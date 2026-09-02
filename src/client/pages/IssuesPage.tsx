@@ -55,6 +55,7 @@ function IssueForm({
 }) {
   const client = useQueryClient();
   const [status, setStatus] = useState(issue?.status || "open");
+  const [dueDate, setDueDate] = useState(issue?.status === "deferred" ? "" : issue?.dueDate || "");
   const needsResolutionNote = Boolean(issue && issue.status !== "resolved" && status === "resolved");
   const mutation = useMutation({
     mutationFn: (value: object) => api<Issue>(issue ? `/api/issues/${issue.id}` : "/api/issues", {
@@ -78,12 +79,12 @@ function IssueForm({
     {!canManage && <p className="issue-contributor-note field-full">提交后问题进入“待处理”，由项目经理分配负责人并确认关闭。</p>}
     <label className="field"><span>关联需求</span><select name="requirementId" defaultValue={issue?.requirementId || ""}><option value="">公共问题</option>{requirements.map((requirement) => <option key={requirement.id} value={requirement.id}>{requirement.title}</option>)}</select></label>
     <label className="field"><span>范围标识</span><input name="sourceRef" defaultValue={issue?.sourceRef || ""} placeholder="可选，如 DCIM-36" /></label>
-    {canManage && <label className="field"><span>状态</span><select name="status" value={status} onChange={(event) => setStatus(event.target.value)}>{statusEntries.filter(([value]) => issue || value !== "resolved").map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>}
+    {canManage && <label className="field"><span>状态</span><select name="status" value={status} onChange={(event) => { const nextStatus = event.target.value; setStatus(nextStatus); if (nextStatus === "deferred") setDueDate(""); }}>{statusEntries.filter(([value]) => issue || value !== "resolved").map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>}
     <label className="field"><span>优先级</span><select name="priority" defaultValue={issue?.priority || "P2"}>{priorityEntries.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
     {canManage && <label className="field"><span>负责人</span><select name="ownerId" required={status === "in_progress"} defaultValue={issue?.ownerId || ""}><option value="">未分配</option>{people.map((person) => <option value={person.id} key={person.id}>{person.name} · {person.jobTitle || "岗位未设置"}</option>)}</select></label>}
     <label className="field"><span>提出人</span><input name="reporter" defaultValue={issue?.reporter || defaultReporter || ""} placeholder="可填写多人或外部人员" /></label>
     <label className="field"><span>发现日期</span><input name="discoveredAt" type="date" required defaultValue={issue?.discoveredAt || todayIso()} /></label>
-    <label className="field"><span>目标日期</span><input name="dueDate" type="date" defaultValue={issue?.dueDate || ""} /></label>
+    <label className="field"><span>目标日期</span><input name="dueDate" type="date" value={dueDate} disabled={status === "deferred"} onChange={(event) => setDueDate(event.target.value)} />{status === "deferred" && <small>暂缓问题不设置目标日期</small>}</label>
     {needsResolutionNote && <label className="field field-full issue-resolution-note"><span>关闭确认说明</span><textarea name="updateContent" rows={3} required placeholder="项目经理确认问题已解决，并填写最终结论" /></label>}
     {mutation.error && <p className="form-error field-full">{mutation.error.message}</p>}
     <div className="form-actions field-full"><button type="button" className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" disabled={mutation.isPending}>{needsResolutionNote ? "确认关闭" : issue ? "保存修改" : "创建问题"}</button></div>

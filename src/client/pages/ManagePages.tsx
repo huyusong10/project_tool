@@ -732,11 +732,21 @@ export function TemplatesPage() {
   );
 }
 
+const archiveEntityOptions = [
+  { value: "projects", label: "项目" },
+  { value: "requirements", label: "需求" },
+  { value: "people", label: "人员" },
+  { value: "templates", label: "模板" },
+] as const;
+type ArchiveEntity = (typeof archiveEntityOptions)[number]["value"];
+
 export function SystemPage() {
   const { session, openLogin } = useApp();
   const client = useQueryClient();
   const [newToken, setNewToken] = useState<string>();
   const [tokenModal, setTokenModal] = useState(false);
+  const [archiveKeyword, setArchiveKeyword] = useState("");
+  const [archiveType, setArchiveType] = useState<"all" | ArchiveEntity>("all");
   const { data: tokens = [] } = useQuery({
     queryKey: ["tokens"],
     queryFn: () => api<ApiToken[]>("/api/tokens"),
@@ -752,6 +762,15 @@ export function SystemPage() {
     queryFn: () => api<Archives>("/api/archives"),
     enabled: session.authenticated,
   });
+  const archiveRows = useMemo(() => archiveEntityOptions.flatMap(({ value, label }) =>
+    (archives?.[value] || []).map((item) => ({ ...item, entity: value, typeLabel: label }))), [archives]);
+  const filteredArchiveRows = useMemo(() => {
+    const keyword = archiveKeyword.trim().toLowerCase();
+    return archiveRows
+      .filter((item) => archiveType === "all" || item.entity === archiveType)
+      .filter((item) => !keyword || `${item.title} ${item.jobTitle || ""} ${item.typeLabel}`.toLowerCase().includes(keyword))
+      .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+  }, [archiveKeyword, archiveRows, archiveType]);
   const createToken = useMutation({
     mutationFn: (value: object) =>
       api<ApiToken & { token: string }>("/api/tokens", {
@@ -883,7 +902,7 @@ export function SystemPage() {
           <header>
             <div>
               <h2>数据库备份</h2>
-              <p>每日02:00自动备份，保留30天</p>
+              <p>本地时间每日02:00自动备份，保留30天且最多100份</p>
             </div>
             <button className="ghost-button" onClick={() => backup.mutate()}>
               <DatabaseBackup size={15} />
@@ -891,7 +910,7 @@ export function SystemPage() {
             </button>
           </header>
           <div className="compact-list">
-            {backups.slice(0, 8).map((item) => (
+            {backups.map((item) => (
               <div key={item.name}>
                 <DatabaseBackup size={16} />
                 <div>
@@ -929,12 +948,24 @@ export function SystemPage() {
         </article>
         </section>
       <section className="panel archive-panel">
-        <header><div><h2>归档中心</h2><p>可恢复或永久删除已归档内容；永久删除后无法恢复</p></div></header>
-        <div className="archive-columns">
-          {([['projects', '项目'], ['requirements', '需求'], ['people', '人员'], ['templates', '模板']] as const).map(([entity, label]) => <div key={entity}><h3>{label}<span>{archives?.[entity].length || 0}</span></h3>
-            {archives?.[entity].map((item) => <article key={item.id}><div><strong>{item.title}</strong><small>{item.jobTitle ? `${item.jobTitle} · ` : ''}{new Date(item.deletedAt).toLocaleString('zh-CN')}</small></div><button title={`恢复${label}`} onClick={() => restoreArchive.mutate({ entity, id: item.id })}><RotateCcw size={14} /><span>恢复</span></button><button className="archive-delete-button" title={`永久删除${label}`} onClick={() => confirm(`永久删除“${item.title}”？该操作无法恢复。${entity === 'projects' ? '项目下的需求和工作项也会一并删除。' : ''}`) && deleteArchive.mutate({ entity, id: item.id })}><Trash2 size={14} /><span>删除</span></button></article>)}
-            {!archives?.[entity].length && <p>暂无归档{label}</p>}
-          </div>)}
+        <header><div><h2>归档中心</h2><p>统一查看、恢复或永久删除已归档内容</p></div></header>
+        <div className="archive-toolbar">
+          <label className="search-box"><Search size={16} /><input value={archiveKeyword} onChange={(event) => setArchiveKeyword(event.target.value)} placeholder="搜索归档名称或岗位" /></label>
+          <select value={archiveType} onChange={(event) => setArchiveType(event.target.value as "all" | ArchiveEntity)}><option value="all">全部类型</option>{archiveEntityOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select>
+          <span>{filteredArchiveRows.length} / {archiveRows.length} 条</span>
+        </div>
+        <div className="archive-table-wrap">
+          <table className="archive-table">
+            <thead><tr><th>名称</th><th>类型</th><th>补充信息</th><th>归档时间</th><th>操作</th></tr></thead>
+            <tbody>{filteredArchiveRows.map((item) => <tr key={`${item.entity}-${item.id}`}>
+              <td><strong title={item.title}>{item.title}</strong></td>
+              <td><span className={`archive-type archive-type-${item.entity}`}>{item.typeLabel}</span></td>
+              <td>{item.jobTitle || "—"}</td>
+              <td>{new Date(item.deletedAt).toLocaleString("zh-CN")}</td>
+              <td><div className="archive-row-actions"><button className="inline-action-button" title={`恢复${item.typeLabel}`} onClick={() => restoreArchive.mutate({ entity: item.entity, id: item.id })}><RotateCcw size={14} />恢复</button><button className="inline-action-button danger" title={`永久删除${item.typeLabel}`} onClick={() => confirm(`永久删除“${item.title}”？该操作无法恢复。${item.entity === "projects" ? "项目下的需求和工作项也会一并删除。" : ""}`) && deleteArchive.mutate({ entity: item.entity, id: item.id })}><Trash2 size={14} />删除</button></div></td>
+            </tr>)}</tbody>
+          </table>
+          {!filteredArchiveRows.length && <EmptyState title="没有符合条件的归档内容" detail={archiveRows.length ? "调整搜索词或类型筛选后重试。" : "归档项目、需求、人员或模板后会显示在这里。"} />}
         </div>
         {(restoreArchive.error || deleteArchive.error) && <p className="form-error archive-error">{(restoreArchive.error || deleteArchive.error)?.message}</p>}
       </section>
@@ -1048,7 +1079,7 @@ export function LogsPage() {
     <PageHeader title="操作日志" />
     <div className="page-content logs-page">
       <div className="audit-filters">
-        <label className="search-box"><Search size={16} /><input value={keyword} onChange={(event) => resetPage(() => setKeyword(event.target.value))} placeholder="搜索操作内容或实体ID" /></label>
+        <label className="search-box"><Search size={16} /><input value={keyword} onChange={(event) => resetPage(() => setKeyword(event.target.value))} placeholder="搜索用户、Token、操作内容或实体ID" /></label>
         <select value={actorType} onChange={(event) => resetPage(() => setActorType(event.target.value))}><option value="">全部来源</option><option value="user">用户</option><option value="token">MCP Token</option></select>
         <select value={action} onChange={(event) => resetPage(() => setAction(event.target.value))}><option value="">全部动作</option>{Object.entries(auditActionLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
         <select value={entityType} onChange={(event) => resetPage(() => setEntityType(event.target.value))}><option value="">全部对象</option>{Object.entries(auditEntityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
@@ -1061,7 +1092,7 @@ export function LogsPage() {
           <div className="audit-head"><span>时间</span><span>来源</span><span>对象</span><span>动作</span><span>内容</span></div>
           {data?.items.map((item) => <div key={item.id}>
             <span>{new Date(item.createdAt).toLocaleString("zh-CN")}</span>
-            <span>{item.actorType === "token" ? `Token · ${item.actorId?.slice(0, 8)}` : "用户"}</span>
+            <span title={item.actorType === "token" && item.tokenName ? `MCP Token：${item.tokenName}` : undefined}>{item.actorName || "已删除用户"}{item.actorType === "token" && ` · MCP${item.tokenName ? `（${item.tokenName}）` : ""}`}</span>
             <span>{auditEntityLabels[item.entityType] || item.entityType}</span>
             <span>{auditActionLabels[item.action] || item.action}</span>
             <span title={item.entityId || undefined}>{item.summary}</span>

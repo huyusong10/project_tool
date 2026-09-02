@@ -43,6 +43,7 @@ describe('正式库增量迁移', () => {
     expect(migrated.prepare('SELECT title,status,planned_start AS plannedStart,actual_end AS actualEnd FROM work_items WHERE id=?').get('w1'))
       .toEqual({ title: '原工作项', status: 'not_started', plannedStart: '2026-09-01', actualEnd: '2026-09-02' });
     expect(migrated.prepare('SELECT priority FROM requirements WHERE id=?').get('r1')).toEqual({ priority: 'P2' });
+    expect(migrated.prepare('SELECT template_id AS templateId FROM requirements WHERE id=?').get('r1')).toEqual({ templateId: 't1' });
     expect(migrated.prepare('SELECT start_offset_days AS offset,duration_days AS duration FROM template_items WHERE id=?').get('ti1'))
       .toEqual({ offset: 4, duration: 1 });
     expect(migrated.prepare('SELECT COUNT(*) AS count FROM work_item_collaborators').get()).toEqual({ count: 0 });

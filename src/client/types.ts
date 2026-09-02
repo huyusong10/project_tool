@@ -50,7 +50,7 @@ export type IssuePage = {
   };
 };
 export type Requirement = {
-  id: string; projectId: string; projectName: string; title: string; ownerId: string | null; ownerName: string | null;
+  id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number; progressGap: number;
   riskLevel: string; priority: string; createdAt: string; updatedAt: string; deletedAt?: string | null;
   workItems: WorkItem[]; progressUpdates?: ProgressUpdate[]; recentProgressUpdates?: ProgressUpdate[]; delayed: boolean; highRisk: boolean;
@@ -89,7 +89,7 @@ export type Archives = {
 };
 export type ArchiveItem = { id: string; title: string; jobTitle?: string | null; deletedAt: string };
 export type ApiToken = { id: string; name: string; prefix: string; expiresAt: string | null; lastUsedAt: string | null; revokedAt: string | null; createdAt: string };
-export type AuditLog = { id: string; actorType: string; actorId: string | null; action: string; entityType: string; entityId: string | null; summary: string; createdAt: string };
+export type AuditLog = { id: string; actorType: string; actorId: string | null; actorName: string | null; tokenName: string | null; action: string; entityType: string; entityId: string | null; summary: string; createdAt: string };
 export type AuditPage = { items: AuditLog[]; total: number; page: number; pageSize: number; pages: number };
 export type Backup = { name: string; size: number; createdAt: string };
 export type Account = {

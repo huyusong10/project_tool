@@ -144,14 +144,17 @@ function Sidebar({ session, collapsed, onToggle }: { session: Session; collapsed
         </button>
       </div>
       <nav>
-        {session.authenticated && <NavLink to="/my-work">
-          <ClipboardList size={18} />
-          我的工作
-        </NavLink>}
+        <span className="nav-section nav-section-first">工作台</span>
         <NavLink to="/" end>
           <GanttChartSquare size={18} />
           项目进展
         </NavLink>
+        {session.authenticated && <span className="nav-section">个人</span>}
+        {session.authenticated && <NavLink to="/my-work">
+          <ClipboardList size={18} />
+          我的工作
+        </NavLink>}
+        <span className="nav-section">项目协作</span>
         <NavLink to="/requirements">
           <ListChecks size={18} />
           需求管理
@@ -313,8 +316,8 @@ function PasswordForm({ forced, onClose }: { forced: boolean; onClose: () => voi
 function RoleRoute({ session, ready, admin = false, manager = false, children }: { session: Session; ready: boolean; admin?: boolean; manager?: boolean; children: ReactNode }) {
   if (!ready) return <div className="page-content"><div className="loading-block">正在确认账号权限…</div></div>;
   if (!session.authenticated) return <Navigate to="/" replace />;
-  if (admin && !isAdmin(session)) return <Navigate to="/my-work" replace />;
-  if (manager && !isAdmin(session) && !session.managedProjectIds.length) return <Navigate to="/my-work" replace />;
+  if (admin && !isAdmin(session)) return <Navigate to="/" replace />;
+  if (manager && !isAdmin(session) && !session.managedProjectIds.length) return <Navigate to="/" replace />;
   return children;
 }
 

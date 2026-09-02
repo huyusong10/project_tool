@@ -7,6 +7,7 @@ import type { FastifyInstance } from 'fastify';
 const dbPath = path.join(process.cwd(), 'data', `integration-${randomUUID()}.db`);
 process.env.DB_PATH = dbPath;
 process.env.BACKUP_DIR = path.join(process.cwd(), 'data', `backups-${randomUUID()}`);
+process.env.BACKUP_MAX_COUNT = '3';
 process.env.APP_USERNAME = 'tester';
 process.env.APP_PASSWORD_HASH = 'scrypt$4c63a6f93ff4f94b031b7e7583592177$b598dbddaf9dd06678ff8756923d9e0a7f2d68eaa45bc644fbf4a73c9298970c7489671dfcfc8be282022c26a3370fb040f3f086a45faa1e1abde04bbe4a51ef';
 process.env.SESSION_SECRET = 'test-session-secret-with-more-than-thirty-two-characters';
@@ -69,6 +70,7 @@ describe('自动化项目管理API', () => {
     } });
     expect(requirement.statusCode).toBe(200); requirementId = requirement.json().id;
     expect(requirement.json().priority).toBe('P1');
+    expect(requirement.json()).toMatchObject({ templateId, templateName: '并行交付模板' });
     expect(requirement.json().workItems).toHaveLength(3);
     expect(requirement.json().workItems[0]).toMatchObject({ plannedStart: '2026-09-04', plannedEnd: '2026-09-08' });
     expect(requirement.json().workItems[1].plannedStart).toBe('2026-09-04');
@@ -134,6 +136,14 @@ describe('自动化项目管理API', () => {
     } });
     const ordered = await app.inject({ method: 'GET', url: `/api/issues?projectId=${projectId}&status=in_progress` });
     expect(ordered.json().items.slice(0, 2).map((item: { id: string }) => item.id)).toEqual([overdueLow.json().id, futureHigh.json().id]);
+    const deferred = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
+      projectId, title: '等待外部条件的问题', status: 'deferred', priority: 'P2', discoveredAt: '2026-09-01', dueDate: '2000-01-03',
+    } });
+    expect(deferred.json()).toMatchObject({ status: 'deferred', dueDate: null, overdue: false });
+    const deferredByUpdate = await app.inject({ method: 'PATCH', url: `/api/issues/${futureHigh.json().id}`, headers: { cookie }, payload: { status: 'deferred' } });
+    expect(deferredByUpdate.json()).toMatchObject({ status: 'deferred', dueDate: null, overdue: false });
+    const dashboardWithoutDeferred = await app.inject({ method: 'GET', url: `/api/dashboard?projectId=${projectId}` });
+    expect(dashboardWithoutDeferred.json().issues.attention.every((item: { status: string }) => ['open', 'in_progress'].includes(item.status))).toBe(true);
   });
 
   it('工作项事件自动推导状态、工期加权进度和进展快照', async () => {
@@ -273,17 +283,32 @@ describe('自动化项目管理API', () => {
     const call = await app.inject({ method: 'POST', url: '/mcp', headers, payload: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'people_concurrency', arguments: { projectId } } } });
     expect(call.statusCode).toBe(200);
     expect(JSON.stringify(call.json())).toContain('张三');
+    const write = await app.inject({ method: 'POST', url: '/mcp', headers, payload: { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'add_progress', arguments: { requirementId, content: 'MCP来源识别测试' } } } });
+    expect(write.statusCode).toBe(200);
   });
 
   it('手动备份可主动删除，操作日志支持筛选搜索', async () => {
-    const response = await app.inject({ method: 'POST', url: '/api/backups', headers: { cookie } });
+    const created = [];
+    for (let index = 0; index < 4; index += 1) created.push(await app.inject({ method: 'POST', url: '/api/backups', headers: { cookie } }));
+    const response = created.at(-1)!;
     const backupPath = path.join(process.env.BACKUP_DIR!, response.json().name);
+    const backups = (await app.inject({ method: 'GET', url: '/api/backups', headers: { cookie } })).json();
+    expect(backups).toHaveLength(3);
+    expect(backups.map((item: { name: string }) => item.name)).not.toContain(created[0].json().name);
+    expect(fs.existsSync(path.join(process.env.BACKUP_DIR!, created[0].json().name))).toBe(false);
+    const localTime = new Date(response.json().createdAt);
+    const filenameTime = /project-manage-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-\d{3}\.db/.exec(response.json().name)!;
+    expect(filenameTime.slice(1, 7).map(Number)).toEqual([localTime.getFullYear(), localTime.getMonth() + 1, localTime.getDate(), localTime.getHours(), localTime.getMinutes(), localTime.getSeconds()]);
     const Database = (await import('better-sqlite3')).default;
     const backupDb = new Database(backupPath, { readonly: true });
     expect((backupDb.pragma('integrity_check') as Array<{ integrity_check: string }>)[0].integrity_check).toBe('ok'); backupDb.close();
     const audit = await app.inject({ method: 'GET', url: '/api/audit', headers: { cookie } });
     expect(audit.json().some((item: { action: string }) => item.action === 'complete')).toBe(true);
     expect(audit.json().some((item: { action: string }) => item.action === 'permanent_delete')).toBe(true);
+    expect(audit.json().some((item: { actorType: string; actorName: string }) => item.actorType === 'user' && item.actorName === 'admin')).toBe(true);
+    expect(audit.json().some((item: { actorType: string; actorName: string; tokenName: string }) => item.actorType === 'token' && item.actorName === 'admin' && item.tokenName === '测试Token')).toBe(true);
+    const actorFiltered = await app.inject({ method: 'GET', url: '/api/audit/search?q=admin&page=1&pageSize=20', headers: { cookie } });
+    expect(actorFiltered.json().items.every((item: { actorName: string }) => item.actorName === 'admin')).toBe(true);
     const filtered = await app.inject({ method: 'GET', url: '/api/audit/search?q=%E5%AE%8C%E6%88%90&action=complete&page=1&pageSize=20', headers: { cookie } });
     expect(filtered.statusCode).toBe(200);
     expect(filtered.json().items.every((item: { action: string; summary: string }) => item.action === 'complete' && item.summary.includes('完成'))).toBe(true);
@@ -291,5 +316,29 @@ describe('自动化项目管理API', () => {
     expect(fs.existsSync(backupPath)).toBe(false);
     const backupAudit = await app.inject({ method: 'GET', url: '/api/audit/search?entityType=backup&pageSize=20', headers: { cookie } });
     expect(backupAudit.json().items.some((item: { action: string }) => item.action === 'delete')).toBe(true);
+  });
+
+  it('流程变更不回写需求，重选流程经确认后清空旧数据并重建计划', async () => {
+    const before = (await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}` })).json();
+    const workItemSnapshot = before.workItems.map((item: any) => ({ id: item.id, title: item.title, plannedStart: item.plannedStart, plannedEnd: item.plannedEnd, actualStart: item.actualStart, actualEnd: item.actualEnd }));
+    const sourceTemplate = (await app.inject({ method: 'GET', url: '/api/templates' })).json().find((item: { id: string }) => item.id === templateId);
+    const changedTemplate = await app.inject({ method: 'PATCH', url: `/api/templates/${templateId}`, headers: { cookie }, payload: {
+      name: sourceTemplate.name, description: sourceTemplate.description,
+      items: sourceTemplate.items.map((item: any, index: number) => ({ ...item, title: index === 0 ? `${item.title}（新版）` : item.title, durationDays: item.durationDays + 1 })),
+    } });
+    expect(changedTemplate.statusCode).toBe(200);
+    const afterTemplateEdit = (await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}` })).json();
+    expect(afterTemplateEdit.workItems.map((item: any) => ({ id: item.id, title: item.title, plannedStart: item.plannedStart, plannedEnd: item.plannedEnd, actualStart: item.actualStart, actualEnd: item.actualEnd }))).toEqual(workItemSnapshot);
+
+    const replacement = await app.inject({ method: 'POST', url: '/api/templates', headers: { cookie }, payload: {
+      name: '重选流程测试', items: [{ title: '重新梳理', startOffsetDays: 0, durationDays: 2, sortOrder: 0 }],
+    } });
+    const resetPayload = { templateId: replacement.json().id, plannedStart: '2026-09-14' };
+    expect((await app.inject({ method: 'PATCH', url: `/api/requirements/${requirementId}`, headers: { cookie }, payload: resetPayload })).statusCode).toBe(400);
+    const reset = await app.inject({ method: 'PATCH', url: `/api/requirements/${requirementId}`, headers: { cookie }, payload: { ...resetPayload, confirmTemplateReset: true } });
+    expect(reset.statusCode).toBe(200);
+    expect(reset.json()).toMatchObject({ templateId: replacement.json().id, templateName: '重选流程测试', plannedStart: '2026-09-14', progress: 0, progressUpdates: [] });
+    expect(reset.json().workItems).toEqual([expect.objectContaining({ title: '重新梳理', status: 'not_started', ownerId: null, actualStart: null, actualEnd: null, plannedStart: '2026-09-14', plannedEnd: '2026-09-15' })]);
+    expect(reset.json().workItems.some((item: { id: string }) => workItemSnapshot.some((old: { id: string }) => old.id === item.id))).toBe(false);
   });
 });

@@ -86,7 +86,7 @@ export type WorkItemRecord = {
 };
 
 export type RequirementRecord = {
-  id: string; projectId: string; projectName: string; title: string; ownerId: string | null; ownerName: string | null;
+  id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number; progressGap?: number;
   riskLevel: string; priority: string; createdAt: string; updatedAt: string; deletedAt?: string | null; workItems?: WorkItemRecord[];
   delayed?: boolean; highRisk?: boolean; finishVariance?: number; durationVariance?: number; effectiveEnd?: string | null;
@@ -110,12 +110,14 @@ type TemplateItemInput = { id?: string; title: string; startOffsetDays: number; 
 const projectSelect = `SELECT id, name, status, planned_start AS plannedStart, planned_end AS plannedEnd,
   default_template_id AS defaultTemplateId, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt FROM projects`;
 
-const requirementSelect = `SELECT r.id, r.project_id AS projectId, pr.name AS projectName, r.title,
+const requirementSelect = `SELECT r.id, r.project_id AS projectId, pr.name AS projectName,
+  r.template_id AS templateId, t.name AS templateName, r.title,
   r.owner_id AS ownerId, p.name AS ownerName, r.status, r.planned_start AS plannedStart,
   r.planned_end AS plannedEnd, r.progress, r.risk_level AS riskLevel, r.priority,
   r.created_at AS createdAt, r.updated_at AS updatedAt, r.deleted_at AS deletedAt
   FROM requirements r JOIN projects pr ON pr.id = r.project_id
-  LEFT JOIN people p ON p.id = r.owner_id`;
+  LEFT JOIN people p ON p.id = r.owner_id
+  LEFT JOIN work_item_templates t ON t.id = r.template_id`;
 
 const workItemSelect = `SELECT w.id, w.requirement_id AS requirementId, w.template_item_id AS templateItemId,
   w.title, w.owner_id AS ownerId, p.name AS ownerName, w.status,
@@ -483,8 +485,8 @@ export function createRequirement(input: JsonObject, actor: Actor) {
   }
   const tx = sqlite.transaction(() => {
     sqlite.prepare(`INSERT INTO requirements
-      (id, project_id, title, status, planned_start, progress, risk_level, priority, created_at, updated_at)
-      VALUES (?, ?, ?, 'planning', ?, 0, 'low', ?, ?, ?)`).run(id, projectId, title, plannedStart, priority, now, now);
+      (id, project_id, template_id, title, status, planned_start, progress, risk_level, priority, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'planning', ?, 0, 'low', ?, ?, ?)`).run(id, projectId, templateId, title, plannedStart, priority, now, now);
     applyTemplateInternal(id, templateId, plannedStart);
     updateStoredRequirementEnd(id);
   });
@@ -497,9 +499,30 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
   const title = input.title === undefined ? current.title : requireText(input.title, '需求标题');
   const priority = input.priority === undefined ? current.priority : ensureEnum(input.priority, priorities, '优先级');
   const plannedStart = input.plannedStart === undefined ? current.plannedStart : requireDate(input.plannedStart, '计划开始');
-  sqlite.prepare('UPDATE requirements SET title=?, priority=?, planned_start=?, updated_at=? WHERE id=?')
-    .run(title, priority, plannedStart, nowIso(), id);
-  audit(actor, 'update', 'requirement', id, `更新需求：${title}`);
+  const templateId = input.templateId === undefined ? current.templateId : nullableText(input.templateId);
+  const templateChanged = input.templateId !== undefined && templateId !== current.templateId;
+  if (templateChanged) {
+    if (!templateId || !row('SELECT id FROM work_item_templates WHERE id=? AND deleted_at IS NULL', templateId)) throw new Error('请选择有效的流程设计');
+    if (!plannedStart) throw new Error('重选流程前请设置计划开始日期');
+    if (input.confirmTemplateReset !== true) throw new Error('重选流程会清空已有工作项和进展记录，请确认后重试');
+  }
+  const now = nowIso();
+  sqlite.transaction(() => {
+    if (templateChanged && templateId) {
+      sqlite.prepare('DELETE FROM progress_updates WHERE requirement_id=?').run(id);
+      sqlite.prepare('DELETE FROM work_items WHERE requirement_id=?').run(id);
+      sqlite.prepare(`UPDATE requirements SET template_id=?, title=?, owner_id=NULL, status='planning', planned_start=?,
+        planned_end=NULL, progress=0, risk_level='low', priority=?, updated_at=? WHERE id=?`)
+        .run(templateId, title, plannedStart, priority, now, id);
+      applyTemplateInternal(id, templateId, plannedStart!);
+      updateStoredRequirementEnd(id);
+      return;
+    }
+    sqlite.prepare('UPDATE requirements SET title=?, priority=?, planned_start=?, updated_at=? WHERE id=?')
+      .run(title, priority, plannedStart, now, id);
+  })();
+  audit(actor, templateChanged ? 'apply_template' : 'update', 'requirement', id,
+    templateChanged ? `重选流程并重建计划：${title}` : `更新需求：${title}`);
   return getRequirement(id);
 }
 
@@ -834,7 +857,7 @@ export function createIssue(input: JsonObject, actor: Actor) {
   const priority = input.priority === undefined ? 'P2' : ensureEnum(input.priority, priorities, '问题优先级');
   if (status === 'in_progress' && !ownerId) throw new Error('进入处理中前请指定负责人');
   const discoveredAt = input.discoveredAt === undefined ? todayIso() : requireDate(input.discoveredAt, '发现日期');
-  const dueDate = nullableDate(input.dueDate, '目标日期');
+  const dueDate = status === 'deferred' ? null : nullableDate(input.dueDate, '目标日期');
   const resolvedAt = status === 'resolved' ? todayIso() : null;
   const now = nowIso();
   sqlite.prepare(`INSERT INTO issues
@@ -861,6 +884,7 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
   if (current.status !== 'resolved' && status === 'resolved' && !updateContent) throw new Error('标记已解决时请填写闭环说明');
   const now = nowIso(); const updateId = updateContent ? randomUUID() : null;
   const resolvedAt = status === 'resolved' ? current.resolvedAt || todayIso() : null;
+  const dueDate = status === 'deferred' ? null : input.dueDate === undefined ? current.dueDate : nullableDate(input.dueDate, '目标日期');
   sqlite.transaction(() => {
     sqlite.prepare(`UPDATE issues SET requirement_id=?, source_ref=?, title=?, impact=?, reporter=?, owner_id=?,
       status=?, priority=?, discovered_at=?, due_date=?, resolved_at=?, updated_at=? WHERE id=?`).run(
@@ -869,7 +893,7 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
       input.reporter === undefined ? current.reporter : nullableText(input.reporter),
       ownerId, status, priority,
       input.discoveredAt === undefined ? current.discoveredAt : requireDate(input.discoveredAt, '发现日期'),
-      input.dueDate === undefined ? current.dueDate : nullableDate(input.dueDate, '目标日期'),
+      dueDate,
       resolvedAt, now, id,
     );
     if (updateId && updateContent) sqlite.prepare(`INSERT INTO issue_updates
@@ -1030,7 +1054,7 @@ export function getDashboard(projectId?: string) {
   const varianceTop = requirements.filter((item) => (item.finishVariance ?? 0) > 0).sort((a, b) => (b.finishVariance ?? 0) - (a.finishVariance ?? 0)).slice(0, 10)
     .map((item) => ({ id: item.id, title: item.title, variance: item.finishVariance }));
   const issuePage = listIssues({ projectId, scope: 'public', page: 1, pageSize: 10 });
-  const attention = issuePage.items.filter((item) => item.status !== 'resolved').slice(0, 5);
+  const attention = issuePage.items.filter((item) => item.status === 'open' || item.status === 'in_progress').slice(0, 5);
   return {
     summary: { total: requirements.length, active, completed, delayed, highRisk, completionRate },
     requirements: dashboardRequirements,
@@ -1040,29 +1064,36 @@ export function getDashboard(projectId?: string) {
 }
 
 export function listAudit(limit = 100) {
-  return rows(`SELECT id, actor_type AS actorType, actor_id AS actorId, action, entity_type AS entityType,
-    entity_id AS entityId, summary, created_at AS createdAt FROM audit_logs ORDER BY created_at DESC LIMIT ?`, Math.min(Math.max(limit, 1), 500));
+  return rows(`${auditSelect} ${auditFrom} ORDER BY l.created_at DESC LIMIT ?`, Math.min(Math.max(limit, 1), 500));
 }
+
+const auditSelect = `SELECT l.id, l.actor_type AS actorType, l.actor_id AS actorId,
+  CASE WHEN l.actor_type='user' THEN user_account.username WHEN l.actor_type='token' THEN token_account.username END AS actorName,
+  actor_token.name AS tokenName, l.action, l.entity_type AS entityType, l.entity_id AS entityId,
+  l.summary, l.created_at AS createdAt`;
+const auditFrom = `FROM audit_logs l
+  LEFT JOIN accounts user_account ON l.actor_type='user' AND user_account.id=l.actor_id
+  LEFT JOIN api_tokens actor_token ON l.actor_type='token' AND actor_token.id=l.actor_id
+  LEFT JOIN accounts token_account ON token_account.id=actor_token.account_id`;
 
 export function searchAudit(filters: { q?: string; actorType?: string; action?: string; entityType?: string; from?: string; to?: string; page?: number; pageSize?: number } = {}) {
   const where: string[] = []; const params: unknown[] = [];
   const q = String(filters.q || '').trim();
   if (q) {
-    where.push('(summary LIKE ? OR entity_id LIKE ? OR actor_id LIKE ? OR action LIKE ?)');
-    const pattern = `%${q}%`; params.push(pattern, pattern, pattern, pattern);
+    where.push('(l.summary LIKE ? OR l.entity_id LIKE ? OR l.actor_id LIKE ? OR l.action LIKE ? OR user_account.username LIKE ? OR token_account.username LIKE ? OR actor_token.name LIKE ?)');
+    const pattern = `%${q}%`; params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern);
   }
-  if (filters.actorType) { where.push('actor_type=?'); params.push(filters.actorType); }
-  if (filters.action) { where.push('action=?'); params.push(filters.action); }
-  if (filters.entityType) { where.push('entity_type=?'); params.push(filters.entityType); }
-  if (filters.from) { where.push('created_at>=?'); params.push(`${filters.from}T00:00:00.000Z`); }
-  if (filters.to) { where.push('created_at<=?'); params.push(`${filters.to}T23:59:59.999Z`); }
+  if (filters.actorType) { where.push('l.actor_type=?'); params.push(filters.actorType); }
+  if (filters.action) { where.push('l.action=?'); params.push(filters.action); }
+  if (filters.entityType) { where.push('l.entity_type=?'); params.push(filters.entityType); }
+  if (filters.from) { where.push('l.created_at>=?'); params.push(`${filters.from}T00:00:00.000Z`); }
+  if (filters.to) { where.push('l.created_at<=?'); params.push(`${filters.to}T23:59:59.999Z`); }
   const page = Math.max(1, Number(filters.page) || 1);
   const pageSize = Math.min(100, Math.max(20, Number(filters.pageSize) || 50));
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const total = row<{ count: number }>(`SELECT COUNT(*) AS count FROM audit_logs ${clause}`, ...params)?.count || 0;
-  const items = rows(`SELECT id, actor_type AS actorType, actor_id AS actorId, action, entity_type AS entityType,
-    entity_id AS entityId, summary, created_at AS createdAt FROM audit_logs ${clause}
-    ORDER BY created_at DESC LIMIT ? OFFSET ?`, ...params, pageSize, (page - 1) * pageSize);
+  const total = row<{ count: number }>(`SELECT COUNT(*) AS count ${auditFrom} ${clause}`, ...params)?.count || 0;
+  const items = rows(`${auditSelect} ${auditFrom} ${clause}
+    ORDER BY l.created_at DESC LIMIT ? OFFSET ?`, ...params, pageSize, (page - 1) * pageSize);
   return { items, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) };
 }
 

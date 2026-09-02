@@ -89,6 +89,7 @@ export const templateItems = sqliteTable('template_items', {
 export const requirements = sqliteTable('requirements', {
   id: text('id').primaryKey(),
   projectId: text('project_id').notNull().references(() => projects.id),
+  templateId: text('template_id').references(() => workItemTemplates.id, { onDelete: 'set null' }),
   title: text('title').notNull(),
   ownerId: text('owner_id').references(() => people.id),
   status: text('status').notNull().default('planning'),
@@ -102,6 +103,7 @@ export const requirements = sqliteTable('requirements', {
 }, (table) => [
   check('requirements_progress_range', sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
   index('idx_requirements_project_status').on(table.projectId, table.status, table.deletedAt),
+  index('idx_requirements_template').on(table.templateId),
   index('idx_requirements_owner').on(table.ownerId),
 ]);
 

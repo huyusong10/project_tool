@@ -49,7 +49,7 @@ export function AccountsPage() {
         <td><strong>{account.personName || '内置管理员'}</strong><small>{account.username} · {account.jobTitle || '—'}</small></td>
         <td><span className={`account-role role-${account.role}`}><UserCog size={14} />{roleLabels[account.role]}</span></td>
         <td><span className="managed-projects">{account.role === 'admin' ? '全部项目' : account.managedProjects.map((project) => project.name).join('、') || '—'}</span></td>
-        <td><span className={`account-status ${account.status}`}>{account.status === 'active' ? '启用' : '停用'}</span>{account.mustChangePassword && <small>待修改初始密码</small>}</td>
+        <td><div className="account-state-cell"><span className={`account-status ${account.status}`}>{account.status === 'active' ? '启用' : '停用'}</span>{account.mustChangePassword && <span className="account-password-state">待修改初始密码</span>}</div></td>
         <td>{account.lastLoginAt ? new Date(account.lastLoginAt).toLocaleString('zh-CN') : '从未登录'}</td>
         <td><div className="project-row-actions"><button className="inline-action-button" onClick={() => setEditing(account)}><Pencil size={14} />配置</button><button className="inline-action-button" onClick={() => confirm(`将“${account.username}”的密码重置为888888？`) && reset.mutate(account.id)}><KeyRound size={14} />重置密码</button></div></td>
       </tr>)}</tbody></table>{!accounts.length && !isLoading && <EmptyState title="没有符合条件的账号" detail="新增人员后会自动创建对应账号。" />}</section>

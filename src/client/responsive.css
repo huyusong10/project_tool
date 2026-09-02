@@ -135,14 +135,6 @@ textarea {
   min-width: 760px;
 }
 
-.system-grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
-}
-
-.archive-columns {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
-}
-
 .people-role-members {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 320px));
   justify-content: start;
@@ -445,6 +437,7 @@ textarea {
 }
 
 @media (max-width: 760px) {
+  .system-grid { grid-template-columns: 1fr; }
   .my-work-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .my-work-items > article { grid-template-columns: 1fr; }
   .my-work-dates, .my-work-actions { grid-column: 1; }

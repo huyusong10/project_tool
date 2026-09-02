@@ -18,6 +18,7 @@ export const config = {
   sessionHours: Number(process.env.SESSION_HOURS || 12),
   highRiskDelayDays: Number(process.env.HIGH_RISK_DELAY_DAYS || 3),
   backupRetentionDays: Number(process.env.BACKUP_RETENTION_DAYS || 30),
+  backupMaxCount: Math.max(1, Math.floor(Number(process.env.BACKUP_MAX_COUNT || 100) || 100)),
   seedDemo: process.env.SEED_DEMO === '1',
   nodeEnv: process.env.NODE_ENV || 'development',
 };

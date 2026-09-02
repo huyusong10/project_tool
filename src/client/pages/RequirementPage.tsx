@@ -40,6 +40,9 @@ function RequirementEditForm({
   onClose: () => void;
 }) {
   const client = useQueryClient();
+  const { data: templates = [] } = useQuery({ queryKey: ["templates"], queryFn: () => api<WorkItemTemplate[]>("/api/templates") });
+  const [templateId, setTemplateId] = useState(requirement.templateId || "");
+  const templateChanged = Boolean(templateId && templateId !== requirement.templateId);
   const mutation = useMutation({
     mutationFn: (value: object) =>
       api(`/api/requirements/${requirement.id}`, {
@@ -59,7 +62,8 @@ function RequirementEditForm({
       className="form-grid"
       onSubmit={(event) => {
         event.preventDefault();
-        mutation.mutate(Object.fromEntries(new FormData(event.currentTarget)));
+        if (templateChanged && !confirm("切换流程会清空当前需求的全部工作项、人员分配、实际日期和进展记录，并按新流程重新生成计划。确认继续？")) return;
+        mutation.mutate({ ...Object.fromEntries(new FormData(event.currentTarget)), ...(templateChanged ? { templateId, confirmTemplateReset: true } : {}) });
       }}
     >
       <label className="field field-full">
@@ -80,10 +84,20 @@ function RequirementEditForm({
         <input
           name="plannedStart"
           type="date"
+          required
           defaultValue={requirement.plannedStart || ""}
         />
       </label>
-      <p className="field-help field-full">状态、进度、风险和计划完成均由工作项自动计算；修改计划开始不会直接覆盖现有工作项。</p>
+      <label className="field field-full">
+        <span>绑定流程</span>
+        <select value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
+          {!requirement.templateId && <option value="">未绑定（保持现有工作项）</option>}
+          {requirement.templateId && !templates.some((template) => template.id === requirement.templateId) && <option value={requirement.templateId}>{requirement.templateName || "原流程"}（已归档）</option>}
+          {templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
+        </select>
+      </label>
+      {templateChanged && <p className="template-reset-warning field-full"><AlertTriangle size={16} />切换后会清空现有工作项及进展，并按所选流程和计划开始日期重新排期。</p>}
+      <p className="field-help field-full">流程仅作为生成模板；流程设计后续变更不会同步到当前需求。仅修改计划开始也不会覆盖已有工作项。</p>
       {mutation.error && (
         <p className="form-error field-full">{mutation.error.message}</p>
       )}
@@ -305,7 +319,7 @@ function ProgressForm({
 
 function PlanForm({ requirement, templates, onClose }: { requirement: Requirement; templates: WorkItemTemplate[]; onClose: () => void }) {
   const client = useQueryClient();
-  const [templateId, setTemplateId] = useState(templates[0]?.id || "");
+  const [templateId, setTemplateId] = useState(requirement.templateId || templates[0]?.id || "");
   const [baseStart, setBaseStart] = useState(requirement.plannedStart || "");
   const [preview, setPreview] = useState<PlanPreview>();
   const previewMutation = useMutation({
