@@ -25,7 +25,7 @@ const templateItem = z.object({
 });
 const requirementInput = z.object({
   projectId: z.string().optional(), title: z.string().min(1).optional(), priority: z.enum(priorities).optional(),
-  plannedStart: optionalDate, templateId: z.string().optional(),
+  plannedStart: optionalDate, plannedEnd: optionalDate, templateId: z.string().optional(),
 });
 const workItemInput = z.object({
   title: z.string().min(1).optional(), ownerId: z.string().nullable().optional(),
@@ -47,7 +47,7 @@ function createServer(actor: Actor) {
 
   server.registerTool('list_requirements', { description: '筛选查询需求', inputSchema: z.object({ projectId: z.string().optional(), status: z.string().optional(), view: z.enum(['delayed', 'high_risk']).optional(), includeDeleted: z.boolean().optional() }) }, async (input) => json(listRequirements(input)));
   server.registerTool('get_requirement', { description: '获取需求、自动指标、工作项和进展', inputSchema: z.object({ id: z.string(), includeDeleted: z.boolean().optional() }) }, async ({ id, includeDeleted }) => json(getRequirement(id, includeDeleted)));
-  server.registerTool('create_requirement', { description: '创建需求并按模板自动生成工作项', inputSchema: requirementInput.extend({ projectId: z.string(), title: z.string().min(1), plannedStart: z.string(), priority: z.enum(priorities), templateId: z.string().optional() }) }, async (input) => json(createRequirement(input, actor)));
+  server.registerTool('create_requirement', { description: '创建需求并按模板自动生成工作项；计划开始和截止日期二选一', inputSchema: requirementInput.extend({ projectId: z.string(), title: z.string().min(1), priority: z.enum(priorities), templateId: z.string().optional() }).refine((input) => Boolean(input.plannedStart) !== Boolean(input.plannedEnd), { message: '计划开始和截止日期请选择一项' }) }, async (input) => json(createRequirement(input, actor)));
   server.registerTool('update_requirement', { description: '修改需求标题、优先级或计划开始，不自动覆盖工作项计划', inputSchema: requirementInput.extend({ id: z.string() }) }, async ({ id, ...input }) => json(updateRequirement(id, input, actor)));
   server.registerTool('archive_requirement', { description: '归档需求', inputSchema: z.object({ id: z.string() }) }, async ({ id }) => json(archiveRequirement(id, actor)));
   server.registerTool('restore_requirement', { description: '恢复需求', inputSchema: z.object({ id: z.string() }) }, async ({ id }) => json(restoreRequirement(id, actor)));

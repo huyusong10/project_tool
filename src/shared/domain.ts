@@ -84,6 +84,14 @@ export function plannedDatesFromOffset(baseStart: string, startOffsetDays: numbe
   return { plannedStart, plannedEnd };
 }
 
+export function plannedStartFromDeadline(deadline: string, items: Array<{ startOffsetDays: number; durationDays: number }>) {
+  const latestEndOffset = Math.max(
+    0,
+    ...items.map((item) => Math.max(0, Math.trunc(item.startOffsetDays)) + Math.max(1, Math.trunc(item.durationDays)) - 1),
+  );
+  return addBusinessDays(deadline, -latestEndOffset);
+}
+
 export function businessDaysInclusive(start?: string | null, end?: string | null): number {
   if (!start || !end) return 0;
   let cursor = parseIsoDate(start);

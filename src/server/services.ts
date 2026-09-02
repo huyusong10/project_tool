@@ -10,6 +10,7 @@ import {
   deriveWorkItemStatus,
   issueStatuses,
   plannedDatesFromOffset,
+  plannedStartFromDeadline,
   priorities,
   requirementStatuses,
   riskLevels,
@@ -465,10 +466,21 @@ export function createRequirement(input: JsonObject, actor: Actor) {
     'SELECT id, default_template_id AS defaultTemplateId FROM projects WHERE id=? AND deleted_at IS NULL', projectId,
   );
   if (!project) throw new Error('项目不存在');
-  const title = requireText(input.title, '需求标题'); const plannedStart = requireDate(input.plannedStart, '计划开始');
+  const title = requireText(input.title, '需求标题');
   const priority = ensureEnum(input.priority ?? 'P2', priorities, '优先级');
   const templateId = nullableText(input.templateId) || project.defaultTemplateId || firstActiveTemplateId();
   if (!templateId || !row('SELECT id FROM work_item_templates WHERE id=? AND deleted_at IS NULL', templateId)) throw new Error('请选择有效的流程设计');
+  const inputPlannedStart = nullableText(input.plannedStart);
+  const inputPlannedEnd = nullableText(input.plannedEnd);
+  if (Boolean(inputPlannedStart) === Boolean(inputPlannedEnd)) throw new Error('计划开始和截止日期请选择一项');
+  let plannedStart: string;
+  if (inputPlannedStart) {
+    plannedStart = requireDate(inputPlannedStart, '计划开始');
+  } else {
+    const deadline = requireDate(inputPlannedEnd, '截止日期');
+    if (businessDaysInclusive(deadline, deadline) !== 1) throw new Error('截止日期需为工作日');
+    plannedStart = plannedStartFromDeadline(deadline, activeTemplateItems(templateId));
+  }
   const tx = sqlite.transaction(() => {
     sqlite.prepare(`INSERT INTO requirements
       (id, project_id, title, status, planned_start, progress, risk_level, priority, created_at, updated_at)

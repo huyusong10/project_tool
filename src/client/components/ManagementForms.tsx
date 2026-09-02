@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, jsonBody } from "../api";
 import { useApp } from "../app-context";
@@ -71,6 +72,7 @@ export function RequirementForm({
   onClose: () => void;
 }) {
   const client = useQueryClient();
+  const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">("start");
   const { projects } = useApp();
   const { data: templates = [] } = useQuery({
     queryKey: ["templates"],
@@ -113,11 +115,45 @@ export function RequirementForm({
           {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
         </select>
       </label>
-      <label className="field">
-        <span>计划开始</span>
-        <input name="plannedStart" type="date" required />
+      <div className="field field-full">
+        <span>排期方式</span>
+        <div className="schedule-mode-switch" role="radiogroup" aria-label="排期方式">
+          <button
+            type="button"
+            className={scheduleMode === "start" ? "is-active" : ""}
+            role="radio"
+            aria-checked={scheduleMode === "start"}
+            onClick={() => setScheduleMode("start")}
+          >
+            <strong>按开始日期排期</strong>
+            <small>从选定日期按流程正向生成计划</small>
+          </button>
+          <button
+            type="button"
+            className={scheduleMode === "deadline" ? "is-active" : ""}
+            role="radio"
+            aria-checked={scheduleMode === "deadline"}
+            onClick={() => setScheduleMode("deadline")}
+          >
+            <strong>按截止日期倒排</strong>
+            <small>以选定日期为目标反算计划开始</small>
+          </button>
+        </div>
+      </div>
+      <label className="field field-full schedule-date-field">
+        <span>{scheduleMode === "start" ? "计划开始" : "截止日期"}</span>
+        <input
+          key={scheduleMode}
+          name={scheduleMode === "start" ? "plannedStart" : "plannedEnd"}
+          type="date"
+          required
+        />
       </label>
-      <p className="field-help field-full">保存后将按模板自动生成工作项和计划完成日期。</p>
+      <p className="field-help field-full">
+        {scheduleMode === "start"
+          ? "保存后将按流程自动生成工作项，并计算计划完成日期。"
+          : "保存后将按流程工期倒排工作项；截止日期需为工作日。"}
+      </p>
       {mutation.error && <p className="form-error field-full">{mutation.error.message}</p>}
       <div className="form-actions field-full">
         <button type="button" className="ghost-button" onClick={onClose}>取消</button>

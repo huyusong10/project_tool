@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
-  deriveWorkItemStatus, plannedDatesFromOffset,
+  deriveWorkItemStatus, plannedDatesFromOffset, plannedStartFromDeadline,
 } from '../src/shared/domain';
 
 describe('工作日、排期与Gap规则', () => {
@@ -9,6 +9,16 @@ describe('工作日、排期与Gap规则', () => {
     expect(businessDaysInclusive('2026-09-04', '2026-09-07')).toBe(2);
     expect(businessDayDelta('2026-09-04', '2026-09-07')).toBe(1);
     expect(plannedDatesFromOffset('2026-09-04', 1, 3)).toEqual({ plannedStart: '2026-09-07', plannedEnd: '2026-09-09' });
+  });
+
+  it('按流程最晚结束偏移从截止日期倒排开始日期', () => {
+    const items = [
+      { startOffsetDays: 0, durationDays: 3 },
+      { startOffsetDays: 1, durationDays: 4 },
+      { startOffsetDays: 3, durationDays: 2 },
+    ];
+    expect(plannedStartFromDeadline('2026-09-11', items)).toBe('2026-09-07');
+    expect(plannedDatesFromOffset('2026-09-07', 1, 4).plannedEnd).toBe('2026-09-11');
   });
 
   it('计算并排计划和实际的完成及耗时偏差', () => {

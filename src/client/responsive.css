@@ -395,33 +395,7 @@ textarea {
 
 @media (max-width: 1040px) {
   :root {
-    --sidebar-width: 76px;
     --page-gutter: 14px;
-  }
-
-  .sidebar {
-    padding-inline: 10px;
-  }
-
-  .brand-mark {
-    justify-content: center;
-    padding-inline: 0;
-  }
-
-  .brand-mark div,
-  .nav-section {
-    display: none;
-  }
-
-  nav a {
-    justify-content: center;
-    padding-inline: 0;
-    font-size: 0;
-  }
-
-  nav a svg {
-    width: 20px;
-    height: 20px;
   }
 
   .topbar {
@@ -439,6 +413,12 @@ textarea {
   .session-badge,
   .guest-badge {
     display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .schedule-mode-switch {
+    grid-template-columns: 1fr;
   }
 }
 

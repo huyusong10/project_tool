@@ -19,6 +19,7 @@ import {
   LockKeyhole,
   LogIn,
   LogOut,
+  PanelLeftClose,
   Settings2,
   ScrollText,
   Users,
@@ -120,7 +121,16 @@ function LoginForm({ onClose }: { onClose: () => void }) {
   );
 }
 
-function Sidebar({ session }: { session: Session }) {
+function Sidebar({ session, collapsed, onToggle }: { session: Session; collapsed: boolean; onToggle: () => void }) {
+  if (collapsed) {
+    return (
+      <aside className="sidebar sidebar-collapsed">
+        <button type="button" className="collapsed-brand" onClick={onToggle} aria-label="展开侧边栏" title="展开侧边栏">
+          PM
+        </button>
+      </aside>
+    );
+  }
   return (
     <aside className="sidebar">
       <div className="brand-mark">
@@ -129,6 +139,9 @@ function Sidebar({ session }: { session: Session }) {
           <strong>项目管理</strong>
           <small>LOCAL WORKSPACE</small>
         </div>
+        <button type="button" className="sidebar-collapse-button" onClick={onToggle} aria-label="收起侧边栏" title="收起侧边栏">
+          <PanelLeftClose size={18} />
+        </button>
       </div>
       <nav>
         {session.authenticated && <NavLink to="/my-work">
@@ -308,6 +321,7 @@ function RoleRoute({ session, ready, admin = false, manager = false, children }:
 export function App() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("project-manage:sidebar-collapsed") === "true");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const { data: session = guestSession, isFetched: sessionReady } = useQuery({
     queryKey: ["session"],
@@ -324,6 +338,9 @@ export function App() {
     )
       setSelectedProjectId(projects[0].id);
   }, [projects, selectedProjectId]);
+  useEffect(() => {
+    window.localStorage.setItem("project-manage:sidebar-collapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
   const context = {
     session,
     projects,
@@ -333,8 +350,8 @@ export function App() {
   };
   return (
     <AppContext.Provider value={context}>
-      <div className="app-shell">
-        <Sidebar session={session} />
+      <div className={`app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
+        <Sidebar session={session} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((value) => !value)} />
         <main>
           <Topbar
             session={session}
