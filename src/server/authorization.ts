@@ -62,12 +62,23 @@ export function canManageProject(actor: SessionActor, projectId: string) {
     .get(projectId, actor.personId));
 }
 
+export function isProjectMember(actor: SessionActor, projectId: string) {
+  if (isAdmin(actor)) return true;
+  if (!actor.personId) return false;
+  return Boolean(sqlite.prepare('SELECT 1 FROM project_people WHERE project_id=? AND person_id=?')
+    .get(projectId, actor.personId));
+}
+
 export function assertAdmin(actor: SessionActor) {
   if (!isAdmin(actor)) forbidden('此功能仅管理员可用');
 }
 
 export function assertProjectManager(actor: SessionActor, projectId: string) {
   if (!canManageProject(actor, projectId)) forbidden('只有当前项目的项目经理或管理员可以执行此操作');
+}
+
+export function assertProjectMember(actor: SessionActor, projectId: string) {
+  if (!isProjectMember(actor, projectId)) forbidden('只有当前项目成员可以提交问题或追加进展');
 }
 
 export function projectIdForRequirement(requirementId: string) {

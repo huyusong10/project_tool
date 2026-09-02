@@ -1,0 +1,1 @@
+ALTER TABLE `work_item_templates` ADD `description` text DEFAULT '' NOT NULL;

@@ -577,12 +577,16 @@ function TemplateForm({
       onSubmit={(event) => {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
-        mutation.mutate({ name: data.get("name"), items: items.map((item, index) => ({ ...item, id: item.id || undefined, sortOrder: index })) });
+        mutation.mutate({ name: data.get("name"), description: data.get("description"), items: items.map((item, index) => ({ ...item, id: item.id || undefined, sortOrder: index })) });
       }}
     >
       <label className="field field-full">
         <span>流程名称</span>
         <input name="name" defaultValue={template?.name || ""} required />
+      </label>
+      <label className="field field-full">
+        <span>设计说明</span>
+        <textarea name="description" rows={4} maxLength={2000} defaultValue={template?.description || ""} placeholder="记录流程的设计目标、关键取舍和适用场景，方便后续回溯。" />
       </label>
       <div className="template-editor field-full">
         <div className="template-item-editor">
@@ -699,6 +703,7 @@ export function TemplatesPage() {
                 </div>
               )}
             </header>
+            {template.description && <p className="template-description" title={template.description}>{template.description}</p>}
             <ol>
               {template.items.map((item) => (
                 <li key={item.id}>

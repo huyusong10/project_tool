@@ -3,7 +3,7 @@ import { config } from './config';
 import { createSessionToken, verifyPassword } from './auth';
 import {
   actorFromRequest, assertAdmin, assertCanAddProgress, assertProgressOwnerOrManager,
-  assertProjectManager, assertWorkItemParticipantOrManager, canManageProject, isAdmin,
+  assertProjectManager, assertProjectMember, assertWorkItemParticipantOrManager, canManageProject, isAdmin,
   managedProjectIds, projectIdForIssue, projectIdForRequirement, projectIdForWorkItem, sessionActor,
 } from './authorization';
 import {
@@ -178,15 +178,16 @@ export function registerApiRoutes(app: FastifyInstance) {
   app.get('/api/issues', async (request) => listIssues(request.query as any));
   app.get('/api/issues/:id', async (request) => getIssue((request.params as any).id));
   app.post('/api/issues', { preHandler: requireReady }, async (request) => {
-    const input = body(request); const actor = actorFromRequest(request); assertProjectManager(actor, String(input.projectId || ''));
-    return createIssue(input, actor);
+    const input = body(request); const actor = actorFromRequest(request); const projectId = String(input.projectId || '');
+    assertProjectMember(actor, projectId);
+    return createIssue(canManageProject(actor, projectId) ? input : { ...input, status: 'open', ownerId: null }, actor);
   });
   app.patch('/api/issues/:id', { preHandler: requireReady }, async (request) => {
     const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectManager(actor, projectIdForIssue(id));
     return updateIssue(id, body(request), actor);
   });
   app.post('/api/issues/:id/updates', { preHandler: requireReady }, async (request) => {
-    const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectManager(actor, projectIdForIssue(id));
+    const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectMember(actor, projectIdForIssue(id));
     return addIssueUpdate(id, body(request), actor);
   });
 

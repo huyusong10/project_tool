@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
   AlertTriangle,
+  ArrowRight,
   CheckCircle2,
+  CircleAlert,
   Clock3,
   CircleDot,
   Plus,
@@ -11,7 +14,7 @@ import {
 import { api } from "../api";
 import { useApp } from "../app-context";
 import type { Dashboard } from "../types";
-import { requirementStatusLabels } from "../../shared/domain";
+import { issueStatusLabels, requirementStatusLabels } from "../../shared/domain";
 import { Chart } from "../components/Chart";
 import { EmptyState, Modal } from "../components/Modal";
 import { ProjectGantt } from "../components/ProjectGantt";
@@ -43,6 +46,54 @@ function Kpi({
         <span>{detail}</span>
       </div>
     </article>
+  );
+}
+
+function IssueHealth({ issues }: { issues?: Dashboard["issues"] }) {
+  const summary = issues?.summary;
+  const total = summary?.total || 0;
+  const resolved = summary?.resolved || 0;
+  const closureRate = summary?.closureRate || 0;
+  return (
+    <section className="dashboard-issue-health" aria-label="问题健康度">
+      <div className="issue-health-primary">
+        <div>
+          <span className="issue-health-icon"><CircleAlert size={17} /></span>
+          <div><strong>问题闭环 {closureRate}%</strong><small>{resolved} / {total} 已解决</small></div>
+        </div>
+        <div className="issue-health-track" aria-label={`问题闭环率 ${closureRate}%`}><span style={{ width: `${closureRate}%` }} /></div>
+      </div>
+      <div className="issue-health-stat"><span>活跃</span><strong>{summary?.active || 0}</strong></div>
+      <div className="issue-health-stat"><span>处理中</span><strong>{summary?.inProgress || 0}</strong></div>
+      <div className={`issue-health-stat${summary?.overdue ? " is-danger" : ""}`}><span>逾期</span><strong>{summary?.overdue || 0}</strong></div>
+      <div className={`issue-health-stat${summary?.highPriority ? " is-warning" : ""}`}><span>P0 / P1</span><strong>{summary?.highPriority || 0}</strong></div>
+    </section>
+  );
+}
+
+function PublicIssueAttention({ issues }: { issues: Dashboard["issues"]["attention"] }) {
+  if (!issues.length) return null;
+  return (
+    <section className="panel dashboard-public-issues">
+      <header>
+        <h2>热点问题</h2>
+      </header>
+      <div className="dashboard-public-list">
+        {issues.map((issue) => (
+          <Link to={`/issues?scope=public&issueId=${encodeURIComponent(issue.id)}`} key={issue.id}>
+            <div className="dashboard-public-title">
+              <span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{issue.priority}</span>
+              <strong>{issue.title}</strong>
+            </div>
+            <span className={`issue-status issue-status-${issue.status}`}>{issueStatusLabels[issue.status as keyof typeof issueStatusLabels] || issue.status}</span>
+            <span>{issue.ownerName || "未分配"}</span>
+            <span className={issue.overdue ? "danger-text" : ""}>{issue.dueDate || "未设置目标日期"}{issue.overdue ? " · 已逾期" : ""}</span>
+            <small>{issue.latestUpdate || issue.impact || "暂无进展说明"}</small>
+            <ArrowRight size={15} />
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -214,6 +265,8 @@ export function DashboardPage() {
           projectStart={projects.find((project) => project.id === selectedProjectId)?.plannedStart}
           projectEnd={projects.find((project) => project.id === selectedProjectId)?.plannedEnd}
         />
+        <IssueHealth issues={data?.issues} />
+        <PublicIssueAttention issues={data?.issues?.attention || []} />
         <div className="section-heading dashboard-overview-heading">
           <div>
             <h2>统计分析</h2>

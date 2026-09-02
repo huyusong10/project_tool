@@ -48,6 +48,7 @@ describe('正式库增量迁移', () => {
     expect(migrated.prepare('SELECT COUNT(*) AS count FROM work_item_collaborators').get()).toEqual({ count: 0 });
     expect(migrated.prepare('SELECT COUNT(*) AS count FROM issues').get()).toEqual({ count: 0 });
     expect(migrated.prepare('SELECT COUNT(*) AS count FROM issue_updates').get()).toEqual({ count: 0 });
+    expect(migrated.prepare('SELECT description FROM work_item_templates WHERE id=?').get('t1')).toEqual({ description: '' });
     expect(migrated.prepare('SELECT project_id AS projectId,person_id AS personId FROM project_people').get())
       .toEqual({ projectId: 'p1', personId: 'u1' });
     expect(migrated.prepare('SELECT project_role AS projectRole FROM project_people WHERE project_id=? AND person_id=?').get('p1', 'u1'))

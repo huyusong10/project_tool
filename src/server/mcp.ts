@@ -69,8 +69,8 @@ function createServer(actor: Actor) {
   server.registerTool('delete_progress', { description: '删除进展记录', inputSchema: z.object({ id: z.string() }) }, async ({ id }) => json(deleteProgress(id, actor)));
 
   server.registerTool('list_templates', { description: '查询结构化流程设计', inputSchema: z.object({ includeDeleted: z.boolean().optional() }) }, async ({ includeDeleted }) => json(listTemplates(includeDeleted)));
-  server.registerTool('create_template', { description: '创建带偏移和工期的模板', inputSchema: z.object({ name: z.string().min(1), items: z.array(templateItem).min(1) }) }, async (input) => json(createTemplate(input, actor)));
-  server.registerTool('update_template', { description: '修改模板，只影响之后应用模板的需求', inputSchema: z.object({ id: z.string(), name: z.string().min(1).optional(), items: z.array(templateItem).min(1).optional() }) }, async ({ id, ...input }) => json(updateTemplate(id, input, actor)));
+  server.registerTool('create_template', { description: '创建带设计说明、偏移和工期的模板', inputSchema: z.object({ name: z.string().min(1), description: z.string().max(2000).optional(), items: z.array(templateItem).min(1) }) }, async (input) => json(createTemplate(input, actor)));
+  server.registerTool('update_template', { description: '修改模板，只影响之后应用模板的需求', inputSchema: z.object({ id: z.string(), name: z.string().min(1).optional(), description: z.string().max(2000).optional(), items: z.array(templateItem).min(1).optional() }) }, async ({ id, ...input }) => json(updateTemplate(id, input, actor)));
   server.registerTool('archive_template', { description: '归档模板', inputSchema: z.object({ id: z.string() }) }, async ({ id }) => json(archiveTemplate(id, actor)));
   server.registerTool('restore_template', { description: '恢复模板', inputSchema: z.object({ id: z.string() }) }, async ({ id }) => json(restoreTemplate(id, actor)));
   server.registerTool('apply_template', { description: '向已有需求补充模板中缺少的工作项', inputSchema: z.object({ requirementId: z.string(), templateId: z.string() }) }, async ({ requirementId, templateId }) => json(applyTemplate(requirementId, templateId, actor)));

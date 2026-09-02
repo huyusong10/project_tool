@@ -17,7 +17,7 @@ export type TemplateItem = {
   startOffsetDays: number; durationDays: number; deletedAt?: string | null;
 };
 export type WorkItemTemplate = {
-  id: string; name: string; createdAt: string; updatedAt: string; deletedAt?: string | null; items: TemplateItem[];
+  id: string; name: string; description: string; createdAt: string; updatedAt: string; deletedAt?: string | null; items: TemplateItem[];
 };
 export type WorkItem = {
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
@@ -44,18 +44,23 @@ export type Issue = {
 };
 export type IssuePage = {
   items: Issue[]; total: number; page: number; pageSize: number; pages: number;
-  summary: { total: number; open: number; inProgress: number; deferred: number; resolved: number; overdue: number; unassigned: number };
+  summary: {
+    total: number; open: number; inProgress: number; deferred: number; resolved: number;
+    active: number; highPriority: number; overdue: number; unassigned: number; closureRate: number;
+  };
 };
 export type Requirement = {
   id: string; projectId: string; projectName: string; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number; progressGap: number;
   riskLevel: string; priority: string; createdAt: string; updatedAt: string; deletedAt?: string | null;
   workItems: WorkItem[]; progressUpdates?: ProgressUpdate[]; recentProgressUpdates?: ProgressUpdate[]; delayed: boolean; highRisk: boolean;
+  issueSummary?: { active: number; overdue: number };
   finishVariance: number; durationVariance: number; effectiveEnd: string | null;
 };
 export type Dashboard = {
   summary: { total: number; active: number; completed: number; delayed: number; highRisk: number; completionRate: number };
   requirements: Requirement[];
+  issues: { summary: IssuePage["summary"]; attention: Issue[] };
   charts: {
     statuses: Array<{ status: string; count: number }>;
     risks: Array<{ risk: string; count: number }>;

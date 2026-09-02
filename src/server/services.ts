@@ -45,6 +45,12 @@ function nullableText(value: unknown) {
   return text || null;
 }
 
+function templateDescription(value: unknown) {
+  const description = String(value ?? '').trim();
+  if (description.length > 2000) throw new Error('流程描述不能超过2000个字符');
+  return description;
+}
+
 function requireDate(value: unknown, field: string) {
   const text = requireText(value, field);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new Error(`${field}格式不合法`);
@@ -299,7 +305,7 @@ function parseTemplateItems(input: unknown): TemplateItemInput[] {
 }
 
 export function listTemplates(includeDeleted = false) {
-  const templates = rows<any>(`SELECT id, name, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt
+  const templates = rows<any>(`SELECT id, name, description, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt
     FROM work_item_templates ${includeDeleted ? '' : 'WHERE deleted_at IS NULL'} ORDER BY created_at`);
   const items = rows<any>(`SELECT id, template_id AS templateId, title, sort_order AS sortOrder,
     start_offset_days AS startOffsetDays, duration_days AS durationDays, deleted_at AS deletedAt
@@ -312,10 +318,11 @@ export function listTemplates(includeDeleted = false) {
 
 export function createTemplate(input: JsonObject, actor: Actor) {
   const id = randomUUID(); const now = nowIso(); const name = requireText(input.name, '模板名称');
+  const description = templateDescription(input.description);
   const items = parseTemplateItems(input.items);
   if (!items.length) throw new Error('模板至少需要一个工作项');
   const tx = sqlite.transaction(() => {
-    sqlite.prepare('INSERT INTO work_item_templates (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(id, name, now, now);
+    sqlite.prepare('INSERT INTO work_item_templates (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(id, name, description, now, now);
     const insert = sqlite.prepare(`INSERT INTO template_items
       (id, template_id, title, sort_order, start_offset_days, duration_days) VALUES (?, ?, ?, ?, ?, ?)`);
     items.forEach((item, index) => insert.run(randomUUID(), id, item.title, index, item.startOffsetDays, item.durationDays));
@@ -325,13 +332,14 @@ export function createTemplate(input: JsonObject, actor: Actor) {
 }
 
 export function updateTemplate(id: string, input: JsonObject, actor: Actor) {
-  const current = row<{ name: string }>('SELECT name FROM work_item_templates WHERE id=? AND deleted_at IS NULL', id);
+  const current = row<{ name: string; description: string }>('SELECT name, description FROM work_item_templates WHERE id=? AND deleted_at IS NULL', id);
   if (!current) throw new Error('模板不存在');
   const name = input.name === undefined ? current.name : requireText(input.name, '模板名称');
+  const description = input.description === undefined ? current.description : templateDescription(input.description);
   const items = input.items === undefined ? null : parseTemplateItems(input.items);
   if (items && !items.length) throw new Error('模板至少需要一个工作项');
   const tx = sqlite.transaction(() => {
-    sqlite.prepare('UPDATE work_item_templates SET name=?, updated_at=? WHERE id=?').run(name, nowIso(), id);
+    sqlite.prepare('UPDATE work_item_templates SET name=?, description=?, updated_at=? WHERE id=?').run(name, description, nowIso(), id);
     if (!items) return;
     const existing = new Set(rows<{ id: string }>('SELECT id FROM template_items WHERE template_id=? AND deleted_at IS NULL', id).map((item) => item.id));
     const kept = new Set<string>();
@@ -728,7 +736,7 @@ function issueOwner(projectId: string, value: unknown) {
 export function listIssues(filters: {
   projectId?: string; q?: string; status?: string; priority?: string; ownerId?: string;
   requirementId?: string; scope?: string; overdue?: string | boolean; unassigned?: string | boolean;
-  page?: number; pageSize?: number;
+  active?: string | boolean; page?: number; pageSize?: number;
 } = {}) {
   const where: string[] = []; const params: unknown[] = [];
   if (filters.projectId) { where.push('i.project_id=?'); params.push(filters.projectId); }
@@ -752,6 +760,7 @@ export function listIssues(filters: {
   if (filters.ownerId) { where.push('i.owner_id=?'); params.push(filters.ownerId); }
   if (filters.requirementId) { where.push('i.requirement_id=?'); params.push(filters.requirementId); }
   if (filters.scope === 'public') where.push('i.requirement_id IS NULL');
+  if (filters.active === true || filters.active === 'true') where.push(`i.status<>'resolved'`);
   if (filters.overdue === true || filters.overdue === 'true') {
     where.push(`i.status<>'resolved' AND i.due_date IS NOT NULL AND i.due_date<?`); params.push(todayIso());
   }
@@ -766,7 +775,9 @@ export function listIssues(filters: {
     ORDER BY CASE WHEN i.status='resolved' THEN 1 ELSE 0 END,
       CASE WHEN i.status<>'resolved' AND i.due_date IS NOT NULL AND i.due_date<? THEN 0 ELSE 1 END,
       CASE i.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
-      CASE WHEN i.due_date IS NULL THEN 1 ELSE 0 END, i.due_date, i.updated_at DESC
+      CASE WHEN i.due_date IS NULL THEN 1 ELSE 0 END, i.due_date,
+      CASE i.status WHEN 'in_progress' THEN 0 WHEN 'open' THEN 1 WHEN 'deferred' THEN 2 ELSE 3 END,
+      i.updated_at DESC, i.id
     LIMIT ? OFFSET ?`, ...params, todayIso(), pageSize, (page - 1) * pageSize).map(enrichIssue);
   const summaryWhere = filters.projectId ? 'WHERE project_id=?' : '';
   const summaryParams = filters.projectId ? [filters.projectId] : [];
@@ -775,14 +786,20 @@ export function listIssues(filters: {
     SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END) AS inProgress,
     SUM(CASE WHEN status='deferred' THEN 1 ELSE 0 END) AS deferred,
     SUM(CASE WHEN status='resolved' THEN 1 ELSE 0 END) AS resolved,
+    SUM(CASE WHEN status<>'resolved' THEN 1 ELSE 0 END) AS active,
+    SUM(CASE WHEN status<>'resolved' AND priority IN ('P0','P1') THEN 1 ELSE 0 END) AS highPriority,
     SUM(CASE WHEN status<>'resolved' AND due_date IS NOT NULL AND due_date<? THEN 1 ELSE 0 END) AS overdue,
     SUM(CASE WHEN owner_id IS NULL AND status<>'resolved' THEN 1 ELSE 0 END) AS unassigned
     FROM issues ${summaryWhere}`, todayIso(), ...summaryParams) || {};
+  const totalSummary = Number(rawSummary.total || 0);
+  const resolvedSummary = Number(rawSummary.resolved || 0);
   const summary = {
-    total: Number(rawSummary.total || 0), open: Number(rawSummary.open || 0),
+    total: totalSummary, open: Number(rawSummary.open || 0),
     inProgress: Number(rawSummary.inProgress || 0), deferred: Number(rawSummary.deferred || 0),
-    resolved: Number(rawSummary.resolved || 0), overdue: Number(rawSummary.overdue || 0),
+    resolved: resolvedSummary, active: Number(rawSummary.active || 0),
+    highPriority: Number(rawSummary.highPriority || 0), overdue: Number(rawSummary.overdue || 0),
     unassigned: Number(rawSummary.unassigned || 0),
+    closureRate: totalSummary ? Math.round((resolvedSummary / totalSummary) * 1000) / 10 : 0,
   };
   return { items, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), summary };
 }
@@ -971,7 +988,20 @@ export function getDashboard(projectId?: string) {
     ) ranked WHERE rank<=3 ORDER BY createdAt DESC`, ...(projectId ? [projectId] : []));
   const recentByRequirement = new Map<string, typeof recentProgress>();
   for (const update of recentProgress) recentByRequirement.set(update.requirementId, [...(recentByRequirement.get(update.requirementId) || []), update]);
-  const dashboardRequirements = requirements.map((item) => ({ ...item, recentProgressUpdates: recentByRequirement.get(item.id) || [] }));
+  const requirementIssueCounts = rows<{ requirementId: string; active: number; overdue: number }>(`
+    SELECT requirement_id AS requirementId, COUNT(*) AS active,
+      SUM(CASE WHEN due_date IS NOT NULL AND due_date<? THEN 1 ELSE 0 END) AS overdue
+    FROM issues
+    WHERE requirement_id IS NOT NULL AND status<>'resolved' ${projectId ? 'AND project_id=?' : ''}
+    GROUP BY requirement_id`, todayIso(), ...(projectId ? [projectId] : []));
+  const issuesByRequirement = new Map(requirementIssueCounts.map((item) => [item.requirementId, {
+    active: Number(item.active || 0), overdue: Number(item.overdue || 0),
+  }]));
+  const dashboardRequirements = requirements.map((item) => ({
+    ...item,
+    recentProgressUpdates: recentByRequirement.get(item.id) || [],
+    issueSummary: issuesByRequirement.get(item.id) || { active: 0, overdue: 0 },
+  }));
   const active = requirements.filter((item) => !['completed', 'cancelled'].includes(item.status)).length;
   const completed = requirements.filter((item) => item.status === 'completed').length;
   const delayed = requirements.filter((item) => item.delayed).length;
@@ -987,7 +1017,14 @@ export function getDashboard(projectId?: string) {
   }
   const varianceTop = requirements.filter((item) => (item.finishVariance ?? 0) > 0).sort((a, b) => (b.finishVariance ?? 0) - (a.finishVariance ?? 0)).slice(0, 10)
     .map((item) => ({ id: item.id, title: item.title, variance: item.finishVariance }));
-  return { summary: { total: requirements.length, active, completed, delayed, highRisk, completionRate }, requirements: dashboardRequirements, charts: { statuses, risks, weeks, varianceTop } };
+  const issuePage = listIssues({ projectId, scope: 'public', page: 1, pageSize: 10 });
+  const attention = issuePage.items.filter((item) => item.status !== 'resolved').slice(0, 5);
+  return {
+    summary: { total: requirements.length, active, completed, delayed, highRisk, completionRate },
+    requirements: dashboardRequirements,
+    issues: { summary: issuePage.summary, attention },
+    charts: { statuses, risks, weeks, varianceTop },
+  };
 }
 
 export function listAudit(limit = 100) {

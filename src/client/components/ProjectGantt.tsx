@@ -6,7 +6,7 @@ import {
   isValid,
   parseISO,
 } from "date-fns";
-import { ChevronDown, ChevronRight, LocateFixed, RotateCcw, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, CircleAlert, LocateFixed, RotateCcw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { calculateWorkItemGap, priorityLabels, requirementStatusLabels, riskLabels } from "../../shared/domain";
 import type { Requirement, WorkItem } from "../types";
@@ -52,6 +52,7 @@ function RequirementPopover({ requirement }: { requirement: Requirement }) {
       <span className={`status-pill status-${requirement.status}`}>{statusLabel(requirement.status)}</span>
       <span>{requirement.progress}%</span>
       <span className={`risk-badge risk-${requirement.riskLevel}`}>{risk}</span>
+      {Boolean(requirement.issueSummary?.active) && <span className={requirement.issueSummary?.overdue ? "gantt-issue-summary overdue" : "gantt-issue-summary"}>问题 {requirement.issueSummary?.active}{requirement.issueSummary?.overdue ? ` · 逾期 ${requirement.issueSummary.overdue}` : ""}</span>}
       {requirement.delayed && <em>延期 +{Math.max(1, requirement.finishVariance)}天</em>}
     </div>
     <dl className="gantt-popover-metrics">
@@ -398,6 +399,16 @@ export function ProjectGantt({
                           <span>{statusLabel(requirement.status)}</span>
                           <span>{requirement.progress}%</span>
                           {requirement.delayed && <em>延期 {Math.max(1, requirement.finishVariance)} 天</em>}
+                          {Boolean(requirement.issueSummary?.active) && (
+                            <button
+                              className={requirement.issueSummary?.overdue ? "gantt-issue-link overdue" : "gantt-issue-link"}
+                              onClick={() => navigate(`/issues?requirementId=${encodeURIComponent(requirement.id)}&active=true`)}
+                              title={`查看 ${requirement.issueSummary?.active} 条未闭环问题`}
+                            >
+                              <CircleAlert size={12} />问题 {requirement.issueSummary?.active}
+                              {Boolean(requirement.issueSummary?.overdue) && <span>逾期 {requirement.issueSummary?.overdue}</span>}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>

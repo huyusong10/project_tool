@@ -17,12 +17,24 @@ main {
   min-width: 0;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   min-width: 0;
 }
 
 .app-shell {
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  min-height: 100dvh;
+}
+
+main {
+  margin-left: var(--sidebar-width);
+}
+
+.topbar {
+  left: var(--sidebar-width);
 }
 
 .sidebar {
@@ -132,7 +144,8 @@ textarea {
 }
 
 .people-role-members {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 320px));
+  justify-content: start;
 }
 
 .template-grid {
@@ -173,7 +186,7 @@ textarea {
 }
 
 .project-gantt-panel {
-  height: clamp(680px, calc(100dvh - 230px), 900px);
+  height: max(480px, calc(100dvh - 198px));
   container-name: project-gantt;
   container-type: inline-size;
 }
@@ -227,6 +240,18 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .dashboard-issue-health {
+    grid-template-columns: minmax(210px, 1fr) repeat(4, minmax(68px, .38fr));
+  }
+
+  .dashboard-public-list > a {
+    grid-template-columns: minmax(210px, 1fr) 74px 90px 140px 18px;
+  }
+
+  .dashboard-public-list > a > small {
+    display: none;
+  }
+
   .progress-detail-card {
     height: 320px;
   }
@@ -245,6 +270,29 @@ textarea {
 
   .issue-meta-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-issue-health {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .issue-health-primary,
+  .issue-health-stat {
+    border-top: 1px solid #e5eaf1;
+  }
+
+  .dashboard-public-list > a {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 10px;
+  }
+
+  .dashboard-public-list > a > span:nth-of-type(n+2) {
+    display: none;
+  }
+
+  .dashboard-public-list > a > svg {
+    grid-column: 2;
+    grid-row: 1;
   }
 }
 
@@ -361,8 +409,7 @@ textarea {
   }
 
   .brand-mark div,
-  .nav-section,
-  .security-note {
+  .nav-section {
     display: none;
   }
 

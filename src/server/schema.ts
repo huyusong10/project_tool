@@ -67,6 +67,7 @@ export const projectPeople = sqliteTable('project_people', {
 export const workItemTemplates = sqliteTable('work_item_templates', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  description: text('description').notNull().default(''),
   ...timestamps,
   deletedAt: text('deleted_at'),
 }, (table) => [index('idx_templates_deleted_at').on(table.deletedAt)]);

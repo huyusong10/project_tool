@@ -173,14 +173,6 @@ function Sidebar({ session }: { session: Session }) {
           操作日志
         </NavLink>}
       </nav>
-      <div className="security-note">
-        <LockKeyhole size={15} />
-        <span>
-          可信局域网运行
-          <br />
-          当前使用 HTTP
-        </span>
-      </div>
     </aside>
   );
 }
@@ -257,8 +249,9 @@ function Topbar({
       </div>
       <div className="top-actions">
         <div id="topbar-action-slot" />
-        {session.authenticated ? (
-          <>
+        <div className="topbar-account">
+          {session.authenticated ? (
+            <>
             <button className="session-badge session-button" onClick={openPassword} title="修改密码">
               <span />
               {session.username}
@@ -267,16 +260,17 @@ function Topbar({
               <LogOut size={15} />
               退出
             </button>
-          </>
-        ) : (
-          <>
+            </>
+          ) : (
+            <>
             <span className="guest-badge">访客只读</span>
             <button className="primary-button" onClick={openLogin}>
               <LogIn size={15} />
               用户登录
             </button>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
     </header>
   );
