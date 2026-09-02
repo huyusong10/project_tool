@@ -131,9 +131,21 @@ textarea {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
 }
 
-.people-role-members,
-.template-grid {
+.people-role-members {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+.template-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 320px));
+  justify-content: start;
+}
+
+.issue-board {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+}
+
+.issue-filters > select {
+  flex: 0 1 180px;
 }
 
 .modal-backdrop {
@@ -229,6 +241,10 @@ textarea {
   .requirement-context-strip > span {
     width: 100%;
     white-space: normal;
+  }
+
+  .issue-meta-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -369,7 +385,7 @@ textarea {
     max-width: 190px;
   }
 
-  .project-switcher select {
+  .project-switcher-button > span:nth-child(2) {
     max-width: 130px;
   }
 

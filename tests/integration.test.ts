@@ -19,6 +19,7 @@ let templateId = '';
 let personId = '';
 let collaboratorPersonId = '';
 let firstWorkItemId = '';
+let issueId = '';
 
 beforeAll(async () => {
   const module = await import('../src/server/app');
@@ -90,6 +91,27 @@ describe('自动化项目管理API', () => {
     expect((await app.inject({ method: 'DELETE', url: `/api/projects/${projectId}/people/${collaboratorPersonId}`, headers: { cookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: `/api/people?projectId=${projectId}` })).json().some((item: { id: string }) => item.id === collaboratorPersonId)).toBe(false);
     expect((await app.inject({ method: 'POST', url: `/api/projects/${projectId}/people/${collaboratorPersonId}`, headers: { cookie } })).statusCode).toBe(200);
+  });
+
+  it('公共问题支持看板、筛选搜索、进展和闭环', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
+      projectId, requirementId, title: '公共证书问题', impact: '影响项目联调', reporter: '测试人员',
+      ownerId: personId, status: 'in_progress', priority: 'P1', discoveredAt: '2026-09-01', dueDate: '2000-01-01',
+    } });
+    expect(created.statusCode).toBe(200); issueId = created.json().id;
+    expect(created.json()).toMatchObject({ title: '公共证书问题', ownerName: '张三', overdue: true });
+    const update = await app.inject({ method: 'POST', url: `/api/issues/${issueId}/updates`, headers: { cookie }, payload: { content: '测试证书已经申请' } });
+    expect(update.json().updates[0].content).toBe('测试证书已经申请');
+    const searched = await app.inject({ method: 'GET', url: `/api/issues?projectId=${projectId}&q=${encodeURIComponent('测试证书')}&overdue=true` });
+    expect(searched.statusCode).toBe(200);
+    expect(searched.json().items).toEqual([expect.objectContaining({ id: issueId, overdue: true })]);
+    expect(searched.json().summary).toMatchObject({ total: 1, inProgress: 1, overdue: 1 });
+    expect((await app.inject({ method: 'PATCH', url: `/api/issues/${issueId}`, headers: { cookie }, payload: { status: 'resolved' } })).statusCode).toBe(400);
+    const resolved = await app.inject({ method: 'PATCH', url: `/api/issues/${issueId}`, headers: { cookie }, payload: { status: 'resolved', updateContent: '证书已签发，问题闭环' } });
+    expect(resolved.statusCode).toBe(200);
+    expect(resolved.json()).toMatchObject({ status: 'resolved', overdue: false });
+    expect(resolved.json().resolvedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(resolved.json().updates.map((item: { content: string }) => item.content)).toEqual(expect.arrayContaining(['测试证书已经申请', '证书已签发，问题闭环']));
   });
 
   it('工作项事件自动推导状态、工期加权进度和进展快照', async () => {

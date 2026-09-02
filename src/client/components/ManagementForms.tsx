@@ -48,7 +48,7 @@ export function ProjectForm({
         <input name="plannedEnd" type="date" defaultValue={project?.plannedEnd || ""} />
       </label>
       <label className="field field-full">
-        <span>默认工作项模板</span>
+        <span>默认流程</span>
         <select key={`${project?.id || "new"}-${templates.length}`} name="defaultTemplateId" defaultValue={project?.defaultTemplateId || ""}>
           <option value="">不指定</option>
           {templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
@@ -107,7 +107,7 @@ export function RequirementForm({
         </select>
       </label>
       <label className="field">
-        <span>工作项模板</span>
+        <span>流程设计</span>
         <select key={`${projectId}-${templates.length}`} name="templateId" required defaultValue={defaultTemplateId}>
           {!defaultTemplateId && <option value="">请选择模板</option>}
           {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}

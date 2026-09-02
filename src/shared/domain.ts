@@ -1,10 +1,12 @@
 export const requirementStatuses = ['planning', 'not_started', 'in_progress', 'blocked', 'completed', 'cancelled'] as const;
 export const workItemStatuses = ['not_started', 'in_progress', 'blocked', 'completed', 'cancelled'] as const;
+export const issueStatuses = ['open', 'in_progress', 'deferred', 'resolved'] as const;
 export const riskLevels = ['low', 'medium', 'high'] as const;
 export const priorities = ['P0', 'P1', 'P2', 'P3'] as const;
 
 export type RequirementStatus = (typeof requirementStatuses)[number];
 export type WorkItemStatus = (typeof workItemStatuses)[number];
+export type IssueStatus = (typeof issueStatuses)[number];
 export type RiskLevel = (typeof riskLevels)[number];
 export type Priority = (typeof priorities)[number];
 
@@ -15,6 +17,13 @@ export const requirementStatusLabels: Record<RequirementStatus, string> = {
   blocked: '阻塞',
   completed: '已完成',
   cancelled: '已取消',
+};
+
+export const issueStatusLabels: Record<IssueStatus, string> = {
+  open: '待处理',
+  in_progress: '处理中',
+  deferred: '暂缓',
+  resolved: '已解决',
 };
 
 export const riskLabels: Record<RiskLevel, string> = {

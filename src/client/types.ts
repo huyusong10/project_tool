@@ -26,6 +26,21 @@ export type ProgressUpdate = {
   id: string; requirementId: string; workItemId: string | null; workItemTitle: string | null;
   percent: number; content: string; createdAt: string; updatedAt: string;
 };
+export type IssueUpdate = {
+  id: string; issueId: string; content: string; createdAt: string; updatedAt: string;
+};
+export type Issue = {
+  id: string; projectId: string; projectName: string; requirementId: string | null; requirementTitle: string | null;
+  sourceRef: string | null; title: string; impact: string | null; reporter: string | null;
+  ownerId: string | null; ownerName: string | null; status: string; priority: string;
+  discoveredAt: string; dueDate: string | null; resolvedAt: string | null;
+  createdAt: string; updatedAt: string; latestUpdate: string | null; latestUpdateAt: string | null;
+  overdue: boolean; updates?: IssueUpdate[];
+};
+export type IssuePage = {
+  items: Issue[]; total: number; page: number; pageSize: number; pages: number;
+  summary: { total: number; open: number; inProgress: number; deferred: number; resolved: number; overdue: number; unassigned: number };
+};
 export type Requirement = {
   id: string; projectId: string; projectName: string; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number; progressGap: number;

@@ -2,12 +2,12 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config } from './config';
 import { createSessionToken, verifyPassword, verifySessionToken, type Actor } from './auth';
 import {
-  addProgress, addProjectPerson, applyRequirementPlan, applyTemplate, archivePerson, archiveProject, archiveRequirement, archiveTemplate,
+  addIssueUpdate, addProgress, addProjectPerson, applyRequirementPlan, applyTemplate, archivePerson, archiveProject, archiveRequirement, archiveTemplate,
   blockWorkItem, cancelWorkItem, completeWorkItem, createPerson, createProject, createRequirement, createTemplate,
-  createWorkItem, deleteProgress, deleteWorkItem, getDashboard, getPeopleConcurrency, getRequirement, issueToken,
-  listArchives, listAudit, listPeople, listProjects, listRequirements, listTemplates, listTokens, previewRequirementPlan,
+  createIssue, createWorkItem, deleteProgress, deleteWorkItem, getDashboard, getIssue, getPeopleConcurrency, getRequirement, issueToken,
+  listArchives, listAudit, listIssues, listPeople, listProjects, listRequirements, listTemplates, listTokens, previewRequirementPlan,
   permanentlyDeleteArchive, recordAudit, removeProjectPerson, reorderWorkItems, restorePerson, restoreProject, restoreRequirement, restoreTemplate, revokeToken, searchAudit, startWorkItem,
-  unblockWorkItem, updatePerson, updateProgress, updateProject, updateRequirement, updateTemplate, updateWorkItem,
+  unblockWorkItem, updateIssue, updatePerson, updateProgress, updateProject, updateRequirement, updateTemplate, updateWorkItem,
 } from './services';
 import { createBackup, deleteBackup, listBackups, scheduleRestore } from './backups';
 
@@ -68,6 +68,12 @@ export function registerApiRoutes(app: FastifyInstance) {
   app.delete('/api/work-items/:id', { preHandler: requireUser }, async (request) => deleteWorkItem((request.params as any).id, userActor()));
   app.patch('/api/progress/:id', { preHandler: requireUser }, async (request) => updateProgress((request.params as any).id, body(request), userActor()));
   app.delete('/api/progress/:id', { preHandler: requireUser }, async (request) => deleteProgress((request.params as any).id, userActor()));
+
+  app.get('/api/issues', async (request) => listIssues(request.query as any));
+  app.get('/api/issues/:id', async (request) => getIssue((request.params as any).id));
+  app.post('/api/issues', { preHandler: requireUser }, async (request) => createIssue(body(request), userActor()));
+  app.patch('/api/issues/:id', { preHandler: requireUser }, async (request) => updateIssue((request.params as any).id, body(request), userActor()));
+  app.post('/api/issues/:id/updates', { preHandler: requireUser }, async (request) => addIssueUpdate((request.params as any).id, body(request), userActor()));
 
   app.get('/api/people', async (request) => listPeople((request.query as any).includeDeleted === 'true', (request.query as any).projectId));
   app.post('/api/people', { preHandler: requireUser }, async (request) => createPerson(body(request), userActor()));

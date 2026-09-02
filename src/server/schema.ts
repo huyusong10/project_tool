@@ -122,6 +122,36 @@ export const progressUpdates = sqliteTable('progress_updates', {
   index('idx_progress_requirement_created').on(table.requirementId, table.createdAt),
 ]);
 
+export const issues = sqliteTable('issues', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  requirementId: text('requirement_id').references(() => requirements.id, { onDelete: 'set null' }),
+  sourceRef: text('source_ref'),
+  title: text('title').notNull(),
+  impact: text('impact'),
+  reporter: text('reporter'),
+  ownerId: text('owner_id').references(() => people.id, { onDelete: 'set null' }),
+  status: text('status').notNull().default('open'),
+  priority: text('priority').notNull().default('P2'),
+  discoveredAt: text('discovered_at').notNull(),
+  dueDate: text('due_date'),
+  resolvedAt: text('resolved_at'),
+  ...timestamps,
+}, (table) => [
+  check('issues_status_valid', sql`${table.status} IN ('open', 'in_progress', 'deferred', 'resolved')`),
+  check('issues_priority_valid', sql`${table.priority} IN ('P0', 'P1', 'P2', 'P3')`),
+  index('idx_issues_project_status_due').on(table.projectId, table.status, table.dueDate, table.updatedAt),
+  index('idx_issues_owner').on(table.ownerId, table.status),
+  index('idx_issues_requirement').on(table.requirementId),
+]);
+
+export const issueUpdates = sqliteTable('issue_updates', {
+  id: text('id').primaryKey(),
+  issueId: text('issue_id').notNull().references(() => issues.id, { onDelete: 'cascade' }),
+  content: text('content').notNull(),
+  ...timestamps,
+}, (table) => [index('idx_issue_updates_issue_created').on(table.issueId, table.createdAt)]);
+
 export const apiTokens = sqliteTable('api_tokens', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),

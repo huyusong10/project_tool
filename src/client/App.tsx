@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Navigate,
@@ -7,8 +7,9 @@ import {
   Routes,
 } from "react-router-dom";
 import {
+  Check,
   ChevronDown,
-  ChartNoAxesCombined,
+  CircleAlert,
   FolderKanban,
   GanttChartSquare,
   KeyRound,
@@ -24,9 +25,9 @@ import { api, jsonBody } from "./api";
 import type { Project, Session } from "./types";
 import { AppContext } from "./app-context";
 import { DashboardPage } from "./pages/DashboardPage";
+import { IssuesPage } from "./pages/IssuesPage";
 import { RequirementPage } from "./pages/RequirementPage";
 import {
-  ConcurrencyPage,
   LogsPage,
   PeoplePage,
   ProjectsPage,
@@ -125,13 +126,13 @@ function Sidebar() {
           <ListChecks size={18} />
           需求管理
         </NavLink>
+        <NavLink to="/issues">
+          <CircleAlert size={18} />
+          问题跟踪
+        </NavLink>
         <NavLink to="/people">
           <Users size={18} />
           人员矩阵
-        </NavLink>
-        <NavLink to="/concurrency">
-          <ChartNoAxesCombined size={18} />
-          人力分析
         </NavLink>
         <span className="nav-section">管理</span>
         <NavLink to="/projects">
@@ -140,7 +141,7 @@ function Sidebar() {
         </NavLink>
         <NavLink to="/templates">
           <Settings2 size={18} />
-          工作项模板
+          流程设计
         </NavLink>
         <NavLink to="/system">
           <LockKeyhole size={18} />
@@ -161,6 +162,50 @@ function Sidebar() {
       </div>
     </aside>
   );
+}
+
+function ProjectSwitcher({
+  projects,
+  selectedProjectId,
+  setSelectedProjectId,
+}: {
+  projects: Project[];
+  selectedProjectId: string;
+  setSelectedProjectId: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selected = projects.find((project) => project.id === selectedProjectId) || projects[0];
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+  return <div className="project-switcher" ref={rootRef}>
+    {projects.length ? <>
+      <button type="button" className="project-switcher-button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <span className="project-dot" />
+        <span>{selected?.name}</span>
+        <ChevronDown className={open ? "is-open" : ""} size={15} />
+      </button>
+      {open && <div className="project-switcher-menu" role="listbox" aria-label="切换项目">
+        {projects.map((project) => <button type="button" role="option" aria-selected={project.id === selectedProjectId} key={project.id} onClick={() => { setSelectedProjectId(project.id); setOpen(false); }}>
+          <span>{project.name}</span>
+          {project.id === selectedProjectId && <Check size={15} />}
+        </button>)}
+      </div>}
+    </> : <span className="project-switcher-empty"><span className="project-dot" />尚未创建项目</span>}
+  </div>;
 }
 
 function Topbar({
@@ -185,26 +230,7 @@ function Topbar({
     <header className="topbar">
       <div className="topbar-context">
         <div id="topbar-title-slot" />
-        <div className="project-switcher">
-          <span className="project-dot" />
-          {projects.length ? (
-            <>
-              <select
-                value={selectedProjectId}
-                onChange={(event) => setSelectedProjectId(event.target.value)}
-              >
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={15} />
-            </>
-          ) : (
-            "尚未创建项目"
-          )}
-        </div>
+        <ProjectSwitcher projects={projects} selectedProjectId={selectedProjectId} setSelectedProjectId={setSelectedProjectId} />
       </div>
       <div className="top-actions">
         <div id="topbar-action-slot" />
@@ -274,9 +300,10 @@ export function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/requirements" element={<RequirementsPage />} />
             <Route path="/requirements/:id" element={<RequirementPage />} />
+            <Route path="/issues" element={<IssuesPage />} />
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/people" element={<PeoplePage />} />
-            <Route path="/concurrency" element={<ConcurrencyPage />} />
+            <Route path="/concurrency" element={<Navigate to="/people?view=analysis" replace />} />
             <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/system" element={<SystemPage />} />
             <Route path="/logs" element={<LogsPage />} />

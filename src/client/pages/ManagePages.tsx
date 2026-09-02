@@ -1,6 +1,6 @@
 import { useDeferredValue, useMemo, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { addDays, format, parseISO, startOfWeek } from "date-fns";
 import {
   Archive,
@@ -310,6 +310,8 @@ function AddProjectPersonForm({ projectId, people, onClose }: { projectId: strin
 
 export function PeoplePage() {
   const { session, openLogin, selectedProjectId, projects } = useApp();
+  const [viewParams, setViewParams] = useSearchParams();
+  const view = viewParams.get("view") === "analysis" ? "analysis" : "matrix";
   const client = useQueryClient();
   const [editing, setEditing] = useState<Person | null | undefined>(undefined);
   const [addingExisting, setAddingExisting] = useState(false);
@@ -349,12 +351,17 @@ export function PeoplePage() {
     <>
       <PageHeader
         title="人员矩阵"
-        actions={session.authenticated ? <div className="panel-actions">
+        actions={view === "matrix" && session.authenticated ? <div className="panel-actions">
           <button className="ghost-button" disabled={!availablePeople.length || !selectedProjectId} onClick={() => setAddingExisting(true)}><UserPlus size={16} />添加已有人员</button>
           <button className="primary-button" disabled={!selectedProjectId} onClick={() => setEditing(null)}><UserPlus size={16} />新增人员</button>
         </div> : null}
       />
       <div className="page-content">
+        <div className="view-tabs people-subnav" aria-label="人员页面视图">
+          <button className={view === "matrix" ? "active" : ""} onClick={() => setViewParams({})}>人员矩阵</button>
+          <button className={view === "analysis" ? "active" : ""} onClick={() => setViewParams({ view: "analysis" })}>并发分析</button>
+        </div>
+        {view === "matrix" ? <>
         <div className="people-matrix">
           {groups.map((group, groupIndex) => (
             <section className="people-role-group" key={group.jobTitle} aria-labelledby={`role-group-${groupIndex}`}>
@@ -431,12 +438,13 @@ export function PeoplePage() {
         </Modal>
         )}
         {addingExisting && <Modal title="添加已有人员" onClose={() => setAddingExisting(false)}><AddProjectPersonForm projectId={selectedProjectId} people={availablePeople} onClose={() => setAddingExisting(false)} /></Modal>}
+        </> : <ConcurrencyPanel />}
       </div>
     </>
   );
 }
 
-export function ConcurrencyPage() {
+function ConcurrencyPanel() {
   const { selectedProjectId } = useApp();
   const [personId, setPersonId] = useState("");
   const [jobTitle, setJobTitle] = useState("");
@@ -464,9 +472,7 @@ export function ConcurrencyPage() {
   });
   const pages = analysis.data?.pages || [];
   const currentTop = pages[0]?.currentTop || [];
-  return <>
-    <PageHeader title="人力分析" />
-    <div className="page-content">
+  return <div className="people-analysis">
       <div className="filter-bar human-filter-bar">
       <select value={jobTitle} onChange={(event) => { setJobTitle(event.target.value); setPersonId(""); }}><option value="">全部岗位</option>{jobTitles.map((title) => <option value={title} key={title}>{title}</option>)}</select>
       <select value={personId} onChange={(event) => setPersonId(event.target.value)}><option value="">全部人员</option>{people.filter((person) => !jobTitle || person.jobTitle === jobTitle).map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
@@ -496,8 +502,7 @@ export function ConcurrencyPage() {
       </div>
       <footer><span><i className="heat heat-1" />1项 正常</span><span><i className="heat heat-2" />2项 预警</span><span><i className="heat heat-3" />3项及以上 高并发</span><small>横向拖动查看后续周</small></footer>
     </div>
-    </div>
-  </>;
+    </div>;
 }
 
 function TemplateForm({
@@ -571,7 +576,7 @@ function TemplateForm({
       }}
     >
       <label className="field field-full">
-        <span>模板名称</span>
+        <span>流程名称</span>
         <input name="name" defaultValue={template?.name || ""} required />
       </label>
       <div className="template-editor field-full">
@@ -622,7 +627,7 @@ function TemplateForm({
         </div>
       </div>
       <p className="field-help field-full">
-        相同或重叠的时间区间表示并行与交错；修改模板不会覆盖已有需求。
+        相同或重叠的时间区间表示并行与交错；修改流程不会覆盖已有需求。
       </p>
       {mutation.error && (
         <p className="form-error field-full">{mutation.error.message}</p>
@@ -631,7 +636,7 @@ function TemplateForm({
         <button type="button" className="ghost-button" onClick={onClose}>
           取消
         </button>
-        <button className="primary-button">保存模板</button>
+        <button className="primary-button">保存流程</button>
       </div>
     </form>
   );
@@ -655,11 +660,11 @@ export function TemplatesPage() {
   return (
     <>
       <PageHeader
-        title="工作项模板"
+        title="流程设计"
         actions={session.authenticated ? (
           <button className="primary-button" onClick={() => setEditing(null)}>
             <Plus size={16} />
-            新建模板
+            新建流程
           </button>
         ) : null}
       />
@@ -674,13 +679,13 @@ export function TemplatesPage() {
               </div>
               {session.authenticated && (
                 <div className="row-actions">
-                  <button aria-label={`编辑模板 ${template.name}`} onClick={() => setEditing(template)}>
+                  <button aria-label={`编辑流程 ${template.name}`} onClick={() => setEditing(template)}>
                     <Edit3 size={15} />
                   </button>
                   <button
-                    aria-label={`归档模板 ${template.name}`}
+                    aria-label={`归档流程 ${template.name}`}
                     onClick={() =>
-                      confirm(`归档模板“${template.name}”？`) &&
+                      confirm(`归档流程“${template.name}”？`) &&
                       archive.mutate(template.id)
                     }
                   >
@@ -702,7 +707,7 @@ export function TemplatesPage() {
         </section>
         {editing !== undefined && (
         <Modal
-          title={editing ? "编辑模板" : "新建模板"}
+          title={editing ? "编辑流程" : "新建流程"}
           width={1040}
           onClose={() => setEditing(undefined)}
         >
@@ -998,10 +1003,11 @@ const auditActionLabels: Record<string, string> = {
   permanent_delete: "永久删除", start: "开始", complete: "完成", block: "阻塞",
   unblock: "解除阻塞", cancel: "取消", reorder: "排序", apply_template: "应用模板",
   apply_plan: "补全计划", revoke: "撤销", add_member: "添加成员", remove_member: "移出成员",
+  import: "导入",
 };
 const auditEntityLabels: Record<string, string> = {
   project: "项目", requirement: "需求", work_item: "工作项", progress: "进展",
-  person: "人员", template: "模板", api_token: "MCP Token", backup: "数据库备份",
+  issue: "问题", issue_update: "问题进展", person: "人员", template: "流程设计", api_token: "MCP Token", backup: "数据库备份",
 };
 
 export function LogsPage() {
