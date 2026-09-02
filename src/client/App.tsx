@@ -9,6 +9,7 @@ import {
 import {
   ChevronDown,
   ChartNoAxesCombined,
+  FolderKanban,
   GanttChartSquare,
   KeyRound,
   ListChecks,
@@ -16,6 +17,7 @@ import {
   LogIn,
   LogOut,
   Settings2,
+  ScrollText,
   Users,
 } from "lucide-react";
 import { api, jsonBody } from "./api";
@@ -25,7 +27,9 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { RequirementPage } from "./pages/RequirementPage";
 import {
   ConcurrencyPage,
+  LogsPage,
   PeoplePage,
+  ProjectsPage,
   RequirementsPage,
   SystemPage,
   TemplatesPage,
@@ -119,7 +123,7 @@ function Sidebar() {
         </NavLink>
         <NavLink to="/requirements">
           <ListChecks size={18} />
-          全部需求
+          需求管理
         </NavLink>
         <NavLink to="/people">
           <Users size={18} />
@@ -127,16 +131,24 @@ function Sidebar() {
         </NavLink>
         <NavLink to="/concurrency">
           <ChartNoAxesCombined size={18} />
-          人员并发
+          人力分析
         </NavLink>
         <span className="nav-section">管理</span>
+        <NavLink to="/projects">
+          <FolderKanban size={18} />
+          项目管理
+        </NavLink>
         <NavLink to="/templates">
           <Settings2 size={18} />
           工作项模板
         </NavLink>
         <NavLink to="/system">
           <LockKeyhole size={18} />
-          Token与审计
+          系统管理
+        </NavLink>
+        <NavLink to="/logs">
+          <ScrollText size={18} />
+          操作日志
         </NavLink>
       </nav>
       <div className="security-note">
@@ -262,10 +274,12 @@ export function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/requirements" element={<RequirementsPage />} />
             <Route path="/requirements/:id" element={<RequirementPage />} />
+            <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/people" element={<PeoplePage />} />
             <Route path="/concurrency" element={<ConcurrencyPage />} />
             <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/system" element={<SystemPage />} />
+            <Route path="/logs" element={<LogsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

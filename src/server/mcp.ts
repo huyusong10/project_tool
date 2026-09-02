@@ -4,10 +4,10 @@ import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import { z } from 'zod';
 import type { Actor } from './auth';
 import {
-  addProgress, applyRequirementPlan, applyTemplate, archivePerson, archiveProject, archiveRequirement, archiveTemplate,
+  addProgress, addProjectPerson, applyRequirementPlan, applyTemplate, archivePerson, archiveProject, archiveRequirement, archiveTemplate,
   blockWorkItem, cancelWorkItem, completeWorkItem, createPerson, createProject, createRequirement, createTemplate,
   createWorkItem, deleteProgress, deleteWorkItem, getDashboard, getPeopleConcurrency, getRequirement, listArchives,
-  listAudit, listPeople, listProjects, listRequirements, listTemplates, permanentlyDeleteArchive, previewRequirementPlan, reorderWorkItems,
+  listAudit, listPeople, listProjects, listRequirements, listTemplates, permanentlyDeleteArchive, previewRequirementPlan, removeProjectPerson, reorderWorkItems,
   restorePerson, restoreProject, restoreRequirement, restoreTemplate, startWorkItem, unblockWorkItem, updatePerson,
   updateProgress, updateProject, updateRequirement, updateTemplate, updateWorkItem,
 } from './services';
@@ -75,8 +75,10 @@ function createServer(actor: Actor) {
   server.registerTool('restore_template', { description: '恢复模板', inputSchema: z.object({ id: z.string() }) }, async ({ id }) => json(restoreTemplate(id, actor)));
   server.registerTool('apply_template', { description: '向已有需求补充模板中缺少的工作项', inputSchema: z.object({ requirementId: z.string(), templateId: z.string() }) }, async ({ requirementId, templateId }) => json(applyTemplate(requirementId, templateId, actor)));
 
-  server.registerTool('list_people', { description: '查询人员和岗位', inputSchema: z.object({ includeDeleted: z.boolean().optional() }) }, async ({ includeDeleted }) => json(listPeople(includeDeleted)));
-  server.registerTool('create_person', { description: '新增唯一姓名的人员', inputSchema: z.object({ name: z.string().min(1), jobTitle: z.string().nullable().optional() }) }, async (input) => json(createPerson(input, actor)));
+  server.registerTool('list_people', { description: '按项目查询人员和岗位', inputSchema: z.object({ projectId: z.string().optional(), includeDeleted: z.boolean().optional() }) }, async ({ projectId, includeDeleted }) => json(listPeople(includeDeleted, projectId)));
+  server.registerTool('create_person', { description: '新增唯一姓名的项目成员', inputSchema: z.object({ projectId: z.string(), name: z.string().min(1), jobTitle: z.string().nullable().optional() }) }, async (input) => json(createPerson(input, actor)));
+  server.registerTool('add_project_person', { description: '将已有人员加入项目', inputSchema: z.object({ projectId: z.string(), personId: z.string() }) }, async ({ projectId, personId }) => json(addProjectPerson(projectId, personId, actor)));
+  server.registerTool('remove_project_person', { description: '将人员移出项目，不删除人员和历史工作项', inputSchema: z.object({ projectId: z.string(), personId: z.string() }) }, async ({ projectId, personId }) => json(removeProjectPerson(projectId, personId, actor)));
   server.registerTool('update_person', { description: '修改人员或岗位', inputSchema: z.object({ id: z.string(), name: z.string().min(1).optional(), jobTitle: z.string().nullable().optional(), active: z.boolean().optional() }) }, async ({ id, ...input }) => json(updatePerson(id, input, actor)));
   server.registerTool('archive_person', { description: '归档人员', inputSchema: z.object({ id: z.string() }) }, async ({ id }) => json(archivePerson(id, actor)));
   server.registerTool('restore_person', { description: '恢复人员', inputSchema: z.object({ id: z.string() }) }, async ({ id }) => json(restorePerson(id, actor)));

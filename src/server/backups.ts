@@ -35,6 +35,13 @@ export async function createBackup() {
   return { name, size: fs.statSync(destination).size, createdAt: new Date().toISOString() };
 }
 
+export function deleteBackup(filename: string) {
+  const target = safeBackupPath(filename);
+  if (!fs.existsSync(target)) throw new Error('备份不存在');
+  fs.unlinkSync(target);
+  return { ok: true, name: filename };
+}
+
 export function cleanupOldBackups() {
   const cutoff = Date.now() - config.backupRetentionDays * 86400000;
   for (const backup of listBackups()) {

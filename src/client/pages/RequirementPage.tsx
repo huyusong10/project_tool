@@ -8,6 +8,7 @@ import {
   CircleStop,
   Clock3,
   Edit3,
+  MoreHorizontal,
   Play,
   Plus,
   RotateCcw,
@@ -23,6 +24,7 @@ import {
   priorityLabels,
   requirementStatusLabels,
   riskLabels,
+  workItemPlannedDuration,
 } from "../../shared/domain";
 import { GapTimeline } from "../components/GapTimeline";
 import { Chart } from "../components/Chart";
@@ -108,8 +110,8 @@ function WorkItemForm({
   const [collaboratorIds, setCollaboratorIds] = useState<string[]>(item?.collaborators?.map((person) => person.id) || []);
   const [showCollaborators, setShowCollaborators] = useState(Boolean(item?.collaborators?.length));
   const { data: people = [] } = useQuery({
-    queryKey: ["people"],
-    queryFn: () => api<Person[]>("/api/people"),
+    queryKey: ["people", requirement.projectId],
+    queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(requirement.projectId)}`),
   });
   const mutation = useMutation({
     mutationFn: (value: object) =>
@@ -349,6 +351,7 @@ export function RequirementPage() {
     "edit" | "work" | "progress" | "template" | null
   >(null);
   const [editingItem, setEditingItem] = useState<WorkItem>();
+  const [workEditorOpen, setWorkEditorOpen] = useState(false);
   const {
     data: requirement,
     isLoading,
@@ -390,19 +393,26 @@ export function RequirementPage() {
     },
   });
   const progressOption = useMemo(
-    () => ({
+    () => {
+      const updates = [...(requirement?.progressUpdates || [])].reverse();
+      const items = (requirement?.workItems || []).filter((item) => item.status !== "cancelled");
+      const totalWeight = items.reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
+      const plannedValues = updates.map((update) => {
+        const date = update.createdAt.slice(0, 10);
+        const plannedWeight = items.filter((item) => item.plannedEnd && item.plannedEnd <= date).reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
+        return totalWeight ? Math.round((plannedWeight / totalWeight) * 100) : 0;
+      });
+      return ({
       tooltip: { trigger: "axis" },
-      grid: { left: 38, right: 18, top: 18, bottom: 34 },
+      legend: { top: 4, right: 16, data: ["实际进度", "计划进度"], textStyle: { color: "#718096", fontSize: 12 } },
+      grid: { left: 42, right: 18, top: 42, bottom: 34 },
       xAxis: {
         type: "category",
-        data: [...(requirement?.progressUpdates || [])]
-          .reverse()
-          .map((item) =>
+        data: updates.map((item) =>
             new Date(item.createdAt).toLocaleDateString("zh-CN", {
               month: "2-digit",
               day: "2-digit",
-            }),
-          ),
+            })),
         axisLabel: { color: "#718096" },
       },
       yAxis: {
@@ -414,24 +424,33 @@ export function RequirementPage() {
       },
       series: [
         {
+          name: "实际进度",
           type: "line",
           smooth: true,
           symbolSize: 8,
-          data: [...(requirement?.progressUpdates || [])]
-            .reverse()
-            .map((item) => item.percent),
+          data: updates.map((item) => item.percent),
           lineStyle: { color: "#2d6cdf", width: 3 },
           itemStyle: { color: "#2d6cdf" },
           areaStyle: { color: "rgba(45,108,223,.12)" },
         },
+        {
+          name: "计划进度",
+          type: "line",
+          smooth: false,
+          symbolSize: 6,
+          data: plannedValues,
+          lineStyle: { color: "#91a3bc", width: 2, type: "dashed" },
+          itemStyle: { color: "#91a3bc" },
+        },
       ],
-    }),
+    });
+    },
     [requirement],
   );
   if (isLoading)
     return (
       <>
-        <PageHeader title="需求详情" onBack={() => navigate("/")} />
+        <PageHeader title="需求详情" onBack={() => navigate(-1)} />
         <div className="page-content">
           <div className="loading-block">加载需求详情…</div>
         </div>
@@ -440,14 +459,14 @@ export function RequirementPage() {
   if (error || !requirement)
     return (
       <>
-        <PageHeader title="需求详情" onBack={() => navigate("/")} />
+        <PageHeader title="需求详情" onBack={() => navigate("/requirements")} backLabel="返回需求管理" />
         <div className="page-content">
           <EmptyState
             title="需求无法打开"
             detail={error?.message || "需求不存在或已归档。"}
             action={
-              <button className="ghost-button" onClick={() => navigate("/")}>
-                返回项目进展
+              <button className="ghost-button" onClick={() => navigate("/requirements")}>
+                返回需求管理
               </button>
             }
           />
@@ -458,7 +477,7 @@ export function RequirementPage() {
     <>
       <PageHeader
         title={requirement.title}
-        onBack={() => navigate("/")}
+        onBack={() => navigate(-1)}
         actions={session.authenticated ? (
           <>
             <button className="ghost-button" onClick={() => setModal("edit")}>
@@ -548,64 +567,36 @@ export function RequirementPage() {
           </small>
         </article>
       </section>
-      <section className="panel detail-panel">
+      <section className="panel detail-panel requirement-progress-panel">
         <header>
           <div>
-            <h2>计划与实际Gap</h2>
-            <p>计划与实际使用上下独立泳道，时间偏差一眼可见</p>
+            <h2>需求进展</h2>
           </div>
           {session.authenticated && (
             <div className="panel-actions">
               <button
                 className="ghost-button"
-                onClick={() => setModal("template")}
+                aria-haspopup="dialog"
+                onClick={() => setWorkEditorOpen(true)}
               >
-                补全计划
-              </button>
-              <button
-                className="ghost-button"
-                onClick={() => {
-                  setEditingItem(undefined);
-                  setModal("work");
-                }}
-              >
-                <Plus size={15} />
-                工作项
+                <Edit3 size={15} />
+                编辑工作项
               </button>
             </div>
           )}
         </header>
-        <GapTimeline items={requirement.workItems} />
+        <GapTimeline items={requirement.workItems} updates={requirement.progressUpdates || []} />
       </section>
-      <section className="detail-grid">
-        <article className="panel">
-          <header>
-            <div>
-              <h2>进度趋势</h2>
-              <p>根据每次进展记录生成</p>
+      {workEditorOpen && session.authenticated && <Modal title="编辑工作项" width={1120} onClose={() => setWorkEditorOpen(false)}>
+          <div className="work-editor-modal">
+            <div className="work-editor-modal-toolbar">
+              <span>状态由实际日期和阻塞标记自动推导</span>
+              <div className="panel-actions">
+              {(!requirement.workItems.length || requirement.workItems.some((item) => !item.plannedStart || !item.plannedEnd)) && <button className="ghost-button" onClick={() => { setWorkEditorOpen(false); setModal("template"); }}>补全计划</button>}
+              <button className="primary-button" onClick={() => { setWorkEditorOpen(false); setEditingItem(undefined); setModal("work"); }}><Plus size={15} />添加工作项</button>
+              </div>
             </div>
-          </header>
-          {requirement.progressUpdates?.length ? (
-            <Chart
-              option={progressOption}
-              height={250}
-              ariaLabel="需求进度趋势"
-            />
-          ) : (
-            <EmptyState
-              title="暂无进展记录"
-              detail="增加第一条进展后自动生成趋势图。"
-            />
-          )}
-        </article>
-        <article className="panel">
-          <header>
-            <div>
-              <h2>工作项明细</h2>
-              <p>状态由实际日期和阻塞标记自动推导</p>
-            </div>
-          </header>
-          <div className="work-list">
+          <div className="work-editor-scroll"><div className="work-list">
             {requirement.workItems.map((item) => {
               const gap = calculateWorkItemGap(item);
               return (
@@ -638,32 +629,19 @@ export function RequirementPage() {
                     {gap.finishVariance}天
                   </b>
                   {session.authenticated && (
-                    <div className="row-actions">
-                      {item.status === "not_started" && <button title="开始工作" aria-label="开始工作" onClick={() => itemAction.mutate({ itemId: item.id, action: "start" })}><Play size={14} /></button>}
-                      {item.status === "in_progress" && <>
-                        <button title="完成工作" aria-label="完成工作" onClick={() => itemAction.mutate({ itemId: item.id, action: "complete" })}><Check size={14} /></button>
-                        <button title="标记阻塞" aria-label="标记阻塞" onClick={() => { const reason = prompt("请输入阻塞原因"); if (reason?.trim()) itemAction.mutate({ itemId: item.id, action: "block", reason }); }}><CircleStop size={14} /></button>
-                      </>}
-                      {item.status === "blocked" && <button title="解除阻塞" aria-label="解除阻塞" onClick={() => itemAction.mutate({ itemId: item.id, action: "unblock" })}><RotateCcw size={14} /></button>}
-                      <button
-                        aria-label="编辑工作项"
-                        onClick={() => {
-                          setEditingItem(item);
-                          setModal("work");
-                        }}
-                      >
-                        <Edit3 size={14} />
-                      </button>
-                      {!['completed', 'cancelled'].includes(item.status) && <button title="取消工作项" aria-label="取消工作项" onClick={() => confirm(`取消工作项“${item.title}”？`) && itemAction.mutate({ itemId: item.id, action: "cancel" })}><CircleStop size={14} /></button>}
-                      <button
-                        aria-label="删除工作项"
-                        onClick={() =>
-                          confirm(`删除工作项“${item.title}”？`) &&
-                          removeItem.mutate(item.id)
-                        }
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                    <div className="work-item-actions">
+                      {item.status === "not_started" && <button className="work-next-action" onClick={() => itemAction.mutate({ itemId: item.id, action: "start" })}><Play size={14} />开始</button>}
+                      {item.status === "in_progress" && <button className="work-next-action" onClick={() => itemAction.mutate({ itemId: item.id, action: "complete" })}><Check size={14} />完成</button>}
+                      {item.status === "blocked" && <button className="work-next-action" onClick={() => itemAction.mutate({ itemId: item.id, action: "unblock" })}><RotateCcw size={14} />解除阻塞</button>}
+                      <details className="action-menu">
+                        <summary aria-label="更多工作项操作" title="更多操作"><MoreHorizontal size={16} /></summary>
+                        <div>
+                          <button onClick={() => { setWorkEditorOpen(false); setEditingItem(item); setModal("work"); }}><Edit3 size={14} />编辑</button>
+                          {item.status === "in_progress" && <button onClick={() => { const reason = prompt("请输入阻塞原因"); if (reason?.trim()) itemAction.mutate({ itemId: item.id, action: "block", reason }); }}><CircleStop size={14} />标记阻塞</button>}
+                          {!['completed', 'cancelled'].includes(item.status) && <button onClick={() => confirm(`取消工作项“${item.title}”？`) && itemAction.mutate({ itemId: item.id, action: "cancel" })}><CircleStop size={14} />取消工作项</button>}
+                          <button className="danger" onClick={() => confirm(`删除工作项“${item.title}”？`) && removeItem.mutate(item.id)}><Trash2 size={14} />删除</button>
+                        </div>
+                      </details>
                     </div>
                   )}
                 </div>
@@ -675,49 +653,27 @@ export function RequirementPage() {
                 detail="可新增工作项，或从通用研发模板补充。"
               />
             )}
+          </div></div>
+          </div>
+      </Modal>}
+      <section className="detail-grid progress-detail-grid">
+        <article className="panel progress-detail-card">
+          <header><div><h2>进展记录</h2></div></header>
+          <div className="progress-feed">
+            {requirement.progressUpdates?.map((item) => (
+              <article key={item.id}>
+                <div className="progress-marker">{item.percent}%</div>
+                <div><header><strong>{new Date(item.createdAt).toLocaleString("zh-CN")}</strong>{item.workItemTitle && <span>{item.workItemTitle}</span>}</header><p>{item.content}</p></div>
+                {session.authenticated && <button aria-label="删除进展" onClick={() => confirm("确认删除这条进展？") && removeProgress.mutate(item.id)}><Trash2 size={14} /></button>}
+              </article>
+            ))}
+            {!requirement.progressUpdates?.length && <EmptyState title="暂无进展" detail="增加进展后，这里会显示具体完成内容。" />}
           </div>
         </article>
-      </section>
-      <section className="panel detail-panel">
-        <header>
-          <div>
-            <h2>进展记录</h2>
-            <p>按时间倒序展示具体完成内容</p>
-          </div>
-        </header>
-        <div className="progress-feed">
-          {requirement.progressUpdates?.map((item) => (
-            <article key={item.id}>
-              <div className="progress-marker">{item.percent}%</div>
-              <div>
-                <header>
-                  <strong>
-                    {new Date(item.createdAt).toLocaleString("zh-CN")}
-                  </strong>
-                  {item.workItemTitle && <span>{item.workItemTitle}</span>}
-                </header>
-                <p>{item.content}</p>
-              </div>
-              {session.authenticated && (
-                <button
-                  aria-label="删除进展"
-                  onClick={() =>
-                    confirm("确认删除这条进展？") &&
-                    removeProgress.mutate(item.id)
-                  }
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </article>
-          ))}
-          {!requirement.progressUpdates?.length && (
-            <EmptyState
-              title="暂无进展"
-              detail="只需填写具体进展，系统会自动记录当时的需求进度。"
-            />
-          )}
-        </div>
+        <article className="panel progress-detail-card">
+          <header><div><h2>进度趋势</h2></div></header>
+          {requirement.progressUpdates?.length ? <Chart option={progressOption} height={270} ariaLabel="需求计划与实际进度趋势" /> : <EmptyState title="暂无趋势" detail="增加第一条进展后自动生成趋势图。" />}
+        </article>
       </section>
       {session.authenticated && (
         <div className="danger-zone">

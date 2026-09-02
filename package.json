@@ -11,6 +11,7 @@
     "start": "node dist-server/index.js",
     "db:generate": "drizzle-kit generate",
     "test": "vitest run",
+    "test:responsive": "playwright test --config playwright.config.ts",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -34,6 +35,7 @@
     "zod": "latest"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/better-sqlite3": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
@@ -41,8 +43,8 @@
     "@vitejs/plugin-react": "latest",
     "concurrently": "latest",
     "drizzle-kit": "latest",
-    "tsx": "latest",
     "tsup": "latest",
+    "tsx": "latest",
     "typescript": "latest",
     "vite": "latest",
     "vitest": "latest"

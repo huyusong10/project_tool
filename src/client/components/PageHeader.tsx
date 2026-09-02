@@ -6,10 +6,12 @@ export function PageHeader({
   title,
   actions,
   onBack,
+  backLabel = "返回",
 }: {
   title: string;
   actions?: ReactNode;
   onBack?: () => void;
+  backLabel?: string;
 }) {
   const [slots, setSlots] = useState<{ title: HTMLElement; actions: HTMLElement }>();
 
@@ -25,7 +27,7 @@ export function PageHeader({
       {createPortal(
         <div className="integrated-page-title">
           {onBack && (
-            <button onClick={onBack} aria-label="返回项目进展" title="返回项目进展">
+            <button onClick={onBack} aria-label={backLabel} title={backLabel}>
               <ArrowLeft size={17} />
             </button>
           )}

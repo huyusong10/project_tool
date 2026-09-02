@@ -31,6 +31,15 @@ export const people = sqliteTable('people', {
     .where(sql`${table.deletedAt} IS NULL`),
 ]);
 
+export const projectPeople = sqliteTable('project_people', {
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  personId: text('person_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.projectId, table.personId] }),
+  index('idx_project_people_person').on(table.personId, table.projectId),
+]);
+
 export const workItemTemplates = sqliteTable('work_item_templates', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),

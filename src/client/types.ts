@@ -30,7 +30,7 @@ export type Requirement = {
   id: string; projectId: string; projectName: string; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number; progressGap: number;
   riskLevel: string; priority: string; createdAt: string; updatedAt: string; deletedAt?: string | null;
-  workItems: WorkItem[]; progressUpdates?: ProgressUpdate[]; delayed: boolean; highRisk: boolean;
+  workItems: WorkItem[]; progressUpdates?: ProgressUpdate[]; recentProgressUpdates?: ProgressUpdate[]; delayed: boolean; highRisk: boolean;
   finishVariance: number; durationVariance: number; effectiveEnd: string | null;
 };
 export type Dashboard = {
@@ -65,4 +65,5 @@ export type Archives = {
 export type ArchiveItem = { id: string; title: string; jobTitle?: string | null; deletedAt: string };
 export type ApiToken = { id: string; name: string; prefix: string; expiresAt: string | null; lastUsedAt: string | null; revokedAt: string | null; createdAt: string };
 export type AuditLog = { id: string; actorType: string; actorId: string | null; action: string; entityType: string; entityId: string | null; summary: string; createdAt: string };
+export type AuditPage = { items: AuditLog[]; total: number; page: number; pageSize: number; pages: number };
 export type Backup = { name: string; size: number; createdAt: string };

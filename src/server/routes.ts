@@ -2,14 +2,14 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config } from './config';
 import { createSessionToken, verifyPassword, verifySessionToken, type Actor } from './auth';
 import {
-  addProgress, applyRequirementPlan, applyTemplate, archivePerson, archiveProject, archiveRequirement, archiveTemplate,
+  addProgress, addProjectPerson, applyRequirementPlan, applyTemplate, archivePerson, archiveProject, archiveRequirement, archiveTemplate,
   blockWorkItem, cancelWorkItem, completeWorkItem, createPerson, createProject, createRequirement, createTemplate,
   createWorkItem, deleteProgress, deleteWorkItem, getDashboard, getPeopleConcurrency, getRequirement, issueToken,
   listArchives, listAudit, listPeople, listProjects, listRequirements, listTemplates, listTokens, previewRequirementPlan,
-  permanentlyDeleteArchive, reorderWorkItems, restorePerson, restoreProject, restoreRequirement, restoreTemplate, revokeToken, startWorkItem,
+  permanentlyDeleteArchive, recordAudit, removeProjectPerson, reorderWorkItems, restorePerson, restoreProject, restoreRequirement, restoreTemplate, revokeToken, searchAudit, startWorkItem,
   unblockWorkItem, updatePerson, updateProgress, updateProject, updateRequirement, updateTemplate, updateWorkItem,
 } from './services';
-import { createBackup, listBackups, scheduleRestore } from './backups';
+import { createBackup, deleteBackup, listBackups, scheduleRestore } from './backups';
 
 const userActor = (): Actor => ({ type: 'user', id: config.appUsername, label: config.appUsername });
 
@@ -69,11 +69,19 @@ export function registerApiRoutes(app: FastifyInstance) {
   app.patch('/api/progress/:id', { preHandler: requireUser }, async (request) => updateProgress((request.params as any).id, body(request), userActor()));
   app.delete('/api/progress/:id', { preHandler: requireUser }, async (request) => deleteProgress((request.params as any).id, userActor()));
 
-  app.get('/api/people', async (request) => listPeople((request.query as any).includeDeleted === 'true'));
+  app.get('/api/people', async (request) => listPeople((request.query as any).includeDeleted === 'true', (request.query as any).projectId));
   app.post('/api/people', { preHandler: requireUser }, async (request) => createPerson(body(request), userActor()));
   app.patch('/api/people/:id', { preHandler: requireUser }, async (request) => updatePerson((request.params as any).id, body(request), userActor()));
   app.delete('/api/people/:id', { preHandler: requireUser }, async (request) => archivePerson((request.params as any).id, userActor()));
   app.post('/api/people/:id/restore', { preHandler: requireUser }, async (request) => restorePerson((request.params as any).id, userActor()));
+  app.post('/api/projects/:projectId/people/:personId', { preHandler: requireUser }, async (request) => {
+    const { projectId, personId } = request.params as { projectId: string; personId: string };
+    return addProjectPerson(projectId, personId, userActor());
+  });
+  app.delete('/api/projects/:projectId/people/:personId', { preHandler: requireUser }, async (request) => {
+    const { projectId, personId } = request.params as { projectId: string; personId: string };
+    return removeProjectPerson(projectId, personId, userActor());
+  });
 
   app.get('/api/templates', async (request) => listTemplates((request.query as any).includeDeleted === 'true'));
   app.post('/api/templates', { preHandler: requireUser }, async (request) => createTemplate(body(request), userActor()));
@@ -92,8 +100,15 @@ export function registerApiRoutes(app: FastifyInstance) {
   app.post('/api/tokens', { preHandler: requireUser }, async (request) => issueToken(body(request), userActor()));
   app.delete('/api/tokens/:id', { preHandler: requireUser }, async (request) => revokeToken((request.params as any).id, userActor()));
   app.get('/api/audit', { preHandler: requireUser }, async (request) => listAudit(Number((request.query as any).limit || 100)));
+  app.get('/api/audit/search', { preHandler: requireUser }, async (request) => searchAudit(request.query as any));
 
   app.get('/api/backups', { preHandler: requireUser }, async () => listBackups());
   app.post('/api/backups', { preHandler: requireUser }, async () => createBackup());
+  app.delete('/api/backups/:name', { preHandler: requireUser }, async (request) => {
+    const name = String((request.params as any).name || '');
+    const result = deleteBackup(name);
+    recordAudit(userActor(), 'delete', 'backup', name, `删除数据库备份：${name}`);
+    return result;
+  });
   app.post('/api/backups/restore', { preHandler: requireUser }, async (request) => scheduleRestore(String(body(request).name || '')));
 }

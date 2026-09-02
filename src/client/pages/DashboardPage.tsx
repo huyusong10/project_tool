@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -8,17 +8,15 @@ import {
   Plus,
   TrendingUp,
 } from "lucide-react";
-import { api, jsonBody } from "../api";
+import { api } from "../api";
 import { useApp } from "../app-context";
-import type {
-  Dashboard,
-  WorkItemTemplate,
-} from "../types";
+import type { Dashboard } from "../types";
 import { requirementStatusLabels } from "../../shared/domain";
 import { Chart } from "../components/Chart";
 import { EmptyState, Modal } from "../components/Modal";
 import { ProjectGantt } from "../components/ProjectGantt";
 import { PageHeader } from "../components/PageHeader";
+import { ProjectForm } from "../components/ManagementForms";
 
 function Kpi({
   label,
@@ -47,130 +45,6 @@ function Kpi({
   );
 }
 
-function ProjectForm({ onClose }: { onClose: () => void }) {
-  const client = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: (data: object) =>
-      api("/api/projects", { method: "POST", body: jsonBody(data) }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["projects"] });
-      onClose();
-    },
-  });
-  return (
-    <form
-      className="form-grid"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const data = new FormData(event.currentTarget);
-        mutation.mutate(Object.fromEntries(data));
-      }}
-    >
-      <label className="field field-full">
-        <span>项目名称</span>
-        <input
-          name="name"
-          required
-          autoFocus
-          placeholder="例如：DCIM平台 V1.0"
-        />
-      </label>
-      <label className="field">
-        <span>计划开始</span>
-        <input name="plannedStart" type="date" />
-      </label>
-      <label className="field">
-        <span>计划完成</span>
-        <input name="plannedEnd" type="date" />
-      </label>
-      {mutation.error && (
-        <p className="form-error field-full">{mutation.error.message}</p>
-      )}
-      <div className="form-actions field-full">
-        <button type="button" className="ghost-button" onClick={onClose}>
-          取消
-        </button>
-        <button className="primary-button" disabled={mutation.isPending}>
-          创建项目
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function RequirementForm({
-  projectId,
-  onClose,
-}: {
-  projectId: string;
-  onClose: () => void;
-}) {
-  const client = useQueryClient();
-  const { projects } = useApp();
-  const { data: templates = [] } = useQuery({
-    queryKey: ["templates"],
-    queryFn: () => api<WorkItemTemplate[]>("/api/templates"),
-  });
-  const mutation = useMutation({
-    mutationFn: (data: object) =>
-      api("/api/requirements", { method: "POST", body: jsonBody(data) }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
-      onClose();
-    },
-  });
-  return (
-    <form
-      className="form-grid"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const data = Object.fromEntries(new FormData(event.currentTarget));
-        mutation.mutate({ ...data, projectId });
-      }}
-    >
-      <label className="field field-full">
-        <span>需求标题</span>
-        <input name="title" required autoFocus />
-      </label>
-      <label className="field">
-        <span>优先级</span>
-        <select name="priority" defaultValue="P2">
-          <option value="P0">P0 · 紧急</option>
-          <option value="P1">P1 · 高</option>
-          <option value="P2">P2 · 中</option>
-          <option value="P3">P3 · 低</option>
-        </select>
-      </label>
-      <label className="field">
-        <span>工作项模板</span>
-        <select name="templateId" required defaultValue={projects.find((project) => project.id === projectId)?.defaultTemplateId || ""}>
-          {templates.map((template) => (
-            <option key={template.id} value={template.id}>
-              {template.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        <span>计划开始</span>
-        <input name="plannedStart" type="date" required />
-      </label>
-      <p className="field-help field-full">保存后将按模板自动生成工作项和计划完成日期。</p>
-      {mutation.error && (
-        <p className="form-error field-full">{mutation.error.message}</p>
-      )}
-      <div className="form-actions field-full">
-        <button type="button" className="ghost-button" onClick={onClose}>
-          取消
-        </button>
-        <button className="primary-button" disabled={mutation.isPending}>
-          创建需求
-        </button>
-      </div>
-    </form>
-  );
-}
-
 export function DashboardPage() {
   const {
     projects,
@@ -178,8 +52,7 @@ export function DashboardPage() {
     session,
     openLogin,
   } = useApp();
-  const [modal, setModal] = useState<"project" | "requirement" | null>(null);
-  const client = useQueryClient();
+  const [modal, setModal] = useState<"project" | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard", selectedProjectId],
     queryFn: () =>
@@ -303,29 +176,7 @@ export function DashboardPage() {
     );
   return (
     <>
-      <PageHeader
-        title="项目进展"
-        actions={
-          session.authenticated ? (
-            <>
-              <button
-                className="ghost-button"
-                onClick={() => setModal("project")}
-              >
-                <Plus size={15} />
-                项目
-              </button>
-              <button
-                className="primary-button"
-                onClick={() => setModal("requirement")}
-              >
-                <Plus size={16} />
-                新建需求
-              </button>
-            </>
-          ) : null
-        }
-      />
+      <PageHeader title="项目进展" />
       <div className="page-content dashboard-page">
         <section className="stats-grid dashboard-top-stats">
         <Kpi
@@ -426,14 +277,6 @@ export function DashboardPage() {
         {modal === "project" && (
         <Modal title="新建项目" onClose={() => setModal(null)}>
           <ProjectForm onClose={() => setModal(null)} />
-        </Modal>
-        )}
-        {modal === "requirement" && selectedProjectId && (
-        <Modal title="新建需求" onClose={() => setModal(null)}>
-          <RequirementForm
-            projectId={selectedProjectId}
-            onClose={() => setModal(null)}
-          />
         </Modal>
         )}
       </div>

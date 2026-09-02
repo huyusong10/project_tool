@@ -1,6 +1,7 @@
-import { useMemo, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useDeferredValue, useMemo, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { addDays, format, parseISO, startOfWeek } from "date-fns";
 import {
   Archive,
   Clock3,
@@ -15,17 +16,19 @@ import {
   Search,
   ShieldCheck,
   Trash2,
+  UserMinus,
   UserPlus,
 } from "lucide-react";
 import { api, jsonBody } from "../api";
 import { useApp } from "../app-context";
 import type {
   ApiToken,
-  AuditLog,
+  AuditPage,
   Backup,
   Archives,
   PeopleConcurrency,
   Person,
+  Project,
   Requirement,
   TemplateItem,
   WorkItemTemplate,
@@ -33,10 +36,12 @@ import type {
 import { priorityLabels, requirementStatusLabels, riskLabels } from "../../shared/domain";
 import { EmptyState, Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
+import { ProjectForm, RequirementForm } from "../components/ManagementForms";
 
 export function RequirementsPage() {
   const { selectedProjectId, projects, session } = useApp();
   const navigate = useNavigate();
+  const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const { data = [] } = useQuery({
@@ -55,11 +60,11 @@ export function RequirementsPage() {
   return (
     <>
       <PageHeader
-        title="全部需求"
+        title="需求管理"
         actions={session.authenticated ? (
-          <button className="primary-button" onClick={() => navigate("/")}>
+          <button className="primary-button" disabled={!selectedProjectId} onClick={() => setCreating(true)} title={selectedProjectId ? "新建需求" : "请先创建项目"}>
             <Plus size={16} />
-            前往项目进展
+            新建需求
           </button>
         ) : null}
       />
@@ -153,10 +158,76 @@ export function RequirementsPage() {
         {!items.length && (
           <EmptyState
             title="没有符合条件的需求"
-            detail="调整筛选条件，或从项目进展新建需求。"
+            detail="调整筛选条件，或新建一条需求。"
           />
         )}
         </div>
+        {creating && selectedProjectId && (
+          <Modal title="新建需求" onClose={() => setCreating(false)}>
+            <RequirementForm projectId={selectedProjectId} onClose={() => setCreating(false)} />
+          </Modal>
+        )}
+      </div>
+    </>
+  );
+}
+
+export function ProjectsPage() {
+  const { projects, selectedProjectId, session } = useApp();
+  const client = useQueryClient();
+  const [editing, setEditing] = useState<Project | null | undefined>(undefined);
+  const { data: templates = [] } = useQuery({
+    queryKey: ["templates"],
+    queryFn: () => api<WorkItemTemplate[]>("/api/templates"),
+  });
+  const archive = useMutation({
+    mutationFn: (id: string) => api(`/api/projects/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["projects"] });
+      void client.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+  const templateName = (id: string | null) => templates.find((template) => template.id === id)?.name || "未指定";
+  return (
+    <>
+      <PageHeader
+        title="项目管理"
+        actions={session.authenticated ? (
+          <button className="primary-button" onClick={() => setEditing(null)}>
+            <Plus size={16} />
+            新建项目
+          </button>
+        ) : null}
+      />
+      <div className="page-content">
+        <div className="table-panel project-table">
+          <table>
+            <thead><tr><th>项目</th><th>计划周期</th><th>默认模板</th>{session.authenticated && <th>操作</th>}</tr></thead>
+            <tbody>
+              {projects.map((project) => (
+                <tr key={project.id} className={project.id === selectedProjectId ? "is-current" : ""}>
+                  <td><strong>{project.name}</strong>{project.id === selectedProjectId && <small>当前项目</small>}</td>
+                  <td>{project.plannedStart || "未设置"} → {project.plannedEnd || "未设置"}</td>
+                  <td>{templateName(project.defaultTemplateId)}</td>
+                  {session.authenticated && (
+                    <td>
+                      <div className="project-row-actions">
+                        <button className="inline-action-button" onClick={() => setEditing(project)}><Edit3 size={14} />编辑</button>
+                        <button className="inline-action-button danger" onClick={() => confirm(`归档项目“${project.name}”？项目数据可在归档中心恢复。`) && archive.mutate(project.id)}><Archive size={14} />归档</button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!projects.length && <EmptyState title="还没有项目" detail="创建第一个项目后即可维护需求和排期。" />}
+        </div>
+        {editing !== undefined && (
+          <Modal title={editing ? "编辑项目" : "新建项目"} onClose={() => setEditing(undefined)}>
+            <ProjectForm project={editing || undefined} onClose={() => setEditing(undefined)} />
+          </Modal>
+        )}
       </div>
     </>
   );
@@ -164,9 +235,11 @@ export function RequirementsPage() {
 
 function PersonForm({
   person,
+  projectId,
   onClose,
 }: {
   person?: Person;
+  projectId: string;
   onClose: () => void;
 }) {
   const client = useQueryClient();
@@ -174,10 +247,11 @@ function PersonForm({
     mutationFn: (value: object) =>
       api(person ? `/api/people/${person.id}` : "/api/people", {
         method: person ? "PATCH" : "POST",
-        body: jsonBody(value),
+        body: jsonBody(person ? value : { ...value, projectId }),
       }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["people"] });
+      void client.invalidateQueries({ queryKey: ["people", projectId] });
       onClose();
     },
   });
@@ -215,14 +289,37 @@ function PersonForm({
   );
 }
 
+function AddProjectPersonForm({ projectId, people, onClose }: { projectId: string; people: Person[]; onClose: () => void }) {
+  const client = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (personId: string) => api(`/api/projects/${projectId}/people/${personId}`, { method: "POST" }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["people", projectId] });
+      onClose();
+    },
+  });
+  return <form className="form-grid" onSubmit={(event) => {
+    event.preventDefault();
+    mutation.mutate(String(new FormData(event.currentTarget).get("personId") || ""));
+  }}>
+    <label className="field field-full"><span>已有人员</span><select name="personId" required defaultValue=""><option value="" disabled>请选择人员</option>{people.map((person) => <option value={person.id} key={person.id}>{person.name} · {person.jobTitle || "岗位未设置"}</option>)}</select></label>
+    {mutation.error && <p className="form-error field-full">{mutation.error.message}</p>}
+    <div className="form-actions field-full"><button type="button" className="ghost-button" onClick={onClose}>取消</button><button className="primary-button">添加到项目</button></div>
+  </form>;
+}
+
 export function PeoplePage() {
-  const { session, openLogin } = useApp();
+  const { session, openLogin, selectedProjectId, projects } = useApp();
   const client = useQueryClient();
   const [editing, setEditing] = useState<Person | null | undefined>(undefined);
+  const [addingExisting, setAddingExisting] = useState(false);
   const { data = [] } = useQuery({
-    queryKey: ["people"],
-    queryFn: () => api<Person[]>("/api/people"),
+    queryKey: ["people", selectedProjectId],
+    queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`),
+    enabled: Boolean(selectedProjectId),
   });
+  const { data: allPeople = [] } = useQuery({ queryKey: ["people", "all"], queryFn: () => api<Person[]>("/api/people"), enabled: session.authenticated });
+  const availablePeople = allPeople.filter((person) => !data.some((member) => member.id === person.id));
   const groups = useMemo(() => {
     const grouped = new Map<string, Person[]>();
     for (const person of data) {
@@ -244,16 +341,18 @@ export function PeoplePage() {
     mutationFn: (id: string) => api(`/api/people/${id}`, { method: "DELETE" }),
     onSuccess: () => void client.invalidateQueries({ queryKey: ["people"] }),
   });
+  const removeMember = useMutation({
+    mutationFn: (id: string) => api(`/api/projects/${selectedProjectId}/people/${id}`, { method: "DELETE" }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["people", selectedProjectId] }),
+  });
   return (
     <>
       <PageHeader
         title="人员矩阵"
-        actions={session.authenticated ? (
-          <button className="primary-button" onClick={() => setEditing(null)}>
-            <UserPlus size={16} />
-            新增人员
-          </button>
-        ) : null}
+        actions={session.authenticated ? <div className="panel-actions">
+          <button className="ghost-button" disabled={!availablePeople.length || !selectedProjectId} onClick={() => setAddingExisting(true)}><UserPlus size={16} />添加已有人员</button>
+          <button className="primary-button" disabled={!selectedProjectId} onClick={() => setEditing(null)}><UserPlus size={16} />新增人员</button>
+        </div> : null}
       />
       <div className="page-content">
         <div className="people-matrix">
@@ -285,15 +384,21 @@ export function PeoplePage() {
                     <div className="person-copy">
                       <strong>{person.name}</strong>
                     </div>
+                    {session.authenticated && <Edit3 className="person-edit-indicator" size={15} aria-hidden="true" />}
                     {session.authenticated && (
                       <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-                        <button className="person-edit-button" aria-label={`编辑 ${person.name}`} onClick={() => setEditing(person)}>
-                          <Edit3 size={15} />编辑
+                        <button
+                          aria-label={`从项目移除 ${person.name}`}
+                          title={`从当前项目移除 ${person.name}`}
+                          onClick={() => confirm(`将“${person.name}”移出当前项目？历史工作项不会改变。`) && removeMember.mutate(person.id)}
+                        >
+                          <UserMinus size={15} />
                         </button>
                         <button
-                          aria-label={`归档 ${person.name}`}
+                          aria-label={`归档人员 ${person.name}`}
+                          title={`全局归档 ${person.name}`}
                           onClick={() =>
-                            confirm(`归档“${person.name}”？`) &&
+                            confirm(`全局归档“${person.name}”？该人员会从所有项目中隐藏。`) &&
                             archive.mutate(person.id)
                           }
                         >
@@ -309,7 +414,7 @@ export function PeoplePage() {
           {!data.length && (
             <EmptyState
               title="还没有人员"
-              detail="新增人员并设置岗位后，将自动形成岗位分组。"
+              detail={`${projects.find((project) => project.id === selectedProjectId)?.name || "当前项目"}还没有项目成员。`}
             />
           )}
         </div>
@@ -320,10 +425,12 @@ export function PeoplePage() {
         >
           <PersonForm
             person={editing || undefined}
+            projectId={selectedProjectId}
             onClose={() => setEditing(undefined)}
           />
         </Modal>
         )}
+        {addingExisting && <Modal title="添加已有人员" onClose={() => setAddingExisting(false)}><AddProjectPersonForm projectId={selectedProjectId} people={availablePeople} onClose={() => setAddingExisting(false)} /></Modal>}
       </div>
     </>
   );
@@ -333,35 +440,62 @@ export function ConcurrencyPage() {
   const { selectedProjectId } = useApp();
   const [personId, setPersonId] = useState("");
   const [jobTitle, setJobTitle] = useState("");
-  const { data: people = [] } = useQuery({ queryKey: ["people"], queryFn: () => api<Person[]>("/api/people") });
+  const firstWeek = useMemo(() => format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd"), []);
+  const { data: people = [] } = useQuery({
+    queryKey: ["people", selectedProjectId],
+    queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`),
+    enabled: Boolean(selectedProjectId),
+  });
   const jobTitles = useMemo(() => [...new Set(people.map((person) => person.jobTitle).filter(Boolean) as string[])].sort(), [people]);
-  const { data, isLoading } = useQuery({
-    queryKey: ["people-concurrency", selectedProjectId, personId, jobTitle],
-    queryFn: () => {
+  const analysis = useInfiniteQuery({
+    queryKey: ["people-concurrency", selectedProjectId, personId, jobTitle, firstWeek],
+    initialPageParam: firstWeek,
+    enabled: Boolean(selectedProjectId),
+    queryFn: ({ pageParam }) => {
       const params = new URLSearchParams();
-      if (selectedProjectId) params.set("projectId", selectedProjectId);
+      params.set("projectId", selectedProjectId);
       if (personId) params.set("personId", personId);
       if (jobTitle) params.set("jobTitle", jobTitle);
+      params.set("from", pageParam);
+      params.set("to", format(addDays(parseISO(pageParam), 6), "yyyy-MM-dd"));
       return api<PeopleConcurrency>(`/api/analytics/people-concurrency?${params}`);
     },
+    getNextPageParam: (lastPage) => format(addDays(parseISO(lastPage.from), 7), "yyyy-MM-dd"),
   });
+  const pages = analysis.data?.pages || [];
+  const currentTop = pages[0]?.currentTop || [];
   return <>
-    <PageHeader title="人员并发分析" />
+    <PageHeader title="人力分析" />
     <div className="page-content">
-      <div className="filter-bar">
-      <select value={jobTitle} onChange={(event) => setJobTitle(event.target.value)}><option value="">全部岗位</option>{jobTitles.map((title) => <option value={title} key={title}>{title}</option>)}</select>
+      <div className="filter-bar human-filter-bar">
+      <select value={jobTitle} onChange={(event) => { setJobTitle(event.target.value); setPersonId(""); }}><option value="">全部岗位</option>{jobTitles.map((title) => <option value={title} key={title}>{title}</option>)}</select>
       <select value={personId} onChange={(event) => setPersonId(event.target.value)}><option value="">全部人员</option>{people.filter((person) => !jobTitle || person.jobTitle === jobTitle).map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
-      <span>今天看实际进行，未来看计划安排</span>
+      <span>今天及历史看实际，未来看计划</span>
     </div>
-    <section className="concurrency-summary">
-      {(data?.currentTop || []).slice(0, 5).map((person) => <article key={person.id}><span className="person-avatar">{person.name.slice(-1)}</span><div><strong>{person.name}</strong><small>{person.jobTitle || "岗位未设置"}</small></div><b className={`load-${Math.min(person.currentCount, 3)}`}>{person.currentCount}项</b></article>)}
-      {!data?.currentTop.some((person) => person.currentCount) && !isLoading && <EmptyState title="今天没有并发工作" detail="未来计划仍可在下方热力图中查看。" />}
-    </section>
-    <div className="concurrency-table-wrap">
-      <table className="concurrency-table"><thead><tr><th>人员</th>{data?.dates.map((date) => <th key={date}>{date.slice(5).replace("-", "/")}</th>)}<th>峰值</th></tr></thead>
-      <tbody>{data?.people.map((person) => <tr key={person.id}><td><strong>{person.name}</strong><small>{person.jobTitle || "—"}</small></td>{person.days.map((day) => <td key={day.date}><span className={`heat heat-${Math.min(day.count, 3)}`} title={day.items.length ? day.items.map((item) => `${item.requirementTitle} · ${item.title}`).join("\n") : "无工作项"}>{day.count || ""}</span></td>)}<td><b className={`load-${Math.min(person.peakCount, 3)}`}>{person.peakCount}</b></td></tr>)}</tbody></table>
-      {!data?.people.length && !isLoading && <EmptyState title="没有人员数据" detail="请先维护人员、岗位和工作项负责人。" />}
+    {currentTop.length > 0 && <section className="human-leaders" aria-label="今日工作最多人员">
+      <strong>今日工作较多</strong>
+      <div>{currentTop.map((person) => <article key={person.id}><span className="person-avatar">{person.name.slice(-1)}</span><div><b>{person.name}</b><small>{person.jobTitle || "岗位未设置"}</small></div><em className={`load-${Math.min(person.currentCount, 3)}`}>{person.currentCount}项</em></article>)}</div>
+    </section>}
+    <div className="human-matrix-frame">
+      <div className="human-matrix-scroll" onScroll={(event) => {
+        const element = event.currentTarget;
+        if (element.scrollLeft + element.clientWidth >= element.scrollWidth - 140 && !analysis.isFetchingNextPage) void analysis.fetchNextPage();
+      }}>
+        <div className="human-week-pages">
+          {pages.map((page) => {
+            const scheduledPeople = page.people.filter((person) => person.peakCount > 0);
+            return <section className="human-week-page" key={page.from}>
+              <header><strong>{format(parseISO(page.from), "MM月dd日")}—{format(parseISO(page.to), "MM月dd日")}</strong><span>工作日并发度</span></header>
+              <table className="human-week-table"><thead><tr><th>人员</th>{page.dates.map((date) => <th key={date}><span>{["日", "一", "二", "三", "四", "五", "六"][parseISO(date).getDay()]}</span>{date.slice(5).replace("-", "/")}</th>)}</tr></thead>
+              <tbody>{scheduledPeople.map((person) => <tr key={person.id}><td><strong>{person.name}</strong><small>{person.jobTitle || "—"}</small></td>{person.days.map((day) => <td key={day.date}><span className={`heat heat-${Math.min(day.count, 3)}`} title={day.items.map((item) => `${item.requirementTitle} · ${item.title}`).join("\n")}>{day.count || ""}</span></td>)}</tr>)}</tbody></table>
+              {!scheduledPeople.length && !analysis.isLoading && <EmptyState title="本周暂无安排" detail="有实际工作或未来计划时会自动显示。" />}
+            </section>;
+          })}
+          <button className="human-next-week" disabled={analysis.isFetchingNextPage} onClick={() => void analysis.fetchNextPage()}>{analysis.isFetchingNextPage ? "加载中" : "向右加载下一周"}</button>
+        </div>
       </div>
+      <footer><span><i className="heat heat-1" />1项 正常</span><span><i className="heat heat-2" />2项 预警</span><span><i className="heat heat-3" />3项及以上 高并发</span><small>横向拖动查看后续周</small></footer>
+    </div>
     </div>
   </>;
 }
@@ -593,11 +727,6 @@ export function SystemPage() {
     queryFn: () => api<ApiToken[]>("/api/tokens"),
     enabled: session.authenticated,
   });
-  const { data: audit = [] } = useQuery({
-    queryKey: ["audit"],
-    queryFn: () => api<AuditLog[]>("/api/audit?limit=80"),
-    enabled: session.authenticated,
-  });
   const { data: backups = [] } = useQuery({
     queryKey: ["backups"],
     queryFn: () => api<Backup[]>("/api/backups"),
@@ -631,6 +760,10 @@ export function SystemPage() {
     mutationFn: (name: string) =>
       api("/api/backups/restore", { method: "POST", body: jsonBody({ name }) }),
   });
+  const deleteBackup = useMutation({
+    mutationFn: (name: string) => api(`/api/backups/${encodeURIComponent(name)}`, { method: "DELETE" }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["backups"] }),
+  });
   const restoreArchive = useMutation({
     mutationFn: ({ entity, id }: { entity: "projects" | "requirements" | "people" | "templates"; id: string }) => api(`/api/${entity}/${id}/restore`, { method: "POST" }),
     onSuccess: () => {
@@ -656,11 +789,11 @@ export function SystemPage() {
   if (!session.authenticated)
     return (
       <>
-        <PageHeader title="Token、备份与审计" />
+        <PageHeader title="系统管理" />
         <div className="page-content">
           <EmptyState
             title="登录后管理系统设置"
-            detail="Token、备份和审计日志仅对已登录用户开放。"
+            detail="Token、数据库备份和归档内容仅对已登录用户开放。"
             action={
               <button className="primary-button" onClick={openLogin}>
                 用户登录
@@ -673,7 +806,7 @@ export function SystemPage() {
   return (
     <>
       <PageHeader
-        title="Token、备份与审计"
+        title="系统管理"
         actions={<div className="http-alert">
           <ShieldCheck size={16} />
           <span>当前使用HTTP，仅限可信局域网</span>
@@ -754,6 +887,7 @@ export function SystemPage() {
                   </span>
                 </div>
                 <button
+                  className="compact-text-button"
                   title="恢复此备份"
                   onClick={() =>
                     confirm("恢复会替换当前数据库并重启服务，确认继续？") &&
@@ -761,6 +895,15 @@ export function SystemPage() {
                   }
                 >
                   <RefreshCcw size={14} />
+                  恢复
+                </button>
+                <button
+                  className="compact-text-button danger"
+                  title="删除此备份"
+                  onClick={() => confirm(`删除备份“${item.name}”？该操作无法恢复。`) && deleteBackup.mutate(item.name)}
+                >
+                  <Trash2 size={14} />
+                  删除
                 </button>
               </div>
             ))}
@@ -774,39 +917,11 @@ export function SystemPage() {
         <header><div><h2>归档中心</h2><p>可恢复或永久删除已归档内容；永久删除后无法恢复</p></div></header>
         <div className="archive-columns">
           {([['projects', '项目'], ['requirements', '需求'], ['people', '人员'], ['templates', '模板']] as const).map(([entity, label]) => <div key={entity}><h3>{label}<span>{archives?.[entity].length || 0}</span></h3>
-            {archives?.[entity].map((item) => <article key={item.id}><div><strong>{item.title}</strong><small>{item.jobTitle ? `${item.jobTitle} · ` : ''}{new Date(item.deletedAt).toLocaleString('zh-CN')}</small></div><button title={`恢复${label}`} onClick={() => restoreArchive.mutate({ entity, id: item.id })}><RotateCcw size={14} /></button><button className="archive-delete-button" title={`永久删除${label}`} onClick={() => confirm(`永久删除“${item.title}”？该操作无法恢复。${entity === 'projects' ? '项目下的需求和工作项也会一并删除。' : ''}`) && deleteArchive.mutate({ entity, id: item.id })}><Trash2 size={14} /></button></article>)}
+            {archives?.[entity].map((item) => <article key={item.id}><div><strong>{item.title}</strong><small>{item.jobTitle ? `${item.jobTitle} · ` : ''}{new Date(item.deletedAt).toLocaleString('zh-CN')}</small></div><button title={`恢复${label}`} onClick={() => restoreArchive.mutate({ entity, id: item.id })}><RotateCcw size={14} /><span>恢复</span></button><button className="archive-delete-button" title={`永久删除${label}`} onClick={() => confirm(`永久删除“${item.title}”？该操作无法恢复。${entity === 'projects' ? '项目下的需求和工作项也会一并删除。' : ''}`) && deleteArchive.mutate({ entity, id: item.id })}><Trash2 size={14} /><span>删除</span></button></article>)}
             {!archives?.[entity].length && <p>暂无归档{label}</p>}
           </div>)}
         </div>
         {(restoreArchive.error || deleteArchive.error) && <p className="form-error archive-error">{(restoreArchive.error || deleteArchive.error)?.message}</p>}
-      </section>
-      <section className="panel audit-panel">
-        <header>
-          <div>
-            <h2>最近操作</h2>
-            <p>网页和MCP写入统一记录</p>
-          </div>
-        </header>
-        <div className="audit-table">
-          <div className="audit-head">
-            <span>时间</span>
-            <span>来源</span>
-            <span>动作</span>
-            <span>内容</span>
-          </div>
-          {audit.map((item) => (
-            <div key={item.id}>
-              <span>{new Date(item.createdAt).toLocaleString()}</span>
-              <span>
-                {item.actorType === "token"
-                  ? `Token · ${item.actorId?.slice(0, 8)}`
-                  : "用户"}
-              </span>
-              <span>{item.action}</span>
-              <span>{item.summary}</span>
-            </div>
-          ))}
-        </div>
       </section>
       {tokenModal && (
         <Modal title="创建MCP Token" onClose={() => setTokenModal(false)}>
@@ -876,4 +991,69 @@ export function SystemPage() {
       </div>
     </>
   );
+}
+
+const auditActionLabels: Record<string, string> = {
+  create: "创建", update: "修改", archive: "归档", restore: "恢复", delete: "删除",
+  permanent_delete: "永久删除", start: "开始", complete: "完成", block: "阻塞",
+  unblock: "解除阻塞", cancel: "取消", reorder: "排序", apply_template: "应用模板",
+  apply_plan: "补全计划", revoke: "撤销", add_member: "添加成员", remove_member: "移出成员",
+};
+const auditEntityLabels: Record<string, string> = {
+  project: "项目", requirement: "需求", work_item: "工作项", progress: "进展",
+  person: "人员", template: "模板", api_token: "MCP Token", backup: "数据库备份",
+};
+
+export function LogsPage() {
+  const { session, openLogin } = useApp();
+  const [keyword, setKeyword] = useState("");
+  const deferredKeyword = useDeferredValue(keyword);
+  const [actorType, setActorType] = useState("");
+  const [action, setAction] = useState("");
+  const [entityType, setEntityType] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [page, setPage] = useState(1);
+  const params = new URLSearchParams({ page: String(page), pageSize: "50" });
+  if (deferredKeyword.trim()) params.set("q", deferredKeyword.trim());
+  if (actorType) params.set("actorType", actorType);
+  if (action) params.set("action", action);
+  if (entityType) params.set("entityType", entityType);
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  const { data, isLoading } = useQuery({
+    queryKey: ["audit-search", deferredKeyword, actorType, action, entityType, from, to, page],
+    queryFn: () => api<AuditPage>(`/api/audit/search?${params}`),
+    enabled: session.authenticated,
+  });
+  const resetPage = (update: () => void) => { update(); setPage(1); };
+  if (!session.authenticated) return <><PageHeader title="操作日志" /><div className="page-content"><EmptyState title="登录后查看操作日志" detail="网页和MCP写入会统一记录。" action={<button className="primary-button" onClick={openLogin}>用户登录</button>} /></div></>;
+  return <>
+    <PageHeader title="操作日志" />
+    <div className="page-content logs-page">
+      <div className="audit-filters">
+        <label className="search-box"><Search size={16} /><input value={keyword} onChange={(event) => resetPage(() => setKeyword(event.target.value))} placeholder="搜索操作内容或实体ID" /></label>
+        <select value={actorType} onChange={(event) => resetPage(() => setActorType(event.target.value))}><option value="">全部来源</option><option value="user">用户</option><option value="token">MCP Token</option></select>
+        <select value={action} onChange={(event) => resetPage(() => setAction(event.target.value))}><option value="">全部动作</option>{Object.entries(auditActionLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
+        <select value={entityType} onChange={(event) => resetPage(() => setEntityType(event.target.value))}><option value="">全部对象</option>{Object.entries(auditEntityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
+        <label className="audit-date"><span>从</span><input type="date" value={from} onChange={(event) => resetPage(() => setFrom(event.target.value))} /></label>
+        <label className="audit-date"><span>至</span><input type="date" value={to} onChange={(event) => resetPage(() => setTo(event.target.value))} /></label>
+      </div>
+      <section className="panel audit-panel audit-page-panel">
+        <header><div><h2>写入记录</h2><p>共 {data?.total || 0} 条，按时间倒序</p></div></header>
+        <div className="audit-table">
+          <div className="audit-head"><span>时间</span><span>来源</span><span>对象</span><span>动作</span><span>内容</span></div>
+          {data?.items.map((item) => <div key={item.id}>
+            <span>{new Date(item.createdAt).toLocaleString("zh-CN")}</span>
+            <span>{item.actorType === "token" ? `Token · ${item.actorId?.slice(0, 8)}` : "用户"}</span>
+            <span>{auditEntityLabels[item.entityType] || item.entityType}</span>
+            <span>{auditActionLabels[item.action] || item.action}</span>
+            <span title={item.entityId || undefined}>{item.summary}</span>
+          </div>)}
+        </div>
+        {!data?.items.length && !isLoading && <EmptyState title="没有符合条件的日志" detail="调整搜索词或筛选条件后重试。" />}
+        <footer className="table-pagination"><span>第 {data?.page || 1} / {data?.pages || 1} 页</span><div><button className="ghost-button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</button><button className="ghost-button" disabled={page >= (data?.pages || 1)} onClick={() => setPage((value) => value + 1)}>下一页</button></div></footer>
+      </section>
+    </div>
+  </>;
 }

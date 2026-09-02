@@ -23,6 +23,10 @@ function audit(actor: Actor, action: string, entityType: string, entityId: strin
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), actor.type, actor.id, action, entityType, entityId, summary, nowIso());
 }
 
+export function recordAudit(actor: Actor, action: string, entityType: string, entityId: string | null, summary: string) {
+  audit(actor, action, entityType, entityId, summary);
+}
+
 function ensureEnum<T extends readonly string[]>(value: unknown, allowed: T, field: string): T[number] {
   if (!allowed.includes(value as T[number])) throw new Error(`${field}不合法`);
   return value as T[number];
@@ -140,9 +144,44 @@ export function restoreProject(id: string, actor: Actor) {
   return row<ProjectRecord>(`${projectSelect} WHERE id=?`, id)!;
 }
 
-export function listPeople(includeDeleted = false) {
-  return rows(`SELECT id, name, job_title AS jobTitle, active, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt
-    FROM people ${includeDeleted ? '' : 'WHERE deleted_at IS NULL'} ORDER BY active DESC, name`);
+export function listPeople(includeDeleted = false, projectId?: string) {
+  const where = includeDeleted ? [] : ['p.deleted_at IS NULL'];
+  const params: unknown[] = [];
+  if (projectId) {
+    where.push('EXISTS (SELECT 1 FROM project_people pp WHERE pp.person_id=p.id AND pp.project_id=?)');
+    params.push(projectId);
+  }
+  return rows(`SELECT p.id, p.name, p.job_title AS jobTitle, p.active, p.created_at AS createdAt,
+    p.updated_at AS updatedAt, p.deleted_at AS deletedAt
+    FROM people p ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY p.active DESC, p.name`, ...params);
+}
+
+function requireActiveProject(projectId: string) {
+  if (!row('SELECT id FROM projects WHERE id=? AND deleted_at IS NULL', projectId)) throw new Error('项目不存在');
+}
+
+function defaultProjectId() {
+  const activeProjects = rows<{ id: string }>('SELECT id FROM projects WHERE deleted_at IS NULL ORDER BY created_at');
+  return activeProjects.length === 1 ? activeProjects[0].id : null;
+}
+
+export function addProjectPerson(projectId: string, personId: string, actor: Actor) {
+  requireActiveProject(projectId);
+  const person = row<{ name: string }>('SELECT name FROM people WHERE id=? AND deleted_at IS NULL AND active=1', personId);
+  if (!person) throw new Error('人员不存在或已停用');
+  sqlite.prepare('INSERT OR IGNORE INTO project_people (project_id, person_id, created_at) VALUES (?, ?, ?)').run(projectId, personId, nowIso());
+  audit(actor, 'add_member', 'person', personId, `添加项目成员：${person.name}`);
+  return listPeople(false, projectId).find((item: any) => item.id === personId);
+}
+
+export function removeProjectPerson(projectId: string, personId: string, actor: Actor) {
+  requireActiveProject(projectId);
+  const person = row<{ name: string }>('SELECT name FROM people WHERE id=? AND deleted_at IS NULL', personId);
+  if (!person) throw new Error('人员不存在');
+  const result = sqlite.prepare('DELETE FROM project_people WHERE project_id=? AND person_id=?').run(projectId, personId);
+  if (!result.changes) throw new Error('该人员不属于当前项目');
+  audit(actor, 'remove_member', 'person', personId, `移出项目成员：${person.name}`);
+  return { ok: true };
 }
 
 function assertUniquePersonName(name: string, exceptId?: string) {
@@ -153,9 +192,15 @@ function assertUniquePersonName(name: string, exceptId?: string) {
 
 export function createPerson(input: JsonObject, actor: Actor) {
   const id = randomUUID(); const now = nowIso(); const name = requireText(input.name, '姓名');
+  const projectId = nullableText(input.projectId) || defaultProjectId();
+  if (!projectId) throw new Error('请选择人员所属项目');
+  requireActiveProject(projectId);
   assertUniquePersonName(name);
-  sqlite.prepare('INSERT INTO people (id, name, job_title, active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)')
-    .run(id, name, nullableText(input.jobTitle), now, now);
+  sqlite.transaction(() => {
+    sqlite.prepare('INSERT INTO people (id, name, job_title, active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)')
+      .run(id, name, nullableText(input.jobTitle), now, now);
+    sqlite.prepare('INSERT INTO project_people (project_id, person_id, created_at) VALUES (?, ?, ?)').run(projectId, id, now);
+  })();
   audit(actor, 'create', 'person', id, `新增人员：${name}`);
   return row('SELECT id, name, job_title AS jobTitle, active, created_at AS createdAt, updated_at AS updatedAt FROM people WHERE id=?', id)!;
 }
@@ -471,6 +516,18 @@ function collaboratorIdsFromInput(input: JsonObject, ownerId: string | null) {
   return ids;
 }
 
+function assertProjectAssignees(requirementId: string, ids: Array<string | null>) {
+  const assigneeIds = [...new Set(ids.filter(Boolean) as string[])];
+  if (!assigneeIds.length) return;
+  const requirement = row<{ projectId: string }>('SELECT project_id AS projectId FROM requirements WHERE id=?', requirementId);
+  if (!requirement) throw new Error('需求不存在');
+  const placeholders = assigneeIds.map(() => '?').join(',');
+  const count = row<{ count: number }>(`SELECT COUNT(*) AS count FROM project_people pp
+    JOIN people p ON p.id=pp.person_id
+    WHERE pp.project_id=? AND pp.person_id IN (${placeholders}) AND p.deleted_at IS NULL AND p.active=1`, requirement.projectId, ...assigneeIds)?.count || 0;
+  if (count !== assigneeIds.length) throw new Error('负责人必须是当前项目成员');
+}
+
 function syncWorkItemCollaborators(workItemId: string, collaboratorIds: string[]) {
   sqlite.prepare('DELETE FROM work_item_collaborators WHERE work_item_id=?').run(workItemId);
   const insert = sqlite.prepare('INSERT INTO work_item_collaborators (work_item_id, person_id) VALUES (?, ?)');
@@ -485,6 +542,7 @@ export function createWorkItem(requirementId: string, input: JsonObject, actor: 
   if (actualEnd && !actualStart) actualStart = actualEnd;
   const ownerId = nullableText(input.ownerId);
   const collaboratorIds = collaboratorIdsFromInput(input, ownerId) || [];
+  assertProjectAssignees(requirementId, [ownerId, ...collaboratorIds]);
   sqlite.transaction(() => {
     sqlite.prepare(`INSERT INTO work_items
       (id, requirement_id, title, owner_id, status, planned_start, planned_end, actual_start, actual_end, sort_order, created_at, updated_at)
@@ -505,6 +563,10 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
   const title = input.title === undefined ? current.title : requireText(input.title, '工作项标题');
   const ownerId = input.ownerId === undefined ? current.ownerId : nullableText(input.ownerId);
   const collaboratorIds = collaboratorIdsFromInput(input, ownerId);
+  const currentCollaborators = collaboratorIds === undefined
+    ? rows<{ personId: string }>('SELECT person_id AS personId FROM work_item_collaborators WHERE work_item_id=?', id).map((item) => item.personId)
+    : collaboratorIds;
+  assertProjectAssignees(current.requirementId, [ownerId, ...currentCollaborators]);
   let actualStart = input.actualStart === undefined ? current.actualStart : nullableText(input.actualStart);
   const actualEnd = input.actualEnd === undefined ? current.actualEnd : nullableText(input.actualEnd);
   if (actualEnd && !actualStart) actualStart = actualEnd;
@@ -592,12 +654,16 @@ export function deleteProgress(id: string, actor: Actor) {
 }
 
 export function getPeopleConcurrency(filters: { projectId?: string; personId?: string; jobTitle?: string; from?: string; to?: string } = {}) {
-  const from = filters.from || todayIso(); const to = filters.to || addCalendarDays(from, 27);
+  const from = filters.from || todayIso(); const to = filters.to || addCalendarDays(from, 6);
   const dates: string[] = [];
   for (let date = from; date <= to; date = addCalendarDays(date, 1)) if (businessDaysInclusive(date, date) === 1) dates.push(date);
   const where = ['p.deleted_at IS NULL', 'p.active=1']; const params: unknown[] = [];
   if (filters.personId) { where.push('p.id=?'); params.push(filters.personId); }
   if (filters.jobTitle) { where.push('p.job_title=?'); params.push(filters.jobTitle); }
+  if (filters.projectId) {
+    where.push('EXISTS (SELECT 1 FROM project_people pp WHERE pp.person_id=p.id AND pp.project_id=?)');
+    params.push(filters.projectId);
+  }
   const people = rows<any>(`SELECT p.id, p.name, p.job_title AS jobTitle FROM people p WHERE ${where.join(' AND ')} ORDER BY p.name`, ...params);
   const itemWhere = ['a.personId IS NOT NULL', 'r.deleted_at IS NULL']; const itemParams: unknown[] = [];
   if (filters.projectId) { itemWhere.push('r.project_id=?'); itemParams.push(filters.projectId); }
@@ -624,7 +690,7 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
     });
     return { ...person, currentCount: days.find((day) => day.date === today)?.count || 0, peakCount: Math.max(0, ...days.map((day) => day.count)), days };
   });
-  return { from, to, dates, people: result, currentTop: [...result].sort((a, b) => b.currentCount - a.currentCount).slice(0, 10) };
+  return { from, to, dates, people: result, currentTop: [...result].filter((person) => person.currentCount > 0).sort((a, b) => b.currentCount - a.currentCount).slice(0, 5) };
 }
 
 export function listArchives() {
@@ -682,6 +748,19 @@ export function permanentlyDeleteArchive(entity: ArchiveEntity, id: string, acto
 
 export function getDashboard(projectId?: string) {
   const requirements = listRequirements({ projectId });
+  const recentProgress = rows<{ id: string; requirementId: string; workItemId: string | null; workItemTitle: string | null; percent: number; content: string; createdAt: string; updatedAt: string }>(`
+    SELECT id, requirementId, workItemId, workItemTitle, percent, content, createdAt, updatedAt FROM (
+      SELECT u.id, u.requirement_id AS requirementId, u.work_item_id AS workItemId,
+        w.title AS workItemTitle, u.percent, u.content, u.created_at AS createdAt, u.updated_at AS updatedAt,
+        ROW_NUMBER() OVER (PARTITION BY u.requirement_id ORDER BY u.created_at DESC, u.id DESC) AS rank
+      FROM progress_updates u
+      LEFT JOIN work_items w ON w.id=u.work_item_id
+      JOIN requirements r ON r.id=u.requirement_id
+      WHERE r.deleted_at IS NULL ${projectId ? 'AND r.project_id=?' : ''}
+    ) ranked WHERE rank<=3 ORDER BY createdAt DESC`, ...(projectId ? [projectId] : []));
+  const recentByRequirement = new Map<string, typeof recentProgress>();
+  for (const update of recentProgress) recentByRequirement.set(update.requirementId, [...(recentByRequirement.get(update.requirementId) || []), update]);
+  const dashboardRequirements = requirements.map((item) => ({ ...item, recentProgressUpdates: recentByRequirement.get(item.id) || [] }));
   const active = requirements.filter((item) => !['completed', 'cancelled'].includes(item.status)).length;
   const completed = requirements.filter((item) => item.status === 'completed').length;
   const delayed = requirements.filter((item) => item.delayed).length;
@@ -697,12 +776,34 @@ export function getDashboard(projectId?: string) {
   }
   const varianceTop = requirements.filter((item) => (item.finishVariance ?? 0) > 0).sort((a, b) => (b.finishVariance ?? 0) - (a.finishVariance ?? 0)).slice(0, 10)
     .map((item) => ({ id: item.id, title: item.title, variance: item.finishVariance }));
-  return { summary: { total: requirements.length, active, completed, delayed, highRisk, completionRate }, requirements, charts: { statuses, risks, weeks, varianceTop } };
+  return { summary: { total: requirements.length, active, completed, delayed, highRisk, completionRate }, requirements: dashboardRequirements, charts: { statuses, risks, weeks, varianceTop } };
 }
 
 export function listAudit(limit = 100) {
   return rows(`SELECT id, actor_type AS actorType, actor_id AS actorId, action, entity_type AS entityType,
     entity_id AS entityId, summary, created_at AS createdAt FROM audit_logs ORDER BY created_at DESC LIMIT ?`, Math.min(Math.max(limit, 1), 500));
+}
+
+export function searchAudit(filters: { q?: string; actorType?: string; action?: string; entityType?: string; from?: string; to?: string; page?: number; pageSize?: number } = {}) {
+  const where: string[] = []; const params: unknown[] = [];
+  const q = String(filters.q || '').trim();
+  if (q) {
+    where.push('(summary LIKE ? OR entity_id LIKE ? OR actor_id LIKE ? OR action LIKE ?)');
+    const pattern = `%${q}%`; params.push(pattern, pattern, pattern, pattern);
+  }
+  if (filters.actorType) { where.push('actor_type=?'); params.push(filters.actorType); }
+  if (filters.action) { where.push('action=?'); params.push(filters.action); }
+  if (filters.entityType) { where.push('entity_type=?'); params.push(filters.entityType); }
+  if (filters.from) { where.push('created_at>=?'); params.push(`${filters.from}T00:00:00.000Z`); }
+  if (filters.to) { where.push('created_at<=?'); params.push(`${filters.to}T23:59:59.999Z`); }
+  const page = Math.max(1, Number(filters.page) || 1);
+  const pageSize = Math.min(100, Math.max(20, Number(filters.pageSize) || 50));
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const total = row<{ count: number }>(`SELECT COUNT(*) AS count FROM audit_logs ${clause}`, ...params)?.count || 0;
+  const items = rows(`SELECT id, actor_type AS actorType, actor_id AS actorId, action, entity_type AS entityType,
+    entity_id AS entityId, summary, created_at AS createdAt FROM audit_logs ${clause}
+    ORDER BY created_at DESC LIMIT ? OFFSET ?`, ...params, pageSize, (page - 1) * pageSize);
+  return { items, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) };
 }
 
 export function listTokens() {

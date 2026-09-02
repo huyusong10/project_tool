@@ -1,0 +1,391 @@
+/* Shared responsive contract. Page-specific styles stay in styles.css. */
+:root {
+  --sidebar-width: 228px;
+  --page-gutter: clamp(18px, 1.5vw, 30px);
+  --layout-gap: clamp(10px, 1vw, 16px);
+  --control-height: 40px;
+  --field-min-width: 240px;
+  --card-min-width: 220px;
+  --project-gantt-label-width: 360px;
+}
+
+html,
+body,
+#root,
+.app-shell,
+main {
+  min-width: 0;
+}
+
+body {
+  min-width: 0;
+}
+
+.app-shell {
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+}
+
+.topbar,
+.topbar-context,
+.top-actions,
+.integrated-page-actions,
+.page-content,
+.workspace,
+.panel,
+.filter-bar,
+.form-grid > *,
+.detail-grid > * {
+  min-width: 0;
+}
+
+.page-content,
+.workspace {
+  padding-inline: var(--page-gutter);
+  container-name: page-content;
+  container-type: inline-size;
+}
+
+.primary-button,
+.ghost-button,
+.date-button,
+.inline-action-button {
+  min-height: var(--control-height);
+  white-space: nowrap;
+}
+
+input,
+select,
+textarea {
+  max-width: 100%;
+}
+
+.stats-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min-width)), 1fr));
+  gap: var(--layout-gap);
+}
+
+.dashboard-charts {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: var(--layout-gap);
+}
+
+.dashboard-charts .chart-wide {
+  grid-column: span 1;
+}
+
+.detail-kpis {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+}
+
+.form-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--field-min-width)), 1fr));
+}
+
+.filter-bar,
+.gantt-filter-bar,
+.project-gantt-toolbar,
+.requirement-gantt-toolbar,
+.requirement-context-strip,
+.hero-badges,
+.form-actions,
+.panel-actions,
+.work-editor-modal-toolbar,
+.danger-zone {
+  flex-wrap: wrap;
+}
+
+.filter-bar .search-box {
+  flex: 1 1 220px;
+  width: auto;
+  max-width: 360px;
+}
+
+.filter-bar select,
+.filter-bar .project-select {
+  flex: 0 1 220px;
+  min-width: min(190px, 100%);
+}
+
+.filter-bar > span {
+  white-space: normal;
+}
+
+.table-panel {
+  overflow: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.table-panel table {
+  min-width: 760px;
+}
+
+.system-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+}
+
+.archive-columns {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
+
+.people-role-members,
+.template-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+.modal-backdrop {
+  padding: clamp(12px, 2vw, 24px);
+}
+
+.modal-card {
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: hidden;
+}
+
+.modal-card > header {
+  flex: none;
+}
+
+.modal-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  container-name: modal-content;
+  container-type: inline-size;
+}
+
+.project-gantt-panel {
+  height: clamp(680px, calc(100dvh - 230px), 900px);
+  container-name: project-gantt;
+  container-type: inline-size;
+}
+
+.project-gantt-grid {
+  grid-template-columns: var(--project-gantt-label-width) 1fr;
+}
+
+.gantt-filter-search {
+  flex: 1 1 200px;
+  width: auto;
+  min-width: 180px;
+  max-width: 320px;
+}
+
+.gantt-filter-bar select {
+  flex: 0 1 132px;
+}
+
+.requirement-progress-panel {
+  height: clamp(560px, calc(100dvh - 270px), 680px);
+  container-name: requirement-progress;
+  container-type: inline-size;
+}
+
+.requirement-gantt-corner span,
+.requirement-gantt-scale > span,
+.requirement-gantt-item small,
+.requirement-gap-summary strong,
+.requirement-gap-summary small,
+.requirement-gap-summary > span {
+  font-size: 12px;
+}
+
+.human-matrix-frame {
+  height: clamp(520px, calc(100dvh - 210px), 680px);
+}
+
+.audit-table {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.audit-page-panel .audit-table > div {
+  min-width: 760px;
+}
+
+@container page-content (max-width: 900px) {
+  .detail-grid,
+  .progress-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .progress-detail-card {
+    height: 320px;
+  }
+}
+
+@container page-content (max-width: 720px) {
+  .stats-grid,
+  .detail-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .requirement-context-strip > span {
+    width: 100%;
+    white-space: normal;
+  }
+}
+
+@container project-gantt (max-width: 1050px) {
+  .project-gantt-panel {
+    --project-gantt-label-width: 320px;
+  }
+
+  .gantt-filter-search {
+    flex-basis: 180px;
+    max-width: 200px;
+  }
+
+  .gantt-filter-bar select {
+    flex-basis: 116px;
+  }
+}
+
+@container project-gantt (max-width: 760px) {
+  .project-gantt-panel {
+    --project-gantt-label-width: 280px;
+  }
+
+  .project-gantt-toolbar,
+  .gantt-filter-bar {
+    align-items: flex-start;
+  }
+
+  .gantt-toolbar-actions {
+    margin-left: auto;
+  }
+}
+
+@container modal-content (max-width: 920px) {
+  .template-editor {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container modal-content (max-width: 720px) {
+  .work-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-block: 10px;
+  }
+
+  .work-row > div:first-child {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .work-row > .work-dates {
+    grid-column: 1 / -1;
+  }
+
+  .work-row > b {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .work-item-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 1399px) {
+  :root {
+    --sidebar-width: 210px;
+    --page-gutter: 18px;
+  }
+
+  .topbar {
+    gap: 12px;
+    padding-inline: 18px;
+  }
+
+  .topbar-context {
+    gap: 12px;
+  }
+
+  .integrated-page-title h1 {
+    max-width: 300px;
+  }
+
+  .project-switcher {
+    padding-left: 12px;
+  }
+}
+
+@media (max-width: 1199px) {
+  :root {
+    --sidebar-width: 190px;
+    --page-gutter: 16px;
+  }
+
+  .integrated-page-title h1 {
+    max-width: 240px;
+  }
+}
+
+@media (max-width: 1040px) {
+  :root {
+    --sidebar-width: 76px;
+    --page-gutter: 14px;
+  }
+
+  .sidebar {
+    padding-inline: 10px;
+  }
+
+  .brand-mark {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .brand-mark div,
+  .nav-section,
+  .security-note {
+    display: none;
+  }
+
+  nav a {
+    justify-content: center;
+    padding-inline: 0;
+    font-size: 0;
+  }
+
+  nav a svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .topbar {
+    padding-inline: 14px;
+  }
+
+  .integrated-page-title h1 {
+    max-width: 190px;
+  }
+
+  .project-switcher select {
+    max-width: 130px;
+  }
+
+  .session-badge,
+  .guest-badge {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

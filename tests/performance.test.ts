@@ -23,7 +23,9 @@ beforeAll(async () => {
   sqlite.prepare('INSERT INTO projects (id,name,status,created_at,updated_at) VALUES (?, ?, ?, ?, ?)').run(projectId, '性能测试项目', 'active', now, now);
   const personIds = Array.from({ length: 50 }, () => randomUUID());
   const insertPerson = sqlite.prepare('INSERT INTO people (id,name,job_title,active,created_at,updated_at) VALUES (?,?,?,1,?,?)');
+  const insertProjectPerson = sqlite.prepare('INSERT INTO project_people (project_id,person_id,created_at) VALUES (?,?,?)');
   personIds.forEach((id, index) => insertPerson.run(id, `人员${index + 1}`, index % 2 ? '开发' : '测试', now, now));
+  personIds.forEach((id) => insertProjectPerson.run(projectId, id, now));
   const insertRequirement = sqlite.prepare(`INSERT INTO requirements (id,project_id,title,status,planned_start,planned_end,progress,risk_level,created_at,updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   const insertWorkItem = sqlite.prepare(`INSERT INTO work_items (id,requirement_id,title,owner_id,status,planned_start,planned_end,actual_start,actual_end,sort_order,created_at,updated_at)
@@ -52,7 +54,7 @@ describe('看板性能', () => {
     expect(elapsed).toBeLessThan(2000);
   });
 
-  it('四周人员并发热力图在2秒内完成统计', () => {
+  it('单周人员并发热力图在2秒内完成统计', () => {
     const start = performance.now();
     const result = getPeopleConcurrency({ projectId }) as { people: unknown[] };
     const elapsed = performance.now() - start;

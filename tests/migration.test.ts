@@ -46,6 +46,8 @@ describe('正式库增量迁移', () => {
     expect(migrated.prepare('SELECT start_offset_days AS offset,duration_days AS duration FROM template_items WHERE id=?').get('ti1'))
       .toEqual({ offset: 4, duration: 1 });
     expect(migrated.prepare('SELECT COUNT(*) AS count FROM work_item_collaborators').get()).toEqual({ count: 0 });
+    expect(migrated.prepare('SELECT project_id AS projectId,person_id AS personId FROM project_people').get())
+      .toEqual({ projectId: 'p1', personId: 'u1' });
     expect((migrated.pragma('integrity_check') as Array<{ integrity_check: string }>)[0].integrity_check).toBe('ok');
     migrated.close();
   });

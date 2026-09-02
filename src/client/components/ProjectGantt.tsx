@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type CSSProperties } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type HTMLAttributes } from "react";
 import {
   addDays,
   differenceInCalendarDays,
@@ -8,9 +8,10 @@ import {
 } from "date-fns";
 import { ChevronDown, ChevronRight, LocateFixed, RotateCcw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { priorityLabels, requirementStatusLabels, riskLabels } from "../../shared/domain";
+import { calculateWorkItemGap, priorityLabels, requirementStatusLabels, riskLabels } from "../../shared/domain";
 import type { Requirement, WorkItem } from "../types";
 import { EmptyState } from "./Modal";
+import { useGanttTooltip } from "./GanttTooltip";
 
 type Zoom = "day" | "week" | "month";
 
@@ -39,6 +40,52 @@ function statusClass(status: string) {
   return status.replaceAll("_", "-");
 }
 
+function RequirementPopover({ requirement }: { requirement: Requirement }) {
+  const updates = requirement.recentProgressUpdates || [];
+  const risk = riskLabels[requirement.riskLevel as keyof typeof riskLabels] || requirement.riskLevel;
+  return <>
+    <header className="gantt-popover-header">
+      <div><strong>{requirement.title}</strong><span>{requirement.projectName}</span></div>
+      <span className={`priority-badge priority-${requirement.priority.toLowerCase()}`}>{priorityLabels[requirement.priority as keyof typeof priorityLabels] || requirement.priority}</span>
+    </header>
+    <div className="gantt-popover-badges">
+      <span className={`status-pill status-${requirement.status}`}>{statusLabel(requirement.status)}</span>
+      <span>{requirement.progress}%</span>
+      <span className={`risk-badge risk-${requirement.riskLevel}`}>{risk}</span>
+      {requirement.delayed && <em>延期 +{Math.max(1, requirement.finishVariance)}天</em>}
+    </div>
+    <dl className="gantt-popover-metrics">
+      <div><dt>计划周期</dt><dd>{dateLabel(requirement.plannedStart)} — {dateLabel(requirement.plannedEnd)}</dd></div>
+      <div><dt>计划 / 实际进度</dt><dd>{requirement.plannedProgress}% / {requirement.progress}%</dd></div>
+    </dl>
+    <div className="gantt-popover-progress"><i style={{ width: `${requirement.plannedProgress}%` }} /><span style={{ width: `${requirement.progress}%` }} /></div>
+    <section className="gantt-popover-updates">
+      <h4>近期进展</h4>
+      {updates.map((update) => <article key={update.id}>
+        <time>{new Date(update.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</time>
+        <div>{update.workItemTitle && <b>{update.workItemTitle}</b>}<p>{update.content}</p></div>
+        <span>{update.percent}%</span>
+      </article>)}
+      {!updates.length && <p className="gantt-popover-empty">暂无进展记录</p>}
+    </section>
+  </>;
+}
+
+function WorkItemPopover({ item, updates }: { item: WorkItem; updates: Requirement["recentProgressUpdates"] }) {
+  const gap = calculateWorkItemGap(item);
+  const recent = (updates || []).filter((update) => update.workItemId === item.id).slice(0, 2);
+  return <>
+    <header className="gantt-popover-header"><div><strong>{item.title}</strong><span>{item.assigneeNames?.join("、") || item.ownerName || "未分配"}</span></div><span className={`status-pill status-${item.status}`}>{statusLabel(item.status)}</span></header>
+    <dl className="gantt-popover-metrics">
+      <div><dt>计划</dt><dd>{dateLabel(item.plannedStart)} — {dateLabel(item.plannedEnd)}</dd></div>
+      <div><dt>实际</dt><dd>{dateLabel(item.actualStart)} — {dateLabel(item.actualEnd || (item.actualStart ? gap.observedEnd : null))}</dd></div>
+      <div><dt>完成 / 耗时偏差</dt><dd className={gap.finishVariance > 0 || gap.durationVariance > 0 ? "danger-text" : ""}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}天 / {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}天</dd></div>
+    </dl>
+    {item.blockedReason && <p className="gantt-popover-blocked">阻塞：{item.blockedReason}</p>}
+    {recent.length > 0 && <section className="gantt-popover-updates"><h4>相关进展</h4>{recent.map((update) => <article key={update.id}><time>{new Date(update.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</time><div><p>{update.content}</p></div><span>{update.percent}%</span></article>)}</section>}
+  </>;
+}
+
 function TimelineBar({
   start,
   end,
@@ -47,7 +94,7 @@ function TimelineBar({
   status,
   progress,
   delayedUntil,
-  title,
+  tooltipProps,
   compact = false,
 }: {
   start: string | null;
@@ -57,7 +104,7 @@ function TimelineBar({
   status: string;
   progress: number;
   delayedUntil?: string | null;
-  title: string;
+  tooltipProps?: HTMLAttributes<HTMLDivElement>;
   compact?: boolean;
 }) {
   const startDate = toDate(start);
@@ -77,7 +124,8 @@ function TimelineBar({
       <div
         className={`gantt-schedule-bar gantt-status-${statusClass(status)}${compact ? " compact" : ""}`}
         style={{ left, width }}
-        title={title}
+        tabIndex={0}
+        {...tooltipProps}
       >
         <span className="gantt-progress-fill" style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} />
         {!compact && width >= 96 && <b>{progress}% · {statusLabel(status)}</b>}
@@ -86,7 +134,7 @@ function TimelineBar({
         <div
           className="gantt-delay-extension"
           style={{ left: left + width, width: extensionDays * cellWidth }}
-          title={`超出计划 ${extensionDays} 个自然日`}
+          {...tooltipProps}
         />
       )}
     </>
@@ -116,6 +164,7 @@ export function ProjectGantt({
 }) {
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const ganttTooltip = useGanttTooltip();
   const [zoom, setZoom] = useState<Zoom>("week");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [search, setSearch] = useState("");
@@ -232,7 +281,9 @@ export function ProjectGantt({
   };
   const scrollToToday = () => {
     if (!todayVisible || !scrollRef.current) return;
-    const leftColumn = 360;
+    const leftColumn = scrollRef.current
+      .querySelector<HTMLElement>(".gantt-corner")
+      ?.getBoundingClientRect().width ?? 360;
     const visibleTimeline = Math.max(300, scrollRef.current.clientWidth - leftColumn);
     scrollRef.current.scrollTo({
       left: Math.max(0, leftColumn + todayOffset * option.cellWidth - visibleTimeline / 2),
@@ -299,7 +350,7 @@ export function ProjectGantt({
         <EmptyState title="暂无可展示需求" detail="调整筛选条件，或新建需求后查看项目排期。" />
       ) : (
         <div className="project-gantt-scroll" ref={scrollRef}>
-          <div className="project-gantt-grid" style={{ width: 360 + timelineWidth }} role="table" aria-label="项目进展甘特图">
+          <div className="project-gantt-grid" style={{ width: `calc(var(--project-gantt-label-width) + ${timelineWidth}px)` }} role="table" aria-label="项目进展甘特图">
             <div className="gantt-corner gantt-sticky-left" role="columnheader">
               <strong>需求 / 工作项</strong>
               <span>{visibleRequirements.length} 项需求</span>
@@ -325,7 +376,7 @@ export function ProjectGantt({
             </div>
             {visibleRequirements.map((requirement) => {
               const isExpanded = expanded.has(requirement.id);
-              const tooltip = `${requirement.title}\n计划：${dateLabel(requirement.plannedStart)} - ${dateLabel(requirement.plannedEnd)}\n状态：${statusLabel(requirement.status)}｜进度：${requirement.progress}%｜风险：${riskLabels[requirement.riskLevel as keyof typeof riskLabels] || requirement.riskLevel}\n完成日期偏差：${requirement.finishVariance} 工作日`;
+              const tooltipProps = ganttTooltip.bind(<RequirementPopover requirement={requirement} />);
               return (
                 <div className="gantt-row-group" key={requirement.id} role="rowgroup">
                   <div className={`gantt-row${requirement.delayed ? " is-delayed" : ""}`} role="row">
@@ -359,14 +410,14 @@ export function ProjectGantt({
                         status={requirement.status}
                         progress={requirement.progress}
                         delayedUntil={requirement.delayed ? requirement.effectiveEnd : null}
-                        title={tooltip}
+                        tooltipProps={tooltipProps}
                       />
                       {todayVisible && <i className="gantt-today-line" style={{ left: todayOffset * option.cellWidth + option.cellWidth / 2 }} />}
                     </div>
                   </div>
                   {isExpanded && requirement.workItems.map((item) => {
                     const itemProgress = item.status === "completed" ? 100 : 0;
-                    const itemTooltip = `${item.title}\n计划：${dateLabel(item.plannedStart)} - ${dateLabel(item.plannedEnd)}\n实际：${dateLabel(item.actualStart)} - ${dateLabel(item.actualEnd)}\n状态：${statusLabel(item.status)}｜负责人：${item.assigneeNames?.join("、") || item.ownerName || "未分配"}`;
+                    const itemTooltipProps = ganttTooltip.bind(<WorkItemPopover item={item} updates={requirement.recentProgressUpdates} />);
                     return (
                       <div className="gantt-row gantt-work-row" key={item.id} role="row">
                         <div className="gantt-sticky-left" role="rowheader"><WorkItemInfo item={item} /></div>
@@ -378,7 +429,7 @@ export function ProjectGantt({
                             cellWidth={option.cellWidth}
                             status={item.status}
                             progress={itemProgress}
-                            title={itemTooltip}
+                            tooltipProps={itemTooltipProps}
                             compact
                           />
                           {todayVisible && <i className="gantt-today-line" style={{ left: todayOffset * option.cellWidth + option.cellWidth / 2 }} />}
@@ -392,6 +443,7 @@ export function ProjectGantt({
           </div>
         </div>
       )}
+      {ganttTooltip.tooltip}
     </section>
   );
 }
