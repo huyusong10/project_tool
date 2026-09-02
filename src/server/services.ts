@@ -91,7 +91,7 @@ export type RequirementRecord = {
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number; progressGap?: number;
   riskLevel: string; priority: string; createdAt: string; updatedAt: string; deletedAt?: string | null; workItems?: WorkItemRecord[];
-  delayed?: boolean; highRisk?: boolean; finishVariance?: number; durationVariance?: number; effectiveEnd?: string | null;
+  delayed?: boolean; highRisk?: boolean; riskEvaluated?: boolean; riskReason?: string; finishVariance?: number; durationVariance?: number; effectiveEnd?: string | null;
 };
 
 export type IssueUpdateRecord = {
@@ -1090,9 +1090,10 @@ export function getDashboard(projectId?: string) {
   const completed = requirements.filter((item) => item.status === 'completed').length;
   const delayed = requirements.filter((item) => item.delayed).length;
   const highRisk = requirements.filter((item) => item.highRisk).length;
+  const evaluatedRequirements = requirements.filter((item) => item.riskEvaluated);
   const completionRate = requirements.length ? Math.round((completed / requirements.length) * 1000) / 10 : 0;
   const statuses = requirementStatuses.map((status) => ({ status, count: requirements.filter((item) => item.status === status).length }));
-  const risks = riskLevels.map((risk) => ({ risk, count: requirements.filter((item) => item.riskLevel === risk).length }));
+  const risks = riskLevels.map((risk) => ({ risk, count: evaluatedRequirements.filter((item) => item.riskLevel === risk).length }));
   const weeks: Array<{ week: string; completed: number }> = []; const now = new Date();
   for (let i = 11; i >= 0; i -= 1) {
     const start = new Date(now); start.setDate(now.getDate() - now.getDay() - i * 7 + 1); start.setHours(0, 0, 0, 0);

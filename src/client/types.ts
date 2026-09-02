@@ -52,7 +52,7 @@ export type IssuePage = {
 export type Requirement = {
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number; progressGap: number;
-  riskLevel: string; priority: string; createdAt: string; updatedAt: string; deletedAt?: string | null;
+  riskLevel: string; riskEvaluated: boolean; riskReason: string; priority: string; createdAt: string; updatedAt: string; deletedAt?: string | null;
   workItems: WorkItem[]; progressUpdates?: ProgressUpdate[]; recentProgressUpdates?: ProgressUpdate[]; delayed: boolean; highRisk: boolean;
   issueSummary?: { active: number; overdue: number };
   finishVariance: number; durationVariance: number; effectiveEnd: string | null;

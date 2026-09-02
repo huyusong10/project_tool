@@ -53,15 +53,14 @@ function IssueHealth({ issues }: { issues?: Dashboard["issues"] }) {
   const summary = issues?.summary;
   const total = summary?.total || 0;
   const resolved = summary?.resolved || 0;
-  const closureRate = summary?.closureRate || 0;
   return (
     <section className="dashboard-issue-health" aria-label="问题健康度">
       <div className="issue-health-primary">
         <div>
           <span className="issue-health-icon"><CircleAlert size={17} /></span>
-          <div><strong>问题闭环 {closureRate}%</strong><small>{resolved} / {total} 已解决</small></div>
+          <div><strong>问题总量</strong><small>累计已解决 {resolved}</small></div>
         </div>
-        <div className="issue-health-track" aria-label={`问题闭环率 ${closureRate}%`}><span style={{ width: `${closureRate}%` }} /></div>
+        <b className="issue-health-total">{total}</b>
       </div>
       <div className="issue-health-stat"><span>活跃</span><strong>{summary?.active || 0}</strong></div>
       <div className="issue-health-stat"><span>处理中</span><strong>{summary?.inProgress || 0}</strong></div>
@@ -255,7 +254,7 @@ export function DashboardPage() {
         <Kpi
           label="高风险需求"
           value={data?.summary.highRisk ?? "—"}
-          detail="阻塞或延期≥3工作日"
+          detail="优先级 × 进度Gap，阻塞/延期覆盖"
           icon={AlertTriangle}
           tone="amber"
         />

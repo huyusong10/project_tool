@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -32,6 +32,45 @@ import { Chart } from "../components/Chart";
 import { EmptyState, Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { canManageProject } from "../permissions";
+
+function ActionMenu({ children }: { children: ReactNode }) {
+  const menuRef = useRef<HTMLDetailsElement>(null);
+  const close = () => menuRef.current?.removeAttribute("open");
+
+  useEffect(() => {
+    const handleOutsidePointer = (event: PointerEvent) => {
+      if (menuRef.current?.open && !menuRef.current.contains(event.target as Node)) close();
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !menuRef.current?.open) return;
+      close();
+      menuRef.current.querySelector("summary")?.focus();
+    };
+    document.addEventListener("pointerdown", handleOutsidePointer);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointer);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
+  return (
+    <details
+      ref={menuRef}
+      className="action-menu"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close();
+      }}
+    >
+      <summary aria-label="更多工作项操作" title="更多操作"><MoreHorizontal size={16} /></summary>
+      <div onClick={(event) => {
+        if ((event.target as HTMLElement).closest("button")) close();
+      }}>
+        {children}
+      </div>
+    </details>
+  );
+}
 
 function RequirementEditForm({
   requirement,
@@ -264,6 +303,10 @@ function WorkItemForm({
   const client = useQueryClient();
   const [ownerId, setOwnerId] = useState(item?.ownerId || "");
   const [collaboratorIds, setCollaboratorIds] = useState<string[]>(item?.collaborators?.map((person) => person.id) || []);
+  const [plannedStart, setPlannedStart] = useState(item?.plannedStart || "");
+  const [plannedEnd, setPlannedEnd] = useState(item?.plannedEnd || "");
+  const [actualStart, setActualStart] = useState(item?.actualStart || "");
+  const [actualEnd, setActualEnd] = useState(item?.actualEnd || "");
   const { data: people = [] } = useQuery({
     queryKey: ["people", requirement.projectId],
     queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(requirement.projectId)}`),
@@ -338,7 +381,8 @@ function WorkItemForm({
         <input
           name="plannedStart"
           type="date"
-          defaultValue={item?.plannedStart || ""}
+          value={plannedStart}
+          onChange={(event) => setPlannedStart(event.target.value)}
         />
       </label>
       <label className="field">
@@ -346,14 +390,32 @@ function WorkItemForm({
         <input
           name="plannedEnd"
           type="date"
-          defaultValue={item?.plannedEnd || ""}
+          value={plannedEnd}
+          onChange={(event) => setPlannedEnd(event.target.value)}
         />
       </label>
       <details className="advanced-fields field-full">
         <summary>高级修正：补录实际日期</summary>
+        {item && (
+          <div className="advanced-fields-shortcut">
+            <span>实际日期与计划日期一致时，可快速填充</span>
+            <button
+              type="button"
+              disabled={!plannedStart || !plannedEnd}
+              title={plannedStart && plannedEnd ? "将实际日期同步为计划日期" : "请先补全计划开始和计划完成日期"}
+              onClick={() => {
+                setActualStart(plannedStart);
+                setActualEnd(plannedEnd);
+              }}
+            >
+              <Check size={15} />
+              按时完成
+            </button>
+          </div>
+        )}
         <div className="form-grid">
-          <label className="field"><span>实际开始</span><input name="actualStart" type="date" defaultValue={item?.actualStart || ""} /></label>
-          <label className="field"><span>实际完成</span><input name="actualEnd" type="date" defaultValue={item?.actualEnd || ""} /></label>
+          <label className="field"><span>实际开始</span><input name="actualStart" type="date" value={actualStart} onChange={(event) => setActualStart(event.target.value)} /></label>
+          <label className="field"><span>实际完成</span><input name="actualEnd" type="date" value={actualEnd} onChange={(event) => setActualEnd(event.target.value)} /></label>
         </div>
       </details>
       {mutation.error && (
@@ -618,6 +680,13 @@ export function RequirementPage() {
   const canManage = canManageProject(session, requirement.projectId);
   const ownItems = requirement.workItems.filter((item) => Boolean(session.personId) && item.assigneeIds.includes(session.personId!));
   const canAddProgress = canManage || ownItems.length > 0;
+  const riskClosed = requirement.status === "completed" || requirement.status === "cancelled";
+  const riskLabel = riskClosed
+    ? "风险已关闭"
+    : requirement.riskEvaluated
+      ? riskLabels[requirement.riskLevel as keyof typeof riskLabels]
+      : "待评估";
+  const riskClass = riskClosed || !requirement.riskEvaluated ? "risk-pending" : `risk-${requirement.riskLevel}`;
   const closeWorkItemForm = () => {
     setModal(null);
     setEditingItem(undefined);
@@ -656,7 +725,7 @@ export function RequirementPage() {
               }
             </span>
             <span className={`priority-badge priority-${requirement.priority.toLowerCase()}`}>{priorityLabels[requirement.priority as keyof typeof priorityLabels] || requirement.priority}</span>
-            <span className={`risk-badge risk-${requirement.riskLevel}`}>{riskLabels[requirement.riskLevel as keyof typeof riskLabels]}</span>
+            <span className={`risk-badge ${riskClass}`}>{riskLabel}</span>
           </div>
           <span>共{requirement.workItems.length}个工作项 · 最近更新 {new Date(requirement.updatedAt).toLocaleString("zh-CN")}</span>
         </div>
@@ -699,19 +768,17 @@ export function RequirementPage() {
         </article>
         <article>
           <span>风险等级</span>
-          <strong>
-            {riskLabels[requirement.riskLevel as keyof typeof riskLabels]}
-          </strong>
+          <strong>{riskLabel}</strong>
           <small>
-            {requirement.highRisk ? (
+            {requirement.riskEvaluated && requirement.riskLevel !== "low" ? (
               <>
                 <AlertTriangle size={14} />
-                已进入高风险视图
+                {requirement.riskReason}
               </>
             ) : (
               <>
                 <Check size={14} />
-                当前风险可控
+                {requirement.riskReason}
               </>
             )}
           </small>
@@ -783,15 +850,12 @@ export function RequirementPage() {
                       {item.status === "not_started" && <button className="work-next-action" onClick={() => itemAction.mutate({ itemId: item.id, action: "start" })}><Play size={14} />开始</button>}
                       {item.status === "in_progress" && <button className="work-next-action" onClick={() => itemAction.mutate({ itemId: item.id, action: "complete" })}><Check size={14} />完成</button>}
                       {item.status === "blocked" && <button className="work-next-action" onClick={() => itemAction.mutate({ itemId: item.id, action: "unblock" })}><RotateCcw size={14} />解除阻塞</button>}
-                      <details className="action-menu">
-                        <summary aria-label="更多工作项操作" title="更多操作"><MoreHorizontal size={16} /></summary>
-                        <div>
-                          <button onClick={() => { setWorkEditorOpen(false); setEditingItem(item); setModal("work"); }}><Edit3 size={14} />编辑</button>
-                          {item.status === "in_progress" && <button onClick={() => { const reason = prompt("请输入阻塞原因"); if (reason?.trim()) itemAction.mutate({ itemId: item.id, action: "block", reason }); }}><CircleStop size={14} />标记阻塞</button>}
-                          {!['completed', 'cancelled'].includes(item.status) && <button onClick={() => confirm(`取消工作项“${item.title}”？`) && itemAction.mutate({ itemId: item.id, action: "cancel" })}><CircleStop size={14} />取消工作项</button>}
-                          <button className="danger" onClick={() => confirm(`删除工作项“${item.title}”？`) && removeItem.mutate(item.id)}><Trash2 size={14} />删除</button>
-                        </div>
-                      </details>
+                      <ActionMenu>
+                        <button onClick={() => { setWorkEditorOpen(false); setEditingItem(item); setModal("work"); }}><Edit3 size={14} />编辑</button>
+                        {item.status === "in_progress" && <button onClick={() => { const reason = prompt("请输入阻塞原因"); if (reason?.trim()) itemAction.mutate({ itemId: item.id, action: "block", reason }); }}><CircleStop size={14} />标记阻塞</button>}
+                        {!['completed', 'cancelled'].includes(item.status) && <button onClick={() => confirm(`取消工作项“${item.title}”？`) && itemAction.mutate({ itemId: item.id, action: "cancel" })}><CircleStop size={14} />取消工作项</button>}
+                        <button className="danger" onClick={() => confirm(`删除工作项“${item.title}”？`) && removeItem.mutate(item.id)}><Trash2 size={14} />删除</button>
+                      </ActionMenu>
                     </div>
                   )}
                 </div>

@@ -1,7 +1,7 @@
-import { useDeferredValue, useMemo, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { addDays, format, parseISO, startOfWeek } from "date-fns";
+import { addDays, format, parseISO } from "date-fns";
 import {
   Archive,
   ArrowDown,
@@ -13,6 +13,7 @@ import {
   Edit3,
   GripVertical,
   KeyRound,
+  LocateFixed,
   Plus,
   RefreshCcw,
   RotateCcw,
@@ -444,7 +445,7 @@ export function PeoplePage() {
       <div className="page-content">
         <div className="view-tabs people-subnav" aria-label="人员页面视图">
           <button className={view === "matrix" ? "active" : ""} onClick={() => setViewParams({})}>人员矩阵</button>
-          <button className={view === "analysis" ? "active" : ""} onClick={() => setViewParams({ view: "analysis" })}>并发分析</button>
+          <button className={view === "analysis" ? "active" : ""} onClick={() => setViewParams({ view: "analysis" })}>人力分析</button>
         </div>
         {view === "matrix" ? <>
         <div className="people-matrix">
@@ -533,7 +534,10 @@ function ConcurrencyPanel() {
   const { selectedProjectId } = useApp();
   const [personId, setPersonId] = useState("");
   const [jobTitle, setJobTitle] = useState("");
-  const firstWeek = useMemo(() => format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd"), []);
+  const matrixScrollRef = useRef<HTMLDivElement>(null);
+  const [matrixViewportWidth, setMatrixViewportWidth] = useState(0);
+  const firstDate = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+  const firstWindowEnd = useMemo(() => format(addDays(parseISO(firstDate), 6), "yyyy-MM-dd"), [firstDate]);
   const { data: people = [] } = useQuery({
     queryKey: ["people", selectedProjectId],
     queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`),
@@ -541,8 +545,8 @@ function ConcurrencyPanel() {
   });
   const jobTitles = useMemo(() => [...new Set(people.map((person) => person.jobTitle).filter(Boolean) as string[])].sort(), [people]);
   const analysis = useInfiniteQuery({
-    queryKey: ["people-concurrency", selectedProjectId, personId, jobTitle, firstWeek],
-    initialPageParam: firstWeek,
+    queryKey: ["people-concurrency", selectedProjectId, personId, jobTitle, firstDate],
+    initialPageParam: firstDate,
     enabled: Boolean(selectedProjectId),
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams();
@@ -557,6 +561,60 @@ function ConcurrencyPanel() {
   });
   const pages = analysis.data?.pages || [];
   const currentTop = pages[0]?.currentTop || [];
+  const matrixData = useMemo(() => {
+    type MatrixDay = PeopleConcurrency["people"][number]["days"][number];
+    const dates = [...new Set(pages.flatMap((page) => page.dates))].sort();
+    const mergedPeople = new Map<string, {
+      id: string;
+      name: string;
+      jobTitle: string | null;
+      daysByDate: Map<string, MatrixDay>;
+    }>();
+    for (const page of pages) {
+      for (const person of page.people) {
+        const merged = mergedPeople.get(person.id) || {
+          id: person.id,
+          name: person.name,
+          jobTitle: person.jobTitle,
+          daysByDate: new Map<string, MatrixDay>(),
+        };
+        for (const day of person.days) merged.daysByDate.set(day.date, day);
+        mergedPeople.set(person.id, merged);
+      }
+    }
+    const matrixPeople = [...mergedPeople.values()].map((person) => ({
+      id: person.id,
+      name: person.name,
+      jobTitle: person.jobTitle,
+      days: dates.map((date) => person.daysByDate.get(date) || {
+        date,
+        count: 0,
+        plannedCount: 0,
+        actualCount: 0,
+        items: [],
+      }),
+    })).filter((person) => person.days.some((day) => day.count > 0));
+    return { dates, people: matrixPeople };
+  }, [pages]);
+  const personColumnWidth = matrixViewportWidth > 0 && matrixViewportWidth < 900 ? 156 : 180;
+  const initialDayCount = pages[0]?.dates.length || 5;
+  const dayColumnWidth = Math.max(112, ((matrixViewportWidth || 960) - personColumnWidth) / initialDayCount);
+  const tableWidth = Math.ceil(personColumnWidth + matrixData.dates.length * dayColumnWidth);
+  const loadedTo = pages.at(-1)?.to || firstWindowEnd;
+
+  useEffect(() => {
+    const element = matrixScrollRef.current;
+    if (!element) return undefined;
+    const updateWidth = () => setMatrixViewportWidth(element.clientWidth);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    matrixScrollRef.current?.scrollTo({ left: 0 });
+  }, [firstDate, jobTitle, personId]);
+
   return <div className="people-analysis">
       <div className="filter-bar human-filter-bar">
       <select value={jobTitle} onChange={(event) => { setJobTitle(event.target.value); setPersonId(""); }}><option value="">全部岗位</option>{jobTitles.map((title) => <option value={title} key={title}>{title}</option>)}</select>
@@ -568,24 +626,30 @@ function ConcurrencyPanel() {
       <div>{currentTop.map((person) => <article key={person.id}><span className="person-avatar">{person.name.slice(-1)}</span><div><b>{person.name}</b><small>{person.jobTitle || "岗位未设置"}</small></div><em className={`load-${Math.min(person.currentCount, 3)}`}>{person.currentCount}项</em></article>)}</div>
     </section>}
     <div className="human-matrix-frame">
-      <div className="human-matrix-scroll" onScroll={(event) => {
+      <header className="human-matrix-heading">
+        <div><span>工作日并发度</span><strong>{format(parseISO(firstDate), "MM月dd日")}—{format(parseISO(firstWindowEnd), "MM月dd日")}</strong></div>
+        <div><span>从今天开始 · 已加载至 {format(parseISO(loadedTo), "MM月dd日")}</span><button type="button" onClick={() => matrixScrollRef.current?.scrollTo({ left: 0, behavior: "smooth" })}><LocateFixed size={14} />回到今天</button></div>
+      </header>
+      <div className="human-matrix-scroll" ref={matrixScrollRef} onScroll={(event) => {
         const element = event.currentTarget;
         if (element.scrollLeft + element.clientWidth >= element.scrollWidth - 140 && !analysis.isFetchingNextPage) void analysis.fetchNextPage();
       }}>
-        <div className="human-week-pages">
-          {pages.map((page) => {
-            const scheduledPeople = page.people.filter((person) => person.peakCount > 0);
-            return <section className="human-week-page" key={page.from}>
-              <header><strong>{format(parseISO(page.from), "MM月dd日")}—{format(parseISO(page.to), "MM月dd日")}</strong><span>工作日并发度</span></header>
-              <table className="human-week-table"><thead><tr><th>人员</th>{page.dates.map((date) => <th key={date}><span>{["日", "一", "二", "三", "四", "五", "六"][parseISO(date).getDay()]}</span>{date.slice(5).replace("-", "/")}</th>)}</tr></thead>
-              <tbody>{scheduledPeople.map((person) => <tr key={person.id}><td><strong>{person.name}</strong><small>{person.jobTitle || "—"}</small></td>{person.days.map((day) => <td key={day.date}><span className={`heat heat-${Math.min(day.count, 3)}`} title={day.items.map((item) => `${item.requirementTitle} · ${item.title}`).join("\n")}>{day.count || ""}</span></td>)}</tr>)}</tbody></table>
-              {!scheduledPeople.length && !analysis.isLoading && <EmptyState title="本周暂无安排" detail="有实际工作或未来计划时会自动显示。" />}
-            </section>;
-          })}
-          <button className="human-next-week" disabled={analysis.isFetchingNextPage} onClick={() => void analysis.fetchNextPage()}>{analysis.isFetchingNextPage ? "加载中" : "向右加载下一周"}</button>
+        <div className="human-matrix-content">
+          <table className="human-continuous-table" style={{ width: tableWidth }} aria-label="人员工作日并发度矩阵">
+            <colgroup><col style={{ width: personColumnWidth }} />{matrixData.dates.map((date) => <col style={{ width: dayColumnWidth }} key={date} />)}</colgroup>
+            <thead><tr><th>人员</th>{matrixData.dates.map((date) => {
+              const parsed = parseISO(date);
+              return <th className={`${date === firstDate ? "is-today" : ""}${parsed.getDay() === 1 && date !== firstDate ? " is-week-start" : ""}`} key={date}><span>{["日", "一", "二", "三", "四", "五", "六"][parsed.getDay()]}</span>{date.slice(5).replace("-", "/")}</th>;
+            })}</tr></thead>
+            <tbody>
+              {matrixData.people.map((person) => <tr key={person.id}><td><strong>{person.name}</strong><small>{person.jobTitle || "—"}</small></td>{person.days.map((day) => <td className={parseISO(day.date).getDay() === 1 && day.date !== firstDate ? "is-week-start" : ""} key={day.date}><span className={`heat heat-${Math.min(day.count, 3)}`} title={day.items.map((item) => `${item.requirementTitle} · ${item.title}`).join("\n")}>{day.count || ""}</span></td>)}</tr>)}
+              {!matrixData.people.length && !analysis.isLoading && <tr className="human-empty-row"><td colSpan={matrixData.dates.length + 1}><strong>当前区间暂无安排</strong><span>向右加载后续日期，或调整人员和岗位筛选。</span></td></tr>}
+            </tbody>
+          </table>
+          <button className="human-next-window" disabled={analysis.isFetchingNextPage} onClick={() => void analysis.fetchNextPage()}>{analysis.isFetchingNextPage ? "加载中" : "加载后续7天"}</button>
         </div>
       </div>
-      <footer><span><i className="heat heat-1" />1项 正常</span><span><i className="heat heat-2" />2项 预警</span><span><i className="heat heat-3" />3项及以上 高并发</span><small>横向拖动查看后续周</small></footer>
+      <footer><span><i className="heat heat-1" />1项 正常</span><span><i className="heat heat-2" />2项 预警</span><span><i className="heat heat-3" />3项及以上 高并发</span><small>横向拖动查看后续日期</small></footer>
     </div>
     </div>;
 }

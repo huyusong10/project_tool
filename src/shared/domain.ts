@@ -39,6 +39,20 @@ export const priorityLabels: Record<Priority, string> = {
   P3: 'P3 · 低',
 };
 
+export const riskGapThresholds: Record<Priority, { medium: number; high: number }> = {
+  P0: { medium: 5, high: 20 },
+  P1: { medium: 15, high: 40 },
+  P2: { medium: 20, high: 50 },
+  P3: { medium: 30, high: 60 },
+};
+
+export function riskLevelFromProgressGap(priority: Priority, progressGap: number): RiskLevel {
+  const threshold = riskGapThresholds[priority];
+  if (progressGap >= threshold.high) return 'high';
+  if (progressGap >= threshold.medium) return 'medium';
+  return 'low';
+}
+
 function parseIsoDate(value: string): Date {
   const [year, month, day] = value.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day));
@@ -148,7 +162,7 @@ export function calculateWorkItemGap(item: WorkItemLike, today = todayIso()) {
 }
 
 export function deriveRequirementMetrics(
-  requirement: { status?: string; plannedStart?: string | null; plannedEnd?: string | null },
+  requirement: { status?: string; priority?: string; plannedStart?: string | null; plannedEnd?: string | null },
   workItems: WorkItemLike[],
   today = todayIso(),
 ) {
@@ -177,14 +191,41 @@ export function deriveRequirementMetrics(
   const actualEnds = activeItems.map((item) => item.actualEnd).filter((value): value is string => Boolean(value));
   const effectiveEnd = status === 'completed'
     ? actualEnds.sort().at(-1) || derivedPlannedEnd
-    : derivedPlannedEnd && today > derivedPlannedEnd ? today : derivedPlannedEnd;
+    : status === 'cancelled'
+      ? derivedPlannedEnd
+      : derivedPlannedEnd && today > derivedPlannedEnd ? today : derivedPlannedEnd;
   const finishVariance = businessDayDelta(derivedPlannedEnd, effectiveEnd);
   const progressGap = Math.max(0, plannedProgress - progress);
-  const riskLevel: RiskLevel = status === 'blocked' || finishVariance >= 3
-    ? 'high'
-    : finishVariance >= 1 || progressGap >= 20
-      ? 'medium'
-      : 'low';
+  const priority = priorities.includes(requirement.priority as Priority) ? requirement.priority as Priority : 'P2';
+  const threshold = riskGapThresholds[priority];
+  const gapRiskLevel = riskLevelFromProgressGap(priority, progressGap);
+  const riskEvaluated = !['completed', 'cancelled', 'planning'].includes(status) && Boolean(derivedPlannedEnd);
+  let riskLevel: RiskLevel = 'low';
+  let riskReason: string;
+  if (!riskEvaluated) {
+    riskReason = status === 'completed'
+      ? '需求已完成，不再计算当前风险'
+      : status === 'cancelled'
+        ? '需求已取消，不再计算当前风险'
+        : '缺少完整排期，暂无法评估风险';
+  } else if (status === 'blocked') {
+    riskLevel = 'high';
+    riskReason = '存在阻塞工作项，直接判定为高风险';
+  } else if (finishVariance >= 3) {
+    riskLevel = 'high';
+    riskReason = `已延期${finishVariance}个工作日，直接判定为高风险`;
+  } else if (gapRiskLevel === 'high') {
+    riskLevel = 'high';
+    riskReason = `${priority}进度Gap ${progressGap}% ≥ 高风险阈值${threshold.high}%`;
+  } else if (finishVariance >= 1) {
+    riskLevel = 'medium';
+    riskReason = `已延期${finishVariance}个工作日，至少判定为中风险`;
+  } else if (gapRiskLevel === 'medium') {
+    riskLevel = 'medium';
+    riskReason = `${priority}进度Gap ${progressGap}% ≥ 中风险阈值${threshold.medium}%`;
+  } else {
+    riskReason = `${priority}进度Gap ${progressGap}% < 中风险阈值${threshold.medium}%`;
+  }
 
   return {
     status,
@@ -192,7 +233,9 @@ export function deriveRequirementMetrics(
     plannedProgress,
     progressGap,
     riskLevel,
-    highRisk: riskLevel === 'high',
+    riskEvaluated,
+    riskReason,
+    highRisk: riskEvaluated && riskLevel === 'high',
     plannedEnd: derivedPlannedEnd,
     effectiveEnd,
     finishVariance,

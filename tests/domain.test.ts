@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
-  deriveWorkItemStatus, plannedDatesFromOffset, plannedStartFromDeadline,
+  deriveWorkItemStatus, plannedDatesFromOffset, plannedStartFromDeadline, riskLevelFromProgressGap,
 } from '../src/shared/domain';
 
 describe('工作日、排期与Gap规则', () => {
@@ -46,16 +46,33 @@ describe('自动状态、进度和风险', () => {
     expect(metrics.progress).toBe(33);
   });
 
-  it('阻塞或延期三工作日为高风险，进度差20%为中风险', () => {
+  it('按优先级使用不同的进度Gap风险阈值', () => {
+    expect(riskLevelFromProgressGap('P0', 4)).toBe('low');
+    expect(riskLevelFromProgressGap('P0', 5)).toBe('medium');
+    expect(riskLevelFromProgressGap('P0', 20)).toBe('high');
+    expect(riskLevelFromProgressGap('P1', 39)).toBe('medium');
+    expect(riskLevelFromProgressGap('P1', 40)).toBe('high');
+    expect(riskLevelFromProgressGap('P2', 49)).toBe('medium');
+    expect(riskLevelFromProgressGap('P3', 59)).toBe('medium');
+    expect(riskLevelFromProgressGap('P3', 60)).toBe('high');
+  });
+
+  it('阻塞或延期三工作日覆盖Gap规则，已关闭需求不再计算当前风险', () => {
     const high = deriveRequirementMetrics({ status: 'in_progress' }, [
       { status: 'in_progress', plannedStart: '2026-08-28', plannedEnd: '2026-09-01', actualStart: '2026-08-28' },
     ], '2026-09-04');
     expect(high.riskLevel).toBe('high');
-    const medium = deriveRequirementMetrics({ status: 'in_progress' }, [
+    expect(high.riskReason).toContain('延期3个工作日');
+    const medium = deriveRequirementMetrics({ status: 'in_progress', priority: 'P3' }, [
       { status: 'not_started', plannedStart: '2026-09-01', plannedEnd: '2026-09-01' },
       { status: 'not_started', plannedStart: '2026-09-08', plannedEnd: '2026-09-08' },
     ], '2026-09-01');
     expect(medium.progressGap).toBe(50);
     expect(medium.riskLevel).toBe('medium');
+    expect(medium.riskReason).toContain('P3进度Gap 50%');
+    const closed = deriveRequirementMetrics({ status: 'in_progress', priority: 'P0' }, [
+      { status: 'completed', plannedStart: '2026-09-01', plannedEnd: '2026-09-01', actualStart: '2026-09-01', actualEnd: '2026-09-04' },
+    ], '2026-09-04');
+    expect(closed).toMatchObject({ status: 'completed', riskEvaluated: false, riskLevel: 'low', highRisk: false, delayed: true });
   });
 });

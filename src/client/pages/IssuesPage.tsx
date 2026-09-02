@@ -229,7 +229,7 @@ export function IssuesPage() {
         <article className="issue-metric metric-open"><CircleDot size={20} /><div><span>待处理</span><strong>{summary.open}</strong></div></article>
         <article className="issue-metric metric-progress"><Clock3 size={20} /><div><span>处理中</span><strong>{summary.inProgress}</strong></div></article>
         <article className="issue-metric metric-deferred"><PauseCircle size={20} /><div><span>暂缓</span><strong>{summary.deferred}</strong></div></article>
-        <article className="issue-metric metric-resolved"><CheckCircle2 size={20} /><div><span>已解决</span><strong>{summary.resolved}</strong><small>闭环率 {summary.closureRate}%</small></div></article>
+        <article className="issue-metric metric-resolved"><CheckCircle2 size={20} /><div><span>已解决</span><strong>{summary.resolved}</strong></div></article>
         <article className="issue-metric metric-overdue"><AlertTriangle size={20} /><div><span>已逾期</span><strong>{summary.overdue}</strong></div></article>
       </section>
       <div className="issue-filters">
