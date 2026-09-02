@@ -31,13 +31,37 @@ export const people = sqliteTable('people', {
     .where(sql`${table.deletedAt} IS NULL`),
 ]);
 
+export const accounts = sqliteTable('accounts', {
+  id: text('id').primaryKey(),
+  username: text('username').notNull(),
+  normalizedUsername: text('normalized_username').notNull(),
+  passwordHash: text('password_hash').notNull(),
+  personId: text('person_id').references(() => people.id, { onDelete: 'set null' }),
+  globalRole: text('global_role').notNull().default('user'),
+  status: text('status').notNull().default('active'),
+  mustChangePassword: integer('must_change_password', { mode: 'boolean' }).notNull().default(true),
+  sessionVersion: integer('session_version').notNull().default(0),
+  isBuiltin: integer('is_builtin', { mode: 'boolean' }).notNull().default(false),
+  lastLoginAt: text('last_login_at'),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex('idx_accounts_normalized_username').on(table.normalizedUsername),
+  uniqueIndex('idx_accounts_person').on(table.personId),
+  index('idx_accounts_status_role').on(table.status, table.globalRole),
+  check('accounts_role_valid', sql`${table.globalRole} IN ('user', 'admin')`),
+  check('accounts_status_valid', sql`${table.status} IN ('active', 'disabled')`),
+]);
+
 export const projectPeople = sqliteTable('project_people', {
   projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   personId: text('person_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
+  projectRole: text('project_role').notNull().default('member'),
   createdAt: text('created_at').notNull(),
 }, (table) => [
   primaryKey({ columns: [table.projectId, table.personId] }),
   index('idx_project_people_person').on(table.personId, table.projectId),
+  index('idx_project_people_role').on(table.projectId, table.projectRole),
+  check('project_people_role_valid', sql`${table.projectRole} IN ('member', 'manager')`),
 ]);
 
 export const workItemTemplates = sqliteTable('work_item_templates', {
@@ -116,6 +140,7 @@ export const progressUpdates = sqliteTable('progress_updates', {
   workItemId: text('work_item_id').references(() => workItems.id, { onDelete: 'set null' }),
   percent: integer('percent').notNull(),
   content: text('content').notNull(),
+  createdByAccountId: text('created_by_account_id').references(() => accounts.id, { onDelete: 'set null' }),
   ...timestamps,
 }, (table) => [
   check('progress_updates_percent_range', sql`${table.percent} >= 0 AND ${table.percent} <= 100`),
@@ -157,6 +182,7 @@ export const apiTokens = sqliteTable('api_tokens', {
   name: text('name').notNull(),
   prefix: text('prefix').notNull(),
   tokenHash: text('token_hash').notNull(),
+  accountId: text('account_id').references(() => accounts.id, { onDelete: 'cascade' }),
   expiresAt: text('expires_at'),
   lastUsedAt: text('last_used_at'),
   revokedAt: text('revoked_at'),

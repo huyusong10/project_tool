@@ -12,7 +12,7 @@ export const config = {
   port: Number(process.env.PORT || 3210),
   dbPath: path.resolve(rootDir, process.env.DB_PATH || './data/project-manage.db'),
   backupDir: path.resolve(rootDir, process.env.BACKUP_DIR || './data/backups'),
-  appUsername: process.env.APP_USERNAME || 'user',
+  appUsername: process.env.APP_USERNAME || 'admin',
   appPasswordHash: process.env.APP_PASSWORD_HASH || '',
   sessionSecret: process.env.SESSION_SECRET || '',
   sessionHours: Number(process.env.SESSION_HOURS || 12),

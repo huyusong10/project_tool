@@ -17,6 +17,7 @@ import type { Issue, IssuePage, Person, Requirement } from "../types";
 import { issueStatusLabels, priorityLabels, todayIso } from "../../shared/domain";
 import { EmptyState, Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
+import { canManageProject } from "../permissions";
 
 const statusEntries = Object.entries(issueStatusLabels);
 const priorityEntries = Object.entries(priorityLabels);
@@ -99,11 +100,11 @@ function IssueUpdateForm({ issueId }: { issueId: string }) {
 
 function IssueDetail({
   issueId,
-  sessionAuthenticated,
+  canEdit,
   onEdit,
 }: {
   issueId: string;
-  sessionAuthenticated: boolean;
+  canEdit: boolean;
   onEdit: (issue: Issue) => void;
 }) {
   const { data: issue, isLoading } = useQuery({ queryKey: ["issue", issueId], queryFn: () => api<Issue>(`/api/issues/${issueId}`) });
@@ -115,7 +116,7 @@ function IssueDetail({
         <h3>{issue.title}</h3>
         <p>{issueScope(issue)}</p>
       </div>
-      {sessionAuthenticated && <button className="ghost-button" onClick={() => onEdit(issue)}><Edit3 size={15} />编辑</button>}
+      {canEdit && <button className="ghost-button" onClick={() => onEdit(issue)}><Edit3 size={15} />编辑</button>}
     </header>
     <dl className="issue-meta-grid">
       <div><dt>负责人</dt><dd>{issue.ownerName || "未分配"}</dd></div>
@@ -132,7 +133,7 @@ function IssueDetail({
         {issue.updates?.map((update) => <article key={update.id}><span className="issue-timeline-dot" /><div><time>{new Date(update.createdAt).toLocaleString("zh-CN")}</time><p>{update.content}</p></div></article>)}
         {!issue.updates?.length && <EmptyState title="还没有进展" detail="追加第一条进展后，会在这里按时间展示。" />}
       </div>
-      {sessionAuthenticated && <IssueUpdateForm issueId={issue.id} />}
+      {canEdit && <IssueUpdateForm issueId={issue.id} />}
     </section>
   </div>;
 }
@@ -150,6 +151,7 @@ export function IssuesPage() {
   const [page, setPage] = useState(1);
   const [selectedIssueId, setSelectedIssueId] = useState<string>();
   const [formIssue, setFormIssue] = useState<Issue | null | undefined>(undefined);
+  const canEdit = canManageProject(session, selectedProjectId);
   const { data: people = [] } = useQuery({ queryKey: ["people", selectedProjectId], queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`), enabled: Boolean(selectedProjectId) });
   const { data: requirements = [] } = useQuery({ queryKey: ["requirements", selectedProjectId], queryFn: () => api<Requirement[]>(`/api/requirements?projectId=${encodeURIComponent(selectedProjectId)}`), enabled: Boolean(selectedProjectId) });
   const params = new URLSearchParams({ projectId: selectedProjectId, page: String(page), pageSize: "50" });
@@ -171,7 +173,7 @@ export function IssuesPage() {
   const hasFilters = Boolean(keyword || status || priority || ownerId || scope || overdue || unassigned);
   const summary = data?.summary || { total: 0, open: 0, inProgress: 0, deferred: 0, resolved: 0, overdue: 0, unassigned: 0 };
   return <>
-    <PageHeader title="问题跟踪" actions={session.authenticated ? <button className="primary-button" disabled={!selectedProjectId} onClick={() => setFormIssue(null)}><Plus size={16} />新建问题</button> : null} />
+    <PageHeader title="问题跟踪" actions={canEdit ? <button className="primary-button" disabled={!selectedProjectId} onClick={() => setFormIssue(null)}><Plus size={16} />新建问题</button> : null} />
     <div className="page-content issues-page">
       <section className="issue-board" aria-label="问题看板">
         <article className="issue-metric metric-open"><CircleDot size={20} /><div><span>待处理</span><strong>{summary.open}</strong></div></article>
@@ -207,7 +209,7 @@ export function IssuesPage() {
         <footer className="table-pagination"><span>第 {data?.page || 1} / {data?.pages || 1} 页</span><div><button className="ghost-button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</button><button className="ghost-button" disabled={page >= (data?.pages || 1)} onClick={() => setPage((value) => value + 1)}>下一页</button></div></footer>
       </section>
     </div>
-    {selectedIssueId && <Modal title="问题详情" width={900} onClose={() => setSelectedIssueId(undefined)}><IssueDetail issueId={selectedIssueId} sessionAuthenticated={session.authenticated} onEdit={(issue) => { setSelectedIssueId(undefined); setFormIssue(issue); }} /></Modal>}
+    {selectedIssueId && <Modal title="问题详情" width={900} onClose={() => setSelectedIssueId(undefined)}><IssueDetail issueId={selectedIssueId} canEdit={canEdit} onEdit={(issue) => { setSelectedIssueId(undefined); setFormIssue(issue); }} /></Modal>}
     {formIssue !== undefined && <Modal title={formIssue ? "编辑问题" : "新建问题"} width={760} onClose={() => setFormIssue(undefined)}><IssueForm issue={formIssue || undefined} projectId={selectedProjectId} people={people} requirements={requirements} onClose={() => setFormIssue(undefined)} /></Modal>}
   </>;
 }

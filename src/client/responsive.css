@@ -405,3 +405,21 @@ textarea {
     transition-duration: 0.01ms !important;
   }
 }
+
+@media (max-width: 1399px) {
+  .my-work-items > article { grid-template-columns: minmax(220px,1fr) minmax(230px,.8fr); }
+  .my-work-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}
+
+@media (max-width: 1199px) {
+  .my-work-summary { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .my-work-charts { grid-template-columns: 1fr; }
+  .account-table-panel { overflow-x: auto; }
+}
+
+@media (max-width: 760px) {
+  .my-work-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .my-work-items > article { grid-template-columns: 1fr; }
+  .my-work-dates, .my-work-actions { grid-column: 1; }
+  .project-permission-list { grid-template-columns: 1fr; }
+}

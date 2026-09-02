@@ -50,6 +50,13 @@ describe('正式库增量迁移', () => {
     expect(migrated.prepare('SELECT COUNT(*) AS count FROM issue_updates').get()).toEqual({ count: 0 });
     expect(migrated.prepare('SELECT project_id AS projectId,person_id AS personId FROM project_people').get())
       .toEqual({ projectId: 'p1', personId: 'u1' });
+    expect(migrated.prepare('SELECT project_role AS projectRole FROM project_people WHERE project_id=? AND person_id=?').get('p1', 'u1'))
+      .toEqual({ projectRole: 'member' });
+    expect(migrated.prepare('SELECT COUNT(*) AS count FROM accounts').get()).toEqual({ count: 2 });
+    expect(migrated.prepare('SELECT username,global_role AS globalRole,is_builtin AS isBuiltin FROM accounts WHERE is_builtin=1').get())
+      .toEqual({ username: 'admin', globalRole: 'admin', isBuiltin: 1 });
+    expect(migrated.prepare('SELECT username,must_change_password AS mustChange FROM accounts WHERE person_id=?').get('u1'))
+      .toEqual({ username: '原人员', mustChange: 1 });
     expect((migrated.pragma('integrity_check') as Array<{ integrity_check: string }>)[0].integrity_check).toBe('ok');
     migrated.close();
   });

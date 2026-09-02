@@ -1,7 +1,4 @@
-param(
-  [string]$Username = "user",
-  [string]$Password
-)
+param([string]$Password)
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -12,7 +9,7 @@ if (-not $Password) {
 if ($Password.Length -lt 10) { throw "密码至少需要10个字符" }
 $env:PROJECT_MANAGE_NEW_PASSWORD = $Password
 try {
-  & node (Join-Path $ProjectRoot "scripts\configure.mjs") $Username
+  & node (Join-Path $ProjectRoot "scripts\configure.mjs")
   if ($LASTEXITCODE -ne 0) { throw "配置失败" }
 } finally {
   Remove-Item Env:PROJECT_MANAGE_NEW_PASSWORD -ErrorAction SilentlyContinue

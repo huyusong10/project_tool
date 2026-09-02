@@ -1,6 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { sqlite } from './database';
 import { createApiTokenValue, hashApiToken, type Actor } from './auth';
+import { createAccountForPerson } from './accounts';
 import {
   addCalendarDays,
   businessDaysInclusive,
@@ -183,8 +184,11 @@ export function listPeople(includeDeleted = false, projectId?: string) {
     params.push(projectId);
   }
   return rows(`SELECT p.id, p.name, p.job_title AS jobTitle, p.active, p.created_at AS createdAt,
-    p.updated_at AS updatedAt, p.deleted_at AS deletedAt
-    FROM people p ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY p.active DESC, p.name`, ...params);
+    p.updated_at AS updatedAt, p.deleted_at AS deletedAt,
+    ${projectId ? `(SELECT pp2.project_role FROM project_people pp2 WHERE pp2.person_id=p.id AND pp2.project_id=?)` : `'member'`} AS projectRole,
+    (SELECT a.username FROM accounts a WHERE a.person_id=p.id) AS username,
+    (SELECT a.status FROM accounts a WHERE a.person_id=p.id) AS accountStatus
+    FROM people p ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY p.active DESC, p.name`, ...(projectId ? [projectId, ...params] : params));
 }
 
 function requireActiveProject(projectId: string) {
@@ -231,6 +235,7 @@ export function createPerson(input: JsonObject, actor: Actor) {
     sqlite.prepare('INSERT INTO people (id, name, job_title, active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)')
       .run(id, name, nullableText(input.jobTitle), now, now);
     sqlite.prepare('INSERT INTO project_people (project_id, person_id, created_at) VALUES (?, ?, ?)').run(projectId, id, now);
+    createAccountForPerson(id, name, true);
   })();
   audit(actor, 'create', 'person', id, `新增人员：${name}`);
   return row('SELECT id, name, job_title AS jobTitle, active, created_at AS createdAt, updated_at AS updatedAt FROM people WHERE id=?', id)!;
@@ -253,7 +258,11 @@ export function updatePerson(id: string, input: JsonObject, actor: Actor) {
 
 export function archivePerson(id: string, actor: Actor) {
   if (!row('SELECT id FROM people WHERE id=? AND deleted_at IS NULL', id)) throw new Error('人员不存在');
-  sqlite.prepare('UPDATE people SET deleted_at=?, active=0, updated_at=? WHERE id=?').run(nowIso(), nowIso(), id);
+  sqlite.transaction(() => {
+    sqlite.prepare('UPDATE people SET deleted_at=?, active=0, updated_at=? WHERE id=?').run(nowIso(), nowIso(), id);
+    sqlite.prepare(`UPDATE accounts SET status='disabled', session_version=session_version+1, updated_at=?
+      WHERE person_id=? AND is_builtin=0`).run(nowIso(), id);
+  })();
   audit(actor, 'archive', 'person', id, '归档人员');
   return { ok: true };
 }
@@ -262,7 +271,12 @@ export function restorePerson(id: string, actor: Actor) {
   const person = row<{ name: string }>('SELECT name FROM people WHERE id=? AND deleted_at IS NOT NULL', id);
   if (!person) throw new Error('归档人员不存在');
   assertUniquePersonName(person.name, id);
-  sqlite.prepare('UPDATE people SET deleted_at=NULL, active=1, updated_at=? WHERE id=?').run(nowIso(), id);
+  sqlite.transaction(() => {
+    sqlite.prepare('UPDATE people SET deleted_at=NULL, active=1, updated_at=? WHERE id=?').run(nowIso(), id);
+    const account = row<{ id: string }>('SELECT id FROM accounts WHERE person_id=?', id);
+    if (account) sqlite.prepare(`UPDATE accounts SET status='active', session_version=session_version+1, updated_at=? WHERE id=?`).run(nowIso(), account.id);
+    else createAccountForPerson(id, person.name, true);
+  })();
   audit(actor, 'restore', 'person', id, `恢复人员：${person.name}`);
   return listPeople(true).find((item: any) => item.id === id);
 }
@@ -400,8 +414,10 @@ export function getRequirement(id: string, includeDeleted = false) {
   if (!requirement) throw new Error('需求不存在');
   const result = enrichRequirement(requirement);
   const progressUpdates = rows(`SELECT u.id, u.requirement_id AS requirementId, u.work_item_id AS workItemId,
-    w.title AS workItemTitle, u.percent, u.content, u.created_at AS createdAt, u.updated_at AS updatedAt
+    w.title AS workItemTitle, u.percent, u.content, u.created_by_account_id AS createdByAccountId,
+    a.username AS createdByName, u.created_at AS createdAt, u.updated_at AS updatedAt
     FROM progress_updates u LEFT JOIN work_items w ON w.id=u.work_item_id
+    LEFT JOIN accounts a ON a.id=u.created_by_account_id
     WHERE u.requirement_id=? ORDER BY u.created_at DESC`, id);
   return { ...result, progressUpdates };
 }
@@ -656,8 +672,8 @@ export function addProgress(requirementId: string, input: JsonObject, actor: Act
   const tx = sqlite.transaction(() => {
     if (workItemId) sqlite.prepare(`UPDATE work_items SET actual_start=COALESCE(actual_start, ?), status=CASE WHEN status='not_started' THEN 'in_progress' ELSE status END, updated_at=? WHERE id=? AND actual_end IS NULL`).run(todayIso(), now, workItemId);
     const percent = enrichRequirement(row<RequirementRecord>(`${requirementSelect} WHERE r.id=?`, requirementId)!).progress;
-    sqlite.prepare(`INSERT INTO progress_updates (id, requirement_id, work_item_id, percent, content, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, requirementId, workItemId, percent, content, now, now);
+    sqlite.prepare(`INSERT INTO progress_updates (id, requirement_id, work_item_id, percent, content, created_by_account_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, requirementId, workItemId, percent, content, actor.accountId || null, now, now);
     sqlite.prepare('UPDATE requirements SET progress=?, updated_at=? WHERE id=?').run(percent, now, requirementId);
   });
   tx(); const result = getRequirement(requirementId);
@@ -670,6 +686,7 @@ export function updateProgress(id: string, input: JsonObject, actor: Actor) {
   if (!current) throw new Error('进展记录不存在');
   const content = input.content === undefined ? current.content : requireText(input.content, '具体进展');
   const workItemId = input.workItemId === undefined ? current.work_item_id : nullableText(input.workItemId);
+  if (workItemId && !row('SELECT id FROM work_items WHERE id=? AND requirement_id=?', workItemId, current.requirement_id)) throw new Error('关联工作项不存在');
   const percent = getRequirement(current.requirement_id).progress;
   sqlite.prepare('UPDATE progress_updates SET percent=?, content=?, work_item_id=?, updated_at=? WHERE id=?').run(percent, content, workItemId, nowIso(), id);
   audit(actor, 'update', 'progress', id, `更新进展记录：${percent}%`);
@@ -920,6 +937,7 @@ export function permanentlyDeleteArchive(entity: ArchiveEntity, id: string, acto
       if (!person) throw new Error('归档人员不存在');
       sqlite.prepare('UPDATE requirements SET owner_id=NULL WHERE owner_id=?').run(id);
       sqlite.prepare('UPDATE work_items SET owner_id=NULL WHERE owner_id=?').run(id);
+      sqlite.prepare('DELETE FROM accounts WHERE person_id=? AND is_builtin=0').run(id);
       sqlite.prepare('DELETE FROM people WHERE id=?').run(id);
       audit(actor, 'permanent_delete', 'person', id, `永久删除归档人员：${person.name}`);
       return { ok: true };
@@ -1001,7 +1019,7 @@ export function searchAudit(filters: { q?: string; actorType?: string; action?: 
 
 export function listTokens() {
   return rows(`SELECT id, name, prefix, expires_at AS expiresAt, last_used_at AS lastUsedAt,
-    revoked_at AS revokedAt, created_at AS createdAt FROM api_tokens ORDER BY created_at DESC`);
+    revoked_at AS revokedAt, account_id AS accountId, created_at AS createdAt FROM api_tokens ORDER BY created_at DESC`);
 }
 
 export function issueToken(input: JsonObject, actor: Actor) {
@@ -1010,8 +1028,8 @@ export function issueToken(input: JsonObject, actor: Actor) {
   if (days !== null && (!Number.isFinite(days) || days < 1 || days > 3650)) throw new Error('有效期不合法');
   const expiresAt = days === null ? null : new Date(Date.now() + days * 86400000).toISOString();
   const { prefix, token } = createApiTokenValue();
-  sqlite.prepare(`INSERT INTO api_tokens (id, name, prefix, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(id, name, prefix, hashApiToken(token), expiresAt, now);
+  sqlite.prepare(`INSERT INTO api_tokens (id, name, prefix, token_hash, account_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(id, name, prefix, hashApiToken(token), actor.accountId || null, expiresAt, now);
   audit(actor, 'create', 'api_token', id, `创建MCP Token：${name}`);
   return { id, name, prefix, token, expiresAt, createdAt: now };
 }
@@ -1027,12 +1045,15 @@ export function revokeToken(id: string, actor: Actor) {
 export function authenticateApiToken(token: string): Actor | null {
   const match = /^pm_([a-f0-9]{10})_/.exec(token);
   if (!match) return null;
-  const record = row<any>('SELECT * FROM api_tokens WHERE prefix=?', match[1]);
-  if (!record || record.revoked_at || (record.expires_at && record.expires_at <= nowIso())) return null;
+  const record = row<any>(`SELECT t.*, a.username, a.person_id, a.global_role, a.status AS account_status
+    FROM api_tokens t JOIN accounts a ON a.id=t.account_id WHERE t.prefix=?`, match[1]);
+  if (!record || record.revoked_at || record.account_status !== 'active' || record.global_role !== 'admin'
+    || (record.expires_at && record.expires_at <= nowIso())) return null;
   const actualHash = Buffer.from(hashApiToken(token)); const expectedHash = Buffer.from(record.token_hash);
   if (actualHash.length !== expectedHash.length || !timingSafeEqual(actualHash, expectedHash)) return null;
   sqlite.prepare('UPDATE api_tokens SET last_used_at=? WHERE id=?').run(nowIso(), record.id);
-  return { type: 'token', id: record.id, label: record.name };
+  return { type: 'token', id: record.id, label: record.name, accountId: record.account_id,
+    personId: record.person_id, globalRole: 'admin' };
 }
 
 export { issueStatuses, priorities, requirementStatuses, riskLevels, workItemStatuses };

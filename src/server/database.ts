@@ -5,6 +5,7 @@ import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { config } from './config';
+import { hashPassword, normalizeUsername } from './auth';
 import * as schema from './schema';
 
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
@@ -39,3 +40,42 @@ function seedBaseData() {
 }
 
 seedBaseData();
+
+function bootstrapAccounts() {
+  const now = new Date().toISOString();
+  const transaction = sqlite.transaction(() => {
+    let builtin = sqlite.prepare('SELECT id FROM accounts WHERE is_builtin=1 LIMIT 1').get() as { id: string } | undefined;
+    if (!builtin) {
+      const id = randomUUID();
+      sqlite.prepare(`INSERT INTO accounts
+        (id, username, normalized_username, password_hash, global_role, status, must_change_password, session_version, is_builtin, created_at, updated_at)
+        VALUES (?, 'admin', 'admin', ?, 'admin', 'active', 0, 0, 1, ?, ?)`)
+        .run(id, config.appPasswordHash, now, now);
+      builtin = { id };
+    }
+
+    const defaultPasswordHash = hashPassword('888888');
+    const people = sqlite.prepare(`SELECT p.id, p.name, p.active, p.deleted_at AS deletedAt
+      FROM people p WHERE NOT EXISTS (SELECT 1 FROM accounts a WHERE a.person_id=p.id)
+      ORDER BY p.created_at, p.id`).all() as Array<{ id: string; name: string; active: number; deletedAt: string | null }>;
+    const exists = sqlite.prepare('SELECT 1 FROM accounts WHERE normalized_username=? LIMIT 1');
+    const insert = sqlite.prepare(`INSERT INTO accounts
+      (id, username, normalized_username, password_hash, person_id, global_role, status, must_change_password, session_version, is_builtin, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'user', ?, 1, 0, 0, ?, ?)`);
+    for (const person of people) {
+      const base = person.name.trim() || `user-${person.id.slice(0, 6)}`;
+      let username = base;
+      let normalized = normalizeUsername(username);
+      if (exists.get(normalized)) {
+        username = `${base}-${person.id.slice(0, 6)}`;
+        normalized = normalizeUsername(username);
+      }
+      insert.run(randomUUID(), username, normalized, defaultPasswordHash, person.id,
+        person.active && !person.deletedAt ? 'active' : 'disabled', now, now);
+    }
+    sqlite.prepare('UPDATE api_tokens SET account_id=? WHERE account_id IS NULL').run(builtin.id);
+  });
+  transaction();
+}
+
+bootstrapAccounts();

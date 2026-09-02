@@ -17,6 +17,7 @@ import { EmptyState, Modal } from "../components/Modal";
 import { ProjectGantt } from "../components/ProjectGantt";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectForm } from "../components/ManagementForms";
+import { isAdmin } from "../permissions";
 
 function Kpi({
   label,
@@ -151,7 +152,7 @@ export function DashboardPage() {
             title="先创建第一个项目"
             detail="项目用于隔离需求、计划和统计数据。"
             action={
-              session.authenticated ? (
+              isAdmin(session) ? (
                 <button
                   className="primary-button"
                   onClick={() => setModal("project")}
@@ -159,11 +160,11 @@ export function DashboardPage() {
                   <Plus size={16} />
                   新建项目
                 </button>
-              ) : (
+              ) : !session.authenticated ? (
                 <button className="primary-button" onClick={openLogin}>
                   用户登录
                 </button>
-              )
+              ) : null
             }
           />
           {modal === "project" && (

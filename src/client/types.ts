@@ -1,10 +1,15 @@
-export type Session = { authenticated: boolean; username: string | null; httpWarning: boolean };
+export type Session = {
+  authenticated: boolean; accountId?: string; username: string | null; httpWarning: boolean;
+  role: 'guest' | 'user' | 'project_manager' | 'admin'; globalRole: 'guest' | 'user' | 'admin';
+  personId: string | null; mustChangePassword: boolean; managedProjectIds: string[];
+};
 export type Project = {
   id: string; name: string; status: string; plannedStart: string | null; plannedEnd: string | null;
   defaultTemplateId: string | null; createdAt: string; updatedAt: string; deletedAt?: string | null;
 };
 export type Person = {
   id: string; name: string; jobTitle: string | null; active: boolean | number;
+  projectRole?: 'member' | 'manager'; username?: string | null; accountStatus?: 'active' | 'disabled' | null;
   createdAt: string; updatedAt: string; deletedAt?: string | null;
 };
 export type TemplateItem = {
@@ -24,7 +29,7 @@ export type WorkItem = {
 };
 export type ProgressUpdate = {
   id: string; requirementId: string; workItemId: string | null; workItemTitle: string | null;
-  percent: number; content: string; createdAt: string; updatedAt: string;
+  percent: number; content: string; createdByAccountId?: string | null; createdByName?: string | null; createdAt: string; updatedAt: string;
 };
 export type IssueUpdate = {
   id: string; issueId: string; content: string; createdAt: string; updatedAt: string;
@@ -82,3 +87,19 @@ export type ApiToken = { id: string; name: string; prefix: string; expiresAt: st
 export type AuditLog = { id: string; actorType: string; actorId: string | null; action: string; entityType: string; entityId: string | null; summary: string; createdAt: string };
 export type AuditPage = { items: AuditLog[]; total: number; page: number; pageSize: number; pages: number };
 export type Backup = { name: string; size: number; createdAt: string };
+export type Account = {
+  id: string; username: string; personId: string | null; personName: string | null; jobTitle: string | null;
+  globalRole: 'user' | 'admin'; role: 'user' | 'project_manager' | 'admin'; status: 'active' | 'disabled';
+  mustChangePassword: boolean; isBuiltin: boolean; lastLoginAt: string | null; createdAt: string; updatedAt: string;
+  managedProjects: Array<{ id: string; name: string }>;
+};
+export type MyWorkItem = WorkItem & {
+  projectId: string; projectName: string; requirementTitle: string; assignmentType: 'owner' | 'collaborator'; overdue: boolean;
+};
+export type MyWork = {
+  summary: { total: number; notStarted: number; inProgress: number; blocked: number; completed: number; overdue: number };
+  items: MyWorkItem[];
+  completionTrend: Array<{ week: string; completed: number }>;
+  upcoming: Array<{ date: string; count: number }>;
+  recentProgress: Array<ProgressUpdate & { requirementTitle: string }>;
+};

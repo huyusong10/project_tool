@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes, scryptSync } from 'node:crypto';
+import Database from 'better-sqlite3';
 
 const root = path.resolve(import.meta.dirname, '..');
-const username = process.argv[2]?.trim() || 'user';
+const username = 'admin';
 const password = process.env.PROJECT_MANAGE_NEW_PASSWORD || '';
 if (password.length < 10) {
   console.error('密码至少需要10个字符。');
@@ -27,4 +28,12 @@ const content = [
   '',
 ].join('\n');
 fs.writeFileSync(path.join(root, '.env'), content, { encoding: 'utf8', mode: 0o600 });
-console.log('本地用户配置已更新。');
+const databasePath = path.join(root, 'data', 'project-manage.db');
+if (fs.existsSync(databasePath)) {
+  const db = new Database(databasePath);
+  const hasAccounts = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='accounts'").get();
+  if (hasAccounts) db.prepare(`UPDATE accounts SET password_hash=?, must_change_password=0,
+    session_version=session_version+1, status='active', updated_at=? WHERE is_builtin=1`).run(passwordHash, new Date().toISOString());
+  db.close();
+}
+console.log('admin账号配置已更新。');

@@ -30,6 +30,7 @@ import { GapTimeline } from "../components/GapTimeline";
 import { Chart } from "../components/Chart";
 import { EmptyState, Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
+import { canManageProject } from "../permissions";
 
 function RequirementEditForm({
   requirement,
@@ -235,9 +236,13 @@ function WorkItemForm({
 
 function ProgressForm({
   requirement,
+  allowedItems,
+  requireAssociation,
   onClose,
 }: {
   requirement: Requirement;
+  allowedItems?: WorkItem[];
+  requireAssociation?: boolean;
   onClose: () => void;
 }) {
   const client = useQueryClient();
@@ -264,10 +269,10 @@ function ProgressForm({
       }}
     >
       <label className="field field-full">
-        <span>关联工作项（可选）</span>
-        <select name="workItemId">
-          <option value="">不关联</option>
-          {requirement.workItems.map((item) => (
+        <span>关联工作项{requireAssociation ? "" : "（可选）"}</span>
+        <select name="workItemId" required={requireAssociation}>
+          {!requireAssociation && <option value="">不关联</option>}
+          {(allowedItems || requirement.workItems).map((item) => (
             <option value={item.id} key={item.id}>
               {item.title}
             </option>
@@ -473,24 +478,27 @@ export function RequirementPage() {
         </div>
       </>
     );
+  const canManage = canManageProject(session, requirement.projectId);
+  const ownItems = requirement.workItems.filter((item) => Boolean(session.personId) && item.assigneeIds.includes(session.personId!));
+  const canAddProgress = canManage || ownItems.length > 0;
   return (
     <>
       <PageHeader
         title={requirement.title}
         onBack={() => navigate(-1)}
-        actions={session.authenticated ? (
+        actions={canAddProgress || canManage ? (
           <>
-            <button className="ghost-button" onClick={() => setModal("edit")}>
+            {canManage && <button className="ghost-button" onClick={() => setModal("edit")}>
               <Edit3 size={15} />
               编辑
-            </button>
-            <button
+            </button>}
+            {canAddProgress && <button
               className="primary-button"
               onClick={() => setModal("progress")}
             >
               <Plus size={15} />
               增加进展
-            </button>
+            </button>}
           </>
         ) : null}
       />
@@ -572,7 +580,7 @@ export function RequirementPage() {
           <div>
             <h2>需求进展</h2>
           </div>
-          {session.authenticated && (
+          {canManage && (
             <div className="panel-actions">
               <button
                 className="ghost-button"
@@ -587,7 +595,7 @@ export function RequirementPage() {
         </header>
         <GapTimeline items={requirement.workItems} updates={requirement.progressUpdates || []} />
       </section>
-      {workEditorOpen && session.authenticated && <Modal title="编辑工作项" width={1120} onClose={() => setWorkEditorOpen(false)}>
+      {workEditorOpen && canManage && <Modal title="编辑工作项" width={1120} onClose={() => setWorkEditorOpen(false)}>
           <div className="work-editor-modal">
             <div className="work-editor-modal-toolbar">
               <span>状态由实际日期和阻塞标记自动推导</span>
@@ -628,7 +636,7 @@ export function RequirementPage() {
                     {gap.finishVariance > 0 ? "+" : ""}
                     {gap.finishVariance}天
                   </b>
-                  {session.authenticated && (
+                  {canManage && (
                     <div className="work-item-actions">
                       {item.status === "not_started" && <button className="work-next-action" onClick={() => itemAction.mutate({ itemId: item.id, action: "start" })}><Play size={14} />开始</button>}
                       {item.status === "in_progress" && <button className="work-next-action" onClick={() => itemAction.mutate({ itemId: item.id, action: "complete" })}><Check size={14} />完成</button>}
@@ -664,7 +672,7 @@ export function RequirementPage() {
               <article key={item.id}>
                 <div className="progress-marker">{item.percent}%</div>
                 <div><header><strong>{new Date(item.createdAt).toLocaleString("zh-CN")}</strong>{item.workItemTitle && <span>{item.workItemTitle}</span>}</header><p>{item.content}</p></div>
-                {session.authenticated && <button aria-label="删除进展" onClick={() => confirm("确认删除这条进展？") && removeProgress.mutate(item.id)}><Trash2 size={14} /></button>}
+                {(canManage || item.createdByAccountId === session.accountId) && <button aria-label="删除进展" onClick={() => confirm("确认删除这条进展？") && removeProgress.mutate(item.id)}><Trash2 size={14} /></button>}
               </article>
             ))}
             {!requirement.progressUpdates?.length && <EmptyState title="暂无进展" detail="增加进展后，这里会显示具体完成内容。" />}
@@ -675,7 +683,7 @@ export function RequirementPage() {
           {requirement.progressUpdates?.length ? <Chart option={progressOption} height={270} ariaLabel="需求计划与实际进度趋势" /> : <EmptyState title="暂无趋势" detail="增加第一条进展后自动生成趋势图。" />}
         </article>
       </section>
-      {session.authenticated && (
+      {canManage && (
         <div className="danger-zone">
           <span>不再跟踪该需求时可以归档，数据不会立即物理删除。</span>
           <button
@@ -709,6 +717,8 @@ export function RequirementPage() {
         <Modal title="增加进展" onClose={() => setModal(null)}>
           <ProgressForm
             requirement={requirement}
+            allowedItems={canManage ? undefined : ownItems}
+            requireAssociation={!canManage}
             onClose={() => setModal(null)}
           />
         </Modal>

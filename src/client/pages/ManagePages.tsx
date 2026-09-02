@@ -37,6 +37,7 @@ import { priorityLabels, requirementStatusLabels, riskLabels } from "../../share
 import { EmptyState, Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectForm, RequirementForm } from "../components/ManagementForms";
+import { canManageProject, isAdmin } from "../permissions";
 
 export function RequirementsPage() {
   const { selectedProjectId, projects, session } = useApp();
@@ -44,6 +45,7 @@ export function RequirementsPage() {
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const canManage = canManageProject(session, selectedProjectId);
   const { data = [] } = useQuery({
     queryKey: ["requirements", selectedProjectId],
     queryFn: () =>
@@ -61,7 +63,7 @@ export function RequirementsPage() {
     <>
       <PageHeader
         title="需求管理"
-        actions={session.authenticated ? (
+        actions={canManage ? (
           <button className="primary-button" disabled={!selectedProjectId} onClick={() => setCreating(true)} title={selectedProjectId ? "新建需求" : "请先创建项目"}>
             <Plus size={16} />
             新建需求
@@ -176,6 +178,7 @@ export function ProjectsPage() {
   const { projects, selectedProjectId, session } = useApp();
   const client = useQueryClient();
   const [editing, setEditing] = useState<Project | null | undefined>(undefined);
+  const admin = isAdmin(session);
   const { data: templates = [] } = useQuery({
     queryKey: ["templates"],
     queryFn: () => api<WorkItemTemplate[]>("/api/templates"),
@@ -192,7 +195,7 @@ export function ProjectsPage() {
     <>
       <PageHeader
         title="项目管理"
-        actions={session.authenticated ? (
+        actions={admin ? (
           <button className="primary-button" onClick={() => setEditing(null)}>
             <Plus size={16} />
             新建项目
@@ -212,8 +215,8 @@ export function ProjectsPage() {
                   {session.authenticated && (
                     <td>
                       <div className="project-row-actions">
-                        <button className="inline-action-button" onClick={() => setEditing(project)}><Edit3 size={14} />编辑</button>
-                        <button className="inline-action-button danger" onClick={() => confirm(`归档项目“${project.name}”？项目数据可在归档中心恢复。`) && archive.mutate(project.id)}><Archive size={14} />归档</button>
+                        {canManageProject(session, project.id) && <button className="inline-action-button" onClick={() => setEditing(project)}><Edit3 size={14} />编辑</button>}
+                        {admin && <button className="inline-action-button danger" onClick={() => confirm(`归档项目“${project.name}”？项目数据可在归档中心恢复。`) && archive.mutate(project.id)}><Archive size={14} />归档</button>}
                       </div>
                     </td>
                   )}
@@ -315,12 +318,14 @@ export function PeoplePage() {
   const client = useQueryClient();
   const [editing, setEditing] = useState<Person | null | undefined>(undefined);
   const [addingExisting, setAddingExisting] = useState(false);
+  const admin = isAdmin(session);
+  const canManage = canManageProject(session, selectedProjectId);
   const { data = [] } = useQuery({
     queryKey: ["people", selectedProjectId],
     queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`),
     enabled: Boolean(selectedProjectId),
   });
-  const { data: allPeople = [] } = useQuery({ queryKey: ["people", "all"], queryFn: () => api<Person[]>("/api/people"), enabled: session.authenticated });
+  const { data: allPeople = [] } = useQuery({ queryKey: ["people", "all"], queryFn: () => api<Person[]>("/api/people"), enabled: canManage });
   const availablePeople = allPeople.filter((person) => !data.some((member) => member.id === person.id));
   const groups = useMemo(() => {
     const grouped = new Map<string, Person[]>();
@@ -351,9 +356,9 @@ export function PeoplePage() {
     <>
       <PageHeader
         title="人员矩阵"
-        actions={view === "matrix" && session.authenticated ? <div className="panel-actions">
+        actions={view === "matrix" && canManage ? <div className="panel-actions">
           <button className="ghost-button" disabled={!availablePeople.length || !selectedProjectId} onClick={() => setAddingExisting(true)}><UserPlus size={16} />添加已有人员</button>
-          <button className="primary-button" disabled={!selectedProjectId} onClick={() => setEditing(null)}><UserPlus size={16} />新增人员</button>
+          {admin && <button className="primary-button" disabled={!selectedProjectId} onClick={() => setEditing(null)}><UserPlus size={16} />新增人员</button>}
         </div> : null}
       />
       <div className="page-content">
@@ -380,27 +385,27 @@ export function PeoplePage() {
                     tabIndex={0}
                     aria-label={`编辑人员 ${person.name}`}
                     title="点击修改姓名和岗位"
-                    onClick={() => session.authenticated ? setEditing(person) : openLogin()}
+                    onClick={() => admin ? setEditing(person) : undefined}
                     onKeyDown={(event) => {
                       if (event.key !== "Enter" && event.key !== " ") return;
                       event.preventDefault();
-                      session.authenticated ? setEditing(person) : openLogin();
+                      if (admin) setEditing(person);
                     }}
                   >
                     <span className="person-avatar">{person.name.slice(-1)}</span>
                     <div className="person-copy">
                       <strong>{person.name}</strong>
                     </div>
-                    {session.authenticated && <Edit3 className="person-edit-indicator" size={15} aria-hidden="true" />}
-                    {session.authenticated && (
+                    {admin && <Edit3 className="person-edit-indicator" size={15} aria-hidden="true" />}
+                    {canManage && (
                       <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-                        <button
+                        {admin && <button
                           aria-label={`从项目移除 ${person.name}`}
                           title={`从当前项目移除 ${person.name}`}
                           onClick={() => confirm(`将“${person.name}”移出当前项目？历史工作项不会改变。`) && removeMember.mutate(person.id)}
                         >
                           <UserMinus size={15} />
-                        </button>
+                        </button>}
                         <button
                           aria-label={`归档人员 ${person.name}`}
                           title={`全局归档 ${person.name}`}
@@ -661,7 +666,7 @@ export function TemplatesPage() {
     <>
       <PageHeader
         title="流程设计"
-        actions={session.authenticated ? (
+        actions={isAdmin(session) ? (
           <button className="primary-button" onClick={() => setEditing(null)}>
             <Plus size={16} />
             新建流程
@@ -677,7 +682,7 @@ export function TemplatesPage() {
                 <strong>{template.name}</strong>
                 <small>{template.items.length}个工作项</small>
               </div>
-              {session.authenticated && (
+              {isAdmin(session) && (
                 <div className="row-actions">
                   <button aria-label={`编辑流程 ${template.name}`} onClick={() => setEditing(template)}>
                     <Edit3 size={15} />
@@ -1003,11 +1008,11 @@ const auditActionLabels: Record<string, string> = {
   permanent_delete: "永久删除", start: "开始", complete: "完成", block: "阻塞",
   unblock: "解除阻塞", cancel: "取消", reorder: "排序", apply_template: "应用模板",
   apply_plan: "补全计划", revoke: "撤销", add_member: "添加成员", remove_member: "移出成员",
-  import: "导入",
+  reset_password: "重置密码", change_password: "修改密码", import: "导入",
 };
 const auditEntityLabels: Record<string, string> = {
   project: "项目", requirement: "需求", work_item: "工作项", progress: "进展",
-  issue: "问题", issue_update: "问题进展", person: "人员", template: "流程设计", api_token: "MCP Token", backup: "数据库备份",
+  issue: "问题", issue_update: "问题进展", person: "人员", account: "账号", template: "流程设计", api_token: "MCP Token", backup: "数据库备份",
 };
 
 export function LogsPage() {

@@ -19,6 +19,7 @@ let templateId = '';
 let personId = '';
 let collaboratorPersonId = '';
 let firstWorkItemId = '';
+let secondWorkItemId = '';
 let issueId = '';
 
 beforeAll(async () => {
@@ -42,7 +43,7 @@ describe('自动化项目管理API', () => {
   });
 
   it('登录后创建结构化模板、项目和自动排期需求', async () => {
-    const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'tester', password: '41_xc7q0qOjo4Inw!' } });
+    const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } });
     const setCookie = login.headers['set-cookie'];
     cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie!).split(';')[0];
     const template = await app.inject({ method: 'POST', url: '/api/templates', headers: { cookie }, payload: {
@@ -132,10 +133,38 @@ describe('自动化项目管理API', () => {
     ]);
 
     const second = progress.json().workItems[1];
+    secondWorkItemId = second.id;
+    await app.inject({ method: 'PATCH', url: `/api/work-items/${second.id}`, headers: { cookie }, payload: { ownerId: personId, assigneeIds: [personId, collaboratorPersonId] } });
     const blocked = await app.inject({ method: 'POST', url: `/api/work-items/${second.id}/block`, headers: { cookie }, payload: { reason: '接口未确定' } });
     expect(blocked.json().status).toBe('blocked');
     expect((await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}` })).json().riskLevel).toBe('high');
     expect((await app.inject({ method: 'POST', url: `/api/work-items/${second.id}/unblock`, headers: { cookie } })).json().status).toBe('not_started');
+  });
+
+  it('人员自动创建账号、首次改密并按本人和项目角色授权', async () => {
+    const accounts = await app.inject({ method: 'GET', url: '/api/accounts', headers: { cookie } });
+    const userAccount = accounts.json().find((item: { personId: string }) => item.personId === collaboratorPersonId);
+    const builtin = accounts.json().find((item: { isBuiltin: boolean }) => item.isBuiltin);
+    expect(userAccount).toMatchObject({ username: '李四', role: 'user', mustChangePassword: true });
+    expect(builtin).toMatchObject({ username: 'admin', role: 'admin' });
+    expect((await app.inject({ method: 'PATCH', url: `/api/accounts/${builtin.id}`, headers: { cookie }, payload: { role: 'user' } })).statusCode).toBe(400);
+
+    const firstLogin = await app.inject({ method: 'POST', url: '/api/login', payload: { username: '李四', password: '888888' } });
+    let userCookie = String(firstLogin.headers['set-cookie']).split(';')[0];
+    expect(firstLogin.json()).toMatchObject({ role: 'user', mustChangePassword: true });
+    expect((await app.inject({ method: 'GET', url: '/api/my-work', headers: { cookie: userCookie } })).statusCode).toBe(403);
+    const changed = await app.inject({ method: 'POST', url: '/api/account/change-password', headers: { cookie: userCookie }, payload: { currentPassword: '888888', newPassword: 'new-password-123' } });
+    userCookie = String(changed.headers['set-cookie']).split(';')[0];
+    expect((await app.inject({ method: 'GET', url: '/api/my-work', headers: { cookie: userCookie } })).json().items.some((item: { id: string }) => item.id === secondWorkItemId)).toBe(true);
+    expect((await app.inject({ method: 'PATCH', url: `/api/work-items/${secondWorkItemId}`, headers: { cookie: userCookie }, payload: { plannedEnd: '2026-12-31' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: `/api/work-items/${secondWorkItemId}/start`, headers: { cookie: userCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: `/api/requirements/${requirementId}/progress`, headers: { cookie: userCookie }, payload: { workItemId: secondWorkItemId, content: '协作联调已开始' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: userCookie }, payload: { projectId, title: '越权需求', priority: 'P2', plannedStart: '2026-09-08', templateId } })).statusCode).toBe(403);
+
+    const promoted = await app.inject({ method: 'PATCH', url: `/api/accounts/${userAccount.id}`, headers: { cookie }, payload: { username: '李四', status: 'active', role: 'project_manager', managedProjectIds: [projectId] } });
+    expect(promoted.json()).toMatchObject({ role: 'project_manager' });
+    expect((await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: userCookie }, payload: { projectId, title: '经理创建需求', priority: 'P2', plannedStart: '2026-09-08', templateId } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/api/templates', headers: { cookie: userCookie }, payload: { name: '越权模板', items: [{ title: '工作', startOffsetDays: 0, durationDays: 1, sortOrder: 0 }] } })).statusCode).toBe(403);
   });
 
   it('补全计划预览只回填空值且不覆盖已有结束日期', async () => {

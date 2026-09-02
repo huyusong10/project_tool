@@ -1,15 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Navigate,
   NavLink,
   Route,
   Routes,
+  useNavigate,
 } from "react-router-dom";
 import {
   Check,
   ChevronDown,
   CircleAlert,
+  ClipboardList,
   FolderKanban,
   GanttChartSquare,
   KeyRound,
@@ -20,6 +22,7 @@ import {
   Settings2,
   ScrollText,
   Users,
+  UserRoundCog,
 } from "lucide-react";
 import { api, jsonBody } from "./api";
 import type { Project, Session } from "./types";
@@ -36,22 +39,32 @@ import {
   TemplatesPage,
 } from "./pages/ManagePages";
 import { Modal } from "./components/Modal";
+import { MyWorkPage } from "./pages/MyWorkPage";
+import { AccountsPage } from "./pages/AccountsPage";
+import { isAdmin } from "./permissions";
 
 const guestSession: Session = {
   authenticated: false,
   username: null,
   httpWarning: true,
+  role: "guest",
+  globalRole: "guest",
+  personId: null,
+  mustChangePassword: false,
+  managedProjectIds: [],
 };
 
 function LoginForm({ onClose }: { onClose: () => void }) {
   const client = useQueryClient();
+  const navigate = useNavigate();
   const [error, setError] = useState("");
   const login = useMutation({
     mutationFn: (value: object) =>
       api<Session>("/api/login", { method: "POST", body: jsonBody(value) }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       void client.invalidateQueries({ queryKey: ["session"] });
       onClose();
+      if (result.role === "user") navigate("/my-work");
     },
     onError: (value) => setError(value.message),
   });
@@ -68,13 +81,13 @@ function LoginForm({ onClose }: { onClose: () => void }) {
         <KeyRound size={25} />
       </div>
       <p className="field-help field-full">
-        登录后可新建、修改项目数据并管理MCP Token。
+        登录后按账号角色进入个人工作台或项目管理功能。
       </p>
       <label className="field field-full">
         <span>用户名</span>
         <input
           name="username"
-          defaultValue="user"
+          defaultValue="admin"
           required
           autoFocus
           autoComplete="username"
@@ -107,7 +120,7 @@ function LoginForm({ onClose }: { onClose: () => void }) {
   );
 }
 
-function Sidebar() {
+function Sidebar({ session }: { session: Session }) {
   return (
     <aside className="sidebar">
       <div className="brand-mark">
@@ -118,6 +131,10 @@ function Sidebar() {
         </div>
       </div>
       <nav>
+        {session.authenticated && <NavLink to="/my-work">
+          <ClipboardList size={18} />
+          我的工作
+        </NavLink>}
         <NavLink to="/" end>
           <GanttChartSquare size={18} />
           项目进展
@@ -134,23 +151,27 @@ function Sidebar() {
           <Users size={18} />
           人员矩阵
         </NavLink>
-        <span className="nav-section">管理</span>
-        <NavLink to="/projects">
+        {(isAdmin(session) || session.managedProjectIds.length > 0) && <span className="nav-section">管理</span>}
+        {(isAdmin(session) || session.managedProjectIds.length > 0) && <NavLink to="/projects">
           <FolderKanban size={18} />
           项目管理
-        </NavLink>
-        <NavLink to="/templates">
+        </NavLink>}
+        {isAdmin(session) && <NavLink to="/accounts">
+          <UserRoundCog size={18} />
+          账号管理
+        </NavLink>}
+        {isAdmin(session) && <NavLink to="/templates">
           <Settings2 size={18} />
           流程设计
-        </NavLink>
-        <NavLink to="/system">
+        </NavLink>}
+        {isAdmin(session) && <NavLink to="/system">
           <LockKeyhole size={18} />
           系统管理
-        </NavLink>
-        <NavLink to="/logs">
+        </NavLink>}
+        {isAdmin(session) && <NavLink to="/logs">
           <ScrollText size={18} />
           操作日志
-        </NavLink>
+        </NavLink>}
       </nav>
       <div className="security-note">
         <LockKeyhole size={15} />
@@ -214,12 +235,14 @@ function Topbar({
   selectedProjectId,
   setSelectedProjectId,
   openLogin,
+  openPassword,
 }: {
   session: Session;
   projects: Project[];
   selectedProjectId: string;
   setSelectedProjectId: (id: string) => void;
   openLogin: () => void;
+  openPassword: () => void;
 }) {
   const client = useQueryClient();
   const logout = useMutation({
@@ -236,10 +259,10 @@ function Topbar({
         <div id="topbar-action-slot" />
         {session.authenticated ? (
           <>
-            <span className="session-badge">
+            <button className="session-badge session-button" onClick={openPassword} title="修改密码">
               <span />
               {session.username}
-            </span>
+            </button>
             <button className="ghost-button" onClick={() => logout.mutate()}>
               <LogOut size={15} />
               退出
@@ -259,10 +282,40 @@ function Topbar({
   );
 }
 
+function PasswordForm({ forced, onClose }: { forced: boolean; onClose: () => void }) {
+  const client = useQueryClient(); const [error, setError] = useState("");
+  const mutation = useMutation({
+    mutationFn: (value: object) => api("/api/account/change-password", { method: "POST", body: jsonBody(value) }),
+    onSuccess: () => { void client.invalidateQueries({ queryKey: ["session"] }); onClose(); },
+    onError: (value) => setError(value.message),
+  });
+  return <form className="form-grid" onSubmit={(event) => {
+    event.preventDefault(); setError(""); const values = Object.fromEntries(new FormData(event.currentTarget));
+    if (values.newPassword !== values.confirmPassword) return setError("两次输入的新密码不一致");
+    mutation.mutate({ currentPassword: values.currentPassword, newPassword: values.newPassword });
+  }}>
+    {forced && <div className="password-required field-full"><KeyRound size={19} /><div><strong>首次登录需要修改密码</strong><span>修改后才能使用工作台和业务功能。</span></div></div>}
+    <label className="field field-full"><span>当前密码</span><input name="currentPassword" type="password" required autoFocus autoComplete="current-password" /></label>
+    <label className="field field-full"><span>新密码</span><input name="newPassword" type="password" minLength={8} required autoComplete="new-password" placeholder="至少8个字符" /></label>
+    <label className="field field-full"><span>确认新密码</span><input name="confirmPassword" type="password" minLength={8} required autoComplete="new-password" /></label>
+    {error && <p className="form-error field-full">{error}</p>}
+    <div className="form-actions field-full">{!forced && <button type="button" className="ghost-button" onClick={onClose}>取消</button>}<button className="primary-button" disabled={mutation.isPending}>保存新密码</button></div>
+  </form>;
+}
+
+function RoleRoute({ session, ready, admin = false, manager = false, children }: { session: Session; ready: boolean; admin?: boolean; manager?: boolean; children: ReactNode }) {
+  if (!ready) return <div className="page-content"><div className="loading-block">正在确认账号权限…</div></div>;
+  if (!session.authenticated) return <Navigate to="/" replace />;
+  if (admin && !isAdmin(session)) return <Navigate to="/my-work" replace />;
+  if (manager && !isAdmin(session) && !session.managedProjectIds.length) return <Navigate to="/my-work" replace />;
+  return children;
+}
+
 export function App() {
   const [loginOpen, setLoginOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState("");
-  const { data: session = guestSession } = useQuery({
+  const { data: session = guestSession, isFetched: sessionReady } = useQuery({
     queryKey: ["session"],
     queryFn: () => api<Session>("/api/session"),
   });
@@ -287,7 +340,7 @@ export function App() {
   return (
     <AppContext.Provider value={context}>
       <div className="app-shell">
-        <Sidebar />
+        <Sidebar session={session} />
         <main>
           <Topbar
             session={session}
@@ -295,18 +348,21 @@ export function App() {
             selectedProjectId={selectedProjectId}
             setSelectedProjectId={setSelectedProjectId}
             openLogin={() => setLoginOpen(true)}
+            openPassword={() => setPasswordOpen(true)}
           />
           <Routes>
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/my-work" element={<RoleRoute session={session} ready={sessionReady}><MyWorkPage /></RoleRoute>} />
             <Route path="/requirements" element={<RequirementsPage />} />
             <Route path="/requirements/:id" element={<RequirementPage />} />
             <Route path="/issues" element={<IssuesPage />} />
-            <Route path="/projects" element={<ProjectsPage />} />
+            <Route path="/projects" element={<RoleRoute session={session} ready={sessionReady} manager><ProjectsPage /></RoleRoute>} />
             <Route path="/people" element={<PeoplePage />} />
             <Route path="/concurrency" element={<Navigate to="/people?view=analysis" replace />} />
-            <Route path="/templates" element={<TemplatesPage />} />
-            <Route path="/system" element={<SystemPage />} />
-            <Route path="/logs" element={<LogsPage />} />
+            <Route path="/accounts" element={<RoleRoute session={session} ready={sessionReady} admin><AccountsPage /></RoleRoute>} />
+            <Route path="/templates" element={<RoleRoute session={session} ready={sessionReady} admin><TemplatesPage /></RoleRoute>} />
+            <Route path="/system" element={<RoleRoute session={session} ready={sessionReady} admin><SystemPage /></RoleRoute>} />
+            <Route path="/logs" element={<RoleRoute session={session} ready={sessionReady} admin><LogsPage /></RoleRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
@@ -319,6 +375,9 @@ export function App() {
             <LoginForm onClose={() => setLoginOpen(false)} />
           </Modal>
         )}
+        {session.authenticated && (passwordOpen || session.mustChangePassword) && <Modal title={session.mustChangePassword ? "修改初始密码" : "修改密码"} onClose={() => setPasswordOpen(false)} width={460} closable={!session.mustChangePassword}>
+          <PasswordForm forced={session.mustChangePassword} onClose={() => setPasswordOpen(false)} />
+        </Modal>}
       </div>
     </AppContext.Provider>
   );

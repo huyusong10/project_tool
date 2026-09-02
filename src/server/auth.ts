@@ -1,7 +1,15 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { config } from './config';
 
-export type Actor = { type: 'user' | 'token'; id: string; label: string };
+export type AccountRole = 'user' | 'admin';
+export type Actor = {
+  type: 'user' | 'token';
+  id: string;
+  label: string;
+  accountId?: string;
+  personId?: string | null;
+  globalRole?: AccountRole;
+};
 
 export function hashPassword(password: string, salt = randomBytes(16).toString('hex')): string {
   const derived = scryptSync(password, salt, 64).toString('hex');
@@ -16,17 +24,21 @@ export function verifyPassword(password: string, encoded: string): boolean {
   return expected.length === actual.length && timingSafeEqual(actual, expected);
 }
 
+export function normalizeUsername(username: string) {
+  return username.trim().toLocaleLowerCase('zh-CN');
+}
+
 function sessionSignature(value: string) {
   return createHmac('sha256', config.sessionSecret).update(value).digest('base64url');
 }
 
-export function createSessionToken(username: string) {
+export function createSessionToken(accountId: string, sessionVersion: number) {
   const expiresAt = Date.now() + config.sessionHours * 60 * 60 * 1000;
-  const value = Buffer.from(JSON.stringify({ username, expiresAt })).toString('base64url');
+  const value = Buffer.from(JSON.stringify({ accountId, sessionVersion, expiresAt })).toString('base64url');
   return `${value}.${sessionSignature(value)}`;
 }
 
-export function verifySessionToken(token?: string): { username: string; expiresAt: number } | null {
+export function verifySessionToken(token?: string): { accountId: string; sessionVersion: number; expiresAt: number } | null {
   if (!token || !config.sessionSecret) return null;
   const [value, signature] = token.split('.');
   if (!value || !signature) return null;
@@ -34,8 +46,8 @@ export function verifySessionToken(token?: string): { username: string; expiresA
   const actual = Buffer.from(signature);
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
   try {
-    const payload = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as { username: string; expiresAt: number };
-    if (payload.username !== config.appUsername || payload.expiresAt <= Date.now()) return null;
+    const payload = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as { accountId: string; sessionVersion: number; expiresAt: number };
+    if (!payload.accountId || !Number.isInteger(payload.sessionVersion) || payload.expiresAt <= Date.now()) return null;
     return payload;
   } catch {
     return null;
