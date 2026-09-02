@@ -171,15 +171,16 @@ export function getMyWork(accountId: string) {
     r.project_id AS projectId, pr.name AS projectName, w.title, w.owner_id AS ownerId,
     owner.name AS ownerName, w.status, w.planned_start AS plannedStart, w.planned_end AS plannedEnd,
     w.actual_start AS actualStart, w.actual_end AS actualEnd, w.forecast_end AS forecastEnd,
-    w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.sort_order AS sortOrder,
+    w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.progress, w.sort_order AS sortOrder,
     w.created_at AS createdAt, w.updated_at AS updatedAt,
     CASE WHEN w.owner_id=? THEN 'owner' ELSE 'collaborator' END AS assignmentType
     FROM work_items w JOIN requirements r ON r.id=w.requirement_id
     JOIN projects pr ON pr.id=r.project_id LEFT JOIN people owner ON owner.id=w.owner_id
+    JOIN project_people access ON access.project_id=r.project_id AND access.person_id=?
     WHERE r.deleted_at IS NULL AND pr.deleted_at IS NULL AND
       (w.owner_id=? OR EXISTS (SELECT 1 FROM work_item_collaborators c WHERE c.work_item_id=w.id AND c.person_id=?))
     ORDER BY CASE WHEN w.actual_end IS NULL THEN 0 ELSE 1 END, COALESCE(w.planned_end, '9999-12-31'), w.updated_at DESC`)
-    .all(account.personId, account.personId, account.personId) as any[];
+    .all(account.personId, account.personId, account.personId, account.personId) as any[];
   const today = todayIso();
   const items = rawItems.map((item) => {
     const status = deriveWorkItemStatus(item);
@@ -207,10 +208,13 @@ export function getMyWork(accountId: string) {
     .filter((date) => ![0, 6].includes(new Date(`${date}T12:00:00`).getDay()))
     .map((date) => ({ date, count: items.filter((item) => item.status !== 'cancelled' && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd).length }));
   const recentProgress = sqlite.prepare(`SELECT u.id, u.requirement_id AS requirementId, r.title AS requirementTitle,
-    u.work_item_id AS workItemId, w.title AS workItemTitle, u.percent, u.content,
+    u.work_item_id AS workItemId, w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content,
     u.created_at AS createdAt, u.updated_at AS updatedAt
     FROM progress_updates u JOIN requirements r ON r.id=u.requirement_id
-    LEFT JOIN work_items w ON w.id=u.work_item_id WHERE u.created_by_account_id=?
-    ORDER BY u.created_at DESC LIMIT 8`).all(accountId);
+    JOIN projects pr ON pr.id=r.project_id
+    JOIN project_people access ON access.project_id=r.project_id AND access.person_id=?
+    LEFT JOIN work_items w ON w.id=u.work_item_id
+    WHERE u.created_by_account_id=? AND r.deleted_at IS NULL AND pr.deleted_at IS NULL
+    ORDER BY u.created_at DESC LIMIT 8`).all(account.personId, accountId);
   return { summary, items, completionTrend, upcoming, recentProgress };
 }

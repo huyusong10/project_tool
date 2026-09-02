@@ -6,18 +6,26 @@ export type Session = {
 export type Project = {
   id: string; name: string; status: string; plannedStart: string | null; plannedEnd: string | null;
   defaultTemplateId: string | null; createdAt: string; updatedAt: string; deletedAt?: string | null;
+  projectRole?: 'viewer' | 'member' | 'manager'; canManage?: boolean;
+};
+
+// 仅用于控制界面可见性；服务端始终独立执行授权校验。
+export type ProjectPermission = {
+  canRead: boolean;
+  canContribute: boolean;
+  canManage: boolean;
 };
 export type Person = {
   id: string; name: string; jobTitle: string | null; active: boolean | number;
-  projectRole?: 'member' | 'manager'; username?: string | null; accountStatus?: 'active' | 'disabled' | null;
+  projectRole?: 'viewer' | 'member' | 'manager'; username?: string | null; accountStatus?: 'active' | 'disabled' | null;
   createdAt: string; updatedAt: string; deletedAt?: string | null;
 };
 export type TemplateItem = {
   id: string; templateId: string; title: string; sortOrder: number;
-  startOffsetDays: number; durationDays: number; deletedAt?: string | null;
+  startOffsetDays: number; durationDays: number; milestoneLabel: string | null; deletedAt?: string | null;
 };
 export type WorkItemTemplate = {
-  id: string; name: string; description: string; createdAt: string; updatedAt: string; deletedAt?: string | null; items: TemplateItem[];
+  id: string; projectId: string; name: string; description: string; createdAt: string; updatedAt: string; deletedAt?: string | null; items: TemplateItem[];
 };
 export type WorkItem = {
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
@@ -25,19 +33,21 @@ export type WorkItem = {
   assigneeIds: string[]; assigneeNames: string[];
   status: string; plannedStart: string | null; plannedEnd: string | null; actualStart: string | null; actualEnd: string | null;
   forecastEnd: string | null; blockedAt: string | null; blockedReason: string | null;
+  milestoneLabel: string | null;
+  progress: number;
   sortOrder: number; createdAt: string; updatedAt: string;
 };
 export type ProgressUpdate = {
   id: string; requirementId: string; workItemId: string | null; workItemTitle: string | null;
-  percent: number; content: string; createdByAccountId?: string | null; createdByName?: string | null; createdAt: string; updatedAt: string;
+  percent: number; workItemPercent: number | null; content: string; createdByAccountId?: string | null; createdByName?: string | null; createdAt: string; updatedAt: string;
 };
 export type IssueUpdate = {
-  id: string; issueId: string; content: string; createdAt: string; updatedAt: string;
+  id: string; issueId: string; progress: number | null; content: string; createdByAccountId: string | null; createdByName: string | null; createdAt: string; updatedAt: string;
 };
 export type Issue = {
   id: string; projectId: string; projectName: string; requirementId: string | null; requirementTitle: string | null;
   sourceRef: string | null; title: string; impact: string | null; reporter: string | null;
-  ownerId: string | null; ownerName: string | null; status: string; priority: string;
+  ownerId: string | null; ownerName: string | null; status: string; priority: string; progress: number;
   discoveredAt: string; dueDate: string | null; resolvedAt: string | null;
   createdAt: string; updatedAt: string; latestUpdate: string | null; latestUpdateAt: string | null;
   overdue: boolean; updates?: IssueUpdate[];
@@ -81,15 +91,15 @@ export type ConcurrencyDay = {
 };
 export type PeopleConcurrency = {
   from: string; to: string; dates: string[];
-  people: Array<{ id: string; name: string; jobTitle: string | null; currentCount: number; peakCount: number; days: ConcurrencyDay[] }>;
-  currentTop: Array<{ id: string; name: string; jobTitle: string | null; currentCount: number; peakCount: number }>;
+  people: Array<{ id: string; name: string; jobTitle: string | null; currentCount: number; externalCurrentCount?: number; peakCount: number; days: ConcurrencyDay[] }>;
+  currentTop: Array<{ id: string; name: string; jobTitle: string | null; currentCount: number; externalCurrentCount?: number; peakCount: number }>;
 };
 export type Archives = {
   projects: ArchiveItem[]; requirements: ArchiveItem[]; people: ArchiveItem[]; templates: ArchiveItem[];
 };
 export type ArchiveItem = { id: string; title: string; jobTitle?: string | null; deletedAt: string };
-export type ApiToken = { id: string; name: string; prefix: string; expiresAt: string | null; lastUsedAt: string | null; revokedAt: string | null; createdAt: string };
-export type AuditLog = { id: string; actorType: string; actorId: string | null; actorName: string | null; tokenName: string | null; action: string; entityType: string; entityId: string | null; summary: string; createdAt: string };
+export type ApiToken = { id: string; name: string; prefix: string; accountId: string; accountName?: string | null; expiresAt: string | null; lastUsedAt: string | null; revokedAt: string | null; createdAt: string };
+export type AuditLog = { id: string; actorType: string; actorId: string | null; actorName: string | null; tokenName: string | null; action: string; entityType: string; entityId: string | null; projectId: string | null; projectName?: string | null; summary: string; createdAt: string };
 export type AuditPage = { items: AuditLog[]; total: number; page: number; pageSize: number; pages: number };
 export type Backup = { name: string; size: number; createdAt: string };
 export type Account = {

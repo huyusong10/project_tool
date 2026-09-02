@@ -1,4 +1,9 @@
 import { defineConfig } from "@playwright/test";
+import os from "node:os";
+import path from "node:path";
+
+const testPort = 3211;
+const testRunId = String(process.pid);
 
 const viewports = [
   { name: "office-1280", width: 1280, height: 800, deviceScaleFactor: 1 },
@@ -17,16 +22,24 @@ export default defineConfig({
   workers: 1,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:3210",
+    baseURL: `http://127.0.0.1:${testPort}`,
     channel: "msedge",
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
   webServer: {
     command: "npm run build && npm start",
-    url: "http://127.0.0.1:3210/health",
-    reuseExistingServer: true,
+    url: `http://127.0.0.1:${testPort}/health`,
+    reuseExistingServer: false,
     timeout: 120_000,
+    env: {
+      ...process.env,
+      PORT: String(testPort),
+      NODE_ENV: "test",
+      DB_PATH: path.join(os.tmpdir(), `project-manage-playwright-${testRunId}.db`),
+      BACKUP_DIR: path.join(os.tmpdir(), `project-manage-playwright-backups-${testRunId}`),
+      APP_PASSWORD_HASH: "scrypt$4c63a6f93ff4f94b031b7e7583592177$b598dbddaf9dd06678ff8756923d9e0a7f2d68eaa45bc644fbf4a73c9298970c7489671dfcfc8be282022c26a3370fb040f3f086a45faa1e1abde04bbe4a51ef",
+    },
   },
   projects: viewports.map(({ name, width, height, deviceScaleFactor }) => ({
     name,

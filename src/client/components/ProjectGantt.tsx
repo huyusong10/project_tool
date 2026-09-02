@@ -1,29 +1,24 @@
-import { useMemo, useRef, useState, type CSSProperties, type HTMLAttributes } from "react";
-import {
-  addBusinessDays,
-  eachDayOfInterval,
-  format,
-  isWeekend,
-  isValid,
-  parseISO,
-  startOfDay,
-} from "date-fns";
+import { useMemo, useRef, useState } from "react";
+import { format } from "date-fns";
 import { CircleAlert, LocateFixed, RotateCcw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { priorityLabels, requirementStatusLabels, riskLabels } from "../../shared/domain";
 import type { Requirement } from "../types";
 import { EmptyState } from "./Modal";
 import { useGanttTooltip } from "./GanttTooltip";
+import {
+  buildBusinessDayTimeline,
+  GanttMilestoneMarker,
+  GanttPlanActualBars,
+  GanttScale,
+  ganttTodayPosition,
+  ganttTrackStyle,
+  ganttZoomOptions,
+  toGanttDate,
+  type GanttZoom,
+} from "./GanttTimeline";
 
-type Zoom = "day" | "week" | "month";
 type RequirementSort = "deadline" | "priority" | "risk" | "progress" | "updated";
-
-const zoomOptions: Record<Zoom, { label: string; cellWidth: number; padding: number; minimumDays: number }> = {
-  day: { label: "日", cellWidth: 40, padding: 3, minimumDays: 21 },
-  week: { label: "周", cellWidth: 15, padding: 7, minimumDays: 56 },
-  month: { label: "月", cellWidth: 6, padding: 15, minimumDays: 180 },
-};
-const weekdayLabels = ["日", "一", "二", "三", "四", "五", "六"];
 const priorityOrder: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 const riskOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
@@ -62,22 +57,16 @@ function compareRequirements(left: Requirement, right: Requirement, sort: Requir
 }
 
 function toDate(value: string | null | undefined) {
-  if (!value) return null;
-  const parsed = parseISO(value);
-  return isValid(parsed) ? parsed : null;
+  return toGanttDate(value);
 }
 
-function dateLabel(value: string | null | undefined) {
+function dateLabel(value: string | null | undefined, empty = "待排期") {
   const parsed = toDate(value);
-  return parsed ? format(parsed, "yyyy/MM/dd") : "待排期";
+  return parsed ? format(parsed, "yyyy/MM/dd") : empty;
 }
 
 function statusLabel(status: string) {
   return requirementStatusLabels[status as keyof typeof requirementStatusLabels] || status;
-}
-
-function statusClass(status: string) {
-  return status.replaceAll("_", "-");
 }
 
 function isClosedRequirement(requirement: Requirement) {
@@ -89,22 +78,22 @@ function activeRiskClass(requirement: Requirement) {
   return ` gantt-risk-${requirement.riskLevel}`;
 }
 
-function businessDateIndex(date: Date, dates: Date[], edge: "start" | "end") {
-  const timestamp = startOfDay(date).getTime();
-  if (edge === "start") {
-    const index = dates.findIndex((candidate) => candidate.getTime() >= timestamp);
-    return index < 0 ? dates.length : index;
-  }
-  for (let index = dates.length - 1; index >= 0; index -= 1) {
-    if (dates[index].getTime() <= timestamp) return index;
-  }
-  return -1;
+function requirementActualRange(requirement: Requirement) {
+  const starts = requirement.workItems.map((item) => item.actualStart).filter(Boolean) as string[];
+  if (!starts.length) return { start: null, end: null };
+  const start = starts.sort()[0];
+  const completedEnds = requirement.workItems.map((item) => item.actualEnd).filter(Boolean) as string[];
+  const end = requirement.status === "completed" || requirement.status === "cancelled"
+    ? completedEnds.sort().at(-1) || start
+    : format(new Date(), "yyyy-MM-dd");
+  return { start, end };
 }
 
 function RequirementPopover({ requirement }: { requirement: Requirement }) {
   const updates = requirement.recentProgressUpdates || [];
   const risk = riskLabels[requirement.riskLevel as keyof typeof riskLabels] || requirement.riskLevel;
   const closed = isClosedRequirement(requirement);
+  const actual = requirementActualRange(requirement);
   return <>
     <header className="gantt-popover-header">
       <div><strong>{requirement.title}</strong><span>{requirement.projectName}</span></div>
@@ -112,7 +101,7 @@ function RequirementPopover({ requirement }: { requirement: Requirement }) {
     </header>
     <div className="gantt-popover-badges">
       <span className={`status-pill status-${requirement.status}`}>{statusLabel(requirement.status)}</span>
-      <span>{requirement.progress}%</span>
+      <span>实际进度 {requirement.progress}%</span>
       {!closed && (requirement.riskEvaluated
         ? <span className={`risk-badge risk-${requirement.riskLevel}`}>{risk}</span>
         : <span className="risk-badge risk-pending">待评估</span>)}
@@ -121,7 +110,8 @@ function RequirementPopover({ requirement }: { requirement: Requirement }) {
     </div>
     <dl className="gantt-popover-metrics">
       <div><dt>计划周期</dt><dd>{dateLabel(requirement.plannedStart)} — {dateLabel(requirement.plannedEnd)}</dd></div>
-      <div><dt>计划 / 实际 / Gap</dt><dd>{requirement.plannedProgress}% / {requirement.progress}% / {requirement.progressGap}%</dd></div>
+      <div><dt>实际周期</dt><dd>{dateLabel(actual.start, "未开始")} — {dateLabel(actual.end, "未完成")}</dd></div>
+      <div><dt>计划进度 / 实际进度 / Gap</dt><dd>{requirement.plannedProgress}% / {requirement.progress}% / {requirement.progressGap}%</dd></div>
       <div><dt>风险判定</dt><dd className={requirement.riskLevel === "high" && requirement.riskEvaluated ? "danger-text" : ""}>{requirement.riskReason}</dd></div>
     </dl>
     <div className="gantt-popover-progress"><i style={{ width: `${requirement.plannedProgress}%` }} /><span style={{ width: `${requirement.progress}%` }} /></div>
@@ -137,60 +127,6 @@ function RequirementPopover({ requirement }: { requirement: Requirement }) {
   </>;
 }
 
-function TimelineBar({
-  start,
-  end,
-  dates,
-  cellWidth,
-  status,
-  progress,
-  delayedUntil,
-  tooltipProps,
-}: {
-  start: string | null;
-  end: string | null;
-  dates: Date[];
-  cellWidth: number;
-  status: string;
-  progress: number;
-  delayedUntil?: string | null;
-  tooltipProps?: HTMLAttributes<HTMLDivElement>;
-}) {
-  const startDate = toDate(start);
-  const endDate = toDate(end);
-  if (!startDate || !endDate) return <span className="gantt-unscheduled">待排期</span>;
-
-  const startIndex = businessDateIndex(startDate, dates, "start");
-  const endIndex = businessDateIndex(endDate, dates, "end");
-  if (startIndex >= dates.length || endIndex < startIndex) return <span className="gantt-unscheduled">待排期</span>;
-  const left = startIndex * cellWidth;
-  const width = Math.max(1, endIndex - startIndex + 1) * cellWidth;
-  const delayedDate = toDate(delayedUntil);
-  const delayedEndIndex = delayedDate ? businessDateIndex(delayedDate, dates, "end") : endIndex;
-  const extensionDays = Math.max(0, delayedEndIndex - endIndex);
-
-  return (
-    <>
-      <div
-        className={`gantt-schedule-bar gantt-status-${statusClass(status)}`}
-        style={{ left, width }}
-        tabIndex={0}
-        {...tooltipProps}
-      >
-        <span className="gantt-progress-fill" style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} />
-        {width >= 96 && <b>{progress}% · {statusLabel(status)}</b>}
-      </div>
-      {extensionDays > 0 && (
-        <div
-          className="gantt-delay-extension"
-          style={{ left: left + width, width: extensionDays * cellWidth }}
-          {...tooltipProps}
-        />
-      )}
-    </>
-  );
-}
-
 export function ProjectGantt({
   requirements,
   projectStart,
@@ -203,7 +139,7 @@ export function ProjectGantt({
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const ganttTooltip = useGanttTooltip();
-  const [zoom, setZoom] = useState<Zoom>("day");
+  const [zoom, setZoom] = useState<GanttZoom>("day");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
@@ -211,7 +147,7 @@ export function ProjectGantt({
   const [personId, setPersonId] = useState("");
   const [schedule, setSchedule] = useState("");
   const [sort, setSort] = useState<RequirementSort>("deadline");
-  const option = zoomOptions[zoom];
+  const option = ganttZoomOptions[zoom];
 
   const people = useMemo(() => {
     const owners = new Map<string, string>();
@@ -251,64 +187,18 @@ export function ProjectGantt({
   };
 
   const range = useMemo(() => {
-    const values: Date[] = [];
-    const append = (value: string | null | undefined) => {
-      const parsed = toDate(value);
-      if (parsed) values.push(parsed);
-    };
-    append(projectStart);
-    append(projectEnd);
+    const values: Array<string | null | undefined> = [projectStart, projectEnd];
     requirements.forEach((requirement) => {
-      append(requirement.plannedStart);
-      append(requirement.plannedEnd);
-      append(requirement.effectiveEnd);
+      const actual = requirementActualRange(requirement);
+      values.push(requirement.plannedStart, requirement.plannedEnd, requirement.effectiveEnd, actual.start, actual.end);
     });
-    const today = new Date();
-    const earliest = values.length
-      ? new Date(Math.min(...values.map((date) => date.getTime())))
-      : today;
-    const latest = values.length
-      ? new Date(Math.max(...values.map((date) => date.getTime())))
-      : today;
-    const start = startOfDay(addBusinessDays(earliest, -option.padding));
-    let end = startOfDay(addBusinessDays(latest, option.padding));
-    let dates = eachDayOfInterval({ start, end }).filter((date) => !isWeekend(date));
-    if (dates.length < option.minimumDays) {
-      end = startOfDay(addBusinessDays(start, option.minimumDays - 1));
-      dates = eachDayOfInterval({ start, end }).filter((date) => !isWeekend(date));
-    }
-    return { start, end, dates, days: dates.length };
-  }, [option.minimumDays, option.padding, projectEnd, projectStart, requirements]);
+    return buildBusinessDayTimeline(values, zoom);
+  }, [projectEnd, projectStart, requirements, zoom]);
 
   const timelineWidth = range.days * option.cellWidth;
   const dates = range.dates;
-  const firstMonday = dates.findIndex((date) => date.getDay() === 1);
-  const trackStyle = {
-    width: timelineWidth,
-    "--gantt-cell": `${option.cellWidth}px`,
-    "--gantt-week": `${option.cellWidth * 5}px`,
-    "--gantt-week-offset": `${Math.max(0, firstMonday) * option.cellWidth}px`,
-  } as CSSProperties;
-  const today = startOfDay(new Date());
-  const todayOffset = businessDateIndex(today, dates, "start");
-  const todayVisible = !isWeekend(today) && todayOffset >= 0 && todayOffset < range.days
-    && dates[todayOffset]?.getTime() === today.getTime();
-
-  const markerVisible = (date: Date, index: number) => {
-    if (zoom === "day") return true;
-    if (zoom === "week") return index === 0 || date.getDay() === 1;
-    return index === 0 || dates[index - 1]?.getMonth() !== date.getMonth();
-  };
-  const markerText = (date: Date) => {
-    if (zoom === "day") return format(date, "MM/dd");
-    if (zoom === "week") return format(date, "MM/dd");
-    return format(date, "yyyy/MM");
-  };
-  const markerWidth = (index: number) => {
-    if (zoom === "day") return option.cellWidth;
-    const nextIndex = dates.findIndex((date, candidateIndex) => candidateIndex > index && markerVisible(date, candidateIndex));
-    return (nextIndex < 0 ? dates.length - index : nextIndex - index) * option.cellWidth;
-  };
+  const trackStyle = ganttTrackStyle(dates, option.cellWidth);
+  const { offset: todayOffset, visible: todayVisible } = ganttTodayPosition(dates);
 
   const scrollToToday = () => {
     if (!todayVisible || !scrollRef.current) return;
@@ -326,11 +216,10 @@ export function ProjectGantt({
     <section className="project-gantt-panel">
       <header className="project-gantt-toolbar">
         <div className="gantt-legend" aria-label="甘特图图例">
-          <span><i className="legend-not-started" />未开始</span>
-          <span><i className="legend-in-progress" />进行中</span>
-          <span><i className="legend-blocked" />阻塞</span>
-          <span><i className="legend-completed" />已完成</span>
-          <span><i className="legend-delayed" />延期</span>
+          <span><i className="legend-plan-pill" />计划窗口</span>
+          <span><i className="legend-actual" />实际执行（颜色代表状态）</span>
+          <span><i className="legend-delayed" />超出计划</span>
+          <span><i className="legend-milestone" />里程碑</span>
           <span><i className="legend-risk-medium" />中风险</span>
           <span><i className="legend-risk-high" />高风险</span>
           <span className="gantt-axis-note">横轴按工作日显示</span>
@@ -340,9 +229,9 @@ export function ProjectGantt({
             <LocateFixed size={15} /> 今天
           </button>
           <div className="view-tabs" aria-label="时间粒度">
-            {(Object.keys(zoomOptions) as Zoom[]).map((key) => (
+            {(Object.keys(ganttZoomOptions) as GanttZoom[]).map((key) => (
               <button key={key} className={zoom === key ? "active" : ""} onClick={() => setZoom(key)}>
-                {zoomOptions[key].label}
+                {ganttZoomOptions[key].label}
               </button>
             ))}
           </div>
@@ -375,7 +264,7 @@ export function ProjectGantt({
           <option value="on_track">计划正常</option>
           <option value="unplanned">待排期</option>
         </select>
-        <select value={sort} onChange={(event) => setSort(event.target.value as RequirementSort)} aria-label="需求排序">
+        <select className="gantt-sort-select" value={sort} onChange={(event) => setSort(event.target.value as RequirementSort)} aria-label="需求排序">
           <option value="deadline">截止时间 · 临近优先</option>
           <option value="priority">优先级 · 高优先</option>
           <option value="risk">风险 · 高优先</option>
@@ -396,32 +285,10 @@ export function ProjectGantt({
               <strong>需求</strong>
               <span>{visibleRequirements.length} 项需求</span>
             </div>
-            <div className="gantt-scale" style={trackStyle} role="columnheader">
-              {dates.map((date, index) => markerVisible(date, index) && (
-                <span
-                  className={`gantt-scale-label${date.getDay() === 0 || date.getDay() === 6 ? " weekend" : ""}`}
-                  style={{
-                    left: index * option.cellWidth,
-                    width: markerWidth(index),
-                  }}
-                  key={date.toISOString()}
-                >
-                  {markerText(date)}
-                </span>
-              ))}
-              {dates.map((date, index) => (
-                <i
-                  className={`gantt-scale-tick${date.getDay() === 1 || index === 0 ? " is-major" : ""}`}
-                  style={{ left: index * option.cellWidth, width: option.cellWidth }}
-                  key={`tick-${date.toISOString()}`}
-                >
-                  {zoom !== "month" && <span>{zoom === "day" ? `周${weekdayLabels[date.getDay()]}` : format(date, "dd")}</span>}
-                </i>
-              ))}
-              {todayVisible && <i className="gantt-today-line" style={{ left: todayOffset * option.cellWidth + option.cellWidth / 2 }} />}
-            </div>
+            <GanttScale dates={dates} zoom={zoom} cellWidth={option.cellWidth} todayOffset={todayOffset} todayVisible={todayVisible} />
             {visibleRequirements.map((requirement) => {
               const tooltipProps = ganttTooltip.bind(<RequirementPopover requirement={requirement} />);
+              const actual = requirementActualRange(requirement);
               return (
                 <div className={`gantt-row${requirement.delayed ? " is-delayed" : ""}${activeRiskClass(requirement)}`} role="row" key={requirement.id}>
                   <div className="gantt-sticky-left gantt-requirement-info" role="rowheader">
@@ -431,8 +298,6 @@ export function ProjectGantt({
                       </button>
                       <div>
                         <span className={`priority-badge priority-${requirement.priority.toLowerCase()}`}>{priorityLabels[requirement.priority as keyof typeof priorityLabels] || requirement.priority}</span>
-                        <span>{statusLabel(requirement.status)}</span>
-                        <span>{requirement.progress}%</span>
                         {!isClosedRequirement(requirement) && (requirement.riskEvaluated
                           ? requirement.riskLevel !== "low" && <span className={`gantt-risk-chip ${requirement.riskLevel}`}>{riskLabels[requirement.riskLevel as keyof typeof riskLabels]} · Gap {requirement.progressGap}%</span>
                           : <span className="gantt-risk-chip pending">待评估</span>)}
@@ -450,17 +315,19 @@ export function ProjectGantt({
                       </div>
                     </div>
                   </div>
-                  <div className="gantt-track" style={trackStyle} role="cell">
-                    <TimelineBar
-                      start={requirement.plannedStart}
-                      end={requirement.plannedEnd}
+                  <div className="gantt-track unified-gantt-track" style={trackStyle} role="cell" tabIndex={0} {...tooltipProps}>
+                    <GanttPlanActualBars
+                      plannedStart={requirement.plannedStart}
+                      plannedEnd={requirement.plannedEnd}
+                      actualStart={actual.start}
+                      actualEnd={actual.end}
                       dates={dates}
                       cellWidth={option.cellWidth}
                       status={requirement.status}
-                      progress={requirement.progress}
-                      delayedUntil={requirement.delayed ? requirement.effectiveEnd : null}
-                      tooltipProps={tooltipProps}
+                      label={`${statusLabel(requirement.status)} · 实际进度 ${requirement.progress}%`}
+                      showUnscheduled
                     />
+                    {requirement.workItems.filter((item) => item.milestoneLabel).map((item) => <GanttMilestoneMarker key={item.id} label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={option.cellWidth} />)}
                     {todayVisible && <i className="gantt-today-line" style={{ left: todayOffset * option.cellWidth + option.cellWidth / 2 }} />}
                   </div>
                 </div>

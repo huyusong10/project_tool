@@ -8,19 +8,22 @@ import { requirementStatusLabels } from '../../shared/domain';
 import { Chart } from '../components/Chart';
 import { EmptyState, Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
+import { ProgressInput } from '../components/ProgressInput';
 
 function ProgressForm({ item, onClose }: { item: MyWorkItem; onClose: () => void }) {
   const client = useQueryClient();
+  const [progress, setProgress] = useState(item.progress);
   const mutation = useMutation({
-    mutationFn: (content: string) => api(`/api/requirements/${item.requirementId}/progress`, {
-      method: 'POST', body: jsonBody({ content, workItemId: item.id }),
+    mutationFn: (value: { content: string; workItemPercent: number }) => api(`/api/requirements/${item.requirementId}/progress`, {
+      method: 'POST', body: jsonBody({ ...value, workItemId: item.id }),
     }),
     onSuccess: () => { void client.invalidateQueries({ queryKey: ['my-work'] }); onClose(); },
   });
   return <form className="form-grid" onSubmit={(event) => {
-    event.preventDefault(); mutation.mutate(String(new FormData(event.currentTarget).get('content') || ''));
+    event.preventDefault(); mutation.mutate({ content: String(new FormData(event.currentTarget).get('content') || ''), workItemPercent: progress });
   }}>
     <div className="my-work-context field-full"><strong>{item.title}</strong><span>{item.projectName} · {item.requirementTitle}</span></div>
+    <ProgressInput name="workItemPercent" value={progress} onChange={setProgress} />
     <label className="field field-full"><span>具体进展</span><textarea name="content" rows={5} required autoFocus placeholder="说明完成了什么、当前结果或下一步" /></label>
     {mutation.error && <p className="form-error field-full">{mutation.error.message}</p>}
     <div className="form-actions field-full"><button type="button" className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" disabled={mutation.isPending}>保存进展</button></div>
@@ -79,7 +82,7 @@ export function MyWorkPage() {
               <div><span className={`work-status-dot work-${item.status}`} /><strong>{item.title}</strong><em>{item.assignmentType === 'owner' ? '主责' : '协作'}</em></div>
               <p>{item.projectName} · {item.requirementTitle}</p>
             </button>
-            <div className="my-work-dates"><span>计划 {item.plannedStart || '—'} → {item.plannedEnd || '—'}</span><b className={item.overdue ? 'danger-text' : ''}>{requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}</b></div>
+            <div className="my-work-dates"><span>计划 {item.plannedStart || '—'} → {item.plannedEnd || '—'}</span><span className="my-work-progress"><i><b style={{ width: `${item.progress}%` }} /></i>{item.progress}%</span><b className={item.overdue ? 'danger-text' : ''}>{requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}</b></div>
             <div className="my-work-actions">
               {item.status === 'not_started' && <button onClick={() => action.mutate({ id: item.id, action: 'start' })}><Play size={14} />开始</button>}
               {item.status === 'in_progress' && <><button onClick={() => action.mutate({ id: item.id, action: 'complete' })}><Check size={14} />完成</button><button onClick={() => { const reason = prompt('请输入阻塞原因'); if (reason?.trim()) action.mutate({ id: item.id, action: 'block', reason }); }}><CircleStop size={14} />阻塞</button></>}

@@ -12,34 +12,29 @@ fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
 
 export const sqlite = new Database(config.dbPath);
 sqlite.pragma('journal_mode = WAL');
-sqlite.pragma('foreign_keys = ON');
 sqlite.pragma('busy_timeout = 5000');
 
 export const db = drizzle(sqlite, { schema });
-migrate(db, { migrationsFolder: path.join(config.rootDir, 'drizzle') });
-sqlite.pragma('optimize');
-
-function seedBaseData() {
-  const row = sqlite.prepare('SELECT COUNT(*) AS count FROM work_item_templates WHERE deleted_at IS NULL').get() as { count: number };
-  if (row.count > 0) return;
-  const now = new Date().toISOString();
-  const templateId = randomUUID();
-  sqlite.prepare('INSERT INTO work_item_templates (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
-    .run(templateId, '通用研发模板', now, now);
-  const insert = sqlite.prepare(`
-    INSERT INTO template_items
-      (id, template_id, title, sort_order, start_offset_days, duration_days)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
-  [
-    { title: '设计', offset: 0, duration: 2 },
-    { title: '开发', offset: 2, duration: 5 },
-    { title: '测试', offset: 7, duration: 3 },
-    { title: '发布', offset: 10, duration: 1 },
-  ].forEach((item, index) => insert.run(randomUUID(), templateId, item.title, index, item.offset, item.duration));
+sqlite.pragma('foreign_keys = OFF');
+try {
+  migrate(db, { migrationsFolder: path.join(config.rootDir, 'drizzle') });
+} finally {
+  sqlite.pragma('foreign_keys = ON');
 }
-
-seedBaseData();
+const foreignKeyViolations = sqlite.pragma('foreign_key_check') as Array<Record<string, unknown>>;
+if (foreignKeyViolations.length) throw new Error(`数据库迁移后存在${foreignKeyViolations.length}条外键异常`);
+const projectScopeViolations = sqlite.prepare(`SELECT
+  (SELECT COUNT(*) FROM projects p JOIN work_item_templates t ON t.id=p.default_template_id WHERE t.project_id<>p.id) AS projectDefaults,
+  (SELECT COUNT(*) FROM requirements r JOIN work_item_templates t ON t.id=r.template_id WHERE t.project_id<>r.project_id) AS requirementTemplates,
+  (SELECT COUNT(*) FROM work_items w JOIN requirements r ON r.id=w.requirement_id
+    JOIN template_items i ON i.id=w.template_item_id JOIN work_item_templates t ON t.id=i.template_id
+    WHERE t.project_id<>r.project_id) AS workItemTemplates`).get() as {
+      projectDefaults: number; requirementTemplates: number; workItemTemplates: number;
+    };
+if (projectScopeViolations.projectDefaults || projectScopeViolations.requirementTemplates || projectScopeViolations.workItemTemplates) {
+  throw new Error('数据库迁移后存在跨项目流程引用，服务已拒绝启动');
+}
+sqlite.pragma('optimize');
 
 function bootstrapAccounts() {
   const now = new Date().toISOString();

@@ -16,7 +16,7 @@ export async function buildApp() {
   await app.register(rateLimit, { global: false });
   app.setErrorHandler((error, _request, reply) => {
     const status = (error as any).statusCode && (error as any).statusCode < 500 ? (error as any).statusCode : 400;
-    reply.code(status).send({ error: error instanceof Error ? error.message : '请求处理失败' });
+    reply.code(status).send({ error: error instanceof Error ? error.message : '请求处理失败', ...((error as any).details ? { details: (error as any).details } : {}) });
   });
   app.get('/health', async () => ({ status: 'ok', time: new Date().toISOString(), service: 'project-manage' }));
   registerApiRoutes(app);

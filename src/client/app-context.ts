@@ -7,6 +7,7 @@ export type AppContextValue = {
   selectedProjectId: string;
   setSelectedProjectId: (id: string) => void;
   openLogin: () => void;
+  openPassword: () => void;
 };
 
 export const AppContext = createContext<AppContextValue | null>(null);

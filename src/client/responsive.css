@@ -195,7 +195,12 @@ textarea {
 }
 
 .gantt-filter-bar select {
-  flex: 0 1 132px;
+  flex: 0 1 140px;
+}
+
+.gantt-filter-bar .gantt-sort-select {
+  min-width: 190px;
+  flex: 0 0 190px;
 }
 
 .requirement-progress-panel {
@@ -233,11 +238,11 @@ textarea {
   }
 
   .dashboard-issue-health {
-    grid-template-columns: minmax(210px, 1fr) repeat(4, minmax(68px, .38fr));
+    grid-template-columns: minmax(150px, 1.15fr) repeat(5, minmax(64px, 1fr));
   }
 
   .dashboard-public-list > a {
-    grid-template-columns: minmax(210px, 1fr) 74px 90px 140px 18px;
+    grid-template-columns: minmax(210px, 1fr) 74px 92px 90px 140px 18px;
   }
 
   .dashboard-public-list > a > small {
@@ -265,12 +270,17 @@ textarea {
   }
 
   .dashboard-issue-health {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
-  .issue-health-primary,
-  .issue-health-stat {
-    border-top: 1px solid #e5eaf1;
+  .issue-health-heading {
+    grid-column: 1 / -1;
+    min-height: 52px;
+    border-bottom: 1px solid #e5eaf1;
+  }
+
+  .issue-health-heading + .issue-health-stat {
+    border-left: 0;
   }
 
   .dashboard-public-list > a {
@@ -299,7 +309,12 @@ textarea {
   }
 
   .gantt-filter-bar select {
-    flex-basis: 116px;
+    flex-basis: 124px;
+  }
+
+  .gantt-filter-bar .gantt-sort-select {
+    min-width: 184px;
+    flex-basis: 184px;
   }
 }
 
@@ -322,9 +337,43 @@ textarea {
   .template-editor {
     grid-template-columns: 1fr;
   }
+
 }
 
 @container modal-content (max-width: 720px) {
+  .issue-settings-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .issue-settings-current-progress {
+    width: 100%;
+  }
+
+  .issue-settings-basic,
+  .issue-settings-updates {
+    padding: 12px;
+  }
+
+  .issue-search-select-menu {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .issue-progress-view-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .issue-progress-view-header .issue-detail-progress {
+    width: 100%;
+  }
+
+  .issue-update-setting-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .work-row {
     grid-template-columns: minmax(0, 1fr) auto;
     padding-block: 10px;
@@ -434,12 +483,36 @@ textarea {
   .my-work-summary { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .my-work-charts { grid-template-columns: 1fr; }
   .account-table-panel { overflow-x: auto; }
+  .analytics-grid > .analytics-panel-small { grid-column: span 6; }
+  .analytics-grid > .analytics-panel-medium, .analytics-grid > .analytics-panel-large { grid-column: span 12; }
+  .analytics-panel-editor { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
   .system-grid { grid-template-columns: 1fr; }
+  .project-members-panel > header { align-items: flex-start; flex-direction: column; }
+  .project-member-header-actions { width: 100%; justify-content: space-between; }
+  .project-member-row, .project-member-row.can-manage { grid-template-columns: minmax(0,1fr) auto; gap: 10px 14px; padding: 12px 14px; }
+  .project-member-identity { grid-column: 1 / -1; }
+  .project-member-meta { grid-column: 1; }
+  .project-member-role { grid-column: 1; }
+  .project-member-action { grid-column: 2; grid-row: 2 / span 2; align-self: end; }
+  .member-picker-role { grid-template-columns: 1fr; }
   .my-work-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .my-work-items > article { grid-template-columns: 1fr; }
   .my-work-dates, .my-work-actions { grid-column: 1; }
   .project-permission-list { grid-template-columns: 1fr; }
+  .analytics-grid > .analytics-panel-small, .analytics-grid > .analytics-panel-medium, .analytics-grid > .analytics-panel-large { grid-column: span 12; }
+  .analytics-toolbar { align-items: flex-start; }
+  .analytics-toolbar .view-tabs { width: 100%; overflow-x: auto; }
+  .analytics-custom-range { width: 100%; flex-wrap: wrap; }
+  .analytics-range-label { width: 100%; }
+  .analytics-edit-actions { width: 100%; margin-left: 0; }
+  .analytics-config-form, .analytics-config-filters { grid-template-columns: 1fr; }
+  .analytics-config-form .field-full, .analytics-config-filters > span { grid-column: 1; }
+  .analytics-drag-handle { display: none; }
+  .analytics-drag-item > .analytics-panel > header { padding-left: 13px; }
+  .inline-date-range { grid-template-columns: 1fr; align-items: stretch; gap: 2px; }
+  .inline-date-range > span { display: none; }
+  .account-inline-projects, .inline-action-date-grid { grid-template-columns: 1fr; }
 }

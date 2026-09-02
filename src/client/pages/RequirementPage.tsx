@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   CalendarDays,
   Check,
   ChevronDown,
@@ -16,6 +18,7 @@ import {
   Search,
   Trash2,
   WandSparkles,
+  X,
 } from "lucide-react";
 import { api, jsonBody } from "../api";
 import { useApp } from "../app-context";
@@ -31,6 +34,8 @@ import { GapTimeline } from "../components/GapTimeline";
 import { Chart } from "../components/Chart";
 import { EmptyState, Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
+import { ProgressInput } from "../components/ProgressInput";
+import { AnchoredPopover, InlineDateCell, InlineMultiSelectCell, InlineSelectCell, InlineTextCell } from "../components/InlineEdit";
 import { canManageProject } from "../permissions";
 
 function ActionMenu({ children }: { children: ReactNode }) {
@@ -80,7 +85,10 @@ function RequirementEditForm({
   onClose: () => void;
 }) {
   const client = useQueryClient();
-  const { data: templates = [] } = useQuery({ queryKey: ["templates"], queryFn: () => api<WorkItemTemplate[]>("/api/templates") });
+  const { data: templates = [] } = useQuery({
+    queryKey: ["templates", requirement.projectId],
+    queryFn: () => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(requirement.projectId)}`),
+  });
   const [templateId, setTemplateId] = useState(requirement.templateId || "");
   const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">("start");
   const templateChanged = Boolean(templateId && templateId !== requirement.templateId);
@@ -95,6 +103,9 @@ function RequirementEditForm({
         queryKey: ["requirement", requirement.id],
       });
       void client.invalidateQueries({ queryKey: ["dashboard"] });
+      void client.invalidateQueries({ queryKey: ["requirements"] });
+      void client.invalidateQueries({ queryKey: ["my-work"] });
+      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
       onClose();
     },
   });
@@ -324,6 +335,9 @@ function WorkItemForm({
         queryKey: ["requirement", requirement.id],
       });
       void client.invalidateQueries({ queryKey: ["dashboard"] });
+      void client.invalidateQueries({ queryKey: ["requirements"] });
+      void client.invalidateQueries({ queryKey: ["my-work"] });
+      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
       onClose();
     },
   });
@@ -437,14 +451,21 @@ function ProgressForm({
   requirement,
   allowedItems,
   requireAssociation,
+  fixedItemId,
   onClose,
 }: {
   requirement: Requirement;
   allowedItems?: WorkItem[];
   requireAssociation?: boolean;
+  fixedItemId?: string | null;
   onClose: () => void;
 }) {
   const client = useQueryClient();
+  const items = (allowedItems || requirement.workItems).filter((item) => item.status !== "cancelled");
+  const fixedItem = fixedItemId ? items.find((item) => item.id === fixedItemId) : undefined;
+  const initialWorkItemId = fixedItem?.id || (requireAssociation ? items[0]?.id || "" : "");
+  const [workItemId, setWorkItemId] = useState(initialWorkItemId);
+  const [workItemPercent, setWorkItemPercent] = useState(() => items.find((item) => item.id === initialWorkItemId)?.progress || 0);
   const mutation = useMutation({
     mutationFn: (value: object) =>
       api(`/api/requirements/${requirement.id}/progress`, {
@@ -456,6 +477,9 @@ function ProgressForm({
         queryKey: ["requirement", requirement.id],
       });
       void client.invalidateQueries({ queryKey: ["dashboard"] });
+      void client.invalidateQueries({ queryKey: ["requirements"] });
+      void client.invalidateQueries({ queryKey: ["my-work"] });
+      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
       onClose();
     },
   });
@@ -467,17 +491,27 @@ function ProgressForm({
         mutation.mutate(Object.fromEntries(new FormData(event.currentTarget)));
       }}
     >
-      <label className="field field-full">
-        <span>关联工作项{requireAssociation ? "" : "（可选）"}</span>
-        <select name="workItemId" required={requireAssociation}>
-          {!requireAssociation && <option value="">不关联</option>}
-          {(allowedItems || requirement.workItems).map((item) => (
-            <option value={item.id} key={item.id}>
-              {item.title}
-            </option>
-          ))}
-        </select>
-      </label>
+      {fixedItem ? <div className="progress-item-context field-full">
+        <span>工作项</span>
+        <strong>{fixedItem.title}</strong>
+        <small>当前完成度 {fixedItem.progress}%</small>
+        <input type="hidden" name="workItemId" value={fixedItem.id} />
+      </div> : <label className="field field-full">
+          <span>关联工作项{requireAssociation ? "" : "（可选）"}</span>
+          <select name="workItemId" required={requireAssociation} value={workItemId} onChange={(event) => {
+            const nextId = event.target.value;
+            setWorkItemId(nextId);
+            setWorkItemPercent(items.find((item) => item.id === nextId)?.progress || 0);
+          }}>
+            {!requireAssociation && <option value="">不关联</option>}
+            {items.map((item) => (
+              <option value={item.id} key={item.id}>
+                {item.title} · 当前 {item.progress}%
+              </option>
+            ))}
+          </select>
+        </label>}
+      {workItemId && <ProgressInput name="workItemPercent" value={workItemPercent} onChange={setWorkItemPercent} />}
       <label className="field field-full">
         <span>具体进展</span>
         <textarea
@@ -488,7 +522,7 @@ function ProgressForm({
           placeholder="描述本次实际完成的内容"
         />
       </label>
-      <p className="field-help field-full">保存时自动记录当前需求进度；关联未开始的工作项会自动标记实际开始。</p>
+      <p className="field-help field-full">填写累计完成度，不是本次增量。需求总进度会按各工作项计划工期自动加权；不关联工作项时仅记录说明。</p>
       {mutation.error && (
         <p className="form-error field-full">{mutation.error.message}</p>
       )}
@@ -546,16 +580,119 @@ function PlanForm({ requirement, templates, onClose }: { requirement: Requiremen
   );
 }
 
+type NewWorkItemDraft = {
+  title: string;
+  milestoneLabel: string;
+  ownerId: string;
+  collaboratorIds: string[];
+  plannedStart: string;
+  plannedEnd: string;
+};
+
+function WorkItemActions({
+  item,
+  onAction,
+  onSaveDates,
+  onCancel,
+  canCancel,
+}: {
+  item: WorkItem;
+  onAction: (action: "start" | "complete" | "block" | "unblock", reason?: string) => Promise<unknown>;
+  onSaveDates: (input: { actualStart: string | null; actualEnd: string | null }) => Promise<unknown>;
+  onCancel: () => Promise<unknown>;
+  canCancel: boolean;
+}) {
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [panel, setPanel] = useState<"block" | "dates" | null>(null);
+  const [reason, setReason] = useState(item.blockedReason || "");
+  const [actualStart, setActualStart] = useState(item.actualStart || "");
+  const [actualEnd, setActualEnd] = useState(item.actualEnd || "");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (panel !== "dates") return;
+    setActualStart(item.actualStart || "");
+    setActualEnd(item.actualEnd || "");
+  }, [item.actualEnd, item.actualStart, panel]);
+
+  const run = async (operation: () => Promise<unknown>, close = true) => {
+    setPending(true);
+    setError("");
+    try {
+      await operation();
+      if (close) setPanel(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "操作失败，请重试");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const canBlock = item.status === "not_started" || item.status === "in_progress";
+  const canOpenMenu = item.status !== "cancelled";
+
+  return <div className="work-item-actions" ref={anchorRef} onClick={(event) => event.stopPropagation()}>
+    <div className="work-item-action-row">
+      {item.status === "not_started" && <button className="work-next-action" disabled={pending} onClick={() => void run(() => onAction("start"))}><Play size={14} />{pending ? "提交中" : "开始"}</button>}
+      {item.status === "in_progress" && <button className="work-next-action" disabled={pending} onClick={() => void run(() => onAction("complete"))}><Check size={14} />{pending ? "提交中" : "完成"}</button>}
+      {item.status === "blocked" && <button className="work-next-action" disabled={pending} onClick={() => void run(() => onAction("unblock"))}><RotateCcw size={14} />{pending ? "提交中" : "解除阻塞"}</button>}
+      {item.status === "completed" && <span className="work-action-state is-completed"><Check size={13} />已完成</span>}
+      {item.status === "cancelled" && <span className="work-action-state is-cancelled"><CircleStop size={13} />已取消</span>}
+      {canOpenMenu && <ActionMenu>
+        <button onClick={() => setPanel("dates")}><CalendarDays size={14} />修正实际日期</button>
+        {canBlock && <button onClick={() => { setReason(""); setPanel("block"); }}><CircleStop size={14} />标记阻塞</button>}
+        {canCancel && !["completed", "cancelled"].includes(item.status) && <button className="danger" onClick={() => {
+          if (confirm(`取消工作项“${item.title}”？`)) void run(onCancel);
+        }}><CircleStop size={14} />取消工作项</button>}
+      </ActionMenu>}
+    </div>
+    {error && panel === null && <small className="work-action-error" title={error}>{error}</small>}
+    <AnchoredPopover anchorRef={anchorRef} open={panel === "block"} onOutside={() => setPanel(null)} width={360}>
+      <form className="inline-action-form" onSubmit={(event) => {
+        event.preventDefault();
+        if (reason.trim()) void run(() => onAction("block", reason.trim()));
+      }}>
+        <header><strong>标记工作项阻塞</strong><button type="button" onClick={() => setPanel(null)} aria-label="关闭"><X size={16} /></button></header>
+        <label><span>阻塞原因</span><textarea autoFocus rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明当前阻塞点" /></label>
+        {error && <p className="form-error">{error}</p>}
+        <footer><button type="button" className="ghost-button" onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || !reason.trim()}>确认阻塞</button></footer>
+      </form>
+    </AnchoredPopover>
+    <AnchoredPopover anchorRef={anchorRef} open={panel === "dates"} onOutside={() => setPanel(null)} width={390}>
+      <form className="inline-action-form" onSubmit={(event) => {
+        event.preventDefault();
+        void run(() => onSaveDates({ actualStart: actualStart || null, actualEnd: actualEnd || null }));
+      }}>
+        <header><strong>高级修正实际日期</strong><button type="button" onClick={() => setPanel(null)} aria-label="关闭"><X size={16} /></button></header>
+        <div className="inline-action-date-grid">
+          <label><span>实际开始</span><input type="date" value={actualStart} onChange={(event) => setActualStart(event.target.value)} /></label>
+          <label><span>实际完成</span><input type="date" value={actualEnd} onChange={(event) => setActualEnd(event.target.value)} /></label>
+        </div>
+        <button
+          type="button"
+          className="inline-on-time-button"
+          disabled={pending || !item.plannedStart || !item.plannedEnd}
+          onClick={() => item.plannedStart && item.plannedEnd && void run(() => onSaveDates({ actualStart: item.plannedStart, actualEnd: item.plannedEnd }))}
+        ><Check size={14} />按时完成：实际日期采用计划日期</button>
+        {error && <p className="form-error">{error}</p>}
+        <footer><button type="button" className="ghost-button" onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending}>保存修正</button></footer>
+      </form>
+    </AnchoredPopover>
+  </div>;
+}
+
 export function RequirementPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
   const { session } = useApp();
   const [modal, setModal] = useState<
-    "edit" | "work" | "progress" | "template" | null
+    "edit" | "progress" | "template" | null
   >(null);
-  const [editingItem, setEditingItem] = useState<WorkItem>();
+  const [progressItemId, setProgressItemId] = useState<string | null>(null);
   const [workEditorOpen, setWorkEditorOpen] = useState(false);
+  const [newItem, setNewItem] = useState<NewWorkItemDraft | null>(null);
   const {
     data: requirement,
     isLoading,
@@ -566,14 +703,32 @@ export function RequirementPage() {
     enabled: Boolean(id),
   });
   const { data: templates = [] } = useQuery({
-    queryKey: ["templates"],
-    queryFn: () => api<WorkItemTemplate[]>("/api/templates"),
+    queryKey: ["templates", requirement?.projectId || ""],
+    queryFn: () => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(requirement!.projectId)}`),
+    enabled: Boolean(requirement?.projectId),
+  });
+  const { data: people = [] } = useQuery({
+    queryKey: ["people", requirement?.projectId || ""],
+    queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(requirement!.projectId)}`),
+    enabled: Boolean(requirement?.projectId),
   });
   const removeItem = useMutation({
     mutationFn: (itemId: string) =>
       api(`/api/work-items/${itemId}`, { method: "DELETE" }),
-    onSuccess: () =>
-      void client.invalidateQueries({ queryKey: ["requirement", id] }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["requirement", id] });
+      void client.invalidateQueries({ queryKey: ["dashboard"] });
+      void client.invalidateQueries({ queryKey: ["requirements"] });
+      void client.invalidateQueries({ queryKey: ["my-work"] });
+      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
+    },
+  });
+  const reorderItems = useMutation({
+    mutationFn: (ids: string[]) => api(`/api/requirements/${id}/reorder-work-items`, {
+      method: "POST",
+      body: jsonBody({ ids }),
+    }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["requirement", id] }),
   });
   const removeProgress = useMutation({
     mutationFn: (progressId: string) =>
@@ -594,8 +749,66 @@ export function RequirementPage() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["requirement", id] });
       void client.invalidateQueries({ queryKey: ["dashboard"] });
+      void client.invalidateQueries({ queryKey: ["requirements"] });
+      void client.invalidateQueries({ queryKey: ["my-work"] });
+      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
     },
   });
+  const createItem = useMutation({
+    mutationFn: (draft: NewWorkItemDraft) => api<WorkItem>(`/api/requirements/${id}/work-items`, {
+      method: "POST",
+      body: jsonBody({
+        title: draft.title,
+        milestoneLabel: draft.milestoneLabel || null,
+        ownerId: draft.ownerId || null,
+        assigneeIds: [draft.ownerId, ...draft.collaboratorIds].filter(Boolean),
+        plannedStart: draft.plannedStart || null,
+        plannedEnd: draft.plannedEnd || null,
+      }),
+    }),
+    onSuccess: () => {
+      setNewItem(null);
+      void client.invalidateQueries({ queryKey: ["requirement", id] });
+      void client.invalidateQueries({ queryKey: ["dashboard"] });
+      void client.invalidateQueries({ queryKey: ["requirements"] });
+      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
+    },
+  });
+  const saveWorkItem = async (item: WorkItem, input: Record<string, unknown>) => {
+    const key = ["requirement", id] as const;
+    const previous = client.getQueryData<Requirement>(key);
+    const optimistic = { ...item, ...input } as WorkItem;
+    if (Object.prototype.hasOwnProperty.call(input, "ownerId")) {
+      optimistic.ownerId = typeof input.ownerId === "string" && input.ownerId ? input.ownerId : null;
+      optimistic.ownerName = people.find((person) => person.id === optimistic.ownerId)?.name || null;
+    }
+    if (Array.isArray(input.assigneeIds)) {
+      optimistic.assigneeIds = input.assigneeIds.map(String);
+      optimistic.assigneeNames = people.filter((person) => optimistic.assigneeIds.includes(person.id)).map((person) => person.name);
+      optimistic.collaborators = people
+        .filter((person) => optimistic.assigneeIds.includes(person.id) && person.id !== optimistic.ownerId)
+        .map((person) => ({ id: person.id, name: person.name, jobTitle: person.jobTitle }));
+    }
+    client.setQueryData<Requirement>(key, (current) => current ? {
+      ...current,
+      workItems: current.workItems.map((entry) => entry.id === item.id ? optimistic : entry),
+    } : current);
+    try {
+      const saved = await api<WorkItem>(`/api/work-items/${item.id}`, { method: "PATCH", body: jsonBody(input) });
+      client.setQueryData<Requirement>(key, (current) => current ? {
+        ...current,
+        workItems: current.workItems.map((entry) => entry.id === saved.id ? saved : entry),
+      } : current);
+      void client.invalidateQueries({ queryKey: ["requirement", id] });
+      void client.invalidateQueries({ queryKey: ["dashboard"] });
+      void client.invalidateQueries({ queryKey: ["requirements"] });
+      void client.invalidateQueries({ queryKey: ["my-work"] });
+      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
+    } catch (error) {
+      client.setQueryData(key, previous);
+      throw error;
+    }
+  };
   const progressOption = useMemo(
     () => {
       const updates = [...(requirement?.progressUpdates || [])].reverse();
@@ -678,8 +891,30 @@ export function RequirementPage() {
       </>
     );
   const canManage = canManageProject(session, requirement.projectId);
-  const ownItems = requirement.workItems.filter((item) => Boolean(session.personId) && item.assigneeIds.includes(session.personId!));
+  const currentPerson = people.find((person) => person.id === session.personId);
+  const canContribute = canManage || currentPerson?.projectRole === "member" || currentPerson?.projectRole === "manager";
+  const ownItems = canContribute
+    ? requirement.workItems.filter((item) => Boolean(session.personId) && item.assigneeIds.includes(session.personId!))
+    : [];
   const canAddProgress = canManage || ownItems.length > 0;
+  const canUpdateItemProgress = (item: WorkItem) => item.status !== "cancelled"
+    && canContribute
+    && (canManage || Boolean(session.personId && item.assigneeIds.includes(session.personId)));
+  const moveWorkItem = (index: number, offset: -1 | 1) => {
+    const nextIndex = index + offset;
+    if (nextIndex < 0 || nextIndex >= requirement.workItems.length) return;
+    const ids = requirement.workItems.map((item) => item.id);
+    [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
+    reorderItems.mutate(ids);
+  };
+  const openProgress = (itemId: string | null = null) => {
+    setProgressItemId(itemId);
+    setModal("progress");
+  };
+  const closeProgress = () => {
+    setProgressItemId(null);
+    setModal(null);
+  };
   const riskClosed = requirement.status === "completed" || requirement.status === "cancelled";
   const riskLabel = riskClosed
     ? "风险已关闭"
@@ -687,11 +922,6 @@ export function RequirementPage() {
       ? riskLabels[requirement.riskLevel as keyof typeof riskLabels]
       : "待评估";
   const riskClass = riskClosed || !requirement.riskEvaluated ? "risk-pending" : `risk-${requirement.riskLevel}`;
-  const closeWorkItemForm = () => {
-    setModal(null);
-    setEditingItem(undefined);
-    setWorkEditorOpen(true);
-  };
   return (
     <>
       <PageHeader
@@ -705,7 +935,7 @@ export function RequirementPage() {
             </button>}
             {canAddProgress && <button
               className="primary-button"
-              onClick={() => setModal("progress")}
+              onClick={() => openProgress()}
             >
               <Plus size={15} />
               增加进展
@@ -797,77 +1027,80 @@ export function RequirementPage() {
                 onClick={() => setWorkEditorOpen(true)}
               >
                 <Edit3 size={15} />
-                编辑工作项
+                工作项设置
               </button>
             </div>
           )}
         </header>
-        <GapTimeline items={requirement.workItems} updates={requirement.progressUpdates || []} />
+        <GapTimeline
+          items={requirement.workItems}
+          updates={requirement.progressUpdates || []}
+          canUpdateProgress={canUpdateItemProgress}
+          onUpdateProgress={(item) => openProgress(item.id)}
+          renderActions={(item) => canUpdateItemProgress(item)
+            ? <WorkItemActions
+                item={item}
+                onAction={(action, reason) => itemAction.mutateAsync({ itemId: item.id, action, reason })}
+                onSaveDates={(dates) => saveWorkItem(item, dates)}
+                onCancel={() => itemAction.mutateAsync({ itemId: item.id, action: "cancel" })}
+                canCancel={canManage}
+              />
+            : <span className={`work-action-state is-readonly status-${item.status}`}>
+                {requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}
+              </span>}
+        />
       </section>
-      {workEditorOpen && canManage && <Modal title="编辑工作项" width={1120} onClose={() => setWorkEditorOpen(false)}>
+      {workEditorOpen && canManage && <Modal title="工作项设置" width={1120} onClose={() => setWorkEditorOpen(false)}>
           <div className="work-editor-modal">
             <div className="work-editor-modal-toolbar">
-              <span>状态由实际日期和阻塞标记自动推导</span>
+              <span>配置名称、人员、计划日期和顺序；日常推进请直接在甘特图操作</span>
               <div className="panel-actions">
               {(!requirement.workItems.length || requirement.workItems.some((item) => !item.plannedStart || !item.plannedEnd)) && <button className="ghost-button" onClick={() => { setWorkEditorOpen(false); setModal("template"); }}>补全计划</button>}
-              <button className="primary-button" onClick={() => { setWorkEditorOpen(false); setEditingItem(undefined); setModal("work"); }}><Plus size={15} />添加工作项</button>
+              <button className="primary-button" disabled={Boolean(newItem)} onClick={() => setNewItem({ title: "", milestoneLabel: "", ownerId: "", collaboratorIds: [], plannedStart: "", plannedEnd: "" })}><Plus size={15} />添加工作项</button>
               </div>
             </div>
-          <div className="work-editor-scroll"><div className="work-list">
-            {requirement.workItems.map((item) => {
+          {(reorderItems.error || removeItem.error) && <p className="form-error">{(reorderItems.error || removeItem.error)?.message}</p>}
+          <div className="work-editor-scroll"><table className="work-inline-table">
+            <thead><tr><th>工作项</th><th>主负责人</th><th>协作人员</th><th>计划开始</th><th>计划完成</th><th>状态 / 偏差</th><th>操作</th></tr></thead>
+            <tbody>
+            {newItem && <tr className="work-inline-new-row">
+              <td><div className="work-item-name-editor"><InlineTextCell value={newItem.title} label="新工作项名称" required placeholder="填写名称" onSave={async (title) => setNewItem((current) => current && ({ ...current, title }))} /><InlineTextCell value={newItem.milestoneLabel} label="新工作项里程碑" placeholder="添加里程碑" onSave={async (milestoneLabel) => setNewItem((current) => current && ({ ...current, milestoneLabel }))} renderValue={(value) => <span className="work-item-milestone-edit">◆ {value}</span>} /></div></td>
+              <td><InlineSelectCell value={newItem.ownerId} label="新工作项主负责人" options={[{ value: "", label: "未分配" }, ...people.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))]} onSave={async (ownerId) => setNewItem((current) => current && ({ ...current, ownerId, collaboratorIds: current.collaboratorIds.filter((personId) => personId !== ownerId) }))} placeholder="未分配" /></td>
+              <td><InlineMultiSelectCell value={newItem.collaboratorIds} label="新工作项协作人员" options={people.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))} excludedValues={newItem.ownerId ? [newItem.ownerId] : []} onSave={async (collaboratorIds) => setNewItem((current) => current && ({ ...current, collaboratorIds }))} placeholder="选择人员" /></td>
+              <td><InlineDateCell value={newItem.plannedStart} label="新工作项计划开始" onSave={async (plannedStart) => setNewItem((current) => current && ({ ...current, plannedStart: plannedStart || "" }))} /></td>
+              <td><InlineDateCell value={newItem.plannedEnd} label="新工作项计划完成" onSave={async (plannedEnd) => setNewItem((current) => current && ({ ...current, plannedEnd: plannedEnd || "" }))} /></td>
+              <td><span className="status-pill status-not_started">待创建</span>{createItem.error && <small className="inline-row-error">{createItem.error.message}</small>}</td>
+              <td><div className="inline-row-actions"><button className="ghost-button" onClick={() => setNewItem(null)}>取消</button><button className="primary-button" disabled={!newItem.title.trim() || createItem.isPending} onClick={() => createItem.mutate(newItem)}>保存</button></div></td>
+            </tr>}
+            {requirement.workItems.map((item, index) => {
               const gap = calculateWorkItemGap(item);
               return (
-                <div className="work-row" key={item.id}>
-                  <div>
-                    <strong>{item.title}</strong>
-                    <span>
-                      {item.assigneeNames?.join("、") || item.ownerName || "未分配"} ·{" "}
-                      {requirementStatusLabels[
-                        item.status as keyof typeof requirementStatusLabels
-                      ] || item.status}
-                    </span>
-                  </div>
-                  <div className="work-dates">
-                    <span>
-                      计划 {item.plannedStart || "—"} → {item.plannedEnd || "—"}
-                    </span>
-                    <span>
-                      实际 {item.actualStart || "—"} →{" "}
-                      {item.actualEnd || "—"}
-                    </span>
-                    {item.blockedReason && <span className="danger-text">阻塞：{item.blockedReason}</span>}
-                  </div>
-                  <b
-                    className={
-                      gap.finishVariance > 0 ? "danger-text" : "safe-text"
-                    }
-                  >
-                    {gap.finishVariance > 0 ? "+" : ""}
-                    {gap.finishVariance}天
-                  </b>
-                  {canManage && (
-                    <div className="work-item-actions">
-                      {item.status === "not_started" && <button className="work-next-action" onClick={() => itemAction.mutate({ itemId: item.id, action: "start" })}><Play size={14} />开始</button>}
-                      {item.status === "in_progress" && <button className="work-next-action" onClick={() => itemAction.mutate({ itemId: item.id, action: "complete" })}><Check size={14} />完成</button>}
-                      {item.status === "blocked" && <button className="work-next-action" onClick={() => itemAction.mutate({ itemId: item.id, action: "unblock" })}><RotateCcw size={14} />解除阻塞</button>}
-                      <ActionMenu>
-                        <button onClick={() => { setWorkEditorOpen(false); setEditingItem(item); setModal("work"); }}><Edit3 size={14} />编辑</button>
-                        {item.status === "in_progress" && <button onClick={() => { const reason = prompt("请输入阻塞原因"); if (reason?.trim()) itemAction.mutate({ itemId: item.id, action: "block", reason }); }}><CircleStop size={14} />标记阻塞</button>}
-                        {!['completed', 'cancelled'].includes(item.status) && <button onClick={() => confirm(`取消工作项“${item.title}”？`) && itemAction.mutate({ itemId: item.id, action: "cancel" })}><CircleStop size={14} />取消工作项</button>}
-                        <button className="danger" onClick={() => confirm(`删除工作项“${item.title}”？`) && removeItem.mutate(item.id)}><Trash2 size={14} />删除</button>
-                      </ActionMenu>
+                <tr key={item.id}>
+                  <td><div className="work-item-name-editor"><InlineTextCell value={item.title} label="工作项名称" required onSave={(title) => saveWorkItem(item, { title })} /><InlineTextCell value={item.milestoneLabel} label="里程碑名称" placeholder="添加里程碑" onSave={(milestoneLabel) => saveWorkItem(item, { milestoneLabel: milestoneLabel || null })} renderValue={(value) => <span className="work-item-milestone-edit">◆ {value}</span>} /></div></td>
+                  <td><InlineSelectCell value={item.ownerId} label="主负责人" options={[{ value: "", label: "未分配" }, ...people.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))]} onSave={(ownerId) => saveWorkItem(item, { ownerId: ownerId || null, assigneeIds: [ownerId, ...item.collaborators.map((person) => person.id).filter((personId) => personId !== ownerId)].filter(Boolean) })} placeholder="未分配" /></td>
+                  <td><InlineMultiSelectCell value={item.collaborators.map((person) => person.id)} label="协作人员" options={people.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))} excludedValues={item.ownerId ? [item.ownerId] : []} onSave={(collaboratorIds) => saveWorkItem(item, { assigneeIds: [item.ownerId, ...collaboratorIds].filter(Boolean) })} placeholder="无协作人员" renderValue={(selected) => selected.length ? <span className="inline-person-summary">{selected.slice(0, 2).map((person) => person.label).join("、")}{selected.length > 2 ? ` +${selected.length - 2}` : ""}</span> : "无协作人员"} /></td>
+                  <td><InlineDateCell value={item.plannedStart} label="计划开始" onSave={(plannedStart) => saveWorkItem(item, { plannedStart })} /></td>
+                  <td><InlineDateCell value={item.plannedEnd} label="计划完成" onSave={(plannedEnd) => saveWorkItem(item, { plannedEnd })} /></td>
+                  <td><div className="work-inline-status"><span className={`work-item-status-badge badge-${item.status.replaceAll("_", "-")}`}>{requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}</span><b className={gap.finishVariance > 0 ? "danger-text" : "safe-text"}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}天</b><span className="work-item-inline-progress"><i><b style={{ width: `${item.progress}%` }} /></i>{item.progress}%</span>{item.blockedReason && <small title={item.blockedReason}>阻塞：{item.blockedReason}</small>}</div></td>
+                  <td>
+                    <div className="work-setting-actions">
+                      <button type="button" aria-label={`上移${item.title}`} title="上移" disabled={index === 0 || reorderItems.isPending} onClick={() => moveWorkItem(index, -1)}><ArrowUp size={14} /></button>
+                      <button type="button" aria-label={`下移${item.title}`} title="下移" disabled={index === requirement.workItems.length - 1 || reorderItems.isPending} onClick={() => moveWorkItem(index, 1)}><ArrowDown size={14} /></button>
+                      <button type="button" className="danger" aria-label={`删除${item.title}`} title="删除" disabled={removeItem.isPending} onClick={() => confirm(`删除工作项“${item.title}”？`) && removeItem.mutate(item.id)}><Trash2 size={14} /></button>
                     </div>
-                  )}
-                </div>
+                  </td>
+                </tr>
               );
             })}
-            {!requirement.workItems.length && (
+            </tbody>
+          </table>
+            {!requirement.workItems.length && !newItem && (
               <EmptyState
                 title="还没有工作项"
                 detail="可新增工作项，或从通用研发模板补充。"
               />
             )}
-          </div></div>
+          </div>
           </div>
       </Modal>}
       <section className="detail-grid progress-detail-grid">
@@ -876,7 +1109,7 @@ export function RequirementPage() {
           <div className="progress-feed">
             {requirement.progressUpdates?.map((item) => (
               <article key={item.id}>
-                <div className="progress-marker">{item.percent}%</div>
+                <div className="progress-marker">{item.workItemPercent ?? item.percent}%</div>
                 <div><header><strong>{new Date(item.createdAt).toLocaleString("zh-CN")}</strong>{item.workItemTitle && <span>{item.workItemTitle}</span>}</header><p>{item.content}</p></div>
                 {(canManage || item.createdByAccountId === session.accountId) && <button aria-label="删除进展" onClick={() => confirm("确认删除这条进展？") && removeProgress.mutate(item.id)}><Trash2 size={14} /></button>}
               </article>
@@ -907,25 +1140,14 @@ export function RequirementPage() {
           />
         </Modal>
       )}
-      {modal === "work" && (
-        <Modal
-          title={editingItem ? "编辑工作项" : "新增工作项"}
-          onClose={closeWorkItemForm}
-        >
-          <WorkItemForm
-            requirement={requirement}
-            item={editingItem}
-            onClose={closeWorkItemForm}
-          />
-        </Modal>
-      )}
       {modal === "progress" && (
-        <Modal title="增加进展" onClose={() => setModal(null)}>
+        <Modal title={progressItemId ? "更新工作项进度" : "增加进展"} onClose={closeProgress}>
           <ProgressForm
             requirement={requirement}
-            allowedItems={canManage ? undefined : ownItems}
-            requireAssociation={!canManage}
-            onClose={() => setModal(null)}
+            allowedItems={progressItemId ? requirement.workItems.filter((item) => item.id === progressItemId) : canManage ? undefined : ownItems}
+            requireAssociation={Boolean(progressItemId) || !canManage}
+            fixedItemId={progressItemId}
+            onClose={closeProgress}
           />
         </Modal>
       )}

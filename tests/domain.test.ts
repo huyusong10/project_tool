@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
-  deriveWorkItemStatus, plannedDatesFromOffset, plannedStartFromDeadline, riskLevelFromProgressGap,
+  deriveWorkItemStatus, plannedDatesFromOffset, plannedStartFromDeadline, riskLevelFromProgressGap, workItemPlannedProgress,
 } from '../src/shared/domain';
 
 describe('工作日、排期与Gap规则', () => {
@@ -44,6 +44,16 @@ describe('自动状态、进度和风险', () => {
     ], '2026-09-02');
     expect(metrics.status).toBe('in_progress');
     expect(metrics.progress).toBe(33);
+  });
+
+  it('按工作项估算完成度加权实际进度，并连续计算计划进度', () => {
+    const metrics = deriveRequirementMetrics({ status: 'in_progress' }, [
+      { status: 'in_progress', progress: 50, plannedStart: '2026-09-01', plannedEnd: '2026-09-02', actualStart: '2026-09-01' },
+      { status: 'in_progress', progress: 25, plannedStart: '2026-09-03', plannedEnd: '2026-09-08', actualStart: '2026-09-03' },
+    ], '2026-09-04');
+    expect(metrics.progress).toBe(33);
+    expect(workItemPlannedProgress({ status: 'in_progress', plannedStart: '2026-09-01', plannedEnd: '2026-09-04' }, '2026-09-02')).toBe(50);
+    expect(metrics.plannedProgress).toBe(67);
   });
 
   it('按优先级使用不同的进度Gap风险阈值', () => {

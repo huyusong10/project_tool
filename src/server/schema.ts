@@ -52,6 +52,12 @@ export const accounts = sqliteTable('accounts', {
   check('accounts_status_valid', sql`${table.status} IN ('active', 'disabled')`),
 ]);
 
+export const analyticsLayouts = sqliteTable('analytics_layouts', {
+  accountId: text('account_id').primaryKey().references(() => accounts.id, { onDelete: 'cascade' }),
+  configJson: text('config_json').notNull(),
+  ...timestamps,
+});
+
 export const projectPeople = sqliteTable('project_people', {
   projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   personId: text('person_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
@@ -61,16 +67,22 @@ export const projectPeople = sqliteTable('project_people', {
   primaryKey({ columns: [table.projectId, table.personId] }),
   index('idx_project_people_person').on(table.personId, table.projectId),
   index('idx_project_people_role').on(table.projectId, table.projectRole),
-  check('project_people_role_valid', sql`${table.projectRole} IN ('member', 'manager')`),
+  check('project_people_role_valid', sql`${table.projectRole} IN ('viewer', 'member', 'manager')`),
 ]);
 
 export const workItemTemplates = sqliteTable('work_item_templates', {
   id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
   ...timestamps,
   deletedAt: text('deleted_at'),
-}, (table) => [index('idx_templates_deleted_at').on(table.deletedAt)]);
+}, (table) => [
+  index('idx_templates_project_deleted').on(table.projectId, table.deletedAt),
+  uniqueIndex('idx_templates_project_active_name_unique')
+    .on(table.projectId, sql`lower(trim(${table.name}))`)
+    .where(sql`${table.deletedAt} IS NULL`),
+]);
 
 export const templateItems = sqliteTable('template_items', {
   id: text('id').primaryKey(),
@@ -79,6 +91,7 @@ export const templateItems = sqliteTable('template_items', {
   sortOrder: integer('sort_order').notNull().default(0),
   startOffsetDays: integer('start_offset_days').notNull().default(0),
   durationDays: integer('duration_days').notNull().default(1),
+  milestoneLabel: text('milestone_label'),
   deletedAt: text('deleted_at'),
 }, (table) => [
   check('template_items_offset_nonnegative', sql`${table.startOffsetDays} >= 0`),
@@ -121,9 +134,12 @@ export const workItems = sqliteTable('work_items', {
   forecastEnd: text('forecast_end'),
   blockedAt: text('blocked_at'),
   blockedReason: text('blocked_reason'),
+  milestoneLabel: text('milestone_label'),
+  progress: integer('progress').notNull().default(0),
   sortOrder: integer('sort_order').notNull().default(0),
   ...timestamps,
 }, (table) => [
+  check('work_items_progress_range', sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
   index('idx_work_items_requirement_order').on(table.requirementId, table.sortOrder),
   index('idx_work_items_status').on(table.status),
   index('idx_work_items_owner_schedule').on(table.ownerId, table.plannedStart, table.plannedEnd),
@@ -142,11 +158,13 @@ export const progressUpdates = sqliteTable('progress_updates', {
   requirementId: text('requirement_id').notNull().references(() => requirements.id, { onDelete: 'cascade' }),
   workItemId: text('work_item_id').references(() => workItems.id, { onDelete: 'set null' }),
   percent: integer('percent').notNull(),
+  workItemPercent: integer('work_item_percent'),
   content: text('content').notNull(),
   createdByAccountId: text('created_by_account_id').references(() => accounts.id, { onDelete: 'set null' }),
   ...timestamps,
 }, (table) => [
   check('progress_updates_percent_range', sql`${table.percent} >= 0 AND ${table.percent} <= 100`),
+  check('progress_updates_work_item_percent_range', sql`${table.workItemPercent} IS NULL OR (${table.workItemPercent} >= 0 AND ${table.workItemPercent} <= 100)`),
   index('idx_progress_requirement_created').on(table.requirementId, table.createdAt),
 ]);
 
@@ -161,6 +179,7 @@ export const issues = sqliteTable('issues', {
   ownerId: text('owner_id').references(() => people.id, { onDelete: 'set null' }),
   status: text('status').notNull().default('open'),
   priority: text('priority').notNull().default('P2'),
+  progress: integer('progress').notNull().default(0),
   discoveredAt: text('discovered_at').notNull(),
   dueDate: text('due_date'),
   resolvedAt: text('resolved_at'),
@@ -168,6 +187,7 @@ export const issues = sqliteTable('issues', {
 }, (table) => [
   check('issues_status_valid', sql`${table.status} IN ('open', 'in_progress', 'deferred', 'resolved')`),
   check('issues_priority_valid', sql`${table.priority} IN ('P0', 'P1', 'P2', 'P3')`),
+  check('issues_progress_range', sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
   index('idx_issues_project_status_due').on(table.projectId, table.status, table.dueDate, table.updatedAt),
   index('idx_issues_owner').on(table.ownerId, table.status),
   index('idx_issues_requirement').on(table.requirementId),
@@ -176,16 +196,21 @@ export const issues = sqliteTable('issues', {
 export const issueUpdates = sqliteTable('issue_updates', {
   id: text('id').primaryKey(),
   issueId: text('issue_id').notNull().references(() => issues.id, { onDelete: 'cascade' }),
+  progress: integer('progress'),
   content: text('content').notNull(),
+  createdByAccountId: text('created_by_account_id').references(() => accounts.id, { onDelete: 'set null' }),
   ...timestamps,
-}, (table) => [index('idx_issue_updates_issue_created').on(table.issueId, table.createdAt)]);
+}, (table) => [
+  check('issue_updates_progress_range', sql`${table.progress} IS NULL OR (${table.progress} >= 0 AND ${table.progress} <= 100)`),
+  index('idx_issue_updates_issue_created').on(table.issueId, table.createdAt),
+]);
 
 export const apiTokens = sqliteTable('api_tokens', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   prefix: text('prefix').notNull(),
   tokenHash: text('token_hash').notNull(),
-  accountId: text('account_id').references(() => accounts.id, { onDelete: 'cascade' }),
+  accountId: text('account_id').notNull().references(() => accounts.id, { onDelete: 'cascade' }),
   expiresAt: text('expires_at'),
   lastUsedAt: text('last_used_at'),
   revokedAt: text('revoked_at'),
@@ -199,6 +224,10 @@ export const auditLogs = sqliteTable('audit_logs', {
   action: text('action').notNull(),
   entityType: text('entity_type').notNull(),
   entityId: text('entity_id'),
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
   summary: text('summary').notNull(),
   createdAt: text('created_at').notNull(),
-}, (table) => [index('idx_audit_created_at').on(table.createdAt)]);
+}, (table) => [
+  index('idx_audit_created_at').on(table.createdAt),
+  index('idx_audit_project_created').on(table.projectId, table.createdAt),
+]);

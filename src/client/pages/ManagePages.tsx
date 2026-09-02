@@ -41,7 +41,9 @@ import { priorityLabels, requirementStatusLabels, riskLabels } from "../../share
 import { EmptyState, Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectForm, RequirementForm } from "../components/ManagementForms";
+import { InlineDateCell, InlineSelectCell, InlineTextCell } from "../components/InlineEdit";
 import { canManageProject, isAdmin } from "../permissions";
+import { priorityOptions, requirementStatusOptions } from "../ui-options";
 
 type RequirementSortKey = "title" | "priority" | "status" | "progress" | "risk" | "plannedEnd" | "variance";
 type SortDirection = "asc" | "desc";
@@ -82,6 +84,7 @@ function compareRequirements(left: Requirement, right: Requirement, key: Require
 
 export function RequirementsPage() {
   const { selectedProjectId, projects, session } = useApp();
+  const client = useQueryClient();
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
@@ -96,6 +99,7 @@ export function RequirementsPage() {
       api<Requirement[]>(
         `/api/requirements${selectedProjectId ? `?projectId=${selectedProjectId}` : ""}`,
       ),
+    enabled: Boolean(selectedProjectId),
   });
   const items = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -113,6 +117,20 @@ export function RequirementsPage() {
         return left.title.localeCompare(right.title, "zh-CN");
       });
   }, [data, search, showCompleted, sortDirection, sortKey, status]);
+  const saveRequirement = async (item: Requirement, input: { priority?: string }) => {
+    const key = ["requirements", selectedProjectId] as const;
+    const previous = client.getQueryData<Requirement[]>(key);
+    client.setQueryData<Requirement[]>(key, (current = []) => current.map((entry) => entry.id === item.id ? { ...entry, ...input } : entry));
+    try {
+      const saved = await api<Requirement>(`/api/requirements/${item.id}`, { method: "PATCH", body: jsonBody(input) });
+      client.setQueryData<Requirement[]>(key, (current = []) => current.map((entry) => entry.id === saved.id ? saved : entry));
+      void client.invalidateQueries({ queryKey: ["requirement", item.id] });
+      void client.invalidateQueries({ queryKey: ["dashboard"] });
+    } catch (error) {
+      client.setQueryData(key, previous);
+      throw error;
+    }
+  };
   const changeSort = (nextKey: RequirementSortKey) => {
     if (nextKey === sortKey) {
       setSortDirection((current) => current === "asc" ? "desc" : "asc");
@@ -158,9 +176,9 @@ export function RequirementsPage() {
           onChange={(event) => setStatus(event.target.value)}
         >
           <option value="">全部状态</option>
-          {Object.entries(requirementStatusLabels).map(([value, label]) => (
-            <option value={value} key={value}>
-              {label}
+          {requirementStatusOptions.map((option) => (
+            <option value={option.value} key={option.value}>
+              {option.label}
             </option>
           ))}
         </select>
@@ -177,8 +195,8 @@ export function RequirementsPage() {
           · {items.length}/{data.length}项
         </span>
       </div>
-      <div className="table-panel">
-        <table>
+      <div className="table-panel requirements-table-panel">
+        <table className="requirements-table">
           <thead>
             <tr>
               <th aria-sort={sortKey === "title" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("需求", "title")}</th>
@@ -196,11 +214,15 @@ export function RequirementsPage() {
                 key={item.id}
                 onClick={() => navigate(`/requirements/${item.id}`)}
               >
-                <td>
-                  <strong>{item.title}</strong>
-                  <small>{item.projectName}</small>
-                </td>
-                <td><span className={`priority-badge priority-${item.priority.toLowerCase()}`}>{priorityLabels[item.priority as keyof typeof priorityLabels] || item.priority}</span></td>
+                <td><strong>{item.title}</strong><small>{item.projectName}</small></td>
+                <td>{canManage ? <InlineSelectCell
+                  value={item.priority}
+                  label="需求优先级"
+                  options={priorityOptions}
+                  displayMode="badge"
+                  onSave={(priority) => saveRequirement(item, { priority })}
+                  renderValue={(value) => <span className={`priority-badge priority-${value.toLowerCase()}`}>{priorityLabels[value as keyof typeof priorityLabels] || value}</span>}
+                /> : <span className={`priority-badge priority-${item.priority.toLowerCase()}`}>{priorityLabels[item.priority as keyof typeof priorityLabels] || item.priority}</span>}</td>
                 <td>
                   <span className={`status-pill status-${item.status}`}>
                     {
@@ -258,11 +280,12 @@ export function RequirementsPage() {
 export function ProjectsPage() {
   const { projects, selectedProjectId, session } = useApp();
   const client = useQueryClient();
-  const [editing, setEditing] = useState<Project | null | undefined>(undefined);
+  const [creating, setCreating] = useState(false);
   const admin = isAdmin(session);
   const { data: templates = [] } = useQuery({
-    queryKey: ["templates"],
-    queryFn: () => api<WorkItemTemplate[]>("/api/templates"),
+    queryKey: ["templates", selectedProjectId],
+    queryFn: () => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(selectedProjectId)}`),
+    enabled: Boolean(selectedProjectId),
   });
   const archive = useMutation({
     mutationFn: (id: string) => api(`/api/projects/${id}`, { method: "DELETE" }),
@@ -272,12 +295,24 @@ export function ProjectsPage() {
     },
   });
   const templateName = (id: string | null) => templates.find((template) => template.id === id)?.name || "未指定";
+  const saveProject = async (project: Project, input: Partial<Pick<Project, "name" | "plannedStart" | "plannedEnd" | "defaultTemplateId">>) => {
+    const previous = client.getQueryData<Project[]>(["projects"]);
+    client.setQueryData<Project[]>(["projects"], (current = []) => current.map((entry) => entry.id === project.id ? { ...entry, ...input } : entry));
+    try {
+      const saved = await api<Project>(`/api/projects/${project.id}`, { method: "PATCH", body: jsonBody(input) });
+      client.setQueryData<Project[]>(["projects"], (current = []) => current.map((entry) => entry.id === saved.id ? saved : entry));
+      void client.invalidateQueries({ queryKey: ["dashboard"] });
+    } catch (error) {
+      client.setQueryData(["projects"], previous);
+      throw error;
+    }
+  };
   return (
     <>
       <PageHeader
         title="项目管理"
         actions={admin ? (
-          <button className="primary-button" onClick={() => setEditing(null)}>
+          <button className="primary-button" onClick={() => setCreating(true)}>
             <Plus size={16} />
             新建项目
           </button>
@@ -288,33 +323,146 @@ export function ProjectsPage() {
           <table>
             <thead><tr><th>项目</th><th>计划周期</th><th>默认模板</th>{session.authenticated && <th>操作</th>}</tr></thead>
             <tbody>
-              {projects.map((project) => (
+              {projects.map((project) => {
+                const canEdit = canManageProject(session, project.id);
+                return (
                 <tr key={project.id} className={project.id === selectedProjectId ? "is-current" : ""}>
-                  <td><strong>{project.name}</strong>{project.id === selectedProjectId && <small>当前项目</small>}</td>
-                  <td>{project.plannedStart || "未设置"} → {project.plannedEnd || "未设置"}</td>
-                  <td>{templateName(project.defaultTemplateId)}</td>
+                  <td>{canEdit ? <InlineTextCell
+                    value={project.name}
+                    label="项目名称"
+                    required
+                    displayMode="stacked"
+                    onSave={(name) => saveProject(project, { name })}
+                    renderValue={(name) => <><strong>{name}</strong>{project.id === selectedProjectId && <small>当前项目</small>}</>}
+                  /> : <><strong>{project.name}</strong>{project.id === selectedProjectId && <small>当前项目</small>}</>}</td>
+                  <td><div className="inline-date-range">
+                    {canEdit ? <InlineDateCell value={project.plannedStart} label="项目计划开始" onSave={(plannedStart) => saveProject(project, { plannedStart })} /> : <span>{project.plannedStart || "未设置"}</span>}
+                    <span>→</span>
+                    {canEdit ? <InlineDateCell value={project.plannedEnd} label="项目计划完成" onSave={(plannedEnd) => saveProject(project, { plannedEnd })} /> : <span>{project.plannedEnd || "未设置"}</span>}
+                  </div></td>
+                  <td>{canEdit && project.id === selectedProjectId ? <InlineSelectCell
+                    value={project.defaultTemplateId}
+                    label="默认流程"
+                    options={[{ value: "", label: "不指定" }, ...templates.map((template) => ({ value: template.id, label: template.name }))]}
+                    onSave={(defaultTemplateId) => saveProject(project, { defaultTemplateId: defaultTemplateId || null })}
+                    placeholder="不指定"
+                  /> : project.id === selectedProjectId ? templateName(project.defaultTemplateId) : "切换到该项目后维护"}</td>
                   {session.authenticated && (
                     <td>
                       <div className="project-row-actions">
-                        {canManageProject(session, project.id) && <button className="inline-action-button" onClick={() => setEditing(project)}><Edit3 size={14} />编辑</button>}
                         {admin && <button className="inline-action-button danger" onClick={() => confirm(`归档项目“${project.name}”？项目数据可在归档中心恢复。`) && archive.mutate(project.id)}><Archive size={14} />归档</button>}
                       </div>
                     </td>
                   )}
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
           {!projects.length && <EmptyState title="还没有项目" detail="创建第一个项目后即可维护需求和排期。" />}
         </div>
-        {editing !== undefined && (
-          <Modal title={editing ? "编辑项目" : "新建项目"} onClose={() => setEditing(undefined)}>
-            <ProjectForm project={editing || undefined} onClose={() => setEditing(undefined)} />
+        {creating && (
+          <Modal title="新建项目" onClose={() => setCreating(false)}>
+            <ProjectForm onClose={() => setCreating(false)} />
           </Modal>
         )}
       </div>
     </>
   );
+}
+
+export function ProjectSettingsPage() {
+  const { projects, selectedProjectId, session } = useApp();
+  const client = useQueryClient();
+  const project = projects.find((item) => item.id === selectedProjectId);
+  const [editing, setEditing] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const admin = isAdmin(session);
+  const canManage = canManageProject(session, selectedProjectId);
+  const { data: members = [] } = useQuery({
+    queryKey: ["project-members", selectedProjectId],
+    queryFn: () => api<Person[]>("/api/projects/" + selectedProjectId + "/members"),
+    enabled: Boolean(selectedProjectId),
+  });
+  const setRole = useMutation({
+    mutationFn: ({ personId, role }: { personId: string; role: string }) =>
+      api("/api/projects/" + selectedProjectId + "/members/" + personId, { method: "PUT", body: jsonBody({ role }) }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["project-members", selectedProjectId] });
+      void client.invalidateQueries({ queryKey: ["people", selectedProjectId] });
+      void client.invalidateQueries({ queryKey: ["session"] });
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (personId: string) => api("/api/projects/" + selectedProjectId + "/members/" + personId, { method: "DELETE" }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["project-members", selectedProjectId] });
+      void client.invalidateQueries({ queryKey: ["people-candidates", selectedProjectId] });
+      void client.invalidateQueries({ queryKey: ["people", selectedProjectId] });
+    },
+  });
+  const { data: projectArchives } = useQuery({
+    queryKey: ["project-archives", selectedProjectId],
+    queryFn: () => api<Archives>("/api/archives?projectId=" + encodeURIComponent(selectedProjectId)),
+    enabled: canManage && Boolean(selectedProjectId),
+  });
+  const restore = useMutation({
+    mutationFn: ({ entity, id }: { entity: "requirements" | "templates"; id: string }) => api("/api/" + entity + "/" + id + "/restore", { method: "POST" }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["project-archives", selectedProjectId] });
+      void client.invalidateQueries({ queryKey: ["requirements"] });
+      void client.invalidateQueries({ queryKey: ["templates"] });
+    },
+  });
+  return <>
+    <PageHeader title="项目设置" actions={canManage && project ? <button className="primary-button" onClick={() => setEditing(true)}><Edit3 size={15} />编辑项目</button> : null} />
+    <div className="page-content">
+      {!project ? <EmptyState title="暂无可访问项目" detail="请联系管理员分配项目权限。" /> : <>
+        <section className="panel project-settings-summary">
+          <header><div><h2>{project.name}</h2><p>{project.plannedStart || "未设置开始"} — {project.plannedEnd || "未设置完成"}</p></div><span className="status-pill status-in_progress">{project.status}</span></header>
+        </section>
+        <section className="panel project-members-panel">
+          <header>
+            <div><h2>项目成员</h2><p>项目经理由平台管理员任免，其他角色由项目经理维护</p></div>
+            <div className="project-member-header-actions">
+              <span className="project-member-count">{members.length} 人</span>
+              {canManage && <button className="ghost-button" onClick={() => setAdding(true)}><UserPlus size={15} />添加成员</button>}
+            </div>
+          </header>
+          <div className="project-member-list">
+            {members.map((person) => {
+              const roleLabel = person.projectRole === "manager" ? "项目经理" : person.projectRole === "viewer" ? "观察者" : "项目成员";
+              const editable = canManage && (admin || person.projectRole !== "manager");
+              return <article className={`project-member-row${canManage ? " can-manage" : ""}`} key={person.id}>
+                <div className="project-member-identity">
+                  <span className="project-member-avatar">{person.name.slice(-1)}</span>
+                  <div><strong>{person.name}</strong><small>{person.username ? `账号 ${person.username}` : "未关联账号"}</small></div>
+                </div>
+                <div className="project-member-meta"><small>岗位</small><strong>{person.jobTitle || "岗位未设置"}</strong></div>
+                <div className="project-member-role">
+                  <small>项目角色</small>
+                  {editable ? <select aria-label={`${person.name}的项目角色`} value={person.projectRole || "member"} disabled={setRole.isPending} onChange={(event) => setRole.mutate({ personId: person.id, role: event.target.value })}>
+                    <option value="viewer">观察者</option><option value="member">项目成员</option>{admin && <option value="manager">项目经理</option>}
+                  </select> : <span className={`project-role-badge role-${person.projectRole || "member"}`}>{roleLabel}</span>}
+                </div>
+                {canManage && <div className="project-member-action">{editable && <button className="inline-action-button danger" disabled={remove.isPending} onClick={() => confirm("将“" + person.name + "”移出项目？") && remove.mutate(person.id)}><UserMinus size={14} />移除</button>}</div>}
+              </article>;
+            })}
+            {!members.length && <EmptyState title="暂无项目成员" detail="点击“添加成员”，从平台人员中选择成员加入项目。" />}
+          </div>
+          {(setRole.error || remove.error) && <p className="form-error">{(setRole.error || remove.error)?.message}</p>}
+        </section>
+        {canManage && <section className="panel project-members-panel">
+          <header><div><h2>项目归档</h2><p>恢复当前项目已归档的需求或流程</p></div></header>
+          <div className="compact-list">
+            {[...(projectArchives?.requirements || []).map((item) => ({ ...item, entity: "requirements" as const, type: "需求" })), ...(projectArchives?.templates || []).map((item) => ({ ...item, entity: "templates" as const, type: "流程" }))].map((item) => <div key={item.entity + item.id}><Archive size={15} /><div><strong>{item.title}</strong><span>{item.type} · {new Date(item.deletedAt).toLocaleString()}</span></div><button className="compact-text-button" onClick={() => restore.mutate({ entity: item.entity, id: item.id })}><RotateCcw size={14} />恢复</button></div>)}
+            {!projectArchives?.requirements.length && !projectArchives?.templates.length && <EmptyState title="暂无项目归档" detail="归档需求或流程后会显示在这里。" />}
+          </div>
+        </section>}
+      </>}
+      {editing && project && <Modal title="编辑项目" onClose={() => setEditing(false)}><ProjectForm project={project} onClose={() => setEditing(false)} /></Modal>}
+      {adding && <Modal title="添加项目成员" width={620} onClose={() => setAdding(false)}><AddProjectPersonForm projectId={selectedProjectId} onClose={() => setAdding(false)} /></Modal>}
+    </div>
+  </>;
 }
 
 function PersonForm({
@@ -323,7 +471,7 @@ function PersonForm({
   onClose,
 }: {
   person?: Person;
-  projectId: string;
+  projectId?: string;
   onClose: () => void;
 }) {
   const client = useQueryClient();
@@ -331,7 +479,7 @@ function PersonForm({
     mutationFn: (value: object) =>
       api(person ? `/api/people/${person.id}` : "/api/people", {
         method: person ? "PATCH" : "POST",
-        body: jsonBody(person ? value : { ...value, projectId }),
+        body: jsonBody(person ? value : { ...value, ...(projectId ? { projectId } : {}) }),
       }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["people"] });
@@ -360,6 +508,10 @@ function PersonForm({
         <span>岗位</span>
         <input name="jobTitle" defaultValue={person?.jobTitle || ""} placeholder="例如：前端开发、测试工程师" />
       </label>
+      {person && <label className="field field-full">
+        <span>资源状态</span>
+        <select name="active" defaultValue={person.active ? "true" : "false"}><option value="true">启用</option><option value="false">停用</option></select>
+      </label>}
       {mutation.error && (
         <p className="form-error field-full">{mutation.error.message}</p>
       )}
@@ -373,22 +525,74 @@ function PersonForm({
   );
 }
 
-function AddProjectPersonForm({ projectId, people, onClose }: { projectId: string; people: Person[]; onClose: () => void }) {
+export function ResourceCenterPage() {
   const client = useQueryClient();
+  const [editing, setEditing] = useState<Person | null | undefined>(undefined);
+  const { data = [] } = useQuery({ queryKey: ["people", "all"], queryFn: () => api<Person[]>("/api/people") });
+  const archive = useMutation({
+    mutationFn: (id: string) => api("/api/people/" + id, { method: "DELETE" }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["people"] }),
+  });
+  return <>
+    <PageHeader title="资源中心" actions={<button className="primary-button" onClick={() => setEditing(null)}><UserPlus size={15} />新增人员</button>} />
+    <div className="page-content">
+      <div className="table-panel"><table>
+        <thead><tr><th>人员</th><th>岗位</th><th>账号</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>{data.map((person) => <tr key={person.id}>
+          <td><strong>{person.name}</strong></td><td>{person.jobTitle || "—"}</td><td>{person.username || "—"}</td><td>{person.active ? "启用" : "停用"}</td>
+          <td><div className="project-row-actions"><button className="inline-action-button" onClick={() => setEditing(person)}><Edit3 size={14} />编辑</button><button className="inline-action-button danger" onClick={() => confirm("归档人员“" + person.name + "”？") && archive.mutate(person.id)}><Archive size={14} />归档</button></div></td>
+        </tr>)}</tbody>
+      </table>{!data.length && <EmptyState title="暂无人员" detail="新增人员后可加入具体项目。" />}</div>
+      {editing !== undefined && <Modal title={editing ? "编辑人员" : "新增人员"} onClose={() => setEditing(undefined)}><PersonForm person={editing || undefined} onClose={() => setEditing(undefined)} /></Modal>}
+    </div>
+  </>;
+}
+
+function AddProjectPersonForm({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const client = useQueryClient();
+  const [keyword, setKeyword] = useState("");
+  const [personId, setPersonId] = useState("");
+  const [role, setRole] = useState("member");
+  const deferredKeyword = useDeferredValue(keyword.trim());
+  const candidatesQuery = useQuery({
+    queryKey: ["people-candidates", projectId, deferredKeyword],
+    queryFn: () => api<Person[]>(`/api/people/candidates?projectId=${encodeURIComponent(projectId)}${deferredKeyword ? `&q=${encodeURIComponent(deferredKeyword)}` : ""}`),
+    enabled: Boolean(projectId),
+  });
+  const people = candidatesQuery.data || [];
   const mutation = useMutation({
-    mutationFn: (personId: string) => api(`/api/projects/${projectId}/people/${personId}`, { method: "POST" }),
+    mutationFn: ({ personId, role }: { personId: string; role: string }) => api(`/api/projects/${projectId}/members/${personId}`, { method: "PUT", body: jsonBody({ role }) }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["people", projectId] });
+      void client.invalidateQueries({ queryKey: ["project-members", projectId] });
+      void client.invalidateQueries({ queryKey: ["people-candidates", projectId] });
       onClose();
     },
   });
-  return <form className="form-grid" onSubmit={(event) => {
+  return <form className="member-picker-form" onSubmit={(event) => {
     event.preventDefault();
-    mutation.mutate(String(new FormData(event.currentTarget).get("personId") || ""));
+    if (personId) mutation.mutate({ personId, role });
   }}>
-    <label className="field field-full"><span>已有人员</span><select name="personId" required defaultValue=""><option value="" disabled>请选择人员</option>{people.map((person) => <option value={person.id} key={person.id}>{person.name} · {person.jobTitle || "岗位未设置"}</option>)}</select></label>
-    {mutation.error && <p className="form-error field-full">{mutation.error.message}</p>}
-    <div className="form-actions field-full"><button type="button" className="ghost-button" onClick={onClose}>取消</button><button className="primary-button">添加到项目</button></div>
+    <label className="member-picker-search"><Search size={16} /><input value={keyword} onChange={(event) => { setKeyword(event.target.value); setPersonId(""); }} placeholder="搜索姓名或岗位" autoFocus /></label>
+    <div className="member-candidate-list" aria-label="可添加人员">
+      {candidatesQuery.isLoading && <div className="member-picker-state">正在加载可添加人员…</div>}
+      {candidatesQuery.isError && <div className="member-picker-state is-error"><strong>候选人员加载失败</strong><span>{candidatesQuery.error.message}</span><button type="button" className="compact-text-button" onClick={() => void candidatesQuery.refetch()}>重试</button></div>}
+      {!candidatesQuery.isLoading && !candidatesQuery.isError && people.map((person) => <button
+        type="button"
+        className={`member-candidate-option${personId === person.id ? " is-selected" : ""}`}
+        aria-pressed={personId === person.id}
+        key={person.id}
+        onClick={() => setPersonId(person.id)}
+      >
+        <span className="project-member-avatar">{person.name.slice(-1)}</span>
+        <span><strong>{person.name}</strong><small>{person.jobTitle || "岗位未设置"}{person.username ? ` · ${person.username}` : ""}</small></span>
+        <span className="member-candidate-check">{personId === person.id ? "已选择" : "选择"}</span>
+      </button>)}
+      {!candidatesQuery.isLoading && !candidatesQuery.isError && !people.length && <div className="member-picker-state"><strong>{keyword ? "没有匹配的人员" : "暂无可添加人员"}</strong><span>{keyword ? "请调整搜索关键词。" : "当前启用人员均已加入项目，或请先到资源中心新增人员。"}</span></div>}
+    </div>
+    <label className="field member-picker-role"><span>加入后的项目角色</span><select value={role} onChange={(event) => setRole(event.target.value)}><option value="member">项目成员</option><option value="viewer">项目观察者</option></select></label>
+    {mutation.error && <p className="form-error">{mutation.error.message}</p>}
+    <div className="form-actions"><button type="button" className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" disabled={!personId || mutation.isPending}>{mutation.isPending ? "正在添加…" : "添加到项目"}</button></div>
   </form>;
 }
 
@@ -397,7 +601,7 @@ export function PeoplePage() {
   const [viewParams, setViewParams] = useSearchParams();
   const view = viewParams.get("view") === "analysis" ? "analysis" : "matrix";
   const client = useQueryClient();
-  const [editing, setEditing] = useState<Person | null | undefined>(undefined);
+  const [creating, setCreating] = useState(false);
   const [addingExisting, setAddingExisting] = useState(false);
   const admin = isAdmin(session);
   const canManage = canManageProject(session, selectedProjectId);
@@ -406,8 +610,6 @@ export function PeoplePage() {
     queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`),
     enabled: Boolean(selectedProjectId),
   });
-  const { data: allPeople = [] } = useQuery({ queryKey: ["people", "all"], queryFn: () => api<Person[]>("/api/people"), enabled: canManage });
-  const availablePeople = allPeople.filter((person) => !data.some((member) => member.id === person.id));
   const groups = useMemo(() => {
     const grouped = new Map<string, Person[]>();
     for (const person of data) {
@@ -430,16 +632,40 @@ export function PeoplePage() {
     onSuccess: () => void client.invalidateQueries({ queryKey: ["people"] }),
   });
   const removeMember = useMutation({
-    mutationFn: (id: string) => api(`/api/projects/${selectedProjectId}/people/${id}`, { method: "DELETE" }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["people", selectedProjectId] }),
+    mutationFn: (id: string) => api(`/api/projects/${selectedProjectId}/members/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["people", selectedProjectId] });
+      void client.invalidateQueries({ queryKey: ["people-candidates", selectedProjectId] });
+    },
   });
+  const savePerson = async (person: Person, input: Partial<Pick<Person, "name" | "jobTitle">>) => {
+    const projectKey = ["people", selectedProjectId] as const;
+    const allKey = ["people", "all"] as const;
+    const previousProject = client.getQueryData<Person[]>(projectKey);
+    const previousAll = client.getQueryData<Person[]>(allKey);
+    const optimistic = (current: Person[] | undefined) => current?.map((entry) => entry.id === person.id ? { ...entry, ...input } : entry);
+    client.setQueryData<Person[]>(projectKey, optimistic);
+    client.setQueryData<Person[]>(allKey, optimistic);
+    try {
+      const saved = await api<Person>(`/api/people/${person.id}`, { method: "PATCH", body: jsonBody(input) });
+      const applySaved = (current: Person[] | undefined) => current?.map((entry) => entry.id === saved.id ? { ...entry, ...saved } : entry);
+      client.setQueryData<Person[]>(projectKey, applySaved);
+      client.setQueryData<Person[]>(allKey, applySaved);
+      void client.invalidateQueries({ queryKey: ["accounts"] });
+      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
+    } catch (error) {
+      client.setQueryData(projectKey, previousProject);
+      client.setQueryData(allKey, previousAll);
+      throw error;
+    }
+  };
   return (
     <>
       <PageHeader
         title="人员矩阵"
         actions={view === "matrix" && canManage ? <div className="panel-actions">
-          <button className="ghost-button" disabled={!availablePeople.length || !selectedProjectId} onClick={() => setAddingExisting(true)}><UserPlus size={16} />添加已有人员</button>
-          {admin && <button className="primary-button" disabled={!selectedProjectId} onClick={() => setEditing(null)}><UserPlus size={16} />新增人员</button>}
+          <button className="ghost-button" disabled={!selectedProjectId} onClick={() => setAddingExisting(true)}><UserPlus size={16} />添加已有人员</button>
+          {admin && <button className="primary-button" disabled={!selectedProjectId} onClick={() => setCreating(true)}><UserPlus size={16} />新增人员</button>}
         </div> : null}
       />
       <div className="page-content">
@@ -460,34 +686,24 @@ export function PeoplePage() {
               </header>
               <div className="people-role-members">
                 {group.people.map((person) => (
-                  <article
-                    className="person-card person-card-editable"
-                    key={person.id}
-                    tabIndex={0}
-                    aria-label={`编辑人员 ${person.name}`}
-                    title="点击修改姓名和岗位"
-                    onClick={() => admin ? setEditing(person) : undefined}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter" && event.key !== " ") return;
-                      event.preventDefault();
-                      if (admin) setEditing(person);
-                    }}
-                  >
+                  <article className={`person-card${admin ? " person-card-inline-editable" : ""}`} key={person.id}>
                     <span className="person-avatar">{person.name.slice(-1)}</span>
                     <div className="person-copy">
-                      <strong>{person.name}</strong>
+                      {admin ? <>
+                        <InlineTextCell value={person.name} label="人员姓名" required onSave={(name) => savePerson(person, { name })} renderValue={(name) => <strong>{name}</strong>} />
+                        <InlineTextCell value={person.jobTitle} label="人员岗位" placeholder="岗位未设置" onSave={(jobTitle) => savePerson(person, { jobTitle: jobTitle || null })} renderValue={(jobTitle) => <small>{jobTitle || "岗位未设置"}</small>} />
+                      </> : <><strong>{person.name}</strong><small>{person.jobTitle || "岗位未设置"}</small></>}
                     </div>
-                    {admin && <Edit3 className="person-edit-indicator" size={15} aria-hidden="true" />}
                     {canManage && (
                       <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-                        {admin && <button
+                        {(admin || person.projectRole !== "manager") && <button
                           aria-label={`从项目移除 ${person.name}`}
                           title={`从当前项目移除 ${person.name}`}
                           onClick={() => confirm(`将“${person.name}”移出当前项目？历史工作项不会改变。`) && removeMember.mutate(person.id)}
                         >
                           <UserMinus size={15} />
                         </button>}
-                        <button
+                        {admin && <button
                           aria-label={`归档人员 ${person.name}`}
                           title={`全局归档 ${person.name}`}
                           onClick={() =>
@@ -496,7 +712,7 @@ export function PeoplePage() {
                           }
                         >
                           <Archive size={15} />
-                        </button>
+                        </button>}
                       </div>
                     )}
                   </article>
@@ -511,19 +727,18 @@ export function PeoplePage() {
             />
           )}
         </div>
-        {editing !== undefined && (
+        {creating && (
         <Modal
-          title={editing ? "编辑人员" : "新增人员"}
-          onClose={() => setEditing(undefined)}
+          title="新增人员"
+          onClose={() => setCreating(false)}
         >
           <PersonForm
-            person={editing || undefined}
             projectId={selectedProjectId}
-            onClose={() => setEditing(undefined)}
+            onClose={() => setCreating(false)}
           />
         </Modal>
         )}
-        {addingExisting && <Modal title="添加已有人员" onClose={() => setAddingExisting(false)}><AddProjectPersonForm projectId={selectedProjectId} people={availablePeople} onClose={() => setAddingExisting(false)} /></Modal>}
+        {addingExisting && <Modal title="添加已有人员" width={620} onClose={() => setAddingExisting(false)}><AddProjectPersonForm projectId={selectedProjectId} onClose={() => setAddingExisting(false)} /></Modal>}
         </> : <ConcurrencyPanel />}
       </div>
     </>
@@ -568,6 +783,7 @@ function ConcurrencyPanel() {
       id: string;
       name: string;
       jobTitle: string | null;
+      externalCurrentCount?: number;
       daysByDate: Map<string, MatrixDay>;
     }>();
     for (const page of pages) {
@@ -576,6 +792,7 @@ function ConcurrencyPanel() {
           id: person.id,
           name: person.name,
           jobTitle: person.jobTitle,
+          externalCurrentCount: person.externalCurrentCount,
           daysByDate: new Map<string, MatrixDay>(),
         };
         for (const day of person.days) merged.daysByDate.set(day.date, day);
@@ -586,6 +803,7 @@ function ConcurrencyPanel() {
       id: person.id,
       name: person.name,
       jobTitle: person.jobTitle,
+      externalCurrentCount: person.externalCurrentCount,
       days: dates.map((date) => person.daysByDate.get(date) || {
         date,
         count: 0,
@@ -623,7 +841,7 @@ function ConcurrencyPanel() {
     </div>
     {currentTop.length > 0 && <section className="human-leaders" aria-label="今日工作最多人员">
       <strong>今日工作较多</strong>
-      <div>{currentTop.map((person) => <article key={person.id}><span className="person-avatar">{person.name.slice(-1)}</span><div><b>{person.name}</b><small>{person.jobTitle || "岗位未设置"}</small></div><em className={`load-${Math.min(person.currentCount, 3)}`}>{person.currentCount}项</em></article>)}</div>
+      <div>{currentTop.map((person) => <article key={person.id}><span className="person-avatar">{person.name.slice(-1)}</span><div><b>{person.name}</b><small>{person.jobTitle || "岗位未设置"}{person.externalCurrentCount ? ` · 外部${person.externalCurrentCount}项` : ""}</small></div><em className={`load-${Math.min(person.currentCount, 3)}`}>{person.currentCount}项</em></article>)}</div>
     </section>}
     <div className="human-matrix-frame">
       <header className="human-matrix-heading">
@@ -642,7 +860,7 @@ function ConcurrencyPanel() {
               return <th className={`${date === firstDate ? "is-today" : ""}${parsed.getDay() === 1 && date !== firstDate ? " is-week-start" : ""}`} key={date}><span>{["日", "一", "二", "三", "四", "五", "六"][parsed.getDay()]}</span>{date.slice(5).replace("-", "/")}</th>;
             })}</tr></thead>
             <tbody>
-              {matrixData.people.map((person) => <tr key={person.id}><td><strong>{person.name}</strong><small>{person.jobTitle || "—"}</small></td>{person.days.map((day) => <td className={parseISO(day.date).getDay() === 1 && day.date !== firstDate ? "is-week-start" : ""} key={day.date}><span className={`heat heat-${Math.min(day.count, 3)}`} title={day.items.map((item) => `${item.requirementTitle} · ${item.title}`).join("\n")}>{day.count || ""}</span></td>)}</tr>)}
+              {matrixData.people.map((person) => <tr key={person.id}><td><strong>{person.name}</strong><small>{person.jobTitle || "—"}{person.externalCurrentCount ? ` · 外部${person.externalCurrentCount}项` : ""}</small></td>{person.days.map((day) => <td className={parseISO(day.date).getDay() === 1 && day.date !== firstDate ? "is-week-start" : ""} key={day.date}><span className={`heat heat-${Math.min(day.count, 3)}`} title={day.items.map((item) => `${item.requirementTitle} · ${item.title}`).join("\n")}>{day.count || ""}</span></td>)}</tr>)}
               {!matrixData.people.length && !analysis.isLoading && <tr className="human-empty-row"><td colSpan={matrixData.dates.length + 1}><strong>当前区间暂无安排</strong><span>向右加载后续日期，或调整人员和岗位筛选。</span></td></tr>}
             </tbody>
           </table>
@@ -656,18 +874,20 @@ function ConcurrencyPanel() {
 
 function TemplateForm({
   template,
+  projectId,
   onClose,
 }: {
   template?: WorkItemTemplate;
+  projectId: string;
   onClose: () => void;
 }) {
   const client = useQueryClient();
-  const [items, setItems] = useState<Array<Pick<TemplateItem, "id" | "title" | "startOffsetDays" | "durationDays" | "sortOrder">>>(
-    template?.items.map((item) => ({ id: item.id, title: item.title, startOffsetDays: item.startOffsetDays, durationDays: item.durationDays, sortOrder: item.sortOrder })) || [
-      { id: "", title: "设计", startOffsetDays: 0, durationDays: 2, sortOrder: 0 },
-      { id: "", title: "开发", startOffsetDays: 2, durationDays: 5, sortOrder: 1 },
-      { id: "", title: "测试", startOffsetDays: 7, durationDays: 3, sortOrder: 2 },
-      { id: "", title: "发布", startOffsetDays: 10, durationDays: 1, sortOrder: 3 },
+  const [items, setItems] = useState<Array<Pick<TemplateItem, "id" | "title" | "startOffsetDays" | "durationDays" | "milestoneLabel" | "sortOrder">>>(
+    template?.items.map((item) => ({ id: item.id, title: item.title, startOffsetDays: item.startOffsetDays, durationDays: item.durationDays, milestoneLabel: item.milestoneLabel, sortOrder: item.sortOrder })) || [
+      { id: "", title: "设计", startOffsetDays: 0, durationDays: 2, milestoneLabel: null, sortOrder: 0 },
+      { id: "", title: "开发", startOffsetDays: 2, durationDays: 5, milestoneLabel: null, sortOrder: 1 },
+      { id: "", title: "测试", startOffsetDays: 7, durationDays: 3, milestoneLabel: null, sortOrder: 2 },
+      { id: "", title: "发布", startOffsetDays: 10, durationDays: 1, milestoneLabel: "发布基线", sortOrder: 3 },
     ],
   );
   const [dragState, setDragState] = useState<{
@@ -721,7 +941,7 @@ function TemplateForm({
       onSubmit={(event) => {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
-        mutation.mutate({ name: data.get("name"), description: data.get("description"), items: items.map((item, index) => ({ ...item, id: item.id || undefined, sortOrder: index })) });
+        mutation.mutate({ projectId, name: data.get("name"), description: data.get("description"), items: items.map((item, index) => ({ ...item, id: item.id || undefined, sortOrder: index })) });
       }}
     >
       <label className="field field-full">
@@ -734,7 +954,7 @@ function TemplateForm({
       </label>
       <div className="template-editor field-full">
         <div className="template-item-editor">
-          <div className="template-editor-head"><span /><span>工作项</span><span>开始偏移</span><span>工期</span><span /></div>
+          <div className="template-editor-head"><span /><span>工作项</span><span>开始偏移</span><span>工期</span><span>里程碑（可选）</span><span /></div>
           {items.map((item, index) => <div
             className={`template-editor-row${dragState?.fromIndex === index ? " is-dragging" : ""}${dragState?.overIndex === index ? ` drop-${dragState.position}` : ""}`}
             key={item.id || index}
@@ -766,15 +986,16 @@ function TemplateForm({
             <input value={item.title} required onChange={(event) => updateItem(index, { title: event.target.value })} />
             <input type="number" min="0" value={item.startOffsetDays} onChange={(event) => updateItem(index, { startOffsetDays: Math.max(0, Number(event.target.value)) })} />
             <input type="number" min="1" value={item.durationDays} onChange={(event) => updateItem(index, { durationDays: Math.max(1, Number(event.target.value)) })} />
+            <input className="template-milestone-input" maxLength={80} value={item.milestoneLabel || ""} placeholder="如：需求基线" onChange={(event) => updateItem(index, { milestoneLabel: event.target.value || null })} />
             <button type="button" className="template-delete-item" aria-label={`删除${item.title || "工作项"}`} title="删除" disabled={items.length === 1} onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={14} /></button>
           </div>)}
-          <button type="button" className="ghost-button add-template-item" onClick={() => setItems((current) => [...current, { id: "", title: `工作项${current.length + 1}`, startOffsetDays: totalDays, durationDays: 1, sortOrder: current.length }])}><Plus size={14} />添加工作项</button>
+          <button type="button" className="ghost-button add-template-item" onClick={() => setItems((current) => [...current, { id: "", title: `工作项${current.length + 1}`, startOffsetDays: totalDays, durationDays: 1, milestoneLabel: null, sortOrder: current.length }])}><Plus size={14} />添加工作项</button>
         </div>
         <div className="template-gantt">
           <div className="template-gantt-scale"><span>第1天</span><span>共{totalDays}个工作日</span></div>
           {items.map((item, index) => <div className="template-gantt-row" key={item.id || index}>
             <span className="template-gantt-title">{item.title || "未命名"}</span>
-            <div className="template-gantt-track"><button type="button" className="template-gantt-bar" style={{ left: `${(item.startOffsetDays / totalDays) * 100}%`, width: `${(item.durationDays / totalDays) * 100}%` }} onPointerDown={(event) => beginTimelineDrag(event, index, "move")} title={`第${item.startOffsetDays + 1}个工作日开始，持续${item.durationDays}天`}><span>{item.durationDays}天</span><i onPointerDown={(event) => beginTimelineDrag(event, index, "resize")} /></button></div>
+            <div className="template-gantt-track"><button type="button" className="template-gantt-bar" style={{ left: `${(item.startOffsetDays / totalDays) * 100}%`, width: `${(item.durationDays / totalDays) * 100}%` }} onPointerDown={(event) => beginTimelineDrag(event, index, "move")} title={`第${item.startOffsetDays + 1}个工作日开始，持续${item.durationDays}天`}><span>{item.durationDays}天</span><i onPointerDown={(event) => beginTimelineDrag(event, index, "resize")} /></button>{item.milestoneLabel?.trim() && <span className={`template-milestone-marker${(item.startOffsetDays + item.durationDays) / totalDays > .72 ? " align-left" : ""}`} style={{ left: `${((item.startOffsetDays + item.durationDays) / totalDays) * 100}%` }} title={`${item.milestoneLabel} · 第${item.startOffsetDays + item.durationDays}个工作日`}><i /><b>{item.milestoneLabel}</b></span>}</div>
           </div>)}
           <p>拖动时间条调整开始偏移，拖动右侧手柄调整工期。</p>
         </div>
@@ -796,15 +1017,17 @@ function TemplateForm({
 }
 
 export function TemplatesPage() {
-  const { session, openLogin } = useApp();
+  const { session, selectedProjectId } = useApp();
   const client = useQueryClient();
   const [editing, setEditing] = useState<WorkItemTemplate | null | undefined>(
     undefined,
   );
   const { data = [] } = useQuery({
-    queryKey: ["templates"],
-    queryFn: () => api<WorkItemTemplate[]>("/api/templates"),
+    queryKey: ["templates", selectedProjectId],
+    queryFn: () => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(selectedProjectId)}`),
+    enabled: Boolean(selectedProjectId),
   });
+  const canManage = canManageProject(session, selectedProjectId);
   const archive = useMutation({
     mutationFn: (id: string) =>
       api(`/api/templates/${id}`, { method: "DELETE" }),
@@ -814,7 +1037,7 @@ export function TemplatesPage() {
     <>
       <PageHeader
         title="流程设计"
-        actions={isAdmin(session) ? (
+        actions={canManage ? (
           <button className="primary-button" onClick={() => setEditing(null)}>
             <Plus size={16} />
             新建流程
@@ -828,9 +1051,9 @@ export function TemplatesPage() {
             <header>
               <div>
                 <strong>{template.name}</strong>
-                <small>{template.items.length}个工作项</small>
+                <small>{template.items.length}个工作项 · {template.items.filter((item) => item.milestoneLabel).length}个里程碑</small>
               </div>
-              {isAdmin(session) && (
+              {canManage && (
                 <div className="row-actions">
                   <button aria-label={`编辑流程 ${template.name}`} onClick={() => setEditing(template)}>
                     <Edit3 size={15} />
@@ -852,7 +1075,7 @@ export function TemplatesPage() {
               {template.items.map((item) => (
                 <li key={item.id}>
                   <span>{item.sortOrder + 1}</span>
-                  <div><b>{item.title}</b><small>第{item.startOffsetDays + 1}个工作日 · {item.durationDays}天</small></div>
+                  <div><b>{item.title}</b><small>第{item.startOffsetDays + 1}个工作日 · {item.durationDays}天{item.milestoneLabel && <em>◆ {item.milestoneLabel}</em>}</small></div>
                 </li>
               ))}
             </ol>
@@ -867,6 +1090,7 @@ export function TemplatesPage() {
         >
           <TemplateForm
             template={editing || undefined}
+            projectId={selectedProjectId}
             onClose={() => setEditing(undefined)}
           />
         </Modal>
@@ -884,16 +1108,113 @@ const archiveEntityOptions = [
 ] as const;
 type ArchiveEntity = (typeof archiveEntityOptions)[number]["value"];
 
+export function ArchiveCenterPage() {
+  const client = useQueryClient();
+  const [keyword, setKeyword] = useState("");
+  const [type, setType] = useState<"all" | ArchiveEntity>("all");
+  const { data: archives } = useQuery({ queryKey: ["archives"], queryFn: () => api<Archives>("/api/archives") });
+  const rows = useMemo(() => archiveEntityOptions.flatMap(({ value, label }) =>
+    (archives?.[value] || []).map((item) => ({ ...item, entity: value, typeLabel: label }))), [archives]);
+  const filteredRows = useMemo(() => {
+    const normalized = keyword.trim().toLowerCase();
+    return rows
+      .filter((item) => type === "all" || item.entity === type)
+      .filter((item) => !normalized || `${item.title} ${item.jobTitle || ""} ${item.typeLabel}`.toLowerCase().includes(normalized))
+      .sort((left, right) => right.deletedAt.localeCompare(left.deletedAt));
+  }, [keyword, rows, type]);
+  const restore = useMutation({
+    mutationFn: ({ entity, id }: { entity: ArchiveEntity; id: string }) => api(`/api/${entity}/${id}/restore`, { method: "POST" }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["archives"] });
+      void client.invalidateQueries({ queryKey: ["projects"] });
+      void client.invalidateQueries({ queryKey: ["people"] });
+      void client.invalidateQueries({ queryKey: ["templates"] });
+      void client.invalidateQueries({ queryKey: ["requirements"] });
+    },
+  });
+  const permanentlyDelete = useMutation({
+    mutationFn: ({ entity, id }: { entity: ArchiveEntity; id: string }) => api(`/api/archives/${entity}/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["archives"] });
+      void client.invalidateQueries({ queryKey: ["audit"] });
+      void client.invalidateQueries({ queryKey: ["projects"] });
+      void client.invalidateQueries({ queryKey: ["people"] });
+      void client.invalidateQueries({ queryKey: ["templates"] });
+      void client.invalidateQueries({ queryKey: ["requirements"] });
+    },
+  });
+  return <>
+    <PageHeader title="归档中心" />
+    <div className="page-content">
+      <section className="panel archive-panel">
+        <header><div><h2>已归档内容</h2><p>统一筛选、恢复或永久删除平台归档资源</p></div></header>
+        <div className="archive-toolbar">
+          <label className="search-box"><Search size={16} /><input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索归档名称或岗位" /></label>
+          <select value={type} onChange={(event) => setType(event.target.value as "all" | ArchiveEntity)}><option value="all">全部类型</option>{archiveEntityOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select>
+          <span>{filteredRows.length} / {rows.length} 条</span>
+        </div>
+        <div className="archive-table-wrap">
+          <table className="archive-table">
+            <thead><tr><th>名称</th><th>类型</th><th>补充信息</th><th>归档时间</th><th>操作</th></tr></thead>
+            <tbody>{filteredRows.map((item) => <tr key={`${item.entity}-${item.id}`}>
+              <td><strong title={item.title}>{item.title}</strong></td>
+              <td><span className={`archive-type archive-type-${item.entity}`}>{item.typeLabel}</span></td>
+              <td>{item.jobTitle || "—"}</td>
+              <td>{new Date(item.deletedAt).toLocaleString("zh-CN")}</td>
+              <td><div className="archive-row-actions"><button className="inline-action-button" title={`恢复${item.typeLabel}`} onClick={() => restore.mutate({ entity: item.entity, id: item.id })}><RotateCcw size={14} />恢复</button><button className="inline-action-button danger" title={`永久删除${item.typeLabel}`} onClick={() => confirm(`永久删除“${item.title}”？该操作无法恢复。${item.entity === "projects" ? "项目下的需求和工作项也会一并删除。" : ""}`) && permanentlyDelete.mutate({ entity: item.entity, id: item.id })}><Trash2 size={14} />删除</button></div></td>
+            </tr>)}</tbody>
+          </table>
+          {!filteredRows.length && <EmptyState title="没有符合条件的归档内容" detail={rows.length ? "调整搜索词或类型筛选后重试。" : "归档项目、需求、人员或流程后会显示在这里。"} />}
+        </div>
+        {(restore.error || permanentlyDelete.error) && <p className="form-error archive-error">{(restore.error || permanentlyDelete.error)?.message}</p>}
+      </section>
+    </div>
+  </>;
+}
+
+export function PersonalSettingsPage() {
+  const { openPassword } = useApp();
+  const client = useQueryClient();
+  const [tokenModal, setTokenModal] = useState(false);
+  const [newToken, setNewToken] = useState<string>();
+  const { data: tokens = [] } = useQuery({ queryKey: ["my-tokens"], queryFn: () => api<ApiToken[]>("/api/tokens") });
+  const createToken = useMutation({
+    mutationFn: (input: object) => api<ApiToken & { token: string }>("/api/tokens", { method: "POST", body: jsonBody(input) }),
+    onSuccess: (result) => { setNewToken(result.token); void client.invalidateQueries({ queryKey: ["my-tokens"] }); },
+  });
+  const revoke = useMutation({
+    mutationFn: (id: string) => api("/api/tokens/" + id, { method: "DELETE" }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["my-tokens"] }),
+  });
+  return <>
+    <PageHeader title="个人设置" actions={<button className="ghost-button" onClick={openPassword}><KeyRound size={15} />修改密码</button>} />
+    <div className="page-content">
+      <section className="panel system-panel personal-token-panel">
+        <header><div><h2>我的 MCP Token</h2><p>Token 自动继承当前账号的项目权限</p></div><button className="primary-button" onClick={() => { setNewToken(undefined); setTokenModal(true); }}><KeyRound size={15} />创建 Token</button></header>
+        <div className="compact-list">{tokens.map((token) => <div key={token.id}><KeyRound size={16} /><div><strong>{token.name}</strong><span>pm_{token.prefix}_… · {token.expiresAt ? new Date(token.expiresAt).toLocaleDateString() + "到期" : "永久有效"}</span></div><b className={token.revokedAt ? "muted" : "safe-text"}>{token.revokedAt ? "已撤销" : "有效"}</b>{!token.revokedAt && <button onClick={() => confirm("确认撤销此 Token？") && revoke.mutate(token.id)}><Trash2 size={14} /></button>}</div>)}</div>
+        {!tokens.length && <EmptyState title="暂无个人 Token" detail="创建后可按当前账号权限访问 MCP。" />}
+      </section>
+      {tokenModal && <Modal title="创建个人 MCP Token" onClose={() => setTokenModal(false)}>
+        {newToken ? <div className="token-reveal"><ShieldCheck size={38} /><strong>Token 只显示这一次</strong><div><code>{newToken}</code><button onClick={() => void navigator.clipboard.writeText(newToken)}><Copy size={16} /></button></div><button className="primary-button" onClick={() => setTokenModal(false)}>我已保存</button></div>
+          : <form className="form-grid" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); createToken.mutate({ name: data.get("name"), expiresInDays: data.get("expiresInDays") === "never" ? null : Number(data.get("expiresInDays")) }); }}>
+            <label className="field field-full"><span>Token 名称</span><input name="name" required /></label>
+            <label className="field field-full"><span>有效期</span><select name="expiresInDays" defaultValue="90"><option value="30">30天</option><option value="90">90天</option><option value="never">永久</option></select></label>
+            {createToken.error && <p className="form-error field-full">{createToken.error.message}</p>}
+            <div className="form-actions field-full"><button type="button" className="ghost-button" onClick={() => setTokenModal(false)}>取消</button><button className="primary-button">创建</button></div>
+          </form>}
+      </Modal>}
+    </div>
+  </>;
+}
+
 export function SystemPage() {
   const { session, openLogin } = useApp();
   const client = useQueryClient();
   const [newToken, setNewToken] = useState<string>();
   const [tokenModal, setTokenModal] = useState(false);
-  const [archiveKeyword, setArchiveKeyword] = useState("");
-  const [archiveType, setArchiveType] = useState<"all" | ArchiveEntity>("all");
   const { data: tokens = [] } = useQuery({
     queryKey: ["tokens"],
-    queryFn: () => api<ApiToken[]>("/api/tokens"),
+    queryFn: () => api<ApiToken[]>("/api/admin/tokens"),
     enabled: session.authenticated,
   });
   const { data: backups = [] } = useQuery({
@@ -901,20 +1222,6 @@ export function SystemPage() {
     queryFn: () => api<Backup[]>("/api/backups"),
     enabled: session.authenticated,
   });
-  const { data: archives } = useQuery({
-    queryKey: ["archives"],
-    queryFn: () => api<Archives>("/api/archives"),
-    enabled: session.authenticated,
-  });
-  const archiveRows = useMemo(() => archiveEntityOptions.flatMap(({ value, label }) =>
-    (archives?.[value] || []).map((item) => ({ ...item, entity: value, typeLabel: label }))), [archives]);
-  const filteredArchiveRows = useMemo(() => {
-    const keyword = archiveKeyword.trim().toLowerCase();
-    return archiveRows
-      .filter((item) => archiveType === "all" || item.entity === archiveType)
-      .filter((item) => !keyword || `${item.title} ${item.jobTitle || ""} ${item.typeLabel}`.toLowerCase().includes(keyword))
-      .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
-  }, [archiveKeyword, archiveRows, archiveType]);
   const createToken = useMutation({
     mutationFn: (value: object) =>
       api<ApiToken & { token: string }>("/api/tokens", {
@@ -927,7 +1234,7 @@ export function SystemPage() {
     },
   });
   const revoke = useMutation({
-    mutationFn: (id: string) => api(`/api/tokens/${id}`, { method: "DELETE" }),
+    mutationFn: (id: string) => api(`/api/admin/tokens/${id}`, { method: "DELETE" }),
     onSuccess: () => void client.invalidateQueries({ queryKey: ["tokens"] }),
   });
   const backup = useMutation({
@@ -941,28 +1248,6 @@ export function SystemPage() {
   const deleteBackup = useMutation({
     mutationFn: (name: string) => api(`/api/backups/${encodeURIComponent(name)}`, { method: "DELETE" }),
     onSuccess: () => void client.invalidateQueries({ queryKey: ["backups"] }),
-  });
-  const restoreArchive = useMutation({
-    mutationFn: ({ entity, id }: { entity: "projects" | "requirements" | "people" | "templates"; id: string }) => api(`/api/${entity}/${id}/restore`, { method: "POST" }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["archives"] });
-      void client.invalidateQueries({ queryKey: ["projects"] });
-      void client.invalidateQueries({ queryKey: ["people"] });
-      void client.invalidateQueries({ queryKey: ["templates"] });
-      void client.invalidateQueries({ queryKey: ["requirements"] });
-    },
-  });
-  const deleteArchive = useMutation({
-    mutationFn: ({ entity, id }: { entity: "projects" | "requirements" | "people" | "templates"; id: string }) =>
-      api(`/api/archives/${entity}/${id}`, { method: "DELETE" }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["archives"] });
-      void client.invalidateQueries({ queryKey: ["audit"] });
-      void client.invalidateQueries({ queryKey: ["projects"] });
-      void client.invalidateQueries({ queryKey: ["people"] });
-      void client.invalidateQueries({ queryKey: ["templates"] });
-      void client.invalidateQueries({ queryKey: ["requirements"] });
-    },
   });
   if (!session.authenticated)
     return (
@@ -996,7 +1281,7 @@ export function SystemPage() {
           <header>
             <div>
               <h2>MCP Token</h2>
-              <p>完整业务读写权限</p>
+              <p>平台Token审计，权限由所属账号动态决定</p>
             </div>
             <button
               className="primary-button"
@@ -1016,7 +1301,7 @@ export function SystemPage() {
                 <div>
                   <strong>{token.name}</strong>
                   <span>
-                    pm_{token.prefix}_… ·{" "}
+                    {token.accountName ? `所属 ${token.accountName} · ` : ""}pm_{token.prefix}_… ·{" "}
                     {token.expiresAt
                       ? `${new Date(token.expiresAt).toLocaleDateString()}到期`
                       : "永久有效"}{" "}
@@ -1091,28 +1376,6 @@ export function SystemPage() {
           </div>
         </article>
         </section>
-      <section className="panel archive-panel">
-        <header><div><h2>归档中心</h2><p>统一查看、恢复或永久删除已归档内容</p></div></header>
-        <div className="archive-toolbar">
-          <label className="search-box"><Search size={16} /><input value={archiveKeyword} onChange={(event) => setArchiveKeyword(event.target.value)} placeholder="搜索归档名称或岗位" /></label>
-          <select value={archiveType} onChange={(event) => setArchiveType(event.target.value as "all" | ArchiveEntity)}><option value="all">全部类型</option>{archiveEntityOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select>
-          <span>{filteredArchiveRows.length} / {archiveRows.length} 条</span>
-        </div>
-        <div className="archive-table-wrap">
-          <table className="archive-table">
-            <thead><tr><th>名称</th><th>类型</th><th>补充信息</th><th>归档时间</th><th>操作</th></tr></thead>
-            <tbody>{filteredArchiveRows.map((item) => <tr key={`${item.entity}-${item.id}`}>
-              <td><strong title={item.title}>{item.title}</strong></td>
-              <td><span className={`archive-type archive-type-${item.entity}`}>{item.typeLabel}</span></td>
-              <td>{item.jobTitle || "—"}</td>
-              <td>{new Date(item.deletedAt).toLocaleString("zh-CN")}</td>
-              <td><div className="archive-row-actions"><button className="inline-action-button" title={`恢复${item.typeLabel}`} onClick={() => restoreArchive.mutate({ entity: item.entity, id: item.id })}><RotateCcw size={14} />恢复</button><button className="inline-action-button danger" title={`永久删除${item.typeLabel}`} onClick={() => confirm(`永久删除“${item.title}”？该操作无法恢复。${item.entity === "projects" ? "项目下的需求和工作项也会一并删除。" : ""}`) && deleteArchive.mutate({ entity: item.entity, id: item.id })}><Trash2 size={14} />删除</button></div></td>
-            </tr>)}</tbody>
-          </table>
-          {!filteredArchiveRows.length && <EmptyState title="没有符合条件的归档内容" detail={archiveRows.length ? "调整搜索词或类型筛选后重试。" : "归档项目、需求、人员或模板后会显示在这里。"} />}
-        </div>
-        {(restoreArchive.error || deleteArchive.error) && <p className="form-error archive-error">{(restoreArchive.error || deleteArchive.error)?.message}</p>}
-      </section>
       {tokenModal && (
         <Modal title="创建MCP Token" onClose={() => setTokenModal(false)}>
           {newToken ? (
@@ -1196,7 +1459,8 @@ const auditEntityLabels: Record<string, string> = {
 };
 
 export function LogsPage() {
-  const { session, openLogin } = useApp();
+  const { session, openLogin, selectedProjectId } = useApp();
+  const admin = isAdmin(session);
   const [keyword, setKeyword] = useState("");
   const deferredKeyword = useDeferredValue(keyword);
   const [actorType, setActorType] = useState("");
@@ -1212,15 +1476,16 @@ export function LogsPage() {
   if (entityType) params.set("entityType", entityType);
   if (from) params.set("from", from);
   if (to) params.set("to", to);
+  if (!admin && selectedProjectId) params.set("projectId", selectedProjectId);
   const { data, isLoading } = useQuery({
-    queryKey: ["audit-search", deferredKeyword, actorType, action, entityType, from, to, page],
+    queryKey: ["audit-search", selectedProjectId, admin, deferredKeyword, actorType, action, entityType, from, to, page],
     queryFn: () => api<AuditPage>(`/api/audit/search?${params}`),
-    enabled: session.authenticated,
+    enabled: session.authenticated && (admin || Boolean(selectedProjectId)),
   });
   const resetPage = (update: () => void) => { update(); setPage(1); };
   if (!session.authenticated) return <><PageHeader title="操作日志" /><div className="page-content"><EmptyState title="登录后查看操作日志" detail="网页和MCP写入会统一记录。" action={<button className="primary-button" onClick={openLogin}>用户登录</button>} /></div></>;
   return <>
-    <PageHeader title="操作日志" />
+    <PageHeader title={admin ? "操作审计" : "项目日志"} />
     <div className="page-content logs-page">
       <div className="audit-filters">
         <label className="search-box"><Search size={16} /><input value={keyword} onChange={(event) => resetPage(() => setKeyword(event.target.value))} placeholder="搜索用户、Token、操作内容或实体ID" /></label>

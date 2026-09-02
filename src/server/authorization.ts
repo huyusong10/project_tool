@@ -1,6 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 import { sqlite } from './database';
 import { verifySessionToken, type AccountRole, type Actor } from './auth';
+import type { ProjectRole } from '../shared/domain';
 
 export type SessionActor = Actor & {
   accountId: string;
@@ -21,6 +22,18 @@ function forbidden(message = '没有执行此操作的权限'): never {
   error.statusCode = 403;
   throw error;
 }
+
+function notFound(message = '资源不存在'): never {
+  const error = new Error(message) as Error & { statusCode: number };
+  error.statusCode = 404;
+  throw error;
+}
+
+export type AuthorizationActor = Pick<Actor, 'type' | 'id' | 'label'> & {
+  accountId: string;
+  personId: string | null;
+  globalRole: AccountRole;
+};
 
 export function sessionActor(token?: string): SessionActor | null {
   const payload = verifySessionToken(token);
@@ -44,7 +57,7 @@ export function actorFromRequest(request: FastifyRequest): SessionActor {
   return request.actor!;
 }
 
-export function managedProjectIds(actor: SessionActor) {
+export function managedProjectIds(actor: AuthorizationActor) {
   if (!actor.personId) return [];
   return (sqlite.prepare(`SELECT project_id AS projectId FROM project_people
     WHERE person_id=? AND project_role='manager' ORDER BY project_id`).all(actor.personId) as Array<{ projectId: string }>)
@@ -55,74 +68,126 @@ export function isAdmin(actor: Pick<SessionActor, 'globalRole'>) {
   return actor.globalRole === 'admin';
 }
 
-export function canManageProject(actor: SessionActor, projectId: string) {
+export function accessibleProjectIds(actor: AuthorizationActor) {
+  if (isAdmin(actor)) {
+    return (sqlite.prepare('SELECT id FROM projects WHERE deleted_at IS NULL ORDER BY created_at DESC').all() as Array<{ id: string }>).map((item) => item.id);
+  }
+  if (!actor.personId) return [];
+  return (sqlite.prepare(`SELECT pp.project_id AS projectId FROM project_people pp
+    JOIN projects p ON p.id=pp.project_id WHERE pp.person_id=? AND p.deleted_at IS NULL
+    ORDER BY p.created_at DESC`).all(actor.personId) as Array<{ projectId: string }>).map((item) => item.projectId);
+}
+
+export function projectRole(actor: AuthorizationActor, projectId: string): ProjectRole | null {
+  if (isAdmin(actor)) return 'manager';
+  if (!actor.personId) return null;
+  return (sqlite.prepare('SELECT project_role AS projectRole FROM project_people WHERE project_id=? AND person_id=?')
+    .get(projectId, actor.personId) as { projectRole: ProjectRole } | undefined)?.projectRole || null;
+}
+
+export function canManageProject(actor: AuthorizationActor, projectId: string) {
   if (isAdmin(actor)) return true;
   if (!actor.personId) return false;
   return Boolean(sqlite.prepare(`SELECT 1 FROM project_people WHERE project_id=? AND person_id=? AND project_role='manager'`)
     .get(projectId, actor.personId));
 }
 
-export function isProjectMember(actor: SessionActor, projectId: string) {
+export function canReadProject(actor: AuthorizationActor, projectId: string) {
   if (isAdmin(actor)) return true;
   if (!actor.personId) return false;
   return Boolean(sqlite.prepare('SELECT 1 FROM project_people WHERE project_id=? AND person_id=?')
     .get(projectId, actor.personId));
 }
 
-export function assertAdmin(actor: SessionActor) {
+export function canContributeProject(actor: AuthorizationActor, projectId: string) {
+  if (isAdmin(actor)) return true;
+  const role = projectRole(actor, projectId);
+  return role === 'member' || role === 'manager';
+}
+
+export function assertAdmin(actor: AuthorizationActor) {
   if (!isAdmin(actor)) forbidden('此功能仅管理员可用');
 }
 
-export function assertProjectManager(actor: SessionActor, projectId: string) {
+export function assertProjectManager(actor: AuthorizationActor, projectId: string) {
   if (!canManageProject(actor, projectId)) forbidden('只有当前项目的项目经理或管理员可以执行此操作');
 }
 
-export function assertProjectMember(actor: SessionActor, projectId: string) {
-  if (!isProjectMember(actor, projectId)) forbidden('只有当前项目成员可以提交问题或追加进展');
+export function assertProjectReadable(actor: AuthorizationActor, projectId: string) {
+  if (!canReadProject(actor, projectId)) forbidden('没有访问当前项目的权限');
+}
+
+export function assertProjectResourceReadable(actor: AuthorizationActor, projectId: string, message = '资源不存在') {
+  if (!canReadProject(actor, projectId)) notFound(message);
+}
+
+export function assertProjectResourceManager(actor: AuthorizationActor, projectId: string, message = '资源不存在') {
+  assertProjectResourceReadable(actor, projectId, message);
+  assertProjectManager(actor, projectId);
+}
+
+export function assertProjectMember(actor: AuthorizationActor, projectId: string) {
+  if (!canContributeProject(actor, projectId)) forbidden('只有当前项目成员可以提交问题或追加进展');
 }
 
 export function projectIdForRequirement(requirementId: string) {
   const value = sqlite.prepare('SELECT project_id AS projectId FROM requirements WHERE id=?').get(requirementId) as { projectId: string } | undefined;
-  if (!value) throw new Error('需求不存在');
+  if (!value) notFound('需求不存在');
   return value.projectId;
 }
 
 export function projectIdForWorkItem(workItemId: string) {
   const value = sqlite.prepare(`SELECT r.project_id AS projectId FROM work_items w
     JOIN requirements r ON r.id=w.requirement_id WHERE w.id=?`).get(workItemId) as { projectId: string } | undefined;
-  if (!value) throw new Error('工作项不存在');
+  if (!value) notFound('工作项不存在');
   return value.projectId;
 }
 
 export function projectIdForIssue(issueId: string) {
   const value = sqlite.prepare('SELECT project_id AS projectId FROM issues WHERE id=?').get(issueId) as { projectId: string } | undefined;
-  if (!value) throw new Error('问题不存在');
+  if (!value) notFound('问题不存在');
   return value.projectId;
+}
+
+export function projectIdForTemplate(templateId: string) {
+  const value = sqlite.prepare('SELECT project_id AS projectId FROM work_item_templates WHERE id=?').get(templateId) as { projectId: string } | undefined;
+  if (!value) notFound('流程设计不存在');
+  return value.projectId;
+}
+
+export function canUpdateIssueProgress(actor: AuthorizationActor, issueId: string) {
+  const projectId = projectIdForIssue(issueId);
+  if (canManageProject(actor, projectId)) return true;
+  if (!canContributeProject(actor, projectId)) return false;
+  if (!actor.personId) return false;
+  return Boolean(sqlite.prepare('SELECT 1 FROM issues WHERE id=? AND owner_id=?').get(issueId, actor.personId));
 }
 
 export function projectIdForProgress(progressId: string) {
   const value = sqlite.prepare(`SELECT r.project_id AS projectId FROM progress_updates u
     JOIN requirements r ON r.id=u.requirement_id WHERE u.id=?`).get(progressId) as { projectId: string } | undefined;
-  if (!value) throw new Error('进展记录不存在');
+  if (!value) notFound('进展记录不存在');
   return value.projectId;
 }
 
-export function isWorkItemAssignee(actor: SessionActor, workItemId: string) {
+export function isWorkItemAssignee(actor: AuthorizationActor, workItemId: string) {
   if (!actor.personId) return false;
   return Boolean(sqlite.prepare(`SELECT 1 FROM work_items w WHERE w.id=? AND
     (w.owner_id=? OR EXISTS (SELECT 1 FROM work_item_collaborators c WHERE c.work_item_id=w.id AND c.person_id=?))`)
     .get(workItemId, actor.personId, actor.personId));
 }
 
-export function assertWorkItemParticipantOrManager(actor: SessionActor, workItemId: string) {
+export function assertWorkItemParticipantOrManager(actor: AuthorizationActor, workItemId: string) {
   const projectId = projectIdForWorkItem(workItemId);
-  if (!canManageProject(actor, projectId) && !isWorkItemAssignee(actor, workItemId)) {
+  assertProjectResourceReadable(actor, projectId, '工作项不存在');
+  if (!canManageProject(actor, projectId) && (!canContributeProject(actor, projectId) || !isWorkItemAssignee(actor, workItemId))) {
     forbidden('只能操作分配给自己的工作项');
   }
 }
 
-export function assertProgressOwnerOrManager(actor: SessionActor, progressId: string, nextWorkItemId?: string | null) {
+export function assertProgressOwnerOrManager(actor: AuthorizationActor, progressId: string, nextWorkItemId?: string | null) {
   const projectId = projectIdForProgress(progressId);
+  assertProjectResourceReadable(actor, projectId, '进展记录不存在');
   if (canManageProject(actor, projectId)) return;
   const progress = sqlite.prepare('SELECT created_by_account_id AS accountId, work_item_id AS workItemId FROM progress_updates WHERE id=?').get(progressId) as { accountId: string | null; workItemId: string | null } | undefined;
   if (!progress || progress.accountId !== actor.accountId) forbidden('只能修改或删除自己填写的进展');
@@ -130,8 +195,8 @@ export function assertProgressOwnerOrManager(actor: SessionActor, progressId: st
   if (!workItemId || !isWorkItemAssignee(actor, workItemId)) forbidden('普通用户的进展必须关联自己的工作项');
 }
 
-export function assertCanAddProgress(actor: SessionActor, requirementId: string, workItemId: string | null) {
+export function assertCanAddProgress(actor: AuthorizationActor, requirementId: string, workItemId: string | null) {
   const projectId = projectIdForRequirement(requirementId);
   if (canManageProject(actor, projectId)) return;
-  if (!workItemId || !isWorkItemAssignee(actor, workItemId)) forbidden('普通用户添加进展时必须关联自己的工作项');
+  if (!canContributeProject(actor, projectId) || !workItemId || !isWorkItemAssignee(actor, workItemId)) forbidden('普通用户添加进展时必须关联自己的工作项');
 }

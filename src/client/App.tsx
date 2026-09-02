@@ -8,6 +8,8 @@ import {
   useNavigate,
 } from "react-router-dom";
 import {
+  BarChart3,
+  Archive,
   Check,
   ChevronDown,
   CircleAlert,
@@ -32,9 +34,13 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { IssuesPage } from "./pages/IssuesPage";
 import { RequirementPage } from "./pages/RequirementPage";
 import {
+  ArchiveCenterPage,
   LogsPage,
   PeoplePage,
+  PersonalSettingsPage,
+  ProjectSettingsPage,
   ProjectsPage,
+  ResourceCenterPage,
   RequirementsPage,
   SystemPage,
   TemplatesPage,
@@ -42,7 +48,9 @@ import {
 import { Modal } from "./components/Modal";
 import { MyWorkPage } from "./pages/MyWorkPage";
 import { AccountsPage } from "./pages/AccountsPage";
-import { isAdmin } from "./permissions";
+import { AnalyticsPage } from "./pages/AnalyticsPage";
+import { canManageProject, isAdmin } from "./permissions";
+import { InlineEditProvider } from "./components/InlineEdit";
 
 const guestSession: Session = {
   authenticated: false,
@@ -63,9 +71,10 @@ function LoginForm({ onClose }: { onClose: () => void }) {
     mutationFn: (value: object) =>
       api<Session>("/api/login", { method: "POST", body: jsonBody(value) }),
     onSuccess: (result) => {
+      client.removeQueries({ predicate: (query) => query.queryKey[0] !== "session" });
       void client.invalidateQueries({ queryKey: ["session"] });
       onClose();
-      if (result.role === "user") navigate("/my-work");
+      navigate("/");
     },
     onError: (value) => setError(value.message),
   });
@@ -105,9 +114,7 @@ function LoginForm({ onClose }: { onClose: () => void }) {
       </label>
       {error && <p className="form-error field-full">{error}</p>}
       <div className="form-actions field-full">
-        <button type="button" className="ghost-button" onClick={onClose}>
-          继续访客查看
-        </button>
+        <button type="button" className="ghost-button" onClick={onClose}>取消</button>
         <button className="primary-button" disabled={login.isPending}>
           <LogIn size={16} />
           用户登录
@@ -121,7 +128,7 @@ function LoginForm({ onClose }: { onClose: () => void }) {
   );
 }
 
-function Sidebar({ session, collapsed, onToggle }: { session: Session; collapsed: boolean; onToggle: () => void }) {
+function Sidebar({ session, selectedProjectId, collapsed, onToggle }: { session: Session; selectedProjectId: string; collapsed: boolean; onToggle: () => void }) {
   if (collapsed) {
     return (
       <aside className="sidebar sidebar-collapsed">
@@ -131,6 +138,7 @@ function Sidebar({ session, collapsed, onToggle }: { session: Session; collapsed
       </aside>
     );
   }
+  const managesCurrentProject = canManageProject(session, selectedProjectId);
   return (
     <aside className="sidebar">
       <div className="brand-mark">
@@ -144,50 +152,28 @@ function Sidebar({ session, collapsed, onToggle }: { session: Session; collapsed
         </button>
       </div>
       <nav>
-        <span className="nav-section nav-section-first">工作台</span>
-        <NavLink to="/" end>
-          <GanttChartSquare size={18} />
-          项目进展
-        </NavLink>
-        {session.authenticated && <span className="nav-section">个人</span>}
-        {session.authenticated && <NavLink to="/my-work">
-          <ClipboardList size={18} />
-          我的工作
-        </NavLink>}
-        <span className="nav-section">项目协作</span>
-        <NavLink to="/requirements">
-          <ListChecks size={18} />
-          需求管理
-        </NavLink>
-        <NavLink to="/issues">
-          <CircleAlert size={18} />
-          问题跟踪
-        </NavLink>
-        <NavLink to="/people">
-          <Users size={18} />
-          人员矩阵
-        </NavLink>
-        {(isAdmin(session) || session.managedProjectIds.length > 0) && <span className="nav-section">管理</span>}
-        {(isAdmin(session) || session.managedProjectIds.length > 0) && <NavLink to="/projects">
-          <FolderKanban size={18} />
-          项目管理
-        </NavLink>}
-        {isAdmin(session) && <NavLink to="/accounts">
-          <UserRoundCog size={18} />
-          账号管理
-        </NavLink>}
-        {isAdmin(session) && <NavLink to="/templates">
-          <Settings2 size={18} />
-          流程设计
-        </NavLink>}
-        {isAdmin(session) && <NavLink to="/system">
-          <LockKeyhole size={18} />
-          系统管理
-        </NavLink>}
-        {isAdmin(session) && <NavLink to="/logs">
-          <ScrollText size={18} />
-          操作日志
-        </NavLink>}
+        {session.authenticated ? <>
+          <span className="nav-section nav-section-first">工作台</span>
+          <NavLink to="/" end><GanttChartSquare size={18} />项目进展</NavLink>
+          <NavLink to="/analytics"><BarChart3 size={18} />统计分析</NavLink>
+          <span className="nav-section">个人</span>
+          <NavLink to="/my-work"><ClipboardList size={18} />我的工作</NavLink>
+          <NavLink to="/settings"><Settings2 size={18} />个人设置</NavLink>
+          <span className="nav-section">项目空间</span>
+          <NavLink to="/requirements"><ListChecks size={18} />需求管理</NavLink>
+          <NavLink to="/issues"><CircleAlert size={18} />问题跟踪</NavLink>
+          <NavLink to="/people"><Users size={18} />人员矩阵</NavLink>
+          <NavLink to="/templates"><Settings2 size={18} />流程设计</NavLink>
+          {managesCurrentProject && <NavLink to="/project-settings"><FolderKanban size={18} />项目设置</NavLink>}
+          {!isAdmin(session) && managesCurrentProject && <NavLink to="/logs"><ScrollText size={18} />项目日志</NavLink>}
+          {isAdmin(session) && <span className="nav-section">平台管理</span>}
+          {isAdmin(session) && <NavLink to="/projects"><FolderKanban size={18} />项目中心</NavLink>}
+          {isAdmin(session) && <NavLink to="/resources"><Users size={18} />资源中心</NavLink>}
+          {isAdmin(session) && <NavLink to="/accounts"><UserRoundCog size={18} />账户与权限</NavLink>}
+          {isAdmin(session) && <NavLink to="/archives"><Archive size={18} />归档中心</NavLink>}
+          {isAdmin(session) && <NavLink to="/system"><LockKeyhole size={18} />系统管理</NavLink>}
+          {isAdmin(session) && <NavLink to="/logs"><ScrollText size={18} />操作审计</NavLink>}
+        </> : <span className="nav-section nav-section-first">登录后使用项目工作台</span>}
       </nav>
     </aside>
   );
@@ -255,7 +241,10 @@ function Topbar({
   const client = useQueryClient();
   const logout = useMutation({
     mutationFn: () => api("/api/logout", { method: "POST" }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["session"] }),
+    onSuccess: () => {
+      client.removeQueries({ predicate: (query) => query.queryKey[0] !== "session" });
+      void client.invalidateQueries({ queryKey: ["session"] });
+    },
   });
   return (
     <header className="topbar">
@@ -279,7 +268,7 @@ function Topbar({
             </>
           ) : (
             <>
-            <span className="guest-badge">访客只读</span>
+            <span className="guest-badge">请登录</span>
             <button className="primary-button" onClick={openLogin}>
               <LogIn size={15} />
               用户登录
@@ -313,12 +302,16 @@ function PasswordForm({ forced, onClose }: { forced: boolean; onClose: () => voi
   </form>;
 }
 
-function RoleRoute({ session, ready, admin = false, manager = false, children }: { session: Session; ready: boolean; admin?: boolean; manager?: boolean; children: ReactNode }) {
+function RoleRoute({ session, ready, admin = false, manager = false, currentProjectId = "", children }: { session: Session; ready: boolean; admin?: boolean; manager?: boolean; currentProjectId?: string; children: ReactNode }) {
   if (!ready) return <div className="page-content"><div className="loading-block">正在确认账号权限…</div></div>;
   if (!session.authenticated) return <Navigate to="/" replace />;
   if (admin && !isAdmin(session)) return <Navigate to="/" replace />;
-  if (manager && !isAdmin(session) && !session.managedProjectIds.length) return <Navigate to="/" replace />;
+  if (manager && !canManageProject(session, currentProjectId)) return <Navigate to="/" replace />;
   return children;
+}
+
+function GuestLanding({ openLogin }: { openLogin: () => void }) {
+  return <div className="page-content guest-landing"><div className="panel"><KeyRound size={32} /><h1>登录项目工作台</h1><p>项目、需求、问题和人员数据仅对已授权账号开放。</p><button className="primary-button" onClick={openLogin}><LogIn size={16} />用户登录</button></div></div>;
 }
 
 export function App() {
@@ -330,10 +323,12 @@ export function App() {
     queryKey: ["session"],
     queryFn: () => api<Session>("/api/session"),
   });
-  const { data: projects = [] } = useQuery({
-    queryKey: ["projects"],
+  const { data: projectData = [] } = useQuery({
+    queryKey: ["projects", session.accountId],
     queryFn: () => api<Project[]>("/api/projects"),
+    enabled: session.authenticated && !session.mustChangePassword,
   });
+  const projects = session.authenticated && !session.mustChangePassword ? projectData : [];
   useEffect(() => {
     if (
       projects.length &&
@@ -350,11 +345,13 @@ export function App() {
     selectedProjectId,
     setSelectedProjectId,
     openLogin: () => setLoginOpen(true),
+    openPassword: () => setPasswordOpen(true),
   };
   return (
-    <AppContext.Provider value={context}>
-      <div className={`app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
-        <Sidebar session={session} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((value) => !value)} />
+    <InlineEditProvider>
+      <AppContext.Provider value={context}>
+        <div className={`app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
+        <Sidebar session={session} selectedProjectId={selectedProjectId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((value) => !value)} />
         <main>
           <Topbar
             session={session}
@@ -365,18 +362,23 @@ export function App() {
             openPassword={() => setPasswordOpen(true)}
           />
           <Routes>
-            <Route path="/" element={<DashboardPage />} />
+            <Route path="/" element={session.authenticated ? <RoleRoute session={session} ready={sessionReady}><DashboardPage /></RoleRoute> : <GuestLanding openLogin={() => setLoginOpen(true)} />} />
+            <Route path="/analytics" element={<RoleRoute session={session} ready={sessionReady}><AnalyticsPage /></RoleRoute>} />
             <Route path="/my-work" element={<RoleRoute session={session} ready={sessionReady}><MyWorkPage /></RoleRoute>} />
-            <Route path="/requirements" element={<RequirementsPage />} />
-            <Route path="/requirements/:id" element={<RequirementPage />} />
-            <Route path="/issues" element={<IssuesPage />} />
-            <Route path="/projects" element={<RoleRoute session={session} ready={sessionReady} manager><ProjectsPage /></RoleRoute>} />
-            <Route path="/people" element={<PeoplePage />} />
+            <Route path="/settings" element={<RoleRoute session={session} ready={sessionReady}><PersonalSettingsPage /></RoleRoute>} />
+            <Route path="/requirements" element={<RoleRoute session={session} ready={sessionReady}><RequirementsPage /></RoleRoute>} />
+            <Route path="/requirements/:id" element={<RoleRoute session={session} ready={sessionReady}><RequirementPage /></RoleRoute>} />
+            <Route path="/issues" element={<RoleRoute session={session} ready={sessionReady}><IssuesPage /></RoleRoute>} />
+            <Route path="/people" element={<RoleRoute session={session} ready={sessionReady}><PeoplePage /></RoleRoute>} />
             <Route path="/concurrency" element={<Navigate to="/people?view=analysis" replace />} />
+            <Route path="/templates" element={<RoleRoute session={session} ready={sessionReady}><TemplatesPage /></RoleRoute>} />
+            <Route path="/project-settings" element={<RoleRoute session={session} ready={sessionReady} manager currentProjectId={selectedProjectId}><ProjectSettingsPage /></RoleRoute>} />
+            <Route path="/logs" element={<RoleRoute session={session} ready={sessionReady} manager currentProjectId={selectedProjectId}><LogsPage /></RoleRoute>} />
+            <Route path="/projects" element={<RoleRoute session={session} ready={sessionReady} admin><ProjectsPage /></RoleRoute>} />
+            <Route path="/resources" element={<RoleRoute session={session} ready={sessionReady} admin><ResourceCenterPage /></RoleRoute>} />
             <Route path="/accounts" element={<RoleRoute session={session} ready={sessionReady} admin><AccountsPage /></RoleRoute>} />
-            <Route path="/templates" element={<RoleRoute session={session} ready={sessionReady} admin><TemplatesPage /></RoleRoute>} />
+            <Route path="/archives" element={<RoleRoute session={session} ready={sessionReady} admin><ArchiveCenterPage /></RoleRoute>} />
             <Route path="/system" element={<RoleRoute session={session} ready={sessionReady} admin><SystemPage /></RoleRoute>} />
-            <Route path="/logs" element={<RoleRoute session={session} ready={sessionReady} admin><LogsPage /></RoleRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
@@ -392,7 +394,8 @@ export function App() {
         {session.authenticated && (passwordOpen || session.mustChangePassword) && <Modal title={session.mustChangePassword ? "修改初始密码" : "修改密码"} onClose={() => setPasswordOpen(false)} width={460} closable={!session.mustChangePassword}>
           <PasswordForm forced={session.mustChangePassword} onClose={() => setPasswordOpen(false)} />
         </Modal>}
-      </div>
-    </AppContext.Provider>
+        </div>
+      </AppContext.Provider>
+    </InlineEditProvider>
   );
 }

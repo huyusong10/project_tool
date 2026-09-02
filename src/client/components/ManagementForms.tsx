@@ -13,8 +13,9 @@ export function ProjectForm({
 }) {
   const client = useQueryClient();
   const { data: templates = [] } = useQuery({
-    queryKey: ["templates"],
-    queryFn: () => api<WorkItemTemplate[]>("/api/templates"),
+    queryKey: ["templates", project?.id || "new"],
+    queryFn: () => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(project!.id)}`),
+    enabled: Boolean(project?.id),
   });
   const mutation = useMutation({
     mutationFn: (data: object) =>
@@ -36,10 +37,10 @@ export function ProjectForm({
         mutation.mutate(Object.fromEntries(new FormData(event.currentTarget)));
       }}
     >
-      <label className="field field-full">
+      {project && <label className="field field-full">
         <span>项目名称</span>
         <input name="name" defaultValue={project?.name || ""} required autoFocus placeholder="例如：DCIM平台 V1.0" />
-      </label>
+      </label>}
       <label className="field">
         <span>计划开始</span>
         <input name="plannedStart" type="date" defaultValue={project?.plannedStart || ""} />
@@ -75,8 +76,9 @@ export function RequirementForm({
   const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">("start");
   const { projects } = useApp();
   const { data: templates = [] } = useQuery({
-    queryKey: ["templates"],
-    queryFn: () => api<WorkItemTemplate[]>("/api/templates"),
+    queryKey: ["templates", projectId],
+    queryFn: () => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(projectId)}`),
+    enabled: Boolean(projectId),
   });
   const mutation = useMutation({
     mutationFn: (data: object) => api("/api/requirements", { method: "POST", body: jsonBody(data) }),

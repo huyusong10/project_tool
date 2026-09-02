@@ -14,22 +14,37 @@ import {
   plannedDatesFromOffset,
   plannedStartFromDeadline,
   priorities,
+  projectRoles,
   requirementStatuses,
   riskLevels,
   todayIso,
   workItemStatuses,
+  type ProjectRole,
 } from '../shared/domain';
 
 type JsonObject = Record<string, unknown>;
 const nowIso = () => new Date().toISOString();
 
-function audit(actor: Actor, action: string, entityType: string, entityId: string | null, summary: string) {
-  sqlite.prepare(`INSERT INTO audit_logs (id, actor_type, actor_id, action, entity_type, entity_id, summary, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), actor.type, actor.id, action, entityType, entityId, summary, nowIso());
+function auditProjectId(entityType: string, entityId: string | null): string | null {
+  if (!entityId) return null;
+  if (entityType === 'project') return entityId;
+  if (entityType === 'template') return row<{ projectId: string }>('SELECT project_id AS projectId FROM work_item_templates WHERE id=?', entityId)?.projectId || null;
+  if (entityType === 'requirement') return row<{ projectId: string }>('SELECT project_id AS projectId FROM requirements WHERE id=?', entityId)?.projectId || null;
+  if (entityType === 'issue') return row<{ projectId: string }>('SELECT project_id AS projectId FROM issues WHERE id=?', entityId)?.projectId || null;
+  if (entityType === 'work_item') return row<{ projectId: string }>(`SELECT r.project_id AS projectId FROM work_items w JOIN requirements r ON r.id=w.requirement_id WHERE w.id=?`, entityId)?.projectId || null;
+  if (entityType === 'progress') return row<{ projectId: string }>(`SELECT r.project_id AS projectId FROM progress_updates u JOIN requirements r ON r.id=u.requirement_id WHERE u.id=?`, entityId)?.projectId || null;
+  if (entityType === 'issue_update') return row<{ projectId: string }>(`SELECT i.project_id AS projectId FROM issue_updates u JOIN issues i ON i.id=u.issue_id WHERE u.id=?`, entityId)?.projectId || null;
+  return null;
 }
 
-export function recordAudit(actor: Actor, action: string, entityType: string, entityId: string | null, summary: string) {
-  audit(actor, action, entityType, entityId, summary);
+function audit(actor: Actor, action: string, entityType: string, entityId: string | null, summary: string, projectId?: string | null) {
+  const scopeProjectId = projectId === undefined ? auditProjectId(entityType, entityId) : projectId;
+  sqlite.prepare(`INSERT INTO audit_logs (id, actor_type, actor_id, action, entity_type, entity_id, project_id, summary, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), actor.type, actor.id, action, entityType, entityId, scopeProjectId, summary, nowIso());
+}
+
+export function recordAudit(actor: Actor, action: string, entityType: string, entityId: string | null, summary: string, projectId?: string | null) {
+  audit(actor, action, entityType, entityId, summary, projectId);
 }
 
 function ensureEnum<T extends readonly string[]>(value: unknown, allowed: T, field: string): T[number] {
@@ -54,6 +69,12 @@ function templateDescription(value: unknown) {
   return description;
 }
 
+function milestoneLabel(value: unknown) {
+  const label = String(value ?? '').trim();
+  if (label.length > 80) throw new Error('里程碑名称不能超过80个字符');
+  return label || null;
+}
+
 function requireDate(value: unknown, field: string) {
   const text = requireText(value, field);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new Error(`${field}格式不合法`);
@@ -64,6 +85,12 @@ function nullableDate(value: unknown, field: string) {
   const text = nullableText(value);
   if (text && !/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new Error(`${field}格式不合法`);
   return text;
+}
+
+function requireProgress(value: unknown, field = '完成度') {
+  const progress = Number(value);
+  if (!Number.isInteger(progress) || progress < 0 || progress > 100) throw new Error(`${field}必须是0到100的整数`);
+  return progress;
 }
 
 function rows<T = JsonObject>(sql: string, ...params: unknown[]): T[] {
@@ -77,12 +104,13 @@ function row<T = JsonObject>(sql: string, ...params: unknown[]): T | undefined {
 export type ProjectRecord = {
   id: string; name: string; status: string; plannedStart: string | null; plannedEnd: string | null;
   defaultTemplateId: string | null; createdAt: string; updatedAt: string; deletedAt?: string | null;
+  projectRole?: ProjectRole; canManage?: boolean;
 };
 
 export type WorkItemRecord = {
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; actualStart: string | null; actualEnd: string | null;
-  forecastEnd: string | null; blockedAt: string | null; blockedReason: string | null; sortOrder: number; createdAt: string; updatedAt: string;
+  forecastEnd: string | null; blockedAt: string | null; blockedReason: string | null; milestoneLabel: string | null; progress: number; sortOrder: number; createdAt: string; updatedAt: string;
   collaborators: Array<{ id: string; name: string; jobTitle: string | null }>;
   assigneeIds: string[]; assigneeNames: string[];
 };
@@ -95,19 +123,19 @@ export type RequirementRecord = {
 };
 
 export type IssueUpdateRecord = {
-  id: string; issueId: string; content: string; createdAt: string; updatedAt: string;
+  id: string; issueId: string; progress: number | null; content: string; createdByAccountId: string | null; createdByName: string | null; createdAt: string; updatedAt: string;
 };
 
 export type IssueRecord = {
   id: string; projectId: string; projectName: string; requirementId: string | null; requirementTitle: string | null;
   sourceRef: string | null; title: string; impact: string | null; reporter: string | null;
-  ownerId: string | null; ownerName: string | null; status: string; priority: string;
+  ownerId: string | null; ownerName: string | null; status: string; priority: string; progress: number;
   discoveredAt: string; dueDate: string | null; resolvedAt: string | null;
   createdAt: string; updatedAt: string; latestUpdate: string | null; latestUpdateAt: string | null;
   overdue: boolean; updates?: IssueUpdateRecord[];
 };
 
-type TemplateItemInput = { id?: string; title: string; startOffsetDays: number; durationDays: number; sortOrder: number };
+type TemplateItemInput = { id?: string; title: string; startOffsetDays: number; durationDays: number; milestoneLabel: string | null; sortOrder: number };
 
 const projectSelect = `SELECT id, name, status, planned_start AS plannedStart, planned_end AS plannedEnd,
   default_template_id AS defaultTemplateId, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt FROM projects`;
@@ -125,14 +153,14 @@ const workItemSelect = `SELECT w.id, w.requirement_id AS requirementId, w.templa
   w.title, w.owner_id AS ownerId, p.name AS ownerName, w.status,
   w.planned_start AS plannedStart, w.planned_end AS plannedEnd,
   w.actual_start AS actualStart, w.actual_end AS actualEnd, w.forecast_end AS forecastEnd,
-  w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason,
+  w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.milestone_label AS milestoneLabel, w.progress,
   w.sort_order AS sortOrder, w.created_at AS createdAt, w.updated_at AS updatedAt
   FROM work_items w LEFT JOIN people p ON p.id = w.owner_id`;
 
 const issueSelect = `SELECT i.id, i.project_id AS projectId, pr.name AS projectName,
   i.requirement_id AS requirementId, r.title AS requirementTitle, i.source_ref AS sourceRef,
   i.title, i.impact, i.reporter, i.owner_id AS ownerId, p.name AS ownerName,
-  i.status, i.priority, i.discovered_at AS discoveredAt, i.due_date AS dueDate,
+  i.status, i.priority, i.progress, i.discovered_at AS discoveredAt, i.due_date AS dueDate,
   i.resolved_at AS resolvedAt, i.created_at AS createdAt, i.updated_at AS updatedAt,
   (SELECT u.content FROM issue_updates u WHERE u.issue_id=i.id ORDER BY u.created_at DESC, u.id DESC LIMIT 1) AS latestUpdate,
   (SELECT u.created_at FROM issue_updates u WHERE u.issue_id=i.id ORDER BY u.created_at DESC, u.id DESC LIMIT 1) AS latestUpdateAt
@@ -140,20 +168,52 @@ const issueSelect = `SELECT i.id, i.project_id AS projectId, pr.name AS projectN
   LEFT JOIN requirements r ON r.id=i.requirement_id
   LEFT JOIN people p ON p.id=i.owner_id`;
 
-export function listProjects(includeDeleted = false): ProjectRecord[] {
-  return rows<ProjectRecord>(`${projectSelect} ${includeDeleted ? '' : 'WHERE deleted_at IS NULL'} ORDER BY created_at DESC`);
+export function listProjects(includeDeleted = false, actor?: Actor): ProjectRecord[] {
+  const projects = rows<ProjectRecord>(`${projectSelect} ${includeDeleted ? '' : 'WHERE deleted_at IS NULL'} ORDER BY created_at DESC`);
+  if (!actor) return projects;
+  if (actor.globalRole === 'admin') return projects.map((project) => ({ ...project, projectRole: 'manager', canManage: true }));
+  if (!actor.personId) return [];
+  const memberships = rows<{ projectId: string; projectRole: ProjectRole }>(
+    'SELECT project_id AS projectId, project_role AS projectRole FROM project_people WHERE person_id=?', actor.personId,
+  );
+  const byProject = new Map(memberships.map((item) => [item.projectId, item.projectRole]));
+  return projects.filter((project) => byProject.has(project.id)).map((project) => {
+    const projectRole = byProject.get(project.id)!;
+    return { ...project, projectRole, canManage: projectRole === 'manager' };
+  });
 }
 
-function firstActiveTemplateId() {
-  return row<{ id: string }>(`SELECT id FROM work_item_templates WHERE deleted_at IS NULL
-    ORDER BY CASE WHEN name='DCIM AI工作流' THEN 0 ELSE 1 END, created_at LIMIT 1`)?.id || null;
+const initialFlowItems = [
+  { title: '设计', startOffsetDays: 0, durationDays: 2 },
+  { title: '开发', startOffsetDays: 2, durationDays: 5 },
+  { title: '测试', startOffsetDays: 7, durationDays: 3 },
+  { title: '发布', startOffsetDays: 10, durationDays: 1 },
+] as const;
+
+function createInitialProjectFlow(projectId: string, createdAt: string) {
+  const templateId = randomUUID();
+  sqlite.prepare(`INSERT INTO work_item_templates (id, project_id, name, description, created_at, updated_at)
+    VALUES (?, ?, '通用研发流程', '项目初始流程，可由项目经理按实际情况调整。', ?, ?)`)
+    .run(templateId, projectId, createdAt, createdAt);
+  const insert = sqlite.prepare(`INSERT INTO template_items
+    (id, template_id, title, sort_order, start_offset_days, duration_days) VALUES (?, ?, ?, ?, ?, ?)`);
+  initialFlowItems.forEach((item, index) => insert.run(randomUUID(), templateId, item.title, index, item.startOffsetDays, item.durationDays));
+  return templateId;
+}
+
+function firstActiveTemplateId(projectId: string) {
+  return row<{ id: string }>(`SELECT id FROM work_item_templates WHERE project_id=? AND deleted_at IS NULL
+    ORDER BY CASE WHEN name='DCIM AI工作流' THEN 0 ELSE 1 END, created_at LIMIT 1`, projectId)?.id || null;
 }
 
 export function createProject(input: JsonObject, actor: Actor): ProjectRecord {
   const id = randomUUID(); const now = nowIso(); const name = requireText(input.name, '项目名称');
-  const defaultTemplateId = nullableText(input.defaultTemplateId) || firstActiveTemplateId();
-  sqlite.prepare(`INSERT INTO projects (id, name, status, planned_start, planned_end, default_template_id, created_at, updated_at)
-    VALUES (?, ?, 'active', ?, ?, ?, ?, ?)`).run(id, name, nullableText(input.plannedStart), nullableText(input.plannedEnd), defaultTemplateId, now, now);
+  sqlite.transaction(() => {
+    sqlite.prepare(`INSERT INTO projects (id, name, status, planned_start, planned_end, default_template_id, created_at, updated_at)
+      VALUES (?, ?, 'active', ?, ?, NULL, ?, ?)`).run(id, name, nullableText(input.plannedStart), nullableText(input.plannedEnd), now, now);
+    const defaultTemplateId = createInitialProjectFlow(id, now);
+    sqlite.prepare('UPDATE projects SET default_template_id=? WHERE id=?').run(defaultTemplateId, id);
+  })();
   audit(actor, 'create', 'project', id, `创建项目：${name}`);
   return row<ProjectRecord>(`${projectSelect} WHERE id=?`, id)!;
 }
@@ -163,6 +223,9 @@ export function updateProject(id: string, input: JsonObject, actor: Actor): Proj
   if (!current) throw new Error('项目不存在');
   const name = input.name === undefined ? current.name : requireText(input.name, '项目名称');
   const defaultTemplateId = input.defaultTemplateId === undefined ? current.defaultTemplateId : nullableText(input.defaultTemplateId);
+  if (defaultTemplateId && !row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', defaultTemplateId, id)) {
+    throw new Error('默认流程必须属于当前项目且未归档');
+  }
   sqlite.prepare(`UPDATE projects SET name=?, status=?, planned_start=?, planned_end=?, default_template_id=?, updated_at=? WHERE id=?`).run(
     name, input.status === undefined ? current.status : String(input.status),
     input.plannedStart === undefined ? current.plannedStart : nullableText(input.plannedStart),
@@ -206,17 +269,28 @@ function requireActiveProject(projectId: string) {
   if (!row('SELECT id FROM projects WHERE id=? AND deleted_at IS NULL', projectId)) throw new Error('项目不存在');
 }
 
-function defaultProjectId() {
-  const activeProjects = rows<{ id: string }>('SELECT id FROM projects WHERE deleted_at IS NULL ORDER BY created_at');
-  return activeProjects.length === 1 ? activeProjects[0].id : null;
+export function listPeopleCandidates(projectId: string, q = '') {
+  requireActiveProject(projectId);
+  const pattern = `%${q.trim()}%`;
+  return rows(`SELECT p.id, p.name, p.job_title AS jobTitle
+    FROM people p WHERE p.deleted_at IS NULL AND p.active=1
+      AND NOT EXISTS (SELECT 1 FROM project_people pp WHERE pp.project_id=? AND pp.person_id=p.id)
+      AND (?='' OR p.name LIKE ? OR COALESCE(p.job_title,'') LIKE ?)
+    ORDER BY p.name LIMIT 50`, projectId, q.trim(), pattern, pattern);
 }
 
-export function addProjectPerson(projectId: string, personId: string, actor: Actor) {
+export function addProjectPerson(projectId: string, personId: string, actor: Actor, requestedRole: unknown = 'member') {
   requireActiveProject(projectId);
   const person = row<{ name: string }>('SELECT name FROM people WHERE id=? AND deleted_at IS NULL AND active=1', personId);
   if (!person) throw new Error('人员不存在或已停用');
-  sqlite.prepare('INSERT OR IGNORE INTO project_people (project_id, person_id, created_at) VALUES (?, ?, ?)').run(projectId, personId, nowIso());
-  audit(actor, 'add_member', 'person', personId, `添加项目成员：${person.name}`);
+  const projectRole = ensureEnum(requestedRole, projectRoles, '项目角色');
+  const currentRole = row<{ projectRole: ProjectRole }>('SELECT project_role AS projectRole FROM project_people WHERE project_id=? AND person_id=?', projectId, personId)?.projectRole;
+  if ((projectRole === 'manager' || currentRole === 'manager') && actor.globalRole !== 'admin') {
+    const error = new Error('项目经理只能由平台管理员任免') as Error & { statusCode: number }; error.statusCode = 403; throw error;
+  }
+  sqlite.prepare(`INSERT INTO project_people (project_id, person_id, project_role, created_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(project_id,person_id) DO UPDATE SET project_role=excluded.project_role`).run(projectId, personId, projectRole, nowIso());
+  audit(actor, 'add_member', 'person', personId, `设置项目成员：${person.name}（${projectRole}）`, projectId);
   return listPeople(false, projectId).find((item: any) => item.id === personId);
 }
 
@@ -224,9 +298,29 @@ export function removeProjectPerson(projectId: string, personId: string, actor: 
   requireActiveProject(projectId);
   const person = row<{ name: string }>('SELECT name FROM people WHERE id=? AND deleted_at IS NULL', personId);
   if (!person) throw new Error('人员不存在');
+  const membership = row<{ projectRole: ProjectRole }>('SELECT project_role AS projectRole FROM project_people WHERE project_id=? AND person_id=?', projectId, personId);
+  if (!membership) throw new Error('该人员不属于当前项目');
+  if (membership.projectRole === 'manager' && actor.globalRole !== 'admin') {
+    const error = new Error('项目经理只能由平台管理员移除') as Error & { statusCode: number }; error.statusCode = 403; throw error;
+  }
+  const assignments = {
+    requirements: row<{ count: number }>(`SELECT COUNT(*) AS count FROM requirements
+      WHERE project_id=? AND owner_id=? AND deleted_at IS NULL AND status NOT IN ('completed','cancelled')`, projectId, personId)?.count || 0,
+    workItems: row<{ count: number }>(`SELECT COUNT(DISTINCT w.id) AS count FROM work_items w
+      JOIN requirements r ON r.id=w.requirement_id
+      LEFT JOIN work_item_collaborators c ON c.work_item_id=w.id AND c.person_id=?
+      WHERE r.project_id=? AND r.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled')
+        AND (w.owner_id=? OR c.person_id IS NOT NULL)`, personId, projectId, personId)?.count || 0,
+    issues: row<{ count: number }>(`SELECT COUNT(*) AS count FROM issues
+      WHERE project_id=? AND owner_id=? AND status<>'resolved'`, projectId, personId)?.count || 0,
+  };
+  if (assignments.requirements || assignments.workItems || assignments.issues) {
+    const error = new Error(`该成员仍有关联任务：需求${assignments.requirements}项、工作项${assignments.workItems}项、问题${assignments.issues}项，请先重新分配`) as Error & { statusCode: number; details: typeof assignments };
+    error.statusCode = 409; error.details = assignments; throw error;
+  }
   const result = sqlite.prepare('DELETE FROM project_people WHERE project_id=? AND person_id=?').run(projectId, personId);
   if (!result.changes) throw new Error('该人员不属于当前项目');
-  audit(actor, 'remove_member', 'person', personId, `移出项目成员：${person.name}`);
+  audit(actor, 'remove_member', 'person', personId, `移出项目成员：${person.name}`, projectId);
   return { ok: true };
 }
 
@@ -238,14 +332,13 @@ function assertUniquePersonName(name: string, exceptId?: string) {
 
 export function createPerson(input: JsonObject, actor: Actor) {
   const id = randomUUID(); const now = nowIso(); const name = requireText(input.name, '姓名');
-  const projectId = nullableText(input.projectId) || defaultProjectId();
-  if (!projectId) throw new Error('请选择人员所属项目');
-  requireActiveProject(projectId);
+  const projectId = nullableText(input.projectId);
+  if (projectId) requireActiveProject(projectId);
   assertUniquePersonName(name);
   sqlite.transaction(() => {
     sqlite.prepare('INSERT INTO people (id, name, job_title, active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)')
       .run(id, name, nullableText(input.jobTitle), now, now);
-    sqlite.prepare('INSERT INTO project_people (project_id, person_id, created_at) VALUES (?, ?, ?)').run(projectId, id, now);
+    if (projectId) sqlite.prepare('INSERT INTO project_people (project_id, person_id, created_at) VALUES (?, ?, ?)').run(projectId, id, now);
     createAccountForPerson(id, name, true);
   })();
   audit(actor, 'create', 'person', id, `新增人员：${name}`);
@@ -259,10 +352,18 @@ export function updatePerson(id: string, input: JsonObject, actor: Actor) {
   if (!current) throw new Error('人员不存在');
   const name = input.name === undefined ? current.name : requireText(input.name, '姓名');
   assertUniquePersonName(name, id);
-  sqlite.prepare('UPDATE people SET name=?, job_title=?, active=?, updated_at=? WHERE id=?').run(
-    name, input.jobTitle === undefined ? current.jobTitle : nullableText(input.jobTitle),
-    input.active === undefined ? current.active : input.active ? 1 : 0, nowIso(), id,
-  );
+  const active = input.active === undefined
+    ? current.active
+    : [true, 1, '1', 'true'].includes(input.active as boolean | number | string) ? 1 : 0;
+  sqlite.transaction(() => {
+    sqlite.prepare('UPDATE people SET name=?, job_title=?, active=?, updated_at=? WHERE id=?').run(
+      name, input.jobTitle === undefined ? current.jobTitle : nullableText(input.jobTitle), active, nowIso(), id,
+    );
+    if (input.active !== undefined) {
+      sqlite.prepare(`UPDATE accounts SET status=?, session_version=session_version+1, updated_at=?
+        WHERE person_id=? AND is_builtin=0`).run(active ? 'active' : 'disabled', nowIso(), id);
+    }
+  })();
   audit(actor, 'update', 'person', id, `更新人员：${name}`);
   return row('SELECT id, name, job_title AS jobTitle, active, created_at AS createdAt, updated_at AS updatedAt FROM people WHERE id=?', id)!;
 }
@@ -295,7 +396,7 @@ export function restorePerson(id: string, actor: Actor) {
 function parseTemplateItems(input: unknown): TemplateItemInput[] {
   if (!Array.isArray(input)) return [];
   return input.map((value, index) => {
-    if (typeof value === 'string') return { title: requireText(value, '工作项名称'), startOffsetDays: index, durationDays: 1, sortOrder: index };
+    if (typeof value === 'string') return { title: requireText(value, '工作项名称'), startOffsetDays: index, durationDays: 1, milestoneLabel: null, sortOrder: index };
     const item = value as JsonObject;
     const startOffsetDays = Number(item.startOffsetDays ?? index);
     const durationDays = Number(item.durationDays ?? 1);
@@ -304,16 +405,19 @@ function parseTemplateItems(input: unknown): TemplateItemInput[] {
     return {
       id: nullableText(item.id) || undefined,
       title: requireText(item.title, '工作项名称'), startOffsetDays, durationDays,
+      milestoneLabel: milestoneLabel(item.milestoneLabel),
       sortOrder: Number.isInteger(Number(item.sortOrder)) ? Number(item.sortOrder) : index,
     };
   });
 }
 
-export function listTemplates(includeDeleted = false) {
-  const templates = rows<any>(`SELECT id, name, description, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt
-    FROM work_item_templates ${includeDeleted ? '' : 'WHERE deleted_at IS NULL'} ORDER BY created_at`);
+export function listTemplates(projectId?: string | null, includeDeleted = false) {
+  if (projectId) requireActiveProject(projectId);
+  const templates = rows<any>(`SELECT id, project_id AS projectId, name, description, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt
+    FROM work_item_templates ${projectId ? 'WHERE project_id=?' : includeDeleted ? '' : 'WHERE deleted_at IS NULL'}
+    ${projectId && !includeDeleted ? 'AND deleted_at IS NULL' : ''} ORDER BY created_at`, ...(projectId ? [projectId] : []));
   const items = rows<any>(`SELECT id, template_id AS templateId, title, sort_order AS sortOrder,
-    start_offset_days AS startOffsetDays, duration_days AS durationDays, deleted_at AS deletedAt
+    start_offset_days AS startOffsetDays, duration_days AS durationDays, milestone_label AS milestoneLabel, deleted_at AS deletedAt
     FROM template_items ORDER BY sort_order`);
   return templates.map((template) => ({
     ...template,
@@ -321,25 +425,35 @@ export function listTemplates(includeDeleted = false) {
   }));
 }
 
+function assertUniqueTemplateName(projectId: string, name: string, exceptId?: string) {
+  const duplicate = row<{ id: string }>(`SELECT id FROM work_item_templates WHERE project_id=? AND deleted_at IS NULL
+    AND lower(trim(name))=lower(trim(?)) ${exceptId ? 'AND id<>?' : ''} LIMIT 1`, projectId, name, ...(exceptId ? [exceptId] : []));
+  if (duplicate) throw new Error('当前项目已存在同名流程');
+}
+
 export function createTemplate(input: JsonObject, actor: Actor) {
-  const id = randomUUID(); const now = nowIso(); const name = requireText(input.name, '模板名称');
+  const id = randomUUID(); const now = nowIso(); const projectId = requireText(input.projectId, '项目');
+  requireActiveProject(projectId);
+  const name = requireText(input.name, '流程名称');
+  assertUniqueTemplateName(projectId, name);
   const description = templateDescription(input.description);
   const items = parseTemplateItems(input.items);
   if (!items.length) throw new Error('模板至少需要一个工作项');
   const tx = sqlite.transaction(() => {
-    sqlite.prepare('INSERT INTO work_item_templates (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(id, name, description, now, now);
+    sqlite.prepare('INSERT INTO work_item_templates (id, project_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, projectId, name, description, now, now);
     const insert = sqlite.prepare(`INSERT INTO template_items
-      (id, template_id, title, sort_order, start_offset_days, duration_days) VALUES (?, ?, ?, ?, ?, ?)`);
-    items.forEach((item, index) => insert.run(randomUUID(), id, item.title, index, item.startOffsetDays, item.durationDays));
+      (id, template_id, title, sort_order, start_offset_days, duration_days, milestone_label) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+    items.forEach((item, index) => insert.run(randomUUID(), id, item.title, index, item.startOffsetDays, item.durationDays, item.milestoneLabel));
   });
-  tx(); audit(actor, 'create', 'template', id, `创建模板：${name}`);
-  return listTemplates().find((item: any) => item.id === id);
+  tx(); audit(actor, 'create', 'template', id, `创建流程：${name}`);
+  return listTemplates(projectId).find((item: any) => item.id === id);
 }
 
 export function updateTemplate(id: string, input: JsonObject, actor: Actor) {
-  const current = row<{ name: string; description: string }>('SELECT name, description FROM work_item_templates WHERE id=? AND deleted_at IS NULL', id);
+  const current = row<{ projectId: string; name: string; description: string }>('SELECT project_id AS projectId, name, description FROM work_item_templates WHERE id=? AND deleted_at IS NULL', id);
   if (!current) throw new Error('模板不存在');
   const name = input.name === undefined ? current.name : requireText(input.name, '模板名称');
+  assertUniqueTemplateName(current.projectId, name, id);
   const description = input.description === undefined ? current.description : templateDescription(input.description);
   const items = input.items === undefined ? null : parseTemplateItems(input.items);
   if (items && !items.length) throw new Error('模板至少需要一个工作项');
@@ -348,21 +462,37 @@ export function updateTemplate(id: string, input: JsonObject, actor: Actor) {
     if (!items) return;
     const existing = new Set(rows<{ id: string }>('SELECT id FROM template_items WHERE template_id=? AND deleted_at IS NULL', id).map((item) => item.id));
     const kept = new Set<string>();
-    const update = sqlite.prepare(`UPDATE template_items SET title=?, sort_order=?, start_offset_days=?, duration_days=?, deleted_at=NULL
+    const update = sqlite.prepare(`UPDATE template_items SET title=?, sort_order=?, start_offset_days=?, duration_days=?, milestone_label=?, deleted_at=NULL
       WHERE id=? AND template_id=?`);
     const insert = sqlite.prepare(`INSERT INTO template_items
-      (id, template_id, title, sort_order, start_offset_days, duration_days) VALUES (?, ?, ?, ?, ?, ?)`);
+      (id, template_id, title, sort_order, start_offset_days, duration_days, milestone_label) VALUES (?, ?, ?, ?, ?, ?, ?)`);
     items.forEach((item, index) => {
       if (item.id && existing.has(item.id)) {
-        update.run(item.title, index, item.startOffsetDays, item.durationDays, item.id, id); kept.add(item.id);
+        update.run(item.title, index, item.startOffsetDays, item.durationDays, item.milestoneLabel, item.id, id); kept.add(item.id);
       } else {
-        const newId = randomUUID(); insert.run(newId, id, item.title, index, item.startOffsetDays, item.durationDays); kept.add(newId);
+        const newId = randomUUID(); insert.run(newId, id, item.title, index, item.startOffsetDays, item.durationDays, item.milestoneLabel); kept.add(newId);
       }
     });
     for (const itemId of existing) if (!kept.has(itemId)) sqlite.prepare('UPDATE template_items SET deleted_at=? WHERE id=?').run(nowIso(), itemId);
   });
   tx(); audit(actor, 'update', 'template', id, `更新模板：${name}`);
-  return listTemplates().find((item: any) => item.id === id);
+  return listTemplates(current.projectId).find((item: any) => item.id === id);
+}
+
+export function copyTemplate(targetProjectId: string, sourceTemplateId: string, actor: Actor) {
+  requireActiveProject(targetProjectId);
+  const source = row<{ name: string; description: string }>(
+    'SELECT name, description FROM work_item_templates WHERE id=? AND deleted_at IS NULL', sourceTemplateId,
+  );
+  if (!source) throw new Error('来源流程不存在');
+  let name = `${source.name}（副本）`; let suffix = 2;
+  while (row('SELECT 1 FROM work_item_templates WHERE project_id=? AND deleted_at IS NULL AND lower(trim(name))=lower(trim(?))', targetProjectId, name)) {
+    name = `${source.name}（副本${suffix++}）`;
+  }
+  const items = activeTemplateItems(sourceTemplateId).map((item) => ({
+    title: item.title, startOffsetDays: item.startOffsetDays, durationDays: item.durationDays, milestoneLabel: item.milestoneLabel, sortOrder: item.sortOrder,
+  }));
+  return createTemplate({ projectId: targetProjectId, name, description: source.description, items }, actor);
 }
 
 export function archiveTemplate(id: string, actor: Actor) {
@@ -373,10 +503,12 @@ export function archiveTemplate(id: string, actor: Actor) {
 }
 
 export function restoreTemplate(id: string, actor: Actor) {
-  if (!row('SELECT id FROM work_item_templates WHERE id=? AND deleted_at IS NOT NULL', id)) throw new Error('归档模板不存在');
+  const template = row<{ projectId: string; name: string }>('SELECT project_id AS projectId, name FROM work_item_templates WHERE id=? AND deleted_at IS NOT NULL', id);
+  if (!template) throw new Error('归档模板不存在');
+  assertUniqueTemplateName(template.projectId, template.name, id);
   sqlite.prepare('UPDATE work_item_templates SET deleted_at=NULL, updated_at=? WHERE id=?').run(nowIso(), id);
   audit(actor, 'restore', 'template', id, '恢复流程设计');
-  return listTemplates(true).find((item: any) => item.id === id);
+  return listTemplates(template.projectId, true).find((item: any) => item.id === id);
 }
 
 function getWorkItems(requirementId: string): WorkItemRecord[] {
@@ -427,7 +559,7 @@ export function getRequirement(id: string, includeDeleted = false) {
   if (!requirement) throw new Error('需求不存在');
   const result = enrichRequirement(requirement);
   const progressUpdates = rows(`SELECT u.id, u.requirement_id AS requirementId, u.work_item_id AS workItemId,
-    w.title AS workItemTitle, u.percent, u.content, u.created_by_account_id AS createdByAccountId,
+    w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content, u.created_by_account_id AS createdByAccountId,
     a.username AS createdByName, u.created_at AS createdAt, u.updated_at AS updatedAt
     FROM progress_updates u LEFT JOIN work_items w ON w.id=u.work_item_id
     LEFT JOIN accounts a ON a.id=u.created_by_account_id
@@ -436,8 +568,8 @@ export function getRequirement(id: string, includeDeleted = false) {
 }
 
 function activeTemplateItems(templateId: string) {
-  return rows<{ id: string; title: string; sortOrder: number; startOffsetDays: number; durationDays: number }>(`SELECT id, title,
-    sort_order AS sortOrder, start_offset_days AS startOffsetDays, duration_days AS durationDays
+  return rows<{ id: string; title: string; sortOrder: number; startOffsetDays: number; durationDays: number; milestoneLabel: string | null }>(`SELECT id, title,
+    sort_order AS sortOrder, start_offset_days AS startOffsetDays, duration_days AS durationDays, milestone_label AS milestoneLabel
     FROM template_items WHERE template_id=? AND deleted_at IS NULL ORDER BY sort_order`, templateId);
 }
 
@@ -448,20 +580,28 @@ function applyTemplateInternal(requirementId: string, templateId: string, baseSt
     'SELECT template_item_id AS templateItemId, title FROM work_items WHERE requirement_id=?', requirementId,
   ).flatMap((item) => [item.templateItemId, item.title].filter(Boolean) as string[]));
   const insert = sqlite.prepare(`INSERT INTO work_items
-    (id, requirement_id, template_item_id, title, status, planned_start, planned_end, sort_order, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'not_started', ?, ?, ?, ?, ?)`);
+    (id, requirement_id, template_item_id, title, milestone_label, status, planned_start, planned_end, sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'not_started', ?, ?, ?, ?, ?)`);
   const now = nowIso();
   let nextOrder = (row<{ maxOrder: number | null }>('SELECT MAX(sort_order) AS maxOrder FROM work_items WHERE requirement_id=?', requirementId)?.maxOrder ?? -1) + 1;
   for (const item of items) {
     if (existing.has(item.id) || existing.has(item.title)) continue;
     const plan = plannedDatesFromOffset(baseStart, item.startOffsetDays, item.durationDays);
-    insert.run(randomUUID(), requirementId, item.id, item.title, plan.plannedStart, plan.plannedEnd, nextOrder++, now, now);
+    insert.run(randomUUID(), requirementId, item.id, item.title, item.milestoneLabel, plan.plannedStart, plan.plannedEnd, nextOrder++, now, now);
   }
 }
 
 function updateStoredRequirementEnd(requirementId: string) {
   const plannedEnd = row<{ plannedEnd: string | null }>('SELECT MAX(planned_end) AS plannedEnd FROM work_items WHERE requirement_id=?', requirementId)?.plannedEnd || null;
   sqlite.prepare('UPDATE requirements SET planned_end=?, updated_at=? WHERE id=?').run(plannedEnd, nowIso(), requirementId);
+}
+
+function syncStoredRequirementProgress(requirementId: string, updatedAt = nowIso()) {
+  const requirement = row<RequirementRecord>(`${requirementSelect} WHERE r.id=?`, requirementId);
+  if (!requirement) throw new Error('需求不存在');
+  const progress = enrichRequirement(requirement).progress;
+  sqlite.prepare('UPDATE requirements SET progress=?, updated_at=? WHERE id=?').run(progress, updatedAt, requirementId);
+  return progress;
 }
 
 function shiftRequirementWorkItems(requirementId: string, businessDays: number, updatedAt: string) {
@@ -488,8 +628,8 @@ export function createRequirement(input: JsonObject, actor: Actor) {
   if (!project) throw new Error('项目不存在');
   const title = requireText(input.title, '需求标题');
   const priority = ensureEnum(input.priority ?? 'P2', priorities, '优先级');
-  const templateId = nullableText(input.templateId) || project.defaultTemplateId || firstActiveTemplateId();
-  if (!templateId || !row('SELECT id FROM work_item_templates WHERE id=? AND deleted_at IS NULL', templateId)) throw new Error('请选择有效的流程设计');
+  const templateId = nullableText(input.templateId) || project.defaultTemplateId || firstActiveTemplateId(projectId);
+  if (!templateId || !row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, projectId)) throw new Error('请选择当前项目的有效流程设计');
   const inputPlannedStart = nullableText(input.plannedStart);
   const inputPlannedEnd = nullableText(input.plannedEnd);
   if (Boolean(inputPlannedStart) === Boolean(inputPlannedEnd)) throw new Error('计划开始和截止日期请选择一项');
@@ -542,7 +682,7 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
     }
   }
   if (templateChanged) {
-    if (!templateId || !row('SELECT id FROM work_item_templates WHERE id=? AND deleted_at IS NULL', templateId)) throw new Error('请选择有效的流程设计');
+    if (!templateId || !row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, current.projectId)) throw new Error('请选择当前项目的有效流程设计');
     if (requestedPlannedEnd !== undefined) {
       nextPlannedStart = plannedStartFromDeadline(requestedPlannedEnd, activeTemplateItems(templateId));
     } else if (requestedPlannedStart !== undefined) {
@@ -556,7 +696,7 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
     if (templateChanged && templateId) {
       sqlite.prepare('DELETE FROM progress_updates WHERE requirement_id=?').run(id);
       sqlite.prepare('DELETE FROM work_items WHERE requirement_id=?').run(id);
-      sqlite.prepare(`UPDATE requirements SET template_id=?, title=?, owner_id=NULL, status='planning', planned_start=?,
+      sqlite.prepare(`UPDATE requirements SET template_id=?, title=?, status='planning', planned_start=?,
         planned_end=NULL, progress=0, risk_level='low', priority=?, updated_at=? WHERE id=?`)
         .run(templateId, title, nextPlannedStart, priority, now, id);
       applyTemplateInternal(id, templateId, nextPlannedStart!);
@@ -591,6 +731,7 @@ export function restoreRequirement(id: string, actor: Actor) {
 export function applyTemplate(requirementId: string, templateId: string, actor: Actor) {
   const requirement = getRequirement(requirementId);
   if (!requirement.plannedStart) throw new Error('需求缺少计划开始日期');
+  if (!row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, requirement.projectId)) throw new Error('流程设计不属于当前项目');
   const tx = sqlite.transaction(() => { applyTemplateInternal(requirementId, templateId, requirement.plannedStart!); updateStoredRequirementEnd(requirementId); });
   tx(); audit(actor, 'apply_template', 'requirement', requirementId, '从模板补充工作项');
   return getRequirement(requirementId);
@@ -599,6 +740,7 @@ export function applyTemplate(requirementId: string, templateId: string, actor: 
 export function previewRequirementPlan(requirementId: string, input: JsonObject) {
   const requirement = getRequirement(requirementId, true);
   const templateId = requireText(input.templateId, '流程设计');
+  if (!row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, requirement.projectId)) throw new Error('流程设计不属于当前项目');
   const baseStart = requireDate(input.baseStart ?? requirement.plannedStart, '计划开始');
   const workItems = requirement.workItems || [];
   const entries = activeTemplateItems(templateId).map((item) => {
@@ -606,6 +748,7 @@ export function previewRequirementPlan(requirementId: string, input: JsonObject)
     const proposed = plannedDatesFromOffset(baseStart, item.startOffsetDays, item.durationDays);
     return {
       templateItemId: item.id, workItemId: existing?.id || null, title: item.title,
+      milestoneLabel: item.milestoneLabel,
       currentStart: existing?.plannedStart || null, currentEnd: existing?.plannedEnd || null,
       proposedStart: proposed.plannedStart, proposedEnd: proposed.plannedEnd,
       willChange: !existing || !existing.plannedStart || !existing.plannedEnd,
@@ -628,9 +771,9 @@ export function applyRequirementPlan(requirementId: string, input: JsonObject, a
           .run(item.proposedStart, item.proposedEnd, now, item.workItemId);
       } else {
         sqlite.prepare(`INSERT INTO work_items
-          (id, requirement_id, template_item_id, title, status, planned_start, planned_end, sort_order, created_at, updated_at)
-          VALUES (?, ?, ?, ?, 'not_started', ?, ?, ?, ?, ?)`).run(
-          randomUUID(), requirementId, item.templateItemId, item.title, item.proposedStart, item.proposedEnd, nextOrder++, now, now,
+          (id, requirement_id, template_item_id, title, milestone_label, status, planned_start, planned_end, sort_order, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, 'not_started', ?, ?, ?, ?, ?)`).run(
+          randomUUID(), requirementId, item.templateItemId, item.title, item.milestoneLabel, item.proposedStart, item.proposedEnd, nextOrder++, now, now,
         );
       }
     }
@@ -681,16 +824,18 @@ export function createWorkItem(requirementId: string, input: JsonObject, actor: 
   const ownerId = nullableText(input.ownerId);
   const collaboratorIds = collaboratorIdsFromInput(input, ownerId) || [];
   assertProjectAssignees(requirementId, [ownerId, ...collaboratorIds]);
+  const milestone = milestoneLabel(input.milestoneLabel);
   sqlite.transaction(() => {
     sqlite.prepare(`INSERT INTO work_items
-      (id, requirement_id, title, owner_id, status, planned_start, planned_end, actual_start, actual_end, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'not_started', ?, ?, ?, ?, ?, ?, ?)`).run(
-      id, requirementId, title, ownerId, nullableText(input.plannedStart), nullableText(input.plannedEnd),
-      actualStart, actualEnd, max + 1, now, now,
+      (id, requirement_id, title, owner_id, milestone_label, status, planned_start, planned_end, actual_start, actual_end, progress, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'not_started', ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      id, requirementId, title, ownerId, milestone, nullableText(input.plannedStart), nullableText(input.plannedEnd),
+      actualStart, actualEnd, actualEnd ? 100 : 0, max + 1, now, now,
     );
     syncWorkItemCollaborators(id, collaboratorIds);
   })();
   updateStoredRequirementEnd(requirementId);
+  syncStoredRequirementProgress(requirementId);
   audit(actor, 'create', 'work_item', id, `新增工作项：${title}${collaboratorIds.length ? `（${collaboratorIds.length + (ownerId ? 1 : 0)}人协作）` : ''}`);
   return getRequirement(requirementId).workItems!.find((item) => item.id === id);
 }
@@ -699,6 +844,7 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) throw new Error('工作项不存在');
   const title = input.title === undefined ? current.title : requireText(input.title, '工作项标题');
+  const milestone = input.milestoneLabel === undefined ? current.milestoneLabel : milestoneLabel(input.milestoneLabel);
   const ownerId = input.ownerId === undefined ? current.ownerId : nullableText(input.ownerId);
   const collaboratorIds = collaboratorIdsFromInput(input, ownerId);
   const currentCollaborators = collaboratorIds === undefined
@@ -708,17 +854,28 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
   let actualStart = input.actualStart === undefined ? current.actualStart : nullableText(input.actualStart);
   const actualEnd = input.actualEnd === undefined ? current.actualEnd : nullableText(input.actualEnd);
   if (actualEnd && !actualStart) actualStart = actualEnd;
+  const progress = actualEnd ? 100 : current.actualEnd && !actualEnd ? Math.min(99, current.progress) : current.progress;
+  const status = current.status === 'cancelled'
+    ? 'cancelled'
+    : current.blockedAt
+      ? 'blocked'
+      : actualEnd
+        ? 'completed'
+        : actualStart
+          ? 'in_progress'
+          : 'not_started';
   sqlite.transaction(() => {
-    sqlite.prepare(`UPDATE work_items SET title=?, owner_id=?, planned_start=?, planned_end=?, actual_start=?, actual_end=?, sort_order=?, updated_at=? WHERE id=?`).run(
-      title, ownerId,
+    sqlite.prepare(`UPDATE work_items SET title=?, owner_id=?, milestone_label=?, planned_start=?, planned_end=?, actual_start=?, actual_end=?, progress=?, status=?, sort_order=?, updated_at=? WHERE id=?`).run(
+      title, ownerId, milestone,
       input.plannedStart === undefined ? current.plannedStart : nullableText(input.plannedStart),
       input.plannedEnd === undefined ? current.plannedEnd : nullableText(input.plannedEnd), actualStart, actualEnd,
-      input.sortOrder === undefined ? current.sortOrder : Number(input.sortOrder), nowIso(), id,
+      progress, status, input.sortOrder === undefined ? current.sortOrder : Number(input.sortOrder), nowIso(), id,
     );
     if (collaboratorIds !== undefined) syncWorkItemCollaborators(id, collaboratorIds);
     else if (ownerId) sqlite.prepare('DELETE FROM work_item_collaborators WHERE work_item_id=? AND person_id=?').run(id, ownerId);
   })();
   updateStoredRequirementEnd(current.requirementId);
+  syncStoredRequirementProgress(current.requirementId);
   audit(actor, 'update', 'work_item', id, `更新工作项：${title}`);
   return getRequirement(current.requirementId).workItems!.find((item) => item.id === id);
 }
@@ -726,12 +883,13 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
 function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unblock' | 'cancel', input: JsonObject, actor: Actor) {
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) throw new Error('工作项不存在');
-  const today = todayIso();
-  if (action === 'start') sqlite.prepare(`UPDATE work_items SET actual_start=COALESCE(actual_start, ?), status='in_progress', blocked_at=NULL, blocked_reason=NULL, updated_at=? WHERE id=?`).run(today, nowIso(), id);
-  if (action === 'complete') sqlite.prepare(`UPDATE work_items SET actual_start=COALESCE(actual_start, ?), actual_end=?, status='completed', blocked_at=NULL, blocked_reason=NULL, updated_at=? WHERE id=?`).run(today, today, nowIso(), id);
-  if (action === 'block') sqlite.prepare(`UPDATE work_items SET blocked_at=?, blocked_reason=?, status='blocked', updated_at=? WHERE id=?`).run(nowIso(), requireText(input.reason, '阻塞原因'), nowIso(), id);
-  if (action === 'unblock') sqlite.prepare(`UPDATE work_items SET blocked_at=NULL, blocked_reason=NULL, status=CASE WHEN actual_start IS NULL THEN 'not_started' ELSE 'in_progress' END, updated_at=? WHERE id=?`).run(nowIso(), id);
-  if (action === 'cancel') sqlite.prepare(`UPDATE work_items SET status='cancelled', blocked_at=NULL, blocked_reason=NULL, updated_at=? WHERE id=?`).run(nowIso(), id);
+  const today = todayIso(); const now = nowIso();
+  if (action === 'start') sqlite.prepare(`UPDATE work_items SET actual_start=COALESCE(actual_start, ?), status='in_progress', blocked_at=NULL, blocked_reason=NULL, updated_at=? WHERE id=?`).run(today, now, id);
+  if (action === 'complete') sqlite.prepare(`UPDATE work_items SET actual_start=COALESCE(actual_start, ?), actual_end=?, progress=100, status='completed', blocked_at=NULL, blocked_reason=NULL, updated_at=? WHERE id=?`).run(today, today, now, id);
+  if (action === 'block') sqlite.prepare(`UPDATE work_items SET blocked_at=?, blocked_reason=?, status='blocked', updated_at=? WHERE id=?`).run(now, requireText(input.reason, '阻塞原因'), now, id);
+  if (action === 'unblock') sqlite.prepare(`UPDATE work_items SET blocked_at=NULL, blocked_reason=NULL, status=CASE WHEN actual_start IS NULL THEN 'not_started' ELSE 'in_progress' END, updated_at=? WHERE id=?`).run(now, id);
+  if (action === 'cancel') sqlite.prepare(`UPDATE work_items SET status='cancelled', blocked_at=NULL, blocked_reason=NULL, updated_at=? WHERE id=?`).run(now, id);
+  syncStoredRequirementProgress(current.requirementId, now);
   audit(actor, action, 'work_item', id, `${action === 'start' ? '开始' : action === 'complete' ? '完成' : action === 'block' ? '阻塞' : action === 'unblock' ? '解除阻塞' : '取消'}工作项：${current.title}`);
   return getRequirement(current.requirementId).workItems!.find((item) => item.id === id);
 }
@@ -745,7 +903,7 @@ export const cancelWorkItem = (id: string, actor: Actor) => workItemEvent(id, 'c
 export function deleteWorkItem(id: string, actor: Actor) {
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) throw new Error('工作项不存在');
-  sqlite.prepare('DELETE FROM work_items WHERE id=?').run(id); updateStoredRequirementEnd(current.requirementId);
+  sqlite.prepare('DELETE FROM work_items WHERE id=?').run(id); updateStoredRequirementEnd(current.requirementId); syncStoredRequirementProgress(current.requirementId);
   audit(actor, 'delete', 'work_item', id, `删除工作项：${current.title}`);
   return { ok: true };
 }
@@ -760,12 +918,24 @@ export function addProgress(requirementId: string, input: JsonObject, actor: Act
   const requirement = getRequirement(requirementId); const content = requireText(input.content, '具体进展');
   const id = randomUUID(); const now = nowIso(); const workItemId = nullableText(input.workItemId);
   if (workItemId && !requirement.workItems!.some((item) => item.id === workItemId)) throw new Error('关联工作项不存在');
+  if (!workItemId && input.workItemPercent !== undefined && nullableText(input.workItemPercent) !== null) throw new Error('填写完成度前请选择工作项');
+  const workItemPercent = workItemId ? requireProgress(input.workItemPercent, '工作项完成度') : null;
+  const workItem = workItemId ? requirement.workItems!.find((item) => item.id === workItemId)! : null;
+  if (workItem?.status === 'cancelled') throw new Error('已取消的工作项不能提交进度');
   const tx = sqlite.transaction(() => {
-    if (workItemId) sqlite.prepare(`UPDATE work_items SET actual_start=COALESCE(actual_start, ?), status=CASE WHEN status='not_started' THEN 'in_progress' ELSE status END, updated_at=? WHERE id=? AND actual_end IS NULL`).run(todayIso(), now, workItemId);
-    const percent = enrichRequirement(row<RequirementRecord>(`${requirementSelect} WHERE r.id=?`, requirementId)!).progress;
-    sqlite.prepare(`INSERT INTO progress_updates (id, requirement_id, work_item_id, percent, content, created_by_account_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, requirementId, workItemId, percent, content, actor.accountId || null, now, now);
-    sqlite.prepare('UPDATE requirements SET progress=?, updated_at=? WHERE id=?').run(percent, now, requirementId);
+    if (workItemId && workItemPercent !== null) {
+      if (workItemPercent === 100) {
+        sqlite.prepare(`UPDATE work_items SET progress=100, actual_start=COALESCE(actual_start, ?), actual_end=?,
+          status='completed', blocked_at=NULL, blocked_reason=NULL, updated_at=? WHERE id=?`).run(todayIso(), todayIso(), now, workItemId);
+      } else {
+        sqlite.prepare(`UPDATE work_items SET progress=?, actual_start=CASE WHEN ?>0 THEN COALESCE(actual_start, ?) ELSE actual_start END,
+          actual_end=NULL, status=CASE WHEN blocked_at IS NOT NULL THEN 'blocked' WHEN ?>0 THEN 'in_progress' ELSE 'not_started' END,
+          updated_at=? WHERE id=?`).run(workItemPercent, workItemPercent, todayIso(), workItemPercent, now, workItemId);
+      }
+    }
+    const percent = syncStoredRequirementProgress(requirementId, now);
+    sqlite.prepare(`INSERT INTO progress_updates (id, requirement_id, work_item_id, percent, work_item_percent, content, created_by_account_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, requirementId, workItemId, percent, workItemPercent, content, actor.accountId || null, now, now);
   });
   tx(); const result = getRequirement(requirementId);
   audit(actor, 'create', 'progress', id, `追加进展：${result.progress}% ${content.slice(0, 50)}`);
@@ -779,7 +949,13 @@ export function updateProgress(id: string, input: JsonObject, actor: Actor) {
   const workItemId = input.workItemId === undefined ? current.work_item_id : nullableText(input.workItemId);
   if (workItemId && !row('SELECT id FROM work_items WHERE id=? AND requirement_id=?', workItemId, current.requirement_id)) throw new Error('关联工作项不存在');
   const percent = getRequirement(current.requirement_id).progress;
-  sqlite.prepare('UPDATE progress_updates SET percent=?, content=?, work_item_id=?, updated_at=? WHERE id=?').run(percent, content, workItemId, nowIso(), id);
+  const workItemPercent = workItemId === current.work_item_id
+    ? current.work_item_percent
+    : workItemId
+      ? row<{ progress: number }>('SELECT progress FROM work_items WHERE id=?', workItemId)?.progress ?? null
+      : null;
+  sqlite.prepare('UPDATE progress_updates SET percent=?, work_item_percent=?, content=?, work_item_id=?, updated_at=? WHERE id=?')
+    .run(percent, workItemPercent, content, workItemId, nowIso(), id);
   audit(actor, 'update', 'progress', id, `更新进展记录：${percent}%`);
   return getRequirement(current.requirement_id);
 }
@@ -890,9 +1066,11 @@ export function listIssues(filters: {
 export function getIssue(id: string) {
   const issue = row<IssueRecord>(`${issueSelect} WHERE i.id=?`, id);
   if (!issue) throw new Error('问题不存在');
-  const updates = rows<IssueUpdateRecord>(`SELECT id, issue_id AS issueId, content,
-    created_at AS createdAt, updated_at AS updatedAt FROM issue_updates
-    WHERE issue_id=? ORDER BY created_at DESC, id DESC`, id);
+  const updates = rows<IssueUpdateRecord>(`SELECT u.id, u.issue_id AS issueId, u.progress, u.content,
+    u.created_by_account_id AS createdByAccountId, a.username AS createdByName,
+    u.created_at AS createdAt, u.updated_at AS updatedAt FROM issue_updates u
+    LEFT JOIN accounts a ON a.id=u.created_by_account_id
+    WHERE u.issue_id=? ORDER BY u.created_at DESC, u.id DESC`, id);
   return { ...enrichIssue(issue), updates };
 }
 
@@ -901,8 +1079,11 @@ export function createIssue(input: JsonObject, actor: Actor) {
   const title = requireText(input.title, '问题标题');
   const requirementId = issueRequirement(projectId, input.requirementId);
   const ownerId = issueOwner(projectId, input.ownerId);
-  const status = input.status === undefined ? 'open' : ensureEnum(input.status, issueStatuses, '问题状态');
+  let status = input.status === undefined ? 'open' : ensureEnum(input.status, issueStatuses, '问题状态');
   const priority = input.priority === undefined ? 'P2' : ensureEnum(input.priority, priorities, '问题优先级');
+  const progress = status === 'resolved' ? 100 : input.progress === undefined ? 0 : requireProgress(input.progress, '问题完成度');
+  if (status !== 'resolved' && progress === 100) throw new Error('100%问题必须由项目经理确认关闭');
+  if (status === 'open' && progress > 0) status = 'in_progress';
   if (status === 'in_progress' && !ownerId) throw new Error('进入处理中前请指定负责人');
   const discoveredAt = input.discoveredAt === undefined ? todayIso() : requireDate(input.discoveredAt, '发现日期');
   const dueDate = status === 'deferred' ? null : nullableDate(input.dueDate, '目标日期');
@@ -910,10 +1091,10 @@ export function createIssue(input: JsonObject, actor: Actor) {
   const now = nowIso();
   sqlite.prepare(`INSERT INTO issues
     (id, project_id, requirement_id, source_ref, title, impact, reporter, owner_id, status, priority,
-      discovered_at, due_date, resolved_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      progress, discovered_at, due_date, resolved_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     id, projectId, requirementId, nullableText(input.sourceRef), title, nullableText(input.impact),
-    nullableText(input.reporter), ownerId, status, priority, discoveredAt, dueDate, resolvedAt, now, now,
+    nullableText(input.reporter), ownerId, status, priority, progress, discoveredAt, dueDate, resolvedAt, now, now,
   );
   audit(actor, 'create', 'issue', id, `创建问题：${title}`);
   return getIssue(id);
@@ -925,46 +1106,122 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
   const requirementId = input.requirementId === undefined ? current.requirementId : issueRequirement(projectId, input.requirementId);
   const sourceRef = input.sourceRef === undefined ? current.sourceRef : nullableText(input.sourceRef);
   const ownerId = input.ownerId === undefined ? current.ownerId : issueOwner(projectId, input.ownerId);
-  const status = input.status === undefined ? current.status : ensureEnum(input.status, issueStatuses, '问题状态');
+  let status = input.status === undefined ? current.status : ensureEnum(input.status, issueStatuses, '问题状态');
   const priority = input.priority === undefined ? current.priority : ensureEnum(input.priority, priorities, '问题优先级');
-  if (status === 'in_progress' && !ownerId) throw new Error('进入处理中前请指定负责人');
   const updateContent = nullableText(input.updateContent);
   if (current.status !== 'resolved' && status === 'resolved' && !updateContent) throw new Error('标记已解决时请填写闭环说明');
+  let progress = status === 'resolved'
+    ? 100
+    : input.progress === undefined
+      ? current.status === 'resolved' ? 99 : current.progress
+      : requireProgress(input.progress, '问题完成度');
+  if (status !== 'resolved' && progress === 100) throw new Error('未关闭问题的完成度不能为100%');
+  if (status === 'open' && progress > 0) status = 'in_progress';
+  if (status === 'in_progress' && !ownerId) throw new Error('进入处理中前请指定负责人');
   const now = nowIso(); const updateId = updateContent ? randomUUID() : null;
   const resolvedAt = status === 'resolved' ? current.resolvedAt || todayIso() : null;
   const dueDate = status === 'deferred' ? null : input.dueDate === undefined ? current.dueDate : nullableDate(input.dueDate, '目标日期');
   sqlite.transaction(() => {
     sqlite.prepare(`UPDATE issues SET requirement_id=?, source_ref=?, title=?, impact=?, reporter=?, owner_id=?,
-      status=?, priority=?, discovered_at=?, due_date=?, resolved_at=?, updated_at=? WHERE id=?`).run(
+      status=?, priority=?, progress=?, discovered_at=?, due_date=?, resolved_at=?, updated_at=? WHERE id=?`).run(
       requirementId, sourceRef, title,
       input.impact === undefined ? current.impact : nullableText(input.impact),
       input.reporter === undefined ? current.reporter : nullableText(input.reporter),
-      ownerId, status, priority,
+      ownerId, status, priority, progress,
       input.discoveredAt === undefined ? current.discoveredAt : requireDate(input.discoveredAt, '发现日期'),
       dueDate,
       resolvedAt, now, id,
     );
     if (updateId && updateContent) sqlite.prepare(`INSERT INTO issue_updates
-      (id, issue_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`).run(updateId, id, updateContent, now, now);
+      (id, issue_id, progress, content, created_by_account_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(updateId, id, progress, updateContent, actor.accountId || null, now, now);
   })();
   audit(actor, 'update', 'issue', id, `更新问题：${title}`);
   if (updateId && updateContent) audit(actor, 'create', 'issue_update', updateId, `追加问题进展：${updateContent.slice(0, 50)}`);
   return getIssue(id);
 }
 
-export function addIssueUpdate(issueId: string, input: JsonObject, actor: Actor) {
+export function addIssueUpdate(issueId: string, input: JsonObject, actor: Actor, permissions: { canSetProgress: boolean; canResolve: boolean }) {
   const issue = getIssue(issueId); const content = requireText(input.content, '进展内容');
+  if (issue.status === 'resolved') throw new Error('已解决问题不能再追加进展，请先由项目经理重新打开');
+  const hasProgress = input.progress !== undefined && nullableText(input.progress) !== null;
+  if (hasProgress && !permissions.canSetProgress) throw new Error('只有问题负责人或项目经理可以更新问题完成度');
+  const progress = hasProgress ? requireProgress(input.progress, '问题完成度') : null;
+  if (progress === 100 && !permissions.canResolve) throw new Error('问题关闭必须由项目经理确认');
+  let status = issue.status;
+  if (progress === 100) status = 'resolved';
+  else if (progress !== null && progress > 0 && status === 'open') status = 'in_progress';
   const id = randomUUID(); const now = nowIso();
   sqlite.transaction(() => {
-    sqlite.prepare(`INSERT INTO issue_updates (id, issue_id, content, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)`).run(id, issueId, content, now, now);
-    sqlite.prepare('UPDATE issues SET updated_at=? WHERE id=?').run(now, issueId);
+    sqlite.prepare(`INSERT INTO issue_updates (id, issue_id, progress, content, created_by_account_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, issueId, progress, content, actor.accountId || null, now, now);
+    sqlite.prepare(`UPDATE issues SET progress=COALESCE(?, progress), status=?, resolved_at=CASE WHEN ?='resolved' THEN ? ELSE resolved_at END,
+      updated_at=? WHERE id=?`).run(progress, status, status, todayIso(), now, issueId);
   })();
   audit(actor, 'create', 'issue_update', id, `追加问题进展：${issue.title} · ${content.slice(0, 50)}`);
   return getIssue(issueId);
 }
 
-export function getPeopleConcurrency(filters: { projectId?: string; personId?: string; jobTitle?: string; from?: string; to?: string } = {}) {
+function latestIssueProgressUpdate(issueId: string) {
+  return row<{ id: string; progress: number }>(`SELECT id, progress FROM issue_updates
+    WHERE issue_id=? AND progress IS NOT NULL ORDER BY created_at DESC, id DESC LIMIT 1`, issueId);
+}
+
+function syncIssueProgressFromUpdates(issueId: string, now = nowIso()) {
+  const issue = row<{ status: string; ownerId: string | null }>(
+    'SELECT status, owner_id AS ownerId FROM issues WHERE id=?', issueId,
+  );
+  if (!issue) throw new Error('问题不存在');
+  const latest = latestIssueProgressUpdate(issueId);
+  const progress = latest?.progress ?? 0;
+  const status = progress === 100
+    ? 'resolved'
+    : issue.status === 'resolved'
+      ? progress > 0 && issue.ownerId ? 'in_progress' : 'open'
+      : issue.status === 'open' && progress > 0 && issue.ownerId
+        ? 'in_progress'
+        : issue.status;
+  sqlite.prepare(`UPDATE issues SET progress=?, status=?, resolved_at=CASE WHEN ?='resolved' THEN COALESCE(resolved_at, ?) ELSE NULL END,
+    updated_at=? WHERE id=?`).run(progress, status, status, todayIso(), now, issueId);
+}
+
+export function updateIssueUpdate(issueId: string, updateId: string, input: JsonObject, actor: Actor) {
+  const current = row<{ id: string; issueId: string; issueTitle: string; progress: number | null; content: string }>(`SELECT
+    u.id, u.issue_id AS issueId, i.title AS issueTitle, u.progress, u.content FROM issue_updates u
+    JOIN issues i ON i.id=u.issue_id WHERE u.id=? AND u.issue_id=?`, updateId, issueId);
+  if (!current) throw new Error('问题进展不存在');
+  const content = input.content === undefined ? current.content : requireText(input.content, '进展内容');
+  const nextProgress = input.progress === undefined
+    ? current.progress
+    : input.progress === null || String(input.progress).trim() === ''
+      ? null
+      : requireProgress(input.progress, '问题完成度');
+  const latestBefore = latestIssueProgressUpdate(issueId);
+  const now = nowIso();
+  sqlite.prepare('UPDATE issue_updates SET content=?, progress=?, updated_at=? WHERE id=? AND issue_id=?')
+    .run(content, nextProgress, now, updateId, issueId);
+  const latestAfter = latestIssueProgressUpdate(issueId);
+  if (input.progress !== undefined && (latestBefore?.id === updateId || latestAfter?.id === updateId)) syncIssueProgressFromUpdates(issueId, now);
+  else sqlite.prepare('UPDATE issues SET updated_at=? WHERE id=?').run(now, issueId);
+  audit(actor, 'update', 'issue_update', updateId, `编辑问题进展：${current.issueTitle} · ${content.slice(0, 50)}`);
+  return getIssue(issueId);
+}
+
+export function deleteIssueUpdate(issueId: string, updateId: string, actor: Actor) {
+  const current = row<{ id: string; issueTitle: string; progress: number | null; content: string }>(`SELECT
+    u.id, i.title AS issueTitle, u.progress, u.content FROM issue_updates u
+    JOIN issues i ON i.id=u.issue_id WHERE u.id=? AND u.issue_id=?`, updateId, issueId);
+  if (!current) throw new Error('问题进展不存在');
+  const latestBefore = latestIssueProgressUpdate(issueId);
+  const now = nowIso();
+  sqlite.prepare('DELETE FROM issue_updates WHERE id=? AND issue_id=?').run(updateId, issueId);
+  if (latestBefore?.id === updateId) syncIssueProgressFromUpdates(issueId, now);
+  else sqlite.prepare('UPDATE issues SET updated_at=? WHERE id=?').run(now, issueId);
+  audit(actor, 'delete', 'issue_update', updateId, `删除问题进展：${current.issueTitle} · ${current.content.slice(0, 50)}`);
+  return getIssue(issueId);
+}
+
+export function getPeopleConcurrency(filters: { projectId?: string; personId?: string; jobTitle?: string; from?: string; to?: string; includeExternalAggregate?: boolean } = {}) {
   const from = filters.from || todayIso(); const to = filters.to || addCalendarDays(from, 6);
   const dates: string[] = [];
   for (let date = from; date <= to; date = addCalendarDays(date, 1)) if (businessDaysInclusive(date, date) === 1) dates.push(date);
@@ -991,6 +1248,19 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
     WHERE ${itemWhere.join(' AND ')}`, ...itemParams)
     .filter((item) => deriveWorkItemStatus(item) !== 'cancelled');
   const today = todayIso();
+  const externalCounts = new Map<string, number>();
+  if (filters.projectId && filters.includeExternalAggregate) {
+    const external = rows<{ personId: string; count: number }>(`SELECT a.personId, COUNT(DISTINCT w.id) AS count
+      FROM work_items w JOIN requirements r ON r.id=w.requirement_id
+      JOIN (
+        SELECT id AS workItemId, owner_id AS personId FROM work_items WHERE owner_id IS NOT NULL
+        UNION SELECT work_item_id AS workItemId, person_id AS personId FROM work_item_collaborators
+      ) a ON a.workItemId=w.id
+      WHERE r.project_id<>? AND r.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled')
+        AND w.actual_start IS NOT NULL AND w.actual_start<=? AND (w.actual_end IS NULL OR w.actual_end>=?)
+      GROUP BY a.personId`, filters.projectId, today, today);
+    external.forEach((item) => externalCounts.set(item.personId, Number(item.count)));
+  }
   const result = people.map((person) => {
     const owned = items.filter((item) => item.personId === person.id);
     const days = dates.map((date) => {
@@ -999,17 +1269,19 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
       const selected = date <= today ? actualItems : plannedItems;
       return { date, count: selected.length, plannedCount: plannedItems.length, actualCount: actualItems.length, items: selected.map((item) => ({ id: item.id, title: item.title, requirementId: item.requirementId, requirementTitle: item.requirementTitle })) };
     });
-    return { ...person, currentCount: days.find((day) => day.date === today)?.count || 0, peakCount: Math.max(0, ...days.map((day) => day.count)), days };
+    return { ...person, currentCount: days.find((day) => day.date === today)?.count || 0,
+      externalCurrentCount: filters.includeExternalAggregate ? externalCounts.get(person.id) || 0 : undefined,
+      peakCount: Math.max(0, ...days.map((day) => day.count)), days };
   });
   return { from, to, dates, people: result, currentTop: [...result].filter((person) => person.currentCount > 0).sort((a, b) => b.currentCount - a.currentCount).slice(0, 5) };
 }
 
-export function listArchives() {
+export function listArchives(projectId?: string) {
   return {
-    projects: rows(`SELECT id, name AS title, deleted_at AS deletedAt FROM projects WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`),
-    requirements: rows(`SELECT id, title, deleted_at AS deletedAt FROM requirements WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`),
-    people: rows(`SELECT id, name AS title, job_title AS jobTitle, deleted_at AS deletedAt FROM people WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`),
-    templates: rows(`SELECT id, name AS title, deleted_at AS deletedAt FROM work_item_templates WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`),
+    projects: projectId ? [] : rows(`SELECT id, name AS title, deleted_at AS deletedAt FROM projects WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`),
+    requirements: rows(`SELECT id, title, deleted_at AS deletedAt FROM requirements WHERE deleted_at IS NOT NULL ${projectId ? 'AND project_id=?' : ''} ORDER BY deleted_at DESC`, ...(projectId ? [projectId] : [])),
+    people: projectId ? [] : rows(`SELECT id, name AS title, job_title AS jobTitle, deleted_at AS deletedAt FROM people WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`),
+    templates: rows(`SELECT id, name AS title, deleted_at AS deletedAt FROM work_item_templates WHERE deleted_at IS NOT NULL ${projectId ? 'AND project_id=?' : ''} ORDER BY deleted_at DESC`, ...(projectId ? [projectId] : [])),
   };
 }
 
@@ -1023,7 +1295,7 @@ export function permanentlyDeleteArchive(entity: ArchiveEntity, id: string, acto
       const requirementCount = row<{ count: number }>('SELECT COUNT(*) AS count FROM requirements WHERE project_id=?', id)?.count || 0;
       sqlite.prepare('DELETE FROM requirements WHERE project_id=?').run(id);
       sqlite.prepare('DELETE FROM projects WHERE id=?').run(id);
-      audit(actor, 'permanent_delete', 'project', id, `永久删除归档项目：${project.name}（含${requirementCount}条需求）`);
+      audit(actor, 'permanent_delete', 'project', id, `永久删除归档项目：${project.name}（含${requirementCount}条需求）`, null);
       return { ok: true };
     }
     if (entity === 'requirements') {
@@ -1112,20 +1384,23 @@ export function getDashboard(projectId?: string) {
   };
 }
 
-export function listAudit(limit = 100) {
-  return rows(`${auditSelect} ${auditFrom} ORDER BY l.created_at DESC LIMIT ?`, Math.min(Math.max(limit, 1), 500));
+export function listAudit(limit = 100, projectId?: string) {
+  return rows(`${auditSelect} ${auditFrom} ${projectId ? 'WHERE l.project_id=?' : ''} ORDER BY l.created_at DESC LIMIT ?`,
+    ...(projectId ? [projectId] : []), Math.min(Math.max(limit, 1), 500));
 }
 
 const auditSelect = `SELECT l.id, l.actor_type AS actorType, l.actor_id AS actorId,
   CASE WHEN l.actor_type='user' THEN user_account.username WHEN l.actor_type='token' THEN token_account.username END AS actorName,
   actor_token.name AS tokenName, l.action, l.entity_type AS entityType, l.entity_id AS entityId,
+  l.project_id AS projectId, audit_project.name AS projectName,
   l.summary, l.created_at AS createdAt`;
 const auditFrom = `FROM audit_logs l
   LEFT JOIN accounts user_account ON l.actor_type='user' AND user_account.id=l.actor_id
   LEFT JOIN api_tokens actor_token ON l.actor_type='token' AND actor_token.id=l.actor_id
-  LEFT JOIN accounts token_account ON token_account.id=actor_token.account_id`;
+  LEFT JOIN accounts token_account ON token_account.id=actor_token.account_id
+  LEFT JOIN projects audit_project ON audit_project.id=l.project_id`;
 
-export function searchAudit(filters: { q?: string; actorType?: string; action?: string; entityType?: string; from?: string; to?: string; page?: number; pageSize?: number } = {}) {
+export function searchAudit(filters: { q?: string; actorType?: string; action?: string; entityType?: string; projectId?: string; from?: string; to?: string; page?: number; pageSize?: number } = {}) {
   const where: string[] = []; const params: unknown[] = [];
   const q = String(filters.q || '').trim();
   if (q) {
@@ -1135,6 +1410,7 @@ export function searchAudit(filters: { q?: string; actorType?: string; action?: 
   if (filters.actorType) { where.push('l.actor_type=?'); params.push(filters.actorType); }
   if (filters.action) { where.push('l.action=?'); params.push(filters.action); }
   if (filters.entityType) { where.push('l.entity_type=?'); params.push(filters.entityType); }
+  if (filters.projectId) { where.push('l.project_id=?'); params.push(filters.projectId); }
   if (filters.from) { where.push('l.created_at>=?'); params.push(`${filters.from}T00:00:00.000Z`); }
   if (filters.to) { where.push('l.created_at<=?'); params.push(`${filters.to}T23:59:59.999Z`); }
   const page = Math.max(1, Number(filters.page) || 1);
@@ -1146,43 +1422,49 @@ export function searchAudit(filters: { q?: string; actorType?: string; action?: 
   return { items, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) };
 }
 
-export function listTokens() {
-  return rows(`SELECT id, name, prefix, expires_at AS expiresAt, last_used_at AS lastUsedAt,
-    revoked_at AS revokedAt, account_id AS accountId, created_at AS createdAt FROM api_tokens ORDER BY created_at DESC`);
+export function listTokens(accountId?: string, allAccounts = false) {
+  return rows(`SELECT t.id, t.name, t.prefix, t.expires_at AS expiresAt, t.last_used_at AS lastUsedAt,
+    t.revoked_at AS revokedAt, t.account_id AS accountId, a.username AS accountName, t.created_at AS createdAt
+    FROM api_tokens t JOIN accounts a ON a.id=t.account_id
+    ${allAccounts ? '' : 'WHERE t.account_id=?'} ORDER BY t.created_at DESC`, ...(allAccounts ? [] : [accountId || '']));
 }
 
 export function issueToken(input: JsonObject, actor: Actor) {
+  if (!actor.accountId) throw new Error('Token必须绑定登录账号');
   const id = randomUUID(); const name = requireText(input.name, 'Token名称'); const now = nowIso();
   const days = input.expiresInDays === null || input.expiresInDays === 'never' ? null : Number(input.expiresInDays ?? 90);
   if (days !== null && (!Number.isFinite(days) || days < 1 || days > 3650)) throw new Error('有效期不合法');
   const expiresAt = days === null ? null : new Date(Date.now() + days * 86400000).toISOString();
   const { prefix, token } = createApiTokenValue();
   sqlite.prepare(`INSERT INTO api_tokens (id, name, prefix, token_hash, account_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .run(id, name, prefix, hashApiToken(token), actor.accountId || null, expiresAt, now);
+    .run(id, name, prefix, hashApiToken(token), actor.accountId, expiresAt, now);
   audit(actor, 'create', 'api_token', id, `创建MCP Token：${name}`);
   return { id, name, prefix, token, expiresAt, createdAt: now };
 }
 
-export function revokeToken(id: string, actor: Actor) {
-  const token = row<{ name: string }>('SELECT name FROM api_tokens WHERE id=?', id);
+export function revokeToken(id: string, actor: Actor, allowAnyAccount = false) {
+  const token = row<{ name: string; accountId: string }>('SELECT name, account_id AS accountId FROM api_tokens WHERE id=?', id);
   if (!token) throw new Error('Token不存在');
+  if (!allowAnyAccount && token.accountId !== actor.accountId) {
+    const error = new Error('只能撤销自己的Token') as Error & { statusCode: number }; error.statusCode = 403; throw error;
+  }
   sqlite.prepare('UPDATE api_tokens SET revoked_at=? WHERE id=?').run(nowIso(), id);
   audit(actor, 'revoke', 'api_token', id, `撤销MCP Token：${token.name}`);
   return { ok: true };
 }
 
-export function authenticateApiToken(token: string): Actor | null {
+export function authenticateApiToken(token: string): (Actor & { accountId: string; personId: string | null; globalRole: 'user' | 'admin' }) | null {
   const match = /^pm_([a-f0-9]{10})_/.exec(token);
   if (!match) return null;
   const record = row<any>(`SELECT t.*, a.username, a.person_id, a.global_role, a.status AS account_status
     FROM api_tokens t JOIN accounts a ON a.id=t.account_id WHERE t.prefix=?`, match[1]);
-  if (!record || record.revoked_at || record.account_status !== 'active' || record.global_role !== 'admin'
+  if (!record || record.revoked_at || record.account_status !== 'active'
     || (record.expires_at && record.expires_at <= nowIso())) return null;
   const actualHash = Buffer.from(hashApiToken(token)); const expectedHash = Buffer.from(record.token_hash);
   if (actualHash.length !== expectedHash.length || !timingSafeEqual(actualHash, expectedHash)) return null;
   sqlite.prepare('UPDATE api_tokens SET last_used_at=? WHERE id=?').run(nowIso(), record.id);
   return { type: 'token', id: record.id, label: record.name, accountId: record.account_id,
-    personId: record.person_id, globalRole: 'admin' };
+    personId: record.person_id, globalRole: record.global_role };
 }
 
 export { issueStatuses, priorities, requirementStatuses, riskLevels, workItemStatuses };

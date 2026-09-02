@@ -3,12 +3,14 @@ export const workItemStatuses = ['not_started', 'in_progress', 'blocked', 'compl
 export const issueStatuses = ['open', 'in_progress', 'deferred', 'resolved'] as const;
 export const riskLevels = ['low', 'medium', 'high'] as const;
 export const priorities = ['P0', 'P1', 'P2', 'P3'] as const;
+export const projectRoles = ['viewer', 'member', 'manager'] as const;
 
 export type RequirementStatus = (typeof requirementStatuses)[number];
 export type WorkItemStatus = (typeof workItemStatuses)[number];
 export type IssueStatus = (typeof issueStatuses)[number];
 export type RiskLevel = (typeof riskLevels)[number];
 export type Priority = (typeof priorities)[number];
+export type ProjectRole = (typeof projectRoles)[number];
 
 export const requirementStatusLabels: Record<RequirementStatus, string> = {
   planning: '待规划',
@@ -127,6 +129,7 @@ export function businessDayDelta(planned?: string | null, actual?: string | null
 
 export type WorkItemLike = {
   status: string;
+  progress?: number | null;
   plannedStart?: string | null;
   plannedEnd?: string | null;
   actualStart?: string | null;
@@ -145,6 +148,19 @@ export function deriveWorkItemStatus(item: WorkItemLike): WorkItemStatus {
 
 export function workItemPlannedDuration(item: WorkItemLike): number {
   return Math.max(1, businessDaysInclusive(item.plannedStart, item.plannedEnd) || 1);
+}
+
+export function workItemPlannedProgress(item: WorkItemLike, today = todayIso()): number {
+  if (!item.plannedStart || !item.plannedEnd || today < item.plannedStart) return 0;
+  if (today >= item.plannedEnd) return 100;
+  const elapsed = Math.max(0, businessDaysInclusive(item.plannedStart, today));
+  return Math.min(100, Math.round((elapsed / workItemPlannedDuration(item)) * 100));
+}
+
+export function workItemActualProgress(item: WorkItemLike): number {
+  if (deriveWorkItemStatus(item) === 'completed') return 100;
+  const progress = Number(item.progress ?? 0);
+  return Number.isFinite(progress) ? Math.min(100, Math.max(0, Math.round(progress))) : 0;
 }
 
 export function calculateWorkItemGap(item: WorkItemLike, today = todayIso()) {
@@ -179,14 +195,14 @@ export function deriveRequirementMetrics(
   else status = 'not_started';
 
   const totalWeight = activeItems.reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
-  const completedWeight = activeItems
-    .filter((item) => item.derivedStatus === 'completed')
-    .reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
-  const plannedWeight = activeItems
-    .filter((item) => item.plannedEnd && item.plannedEnd <= today)
-    .reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
-  const progress = totalWeight ? Math.round((completedWeight / totalWeight) * 100) : 0;
-  const plannedProgress = totalWeight ? Math.round((plannedWeight / totalWeight) * 100) : 0;
+  const actualWeightedProgress = activeItems.reduce(
+    (sum, item) => sum + workItemPlannedDuration(item) * workItemActualProgress(item), 0,
+  );
+  const plannedWeightedProgress = activeItems.reduce(
+    (sum, item) => sum + workItemPlannedDuration(item) * workItemPlannedProgress(item, today), 0,
+  );
+  const progress = totalWeight ? Math.round(actualWeightedProgress / totalWeight) : 0;
+  const plannedProgress = totalWeight ? Math.round(plannedWeightedProgress / totalWeight) : 0;
 
   const actualEnds = activeItems.map((item) => item.actualEnd).filter((value): value is string => Boolean(value));
   const effectiveEnd = status === 'completed'

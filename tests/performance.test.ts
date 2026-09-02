@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { defaultAnalyticsLayout, type AnalyticsQueryResponse } from '../src/shared/analytics';
 
 const dbPath = path.join(process.cwd(), 'data', `performance-${randomUUID()}.db`);
 process.env.DB_PATH = dbPath;
@@ -12,12 +13,14 @@ process.env.SESSION_SECRET = 'performance-test-session-secret-more-than-32-chars
 let sqlite: import('better-sqlite3').Database;
 let getDashboard: (projectId?: string) => unknown;
 let getPeopleConcurrency: (filters?: { projectId?: string }) => unknown;
+let queryAnalytics: (input: unknown) => AnalyticsQueryResponse;
 let projectId = '';
 
 beforeAll(async () => {
   const database = await import('../src/server/database');
   sqlite = database.sqlite;
   ({ getDashboard, getPeopleConcurrency } = await import('../src/server/services'));
+  ({ queryAnalytics } = await import('../src/server/analytics'));
   projectId = randomUUID();
   const now = new Date().toISOString();
   sqlite.prepare('INSERT INTO projects (id,name,status,created_at,updated_at) VALUES (?, ?, ?, ?, ?)').run(projectId, '性能测试项目', 'active', now, now);
@@ -60,5 +63,25 @@ describe('看板性能', () => {
     const elapsed = performance.now() - start;
     expect(result.people).toHaveLength(50);
     expect(elapsed).toBeLessThan(2000);
+  });
+
+  it('默认分析看板批量查询在2秒内完成且24面板在3秒内完成', () => {
+    const query = (panels: typeof defaultAnalyticsLayout.panels) => queryAnalytics({
+      projectId, range: { from: '2026-06-01', to: '2026-12-01' }, panels,
+    });
+    let start = performance.now();
+    const defaults = query(defaultAnalyticsLayout.panels);
+    const defaultElapsed = performance.now() - start;
+    expect(defaults.results).toHaveLength(defaultAnalyticsLayout.panels.length);
+    expect(defaultElapsed).toBeLessThan(2000);
+
+    const panels = Array.from({ length: 24 }, (_, index) => ({
+      ...defaultAnalyticsLayout.panels[index % defaultAnalyticsLayout.panels.length], id: `performance-panel-${index}`,
+    }));
+    start = performance.now();
+    const maximum = query(panels);
+    const maximumElapsed = performance.now() - start;
+    expect(maximum.results).toHaveLength(24);
+    expect(maximumElapsed).toBeLessThan(3000);
   });
 });
