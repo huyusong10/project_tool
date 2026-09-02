@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertTriangle,
   CalendarDays,
   Check,
+  ChevronDown,
   CircleStop,
   Clock3,
   Edit3,
@@ -12,8 +13,8 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Search,
   Trash2,
-  UserPlus,
   WandSparkles,
 } from "lucide-react";
 import { api, jsonBody } from "../api";
@@ -42,6 +43,7 @@ function RequirementEditForm({
   const client = useQueryClient();
   const { data: templates = [] } = useQuery({ queryKey: ["templates"], queryFn: () => api<WorkItemTemplate[]>("/api/templates") });
   const [templateId, setTemplateId] = useState(requirement.templateId || "");
+  const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">("start");
   const templateChanged = Boolean(templateId && templateId !== requirement.templateId);
   const mutation = useMutation({
     mutationFn: (value: object) =>
@@ -63,7 +65,11 @@ function RequirementEditForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (templateChanged && !confirm("切换流程会清空当前需求的全部工作项、人员分配、实际日期和进展记录，并按新流程重新生成计划。确认继续？")) return;
-        mutation.mutate({ ...Object.fromEntries(new FormData(event.currentTarget)), ...(templateChanged ? { templateId, confirmTemplateReset: true } : {}) });
+        mutation.mutate({
+          ...Object.fromEntries(new FormData(event.currentTarget)),
+          scheduleMode,
+          ...(templateChanged ? { templateId, confirmTemplateReset: true } : {}),
+        });
       }}
     >
       <label className="field field-full">
@@ -79,13 +85,27 @@ function RequirementEditForm({
           <option value="P3">P3 · 低</option>
         </select>
       </label>
-      <label className="field">
-        <span>计划开始</span>
+      <div className="field field-full">
+        <span>排期方式</span>
+        <div className="schedule-mode-switch" role="radiogroup" aria-label="排期方式">
+          <button type="button" className={scheduleMode === "start" ? "is-active" : ""} role="radio" aria-checked={scheduleMode === "start"} onClick={() => setScheduleMode("start")}>
+            <strong>按开始日期正排</strong>
+            <small>整体平移现有工作项，以选定日期开始</small>
+          </button>
+          <button type="button" className={scheduleMode === "deadline" ? "is-active" : ""} role="radio" aria-checked={scheduleMode === "deadline"} onClick={() => setScheduleMode("deadline")}>
+            <strong>按截止日期倒排</strong>
+            <small>整体平移现有工作项，以选定日期结束</small>
+          </button>
+        </div>
+      </div>
+      <label className="field field-full schedule-date-field">
+        <span>{scheduleMode === "start" ? "计划开始" : "计划完成"}</span>
         <input
-          name="plannedStart"
+          key={scheduleMode}
+          name={scheduleMode === "start" ? "plannedStart" : "plannedEnd"}
           type="date"
           required
-          defaultValue={requirement.plannedStart || ""}
+          defaultValue={(scheduleMode === "start" ? requirement.plannedStart : requirement.plannedEnd) || ""}
         />
       </label>
       <label className="field field-full">
@@ -96,8 +116,8 @@ function RequirementEditForm({
           {templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
         </select>
       </label>
-      {templateChanged && <p className="template-reset-warning field-full"><AlertTriangle size={16} />切换后会清空现有工作项及进展，并按所选流程和计划开始日期重新排期。</p>}
-      <p className="field-help field-full">流程仅作为生成模板；流程设计后续变更不会同步到当前需求。仅修改计划开始也不会覆盖已有工作项。</p>
+      {templateChanged && <p className="template-reset-warning field-full"><AlertTriangle size={16} />切换后会清空现有工作项及进展，并按新流程和所选排期方向重新生成。</p>}
+      <p className="field-help field-full">修改日期会整体平移已有工作项，保留相对间隔、人员和实际日期；每个工作项仍可单独修改自定义计划。流程设计后续变更不会同步到当前需求。</p>
       {mutation.error && (
         <p className="form-error field-full">{mutation.error.message}</p>
       )}
@@ -108,6 +128,127 @@ function RequirementEditForm({
         <button className="primary-button">保存修改</button>
       </div>
     </form>
+  );
+}
+
+function MultiPersonSelect({
+  people,
+  selectedIds,
+  excludedId,
+  onChange,
+}: {
+  people: Person[];
+  selectedIds: string[];
+  excludedId?: string;
+  onChange: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const availablePeople = useMemo(
+    () => people.filter((person) => person.id !== excludedId),
+    [excludedId, people],
+  );
+  const selectedPeople = availablePeople.filter((person) => selectedIds.includes(person.id));
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visiblePeople = availablePeople.filter((person) =>
+    !normalizedQuery
+    || person.name.toLocaleLowerCase().includes(normalizedQuery)
+    || (person.jobTitle || "").toLocaleLowerCase().includes(normalizedQuery),
+  );
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  const togglePerson = (personId: string) => {
+    onChange(selectedIds.includes(personId)
+      ? selectedIds.filter((id) => id !== personId)
+      : [...selectedIds, personId]);
+  };
+
+  return (
+    <div className="multi-person-select" ref={rootRef}>
+      <button
+        type="button"
+        className={`multi-person-trigger${open ? " is-open" : ""}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className={`multi-person-value${selectedPeople.length ? "" : " is-placeholder"}`}>
+          {selectedPeople.length ? (
+            <>
+              {selectedPeople.slice(0, 2).map((person) => (
+                <span className="multi-person-chip" key={person.id}>{person.name}</span>
+              ))}
+              {selectedPeople.length > 2 && <span className="multi-person-count">+{selectedPeople.length - 2}</span>}
+            </>
+          ) : "请选择协作人员"}
+        </span>
+        <ChevronDown size={16} aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="multi-person-menu">
+          <label className="multi-person-search">
+            <Search size={15} aria-hidden="true" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜索姓名或岗位"
+              autoFocus
+            />
+          </label>
+          <div className="multi-person-options" role="listbox" aria-label="协作人员" aria-multiselectable="true">
+            {visiblePeople.map((person) => {
+              const selected = selectedIds.includes(person.id);
+              return (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className="multi-person-option"
+                  key={person.id}
+                  onClick={() => togglePerson(person.id)}
+                >
+                  <span className="multi-person-check">{selected && <Check size={13} />}</span>
+                  <span className="multi-person-option-copy">
+                    <strong>{person.name}</strong>
+                    <small>{person.jobTitle || "岗位未设置"}</small>
+                  </span>
+                </button>
+              );
+            })}
+            {!visiblePeople.length && <p>没有匹配人员</p>}
+          </div>
+          <div className="multi-person-footer">
+            <span>已选 {selectedPeople.length} 人</span>
+            <div>
+              {!!selectedPeople.length && <button type="button" onClick={() => onChange([])}>清空</button>}
+              <button type="button" className="is-primary" onClick={() => { setOpen(false); setQuery(""); }}>完成</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -123,7 +264,6 @@ function WorkItemForm({
   const client = useQueryClient();
   const [ownerId, setOwnerId] = useState(item?.ownerId || "");
   const [collaboratorIds, setCollaboratorIds] = useState<string[]>(item?.collaborators?.map((person) => person.id) || []);
-  const [showCollaborators, setShowCollaborators] = useState(Boolean(item?.collaborators?.length));
   const { data: people = [] } = useQuery({
     queryKey: ["people", requirement.projectId],
     queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(requirement.projectId)}`),
@@ -166,7 +306,7 @@ function WorkItemForm({
           autoFocus
         />
       </label>
-      <label className="field">
+      <label className="field work-item-assignment-field">
         <span>主负责人</span>
         <select
           value={ownerId}
@@ -184,31 +324,14 @@ function WorkItemForm({
           ))}
         </select>
       </label>
-      <div className="field collaborator-field">
-        <span>协作人员 <small>可选</small></span>
-        {!showCollaborators ? (
-          <button type="button" className="collaborator-toggle" onClick={() => setShowCollaborators(true)}>
-            <UserPlus size={15} />
-            添加协作人员
-          </button>
-        ) : (
-          <div className="collaborator-picker">
-            {people.filter((person) => person.id !== ownerId).map((person) => (
-              <label key={person.id}>
-                <input
-                  type="checkbox"
-                  checked={collaboratorIds.includes(person.id)}
-                  onChange={(event) => setCollaboratorIds((current) => event.target.checked
-                    ? [...current, person.id]
-                    : current.filter((id) => id !== person.id))}
-                />
-                <span>{person.name}</span>
-                <small>{person.jobTitle || "岗位未设置"}</small>
-              </label>
-            ))}
-            {!people.some((person) => person.id !== ownerId) && <p>暂无其他可选人员</p>}
-          </div>
-        )}
+      <div className="field collaborator-field work-item-assignment-field">
+        <span>协作人员 <small>可选 · 多选</small></span>
+        <MultiPersonSelect
+          people={people}
+          selectedIds={collaboratorIds}
+          excludedId={ownerId}
+          onChange={setCollaboratorIds}
+        />
       </div>
       <label className="field">
         <span>计划开始</span>
@@ -495,6 +618,11 @@ export function RequirementPage() {
   const canManage = canManageProject(session, requirement.projectId);
   const ownItems = requirement.workItems.filter((item) => Boolean(session.personId) && item.assigneeIds.includes(session.personId!));
   const canAddProgress = canManage || ownItems.length > 0;
+  const closeWorkItemForm = () => {
+    setModal(null);
+    setEditingItem(undefined);
+    setWorkEditorOpen(true);
+  };
   return (
     <>
       <PageHeader
@@ -718,12 +846,12 @@ export function RequirementPage() {
       {modal === "work" && (
         <Modal
           title={editingItem ? "编辑工作项" : "新增工作项"}
-          onClose={() => setModal(null)}
+          onClose={closeWorkItemForm}
         >
           <WorkItemForm
             requirement={requirement}
             item={editingItem}
-            onClose={() => setModal(null)}
+            onClose={closeWorkItemForm}
           />
         </Modal>
       )}

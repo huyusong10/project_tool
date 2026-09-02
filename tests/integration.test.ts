@@ -341,4 +341,38 @@ describe('自动化项目管理API', () => {
     expect(reset.json().workItems).toEqual([expect.objectContaining({ title: '重新梳理', status: 'not_started', ownerId: null, actualStart: null, actualEnd: null, plannedStart: '2026-09-14', plannedEnd: '2026-09-15' })]);
     expect(reset.json().workItems.some((item: { id: string }) => workItemSnapshot.some((old: { id: string }) => old.id === item.id))).toBe(false);
   });
+
+  it('编辑需求可正排倒排并保留自定义工作项排期', async () => {
+    const custom = await app.inject({ method: 'POST', url: `/api/requirements/${requirementId}/work-items`, headers: { cookie }, payload: {
+      title: '自定义联调窗口', plannedStart: '2026-09-16', plannedEnd: '2026-09-18', actualStart: '2026-09-10',
+    } });
+    expect(custom.statusCode).toBe(200);
+    const customId = custom.json().id;
+
+    const forward = await app.inject({ method: 'PATCH', url: `/api/requirements/${requirementId}`, headers: { cookie }, payload: {
+      scheduleMode: 'start', plannedStart: '2026-10-05',
+    } });
+    expect(forward.statusCode).toBe(200);
+    expect(forward.json()).toMatchObject({ plannedStart: '2026-10-05', plannedEnd: '2026-10-09' });
+    expect(forward.json().workItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: '重新梳理', plannedStart: '2026-10-05', plannedEnd: '2026-10-06' }),
+      expect.objectContaining({ id: customId, plannedStart: '2026-10-07', plannedEnd: '2026-10-09', actualStart: '2026-09-10' }),
+    ]));
+
+    const manual = await app.inject({ method: 'PATCH', url: `/api/work-items/${customId}`, headers: { cookie }, payload: {
+      plannedStart: '2026-10-08', plannedEnd: '2026-10-13',
+    } });
+    expect(manual.statusCode).toBe(200);
+    expect(manual.json()).toMatchObject({ plannedStart: '2026-10-08', plannedEnd: '2026-10-13', actualStart: '2026-09-10' });
+
+    const backward = await app.inject({ method: 'PATCH', url: `/api/requirements/${requirementId}`, headers: { cookie }, payload: {
+      scheduleMode: 'deadline', plannedEnd: '2026-10-16',
+    } });
+    expect(backward.statusCode).toBe(200);
+    expect(backward.json()).toMatchObject({ plannedStart: '2026-10-08', plannedEnd: '2026-10-16' });
+    expect(backward.json().workItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: '重新梳理', plannedStart: '2026-10-08', plannedEnd: '2026-10-09' }),
+      expect.objectContaining({ id: customId, plannedStart: '2026-10-13', plannedEnd: '2026-10-16', actualStart: '2026-09-10' }),
+    ]));
+  });
 });

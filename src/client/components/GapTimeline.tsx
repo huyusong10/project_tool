@@ -121,7 +121,7 @@ export const GapTimeline = memo(function GapTimeline({ items, updates = [] }: { 
           <div className="requirement-gantt-corner sticky-left" role="columnheader"><strong>工作项</strong><span>{items.length}项</span></div>
           <div className="requirement-gantt-scale" style={trackStyle} role="columnheader">
             {dates.map((date, index) => markerVisible(date, index) && <span style={{ left: index * cellWidth, width: zoom === "month" ? cellWidth * 30 : zoom === "week" ? cellWidth * 7 : cellWidth }} key={date.toISOString()}>{markerText(date)}</span>)}
-            {todayVisible && <i className="gantt-today-line" style={{ left: todayOffset * cellWidth + cellWidth / 2 }}><span>今天</span></i>}
+            {todayVisible && <i className="gantt-today-line" style={{ left: todayOffset * cellWidth + cellWidth / 2 }} />}
           </div>
           <div className="requirement-gantt-gap-head sticky-right" role="columnheader">偏差</div>
           {items.map((item) => {

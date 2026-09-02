@@ -4,6 +4,9 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { addDays, format, parseISO, startOfWeek } from "date-fns";
 import {
   Archive,
+  ArrowDown,
+  ArrowUp,
+  ChevronsUpDown,
   Clock3,
   Copy,
   DatabaseBackup,
@@ -39,12 +42,52 @@ import { PageHeader } from "../components/PageHeader";
 import { ProjectForm, RequirementForm } from "../components/ManagementForms";
 import { canManageProject, isAdmin } from "../permissions";
 
+type RequirementSortKey = "title" | "priority" | "status" | "progress" | "risk" | "plannedEnd" | "variance";
+type SortDirection = "asc" | "desc";
+
+const priorityOrder: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
+const requirementStatusOrder: Record<string, number> = {
+  blocked: 0,
+  in_progress: 1,
+  not_started: 2,
+  planning: 3,
+  completed: 4,
+  cancelled: 5,
+};
+const riskOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+function compareRequirements(left: Requirement, right: Requirement, key: RequirementSortKey) {
+  switch (key) {
+    case "title":
+      return left.title.localeCompare(right.title, "zh-CN");
+    case "priority":
+      return (priorityOrder[left.priority] ?? 99) - (priorityOrder[right.priority] ?? 99);
+    case "status":
+      return (requirementStatusOrder[left.status] ?? 99) - (requirementStatusOrder[right.status] ?? 99);
+    case "progress":
+      return left.progress - right.progress;
+    case "risk":
+      return (riskOrder[left.highRisk ? "high" : left.riskLevel] ?? 99) - (riskOrder[right.highRisk ? "high" : right.riskLevel] ?? 99);
+    case "variance":
+      return left.finishVariance - right.finishVariance;
+    case "plannedEnd":
+    default:
+      if (!left.plannedEnd && !right.plannedEnd) return 0;
+      if (!left.plannedEnd) return 1;
+      if (!right.plannedEnd) return -1;
+      return left.plannedEnd.localeCompare(right.plannedEnd);
+  }
+}
+
 export function RequirementsPage() {
   const { selectedProjectId, projects, session } = useApp();
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [sortKey, setSortKey] = useState<RequirementSortKey>("plannedEnd");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const canManage = canManageProject(session, selectedProjectId);
   const { data = [] } = useQuery({
     queryKey: ["requirements", selectedProjectId],
@@ -53,11 +96,40 @@ export function RequirementsPage() {
         `/api/requirements${selectedProjectId ? `?projectId=${selectedProjectId}` : ""}`,
       ),
   });
-  const items = data.filter(
-    (item) =>
-      (!search ||
-        item.title.toLowerCase().includes(search.toLowerCase())) &&
-      (!status || item.status === status),
+  const items = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+    return data
+      .filter((item) =>
+        (!normalizedSearch || item.title.toLowerCase().includes(normalizedSearch)) &&
+        (!status || item.status === status) &&
+        (showCompleted || status === "completed" || item.status !== "completed"),
+      )
+      .sort((left, right) => {
+        const result = compareRequirements(left, right, sortKey);
+        if (result !== 0) return sortDirection === "asc" ? result : -result;
+        const priorityResult = compareRequirements(left, right, "priority");
+        if (priorityResult !== 0) return priorityResult;
+        return left.title.localeCompare(right.title, "zh-CN");
+      });
+  }, [data, search, showCompleted, sortDirection, sortKey, status]);
+  const changeSort = (nextKey: RequirementSortKey) => {
+    if (nextKey === sortKey) {
+      setSortDirection((current) => current === "asc" ? "desc" : "asc");
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection("asc");
+  };
+  const sortableHeader = (label: string, key: RequirementSortKey) => (
+    <button
+      type="button"
+      className={`sortable-table-heading${sortKey === key ? " is-active" : ""}`}
+      onClick={() => changeSort(key)}
+      title={`按${label}${sortKey === key && sortDirection === "asc" ? "倒序" : "正序"}排列`}
+    >
+      {label}
+      {sortKey !== key ? <ChevronsUpDown size={14} /> : sortDirection === "asc" ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+    </button>
   );
   return (
     <>
@@ -91,22 +163,30 @@ export function RequirementsPage() {
             </option>
           ))}
         </select>
+        <button
+          type="button"
+          className={`filter-toggle-button${showCompleted ? " is-active" : ""}`}
+          onClick={() => setShowCompleted((current) => !current)}
+          aria-pressed={showCompleted}
+        >
+          {showCompleted ? "隐藏已完成" : "显示已完成"}
+        </button>
         <span>
           {projects.find((p) => p.id === selectedProjectId)?.name || "全部项目"}{" "}
-          · {items.length}项
+          · {items.length}/{data.length}项
         </span>
       </div>
       <div className="table-panel">
         <table>
           <thead>
             <tr>
-              <th>需求</th>
-              <th>优先级</th>
-              <th>状态</th>
-              <th>进度</th>
-              <th>风险</th>
-              <th>计划完成</th>
-              <th>偏差</th>
+              <th aria-sort={sortKey === "title" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("需求", "title")}</th>
+              <th aria-sort={sortKey === "priority" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("优先级", "priority")}</th>
+              <th aria-sort={sortKey === "status" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("状态", "status")}</th>
+              <th aria-sort={sortKey === "progress" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("进度", "progress")}</th>
+              <th aria-sort={sortKey === "risk" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("风险", "risk")}</th>
+              <th aria-sort={sortKey === "plannedEnd" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("计划完成", "plannedEnd")}</th>
+              <th aria-sort={sortKey === "variance" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("偏差", "variance")}</th>
             </tr>
           </thead>
           <tbody>

@@ -25,7 +25,8 @@ const templateItem = z.object({
 });
 const requirementInput = z.object({
   projectId: z.string().optional(), title: z.string().min(1).optional(), priority: z.enum(priorities).optional(),
-  plannedStart: optionalDate, plannedEnd: optionalDate, templateId: z.string().optional(), confirmTemplateReset: z.boolean().optional(),
+  plannedStart: optionalDate, plannedEnd: optionalDate, scheduleMode: z.enum(['start', 'deadline']).optional(),
+  templateId: z.string().optional(), confirmTemplateReset: z.boolean().optional(),
 });
 const workItemInput = z.object({
   title: z.string().min(1).optional(), ownerId: z.string().nullable().optional(),
@@ -48,7 +49,7 @@ function createServer(actor: Actor) {
   server.registerTool('list_requirements', { description: '筛选查询需求', inputSchema: z.object({ projectId: z.string().optional(), status: z.string().optional(), view: z.enum(['delayed', 'high_risk']).optional(), includeDeleted: z.boolean().optional() }) }, async (input) => json(listRequirements(input)));
   server.registerTool('get_requirement', { description: '获取需求、自动指标、工作项和进展', inputSchema: z.object({ id: z.string(), includeDeleted: z.boolean().optional() }) }, async ({ id, includeDeleted }) => json(getRequirement(id, includeDeleted)));
   server.registerTool('create_requirement', { description: '创建需求并按模板自动生成工作项；计划开始和截止日期二选一', inputSchema: requirementInput.extend({ projectId: z.string(), title: z.string().min(1), priority: z.enum(priorities), templateId: z.string().optional() }).refine((input) => Boolean(input.plannedStart) !== Boolean(input.plannedEnd), { message: '计划开始和截止日期请选择一项' }) }, async (input) => json(createRequirement(input, actor)));
-  server.registerTool('update_requirement', { description: '修改需求；重选流程时须确认清空已有工作项和进展，并按新流程重建计划', inputSchema: requirementInput.extend({ id: z.string() }) }, async ({ id, ...input }) => json(updateRequirement(id, input, actor)));
+  server.registerTool('update_requirement', { description: '修改需求；可按开始日期正排或截止日期倒排并整体顺延现有计划；重选流程时须确认清空已有工作项和进展', inputSchema: requirementInput.extend({ id: z.string() }) }, async ({ id, ...input }) => json(updateRequirement(id, input, actor)));
   server.registerTool('archive_requirement', { description: '归档需求', inputSchema: z.object({ id: z.string() }) }, async ({ id }) => json(archiveRequirement(id, actor)));
   server.registerTool('restore_requirement', { description: '恢复需求', inputSchema: z.object({ id: z.string() }) }, async ({ id }) => json(restoreRequirement(id, actor)));
   server.registerTool('preview_requirement_plan', { description: '预览按模板补全缺失计划，不写入数据', inputSchema: z.object({ requirementId: z.string(), templateId: z.string(), baseStart: z.string() }) }, async ({ requirementId, ...input }) => json(previewRequirementPlan(requirementId, input)));

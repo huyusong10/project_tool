@@ -1,10 +1,12 @@
 import { useMemo, useRef, useState, type CSSProperties, type HTMLAttributes } from "react";
 import {
-  addDays,
-  differenceInCalendarDays,
+  addBusinessDays,
+  eachDayOfInterval,
   format,
+  isWeekend,
   isValid,
   parseISO,
+  startOfDay,
 } from "date-fns";
 import { ChevronDown, ChevronRight, CircleAlert, LocateFixed, RotateCcw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -14,12 +16,50 @@ import { EmptyState } from "./Modal";
 import { useGanttTooltip } from "./GanttTooltip";
 
 type Zoom = "day" | "week" | "month";
+type RequirementSort = "deadline" | "priority" | "risk" | "progress" | "updated";
 
 const zoomOptions: Record<Zoom, { label: string; cellWidth: number; padding: number; minimumDays: number }> = {
-  day: { label: "日", cellWidth: 34, padding: 3, minimumDays: 21 },
+  day: { label: "日", cellWidth: 40, padding: 3, minimumDays: 21 },
   week: { label: "周", cellWidth: 15, padding: 7, minimumDays: 56 },
   month: { label: "月", cellWidth: 6, padding: 15, minimumDays: 180 },
 };
+const weekdayLabels = ["日", "一", "二", "三", "四", "五", "六"];
+const priorityOrder: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
+const riskOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+function compareDeadline(left: Requirement, right: Requirement) {
+  if (!left.plannedEnd && !right.plannedEnd) return 0;
+  if (!left.plannedEnd) return 1;
+  if (!right.plannedEnd) return -1;
+  return left.plannedEnd.localeCompare(right.plannedEnd);
+}
+
+function compareRequirementIdentity(left: Requirement, right: Requirement) {
+  const leftNumber = /-(\d+)(?=\D|$)/.exec(left.title)?.[1];
+  const rightNumber = /-(\d+)(?=\D|$)/.exec(right.title)?.[1];
+  if (leftNumber && rightNumber) {
+    const numberResult = Number(leftNumber) - Number(rightNumber);
+    if (numberResult !== 0) return numberResult;
+  }
+  return left.title.localeCompare(right.title, "zh-CN");
+}
+
+function compareRequirements(left: Requirement, right: Requirement, sort: RequirementSort) {
+  const leftClosed = left.status === "completed" || left.status === "cancelled";
+  const rightClosed = right.status === "completed" || right.status === "cancelled";
+  if (leftClosed !== rightClosed) return leftClosed ? 1 : -1;
+  let result = 0;
+  if (sort === "priority") result = (priorityOrder[left.priority] ?? 99) - (priorityOrder[right.priority] ?? 99);
+  else if (sort === "risk") result = (riskOrder[left.highRisk ? "high" : left.riskLevel] ?? 99) - (riskOrder[right.highRisk ? "high" : right.riskLevel] ?? 99);
+  else if (sort === "progress") result = left.progress - right.progress;
+  else if (sort === "updated") result = right.updatedAt.localeCompare(left.updatedAt);
+  else result = compareDeadline(left, right);
+  if (result !== 0) return result;
+  const deadlineResult = compareDeadline(left, right);
+  if (deadlineResult !== 0) return deadlineResult;
+  const priorityResult = (priorityOrder[left.priority] ?? 99) - (priorityOrder[right.priority] ?? 99);
+  return priorityResult || compareRequirementIdentity(left, right);
+}
 
 function toDate(value: string | null | undefined) {
   if (!value) return null;
@@ -38,6 +78,18 @@ function statusLabel(status: string) {
 
 function statusClass(status: string) {
   return status.replaceAll("_", "-");
+}
+
+function businessDateIndex(date: Date, dates: Date[], edge: "start" | "end") {
+  const timestamp = startOfDay(date).getTime();
+  if (edge === "start") {
+    const index = dates.findIndex((candidate) => candidate.getTime() >= timestamp);
+    return index < 0 ? dates.length : index;
+  }
+  for (let index = dates.length - 1; index >= 0; index -= 1) {
+    if (dates[index].getTime() <= timestamp) return index;
+  }
+  return -1;
 }
 
 function RequirementPopover({ requirement }: { requirement: Requirement }) {
@@ -90,7 +142,7 @@ function WorkItemPopover({ item, updates }: { item: WorkItem; updates: Requireme
 function TimelineBar({
   start,
   end,
-  rangeStart,
+  dates,
   cellWidth,
   status,
   progress,
@@ -100,7 +152,7 @@ function TimelineBar({
 }: {
   start: string | null;
   end: string | null;
-  rangeStart: Date;
+  dates: Date[];
   cellWidth: number;
   status: string;
   progress: number;
@@ -112,13 +164,14 @@ function TimelineBar({
   const endDate = toDate(end);
   if (!startDate || !endDate) return <span className="gantt-unscheduled">待排期</span>;
 
-  const left = differenceInCalendarDays(startDate, rangeStart) * cellWidth;
-  const days = Math.max(1, differenceInCalendarDays(endDate, startDate) + 1);
-  const width = days * cellWidth;
+  const startIndex = businessDateIndex(startDate, dates, "start");
+  const endIndex = businessDateIndex(endDate, dates, "end");
+  if (startIndex >= dates.length || endIndex < startIndex) return <span className="gantt-unscheduled">待排期</span>;
+  const left = startIndex * cellWidth;
+  const width = Math.max(1, endIndex - startIndex + 1) * cellWidth;
   const delayedDate = toDate(delayedUntil);
-  const extensionDays = delayedDate && delayedDate > endDate
-    ? differenceInCalendarDays(delayedDate, endDate)
-    : 0;
+  const delayedEndIndex = delayedDate ? businessDateIndex(delayedDate, dates, "end") : endIndex;
+  const extensionDays = Math.max(0, delayedEndIndex - endIndex);
 
   return (
     <>
@@ -166,7 +219,7 @@ export function ProjectGantt({
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const ganttTooltip = useGanttTooltip();
-  const [zoom, setZoom] = useState<Zoom>("week");
+  const [zoom, setZoom] = useState<Zoom>("day");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -174,6 +227,7 @@ export function ProjectGantt({
   const [risk, setRisk] = useState("");
   const [personId, setPersonId] = useState("");
   const [schedule, setSchedule] = useState("");
+  const [sort, setSort] = useState<RequirementSort>("deadline");
   const option = zoomOptions[zoom];
 
   const people = useMemo(() => {
@@ -201,8 +255,8 @@ export function ProjectGantt({
         && (!risk || requirement.riskLevel === risk)
         && (!personId || requirement.workItems.some((item) => item.assigneeIds?.includes(personId) || item.ownerId === personId))
         && matchesSchedule;
-    });
-  }, [personId, priority, requirements, risk, schedule, search, status]);
+    }).sort((left, right) => compareRequirements(left, right, sort));
+  }, [personId, priority, requirements, risk, schedule, search, sort, status]);
   const hasFilters = Boolean(search || status || priority || risk || personId || schedule);
   const resetFilters = () => {
     setSearch("");
@@ -239,37 +293,44 @@ export function ProjectGantt({
     const latest = values.length
       ? new Date(Math.max(...values.map((date) => date.getTime())))
       : today;
-    const start = addDays(earliest, -option.padding);
-    let end = addDays(latest, option.padding);
-    const currentDays = differenceInCalendarDays(end, start) + 1;
-    if (currentDays < option.minimumDays) end = addDays(start, option.minimumDays - 1);
-    return { start, end, days: differenceInCalendarDays(end, start) + 1 };
+    const start = startOfDay(addBusinessDays(earliest, -option.padding));
+    let end = startOfDay(addBusinessDays(latest, option.padding));
+    let dates = eachDayOfInterval({ start, end }).filter((date) => !isWeekend(date));
+    if (dates.length < option.minimumDays) {
+      end = startOfDay(addBusinessDays(start, option.minimumDays - 1));
+      dates = eachDayOfInterval({ start, end }).filter((date) => !isWeekend(date));
+    }
+    return { start, end, dates, days: dates.length };
   }, [option.minimumDays, option.padding, projectEnd, projectStart, requirements]);
 
   const timelineWidth = range.days * option.cellWidth;
-  const dates = useMemo(
-    () => Array.from({ length: range.days }, (_, index) => addDays(range.start, index)),
-    [range.days, range.start],
-  );
-  const firstSaturday = dates.findIndex((date) => date.getDay() === 6);
+  const dates = range.dates;
+  const firstMonday = dates.findIndex((date) => date.getDay() === 1);
   const trackStyle = {
     width: timelineWidth,
     "--gantt-cell": `${option.cellWidth}px`,
-    "--gantt-week": `${option.cellWidth * 7}px`,
-    "--gantt-weekend-offset": `${Math.max(0, firstSaturday) * option.cellWidth}px`,
+    "--gantt-week": `${option.cellWidth * 5}px`,
+    "--gantt-week-offset": `${Math.max(0, firstMonday) * option.cellWidth}px`,
   } as CSSProperties;
-  const todayOffset = differenceInCalendarDays(new Date(), range.start);
-  const todayVisible = todayOffset >= 0 && todayOffset < range.days;
+  const today = startOfDay(new Date());
+  const todayOffset = businessDateIndex(today, dates, "start");
+  const todayVisible = !isWeekend(today) && todayOffset >= 0 && todayOffset < range.days
+    && dates[todayOffset]?.getTime() === today.getTime();
 
   const markerVisible = (date: Date, index: number) => {
     if (zoom === "day") return true;
     if (zoom === "week") return index === 0 || date.getDay() === 1;
-    return index === 0 || date.getDate() === 1;
+    return index === 0 || dates[index - 1]?.getMonth() !== date.getMonth();
   };
   const markerText = (date: Date) => {
-    if (zoom === "day") return format(date, "dd");
+    if (zoom === "day") return format(date, "MM/dd");
     if (zoom === "week") return format(date, "MM/dd");
     return format(date, "yyyy/MM");
+  };
+  const markerWidth = (index: number) => {
+    if (zoom === "day") return option.cellWidth;
+    const nextIndex = dates.findIndex((date, candidateIndex) => candidateIndex > index && markerVisible(date, candidateIndex));
+    return (nextIndex < 0 ? dates.length - index : nextIndex - index) * option.cellWidth;
   };
 
   const toggleExpanded = (id: string) => {
@@ -301,6 +362,7 @@ export function ProjectGantt({
           <span><i className="legend-blocked" />阻塞</span>
           <span><i className="legend-completed" />已完成</span>
           <span><i className="legend-delayed" />延期</span>
+          <span className="gantt-axis-note">横轴按工作日显示</span>
         </div>
         <div className="gantt-toolbar-actions">
           <button className="ghost-button" onClick={scrollToToday} disabled={!todayVisible} title={todayVisible ? "定位到今天" : "今天不在当前项目时间范围内"}>
@@ -342,6 +404,13 @@ export function ProjectGantt({
           <option value="on_track">计划正常</option>
           <option value="unplanned">待排期</option>
         </select>
+        <select value={sort} onChange={(event) => setSort(event.target.value as RequirementSort)} aria-label="需求排序">
+          <option value="deadline">截止时间 · 临近优先</option>
+          <option value="priority">优先级 · 高优先</option>
+          <option value="risk">风险 · 高优先</option>
+          <option value="progress">进度 · 低优先</option>
+          <option value="updated">最近更新 · 新优先</option>
+        </select>
         <span className="gantt-filter-result">{visibleRequirements.length} / {requirements.length} 项</span>
         <button className="gantt-reset-button" onClick={resetFilters} disabled={!hasFilters} title="清除全部筛选">
           <RotateCcw size={15} /> 清除
@@ -362,18 +431,23 @@ export function ProjectGantt({
                   className={`gantt-scale-label${date.getDay() === 0 || date.getDay() === 6 ? " weekend" : ""}`}
                   style={{
                     left: index * option.cellWidth,
-                    width: zoom === "month"
-                      ? option.cellWidth * 30
-                      : zoom === "week"
-                        ? option.cellWidth * 7
-                        : option.cellWidth,
+                    width: markerWidth(index),
                   }}
                   key={date.toISOString()}
                 >
                   {markerText(date)}
                 </span>
               ))}
-              {todayVisible && <i className="gantt-today-line" style={{ left: todayOffset * option.cellWidth + option.cellWidth / 2 }}><span>今天</span></i>}
+              {dates.map((date, index) => (
+                <i
+                  className={`gantt-scale-tick${date.getDay() === 1 || index === 0 ? " is-major" : ""}`}
+                  style={{ left: index * option.cellWidth, width: option.cellWidth }}
+                  key={`tick-${date.toISOString()}`}
+                >
+                  {zoom !== "month" && <span>{zoom === "day" ? `周${weekdayLabels[date.getDay()]}` : format(date, "dd")}</span>}
+                </i>
+              ))}
+              {todayVisible && <i className="gantt-today-line" style={{ left: todayOffset * option.cellWidth + option.cellWidth / 2 }} />}
             </div>
             {visibleRequirements.map((requirement) => {
               const isExpanded = expanded.has(requirement.id);
@@ -416,7 +490,7 @@ export function ProjectGantt({
                       <TimelineBar
                         start={requirement.plannedStart}
                         end={requirement.plannedEnd}
-                        rangeStart={range.start}
+                        dates={dates}
                         cellWidth={option.cellWidth}
                         status={requirement.status}
                         progress={requirement.progress}
@@ -436,7 +510,7 @@ export function ProjectGantt({
                           <TimelineBar
                             start={item.plannedStart}
                             end={item.plannedEnd}
-                            rangeStart={range.start}
+                            dates={dates}
                             cellWidth={option.cellWidth}
                             status={item.status}
                             progress={itemProgress}

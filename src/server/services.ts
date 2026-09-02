@@ -3,7 +3,9 @@ import { sqlite } from './database';
 import { createApiTokenValue, hashApiToken, type Actor } from './auth';
 import { createAccountForPerson } from './accounts';
 import {
+  addBusinessDays,
   addCalendarDays,
+  businessDayDelta,
   businessDaysInclusive,
   calculateWorkItemGap,
   deriveRequirementMetrics,
@@ -462,6 +464,22 @@ function updateStoredRequirementEnd(requirementId: string) {
   sqlite.prepare('UPDATE requirements SET planned_end=?, updated_at=? WHERE id=?').run(plannedEnd, nowIso(), requirementId);
 }
 
+function shiftRequirementWorkItems(requirementId: string, businessDays: number, updatedAt: string) {
+  if (businessDays === 0) return;
+  const items = rows<{ id: string; plannedStart: string | null; plannedEnd: string | null }>(
+    'SELECT id, planned_start AS plannedStart, planned_end AS plannedEnd FROM work_items WHERE requirement_id=?', requirementId,
+  );
+  const update = sqlite.prepare('UPDATE work_items SET planned_start=?, planned_end=?, updated_at=? WHERE id=?');
+  for (const item of items) {
+    update.run(
+      item.plannedStart ? addBusinessDays(item.plannedStart, businessDays) : null,
+      item.plannedEnd ? addBusinessDays(item.plannedEnd, businessDays) : null,
+      updatedAt,
+      item.id,
+    );
+  }
+}
+
 export function createRequirement(input: JsonObject, actor: Actor) {
   const id = randomUUID(); const now = nowIso(); const projectId = requireText(input.projectId, '项目');
   const project = row<{ id: string; defaultTemplateId: string | null }>(
@@ -478,6 +496,7 @@ export function createRequirement(input: JsonObject, actor: Actor) {
   let plannedStart: string;
   if (inputPlannedStart) {
     plannedStart = requireDate(inputPlannedStart, '计划开始');
+    if (businessDaysInclusive(plannedStart, plannedStart) !== 1) throw new Error('计划开始需为工作日');
   } else {
     const deadline = requireDate(inputPlannedEnd, '截止日期');
     if (businessDaysInclusive(deadline, deadline) !== 1) throw new Error('截止日期需为工作日');
@@ -498,12 +517,38 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
   const current = getRequirement(id);
   const title = input.title === undefined ? current.title : requireText(input.title, '需求标题');
   const priority = input.priority === undefined ? current.priority : ensureEnum(input.priority, priorities, '优先级');
-  const plannedStart = input.plannedStart === undefined ? current.plannedStart : requireDate(input.plannedStart, '计划开始');
+  const requestedPlannedStart = input.plannedStart === undefined ? undefined : requireDate(input.plannedStart, '计划开始');
+  const requestedPlannedEnd = input.plannedEnd === undefined ? undefined : requireDate(input.plannedEnd, '计划完成');
+  if (requestedPlannedStart !== undefined && requestedPlannedEnd !== undefined) throw new Error('计划开始和完成日期请选择一项');
+  const scheduleMode = input.scheduleMode === undefined
+    ? (requestedPlannedEnd !== undefined ? 'deadline' : 'start')
+    : ensureEnum(input.scheduleMode, ['start', 'deadline'] as const, '排期方式');
+  if (scheduleMode === 'start' && requestedPlannedEnd !== undefined) throw new Error('正排时请设置计划开始日期');
+  if (scheduleMode === 'deadline' && requestedPlannedStart !== undefined) throw new Error('倒排时请设置计划完成日期');
   const templateId = input.templateId === undefined ? current.templateId : nullableText(input.templateId);
   const templateChanged = input.templateId !== undefined && templateId !== current.templateId;
+  let nextPlannedStart = current.plannedStart;
+  let shiftDays = 0;
+  if (requestedPlannedStart !== undefined || requestedPlannedEnd !== undefined) {
+    const targetDate = requestedPlannedStart ?? requestedPlannedEnd!;
+    if (businessDaysInclusive(targetDate, targetDate) !== 1) throw new Error(`${scheduleMode === 'start' ? '计划开始' : '计划完成'}需为工作日`);
+    if (!templateChanged) {
+      const currentAnchor = scheduleMode === 'start' ? current.plannedStart : current.plannedEnd;
+      if (!currentAnchor) throw new Error('当前需求缺少可用于顺延的计划日期');
+      shiftDays = businessDayDelta(currentAnchor, targetDate);
+      nextPlannedStart = scheduleMode === 'start'
+        ? targetDate
+        : current.plannedStart ? addBusinessDays(current.plannedStart, shiftDays) : null;
+    }
+  }
   if (templateChanged) {
     if (!templateId || !row('SELECT id FROM work_item_templates WHERE id=? AND deleted_at IS NULL', templateId)) throw new Error('请选择有效的流程设计');
-    if (!plannedStart) throw new Error('重选流程前请设置计划开始日期');
+    if (requestedPlannedEnd !== undefined) {
+      nextPlannedStart = plannedStartFromDeadline(requestedPlannedEnd, activeTemplateItems(templateId));
+    } else if (requestedPlannedStart !== undefined) {
+      nextPlannedStart = requestedPlannedStart;
+    }
+    if (!nextPlannedStart) throw new Error('重选流程前请设置计划日期');
     if (input.confirmTemplateReset !== true) throw new Error('重选流程会清空已有工作项和进展记录，请确认后重试');
   }
   const now = nowIso();
@@ -513,16 +558,19 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
       sqlite.prepare('DELETE FROM work_items WHERE requirement_id=?').run(id);
       sqlite.prepare(`UPDATE requirements SET template_id=?, title=?, owner_id=NULL, status='planning', planned_start=?,
         planned_end=NULL, progress=0, risk_level='low', priority=?, updated_at=? WHERE id=?`)
-        .run(templateId, title, plannedStart, priority, now, id);
-      applyTemplateInternal(id, templateId, plannedStart!);
+        .run(templateId, title, nextPlannedStart, priority, now, id);
+      applyTemplateInternal(id, templateId, nextPlannedStart!);
       updateStoredRequirementEnd(id);
       return;
     }
+    shiftRequirementWorkItems(id, shiftDays, now);
     sqlite.prepare('UPDATE requirements SET title=?, priority=?, planned_start=?, updated_at=? WHERE id=?')
-      .run(title, priority, plannedStart, now, id);
+      .run(title, priority, nextPlannedStart, now, id);
+    if (requestedPlannedStart !== undefined || requestedPlannedEnd !== undefined) updateStoredRequirementEnd(id);
   })();
   audit(actor, templateChanged ? 'apply_template' : 'update', 'requirement', id,
-    templateChanged ? `重选流程并重建计划：${title}` : `更新需求：${title}`);
+    templateChanged ? `重选流程并重建计划：${title}`
+      : requestedPlannedStart !== undefined || requestedPlannedEnd !== undefined ? `调整需求排期：${title}` : `更新需求：${title}`);
   return getRequirement(id);
 }
 
