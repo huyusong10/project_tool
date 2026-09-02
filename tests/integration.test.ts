@@ -1,0 +1,197 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { FastifyInstance } from 'fastify';
+
+const dbPath = path.join(process.cwd(), 'data', `integration-${randomUUID()}.db`);
+process.env.DB_PATH = dbPath;
+process.env.BACKUP_DIR = path.join(process.cwd(), 'data', `backups-${randomUUID()}`);
+process.env.APP_USERNAME = 'tester';
+process.env.APP_PASSWORD_HASH = 'scrypt$4c63a6f93ff4f94b031b7e7583592177$b598dbddaf9dd06678ff8756923d9e0a7f2d68eaa45bc644fbf4a73c9298970c7489671dfcfc8be282022c26a3370fb040f3f086a45faa1e1abde04bbe4a51ef';
+process.env.SESSION_SECRET = 'test-session-secret-with-more-than-thirty-two-characters';
+
+let app: FastifyInstance;
+let cookie = '';
+let projectId = '';
+let requirementId = '';
+let templateId = '';
+let personId = '';
+let collaboratorPersonId = '';
+let firstWorkItemId = '';
+
+beforeAll(async () => {
+  const module = await import('../src/server/app');
+  app = await module.buildApp();
+  await app.ready();
+});
+
+afterAll(async () => {
+  await app.close();
+  const { sqlite } = await import('../src/server/database');
+  if (sqlite.open) sqlite.close();
+  for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${dbPath}${suffix}`, { force: true });
+  fs.rmSync(process.env.BACKUP_DIR!, { recursive: true, force: true });
+});
+
+describe('自动化项目管理API', () => {
+  it('访客只能读取，未登录写入返回401', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/projects' })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/api/projects', payload: { name: '无权限' } })).statusCode).toBe(401);
+  });
+
+  it('登录后创建结构化模板、项目和自动排期需求', async () => {
+    const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'tester', password: '41_xc7q0qOjo4Inw!' } });
+    const setCookie = login.headers['set-cookie'];
+    cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie!).split(';')[0];
+    const template = await app.inject({ method: 'POST', url: '/api/templates', headers: { cookie }, payload: {
+      name: '并行交付模板', items: [
+        { title: '设计', startOffsetDays: 0, durationDays: 2, sortOrder: 0 },
+        { title: '开发', startOffsetDays: 0, durationDays: 3, sortOrder: 1 },
+        { title: '测试', startOffsetDays: 2, durationDays: 2, sortOrder: 2 },
+      ],
+    } });
+    expect(template.statusCode).toBe(200); templateId = template.json().id;
+    const originalIds = template.json().items.map((item: { id: string }) => item.id);
+    const updated = await app.inject({ method: 'PATCH', url: `/api/templates/${templateId}`, headers: { cookie }, payload: {
+      name: '并行交付模板', items: template.json().items.map((item: any) => ({ ...item, durationDays: item.durationDays + 1 })),
+    } });
+    expect(updated.json().items.map((item: { id: string }) => item.id)).toEqual(originalIds);
+
+    const project = await app.inject({ method: 'POST', url: '/api/projects', headers: { cookie }, payload: { name: '集成测试项目', defaultTemplateId: templateId } });
+    projectId = project.json().id;
+    const requirement = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie }, payload: {
+      projectId, title: '自动排期需求', priority: 'P1', plannedStart: '2026-09-04', templateId,
+    } });
+    expect(requirement.statusCode).toBe(200); requirementId = requirement.json().id;
+    expect(requirement.json().priority).toBe('P1');
+    expect(requirement.json().workItems).toHaveLength(3);
+    expect(requirement.json().workItems[0]).toMatchObject({ plannedStart: '2026-09-04', plannedEnd: '2026-09-08' });
+    expect(requirement.json().workItems[1].plannedStart).toBe('2026-09-04');
+    expect(requirement.json().plannedEnd).toBe('2026-09-10');
+    expect(requirement.json().status).toBe('not_started');
+    firstWorkItemId = requirement.json().workItems[0].id;
+  });
+
+  it('人员姓名唯一、岗位可维护并可恢复归档', async () => {
+    const person = await app.inject({ method: 'POST', url: '/api/people', headers: { cookie }, payload: { name: '张三', jobTitle: '前端开发' } });
+    expect(person.statusCode).toBe(200); personId = person.json().id;
+    const updated = await app.inject({ method: 'PATCH', url: `/api/people/${personId}`, headers: { cookie }, payload: { name: '张三', jobTitle: '技术负责人' } });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json()).toMatchObject({ name: '张三', jobTitle: '技术负责人' });
+    expect((await app.inject({ method: 'POST', url: '/api/people', headers: { cookie }, payload: { name: '  张三  ' } })).statusCode).toBe(400);
+    await app.inject({ method: 'DELETE', url: `/api/people/${personId}`, headers: { cookie } });
+    const archives = await app.inject({ method: 'GET', url: '/api/archives', headers: { cookie } });
+    expect(archives.json().people.some((item: { id: string }) => item.id === personId)).toBe(true);
+    expect((await app.inject({ method: 'POST', url: `/api/people/${personId}/restore`, headers: { cookie } })).statusCode).toBe(200);
+    const collaborator = await app.inject({ method: 'POST', url: '/api/people', headers: { cookie }, payload: { name: '李四', jobTitle: '后端开发' } });
+    expect(collaborator.statusCode).toBe(200); collaboratorPersonId = collaborator.json().id;
+  });
+
+  it('工作项事件自动推导状态、工期加权进度和进展快照', async () => {
+    const singleOwner = await app.inject({ method: 'PATCH', url: `/api/work-items/${firstWorkItemId}`, headers: { cookie }, payload: { ownerId: personId } });
+    expect(singleOwner.json()).toMatchObject({ ownerId: personId, collaborators: [], assigneeIds: [personId] });
+    const collaborative = await app.inject({ method: 'PATCH', url: `/api/work-items/${firstWorkItemId}`, headers: { cookie }, payload: { ownerId: personId, assigneeIds: [personId, collaboratorPersonId] } });
+    expect(collaborative.json().collaborators).toEqual([expect.objectContaining({ id: collaboratorPersonId, name: '李四' })]);
+    expect(collaborative.json().assigneeIds).toEqual([personId, collaboratorPersonId]);
+    expect((await app.inject({ method: 'POST', url: `/api/work-items/${firstWorkItemId}/start`, headers: { cookie } })).json().status).toBe('in_progress');
+    const completed = await app.inject({ method: 'POST', url: `/api/work-items/${firstWorkItemId}/complete`, headers: { cookie } });
+    expect(completed.json().status).toBe('completed');
+    const progress = await app.inject({ method: 'POST', url: `/api/requirements/${requirementId}/progress`, headers: { cookie }, payload: { content: '完成设计评审', workItemId: firstWorkItemId } });
+    expect(progress.json().progress).toBe(30);
+    expect(progress.json().progressUpdates[0]).toMatchObject({ percent: 30, content: '完成设计评审' });
+
+    const second = progress.json().workItems[1];
+    const blocked = await app.inject({ method: 'POST', url: `/api/work-items/${second.id}/block`, headers: { cookie }, payload: { reason: '接口未确定' } });
+    expect(blocked.json().status).toBe('blocked');
+    expect((await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}` })).json().riskLevel).toBe('high');
+    expect((await app.inject({ method: 'POST', url: `/api/work-items/${second.id}/unblock`, headers: { cookie } })).json().status).toBe('not_started');
+  });
+
+  it('补全计划预览只回填空值且不覆盖已有结束日期', async () => {
+    const before = (await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}` })).json();
+    const item = before.workItems[2];
+    await app.inject({ method: 'PATCH', url: `/api/work-items/${item.id}`, headers: { cookie }, payload: { plannedStart: '' } });
+    const preview = await app.inject({ method: 'POST', url: `/api/requirements/${requirementId}/plan-preview`, headers: { cookie }, payload: { templateId, baseStart: before.plannedStart } });
+    const entry = preview.json().entries.find((value: { workItemId: string }) => value.workItemId === item.id);
+    expect(entry).toMatchObject({ currentStart: null, currentEnd: item.plannedEnd, willChange: true });
+    await app.inject({ method: 'POST', url: `/api/requirements/${requirementId}/apply-plan`, headers: { cookie }, payload: { templateId, baseStart: before.plannedStart, templateItemIds: [entry.templateItemId] } });
+    const after = (await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}` })).json().workItems.find((value: { id: string }) => value.id === item.id);
+    expect(after.plannedStart).toBe(entry.proposedStart);
+    expect(after.plannedEnd).toBe(item.plannedEnd);
+  });
+
+  it('人员并发统计使用负责人和计划/实际区间', async () => {
+    const response = await app.inject({ method: 'GET', url: `/api/analytics/people-concurrency?projectId=${projectId}&personId=${personId}` });
+    expect(response.statusCode).toBe(200);
+    const person = response.json().people[0];
+    expect(person.name).toBe('张三');
+    expect(person.currentCount).toBeGreaterThanOrEqual(1);
+    const collaboratorResponse = await app.inject({ method: 'GET', url: `/api/analytics/people-concurrency?projectId=${projectId}&personId=${collaboratorPersonId}` });
+    expect(collaboratorResponse.json().people[0]).toMatchObject({ name: '李四' });
+    expect(collaboratorResponse.json().people[0].currentCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('只能永久删除归档内容并安全处理关联数据', async () => {
+    const template = await app.inject({ method: 'POST', url: '/api/templates', headers: { cookie }, payload: {
+      name: '待永久删除模板', items: [{ title: '临时工作项', startOffsetDays: 0, durationDays: 1, sortOrder: 0 }],
+    } });
+    const disposableTemplateId = template.json().id as string;
+    const project = await app.inject({ method: 'POST', url: '/api/projects', headers: { cookie }, payload: {
+      name: '待永久删除项目', defaultTemplateId: disposableTemplateId,
+    } });
+    const disposableProjectId = project.json().id as string;
+    const requirement = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie }, payload: {
+      projectId: disposableProjectId, title: '待永久删除需求', priority: 'P2', plannedStart: '2026-09-07', templateId: disposableTemplateId,
+    } });
+    const disposableRequirementId = requirement.json().id as string;
+    const disposableWorkItemId = requirement.json().workItems[0].id as string;
+    const person = await app.inject({ method: 'POST', url: '/api/people', headers: { cookie }, payload: { name: '待永久删除人员', jobTitle: '临时岗位' } });
+    const disposablePersonId = person.json().id as string;
+    await app.inject({ method: 'PATCH', url: `/api/work-items/${disposableWorkItemId}`, headers: { cookie }, payload: { ownerId: disposablePersonId } });
+
+    expect((await app.inject({ method: 'DELETE', url: `/api/archives/projects/${disposableProjectId}`, headers: { cookie } })).statusCode).toBe(400);
+
+    await app.inject({ method: 'DELETE', url: `/api/people/${disposablePersonId}`, headers: { cookie } });
+    expect((await app.inject({ method: 'DELETE', url: `/api/archives/people/${disposablePersonId}`, headers: { cookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: `/api/requirements/${disposableRequirementId}` })).json().workItems[0].ownerId).toBeNull();
+
+    await app.inject({ method: 'DELETE', url: `/api/templates/${disposableTemplateId}`, headers: { cookie } });
+    expect((await app.inject({ method: 'DELETE', url: `/api/archives/templates/${disposableTemplateId}`, headers: { cookie } })).statusCode).toBe(200);
+    const afterTemplateDelete = (await app.inject({ method: 'GET', url: `/api/requirements/${disposableRequirementId}` })).json();
+    expect(afterTemplateDelete.workItems[0].templateItemId).toBeNull();
+    const projectAfterTemplateDelete = (await app.inject({ method: 'GET', url: '/api/projects' })).json().find((item: { id: string }) => item.id === disposableProjectId);
+    expect(projectAfterTemplateDelete.defaultTemplateId).toBeNull();
+
+    await app.inject({ method: 'DELETE', url: `/api/requirements/${disposableRequirementId}`, headers: { cookie } });
+    expect((await app.inject({ method: 'DELETE', url: `/api/archives/requirements/${disposableRequirementId}`, headers: { cookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/archives', headers: { cookie } })).json().requirements.some((item: { id: string }) => item.id === disposableRequirementId)).toBe(false);
+
+    await app.inject({ method: 'DELETE', url: `/api/projects/${disposableProjectId}`, headers: { cookie } });
+    expect((await app.inject({ method: 'DELETE', url: `/api/archives/projects/${disposableProjectId}`, headers: { cookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/projects?includeDeleted=true' })).json().some((item: { id: string }) => item.id === disposableProjectId)).toBe(false);
+  });
+
+  it('Token只展示一次并可调用新版MCP工具', async () => {
+    const tokenResponse = await app.inject({ method: 'POST', url: '/api/tokens', headers: { cookie }, payload: { name: '测试Token', expiresInDays: 90 } });
+    const token = tokenResponse.json().token as string;
+    const headers = { authorization: `Bearer ${token}`, accept: 'application/json, text/event-stream', 'content-type': 'application/json' };
+    const initialize = await app.inject({ method: 'POST', url: '/mcp', headers, payload: { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2026-07-28', capabilities: {}, clientInfo: { name: 'vitest', version: '1.0.0' } } } });
+    expect(initialize.statusCode).toBe(200);
+    await app.inject({ method: 'POST', url: '/mcp', headers, payload: { jsonrpc: '2.0', method: 'notifications/initialized' } });
+    const call = await app.inject({ method: 'POST', url: '/mcp', headers, payload: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'people_concurrency', arguments: { projectId } } } });
+    expect(call.statusCode).toBe(200);
+    expect(JSON.stringify(call.json())).toContain('张三');
+  });
+
+  it('手动备份和审计保持可用', async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/backups', headers: { cookie } });
+    const backupPath = path.join(process.env.BACKUP_DIR!, response.json().name);
+    const Database = (await import('better-sqlite3')).default;
+    const backupDb = new Database(backupPath, { readonly: true });
+    expect((backupDb.pragma('integrity_check') as Array<{ integrity_check: string }>)[0].integrity_check).toBe('ok'); backupDb.close();
+    const audit = await app.inject({ method: 'GET', url: '/api/audit', headers: { cookie } });
+    expect(audit.json().some((item: { action: string }) => item.action === 'complete')).toBe(true);
+    expect(audit.json().some((item: { action: string }) => item.action === 'permanent_delete')).toBe(true);
+  });
+});

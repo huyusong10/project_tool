@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788265084830,
+      "tag": "0000_short_punisher",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788270142094,
+      "tag": "0001_automation-upgrade",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788318923283,
+      "tag": "0002_dashing_tempest",
+      "breakpoints": true
+    }
+  ]
+}
