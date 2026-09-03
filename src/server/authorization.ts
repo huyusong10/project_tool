@@ -96,7 +96,6 @@ export function canReadProject(actor: AuthorizationActor, projectId: string) {
 }
 
 export function canContributeProject(actor: AuthorizationActor, projectId: string) {
-  if (isAdmin(actor)) return true;
   const role = projectRole(actor, projectId);
   return role === 'member' || role === 'manager';
 }
@@ -134,7 +133,7 @@ export function projectIdForRequirement(requirementId: string) {
 
 export function projectIdForWorkItem(workItemId: string) {
   const value = sqlite.prepare(`SELECT r.project_id AS projectId FROM work_items w
-    JOIN requirements r ON r.id=w.requirement_id WHERE w.id=?`).get(workItemId) as { projectId: string } | undefined;
+    JOIN requirements r ON r.id=w.requirement_id WHERE w.id=? AND r.deleted_at IS NULL`).get(workItemId) as { projectId: string } | undefined;
   if (!value) notFound('工作项不存在');
   return value.projectId;
 }
@@ -192,7 +191,7 @@ export function canUpdateIssueProgress(actor: AuthorizationActor, issueId: strin
 
 export function projectIdForProgress(progressId: string) {
   const value = sqlite.prepare(`SELECT r.project_id AS projectId FROM progress_updates u
-    JOIN requirements r ON r.id=u.requirement_id WHERE u.id=?`).get(progressId) as { projectId: string } | undefined;
+    JOIN requirements r ON r.id=u.requirement_id WHERE u.id=? AND r.deleted_at IS NULL`).get(progressId) as { projectId: string } | undefined;
   if (!value) notFound('进展记录不存在');
   return value.projectId;
 }
@@ -224,7 +223,10 @@ export function assertProgressOwnerOrManager(actor: AuthorizationActor, progress
 }
 
 export function assertCanAddProgress(actor: AuthorizationActor, requirementId: string, workItemId: string | null) {
-  const projectId = projectIdForRequirement(requirementId);
+  const requirement = sqlite.prepare('SELECT project_id AS projectId FROM requirements WHERE id=? AND deleted_at IS NULL')
+    .get(requirementId) as { projectId: string } | undefined;
+  if (!requirement) notFound('需求不存在');
+  const projectId = requirement.projectId;
   if (canManageProject(actor, projectId)) return;
   if (!canContributeProject(actor, projectId)) forbidden('只有当前项目成员可以追加说明');
   if (workItemId && isRequirementOwner(actor, requirementId)) return;

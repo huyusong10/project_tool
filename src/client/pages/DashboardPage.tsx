@@ -109,7 +109,7 @@ export function DashboardPage() {
     openLogin,
   } = useApp();
   const [modal, setModal] = useState<"project" | null>(null);
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["dashboard", selectedProjectId],
     queryFn: () =>
       api<Dashboard>(
@@ -149,10 +149,19 @@ export function DashboardPage() {
         </div>
       </>
     );
+  if (selectedProjectId && isLoading && !data) return <>
+    <PageHeader title="项目进展" />
+    <div className="page-content"><div className="loading-block">加载项目进展…</div></div>
+  </>;
+  if (error && !data) return <>
+    <PageHeader title="项目进展" />
+    <div className="page-content"><EmptyState title="项目进展加载失败" detail={error.message} action={<button className="ghost-button" onClick={() => void refetch()}>重新加载</button>} /></div>
+  </>;
   return (
     <>
       <PageHeader title="项目进展" />
       <div className="page-content dashboard-page">
+        {error && data && <div className="warning-banner">数据刷新失败，当前展示的是上次成功结果。<button className="ghost-button" onClick={() => void refetch()}>重新加载</button></div>}
         <section className="stats-grid dashboard-top-stats">
         <Kpi
           label="开发中需求"

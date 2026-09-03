@@ -19,6 +19,7 @@ import type { Person, PlanPreview, Requirement, WorkItem, WorkItemTemplate } fro
 import {
   calculateWorkItemGap,
   addBusinessDays,
+  businessDateFromDateTime,
   businessDayDelta,
   plannedDatesFromOffset,
   plannedStartFromDeadline,
@@ -548,7 +549,7 @@ export function RequirementPage() {
       const items = (requirement?.workItems || []).filter((item) => item.status !== "cancelled");
       const totalWeight = items.reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
       const plannedValues = updates.map((update) => {
-        const date = update.createdAt.slice(0, 10);
+        const date = businessDateFromDateTime(update.createdAt);
         const plannedWeight = items.reduce((sum, item) => sum + workItemPlannedDuration(item) * workItemPlannedProgress(item, date) / 100, 0);
         return totalWeight ? Math.round((plannedWeight / totalWeight) * 100) : 0;
       });
@@ -560,6 +561,7 @@ export function RequirementPage() {
         type: "category",
         data: updates.map((item) =>
             new Date(item.createdAt).toLocaleDateString("zh-CN", {
+              timeZone: "Asia/Shanghai",
               month: "2-digit",
               day: "2-digit",
             })),
@@ -626,7 +628,7 @@ export function RequirementPage() {
   const canManage = canManageProject(session, requirement.projectId);
   const currentPerson = people.find((person) => person.id === session.personId);
   const canContribute = canManage || currentPerson?.projectRole === "member" || currentPerson?.projectRole === "manager";
-  const isRequirementOwner = Boolean(session.personId && requirement.ownerId === session.personId);
+  const isRequirementOwner = canContribute && Boolean(session.personId && requirement.ownerId === session.personId);
   const ownItems = canContribute
     ? isRequirementOwner ? requirement.workItems : requirement.workItems.filter((item) => Boolean(session.personId) && item.assigneeIds.includes(session.personId!))
     : [];
@@ -637,7 +639,8 @@ export function RequirementPage() {
   const canUpdateItemProgress = (item: WorkItem) => item.status === "in_progress"
     && canContribute
     && (canManage || isRequirementOwner || Boolean(session.personId && item.assigneeIds.includes(session.personId)));
-  const canOperateItem = (item: WorkItem) => canManage || isRequirementOwner || (canContribute && Boolean(session.personId && item.assigneeIds.includes(session.personId)));
+  const canOperateItem = (item: WorkItem) => requirement.status !== "cancelled"
+    && (canManage || isRequirementOwner || (canContribute && Boolean(session.personId && item.assigneeIds.includes(session.personId))));
   const reorderWorkItems = (nextItems: WorkItem[]) => {
     const ids = nextItems.map((item) => item.id);
     if (requirement.workItems.some((item) => item.status !== "not_started")) {

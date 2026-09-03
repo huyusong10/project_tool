@@ -20,6 +20,7 @@ import {
 import { getMyWork } from './accounts';
 import { getAnalyticsCatalog, queryAnalytics } from './analytics';
 import { errorResponse } from './errors';
+import { maxTemplateItems } from '../shared/domain';
 import {
   actionItemsInputSchema,
   contentCommandSchema,
@@ -242,7 +243,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('list_templates', { description: '按项目查询结构化流程设计', inputSchema: z.object({ projectId: z.string(), includeDeleted: z.boolean().optional() }) }, async ({ projectId, includeDeleted }) => {
     assertProjectReadable(actor, projectId); return json(listTemplates(projectId, includeDeleted));
   });
-  registerTool('create_template', { description: '创建带设计说明、偏移和工期的流程', inputSchema: templateInputSchema.extend({ projectId: z.string(), name: z.string().min(1), items: z.array(templateItemSchema).min(1) }) }, async (input) => {
+  registerTool('create_template', { description: '创建带设计说明、偏移和工期的流程', inputSchema: templateInputSchema.extend({ projectId: z.string(), name: z.string().min(1), items: z.array(templateItemSchema).min(1).max(maxTemplateItems) }) }, async (input) => {
     assertProjectManager(actor, input.projectId); return json(createTemplate(input, actor));
   });
   registerTool('update_template', { description: '修改流程，只影响之后应用流程的需求', inputSchema: templateInputSchema.extend({ id: z.string() }) }, async ({ id, ...input }) => {

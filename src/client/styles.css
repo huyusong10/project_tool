@@ -127,6 +127,7 @@ h1 { margin: 0; color: #162236; font-size: 26px; line-height: 1.2; letter-spacin
 .view-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
 
 .dashboard-top-stats { margin-bottom: 16px; }
+.warning-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid #f2d39a; border-radius: 9px; color: #8a5a08; background: #fff9ec; font-size: 13px; }
 .dashboard-overview-heading { margin-top: 28px; }
 .dashboard-issue-health { min-height: 72px; display: grid; grid-template-columns: minmax(150px,1.15fr) repeat(5,minmax(76px,1fr)); align-items: stretch; margin: 14px 0 0; overflow: hidden; border: 1px solid #dce4ee; border-radius: 11px; background: white; box-shadow: 0 3px 12px rgba(30,49,75,.035); }
 .issue-health-heading { min-width: 0; display: flex; align-items: center; gap: 9px; padding: 10px 16px; background: #f8faff; }.issue-health-heading > div { min-width: 0; display: grid; gap: 1px; }.issue-health-heading strong { color: #263448; font-size: 14px; }.issue-health-heading small { color: #8793a3; font-size: 11px; white-space: nowrap; }.issue-health-icon { width: 30px; height: 30px; display: grid; place-items: center; flex: none; border-radius: 8px; color: #2d6cdf; background: #e8f0ff; }

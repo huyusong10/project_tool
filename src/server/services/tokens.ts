@@ -37,15 +37,17 @@ export function revokeToken(id: string, actor: Actor, allowAnyAccount = false) {
 export function authenticateApiToken(token: string): (Actor & { accountId: string; personId: string | null; globalRole: 'user' | 'admin' }) | null {
   const match = /^pm_([a-f0-9]{10})_/.exec(token);
   if (!match) return null;
-  const record = row<Record<string, string | null>>(`SELECT t.*, a.username, a.person_id, a.global_role, a.status AS account_status
+  const record = row<Record<string, string | number | null>>(`SELECT t.*, a.username, a.person_id, a.global_role, a.status AS account_status,
+      a.must_change_password
     FROM api_tokens t JOIN accounts a ON a.id=t.account_id WHERE t.prefix=? AND a.deleted_at IS NULL`, match[1]);
   if (!record || record.revoked_at || record.account_status !== 'active'
+    || Number(record.must_change_password) === 1
     || (record.expires_at && record.expires_at <= nowIso())) return null;
   const actualHash = Buffer.from(hashApiToken(token)); const expectedHash = Buffer.from(String(record.token_hash));
   if (actualHash.length !== expectedHash.length || !timingSafeEqual(actualHash, expectedHash)) return null;
   sqlite.prepare('UPDATE api_tokens SET last_used_at=? WHERE id=?').run(nowIso(), record.id);
   return {
     type: 'token', id: String(record.id), label: String(record.name), accountId: String(record.account_id),
-    personId: record.person_id, globalRole: record.global_role as 'user' | 'admin',
+    personId: record.person_id ? String(record.person_id) : null, globalRole: record.global_role as 'user' | 'admin',
   };
 }

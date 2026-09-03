@@ -34,13 +34,14 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
     params.push(filters.projectId);
   }
   const people = rows<PersonRow>(`SELECT p.id, p.name, p.job_title AS jobTitle FROM people p WHERE ${where.join(' AND ')} ORDER BY p.name`, ...params);
-  const itemWhere = ['a.personId IS NOT NULL', 'r.deleted_at IS NULL']; const itemParams: unknown[] = [];
+  const itemWhere = ['a.personId IS NOT NULL', 'r.deleted_at IS NULL', 'pr.deleted_at IS NULL']; const itemParams: unknown[] = [];
   if (filters.projectId) { itemWhere.push('r.project_id=?'); itemParams.push(filters.projectId); }
   const items = rows<ConcurrencyItem>(`SELECT w.id, w.title, a.personId, w.status, w.planned_start AS plannedStart,
     w.planned_end AS plannedEnd, w.actual_start AS actualStart, w.actual_end AS actualEnd,
     w.blocked_at AS blockedAt, r.id AS requirementId, r.title AS requirementTitle
     FROM work_items w
     JOIN requirements r ON r.id=w.requirement_id
+    JOIN projects pr ON pr.id=r.project_id
     JOIN (
       SELECT id AS workItemId, owner_id AS personId FROM work_items WHERE owner_id IS NOT NULL
       UNION
@@ -58,12 +59,12 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
   const externalCounts = new Map<string, number>();
   if (filters.projectId && filters.includeExternalAggregate) {
     const external = rows<{ personId: string; count: number }>(`SELECT a.personId, COUNT(DISTINCT w.id) AS count
-      FROM work_items w JOIN requirements r ON r.id=w.requirement_id
+      FROM work_items w JOIN requirements r ON r.id=w.requirement_id JOIN projects pr ON pr.id=r.project_id
       JOIN (
         SELECT id AS workItemId, owner_id AS personId FROM work_items WHERE owner_id IS NOT NULL
         UNION SELECT work_item_id AS workItemId, person_id AS personId FROM work_item_collaborators
       ) a ON a.workItemId=w.id
-      WHERE r.project_id<>? AND r.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled')
+      WHERE r.project_id<>? AND r.deleted_at IS NULL AND pr.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled')
         AND w.actual_start IS NOT NULL AND w.actual_start<=? AND (w.actual_end IS NULL OR w.actual_end>=?)
       GROUP BY a.personId`, filters.projectId, today, today);
     external.forEach((item) => externalCounts.set(item.personId, Number(item.count)));
@@ -71,7 +72,7 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
   const result = people.map((person) => {
     const owned = itemsByPerson.get(person.id) || [];
     const days = dates.map((date) => {
-      const plannedItems = owned.filter((item) => item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd);
+      const plannedItems = owned.filter((item) => item.status !== 'completed' && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd);
       const actualItems = owned.filter((item) => item.actualStart && date >= item.actualStart && date <= (item.actualEnd || today));
       const selected = date <= today ? actualItems : plannedItems;
       return { date, count: selected.length, plannedCount: plannedItems.length, actualCount: actualItems.length, items: selected.map((item) => ({ id: item.id, title: item.title, requirementId: item.requirementId, requirementTitle: item.requirementTitle })) };

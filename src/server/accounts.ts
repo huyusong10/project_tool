@@ -86,14 +86,13 @@ export function listAccounts() {
     FROM project_people pp JOIN projects pr ON pr.id=pp.project_id
     WHERE pp.project_role='manager' AND pr.deleted_at IS NULL ORDER BY pr.name`).all() as any[];
   const assignments = sqlite.prepare(`SELECT p.id AS personId,
-    (SELECT COUNT(*) FROM requirements r JOIN projects pr ON pr.id=r.project_id
-      WHERE r.owner_id=p.id AND r.deleted_at IS NULL AND pr.deleted_at IS NULL AND r.status NOT IN ('completed','cancelled')) AS requirements,
+    (SELECT COUNT(*) FROM requirements r
+      WHERE r.owner_id=p.id AND r.deleted_at IS NULL AND r.status NOT IN ('completed','cancelled')) AS requirements,
     (SELECT COUNT(DISTINCT w.id) FROM work_items w LEFT JOIN work_item_collaborators c ON c.work_item_id=w.id AND c.person_id=p.id
-      JOIN requirements r ON r.id=w.requirement_id JOIN projects pr ON pr.id=r.project_id
-      WHERE r.deleted_at IS NULL AND pr.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled')
+      JOIN requirements r ON r.id=w.requirement_id
+      WHERE r.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled')
         AND (w.owner_id=p.id OR c.person_id IS NOT NULL)) AS workItems,
-    (SELECT COUNT(*) FROM issues i JOIN projects pr ON pr.id=i.project_id
-      WHERE i.owner_id=p.id AND pr.deleted_at IS NULL AND i.status<>'resolved') AS issues
+    (SELECT COUNT(*) FROM issues i WHERE i.owner_id=p.id AND i.status<>'resolved') AS issues
     FROM people p`).all() as Array<{ personId: string; requirements: number; workItems: number; issues: number }>;
   const assignmentsByPerson = new Map(assignments.map(({ personId, requirements, workItems, issues }) => [
     personId, { requirements: Number(requirements), workItems: Number(workItems), issues: Number(issues) },
@@ -201,8 +200,12 @@ export function openAccountForPerson(personId: string, actor: Actor) {
 export function resetAccountPassword(id: string, actor: Actor) {
   const account = sqlite.prepare('SELECT username FROM accounts WHERE id=? AND deleted_at IS NULL').get(id) as { username: string } | undefined;
   if (!account) fail('账号不存在', 404);
-  sqlite.prepare(`UPDATE accounts SET password_hash=?, must_change_password=1,
-    session_version=session_version+1, updated_at=? WHERE id=?`).run(hashPassword('888888'), nowIso(), id);
+  const now = nowIso();
+  sqlite.transaction(() => {
+    sqlite.prepare(`UPDATE accounts SET password_hash=?, must_change_password=1,
+      session_version=session_version+1, updated_at=? WHERE id=?`).run(hashPassword('888888'), now, id);
+    sqlite.prepare('UPDATE api_tokens SET revoked_at=COALESCE(revoked_at, ?) WHERE account_id=?').run(now, id);
+  })();
   audit(actor, 'reset_password', id, `重置账号密码：${account.username}`);
   return { ok: true, temporaryPassword: '888888' };
 }
@@ -305,7 +308,7 @@ export function getMyWork(accountId: string) {
   }
   const upcoming = upcomingDates.map((date) => ({
     date,
-    count: items.filter((item) => item.status !== 'cancelled' && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd).length,
+    count: items.filter((item) => !['completed', 'cancelled'].includes(item.status) && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd).length,
   }));
   const recentProgress = sqlite.prepare(`SELECT u.id, u.requirement_id AS requirementId, r.title AS requirementTitle,
     u.work_item_id AS workItemId, w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content,

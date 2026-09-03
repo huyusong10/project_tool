@@ -15,6 +15,9 @@ import {
   businessDaysInclusive,
   deriveRequirementMetrics,
   issueStatuses,
+  maxTemplateDurationDays,
+  maxTemplateItems,
+  maxTemplateOffsetDays,
   plannedDatesFromOffset,
   plannedStartFromDeadline,
   priorities,
@@ -403,13 +406,14 @@ export function restorePerson(id: string, actor: Actor) {
 
 function parseTemplateItems(input: unknown): TemplateItemInput[] {
   if (!Array.isArray(input)) return [];
+  if (input.length > maxTemplateItems) fail(`流程工作项不能超过${maxTemplateItems}个`);
   return input.map((value, index) => {
     if (typeof value === 'string') return { title: requireLabel(value, '工作项名称'), startOffsetDays: index, durationDays: 1, milestoneLabel: null, sortOrder: index };
     const item = value as JsonObject;
     const startOffsetDays = Number(item.startOffsetDays ?? index);
     const durationDays = Number(item.durationDays ?? 1);
-    if (!Number.isInteger(startOffsetDays) || startOffsetDays < 0) fail('开始偏移必须是非负整数');
-    if (!Number.isInteger(durationDays) || durationDays < 1) fail('工期必须是正整数');
+    if (!Number.isInteger(startOffsetDays) || startOffsetDays < 0 || startOffsetDays > maxTemplateOffsetDays) fail(`开始偏移必须是0到${maxTemplateOffsetDays}之间的整数`);
+    if (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > maxTemplateDurationDays) fail(`工期必须是1到${maxTemplateDurationDays}之间的整数`);
     return {
       id: nullableText(item.id) || undefined,
       title: requireLabel(item.title, '工作项名称'), startOffsetDays, durationDays,
@@ -704,6 +708,9 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor) {
     if (!nextPlannedStart) fail('重选流程前请设置计划日期');
     if (input.confirmTemplateReset !== true) fail('重选流程会替换未执行工作项并重新生成计划；需求级说明将保留，请确认后重试');
   }
+  if (generateInitialPlan && !row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', current.templateId, current.projectId)) {
+    fail('当前流程设计已归档，请恢复流程或重新选择', 'DEPENDENCY_CONFLICT', 409);
+  }
   const now = nowIso();
   sqlite.transaction(() => {
     if (templateChanged && templateId) {
@@ -885,7 +892,7 @@ function collaboratorIdsFromInput(input: JsonObject, ownerId: string | null) {
   return ids;
 }
 
-function assertProjectAssignees(requirementId: string, ids: Array<string | null>) {
+function assertProjectAssignees(requirementId: string, ids: Array<string | null>, conflict = false) {
   const assigneeIds = [...new Set(ids.filter(Boolean) as string[])];
   if (!assigneeIds.length) return;
   const requirement = row<{ projectId: string }>('SELECT project_id AS projectId FROM requirements WHERE id=?', requirementId);
@@ -895,7 +902,7 @@ function assertProjectAssignees(requirementId: string, ids: Array<string | null>
     JOIN people p ON p.id=pp.person_id
     WHERE pp.project_id=? AND pp.person_id IN (${placeholders}) AND pp.project_role IN ('member','manager')
       AND p.deleted_at IS NULL AND p.active=1`, requirement.projectId, ...assigneeIds)?.count || 0;
-  if (count !== assigneeIds.length) fail('负责人必须是当前项目中已启用的成员或项目经理');
+  if (count !== assigneeIds.length) fail('负责人必须是当前项目中已启用的成员或项目经理', conflict ? 'DEPENDENCY_CONFLICT' : 'VALIDATION_ERROR', conflict ? 409 : 400);
 }
 
 function syncWorkItemCollaborators(workItemId: string, collaboratorIds: string[]) {
@@ -937,6 +944,7 @@ export function createWorkItem(requirementId: string, input: JsonObject, actor: 
 export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) notFound('工作项不存在');
+  getRequirement(current.requirementId);
   assertExpectedVersion(input, current.version);
   if (isTerminalWorkItemStatus(current.status)) fail('已完成或已取消的工作项已锁定，请使用重开或纠错操作', 'TERMINAL_LOCKED');
   const executionKeys = ['status', 'progress', 'actualStart', 'actualEnd', 'blockedAt', 'blockedReason'];
@@ -981,6 +989,7 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
 function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unblock' | 'cancel', input: JsonObject, actor: Actor) {
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) notFound('工作项不存在');
+  getRequirement(current.requirementId);
   assertExpectedVersion(input, current.version);
   const today = todayIso(); const now = nowIso();
   const labels = { start: '开始', complete: '完成', block: '阻塞', unblock: '解除阻塞', cancel: '取消' } as const;
@@ -1022,6 +1031,10 @@ export const cancelWorkItem = (id: string, input: JsonObject, actor: Actor) => w
 export function reopenWorkItem(id: string, input: JsonObject, actor: Actor) {
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) notFound('工作项不存在');
+  const requirement = getRequirement(current.requirementId);
+  if (requirement.status === 'cancelled') fail('已取消需求的工作项不能重开', 'DEPENDENCY_CONFLICT', 409);
+  const item = requirement.workItems!.find((entry) => entry.id === id)!;
+  assertProjectAssignees(current.requirementId, [requirement.ownerId, item.ownerId, ...item.collaborators.map((person) => person.id)], true);
   assertExpectedVersion(input, current.version); assertTransition(current.status, ['completed', 'cancelled'], '重开');
   const reason = requireText(input.reason, '重开原因');
   const restoredProgress = input.progress === undefined ? (current.status === 'completed' ? 99 : Math.min(current.progress, 99)) : requireProgress(input.progress, '恢复进度');
@@ -1041,6 +1054,7 @@ export function reopenWorkItem(id: string, input: JsonObject, actor: Actor) {
 export function correctWorkItem(id: string, input: JsonObject, actor: Actor) {
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) notFound('工作项不存在');
+  getRequirement(current.requirementId);
   assertExpectedVersion(input, current.version); const reason = requireText(input.reason, '纠错原因');
   const progress = input.progress === undefined ? current.progress : requireProgress(input.progress, '完成度');
   if (isTerminalWorkItemStatus(current.status) && progress !== current.progress) fail('终态工作项调整进度时必须使用重开操作', 'TERMINAL_LOCKED');
@@ -1066,6 +1080,7 @@ export function correctWorkItem(id: string, input: JsonObject, actor: Actor) {
 export function deleteWorkItem(id: string, input: JsonObject, actor: Actor) {
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) notFound('工作项不存在');
+  getRequirement(current.requirementId);
   assertExpectedVersion(input, current.version);
   if (current.status !== 'not_started' || current.progress !== 0 || row('SELECT 1 FROM progress_updates WHERE work_item_id=? LIMIT 1', id)) {
     fail('只有未开始、0%且无历史的工作项可以删除，其他工作项请使用取消', 'DEPENDENCY_CONFLICT');

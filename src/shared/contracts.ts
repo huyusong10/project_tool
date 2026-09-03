@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { issueStatuses, priorities, projectRoles } from './domain';
+import {
+  issueStatuses, maxTemplateDurationDays, maxTemplateItems, maxTemplateOffsetDays,
+  priorities, projectRoles,
+} from './domain';
 import { actionReasonCodes } from './action-items';
 import { isValidIsoDate } from './workday';
 
@@ -126,8 +129,8 @@ export const issueUpdateInputSchema = z.object({
 export const templateItemSchema = z.object({
   id: z.string().optional(),
   title: z.string().trim().min(1),
-  startOffsetDays: z.number().int().min(0),
-  durationDays: z.number().int().min(1),
+  startOffsetDays: z.number().int().min(0).max(maxTemplateOffsetDays),
+  durationDays: z.number().int().min(1).max(maxTemplateDurationDays),
   milestoneLabel: z.string().nullable().optional(),
   sortOrder: z.number().int().min(0),
 });
@@ -136,7 +139,7 @@ export const templateInputSchema = z.object({
   projectId: idSchema.optional(),
   name: z.string().trim().min(1).optional(),
   description: z.string().max(2000).optional(),
-  items: z.array(templateItemSchema).min(1).optional(),
+  items: z.array(templateItemSchema).min(1).max(maxTemplateItems).optional(),
 }).passthrough();
 
 export const personInputSchema = z.object({

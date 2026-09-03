@@ -67,14 +67,20 @@ function issueRequirement(projectId: string, value: unknown) {
   return requirementId;
 }
 
-function issueOwner(projectId: string, value: unknown) {
+function issueOwner(projectId: string, value: unknown, conflict = false) {
   const ownerId = nullableText(value);
   if (ownerId && !row(`SELECT p.id FROM people p JOIN project_people pp ON pp.person_id=p.id
     WHERE p.id=? AND pp.project_id=? AND pp.project_role IN ('member','manager')
       AND p.deleted_at IS NULL AND p.active=1`, ownerId, projectId)) {
-    fail('负责人必须是当前项目中已启用的成员或项目经理');
+    fail('负责人必须是当前项目中已启用的成员或项目经理', conflict ? 'DEPENDENCY_CONFLICT' : 'VALIDATION_ERROR', conflict ? 409 : 400);
   }
   return ownerId;
+}
+
+function assertIssueParentMutable(issue: Pick<IssueRecord, 'requirementId'>) {
+  if (issue.requirementId && !row('SELECT id FROM requirements WHERE id=? AND deleted_at IS NULL', issue.requirementId)) {
+    fail('关联需求已归档，不能修改其问题', 'DEPENDENCY_CONFLICT', 409);
+  }
 }
 
 export function listIssues(filters: {
@@ -105,6 +111,7 @@ export function listIssues(filters: {
   if (filters.ownerId) { where.push('i.owner_id=?'); params.push(filters.ownerId); }
   if (filters.requirementId) { where.push('i.requirement_id=?'); params.push(filters.requirementId); }
   if (filters.scope === 'public') where.push('i.requirement_id IS NULL');
+  if (filters.scope === 'requirement') where.push('i.requirement_id IS NOT NULL');
   if (filters.active === true || filters.active === 'true') where.push(`i.status<>'resolved'`);
   if (filters.overdue === true || filters.overdue === 'true') {
     where.push(`i.status<>'resolved' AND i.due_date IS NOT NULL AND business_day_delta(i.due_date, ?)>0`); params.push(todayIso());
@@ -112,7 +119,7 @@ export function listIssues(filters: {
   if (filters.unassigned === true || filters.unassigned === 'true') where.push('i.owner_id IS NULL');
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const page = Math.max(1, Number(filters.page) || 1);
-  const pageSize = Math.min(100, Math.max(10, Number(filters.pageSize) || 50));
+  const pageSize = Math.min(100, Math.max(1, Number(filters.pageSize) || 50));
   const countFrom = `FROM issues i JOIN projects pr ON pr.id=i.project_id
     LEFT JOIN requirements r ON r.id=i.requirement_id LEFT JOIN people p ON p.id=i.owner_id`;
   const total = row<{ count: number }>(`SELECT COUNT(*) AS count ${countFrom} ${clause}`, ...params)?.count || 0;
@@ -181,6 +188,7 @@ export function createIssue(input: JsonObject, actor: Actor) {
 
 export function updateIssue(id: string, input: JsonObject, actor: Actor) {
   const current = getIssue(id); const projectId = current.projectId;
+  assertIssueParentMutable(current);
   assertExpectedVersion(input, current.version);
   if (current.status === 'resolved') fail('已解决问题已锁定，请使用重开或纠错操作', 'TERMINAL_LOCKED');
   if (['status', 'progress', 'resolvedAt'].some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
@@ -210,6 +218,7 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
 
 export function addIssueUpdate(issueId: string, input: JsonObject, actor: Actor, permissions: { canSetProgress: boolean; canResolve: boolean }) {
   const issue = getIssue(issueId); const content = requireText(input.content, '进展内容');
+  assertIssueParentMutable(issue);
   if (issue.status === 'resolved') fail('已解决问题不能再追加进展，请先由项目经理重新打开', 'TERMINAL_LOCKED');
   const hasProgress = input.progress !== undefined && nullableText(input.progress) !== null;
   if (hasProgress && !permissions.canSetProgress) forbidden('只有问题负责人或项目经理可以更新问题完成度');
@@ -231,6 +240,7 @@ export function addIssueUpdate(issueId: string, input: JsonObject, actor: Actor,
 
 function issueStateEvent(id: string, action: 'defer' | 'resume' | 'resolve', input: JsonObject, actor: Actor) {
   const current = getIssue(id); assertExpectedVersion(input, current.version); const now = nowIso();
+  assertIssueParentMutable(current);
   const content = action === 'defer' ? requireText(input.reason, '挂起原因')
     : action === 'resume' ? requireText(input.reason, '恢复原因')
       : requireText(input.content, '闭环说明');
@@ -253,6 +263,8 @@ export const resolveIssue = (id: string, input: JsonObject, actor: Actor) => iss
 
 export function reopenIssue(id: string, input: JsonObject, actor: Actor) {
   const current = getIssue(id); assertExpectedVersion(input, current.version); assertTransition(current.status, ['resolved'], '重开');
+  assertIssueParentMutable(current);
+  if (current.ownerId) issueOwner(current.projectId, current.ownerId, true);
   const reason = requireText(input.reason, '重开原因');
   const requested = input.progress === undefined ? (current.ownerId ? 99 : 0) : requireProgress(input.progress, '恢复进度');
   if (requested >= 100) fail('恢复进度必须小于100%');
@@ -268,6 +280,7 @@ export function reopenIssue(id: string, input: JsonObject, actor: Actor) {
 
 export function correctIssue(id: string, input: JsonObject, actor: Actor) {
   const current = getIssue(id); assertExpectedVersion(input, current.version); const reason = requireText(input.reason, '纠错原因');
+  assertIssueParentMutable(current);
   const progress = input.progress === undefined ? current.progress : requireProgress(input.progress, '问题完成度');
   if (current.status === 'resolved' && progress !== 100) fail('已解决问题降低进度时必须使用重开操作', 'TERMINAL_LOCKED');
   if (current.status !== 'resolved' && progress >= 100) fail('100%只能通过“确认解决”产生');

@@ -364,14 +364,21 @@ function IssueDetail({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"basic" | "updates">(initialTab);
-  const { data: issue, isLoading } = useQuery({ queryKey: ["issue", issueId], queryFn: () => api<Issue>(`/api/issues/${issueId}`) });
-  if (isLoading || !issue) return <div className="issue-detail-loading">正在加载问题详情…</div>;
-  const canOwnIssue = canEdit || Boolean(personId && issue.ownerId === personId);
+  const { data: issue, isLoading, error, refetch } = useQuery({ queryKey: ["issue", issueId], queryFn: () => api<Issue>(`/api/issues/${issueId}`) });
+  if (isLoading) return <div className="issue-detail-loading">正在加载问题详情…</div>;
+  if (error || !issue) return <EmptyState
+    title="问题详情加载失败"
+    detail={error?.message || "问题不存在或当前账号无权访问。"}
+    action={<div className="button-row"><button type="button" className="ghost-button" onClick={onClose}>关闭</button><button type="button" className="primary-button" onClick={() => void refetch()}>重新加载</button></div>}
+  />;
+  const parentMutable = !issue.requirementId || requirements.some((requirement) => requirement.id === issue.requirementId);
+  const canEditIssue = canEdit && parentMutable;
+  const canOwnIssue = canEditIssue || Boolean(parentMutable && personId && issue.ownerId === personId);
   const canSetProgress = canOwnIssue && issue.status === "in_progress";
   return <div className="issue-settings-shell">
     <header className="issue-settings-summary">
       <div>
-        <div className="issue-detail-badges"><IssueStatusControl issue={issue} canManage={canEdit} compact /><span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>{issue.overdue && <span className="issue-overdue-badge">已逾期</span>}</div>
+        <div className="issue-detail-badges"><IssueStatusControl issue={issue} canManage={canEditIssue} compact /><span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>{issue.overdue && <span className="issue-overdue-badge">已逾期</span>}</div>
         <h3>{issue.title}</h3>
         <p>{issueScope(issue)} · {issue.ownerName || "未分配负责人"}</p>
       </div>
@@ -382,7 +389,7 @@ function IssueDetail({
       <button id="issue-tab-updates" type="button" role="tab" aria-controls="issue-panel-updates" aria-selected={tab === "updates"} className={tab === "updates" ? "active" : ""} onClick={() => setTab("updates")}>进展记录 <span>{issue.updates?.length || 0}</span></button>
     </nav>
     <section id="issue-panel-basic" className="issue-settings-panel issue-settings-basic" role="tabpanel" aria-labelledby="issue-tab-basic" hidden={tab !== "basic"}>
-      {!canEdit ? <div className="issue-readonly-detail">
+      {!canEditIssue ? <div className="issue-readonly-detail">
         <dl><div><dt>问题影响</dt><dd>{issue.impact || "暂无影响说明"}</dd></div><div><dt>关联范围</dt><dd>{issueScope(issue)}</dd></div><div><dt>负责人</dt><dd>{issue.ownerName || "未分配"}</dd></div><div><dt>提出人</dt><dd>{issue.reporter || "未指定"}</dd></div><div><dt>发现日期</dt><dd>{issue.discoveredAt}</dd></div><div><dt>目标日期</dt><dd>{issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"}</dd></div></dl>
       </div> : issue.status === "resolved"
         ? <div className="terminal-lock-note"><CheckCircle2 size={18} /><div><strong>问题已解决，当前数据已锁定</strong><p>如需继续处理，请先使用上方“重开”；日期或描述纠错会以新事件保留原因。</p></div></div>
@@ -436,6 +443,7 @@ export function IssuesPage() {
   const eligiblePeople = people.filter((person) => person.active && person.projectRole !== "viewer");
   const { data: requirements = [] } = useQuery({ queryKey: ["requirements", selectedProjectId], queryFn: () => api<Requirement[]>(`/api/requirements?projectId=${encodeURIComponent(selectedProjectId)}`), enabled: Boolean(selectedProjectId) });
   const canEdit = canManageProject(session, selectedProjectId);
+  const canEditIssue = (issue: Issue) => canEdit && (!issue.requirementId || requirements.some((requirement) => requirement.id === issue.requirementId));
   const canContribute = session.authenticated && !session.mustChangePassword
     && (canEdit || Boolean(session.personId && people.some((person) => person.id === session.personId && person.projectRole !== "viewer")));
   const defaultReporter = people.find((person) => person.id === session.personId)?.name || session.username;
@@ -487,12 +495,26 @@ export function IssuesPage() {
       throw error;
     }
   };
-  const resetPage = (update: () => void) => { update(); setPage(1); };
+  const updateFilter = (key: string, value: string, update: () => void) => {
+    update();
+    setPage(1);
+    const next = new URLSearchParams(linkedQuery);
+    if (value) next.set(key, value); else next.delete(key);
+    setSearchParams(next, { replace: true });
+  };
   const changeStatus = (value: string) => {
     setStatus(value);
     setPage(1);
     const next = new URLSearchParams(linkedQuery);
-    next.set("status", value);
+    if (value) next.set("status", value); else next.delete("status");
+    setSearchParams(next, { replace: true });
+  };
+  const changeScope = (value: string) => {
+    setScope(value); setPage(1);
+    const next = new URLSearchParams(linkedQuery);
+    next.delete("scope"); next.delete("requirementId");
+    if (value === "public") next.set("scope", "public");
+    else if (value) next.set("requirementId", value);
     setSearchParams(next, { replace: true });
   };
   const clearFilters = () => { setKeyword(""); setStatus("in_progress"); setPriority(""); setOwnerId(""); setScope(""); setOverdue(false); setUnassigned(false); setPage(1); setSearchParams({}, { replace: true }); };
@@ -517,13 +539,13 @@ export function IssuesPage() {
         <article className="issue-metric metric-overdue"><AlertTriangle size={20} /><div><span>已逾期</span><strong>{summary.overdue}</strong></div></article>
       </section>
       <div className="issue-filters">
-        <SearchInput value={keyword} onChange={(value) => resetPage(() => setKeyword(value))} placeholder="搜索问题、影响、人员、进展或拼音" />
+        <SearchInput value={keyword} onChange={(value) => updateFilter("q", value, () => setKeyword(value))} placeholder="搜索问题、影响、人员、进展或拼音" />
         <select value={status} onChange={(event) => changeStatus(event.target.value)}><option value="in_progress">处理中</option><option value="active">全部未闭环</option><option value="">全部状态</option>{statusEntries.filter(([value]) => value !== "in_progress").map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
-        <select value={priority} onChange={(event) => resetPage(() => setPriority(event.target.value))}><option value="">全部优先级</option>{priorityEntries.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
-        <select value={ownerId} onChange={(event) => resetPage(() => setOwnerId(event.target.value))}><option value="">全部负责人</option>{people.map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
-        <select value={scope} onChange={(event) => resetPage(() => setScope(event.target.value))}><option value="">全部范围</option><option value="public">公共问题</option>{requirements.map((requirement) => <option value={requirement.id} key={requirement.id}>{requirement.title}</option>)}</select>
-        <button className={`issue-filter-toggle${overdue ? " active" : ""}`} onClick={() => resetPage(() => setOverdue((value) => !value))}><AlertTriangle size={14} />仅逾期</button>
-        <button className={`issue-filter-toggle${unassigned ? " active" : ""}`} onClick={() => resetPage(() => setUnassigned((value) => !value))}><UserRound size={14} />未分配</button>
+        <select value={priority} onChange={(event) => updateFilter("priority", event.target.value, () => setPriority(event.target.value))}><option value="">全部优先级</option>{priorityEntries.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
+        <select value={ownerId} onChange={(event) => updateFilter("ownerId", event.target.value, () => setOwnerId(event.target.value))}><option value="">全部负责人</option>{people.map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
+        <select value={scope} onChange={(event) => changeScope(event.target.value)}><option value="">全部范围</option><option value="public">公共问题</option>{requirements.map((requirement) => <option value={requirement.id} key={requirement.id}>{requirement.title}</option>)}</select>
+        <button className={`issue-filter-toggle${overdue ? " active" : ""}`} onClick={() => updateFilter("overdue", overdue ? "" : "true", () => setOverdue((value) => !value))}><AlertTriangle size={14} />仅逾期</button>
+        <button className={`issue-filter-toggle${unassigned ? " active" : ""}`} onClick={() => updateFilter("unassigned", unassigned ? "" : "true", () => setUnassigned((value) => !value))}><UserRound size={14} />未分配</button>
         <span className="issue-filter-result">{data?.total || 0} / {summary.total} 条</span>
         <button className="gantt-reset-button" disabled={!hasFilters} onClick={clearFilters}>清除筛选</button>
       </div>
@@ -536,12 +558,12 @@ export function IssuesPage() {
       >
         {data?.items.map((issue) => <AdaptiveDataRow className={`issue-data-row${issue.overdue ? " is-overdue" : ""}`} key={issue.id}>
           <AdaptiveDataCell column="issue" className="issue-data-primary"><button type="button" className="issue-title-button" onClick={() => openIssue(issue.id, "basic")}><DataCell primary={<strong>{issue.title}</strong>} secondary={issue.impact || "暂无影响说明"} /></button></AdaptiveDataCell>
-          <AdaptiveDataCell column="scope" className="issue-data-scope"><DataCell primary={<IssueScopeControl issue={issue} requirements={requirements} canEdit={canEdit} onSave={(input) => saveIssue(issue, input)} />} /></AdaptiveDataCell>
-          <AdaptiveDataCell column="status" className="issue-data-status"><DataCell primary={<IssueStatusControl issue={issue} canManage={canEdit} compact />} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="scope" className="issue-data-scope"><DataCell primary={<IssueScopeControl issue={issue} requirements={requirements} canEdit={canEditIssue(issue)} onSave={(input) => saveIssue(issue, input)} />} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="status" className="issue-data-status"><DataCell primary={<IssueStatusControl issue={issue} canManage={canEditIssue(issue)} compact />} /></AdaptiveDataCell>
           <AdaptiveDataCell column="progress" className="issue-data-progress"><DataCell primary={<span className="issue-table-progress"><i><b style={{ width: `${issue.progress}%` }} /></i>{issue.progress}%</span>} /></AdaptiveDataCell>
-          <AdaptiveDataCell column="priority" className="issue-data-priority"><DataCell primary={canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.priority} label="问题优先级" options={priorityOptions} displayMode="badge" onSave={(priority) => saveIssue(issue, { priority })} renderValue={(value) => <span className={`priority-badge priority-${value.toLowerCase()}`}>{priorityLabels[value as keyof typeof priorityLabels] || value}</span>} /> : <span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>} /></AdaptiveDataCell>
-          <AdaptiveDataCell column="owner" className="issue-data-owner"><DataCell primary={canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.ownerId} label="问题负责人" options={[{ value: "", label: "未分配" }, ...eligiblePeople.map((person) => ({ value: person.id, label: person.name })), ...(issue.ownerId && !eligiblePeople.some((person) => person.id === issue.ownerId) ? [{ value: issue.ownerId, label: issue.ownerName || "历史负责人", description: "历史负责人" }] : [])]} onSave={(ownerId) => saveIssue(issue, { ownerId: ownerId || null })} placeholder="未分配" renderValue={(_value, selected) => selected?.value ? selected.label : <span className="muted-text">未分配</span>} /> : issue.ownerName || <span className="muted-text">未分配</span>} /></AdaptiveDataCell>
-          <AdaptiveDataCell column="dueDate" className={`issue-data-due${issue.overdue ? " danger-text" : ""}`}><DataCell primary={canEdit && !["deferred", "resolved"].includes(issue.status) ? <InlineDateCell value={issue.dueDate} label="目标日期" onSave={(dueDate) => saveIssue(issue, { dueDate })} /> : issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"} secondary={issue.overdue ? "已逾期" : undefined} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="priority" className="issue-data-priority"><DataCell primary={canEditIssue(issue) && issue.status !== "resolved" ? <InlineSelectCell value={issue.priority} label="问题优先级" options={priorityOptions} displayMode="badge" onSave={(priority) => saveIssue(issue, { priority })} renderValue={(value) => <span className={`priority-badge priority-${value.toLowerCase()}`}>{priorityLabels[value as keyof typeof priorityLabels] || value}</span>} /> : <span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="owner" className="issue-data-owner"><DataCell primary={canEditIssue(issue) && issue.status !== "resolved" ? <InlineSelectCell value={issue.ownerId} label="问题负责人" options={[{ value: "", label: "未分配" }, ...eligiblePeople.map((person) => ({ value: person.id, label: person.name })), ...(issue.ownerId && !eligiblePeople.some((person) => person.id === issue.ownerId) ? [{ value: issue.ownerId, label: issue.ownerName || "历史负责人", description: "历史负责人" }] : [])]} onSave={(ownerId) => saveIssue(issue, { ownerId: ownerId || null })} placeholder="未分配" renderValue={(_value, selected) => selected?.value ? selected.label : <span className="muted-text">未分配</span>} /> : issue.ownerName || <span className="muted-text">未分配</span>} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="dueDate" className={`issue-data-due${issue.overdue ? " danger-text" : ""}`}><DataCell primary={canEditIssue(issue) && !["deferred", "resolved"].includes(issue.status) ? <InlineDateCell value={issue.dueDate} label="目标日期" onSave={(dueDate) => saveIssue(issue, { dueDate })} /> : issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"} secondary={issue.overdue ? "已逾期" : undefined} /></AdaptiveDataCell>
           <AdaptiveDataCell column="latest" className="issue-data-latest"><button type="button" className="issue-latest-update-button" onClick={() => openIssue(issue.id, "updates")}><DataCell primary={<span className="issue-latest-update" title={issue.latestUpdate || undefined}>{issue.latestUpdate || "暂无进展"}</span>} secondary={issue.latestUpdateAt ? shortDateTime(issue.latestUpdateAt) : "查看进展"} /></button></AdaptiveDataCell>
         </AdaptiveDataRow>)}
       </AdaptiveDataList>

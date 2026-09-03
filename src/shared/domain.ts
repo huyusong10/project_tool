@@ -6,6 +6,9 @@ export const issueStatuses = ['in_progress', 'deferred', 'resolved'] as const;
 export const riskLevels = ['low', 'medium', 'high'] as const;
 export const priorities = ['P0', 'P1', 'P2', 'P3'] as const;
 export const projectRoles = ['viewer', 'member', 'manager'] as const;
+export const maxTemplateItems = 200;
+export const maxTemplateOffsetDays = 1830;
+export const maxTemplateDurationDays = 1830;
 
 export type RequirementStatus = (typeof requirementStatuses)[number];
 export type WorkItemStatus = (typeof workItemStatuses)[number];
@@ -79,11 +82,15 @@ function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-export function todayIso(): string {
+export function businessDateFromDateTime(value: string | number | Date): string {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
   });
-  return formatter.format(new Date());
+  return formatter.format(new Date(value));
+}
+
+export function todayIso(): string {
+  return businessDateFromDateTime(new Date());
 }
 
 export function addCalendarDays(value: string, days: number): string {

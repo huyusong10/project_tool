@@ -61,6 +61,10 @@ const querySchema = z.object({
   projectId: z.string().optional(), includeDeleted: z.string().optional(), q: z.string().optional(),
   limit: z.string().optional(), page: z.string().optional(), pageSize: z.string().optional(),
 }).passthrough();
+const auditListQuerySchema = z.object({
+  projectId: z.string().trim().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+});
 
 function parse<T>(schema: ZodType<T>, value: unknown): T {
   return schema.parse(value ?? {});
@@ -438,9 +442,9 @@ export function registerApiRoutes(app: FastifyInstance) {
   app.get('/api/admin/tokens', { preHandler: requireAdmin }, async () => listTokens(undefined, true));
   app.delete('/api/admin/tokens/:id', { preHandler: requireAdmin }, async (request) => revokeToken(idOf(request), actorFromRequest(request), true));
   app.get('/api/audit', { preHandler: requireReady }, async (request) => {
-    const input = query(request); const actor = actorFromRequest(request); const projectId = String(input.projectId || '');
+    const input = parsedQuery(request, auditListQuerySchema); const actor = actorFromRequest(request); const projectId = input.projectId || '';
     if (!isAdmin(actor)) assertProjectManager(actor, projectId);
-    return listAudit(Number(input.limit || 100), projectId || undefined);
+    return listAudit(input.limit, projectId || undefined);
   });
   app.get('/api/audit/search', { preHandler: requireReady }, async (request) => {
     const input = query(request); const actor = actorFromRequest(request); const projectId = String(input.projectId || '');

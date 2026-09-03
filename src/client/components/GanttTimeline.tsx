@@ -2,6 +2,7 @@ import { type CSSProperties, type HTMLAttributes } from "react";
 import { eachDayOfInterval, format, isValid, parseISO, startOfDay } from "date-fns";
 import { addBusinessDays, ganttProgressDisplay, isOverdueByWorkday, todayIso } from "../../shared/domain";
 import { isBusinessDay, workdayCalendarWarning } from "../../shared/workday";
+import { ganttWeekOffsets } from "../gantt-calendar";
 
 export type GanttZoom = "day" | "week" | "month";
 
@@ -54,12 +55,17 @@ export function buildBusinessDayTimeline(values: Array<string | null | undefined
 }
 
 export function ganttTrackStyle(dates: Date[], cellWidth: number): CSSProperties {
-  const firstMonday = dates.findIndex((date) => date.getDay() === 1);
+  const mondayOffsets = ganttWeekOffsets(dates, cellWidth);
+  const weekBackgrounds = mondayOffsets.map(() => "linear-gradient(var(--gantt-week-line), var(--gantt-week-line))");
   return {
     width: dates.length * cellWidth,
     "--gantt-cell": `${cellWidth}px`,
-    "--gantt-week": `${cellWidth * 5}px`,
-    "--gantt-week-offset": `${Math.max(0, firstMonday) * cellWidth}px`,
+    "--gantt-week-line": "rgba(148, 163, 184, .7)",
+    "--gantt-day-line": "#edf1f5",
+    backgroundImage: [...weekBackgrounds, `repeating-linear-gradient(to right,var(--gantt-day-line) 0,var(--gantt-day-line) 1px,transparent 1px,transparent ${cellWidth}px)`].join(","),
+    backgroundPosition: [...mondayOffsets.map((offset) => `${offset}px 0`), "0 0"].join(","),
+    backgroundSize: [...mondayOffsets.map(() => "1px 100%"), "auto"].join(","),
+    backgroundRepeat: [...mondayOffsets.map(() => "no-repeat"), "repeat"].join(","),
   } as CSSProperties;
 }
 

@@ -28,13 +28,15 @@ const issuePage: IssuePage = {
 async function mockIssues(page: Page) {
   await page.route('**/api/**', async (route: Route) => {
     const pathname = new URL(route.request().url()).pathname;
-    const json = (value: unknown) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(value) });
+    const json = (value: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
     if (pathname === '/api/branding') return json({ systemName: '项目管理', shortName: 'PM', logoUrl: null, updatedAt: null });
     if (pathname === '/api/session') return json({ authenticated: true, accountId: 'admin', username: 'admin', httpWarning: true, role: 'admin', globalRole: 'admin', personId: null, mustChangePassword: false, managedProjectIds: [] });
     if (pathname === '/api/projects') return json([project]);
     if (pathname === '/api/people') return json(people);
     if (pathname === '/api/requirements') return json([]);
     if (pathname === '/api/issues') return json(issuePage);
+    if (pathname === '/api/issues/issue-1') return json({ ...baseIssue, updates: [] });
+    if (pathname === '/api/issues/does-not-exist') return json({ error: '问题不存在' }, 404);
     return json({});
   });
 }
@@ -82,4 +84,29 @@ test('问题列表在低分辨率下不遮挡优先级和编辑控件', async ({
   expect(rect).not.toBeNull();
   expect(rect!.x).toBeGreaterThanOrEqual(0);
   expect(rect!.x + rect!.width).toBeLessThanOrEqual(620);
+});
+
+test('问题筛选、详情错误态和嵌套Esc保持正确', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-1080p', '交互流程只需在一个桌面视口执行');
+  await mockIssues(page);
+  await page.goto('/issues');
+  await page.locator('.issue-filters select').nth(1).selectOption('P1');
+  await expect(page).toHaveURL(/priority=P1/);
+  await page.locator('.issue-title-button').first().click();
+  await expect(page).toHaveURL(/priority=P1.*issueId=issue-1|issueId=issue-1.*priority=P1/);
+  const dialog = page.getByRole('dialog', { name: '问题详情' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: /关联需求：/ }).click();
+  const search = dialog.getByPlaceholder('搜索需求编号或名称');
+  await expect(search).toBeVisible();
+  await search.press('Escape');
+  await expect(search).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('.issue-filters select').nth(1)).toHaveValue('P1');
+
+  await page.goto('/issues?issueId=does-not-exist');
+  await expect(page.getByText('问题详情加载失败')).toBeVisible();
+  await expect(page.getByText('正在加载问题详情…')).toHaveCount(0);
 });

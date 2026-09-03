@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addBusinessDays, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
+  addBusinessDays, businessDateFromDateTime, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
   deriveWorkItemStatus, ganttProgressDisplay, issueActionsByStatus, plannedDatesFromOffset, plannedStartFromDeadline, requirementActionsByStatus, riskLevelFromProgressGap, signedProgressVariance, workItemActionsByStatus, workItemPlannedProgress,
   isOverdueByWorkday,
 } from '../src/shared/domain';
 import { isBusinessDay, isValidIsoDate, workdayCalendarWarning } from '../src/shared/workday';
-import { isoDateSchema, peopleConcurrencyInputSchema, reorderWorkItemsInputSchema } from '../src/shared/contracts';
+import { isoDateSchema, peopleConcurrencyInputSchema, reorderWorkItemsInputSchema, templateInputSchema } from '../src/shared/contracts';
 
 describe('工作日、排期与Gap规则', () => {
   it('排除周末并按偏移和工期生成计划', () => {
@@ -42,6 +42,13 @@ describe('工作日、排期与Gap规则', () => {
     expect(isBusinessDay('2026-02-31')).toBe(false);
     expect(isOverdueByWorkday('2026-02-14', '2026-02-16')).toBe(false);
     expect(isOverdueByWorkday('2026-02-14', '2026-02-24')).toBe(true);
+  });
+
+  it('时间戳统一换算为上海业务日期，并限制异常大的流程', () => {
+    expect(businessDateFromDateTime('2026-09-02T15:59:59.000Z')).toBe('2026-09-02');
+    expect(businessDateFromDateTime('2026-09-02T16:00:00.000Z')).toBe('2026-09-03');
+    expect(templateInputSchema.safeParse({ items: Array.from({ length: 201 }, (_, index) => ({ title: `${index}`, startOffsetDays: 0, durationDays: 1, sortOrder: index })) }).success).toBe(false);
+    expect(templateInputSchema.safeParse({ items: [{ title: '异常工期', startOffsetDays: 0, durationDays: 1831, sortOrder: 0 }] }).success).toBe(false);
   });
 
   it('限制人员并发查询跨度并拒绝重复排序ID', () => {

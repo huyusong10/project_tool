@@ -40,8 +40,9 @@ const auditFrom = `FROM audit_logs l
   LEFT JOIN projects audit_project ON audit_project.id=l.project_id`;
 
 export function listAudit(limit = 100, projectId?: string) {
+  const normalizedLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 500) : 100;
   return rows(`${auditSelect} ${auditFrom} ${projectId ? 'WHERE l.project_id=?' : ''} ORDER BY l.created_at DESC LIMIT ?`,
-    ...(projectId ? [projectId] : []), Math.min(Math.max(limit, 1), 500));
+    ...(projectId ? [projectId] : []), normalizedLimit);
 }
 
 export function searchAudit(filters: { q?: string; actorType?: string; action?: string; entityType?: string; projectId?: string; from?: string; to?: string; page?: number; pageSize?: number } = {}) {

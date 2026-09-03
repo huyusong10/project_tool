@@ -180,7 +180,10 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
   let progress: GenericRecord[] = [];
   let people: GenericRecord[] = [];
   const errors: Record<string, string> = {};
-  const messageOf = (error: unknown) => error instanceof Error ? error.message : '数据读取失败';
+  const messageOf = (dataset: string, error: unknown) => {
+    console.error(`[analytics] failed to load ${dataset}`, error);
+    return '图表数据读取失败';
+  };
   if (datasets.has('requirements') || datasets.has('work_items')) {
     try {
       const requirements = listRequirements({ projectId });
@@ -194,8 +197,9 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
         ...item, requirementTitle: requirement.title, owner: item.ownerName || '未分配',
       })));
     } catch (error) {
-      if (datasets.has('requirements')) errors.requirements = messageOf(error);
-      if (datasets.has('work_items')) errors.work_items = messageOf(error);
+      const message = messageOf('requirements/work_items', error);
+      if (datasets.has('requirements')) errors.requirements = message;
+      if (datasets.has('work_items')) errors.work_items = message;
     }
   }
   if (datasets.has('issues')) try {
@@ -206,14 +210,14 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
       FROM issues i LEFT JOIN people p ON p.id=i.owner_id
       LEFT JOIN requirements r ON r.id=i.requirement_id
       WHERE i.project_id=? AND (i.requirement_id IS NULL OR r.deleted_at IS NULL)`).all(projectId) as GenericRecord[];
-  } catch (error) { errors.issues = messageOf(error); }
+  } catch (error) { errors.issues = messageOf('issues', error); }
   if (datasets.has('progress')) try {
     progress = sqlite.prepare(`SELECT u.id, u.requirement_id AS requirementId,
       r.title AS requirement, COALESCE(a.username, '系统/未知') AS creator, u.created_at AS createdAt
       FROM progress_updates u JOIN requirements r ON r.id=u.requirement_id
       LEFT JOIN accounts a ON a.id=u.created_by_account_id
       WHERE r.project_id=? AND r.deleted_at IS NULL`).all(projectId) as GenericRecord[];
-  } catch (error) { errors.progress = messageOf(error); }
+  } catch (error) { errors.progress = messageOf('progress', error); }
   if (datasets.has('people')) {
     try {
       const today = todayIso();
@@ -222,14 +226,18 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
         from: range.from < today ? range.from : today,
         to: range.to > today ? range.to : today,
       }).people;
-      people = loadedPeople.map((person) => ({
-        ...person,
-        days: person.days.filter((day) => day.date >= range.from && day.date <= range.to),
-        currentCount: person.days.find((day) => day.date === today)?.count || 0,
-        person: person.name,
-        job_title: person.jobTitle || '岗位未设置',
-      }));
-    } catch (error) { errors.people = messageOf(error); }
+      people = loadedPeople.map((person) => {
+        const days = person.days.filter((day) => day.date >= range.from && day.date <= range.to);
+        return {
+          ...person,
+          days,
+          peakCount: Math.max(0, ...days.map((day) => day.count)),
+          currentCount: person.days.find((day) => day.date === today)?.count || 0,
+          person: person.name,
+          job_title: person.jobTitle || '岗位未设置',
+        };
+      });
+    } catch (error) { errors.people = messageOf('people', error); }
   }
   return { requirements: requirementRows, workItems, issues, progress, people, errors };
 }
@@ -274,7 +282,7 @@ function applyPanelFilters(records: GenericRecord[], panel: AnalyticsPanelConfig
 function eligibleRecords(dataset: string, measure: string, records: GenericRecord[], panel: AnalyticsPanelConfig, globalRange: AnalyticsRange) {
   const range = effectiveRange(panel, globalRange);
   let result = records;
-  if (range) result = result.filter((record) => inRange(eventDate(dataset, measure, record), range));
+  if (range && dataset !== 'people') result = result.filter((record) => inRange(eventDate(dataset, measure, record), range));
   if (dataset === 'requirements') {
     if (measure === 'active_count') result = result.filter((record) => !['completed', 'cancelled'].includes(record.status));
     if (measure === 'completed_count' || measure === 'on_time_rate') result = result.filter((record) => Boolean(record.completedAt));
