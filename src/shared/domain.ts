@@ -98,10 +98,10 @@ export function addCalendarDays(value: string, days: number): string {
 export function addBusinessDays(value: string, days: number): string {
   let cursor = parseIsoDate(value);
   const direction = days < 0 ? -1 : 1;
-  while (!isWeekday(cursor)) cursor = parseIsoDate(addCalendarDays(isoDate(cursor), direction));
+  while (!isWeekday(cursor)) cursor.setUTCDate(cursor.getUTCDate() + direction);
   let remaining = Math.abs(days);
   while (remaining > 0) {
-    cursor = parseIsoDate(addCalendarDays(isoDate(cursor), direction));
+    cursor.setUTCDate(cursor.getUTCDate() + direction);
     if (isWeekday(cursor)) remaining -= 1;
   }
   return isoDate(cursor);
@@ -129,7 +129,7 @@ export function businessDaysInclusive(start?: string | null, end?: string | null
   let total = 0;
   while (cursor <= target) {
     if (isWeekday(cursor)) total += 1;
-    cursor = parseIsoDate(addCalendarDays(isoDate(cursor), 1));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
   return total;
 }
@@ -207,9 +207,18 @@ export function workItemActualProgress(item: WorkItemLike): number {
   return Number.isFinite(progress) ? Math.min(100, Math.max(0, Math.round(progress))) : 0;
 }
 
-function scheduleVarianceFromProgress(items: WorkItemLike[], actualProgress: number, today: string) {
+type WeightedWorkItem = WorkItemLike & { plannedDuration: number };
+
+function plannedProgressWithDuration(item: WeightedWorkItem, today: string) {
+  if (!item.plannedStart || !item.plannedEnd || today < item.plannedStart) return 0;
+  if (today >= item.plannedEnd) return 100;
+  const elapsed = Math.max(0, businessDaysInclusive(item.plannedStart, today));
+  return Math.min(100, Math.round((elapsed / item.plannedDuration) * 100));
+}
+
+function scheduleVarianceFromProgress(items: WeightedWorkItem[], actualProgress: number, today: string) {
   if (!items.length || items.some((item) => !item.plannedStart || !item.plannedEnd)) return null;
-  const totalWeight = items.reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
+  const totalWeight = items.reduce((sum, item) => sum + item.plannedDuration, 0);
   if (!totalWeight) return null;
 
   const plannedStarts = items.map((item) => item.plannedStart as string).sort();
@@ -217,7 +226,7 @@ function scheduleVarianceFromProgress(items: WorkItemLike[], actualProgress: num
   const plannedStart = plannedStarts[0];
   const plannedEnd = plannedEnds.at(-1) as string;
   const plannedProgressAt = (date: string) => Math.round(items.reduce(
-    (sum, item) => sum + workItemPlannedDuration(item) * workItemPlannedProgress(item, date),
+    (sum, item) => sum + item.plannedDuration * plannedProgressWithDuration(item, date),
     0,
   ) / totalWeight);
   const actual = Math.min(100, Math.max(0, Math.round(actualProgress)));
@@ -270,8 +279,13 @@ export function deriveRequirementMetrics(
   },
   workItems: WorkItemLike[],
   today = todayIso(),
+  highRiskDelayDays = 3,
 ) {
-  const items = workItems.map((item) => ({ ...item, derivedStatus: deriveWorkItemStatus(item) }));
+  const items = workItems.map((item) => ({
+    ...item,
+    derivedStatus: deriveWorkItemStatus(item),
+    plannedDuration: workItemPlannedDuration(item),
+  }));
   const activeItems = items.filter((item) => item.derivedStatus !== 'cancelled');
   const plannedEnds = activeItems.map((item) => item.plannedEnd).filter((value): value is string => Boolean(value));
   const derivedPlannedEnd = plannedEnds.sort().at(-1) || requirement.plannedEnd || null;
@@ -284,12 +298,12 @@ export function deriveRequirementMetrics(
   else if (activeItems.some((item) => ['in_progress', 'completed'].includes(item.derivedStatus))) status = 'in_progress';
   else status = 'not_started';
 
-  const totalWeight = activeItems.reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
+  const totalWeight = activeItems.reduce((sum, item) => sum + item.plannedDuration, 0);
   const actualWeightedProgress = activeItems.reduce(
-    (sum, item) => sum + workItemPlannedDuration(item) * workItemActualProgress(item), 0,
+    (sum, item) => sum + item.plannedDuration * workItemActualProgress(item), 0,
   );
   const plannedWeightedProgress = activeItems.reduce(
-    (sum, item) => sum + workItemPlannedDuration(item) * workItemPlannedProgress(item, today), 0,
+    (sum, item) => sum + item.plannedDuration * plannedProgressWithDuration(item, today), 0,
   );
   const progress = totalWeight ? Math.round(actualWeightedProgress / totalWeight) : 0;
   const plannedProgress = totalWeight ? Math.round(plannedWeightedProgress / totalWeight) : 0;
@@ -320,7 +334,7 @@ export function deriveRequirementMetrics(
   } else if (status === 'blocked') {
     riskLevel = 'high';
     riskReason = '存在阻塞工作项，直接判定为高风险';
-  } else if (finishVariance >= 3) {
+  } else if (finishVariance >= highRiskDelayDays) {
     riskLevel = 'high';
     riskReason = `已延期${finishVariance}个工作日，直接判定为高风险`;
   } else if (gapRiskLevel === 'high') {

@@ -138,8 +138,8 @@ export function PeopleAccessPage() {
   const [creating, setCreating] = useState(false);
   const peopleQuery = useQuery({ queryKey: ['people', 'all'], queryFn: () => api<Person[]>('/api/people') });
   const accountsQuery = useQuery({ queryKey: ['accounts'], queryFn: () => api<Account[]>('/api/accounts') });
-  const people = peopleQuery.data || [];
-  const accounts = accountsQuery.data || [];
+  const people = useMemo(() => peopleQuery.data || [], [peopleQuery.data]);
+  const accounts = useMemo(() => accountsQuery.data || [], [accountsQuery.data]);
   const builtin = accounts.find((account) => account.isBuiltin) || null;
   const accountByPerson = useMemo(() => new Map(accounts.filter((account) => account.personId).map((account) => [account.personId!, account])), [accounts]);
   const rows = useMemo<IdentityRow[]>(() => people.map((person) => ({ person, account: accountByPerson.get(person.id) || null })), [accountByPerson, people]);

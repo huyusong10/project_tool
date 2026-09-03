@@ -1,5 +1,7 @@
 import { sqlite } from './database';
-import { getPeopleConcurrency, listRequirements, recordAudit, type RequirementRecord } from './services';
+import { getPeopleConcurrency } from './services/reporting';
+import { listRequirements, type RequirementRecord } from './services/requirements';
+import { recordAudit } from './services/audit';
 import type { Actor } from './auth';
 import {
   analyticsCatalog,
@@ -15,7 +17,6 @@ import {
   type AnalyticsLayoutResponse,
   type AnalyticsPanelConfig,
   type AnalyticsPanelResult,
-  type AnalyticsQueryRequest,
   type AnalyticsQueryResponse,
   type AnalyticsRange,
 } from '../shared/analytics';
@@ -27,6 +28,7 @@ import {
   riskLabels,
   todayIso,
 } from '../shared/domain';
+import { fail } from './errors';
 
 type GenericRecord = Record<string, any>;
 type AnalyticsContext = {
@@ -47,9 +49,7 @@ function cloneDefaultLayout(): AnalyticsLayout {
 }
 
 function validationError(message: string): never {
-  const error = new Error(message) as Error & { statusCode: number };
-  error.statusCode = 400;
-  throw error;
+  fail(message);
 }
 
 function stringArray(value: unknown) {
@@ -212,12 +212,16 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
   } catch (error) { errors.progress = messageOf(error); }
   if (datasets.has('people')) {
     try {
-      const rangePeople = getPeopleConcurrency({ projectId, from: range.from, to: range.to }).people;
-      const currentById = new Map(getPeopleConcurrency({ projectId, from: todayIso(), to: todayIso() }).people
-        .map((person) => [person.id, person.currentCount]));
-      people = rangePeople.map((person) => ({
+      const today = todayIso();
+      const loadedPeople = getPeopleConcurrency({
+        projectId,
+        from: range.from < today ? range.from : today,
+        to: range.to > today ? range.to : today,
+      }).people;
+      people = loadedPeople.map((person) => ({
         ...person,
-        currentCount: currentById.get(person.id) || 0,
+        days: person.days.filter((day) => day.date >= range.from && day.date <= range.to),
+        currentCount: person.days.find((day) => day.date === today)?.count || 0,
         person: person.name,
         job_title: person.jobTitle || '岗位未设置',
       }));

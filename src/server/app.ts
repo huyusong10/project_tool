@@ -9,19 +9,16 @@ import './database';
 import { registerApiRoutes } from './routes';
 import { registerMcpRoute } from './mcp';
 import { authenticateApiToken } from './services';
+import { errorResponse } from './errors';
 
 export async function buildApp() {
   const app = Fastify({ logger: { level: config.nodeEnv === 'production' ? 'info' : 'warn' }, bodyLimit: 1024 * 1024 });
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
-  app.setErrorHandler((error, _request, reply) => {
-    const status = (error as any).statusCode && (error as any).statusCode < 500 ? (error as any).statusCode : 400;
-    reply.code(status).send({
-      error: error instanceof Error ? error.message : '请求处理失败',
-      ...((error as any).code ? { code: (error as any).code } : {}),
-      ...((error as any).details ? { details: (error as any).details } : {}),
-      ...((error as any).currentVersion ? { currentVersion: (error as any).currentVersion } : {}),
-    });
+  app.setErrorHandler((error, request, reply) => {
+    const response = errorResponse(error);
+    if (!response.known) request.log.error({ err: error }, 'Unhandled request error');
+    reply.code(response.statusCode).send(response.payload);
   });
   app.get('/health', async () => ({ status: 'ok', time: new Date().toISOString(), service: 'project-manage' }));
   registerApiRoutes(app);

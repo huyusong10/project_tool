@@ -120,6 +120,10 @@ describe('自动状态、进度和风险', () => {
     ], '2026-09-04');
     expect(high.riskLevel).toBe('high');
     expect(high.riskReason).toContain('延期3个工作日');
+    const customThreshold = deriveRequirementMetrics({ status: 'in_progress' }, [
+      { status: 'in_progress', progress: 80, plannedStart: '2026-08-28', plannedEnd: '2026-09-01', actualStart: '2026-08-28' },
+    ], '2026-09-04', 5);
+    expect(customThreshold.riskLevel).toBe('medium');
     const medium = deriveRequirementMetrics({ status: 'in_progress', priority: 'P3' }, [
       { status: 'not_started', plannedStart: '2026-09-01', plannedEnd: '2026-09-01' },
       { status: 'not_started', plannedStart: '2026-09-08', plannedEnd: '2026-09-08' },

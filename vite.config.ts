@@ -16,5 +16,23 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: 'zrender',
+              test: /node_modules[\\/]zrender[\\/]/,
+              includeDependenciesRecursively: false,
+            },
+            {
+              name: 'echarts',
+              test: /node_modules[\\/]echarts[\\/]/,
+              includeDependenciesRecursively: false,
+            },
+          ],
+        },
+      },
+    },
   },
 });

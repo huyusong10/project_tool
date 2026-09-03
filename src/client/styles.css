@@ -603,6 +603,7 @@ body { font-size: 14px; line-height: 1.55; }
 .system-account-card .account-permission-summary { min-width: 0; }.system-account-card .account-actions { justify-self: end; }
 .people-access-filters { flex-wrap: wrap; }.people-access-filters .search-box { min-width: 260px; flex: 1; }.people-access-filters select { min-width: 138px; height: 38px; padding: 0 31px 0 10px; border: 1px solid #d8e0ea; border-radius: 7px; color: #4b5b71; background: white; font: inherit; font-size: 13px; }
 .people-access-person-editor { min-width: 0; width: 100%; display: grid; gap: 1px; }.people-access-person-editor .inline-edit-trigger { min-height: 30px; height: 30px; }.people-access-person-editor .inline-edit-cell + .inline-edit-cell .inline-edit-trigger { color: #8491a3; font-size: 12px; }
+.people-access-person-editor .inline-edit-value small, .account-data-list .data-cell-secondary { font-size: 12px; }
 .account-data-account { min-width: 0; }.account-data-account .inline-edit-trigger { width: 100%; }.account-missing, .account-muted { display: inline-flex; align-items: center; gap: 5px; color: #8793a3; font-size: 12px; }.account-missing { color: #956918; }.account-status.missing { color: #8b6b2b; background: #fff4da; }
 .people-access-row { min-height: 86px; }
 .managed-projects { display: block; overflow: hidden; max-width: 330px; text-overflow: ellipsis; white-space: nowrap; }
@@ -807,4 +808,12 @@ body { font-size: 14px; line-height: 1.55; }
   color: #b45309;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.route-loading {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+  color: #68768a;
+  font-size: 14px;
 }

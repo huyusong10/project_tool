@@ -23,7 +23,7 @@ TypeScript、React、Vite、Fastify、SQLite、Drizzle 和 ECharts。默认开�
 1. 首次使用先运行 `npm install`，复制 `.env.example` 为 `.env`，再执行 `configure.ps1` 完成账号配置。
 2. 双击 `start.bat`，或运行 `npm run build` 后执行 `npm start`。
 3. 本机访问 `http://localhost:3210`；局域网其他电脑访问 `http://本机IP:3210`。
-4. 访客无需登录，只能查看；登录后的可写范围由账号角色决定。
+4. 未登录时只显示登录入口；登录后的可见与可写范围由账号角色决定。
 
 内置账号为 `admin`，密码沿用首次配置时设置的密码。安装完成后建议立即运行：
 
@@ -37,7 +37,7 @@ TypeScript、React、Vite、Fastify、SQLite、Drizzle 和 ECharts。默认开�
 
 ## MCP
 
-管理员登录后进入“系统管理”，创建Token并立即复制。MCP地址：
+登录后进入“个人设置”，创建Token并立即复制。Token自动继承当前账号的项目权限。MCP地址：
 
 ```text
 http://本机IP:3210/mcp
@@ -49,7 +49,7 @@ http://本机IP:3210/mcp
 Authorization: Bearer pm_xxx_xxx
 ```
 
-首期MCP Token仅由管理员创建并拥有完整业务权限。MCP不开放登录凭据、Token管理和数据库恢复。
+MCP不开放登录凭据、Token管理和数据库恢复。
 
 ## 使用要点
 
@@ -69,14 +69,17 @@ Authorization: Bearer pm_xxx_xxx
 - 升级使用编号迁移，不会重新初始化或覆盖现有数据库；升级前仍建议先执行在线备份
 - 现有需求的“补全计划”先显示差异，只填空缺日期，不覆盖已有计划和实际日期
 - 延期和Gap按工作日计算，默认只排除周六、周日
+- 高风险延期阈值默认3天，可通过 `HIGH_RISK_DELAY_DAYS` 调整
 
 ## 常用命令
 
 ```powershell
 npm run dev       # 前后端开发模式
 npm run build     # 类型检查并构建
+npm run lint      # 轻量代码检查
 npm test          # 单元、集成和性能测试
 npm run test:responsive # 六组常用视口的布局守护测试（使用本机 Edge）
+npm run verify    # 原生依赖、代码检查、测试与生产构建
 ```
 
 需要开机自动启动时，以当前用户运行 `install-autostart.ps1`；移除时运行 `uninstall-autostart.ps1`。

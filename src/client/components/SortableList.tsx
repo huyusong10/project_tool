@@ -58,7 +58,7 @@ function SortableItem<T>({
   const setNodeRef = useCallback((node: HTMLElement | null) => {
     draggable.setNodeRef(node);
     droppable.setNodeRef(node);
-  }, [draggable.setNodeRef, droppable.setNodeRef]);
+  }, [draggable, droppable]);
 
   return renderItem(item, index, {
     setNodeRef,

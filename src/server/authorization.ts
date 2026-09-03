@@ -2,6 +2,7 @@ import type { FastifyRequest } from 'fastify';
 import { sqlite } from './database';
 import { verifySessionToken, type AccountRole, type Actor } from './auth';
 import type { ProjectRole } from '../shared/domain';
+import { forbidden, notFound } from './errors';
 
 export type SessionActor = Actor & {
   accountId: string;
@@ -15,18 +16,6 @@ declare module 'fastify' {
   interface FastifyRequest {
     actor: SessionActor | null;
   }
-}
-
-function forbidden(message = '没有执行此操作的权限'): never {
-  const error = new Error(message) as Error & { statusCode: number };
-  error.statusCode = 403;
-  throw error;
-}
-
-function notFound(message = '资源不存在'): never {
-  const error = new Error(message) as Error & { statusCode: number };
-  error.statusCode = 404;
-  throw error;
 }
 
 export type AuthorizationActor = Pick<Actor, 'type' | 'id' | 'label'> & {

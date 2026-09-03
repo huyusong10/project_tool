@@ -2,14 +2,20 @@ import { randomUUID } from 'node:crypto';
 import { sqlite } from './database';
 import { hashPassword, normalizeUsername, verifyPassword, type Actor } from './auth';
 import { addCalendarDays, deriveWorkItemStatus, todayIso } from '../shared/domain';
+import { AppError, type AppErrorCode } from './errors';
 
 type JsonObject = Record<string, unknown>;
 const nowIso = () => new Date().toISOString();
 
 function fail(message: string, statusCode = 400): never {
-  const error = new Error(message) as Error & { statusCode: number };
-  error.statusCode = statusCode;
-  throw error;
+  const code: AppErrorCode = statusCode === 403
+    ? 'FORBIDDEN'
+    : statusCode === 404
+      ? 'NOT_FOUND'
+      : statusCode === 409
+        ? 'DEPENDENCY_CONFLICT'
+        : 'VALIDATION_ERROR';
+  throw new AppError(message, statusCode, code);
 }
 
 function audit(actor: Actor, action: string, entityId: string | null, summary: string) {

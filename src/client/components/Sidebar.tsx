@@ -7,7 +7,6 @@ import {
   BriefcaseBusiness,
   CircleAlert,
   ClipboardList,
-  ContactRound,
   FileClock,
   FolderCog,
   GanttChartSquare,

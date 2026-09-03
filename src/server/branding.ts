@@ -1,4 +1,5 @@
 import { sqlite } from './database';
+import { fail } from './errors';
 
 const BRANDING_META_KEY = 'system-branding';
 const DEFAULT_SYSTEM_NAME = '项目管理';
@@ -16,12 +17,6 @@ type BrandingRow = {
   value: string;
   updatedAt: string;
 };
-
-function fail(message: string): never {
-  const error = new Error(message) as Error & { statusCode: number };
-  error.statusCode = 400;
-  throw error;
-}
 
 function characterCount(value: string) {
   return [...value].length;

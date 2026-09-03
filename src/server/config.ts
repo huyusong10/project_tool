@@ -7,6 +7,11 @@ dotenv.config({ quiet: true });
 
 const rootDir = process.cwd();
 
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 function readAppVersion() {
   try {
     const packageJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')) as { version?: unknown };
@@ -23,12 +28,11 @@ export const config = {
   port: Number(process.env.PORT || 3210),
   dbPath: path.resolve(rootDir, process.env.DB_PATH || './data/project-manage.db'),
   backupDir: path.resolve(rootDir, process.env.BACKUP_DIR || './data/backups'),
-  appUsername: process.env.APP_USERNAME || 'admin',
   appPasswordHash: process.env.APP_PASSWORD_HASH || '',
   sessionSecret: process.env.SESSION_SECRET || '',
   sessionHours: Number(process.env.SESSION_HOURS || 12),
-  highRiskDelayDays: Number(process.env.HIGH_RISK_DELAY_DAYS || 3),
-  backupRetentionDays: Number(process.env.BACKUP_RETENTION_DAYS || 30),
+  highRiskDelayDays: positiveInteger(process.env.HIGH_RISK_DELAY_DAYS, 3),
+  backupRetentionDays: positiveInteger(process.env.BACKUP_RETENTION_DAYS, 30),
   backupMaxCount: Math.max(1, Math.floor(Number(process.env.BACKUP_MAX_COUNT || 100) || 100)),
   seedDemo: process.env.SEED_DEMO !== '0',
   nodeEnv: process.env.NODE_ENV || 'development',
