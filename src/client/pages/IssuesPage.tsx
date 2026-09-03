@@ -11,9 +11,7 @@ import {
   PauseCircle,
   Plus,
   Search,
-  Save,
   Settings,
-  Trash2,
   UserRound,
 } from "lucide-react";
 import { api, jsonBody } from "../api";
@@ -23,7 +21,7 @@ import { issueStatusLabels, priorityLabels, todayIso } from "../../shared/domain
 import { EmptyState, Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { ProgressInput } from "../components/ProgressInput";
-import { AnchoredPopover, InlineDateCell, InlineSelectCell, InlineTextCell } from "../components/InlineEdit";
+import { InlineDateCell, InlineSelectCell, InlineTextCell } from "../components/InlineEdit";
 import { canManageProject } from "../permissions";
 import { issueStatusOptions, priorityOptions } from "../ui-options";
 
@@ -134,12 +132,10 @@ function IssueForm({
   onClose: () => void;
 }) {
   const client = useQueryClient();
-  const [status, setStatus] = useState(issue?.status || "open");
   const [dueDate, setDueDate] = useState(issue?.status === "deferred" ? "" : issue?.dueDate || "");
   const [requirementId, setRequirementId] = useState(issue?.requirementId || "");
   const [ownerId, setOwnerId] = useState(issue?.ownerId || "");
   const [reporter, setReporter] = useState(issue?.reporter || defaultReporter || "");
-  const [validationError, setValidationError] = useState("");
   const requirementOptions: SearchSelectOption[] = [
     { value: "", label: "公共问题", description: "不绑定具体需求" },
     ...requirements.map((requirement) => ({ value: requirement.id, label: requirement.title })),
@@ -169,37 +165,35 @@ function IssueForm({
   });
   return <form className="form-grid issue-form" onSubmit={(event) => {
     event.preventDefault();
-    if (canManage && status === "in_progress" && !ownerId) {
-      setValidationError("进入处理中前必须选择负责人");
-      return;
-    }
-    setValidationError("");
     const data = Object.fromEntries(new FormData(event.currentTarget));
-    mutation.mutate({ ...data, projectId, status: canManage ? status : "open", ownerId: canManage ? ownerId : "" });
+    mutation.mutate({
+      ...data,
+      projectId,
+      ...(issue ? { expectedVersion: issue.version, ownerId: canManage ? ownerId : issue.ownerId } : { ownerId: null }),
+    });
   }}>
     <label className="field field-full"><span>问题标题</span><input name="title" required autoFocus defaultValue={issue?.title || ""} placeholder="用一句话说明要跟踪的问题" /></label>
     <label className="field field-full"><span>问题影响</span><textarea name="impact" rows={3} defaultValue={issue?.impact || ""} placeholder="可选：说明影响范围、风险或被阻塞的工作" /></label>
     {!canManage && <p className="issue-contributor-note field-full">提交后问题进入“待处理”，由项目经理分配负责人并确认关闭。</p>}
     <SearchSelectField label="关联需求" name="requirementId" value={requirementId} options={requirementOptions} onChange={setRequirementId} pinnedValues={[""]} searchPlaceholder="搜索需求编号或名称" helper="默认展示最多20项，输入关键字可快速筛选" />
     <label className="field"><span>范围标识</span><input name="sourceRef" defaultValue={issue?.sourceRef || ""} placeholder="可选，如 DCIM-36" /></label>
-    {canManage && (issue?.status === "resolved" ? <div className="field issue-readonly-field"><span>状态</span><div><span className="issue-status issue-status-resolved">已解决</span></div><small>如需重新打开，请在“进展记录”中修正最新进度</small></div> : <label className="field"><span>状态</span><select name="status" value={status} onChange={(event) => { const nextStatus = event.target.value; setStatus(nextStatus); if (nextStatus === "deferred") setDueDate(""); }}>{statusEntries.filter(([value]) => value !== "resolved").map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select><small>问题闭环统一在“进展记录”中确认</small></label>)}
+    {issue && <div className="field issue-readonly-field"><span>当前状态</span><div><span className={`issue-status issue-status-${issue.status}`}>{issueStatusLabels[issue.status as keyof typeof issueStatusLabels]}</span></div><small>状态通过开始、暂缓、解决或重开操作变更</small></div>}
     <label className="field"><span>优先级</span><select name="priority" defaultValue={issue?.priority || "P2"}>{priorityEntries.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-    {canManage && <SearchSelectField label="负责人" name="ownerId" value={ownerId} options={ownerOptions} onChange={setOwnerId} pinnedValues={[""]} searchPlaceholder="搜索负责人姓名" />}
+    {canManage && issue && issue.status !== "resolved" && <SearchSelectField label="负责人" name="ownerId" value={ownerId} options={ownerOptions} onChange={setOwnerId} pinnedValues={[""]} searchPlaceholder="搜索负责人姓名" />}
     <SearchSelectField label="提出人" name="reporter" value={reporter} options={reporterOptions} onChange={setReporter} pinnedValues={[""]} searchPlaceholder="搜索项目成员" helper={issue?.reporter && !people.some((person) => person.name === issue.reporter) ? "当前值为历史自由文本，重新选择后将使用项目成员姓名" : undefined} />
     <label className="field"><span>发现日期</span><input name="discoveredAt" type="date" required defaultValue={issue?.discoveredAt || todayIso()} /></label>
-    <label className="field"><span>目标日期</span><input name="dueDate" type="date" value={dueDate} disabled={status === "deferred"} onChange={(event) => setDueDate(event.target.value)} />{status === "deferred" && <small>暂缓问题不设置目标日期</small>}</label>
-    {validationError && <p className="form-error field-full">{validationError}</p>}
+    <label className="field"><span>目标日期</span><input name="dueDate" type="date" value={dueDate} disabled={issue?.status === "deferred"} onChange={(event) => setDueDate(event.target.value)} />{issue?.status === "deferred" && <small>暂缓问题不设置目标日期</small>}</label>
     {mutation.error && <p className="form-error field-full">{mutation.error.message}</p>}
     <div className="form-actions field-full"><button type="button" className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" disabled={mutation.isPending}>{issue ? "保存修改" : "创建问题"}</button></div>
   </form>;
 }
 
-function IssueUpdateForm({ issue, canSetProgress, canResolve }: { issue: Issue; canSetProgress: boolean; canResolve: boolean }) {
+function IssueUpdateForm({ issue, canSetProgress }: { issue: Issue; canSetProgress: boolean }) {
   const client = useQueryClient();
   const [progress, setProgress] = useState(issue.progress);
   useEffect(() => setProgress(issue.progress), [issue.progress]);
   const mutation = useMutation({
-    mutationFn: (value: { content: string; progress?: number }) => api<Issue>(`/api/issues/${issue.id}/updates`, { method: "POST", body: jsonBody(value) }),
+    mutationFn: (value: { content: string; progress?: number; expectedVersion?: number }) => api<Issue>(`/api/issues/${issue.id}/updates`, { method: "POST", body: jsonBody(value) }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["issue", issue.id] });
       void client.invalidateQueries({ queryKey: ["issues"] });
@@ -210,12 +204,48 @@ function IssueUpdateForm({ issue, canSetProgress, canResolve }: { issue: Issue; 
     event.preventDefault();
     const form = event.currentTarget;
     const content = String(new FormData(form).get("content") || "");
-    mutation.mutate(canSetProgress ? { content, progress } : { content }, { onSuccess: () => form.reset() });
+    mutation.mutate(canSetProgress ? { content, progress, expectedVersion: issue.version } : { content }, { onSuccess: () => form.reset() });
   }}>
-    {canSetProgress && <ProgressInput value={progress} onChange={setProgress} max={canResolve ? 100 : 99} label="本次进度（更新后）" />}
+    {canSetProgress && <ProgressInput value={progress} onChange={setProgress} max={99} label="本次进度（更新后）" />}
     <textarea name="content" rows={3} required placeholder="记录新进展、决策或待办结果" />
-    <div><span>{mutation.error?.message}</span><button className="primary-button" disabled={mutation.isPending}>{canResolve && progress === 100 ? "确认闭环" : "追加进展"}</button></div>
+    <div><span>{mutation.error?.message}</span><button className="primary-button" disabled={mutation.isPending}>追加进展</button></div>
   </form>;
+}
+
+const issueEventLabels: Record<string, string> = {
+  note: "说明", progress: "进度", start: "开始", defer: "暂缓", resume: "恢复",
+  resolve: "解决", reopen: "重开", correction: "纠错", migration: "迁移",
+};
+
+function IssueStateActions({ issue, canManage, canStart, compact = false }: { issue: Issue; canManage: boolean; canStart: boolean; compact?: boolean }) {
+  const client = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ action, content, reason }: { action: string; content?: string; reason?: string }) => api<Issue>(`/api/issues/${issue.id}/${action}`, {
+      method: "POST", body: jsonBody({ expectedVersion: issue.version, content, reason }),
+    }),
+    onSuccess: (saved) => {
+      client.setQueryData(["issue", issue.id], saved);
+      void client.invalidateQueries({ queryKey: ["issues"] });
+      void client.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+  const runReason = (action: string, promptText: string) => {
+    const reason = prompt(promptText);
+    if (reason?.trim()) mutation.mutate({ action, reason: reason.trim() });
+  };
+  const runContent = (action: string, promptText: string) => {
+    const content = prompt(promptText);
+    if (content?.trim()) mutation.mutate({ action, content: content.trim() });
+  };
+  return <div className={`issue-state-actions${compact ? " is-compact" : ""}`}>
+    <span className={`issue-status issue-status-${issue.status}`}>{issueStatusLabels[issue.status as keyof typeof issueStatusLabels] || issue.status}</span>
+    {issue.status === "open" && canStart && <button type="button" disabled={mutation.isPending || !issue.ownerId} title={!issue.ownerId ? "请先分配负责人" : undefined} onClick={() => mutation.mutate({ action: "start" })}>开始</button>}
+    {canManage && ["open", "in_progress"].includes(issue.status) && <button type="button" disabled={mutation.isPending} onClick={() => runReason("defer", "请填写暂缓原因")}>暂缓</button>}
+    {canManage && issue.status === "in_progress" && <button type="button" disabled={mutation.isPending} onClick={() => runContent("resolve", "请填写闭环说明")}>解决</button>}
+    {canManage && issue.status === "deferred" && <button type="button" disabled={mutation.isPending} onClick={() => runReason("resume", "请填写恢复原因")}>恢复</button>}
+    {canManage && issue.status === "resolved" && <button type="button" disabled={mutation.isPending} onClick={() => runReason("reopen", "请填写重开原因")}>重开</button>}
+    {mutation.error && <small className="form-error">{mutation.error.message}</small>}
+  </div>;
 }
 
 function IssueProgressView({
@@ -231,11 +261,12 @@ function IssueProgressView({
 }) {
   const { data: issue, isLoading } = useQuery({ queryKey: ["issue", issueId], queryFn: () => api<Issue>(`/api/issues/${issueId}`) });
   if (isLoading || !issue) return <div className="issue-detail-loading">正在加载问题进展…</div>;
-  const canSetProgress = canEdit || Boolean(personId && issue.ownerId === personId);
+  const canOwnIssue = canEdit || Boolean(personId && issue.ownerId === personId);
+  const canSetProgress = canOwnIssue && issue.status === "in_progress";
   return <div className="issue-progress-view">
     <header className="issue-progress-view-header">
       <div>
-        <div className="issue-detail-badges"><span className={`issue-status issue-status-${issue.status}`}>{issueStatusLabels[issue.status as keyof typeof issueStatusLabels] || issue.status}</span><span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>{issue.overdue && <span className="issue-overdue-badge">已逾期</span>}</div>
+        <div className="issue-detail-badges"><IssueStateActions issue={issue} canManage={canEdit} canStart={canOwnIssue} compact /><span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>{issue.overdue && <span className="issue-overdue-badge">已逾期</span>}</div>
         <h3>{issue.title}</h3>
         <p>{issueScope(issue)} · {issue.updates?.length || 0} 条进展</p>
       </div>
@@ -243,47 +274,21 @@ function IssueProgressView({
     </header>
     <section className="issue-progress-section">
       <div className="issue-timeline">
-        {issue.updates?.map((update) => <article key={update.id}><span className="issue-timeline-dot" /><div><time>{new Date(update.createdAt).toLocaleString("zh-CN")}{update.createdByName ? ` · ${update.createdByName}` : ""}</time><p>{update.content}</p></div>{update.progress !== null && <strong className="issue-update-progress">{update.progress}%</strong>}</article>)}
+        {issue.updates?.map((update) => <article key={update.id}><span className="issue-timeline-dot" /><div><time><b className={`history-event history-event-${update.eventType}`}>{issueEventLabels[update.eventType] || update.eventType}</b>{new Date(update.createdAt).toLocaleString("zh-CN")}{update.createdByName ? ` · ${update.createdByName}` : ""}</time><p>{update.content}</p></div>{update.progress !== null && <strong className="issue-update-progress">{update.progress}%</strong>}</article>)}
         {!issue.updates?.length && <EmptyState title="还没有进展" detail="追加第一条进展后，会在这里按时间展示。" />}
       </div>
-      {canContribute && issue.status !== "resolved" && <IssueUpdateForm issue={issue} canSetProgress={canSetProgress} canResolve={canEdit} />}
+      {canContribute && issue.status !== "resolved" && <IssueUpdateForm issue={issue} canSetProgress={canSetProgress} />}
     </section>
   </div>;
 }
 
-function IssueUpdateSettingRow({ issueId, update }: { issueId: string; update: IssueUpdate }) {
-  const client = useQueryClient();
-  const [content, setContent] = useState(update.content);
-  const [progress, setProgress] = useState<number | null>(update.progress);
-  useEffect(() => { setContent(update.content); setProgress(update.progress); }, [update.content, update.progress]);
-  const refresh = (saved: Issue) => {
-    client.setQueryData(["issue", issueId], saved);
-    void client.invalidateQueries({ queryKey: ["issues"] });
-    void client.invalidateQueries({ queryKey: ["dashboard"] });
-  };
-  const save = useMutation({
-    mutationFn: () => api<Issue>(`/api/issues/${issueId}/updates/${update.id}`, {
-      method: "PATCH",
-      body: jsonBody({ content, progress }),
-    }),
-    onSuccess: refresh,
-  });
-  const remove = useMutation({
-    mutationFn: () => api<Issue>(`/api/issues/${issueId}/updates/${update.id}`, { method: "DELETE" }),
-    onSuccess: refresh,
-  });
-  const dirty = content.trim() !== update.content || progress !== update.progress;
+function IssueUpdateSettingRow({ update }: { update: IssueUpdate }) {
   return <article className="issue-update-setting-row">
-    <header><time>{new Date(update.createdAt).toLocaleString("zh-CN")}</time><span>{update.createdByName || "系统记录"}</span></header>
-    <textarea value={content} rows={2} aria-label={`编辑${new Date(update.createdAt).toLocaleString("zh-CN")}的问题进展`} onChange={(event) => setContent(event.target.value)} />
+    <header><time>{new Date(update.createdAt).toLocaleString("zh-CN")}</time><span><b className={`history-event history-event-${update.eventType}`}>{issueEventLabels[update.eventType] || update.eventType}</b>{update.createdByName || "系统记录"}</span></header>
+    <p>{update.content}</p>
     <div className="issue-update-setting-footer">
-      <label><span>记录进度</span><input type="number" min="0" max="100" value={progress ?? ""} placeholder="未记录" onChange={(event) => setProgress(event.target.value === "" ? null : Math.max(0, Math.min(100, Number(event.target.value))))} /><em>%</em></label>
-      <div>
-        <button type="button" className="ghost-button" disabled={!dirty || !content.trim() || save.isPending} onClick={() => save.mutate()}><Save size={14} />保存</button>
-        <button type="button" className="ghost-button danger" disabled={remove.isPending} onClick={() => confirm("确认删除这条问题进展？") && remove.mutate()}><Trash2 size={14} />删除</button>
-      </div>
+      <span>{update.progress === null ? "仅说明" : `记录进度 ${update.progress}%`}</span>
     </div>
-    {(save.error || remove.error) && <p className="form-error">{(save.error || remove.error)?.message}</p>}
   </article>;
 }
 
@@ -308,84 +313,31 @@ function IssueSettings({
   return <div className="issue-settings-shell">
     <header className="issue-settings-summary">
       <div>
-        <div className="issue-detail-badges"><span className={`issue-status issue-status-${issue.status}`}>{issueStatusLabels[issue.status as keyof typeof issueStatusLabels] || issue.status}</span><span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>{issue.overdue && <span className="issue-overdue-badge">已逾期</span>}</div>
+        <div className="issue-detail-badges"><IssueStateActions issue={issue} canManage canStart compact /><span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>{issue.overdue && <span className="issue-overdue-badge">已逾期</span>}</div>
         <h3>{issue.title}</h3>
         <p>{issueScope(issue)} · {issue.ownerName || "未分配负责人"}</p>
       </div>
-      <div className="issue-settings-current-progress"><span>当前进度</span><div><i><b style={{ width: `${issue.progress}%` }} /></i><strong>{issue.progress}%</strong></div><small>由最新一条进展记录自动得出</small></div>
+      <div className="issue-settings-current-progress"><span>当前进度</span><div><i><b style={{ width: `${issue.progress}%` }} /></i><strong>{issue.progress}%</strong></div><small>由状态命令与追加进展共同维护</small></div>
     </header>
     <nav className="issue-settings-tabs" role="tablist" aria-label="问题设置内容">
       <button type="button" role="tab" aria-selected={tab === "basic"} className={tab === "basic" ? "active" : ""} onClick={() => setTab("basic")}>基本设置</button>
       <button type="button" role="tab" aria-selected={tab === "updates"} className={tab === "updates" ? "active" : ""} onClick={() => setTab("updates")}>进展记录 <span>{issue.updates?.length || 0}</span></button>
     </nav>
     {tab === "basic" ? <section className="issue-settings-panel issue-settings-basic" role="tabpanel">
-      <IssueForm issue={issue} projectId={projectId} people={people} requirements={requirements} canManage defaultReporter={defaultReporter} onClose={onClose} />
+      {issue.status === "resolved"
+        ? <div className="terminal-lock-note"><CheckCircle2 size={18} /><div><strong>问题已解决，当前数据已锁定</strong><p>如需继续处理，请先使用上方“重开”；日期或描述纠错会以新事件保留原因。</p></div></div>
+        : <IssueForm issue={issue} projectId={projectId} people={people} requirements={requirements} canManage defaultReporter={defaultReporter} onClose={onClose} />}
     </section> : <section className="issue-settings-panel issue-settings-updates" role="tabpanel">
       <div className="issue-settings-progress-entry">
-        <header><div><h3>追加进展</h3><p>进度和说明会作为同一条记录保存；100% 仅由项目经理确认闭环</p></div></header>
-        {issue.status === "resolved" ? <p className="issue-settings-resolved-note"><CheckCircle2 size={17} />问题已闭环。如需重新打开，请在下方修正最新一条进展的进度。</p> : <IssueUpdateForm issue={issue} canSetProgress canResolve />}
+        <header><div><h3>追加进展</h3><p>普通进展最高99%；100%仅由“解决问题”操作产生</p></div></header>
+        {issue.status === "resolved" ? <p className="issue-settings-resolved-note"><CheckCircle2 size={17} />问题已闭环并锁定。如需继续处理，请先执行“重开”。</p> : <IssueUpdateForm issue={issue} canSetProgress={issue.status === "in_progress"} />}
       </div>
       <div className="issue-update-settings">
-        <header><div><h3>历史进展</h3><p>{issue.updates?.length || 0} 条记录 · 修改最新进度记录会同步问题当前进度</p></div></header>
-        <div className="issue-update-settings-list">{issue.updates?.map((update) => <IssueUpdateSettingRow issueId={issue.id} update={update} key={update.id} />)}</div>
+        <header><div><h3>历史进展</h3><p>{issue.updates?.length || 0} 条只读记录；纠错会新增记录，不覆盖历史</p></div></header>
+        <div className="issue-update-settings-list">{issue.updates?.map((update) => <IssueUpdateSettingRow update={update} key={update.id} />)}</div>
         {!issue.updates?.length && <EmptyState title="暂无进展记录" detail="在上方填写进度与说明，创建第一条记录。" />}
       </div>
     </section>}
-  </div>;
-}
-
-function IssueStatusCell({ issue, people, onSave }: { issue: Issue; people: Person[]; onSave: (input: Record<string, unknown>) => Promise<unknown> }) {
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  const [nextStatus, setNextStatus] = useState(issue.status);
-  const [ownerId, setOwnerId] = useState(issue.ownerId || "");
-  const [note, setNote] = useState("");
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-  const needsOwner = nextStatus === "in_progress" && !ownerId;
-  const needsNote = nextStatus === "resolved" && issue.status !== "resolved";
-
-  useEffect(() => {
-    if (!open) return;
-    setNextStatus(issue.status);
-    setOwnerId(issue.ownerId || "");
-    setNote("");
-    setError("");
-  }, [issue.ownerId, issue.status, open]);
-
-  const submit = async () => {
-    if (needsOwner || needsNote && !note.trim()) return;
-    setPending(true);
-    setError("");
-    try {
-      await onSave({
-        status: nextStatus,
-        ...(nextStatus === "in_progress" ? { ownerId } : {}),
-        ...(needsNote ? { updateContent: note.trim() } : {}),
-      });
-      setOpen(false);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "保存失败，请重试");
-    } finally {
-      setPending(false);
-    }
-  };
-
-  return <div className="inline-edit-cell issue-status-editor" ref={anchorRef} onClick={(event) => event.stopPropagation()}>
-    <button className="inline-edit-trigger" type="button" aria-expanded={open} onClick={() => setOpen(true)}>
-      <span className={`issue-status issue-status-${issue.status}`}>{issueStatusLabels[issue.status as keyof typeof issueStatusLabels] || issue.status}</span>
-    </button>
-    <AnchoredPopover anchorRef={anchorRef} open={open} onOutside={() => setOpen(false)} width={380}>
-      <div className="inline-action-form issue-status-popover">
-        <header><strong>调整问题状态</strong></header>
-        <label><span>状态</span><select autoFocus value={nextStatus} onChange={(event) => setNextStatus(event.target.value)}>{statusEntries.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        {nextStatus === "in_progress" && <label><span>负责人</span><select value={ownerId} onChange={(event) => setOwnerId(event.target.value)}><option value="">请选择负责人</option>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select>{needsOwner && <small className="danger-text">进入处理中前必须指定负责人</small>}</label>}
-        {needsNote && <label><span>闭环说明</span><textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="填写最终结论或处理结果" /></label>}
-        {nextStatus === "deferred" && <p className="inline-action-hint">保存后将清除目标日期。</p>}
-        {error && <p className="form-error">{error}</p>}
-        <footer><button type="button" className="ghost-button" onClick={() => setOpen(false)}>取消</button><button type="button" className="primary-button" disabled={pending || needsOwner || needsNote && !note.trim()} onClick={() => void submit()}>{needsNote ? "确认闭环" : "保存状态"}</button></footer>
-      </div>
-    </AnchoredPopover>
   </div>;
 }
 
@@ -454,8 +406,6 @@ export function IssuesPage() {
       optimistic.requirementId = typeof input.requirementId === "string" && input.requirementId ? input.requirementId : null;
       optimistic.requirementTitle = requirements.find((requirement) => requirement.id === optimistic.requirementId)?.title || null;
     }
-    if (input.status === "deferred") optimistic.dueDate = null;
-    if (input.status === "resolved") optimistic.progress = 100;
     const apply = (current: IssuePage | undefined) => current ? {
       ...current,
       items: current.items.map((entry) => entry.id === issue.id ? optimistic : entry),
@@ -463,7 +413,7 @@ export function IssuesPage() {
     client.setQueriesData<IssuePage>({ queryKey: ["issues", selectedProjectId] }, apply);
     client.setQueryData<Issue>(["issue", issue.id], optimistic);
     try {
-      const saved = await api<Issue>(`/api/issues/${issue.id}`, { method: "PATCH", body: jsonBody(input) });
+      const saved = await api<Issue>(`/api/issues/${issue.id}`, { method: "PATCH", body: jsonBody({ ...input, expectedVersion: issue.version }) });
       client.setQueriesData<IssuePage>({ queryKey: ["issues", selectedProjectId] }, (current) => current ? {
         ...current,
         items: current.items.map((entry) => entry.id === saved.id ? saved : entry),
@@ -521,13 +471,13 @@ export function IssuesPage() {
       <section className="table-panel issue-table-panel">
         <table className="issue-table"><thead><tr><th>问题</th><th>范围</th><th>状态</th><th>进度</th><th>优先级</th><th>负责人</th><th>目标日期</th><th>最近进展</th><th>操作</th></tr></thead>
           <tbody>{data?.items.map((issue) => <tr className={issue.overdue ? "is-overdue" : undefined} key={issue.id}>
-            <td>{canEdit ? <InlineTextCell value={issue.title} label="问题标题" required displayMode="stacked" onSave={(title) => saveIssue(issue, { title })} renderValue={(title) => <><strong>{title}</strong><small>{issue.impact || "暂无影响说明"}</small></>} /> : <><strong>{issue.title}</strong><small>{issue.impact || "暂无影响说明"}</small></>}</td>
-            <td>{canEdit ? <InlineSelectCell value={issue.requirementId} label="关联需求" options={[{ value: "", label: issue.sourceRef ? `公共问题 · ${issue.sourceRef}` : "公共问题" }, ...requirements.map((requirement) => ({ value: requirement.id, label: requirement.title }))]} onSave={(requirementId) => saveIssue(issue, { requirementId: requirementId || null })} placeholder="公共问题" renderValue={() => <span className="issue-scope" title={issueScope(issue)}>{issueScope(issue)}</span>} /> : <span className="issue-scope" title={issueScope(issue)}>{issueScope(issue)}</span>}</td>
-            <td>{canEdit ? <IssueStatusCell issue={issue} people={people} onSave={(input) => saveIssue(issue, input)} /> : <span className={`issue-status issue-status-${issue.status}`}>{issueStatusLabels[issue.status as keyof typeof issueStatusLabels] || issue.status}</span>}</td>
+            <td>{canEdit && issue.status !== "resolved" ? <InlineTextCell value={issue.title} label="问题标题" required displayMode="stacked" onSave={(title) => saveIssue(issue, { title })} renderValue={(title) => <><strong>{title}</strong><small>{issue.impact || "暂无影响说明"}</small></>} /> : <><strong>{issue.title}</strong><small>{issue.impact || "暂无影响说明"}</small></>}</td>
+            <td>{canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.requirementId} label="关联需求" options={[{ value: "", label: issue.sourceRef ? `公共问题 · ${issue.sourceRef}` : "公共问题" }, ...requirements.map((requirement) => ({ value: requirement.id, label: requirement.title }))]} onSave={(requirementId) => saveIssue(issue, { requirementId: requirementId || null })} placeholder="公共问题" renderValue={() => <span className="issue-scope" title={issueScope(issue)}>{issueScope(issue)}</span>} /> : <span className="issue-scope" title={issueScope(issue)}>{issueScope(issue)}</span>}</td>
+            <td><IssueStateActions issue={issue} canManage={canEdit} canStart={canEdit} compact /></td>
             <td><span className="issue-table-progress"><i><b style={{ width: `${issue.progress}%` }} /></i>{issue.progress}%</span></td>
-            <td>{canEdit ? <InlineSelectCell value={issue.priority} label="问题优先级" options={priorityOptions} displayMode="badge" onSave={(priority) => saveIssue(issue, { priority })} renderValue={(value) => <span className={`priority-badge priority-${value.toLowerCase()}`}>{priorityLabels[value as keyof typeof priorityLabels] || value}</span>} /> : <span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>}</td>
-            <td>{canEdit ? <InlineSelectCell value={issue.ownerId} label="问题负责人" options={[{ value: "", label: "未分配" }, ...people.map((person) => ({ value: person.id, label: person.name }))]} onSave={(ownerId) => saveIssue(issue, { ownerId: ownerId || null })} placeholder="未分配" renderValue={(_value, selected) => selected?.value ? selected.label : <span className="muted-text">未分配</span>} /> : issue.ownerName || <span className="muted-text">未分配</span>}</td>
-            <td className={issue.overdue ? "danger-text" : ""}>{canEdit && issue.status !== "deferred" ? <InlineDateCell value={issue.dueDate} label="目标日期" onSave={(dueDate) => saveIssue(issue, { dueDate })} /> : <>{issue.status === "deferred" ? "暂缓 · 无日期" : issue.dueDate || "未设置"}</>}{issue.overdue && <small>已逾期</small>}</td>
+            <td>{canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.priority} label="问题优先级" options={priorityOptions} displayMode="badge" onSave={(priority) => saveIssue(issue, { priority })} renderValue={(value) => <span className={`priority-badge priority-${value.toLowerCase()}`}>{priorityLabels[value as keyof typeof priorityLabels] || value}</span>} /> : <span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>}</td>
+            <td>{canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.ownerId} label="问题负责人" options={[{ value: "", label: "未分配" }, ...people.map((person) => ({ value: person.id, label: person.name }))]} onSave={(ownerId) => saveIssue(issue, { ownerId: ownerId || null })} placeholder="未分配" renderValue={(_value, selected) => selected?.value ? selected.label : <span className="muted-text">未分配</span>} /> : issue.ownerName || <span className="muted-text">未分配</span>}</td>
+            <td className={issue.overdue ? "danger-text" : ""}>{canEdit && !["deferred", "resolved"].includes(issue.status) ? <InlineDateCell value={issue.dueDate} label="目标日期" onSave={(dueDate) => saveIssue(issue, { dueDate })} /> : <>{issue.status === "deferred" ? "暂缓 · 无日期" : issue.dueDate || "未设置"}</>}{issue.overdue && <small>已逾期</small>}</td>
             <td><button type="button" className="issue-latest-update-button" onClick={() => openIssue(issue.id)}><span className="issue-latest-update" title={issue.latestUpdate || undefined}>{issue.latestUpdate || "暂无进展"}</span><small>{issue.latestUpdateAt ? shortDateTime(issue.latestUpdateAt) : "查看进展"}</small></button></td>
             <td>{canEdit ? <button type="button" className="issue-settings-button" onClick={() => setSettingsIssueId(issue.id)}><Settings size={14} />设置</button> : <span className="muted-text">—</span>}</td>
           </tr>)}</tbody>

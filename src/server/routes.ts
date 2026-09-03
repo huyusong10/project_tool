@@ -12,14 +12,15 @@ import {
   resetAccountPassword, updateAccount,
 } from './accounts';
 import {
-  addIssueUpdate, addProgress, addProjectPerson, applyRequirementPlan, applyTemplate, archivePerson, archiveProject, archiveRequirement, archiveTemplate,
-  blockWorkItem, cancelWorkItem, completeWorkItem, copyTemplate, createPerson, createProject, createRequirement, createTemplate,
+  acceptRequirement, addIssueUpdate, addProgress, addProjectPerson, applyRequirementPlan, applyTemplate, archivePerson, archiveProject, archiveRequirement, archiveTemplate,
+  blockWorkItem, cancelRequirement, cancelWorkItem, completeWorkItem, copyTemplate, correctIssue, correctWorkItem, createPerson, createProject, createRequirement, createTemplate,
   createIssue, createWorkItem, deleteIssueUpdate, deleteProgress, deleteWorkItem, getDashboard, getIssue, getPeopleConcurrency, getRequirement, issueToken,
   listArchives, listAudit, listIssues, listPeople, listPeopleCandidates, listProjects, listRequirements, listTemplates, listTokens, previewRequirementPlan,
-  permanentlyDeleteArchive, recordAudit, removeProjectPerson, reorderWorkItems, restorePerson, restoreProject, restoreRequirement, restoreTemplate, revokeToken, searchAudit, startWorkItem,
-  unblockWorkItem, updateIssue, updateIssueUpdate, updatePerson, updateProgress, updateProject, updateRequirement, updateTemplate, updateWorkItem,
+  permanentlyDeleteArchive, recordAudit, removeProjectPerson, reorderWorkItems, reopenIssue, reopenWorkItem, reselectRequirementTemplate, rescheduleRequirement, resolveIssue, restorePerson, restoreProject, restoreRequirement, restoreTemplate, resumeIssue, revokeToken, searchAudit, startIssue, startWorkItem,
+  deferIssue, unblockWorkItem, updateIssue, updateIssueUpdate, updatePerson, updateProgress, updateProject, updateRequirement, updateTemplate, updateWorkItem,
 } from './services';
 import { createBackup, deleteBackup, listBackups, scheduleRestore } from './backups';
+import { checkDatabaseIntegrity, getSystemOverview } from './system';
 import {
   getAnalyticsCatalog, getAnalyticsLayout, queryAnalytics, resetAnalyticsLayout, saveAnalyticsLayout,
 } from './analytics';
@@ -133,9 +134,25 @@ export function registerApiRoutes(app: FastifyInstance) {
     const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
     return updateRequirement(id, body(request), actor);
   });
+  app.post('/api/requirements/:id/accept', { preHandler: requireReady }, async (request) => {
+    const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
+    return acceptRequirement(id, body(request), actor);
+  });
+  app.post('/api/requirements/:id/cancel', { preHandler: requireReady }, async (request) => {
+    const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
+    return cancelRequirement(id, body(request), actor);
+  });
+  app.post('/api/requirements/:id/reschedule', { preHandler: requireReady }, async (request) => {
+    const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
+    return rescheduleRequirement(id, body(request), actor);
+  });
+  app.post('/api/requirements/:id/reselect-template', { preHandler: requireReady }, async (request) => {
+    const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
+    return reselectRequirementTemplate(id, body(request), actor);
+  });
   app.delete('/api/requirements/:id', { preHandler: requireReady }, async (request) => {
     const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
-    return archiveRequirement(id, actor);
+    return archiveRequirement(id, body(request), actor);
   });
   app.post('/api/requirements/:id/restore', { preHandler: requireReady }, async (request) => {
     const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
@@ -143,7 +160,7 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
   app.post('/api/requirements/:id/apply-template', { preHandler: requireReady }, async (request) => {
     const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
-    return applyTemplate(id, String(body(request).templateId), actor);
+    return applyTemplate(id, body(request), actor);
   });
   app.post('/api/requirements/:id/plan-preview', { preHandler: requireReady }, async (request) => {
     const id = (request.params as any).id; assertProjectResourceManager(actorFromRequest(request), projectIdForRequirement(id), '需求不存在');
@@ -159,7 +176,7 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
   app.post('/api/requirements/:id/reorder-work-items', { preHandler: requireReady }, async (request) => {
     const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
-    return reorderWorkItems(id, body(request).ids as string[], actor);
+    const input = body(request); return reorderWorkItems(id, input.ids as string[], actor, input);
   });
   app.post('/api/requirements/:id/progress', { preHandler: requireReady }, async (request) => {
     const id = (request.params as any).id; const input = body(request); const actor = actorFromRequest(request);
@@ -170,18 +187,14 @@ export function registerApiRoutes(app: FastifyInstance) {
   app.patch('/api/work-items/:id', { preHandler: requireReady }, async (request) => {
     const id = (request.params as any).id; const input = body(request); const actor = actorFromRequest(request);
     assertProjectResourceReadable(actor, projectIdForWorkItem(id), '工作项不存在');
-    if (!canManageProject(actor, projectIdForWorkItem(id))) {
-      assertWorkItemParticipantOrManager(actor, id);
-      const forbiddenKeys = Object.keys(input).filter((key) => !['actualStart', 'actualEnd'].includes(key));
-      if (forbiddenKeys.length) { const error = new Error('普通用户只能修正自己工作项的实际日期') as Error & { statusCode: number }; error.statusCode = 403; throw error; }
-    }
+    assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在');
     return updateWorkItem(id, input, actor);
   });
   for (const [action, handler] of [
-    ['start', (id: string, _input: any, actor: any) => startWorkItem(id, actor)],
-    ['complete', (id: string, _input: any, actor: any) => completeWorkItem(id, actor)],
+    ['start', (id: string, input: any, actor: any) => startWorkItem(id, input, actor)],
+    ['complete', (id: string, input: any, actor: any) => completeWorkItem(id, input, actor)],
     ['block', (id: string, input: any, actor: any) => blockWorkItem(id, input, actor)],
-    ['unblock', (id: string, _input: any, actor: any) => unblockWorkItem(id, actor)],
+    ['unblock', (id: string, input: any, actor: any) => unblockWorkItem(id, input, actor)],
   ] as const) {
     app.post(`/api/work-items/:id/${action}`, { preHandler: requireReady }, async (request) => {
       const id = (request.params as any).id; const actor = actorFromRequest(request); assertWorkItemParticipantOrManager(actor, id);
@@ -190,11 +203,19 @@ export function registerApiRoutes(app: FastifyInstance) {
   }
   app.post('/api/work-items/:id/cancel', { preHandler: requireReady }, async (request) => {
     const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在');
-    return cancelWorkItem(id, actor);
+    return cancelWorkItem(id, body(request), actor);
+  });
+  app.post('/api/work-items/:id/reopen', { preHandler: requireReady }, async (request) => {
+    const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在');
+    return reopenWorkItem(id, body(request), actor);
+  });
+  app.post('/api/work-items/:id/correct', { preHandler: requireReady }, async (request) => {
+    const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在');
+    return correctWorkItem(id, body(request), actor);
   });
   app.delete('/api/work-items/:id', { preHandler: requireReady }, async (request) => {
     const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在');
-    return deleteWorkItem(id, actor);
+    return deleteWorkItem(id, body(request), actor);
   });
   app.patch('/api/progress/:id', { preHandler: requireReady }, async (request) => {
     const id = (request.params as any).id; const actor = actorFromRequest(request); const input = body(request);
@@ -223,6 +244,20 @@ export function registerApiRoutes(app: FastifyInstance) {
     const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在');
     return updateIssue(id, body(request), actor);
   });
+  app.post('/api/issues/:id/start', { preHandler: requireReady }, async (request) => {
+    const id = (request.params as any).id; const actor = actorFromRequest(request); const projectId = projectIdForIssue(id);
+    assertProjectResourceReadable(actor, projectId, '问题不存在');
+    if (!canUpdateIssueProgress(actor, id)) { const error = new Error('只有问题负责人或项目经理可以开始处理') as Error & { statusCode: number }; error.statusCode = 403; throw error; }
+    return startIssue(id, body(request), actor);
+  });
+  for (const [action, handler] of [
+    ['defer', deferIssue], ['resume', resumeIssue], ['resolve', resolveIssue], ['reopen', reopenIssue], ['correct', correctIssue],
+  ] as const) {
+    app.post(`/api/issues/:id/${action}`, { preHandler: requireReady }, async (request) => {
+      const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在');
+      return handler(id, body(request), actor);
+    });
+  }
   app.post('/api/issues/:id/updates', { preHandler: requireReady }, async (request) => {
     const id = (request.params as any).id; const actor = actorFromRequest(request); const projectId = projectIdForIssue(id);
     assertProjectResourceReadable(actor, projectId, '问题不存在'); assertProjectMember(actor, projectId);
@@ -314,7 +349,7 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
   app.delete('/api/archives/:entity/:id', { preHandler: requireAdmin }, async (request) => {
     const { entity, id } = request.params as { entity: 'projects' | 'requirements' | 'people' | 'templates'; id: string };
-    return permanentlyDeleteArchive(entity, id, actorFromRequest(request));
+    return permanentlyDeleteArchive(entity, id, actorFromRequest(request), body(request));
   });
 
   app.get('/api/tokens', { preHandler: requireReady }, async (request) => listTokens(actorFromRequest(request).accountId));
@@ -333,11 +368,21 @@ export function registerApiRoutes(app: FastifyInstance) {
     return searchAudit({ ...(request.query as any), projectId: projectId || undefined });
   });
 
+  app.get('/api/system/overview', { preHandler: requireAdmin }, async () => getSystemOverview());
+  app.post('/api/system/database-check', { preHandler: requireAdmin }, async () => checkDatabaseIntegrity());
   app.get('/api/backups', { preHandler: requireAdmin }, async () => listBackups());
-  app.post('/api/backups', { preHandler: requireAdmin }, async () => createBackup());
+  app.post('/api/backups', { preHandler: requireAdmin }, async (request) => {
+    const actor = actorFromRequest(request); const result = await createBackup();
+    recordAudit(actor, 'create', 'backup', result.name, `创建数据库备份：${result.name}`); return result;
+  });
   app.delete('/api/backups/:name', { preHandler: requireAdmin }, async (request) => {
     const name = String((request.params as any).name || ''); const actor = actorFromRequest(request);
     const result = deleteBackup(name); recordAudit(actor, 'delete', 'backup', name, `删除数据库备份：${name}`); return result;
   });
-  app.post('/api/backups/restore', { preHandler: requireAdmin }, async (request) => scheduleRestore(String(body(request).name || '')));
+  app.post('/api/backups/restore', { preHandler: requireAdmin }, async (request) => {
+    const name = String(body(request).name || ''); const actor = actorFromRequest(request);
+    const result = await scheduleRestore(name);
+    recordAudit(actor, 'restore', 'backup', name, `恢复数据库备份：${name}；恢复前备份：${result.safetyBackupName}`);
+    return result;
+  });
 }

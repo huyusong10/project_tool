@@ -73,6 +73,11 @@ export function listAccounts() {
   const roles = sqlite.prepare(`SELECT pp.person_id AS personId, pp.project_id AS projectId, pr.name AS projectName
     FROM project_people pp JOIN projects pr ON pr.id=pp.project_id
     WHERE pp.project_role='manager' AND pr.deleted_at IS NULL ORDER BY pr.name`).all() as any[];
+  const assignmentSummary = sqlite.prepare(`SELECT
+    (SELECT COUNT(*) FROM requirements WHERE owner_id=? AND deleted_at IS NULL AND status NOT IN ('completed','cancelled')) AS requirements,
+    (SELECT COUNT(DISTINCT w.id) FROM work_items w LEFT JOIN work_item_collaborators c ON c.work_item_id=w.id AND c.person_id=?
+      JOIN requirements r ON r.id=w.requirement_id WHERE r.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled') AND (w.owner_id=? OR c.person_id IS NOT NULL)) AS workItems,
+    (SELECT COUNT(*) FROM issues WHERE owner_id=? AND status<>'resolved') AS issues`);
   return accounts.map((account) => {
     const managedProjects = roles.filter((role) => role.personId === account.personId)
       .map(({ projectId, projectName }) => ({ id: projectId, name: projectName }));
@@ -82,6 +87,9 @@ export function listAccounts() {
       isBuiltin: Boolean(account.isBuiltin),
       role: account.globalRole === 'admin' ? 'admin' : managedProjects.length ? 'project_manager' : 'user',
       managedProjects,
+      activeAssignments: account.personId
+        ? assignmentSummary.get(account.personId, account.personId, account.personId, account.personId)
+        : { requirements: 0, workItems: 0, issues: 0 },
     };
   });
 }
@@ -171,7 +179,8 @@ export function getMyWork(accountId: string) {
     r.project_id AS projectId, pr.name AS projectName, w.title, w.owner_id AS ownerId,
     owner.name AS ownerName, w.status, w.planned_start AS plannedStart, w.planned_end AS plannedEnd,
     w.actual_start AS actualStart, w.actual_end AS actualEnd, w.forecast_end AS forecastEnd,
-    w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.progress, w.sort_order AS sortOrder,
+    w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.milestone_label AS milestoneLabel,
+    w.progress, w.sort_order AS sortOrder, w.version,
     w.created_at AS createdAt, w.updated_at AS updatedAt,
     CASE WHEN w.owner_id=? THEN 'owner' ELSE 'collaborator' END AS assignmentType
     FROM work_items w JOIN requirements r ON r.id=w.requirement_id

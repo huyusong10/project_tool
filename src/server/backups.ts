@@ -36,7 +36,7 @@ export function listBackups() {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.name.localeCompare(a.name));
 }
 
-export async function createBackup() {
+export async function createBackup(options: { cleanup?: boolean } = {}) {
   let timestamp = new Date();
   let name = backupFilename(timestamp);
   while (fs.existsSync(safeBackupPath(name))) {
@@ -45,7 +45,7 @@ export async function createBackup() {
   }
   const destination = safeBackupPath(name);
   await sqlite.backup(destination);
-  cleanupOldBackups();
+  if (options.cleanup !== false) cleanupOldBackups();
   const stat = fs.statSync(destination);
   return { name, size: stat.size, createdAt: backupCreatedAt(name, stat) };
 }
@@ -65,24 +65,48 @@ export function cleanupOldBackups() {
   for (const backup of listBackups().slice(config.backupMaxCount)) fs.unlinkSync(safeBackupPath(backup.name));
 }
 
-export function scheduleRestore(filename: string) {
+function validateBackup(filename: string) {
   const source = safeBackupPath(filename);
   if (!fs.existsSync(source)) throw new Error('备份不存在');
   const checkDb = new Database(source, { readonly: true });
-  const integrity = checkDb.pragma('integrity_check') as Array<{ integrity_check: string }>;
-  checkDb.close();
+  let integrity: Array<{ integrity_check: string }>;
+  try {
+    integrity = checkDb.pragma('integrity_check') as Array<{ integrity_check: string }>;
+  } finally {
+    checkDb.close();
+  }
   if (integrity[0]?.integrity_check !== 'ok') throw new Error('备份数据库校验失败');
+  return source;
+}
+
+export async function prepareRestore(filename: string) {
+  const source = validateBackup(filename);
+  // 恢复准备期间暂不清理旧备份，避免待恢复的旧文件被保留策略提前删除。
+  const safetyBackup = await createBackup({ cleanup: false });
+  return { source, safetyBackup };
+}
+
+export async function scheduleRestore(filename: string) {
+  const { source, safetyBackup } = await prepareRestore(filename);
 
   setTimeout(() => {
     sqlite.close();
+    const replacement = `${config.dbPath}.restore`;
+    if (fs.existsSync(replacement)) fs.rmSync(replacement, { force: true });
+    fs.copyFileSync(source, replacement);
     for (const suffix of ['', '-wal', '-shm']) {
       const target = `${config.dbPath}${suffix}`;
       if (fs.existsSync(target)) fs.rmSync(target, { force: true });
     }
-    fs.copyFileSync(source, config.dbPath);
+    fs.renameSync(replacement, config.dbPath);
+    cleanupOldBackups();
     process.exit(75);
-  }, 500);
-  return { ok: true, message: '恢复已通过校验，服务即将自动重启。' };
+  }, 800);
+  return {
+    ok: true,
+    message: '目标备份已通过校验，当前数据库已安全备份，服务即将自动重启。',
+    safetyBackupName: safetyBackup.name,
+  };
 }
 
 let lastScheduledBackup = '';

@@ -3,6 +3,12 @@ import { sqlite } from './database';
 import { createApiTokenValue, hashApiToken, type Actor } from './auth';
 import { createAccountForPerson } from './accounts';
 import {
+  archiveUnusedSamplePeople,
+  deleteOrReleaseSamplePeople,
+  isSampleProjectId,
+  restoreSamplePeople,
+} from './sample-project';
+import {
   addBusinessDays,
   addCalendarDays,
   businessDayDelta,
@@ -17,6 +23,8 @@ import {
   projectRoles,
   requirementStatuses,
   riskLevels,
+  isTerminalRequirementStatus,
+  isTerminalWorkItemStatus,
   todayIso,
   workItemStatuses,
   type ProjectRole,
@@ -24,6 +32,26 @@ import {
 
 type JsonObject = Record<string, unknown>;
 const nowIso = () => new Date().toISOString();
+
+type DomainErrorCode = 'VALIDATION_ERROR' | 'INVALID_TRANSITION' | 'TERMINAL_LOCKED' | 'HISTORY_IMMUTABLE' | 'STALE_WRITE' | 'DEPENDENCY_CONFLICT';
+
+function fail(message: string, code: DomainErrorCode = 'VALIDATION_ERROR', statusCode = code === 'VALIDATION_ERROR' ? 400 : 409, details?: unknown, currentVersion?: number): never {
+  const error = new Error(message) as Error & { statusCode: number; code: DomainErrorCode; details?: unknown; currentVersion?: number };
+  error.statusCode = statusCode; error.code = code; error.details = details; error.currentVersion = currentVersion;
+  throw error;
+}
+
+function assertExpectedVersion(input: JsonObject, currentVersion: number) {
+  if (input.expectedVersion === undefined || input.expectedVersion === null || input.expectedVersion === '') fail('缺少expectedVersion，请刷新数据后重试');
+  const expected = Number(input.expectedVersion);
+  if (!Number.isInteger(expected) || expected < 1) fail('数据版本不合法');
+  if (expected !== currentVersion) fail('数据已被其他用户修改，请刷新后重试', 'STALE_WRITE', 409, undefined, currentVersion);
+  return expected;
+}
+
+function assertTransition(current: string, allowed: readonly string[], action: string) {
+  if (!allowed.includes(current)) fail(`当前状态“${current}”不能${action}`, isTerminalWorkItemStatus(current) || isTerminalRequirementStatus(current) || current === 'resolved' ? 'TERMINAL_LOCKED' : 'INVALID_TRANSITION');
+}
 
 function auditProjectId(entityType: string, entityId: string | null): string | null {
   if (!entityId) return null;
@@ -48,13 +76,13 @@ export function recordAudit(actor: Actor, action: string, entityType: string, en
 }
 
 function ensureEnum<T extends readonly string[]>(value: unknown, allowed: T, field: string): T[number] {
-  if (!allowed.includes(value as T[number])) throw new Error(`${field}不合法`);
+  if (!allowed.includes(value as T[number])) fail(`${field}不合法`);
   return value as T[number];
 }
 
 function requireText(value: unknown, field: string) {
   const text = String(value ?? '').trim();
-  if (!text) throw new Error(`${field}不能为空`);
+  if (!text) fail(`${field}不能为空`);
   return text;
 }
 
@@ -65,31 +93,31 @@ function nullableText(value: unknown) {
 
 function templateDescription(value: unknown) {
   const description = String(value ?? '').trim();
-  if (description.length > 2000) throw new Error('流程描述不能超过2000个字符');
+  if (description.length > 2000) fail('流程描述不能超过2000个字符');
   return description;
 }
 
 function milestoneLabel(value: unknown) {
   const label = String(value ?? '').trim();
-  if (label.length > 80) throw new Error('里程碑名称不能超过80个字符');
+  if (label.length > 80) fail('里程碑名称不能超过80个字符');
   return label || null;
 }
 
 function requireDate(value: unknown, field: string) {
   const text = requireText(value, field);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new Error(`${field}格式不合法`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) fail(`${field}格式不合法`);
   return text;
 }
 
 function nullableDate(value: unknown, field: string) {
   const text = nullableText(value);
-  if (text && !/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new Error(`${field}格式不合法`);
+  if (text && !/^\d{4}-\d{2}-\d{2}$/.test(text)) fail(`${field}格式不合法`);
   return text;
 }
 
 function requireProgress(value: unknown, field = '完成度') {
   const progress = Number(value);
-  if (!Number.isInteger(progress) || progress < 0 || progress > 100) throw new Error(`${field}必须是0到100的整数`);
+  if (!Number.isInteger(progress) || progress < 0 || progress > 100) fail(`${field}必须是0到100的整数`);
   return progress;
 }
 
@@ -104,13 +132,13 @@ function row<T = JsonObject>(sql: string, ...params: unknown[]): T | undefined {
 export type ProjectRecord = {
   id: string; name: string; status: string; plannedStart: string | null; plannedEnd: string | null;
   defaultTemplateId: string | null; createdAt: string; updatedAt: string; deletedAt?: string | null;
-  projectRole?: ProjectRole; canManage?: boolean;
+  isSample: boolean; projectRole?: ProjectRole; canManage?: boolean;
 };
 
 export type WorkItemRecord = {
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; actualStart: string | null; actualEnd: string | null;
-  forecastEnd: string | null; blockedAt: string | null; blockedReason: string | null; milestoneLabel: string | null; progress: number; sortOrder: number; createdAt: string; updatedAt: string;
+  forecastEnd: string | null; blockedAt: string | null; blockedReason: string | null; milestoneLabel: string | null; progress: number; sortOrder: number; version: number; createdAt: string; updatedAt: string;
   collaborators: Array<{ id: string; name: string; jobTitle: string | null }>;
   assigneeIds: string[]; assigneeNames: string[];
 };
@@ -118,12 +146,12 @@ export type WorkItemRecord = {
 export type RequirementRecord = {
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number; progressGap?: number;
-  riskLevel: string; priority: string; createdAt: string; updatedAt: string; deletedAt?: string | null; workItems?: WorkItemRecord[];
+  riskLevel: string; priority: string; acceptedAt: string | null; acceptedByAccountId: string | null; version: number; createdAt: string; updatedAt: string; deletedAt?: string | null; workItems?: WorkItemRecord[];
   delayed?: boolean; highRisk?: boolean; riskEvaluated?: boolean; riskReason?: string; finishVariance?: number; durationVariance?: number; effectiveEnd?: string | null;
 };
 
 export type IssueUpdateRecord = {
-  id: string; issueId: string; progress: number | null; content: string; createdByAccountId: string | null; createdByName: string | null; createdAt: string; updatedAt: string;
+  id: string; issueId: string; progress: number | null; content: string; eventType: string; supersedesId: string | null; createdByAccountId: string | null; createdByName: string | null; createdAt: string; updatedAt: string;
 };
 
 export type IssueRecord = {
@@ -131,7 +159,7 @@ export type IssueRecord = {
   sourceRef: string | null; title: string; impact: string | null; reporter: string | null;
   ownerId: string | null; ownerName: string | null; status: string; priority: string; progress: number;
   discoveredAt: string; dueDate: string | null; resolvedAt: string | null;
-  createdAt: string; updatedAt: string; latestUpdate: string | null; latestUpdateAt: string | null;
+  version: number; createdAt: string; updatedAt: string; latestUpdate: string | null; latestUpdateAt: string | null;
   overdue: boolean; updates?: IssueUpdateRecord[];
 };
 
@@ -140,10 +168,15 @@ type TemplateItemInput = { id?: string; title: string; startOffsetDays: number; 
 const projectSelect = `SELECT id, name, status, planned_start AS plannedStart, planned_end AS plannedEnd,
   default_template_id AS defaultTemplateId, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt FROM projects`;
 
+function withProjectMeta<T extends { id: string }>(project: T): T & { isSample: boolean } {
+  return { ...project, isSample: isSampleProjectId(project.id) };
+}
+
 const requirementSelect = `SELECT r.id, r.project_id AS projectId, pr.name AS projectName,
   r.template_id AS templateId, t.name AS templateName, r.title,
   r.owner_id AS ownerId, p.name AS ownerName, r.status, r.planned_start AS plannedStart,
   r.planned_end AS plannedEnd, r.progress, r.risk_level AS riskLevel, r.priority,
+  r.accepted_at AS acceptedAt, r.accepted_by_account_id AS acceptedByAccountId, r.version,
   r.created_at AS createdAt, r.updated_at AS updatedAt, r.deleted_at AS deletedAt
   FROM requirements r JOIN projects pr ON pr.id = r.project_id
   LEFT JOIN people p ON p.id = r.owner_id
@@ -154,14 +187,14 @@ const workItemSelect = `SELECT w.id, w.requirement_id AS requirementId, w.templa
   w.planned_start AS plannedStart, w.planned_end AS plannedEnd,
   w.actual_start AS actualStart, w.actual_end AS actualEnd, w.forecast_end AS forecastEnd,
   w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.milestone_label AS milestoneLabel, w.progress,
-  w.sort_order AS sortOrder, w.created_at AS createdAt, w.updated_at AS updatedAt
+  w.sort_order AS sortOrder, w.version, w.created_at AS createdAt, w.updated_at AS updatedAt
   FROM work_items w LEFT JOIN people p ON p.id = w.owner_id`;
 
 const issueSelect = `SELECT i.id, i.project_id AS projectId, pr.name AS projectName,
   i.requirement_id AS requirementId, r.title AS requirementTitle, i.source_ref AS sourceRef,
   i.title, i.impact, i.reporter, i.owner_id AS ownerId, p.name AS ownerName,
   i.status, i.priority, i.progress, i.discovered_at AS discoveredAt, i.due_date AS dueDate,
-  i.resolved_at AS resolvedAt, i.created_at AS createdAt, i.updated_at AS updatedAt,
+  i.resolved_at AS resolvedAt, i.version, i.created_at AS createdAt, i.updated_at AS updatedAt,
   (SELECT u.content FROM issue_updates u WHERE u.issue_id=i.id ORDER BY u.created_at DESC, u.id DESC LIMIT 1) AS latestUpdate,
   (SELECT u.created_at FROM issue_updates u WHERE u.issue_id=i.id ORDER BY u.created_at DESC, u.id DESC LIMIT 1) AS latestUpdateAt
   FROM issues i JOIN projects pr ON pr.id=i.project_id
@@ -169,7 +202,9 @@ const issueSelect = `SELECT i.id, i.project_id AS projectId, pr.name AS projectN
   LEFT JOIN people p ON p.id=i.owner_id`;
 
 export function listProjects(includeDeleted = false, actor?: Actor): ProjectRecord[] {
-  const projects = rows<ProjectRecord>(`${projectSelect} ${includeDeleted ? '' : 'WHERE deleted_at IS NULL'} ORDER BY created_at DESC`);
+  const projects = rows<Omit<ProjectRecord, 'isSample'>>(`${projectSelect} ${includeDeleted ? '' : 'WHERE deleted_at IS NULL'} ORDER BY created_at DESC`)
+    .map(withProjectMeta)
+    .sort((left, right) => Number(left.isSample) - Number(right.isSample));
   if (!actor) return projects;
   if (actor.globalRole === 'admin') return projects.map((project) => ({ ...project, projectRole: 'manager', canManage: true }));
   if (!actor.personId) return [];
@@ -215,11 +250,11 @@ export function createProject(input: JsonObject, actor: Actor): ProjectRecord {
     sqlite.prepare('UPDATE projects SET default_template_id=? WHERE id=?').run(defaultTemplateId, id);
   })();
   audit(actor, 'create', 'project', id, `创建项目：${name}`);
-  return row<ProjectRecord>(`${projectSelect} WHERE id=?`, id)!;
+  return withProjectMeta(row<Omit<ProjectRecord, 'isSample'>>(`${projectSelect} WHERE id=?`, id)!);
 }
 
 export function updateProject(id: string, input: JsonObject, actor: Actor): ProjectRecord {
-  const current = row<ProjectRecord>(`${projectSelect} WHERE id=? AND deleted_at IS NULL`, id);
+  const current = row<Omit<ProjectRecord, 'isSample'>>(`${projectSelect} WHERE id=? AND deleted_at IS NULL`, id);
   if (!current) throw new Error('项目不存在');
   const name = input.name === undefined ? current.name : requireText(input.name, '项目名称');
   const defaultTemplateId = input.defaultTemplateId === undefined ? current.defaultTemplateId : nullableText(input.defaultTemplateId);
@@ -232,22 +267,35 @@ export function updateProject(id: string, input: JsonObject, actor: Actor): Proj
     input.plannedEnd === undefined ? current.plannedEnd : nullableText(input.plannedEnd), defaultTemplateId, nowIso(), id,
   );
   audit(actor, 'update', 'project', id, `更新项目：${name}`);
-  return row<ProjectRecord>(`${projectSelect} WHERE id=?`, id)!;
+  return withProjectMeta(row<Omit<ProjectRecord, 'isSample'>>(`${projectSelect} WHERE id=?`, id)!);
 }
 
 export function archiveProject(id: string, actor: Actor) {
   const existing = row<{ name: string }>('SELECT name FROM projects WHERE id=? AND deleted_at IS NULL', id);
   if (!existing) throw new Error('项目不存在');
-  sqlite.prepare('UPDATE projects SET deleted_at=?, updated_at=? WHERE id=?').run(nowIso(), nowIso(), id);
+  const dependencies = {
+    requirements: row<{ count: number }>(`SELECT COUNT(*) AS count FROM requirements WHERE project_id=? AND deleted_at IS NULL AND status NOT IN ('completed','cancelled')`, id)?.count || 0,
+    issues: row<{ count: number }>(`SELECT COUNT(*) AS count FROM issues WHERE project_id=? AND status<>'resolved'`, id)?.count || 0,
+  };
+  if (dependencies.requirements || dependencies.issues) fail(`项目仍有活跃需求${dependencies.requirements}项、未解决问题${dependencies.issues}项，请先终止或闭环`, 'DEPENDENCY_CONFLICT', 409, dependencies);
+  const now = nowIso();
+  sqlite.transaction(() => {
+    sqlite.prepare('UPDATE projects SET deleted_at=?, updated_at=? WHERE id=?').run(now, now, id);
+    if (isSampleProjectId(id)) archiveUnusedSamplePeople(sqlite, now);
+  })();
   audit(actor, 'archive', 'project', id, `归档项目：${existing.name}`);
   return { ok: true };
 }
 
 export function restoreProject(id: string, actor: Actor) {
   if (!row('SELECT id FROM projects WHERE id=? AND deleted_at IS NOT NULL', id)) throw new Error('归档项目不存在');
-  sqlite.prepare('UPDATE projects SET deleted_at=NULL, updated_at=? WHERE id=?').run(nowIso(), id);
+  const now = nowIso();
+  sqlite.transaction(() => {
+    sqlite.prepare('UPDATE projects SET deleted_at=NULL, updated_at=? WHERE id=?').run(now, id);
+    if (isSampleProjectId(id)) restoreSamplePeople(sqlite, now);
+  })();
   audit(actor, 'restore', 'project', id, '恢复项目');
-  return row<ProjectRecord>(`${projectSelect} WHERE id=?`, id)!;
+  return withProjectMeta(row<Omit<ProjectRecord, 'isSample'>>(`${projectSelect} WHERE id=?`, id)!);
 }
 
 export function listPeople(includeDeleted = false, projectId?: string) {
@@ -279,6 +327,29 @@ export function listPeopleCandidates(projectId: string, q = '') {
     ORDER BY p.name LIMIT 50`, projectId, q.trim(), pattern, pattern);
 }
 
+function activeAssignmentCounts(personId: string, projectId?: string) {
+  const projectClause = projectId ? 'AND r.project_id=?' : '';
+  const requirementClause = projectId ? 'AND project_id=?' : '';
+  return {
+    requirements: row<{ count: number }>(`SELECT COUNT(*) AS count FROM requirements
+      WHERE owner_id=? AND deleted_at IS NULL AND status NOT IN ('completed','cancelled') ${requirementClause}`, personId, ...(projectId ? [projectId] : []))?.count || 0,
+    workItems: row<{ count: number }>(`SELECT COUNT(DISTINCT w.id) AS count FROM work_items w
+      JOIN requirements r ON r.id=w.requirement_id
+      LEFT JOIN work_item_collaborators c ON c.work_item_id=w.id AND c.person_id=?
+      WHERE r.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled') AND (w.owner_id=? OR c.person_id IS NOT NULL) ${projectClause}`,
+      personId, personId, ...(projectId ? [projectId] : []))?.count || 0,
+    issues: row<{ count: number }>(`SELECT COUNT(*) AS count FROM issues
+      WHERE owner_id=? AND status<>'resolved' ${projectId ? 'AND project_id=?' : ''}`, personId, ...(projectId ? [projectId] : []))?.count || 0,
+  };
+}
+
+function assertNoActiveAssignments(personId: string, projectId?: string) {
+  const assignments = activeAssignmentCounts(personId, projectId);
+  if (assignments.requirements || assignments.workItems || assignments.issues) {
+    fail(`该人员仍有需求${assignments.requirements}项、工作项${assignments.workItems}项、问题${assignments.issues}项，请先重新分配`, 'DEPENDENCY_CONFLICT', 409, assignments);
+  }
+}
+
 export function addProjectPerson(projectId: string, personId: string, actor: Actor, requestedRole: unknown = 'member') {
   requireActiveProject(projectId);
   const person = row<{ name: string }>('SELECT name FROM people WHERE id=? AND deleted_at IS NULL AND active=1', personId);
@@ -288,6 +359,7 @@ export function addProjectPerson(projectId: string, personId: string, actor: Act
   if ((projectRole === 'manager' || currentRole === 'manager') && actor.globalRole !== 'admin') {
     const error = new Error('项目经理只能由平台管理员任免') as Error & { statusCode: number }; error.statusCode = 403; throw error;
   }
+  if (projectRole === 'viewer' && currentRole && currentRole !== 'viewer') assertNoActiveAssignments(personId, projectId);
   sqlite.prepare(`INSERT INTO project_people (project_id, person_id, project_role, created_at) VALUES (?, ?, ?, ?)
     ON CONFLICT(project_id,person_id) DO UPDATE SET project_role=excluded.project_role`).run(projectId, personId, projectRole, nowIso());
   audit(actor, 'add_member', 'person', personId, `设置项目成员：${person.name}（${projectRole}）`, projectId);
@@ -303,21 +375,7 @@ export function removeProjectPerson(projectId: string, personId: string, actor: 
   if (membership.projectRole === 'manager' && actor.globalRole !== 'admin') {
     const error = new Error('项目经理只能由平台管理员移除') as Error & { statusCode: number }; error.statusCode = 403; throw error;
   }
-  const assignments = {
-    requirements: row<{ count: number }>(`SELECT COUNT(*) AS count FROM requirements
-      WHERE project_id=? AND owner_id=? AND deleted_at IS NULL AND status NOT IN ('completed','cancelled')`, projectId, personId)?.count || 0,
-    workItems: row<{ count: number }>(`SELECT COUNT(DISTINCT w.id) AS count FROM work_items w
-      JOIN requirements r ON r.id=w.requirement_id
-      LEFT JOIN work_item_collaborators c ON c.work_item_id=w.id AND c.person_id=?
-      WHERE r.project_id=? AND r.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled')
-        AND (w.owner_id=? OR c.person_id IS NOT NULL)`, personId, projectId, personId)?.count || 0,
-    issues: row<{ count: number }>(`SELECT COUNT(*) AS count FROM issues
-      WHERE project_id=? AND owner_id=? AND status<>'resolved'`, projectId, personId)?.count || 0,
-  };
-  if (assignments.requirements || assignments.workItems || assignments.issues) {
-    const error = new Error(`该成员仍有关联任务：需求${assignments.requirements}项、工作项${assignments.workItems}项、问题${assignments.issues}项，请先重新分配`) as Error & { statusCode: number; details: typeof assignments };
-    error.statusCode = 409; error.details = assignments; throw error;
-  }
+  assertNoActiveAssignments(personId, projectId);
   const result = sqlite.prepare('DELETE FROM project_people WHERE project_id=? AND person_id=?').run(projectId, personId);
   if (!result.changes) throw new Error('该人员不属于当前项目');
   audit(actor, 'remove_member', 'person', personId, `移出项目成员：${person.name}`, projectId);
@@ -355,6 +413,7 @@ export function updatePerson(id: string, input: JsonObject, actor: Actor) {
   const active = input.active === undefined
     ? current.active
     : [true, 1, '1', 'true'].includes(input.active as boolean | number | string) ? 1 : 0;
+  if (!active && current.active) assertNoActiveAssignments(id);
   sqlite.transaction(() => {
     sqlite.prepare('UPDATE people SET name=?, job_title=?, active=?, updated_at=? WHERE id=?').run(
       name, input.jobTitle === undefined ? current.jobTitle : nullableText(input.jobTitle), active, nowIso(), id,
@@ -370,6 +429,7 @@ export function updatePerson(id: string, input: JsonObject, actor: Actor) {
 
 export function archivePerson(id: string, actor: Actor) {
   if (!row('SELECT id FROM people WHERE id=? AND deleted_at IS NULL', id)) throw new Error('人员不存在');
+  assertNoActiveAssignments(id);
   sqlite.transaction(() => {
     sqlite.prepare('UPDATE people SET deleted_at=?, active=0, updated_at=? WHERE id=?').run(nowIso(), nowIso(), id);
     sqlite.prepare(`UPDATE accounts SET status='disabled', session_version=session_version+1, updated_at=?
@@ -496,7 +556,11 @@ export function copyTemplate(targetProjectId: string, sourceTemplateId: string, 
 }
 
 export function archiveTemplate(id: string, actor: Actor) {
-  if (!row('SELECT id FROM work_item_templates WHERE id=? AND deleted_at IS NULL', id)) throw new Error('模板不存在');
+  const template = row<{ projectId: string }>('SELECT project_id AS projectId FROM work_item_templates WHERE id=? AND deleted_at IS NULL', id);
+  if (!template) throw new Error('模板不存在');
+  if (row('SELECT 1 FROM projects WHERE id=? AND default_template_id=?', template.projectId, id)) fail('项目默认流程不能归档，请先更换默认流程', 'DEPENDENCY_CONFLICT');
+  const activeCount = row<{ count: number }>('SELECT COUNT(*) AS count FROM work_item_templates WHERE project_id=? AND deleted_at IS NULL', template.projectId)?.count || 0;
+  if (activeCount <= 1) fail('项目至少需要保留一个有效流程', 'DEPENDENCY_CONFLICT');
   sqlite.prepare('UPDATE work_item_templates SET deleted_at=?, updated_at=? WHERE id=?').run(nowIso(), nowIso(), id);
   audit(actor, 'archive', 'template', id, '归档流程设计');
   return { ok: true };
@@ -526,7 +590,6 @@ function getWorkItems(requirementId: string): WorkItemRecord[] {
       .map(({ workItemId: _workItemId, ...person }) => person);
     return {
       ...item,
-      status: deriveWorkItemStatus(item),
       collaborators: itemCollaborators,
       assigneeIds: [item.ownerId, ...itemCollaborators.map((person) => person.id)].filter(Boolean) as string[],
       assigneeNames: [item.ownerName, ...itemCollaborators.map((person) => person.name)].filter(Boolean) as string[],
@@ -539,7 +602,9 @@ function enrichRequirement(requirement: RequirementRecord): RequirementRecord {
   const metrics = deriveRequirementMetrics(requirement, workItems);
   const gaps = workItems.map((item) => calculateWorkItemGap(item));
   return {
-    ...requirement, ...metrics, workItems,
+    ...requirement, ...metrics,
+    status: requirement.status, progress: requirement.progress, plannedEnd: requirement.plannedEnd,
+    workItems,
     durationVariance: gaps.length ? Math.max(...gaps.map((gap) => gap.durationVariance), 0) : 0,
   };
 }
@@ -559,7 +624,8 @@ export function getRequirement(id: string, includeDeleted = false) {
   if (!requirement) throw new Error('需求不存在');
   const result = enrichRequirement(requirement);
   const progressUpdates = rows(`SELECT u.id, u.requirement_id AS requirementId, u.work_item_id AS workItemId,
-    w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content, u.created_by_account_id AS createdByAccountId,
+    w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content,
+    u.event_type AS eventType, u.supersedes_id AS supersedesId, u.created_by_account_id AS createdByAccountId,
     a.username AS createdByName, u.created_at AS createdAt, u.updated_at AS updatedAt
     FROM progress_updates u LEFT JOIN work_items w ON w.id=u.work_item_id
     LEFT JOIN accounts a ON a.id=u.created_by_account_id
@@ -591,17 +657,48 @@ function applyTemplateInternal(requirementId: string, templateId: string, baseSt
   }
 }
 
+function syncStoredRequirementState(requirementId: string, updatedAt = nowIso(), incrementVersion = true) {
+  const requirement = row<RequirementRecord>(`${requirementSelect} WHERE r.id=?`, requirementId);
+  if (!requirement) throw new Error('需求不存在');
+  const workItems = getWorkItems(requirementId);
+  const metrics = deriveRequirementMetrics(requirement, workItems);
+  const acceptedAt = metrics.status === 'completed' ? requirement.acceptedAt : null;
+  sqlite.prepare(`UPDATE requirements SET status=?, progress=?, planned_end=?, risk_level=?, accepted_at=?,
+    accepted_by_account_id=CASE WHEN ? IS NULL THEN NULL ELSE accepted_by_account_id END,
+    version=version+?, updated_at=? WHERE id=?`).run(
+    metrics.status, metrics.progress, metrics.plannedEnd, metrics.riskLevel, acceptedAt, acceptedAt,
+    incrementVersion ? 1 : 0, updatedAt, requirementId,
+  );
+  return metrics;
+}
+
 function updateStoredRequirementEnd(requirementId: string) {
-  const plannedEnd = row<{ plannedEnd: string | null }>('SELECT MAX(planned_end) AS plannedEnd FROM work_items WHERE requirement_id=?', requirementId)?.plannedEnd || null;
-  sqlite.prepare('UPDATE requirements SET planned_end=?, updated_at=? WHERE id=?').run(plannedEnd, nowIso(), requirementId);
+  return syncStoredRequirementState(requirementId);
 }
 
 function syncStoredRequirementProgress(requirementId: string, updatedAt = nowIso()) {
-  const requirement = row<RequirementRecord>(`${requirementSelect} WHERE r.id=?`, requirementId);
-  if (!requirement) throw new Error('需求不存在');
-  const progress = enrichRequirement(requirement).progress;
-  sqlite.prepare('UPDATE requirements SET progress=?, updated_at=? WHERE id=?').run(progress, updatedAt, requirementId);
-  return progress;
+  return syncStoredRequirementState(requirementId, updatedAt).progress;
+}
+
+function appendRequirementEvent(requirementId: string, eventType: string, content: string, actor: Actor, workItemId: string | null = null, workItemPercent: number | null = null, supersedesId: string | null = null, createdAt = nowIso()) {
+  const percent = row<{ progress: number }>('SELECT progress FROM requirements WHERE id=?', requirementId)?.progress ?? 0;
+  const id = randomUUID();
+  sqlite.prepare(`INSERT INTO progress_updates
+    (id, requirement_id, work_item_id, percent, work_item_percent, content, event_type, supersedes_id, created_by_account_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    id, requirementId, workItemId, percent, workItemPercent, content, eventType, supersedesId, actor.accountId || null, createdAt, createdAt,
+  );
+  return id;
+}
+
+function appendIssueEvent(issueId: string, eventType: string, content: string, actor: Actor, progress: number | null = null, supersedesId: string | null = null, createdAt = nowIso()) {
+  const id = randomUUID();
+  sqlite.prepare(`INSERT INTO issue_updates
+    (id, issue_id, progress, content, event_type, supersedes_id, created_by_account_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    id, issueId, progress, content, eventType, supersedesId, actor.accountId || null, createdAt, createdAt,
+  );
+  return id;
 }
 
 function shiftRequirementWorkItems(requirementId: string, businessDays: number, updatedAt: string) {
@@ -609,7 +706,7 @@ function shiftRequirementWorkItems(requirementId: string, businessDays: number, 
   const items = rows<{ id: string; plannedStart: string | null; plannedEnd: string | null }>(
     'SELECT id, planned_start AS plannedStart, planned_end AS plannedEnd FROM work_items WHERE requirement_id=?', requirementId,
   );
-  const update = sqlite.prepare('UPDATE work_items SET planned_start=?, planned_end=?, updated_at=? WHERE id=?');
+  const update = sqlite.prepare('UPDATE work_items SET planned_start=?, planned_end=?, version=version+1, updated_at=? WHERE id=?');
   for (const item of items) {
     update.run(
       item.plannedStart ? addBusinessDays(item.plannedStart, businessDays) : null,
@@ -653,8 +750,12 @@ export function createRequirement(input: JsonObject, actor: Actor) {
   return getRequirement(id);
 }
 
-export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
+function changeRequirement(id: string, input: JsonObject, actor: Actor) {
   const current = getRequirement(id);
+  assertExpectedVersion(input, current.version);
+  if (['pending_acceptance', 'completed', 'cancelled'].includes(current.status)) {
+    fail('待验收、已完成或已取消需求已锁定，请使用验收、返工或纠错操作', 'TERMINAL_LOCKED');
+  }
   const title = input.title === undefined ? current.title : requireText(input.title, '需求标题');
   const priority = input.priority === undefined ? current.priority : ensureEnum(input.priority, priorities, '优先级');
   const requestedPlannedStart = input.plannedStart === undefined ? undefined : requireDate(input.plannedStart, '计划开始');
@@ -667,6 +768,8 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
   if (scheduleMode === 'deadline' && requestedPlannedStart !== undefined) throw new Error('倒排时请设置计划完成日期');
   const templateId = input.templateId === undefined ? current.templateId : nullableText(input.templateId);
   const templateChanged = input.templateId !== undefined && templateId !== current.templateId;
+  const hasExecution = current.workItems!.some((item) => item.status !== 'not_started' || item.progress > 0 || item.actualStart)
+    || Boolean(row(`SELECT 1 FROM progress_updates WHERE requirement_id=? AND event_type<>'note' LIMIT 1`, id));
   let nextPlannedStart = current.plannedStart;
   let shiftDays = 0;
   if (requestedPlannedStart !== undefined || requestedPlannedEnd !== undefined) {
@@ -680,8 +783,10 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
         ? targetDate
         : current.plannedStart ? addBusinessDays(current.plannedStart, shiftDays) : null;
     }
+    if (hasExecution && !nullableText(input.reason)) fail('需求已开始执行，调整排期时必须填写变更原因');
   }
   if (templateChanged) {
+    if (hasExecution) fail('需求已有执行记录，不能重选流程；请取消后重新创建', 'INVALID_TRANSITION');
     if (!templateId || !row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, current.projectId)) throw new Error('请选择当前项目的有效流程设计');
     if (requestedPlannedEnd !== undefined) {
       nextPlannedStart = plannedStartFromDeadline(requestedPlannedEnd, activeTemplateItems(templateId));
@@ -689,22 +794,22 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
       nextPlannedStart = requestedPlannedStart;
     }
     if (!nextPlannedStart) throw new Error('重选流程前请设置计划日期');
-    if (input.confirmTemplateReset !== true) throw new Error('重选流程会清空已有工作项和进展记录，请确认后重试');
+    if (input.confirmTemplateReset !== true) throw new Error('重选流程会替换未执行工作项并重新生成计划；需求级说明将保留，请确认后重试');
   }
   const now = nowIso();
   sqlite.transaction(() => {
     if (templateChanged && templateId) {
-      sqlite.prepare('DELETE FROM progress_updates WHERE requirement_id=?').run(id);
       sqlite.prepare('DELETE FROM work_items WHERE requirement_id=?').run(id);
       sqlite.prepare(`UPDATE requirements SET template_id=?, title=?, status='planning', planned_start=?,
-        planned_end=NULL, progress=0, risk_level='low', priority=?, updated_at=? WHERE id=?`)
+        planned_end=NULL, progress=0, risk_level='low', priority=?, accepted_at=NULL, accepted_by_account_id=NULL,
+        version=version+1, updated_at=? WHERE id=?`)
         .run(templateId, title, nextPlannedStart, priority, now, id);
       applyTemplateInternal(id, templateId, nextPlannedStart!);
       updateStoredRequirementEnd(id);
       return;
     }
     shiftRequirementWorkItems(id, shiftDays, now);
-    sqlite.prepare('UPDATE requirements SET title=?, priority=?, planned_start=?, updated_at=? WHERE id=?')
+    sqlite.prepare('UPDATE requirements SET title=?, priority=?, planned_start=?, version=version+1, updated_at=? WHERE id=?')
       .run(title, priority, nextPlannedStart, now, id);
     if (requestedPlannedStart !== undefined || requestedPlannedEnd !== undefined) updateStoredRequirementEnd(id);
   })();
@@ -714,11 +819,70 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
   return getRequirement(id);
 }
 
-export function archiveRequirement(id: string, actor: Actor) {
+export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
+  const commandFields = ['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'plannedStart', 'plannedEnd', 'scheduleMode', 'templateId', 'confirmTemplateReset'];
+  if (commandFields.some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
+    fail('需求状态、进度、验收、排期和流程不能通过普通编辑修改，请使用对应操作命令');
+  }
+  return changeRequirement(id, input, actor);
+}
+
+export function rescheduleRequirement(id: string, input: JsonObject, actor: Actor) {
+  if (input.plannedStart === undefined && input.plannedEnd === undefined) fail('请设置计划开始或计划完成日期');
+  if (['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'templateId'].some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
+    fail('排期命令不能修改状态、进度、验收或流程');
+  }
+  return changeRequirement(id, input, actor);
+}
+
+export function reselectRequirementTemplate(id: string, input: JsonObject, actor: Actor) {
+  if (!nullableText(input.templateId)) fail('请选择要重新绑定的流程');
+  if (['status', 'progress', 'acceptedAt', 'acceptedByAccountId'].some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
+    fail('流程重选命令不能修改状态、进度或验收信息');
+  }
+  return changeRequirement(id, { ...input, confirmTemplateReset: true }, actor);
+}
+
+export function archiveRequirement(id: string, input: JsonObject, actor: Actor) {
   const current = getRequirement(id);
+  assertExpectedVersion(input, current.version);
+  if (!['completed', 'cancelled'].includes(current.status)) fail('需求必须先完成验收或取消，才能归档', 'DEPENDENCY_CONFLICT');
+  const activeIssues = row<{ count: number }>(`SELECT COUNT(*) AS count FROM issues WHERE requirement_id=? AND status<>'resolved'`, id)?.count || 0;
+  if (activeIssues) fail(`需求仍有${activeIssues}个未解决问题，不能归档`, 'DEPENDENCY_CONFLICT', 409, { issues: activeIssues });
   sqlite.prepare('UPDATE requirements SET deleted_at=?, updated_at=? WHERE id=?').run(nowIso(), nowIso(), id);
   audit(actor, 'archive', 'requirement', id, `归档需求：${current.title}`);
   return { ok: true };
+}
+
+export function acceptRequirement(id: string, input: JsonObject, actor: Actor) {
+  const current = getRequirement(id);
+  assertExpectedVersion(input, current.version);
+  assertTransition(current.status, ['pending_acceptance'], '验收');
+  const content = requireText(input.content, '验收说明'); const now = nowIso();
+  sqlite.transaction(() => {
+    sqlite.prepare(`UPDATE requirements SET status='completed', progress=100, accepted_at=?, accepted_by_account_id=?,
+      version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, actor.accountId || null, now, id, current.version);
+    appendRequirementEvent(id, 'accept', content, actor, null, null, null, now);
+    audit(actor, 'accept', 'requirement', id, `验收需求：${current.title}`);
+  })();
+  return getRequirement(id);
+}
+
+export function cancelRequirement(id: string, input: JsonObject, actor: Actor) {
+  const current = getRequirement(id);
+  assertExpectedVersion(input, current.version);
+  assertTransition(current.status, ['planning', 'not_started', 'in_progress', 'blocked', 'pending_acceptance'], '取消');
+  const reason = requireText(input.reason, '取消原因'); const now = nowIso();
+  sqlite.transaction(() => {
+    sqlite.prepare(`UPDATE work_items SET status='cancelled', progress=min(progress,99), actual_end=NULL,
+      blocked_at=NULL, blocked_reason=NULL, version=version+1, updated_at=?
+      WHERE requirement_id=? AND status NOT IN ('completed','cancelled')`).run(now, id);
+    sqlite.prepare(`UPDATE requirements SET status='cancelled', accepted_at=NULL, accepted_by_account_id=NULL,
+      version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version);
+    appendRequirementEvent(id, 'cancel', reason, actor, null, null, null, now);
+    audit(actor, 'cancel', 'requirement', id, `取消需求：${current.title}`);
+  })();
+  return getRequirement(id);
 }
 
 export function restoreRequirement(id: string, actor: Actor) {
@@ -728,8 +892,12 @@ export function restoreRequirement(id: string, actor: Actor) {
   return getRequirement(id);
 }
 
-export function applyTemplate(requirementId: string, templateId: string, actor: Actor) {
+export function applyTemplate(requirementId: string, input: JsonObject, actor: Actor) {
   const requirement = getRequirement(requirementId);
+  assertExpectedVersion(input, requirement.version);
+  const templateId = requireText(input.templateId, '流程设计');
+  if (['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status)) fail('终态需求不能补充工作项', 'TERMINAL_LOCKED');
+  if (requirement.workItems!.some((item) => item.status !== 'not_started') && !nullableText(input.reason)) fail('需求已开始执行，补充流程工作项时必须填写变更原因');
   if (!requirement.plannedStart) throw new Error('需求缺少计划开始日期');
   if (!row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, requirement.projectId)) throw new Error('流程设计不属于当前项目');
   const tx = sqlite.transaction(() => { applyTemplateInternal(requirementId, templateId, requirement.plannedStart!); updateStoredRequirementEnd(requirementId); });
@@ -759,6 +927,11 @@ export function previewRequirementPlan(requirementId: string, input: JsonObject)
 }
 
 export function applyRequirementPlan(requirementId: string, input: JsonObject, actor: Actor) {
+  const requirement = getRequirement(requirementId);
+  assertExpectedVersion(input, requirement.version);
+  if (['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status)) fail('终态需求不能修改工作计划', 'TERMINAL_LOCKED');
+  const hasExecution = requirement.workItems!.some((item) => item.status !== 'not_started');
+  if (hasExecution && !nullableText(input.reason)) fail('需求已开始执行，补全或调整计划时必须填写原因');
   const preview = previewRequirementPlan(requirementId, input);
   const selected = new Set(Array.isArray(input.templateItemIds) ? input.templateItemIds.map(String) : preview.entries.filter((item) => item.willChange).map((item) => item.templateItemId));
   const now = nowIso();
@@ -767,7 +940,7 @@ export function applyRequirementPlan(requirementId: string, input: JsonObject, a
     for (const item of preview.entries) {
       if (!selected.has(item.templateItemId) || !item.willChange) continue;
       if (item.workItemId) {
-        sqlite.prepare(`UPDATE work_items SET planned_start=COALESCE(planned_start, ?), planned_end=COALESCE(planned_end, ?), updated_at=? WHERE id=?`)
+        sqlite.prepare(`UPDATE work_items SET planned_start=COALESCE(planned_start, ?), planned_end=COALESCE(planned_end, ?), version=version+1, updated_at=? WHERE id=?`)
           .run(item.proposedStart, item.proposedEnd, now, item.workItemId);
       } else {
         sqlite.prepare(`INSERT INTO work_items
@@ -777,7 +950,7 @@ export function applyRequirementPlan(requirementId: string, input: JsonObject, a
         );
       }
     }
-    sqlite.prepare('UPDATE requirements SET planned_start=?, updated_at=? WHERE id=?').run(preview.baseStart, now, requirementId);
+    sqlite.prepare('UPDATE requirements SET planned_start=?, version=version+1, updated_at=? WHERE id=?').run(preview.baseStart, now, requirementId);
     updateStoredRequirementEnd(requirementId);
   });
   tx(); audit(actor, 'apply_plan', 'requirement', requirementId, `按模板补全计划：${selected.size}项`);
@@ -805,8 +978,9 @@ function assertProjectAssignees(requirementId: string, ids: Array<string | null>
   const placeholders = assigneeIds.map(() => '?').join(',');
   const count = row<{ count: number }>(`SELECT COUNT(*) AS count FROM project_people pp
     JOIN people p ON p.id=pp.person_id
-    WHERE pp.project_id=? AND pp.person_id IN (${placeholders}) AND p.deleted_at IS NULL AND p.active=1`, requirement.projectId, ...assigneeIds)?.count || 0;
-  if (count !== assigneeIds.length) throw new Error('负责人必须是当前项目成员');
+    WHERE pp.project_id=? AND pp.person_id IN (${placeholders}) AND pp.project_role IN ('member','manager')
+      AND p.deleted_at IS NULL AND p.active=1`, requirement.projectId, ...assigneeIds)?.count || 0;
+  if (count !== assigneeIds.length) throw new Error('负责人必须是当前项目中已启用的成员或项目经理');
 }
 
 function syncWorkItemCollaborators(workItemId: string, collaboratorIds: string[]) {
@@ -816,33 +990,40 @@ function syncWorkItemCollaborators(workItemId: string, collaboratorIds: string[]
 }
 
 export function createWorkItem(requirementId: string, input: JsonObject, actor: Actor) {
-  getRequirement(requirementId);
+  const requirement = getRequirement(requirementId);
+  assertExpectedVersion(input, requirement.version);
+  if (['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status)) fail('当前需求已锁定，不能新增工作项', 'TERMINAL_LOCKED');
+  if (requirement.workItems!.some((item) => item.status !== 'not_started') && !nullableText(input.reason)) {
+    fail('需求已开始执行，新增工作项时必须填写变更原因');
+  }
   const id = randomUUID(); const now = nowIso(); const title = requireText(input.title, '工作项标题');
   const max = row<{ value: number | null }>('SELECT MAX(sort_order) AS value FROM work_items WHERE requirement_id=?', requirementId)?.value ?? -1;
-  let actualStart = nullableText(input.actualStart); let actualEnd = nullableText(input.actualEnd);
-  if (actualEnd && !actualStart) actualStart = actualEnd;
   const ownerId = nullableText(input.ownerId);
   const collaboratorIds = collaboratorIdsFromInput(input, ownerId) || [];
   assertProjectAssignees(requirementId, [ownerId, ...collaboratorIds]);
   const milestone = milestoneLabel(input.milestoneLabel);
+  const plannedStart = nullableDate(input.plannedStart, '计划开始'); const plannedEnd = nullableDate(input.plannedEnd, '计划完成');
+  if (plannedStart && plannedEnd && plannedStart > plannedEnd) throw new Error('计划完成日期不能早于计划开始日期');
   sqlite.transaction(() => {
     sqlite.prepare(`INSERT INTO work_items
-      (id, requirement_id, title, owner_id, milestone_label, status, planned_start, planned_end, actual_start, actual_end, progress, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'not_started', ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      id, requirementId, title, ownerId, milestone, nullableText(input.plannedStart), nullableText(input.plannedEnd),
-      actualStart, actualEnd, actualEnd ? 100 : 0, max + 1, now, now,
+      (id, requirement_id, title, owner_id, milestone_label, status, planned_start, planned_end, progress, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'not_started', ?, ?, 0, ?, ?, ?)`).run(
+      id, requirementId, title, ownerId, milestone, plannedStart, plannedEnd, max + 1, now, now,
     );
     syncWorkItemCollaborators(id, collaboratorIds);
+    syncStoredRequirementState(requirementId, now);
+    audit(actor, 'create', 'work_item', id, `新增工作项：${title}${collaboratorIds.length ? `（${collaboratorIds.length + (ownerId ? 1 : 0)}人协作）` : ''}`);
   })();
-  updateStoredRequirementEnd(requirementId);
-  syncStoredRequirementProgress(requirementId);
-  audit(actor, 'create', 'work_item', id, `新增工作项：${title}${collaboratorIds.length ? `（${collaboratorIds.length + (ownerId ? 1 : 0)}人协作）` : ''}`);
   return getRequirement(requirementId).workItems!.find((item) => item.id === id);
 }
 
 export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) throw new Error('工作项不存在');
+  assertExpectedVersion(input, current.version);
+  if (isTerminalWorkItemStatus(current.status)) fail('已完成或已取消的工作项已锁定，请使用重开或纠错操作', 'TERMINAL_LOCKED');
+  const executionKeys = ['status', 'progress', 'actualStart', 'actualEnd', 'blockedAt', 'blockedReason'];
+  if (executionKeys.some((key) => Object.prototype.hasOwnProperty.call(input, key))) fail('状态、进度和实际日期不能通过普通编辑修改，请使用对应操作命令');
   const title = input.title === undefined ? current.title : requireText(input.title, '工作项标题');
   const milestone = input.milestoneLabel === undefined ? current.milestoneLabel : milestoneLabel(input.milestoneLabel);
   const ownerId = input.ownerId === undefined ? current.ownerId : nullableText(input.ownerId);
@@ -851,65 +1032,134 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
     ? rows<{ personId: string }>('SELECT person_id AS personId FROM work_item_collaborators WHERE work_item_id=?', id).map((item) => item.personId)
     : collaboratorIds;
   assertProjectAssignees(current.requirementId, [ownerId, ...currentCollaborators]);
-  let actualStart = input.actualStart === undefined ? current.actualStart : nullableText(input.actualStart);
-  const actualEnd = input.actualEnd === undefined ? current.actualEnd : nullableText(input.actualEnd);
-  if (actualEnd && !actualStart) actualStart = actualEnd;
-  const progress = actualEnd ? 100 : current.actualEnd && !actualEnd ? Math.min(99, current.progress) : current.progress;
-  const status = current.status === 'cancelled'
-    ? 'cancelled'
-    : current.blockedAt
-      ? 'blocked'
-      : actualEnd
-        ? 'completed'
-        : actualStart
-          ? 'in_progress'
-          : 'not_started';
+  const plannedStart = input.plannedStart === undefined ? current.plannedStart : nullableDate(input.plannedStart, '计划开始');
+  const plannedEnd = input.plannedEnd === undefined ? current.plannedEnd : nullableDate(input.plannedEnd, '计划完成');
+  if (plannedStart && plannedEnd && plannedStart > plannedEnd) throw new Error('计划完成日期不能早于计划开始日期');
+  const scheduleChanged = plannedStart !== current.plannedStart || plannedEnd !== current.plannedEnd;
+  const requirementHasExecution = Boolean(row(`SELECT 1 FROM work_items WHERE requirement_id=? AND status<>'not_started' LIMIT 1`, current.requirementId));
+  const collaboratorsChanged = collaboratorIds !== undefined
+    && [...collaboratorIds].sort().join(',') !== [...currentCollaborators].sort().join(',');
+  const structuralChanged = title !== current.title || milestone !== current.milestoneLabel || ownerId !== current.ownerId
+    || collaboratorsChanged || scheduleChanged || input.sortOrder !== undefined && Number(input.sortOrder) !== current.sortOrder;
+  if (requirementHasExecution && structuralChanged && !nullableText(input.reason)) fail('需求已开始执行，调整工作项结构、负责人或排期时必须填写变更原因');
+  const now = nowIso();
   sqlite.transaction(() => {
-    sqlite.prepare(`UPDATE work_items SET title=?, owner_id=?, milestone_label=?, planned_start=?, planned_end=?, actual_start=?, actual_end=?, progress=?, status=?, sort_order=?, updated_at=? WHERE id=?`).run(
-      title, ownerId, milestone,
-      input.plannedStart === undefined ? current.plannedStart : nullableText(input.plannedStart),
-      input.plannedEnd === undefined ? current.plannedEnd : nullableText(input.plannedEnd), actualStart, actualEnd,
-      progress, status, input.sortOrder === undefined ? current.sortOrder : Number(input.sortOrder), nowIso(), id,
+    const result = sqlite.prepare(`UPDATE work_items SET title=?, owner_id=?, milestone_label=?, planned_start=?, planned_end=?,
+      sort_order=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(
+      title, ownerId, milestone, plannedStart, plannedEnd,
+      input.sortOrder === undefined ? current.sortOrder : Number(input.sortOrder), now, id, current.version,
     );
+    if (!result.changes) fail('数据已被其他用户修改，请刷新后重试', 'STALE_WRITE', 409, undefined, current.version);
     if (collaboratorIds !== undefined) syncWorkItemCollaborators(id, collaboratorIds);
     else if (ownerId) sqlite.prepare('DELETE FROM work_item_collaborators WHERE work_item_id=? AND person_id=?').run(id, ownerId);
+    syncStoredRequirementState(current.requirementId, now);
+    if (requirementHasExecution && structuralChanged) appendRequirementEvent(current.requirementId, 'correction', requireText(input.reason, '变更原因'), actor, id, current.progress, null, now);
+    audit(actor, 'update', 'work_item', id, `更新工作项：${title}`);
   })();
-  updateStoredRequirementEnd(current.requirementId);
-  syncStoredRequirementProgress(current.requirementId);
-  audit(actor, 'update', 'work_item', id, `更新工作项：${title}`);
   return getRequirement(current.requirementId).workItems!.find((item) => item.id === id);
 }
 
 function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unblock' | 'cancel', input: JsonObject, actor: Actor) {
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) throw new Error('工作项不存在');
+  assertExpectedVersion(input, current.version);
   const today = todayIso(); const now = nowIso();
-  if (action === 'start') sqlite.prepare(`UPDATE work_items SET actual_start=COALESCE(actual_start, ?), status='in_progress', blocked_at=NULL, blocked_reason=NULL, updated_at=? WHERE id=?`).run(today, now, id);
-  if (action === 'complete') sqlite.prepare(`UPDATE work_items SET actual_start=COALESCE(actual_start, ?), actual_end=?, progress=100, status='completed', blocked_at=NULL, blocked_reason=NULL, updated_at=? WHERE id=?`).run(today, today, now, id);
-  if (action === 'block') sqlite.prepare(`UPDATE work_items SET blocked_at=?, blocked_reason=?, status='blocked', updated_at=? WHERE id=?`).run(now, requireText(input.reason, '阻塞原因'), now, id);
-  if (action === 'unblock') sqlite.prepare(`UPDATE work_items SET blocked_at=NULL, blocked_reason=NULL, status=CASE WHEN actual_start IS NULL THEN 'not_started' ELSE 'in_progress' END, updated_at=? WHERE id=?`).run(now, id);
-  if (action === 'cancel') sqlite.prepare(`UPDATE work_items SET status='cancelled', blocked_at=NULL, blocked_reason=NULL, updated_at=? WHERE id=?`).run(now, id);
-  syncStoredRequirementProgress(current.requirementId, now);
-  audit(actor, action, 'work_item', id, `${action === 'start' ? '开始' : action === 'complete' ? '完成' : action === 'block' ? '阻塞' : action === 'unblock' ? '解除阻塞' : '取消'}工作项：${current.title}`);
+  const labels = { start: '开始', complete: '完成', block: '阻塞', unblock: '解除阻塞', cancel: '取消' } as const;
+  const eventContent = action === 'complete' ? requireText(input.content, '完成说明')
+    : action === 'block' ? requireText(input.reason, '阻塞原因')
+      : action === 'cancel' ? requireText(input.reason, '取消原因')
+        : nullableText(input.content) || `${labels[action]}工作项`;
+  if (action === 'start') {
+    assertTransition(current.status, ['not_started'], '开始');
+    if (!current.ownerId) fail('开始工作项前请指定负责人');
+    if (!current.plannedStart || !current.plannedEnd) fail('开始工作项前请完善计划日期');
+  }
+  if (action === 'complete') assertTransition(current.status, ['in_progress'], '完成');
+  if (action === 'block') assertTransition(current.status, ['in_progress'], '阻塞');
+  if (action === 'unblock') assertTransition(current.status, ['blocked'], '解除阻塞');
+  if (action === 'cancel') assertTransition(current.status, ['not_started', 'in_progress', 'blocked'], '取消');
+  sqlite.transaction(() => {
+    if (action === 'start') sqlite.prepare(`UPDATE work_items SET actual_start=?, status='in_progress', version=version+1, updated_at=? WHERE id=? AND version=?`).run(today, now, id, current.version);
+    if (action === 'complete') sqlite.prepare(`UPDATE work_items SET actual_end=?, progress=100, status='completed', blocked_at=NULL, blocked_reason=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(today, now, id, current.version);
+    if (action === 'block') sqlite.prepare(`UPDATE work_items SET blocked_at=?, blocked_reason=?, status='blocked', version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, eventContent, now, id, current.version);
+    if (action === 'unblock') sqlite.prepare(`UPDATE work_items SET blocked_at=NULL, blocked_reason=NULL, status='in_progress', version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version);
+    if (action === 'cancel') sqlite.prepare(`UPDATE work_items SET status='cancelled', progress=min(progress,99), actual_end=NULL, blocked_at=NULL, blocked_reason=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version);
+    syncStoredRequirementState(current.requirementId, now);
+    const nextProgress = action === 'complete' ? 100 : current.progress;
+    appendRequirementEvent(current.requirementId, action, eventContent, actor, id, nextProgress, null, now);
+    audit(actor, action, 'work_item', id, `${labels[action]}工作项：${current.title}`);
+  })();
   return getRequirement(current.requirementId).workItems!.find((item) => item.id === id);
 }
 
-export const startWorkItem = (id: string, actor: Actor) => workItemEvent(id, 'start', {}, actor);
-export const completeWorkItem = (id: string, actor: Actor) => workItemEvent(id, 'complete', {}, actor);
+export const startWorkItem = (id: string, input: JsonObject, actor: Actor) => workItemEvent(id, 'start', input, actor);
+export const completeWorkItem = (id: string, input: JsonObject, actor: Actor) => workItemEvent(id, 'complete', input, actor);
 export const blockWorkItem = (id: string, input: JsonObject, actor: Actor) => workItemEvent(id, 'block', input, actor);
-export const unblockWorkItem = (id: string, actor: Actor) => workItemEvent(id, 'unblock', {}, actor);
-export const cancelWorkItem = (id: string, actor: Actor) => workItemEvent(id, 'cancel', {}, actor);
+export const unblockWorkItem = (id: string, input: JsonObject, actor: Actor) => workItemEvent(id, 'unblock', input, actor);
+export const cancelWorkItem = (id: string, input: JsonObject, actor: Actor) => workItemEvent(id, 'cancel', input, actor);
 
-export function deleteWorkItem(id: string, actor: Actor) {
+export function reopenWorkItem(id: string, input: JsonObject, actor: Actor) {
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) throw new Error('工作项不存在');
-  sqlite.prepare('DELETE FROM work_items WHERE id=?').run(id); updateStoredRequirementEnd(current.requirementId); syncStoredRequirementProgress(current.requirementId);
+  assertExpectedVersion(input, current.version); assertTransition(current.status, ['completed', 'cancelled'], '重开');
+  const reason = requireText(input.reason, '重开原因');
+  const restoredProgress = input.progress === undefined ? (current.status === 'completed' ? 99 : Math.min(current.progress, 99)) : requireProgress(input.progress, '恢复进度');
+  if (restoredProgress >= 100) fail('恢复进度必须小于100%');
+  const nextStatus = current.actualStart ? 'in_progress' : 'not_started'; const nextProgress = nextStatus === 'not_started' ? 0 : restoredProgress;
+  const now = nowIso();
+  sqlite.transaction(() => {
+    sqlite.prepare(`UPDATE work_items SET status=?, progress=?, actual_end=NULL, blocked_at=NULL, blocked_reason=NULL,
+      version=version+1, updated_at=? WHERE id=? AND version=?`).run(nextStatus, nextProgress, now, id, current.version);
+    syncStoredRequirementState(current.requirementId, now);
+    appendRequirementEvent(current.requirementId, 'reopen', reason, actor, id, nextProgress, null, now);
+    audit(actor, 'reopen', 'work_item', id, `重开工作项：${current.title}`);
+  })();
+  return getRequirement(current.requirementId).workItems!.find((item) => item.id === id);
+}
+
+export function correctWorkItem(id: string, input: JsonObject, actor: Actor) {
+  const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
+  if (!current) throw new Error('工作项不存在');
+  assertExpectedVersion(input, current.version); const reason = requireText(input.reason, '纠错原因');
+  const progress = input.progress === undefined ? current.progress : requireProgress(input.progress, '完成度');
+  if (isTerminalWorkItemStatus(current.status) && progress !== current.progress) fail('终态工作项调整进度时必须使用重开操作', 'TERMINAL_LOCKED');
+  if (progress >= 100 && current.status !== 'completed') fail('100%只能由完成操作产生');
+  const actualStart = input.actualStart === undefined ? current.actualStart : nullableDate(input.actualStart, '实际开始');
+  const actualEnd = input.actualEnd === undefined ? current.actualEnd : nullableDate(input.actualEnd, '实际完成');
+  if (current.status === 'not_started' && (actualStart || actualEnd || progress !== 0)) fail('未开始工作项不能设置实际日期或非零进度');
+  if (['in_progress', 'blocked'].includes(current.status) && (!actualStart || actualEnd || progress >= 100)) fail('进行中或阻塞工作项必须保留实际开始日期，且不能设置实际完成日期');
+  if (current.status === 'completed' && (!actualStart || !actualEnd)) fail('已完成工作项必须保留实际开始和完成日期');
+  if (current.status === 'cancelled' && actualEnd) fail('已取消工作项不能设置实际完成日期');
+  if (actualStart && actualEnd && actualStart > actualEnd) fail('实际完成日期不能早于实际开始日期');
+  const title = input.title === undefined ? current.title : requireText(input.title, '工作项标题'); const now = nowIso();
+  sqlite.transaction(() => {
+    sqlite.prepare(`UPDATE work_items SET title=?, actual_start=?, actual_end=?, progress=?, version=version+1, updated_at=? WHERE id=? AND version=?`)
+      .run(title, actualStart, actualEnd, progress, now, id, current.version);
+    syncStoredRequirementState(current.requirementId, now);
+    appendRequirementEvent(current.requirementId, 'correction', reason, actor, id, progress, nullableText(input.supersedesId), now);
+    audit(actor, 'correct', 'work_item', id, `纠错工作项：${current.title}`);
+  })();
+  return getRequirement(current.requirementId).workItems!.find((item) => item.id === id);
+}
+
+export function deleteWorkItem(id: string, input: JsonObject, actor: Actor) {
+  const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
+  if (!current) throw new Error('工作项不存在');
+  assertExpectedVersion(input, current.version);
+  if (current.status !== 'not_started' || current.progress !== 0 || row('SELECT 1 FROM progress_updates WHERE work_item_id=? LIMIT 1', id)) {
+    fail('只有未开始、0%且无历史的工作项可以删除，其他工作项请使用取消', 'DEPENDENCY_CONFLICT');
+  }
+  sqlite.transaction(() => { sqlite.prepare('DELETE FROM work_items WHERE id=?').run(id); syncStoredRequirementState(current.requirementId); })();
   audit(actor, 'delete', 'work_item', id, `删除工作项：${current.title}`);
   return { ok: true };
 }
 
-export function reorderWorkItems(requirementId: string, ids: string[], actor: Actor) {
-  const tx = sqlite.transaction(() => ids.forEach((id, index) => sqlite.prepare('UPDATE work_items SET sort_order=?, updated_at=? WHERE id=? AND requirement_id=?').run(index, nowIso(), id, requirementId)));
+export function reorderWorkItems(requirementId: string, ids: string[], actor: Actor, input: JsonObject = {}) {
+  const requirement = getRequirement(requirementId); assertExpectedVersion(input, requirement.version);
+  if (['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status)) fail('当前需求已锁定，不能调整工作项顺序', 'TERMINAL_LOCKED');
+  if (requirement.workItems!.some((item) => item.status !== 'not_started') && !nullableText(input.reason)) fail('需求已开始执行，调整顺序时必须填写变更原因');
+  const now = nowIso();
+  const tx = sqlite.transaction(() => { ids.forEach((id, index) => sqlite.prepare('UPDATE work_items SET sort_order=?, version=version+1, updated_at=? WHERE id=? AND requirement_id=?').run(index, now, id, requirementId)); syncStoredRequirementState(requirementId, now); });
   tx(); audit(actor, 'reorder', 'work_item', requirementId, '调整工作项顺序');
   return getRequirement(requirementId).workItems;
 }
@@ -919,23 +1169,24 @@ export function addProgress(requirementId: string, input: JsonObject, actor: Act
   const id = randomUUID(); const now = nowIso(); const workItemId = nullableText(input.workItemId);
   if (workItemId && !requirement.workItems!.some((item) => item.id === workItemId)) throw new Error('关联工作项不存在');
   if (!workItemId && input.workItemPercent !== undefined && nullableText(input.workItemPercent) !== null) throw new Error('填写完成度前请选择工作项');
-  const workItemPercent = workItemId ? requireProgress(input.workItemPercent, '工作项完成度') : null;
+  const hasPercent = input.workItemPercent !== undefined && input.workItemPercent !== null && String(input.workItemPercent).trim() !== '';
+  const workItemPercent = workItemId && hasPercent ? requireProgress(input.workItemPercent, '工作项完成度') : null;
   const workItem = workItemId ? requirement.workItems!.find((item) => item.id === workItemId)! : null;
-  if (workItem?.status === 'cancelled') throw new Error('已取消的工作项不能提交进度');
+  if (workItemPercent !== null && workItem) assertExpectedVersion(input, workItem.version);
+  if (workItem && isTerminalWorkItemStatus(workItem.status)) fail('已完成或已取消工作项不能再提交进展', 'TERMINAL_LOCKED');
+  if (workItemPercent !== null && workItem?.status !== 'in_progress') fail('只有进行中工作项可以更新完成度；请先开始或解除阻塞', 'INVALID_TRANSITION');
+  if (workItemPercent === 100) fail('100%只能通过“完成工作项”操作提交');
+  if (workItemPercent !== null && workItem && workItemPercent < workItem.progress) fail('普通进展不能降低完成度，请由项目经理执行纠错');
+  if (!workItemId && ['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status)) fail('终态需求已锁定，不能追加进展', 'TERMINAL_LOCKED');
   const tx = sqlite.transaction(() => {
     if (workItemId && workItemPercent !== null) {
-      if (workItemPercent === 100) {
-        sqlite.prepare(`UPDATE work_items SET progress=100, actual_start=COALESCE(actual_start, ?), actual_end=?,
-          status='completed', blocked_at=NULL, blocked_reason=NULL, updated_at=? WHERE id=?`).run(todayIso(), todayIso(), now, workItemId);
-      } else {
-        sqlite.prepare(`UPDATE work_items SET progress=?, actual_start=CASE WHEN ?>0 THEN COALESCE(actual_start, ?) ELSE actual_start END,
-          actual_end=NULL, status=CASE WHEN blocked_at IS NOT NULL THEN 'blocked' WHEN ?>0 THEN 'in_progress' ELSE 'not_started' END,
-          updated_at=? WHERE id=?`).run(workItemPercent, workItemPercent, todayIso(), workItemPercent, now, workItemId);
-      }
+      sqlite.prepare(`UPDATE work_items SET progress=?, version=version+1, updated_at=? WHERE id=? AND version=?`)
+        .run(workItemPercent, now, workItemId, workItem!.version);
+      syncStoredRequirementState(requirementId, now);
     }
-    const percent = syncStoredRequirementProgress(requirementId, now);
-    sqlite.prepare(`INSERT INTO progress_updates (id, requirement_id, work_item_id, percent, work_item_percent, content, created_by_account_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, requirementId, workItemId, percent, workItemPercent, content, actor.accountId || null, now, now);
+    const percent = row<{ progress: number }>('SELECT progress FROM requirements WHERE id=?', requirementId)?.progress ?? requirement.progress;
+    sqlite.prepare(`INSERT INTO progress_updates (id, requirement_id, work_item_id, percent, work_item_percent, content, event_type, created_by_account_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, requirementId, workItemId, percent, workItemPercent, content, workItemPercent === null ? 'note' : 'progress', actor.accountId || null, now, now);
   });
   tx(); const result = getRequirement(requirementId);
   audit(actor, 'create', 'progress', id, `追加进展：${result.progress}% ${content.slice(0, 50)}`);
@@ -943,29 +1194,13 @@ export function addProgress(requirementId: string, input: JsonObject, actor: Act
 }
 
 export function updateProgress(id: string, input: JsonObject, actor: Actor) {
-  const current = row<any>('SELECT * FROM progress_updates WHERE id=?', id);
-  if (!current) throw new Error('进展记录不存在');
-  const content = input.content === undefined ? current.content : requireText(input.content, '具体进展');
-  const workItemId = input.workItemId === undefined ? current.work_item_id : nullableText(input.workItemId);
-  if (workItemId && !row('SELECT id FROM work_items WHERE id=? AND requirement_id=?', workItemId, current.requirement_id)) throw new Error('关联工作项不存在');
-  const percent = getRequirement(current.requirement_id).progress;
-  const workItemPercent = workItemId === current.work_item_id
-    ? current.work_item_percent
-    : workItemId
-      ? row<{ progress: number }>('SELECT progress FROM work_items WHERE id=?', workItemId)?.progress ?? null
-      : null;
-  sqlite.prepare('UPDATE progress_updates SET percent=?, work_item_percent=?, content=?, work_item_id=?, updated_at=? WHERE id=?')
-    .run(percent, workItemPercent, content, workItemId, nowIso(), id);
-  audit(actor, 'update', 'progress', id, `更新进展记录：${percent}%`);
-  return getRequirement(current.requirement_id);
+  if (!row('SELECT id FROM progress_updates WHERE id=?', id)) throw new Error('进展记录不存在');
+  fail('进展历史为只追加记录，不能修改；如需更正请追加纠错记录', 'HISTORY_IMMUTABLE');
 }
 
 export function deleteProgress(id: string, actor: Actor) {
-  const current = row<any>('SELECT * FROM progress_updates WHERE id=?', id);
-  if (!current) throw new Error('进展记录不存在');
-  sqlite.prepare('DELETE FROM progress_updates WHERE id=?').run(id);
-  audit(actor, 'delete', 'progress', id, `删除进展记录：${current.percent}%`);
-  return { ok: true };
+  if (!row('SELECT id FROM progress_updates WHERE id=?', id)) throw new Error('进展记录不存在');
+  fail('进展历史为只追加记录，不能删除', 'HISTORY_IMMUTABLE');
 }
 
 function enrichIssue(issue: Omit<IssueRecord, 'overdue'> & Partial<Pick<IssueRecord, 'overdue'>>): IssueRecord {
@@ -986,8 +1221,9 @@ function issueRequirement(projectId: string, value: unknown) {
 function issueOwner(projectId: string, value: unknown) {
   const ownerId = nullableText(value);
   if (ownerId && !row(`SELECT p.id FROM people p JOIN project_people pp ON pp.person_id=p.id
-    WHERE p.id=? AND pp.project_id=? AND p.deleted_at IS NULL AND p.active=1`, ownerId, projectId)) {
-    throw new Error('负责人不属于当前项目');
+    WHERE p.id=? AND pp.project_id=? AND pp.project_role IN ('member','manager')
+      AND p.deleted_at IS NULL AND p.active=1`, ownerId, projectId)) {
+    throw new Error('负责人必须是当前项目中已启用的成员或项目经理');
   }
   return ownerId;
 }
@@ -1067,6 +1303,7 @@ export function getIssue(id: string) {
   const issue = row<IssueRecord>(`${issueSelect} WHERE i.id=?`, id);
   if (!issue) throw new Error('问题不存在');
   const updates = rows<IssueUpdateRecord>(`SELECT u.id, u.issue_id AS issueId, u.progress, u.content,
+    u.event_type AS eventType, u.supersedes_id AS supersedesId,
     u.created_by_account_id AS createdByAccountId, a.username AS createdByName,
     u.created_at AS createdAt, u.updated_at AS updatedAt FROM issue_updates u
     LEFT JOIN accounts a ON a.id=u.created_by_account_id
@@ -1078,23 +1315,16 @@ export function createIssue(input: JsonObject, actor: Actor) {
   const id = randomUUID(); const projectId = requireText(input.projectId, '项目'); requireActiveProject(projectId);
   const title = requireText(input.title, '问题标题');
   const requirementId = issueRequirement(projectId, input.requirementId);
-  const ownerId = issueOwner(projectId, input.ownerId);
-  let status = input.status === undefined ? 'open' : ensureEnum(input.status, issueStatuses, '问题状态');
   const priority = input.priority === undefined ? 'P2' : ensureEnum(input.priority, priorities, '问题优先级');
-  const progress = status === 'resolved' ? 100 : input.progress === undefined ? 0 : requireProgress(input.progress, '问题完成度');
-  if (status !== 'resolved' && progress === 100) throw new Error('100%问题必须由项目经理确认关闭');
-  if (status === 'open' && progress > 0) status = 'in_progress';
-  if (status === 'in_progress' && !ownerId) throw new Error('进入处理中前请指定负责人');
   const discoveredAt = input.discoveredAt === undefined ? todayIso() : requireDate(input.discoveredAt, '发现日期');
-  const dueDate = status === 'deferred' ? null : nullableDate(input.dueDate, '目标日期');
-  const resolvedAt = status === 'resolved' ? todayIso() : null;
+  const dueDate = nullableDate(input.dueDate, '目标日期');
   const now = nowIso();
   sqlite.prepare(`INSERT INTO issues
     (id, project_id, requirement_id, source_ref, title, impact, reporter, owner_id, status, priority,
       progress, discovered_at, due_date, resolved_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     id, projectId, requirementId, nullableText(input.sourceRef), title, nullableText(input.impact),
-    nullableText(input.reporter), ownerId, status, priority, progress, discoveredAt, dueDate, resolvedAt, now, now,
+    nullableText(input.reporter), null, 'open', priority, 0, discoveredAt, dueDate, null, now, now,
   );
   audit(actor, 'create', 'issue', id, `创建问题：${title}`);
   return getIssue(id);
@@ -1102,123 +1332,129 @@ export function createIssue(input: JsonObject, actor: Actor) {
 
 export function updateIssue(id: string, input: JsonObject, actor: Actor) {
   const current = getIssue(id); const projectId = current.projectId;
+  assertExpectedVersion(input, current.version);
+  if (current.status === 'resolved') fail('已解决问题已锁定，请使用重开或纠错操作', 'TERMINAL_LOCKED');
+  if (['status', 'progress', 'resolvedAt'].some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
+    fail('问题状态、完成度和解决日期不能通过普通编辑修改');
+  }
   const title = input.title === undefined ? current.title : requireText(input.title, '问题标题');
   const requirementId = input.requirementId === undefined ? current.requirementId : issueRequirement(projectId, input.requirementId);
   const sourceRef = input.sourceRef === undefined ? current.sourceRef : nullableText(input.sourceRef);
   const ownerId = input.ownerId === undefined ? current.ownerId : issueOwner(projectId, input.ownerId);
-  let status = input.status === undefined ? current.status : ensureEnum(input.status, issueStatuses, '问题状态');
   const priority = input.priority === undefined ? current.priority : ensureEnum(input.priority, priorities, '问题优先级');
-  const updateContent = nullableText(input.updateContent);
-  if (current.status !== 'resolved' && status === 'resolved' && !updateContent) throw new Error('标记已解决时请填写闭环说明');
-  let progress = status === 'resolved'
-    ? 100
-    : input.progress === undefined
-      ? current.status === 'resolved' ? 99 : current.progress
-      : requireProgress(input.progress, '问题完成度');
-  if (status !== 'resolved' && progress === 100) throw new Error('未关闭问题的完成度不能为100%');
-  if (status === 'open' && progress > 0) status = 'in_progress';
-  if (status === 'in_progress' && !ownerId) throw new Error('进入处理中前请指定负责人');
-  const now = nowIso(); const updateId = updateContent ? randomUUID() : null;
-  const resolvedAt = status === 'resolved' ? current.resolvedAt || todayIso() : null;
-  const dueDate = status === 'deferred' ? null : input.dueDate === undefined ? current.dueDate : nullableDate(input.dueDate, '目标日期');
+  const now = nowIso();
+  const dueDate = current.status === 'deferred' ? null : input.dueDate === undefined ? current.dueDate : nullableDate(input.dueDate, '目标日期');
   sqlite.transaction(() => {
     sqlite.prepare(`UPDATE issues SET requirement_id=?, source_ref=?, title=?, impact=?, reporter=?, owner_id=?,
-      status=?, priority=?, progress=?, discovered_at=?, due_date=?, resolved_at=?, updated_at=? WHERE id=?`).run(
+      priority=?, discovered_at=?, due_date=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(
       requirementId, sourceRef, title,
       input.impact === undefined ? current.impact : nullableText(input.impact),
       input.reporter === undefined ? current.reporter : nullableText(input.reporter),
-      ownerId, status, priority, progress,
+      ownerId, priority,
       input.discoveredAt === undefined ? current.discoveredAt : requireDate(input.discoveredAt, '发现日期'),
-      dueDate,
-      resolvedAt, now, id,
+      dueDate, now, id, current.version,
     );
-    if (updateId && updateContent) sqlite.prepare(`INSERT INTO issue_updates
-      (id, issue_id, progress, content, created_by_account_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .run(updateId, id, progress, updateContent, actor.accountId || null, now, now);
+    audit(actor, 'update', 'issue', id, `更新问题：${title}`);
   })();
-  audit(actor, 'update', 'issue', id, `更新问题：${title}`);
-  if (updateId && updateContent) audit(actor, 'create', 'issue_update', updateId, `追加问题进展：${updateContent.slice(0, 50)}`);
   return getIssue(id);
 }
 
 export function addIssueUpdate(issueId: string, input: JsonObject, actor: Actor, permissions: { canSetProgress: boolean; canResolve: boolean }) {
   const issue = getIssue(issueId); const content = requireText(input.content, '进展内容');
-  if (issue.status === 'resolved') throw new Error('已解决问题不能再追加进展，请先由项目经理重新打开');
+  if (issue.status === 'resolved') fail('已解决问题不能再追加进展，请先由项目经理重新打开', 'TERMINAL_LOCKED');
   const hasProgress = input.progress !== undefined && nullableText(input.progress) !== null;
   if (hasProgress && !permissions.canSetProgress) throw new Error('只有问题负责人或项目经理可以更新问题完成度');
   const progress = hasProgress ? requireProgress(input.progress, '问题完成度') : null;
-  if (progress === 100 && !permissions.canResolve) throw new Error('问题关闭必须由项目经理确认');
-  let status = issue.status;
-  if (progress === 100) status = 'resolved';
-  else if (progress !== null && progress > 0 && status === 'open') status = 'in_progress';
+  if (progress === 100) fail('100%只能由项目经理通过“确认解决”提交');
+  if (progress !== null && issue.status !== 'in_progress') fail('只有处理中问题可以更新完成度', 'INVALID_TRANSITION');
+  if (progress !== null && progress < issue.progress) fail('普通进展不能降低完成度，请由项目经理执行纠错');
+  if (progress !== null) assertExpectedVersion(input, issue.version);
   const id = randomUUID(); const now = nowIso();
   sqlite.transaction(() => {
-    sqlite.prepare(`INSERT INTO issue_updates (id, issue_id, progress, content, created_by_account_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, issueId, progress, content, actor.accountId || null, now, now);
-    sqlite.prepare(`UPDATE issues SET progress=COALESCE(?, progress), status=?, resolved_at=CASE WHEN ?='resolved' THEN ? ELSE resolved_at END,
-      updated_at=? WHERE id=?`).run(progress, status, status, todayIso(), now, issueId);
+    sqlite.prepare(`INSERT INTO issue_updates (id, issue_id, progress, content, event_type, created_by_account_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, issueId, progress, content, progress === null ? 'note' : 'progress', actor.accountId || null, now, now);
+    if (progress !== null) sqlite.prepare(`UPDATE issues SET progress=?, version=version+1, updated_at=? WHERE id=? AND version=?`)
+      .run(progress, now, issueId, issue.version);
   })();
   audit(actor, 'create', 'issue_update', id, `追加问题进展：${issue.title} · ${content.slice(0, 50)}`);
   return getIssue(issueId);
 }
 
-function latestIssueProgressUpdate(issueId: string) {
-  return row<{ id: string; progress: number }>(`SELECT id, progress FROM issue_updates
-    WHERE issue_id=? AND progress IS NOT NULL ORDER BY created_at DESC, id DESC LIMIT 1`, issueId);
+function issueStateEvent(id: string, action: 'start' | 'defer' | 'resume' | 'resolve', input: JsonObject, actor: Actor) {
+  const current = getIssue(id); assertExpectedVersion(input, current.version); const now = nowIso();
+  const content = action === 'start' ? nullableText(input.content) || '开始处理问题'
+    : action === 'defer' ? requireText(input.reason, '暂缓原因')
+      : action === 'resume' ? requireText(input.reason, '恢复原因')
+        : requireText(input.content, '闭环说明');
+  if (action === 'start') {
+    assertTransition(current.status, ['open'], '开始处理');
+    if (!current.ownerId) fail('进入处理中前请指定负责人');
+  }
+  if (action === 'defer') assertTransition(current.status, ['open', 'in_progress'], '暂缓');
+  if (action === 'resume') assertTransition(current.status, ['deferred'], '恢复');
+  if (action === 'resolve') assertTransition(current.status, ['in_progress'], '确认解决');
+  const resumeStatus = current.progress > 0 ? 'in_progress' : 'open';
+  if (action === 'resume' && resumeStatus === 'in_progress' && !current.ownerId) fail('恢复处理前请指定负责人');
+  sqlite.transaction(() => {
+    if (action === 'start') sqlite.prepare(`UPDATE issues SET status='in_progress', version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version);
+    if (action === 'defer') sqlite.prepare(`UPDATE issues SET status='deferred', due_date=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version);
+    if (action === 'resume') sqlite.prepare(`UPDATE issues SET status=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(resumeStatus, now, id, current.version);
+    if (action === 'resolve') sqlite.prepare(`UPDATE issues SET status='resolved', progress=100, resolved_at=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(todayIso(), now, id, current.version);
+    appendIssueEvent(id, action, content, actor, action === 'resolve' ? 100 : current.progress, null, now);
+    audit(actor, action, 'issue', id, `${action === 'start' ? '开始处理' : action === 'defer' ? '暂缓' : action === 'resume' ? '恢处理' : '确认解决'}问题：${current.title}`);
+  })();
+  return getIssue(id);
 }
 
-function syncIssueProgressFromUpdates(issueId: string, now = nowIso()) {
-  const issue = row<{ status: string; ownerId: string | null }>(
-    'SELECT status, owner_id AS ownerId FROM issues WHERE id=?', issueId,
-  );
-  if (!issue) throw new Error('问题不存在');
-  const latest = latestIssueProgressUpdate(issueId);
-  const progress = latest?.progress ?? 0;
-  const status = progress === 100
-    ? 'resolved'
-    : issue.status === 'resolved'
-      ? progress > 0 && issue.ownerId ? 'in_progress' : 'open'
-      : issue.status === 'open' && progress > 0 && issue.ownerId
-        ? 'in_progress'
-        : issue.status;
-  sqlite.prepare(`UPDATE issues SET progress=?, status=?, resolved_at=CASE WHEN ?='resolved' THEN COALESCE(resolved_at, ?) ELSE NULL END,
-    updated_at=? WHERE id=?`).run(progress, status, status, todayIso(), now, issueId);
+export const startIssue = (id: string, input: JsonObject, actor: Actor) => issueStateEvent(id, 'start', input, actor);
+export const deferIssue = (id: string, input: JsonObject, actor: Actor) => issueStateEvent(id, 'defer', input, actor);
+export const resumeIssue = (id: string, input: JsonObject, actor: Actor) => issueStateEvent(id, 'resume', input, actor);
+export const resolveIssue = (id: string, input: JsonObject, actor: Actor) => issueStateEvent(id, 'resolve', input, actor);
+
+export function reopenIssue(id: string, input: JsonObject, actor: Actor) {
+  const current = getIssue(id); assertExpectedVersion(input, current.version); assertTransition(current.status, ['resolved'], '重开');
+  const reason = requireText(input.reason, '重开原因');
+  const requested = input.progress === undefined ? (current.ownerId ? 99 : 0) : requireProgress(input.progress, '恢复进度');
+  if (requested >= 100) fail('恢复进度必须小于100%');
+  if (requested > 0 && !current.ownerId) fail('恢复为处理中前请先指定负责人');
+  const status = requested > 0 ? 'in_progress' : 'open'; const now = nowIso();
+  sqlite.transaction(() => {
+    sqlite.prepare(`UPDATE issues SET status=?, progress=?, resolved_at=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`)
+      .run(status, requested, now, id, current.version);
+    appendIssueEvent(id, 'reopen', reason, actor, requested, null, now);
+    audit(actor, 'reopen', 'issue', id, `重开问题：${current.title}`);
+  })();
+  return getIssue(id);
+}
+
+export function correctIssue(id: string, input: JsonObject, actor: Actor) {
+  const current = getIssue(id); assertExpectedVersion(input, current.version); const reason = requireText(input.reason, '纠错原因');
+  const progress = input.progress === undefined ? current.progress : requireProgress(input.progress, '问题完成度');
+  if (current.status === 'resolved' && progress !== 100) fail('已解决问题降低进度时必须使用重开操作', 'TERMINAL_LOCKED');
+  if (current.status !== 'resolved' && progress >= 100) fail('100%只能通过“确认解决”产生');
+  if (current.status === 'open' && progress !== 0) fail('待处理问题进度必须为0%');
+  const title = input.title === undefined ? current.title : requireText(input.title, '问题标题');
+  const resolvedAt = input.resolvedAt === undefined ? current.resolvedAt : nullableDate(input.resolvedAt, '解决日期');
+  if (current.status === 'resolved' && !resolvedAt) fail('已解决问题必须保留解决日期');
+  const now = nowIso();
+  sqlite.transaction(() => {
+    sqlite.prepare(`UPDATE issues SET title=?, impact=?, resolved_at=?, progress=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(
+      title, input.impact === undefined ? current.impact : nullableText(input.impact), resolvedAt, progress, now, id, current.version,
+    );
+    appendIssueEvent(id, 'correction', reason, actor, progress, nullableText(input.supersedesId), now);
+    audit(actor, 'correct', 'issue', id, `纠错问题：${current.title}`);
+  })();
+  return getIssue(id);
 }
 
 export function updateIssueUpdate(issueId: string, updateId: string, input: JsonObject, actor: Actor) {
-  const current = row<{ id: string; issueId: string; issueTitle: string; progress: number | null; content: string }>(`SELECT
-    u.id, u.issue_id AS issueId, i.title AS issueTitle, u.progress, u.content FROM issue_updates u
-    JOIN issues i ON i.id=u.issue_id WHERE u.id=? AND u.issue_id=?`, updateId, issueId);
-  if (!current) throw new Error('问题进展不存在');
-  const content = input.content === undefined ? current.content : requireText(input.content, '进展内容');
-  const nextProgress = input.progress === undefined
-    ? current.progress
-    : input.progress === null || String(input.progress).trim() === ''
-      ? null
-      : requireProgress(input.progress, '问题完成度');
-  const latestBefore = latestIssueProgressUpdate(issueId);
-  const now = nowIso();
-  sqlite.prepare('UPDATE issue_updates SET content=?, progress=?, updated_at=? WHERE id=? AND issue_id=?')
-    .run(content, nextProgress, now, updateId, issueId);
-  const latestAfter = latestIssueProgressUpdate(issueId);
-  if (input.progress !== undefined && (latestBefore?.id === updateId || latestAfter?.id === updateId)) syncIssueProgressFromUpdates(issueId, now);
-  else sqlite.prepare('UPDATE issues SET updated_at=? WHERE id=?').run(now, issueId);
-  audit(actor, 'update', 'issue_update', updateId, `编辑问题进展：${current.issueTitle} · ${content.slice(0, 50)}`);
-  return getIssue(issueId);
+  if (!row('SELECT id FROM issue_updates WHERE id=? AND issue_id=?', updateId, issueId)) throw new Error('问题进展不存在');
+  fail('问题历史为只追加记录，不能修改；如需更正请追加纠错记录', 'HISTORY_IMMUTABLE');
 }
 
 export function deleteIssueUpdate(issueId: string, updateId: string, actor: Actor) {
-  const current = row<{ id: string; issueTitle: string; progress: number | null; content: string }>(`SELECT
-    u.id, i.title AS issueTitle, u.progress, u.content FROM issue_updates u
-    JOIN issues i ON i.id=u.issue_id WHERE u.id=? AND u.issue_id=?`, updateId, issueId);
-  if (!current) throw new Error('问题进展不存在');
-  const latestBefore = latestIssueProgressUpdate(issueId);
-  const now = nowIso();
-  sqlite.prepare('DELETE FROM issue_updates WHERE id=? AND issue_id=?').run(updateId, issueId);
-  if (latestBefore?.id === updateId) syncIssueProgressFromUpdates(issueId, now);
-  else sqlite.prepare('UPDATE issues SET updated_at=? WHERE id=?').run(now, issueId);
-  audit(actor, 'delete', 'issue_update', updateId, `删除问题进展：${current.issueTitle} · ${current.content.slice(0, 50)}`);
-  return getIssue(issueId);
+  if (!row('SELECT id FROM issue_updates WHERE id=? AND issue_id=?', updateId, issueId)) throw new Error('问题进展不存在');
+  fail('问题历史为只追加记录，不能删除', 'HISTORY_IMMUTABLE');
 }
 
 export function getPeopleConcurrency(filters: { projectId?: string; personId?: string; jobTitle?: string; from?: string; to?: string; includeExternalAggregate?: boolean } = {}) {
@@ -1278,8 +1514,17 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
 
 export function listArchives(projectId?: string) {
   return {
-    projects: projectId ? [] : rows(`SELECT id, name AS title, deleted_at AS deletedAt FROM projects WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`),
-    requirements: rows(`SELECT id, title, deleted_at AS deletedAt FROM requirements WHERE deleted_at IS NOT NULL ${projectId ? 'AND project_id=?' : ''} ORDER BY deleted_at DESC`, ...(projectId ? [projectId] : [])),
+    projects: projectId ? [] : rows(`SELECT p.id, p.name AS title, p.deleted_at AS deletedAt,
+      (SELECT COUNT(*) FROM requirements r WHERE r.project_id=p.id) AS requirementCount,
+      (SELECT COUNT(*) FROM work_items w JOIN requirements r ON r.id=w.requirement_id WHERE r.project_id=p.id) AS workItemCount,
+      (SELECT COUNT(*) FROM issues i WHERE i.project_id=p.id) AS issueCount,
+      (SELECT COUNT(*) FROM work_item_templates t WHERE t.project_id=p.id) AS templateCount
+      FROM projects p WHERE p.deleted_at IS NOT NULL ORDER BY p.deleted_at DESC`),
+    requirements: rows(`SELECT r.id, r.title, r.deleted_at AS deletedAt,
+      (SELECT COUNT(*) FROM work_items w WHERE w.requirement_id=r.id) AS workItemCount,
+      (SELECT COUNT(*) FROM progress_updates u WHERE u.requirement_id=r.id) AS progressCount,
+      (SELECT COUNT(*) FROM issues i WHERE i.requirement_id=r.id) AS linkedIssueCount
+      FROM requirements r WHERE r.deleted_at IS NOT NULL ${projectId ? 'AND r.project_id=?' : ''} ORDER BY r.deleted_at DESC`, ...(projectId ? [projectId] : [])),
     people: projectId ? [] : rows(`SELECT id, name AS title, job_title AS jobTitle, deleted_at AS deletedAt FROM people WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`),
     templates: rows(`SELECT id, name AS title, deleted_at AS deletedAt FROM work_item_templates WHERE deleted_at IS NOT NULL ${projectId ? 'AND project_id=?' : ''} ORDER BY deleted_at DESC`, ...(projectId ? [projectId] : [])),
   };
@@ -1287,20 +1532,23 @@ export function listArchives(projectId?: string) {
 
 export type ArchiveEntity = 'projects' | 'requirements' | 'people' | 'templates';
 
-export function permanentlyDeleteArchive(entity: ArchiveEntity, id: string, actor: Actor) {
+export function permanentlyDeleteArchive(entity: ArchiveEntity, id: string, actor: Actor, input: JsonObject = {}) {
   const tx = sqlite.transaction(() => {
     if (entity === 'projects') {
       const project = row<{ name: string }>('SELECT name FROM projects WHERE id=? AND deleted_at IS NOT NULL', id);
       if (!project) throw new Error('归档项目不存在');
+      if (requireText(input.confirmName, '确认名称') !== project.name) fail('确认名称与项目名称不一致');
       const requirementCount = row<{ count: number }>('SELECT COUNT(*) AS count FROM requirements WHERE project_id=?', id)?.count || 0;
       sqlite.prepare('DELETE FROM requirements WHERE project_id=?').run(id);
       sqlite.prepare('DELETE FROM projects WHERE id=?').run(id);
+      if (isSampleProjectId(id)) deleteOrReleaseSamplePeople(sqlite, nowIso());
       audit(actor, 'permanent_delete', 'project', id, `永久删除归档项目：${project.name}（含${requirementCount}条需求）`, null);
       return { ok: true };
     }
     if (entity === 'requirements') {
       const requirement = row<{ title: string }>('SELECT title FROM requirements WHERE id=? AND deleted_at IS NOT NULL', id);
       if (!requirement) throw new Error('归档需求不存在');
+      if (requireText(input.confirmName, '确认名称') !== requirement.title) fail('确认名称与需求名称不一致');
       sqlite.prepare('DELETE FROM requirements WHERE id=?').run(id);
       audit(actor, 'permanent_delete', 'requirement', id, `永久删除归档需求：${requirement.title}`);
       return { ok: true };
@@ -1308,8 +1556,12 @@ export function permanentlyDeleteArchive(entity: ArchiveEntity, id: string, acto
     if (entity === 'people') {
       const person = row<{ name: string }>('SELECT name FROM people WHERE id=? AND deleted_at IS NOT NULL', id);
       if (!person) throw new Error('归档人员不存在');
-      sqlite.prepare('UPDATE requirements SET owner_id=NULL WHERE owner_id=?').run(id);
-      sqlite.prepare('UPDATE work_items SET owner_id=NULL WHERE owner_id=?').run(id);
+      const references = row<{ count: number }>(`SELECT
+        (SELECT COUNT(*) FROM requirements WHERE owner_id=?) +
+        (SELECT COUNT(*) FROM work_items WHERE owner_id=?) +
+        (SELECT COUNT(*) FROM work_item_collaborators WHERE person_id=?) +
+        (SELECT COUNT(*) FROM issues WHERE owner_id=?) AS count`, id, id, id, id)?.count || 0;
+      if (references) fail(`该人员仍被${references}条历史业务记录引用，只能保留归档`, 'DEPENDENCY_CONFLICT', 409, { references });
       sqlite.prepare('DELETE FROM accounts WHERE person_id=? AND is_builtin=0').run(id);
       sqlite.prepare('DELETE FROM people WHERE id=?').run(id);
       audit(actor, 'permanent_delete', 'person', id, `永久删除归档人员：${person.name}`);
@@ -1318,9 +1570,10 @@ export function permanentlyDeleteArchive(entity: ArchiveEntity, id: string, acto
     if (entity === 'templates') {
       const template = row<{ name: string }>('SELECT name FROM work_item_templates WHERE id=? AND deleted_at IS NOT NULL', id);
       if (!template) throw new Error('归档模板不存在');
-      sqlite.prepare('UPDATE projects SET default_template_id=NULL WHERE default_template_id=?').run(id);
-      sqlite.prepare(`UPDATE work_items SET template_item_id=NULL
-        WHERE template_item_id IN (SELECT id FROM template_items WHERE template_id=?)`).run(id);
+      const references = row<{ count: number }>(`SELECT
+        (SELECT COUNT(*) FROM requirements WHERE template_id=?) +
+        (SELECT COUNT(*) FROM work_items WHERE template_item_id IN (SELECT id FROM template_items WHERE template_id=?)) AS count`, id, id)?.count || 0;
+      if (references) fail(`该流程仍被${references}条历史业务记录引用，只能保留归档快照`, 'DEPENDENCY_CONFLICT', 409, { references });
       sqlite.prepare('DELETE FROM work_item_templates WHERE id=?').run(id);
       audit(actor, 'permanent_delete', 'template', id, `永久删除归档模板：${template.name}`);
       return { ok: true };

@@ -232,6 +232,15 @@ textarea {
 }
 
 @container page-content (max-width: 900px) {
+  .system-overview-grid,
+  .system-secondary-grid {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+
+  .system-secondary-grid > .system-detail-panel {
+    min-height: 300px;
+  }
+
   .detail-grid,
   .progress-detail-grid {
     grid-template-columns: 1fr;
@@ -255,6 +264,27 @@ textarea {
 }
 
 @container page-content (max-width: 720px) {
+  .system-overview-grid,
+  .system-secondary-grid,
+  .system-detail-list {
+    grid-template-columns: 1fr;
+  }
+
+  .system-detail-list .http-alert {
+    grid-column: 1;
+  }
+
+  .system-backup-policy {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .system-backup-policy .system-operation-success,
+  .system-backup-policy .system-operation-error {
+    margin-left: 0;
+  }
+
   .stats-grid,
   .detail-kpis {
     grid-template-columns: 1fr;
@@ -447,7 +477,7 @@ textarea {
     max-width: 190px;
   }
 
-  .project-switcher-button > span:nth-child(2) {
+  .project-switcher-name {
     max-width: 130px;
   }
 
@@ -489,6 +519,9 @@ textarea {
 }
 
 @media (max-width: 760px) {
+  .requirement-acceptance-banner { align-items: stretch; flex-direction: column; }
+  .requirement-acceptance-banner .primary-button { width: 100%; }
+  .issue-state-actions.is-compact { flex-wrap: wrap; }
   .system-grid { grid-template-columns: 1fr; }
   .project-members-panel > header { align-items: flex-start; flex-direction: column; }
   .project-member-header-actions { width: 100%; justify-content: space-between; }

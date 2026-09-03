@@ -24,7 +24,7 @@ function expectStable(before: Geometry, after: Geometry) {
 
 const project: Project = {
   id: "p1", name: "测试项目", status: "active", plannedStart: "2026-09-01", plannedEnd: "2026-09-30",
-  defaultTemplateId: "t1", createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z",
+  defaultTemplateId: "t1", isSample: false, createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z",
 };
 const people: Person[] = [
   { id: "u1", name: "张三", jobTitle: "前端工程师", active: 1, createdAt: "2026-09-01", updatedAt: "2026-09-01" },
@@ -34,12 +34,12 @@ const workItem: WorkItem = {
   id: "w1", requirementId: "r1", templateItemId: "ti1", title: "设计", ownerId: null, ownerName: null,
   collaborators: [], assigneeIds: [], assigneeNames: [], status: "not_started", plannedStart: "2026-09-01",
   plannedEnd: "2026-09-03", actualStart: null, actualEnd: null, forecastEnd: null, blockedAt: null,
-  blockedReason: null, milestoneLabel: "需求基线", progress: 0, sortOrder: 0, createdAt: "2026-09-01", updatedAt: "2026-09-01",
+  blockedReason: null, milestoneLabel: "需求基线", progress: 0, sortOrder: 0, version: 1, createdAt: "2026-09-01", updatedAt: "2026-09-01",
 };
 const requirement: Requirement = {
   id: "r1", projectId: "p1", projectName: "测试项目", templateId: "t1", templateName: "研发流程",
   title: "原需求", ownerId: null, ownerName: null, status: "not_started", plannedStart: "2026-09-01",
-  plannedEnd: "2026-09-03", progress: 0, plannedProgress: 0, progressGap: 0, riskLevel: "low",
+  plannedEnd: "2026-09-03", progress: 0, plannedProgress: 0, progressGap: 0, acceptedAt: null, acceptedByAccountId: null, version: 1, riskLevel: "low",
   riskEvaluated: true, riskReason: "", priority: "P2", createdAt: "2026-09-01", updatedAt: "2026-09-01",
   workItems: [workItem], progressUpdates: [], recentProgressUpdates: [], delayed: false, highRisk: false,
   finishVariance: 0, durationVariance: 0, effectiveEnd: "2026-09-03", issueSummary: { active: 0, overdue: 0 },
@@ -48,13 +48,14 @@ const issue: Issue = {
   id: "i1", projectId: "p1", projectName: "测试项目", requirementId: "r1", requirementTitle: "原需求",
   sourceRef: null, title: "联调问题", impact: "影响发布", reporter: "测试", ownerId: "u1", ownerName: "张三",
   status: "in_progress", priority: "P2", progress: 50, discoveredAt: "2026-09-01", dueDate: "2026-09-05",
-  resolvedAt: null, createdAt: "2026-09-01", updatedAt: "2026-09-01", latestUpdate: null,
+  resolvedAt: null, version: 1, createdAt: "2026-09-01", updatedAt: "2026-09-01", latestUpdate: null,
   latestUpdateAt: null, overdue: false, updates: [],
 };
 const account: Account = {
   id: "a1", username: "zhangsan", personId: "u1", personName: "张三", jobTitle: "前端工程师",
   globalRole: "user", role: "user", status: "active", mustChangePassword: false, isBuiltin: false,
   lastLoginAt: null, createdAt: "2026-09-01", updatedAt: "2026-09-01", managedProjects: [],
+  activeAssignments: { requirements: 0, workItems: 0, issues: 0 },
 };
 
 async function mockApplication(page: Page, patches: Array<{ path: string; body: Record<string, unknown> }>) {
@@ -106,7 +107,13 @@ async function mockApplication(page: Page, patches: Array<{ path: string; body: 
     if (url.pathname === "/api/issues" && method === "GET") return json({ items: [currentIssue], total: 1, page: 1, pageSize: 50, pages: 1, summary: { total: 1, open: 0, inProgress: 1, deferred: 0, resolved: 0, active: 1, highPriority: 0, overdue: 0, unassigned: 0, closureRate: 0 } });
     if (url.pathname === "/api/issues/i1" && method === "PATCH") {
       patches.push({ path: url.pathname, body: body || {} });
-      currentIssue = { ...currentIssue, ...body, progress: body?.status === "resolved" ? 100 : currentIssue.progress };
+      if (body?.title === "问题冲突") return json({ error: "问题标题已存在" }, 400);
+      currentIssue = { ...currentIssue, ...body };
+      return json(currentIssue);
+    }
+    if (url.pathname === "/api/issues/i1/resolve" && method === "POST") {
+      patches.push({ path: url.pathname, body: body || {} });
+      currentIssue = { ...currentIssue, status: "resolved", progress: 100, resolvedAt: "2026-09-02", version: currentIssue.version + 1 };
       return json(currentIssue);
     }
     if (url.pathname === "/api/accounts" && method === "GET") return json([currentAccount]);
@@ -121,30 +128,20 @@ async function mockApplication(page: Page, patches: Array<{ path: string; body: 
   });
 }
 
-test("管理表格支持原地编辑、复杂状态浮层和失败回滚", async ({ page }, testInfo) => {
+test("管理表格支持原地编辑、显式状态命令和失败回滚", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-1080p", "交互流程只需在一个桌面视口执行");
   const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
   await mockApplication(page, patches);
 
   await page.goto("/requirements");
   const requirementBefore = await geometry(page, ".requirements-table");
-  await page.getByRole("button", { name: /需求标题：原需求/ }).click();
+  await page.getByRole("button", { name: /需求优先级/ }).click();
   await expect(page.locator(".inline-edit-popover")).toHaveCount(1);
   expectStable(requirementBefore, await geometry(page, ".requirements-table"));
-  await page.getByLabel("需求标题", { exact: true }).fill("修改后需求");
-  expectStable(requirementBefore, await geometry(page, ".requirements-table"));
-  await page.getByLabel("需求标题", { exact: true }).press("Enter");
-  await expect.poll(() => patches.some((entry) => entry.path === "/api/requirements/r1" && entry.body.title === "修改后需求")).toBe(true);
-  await page.getByRole("button", { name: /需求优先级/ }).click();
   await expect(page.getByRole("option", { name: "P1 · 高", exact: true })).toBeVisible();
   await page.getByRole("option", { name: "P1 · 高", exact: true }).click();
   await expect.poll(() => patches.some((entry) => entry.body.priority === "P1")).toBe(true);
   await expect(page.getByText("P1 · 高", { exact: true })).toHaveCount(1);
-  await page.getByRole("button", { name: /需求标题：修改后需求/ }).click();
-  await page.getByLabel("需求标题", { exact: true }).fill("冲突");
-  await page.getByLabel("需求标题", { exact: true }).press("Enter");
-  await expect(page.getByText("需求标题已存在")).toBeVisible();
-  await expect(page.getByText("修改后需求", { exact: true })).toBeVisible();
   expectStable(requirementBefore, await geometry(page, ".requirements-table"));
 
   await page.goto("/requirements/r1");
@@ -164,11 +161,15 @@ test("管理表格支持原地编辑、复杂状态浮层和失败回滚", async
   expectStable(workBefore, await geometry(page, ".work-inline-table"));
 
   await page.goto("/issues");
-  await page.locator(".issue-status-editor .inline-edit-trigger").click();
-  await page.locator(".issue-status-popover select").first().selectOption("resolved");
-  await page.getByPlaceholder("填写最终结论或处理结果").fill("联调验证通过");
-  await page.getByRole("button", { name: "确认闭环" }).click();
-  await expect.poll(() => patches.some((entry) => entry.path === "/api/issues/i1" && entry.body.status === "resolved" && entry.body.updateContent === "联调验证通过")).toBe(true);
+  await page.getByRole("button", { name: /问题标题：联调问题/ }).click();
+  await page.getByLabel("问题标题", { exact: true }).fill("问题冲突");
+  await page.getByLabel("问题标题", { exact: true }).press("Enter");
+  await expect(page.getByText("问题标题已存在")).toBeVisible();
+  await expect(page.getByText("联调问题", { exact: true })).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept("联调验证通过"));
+  await page.getByRole("button", { name: "解决", exact: true }).click();
+  await expect.poll(() => patches.some((entry) => entry.path === "/api/issues/i1/resolve" && entry.body.content === "联调验证通过")).toBe(true);
+  await expect(page.getByRole("table").getByText("已解决", { exact: true })).toBeVisible();
 
   await page.goto("/accounts");
   await page.locator(".account-permission-editor").first().getByRole("button").click();

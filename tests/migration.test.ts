@@ -30,6 +30,8 @@ describe('正式库增量迁移', () => {
       VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run('r1', 'p1', '原需求', 'u1', 'in_progress', '2026-09-01', '2026-09-10', 50, 'low', now, now);
     db.prepare(`INSERT INTO work_items (id,requirement_id,template_item_id,title,status,planned_start,planned_end,actual_start,actual_end,sort_order,created_at,updated_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run('w1', 'r1', 'ti1', '原工作项', 'not_started', '2026-09-01', '2026-09-03', '2026-09-01', '2026-09-02', 0, now, now);
+    db.prepare(`INSERT INTO progress_updates (id,requirement_id,work_item_id,percent,content,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?)`).run('pu1', 'r1', 'w1', 50, '原进展', now, now);
     db.prepare(`INSERT INTO requirements (id,project_id,title,status,planned_start,planned_end,progress,risk_level,created_at,updated_at)
       VALUES (?,?,?,?,?,?,?,?,?,?)`).run('r2', 'p2', '第二项目需求', 'planning', '2026-09-01', '2026-09-10', 0, 'low', now, now);
     db.prepare(`INSERT INTO work_items (id,requirement_id,template_item_id,title,status,planned_start,planned_end,sort_order,created_at,updated_at)
@@ -40,16 +42,27 @@ describe('正式库增量迁移', () => {
     db.close();
 
     const script = "const m=await import('./src/server/database.ts'); console.log(m.sqlite.prepare('SELECT COUNT(*) AS count FROM work_items').get().count); m.sqlite.close();";
-    const env = { ...process.env, DB_PATH: dbPath, BACKUP_DIR: backupDir };
+    const env = { ...process.env, DB_PATH: dbPath, BACKUP_DIR: backupDir, SEED_DEMO: '0' };
     const first = spawnSync(process.execPath, ['--import', 'tsx', '--eval', script], { cwd: process.cwd(), env, encoding: 'utf8' });
     const second = spawnSync(process.execPath, ['--import', 'tsx', '--eval', script], { cwd: process.cwd(), env, encoding: 'utf8' });
     expect(first.status, first.stderr).toBe(0); expect(second.status, second.stderr).toBe(0);
+    const migrationBackups = fs.readdirSync(backupDir).filter((name) => name.endsWith('.db'));
+    expect(migrationBackups).toHaveLength(1);
+    const migrationBackup = new Database(path.join(backupDir, migrationBackups[0]), { readonly: true });
+    expect(migrationBackup.prepare('SELECT COUNT(*) AS count FROM work_items').get()).toEqual({ count: 2 });
+    expect((migrationBackup.pragma('integrity_check') as Array<{ integrity_check: string }>)[0].integrity_check).toBe('ok');
+    migrationBackup.close();
 
     const migrated = migratedDb = new Database(dbPath, { readonly: true });
     expect(migrated.prepare('SELECT COUNT(*) AS count FROM work_items').get()).toEqual({ count: 2 });
     expect(migrated.prepare('SELECT title,status,progress,planned_start AS plannedStart,actual_end AS actualEnd FROM work_items WHERE id=?').get('w1'))
-      .toEqual({ title: '原工作项', status: 'not_started', progress: 100, plannedStart: '2026-09-01', actualEnd: '2026-09-02' });
+      .toEqual({ title: '原工作项', status: 'completed', progress: 100, plannedStart: '2026-09-01', actualEnd: '2026-09-02' });
     expect(migrated.prepare('SELECT priority,progress FROM requirements WHERE id=?').get('r1')).toEqual({ priority: 'P2', progress: 100 });
+    const stateReport = JSON.parse((migrated.prepare("SELECT value FROM system_meta WHERE key='state-migration-0013-report'").get() as { value: string }).value);
+    expect(stateReport.workItems).toBeGreaterThan(0);
+    expect(migrated.prepare('SELECT status,accepted_at AS acceptedAt,version FROM requirements WHERE id=?').get('r1'))
+      .toMatchObject({ status: 'completed', acceptedAt: expect.any(String), version: 1 });
+    expect(migrated.prepare('SELECT event_type AS eventType FROM progress_updates WHERE id=?').get('pu1')).toEqual({ eventType: 'note' });
     const migratedTemplates = migrated.prepare('SELECT id,project_id AS projectId FROM work_item_templates WHERE name=? ORDER BY project_id').all('DCIM AI工作流') as Array<{ id: string; projectId: string }>;
     expect(migratedTemplates.map((item) => item.projectId)).toEqual(['p1', 'p2']);
     expect(new Set(migratedTemplates.map((item) => item.id)).size).toBe(2);

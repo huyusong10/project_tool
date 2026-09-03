@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { format } from "date-fns";
-import { Ban, Check, Circle, CircleAlert, LocateFixed, Pencil, Play } from "lucide-react";
+import { Ban, Check, Circle, CircleAlert, LocateFixed, Play } from "lucide-react";
 import { calculateWorkItemGap, requirementStatusLabels } from "../../shared/domain";
 import type { ProgressUpdate, WorkItem } from "../types";
 import { useGanttTooltip } from "./GanttTooltip";
@@ -164,9 +164,9 @@ export const GapTimeline = memo(function GapTimeline({
             })}
           </div>
           <div className="gantt-legend" aria-label="计划实际图例">
-            <span><i className="legend-plan-pill" />计划窗口</span>
-            <span><i className="legend-actual" />实际执行（颜色代表状态）</span>
-            <span><i className="legend-delayed" />超出计划</span>
+            <span><i className="legend-plan-pill" />计划</span>
+            <span><i className="legend-actual" />实际</span>
+            <span><i className="legend-delayed" />延期</span>
             <span><i className="legend-milestone" />里程碑</span>
           </div>
         </div>
@@ -208,21 +208,23 @@ export const GapTimeline = memo(function GapTimeline({
                       ? <small>{item.assigneeNames?.join("、") || item.ownerName}</small>
                       : <small className="work-item-owner-warning"><CircleAlert size={11} />未设置负责人{item.collaborators?.length ? ` · ${item.collaborators.length}人协作` : ""}</small>}
                     {item.milestoneLabel && <span className="work-item-milestone-chip" title={`里程碑：${item.milestoneLabel}`}>◆ {item.milestoneLabel}</span>}
-                    <span className={`work-item-status-badge badge-${statusClass(item.status)}`}><WorkStatusIcon status={item.status} size={10} />{statusLabel(item.status)}</span>
-                    {onUpdateProgress && canUpdateProgress?.(item)
-                      ? <button
-                          type="button"
-                          className="work-item-progress-button"
-                          title={`更新“${item.title}”的进度`}
-                          aria-label={`更新“${item.title}”的进度，当前${item.progress}%`}
-                          onClick={() => onUpdateProgress(item)}
-                        ><Pencil size={10} />{item.progress}%</button>
-                      : <span className="work-item-progress-chip">{item.progress}%</span>}
                   </span>
                 </div>
               </div>
-              <div className="requirement-gantt-track unified-gantt-track" style={trackStyle} role="cell" tabIndex={0} {...tooltipProps}>
-                <GanttPlanActualBars plannedStart={item.plannedStart} plannedEnd={item.plannedEnd} actualStart={item.actualStart} actualEnd={observedEnd} status={item.status} dates={dates} cellWidth={cellWidth} endpoint={<WorkStatusIcon status={item.status} size={9} />} label={`${statusLabel(item.status)} · 实际进度 ${item.progress}%`} />
+              <div className="requirement-gantt-track unified-gantt-track" style={trackStyle} role="cell">
+                <GanttPlanActualBars
+                  plannedStart={item.plannedStart}
+                  plannedEnd={item.plannedEnd}
+                  actualStart={item.actualStart}
+                  actualEnd={observedEnd}
+                  status={item.status}
+                  progress={item.progress}
+                  dates={dates}
+                  cellWidth={cellWidth}
+                  onProgressClick={onUpdateProgress && canUpdateProgress?.(item) ? () => onUpdateProgress(item) : undefined}
+                  progressAriaLabel={`${statusLabel(item.status)}，实际进度${item.progress}%，${onUpdateProgress && canUpdateProgress?.(item) ? "点击更新进度" : "只读"}`}
+                  interactionProps={tooltipProps}
+                />
                 <GanttMilestoneMarker label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={cellWidth} />
                 {todayVisible && <i className="gantt-today-line" style={{ left: todayOffset * cellWidth + cellWidth / 2 }} />}
               </div>

@@ -6,6 +6,13 @@ const timestamps = {
   updatedAt: text('updated_at').notNull(),
 };
 
+export const systemMeta = sqliteTable('system_meta', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -111,10 +118,20 @@ export const requirements = sqliteTable('requirements', {
   progress: integer('progress').notNull().default(0),
   riskLevel: text('risk_level').notNull().default('low'),
   priority: text('priority').notNull().default('P2'),
+  acceptedAt: text('accepted_at'),
+  acceptedByAccountId: text('accepted_by_account_id').references(() => accounts.id, { onDelete: 'set null' }),
+  version: integer('version').notNull().default(1),
   ...timestamps,
   deletedAt: text('deleted_at'),
 }, (table) => [
   check('requirements_progress_range', sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
+  check('requirements_status_valid', sql`${table.status} IN ('planning', 'not_started', 'in_progress', 'blocked', 'pending_acceptance', 'completed', 'cancelled')`),
+  check('requirements_terminal_consistent', sql`(
+    (${table.status} = 'completed' AND ${table.progress} = 100 AND ${table.acceptedAt} IS NOT NULL) OR
+    (${table.status} = 'pending_acceptance' AND ${table.progress} = 100 AND ${table.acceptedAt} IS NULL) OR
+    (${table.status} = 'cancelled' AND ${table.acceptedAt} IS NULL) OR
+    (${table.status} NOT IN ('completed', 'pending_acceptance', 'cancelled') AND ${table.progress} < 100 AND ${table.acceptedAt} IS NULL)
+  )`),
   index('idx_requirements_project_status').on(table.projectId, table.status, table.deletedAt),
   index('idx_requirements_template').on(table.templateId),
   index('idx_requirements_owner').on(table.ownerId),
@@ -137,9 +154,18 @@ export const workItems = sqliteTable('work_items', {
   milestoneLabel: text('milestone_label'),
   progress: integer('progress').notNull().default(0),
   sortOrder: integer('sort_order').notNull().default(0),
+  version: integer('version').notNull().default(1),
   ...timestamps,
 }, (table) => [
   check('work_items_progress_range', sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
+  check('work_items_status_valid', sql`${table.status} IN ('not_started', 'in_progress', 'blocked', 'completed', 'cancelled')`),
+  check('work_items_state_consistent', sql`(
+    (${table.status} = 'not_started' AND ${table.progress} = 0 AND ${table.actualStart} IS NULL AND ${table.actualEnd} IS NULL AND ${table.blockedAt} IS NULL) OR
+    (${table.status} = 'in_progress' AND ${table.progress} < 100 AND ${table.actualStart} IS NOT NULL AND ${table.actualEnd} IS NULL AND ${table.blockedAt} IS NULL) OR
+    (${table.status} = 'blocked' AND ${table.progress} < 100 AND ${table.actualStart} IS NOT NULL AND ${table.actualEnd} IS NULL AND ${table.blockedAt} IS NOT NULL) OR
+    (${table.status} = 'completed' AND ${table.progress} = 100 AND ${table.actualStart} IS NOT NULL AND ${table.actualEnd} IS NOT NULL AND ${table.blockedAt} IS NULL) OR
+    (${table.status} = 'cancelled' AND ${table.progress} < 100 AND ${table.actualEnd} IS NULL AND ${table.blockedAt} IS NULL)
+  )`),
   index('idx_work_items_requirement_order').on(table.requirementId, table.sortOrder),
   index('idx_work_items_status').on(table.status),
   index('idx_work_items_owner_schedule').on(table.ownerId, table.plannedStart, table.plannedEnd),
@@ -160,6 +186,8 @@ export const progressUpdates = sqliteTable('progress_updates', {
   percent: integer('percent').notNull(),
   workItemPercent: integer('work_item_percent'),
   content: text('content').notNull(),
+  eventType: text('event_type').notNull().default('progress'),
+  supersedesId: text('supersedes_id'),
   createdByAccountId: text('created_by_account_id').references(() => accounts.id, { onDelete: 'set null' }),
   ...timestamps,
 }, (table) => [
@@ -183,11 +211,18 @@ export const issues = sqliteTable('issues', {
   discoveredAt: text('discovered_at').notNull(),
   dueDate: text('due_date'),
   resolvedAt: text('resolved_at'),
+  version: integer('version').notNull().default(1),
   ...timestamps,
 }, (table) => [
   check('issues_status_valid', sql`${table.status} IN ('open', 'in_progress', 'deferred', 'resolved')`),
   check('issues_priority_valid', sql`${table.priority} IN ('P0', 'P1', 'P2', 'P3')`),
   check('issues_progress_range', sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
+  check('issues_state_consistent', sql`(
+    (${table.status} = 'resolved' AND ${table.progress} = 100 AND ${table.resolvedAt} IS NOT NULL) OR
+    (${table.status} <> 'resolved' AND ${table.progress} < 100 AND ${table.resolvedAt} IS NULL)
+  )`),
+  check('issues_open_progress_zero', sql`${table.status} <> 'open' OR ${table.progress} = 0`),
+  check('issues_deferred_without_due_date', sql`${table.status} <> 'deferred' OR ${table.dueDate} IS NULL`),
   index('idx_issues_project_status_due').on(table.projectId, table.status, table.dueDate, table.updatedAt),
   index('idx_issues_owner').on(table.ownerId, table.status),
   index('idx_issues_requirement').on(table.requirementId),
@@ -198,6 +233,8 @@ export const issueUpdates = sqliteTable('issue_updates', {
   issueId: text('issue_id').notNull().references(() => issues.id, { onDelete: 'cascade' }),
   progress: integer('progress'),
   content: text('content').notNull(),
+  eventType: text('event_type').notNull().default('progress'),
+  supersedesId: text('supersedes_id'),
   createdByAccountId: text('created_by_account_id').references(() => accounts.id, { onDelete: 'set null' }),
   ...timestamps,
 }, (table) => [

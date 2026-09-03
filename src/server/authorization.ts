@@ -198,5 +198,6 @@ export function assertProgressOwnerOrManager(actor: AuthorizationActor, progress
 export function assertCanAddProgress(actor: AuthorizationActor, requirementId: string, workItemId: string | null) {
   const projectId = projectIdForRequirement(requirementId);
   if (canManageProject(actor, projectId)) return;
-  if (!canContributeProject(actor, projectId) || !workItemId || !isWorkItemAssignee(actor, workItemId)) forbidden('普通用户添加进展时必须关联自己的工作项');
+  if (!canContributeProject(actor, projectId)) forbidden('只有当前项目成员可以追加说明');
+  if (workItemId && !isWorkItemAssignee(actor, workItemId)) forbidden('普通用户只能更新分配给自己的工作项');
 }

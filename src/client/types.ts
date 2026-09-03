@@ -6,7 +6,7 @@ export type Session = {
 export type Project = {
   id: string; name: string; status: string; plannedStart: string | null; plannedEnd: string | null;
   defaultTemplateId: string | null; createdAt: string; updatedAt: string; deletedAt?: string | null;
-  projectRole?: 'viewer' | 'member' | 'manager'; canManage?: boolean;
+  isSample: boolean; projectRole?: 'viewer' | 'member' | 'manager'; canManage?: boolean;
 };
 
 // 仅用于控制界面可见性；服务端始终独立执行授权校验。
@@ -35,21 +35,23 @@ export type WorkItem = {
   forecastEnd: string | null; blockedAt: string | null; blockedReason: string | null;
   milestoneLabel: string | null;
   progress: number;
-  sortOrder: number; createdAt: string; updatedAt: string;
+  sortOrder: number; version: number; createdAt: string; updatedAt: string;
 };
 export type ProgressUpdate = {
   id: string; requirementId: string; workItemId: string | null; workItemTitle: string | null;
-  percent: number; workItemPercent: number | null; content: string; createdByAccountId?: string | null; createdByName?: string | null; createdAt: string; updatedAt: string;
+  percent: number; workItemPercent: number | null; content: string; eventType: string; supersedesId?: string | null;
+  createdByAccountId?: string | null; createdByName?: string | null; createdAt: string; updatedAt: string;
 };
 export type IssueUpdate = {
-  id: string; issueId: string; progress: number | null; content: string; createdByAccountId: string | null; createdByName: string | null; createdAt: string; updatedAt: string;
+  id: string; issueId: string; progress: number | null; content: string; eventType: string; supersedesId?: string | null;
+  createdByAccountId: string | null; createdByName: string | null; createdAt: string; updatedAt: string;
 };
 export type Issue = {
   id: string; projectId: string; projectName: string; requirementId: string | null; requirementTitle: string | null;
   sourceRef: string | null; title: string; impact: string | null; reporter: string | null;
   ownerId: string | null; ownerName: string | null; status: string; priority: string; progress: number;
   discoveredAt: string; dueDate: string | null; resolvedAt: string | null;
-  createdAt: string; updatedAt: string; latestUpdate: string | null; latestUpdateAt: string | null;
+  version: number; createdAt: string; updatedAt: string; latestUpdate: string | null; latestUpdateAt: string | null;
   overdue: boolean; updates?: IssueUpdate[];
 };
 export type IssuePage = {
@@ -62,6 +64,7 @@ export type IssuePage = {
 export type Requirement = {
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number; progressGap: number;
+  acceptedAt: string | null; acceptedByAccountId: string | null; version: number;
   riskLevel: string; riskEvaluated: boolean; riskReason: string; priority: string; createdAt: string; updatedAt: string; deletedAt?: string | null;
   workItems: WorkItem[]; progressUpdates?: ProgressUpdate[]; recentProgressUpdates?: ProgressUpdate[]; delayed: boolean; highRisk: boolean;
   issueSummary?: { active: number; overdue: number };
@@ -97,16 +100,37 @@ export type PeopleConcurrency = {
 export type Archives = {
   projects: ArchiveItem[]; requirements: ArchiveItem[]; people: ArchiveItem[]; templates: ArchiveItem[];
 };
-export type ArchiveItem = { id: string; title: string; jobTitle?: string | null; deletedAt: string };
+export type ArchiveItem = {
+  id: string; title: string; jobTitle?: string | null; deletedAt: string;
+  requirementCount?: number; workItemCount?: number; issueCount?: number; templateCount?: number;
+  progressCount?: number; linkedIssueCount?: number;
+};
 export type ApiToken = { id: string; name: string; prefix: string; accountId: string; accountName?: string | null; expiresAt: string | null; lastUsedAt: string | null; revokedAt: string | null; createdAt: string };
 export type AuditLog = { id: string; actorType: string; actorId: string | null; actorName: string | null; tokenName: string | null; action: string; entityType: string; entityId: string | null; projectId: string | null; projectName?: string | null; summary: string; createdAt: string };
 export type AuditPage = { items: AuditLog[]; total: number; page: number; pageSize: number; pages: number };
 export type Backup = { name: string; size: number; createdAt: string };
+export type SystemOverview = {
+  status: 'ok';
+  service: {
+    version: string; startedAt: string; uptimeSeconds: number; environment: string;
+    timezone: string; host: string; port: number; protocol: 'http';
+  };
+  database: {
+    path: string; backupDirectory: string; mainSizeBytes: number; walSizeBytes: number;
+    shmSizeBytes: number; totalSizeBytes: number; journalMode: string;
+  };
+  backups: {
+    count: number; totalSizeBytes: number; lastCreatedAt: string | null; overdue: boolean;
+    retentionDays: number; maxCount: number; nextScheduledAt: string;
+  };
+};
+export type DatabaseIntegrityCheck = { ok: boolean; checkedAt: string; durationMs: number; message: string };
 export type Account = {
   id: string; username: string; personId: string | null; personName: string | null; jobTitle: string | null;
   globalRole: 'user' | 'admin'; role: 'user' | 'project_manager' | 'admin'; status: 'active' | 'disabled';
   mustChangePassword: boolean; isBuiltin: boolean; lastLoginAt: string | null; createdAt: string; updatedAt: string;
   managedProjects: Array<{ id: string; name: string }>;
+  activeAssignments: { requirements: number; workItems: number; issues: number };
 };
 export type MyWorkItem = WorkItem & {
   projectId: string; projectName: string; requirementTitle: string; assignmentType: 'owner' | 'collaborator'; overdue: boolean;

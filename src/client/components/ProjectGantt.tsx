@@ -2,14 +2,14 @@ import { useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { CircleAlert, LocateFixed, RotateCcw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { priorityLabels, requirementStatusLabels, riskLabels } from "../../shared/domain";
+import { priorityLabels, requirementStatusLabels, riskLabels, signedProgressVariance } from "../../shared/domain";
 import type { Requirement } from "../types";
 import { EmptyState } from "./Modal";
 import { useGanttTooltip } from "./GanttTooltip";
 import {
   buildBusinessDayTimeline,
   GanttMilestoneMarker,
-  GanttPlanActualBars,
+  GanttProgressComparison,
   GanttScale,
   ganttTodayPosition,
   ganttTrackStyle,
@@ -73,6 +73,17 @@ function isClosedRequirement(requirement: Requirement) {
   return requirement.status === "completed" || requirement.status === "cancelled";
 }
 
+function progressVariance(requirement: Requirement) {
+  return signedProgressVariance(requirement.progress, requirement.plannedProgress);
+}
+
+function progressVarianceText(requirement: Requirement) {
+  const variance = progressVariance(requirement);
+  if (variance < 0) return `落后${Math.abs(variance)}%`;
+  if (variance > 0) return `领先${variance}%`;
+  return "进度一致";
+}
+
 function activeRiskClass(requirement: Requirement) {
   if (isClosedRequirement(requirement) || !requirement.riskEvaluated) return "";
   return ` gantt-risk-${requirement.riskLevel}`;
@@ -94,6 +105,7 @@ function RequirementPopover({ requirement }: { requirement: Requirement }) {
   const risk = riskLabels[requirement.riskLevel as keyof typeof riskLabels] || requirement.riskLevel;
   const closed = isClosedRequirement(requirement);
   const actual = requirementActualRange(requirement);
+  const variance = progressVariance(requirement);
   return <>
     <header className="gantt-popover-header">
       <div><strong>{requirement.title}</strong><span>{requirement.projectName}</span></div>
@@ -111,12 +123,17 @@ function RequirementPopover({ requirement }: { requirement: Requirement }) {
     <dl className="gantt-popover-metrics">
       <div><dt>计划周期</dt><dd>{dateLabel(requirement.plannedStart)} — {dateLabel(requirement.plannedEnd)}</dd></div>
       <div><dt>实际周期</dt><dd>{dateLabel(actual.start, "未开始")} — {dateLabel(actual.end, "未完成")}</dd></div>
-      <div><dt>计划进度 / 实际进度 / Gap</dt><dd>{requirement.plannedProgress}% / {requirement.progress}% / {requirement.progressGap}%</dd></div>
+      <div><dt>截至今日应达</dt><dd>{requirement.plannedProgress}%</dd></div>
+      <div><dt>当前实际进度</dt><dd>{requirement.progress}%</dd></div>
+      <div><dt>进度偏差</dt><dd className={variance < 0 ? "danger-text" : variance > 0 ? "safe-text" : ""}>{progressVarianceText(requirement)}</dd></div>
       <div><dt>风险判定</dt><dd className={requirement.riskLevel === "high" && requirement.riskEvaluated ? "danger-text" : ""}>{requirement.riskReason}</dd></div>
     </dl>
-    <div className="gantt-popover-progress"><i style={{ width: `${requirement.plannedProgress}%` }} /><span style={{ width: `${requirement.progress}%` }} /></div>
+    <div className="gantt-popover-progress-compare" aria-label={`实际进度${requirement.progress}%，截至今日应达${requirement.plannedProgress}%`}>
+      <div><span>实际</span><i><b style={{ width: `${requirement.progress}%` }} /></i><strong>{requirement.progress}%</strong></div>
+      <div><span>应达</span><i><b className="is-expected" style={{ width: `${requirement.plannedProgress}%` }} /></i><strong>{requirement.plannedProgress}%</strong></div>
+    </div>
     <section className="gantt-popover-updates">
-      <h4>近期进展</h4>
+      <h4>近期进展{updates.length ? `（${updates.length}）` : ""}</h4>
       {updates.map((update) => <article key={update.id}>
         <time>{new Date(update.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</time>
         <div>{update.workItemTitle && <b>{update.workItemTitle}</b>}<p>{update.content}</p></div>
@@ -216,9 +233,11 @@ export function ProjectGantt({
     <section className="project-gantt-panel">
       <header className="project-gantt-toolbar">
         <div className="gantt-legend" aria-label="甘特图图例">
-          <span><i className="legend-plan-pill" />计划窗口</span>
-          <span><i className="legend-actual" />实际执行（颜色代表状态）</span>
-          <span><i className="legend-delayed" />超出计划</span>
+          <span><i className="legend-plan-pill" />计划</span>
+          <span><i className="legend-actual" />实际</span>
+          <span><i className="legend-expected" />应达</span>
+          <span><i className="legend-behind" />落后差值</span>
+          <span><i className="legend-ahead" />领先差值</span>
           <span><i className="legend-milestone" />里程碑</span>
           <span><i className="legend-risk-medium" />中风险</span>
           <span><i className="legend-risk-high" />高风险</span>
@@ -288,7 +307,11 @@ export function ProjectGantt({
             <GanttScale dates={dates} zoom={zoom} cellWidth={option.cellWidth} todayOffset={todayOffset} todayVisible={todayVisible} />
             {visibleRequirements.map((requirement) => {
               const tooltipProps = ganttTooltip.bind(<RequirementPopover requirement={requirement} />);
-              const actual = requirementActualRange(requirement);
+              const variance = progressVariance(requirement);
+              const risk = requirement.riskLevel !== "low" ? riskLabels[requirement.riskLevel as keyof typeof riskLabels] : "";
+              const varianceLabel = variance < 0 ? `落后${Math.abs(variance)}%` : variance > 0 ? `领先${variance}%` : "";
+              const healthLabel = [risk, varianceLabel].filter(Boolean).join(" · ");
+              const healthClass = requirement.riskLevel !== "low" ? requirement.riskLevel : variance > 0 ? "ahead" : "";
               return (
                 <div className={`gantt-row${requirement.delayed ? " is-delayed" : ""}${activeRiskClass(requirement)}`} role="row" key={requirement.id}>
                   <div className="gantt-sticky-left gantt-requirement-info" role="rowheader">
@@ -299,7 +322,7 @@ export function ProjectGantt({
                       <div>
                         <span className={`priority-badge priority-${requirement.priority.toLowerCase()}`}>{priorityLabels[requirement.priority as keyof typeof priorityLabels] || requirement.priority}</span>
                         {!isClosedRequirement(requirement) && (requirement.riskEvaluated
-                          ? requirement.riskLevel !== "low" && <span className={`gantt-risk-chip ${requirement.riskLevel}`}>{riskLabels[requirement.riskLevel as keyof typeof riskLabels]} · Gap {requirement.progressGap}%</span>
+                          ? healthLabel && <span className={`gantt-risk-chip ${healthClass}`}>{healthLabel}</span>
                           : <span className="gantt-risk-chip pending">待评估</span>)}
                         {requirement.delayed && <em>延期 {Math.max(1, requirement.finishVariance)} 天</em>}
                         {Boolean(requirement.issueSummary?.active) && (
@@ -315,16 +338,17 @@ export function ProjectGantt({
                       </div>
                     </div>
                   </div>
-                  <div className="gantt-track unified-gantt-track" style={trackStyle} role="cell" tabIndex={0} {...tooltipProps}>
-                    <GanttPlanActualBars
+                  <div className="gantt-track unified-gantt-track" style={trackStyle} role="cell">
+                    <GanttProgressComparison
                       plannedStart={requirement.plannedStart}
                       plannedEnd={requirement.plannedEnd}
-                      actualStart={actual.start}
-                      actualEnd={actual.end}
+                      effectiveEnd={requirement.effectiveEnd}
                       dates={dates}
                       cellWidth={option.cellWidth}
                       status={requirement.status}
-                      label={`${statusLabel(requirement.status)} · 实际进度 ${requirement.progress}%`}
+                      progress={requirement.progress}
+                      plannedProgress={requirement.plannedProgress}
+                      interactionProps={tooltipProps}
                       showUnscheduled
                     />
                     {requirement.workItems.filter((item) => item.milestoneLabel).map((item) => <GanttMilestoneMarker key={item.id} label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={option.cellWidth} />)}

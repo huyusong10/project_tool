@@ -36,6 +36,7 @@ export default defineConfig({
       ...process.env,
       PORT: String(testPort),
       NODE_ENV: "test",
+      SEED_DEMO: "0",
       DB_PATH: path.join(os.tmpdir(), `project-manage-playwright-${testRunId}.db`),
       BACKUP_DIR: path.join(os.tmpdir(), `project-manage-playwright-backups-${testRunId}`),
       APP_PASSWORD_HASH: "scrypt$4c63a6f93ff4f94b031b7e7583592177$b598dbddaf9dd06678ff8756923d9e0a7f2d68eaa45bc644fbf4a73c9298970c7489671dfcfc8be282022c26a3370fb040f3f086a45faa1e1abde04bbe4a51ef",

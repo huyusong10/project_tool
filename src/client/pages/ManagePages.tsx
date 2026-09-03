@@ -29,11 +29,13 @@ import type {
   ApiToken,
   AuditPage,
   Backup,
+  DatabaseIntegrityCheck,
   Archives,
   PeopleConcurrency,
   Person,
   Project,
   Requirement,
+  SystemOverview,
   TemplateItem,
   WorkItemTemplate,
 } from "../types";
@@ -122,7 +124,7 @@ export function RequirementsPage() {
     const previous = client.getQueryData<Requirement[]>(key);
     client.setQueryData<Requirement[]>(key, (current = []) => current.map((entry) => entry.id === item.id ? { ...entry, ...input } : entry));
     try {
-      const saved = await api<Requirement>(`/api/requirements/${item.id}`, { method: "PATCH", body: jsonBody(input) });
+      const saved = await api<Requirement>(`/api/requirements/${item.id}`, { method: "PATCH", body: jsonBody({ ...input, expectedVersion: item.version }) });
       client.setQueryData<Requirement[]>(key, (current = []) => current.map((entry) => entry.id === saved.id ? saved : entry));
       void client.invalidateQueries({ queryKey: ["requirement", item.id] });
       void client.invalidateQueries({ queryKey: ["dashboard"] });
@@ -333,8 +335,8 @@ export function ProjectsPage() {
                     required
                     displayMode="stacked"
                     onSave={(name) => saveProject(project, { name })}
-                    renderValue={(name) => <><strong>{name}</strong>{project.id === selectedProjectId && <small>当前项目</small>}</>}
-                  /> : <><strong>{project.name}</strong>{project.id === selectedProjectId && <small>当前项目</small>}</>}</td>
+                    renderValue={(name) => <><span className="project-name-line"><strong>{name}</strong>{project.isSample && <span className="sample-project-badge">样板</span>}</span>{project.id === selectedProjectId && <small>当前项目</small>}</>}
+                  /> : <><span className="project-name-line"><strong>{project.name}</strong>{project.isSample && <span className="sample-project-badge">样板</span>}</span>{project.id === selectedProjectId && <small>当前项目</small>}</>}</td>
                   <td><div className="inline-date-range">
                     {canEdit ? <InlineDateCell value={project.plannedStart} label="项目计划开始" onSave={(plannedStart) => saveProject(project, { plannedStart })} /> : <span>{project.plannedStart || "未设置"}</span>}
                     <span>→</span>
@@ -1133,7 +1135,7 @@ export function ArchiveCenterPage() {
     },
   });
   const permanentlyDelete = useMutation({
-    mutationFn: ({ entity, id }: { entity: ArchiveEntity; id: string }) => api(`/api/archives/${entity}/${id}`, { method: "DELETE" }),
+    mutationFn: ({ entity, id, confirmName }: { entity: ArchiveEntity; id: string; confirmName?: string }) => api(`/api/archives/${entity}/${id}`, { method: "DELETE", body: jsonBody({ confirmName }) }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["archives"] });
       void client.invalidateQueries({ queryKey: ["audit"] });
@@ -1161,7 +1163,18 @@ export function ArchiveCenterPage() {
               <td><span className={`archive-type archive-type-${item.entity}`}>{item.typeLabel}</span></td>
               <td>{item.jobTitle || "—"}</td>
               <td>{new Date(item.deletedAt).toLocaleString("zh-CN")}</td>
-              <td><div className="archive-row-actions"><button className="inline-action-button" title={`恢复${item.typeLabel}`} onClick={() => restore.mutate({ entity: item.entity, id: item.id })}><RotateCcw size={14} />恢复</button><button className="inline-action-button danger" title={`永久删除${item.typeLabel}`} onClick={() => confirm(`永久删除“${item.title}”？该操作无法恢复。${item.entity === "projects" ? "项目下的需求和工作项也会一并删除。" : ""}`) && permanentlyDelete.mutate({ entity: item.entity, id: item.id })}><Trash2 size={14} />删除</button></div></td>
+              <td><div className="archive-row-actions"><button className="inline-action-button" title={`恢复${item.typeLabel}`} onClick={() => restore.mutate({ entity: item.entity, id: item.id })}><RotateCcw size={14} />恢复</button><button className="inline-action-button danger" title={`永久删除${item.typeLabel}`} onClick={() => {
+                if (item.entity === "projects" || item.entity === "requirements") {
+                  const impact = item.entity === "projects"
+                    ? `将级联删除需求 ${item.requirementCount || 0} 条、工作项 ${item.workItemCount || 0} 条、问题 ${item.issueCount || 0} 条、流程 ${item.templateCount || 0} 个。`
+                    : `将级联删除工作项 ${item.workItemCount || 0} 条、进展 ${item.progressCount || 0} 条；${item.linkedIssueCount || 0} 个关联问题会保留并转为项目公共问题。`;
+                  const confirmName = prompt(`${impact}\n永久删除无法恢复。请输入完整名称“${item.title}”确认：`);
+                  if (confirmName !== item.title) return;
+                  permanentlyDelete.mutate({ entity: item.entity, id: item.id, confirmName });
+                  return;
+                }
+                if (confirm(`永久删除“${item.title}”？该操作无法恢复。`)) permanentlyDelete.mutate({ entity: item.entity, id: item.id });
+              }}><Trash2 size={14} />删除</button></div></td>
             </tr>)}</tbody>
           </table>
           {!filteredRows.length && <EmptyState title="没有符合条件的归档内容" detail={rows.length ? "调整搜索词或类型筛选后重试。" : "归档项目、需求、人员或流程后会显示在这里。"} />}
@@ -1207,48 +1220,75 @@ export function PersonalSettingsPage() {
   </>;
 }
 
+function formatStorageSize(bytes = 0) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function formatUptime(seconds = 0) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days) return `${days}天${hours}小时`;
+  if (hours) return `${hours}小时${minutes}分钟`;
+  return `${Math.max(1, minutes)}分钟`;
+}
+
+function relativeTime(value: string | null) {
+  if (!value) return "尚未备份";
+  const difference = Date.now() - new Date(value).getTime();
+  if (difference < 60_000) return "刚刚";
+  if (difference < 3_600_000) return `${Math.floor(difference / 60_000)}分钟前`;
+  if (difference < 86_400_000) return `${Math.floor(difference / 3_600_000)}小时前`;
+  return `${Math.floor(difference / 86_400_000)}天前`;
+}
+
 export function SystemPage() {
   const { session, openLogin } = useApp();
   const client = useQueryClient();
-  const [newToken, setNewToken] = useState<string>();
-  const [tokenModal, setTokenModal] = useState(false);
-  const { data: tokens = [] } = useQuery({
-    queryKey: ["tokens"],
-    queryFn: () => api<ApiToken[]>("/api/admin/tokens"),
+  const [restoreTarget, setRestoreTarget] = useState<Backup>();
+  const [feedback, setFeedback] = useState("");
+  const overviewQuery = useQuery({
+    queryKey: ["system-overview"],
+    queryFn: () => api<SystemOverview>("/api/system/overview"),
     enabled: session.authenticated,
   });
-  const { data: backups = [] } = useQuery({
+  const backupsQuery = useQuery({
     queryKey: ["backups"],
     queryFn: () => api<Backup[]>("/api/backups"),
     enabled: session.authenticated,
   });
-  const createToken = useMutation({
-    mutationFn: (value: object) =>
-      api<ApiToken & { token: string }>("/api/tokens", {
-        method: "POST",
-        body: jsonBody(value),
-      }),
-    onSuccess: (result) => {
-      setNewToken(result.token);
-      void client.invalidateQueries({ queryKey: ["tokens"] });
-    },
-  });
-  const revoke = useMutation({
-    mutationFn: (id: string) => api(`/api/admin/tokens/${id}`, { method: "DELETE" }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["tokens"] }),
-  });
+  const refreshSystemData = () => {
+    void client.invalidateQueries({ queryKey: ["backups"] });
+    void client.invalidateQueries({ queryKey: ["system-overview"] });
+  };
   const backup = useMutation({
-    mutationFn: () => api("/api/backups", { method: "POST" }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["backups"] }),
+    mutationFn: () => api<Backup>("/api/backups", { method: "POST" }),
+    onSuccess: (result) => {
+      setFeedback(`备份已创建：${result.name}`);
+      refreshSystemData();
+    },
   });
   const restore = useMutation({
     mutationFn: (name: string) =>
-      api("/api/backups/restore", { method: "POST", body: jsonBody({ name }) }),
+      api<{ ok: boolean; message: string; safetyBackupName: string }>("/api/backups/restore", { method: "POST", body: jsonBody({ name }) }),
+    onSuccess: (result) => setFeedback(result.message),
   });
   const deleteBackup = useMutation({
     mutationFn: (name: string) => api(`/api/backups/${encodeURIComponent(name)}`, { method: "DELETE" }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["backups"] }),
+    onSuccess: (_result, name) => {
+      setFeedback(`备份已删除：${name}`);
+      refreshSystemData();
+    },
   });
+  const integrityCheck = useMutation({
+    mutationFn: () => api<DatabaseIntegrityCheck>("/api/system/database-check", { method: "POST" }),
+  });
+  const overview = overviewQuery.data;
+  const backups = backupsQuery.data ?? [];
+  const operationError = backup.error || deleteBackup.error || restore.error;
   if (!session.authenticated)
     return (
       <>
@@ -1256,7 +1296,7 @@ export function SystemPage() {
         <div className="page-content">
           <EmptyState
             title="登录后管理系统设置"
-            detail="Token、数据库备份和归档内容仅对已登录用户开放。"
+            detail="系统状态和数据库维护功能仅对管理员开放。"
             action={
               <button className="primary-button" onClick={openLogin}>
                 用户登录
@@ -1268,179 +1308,107 @@ export function SystemPage() {
     );
   return (
     <>
-      <PageHeader
-        title="系统管理"
-        actions={<div className="http-alert">
-          <ShieldCheck size={16} />
-          <span>当前使用HTTP，仅限可信局域网</span>
-        </div>}
-      />
+      <PageHeader title="系统管理" />
       <div className="page-content">
-        <section className="system-grid">
-        <article className="panel system-panel">
+        <div className="system-page">
+          <section className="system-overview-grid" aria-label="系统概览">
+            <article className="system-overview-card system-overview-running">
+              <ShieldCheck size={22} />
+              <div><span>运行状态</span><strong>{overview ? "运行正常" : overviewQuery.isLoading ? "读取中" : "状态未知"}</strong><small>{overview ? `已运行 ${formatUptime(overview.service.uptimeSeconds)}` : "等待系统响应"}</small></div>
+            </article>
+            <article className="system-overview-card">
+              <DatabaseBackup size={22} />
+              <div><span>数据库大小</span><strong>{overview ? formatStorageSize(overview.database.totalSizeBytes) : "—"}</strong><small>{overview ? `${overview.database.journalMode} 模式` : "包含数据库运行文件"}</small></div>
+            </article>
+            <article className={`system-overview-card ${overview?.backups.overdue ? "system-overview-warning" : ""}`}>
+              <Clock3 size={22} />
+              <div><span>最近备份</span><strong>{relativeTime(overview?.backups.lastCreatedAt ?? null)}</strong><small>{overview?.backups.overdue ? "已超过安全备份周期" : overview?.backups.lastCreatedAt ? new Date(overview.backups.lastCreatedAt).toLocaleString("zh-CN", { hour12: false }) : "请立即创建首份备份"}</small></div>
+            </article>
+            <article className="system-overview-card">
+              <Archive size={22} />
+              <div><span>备份空间</span><strong>{overview ? `${overview.backups.count} 份 · ${formatStorageSize(overview.backups.totalSizeBytes)}` : "—"}</strong><small>{overview ? `保留 ${overview.backups.retentionDays} 天，最多 ${overview.backups.maxCount} 份` : "读取备份策略"}</small></div>
+            </article>
+          </section>
+
+          <article className="panel system-backup-panel">
           <header>
             <div>
-              <h2>MCP Token</h2>
-              <p>平台Token审计，权限由所属账号动态决定</p>
+              <h2>数据库备份与恢复</h2>
+              <p>自动备份每天02:00执行；恢复前会先保存当前数据库</p>
             </div>
             <button
               className="primary-button"
-              onClick={() => {
-                setNewToken(undefined);
-                setTokenModal(true);
-              }}
+              disabled={backup.isPending}
+              onClick={() => { setFeedback(""); backup.mutate(); }}
             >
-              <KeyRound size={15} />
-              创建Token
-            </button>
-          </header>
-          <div className="compact-list">
-            {tokens.map((token) => (
-              <div key={token.id}>
-                <KeyRound size={16} />
-                <div>
-                  <strong>{token.name}</strong>
-                  <span>
-                    {token.accountName ? `所属 ${token.accountName} · ` : ""}pm_{token.prefix}_… ·{" "}
-                    {token.expiresAt
-                      ? `${new Date(token.expiresAt).toLocaleDateString()}到期`
-                      : "永久有效"}{" "}
-                    · 最近使用{" "}
-                    {token.lastUsedAt
-                      ? new Date(token.lastUsedAt).toLocaleString()
-                      : "从未"}
-                  </span>
-                </div>
-                <b className={token.revokedAt ? "muted" : "safe-text"}>
-                  {token.revokedAt ? "已撤销" : "有效"}
-                </b>
-                {!token.revokedAt && (
-                  <button
-                    onClick={() =>
-                      confirm("确认撤销此Token？") && revoke.mutate(token.id)
-                    }
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </article>
-        <article className="panel system-panel">
-          <header>
-            <div>
-              <h2>数据库备份</h2>
-              <p>本地时间每日02:00自动备份，保留30天且最多100份</p>
-            </div>
-            <button className="ghost-button" onClick={() => backup.mutate()}>
               <DatabaseBackup size={15} />
-              立即备份
+              {backup.isPending ? "正在备份…" : "立即备份"}
             </button>
           </header>
-          <div className="compact-list">
-            {backups.map((item) => (
-              <div key={item.name}>
-                <DatabaseBackup size={16} />
-                <div>
-                  <strong>{item.name}</strong>
-                  <span>
-                    {(item.size / 1024).toFixed(1)} KB ·{" "}
-                    {new Date(item.createdAt).toLocaleString()}
-                  </span>
-                </div>
-                <button
-                  className="compact-text-button"
-                  title="恢复此备份"
-                  onClick={() =>
-                    confirm("恢复会替换当前数据库并重启服务，确认继续？") &&
-                    restore.mutate(item.name)
-                  }
-                >
-                  <RefreshCcw size={14} />
-                  恢复
-                </button>
-                <button
-                  className="compact-text-button danger"
-                  title="删除此备份"
-                  onClick={() => confirm(`删除备份“${item.name}”？该操作无法恢复。`) && deleteBackup.mutate(item.name)}
-                >
-                  <Trash2 size={14} />
-                  删除
-                </button>
-              </div>
-            ))}
-            {!backups.length && (
-              <EmptyState title="暂无备份" detail="可立即创建第一份备份。" />
-            )}
+          <div className="system-backup-policy">
+            <span>保留策略 <strong>{overview ? `${overview.backups.retentionDays}天 / ${overview.backups.maxCount}份` : "—"}</strong></span>
+            <span>下次自动备份 <strong>{overview ? new Date(overview.backups.nextScheduledAt).toLocaleString("zh-CN", { hour12: false }) : "—"}</strong></span>
+            {feedback && <span className="system-operation-success"><ShieldCheck size={14} />{feedback}</span>}
+            {operationError && <span className="system-operation-error">{operationError.message}</span>}
           </div>
-        </article>
-        </section>
-      {tokenModal && (
-        <Modal title="创建MCP Token" onClose={() => setTokenModal(false)}>
-          {newToken ? (
-            <div className="token-reveal">
-              <ShieldCheck size={38} />
-              <strong>Token只显示这一次</strong>
-              <p>请立即复制并安全保存。数据库中只保留哈希。</p>
-              <div>
-                <code>{newToken}</code>
-                <button
-                  onClick={() => void navigator.clipboard.writeText(newToken)}
-                >
-                  <Copy size={16} />
-                </button>
+          <div className="system-backup-table-wrap">
+            <table className="system-backup-table">
+              <thead><tr><th>备份时间</th><th>文件名</th><th>大小</th><th>距今</th><th>操作</th></tr></thead>
+              <tbody>
+                {backups.map((item) => <tr key={item.name}>
+                  <td>{new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false })}</td>
+                  <td><strong title={item.name}>{item.name}</strong></td>
+                  <td>{formatStorageSize(item.size)}</td>
+                  <td>{relativeTime(item.createdAt)}</td>
+                  <td><div className="system-backup-actions">
+                    <button className="inline-action-button" disabled={restore.isPending} onClick={() => { setFeedback(""); setRestoreTarget(item); }}><RefreshCcw size={14} />恢复</button>
+                    <button className="inline-action-button danger" disabled={deleteBackup.isPending && deleteBackup.variables === item.name} onClick={() => confirm(`删除备份“${item.name}”？该操作无法恢复。`) && deleteBackup.mutate(item.name)}><Trash2 size={14} />{deleteBackup.isPending && deleteBackup.variables === item.name ? "删除中" : "删除"}</button>
+                  </div></td>
+                </tr>)}
+              </tbody>
+            </table>
+            {backupsQuery.isLoading && <div className="system-table-state">正在读取备份…</div>}
+            {!backupsQuery.isLoading && !backups.length && <EmptyState title="暂无备份" detail="可立即创建第一份备份。" />}
+          </div>
+          </article>
+
+          <section className="system-secondary-grid">
+            <article className="panel system-detail-panel">
+              <header><div><h2>系统运行信息</h2><p>只读展示当前部署参数</p></div></header>
+              <div className="system-detail-list">
+                <div><span>应用版本</span><strong>v{overview?.service.version ?? "—"}</strong></div>
+                <div><span>启动时间</span><strong>{overview ? new Date(overview.service.startedAt).toLocaleString("zh-CN", { hour12: false }) : "—"}</strong></div>
+                <div><span>运行环境</span><strong>{overview?.service.environment ?? "—"}</strong></div>
+                <div><span>时区</span><strong>{overview?.service.timezone ?? "—"}</strong></div>
+                <div><span>监听地址</span><strong>{overview ? `${overview.service.host}:${overview.service.port}` : "—"}</strong></div>
+                <div><span>数据库文件</span><strong title={overview?.database.path}>{overview?.database.path ?? "—"}</strong></div>
+                <div><span>备份目录</span><strong title={overview?.database.backupDirectory}>{overview?.database.backupDirectory ?? "—"}</strong></div>
+                <div className="http-alert"><ShieldCheck size={16} /><span>当前使用HTTP，仅限可信局域网访问</span></div>
               </div>
-              <button
-                className="primary-button"
-                onClick={() => setTokenModal(false)}
-              >
-                我已保存
-              </button>
-            </div>
-          ) : (
-            <form
-              className="form-grid"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const data = Object.fromEntries(
-                  new FormData(event.currentTarget),
-                );
-                createToken.mutate({
-                  name: data.name,
-                  expiresInDays:
-                    data.expiresInDays === "never"
-                      ? null
-                      : Number(data.expiresInDays),
-                });
-              }}
-            >
-              <label className="field field-full">
-                <span>Token名称</span>
-                <input name="name" required placeholder="例如：Codex项目查询" />
-              </label>
-              <label className="field field-full">
-                <span>有效期</span>
-                <select name="expiresInDays" defaultValue="90">
-                  <option value="30">30天</option>
-                  <option value="90">90天（默认）</option>
-                  <option value="never">永久有效</option>
-                </select>
-              </label>
-              <div className="form-actions field-full">
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => setTokenModal(false)}
-                >
-                  取消
-                </button>
-                <button className="primary-button">创建Token</button>
+            </article>
+            <article className="panel system-detail-panel system-check-panel">
+              <header><div><h2>数据库健康检查</h2><p>检查SQLite结构和数据页，不修改业务数据</p></div><button className="ghost-button" disabled={integrityCheck.isPending} onClick={() => integrityCheck.mutate()}><ShieldCheck size={15} />{integrityCheck.isPending ? "检查中…" : "立即检查"}</button></header>
+              <div className="system-check-content">
+                <div className={`system-check-state ${integrityCheck.data ? integrityCheck.data.ok ? "is-success" : "is-error" : ""}`}>
+                  <ShieldCheck size={30} />
+                  <div><strong>{integrityCheck.data ? integrityCheck.data.ok ? "数据库状态正常" : "发现数据库异常" : "等待执行完整性检查"}</strong><span>{integrityCheck.data?.message ?? `当前使用 ${overview?.database.journalMode || "—"} 日志模式`}</span></div>
+                </div>
+                {integrityCheck.data && <dl className="system-check-meta"><div><dt>检查时间</dt><dd>{new Date(integrityCheck.data.checkedAt).toLocaleString("zh-CN", { hour12: false })}</dd></div><div><dt>检查耗时</dt><dd>{integrityCheck.data.durationMs} ms</dd></div></dl>}
+                {integrityCheck.error && <p className="form-error">{integrityCheck.error.message}</p>}
               </div>
-            </form>
-          )}
-        </Modal>
-      )}
+            </article>
+          </section>
+        </div>
+
+        {restoreTarget && <Modal title="恢复数据库备份" width={600} closable={!restore.isPending} onClose={() => { if (!restore.isPending) setRestoreTarget(undefined); }}>
+          <div className="system-restore-dialog">
+            <div className="system-restore-warning"><RefreshCcw size={22} /><div><strong>恢复后当前数据库将被替换</strong><p>系统会先校验目标备份并自动备份当前数据，然后重启服务。</p></div></div>
+            <dl><div><dt>备份文件</dt><dd title={restoreTarget.name}>{restoreTarget.name}</dd></div><div><dt>备份时间</dt><dd>{new Date(restoreTarget.createdAt).toLocaleString("zh-CN", { hour12: false })}</dd></div><div><dt>文件大小</dt><dd>{formatStorageSize(restoreTarget.size)}</dd></div></dl>
+            {restore.error && <p className="form-error">{restore.error.message}</p>}
+            {restore.data && <p className="system-operation-success"><ShieldCheck size={14} />{restore.data.message}</p>}
+            <div className="form-actions"><button className="ghost-button" disabled={restore.isPending} onClick={() => setRestoreTarget(undefined)}>取消</button><button className="primary-button" disabled={restore.isPending || Boolean(restore.data)} onClick={() => restore.mutate(restoreTarget.name)}><RefreshCcw size={15} />{restore.isPending ? "正在校验并备份…" : restore.data ? "等待服务重启" : "确认恢复"}</button></div>
+          </div>
+        </Modal>}
       </div>
     </>
   );

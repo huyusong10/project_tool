@@ -166,11 +166,12 @@ function Sidebar({ session, selectedProjectId, collapsed, onToggle }: { session:
           <NavLink to="/templates"><Settings2 size={18} />流程设计</NavLink>
           {managesCurrentProject && <NavLink to="/project-settings"><FolderKanban size={18} />项目设置</NavLink>}
           {!isAdmin(session) && managesCurrentProject && <NavLink to="/logs"><ScrollText size={18} />项目日志</NavLink>}
-          {isAdmin(session) && <span className="nav-section">平台管理</span>}
+          {isAdmin(session) && <span className="nav-section">平台治理</span>}
           {isAdmin(session) && <NavLink to="/projects"><FolderKanban size={18} />项目中心</NavLink>}
           {isAdmin(session) && <NavLink to="/resources"><Users size={18} />资源中心</NavLink>}
           {isAdmin(session) && <NavLink to="/accounts"><UserRoundCog size={18} />账户与权限</NavLink>}
           {isAdmin(session) && <NavLink to="/archives"><Archive size={18} />归档中心</NavLink>}
+          {isAdmin(session) && <span className="nav-section">平台运维</span>}
           {isAdmin(session) && <NavLink to="/system"><LockKeyhole size={18} />系统管理</NavLink>}
           {isAdmin(session) && <NavLink to="/logs"><ScrollText size={18} />操作审计</NavLink>}
         </> : <span className="nav-section nav-section-first">登录后使用项目工作台</span>}
@@ -210,12 +211,13 @@ function ProjectSwitcher({
     {projects.length ? <>
       <button type="button" className="project-switcher-button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <span className="project-dot" />
-        <span>{selected?.name}</span>
+        <span className="project-switcher-name">{selected?.name}</span>
+        {selected?.isSample && <span className="sample-project-badge">样板</span>}
         <ChevronDown className={open ? "is-open" : ""} size={15} />
       </button>
       {open && <div className="project-switcher-menu" role="listbox" aria-label="切换项目">
         {projects.map((project) => <button type="button" role="option" aria-selected={project.id === selectedProjectId} key={project.id} onClick={() => { setSelectedProjectId(project.id); setOpen(false); }}>
-          <span>{project.name}</span>
+          <span className="project-switcher-option"><span>{project.name}</span>{project.isSample && <em className="sample-project-badge">样板</em>}</span>
           {project.id === selectedProjectId && <Check size={15} />}
         </button>)}
       </div>}

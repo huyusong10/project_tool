@@ -7,6 +7,7 @@ import { defaultAnalyticsLayout, type AnalyticsQueryResponse } from '../src/shar
 const dbPath = path.join(process.cwd(), 'data', `performance-${randomUUID()}.db`);
 process.env.DB_PATH = dbPath;
 process.env.BACKUP_DIR = path.join(process.cwd(), 'data', `performance-backups-${randomUUID()}`);
+process.env.SEED_DEMO = '0';
 process.env.APP_PASSWORD_HASH = 'scrypt$test$00';
 process.env.SESSION_SECRET = 'performance-test-session-secret-more-than-32-chars';
 
@@ -29,15 +30,19 @@ beforeAll(async () => {
   const insertProjectPerson = sqlite.prepare('INSERT INTO project_people (project_id,person_id,created_at) VALUES (?,?,?)');
   personIds.forEach((id, index) => insertPerson.run(id, `人员${index + 1}`, index % 2 ? '开发' : '测试', now, now));
   personIds.forEach((id) => insertProjectPerson.run(projectId, id, now));
-  const insertRequirement = sqlite.prepare(`INSERT INTO requirements (id,project_id,title,status,planned_start,planned_end,progress,risk_level,created_at,updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-  const insertWorkItem = sqlite.prepare(`INSERT INTO work_items (id,requirement_id,title,owner_id,status,planned_start,planned_end,actual_start,actual_end,sort_order,created_at,updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insertRequirement = sqlite.prepare(`INSERT INTO requirements (id,project_id,title,status,planned_start,planned_end,progress,risk_level,accepted_at,created_at,updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insertWorkItem = sqlite.prepare(`INSERT INTO work_items (id,requirement_id,title,owner_id,status,planned_start,planned_end,actual_start,actual_end,progress,sort_order,created_at,updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   sqlite.transaction(() => {
     for (let index = 0; index < 500; index += 1) {
       const requirementId = randomUUID();
-      insertRequirement.run(requirementId, projectId, `性能需求 ${index + 1}`, index % 5 === 0 ? 'completed' : 'in_progress', '2026-09-01', '2026-09-30', index % 101, index % 17 === 0 ? 'high' : 'low', now, now);
-      for (let item = 0; item < 10; item += 1) insertWorkItem.run(randomUUID(), requirementId, `工作项 ${item + 1}`, personIds[(index * 10 + item) % personIds.length], item < 3 ? 'completed' : 'in_progress', '2026-09-01', '2026-09-10', '2026-09-01', item < 3 ? '2026-09-03' : null, item, now, now);
+      const completed = index % 5 === 0;
+      insertRequirement.run(requirementId, projectId, `性能需求 ${index + 1}`, completed ? 'completed' : 'in_progress', '2026-09-01', '2026-09-30', completed ? 100 : index % 100, index % 17 === 0 ? 'high' : 'low', completed ? now : null, now, now);
+      for (let item = 0; item < 10; item += 1) {
+        const itemCompleted = completed || item < 3;
+        insertWorkItem.run(randomUUID(), requirementId, `工作项 ${item + 1}`, personIds[(index * 10 + item) % personIds.length], itemCompleted ? 'completed' : 'in_progress', '2026-09-01', '2026-09-10', '2026-09-01', itemCompleted ? '2026-09-03' : null, itemCompleted ? 100 : 30, item, now, now);
+      }
     }
   })();
 });

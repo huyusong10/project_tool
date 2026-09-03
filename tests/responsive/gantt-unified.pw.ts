@@ -4,16 +4,20 @@ const workItem = {
   id: "w1", requirementId: "r1", templateItemId: "ti1", title: "接口开发", ownerId: "u1", ownerName: "张三",
   collaborators: [], assigneeIds: ["u1"], assigneeNames: ["张三"], status: "in_progress",
   plannedStart: "2026-09-01", plannedEnd: "2026-09-10", actualStart: "2026-09-01", actualEnd: null,
-  forecastEnd: null, blockedAt: null, blockedReason: null, progress: 40, sortOrder: 0,
+  forecastEnd: null, blockedAt: null, blockedReason: null, milestoneLabel: "接口基线", progress: 40, sortOrder: 0,
   createdAt: "2026-09-01", updatedAt: "2026-09-02",
 };
 
 const requirement = {
   id: "r1", projectId: "p1", projectName: "测试项目", templateId: "t1", templateName: "研发流程",
   title: "统一甘特样式", ownerId: null, ownerName: null, status: "in_progress", plannedStart: "2026-09-01",
-  plannedEnd: "2026-09-10", progress: 40, plannedProgress: 25, progressGap: -15, riskLevel: "low",
-  riskEvaluated: true, riskReason: "进展正常", priority: "P1", createdAt: "2026-09-01", updatedAt: "2026-09-02",
-  workItems: [workItem], progressUpdates: [], recentProgressUpdates: [], delayed: false, highRisk: false,
+  plannedEnd: "2026-09-10", progress: 61, plannedProgress: 91, progressGap: 30, riskLevel: "medium",
+  riskEvaluated: true, riskReason: "P1进度Gap 30%", priority: "P1", createdAt: "2026-09-01", updatedAt: "2026-09-02",
+  workItems: [workItem], progressUpdates: [], recentProgressUpdates: [{
+    id: "u1", requirementId: "r1", workItemId: "w1", workItemTitle: "接口开发", percent: 61,
+    content: "完成接口权限校验与异常分支联调，补充回归场景并记录后续优化建议，等待产品侧确认边界。",
+    createdAt: "2026-09-02T10:00:00.000Z", updatedAt: "2026-09-02T10:00:00.000Z",
+  }], delayed: false, highRisk: false,
   finishVariance: 0, durationVariance: 0, effectiveEnd: "2026-09-10", issueSummary: { active: 0, overdue: 0 },
 };
 
@@ -25,7 +29,7 @@ async function mockGanttData(page: Page) {
     if (pathname === "/api/projects") return json([{ id: "p1", name: "测试项目", status: "active", plannedStart: "2026-09-01", plannedEnd: "2026-09-30", defaultTemplateId: "t1", createdAt: "2026-09-01", updatedAt: "2026-09-01" }]);
     if (pathname === "/api/dashboard") return json({
       summary: { total: 2, active: 2, completed: 0, delayed: 0, highRisk: 0, completionRate: 0 },
-      requirements: [requirement, { ...requirement, id: "r2", title: "相同八日流程", workItems: [{ ...workItem, id: "w2", requirementId: "r2" }] }],
+      requirements: [requirement, { ...requirement, id: "r2", title: "领先计划流程", progress: 70, plannedProgress: 50, progressGap: 0, riskLevel: "low", riskReason: "进展正常", workItems: [{ ...workItem, id: "w2", requirementId: "r2" }] }],
       issues: { summary: { total: 0, open: 0, inProgress: 0, deferred: 0, resolved: 0, active: 0, highPriority: 0, overdue: 0, unassigned: 0, closureRate: 0 }, attention: [] },
       charts: { statuses: [], risks: [], weeks: [], varianceTop: [] },
     });
@@ -36,17 +40,32 @@ async function mockGanttData(page: Page) {
   });
 }
 
-test("项目与需求甘特共用日刻度和计划实际状态样式", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop-1080p", "统一甘特图只需在主桌面视口专项验证");
+test("项目与需求甘特统一展示状态进度及今日进度差", async ({ page }, testInfo) => {
+  test.skip(!["laptop-1366", "hidpi-3k-200", "desktop-1080p"].includes(testInfo.project.name), "统一甘特图仅验证代表性桌面视口");
   await mockGanttData(page);
 
   await page.goto("/");
   await expect(page.locator(".project-gantt-grid")).toBeVisible();
   await expect(page.locator(".project-gantt-toolbar .view-tabs button.active")).toHaveText("日");
   await expect(page.locator(".project-gantt-grid .unified-gantt-plan")).toHaveCount(2);
-  await expect(page.locator(".project-gantt-grid .unified-gantt-actual")).toHaveCount(2);
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-actual")).toHaveCount(2);
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveCount(1);
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveText("落后 30%");
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-ahead")).toHaveCount(1);
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-target")).toHaveCount(2);
   await expect(page.locator(".project-gantt-grid .unified-gantt-plan-end")).toHaveCount(2);
-  await expect(page.locator(".project-gantt-grid .unified-gantt-label").first()).toHaveText("进行中 · 实际进度 40%");
+  await expect(page.locator(".project-gantt-grid .unified-gantt-label")).toHaveCount(0);
+  await expect(page.locator(".gantt-row").filter({ hasText: "统一甘特样式" }).locator(".gantt-progress-marker")).toHaveText("61");
+  await expect(page.locator(".gantt-row").filter({ hasText: "领先计划流程" }).locator(".gantt-progress-marker")).toHaveText("70");
+  await expect(page.getByText("中风险 · 落后30%", { exact: true })).toBeVisible();
+  await expect(page.getByText("领先20%", { exact: true })).toBeVisible();
+  const delayedRow = page.locator(".gantt-row").filter({ hasText: "统一甘特样式" });
+  await delayedRow.locator(".gantt-track").hover({ position: { x: 4, y: 4 } });
+  await expect(page.locator(".gantt-popover")).toBeHidden();
+  await delayedRow.locator(".gantt-bar-hitbox").hover();
+  await expect(page.locator(".gantt-popover")).toBeVisible();
+  await expect(page.locator(".gantt-popover-updates")).toContainText("完成接口权限校验与异常分支联调");
+  expect(await page.locator(".gantt-popover-updates p").evaluate((node) => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
   const projectWidths = await page.locator(".project-gantt-grid .unified-gantt-plan").evaluateAll((bars) => bars.map((bar) => bar.getBoundingClientRect().width));
   expect(Math.abs(projectWidths[0] - projectWidths[1])).toBeLessThanOrEqual(1);
   await expect(page.locator(".project-gantt-grid .gantt-scale-tick", { hasText: /周六|周日/ })).toHaveCount(0);
@@ -57,6 +76,10 @@ test("项目与需求甘特共用日刻度和计划实际状态样式", async ({
   await expect(page.locator(".requirement-gantt-grid .unified-gantt-plan")).toHaveCount(1);
   await expect(page.locator(".requirement-gantt-grid .unified-gantt-actual")).toHaveCount(1);
   await expect(page.locator(".requirement-gantt-grid .unified-gantt-plan-end")).toHaveCount(1);
-  await expect(page.locator(".requirement-gantt-grid .unified-gantt-label")).toHaveText("进行中 · 实际进度 40%");
+  await expect(page.locator(".requirement-gantt-grid .unified-gantt-label")).toHaveCount(0);
+  await expect(page.locator(".requirement-gantt-grid .gantt-progress-marker")).toHaveText("40");
+  await expect(page.locator(".requirement-gantt-grid .gantt-milestone-marker")).toContainText("接口基线");
+  await page.locator(".requirement-gantt-grid .gantt-progress-marker").click();
+  await expect(page.getByRole("heading", { name: "更新工作项进度" })).toBeVisible();
   await expect(page.locator(".requirement-gantt-grid .gantt-scale-tick", { hasText: /周六|周日/ })).toHaveCount(0);
 });

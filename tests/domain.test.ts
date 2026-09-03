@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
-  deriveWorkItemStatus, plannedDatesFromOffset, plannedStartFromDeadline, riskLevelFromProgressGap, workItemPlannedProgress,
+  deriveWorkItemStatus, ganttProgressDisplay, issueActionsByStatus, plannedDatesFromOffset, plannedStartFromDeadline, requirementActionsByStatus, riskLevelFromProgressGap, signedProgressVariance, workItemActionsByStatus, workItemPlannedProgress,
 } from '../src/shared/domain';
 
 describe('工作日、排期与Gap规则', () => {
@@ -31,10 +31,16 @@ describe('工作日、排期与Gap规则', () => {
 });
 
 describe('自动状态、进度和风险', () => {
-  it('实际日期优先于遗留状态推导工作项状态', () => {
-    expect(deriveWorkItemStatus({ status: 'not_started', actualStart: '2026-09-01', actualEnd: '2026-09-02' })).toBe('completed');
-    expect(deriveWorkItemStatus({ status: 'not_started', actualStart: '2026-09-01' })).toBe('in_progress');
-    expect(deriveWorkItemStatus({ status: 'not_started', blockedAt: '2026-09-01T00:00:00Z' })).toBe('blocked');
+  it('集中声明工作项、需求和问题的状态操作入口', () => {
+    expect(workItemActionsByStatus.in_progress).toEqual(['progress', 'block', 'complete', 'cancel']);
+    expect(workItemActionsByStatus.completed).toEqual(['reopen', 'correct']);
+    expect(requirementActionsByStatus.pending_acceptance).toEqual(['accept', 'rework', 'cancel']);
+    expect(issueActionsByStatus.resolved).toEqual(['reopen', 'correct']);
+  });
+  it('工作项以持久化状态为权威，不再由日期静默改写', () => {
+    expect(deriveWorkItemStatus({ status: 'not_started', actualStart: '2026-09-01', actualEnd: '2026-09-02' })).toBe('not_started');
+    expect(deriveWorkItemStatus({ status: 'in_progress', actualStart: '2026-09-01' })).toBe('in_progress');
+    expect(deriveWorkItemStatus({ status: 'blocked', blockedAt: '2026-09-01T00:00:00Z' })).toBe('blocked');
   });
 
   it('按计划工期加权已完成工作项', () => {
@@ -67,6 +73,25 @@ describe('自动状态、进度和风险', () => {
     expect(riskLevelFromProgressGap('P3', 60)).toBe('high');
   });
 
+  it('展示偏差保留领先和落后的方向，风险Gap仍保持非负', () => {
+    expect(signedProgressVariance(61, 91)).toBe(-30);
+    expect(signedProgressVariance(70, 50)).toBe(20);
+    const ahead = deriveRequirementMetrics({ status: 'in_progress', priority: 'P1' }, [
+      { status: 'in_progress', progress: 100, plannedStart: '2026-09-01', plannedEnd: '2026-09-10', actualStart: '2026-09-01' },
+    ], '2026-09-02');
+    expect(ahead.progressGap).toBe(0);
+  });
+
+  it('状态进度圆点规范化完成、取消和异常进度', () => {
+    expect(ganttProgressDisplay('not_started', 0)).toBe(0);
+    expect(ganttProgressDisplay('in_progress', 61)).toBe(61);
+    expect(ganttProgressDisplay('blocked', 45)).toBe(45);
+    expect(ganttProgressDisplay('completed', 75)).toBe(100);
+    expect(ganttProgressDisplay('cancelled', 30)).toBe('—');
+    expect(ganttProgressDisplay('in_progress', -8)).toBe(0);
+    expect(ganttProgressDisplay('in_progress', 108)).toBe(100);
+  });
+
   it('阻塞或延期三工作日覆盖Gap规则，已关闭需求不再计算当前风险', () => {
     const high = deriveRequirementMetrics({ status: 'in_progress' }, [
       { status: 'in_progress', plannedStart: '2026-08-28', plannedEnd: '2026-09-01', actualStart: '2026-08-28' },
@@ -80,7 +105,7 @@ describe('自动状态、进度和风险', () => {
     expect(medium.progressGap).toBe(50);
     expect(medium.riskLevel).toBe('medium');
     expect(medium.riskReason).toContain('P3进度Gap 50%');
-    const closed = deriveRequirementMetrics({ status: 'in_progress', priority: 'P0' }, [
+    const closed = deriveRequirementMetrics({ status: 'in_progress', priority: 'P0', acceptedAt: '2026-09-04' }, [
       { status: 'completed', plannedStart: '2026-09-01', plannedEnd: '2026-09-01', actualStart: '2026-09-01', actualEnd: '2026-09-04' },
     ], '2026-09-04');
     expect(closed).toMatchObject({ status: 'completed', riskEvaluated: false, riskLevel: 'low', highRisk: false, delayed: true });

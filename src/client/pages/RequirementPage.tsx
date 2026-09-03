@@ -94,8 +94,8 @@ function RequirementEditForm({
   const templateChanged = Boolean(templateId && templateId !== requirement.templateId);
   const mutation = useMutation({
     mutationFn: (value: object) =>
-      api(`/api/requirements/${requirement.id}`, {
-        method: "PATCH",
+      api(`/api/requirements/${requirement.id}/${templateChanged ? "reselect-template" : "reschedule"}`, {
+        method: "POST",
         body: jsonBody(value),
       }),
     onSuccess: () => {
@@ -114,10 +114,11 @@ function RequirementEditForm({
       className="form-grid"
       onSubmit={(event) => {
         event.preventDefault();
-        if (templateChanged && !confirm("切换流程会清空当前需求的全部工作项、人员分配、实际日期和进展记录，并按新流程重新生成计划。确认继续？")) return;
+        if (templateChanged && !confirm("切换流程会替换当前未执行工作项、人员分配和计划，并按新流程重新生成；需求级说明将保留。确认继续？")) return;
         mutation.mutate({
           ...Object.fromEntries(new FormData(event.currentTarget)),
           scheduleMode,
+          expectedVersion: requirement.version,
           ...(templateChanged ? { templateId, confirmTemplateReset: true } : {}),
         });
       }}
@@ -166,7 +167,8 @@ function RequirementEditForm({
           {templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
         </select>
       </label>
-      {templateChanged && <p className="template-reset-warning field-full"><AlertTriangle size={16} />切换后会清空现有工作项及进展，并按新流程和所选排期方向重新生成。</p>}
+      {templateChanged && <p className="template-reset-warning field-full"><AlertTriangle size={16} />切换后会替换未执行工作项并按新流程重新排期；需求级说明保留。</p>}
+      {requirement.workItems.some((item) => item.status !== "not_started") && <label className="field field-full"><span>变更原因</span><textarea name="reason" rows={3} required placeholder="需求已开始执行，请说明调整排期的原因" /></label>}
       <p className="field-help field-full">修改日期会整体平移已有工作项，保留相对间隔、人员和实际日期；每个工作项仍可单独修改自定义计划。流程设计后续变更不会同步到当前需求。</p>
       {mutation.error && (
         <p className="form-error field-full">{mutation.error.message}</p>
@@ -316,8 +318,6 @@ function WorkItemForm({
   const [collaboratorIds, setCollaboratorIds] = useState<string[]>(item?.collaborators?.map((person) => person.id) || []);
   const [plannedStart, setPlannedStart] = useState(item?.plannedStart || "");
   const [plannedEnd, setPlannedEnd] = useState(item?.plannedEnd || "");
-  const [actualStart, setActualStart] = useState(item?.actualStart || "");
-  const [actualEnd, setActualEnd] = useState(item?.actualEnd || "");
   const { data: people = [] } = useQuery({
     queryKey: ["people", requirement.projectId],
     queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(requirement.projectId)}`),
@@ -351,6 +351,7 @@ function WorkItemForm({
           ...values,
           ownerId,
           assigneeIds: [ownerId, ...collaboratorIds].filter(Boolean),
+          expectedVersion: item?.version ?? requirement.version,
         });
       }}
     >
@@ -408,30 +409,7 @@ function WorkItemForm({
           onChange={(event) => setPlannedEnd(event.target.value)}
         />
       </label>
-      <details className="advanced-fields field-full">
-        <summary>高级修正：补录实际日期</summary>
-        {item && (
-          <div className="advanced-fields-shortcut">
-            <span>实际日期与计划日期一致时，可快速填充</span>
-            <button
-              type="button"
-              disabled={!plannedStart || !plannedEnd}
-              title={plannedStart && plannedEnd ? "将实际日期同步为计划日期" : "请先补全计划开始和计划完成日期"}
-              onClick={() => {
-                setActualStart(plannedStart);
-                setActualEnd(plannedEnd);
-              }}
-            >
-              <Check size={15} />
-              按时完成
-            </button>
-          </div>
-        )}
-        <div className="form-grid">
-          <label className="field"><span>实际开始</span><input name="actualStart" type="date" value={actualStart} onChange={(event) => setActualStart(event.target.value)} /></label>
-          <label className="field"><span>实际完成</span><input name="actualEnd" type="date" value={actualEnd} onChange={(event) => setActualEnd(event.target.value)} /></label>
-        </div>
-      </details>
+      {item && item.status !== "not_started" && <label className="field field-full"><span>变更原因</span><textarea name="reason" rows={3} placeholder="调整已开始工作项的计划日期时必填" /></label>}
       {mutation.error && (
         <p className="form-error field-full">{mutation.error.message}</p>
       )}
@@ -461,7 +439,7 @@ function ProgressForm({
   onClose: () => void;
 }) {
   const client = useQueryClient();
-  const items = (allowedItems || requirement.workItems).filter((item) => item.status !== "cancelled");
+  const items = (allowedItems || requirement.workItems).filter((item) => !["completed", "cancelled"].includes(item.status));
   const fixedItem = fixedItemId ? items.find((item) => item.id === fixedItemId) : undefined;
   const initialWorkItemId = fixedItem?.id || (requireAssociation ? items[0]?.id || "" : "");
   const [workItemId, setWorkItemId] = useState(initialWorkItemId);
@@ -511,7 +489,7 @@ function ProgressForm({
             ))}
           </select>
         </label>}
-      {workItemId && <ProgressInput name="workItemPercent" value={workItemPercent} onChange={setWorkItemPercent} />}
+      {workItemId && <><input type="hidden" name="expectedVersion" value={items.find((item) => item.id === workItemId)?.version || 1} /><ProgressInput name="workItemPercent" value={workItemPercent} onChange={setWorkItemPercent} max={99} /></>}
       <label className="field field-full">
         <span>具体进展</span>
         <textarea
@@ -522,7 +500,7 @@ function ProgressForm({
           placeholder="描述本次实际完成的内容"
         />
       </label>
-      <p className="field-help field-full">填写累计完成度，不是本次增量。需求总进度会按各工作项计划工期自动加权；不关联工作项时仅记录说明。</p>
+      <p className="field-help field-full">填写0～99%的累计完成度；100%请使用“完成工作项”。不关联工作项时仅记录说明。</p>
       {mutation.error && (
         <p className="form-error field-full">{mutation.error.message}</p>
       )}
@@ -540,6 +518,8 @@ function PlanForm({ requirement, templates, onClose }: { requirement: Requiremen
   const client = useQueryClient();
   const [templateId, setTemplateId] = useState(requirement.templateId || templates[0]?.id || "");
   const [baseStart, setBaseStart] = useState(requirement.plannedStart || "");
+  const [reason, setReason] = useState("");
+  const hasExecution = requirement.workItems.some((item) => item.status !== "not_started");
   const [preview, setPreview] = useState<PlanPreview>();
   const previewMutation = useMutation({
     mutationFn: () => api<PlanPreview>(`/api/requirements/${requirement.id}/plan-preview`, {
@@ -550,7 +530,7 @@ function PlanForm({ requirement, templates, onClose }: { requirement: Requiremen
   const applyMutation = useMutation({
     mutationFn: () => api(`/api/requirements/${requirement.id}/apply-plan`, {
       method: "POST",
-      body: jsonBody({ templateId, baseStart, templateItemIds: preview?.entries.filter((item) => item.willChange).map((item) => item.templateItemId) }),
+      body: jsonBody({ templateId, baseStart, expectedVersion: requirement.version, reason: reason.trim() || undefined, templateItemIds: preview?.entries.filter((item) => item.willChange).map((item) => item.templateItemId) }),
     }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["requirement", requirement.id] });
@@ -564,6 +544,7 @@ function PlanForm({ requirement, templates, onClose }: { requirement: Requiremen
         <label className="field"><span>流程设计</span><select value={templateId} onChange={(event) => { setTemplateId(event.target.value); setPreview(undefined); }}>{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</select></label>
         <label className="field"><span>计划开始</span><input type="date" value={baseStart} onChange={(event) => { setBaseStart(event.target.value); setPreview(undefined); }} /></label>
       </div>
+      {hasExecution && <label className="field field-full"><span>变更原因</span><textarea rows={2} value={reason} onChange={(event) => setReason(event.target.value)} required placeholder="需求已开始执行，请说明补排或调整原因" /></label>}
       {!preview && <div className="form-actions"><button className="primary-button" disabled={!templateId || !baseStart || previewMutation.isPending} onClick={() => previewMutation.mutate()}><WandSparkles size={15} />生成差异预览</button></div>}
       {previewMutation.error && <p className="form-error">{previewMutation.error.message}</p>}
       {preview && <>
@@ -574,7 +555,7 @@ function PlanForm({ requirement, templates, onClose }: { requirement: Requiremen
         </div>
         <p className="field-help">仅补充空日期或缺失工作项，已有计划和实际日期不会覆盖。</p>
         {applyMutation.error && <p className="form-error">{applyMutation.error.message}</p>}
-        <div className="form-actions"><button className="ghost-button" onClick={() => setPreview(undefined)}>重新预览</button><button className="primary-button" disabled={!preview.entries.some((item) => item.willChange) || applyMutation.isPending} onClick={() => applyMutation.mutate()}>确认补全</button></div>
+        <div className="form-actions"><button className="ghost-button" onClick={() => setPreview(undefined)}>重新预览</button><button className="primary-button" disabled={!preview.entries.some((item) => item.willChange) || hasExecution && !reason.trim() || applyMutation.isPending} onClick={() => applyMutation.mutate()}>确认补全</button></div>
       </>}
     </div>
   );
@@ -587,6 +568,7 @@ type NewWorkItemDraft = {
   collaboratorIds: string[];
   plannedStart: string;
   plannedEnd: string;
+  reason?: string;
 };
 
 function WorkItemActions({
@@ -594,16 +576,16 @@ function WorkItemActions({
   onAction,
   onSaveDates,
   onCancel,
-  canCancel,
+  canManage,
 }: {
   item: WorkItem;
-  onAction: (action: "start" | "complete" | "block" | "unblock", reason?: string) => Promise<unknown>;
-  onSaveDates: (input: { actualStart: string | null; actualEnd: string | null }) => Promise<unknown>;
-  onCancel: () => Promise<unknown>;
-  canCancel: boolean;
+  onAction: (action: "start" | "complete" | "block" | "unblock" | "reopen", content?: string) => Promise<unknown>;
+  onSaveDates: (input: { actualStart: string | null; actualEnd: string | null; reason: string }) => Promise<unknown>;
+  onCancel: (reason: string) => Promise<unknown>;
+  canManage: boolean;
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
-  const [panel, setPanel] = useState<"block" | "dates" | null>(null);
+  const [panel, setPanel] = useState<"block" | "complete" | "dates" | null>(null);
   const [reason, setReason] = useState(item.blockedReason || "");
   const [actualStart, setActualStart] = useState(item.actualStart || "");
   const [actualEnd, setActualEnd] = useState(item.actualEnd || "");
@@ -629,21 +611,22 @@ function WorkItemActions({
     }
   };
 
-  const canBlock = item.status === "not_started" || item.status === "in_progress";
-  const canOpenMenu = item.status !== "cancelled";
+  const canBlock = item.status === "in_progress";
+  const canOpenMenu = canManage || canBlock;
 
   return <div className="work-item-actions" ref={anchorRef} onClick={(event) => event.stopPropagation()}>
     <div className="work-item-action-row">
       {item.status === "not_started" && <button className="work-next-action" disabled={pending} onClick={() => void run(() => onAction("start"))}><Play size={14} />{pending ? "提交中" : "开始"}</button>}
-      {item.status === "in_progress" && <button className="work-next-action" disabled={pending} onClick={() => void run(() => onAction("complete"))}><Check size={14} />{pending ? "提交中" : "完成"}</button>}
+      {item.status === "in_progress" && <button className="work-next-action" disabled={pending} onClick={() => { setReason(""); setPanel("complete"); }}><Check size={14} />完成</button>}
       {item.status === "blocked" && <button className="work-next-action" disabled={pending} onClick={() => void run(() => onAction("unblock"))}><RotateCcw size={14} />{pending ? "提交中" : "解除阻塞"}</button>}
-      {item.status === "completed" && <span className="work-action-state is-completed"><Check size={13} />已完成</span>}
-      {item.status === "cancelled" && <span className="work-action-state is-cancelled"><CircleStop size={13} />已取消</span>}
+      {item.status === "completed" && <span className="work-action-state is-completed is-icon-only" role="img" aria-label="已完成" title="已完成"><Check size={16} /></span>}
+      {item.status === "cancelled" && <span className="work-action-state is-cancelled is-icon-only" role="img" aria-label="已取消" title="已取消"><CircleStop size={16} /></span>}
       {canOpenMenu && <ActionMenu>
-        <button onClick={() => setPanel("dates")}><CalendarDays size={14} />修正实际日期</button>
+        {canManage && <button onClick={() => { setReason(""); setPanel("dates"); }}><CalendarDays size={14} />受控修正</button>}
         {canBlock && <button onClick={() => { setReason(""); setPanel("block"); }}><CircleStop size={14} />标记阻塞</button>}
-        {canCancel && !["completed", "cancelled"].includes(item.status) && <button className="danger" onClick={() => {
-          if (confirm(`取消工作项“${item.title}”？`)) void run(onCancel);
+        {canManage && ["completed", "cancelled"].includes(item.status) && <button onClick={() => { const value = prompt("请填写重开/返工原因"); if (value?.trim()) void run(() => onAction("reopen", value.trim())); }}><RotateCcw size={14} />重开/返工</button>}
+        {canManage && !["completed", "cancelled"].includes(item.status) && <button className="danger" onClick={() => {
+          const value = prompt(`请填写取消工作项“${item.title}”的原因`); if (value?.trim()) void run(() => onCancel(value.trim()));
         }}><CircleStop size={14} />取消工作项</button>}
       </ActionMenu>}
     </div>
@@ -659,24 +642,29 @@ function WorkItemActions({
         <footer><button type="button" className="ghost-button" onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || !reason.trim()}>确认阻塞</button></footer>
       </form>
     </AnchoredPopover>
+    <AnchoredPopover anchorRef={anchorRef} open={panel === "complete"} onOutside={() => setPanel(null)} width={390}>
+      <form className="inline-action-form" onSubmit={(event) => {
+        event.preventDefault(); if (reason.trim()) void run(() => onAction("complete", reason.trim()));
+      }}>
+        <header><strong>完成工作项</strong><button type="button" onClick={() => setPanel(null)} aria-label="关闭"><X size={16} /></button></header>
+        <label><span>完成说明</span><textarea autoFocus rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明交付结果或验证结论" /></label>
+        {error && <p className="form-error">{error}</p>}
+        <footer><button type="button" className="ghost-button" onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || !reason.trim()}>确认完成</button></footer>
+      </form>
+    </AnchoredPopover>
     <AnchoredPopover anchorRef={anchorRef} open={panel === "dates"} onOutside={() => setPanel(null)} width={390}>
       <form className="inline-action-form" onSubmit={(event) => {
         event.preventDefault();
-        void run(() => onSaveDates({ actualStart: actualStart || null, actualEnd: actualEnd || null }));
+        if (reason.trim()) void run(() => onSaveDates({ actualStart: actualStart || null, actualEnd: actualEnd || null, reason: reason.trim() }));
       }}>
         <header><strong>高级修正实际日期</strong><button type="button" onClick={() => setPanel(null)} aria-label="关闭"><X size={16} /></button></header>
         <div className="inline-action-date-grid">
           <label><span>实际开始</span><input type="date" value={actualStart} onChange={(event) => setActualStart(event.target.value)} /></label>
           <label><span>实际完成</span><input type="date" value={actualEnd} onChange={(event) => setActualEnd(event.target.value)} /></label>
         </div>
-        <button
-          type="button"
-          className="inline-on-time-button"
-          disabled={pending || !item.plannedStart || !item.plannedEnd}
-          onClick={() => item.plannedStart && item.plannedEnd && void run(() => onSaveDates({ actualStart: item.plannedStart, actualEnd: item.plannedEnd }))}
-        ><Check size={14} />按时完成：实际日期采用计划日期</button>
+        <label><span>纠错原因</span><textarea rows={2} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明为什么修正历史数据" /></label>
         {error && <p className="form-error">{error}</p>}
-        <footer><button type="button" className="ghost-button" onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending}>保存修正</button></footer>
+        <footer><button type="button" className="ghost-button" onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || !reason.trim()}>保存纠错</button></footer>
       </form>
     </AnchoredPopover>
   </div>;
@@ -713,8 +701,8 @@ export function RequirementPage() {
     enabled: Boolean(requirement?.projectId),
   });
   const removeItem = useMutation({
-    mutationFn: (itemId: string) =>
-      api(`/api/work-items/${itemId}`, { method: "DELETE" }),
+    mutationFn: (item: WorkItem) =>
+      api(`/api/work-items/${item.id}`, { method: "DELETE", body: jsonBody({ expectedVersion: item.version }) }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["requirement", id] });
       void client.invalidateQueries({ queryKey: ["dashboard"] });
@@ -726,26 +714,35 @@ export function RequirementPage() {
   const reorderItems = useMutation({
     mutationFn: (ids: string[]) => api(`/api/requirements/${id}/reorder-work-items`, {
       method: "POST",
-      body: jsonBody({ ids }),
+      body: jsonBody({ ids, expectedVersion: requirement?.version }),
     }),
     onSuccess: () => void client.invalidateQueries({ queryKey: ["requirement", id] }),
   });
-  const removeProgress = useMutation({
-    mutationFn: (progressId: string) =>
-      api(`/api/progress/${progressId}`, { method: "DELETE" }),
-    onSuccess: () =>
-      void client.invalidateQueries({ queryKey: ["requirement", id] }),
-  });
   const archive = useMutation({
-    mutationFn: () => api(`/api/requirements/${id}`, { method: "DELETE" }),
+    mutationFn: () => api(`/api/requirements/${id}`, { method: "DELETE", body: jsonBody({ expectedVersion: requirement?.version }) }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["dashboard"] });
       navigate("/");
     },
   });
+  const requirementAction = useMutation({
+    mutationFn: ({ action, text }: { action: "accept" | "cancel"; text: string }) => api<Requirement>(`/api/requirements/${id}/${action}`, {
+      method: "POST",
+      body: jsonBody({ expectedVersion: requirement?.version, ...(action === "accept" ? { content: text } : { reason: text }) }),
+    }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["requirement", id] });
+      void client.invalidateQueries({ queryKey: ["dashboard"] });
+      void client.invalidateQueries({ queryKey: ["requirements"] });
+      void client.invalidateQueries({ queryKey: ["my-work"] });
+    },
+  });
   const itemAction = useMutation({
-    mutationFn: ({ itemId, action, reason }: { itemId: string; action: string; reason?: string }) =>
-      api(`/api/work-items/${itemId}/${action}`, { method: "POST", body: reason ? jsonBody({ reason }) : undefined }),
+    mutationFn: ({ item, action, content }: { item: WorkItem; action: string; content?: string }) =>
+      api(`/api/work-items/${item.id}/${action}`, {
+        method: "POST",
+        body: jsonBody({ expectedVersion: item.version, ...(action === "complete" ? { content } : content ? { reason: content } : {}) }),
+      }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["requirement", id] });
       void client.invalidateQueries({ queryKey: ["dashboard"] });
@@ -764,6 +761,8 @@ export function RequirementPage() {
         assigneeIds: [draft.ownerId, ...draft.collaboratorIds].filter(Boolean),
         plannedStart: draft.plannedStart || null,
         plannedEnd: draft.plannedEnd || null,
+        expectedVersion: requirement?.version,
+        ...(draft.reason ? { reason: draft.reason } : {}),
       }),
     }),
     onSuccess: () => {
@@ -775,9 +774,15 @@ export function RequirementPage() {
     },
   });
   const saveWorkItem = async (item: WorkItem, input: Record<string, unknown>) => {
+    const normalizedInput = { ...input };
+    if (item.status !== "not_started" && (Object.prototype.hasOwnProperty.call(input, "plannedStart") || Object.prototype.hasOwnProperty.call(input, "plannedEnd"))) {
+      const reason = prompt("该工作项已开始，请填写调整排期的原因");
+      if (!reason?.trim()) throw new Error("已取消排期变更");
+      normalizedInput.reason = reason.trim();
+    }
     const key = ["requirement", id] as const;
     const previous = client.getQueryData<Requirement>(key);
-    const optimistic = { ...item, ...input } as WorkItem;
+    const optimistic = { ...item, ...normalizedInput } as WorkItem;
     if (Object.prototype.hasOwnProperty.call(input, "ownerId")) {
       optimistic.ownerId = typeof input.ownerId === "string" && input.ownerId ? input.ownerId : null;
       optimistic.ownerName = people.find((person) => person.id === optimistic.ownerId)?.name || null;
@@ -794,7 +799,10 @@ export function RequirementPage() {
       workItems: current.workItems.map((entry) => entry.id === item.id ? optimistic : entry),
     } : current);
     try {
-      const saved = await api<WorkItem>(`/api/work-items/${item.id}`, { method: "PATCH", body: jsonBody(input) });
+      const isCorrection = Object.prototype.hasOwnProperty.call(normalizedInput, "actualStart") || Object.prototype.hasOwnProperty.call(normalizedInput, "actualEnd");
+      const saved = await api<WorkItem>(`/api/work-items/${item.id}${isCorrection ? "/correct" : ""}`, {
+        method: isCorrection ? "POST" : "PATCH", body: jsonBody({ ...normalizedInput, expectedVersion: item.version }),
+      });
       client.setQueryData<Requirement>(key, (current) => current ? {
         ...current,
         workItems: current.workItems.map((entry) => entry.id === saved.id ? saved : entry),
@@ -896,15 +904,25 @@ export function RequirementPage() {
   const ownItems = canContribute
     ? requirement.workItems.filter((item) => Boolean(session.personId) && item.assigneeIds.includes(session.personId!))
     : [];
-  const canAddProgress = canManage || ownItems.length > 0;
-  const canUpdateItemProgress = (item: WorkItem) => item.status !== "cancelled"
+  const requirementLocked = ["pending_acceptance", "completed", "cancelled"].includes(requirement.status);
+  const canAddProgress = canContribute && !requirementLocked;
+  const canUpdateItemProgress = (item: WorkItem) => item.status === "in_progress"
     && canContribute
     && (canManage || Boolean(session.personId && item.assigneeIds.includes(session.personId)));
+  const canOperateItem = (item: WorkItem) => canManage || (canContribute && Boolean(session.personId && item.assigneeIds.includes(session.personId)));
   const moveWorkItem = (index: number, offset: -1 | 1) => {
     const nextIndex = index + offset;
     if (nextIndex < 0 || nextIndex >= requirement.workItems.length) return;
     const ids = requirement.workItems.map((item) => item.id);
     [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
+    if (requirement.workItems.some((item) => item.status !== "not_started")) {
+      const reason = prompt("需求已开始执行，请填写调整工作项顺序的原因");
+      if (!reason?.trim()) return;
+      api(`/api/requirements/${id}/reorder-work-items`, { method: "POST", body: jsonBody({ ids, reason: reason.trim(), expectedVersion: requirement.version }) })
+        .then(() => void client.invalidateQueries({ queryKey: ["requirement", id] }))
+        .catch(() => void client.invalidateQueries({ queryKey: ["requirement", id] }));
+      return;
+    }
     reorderItems.mutate(ids);
   };
   const openProgress = (itemId: string | null = null) => {
@@ -915,7 +933,7 @@ export function RequirementPage() {
     setProgressItemId(null);
     setModal(null);
   };
-  const riskClosed = requirement.status === "completed" || requirement.status === "cancelled";
+  const riskClosed = ["pending_acceptance", "completed", "cancelled"].includes(requirement.status);
   const riskLabel = riskClosed
     ? "风险已关闭"
     : requirement.riskEvaluated
@@ -929,7 +947,7 @@ export function RequirementPage() {
         onBack={() => navigate(-1)}
         actions={canAddProgress || canManage ? (
           <>
-            {canManage && <button className="ghost-button" onClick={() => setModal("edit")}>
+            {canManage && !requirementLocked && <button className="ghost-button" onClick={() => setModal("edit")}>
               <Edit3 size={15} />
               编辑
             </button>}
@@ -944,6 +962,12 @@ export function RequirementPage() {
         ) : null}
       />
       <div className="page-content requirement-page">
+        {requirement.status === "pending_acceptance" && <section className="requirement-acceptance-banner">
+          <div><Check size={18} /><span><strong>所有工作项已完成，等待项目经理验收</strong><small>验收后才会计入已完成需求和完成率</small></span></div>
+          {canManage && <button className="primary-button" disabled={requirementAction.isPending} onClick={() => {
+            const content = prompt("请填写验收说明"); if (content?.trim()) requirementAction.mutate({ action: "accept", text: content.trim() });
+          }}><Check size={15} />确认验收</button>}
+        </section>}
         <div className="requirement-context-strip">
           <div className="hero-badges">
             <span>{requirement.projectName}</span>
@@ -1019,7 +1043,7 @@ export function RequirementPage() {
           <div>
             <h2>需求进展</h2>
           </div>
-          {canManage && (
+          {canManage && !requirementLocked && (
             <div className="panel-actions">
               <button
                 className="ghost-button"
@@ -1037,20 +1061,20 @@ export function RequirementPage() {
           updates={requirement.progressUpdates || []}
           canUpdateProgress={canUpdateItemProgress}
           onUpdateProgress={(item) => openProgress(item.id)}
-          renderActions={(item) => canUpdateItemProgress(item)
+          renderActions={(item) => canOperateItem(item)
             ? <WorkItemActions
                 item={item}
-                onAction={(action, reason) => itemAction.mutateAsync({ itemId: item.id, action, reason })}
+                onAction={(action, content) => itemAction.mutateAsync({ item, action, content })}
                 onSaveDates={(dates) => saveWorkItem(item, dates)}
-                onCancel={() => itemAction.mutateAsync({ itemId: item.id, action: "cancel" })}
-                canCancel={canManage}
+                onCancel={(reason) => itemAction.mutateAsync({ item, action: "cancel", content: reason })}
+                canManage={canManage}
               />
             : <span className={`work-action-state is-readonly status-${item.status}`}>
                 {requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}
               </span>}
         />
       </section>
-      {workEditorOpen && canManage && <Modal title="工作项设置" width={1120} onClose={() => setWorkEditorOpen(false)}>
+      {workEditorOpen && canManage && !requirementLocked && <Modal title="工作项设置" width={1120} onClose={() => setWorkEditorOpen(false)}>
           <div className="work-editor-modal">
             <div className="work-editor-modal-toolbar">
               <span>配置名称、人员、计划日期和顺序；日常推进请直接在甘特图操作</span>
@@ -1070,7 +1094,13 @@ export function RequirementPage() {
               <td><InlineDateCell value={newItem.plannedStart} label="新工作项计划开始" onSave={async (plannedStart) => setNewItem((current) => current && ({ ...current, plannedStart: plannedStart || "" }))} /></td>
               <td><InlineDateCell value={newItem.plannedEnd} label="新工作项计划完成" onSave={async (plannedEnd) => setNewItem((current) => current && ({ ...current, plannedEnd: plannedEnd || "" }))} /></td>
               <td><span className="status-pill status-not_started">待创建</span>{createItem.error && <small className="inline-row-error">{createItem.error.message}</small>}</td>
-              <td><div className="inline-row-actions"><button className="ghost-button" onClick={() => setNewItem(null)}>取消</button><button className="primary-button" disabled={!newItem.title.trim() || createItem.isPending} onClick={() => createItem.mutate(newItem)}>保存</button></div></td>
+              <td><div className="inline-row-actions"><button className="ghost-button" onClick={() => setNewItem(null)}>取消</button><button className="primary-button" disabled={!newItem.title.trim() || createItem.isPending} onClick={() => {
+                if (requirement.workItems.some((item) => item.status !== "not_started")) {
+                  const reason = prompt("需求已开始执行，请填写新增工作项的原因"); if (!reason?.trim()) return;
+                  createItem.mutate({ ...newItem, reason: reason.trim() }); return;
+                }
+                createItem.mutate(newItem);
+              }}>保存</button></div></td>
             </tr>}
             {requirement.workItems.map((item, index) => {
               const gap = calculateWorkItemGap(item);
@@ -1086,7 +1116,7 @@ export function RequirementPage() {
                     <div className="work-setting-actions">
                       <button type="button" aria-label={`上移${item.title}`} title="上移" disabled={index === 0 || reorderItems.isPending} onClick={() => moveWorkItem(index, -1)}><ArrowUp size={14} /></button>
                       <button type="button" aria-label={`下移${item.title}`} title="下移" disabled={index === requirement.workItems.length - 1 || reorderItems.isPending} onClick={() => moveWorkItem(index, 1)}><ArrowDown size={14} /></button>
-                      <button type="button" className="danger" aria-label={`删除${item.title}`} title="删除" disabled={removeItem.isPending} onClick={() => confirm(`删除工作项“${item.title}”？`) && removeItem.mutate(item.id)}><Trash2 size={14} /></button>
+                      {item.status === "not_started" && item.progress === 0 && <button type="button" className="danger" aria-label={`删除${item.title}`} title="删除" disabled={removeItem.isPending} onClick={() => confirm(`删除工作项“${item.title}”？`) && removeItem.mutate(item)}><Trash2 size={14} /></button>}
                     </div>
                   </td>
                 </tr>
@@ -1111,7 +1141,7 @@ export function RequirementPage() {
               <article key={item.id}>
                 <div className="progress-marker">{item.workItemPercent ?? item.percent}%</div>
                 <div><header><strong>{new Date(item.createdAt).toLocaleString("zh-CN")}</strong>{item.workItemTitle && <span>{item.workItemTitle}</span>}</header><p>{item.content}</p></div>
-                {(canManage || item.createdByAccountId === session.accountId) && <button aria-label="删除进展" onClick={() => confirm("确认删除这条进展？") && removeProgress.mutate(item.id)}><Trash2 size={14} /></button>}
+                <span className="progress-event-type">{{ note: "说明", progress: "进展", start: "开始", block: "阻塞", unblock: "解阻", complete: "完成", reopen: "返工", correction: "纠错", accept: "验收", cancel: "取消" }[item.eventType] || "记录"}</span>
               </article>
             ))}
             {!requirement.progressUpdates?.length && <EmptyState title="暂无进展" detail="增加进展后，这里会显示具体完成内容。" />}
@@ -1122,7 +1152,7 @@ export function RequirementPage() {
           {requirement.progressUpdates?.length ? <Chart option={progressOption} height={270} ariaLabel="需求计划与实际进度趋势" /> : <EmptyState title="暂无趋势" detail="增加第一条进展后自动生成趋势图。" />}
         </article>
       </section>
-      {canManage && (
+      {canManage && ['completed', 'cancelled'].includes(requirement.status) && (
         <div className="danger-zone">
           <span>不再跟踪该需求时可以归档，数据不会立即物理删除。</span>
           <button
@@ -1132,6 +1162,10 @@ export function RequirementPage() {
           </button>
         </div>
       )}
+      {canManage && !['completed', 'cancelled'].includes(requirement.status) && <div className="danger-zone">
+        <span>取消会保留已完成工作项和历史，并级联取消其余工作项。</span>
+        <button onClick={() => { const reason = prompt("请填写取消需求的原因"); if (reason?.trim()) requirementAction.mutate({ action: "cancel", text: reason.trim() }); }}>取消需求</button>
+      </div>}
       {modal === "edit" && (
         <Modal title="编辑需求" onClose={() => setModal(null)}>
           <RequirementEditForm
