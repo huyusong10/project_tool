@@ -7,11 +7,13 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronsUpDown,
+  CircleUserRound,
   Copy,
   Edit3,
   GripVertical,
   KeyRound,
   LocateFixed,
+  PlugZap,
   Plus,
   RotateCcw,
   ShieldCheck,
@@ -1099,15 +1101,16 @@ export function ArchiveCenterPage() {
 }
 
 export function PersonalSettingsPage() {
-  const { openPassword } = useApp();
+  const { openPassword, projects, session } = useApp();
   const client = useQueryClient();
   const [tokenModal, setTokenModal] = useState(false);
   const [newToken, setNewToken] = useState<string>();
+  const [copied, setCopied] = useState<"endpoint" | "token" | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ApiToken | null>(null);
-  const { data: tokens = [] } = useQuery({ queryKey: ["my-tokens"], queryFn: () => api<ApiToken[]>("/api/tokens") });
+  const { data: tokens = [], isLoading, error, refetch } = useQuery({ queryKey: ["my-tokens"], queryFn: () => api<ApiToken[]>("/api/tokens") });
   const createToken = useMutation({
     mutationFn: (input: object) => api<ApiToken & { token: string }>("/api/tokens", { method: "POST", body: jsonBody(input) }),
-    onSuccess: (result) => { setNewToken(result.token); void client.invalidateQueries({ queryKey: ["my-tokens"] }); },
+    onSuccess: (result) => { setNewToken(result.token); setCopied(null); void client.invalidateQueries({ queryKey: ["my-tokens"] }); },
   });
   const revoke = useMutation({
     mutationFn: (id: string) => api("/api/tokens/" + id, { method: "DELETE" }),
@@ -1116,21 +1119,80 @@ export function PersonalSettingsPage() {
       void client.invalidateQueries({ queryKey: ["my-tokens"] });
     },
   });
+  const mcpEndpoint = `${window.location.origin}/mcp`;
+  const roleLabel = session.globalRole === "admin" ? "系统管理员" : session.managedProjectIds.length ? "项目经理" : "项目成员";
+  const activeTokens = tokens.filter((token) => !token.revokedAt && (!token.expiresAt || new Date(token.expiresAt).getTime() > Date.now()));
+  const orderedTokens = [...tokens].sort((left, right) => {
+    const leftInactive = Boolean(left.revokedAt || (left.expiresAt && new Date(left.expiresAt).getTime() <= Date.now()));
+    const rightInactive = Boolean(right.revokedAt || (right.expiresAt && new Date(right.expiresAt).getTime() <= Date.now()));
+    return Number(leftInactive) - Number(rightInactive) || right.createdAt.localeCompare(left.createdAt);
+  });
+  const copyText = async (value: string, target: "endpoint" | "token") => {
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
+      else {
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        try { textarea.select(); document.execCommand("copy"); } finally { textarea.remove(); }
+      }
+      setCopied(target);
+    } catch { setCopied(null); }
+  };
+  const openTokenModal = () => {
+    createToken.reset();
+    setNewToken(undefined);
+    setCopied(null);
+    setTokenModal(true);
+  };
   return <>
-    <PageHeader title="个人设置" actions={<button className="ghost-button" onClick={openPassword}><KeyRound size={15} />修改密码</button>} />
-    <div className="page-content">
-      <section className="panel system-panel personal-token-panel">
-        <header><div><h2>我的 MCP Token</h2><p>Token 自动继承当前账号的项目权限</p></div><button className="primary-button" onClick={() => { setNewToken(undefined); setTokenModal(true); }}><KeyRound size={15} />创建 Token</button></header>
-        <div className="compact-list">{tokens.map((token) => <div key={token.id}><KeyRound size={16} /><div><strong>{token.name}</strong><span>pm_{token.prefix}_… · {token.expiresAt ? new Date(token.expiresAt).toLocaleDateString() + "到期" : "永久有效"}</span></div><b className={token.revokedAt ? "muted" : "safe-text"}>{token.revokedAt ? "已撤销" : "有效"}</b>{!token.revokedAt && <button onClick={() => { revoke.reset(); setRevokeTarget(token); }}><Trash2 size={14} /></button>}</div>)}</div>
-        {!tokens.length && <EmptyState title="暂无个人 Token" detail="创建后可按当前账号权限访问 MCP。" />}
+    <PageHeader title="个人设置" />
+    <div className="page-content personal-settings-page">
+      <section className="panel personal-account-panel">
+        <div className="personal-account-identity"><span>{session.username?.slice(0, 1).toUpperCase() || "用"}</span><div><h2>{session.username}</h2><p><CircleUserRound size={14} />{session.personId ? "已关联业务人员" : "当前账号未关联业务人员"}</p></div></div>
+        <dl className="personal-account-facts">
+          <div><dt>账号角色</dt><dd>{roleLabel}</dd></div>
+          <div><dt>可访问项目</dt><dd>{projects.length} 个</dd></div>
+          <div><dt>MCP 权限</dt><dd>随账号权限同步</dd></div>
+        </dl>
+        <button className="ghost-button personal-password-button" onClick={openPassword}><KeyRound size={15} />修改密码</button>
       </section>
-      {tokenModal && <Modal title="创建个人 MCP Token" onClose={() => setTokenModal(false)}>
-        {newToken ? <div className="token-reveal"><ShieldCheck size={38} /><strong>Token 只显示这一次</strong><div><code>{newToken}</code><button onClick={() => void navigator.clipboard.writeText(newToken)}><Copy size={16} /></button></div><button className="primary-button" onClick={() => setTokenModal(false)}>我已保存</button></div>
+      <section className="panel personal-mcp-panel">
+        <header><div><h2>MCP 接入</h2><p>为本机客户端创建独立凭据，Token 自动继承当前账号的项目权限</p></div>{tokens.length > 0 && <button className="primary-button" onClick={openTokenModal}><Plus size={15} />创建 Token</button>}</header>
+        <div className="personal-mcp-connection">
+          <span className="personal-mcp-icon"><PlugZap size={20} /></span>
+          <div><span>MCP 服务地址</span><code>{mcpEndpoint}</code><small>客户端通过 Authorization: Bearer Token 连接</small></div>
+          <button className="ghost-button" onClick={() => void copyText(mcpEndpoint, "endpoint")}><Copy size={15} />{copied === "endpoint" ? "已复制" : "复制地址"}</button>
+        </div>
+        {isLoading && <div className="personal-token-loading">正在加载 Token…</div>}
+        {error && <div className="personal-token-error"><span>{error.message}</span><button className="ghost-button" onClick={() => void refetch()}>重新加载</button></div>}
+        {!isLoading && !error && tokens.length > 0 && <div className="personal-token-list" role="table" aria-label="我的 MCP Token">
+          <div className="personal-token-head" role="row"><span>Token</span><span>创建时间</span><span>最近使用</span><span>有效期</span><span>状态与操作</span></div>
+          {orderedTokens.map((token) => {
+            const expired = Boolean(token.expiresAt && new Date(token.expiresAt).getTime() <= Date.now());
+            const status = token.revokedAt ? "已撤销" : expired ? "已过期" : "有效";
+            return <div className="personal-token-row" role="row" key={token.id}>
+              <div><KeyRound size={16} /><span><strong>{token.name}</strong><small>pm_{token.prefix}_…</small></span></div>
+              <time>{new Date(token.createdAt).toLocaleDateString("zh-CN")}</time>
+              <time>{token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString("zh-CN", { hour12: false }) : "尚未使用"}</time>
+              <time>{token.expiresAt ? new Date(token.expiresAt).toLocaleDateString("zh-CN") : "永久有效"}</time>
+              <div><b className={status === "有效" ? "safe-text" : "muted"}>{status}</b>{status === "有效" && <button className="token-revoke-button" onClick={() => { revoke.reset(); setRevokeTarget(token); }}>撤销</button>}</div>
+            </div>;
+          })}
+        </div>}
+        {!isLoading && !error && !tokens.length && <div className="personal-token-empty"><span><KeyRound size={22} /></span><div><strong>还没有个人 Token</strong><p>为 Claude Desktop、Codex 等客户端分别创建 Token，后续可独立撤销。</p></div><button className="primary-button" onClick={openTokenModal}><Plus size={15} />创建第一个 Token</button></div>}
+        {!isLoading && !error && tokens.length > 0 && <footer className="personal-token-footer"><span>{activeTokens.length} 个有效 Token</span><small>建议不同客户端使用不同 Token，并定期撤销不再使用的凭据。</small></footer>}
+      </section>
+      {tokenModal && <Modal title="创建 MCP Token" width={560} onClose={() => setTokenModal(false)} closable={!createToken.isPending}>
+        {newToken ? <div className="token-reveal"><ShieldCheck size={38} /><strong>Token 已创建，只显示这一次</strong><p>立即复制并保存到客户端配置中，关闭后无法再次查看。</p><div><code>{newToken}</code><button className="ghost-button" onClick={() => void copyText(newToken, "token")}><Copy size={16} />{copied === "token" ? "已复制" : "复制 Token"}</button></div><button className="primary-button" onClick={() => setTokenModal(false)}>我已安全保存</button></div>
           : <form className="form-grid" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); createToken.mutate({ name: data.get("name"), expiresInDays: data.get("expiresInDays") === "never" ? null : Number(data.get("expiresInDays")) }); }}>
-            <label className="field field-full"><span>Token 名称</span><input name="name" required /></label>
-            <label className="field field-full"><span>有效期</span><select name="expiresInDays" defaultValue="90"><option value="30">30天</option><option value="90">90天</option><option value="never">永久</option></select></label>
+            <div className="token-create-note field-full"><ShieldCheck size={18} /><span>Token 权限与当前账号一致。建议每个客户端单独创建，便于后续识别和撤销。</span></div>
+            <label className="field field-full"><span>Token 名称</span><input name="name" required autoFocus placeholder="例如：Claude Desktop、办公电脑 Codex" /></label>
+            <label className="field field-full"><span>有效期</span><select name="expiresInDays" defaultValue="90"><option value="30">30 天</option><option value="90">90 天（推荐）</option><option value="365">1 年</option><option value="never">永久有效</option></select><small className="field-help">到期后客户端将自动失效，可以随时创建新 Token。</small></label>
             {createToken.error && <p className="form-error field-full">{createToken.error.message}</p>}
-            <div className="form-actions field-full"><button type="button" className="ghost-button" onClick={() => setTokenModal(false)}>取消</button><button className="primary-button">创建</button></div>
+            <div className="form-actions field-full"><button type="button" className="ghost-button" disabled={createToken.isPending} onClick={() => setTokenModal(false)}>取消</button><button className="primary-button" disabled={createToken.isPending}>{createToken.isPending ? "创建中…" : "创建 Token"}</button></div>
           </form>}
       </Modal>}
       {revokeTarget && <ConfirmDialog title="撤销 MCP Token" description={<>撤销“<strong>{revokeTarget.name}</strong>”后，使用该 Token 的客户端将立即无法访问系统。</>} confirmLabel="确认撤销" pendingLabel="撤销中…" danger pending={revoke.isPending} error={revoke.error?.message} onClose={() => setRevokeTarget(null)} onConfirm={() => revoke.mutate(revokeTarget.id)} />}

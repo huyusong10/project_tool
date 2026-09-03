@@ -192,7 +192,6 @@ export function DashboardPage() {
           tone="amber"
         />
         </section>
-        <ActionOverview actions={data?.actions} />
         <ProjectGantt
           requirements={data?.requirements || []}
           asOfDate={data?.requirements[0]?.asOfDate}
@@ -201,6 +200,7 @@ export function DashboardPage() {
         />
         <IssueHealth issues={data?.issues} />
         <PublicIssueAttention issues={data?.issues?.attention || []} />
+        <ActionOverview actions={data?.actions} />
         {modal === "project" && (
         <Modal title="新建项目" onClose={() => setModal(null)}>
           <ProjectForm onClose={() => setModal(null)} />

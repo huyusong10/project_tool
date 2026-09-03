@@ -191,7 +191,6 @@ function Topbar({
   projectSelectionReady,
   scope,
   openLogin,
-  openPassword,
 }: {
   session: Session;
   projects: Project[];
@@ -200,9 +199,9 @@ function Topbar({
   projectSelectionReady: boolean;
   scope: PageScope;
   openLogin: () => void;
-  openPassword: () => void;
 }) {
   const client = useQueryClient();
+  const navigate = useNavigate();
   const logout = useMutation({
     mutationFn: () => api("/api/logout", { method: "POST" }),
     onSuccess: () => {
@@ -223,7 +222,7 @@ function Topbar({
         <div className="topbar-account">
           {session.authenticated ? (
             <>
-            <button className="session-badge session-button" onClick={openPassword} title="修改密码">
+            <button className="session-badge session-button" onClick={() => navigate("/settings")} title="个人设置">
               <span />
               {session.username}
             </button>
@@ -416,7 +415,6 @@ export function App() {
             projectSelectionReady={projectSelectionReady}
             scope={currentPageScope}
             openLogin={() => setLoginOpen(true)}
-            openPassword={() => setPasswordOpen(true)}
           />
           <Suspense fallback={<div className="route-loading" role="status">正在加载页面…</div>}>
           <Routes>
