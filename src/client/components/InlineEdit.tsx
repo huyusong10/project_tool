@@ -510,7 +510,7 @@ export function InlineMultiSelectCell({
   const selected = available.filter((option) => value.includes(option.value));
   const visible = available.filter((option) => `${option.label}${option.description || ""}${option.keywords || ""}`.toLowerCase().includes(search.trim().toLowerCase()));
 
-  useEffect(() => { if (!open && feedback.state !== "saving") setDraft(value); }, [feedback.state, normalizedValue, open]);
+  useEffect(() => { if (!open && feedback.state !== "saving") setDraft(value); }, [feedback.state, normalizedValue, open, value]);
 
   const cancel = useCallback(() => {
     setDraft(value);

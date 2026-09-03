@@ -4,7 +4,6 @@ import { randomBytes, scryptSync } from 'node:crypto';
 import Database from 'better-sqlite3';
 
 const root = path.resolve(import.meta.dirname, '..');
-const username = 'admin';
 const password = process.env.PROJECT_MANAGE_NEW_PASSWORD || '';
 if (password.length < 10) {
   console.error('密码至少需要10个字符。');
@@ -18,7 +17,6 @@ const content = [
   'PORT=3210',
   'DB_PATH=./data/project-manage.db',
   'BACKUP_DIR=./data/backups',
-  `APP_USERNAME=${username.replace(/[\r\n=]/g, '')}`,
   `APP_PASSWORD_HASH=${passwordHash}`,
   `SESSION_SECRET=${sessionSecret}`,
   'SESSION_HOURS=12',

@@ -14,7 +14,6 @@ import {
   analyticsCatalog as fallbackCatalog,
   defaultAnalyticsLayout,
   type AnalyticsCatalog,
-  type AnalyticsCatalogDataset,
   type AnalyticsLayout,
   type AnalyticsLayoutResponse,
   type AnalyticsPanelConfig,

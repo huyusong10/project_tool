@@ -10,7 +10,6 @@ process.env.DB_PATH = dbPath;
 process.env.BACKUP_DIR = path.join(process.cwd(), 'data', `backups-${randomUUID()}`);
 process.env.BACKUP_MAX_COUNT = '3';
 process.env.SEED_DEMO = '0';
-process.env.APP_USERNAME = 'tester';
 process.env.APP_PASSWORD_HASH = 'scrypt$4c63a6f93ff4f94b031b7e7583592177$b598dbddaf9dd06678ff8756923d9e0a7f2d68eaa45bc644fbf4a73c9298970c7489671dfcfc8be282022c26a3370fb040f3f086a45faa1e1abde04bbe4a51ef';
 process.env.SESSION_SECRET = 'test-session-secret-with-more-than-thirty-two-characters';
 

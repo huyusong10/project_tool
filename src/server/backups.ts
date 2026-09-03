@@ -3,6 +3,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { config } from './config';
 import { sqlite } from './database';
+import { fail, notFound } from './errors';
 
 fs.mkdirSync(config.backupDir, { recursive: true });
 
@@ -13,9 +14,9 @@ function backupFilename(date = new Date()) {
 }
 
 function safeBackupPath(filename: string) {
-  if (path.basename(filename) !== filename || !filename.toLowerCase().endsWith('.db') || filename.includes('\0')) throw new Error('备份文件名不合法');
+  if (path.basename(filename) !== filename || !filename.toLowerCase().endsWith('.db') || filename.includes('\0')) fail('备份文件名不合法');
   const resolved = path.resolve(config.backupDir, filename);
-  if (path.dirname(resolved) !== path.resolve(config.backupDir)) throw new Error('备份文件不合法');
+  if (path.dirname(resolved) !== path.resolve(config.backupDir)) fail('备份文件不合法');
   return resolved;
 }
 
@@ -52,7 +53,7 @@ export async function createBackup(options: { cleanup?: boolean } = {}) {
 
 export function deleteBackup(filename: string) {
   const target = safeBackupPath(filename);
-  if (!fs.existsSync(target)) throw new Error('备份不存在');
+  if (!fs.existsSync(target)) notFound('备份不存在');
   fs.unlinkSync(target);
   return { ok: true, name: filename };
 }
@@ -67,15 +68,18 @@ export function cleanupOldBackups() {
 
 function validateBackup(filename: string) {
   const source = safeBackupPath(filename);
-  if (!fs.existsSync(source)) throw new Error('备份不存在');
-  const checkDb = new Database(source, { readonly: true });
+  if (!fs.existsSync(source)) notFound('备份不存在');
+  let checkDb: InstanceType<typeof Database> | undefined;
   let integrity: Array<{ integrity_check: string }>;
   try {
+    checkDb = new Database(source, { readonly: true });
     integrity = checkDb.pragma('integrity_check') as Array<{ integrity_check: string }>;
+  } catch {
+    fail('备份数据库文件无效');
   } finally {
-    checkDb.close();
+    checkDb?.close();
   }
-  if (integrity[0]?.integrity_check !== 'ok') throw new Error('备份数据库校验失败');
+  if (integrity[0]?.integrity_check !== 'ok') fail('备份数据库校验失败', 'DEPENDENCY_CONFLICT', 409);
   return source;
 }
 

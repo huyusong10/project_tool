@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Navigate,
@@ -18,27 +18,26 @@ import { api, jsonBody } from "./api";
 import type { Project, Session, SystemBranding } from "./types";
 import { AppContext } from "./app-context";
 import { DashboardPage } from "./pages/DashboardPage";
-import { IssuesPage } from "./pages/IssuesPage";
-import { RequirementPage } from "./pages/RequirementPage";
-import {
-  ArchiveCenterPage,
-  LogsPage,
-  PeoplePage,
-  PersonalSettingsPage,
-  ProjectSettingsPage,
-  ProjectsPage,
-  RequirementsPage,
-  SystemPage,
-  TemplatesPage,
-} from "./pages/ManagePages";
 import { Modal } from "./components/Modal";
-import { MyWorkPage } from "./pages/MyWorkPage";
-import { AccountsPage } from "./pages/AccountsPage";
-import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { canManageProject, isAdmin } from "./permissions";
 import { InlineEditProvider } from "./components/InlineEdit";
 import { BrandLogo, defaultBranding, useDocumentBranding } from "./components/BrandLogo";
 import { Sidebar } from "./components/Sidebar";
+
+const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
+const MyWorkPage = lazy(() => import("./pages/MyWorkPage").then((module) => ({ default: module.MyWorkPage })));
+const RequirementPage = lazy(() => import("./pages/RequirementPage").then((module) => ({ default: module.RequirementPage })));
+const IssuesPage = lazy(() => import("./pages/IssuesPage").then((module) => ({ default: module.IssuesPage })));
+const AccountsPage = lazy(() => import("./pages/AccountsPage").then((module) => ({ default: module.AccountsPage })));
+const RequirementsPage = lazy(() => import("./pages/ManagePages").then((module) => ({ default: module.RequirementsPage })));
+const PeoplePage = lazy(() => import("./pages/ManagePages").then((module) => ({ default: module.PeoplePage })));
+const TemplatesPage = lazy(() => import("./pages/ManagePages").then((module) => ({ default: module.TemplatesPage })));
+const ProjectSettingsPage = lazy(() => import("./pages/ManagePages").then((module) => ({ default: module.ProjectSettingsPage })));
+const PersonalSettingsPage = lazy(() => import("./pages/ManagePages").then((module) => ({ default: module.PersonalSettingsPage })));
+const ProjectsPage = lazy(() => import("./pages/ManagePages").then((module) => ({ default: module.ProjectsPage })));
+const ArchiveCenterPage = lazy(() => import("./pages/ManagePages").then((module) => ({ default: module.ArchiveCenterPage })));
+const SystemPage = lazy(() => import("./pages/SystemPage").then((module) => ({ default: module.SystemPage })));
+const LogsPage = lazy(() => import("./pages/LogsPage").then((module) => ({ default: module.LogsPage })));
 
 const guestSession: Session = {
   authenticated: false,
@@ -58,7 +57,7 @@ function LoginForm({ onClose, branding }: { onClose: () => void; branding: Syste
   const login = useMutation({
     mutationFn: (value: object) =>
       api<Session>("/api/login", { method: "POST", body: jsonBody(value) }),
-    onSuccess: (result) => {
+    onSuccess: (_result) => {
       client.removeQueries({ predicate: (query) => query.queryKey[0] !== "session" });
       void client.invalidateQueries({ queryKey: ["session"] });
       onClose();
@@ -269,7 +268,10 @@ export function App() {
     queryFn: () => api<Project[]>("/api/projects"),
     enabled: session.authenticated && !session.mustChangePassword,
   });
-  const projects = session.authenticated && !session.mustChangePassword ? projectData : [];
+  const projects = useMemo(
+    () => session.authenticated && !session.mustChangePassword ? projectData : [],
+    [projectData, session.authenticated, session.mustChangePassword],
+  );
   useEffect(() => {
     if (
       projects.length &&
@@ -302,6 +304,7 @@ export function App() {
             openLogin={() => setLoginOpen(true)}
             openPassword={() => setPasswordOpen(true)}
           />
+          <Suspense fallback={<div className="route-loading" role="status">正在加载页面…</div>}>
           <Routes>
             <Route path="/" element={session.authenticated ? <RoleRoute session={session} ready={sessionReady}><DashboardPage /></RoleRoute> : <GuestLanding openLogin={() => setLoginOpen(true)} />} />
             <Route path="/analytics" element={<RoleRoute session={session} ready={sessionReady}><AnalyticsPage /></RoleRoute>} />
@@ -322,6 +325,7 @@ export function App() {
             <Route path="/system" element={<RoleRoute session={session} ready={sessionReady} admin><SystemPage /></RoleRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
         </main>
         {loginOpen && (
           <Modal
