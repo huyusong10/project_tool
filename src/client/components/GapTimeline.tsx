@@ -79,6 +79,13 @@ export const GapTimeline = memo(function GapTimeline({
   canUpdateProgress,
   onUpdateProgress,
   renderActions,
+  renderItemMeta,
+  onItemClick,
+  showStatusFilters = true,
+  showGapSummary = true,
+  showUnscheduled = false,
+  actionColumnWidth = 132,
+  ariaLabel = "需求工作项进展甘特图",
   asOfDate = todayIso(),
 }: {
   items: WorkItem[];
@@ -86,6 +93,13 @@ export const GapTimeline = memo(function GapTimeline({
   canUpdateProgress?: (item: WorkItem) => boolean;
   onUpdateProgress?: (item: WorkItem) => void;
   renderActions?: (item: WorkItem) => ReactNode;
+  renderItemMeta?: (item: WorkItem) => ReactNode;
+  onItemClick?: (item: WorkItem) => void;
+  showStatusFilters?: boolean;
+  showGapSummary?: boolean;
+  showUnscheduled?: boolean;
+  actionColumnWidth?: number;
+  ariaLabel?: string;
   asOfDate?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -124,14 +138,14 @@ export const GapTimeline = memo(function GapTimeline({
     zoom,
   ), [items, zoom]);
 
-  if (!hasTimeline) return <EmptyState title="尚无可绘制的计划" detail="工作项生成计划后，这里会展示需求进展。" />;
+  if (!hasTimeline && !showUnscheduled) return <EmptyState title="尚无可绘制的计划" detail="工作项生成计划后，这里会展示需求进展。" />;
   const labelWidth = viewportWidth
     ? Math.max(190, Math.min(230, Math.round(viewportWidth * 0.22)))
     : 230;
   const hasActions = Boolean(renderActions);
   const compactLayout = hasActions && viewportWidth > 0 && viewportWidth < 900;
-  const gapWidth = compactLayout ? 0 : viewportWidth > 0 && viewportWidth < 850 ? 110 : 124;
-  const actionWidth = hasActions ? compactLayout ? 126 : 132 : 0;
+  const gapWidth = showGapSummary && !compactLayout ? viewportWidth > 0 && viewportWidth < 850 ? 110 : 124 : 0;
+  const actionWidth = hasActions ? compactLayout ? Math.min(actionColumnWidth, 144) : actionColumnWidth : 0;
   const fixedColumnsWidth = labelWidth + gapWidth + actionWidth;
   const timelineWidth = Math.max(range.days * option.cellWidth, viewportWidth - fixedColumnsWidth);
   const cellWidth = timelineWidth / range.days;
@@ -148,7 +162,7 @@ export const GapTimeline = memo(function GapTimeline({
     <div className="requirement-gantt">
       <div className="requirement-gantt-toolbar">
         <div className="requirement-gantt-toolbar-main">
-          <div className="work-status-filters" aria-label="按工作项状态筛选">
+          {showStatusFilters && <div className="work-status-filters" aria-label="按工作项状态筛选">
             <button type="button" className={statusFilter === "all" ? "is-active" : ""} aria-pressed={statusFilter === "all"} onClick={() => setStatusFilter("all")}>全部 <b>{items.length}</b></button>
             {statusFilters.filter((filter) => filter.value !== "cancelled" || statusCounts.cancelled).map((filter) => {
               const count = statusCounts[filter.value] || 0;
@@ -164,7 +178,7 @@ export const GapTimeline = memo(function GapTimeline({
                 {filter.label} <b>{count}</b>
               </button>;
             })}
-          </div>
+          </div>}
           <div className="gantt-legend" aria-label="计划实际图例">
             <span><i className="legend-plan-pill" />计划</span>
             <span><i className="legend-actual" />实际</span>
@@ -185,7 +199,7 @@ export const GapTimeline = memo(function GapTimeline({
             gridTemplateColumns: `${labelWidth}px ${timelineWidth}px${gapWidth ? ` ${gapWidth}px` : ""}${actionWidth ? ` ${actionWidth}px` : ""}`,
           }}
           role="table"
-          aria-label="需求工作项进展甘特图"
+          aria-label={ariaLabel}
         >
           <div className="requirement-gantt-corner sticky-left" role="columnheader">
             <strong>工作项</strong>
@@ -204,9 +218,11 @@ export const GapTimeline = memo(function GapTimeline({
             return <div className="requirement-gantt-row" role="row" key={item.id}>
               <div className={`requirement-gantt-item item-status-${statusClass(item.status)}${item.ownerId ? "" : " is-unassigned"} sticky-left`} role="rowheader">
                 <div>
-                  <strong>{item.title}</strong>
+                  {onItemClick
+                    ? <button type="button" className="requirement-gantt-item-link" onClick={() => onItemClick(item)} title={item.title}>{item.title}</button>
+                    : <strong>{item.title}</strong>}
                   <span className="requirement-gantt-item-meta">
-                    {item.ownerId
+                    {renderItemMeta ? renderItemMeta(item) : item.ownerId
                       ? <small>{item.assigneeNames?.join("、") || item.ownerName}</small>
                       : <small className="work-item-owner-warning"><CircleAlert size={11} />未设置负责人{item.collaborators?.length ? ` · ${item.collaborators.length}人协作` : ""}</small>}
                     {item.milestoneLabel && <span className="work-item-milestone-chip" title={`里程碑：${item.milestoneLabel}`}>◆ {item.milestoneLabel}</span>}
@@ -226,6 +242,7 @@ export const GapTimeline = memo(function GapTimeline({
                   onProgressClick={onUpdateProgress && canUpdateProgress?.(item) ? () => onUpdateProgress(item) : undefined}
                   progressAriaLabel={`${statusLabel(item.status)}，实际进度${item.progress}%，${onUpdateProgress && canUpdateProgress?.(item) ? "点击更新进度" : "只读"}`}
                   interactionProps={tooltipProps}
+                  showUnscheduled={showUnscheduled}
                 />
                 <GanttMilestoneMarker label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={cellWidth} zoom={zoom} asOfDate={asOfDate} />
                 {todayVisible && <i className="gantt-today-line" style={{ left: (todayOffset + 1) * cellWidth }} title={`截至 ${asOfDate}`} />}

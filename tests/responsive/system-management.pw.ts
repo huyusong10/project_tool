@@ -29,5 +29,7 @@ test('system management focuses on health and data safety', async ({ page }) => 
   await expect(page.getByText('数据库状态正常')).toBeVisible();
 
   await page.goto('/settings');
-  await expect(page.getByRole('heading', { name: '我的 MCP Token', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'MCP 接入', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'admin', exact: true })).toBeVisible();
+  await expect(page.getByText('/mcp', { exact: false })).toBeVisible();
 });

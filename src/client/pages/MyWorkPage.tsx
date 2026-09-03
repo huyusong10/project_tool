@@ -6,6 +6,7 @@ import { api, jsonBody } from '../api';
 import type { MyWork, MyWorkItem } from '../types';
 import { requirementStatusLabels } from '../../shared/domain';
 import { Chart } from '../components/Chart';
+import { GapTimeline } from '../components/GapTimeline';
 import { EmptyState, Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { ProgressInput } from '../components/ProgressInput';
@@ -77,20 +78,26 @@ export function MyWorkPage() {
       </section>}
       <section className="panel my-work-list">
         <header><div><h2>分配给我的工作项</h2><p>主负责人和协作工作都会显示</p></div><div className="view-tabs">{[['active', '当前'], ['not_started', '未开始'], ['in_progress', '进行中'], ['blocked', '阻塞'], ['completed', '已完成'], ['all', '全部']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}</button>)}</div></header>
-        <div className="my-work-items">
-          {items.map((item) => <article key={item.id} className={item.overdue ? 'is-overdue' : ''}>
-            <button className="my-work-main" onClick={() => navigate(`/requirements/${item.requirementId}`)}>
-              <div><span className={`work-status-dot work-${item.status}`} /><strong>{item.title}</strong><em>{item.assignmentType === 'owner' ? '主责' : '协作'}</em></div>
-              <p>{item.projectName} · {item.requirementTitle}</p>
-            </button>
-            <div className="my-work-dates"><span>计划 {item.plannedStart || '—'} → {item.plannedEnd || '—'}</span><span className="my-work-progress"><i><b style={{ width: `${item.progress}%` }} /></i>{item.progress}%</span><b className={item.overdue ? 'danger-text' : ''}>{requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}</b></div>
-            <div className="my-work-actions">
+        {items.length ? <GapTimeline
+          items={items}
+          showStatusFilters={false}
+          showGapSummary={false}
+          showUnscheduled
+          actionColumnWidth={164}
+          ariaLabel="分配给我的工作项甘特图"
+          onItemClick={(baseItem) => navigate(`/requirements/${(baseItem as MyWorkItem).requirementId}`)}
+          renderItemMeta={(baseItem) => {
+            const item = baseItem as MyWorkItem;
+            return <><small title={`${item.projectName} · ${item.requirementTitle}`}>{item.projectName} · {item.requirementTitle}</small><em className="my-work-assignment-badge">{item.assignmentType === 'owner' ? '主责' : '协作'}</em>{item.overdue && <em className="my-work-overdue-badge">延期</em>}</>;
+          }}
+          renderActions={(baseItem) => {
+            const item = baseItem as MyWorkItem;
+            return <div className="my-work-gantt-actions">
+              {['in_progress', 'blocked'].includes(item.status) && <button className="my-work-progress-action" onClick={() => setProgressItem(item)} title="写进展" aria-label={`为${item.title}写进展`}><MessageSquarePlus size={15} /><span>进展</span></button>}
               <WorkItemActions item={item} onAction={(nextAction, text) => action.mutateAsync({ item, action: nextAction, ...(nextAction === 'block' ? { reason: text } : { content: text }) })} />
-              {['in_progress', 'blocked'].includes(item.status) && <button onClick={() => setProgressItem(item)}><MessageSquarePlus size={14} />写进展</button>}
-            </div>
-          </article>)}
-          {!error && !items.length && !isLoading && <EmptyState title="当前没有工作项" detail="分配为主负责人或协作人员后，会自动出现在这里。" />}
-        </div>
+            </div>;
+          }}
+        /> : !error && !isLoading && <EmptyState title="当前没有工作项" detail="分配为主负责人或协作人员后，会自动出现在这里。" />}
       </section>
       <section className="my-work-charts"><article className="panel"><header><div><h2>完成趋势</h2><p>近8个有完成记录的自然周</p></div></header><Chart option={charts.completion} height={230} ariaLabel="我的工作完成趋势" /></article><article className="panel"><header><div><h2>近期并发</h2><p>未来10个工作日的计划工作项数</p></div></header><Chart option={charts.upcoming} height={230} ariaLabel="我的近期工作并发趋势" /></article></section>
       </>}
