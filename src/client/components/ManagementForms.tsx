@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, jsonBody } from "../api";
 import { useApp } from "../app-context";
-import type { Project, WorkItemTemplate } from "../types";
+import type { Person, Project, WorkItemTemplate } from "../types";
+import { workdayCalendarWarning } from "../../shared/workday";
 
 export function ProjectForm({
   project,
@@ -74,10 +75,18 @@ export function RequirementForm({
 }) {
   const client = useQueryClient();
   const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">("start");
+  const [planningOpen, setPlanningOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState("");
   const { projects } = useApp();
   const { data: templates = [] } = useQuery({
     queryKey: ["templates", projectId],
     queryFn: () => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(projectId)}`),
+    enabled: Boolean(projectId),
+  });
+  const { data: people = [] } = useQuery({
+    queryKey: ["people", projectId],
+    queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(projectId)}`),
     enabled: Boolean(projectId),
   });
   const mutation = useMutation({
@@ -111,21 +120,34 @@ export function RequirementForm({
         </select>
       </label>
       <label className="field">
-        <span>流程设计</span>
-        <select key={`${projectId}-${templates.length}`} name="templateId" required defaultValue={defaultTemplateId}>
-          {!defaultTemplateId && <option value="">请选择模板</option>}
-          {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+        <span>需求负责人（可稍后指定）</span>
+        <select name="ownerId" defaultValue="">
+          <option value="">待指定</option>
+          {people.filter((person) => person.active && person.projectRole !== "viewer").map((person) => <option key={person.id} value={person.id}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}</option>)}
         </select>
       </label>
-      <div className="field field-full">
-        <span>排期方式</span>
-        <div className="schedule-mode-switch" role="radiogroup" aria-label="排期方式">
+      <div className="form-disclosure field-full">
+        <button type="button" className={planningOpen ? "is-open" : ""} onClick={() => setPlanningOpen((value) => !value)}>
+          <strong>立即规划</strong><span>{planningOpen ? "收起" : "可选：选择流程并自动生成工作项"}</span>
+        </button>
+      </div>
+      {planningOpen && <>
+        <label className="field field-full">
+          <span>流程设计</span>
+          <select key={`${projectId}-${templates.length}`} name="templateId" required defaultValue={defaultTemplateId}>
+            {!defaultTemplateId && <option value="">请选择模板</option>}
+            {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+          </select>
+        </label>
+        <div className="field field-full">
+          <span>排期方式</span>
+          <div className="schedule-mode-switch" role="radiogroup" aria-label="排期方式">
           <button
             type="button"
             className={scheduleMode === "start" ? "is-active" : ""}
             role="radio"
             aria-checked={scheduleMode === "start"}
-            onClick={() => setScheduleMode("start")}
+            onClick={() => { setScheduleMode("start"); setScheduleDate(""); }}
           >
             <strong>按开始日期排期</strong>
             <small>从选定日期按流程正向生成计划</small>
@@ -135,27 +157,30 @@ export function RequirementForm({
             className={scheduleMode === "deadline" ? "is-active" : ""}
             role="radio"
             aria-checked={scheduleMode === "deadline"}
-            onClick={() => setScheduleMode("deadline")}
+            onClick={() => { setScheduleMode("deadline"); setScheduleDate(""); }}
           >
             <strong>按截止日期倒排</strong>
             <small>以选定日期为目标反算计划开始</small>
           </button>
+          </div>
         </div>
+        <label className="field field-full schedule-date-field">
+          <span>{scheduleMode === "start" ? "计划开始" : "截止日期"}</span>
+          <input key={scheduleMode} name={scheduleMode === "start" ? "plannedStart" : "plannedEnd"} type="date" required value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} />
+        </label>
+        {workdayCalendarWarning(scheduleDate, scheduleDate) && <p className="calendar-coverage-warning field-full">{workdayCalendarWarning(scheduleDate, scheduleDate)}</p>}
+        <p className="field-help field-full">{scheduleMode === "start" ? "保存后按流程自动生成工作项并计算完成日期。" : "保存后按流程工期倒排；截止日期需为工作日。"}</p>
+      </>}
+      <div className="form-disclosure field-full">
+        <button type="button" className={detailsOpen ? "is-open" : ""} onClick={() => setDetailsOpen((value) => !value)}>
+          <strong>补充信息</strong><span>{detailsOpen ? "收起" : "可选：背景、验收标准和参考链接"}</span>
+        </button>
       </div>
-      <label className="field field-full schedule-date-field">
-        <span>{scheduleMode === "start" ? "计划开始" : "截止日期"}</span>
-        <input
-          key={scheduleMode}
-          name={scheduleMode === "start" ? "plannedStart" : "plannedEnd"}
-          type="date"
-          required
-        />
-      </label>
-      <p className="field-help field-full">
-        {scheduleMode === "start"
-          ? "保存后将按流程自动生成工作项，并计算计划完成日期。"
-          : "保存后将按流程工期倒排工作项；截止日期需为工作日。"}
-      </p>
+      {detailsOpen && <>
+        <label className="field field-full"><span>需求背景</span><textarea name="background" rows={3} placeholder="为什么要做，可留空" /></label>
+        <label className="field field-full"><span>验收标准</span><textarea name="acceptanceCriteria" rows={3} placeholder="如何判断完成，可留空" /></label>
+        <label className="field field-full"><span>参考链接</span><input name="referenceUrl" type="url" placeholder="https://…" /></label>
+      </>}
       {mutation.error && <p className="form-error field-full">{mutation.error.message}</p>}
       <div className="form-actions field-full">
         <button type="button" className="ghost-button" onClick={onClose}>取消</button>

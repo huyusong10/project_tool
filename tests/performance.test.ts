@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { defaultAnalyticsLayout, type AnalyticsQueryResponse } from '../src/shared/analytics';
+import type { AuthorizationActor } from '../src/server/authorization';
 
 const dbPath = path.join(process.cwd(), 'data', `performance-${randomUUID()}.db`);
 process.env.DB_PATH = dbPath;
@@ -15,6 +16,7 @@ let sqlite: import('better-sqlite3').Database;
 let getDashboard: (projectId?: string) => unknown;
 let getPeopleConcurrency: (filters?: { projectId?: string }) => unknown;
 let queryAnalytics: (input: unknown) => AnalyticsQueryResponse;
+let listActionItems: typeof import('../src/server/services/actions').listActionItems;
 let projectId = '';
 
 beforeAll(async () => {
@@ -22,6 +24,7 @@ beforeAll(async () => {
   sqlite = database.sqlite;
   ({ getDashboard, getPeopleConcurrency } = await import('../src/server/services'));
   ({ queryAnalytics } = await import('../src/server/analytics'));
+  ({ listActionItems } = await import('../src/server/services/actions'));
   projectId = randomUUID();
   const now = new Date().toISOString();
   sqlite.prepare('INSERT INTO projects (id,name,status,created_at,updated_at) VALUES (?, ?, ?, ?, ?)').run(projectId, '性能测试项目', 'active', now, now);
@@ -88,5 +91,28 @@ describe('看板性能', () => {
     const maximumElapsed = performance.now() - start;
     expect(maximum.results).toHaveLength(24);
     expect(maximumElapsed).toBeLessThan(3000);
+  });
+
+  it('行动中心在2秒内完成，且查询次数不随需求数量增长', () => {
+    const actor: AuthorizationActor = {
+      type: 'user', id: 'performance-admin', label: 'performance-admin',
+      accountId: 'performance-admin', personId: null, globalRole: 'admin',
+    };
+    const originalPrepare = sqlite.prepare.bind(sqlite);
+    let prepareCount = 0;
+    sqlite.prepare = ((...args: Parameters<typeof sqlite.prepare>) => {
+      prepareCount += 1;
+      return originalPrepare(...args);
+    }) as typeof sqlite.prepare;
+    try {
+      const start = performance.now();
+      const result = listActionItems({ projectId, pageSize: 100 }, actor);
+      const elapsed = performance.now() - start;
+      expect(result.total).toBeGreaterThan(0);
+      expect(elapsed).toBeLessThan(2000);
+      expect(prepareCount).toBeLessThanOrEqual(6);
+    } finally {
+      sqlite.prepare = originalPrepare as typeof sqlite.prepare;
+    }
   });
 });

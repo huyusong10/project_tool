@@ -27,6 +27,7 @@ import { Sidebar } from "./components/Sidebar";
 
 const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
 const MyWorkPage = lazy(() => import("./pages/MyWorkPage").then((module) => ({ default: module.MyWorkPage })));
+const ActionCenterPage = lazy(() => import("./pages/ActionCenterPage").then((module) => ({ default: module.ActionCenterPage })));
 const RequirementPage = lazy(() => import("./pages/RequirementPage").then((module) => ({ default: module.RequirementPage })));
 const IssuesPage = lazy(() => import("./pages/IssuesPage").then((module) => ({ default: module.IssuesPage })));
 const AccountsPage = lazy(() => import("./pages/AccountsPage").then((module) => ({ default: module.AccountsPage })));
@@ -416,6 +417,7 @@ export function App() {
             <Route path="/" element={session.authenticated ? <ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} currentProjectId={selectedProjectId}><DashboardPage /></ProjectRoute> : <GuestLanding openLogin={() => setLoginOpen(true)} />} />
             <Route path="/analytics" element={<ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} currentProjectId={selectedProjectId}><AnalyticsPage /></ProjectRoute>} />
             <Route path="/my-work" element={<RoleRoute session={session} ready={sessionReady}><MyWorkPage /></RoleRoute>} />
+            <Route path="/actions" element={<ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} currentProjectId={selectedProjectId}><ActionCenterPage /></ProjectRoute>} />
             <Route path="/settings" element={<RoleRoute session={session} ready={sessionReady}><PersonalSettingsPage /></RoleRoute>} />
             <Route path="/requirements" element={<ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} currentProjectId={selectedProjectId}><RequirementsPage /></ProjectRoute>} />
             <Route path="/requirements/:id" element={<ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} currentProjectId={selectedProjectId} resetOnProjectChange={false}><RequirementPage /></ProjectRoute>} />

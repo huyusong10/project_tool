@@ -151,12 +151,21 @@ export function RequirementsPage() {
   const items = useMemo(() => {
     return data
       .filter((item) =>
-        matchesSearch([{ text: item.title, weight: 100 }], search) &&
+        matchesSearch([
+          { text: item.title, weight: 100 },
+          { text: item.ownerName, weight: 40 },
+        ], search) &&
         (status === "current" ? item.status !== "completed" : !status || item.status === status),
       )
       .sort((left, right) => {
         if (search.trim()) {
-          const relevance = searchScore([{ text: right.title, weight: 100 }], search) - searchScore([{ text: left.title, weight: 100 }], search);
+          const relevance = searchScore([
+            { text: right.title, weight: 100 },
+            { text: right.ownerName, weight: 40 },
+          ], search) - searchScore([
+            { text: left.title, weight: 100 },
+            { text: left.ownerName, weight: 40 },
+          ], search);
           if (relevance !== 0) return relevance;
         }
         if (sortKey === "variance") {
@@ -218,7 +227,7 @@ export function RequirementsPage() {
       />
       <div className="page-content">
         <div className="filter-bar">
-        <SearchInput value={search} onChange={setSearch} placeholder="搜索需求标题" />
+        <SearchInput value={search} onChange={setSearch} placeholder="搜索需求或负责人" />
         <select
           value={status}
           onChange={(event) => setStatus(event.target.value)}
@@ -256,7 +265,7 @@ export function RequirementsPage() {
                 key={item.id}
                 onClick={() => navigate(`/requirements/${item.id}`)}
               >
-                <td><DataCell density="compact" primary={<strong>{item.title}</strong>} secondary={item.projectName} /></td>
+                <td><DataCell density="compact" primary={<strong>{item.title}</strong>} secondary={`${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
                 <td><DataCell density="compact" primary={canManage ? <InlineSelectCell
                   value={item.priority}
                   label="需求优先级"
@@ -395,7 +404,7 @@ export function ProjectsPage() {
           </Modal>
         )}
         {archiveTarget && <ConfirmDialog title="归档项目" description={<>项目“<strong>{archiveTarget.name}</strong>”将从日常页面隐藏，之后可以在归档中心恢复。</>} confirmLabel="确认归档" pendingLabel="归档中…" danger pending={archive.isPending} error={archiveError} onClose={() => { setArchiveTarget(null); setArchiveError(""); }} onConfirm={() => archive.mutate({ ...archiveTarget })} />}
-        {archiveConflict && <ConfirmDialog title="项目仍有活跃内容" description={<div className="archive-project-confirmation"><p>项目“{archiveConflict.name}”仍有活跃内容：</p><div><strong>{archiveConflict.requirements}</strong><span>条活跃需求</span><strong>{archiveConflict.issues}</strong><span>条未解决问题</span></div><p>继续归档后，这些内容将随项目隐藏，恢复项目后仍可继续处理。</p></div>} confirmLabel="仍然归档" pendingLabel="归档中…" danger pending={archive.isPending} error={archiveError} onClose={() => { setArchiveConflict(null); setArchiveError(""); }} onConfirm={() => archive.mutate({ id: archiveConflict.id, name: archiveConflict.name, force: true })} />}
+        {archiveConflict && <ConfirmDialog title="确认强制归档" description={<div className="archive-project-confirmation"><p>项目“{archiveConflict.name}”仍有活跃内容：</p><div><strong>{archiveConflict.requirements}</strong><span>条活跃需求</span><strong>{archiveConflict.issues}</strong><span>条未解决问题</span></div><p>继续归档后，这些内容将随项目隐藏，恢复项目后仍可继续处理。</p></div>} confirmLabel="仍然归档" pendingLabel="归档中…" danger pending={archive.isPending} error={archiveError} onClose={() => { setArchiveConflict(null); setArchiveError(""); }} onConfirm={() => archive.mutate({ id: archiveConflict.id, name: archiveConflict.name, force: true })} />}
       </div>
     </>
   );

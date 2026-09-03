@@ -51,8 +51,10 @@ test('活跃项目通过明确二次确认归档且登录态保持不变', async
   await mockProjectArchive(page, deleteBodies);
   await page.goto('/projects');
 
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: '归档', exact: true }).click();
+  const archiveConfirmation = page.getByRole('dialog', { name: '归档项目' });
+  await expect(archiveConfirmation).toBeVisible();
+  await archiveConfirmation.getByRole('button', { name: '确认归档' }).click();
 
   const confirmation = page.getByRole('dialog', { name: '确认强制归档' });
   await expect(confirmation).toBeVisible();

@@ -177,6 +177,7 @@ export const GapTimeline = memo(function GapTimeline({
           <div className="view-tabs" aria-label="时间粒度">{(Object.keys(ganttZoomOptions) as GanttZoom[]).map((key) => <button key={key} className={zoom === key ? "active" : ""} onClick={() => setZoom(key)}>{ganttZoomOptions[key].label}</button>)}</div>
         </div>
       </div>
+      {range.calendarWarning && <p className="calendar-coverage-warning">{range.calendarWarning}</p>}
       <div className="requirement-gantt-scroll" ref={scrollRef}>
         <div
           className="requirement-gantt-grid"

@@ -18,6 +18,7 @@ let cookie = '';
 let projectId = '';
 let requirementId = '';
 let templateId = '';
+let requirementOwnerId = '';
 let personId = '';
 let collaboratorPersonId = '';
 let firstWorkItemId = '';
@@ -53,6 +54,11 @@ describe('自动化项目管理API', () => {
     const project = await app.inject({ method: 'POST', url: '/api/projects', headers: { cookie }, payload: { name: '集成测试项目' } });
     expect(project.statusCode).toBe(200);
     projectId = project.json().id;
+    const requirementOwner = await app.inject({ method: 'POST', url: '/api/people', headers: { cookie }, payload: {
+      projectId, name: '王需求', jobTitle: '需求负责人',
+    } });
+    expect(requirementOwner.statusCode).toBe(200);
+    requirementOwnerId = requirementOwner.json().id;
     const initialFlows = await app.inject({ method: 'GET', url: '/api/templates?projectId=' + projectId, headers: { cookie } });
     expect(initialFlows.json()).toHaveLength(1);
     expect(project.json().defaultTemplateId).toBe(initialFlows.json()[0].id);
@@ -75,7 +81,7 @@ describe('自动化项目管理API', () => {
 
     expect((await app.inject({ method: 'PATCH', url: '/api/projects/' + projectId, headers: { cookie }, payload: { defaultTemplateId: templateId } })).statusCode).toBe(200);
     const requirement = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie }, payload: {
-      projectId, title: '自动排期需求', priority: 'P1', plannedStart: '2026-09-04', templateId,
+      projectId, title: '自动排期需求', priority: 'P1', ownerId: requirementOwnerId, plannedStart: '2026-09-04', templateId,
     } });
     expect(requirement.statusCode).toBe(200); requirementId = requirement.json().id;
     expect(requirement.json().priority).toBe('P1');
@@ -576,7 +582,7 @@ describe('自动化项目管理API', () => {
     expect(blockedReset.json().code).toBe('INVALID_TRANSITION');
 
     const fresh = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie }, payload: {
-      projectId, title: '未开始重选流程需求', priority: 'P2', plannedStart: '2026-09-11', templateId,
+      projectId, title: '未开始重选流程需求', priority: 'P2', ownerId: personId, plannedStart: '2026-09-11', templateId,
     } });
     await app.inject({ method: 'POST', url: `/api/requirements/${fresh.json().id}/progress`, headers: { cookie }, payload: { content: '保留需求级设计说明' } });
     const resetPayload = { templateId: replacement.json().id, plannedStart: '2026-09-14', expectedVersion: fresh.json().version };
@@ -601,16 +607,16 @@ describe('自动化项目管理API', () => {
     expect(renamedMilestone.json().milestoneLabel).toBe('联调冻结基线');
 
     const beforeForward = (await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie } })).json();
-    const forwardDelta = businessDayDelta(beforeForward.plannedStart, '2026-10-05');
+    const forwardDelta = businessDayDelta(beforeForward.plannedStart, '2026-10-08');
     const directScheduleWrite = await app.inject({ method: 'PATCH', url: `/api/requirements/${requirementId}`, headers: { cookie }, payload: {
-      plannedStart: '2026-10-05', expectedVersion: beforeForward.version,
+      plannedStart: '2026-10-08', expectedVersion: beforeForward.version,
     } });
     expect(directScheduleWrite.statusCode).toBe(400);
     const forward = await app.inject({ method: 'POST', url: `/api/requirements/${requirementId}/reschedule`, headers: { cookie }, payload: {
-      scheduleMode: 'start', plannedStart: '2026-10-05', expectedVersion: beforeForward.version, reason: '整体顺延交付计划',
+      scheduleMode: 'start', plannedStart: '2026-10-08', expectedVersion: beforeForward.version, reason: '整体顺延交付计划',
     } });
     expect(forward.statusCode).toBe(200);
-    expect(forward.json().plannedStart).toBe('2026-10-05');
+    expect(forward.json().plannedStart).toBe('2026-10-08');
     expect(forward.json().workItems).toEqual(expect.arrayContaining([expect.objectContaining({
       id: customId, plannedStart: addBusinessDays('2026-09-16', forwardDelta), plannedEnd: addBusinessDays('2026-09-18', forwardDelta), actualStart: null,
     })]));
@@ -640,7 +646,7 @@ describe('自动化项目管理API', () => {
       items: [{ title: '唯一执行项', startOffsetDays: 0, durationDays: 1, sortOrder: 0 }],
     } });
     const created = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie }, payload: {
-      projectId, title: '状态机验收需求', priority: 'P1', plannedStart: '2026-11-02', templateId: flow.json().id,
+      projectId, title: '状态机验收需求', priority: 'P1', ownerId: personId, plannedStart: '2026-11-02', templateId: flow.json().id,
     } });
     const item = created.json().workItems[0];
     const assigned = await app.inject({ method: 'PATCH', url: `/api/work-items/${item.id}`, headers: { cookie }, payload: {

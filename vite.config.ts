@@ -21,6 +21,11 @@ export default defineConfig({
         codeSplitting: {
           groups: [
             {
+              name: 'pinyin',
+              test: /node_modules[\\/]pinyin-pro[\\/]/,
+              includeDependenciesRecursively: false,
+            },
+            {
               name: 'zrender',
               test: /node_modules[\\/]zrender[\\/]/,
               includeDependenciesRecursively: false,

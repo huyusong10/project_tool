@@ -63,6 +63,16 @@ export function MyWorkPage() {
       <section className="my-work-summary">
         {metrics.map(({ label, value, Icon }) => <article key={label}><Icon size={19} /><span>{label}</span><strong>{value}</strong></article>)}
       </section>
+      {!!data?.requirements.length && <section className="panel my-owned-requirements">
+        <header><div><h2>我负责的需求</h2><p>规划完整度、交付风险和待处理事项</p></div></header>
+        <div className="my-owned-requirement-grid">
+          {data.requirements.map((requirement) => <button key={requirement.id} onClick={() => navigate(`/requirements/${requirement.id}`)}>
+            <div><span className={`priority-badge priority-${requirement.priority.toLowerCase()}`}>{requirement.priority}</span><strong>{requirement.title}</strong></div>
+            <p>{requirement.projectName} · {requirement.plannedStart || "待排期"} → {requirement.plannedEnd || "待排期"}</p>
+            <footer><span className={`status-pill status-${requirement.status}`}>{requirementStatusLabels[requirement.status as keyof typeof requirementStatusLabels] || requirement.status}</span><span>{requirement.planningReasons.join("、") || (requirement.highRisk ? "高风险" : requirement.delayed ? "已延期" : "计划正常")}</span><b>{requirement.actionCount} 项待处理</b></footer>
+          </button>)}
+        </div>
+      </section>}
       <section className="panel my-work-list">
         <header><div><h2>分配给我的工作项</h2><p>主负责人和协作工作都会显示</p></div><div className="view-tabs">{[['active', '当前'], ['not_started', '未开始'], ['in_progress', '进行中'], ['blocked', '阻塞'], ['completed', '已完成'], ['all', '全部']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}</button>)}</div></header>
         <div className="my-work-items">

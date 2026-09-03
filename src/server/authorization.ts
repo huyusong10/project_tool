@@ -132,6 +132,37 @@ export function projectIdForWorkItem(workItemId: string) {
   return value.projectId;
 }
 
+export function isRequirementOwner(actor: AuthorizationActor, requirementId: string) {
+  if (!actor.personId) return false;
+  return Boolean(sqlite.prepare('SELECT 1 FROM requirements WHERE id=? AND owner_id=? AND deleted_at IS NULL')
+    .get(requirementId, actor.personId));
+}
+
+export function isRequirementOwnerForWorkItem(actor: AuthorizationActor, workItemId: string) {
+  if (!actor.personId) return false;
+  return Boolean(sqlite.prepare(`SELECT 1 FROM work_items w
+    JOIN requirements r ON r.id=w.requirement_id
+    WHERE w.id=? AND r.owner_id=? AND r.deleted_at IS NULL`).get(workItemId, actor.personId));
+}
+
+export function assertRequirementOwnerOrManager(actor: AuthorizationActor, requirementId: string) {
+  const projectId = projectIdForRequirement(requirementId);
+  assertProjectResourceReadable(actor, projectId, '需求不存在');
+  if (canManageProject(actor, projectId)) return;
+  if (!canContributeProject(actor, projectId) || !isRequirementOwner(actor, requirementId)) {
+    forbidden('只有需求负责人、项目经理或管理员可以管理该需求的工作项');
+  }
+}
+
+export function assertWorkItemRequirementOwnerOrManager(actor: AuthorizationActor, workItemId: string) {
+  const projectId = projectIdForWorkItem(workItemId);
+  assertProjectResourceReadable(actor, projectId, '工作项不存在');
+  if (canManageProject(actor, projectId)) return;
+  if (!canContributeProject(actor, projectId) || !isRequirementOwnerForWorkItem(actor, workItemId)) {
+    forbidden('只有需求负责人、项目经理或管理员可以管理该工作项');
+  }
+}
+
 export function projectIdForIssue(issueId: string) {
   const value = sqlite.prepare('SELECT project_id AS projectId FROM issues WHERE id=?').get(issueId) as { projectId: string } | undefined;
   if (!value) notFound('问题不存在');
@@ -169,7 +200,8 @@ export function isWorkItemAssignee(actor: AuthorizationActor, workItemId: string
 export function assertWorkItemParticipantOrManager(actor: AuthorizationActor, workItemId: string) {
   const projectId = projectIdForWorkItem(workItemId);
   assertProjectResourceReadable(actor, projectId, '工作项不存在');
-  if (!canManageProject(actor, projectId) && (!canContributeProject(actor, projectId) || !isWorkItemAssignee(actor, workItemId))) {
+  if (!canManageProject(actor, projectId) && (!canContributeProject(actor, projectId)
+    || !isWorkItemAssignee(actor, workItemId) && !isRequirementOwnerForWorkItem(actor, workItemId))) {
     forbidden('只能操作分配给自己的工作项');
   }
 }
@@ -188,5 +220,6 @@ export function assertCanAddProgress(actor: AuthorizationActor, requirementId: s
   const projectId = projectIdForRequirement(requirementId);
   if (canManageProject(actor, projectId)) return;
   if (!canContributeProject(actor, projectId)) forbidden('只有当前项目成员可以追加说明');
+  if (workItemId && isRequirementOwner(actor, requirementId)) return;
   if (workItemId && !isWorkItemAssignee(actor, workItemId)) forbidden('普通用户只能更新分配给自己的工作项');
 }

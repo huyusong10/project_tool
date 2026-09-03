@@ -13,6 +13,7 @@ export type WorkItemRecord = {
 
 export type RequirementRecord = {
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
+  background: string | null; acceptanceCriteria: string | null; referenceUrl: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number; progressGap?: number;
   asOfDate?: string;
   riskLevel: string; priority: string; acceptedAt: string | null; acceptedByAccountId: string | null; version: number; createdAt: string; updatedAt: string; deletedAt?: string | null; workItems?: WorkItemRecord[];
@@ -22,6 +23,7 @@ export type RequirementRecord = {
 
 export const requirementSelect = `SELECT r.id, r.project_id AS projectId, pr.name AS projectName,
   r.template_id AS templateId, t.name AS templateName, r.title,
+  r.background, r.acceptance_criteria AS acceptanceCriteria, r.reference_url AS referenceUrl,
   r.owner_id AS ownerId, p.name AS ownerName, r.status, r.planned_start AS plannedStart,
   r.planned_end AS plannedEnd, r.progress, r.risk_level AS riskLevel, r.priority,
   r.accepted_at AS acceptedAt, r.accepted_by_account_id AS acceptedByAccountId, r.version,
@@ -100,10 +102,11 @@ function enrichRequirement(requirement: RequirementRecord, workItems: WorkItemRe
   };
 }
 
-export function listRequirements(filters: { projectId?: string; includeDeleted?: boolean; view?: string; status?: string } = {}) {
+export function listRequirements(filters: { projectId?: string; ownerId?: string; includeDeleted?: boolean; view?: string; status?: string } = {}) {
   const where = [filters.includeDeleted ? '1=1' : 'r.deleted_at IS NULL'];
   const params: unknown[] = [];
   if (filters.projectId) { where.push('r.project_id=?'); params.push(filters.projectId); }
+  if (filters.ownerId) { where.push('r.owner_id=?'); params.push(filters.ownerId); }
   const requirements = rows<RequirementRecord>(`${requirementSelect} WHERE ${where.join(' AND ')} ORDER BY r.updated_at DESC`, ...params);
   const workItemsByRequirement = getWorkItemsByRequirementIds(requirements.map((requirement) => requirement.id));
   const asOfDate = todayIso();

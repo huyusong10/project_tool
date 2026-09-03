@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
+  addBusinessDays, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
   deriveWorkItemStatus, ganttProgressDisplay, issueActionsByStatus, plannedDatesFromOffset, plannedStartFromDeadline, requirementActionsByStatus, riskLevelFromProgressGap, signedProgressVariance, workItemActionsByStatus, workItemPlannedProgress,
 } from '../src/shared/domain';
+import { isBusinessDay, workdayCalendarWarning } from '../src/shared/workday';
 
 describe('工作日、排期与Gap规则', () => {
   it('排除周末并按偏移和工期生成计划', () => {
@@ -19,6 +20,16 @@ describe('工作日、排期与Gap规则', () => {
     ];
     expect(plannedStartFromDeadline('2026-09-11', items)).toBe('2026-09-07');
     expect(plannedDatesFromOffset('2026-09-07', 1, 4).plannedEnd).toBe('2026-09-11');
+  });
+
+  it('使用2026年法定节假日和调休，超出覆盖范围时回退并提示', () => {
+    expect(isBusinessDay('2026-02-14')).toBe(true);
+    expect(isBusinessDay('2026-02-16')).toBe(false);
+    expect(addBusinessDays('2026-02-13', 1)).toBe('2026-02-14');
+    expect(plannedDatesFromOffset('2026-02-13', 1, 2)).toEqual({ plannedStart: '2026-02-14', plannedEnd: '2026-02-24' });
+    expect(plannedStartFromDeadline('2026-02-24', [{ startOffsetDays: 0, durationDays: 2 }])).toBe('2026-02-14');
+    expect(isBusinessDay('2027-02-15')).toBe(true);
+    expect(workdayCalendarWarning('2027-02-15', '2027-02-15')).toContain('周一至周五');
   });
 
   it('计算并排计划和实际的完成及耗时偏差', () => {

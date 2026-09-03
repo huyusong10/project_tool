@@ -1,4 +1,16 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { isBusinessDay } from "../../src/shared/workday";
+
+async function expectOnlyBusinessDays(locator: ReturnType<Page["locator"]>) {
+  const dates = await locator.evaluateAll((ticks) => ticks.map((tick) => tick.getAttribute("data-date") || ""));
+  expect(dates.length).toBeGreaterThan(0);
+  expect(dates.every((date) => isBusinessDay(date))).toBe(true);
+  expect(dates.some((date) => {
+    const [year, month, day] = date.split("-").map(Number);
+    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    return weekday === 0 || weekday === 6;
+  }), "法定调休周末应作为工作日出现在时间轴中").toBe(true);
+}
 
 const workItem = {
   id: "w1", requirementId: "r1", templateItemId: "ti1", title: "接口开发", ownerId: "u1", ownerName: "张三",
@@ -103,7 +115,7 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   expect(await page.locator(".gantt-popover-updates p").evaluate((node) => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
   const projectWidths = await page.locator(".project-gantt-grid .unified-gantt-plan").evaluateAll((bars) => bars.map((bar) => bar.getBoundingClientRect().width));
   expect(Math.abs(projectWidths[0] - projectWidths[1])).toBeLessThanOrEqual(1);
-  await expect(page.locator(".project-gantt-grid .gantt-scale-tick", { hasText: /周六|周日/ })).toHaveCount(0);
+  await expectOnlyBusinessDays(page.locator(".project-gantt-grid .gantt-scale-tick"));
 
   await page.goto("/requirements/r1");
   await expect(page.locator(".requirement-gantt-grid")).toBeVisible();
@@ -123,7 +135,7 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   expect(progressRequests[0]).toMatchObject({ workItemId: "w1", workItemPercent: 80, expectedVersion: 1, content: "完成开发，等待联调" });
   expect(typeof progressRequests[0].workItemPercent).toBe("number");
   expect(typeof progressRequests[0].expectedVersion).toBe("number");
-  await expect(page.locator(".requirement-gantt-grid .gantt-scale-tick", { hasText: /周六|周日/ })).toHaveCount(0);
+  await expectOnlyBusinessDays(page.locator(".requirement-gantt-grid .gantt-scale-tick"));
 });
 
 test("时间轴元素横向滚动时不会覆盖左侧标题", async ({ page }, testInfo) => {
