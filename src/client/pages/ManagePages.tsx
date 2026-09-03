@@ -292,7 +292,9 @@ export function RequirementsPage() {
                   </div>} />
                 </td>
                 <td>
-                  <DataCell density="compact" primary={item.highRisk ? (
+                  <DataCell density="compact" primary={!item.riskEvaluated ? (
+                    <span className="risk-badge risk-pending">待评估</span>
+                  ) : item.highRisk ? (
                     <span className="risk-badge risk-high">高风险</span>
                   ) : (
                     riskLabels[item.riskLevel as keyof typeof riskLabels]

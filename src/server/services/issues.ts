@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sqlite } from '../database';
 import type { Actor } from '../auth';
-import { issueStatuses, priorities, todayIso } from '../../shared/domain';
+import { issueStatuses, isOverdueByWorkday, priorities, todayIso } from '../../shared/domain';
 import { fail, forbidden, notFound } from '../errors';
 import { recordAudit as audit } from './audit';
 import {
@@ -52,7 +52,7 @@ function appendIssueEvent(issueId: string, eventType: string, content: string, a
 }
 
 function enrichIssue(issue: Omit<IssueRecord, 'overdue'> & Partial<Pick<IssueRecord, 'overdue'>>): IssueRecord {
-  return { ...issue, overdue: issue.status !== 'resolved' && Boolean(issue.dueDate && issue.dueDate < todayIso()) } as IssueRecord;
+  return { ...issue, overdue: issue.status !== 'resolved' && isOverdueByWorkday(issue.dueDate) } as IssueRecord;
 }
 
 function requireActiveProject(projectId: string) {
@@ -107,7 +107,7 @@ export function listIssues(filters: {
   if (filters.scope === 'public') where.push('i.requirement_id IS NULL');
   if (filters.active === true || filters.active === 'true') where.push(`i.status<>'resolved'`);
   if (filters.overdue === true || filters.overdue === 'true') {
-    where.push(`i.status<>'resolved' AND i.due_date IS NOT NULL AND i.due_date<?`); params.push(todayIso());
+    where.push(`i.status<>'resolved' AND i.due_date IS NOT NULL AND business_day_delta(i.due_date, ?)>0`); params.push(todayIso());
   }
   if (filters.unassigned === true || filters.unassigned === 'true') where.push('i.owner_id IS NULL');
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -118,7 +118,7 @@ export function listIssues(filters: {
   const total = row<{ count: number }>(`SELECT COUNT(*) AS count ${countFrom} ${clause}`, ...params)?.count || 0;
   const items = rows<IssueRecord>(`${issueSelect} ${clause}
     ORDER BY CASE WHEN i.status='resolved' THEN 1 ELSE 0 END,
-      CASE WHEN i.status<>'resolved' AND i.due_date IS NOT NULL AND i.due_date<? THEN 0 ELSE 1 END,
+      CASE WHEN i.status<>'resolved' AND i.due_date IS NOT NULL AND business_day_delta(i.due_date, ?)>0 THEN 0 ELSE 1 END,
       CASE i.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
       CASE WHEN i.due_date IS NULL THEN 1 ELSE 0 END, i.due_date,
       CASE i.status WHEN 'in_progress' THEN 0 WHEN 'deferred' THEN 1 ELSE 2 END,
@@ -132,7 +132,7 @@ export function listIssues(filters: {
     SUM(CASE WHEN status='resolved' THEN 1 ELSE 0 END) AS resolved,
     SUM(CASE WHEN status<>'resolved' THEN 1 ELSE 0 END) AS active,
     SUM(CASE WHEN status<>'resolved' AND priority IN ('P0','P1') THEN 1 ELSE 0 END) AS highPriority,
-    SUM(CASE WHEN status<>'resolved' AND due_date IS NOT NULL AND due_date<? THEN 1 ELSE 0 END) AS overdue,
+    SUM(CASE WHEN status<>'resolved' AND due_date IS NOT NULL AND business_day_delta(due_date, ?)>0 THEN 1 ELSE 0 END) AS overdue,
     SUM(CASE WHEN owner_id IS NULL AND status<>'resolved' THEN 1 ELSE 0 END) AS unassigned
     FROM issues ${summaryWhere}`, todayIso(), ...summaryParams) || {};
   const totalSummary = Number(rawSummary.total || 0);

@@ -18,9 +18,14 @@ import { useApp } from "../app-context";
 import type { Person, PlanPreview, Requirement, WorkItem, WorkItemTemplate } from "../types";
 import {
   calculateWorkItemGap,
+  addBusinessDays,
+  businessDayDelta,
+  plannedDatesFromOffset,
+  plannedStartFromDeadline,
   priorityLabels,
   requirementStatusLabels,
   riskLabels,
+  workItemPlannedProgress,
   workItemPlannedDuration,
 } from "../../shared/domain";
 import { GapTimeline } from "../components/GapTimeline";
@@ -34,6 +39,13 @@ import { SortableList } from "../components/SortableList";
 import { canManageProject } from "../permissions";
 import { workdayCalendarWarning } from "../../shared/workday";
 
+function templateScheduleRange(template: WorkItemTemplate | undefined, anchor: string, mode: "start" | "deadline") {
+  if (!template?.items.length || !anchor) return { from: anchor, to: anchor };
+  const from = mode === "start" ? anchor : plannedStartFromDeadline(anchor, template.items);
+  const ends = template.items.map((item) => plannedDatesFromOffset(from, item.startOffsetDays, item.durationDays).plannedEnd);
+  return { from, to: ends.sort().at(-1) || anchor };
+}
+
 function RequirementInfoForm({
   requirement,
   people,
@@ -45,6 +57,12 @@ function RequirementInfoForm({
 }) {
   const client = useQueryClient();
   const hasExecution = requirement.workItems.some((item) => item.status !== "not_started" || item.progress > 0 || item.actualStart);
+  const eligiblePeople = people.filter((person) => person.active && person.projectRole !== "viewer");
+  const currentOwner = requirement.ownerId ? people.find((person) => person.id === requirement.ownerId) : undefined;
+  const ownerOptions = currentOwner && !eligiblePeople.some((person) => person.id === currentOwner.id)
+    ? [currentOwner, ...eligiblePeople]
+    : eligiblePeople;
+  const [ownerId, setOwnerId] = useState(requirement.ownerId || "");
   const mutation = useMutation({
     mutationFn: (value: object) => api(`/api/requirements/${requirement.id}`, { method: "PATCH", body: jsonBody(value) }),
     onSuccess: () => {
@@ -59,15 +77,20 @@ function RequirementInfoForm({
   return <form className="form-grid" onSubmit={(event) => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget));
-    mutation.mutate({ ...values, ownerId: values.ownerId || null, expectedVersion: requirement.version });
+    mutation.mutate({
+      ...values,
+      ...(ownerId !== (requirement.ownerId || "") ? { ownerId: ownerId || null } : {}),
+      expectedVersion: requirement.version,
+    });
   }}>
     <label className="field field-full"><span>需求标题</span><input name="title" defaultValue={requirement.title} required autoFocus /></label>
     <label className="field"><span>优先级</span><select name="priority" defaultValue={requirement.priority}>
       <option value="P0">P0 · 紧急</option><option value="P1">P1 · 高</option><option value="P2">P2 · 中</option><option value="P3">P3 · 低</option>
     </select></label>
-    <label className="field"><span>需求负责人</span><select name="ownerId" defaultValue={requirement.ownerId || ""}>
-      {!hasExecution && <option value="">待指定</option>}
-      {people.filter((person) => person.active && person.projectRole !== "viewer").map((person) => <option value={person.id} key={person.id}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}</option>)}
+    <label className="field"><span>需求负责人</span><select name="ownerId" value={ownerId} required={hasExecution} onChange={(event) => setOwnerId(event.target.value)}>
+      <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
+      {requirement.ownerId && !ownerOptions.some((person) => person.id === requirement.ownerId) && <option value={requirement.ownerId}>{requirement.ownerName || "历史负责人"} · 历史负责人</option>}
+      {ownerOptions.map((person) => <option value={person.id} key={person.id}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}{person === currentOwner && !eligiblePeople.includes(person) ? " · 历史负责人" : ""}</option>)}
     </select></label>
     {hasExecution && <p className="field-help field-full">需求已开始执行，负责人可以更换但不能清空。</p>}
     <label className="field field-full"><span>需求背景（可选）</span><textarea name="background" rows={3} defaultValue={requirement.background || ""} /></label>
@@ -95,6 +118,18 @@ function RequirementScheduleForm({
   const [pendingSubmit, setPendingSubmit] = useState<object | null>(null);
   const [scheduleDate, setScheduleDate] = useState(requirement.plannedStart || "");
   const templateChanged = Boolean(templateId && templateId !== requirement.templateId);
+  const selectedTemplate = templates.find((template) => template.id === templateId);
+  const scheduleRange = (() => {
+    if (!scheduleDate) return { from: scheduleDate, to: scheduleDate };
+    const plannedItems = requirement.workItems.filter((item) => item.plannedStart && item.plannedEnd);
+    if (templateChanged || !plannedItems.length) return templateScheduleRange(selectedTemplate, scheduleDate, scheduleMode);
+    const starts = plannedItems.map((item) => item.plannedStart!).sort();
+    const ends = plannedItems.map((item) => item.plannedEnd!).sort();
+    const currentAnchor = scheduleMode === "start" ? starts[0] : ends.at(-1)!;
+    const shift = businessDayDelta(currentAnchor, scheduleDate);
+    return { from: addBusinessDays(starts[0], shift), to: addBusinessDays(ends.at(-1)!, shift) };
+  })();
+  const calendarWarning = workdayCalendarWarning(scheduleRange.from, scheduleRange.to);
   const mutation = useMutation({
     mutationFn: (value: object) =>
       api(`/api/requirements/${requirement.id}/${templateChanged ? "reselect-template" : "reschedule"}`, {
@@ -152,7 +187,7 @@ function RequirementScheduleForm({
           onChange={(event) => setScheduleDate(event.target.value)}
         />
       </label>
-      {workdayCalendarWarning(scheduleDate, scheduleDate) && <p className="calendar-coverage-warning field-full">{workdayCalendarWarning(scheduleDate, scheduleDate)}</p>}
+      {calendarWarning && <p className="calendar-coverage-warning field-full">{calendarWarning}</p>}
       <label className="field field-full">
         <span>绑定流程</span>
         <select value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
@@ -284,6 +319,15 @@ function PlanForm({ requirement, templates, onClose }: { requirement: Requiremen
   const [reason, setReason] = useState("");
   const hasExecution = requirement.workItems.some((item) => item.status !== "not_started");
   const [preview, setPreview] = useState<PlanPreview>();
+  useEffect(() => {
+    if (!templateId && templates[0]) setTemplateId(templates[0].id);
+  }, [templateId, templates]);
+  const selectedTemplate = templates.find((template) => template.id === templateId);
+  const previewDates = preview?.entries.flatMap((entry) => [entry.proposedStart, entry.proposedEnd]).filter(Boolean).sort();
+  const planRange = previewDates?.length
+    ? { from: previewDates[0], to: previewDates.at(-1)! }
+    : templateScheduleRange(selectedTemplate, baseStart, "start");
+  const planCalendarWarning = workdayCalendarWarning(planRange.from, planRange.to);
   const previewMutation = useMutation({
     mutationFn: () => api<PlanPreview>(`/api/requirements/${requirement.id}/plan-preview`, {
       method: "POST", body: jsonBody({ templateId, baseStart }),
@@ -307,7 +351,7 @@ function PlanForm({ requirement, templates, onClose }: { requirement: Requiremen
         <label className="field"><span>流程设计</span><select value={templateId} onChange={(event) => { setTemplateId(event.target.value); setPreview(undefined); }}>{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</select></label>
         <label className="field"><span>计划开始</span><input type="date" value={baseStart} onChange={(event) => { setBaseStart(event.target.value); setPreview(undefined); }} /></label>
       </div>
-      {workdayCalendarWarning(baseStart, baseStart) && <p className="calendar-coverage-warning">{workdayCalendarWarning(baseStart, baseStart)}</p>}
+      {planCalendarWarning && <p className="calendar-coverage-warning">{planCalendarWarning}</p>}
       {hasExecution && <label className="field field-full"><span>变更原因</span><textarea rows={2} value={reason} onChange={(event) => setReason(event.target.value)} required placeholder="需求已开始执行，请说明补排或调整原因" /></label>}
       {!preview && <div className="form-actions"><button className="primary-button" disabled={!templateId || !baseStart || previewMutation.isPending} onClick={() => previewMutation.mutate()}><WandSparkles size={15} />生成差异预览</button></div>}
       {previewMutation.error && <p className="form-error">{previewMutation.error.message}</p>}
@@ -505,7 +549,7 @@ export function RequirementPage() {
       const totalWeight = items.reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
       const plannedValues = updates.map((update) => {
         const date = update.createdAt.slice(0, 10);
-        const plannedWeight = items.filter((item) => item.plannedEnd && item.plannedEnd <= date).reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
+        const plannedWeight = items.reduce((sum, item) => sum + workItemPlannedDuration(item) * workItemPlannedProgress(item, date) / 100, 0);
         return totalWeight ? Math.round((plannedWeight / totalWeight) * 100) : 0;
       });
       return ({
@@ -588,6 +632,7 @@ export function RequirementPage() {
     : [];
   const requirementLocked = ["pending_acceptance", "completed", "cancelled"].includes(requirement.status);
   const canManageWorkItems = (canManage || isRequirementOwner) && !requirementLocked;
+  const eligiblePeople = people.filter((person) => person.active && person.projectRole !== "viewer");
   const canAddProgress = canContribute && !requirementLocked;
   const canUpdateItemProgress = (item: WorkItem) => item.status === "in_progress"
     && canContribute
@@ -775,8 +820,8 @@ export function RequirementPage() {
             <tbody>
             {newItem && <tr className="work-inline-new-row">
               <td><div className="work-item-name-editor"><InlineTextCell value={newItem.title} label="新工作项名称" required placeholder="填写名称" onSave={async (title) => setNewItem((current) => current && ({ ...current, title }))} /><InlineTextCell value={newItem.milestoneLabel} label="新工作项里程碑" placeholder="添加里程碑" onSave={async (milestoneLabel) => setNewItem((current) => current && ({ ...current, milestoneLabel }))} renderValue={(value) => <span className="work-item-milestone-edit">◆ {value}</span>} /></div></td>
-              <td><InlineSelectCell value={newItem.ownerId} label="新工作项主负责人" options={[{ value: "", label: "未分配" }, ...people.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))]} onSave={async (ownerId) => setNewItem((current) => current && ({ ...current, ownerId, collaboratorIds: current.collaboratorIds.filter((personId) => personId !== ownerId) }))} placeholder="未分配" /></td>
-              <td><InlineMultiSelectCell value={newItem.collaboratorIds} label="新工作项协作人员" options={people.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))} excludedValues={newItem.ownerId ? [newItem.ownerId] : []} onSave={async (collaboratorIds) => setNewItem((current) => current && ({ ...current, collaboratorIds }))} placeholder="选择人员" /></td>
+              <td><InlineSelectCell value={newItem.ownerId} label="新工作项主负责人" options={[{ value: "", label: "未分配" }, ...eligiblePeople.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))]} onSave={async (ownerId) => setNewItem((current) => current && ({ ...current, ownerId, collaboratorIds: current.collaboratorIds.filter((personId) => personId !== ownerId) }))} placeholder="未分配" /></td>
+              <td><InlineMultiSelectCell value={newItem.collaboratorIds} label="新工作项协作人员" options={eligiblePeople.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))} excludedValues={newItem.ownerId ? [newItem.ownerId] : []} onSave={async (collaboratorIds) => setNewItem((current) => current && ({ ...current, collaboratorIds }))} placeholder="选择人员" /></td>
               <td><InlineDateCell value={newItem.plannedStart} label="新工作项计划开始" onSave={async (plannedStart) => setNewItem((current) => current && ({ ...current, plannedStart: plannedStart || "" }))} /></td>
               <td><InlineDateCell value={newItem.plannedEnd} label="新工作项计划完成" onSave={async (plannedEnd) => setNewItem((current) => current && ({ ...current, plannedEnd: plannedEnd || "" }))} /></td>
               <td><span className="status-pill status-not_started">待创建</span>{createItem.error && <small className="inline-row-error">{createItem.error.message}</small>}</td>
@@ -792,11 +837,20 @@ export function RequirementPage() {
               onReorder={reorderWorkItems}
               renderItem={(item, _index, sortable) => {
               const gap = calculateWorkItemGap(item);
+              const historicalPeople = [
+                ...(item.ownerId && !eligiblePeople.some((person) => person.id === item.ownerId)
+                  ? [{ id: item.ownerId, name: item.ownerName || "历史负责人", jobTitle: "历史负责人" }]
+                  : []),
+                ...item.collaborators.filter((collaborator) => !eligiblePeople.some((person) => person.id === collaborator.id)),
+              ];
+              const assignmentOptions = [...eligiblePeople, ...historicalPeople].map((person) => ({
+                value: person.id, label: person.name, description: person.jobTitle || "岗位未设置",
+              }));
               return (
                 <tr ref={sortable.setNodeRef} className={`sortable-item${sortable.isDragging ? " is-dragging" : ""}${sortable.isOver ? " is-over" : ""}`}>
                   <td><div className="work-item-name-editor"><InlineTextCell value={item.title} label="工作项名称" required onSave={(title) => saveWorkItem(item, { title })} /><InlineTextCell value={item.milestoneLabel} label="里程碑名称" placeholder="添加里程碑" onSave={(milestoneLabel) => saveWorkItem(item, { milestoneLabel: milestoneLabel || null })} renderValue={(value) => <span className="work-item-milestone-edit">◆ {value}</span>} /></div></td>
-                  <td><InlineSelectCell value={item.ownerId} label="主负责人" options={[{ value: "", label: "未分配" }, ...people.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))]} reason={requirement.workItems.some((workItem) => workItem.status !== "not_started") ? { required: true, label: "调整原因", placeholder: "需求已开始执行，请说明切换主负责人的原因" } : undefined} onSave={(ownerId, reason) => saveWorkItem(item, { ownerId: ownerId || null, assigneeIds: [ownerId, ...item.collaborators.map((person) => person.id).filter((personId) => personId !== ownerId)].filter(Boolean), ...(reason ? { reason } : {}) })} placeholder="未分配" /></td>
-                  <td><InlineMultiSelectCell value={item.collaborators.map((person) => person.id)} label="协作人员" options={people.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))} excludedValues={item.ownerId ? [item.ownerId] : []} onSave={(collaboratorIds) => saveWorkItem(item, { assigneeIds: [item.ownerId, ...collaboratorIds].filter(Boolean) })} placeholder="无协作人员" renderValue={(selected) => selected.length ? <span className="inline-person-summary">{selected.slice(0, 2).map((person) => person.label).join("、")}{selected.length > 2 ? ` +${selected.length - 2}` : ""}</span> : "无协作人员"} /></td>
+                  <td><InlineSelectCell value={item.ownerId} label="主负责人" options={[{ value: "", label: "未分配" }, ...assignmentOptions]} reason={requirement.workItems.some((workItem) => workItem.status !== "not_started") ? { required: true, label: "调整原因", placeholder: "需求已开始执行，请说明切换主负责人的原因" } : undefined} onSave={(ownerId, reason) => saveWorkItem(item, { ownerId: ownerId || null, assigneeIds: [ownerId, ...item.collaborators.map((person) => person.id).filter((personId) => personId !== ownerId)].filter(Boolean), ...(reason ? { reason } : {}) })} placeholder="未分配" /></td>
+                  <td><InlineMultiSelectCell value={item.collaborators.map((person) => person.id)} label="协作人员" options={assignmentOptions} excludedValues={item.ownerId ? [item.ownerId] : []} onSave={(collaboratorIds) => saveWorkItem(item, { assigneeIds: [item.ownerId, ...collaboratorIds].filter(Boolean) })} placeholder="无协作人员" renderValue={(selected) => selected.length ? <span className="inline-person-summary">{selected.slice(0, 2).map((person) => person.label).join("、")}{selected.length > 2 ? ` +${selected.length - 2}` : ""}</span> : "无协作人员"} /></td>
                   <td><InlineDateCell value={item.plannedStart} label="计划开始" reason={item.status === "not_started" ? undefined : { required: true, label: "调整原因", placeholder: "请说明计划开始日期调整原因" }} onSave={(plannedStart, reason) => saveWorkItem(item, { plannedStart, ...(reason ? { reason } : {}) })} /></td>
                   <td><InlineDateCell value={item.plannedEnd} label="计划完成" reason={item.status === "not_started" ? undefined : { required: true, label: "调整原因", placeholder: "请说明计划完成日期调整原因" }} onSave={(plannedEnd, reason) => saveWorkItem(item, { plannedEnd, ...(reason ? { reason } : {}) })} /></td>
                   <td><div className="work-inline-status"><span className={`work-item-status-badge badge-${item.status.replaceAll("_", "-")}`}>{requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}</span><b className={gap.finishVariance > 0 ? "danger-text" : "safe-text"}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}天</b><span className="work-item-inline-progress"><i><b style={{ width: `${item.progress}%` }} /></i>{item.progress}%</span>{item.blockedReason && <small title={item.blockedReason}>阻塞：{item.blockedReason}</small>}</div></td>

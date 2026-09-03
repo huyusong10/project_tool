@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   addBusinessDays, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
   deriveWorkItemStatus, ganttProgressDisplay, issueActionsByStatus, plannedDatesFromOffset, plannedStartFromDeadline, requirementActionsByStatus, riskLevelFromProgressGap, signedProgressVariance, workItemActionsByStatus, workItemPlannedProgress,
+  isOverdueByWorkday,
 } from '../src/shared/domain';
-import { isBusinessDay, workdayCalendarWarning } from '../src/shared/workday';
+import { isBusinessDay, isValidIsoDate, workdayCalendarWarning } from '../src/shared/workday';
+import { isoDateSchema, peopleConcurrencyInputSchema, reorderWorkItemsInputSchema } from '../src/shared/contracts';
 
 describe('工作日、排期与Gap规则', () => {
   it('排除周末并按偏移和工期生成计划', () => {
@@ -30,6 +32,22 @@ describe('工作日、排期与Gap规则', () => {
     expect(plannedStartFromDeadline('2026-02-24', [{ startOffsetDays: 0, durationDays: 2 }])).toBe('2026-02-14');
     expect(isBusinessDay('2027-02-15')).toBe(true);
     expect(workdayCalendarWarning('2027-02-15', '2027-02-15')).toContain('周一至周五');
+  });
+
+  it('拒绝不存在的自然日，并按工作日判断是否逾期', () => {
+    expect(isValidIsoDate('2026-02-28')).toBe(true);
+    expect(isValidIsoDate('2026-02-29')).toBe(false);
+    expect(isValidIsoDate('2026-13-01')).toBe(false);
+    expect(isoDateSchema.safeParse('2026-02-31').success).toBe(false);
+    expect(isBusinessDay('2026-02-31')).toBe(false);
+    expect(isOverdueByWorkday('2026-02-14', '2026-02-16')).toBe(false);
+    expect(isOverdueByWorkday('2026-02-14', '2026-02-24')).toBe(true);
+  });
+
+  it('限制人员并发查询跨度并拒绝重复排序ID', () => {
+    expect(peopleConcurrencyInputSchema.safeParse({ from: '2026-01-01', to: '2031-01-05' }).success).toBe(true);
+    expect(peopleConcurrencyInputSchema.safeParse({ from: '2026-01-01', to: '2031-01-06' }).success).toBe(false);
+    expect(reorderWorkItemsInputSchema.safeParse({ ids: ['a', 'a'], expectedVersion: 1 }).success).toBe(false);
   });
 
   it('计算并排计划和实际的完成及耗时偏差', () => {

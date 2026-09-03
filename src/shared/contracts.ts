@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { issueStatuses, priorities, projectRoles } from './domain';
 import { actionReasonCodes } from './action-items';
+import { isValidIsoDate } from './workday';
 
 export const idSchema = z.string().trim().min(1, 'ID不能为空');
-export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式应为YYYY-MM-DD');
+export const isoDateSchema = z.string().refine(isValidIsoDate, '日期必须是有效的YYYY-MM-DD日期');
 export const optionalDateSchema = z.union([isoDateSchema, z.literal(''), z.null()]).optional();
 export const optionalTextSchema = z.union([z.string().trim().max(10000), z.null()]).optional();
 export const optionalIdSchema = z.union([idSchema, z.literal(''), z.null()]).optional();
@@ -181,3 +182,32 @@ export const actionItemsInputSchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(100).optional(),
 });
+
+export const reorderWorkItemsInputSchema = z.object({
+  ids: z.array(idSchema).min(1, '工作项顺序不能为空').refine(
+    (ids) => new Set(ids).size === ids.length,
+    '工作项顺序不能包含重复ID',
+  ),
+  reason: z.string().trim().min(1).optional(),
+  expectedVersion: expectedVersionSchema,
+});
+
+export const peopleConcurrencyInputSchema = z.object({
+  projectId: idSchema.optional(),
+  personId: idSchema.optional(),
+  jobTitle: z.string().trim().optional(),
+  from: isoDateSchema.optional(),
+  to: isoDateSchema.optional(),
+}).refine((input) => !input.from || !input.to || input.from <= input.to, {
+  message: '开始日期不能晚于结束日期',
+}).refine((input) => {
+  if (!input.from || !input.to) return true;
+  const from = Date.parse(`${input.from}T00:00:00Z`);
+  const to = Date.parse(`${input.to}T00:00:00Z`);
+  return to - from <= 1830 * 24 * 60 * 60 * 1000;
+}, { message: '人员并发查询范围不能超过5年' });
+
+export const projectPeopleConcurrencyInputSchema = peopleConcurrencyInputSchema.refine(
+  (input) => Boolean(input.projectId),
+  { message: '项目ID不能为空', path: ['projectId'] },
+);

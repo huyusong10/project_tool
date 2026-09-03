@@ -8,6 +8,7 @@ import { config } from './config';
 import { hashPassword, normalizeUsername } from './auth';
 import { ensureBuiltInSampleProject, linkSampleProgressAuthors } from './sample-project';
 import { canonicalizeLabel, matchesPlainText, searchScore } from '../shared/search';
+import { businessDayDelta } from '../shared/domain';
 import * as schema from './schema';
 
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
@@ -19,6 +20,8 @@ sqlite.function('search_score', { deterministic: true }, (value: unknown, query:
   searchScore([String(value ?? '')], query));
 sqlite.function('search_plain_match', { deterministic: true }, (value: unknown, query: unknown) =>
   matchesPlainText([String(value ?? '')], query) ? 1 : 0);
+sqlite.function('business_day_delta', { deterministic: true }, (planned: unknown, actual: unknown) =>
+  businessDayDelta(planned == null ? null : String(planned), actual == null ? null : String(actual)));
 
 function latestMigrationTimestamp() {
   const journalPath = path.join(config.rootDir, 'drizzle', 'meta', '_journal.json');

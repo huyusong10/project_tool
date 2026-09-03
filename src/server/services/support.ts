@@ -2,6 +2,7 @@ import { sqlite } from '../database';
 import { fail } from '../errors';
 import { isTerminalRequirementStatus, isTerminalWorkItemStatus } from '../../shared/domain';
 import { canonicalizeContent, canonicalizeLabel, textSafetyIssue } from '../../shared/search';
+import { isValidIsoDate } from '../../shared/workday';
 
 export type JsonObject = Record<string, unknown>;
 
@@ -87,13 +88,13 @@ export function milestoneLabel(value: unknown) {
 
 export function requireDate(value: unknown, field: string) {
   const text = requireText(value, field);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) fail(`${field}格式不合法`);
+  if (!isValidIsoDate(text)) fail(`${field}格式不合法`);
   return text;
 }
 
 export function nullableDate(value: unknown, field: string) {
   const text = nullableText(value);
-  if (text && !/^\d{4}-\d{2}-\d{2}$/.test(text)) fail(`${field}格式不合法`);
+  if (text && !isValidIsoDate(text)) fail(`${field}格式不合法`);
   return text;
 }
 

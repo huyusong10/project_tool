@@ -57,6 +57,10 @@ export function isAdmin(actor: Pick<SessionActor, 'globalRole'>) {
   return actor.globalRole === 'admin';
 }
 
+function isActiveProject(projectId: string) {
+  return Boolean(sqlite.prepare('SELECT 1 FROM projects WHERE id=? AND deleted_at IS NULL').get(projectId));
+}
+
 export function accessibleProjectIds(actor: AuthorizationActor) {
   if (isAdmin(actor)) {
     return (sqlite.prepare('SELECT id FROM projects WHERE deleted_at IS NULL ORDER BY created_at DESC').all() as Array<{ id: string }>).map((item) => item.id);
@@ -68,6 +72,7 @@ export function accessibleProjectIds(actor: AuthorizationActor) {
 }
 
 export function projectRole(actor: AuthorizationActor, projectId: string): ProjectRole | null {
+  if (!isActiveProject(projectId)) return null;
   if (isAdmin(actor)) return 'manager';
   if (!actor.personId) return null;
   return (sqlite.prepare('SELECT project_role AS projectRole FROM project_people WHERE project_id=? AND person_id=?')
@@ -75,6 +80,7 @@ export function projectRole(actor: AuthorizationActor, projectId: string): Proje
 }
 
 export function canManageProject(actor: AuthorizationActor, projectId: string) {
+  if (!isActiveProject(projectId)) return false;
   if (isAdmin(actor)) return true;
   if (!actor.personId) return false;
   return Boolean(sqlite.prepare(`SELECT 1 FROM project_people WHERE project_id=? AND person_id=? AND project_role='manager'`)
@@ -82,6 +88,7 @@ export function canManageProject(actor: AuthorizationActor, projectId: string) {
 }
 
 export function canReadProject(actor: AuthorizationActor, projectId: string) {
+  if (!isActiveProject(projectId)) return false;
   if (isAdmin(actor)) return true;
   if (!actor.personId) return false;
   return Boolean(sqlite.prepare('SELECT 1 FROM project_people WHERE project_id=? AND person_id=?')

@@ -424,9 +424,14 @@ export function listTemplates(projectId?: string | null, includeDeleted = false)
   const templates = rows<any>(`SELECT id, project_id AS projectId, name, description, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt
     FROM work_item_templates ${projectId ? 'WHERE project_id=?' : includeDeleted ? '' : 'WHERE deleted_at IS NULL'}
     ${projectId && !includeDeleted ? 'AND deleted_at IS NULL' : ''} ORDER BY created_at`, ...(projectId ? [projectId] : []));
-  const items = rows<any>(`SELECT id, template_id AS templateId, title, sort_order AS sortOrder,
-    start_offset_days AS startOffsetDays, duration_days AS durationDays, milestone_label AS milestoneLabel, deleted_at AS deletedAt
-    FROM template_items ORDER BY sort_order`);
+  const itemWhere = [
+    ...(projectId ? ['t.project_id=?'] : []),
+    ...(!includeDeleted ? ['t.deleted_at IS NULL', 'i.deleted_at IS NULL'] : []),
+  ];
+  const items = rows<any>(`SELECT i.id, i.template_id AS templateId, i.title, i.sort_order AS sortOrder,
+    i.start_offset_days AS startOffsetDays, i.duration_days AS durationDays, i.milestone_label AS milestoneLabel, i.deleted_at AS deletedAt
+    FROM template_items i JOIN work_item_templates t ON t.id=i.template_id
+    ${itemWhere.length ? `WHERE ${itemWhere.join(' AND ')}` : ''} ORDER BY i.sort_order`, ...(projectId ? [projectId] : []));
   return templates.map((template) => ({
     ...template,
     items: items.filter((item) => item.templateId === template.id && (includeDeleted || !item.deletedAt)),
@@ -1073,6 +1078,11 @@ export function deleteWorkItem(id: string, input: JsonObject, actor: Actor) {
 export function reorderWorkItems(requirementId: string, ids: string[], actor: Actor, input: JsonObject = {}) {
   const requirement = getRequirement(requirementId); assertExpectedVersion(input, requirement.version);
   if (['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status)) fail('当前需求已锁定，不能调整工作项顺序', 'TERMINAL_LOCKED');
+  const currentIds = requirement.workItems!.map((item) => item.id);
+  if (ids.length !== currentIds.length || new Set(ids).size !== ids.length
+    || ids.some((id) => !currentIds.includes(id))) {
+    fail('工作项顺序必须包含当前需求的全部工作项，且不能重复');
+  }
   if (requirement.workItems!.some((item) => item.status !== 'not_started') && !nullableText(input.reason)) fail('需求已开始执行，调整顺序时必须填写变更原因');
   const now = nowIso();
   const tx = sqlite.transaction(() => { ids.forEach((id, index) => sqlite.prepare('UPDATE work_items SET sort_order=?, version=version+1, updated_at=? WHERE id=? AND requirement_id=?').run(index, now, id, requirementId)); syncStoredRequirementState(requirementId, now); });

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sqlite } from './database';
 import { hashPassword, normalizeUsername, verifyPassword, type Actor } from './auth';
-import { addCalendarDays, deriveWorkItemStatus, todayIso } from '../shared/domain';
+import { addCalendarDays, deriveWorkItemStatus, isOverdueByWorkday, todayIso } from '../shared/domain';
 import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
 import { isBusinessDay } from '../shared/workday';
 import { listRequirements } from './services/requirements';
@@ -85,11 +85,19 @@ export function listAccounts() {
   const roles = sqlite.prepare(`SELECT pp.person_id AS personId, pp.project_id AS projectId, pr.name AS projectName
     FROM project_people pp JOIN projects pr ON pr.id=pp.project_id
     WHERE pp.project_role='manager' AND pr.deleted_at IS NULL ORDER BY pr.name`).all() as any[];
-  const assignmentSummary = sqlite.prepare(`SELECT
-    (SELECT COUNT(*) FROM requirements WHERE owner_id=? AND deleted_at IS NULL AND status NOT IN ('completed','cancelled')) AS requirements,
-    (SELECT COUNT(DISTINCT w.id) FROM work_items w LEFT JOIN work_item_collaborators c ON c.work_item_id=w.id AND c.person_id=?
-      JOIN requirements r ON r.id=w.requirement_id WHERE r.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled') AND (w.owner_id=? OR c.person_id IS NOT NULL)) AS workItems,
-    (SELECT COUNT(*) FROM issues WHERE owner_id=? AND status<>'resolved') AS issues`);
+  const assignments = sqlite.prepare(`SELECT p.id AS personId,
+    (SELECT COUNT(*) FROM requirements r JOIN projects pr ON pr.id=r.project_id
+      WHERE r.owner_id=p.id AND r.deleted_at IS NULL AND pr.deleted_at IS NULL AND r.status NOT IN ('completed','cancelled')) AS requirements,
+    (SELECT COUNT(DISTINCT w.id) FROM work_items w LEFT JOIN work_item_collaborators c ON c.work_item_id=w.id AND c.person_id=p.id
+      JOIN requirements r ON r.id=w.requirement_id JOIN projects pr ON pr.id=r.project_id
+      WHERE r.deleted_at IS NULL AND pr.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled')
+        AND (w.owner_id=p.id OR c.person_id IS NOT NULL)) AS workItems,
+    (SELECT COUNT(*) FROM issues i JOIN projects pr ON pr.id=i.project_id
+      WHERE i.owner_id=p.id AND pr.deleted_at IS NULL AND i.status<>'resolved') AS issues
+    FROM people p`).all() as Array<{ personId: string; requirements: number; workItems: number; issues: number }>;
+  const assignmentsByPerson = new Map(assignments.map(({ personId, requirements, workItems, issues }) => [
+    personId, { requirements: Number(requirements), workItems: Number(workItems), issues: Number(issues) },
+  ]));
   return accounts.map((account) => {
     const managedProjects = roles.filter((role) => role.personId === account.personId)
       .map(({ projectId, projectName }) => ({ id: projectId, name: projectName }));
@@ -100,7 +108,7 @@ export function listAccounts() {
       role: account.globalRole === 'admin' ? 'admin' : managedProjects.length ? 'project_manager' : 'user',
       managedProjects,
       activeAssignments: account.personId
-        ? assignmentSummary.get(account.personId, account.personId, account.personId, account.personId)
+        ? assignmentsByPerson.get(account.personId) || { requirements: 0, workItems: 0, issues: 0 }
         : { requirements: 0, workItems: 0, issues: 0 },
     };
   });
@@ -237,7 +245,7 @@ export function getMyWork(accountId: string) {
   const today = todayIso();
   const items = rawItems.map((item) => {
     const status = deriveWorkItemStatus(item);
-    return { ...item, status, overdue: Boolean(item.plannedEnd && item.plannedEnd < today && !['completed', 'cancelled'].includes(status)) };
+    return { ...item, status, overdue: !['completed', 'cancelled'].includes(status) && isOverdueByWorkday(item.plannedEnd, today) };
   });
   const summary = {
     total: items.filter((item) => item.status !== 'cancelled').length,
@@ -247,7 +255,8 @@ export function getMyWork(accountId: string) {
     completed: items.filter((item) => item.status === 'completed').length,
     overdue: items.filter((item) => item.overdue).length,
   };
-  const accessibleProjects = new Set((sqlite.prepare('SELECT project_id AS projectId FROM project_people WHERE person_id=?')
+  const accessibleProjects = new Set((sqlite.prepare(`SELECT pp.project_id AS projectId FROM project_people pp
+    JOIN projects p ON p.id=pp.project_id WHERE pp.person_id=? AND p.deleted_at IS NULL`)
     .all(account.personId) as Array<{ projectId: string }>).map((item) => item.projectId));
   const ownedRequirements = listRequirements({ ownerId: account.personId })
     .filter((requirement) => accessibleProjects.has(requirement.projectId));
@@ -256,7 +265,8 @@ export function getMyWork(accountId: string) {
   if (requirementIds.length) {
     const placeholders = requirementIds.map(() => '?').join(',');
     const counts = sqlite.prepare(`SELECT requirement_id AS requirementId, COUNT(*) AS count FROM issues
-      WHERE requirement_id IN (${placeholders}) AND status<>'resolved' AND (owner_id IS NULL OR due_date<?)
+      WHERE requirement_id IN (${placeholders}) AND status<>'resolved'
+        AND (owner_id IS NULL OR business_day_delta(due_date, ?)>0)
       GROUP BY requirement_id`).all(...requirementIds, today) as Array<{ requirementId: string; count: number }>;
     counts.forEach((item) => issueActionCounts.set(item.requirementId, Number(item.count)));
   }

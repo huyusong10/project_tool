@@ -28,6 +28,8 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
     const handleKeyDown = (event: KeyboardEvent) => {
       const card = cardRef.current;
       if (!card) return;
+      const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'));
+      if (dialogs.at(-1) !== card) return;
       if (event.key === 'Escape' && closableRef.current) {
         event.preventDefault();
         closeRef.current();
@@ -107,10 +109,26 @@ export function ConfirmDialog({
 
 export function ResultDialog({ title, message, value, error = false, onClose }: { title: string; message: ReactNode; value?: string; error?: boolean; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const copyValue = async () => {
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value || '');
+      else {
+        const input = document.createElement('textarea');
+        input.value = value || ''; input.style.position = 'fixed'; input.style.opacity = '0';
+        document.body.appendChild(input);
+        try {
+          input.select();
+          if (!document.execCommand('copy')) throw new Error('copy failed');
+        } finally { input.remove(); }
+      }
+      setCopied(true); setCopyFailed(false);
+    } catch { setCopyFailed(true); }
+  };
   return <Modal title={title} width={500} onClose={onClose}>
     <div className={`result-dialog${error ? ' is-error' : ''}`}>
       <div className="result-dialog-message">{error ? <AlertTriangle size={24} /> : <CheckCircle2 size={24} />}<div>{message}</div></div>
-      {value && <div className="result-dialog-value"><code>{value}</code><button type="button" className="icon-button" title="复制" aria-label="复制结果" onClick={() => void navigator.clipboard.writeText(value).then(() => setCopied(true))}><Copy size={16} /></button>{copied && <span>已复制</span>}</div>}
+      {value && <div className="result-dialog-value"><code>{value}</code><button type="button" className="icon-button" title="复制" aria-label="复制结果" onClick={() => void copyValue()}><Copy size={16} /></button>{copied && <span>已复制</span>}{copyFailed && <span>复制失败，请手动选择</span>}</div>}
       <div className="form-actions"><button type="button" autoFocus className="primary-button" onClick={onClose}>知道了</button></div>
     </div>
   </Modal>;

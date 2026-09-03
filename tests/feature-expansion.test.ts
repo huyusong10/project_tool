@@ -252,5 +252,10 @@ describe('功能扩充契约', () => {
       isError: true,
       structuredContent: { statusCode: 403, error: { code: restDenied.json().code } },
     });
+    const mcpInvalid = await callMcp(token, 7, 'list_action_items', { projectId, reason: 'unknown' });
+    expect(mcpInvalid.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
   });
 });

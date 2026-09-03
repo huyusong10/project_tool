@@ -41,11 +41,13 @@ import {
   issueUpdateParamsSchema,
   personInputSchema,
   progressInputSchema,
+  peopleConcurrencyInputSchema,
   projectInputSchema,
   projectMemberInputSchema,
   projectParamsSchema,
   projectPersonParamsSchema,
   reasonCommandSchema,
+  reorderWorkItemsInputSchema,
   rescheduleRequirementInputSchema,
   reselectRequirementTemplateInputSchema,
   templateInputSchema,
@@ -172,7 +174,8 @@ export function registerApiRoutes(app: FastifyInstance) {
   app.post('/api/projects/:id/restore', { preHandler: requireAdmin }, async (request) => restoreProject(idOf(request), actorFromRequest(request)));
   app.get('/api/dashboard', { preHandler: requireReady }, async (request) => {
     const projectId = String(query(request).projectId || ''); const actor = actorFromRequest(request); assertProjectReadable(actor, projectId);
-    return { ...getDashboard(projectId), actions: listActionItems({ projectId, page: 1, pageSize: 5 }, actor) };
+    const dashboard = getDashboard(projectId);
+    return { ...dashboard, actions: listActionItems({ projectId, page: 1, pageSize: 5 }, actor, dashboard.requirements) };
   });
   app.get('/api/action-items', { preHandler: requireReady }, async (request) => {
     const input = parsedQuery(request, actionItemsInputSchema); const actor = actorFromRequest(request);
@@ -260,7 +263,7 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
   app.post('/api/requirements/:id/reorder-work-items', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertRequirementOwnerOrManager(actor, id);
-    const input = body(request); return reorderWorkItems(id, input.ids as string[], actor, input);
+    const input = parsedBody(request, reorderWorkItemsInputSchema); return reorderWorkItems(id, input.ids, actor, input);
   });
   app.post('/api/requirements/:id/progress', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const input = parsedBody(request, progressInputSchema); const actor = actorFromRequest(request);
@@ -415,7 +418,7 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/analytics/people-concurrency', { preHandler: requireReady }, async (request) => {
-    const input = query(request); const actor = actorFromRequest(request); const projectId = String(input.projectId || '');
+    const input = parsedQuery(request, peopleConcurrencyInputSchema); const actor = actorFromRequest(request); const projectId = input.projectId || '';
     if (projectId) assertProjectReadable(actor, projectId); else assertAdmin(actor);
     return getPeopleConcurrency({ ...input, projectId: projectId || undefined, includeExternalAggregate: Boolean(projectId && canManageProject(actor, projectId)) });
   });

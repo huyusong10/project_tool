@@ -29,7 +29,7 @@ export function ActionCenterPage() {
   if (severity) query.set('severity', severity);
   if (reason) query.set('reason', reason);
   if (ownerId) query.set('ownerId', ownerId);
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['action-items', selectedProjectId, severity, reason, ownerId, page],
     queryFn: () => api<ActionItemsPage>(`/api/action-items?${query.toString()}`),
     enabled: Boolean(selectedProjectId),
@@ -37,6 +37,7 @@ export function ActionCenterPage() {
   return <>
     <PageHeader title="异常行动中心" />
     <div className="page-content action-center-page">
+      {error ? <section className="panel action-center-list"><EmptyState title="行动项加载失败" detail={error.message} action={<button className="ghost-button" onClick={() => void refetch()}>重新加载</button>} /></section> : <>
       <section className="action-summary">
         <article><ListTodo size={19} /><span>全部行动</span><strong>{data?.summary.total || 0}</strong></article>
         <article className="is-high"><AlertTriangle size={19} /><span>高优先级</span><strong>{data?.summary.high || 0}</strong></article>
@@ -58,10 +59,11 @@ export function ActionCenterPage() {
             <div className="action-item-meta"><span>{item.ownerName || '未分派'}</span><span>{item.dueDate || '无截止日期'}{item.overdueWorkdays ? ` · 逾期${item.overdueWorkdays}个工作日` : ''}</span></div>
             <ArrowRight size={16} />
           </button>)}
-          {!data?.items.length && !isLoading && <EmptyState title="当前没有待处理事项" detail="筛选范围内的需求、工作项和问题均无客观异常。" />}
+          {!error && !data?.items.length && !isLoading && <EmptyState title="当前没有待处理事项" detail="筛选范围内的需求、工作项和问题均无客观异常。" />}
         </div>
         {(data?.pages || 0) > 1 && <footer className="pagination"><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</button><span>{page} / {data?.pages}</span><button disabled={page >= (data?.pages || 0)} onClick={() => setPage((value) => value + 1)}>下一页</button></footer>}
       </section>
+      </>}
     </div>
   </>;
 }

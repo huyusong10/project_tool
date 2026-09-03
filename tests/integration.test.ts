@@ -117,6 +117,11 @@ describe('自动化项目管理API', () => {
     expect(forced.json()).toMatchObject({ ok: true, forced: true, dependencies: { requirements: 1, issues: 1 } });
     expect((await app.inject({ method: 'GET', url: '/api/session', headers: { cookie: archiveCookie } })).json()).toMatchObject({ authenticated: true, username: 'admin' });
     expect((await app.inject({ method: 'GET', url: '/api/projects', headers: { cookie: archiveCookie } })).json().some((item: { id: string }) => item.id === archiveProjectId)).toBe(false);
+    const archivedWrite = await app.inject({ method: 'PATCH', url: `/api/requirements/${requirement.json().id}`, headers: { cookie: archiveCookie }, payload: {
+      title: '不应写入的标题', expectedVersion: requirement.json().version,
+    } });
+    expect(archivedWrite.statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: `/api/action-items?projectId=${archiveProjectId}`, headers: { cookie: archiveCookie } })).statusCode).toBe(403);
     expect((await app.inject({ method: 'DELETE', url: `/api/archives/projects/${archiveProjectId}`, headers: { cookie: archiveCookie }, payload: { confirmName: '强制归档验证项目' } })).statusCode).toBe(200);
   });
 
@@ -137,6 +142,16 @@ describe('自动化项目管理API', () => {
     expect((await app.inject({ method: 'DELETE', url: `/api/projects/${projectId}/people/${collaboratorPersonId}`, headers: { cookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: `/api/people?projectId=${projectId}`, headers: { cookie } })).json().some((item: { id: string }) => item.id === collaboratorPersonId)).toBe(false);
     expect((await app.inject({ method: 'POST', url: `/api/projects/${projectId}/people/${collaboratorPersonId}`, headers: { cookie } })).statusCode).toBe(200);
+  });
+
+  it('拒绝非法日期和超长人员并发范围', async () => {
+    const invalidRequirement = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie }, payload: {
+      projectId, title: '非法日期需求', plannedStart: '2026-02-31', templateId,
+    } });
+    expect(invalidRequirement.statusCode).toBe(400);
+    expect(invalidRequirement.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const concurrency = await app.inject({ method: 'GET', url: `/api/analytics/people-concurrency?projectId=${projectId}&from=2026-01-01&to=2031-01-06`, headers: { cookie } });
+    expect(concurrency.statusCode).toBe(400);
   });
 
   it('公共问题支持看板、筛选搜索、进展和闭环', async () => {
@@ -314,6 +329,25 @@ describe('自动化项目管理API', () => {
     expect(blocked.json().status).toBe('blocked');
     expect((await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie } })).json().riskLevel).toBe('high');
     expect((await app.inject({ method: 'POST', url: `/api/work-items/${second.id}/unblock`, headers: { cookie }, payload: { expectedVersion: blocked.json().version } })).json().status).toBe('in_progress');
+  });
+
+  it('工作项排序必须提交完整且唯一的同需求ID集合', async () => {
+    const before = (await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie } })).json();
+    const original = before.workItems.map((item: { id: string; sortOrder: number }) => ({ id: item.id, sortOrder: item.sortOrder }));
+    const missing = await app.inject({ method: 'POST', url: `/api/requirements/${requirementId}/reorder-work-items`, headers: { cookie }, payload: {
+      expectedVersion: before.version,
+    } });
+    expect(missing.statusCode).toBe(400);
+    const partial = await app.inject({ method: 'POST', url: `/api/requirements/${requirementId}/reorder-work-items`, headers: { cookie }, payload: {
+      ids: [before.workItems[0].id], reason: '验证不完整排序', expectedVersion: before.version,
+    } });
+    expect(partial.statusCode).toBe(400);
+    const duplicate = await app.inject({ method: 'POST', url: `/api/requirements/${requirementId}/reorder-work-items`, headers: { cookie }, payload: {
+      ids: before.workItems.map(() => before.workItems[0].id), reason: '验证重复排序', expectedVersion: before.version,
+    } });
+    expect(duplicate.statusCode).toBe(400);
+    const after = (await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie } })).json();
+    expect(after.workItems.map((item: { id: string; sortOrder: number }) => ({ id: item.id, sortOrder: item.sortOrder }))).toEqual(original);
   });
 
   it('人员自动创建账号、首次改密并按本人和项目角色授权', async () => {

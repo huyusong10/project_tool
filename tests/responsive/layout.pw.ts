@@ -197,7 +197,7 @@ test("lightweight requirements and the action center remain usable", async ({ pa
   await expect(dialog.getByLabel("需求负责人（可稍后指定）")).toBeVisible();
   await expect(dialog.getByLabel("流程设计")).toBeHidden();
   await expect(dialog.getByLabel("需求背景")).toBeHidden();
-  await dialog.getByRole("button", { name: /立即规划/ }).click();
+  await dialog.getByRole("button", { name: /流程与排期/ }).click();
   await expect(dialog.getByLabel("流程设计")).toBeVisible();
   await dialog.getByRole("button", { name: /补充信息/ }).click();
   await expect(dialog.getByLabel("需求背景")).toBeVisible();

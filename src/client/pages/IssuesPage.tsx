@@ -205,10 +205,14 @@ function IssueForm({
   if (reporter && !reporterOptions.some((option) => option.value === reporter)) {
     reporterOptions.push({ value: reporter, label: reporter, description: issue?.reporter === reporter ? "历史记录" : "当前登录账号" });
   }
+  const eligiblePeople = people.filter((person) => person.active && person.projectRole !== "viewer");
   const ownerOptions: SearchSelectOption[] = [
     { value: "", label: "未分配" },
-    ...people.map((person) => ({ value: person.id, label: person.name })),
+    ...eligiblePeople.map((person) => ({ value: person.id, label: person.name })),
   ];
+  if (issue?.ownerId && !ownerOptions.some((option) => option.value === issue.ownerId)) {
+    ownerOptions.push({ value: issue.ownerId, label: issue.ownerName || "历史负责人", description: "历史负责人" });
+  }
   const mutation = useMutation({
     mutationFn: (value: object) => api<Issue>(issue ? `/api/issues/${issue.id}` : "/api/issues", {
       method: issue ? "PATCH" : "POST",
@@ -227,7 +231,10 @@ function IssueForm({
     mutation.mutate({
       ...data,
       projectId,
-      ...(issue ? { expectedVersion: issue.version, ownerId: canManage ? ownerId : issue.ownerId } : { ownerId: null }),
+      ...(issue ? {
+        expectedVersion: issue.version,
+        ...(canManage && ownerId !== (issue.ownerId || "") ? { ownerId: ownerId || null } : {}),
+      } : { ownerId: null }),
     });
   }}>
     <FieldShell label="问题标题" full><input name="title" required autoFocus={autoFocusTitle} defaultValue={issue?.title || ""} placeholder="用一句话说明要跟踪的问题" /></FieldShell>
@@ -426,6 +433,7 @@ export function IssuesPage() {
     setPage(1);
   }, [linkedQuery]);
   const { data: people = [] } = useQuery({ queryKey: ["people", selectedProjectId], queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`), enabled: Boolean(selectedProjectId) });
+  const eligiblePeople = people.filter((person) => person.active && person.projectRole !== "viewer");
   const { data: requirements = [] } = useQuery({ queryKey: ["requirements", selectedProjectId], queryFn: () => api<Requirement[]>(`/api/requirements?projectId=${encodeURIComponent(selectedProjectId)}`), enabled: Boolean(selectedProjectId) });
   const canEdit = canManageProject(session, selectedProjectId);
   const canContribute = session.authenticated && !session.mustChangePassword
@@ -532,7 +540,7 @@ export function IssuesPage() {
           <AdaptiveDataCell column="status" className="issue-data-status"><DataCell primary={<IssueStatusControl issue={issue} canManage={canEdit} compact />} /></AdaptiveDataCell>
           <AdaptiveDataCell column="progress" className="issue-data-progress"><DataCell primary={<span className="issue-table-progress"><i><b style={{ width: `${issue.progress}%` }} /></i>{issue.progress}%</span>} /></AdaptiveDataCell>
           <AdaptiveDataCell column="priority" className="issue-data-priority"><DataCell primary={canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.priority} label="问题优先级" options={priorityOptions} displayMode="badge" onSave={(priority) => saveIssue(issue, { priority })} renderValue={(value) => <span className={`priority-badge priority-${value.toLowerCase()}`}>{priorityLabels[value as keyof typeof priorityLabels] || value}</span>} /> : <span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>} /></AdaptiveDataCell>
-          <AdaptiveDataCell column="owner" className="issue-data-owner"><DataCell primary={canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.ownerId} label="问题负责人" options={[{ value: "", label: "未分配" }, ...people.map((person) => ({ value: person.id, label: person.name }))]} onSave={(ownerId) => saveIssue(issue, { ownerId: ownerId || null })} placeholder="未分配" renderValue={(_value, selected) => selected?.value ? selected.label : <span className="muted-text">未分配</span>} /> : issue.ownerName || <span className="muted-text">未分配</span>} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="owner" className="issue-data-owner"><DataCell primary={canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.ownerId} label="问题负责人" options={[{ value: "", label: "未分配" }, ...eligiblePeople.map((person) => ({ value: person.id, label: person.name })), ...(issue.ownerId && !eligiblePeople.some((person) => person.id === issue.ownerId) ? [{ value: issue.ownerId, label: issue.ownerName || "历史负责人", description: "历史负责人" }] : [])]} onSave={(ownerId) => saveIssue(issue, { ownerId: ownerId || null })} placeholder="未分配" renderValue={(_value, selected) => selected?.value ? selected.label : <span className="muted-text">未分配</span>} /> : issue.ownerName || <span className="muted-text">未分配</span>} /></AdaptiveDataCell>
           <AdaptiveDataCell column="dueDate" className={`issue-data-due${issue.overdue ? " danger-text" : ""}`}><DataCell primary={canEdit && !["deferred", "resolved"].includes(issue.status) ? <InlineDateCell value={issue.dueDate} label="目标日期" onSave={(dueDate) => saveIssue(issue, { dueDate })} /> : issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"} secondary={issue.overdue ? "已逾期" : undefined} /></AdaptiveDataCell>
           <AdaptiveDataCell column="latest" className="issue-data-latest"><button type="button" className="issue-latest-update-button" onClick={() => openIssue(issue.id, "updates")}><DataCell primary={<span className="issue-latest-update" title={issue.latestUpdate || undefined}>{issue.latestUpdate || "暂无进展"}</span>} secondary={issue.latestUpdateAt ? shortDateTime(issue.latestUpdateAt) : "查看进展"} /></button></AdaptiveDataCell>
         </AdaptiveDataRow>)}

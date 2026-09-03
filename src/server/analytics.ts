@@ -23,6 +23,7 @@ import {
 import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
 import {
   addCalendarDays,
+  businessDayDelta,
   businessDaysInclusive,
   priorityLabels,
   requirementStatusLabels,
@@ -30,6 +31,7 @@ import {
   todayIso,
 } from '../shared/domain';
 import { fail } from './errors';
+import { isValidIsoDate } from '../shared/workday';
 
 type GenericRecord = Record<string, any>;
 type AnalyticsContext = {
@@ -127,7 +129,7 @@ function validateRange(value: unknown): AnalyticsRange {
   if (!value || typeof value !== 'object') validationError('分析时间范围不能为空');
   const range = value as Record<string, unknown>;
   const from = String(range.from || ''); const to = String(range.to || '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) validationError('分析时间范围不合法');
+  if (!isValidIsoDate(from) || !isValidIsoDate(to) || from > to) validationError('分析时间范围不合法');
   if (businessDaysInclusive(from, to) > 1320) validationError('分析时间范围不能超过5年');
   return { from, to };
 }
@@ -288,7 +290,7 @@ function eligibleRecords(dataset: string, measure: string, records: GenericRecor
     if (measure === 'active_count') result = result.filter((record) => record.status !== 'resolved');
     if (measure === 'resolved_count' || measure === 'average_resolution_days') result = result.filter((record) => Boolean(record.resolvedAt));
     if (measure === 'closure_rate') result = result.filter((record) => record.status === 'resolved' || Boolean(record.discoveredAt));
-    if (measure === 'overdue_count') result = result.filter((record) => record.status !== 'resolved' && record.dueDate && record.dueDate < todayIso());
+    if (measure === 'overdue_count') result = result.filter((record) => record.status !== 'resolved' && businessDayDelta(record.dueDate, todayIso()) > 0);
   }
   return result;
 }
@@ -300,11 +302,11 @@ function round(value: number) {
 function measureValue(dataset: string, measure: string, records: GenericRecord[]) {
   if (!records.length) return 0;
   if (dataset === 'requirements') {
-    if (measure === 'on_time_rate') return round(records.filter((record) => record.completedAt <= record.plannedEnd).length / records.length * 100);
+    if (measure === 'on_time_rate') return round(records.filter((record) => businessDayDelta(record.plannedEnd, record.completedAt) <= 0).length / records.length * 100);
     if (measure === 'finish_variance') return round(records.reduce((sum, record) => sum + Number(record.finishVariance || 0), 0) / records.length);
   }
   if (dataset === 'work_items') {
-    if (measure === 'on_time_rate') return round(records.filter((record) => record.actualEnd <= record.plannedEnd).length / records.length * 100);
+    if (measure === 'on_time_rate') return round(records.filter((record) => businessDayDelta(record.plannedEnd, record.actualEnd) <= 0).length / records.length * 100);
     if (measure === 'average_cycle_days') return round(records.reduce((sum, record) => sum + Math.max(1, businessDaysInclusive(record.actualStart, record.actualEnd)), 0) / records.length);
   }
   if (dataset === 'issues') {

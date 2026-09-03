@@ -29,12 +29,14 @@ import {
   issueListInputSchema,
   issueUpdateInputSchema,
   optionalDateSchema,
+  projectPeopleConcurrencyInputSchema,
   personInputSchema,
   progressInputSchema,
   projectInputSchema,
   rescheduleRequirementInputSchema,
   reselectRequirementTemplateInputSchema,
   reasonCommandSchema,
+  reorderWorkItemsInputSchema,
   templateInputSchema,
   templateItemSchema,
   updateRequirementInputSchema,
@@ -49,11 +51,14 @@ const json = (value: unknown) => ({
 
 function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown) => void) {
   const server = new McpServer({ name: 'project-manage', version: '1.2.0' });
+  const inputSchemas = new Map<string, StandardSchemaWithJSON>();
   const registerTool = <InputArgs extends StandardSchemaWithJSON>(
     name: string,
     config: { description?: string; inputSchema: InputArgs },
     callback: ToolCallback<InputArgs>,
-  ) => server.registerTool(name, config, (async (...args: Parameters<ToolCallback<InputArgs>>) => {
+  ) => {
+    inputSchemas.set(name, config.inputSchema);
+    return server.registerTool(name, config, (async (...args: Parameters<ToolCallback<InputArgs>>) => {
     try {
       return await (callback as (...values: unknown[]) => unknown)(...(args as unknown[]));
     } catch (error) {
@@ -65,10 +70,12 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
         isError: true,
       };
     }
-  }) as ToolCallback<InputArgs>);
+    }) as ToolCallback<InputArgs>);
+  };
 
   registerTool('dashboard_summary', { description: '查询项目看板、自动风险和图表', inputSchema: z.object({ projectId: z.string() }) }, async ({ projectId }) => {
-    assertProjectReadable(actor, projectId); return json({ ...getDashboard(projectId), actions: listActionItems({ projectId, pageSize: 5 }, actor) });
+    assertProjectReadable(actor, projectId); const dashboard = getDashboard(projectId);
+    return json({ ...dashboard, actions: listActionItems({ projectId, pageSize: 5 }, actor, dashboard.requirements) });
   });
   registerTool('get_my_work', { description: '查询当前账号负责的需求、工作项和近期进展', inputSchema: z.object({}) }, async () => json(getMyWork(actor.accountId)));
   registerTool('list_action_items', { description: '查询当前账号可见的客观异常与待处理事项', inputSchema: actionItemsInputSchema }, async (input) => {
@@ -78,12 +85,13 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('query_analytics', { description: '按项目查询业务分析指标', inputSchema: z.object({
     projectId: z.string(), range: z.object({ from: z.string(), to: z.string() }), panels: z.array(z.record(z.string(), z.unknown())).min(1),
   }) }, async (input) => { assertProjectReadable(actor, input.projectId); return json(queryAnalytics(input)); });
-  registerTool('people_concurrency', { description: '查询人员当前及未来并发度', inputSchema: z.object({ projectId: z.string(), personId: z.string().optional(), jobTitle: z.string().optional(), from: optionalDateSchema, to: optionalDateSchema }) }, async (input) => {
-    assertProjectReadable(actor, input.projectId); return json(getPeopleConcurrency({
+  registerTool('people_concurrency', { description: '查询人员当前及未来并发度', inputSchema: projectPeopleConcurrencyInputSchema }, async (input) => {
+    const projectId = input.projectId!;
+    assertProjectReadable(actor, projectId); return json(getPeopleConcurrency({
       ...input,
       from: input.from || undefined,
       to: input.to || undefined,
-      includeExternalAggregate: canManageProject(actor, input.projectId),
+      includeExternalAggregate: canManageProject(actor, projectId),
     }));
   });
 
@@ -162,13 +170,17 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('reopen_work_item', { description: '项目经理重开已完成或已取消工作项', inputSchema: z.object({ id: z.string(), reason: z.string().min(1), progress: z.number().int().min(0).max(99).optional(), expectedVersion: z.number().int().min(1) }) }, async ({ id, ...input }) => {
     assertWorkItemRequirementOwnerOrManager(actor, id); return json(reopenWorkItem(id, input, actor));
   });
-  registerTool('correct_work_item', { description: '项目经理追加工作项纠错记录', inputSchema: z.object({ id: z.string(), reason: z.string().min(1), progress: z.number().int().min(0).max(100).optional(), actualStart: optionalDateSchema, actualEnd: optionalDateSchema, expectedVersion: z.number().int().min(1) }) }, async ({ id, ...input }) => {
+  registerTool('correct_work_item', { description: '项目经理追加工作项纠错记录', inputSchema: z.object({
+    id: z.string(), reason: z.string().min(1), title: z.string().min(1).optional(),
+    progress: z.number().int().min(0).max(100).optional(), actualStart: optionalDateSchema,
+    actualEnd: optionalDateSchema, supersedesId: z.string().nullable().optional(), expectedVersion: z.number().int().min(1),
+  }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在'); return json(correctWorkItem(id, input, actor));
   });
   registerTool('delete_work_item', { description: '删除未开始且无历史的工作项', inputSchema: expectedVersionInputSchema.extend({ id: z.string() }) }, async ({ id, ...input }) => {
     assertWorkItemRequirementOwnerOrManager(actor, id); return json(deleteWorkItem(id, input, actor));
   });
-  registerTool('reorder_work_items', { description: '调整工作项顺序', inputSchema: z.object({ requirementId: z.string(), ids: z.array(z.string()), reason: z.string().optional(), expectedVersion: z.number().int().min(1) }) }, async ({ requirementId, ids, ...input }) => {
+  registerTool('reorder_work_items', { description: '调整工作项顺序', inputSchema: reorderWorkItemsInputSchema.extend({ requirementId: z.string() }) }, async ({ requirementId, ids, ...input }) => {
     assertRequirementOwnerOrManager(actor, requirementId); return json(reorderWorkItems(requirementId, ids, actor, input));
   });
 
@@ -217,7 +229,12 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     ['resolve_issue', '确认问题解决', resolveIssue], ['reopen_issue', '重开已解决问题', reopenIssue],
     ['correct_issue', '追加问题纠错记录', correctIssue],
   ] as const) {
-    registerTool(name, { description, inputSchema: z.object({ id: z.string(), reason: z.string().optional(), content: z.string().optional(), progress: z.number().int().min(0).max(100).optional(), expectedVersion: z.number().int().min(1) }) }, async ({ id, ...input }) => {
+    registerTool(name, { description, inputSchema: z.object({
+      id: z.string(), reason: z.string().optional(), content: z.string().optional(),
+      title: z.string().min(1).optional(), impact: z.string().nullable().optional(),
+      resolvedAt: optionalDateSchema, supersedesId: z.string().nullable().optional(),
+      progress: z.number().int().min(0).max(100).optional(), expectedVersion: z.number().int().min(1),
+    }) }, async ({ id, ...input }) => {
       assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在'); return json(handler(id, input, actor));
     });
   }
@@ -277,8 +294,9 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('restore_person', { description: '恢复平台人员', inputSchema: z.object({ id: z.string() }) }, async ({ id }) => {
     assertAdmin(actor); return json(restorePerson(id, actor));
   });
-  registerTool('list_archives', { description: '查询全部归档', inputSchema: z.object({}) }, async () => {
-    assertAdmin(actor); return json(listArchives());
+  registerTool('list_archives', { description: '查询有权限的归档；项目经理需指定项目', inputSchema: z.object({ projectId: z.string().optional() }) }, async ({ projectId }) => {
+    if (!projectId) { assertAdmin(actor); return json(listArchives()); }
+    assertProjectManager(actor, projectId); return json(listArchives(projectId));
   });
   registerTool('permanently_delete_archive', {
     description: '永久删除已归档的项目、需求、人员或模板；该操作不可恢复',
@@ -287,7 +305,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('list_audit_logs', { description: '查询审计日志', inputSchema: z.object({ limit: z.number().int().min(1).max(500).optional() }) }, async ({ limit }) => {
     assertAdmin(actor); return json(listAudit(limit));
   });
-  return server;
+  return { server, inputSchemas };
 }
 
 export function registerMcpRoute(app: FastifyInstance, authenticate: (header?: string) => AuthorizationActor | null) {
@@ -299,7 +317,23 @@ export function registerMcpRoute(app: FastifyInstance, authenticate: (header?: s
       const actor = token ? authenticate(token) : null;
       if (!actor) return reply.code(401).header('WWW-Authenticate', 'Bearer').send({ error: 'MCP Token无效或已过期' });
       if (request.method !== 'POST') return reply.code(405).send({ error: '当前MCP端点使用无状态POST模式' });
-      const server = createServer(actor, (error) => request.log.error({ err: error }, 'Unhandled MCP tool error'));
+      const { server, inputSchemas } = createServer(actor, (error) => request.log.error({ err: error }, 'Unhandled MCP tool error'));
+      const envelope = request.body as { jsonrpc?: string; id?: unknown; method?: string; params?: { name?: string; arguments?: unknown } } | null;
+      if (envelope?.method === 'tools/call' && envelope.params?.name) {
+        const schema = inputSchemas.get(envelope.params.name);
+        const validation = schema ? await schema['~standard'].validate(envelope.params.arguments ?? {}) : null;
+        if (validation?.issues?.length) {
+          const payload = { error: validation.issues[0].message || '输入参数不合法', code: 'VALIDATION_ERROR' };
+          return reply.send({
+            jsonrpc: envelope.jsonrpc || '2.0', id: envelope.id,
+            result: {
+              content: [{ type: 'text', text: JSON.stringify(payload) }],
+              structuredContent: { error: payload, statusCode: 400 },
+              isError: true,
+            },
+          });
+        }
+      }
       const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
       await server.connect(transport); reply.hijack();
       try { await transport.handleRequest(request.raw, reply.raw, request.body); }

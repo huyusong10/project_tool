@@ -309,6 +309,10 @@ function GuestLanding({ openLogin }: { openLogin: () => void }) {
   return <div className="page-content guest-landing"><div className="panel"><KeyRound size={32} /><h1>登录项目工作台</h1><p>项目、需求、问题和人员数据仅对已授权账号开放。</p><button className="primary-button" onClick={openLogin}><LogIn size={16} />用户登录</button></div></div>;
 }
 
+function StartupError({ title, error, onRetry }: { title: string; error: Error; onRetry: () => void }) {
+  return <div className="page-content guest-landing"><div className="panel"><h1>{title}</h1><p>{error.message}</p><button className="primary-button" onClick={onRetry}>重新加载</button></div></div>;
+}
+
 export function App() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -321,12 +325,12 @@ export function App() {
     queryFn: () => api<SystemBranding>("/api/branding"),
   });
   useDocumentBranding(branding);
-  const { data: session = guestSession, isFetched: sessionReady } = useQuery({
+  const { data: session = guestSession, isFetched: sessionReady, error: sessionError, refetch: refetchSession } = useQuery({
     queryKey: ["session"],
     queryFn: () => api<Session>("/api/session"),
   });
   const projectsEnabled = session.authenticated && !session.mustChangePassword;
-  const { data: projectData = [], isFetched: projectsFetched } = useQuery({
+  const { data: projectData = [], isFetched: projectsFetched, error: projectsError, refetch: refetchProjects } = useQuery({
     queryKey: ["projects", session.accountId],
     queryFn: () => api<Project[]>("/api/projects"),
     enabled: projectsEnabled,
@@ -396,6 +400,8 @@ export function App() {
     openLogin: () => setLoginOpen(true),
     openPassword: () => setPasswordOpen(true),
   };
+  if (sessionError) return <StartupError title="登录状态加载失败" error={sessionError} onRetry={() => void refetchSession()} />;
+  if (projectsEnabled && projectsError) return <StartupError title="项目列表加载失败" error={projectsError} onRetry={() => void refetchProjects()} />;
   return (
     <InlineEditProvider>
       <AppContext.Provider value={context}>

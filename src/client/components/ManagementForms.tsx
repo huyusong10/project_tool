@@ -4,6 +4,7 @@ import { api, jsonBody } from "../api";
 import { useApp } from "../app-context";
 import type { Person, Project, WorkItemTemplate } from "../types";
 import { workdayCalendarWarning } from "../../shared/workday";
+import { plannedDatesFromOffset, plannedStartFromDeadline } from "../../shared/domain";
 
 export function ProjectForm({
   project,
@@ -79,6 +80,8 @@ export function RequirementForm({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [scheduleDate, setScheduleDate] = useState("");
   const { projects } = useApp();
+  const defaultTemplateId = projects.find((project) => project.id === projectId)?.defaultTemplateId || "";
+  const [templateId, setTemplateId] = useState(defaultTemplateId);
   const { data: templates = [] } = useQuery({
     queryKey: ["templates", projectId],
     queryFn: () => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(projectId)}`),
@@ -97,7 +100,16 @@ export function RequirementForm({
       onClose();
     },
   });
-  const defaultTemplateId = projects.find((project) => project.id === projectId)?.defaultTemplateId || "";
+  const selectedTemplate = templates.find((template) => template.id === templateId);
+  const scheduleRange = (() => {
+    if (!scheduleDate || !selectedTemplate?.items.length) return { from: scheduleDate, to: scheduleDate };
+    const baseStart = scheduleMode === "start"
+      ? scheduleDate
+      : plannedStartFromDeadline(scheduleDate, selectedTemplate.items);
+    const ends = selectedTemplate.items.map((item) => plannedDatesFromOffset(baseStart, item.startOffsetDays, item.durationDays).plannedEnd);
+    return { from: baseStart, to: ends.sort().at(-1) || scheduleDate };
+  })();
+  const calendarWarning = workdayCalendarWarning(scheduleRange.from, scheduleRange.to);
   return (
     <form
       className="form-grid"
@@ -128,14 +140,14 @@ export function RequirementForm({
       </label>
       <div className="form-disclosure field-full">
         <button type="button" className={planningOpen ? "is-open" : ""} onClick={() => setPlanningOpen((value) => !value)}>
-          <strong>立即规划</strong><span>{planningOpen ? "收起" : "可选：选择流程并自动生成工作项"}</span>
+          <strong>流程与排期</strong><span>{planningOpen ? "收起" : "可选：可只选流程，排期稍后补充"}</span>
         </button>
       </div>
       {planningOpen && <>
         <label className="field field-full">
           <span>流程设计</span>
-          <select key={`${projectId}-${templates.length}`} name="templateId" required defaultValue={defaultTemplateId}>
-            {!defaultTemplateId && <option value="">请选择模板</option>}
+          <select key={`${projectId}-${templates.length}`} name="templateId" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
+            <option value="">暂不选择流程</option>
             {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
           </select>
         </label>
@@ -166,10 +178,10 @@ export function RequirementForm({
         </div>
         <label className="field field-full schedule-date-field">
           <span>{scheduleMode === "start" ? "计划开始" : "截止日期"}</span>
-          <input key={scheduleMode} name={scheduleMode === "start" ? "plannedStart" : "plannedEnd"} type="date" required value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} />
+          <input key={scheduleMode} name={scheduleMode === "start" ? "plannedStart" : "plannedEnd"} type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} />
         </label>
-        {workdayCalendarWarning(scheduleDate, scheduleDate) && <p className="calendar-coverage-warning field-full">{workdayCalendarWarning(scheduleDate, scheduleDate)}</p>}
-        <p className="field-help field-full">{scheduleMode === "start" ? "保存后按流程自动生成工作项并计算完成日期。" : "保存后按流程工期倒排；截止日期需为工作日。"}</p>
+        {calendarWarning && <p className="calendar-coverage-warning field-full">{calendarWarning}</p>}
+        <p className="field-help field-full">日期可留空：只保存所选流程，需求保持待规划；填写日期后才会自动生成工作项。{scheduleMode === "deadline" ? " 截止日期需为工作日。" : ""}</p>
       </>}
       <div className="form-disclosure field-full">
         <button type="button" className={detailsOpen ? "is-open" : ""} onClick={() => setDetailsOpen((value) => !value)}>

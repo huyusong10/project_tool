@@ -1,6 +1,6 @@
 import type { AuthorizationActor } from '../authorization';
 import { canContributeProject, canManageProject } from '../authorization';
-import { businessDayDelta, todayIso } from '../../shared/domain';
+import { businessDayDelta, isOverdueByWorkday, todayIso } from '../../shared/domain';
 import {
   actionReasonLabels,
   type ActionItem,
@@ -8,7 +8,7 @@ import {
   type ActionReasonCode,
   type ActionSeverity,
 } from '../../shared/action-items';
-import { listRequirements } from './requirements';
+import { listRequirements, type RequirementRecord } from './requirements';
 import { rows } from './support';
 
 type Filters = {
@@ -65,7 +65,7 @@ function emptyPage(page: number, pageSize: number): ActionItemsPage {
   return { items: [], total: 0, page, pageSize, pages: 0, summary: { total: 0, high: 0, medium: 0, low: 0, byReason: {} } };
 }
 
-export function listActionItems(filters: Filters, actor: AuthorizationActor): ActionItemsPage {
+export function listActionItems(filters: Filters, actor: AuthorizationActor, loadedRequirements?: RequirementRecord[]): ActionItemsPage {
   const page = Math.max(1, Math.trunc(Number(filters.page) || 1));
   const pageSize = Math.min(100, Math.max(1, Math.trunc(Number(filters.pageSize) || 20)));
   const manager = canManageProject(actor, filters.projectId);
@@ -74,7 +74,7 @@ export function listActionItems(filters: Filters, actor: AuthorizationActor): Ac
   const today = todayIso();
   const items: ActionItem[] = [];
 
-  for (const requirement of listRequirements({ projectId: filters.projectId })) {
+  for (const requirement of loadedRequirements || listRequirements({ projectId: filters.projectId })) {
     if (!manager && requirement.ownerId !== personId) continue;
     if (['completed', 'cancelled'].includes(requirement.status)) continue;
     const activeWorkItems = (requirement.workItems || []).filter((item) => item.status !== 'cancelled');
@@ -116,7 +116,7 @@ export function listActionItems(filters: Filters, actor: AuthorizationActor): Ac
       sourceType: 'work_item', sourceId: workItem.id, projectId: filters.projectId,
       requirementId: workItem.requirementId, contextTitle: workItem.requirementTitle, title: workItem.title,
       reasonCodes, ownerId: workItem.ownerId, ownerName: workItem.ownerName, dueDate: workItem.plannedEnd,
-      overdueWorkdays: workItem.plannedEnd && workItem.plannedEnd < today
+      overdueWorkdays: isOverdueByWorkday(workItem.plannedEnd, today)
         ? Math.max(0, businessDayDelta(workItem.plannedEnd, today)) : 0,
       targetPath: `/requirements/${workItem.requirementId}`, updatedAt: workItem.updatedAt,
     }));
@@ -131,14 +131,14 @@ export function listActionItems(filters: Filters, actor: AuthorizationActor): Ac
   for (const issue of issues) {
     if (!manager && issue.ownerId !== personId && issue.requirementOwnerId !== personId) continue;
     const reasonCodes: ActionReasonCode[] = [];
-    if (issue.dueDate && issue.dueDate < today) reasonCodes.push('overdue');
+    if (isOverdueByWorkday(issue.dueDate, today)) reasonCodes.push('overdue');
     if (!issue.ownerId) reasonCodes.push('unassigned');
     if (!reasonCodes.length) continue;
     items.push(makeItem({
       sourceType: 'issue', sourceId: issue.id, projectId: filters.projectId,
       requirementId: issue.requirementId, contextTitle: issue.requirementTitle, title: issue.title,
       reasonCodes, ownerId: issue.ownerId, ownerName: issue.ownerName, dueDate: issue.dueDate,
-      overdueWorkdays: issue.dueDate && issue.dueDate < today ? Math.max(0, businessDayDelta(issue.dueDate, today)) : 0,
+      overdueWorkdays: isOverdueByWorkday(issue.dueDate, today) ? Math.max(0, businessDayDelta(issue.dueDate, today)) : 0,
       targetPath: `/issues?issueId=${encodeURIComponent(issue.id)}`, updatedAt: issue.updatedAt,
     }));
   }

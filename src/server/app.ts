@@ -25,8 +25,18 @@ export async function buildApp() {
   registerMcpRoute(app, (token) => token ? authenticateApiToken(token) : null);
   const distDir = path.join(config.rootDir, 'dist');
   if (fs.existsSync(distDir)) {
-    await app.register(fastifyStatic, { root: distDir, wildcard: false });
-    app.get('/*', async (_request, reply) => reply.sendFile('index.html'));
+    const assetsDir = path.join(distDir, 'assets');
+    if (fs.existsSync(assetsDir)) {
+      await app.register(fastifyStatic, { root: assetsDir, prefix: '/assets/' });
+    }
+    app.get('/project-management-logo.png', async (_request, reply) =>
+      reply.type('image/png').send(fs.createReadStream(path.join(distDir, 'project-management-logo.png'))));
+    app.get('/*', async (request, reply) => {
+      if (request.url.startsWith('/api/') || request.url.startsWith('/mcp/')) {
+        return reply.code(404).send({ error: '接口不存在' });
+      }
+      return reply.type('text/html; charset=utf-8').send(await fs.promises.readFile(path.join(distDir, 'index.html')));
+    });
   }
   return app;
 }

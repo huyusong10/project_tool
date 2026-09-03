@@ -38,7 +38,7 @@ export function MyWorkPage() {
   const client = useQueryClient(); const navigate = useNavigate();
   const [filter, setFilter] = useState('active');
   const [progressItem, setProgressItem] = useState<MyWorkItem>();
-  const { data, isLoading } = useQuery({ queryKey: ['my-work'], queryFn: () => api<MyWork>('/api/my-work') });
+  const { data, isLoading, error, refetch } = useQuery({ queryKey: ['my-work'], queryFn: () => api<MyWork>('/api/my-work') });
   const items = (data?.items || []).filter((item) => filter === 'all' || (filter === 'active' ? !['completed', 'cancelled'].includes(item.status) : item.status === filter));
   const action = useMutation({
     mutationFn: ({ item, action, content, reason }: { item: MyWorkItem; action: string; content?: string; reason?: string }) => api(`/api/work-items/${item.id}/${action}`, {
@@ -60,6 +60,8 @@ export function MyWorkPage() {
   return <>
     <PageHeader title="我的工作" />
     <div className="page-content my-work-page">
+      {error && <EmptyState title="我的工作加载失败" detail={error.message} action={<button className="ghost-button" onClick={() => void refetch()}>重新加载</button>} />}
+      {!error && <>
       <section className="my-work-summary">
         {metrics.map(({ label, value, Icon }) => <article key={label}><Icon size={19} /><span>{label}</span><strong>{value}</strong></article>)}
       </section>
@@ -87,10 +89,11 @@ export function MyWorkPage() {
               {['in_progress', 'blocked'].includes(item.status) && <button onClick={() => setProgressItem(item)}><MessageSquarePlus size={14} />写进展</button>}
             </div>
           </article>)}
-          {!items.length && !isLoading && <EmptyState title="当前没有工作项" detail="分配为主负责人或协作人员后，会自动出现在这里。" />}
+          {!error && !items.length && !isLoading && <EmptyState title="当前没有工作项" detail="分配为主负责人或协作人员后，会自动出现在这里。" />}
         </div>
       </section>
       <section className="my-work-charts"><article className="panel"><header><div><h2>完成趋势</h2><p>近8个有完成记录的自然周</p></div></header><Chart option={charts.completion} height={230} ariaLabel="我的工作完成趋势" /></article><article className="panel"><header><div><h2>近期并发</h2><p>未来10个工作日的计划工作项数</p></div></header><Chart option={charts.upcoming} height={230} ariaLabel="我的近期工作并发趋势" /></article></section>
+      </>}
     </div>
     {progressItem && <Modal title="添加工作进展" onClose={() => setProgressItem(undefined)}><ProgressForm item={progressItem} onClose={() => setProgressItem(undefined)} /></Modal>}
   </>;

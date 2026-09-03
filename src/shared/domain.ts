@@ -1,4 +1,4 @@
-import { isBusinessDay } from './workday';
+import { isBusinessDay, isValidIsoDate } from './workday';
 
 export const requirementStatuses = ['planning', 'not_started', 'in_progress', 'blocked', 'pending_acceptance', 'completed', 'cancelled'] as const;
 export const workItemStatuses = ['not_started', 'in_progress', 'blocked', 'completed', 'cancelled'] as const;
@@ -119,7 +119,7 @@ export function plannedStartFromDeadline(deadline: string, items: Array<{ startO
 }
 
 export function businessDaysInclusive(start?: string | null, end?: string | null): number {
-  if (!start || !end) return 0;
+  if (!isValidIsoDate(start) || !isValidIsoDate(end)) return 0;
   let cursor = parseIsoDate(start);
   const target = parseIsoDate(end);
   if (cursor > target) return -businessDaysInclusive(end, start);
@@ -132,9 +132,13 @@ export function businessDaysInclusive(start?: string | null, end?: string | null
 }
 
 export function businessDayDelta(planned?: string | null, actual?: string | null): number {
-  if (!planned || !actual || planned === actual) return 0;
+  if (!isValidIsoDate(planned) || !isValidIsoDate(actual) || planned === actual) return 0;
   if (actual > planned) return Math.max(0, businessDaysInclusive(addCalendarDays(planned, 1), actual));
   return -Math.max(0, businessDaysInclusive(addCalendarDays(actual, 1), planned));
+}
+
+export function isOverdueByWorkday(due?: string | null, asOf = todayIso()): boolean {
+  return businessDayDelta(due, asOf) > 0;
 }
 
 export type WorkItemLike = {

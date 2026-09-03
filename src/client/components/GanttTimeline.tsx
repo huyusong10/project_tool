@@ -1,6 +1,6 @@
 import { type CSSProperties, type HTMLAttributes } from "react";
 import { eachDayOfInterval, format, isValid, parseISO, startOfDay } from "date-fns";
-import { addBusinessDays, ganttProgressDisplay, todayIso } from "../../shared/domain";
+import { addBusinessDays, ganttProgressDisplay, isOverdueByWorkday, todayIso } from "../../shared/domain";
 import { isBusinessDay, workdayCalendarWarning } from "../../shared/workday";
 
 export type GanttZoom = "day" | "week" | "month";
@@ -368,7 +368,7 @@ export function GanttMilestoneMarker({
   const endIndex = businessDateIndex(plannedDate, dates, "end");
   if (endIndex < 0 || endIndex >= dates.length) return null;
   const reached = status === "completed" || Boolean(actualEnd);
-  const state = status === "cancelled" ? "cancelled" : reached ? "reached" : plannedEnd! < asOfDate ? "overdue" : "planned";
+  const state = status === "cancelled" ? "cancelled" : reached ? "reached" : isOverdueByWorkday(plannedEnd, asOfDate) ? "overdue" : "planned";
   const stateLabel = state === "cancelled" ? "已取消" : state === "reached" ? "已达成" : state === "overdue" ? "已逾期" : "计划中";
   const fallbackPlacement = layoutGanttMilestones([{ id: "milestone", label: milestone, plannedEnd }], dates, cellWidth, zoom)[0];
   const resolvedPlacement = placement || fallbackPlacement;

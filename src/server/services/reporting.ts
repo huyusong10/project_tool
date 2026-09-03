@@ -9,6 +9,8 @@ import {
 import { listRequirements } from './requirements';
 import { listIssues } from './issues';
 import { rows } from './support';
+import { fail } from '../errors';
+import { isValidIsoDate } from '../../shared/workday';
 
 type PersonRow = { id: string; name: string; jobTitle: string | null };
 type ConcurrencyItem = {
@@ -20,6 +22,8 @@ type ConcurrencyItem = {
 
 export function getPeopleConcurrency(filters: { projectId?: string; personId?: string; jobTitle?: string; from?: string; to?: string; includeExternalAggregate?: boolean } = {}) {
   const from = filters.from || todayIso(); const to = filters.to || addCalendarDays(from, 6);
+  if (!isValidIsoDate(from) || !isValidIsoDate(to) || from > to) fail('人员并发查询日期范围不合法');
+  if (to > addCalendarDays(from, 1830)) fail('人员并发查询范围不能超过5年');
   const dates: string[] = [];
   for (let date = from; date <= to; date = addCalendarDays(date, 1)) if (businessDaysInclusive(date, date) === 1) dates.push(date);
   const where = ['p.deleted_at IS NULL', 'p.active=1']; const params: unknown[] = [];
@@ -99,7 +103,7 @@ export function getDashboard(projectId?: string) {
   for (const update of recentProgress) recentByRequirement.set(update.requirementId, [...(recentByRequirement.get(update.requirementId) || []), update]);
   const requirementIssueCounts = rows<{ requirementId: string; active: number; overdue: number }>(`
     SELECT requirement_id AS requirementId, COUNT(*) AS active,
-      SUM(CASE WHEN due_date IS NOT NULL AND due_date<? THEN 1 ELSE 0 END) AS overdue
+      SUM(CASE WHEN due_date IS NOT NULL AND business_day_delta(due_date, ?)>0 THEN 1 ELSE 0 END) AS overdue
     FROM issues
     WHERE requirement_id IS NOT NULL AND status<>'resolved' ${projectId ? 'AND project_id=?' : ''}
     GROUP BY requirement_id`, todayIso(), ...(projectId ? [projectId] : []));
