@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { config } from './config';
+import { normalizeSearchText } from '../shared/search';
 
 export type AccountRole = 'user' | 'admin';
 export type Actor = {
@@ -25,7 +26,7 @@ export function verifyPassword(password: string, encoded: string): boolean {
 }
 
 export function normalizeUsername(username: string) {
-  return username.trim().toLocaleLowerCase('zh-CN');
+  return normalizeSearchText(username);
 }
 
 function sessionSignature(value: string) {

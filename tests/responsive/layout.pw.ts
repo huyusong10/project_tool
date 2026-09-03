@@ -143,22 +143,32 @@ test("the login dialog remains inside the viewport", async ({ page }) => {
 
 test("project members can be searched and added from project settings", async ({ page }) => {
   await loginAsAdmin(page);
-  const candidateName = `界面候选${Date.now()}${Math.floor(Math.random() * 10_000)}`;
-  const created = await page.context().request.post("/api/people", {
-    data: { name: candidateName, jobTitle: "测试工程师" },
-  });
-  expect(created.ok(), "测试候选人员应创建成功").toBe(true);
+  const suffix = `${Date.now()}${Math.floor(Math.random() * 10_000)}`;
+  const candidateNames = [`批量候选甲${suffix}`, `批量候选乙${suffix}`];
+  for (const candidateName of candidateNames) {
+    const created = await page.context().request.post("/api/people", {
+      data: { name: candidateName, jobTitle: "测试工程师" },
+    });
+    expect(created.ok(), `测试候选人员 ${candidateName} 应创建成功`).toBe(true);
+  }
 
   await page.goto("/project-settings");
   await page.getByRole("button", { name: "添加成员" }).click();
   const dialog = page.getByRole("dialog", { name: "添加项目成员" });
   await expect(dialog).toBeVisible();
-  await dialog.getByPlaceholder("搜索姓名或岗位").fill(candidateName);
-  await dialog.getByRole("button", { name: new RegExp(candidateName) }).click();
-  await dialog.getByRole("button", { name: "添加到项目" }).click();
+  const search = dialog.getByPlaceholder("搜索姓名、岗位、登录名或拼音");
+  await search.fill(candidateNames[0]);
+  await dialog.getByRole("button", { name: new RegExp(candidateNames[0]) }).click();
+  await expect(dialog.getByText("已选择 1 人", { exact: true })).toBeVisible();
+  await search.fill(candidateNames[1]);
+  await dialog.getByRole("button", { name: new RegExp(candidateNames[1]) }).click();
+  await expect(dialog.getByText("已选择 2 人", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "添加 2 人到项目" }).click();
 
   await expect(dialog).toBeHidden();
-  await expect(page.locator(".project-member-row", { hasText: candidateName })).toBeVisible();
+  for (const candidateName of candidateNames) {
+    await expect(page.locator(".project-member-row", { hasText: candidateName })).toBeVisible();
+  }
 });
 
 test("analytics dashboard becomes a single column on mobile", async ({ page }) => {

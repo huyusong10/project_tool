@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sqlite } from './database';
 import { hashPassword, normalizeUsername, verifyPassword, type Actor } from './auth';
 import { addCalendarDays, deriveWorkItemStatus, todayIso } from '../shared/domain';
+import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
 import { AppError, type AppErrorCode } from './errors';
 
 type JsonObject = Record<string, unknown>;
@@ -24,7 +25,9 @@ function audit(actor: Actor, action: string, entityId: string | null, summary: s
 }
 
 function uniqueUsername(username: string, exceptId?: string) {
-  const value = username.trim();
+  const issue = textSafetyIssue(username, false);
+  if (issue) fail(issue === 'line_break' ? '登录名不能包含换行' : '登录名包含不支持的控制字符');
+  const value = canonicalizeLabel(username);
   if (!value) fail('登录名不能为空');
   if (value.length > 64) fail('登录名不能超过64个字符');
   const normalized = normalizeUsername(value);
@@ -35,7 +38,7 @@ function uniqueUsername(username: string, exceptId?: string) {
 }
 
 function availableUsername(base: string, personId: string) {
-  let username = base.trim() || `user-${personId.slice(0, 6)}`;
+  let username = canonicalizeLabel(base) || `user-${personId.slice(0, 6)}`;
   let normalized = normalizeUsername(username);
   if (sqlite.prepare('SELECT 1 FROM accounts WHERE normalized_username=?').get(normalized)) {
     username = `${username}-${personId.slice(0, 6)}`;
@@ -108,7 +111,8 @@ export function updateAccount(id: string, input: JsonObject, actor: Actor) {
   const role = input.role === undefined
     ? (current.globalRole === 'admin' ? 'admin' : undefined)
     : String(input.role);
-  if (role && !['user', 'project_manager', 'admin'].includes(role)) fail('账号角色不合法');
+  if (role === 'project_manager' || input.managedProjectIds !== undefined) fail('项目经理请在对应项目的“项目设置”中配置');
+  if (role && !['user', 'admin'].includes(role)) fail('账号角色不合法');
   const status = input.status === undefined ? current.status : String(input.status);
   if (!['active', 'disabled'].includes(status)) fail('账号状态不合法');
   if (current.isBuiltin && (status !== 'active' || (role && role !== 'admin'))) fail('内置admin账号不能停用或降级');
@@ -124,31 +128,8 @@ export function updateAccount(id: string, input: JsonObject, actor: Actor) {
     if (!remaining.count) fail('系统至少需要保留一个可用管理员');
   }
 
-  const managedProjectIds = input.managedProjectIds === undefined ? undefined
-    : [...new Set((Array.isArray(input.managedProjectIds) ? input.managedProjectIds : []).map(String))];
-  if (role === 'project_manager' && !current.personId) fail('项目经理账号必须关联人员');
-  if (role === 'project_manager' && managedProjectIds && !managedProjectIds.length) fail('项目经理至少需要负责一个项目');
-  if (managedProjectIds?.length) {
-    const placeholders = managedProjectIds.map(() => '?').join(',');
-    const count = (sqlite.prepare(`SELECT COUNT(*) AS count FROM projects WHERE id IN (${placeholders}) AND deleted_at IS NULL`)
-      .get(...managedProjectIds) as { count: number }).count;
-    if (count !== managedProjectIds.length) fail('包含无效项目');
-  }
-
-  sqlite.transaction(() => {
-    sqlite.prepare(`UPDATE accounts SET username=?, normalized_username=?, global_role=?, status=?, updated_at=? WHERE id=?`)
-      .run(login.username, login.normalized, globalRole, status, nowIso(), id);
-    if (current.personId && (managedProjectIds !== undefined || role)) {
-      sqlite.prepare(`UPDATE project_people SET project_role='member' WHERE person_id=?`).run(current.personId);
-      if (role === 'project_manager') {
-        for (const projectId of managedProjectIds || []) {
-          sqlite.prepare(`INSERT INTO project_people (project_id, person_id, project_role, created_at)
-            VALUES (?, ?, 'manager', ?) ON CONFLICT(project_id,person_id)
-            DO UPDATE SET project_role='manager'`).run(projectId, current.personId, nowIso());
-        }
-      }
-    }
-  })();
+  sqlite.prepare(`UPDATE accounts SET username=?, normalized_username=?, global_role=?, status=?, updated_at=? WHERE id=?`)
+    .run(login.username, login.normalized, globalRole, status, nowIso(), id);
   audit(actor, 'update', id, `更新账号：${login.username}`);
   return listAccounts().find((account) => account.id === id)!;
 }
@@ -172,10 +153,6 @@ export function deleteAccount(id: string, actor: Actor) {
   sqlite.transaction(() => {
     sqlite.prepare(`UPDATE accounts SET status='disabled', deleted_at=?, session_version=session_version+1, updated_at=?
       WHERE id=? AND deleted_at IS NULL`).run(now, now, id);
-    if (account.personId) {
-      sqlite.prepare(`UPDATE project_people SET project_role='member'
-        WHERE person_id=? AND project_role='manager'`).run(account.personId);
-    }
     sqlite.prepare('UPDATE api_tokens SET revoked_at=COALESCE(revoked_at, ?) WHERE account_id=?').run(now, id);
   })();
   audit(actor, 'delete', id, `删除账号登录能力：${account.username}`);
@@ -194,8 +171,6 @@ export function openAccountForPerson(personId: string, actor: Actor) {
   let accountId = existing?.id;
   const now = nowIso();
   sqlite.transaction(() => {
-    sqlite.prepare(`UPDATE project_people SET project_role='member'
-      WHERE person_id=? AND project_role='manager'`).run(personId);
     if (existing) {
       sqlite.prepare(`UPDATE accounts SET password_hash=?, global_role='user', status='active',
         must_change_password=1, session_version=session_version+1, deleted_at=NULL, updated_at=?

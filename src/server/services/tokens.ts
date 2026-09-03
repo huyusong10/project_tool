@@ -3,7 +3,7 @@ import { sqlite } from '../database';
 import { createApiTokenValue, hashApiToken, type Actor } from '../auth';
 import { fail, forbidden, notFound } from '../errors';
 import { recordAudit as audit } from './audit';
-import { nowIso, requireText, row, rows, type JsonObject } from './support';
+import { nowIso, requireLabel, row, rows, type JsonObject } from './support';
 
 export function listTokens(accountId?: string, allAccounts = false) {
   return rows(`SELECT t.id, t.name, t.prefix, t.expires_at AS expiresAt, t.last_used_at AS lastUsedAt,
@@ -14,7 +14,7 @@ export function listTokens(accountId?: string, allAccounts = false) {
 
 export function issueToken(input: JsonObject, actor: Actor) {
   if (!actor.accountId) fail('Token必须绑定登录账号');
-  const id = randomUUID(); const name = requireText(input.name, 'Token名称'); const now = nowIso();
+  const id = randomUUID(); const name = requireLabel(input.name, 'Token名称'); const now = nowIso();
   const days = input.expiresInDays === null || input.expiresInDays === 'never' ? null : Number(input.expiresInDays ?? 90);
   if (days !== null && (!Number.isFinite(days) || days < 1 || days > 3650)) fail('有效期不合法');
   const expiresAt = days === null ? null : new Date(Date.now() + days * 86400000).toISOString();

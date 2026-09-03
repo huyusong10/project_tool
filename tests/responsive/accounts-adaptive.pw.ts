@@ -40,7 +40,7 @@ async function mockAccounts(page: Page) {
   });
 }
 
-test('人员与权限在宽、中、窄内容区都完整展示且旧地址可跳转', async ({ page }, testInfo) => {
+test('人员与权限在宽、中、窄内容区完整展示并与项目角色分离', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-1080p', '在一个浏览器内覆盖三种内容宽度');
   await mockAccounts(page);
 
@@ -54,16 +54,15 @@ test('人员与权限在宽、中、窄内容区都完整展示且旧地址可�
     { width: 620, height: 760 },
   ]) {
     await page.setViewportSize(viewport);
-    await page.goto('/accounts');
-    await expect(page).toHaveURL(/\/resources$/);
+    await page.goto('/resources');
     const pageHeading = page.getByRole('heading', { name: '人员与权限' });
     if (viewport.width >= 900) await expect(pageHeading).toBeVisible();
     else await expect(pageHeading).toHaveCount(1);
     await expect(page.locator('.people-access-row')).toHaveCount(3);
     await expect(page.locator('.system-account-card')).toContainText('系统管理员账号');
     await expect(page.locator('.people-access-list').getByText('未开通账号', { exact: true })).toBeVisible();
-    await expect(page.getByText('无项目管理权限', { exact: true })).toBeVisible();
-    await expect(page.getByText(/DCIM、基础设施平台 等 3 个项目/)).toBeVisible();
+    await expect(page.getByText('项目角色在各项目内配置', { exact: true })).toBeVisible();
+    await expect(page.getByText(/项目经理：DCIM、基础设施平台 等 3 个项目/)).toBeVisible();
     await expect(page.getByText('从未登录', { exact: true }).first()).toBeVisible();
     await expect(page.locator('.account-actions-trigger')).toHaveCount(4);
 
@@ -87,6 +86,8 @@ test('人员与权限在宽、中、窄内容区都完整展示且旧地址可�
   await page.locator('.people-access-row .account-permission-editor').last().getByRole('button').click();
   const popover = page.locator('.account-permission-popover');
   await expect(popover).toBeVisible();
+  await expect(popover.getByRole('option', { name: '项目经理' })).toHaveCount(0);
+  await expect(popover.getByText(/项目经理在对应项目的“项目设置”中配置/)).toBeVisible();
   const rect = await popover.boundingBox();
   expect(rect).not.toBeNull();
   expect(rect!.x).toBeGreaterThanOrEqual(0);
@@ -94,7 +95,6 @@ test('人员与权限在宽、中、窄内容区都完整展示且旧地址可�
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/project-settings');
-  await expect(page.getByText(/项目经理在“人员与权限”中统一任免/)).toBeVisible();
-  await expect(page.getByText('项目经理', { exact: true })).toBeVisible();
-  await expect(page.getByRole('option', { name: '项目经理' })).toHaveCount(0);
+  await expect(page.getByText(/在当前项目内配置项目经理/)).toBeVisible();
+  await expect(page.getByRole('option', { name: '项目经理' }).first()).toBeAttached();
 });

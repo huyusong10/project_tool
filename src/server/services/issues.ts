@@ -10,8 +10,10 @@ import {
   ensureEnum,
   nowIso,
   nullableDate,
+  nullableLabel,
   nullableText,
   requireDate,
+  requireLabel,
   requireProgress,
   requireText,
   row,
@@ -85,12 +87,12 @@ export function listIssues(filters: {
   if (filters.projectId) { where.push('i.project_id=?'); params.push(filters.projectId); }
   const q = String(filters.q || '').trim();
   if (q) {
-    const pattern = `%${q}%`;
-    where.push(`(i.title LIKE ? OR i.impact LIKE ? OR i.reporter LIKE ? OR i.source_ref LIKE ?
-      OR r.title LIKE ? OR p.name LIKE ? OR EXISTS (
-        SELECT 1 FROM issue_updates search_update WHERE search_update.issue_id=i.id AND search_update.content LIKE ?
+    where.push(`(search_score(i.title, ?)>0 OR search_plain_match(COALESCE(i.impact, ''), ?)=1
+      OR search_score(COALESCE(i.reporter, ''), ?)>0 OR search_plain_match(COALESCE(i.source_ref, ''), ?)=1
+      OR search_score(COALESCE(r.title, ''), ?)>0 OR search_score(COALESCE(p.name, ''), ?)>0 OR EXISTS (
+        SELECT 1 FROM issue_updates search_update WHERE search_update.issue_id=i.id AND search_plain_match(search_update.content, ?)=1
       ))`);
-    params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+    params.push(q, q, q, q, q, q, q);
   }
   if (filters.status) {
     const status = ensureEnum(filters.status, issueStatuses, '问题状态');
@@ -160,7 +162,7 @@ export function getIssue(id: string) {
 
 export function createIssue(input: JsonObject, actor: Actor) {
   const id = randomUUID(); const projectId = requireText(input.projectId, '项目'); requireActiveProject(projectId);
-  const title = requireText(input.title, '问题标题');
+  const title = requireLabel(input.title, '问题标题');
   const requirementId = issueRequirement(projectId, input.requirementId);
   const priority = input.priority === undefined ? 'P2' : ensureEnum(input.priority, priorities, '问题优先级');
   const discoveredAt = input.discoveredAt === undefined ? todayIso() : requireDate(input.discoveredAt, '发现日期');
@@ -170,8 +172,8 @@ export function createIssue(input: JsonObject, actor: Actor) {
     (id, project_id, requirement_id, source_ref, title, impact, reporter, owner_id, status, priority,
       progress, discovered_at, due_date, resolved_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    id, projectId, requirementId, nullableText(input.sourceRef), title, nullableText(input.impact),
-    nullableText(input.reporter), issueOwner(projectId, input.ownerId), 'in_progress', priority, 0, discoveredAt, dueDate, null, now, now,
+    id, projectId, requirementId, nullableLabel(input.sourceRef, '来源标识'), title, nullableText(input.impact),
+    nullableLabel(input.reporter, '提出人'), issueOwner(projectId, input.ownerId), 'in_progress', priority, 0, discoveredAt, dueDate, null, now, now,
   );
   audit(actor, 'create', 'issue', id, `创建问题：${title}`);
   return getIssue(id);
@@ -184,9 +186,9 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
   if (['status', 'progress', 'resolvedAt'].some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
     fail('问题状态、完成度和解决日期不能通过普通编辑修改');
   }
-  const title = input.title === undefined ? current.title : requireText(input.title, '问题标题');
+  const title = input.title === undefined ? current.title : requireLabel(input.title, '问题标题');
   const requirementId = input.requirementId === undefined ? current.requirementId : issueRequirement(projectId, input.requirementId);
-  const sourceRef = input.sourceRef === undefined ? current.sourceRef : nullableText(input.sourceRef);
+  const sourceRef = input.sourceRef === undefined ? current.sourceRef : nullableLabel(input.sourceRef, '来源标识');
   const ownerId = input.ownerId === undefined ? current.ownerId : issueOwner(projectId, input.ownerId);
   const priority = input.priority === undefined ? current.priority : ensureEnum(input.priority, priorities, '问题优先级');
   const now = nowIso();
@@ -196,7 +198,7 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
       priority=?, discovered_at=?, due_date=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(
       requirementId, sourceRef, title,
       input.impact === undefined ? current.impact : nullableText(input.impact),
-      input.reporter === undefined ? current.reporter : nullableText(input.reporter),
+      input.reporter === undefined ? current.reporter : nullableLabel(input.reporter, '提出人'),
       ownerId, priority,
       input.discoveredAt === undefined ? current.discoveredAt : requireDate(input.discoveredAt, '发现日期'),
       dueDate, now, id, current.version,
@@ -269,7 +271,7 @@ export function correctIssue(id: string, input: JsonObject, actor: Actor) {
   const progress = input.progress === undefined ? current.progress : requireProgress(input.progress, '问题完成度');
   if (current.status === 'resolved' && progress !== 100) fail('已解决问题降低进度时必须使用重开操作', 'TERMINAL_LOCKED');
   if (current.status !== 'resolved' && progress >= 100) fail('100%只能通过“确认解决”产生');
-  const title = input.title === undefined ? current.title : requireText(input.title, '问题标题');
+  const title = input.title === undefined ? current.title : requireLabel(input.title, '问题标题');
   const resolvedAt = input.resolvedAt === undefined ? current.resolvedAt : nullableDate(input.resolvedAt, '解决日期');
   if (current.status === 'resolved' && !resolvedAt) fail('已解决问题必须保留解决日期');
   const now = nowIso();

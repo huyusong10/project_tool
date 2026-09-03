@@ -13,8 +13,9 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { AlertCircle, Check, ChevronDown, LoaderCircle, Search, X } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, ChevronLeft, ChevronRight, LoaderCircle, Search, X } from "lucide-react";
 import type { UiOption } from "../ui-options";
+import { rankSearchItems } from "../../shared/search";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 type DisplayMode = "single" | "stacked" | "badge";
@@ -137,8 +138,8 @@ export function EditableCell({
     >
       <span className={`inline-edit-value inline-edit-value-${displayMode}`}>{display}</span>
       {!disabled && <ChevronDown className="inline-edit-chevron" size={13} />}
+      <span className="inline-edit-feedback"><SaveFeedback state={state} error={error} /></span>
     </button>
-    <span className="inline-edit-feedback"><SaveFeedback state={state} error={error} /></span>
     {children}
   </div>;
 }
@@ -193,10 +194,13 @@ export function AnchoredPopover({
     }
     reposition();
     const frame = window.requestAnimationFrame(reposition);
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reposition);
+    if (popoverRef.current) resizeObserver?.observe(popoverRef.current);
     window.addEventListener("resize", reposition);
     window.addEventListener("scroll", reposition, true);
     return () => {
       window.cancelAnimationFrame(frame);
+      resizeObserver?.disconnect();
       window.removeEventListener("resize", reposition);
       window.removeEventListener("scroll", reposition, true);
     };
@@ -328,27 +332,34 @@ export function InlineSelectCell({
   displayMode = "single",
   renderValue,
   renderOption,
+  reason,
 }: BaseProps & {
   value: string | null | undefined;
   options: InlineOption[];
-  onSave: (value: string) => Promise<unknown>;
+  onSave: (value: string, reason?: string) => Promise<unknown>;
   renderValue?: (value: string, option?: InlineOption) => ReactNode;
   renderOption?: (option: InlineOption, selected: boolean) => ReactNode;
+  reason?: {
+    required?: boolean;
+    label?: string;
+    placeholder?: string;
+  };
 }) {
   const currentValue = value || "";
   const anchorRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const [pendingValue, setPendingValue] = useState<string | null>(null);
+  const [reasonText, setReasonText] = useState("");
   const feedback = useSaveState();
   const selected = options.find((option) => option.value === currentValue);
   const searchable = options.length > 7;
   const filtered = useMemo(() => {
-    const keyword = query.trim().toLowerCase();
-    if (!keyword) return options;
-    return options.filter((option) => `${option.label} ${option.description || ""} ${option.keywords || ""}`.toLowerCase().includes(keyword));
+    return rankSearchItems(options, query, (option) => [{ text: option.label, weight: 100 }, option.description, option.keywords]);
   }, [options, query]);
 
   useEffect(() => {
@@ -358,24 +369,48 @@ export function InlineSelectCell({
     window.requestAnimationFrame(() => searchable ? searchRef.current?.focus() : listRef.current?.focus());
   }, [currentValue, filtered, open, searchable]);
 
+  useEffect(() => {
+    if (open && pendingValue !== null) reasonRef.current?.focus();
+  }, [open, pendingValue]);
+
   const cancel = useCallback(() => {
     setOpen(false);
     setQuery("");
+    setPendingValue(null);
+    setReasonText("");
     feedback.clearError();
   }, [feedback]);
 
   const choose = useCallback(async (next: string) => {
     if (next === currentValue) {
-      setOpen(false);
-      setQuery("");
+      cancel();
       return;
     }
-    const saved = await feedback.save(() => onSave(next));
+    if (reason) {
+      setPendingValue(next);
+      setReasonText("");
+      feedback.clearError();
+      return;
+    }
+    const saved = await feedback.save(() => onSave(next, undefined));
     if (saved) {
       setOpen(false);
       setQuery("");
     }
-  }, [currentValue, feedback, onSave]);
+  }, [cancel, currentValue, feedback, onSave, reason]);
+
+  const commit = useCallback(async () => {
+    if (pendingValue === null) return;
+    const normalizedReason = reasonText.trim();
+    if (reason?.required && !normalizedReason) return feedback.fail(`${reason.label || "变更原因"}不能为空`);
+    const saved = await feedback.save(() => onSave(pendingValue, normalizedReason || undefined));
+    if (saved) {
+      setOpen(false);
+      setQuery("");
+      setPendingValue(null);
+      setReasonText("");
+    }
+  }, [feedback, onSave, pendingValue, reason?.label, reason?.required, reasonText]);
 
   const keyDown = (event: ReactKeyboardEvent) => {
     if (!filtered.length) return;
@@ -391,14 +426,16 @@ export function InlineSelectCell({
     <EditableCell label={label} display={display} fullText={selected?.label || placeholder} open={open} disabled={disabled} state={feedback.state} error={feedback.error} displayMode={displayMode} className={className} onOpen={() => {
       feedback.clearError();
       setQuery("");
+      setPendingValue(null);
+      setReasonText("");
       setOpen(true);
     }}>
-      <AnchoredPopover anchorRef={anchorRef} open={open} width={300} matchAnchor onOutside={cancel} onEscape={cancel} className="inline-select-popover">
+      <AnchoredPopover anchorRef={anchorRef} open={open} width={300} matchAnchor onOutside={cancel} onEscape={cancel} className={`inline-select-popover${pendingValue !== null ? " has-pending" : ""}`}>
         <div className="inline-picker-heading"><strong>{label}</strong><button type="button" onClick={cancel} aria-label={`关闭${label}`}><X size={14} /></button></div>
         {searchable && <label className="inline-picker-search"><Search size={14} /><input ref={searchRef} value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={keyDown} placeholder={`搜索${label}`} /></label>}
         <div ref={listRef} className="inline-option-list" role="listbox" tabIndex={searchable ? -1 : 0} aria-label={label} onKeyDown={keyDown}>
           {filtered.map((option, index) => {
-            const isSelected = option.value === currentValue;
+            const isSelected = option.value === (pendingValue ?? currentValue);
             return <button
               type="button"
               role="option"
@@ -415,10 +452,43 @@ export function InlineSelectCell({
           })}
           {!filtered.length && <p className="inline-picker-empty">没有匹配选项</p>}
         </div>
+        {reason && pendingValue !== null && <>
+          <label className="inline-select-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea ref={reasonRef} rows={3} value={reasonText} onChange={(event) => setReasonText(event.target.value)} aria-label={reason.label || "变更原因"} placeholder={reason.placeholder || "请说明本次变更原因"} /></label>
+          <div className="inline-select-actions"><button type="button" className="ghost-button" onClick={cancel}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving"} onClick={() => void commit()}>保存</button></div>
+        </>}
         <EditorError error={feedback.error} />
       </AnchoredPopover>
     </EditableCell>
   </div>;
+}
+
+function dateFromIso(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dateToIso(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function moveMonth(date: Date, offset: number) {
+  return new Date(date.getFullYear(), date.getMonth() + offset, 1, 12);
+}
+
+function monthLabel(date: Date) {
+  return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, "0")}月`;
+}
+
+function calendarDays(month: Date) {
+  const first = new Date(month.getFullYear(), month.getMonth(), 1, 12);
+  const mondayOffset = (first.getDay() + 6) % 7;
+  const start = new Date(first.getFullYear(), first.getMonth(), 1 - mondayOffset, 12);
+  return Array.from({ length: 42 }, (_, index) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + index, 12));
 }
 
 export function InlineDateCell({
@@ -430,54 +500,92 @@ export function InlineDateCell({
   allowClear = true,
   placeholder = "未设置",
   displayMode = "single",
+  reason,
 }: BaseProps & {
   value: string | null | undefined;
-  onSave: (value: string | null) => Promise<unknown>;
+  onSave: (value: string | null, reason?: string) => Promise<unknown>;
   allowClear?: boolean;
+  reason?: {
+    required?: boolean;
+    label?: string;
+    placeholder?: string;
+    help?: string;
+  };
 }) {
   const currentValue = value || "";
-  const inputRef = useRef<HTMLInputElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(currentValue);
+  const [reasonText, setReasonText] = useState("");
+  const [visibleMonth, setVisibleMonth] = useState(() => dateFromIso(currentValue) || new Date());
   const feedback = useSaveState();
 
-  const choose = useCallback(async (next: string) => {
-    if (!allowClear && !next) { setOpen(false); return; }
-    if (next === currentValue) { setOpen(false); return; }
-    const saved = await feedback.save(() => onSave(next || null));
-    if (saved) setOpen(false);
-  }, [allowClear, currentValue, feedback, onSave]);
+  useEffect(() => {
+    if (!open && feedback.state !== "saving") setDraft(currentValue);
+  }, [currentValue, feedback.state, open]);
+
+  const cancel = useCallback(() => {
+    setDraft(currentValue);
+    setReasonText("");
+    setOpen(false);
+    feedback.clearError();
+  }, [currentValue, feedback]);
 
   const openPicker = useCallback(() => {
     feedback.clearError();
+    setDraft(currentValue);
+    setReasonText("");
+    setVisibleMonth(dateFromIso(currentValue) || new Date());
     setOpen(true);
-    const input = inputRef.current;
-    if (!input) return;
-    input.focus({ preventScroll: true });
-    try { input.showPicker?.(); } catch { input.click(); }
-  }, [feedback]);
+  }, [currentValue, feedback]);
 
-  return <div className="inline-edit-anchor inline-date-native-anchor">
+  const commit = useCallback(async () => {
+    if (!allowClear && !draft) return feedback.fail(`${label}不能为空`);
+    if (draft === currentValue) {
+      setOpen(false);
+      setReasonText("");
+      return;
+    }
+    const normalizedReason = reasonText.trim();
+    if (reason?.required && !normalizedReason) return feedback.fail(`${reason.label || "变更原因"}不能为空`);
+    const saved = await feedback.save(() => onSave(draft || null, normalizedReason || undefined));
+    if (saved) {
+      setOpen(false);
+      setReasonText("");
+    }
+  }, [allowClear, currentValue, draft, feedback, label, onSave, reason?.label, reason?.required, reasonText]);
+
+  const monthDays = calendarDays(visibleMonth);
+  const today = dateToIso(new Date());
+
+  return <div ref={anchorRef} className="inline-edit-anchor">
     <EditableCell label={label} display={currentValue || <span className="is-placeholder">{placeholder}</span>} fullText={currentValue || placeholder} open={open} disabled={disabled} state={feedback.state} error={feedback.error} displayMode={displayMode} className={className} onOpen={() => {
       openPicker();
     }}>
+      <AnchoredPopover anchorRef={anchorRef} open={open} width={320} onOutside={cancel} onEscape={cancel} onSuperseded={cancel} className="inline-date-popover">
+        <div className="inline-date-editor">
+          <header>
+            <button type="button" aria-label="上一个月" onClick={() => setVisibleMonth((month) => moveMonth(month, -1))}><ChevronLeft size={16} /></button>
+            <strong>{monthLabel(visibleMonth)}</strong>
+            <button type="button" aria-label="下一个月" onClick={() => setVisibleMonth((month) => moveMonth(month, 1))}><ChevronRight size={16} /></button>
+          </header>
+          <div className="inline-calendar-weekdays" aria-hidden="true">{["一", "二", "三", "四", "五", "六", "日"].map((day) => <span key={day}>{day}</span>)}</div>
+          <div className="inline-calendar-grid" role="grid" aria-label={label}>
+            {monthDays.map((date) => {
+              const iso = dateToIso(date);
+              const outside = date.getMonth() !== visibleMonth.getMonth();
+              return <button type="button" role="gridcell" key={iso} className={`${outside ? "is-outside" : ""}${draft === iso ? " is-selected" : ""}${today === iso ? " is-today" : ""}`} aria-selected={draft === iso} aria-label={iso} onClick={() => setDraft(iso)}>{date.getDate()}</button>;
+            })}
+          </div>
+          {reason && draft !== currentValue && <label className="inline-date-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea rows={3} autoFocus value={reasonText} onChange={(event) => setReasonText(event.target.value)} placeholder={reason.placeholder || "请说明本次调整原因"} />{reason.help && <small>{reason.help}</small>}</label>}
+          <EditorError error={feedback.error} />
+          <footer>
+            <div>{allowClear && <button type="button" className="inline-date-clear" onClick={() => setDraft("")}>清除</button>}<button type="button" className="inline-date-today" onClick={() => { setDraft(today); setVisibleMonth(new Date()); }}>今天</button></div>
+            <div><button type="button" className="ghost-button" onClick={cancel}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || draft === currentValue} onClick={() => void commit()}>保存</button></div>
+          </footer>
+        </div>
+      </AnchoredPopover>
     </EditableCell>
-    <input
-      ref={inputRef}
-      className="inline-date-native-control"
-      type="date"
-      value={currentValue}
-      aria-label={label}
-      disabled={disabled}
-      onChange={(event) => void choose(event.target.value)}
-      onBlur={() => setOpen(false)}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          setOpen(false);
-          inputRef.current?.blur();
-        }
-      }}
-    />
   </div>;
 }
 
@@ -508,7 +616,7 @@ export function InlineMultiSelectCell({
   const normalizedDraft = [...draft].sort().join("|");
   const available = options.filter((option) => !excludedValues.includes(option.value));
   const selected = available.filter((option) => value.includes(option.value));
-  const visible = available.filter((option) => `${option.label}${option.description || ""}${option.keywords || ""}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const visible = rankSearchItems(available, search, (option) => [{ text: option.label, weight: 100 }, option.description, option.keywords]);
 
   useEffect(() => { if (!open && feedback.state !== "saving") setDraft(value); }, [feedback.state, normalizedValue, open, value]);
 

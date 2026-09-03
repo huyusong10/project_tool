@@ -49,9 +49,12 @@ export function searchAudit(filters: { q?: string; actorType?: string; action?: 
   const params: unknown[] = [];
   const q = String(filters.q || '').trim();
   if (q) {
-    where.push('(l.summary LIKE ? OR l.entity_id LIKE ? OR l.actor_id LIKE ? OR l.action LIKE ? OR user_account.username LIKE ? OR token_account.username LIKE ? OR actor_token.name LIKE ?)');
-    const pattern = `%${q}%`;
-    params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+    where.push(`(search_plain_match(l.summary, ?)=1 OR search_plain_match(COALESCE(l.entity_id, ''), ?)=1
+      OR search_plain_match(COALESCE(l.actor_id, ''), ?)=1 OR search_plain_match(l.action, ?)=1
+      OR search_score(COALESCE(user_account.username, ''), ?)>0
+      OR search_score(COALESCE(token_account.username, ''), ?)>0
+      OR search_score(COALESCE(actor_token.name, ''), ?)>0)`);
+    params.push(q, q, q, q, q, q, q);
   }
   if (filters.actorType) { where.push('l.actor_type=?'); params.push(filters.actorType); }
   if (filters.action) { where.push('l.action=?'); params.push(filters.action); }

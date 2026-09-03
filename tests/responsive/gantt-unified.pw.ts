@@ -5,7 +5,7 @@ const workItem = {
   collaborators: [], assigneeIds: ["u1"], assigneeNames: ["张三"], status: "in_progress",
   plannedStart: "2026-09-01", plannedEnd: "2026-09-10", actualStart: "2026-09-01", actualEnd: null,
   forecastEnd: null, blockedAt: null, blockedReason: null, milestoneLabel: "接口基线", progress: 40, sortOrder: 0,
-  createdAt: "2026-09-01", updatedAt: "2026-09-02",
+  version: 1, createdAt: "2026-09-01", updatedAt: "2026-09-02",
 };
 
 const requirement = {
@@ -22,7 +22,7 @@ const requirement = {
   finishVariance: 0, durationVariance: 0, effectiveEnd: "2026-09-10", issueSummary: { active: 0, overdue: 0 },
 };
 
-async function mockGanttData(page: Page) {
+async function mockGanttData(page: Page, progressRequests: Array<Record<string, unknown>> = []) {
   await page.route("**/api/**", async (route: Route) => {
     const pathname = new URL(route.request().url()).pathname;
     const json = (value: unknown) => route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
@@ -38,6 +38,10 @@ async function mockGanttData(page: Page) {
       issues: { summary: { total: 0, inProgress: 0, deferred: 0, resolved: 0, active: 0, highPriority: 0, overdue: 0, unassigned: 0, closureRate: 0 }, attention: [] },
       charts: { statuses: [], risks: [], weeks: [], varianceTop: [] },
     });
+    if (pathname === "/api/requirements/r1/progress" && route.request().method() === "POST") {
+      progressRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+      return json(requirement);
+    }
     if (pathname === "/api/requirements/r1") return json(requirement);
     if (pathname === "/api/templates") return json([]);
     if (pathname === "/api/people") return json([]);
@@ -47,7 +51,8 @@ async function mockGanttData(page: Page) {
 
 test("项目与需求甘特统一展示状态进度及今日进度差", async ({ page }, testInfo) => {
   test.skip(!["laptop-1366", "hidpi-3k-200", "desktop-1080p"].includes(testInfo.project.name), "统一甘特图仅验证代表性桌面视口");
-  await mockGanttData(page);
+  const progressRequests: Array<Record<string, unknown>> = [];
+  await mockGanttData(page, progressRequests);
 
   await page.goto("/");
   await expect(page.locator(".project-gantt-grid")).toBeVisible();
@@ -111,5 +116,40 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   await expect(page.locator(".requirement-gantt-grid .gantt-milestone-marker")).toContainText("接口基线");
   await page.locator(".requirement-gantt-grid .gantt-progress-marker").click();
   await expect(page.getByRole("heading", { name: "更新工作项进度" })).toBeVisible();
+  await page.getByLabel("当前完成度（估算）数值").fill("80");
+  await page.getByPlaceholder("描述本次实际完成的内容").fill("完成开发，等待联调");
+  await page.getByRole("button", { name: "记录进展" }).click();
+  await expect.poll(() => progressRequests.length).toBe(1);
+  expect(progressRequests[0]).toMatchObject({ workItemId: "w1", workItemPercent: 80, expectedVersion: 1, content: "完成开发，等待联调" });
+  expect(typeof progressRequests[0].workItemPercent).toBe("number");
+  expect(typeof progressRequests[0].expectedVersion).toBe("number");
   await expect(page.locator(".requirement-gantt-grid .gantt-scale-tick", { hasText: /周六|周日/ })).toHaveCount(0);
+});
+
+test("时间轴元素横向滚动时不会覆盖左侧标题", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "laptop-1366", "在会触发横向滚动的桌面视口验证图层边界");
+  await mockGanttData(page);
+  await page.goto("/");
+
+  const scroll = page.locator(".project-gantt-scroll");
+  await scroll.evaluate((element) => { element.scrollLeft = element.scrollWidth - element.clientWidth; });
+  await page.waitForTimeout(100);
+  const layer = await page.locator(".gantt-row").filter({ hasText: "统一甘特样式" }).evaluate((row) => {
+    const label = row.querySelector<HTMLElement>(".gantt-requirement-info")!;
+    const marker = row.querySelector<HTMLElement>(".gantt-progress-marker")!;
+    const labelBox = label.getBoundingClientRect();
+    const markerBox = marker.getBoundingClientRect();
+    const overlaps = markerBox.left < labelBox.right && markerBox.right > labelBox.left;
+    const x = Math.min(labelBox.right - 2, Math.max(labelBox.left + 2, markerBox.left + 2));
+    const y = markerBox.top + markerBox.height / 2;
+    const topElement = document.elementFromPoint(x, y);
+    return {
+      overlaps,
+      coveredByLabel: Boolean(topElement?.closest(".gantt-requirement-info")),
+      isolated: getComputedStyle(row.querySelector<HTMLElement>(".unified-gantt-track")!).isolation,
+    };
+  });
+  expect(layer.overlaps).toBe(true);
+  expect(layer.coveredByLabel).toBe(true);
+  expect(layer.isolated).toBe("isolate");
 });

@@ -17,7 +17,7 @@ import type {
   SystemBranding,
   SystemOverview,
 } from "../types";
-import { EmptyState, Modal } from "../components/Modal";
+import { ConfirmDialog, EmptyState, Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { BrandLogo, defaultBranding } from "../components/BrandLogo";
 
@@ -135,6 +135,7 @@ export function SystemPage() {
   const { session, openLogin } = useApp();
   const client = useQueryClient();
   const [restoreTarget, setRestoreTarget] = useState<Backup>();
+  const [deleteTarget, setDeleteTarget] = useState<Backup>();
   const [feedback, setFeedback] = useState("");
   const overviewQuery = useQuery({
     queryKey: ["system-overview"],
@@ -165,6 +166,7 @@ export function SystemPage() {
   const deleteBackup = useMutation({
     mutationFn: (name: string) => api(`/api/backups/${encodeURIComponent(name)}`, { method: "DELETE" }),
     onSuccess: (_result, name) => {
+      setDeleteTarget(undefined);
       setFeedback(`备份已删除：${name}`);
       refreshSystemData();
     },
@@ -248,7 +250,7 @@ export function SystemPage() {
                   <td>{relativeTime(item.createdAt)}</td>
                   <td><div className="system-backup-actions">
                     <button className="inline-action-button" disabled={restore.isPending} onClick={() => { setFeedback(""); setRestoreTarget(item); }}><RefreshCcw size={14} />恢复</button>
-                    <button className="inline-action-button danger" disabled={deleteBackup.isPending && deleteBackup.variables === item.name} onClick={() => confirm(`删除备份“${item.name}”？该操作无法恢复。`) && deleteBackup.mutate(item.name)}><Trash2 size={14} />{deleteBackup.isPending && deleteBackup.variables === item.name ? "删除中" : "删除"}</button>
+                    <button className="inline-action-button danger" disabled={deleteBackup.isPending && deleteBackup.variables === item.name} onClick={() => { deleteBackup.reset(); setDeleteTarget(item); }}><Trash2 size={14} />{deleteBackup.isPending && deleteBackup.variables === item.name ? "删除中" : "删除"}</button>
                   </div></td>
                 </tr>)}
               </tbody>
@@ -296,6 +298,7 @@ export function SystemPage() {
             <div className="form-actions"><button className="ghost-button" disabled={restore.isPending} onClick={() => setRestoreTarget(undefined)}>取消</button><button className="primary-button" disabled={restore.isPending || Boolean(restore.data)} onClick={() => restore.mutate(restoreTarget.name)}><RefreshCcw size={15} />{restore.isPending ? "正在校验并备份…" : restore.data ? "等待服务重启" : "确认恢复"}</button></div>
           </div>
         </Modal>}
+        {deleteTarget && <ConfirmDialog title="删除数据库备份" description={<>备份“<strong>{deleteTarget.name}</strong>”将被永久删除，删除后无法用于数据库恢复。</>} confirmLabel="永久删除" pendingLabel="删除中…" danger pending={deleteBackup.isPending} error={deleteBackup.error?.message} onClose={() => setDeleteTarget(undefined)} onConfirm={() => deleteBackup.mutate(deleteTarget.name)} />}
       </div>
     </>
   );

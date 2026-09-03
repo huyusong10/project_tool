@@ -63,8 +63,8 @@ function createServer(actor: AuthorizationActor) {
   server.registerTool('update_project', { description: '修改项目', inputSchema: projectInputSchema.extend({ id: z.string() }) }, async ({ id, ...input }) => {
     assertProjectManager(actor, id); return json(updateProject(id, input, actor));
   });
-  server.registerTool('archive_project', { description: '归档项目', inputSchema: z.object({ id: z.string() }) }, async ({ id }) => {
-    assertAdmin(actor); return json(archiveProject(id, actor));
+  server.registerTool('archive_project', { description: '归档项目', inputSchema: z.object({ id: z.string(), force: z.boolean().optional() }) }, async ({ id, force }) => {
+    assertAdmin(actor); return json(archiveProject(id, actor, { force }));
   });
   server.registerTool('restore_project', { description: '恢复项目', inputSchema: z.object({ id: z.string() }) }, async ({ id }) => {
     assertAdmin(actor); return json(restoreProject(id, actor));

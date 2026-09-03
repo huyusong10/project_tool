@@ -37,10 +37,10 @@ export function ProjectForm({
         mutation.mutate(Object.fromEntries(new FormData(event.currentTarget)));
       }}
     >
-      {project && <label className="field field-full">
+      <label className="field field-full">
         <span>项目名称</span>
         <input name="name" defaultValue={project?.name || ""} required autoFocus placeholder="例如：DCIM平台 V1.0" />
-      </label>}
+      </label>
       <label className="field">
         <span>计划开始</span>
         <input name="plannedStart" type="date" defaultValue={project?.plannedStart || ""} />

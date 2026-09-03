@@ -1,9 +1,10 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Navigate,
   Route,
   Routes,
+  useLocation,
   useNavigate,
 } from "react-router-dom";
 import {
@@ -49,6 +50,18 @@ const guestSession: Session = {
   mustChangePassword: false,
   managedProjectIds: [],
 };
+
+type PageScope = "project" | "personal" | "platform";
+type ProjectSelection = { accountKey: string; projectId: string };
+
+const projectSelectionStorageKey = (accountKey: string) => `project-manage:selected-project:${accountKey}`;
+
+function pageScope(pathname: string, admin: boolean): PageScope {
+  if (pathname === "/my-work" || pathname === "/settings") return "personal";
+  if (["/projects", "/resources", "/accounts", "/archives", "/system"].includes(pathname)) return "platform";
+  if (pathname === "/logs" && admin) return "platform";
+  return "project";
+}
 
 function LoginForm({ onClose, branding }: { onClose: () => void; branding: SystemBranding }) {
   const client = useQueryClient();
@@ -117,10 +130,12 @@ function ProjectSwitcher({
   projects,
   selectedProjectId,
   setSelectedProjectId,
+  ready,
 }: {
   projects: Project[];
   selectedProjectId: string;
   setSelectedProjectId: (id: string) => void;
+  ready: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -141,7 +156,7 @@ function ProjectSwitcher({
     };
   }, [open]);
   return <div className="project-switcher" ref={rootRef}>
-    {projects.length ? <>
+    {!ready ? <span className="project-switcher-empty"><span className="project-dot" />正在加载项目…</span> : projects.length ? <>
       <button type="button" className="project-switcher-button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <span className="project-dot" />
         <span className="project-switcher-name">{selected?.name}</span>
@@ -158,11 +173,22 @@ function ProjectSwitcher({
   </div>;
 }
 
+function ScopeIndicator({ scope }: { scope: Exclude<PageScope, "project"> }) {
+  return <div className="project-switcher">
+    <span className={`project-scope-indicator scope-${scope}`}>
+      <span className="project-dot" />
+      {scope === "personal" ? "跨项目" : "平台范围"}
+    </span>
+  </div>;
+}
+
 function Topbar({
   session,
   projects,
   selectedProjectId,
   setSelectedProjectId,
+  projectSelectionReady,
+  scope,
   openLogin,
   openPassword,
 }: {
@@ -170,6 +196,8 @@ function Topbar({
   projects: Project[];
   selectedProjectId: string;
   setSelectedProjectId: (id: string) => void;
+  projectSelectionReady: boolean;
+  scope: PageScope;
   openLogin: () => void;
   openPassword: () => void;
 }) {
@@ -185,7 +213,9 @@ function Topbar({
     <header className="topbar">
       <div className="topbar-context">
         <div id="topbar-title-slot" />
-        <ProjectSwitcher projects={projects} selectedProjectId={selectedProjectId} setSelectedProjectId={setSelectedProjectId} />
+        {scope === "project"
+          ? <ProjectSwitcher projects={projects} selectedProjectId={selectedProjectId} setSelectedProjectId={setSelectedProjectId} ready={projectSelectionReady} />
+          : <ScopeIndicator scope={scope} />}
       </div>
       <div className="top-actions">
         <div id="topbar-action-slot" />
@@ -245,15 +275,46 @@ function RoleRoute({ session, ready, admin = false, manager = false, currentProj
   return children;
 }
 
+function ProjectScopeBoundary({ children }: { children: ReactNode }) {
+  return <>{children}</>;
+}
+
+function ProjectRoute({
+  session,
+  ready,
+  projectSelectionReady,
+  currentProjectId,
+  manager = false,
+  resetOnProjectChange = true,
+  children,
+}: {
+  session: Session;
+  ready: boolean;
+  projectSelectionReady: boolean;
+  currentProjectId: string;
+  manager?: boolean;
+  resetOnProjectChange?: boolean;
+  children: ReactNode;
+}) {
+  if (!ready || !projectSelectionReady)
+    return <div className="page-content"><div className="loading-block">正在确认项目权限…</div></div>;
+  if (!session.authenticated) return <Navigate to="/" replace />;
+  if (manager && !canManageProject(session, currentProjectId)) return <Navigate to="/" replace />;
+  const boundaryKey = resetOnProjectChange ? currentProjectId || "no-project" : "resource-detail";
+  return <ProjectScopeBoundary key={boundaryKey}>{children}</ProjectScopeBoundary>;
+}
+
 function GuestLanding({ openLogin }: { openLogin: () => void }) {
   return <div className="page-content guest-landing"><div className="panel"><KeyRound size={32} /><h1>登录项目工作台</h1><p>项目、需求、问题和人员数据仅对已授权账号开放。</p><button className="primary-button" onClick={openLogin}><LogIn size={16} />用户登录</button></div></div>;
 }
 
 export function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [loginOpen, setLoginOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("project-manage:sidebar-collapsed") === "true");
-  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [projectSelection, setProjectSelection] = useState<ProjectSelection>({ accountKey: "", projectId: "" });
   const { data: branding = defaultBranding } = useQuery({
     queryKey: ["branding"],
     queryFn: () => api<SystemBranding>("/api/branding"),
@@ -263,30 +324,74 @@ export function App() {
     queryKey: ["session"],
     queryFn: () => api<Session>("/api/session"),
   });
-  const { data: projectData = [] } = useQuery({
+  const projectsEnabled = session.authenticated && !session.mustChangePassword;
+  const { data: projectData = [], isFetched: projectsFetched } = useQuery({
     queryKey: ["projects", session.accountId],
     queryFn: () => api<Project[]>("/api/projects"),
-    enabled: session.authenticated && !session.mustChangePassword,
+    enabled: projectsEnabled,
   });
   const projects = useMemo(
-    () => session.authenticated && !session.mustChangePassword ? projectData : [],
-    [projectData, session.authenticated, session.mustChangePassword],
+    () => projectsEnabled ? projectData : [],
+    [projectData, projectsEnabled],
+  );
+  const selectionAccountKey = projectsEnabled ? session.accountId || session.username || "authenticated" : "";
+  const selectedProjectId = projectSelection.accountKey === selectionAccountKey ? projectSelection.projectId : "";
+  useEffect(() => {
+    if (!projectsEnabled) {
+      setProjectSelection((current) => current.accountKey || current.projectId ? { accountKey: "", projectId: "" } : current);
+      return;
+    }
+    if (!projectsFetched || !selectionAccountKey) return;
+    setProjectSelection((current) => {
+      const storedProjectId = window.localStorage.getItem(projectSelectionStorageKey(selectionAccountKey)) || "";
+      const candidate = current.accountKey === selectionAccountKey ? current.projectId : storedProjectId;
+      const projectId = projects.some((project) => project.id === candidate) ? candidate : projects[0]?.id || "";
+      if (current.accountKey === selectionAccountKey && current.projectId === projectId) return current;
+      return { accountKey: selectionAccountKey, projectId };
+    });
+  }, [projects, projectsEnabled, projectsFetched, selectionAccountKey]);
+  const projectSelectionReady = !projectsEnabled || Boolean(
+    projectsFetched
+    && projectSelection.accountKey === selectionAccountKey
+    && (!projects.length || projects.some((project) => project.id === selectedProjectId)),
   );
   useEffect(() => {
-    if (
-      projects.length &&
-      !projects.some((project) => project.id === selectedProjectId)
-    )
-      setSelectedProjectId(projects[0].id);
-  }, [projects, selectedProjectId]);
+    if (!projectSelectionReady || !selectionAccountKey) return;
+    const storageKey = projectSelectionStorageKey(selectionAccountKey);
+    if (selectedProjectId) window.localStorage.setItem(storageKey, selectedProjectId);
+    else window.localStorage.removeItem(storageKey);
+  }, [projectSelectionReady, selectedProjectId, selectionAccountKey]);
   useEffect(() => {
     window.localStorage.setItem("project-manage:sidebar-collapsed", String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+  const setSelectedProjectId = useCallback((projectId: string) => {
+    if (!selectionAccountKey) return;
+    setProjectSelection((current) => current.accountKey === selectionAccountKey && current.projectId === projectId
+      ? current
+      : { accountKey: selectionAccountKey, projectId });
+  }, [selectionAccountKey]);
+  const currentPageScope = pageScope(location.pathname, isAdmin(session));
+  const changeProject = useCallback((projectId: string) => {
+    if (projectId === selectedProjectId) return;
+    setSelectedProjectId(projectId);
+    if (/^\/requirements\/[^/]+$/.test(location.pathname)) {
+      navigate("/requirements");
+      return;
+    }
+    if (location.pathname === "/issues") {
+      const params = new URLSearchParams(location.search);
+      params.delete("issueId");
+      params.delete("requirementId");
+      params.delete("ownerId");
+      const search = params.toString();
+      navigate({ pathname: location.pathname, search: search ? `?${search}` : "" }, { replace: true });
+    }
+  }, [location.pathname, location.search, navigate, selectedProjectId, setSelectedProjectId]);
   const context = {
     session,
     projects,
     selectedProjectId,
-    setSelectedProjectId,
+    syncProjectContext: setSelectedProjectId,
     openLogin: () => setLoginOpen(true),
     openPassword: () => setPasswordOpen(true),
   };
@@ -300,24 +405,28 @@ export function App() {
             session={session}
             projects={projects}
             selectedProjectId={selectedProjectId}
-            setSelectedProjectId={setSelectedProjectId}
+            setSelectedProjectId={changeProject}
+            projectSelectionReady={projectSelectionReady}
+            scope={currentPageScope}
             openLogin={() => setLoginOpen(true)}
             openPassword={() => setPasswordOpen(true)}
           />
           <Suspense fallback={<div className="route-loading" role="status">正在加载页面…</div>}>
           <Routes>
-            <Route path="/" element={session.authenticated ? <RoleRoute session={session} ready={sessionReady}><DashboardPage /></RoleRoute> : <GuestLanding openLogin={() => setLoginOpen(true)} />} />
-            <Route path="/analytics" element={<RoleRoute session={session} ready={sessionReady}><AnalyticsPage /></RoleRoute>} />
+            <Route path="/" element={session.authenticated ? <ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} currentProjectId={selectedProjectId}><DashboardPage /></ProjectRoute> : <GuestLanding openLogin={() => setLoginOpen(true)} />} />
+            <Route path="/analytics" element={<ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} currentProjectId={selectedProjectId}><AnalyticsPage /></ProjectRoute>} />
             <Route path="/my-work" element={<RoleRoute session={session} ready={sessionReady}><MyWorkPage /></RoleRoute>} />
             <Route path="/settings" element={<RoleRoute session={session} ready={sessionReady}><PersonalSettingsPage /></RoleRoute>} />
-            <Route path="/requirements" element={<RoleRoute session={session} ready={sessionReady}><RequirementsPage /></RoleRoute>} />
-            <Route path="/requirements/:id" element={<RoleRoute session={session} ready={sessionReady}><RequirementPage /></RoleRoute>} />
-            <Route path="/issues" element={<RoleRoute session={session} ready={sessionReady}><IssuesPage /></RoleRoute>} />
-            <Route path="/people" element={<RoleRoute session={session} ready={sessionReady}><PeoplePage /></RoleRoute>} />
+            <Route path="/requirements" element={<ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} currentProjectId={selectedProjectId}><RequirementsPage /></ProjectRoute>} />
+            <Route path="/requirements/:id" element={<ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} currentProjectId={selectedProjectId} resetOnProjectChange={false}><RequirementPage /></ProjectRoute>} />
+            <Route path="/issues" element={<ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} currentProjectId={selectedProjectId}><IssuesPage /></ProjectRoute>} />
+            <Route path="/people" element={<ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} currentProjectId={selectedProjectId}><PeoplePage /></ProjectRoute>} />
             <Route path="/concurrency" element={<Navigate to="/people?view=analysis" replace />} />
-            <Route path="/templates" element={<RoleRoute session={session} ready={sessionReady}><TemplatesPage /></RoleRoute>} />
-            <Route path="/project-settings" element={<RoleRoute session={session} ready={sessionReady} manager currentProjectId={selectedProjectId}><ProjectSettingsPage /></RoleRoute>} />
-            <Route path="/logs" element={<RoleRoute session={session} ready={sessionReady} manager currentProjectId={selectedProjectId}><LogsPage /></RoleRoute>} />
+            <Route path="/templates" element={<ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} currentProjectId={selectedProjectId}><TemplatesPage /></ProjectRoute>} />
+            <Route path="/project-settings" element={<ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} manager currentProjectId={selectedProjectId}><ProjectSettingsPage /></ProjectRoute>} />
+            <Route path="/logs" element={isAdmin(session)
+              ? <RoleRoute session={session} ready={sessionReady} admin><LogsPage /></RoleRoute>
+              : <ProjectRoute session={session} ready={sessionReady} projectSelectionReady={projectSelectionReady} manager currentProjectId={selectedProjectId}><LogsPage /></ProjectRoute>} />
             <Route path="/projects" element={<RoleRoute session={session} ready={sessionReady} admin><ProjectsPage /></RoleRoute>} />
             <Route path="/resources" element={<RoleRoute session={session} ready={sessionReady} admin><AccountsPage /></RoleRoute>} />
             <Route path="/accounts" element={<Navigate to="/resources" replace />} />

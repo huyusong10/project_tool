@@ -20,6 +20,7 @@ import {
   type AnalyticsQueryResponse,
   type AnalyticsRange,
 } from '../shared/analytics';
+import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
 import {
   addCalendarDays,
   businessDaysInclusive,
@@ -61,7 +62,8 @@ function validatePanel(value: unknown, index: number): AnalyticsPanelConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) validationError(`第${index + 1}个图表配置不合法`);
   const panel = value as Record<string, unknown>;
   const id = String(panel.id || '').trim();
-  const title = String(panel.title || '').trim();
+  if (textSafetyIssue(panel.title, false)) validationError(`第${index + 1}个图表标题包含不支持的控制字符`);
+  const title = canonicalizeLabel(panel.title);
   if (!id || id.length > 80 || !/^[\w-]+$/.test(id)) validationError(`第${index + 1}个图表ID不合法`);
   if (!title || title.length > 60) validationError(`第${index + 1}个图表标题不合法`);
   const datasetId = String(panel.dataset || '');

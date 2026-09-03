@@ -7,6 +7,7 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { config } from './config';
 import { hashPassword, normalizeUsername } from './auth';
 import { ensureBuiltInSampleProject, linkSampleProgressAuthors } from './sample-project';
+import { canonicalizeLabel, matchesPlainText, searchScore } from '../shared/search';
 import * as schema from './schema';
 
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
@@ -14,6 +15,10 @@ fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
 export const sqlite = new Database(config.dbPath);
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('busy_timeout = 5000');
+sqlite.function('search_score', { deterministic: true }, (value: unknown, query: unknown) =>
+  searchScore([String(value ?? '')], query));
+sqlite.function('search_plain_match', { deterministic: true }, (value: unknown, query: unknown) =>
+  matchesPlainText([String(value ?? '')], query) ? 1 : 0);
 
 function latestMigrationTimestamp() {
   const journalPath = path.join(config.rootDir, 'drizzle', 'meta', '_journal.json');
@@ -55,6 +60,47 @@ try {
 } finally {
   sqlite.pragma('foreign_keys = ON');
 }
+
+function repairLegacyIdentityText() {
+  const transaction = sqlite.transaction(() => {
+    const people = sqlite.prepare('SELECT id, name, job_title AS jobTitle FROM people').all() as Array<{ id: string; name: string; jobTitle: string | null }>;
+    const updatePerson = sqlite.prepare('UPDATE people SET name=?, job_title=? WHERE id=?');
+    for (const person of people) {
+      const name = canonicalizeLabel(person.name);
+      const jobTitle = person.jobTitle === null ? null : canonicalizeLabel(person.jobTitle) || null;
+      if (name !== person.name || jobTitle !== person.jobTitle) updatePerson.run(name, jobTitle, person.id);
+    }
+
+    const accounts = (sqlite.prepare(`SELECT id, username, normalized_username AS normalizedUsername, is_builtin AS isBuiltin, created_at AS createdAt
+      FROM accounts ORDER BY is_builtin DESC, created_at, id`).all() as Array<{ id: string; username: string; normalizedUsername: string; isBuiltin: number; createdAt: string }>)
+      .sort((left, right) => {
+        const leftClean = canonicalizeLabel(left.username) === left.username ? 0 : 1;
+        const rightClean = canonicalizeLabel(right.username) === right.username ? 0 : 1;
+        return left.isBuiltin === right.isBuiltin ? leftClean - rightClean : right.isBuiltin - left.isBuiltin;
+      });
+    const used = new Set<string>();
+    const assignments: Array<{ id: string; username: string; normalized: string; changed: boolean }> = [];
+    for (const account of accounts) {
+      const base = canonicalizeLabel(account.username) || `user-${account.id.slice(0, 6)}`;
+      let username = base;
+      let normalized = normalizeUsername(username);
+      let suffix = 2;
+      while (used.has(normalized)) {
+        username = `${base}-${suffix++}`;
+        normalized = normalizeUsername(username);
+      }
+      used.add(normalized);
+      assignments.push({ id: account.id, username, normalized, changed: username !== account.username || normalized !== account.normalizedUsername });
+    }
+    const updateAccount = sqlite.prepare('UPDATE accounts SET username=?, normalized_username=? WHERE id=?');
+    for (const assignment of assignments) {
+      if (assignment.changed) updateAccount.run(assignment.username, assignment.normalized, assignment.id);
+    }
+  });
+  transaction();
+}
+
+repairLegacyIdentityText();
 function bootstrapAccounts() {
   const now = new Date().toISOString();
   const transaction = sqlite.transaction(() => {

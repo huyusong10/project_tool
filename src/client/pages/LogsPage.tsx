@@ -1,12 +1,12 @@
 import { useDeferredValue, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
 import { api } from "../api";
 import { useApp } from "../app-context";
 import type { AuditPage } from "../types";
 import { EmptyState } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { isAdmin } from "../permissions";
+import { SearchInput } from "../components/SearchInput";
 
 const auditActionLabels: Record<string, string> = {
   create: "创建", update: "修改", archive: "归档", restore: "恢复", delete: "删除",
@@ -50,7 +50,7 @@ export function LogsPage() {
     <PageHeader title={admin ? "操作审计" : "项目日志"} />
     <div className="page-content logs-page">
       <div className="audit-filters">
-        <label className="search-box"><Search size={16} /><input value={keyword} onChange={(event) => resetPage(() => setKeyword(event.target.value))} placeholder="搜索用户、Token、操作内容或实体ID" /></label>
+        <SearchInput value={keyword} onChange={(value) => resetPage(() => setKeyword(value))} placeholder="搜索用户、Token、操作内容、实体ID或拼音" />
         <select value={actorType} onChange={(event) => resetPage(() => setActorType(event.target.value))}><option value="">全部来源</option><option value="user">用户</option><option value="token">MCP Token</option></select>
         <select value={action} onChange={(event) => resetPage(() => setAction(event.target.value))}><option value="">全部动作</option>{Object.entries(auditActionLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
         <select value={entityType} onChange={(event) => resetPage(() => setEntityType(event.target.value))}><option value="">全部对象</option>{Object.entries(auditEntityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>

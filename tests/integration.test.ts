@@ -89,6 +89,31 @@ describe('自动化项目管理API', () => {
     firstWorkItemId = requirement.json().workItems[0].id;
   });
 
+  it('活跃项目经二次确认后可强制归档且不会使当前会话失效', async () => {
+    const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } });
+    const setCookie = login.headers['set-cookie'];
+    const archiveCookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie!).split(';')[0];
+    const project = await app.inject({ method: 'POST', url: '/api/projects', headers: { cookie: archiveCookie }, payload: { name: '强制归档验证项目' } });
+    const archiveProjectId = project.json().id as string;
+    const requirement = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: archiveCookie }, payload: {
+      projectId: archiveProjectId, title: '仍在推进的需求', priority: 'P1', plannedStart: '2026-09-03', templateId: project.json().defaultTemplateId,
+    } });
+    await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie: archiveCookie }, payload: {
+      projectId: archiveProjectId, requirementId: requirement.json().id, title: '仍未解决的问题', priority: 'P1', discoveredAt: '2026-09-03',
+    } });
+
+    const blocked = await app.inject({ method: 'DELETE', url: `/api/projects/${archiveProjectId}`, headers: { cookie: archiveCookie } });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json()).toMatchObject({ code: 'DEPENDENCY_CONFLICT', details: { requirements: 1, issues: 1 } });
+
+    const forced = await app.inject({ method: 'DELETE', url: `/api/projects/${archiveProjectId}`, headers: { cookie: archiveCookie }, payload: { force: true } });
+    expect(forced.statusCode).toBe(200);
+    expect(forced.json()).toMatchObject({ ok: true, forced: true, dependencies: { requirements: 1, issues: 1 } });
+    expect((await app.inject({ method: 'GET', url: '/api/session', headers: { cookie: archiveCookie } })).json()).toMatchObject({ authenticated: true, username: 'admin' });
+    expect((await app.inject({ method: 'GET', url: '/api/projects', headers: { cookie: archiveCookie } })).json().some((item: { id: string }) => item.id === archiveProjectId)).toBe(false);
+    expect((await app.inject({ method: 'DELETE', url: `/api/archives/projects/${archiveProjectId}`, headers: { cookie: archiveCookie }, payload: { confirmName: '强制归档验证项目' } })).statusCode).toBe(200);
+  });
+
   it('人员姓名唯一、岗位可维护并可恢复归档', async () => {
     const person = await app.inject({ method: 'POST', url: '/api/people', headers: { cookie }, payload: { projectId, name: '张三', jobTitle: '前端开发' } });
     expect(person.statusCode).toBe(200); personId = person.json().id;
@@ -320,8 +345,10 @@ describe('自动化项目管理API', () => {
     expect((await app.inject({ method: 'POST', url: `/api/requirements/${requirementId}/progress`, headers: { cookie: userCookie }, payload: { workItemId: secondWorkItemId, workItemPercent: 20, content: '协作联调已开始', expectedVersion: currentSecond.version } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: userCookie }, payload: { projectId, title: '越权需求', priority: 'P2', plannedStart: '2026-09-08', templateId } })).statusCode).toBe(403);
 
-    const promoted = await app.inject({ method: 'PATCH', url: `/api/accounts/${userAccount.id}`, headers: { cookie }, payload: { username: '李四', status: 'active', role: 'project_manager', managedProjectIds: [projectId] } });
-    expect(promoted.json()).toMatchObject({ role: 'project_manager' });
+    const rejectedGlobalPromotion = await app.inject({ method: 'PATCH', url: `/api/accounts/${userAccount.id}`, headers: { cookie }, payload: { role: 'project_manager', managedProjectIds: [projectId] } });
+    expect(rejectedGlobalPromotion.statusCode).toBe(400);
+    const promoted = await app.inject({ method: 'PUT', url: `/api/projects/${projectId}/members/${collaboratorPersonId}`, headers: { cookie }, payload: { role: 'manager' } });
+    expect(promoted.json()).toMatchObject({ projectRole: 'manager' });
     const issueBeforeClose = (await app.inject({ method: 'GET', url: `/api/issues/${userIssue.json().id}`, headers: { cookie: userCookie } })).json();
     const managerClosedIssue = await app.inject({ method: 'POST', url: `/api/issues/${userIssue.json().id}/resolve`, headers: { cookie: userCookie }, payload: { content: '项目经理确认问题已解决', expectedVersion: issueBeforeClose.version } });
     expect(managerClosedIssue.statusCode).toBe(200);
@@ -368,8 +395,11 @@ describe('自动化项目管理API', () => {
     } });
     expect(isolatedRequirement.statusCode).toBe(200);
 
-    expect((await app.inject({ method: 'PUT', url: `/api/projects/${projectId}/members/${personId}`, headers: { cookie: memberCookie }, payload: { role: 'manager' } })).statusCode).toBe(403);
-    expect((await app.inject({ method: 'DELETE', url: `/api/projects/${projectId}/members/${collaboratorPersonId}`, headers: { cookie: memberCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: `/api/projects/${projectId}/members/${personId}`, headers: { cookie: memberCookie }, payload: { role: 'manager' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'PUT', url: `/api/projects/${projectId}/members/${personId}`, headers: { cookie: memberCookie }, payload: { role: 'member' } })).statusCode).toBe(200);
+    const lastManagerRemoval = await app.inject({ method: 'DELETE', url: `/api/projects/${projectId}/members/${collaboratorPersonId}`, headers: { cookie: memberCookie } });
+    expect(lastManagerRemoval.statusCode).toBe(409);
+    expect(lastManagerRemoval.json().error).toContain('至少需要保留一名项目经理');
     const blockedRemoval = await app.inject({ method: 'DELETE', url: `/api/projects/${projectId}/members/${personId}`, headers: { cookie: memberCookie } });
     expect(blockedRemoval.statusCode).toBe(409);
     expect(blockedRemoval.json().details).toEqual(expect.objectContaining({ workItems: expect.any(Number), issues: expect.any(Number) }));
@@ -684,10 +714,8 @@ describe('自动化项目管理API', () => {
     expect(disposable).toBeTruthy();
     expect((await app.inject({ method: 'DELETE', url: `/api/accounts/${builtin.id}`, headers: { cookie } })).statusCode).toBe(400);
 
-    const promoted = await app.inject({ method: 'PATCH', url: `/api/accounts/${disposable.id}`, headers: { cookie }, payload: {
-      role: 'project_manager', managedProjectIds: [projectId],
-    } });
-    expect(promoted.json().role).toBe('project_manager');
+    const promoted = await app.inject({ method: 'PUT', url: `/api/projects/${projectId}/members/${createdPerson.json().id}`, headers: { cookie }, payload: { role: 'manager' } });
+    expect(promoted.json().projectRole).toBe('manager');
     const removed = await app.inject({ method: 'DELETE', url: `/api/accounts/${disposable.id}`, headers: { cookie } });
     expect(removed.statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/accounts', headers: { cookie } })).json()
@@ -700,18 +728,18 @@ describe('自动化项目管理API', () => {
     expect(sqlite.prepare('SELECT status,deleted_at AS deletedAt FROM accounts WHERE id=?').get(disposable.id))
       .toMatchObject({ status: 'disabled', deletedAt: expect.any(String) });
     expect(sqlite.prepare('SELECT project_role AS projectRole FROM project_people WHERE project_id=? AND person_id=?')
-      .get(projectId, createdPerson.json().id)).toEqual({ projectRole: 'member' });
+      .get(projectId, createdPerson.json().id)).toEqual({ projectRole: 'manager' });
 
     expect((await app.inject({ method: 'POST', url: `/api/people/${createdPerson.json().id}/account`, headers: { cookie: memberCookie } })).statusCode).toBe(403);
     const opened = await app.inject({ method: 'POST', url: `/api/people/${createdPerson.json().id}/account`, headers: { cookie } });
     expect(opened.statusCode).toBe(200);
     expect(opened.json()).toMatchObject({
       temporaryPassword: '888888',
-      account: { id: disposable.id, username: name, status: 'active', role: 'user', mustChangePassword: true },
+      account: { id: disposable.id, username: name, status: 'active', role: 'project_manager', globalRole: 'user', mustChangePassword: true },
     });
     expect((await app.inject({ method: 'POST', url: `/api/people/${createdPerson.json().id}/account`, headers: { cookie } })).statusCode).toBe(409);
     expect((await app.inject({ method: 'POST', url: '/api/login', payload: { username: name, password: '888888' } })).statusCode).toBe(200);
     expect(sqlite.prepare('SELECT project_role AS projectRole FROM project_people WHERE project_id=? AND person_id=?')
-      .get(projectId, createdPerson.json().id)).toEqual({ projectRole: 'member' });
+      .get(projectId, createdPerson.json().id)).toEqual({ projectRole: 'manager' });
   });
 });

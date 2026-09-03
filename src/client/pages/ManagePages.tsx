@@ -14,13 +14,12 @@ import {
   LocateFixed,
   Plus,
   RotateCcw,
-  Search,
   ShieldCheck,
   Trash2,
   UserMinus,
   UserPlus,
 } from "lucide-react";
-import { api, jsonBody } from "../api";
+import { ApiError, api, jsonBody } from "../api";
 import { useApp } from "../app-context";
 import type {
   ApiToken,
@@ -32,7 +31,8 @@ import type {
   WorkItemTemplate,
 } from "../types";
 import { priorityLabels, requirementStatusLabels, riskLabels } from "../../shared/domain";
-import { EmptyState, Modal } from "../components/Modal";
+import { matchesSearch, searchScore } from "../../shared/search";
+import { ConfirmDialog, EmptyState, Modal, TextPromptModal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectForm, RequirementForm } from "../components/ManagementForms";
 import { InlineSelectCell } from "../components/InlineEdit";
@@ -40,6 +40,7 @@ import { canManageProject, isAdmin } from "../permissions";
 import { priorityOptions, requirementStatusOptions } from "../ui-options";
 import { DataCell } from "../components/LayoutPrimitives";
 import { SortableList } from "../components/SortableList";
+import { SearchInput } from "../components/SearchInput";
 
 type RequirementSortKey = "title" | "priority" | "status" | "progress" | "risk" | "plannedEnd" | "variance";
 type SortDirection = "asc" | "desc";
@@ -148,13 +149,16 @@ export function RequirementsPage() {
     enabled: Boolean(selectedProjectId),
   });
   const items = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
     return data
       .filter((item) =>
-        (!normalizedSearch || item.title.toLowerCase().includes(normalizedSearch)) &&
+        matchesSearch([{ text: item.title, weight: 100 }], search) &&
         (status === "current" ? item.status !== "completed" : !status || item.status === status),
       )
       .sort((left, right) => {
+        if (search.trim()) {
+          const relevance = searchScore([{ text: right.title, weight: 100 }], search) - searchScore([{ text: left.title, weight: 100 }], search);
+          if (relevance !== 0) return relevance;
+        }
         if (sortKey === "variance") {
           const leftVariance = requirementVarianceValue(left);
           const rightVariance = requirementVarianceValue(right);
@@ -214,14 +218,7 @@ export function RequirementsPage() {
       />
       <div className="page-content">
         <div className="filter-bar">
-        <label className="search-box">
-          <Search size={16} />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="搜索需求标题"
-          />
-        </label>
+        <SearchInput value={search} onChange={setSearch} placeholder="搜索需求标题" />
         <select
           value={status}
           onChange={(event) => setStatus(event.target.value)}
@@ -321,12 +318,32 @@ export function ProjectsPage() {
   const { projects, selectedProjectId, session } = useApp();
   const client = useQueryClient();
   const [creating, setCreating] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
+  const [archiveConflict, setArchiveConflict] = useState<{ id: string; name: string; requirements: number; issues: number } | null>(null);
+  const [archiveError, setArchiveError] = useState("");
   const admin = isAdmin(session);
   const archive = useMutation({
-    mutationFn: (id: string) => api(`/api/projects/${id}`, { method: "DELETE" }),
+    mutationFn: ({ id, force = false }: { id: string; name: string; force?: boolean }) => api(`/api/projects/${id}`, {
+      method: "DELETE",
+      ...(force ? { body: jsonBody({ force: true }) } : {}),
+    }),
     onSuccess: () => {
+      setArchiveTarget(null);
+      setArchiveConflict(null);
+      setArchiveError("");
       void client.invalidateQueries({ queryKey: ["projects"] });
       void client.invalidateQueries({ queryKey: ["dashboard"] });
+      void client.invalidateQueries({ queryKey: ["archives"] });
+    },
+    onError: (error, input) => {
+      if (!input.force && error instanceof ApiError && error.code === "DEPENDENCY_CONFLICT") {
+        const details = error.details as { requirements?: number; issues?: number } | undefined;
+        setArchiveConflict({ id: input.id, name: input.name, requirements: Number(details?.requirements || 0), issues: Number(details?.issues || 0) });
+        setArchiveTarget(null);
+        setArchiveError("");
+        return;
+      }
+      setArchiveError(error instanceof Error ? error.message : "项目归档失败");
     },
   });
   return (
@@ -358,7 +375,11 @@ export function ProjectsPage() {
                   {session.authenticated && (
                     <td>
                       <div className="project-row-actions">
-                        {admin && <button className="inline-action-button danger" onClick={() => confirm(`归档项目“${project.name}”？项目数据可在归档中心恢复。`) && archive.mutate(project.id)}><Archive size={14} />归档</button>}
+                        {admin && <button className="inline-action-button danger" disabled={archive.isPending} onClick={() => {
+                          archive.reset();
+                          setArchiveError("");
+                          setArchiveTarget({ id: project.id, name: project.name });
+                        }}><Archive size={14} />归档</button>}
                       </div>
                     </td>
                   )}
@@ -373,6 +394,8 @@ export function ProjectsPage() {
             <ProjectForm onClose={() => setCreating(false)} />
           </Modal>
         )}
+        {archiveTarget && <ConfirmDialog title="归档项目" description={<>项目“<strong>{archiveTarget.name}</strong>”将从日常页面隐藏，之后可以在归档中心恢复。</>} confirmLabel="确认归档" pendingLabel="归档中…" danger pending={archive.isPending} error={archiveError} onClose={() => { setArchiveTarget(null); setArchiveError(""); }} onConfirm={() => archive.mutate({ ...archiveTarget })} />}
+        {archiveConflict && <ConfirmDialog title="项目仍有活跃内容" description={<div className="archive-project-confirmation"><p>项目“{archiveConflict.name}”仍有活跃内容：</p><div><strong>{archiveConflict.requirements}</strong><span>条活跃需求</span><strong>{archiveConflict.issues}</strong><span>条未解决问题</span></div><p>继续归档后，这些内容将随项目隐藏，恢复项目后仍可继续处理。</p></div>} confirmLabel="仍然归档" pendingLabel="归档中…" danger pending={archive.isPending} error={archiveError} onClose={() => { setArchiveConflict(null); setArchiveError(""); }} onConfirm={() => archive.mutate({ id: archiveConflict.id, name: archiveConflict.name, force: true })} />}
       </div>
     </>
   );
@@ -384,6 +407,7 @@ export function ProjectSettingsPage() {
   const project = projects.find((item) => item.id === selectedProjectId);
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<Person | null>(null);
   const canManage = canManageProject(session, selectedProjectId);
   const { data: members = [] } = useQuery({
     queryKey: ["project-members", selectedProjectId],
@@ -397,6 +421,7 @@ export function ProjectSettingsPage() {
       void client.invalidateQueries({ queryKey: ["project-members", selectedProjectId] });
       void client.invalidateQueries({ queryKey: ["people", selectedProjectId] });
       void client.invalidateQueries({ queryKey: ["session"] });
+      void client.invalidateQueries({ queryKey: ["projects"] });
     },
   });
   const remove = useMutation({
@@ -405,6 +430,8 @@ export function ProjectSettingsPage() {
       void client.invalidateQueries({ queryKey: ["project-members", selectedProjectId] });
       void client.invalidateQueries({ queryKey: ["people-candidates", selectedProjectId] });
       void client.invalidateQueries({ queryKey: ["people", selectedProjectId] });
+      void client.invalidateQueries({ queryKey: ["session"] });
+      void client.invalidateQueries({ queryKey: ["projects"] });
     },
   });
   const { data: projectArchives } = useQuery({
@@ -429,7 +456,7 @@ export function ProjectSettingsPage() {
         </section>
         <section className="panel project-members-panel">
           <header>
-            <div><h2>项目成员</h2><p>项目经理在“人员与权限”中统一任免；这里维护观察者和普通成员</p></div>
+            <div><h2>项目成员</h2><p>在当前项目内配置项目经理、项目成员和观察者</p></div>
             <div className="project-member-header-actions">
               <span className="project-member-count">{members.length} 人</span>
               {canManage && <button className="ghost-button" onClick={() => setAdding(true)}><UserPlus size={15} />添加成员</button>}
@@ -438,7 +465,7 @@ export function ProjectSettingsPage() {
           <div className="project-member-list">
             {members.map((person) => {
               const roleLabel = person.projectRole === "manager" ? "项目经理" : person.projectRole === "viewer" ? "观察者" : "项目成员";
-              const editable = canManage && person.projectRole !== "manager";
+              const editable = canManage;
               return <article className={`project-member-row${canManage ? " can-manage" : ""}`} key={person.id}>
                 <div className="project-member-identity">
                   <span className="project-member-avatar">{person.name.slice(-1)}</span>
@@ -448,10 +475,10 @@ export function ProjectSettingsPage() {
                 <div className="project-member-role">
                   <small>项目角色</small>
                   {editable ? <select aria-label={`${person.name}的项目角色`} value={person.projectRole || "member"} disabled={setRole.isPending} onChange={(event) => setRole.mutate({ personId: person.id, role: event.target.value })}>
-                    <option value="viewer">观察者</option><option value="member">项目成员</option>
+                    <option value="manager">项目经理</option><option value="member">项目成员</option><option value="viewer">观察者</option>
                   </select> : <span className={`project-role-badge role-${person.projectRole || "member"}`}>{roleLabel}</span>}
                 </div>
-                {canManage && <div className="project-member-action">{editable && <button className="inline-action-button danger" disabled={remove.isPending} onClick={() => confirm("将“" + person.name + "”移出项目？") && remove.mutate(person.id)}><UserMinus size={14} />移除</button>}</div>}
+                {canManage && <div className="project-member-action"><button className="inline-action-button danger" disabled={remove.isPending} onClick={() => { remove.reset(); setRemoveTarget(person); }}><UserMinus size={14} />移除</button></div>}
               </article>;
             })}
             {!members.length && <EmptyState title="暂无项目成员" detail="点击“添加成员”，从平台人员中选择成员加入项目。" />}
@@ -468,55 +495,90 @@ export function ProjectSettingsPage() {
       </>}
       {editing && project && <Modal title="编辑项目" onClose={() => setEditing(false)}><ProjectForm project={project} onClose={() => setEditing(false)} /></Modal>}
       {adding && <Modal title="添加项目成员" width={620} onClose={() => setAdding(false)}><AddProjectPersonForm projectId={selectedProjectId} onClose={() => setAdding(false)} /></Modal>}
+      {removeTarget && <ConfirmDialog title="移出项目成员" description={<>将“<strong>{removeTarget.name}</strong>”移出当前项目？人员资料和其他项目权限不会受到影响。</>} confirmLabel="确认移出" pendingLabel="移除中…" danger pending={remove.isPending} error={remove.error?.message} onClose={() => setRemoveTarget(null)} onConfirm={() => remove.mutate(removeTarget.id)} />}
     </div>
   </>;
 }
 
+type ProjectPersonCandidate = Person & {
+  canAdd: boolean;
+  unavailableReason: "already_member" | "inactive" | "archived" | null;
+  existingProjectRole: "manager" | "member" | "viewer" | null;
+};
+
+const candidateReasonLabels = {
+  already_member: "已是项目成员",
+  inactive: "人员已停用",
+  archived: "人员已归档",
+} as const;
+
 function AddProjectPersonForm({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const client = useQueryClient();
   const [keyword, setKeyword] = useState("");
-  const [personId, setPersonId] = useState("");
+  const [selectedPeople, setSelectedPeople] = useState<Record<string, string>>({});
   const [role, setRole] = useState("member");
+  const [batchError, setBatchError] = useState("");
   const deferredKeyword = useDeferredValue(keyword.trim());
   const candidatesQuery = useQuery({
     queryKey: ["people-candidates", projectId, deferredKeyword],
-    queryFn: () => api<Person[]>(`/api/people/candidates?projectId=${encodeURIComponent(projectId)}${deferredKeyword ? `&q=${encodeURIComponent(deferredKeyword)}` : ""}`),
+    queryFn: () => api<ProjectPersonCandidate[]>(`/api/people/candidates?projectId=${encodeURIComponent(projectId)}${deferredKeyword ? `&q=${encodeURIComponent(deferredKeyword)}` : ""}`),
     enabled: Boolean(projectId),
   });
   const people = candidatesQuery.data || [];
+  const selectedIds = Object.keys(selectedPeople);
   const mutation = useMutation({
-    mutationFn: ({ personId, role }: { personId: string; role: string }) => api(`/api/projects/${projectId}/members/${personId}`, { method: "PUT", body: jsonBody({ role }) }),
-    onSuccess: () => {
+    mutationFn: async ({ personIds, role }: { personIds: string[]; role: string }) => {
+      const failed: Array<{ id: string; name: string; message: string }> = [];
+      for (const personId of personIds) {
+        try {
+          await api(`/api/projects/${projectId}/members/${personId}`, { method: "PUT", body: jsonBody({ role }) });
+        } catch (error) {
+          failed.push({ id: personId, name: selectedPeople[personId] || personId, message: error instanceof Error ? error.message : "添加失败" });
+        }
+      }
+      return { failed };
+    },
+    onSuccess: ({ failed }) => {
       void client.invalidateQueries({ queryKey: ["people", projectId] });
       void client.invalidateQueries({ queryKey: ["project-members", projectId] });
       void client.invalidateQueries({ queryKey: ["people-candidates", projectId] });
-      onClose();
+      if (!failed.length) { onClose(); return; }
+      setSelectedPeople(Object.fromEntries(failed.map((item) => [item.id, item.name])));
+      setBatchError(failed.map((item) => `${item.name}：${item.message}`).join("；"));
     },
   });
   return <form className="member-picker-form" onSubmit={(event) => {
     event.preventDefault();
-    if (personId) mutation.mutate({ personId, role });
+    if (selectedIds.length) { setBatchError(""); mutation.mutate({ personIds: selectedIds, role }); }
   }}>
-    <label className="member-picker-search"><Search size={16} /><input value={keyword} onChange={(event) => { setKeyword(event.target.value); setPersonId(""); }} placeholder="搜索姓名或岗位" autoFocus /></label>
+    <SearchInput className="member-picker-search" value={keyword} onChange={setKeyword} placeholder="搜索姓名、岗位、登录名或拼音" autoFocus />
+    <div className="member-picker-selection"><span>已选择 <strong>{selectedIds.length}</strong> 人</span>{selectedIds.length > 0 && <button type="button" onClick={() => { setSelectedPeople({}); setBatchError(""); }}>清空选择</button>}</div>
     <div className="member-candidate-list" aria-label="可添加人员">
       {candidatesQuery.isLoading && <div className="member-picker-state">正在加载可添加人员…</div>}
       {candidatesQuery.isError && <div className="member-picker-state is-error"><strong>候选人员加载失败</strong><span>{candidatesQuery.error.message}</span><button type="button" className="compact-text-button" onClick={() => void candidatesQuery.refetch()}>重试</button></div>}
       {!candidatesQuery.isLoading && !candidatesQuery.isError && people.map((person) => <button
         type="button"
-        className={`member-candidate-option${personId === person.id ? " is-selected" : ""}`}
-        aria-pressed={personId === person.id}
+        className={`member-candidate-option${selectedPeople[person.id] ? " is-selected" : ""}`}
+        aria-pressed={Boolean(selectedPeople[person.id])}
         key={person.id}
-        onClick={() => setPersonId(person.id)}
+        disabled={!person.canAdd || mutation.isPending}
+        onClick={() => {
+          setBatchError("");
+          setSelectedPeople((current) => {
+            if (current[person.id]) { const next = { ...current }; delete next[person.id]; return next; }
+            return { ...current, [person.id]: person.name };
+          });
+        }}
       >
         <span className="project-member-avatar">{person.name.slice(-1)}</span>
         <span><strong>{person.name}</strong><small>{person.jobTitle || "岗位未设置"}{person.username ? ` · ${person.username}` : ""}</small></span>
-        <span className="member-candidate-check">{personId === person.id ? "已选择" : "选择"}</span>
+        <span className="member-candidate-check">{person.unavailableReason ? candidateReasonLabels[person.unavailableReason] : selectedPeople[person.id] ? "✓ 已选" : "选择"}</span>
       </button>)}
       {!candidatesQuery.isLoading && !candidatesQuery.isError && !people.length && <div className="member-picker-state"><strong>{keyword ? "没有匹配的人员" : "暂无可添加人员"}</strong><span>{keyword ? "请调整搜索关键词。" : "当前启用人员均已加入项目，或请先到人员与权限新增人员。"}</span></div>}
     </div>
-    <label className="field member-picker-role"><span>加入后的项目角色</span><select value={role} onChange={(event) => setRole(event.target.value)}><option value="member">项目成员</option><option value="viewer">项目观察者</option></select></label>
-    {mutation.error && <p className="form-error">{mutation.error.message}</p>}
-    <div className="form-actions"><button type="button" className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" disabled={!personId || mutation.isPending}>{mutation.isPending ? "正在添加…" : "添加到项目"}</button></div>
+    <label className="field member-picker-role"><span>加入后的项目角色</span><select value={role} onChange={(event) => setRole(event.target.value)}><option value="member">项目成员</option><option value="viewer">项目观察者</option><option value="manager">项目经理</option></select></label>
+    {batchError && <p className="form-error">部分成员添加失败：{batchError}</p>}
+    <div className="form-actions"><button type="button" className="ghost-button" disabled={mutation.isPending} onClick={onClose}>取消</button><button className="primary-button" disabled={!selectedIds.length || mutation.isPending}>{mutation.isPending ? `正在添加 ${selectedIds.length} 人…` : `添加 ${selectedIds.length} 人到项目`}</button></div>
   </form>;
 }
 
@@ -834,21 +896,27 @@ function TemplateForm({
 }
 
 export function TemplatesPage() {
-  const { session, selectedProjectId } = useApp();
+  const { projects, session, selectedProjectId } = useApp();
   const client = useQueryClient();
   const [editing, setEditing] = useState<WorkItemTemplate | null | undefined>(
     undefined,
   );
+  const [archiveTarget, setArchiveTarget] = useState<WorkItemTemplate | null>(null);
   const { data = [] } = useQuery({
     queryKey: ["templates", selectedProjectId],
     queryFn: () => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(selectedProjectId)}`),
     enabled: Boolean(selectedProjectId),
   });
   const canManage = canManageProject(session, selectedProjectId);
+  const project = projects.find((item) => item.id === selectedProjectId);
   const archive = useMutation({
     mutationFn: (id: string) =>
       api(`/api/templates/${id}`, { method: "DELETE" }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["templates"] }),
+    onSuccess: () => {
+      setArchiveTarget(null);
+      void client.invalidateQueries({ queryKey: ["templates"] });
+      void client.invalidateQueries({ queryKey: ["archives"] });
+    },
   });
   return (
     <>
@@ -867,7 +935,7 @@ export function TemplatesPage() {
           <article className="template-card" key={template.id}>
             <header>
               <div>
-                <strong>{template.name}</strong>
+                <strong className="template-name-line">{template.name}{project?.defaultTemplateId === template.id && <span className="template-default-badge">项目默认</span>}</strong>
                 <small>{template.items.length}个工作项 · {template.items.filter((item) => item.milestoneLabel).length}个里程碑</small>
               </div>
               {canManage && (
@@ -877,10 +945,7 @@ export function TemplatesPage() {
                   </button>
                   <button
                     aria-label={`归档流程 ${template.name}`}
-                    onClick={() =>
-                      confirm(`归档流程“${template.name}”？`) &&
-                      archive.mutate(template.id)
-                    }
+                    onClick={() => { archive.reset(); setArchiveTarget(template); }}
                   >
                     <Archive size={15} />
                   </button>
@@ -912,6 +977,12 @@ export function TemplatesPage() {
           />
         </Modal>
         )}
+        {archiveTarget && (() => {
+          const blockedReason = project?.defaultTemplateId === archiveTarget.id
+            ? "这是项目默认流程。请先在项目设置中更换默认流程，再执行归档。"
+            : data.length <= 1 ? "项目至少需要保留一个有效流程，当前流程不能归档。" : undefined;
+          return <ConfirmDialog title="归档流程" description={<>流程“<strong>{archiveTarget.name}</strong>”归档后不再用于新需求，已有需求和历史数据不会改变。</>} confirmLabel={blockedReason ? "无法归档" : "确认归档"} pendingLabel="归档中…" danger pending={archive.isPending} disabled={Boolean(blockedReason)} error={blockedReason || archive.error?.message} onClose={() => setArchiveTarget(null)} onConfirm={() => archive.mutate(archiveTarget.id)} />;
+        })()}
       </div>
     </>
   );
@@ -929,15 +1000,27 @@ export function ArchiveCenterPage() {
   const client = useQueryClient();
   const [keyword, setKeyword] = useState("");
   const [type, setType] = useState<"all" | ArchiveEntity>("all");
+  const [deletePrompt, setDeletePrompt] = useState<{ entity: ArchiveEntity; id: string; title: string; impact: string } | null>(null);
+  const [simpleDeleteTarget, setSimpleDeleteTarget] = useState<{ entity: ArchiveEntity; id: string; title: string } | null>(null);
   const { data: archives } = useQuery({ queryKey: ["archives"], queryFn: () => api<Archives>("/api/archives") });
   const rows = useMemo(() => archiveEntityOptions.flatMap(({ value, label }) =>
     (archives?.[value] || []).map((item) => ({ ...item, entity: value, typeLabel: label }))), [archives]);
   const filteredRows = useMemo(() => {
-    const normalized = keyword.trim().toLowerCase();
     return rows
       .filter((item) => type === "all" || item.entity === type)
-      .filter((item) => !normalized || `${item.title} ${item.jobTitle || ""} ${item.typeLabel}`.toLowerCase().includes(normalized))
-      .sort((left, right) => right.deletedAt.localeCompare(left.deletedAt));
+      .filter((item) => matchesSearch([
+        { text: item.title, weight: 100 },
+        { text: item.jobTitle, weight: 20 },
+        { text: item.typeLabel, pinyin: false },
+      ], keyword))
+      .sort((left, right) => {
+        if (keyword.trim()) {
+          const score = searchScore([{ text: right.title, weight: 100 }, right.jobTitle, { text: right.typeLabel, pinyin: false }], keyword)
+            - searchScore([{ text: left.title, weight: 100 }, left.jobTitle, { text: left.typeLabel, pinyin: false }], keyword);
+          if (score !== 0) return score;
+        }
+        return right.deletedAt.localeCompare(left.deletedAt);
+      });
   }, [keyword, rows, type]);
   const restore = useMutation({
     mutationFn: ({ entity, id }: { entity: ArchiveEntity; id: string }) => api(`/api/${entity}/${id}/restore`, { method: "POST" }),
@@ -952,6 +1035,8 @@ export function ArchiveCenterPage() {
   const permanentlyDelete = useMutation({
     mutationFn: ({ entity, id, confirmName }: { entity: ArchiveEntity; id: string; confirmName?: string }) => api(`/api/archives/${entity}/${id}`, { method: "DELETE", body: jsonBody({ confirmName }) }),
     onSuccess: () => {
+      setDeletePrompt(null);
+      setSimpleDeleteTarget(null);
       void client.invalidateQueries({ queryKey: ["archives"] });
       void client.invalidateQueries({ queryKey: ["audit"] });
       void client.invalidateQueries({ queryKey: ["projects"] });
@@ -966,7 +1051,7 @@ export function ArchiveCenterPage() {
       <section className="panel archive-panel">
         <header><div><h2>已归档内容</h2><p>统一筛选、恢复或永久删除平台归档资源</p></div></header>
         <div className="archive-toolbar">
-          <label className="search-box"><Search size={16} /><input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索归档名称或岗位" /></label>
+          <SearchInput value={keyword} onChange={setKeyword} placeholder="搜索归档名称、岗位或拼音" />
           <select value={type} onChange={(event) => setType(event.target.value as "all" | ArchiveEntity)}><option value="all">全部类型</option>{archiveEntityOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select>
           <span>{filteredRows.length} / {rows.length} 条</span>
         </div>
@@ -983,12 +1068,12 @@ export function ArchiveCenterPage() {
                   const impact = item.entity === "projects"
                     ? `将级联删除需求 ${item.requirementCount || 0} 条、工作项 ${item.workItemCount || 0} 条、问题 ${item.issueCount || 0} 条、流程 ${item.templateCount || 0} 个。`
                     : `将级联删除工作项 ${item.workItemCount || 0} 条、进展 ${item.progressCount || 0} 条；${item.linkedIssueCount || 0} 个关联问题会保留并转为项目公共问题。`;
-                  const confirmName = prompt(`${impact}\n永久删除无法恢复。请输入完整名称“${item.title}”确认：`);
-                  if (confirmName !== item.title) return;
-                  permanentlyDelete.mutate({ entity: item.entity, id: item.id, confirmName });
+                  permanentlyDelete.reset();
+                  setDeletePrompt({ entity: item.entity, id: item.id, title: item.title, impact });
                   return;
                 }
-                if (confirm(`永久删除“${item.title}”？该操作无法恢复。`)) permanentlyDelete.mutate({ entity: item.entity, id: item.id });
+                permanentlyDelete.reset();
+                setSimpleDeleteTarget({ entity: item.entity, id: item.id, title: item.title });
               }}><Trash2 size={14} />删除</button></div></td>
             </tr>)}</tbody>
           </table>
@@ -997,6 +1082,8 @@ export function ArchiveCenterPage() {
         {(restore.error || permanentlyDelete.error) && <p className="form-error archive-error">{(restore.error || permanentlyDelete.error)?.message}</p>}
       </section>
     </div>
+    {deletePrompt && <TextPromptModal title={`永久删除${deletePrompt.entity === "projects" ? "项目" : "需求"}`} description={`${deletePrompt.impact}\n永久删除后无法恢复。`} label="输入完整名称确认" expectedValue={deletePrompt.title} confirmLabel="永久删除" danger pending={permanentlyDelete.isPending} error={permanentlyDelete.error?.message} onClose={() => setDeletePrompt(null)} onConfirm={(confirmName) => permanentlyDelete.mutate({ entity: deletePrompt.entity, id: deletePrompt.id, confirmName })} />}
+    {simpleDeleteTarget && <ConfirmDialog title="永久删除归档内容" description={<>“<strong>{simpleDeleteTarget.title}</strong>”将被永久删除，此操作无法恢复。</>} confirmLabel="永久删除" pendingLabel="删除中…" danger pending={permanentlyDelete.isPending} error={permanentlyDelete.error?.message} onClose={() => setSimpleDeleteTarget(null)} onConfirm={() => permanentlyDelete.mutate({ entity: simpleDeleteTarget.entity, id: simpleDeleteTarget.id })} />}
   </>;
 }
 
@@ -1005,6 +1092,7 @@ export function PersonalSettingsPage() {
   const client = useQueryClient();
   const [tokenModal, setTokenModal] = useState(false);
   const [newToken, setNewToken] = useState<string>();
+  const [revokeTarget, setRevokeTarget] = useState<ApiToken | null>(null);
   const { data: tokens = [] } = useQuery({ queryKey: ["my-tokens"], queryFn: () => api<ApiToken[]>("/api/tokens") });
   const createToken = useMutation({
     mutationFn: (input: object) => api<ApiToken & { token: string }>("/api/tokens", { method: "POST", body: jsonBody(input) }),
@@ -1012,14 +1100,17 @@ export function PersonalSettingsPage() {
   });
   const revoke = useMutation({
     mutationFn: (id: string) => api("/api/tokens/" + id, { method: "DELETE" }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["my-tokens"] }),
+    onSuccess: () => {
+      setRevokeTarget(null);
+      void client.invalidateQueries({ queryKey: ["my-tokens"] });
+    },
   });
   return <>
     <PageHeader title="个人设置" actions={<button className="ghost-button" onClick={openPassword}><KeyRound size={15} />修改密码</button>} />
     <div className="page-content">
       <section className="panel system-panel personal-token-panel">
         <header><div><h2>我的 MCP Token</h2><p>Token 自动继承当前账号的项目权限</p></div><button className="primary-button" onClick={() => { setNewToken(undefined); setTokenModal(true); }}><KeyRound size={15} />创建 Token</button></header>
-        <div className="compact-list">{tokens.map((token) => <div key={token.id}><KeyRound size={16} /><div><strong>{token.name}</strong><span>pm_{token.prefix}_… · {token.expiresAt ? new Date(token.expiresAt).toLocaleDateString() + "到期" : "永久有效"}</span></div><b className={token.revokedAt ? "muted" : "safe-text"}>{token.revokedAt ? "已撤销" : "有效"}</b>{!token.revokedAt && <button onClick={() => confirm("确认撤销此 Token？") && revoke.mutate(token.id)}><Trash2 size={14} /></button>}</div>)}</div>
+        <div className="compact-list">{tokens.map((token) => <div key={token.id}><KeyRound size={16} /><div><strong>{token.name}</strong><span>pm_{token.prefix}_… · {token.expiresAt ? new Date(token.expiresAt).toLocaleDateString() + "到期" : "永久有效"}</span></div><b className={token.revokedAt ? "muted" : "safe-text"}>{token.revokedAt ? "已撤销" : "有效"}</b>{!token.revokedAt && <button onClick={() => { revoke.reset(); setRevokeTarget(token); }}><Trash2 size={14} /></button>}</div>)}</div>
         {!tokens.length && <EmptyState title="暂无个人 Token" detail="创建后可按当前账号权限访问 MCP。" />}
       </section>
       {tokenModal && <Modal title="创建个人 MCP Token" onClose={() => setTokenModal(false)}>
@@ -1031,6 +1122,7 @@ export function PersonalSettingsPage() {
             <div className="form-actions field-full"><button type="button" className="ghost-button" onClick={() => setTokenModal(false)}>取消</button><button className="primary-button">创建</button></div>
           </form>}
       </Modal>}
+      {revokeTarget && <ConfirmDialog title="撤销 MCP Token" description={<>撤销“<strong>{revokeTarget.name}</strong>”后，使用该 Token 的客户端将立即无法访问系统。</>} confirmLabel="确认撤销" pendingLabel="撤销中…" danger pending={revoke.isPending} error={revoke.error?.message} onClose={() => setRevokeTarget(null)} onConfirm={() => revoke.mutate(revokeTarget.id)} />}
     </div>
   </>;
 }

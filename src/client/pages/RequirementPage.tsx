@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -24,7 +24,7 @@ import {
 } from "../../shared/domain";
 import { GapTimeline } from "../components/GapTimeline";
 import { Chart } from "../components/Chart";
-import { EmptyState, Modal } from "../components/Modal";
+import { ConfirmDialog, EmptyState, Modal, TextPromptModal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { ProgressInput } from "../components/ProgressInput";
 import { InlineDateCell, InlineMultiSelectCell, InlineSelectCell, InlineTextCell } from "../components/InlineEdit";
@@ -46,6 +46,7 @@ function RequirementEditForm({
   });
   const [templateId, setTemplateId] = useState(requirement.templateId || "");
   const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">("start");
+  const [pendingSubmit, setPendingSubmit] = useState<object | null>(null);
   const templateChanged = Boolean(templateId && templateId !== requirement.templateId);
   const mutation = useMutation({
     mutationFn: (value: object) =>
@@ -54,6 +55,7 @@ function RequirementEditForm({
         body: jsonBody(value),
       }),
     onSuccess: () => {
+      setPendingSubmit(null);
       void client.invalidateQueries({
         queryKey: ["requirement", requirement.id],
       });
@@ -64,18 +66,19 @@ function RequirementEditForm({
       onClose();
     },
   });
-  return (
+  return <>
     <form
       className="form-grid"
       onSubmit={(event) => {
         event.preventDefault();
-        if (templateChanged && !confirm("切换流程会替换当前未执行工作项、人员分配和计划，并按新流程重新生成；需求级说明将保留。确认继续？")) return;
-        mutation.mutate({
+        const input = {
           ...Object.fromEntries(new FormData(event.currentTarget)),
           scheduleMode,
           expectedVersion: requirement.version,
           ...(templateChanged ? { templateId, confirmTemplateReset: true } : {}),
-        });
+        };
+        if (templateChanged) { mutation.reset(); setPendingSubmit(input); return; }
+        mutation.mutate(input);
       }}
     >
       <label className="field field-full">
@@ -135,7 +138,8 @@ function RequirementEditForm({
         <button className="primary-button">保存修改</button>
       </div>
     </form>
-  );
+    {pendingSubmit && <ConfirmDialog title="切换需求流程" description="切换流程会替换当前未执行工作项、人员分配和计划，并按新流程重新生成；需求级说明将保留。" confirmLabel="确认切换" pendingLabel="切换中…" danger pending={mutation.isPending} error={mutation.error?.message} onClose={() => setPendingSubmit(null)} onConfirm={() => mutation.mutate(pendingSubmit)} />}
+  </>;
 }
 function ProgressForm({
   requirement,
@@ -178,7 +182,16 @@ function ProgressForm({
       className="form-grid"
       onSubmit={(event) => {
         event.preventDefault();
-        mutation.mutate(Object.fromEntries(new FormData(event.currentTarget)));
+        const content = String(new FormData(event.currentTarget).get("content") || "");
+        const selectedItem = items.find((item) => item.id === workItemId);
+        mutation.mutate({
+          content,
+          ...(selectedItem ? {
+            workItemId: selectedItem.id,
+            workItemPercent,
+            expectedVersion: selectedItem.version,
+          } : {}),
+        });
       }}
     >
       {fixedItem ? <div className="progress-item-context field-full">
@@ -283,17 +296,26 @@ type NewWorkItemDraft = {
   reason?: string;
 };
 
+type RequirementTextPrompt =
+  | { kind: "reorder"; ids: string[] }
+  | { kind: "accept" }
+  | { kind: "new-item" }
+  | { kind: "cancel" };
+
 export function RequirementPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
-  const { session } = useApp();
+  const { session, projects, syncProjectContext } = useApp();
   const [modal, setModal] = useState<
     "edit" | "progress" | "template" | null
   >(null);
   const [progressItemId, setProgressItemId] = useState<string | null>(null);
   const [workEditorOpen, setWorkEditorOpen] = useState(false);
   const [newItem, setNewItem] = useState<NewWorkItemDraft | null>(null);
+  const [textPrompt, setTextPrompt] = useState<RequirementTextPrompt | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<WorkItem | null>(null);
+  const [archiveConfirm, setArchiveConfirm] = useState(false);
   const {
     data: requirement,
     isLoading,
@@ -303,6 +325,11 @@ export function RequirementPage() {
     queryFn: () => api<Requirement>(`/api/requirements/${id}`),
     enabled: Boolean(id),
   });
+  useEffect(() => {
+    if (!requirement?.projectId) return;
+    if (projects.some((project) => project.id === requirement.projectId))
+      syncProjectContext(requirement.projectId);
+  }, [projects, requirement?.projectId, syncProjectContext]);
   const { data: templates = [] } = useQuery({
     queryKey: ["templates", requirement?.projectId || ""],
     queryFn: () => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(requirement!.projectId)}`),
@@ -329,7 +356,11 @@ export function RequirementPage() {
       method: "POST",
       body: jsonBody({ ids, reason, expectedVersion: requirement?.version }),
     }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["requirement", id] }),
+    onSuccess: () => {
+      setRemoveTarget(null);
+      setTextPrompt(null);
+      void client.invalidateQueries({ queryKey: ["requirement", id] });
+    },
   });
   const archive = useMutation({
     mutationFn: () => api(`/api/requirements/${id}`, { method: "DELETE", body: jsonBody({ expectedVersion: requirement?.version }) }),
@@ -344,6 +375,8 @@ export function RequirementPage() {
       body: jsonBody({ expectedVersion: requirement?.version, ...(action === "accept" ? { content: text } : { reason: text }) }),
     }),
     onSuccess: () => {
+      setArchiveConfirm(false);
+      setTextPrompt(null);
       void client.invalidateQueries({ queryKey: ["requirement", id] });
       void client.invalidateQueries({ queryKey: ["dashboard"] });
       void client.invalidateQueries({ queryKey: ["requirements"] });
@@ -380,6 +413,7 @@ export function RequirementPage() {
     }),
     onSuccess: () => {
       setNewItem(null);
+      setTextPrompt(null);
       void client.invalidateQueries({ queryKey: ["requirement", id] });
       void client.invalidateQueries({ queryKey: ["dashboard"] });
       void client.invalidateQueries({ queryKey: ["requirements"] });
@@ -388,11 +422,6 @@ export function RequirementPage() {
   });
   const saveWorkItem = async (item: WorkItem, input: Record<string, unknown>) => {
     const normalizedInput = { ...input };
-    if (item.status !== "not_started" && (Object.prototype.hasOwnProperty.call(input, "plannedStart") || Object.prototype.hasOwnProperty.call(input, "plannedEnd"))) {
-      const reason = prompt("该工作项已开始，请填写调整排期的原因");
-      if (!reason?.trim()) throw new Error("已取消排期变更");
-      normalizedInput.reason = reason.trim();
-    }
     const key = ["requirement", id] as const;
     const previous = client.getQueryData<Requirement>(key);
     const optimistic = { ...item, ...normalizedInput } as WorkItem;
@@ -526,9 +555,8 @@ export function RequirementPage() {
   const reorderWorkItems = (nextItems: WorkItem[]) => {
     const ids = nextItems.map((item) => item.id);
     if (requirement.workItems.some((item) => item.status !== "not_started")) {
-      const reason = prompt("需求已开始执行，请填写调整工作项顺序的原因");
-      if (!reason?.trim()) return;
-      reorderItems.mutate({ ids, reason: reason.trim() });
+      reorderItems.reset();
+      setTextPrompt({ kind: "reorder", ids });
       return;
     }
     reorderItems.mutate({ ids });
@@ -572,9 +600,7 @@ export function RequirementPage() {
       <div className="page-content requirement-page">
         {requirement.status === "pending_acceptance" && <section className="requirement-acceptance-banner">
           <div><Check size={18} /><span><strong>所有工作项已完成，等待项目经理验收</strong><small>验收后才会计入已完成需求和完成率</small></span></div>
-          {canManage && <button className="primary-button" disabled={requirementAction.isPending} onClick={() => {
-            const content = prompt("请填写验收说明"); if (content?.trim()) requirementAction.mutate({ action: "accept", text: content.trim() });
-          }}><Check size={15} />确认验收</button>}
+          {canManage && <button className="primary-button" disabled={requirementAction.isPending} onClick={() => { requirementAction.reset(); setTextPrompt({ kind: "accept" }); }}><Check size={15} />确认验收</button>}
         </section>}
         <div className="requirement-context-strip">
           <div className="hero-badges">
@@ -704,10 +730,7 @@ export function RequirementPage() {
               <td><InlineDateCell value={newItem.plannedEnd} label="新工作项计划完成" onSave={async (plannedEnd) => setNewItem((current) => current && ({ ...current, plannedEnd: plannedEnd || "" }))} /></td>
               <td><span className="status-pill status-not_started">待创建</span>{createItem.error && <small className="inline-row-error">{createItem.error.message}</small>}</td>
               <td><div className="inline-row-actions"><button className="ghost-button" onClick={() => setNewItem(null)}>取消</button><button className="primary-button" disabled={!newItem.title.trim() || createItem.isPending} onClick={() => {
-                if (requirement.workItems.some((item) => item.status !== "not_started")) {
-                  const reason = prompt("需求已开始执行，请填写新增工作项的原因"); if (!reason?.trim()) return;
-                  createItem.mutate({ ...newItem, reason: reason.trim() }); return;
-                }
+                if (requirement.workItems.some((item) => item.status !== "not_started")) { createItem.reset(); setTextPrompt({ kind: "new-item" }); return; }
                 createItem.mutate(newItem);
               }}>保存</button></div></td>
             </tr>}
@@ -721,15 +744,15 @@ export function RequirementPage() {
               return (
                 <tr ref={sortable.setNodeRef} className={`sortable-item${sortable.isDragging ? " is-dragging" : ""}${sortable.isOver ? " is-over" : ""}`}>
                   <td><div className="work-item-name-editor"><InlineTextCell value={item.title} label="工作项名称" required onSave={(title) => saveWorkItem(item, { title })} /><InlineTextCell value={item.milestoneLabel} label="里程碑名称" placeholder="添加里程碑" onSave={(milestoneLabel) => saveWorkItem(item, { milestoneLabel: milestoneLabel || null })} renderValue={(value) => <span className="work-item-milestone-edit">◆ {value}</span>} /></div></td>
-                  <td><InlineSelectCell value={item.ownerId} label="主负责人" options={[{ value: "", label: "未分配" }, ...people.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))]} onSave={(ownerId) => saveWorkItem(item, { ownerId: ownerId || null, assigneeIds: [ownerId, ...item.collaborators.map((person) => person.id).filter((personId) => personId !== ownerId)].filter(Boolean) })} placeholder="未分配" /></td>
+                  <td><InlineSelectCell value={item.ownerId} label="主负责人" options={[{ value: "", label: "未分配" }, ...people.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))]} reason={requirement.workItems.some((workItem) => workItem.status !== "not_started") ? { required: true, label: "调整原因", placeholder: "需求已开始执行，请说明切换主负责人的原因" } : undefined} onSave={(ownerId, reason) => saveWorkItem(item, { ownerId: ownerId || null, assigneeIds: [ownerId, ...item.collaborators.map((person) => person.id).filter((personId) => personId !== ownerId)].filter(Boolean), ...(reason ? { reason } : {}) })} placeholder="未分配" /></td>
                   <td><InlineMultiSelectCell value={item.collaborators.map((person) => person.id)} label="协作人员" options={people.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))} excludedValues={item.ownerId ? [item.ownerId] : []} onSave={(collaboratorIds) => saveWorkItem(item, { assigneeIds: [item.ownerId, ...collaboratorIds].filter(Boolean) })} placeholder="无协作人员" renderValue={(selected) => selected.length ? <span className="inline-person-summary">{selected.slice(0, 2).map((person) => person.label).join("、")}{selected.length > 2 ? ` +${selected.length - 2}` : ""}</span> : "无协作人员"} /></td>
-                  <td><InlineDateCell value={item.plannedStart} label="计划开始" onSave={(plannedStart) => saveWorkItem(item, { plannedStart })} /></td>
-                  <td><InlineDateCell value={item.plannedEnd} label="计划完成" onSave={(plannedEnd) => saveWorkItem(item, { plannedEnd })} /></td>
+                  <td><InlineDateCell value={item.plannedStart} label="计划开始" reason={item.status === "not_started" ? undefined : { required: true, label: "调整原因", placeholder: "请说明计划开始日期调整原因" }} onSave={(plannedStart, reason) => saveWorkItem(item, { plannedStart, ...(reason ? { reason } : {}) })} /></td>
+                  <td><InlineDateCell value={item.plannedEnd} label="计划完成" reason={item.status === "not_started" ? undefined : { required: true, label: "调整原因", placeholder: "请说明计划完成日期调整原因" }} onSave={(plannedEnd, reason) => saveWorkItem(item, { plannedEnd, ...(reason ? { reason } : {}) })} /></td>
                   <td><div className="work-inline-status"><span className={`work-item-status-badge badge-${item.status.replaceAll("_", "-")}`}>{requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}</span><b className={gap.finishVariance > 0 ? "danger-text" : "safe-text"}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}天</b><span className="work-item-inline-progress"><i><b style={{ width: `${item.progress}%` }} /></i>{item.progress}%</span>{item.blockedReason && <small title={item.blockedReason}>阻塞：{item.blockedReason}</small>}</div></td>
                   <td>
                     <div className="work-setting-actions">
                       <button type="button" className="sortable-drag-handle" aria-label={`拖动${item.title}调整顺序`} title="按住拖动调整顺序" disabled={reorderItems.isPending} {...sortable.handleAttributes} {...sortable.handleListeners}><GripVertical size={16} /></button>
-                      {item.status === "not_started" && item.progress === 0 && <button type="button" className="danger" aria-label={`删除${item.title}`} title="删除" disabled={removeItem.isPending} onClick={() => confirm(`删除工作项“${item.title}”？`) && removeItem.mutate(item)}><Trash2 size={14} /></button>}
+                      {item.status === "not_started" && item.progress === 0 && <button type="button" className="danger" aria-label={`删除${item.title}`} title="删除" disabled={removeItem.isPending} onClick={() => { removeItem.reset(); setRemoveTarget(item); }}><Trash2 size={14} /></button>}
                     </div>
                   </td>
                 </tr>
@@ -770,7 +793,7 @@ export function RequirementPage() {
         <div className="danger-zone">
           <span>不再跟踪该需求时可以归档，数据不会立即物理删除。</span>
           <button
-            onClick={() => confirm("确认归档该需求？") && archive.mutate()}
+            onClick={() => { archive.reset(); setArchiveConfirm(true); }}
           >
             归档需求
           </button>
@@ -778,7 +801,7 @@ export function RequirementPage() {
       )}
       {canManage && !['completed', 'cancelled'].includes(requirement.status) && <div className="danger-zone">
         <span>取消会保留已完成工作项和历史，并级联取消其余工作项。</span>
-        <button onClick={() => { const reason = prompt("请填写取消需求的原因"); if (reason?.trim()) requirementAction.mutate({ action: "cancel", text: reason.trim() }); }}>取消需求</button>
+        <button onClick={() => { requirementAction.reset(); setTextPrompt({ kind: "cancel" }); }}>取消需求</button>
       </div>}
       {modal === "edit" && (
         <Modal title="编辑需求" onClose={() => setModal(null)}>
@@ -804,6 +827,29 @@ export function RequirementPage() {
           <PlanForm requirement={requirement} templates={templates} onClose={() => setModal(null)} />
         </Modal>
       )}
+      {textPrompt && <TextPromptModal
+        title={{ reorder: "调整工作项顺序", accept: "确认验收", "new-item": "新增执行中工作项", cancel: "取消需求" }[textPrompt.kind]}
+        description={{
+          reorder: "需求已经开始执行。调整工作项顺序会改变后续计划，请说明本次调整原因。",
+          accept: "验收后需求将计入已完成需求和完成率，请填写验收结论。",
+          "new-item": "需求已经开始执行。新增工作项会改变当前执行计划，请说明新增原因。",
+          cancel: "取消后将保留已完成工作项和历史，其余工作项会同步取消。",
+        }[textPrompt.kind]}
+        label={{ reorder: "调整原因", accept: "验收说明", "new-item": "新增原因", cancel: "取消原因" }[textPrompt.kind]}
+        placeholder={{ reorder: "说明为什么需要调整顺序", accept: "填写验收结果和必要说明", "new-item": "说明新增工作项的原因", cancel: "说明取消需求的原因" }[textPrompt.kind]}
+        confirmLabel={{ reorder: "确认调整", accept: "确认验收", "new-item": "确认新增", cancel: "确认取消" }[textPrompt.kind]}
+        danger={textPrompt.kind === "cancel"}
+        pending={textPrompt.kind === "reorder" ? reorderItems.isPending : textPrompt.kind === "new-item" ? createItem.isPending : requirementAction.isPending}
+        error={(textPrompt.kind === "reorder" ? reorderItems.error : textPrompt.kind === "new-item" ? createItem.error : requirementAction.error)?.message}
+        onClose={() => setTextPrompt(null)}
+        onConfirm={(text) => {
+          if (textPrompt.kind === "reorder") reorderItems.mutate({ ids: textPrompt.ids, reason: text });
+          else if (textPrompt.kind === "new-item") { if (newItem) createItem.mutate({ ...newItem, reason: text }); }
+          else requirementAction.mutate({ action: textPrompt.kind, text });
+        }}
+      />}
+      {removeTarget && <ConfirmDialog title="删除工作项" description={<>工作项“<strong>{removeTarget.title}</strong>”将从需求计划中删除。此操作仅适用于尚未开始且没有进展历史的工作项。</>} confirmLabel="确认删除" pendingLabel="删除中…" danger pending={removeItem.isPending} error={removeItem.error?.message} onClose={() => setRemoveTarget(null)} onConfirm={() => removeItem.mutate(removeTarget)} />}
+      {archiveConfirm && <ConfirmDialog title="归档需求" description={<>需求“<strong>{requirement.title}</strong>”将从日常页面隐藏，历史数据仍会保留并可在归档中心恢复。</>} confirmLabel="确认归档" pendingLabel="归档中…" danger pending={archive.isPending} error={archive.error?.message} onClose={() => setArchiveConfirm(false)} onConfirm={() => archive.mutate()} />}
       </div>
     </>
   );

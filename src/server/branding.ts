@@ -1,5 +1,6 @@
 import { sqlite } from './database';
 import { fail } from './errors';
+import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
 
 const BRANDING_META_KEY = 'system-branding';
 const DEFAULT_SYSTEM_NAME = '项目管理';
@@ -40,8 +41,8 @@ function readStoredBranding(row = brandingRow()): { value: StoredBranding; updat
   if (!row) return { value: defaultStoredBranding(), updatedAt: null };
   try {
     const parsed = JSON.parse(row.value) as Partial<StoredBranding>;
-    const systemName = String(parsed.systemName || '').trim();
-    const shortName = String(parsed.shortName || '').trim();
+    const systemName = canonicalizeLabel(parsed.systemName);
+    const shortName = canonicalizeLabel(parsed.shortName);
     if (!systemName || !shortName) throw new Error('invalid branding');
     return {
       value: {
@@ -102,8 +103,9 @@ export function getBrandingLogo() {
 }
 
 export function updateBranding(input: Record<string, unknown>) {
-  const systemName = String(input.systemName || '').trim();
-  const shortName = String(input.shortName || '').trim();
+  if (textSafetyIssue(input.systemName, false) || textSafetyIssue(input.shortName, false)) fail('系统名称包含不支持的控制字符');
+  const systemName = canonicalizeLabel(input.systemName);
+  const shortName = canonicalizeLabel(input.shortName);
   if (!systemName || characterCount(systemName) > 20) fail('系统名称需为1～20个字符');
   if (!shortName || characterCount(shortName) > 4) fail('系统简称需为1～4个字符');
 

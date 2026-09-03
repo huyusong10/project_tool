@@ -68,10 +68,11 @@ const account: Account = {
   activeAssignments: { requirements: 0, workItems: 0, issues: 0 },
 };
 
-async function mockApplication(page: Page, patches: Array<{ path: string; body: Record<string, unknown> }>, options: { issue?: Partial<Issue>; account?: Partial<Account> } = {}) {
+async function mockApplication(page: Page, patches: Array<{ path: string; body: Record<string, unknown> }>, options: { issue?: Partial<Issue>; account?: Partial<Account>; workItem?: Partial<WorkItem> } = {}) {
   let currentProject = structuredClone(project);
   let currentPeople = structuredClone(people);
   let currentRequirement = structuredClone(requirement);
+  if (options.workItem) currentRequirement = { ...currentRequirement, workItems: currentRequirement.workItems.map((item, index) => index === 0 ? { ...item, ...options.workItem } : item) };
   let currentIssue = { ...structuredClone(issue), ...options.issue };
   let currentAccount = { ...structuredClone(account), ...options.account };
   await page.route("**/api/**", async (route: Route) => {
@@ -145,9 +146,8 @@ async function mockApplication(page: Page, patches: Array<{ path: string; body: 
     if (url.pathname === "/api/accounts" && method === "GET") return json([currentAccount]);
     if (url.pathname === "/api/accounts/a1" && method === "PATCH") {
       patches.push({ path: url.pathname, body: body || {} });
-      const role = (body?.role as Account["role"] | undefined) || currentAccount.role;
-      const managedIds = Array.isArray(body?.managedProjectIds) ? body.managedProjectIds.map(String) : [];
-      currentAccount = { ...currentAccount, ...body, role, managedProjects: role === "project_manager" && managedIds.includes("p1") ? [{ id: "p1", name: "测试项目" }] : [] };
+      const globalRole = (body?.role as Account["globalRole"] | undefined) || currentAccount.globalRole;
+      currentAccount = { ...currentAccount, ...body, globalRole, role: globalRole === "admin" ? "admin" : currentAccount.managedProjects.length ? "project_manager" : "user" };
       return json(currentAccount);
     }
     return json({});
@@ -182,8 +182,13 @@ test("管理表格支持原地编辑、显式状态命令和失败回滚", async
   await page.getByRole("button", { name: "完成", exact: true }).click();
   await expect.poll(() => patches.some((entry) => Array.isArray(entry.body.assigneeIds) && entry.body.assigneeIds.includes("u2"))).toBe(true);
   await page.getByRole("button", { name: /计划开始：2026-09-01/ }).first().click();
-  await expect(page.locator(".inline-date-popover")).toHaveCount(0);
-  await page.getByLabel("计划开始", { exact: true }).first().fill("2026-09-02");
+  const datePopover = page.locator(".inline-date-popover");
+  await expect(datePopover).toBeVisible();
+  await datePopover.getByRole("button", { name: "下一个月" }).click();
+  await expect.poll(() => patches.some((entry) => entry.path === "/api/work-items/w1" && Object.prototype.hasOwnProperty.call(entry.body, "plannedStart"))).toBe(false);
+  await datePopover.getByRole("button", { name: "上一个月" }).click();
+  await datePopover.getByRole("gridcell", { name: "2026-09-02" }).click();
+  await datePopover.getByRole("button", { name: "保存", exact: true }).click();
   await expect.poll(() => patches.some((entry) => entry.path === "/api/work-items/w1" && entry.body.plannedStart === "2026-09-02")).toBe(true);
   expectStable(workBefore, await geometry(page, ".work-inline-table"));
 
@@ -203,10 +208,10 @@ test("管理表格支持原地编辑、显式状态命令和失败回滚", async
 
   await page.goto("/accounts");
   await page.locator(".account-permission-editor").first().getByRole("button").click();
-  await page.locator(".account-permission-popover select").selectOption("project_manager");
-  await page.locator(".account-permission-popover").getByText("测试项目", { exact: true }).click();
+  await expect(page.locator(".account-permission-popover").getByRole("option", { name: "项目经理" })).toHaveCount(0);
+  await page.locator(".account-permission-popover select").selectOption("admin");
   await page.getByRole("button", { name: "保存权限" }).click();
-  await expect.poll(() => patches.some((entry) => entry.path === "/api/accounts/a1" && entry.body.role === "project_manager" && Array.isArray(entry.body.managedProjectIds) && entry.body.managedProjectIds.includes("p1"))).toBe(true);
+  await expect.poll(() => patches.some((entry) => entry.path === "/api/accounts/a1" && entry.body.role === "admin" && entry.body.managedProjectIds === undefined)).toBe(true);
 
   await page.goto("/projects");
   await expect(page.locator(".project-table").getByText("测试项目", { exact: true })).toBeVisible();
@@ -215,6 +220,66 @@ test("管理表格支持原地编辑、显式状态命令和失败回滚", async
   await page.goto("/people");
   await expect(page.getByRole("heading", { name: "前端工程师" })).toBeVisible();
   await expect(page.locator(".person-card .inline-edit-cell")).toHaveCount(0);
+});
+
+test("日期翻月不提交，执行中工作项在统一浮窗填写调整原因", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1080p", "交互流程只需在一个桌面视口执行");
+  const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
+  const browserDialogs: string[] = [];
+  page.on("dialog", async (dialog) => { browserDialogs.push(dialog.message()); await dialog.dismiss(); });
+  await mockApplication(page, patches, { workItem: { status: "in_progress", actualStart: "2026-09-01", ownerId: "u1", ownerName: "张三", assigneeIds: ["u1"], assigneeNames: ["张三"] } });
+
+  await page.goto("/requirements/r1");
+  await page.getByRole("button", { name: /工作项设置|编辑工作项/ }).click();
+  const workBefore = await geometry(page, ".work-inline-table");
+  await page.getByRole("button", { name: /主负责人：张三/ }).first().click();
+  const ownerPicker = page.locator(".inline-select-popover");
+  await ownerPicker.getByRole("option", { name: /李四/ }).click();
+  await expect(ownerPicker.getByPlaceholder("需求已开始执行，请说明切换主负责人的原因")).toBeVisible();
+  expect(patches.some((entry) => entry.path === "/api/work-items/w1" && entry.body.ownerId === "u2")).toBe(false);
+  await ownerPicker.getByPlaceholder("需求已开始执行，请说明切换主负责人的原因").fill("调整开发任务分工");
+  await ownerPicker.getByRole("button", { name: "保存", exact: true }).click();
+  await expect.poll(() => patches.some((entry) => entry.path === "/api/work-items/w1" && entry.body.ownerId === "u2" && entry.body.reason === "调整开发任务分工")).toBe(true);
+  await page.getByRole("button", { name: /计划开始：2026-09-01/ }).first().click();
+  const popover = page.locator(".inline-date-popover");
+  await expect(popover).toBeVisible();
+  await popover.getByRole("button", { name: "下一个月" }).click();
+  await page.waitForTimeout(150);
+  expect(patches.some((entry) => entry.path === "/api/work-items/w1" && Object.prototype.hasOwnProperty.call(entry.body, "plannedStart"))).toBe(false);
+  expect(browserDialogs).toEqual([]);
+  expectStable(workBefore, await geometry(page, ".work-inline-table"));
+
+  await popover.getByRole("button", { name: "上一个月" }).click();
+  await popover.getByRole("gridcell", { name: "2026-09-02" }).click();
+  await expect(popover.getByPlaceholder("请说明计划开始日期调整原因")).toBeVisible();
+  expect(patches.some((entry) => entry.path === "/api/work-items/w1" && Object.prototype.hasOwnProperty.call(entry.body, "plannedStart"))).toBe(false);
+  await popover.getByPlaceholder("请说明计划开始日期调整原因").fill("配合联调窗口调整排期");
+  await popover.getByRole("button", { name: "保存", exact: true }).click();
+  await expect.poll(() => patches.some((entry) => entry.path === "/api/work-items/w1" && entry.body.plannedStart === "2026-09-02" && entry.body.reason === "配合联调窗口调整排期")).toBe(true);
+  const savedDateButton = page.getByRole("button", { name: /计划开始：2026-09-02/ }).first();
+  await expect(savedDateButton.locator(".inline-edit-success")).toBeVisible();
+  expect(await savedDateButton.evaluate((button) => {
+    const icon = button.querySelector(".inline-edit-success")?.getBoundingClientRect();
+    const bounds = button.getBoundingClientRect();
+    return Boolean(icon && icon.left >= bounds.left && icon.right <= bounds.right && icon.top >= bounds.top && icon.bottom <= bounds.bottom);
+  })).toBe(true);
+  expect(browserDialogs).toEqual([]);
+  expectStable(workBefore, await geometry(page, ".work-inline-table"));
+
+  const handles = page.getByRole("button", { name: /拖动.*调整顺序/ });
+  const first = await handles.nth(0).boundingBox();
+  const second = await handles.nth(1).boundingBox();
+  await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
+  await page.mouse.up();
+  const reasonDialog = page.getByRole("dialog", { name: "调整工作项顺序" });
+  await expect(reasonDialog).toBeVisible();
+  expect(patches.some((entry) => entry.path.endsWith("/reorder-work-items"))).toBe(false);
+  await reasonDialog.getByLabel("调整原因").fill("先完成开发再补充设计归档");
+  await reasonDialog.getByRole("button", { name: "确认调整" }).click();
+  await expect.poll(() => patches.some((entry) => entry.path.endsWith("/reorder-work-items") && entry.body.reason === "先完成开发再补充设计归档")).toBe(true);
+  expect(browserDialogs).toEqual([]);
 });
 
 test("流程里程碑在需求甘特图展示并可单独调整", async ({ page }, testInfo) => {
@@ -300,7 +365,14 @@ test("编辑浮层在常用分辨率下保持表格几何稳定", async ({ page 
 test("问题字段、表格基线和详情工作区保持稳定", async ({ page }, testInfo) => {
   test.skip(!["laptop-1366", "desktop-1080p"].includes(testInfo.project.name), "覆盖常用桌面视口");
   const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
-  await mockApplication(page, patches, { issue: { dueDate: "2026-08-25", overdue: true } });
+  await mockApplication(page, patches, { issue: {
+    dueDate: "2026-08-25",
+    overdue: true,
+    updates: [{
+      id: "iu1", issueId: "i1", progress: 50, content: "历史进展内容应当可以完整滚动查看", eventType: "progress",
+      createdByAccountId: "admin", createdByName: "管理员", createdAt: "2026-09-02T08:00:00.000Z", updatedAt: "2026-09-02T08:00:00.000Z",
+    }],
+  } });
   await page.goto("/issues");
 
   const primaryTops = await page.locator('.issue-data-row:first-child > .adaptive-data-cell:not([data-importance="secondary"]) .data-cell-primary').evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().top));
@@ -325,7 +397,17 @@ test("问题字段、表格基线和详情工作区保持稳定", async ({ page 
   expect(Math.abs(after!.y - before!.y)).toBeLessThanOrEqual(1);
   expect(Math.abs(after!.width - before!.width)).toBeLessThanOrEqual(1);
   expect(Math.abs(after!.height - before!.height)).toBeLessThanOrEqual(1);
-  await expect(dialog.locator(".issue-update-settings-list")).toHaveCSS("overflow-y", "auto");
+  const updatesPanel = dialog.locator(".issue-settings-updates");
+  await expect(updatesPanel).toHaveCSS("overflow-y", "auto");
+  await expect(dialog.locator(".issue-update-settings")).toHaveCSS("min-height", "220px");
+  const historyRow = dialog.locator(".issue-update-setting-row").first();
+  await historyRow.scrollIntoViewIfNeeded();
+  const visibleHistory = await historyRow.evaluate((row) => {
+    const panel = row.closest<HTMLElement>(".issue-settings-updates")!.getBoundingClientRect();
+    const record = row.getBoundingClientRect();
+    return record.top >= panel.top - 1 && record.bottom <= panel.bottom + 1;
+  });
+  expect(visibleHistory).toBe(true);
 
   await dialog.getByRole("tab", { name: "基本信息" }).click();
   await expect(dialog.getByLabel("问题标题", { exact: true })).toHaveValue("保留中的问题草稿");
@@ -371,4 +453,22 @@ test("公共数据单元格统一编辑态与次级信息的可见起点", async
   const accountBadgeLeft = await page.locator(`${accountStatus} .account-status`).evaluate((element) => element.getBoundingClientRect().left);
   const accountMetaLeft = await textLeft(`${accountStatus} .account-password-state`);
   expect(Math.abs(accountBadgeLeft - accountMetaLeft)).toBeLessThanOrEqual(1);
+});
+
+test("问题范围在收起、展开和保存后使用一致名称", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1080p", "交互语义只需在一个桌面视口执行");
+  const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
+  await mockApplication(page, patches, { issue: { requirementId: null, requirementTitle: null, sourceRef: "DCIM-36" } });
+  await page.goto("/issues");
+
+  await expect(page.locator(".issue-data-scope .issue-scope")).toHaveText("DCIM-36");
+  await page.locator(".issue-data-scope .inline-edit-trigger").click();
+  const picker = page.locator(".inline-select-popover");
+  await expect(picker.getByRole("option", { name: "公共问题", exact: true })).toBeVisible();
+  await expect(picker.getByRole("option", { name: "DCIM-36", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(picker.getByText("公共问题 · DCIM-36", { exact: true })).toHaveCount(0);
+
+  await picker.getByRole("option", { name: "公共问题", exact: true }).click();
+  await expect.poll(() => patches.some((entry) => entry.path === "/api/issues/i1" && entry.body.requirementId === null && entry.body.sourceRef === null)).toBe(true);
+  await expect(page.locator(".issue-data-scope .issue-scope")).toHaveText("公共问题");
 });

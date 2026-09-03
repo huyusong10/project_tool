@@ -5,7 +5,7 @@ export type AppContextValue = {
   session: Session;
   projects: Project[];
   selectedProjectId: string;
-  setSelectedProjectId: (id: string) => void;
+  syncProjectContext: (id: string) => void;
   openLogin: () => void;
   openPassword: () => void;
 };

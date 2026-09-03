@@ -158,7 +158,10 @@ export function registerApiRoutes(app: FastifyInstance) {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectManager(actor, id);
     return updateProject(id, parsedBody(request, projectInputSchema), actor);
   });
-  app.delete('/api/projects/:id', { preHandler: requireAdmin }, async (request) => archiveProject(idOf(request), actorFromRequest(request)));
+  app.delete('/api/projects/:id', { preHandler: requireAdmin }, async (request) => {
+    const input = request.body ? body(request) : {};
+    return archiveProject(idOf(request), actorFromRequest(request), { force: input.force === true });
+  });
   app.post('/api/projects/:id/restore', { preHandler: requireAdmin }, async (request) => restoreProject(idOf(request), actorFromRequest(request)));
   app.get('/api/dashboard', { preHandler: requireReady }, async (request) => {
     const projectId = String(query(request).projectId || ''); assertProjectReadable(actorFromRequest(request), projectId);

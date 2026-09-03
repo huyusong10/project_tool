@@ -1,6 +1,7 @@
 import { sqlite } from '../database';
 import { fail } from '../errors';
 import { isTerminalRequirementStatus, isTerminalWorkItemStatus } from '../../shared/domain';
+import { canonicalizeContent, canonicalizeLabel, textSafetyIssue } from '../../shared/search';
 
 export type JsonObject = Record<string, unknown>;
 
@@ -35,25 +36,51 @@ export function ensureEnum<T extends readonly string[]>(value: unknown, allowed:
   return value as T[number];
 }
 
+function assertSafeText(value: unknown, field: string, multiline: boolean) {
+  const issue = textSafetyIssue(value, multiline);
+  if (issue === 'line_break') fail(`${field}不能包含换行`);
+  if (issue === 'bidi') fail(`${field}包含不安全的文字方向控制字符`);
+  if (issue === 'control') fail(`${field}包含不支持的控制字符`);
+}
+
 export function requireText(value: unknown, field: string) {
-  const text = String(value ?? '').trim();
+  assertSafeText(value, field, true);
+  const text = canonicalizeContent(value);
   if (!text) fail(`${field}不能为空`);
   return text;
 }
 
 export function nullableText(value: unknown) {
-  const text = String(value ?? '').trim();
+  assertSafeText(value, '文本', true);
+  const text = canonicalizeContent(value);
+  return text || null;
+}
+
+export function requireLabel(value: unknown, field: string, maxLength = 200) {
+  assertSafeText(value, field, false);
+  const text = canonicalizeLabel(value);
+  if (!text) fail(`${field}不能为空`);
+  if ([...text].length > maxLength) fail(`${field}不能超过${maxLength}个字符`);
+  return text;
+}
+
+export function nullableLabel(value: unknown, field = '文本', maxLength = 200) {
+  assertSafeText(value, field, false);
+  const text = canonicalizeLabel(value);
+  if ([...text].length > maxLength) fail(`${field}不能超过${maxLength}个字符`);
   return text || null;
 }
 
 export function templateDescription(value: unknown) {
-  const description = String(value ?? '').trim();
+  assertSafeText(value, '流程描述', true);
+  const description = canonicalizeContent(value);
   if (description.length > 2000) fail('流程描述不能超过2000个字符');
   return description;
 }
 
 export function milestoneLabel(value: unknown) {
-  const label = String(value ?? '').trim();
+  assertSafeText(value, '里程碑名称', false);
+  const label = canonicalizeLabel(value);
   if (label.length > 80) fail('里程碑名称不能超过80个字符');
   return label || null;
 }

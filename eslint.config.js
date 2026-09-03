@@ -34,6 +34,7 @@ export default defineConfig(
       ],
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
+      "no-restricted-globals": ["error", { name: "alert", message: "请使用系统 ResultDialog 展示结果或错误。" }, { name: "confirm", message: "请使用系统 ConfirmDialog 处理确认操作。" }, { name: "prompt", message: "请使用系统 TextPromptModal 收集输入。" }],
     },
   },
 );

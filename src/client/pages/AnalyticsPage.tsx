@@ -8,7 +8,7 @@ import {
 import { api, jsonBody } from "../api";
 import { useApp } from "../app-context";
 import { Chart } from "../components/Chart";
-import { EmptyState, Modal } from "../components/Modal";
+import { ConfirmDialog, EmptyState, Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import {
   analyticsCatalog as fallbackCatalog,
@@ -208,6 +208,7 @@ export function AnalyticsPage() {
   const [customTo, setCustomTo] = useState(today());
   const [draft, setDraft] = useState<AnalyticsLayout | null>(null);
   const [editingPanel, setEditingPanel] = useState<AnalyticsPanelConfig | null>(null);
+  const [resetConfirm, setResetConfirm] = useState(false);
   const project = projects.find((item) => item.id === selectedProjectId);
   const range = useMemo<AnalyticsRange>(() => {
     if (preset === "custom") return { from: customFrom, to: customTo };
@@ -233,7 +234,7 @@ export function AnalyticsPage() {
   });
   const resetLayout = useMutation({
     mutationFn: () => api<AnalyticsLayoutResponse>("/api/analytics/layout", { method: "DELETE" }),
-    onSuccess: () => { setDraft(null); void client.invalidateQueries({ queryKey: ["analytics-layout"] }); },
+    onSuccess: () => { setResetConfirm(false); setDraft(null); void client.invalidateQueries({ queryKey: ["analytics-layout"] }); },
   });
   const beginEditing = () => setDraft(cloneLayout(savedLayout));
   const updatePanel = (panel: AnalyticsPanelConfig) => {
@@ -270,7 +271,7 @@ export function AnalyticsPage() {
         </div>
         {preset === "custom" && <div className="analytics-custom-range"><input aria-label="分析开始日期" type="date" value={customFrom} max={customTo} onChange={(event) => setCustomFrom(event.target.value)} /><span>至</span><input aria-label="分析结束日期" type="date" value={customTo} min={customFrom} onChange={(event) => setCustomTo(event.target.value)} /></div>}
         <span className="analytics-range-label">{range.from} 至 {range.to}</span>
-        {draft && <div className="analytics-edit-actions"><button className="ghost-button" disabled={draft.panels.length >= 24} onClick={addPanel}><Plus size={15} />新增图表</button><button className="ghost-button" onClick={() => confirm("恢复系统默认看板？当前个人布局将被删除。") && resetLayout.mutate()} disabled={resetLayout.isPending}><RotateCcw size={15} />恢复默认</button></div>}
+        {draft && <div className="analytics-edit-actions"><button className="ghost-button" disabled={draft.panels.length >= 24} onClick={addPanel}><Plus size={15} />新增图表</button><button className="ghost-button" onClick={() => { resetLayout.reset(); setResetConfirm(true); }} disabled={resetLayout.isPending}><RotateCcw size={15} />恢复默认</button></div>}
       </section>
       {!session.authenticated && <p className="analytics-guest-note">当前展示系统默认看板；登录后可配置并保存个人布局。</p>}
       {(saveLayout.error || resetLayout.error) && <p className="form-error">{saveLayout.error?.message || resetLayout.error?.message}</p>}
@@ -287,6 +288,7 @@ export function AnalyticsPage() {
       </DndContext>
       {dataQuery.error && <EmptyState title="分析数据加载失败" detail={dataQuery.error.message} action={<button className="ghost-button" onClick={() => void dataQuery.refetch()}><RefreshCcw size={15} />重新加载</button>} />}
       {editingPanel && <Modal title="配置分析图表" width={1080} onClose={() => setEditingPanel(null)}><PanelEditor initial={editingPanel} catalog={catalog} range={range} projectId={selectedProjectId} onClose={() => setEditingPanel(null)} onSave={updatePanel} /></Modal>}
+      {resetConfirm && <ConfirmDialog title="恢复默认看板" description="当前个人看板布局将被删除，并恢复为系统默认布局。" confirmLabel="恢复默认" pendingLabel="恢复中…" danger pending={resetLayout.isPending} error={resetLayout.error?.message} onClose={() => setResetConfirm(false)} onConfirm={() => resetLayout.mutate()} />}
     </div>
   </>;
 }

@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import { CircleAlert, LocateFixed, RotateCcw, Search } from "lucide-react";
+import { CircleAlert, LocateFixed, RotateCcw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { priorityLabels, requirementStatusLabels, riskLabels, signedProgressVariance, todayIso } from "../../shared/domain";
+import { matchesSearch, searchScore } from "../../shared/search";
 import type { Requirement } from "../types";
 import { EmptyState } from "./Modal";
 import { useGanttTooltip } from "./GanttTooltip";
+import { SearchInput } from "./SearchInput";
 import {
   buildBusinessDayTimeline,
   GanttMilestoneMarker,
@@ -180,22 +182,29 @@ export function ProjectGantt({
     return [...owners.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
   }, [requirements]);
   const visibleRequirements = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
     return requirements.filter((requirement) => {
-      const matchesSearch = !keyword
-        || requirement.title.toLowerCase().includes(keyword)
-        || requirement.workItems.some((item) => item.title.toLowerCase().includes(keyword));
+      const matchesKeyword = matchesSearch([
+        { text: requirement.title, weight: 100 },
+        ...requirement.workItems.map((item) => ({ text: item.title, weight: 20 })),
+      ], search);
       const matchesSchedule = !schedule
         || (schedule === "delayed" && requirement.delayed)
         || (schedule === "on_track" && Boolean(requirement.plannedStart && requirement.plannedEnd) && !requirement.delayed)
         || (schedule === "unplanned" && (!requirement.plannedStart || !requirement.plannedEnd));
-      return matchesSearch
+      return matchesKeyword
         && (!status || requirement.status === status)
         && (!priority || requirement.priority === priority)
         && (!risk || (requirement.riskEvaluated && requirement.riskLevel === risk))
         && (!personId || requirement.workItems.some((item) => item.assigneeIds?.includes(personId) || item.ownerId === personId))
         && matchesSchedule;
-    }).sort((left, right) => compareRequirements(left, right, sort));
+    }).sort((left, right) => {
+      if (search.trim()) {
+        const score = searchScore([{ text: right.title, weight: 100 }, ...right.workItems.map((item) => ({ text: item.title, weight: 20 }))], search)
+          - searchScore([{ text: left.title, weight: 100 }, ...left.workItems.map((item) => ({ text: item.title, weight: 20 }))], search);
+        if (score !== 0) return score;
+      }
+      return compareRequirements(left, right, sort);
+    });
   }, [personId, priority, requirements, risk, schedule, search, sort, status]);
   const hasFilters = Boolean(search || status || priority || risk || personId || schedule);
   const resetFilters = () => {
@@ -261,10 +270,7 @@ export function ProjectGantt({
         </div>
       </header>
       <div className="gantt-filter-bar" aria-label="项目进展筛选">
-        <label className="gantt-filter-search">
-          <Search size={16} />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索需求或工作项" aria-label="搜索需求或工作项" />
-        </label>
+        <SearchInput className="gantt-filter-search" value={search} onChange={setSearch} placeholder="搜索需求、工作项或拼音" />
         <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="按状态筛选">
           <option value="">全部状态</option>
           {Object.entries(requirementStatusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}

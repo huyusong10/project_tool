@@ -380,13 +380,14 @@ export function linkSampleProgressAuthors(sqlite: SqliteDatabase) {
   })();
 }
 
-export function archiveUnusedSamplePeople(sqlite: SqliteDatabase, now: string) {
+export function archiveUnusedSamplePeople(sqlite: SqliteDatabase, now: string, preserveAccountId?: string) {
   const archivePerson = sqlite.prepare('UPDATE people SET active=0, deleted_at=?, updated_at=? WHERE id=? AND deleted_at IS NULL');
-  const disableAccount = sqlite.prepare(`UPDATE accounts SET status='disabled', session_version=session_version+1, updated_at=? WHERE person_id=? AND is_builtin=0 AND deleted_at IS NULL`);
+  const disableAccount = sqlite.prepare(`UPDATE accounts SET status='disabled', session_version=session_version+1, updated_at=?
+    WHERE person_id=? AND is_builtin=0 AND deleted_at IS NULL AND (? IS NULL OR id<>?)`);
   for (const personId of SAMPLE_PERSON_IDS) {
     if (samplePersonUsedOutside(sqlite, personId)) continue;
     archivePerson.run(now, now, personId);
-    disableAccount.run(now, personId);
+    disableAccount.run(now, personId, preserveAccountId || null, preserveAccountId || null);
   }
 }
 

@@ -52,10 +52,10 @@ export const accountRoleLabels = {
   admin: "管理员",
 } as const;
 
-export const accountRoleOptions: UiOption<keyof typeof accountRoleLabels>[] = Object.entries(accountRoleLabels).map(([value, label]) => ({
-  value: value as keyof typeof accountRoleLabels,
-  label,
-}));
+export const accountRoleOptions: UiOption<"user" | "admin">[] = [
+  { value: "user", label: accountRoleLabels.user },
+  { value: "admin", label: accountRoleLabels.admin },
+];
 
 export const accountStatusOptions: UiOption<"active" | "disabled">[] = [
   { value: "active", label: "允许登录", toneClass: "account-status active" },

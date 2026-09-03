@@ -16,6 +16,7 @@ import { api, jsonBody } from "../api";
 import { useApp } from "../app-context";
 import type { Issue, IssuePage, IssueUpdate, Person, Requirement } from "../types";
 import { issueStatusLabels, priorityLabels, todayIso } from "../../shared/domain";
+import { rankSearchItems } from "../../shared/search";
 import { AdaptiveDataCell, AdaptiveDataList, AdaptiveDataRow, type AdaptiveDataColumn } from "../components/AdaptiveDataList";
 import { EmptyState, Modal } from "../components/Modal";
 import { DataCell, FieldShell } from "../components/LayoutPrimitives";
@@ -24,6 +25,7 @@ import { ProgressInput } from "../components/ProgressInput";
 import { AnchoredPopover, InlineDateCell, InlineSelectCell } from "../components/InlineEdit";
 import { canManageProject } from "../permissions";
 import { issueStatusOptions, priorityOptions } from "../ui-options";
+import { SearchInput } from "../components/SearchInput";
 
 const statusEntries = issueStatusOptions.map(({ value, label }) => [value, label] as const);
 const priorityEntries = priorityOptions.map(({ value, label }) => [value, label] as const);
@@ -43,8 +45,51 @@ function defaultIssueStatus(params: URLSearchParams) {
   return params.has("status") ? params.get("status") || "" : "in_progress";
 }
 
+function issueSourceLabel(issue: Issue) {
+  const value = issue.sourceRef?.trim();
+  return value && value !== "公共问题" ? value : null;
+}
+
 function issueScope(issue: Issue) {
-  return issue.requirementTitle || issue.sourceRef || "公共问题";
+  return issue.requirementTitle || issueSourceLabel(issue) || "公共问题";
+}
+
+const publicIssueScopeValue = "__public_issue__";
+const sourceIssueScopeValue = "__source_ref__";
+
+function IssueScopeControl({
+  issue,
+  requirements,
+  canEdit,
+  onSave,
+}: {
+  issue: Issue;
+  requirements: Requirement[];
+  canEdit: boolean;
+  onSave: (input: Record<string, unknown>) => Promise<unknown>;
+}) {
+  const label = issueScope(issue);
+  if (!canEdit || issue.status === "resolved") {
+    return <span className="issue-scope" title={label}>{label}</span>;
+  }
+  const sourceLabel = issueSourceLabel(issue);
+  const value = issue.requirementId || (sourceLabel ? sourceIssueScopeValue : publicIssueScopeValue);
+  const options = [
+    { value: publicIssueScopeValue, label: "公共问题" },
+    ...(sourceLabel ? [{ value: sourceIssueScopeValue, label: sourceLabel }] : []),
+    ...requirements.map((requirement) => ({ value: requirement.id, label: requirement.title })),
+  ];
+  return <InlineSelectCell
+    value={value}
+    label="关联需求"
+    options={options}
+    onSave={(next) => {
+      if (next === publicIssueScopeValue) return onSave({ requirementId: null, sourceRef: null });
+      if (next === sourceIssueScopeValue) return onSave({ requirementId: null });
+      return onSave({ requirementId: next, sourceRef: null });
+    }}
+    renderValue={(_value, selected) => <span className="issue-scope" title={selected?.label || label}>{selected?.label || label}</span>}
+  />;
 }
 
 function shortDateTime(value?: string | null) {
@@ -79,10 +124,12 @@ function SearchSelectField({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const selected = options.find((option) => option.value === value);
-  const keyword = query.trim().toLowerCase();
   const pinned = options.filter((option) => pinnedValues.includes(option.value));
-  const matched = options.filter((option) => !pinnedValues.includes(option.value)
-    && (!keyword || `${option.label} ${option.description || ""}`.toLowerCase().includes(keyword)));
+  const matched = rankSearchItems(
+    options.filter((option) => !pinnedValues.includes(option.value)),
+    query,
+    (option) => [{ text: option.label, weight: 100 }, { text: option.description, weight: 20 }],
+  );
   const visibleOptions = [...pinned];
   if (selected && !visibleOptions.some((option) => option.value === selected.value)) visibleOptions.push(selected);
   for (const option of matched) {
@@ -462,7 +509,7 @@ export function IssuesPage() {
         <article className="issue-metric metric-overdue"><AlertTriangle size={20} /><div><span>已逾期</span><strong>{summary.overdue}</strong></div></article>
       </section>
       <div className="issue-filters">
-        <label className="search-box"><Search size={16} /><input value={keyword} onChange={(event) => resetPage(() => setKeyword(event.target.value))} placeholder="搜索问题、影响或进展" /></label>
+        <SearchInput value={keyword} onChange={(value) => resetPage(() => setKeyword(value))} placeholder="搜索问题、影响、人员、进展或拼音" />
         <select value={status} onChange={(event) => changeStatus(event.target.value)}><option value="in_progress">处理中</option><option value="active">全部未闭环</option><option value="">全部状态</option>{statusEntries.filter(([value]) => value !== "in_progress").map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
         <select value={priority} onChange={(event) => resetPage(() => setPriority(event.target.value))}><option value="">全部优先级</option>{priorityEntries.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
         <select value={ownerId} onChange={(event) => resetPage(() => setOwnerId(event.target.value))}><option value="">全部负责人</option>{people.map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
@@ -481,7 +528,7 @@ export function IssuesPage() {
       >
         {data?.items.map((issue) => <AdaptiveDataRow className={`issue-data-row${issue.overdue ? " is-overdue" : ""}`} key={issue.id}>
           <AdaptiveDataCell column="issue" className="issue-data-primary"><button type="button" className="issue-title-button" onClick={() => openIssue(issue.id, "basic")}><DataCell primary={<strong>{issue.title}</strong>} secondary={issue.impact || "暂无影响说明"} /></button></AdaptiveDataCell>
-          <AdaptiveDataCell column="scope" className="issue-data-scope"><DataCell primary={canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.requirementId} label="关联需求" options={[{ value: "", label: issue.sourceRef ? `公共问题 · ${issue.sourceRef}` : "公共问题" }, ...requirements.map((requirement) => ({ value: requirement.id, label: requirement.title }))]} onSave={(requirementId) => saveIssue(issue, { requirementId: requirementId || null })} placeholder="公共问题" renderValue={() => <span className="issue-scope" title={issueScope(issue)}>{issueScope(issue)}</span>} /> : <span className="issue-scope" title={issueScope(issue)}>{issueScope(issue)}</span>} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="scope" className="issue-data-scope"><DataCell primary={<IssueScopeControl issue={issue} requirements={requirements} canEdit={canEdit} onSave={(input) => saveIssue(issue, input)} />} /></AdaptiveDataCell>
           <AdaptiveDataCell column="status" className="issue-data-status"><DataCell primary={<IssueStatusControl issue={issue} canManage={canEdit} compact />} /></AdaptiveDataCell>
           <AdaptiveDataCell column="progress" className="issue-data-progress"><DataCell primary={<span className="issue-table-progress"><i><b style={{ width: `${issue.progress}%` }} /></i>{issue.progress}%</span>} /></AdaptiveDataCell>
           <AdaptiveDataCell column="priority" className="issue-data-priority"><DataCell primary={canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.priority} label="问题优先级" options={priorityOptions} displayMode="badge" onSave={(priority) => saveIssue(issue, { priority })} renderValue={(value) => <span className={`priority-badge priority-${value.toLowerCase()}`}>{priorityLabels[value as keyof typeof priorityLabels] || value}</span>} /> : <span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>} /></AdaptiveDataCell>
