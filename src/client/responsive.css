@@ -620,6 +620,7 @@ textarea {
   :root {
     --sidebar-width: 210px;
     --page-gutter: 18px;
+    --topbar-title-width: 300px;
   }
 
   .topbar {
@@ -631,10 +632,6 @@ textarea {
     gap: 12px;
   }
 
-  .integrated-page-title h1 {
-    max-width: 300px;
-  }
-
   .project-switcher {
     padding-left: 12px;
   }
@@ -644,24 +641,18 @@ textarea {
   :root {
     --sidebar-width: 190px;
     --page-gutter: 16px;
-  }
-
-  .integrated-page-title h1 {
-    max-width: 240px;
+    --topbar-title-width: 240px;
   }
 }
 
 @media (max-width: 1040px) {
   :root {
     --page-gutter: 14px;
+    --topbar-title-width: 190px;
   }
 
   .topbar {
     padding-inline: 14px;
-  }
-
-  .integrated-page-title h1 {
-    max-width: 190px;
   }
 
   .project-switcher-name {

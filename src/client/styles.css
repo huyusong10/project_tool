@@ -12,6 +12,7 @@
   --red: #d84a4a;
   --border: #e2e8f0;
   --muted: #6b788b;
+  --topbar-title-width: 360px;
 }
 
 * { box-sizing: border-box; }
@@ -59,9 +60,9 @@ button { cursor: pointer; }
 main { min-width: 0; margin-left: var(--sidebar-width,228px); padding-top: 64px; transition: margin-left .18s ease; }
 .topbar { position: fixed; inset: 0 0 auto var(--sidebar-width,228px); z-index: 20; height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 0 24px; background: rgba(255,255,255,.97); border-bottom: 1px solid var(--border); backdrop-filter: blur(10px); transition: left .18s ease; }
 .topbar-context { min-width: 0; flex: 1; display: flex; align-items: center; gap: 16px; }
-#topbar-title-slot { min-width: 0; flex: 0 1 auto; }
-.integrated-page-title { min-width: 0; display: flex; align-items: center; gap: 8px; }
-.integrated-page-title h1 { max-width: 420px; overflow: hidden; color: #172438; font-size: 20px; font-weight: 750; letter-spacing: -.35px; text-overflow: ellipsis; white-space: nowrap; }
+#topbar-title-slot { width: var(--topbar-title-width); min-width: 0; flex: 0 0 var(--topbar-title-width); }
+.integrated-page-title { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.integrated-page-title h1 { min-width: 0; max-width: 100%; flex: 1; overflow: hidden; color: #172438; font-size: 20px; font-weight: 750; letter-spacing: -.35px; text-overflow: ellipsis; white-space: nowrap; }
 .integrated-page-title button { flex: none; width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 7px; color: #607088; background: transparent; }
 .integrated-page-title button:hover { color: #2d6cdf; background: #edf3ff; }
 .project-switcher { position: relative; flex: none; padding-left: 16px; border-left: 1px solid #e4e9f0; font-size: 14px; font-weight: 650; }
@@ -421,7 +422,6 @@ h1 { margin: 0; color: #162236; font-size: 26px; line-height: 1.2; letter-spacin
   body { min-width: 900px; }
   .app-shell { grid-template-columns: 190px minmax(0,1fr); }
   .sidebar { width: 190px; }
-  .integrated-page-title h1 { max-width: 250px; }
   .insight-strip { grid-template-columns: 120px 130px 1fr; }
   .dashboard-charts { grid-template-columns: 1fr 1fr; }.dashboard-charts .chart-wide { grid-column: span 1; }.detail-grid { grid-template-columns: 1fr; }
 }

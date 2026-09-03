@@ -31,6 +31,7 @@ test("project selection persists and respects page scope", async ({ page }) => {
   await selectProject(page, firstName);
   await page.reload();
   await expect(page.locator(".project-switcher-name")).toHaveText(firstName);
+  const dashboardSwitcherLeft = await page.locator(".project-switcher").evaluate((element) => element.getBoundingClientRect().left);
 
   await page.goto("/my-work");
   await expect(page.locator(".project-scope-indicator")).toHaveText("跨项目");
@@ -48,10 +49,11 @@ test("project selection persists and respects page scope", async ({ page }) => {
   expect(params.has("requirementId")).toBe(false);
   expect(params.has("issueId")).toBe(false);
 
+  const requirementTitle = `非常长的需求详情标题用于验证顶栏项目切换位置保持稳定-${suffix}`;
   const requirementResponse = await page.context().request.post("/api/requirements", {
     data: {
       projectId: first.id,
-      title: `详情归属校验-${suffix}`,
+      title: requirementTitle,
       priority: "P2",
       plannedStart: "2026-09-03",
       templateId: first.defaultTemplateId,
@@ -62,6 +64,10 @@ test("project selection persists and respects page scope", async ({ page }) => {
 
   await page.goto(`/requirements/${requirement.id}`);
   await expect(page.locator(".project-switcher-name")).toHaveText(firstName);
+  await expect(page.locator(".integrated-page-title h1")).toHaveAttribute("title", requirementTitle);
+  const detailSwitcherLeft = await page.locator(".project-switcher").evaluate((element) => element.getBoundingClientRect().left);
+  expect(Math.abs(detailSwitcherLeft - dashboardSwitcherLeft)).toBeLessThanOrEqual(1);
+  expect(await page.locator(".integrated-page-title h1").evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
   await selectProject(page, secondName);
   await expect(page).toHaveURL(/\/requirements$/);
   await expect(page.locator(".project-switcher-name")).toHaveText(secondName);
