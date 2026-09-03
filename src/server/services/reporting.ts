@@ -90,10 +90,10 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
 
 export function getDashboard(projectId?: string) {
   const requirements = listRequirements({ projectId });
-  const recentProgress = rows<{ id: string; requirementId: string; workItemId: string | null; workItemTitle: string | null; percent: number; content: string; createdAt: string; updatedAt: string }>(`
-    SELECT id, requirementId, workItemId, workItemTitle, percent, content, createdAt, updatedAt FROM (
+  const recentProgress = rows<{ id: string; requirementId: string; workItemId: string | null; workItemTitle: string | null; percent: number; workItemPercent: number | null; content: string; createdAt: string; updatedAt: string }>(`
+    SELECT id, requirementId, workItemId, workItemTitle, percent, workItemPercent, content, createdAt, updatedAt FROM (
       SELECT u.id, u.requirement_id AS requirementId, u.work_item_id AS workItemId,
-        w.title AS workItemTitle, u.percent, u.content, u.created_at AS createdAt, u.updated_at AS updatedAt,
+        w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content, u.created_at AS createdAt, u.updated_at AS updatedAt,
         ROW_NUMBER() OVER (PARTITION BY u.requirement_id ORDER BY u.created_at DESC, u.id DESC) AS rank
       FROM progress_updates u
       LEFT JOIN work_items w ON w.id=u.work_item_id

@@ -137,11 +137,14 @@ function RequirementPopover({ requirement, asOfDate }: { requirement: Requiremen
     </div>
     <section className="gantt-popover-updates">
       <h4>近期进展{updates.length ? `（${updates.length}）` : ""}</h4>
-      {updates.map((update) => <article key={update.id}>
-        <time>{new Date(update.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</time>
-        <div>{update.workItemTitle && <b>{update.workItemTitle}</b>}<p>{update.content}</p></div>
-        <span>{update.percent}%</span>
-      </article>)}
+      {updates.map((update) => {
+        const displayedPercent = update.workItemId ? update.workItemPercent : update.percent;
+        return <article key={update.id}>
+          <time>{new Date(update.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</time>
+          <div>{update.workItemTitle && <b>{update.workItemTitle}</b>}<p>{update.content}</p></div>
+          {displayedPercent !== null && displayedPercent !== undefined && <span>{displayedPercent}%</span>}
+        </article>;
+      })}
       {!updates.length && <p className="gantt-popover-empty">暂无进展记录</p>}
     </section>
   </>;
@@ -269,7 +272,6 @@ export function ProjectGantt({
           </div>
         </div>
       </header>
-      {range.calendarWarning && <p className="calendar-coverage-warning">{range.calendarWarning}</p>}
       <div className="gantt-filter-bar" aria-label="项目进展筛选">
         <SearchInput className="gantt-filter-search" value={search} onChange={setSearch} placeholder="搜索需求、工作项或拼音" />
         <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="按状态筛选">

@@ -3,8 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, jsonBody } from "../api";
 import { useApp } from "../app-context";
 import type { Person, Project, WorkItemTemplate } from "../types";
-import { workdayCalendarWarning } from "../../shared/workday";
-import { plannedDatesFromOffset, plannedStartFromDeadline } from "../../shared/domain";
 
 export function ProjectForm({
   project,
@@ -100,16 +98,6 @@ export function RequirementForm({
       onClose();
     },
   });
-  const selectedTemplate = templates.find((template) => template.id === templateId);
-  const scheduleRange = (() => {
-    if (!scheduleDate || !selectedTemplate?.items.length) return { from: scheduleDate, to: scheduleDate };
-    const baseStart = scheduleMode === "start"
-      ? scheduleDate
-      : plannedStartFromDeadline(scheduleDate, selectedTemplate.items);
-    const ends = selectedTemplate.items.map((item) => plannedDatesFromOffset(baseStart, item.startOffsetDays, item.durationDays).plannedEnd);
-    return { from: baseStart, to: ends.sort().at(-1) || scheduleDate };
-  })();
-  const calendarWarning = workdayCalendarWarning(scheduleRange.from, scheduleRange.to);
   return (
     <form
       className="form-grid"
@@ -180,7 +168,6 @@ export function RequirementForm({
           <span>{scheduleMode === "start" ? "计划开始" : "截止日期"}</span>
           <input key={scheduleMode} name={scheduleMode === "start" ? "plannedStart" : "plannedEnd"} type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} />
         </label>
-        {calendarWarning && <p className="calendar-coverage-warning field-full">{calendarWarning}</p>}
         <p className="field-help field-full">日期可留空：只保存所选流程，需求保持待规划；填写日期后才会自动生成工作项。{scheduleMode === "deadline" ? " 截止日期需为工作日。" : ""}</p>
       </>}
       <div className="form-disclosure field-full">

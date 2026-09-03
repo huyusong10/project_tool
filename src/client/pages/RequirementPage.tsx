@@ -18,11 +18,6 @@ import { useApp } from "../app-context";
 import type { Person, PlanPreview, Requirement, WorkItem, WorkItemTemplate } from "../types";
 import {
   calculateWorkItemGap,
-  addBusinessDays,
-  businessDateFromDateTime,
-  businessDayDelta,
-  plannedDatesFromOffset,
-  plannedStartFromDeadline,
   priorityLabels,
   requirementStatusLabels,
   riskLabels,
@@ -38,14 +33,7 @@ import { InlineDateCell, InlineMultiSelectCell, InlineSelectCell, InlineTextCell
 import { WorkItemActions } from "../components/WorkItemActions";
 import { SortableList } from "../components/SortableList";
 import { canManageProject } from "../permissions";
-import { workdayCalendarWarning } from "../../shared/workday";
-
-function templateScheduleRange(template: WorkItemTemplate | undefined, anchor: string, mode: "start" | "deadline") {
-  if (!template?.items.length || !anchor) return { from: anchor, to: anchor };
-  const from = mode === "start" ? anchor : plannedStartFromDeadline(anchor, template.items);
-  const ends = template.items.map((item) => plannedDatesFromOffset(from, item.startOffsetDays, item.durationDays).plannedEnd);
-  return { from, to: ends.sort().at(-1) || anchor };
-}
+import { dailyProgressTrend } from "../progress-trend";
 
 function RequirementInfoForm({
   requirement,
@@ -119,18 +107,6 @@ function RequirementScheduleForm({
   const [pendingSubmit, setPendingSubmit] = useState<object | null>(null);
   const [scheduleDate, setScheduleDate] = useState(requirement.plannedStart || "");
   const templateChanged = Boolean(templateId && templateId !== requirement.templateId);
-  const selectedTemplate = templates.find((template) => template.id === templateId);
-  const scheduleRange = (() => {
-    if (!scheduleDate) return { from: scheduleDate, to: scheduleDate };
-    const plannedItems = requirement.workItems.filter((item) => item.plannedStart && item.plannedEnd);
-    if (templateChanged || !plannedItems.length) return templateScheduleRange(selectedTemplate, scheduleDate, scheduleMode);
-    const starts = plannedItems.map((item) => item.plannedStart!).sort();
-    const ends = plannedItems.map((item) => item.plannedEnd!).sort();
-    const currentAnchor = scheduleMode === "start" ? starts[0] : ends.at(-1)!;
-    const shift = businessDayDelta(currentAnchor, scheduleDate);
-    return { from: addBusinessDays(starts[0], shift), to: addBusinessDays(ends.at(-1)!, shift) };
-  })();
-  const calendarWarning = workdayCalendarWarning(scheduleRange.from, scheduleRange.to);
   const mutation = useMutation({
     mutationFn: (value: object) =>
       api(`/api/requirements/${requirement.id}/${templateChanged ? "reselect-template" : "reschedule"}`, {
@@ -188,7 +164,6 @@ function RequirementScheduleForm({
           onChange={(event) => setScheduleDate(event.target.value)}
         />
       </label>
-      {calendarWarning && <p className="calendar-coverage-warning field-full">{calendarWarning}</p>}
       <label className="field field-full">
         <span>绑定流程</span>
         <select value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
@@ -323,12 +298,6 @@ function PlanForm({ requirement, templates, onClose }: { requirement: Requiremen
   useEffect(() => {
     if (!templateId && templates[0]) setTemplateId(templates[0].id);
   }, [templateId, templates]);
-  const selectedTemplate = templates.find((template) => template.id === templateId);
-  const previewDates = preview?.entries.flatMap((entry) => [entry.proposedStart, entry.proposedEnd]).filter(Boolean).sort();
-  const planRange = previewDates?.length
-    ? { from: previewDates[0], to: previewDates.at(-1)! }
-    : templateScheduleRange(selectedTemplate, baseStart, "start");
-  const planCalendarWarning = workdayCalendarWarning(planRange.from, planRange.to);
   const previewMutation = useMutation({
     mutationFn: () => api<PlanPreview>(`/api/requirements/${requirement.id}/plan-preview`, {
       method: "POST", body: jsonBody({ templateId, baseStart }),
@@ -352,7 +321,6 @@ function PlanForm({ requirement, templates, onClose }: { requirement: Requiremen
         <label className="field"><span>流程设计</span><select value={templateId} onChange={(event) => { setTemplateId(event.target.value); setPreview(undefined); }}>{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</select></label>
         <label className="field"><span>计划开始</span><input type="date" value={baseStart} onChange={(event) => { setBaseStart(event.target.value); setPreview(undefined); }} /></label>
       </div>
-      {planCalendarWarning && <p className="calendar-coverage-warning">{planCalendarWarning}</p>}
       {hasExecution && <label className="field field-full"><span>变更原因</span><textarea rows={2} value={reason} onChange={(event) => setReason(event.target.value)} required placeholder="需求已开始执行，请说明补排或调整原因" /></label>}
       {!preview && <div className="form-actions"><button className="primary-button" disabled={!templateId || !baseStart || previewMutation.isPending} onClick={() => previewMutation.mutate()}><WandSparkles size={15} />生成差异预览</button></div>}
       {previewMutation.error && <p className="form-error">{previewMutation.error.message}</p>}
@@ -545,11 +513,10 @@ export function RequirementPage() {
   };
   const progressOption = useMemo(
     () => {
-      const updates = [...(requirement?.progressUpdates || [])].reverse();
+      const dailyTrend = dailyProgressTrend(requirement?.progressUpdates || []);
       const items = (requirement?.workItems || []).filter((item) => item.status !== "cancelled");
       const totalWeight = items.reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
-      const plannedValues = updates.map((update) => {
-        const date = businessDateFromDateTime(update.createdAt);
+      const plannedValues = dailyTrend.map(({ date }) => {
         const plannedWeight = items.reduce((sum, item) => sum + workItemPlannedDuration(item) * workItemPlannedProgress(item, date) / 100, 0);
         return totalWeight ? Math.round((plannedWeight / totalWeight) * 100) : 0;
       });
@@ -559,12 +526,7 @@ export function RequirementPage() {
       grid: { left: 42, right: 18, top: 42, bottom: 34 },
       xAxis: {
         type: "category",
-        data: updates.map((item) =>
-            new Date(item.createdAt).toLocaleDateString("zh-CN", {
-              timeZone: "Asia/Shanghai",
-              month: "2-digit",
-              day: "2-digit",
-            })),
+        data: dailyTrend.map(({ date }) => `${date.slice(5, 7)}/${date.slice(8, 10)}`),
         axisLabel: { color: "#718096" },
       },
       yAxis: {
@@ -580,7 +542,7 @@ export function RequirementPage() {
           type: "line",
           smooth: true,
           symbolSize: 8,
-          data: updates.map((item) => item.percent),
+          data: dailyTrend.map((item) => item.actualProgress),
           lineStyle: { color: "#2d6cdf", width: 3 },
           itemStyle: { color: "#2d6cdf" },
           areaStyle: { color: "rgba(45,108,223,.12)" },

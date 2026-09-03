@@ -1,7 +1,7 @@
 import { type CSSProperties, type HTMLAttributes } from "react";
 import { eachDayOfInterval, format, isValid, parseISO, startOfDay } from "date-fns";
 import { addBusinessDays, ganttProgressDisplay, isOverdueByWorkday, todayIso } from "../../shared/domain";
-import { isBusinessDay, workdayCalendarWarning } from "../../shared/workday";
+import { isBusinessDay } from "../../shared/workday";
 import { ganttWeekOffsets } from "../gantt-calendar";
 
 export type GanttZoom = "day" | "week" | "month";
@@ -50,7 +50,6 @@ export function buildBusinessDayTimeline(values: Array<string | null | undefined
     end,
     dates,
     days: dates.length,
-    calendarWarning: workdayCalendarWarning(format(start, "yyyy-MM-dd"), format(end, "yyyy-MM-dd")),
   };
 }
 

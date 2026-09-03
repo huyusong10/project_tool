@@ -4,7 +4,7 @@ import {
   deriveWorkItemStatus, ganttProgressDisplay, issueActionsByStatus, plannedDatesFromOffset, plannedStartFromDeadline, requirementActionsByStatus, riskLevelFromProgressGap, signedProgressVariance, workItemActionsByStatus, workItemPlannedProgress,
   isOverdueByWorkday,
 } from '../src/shared/domain';
-import { isBusinessDay, isValidIsoDate, workdayCalendarWarning } from '../src/shared/workday';
+import { isBusinessDay, isValidIsoDate } from '../src/shared/workday';
 import { isoDateSchema, peopleConcurrencyInputSchema, reorderWorkItemsInputSchema, templateInputSchema } from '../src/shared/contracts';
 
 describe('工作日、排期与Gap规则', () => {
@@ -24,14 +24,13 @@ describe('工作日、排期与Gap规则', () => {
     expect(plannedDatesFromOffset('2026-09-07', 1, 4).plannedEnd).toBe('2026-09-11');
   });
 
-  it('使用2026年法定节假日和调休，超出覆盖范围时回退并提示', () => {
+  it('使用2026年法定节假日和调休，超出覆盖范围时回退', () => {
     expect(isBusinessDay('2026-02-14')).toBe(true);
     expect(isBusinessDay('2026-02-16')).toBe(false);
     expect(addBusinessDays('2026-02-13', 1)).toBe('2026-02-14');
     expect(plannedDatesFromOffset('2026-02-13', 1, 2)).toEqual({ plannedStart: '2026-02-14', plannedEnd: '2026-02-24' });
     expect(plannedStartFromDeadline('2026-02-24', [{ startOffsetDays: 0, durationDays: 2 }])).toBe('2026-02-14');
     expect(isBusinessDay('2027-02-15')).toBe(true);
-    expect(workdayCalendarWarning('2027-02-15', '2027-02-15')).toContain('周一至周五');
   });
 
   it('拒绝不存在的自然日，并按工作日判断是否逾期', () => {

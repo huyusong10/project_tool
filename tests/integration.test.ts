@@ -318,7 +318,7 @@ describe('自动化项目管理API', () => {
     expect(progress.progressUpdates[0]).toMatchObject({ content: '完成设计评审', eventType: 'complete' });
     const dashboard = await app.inject({ method: 'GET', url: `/api/dashboard?projectId=${projectId}`, headers: { cookie } });
     expect(dashboard.json().requirements[0].recentProgressUpdates).toEqual(expect.arrayContaining([
-      expect.objectContaining({ content: '完成设计评审', workItemId: firstWorkItemId }),
+      expect.objectContaining({ content: '完成设计评审', workItemId: firstWorkItemId, workItemPercent: 100 }),
     ]));
 
     const second = progress.workItems[1];

@@ -36,9 +36,3 @@ export function isBusinessDay(value: string) {
   if (!isWorkdayCalendarCovered(value)) return isWeekday(value);
   return chineseDays.isWorkday(value);
 }
-
-export function workdayCalendarWarning(from?: string | null, to?: string | null) {
-  const values = [from, to].filter((value): value is string => Boolean(value));
-  if (!values.some((value) => !isWorkdayCalendarCovered(value))) return null;
-  return `法定节假日数据覆盖${workdayCalendarCoverage.fromYear}—${workdayCalendarCoverage.toYear}年，超出范围按周一至周五计算。`;
-}

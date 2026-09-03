@@ -882,8 +882,6 @@ body { font-size: 14px; line-height: 1.55; }
 .form-disclosure > button:hover, .form-disclosure > button.is-open { background: #f0f5fd; }
 .form-disclosure strong { color: #344258; font-size: 13px; }
 .form-disclosure span { color: #7b8798; font-size: 12px; }
-.calendar-coverage-warning { margin: 0; padding: 8px 10px; border: 1px solid #efd39e; border-radius: 7px; color: #8b5d12; background: #fff8e8; font-size: 12px; line-height: 1.55; }
-
 .requirement-brief { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 0; overflow: hidden; }
 .requirement-brief > div { min-width: 0; display: grid; align-content: start; gap: 5px; padding: 14px 16px; border-left: 1px solid #edf1f5; }
 .requirement-brief > div:first-child { border-left: 0; }

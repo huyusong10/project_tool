@@ -27,7 +27,7 @@ const requirement = {
   asOfDate: "2026-09-03",
   riskEvaluated: true, riskReason: "P1进度Gap 30%", priority: "P1", createdAt: "2026-09-01", updatedAt: "2026-09-02",
   workItems: [workItem], progressUpdates: [], recentProgressUpdates: [{
-    id: "u1", requirementId: "r1", workItemId: "w1", workItemTitle: "接口开发", percent: 61,
+    id: "u1", requirementId: "r1", workItemId: "w1", workItemTitle: "接口开发", percent: 61, workItemPercent: 40,
     content: "完成接口权限校验与异常分支联调，补充回归场景并记录后续优化建议，等待产品侧确认边界。",
     createdAt: "2026-09-02T10:00:00.000Z", updatedAt: "2026-09-02T10:00:00.000Z",
   }], delayed: false, highRisk: false,
@@ -112,6 +112,8 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   await delayedRow.locator(".gantt-bar-hitbox").hover();
   await expect(page.locator(".gantt-popover")).toBeVisible();
   await expect(page.locator(".gantt-popover-updates")).toContainText("完成接口权限校验与异常分支联调");
+  await expect(page.locator(".gantt-popover-updates article > span")).toHaveText("40%");
+  await expect(page.locator(".gantt-popover-updates article > span")).not.toHaveText("61%");
   expect(await page.locator(".gantt-popover-updates p").evaluate((node) => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
   const projectWidths = await page.locator(".project-gantt-grid .unified-gantt-plan").evaluateAll((bars) => bars.map((bar) => bar.getBoundingClientRect().width));
   expect(Math.abs(projectWidths[0] - projectWidths[1])).toBeLessThanOrEqual(1);
