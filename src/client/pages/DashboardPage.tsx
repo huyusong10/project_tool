@@ -93,6 +93,14 @@ function PublicIssueAttention({ issues }: { issues: Dashboard["issues"]["attenti
   );
 }
 
+function ActionOverview({ actions }: { actions?: Dashboard["actions"] }) {
+  if (!actions?.summary.total) return null;
+  return <section className="panel dashboard-actions">
+    <header><div><h2>异常行动</h2><p>高 {actions.summary.high} · 中 {actions.summary.medium} · 低 {actions.summary.low}</p></div><Link to="/actions">查看全部 <ArrowRight size={15} /></Link></header>
+    <div className="dashboard-action-list">{actions.items.map((item) => <Link to={item.targetPath} key={item.id}><span className={`action-severity action-${item.severity}`}>{item.severity === "high" ? "高" : item.severity === "medium" ? "中" : "低"}</span><strong>{item.title}</strong><small>{item.reasons.map((reason) => reason.label).join(" · ")}</small><ArrowRight size={15} /></Link>)}</div>
+  </section>;
+}
+
 export function DashboardPage() {
   const {
     projects,
@@ -175,6 +183,7 @@ export function DashboardPage() {
           tone="amber"
         />
         </section>
+        <ActionOverview actions={data?.actions} />
         <ProjectGantt
           requirements={data?.requirements || []}
           asOfDate={data?.requirements[0]?.asOfDate}

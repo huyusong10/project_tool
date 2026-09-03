@@ -260,6 +260,7 @@ export function ProjectGantt({
           </div>
         </div>
       </header>
+      {range.calendarWarning && <p className="calendar-coverage-warning">{range.calendarWarning}</p>}
       <div className="gantt-filter-bar" aria-label="项目进展筛选">
         <label className="gantt-filter-search">
           <Search size={16} />

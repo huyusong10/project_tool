@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { sqlite } from './database';
 import { hashPassword, normalizeUsername, verifyPassword, type Actor } from './auth';
 import { addCalendarDays, deriveWorkItemStatus, todayIso } from '../shared/domain';
+import { isBusinessDay } from '../shared/workday';
+import { listRequirements } from './services/requirements';
 import { AppError, type AppErrorCode } from './errors';
 
 type JsonObject = Record<string, unknown>;
@@ -240,7 +242,7 @@ export function getMyWork(accountId: string) {
   const account = sqlite.prepare(`SELECT person_id AS personId FROM accounts WHERE id=? AND status='active' AND deleted_at IS NULL`).get(accountId) as { personId: string | null } | undefined;
   if (!account?.personId) return {
     summary: { total: 0, notStarted: 0, inProgress: 0, blocked: 0, completed: 0, overdue: 0 },
-    items: [], completionTrend: [], upcoming: [], recentProgress: [],
+    requirements: [], items: [], completionTrend: [], upcoming: [], recentProgress: [],
   };
   const rawItems = sqlite.prepare(`SELECT w.id, w.requirement_id AS requirementId, r.title AS requirementTitle,
     r.project_id AS projectId, pr.name AS projectName, w.title, w.owner_id AS ownerId,
@@ -270,6 +272,37 @@ export function getMyWork(accountId: string) {
     completed: items.filter((item) => item.status === 'completed').length,
     overdue: items.filter((item) => item.overdue).length,
   };
+  const accessibleProjects = new Set((sqlite.prepare('SELECT project_id AS projectId FROM project_people WHERE person_id=?')
+    .all(account.personId) as Array<{ projectId: string }>).map((item) => item.projectId));
+  const ownedRequirements = listRequirements({ ownerId: account.personId })
+    .filter((requirement) => accessibleProjects.has(requirement.projectId));
+  const requirementIds = ownedRequirements.map((requirement) => requirement.id);
+  const issueActionCounts = new Map<string, number>();
+  if (requirementIds.length) {
+    const placeholders = requirementIds.map(() => '?').join(',');
+    const counts = sqlite.prepare(`SELECT requirement_id AS requirementId, COUNT(*) AS count FROM issues
+      WHERE requirement_id IN (${placeholders}) AND status<>'resolved' AND (owner_id IS NULL OR due_date<?)
+      GROUP BY requirement_id`).all(...requirementIds, today) as Array<{ requirementId: string; count: number }>;
+    counts.forEach((item) => issueActionCounts.set(item.requirementId, Number(item.count)));
+  }
+  const requirements = ownedRequirements.map((requirement) => {
+    const activeItems = (requirement.workItems || []).filter((item) => item.status !== 'cancelled');
+    const planningReasons: string[] = [];
+    if (!activeItems.length) planningReasons.push('缺少工作项');
+    else if (activeItems.some((item) => !item.plannedStart || !item.plannedEnd)) planningReasons.push('排期不完整');
+    const hasRequirementAction = requirement.status === 'planning' || requirement.highRisk || requirement.delayed || requirement.status === 'pending_acceptance';
+    const workItemActions = activeItems.filter((item) => !['completed', 'cancelled'].includes(item.status)
+      && (item.status === 'blocked' || !item.ownerId)).length;
+    return {
+      id: requirement.id, projectId: requirement.projectId, projectName: requirement.projectName,
+      title: requirement.title, status: requirement.status, priority: requirement.priority,
+      plannedStart: requirement.plannedStart, plannedEnd: requirement.plannedEnd,
+      progress: requirement.progress, riskLevel: requirement.riskLevel, riskEvaluated: requirement.riskEvaluated,
+      delayed: requirement.delayed, highRisk: requirement.highRisk, planningReasons,
+      actionCount: Number(hasRequirementAction) + workItemActions + (issueActionCounts.get(requirement.id) || 0),
+      updatedAt: requirement.updatedAt,
+    };
+  });
   const weekly = new Map<string, number>();
   for (const item of items.filter((value) => value.actualEnd)) {
     const date = new Date(`${item.actualEnd}T12:00:00`);
@@ -280,9 +313,15 @@ export function getMyWork(accountId: string) {
   }
   const completionTrend = [...weekly.entries()].sort(([left], [right]) => left.localeCompare(right)).slice(-8)
     .map(([week, completed]) => ({ week, completed }));
-  const upcoming = Array.from({ length: 14 }, (_, offset) => addCalendarDays(today, offset))
-    .filter((date) => ![0, 6].includes(new Date(`${date}T12:00:00`).getDay()))
-    .map((date) => ({ date, count: items.filter((item) => item.status !== 'cancelled' && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd).length }));
+  const upcomingDates: string[] = [];
+  for (let offset = 0; upcomingDates.length < 10; offset += 1) {
+    const date = addCalendarDays(today, offset);
+    if (isBusinessDay(date)) upcomingDates.push(date);
+  }
+  const upcoming = upcomingDates.map((date) => ({
+    date,
+    count: items.filter((item) => item.status !== 'cancelled' && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd).length,
+  }));
   const recentProgress = sqlite.prepare(`SELECT u.id, u.requirement_id AS requirementId, r.title AS requirementTitle,
     u.work_item_id AS workItemId, w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content,
     u.created_at AS createdAt, u.updated_at AS updatedAt
@@ -292,5 +331,5 @@ export function getMyWork(accountId: string) {
     LEFT JOIN work_items w ON w.id=u.work_item_id
     WHERE u.created_by_account_id=? AND r.deleted_at IS NULL AND pr.deleted_at IS NULL
     ORDER BY u.created_at DESC LIMIT 8`).all(account.personId, accountId);
-  return { summary, items, completionTrend, upcoming, recentProgress };
+  return { summary, requirements, items, completionTrend, upcoming, recentProgress };
 }

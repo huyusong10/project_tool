@@ -1,3 +1,5 @@
+import { isBusinessDay } from './workday';
+
 export const requirementStatuses = ['planning', 'not_started', 'in_progress', 'blocked', 'pending_acceptance', 'completed', 'cancelled'] as const;
 export const workItemStatuses = ['not_started', 'in_progress', 'blocked', 'completed', 'cancelled'] as const;
 export const issueStatuses = ['in_progress', 'deferred', 'resolved'] as const;
@@ -77,11 +79,6 @@ function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function isWeekday(date: Date): boolean {
-  const day = date.getUTCDay();
-  return day !== 0 && day !== 6;
-}
-
 export function todayIso(): string {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -98,11 +95,11 @@ export function addCalendarDays(value: string, days: number): string {
 export function addBusinessDays(value: string, days: number): string {
   let cursor = parseIsoDate(value);
   const direction = days < 0 ? -1 : 1;
-  while (!isWeekday(cursor)) cursor.setUTCDate(cursor.getUTCDate() + direction);
+  while (!isBusinessDay(isoDate(cursor))) cursor.setUTCDate(cursor.getUTCDate() + direction);
   let remaining = Math.abs(days);
   while (remaining > 0) {
     cursor.setUTCDate(cursor.getUTCDate() + direction);
-    if (isWeekday(cursor)) remaining -= 1;
+    if (isBusinessDay(isoDate(cursor))) remaining -= 1;
   }
   return isoDate(cursor);
 }
@@ -128,7 +125,7 @@ export function businessDaysInclusive(start?: string | null, end?: string | null
   if (cursor > target) return -businessDaysInclusive(end, start);
   let total = 0;
   while (cursor <= target) {
-    if (isWeekday(cursor)) total += 1;
+    if (isBusinessDay(isoDate(cursor))) total += 1;
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
   return total;
@@ -237,14 +234,14 @@ function scheduleVarianceFromProgress(items: WeightedWorkItem[], actualProgress:
     referenceDate = addBusinessDays(plannedStart, -1);
     const searchEnd = today < plannedEnd ? today : plannedEnd;
     for (let cursor = plannedStart; cursor <= searchEnd; cursor = addCalendarDays(cursor, 1)) {
-      if (!isWeekday(parseIsoDate(cursor))) continue;
+      if (!isBusinessDay(cursor)) continue;
       if (plannedProgressAt(cursor) > actual) break;
       referenceDate = cursor;
     }
   } else if (actual > plannedToday) {
     referenceDate = plannedEnd;
     for (let cursor = today; cursor <= plannedEnd; cursor = addCalendarDays(cursor, 1)) {
-      if (!isWeekday(parseIsoDate(cursor))) continue;
+      if (!isBusinessDay(cursor)) continue;
       if (plannedProgressAt(cursor) >= actual) {
         referenceDate = cursor;
         break;
@@ -275,7 +272,7 @@ export function calculateWorkItemGap(item: WorkItemLike, today = todayIso()) {
 export function deriveRequirementMetrics(
   requirement: {
     status?: string; priority?: string; plannedStart?: string | null; plannedEnd?: string | null;
-    acceptedAt?: string | null;
+    acceptedAt?: string | null; ownerId?: string | null;
   },
   workItems: WorkItemLike[],
   today = todayIso(),
@@ -292,10 +289,11 @@ export function deriveRequirementMetrics(
   let status: RequirementStatus;
   if (requirement.status === 'cancelled') status = 'cancelled';
   else if (requirement.acceptedAt && activeItems.length && activeItems.every((item) => item.derivedStatus === 'completed')) status = 'completed';
-  else if (!activeItems.length || activeItems.some((item) => !item.plannedStart || !item.plannedEnd)) status = 'planning';
+  else if (activeItems.length && activeItems.every((item) => item.derivedStatus === 'completed')) status = 'pending_acceptance';
   else if (activeItems.some((item) => item.derivedStatus === 'blocked')) status = 'blocked';
-  else if (activeItems.every((item) => item.derivedStatus === 'completed')) status = 'pending_acceptance';
   else if (activeItems.some((item) => ['in_progress', 'completed'].includes(item.derivedStatus))) status = 'in_progress';
+  else if (requirement.status === 'in_progress' || requirement.status === 'blocked') status = requirement.status;
+  else if (!requirement.ownerId || !activeItems.length || activeItems.some((item) => !item.plannedStart || !item.plannedEnd)) status = 'planning';
   else status = 'not_started';
 
   const totalWeight = activeItems.reduce((sum, item) => sum + item.plannedDuration, 0);

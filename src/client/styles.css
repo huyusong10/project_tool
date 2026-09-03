@@ -817,3 +817,78 @@ body { font-size: 14px; line-height: 1.55; }
   color: #68768a;
   font-size: 14px;
 }
+
+/* Feature expansion: lightweight planning, workday coverage and action center */
+.form-disclosure { overflow: hidden; border: 1px solid #dde5ef; border-radius: 8px; background: #f8fafc; }
+.form-disclosure > button { width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 12px; border: 0; color: #405067; background: transparent; text-align: left; }
+.form-disclosure > button:hover, .form-disclosure > button.is-open { background: #f0f5fd; }
+.form-disclosure strong { color: #344258; font-size: 13px; }
+.form-disclosure span { color: #7b8798; font-size: 12px; }
+.calendar-coverage-warning { margin: 0; padding: 8px 10px; border: 1px solid #efd39e; border-radius: 7px; color: #8b5d12; background: #fff8e8; font-size: 12px; line-height: 1.55; }
+
+.requirement-brief { display: grid; grid-template-columns: minmax(180px,.45fr) repeat(3,minmax(0,1fr)); gap: 0; overflow: hidden; }
+.requirement-brief > div { min-width: 0; display: grid; align-content: start; gap: 5px; padding: 14px 16px; border-left: 1px solid #edf1f5; }
+.requirement-brief > div:first-child { border-left: 0; }
+.requirement-brief span { color: #7b8798; font-size: 12px; }
+.requirement-brief strong, .requirement-brief p, .requirement-brief a { margin: 0; color: #405067; font-size: 13px; line-height: 1.6; }
+.requirement-brief p { overflow-wrap: anywhere; white-space: pre-wrap; }
+.requirement-brief a { width: fit-content; display: inline-flex; align-items: center; gap: 5px; color: #245fbd; text-decoration: none; }
+
+.my-owned-requirement-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; padding: 12px; }
+.my-owned-requirement-grid > button { min-width: 0; display: grid; gap: 8px; padding: 12px 13px; border: 1px solid #dfe6ef; border-radius: 9px; color: #526176; background: #fbfcfe; text-align: left; }
+.my-owned-requirement-grid > button:hover { border-color: #aac0e8; background: #f3f7fd; box-shadow: 0 3px 10px rgba(45,108,223,.06); }
+.my-owned-requirement-grid > button > div { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.my-owned-requirement-grid strong { overflow: hidden; color: #344258; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.my-owned-requirement-grid p { margin: 0; overflow: hidden; color: #7b8798; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.my-owned-requirement-grid footer { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 7px; }
+.my-owned-requirement-grid footer > span:nth-child(2) { overflow: hidden; color: #6f7d90; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.my-owned-requirement-grid footer b { color: #9a6508; font-size: 11px; white-space: nowrap; }
+
+.action-center-page { display: grid; gap: 12px; }
+.action-summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }
+.action-summary article { min-height: 82px; display: grid; grid-template-columns: 36px minmax(0,1fr) auto; align-items: center; gap: 9px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: white; }
+.action-summary svg { width: 36px; height: 36px; padding: 8px; border-radius: 9px; color: #607088; background: #edf1f5; }
+.action-summary span { color: #68768a; }
+.action-summary strong { color: #263448; font-size: 24px; }
+.action-summary .is-high svg { color: #b3261e; background: #fde8e7; }
+.action-summary .is-medium svg { color: #9a6508; background: #fff0d0; }
+.action-center-list > header { flex-wrap: wrap; }
+.action-center-filters { flex-wrap: wrap; padding: 11px 14px; border-bottom: 1px solid #edf1f5; }
+.action-center-filters select { min-width: 150px; }
+.action-center-filters > span { margin-left: auto; white-space: nowrap; }
+.action-items { display: grid; }
+.action-item { width: 100%; min-height: 72px; display: grid; grid-template-columns: 30px minmax(220px,1.3fr) minmax(190px,.75fr) 20px; align-items: center; gap: 12px; padding: 10px 15px; border: 0; border-top: 1px solid #edf1f5; color: #526176; background: white; text-align: left; }
+.action-item:first-child { border-top: 0; }
+.action-item:hover { background: #f8fafd; }
+.action-severity { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 7px; color: #607088; background: #edf1f5; font-size: 12px; font-weight: 750; }
+.action-severity.action-high, .action-high > .action-severity { color: #b3261e; background: #fde8e7; }
+.action-severity.action-medium, .action-medium > .action-severity { color: #9a6508; background: #fff0d0; }
+.action-severity.action-low, .action-low > .action-severity { color: #536f99; background: #eaf1ff; }
+.action-item-main { min-width: 0; display: grid; gap: 4px; }
+.action-item-main > div { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.action-item-main strong, .action-item-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.action-item-main strong { color: #344258; font-size: 14px; }
+.action-item-main small { color: #8793a3; font-size: 11px; }
+.action-item-main p { margin: 0; color: #6f7d90; font-size: 12px; }
+.action-item-meta { min-width: 0; display: grid; gap: 3px; color: #7b8798; font-size: 12px; }
+.action-item-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.action-item > svg { color: #8793a3; }
+
+.dashboard-actions > header > a { display: inline-flex; align-items: center; gap: 4px; color: #245fbd; font-size: 12px; text-decoration: none; }
+.dashboard-action-list { display: grid; }
+.dashboard-action-list > a { min-height: 50px; display: grid; grid-template-columns: 28px minmax(150px,.75fr) minmax(220px,1fr) 18px; align-items: center; gap: 10px; padding: 8px 14px; border-top: 1px solid #edf1f5; color: #526176; text-decoration: none; }
+.dashboard-action-list > a:first-child { border-top: 0; }
+.dashboard-action-list > a:hover { background: #f8fafd; }
+.dashboard-action-list strong, .dashboard-action-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-action-list strong { color: #344258; font-size: 13px; }
+.dashboard-action-list small { color: #7b8798; font-size: 12px; }
+.dashboard-action-list > a > svg { color: #8793a3; }
+
+@media (max-width: 1200px) {
+  .requirement-brief { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .requirement-brief > div:nth-child(odd) { border-left: 0; }
+  .requirement-brief > div:nth-child(n+3) { border-top: 1px solid #edf1f5; }
+  .action-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .action-item { grid-template-columns: 30px minmax(220px,1fr) minmax(170px,.7fr) 20px; }
+  .my-owned-requirement-grid { grid-template-columns: 1fr; }
+}

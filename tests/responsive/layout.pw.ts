@@ -3,7 +3,10 @@ import { expect, test, type Page } from "@playwright/test";
 const routes = [
   "/",
   "/analytics",
+  "/my-work",
+  "/actions",
   "/requirements",
+  "/issues",
   "/people",
   "/concurrency",
   "/projects",
@@ -159,6 +162,42 @@ test("project members can be searched and added from project settings", async ({
 
   await expect(dialog).toBeHidden();
   await expect(page.locator(".project-member-row", { hasText: candidateName })).toBeVisible();
+});
+
+test("lightweight requirements and the action center remain usable", async ({ page }) => {
+  await loginAsAdmin(page);
+  const projects = await (await page.context().request.get("/api/projects")).json() as Array<{ id: string }>;
+  const title = `响应式待规划需求-${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
+  const created = await page.context().request.post("/api/requirements", {
+    data: { projectId: projects[0].id, title },
+  });
+  expect(created.ok(), "应允许仅填写标题创建待规划需求").toBe(true);
+
+  await page.goto("/actions");
+  await expect(page.getByRole("heading", { name: "异常行动中心" })).toBeVisible();
+  await expect(page.locator(".action-item", { hasText: title })).toBeVisible();
+  await page.getByLabel("行动原因").selectOption("planning");
+  await expect(page.locator(".action-item", { hasText: title })).toContainText("待规划");
+
+  await page.goto("/requirements");
+  await page.getByRole("button", { name: "新建需求" }).click();
+  const dialog = page.getByRole("dialog", { name: "新建需求" });
+  await expect(dialog.getByLabel("需求标题")).toBeVisible();
+  await expect(dialog.getByLabel("优先级")).toHaveValue("P2");
+  await expect(dialog.getByLabel("需求负责人（可稍后指定）")).toBeVisible();
+  await expect(dialog.getByLabel("流程设计")).toBeHidden();
+  await expect(dialog.getByLabel("需求背景")).toBeHidden();
+  await dialog.getByRole("button", { name: /立即规划/ }).click();
+  await expect(dialog.getByLabel("流程设计")).toBeVisible();
+  await dialog.getByRole("button", { name: /补充信息/ }).click();
+  await expect(dialog.getByLabel("需求背景")).toBeVisible();
+
+  const bounds = await dialog.boundingBox();
+  const viewport = page.viewportSize();
+  expect(bounds).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport!.width);
 });
 
 test("analytics dashboard becomes a single column on mobile", async ({ page }) => {

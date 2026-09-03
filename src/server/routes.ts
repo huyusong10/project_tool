@@ -5,7 +5,8 @@ import { createSessionToken, verifyPassword } from './auth';
 import {
   actorFromRequest, assertAdmin, assertCanAddProgress, assertProgressOwnerOrManager,
   assertProjectManager, assertProjectMember, assertProjectReadable, assertProjectResourceManager, assertProjectResourceReadable,
-  assertWorkItemParticipantOrManager, canManageProject, canUpdateIssueProgress, isAdmin,
+  assertRequirementOwnerOrManager, assertWorkItemParticipantOrManager, assertWorkItemRequirementOwnerOrManager,
+  canManageProject, canUpdateIssueProgress, isAdmin,
   managedProjectIds, projectIdForIssue, projectIdForRequirement, projectIdForTemplate, projectIdForWorkItem, sessionActor,
 } from './authorization';
 import {
@@ -16,7 +17,7 @@ import {
   acceptRequirement, addIssueUpdate, addProgress, addProjectPerson, applyRequirementPlan, applyTemplate, archivePerson, archiveProject, archiveRequirement, archiveTemplate,
   blockWorkItem, cancelRequirement, cancelWorkItem, completeWorkItem, copyTemplate, correctIssue, correctWorkItem, createPerson, createProject, createRequirement, createTemplate,
   createIssue, createWorkItem, deleteIssueUpdate, deleteProgress, deleteWorkItem, getDashboard, getIssue, getPeopleConcurrency, getRequirement, issueToken,
-  listArchives, listAudit, listIssues, listPeople, listPeopleCandidates, listProjects, listRequirements, listTemplates, listTokens, previewRequirementPlan,
+  listActionItems, listArchives, listAudit, listIssues, listPeople, listPeopleCandidates, listProjects, listRequirements, listTemplates, listTokens, previewRequirementPlan,
   permanentlyDeleteArchive, recordAudit, removeProjectPerson, reorderWorkItems, reopenIssue, reopenWorkItem, reselectRequirementTemplate, rescheduleRequirement, resolveIssue, restorePerson, restoreProject, restoreRequirement, restoreTemplate, resumeIssue, revokeToken, searchAudit, startWorkItem,
   deferIssue, unblockWorkItem, updateIssue, updateIssueUpdate, updatePerson, updateProgress, updateProject, updateRequirement, updateTemplate, updateWorkItem,
 } from './services';
@@ -27,6 +28,7 @@ import {
   getAnalyticsCatalog, getAnalyticsLayout, queryAnalytics, resetAnalyticsLayout, saveAnalyticsLayout,
 } from './analytics';
 import {
+  actionItemsInputSchema,
   archiveDeleteInputSchema,
   archiveParamsSchema,
   contentCommandSchema,
@@ -34,6 +36,7 @@ import {
   expectedVersionInputSchema,
   idParamsSchema,
   issueInputSchema,
+  issueListInputSchema,
   issueUpdateInputSchema,
   issueUpdateParamsSchema,
   personInputSchema,
@@ -42,11 +45,11 @@ import {
   projectMemberInputSchema,
   projectParamsSchema,
   projectPersonParamsSchema,
-  requirementInputSchema,
   reasonCommandSchema,
   rescheduleRequirementInputSchema,
   reselectRequirementTemplateInputSchema,
   templateInputSchema,
+  updateRequirementInputSchema,
   workItemCommandSchema,
   workItemInputSchema,
 } from '../shared/contracts';
@@ -83,6 +86,10 @@ function body(request: FastifyRequest) {
 
 function parsedBody<T>(request: FastifyRequest, schema: ZodType<T>) {
   return parse(schema, request.body);
+}
+
+function parsedQuery<T>(request: FastifyRequest, schema: ZodType<T>) {
+  return parse(schema, request.query);
 }
 
 async function requireAuthenticated(request: FastifyRequest, reply: FastifyReply) {
@@ -161,8 +168,13 @@ export function registerApiRoutes(app: FastifyInstance) {
   app.delete('/api/projects/:id', { preHandler: requireAdmin }, async (request) => archiveProject(idOf(request), actorFromRequest(request)));
   app.post('/api/projects/:id/restore', { preHandler: requireAdmin }, async (request) => restoreProject(idOf(request), actorFromRequest(request)));
   app.get('/api/dashboard', { preHandler: requireReady }, async (request) => {
-    const projectId = String(query(request).projectId || ''); assertProjectReadable(actorFromRequest(request), projectId);
-    return getDashboard(projectId);
+    const projectId = String(query(request).projectId || ''); const actor = actorFromRequest(request); assertProjectReadable(actor, projectId);
+    return { ...getDashboard(projectId), actions: listActionItems({ projectId, page: 1, pageSize: 5 }, actor) };
+  });
+  app.get('/api/action-items', { preHandler: requireReady }, async (request) => {
+    const input = parsedQuery(request, actionItemsInputSchema); const actor = actorFromRequest(request);
+    assertProjectReadable(actor, input.projectId);
+    return listActionItems(input, actor);
   });
   app.get('/api/analytics/catalog', async () => getAnalyticsCatalog());
   app.post('/api/analytics/query', { preHandler: requireReady }, async (request) => {
@@ -201,7 +213,7 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
   app.patch('/api/requirements/:id', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
-    return updateRequirement(id, parsedBody(request, requirementInputSchema), actor);
+    return updateRequirement(id, parsedBody(request, updateRequirementInputSchema), actor);
   });
   app.post('/api/requirements/:id/accept', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
@@ -240,11 +252,11 @@ export function registerApiRoutes(app: FastifyInstance) {
     return applyRequirementPlan(id, body(request), actor);
   });
   app.post('/api/requirements/:id/work-items', { preHandler: requireReady }, async (request) => {
-    const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
+    const id = idOf(request); const actor = actorFromRequest(request); assertRequirementOwnerOrManager(actor, id);
     return createWorkItem(id, parsedBody(request, workItemInputSchema), actor);
   });
   app.post('/api/requirements/:id/reorder-work-items', { preHandler: requireReady }, async (request) => {
-    const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
+    const id = idOf(request); const actor = actorFromRequest(request); assertRequirementOwnerOrManager(actor, id);
     const input = body(request); return reorderWorkItems(id, input.ids as string[], actor, input);
   });
   app.post('/api/requirements/:id/progress', { preHandler: requireReady }, async (request) => {
@@ -255,8 +267,7 @@ export function registerApiRoutes(app: FastifyInstance) {
 
   app.patch('/api/work-items/:id', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const input = parsedBody(request, workItemInputSchema); const actor = actorFromRequest(request);
-    assertProjectResourceReadable(actor, projectIdForWorkItem(id), '工作项不存在');
-    assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在');
+    assertWorkItemRequirementOwnerOrManager(actor, id);
     return updateWorkItem(id, input, actor);
   });
   for (const [action, handler] of [
@@ -271,11 +282,11 @@ export function registerApiRoutes(app: FastifyInstance) {
     });
   }
   app.post('/api/work-items/:id/cancel', { preHandler: requireReady }, async (request) => {
-    const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在');
+    const id = idOf(request); const actor = actorFromRequest(request); assertWorkItemRequirementOwnerOrManager(actor, id);
     return cancelWorkItem(id, parsedBody(request, workItemCommandSchema), actor);
   });
   app.post('/api/work-items/:id/reopen', { preHandler: requireReady }, async (request) => {
-    const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在');
+    const id = idOf(request); const actor = actorFromRequest(request); assertWorkItemRequirementOwnerOrManager(actor, id);
     return reopenWorkItem(id, parsedBody(request, workItemCommandSchema), actor);
   });
   app.post('/api/work-items/:id/correct', { preHandler: requireReady }, async (request) => {
@@ -283,7 +294,7 @@ export function registerApiRoutes(app: FastifyInstance) {
     return correctWorkItem(id, parsedBody(request, workItemCommandSchema), actor);
   });
   app.delete('/api/work-items/:id', { preHandler: requireReady }, async (request) => {
-    const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在');
+    const id = idOf(request); const actor = actorFromRequest(request); assertWorkItemRequirementOwnerOrManager(actor, id);
     return deleteWorkItem(id, parsedBody(request, workItemCommandSchema), actor);
   });
   app.patch('/api/progress/:id', { preHandler: requireReady }, async (request) => {
@@ -297,21 +308,8 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/issues', { preHandler: requireReady }, async (request) => {
-    const input = query(request); const projectId = String(input.projectId || ''); assertProjectReadable(actorFromRequest(request), projectId);
-    return listIssues({
-      projectId,
-      q: typeof input.q === 'string' ? input.q : undefined,
-      status: typeof input.status === 'string' ? input.status : undefined,
-      priority: typeof input.priority === 'string' ? input.priority : undefined,
-      ownerId: typeof input.ownerId === 'string' ? input.ownerId : undefined,
-      requirementId: typeof input.requirementId === 'string' ? input.requirementId : undefined,
-      scope: typeof input.scope === 'string' ? input.scope : undefined,
-      overdue: typeof input.overdue === 'string' ? input.overdue : undefined,
-      unassigned: typeof input.unassigned === 'string' ? input.unassigned : undefined,
-      active: typeof input.active === 'string' ? input.active : undefined,
-      page: input.page ? Number(input.page) : undefined,
-      pageSize: input.pageSize ? Number(input.pageSize) : undefined,
-    });
+    const input = parsedQuery(request, issueListInputSchema); assertProjectReadable(actorFromRequest(request), input.projectId);
+    return listIssues(input);
   });
   app.get('/api/issues/:id', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); assertProjectResourceReadable(actorFromRequest(request), projectIdForIssue(id), '问题不存在');

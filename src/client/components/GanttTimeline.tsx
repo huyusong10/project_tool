@@ -1,6 +1,7 @@
 import { type CSSProperties, type HTMLAttributes } from "react";
-import { addBusinessDays, eachDayOfInterval, format, isValid, isWeekend, parseISO, startOfDay } from "date-fns";
-import { ganttProgressDisplay, todayIso } from "../../shared/domain";
+import { eachDayOfInterval, format, isValid, parseISO, startOfDay } from "date-fns";
+import { addBusinessDays, ganttProgressDisplay, todayIso } from "../../shared/domain";
+import { isBusinessDay, workdayCalendarWarning } from "../../shared/workday";
 
 export type GanttZoom = "day" | "week" | "month";
 
@@ -36,14 +37,20 @@ export function buildBusinessDayTimeline(values: Array<string | null | undefined
   const today = toGanttDate(todayIso()) || startOfDay(new Date());
   const earliest = parsed.length ? new Date(Math.min(...parsed.map((date) => date.getTime()))) : today;
   const latest = parsed.length ? new Date(Math.max(...parsed.map((date) => date.getTime()))) : today;
-  const start = startOfDay(addBusinessDays(earliest, -option.padding));
-  let end = startOfDay(addBusinessDays(latest, option.padding));
-  let dates = eachDayOfInterval({ start, end }).filter((date) => !isWeekend(date));
+  const start = toGanttDate(addBusinessDays(format(earliest, "yyyy-MM-dd"), -option.padding))!;
+  let end = toGanttDate(addBusinessDays(format(latest, "yyyy-MM-dd"), option.padding))!;
+  let dates = eachDayOfInterval({ start, end }).filter((date) => isBusinessDay(format(date, "yyyy-MM-dd")));
   if (dates.length < option.minimumDays) {
-    end = startOfDay(addBusinessDays(start, option.minimumDays - 1));
-    dates = eachDayOfInterval({ start, end }).filter((date) => !isWeekend(date));
+    end = toGanttDate(addBusinessDays(format(start, "yyyy-MM-dd"), option.minimumDays - 1))!;
+    dates = eachDayOfInterval({ start, end }).filter((date) => isBusinessDay(format(date, "yyyy-MM-dd")));
   }
-  return { start, end, dates, days: dates.length };
+  return {
+    start,
+    end,
+    dates,
+    days: dates.length,
+    calendarWarning: workdayCalendarWarning(format(start, "yyyy-MM-dd"), format(end, "yyyy-MM-dd")),
+  };
 }
 
 export function ganttTrackStyle(dates: Date[], cellWidth: number): CSSProperties {
@@ -101,6 +108,7 @@ export function GanttScale({
     >{zoom === "month" ? format(date, "yyyy/MM") : format(date, "MM/dd")}</span>)}
     {dates.map((date, index) => <i
       className={`gantt-scale-tick${date.getDay() === 1 || index === 0 ? " is-major" : ""}`}
+      data-date={format(date, "yyyy-MM-dd")}
       style={{ left: index * cellWidth, width: cellWidth }}
       key={`tick-${date.toISOString()}`}
     >{zoom !== "month" && <span>{zoom === "day" ? `周${weekdayLabels[date.getDay()]}` : format(date, "dd")}</span>}</i>)}

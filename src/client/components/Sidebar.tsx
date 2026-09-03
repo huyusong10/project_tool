@@ -44,6 +44,7 @@ function groupsFor(session: Session, selectedProjectId: string): NavGroup[] {
     ] },
     { label: "项目空间", items: [
       { label: "需求管理", to: "/requirements", icon: ListChecks },
+      { label: "异常行动", to: "/actions", icon: CircleAlert },
       { label: "问题跟踪", to: "/issues", icon: CircleAlert },
       { label: "人员矩阵", to: "/people", icon: Network },
       { label: "流程设计", to: "/templates", icon: Workflow },

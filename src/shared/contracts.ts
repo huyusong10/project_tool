@@ -1,9 +1,17 @@
 import { z } from 'zod';
-import { priorities, projectRoles } from './domain';
+import { issueStatuses, priorities, projectRoles } from './domain';
+import { actionReasonCodes } from './action-items';
 
 export const idSchema = z.string().trim().min(1, 'ID不能为空');
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式应为YYYY-MM-DD');
 export const optionalDateSchema = z.union([isoDateSchema, z.literal(''), z.null()]).optional();
+export const optionalTextSchema = z.union([z.string().trim().max(10000), z.null()]).optional();
+export const optionalIdSchema = z.union([idSchema, z.literal(''), z.null()]).optional();
+export const optionalHttpUrlSchema = z.union([
+  z.literal(''),
+  z.null(),
+  z.string().trim().url('辅助链接格式不正确').refine((value) => /^https?:\/\//i.test(value), '辅助链接仅支持HTTP或HTTPS'),
+]).optional();
 export const expectedVersionSchema = z.number().int().min(1);
 
 export const idParamsSchema = z.object({ id: idSchema });
@@ -27,6 +35,10 @@ export const requirementInputSchema = z.object({
   projectId: idSchema.optional(),
   title: z.string().trim().min(1).optional(),
   priority: z.enum(priorities).optional(),
+  ownerId: optionalIdSchema,
+  background: optionalTextSchema,
+  acceptanceCriteria: optionalTextSchema,
+  referenceUrl: optionalHttpUrlSchema,
   plannedStart: optionalDateSchema,
   plannedEnd: optionalDateSchema,
   scheduleMode: z.enum(['start', 'deadline']).optional(),
@@ -40,12 +52,13 @@ export const createRequirementInputSchema = requirementInputSchema.extend({
   projectId: idSchema,
   title: z.string().trim().min(1),
   priority: z.enum(priorities).default('P2'),
-}).refine((input) => Boolean(input.plannedStart) !== Boolean(input.plannedEnd), {
-  message: '计划开始和截止日期请选择一项',
+}).refine((input) => !(input.plannedStart && input.plannedEnd), {
+  message: '计划开始和截止日期只能选择一项',
 });
 
 export const updateRequirementInputSchema = requirementInputSchema.pick({
-  title: true, priority: true, expectedVersion: true,
+  title: true, priority: true, ownerId: true, background: true,
+  acceptanceCriteria: true, referenceUrl: true, expectedVersion: true,
 }).extend({ expectedVersion: expectedVersionSchema });
 
 export const rescheduleRequirementInputSchema = requirementInputSchema.extend({
@@ -142,3 +155,29 @@ export const personInputSchema = z.object({
 
 export const projectMemberInputSchema = z.object({ role: z.enum(projectRoles).default('member') }).passthrough();
 export const archiveDeleteInputSchema = z.object({ confirmName: z.string().optional() }).passthrough();
+
+const optionalQueryFlagSchema = z.union([z.boolean(), z.enum(['true', 'false'])]).optional();
+
+export const issueListInputSchema = z.object({
+  projectId: idSchema,
+  q: z.string().trim().optional(),
+  status: z.enum(issueStatuses).optional(),
+  priority: z.enum(priorities).optional(),
+  ownerId: idSchema.optional(),
+  requirementId: idSchema.optional(),
+  scope: z.enum(['public', 'requirement']).optional(),
+  overdue: optionalQueryFlagSchema,
+  unassigned: optionalQueryFlagSchema,
+  active: optionalQueryFlagSchema,
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+export const actionItemsInputSchema = z.object({
+  projectId: idSchema,
+  severity: z.enum(['high', 'medium', 'low']).optional(),
+  reason: z.enum(actionReasonCodes).optional(),
+  ownerId: z.union([idSchema, z.literal('unassigned')]).optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+});

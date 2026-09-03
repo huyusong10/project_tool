@@ -151,7 +151,7 @@ export function RequirementsPage() {
     const normalizedSearch = search.trim().toLowerCase();
     return data
       .filter((item) =>
-        (!normalizedSearch || item.title.toLowerCase().includes(normalizedSearch)) &&
+        (!normalizedSearch || item.title.toLowerCase().includes(normalizedSearch) || item.ownerName?.toLowerCase().includes(normalizedSearch)) &&
         (status === "current" ? item.status !== "completed" : !status || item.status === status),
       )
       .sort((left, right) => {
@@ -219,7 +219,7 @@ export function RequirementsPage() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="搜索需求标题"
+            placeholder="搜索需求或负责人"
           />
         </label>
         <select
@@ -259,7 +259,7 @@ export function RequirementsPage() {
                 key={item.id}
                 onClick={() => navigate(`/requirements/${item.id}`)}
               >
-                <td><DataCell density="compact" primary={<strong>{item.title}</strong>} secondary={item.projectName} /></td>
+                <td><DataCell density="compact" primary={<strong>{item.title}</strong>} secondary={`${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
                 <td><DataCell density="compact" primary={canManage ? <InlineSelectCell
                   value={item.priority}
                   label="需求优先级"

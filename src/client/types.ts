@@ -1,3 +1,7 @@
+import type { ActionItemsPage } from '../shared/action-items';
+
+export type { ActionItem, ActionItemsPage, ActionReason, ActionReasonCode, ActionSeverity } from '../shared/action-items';
+
 export type Session = {
   authenticated: boolean; accountId?: string; username: string | null; httpWarning: boolean;
   role: 'guest' | 'user' | 'project_manager' | 'admin'; globalRole: 'guest' | 'user' | 'admin';
@@ -63,6 +67,7 @@ export type IssuePage = {
 };
 export type Requirement = {
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
+  background?: string | null; acceptanceCriteria?: string | null; referenceUrl?: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number; progressGap: number;
   asOfDate?: string;
   acceptedAt: string | null; acceptedByAccountId: string | null; version: number;
@@ -76,6 +81,7 @@ export type Dashboard = {
   summary: { total: number; active: number; completed: number; delayed: number; highRisk: number; completionRate: number };
   requirements: Requirement[];
   issues: { summary: IssuePage["summary"]; attention: Issue[] };
+  actions?: ActionItemsPage;
   charts: {
     statuses: Array<{ status: string; count: number }>;
     risks: Array<{ risk: string; count: number }>;
@@ -143,8 +149,15 @@ export type Account = {
 export type MyWorkItem = WorkItem & {
   projectId: string; projectName: string; requirementTitle: string; assignmentType: 'owner' | 'collaborator'; overdue: boolean;
 };
+export type MyOwnedRequirement = {
+  id: string; projectId: string; projectName: string; title: string; status: string; priority: string;
+  plannedStart: string | null; plannedEnd: string | null; progress: number; riskLevel: string;
+  riskEvaluated: boolean; delayed: boolean; highRisk: boolean; planningReasons: string[];
+  actionCount: number; updatedAt: string;
+};
 export type MyWork = {
   summary: { total: number; notStarted: number; inProgress: number; blocked: number; completed: number; overdue: number };
+  requirements: MyOwnedRequirement[];
   items: MyWorkItem[];
   completionTrend: Array<{ week: string; completed: number }>;
   upcoming: Array<{ date: string; count: number }>;

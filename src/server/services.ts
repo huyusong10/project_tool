@@ -73,6 +73,7 @@ export {
 export type { IssueRecord, IssueUpdateRecord } from './services/issues';
 export { authenticateApiToken, issueToken, listTokens, revokeToken } from './services/tokens';
 export { getDashboard, getPeopleConcurrency } from './services/reporting';
+export { listActionItems } from './services/actions';
 
 export type ProjectRecord = {
   id: string; name: string; status: string; plannedStart: string | null; plannedEnd: string | null;
@@ -127,6 +128,16 @@ function createInitialProjectFlow(projectId: string, createdAt: string) {
 function firstActiveTemplateId(projectId: string) {
   return row<{ id: string }>(`SELECT id FROM work_item_templates WHERE project_id=? AND deleted_at IS NULL
     ORDER BY CASE WHEN name='DCIM AI工作流' THEN 0 ELSE 1 END, created_at LIMIT 1`, projectId)?.id || null;
+}
+
+function requirementOwner(projectId: string, value: unknown) {
+  const ownerId = nullableText(value);
+  if (ownerId && !row(`SELECT p.id FROM people p JOIN project_people pp ON pp.person_id=p.id
+    WHERE p.id=? AND pp.project_id=? AND pp.project_role IN ('member','manager')
+      AND p.deleted_at IS NULL AND p.active=1`, ownerId, projectId)) {
+    fail('需求负责人必须是当前项目中已启用的成员或项目经理');
+  }
+  return ownerId;
 }
 
 export function createProject(input: JsonObject, actor: Actor): ProjectRecord {
@@ -541,28 +552,39 @@ export function createRequirement(input: JsonObject, actor: Actor) {
   if (!project) notFound('项目不存在');
   const title = requireText(input.title, '需求标题');
   const priority = ensureEnum(input.priority ?? 'P2', priorities, '优先级');
-  const templateId = nullableText(input.templateId) || project.defaultTemplateId || firstActiveTemplateId(projectId);
-  if (!templateId || !row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, projectId)) fail('请选择当前项目的有效流程设计');
+  const ownerId = requirementOwner(projectId, input.ownerId);
+  const background = nullableText(input.background);
+  const acceptanceCriteria = nullableText(input.acceptanceCriteria);
+  const referenceUrl = nullableText(input.referenceUrl);
   const inputPlannedStart = nullableText(input.plannedStart);
   const inputPlannedEnd = nullableText(input.plannedEnd);
-  if (Boolean(inputPlannedStart) === Boolean(inputPlannedEnd)) fail('计划开始和截止日期请选择一项');
-  let plannedStart: string;
+  if (inputPlannedStart && inputPlannedEnd) fail('计划开始和截止日期只能选择一项');
+  const hasSchedule = Boolean(inputPlannedStart || inputPlannedEnd);
+  const templateId = nullableText(input.templateId) || (hasSchedule ? project.defaultTemplateId || firstActiveTemplateId(projectId) : null);
+  if (templateId && !row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, projectId)) {
+    fail('请选择当前项目的有效流程设计');
+  }
+  if (hasSchedule && !templateId) fail('立即规划时请选择当前项目的有效流程设计');
+  let plannedStart: string | null = null;
   if (inputPlannedStart) {
     plannedStart = requireDate(inputPlannedStart, '计划开始');
     if (businessDaysInclusive(plannedStart, plannedStart) !== 1) fail('计划开始需为工作日');
-  } else {
+  } else if (inputPlannedEnd) {
     const deadline = requireDate(inputPlannedEnd, '截止日期');
     if (businessDaysInclusive(deadline, deadline) !== 1) fail('截止日期需为工作日');
-    plannedStart = plannedStartFromDeadline(deadline, activeTemplateItems(templateId));
+    plannedStart = plannedStartFromDeadline(deadline, activeTemplateItems(templateId!));
   }
   const tx = sqlite.transaction(() => {
     sqlite.prepare(`INSERT INTO requirements
-      (id, project_id, template_id, title, status, planned_start, progress, risk_level, priority, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'planning', ?, 0, 'low', ?, ?, ?)`).run(id, projectId, templateId, title, plannedStart, priority, now, now);
-    applyTemplateInternal(id, templateId, plannedStart);
+      (id, project_id, template_id, title, background, acceptance_criteria, reference_url, owner_id,
+        status, planned_start, progress, risk_level, priority, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planning', ?, 0, 'low', ?, ?, ?)`).run(
+      id, projectId, templateId, title, background, acceptanceCriteria, referenceUrl, ownerId, plannedStart, priority, now, now,
+    );
+    if (plannedStart && templateId) applyTemplateInternal(id, templateId, plannedStart);
     updateStoredRequirementEnd(id);
   });
-  tx(); audit(actor, 'create', 'requirement', id, `创建需求并生成工作项：${title}`);
+  tx(); audit(actor, 'create', 'requirement', id, plannedStart ? `创建需求并生成工作项：${title}` : `创建待规划需求：${title}`);
   return getRequirement(id);
 }
 
@@ -574,6 +596,10 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor) {
   }
   const title = input.title === undefined ? current.title : requireText(input.title, '需求标题');
   const priority = input.priority === undefined ? current.priority : ensureEnum(input.priority, priorities, '优先级');
+  const ownerId = input.ownerId === undefined ? current.ownerId : requirementOwner(current.projectId, input.ownerId);
+  const background = input.background === undefined ? current.background : nullableText(input.background);
+  const acceptanceCriteria = input.acceptanceCriteria === undefined ? current.acceptanceCriteria : nullableText(input.acceptanceCriteria);
+  const referenceUrl = input.referenceUrl === undefined ? current.referenceUrl : nullableText(input.referenceUrl);
   const requestedPlannedStart = input.plannedStart === undefined ? undefined : requireDate(input.plannedStart, '计划开始');
   const requestedPlannedEnd = input.plannedEnd === undefined ? undefined : requireDate(input.plannedEnd, '计划完成');
   if (requestedPlannedStart !== undefined && requestedPlannedEnd !== undefined) fail('计划开始和完成日期请选择一项');
@@ -586,18 +612,29 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor) {
   const templateChanged = input.templateId !== undefined && templateId !== current.templateId;
   const hasExecution = current.workItems!.some((item) => item.status !== 'not_started' || item.progress > 0 || item.actualStart)
     || Boolean(row(`SELECT 1 FROM progress_updates WHERE requirement_id=? AND event_type<>'note' LIMIT 1`, id));
+  if (input.ownerId !== undefined && !ownerId && hasExecution) {
+    fail('需求已开始执行，只能更换负责人，不能清空负责人', 'DEPENDENCY_CONFLICT', 409);
+  }
   let nextPlannedStart = current.plannedStart;
   let shiftDays = 0;
+  let generateInitialPlan = false;
   if (requestedPlannedStart !== undefined || requestedPlannedEnd !== undefined) {
     const targetDate = requestedPlannedStart ?? requestedPlannedEnd!;
     if (businessDaysInclusive(targetDate, targetDate) !== 1) fail(`${scheduleMode === 'start' ? '计划开始' : '计划完成'}需为工作日`);
     if (!templateChanged) {
       const currentAnchor = scheduleMode === 'start' ? current.plannedStart : current.plannedEnd;
-      if (!currentAnchor) fail('当前需求缺少可用于顺延的计划日期');
-      shiftDays = businessDayDelta(currentAnchor, targetDate);
-      nextPlannedStart = scheduleMode === 'start'
-        ? targetDate
-        : current.plannedStart ? addBusinessDays(current.plannedStart, shiftDays) : null;
+      if (!currentAnchor) {
+        if (current.workItems!.length || !current.templateId) fail('当前需求缺少可用于顺延的计划日期');
+        nextPlannedStart = scheduleMode === 'start'
+          ? targetDate
+          : plannedStartFromDeadline(targetDate, activeTemplateItems(current.templateId));
+        generateInitialPlan = true;
+      } else {
+        shiftDays = businessDayDelta(currentAnchor, targetDate);
+        nextPlannedStart = scheduleMode === 'start'
+          ? targetDate
+          : current.plannedStart ? addBusinessDays(current.plannedStart, shiftDays) : null;
+      }
     }
     if (hasExecution && !nullableText(input.reason)) fail('需求已开始执行，调整排期时必须填写变更原因');
   }
@@ -617,17 +654,21 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor) {
     if (templateChanged && templateId) {
       sqlite.prepare('DELETE FROM work_items WHERE requirement_id=?').run(id);
       sqlite.prepare(`UPDATE requirements SET template_id=?, title=?, status='planning', planned_start=?,
-        planned_end=NULL, progress=0, risk_level='low', priority=?, accepted_at=NULL, accepted_by_account_id=NULL,
+        planned_end=NULL, progress=0, risk_level='low', priority=?, owner_id=?, background=?, acceptance_criteria=?, reference_url=?,
+        accepted_at=NULL, accepted_by_account_id=NULL,
         version=version+1, updated_at=? WHERE id=?`)
-        .run(templateId, title, nextPlannedStart, priority, now, id);
+        .run(templateId, title, nextPlannedStart, priority, ownerId, background, acceptanceCriteria, referenceUrl, now, id);
       applyTemplateInternal(id, templateId, nextPlannedStart!);
       updateStoredRequirementEnd(id);
       return;
     }
     shiftRequirementWorkItems(id, shiftDays, now);
-    sqlite.prepare('UPDATE requirements SET title=?, priority=?, planned_start=?, version=version+1, updated_at=? WHERE id=?')
-      .run(title, priority, nextPlannedStart, now, id);
+    sqlite.prepare(`UPDATE requirements SET title=?, priority=?, owner_id=?, background=?, acceptance_criteria=?, reference_url=?,
+      planned_start=?, version=version+1, updated_at=? WHERE id=?`)
+      .run(title, priority, ownerId, background, acceptanceCriteria, referenceUrl, nextPlannedStart, now, id);
+    if (generateInitialPlan) applyTemplateInternal(id, current.templateId!, nextPlannedStart!);
     if (requestedPlannedStart !== undefined || requestedPlannedEnd !== undefined) updateStoredRequirementEnd(id);
+    else if (ownerId !== current.ownerId) syncStoredRequirementState(id, now, false);
   })();
   audit(actor, templateChanged ? 'apply_template' : 'update', 'requirement', id,
     templateChanged ? `重选流程并重建计划：${title}`
@@ -645,16 +686,18 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
 
 export function rescheduleRequirement(id: string, input: JsonObject, actor: Actor) {
   if (input.plannedStart === undefined && input.plannedEnd === undefined) fail('请设置计划开始或计划完成日期');
-  if (['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'templateId'].some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
-    fail('排期命令不能修改状态、进度、验收或流程');
+  if (['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'templateId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl']
+    .some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
+    fail('排期命令不能修改需求信息、状态、进度、验收或流程');
   }
   return changeRequirement(id, input, actor);
 }
 
 export function reselectRequirementTemplate(id: string, input: JsonObject, actor: Actor) {
   if (!nullableText(input.templateId)) fail('请选择要重新绑定的流程');
-  if (['status', 'progress', 'acceptedAt', 'acceptedByAccountId'].some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
-    fail('流程重选命令不能修改状态、进度或验收信息');
+  if (['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl']
+    .some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
+    fail('流程重选命令不能修改需求信息、状态、进度或验收信息');
   }
   return changeRequirement(id, { ...input, confirmTemplateReset: true }, actor);
 }
@@ -726,6 +769,7 @@ export function previewRequirementPlan(requirementId: string, input: JsonObject)
   const templateId = requireText(input.templateId, '流程设计');
   if (!row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, requirement.projectId)) fail('流程设计不属于当前项目');
   const baseStart = requireDate(input.baseStart ?? requirement.plannedStart, '计划开始');
+  if (businessDaysInclusive(baseStart, baseStart) !== 1) fail('计划开始需为工作日');
   const workItems = requirement.workItems || [];
   const entries = activeTemplateItems(templateId).map((item) => {
     const existing = workItems.find((work) => work.templateItemId === item.id) || workItems.find((work) => work.title === item.title);
@@ -819,6 +863,8 @@ export function createWorkItem(requirementId: string, input: JsonObject, actor: 
   assertProjectAssignees(requirementId, [ownerId, ...collaboratorIds]);
   const milestone = milestoneLabel(input.milestoneLabel);
   const plannedStart = nullableDate(input.plannedStart, '计划开始'); const plannedEnd = nullableDate(input.plannedEnd, '计划完成');
+  if (plannedStart && businessDaysInclusive(plannedStart, plannedStart) !== 1) fail('计划开始需为工作日');
+  if (plannedEnd && businessDaysInclusive(plannedEnd, plannedEnd) !== 1) fail('计划完成需为工作日');
   if (plannedStart && plannedEnd && plannedStart > plannedEnd) fail('计划完成日期不能早于计划开始日期');
   sqlite.transaction(() => {
     sqlite.prepare(`INSERT INTO work_items
@@ -850,6 +896,8 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
   assertProjectAssignees(current.requirementId, [ownerId, ...currentCollaborators]);
   const plannedStart = input.plannedStart === undefined ? current.plannedStart : nullableDate(input.plannedStart, '计划开始');
   const plannedEnd = input.plannedEnd === undefined ? current.plannedEnd : nullableDate(input.plannedEnd, '计划完成');
+  if (plannedStart && businessDaysInclusive(plannedStart, plannedStart) !== 1) fail('计划开始需为工作日');
+  if (plannedEnd && businessDaysInclusive(plannedEnd, plannedEnd) !== 1) fail('计划完成需为工作日');
   if (plannedStart && plannedEnd && plannedStart > plannedEnd) fail('计划完成日期不能早于计划开始日期');
   const scheduleChanged = plannedStart !== current.plannedStart || plannedEnd !== current.plannedEnd;
   const requirementHasExecution = Boolean(row(`SELECT 1 FROM work_items WHERE requirement_id=? AND status<>'not_started' LIMIT 1`, current.requirementId));
@@ -887,6 +935,8 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unb
         : nullableText(input.content) || `${labels[action]}工作项`;
   if (action === 'start') {
     assertTransition(current.status, ['not_started'], '开始');
+    const requirement = getRequirement(current.requirementId);
+    if (requirement.status === 'planning') fail('需求尚未完成规划，请先指定需求负责人并补齐全部工作项排期', 'DEPENDENCY_CONFLICT', 409);
     if (!current.ownerId) fail('开始工作项前请指定负责人');
     if (!current.plannedStart || !current.plannedEnd) fail('开始工作项前请完善计划日期');
   }
