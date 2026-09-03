@@ -8,7 +8,7 @@ import {
   managedProjectIds, projectIdForIssue, projectIdForRequirement, projectIdForTemplate, projectIdForWorkItem, sessionActor,
 } from './authorization';
 import {
-  changeOwnPassword, findAccountForLogin, getMyWork, listAccounts, markLogin,
+  changeOwnPassword, deleteAccount, findAccountForLogin, getMyWork, listAccounts, markLogin, openAccountForPerson,
   resetAccountPassword, updateAccount,
 } from './accounts';
 import {
@@ -16,11 +16,12 @@ import {
   blockWorkItem, cancelRequirement, cancelWorkItem, completeWorkItem, copyTemplate, correctIssue, correctWorkItem, createPerson, createProject, createRequirement, createTemplate,
   createIssue, createWorkItem, deleteIssueUpdate, deleteProgress, deleteWorkItem, getDashboard, getIssue, getPeopleConcurrency, getRequirement, issueToken,
   listArchives, listAudit, listIssues, listPeople, listPeopleCandidates, listProjects, listRequirements, listTemplates, listTokens, previewRequirementPlan,
-  permanentlyDeleteArchive, recordAudit, removeProjectPerson, reorderWorkItems, reopenIssue, reopenWorkItem, reselectRequirementTemplate, rescheduleRequirement, resolveIssue, restorePerson, restoreProject, restoreRequirement, restoreTemplate, resumeIssue, revokeToken, searchAudit, startIssue, startWorkItem,
+  permanentlyDeleteArchive, recordAudit, removeProjectPerson, reorderWorkItems, reopenIssue, reopenWorkItem, reselectRequirementTemplate, rescheduleRequirement, resolveIssue, restorePerson, restoreProject, restoreRequirement, restoreTemplate, resumeIssue, revokeToken, searchAudit, startWorkItem,
   deferIssue, unblockWorkItem, updateIssue, updateIssueUpdate, updatePerson, updateProgress, updateProject, updateRequirement, updateTemplate, updateWorkItem,
 } from './services';
 import { createBackup, deleteBackup, listBackups, scheduleRestore } from './backups';
 import { checkDatabaseIntegrity, getSystemOverview } from './system';
+import { getBranding, getBrandingLogo, updateBranding } from './branding';
 import {
   getAnalyticsCatalog, getAnalyticsLayout, queryAnalytics, resetAnalyticsLayout, saveAnalyticsLayout,
 } from './analytics';
@@ -67,6 +68,16 @@ function setSessionCookie(reply: FastifyReply, accountId: string, sessionVersion
 }
 
 export function registerApiRoutes(app: FastifyInstance) {
+  app.get('/api/branding', async () => getBranding());
+  app.get('/api/branding/logo', async (_request, reply) => {
+    const logo = getBrandingLogo();
+    if (!logo) return reply.code(404).send({ error: '尚未配置系统Logo' });
+    return reply
+      .type(logo.mimeType)
+      .header('Cache-Control', 'public, max-age=31536000, immutable')
+      .send(logo.content);
+  });
+
   app.decorateRequest('actor', null);
   app.get('/api/session', async (request) => sessionPayload(sessionOf(request)));
   app.post('/api/login', { config: { rateLimit: { max: config.nodeEnv === 'test' ? 100 : 8, timeWindow: '1 minute' } } }, async (request, reply) => {
@@ -86,6 +97,8 @@ export function registerApiRoutes(app: FastifyInstance) {
   app.get('/api/accounts', { preHandler: requireAdmin }, async () => listAccounts());
   app.patch('/api/accounts/:id', { preHandler: requireAdmin }, async (request) => updateAccount((request.params as any).id, body(request), actorFromRequest(request)));
   app.post('/api/accounts/:id/reset-password', { preHandler: requireAdmin }, async (request) => resetAccountPassword((request.params as any).id, actorFromRequest(request)));
+  app.delete('/api/accounts/:id', { preHandler: requireAdmin }, async (request) => deleteAccount((request.params as any).id, actorFromRequest(request)));
+  app.post('/api/people/:id/account', { preHandler: requireAdmin }, async (request) => openAccountForPerson((request.params as any).id, actorFromRequest(request)));
   app.get('/api/my-work', { preHandler: requireReady }, async (request) => getMyWork(actorFromRequest(request).accountId));
 
   app.get('/api/projects', { preHandler: requireReady }, async (request) => listProjects((request.query as any).includeDeleted === 'true', actorFromRequest(request)));
@@ -238,17 +251,11 @@ export function registerApiRoutes(app: FastifyInstance) {
   app.post('/api/issues', { preHandler: requireReady }, async (request) => {
     const input = body(request); const actor = actorFromRequest(request); const projectId = String(input.projectId || '');
     assertProjectMember(actor, projectId);
-    return createIssue(canManageProject(actor, projectId) ? input : { ...input, status: 'open', ownerId: null, progress: 0 }, actor);
+    return createIssue(canManageProject(actor, projectId) ? input : { ...input, ownerId: null, progress: 0 }, actor);
   });
   app.patch('/api/issues/:id', { preHandler: requireReady }, async (request) => {
     const id = (request.params as any).id; const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在');
     return updateIssue(id, body(request), actor);
-  });
-  app.post('/api/issues/:id/start', { preHandler: requireReady }, async (request) => {
-    const id = (request.params as any).id; const actor = actorFromRequest(request); const projectId = projectIdForIssue(id);
-    assertProjectResourceReadable(actor, projectId, '问题不存在');
-    if (!canUpdateIssueProgress(actor, id)) { const error = new Error('只有问题负责人或项目经理可以开始处理') as Error & { statusCode: number }; error.statusCode = 403; throw error; }
-    return startIssue(id, body(request), actor);
   });
   for (const [action, handler] of [
     ['defer', deferIssue], ['resume', resumeIssue], ['resolve', resolveIssue], ['reopen', reopenIssue], ['correct', correctIssue],
@@ -370,6 +377,12 @@ export function registerApiRoutes(app: FastifyInstance) {
 
   app.get('/api/system/overview', { preHandler: requireAdmin }, async () => getSystemOverview());
   app.post('/api/system/database-check', { preHandler: requireAdmin }, async () => checkDatabaseIntegrity());
+  app.put('/api/system/branding', { preHandler: requireAdmin }, async (request) => {
+    const actor = actorFromRequest(request);
+    const result = updateBranding(body(request));
+    recordAudit(actor, 'update', 'system_branding', 'default', `更新系统品牌：${result.systemName}（${result.shortName}）`);
+    return result;
+  });
   app.get('/api/backups', { preHandler: requireAdmin }, async () => listBackups());
   app.post('/api/backups', { preHandler: requireAdmin }, async (request) => {
     const actor = actorFromRequest(request); const result = await createBackup();

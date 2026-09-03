@@ -2,33 +2,20 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Navigate,
-  NavLink,
   Route,
   Routes,
   useNavigate,
 } from "react-router-dom";
 import {
-  BarChart3,
-  Archive,
   Check,
   ChevronDown,
-  CircleAlert,
-  ClipboardList,
-  FolderKanban,
-  GanttChartSquare,
   KeyRound,
-  ListChecks,
   LockKeyhole,
   LogIn,
   LogOut,
-  PanelLeftClose,
-  Settings2,
-  ScrollText,
-  Users,
-  UserRoundCog,
 } from "lucide-react";
 import { api, jsonBody } from "./api";
-import type { Project, Session } from "./types";
+import type { Project, Session, SystemBranding } from "./types";
 import { AppContext } from "./app-context";
 import { DashboardPage } from "./pages/DashboardPage";
 import { IssuesPage } from "./pages/IssuesPage";
@@ -40,7 +27,6 @@ import {
   PersonalSettingsPage,
   ProjectSettingsPage,
   ProjectsPage,
-  ResourceCenterPage,
   RequirementsPage,
   SystemPage,
   TemplatesPage,
@@ -51,6 +37,8 @@ import { AccountsPage } from "./pages/AccountsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { canManageProject, isAdmin } from "./permissions";
 import { InlineEditProvider } from "./components/InlineEdit";
+import { BrandLogo, defaultBranding, useDocumentBranding } from "./components/BrandLogo";
+import { Sidebar } from "./components/Sidebar";
 
 const guestSession: Session = {
   authenticated: false,
@@ -63,7 +51,7 @@ const guestSession: Session = {
   managedProjectIds: [],
 };
 
-function LoginForm({ onClose }: { onClose: () => void }) {
+function LoginForm({ onClose, branding }: { onClose: () => void; branding: SystemBranding }) {
   const client = useQueryClient();
   const navigate = useNavigate();
   const [error, setError] = useState("");
@@ -87,9 +75,7 @@ function LoginForm({ onClose }: { onClose: () => void }) {
         login.mutate(Object.fromEntries(new FormData(event.currentTarget)));
       }}
     >
-      <div className="login-symbol">
-        <KeyRound size={25} />
-      </div>
+      <BrandLogo branding={branding} className="login-brand-logo" />
       <p className="field-help field-full">
         登录后按账号角色进入个人工作台或项目管理功能。
       </p>
@@ -125,58 +111,6 @@ function LoginForm({ onClose }: { onClose: () => void }) {
         当前为HTTP局域网访问，请仅在可信网络中输入密码。
       </div>
     </form>
-  );
-}
-
-function Sidebar({ session, selectedProjectId, collapsed, onToggle }: { session: Session; selectedProjectId: string; collapsed: boolean; onToggle: () => void }) {
-  if (collapsed) {
-    return (
-      <aside className="sidebar sidebar-collapsed">
-        <button type="button" className="collapsed-brand" onClick={onToggle} aria-label="展开侧边栏" title="展开侧边栏">
-          PM
-        </button>
-      </aside>
-    );
-  }
-  const managesCurrentProject = canManageProject(session, selectedProjectId);
-  return (
-    <aside className="sidebar">
-      <div className="brand-mark">
-        <span>PM</span>
-        <div>
-          <strong>项目管理</strong>
-          <small>LOCAL WORKSPACE</small>
-        </div>
-        <button type="button" className="sidebar-collapse-button" onClick={onToggle} aria-label="收起侧边栏" title="收起侧边栏">
-          <PanelLeftClose size={18} />
-        </button>
-      </div>
-      <nav>
-        {session.authenticated ? <>
-          <span className="nav-section nav-section-first">工作台</span>
-          <NavLink to="/" end><GanttChartSquare size={18} />项目进展</NavLink>
-          <NavLink to="/analytics"><BarChart3 size={18} />统计分析</NavLink>
-          <span className="nav-section">个人</span>
-          <NavLink to="/my-work"><ClipboardList size={18} />我的工作</NavLink>
-          <NavLink to="/settings"><Settings2 size={18} />个人设置</NavLink>
-          <span className="nav-section">项目空间</span>
-          <NavLink to="/requirements"><ListChecks size={18} />需求管理</NavLink>
-          <NavLink to="/issues"><CircleAlert size={18} />问题跟踪</NavLink>
-          <NavLink to="/people"><Users size={18} />人员矩阵</NavLink>
-          <NavLink to="/templates"><Settings2 size={18} />流程设计</NavLink>
-          {managesCurrentProject && <NavLink to="/project-settings"><FolderKanban size={18} />项目设置</NavLink>}
-          {!isAdmin(session) && managesCurrentProject && <NavLink to="/logs"><ScrollText size={18} />项目日志</NavLink>}
-          {isAdmin(session) && <span className="nav-section">平台治理</span>}
-          {isAdmin(session) && <NavLink to="/projects"><FolderKanban size={18} />项目中心</NavLink>}
-          {isAdmin(session) && <NavLink to="/resources"><Users size={18} />资源中心</NavLink>}
-          {isAdmin(session) && <NavLink to="/accounts"><UserRoundCog size={18} />账户与权限</NavLink>}
-          {isAdmin(session) && <NavLink to="/archives"><Archive size={18} />归档中心</NavLink>}
-          {isAdmin(session) && <span className="nav-section">平台运维</span>}
-          {isAdmin(session) && <NavLink to="/system"><LockKeyhole size={18} />系统管理</NavLink>}
-          {isAdmin(session) && <NavLink to="/logs"><ScrollText size={18} />操作审计</NavLink>}
-        </> : <span className="nav-section nav-section-first">登录后使用项目工作台</span>}
-      </nav>
-    </aside>
   );
 }
 
@@ -321,6 +255,11 @@ export function App() {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("project-manage:sidebar-collapsed") === "true");
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const { data: branding = defaultBranding } = useQuery({
+    queryKey: ["branding"],
+    queryFn: () => api<SystemBranding>("/api/branding"),
+  });
+  useDocumentBranding(branding);
   const { data: session = guestSession, isFetched: sessionReady } = useQuery({
     queryKey: ["session"],
     queryFn: () => api<Session>("/api/session"),
@@ -353,7 +292,7 @@ export function App() {
     <InlineEditProvider>
       <AppContext.Provider value={context}>
         <div className={`app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
-        <Sidebar session={session} selectedProjectId={selectedProjectId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((value) => !value)} />
+        <Sidebar session={session} selectedProjectId={selectedProjectId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((value) => !value)} branding={branding} />
         <main>
           <Topbar
             session={session}
@@ -377,8 +316,8 @@ export function App() {
             <Route path="/project-settings" element={<RoleRoute session={session} ready={sessionReady} manager currentProjectId={selectedProjectId}><ProjectSettingsPage /></RoleRoute>} />
             <Route path="/logs" element={<RoleRoute session={session} ready={sessionReady} manager currentProjectId={selectedProjectId}><LogsPage /></RoleRoute>} />
             <Route path="/projects" element={<RoleRoute session={session} ready={sessionReady} admin><ProjectsPage /></RoleRoute>} />
-            <Route path="/resources" element={<RoleRoute session={session} ready={sessionReady} admin><ResourceCenterPage /></RoleRoute>} />
-            <Route path="/accounts" element={<RoleRoute session={session} ready={sessionReady} admin><AccountsPage /></RoleRoute>} />
+            <Route path="/resources" element={<RoleRoute session={session} ready={sessionReady} admin><AccountsPage /></RoleRoute>} />
+            <Route path="/accounts" element={<Navigate to="/resources" replace />} />
             <Route path="/archives" element={<RoleRoute session={session} ready={sessionReady} admin><ArchiveCenterPage /></RoleRoute>} />
             <Route path="/system" element={<RoleRoute session={session} ready={sessionReady} admin><SystemPage /></RoleRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
@@ -390,7 +329,7 @@ export function App() {
             onClose={() => setLoginOpen(false)}
             width={440}
           >
-            <LoginForm onClose={() => setLoginOpen(false)} />
+            <LoginForm onClose={() => setLoginOpen(false)} branding={branding} />
           </Modal>
         )}
         {session.authenticated && (passwordOpen || session.mustChangePassword) && <Modal title={session.mustChangePassword ? "修改初始密码" : "修改密码"} onClose={() => setPasswordOpen(false)} width={460} closable={!session.mustChangePassword}>

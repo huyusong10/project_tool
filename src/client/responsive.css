@@ -241,6 +241,18 @@ textarea {
     min-height: 300px;
   }
 
+  .system-branding-content {
+    grid-template-columns: 230px minmax(0, 1fr);
+  }
+
+  .system-branding-form {
+    grid-template-columns: minmax(150px, 1fr) minmax(120px, .6fr);
+  }
+
+  .system-branding-logo-field {
+    grid-column: 1 / -1;
+  }
+
   .detail-grid,
   .progress-detail-grid {
     grid-template-columns: 1fr;
@@ -271,6 +283,26 @@ textarea {
   }
 
   .system-detail-list .http-alert {
+    grid-column: 1;
+  }
+
+  .system-branding-content {
+    grid-template-columns: 1fr;
+  }
+
+  .system-branding-preview {
+    justify-content: flex-start;
+    border-right: 0;
+    border-bottom: 1px solid #edf1f5;
+  }
+
+  .system-branding-form {
+    grid-template-columns: 1fr;
+  }
+
+  .system-branding-logo-field,
+  .system-branding-feedback,
+  .system-branding-actions {
     grid-column: 1;
   }
 
@@ -325,6 +357,79 @@ textarea {
   .dashboard-public-list > a > svg {
     grid-column: 2;
     grid-row: 1;
+  }
+}
+
+@container adaptive-data-list (max-width: 900px) {
+  .account-data-list .adaptive-data-list-header {
+    display: none;
+  }
+
+  .account-data-list .adaptive-data-list-body {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .account-data-list .account-data-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "primary status"
+      "account account"
+      "permission permission"
+      "login actions";
+    gap: 10px 14px;
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .account-data-list .adaptive-data-cell {
+    align-self: auto;
+    padding: 0;
+  }
+
+  .account-data-primary { grid-area: primary; }
+  .account-data-account { grid-area: account; }
+  .account-data-permission { grid-area: permission; }
+  .account-data-status { grid-area: status; align-self: start !important; justify-content: flex-end; }
+  .account-data-status .data-cell { justify-items: end; text-align: right; }
+  .account-data-status .data-cell-primary { justify-content: flex-end; }
+  .account-data-login { grid-area: login; }
+  .account-data-actions { grid-area: actions; justify-content: flex-end; }
+
+  .account-data-account,
+  .account-data-permission,
+  .account-data-login {
+    display: grid !important;
+    grid-template-columns: 86px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+  }
+
+  .account-data-account::before,
+  .account-data-permission::before,
+  .account-data-login::before {
+    display: block;
+    color: #8793a3;
+    font-size: 12px;
+  }
+
+  .account-data-list .account-permission-editor .inline-edit-trigger {
+    min-height: 52px;
+  }
+}
+
+@container adaptive-data-list (max-width: 560px) {
+  .account-data-list .account-data-row {
+    grid-template-areas:
+      "primary status"
+      "account account"
+      "permission permission"
+      "login login"
+      "actions actions";
+  }
+
+  .account-data-actions {
+    justify-content: flex-start;
   }
 }
 
@@ -488,6 +593,14 @@ textarea {
 }
 
 @media (max-width: 620px) {
+  .modal-card-workspace {
+    height: calc(100dvh - 24px);
+  }
+
+  .modal-card-workspace .modal-body-workspace {
+    padding: 12px;
+  }
+
   .schedule-mode-switch {
     grid-template-columns: 1fr;
   }
@@ -510,15 +623,22 @@ textarea {
 }
 
 @media (max-width: 1199px) {
+  .system-account-card { grid-template-columns: 42px minmax(180px,1fr) minmax(190px,1fr) auto 40px; }
+  .system-account-login { grid-column: 2 / 5; grid-row: 2; }
   .my-work-summary { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .my-work-charts { grid-template-columns: 1fr; }
-  .account-table-panel { overflow-x: auto; }
   .analytics-grid > .analytics-panel-small { grid-column: span 6; }
   .analytics-grid > .analytics-panel-medium, .analytics-grid > .analytics-panel-large { grid-column: span 12; }
   .analytics-panel-editor { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
+  .system-account-card { grid-template-columns: 42px minmax(0,1fr) 40px; align-items: center; }
+  .system-account-copy { grid-column: 2; }
+  .system-account-card .account-permission-summary, .system-account-card > .account-status, .system-account-login { grid-column: 1 / -1; }
+  .system-account-card .account-actions { grid-column: 3; grid-row: 1; }
+  .people-access-filters .search-box, .people-access-filters select { width: 100%; min-width: 0; }
+  .people-access-filters > span { margin-left: 0; }
   .requirement-acceptance-banner { align-items: stretch; flex-direction: column; }
   .requirement-acceptance-banner .primary-button { width: 100%; }
   .issue-state-actions.is-compact { flex-wrap: wrap; }

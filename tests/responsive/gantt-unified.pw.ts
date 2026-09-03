@@ -12,6 +12,7 @@ const requirement = {
   id: "r1", projectId: "p1", projectName: "测试项目", templateId: "t1", templateName: "研发流程",
   title: "统一甘特样式", ownerId: null, ownerName: null, status: "in_progress", plannedStart: "2026-09-01",
   plannedEnd: "2026-09-10", progress: 61, plannedProgress: 91, progressGap: 30, riskLevel: "medium",
+  asOfDate: "2026-09-03",
   riskEvaluated: true, riskReason: "P1进度Gap 30%", priority: "P1", createdAt: "2026-09-01", updatedAt: "2026-09-02",
   workItems: [workItem], progressUpdates: [], recentProgressUpdates: [{
     id: "u1", requirementId: "r1", workItemId: "w1", workItemTitle: "接口开发", percent: 61,
@@ -29,8 +30,12 @@ async function mockGanttData(page: Page) {
     if (pathname === "/api/projects") return json([{ id: "p1", name: "测试项目", status: "active", plannedStart: "2026-09-01", plannedEnd: "2026-09-30", defaultTemplateId: "t1", createdAt: "2026-09-01", updatedAt: "2026-09-01" }]);
     if (pathname === "/api/dashboard") return json({
       summary: { total: 2, active: 2, completed: 0, delayed: 0, highRisk: 0, completionRate: 0 },
-      requirements: [requirement, { ...requirement, id: "r2", title: "领先计划流程", progress: 70, plannedProgress: 50, progressGap: 0, riskLevel: "low", riskReason: "进展正常", workItems: [{ ...workItem, id: "w2", requirementId: "r2" }] }],
-      issues: { summary: { total: 0, open: 0, inProgress: 0, deferred: 0, resolved: 0, active: 0, highPriority: 0, overdue: 0, unassigned: 0, closureRate: 0 }, attention: [] },
+      requirements: [requirement, { ...requirement, id: "r2", title: "领先计划流程", progress: 70, plannedProgress: 50, progressGap: 0, riskLevel: "low", riskReason: "进展正常", workItems: [
+        { ...workItem, id: "w2", requirementId: "r2", plannedEnd: "2026-09-09", milestoneLabel: "方案评审" },
+        { ...workItem, id: "w3", requirementId: "r2", plannedEnd: "2026-09-10", milestoneLabel: "验收通过" },
+        { ...workItem, id: "w4", requirementId: "r2", plannedEnd: "2026-09-10", milestoneLabel: "正式上线" },
+      ] }],
+      issues: { summary: { total: 0, inProgress: 0, deferred: 0, resolved: 0, active: 0, highPriority: 0, overdue: 0, unassigned: 0, closureRate: 0 }, attention: [] },
       charts: { statuses: [], risks: [], weeks: [], varianceTop: [] },
     });
     if (pathname === "/api/requirements/r1") return json(requirement);
@@ -52,7 +57,7 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveCount(1);
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveText("落后 30%");
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-ahead")).toHaveCount(1);
-  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-target")).toHaveCount(2);
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-target")).toHaveCount(0);
   await expect(page.locator(".project-gantt-grid .unified-gantt-plan-end")).toHaveCount(2);
   await expect(page.locator(".project-gantt-grid .unified-gantt-label")).toHaveCount(0);
   await expect(page.locator(".gantt-row").filter({ hasText: "统一甘特样式" }).locator(".gantt-progress-marker")).toHaveText("61");
@@ -60,6 +65,31 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   await expect(page.getByText("中风险 · 落后30%", { exact: true })).toBeVisible();
   await expect(page.getByText("领先20%", { exact: true })).toBeVisible();
   const delayedRow = page.locator(".gantt-row").filter({ hasText: "统一甘特样式" });
+  const todayLineBox = await delayedRow.locator(".gantt-today-line").boundingBox();
+  const behindBox = await delayedRow.locator(".unified-gantt-progress-gap.is-behind").boundingBox();
+  expect(todayLineBox).not.toBeNull();
+  expect(behindBox).not.toBeNull();
+  expect(Math.abs((behindBox!.x + behindBox!.width) - todayLineBox!.x)).toBeLessThanOrEqual(1.5);
+  const milestoneRow = page.locator(".gantt-row").filter({ hasText: "领先计划流程" });
+  const milestoneTrackBox = await milestoneRow.locator(".gantt-track").boundingBox();
+  const milestoneLabelBoxes = await milestoneRow.locator(".gantt-milestone-marker > b").evaluateAll((labels) => labels.map((label) => {
+    const box = label.getBoundingClientRect();
+    return { x: box.x, y: box.y, right: box.right, bottom: box.bottom };
+  }));
+  expect(milestoneTrackBox).not.toBeNull();
+  expect(milestoneLabelBoxes.length).toBeGreaterThan(0);
+  for (const box of milestoneLabelBoxes) {
+    expect(box.x).toBeGreaterThanOrEqual(milestoneTrackBox!.x - 1);
+    expect(box.right).toBeLessThanOrEqual(milestoneTrackBox!.x + milestoneTrackBox!.width + 1);
+  }
+  for (let left = 0; left < milestoneLabelBoxes.length; left += 1) {
+    for (let right = left + 1; right < milestoneLabelBoxes.length; right += 1) {
+      const a = milestoneLabelBoxes[left];
+      const b = milestoneLabelBoxes[right];
+      const overlaps = a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y;
+      expect(overlaps).toBe(false);
+    }
+  }
   await delayedRow.locator(".gantt-track").hover({ position: { x: 4, y: 4 } });
   await expect(page.locator(".gantt-popover")).toBeHidden();
   await delayedRow.locator(".gantt-bar-hitbox").hover();

@@ -1,24 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertTriangle,
-  ArrowDown,
-  ArrowUp,
   CalendarDays,
   Check,
   ChevronDown,
-  CircleStop,
   Clock3,
   Edit3,
-  MoreHorizontal,
-  Play,
+  GripVertical,
   Plus,
-  RotateCcw,
   Search,
   Trash2,
   WandSparkles,
-  X,
 } from "lucide-react";
 import { api, jsonBody } from "../api";
 import { useApp } from "../app-context";
@@ -35,47 +29,10 @@ import { Chart } from "../components/Chart";
 import { EmptyState, Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { ProgressInput } from "../components/ProgressInput";
-import { AnchoredPopover, InlineDateCell, InlineMultiSelectCell, InlineSelectCell, InlineTextCell } from "../components/InlineEdit";
+import { InlineDateCell, InlineMultiSelectCell, InlineSelectCell, InlineTextCell } from "../components/InlineEdit";
+import { WorkItemActions } from "../components/WorkItemActions";
+import { SortableList } from "../components/SortableList";
 import { canManageProject } from "../permissions";
-
-function ActionMenu({ children }: { children: ReactNode }) {
-  const menuRef = useRef<HTMLDetailsElement>(null);
-  const close = () => menuRef.current?.removeAttribute("open");
-
-  useEffect(() => {
-    const handleOutsidePointer = (event: PointerEvent) => {
-      if (menuRef.current?.open && !menuRef.current.contains(event.target as Node)) close();
-    };
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !menuRef.current?.open) return;
-      close();
-      menuRef.current.querySelector("summary")?.focus();
-    };
-    document.addEventListener("pointerdown", handleOutsidePointer);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("pointerdown", handleOutsidePointer);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, []);
-
-  return (
-    <details
-      ref={menuRef}
-      className="action-menu"
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close();
-      }}
-    >
-      <summary aria-label="更多工作项操作" title="更多操作"><MoreHorizontal size={16} /></summary>
-      <div onClick={(event) => {
-        if ((event.target as HTMLElement).closest("button")) close();
-      }}>
-        {children}
-      </div>
-    </details>
-  );
-}
 
 function RequirementEditForm({
   requirement,
@@ -571,105 +528,6 @@ type NewWorkItemDraft = {
   reason?: string;
 };
 
-function WorkItemActions({
-  item,
-  onAction,
-  onSaveDates,
-  onCancel,
-  canManage,
-}: {
-  item: WorkItem;
-  onAction: (action: "start" | "complete" | "block" | "unblock" | "reopen", content?: string) => Promise<unknown>;
-  onSaveDates: (input: { actualStart: string | null; actualEnd: string | null; reason: string }) => Promise<unknown>;
-  onCancel: (reason: string) => Promise<unknown>;
-  canManage: boolean;
-}) {
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const [panel, setPanel] = useState<"block" | "complete" | "dates" | null>(null);
-  const [reason, setReason] = useState(item.blockedReason || "");
-  const [actualStart, setActualStart] = useState(item.actualStart || "");
-  const [actualEnd, setActualEnd] = useState(item.actualEnd || "");
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (panel !== "dates") return;
-    setActualStart(item.actualStart || "");
-    setActualEnd(item.actualEnd || "");
-  }, [item.actualEnd, item.actualStart, panel]);
-
-  const run = async (operation: () => Promise<unknown>, close = true) => {
-    setPending(true);
-    setError("");
-    try {
-      await operation();
-      if (close) setPanel(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "操作失败，请重试");
-    } finally {
-      setPending(false);
-    }
-  };
-
-  const canBlock = item.status === "in_progress";
-  const canOpenMenu = canManage || canBlock;
-
-  return <div className="work-item-actions" ref={anchorRef} onClick={(event) => event.stopPropagation()}>
-    <div className="work-item-action-row">
-      {item.status === "not_started" && <button className="work-next-action" disabled={pending} onClick={() => void run(() => onAction("start"))}><Play size={14} />{pending ? "提交中" : "开始"}</button>}
-      {item.status === "in_progress" && <button className="work-next-action" disabled={pending} onClick={() => { setReason(""); setPanel("complete"); }}><Check size={14} />完成</button>}
-      {item.status === "blocked" && <button className="work-next-action" disabled={pending} onClick={() => void run(() => onAction("unblock"))}><RotateCcw size={14} />{pending ? "提交中" : "解除阻塞"}</button>}
-      {item.status === "completed" && <span className="work-action-state is-completed is-icon-only" role="img" aria-label="已完成" title="已完成"><Check size={16} /></span>}
-      {item.status === "cancelled" && <span className="work-action-state is-cancelled is-icon-only" role="img" aria-label="已取消" title="已取消"><CircleStop size={16} /></span>}
-      {canOpenMenu && <ActionMenu>
-        {canManage && <button onClick={() => { setReason(""); setPanel("dates"); }}><CalendarDays size={14} />受控修正</button>}
-        {canBlock && <button onClick={() => { setReason(""); setPanel("block"); }}><CircleStop size={14} />标记阻塞</button>}
-        {canManage && ["completed", "cancelled"].includes(item.status) && <button onClick={() => { const value = prompt("请填写重开/返工原因"); if (value?.trim()) void run(() => onAction("reopen", value.trim())); }}><RotateCcw size={14} />重开/返工</button>}
-        {canManage && !["completed", "cancelled"].includes(item.status) && <button className="danger" onClick={() => {
-          const value = prompt(`请填写取消工作项“${item.title}”的原因`); if (value?.trim()) void run(() => onCancel(value.trim()));
-        }}><CircleStop size={14} />取消工作项</button>}
-      </ActionMenu>}
-    </div>
-    {error && panel === null && <small className="work-action-error" title={error}>{error}</small>}
-    <AnchoredPopover anchorRef={anchorRef} open={panel === "block"} onOutside={() => setPanel(null)} width={360}>
-      <form className="inline-action-form" onSubmit={(event) => {
-        event.preventDefault();
-        if (reason.trim()) void run(() => onAction("block", reason.trim()));
-      }}>
-        <header><strong>标记工作项阻塞</strong><button type="button" onClick={() => setPanel(null)} aria-label="关闭"><X size={16} /></button></header>
-        <label><span>阻塞原因</span><textarea autoFocus rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明当前阻塞点" /></label>
-        {error && <p className="form-error">{error}</p>}
-        <footer><button type="button" className="ghost-button" onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || !reason.trim()}>确认阻塞</button></footer>
-      </form>
-    </AnchoredPopover>
-    <AnchoredPopover anchorRef={anchorRef} open={panel === "complete"} onOutside={() => setPanel(null)} width={390}>
-      <form className="inline-action-form" onSubmit={(event) => {
-        event.preventDefault(); if (reason.trim()) void run(() => onAction("complete", reason.trim()));
-      }}>
-        <header><strong>完成工作项</strong><button type="button" onClick={() => setPanel(null)} aria-label="关闭"><X size={16} /></button></header>
-        <label><span>完成说明</span><textarea autoFocus rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明交付结果或验证结论" /></label>
-        {error && <p className="form-error">{error}</p>}
-        <footer><button type="button" className="ghost-button" onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || !reason.trim()}>确认完成</button></footer>
-      </form>
-    </AnchoredPopover>
-    <AnchoredPopover anchorRef={anchorRef} open={panel === "dates"} onOutside={() => setPanel(null)} width={390}>
-      <form className="inline-action-form" onSubmit={(event) => {
-        event.preventDefault();
-        if (reason.trim()) void run(() => onSaveDates({ actualStart: actualStart || null, actualEnd: actualEnd || null, reason: reason.trim() }));
-      }}>
-        <header><strong>高级修正实际日期</strong><button type="button" onClick={() => setPanel(null)} aria-label="关闭"><X size={16} /></button></header>
-        <div className="inline-action-date-grid">
-          <label><span>实际开始</span><input type="date" value={actualStart} onChange={(event) => setActualStart(event.target.value)} /></label>
-          <label><span>实际完成</span><input type="date" value={actualEnd} onChange={(event) => setActualEnd(event.target.value)} /></label>
-        </div>
-        <label><span>纠错原因</span><textarea rows={2} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明为什么修正历史数据" /></label>
-        {error && <p className="form-error">{error}</p>}
-        <footer><button type="button" className="ghost-button" onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || !reason.trim()}>保存纠错</button></footer>
-      </form>
-    </AnchoredPopover>
-  </div>;
-}
-
 export function RequirementPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
@@ -712,9 +570,9 @@ export function RequirementPage() {
     },
   });
   const reorderItems = useMutation({
-    mutationFn: (ids: string[]) => api(`/api/requirements/${id}/reorder-work-items`, {
+    mutationFn: ({ ids, reason }: { ids: string[]; reason?: string }) => api(`/api/requirements/${id}/reorder-work-items`, {
       method: "POST",
-      body: jsonBody({ ids, expectedVersion: requirement?.version }),
+      body: jsonBody({ ids, reason, expectedVersion: requirement?.version }),
     }),
     onSuccess: () => void client.invalidateQueries({ queryKey: ["requirement", id] }),
   });
@@ -910,20 +768,15 @@ export function RequirementPage() {
     && canContribute
     && (canManage || Boolean(session.personId && item.assigneeIds.includes(session.personId)));
   const canOperateItem = (item: WorkItem) => canManage || (canContribute && Boolean(session.personId && item.assigneeIds.includes(session.personId)));
-  const moveWorkItem = (index: number, offset: -1 | 1) => {
-    const nextIndex = index + offset;
-    if (nextIndex < 0 || nextIndex >= requirement.workItems.length) return;
-    const ids = requirement.workItems.map((item) => item.id);
-    [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
+  const reorderWorkItems = (nextItems: WorkItem[]) => {
+    const ids = nextItems.map((item) => item.id);
     if (requirement.workItems.some((item) => item.status !== "not_started")) {
       const reason = prompt("需求已开始执行，请填写调整工作项顺序的原因");
       if (!reason?.trim()) return;
-      api(`/api/requirements/${id}/reorder-work-items`, { method: "POST", body: jsonBody({ ids, reason: reason.trim(), expectedVersion: requirement.version }) })
-        .then(() => void client.invalidateQueries({ queryKey: ["requirement", id] }))
-        .catch(() => void client.invalidateQueries({ queryKey: ["requirement", id] }));
+      reorderItems.mutate({ ids, reason: reason.trim() });
       return;
     }
-    reorderItems.mutate(ids);
+    reorderItems.mutate({ ids });
   };
   const openProgress = (itemId: string | null = null) => {
     setProgressItemId(itemId);
@@ -1058,6 +911,7 @@ export function RequirementPage() {
         </header>
         <GapTimeline
           items={requirement.workItems}
+          asOfDate={requirement.asOfDate}
           updates={requirement.progressUpdates || []}
           canUpdateProgress={canUpdateItemProgress}
           onUpdateProgress={(item) => openProgress(item.id)}
@@ -1102,10 +956,15 @@ export function RequirementPage() {
                 createItem.mutate(newItem);
               }}>保存</button></div></td>
             </tr>}
-            {requirement.workItems.map((item, index) => {
+            <SortableList
+              items={requirement.workItems}
+              getId={(item) => item.id}
+              disabled={reorderItems.isPending}
+              onReorder={reorderWorkItems}
+              renderItem={(item, _index, sortable) => {
               const gap = calculateWorkItemGap(item);
               return (
-                <tr key={item.id}>
+                <tr ref={sortable.setNodeRef} className={`sortable-item${sortable.isDragging ? " is-dragging" : ""}${sortable.isOver ? " is-over" : ""}`}>
                   <td><div className="work-item-name-editor"><InlineTextCell value={item.title} label="工作项名称" required onSave={(title) => saveWorkItem(item, { title })} /><InlineTextCell value={item.milestoneLabel} label="里程碑名称" placeholder="添加里程碑" onSave={(milestoneLabel) => saveWorkItem(item, { milestoneLabel: milestoneLabel || null })} renderValue={(value) => <span className="work-item-milestone-edit">◆ {value}</span>} /></div></td>
                   <td><InlineSelectCell value={item.ownerId} label="主负责人" options={[{ value: "", label: "未分配" }, ...people.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))]} onSave={(ownerId) => saveWorkItem(item, { ownerId: ownerId || null, assigneeIds: [ownerId, ...item.collaborators.map((person) => person.id).filter((personId) => personId !== ownerId)].filter(Boolean) })} placeholder="未分配" /></td>
                   <td><InlineMultiSelectCell value={item.collaborators.map((person) => person.id)} label="协作人员" options={people.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))} excludedValues={item.ownerId ? [item.ownerId] : []} onSave={(collaboratorIds) => saveWorkItem(item, { assigneeIds: [item.ownerId, ...collaboratorIds].filter(Boolean) })} placeholder="无协作人员" renderValue={(selected) => selected.length ? <span className="inline-person-summary">{selected.slice(0, 2).map((person) => person.label).join("、")}{selected.length > 2 ? ` +${selected.length - 2}` : ""}</span> : "无协作人员"} /></td>
@@ -1114,14 +973,14 @@ export function RequirementPage() {
                   <td><div className="work-inline-status"><span className={`work-item-status-badge badge-${item.status.replaceAll("_", "-")}`}>{requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}</span><b className={gap.finishVariance > 0 ? "danger-text" : "safe-text"}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}天</b><span className="work-item-inline-progress"><i><b style={{ width: `${item.progress}%` }} /></i>{item.progress}%</span>{item.blockedReason && <small title={item.blockedReason}>阻塞：{item.blockedReason}</small>}</div></td>
                   <td>
                     <div className="work-setting-actions">
-                      <button type="button" aria-label={`上移${item.title}`} title="上移" disabled={index === 0 || reorderItems.isPending} onClick={() => moveWorkItem(index, -1)}><ArrowUp size={14} /></button>
-                      <button type="button" aria-label={`下移${item.title}`} title="下移" disabled={index === requirement.workItems.length - 1 || reorderItems.isPending} onClick={() => moveWorkItem(index, 1)}><ArrowDown size={14} /></button>
+                      <button type="button" className="sortable-drag-handle" aria-label={`拖动${item.title}调整顺序`} title="按住拖动调整顺序" disabled={reorderItems.isPending} {...sortable.handleAttributes} {...sortable.handleListeners}><GripVertical size={16} /></button>
                       {item.status === "not_started" && item.progress === 0 && <button type="button" className="danger" aria-label={`删除${item.title}`} title="删除" disabled={removeItem.isPending} onClick={() => confirm(`删除工作项“${item.title}”？`) && removeItem.mutate(item)}><Trash2 size={14} /></button>}
                     </div>
                   </td>
                 </tr>
               );
-            })}
+            }}
+            />
             </tbody>
           </table>
             {!requirement.workItems.length && !newItem && (

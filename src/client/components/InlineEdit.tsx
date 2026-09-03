@@ -436,42 +436,48 @@ export function InlineDateCell({
   allowClear?: boolean;
 }) {
   const currentValue = value || "";
-  const anchorRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const feedback = useSaveState();
 
-  useEffect(() => {
-    if (!open) return;
-    window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      try { inputRef.current?.showPicker?.(); } catch { /* 浏览器可能限制非直接手势调用。 */ }
-    });
-  }, [open]);
-
-  const cancel = useCallback(() => {
-    setOpen(false);
-    feedback.clearError();
-  }, [feedback]);
-
   const choose = useCallback(async (next: string) => {
+    if (!allowClear && !next) { setOpen(false); return; }
     if (next === currentValue) { setOpen(false); return; }
     const saved = await feedback.save(() => onSave(next || null));
     if (saved) setOpen(false);
-  }, [currentValue, feedback, onSave]);
+  }, [allowClear, currentValue, feedback, onSave]);
 
-  return <div ref={anchorRef} className="inline-edit-anchor">
+  const openPicker = useCallback(() => {
+    feedback.clearError();
+    setOpen(true);
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    try { input.showPicker?.(); } catch { input.click(); }
+  }, [feedback]);
+
+  return <div className="inline-edit-anchor inline-date-native-anchor">
     <EditableCell label={label} display={currentValue || <span className="is-placeholder">{placeholder}</span>} fullText={currentValue || placeholder} open={open} disabled={disabled} state={feedback.state} error={feedback.error} displayMode={displayMode} className={className} onOpen={() => {
-      feedback.clearError();
-      setOpen(true);
+      openPicker();
     }}>
-      <AnchoredPopover anchorRef={anchorRef} open={open} width={250} matchAnchor onOutside={cancel} onEscape={cancel} className="inline-date-popover">
-        <div className="inline-picker-heading"><strong>{label}</strong><button type="button" onClick={cancel} aria-label={`关闭${label}`}><X size={14} /></button></div>
-        <input ref={inputRef} className="inline-date-picker" type="date" value={currentValue} aria-label={label} onChange={(event) => void choose(event.target.value)} />
-        <EditorError error={feedback.error} />
-        {allowClear && currentValue && <button type="button" className="inline-date-clear" onClick={() => void choose("")}><X size={13} />清除日期</button>}
-      </AnchoredPopover>
     </EditableCell>
+    <input
+      ref={inputRef}
+      className="inline-date-native-control"
+      type="date"
+      value={currentValue}
+      aria-label={label}
+      disabled={disabled}
+      onChange={(event) => void choose(event.target.value)}
+      onBlur={() => setOpen(false)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setOpen(false);
+          inputRef.current?.blur();
+        }
+      }}
+    />
   </div>;
 }
 

@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { format } from "date-fns";
 import { Ban, Check, Circle, CircleAlert, LocateFixed, Play } from "lucide-react";
-import { calculateWorkItemGap, requirementStatusLabels } from "../../shared/domain";
+import { calculateWorkItemGap, requirementStatusLabels, todayIso } from "../../shared/domain";
 import type { ProgressUpdate, WorkItem } from "../types";
 import { useGanttTooltip } from "./GanttTooltip";
 import { EmptyState } from "./Modal";
@@ -79,12 +79,14 @@ export const GapTimeline = memo(function GapTimeline({
   canUpdateProgress,
   onUpdateProgress,
   renderActions,
+  asOfDate = todayIso(),
 }: {
   items: WorkItem[];
   updates?: ProgressUpdate[];
   canUpdateProgress?: (item: WorkItem) => boolean;
   onUpdateProgress?: (item: WorkItem) => void;
   renderActions?: (item: WorkItem) => ReactNode;
+  asOfDate?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState<GanttZoom>("day");
@@ -135,11 +137,11 @@ export const GapTimeline = memo(function GapTimeline({
   const cellWidth = timelineWidth / range.days;
   const dates = range.dates;
   const trackStyle = ganttTrackStyle(dates, cellWidth);
-  const { offset: todayOffset, visible: todayVisible } = ganttTodayPosition(dates);
+  const { offset: todayOffset, visible: todayVisible } = ganttTodayPosition(dates, asOfDate);
   const scrollToToday = () => {
     if (!todayVisible || !scrollRef.current) return;
     const visibleWidth = Math.max(280, scrollRef.current.clientWidth - fixedColumnsWidth);
-    scrollRef.current.scrollTo({ left: Math.max(0, labelWidth + todayOffset * cellWidth - visibleWidth / 2), behavior: "smooth" });
+    scrollRef.current.scrollTo({ left: Math.max(0, labelWidth + (todayOffset + 1) * cellWidth - visibleWidth / 2), behavior: "smooth" });
   };
 
   return (
@@ -225,8 +227,8 @@ export const GapTimeline = memo(function GapTimeline({
                   progressAriaLabel={`${statusLabel(item.status)}，实际进度${item.progress}%，${onUpdateProgress && canUpdateProgress?.(item) ? "点击更新进度" : "只读"}`}
                   interactionProps={tooltipProps}
                 />
-                <GanttMilestoneMarker label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={cellWidth} />
-                {todayVisible && <i className="gantt-today-line" style={{ left: todayOffset * cellWidth + cellWidth / 2 }} />}
+                <GanttMilestoneMarker label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={cellWidth} zoom={zoom} asOfDate={asOfDate} />
+                {todayVisible && <i className="gantt-today-line" style={{ left: (todayOffset + 1) * cellWidth }} title={`截至 ${asOfDate}`} />}
               </div>
               {gapWidth > 0 && <div className="requirement-gap-summary sticky-right" style={{ right: actionWidth }} role="cell">
                 {item.actualStart ? <><strong className={gap.finishVariance > 0 ? "gap-late" : gap.finishVariance < 0 ? "gap-early" : ""}>{gap.finishVariance > 0 ? `延期 +${gap.finishVariance}天` : gap.finishVariance < 0 ? `提前 ${Math.abs(gap.finishVariance)}天` : "按期"}</strong><small>耗时 {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}天</small></> : <span>未开始</span>}

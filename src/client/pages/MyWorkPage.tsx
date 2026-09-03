@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Check, CircleStop, Clock3, MessageSquarePlus, Play, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Check, CircleStop, Clock3, MessageSquarePlus, Play } from 'lucide-react';
 import { api, jsonBody } from '../api';
 import type { MyWork, MyWorkItem } from '../types';
 import { requirementStatusLabels } from '../../shared/domain';
@@ -9,6 +9,7 @@ import { Chart } from '../components/Chart';
 import { EmptyState, Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { ProgressInput } from '../components/ProgressInput';
+import { WorkItemActions } from '../components/WorkItemActions';
 
 function ProgressForm({ item, onClose }: { item: MyWorkItem; onClose: () => void }) {
   const client = useQueryClient();
@@ -72,9 +73,7 @@ export function MyWorkPage() {
             </button>
             <div className="my-work-dates"><span>计划 {item.plannedStart || '—'} → {item.plannedEnd || '—'}</span><span className="my-work-progress"><i><b style={{ width: `${item.progress}%` }} /></i>{item.progress}%</span><b className={item.overdue ? 'danger-text' : ''}>{requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}</b></div>
             <div className="my-work-actions">
-              {item.status === 'not_started' && <button onClick={() => action.mutate({ item, action: 'start' })}><Play size={14} />开始</button>}
-              {item.status === 'in_progress' && <><button onClick={() => { const content = prompt('请填写完成说明'); if (content?.trim()) action.mutate({ item, action: 'complete', content: content.trim() }); }}><Check size={14} />完成</button><button onClick={() => { const reason = prompt('请输入阻塞原因'); if (reason?.trim()) action.mutate({ item, action: 'block', reason: reason.trim() }); }}><CircleStop size={14} />阻塞</button></>}
-              {item.status === 'blocked' && <button onClick={() => action.mutate({ item, action: 'unblock' })}><RotateCcw size={14} />解除阻塞</button>}
+              <WorkItemActions item={item} onAction={(nextAction, text) => action.mutateAsync({ item, action: nextAction, ...(nextAction === 'block' ? { reason: text } : { content: text }) })} />
               {['in_progress', 'blocked'].includes(item.status) && <button onClick={() => setProgressItem(item)}><MessageSquarePlus size={14} />写进展</button>}
             </div>
           </article>)}

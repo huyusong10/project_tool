@@ -177,6 +177,7 @@ export function DashboardPage() {
         </section>
         <ProjectGantt
           requirements={data?.requirements || []}
+          asOfDate={data?.requirements[0]?.asOfDate}
           projectStart={projects.find((project) => project.id === selectedProjectId)?.plannedStart}
           projectEnd={projects.find((project) => project.id === selectedProjectId)?.plannedEnd}
         />

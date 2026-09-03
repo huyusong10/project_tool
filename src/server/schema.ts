@@ -51,10 +51,12 @@ export const accounts = sqliteTable('accounts', {
   isBuiltin: integer('is_builtin', { mode: 'boolean' }).notNull().default(false),
   lastLoginAt: text('last_login_at'),
   ...timestamps,
+  deletedAt: text('deleted_at'),
 }, (table) => [
   uniqueIndex('idx_accounts_normalized_username').on(table.normalizedUsername),
   uniqueIndex('idx_accounts_person').on(table.personId),
   index('idx_accounts_status_role').on(table.status, table.globalRole),
+  index('idx_accounts_deleted_at').on(table.deletedAt),
   check('accounts_role_valid', sql`${table.globalRole} IN ('user', 'admin')`),
   check('accounts_status_valid', sql`${table.status} IN ('active', 'disabled')`),
 ]);
@@ -205,7 +207,7 @@ export const issues = sqliteTable('issues', {
   impact: text('impact'),
   reporter: text('reporter'),
   ownerId: text('owner_id').references(() => people.id, { onDelete: 'set null' }),
-  status: text('status').notNull().default('open'),
+  status: text('status').notNull().default('in_progress'),
   priority: text('priority').notNull().default('P2'),
   progress: integer('progress').notNull().default(0),
   discoveredAt: text('discovered_at').notNull(),
@@ -214,14 +216,13 @@ export const issues = sqliteTable('issues', {
   version: integer('version').notNull().default(1),
   ...timestamps,
 }, (table) => [
-  check('issues_status_valid', sql`${table.status} IN ('open', 'in_progress', 'deferred', 'resolved')`),
+  check('issues_status_valid', sql`${table.status} IN ('in_progress', 'deferred', 'resolved')`),
   check('issues_priority_valid', sql`${table.priority} IN ('P0', 'P1', 'P2', 'P3')`),
   check('issues_progress_range', sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
   check('issues_state_consistent', sql`(
     (${table.status} = 'resolved' AND ${table.progress} = 100 AND ${table.resolvedAt} IS NOT NULL) OR
     (${table.status} <> 'resolved' AND ${table.progress} < 100 AND ${table.resolvedAt} IS NULL)
   )`),
-  check('issues_open_progress_zero', sql`${table.status} <> 'open' OR ${table.progress} = 0`),
   check('issues_deferred_without_due_date', sql`${table.status} <> 'deferred' OR ${table.dueDate} IS NULL`),
   index('idx_issues_project_status_due').on(table.projectId, table.status, table.dueDate, table.updatedAt),
   index('idx_issues_owner').on(table.ownerId, table.status),

@@ -88,8 +88,8 @@ const statusOptions = [
   { value: "completed", label: "已完成" }, { value: "cancelled", label: "已取消" },
 ];
 const issueStatusOptions = [
-  { value: "open", label: "待处理" }, { value: "in_progress", label: "处理中" },
-  { value: "deferred", label: "暂缓" }, { value: "resolved", label: "已解决" },
+  { value: "in_progress", label: "处理中" },
+  { value: "deferred", label: "挂起" }, { value: "resolved", label: "已解决" },
 ];
 const priorityOptions = ["P0", "P1", "P2", "P3"].map((value) => ({ value, label: value }));
 const riskOptions = [

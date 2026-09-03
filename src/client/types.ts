@@ -57,18 +57,20 @@ export type Issue = {
 export type IssuePage = {
   items: Issue[]; total: number; page: number; pageSize: number; pages: number;
   summary: {
-    total: number; open: number; inProgress: number; deferred: number; resolved: number;
+    total: number; inProgress: number; deferred: number; resolved: number;
     active: number; highPriority: number; overdue: number; unassigned: number; closureRate: number;
   };
 };
 export type Requirement = {
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number; progressGap: number;
+  asOfDate?: string;
   acceptedAt: string | null; acceptedByAccountId: string | null; version: number;
   riskLevel: string; riskEvaluated: boolean; riskReason: string; priority: string; createdAt: string; updatedAt: string; deletedAt?: string | null;
   workItems: WorkItem[]; progressUpdates?: ProgressUpdate[]; recentProgressUpdates?: ProgressUpdate[]; delayed: boolean; highRisk: boolean;
   issueSummary?: { active: number; overdue: number };
   finishVariance: number; durationVariance: number; effectiveEnd: string | null;
+  scheduleVarianceDays?: number | null; scheduleReferenceDate?: string | null;
 };
 export type Dashboard = {
   summary: { total: number; active: number; completed: number; delayed: number; highRisk: number; completionRate: number };
@@ -125,6 +127,12 @@ export type SystemOverview = {
   };
 };
 export type DatabaseIntegrityCheck = { ok: boolean; checkedAt: string; durationMs: number; message: string };
+export type SystemBranding = {
+  systemName: string;
+  shortName: string;
+  logoUrl: string | null;
+  updatedAt: string | null;
+};
 export type Account = {
   id: string; username: string; personId: string | null; personName: string | null; jobTitle: string | null;
   globalRole: 'user' | 'admin'; role: 'user' | 'project_manager' | 'admin'; status: 'active' | 'disabled';

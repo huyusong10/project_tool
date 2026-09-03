@@ -146,8 +146,10 @@ export type WorkItemRecord = {
 export type RequirementRecord = {
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number; progressGap?: number;
+  asOfDate?: string;
   riskLevel: string; priority: string; acceptedAt: string | null; acceptedByAccountId: string | null; version: number; createdAt: string; updatedAt: string; deletedAt?: string | null; workItems?: WorkItemRecord[];
   delayed?: boolean; highRisk?: boolean; riskEvaluated?: boolean; riskReason?: string; finishVariance?: number; durationVariance?: number; effectiveEnd?: string | null;
+  scheduleVarianceDays?: number | null; scheduleReferenceDate?: string | null;
 };
 
 export type IssueUpdateRecord = {
@@ -308,8 +310,8 @@ export function listPeople(includeDeleted = false, projectId?: string) {
   return rows(`SELECT p.id, p.name, p.job_title AS jobTitle, p.active, p.created_at AS createdAt,
     p.updated_at AS updatedAt, p.deleted_at AS deletedAt,
     ${projectId ? `(SELECT pp2.project_role FROM project_people pp2 WHERE pp2.person_id=p.id AND pp2.project_id=?)` : `'member'`} AS projectRole,
-    (SELECT a.username FROM accounts a WHERE a.person_id=p.id) AS username,
-    (SELECT a.status FROM accounts a WHERE a.person_id=p.id) AS accountStatus
+    (SELECT a.username FROM accounts a WHERE a.person_id=p.id AND a.deleted_at IS NULL) AS username,
+    (SELECT a.status FROM accounts a WHERE a.person_id=p.id AND a.deleted_at IS NULL) AS accountStatus
     FROM people p ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY p.active DESC, p.name`, ...(projectId ? [projectId, ...params] : params));
 }
 
@@ -420,7 +422,7 @@ export function updatePerson(id: string, input: JsonObject, actor: Actor) {
     );
     if (input.active !== undefined) {
       sqlite.prepare(`UPDATE accounts SET status=?, session_version=session_version+1, updated_at=?
-        WHERE person_id=? AND is_builtin=0`).run(active ? 'active' : 'disabled', nowIso(), id);
+        WHERE person_id=? AND is_builtin=0 AND deleted_at IS NULL`).run(active ? 'active' : 'disabled', nowIso(), id);
     }
   })();
   audit(actor, 'update', 'person', id, `更新人员：${name}`);
@@ -433,7 +435,7 @@ export function archivePerson(id: string, actor: Actor) {
   sqlite.transaction(() => {
     sqlite.prepare('UPDATE people SET deleted_at=?, active=0, updated_at=? WHERE id=?').run(nowIso(), nowIso(), id);
     sqlite.prepare(`UPDATE accounts SET status='disabled', session_version=session_version+1, updated_at=?
-      WHERE person_id=? AND is_builtin=0`).run(nowIso(), id);
+      WHERE person_id=? AND is_builtin=0 AND deleted_at IS NULL`).run(nowIso(), id);
   })();
   audit(actor, 'archive', 'person', id, '归档人员');
   return { ok: true };
@@ -445,9 +447,9 @@ export function restorePerson(id: string, actor: Actor) {
   assertUniquePersonName(person.name, id);
   sqlite.transaction(() => {
     sqlite.prepare('UPDATE people SET deleted_at=NULL, active=1, updated_at=? WHERE id=?').run(nowIso(), id);
-    const account = row<{ id: string }>('SELECT id FROM accounts WHERE person_id=?', id);
-    if (account) sqlite.prepare(`UPDATE accounts SET status='active', session_version=session_version+1, updated_at=? WHERE id=?`).run(nowIso(), account.id);
-    else createAccountForPerson(id, person.name, true);
+    const account = row<{ id: string; deletedAt: string | null }>('SELECT id, deleted_at AS deletedAt FROM accounts WHERE person_id=?', id);
+    if (account && !account.deletedAt) sqlite.prepare(`UPDATE accounts SET status='active', session_version=session_version+1, updated_at=? WHERE id=?`).run(nowIso(), account.id);
+    else if (!account) createAccountForPerson(id, person.name, true);
   })();
   audit(actor, 'restore', 'person', id, `恢复人员：${person.name}`);
   return listPeople(true).find((item: any) => item.id === id);
@@ -599,10 +601,11 @@ function getWorkItems(requirementId: string): WorkItemRecord[] {
 
 function enrichRequirement(requirement: RequirementRecord): RequirementRecord {
   const workItems = getWorkItems(requirement.id);
-  const metrics = deriveRequirementMetrics(requirement, workItems);
+  const asOfDate = todayIso();
+  const metrics = deriveRequirementMetrics(requirement, workItems, asOfDate);
   const gaps = workItems.map((item) => calculateWorkItemGap(item));
   return {
-    ...requirement, ...metrics,
+    ...requirement, ...metrics, asOfDate,
     status: requirement.status, progress: requirement.progress, plannedEnd: requirement.plannedEnd,
     workItems,
     durationVariance: gaps.length ? Math.max(...gaps.map((gap) => gap.durationVariance), 0) : 0,
@@ -1271,13 +1274,12 @@ export function listIssues(filters: {
       CASE WHEN i.status<>'resolved' AND i.due_date IS NOT NULL AND i.due_date<? THEN 0 ELSE 1 END,
       CASE i.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
       CASE WHEN i.due_date IS NULL THEN 1 ELSE 0 END, i.due_date,
-      CASE i.status WHEN 'in_progress' THEN 0 WHEN 'open' THEN 1 WHEN 'deferred' THEN 2 ELSE 3 END,
+      CASE i.status WHEN 'in_progress' THEN 0 WHEN 'deferred' THEN 1 ELSE 2 END,
       i.updated_at DESC, i.id
     LIMIT ? OFFSET ?`, ...params, todayIso(), pageSize, (page - 1) * pageSize).map(enrichIssue);
   const summaryWhere = filters.projectId ? 'WHERE project_id=?' : '';
   const summaryParams = filters.projectId ? [filters.projectId] : [];
   const rawSummary = row<any>(`SELECT COUNT(*) AS total,
-    SUM(CASE WHEN status='open' THEN 1 ELSE 0 END) AS open,
     SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END) AS inProgress,
     SUM(CASE WHEN status='deferred' THEN 1 ELSE 0 END) AS deferred,
     SUM(CASE WHEN status='resolved' THEN 1 ELSE 0 END) AS resolved,
@@ -1289,7 +1291,7 @@ export function listIssues(filters: {
   const totalSummary = Number(rawSummary.total || 0);
   const resolvedSummary = Number(rawSummary.resolved || 0);
   const summary = {
-    total: totalSummary, open: Number(rawSummary.open || 0),
+    total: totalSummary,
     inProgress: Number(rawSummary.inProgress || 0), deferred: Number(rawSummary.deferred || 0),
     resolved: resolvedSummary, active: Number(rawSummary.active || 0),
     highPriority: Number(rawSummary.highPriority || 0), overdue: Number(rawSummary.overdue || 0),
@@ -1324,7 +1326,7 @@ export function createIssue(input: JsonObject, actor: Actor) {
       progress, discovered_at, due_date, resolved_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     id, projectId, requirementId, nullableText(input.sourceRef), title, nullableText(input.impact),
-    nullableText(input.reporter), null, 'open', priority, 0, discoveredAt, dueDate, null, now, now,
+    nullableText(input.reporter), issueOwner(projectId, input.ownerId), 'in_progress', priority, 0, discoveredAt, dueDate, null, now, now,
   );
   audit(actor, 'create', 'issue', id, `创建问题：${title}`);
   return getIssue(id);
@@ -1380,33 +1382,24 @@ export function addIssueUpdate(issueId: string, input: JsonObject, actor: Actor,
   return getIssue(issueId);
 }
 
-function issueStateEvent(id: string, action: 'start' | 'defer' | 'resume' | 'resolve', input: JsonObject, actor: Actor) {
+function issueStateEvent(id: string, action: 'defer' | 'resume' | 'resolve', input: JsonObject, actor: Actor) {
   const current = getIssue(id); assertExpectedVersion(input, current.version); const now = nowIso();
-  const content = action === 'start' ? nullableText(input.content) || '开始处理问题'
-    : action === 'defer' ? requireText(input.reason, '暂缓原因')
+  const content = action === 'defer' ? requireText(input.reason, '挂起原因')
       : action === 'resume' ? requireText(input.reason, '恢复原因')
         : requireText(input.content, '闭环说明');
-  if (action === 'start') {
-    assertTransition(current.status, ['open'], '开始处理');
-    if (!current.ownerId) fail('进入处理中前请指定负责人');
-  }
-  if (action === 'defer') assertTransition(current.status, ['open', 'in_progress'], '暂缓');
+  if (action === 'defer') assertTransition(current.status, ['in_progress'], '挂起');
   if (action === 'resume') assertTransition(current.status, ['deferred'], '恢复');
   if (action === 'resolve') assertTransition(current.status, ['in_progress'], '确认解决');
-  const resumeStatus = current.progress > 0 ? 'in_progress' : 'open';
-  if (action === 'resume' && resumeStatus === 'in_progress' && !current.ownerId) fail('恢复处理前请指定负责人');
   sqlite.transaction(() => {
-    if (action === 'start') sqlite.prepare(`UPDATE issues SET status='in_progress', version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version);
     if (action === 'defer') sqlite.prepare(`UPDATE issues SET status='deferred', due_date=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version);
-    if (action === 'resume') sqlite.prepare(`UPDATE issues SET status=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(resumeStatus, now, id, current.version);
+    if (action === 'resume') sqlite.prepare(`UPDATE issues SET status='in_progress', version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version);
     if (action === 'resolve') sqlite.prepare(`UPDATE issues SET status='resolved', progress=100, resolved_at=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(todayIso(), now, id, current.version);
     appendIssueEvent(id, action, content, actor, action === 'resolve' ? 100 : current.progress, null, now);
-    audit(actor, action, 'issue', id, `${action === 'start' ? '开始处理' : action === 'defer' ? '暂缓' : action === 'resume' ? '恢处理' : '确认解决'}问题：${current.title}`);
+    audit(actor, action, 'issue', id, `${action === 'defer' ? '挂起' : action === 'resume' ? '恢复处理' : '确认解决'}问题：${current.title}`);
   })();
   return getIssue(id);
 }
 
-export const startIssue = (id: string, input: JsonObject, actor: Actor) => issueStateEvent(id, 'start', input, actor);
 export const deferIssue = (id: string, input: JsonObject, actor: Actor) => issueStateEvent(id, 'defer', input, actor);
 export const resumeIssue = (id: string, input: JsonObject, actor: Actor) => issueStateEvent(id, 'resume', input, actor);
 export const resolveIssue = (id: string, input: JsonObject, actor: Actor) => issueStateEvent(id, 'resolve', input, actor);
@@ -1416,8 +1409,7 @@ export function reopenIssue(id: string, input: JsonObject, actor: Actor) {
   const reason = requireText(input.reason, '重开原因');
   const requested = input.progress === undefined ? (current.ownerId ? 99 : 0) : requireProgress(input.progress, '恢复进度');
   if (requested >= 100) fail('恢复进度必须小于100%');
-  if (requested > 0 && !current.ownerId) fail('恢复为处理中前请先指定负责人');
-  const status = requested > 0 ? 'in_progress' : 'open'; const now = nowIso();
+  const status = 'in_progress'; const now = nowIso();
   sqlite.transaction(() => {
     sqlite.prepare(`UPDATE issues SET status=?, progress=?, resolved_at=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`)
       .run(status, requested, now, id, current.version);
@@ -1432,7 +1424,6 @@ export function correctIssue(id: string, input: JsonObject, actor: Actor) {
   const progress = input.progress === undefined ? current.progress : requireProgress(input.progress, '问题完成度');
   if (current.status === 'resolved' && progress !== 100) fail('已解决问题降低进度时必须使用重开操作', 'TERMINAL_LOCKED');
   if (current.status !== 'resolved' && progress >= 100) fail('100%只能通过“确认解决”产生');
-  if (current.status === 'open' && progress !== 0) fail('待处理问题进度必须为0%');
   const title = input.title === undefined ? current.title : requireText(input.title, '问题标题');
   const resolvedAt = input.resolvedAt === undefined ? current.resolvedAt : nullableDate(input.resolvedAt, '解决日期');
   if (current.status === 'resolved' && !resolvedAt) fail('已解决问题必须保留解决日期');
@@ -1628,7 +1619,7 @@ export function getDashboard(projectId?: string) {
   const varianceTop = requirements.filter((item) => (item.finishVariance ?? 0) > 0).sort((a, b) => (b.finishVariance ?? 0) - (a.finishVariance ?? 0)).slice(0, 10)
     .map((item) => ({ id: item.id, title: item.title, variance: item.finishVariance }));
   const issuePage = listIssues({ projectId, scope: 'public', page: 1, pageSize: 10 });
-  const attention = issuePage.items.filter((item) => item.status === 'open' || item.status === 'in_progress').slice(0, 5);
+  const attention = issuePage.items.filter((item) => item.status === 'in_progress').slice(0, 5);
   return {
     summary: { total: requirements.length, active, completed, delayed, highRisk, completionRate },
     requirements: dashboardRequirements,
@@ -1710,7 +1701,7 @@ export function authenticateApiToken(token: string): (Actor & { accountId: strin
   const match = /^pm_([a-f0-9]{10})_/.exec(token);
   if (!match) return null;
   const record = row<any>(`SELECT t.*, a.username, a.person_id, a.global_role, a.status AS account_status
-    FROM api_tokens t JOIN accounts a ON a.id=t.account_id WHERE t.prefix=?`, match[1]);
+    FROM api_tokens t JOIN accounts a ON a.id=t.account_id WHERE t.prefix=? AND a.deleted_at IS NULL`, match[1]);
   if (!record || record.revoked_at || record.account_status !== 'active'
     || (record.expires_at && record.expires_at <= nowIso())) return null;
   const actualHash = Buffer.from(hashApiToken(token)); const expectedHash = Buffer.from(record.token_hash);

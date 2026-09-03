@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { CircleAlert, LocateFixed, RotateCcw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { priorityLabels, requirementStatusLabels, riskLabels, signedProgressVariance } from "../../shared/domain";
+import { priorityLabels, requirementStatusLabels, riskLabels, signedProgressVariance, todayIso } from "../../shared/domain";
 import type { Requirement } from "../types";
 import { EmptyState } from "./Modal";
 import { useGanttTooltip } from "./GanttTooltip";
@@ -14,6 +14,7 @@ import {
   ganttTodayPosition,
   ganttTrackStyle,
   ganttZoomOptions,
+  layoutGanttMilestones,
   toGanttDate,
   type GanttZoom,
 } from "./GanttTimeline";
@@ -89,22 +90,22 @@ function activeRiskClass(requirement: Requirement) {
   return ` gantt-risk-${requirement.riskLevel}`;
 }
 
-function requirementActualRange(requirement: Requirement) {
+function requirementActualRange(requirement: Requirement, asOfDate: string) {
   const starts = requirement.workItems.map((item) => item.actualStart).filter(Boolean) as string[];
   if (!starts.length) return { start: null, end: null };
   const start = starts.sort()[0];
   const completedEnds = requirement.workItems.map((item) => item.actualEnd).filter(Boolean) as string[];
-  const end = requirement.status === "completed" || requirement.status === "cancelled"
+  const end = requirement.status === "completed" || requirement.status === "pending_acceptance" || requirement.status === "cancelled"
     ? completedEnds.sort().at(-1) || start
-    : format(new Date(), "yyyy-MM-dd");
+    : asOfDate;
   return { start, end };
 }
 
-function RequirementPopover({ requirement }: { requirement: Requirement }) {
+function RequirementPopover({ requirement, asOfDate }: { requirement: Requirement; asOfDate: string }) {
   const updates = requirement.recentProgressUpdates || [];
   const risk = riskLabels[requirement.riskLevel as keyof typeof riskLabels] || requirement.riskLevel;
   const closed = isClosedRequirement(requirement);
-  const actual = requirementActualRange(requirement);
+  const actual = requirementActualRange(requirement, asOfDate);
   const variance = progressVariance(requirement);
   return <>
     <header className="gantt-popover-header">
@@ -123,12 +124,12 @@ function RequirementPopover({ requirement }: { requirement: Requirement }) {
     <dl className="gantt-popover-metrics">
       <div><dt>计划周期</dt><dd>{dateLabel(requirement.plannedStart)} — {dateLabel(requirement.plannedEnd)}</dd></div>
       <div><dt>实际周期</dt><dd>{dateLabel(actual.start, "未开始")} — {dateLabel(actual.end, "未完成")}</dd></div>
-      <div><dt>截至今日应达</dt><dd>{requirement.plannedProgress}%</dd></div>
+      <div><dt>截至 {format(toGanttDate(asOfDate)!, "MM/dd")} 应达</dt><dd>{requirement.plannedProgress}%</dd></div>
       <div><dt>当前实际进度</dt><dd>{requirement.progress}%</dd></div>
       <div><dt>进度偏差</dt><dd className={variance < 0 ? "danger-text" : variance > 0 ? "safe-text" : ""}>{progressVarianceText(requirement)}</dd></div>
       <div><dt>风险判定</dt><dd className={requirement.riskLevel === "high" && requirement.riskEvaluated ? "danger-text" : ""}>{requirement.riskReason}</dd></div>
     </dl>
-    <div className="gantt-popover-progress-compare" aria-label={`实际进度${requirement.progress}%，截至今日应达${requirement.plannedProgress}%`}>
+    <div className="gantt-popover-progress-compare" aria-label={`实际进度${requirement.progress}%，截至${asOfDate}应达${requirement.plannedProgress}%`}>
       <div><span>实际</span><i><b style={{ width: `${requirement.progress}%` }} /></i><strong>{requirement.progress}%</strong></div>
       <div><span>应达</span><i><b className="is-expected" style={{ width: `${requirement.plannedProgress}%` }} /></i><strong>{requirement.plannedProgress}%</strong></div>
     </div>
@@ -148,10 +149,12 @@ export function ProjectGantt({
   requirements,
   projectStart,
   projectEnd,
+  asOfDate: asOfDateProp,
 }: {
   requirements: Requirement[];
   projectStart?: string | null;
   projectEnd?: string | null;
+  asOfDate?: string;
 }) {
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -165,6 +168,7 @@ export function ProjectGantt({
   const [schedule, setSchedule] = useState("");
   const [sort, setSort] = useState<RequirementSort>("deadline");
   const option = ganttZoomOptions[zoom];
+  const asOfDate = asOfDateProp || requirements[0]?.asOfDate || todayIso();
 
   const people = useMemo(() => {
     const owners = new Map<string, string>();
@@ -206,16 +210,16 @@ export function ProjectGantt({
   const range = useMemo(() => {
     const values: Array<string | null | undefined> = [projectStart, projectEnd];
     requirements.forEach((requirement) => {
-      const actual = requirementActualRange(requirement);
+      const actual = requirementActualRange(requirement, asOfDate);
       values.push(requirement.plannedStart, requirement.plannedEnd, requirement.effectiveEnd, actual.start, actual.end);
     });
     return buildBusinessDayTimeline(values, zoom);
-  }, [projectEnd, projectStart, requirements, zoom]);
+  }, [asOfDate, projectEnd, projectStart, requirements, zoom]);
 
   const timelineWidth = range.days * option.cellWidth;
   const dates = range.dates;
   const trackStyle = ganttTrackStyle(dates, option.cellWidth);
-  const { offset: todayOffset, visible: todayVisible } = ganttTodayPosition(dates);
+  const { offset: todayOffset, visible: todayVisible } = ganttTodayPosition(dates, asOfDate);
 
   const scrollToToday = () => {
     if (!todayVisible || !scrollRef.current) return;
@@ -224,7 +228,7 @@ export function ProjectGantt({
       ?.getBoundingClientRect().width ?? 360;
     const visibleTimeline = Math.max(300, scrollRef.current.clientWidth - leftColumn);
     scrollRef.current.scrollTo({
-      left: Math.max(0, leftColumn + todayOffset * option.cellWidth - visibleTimeline / 2),
+      left: Math.max(0, leftColumn + (todayOffset + 1) * option.cellWidth - visibleTimeline / 2),
       behavior: "smooth",
     });
   };
@@ -235,7 +239,7 @@ export function ProjectGantt({
         <div className="gantt-legend" aria-label="甘特图图例">
           <span><i className="legend-plan-pill" />计划</span>
           <span><i className="legend-actual" />实际</span>
-          <span><i className="legend-expected" />应达</span>
+          <span><i className="legend-today" />截至 {format(toGanttDate(asOfDate)!, "MM/dd")}</span>
           <span><i className="legend-behind" />落后差值</span>
           <span><i className="legend-ahead" />领先差值</span>
           <span><i className="legend-milestone" />里程碑</span>
@@ -306,12 +310,19 @@ export function ProjectGantt({
             </div>
             <GanttScale dates={dates} zoom={zoom} cellWidth={option.cellWidth} todayOffset={todayOffset} todayVisible={todayVisible} />
             {visibleRequirements.map((requirement) => {
-              const tooltipProps = ganttTooltip.bind(<RequirementPopover requirement={requirement} />);
+              const tooltipProps = ganttTooltip.bind(<RequirementPopover requirement={requirement} asOfDate={asOfDate} />);
               const variance = progressVariance(requirement);
               const risk = requirement.riskLevel !== "low" ? riskLabels[requirement.riskLevel as keyof typeof riskLabels] : "";
               const varianceLabel = variance < 0 ? `落后${Math.abs(variance)}%` : variance > 0 ? `领先${variance}%` : "";
               const healthLabel = [risk, varianceLabel].filter(Boolean).join(" · ");
               const healthClass = requirement.riskLevel !== "low" ? requirement.riskLevel : variance > 0 ? "ahead" : "";
+              const milestoneItems = requirement.workItems.filter((item) => item.milestoneLabel);
+              const milestonePlacements = new Map(layoutGanttMilestones(
+                milestoneItems.map((item) => ({ id: item.id, label: item.milestoneLabel, plannedEnd: item.plannedEnd })),
+                dates,
+                option.cellWidth,
+                zoom,
+              ).map((placement) => [placement.id, placement]));
               return (
                 <div className={`gantt-row${requirement.delayed ? " is-delayed" : ""}${activeRiskClass(requirement)}`} role="row" key={requirement.id}>
                   <div className="gantt-sticky-left gantt-requirement-info" role="rowheader">
@@ -348,11 +359,12 @@ export function ProjectGantt({
                       status={requirement.status}
                       progress={requirement.progress}
                       plannedProgress={requirement.plannedProgress}
+                      asOfDate={asOfDate}
                       interactionProps={tooltipProps}
                       showUnscheduled
                     />
-                    {requirement.workItems.filter((item) => item.milestoneLabel).map((item) => <GanttMilestoneMarker key={item.id} label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={option.cellWidth} />)}
-                    {todayVisible && <i className="gantt-today-line" style={{ left: todayOffset * option.cellWidth + option.cellWidth / 2 }} />}
+                    {milestoneItems.map((item) => <GanttMilestoneMarker key={item.id} label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={option.cellWidth} zoom={zoom} placement={milestonePlacements.get(item.id)} asOfDate={asOfDate} />)}
+                    {todayVisible && <i className="gantt-today-line" style={{ left: (todayOffset + 1) * option.cellWidth }} title={`截至 ${asOfDate}`} />}
                   </div>
                 </div>
               );

@@ -187,7 +187,7 @@ const progressEntries = [
 const issues = [
   { key: 'auth-api', requirement: 'permission', title: '外部鉴权接口偶发超时', impact: '阻塞统一权限中心联调与上线', reporter: 'test', owner: 'architect', status: 'in_progress', priority: 'P0', progress: 40, discovered: -12, due: -3, resolved: null },
   { key: 'export', requirement: null, title: '大数据量导出内存占用过高', impact: '公共导出能力在大数据量下可能失败', reporter: 'backend', owner: 'backend', status: 'in_progress', priority: 'P1', progress: 65, discovered: -5, due: 3, resolved: null },
-  { key: 'browser', requirement: 'dashboard', title: '旧版浏览器图表样式错位', impact: '影响少量使用旧版浏览器的用户', reporter: 'viewer', owner: null, status: 'open', priority: 'P2', progress: 0, discovered: -2, due: 10, resolved: null },
+  { key: 'browser', requirement: 'dashboard', title: '旧版浏览器图表样式错位', impact: '影响少量使用旧版浏览器的用户', reporter: 'viewer', owner: null, status: 'in_progress', priority: 'P2', progress: 0, discovered: -2, due: 10, resolved: null },
   { key: 'vendor', requirement: null, title: '等待供应商开放测试环境', impact: '外部联调暂时无法开展', reporter: 'pm', owner: 'pm', status: 'deferred', priority: 'P2', progress: 30, discovered: -9, due: null, resolved: null },
   { key: 'timezone', requirement: 'login', title: '登录记录时区展示不一致', impact: '审计时间显示存在八小时时差', reporter: 'test', owner: 'frontend', status: 'resolved', priority: 'P3', progress: 100, discovered: -25, due: -20, resolved: -22 },
 ] as const;
@@ -198,7 +198,7 @@ const issueUpdates = [
   { id: 'sample-v1-issue-update-export-1', issue: 'export', progress: 30, content: '完成内存快照分析，决定改为流式生成文件。', author: 'backend', day: -4 },
   { id: 'sample-v1-issue-update-export-2', issue: 'export', progress: 65, content: '流式导出主链路已完成，正在进行百万行数据压测。', author: 'backend', day: -1 },
   { id: 'sample-v1-issue-update-browser-1', issue: 'browser', progress: 0, content: '已收集浏览器版本和页面截图，等待安排负责人。', author: 'viewer', day: -1 },
-  { id: 'sample-v1-issue-update-vendor-1', issue: 'vendor', progress: 30, content: '供应商预计下周开放环境，问题暂缓且移除目标日期。', author: 'pm', day: -6 },
+  { id: 'sample-v1-issue-update-vendor-1', issue: 'vendor', progress: 30, content: '供应商预计下周开放环境，问题已挂起且移除目标日期。', author: 'pm', day: -6 },
   { id: 'sample-v1-issue-update-timezone-1', issue: 'timezone', progress: 60, content: '统一服务端时间存储格式，前端按本地时区显示。', author: 'frontend', day: -23 },
   { id: 'sample-v1-issue-update-timezone-2', issue: 'timezone', progress: 100, content: '修复已发布并由项目经理确认闭环。', author: 'pm', day: -22 },
 ] as const;
@@ -382,7 +382,7 @@ export function linkSampleProgressAuthors(sqlite: SqliteDatabase) {
 
 export function archiveUnusedSamplePeople(sqlite: SqliteDatabase, now: string) {
   const archivePerson = sqlite.prepare('UPDATE people SET active=0, deleted_at=?, updated_at=? WHERE id=? AND deleted_at IS NULL');
-  const disableAccount = sqlite.prepare(`UPDATE accounts SET status='disabled', session_version=session_version+1, updated_at=? WHERE person_id=? AND is_builtin=0`);
+  const disableAccount = sqlite.prepare(`UPDATE accounts SET status='disabled', session_version=session_version+1, updated_at=? WHERE person_id=? AND is_builtin=0 AND deleted_at IS NULL`);
   for (const personId of SAMPLE_PERSON_IDS) {
     if (samplePersonUsedOutside(sqlite, personId)) continue;
     archivePerson.run(now, now, personId);
@@ -392,7 +392,7 @@ export function archiveUnusedSamplePeople(sqlite: SqliteDatabase, now: string) {
 
 export function restoreSamplePeople(sqlite: SqliteDatabase, now: string) {
   const restorePerson = sqlite.prepare('UPDATE people SET active=1, deleted_at=NULL, updated_at=? WHERE id=? AND deleted_at IS NOT NULL');
-  const enableAccount = sqlite.prepare(`UPDATE accounts SET status='active', updated_at=? WHERE person_id=? AND is_builtin=0`);
+  const enableAccount = sqlite.prepare(`UPDATE accounts SET status='active', updated_at=? WHERE person_id=? AND is_builtin=0 AND deleted_at IS NULL`);
   for (const personId of SAMPLE_PERSON_IDS) {
     restorePerson.run(now, personId);
     enableAccount.run(now, personId);
@@ -403,7 +403,7 @@ export function deleteOrReleaseSamplePeople(sqlite: SqliteDatabase, now: string)
   const deleteAccounts = sqlite.prepare('DELETE FROM accounts WHERE person_id=? AND is_builtin=0');
   const deletePerson = sqlite.prepare('DELETE FROM people WHERE id=?');
   const releasePerson = sqlite.prepare('UPDATE people SET active=1, deleted_at=NULL, updated_at=? WHERE id=?');
-  const releaseAccount = sqlite.prepare(`UPDATE accounts SET status='active', updated_at=? WHERE person_id=? AND is_builtin=0`);
+  const releaseAccount = sqlite.prepare(`UPDATE accounts SET status='active', updated_at=? WHERE person_id=? AND is_builtin=0 AND deleted_at IS NULL`);
   for (const personId of SAMPLE_PERSON_IDS) {
     if (samplePersonUsedOutside(sqlite, personId)) {
       releasePerson.run(now, personId);

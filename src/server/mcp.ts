@@ -13,7 +13,7 @@ import {
   addIssueUpdate, blockWorkItem, cancelRequirement, cancelWorkItem, completeWorkItem, correctIssue, correctWorkItem, createIssue, createPerson, createProject, createRequirement, createTemplate,
   createWorkItem, deleteWorkItem, getDashboard, getPeopleConcurrency, getRequirement, listArchives,
   listAudit, listPeople, listProjects, listRequirements, listTemplates, permanentlyDeleteArchive, previewRequirementPlan, removeProjectPerson, reorderWorkItems,
-  deferIssue, reopenIssue, reopenWorkItem, reselectRequirementTemplate, rescheduleRequirement, resolveIssue, restorePerson, restoreProject, restoreRequirement, restoreTemplate, resumeIssue, startIssue, startWorkItem, unblockWorkItem, updateIssue, updatePerson,
+  deferIssue, reopenIssue, reopenWorkItem, reselectRequirementTemplate, rescheduleRequirement, resolveIssue, restorePerson, restoreProject, restoreRequirement, restoreTemplate, resumeIssue, startWorkItem, unblockWorkItem, updateIssue, updatePerson,
   updateProject, updateRequirement, updateTemplate, updateWorkItem,
 } from './services';
 import { priorities } from '../shared/domain';
@@ -140,20 +140,17 @@ function createServer(actor: AuthorizationActor) {
     assertCanAddProgress(actor, requirementId, input.workItemId || null); return json(addProgress(requirementId, input, actor));
   });
 
-  server.registerTool('create_issue', { description: '创建待处理问题', inputSchema: z.object({ projectId: z.string(), title: z.string().min(1), impact: z.string().optional(), requirementId: z.string().nullable().optional(), priority: z.enum(priorities).optional(), dueDate: optionalDate }) }, async (input) => {
+  server.registerTool('create_issue', { description: '创建处理中问题', inputSchema: z.object({ projectId: z.string(), title: z.string().min(1), impact: z.string().optional(), requirementId: z.string().nullable().optional(), priority: z.enum(priorities).optional(), dueDate: optionalDate }) }, async (input) => {
     assertProjectMember(actor, input.projectId); return json(createIssue(input, actor));
   });
   server.registerTool('update_issue', { description: '项目经理修改问题元数据，不直接修改状态或进度', inputSchema: z.object({ id: z.string(), title: z.string().optional(), impact: z.string().nullable().optional(), ownerId: z.string().nullable().optional(), requirementId: z.string().nullable().optional(), priority: z.enum(priorities).optional(), dueDate: optionalDate, expectedVersion: z.number().int().min(1) }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在'); return json(updateIssue(id, input, actor));
   });
-  server.registerTool('start_issue', { description: '负责人或项目经理开始处理问题', inputSchema: z.object({ id: z.string(), expectedVersion: z.number().int().min(1) }) }, async ({ id, ...input }) => {
-    if (!canUpdateIssueProgress(actor, id)) throw new Error('只有问题负责人或项目经理可以开始处理'); return json(startIssue(id, input, actor));
-  });
   server.registerTool('add_issue_update', { description: '追加问题说明或0-99%进度', inputSchema: z.object({ id: z.string(), content: z.string().min(1), progress: z.number().int().min(0).max(99).optional(), expectedVersion: z.number().int().min(1).optional() }) }, async ({ id, ...input }) => {
     assertProjectResourceReadable(actor, projectIdForIssue(id), '问题不存在'); return json(addIssueUpdate(id, input, actor, { canSetProgress: canUpdateIssueProgress(actor, id), canResolve: false }));
   });
   for (const [name, description, handler] of [
-    ['defer_issue', '暂缓问题', deferIssue], ['resume_issue', '恢复暂缓问题', resumeIssue],
+    ['defer_issue', '挂起问题', deferIssue], ['resume_issue', '恢复挂起问题', resumeIssue],
     ['resolve_issue', '确认问题解决', resolveIssue], ['reopen_issue', '重开已解决问题', reopenIssue],
     ['correct_issue', '追加问题纠错记录', correctIssue],
   ] as const) {

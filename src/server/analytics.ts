@@ -39,7 +39,7 @@ type AnalyticsContext = {
 };
 
 const issueStatusLabels: Record<string, string> = {
-  open: '待处理', in_progress: '处理中', deferred: '暂缓', resolved: '已解决',
+  in_progress: '处理中', deferred: '挂起', resolved: '已解决',
 };
 
 function cloneDefaultLayout(): AnalyticsLayout {

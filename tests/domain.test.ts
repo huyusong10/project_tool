@@ -82,6 +82,28 @@ describe('自动状态、进度和风险', () => {
     expect(ahead.progressGap).toBe(0);
   });
 
+  it('将未到期需求的进度位置换算为相对计划曲线的工作日偏差', () => {
+    const behind = deriveRequirementMetrics({ status: 'in_progress', priority: 'P1' }, [
+      { status: 'in_progress', progress: 25, plannedStart: '2026-09-01', plannedEnd: '2026-09-10', actualStart: '2026-09-01' },
+    ], '2026-09-04');
+    expect(behind).toMatchObject({
+      plannedProgress: 50,
+      scheduleReferenceDate: '2026-09-02',
+      scheduleVarianceDays: 2,
+      finishVariance: 0,
+    });
+
+    const ahead = deriveRequirementMetrics({ status: 'in_progress', priority: 'P1' }, [
+      { status: 'in_progress', progress: 75, plannedStart: '2026-09-01', plannedEnd: '2026-09-10', actualStart: '2026-09-01' },
+    ], '2026-09-04');
+    expect(ahead).toMatchObject({
+      plannedProgress: 50,
+      scheduleReferenceDate: '2026-09-08',
+      scheduleVarianceDays: -2,
+      finishVariance: 0,
+    });
+  });
+
   it('状态进度圆点规范化完成、取消和异常进度', () => {
     expect(ganttProgressDisplay('not_started', 0)).toBe(0);
     expect(ganttProgressDisplay('in_progress', 61)).toBe(61);

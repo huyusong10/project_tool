@@ -53,7 +53,7 @@ export function findAccountForLogin(username: string) {
   return sqlite.prepare(`SELECT id, username, password_hash AS passwordHash, person_id AS personId,
     global_role AS globalRole, status, must_change_password AS mustChangePassword,
     session_version AS sessionVersion, is_builtin AS isBuiltin
-    FROM accounts WHERE normalized_username=?`).get(normalizeUsername(username)) as {
+    FROM accounts WHERE normalized_username=? AND deleted_at IS NULL`).get(normalizeUsername(username)) as {
       id: string; username: string; passwordHash: string; personId: string | null;
       globalRole: 'user' | 'admin'; status: 'active' | 'disabled'; mustChangePassword: number;
       sessionVersion: number; isBuiltin: number;
@@ -61,7 +61,7 @@ export function findAccountForLogin(username: string) {
 }
 
 export function markLogin(accountId: string) {
-  sqlite.prepare('UPDATE accounts SET last_login_at=?, updated_at=? WHERE id=?').run(nowIso(), nowIso(), accountId);
+  sqlite.prepare('UPDATE accounts SET last_login_at=?, updated_at=? WHERE id=? AND deleted_at IS NULL').run(nowIso(), nowIso(), accountId);
 }
 
 export function listAccounts() {
@@ -69,7 +69,8 @@ export function listAccounts() {
     p.job_title AS jobTitle, a.global_role AS globalRole, a.status,
     a.must_change_password AS mustChangePassword, a.is_builtin AS isBuiltin,
     a.last_login_at AS lastLoginAt, a.created_at AS createdAt, a.updated_at AS updatedAt
-    FROM accounts a LEFT JOIN people p ON p.id=a.person_id ORDER BY a.is_builtin DESC, a.username`).all() as any[];
+    FROM accounts a LEFT JOIN people p ON p.id=a.person_id
+    WHERE a.deleted_at IS NULL ORDER BY a.is_builtin DESC, a.username`).all() as any[];
   const roles = sqlite.prepare(`SELECT pp.person_id AS personId, pp.project_id AS projectId, pr.name AS projectName
     FROM project_people pp JOIN projects pr ON pr.id=pp.project_id
     WHERE pp.project_role='manager' AND pr.deleted_at IS NULL ORDER BY pr.name`).all() as any[];
@@ -96,7 +97,7 @@ export function listAccounts() {
 
 export function updateAccount(id: string, input: JsonObject, actor: Actor) {
   const current = sqlite.prepare(`SELECT id, username, normalized_username AS normalizedUsername, person_id AS personId,
-    global_role AS globalRole, status, is_builtin AS isBuiltin FROM accounts WHERE id=?`).get(id) as any;
+    global_role AS globalRole, status, is_builtin AS isBuiltin FROM accounts WHERE id=? AND deleted_at IS NULL`).get(id) as any;
   if (!current) fail('账号不存在', 404);
   const role = input.role === undefined
     ? (current.globalRole === 'admin' ? 'admin' : undefined)
@@ -113,7 +114,7 @@ export function updateAccount(id: string, input: JsonObject, actor: Actor) {
   const globalRole = role === 'admin' ? 'admin' : role ? 'user' : current.globalRole;
   if (current.globalRole === 'admin' && current.status === 'active' && (globalRole !== 'admin' || status !== 'active')) {
     const remaining = sqlite.prepare(`SELECT COUNT(*) AS count FROM accounts
-      WHERE id<>? AND global_role='admin' AND status='active'`).get(id) as { count: number };
+      WHERE id<>? AND global_role='admin' AND status='active' AND deleted_at IS NULL`).get(id) as { count: number };
     if (!remaining.count) fail('系统至少需要保留一个可用管理员');
   }
 
@@ -146,8 +147,68 @@ export function updateAccount(id: string, input: JsonObject, actor: Actor) {
   return listAccounts().find((account) => account.id === id)!;
 }
 
+export function deleteAccount(id: string, actor: Actor) {
+  const account = sqlite.prepare(`SELECT id, username, person_id AS personId, global_role AS globalRole,
+    status, is_builtin AS isBuiltin FROM accounts WHERE id=? AND deleted_at IS NULL`).get(id) as {
+      id: string; username: string; personId: string | null; globalRole: 'user' | 'admin';
+      status: 'active' | 'disabled'; isBuiltin: number;
+    } | undefined;
+  if (!account) fail('账号不存在', 404);
+  if (account.isBuiltin) fail('内置admin账号不能删除');
+  if (actor.accountId === id) fail('不能删除当前登录账号');
+  if (account.globalRole === 'admin' && account.status === 'active') {
+    const remaining = sqlite.prepare(`SELECT COUNT(*) AS count FROM accounts
+      WHERE id<>? AND global_role='admin' AND status='active' AND deleted_at IS NULL`).get(id) as { count: number };
+    if (!remaining.count) fail('系统至少需要保留一个可用管理员');
+  }
+
+  const now = nowIso();
+  sqlite.transaction(() => {
+    sqlite.prepare(`UPDATE accounts SET status='disabled', deleted_at=?, session_version=session_version+1, updated_at=?
+      WHERE id=? AND deleted_at IS NULL`).run(now, now, id);
+    if (account.personId) {
+      sqlite.prepare(`UPDATE project_people SET project_role='member'
+        WHERE person_id=? AND project_role='manager'`).run(account.personId);
+    }
+    sqlite.prepare('UPDATE api_tokens SET revoked_at=COALESCE(revoked_at, ?) WHERE account_id=?').run(now, id);
+  })();
+  audit(actor, 'delete', id, `删除账号登录能力：${account.username}`);
+  return { ok: true };
+}
+
+export function openAccountForPerson(personId: string, actor: Actor) {
+  const person = sqlite.prepare(`SELECT id, name, active FROM people
+    WHERE id=? AND deleted_at IS NULL`).get(personId) as { id: string; name: string; active: number } | undefined;
+  if (!person) fail('人员不存在', 404);
+  if (!person.active) fail('人员已停用，请先恢复人员', 409);
+  const existing = sqlite.prepare(`SELECT id, username, deleted_at AS deletedAt FROM accounts
+    WHERE person_id=?`).get(personId) as { id: string; username: string; deletedAt: string | null } | undefined;
+  if (existing && !existing.deletedAt) fail('该人员已有可用账号', 409);
+
+  let accountId = existing?.id;
+  const now = nowIso();
+  sqlite.transaction(() => {
+    sqlite.prepare(`UPDATE project_people SET project_role='member'
+      WHERE person_id=? AND project_role='manager'`).run(personId);
+    if (existing) {
+      sqlite.prepare(`UPDATE accounts SET password_hash=?, global_role='user', status='active',
+        must_change_password=1, session_version=session_version+1, deleted_at=NULL, updated_at=?
+        WHERE id=?`).run(hashPassword('888888'), now, existing.id);
+      sqlite.prepare(`UPDATE api_tokens SET revoked_at=COALESCE(revoked_at, ?)
+        WHERE account_id=?`).run(now, existing.id);
+    } else {
+      accountId = createAccountForPerson(personId, person.name, true);
+    }
+  })();
+  audit(actor, 'create', accountId || null, `${existing ? '重新开通' : '开通'}账号：${existing?.username || person.name}`);
+  return {
+    account: listAccounts().find((account) => account.id === accountId)!,
+    temporaryPassword: '888888',
+  };
+}
+
 export function resetAccountPassword(id: string, actor: Actor) {
-  const account = sqlite.prepare('SELECT username FROM accounts WHERE id=?').get(id) as { username: string } | undefined;
+  const account = sqlite.prepare('SELECT username FROM accounts WHERE id=? AND deleted_at IS NULL').get(id) as { username: string } | undefined;
   if (!account) fail('账号不存在', 404);
   sqlite.prepare(`UPDATE accounts SET password_hash=?, must_change_password=1,
     session_version=session_version+1, updated_at=? WHERE id=?`).run(hashPassword('888888'), nowIso(), id);
@@ -156,7 +217,7 @@ export function resetAccountPassword(id: string, actor: Actor) {
 }
 
 export function changeOwnPassword(accountId: string, currentPassword: string, newPassword: string, actor: Actor) {
-  const account = sqlite.prepare('SELECT username, password_hash AS passwordHash, session_version AS sessionVersion FROM accounts WHERE id=?')
+  const account = sqlite.prepare('SELECT username, password_hash AS passwordHash, session_version AS sessionVersion FROM accounts WHERE id=? AND deleted_at IS NULL')
     .get(accountId) as { username: string; passwordHash: string; sessionVersion: number } | undefined;
   if (!account) fail('账号不存在', 404);
   if (!verifyPassword(currentPassword, account.passwordHash)) fail('当前密码错误');
@@ -170,7 +231,7 @@ export function changeOwnPassword(accountId: string, currentPassword: string, ne
 }
 
 export function getMyWork(accountId: string) {
-  const account = sqlite.prepare(`SELECT person_id AS personId FROM accounts WHERE id=? AND status='active'`).get(accountId) as { personId: string | null } | undefined;
+  const account = sqlite.prepare(`SELECT person_id AS personId FROM accounts WHERE id=? AND status='active' AND deleted_at IS NULL`).get(accountId) as { personId: string | null } | undefined;
   if (!account?.personId) return {
     summary: { total: 0, notStarted: 0, inProgress: 0, blocked: 0, completed: 0, overdue: 0 },
     items: [], completionTrend: [], upcoming: [], recentProgress: [],

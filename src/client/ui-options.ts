@@ -58,6 +58,6 @@ export const accountRoleOptions: UiOption<keyof typeof accountRoleLabels>[] = Ob
 }));
 
 export const accountStatusOptions: UiOption<"active" | "disabled">[] = [
-  { value: "active", label: "启用", toneClass: "account-status active" },
-  { value: "disabled", label: "停用", toneClass: "account-status disabled" },
+  { value: "active", label: "允许登录", toneClass: "account-status active" },
+  { value: "disabled", label: "禁止登录", toneClass: "account-status disabled" },
 ];

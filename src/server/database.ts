@@ -123,7 +123,7 @@ const stateViolations = sqlite.prepare(`SELECT
   (SELECT COUNT(*) FROM issues WHERE
     (status='resolved' AND (progress<>100 OR resolved_at IS NULL)) OR
     (status<>'resolved' AND (progress>=100 OR resolved_at IS NOT NULL)) OR
-    (status='open' AND progress<>0) OR (status='deferred' AND due_date IS NOT NULL)) AS issues`).get() as { workItems: number; requirements: number; issues: number };
+    (status='deferred' AND due_date IS NOT NULL)) AS issues`).get() as { workItems: number; requirements: number; issues: number };
 if (stateViolations.workItems || stateViolations.requirements || stateViolations.issues) {
   throw new Error(`数据库状态一致性校验失败：工作项${stateViolations.workItems}、需求${stateViolations.requirements}、问题${stateViolations.issues}`);
 }

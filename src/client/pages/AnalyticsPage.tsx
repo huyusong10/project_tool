@@ -141,7 +141,7 @@ function DraggablePanel({ panel, children }: { panel: AnalyticsPanelConfig; chil
   const setRef = (node: HTMLElement | null) => { drag.setNodeRef(node); drop.setNodeRef(node); };
   const style = drag.transform ? { transform: `translate3d(${drag.transform.x}px,${drag.transform.y}px,0)`, zIndex: 20 } as CSSProperties : undefined;
   return <div ref={setRef} style={style} className={`analytics-drag-item analytics-panel-${panel.size}${drag.isDragging ? " is-dragging" : ""}`}>
-    <button className="analytics-drag-handle" aria-label={`拖动${panel.title}调整顺序`} {...drag.listeners} {...drag.attributes}><GripVertical size={16} /></button>
+    <button className="analytics-drag-handle sortable-drag-handle" aria-label={`拖动${panel.title}调整顺序`} {...drag.listeners} {...drag.attributes}><GripVertical size={16} /></button>
     {children}
   </div>;
 }

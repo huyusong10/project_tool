@@ -36,6 +36,9 @@ afterAll(async () => {
 
 describe('系统管理API', () => {
   it('仅管理员可查看概览并执行数据库完整性检查', async () => {
+    const defaultBranding = await app.inject({ method: 'GET', url: '/api/branding' });
+    expect(defaultBranding.statusCode).toBe(200);
+    expect(defaultBranding.json()).toMatchObject({ systemName: '项目管理', shortName: 'PM', logoUrl: null });
     expect((await app.inject({ method: 'GET', url: '/api/system/overview' })).statusCode).toBe(401);
     expect((await app.inject({ method: 'POST', url: '/api/system/database-check' })).statusCode).toBe(401);
 
@@ -48,6 +51,19 @@ describe('系统管理API', () => {
     memberCookie = (Array.isArray(changedSetCookie) ? changedSetCookie[0] : changedSetCookie!).split(';')[0];
     expect((await app.inject({ method: 'GET', url: '/api/system/overview', headers: { cookie: memberCookie } })).statusCode).toBe(403);
     expect((await app.inject({ method: 'POST', url: '/api/system/database-check', headers: { cookie: memberCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: '/api/system/branding', headers: { cookie: memberCookie }, payload: { systemName: '无权修改', shortName: 'NO' } })).statusCode).toBe(403);
+
+    const logoDataUrl = `data:image/png;base64,${Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString('base64')}`;
+    const updatedBranding = await app.inject({ method: 'PUT', url: '/api/system/branding', headers: { cookie }, payload: { systemName: '研发项目管理', shortName: 'RDM', logoDataUrl } });
+    expect(updatedBranding.statusCode).toBe(200);
+    expect(updatedBranding.json()).toEqual(expect.objectContaining({ systemName: '研发项目管理', shortName: 'RDM', logoUrl: expect.stringContaining('/api/branding/logo?v=') }));
+    const logo = await app.inject({ method: 'GET', url: '/api/branding/logo' });
+    expect(logo.statusCode).toBe(200);
+    expect(logo.headers['content-type']).toContain('image/png');
+    expect((await app.inject({ method: 'PUT', url: '/api/system/branding', headers: { cookie }, payload: { systemName: '研发项目管理', shortName: 'RDM', logoDataUrl: 'data:image/png;base64,bm90LWltYWdl' } })).statusCode).toBe(400);
+    const removedLogo = await app.inject({ method: 'PUT', url: '/api/system/branding', headers: { cookie }, payload: { systemName: '项目管理', shortName: 'PM', logoDataUrl: null } });
+    expect(removedLogo.json()).toMatchObject({ systemName: '项目管理', shortName: 'PM', logoUrl: null });
+    expect((await app.inject({ method: 'GET', url: '/api/branding/logo' })).statusCode).toBe(404);
 
     const overview = await app.inject({ method: 'GET', url: '/api/system/overview', headers: { cookie } });
     expect(overview.statusCode).toBe(200);
@@ -61,6 +77,8 @@ describe('系统管理API', () => {
     const check = await app.inject({ method: 'POST', url: '/api/system/database-check', headers: { cookie } });
     expect(check.statusCode).toBe(200);
     expect(check.json()).toEqual(expect.objectContaining({ ok: true, checkedAt: expect.any(String), durationMs: expect.any(Number) }));
+    const brandingAudit = await app.inject({ method: 'GET', url: '/api/audit/search?entityType=system_branding&action=update&pageSize=20', headers: { cookie } });
+    expect(brandingAudit.json().items).toEqual(expect.arrayContaining([expect.objectContaining({ entityType: 'system_branding', action: 'update', summary: expect.not.stringContaining('base64') })]));
   });
 
   it('备份统计准确，恢复准备会校验目标并生成当前数据库安全备份', async () => {

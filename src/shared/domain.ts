@@ -1,6 +1,6 @@
 export const requirementStatuses = ['planning', 'not_started', 'in_progress', 'blocked', 'pending_acceptance', 'completed', 'cancelled'] as const;
 export const workItemStatuses = ['not_started', 'in_progress', 'blocked', 'completed', 'cancelled'] as const;
-export const issueStatuses = ['open', 'in_progress', 'deferred', 'resolved'] as const;
+export const issueStatuses = ['in_progress', 'deferred', 'resolved'] as const;
 export const riskLevels = ['low', 'medium', 'high'] as const;
 export const priorities = ['P0', 'P1', 'P2', 'P3'] as const;
 export const projectRoles = ['viewer', 'member', 'manager'] as const;
@@ -23,9 +23,8 @@ export const requirementStatusLabels: Record<RequirementStatus, string> = {
 };
 
 export const issueStatusLabels: Record<IssueStatus, string> = {
-  open: '待处理',
   in_progress: '处理中',
-  deferred: '暂缓',
+  deferred: '挂起',
   resolved: '已解决',
 };
 
@@ -174,7 +173,6 @@ export const requirementActionsByStatus = {
 } as const satisfies Record<RequirementStatus, readonly string[]>;
 
 export const issueActionsByStatus = {
-  open: ['note', 'start', 'defer'],
   in_progress: ['note', 'progress', 'defer', 'resolve'],
   deferred: ['note', 'resume'],
   resolved: ['reopen', 'correct'],
@@ -207,6 +205,48 @@ export function workItemActualProgress(item: WorkItemLike): number {
   if (deriveWorkItemStatus(item) === 'completed') return 100;
   const progress = Number(item.progress ?? 0);
   return Number.isFinite(progress) ? Math.min(100, Math.max(0, Math.round(progress))) : 0;
+}
+
+function scheduleVarianceFromProgress(items: WorkItemLike[], actualProgress: number, today: string) {
+  if (!items.length || items.some((item) => !item.plannedStart || !item.plannedEnd)) return null;
+  const totalWeight = items.reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
+  if (!totalWeight) return null;
+
+  const plannedStarts = items.map((item) => item.plannedStart as string).sort();
+  const plannedEnds = items.map((item) => item.plannedEnd as string).sort();
+  const plannedStart = plannedStarts[0];
+  const plannedEnd = plannedEnds.at(-1) as string;
+  const plannedProgressAt = (date: string) => Math.round(items.reduce(
+    (sum, item) => sum + workItemPlannedDuration(item) * workItemPlannedProgress(item, date),
+    0,
+  ) / totalWeight);
+  const actual = Math.min(100, Math.max(0, Math.round(actualProgress)));
+  const plannedToday = plannedProgressAt(today);
+  let referenceDate = today;
+
+  if (actual < plannedToday) {
+    referenceDate = addBusinessDays(plannedStart, -1);
+    const searchEnd = today < plannedEnd ? today : plannedEnd;
+    for (let cursor = plannedStart; cursor <= searchEnd; cursor = addCalendarDays(cursor, 1)) {
+      if (!isWeekday(parseIsoDate(cursor))) continue;
+      if (plannedProgressAt(cursor) > actual) break;
+      referenceDate = cursor;
+    }
+  } else if (actual > plannedToday) {
+    referenceDate = plannedEnd;
+    for (let cursor = today; cursor <= plannedEnd; cursor = addCalendarDays(cursor, 1)) {
+      if (!isWeekday(parseIsoDate(cursor))) continue;
+      if (plannedProgressAt(cursor) >= actual) {
+        referenceDate = cursor;
+        break;
+      }
+    }
+  }
+
+  return {
+    referenceDate,
+    varianceDays: businessDayDelta(referenceDate, today),
+  };
 }
 
 export function calculateWorkItemGap(item: WorkItemLike, today = todayIso()) {
@@ -253,6 +293,7 @@ export function deriveRequirementMetrics(
   );
   const progress = totalWeight ? Math.round(actualWeightedProgress / totalWeight) : 0;
   const plannedProgress = totalWeight ? Math.round(plannedWeightedProgress / totalWeight) : 0;
+  const scheduleVariance = scheduleVarianceFromProgress(activeItems, progress, today);
 
   const actualEnds = activeItems.map((item) => item.actualEnd).filter((value): value is string => Boolean(value));
   const effectiveEnd = ['completed', 'pending_acceptance'].includes(status)
@@ -300,6 +341,8 @@ export function deriveRequirementMetrics(
     progress,
     plannedProgress,
     progressGap,
+    scheduleVarianceDays: scheduleVariance?.varianceDays ?? null,
+    scheduleReferenceDate: scheduleVariance?.referenceDate ?? null,
     riskLevel,
     riskEvaluated,
     riskReason,

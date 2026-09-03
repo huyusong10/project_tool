@@ -115,10 +115,7 @@ describe('自动化项目管理API', () => {
       ownerId: personId, status: 'in_progress', priority: 'P1', discoveredAt: '2026-09-01', dueDate: '2000-01-01',
     } });
     expect(created.statusCode).toBe(200); issueId = created.json().id;
-    expect(created.json()).toMatchObject({ title: '公共证书问题', status: 'open', progress: 0, ownerId: null, overdue: true });
-    const assigned = await app.inject({ method: 'PATCH', url: `/api/issues/${issueId}`, headers: { cookie }, payload: { ownerId: personId, expectedVersion: created.json().version } });
-    const started = await app.inject({ method: 'POST', url: `/api/issues/${issueId}/start`, headers: { cookie }, payload: { expectedVersion: assigned.json().version } });
-    expect(started.json()).toMatchObject({ status: 'in_progress', ownerName: '张三' });
+    expect(created.json()).toMatchObject({ title: '公共证书问题', status: 'in_progress', progress: 0, ownerId: personId, ownerName: '张三', overdue: true });
     const update = await app.inject({ method: 'POST', url: `/api/issues/${issueId}/updates`, headers: { cookie }, payload: { content: '测试证书已经申请' } });
     expect(update.json().updates[0].content).toBe('测试证书已经申请');
     const searched = await app.inject({ method: 'GET', url: `/api/issues?projectId=${projectId}&q=${encodeURIComponent('测试证书')}&overdue=true`, headers: { cookie } });
@@ -127,42 +124,38 @@ describe('自动化项目管理API', () => {
     expect(searched.json().summary).toMatchObject({ total: 1, active: 1, inProgress: 1, highPriority: 1, overdue: 1, closureRate: 0 });
     const linkedDashboard = await app.inject({ method: 'GET', url: `/api/dashboard?projectId=${projectId}`, headers: { cookie } });
     expect(linkedDashboard.json().requirements[0].issueSummary).toEqual({ active: 1, overdue: 1 });
-    expect((await app.inject({ method: 'PATCH', url: `/api/issues/${issueId}`, headers: { cookie }, payload: { status: 'resolved', expectedVersion: started.json().version } })).statusCode).toBe(400);
-    const resolved = await app.inject({ method: 'POST', url: `/api/issues/${issueId}/resolve`, headers: { cookie }, payload: { content: '证书已签发，问题闭环', expectedVersion: started.json().version } });
+    expect((await app.inject({ method: 'PATCH', url: `/api/issues/${issueId}`, headers: { cookie }, payload: { status: 'resolved', expectedVersion: created.json().version } })).statusCode).toBe(400);
+    const resolved = await app.inject({ method: 'POST', url: `/api/issues/${issueId}/resolve`, headers: { cookie }, payload: { content: '证书已签发，问题闭环', expectedVersion: created.json().version } });
     expect(resolved.statusCode).toBe(200);
     expect(resolved.json()).toMatchObject({ status: 'resolved', overdue: false });
     expect(resolved.json().resolvedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(resolved.json().updates.map((item: { content: string }) => item.content)).toEqual(expect.arrayContaining(['测试证书已经申请', '证书已签发，问题闭环']));
     const publicIssue = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
-      projectId, title: '公共部署风险', impact: '影响多个需求交付', status: 'open', priority: 'P0', discoveredAt: '2026-09-01', dueDate: '2000-01-01',
+      projectId, title: '公共部署风险', impact: '影响多个需求交付', priority: 'P0', discoveredAt: '2026-09-01', dueDate: '2000-01-01',
     } });
     const dashboard = await app.inject({ method: 'GET', url: `/api/dashboard?projectId=${projectId}`, headers: { cookie } });
     expect(dashboard.json().issues.summary).toMatchObject({ total: 2, active: 1, resolved: 1, highPriority: 1, overdue: 1, closureRate: 50 });
     expect(dashboard.json().issues.attention).toEqual([expect.objectContaining({ id: publicIssue.json().id, title: '公共部署风险', overdue: true })]);
     expect(dashboard.json().requirements[0].issueSummary).toEqual({ active: 0, overdue: 0 });
     const activeIssues = await app.inject({ method: 'GET', url: `/api/issues?projectId=${projectId}&active=true`, headers: { cookie } });
-    expect(activeIssues.json().items).toEqual([expect.objectContaining({ id: publicIssue.json().id, status: 'open' })]);
+    expect(activeIssues.json().items).toEqual([expect.objectContaining({ id: publicIssue.json().id, status: 'in_progress' })]);
     const futureHigh = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
       projectId, title: '未来高优先级问题', ownerId: personId, status: 'in_progress', priority: 'P0', discoveredAt: '2026-09-01', dueDate: '2999-12-31',
     } });
     const overdueLow = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
       projectId, title: '逾期低优先级问题', ownerId: personId, status: 'in_progress', priority: 'P3', discoveredAt: '2026-09-01', dueDate: '2000-01-02',
     } });
-    const futureAssigned = await app.inject({ method: 'PATCH', url: `/api/issues/${futureHigh.json().id}`, headers: { cookie }, payload: { ownerId: personId, expectedVersion: futureHigh.json().version } });
-    const futureStarted = await app.inject({ method: 'POST', url: `/api/issues/${futureHigh.json().id}/start`, headers: { cookie }, payload: { expectedVersion: futureAssigned.json().version } });
-    const overdueAssigned = await app.inject({ method: 'PATCH', url: `/api/issues/${overdueLow.json().id}`, headers: { cookie }, payload: { ownerId: personId, expectedVersion: overdueLow.json().version } });
-    await app.inject({ method: 'POST', url: `/api/issues/${overdueLow.json().id}/start`, headers: { cookie }, payload: { expectedVersion: overdueAssigned.json().version } });
     const ordered = await app.inject({ method: 'GET', url: `/api/issues?projectId=${projectId}&status=in_progress`, headers: { cookie } });
-    expect(ordered.json().items.slice(0, 2).map((item: { id: string }) => item.id)).toEqual([overdueLow.json().id, futureHigh.json().id]);
+    expect(ordered.json().items.slice(0, 2).map((item: { id: string }) => item.id)).toEqual([publicIssue.json().id, overdueLow.json().id]);
     const deferred = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
       projectId, title: '等待外部条件的问题', status: 'deferred', priority: 'P2', discoveredAt: '2026-09-01', dueDate: '2000-01-03',
     } });
     const deferredByCommand = await app.inject({ method: 'POST', url: `/api/issues/${deferred.json().id}/defer`, headers: { cookie }, payload: { reason: '等待外部环境', expectedVersion: deferred.json().version } });
     expect(deferredByCommand.json()).toMatchObject({ status: 'deferred', dueDate: null, overdue: false });
-    const deferredByUpdate = await app.inject({ method: 'POST', url: `/api/issues/${futureHigh.json().id}/defer`, headers: { cookie }, payload: { reason: '等待排期', expectedVersion: futureStarted.json().version } });
+    const deferredByUpdate = await app.inject({ method: 'POST', url: `/api/issues/${futureHigh.json().id}/defer`, headers: { cookie }, payload: { reason: '等待排期', expectedVersion: futureHigh.json().version } });
     expect(deferredByUpdate.json()).toMatchObject({ status: 'deferred', dueDate: null, overdue: false });
     const dashboardWithoutDeferred = await app.inject({ method: 'GET', url: `/api/dashboard?projectId=${projectId}`, headers: { cookie } });
-    expect(dashboardWithoutDeferred.json().issues.attention.every((item: { status: string }) => ['open', 'in_progress'].includes(item.status))).toBe(true);
+    expect(dashboardWithoutDeferred.json().issues.attention.every((item: { status: string }) => item.status === 'in_progress')).toBe(true);
   });
 
   it('统计目录公开，项目查询和个人布局受账号权限保护', async () => {
@@ -197,7 +190,7 @@ describe('自动化项目管理API', () => {
       VALUES (?,?,'已归档分析需求','planning',0,'low','P2',?,?,?)`).run(archivedRequirementId, projectId, now, now, now);
     sqlite.prepare(`INSERT INTO issues
       (id,project_id,requirement_id,title,status,priority,discovered_at,created_at,updated_at)
-      VALUES (?,?,?,'归档需求中的问题','open','P2','2026-09-01',?,?)`).run(archivedIssueId, projectId, archivedRequirementId, now, now);
+      VALUES (?,?,?,'归档需求中的问题','in_progress','P2','2026-09-01',?,?)`).run(archivedIssueId, projectId, archivedRequirementId, now, now);
     const archiveExcluded = await app.inject({ method: 'POST', url: '/api/analytics/query', headers: { cookie }, payload: {
       projectId, range: { from: '2026-09-01', to: '2026-09-30' }, panels,
     } });
@@ -209,7 +202,7 @@ describe('自动化项目管理API', () => {
     const malformedIssueId = randomUUID();
     sqlite.prepare(`INSERT INTO issues
       (id,project_id,title,status,priority,discovered_at,created_at,updated_at)
-      VALUES (?,?,'日期损坏的问题','open','P2','bad',?,?)`).run(malformedIssueId, projectId, now, now);
+      VALUES (?,?,'日期损坏的问题','in_progress','P2','bad',?,?)`).run(malformedIssueId, projectId, now, now);
     const isolatedFailure = await app.inject({ method: 'POST', url: '/api/analytics/query', headers: { cookie }, payload: {
       projectId, range: { from: '2026-09-01', to: '2026-09-30' }, panels: [panels[0], {
         id: 'broken-panel', title: '损坏面板', dataset: 'issues', measure: 'count', dimension: 'week', visualization: 'line', size: 'medium', timeScope: 'snapshot',
@@ -314,12 +307,11 @@ describe('自动化项目管理API', () => {
       projectId, requirementId, title: '普通用户提交的问题', reporter: '李四', priority: 'P1', status: 'resolved', ownerId: personId,
     } });
     expect(userIssue.statusCode).toBe(200);
-    expect(userIssue.json()).toMatchObject({ status: 'open', ownerId: null, reporter: '李四' });
+    expect(userIssue.json()).toMatchObject({ status: 'in_progress', ownerId: null, reporter: '李四' });
     expect((await app.inject({ method: 'POST', url: `/api/issues/${userIssue.json().id}/updates`, headers: { cookie: userCookie }, payload: { content: '已经补充复现步骤' } })).statusCode).toBe(200);
     const assignedIssue = await app.inject({ method: 'PATCH', url: `/api/issues/${userIssue.json().id}`, headers: { cookie }, payload: { ownerId: collaboratorPersonId, expectedVersion: userIssue.json().version } });
-    const startedIssue = await app.inject({ method: 'POST', url: `/api/issues/${userIssue.json().id}/start`, headers: { cookie: userCookie }, payload: { expectedVersion: assignedIssue.json().version } });
-    expect(startedIssue.json()).toMatchObject({ ownerId: collaboratorPersonId, status: 'in_progress', progress: 0 });
-    const ownerProgress = await app.inject({ method: 'POST', url: `/api/issues/${userIssue.json().id}/updates`, headers: { cookie: userCookie }, payload: { content: '修复方案已完成验证', progress: 60, expectedVersion: startedIssue.json().version } });
+    expect(assignedIssue.json()).toMatchObject({ ownerId: collaboratorPersonId, status: 'in_progress', progress: 0 });
+    const ownerProgress = await app.inject({ method: 'POST', url: `/api/issues/${userIssue.json().id}/updates`, headers: { cookie: userCookie }, payload: { content: '修复方案已完成验证', progress: 60, expectedVersion: assignedIssue.json().version } });
     expect(ownerProgress.json()).toMatchObject({ progress: 60, status: 'in_progress' });
     expect(ownerProgress.json().updates[0]).toMatchObject({ progress: 60, createdByName: '李四' });
     expect((await app.inject({ method: 'POST', url: `/api/issues/${userIssue.json().id}/updates`, headers: { cookie: userCookie }, payload: { content: '尝试自行关闭', progress: 100, expectedVersion: ownerProgress.json().version } })).statusCode).toBe(400);
@@ -674,11 +666,53 @@ describe('自动化项目管理API', () => {
       projectId, title: '状态机问题', priority: 'P2', discoveredAt: '2026-09-02', dueDate: '2026-09-10',
     } });
     const issueAssigned = await app.inject({ method: 'PATCH', url: `/api/issues/${issue.json().id}`, headers: { cookie }, payload: { ownerId: personId, expectedVersion: issue.json().version } });
-    const issueStarted = await app.inject({ method: 'POST', url: `/api/issues/${issue.json().id}/start`, headers: { cookie }, payload: { expectedVersion: issueAssigned.json().version } });
-    const issueProgress = await app.inject({ method: 'POST', url: `/api/issues/${issue.json().id}/updates`, headers: { cookie }, payload: { content: '处理中', progress: 30, expectedVersion: issueStarted.json().version } });
+    const issueProgress = await app.inject({ method: 'POST', url: `/api/issues/${issue.json().id}/updates`, headers: { cookie }, payload: { content: '处理中', progress: 30, expectedVersion: issueAssigned.json().version } });
     const resolved = await app.inject({ method: 'POST', url: `/api/issues/${issue.json().id}/resolve`, headers: { cookie }, payload: { content: '问题闭环', expectedVersion: issueProgress.json().version } });
     expect((await app.inject({ method: 'POST', url: `/api/issues/${issue.json().id}/updates`, headers: { cookie }, payload: { content: '终态追加' } })).json().code).toBe('TERMINAL_LOCKED');
     const issueReopened = await app.inject({ method: 'POST', url: `/api/issues/${issue.json().id}/reopen`, headers: { cookie }, payload: { reason: '问题复现', progress: 20, expectedVersion: resolved.json().version } });
     expect(issueReopened.json()).toMatchObject({ status: 'in_progress', progress: 20, resolvedAt: null });
+  });
+
+  it('删除账号会终止登录但保留人员和业务归属', async () => {
+    const name = `待删除账号-${randomUUID().slice(0, 6)}`;
+    const createdPerson = await app.inject({ method: 'POST', url: '/api/people', headers: { cookie }, payload: {
+      projectId, name, jobTitle: '临时协作人员',
+    } });
+    expect(createdPerson.statusCode).toBe(200);
+    const accountsBefore = (await app.inject({ method: 'GET', url: '/api/accounts', headers: { cookie } })).json();
+    const disposable = accountsBefore.find((account: { personId: string }) => account.personId === createdPerson.json().id);
+    const builtin = accountsBefore.find((account: { isBuiltin: boolean }) => account.isBuiltin);
+    expect(disposable).toBeTruthy();
+    expect((await app.inject({ method: 'DELETE', url: `/api/accounts/${builtin.id}`, headers: { cookie } })).statusCode).toBe(400);
+
+    const promoted = await app.inject({ method: 'PATCH', url: `/api/accounts/${disposable.id}`, headers: { cookie }, payload: {
+      role: 'project_manager', managedProjectIds: [projectId],
+    } });
+    expect(promoted.json().role).toBe('project_manager');
+    const removed = await app.inject({ method: 'DELETE', url: `/api/accounts/${disposable.id}`, headers: { cookie } });
+    expect(removed.statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/accounts', headers: { cookie } })).json()
+      .some((account: { id: string }) => account.id === disposable.id)).toBe(false);
+    expect((await app.inject({ method: 'POST', url: '/api/login', payload: { username: name, password: '888888' } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: `/api/people?projectId=${projectId}`, headers: { cookie } })).json()
+      .some((person: { id: string }) => person.id === createdPerson.json().id)).toBe(true);
+
+    const { sqlite } = await import('../src/server/database');
+    expect(sqlite.prepare('SELECT status,deleted_at AS deletedAt FROM accounts WHERE id=?').get(disposable.id))
+      .toMatchObject({ status: 'disabled', deletedAt: expect.any(String) });
+    expect(sqlite.prepare('SELECT project_role AS projectRole FROM project_people WHERE project_id=? AND person_id=?')
+      .get(projectId, createdPerson.json().id)).toEqual({ projectRole: 'member' });
+
+    expect((await app.inject({ method: 'POST', url: `/api/people/${createdPerson.json().id}/account`, headers: { cookie: memberCookie } })).statusCode).toBe(403);
+    const opened = await app.inject({ method: 'POST', url: `/api/people/${createdPerson.json().id}/account`, headers: { cookie } });
+    expect(opened.statusCode).toBe(200);
+    expect(opened.json()).toMatchObject({
+      temporaryPassword: '888888',
+      account: { id: disposable.id, username: name, status: 'active', role: 'user', mustChangePassword: true },
+    });
+    expect((await app.inject({ method: 'POST', url: `/api/people/${createdPerson.json().id}/account`, headers: { cookie } })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'POST', url: '/api/login', payload: { username: name, password: '888888' } })).statusCode).toBe(200);
+    expect(sqlite.prepare('SELECT project_role AS projectRole FROM project_people WHERE project_id=? AND person_id=?')
+      .get(projectId, createdPerson.json().id)).toEqual({ projectRole: 'member' });
   });
 });

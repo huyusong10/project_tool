@@ -40,7 +40,7 @@ export function sessionActor(token?: string): SessionActor | null {
   if (!payload) return null;
   const account = sqlite.prepare(`SELECT id, username, person_id AS personId, global_role AS globalRole,
     must_change_password AS mustChangePassword, session_version AS sessionVersion
-    FROM accounts WHERE id=? AND status='active'`).get(payload.accountId) as {
+    FROM accounts WHERE id=? AND status='active' AND deleted_at IS NULL`).get(payload.accountId) as {
       id: string; username: string; personId: string | null; globalRole: AccountRole;
       mustChangePassword: number; sessionVersion: number;
     } | undefined;

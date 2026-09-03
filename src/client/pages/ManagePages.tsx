@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { addDays, format, parseISO } from "date-fns";
@@ -12,6 +12,7 @@ import {
   DatabaseBackup,
   Edit3,
   GripVertical,
+  ImagePlus,
   KeyRound,
   LocateFixed,
   Plus,
@@ -36,6 +37,7 @@ import type {
   Project,
   Requirement,
   SystemOverview,
+  SystemBranding,
   TemplateItem,
   WorkItemTemplate,
 } from "../types";
@@ -46,6 +48,9 @@ import { ProjectForm, RequirementForm } from "../components/ManagementForms";
 import { InlineDateCell, InlineSelectCell, InlineTextCell } from "../components/InlineEdit";
 import { canManageProject, isAdmin } from "../permissions";
 import { priorityOptions, requirementStatusOptions } from "../ui-options";
+import { BrandLogo, defaultBranding } from "../components/BrandLogo";
+import { DataCell } from "../components/LayoutPrimitives";
+import { SortableList } from "../components/SortableList";
 
 type RequirementSortKey = "title" | "priority" | "status" | "progress" | "risk" | "plannedEnd" | "variance";
 type SortDirection = "asc" | "desc";
@@ -56,10 +61,61 @@ const requirementStatusOrder: Record<string, number> = {
   in_progress: 1,
   not_started: 2,
   planning: 3,
-  completed: 4,
-  cancelled: 5,
+  pending_acceptance: 4,
+  completed: 5,
+  cancelled: 6,
 };
 const riskOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+function requirementVarianceValue(requirement: Requirement): number | null {
+  if (requirement.status === "planning" || requirement.status === "cancelled") return null;
+  if (["completed", "pending_acceptance"].includes(requirement.status)) return requirement.finishVariance;
+  if (requirement.finishVariance > 0) return requirement.finishVariance;
+  if (requirement.status === "not_started" && requirement.progress === 0 && requirement.plannedProgress === 0) return null;
+  return requirement.scheduleVarianceDays ?? null;
+}
+
+function requirementVarianceDisplay(requirement: Requirement) {
+  const progressDetail = `实际进度 ${requirement.progress}%，计划进度 ${requirement.plannedProgress}%`;
+  if (requirement.status === "planning") {
+    return { label: "待排期", className: "muted", title: "工作项排期尚不完整，暂时无法计算计划偏差" };
+  }
+  if (requirement.status === "cancelled") {
+    return { label: "已取消", className: "muted", title: "已取消需求不再计算计划偏差" };
+  }
+  if (requirement.status === "not_started" && requirement.progress === 0 && requirement.plannedProgress === 0) {
+    return { label: "未到计划", className: "muted", title: "尚未到计划开始时间" };
+  }
+  if (["completed", "pending_acceptance"].includes(requirement.status)) {
+    if (requirement.finishVariance > 0) {
+      return { label: `延期 ${requirement.finishVariance}天`, className: "danger-text", title: "实际完成日期晚于计划完成日期" };
+    }
+    if (requirement.finishVariance < 0) {
+      return { label: `提前 ${Math.abs(requirement.finishVariance)}天`, className: "safe-text", title: "实际完成日期早于计划完成日期" };
+    }
+    return { label: "按期", className: "", title: "实际完成日期与计划完成日期一致" };
+  }
+  if (requirement.finishVariance > 0) {
+    return {
+      label: `已延期 ${requirement.finishVariance}天`,
+      className: "danger-text",
+      title: `${progressDetail}；截至今天已超过计划完成日期`,
+    };
+  }
+
+  const variance = requirement.scheduleVarianceDays;
+  const reference = requirement.scheduleReferenceDate ? `；当前进展相当于 ${requirement.scheduleReferenceDate} 的计划` : "";
+  if (variance === null || variance === undefined) {
+    return { label: "待评估", className: "muted", title: `${progressDetail}；暂时无法换算计划偏差` };
+  }
+  if (variance > 0) {
+    return { label: `落后 ${variance}天`, className: "danger-text", title: `${progressDetail}${reference}，落后 ${variance} 个工作日` };
+  }
+  if (variance < 0) {
+    return { label: `领先 ${Math.abs(variance)}天`, className: "safe-text", title: `${progressDetail}${reference}，领先 ${Math.abs(variance)} 个工作日` };
+  }
+  return { label: "按计划", className: "", title: `${progressDetail}；当前进展与计划曲线一致` };
+}
 
 function compareRequirements(left: Requirement, right: Requirement, key: RequirementSortKey) {
   switch (key) {
@@ -74,7 +130,7 @@ function compareRequirements(left: Requirement, right: Requirement, key: Require
     case "risk":
       return (riskOrder[left.highRisk ? "high" : left.riskLevel] ?? 99) - (riskOrder[right.highRisk ? "high" : right.riskLevel] ?? 99);
     case "variance":
-      return left.finishVariance - right.finishVariance;
+      return (requirementVarianceValue(left) ?? 0) - (requirementVarianceValue(right) ?? 0);
     case "plannedEnd":
     default:
       if (!left.plannedEnd && !right.plannedEnd) return 0;
@@ -90,8 +146,7 @@ export function RequirementsPage() {
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
-  const [showCompleted, setShowCompleted] = useState(false);
+  const [status, setStatus] = useState("current");
   const [sortKey, setSortKey] = useState<RequirementSortKey>("plannedEnd");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const canManage = canManageProject(session, selectedProjectId);
@@ -108,17 +163,22 @@ export function RequirementsPage() {
     return data
       .filter((item) =>
         (!normalizedSearch || item.title.toLowerCase().includes(normalizedSearch)) &&
-        (!status || item.status === status) &&
-        (showCompleted || status === "completed" || item.status !== "completed"),
+        (status === "current" ? item.status !== "completed" : !status || item.status === status),
       )
       .sort((left, right) => {
+        if (sortKey === "variance") {
+          const leftVariance = requirementVarianceValue(left);
+          const rightVariance = requirementVarianceValue(right);
+          if (leftVariance === null && rightVariance !== null) return 1;
+          if (leftVariance !== null && rightVariance === null) return -1;
+        }
         const result = compareRequirements(left, right, sortKey);
         if (result !== 0) return sortDirection === "asc" ? result : -result;
         const priorityResult = compareRequirements(left, right, "priority");
         if (priorityResult !== 0) return priorityResult;
         return left.title.localeCompare(right.title, "zh-CN");
       });
-  }, [data, search, showCompleted, sortDirection, sortKey, status]);
+  }, [data, search, sortDirection, sortKey, status]);
   const saveRequirement = async (item: Requirement, input: { priority?: string }) => {
     const key = ["requirements", selectedProjectId] as const;
     const previous = client.getQueryData<Requirement[]>(key);
@@ -139,7 +199,7 @@ export function RequirementsPage() {
       return;
     }
     setSortKey(nextKey);
-    setSortDirection("asc");
+    setSortDirection(nextKey === "variance" ? "desc" : "asc");
   };
   const sortableHeader = (label: string, key: RequirementSortKey) => (
     <button
@@ -177,6 +237,7 @@ export function RequirementsPage() {
           value={status}
           onChange={(event) => setStatus(event.target.value)}
         >
+          <option value="current">当前需求</option>
           <option value="">全部状态</option>
           {requirementStatusOptions.map((option) => (
             <option value={option.value} key={option.value}>
@@ -184,14 +245,6 @@ export function RequirementsPage() {
             </option>
           ))}
         </select>
-        <button
-          type="button"
-          className={`filter-toggle-button${showCompleted ? " is-active" : ""}`}
-          onClick={() => setShowCompleted((current) => !current)}
-          aria-pressed={showCompleted}
-        >
-          {showCompleted ? "隐藏已完成" : "显示已完成"}
-        </button>
         <span>
           {projects.find((p) => p.id === selectedProjectId)?.name || "全部项目"}{" "}
           · {items.length}/{data.length}项
@@ -207,59 +260,55 @@ export function RequirementsPage() {
               <th aria-sort={sortKey === "progress" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("进度", "progress")}</th>
               <th aria-sort={sortKey === "risk" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("风险", "risk")}</th>
               <th aria-sort={sortKey === "plannedEnd" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("计划完成", "plannedEnd")}</th>
-              <th aria-sort={sortKey === "variance" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("偏差", "variance")}</th>
+              <th aria-sort={sortKey === "variance" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("计划偏差", "variance")}</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
-              <tr
+            {items.map((item) => {
+              const variance = requirementVarianceDisplay(item);
+              return <tr
                 key={item.id}
                 onClick={() => navigate(`/requirements/${item.id}`)}
               >
-                <td><strong>{item.title}</strong><small>{item.projectName}</small></td>
-                <td>{canManage ? <InlineSelectCell
+                <td><DataCell density="compact" primary={<strong>{item.title}</strong>} secondary={item.projectName} /></td>
+                <td><DataCell density="compact" primary={canManage ? <InlineSelectCell
                   value={item.priority}
                   label="需求优先级"
                   options={priorityOptions}
                   displayMode="badge"
                   onSave={(priority) => saveRequirement(item, { priority })}
                   renderValue={(value) => <span className={`priority-badge priority-${value.toLowerCase()}`}>{priorityLabels[value as keyof typeof priorityLabels] || value}</span>}
-                /> : <span className={`priority-badge priority-${item.priority.toLowerCase()}`}>{priorityLabels[item.priority as keyof typeof priorityLabels] || item.priority}</span>}</td>
+                /> : <span className={`priority-badge priority-${item.priority.toLowerCase()}`}>{priorityLabels[item.priority as keyof typeof priorityLabels] || item.priority}</span>} /></td>
                 <td>
-                  <span className={`status-pill status-${item.status}`}>
+                  <DataCell density="compact" primary={<span className={`status-pill status-${item.status}`}>
                     {
                       requirementStatusLabels[
                         item.status as keyof typeof requirementStatusLabels
                       ]
                     }
-                  </span>
+                  </span>} />
                 </td>
                 <td>
-                  <div className="table-progress">
+                  <DataCell density="compact" primary={<div className="table-progress">
                     <span>
                       <i style={{ width: `${item.progress}%` }} />
                     </span>
                     <b>{item.progress}%</b>
-                  </div>
+                  </div>} />
                 </td>
                 <td>
-                  {item.highRisk ? (
+                  <DataCell density="compact" primary={item.highRisk ? (
                     <span className="risk-badge risk-high">高风险</span>
                   ) : (
                     riskLabels[item.riskLevel as keyof typeof riskLabels]
-                  )}
+                  )} />
                 </td>
-                <td>{item.plannedEnd || "待排期"}</td>
-                <td
-                  className={
-                    item.finishVariance > 0 ? "danger-text" : "safe-text"
-                  }
-                >
-                  {item.finishVariance > 0 ? "+" : ""}
-                  {item.finishVariance}天
+                <td><DataCell density="compact" primary={item.plannedEnd || "待排期"} /></td>
+                <td className={variance.className} title={variance.title}>
+                  <DataCell density="compact" primary={variance.label} />
                 </td>
               </tr>
-            ))}
+            })}
           </tbody>
         </table>
         {!items.length && (
@@ -284,11 +333,6 @@ export function ProjectsPage() {
   const client = useQueryClient();
   const [creating, setCreating] = useState(false);
   const admin = isAdmin(session);
-  const { data: templates = [] } = useQuery({
-    queryKey: ["templates", selectedProjectId],
-    queryFn: () => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(selectedProjectId)}`),
-    enabled: Boolean(selectedProjectId),
-  });
   const archive = useMutation({
     mutationFn: (id: string) => api(`/api/projects/${id}`, { method: "DELETE" }),
     onSuccess: () => {
@@ -296,19 +340,6 @@ export function ProjectsPage() {
       void client.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
-  const templateName = (id: string | null) => templates.find((template) => template.id === id)?.name || "未指定";
-  const saveProject = async (project: Project, input: Partial<Pick<Project, "name" | "plannedStart" | "plannedEnd" | "defaultTemplateId">>) => {
-    const previous = client.getQueryData<Project[]>(["projects"]);
-    client.setQueryData<Project[]>(["projects"], (current = []) => current.map((entry) => entry.id === project.id ? { ...entry, ...input } : entry));
-    try {
-      const saved = await api<Project>(`/api/projects/${project.id}`, { method: "PATCH", body: jsonBody(input) });
-      client.setQueryData<Project[]>(["projects"], (current = []) => current.map((entry) => entry.id === saved.id ? saved : entry));
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
-    } catch (error) {
-      client.setQueryData(["projects"], previous);
-      throw error;
-    }
-  };
   return (
     <>
       <PageHeader
@@ -323,32 +354,18 @@ export function ProjectsPage() {
       <div className="page-content">
         <div className="table-panel project-table">
           <table>
-            <thead><tr><th>项目</th><th>计划周期</th><th>默认模板</th>{session.authenticated && <th>操作</th>}</tr></thead>
+            <thead><tr><th>项目</th><th>计划周期</th><th>状态</th>{session.authenticated && <th>操作</th>}</tr></thead>
             <tbody>
               {projects.map((project) => {
-                const canEdit = canManageProject(session, project.id);
                 return (
                 <tr key={project.id} className={project.id === selectedProjectId ? "is-current" : ""}>
-                  <td>{canEdit ? <InlineTextCell
-                    value={project.name}
-                    label="项目名称"
-                    required
-                    displayMode="stacked"
-                    onSave={(name) => saveProject(project, { name })}
-                    renderValue={(name) => <><span className="project-name-line"><strong>{name}</strong>{project.isSample && <span className="sample-project-badge">样板</span>}</span>{project.id === selectedProjectId && <small>当前项目</small>}</>}
-                  /> : <><span className="project-name-line"><strong>{project.name}</strong>{project.isSample && <span className="sample-project-badge">样板</span>}</span>{project.id === selectedProjectId && <small>当前项目</small>}</>}</td>
+                  <td><span className="project-name-line"><strong>{project.name}</strong>{project.isSample && <span className="sample-project-badge">样板</span>}</span>{project.id === selectedProjectId && <small>当前项目</small>}</td>
                   <td><div className="inline-date-range">
-                    {canEdit ? <InlineDateCell value={project.plannedStart} label="项目计划开始" onSave={(plannedStart) => saveProject(project, { plannedStart })} /> : <span>{project.plannedStart || "未设置"}</span>}
+                    <span>{project.plannedStart || "未设置"}</span>
                     <span>→</span>
-                    {canEdit ? <InlineDateCell value={project.plannedEnd} label="项目计划完成" onSave={(plannedEnd) => saveProject(project, { plannedEnd })} /> : <span>{project.plannedEnd || "未设置"}</span>}
+                    <span>{project.plannedEnd || "未设置"}</span>
                   </div></td>
-                  <td>{canEdit && project.id === selectedProjectId ? <InlineSelectCell
-                    value={project.defaultTemplateId}
-                    label="默认流程"
-                    options={[{ value: "", label: "不指定" }, ...templates.map((template) => ({ value: template.id, label: template.name }))]}
-                    onSave={(defaultTemplateId) => saveProject(project, { defaultTemplateId: defaultTemplateId || null })}
-                    placeholder="不指定"
-                  /> : project.id === selectedProjectId ? templateName(project.defaultTemplateId) : "切换到该项目后维护"}</td>
+                  <td><span className={`status-pill status-${project.status}`}>{project.status === "active" ? "进行中" : project.status === "completed" ? "已完成" : "规划中"}</span></td>
                   {session.authenticated && (
                     <td>
                       <div className="project-row-actions">
@@ -378,7 +395,6 @@ export function ProjectSettingsPage() {
   const project = projects.find((item) => item.id === selectedProjectId);
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
-  const admin = isAdmin(session);
   const canManage = canManageProject(session, selectedProjectId);
   const { data: members = [] } = useQuery({
     queryKey: ["project-members", selectedProjectId],
@@ -424,7 +440,7 @@ export function ProjectSettingsPage() {
         </section>
         <section className="panel project-members-panel">
           <header>
-            <div><h2>项目成员</h2><p>项目经理由平台管理员任免，其他角色由项目经理维护</p></div>
+            <div><h2>项目成员</h2><p>项目经理在“人员与权限”中统一任免；这里维护观察者和普通成员</p></div>
             <div className="project-member-header-actions">
               <span className="project-member-count">{members.length} 人</span>
               {canManage && <button className="ghost-button" onClick={() => setAdding(true)}><UserPlus size={15} />添加成员</button>}
@@ -433,7 +449,7 @@ export function ProjectSettingsPage() {
           <div className="project-member-list">
             {members.map((person) => {
               const roleLabel = person.projectRole === "manager" ? "项目经理" : person.projectRole === "viewer" ? "观察者" : "项目成员";
-              const editable = canManage && (admin || person.projectRole !== "manager");
+              const editable = canManage && person.projectRole !== "manager";
               return <article className={`project-member-row${canManage ? " can-manage" : ""}`} key={person.id}>
                 <div className="project-member-identity">
                   <span className="project-member-avatar">{person.name.slice(-1)}</span>
@@ -443,7 +459,7 @@ export function ProjectSettingsPage() {
                 <div className="project-member-role">
                   <small>项目角色</small>
                   {editable ? <select aria-label={`${person.name}的项目角色`} value={person.projectRole || "member"} disabled={setRole.isPending} onChange={(event) => setRole.mutate({ personId: person.id, role: event.target.value })}>
-                    <option value="viewer">观察者</option><option value="member">项目成员</option>{admin && <option value="manager">项目经理</option>}
+                    <option value="viewer">观察者</option><option value="member">项目成员</option>
                   </select> : <span className={`project-role-badge role-${person.projectRole || "member"}`}>{roleLabel}</span>}
                 </div>
                 {canManage && <div className="project-member-action">{editable && <button className="inline-action-button danger" disabled={remove.isPending} onClick={() => confirm("将“" + person.name + "”移出项目？") && remove.mutate(person.id)}><UserMinus size={14} />移除</button>}</div>}
@@ -463,89 +479,6 @@ export function ProjectSettingsPage() {
       </>}
       {editing && project && <Modal title="编辑项目" onClose={() => setEditing(false)}><ProjectForm project={project} onClose={() => setEditing(false)} /></Modal>}
       {adding && <Modal title="添加项目成员" width={620} onClose={() => setAdding(false)}><AddProjectPersonForm projectId={selectedProjectId} onClose={() => setAdding(false)} /></Modal>}
-    </div>
-  </>;
-}
-
-function PersonForm({
-  person,
-  projectId,
-  onClose,
-}: {
-  person?: Person;
-  projectId?: string;
-  onClose: () => void;
-}) {
-  const client = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: (value: object) =>
-      api(person ? `/api/people/${person.id}` : "/api/people", {
-        method: person ? "PATCH" : "POST",
-        body: jsonBody(person ? value : { ...value, ...(projectId ? { projectId } : {}) }),
-      }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["people"] });
-      void client.invalidateQueries({ queryKey: ["people", projectId] });
-      onClose();
-    },
-  });
-  return (
-    <form
-      className="form-grid"
-      onSubmit={(event) => {
-        event.preventDefault();
-        mutation.mutate(Object.fromEntries(new FormData(event.currentTarget)));
-      }}
-    >
-      <label className="field field-full">
-        <span>姓名</span>
-        <input
-          name="name"
-          defaultValue={person?.name || ""}
-          required
-          autoFocus
-        />
-      </label>
-      <label className="field field-full">
-        <span>岗位</span>
-        <input name="jobTitle" defaultValue={person?.jobTitle || ""} placeholder="例如：前端开发、测试工程师" />
-      </label>
-      {person && <label className="field field-full">
-        <span>资源状态</span>
-        <select name="active" defaultValue={person.active ? "true" : "false"}><option value="true">启用</option><option value="false">停用</option></select>
-      </label>}
-      {mutation.error && (
-        <p className="form-error field-full">{mutation.error.message}</p>
-      )}
-      <div className="form-actions field-full">
-        <button type="button" className="ghost-button" onClick={onClose}>
-          取消
-        </button>
-        <button className="primary-button">保存</button>
-      </div>
-    </form>
-  );
-}
-
-export function ResourceCenterPage() {
-  const client = useQueryClient();
-  const [editing, setEditing] = useState<Person | null | undefined>(undefined);
-  const { data = [] } = useQuery({ queryKey: ["people", "all"], queryFn: () => api<Person[]>("/api/people") });
-  const archive = useMutation({
-    mutationFn: (id: string) => api("/api/people/" + id, { method: "DELETE" }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["people"] }),
-  });
-  return <>
-    <PageHeader title="资源中心" actions={<button className="primary-button" onClick={() => setEditing(null)}><UserPlus size={15} />新增人员</button>} />
-    <div className="page-content">
-      <div className="table-panel"><table>
-        <thead><tr><th>人员</th><th>岗位</th><th>账号</th><th>状态</th><th>操作</th></tr></thead>
-        <tbody>{data.map((person) => <tr key={person.id}>
-          <td><strong>{person.name}</strong></td><td>{person.jobTitle || "—"}</td><td>{person.username || "—"}</td><td>{person.active ? "启用" : "停用"}</td>
-          <td><div className="project-row-actions"><button className="inline-action-button" onClick={() => setEditing(person)}><Edit3 size={14} />编辑</button><button className="inline-action-button danger" onClick={() => confirm("归档人员“" + person.name + "”？") && archive.mutate(person.id)}><Archive size={14} />归档</button></div></td>
-        </tr>)}</tbody>
-      </table>{!data.length && <EmptyState title="暂无人员" detail="新增人员后可加入具体项目。" />}</div>
-      {editing !== undefined && <Modal title={editing ? "编辑人员" : "新增人员"} onClose={() => setEditing(undefined)}><PersonForm person={editing || undefined} onClose={() => setEditing(undefined)} /></Modal>}
     </div>
   </>;
 }
@@ -590,7 +523,7 @@ function AddProjectPersonForm({ projectId, onClose }: { projectId: string; onClo
         <span><strong>{person.name}</strong><small>{person.jobTitle || "岗位未设置"}{person.username ? ` · ${person.username}` : ""}</small></span>
         <span className="member-candidate-check">{personId === person.id ? "已选择" : "选择"}</span>
       </button>)}
-      {!candidatesQuery.isLoading && !candidatesQuery.isError && !people.length && <div className="member-picker-state"><strong>{keyword ? "没有匹配的人员" : "暂无可添加人员"}</strong><span>{keyword ? "请调整搜索关键词。" : "当前启用人员均已加入项目，或请先到资源中心新增人员。"}</span></div>}
+      {!candidatesQuery.isLoading && !candidatesQuery.isError && !people.length && <div className="member-picker-state"><strong>{keyword ? "没有匹配的人员" : "暂无可添加人员"}</strong><span>{keyword ? "请调整搜索关键词。" : "当前启用人员均已加入项目，或请先到人员与权限新增人员。"}</span></div>}
     </div>
     <label className="field member-picker-role"><span>加入后的项目角色</span><select value={role} onChange={(event) => setRole(event.target.value)}><option value="member">项目成员</option><option value="viewer">项目观察者</option></select></label>
     {mutation.error && <p className="form-error">{mutation.error.message}</p>}
@@ -599,14 +532,9 @@ function AddProjectPersonForm({ projectId, onClose }: { projectId: string; onClo
 }
 
 export function PeoplePage() {
-  const { session, openLogin, selectedProjectId, projects } = useApp();
+  const { selectedProjectId, projects } = useApp();
   const [viewParams, setViewParams] = useSearchParams();
   const view = viewParams.get("view") === "analysis" ? "analysis" : "matrix";
-  const client = useQueryClient();
-  const [creating, setCreating] = useState(false);
-  const [addingExisting, setAddingExisting] = useState(false);
-  const admin = isAdmin(session);
-  const canManage = canManageProject(session, selectedProjectId);
   const { data = [] } = useQuery({
     queryKey: ["people", selectedProjectId],
     queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`),
@@ -629,47 +557,9 @@ export function PeoplePage() {
         people: people.sort((left, right) => left.name.localeCompare(right.name, "zh-CN")),
       }));
   }, [data]);
-  const archive = useMutation({
-    mutationFn: (id: string) => api(`/api/people/${id}`, { method: "DELETE" }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["people"] }),
-  });
-  const removeMember = useMutation({
-    mutationFn: (id: string) => api(`/api/projects/${selectedProjectId}/members/${id}`, { method: "DELETE" }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["people", selectedProjectId] });
-      void client.invalidateQueries({ queryKey: ["people-candidates", selectedProjectId] });
-    },
-  });
-  const savePerson = async (person: Person, input: Partial<Pick<Person, "name" | "jobTitle">>) => {
-    const projectKey = ["people", selectedProjectId] as const;
-    const allKey = ["people", "all"] as const;
-    const previousProject = client.getQueryData<Person[]>(projectKey);
-    const previousAll = client.getQueryData<Person[]>(allKey);
-    const optimistic = (current: Person[] | undefined) => current?.map((entry) => entry.id === person.id ? { ...entry, ...input } : entry);
-    client.setQueryData<Person[]>(projectKey, optimistic);
-    client.setQueryData<Person[]>(allKey, optimistic);
-    try {
-      const saved = await api<Person>(`/api/people/${person.id}`, { method: "PATCH", body: jsonBody(input) });
-      const applySaved = (current: Person[] | undefined) => current?.map((entry) => entry.id === saved.id ? { ...entry, ...saved } : entry);
-      client.setQueryData<Person[]>(projectKey, applySaved);
-      client.setQueryData<Person[]>(allKey, applySaved);
-      void client.invalidateQueries({ queryKey: ["accounts"] });
-      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
-    } catch (error) {
-      client.setQueryData(projectKey, previousProject);
-      client.setQueryData(allKey, previousAll);
-      throw error;
-    }
-  };
   return (
     <>
-      <PageHeader
-        title="人员矩阵"
-        actions={view === "matrix" && canManage ? <div className="panel-actions">
-          <button className="ghost-button" disabled={!selectedProjectId} onClick={() => setAddingExisting(true)}><UserPlus size={16} />添加已有人员</button>
-          {admin && <button className="primary-button" disabled={!selectedProjectId} onClick={() => setCreating(true)}><UserPlus size={16} />新增人员</button>}
-        </div> : null}
-      />
+      <PageHeader title="人员矩阵" />
       <div className="page-content">
         <div className="view-tabs people-subnav" aria-label="人员页面视图">
           <button className={view === "matrix" ? "active" : ""} onClick={() => setViewParams({})}>人员矩阵</button>
@@ -688,35 +578,11 @@ export function PeoplePage() {
               </header>
               <div className="people-role-members">
                 {group.people.map((person) => (
-                  <article className={`person-card${admin ? " person-card-inline-editable" : ""}`} key={person.id}>
+                  <article className="person-card" key={person.id}>
                     <span className="person-avatar">{person.name.slice(-1)}</span>
                     <div className="person-copy">
-                      {admin ? <>
-                        <InlineTextCell value={person.name} label="人员姓名" required onSave={(name) => savePerson(person, { name })} renderValue={(name) => <strong>{name}</strong>} />
-                        <InlineTextCell value={person.jobTitle} label="人员岗位" placeholder="岗位未设置" onSave={(jobTitle) => savePerson(person, { jobTitle: jobTitle || null })} renderValue={(jobTitle) => <small>{jobTitle || "岗位未设置"}</small>} />
-                      </> : <><strong>{person.name}</strong><small>{person.jobTitle || "岗位未设置"}</small></>}
+                      <strong>{person.name}</strong><small>{person.jobTitle || "岗位未设置"}</small>
                     </div>
-                    {canManage && (
-                      <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-                        {(admin || person.projectRole !== "manager") && <button
-                          aria-label={`从项目移除 ${person.name}`}
-                          title={`从当前项目移除 ${person.name}`}
-                          onClick={() => confirm(`将“${person.name}”移出当前项目？历史工作项不会改变。`) && removeMember.mutate(person.id)}
-                        >
-                          <UserMinus size={15} />
-                        </button>}
-                        {admin && <button
-                          aria-label={`归档人员 ${person.name}`}
-                          title={`全局归档 ${person.name}`}
-                          onClick={() =>
-                            confirm(`全局归档“${person.name}”？该人员会从所有项目中隐藏。`) &&
-                            archive.mutate(person.id)
-                          }
-                        >
-                          <Archive size={15} />
-                        </button>}
-                      </div>
-                    )}
                   </article>
                 ))}
               </div>
@@ -729,18 +595,6 @@ export function PeoplePage() {
             />
           )}
         </div>
-        {creating && (
-        <Modal
-          title="新增人员"
-          onClose={() => setCreating(false)}
-        >
-          <PersonForm
-            projectId={selectedProjectId}
-            onClose={() => setCreating(false)}
-          />
-        </Modal>
-        )}
-        {addingExisting && <Modal title="添加已有人员" width={620} onClose={() => setAddingExisting(false)}><AddProjectPersonForm projectId={selectedProjectId} onClose={() => setAddingExisting(false)} /></Modal>}
         </> : <ConcurrencyPanel />}
       </div>
     </>
@@ -884,36 +738,17 @@ function TemplateForm({
   onClose: () => void;
 }) {
   const client = useQueryClient();
-  const [items, setItems] = useState<Array<Pick<TemplateItem, "id" | "title" | "startOffsetDays" | "durationDays" | "milestoneLabel" | "sortOrder">>>(
-    template?.items.map((item) => ({ id: item.id, title: item.title, startOffsetDays: item.startOffsetDays, durationDays: item.durationDays, milestoneLabel: item.milestoneLabel, sortOrder: item.sortOrder })) || [
-      { id: "", title: "设计", startOffsetDays: 0, durationDays: 2, milestoneLabel: null, sortOrder: 0 },
-      { id: "", title: "开发", startOffsetDays: 2, durationDays: 5, milestoneLabel: null, sortOrder: 1 },
-      { id: "", title: "测试", startOffsetDays: 7, durationDays: 3, milestoneLabel: null, sortOrder: 2 },
-      { id: "", title: "发布", startOffsetDays: 10, durationDays: 1, milestoneLabel: "发布基线", sortOrder: 3 },
+  type TemplateDraftItem = Pick<TemplateItem, "id" | "title" | "startOffsetDays" | "durationDays" | "milestoneLabel" | "sortOrder"> & { uiKey: string };
+  const createDraft = (item: Omit<TemplateDraftItem, "uiKey">): TemplateDraftItem => ({ ...item, uiKey: item.id || crypto.randomUUID() });
+  const [items, setItems] = useState<TemplateDraftItem[]>(() =>
+    template?.items.map((item) => createDraft({ id: item.id, title: item.title, startOffsetDays: item.startOffsetDays, durationDays: item.durationDays, milestoneLabel: item.milestoneLabel, sortOrder: item.sortOrder })) || [
+      createDraft({ id: "", title: "设计", startOffsetDays: 0, durationDays: 2, milestoneLabel: null, sortOrder: 0 }),
+      createDraft({ id: "", title: "开发", startOffsetDays: 2, durationDays: 5, milestoneLabel: null, sortOrder: 1 }),
+      createDraft({ id: "", title: "测试", startOffsetDays: 7, durationDays: 3, milestoneLabel: null, sortOrder: 2 }),
+      createDraft({ id: "", title: "发布", startOffsetDays: 10, durationDays: 1, milestoneLabel: "发布基线", sortOrder: 3 }),
     ],
   );
-  const [dragState, setDragState] = useState<{
-    fromIndex: number;
-    overIndex: number;
-    position: "before" | "after";
-  } | null>(null);
   const updateItem = (index: number, patch: Partial<(typeof items)[number]>) => setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
-  const dropItem = (event: ReactDragEvent<HTMLDivElement>, overIndex: number) => {
-    event.preventDefault();
-    const fromIndex = dragState?.fromIndex ?? Number(event.dataTransfer.getData("text/plain"));
-    const position = dragState?.position || "before";
-    if (!Number.isInteger(fromIndex)) return setDragState(null);
-    setItems((current) => {
-      if (fromIndex < 0 || fromIndex >= current.length) return current;
-      const reordered = [...current];
-      const [moved] = reordered.splice(fromIndex, 1);
-      let insertionIndex = overIndex + (position === "after" ? 1 : 0);
-      if (fromIndex < insertionIndex) insertionIndex -= 1;
-      reordered.splice(Math.max(0, Math.min(insertionIndex, reordered.length)), 0, moved);
-      return reordered.map((item, itemIndex) => ({ ...item, sortOrder: itemIndex }));
-    });
-    setDragState(null);
-  };
   const totalDays = Math.max(1, ...items.map((item) => item.startOffsetDays + item.durationDays));
   const beginTimelineDrag = (event: ReactPointerEvent, index: number, mode: "move" | "resize") => {
     event.preventDefault(); event.stopPropagation();
@@ -943,7 +778,7 @@ function TemplateForm({
       onSubmit={(event) => {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
-        mutation.mutate({ projectId, name: data.get("name"), description: data.get("description"), items: items.map((item, index) => ({ ...item, id: item.id || undefined, sortOrder: index })) });
+        mutation.mutate({ projectId, name: data.get("name"), description: data.get("description"), items: items.map(({ uiKey: _uiKey, ...item }, index) => ({ ...item, id: item.id || undefined, sortOrder: index })) });
       }}
     >
       <label className="field field-full">
@@ -957,31 +792,21 @@ function TemplateForm({
       <div className="template-editor field-full">
         <div className="template-item-editor">
           <div className="template-editor-head"><span /><span>工作项</span><span>开始偏移</span><span>工期</span><span>里程碑（可选）</span><span /></div>
-          {items.map((item, index) => <div
-            className={`template-editor-row${dragState?.fromIndex === index ? " is-dragging" : ""}${dragState?.overIndex === index ? ` drop-${dragState.position}` : ""}`}
-            key={item.id || index}
-            onDragOver={(event) => {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-              const bounds = event.currentTarget.getBoundingClientRect();
-              const position = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
-              setDragState((current) => current ? { ...current, overIndex: index, position } : current);
-            }}
-            onDrop={(event) => dropItem(event, index)}
+          <SortableList
+            items={items}
+            getId={(item) => item.uiKey}
+            onReorder={(next) => setItems(next.map((item, itemIndex) => ({ ...item, sortOrder: itemIndex })))}
+            renderItem={(item, index, sortable) => <div
+            ref={sortable.setNodeRef}
+            className={`template-editor-row sortable-item${sortable.isDragging ? " is-dragging" : ""}${sortable.isOver ? " is-over" : ""}`}
           >
             <button
               type="button"
-              className="template-drag-handle"
-              draggable
+              className="template-drag-handle sortable-drag-handle"
               aria-label={`拖动${item.title || "工作项"}调整顺序`}
-              aria-grabbed={dragState?.fromIndex === index}
               title="按住拖动调整顺序"
-              onDragStart={(event) => {
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", String(index));
-                setDragState({ fromIndex: index, overIndex: index, position: "before" });
-              }}
-              onDragEnd={() => setDragState(null)}
+              {...sortable.handleAttributes}
+              {...sortable.handleListeners}
             >
               <GripVertical size={17} />
             </button>
@@ -990,12 +815,13 @@ function TemplateForm({
             <input type="number" min="1" value={item.durationDays} onChange={(event) => updateItem(index, { durationDays: Math.max(1, Number(event.target.value)) })} />
             <input className="template-milestone-input" maxLength={80} value={item.milestoneLabel || ""} placeholder="如：需求基线" onChange={(event) => updateItem(index, { milestoneLabel: event.target.value || null })} />
             <button type="button" className="template-delete-item" aria-label={`删除${item.title || "工作项"}`} title="删除" disabled={items.length === 1} onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={14} /></button>
-          </div>)}
-          <button type="button" className="ghost-button add-template-item" onClick={() => setItems((current) => [...current, { id: "", title: `工作项${current.length + 1}`, startOffsetDays: totalDays, durationDays: 1, milestoneLabel: null, sortOrder: current.length }])}><Plus size={14} />添加工作项</button>
+          </div>}
+          />
+          <button type="button" className="ghost-button add-template-item" onClick={() => setItems((current) => [...current, createDraft({ id: "", title: `工作项${current.length + 1}`, startOffsetDays: totalDays, durationDays: 1, milestoneLabel: null, sortOrder: current.length })])}><Plus size={14} />添加工作项</button>
         </div>
         <div className="template-gantt">
           <div className="template-gantt-scale"><span>第1天</span><span>共{totalDays}个工作日</span></div>
-          {items.map((item, index) => <div className="template-gantt-row" key={item.id || index}>
+          {items.map((item, index) => <div className="template-gantt-row" key={item.uiKey}>
             <span className="template-gantt-title">{item.title || "未命名"}</span>
             <div className="template-gantt-track"><button type="button" className="template-gantt-bar" style={{ left: `${(item.startOffsetDays / totalDays) * 100}%`, width: `${(item.durationDays / totalDays) * 100}%` }} onPointerDown={(event) => beginTimelineDrag(event, index, "move")} title={`第${item.startOffsetDays + 1}个工作日开始，持续${item.durationDays}天`}><span>{item.durationDays}天</span><i onPointerDown={(event) => beginTimelineDrag(event, index, "resize")} /></button>{item.milestoneLabel?.trim() && <span className={`template-milestone-marker${(item.startOffsetDays + item.durationDays) / totalDays > .72 ? " align-left" : ""}`} style={{ left: `${((item.startOffsetDays + item.durationDays) / totalDays) * 100}%` }} title={`${item.milestoneLabel} · 第${item.startOffsetDays + item.durationDays}个工作日`}><i /><b>{item.milestoneLabel}</b></span>}</div>
           </div>)}
@@ -1245,6 +1071,91 @@ function relativeTime(value: string | null) {
   return `${Math.floor(difference / 86_400_000)}天前`;
 }
 
+function BrandingSettingsCard() {
+  const client = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [systemName, setSystemName] = useState(defaultBranding.systemName);
+  const [shortName, setShortName] = useState(defaultBranding.shortName);
+  const [logoDraft, setLogoDraft] = useState<string | null | undefined>(undefined);
+  const [message, setMessage] = useState("");
+  const [localError, setLocalError] = useState("");
+  const brandingQuery = useQuery({
+    queryKey: ["branding"],
+    queryFn: () => api<SystemBranding>("/api/branding"),
+  });
+  const branding = brandingQuery.data ?? defaultBranding;
+  useEffect(() => {
+    if (!brandingQuery.data) return;
+    setSystemName(brandingQuery.data.systemName);
+    setShortName(brandingQuery.data.shortName);
+    setLogoDraft(undefined);
+  }, [brandingQuery.data]);
+  const save = useMutation({
+    mutationFn: () => {
+      const payload: Record<string, unknown> = { systemName, shortName };
+      if (logoDraft !== undefined) payload.logoDataUrl = logoDraft;
+      return api<SystemBranding>("/api/system/branding", { method: "PUT", body: jsonBody(payload) });
+    },
+    onSuccess: (result) => {
+      client.setQueryData(["branding"], result);
+      setLogoDraft(undefined);
+      setMessage("品牌设置已保存");
+      setLocalError("");
+    },
+  });
+  const previewBranding: SystemBranding = {
+    systemName: systemName.trim() || defaultBranding.systemName,
+    shortName: shortName.trim() || defaultBranding.shortName,
+    logoUrl: logoDraft === undefined ? branding.logoUrl : logoDraft,
+    updatedAt: branding.updatedAt,
+  };
+  const selectLogo = (file?: File) => {
+    setMessage("");
+    setLocalError("");
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setLocalError("Logo仅支持PNG、JPEG或WebP图片");
+      return;
+    }
+    if (file.size > 512 * 1024) {
+      setLocalError("Logo文件不能超过512KB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setLogoDraft(String(reader.result || ""));
+    reader.onerror = () => setLocalError("Logo读取失败，请重新选择");
+    reader.readAsDataURL(file);
+  };
+  return <article className="panel system-detail-panel system-branding-panel">
+    <header><div><h2>品牌设置</h2><p>统一侧边栏、登录界面和浏览器标签的系统标识</p></div></header>
+    <div className="system-branding-content">
+      <div className="system-branding-preview">
+        <BrandLogo branding={previewBranding} />
+        <div><strong>{previewBranding.systemName}</strong><span>展开与折叠状态使用同一Logo</span></div>
+      </div>
+      <form className="system-branding-form" onSubmit={(event) => { event.preventDefault(); setMessage(""); setLocalError(""); save.mutate(); }}>
+        <label className="field"><span>系统名称</span><input value={systemName} maxLength={20} required onChange={(event) => setSystemName(event.target.value)} /></label>
+        <label className="field"><span>系统简称</span><input value={shortName} maxLength={4} required onChange={(event) => setShortName(event.target.value)} /></label>
+        <div className="system-branding-logo-field">
+          <span>系统Logo</span>
+          <div>
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(event) => selectLogo(event.target.files?.[0])} />
+            <button type="button" className="ghost-button" onClick={() => fileRef.current?.click()}><ImagePlus size={15} />选择图片</button>
+            {previewBranding.logoUrl && <button type="button" className="ghost-button" onClick={() => { setLogoDraft(null); if (fileRef.current) fileRef.current.value = ""; }}>移除Logo</button>}
+          </div>
+          <small>支持PNG、JPEG、WebP，最大512KB，建议使用正方形图片。</small>
+        </div>
+        {(localError || save.error) && <p className="form-error system-branding-feedback">{localError || save.error?.message}</p>}
+        {message && <p className="system-operation-success system-branding-feedback"><ShieldCheck size={14} />{message}</p>}
+        <div className="system-branding-actions">
+          <button type="button" className="ghost-button" onClick={() => { setSystemName(defaultBranding.systemName); setShortName(defaultBranding.shortName); setLogoDraft(null); setMessage(""); setLocalError(""); }}>恢复默认值</button>
+          <button className="primary-button" disabled={save.isPending || brandingQuery.isLoading}>{save.isPending ? "保存中…" : "保存品牌设置"}</button>
+        </div>
+      </form>
+    </div>
+  </article>;
+}
+
 export function SystemPage() {
   const { session, openLogin } = useApp();
   const client = useQueryClient();
@@ -1397,6 +1308,7 @@ export function SystemPage() {
                 {integrityCheck.error && <p className="form-error">{integrityCheck.error.message}</p>}
               </div>
             </article>
+            <BrandingSettingsCard />
           </section>
         </div>
 
@@ -1423,7 +1335,7 @@ const auditActionLabels: Record<string, string> = {
 };
 const auditEntityLabels: Record<string, string> = {
   project: "项目", requirement: "需求", work_item: "工作项", progress: "进展",
-  issue: "问题", issue_update: "问题进展", person: "人员", account: "账号", template: "流程设计", api_token: "MCP Token", backup: "数据库备份",
+  issue: "问题", issue_update: "问题进展", person: "人员", account: "账号", template: "流程设计", api_token: "MCP Token", backup: "数据库备份", system_branding: "系统品牌",
 };
 
 export function LogsPage() {

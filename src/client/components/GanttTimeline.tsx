@@ -1,6 +1,6 @@
 import { type CSSProperties, type HTMLAttributes } from "react";
 import { addBusinessDays, eachDayOfInterval, format, isValid, isWeekend, parseISO, startOfDay } from "date-fns";
-import { ganttProgressDisplay } from "../../shared/domain";
+import { ganttProgressDisplay, todayIso } from "../../shared/domain";
 
 export type GanttZoom = "day" | "week" | "month";
 
@@ -33,7 +33,7 @@ export function businessDateIndex(date: Date, dates: Date[], edge: "start" | "en
 export function buildBusinessDayTimeline(values: Array<string | null | undefined>, zoom: GanttZoom) {
   const option = ganttZoomOptions[zoom];
   const parsed = values.map(toGanttDate).filter(Boolean) as Date[];
-  const today = startOfDay(new Date());
+  const today = toGanttDate(todayIso()) || startOfDay(new Date());
   const earliest = parsed.length ? new Date(Math.min(...parsed.map((date) => date.getTime()))) : today;
   const latest = parsed.length ? new Date(Math.max(...parsed.map((date) => date.getTime()))) : today;
   const start = startOfDay(addBusinessDays(earliest, -option.padding));
@@ -56,11 +56,12 @@ export function ganttTrackStyle(dates: Date[], cellWidth: number): CSSProperties
   } as CSSProperties;
 }
 
-export function ganttTodayPosition(dates: Date[]) {
-  const today = startOfDay(new Date());
-  const offset = businessDateIndex(today, dates, "start");
-  const visible = !isWeekend(today) && offset >= 0 && offset < dates.length && dates[offset]?.getTime() === today.getTime();
-  return { offset, visible };
+export function ganttTodayPosition(dates: Date[], asOfDate = todayIso()) {
+  const today = toGanttDate(asOfDate) || toGanttDate(todayIso())!;
+  const offset = businessDateIndex(today, dates, "end");
+  const nextOffset = businessDateIndex(today, dates, "start");
+  const visible = offset >= 0 && nextOffset < dates.length;
+  return { offset, visible, asOfDate: format(today, "yyyy-MM-dd") };
 }
 
 function markerVisible(dates: Date[], zoom: GanttZoom, index: number) {
@@ -103,7 +104,7 @@ export function GanttScale({
       style={{ left: index * cellWidth, width: cellWidth }}
       key={`tick-${date.toISOString()}`}
     >{zoom !== "month" && <span>{zoom === "day" ? `周${weekdayLabels[date.getDay()]}` : format(date, "dd")}</span>}</i>)}
-    {todayVisible && <i className="gantt-today-line" style={{ left: todayOffset * cellWidth + cellWidth / 2 }} />}
+    {todayVisible && <i className="gantt-today-line" style={{ left: (todayOffset + 1) * cellWidth }} />}
   </div>;
 }
 
@@ -220,6 +221,7 @@ export function GanttProgressComparison({
   status,
   progress,
   plannedProgress,
+  asOfDate,
   dates,
   cellWidth,
   interactionProps,
@@ -231,6 +233,7 @@ export function GanttProgressComparison({
   status: string;
   progress: number;
   plannedProgress: number;
+  asOfDate?: string;
   dates: Date[];
   cellWidth: number;
   interactionProps?: HTMLAttributes<HTMLElement>;
@@ -240,10 +243,18 @@ export function GanttProgressComparison({
   if (!plan) return showUnscheduled ? <span className="gantt-unscheduled">待排期</span> : null;
   const actualValue = normalizedProgress(status, progress);
   const expectedValue = Math.min(100, Math.max(0, Math.round(plannedProgress || 0)));
-  const actualPoint = plan.left + plan.width * actualValue / 100;
-  const expectedPoint = plan.left + plan.width * expectedValue / 100;
-  const behind = actualPoint < expectedPoint;
-  const ahead = actualPoint > expectedPoint;
+  const asOf = ganttTodayPosition(dates, asOfDate);
+  const expectedPoint = Math.min(plan.right, Math.max(plan.left, (asOf.offset + 1) * cellWidth));
+  const isTerminal = status === "completed" || status === "pending_acceptance" || status === "cancelled";
+  const actualPoint = isTerminal
+    ? plan.left + plan.width * actualValue / 100
+    : actualValue <= expectedValue
+      ? expectedValue > 0
+        ? plan.left + (expectedPoint - plan.left) * actualValue / expectedValue
+        : plan.left
+      : expectedPoint + (plan.right - expectedPoint) * (actualValue - expectedValue) / Math.max(1, 100 - expectedValue);
+  const behind = !isTerminal && actualValue < expectedValue;
+  const ahead = !isTerminal && actualValue > expectedValue;
   const extended = ganttInterval(plannedStart, effectiveEnd, dates, cellWidth);
   const delayWidth = extended ? Math.max(0, extended.right - plan.right) : 0;
   const behindWidth = Math.max(0, expectedPoint - actualPoint);
@@ -253,10 +264,9 @@ export function GanttProgressComparison({
   return <>
     <span className="unified-gantt-plan" style={{ left: plan.left, width: plan.width }} />
     {actualValue > 0 && <span className={`unified-gantt-progress-actual gantt-status-${statusClass}`} style={{ left: plan.left, width: actualPoint - plan.left }} />}
-    {behind && <span className="unified-gantt-progress-gap is-behind" style={{ left: actualPoint, width: behindWidth }}>{behindWidth >= 58 && <b>落后 {variance}%</b>}</span>}
-    {ahead && <span className="unified-gantt-progress-gap is-ahead" style={{ left: expectedPoint, width: aheadWidth }}>{aheadWidth >= 58 && <b>领先 {variance}%</b>}</span>}
+    {behind && <span className="unified-gantt-progress-gap is-behind" style={{ left: actualPoint, width: behindWidth }}>{behindWidth >= 38 && <b>落后 {variance}%</b>}</span>}
+    {ahead && <span className="unified-gantt-progress-gap is-ahead" style={{ left: expectedPoint, width: aheadWidth }}>{aheadWidth >= 38 && <b>领先 {variance}%</b>}</span>}
     {delayWidth > 0 && <span className="unified-gantt-delay" style={{ left: plan.right, width: delayWidth }} />}
-    <span className="unified-gantt-progress-target" style={{ left: expectedPoint }} title={`截至今日应达 ${expectedValue}%`} />
     <span className="unified-gantt-plan-end" style={{ left: plan.right }} />
     {interactionProps && <span
       className="gantt-bar-hitbox"
@@ -265,8 +275,62 @@ export function GanttProgressComparison({
       aria-label="查看需求进度详情"
       {...interactionProps}
     />}
-    <GanttProgressMarker left={actualPoint} status={status} progress={actualValue} ariaLabel={`${progressStatusLabels[status] || status}，实际进度${actualValue}%，截至今日应达${expectedValue}%`} />
+    <GanttProgressMarker left={actualPoint} status={status} progress={actualValue} ariaLabel={`${progressStatusLabels[status] || status}，实际进度${actualValue}%，截至${asOf.asOfDate}应达${expectedValue}%`} />
   </>;
+}
+
+export type GanttMilestonePlacement = {
+  id: string;
+  left: number;
+  labelLeft: number;
+  labelWidth: number;
+  lane: 0 | 1;
+  showLabel: boolean;
+};
+
+type GanttMilestoneInput = { id: string; label?: string | null; plannedEnd?: string | null };
+
+function milestoneLabelWidth(label: string, zoom: GanttZoom) {
+  const estimated = Array.from(label).reduce((width, character) => width + (/[^\u0000-\u00ff]/.test(character) ? 11 : 7), 12);
+  const maximum = zoom === "day" ? 128 : zoom === "week" ? 106 : 88;
+  return Math.min(maximum, Math.max(42, estimated));
+}
+
+export function layoutGanttMilestones(
+  items: GanttMilestoneInput[],
+  dates: Date[],
+  cellWidth: number,
+  zoom: GanttZoom = "day",
+) {
+  const totalWidth = dates.length * cellWidth;
+  const padding = 4;
+  const gap = 5;
+  const occupied: Array<Array<{ start: number; end: number }>> = [[], []];
+  return items
+    .map((item) => {
+      const plannedDate = toGanttDate(item.plannedEnd);
+      const label = item.label?.trim();
+      if (!plannedDate || !label) return null;
+      const endIndex = businessDateIndex(plannedDate, dates, "end");
+      if (endIndex < 0 || endIndex >= dates.length) return null;
+      return { item, label, left: (endIndex + 1) * cellWidth, labelWidth: milestoneLabelWidth(label, zoom) };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left!.left - right!.left)
+    .map((entry) => {
+      const { item, left, labelWidth } = entry!;
+      const rightCandidate = Math.min(totalWidth - padding - labelWidth, Math.max(padding, left + 7));
+      const leftCandidate = Math.min(totalWidth - padding - labelWidth, Math.max(padding, left - 7 - labelWidth));
+      const candidates = left > totalWidth / 2 ? [leftCandidate, rightCandidate] : [rightCandidate, leftCandidate];
+      for (const lane of [0, 1] as const) {
+        const labelLeft = candidates.find((candidate) => !occupied[lane].some((range) => candidate < range.end + gap && candidate + labelWidth > range.start - gap));
+        if (labelLeft !== undefined) {
+          occupied[lane].push({ start: labelLeft, end: labelLeft + labelWidth });
+          return { id: item.id, left, labelLeft, labelWidth, lane, showLabel: true } satisfies GanttMilestonePlacement;
+        }
+      }
+      return { id: item.id, left, labelLeft: rightCandidate, labelWidth, lane: 0, showLabel: false } satisfies GanttMilestonePlacement;
+    });
 }
 
 export function GanttMilestoneMarker({
@@ -276,6 +340,9 @@ export function GanttMilestoneMarker({
   status,
   dates,
   cellWidth,
+  zoom = "day",
+  placement,
+  asOfDate = todayIso(),
 }: {
   label?: string | null;
   plannedEnd?: string | null;
@@ -283,6 +350,9 @@ export function GanttMilestoneMarker({
   status: string;
   dates: Date[];
   cellWidth: number;
+  zoom?: GanttZoom;
+  placement?: GanttMilestonePlacement;
+  asOfDate?: string;
 }) {
   const milestone = label?.trim();
   const plannedDate = toGanttDate(plannedEnd);
@@ -290,13 +360,17 @@ export function GanttMilestoneMarker({
   const endIndex = businessDateIndex(plannedDate, dates, "end");
   if (endIndex < 0 || endIndex >= dates.length) return null;
   const reached = status === "completed" || Boolean(actualEnd);
-  const state = status === "cancelled" ? "cancelled" : reached ? "reached" : plannedEnd! < format(new Date(), "yyyy-MM-dd") ? "overdue" : "planned";
+  const state = status === "cancelled" ? "cancelled" : reached ? "reached" : plannedEnd! < asOfDate ? "overdue" : "planned";
   const stateLabel = state === "cancelled" ? "已取消" : state === "reached" ? "已达成" : state === "overdue" ? "已逾期" : "计划中";
-  const left = (endIndex + 1) * cellWidth;
-  const alignLeft = left > dates.length * cellWidth * .72;
+  const fallbackPlacement = layoutGanttMilestones([{ id: "milestone", label: milestone, plannedEnd }], dates, cellWidth, zoom)[0];
+  const resolvedPlacement = placement || fallbackPlacement;
+  if (!resolvedPlacement) return null;
+  const { left, labelLeft, labelWidth, lane, showLabel } = resolvedPlacement;
   return <span
-    className={`gantt-milestone-marker milestone-${state}${alignLeft ? " align-left" : ""}`}
+    className={`gantt-milestone-marker milestone-${state} milestone-lane-${lane}`}
     style={{ left }}
     title={`${milestone} · ${stateLabel} · 计划 ${plannedEnd}${actualEnd ? ` · 实际 ${actualEnd}` : ""}`}
-  ><i /><b>{milestone}</b></span>;
+    tabIndex={0}
+    aria-label={`${milestone}，${stateLabel}，计划${plannedEnd}`}
+  ><i />{showLabel && <b style={{ left: labelLeft - left, width: labelWidth }}>{milestone}</b>}</span>;
 }

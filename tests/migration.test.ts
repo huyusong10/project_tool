@@ -97,6 +97,7 @@ describe('正式库增量迁移', () => {
       .toEqual({ username: 'admin', globalRole: 'admin', isBuiltin: 1 });
     expect(migrated.prepare('SELECT username,must_change_password AS mustChange FROM accounts WHERE person_id=?').get('u1'))
       .toEqual({ username: '原人员', mustChange: 1 });
+    expect(migrated.prepare(`SELECT COUNT(*) AS count FROM pragma_table_info('accounts') WHERE name='deleted_at'`).get()).toEqual({ count: 1 });
     expect((migrated.pragma('integrity_check') as Array<{ integrity_check: string }>)[0].integrity_check).toBe('ok');
     expect(migrated.pragma('foreign_key_check')).toEqual([]);
     migrated.close(); migratedDb = null;
