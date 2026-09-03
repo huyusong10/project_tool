@@ -4,7 +4,7 @@ import { Archive, KeyRound, MoreHorizontal, Search, ShieldCheck, Trash2, UserCog
 import { api, jsonBody } from '../api';
 import { useApp } from '../app-context';
 import type { Account, Person } from '../types';
-import { AdaptiveDataCell, AdaptiveDataList, AdaptiveDataRow } from '../components/AdaptiveDataList';
+import { AdaptiveDataCell, AdaptiveDataList, AdaptiveDataRow, type AdaptiveDataColumn } from '../components/AdaptiveDataList';
 import { DataCell } from '../components/LayoutPrimitives';
 import { EmptyState, Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
@@ -13,6 +13,15 @@ import { accountRoleLabels, accountRoleOptions, accountStatusOptions } from '../
 
 type OpenAccountResult = { account: Account; temporaryPassword: string };
 type IdentityRow = { person: Person; account: Account | null };
+
+const accountColumns: AdaptiveDataColumn[] = [
+  { key: 'identity', label: '人员与岗位', track: 'minmax(210px,1.25fr)', importance: 'primary', compact: 'primary' },
+  { key: 'account', label: '登录账号', track: 'minmax(160px,.85fr)', compact: 'full' },
+  { key: 'permission', label: '权限范围', track: 'minmax(210px,1.05fr)', compact: 'full' },
+  { key: 'status', label: '登录状态', track: 'minmax(140px,.65fr)', compact: 'detail' },
+  { key: 'login', label: '最近登录', track: 'minmax(150px,.7fr)', compact: 'full' },
+  { key: 'actions', label: '操作', track: '64px', compact: 'actions', align: 'center' },
+];
 
 function AccountPermissionEditor({ account, projects, onSave }: {
   account: Account;
@@ -233,21 +242,19 @@ export function PeopleAccessPage() {
         <select aria-label="按登录状态筛选" value={loginStatus} onChange={(event) => setLoginStatus(event.target.value)}><option value="all">全部登录状态</option><option value="active">允许登录</option><option value="disabled">禁止登录</option><option value="missing">未开通账号</option></select>
         <span>{filteredRows.length} 名人员</span>
       </div>
-      {filteredRows.length ? <AdaptiveDataList label="人员与权限列表" className="account-data-list people-access-list"
-        columns="minmax(210px,1.25fr) minmax(160px,.85fr) minmax(210px,1.05fr) minmax(140px,.65fr) minmax(150px,.7fr) 64px"
-        headers={['人员与岗位', '登录账号', '权限范围', '登录状态', '最近登录', '操作']}>
+      {filteredRows.length ? <AdaptiveDataList label="人员与权限列表" className="account-data-list people-access-list" columns={accountColumns}>
         {filteredRows.map(({ person, account }) => <AdaptiveDataRow className="account-data-row people-access-row" key={person.id}>
-          <AdaptiveDataCell label="人员与岗位" className="account-data-primary"><div className="people-access-person-editor"><InlineTextCell value={person.name} label="人员姓名" required onSave={(name) => savePerson(person, { name })} /><InlineTextCell value={person.jobTitle} label="岗位" placeholder="岗位未设置" onSave={(value) => savePerson(person, { jobTitle: value || null })} renderValue={(value) => <small>{value}</small>} /></div></AdaptiveDataCell>
-          <AdaptiveDataCell label="登录账号" className="account-data-account"><DataCell primary={account ? <InlineTextCell value={account.username} label="登录名" required onSave={(username) => saveAccount(account, { username })} /> : <span className="account-missing"><UserRoundCheck size={15} />未开通账号</span>} /></AdaptiveDataCell>
-          <AdaptiveDataCell label="权限范围" className="account-data-permission"><DataCell primary={account ? <AccountPermissionEditor account={account} projects={projects} onSave={(input) => saveAccount(account, input)} /> : <span className="account-muted">开通账号后配置</span>} /></AdaptiveDataCell>
-          <AdaptiveDataCell label="登录状态" className="account-data-status"><DataCell primary={account ? <InlineSelectCell value={account.status} label="登录状态" options={accountStatusOptions} displayMode="badge" onSave={async (status) => {
+          <AdaptiveDataCell column="identity" className="account-data-primary"><div className="people-access-person-editor"><InlineTextCell value={person.name} label="人员姓名" required onSave={(name) => savePerson(person, { name })} /><InlineTextCell value={person.jobTitle} label="岗位" placeholder="岗位未设置" onSave={(value) => savePerson(person, { jobTitle: value || null })} renderValue={(value) => <small>{value}</small>} /></div></AdaptiveDataCell>
+          <AdaptiveDataCell column="account" className="account-data-account"><DataCell primary={account ? <InlineTextCell value={account.username} label="登录名" required onSave={(username) => saveAccount(account, { username })} /> : <span className="account-missing"><UserRoundCheck size={15} />未开通账号</span>} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="permission" className="account-data-permission"><DataCell primary={account ? <AccountPermissionEditor account={account} projects={projects} onSave={(input) => saveAccount(account, input)} /> : <span className="account-muted">开通账号后配置</span>} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="status" className="account-data-status"><DataCell primary={account ? <InlineSelectCell value={account.status} label="登录状态" options={accountStatusOptions} displayMode="badge" onSave={async (status) => {
             const total = account.activeAssignments.requirements + account.activeAssignments.workItems + account.activeAssignments.issues;
             if (status === 'disabled' && total > 0 && !confirm(`该账号仍有关联需求${account.activeAssignments.requirements}项、工作项${account.activeAssignments.workItems}项、问题${account.activeAssignments.issues}项。禁止登录不会重新分配这些任务，是否继续？`)) return;
             await saveAccount(account, { status });
           }} renderValue={(value, option) => <span className={`account-status ${value}`}>{option?.label || value}</span>} /> : <span className="account-status missing">未开通</span>}
             secondary={account?.mustChangePassword || account?.status === 'disabled' && account.activeAssignments.requirements + account.activeAssignments.workItems + account.activeAssignments.issues > 0 ? <>{account?.mustChangePassword && <span className="account-password-state">待修改初始密码</span>}{account?.status === 'disabled' && account.activeAssignments.requirements + account.activeAssignments.workItems + account.activeAssignments.issues > 0 && <span className="account-assignment-warning">仍有待处理任务</span>}</> : undefined} /></AdaptiveDataCell>
-          <AdaptiveDataCell label="最近登录" className="account-data-login"><DataCell primary={account ? account.lastLoginAt ? new Date(account.lastLoginAt).toLocaleString('zh-CN') : '从未登录' : '—'} /></AdaptiveDataCell>
-          <AdaptiveDataCell label="操作" className="account-data-actions"><AccountActions account={account} person={person} currentAccountId={session.accountId} pending={pending}
+          <AdaptiveDataCell column="login" className="account-data-login"><DataCell primary={account ? account.lastLoginAt ? new Date(account.lastLoginAt).toLocaleString('zh-CN') : '从未登录' : '—'} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="actions" className="account-data-actions"><AccountActions account={account} person={person} currentAccountId={session.accountId} pending={pending}
             onReset={account ? () => confirm(`将“${account.username}”的密码重置为888888？`) && reset.mutate(account.id) : undefined}
             onToggleLogin={account ? () => {
               const nextStatus = account.status === 'active' ? 'disabled' : 'active';

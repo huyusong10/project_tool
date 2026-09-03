@@ -16,6 +16,7 @@ import { api, jsonBody } from "../api";
 import { useApp } from "../app-context";
 import type { Issue, IssuePage, IssueUpdate, Person, Requirement } from "../types";
 import { issueStatusLabels, priorityLabels, todayIso } from "../../shared/domain";
+import { AdaptiveDataCell, AdaptiveDataList, AdaptiveDataRow, type AdaptiveDataColumn } from "../components/AdaptiveDataList";
 import { EmptyState, Modal } from "../components/Modal";
 import { DataCell, FieldShell } from "../components/LayoutPrimitives";
 import { PageHeader } from "../components/PageHeader";
@@ -26,6 +27,16 @@ import { issueStatusOptions, priorityOptions } from "../ui-options";
 
 const statusEntries = issueStatusOptions.map(({ value, label }) => [value, label] as const);
 const priorityEntries = priorityOptions.map(({ value, label }) => [value, label] as const);
+const issueColumns: AdaptiveDataColumn[] = [
+  { key: "issue", label: "问题", track: "minmax(280px,2fr)", importance: "primary", compact: "primary" },
+  { key: "scope", label: "范围", track: "minmax(140px,.9fr)", importance: "secondary", compact: "full" },
+  { key: "status", label: "状态", track: "minmax(128px,.65fr)", compact: "detail" },
+  { key: "progress", label: "进度", track: "minmax(126px,.65fr)", compact: "detail" },
+  { key: "priority", label: "优先级", track: "minmax(132px,.65fr)", compact: "detail" },
+  { key: "owner", label: "负责人", track: "minmax(140px,.75fr)", compact: "detail" },
+  { key: "dueDate", label: "目标日期", track: "minmax(150px,.8fr)", compact: "detail" },
+  { key: "latest", label: "最近进展", track: "minmax(240px,1.4fr)", importance: "secondary", compact: "full" },
+];
 
 function defaultIssueStatus(params: URLSearchParams) {
   if (params.get("active") === "true") return "active";
@@ -461,22 +472,24 @@ export function IssuesPage() {
         <span className="issue-filter-result">{data?.total || 0} / {summary.total} 条</span>
         <button className="gantt-reset-button" disabled={!hasFilters} onClick={clearFilters}>清除筛选</button>
       </div>
-      <section className="table-panel issue-table-panel">
-        <table className="issue-table"><thead><tr><th>问题</th><th>范围</th><th>状态</th><th>进度</th><th>优先级</th><th>负责人</th><th>目标日期</th><th>最近进展</th></tr></thead>
-          <tbody>{data?.items.map((issue) => <tr className={issue.overdue ? "is-overdue" : undefined} key={issue.id}>
-            <td><button type="button" className="issue-title-button" onClick={() => openIssue(issue.id, "basic")}><DataCell primary={<strong>{issue.title}</strong>} secondary={issue.impact || "暂无影响说明"} /></button></td>
-            <td><DataCell primary={canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.requirementId} label="关联需求" options={[{ value: "", label: issue.sourceRef ? `公共问题 · ${issue.sourceRef}` : "公共问题" }, ...requirements.map((requirement) => ({ value: requirement.id, label: requirement.title }))]} onSave={(requirementId) => saveIssue(issue, { requirementId: requirementId || null })} placeholder="公共问题" renderValue={() => <span className="issue-scope" title={issueScope(issue)}>{issueScope(issue)}</span>} /> : <span className="issue-scope" title={issueScope(issue)}>{issueScope(issue)}</span>} /></td>
-            <td><DataCell primary={<IssueStatusControl issue={issue} canManage={canEdit} compact />} /></td>
-            <td><DataCell primary={<span className="issue-table-progress"><i><b style={{ width: `${issue.progress}%` }} /></i>{issue.progress}%</span>} /></td>
-            <td><DataCell primary={canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.priority} label="问题优先级" options={priorityOptions} displayMode="badge" onSave={(priority) => saveIssue(issue, { priority })} renderValue={(value) => <span className={`priority-badge priority-${value.toLowerCase()}`}>{priorityLabels[value as keyof typeof priorityLabels] || value}</span>} /> : <span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>} /></td>
-            <td><DataCell primary={canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.ownerId} label="问题负责人" options={[{ value: "", label: "未分配" }, ...people.map((person) => ({ value: person.id, label: person.name }))]} onSave={(ownerId) => saveIssue(issue, { ownerId: ownerId || null })} placeholder="未分配" renderValue={(_value, selected) => selected?.value ? selected.label : <span className="muted-text">未分配</span>} /> : issue.ownerName || <span className="muted-text">未分配</span>} /></td>
-            <td className={issue.overdue ? "danger-text" : ""}><DataCell primary={canEdit && !["deferred", "resolved"].includes(issue.status) ? <InlineDateCell value={issue.dueDate} label="目标日期" onSave={(dueDate) => saveIssue(issue, { dueDate })} /> : issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"} secondary={issue.overdue ? "已逾期" : undefined} /></td>
-            <td><button type="button" className="issue-latest-update-button" onClick={() => openIssue(issue.id, "updates")}><DataCell primary={<span className="issue-latest-update" title={issue.latestUpdate || undefined}>{issue.latestUpdate || "暂无进展"}</span>} secondary={issue.latestUpdateAt ? shortDateTime(issue.latestUpdateAt) : "查看进展"} /></button></td>
-          </tr>)}</tbody>
-        </table>
-        {!data?.items.length && !isLoading && <EmptyState title="没有符合条件的问题" detail="调整筛选条件，或新建一条公共问题。" />}
-        <footer className="table-pagination"><span>第 {data?.page || 1} / {data?.pages || 1} 页</span><div><button className="ghost-button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</button><button className="ghost-button" disabled={page >= (data?.pages || 1)} onClick={() => setPage((value) => value + 1)}>下一页</button></div></footer>
-      </section>
+      <AdaptiveDataList
+        label="问题跟踪列表"
+        className="issue-data-list"
+        columns={issueColumns}
+        empty={!data?.items.length && !isLoading ? <EmptyState title="没有符合条件的问题" detail="调整筛选条件，或新建一条公共问题。" /> : null}
+        footer={<footer className="table-pagination"><span>第 {data?.page || 1} / {data?.pages || 1} 页</span><div><button className="ghost-button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</button><button className="ghost-button" disabled={page >= (data?.pages || 1)} onClick={() => setPage((value) => value + 1)}>下一页</button></div></footer>}
+      >
+        {data?.items.map((issue) => <AdaptiveDataRow className={`issue-data-row${issue.overdue ? " is-overdue" : ""}`} key={issue.id}>
+          <AdaptiveDataCell column="issue" className="issue-data-primary"><button type="button" className="issue-title-button" onClick={() => openIssue(issue.id, "basic")}><DataCell primary={<strong>{issue.title}</strong>} secondary={issue.impact || "暂无影响说明"} /></button></AdaptiveDataCell>
+          <AdaptiveDataCell column="scope" className="issue-data-scope"><DataCell primary={canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.requirementId} label="关联需求" options={[{ value: "", label: issue.sourceRef ? `公共问题 · ${issue.sourceRef}` : "公共问题" }, ...requirements.map((requirement) => ({ value: requirement.id, label: requirement.title }))]} onSave={(requirementId) => saveIssue(issue, { requirementId: requirementId || null })} placeholder="公共问题" renderValue={() => <span className="issue-scope" title={issueScope(issue)}>{issueScope(issue)}</span>} /> : <span className="issue-scope" title={issueScope(issue)}>{issueScope(issue)}</span>} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="status" className="issue-data-status"><DataCell primary={<IssueStatusControl issue={issue} canManage={canEdit} compact />} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="progress" className="issue-data-progress"><DataCell primary={<span className="issue-table-progress"><i><b style={{ width: `${issue.progress}%` }} /></i>{issue.progress}%</span>} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="priority" className="issue-data-priority"><DataCell primary={canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.priority} label="问题优先级" options={priorityOptions} displayMode="badge" onSave={(priority) => saveIssue(issue, { priority })} renderValue={(value) => <span className={`priority-badge priority-${value.toLowerCase()}`}>{priorityLabels[value as keyof typeof priorityLabels] || value}</span>} /> : <span className={`priority-badge priority-${issue.priority.toLowerCase()}`}>{priorityLabels[issue.priority as keyof typeof priorityLabels] || issue.priority}</span>} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="owner" className="issue-data-owner"><DataCell primary={canEdit && issue.status !== "resolved" ? <InlineSelectCell value={issue.ownerId} label="问题负责人" options={[{ value: "", label: "未分配" }, ...people.map((person) => ({ value: person.id, label: person.name }))]} onSave={(ownerId) => saveIssue(issue, { ownerId: ownerId || null })} placeholder="未分配" renderValue={(_value, selected) => selected?.value ? selected.label : <span className="muted-text">未分配</span>} /> : issue.ownerName || <span className="muted-text">未分配</span>} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="dueDate" className={`issue-data-due${issue.overdue ? " danger-text" : ""}`}><DataCell primary={canEdit && !["deferred", "resolved"].includes(issue.status) ? <InlineDateCell value={issue.dueDate} label="目标日期" onSave={(dueDate) => saveIssue(issue, { dueDate })} /> : issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"} secondary={issue.overdue ? "已逾期" : undefined} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="latest" className="issue-data-latest"><button type="button" className="issue-latest-update-button" onClick={() => openIssue(issue.id, "updates")}><DataCell primary={<span className="issue-latest-update" title={issue.latestUpdate || undefined}>{issue.latestUpdate || "暂无进展"}</span>} secondary={issue.latestUpdateAt ? shortDateTime(issue.latestUpdateAt) : "查看进展"} /></button></AdaptiveDataCell>
+        </AdaptiveDataRow>)}
+      </AdaptiveDataList>
     </div>
     {selectedIssueId && <Modal title="问题详情" width={960} layout="workspace" onClose={closeIssue}><IssueDetail issueId={selectedIssueId} projectId={selectedProjectId} people={people} requirements={requirements} defaultReporter={defaultReporter} initialTab={detailTab} canEdit={canEdit} canContribute={canContribute} personId={session.personId} onClose={closeIssue} /></Modal>}
     {formIssue !== undefined && <Modal title={formIssue ? "编辑问题" : "新建问题"} width={760} onClose={() => setFormIssue(undefined)}><IssueForm issue={formIssue || undefined} projectId={selectedProjectId} people={people} requirements={requirements} canManage={canEdit} defaultReporter={defaultReporter} onClose={() => setFormIssue(undefined)} /></Modal>}

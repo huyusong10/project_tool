@@ -360,6 +360,82 @@ textarea {
   }
 }
 
+@container adaptive-data-list (max-width: 1320px) {
+  .adaptive-data-list-header,
+  .adaptive-data-row {
+    grid-template-columns: var(--adaptive-medium-columns);
+  }
+
+  .adaptive-data-list-header > [data-importance="secondary"],
+  .adaptive-data-row > [data-importance="secondary"] {
+    display: none;
+  }
+}
+
+@container adaptive-data-list (max-width: 980px) {
+  .adaptive-data-list-header {
+    display: none;
+  }
+
+  .adaptive-data-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 14px;
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .adaptive-data-cell {
+    align-self: auto;
+    display: grid;
+    grid-template-columns: 82px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+  }
+
+  .adaptive-data-cell::before {
+    display: block;
+    color: #8793a3;
+    font-size: 12px;
+  }
+
+  .adaptive-data-cell[data-compact="primary"] {
+    grid-column: 1 / -1;
+    display: block;
+  }
+
+  .adaptive-data-cell[data-compact="primary"]::before,
+  .adaptive-data-cell[data-compact="actions"]::before {
+    display: none;
+  }
+
+  .adaptive-data-row > .adaptive-data-cell[data-compact="full"],
+  .adaptive-data-cell[data-compact="actions"] {
+    grid-column: 1 / -1;
+  }
+
+  .adaptive-data-row > .adaptive-data-cell[data-compact="full"] {
+    display: grid;
+  }
+
+  .adaptive-data-cell[data-compact="hidden"] {
+    display: none;
+  }
+}
+
+@container adaptive-data-list (max-width: 560px) {
+  .adaptive-data-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .adaptive-data-cell,
+  .adaptive-data-cell[data-compact="primary"],
+  .adaptive-data-cell[data-compact="full"],
+  .adaptive-data-cell[data-compact="actions"] {
+    grid-column: 1;
+  }
+}
+
 @container adaptive-data-list (max-width: 900px) {
   .account-data-list .adaptive-data-list-header {
     display: none;
@@ -385,6 +461,12 @@ textarea {
   .account-data-list .adaptive-data-cell {
     align-self: auto;
     padding: 0;
+  }
+
+  .account-data-list .account-data-primary::before,
+  .account-data-list .account-data-status::before,
+  .account-data-list .account-data-actions::before {
+    display: none;
   }
 
   .account-data-primary { grid-area: primary; }

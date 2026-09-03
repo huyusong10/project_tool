@@ -1,0 +1,85 @@
+import { expect, test, type Page, type Route } from '@playwright/test';
+import type { Issue, IssuePage, Person, Project } from '../../src/client/types';
+
+const project: Project = {
+  id: 'p1', name: 'DCIM', status: 'active', plannedStart: null, plannedEnd: null,
+  defaultTemplateId: null, isSample: false, createdAt: '2026-09-01', updatedAt: '2026-09-01',
+};
+
+const people: Person[] = [
+  { id: 'u1', name: '一位名字较长的负责人', jobTitle: '产品经理', active: 1, createdAt: '2026-09-01', updatedAt: '2026-09-01' },
+];
+
+const baseIssue: Issue = {
+  id: 'issue-1', projectId: project.id, projectName: project.name, requirementId: null, requirementTitle: null,
+  sourceRef: '公共问题', title: '低分辨率下也必须完整显示优先级与编辑入口', impact: '影响多个团队的公共问题',
+  reporter: '提出人', ownerId: people[0].id, ownerName: people[0].name, status: 'in_progress', priority: 'P0', progress: 45,
+  discoveredAt: '2026-08-20', dueDate: '2026-09-01', resolvedAt: null, version: 1,
+  createdAt: '2026-08-20', updatedAt: '2026-09-03', latestUpdate: '正在协调相关人员处理，这是一段用于验证响应式布局的较长进展说明。',
+  latestUpdateAt: '2026-09-03T09:30:00.000Z', overdue: true,
+};
+
+const issuePage: IssuePage = {
+  items: [baseIssue, { ...baseIssue, id: 'issue-2', title: '普通优先级问题', priority: 'P2', overdue: false, dueDate: '2026-09-10' }],
+  total: 2, page: 1, pageSize: 50, pages: 1,
+  summary: { total: 2, inProgress: 2, deferred: 0, resolved: 0, active: 2, highPriority: 1, overdue: 1, unassigned: 0, closureRate: 0 },
+};
+
+async function mockIssues(page: Page) {
+  await page.route('**/api/**', async (route: Route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    const json = (value: unknown) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(value) });
+    if (pathname === '/api/branding') return json({ systemName: '项目管理', shortName: 'PM', logoUrl: null, updatedAt: null });
+    if (pathname === '/api/session') return json({ authenticated: true, accountId: 'admin', username: 'admin', httpWarning: true, role: 'admin', globalRole: 'admin', personId: null, mustChangePassword: false, managedProjectIds: [] });
+    if (pathname === '/api/projects') return json([project]);
+    if (pathname === '/api/people') return json(people);
+    if (pathname === '/api/requirements') return json([]);
+    if (pathname === '/api/issues') return json(issuePage);
+    return json({});
+  });
+}
+
+test('问题列表在低分辨率下不遮挡优先级和编辑控件', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-1080p', '在一个浏览器内覆盖多种内容宽度');
+  await mockIssues(page);
+
+  for (const viewport of [
+    { width: 1920, height: 1080 },
+    { width: 1366, height: 768 },
+    { width: 1280, height: 800 },
+    { width: 1024, height: 768 },
+    { width: 900, height: 760 },
+    { width: 760, height: 760 },
+    { width: 620, height: 760 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/issues');
+    await expect(page.locator('.issue-data-row')).toHaveCount(2);
+    await expect(page.locator('.issue-data-priority .priority-badge').first()).toHaveText('P0 · 紧急');
+
+    const layout = await page.locator('.issue-data-list').evaluate((list) => ({
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      escapedPriorities: [...list.querySelectorAll<HTMLElement>('.issue-data-priority .priority-badge')].filter((badge) => {
+        const cell = badge.closest<HTMLElement>('.issue-data-priority')?.getBoundingClientRect();
+        const rect = badge.getBoundingClientRect();
+        return !cell || rect.left < cell.left - 1 || rect.right > cell.right + 1;
+      }).length,
+      escapedEditors: [...list.querySelectorAll<HTMLElement>('.inline-edit-trigger')].filter((button) => {
+        const cell = button.closest<HTMLElement>('.adaptive-data-cell')?.getBoundingClientRect();
+        const rect = button.getBoundingClientRect();
+        return !cell || rect.left < cell.left - 1 || rect.right > cell.right + 1;
+      }).length,
+    }));
+    expect(layout.pageOverflow).toBeLessThanOrEqual(1);
+    expect(layout.escapedPriorities).toBe(0);
+    expect(layout.escapedEditors).toBe(0);
+  }
+
+  await page.locator('.issue-data-priority').first().getByRole('button', { name: /问题优先级/ }).click();
+  const popover = page.locator('.inline-select-popover');
+  await expect(popover).toBeVisible();
+  const rect = await popover.boundingBox();
+  expect(rect).not.toBeNull();
+  expect(rect!.x).toBeGreaterThanOrEqual(0);
+  expect(rect!.x + rect!.width).toBeLessThanOrEqual(620);
+});

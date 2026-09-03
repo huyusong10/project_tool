@@ -303,9 +303,9 @@ test("问题字段、表格基线和详情工作区保持稳定", async ({ page 
   await mockApplication(page, patches, { issue: { dueDate: "2026-08-25", overdue: true } });
   await page.goto("/issues");
 
-  const primaryTops = await page.locator(".issue-table tbody tr:first-child .data-cell-primary").evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().top));
+  const primaryTops = await page.locator('.issue-data-row:first-child > .adaptive-data-cell:not([data-importance="secondary"]) .data-cell-primary').evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().top));
   expect(Math.max(...primaryTops) - Math.min(...primaryTops)).toBeLessThanOrEqual(1);
-  await expect(page.locator(".issue-table tbody tr:first-child .data-cell-secondary").filter({ hasText: "已逾期" })).toBeVisible();
+  await expect(page.locator(".issue-data-row:first-child .issue-data-due .data-cell-secondary").filter({ hasText: "已逾期" })).toBeVisible();
 
   await page.locator(".issue-title-button").click();
   const dialog = page.getByRole("dialog", { name: "问题详情" });
@@ -350,7 +350,7 @@ test("公共数据单元格统一编辑态与次级信息的可见起点", async
   });
 
   await page.goto("/issues");
-  const issueCell = ".issue-table tbody tr:first-child td:nth-child(7) .data-cell";
+  const issueCell = ".issue-data-row:first-child .issue-data-due .data-cell";
   const issueValueLeft = await textLeft(`${issueCell} .inline-edit-value`);
   const issueMetaLeft = await textLeft(`${issueCell} .data-cell-secondary`);
   expect(Math.abs(issueValueLeft - issueMetaLeft)).toBeLessThanOrEqual(1);
@@ -358,9 +358,13 @@ test("公共数据单元格统一编辑态与次级信息的可见起点", async
   await page.goto("/requirements");
   const requirementTitle = ".requirements-table tbody tr:first-child td:first-child .data-cell";
   expect(Math.abs(await textLeft(`${requirementTitle} .data-cell-primary`) - await textLeft(`${requirementTitle} .data-cell-secondary`))).toBeLessThanOrEqual(1);
-  const priorityCellLeft = await page.locator(".requirements-table tbody tr:first-child td:nth-child(2) .data-cell").evaluate((element) => element.getBoundingClientRect().left);
-  const priorityBadgeLeft = await page.locator(".requirements-table tbody tr:first-child td:nth-child(2) .priority-badge").evaluate((element) => element.getBoundingClientRect().left);
-  expect(Math.abs(priorityCellLeft - priorityBadgeLeft)).toBeLessThanOrEqual(1);
+  const priorityBounds = await page.locator(".requirements-table tbody tr:first-child td:nth-child(2)").evaluate((cell) => {
+    const cellRect = cell.getBoundingClientRect();
+    const badgeRect = cell.querySelector<HTMLElement>('.priority-badge')!.getBoundingClientRect();
+    return { cellLeft: cellRect.left, cellRight: cellRect.right, badgeLeft: badgeRect.left, badgeRight: badgeRect.right };
+  });
+  expect(priorityBounds.badgeLeft).toBeGreaterThanOrEqual(priorityBounds.cellLeft);
+  expect(priorityBounds.badgeRight).toBeLessThanOrEqual(priorityBounds.cellRight);
 
   await page.goto("/accounts");
   const accountStatus = ".account-data-row:first-child .account-data-status .data-cell";
