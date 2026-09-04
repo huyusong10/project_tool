@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, KeyRound, MoreHorizontal, ShieldCheck, Trash2, UserCog, UserPlus, UserRoundCheck, UserRoundX } from 'lucide-react';
+import { Archive, KeyRound, MoreHorizontal, Trash2, UserCog, UserPlus, UserRoundCheck, UserRoundX } from 'lucide-react';
 import { api, jsonBody } from '../api';
 import { useApp } from '../app-context';
 import type { Account, Person } from '../types';
@@ -146,7 +146,6 @@ export function PeopleAccessPage() {
   const accountsQuery = useQuery({ queryKey: ['accounts'], queryFn: () => api<Account[]>('/api/accounts') });
   const people = useMemo(() => peopleQuery.data || [], [peopleQuery.data]);
   const accounts = useMemo(() => accountsQuery.data || [], [accountsQuery.data]);
-  const builtin = accounts.find((account) => account.isBuiltin) || null;
   const accountByPerson = useMemo(() => new Map(accounts.filter((account) => account.personId).map((account) => [account.personId!, account])), [accounts]);
   const rows = useMemo<IdentityRow[]>(() => people.map((person) => ({ person, account: accountByPerson.get(person.id) || null })), [accountByPerson, people]);
   const jobTitles = useMemo(() => [...new Set(people.map((person) => person.jobTitle).filter(Boolean) as string[])].sort((left, right) => left.localeCompare(right, 'zh-CN')), [people]);
@@ -261,14 +260,6 @@ export function PeopleAccessPage() {
   return <>
     <PageHeader title="人员与权限" actions={<button className="primary-button" onClick={() => setCreating(true)}><UserPlus size={16} />新增人员</button>} />
     <div className="page-content accounts-page people-access-page">
-      {builtin && <section className="system-account-card">
-        <span className="system-account-icon"><ShieldCheck size={21} /></span>
-        <div className="system-account-copy"><strong>系统管理员账号</strong><span>{builtin.username} · 不关联业务人员</span></div>
-        <AccountPermissionEditor account={builtin} onSave={async () => undefined} />
-        <span className={`account-status ${builtin.status}`}>允许登录</span>
-        <span className="system-account-login">{builtin.lastLoginAt ? `最近登录 ${new Date(builtin.lastLoginAt).toLocaleString('zh-CN')}` : '从未登录'}</span>
-        <AccountActions account={builtin} person={null} currentAccountId={session.accountId} pending={pending} onReset={() => openConfirmation({ kind: 'reset', accountId: builtin.id, name: builtin.username })} />
-      </section>}
       <div className="filter-bar people-access-filters">
         <SearchInput value={keyword} onChange={setKeyword} placeholder="搜索姓名、岗位、登录名或拼音" />
         <select aria-label="按岗位筛选" value={jobTitle} onChange={(event) => setJobTitle(event.target.value)}><option value="all">全部岗位</option>{jobTitles.map((value) => <option key={value}>{value}</option>)}</select>

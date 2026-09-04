@@ -51,6 +51,7 @@ test("项目看板、我的工作和个人设置采用新的信息层级", async
   expect(actions).not.toBeNull();
   expect(actions!.y).toBeGreaterThan(issue!.y);
   expect(actions!.y).toBeGreaterThan(gantt!.y);
+  await expect(page.locator(".project-gantt-panel").getByRole("button", { name: "调整卡片高度" })).toBeVisible();
 
   await page.goto("/my-work");
   await expect(page.getByRole("table", { name: "分配给我的工作项甘特图" })).toBeVisible();
@@ -59,6 +60,38 @@ test("项目看板、我的工作和个人设置采用新的信息层级", async
   await expect(page.getByRole("button", { name: "为SDS 文档编写写进展" })).toBeVisible();
   await expect(page.locator(".my-work-dates")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+
+  const workPanel = page.locator(".my-work-list");
+  const charts = page.locator(".my-work-charts");
+  const panelBeforeEmpty = await workPanel.boundingBox();
+  const chartsBeforeEmpty = await charts.boundingBox();
+  await workPanel.getByRole("button", { name: "未开始", exact: true }).click();
+  await expect(page.getByRole("table", { name: "分配给我的工作项甘特图" })).toBeVisible();
+  await expect(page.locator(".requirement-gantt-filter-empty")).toContainText("当前筛选下没有工作项");
+  const panelAfterEmpty = await workPanel.boundingBox();
+  const chartsAfterEmpty = await charts.boundingBox();
+  expect(Math.abs(panelAfterEmpty!.height - panelBeforeEmpty!.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(chartsAfterEmpty!.y - chartsBeforeEmpty!.y)).toBeLessThanOrEqual(1);
+  await page.getByRole("button", { name: "查看全部", exact: true }).click();
+  await expect(page.locator(".my-work-list .unified-gantt-plan")).toHaveCount(1);
+
+  const initialPanel = await workPanel.boundingBox();
+  const resizeHandle = workPanel.getByRole("button", { name: "调整卡片高度" });
+  const handleBox = await resizeHandle.boundingBox();
+  await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + handleBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + handleBox!.height / 2 + 64);
+  await page.mouse.up();
+  const resizedPanel = await workPanel.boundingBox();
+  expect(resizedPanel!.height).toBeGreaterThan(initialPanel!.height + 40);
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("project-manage:panel-height:a1:my-work-gantt"))).not.toBeNull();
+  await page.reload();
+  const restoredPanel = await page.locator(".my-work-list").boundingBox();
+  expect(Math.abs(restoredPanel!.height - resizedPanel!.height)).toBeLessThanOrEqual(1);
+  await page.locator(".my-work-list").getByRole("button", { name: "调整卡片高度" }).dblclick();
+  const resetPanel = await page.locator(".my-work-list").boundingBox();
+  expect(Math.abs(resetPanel!.height - initialPanel!.height)).toBeLessThanOrEqual(1);
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("project-manage:panel-height:a1:my-work-gantt"))).toBeNull();
 
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "胡宇松", exact: true })).toBeVisible();

@@ -120,6 +120,13 @@
       "when": 1788421912546,
       "tag": "0016_superb_the_order",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1788440177861,
+      "tag": "0017_uniform_requirement_schedule",
+      "breakpoints": true
     }
   ]
 }

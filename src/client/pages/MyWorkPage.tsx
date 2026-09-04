@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Check, CircleStop, Clock3, MessageSquarePlus, Play } from 'lucide-react';
 import { api, jsonBody } from '../api';
+import { useApp } from '../app-context';
+import { invalidateRequirementViews } from '../query-invalidation';
 import type { MyWork, MyWorkItem } from '../types';
 import { requirementStatusLabels } from '../../shared/domain';
 import { Chart } from '../components/Chart';
@@ -10,6 +12,7 @@ import { GapTimeline } from '../components/GapTimeline';
 import { EmptyState, Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { ProgressInput } from '../components/ProgressInput';
+import { ResizablePanel } from '../components/ResizablePanel';
 import { WorkItemActions } from '../components/WorkItemActions';
 
 function ProgressForm({ item, onClose }: { item: MyWorkItem; onClose: () => void }) {
@@ -19,7 +22,10 @@ function ProgressForm({ item, onClose }: { item: MyWorkItem; onClose: () => void
     mutationFn: (value: { content: string; workItemPercent?: number }) => api(`/api/requirements/${item.requirementId}/progress`, {
       method: 'POST', body: jsonBody({ ...value, workItemId: item.id, expectedVersion: item.version }),
     }),
-    onSuccess: () => { void client.invalidateQueries({ queryKey: ['my-work'] }); onClose(); },
+    onSuccess: () => {
+      invalidateRequirementViews(client, item.requirementId);
+      onClose();
+    },
   });
   return <form className="form-grid" onSubmit={(event) => {
     event.preventDefault();
@@ -37,6 +43,7 @@ function ProgressForm({ item, onClose }: { item: MyWorkItem; onClose: () => void
 
 export function MyWorkPage() {
   const client = useQueryClient(); const navigate = useNavigate();
+  const { session } = useApp();
   const [filter, setFilter] = useState('active');
   const [progressItem, setProgressItem] = useState<MyWorkItem>();
   const { data, isLoading, error, refetch } = useQuery({ queryKey: ['my-work'], queryFn: () => api<MyWork>('/api/my-work') });
@@ -45,7 +52,9 @@ export function MyWorkPage() {
     mutationFn: ({ item, action, content, reason }: { item: MyWorkItem; action: string; content?: string; reason?: string }) => api(`/api/work-items/${item.id}/${action}`, {
       method: 'POST', body: jsonBody({ expectedVersion: item.version, content, reason }),
     }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ['my-work'] }),
+    onSuccess: (_result, variables) => {
+      invalidateRequirementViews(client, variables.item.requirementId);
+    },
   });
   const charts = useMemo(() => ({
     completion: { grid: { left: 35, right: 12, top: 18, bottom: 32 }, tooltip: { trigger: 'axis' }, xAxis: { type: 'category', data: data?.completionTrend.map((item) => item.week.slice(5)) || [] }, yAxis: { type: 'value', minInterval: 1 }, series: [{ type: 'bar', data: data?.completionTrend.map((item) => item.completed) || [], itemStyle: { color: '#2f6feb', borderRadius: [5, 5, 0, 0] } }] },
@@ -76,15 +85,21 @@ export function MyWorkPage() {
           </button>)}
         </div>
       </section>}
-      <section className="panel my-work-list">
+      <ResizablePanel
+        className="panel my-work-list stable-workspace-panel"
+        storageKey={`${session.accountId || session.username || 'guest'}:my-work-gantt`}
+        defaultHeight={520}
+        minHeight={360}
+      >
         <header><div><h2>分配给我的工作项</h2><p>主负责人和协作工作都会显示</p></div><div className="view-tabs">{[['active', '当前'], ['not_started', '未开始'], ['in_progress', '进行中'], ['blocked', '阻塞'], ['completed', '已完成'], ['all', '全部']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}</button>)}</div></header>
-        {items.length ? <GapTimeline
+        {isLoading && !data ? <div className="stable-panel-state">正在加载工作项…</div> : <GapTimeline
           items={items}
           showStatusFilters={false}
           showGapSummary={false}
           showUnscheduled
           actionColumnWidth={164}
           ariaLabel="分配给我的工作项甘特图"
+          emptyState={{ message: '当前筛选下没有工作项', actionLabel: '查看全部', onAction: () => setFilter('all') }}
           onItemClick={(baseItem) => navigate(`/requirements/${(baseItem as MyWorkItem).requirementId}`)}
           renderItemMeta={(baseItem) => {
             const item = baseItem as MyWorkItem;
@@ -97,8 +112,8 @@ export function MyWorkPage() {
               <WorkItemActions item={item} onAction={(nextAction, text) => action.mutateAsync({ item, action: nextAction, ...(nextAction === 'block' ? { reason: text } : { content: text }) })} />
             </div>;
           }}
-        /> : !error && !isLoading && <EmptyState title="当前没有工作项" detail="分配为主负责人或协作人员后，会自动出现在这里。" />}
-      </section>
+        />}
+      </ResizablePanel>
       <section className="my-work-charts"><article className="panel"><header><div><h2>完成趋势</h2><p>近8个有完成记录的自然周</p></div></header><Chart option={charts.completion} height={230} ariaLabel="我的工作完成趋势" /></article><article className="panel"><header><div><h2>近期并发</h2><p>未来10个工作日的计划工作项数</p></div></header><Chart option={charts.upcoming} height={230} ariaLabel="我的近期工作并发趋势" /></article></section>
       </>}
     </div>

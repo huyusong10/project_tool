@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { ApiError, api, jsonBody } from "../api";
 import { useApp } from "../app-context";
+import { invalidateRequirementViews } from "../query-invalidation";
 import type {
   ApiToken,
   Archives,
@@ -190,8 +191,7 @@ export function RequirementsPage() {
     try {
       const saved = await api<Requirement>(`/api/requirements/${item.id}`, { method: "PATCH", body: jsonBody({ ...input, expectedVersion: item.version }) });
       client.setQueryData<Requirement[]>(key, (current = []) => current.map((entry) => entry.id === saved.id ? saved : entry));
-      void client.invalidateQueries({ queryKey: ["requirement", item.id] });
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
+      invalidateRequirementViews(client, item.id);
     } catch (error) {
       client.setQueryData(key, previous);
       throw error;

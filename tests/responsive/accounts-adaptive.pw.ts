@@ -59,7 +59,6 @@ test('人员与权限在宽、中、窄内容区完整展示并与项目角色�
     if (viewport.width >= 900) await expect(pageHeading).toBeVisible();
     else await expect(pageHeading).toHaveCount(1);
     await expect(page.locator('.people-access-row')).toHaveCount(3);
-    await expect(page.locator('.system-account-card')).toContainText('系统管理员账号');
     await expect(page.locator('.people-access-list').getByText('未开通账号', { exact: true })).toBeVisible();
     await expect(page.getByText('项目角色在各项目内配置', { exact: true })).toBeVisible();
     await expect(page.getByText(/项目经理：DCIM、基础设施平台 等 3 个项目/)).toBeVisible();

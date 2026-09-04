@@ -472,6 +472,70 @@ describe('自动化项目管理API', () => {
     expect(after.plannedEnd).toBe(item.plannedEnd);
   });
 
+  it('需求排期随工作项编辑、新增、删除、取消和重开统一聚合', async () => {
+    const flow = await app.inject({ method: 'POST', url: '/api/templates', headers: { cookie }, payload: {
+      projectId, name: `排期聚合-${randomUUID().slice(0, 6)}`, items: [
+        { title: '设计', startOffsetDays: 0, durationDays: 2, sortOrder: 0 },
+        { title: '交付', startOffsetDays: 3, durationDays: 2, sortOrder: 1 },
+      ],
+    } });
+    const created = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie }, payload: {
+      projectId, title: '排期聚合验证', ownerId: requirementOwnerId, plannedStart: '2026-09-07', templateId: flow.json().id,
+    } });
+    expect(created.json()).toMatchObject({ plannedStart: '2026-09-07', scheduleComplete: true });
+    const [first, second] = created.json().workItems;
+
+    const moved = await app.inject({ method: 'PATCH', url: `/api/work-items/${first.id}`, headers: { cookie }, payload: {
+      plannedStart: '2026-08-17', expectedVersion: first.version,
+    } });
+    expect(moved.statusCode).toBe(200);
+    let aggregate = (await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie } })).json();
+    expect(aggregate).toMatchObject({ plannedStart: '2026-08-17', plannedEnd: second.plannedEnd, scheduleComplete: true });
+    const dashboard = (await app.inject({ method: 'GET', url: `/api/dashboard?projectId=${projectId}`, headers: { cookie } })).json();
+    expect(dashboard.requirements.find((item: { id: string }) => item.id === created.json().id))
+      .toMatchObject({ plannedStart: '2026-08-17', plannedEnd: second.plannedEnd });
+
+    const custom = await app.inject({ method: 'POST', url: `/api/requirements/${created.json().id}/work-items`, headers: { cookie }, payload: {
+      title: '前置评审', plannedStart: '2026-08-14', plannedEnd: '2026-08-14', expectedVersion: aggregate.version,
+    } });
+    expect(custom.statusCode).toBe(200);
+    aggregate = (await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie } })).json();
+    expect(aggregate.plannedStart).toBe('2026-08-14');
+
+    const removed = await app.inject({ method: 'DELETE', url: `/api/work-items/${custom.json().id}`, headers: { cookie }, payload: {
+      expectedVersion: custom.json().version,
+    } });
+    expect(removed.statusCode).toBe(200);
+    aggregate = (await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie } })).json();
+    expect(aggregate.plannedStart).toBe('2026-08-17');
+
+    const currentFirst = aggregate.workItems.find((item: { id: string }) => item.id === first.id);
+    const cancelled = await app.inject({ method: 'POST', url: `/api/work-items/${first.id}/cancel`, headers: { cookie }, payload: {
+      reason: '暂时取消前置项', expectedVersion: currentFirst.version,
+    } });
+    expect(cancelled.statusCode).toBe(200);
+    aggregate = (await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie } })).json();
+    expect(aggregate.plannedStart).toBe(second.plannedStart);
+
+    const reopened = await app.inject({ method: 'POST', url: `/api/work-items/${first.id}/reopen`, headers: { cookie }, payload: {
+      reason: '恢复前置项', expectedVersion: cancelled.json().version,
+    } });
+    expect(reopened.statusCode).toBe(200);
+    aggregate = (await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie } })).json();
+    expect(aggregate.plannedStart).toBe('2026-08-17');
+
+    const delta = businessDayDelta('2026-08-17', '2026-09-07');
+    const shifted = await app.inject({ method: 'POST', url: `/api/requirements/${created.json().id}/reschedule`, headers: { cookie }, payload: {
+      scheduleMode: 'start', plannedStart: '2026-09-07', expectedVersion: aggregate.version, reason: '按聚合起点整体调整',
+    } });
+    expect(shifted.statusCode).toBe(200);
+    expect(shifted.json()).toMatchObject({ plannedStart: '2026-09-07', scheduleComplete: true });
+    expect(shifted.json().workItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: first.id, plannedStart: '2026-09-07' }),
+      expect.objectContaining({ id: second.id, plannedStart: addBusinessDays(second.plannedStart, delta), plannedEnd: addBusinessDays(second.plannedEnd, delta) }),
+    ]));
+  });
+
   it('人员并发统计使用负责人和计划/实际区间', async () => {
     const response = await app.inject({ method: 'GET', url: `/api/analytics/people-concurrency?projectId=${projectId}&personId=${personId}`, headers: { cookie } });
     expect(response.statusCode).toBe(200);

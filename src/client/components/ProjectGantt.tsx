@@ -7,6 +7,7 @@ import { matchesSearch, searchScore } from "../../shared/search";
 import type { Requirement } from "../types";
 import { EmptyState } from "./Modal";
 import { useGanttTooltip } from "./GanttTooltip";
+import { ResizablePanel } from "./ResizablePanel";
 import { SearchInput } from "./SearchInput";
 import {
   buildBusinessDayTimeline,
@@ -74,6 +75,12 @@ function statusLabel(status: string) {
 
 function isClosedRequirement(requirement: Requirement) {
   return requirement.status === "completed" || requirement.status === "cancelled";
+}
+
+function hasCompleteSchedule(requirement: Requirement) {
+  if (requirement.scheduleComplete !== undefined) return requirement.scheduleComplete;
+  const activeItems = requirement.workItems.filter((item) => item.status !== "cancelled");
+  return activeItems.length > 0 && activeItems.every((item) => Boolean(item.plannedStart && item.plannedEnd));
 }
 
 function progressVariance(requirement: Requirement) {
@@ -155,11 +162,13 @@ export function ProjectGantt({
   projectStart,
   projectEnd,
   asOfDate: asOfDateProp,
+  resizeStorageKey,
 }: {
   requirements: Requirement[];
   projectStart?: string | null;
   projectEnd?: string | null;
   asOfDate?: string;
+  resizeStorageKey: string;
 }) {
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -190,10 +199,11 @@ export function ProjectGantt({
         { text: requirement.title, weight: 100 },
         ...requirement.workItems.map((item) => ({ text: item.title, weight: 20 })),
       ], search);
+      const scheduleComplete = hasCompleteSchedule(requirement);
       const matchesSchedule = !schedule
         || (schedule === "delayed" && requirement.delayed)
-        || (schedule === "on_track" && Boolean(requirement.plannedStart && requirement.plannedEnd) && !requirement.delayed)
-        || (schedule === "unplanned" && (!requirement.plannedStart || !requirement.plannedEnd));
+        || (schedule === "on_track" && scheduleComplete && !requirement.delayed)
+        || (schedule === "unplanned" && !scheduleComplete);
       return matchesKeyword
         && (!status || requirement.status === status)
         && (!priority || requirement.priority === priority)
@@ -222,11 +232,12 @@ export function ProjectGantt({
   const range = useMemo(() => {
     const values: Array<string | null | undefined> = [projectStart, projectEnd];
     requirements.forEach((requirement) => {
-      const actual = requirementActualRange(requirement, asOfDate);
-      values.push(requirement.plannedStart, requirement.plannedEnd, requirement.effectiveEnd, actual.start, actual.end);
+      if (hasCompleteSchedule(requirement) || isClosedRequirement(requirement)) {
+        values.push(requirement.plannedStart, requirement.plannedEnd, requirement.effectiveEnd);
+      }
     });
     return buildBusinessDayTimeline(values, zoom);
-  }, [asOfDate, projectEnd, projectStart, requirements, zoom]);
+  }, [projectEnd, projectStart, requirements, zoom]);
 
   const timelineWidth = range.days * option.cellWidth;
   const dates = range.dates;
@@ -246,14 +257,15 @@ export function ProjectGantt({
   };
 
   return (
-    <section className="project-gantt-panel">
+    <ResizablePanel className="project-gantt-panel stable-workspace-panel" storageKey={resizeStorageKey} defaultHeight={560} minHeight={420}>
       <header className="project-gantt-toolbar">
         <div className="gantt-legend" aria-label="甘特图图例">
           <span><i className="legend-plan-pill" />计划</span>
-          <span><i className="legend-actual" />实际</span>
+          <span title="按实际完成度折算到计划时间轴的位置"><i className="legend-actual" />实际进度</span>
           <span><i className="legend-today" />截至 {format(toGanttDate(asOfDate)!, "MM/dd")}</span>
-          <span><i className="legend-behind" />落后差值</span>
-          <span><i className="legend-ahead" />领先差值</span>
+          <span><i className="legend-behind" />落后段</span>
+          <span><i className="legend-ahead" />领先段</span>
+          <span><i className="legend-delayed" />延期段</span>
           <span><i className="legend-milestone" />里程碑</span>
           <span><i className="legend-risk-medium" />中风险</span>
           <span><i className="legend-risk-high" />高风险</span>
@@ -319,6 +331,8 @@ export function ProjectGantt({
             </div>
             <GanttScale dates={dates} zoom={zoom} cellWidth={option.cellWidth} todayOffset={todayOffset} todayVisible={todayVisible} />
             {visibleRequirements.map((requirement) => {
+              const scheduleComplete = hasCompleteSchedule(requirement);
+              const showPlan = scheduleComplete || isClosedRequirement(requirement);
               const tooltipProps = ganttTooltip.bind(<RequirementPopover requirement={requirement} asOfDate={asOfDate} />);
               const variance = progressVariance(requirement);
               const risk = requirement.riskLevel !== "low" ? riskLabels[requirement.riskLevel as keyof typeof riskLabels] : "";
@@ -360,8 +374,8 @@ export function ProjectGantt({
                   </div>
                   <div className="gantt-track unified-gantt-track" style={trackStyle} role="cell">
                     <GanttProgressComparison
-                      plannedStart={requirement.plannedStart}
-                      plannedEnd={requirement.plannedEnd}
+                      plannedStart={showPlan ? requirement.plannedStart : null}
+                      plannedEnd={showPlan ? requirement.plannedEnd : null}
                       effectiveEnd={requirement.effectiveEnd}
                       dates={dates}
                       cellWidth={option.cellWidth}
@@ -382,6 +396,6 @@ export function ProjectGantt({
         </div>
       )}
       {ganttTooltip.tooltip}
-    </section>
+    </ResizablePanel>
   );
 }

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { api, jsonBody } from "../api";
 import { useApp } from "../app-context";
+import { invalidateRequirementViews } from "../query-invalidation";
 import type { Person, PlanPreview, Requirement, WorkItem, WorkItemTemplate } from "../types";
 import {
   calculateWorkItemGap,
@@ -29,6 +30,7 @@ import { Chart } from "../components/Chart";
 import { ConfirmDialog, EmptyState, Modal, TextPromptModal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { ProgressInput } from "../components/ProgressInput";
+import { ResizablePanel } from "../components/ResizablePanel";
 import { InlineDateCell, InlineMultiSelectCell, InlineSelectCell, InlineTextCell } from "../components/InlineEdit";
 import { WorkItemActions } from "../components/WorkItemActions";
 import { SortableList } from "../components/SortableList";
@@ -55,11 +57,7 @@ function RequirementInfoForm({
   const mutation = useMutation({
     mutationFn: (value: object) => api(`/api/requirements/${requirement.id}`, { method: "PATCH", body: jsonBody(value) }),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["requirement", requirement.id] });
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
-      void client.invalidateQueries({ queryKey: ["requirements"] });
-      void client.invalidateQueries({ queryKey: ["my-work"] });
-      void client.invalidateQueries({ queryKey: ["action-items"] });
+      invalidateRequirementViews(client, requirement.id);
       onClose();
     },
   });
@@ -115,13 +113,7 @@ function RequirementScheduleForm({
       }),
     onSuccess: () => {
       setPendingSubmit(null);
-      void client.invalidateQueries({
-        queryKey: ["requirement", requirement.id],
-      });
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
-      void client.invalidateQueries({ queryKey: ["requirements"] });
-      void client.invalidateQueries({ queryKey: ["my-work"] });
-      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
+      invalidateRequirementViews(client, requirement.id);
       onClose();
     },
   });
@@ -216,13 +208,7 @@ function ProgressForm({
         body: jsonBody(value),
       }),
     onSuccess: () => {
-      void client.invalidateQueries({
-        queryKey: ["requirement", requirement.id],
-      });
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
-      void client.invalidateQueries({ queryKey: ["requirements"] });
-      void client.invalidateQueries({ queryKey: ["my-work"] });
-      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
+      invalidateRequirementViews(client, requirement.id);
       onClose();
     },
   });
@@ -310,8 +296,7 @@ function PlanForm({ requirement, templates, onClose }: { requirement: Requiremen
       body: jsonBody({ templateId, baseStart, expectedVersion: requirement.version, reason: reason.trim() || undefined, templateItemIds: preview?.entries.filter((item) => item.willChange).map((item) => item.templateItemId) }),
     }),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["requirement", requirement.id] });
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
+      invalidateRequirementViews(client, requirement.id);
       onClose();
     },
   });
@@ -396,11 +381,7 @@ export function RequirementPage() {
     mutationFn: (item: WorkItem) =>
       api(`/api/work-items/${item.id}`, { method: "DELETE", body: jsonBody({ expectedVersion: item.version }) }),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["requirement", id] });
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
-      void client.invalidateQueries({ queryKey: ["requirements"] });
-      void client.invalidateQueries({ queryKey: ["my-work"] });
-      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
+      invalidateRequirementViews(client, id);
     },
   });
   const reorderItems = useMutation({
@@ -411,13 +392,13 @@ export function RequirementPage() {
     onSuccess: () => {
       setRemoveTarget(null);
       setTextPrompt(null);
-      void client.invalidateQueries({ queryKey: ["requirement", id] });
+      invalidateRequirementViews(client, id);
     },
   });
   const archive = useMutation({
     mutationFn: () => api(`/api/requirements/${id}`, { method: "DELETE", body: jsonBody({ expectedVersion: requirement?.version }) }),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
+      invalidateRequirementViews(client, id);
       navigate("/");
     },
   });
@@ -429,10 +410,7 @@ export function RequirementPage() {
     onSuccess: () => {
       setArchiveConfirm(false);
       setTextPrompt(null);
-      void client.invalidateQueries({ queryKey: ["requirement", id] });
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
-      void client.invalidateQueries({ queryKey: ["requirements"] });
-      void client.invalidateQueries({ queryKey: ["my-work"] });
+      invalidateRequirementViews(client, id);
     },
   });
   const itemAction = useMutation({
@@ -442,11 +420,7 @@ export function RequirementPage() {
         body: jsonBody({ expectedVersion: item.version, ...(action === "complete" ? { content } : content ? { reason: content } : {}) }),
       }),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["requirement", id] });
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
-      void client.invalidateQueries({ queryKey: ["requirements"] });
-      void client.invalidateQueries({ queryKey: ["my-work"] });
-      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
+      invalidateRequirementViews(client, id);
     },
   });
   const createItem = useMutation({
@@ -466,10 +440,7 @@ export function RequirementPage() {
     onSuccess: () => {
       setNewItem(null);
       setTextPrompt(null);
-      void client.invalidateQueries({ queryKey: ["requirement", id] });
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
-      void client.invalidateQueries({ queryKey: ["requirements"] });
-      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
+      invalidateRequirementViews(client, id);
     },
   });
   const saveWorkItem = async (item: WorkItem, input: Record<string, unknown>) => {
@@ -501,11 +472,7 @@ export function RequirementPage() {
         ...current,
         workItems: current.workItems.map((entry) => entry.id === saved.id ? saved : entry),
       } : current);
-      void client.invalidateQueries({ queryKey: ["requirement", id] });
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
-      void client.invalidateQueries({ queryKey: ["requirements"] });
-      void client.invalidateQueries({ queryKey: ["my-work"] });
-      void client.invalidateQueries({ queryKey: ["people-concurrency"] });
+      invalidateRequirementViews(client, id);
     } catch (error) {
       client.setQueryData(key, previous);
       throw error;
@@ -733,7 +700,12 @@ export function RequirementPage() {
           </small>
         </article>
       </section>
-      <section className="panel detail-panel requirement-progress-panel">
+      <ResizablePanel
+        className="panel detail-panel requirement-progress-panel stable-workspace-panel"
+        storageKey={`${session.accountId || session.username || "guest"}:requirement-gantt`}
+        defaultHeight={600}
+        minHeight={420}
+      >
         <header>
           <div>
             <h2>需求进展</h2>
@@ -769,7 +741,7 @@ export function RequirementPage() {
                 {requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}
               </span>}
         />
-      </section>
+      </ResizablePanel>
       {workEditorOpen && canManageWorkItems && <Modal title="工作项设置" width={1120} onClose={() => setWorkEditorOpen(false)}>
           <div className="work-editor-modal">
             <div className="work-editor-modal-toolbar">

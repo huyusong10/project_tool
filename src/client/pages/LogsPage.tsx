@@ -68,8 +68,8 @@ export function LogsPage() {
             <span>{auditActionLabels[item.action] || item.action}</span>
             <span title={item.entityId || undefined}>{item.summary}</span>
           </div>)}
+          {!data?.items.length && !isLoading && <EmptyState title="没有符合条件的日志" detail="调整搜索词或筛选条件后重试。" />}
         </div>
-        {!data?.items.length && !isLoading && <EmptyState title="没有符合条件的日志" detail="调整搜索词或筛选条件后重试。" />}
         <footer className="table-pagination"><span>第 {data?.page || 1} / {data?.pages || 1} 页</span><div><button className="ghost-button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</button><button className="ghost-button" disabled={page >= (data?.pages || 1)} onClick={() => setPage((value) => value + 1)}>下一页</button></div></footer>
       </section>
     </div>

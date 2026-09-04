@@ -563,16 +563,16 @@ function syncStoredRequirementState(requirementId: string, updatedAt = nowIso(),
   const workItems = getWorkItems(requirementId);
   const metrics = deriveRequirementMetrics(requirement, workItems, todayIso(), config.highRiskDelayDays);
   const acceptedAt = metrics.status === 'completed' ? requirement.acceptedAt : null;
-  sqlite.prepare(`UPDATE requirements SET status=?, progress=?, planned_end=?, risk_level=?, accepted_at=?,
+  sqlite.prepare(`UPDATE requirements SET status=?, progress=?, planned_start=?, planned_end=?, risk_level=?, accepted_at=?,
     accepted_by_account_id=CASE WHEN ? IS NULL THEN NULL ELSE accepted_by_account_id END,
     version=version+?, updated_at=? WHERE id=?`).run(
-    metrics.status, metrics.progress, metrics.plannedEnd, metrics.riskLevel, acceptedAt, acceptedAt,
+    metrics.status, metrics.progress, metrics.plannedStart, metrics.plannedEnd, metrics.riskLevel, acceptedAt, acceptedAt,
     incrementVersion ? 1 : 0, updatedAt, requirementId,
   );
   return metrics;
 }
 
-function updateStoredRequirementEnd(requirementId: string) {
+function updateStoredRequirementSchedule(requirementId: string) {
   return syncStoredRequirementState(requirementId);
 }
 
@@ -641,7 +641,7 @@ export function createRequirement(input: JsonObject, actor: Actor) {
       id, projectId, templateId, title, background, acceptanceCriteria, referenceUrl, ownerId, plannedStart, priority, now, now,
     );
     if (plannedStart && templateId) applyTemplateInternal(id, templateId, plannedStart);
-    updateStoredRequirementEnd(id);
+    updateStoredRequirementSchedule(id);
   });
   tx(); audit(actor, 'create', 'requirement', id, plannedStart ? `创建需求并生成工作项：${title}` : `创建待规划需求：${title}`);
   return getRequirement(id);
@@ -721,7 +721,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor) {
         version=version+1, updated_at=? WHERE id=?`)
         .run(templateId, title, nextPlannedStart, priority, ownerId, background, acceptanceCriteria, referenceUrl, now, id);
       applyTemplateInternal(id, templateId, nextPlannedStart!);
-      updateStoredRequirementEnd(id);
+      updateStoredRequirementSchedule(id);
       return;
     }
     shiftRequirementWorkItems(id, shiftDays, now);
@@ -729,7 +729,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor) {
       planned_start=?, version=version+1, updated_at=? WHERE id=?`)
       .run(title, priority, ownerId, background, acceptanceCriteria, referenceUrl, nextPlannedStart, now, id);
     if (generateInitialPlan) applyTemplateInternal(id, current.templateId!, nextPlannedStart!);
-    if (requestedPlannedStart !== undefined || requestedPlannedEnd !== undefined) updateStoredRequirementEnd(id);
+    if (requestedPlannedStart !== undefined || requestedPlannedEnd !== undefined) updateStoredRequirementSchedule(id);
     else if (ownerId !== current.ownerId) syncStoredRequirementState(id, now, false);
   })();
   audit(actor, templateChanged ? 'apply_template' : 'update', 'requirement', id,
@@ -821,7 +821,7 @@ export function applyTemplate(requirementId: string, input: JsonObject, actor: A
   if (requirement.workItems!.some((item) => item.status !== 'not_started') && !nullableText(input.reason)) fail('需求已开始执行，补充流程工作项时必须填写变更原因');
   if (!requirement.plannedStart) fail('需求缺少计划开始日期');
   if (!row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, requirement.projectId)) fail('流程设计不属于当前项目');
-  const tx = sqlite.transaction(() => { applyTemplateInternal(requirementId, templateId, requirement.plannedStart!); updateStoredRequirementEnd(requirementId); });
+  const tx = sqlite.transaction(() => { applyTemplateInternal(requirementId, templateId, requirement.plannedStart!); updateStoredRequirementSchedule(requirementId); });
   tx(); audit(actor, 'apply_template', 'requirement', requirementId, '从模板补充工作项');
   return getRequirement(requirementId);
 }
@@ -873,7 +873,7 @@ export function applyRequirementPlan(requirementId: string, input: JsonObject, a
       }
     }
     sqlite.prepare('UPDATE requirements SET planned_start=?, version=version+1, updated_at=? WHERE id=?').run(preview.baseStart, now, requirementId);
-    updateStoredRequirementEnd(requirementId);
+    updateStoredRequirementSchedule(requirementId);
   });
   tx(); audit(actor, 'apply_plan', 'requirement', requirementId, `按模板补全计划：${selected.size}项`);
   return getRequirement(requirementId);

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, jsonBody } from "../api";
 import { useApp } from "../app-context";
+import { invalidateRequirementViews } from "../query-invalidation";
 import type { Person, Project, WorkItemTemplate } from "../types";
 
 export function ProjectForm({
@@ -93,8 +94,7 @@ export function RequirementForm({
   const mutation = useMutation({
     mutationFn: (data: object) => api("/api/requirements", { method: "POST", body: jsonBody(data) }),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["requirements"] });
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
+      invalidateRequirementViews(client);
       onClose();
     },
   });

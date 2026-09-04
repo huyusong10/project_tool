@@ -69,7 +69,7 @@ export type Requirement = {
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   background?: string | null; acceptanceCriteria?: string | null; referenceUrl?: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number; progressGap: number;
-  asOfDate?: string;
+  asOfDate?: string; scheduleComplete?: boolean;
   acceptedAt: string | null; acceptedByAccountId: string | null; version: number;
   riskLevel: string; riskEvaluated: boolean; riskReason: string; priority: string; createdAt: string; updatedAt: string; deletedAt?: string | null;
   workItems: WorkItem[]; progressUpdates?: ProgressUpdate[]; recentProgressUpdates?: ProgressUpdate[]; delayed: boolean; highRisk: boolean;

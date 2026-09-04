@@ -198,6 +198,27 @@ export function deriveWorkItemStatus(item: WorkItemLike): WorkItemStatus {
   return workItemStatuses.includes(item.status as WorkItemStatus) ? item.status as WorkItemStatus : 'not_started';
 }
 
+export function deriveRequirementScheduleRange(
+  requirement: { plannedStart?: string | null; plannedEnd?: string | null },
+  workItems: WorkItemLike[],
+) {
+  const activeItems = workItems.filter((item) => deriveWorkItemStatus(item) !== 'cancelled');
+  if (!activeItems.length) {
+    return {
+      plannedStart: requirement.plannedStart || null,
+      plannedEnd: requirement.plannedEnd || null,
+      scheduleComplete: false,
+    };
+  }
+  const plannedStarts = activeItems.map((item) => item.plannedStart).filter((value): value is string => Boolean(value));
+  const plannedEnds = activeItems.map((item) => item.plannedEnd).filter((value): value is string => Boolean(value));
+  return {
+    plannedStart: plannedStarts.sort()[0] || null,
+    plannedEnd: plannedEnds.sort().at(-1) || null,
+    scheduleComplete: activeItems.every((item) => Boolean(item.plannedStart && item.plannedEnd)),
+  };
+}
+
 export function workItemPlannedDuration(item: WorkItemLike): number {
   return Math.max(1, businessDaysInclusive(item.plannedStart, item.plannedEnd) || 1);
 }
@@ -295,8 +316,9 @@ export function deriveRequirementMetrics(
     plannedDuration: workItemPlannedDuration(item),
   }));
   const activeItems = items.filter((item) => item.derivedStatus !== 'cancelled');
-  const plannedEnds = activeItems.map((item) => item.plannedEnd).filter((value): value is string => Boolean(value));
-  const derivedPlannedEnd = plannedEnds.sort().at(-1) || requirement.plannedEnd || null;
+  const schedule = deriveRequirementScheduleRange(requirement, activeItems);
+  const derivedPlannedStart = schedule.plannedStart;
+  const derivedPlannedEnd = schedule.plannedEnd;
   let status: RequirementStatus;
   if (requirement.status === 'cancelled') status = 'cancelled';
   else if (requirement.acceptedAt && activeItems.length && activeItems.every((item) => item.derivedStatus === 'completed')) status = 'completed';
@@ -329,7 +351,9 @@ export function deriveRequirementMetrics(
   const priority = priorities.includes(requirement.priority as Priority) ? requirement.priority as Priority : 'P2';
   const threshold = riskGapThresholds[priority];
   const gapRiskLevel = riskLevelFromProgressGap(priority, progressGap);
-  const riskEvaluated = !['completed', 'pending_acceptance', 'cancelled', 'planning'].includes(status) && Boolean(derivedPlannedEnd);
+  const riskEvaluated = schedule.scheduleComplete
+    && !['completed', 'pending_acceptance', 'cancelled', 'planning'].includes(status)
+    && Boolean(derivedPlannedEnd);
   let riskLevel: RiskLevel = 'low';
   let riskReason: string;
   if (!riskEvaluated) {
@@ -364,13 +388,15 @@ export function deriveRequirementMetrics(
     progress,
     plannedProgress,
     progressGap,
+    plannedStart: derivedPlannedStart,
+    plannedEnd: derivedPlannedEnd,
+    scheduleComplete: schedule.scheduleComplete,
     scheduleVarianceDays: scheduleVariance?.varianceDays ?? null,
     scheduleReferenceDate: scheduleVariance?.referenceDate ?? null,
     riskLevel,
     riskEvaluated,
     riskReason,
     highRisk: riskEvaluated && riskLevel === 'high',
-    plannedEnd: derivedPlannedEnd,
     effectiveEnd,
     finishVariance,
     delayed: finishVariance > 0,

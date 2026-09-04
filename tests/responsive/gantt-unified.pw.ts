@@ -20,13 +20,35 @@ const workItem = {
   version: 1, createdAt: "2026-09-01", updatedAt: "2026-09-02",
 };
 
+const completedLateWorkItem = {
+  ...workItem,
+  id: "w-late",
+  title: "延期完成项",
+  status: "completed",
+  plannedEnd: "2026-09-10",
+  actualEnd: "2026-09-14",
+  milestoneLabel: null,
+  progress: 100,
+};
+
+const completedEarlyWorkItem = {
+  ...workItem,
+  id: "w-early",
+  title: "提前完成项",
+  status: "completed",
+  plannedEnd: "2026-09-10",
+  actualEnd: "2026-09-08",
+  milestoneLabel: null,
+  progress: 100,
+};
+
 const requirement = {
   id: "r1", projectId: "p1", projectName: "测试项目", templateId: "t1", templateName: "研发流程",
   title: "统一甘特样式", ownerId: null, ownerName: null, status: "in_progress", plannedStart: "2026-09-01",
   plannedEnd: "2026-09-10", progress: 61, plannedProgress: 91, progressGap: 30, riskLevel: "medium",
-  asOfDate: "2026-09-03",
+  asOfDate: "2026-09-03", scheduleComplete: true,
   riskEvaluated: true, riskReason: "P1进度Gap 30%", priority: "P1", createdAt: "2026-09-01", updatedAt: "2026-09-02",
-  workItems: [workItem], progressUpdates: [], recentProgressUpdates: [{
+  workItems: [workItem, completedLateWorkItem, completedEarlyWorkItem], progressUpdates: [], recentProgressUpdates: [{
     id: "u1", requirementId: "r1", workItemId: "w1", workItemTitle: "接口开发", percent: 61, workItemPercent: 40,
     content: "完成接口权限校验与异常分支联调，补充回归场景并记录后续优化建议，等待产品侧确认边界。",
     createdAt: "2026-09-02T10:00:00.000Z", updatedAt: "2026-09-02T10:00:00.000Z",
@@ -68,25 +90,35 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
 
   await page.goto("/");
   await expect(page.locator(".project-gantt-grid")).toBeVisible();
+  await expect(page.locator(".project-gantt-toolbar .gantt-legend").getByText("实际进度", { exact: true })).toBeVisible();
   await expect(page.locator(".project-gantt-toolbar .view-tabs button.active")).toHaveText("日");
   await expect(page.locator(".project-gantt-grid .unified-gantt-plan")).toHaveCount(2);
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-actual")).toHaveCount(2);
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveCount(1);
-  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveText("落后 30%");
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveText("");
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveCSS("border-top-style", "dashed");
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveCSS("border-top-color", "rgb(216, 74, 74)");
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).not.toHaveCSS("background-image", "none");
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-ahead")).toHaveCount(1);
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-ahead")).toHaveCSS("border-top-color", "rgb(29, 154, 108)");
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-target")).toHaveCount(0);
   await expect(page.locator(".project-gantt-grid .unified-gantt-plan-end")).toHaveCount(2);
   await expect(page.locator(".project-gantt-grid .unified-gantt-label")).toHaveCount(0);
-  await expect(page.locator(".gantt-row").filter({ hasText: "统一甘特样式" }).locator(".gantt-progress-marker")).toHaveText("61");
-  await expect(page.locator(".gantt-row").filter({ hasText: "领先计划流程" }).locator(".gantt-progress-marker")).toHaveText("70");
+  const delayedRow = page.locator(".gantt-row").filter({ hasText: "统一甘特样式" });
+  await expect(page.locator(".gantt-row").filter({ hasText: "统一甘特样式" }).locator(".gantt-progress-marker > span")).toHaveText("61");
+  await expect(page.locator(".gantt-row").filter({ hasText: "领先计划流程" }).locator(".gantt-progress-marker > span")).toHaveText("70");
+  await expect(page.locator(".project-gantt-grid .gantt-progress-marker-tooltip")).toHaveCount(2);
+  await expect(delayedRow.locator(".gantt-progress-marker-tooltip")).toHaveCSS("opacity", "0");
+  await delayedRow.locator(".gantt-progress-marker").hover();
+  await expect(delayedRow.locator(".gantt-progress-marker-tooltip")).toHaveCSS("opacity", "1");
+  await expect(delayedRow.locator(".gantt-progress-marker-tooltip")).toHaveText("落后 30% · 应达 91%");
   await expect(page.getByText("中风险 · 落后30%", { exact: true })).toBeVisible();
   await expect(page.getByText("领先20%", { exact: true })).toBeVisible();
-  const delayedRow = page.locator(".gantt-row").filter({ hasText: "统一甘特样式" });
   const todayLineBox = await delayedRow.locator(".gantt-today-line").boundingBox();
-  const behindBox = await delayedRow.locator(".unified-gantt-progress-gap.is-behind").boundingBox();
+  const progressMarkerBox = await delayedRow.locator(".gantt-progress-marker").boundingBox();
   expect(todayLineBox).not.toBeNull();
-  expect(behindBox).not.toBeNull();
-  expect(Math.abs((behindBox!.x + behindBox!.width) - todayLineBox!.x)).toBeLessThanOrEqual(1.5);
+  expect(progressMarkerBox).not.toBeNull();
+  expect(progressMarkerBox!.x + progressMarkerBox!.width / 2).toBeLessThan(todayLineBox!.x);
   const milestoneRow = page.locator(".gantt-row").filter({ hasText: "领先计划流程" });
   const milestoneTrackBox = await milestoneRow.locator(".gantt-track").boundingBox();
   const milestoneLabelBoxes = await milestoneRow.locator(".gantt-milestone-marker > b").evaluateAll((labels) => labels.map((label) => {
@@ -121,14 +153,25 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
 
   await page.goto("/requirements/r1");
   await expect(page.locator(".requirement-gantt-grid")).toBeVisible();
+  await expect(page.locator(".requirement-progress-panel").getByRole("button", { name: "调整卡片高度" })).toBeVisible();
   await expect(page.locator(".requirement-gantt-toolbar .view-tabs button.active")).toHaveText("日");
-  await expect(page.locator(".requirement-gantt-grid .unified-gantt-plan")).toHaveCount(1);
-  await expect(page.locator(".requirement-gantt-grid .unified-gantt-actual")).toHaveCount(1);
-  await expect(page.locator(".requirement-gantt-grid .unified-gantt-plan-end")).toHaveCount(1);
+  await expect(page.locator(".requirement-gantt-grid .unified-gantt-plan")).toHaveCount(3);
+  await expect(page.locator(".requirement-gantt-grid .unified-gantt-actual")).toHaveCount(3);
+  await expect(page.locator(".requirement-gantt-grid .unified-gantt-plan-end")).toHaveCount(3);
   await expect(page.locator(".requirement-gantt-grid .unified-gantt-label")).toHaveCount(0);
-  await expect(page.locator(".requirement-gantt-grid .gantt-progress-marker")).toHaveText("40");
+  const activeWorkRow = page.locator(".requirement-gantt-row").filter({ hasText: "接口开发" });
+  const completedLateRow = page.locator(".requirement-gantt-row").filter({ hasText: "延期完成项" });
+  const completedEarlyRow = page.locator(".requirement-gantt-row").filter({ hasText: "提前完成项" });
+  await expect(activeWorkRow.locator(".gantt-progress-marker")).toHaveText("40");
+  await expect(completedLateRow.locator(".gantt-progress-marker")).toHaveText("100");
+  await expect(completedLateRow.locator(".unified-gantt-actual")).toHaveCSS("background-color", "rgb(45, 108, 223)");
+  await expect(completedLateRow.locator(".unified-gantt-delay")).toHaveCSS("background-color", "rgb(45, 108, 223)");
+  await expect(completedLateRow.locator(".unified-gantt-delay")).toHaveCSS("border-top-color", "rgb(216, 74, 74)");
+  await expect(completedEarlyRow.locator(".unified-gantt-actual")).toHaveCSS("background-color", "rgb(45, 108, 223)");
+  await expect(completedEarlyRow.locator(".unified-gantt-early")).toHaveCSS("border-top-color", "rgb(29, 154, 108)");
+  await expect(completedEarlyRow.locator(".unified-gantt-early")).not.toHaveCSS("background-image", "none");
   await expect(page.locator(".requirement-gantt-grid .gantt-milestone-marker")).toContainText("接口基线");
-  await page.locator(".requirement-gantt-grid .gantt-progress-marker").click();
+  await activeWorkRow.locator(".gantt-progress-marker").click();
   await expect(page.getByRole("heading", { name: "更新工作项进度" })).toBeVisible();
   await page.getByLabel("当前完成度（估算）数值").fill("80");
   await page.getByPlaceholder("描述本次实际完成的内容").fill("完成开发，等待联调");

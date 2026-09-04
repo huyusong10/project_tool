@@ -15,6 +15,7 @@ export type RequirementRecord = {
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   background: string | null; acceptanceCriteria: string | null; referenceUrl: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number; progressGap?: number;
+  scheduleComplete?: boolean;
   asOfDate?: string;
   riskLevel: string; priority: string; acceptedAt: string | null; acceptedByAccountId: string | null; version: number; createdAt: string; updatedAt: string; deletedAt?: string | null; workItems?: WorkItemRecord[];
   delayed?: boolean; highRisk?: boolean; riskEvaluated?: boolean; riskReason?: string; finishVariance?: number; durationVariance?: number; effectiveEnd?: string | null;
@@ -96,7 +97,6 @@ function enrichRequirement(requirement: RequirementRecord, workItems: WorkItemRe
   const gaps = workItems.map((item) => calculateWorkItemGap(item));
   return {
     ...requirement, ...metrics, asOfDate,
-    status: requirement.status, progress: requirement.progress, plannedEnd: requirement.plannedEnd,
     workItems,
     durationVariance: gaps.length ? Math.max(...gaps.map((gap) => gap.durationVariance), 0) : 0,
   };

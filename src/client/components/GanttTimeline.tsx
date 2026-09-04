@@ -152,6 +152,8 @@ export function GanttPlanActualBars({
   const actual = ganttInterval(actualStart, actualEnd, dates, cellWidth);
   const delayLeft = plan && actual ? Math.max(actual.left, plan.right) : 0;
   const delayWidth = plan && actual ? Math.max(0, actual.right - delayLeft) : 0;
+  const earlyLeft = plan && actual && status === "completed" ? actual.right : 0;
+  const earlyWidth = plan && actual && status === "completed" ? Math.max(0, plan.right - actual.right) : 0;
   const statusClass = status.replaceAll("_", "-");
   const markerLeft = actual?.right ?? plan?.left;
   const interactionLeft = Math.min(plan?.left ?? Number.POSITIVE_INFINITY, actual?.left ?? Number.POSITIVE_INFINITY);
@@ -160,7 +162,8 @@ export function GanttPlanActualBars({
   return <>
     {plan && <span className="unified-gantt-plan" style={{ left: plan.left, width: plan.width }} />}
     {actual && <span className={`unified-gantt-actual gantt-status-${statusClass}`} style={{ left: actual.left, width: actual.width }} />}
-    {delayWidth > 0 && <span className="unified-gantt-delay" style={{ left: delayLeft, width: delayWidth }} />}
+    {earlyWidth > 0 && <span className="unified-gantt-early" style={{ left: earlyLeft, width: earlyWidth }} />}
+    {delayWidth > 0 && <span className={`unified-gantt-delay gantt-status-${statusClass}`} style={{ left: delayLeft, width: delayWidth }} />}
     {plan && <span className="unified-gantt-plan-end" style={{ left: plan.right }} />}
     {interactionProps && Number.isFinite(interactionLeft) && Number.isFinite(interactionRight) && <span
       className="gantt-bar-hitbox"
@@ -210,21 +213,25 @@ export function GanttProgressMarker({
   progress,
   onClick,
   ariaLabel,
+  supplementalLabel,
+  tooltipSide = "right",
 }: {
   left: number;
   status: string;
   progress: number;
   onClick?: () => void;
   ariaLabel?: string;
+  supplementalLabel?: string;
+  tooltipSide?: "left" | "right";
 }) {
   const value = normalizedProgress(status, progress);
   const display = String(ganttProgressDisplay(status, progress));
   const label = ariaLabel || `${progressStatusLabels[status] || status}，实际进度${value}%`;
-  const className = `gantt-progress-marker gantt-status-${status.replaceAll("_", "-")}${onClick ? " is-clickable" : ""}`;
-  const content = <><span aria-hidden="true">{display}</span>{status === "blocked" && <em aria-hidden="true" />}</>;
+  const className = `gantt-progress-marker gantt-status-${status.replaceAll("_", "-")}${onClick ? " is-clickable" : ""}${supplementalLabel ? ` has-tooltip tooltip-${tooltipSide}` : ""}`;
+  const content = <><span aria-hidden="true">{display}</span>{status === "blocked" && <em aria-hidden="true" />}{supplementalLabel && <small className="gantt-progress-marker-tooltip" aria-hidden="true">{supplementalLabel}</small>}</>;
   return onClick
     ? <button type="button" className={className} style={{ left }} aria-label={label} title={label} onClick={(event) => { event.stopPropagation(); onClick(); }}>{content}</button>
-    : <span className={className} style={{ left }} role="img" aria-label={label} title={label}>{content}</span>;
+    : <span className={className} style={{ left }} role="img" aria-label={label} title={supplementalLabel ? undefined : label} tabIndex={supplementalLabel ? 0 : undefined}>{content}</span>;
 }
 
 export function GanttProgressComparison({
@@ -272,14 +279,18 @@ export function GanttProgressComparison({
   const delayWidth = extended ? Math.max(0, extended.right - plan.right) : 0;
   const behindWidth = Math.max(0, expectedPoint - actualPoint);
   const aheadWidth = Math.max(0, actualPoint - expectedPoint);
-  const variance = Math.abs(expectedValue - actualValue);
+  const variance = actualValue - expectedValue;
+  const comparisonLabel = isTerminal || variance === 0
+    ? undefined
+    : `${variance < 0 ? "落后" : "领先"} ${Math.abs(variance)}% · 应达 ${expectedValue}%`;
+  const tooltipSide = actualPoint > dates.length * cellWidth - 150 ? "left" : "right";
   const statusClass = status.replaceAll("_", "-");
   return <>
     <span className="unified-gantt-plan" style={{ left: plan.left, width: plan.width }} />
     {actualValue > 0 && <span className={`unified-gantt-progress-actual gantt-status-${statusClass}`} style={{ left: plan.left, width: actualPoint - plan.left }} />}
-    {behind && <span className="unified-gantt-progress-gap is-behind" style={{ left: actualPoint, width: behindWidth }}>{behindWidth >= 38 && <b>落后 {variance}%</b>}</span>}
-    {ahead && <span className="unified-gantt-progress-gap is-ahead" style={{ left: expectedPoint, width: aheadWidth }}>{aheadWidth >= 38 && <b>领先 {variance}%</b>}</span>}
-    {delayWidth > 0 && <span className="unified-gantt-delay" style={{ left: plan.right, width: delayWidth }} />}
+    {behind && <span className="unified-gantt-progress-gap is-behind" style={{ left: actualPoint, width: behindWidth }} />}
+    {ahead && <span className="unified-gantt-progress-gap is-ahead" style={{ left: expectedPoint, width: aheadWidth }} />}
+    {delayWidth > 0 && <span className={`unified-gantt-delay gantt-status-${statusClass}`} style={{ left: plan.right, width: delayWidth }} />}
     <span className="unified-gantt-plan-end" style={{ left: plan.right }} />
     {interactionProps && <span
       className="gantt-bar-hitbox"
@@ -288,7 +299,14 @@ export function GanttProgressComparison({
       aria-label="查看需求进度详情"
       {...interactionProps}
     />}
-    <GanttProgressMarker left={actualPoint} status={status} progress={actualValue} ariaLabel={`${progressStatusLabels[status] || status}，实际进度${actualValue}%，截至${asOf.asOfDate}应达${expectedValue}%`} />
+    <GanttProgressMarker
+      left={actualPoint}
+      status={status}
+      progress={actualValue}
+      ariaLabel={`${progressStatusLabels[status] || status}，实际进度${actualValue}%，截至${asOf.asOfDate}应达${expectedValue}%`}
+      supplementalLabel={comparisonLabel}
+      tooltipSide={tooltipSide}
+    />
   </>;
 }
 

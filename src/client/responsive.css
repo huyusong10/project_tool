@@ -620,7 +620,7 @@ textarea {
   :root {
     --sidebar-width: 210px;
     --page-gutter: 18px;
-    --topbar-title-width: 300px;
+    --topbar-title-width: 120px;
   }
 
   .topbar {
@@ -641,14 +641,14 @@ textarea {
   :root {
     --sidebar-width: 190px;
     --page-gutter: 16px;
-    --topbar-title-width: 240px;
+    --topbar-title-width: 120px;
   }
 }
 
 @media (max-width: 1040px) {
   :root {
     --page-gutter: 14px;
-    --topbar-title-width: 190px;
+    --topbar-title-width: 120px;
   }
 
   .topbar {
@@ -696,8 +696,6 @@ textarea {
 }
 
 @media (max-width: 1199px) {
-  .system-account-card { grid-template-columns: 42px minmax(180px,1fr) minmax(190px,1fr) auto 40px; }
-  .system-account-login { grid-column: 2 / 5; grid-row: 2; }
   .my-work-summary { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .my-work-charts { grid-template-columns: 1fr; }
   .analytics-grid > .analytics-panel-small { grid-column: span 6; }
@@ -706,10 +704,6 @@ textarea {
 }
 
 @media (max-width: 760px) {
-  .system-account-card { grid-template-columns: 42px minmax(0,1fr) 40px; align-items: center; }
-  .system-account-copy { grid-column: 2; }
-  .system-account-card .account-permission-summary, .system-account-card > .account-status, .system-account-login { grid-column: 1 / -1; }
-  .system-account-card .account-actions { grid-column: 3; grid-row: 1; }
   .people-access-filters .search-box, .people-access-filters select { width: 100%; min-width: 0; }
   .people-access-filters > span { margin-left: 0; }
   .requirement-acceptance-banner { align-items: stretch; flex-direction: column; }

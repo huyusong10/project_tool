@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addBusinessDays, businessDateFromDateTime, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
-  deriveWorkItemStatus, ganttProgressDisplay, issueActionsByStatus, plannedDatesFromOffset, plannedStartFromDeadline, requirementActionsByStatus, riskLevelFromProgressGap, signedProgressVariance, workItemActionsByStatus, workItemPlannedProgress,
+  deriveRequirementScheduleRange, deriveWorkItemStatus, ganttProgressDisplay, issueActionsByStatus, plannedDatesFromOffset, plannedStartFromDeadline, requirementActionsByStatus, riskLevelFromProgressGap, signedProgressVariance, workItemActionsByStatus, workItemPlannedProgress,
   isOverdueByWorkday,
 } from '../src/shared/domain';
 import { isBusinessDay, isValidIsoDate } from '../src/shared/workday';
@@ -76,6 +76,23 @@ describe('自动状态、进度和风险', () => {
     expect(deriveWorkItemStatus({ status: 'not_started', actualStart: '2026-09-01', actualEnd: '2026-09-02' })).toBe('not_started');
     expect(deriveWorkItemStatus({ status: 'in_progress', actualStart: '2026-09-01' })).toBe('in_progress');
     expect(deriveWorkItemStatus({ status: 'blocked', blockedAt: '2026-09-01T00:00:00Z' })).toBe('blocked');
+  });
+
+  it('需求排期边界统一由有效工作项聚合', () => {
+    expect(deriveRequirementScheduleRange({ plannedStart: '2026-09-04', plannedEnd: '2026-09-11' }, [
+      { status: 'in_progress', plannedStart: '2026-08-17', plannedEnd: '2026-09-09' },
+      { status: 'not_started', plannedStart: '2026-09-09', plannedEnd: '2026-09-11' },
+      { status: 'cancelled', plannedStart: '2026-08-01', plannedEnd: '2026-09-30' },
+    ])).toEqual({ plannedStart: '2026-08-17', plannedEnd: '2026-09-11', scheduleComplete: true });
+  });
+
+  it('排期不完整时保留可用边界但不进行风险评估', () => {
+    const metrics = deriveRequirementMetrics({ status: 'in_progress', plannedStart: '2026-09-04', plannedEnd: '2026-09-11' }, [
+      { status: 'in_progress', progress: 50, plannedStart: '2026-08-17', plannedEnd: '2026-09-09', actualStart: '2026-08-17' },
+      { status: 'not_started', plannedStart: null, plannedEnd: '2026-09-11' },
+    ], '2026-09-04');
+    expect(metrics).toMatchObject({ plannedStart: '2026-08-17', plannedEnd: '2026-09-11', scheduleComplete: false, riskEvaluated: false });
+    expect(metrics.riskReason).toBe('缺少完整排期，暂无法评估风险');
   });
 
   it('按计划工期加权已完成工作项', () => {

@@ -59,6 +59,8 @@ describe('正式库增量迁移', () => {
     expect(migrated.prepare('SELECT title,status,progress,planned_start AS plannedStart,actual_end AS actualEnd FROM work_items WHERE id=?').get('w1'))
       .toEqual({ title: '原工作项', status: 'completed', progress: 100, plannedStart: '2026-09-01', actualEnd: '2026-09-02' });
     expect(migrated.prepare('SELECT priority,progress FROM requirements WHERE id=?').get('r1')).toEqual({ priority: 'P2', progress: 100 });
+    expect(migrated.prepare('SELECT planned_start AS plannedStart,planned_end AS plannedEnd FROM requirements WHERE id=?').get('r1'))
+      .toEqual({ plannedStart: '2026-09-01', plannedEnd: '2026-09-03' });
     expect(migrated.prepare(`SELECT background,acceptance_criteria AS acceptanceCriteria,reference_url AS referenceUrl
       FROM requirements WHERE id=?`).get('r1')).toEqual({ background: null, acceptanceCriteria: null, referenceUrl: null });
     const stateReport = JSON.parse((migrated.prepare("SELECT value FROM system_meta WHERE key='state-migration-0013-report'").get() as { value: string }).value);

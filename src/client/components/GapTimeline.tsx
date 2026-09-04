@@ -87,6 +87,7 @@ export const GapTimeline = memo(function GapTimeline({
   actionColumnWidth = 132,
   ariaLabel = "需求工作项进展甘特图",
   asOfDate = todayIso(),
+  emptyState,
 }: {
   items: WorkItem[];
   updates?: ProgressUpdate[];
@@ -101,6 +102,7 @@ export const GapTimeline = memo(function GapTimeline({
   actionColumnWidth?: number;
   ariaLabel?: string;
   asOfDate?: string;
+  emptyState?: { message: string; actionLabel?: string; onAction?: () => void };
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState<GanttZoom>("day");
@@ -183,6 +185,7 @@ export const GapTimeline = memo(function GapTimeline({
             <span><i className="legend-plan-pill" />计划</span>
             <span><i className="legend-actual" />实际</span>
             <span><i className="legend-delayed" />延期</span>
+            <span><i className="legend-early" />提前</span>
             <span><i className="legend-milestone" />里程碑</span>
           </div>
         </div>
@@ -193,7 +196,7 @@ export const GapTimeline = memo(function GapTimeline({
       </div>
       <div className="requirement-gantt-scroll" ref={scrollRef}>
         <div
-          className="requirement-gantt-grid"
+          className={`requirement-gantt-grid${!visibleItems.length ? " is-empty" : ""}`}
           style={{
             width: fixedColumnsWidth + timelineWidth,
             gridTemplateColumns: `${labelWidth}px ${timelineWidth}px${gapWidth ? ` ${gapWidth}px` : ""}${actionWidth ? ` ${actionWidth}px` : ""}`,
@@ -253,7 +256,7 @@ export const GapTimeline = memo(function GapTimeline({
               {hasActions && <div className="requirement-gantt-actions sticky-right" role="cell">{renderActions?.(item)}</div>}
             </div>;
           })}
-          {!visibleItems.length && <div className="requirement-gantt-filter-empty"><span>当前状态下没有工作项</span><button type="button" onClick={() => setStatusFilter("all")}>查看全部</button></div>}
+          {!visibleItems.length && <div className="requirement-gantt-filter-empty"><span>{emptyState?.message || "当前状态下没有工作项"}</span>{(emptyState?.onAction || statusFilter !== "all") && <button type="button" onClick={emptyState?.onAction || (() => setStatusFilter("all"))}>{emptyState?.actionLabel || "查看全部"}</button>}</div>}
         </div>
       </div>
       {tooltip.tooltip}
