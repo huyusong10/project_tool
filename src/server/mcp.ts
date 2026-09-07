@@ -3,7 +3,8 @@ import { McpServer, type StandardSchemaWithJSON, type ToolCallback } from '@mode
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import { z } from 'zod';
 import { todayIso } from '../shared/domain';
-import { pathQuery, dependencyInput, pathVersion, reviewDependenciesInput, pathEstimateInput, dependencyPlanInput, applyDependencyPlanInput } from '../shared/path-contracts';
+import { pathQuery, dependencyInput, pathVersion, reviewDependenciesInput, pathEstimateInput, dependencyPlanInput, applyDependencyPlanInput, dependencyChangesInput, applyDependencyChangesInput } from '../shared/path-contracts';
+import { applyDependencyChanges, getDependencyChangeReceipt, previewDependencyChanges } from './services/path-changes';
 import { readPathAnalysis, addDependency, removeDependency, reviewDependencies, updatePathEstimate, previewDependencyPlan, applyDependencyPlan } from './services/paths';
 import {
   assertAdmin, assertCanAddProgress, assertProgressOwnerOrManager, assertProjectManager, assertProjectMember, assertProjectReadable,
@@ -114,6 +115,9 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   };
 
   registerTool('get_path_analysis', { description: '查询完整项目网络的关键路径、交付预测、风险和阻塞来源；target可为project、acceptance:需求ID或工作项ID', inputSchema: pathQuery.extend({ projectId: idSchema }) }, async ({ projectId, target }) => json(readPathAnalysis(projectId, target, actor)));
+  registerTool('preview_dependency_changes', { description: '预览整批依赖与工期修改，不保存正式数据', inputSchema: dependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(previewDependencyChanges(projectId, input, actor)));
+  registerTool('apply_dependency_changes', { description: '按预览凭据原子提交依赖与工期批次；相同批次标识不会重复写入', inputSchema: applyDependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(applyDependencyChanges(projectId, input, actor)));
+  registerTool('get_dependency_change_receipt', { description: '查询本次依赖批次的提交回执', inputSchema: z.object({ projectId: idSchema, batchId: z.string().uuid() }) }, async ({ projectId, batchId }) => json(getDependencyChangeReceipt(projectId, batchId, actor)));
   registerTool('add_dependency', { description: '增加完成后开始的依赖，必须提供最新项目分析版本', inputSchema: dependencyInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(addDependency(projectId, input, actor)));
   registerTool('remove_dependency', { description: '移除依赖', inputSchema: pathVersion.extend({ id: idSchema }) }, async ({ id, ...input }) => json(removeDependency(id, input, actor)));
   registerTool('review_dependencies', { description: '核对需求全部前置或设置预计验收日', inputSchema: reviewDependenciesInput.extend({ id: idSchema }) }, async ({ id, ...input }) => json(reviewDependencies(id, input, actor)));

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, Edit3, Plus } from "lucide-react";
 import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
@@ -17,9 +18,9 @@ export function TemplatesPage() {
   const { session } = useSession();
   const { projects, selectedProjectId } = useProjects();
   const client = useQueryClient();
-  const [editing, setEditing] = useState<WorkItemTemplate | null | undefined>(
-    undefined,
-  );
+  const [params,setParams]=useSearchParams();
+  const [editingSnapshot,setEditingSnapshot]=useState<WorkItemTemplate|null>(null);
+  const setEditing=(value:WorkItemTemplate|null|undefined)=>{setEditingSnapshot(value||null);const next=new URLSearchParams(params);next.delete('templateNode');if(value===undefined)next.delete('edit');else next.set('edit',value?.id||'new');setParams(next);};
   const [archiveTarget, setArchiveTarget] = useState<WorkItemTemplate | null>(null);
   const [archiveNeedsReopen, setArchiveNeedsReopen] = useState(false);
   const archiveSubmitting = useRef(false);
@@ -29,6 +30,7 @@ export function TemplatesPage() {
     enabled: Boolean(selectedProjectId),
   });
   const data = loadedTemplates || emptyTemplates;
+  const editing=params.get('edit')==='new'?null:params.get('edit')?(data.find(t=>t.id===params.get('edit'))||editingSnapshot||undefined):undefined;
   const listUnavailable = Boolean(error && !loadedTemplates);
   const canManage = canManageProject(session, selectedProjectId);
   const project = projects.find((item) => item.id === selectedProjectId);
@@ -72,6 +74,9 @@ export function TemplatesPage() {
     archiveSubmitting.current = true;
     archive.mutate(template);
   };
+  if (editing !== undefined && canManage) return <><PageHeader title="流程设计"/><TemplateForm key={selectedProjectId+':'+(editing?.id||'new')}
+    template={editing ? data.find(t=>t.id===editing.id)||editing : undefined} templateUnavailable={Boolean(editing&&loadedTemplates&&!data.some(t=>t.id===editing.id))}
+    projectId={selectedProjectId} onClose={()=>setEditing(undefined)}/></>;
   return (
     <>
       <PageHeader

@@ -1,13 +1,88 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {scryptSync} from 'node:crypto';
+import {scryptSync,randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import type {FastifyInstance} from 'fastify';
 import type {PathAnalysis} from '../src/shared/paths';
 import type {Requirement,WorkItemTemplate} from '../src/client/types';
 import {addBusinessDays,todayIso} from '../src/shared/domain';
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'pm-path-api-'));
+import type {DependencyChanges,DependencyChangePreview,DependencyChangeReceipt} from '../src/shared/path-contracts';
+
+it('提交中审计失败时关系、估算、版本和回执全部回滚，同批次可安全重试',async()=>{
+ const {projectId,a,b}=await fixture(),before=await analysis(projectId),changes:DependencyChanges={add:[{clientId:randomUUID(),sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:b.workItems[1].id}],remove:[before.dependencies[0].id],estimates:[{workItemId:a.workItems[0].id,durationDays:7}]};
+ const {input,preview,response}=await batchPreview(projectId,changes);expect(response.statusCode,response.body).toBe(200);
+ const {sqlite}=await import('../src/server/database'),batchId=randomUUID(),body={...input,batchId,previewToken:preview.previewToken};
+ sqlite.exec("CREATE TEMP TRIGGER reject_path_batch BEFORE INSERT ON audit_logs WHEN NEW.action='apply_dependency_changes' BEGIN SELECT RAISE(ABORT,'batch audit unavailable'); END");
+ try{const rejected=await post('/api/projects/'+projectId+'/dependency-changes/apply',body);expect(rejected.statusCode).toBe(500);}
+ finally{sqlite.exec('DROP TRIGGER reject_path_batch');}
+ expect(await analysis(projectId)).toEqual(before);
+ expect((await request('GET','/api/projects/'+projectId+'/dependency-changes/'+batchId)).json().status).toBe('not_found');
+ const saved=await post('/api/projects/'+projectId+'/dependency-changes/apply',body);expect(saved.statusCode,saved.body).toBe(200);
+ expect((await analysis(projectId)).nodes.find(n=>n.id===a.workItems[0].id)?.estimate.durationDays).toBe(7);
+});
+
+async function batchPreview(projectId:string,changes:DependencyChanges,revision?:number) {
+  const input={expectedRevision:revision??(await analysis(projectId)).revision,target:'project',changes};
+  const response=await post('/api/projects/'+projectId+'/dependency-changes/preview',input);
+  return {input,response,preview:response.json<DependencyChangePreview>()};
+}
+it('批次按最终网络校验：移除旧前置再反向连接；预览无副作用，原子保存估算',async()=>{
+  const {projectId,a}=await fixture(),before=await analysis(projectId),old=before.dependencies.find(d=>d.sourceWorkItemId===a.workItems[0].id)!;
+  const edge={clientId:randomUUID(),sourceRequirementId:a.id,sourceWorkItemId:a.workItems[1].id,targetRequirementId:a.id,targetWorkItemId:a.workItems[0].id};
+  // Adding the reverse alone is cyclic, while the complete replacement is valid.
+  const invalid=await batchPreview(projectId,{add:[edge],remove:[],estimates:[]});
+  expect(invalid.response.statusCode).toBe(409);expect(invalid.response.json().details.nodeIds).toContain(a.workItems[0].id);
+  const {input,response,preview}=await batchPreview(projectId,{add:[edge],remove:[old.id],estimates:[{workItemId:a.workItems[0].id,durationDays:4}]});
+  expect(response.statusCode,response.body).toBe(200);expect((await analysis(projectId)).revision).toBe(before.revision);
+  expect(preview.analysis.nodes.find(n=>n.id===a.workItems[0].id)?.estimate.durationDays).toBe(4);
+  const actual=(await detail(a.id)).workItems.map(w=>[w.plannedStart,w.plannedEnd,w.actualStart,w.actualEnd]);
+  const batchId=randomUUID(),body={...input,batchId,previewToken:preview.previewToken};
+  const applied=await post('/api/projects/'+projectId+'/dependency-changes/apply',body);expect(applied.statusCode,applied.body).toBe(200);
+  const receipt=applied.json<DependencyChangeReceipt>(),after=await analysis(projectId);
+  expect(after.dependencies.some(d=>d.id===old.id)).toBe(false);expect(after.dependencies.some(d=>d.id===receipt.addedIds[edge.clientId])).toBe(true);
+  expect((await detail(a.id)).workItems.map(w=>[w.plannedStart,w.plannedEnd,w.actualStart,w.actualEnd])).toEqual(actual);
+  const duplicate=await post('/api/projects/'+projectId+'/dependency-changes/apply',body);expect(duplicate.json()).toEqual(receipt);
+  expect((await analysis(projectId)).revision).toBe(after.revision);
+  expect((await request('GET','/api/projects/'+projectId+'/dependency-changes/'+batchId)).json()).toEqual({status:'applied',...receipt});
+  const reused=await post('/api/projects/'+projectId+'/dependency-changes/apply',{...body,changes:{...input.changes,estimates:[]}});
+  expect(reused.statusCode).toBe(409);expect((await analysis(projectId)).revision).toBe(after.revision);
+});
+it('失效端点、循环、过期版本及跨日批次全部拒绝，正式数据不变',async()=>{
+  const {projectId,a,b}=await fixture(),before=await analysis(projectId);
+  const changes:DependencyChanges={add:[{clientId:randomUUID(),sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:b.workItems[1].id}],remove:[],estimates:[{workItemId:b.workItems[0].id,durationDays:5}]};
+  const {input,preview}=await batchPreview(projectId,changes);
+  const badEndpoint=await batchPreview(projectId,{...changes,estimates:[...changes.estimates,{workItemId:randomUUID(),durationDays:8}]});
+  expect(badEndpoint.response.statusCode).not.toBe(200);
+  const invalidToken=await post('/api/projects/'+projectId+'/dependency-changes/apply',{...input,batchId:randomUUID(),previewToken:'invalid'});
+  expect(invalidToken.statusCode).toBe(409);expect((await analysis(projectId)).revision).toBe(before.revision);
+  vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date(Date.now()+86400000));
+  const originalCookie=cookie;const login=await request('POST','/api/login',{username:'admin',password},'');cookie=String(login.headers['set-cookie']).split(';')[0];
+  const tomorrow=await post('/api/projects/'+projectId+'/dependency-changes/apply',{...input,batchId:randomUUID(),previewToken:preview.previewToken});
+  vi.useRealTimers();cookie=originalCookie;expect(tomorrow.statusCode).toBe(409);
+  await request('PATCH','/api/work-items/'+a.workItems[0].id+'/path-estimate',{expectedRevision:before.revision,durationDays:3});
+  const now=await analysis(projectId);
+  const stale=await post('/api/projects/'+projectId+'/dependency-changes/apply',{...input,batchId:randomUUID(),previewToken:preview.previewToken});
+  expect(stale.statusCode).toBe(409);expect((await analysis(projectId)).dependencies).toEqual(now.dependencies);
+  expect((await analysis(projectId)).nodes.find(n=>n.id===b.workItems[0].id)?.estimate.durationDays).toBe(2);
+});
+it('批次权限、MCP 与回执共用服务；包含越权关系时整批拒绝',async()=>{
+  const {projectId,a,b,owner}=await fixture(),before=await analysis(projectId);
+  const changes:DependencyChanges={add:[{clientId:randomUUID(),sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:b.workItems[1].id}],remove:[],estimates:[{workItemId:a.workItems[0].id,durationDays:4}]};
+  const login=await request('POST','/api/login',{username:owner.name,password:'888888'},'');let ownerCookie=String(login.headers['set-cookie']).split(';')[0];
+  const passwordResponse=await request('POST','/api/account/change-password',{currentPassword:'888888',newPassword:'batch-owner-test-123'},ownerCookie);ownerCookie=String(passwordResponse.headers['set-cookie']).split(';')[0];
+  const input={expectedRevision:before.revision,target:'project',changes};
+  const rejected=await request('POST','/api/projects/'+projectId+'/dependency-changes/preview',input,ownerCookie);
+  expect(rejected.statusCode).toBe(403);expect((await analysis(projectId)).revision).toBe(before.revision);
+  const result=await mcp('preview_dependency_changes',{projectId,...input});expect(result.result?.previewToken,JSON.stringify(result)).toBeTruthy();
+  const batchId=randomUUID();const applied=await mcp('apply_dependency_changes',{projectId,...input,batchId,previewToken:result.result.previewToken});
+  expect(applied.result?.batchId,JSON.stringify(applied)).toBe(batchId);
+  const receipt=await mcp('get_dependency_change_receipt',{projectId,batchId});expect(receipt.result.status).toBe('applied');
+  const none=await request('GET','/api/projects/'+projectId+'/dependency-changes/'+randomUUID());expect(none.json().status).toBe('not_found');
+  const otherActor=await request('GET','/api/projects/'+projectId+'/dependency-changes/'+batchId,undefined,ownerCookie);expect(otherActor.statusCode).toBe(404);
+});
+
 const password='path-api-private-test-password';
 Object.assign(process.env,{DB_PATH:path.join(directory,'test.db'),BACKUP_DIR:path.join(directory,'backups'),WEB_DIST_DIR:path.join(directory,'web'),SEED_DEMO:'0',NODE_ENV:'test',APP_PASSWORD_HASH:`scrypt$paths$${scryptSync(password,'paths',64).toString('hex')}`,SESSION_SECRET:'path-api-test-secret-more-than-thirty-two-characters'});
 let app:FastifyInstance,cookie='',origin='',token='',sequence=0;

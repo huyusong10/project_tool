@@ -300,3 +300,14 @@ export const auditLogs = sqliteTable('audit_logs', {
   index('idx_audit_created_at').on(table.createdAt),
   index('idx_audit_project_created').on(table.projectId, table.createdAt),
 ]);
+
+export const dependencyChangeReceipts = sqliteTable('dependency_change_receipts', {
+  batchId: text('batch_id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  actorType: text('actor_type').notNull(),
+  actorId: text('actor_id').notNull(),
+  contentHash: text('content_hash').notNull(),
+  committedRevision: integer('committed_revision').notNull(),
+  addedIds: text('added_ids').notNull(),
+  createdAt: text('created_at').notNull(),
+}, table => [index('idx_dependency_receipt_project').on(table.projectId)]);

@@ -46,6 +46,12 @@ export const startId = (id: string) => `start:${id}`;
 export const acceptanceId = (id: string) => `acceptance:${id}`;
 export const projectTarget = 'project';
 
+export class DependencyCycleError extends Error {
+  constructor(public nodeIds: string[], public edgeIds: string[] = []) {
+    super('依赖形成执行循环，请调整前置关系');
+  }
+}
+
 /** Stable Kahn traversal. A requirement projection may contain cycles; this execution graph must not. */
 export function topologicalOrder(ids: string[], edges: Array<{ source: string; target: string }>) {
   const degree = new Map(ids.map(id => [id, 0]));
@@ -61,7 +67,32 @@ export function topologicalOrder(ids: string[], edges: Array<{ source: string; t
       const value = degree.get(child)! - 1; degree.set(child, value); if (value === 0) ready.push(child);
     }
   }
-  if (result.length !== ids.length) throw new Error('依赖形成执行循环，请调整前置关系');
+  if (result.length !== ids.length) {
+    const remaining = new Set(ids.filter(id => degree.get(id)! > 0));
+    const color = new Map<string, number>(), parent = new Map<string, string>();
+    for (const root of remaining) {
+      if (color.has(root)) continue;
+      color.set(root, 1);
+      const stack = [{ id: root, index: 0 }];
+      while (stack.length) {
+        const frame = stack.at(-1)!, children = next.get(frame.id)!;
+        if (frame.index === children.length) { color.set(frame.id, 2); stack.pop(); continue; }
+        const child = children[frame.index++];
+        if (!remaining.has(child)) continue;
+        if (color.get(child) === 1) {
+          const cycle = [frame.id];
+          while (cycle.at(-1) !== child) cycle.push(parent.get(cycle.at(-1)!)!);
+          cycle.reverse();
+          const pairs = cycle.map((source, i) => ({ source, target: cycle[(i + 1) % cycle.length] }));
+          const edgeIds = pairs.flatMap(pair => edges.filter(e => e.source === pair.source && e.target === pair.target)
+            .map(e => (e as { id?: string }).id).filter((id): id is string => !!id));
+          throw new DependencyCycleError(cycle, edgeIds);
+        }
+        if (!color.has(child)) { color.set(child, 1); parent.set(child, frame.id); stack.push({ id: child, index: 0 }); }
+      }
+    }
+    throw new DependencyCycleError([...remaining]);
+  }
   return result;
 }
 

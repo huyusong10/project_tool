@@ -49,7 +49,8 @@ export function RequirementPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const pathLocation=useLocation();
   const pathView = searchParams.get('view') === 'path';
-  const openPathView = () => { const params = new URLSearchParams(searchParams); params.set('view','path'); setSearchParams(params,{state:pathLocation.state}); };
+  const openPathView = () => { sessionStorage.setItem('pm-detail-scroll:'+id,String(window.scrollY)); const params = new URLSearchParams(searchParams); params.set('view','path'); setSearchParams(params,{state:pathLocation.state}); };
+  useEffect(()=>{if(!pathView&&!searchParams.get('workItemId'))requestAnimationFrame(()=>window.scrollTo(0,Number(sessionStorage.getItem('pm-detail-scroll:'+id)||0)));},[pathView,id,searchParams]);
   const client = useQueryClient();
   const { session } = useSession();
   const { projects, syncProjectContext } = useProjects();
@@ -229,6 +230,7 @@ export function RequirementPage() {
       : "待评估";
   const riskClass = riskClosed || !requirement.riskEvaluated ? "risk-pending" : `risk-${requirement.riskLevel}`;
   const progressById = new Map((requirement.progressUpdates || []).map((update) => [update.id, update]));
+  if (pathView) return <><PageHeader title={requirement.title}/><PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement} onExit={()=>{const params=new URLSearchParams(searchParams);params.delete('view');params.delete('workItemId');setSearchParams(params,{state:pathLocation.state});}}/></>;
   return (
     <>
       <PageHeader

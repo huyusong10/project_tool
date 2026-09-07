@@ -1,13 +1,13 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { useEffect,useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { api, jsonBody, requiresWriteRecheck } from '../api';
+import { api, ApiError,jsonBody, requiresWriteRecheck } from '../api';
 import { useSession } from '../app-context';
 import { useResourceQuery } from '../use-resource-query';
 import { invalidateRequirementViews, keys } from '../query-keys';
 import { canManageProject } from '../permissions';
 import type { Requirement } from '../types';
-import { acceptanceId, type PathAnalysis, type PathNode } from '../../shared/paths';
+import { acceptanceId, startId, type PathAnalysis, type PathNode } from '../../shared/paths';
 import { addBusinessDays, riskLabels, todayIso } from '../../shared/domain';
 import { hasWorkdayCalendarFallback } from '../../shared/workday';
 import { projectPathGraph } from '../path-projection';
@@ -15,7 +15,12 @@ import { Modal } from './Modal';
 import { EmptyState, LoadingState } from './Feedback';
 import { FormError } from './Form';
 import '../paths.css';
-const DependencyGraph=lazy(()=>import('./DependencyGraph').then(m=>({default:m.DependencyGraph})));
+import { GraphWorkspace } from './GraphWorkspace';
+import { PredecessorPicker } from './PredecessorPicker';
+import { clearProjectGraphDrafts,useDependencyDraft } from '../use-graph-draft';
+import { draftNetwork, dependencyIssue } from '../dependency-draft';
+import type { DependencyChanges } from '../../shared/path-contracts';
+import type { GraphCard } from '../path-projection';
 type PlanPreview={requirementId:string;projectId:string;baseStart:string;expectedRevision:number;previewToken:string;applicable:boolean;entries:Array<{workItemId:string;requirementId:string;title:string;currentStart:string|null;currentEnd:string|null;proposedStart:string|null;proposedEnd:string|null;reasons:string[]}>};
 type Editor = {kind:'relation'}|{kind:'estimate';node:PathNode}|{kind:'review'}|{kind:'plan'}|{kind:'acceptance'};
 
@@ -65,53 +70,175 @@ function PathEditor({editor,data,requirement,manager,onClose,onReload}:{editor:E
   </Modal>;
 }
 
-export function PathAnalysisPanel({projectId,requirement}:{projectId:string;requirement?:Requirement}) {
-  const [params,setParams]=useSearchParams(),navigate=useNavigate(),location=useLocation(),client=useQueryClient(),{session}=useSession();
-  const focus=requirement?.id, target=focus?(params.get('target')||acceptanceId(focus)):'project';
-  const selected=params.get('pathNode')||params.get('workItemId')||'',attention=params.get('pathScope')!=='all',search=params.get('pathSearch')||'',floatFilter=params.get('pathFloat')||'';
-  const [editor,setEditor]=useState<Editor|null>(null),[removeId,setRemoveId]=useState<{id:string;revision:number}|null>(null);
-  const query=useResourceQuery<PathAnalysis>([...keys.paths,projectId,focus||'all',target],focus?`/api/requirements/${focus}/path-analysis?target=${encodeURIComponent(target)}`:`/api/projects/${projectId}/path-analysis`,!!projectId);
-  const data=query.data,manager=canManageProject(session,projectId),canEdit=manager||!!requirement&&requirement.ownerId===session.personId;
-  const setParam=(name:string,value:string)=>{const next=new URLSearchParams(params);if(value)next.set(name,value);else next.delete(name);setParams(next,{replace:true,state:location.state});};
-  const graph=useMemo(()=>data?projectPathGraph(data,focus,!focus&&attention):{cards:[],links:[]},[data,focus,attention]);
-  const filtered=useMemo(()=>{
-    if(!search&&!floatFilter)return graph;
-    const keep=new Set(graph.cards.filter(c=>(!search||`${c.title} ${c.subtitle}`.toLowerCase().includes(search.toLowerCase()))&&(!floatFilter||(floatFilter==='unknown'?c.floatDays===null:floatFilter==='critical'?c.floatDays===0:floatFilter==='near'?c.floatDays!==null&&c.floatDays>0&&c.floatDays<=2:c.floatDays!==null&&c.floatDays>2))).map(c=>c.id));
-    return {cards:graph.cards.filter(c=>keep.has(c.id)).map(c=>({...c,hiddenCount:c.hiddenCount+graph.links.filter(e=>(e.source===c.id&&!keep.has(e.target))||(e.target===c.id&&!keep.has(e.source))).length})),links:graph.links.filter(e=>keep.has(e.source)&&keep.has(e.target))};
-  },[graph,search,floatFilter]);
-  const mutation=useMutation({mutationFn:({id,revision}:{id:string;revision:number})=>api(`/api/dependencies/${id}`,{method:'DELETE',body:jsonBody({expectedRevision:revision})}),onSuccess:()=>{setRemoveId(null);invalidateRequirementViews(client,focus);},onError:()=>void query.refetch()});
+
+export function PathAnalysisPanel({projectId,requirement,onExit}:{projectId:string;requirement?:Requirement;onExit?:()=>void}) {
+  const [params]=useSearchParams();
+  const {session}=useSession();
+  const target=requirement?(params.get('target')||acceptanceId(requirement.id)):'project';
+  const query=useResourceQuery<PathAnalysis>([...keys.paths,projectId,requirement?.id||'all',target],
+    requirement?'/api/requirements/'+requirement.id+'/path-analysis?target='+encodeURIComponent(target):'/api/projects/'+projectId+'/path-analysis',!!projectId);
+  useEffect(()=>{if(query.error instanceof ApiError&&[401,403].includes(query.error.status))clearProjectGraphDrafts(session.accountId||'guest',projectId);},[query.error,session.accountId,projectId]);
   if(query.isLoading)return <LoadingState label="正在分析交付依赖…"/>;
-  if(query.unavailable||!data)return <EmptyState title="路径分析暂不可用" detail={query.error?.message||'请选择项目'} action={<button className="ghost-button" onClick={()=>void query.refetch()}>重新加载</button>}/>;
-  const selectedCard=graph.cards.find(c=>c.id===selected),selectedNode=data.nodes.find(n=>n.id===selected),risk=selectedCard?data.risks[selectedCard.requirementId]:null;
-  const eligible=data.requirements.filter(r=>!['completed','cancelled','planning'].includes(r.status));
+  if(query.unavailable||!query.data)return <EmptyState title="路径分析暂不可用" detail={query.error?.message||'请选择项目'} action={<button className="ghost-button" onClick={()=>void query.refetch()}>重新加载</button>}/>;
+  return <PathWorkspace key={projectId} data={query.data} requirement={requirement} target={target} onExit={onExit}
+    onReload={async()=>{const result=await query.refetch({throwOnError:true});return result.data!;}}/>;
+}
+function EstimateFields({node,structure,onChange}:{node:PathNode;structure:boolean;onChange:(patch:DependencyChanges['estimates'][number])=>void}) {
+  return <div className="graph-fields">{(['durationDays','earliestStart','unblockEstimate','forecastEnd'] as const).filter(k=>structure||!['durationDays','earliestStart'].includes(k)).map(key=>
+    <label className="field" key={key}><span>{{durationDays:'预计工期（工作日）',earliestStart:'最早开始',unblockEstimate:'预计解阻',forecastEnd:'人工预测完成'}[key]}</span>
+      <input key={key+String(node.estimate[key])} aria-label={{durationDays:'预计工期',earliestStart:'最早开始',unblockEstimate:'预计解阻',forecastEnd:'人工预测完成'}[key]}
+        type={key==='durationDays'?'number':'date'} min={key==='durationDays'?1:undefined} max={key==='durationDays'?3660:undefined} defaultValue={node.estimate[key]??''}
+        onBlur={e=>{const value=e.target.value?(key==='durationDays'?Number(e.target.value):e.target.value):null;if(value!==node.estimate[key])onChange({workItemId:node.id,[key]:value});}}/></label>)}
+    <small>字段修改加入草稿。保存预测后，计划日期仍需单独预览并应用。</small></div>;
+}
+function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:PathAnalysis;requirement?:Requirement;target:string;onExit?:()=>void;onReload:()=>Promise<PathAnalysis>}) {
+  const [params,setParams]=useSearchParams(),location=useLocation(),navigate=useNavigate(),client=useQueryClient(),{session}=useSession();
+  const focus=requirement?.id,manager=canManageProject(session,formal.projectId),canEdit=manager||!!requirement&&requirement.ownerId===session.personId;
+  const draft=useDependencyDraft(session.accountId||'guest',formal,target,()=>{invalidateRequirementViews(client,focus);void onReload().catch(()=>{});});
+  const data=useMemo(()=>draft.preview?.analysis||draftNetwork(formal,draft.changes),[draft.preview,formal,draft.changes]);
+  const editing=draft.active&&!draft.pending,selected=params.get('pathNode')||params.get('workItemId')||'',search=params.get('pathSearch')||'';
+  const [panel,setPanel]=useState(''),[edgeId,setEdgeId]=useState(''),[relationId,setRelationId]=useState('');
+  const [inspector,setInspector]=useState(!!selected),[locate,setLocate]=useState<{id:string;sequence:number}>();
+  const [imported,setImported]=useState<string[]>([]),[issue,setIssue]=useState<{message:string;nodeIds?:string[]}>(),[confirmDiscard,setConfirmDiscard]=useState(false);
+  const [guard,setGuard]=useState<null|(()=>void)>(null),[editor,setEditor]=useState<Editor|null>(null);
+  useEffect(()=>setIssue(undefined),[draft.changes]);
+  const setParam=(name:string,value:string)=>{const next=new URLSearchParams(params);if(value)next.set(name,value);else next.delete(name);setParams(next,{replace:true,state:location.state});};
+  const narrow=()=>matchMedia('(max-width: 800px)').matches;
+  const select=(id:string)=>{setParam('pathNode',id);setEdgeId('');setRelationId('');setInspector(true);if(narrow())setPanel('');};
+  const openPanel=(name:string)=>{setPanel(panel===name?'':name);if(narrow())setInspector(false);};
   const directTo=(requirementId:string,workItemId?:string|null)=>{
-    const queryParams=new URLSearchParams({view:'path',target});if(workItemId)queryParams.set('workItemId',workItemId);
-    navigate(`/requirements/${requirementId}?${queryParams}`,{state:{pathReturn:focus?(location.state as {pathReturn?:string}|null)?.pathReturn||'/paths':`${location.pathname}${location.search}`}});
+    const p=new URLSearchParams({view:'path',target});if(workItemId)p.set('workItemId',workItemId);
+    navigate('/requirements/'+requirementId+'?'+p,{state:{pathReturn:focus?(location.state as {pathReturn?:string}|null)?.pathReturn||'/paths':location.pathname+location.search}});
   };
-  const returnPath=(location.state as {pathReturn?:string}|null)?.pathReturn;
-  const req=data.requirements.find(r=>r.id===focus);
-  const visibleLinks=data.dependencies.filter(d=>focus?(d.sourceRequirementId===focus||d.targetRequirementId===focus):d.sourceRequirementId!==d.targetRequirementId);
-  const workSelection=selectedNode&&requirement?.workItems.find(w=>w.id===selectedNode.id);
-  const canEstimate=!!workSelection&&!['completed','cancelled'].includes(workSelection.status)&&(canEdit||!!session.personId&&workSelection.assigneeIds.includes(session.personId));
-  return <div className={`path-analysis${focus?' requirement-path-analysis':''}`}>
-    {query.error&&<div className="warning-banner">刷新失败，当前展示 {data.asOfDate} 的已读取结果。<button className="ghost-button" onClick={()=>void query.refetch()}>重试</button></div>}
-    <div className="path-toolbar"><div>{focus?<label>分析目标 <select aria-label="分析目标" value={target} onChange={e=>setParam('target',e.target.value)}><option value={acceptanceId(focus)}>本需求验收</option><option value="project">项目交付</option>{target!=="project"&&target!==acceptanceId(focus)&&!data.nodes.some(n=>n.id===target&&n.requirementId===focus&&n.milestoneLabel)&&<option value={target}>来源目标：{data.targetLabel}</option>}{data.nodes.filter(n=>n.requirementId===focus&&n.milestoneLabel).map(n=><option key={n.id} value={n.id}>{n.milestoneLabel}</option>)}</select></label>:<strong>当前项目 · 全部需求的交付依赖</strong>}</div>
-      <div className="button-row">{focus&&<Link className="ghost-button" to={returnPath?.startsWith('/paths')?returnPath:'/paths'}>返回全局分析</Link>}{canEdit&&<button className="ghost-button" onClick={()=>setEditor({kind:'relation'})}>配置前置</button>}{focus&&canEdit&&!req?.dependenciesReviewedAt&&<button className="primary-button" onClick={()=>setEditor({kind:'review'})}>核对依赖</button>}{focus&&manager&&<button className="ghost-button" onClick={()=>setEditor({kind:'plan'})}>预览排期</button>}<button className="ghost-button" disabled={query.isFetching} onClick={()=>void query.refetch()}>刷新</button></div>
+  const guarded=(action:()=>void)=>{if(draft.count||draft.pending)setGuard(()=>action);else action();};
+  const graph=useMemo(()=>{
+    const value=projectPathGraph(data,focus,!focus&&params.get('pathScope')!=='all'&&!editing);
+    if(focus)for(const id of new Set([...imported,...(selected?[selected]:[])])) {
+      if(value.cards.some(c=>c.id===id))continue;
+      const n=data.nodes.find(n=>n.id===id&&n.kind==='work');if(!n)continue;
+      value.cards.push({id:n.id,requirementId:n.requirementId!,workItemId:n.id,kind:n.kind,title:n.title,subtitle:'外部 · '+data.requirements.find(r=>r.id===n.requirementId)?.title,status:n.status,risk:data.risks[n.requirementId!]?.riskLevel||'pending',forecast:n.forecastEnd,floatDays:n.floatDays,critical:n.critical,unknown:!!n.unknownReasons.length,external:true,hiddenCount:0});
+    }
+    if(draft.count&&!draft.preview)value.cards=value.cards.map(c=>({...c,forecast:null,floatDays:null,critical:false,unknown:true}));
+    return value;
+  },[data,focus,params,editing,imported,selected,draft.count,draft.preview]);
+  const matches=(c:GraphCard)=>!search||(c.title+' '+c.subtitle).toLowerCase().includes(search.toLowerCase());
+  const floatMatch=(c:GraphCard)=>{const f=params.get('pathFloat');return !f||(f==='unknown'?c.floatDays===null:f==='critical'?c.floatDays===0:f==='near'?c.floatDays!==null&&c.floatDays>0&&c.floatDays<=2:c.floatDays!==null&&c.floatDays>2);};
+  const results=graph.cards.filter(c=>matches(c)&&floatMatch(c));
+  const branch=params.get('pathBranch'),visible=useMemo(()=>{
+    if(!branch)return graph;const ids=new Set([branch]);
+    for(const direction of ['source','target'] as const){const seen=new Set([branch]),queue=[branch];for(let i=0;i<queue.length;i++)for(const e of graph.links)if(e[direction]===queue[i]){const id=e[direction==='source'?'target':'source'];if(!seen.has(id)){seen.add(id);queue.push(id);ids.add(id);}}}
+    return {cards:graph.cards.filter(c=>ids.has(c.id)),links:graph.links.filter(e=>ids.has(e.source)&&ids.has(e.target))};
+  },[graph,branch]);
+  const selectedCard=graph.cards.find(c=>c.id===selected),node=data.nodes.find(n=>n.id===selected);
+  const selectedEdge=graph.links.find(e=>e.id===edgeId),selectedRelation=data.dependencies.find(d=>d.id===relationId);
+  const editableRelation=(d:PathAnalysis['dependencies'][number])=>manager||canEdit&&d.sourceRequirementId===focus&&d.targetRequirementId===focus;
+  const remove=(id:string,changes=draft.changes):DependencyChanges=>({...changes,add:changes.add.filter(e=>e.clientId!==id),remove:formal.dependencies.some(e=>e.id===id)?[...new Set([...changes.remove,id])]:changes.remove});
+  const proposal=(source:string,destination:string):DependencyChanges['add'][number]|null=>{
+    if(!focus)return {clientId:crypto.randomUUID(),sourceRequirementId:source,sourceWorkItemId:null,targetRequirementId:destination,targetWorkItemId:null};
+    const a=data.nodes.find(n=>n.id===source),b=data.nodes.find(n=>n.id===destination);if(!a?.requirementId||!b?.requirementId)return null;
+    return {clientId:crypto.randomUUID(),sourceRequirementId:a.requirementId,sourceWorkItemId:a.kind==='work'?a.id:null,targetRequirementId:b.requirementId,targetWorkItemId:b.kind==='work'?b.id:null};
+  };
+  const validate=(source:string,destination:string)=>{
+    if(source===destination)return {message:'不能依赖自身',nodeIds:[source]};
+    const edge=proposal(source,destination);if(!edge)return {message:'交付端点已失效'};
+    if(['completed','cancelled'].includes(data.requirements.find(r=>r.id===edge.targetRequirementId)?.status||'')||['completed','cancelled'].includes(data.nodes.find(n=>n.id===destination)?.status||''))return {message:'已结束的交付不能增加前置关系',nodeIds:[destination]};
+    if(!manager&&(!canEdit||edge.sourceRequirementId!==focus||edge.targetRequirementId!==focus))return {message:'跨需求关系由项目经理维护'};
+    if(data.dependencies.some(d=>d.sourceRequirementId===edge.sourceRequirementId&&d.targetRequirementId===edge.targetRequirementId&&d.sourceWorkItemId===edge.sourceWorkItemId&&d.targetWorkItemId===edge.targetWorkItemId))return {message:'这条依赖已经存在',nodeIds:[source,destination]};
+    return dependencyIssue(formal,{...draft.changes,add:[...draft.changes.add,edge]});
+  };
+  const connect=(source:string,destination:string)=>{
+    const error=validate(source,destination);if(error){setIssue(error);return;}
+    draft.change({...draft.changes,add:[...draft.changes.add,proposal(source,destination)!]});setIssue(undefined);
+  };
+  const label=(id:string)=>data.nodes.find(n=>n.id===id)?.title||data.requirements.find(r=>r.id===id)?.title||'失效端点';
+  const relationLabel=(d:PathAnalysis['dependencies'][number])=>label(d.sourceWorkItemId||acceptanceId(d.sourceRequirementId))+' → '+label(d.targetWorkItemId||startId(d.targetRequirementId));
+  const displayRelations=selectedEdge?data.dependencies.filter(d=>selectedEdge.dependencyIds.includes(d.id)):data.dependencies.filter(d=>focus?(d.sourceRequirementId===focus||d.targetRequirementId===focus):d.sourceRequirementId!==d.targetRequirementId);
+  const relationList=(relations:typeof data.dependencies)=><div className="graph-relation-list">{relations.length?relations.map(d=><div key={d.id}>
+    <button className={relationId===d.id?'selected':''} onClick={()=>{setRelationId(d.id);setInspector(true);if(narrow())setPanel('');}}>{relationLabel(d)}<small>{d.sourceWorkItemId||d.targetWorkItemId?'部分交付':'验收后开始'} · {d.origin==='template'?'模板关系':'自定义关系'}</small></button>
+    {editing&&editableRelation(d)&&relationId===d.id&&<button className="ghost-button" onClick={()=>{draft.change(remove(d.id));setRelationId('');}}>移除选中关系</button>}
+  </div>):<p>当前没有关系。</p>}</div>;
+  const work=requirement?.workItems.find(w=>w.id===selected),canEstimate=!!work&&!['completed','cancelled'].includes(work.status)&&(canEdit||!!session.personId&&work.assigneeIds.includes(session.personId));
+  const req=data.requirements.find(r=>r.id===focus),returnPath=(location.state as {pathReturn?:string}|null)?.pathReturn;
+  const nodesPanel=<><input aria-label="筛选图中节点" value={search} placeholder="搜索名称或负责人，只高亮结果" onChange={e=>setParam('pathSearch',e.target.value)}/>
+    {!focus&&<select aria-label="图显示范围" value={params.get('pathScope')==='all'?'all':'attention'} onChange={e=>setParam('pathScope',e.target.value)}><option value="attention">关键与异常范围</option><option value="all">全部需求</option></select>}
+    <div className="path-node-list">{results.map(c=><div className="graph-list-row" key={c.id}><button className={selected===c.id?'selected':''} onClick={()=>select(c.id)}>{c.title}<small>{c.forecast||'待确认'} · {riskLabels[c.risk as keyof typeof riskLabels]||'待评估'}</small></button><button className="ghost-button" onClick={()=>setLocate({id:c.id,sequence:Date.now()})}>定位</button></div>)}</div></>;
+  const toolbar=<><div className="graph-toolbar-row"><strong>{focus?requirement!.title:'项目交付依赖'}</strong>
+    <div className="button-row">{focus&&<Link className="ghost-button" to={returnPath?.startsWith('/paths')?returnPath:'/paths'}>全局分析</Link>}{onExit&&<button className="ghost-button" onClick={()=>guarded(onExit)}>退出路径</button>}
+      {draft.active?<><span className="draft-badge">{draft.count} 项未保存</span><button className="ghost-button" disabled={!draft.canUndo||!!draft.pending||draft.busy} onClick={draft.undo}>撤销</button><button className="ghost-button" disabled={!draft.canRedo||!!draft.pending||draft.busy} onClick={draft.redo}>重做</button>
+        <button className="primary-button" disabled={draft.busy||!draft.pending&&(!draft.preview||draft.conflict)} onClick={()=>void draft.save()}>{draft.busy?'保存中…':draft.pending?'查询回执并重试':'保存修改'}</button>
+        <button className="ghost-button" disabled={!!draft.pending||draft.busy} onClick={()=>draft.count?setConfirmDiscard(true):draft.cancel()}>取消编辑</button></>:
+        (canEdit||canEstimate)&&<button className="primary-button" onClick={draft.begin}>{canEdit?'编辑关系':'编辑预测'}</button>}
+    </div></div>
+    <div className="graph-toolbar-row graph-delivery-summary">{focus?<select aria-label="分析目标" value={target} onChange={e=>setParam('target',e.target.value)}>
+      <option value={acceptanceId(focus)}>本需求验收</option><option value="project">项目交付</option>
+      {target!=='project'&&target!==acceptanceId(focus)&&!data.nodes.some(n=>n.id===target&&n.requirementId===focus&&n.milestoneLabel)&&<option value={target}>{data.targetLabel}</option>}
+      {data.nodes.filter(n=>n.requirementId===focus&&n.milestoneLabel).map(n=><option key={n.id} value={n.id}>{n.milestoneLabel}</option>)}</select>:<span>{data.targetLabel}</span>}
+      <span>{draft.count?'未保存预览':'正式分析'} · {draft.previewing?'计算中…':draft.count&&!draft.preview?'等待有效预览':'预计 '+(data.forecastEnd||'待确认')}</span>
+      <span>目标 {data.targetDate||'未设日期'} · {draft.count&&!draft.preview?'余量待预览':data.deadlineSlack===null?'余量待确认':'余量 '+data.deadlineSlack+' 天'}</span>
+      <button className="ghost-button" onClick={()=>openPanel('summary')}>分析说明</button>
     </div>
-    <div className="path-summary"><div><small>分析目标</small><strong>{data.targetLabel}</strong></div><div><small>目标日期</small><strong>{data.targetDate||'未设日期'}</strong></div><div><small>预计完成</small><strong>{data.forecastEnd||(!focus&&!eligible.length?'暂无待交付目标':'待确认')}</strong></div><div><small>交付差额</small><strong className={data.deadlineSlack!==null&&data.deadlineSlack<0?'danger-text':''}>{data.deadlineSlack===null?'待确认':data.deadlineSlack<0?`预计延期 ${-data.deadlineSlack} 天`:`尚余 ${data.deadlineSlack} 天`}</strong></div></div>
-    {hasWorkdayCalendarFallback([data.targetDate,data.forecastEnd])&&<p role="status" className="path-coverage">部分日期超出法定工作日日历覆盖范围，将按周一至周五计算。</p>}
-    {(!data.complete||data.coverage.reviewed<data.coverage.total||data.coverage.unplanned>0)&&<div className="path-coverage">已核对 {data.coverage.reviewed}/{data.coverage.total} 个需求；{data.coverage.unplanned} 个待规划。{!data.complete?'存在待确认条件，当前日期与余量分析不完整。':'预测仅覆盖已纳入计划的目标。'}</div>}
-    {!focus&&<section className="path-float-distribution" aria-label="需求余量分布">{[{key:'critical',label:'0 天',test:(f:number|null)=>f===0},{key:'near',label:'1—2 天',test:(f:number|null)=>f!==null&&f>0&&f<=2},{key:'other',label:'大于 2 天',test:(f:number|null)=>f!==null&&f>2},{key:'unknown',label:'待确认',test:(f:number|null)=>f===null}].map(bucket=>{const cards=projectPathGraph(data,undefined,false).cards.filter(c=>!['completed','cancelled'].includes(c.status));const count=cards.filter(c=>bucket.test(c.floatDays)).length;return <button key={bucket.key} className={floatFilter===bucket.key?'selected':''} onClick={()=>setParam('pathFloat',floatFilter===bucket.key?'':bucket.key)}><span>{bucket.label}<strong>{count} 个需求</strong></span><i style={{width:`${100*count/Math.max(1,cards.length)}%`}}/></button>;})}</section>}
-    <div className="path-filters"><input aria-label="筛选图中节点" value={search} placeholder={focus?'查找工作项或负责人':'查找需求或负责人'} onChange={e=>setParam('pathSearch',e.target.value)}/>{!focus&&<select aria-label="图显示范围" value={attention?'attention':'all'} onChange={e=>setParam('pathScope',e.target.value)}><option value="attention">关键与异常范围</option><option value="all">全部需求</option></select>}<select aria-label="按余量筛选" value={floatFilter} onChange={e=>setParam('pathFloat',e.target.value)}><option value="">全部余量</option><option value="critical">0 天</option><option value="near">1—2 天</option><option value="other">大于 2 天</option><option value="unknown">待确认</option></select><small>粗线：当前目标关键关系 · 风险标签：项目风险 · 筛选不改变计算</small></div>
-    {filtered.cards.length?<Suspense fallback={<LoadingState label="加载依赖图…"/>}><DependencyGraph cards={filtered.cards} links={filtered.links} selected={selected} onSelect={id=>setParam('pathNode',id)} viewKey={`${session.accountId}:${projectId}:${focus||'all'}`}/></Suspense>:<EmptyState title="当前范围没有可显示节点" detail="调整筛选条件或配置工作项及前置关系。"/>}
-    <div className="path-content-grid"><section className="path-detail"><h3>{selectedCard?.title||'选择节点查看交付条件'}</h3>{selectedCard&&<><p>{selectedCard.subtitle}</p><p>{risk?.riskReason}</p><p>{selectedNode?.source}</p>{selectedNode?.unknownReasons.length?<p className="danger-text">{selectedNode.unknownReasons.join('；')}</p>:null}<div className="button-row">{(!focus||selectedCard.external)&&<button className="primary-button" onClick={()=>directTo(selectedCard.requirementId,selectedCard.workItemId)}>进入需求路径</button>}{focus&&selectedNode?.workItemId&&selectedNode.requirementId===focus&&<button className="ghost-button" onClick={()=>{const p=new URLSearchParams(params);p.delete('view');p.set('workItemId',selectedNode.id);setParams(p,{state:location.state});}}>定位并处理工作项</button>}{canEstimate&&<button className="ghost-button" onClick={()=>setEditor({kind:'estimate',node:selectedNode!})}>工期与预测</button>}{focus&&manager&&selectedNode?.kind==='acceptance'&&selectedNode.requirementId===focus&&<button className="ghost-button" onClick={()=>setEditor({kind:'acceptance'})}>预计验收日期</button>}</div></>}</section>
-      <section className="path-blockers"><h3>阻塞源排行 <small>{data.blockers.length} 项</small></h3>{!data.blockers.length?<p className="field-help">当前没有需要处理的阻塞源。</p>:data.blockers.slice(0,20).map(b=><button className="path-blocker" key={b.nodeId} onClick={()=>{if(!focus)setParam('pathNode',b.requirementId);else if(graph.cards.some(c=>c.id===b.nodeId))setParam('pathNode',b.nodeId);else directTo(b.requirementId,b.workItemId);}}><span><strong>{b.title}</strong><small>{b.reasons.join('；')} · {b.ownerName||'未分派'}</small><span className="path-impact-bar"><i style={{width:`${Math.max(4,b.affectedRequirementIds.length/Math.max(1,data.coverage.total)*100)}%`}}/></span></span><span>{b.affectedRequirementIds.length} 个下游需求{b.critical&&<small>关键阻塞源</small>}</span></button>)}</section></div>
-    <section className="path-list"><h3>节点列表 <small>{filtered.cards.length} / {graph.cards.length}</small></h3><div className="path-node-list">{filtered.cards.map(c=><button key={c.id} className={selected===c.id?'selected':''} onClick={()=>setParam('pathNode',c.id)}><span>{c.title}</span><small>{c.forecast||'待确认'} · {riskLabels[c.risk as keyof typeof riskLabels]||'待评估'}{c.critical?' · 关键':''}{c.hiddenCount?` · 隐藏 ${c.hiddenCount} 条关系`:''}</small></button>)}</div></section>
-    <section className="path-relations"><h3>关系明细 <small>{visibleLinks.length} 条</small></h3>{!visibleLinks.length?<p className="field-help">尚未配置{focus?'前置关系':'跨需求依赖'}。</p>:visibleLinks.map(d=>{
-      const source=data.nodes.find(n=>n.id===(d.sourceWorkItemId||acceptanceId(d.sourceRequirementId))),targetNode=data.nodes.find(n=>n.id===(d.targetWorkItemId||`start:${d.targetRequirementId}`));
-      return <div className="path-relation" key={d.id}><button onClick={()=>focus?setParam('pathNode',targetNode!.id):directTo(d.targetRequirementId,d.targetWorkItemId)}>{source?.title} → {targetNode?.title}<small>{d.origin==='template'?'继承模板':'本需求调整'} · {d.sourceWorkItemId||d.targetWorkItemId?'部分交付':'整需求依赖'}</small></button>{(manager||canEdit&&d.sourceRequirementId===focus&&d.targetRequirementId===focus)&&<button className="ghost-button" onClick={()=>setRemoveId({id:d.id,revision:data.revision})}>移除</button>}</div>;
-    })}</section>
-    {editor&&<PathEditor key={`${editor.kind}:${editor.kind==='estimate'?editor.node.id:''}`} editor={editor} data={data} requirement={requirement} manager={manager} onClose={()=>setEditor(null)} onReload={async()=>{const result=await query.refetch({throwOnError:true});return result.data!;}}/>}
-    {removeId&&<Modal title="移除依赖" width={500} onClose={()=>setRemoveId(null)}><p>移除后重新计算路径和预测，计划日期保持原值。</p>{removeId.revision!==data.revision&&<p className="form-error">依赖或进度已变化，请关闭后重新核对这条关系。</p>}<FormError>{mutation.error?.message}</FormError><div className="button-row"><button className="ghost-button" onClick={()=>setRemoveId(null)}>取消</button><button className="primary-button" disabled={mutation.isPending||removeId.revision!==data.revision} onClick={()=>mutation.mutate(removeId)}>确认移除</button></div></Modal>}
+    {editing&&canEdit&&<small>{focus?'从完成出口拖到开始入口，或依次点击两个连接点。':'需求连线表示：前置需求验收后，后续需求开始。部分交付请进入需求内部配置。'}</small>}
+    {branch&&<button className="ghost-button" onClick={()=>setParam('pathBranch','')}>退出分支聚焦</button>}
+    {(issue||draft.error)&&<div role="alert" className="form-error">{issue?.message||draft.error?.message}{issue?.nodeIds?.length?<small>{issue.nodeIds.slice(0,7).map(label).join(' → ')}</small>:null}<button className="ghost-button" onClick={()=>{setIssue(undefined);openPanel('changes');}}>查看修改</button>{draft.error&&!draft.pending&&<button className="ghost-button" disabled={draft.previewing||draft.conflict} onClick={draft.retryPreview}>重新预览</button>}</div>}
+    {draft.conflict&&<div className="warning-banner">服务端版本 {formal.revision}，草稿基于 {draft.version}。修改已保留。<button className="ghost-button" onClick={()=>openPanel('changes')}>核对冲突</button></div>}
+  </>;
+  const detail=inspector?<><div className="graph-panel-heading"><h3>{selectedRelation?'关系详情':selectedEdge?'交付关系':selectedCard?.title||'选择节点或连线'}</h3><button className="ghost-button" onClick={()=>setInspector(false)}>关闭</button></div>
+    {selectedEdge||selectedRelation?<>{relationList(selectedRelation?[selectedRelation]:displayRelations)}
+      {editing&&selectedRelation&&editableRelation(selectedRelation)&&<PredecessorPicker label="改接前置（选择后替换）" value={[]} options={graph.cards.filter(c=>c.kind!=='start').map(c=>({id:c.id,title:c.title}))} onChange={ids=>{
+        const source=ids.at(-1);if(!source)return;const destination=focus?selectedRelation.targetWorkItemId||startId(selectedRelation.targetRequirementId):selectedRelation.targetRequirementId;
+        if(!focus&&(selectedRelation.sourceWorkItemId||selectedRelation.targetWorkItemId)){directTo(selectedRelation.targetRequirementId,selectedRelation.targetWorkItemId);return;}
+        const edge=proposal(source,destination)!;const next=remove(selectedRelation.id);next.add.push(edge);
+        const problem=dependencyIssue(formal,next);if(problem)setIssue(problem);else{draft.change(next);setRelationId(edge.clientId);setEdgeId('');}
+      }}/>}
+    </>:selectedCard&&<><p>{selectedCard.subtitle}</p><p>{data.risks[selectedCard.requirementId]?.riskReason}</p><p>{node?.source}</p>{node?.unknownReasons.length?<p className="danger-text">{node.unknownReasons.join('；')}</p>:null}
+      <div className="button-row"><button className="ghost-button" onClick={()=>setLocate({id:selected,sequence:Date.now()})}>定位</button><button className="ghost-button" onClick={()=>setParam('pathBranch',selected)}>聚焦分支</button>
+        {(!focus||selectedCard.external)&&<button className="primary-button" onClick={()=>directTo(selectedCard.requirementId,selectedCard.workItemId)}>进入需求路径</button>}
+        {focus&&node?.workItemId&&node.requirementId===focus&&<button className="ghost-button" onClick={()=>guarded(()=>{const p=new URLSearchParams(params);p.delete('view');p.set('workItemId',node.id);setParams(p,{state:location.state});})}>定位并处理工作项</button>}
+      </div>
+      {editing&&canEstimate&&node&&<EstimateFields key={node.id} node={node} structure={canEdit} onChange={patch=>{
+        const existing=draft.changes.estimates.find(p=>p.workItemId===patch.workItemId);
+        draft.change({...draft.changes,estimates:[...draft.changes.estimates.filter(p=>p.workItemId!==patch.workItemId),{...existing,...patch}]});
+      }}/>}
+      {editing&&canEdit&&!['acceptance'].includes(selectedCard.kind)&&<PredecessorPicker label={focus?'前置工作项':'前置需求'} value={data.dependencies.filter(d=>focus?(d.targetWorkItemId||startId(d.targetRequirementId))===selected:!d.sourceWorkItemId&&!d.targetWorkItemId&&d.targetRequirementId===selected).map(d=>focus?d.sourceWorkItemId||acceptanceId(d.sourceRequirementId):d.sourceRequirementId)}
+        options={graph.cards.filter(c=>c.id!==selected&&c.kind!=='start'&&(manager||c.requirementId===focus)).map(c=>({id:c.id,title:c.title}))}
+        onChange={ids=>{
+          const current=data.dependencies.filter(d=>focus?(d.targetWorkItemId||startId(d.targetRequirementId))===selected:!d.sourceWorkItemId&&!d.targetWorkItemId&&d.targetRequirementId===selected);
+          let next=draft.changes;
+          for(const d of current)if(!ids.includes(focus?d.sourceWorkItemId||acceptanceId(d.sourceRequirementId):d.sourceRequirementId)&&editableRelation(d))next=remove(d.id,next);
+          const existing=current.map(d=>focus?d.sourceWorkItemId||acceptanceId(d.sourceRequirementId):d.sourceRequirementId);
+          next={...next,add:[...next.add,...ids.filter(id=>!existing.includes(id)).map(id=>proposal(id,selected)!)]};
+          const problem=dependencyIssue(formal,next);if(problem)setIssue(problem);else{draft.change(next);setIssue(undefined);}
+        }}/>}
+      {node?.kind==='acceptance'&&node.requirementId===focus&&manager&&<button className="ghost-button" onClick={()=>guarded(()=>setEditor({kind:'acceptance'}))}>预计验收日期</button>}
+    </>}
+  </>:undefined;
+  const auxiliary=panel?<><div className="graph-panel-heading"><h3>{{nodes:'节点列表',blockers:'阻塞源排行',float:'余量分布',relations:'关系明细',import:'引入外部工作项',summary:'分析说明',changes:'修改与冲突'}[panel]}</h3><button className="ghost-button" onClick={()=>setPanel('')}>关闭</button></div>
+    {panel==='nodes'&&nodesPanel}
+    {panel==='blockers'&&<>{!data.blockers.length&&<p>当前没有阻塞源。</p>}{data.blockers.map(b=><div className="graph-list-row" key={b.nodeId}><button onClick={()=>{if(!focus)select(b.requirementId);else if(graph.cards.some(c=>c.id===b.nodeId))select(b.nodeId);else directTo(b.requirementId,b.workItemId);}}><strong>{b.title}</strong><small>{b.reasons.join('；')} · {b.ownerName||'未分派'}</small><small>{b.affectedRequirementIds.length} 个下游需求{b.critical?' · 关键阻塞':''}</small><span className="path-impact-bar"><i style={{width:Math.min(100,b.affectedRequirementIds.length/Math.max(1,data.coverage.total)*100)+'%'}}/></span></button></div>)}</>}
+    {panel==='float'&&<><div className="path-float-distribution">{[{id:'critical',label:'0 天'},{id:'near',label:'1—2 天'},{id:'other',label:'大于 2 天'},{id:'unknown',label:'待确认'}].map(b=><button key={b.id} onClick={()=>setParam('pathFloat',params.get('pathFloat')===b.id?'':b.id)} className={params.get('pathFloat')===b.id?'selected':''}>{b.label}<strong>{graph.cards.filter(c=>b.id==='critical'?c.floatDays===0:b.id==='near'?c.floatDays!==null&&c.floatDays>0&&c.floatDays<=2:b.id==='other'?c.floatDays!==null&&c.floatDays>2:c.floatDays===null).length}</strong></button>)}</div>{nodesPanel}</>}
+    {panel==='relations'&&relationList(displayRelations)}
+    {panel==='import'&&<><input aria-label="搜索外部工作项" placeholder="搜索工作项或需求…" value={search} onChange={e=>setParam('pathSearch',e.target.value)}/>{data.nodes.filter(n=>n.kind==='work'&&n.requirementId!==focus&&(n.title+' '+data.requirements.find(r=>r.id===n.requirementId)?.title).toLowerCase().includes(search.toLowerCase())).map(n=><div className="graph-list-row" key={n.id}><button onClick={()=>{setImported(ids=>[...new Set([...ids,n.id])]);select(n.id);}}>{n.title}<small>{data.requirements.find(r=>r.id===n.requirementId)?.title}</small></button></div>)}<small>引入后连线建立部分交付关系，未连线的外部节点不会写入数据。</small></>}
+    {panel==='summary'&&<><p>目标：{data.targetLabel}</p><p>业务日期：{data.asOfDate} · 版本 {formal.revision}</p><p>已核对 {data.coverage.reviewed}/{data.coverage.total} 个需求；{data.coverage.unplanned} 个待规划。</p><p>{data.complete?'预测覆盖当前目标。':'仍有待确认条件，交付日期与余量不完整。'}</p><p>图中关键路径按当前目标计算；风险标签采用项目目标。草稿仅用于预览，保存后才刷新正式风险和甘特。</p>{hasWorkdayCalendarFallback([data.forecastEnd,data.targetDate])&&<p>部分日期超出法定工作日日历覆盖范围，按周一至周五计算。</p>}<button className="ghost-button" onClick={()=>void onReload()}>刷新分析</button></>}
+    {panel==='changes'&&<><p>新增 {draft.changes.add.length} 条，移除 {draft.changes.remove.length} 条，估算 {draft.changes.estimates.length} 项。</p>
+      {draft.changes.add.map(d=><p key={d.clientId}>新增：{label(d.sourceWorkItemId||acceptanceId(d.sourceRequirementId))} → {label(d.targetWorkItemId||startId(d.targetRequirementId))}</p>)}
+      {draft.changes.remove.map(id=><p key={id}>移除：{formal.dependencies.find(d=>d.id===id)?relationLabel(formal.dependencies.find(d=>d.id===id)!):'该关系已被其他人移除'}</p>)}
+      {draft.changes.estimates.map(e=><div key={e.workItemId}><strong>{label(e.workItemId)}</strong>{Object.entries(e).filter(([k])=>k!=='workItemId').map(([k,v])=><p key={k}>{{durationDays:'工期',earliestStart:'最早开始',unblockEstimate:'解阻',forecastEnd:'预测完成'}[k]}：{String(formal.nodes.find(n=>n.id===e.workItemId)?.estimate[k as keyof PathNode['estimate']]??'空')} → {String(v??'空')}</p>)}</div>)}
+      {draft.conflict&&<><p>请核对上述修改与最新值。已删除的关系会从移除列表中剔除；其他修改按您填写的值重新预览。</p><button className="primary-button" onClick={draft.rebase}>已核对，按最新版本重新预览</button></>}
+    </>}
+  </>:undefined;
+  return <div className="path-analysis immersive-path"><GraphWorkspace cards={visible.cards} links={visible.links} selected={selected} onSelect={select}
+    viewKey={(session.accountId||'guest')+':'+formal.projectId+':'+(focus||'all')} toolbar={toolbar} detail={detail} auxiliary={auxiliary} selectedEdge={edgeId}
+    onEdgeSelect={id=>{setEdgeId(id);setRelationId('');setInspector(true);if(narrow())setPanel('');}} editing={editing&&canEdit} onConnect={connect} validateConnection={validate} onInvalid={setIssue}
+    highlighted={search||params.get('pathFloat')?results.map(c=>c.id):[]} invalidNodes={(issue?.nodeIds||draft.issue?.nodeIds||[]).map(id=>focus?id:formal.nodes.find(n=>n.id===id)?.requirementId||id)} locate={locate} focusId={branch||''} onUndo={editing?draft.undo:undefined} onRedo={editing?draft.redo:undefined}
+    footer={<><button className="ghost-button" onClick={()=>openPanel('nodes')}>节点 {graph.cards.length}</button><button className="ghost-button" onClick={()=>openPanel('blockers')}>阻塞 {data.blockers.length}</button><button className="ghost-button" onClick={()=>openPanel('float')}>余量</button><button className="ghost-button" onClick={()=>openPanel('relations')}>关系</button>
+      {editing&&focus&&manager&&<button className="ghost-button" onClick={()=>openPanel('import')}>引入外部交付</button>}
+      {focus&&manager&&<button className="ghost-button" onClick={()=>guarded(()=>setEditor({kind:'plan'}))}>排期预览</button>}
+      {focus&&canEdit&&!req?.dependenciesReviewedAt&&<button className="ghost-button" onClick={()=>guarded(()=>setEditor({kind:'review'}))}>核对依赖</button>}
+    </>}/>
+    {editor&&<PathEditor editor={editor} data={formal} requirement={requirement} manager={manager} onClose={()=>setEditor(null)} onReload={onReload}/>}
+    {(confirmDiscard||guard)&&<Modal title="处理未保存修改" width={460} onClose={()=>{setConfirmDiscard(false);setGuard(null);}}><p>当前草稿尚未保存。</p><div className="button-row">
+      <button className="ghost-button" onClick={()=>{setConfirmDiscard(false);setGuard(null);}}>继续编辑</button><button className="ghost-button" disabled={!!draft.pending||draft.busy} onClick={()=>{draft.cancel();setConfirmDiscard(false);const action=guard;setGuard(null);action?.();}}>放弃草稿</button>
+      {guard&&<button className="primary-button" disabled={draft.busy||!draft.pending&&!draft.preview} onClick={()=>void draft.save().then(saved=>{if(saved){const action=guard;setGuard(null);action?.();}})}>保存后继续</button>}
+    </div></Modal>}
   </div>;
 }

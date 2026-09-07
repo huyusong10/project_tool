@@ -1,0 +1,27 @@
+{
+  "checkedAt": "2026-09-07T14:00:50.304Z",
+  "tables": {
+    "requirements": {
+      "count": 9,
+      "unchanged": true
+    },
+    "work_items": {
+      "count": 17,
+      "unchanged": true
+    },
+    "dependency_edges": {
+      "count": 14,
+      "unchanged": true
+    },
+    "work_item_templates": {
+      "count": 6,
+      "unchanged": true
+    },
+    "template_items": {
+      "count": 17,
+      "unchanged": true
+    }
+  },
+  "receipts": true,
+  "backup": "D:\\tools\\project-manage-paths\\.preview\\backups\\pre-immersive-install-2026-09-07T14-00-24-283Z.db"
+}

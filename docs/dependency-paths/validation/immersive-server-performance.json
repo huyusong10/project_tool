@@ -1,0 +1,24 @@
+{
+  "measuredAt": "2026-09-07T13:47:03.185Z",
+  "device": {
+    "cpu": "Intel(R) Core(TM) i9-14900K",
+    "logicalCpus": 24,
+    "memoryGiB": 32,
+    "node": "v24.15.0"
+  },
+  "workItems": 2000,
+  "dependencies": 6000,
+  "includes": "SQLite完整快照、项目关键路径、阻塞汇总、JSON序列化；单进程顺序采样",
+  "serial": {
+    "samples": 20,
+    "p50Ms": 60.4,
+    "p95Ms": 68.9,
+    "maxMs": 72.6
+  },
+  "allBlocked": {
+    "samples": 20,
+    "p50Ms": 370.9,
+    "p95Ms": 406.3,
+    "maxMs": 460.2
+  }
+}

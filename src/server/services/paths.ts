@@ -1,3 +1,4 @@
+import {analyseChecked,normalizePathEstimates,persistPathEstimates} from './path-estimates';
 import { randomUUID, createHash } from 'node:crypto';
 import { sqlite } from '../database';
 import type { Actor } from '../auth';
@@ -6,7 +7,7 @@ import { config } from '../config';
 import { fail, notFound } from '../errors';
 import { recordAudit } from './audit';
 import { acceptanceId, analysePaths, type Dependency, type PathInput, type PathRequirement, type PathWork, type PathAnalysis } from '../../shared/paths';
-import { addBusinessDays, businessDayDelta, businessDaysInclusive, todayIso } from '../../shared/domain';
+import { businessDayDelta, businessDaysInclusive, todayIso } from '../../shared/domain';
 import { dependencyInput, pathVersion, pathEstimateInput, reviewDependenciesInput, dependencyPlanInput, applyDependencyPlanInput } from '../../shared/path-contracts';
 
 const all = <T>(sql: string, ...args: unknown[]) => sqlite.prepare(sql).all(...args) as T[];
@@ -50,17 +51,17 @@ export function pathProjectForRequirement(id: string) {
   const r = one<{ projectId: string }>('SELECT project_id AS projectId FROM requirements WHERE id=? AND deleted_at IS NULL', id);
   if (!r) notFound('需求不存在'); return r.projectId;
 }
-function checkedRevision(projectId: string, revision: number) {
+export function checkedRevision(projectId: string, revision: number) {
   const current = one<{ revision: number }>('SELECT analysis_revision AS revision FROM projects WHERE id=? AND deleted_at IS NULL', projectId);
   if (!current) notFound('项目不存在');
   if (current.revision !== revision) fail('依赖、进度或计划已变化，请刷新后重新核对', 'STALE_WRITE', 409, undefined, current.revision);
 }
-function assertRelationAccess(d: Pick<Dependency, 'projectId' | 'sourceRequirementId' | 'targetRequirementId'>, actor: Actor) {
+export function assertRelationAccess(d: Pick<Dependency, 'projectId' | 'sourceRequirementId' | 'targetRequirementId'>, actor: Actor) {
   const current = requireAuthorizationActor(actor);
   if (d.sourceRequirementId === d.targetRequirementId) assertRequirementOwnerOrManager(current, d.targetRequirementId);
   else assertProjectManager(current, d.projectId);
 }
-function assertEndpoints(d: Omit<Dependency, 'id' | 'origin'>) {
+export function assertEndpoints(d: Omit<Dependency, 'id' | 'origin'>) {
   for (const [req, work] of [[d.sourceRequirementId, d.sourceWorkItemId], [d.targetRequirementId, d.targetWorkItemId]]) {
     if (!one('SELECT 1 FROM requirements WHERE id=? AND project_id=? AND deleted_at IS NULL', req, d.projectId)) fail('依赖端点必须属于当前项目的有效需求');
     if (work && !one('SELECT 1 FROM work_items WHERE id=? AND requirement_id=?', work, req)) fail('工作项不属于所选需求');
@@ -119,19 +120,11 @@ export function updatePathEstimate(id: string, raw: unknown, actor: Actor) {
     if (input.durationDays !== undefined || input.earliestStart !== undefined) assertRequirementOwnerOrManager(current, w.requirementId);
     else assertWorkItemParticipantOrManager(current, id);
     checkedRevision(projectId, input.expectedRevision);
-    if (['completed', 'cancelled'].includes(w.status)) fail('已结束工作项不能修改当前预测', 'TERMINAL_LOCKED');
-    const today = todayIso();
-    if (input.unblockEstimate && input.unblockEstimate < today || input.forecastEnd && input.forecastEnd < today) fail('预计日期不能早于今天');
-    const columns = { durationDays: 'duration_days', earliestStart: 'earliest_start', unblockEstimate: 'unblock_estimate' } as const;
-    for (const [key, column] of Object.entries(columns)) if (input[key as keyof typeof columns] !== undefined) sqlite.prepare(`UPDATE work_items SET ${column}=? WHERE id=?`).run(input[key as keyof typeof columns], id);
-    if (input.forecastEnd !== undefined) {
-      const n = getPathAnalysis(projectId, id).nodes.find(n => n.id === id)!;
-      const ready = addBusinessDays(today, n.earliestStart);
-      const duration = input.forecastEnd ? businessDaysInclusive(ready, input.forecastEnd) : null;
-      if (input.forecastEnd && !duration) fail('预测完成不能早于可开工日期');
-      sqlite.prepare('UPDATE work_items SET forecast_end=?, forecast_duration=?, forecast_ready_at=? WHERE id=?').run(input.forecastEnd, duration, input.forecastEnd ? ready : null, id);
-    }
-    sqlite.prepare('UPDATE work_items SET version=version+1,updated_at=? WHERE id=?').run(new Date().toISOString(), id);
+    const snapshot=loadPathInput(projectId);
+    const patch={durationDays:input.durationDays,earliestStart:input.earliestStart,unblockEstimate:input.unblockEstimate,forecastEnd:input.forecastEnd};
+    const patches=[{...patch,workItemId:id}];
+    normalizePathEstimates(snapshot,patches,actor);analyseChecked(snapshot);
+    persistPathEstimates(snapshot,patches);
     recordAudit(actor, 'estimate_path', 'work_item', id, '更新工期、开始约束或交付预测');
     return getPathAnalysis(projectId, acceptanceId(w.requirementId));
   }).immediate();
