@@ -334,11 +334,13 @@ export function AnchoredPopover({
     if (!open) return;
     const closeOutside = (event: PointerEvent) => {
       const target = event.target as Node;
+      if (target instanceof Element && target.closest("[data-preserve-edit]")) return;
       if (anchorRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
       onOutside();
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      if (event.target instanceof Element && event.target.closest("[data-preserve-edit]")) return;
       event.preventDefault();
       onEscape();
     };

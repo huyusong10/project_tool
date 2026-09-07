@@ -7,6 +7,7 @@ import { ToastProvider } from './components/Toast';
 import { initTheme } from './theme';
 import './tokens.css';
 import './styles.css';
+import './themes.css';
 import './responsive.css';
 
 initTheme();

@@ -1,3 +1,4 @@
+import { chartCategoryColor } from "../chart-theme";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -39,7 +40,10 @@ function valueLabel(value: number, unit: AnalyticsPanelResult["unit"]) {
 
 function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) {
   const labels = result.rows.map((row) => row.label);
-  const primary = result.rows.map((row) => row.value);
+  const primary = result.rows.map((row) => {
+    const color = chartCategoryColor(panel.dimension, row.key);
+    return panel.visualization === "bar" && color ? { value: row.value, itemStyle: { color } } : row.value;
+  });
   const secondary = result.rows.map((row) => row.secondaryValue || 0);
   const series = [
     {
@@ -48,9 +52,9 @@ function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) 
       data: primary,
       smooth: panel.visualization === "line",
       symbolSize: 7,
-      lineStyle: { width: 3, color: "#2d6cdf" },
-      itemStyle: { color: "#2d6cdf", borderRadius: panel.visualization === "bar" ? 4 : undefined },
-      areaStyle: panel.visualization === "line" ? { color: "rgba(45,108,223,.1)" } : undefined,
+      lineStyle: { width: 3, color: "var(--accent)" },
+      itemStyle: { color: "var(--accent)", borderRadius: panel.visualization === "bar" ? 4 : undefined },
+      areaStyle: panel.visualization === "line" ? { color: "var(--chart-area)" } : undefined,
     },
     ...(result.secondaryMeasureLabel ? [{
       name: result.secondaryMeasureLabel,
@@ -58,33 +62,33 @@ function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) 
       data: secondary,
       smooth: panel.visualization === "line",
       symbolSize: 7,
-      lineStyle: { width: 2, color: "#d78a14" },
-      itemStyle: { color: "#d78a14", borderRadius: panel.visualization === "bar" ? 4 : undefined },
+      lineStyle: { width: 2, color: "var(--warning)" },
+      itemStyle: { color: "var(--warning)", borderRadius: panel.visualization === "bar" ? 4 : undefined },
     }] : []),
   ];
   if (panel.visualization === "donut") return {
     tooltip: { trigger: "item" },
-    legend: { bottom: 0, textStyle: { color: "#68768a" } },
+    legend: { bottom: 0, textStyle: { color: "var(--text-muted)" } },
     series: [{
       name: result.measureLabel, type: "pie", radius: ["46%", "70%"], center: ["50%", "44%"],
-      label: { show: false }, data: result.rows.map((row) => ({ name: row.label, value: row.value })),
-      color: ["#2d6cdf", "#1d9a6c", "#d78a14", "#7c8da5", "#8d67ca", "#df6565", "#66a6b8"],
+      label: { show: false }, data: result.rows.map((row) => ({ name: row.label, value: row.value, itemStyle: { color: chartCategoryColor(panel.dimension, row.key) } })),
+      color: ["var(--accent)", "var(--success)", "var(--warning)", "var(--text-muted)", "var(--purple)", "var(--danger)", "var(--info)"],
     }],
   };
   const horizontal = panel.visualization === "bar" && ["requirement", "person", "owner"].includes(panel.dimension || "");
   if (horizontal) return {
     tooltip: { trigger: "axis" },
     grid: { left: 120, right: 24, top: 16, bottom: 24 },
-    xAxis: { type: "value", splitLine: { lineStyle: { color: "#edf1f5" } }, axisLabel: { color: "#788598" } },
-    yAxis: { type: "category", inverse: true, data: labels, axisLabel: { color: "#536176", width: 105, overflow: "truncate" } },
+    xAxis: { type: "value", splitLine: { lineStyle: { color: "var(--divider)" } }, axisLabel: { color: "var(--text-muted)" } },
+    yAxis: { type: "category", inverse: true, data: labels, axisLabel: { color: "var(--text-secondary)", width: 105, overflow: "truncate" } },
     series,
   };
   return {
     tooltip: { trigger: "axis" },
-    legend: result.secondaryMeasureLabel ? { top: 0, right: 12, textStyle: { color: "#68768a" } } : undefined,
+    legend: result.secondaryMeasureLabel ? { top: 0, right: 12, textStyle: { color: "var(--text-muted)" } } : undefined,
     grid: { left: 42, right: 18, top: result.secondaryMeasureLabel ? 34 : 16, bottom: 40 },
-    xAxis: { type: "category", data: labels, axisLabel: { color: "#788598", hideOverlap: true }, axisLine: { lineStyle: { color: "#dfe5ed" } } },
-    yAxis: { type: "value", minInterval: result.unit === "count" ? 1 : undefined, splitLine: { lineStyle: { color: "#edf1f5" } }, axisLabel: { color: "#788598" } },
+    xAxis: { type: "category", data: labels, axisLabel: { color: "var(--text-muted)", hideOverlap: true }, axisLine: { lineStyle: { color: "var(--border-default)" } } },
+    yAxis: { type: "value", minInterval: result.unit === "count" ? 1 : undefined, splitLine: { lineStyle: { color: "var(--divider)" } }, axisLabel: { color: "var(--text-muted)" } },
     series,
   };
 }

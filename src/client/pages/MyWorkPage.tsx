@@ -36,8 +36,8 @@ export function MyWorkPage() {
     },
   });
   const charts = useMemo(() => ({
-    completion: { grid: { left: 35, right: 12, top: 18, bottom: 32 }, tooltip: { trigger: 'axis' }, xAxis: { type: 'category', data: data?.completionTrend.map((item) => item.week.slice(5)) || [] }, yAxis: { type: 'value', minInterval: 1 }, series: [{ type: 'bar', data: data?.completionTrend.map((item) => item.completed) || [], itemStyle: { color: '#2f6feb', borderRadius: [5, 5, 0, 0] } }] },
-    upcoming: { grid: { left: 35, right: 12, top: 18, bottom: 32 }, tooltip: { trigger: 'axis' }, xAxis: { type: 'category', data: data?.upcoming.map((item) => item.date.slice(5)) || [] }, yAxis: { type: 'value', minInterval: 1 }, series: [{ type: 'line', smooth: true, data: data?.upcoming.map((item) => item.count) || [], lineStyle: { color: '#18a779', width: 3 }, itemStyle: { color: '#18a779' }, areaStyle: { color: 'rgba(24,167,121,.12)' } }] },
+    completion: { grid: { left: 35, right: 12, top: 18, bottom: 32 }, tooltip: { trigger: 'axis' }, xAxis: { type: 'category', data: data?.completionTrend.map((item) => item.week.slice(5)) || [] }, yAxis: { type: 'value', minInterval: 1 }, series: [{ type: 'bar', data: data?.completionTrend.map((item) => item.completed) || [], itemStyle: { color: 'var(--accent)', borderRadius: [5, 5, 0, 0] } }] },
+    upcoming: { grid: { left: 35, right: 12, top: 18, bottom: 32 }, tooltip: { trigger: 'axis' }, xAxis: { type: 'category', data: data?.upcoming.map((item) => item.date.slice(5)) || [] }, yAxis: { type: 'value', minInterval: 1 }, series: [{ type: 'line', smooth: true, data: data?.upcoming.map((item) => item.count) || [], lineStyle: { color: 'var(--success)', width: 3 }, itemStyle: { color: 'var(--success)' }, areaStyle: { color: 'var(--chart-success-area)' } }] },
   }), [data]);
   const metrics: Array<{ label: string; value: number; Icon: typeof Clock3 }> = [
     { label: '待开始', value: data?.summary.notStarted || 0, Icon: Clock3 },

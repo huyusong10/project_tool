@@ -1,7 +1,7 @@
 /* ════════════════════════════════════════════════════════════════
    设计令牌层（三层架构）
    Layer 1 原始令牌：收敛后的色阶/间距/圆角/字号/动效，组件不直接使用
-   Layer 2 语义令牌：组件唯一入口；暗色主题只重写这一层
+   Layer 2 语义令牌：组件唯一入口；五套风格定义在 themes.css
    Layer 3 组件令牌：散落在各组件规则内（沿用甘特 --bar-color 模式）
    ════════════════════════════════════════════════════════════════ */
 
@@ -41,85 +41,4 @@
   --ease-spring: cubic-bezier(.34, 1.3, .4, 1);
   /* 层级 */
   --z-sidebar: 10; --z-topbar: 20; --z-popover: 40; --z-tooltip: 1000; --z-modal: 1100; --z-toast: 1200;
-}
-
-/* ── Layer 2 · 语义令牌（默认亮色） ── */
-:root, [data-theme="light"] {
-  color-scheme: light;
-  --bg-page: var(--gray-50);
-  --bg-surface: #ffffff;
-  --bg-surface-subtle: var(--gray-25);
-  --bg-hover: var(--gray-100);
-  --bg-active: var(--blue-50);
-  --text-primary: var(--gray-900);
-  --text-secondary: var(--gray-700);
-  --text-muted: var(--gray-600);
-  --text-faint: #64748b;
-  --border-default: var(--gray-200);
-  --border-strong: var(--gray-250);
-  --divider: var(--gray-100);
-  --accent: var(--blue-600);
-  --accent-hover: var(--blue-700);
-  --accent-soft: var(--blue-50);
-  --accent-border: var(--blue-200);
-  --on-accent: #ffffff;
-  --success: var(--green-600); --success-text: var(--green-700); --success-bg: var(--green-50); --success-border: var(--green-100);
-  --warning: var(--amber-500); --warning-text: var(--amber-700); --warning-bg: var(--amber-50); --warning-border: var(--amber-100);
-  --danger: var(--red-500); --danger-text: var(--red-700); --danger-bg: var(--red-50); --danger-border: var(--red-100);
-  --info: var(--blue-600); --info-text: var(--blue-700); --info-bg: var(--blue-50); --info-border: var(--blue-100);
-  --purple: var(--purple-500); --purple-text: var(--purple-700); --purple-bg: var(--purple-50);
-  /* 侧栏 */
-  --sidebar-bg: linear-gradient(180deg, var(--navy-800) 0%, var(--navy-900) 100%);
-  --sidebar-text: #aebdcd;
-  --sidebar-text-strong: #ffffff;
-  --sidebar-text-muted: #62758c;
-  --sidebar-hover-bg: rgba(255, 255, 255, .06);
-  --sidebar-divider: rgba(255, 255, 255, .08);
-  /* 顶栏 */
-  --topbar-bg: rgba(255, 255, 255, .97);
-  /* 阴影与聚焦环 */
-  --shadow-1: 0 3px 12px rgba(30, 49, 75, .05);
-  --shadow-2: 0 10px 28px rgba(17, 34, 56, .12);
-  --shadow-3: 0 14px 34px rgba(17, 34, 56, .18);
-  --focus-ring: 0 0 0 3px rgba(45, 108, 223, .18);
-  --backdrop-bg: rgba(23, 36, 56, .32);
-}
-
-/* ── Layer 2 · 暗色主题（只重写语义层，组件零改动） ── */
-[data-theme="dark"] {
-  color-scheme: dark;
-  --bg-page: #0e141d;
-  --bg-surface: #151e2a;
-  --bg-surface-subtle: #1a2432;
-  --bg-hover: #1e2938;
-  --bg-active: #1d3153;
-  --text-primary: #e6edf5;
-  --text-secondary: #b3c1d1;
-  --text-muted: #8b9cb0;
-  --text-faint: #7d8ca0;
-  --border-default: #263446;
-  --border-strong: #324357;
-  --divider: #1e2938;
-  --accent: #5a8def;
-  --accent-hover: #7ea6f5;
-  --accent-soft: #1d3153;
-  --accent-border: #2c4a7c;
-  --on-accent: #0e141d;
-  --success: #3fbd8a; --success-text: #6ed3a9; --success-bg: rgba(36, 163, 114, .14); --success-border: rgba(36, 163, 114, .38);
-  --warning: #e5a63f; --warning-text: #edbe6b; --warning-bg: rgba(215, 138, 20, .15); --warning-border: rgba(215, 138, 20, .4);
-  --danger: #e86a6a; --danger-text: #f09393; --danger-bg: rgba(216, 74, 74, .15); --danger-border: rgba(216, 74, 74, .42);
-  --info: #5a8def; --info-text: #8ab0f3; --info-bg: rgba(90, 141, 239, .15); --info-border: rgba(90, 141, 239, .38);
-  --purple: #9a82d4; --purple-text: #b8a5e4; --purple-bg: rgba(154, 130, 212, .15);
-  --sidebar-bg: linear-gradient(180deg, #0d1622 0%, #080f18 100%);
-  --sidebar-text: #93a5ba;
-  --sidebar-text-strong: #f2f6fa;
-  --sidebar-text-muted: #5b6f85;
-  --sidebar-hover-bg: rgba(255, 255, 255, .05);
-  --sidebar-divider: rgba(255, 255, 255, .07);
-  --topbar-bg: rgba(21, 30, 42, .92);
-  --shadow-1: 0 3px 12px rgba(0, 0, 0, .25);
-  --shadow-2: 0 10px 28px rgba(0, 0, 0, .35);
-  --shadow-3: 0 14px 34px rgba(0, 0, 0, .45);
-  --focus-ring: 0 0 0 3px rgba(90, 141, 239, .35);
-  --backdrop-bg: rgba(4, 8, 14, .55);
 }
