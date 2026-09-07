@@ -41,10 +41,10 @@ it('登录按真实IP限流，换用户名、查询参数和伪造转发头不�
   expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
   expect(limited.json()).toHaveProperty('error');
   const otherIp = await app.inject({ method: 'POST', url: '/api/login', remoteAddress: '192.0.2.11', payload: {} });
-  expect(otherIp.statusCode).toBe(401);
+  expect(otherIp.statusCode).toBe(400);
   expect((await app.inject({ url: '/health', remoteAddress: '192.0.2.10' })).statusCode).toBe(200);
   vi.setSystemTime(Date.now() + 60_001);
   const afterWindow = await app.inject({ method: 'POST', url: '/api/login', remoteAddress: '192.0.2.10', payload: {} });
-  expect(afterWindow.statusCode).toBe(401);
+  expect(afterWindow.statusCode).toBe(400);
   expect(Number(afterWindow.headers['x-ratelimit-remaining'])).toBe(7);
 });

@@ -53,7 +53,10 @@ async function fixture(status: string) {
     item = started.json();
     if (status !== 'in_progress') {
       const action = status === 'completed' ? 'complete' : status === 'cancelled' ? 'cancel' : 'block';
-      const changed = await post(`/api/work-items/${item.id}/${action}`, { expectedVersion: item.version, reason: '验证关联说明', content: '完成测试工作' });
+      const changed = await post(`/api/work-items/${item.id}/${action}`, {
+        expectedVersion: item.version,
+        ...(action === 'complete' ? { content: '完成测试工作' } : { reason: '验证关联说明' }),
+      });
       expect(changed.statusCode, changed.body).toBe(200);
     }
   }

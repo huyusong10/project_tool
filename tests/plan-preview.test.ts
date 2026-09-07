@@ -77,7 +77,10 @@ for (const protocol of ['REST', 'MCP'] as const) {
     expect(initial.statusCode).toBe(200);
     const preview = initial.body as Preview;
     const updated = await app.inject({ method: 'PATCH', url: `/api/templates/${template.id}`, headers: { cookie }, payload: {
-      name: template.name, items: template.items.map((item) => ({ ...item, durationDays: 4 })),
+      name: template.name,
+      items: template.items.map(({ id, title, startOffsetDays, milestoneLabel, sortOrder }) => ({
+        id, title, startOffsetDays, durationDays: 4, milestoneLabel, sortOrder,
+      })),
     } });
     expect(updated.statusCode, updated.body).toBe(200);
     const beforeApply = await detail(requirement.id);

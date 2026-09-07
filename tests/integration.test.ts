@@ -86,7 +86,10 @@ describe('自动化项目管理API', () => {
     const originalIds = template.json().items.map((item: { id: string }) => item.id);
     const updated = await app.inject({ method: 'PATCH', url: `/api/templates/${templateId}`, headers: { cookie }, payload: {
       name: '并行交付模板', description: '根据复盘调整工期，保留并行交付策略。', expectedUpdatedAt: template.json().updatedAt,
-      items: template.json().items.map((item: any) => ({ ...item, durationDays: item.durationDays + 1 })),
+      items: template.json().items.map((item: any) => ({
+        id: item.id, title: item.title, startOffsetDays: item.startOffsetDays, durationDays: item.durationDays + 1,
+        milestoneLabel: item.milestoneLabel, sortOrder: item.sortOrder,
+      })),
     } });
     expect(updated.statusCode, updated.body).toBe(200);
     expect(updated.json().items.map((item: { id: string }) => item.id)).toEqual(originalIds);
@@ -231,7 +234,7 @@ describe('自动化项目管理API', () => {
   it('公共问题支持看板、筛选搜索、进展和闭环', async () => {
     const created = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
       projectId, requirementId, title: '公共证书问题', impact: '影响项目联调', reporter: '测试人员',
-      ownerId: personId, status: 'in_progress', priority: 'P1', discoveredAt: '2026-09-01', dueDate: '2000-01-01',
+      ownerId: personId, priority: 'P1', discoveredAt: '2026-09-01', dueDate: '2000-01-01',
     } });
     expect(created.statusCode).toBe(200); issueId = created.json().id;
     expect(created.json()).toMatchObject({ title: '公共证书问题', status: 'in_progress', progress: 0, ownerId: personId, ownerName: '张三', overdue: true });
@@ -261,15 +264,15 @@ describe('自动化项目管理API', () => {
     const activeIssues = await app.inject({ method: 'GET', url: `/api/issues?projectId=${projectId}&active=true`, headers: { cookie } });
     expect(activeIssues.json().items).toEqual([expect.objectContaining({ id: publicIssue.json().id, status: 'in_progress' })]);
     const futureHigh = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
-      projectId, title: '未来高优先级问题', ownerId: personId, status: 'in_progress', priority: 'P0', discoveredAt: '2026-09-01', dueDate: '2999-12-31',
+      projectId, title: '未来高优先级问题', ownerId: personId, priority: 'P0', discoveredAt: '2026-09-01', dueDate: '2999-12-31',
     } });
     const overdueLow = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
-      projectId, title: '逾期低优先级问题', ownerId: personId, status: 'in_progress', priority: 'P3', discoveredAt: '2026-09-01', dueDate: '2000-01-02',
+      projectId, title: '逾期低优先级问题', ownerId: personId, priority: 'P3', discoveredAt: '2026-09-01', dueDate: '2000-01-02',
     } });
     const ordered = await app.inject({ method: 'GET', url: `/api/issues?projectId=${projectId}&status=in_progress`, headers: { cookie } });
     expect(ordered.json().items.slice(0, 2).map((item: { id: string }) => item.id)).toEqual([publicIssue.json().id, overdueLow.json().id]);
     const deferred = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
-      projectId, title: '等待外部条件的问题', status: 'deferred', priority: 'P2', discoveredAt: '2026-09-01', dueDate: '2000-01-03',
+      projectId, title: '等待外部条件的问题', priority: 'P2', discoveredAt: '2026-09-01', dueDate: '2000-01-03',
     } });
     const deferredByCommand = await app.inject({ method: 'POST', url: `/api/issues/${deferred.json().id}/defer`, headers: { cookie }, payload: { reason: '等待外部环境', expectedVersion: deferred.json().version } });
     expect(deferredByCommand.json()).toMatchObject({ status: 'deferred', dueDate: null, overdue: false });
@@ -279,7 +282,7 @@ describe('自动化项目管理API', () => {
     expect(dashboardWithoutDeferred.json().issues.attention.every((item: { status: string }) => item.status === 'in_progress')).toBe(true);
 
     const attentionTarget = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
-      projectId, title: '不能被挂起问题挤出的热点', status: 'in_progress', priority: 'P3', discoveredAt: '2026-09-01', dueDate: '2999-12-31',
+      projectId, title: '不能被挂起问题挤出的热点', priority: 'P3', discoveredAt: '2026-09-01', dueDate: '2999-12-31',
     } });
     const temporaryIssueIds = [attentionTarget.json().id as string];
     for (let index = 0; index < 10; index += 1) {
@@ -489,7 +492,7 @@ describe('自动化项目管理API', () => {
     memberAccountId = userAccount.id;
     expect((await app.inject({ method: 'GET', url: '/api/my-work', headers: { cookie: userCookie } })).json().items.some((item: { id: string }) => item.id === secondWorkItemId)).toBe(true);
     const userIssue = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie: userCookie }, payload: {
-      projectId, requirementId, title: '普通用户提交的问题', reporter: '李四', priority: 'P1', status: 'resolved', ownerId: personId,
+      projectId, requirementId, title: '普通用户提交的问题', reporter: '李四', priority: 'P1',
     } });
     expect(userIssue.statusCode).toBe(200);
     expect(userIssue.json()).toMatchObject({ status: 'in_progress', ownerId: null, reporter: '李四' });
@@ -887,7 +890,10 @@ describe('自动化项目管理API', () => {
     const sourceTemplate = (await app.inject({ method: 'GET', url: `/api/templates?projectId=${projectId}`, headers: { cookie } })).json().find((item: { id: string }) => item.id === templateId);
     const changedTemplate = await app.inject({ method: 'PATCH', url: `/api/templates/${templateId}`, headers: { cookie }, payload: {
       name: sourceTemplate.name, description: sourceTemplate.description,
-      items: sourceTemplate.items.map((item: any, index: number) => ({ ...item, title: index === 0 ? `${item.title}（新版）` : item.title, milestoneLabel: index === 0 ? '新版需求基线' : item.milestoneLabel, durationDays: item.durationDays + 1 })),
+      items: sourceTemplate.items.map((item: any, index: number) => ({
+        id: item.id, title: index === 0 ? `${item.title}（新版）` : item.title, startOffsetDays: item.startOffsetDays,
+        durationDays: item.durationDays + 1, milestoneLabel: index === 0 ? '新版需求基线' : item.milestoneLabel, sortOrder: item.sortOrder,
+      })),
     } });
     expect(changedTemplate.statusCode).toBe(200);
     const afterTemplateEdit = (await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie } })).json();

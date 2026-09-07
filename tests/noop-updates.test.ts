@@ -136,7 +136,10 @@ it('项目、人员、流程和成员角色保存原值时保持时间戳及审�
     .toBe(person.updatedAt);
 
   const restTemplate = await patch(`/api/templates/${template.id}`, {
-    name: template.name, description: template.description, items: template.items, expectedUpdatedAt: template.updatedAt,
+    name: template.name, description: template.description, expectedUpdatedAt: template.updatedAt,
+    items: template.items.map(({ id, title, startOffsetDays, durationDays, milestoneLabel, sortOrder }: Record<string, unknown>) => ({
+      id, title, startOffsetDays, durationDays, milestoneLabel, sortOrder,
+    })),
   });
   expect(restTemplate.statusCode, restTemplate.body).toBe(200);
   expect(restTemplate.json().updatedAt).toBe(template.updatedAt);
