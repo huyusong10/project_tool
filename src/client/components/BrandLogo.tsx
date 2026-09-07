@@ -10,16 +10,51 @@ export const defaultBranding: SystemBranding = {
   updatedAt: null,
 };
 
+/** 把任意比例的 logo 居中绘制成正方形 PNG，避免浏览器标签页拉伸非正方形图标。 */
+function squareFavicon(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const size = 64;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const context = canvas.getContext("2d");
+      if (!context) return reject(new Error("无法创建画布"));
+      const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight);
+      const width = image.naturalWidth * scale;
+      const height = image.naturalHeight * scale;
+      context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    image.onerror = () => reject(new Error("logo 加载失败"));
+    image.src = url;
+  });
+}
+
 export function useDocumentBranding(branding: SystemBranding) {
   useEffect(() => {
     document.title = branding.systemName || defaultBranding.systemName;
 
-    const favicon = document.createElement("link");
-    favicon.rel = "icon";
-    favicon.setAttribute("href", branding.logoUrl || defaultLogoUrl);
-    if (!branding.logoUrl) favicon.type = "image/png";
-    document.head.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]').forEach((link) => link.remove());
-    document.head.appendChild(favicon);
+    let cancelled = false;
+    const applyFavicon = (href: string, type?: string) => {
+      if (cancelled) return;
+      const favicon = document.createElement("link");
+      favicon.rel = "icon";
+      if (type) favicon.type = type;
+      favicon.setAttribute("href", href);
+      document.head.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]').forEach((link) => link.remove());
+      document.head.appendChild(favicon);
+    };
+    if (!branding.logoUrl) {
+      applyFavicon(defaultLogoUrl, "image/png");
+    } else {
+      squareFavicon(branding.logoUrl).then(
+        (href) => applyFavicon(href, "image/png"),
+        () => applyFavicon(branding.logoUrl as string),
+      );
+    }
+    return () => { cancelled = true; };
   }, [branding.logoUrl, branding.systemName]);
 }
 
