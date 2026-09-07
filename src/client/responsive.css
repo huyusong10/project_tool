@@ -293,7 +293,7 @@ textarea {
   .system-branding-preview {
     justify-content: flex-start;
     border-right: 0;
-    border-bottom: 1px solid #edf1f5;
+    border-bottom: 1px solid var(--divider);
   }
 
   .system-branding-form {
@@ -338,7 +338,7 @@ textarea {
   .issue-health-heading {
     grid-column: 1 / -1;
     min-height: 52px;
-    border-bottom: 1px solid #e5eaf1;
+    border-bottom: 1px solid var(--border-default);
   }
 
   .issue-health-heading + .issue-health-stat {
@@ -395,7 +395,7 @@ textarea {
 
   .adaptive-data-cell::before {
     display: block;
-    color: #8793a3;
+    color: var(--text-faint);
     font-size: 12px;
   }
 
@@ -491,7 +491,7 @@ textarea {
   .account-data-permission::before,
   .account-data-login::before {
     display: block;
-    color: #8793a3;
+    color: var(--text-faint);
     font-size: 12px;
   }
 

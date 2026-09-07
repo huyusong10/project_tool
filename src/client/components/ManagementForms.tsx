@@ -1,9 +1,83 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, jsonBody } from "../api";
-import { useApp } from "../app-context";
-import { invalidateRequirementViews } from "../query-invalidation";
-import type { Person, Project, WorkItemTemplate } from "../types";
+import { api, jsonBody, requiresWriteRecheck } from "../api";
+import { useProjects } from "../app-context";
+import { invalidateProjectViews, invalidateRequirementViews, keys } from "../query-keys";
+import type { Person, Project, Requirement, WorkItemTemplate } from "../types";
+import { FormDisclosure, FormError, FormField, FormSubmitActions } from "./Form";
+import { EmptyState, LoadingState } from "./Feedback";
+import { Modal } from "./Modal";
+import { WorkdayCalendarNotice } from "./WorkdayCalendarNotice";
+import { projectStatusOptions } from "../ui-options";
+import { plannedDatesFromOffset, plannedStartFromDeadline } from "../../shared/domain";
+import { canonicalizeContent, canonicalizeLabel } from "../../shared/search";
+import { useToast } from "./Toast";
+
+type ProjectFormInput = {
+  name: string;
+  status: string;
+  plannedStart: string;
+  plannedEnd: string;
+  defaultTemplateId: string;
+  expectedUpdatedAt?: string;
+};
+
+type RequirementFormInput = {
+  projectId: string;
+  templateId: string;
+  title: string;
+  priority: string;
+  ownerId: string;
+  background: string;
+  acceptanceCriteria: string;
+  referenceUrl: string;
+  plannedStart?: string;
+  plannedEnd?: string;
+};
+
+function matchesCreatedRequirement(
+  requirement: Requirement,
+  input: RequirementFormInput,
+  sourceIds: ReadonlySet<string>,
+  defaultTemplateId: string,
+  templates: WorkItemTemplate[],
+) {
+  if (sourceIds.has(requirement.id)) return false;
+  const hasSchedule = Boolean(input.plannedStart || input.plannedEnd);
+  const fallbackTemplate = templates.find((item) => item.name === "DCIM AI工作流") || templates[0];
+  const expectedTemplateId = input.templateId || (hasSchedule ? defaultTemplateId || fallbackTemplate?.id || "" : "");
+  if (hasSchedule && !expectedTemplateId) return false;
+  if (requirement.projectId !== input.projectId
+    || requirement.title !== canonicalizeLabel(input.title)
+    || requirement.priority !== (input.priority || "P2")
+    || requirement.ownerId !== (input.ownerId || null)
+    || requirement.background !== (canonicalizeContent(input.background) || null)
+    || requirement.acceptanceCriteria !== (canonicalizeContent(input.acceptanceCriteria) || null)
+    || requirement.referenceUrl !== (canonicalizeContent(input.referenceUrl) || null)
+    || requirement.templateId !== (expectedTemplateId || null)) return false;
+  if (!hasSchedule) {
+    return requirement.plannedStart === null && requirement.plannedEnd === null && requirement.workItems.length === 0;
+  }
+  const selectedTemplate = templates.find((item) => item.id === expectedTemplateId);
+  if (!selectedTemplate) return false;
+  const templateItems = selectedTemplate.items.filter((item) => !item.deletedAt).sort((left, right) => left.sortOrder - right.sortOrder);
+  if (!templateItems.length || requirement.workItems.length !== templateItems.length) return false;
+  const baseStart = input.plannedStart || plannedStartFromDeadline(input.plannedEnd!, templateItems);
+  const expectedItems = templateItems.map((item) => ({
+    ...plannedDatesFromOffset(baseStart, item.startOffsetDays, item.durationDays),
+    templateItemId: item.id,
+    title: item.title,
+    milestoneLabel: item.milestoneLabel,
+  }));
+  return requirement.plannedStart === expectedItems.map((item) => item.plannedStart).sort()[0]
+    && requirement.plannedEnd === expectedItems.map((item) => item.plannedEnd).sort().at(-1)
+    && expectedItems.every((expected) => requirement.workItems.some((item) =>
+      item.templateItemId === expected.templateItemId
+      && item.title === expected.title
+      && item.milestoneLabel === expected.milestoneLabel
+      && item.plannedStart === expected.plannedStart
+      && item.plannedEnd === expected.plannedEnd));
+}
 
 export function ProjectForm({
   project,
@@ -13,56 +87,110 @@ export function ProjectForm({
   onClose: () => void;
 }) {
   const client = useQueryClient();
-  const { data: templates = [] } = useQuery({
-    queryKey: ["templates", project?.id || "new"],
-    queryFn: () => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(project!.id)}`),
+  const toast = useToast();
+  const { projects } = useProjects();
+  const submitting = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const initialProjectIds = useRef(new Set(projects.map((item) => item.id)));
+  const [baseProject, setBaseProject] = useState(project);
+  const [name, setName] = useState(project?.name || "");
+  const [status, setStatus] = useState(project?.status || "active");
+  const [plannedStart, setPlannedStart] = useState(project?.plannedStart || "");
+  const [plannedEnd, setPlannedEnd] = useState(project?.plannedEnd || "");
+  const [defaultTemplateId, setDefaultTemplateId] = useState(project?.defaultTemplateId || "");
+  const changed = Boolean(project && baseProject && project.updatedAt !== baseProject.updatedAt);
+  const templatesQuery = useQuery({
+    queryKey: [...keys.templates, project?.id || "new"],
+    queryFn: ({ signal }) => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(project!.id)}`, { signal }),
     enabled: Boolean(project?.id),
   });
+  const templates = templatesQuery.data || [];
+  const templatesReady = !project || templatesQuery.data !== undefined;
+  const selectedTemplateUnavailable = Boolean(defaultTemplateId && templatesQuery.data && !templates.some((template) => template.id === defaultTemplateId));
   const mutation = useMutation({
-    mutationFn: (data: object) =>
-      api(project ? `/api/projects/${project.id}` : "/api/projects", {
-        method: project ? "PATCH" : "POST",
+    mutationFn: (data: ProjectFormInput) =>
+      api(baseProject ? `/api/projects/${baseProject.id}` : "/api/projects", {
+        method: baseProject ? "PATCH" : "POST",
         body: jsonBody(data),
       }),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["projects"] });
-      void client.invalidateQueries({ queryKey: ["dashboard"] });
+      invalidateProjectViews(client);
       onClose();
     },
+    onError: async (error, input) => {
+      if (!requiresWriteRecheck(error)) return;
+      try {
+        const latest = await api<Project[]>("/api/projects", { readOnly: true });
+        const matchesDraft = (item: Project) => item.name === canonicalizeLabel(input.name)
+          && item.status === input.status
+          && item.plannedStart === (input.plannedStart || null)
+          && item.plannedEnd === (input.plannedEnd || null)
+          && (baseProject ? item.defaultTemplateId === (input.defaultTemplateId || null) : !item.isSample);
+        let saved: Project | undefined;
+        if (baseProject) {
+          saved = latest.find((item) => item.id === baseProject.id && matchesDraft(item));
+        } else {
+          const created = latest.filter((item) => !initialProjectIds.current.has(item.id) && matchesDraft(item));
+          if (created.length === 1) saved = created[0];
+        }
+        if (saved && mounted.current) {
+          invalidateProjectViews(client);
+          toast.success(baseProject ? "已核对最新状态：项目设置已保存" : "已核对最新状态：项目已创建");
+          onClose();
+        }
+      } catch {
+        // 保留原写入错误和草稿，允许用户刷新后再确认。
+      }
+    },
+    onSettled: () => { submitting.current = false; },
   });
   return (
+    <Modal title={project ? "编辑项目" : "新建项目"} closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
+    {!templatesReady && templatesQuery.error ? <EmptyState title="项目配置加载失败" detail={templatesQuery.error.message || "暂时无法读取默认流程，请稍后重试。"} action={<button type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</button>} />
+      : !templatesReady ? <LoadingState label="正在加载项目配置…" className="stable-panel-state" /> : <>
+    {templatesQuery.error && <div className="warning-banner">默认流程刷新失败，当前展示的是上次成功结果。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</button></div>}
+    {changed && project && <div className="warning-banner">项目设置已在其他位置更新，当前草稿保持不变。<button type="button" className="ghost-button" disabled={mutation.isPending} onClick={() => {
+      setBaseProject(project); setName(project.name); setStatus(project.status); setPlannedStart(project.plannedStart || ""); setPlannedEnd(project.plannedEnd || ""); setDefaultTemplateId(project.defaultTemplateId || ""); mutation.reset();
+    }}>使用最新设置</button></div>}
     <form
-      className="form-grid"
       onSubmit={(event) => {
         event.preventDefault();
-        mutation.mutate(Object.fromEntries(new FormData(event.currentTarget)));
+        if (submitting.current || changed || selectedTemplateUnavailable) return;
+        submitting.current = true;
+        mutation.mutate({ name, status, plannedStart, plannedEnd, defaultTemplateId, ...(baseProject ? { expectedUpdatedAt: baseProject.updatedAt } : {}) });
       }}
     >
-      <label className="field field-full">
-        <span>项目名称</span>
-        <input name="name" defaultValue={project?.name || ""} required autoFocus placeholder="例如：DCIM平台 V1.0" />
-      </label>
-      <label className="field">
-        <span>计划开始</span>
-        <input name="plannedStart" type="date" defaultValue={project?.plannedStart || ""} />
-      </label>
-      <label className="field">
-        <span>计划完成</span>
-        <input name="plannedEnd" type="date" defaultValue={project?.plannedEnd || ""} />
-      </label>
-      <label className="field field-full">
-        <span>默认流程</span>
-        <select key={`${project?.id || "new"}-${templates.length}`} name="defaultTemplateId" defaultValue={project?.defaultTemplateId || ""}>
+      <fieldset className="form-grid form-fieldset" disabled={mutation.isPending}>
+      <FormField label="项目名称" full>
+        <input name="name" value={name} onChange={(event) => setName(event.target.value)} required autoFocus placeholder="例如：DCIM平台 V1.0" />
+      </FormField>
+      <FormField label="项目状态" full help="状态只标识当前阶段；需要从日常页面隐藏时请使用项目归档。">
+        <select name="status" value={status} onChange={(event) => setStatus(event.target.value)}>
+          {projectStatusOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+        </select>
+      </FormField>
+      <FormField label="计划开始">
+        <input name="plannedStart" type="date" max={plannedEnd || undefined} value={plannedStart} onChange={(event) => setPlannedStart(event.target.value)} />
+      </FormField>
+      <FormField label="计划完成">
+        <input name="plannedEnd" type="date" min={plannedStart || undefined} value={plannedEnd} onChange={(event) => setPlannedEnd(event.target.value)} />
+      </FormField>
+      <WorkdayCalendarNotice values={[plannedStart, plannedEnd]} className="field-full" />
+      <FormField label="默认流程" full>
+        <select name="defaultTemplateId" value={defaultTemplateId} onChange={(event) => setDefaultTemplateId(event.target.value)}>
           <option value="">不指定</option>
+          {defaultTemplateId && !templates.some((template) => template.id === defaultTemplateId) && <option value={defaultTemplateId}>已不可用的流程（请重新选择）</option>}
           {templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
         </select>
-      </label>
-      {mutation.error && <p className="form-error field-full">{mutation.error.message}</p>}
-      <div className="form-actions field-full">
-        <button type="button" className="ghost-button" onClick={onClose}>取消</button>
-        <button className="primary-button" disabled={mutation.isPending}>{project ? "保存修改" : "创建项目"}</button>
-      </div>
+      </FormField>
+      {selectedTemplateUnavailable && <FormError>所选默认流程已不可用，请重新选择。</FormError>}
+      <FormError>{mutation.error?.message}</FormError>
+      <FormSubmitActions submitLabel={project ? "保存修改" : "创建项目"} pending={mutation.isPending} disabled={changed || selectedTemplateUnavailable} onCancel={onClose} />
+      </fieldset>
     </form>
+    </>}
+    </Modal>
   );
 }
 
@@ -74,71 +202,97 @@ export function RequirementForm({
   onClose: () => void;
 }) {
   const client = useQueryClient();
+  const toast = useToast();
+  const submitting = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const initialRequirementIds = useRef<Set<string> | null | undefined>(undefined);
+  if (initialRequirementIds.current === undefined) {
+    const queryKey = [...keys.requirements, projectId];
+    const cached = client.getQueryData<Requirement[]>(queryKey);
+    initialRequirementIds.current = client.getQueryState(queryKey)?.status === "success" && cached
+      ? new Set(cached.map((requirement) => requirement.id))
+      : null;
+  }
   const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">("start");
-  const [planningOpen, setPlanningOpen] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [scheduleDate, setScheduleDate] = useState("");
-  const { projects } = useApp();
+  const [ownerId, setOwnerId] = useState("");
+  const { projects } = useProjects();
   const defaultTemplateId = projects.find((project) => project.id === projectId)?.defaultTemplateId || "";
   const [templateId, setTemplateId] = useState(defaultTemplateId);
-  const { data: templates = [] } = useQuery({
-    queryKey: ["templates", projectId],
-    queryFn: () => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(projectId)}`),
+  const templatesQuery = useQuery({
+    queryKey: [...keys.templates, projectId],
+    queryFn: ({ signal }) => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(projectId)}`, { signal }),
     enabled: Boolean(projectId),
   });
-  const { data: people = [] } = useQuery({
-    queryKey: ["people", projectId],
-    queryFn: () => api<Person[]>(`/api/people?projectId=${encodeURIComponent(projectId)}`),
+  const peopleQuery = useQuery({
+    queryKey: [...keys.people, projectId],
+    queryFn: ({ signal }) => api<Person[]>(`/api/people?projectId=${encodeURIComponent(projectId)}`, { signal }),
     enabled: Boolean(projectId),
   });
+  const templates = templatesQuery.data || [];
+  const people = peopleQuery.data || [];
   const mutation = useMutation({
-    mutationFn: (data: object) => api("/api/requirements", { method: "POST", body: jsonBody(data) }),
+    mutationFn: (data: RequirementFormInput) => api<Requirement>("/api/requirements", { method: "POST", body: jsonBody(data) }),
     onSuccess: () => {
       invalidateRequirementViews(client);
       onClose();
     },
+    onError: async (error, input) => {
+      const sourceIds = initialRequirementIds.current;
+      if (!sourceIds || !requiresWriteRecheck(error)) return;
+      try {
+        const latest = await api<Requirement[]>(`/api/requirements?projectId=${encodeURIComponent(projectId)}`, { readOnly: true });
+        const matches = latest.filter((requirement) => matchesCreatedRequirement(requirement, input, sourceIds, defaultTemplateId, templates));
+        if (matches.length === 1 && mounted.current) {
+          invalidateRequirementViews(client, matches[0].id);
+          toast.success("已核对最新状态：需求已创建");
+          onClose();
+        }
+      } catch {
+        // 保留原写入错误和草稿，避免把读取失败误判为创建成功。
+      }
+    },
+    onSettled: () => { submitting.current = false; },
   });
   return (
+    <Modal title="新建需求" closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
     <form
-      className="form-grid"
       onSubmit={(event) => {
         event.preventDefault();
-        mutation.mutate({ ...Object.fromEntries(new FormData(event.currentTarget)), projectId });
+        if (submitting.current) return;
+        submitting.current = true;
+        const values = Object.fromEntries(new FormData(event.currentTarget));
+        mutation.mutate({ ...values, templateId, projectId } as RequirementFormInput);
       }}
     >
-      <label className="field field-full">
-        <span>需求标题</span>
+      <fieldset className="form-grid form-fieldset" disabled={mutation.isPending}>
+      <FormField label="需求标题" full>
         <input name="title" required autoFocus />
-      </label>
-      <label className="field">
-        <span>优先级</span>
+      </FormField>
+      <FormField label="优先级">
         <select name="priority" defaultValue="P2">
           <option value="P0">P0 · 紧急</option>
           <option value="P1">P1 · 高</option>
           <option value="P2">P2 · 中</option>
           <option value="P3">P3 · 低</option>
         </select>
-      </label>
-      <label className="field">
-        <span>需求负责人（可稍后指定）</span>
-        <select name="ownerId" defaultValue="">
+      </FormField>
+      <FormField label="需求负责人（可稍后指定）">
+        <select name="ownerId" value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
           <option value="">待指定</option>
+          {ownerId && !people.some((person) => person.id === ownerId && person.active && person.projectRole !== "viewer") && <option value={ownerId}>已不可用的负责人（请重新选择）</option>}
           {people.filter((person) => person.active && person.projectRole !== "viewer").map((person) => <option key={person.id} value={person.id}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}</option>)}
         </select>
-      </label>
-      <div className="form-disclosure field-full">
-        <button type="button" className={planningOpen ? "is-open" : ""} onClick={() => setPlanningOpen((value) => !value)}>
-          <strong>流程与排期</strong><span>{planningOpen ? "收起" : "可选：可只选流程，排期稍后补充"}</span>
-        </button>
-      </div>
-      {planningOpen && <>
-        <label className="field field-full">
-          <span>流程设计</span>
-          <select key={`${projectId}-${templates.length}`} name="templateId" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
+      </FormField>
+      <FormDisclosure label="流程与排期" hint="可选：可只选流程，排期稍后补充">
+        <FormField label="流程设计" full>
+          <select name="templateId" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
             <option value="">暂不选择流程</option>
+            {templateId && !templates.some((template) => template.id === templateId) && <option value={templateId}>{templatesQuery.data === undefined ? "项目默认流程（正在加载）" : "已不可用的流程（请重新选择）"}</option>}
             {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
           </select>
-        </label>
+        </FormField>
         <div className="field field-full">
           <span>排期方式</span>
           <div className="schedule-mode-switch" role="radiogroup" aria-label="排期方式">
@@ -164,27 +318,22 @@ export function RequirementForm({
           </button>
           </div>
         </div>
-        <label className="field field-full schedule-date-field">
-          <span>{scheduleMode === "start" ? "计划开始" : "截止日期"}</span>
+        <FormField label={scheduleMode === "start" ? "计划开始" : "截止日期"} full className="schedule-date-field">
           <input key={scheduleMode} name={scheduleMode === "start" ? "plannedStart" : "plannedEnd"} type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} />
-        </label>
+        </FormField>
+        <WorkdayCalendarNotice values={[scheduleDate]} className="field-full" />
         <p className="field-help field-full">日期可留空：只保存所选流程，需求保持待规划；填写日期后才会自动生成工作项。{scheduleMode === "deadline" ? " 截止日期需为工作日。" : ""}</p>
-      </>}
-      <div className="form-disclosure field-full">
-        <button type="button" className={detailsOpen ? "is-open" : ""} onClick={() => setDetailsOpen((value) => !value)}>
-          <strong>补充信息</strong><span>{detailsOpen ? "收起" : "可选：背景、验收标准和参考链接"}</span>
-        </button>
-      </div>
-      {detailsOpen && <>
-        <label className="field field-full"><span>需求背景</span><textarea name="background" rows={3} placeholder="为什么要做，可留空" /></label>
-        <label className="field field-full"><span>验收标准</span><textarea name="acceptanceCriteria" rows={3} placeholder="如何判断完成，可留空" /></label>
-        <label className="field field-full"><span>参考链接</span><input name="referenceUrl" type="url" placeholder="https://…" /></label>
-      </>}
-      {mutation.error && <p className="form-error field-full">{mutation.error.message}</p>}
-      <div className="form-actions field-full">
-        <button type="button" className="ghost-button" onClick={onClose}>取消</button>
-        <button className="primary-button" disabled={mutation.isPending}>创建需求</button>
-      </div>
+      </FormDisclosure>
+      {(templatesQuery.error || peopleQuery.error) && <div className="warning-banner field-full">部分辅助选项加载失败，仍可创建待规划需求并稍后补充。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching || peopleQuery.isFetching} onClick={() => void Promise.all([templatesQuery.refetch(), peopleQuery.refetch()])}>重新加载</button></div>}
+      <FormDisclosure label="补充信息" hint="可选：背景、验收标准和参考链接">
+        <FormField label="需求背景" full><textarea name="background" rows={3} placeholder="为什么要做，可留空" /></FormField>
+        <FormField label="验收标准" full><textarea name="acceptanceCriteria" rows={3} placeholder="如何判断完成，可留空" /></FormField>
+        <FormField label="参考链接" full><input name="referenceUrl" type="url" placeholder="https://…" /></FormField>
+      </FormDisclosure>
+      <FormError>{mutation.error?.message}</FormError>
+      <FormSubmitActions submitLabel="创建需求" pending={mutation.isPending} onCancel={onClose} />
+      </fieldset>
     </form>
+    </Modal>
   );
 }

@@ -1,0 +1,125 @@
+/* ════════════════════════════════════════════════════════════════
+   设计令牌层（三层架构）
+   Layer 1 原始令牌：收敛后的色阶/间距/圆角/字号/动效，组件不直接使用
+   Layer 2 语义令牌：组件唯一入口；暗色主题只重写这一层
+   Layer 3 组件令牌：散落在各组件规则内（沿用甘特 --bar-color 模式）
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Layer 1 · 原始令牌 ── */
+:root {
+  /* 品牌蓝 */
+  --blue-50: #eef4ff; --blue-100: #e0ebff; --blue-200: #c2d6fe; --blue-300: #93b4f8;
+  --blue-400: #5a88df; --blue-500: #3d78e8; --blue-600: #2d6cdf; --blue-700: #245fbd; --blue-800: #1e4f9c;
+  /* 中性灰（蓝调） */
+  --gray-25: #fafbfd; --gray-50: #f3f6fa; --gray-100: #edf1f5; --gray-150: #e6ebf2;
+  --gray-200: #dfe6ef; --gray-250: #d3dce7; --gray-300: #c2cddc; --gray-400: #a7b3c3;
+  --gray-500: #8793a3; --gray-600: #6b788b; --gray-700: #536176; --gray-800: #36435a; --gray-900: #182334;
+  /* 语义色 */
+  --green-50: #e5f6ef; --green-100: #d3f0e3; --green-300: #5cc49b; --green-500: #24a372;
+  --green-600: #1d9a6c; --green-700: #147a55; --green-800: #0f6244;
+  --amber-50: #fdf3e3; --amber-100: #fbe9c8; --amber-300: #ecb34f; --amber-500: #d78a14;
+  --amber-600: #c27d10; --amber-700: #9a6208; --amber-800: #7c4e06;
+  --red-50: #fde8e7; --red-100: #fbd5d4; --red-300: #ef8f8c; --red-500: #d84a4a;
+  --red-600: #c53c3c; --red-700: #b3261e; --red-800: #8f1d17;
+  --purple-50: #f0eaff; --purple-300: #b39ddb; --purple-500: #7152b8; --purple-700: #5b4396;
+  /* 深色基底（侧栏 / 暗色主题） */
+  --navy-700: #1b3049; --navy-800: #132236; --navy-900: #0c192a; --navy-950: #081221;
+  /* 字号（px） */
+  --text-2xs: 10px; --text-xs: 11px; --text-sm: 12px; --text-md: 13px; --text-lg: 14px;
+  --text-xl: 16px; --text-2xl: 18px; --text-3xl: 20px; --text-4xl: 24px;
+  /* 字重 */
+  --weight-normal: 400; --weight-medium: 500; --weight-semibold: 650; --weight-bold: 750;
+  /* 间距（4px 基准 + 半档） */
+  --space-0-5: 2px; --space-1: 4px; --space-1-5: 6px; --space-2: 8px; --space-2-5: 10px;
+  --space-3: 12px; --space-3-5: 14px; --space-4: 16px; --space-5: 20px; --space-6: 24px;
+  --space-7: 30px; --space-8: 36px;
+  /* 圆角 */
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 12px; --radius-pill: 999px;
+  /* 动效 */
+  --dur-fast: .12s; --dur-base: .15s; --dur-slow: .22s;
+  --ease-standard: cubic-bezier(.2, 0, .38, 1);
+  --ease-spring: cubic-bezier(.34, 1.3, .4, 1);
+  /* 层级 */
+  --z-sidebar: 10; --z-topbar: 20; --z-popover: 40; --z-tooltip: 1000; --z-modal: 1100; --z-toast: 1200;
+}
+
+/* ── Layer 2 · 语义令牌（默认亮色） ── */
+:root, [data-theme="light"] {
+  color-scheme: light;
+  --bg-page: var(--gray-50);
+  --bg-surface: #ffffff;
+  --bg-surface-subtle: var(--gray-25);
+  --bg-hover: var(--gray-100);
+  --bg-active: var(--blue-50);
+  --text-primary: var(--gray-900);
+  --text-secondary: var(--gray-700);
+  --text-muted: var(--gray-600);
+  --text-faint: #64748b;
+  --border-default: var(--gray-200);
+  --border-strong: var(--gray-250);
+  --divider: var(--gray-100);
+  --accent: var(--blue-600);
+  --accent-hover: var(--blue-700);
+  --accent-soft: var(--blue-50);
+  --accent-border: var(--blue-200);
+  --on-accent: #ffffff;
+  --success: var(--green-600); --success-text: var(--green-700); --success-bg: var(--green-50); --success-border: var(--green-100);
+  --warning: var(--amber-500); --warning-text: var(--amber-700); --warning-bg: var(--amber-50); --warning-border: var(--amber-100);
+  --danger: var(--red-500); --danger-text: var(--red-700); --danger-bg: var(--red-50); --danger-border: var(--red-100);
+  --info: var(--blue-600); --info-text: var(--blue-700); --info-bg: var(--blue-50); --info-border: var(--blue-100);
+  --purple: var(--purple-500); --purple-text: var(--purple-700); --purple-bg: var(--purple-50);
+  /* 侧栏 */
+  --sidebar-bg: linear-gradient(180deg, var(--navy-800) 0%, var(--navy-900) 100%);
+  --sidebar-text: #aebdcd;
+  --sidebar-text-strong: #ffffff;
+  --sidebar-text-muted: #62758c;
+  --sidebar-hover-bg: rgba(255, 255, 255, .06);
+  --sidebar-divider: rgba(255, 255, 255, .08);
+  /* 顶栏 */
+  --topbar-bg: rgba(255, 255, 255, .97);
+  /* 阴影与聚焦环 */
+  --shadow-1: 0 3px 12px rgba(30, 49, 75, .05);
+  --shadow-2: 0 10px 28px rgba(17, 34, 56, .12);
+  --shadow-3: 0 14px 34px rgba(17, 34, 56, .18);
+  --focus-ring: 0 0 0 3px rgba(45, 108, 223, .18);
+  --backdrop-bg: rgba(23, 36, 56, .32);
+}
+
+/* ── Layer 2 · 暗色主题（只重写语义层，组件零改动） ── */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-page: #0e141d;
+  --bg-surface: #151e2a;
+  --bg-surface-subtle: #1a2432;
+  --bg-hover: #1e2938;
+  --bg-active: #1d3153;
+  --text-primary: #e6edf5;
+  --text-secondary: #b3c1d1;
+  --text-muted: #8b9cb0;
+  --text-faint: #7d8ca0;
+  --border-default: #263446;
+  --border-strong: #324357;
+  --divider: #1e2938;
+  --accent: #5a8def;
+  --accent-hover: #7ea6f5;
+  --accent-soft: #1d3153;
+  --accent-border: #2c4a7c;
+  --on-accent: #0e141d;
+  --success: #3fbd8a; --success-text: #6ed3a9; --success-bg: rgba(36, 163, 114, .14); --success-border: rgba(36, 163, 114, .38);
+  --warning: #e5a63f; --warning-text: #edbe6b; --warning-bg: rgba(215, 138, 20, .15); --warning-border: rgba(215, 138, 20, .4);
+  --danger: #e86a6a; --danger-text: #f09393; --danger-bg: rgba(216, 74, 74, .15); --danger-border: rgba(216, 74, 74, .42);
+  --info: #5a8def; --info-text: #8ab0f3; --info-bg: rgba(90, 141, 239, .15); --info-border: rgba(90, 141, 239, .38);
+  --purple: #9a82d4; --purple-text: #b8a5e4; --purple-bg: rgba(154, 130, 212, .15);
+  --sidebar-bg: linear-gradient(180deg, #0d1622 0%, #080f18 100%);
+  --sidebar-text: #93a5ba;
+  --sidebar-text-strong: #f2f6fa;
+  --sidebar-text-muted: #5b6f85;
+  --sidebar-hover-bg: rgba(255, 255, 255, .05);
+  --sidebar-divider: rgba(255, 255, 255, .07);
+  --topbar-bg: rgba(21, 30, 42, .92);
+  --shadow-1: 0 3px 12px rgba(0, 0, 0, .25);
+  --shadow-2: 0 10px 28px rgba(0, 0, 0, .35);
+  --shadow-3: 0 14px 34px rgba(0, 0, 0, .45);
+  --focus-ring: 0 0 0 3px rgba(90, 141, 239, .35);
+  --backdrop-bg: rgba(4, 8, 14, .55);
+}

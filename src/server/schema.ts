@@ -72,6 +72,7 @@ export const projectPeople = sqliteTable('project_people', {
   personId: text('person_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
   projectRole: text('project_role').notNull().default('member'),
   createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at'),
 }, (table) => [
   primaryKey({ columns: [table.projectId, table.personId] }),
   index('idx_project_people_person').on(table.personId, table.projectId),

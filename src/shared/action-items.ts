@@ -45,11 +45,15 @@ export type ActionItem = {
 };
 
 export type ActionItemsPage = {
+  asOfDate: string;
   items: ActionItem[];
   total: number;
   page: number;
   pageSize: number;
   pages: number;
+  /** 当前账号可见行动范围内实际出现的负责人，用于避免暴露无关项目成员。 */
+  ownerOptions: Array<{ id: string; name: string; count: number }>;
+  hasUnassigned: boolean;
   summary: {
     total: number;
     high: number;

@@ -28,7 +28,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "npm run build && npm start",
+    command: "npm run build:test-ui && node .playwright/server/index.js",
     url: `http://127.0.0.1:${testPort}/health`,
     reuseExistingServer: false,
     timeout: 120_000,
@@ -36,6 +36,9 @@ export default defineConfig({
       ...process.env,
       PORT: String(testPort),
       NODE_ENV: "test",
+      HOST: "127.0.0.1",
+      WEB_DIST_DIR: path.join(process.cwd(), ".playwright", "dist"),
+      SESSION_COOKIE_NAME: `pm_playwright_${testRunId}`,
       SEED_DEMO: "0",
       DB_PATH: path.join(os.tmpdir(), `project-manage-playwright-${testRunId}.db`),
       BACKUP_DIR: path.join(os.tmpdir(), `project-manage-playwright-backups-${testRunId}`),

@@ -22,10 +22,25 @@ function auditProjectId(entityType: string, entityId: string | null): string | n
   return null;
 }
 
+export type AuditEntry = {
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  summary: string;
+  projectId?: string | null;
+};
+
+export function recordAudits(actor: Actor, entries: AuditEntry[]) {
+  const insert = sqlite.prepare(`INSERT INTO audit_logs (id, actor_type, actor_id, action, entity_type, entity_id, project_id, summary, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  for (const entry of entries) {
+    const scopeProjectId = entry.projectId === undefined ? auditProjectId(entry.entityType, entry.entityId) : entry.projectId;
+    insert.run(randomUUID(), actor.type, actor.id, entry.action, entry.entityType, entry.entityId, scopeProjectId, entry.summary, new Date().toISOString());
+  }
+}
+
 export function recordAudit(actor: Actor, action: string, entityType: string, entityId: string | null, summary: string, projectId?: string | null) {
-  const scopeProjectId = projectId === undefined ? auditProjectId(entityType, entityId) : projectId;
-  sqlite.prepare(`INSERT INTO audit_logs (id, actor_type, actor_id, action, entity_type, entity_id, project_id, summary, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), actor.type, actor.id, action, entityType, entityId, scopeProjectId, summary, new Date().toISOString());
+  recordAudits(actor, [{ action, entityType, entityId, summary, projectId }]);
 }
 
 const auditSelect = `SELECT l.id, l.actor_type AS actorType, l.actor_id AS actorId,
@@ -41,13 +56,22 @@ const auditFrom = `FROM audit_logs l
 
 export function listAudit(limit = 100, projectId?: string) {
   const normalizedLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 500) : 100;
-  return rows(`${auditSelect} ${auditFrom} ${projectId ? 'WHERE l.project_id=?' : ''} ORDER BY l.created_at DESC LIMIT ?`,
+  return rows(`${auditSelect} ${auditFrom} ${projectId ? 'WHERE l.project_id=?' : ''} ORDER BY l.created_at DESC, l.rowid DESC LIMIT ?`,
     ...(projectId ? [projectId] : []), normalizedLimit);
 }
 
-export function searchAudit(filters: { q?: string; actorType?: string; action?: string; entityType?: string; projectId?: string; from?: string; to?: string; page?: number; pageSize?: number } = {}) {
+function localDateBoundary(value: string, endOfDay: boolean) {
+  const time = endOfDay ? '23:59:59.999' : '00:00:00.000';
+  return new Date(`${value}T${time}+08:00`).toISOString();
+}
+
+export function searchAudit(filters: { q?: string; actorType?: string; action?: string; entityType?: string; projectId?: string; from?: string; to?: string; page?: number; pageSize?: number; snapshot?: number } = {}) {
   const where: string[] = [];
   const params: unknown[] = [];
+  const latestRowId = row<{ rowId: number | null }>('SELECT MAX(rowid) AS rowId FROM audit_logs')?.rowId || 0;
+  const snapshot = filters.snapshot === undefined ? latestRowId : Math.min(filters.snapshot, latestRowId);
+  where.push('l.rowid<=?');
+  params.push(snapshot);
   const q = String(filters.q || '').trim();
   if (q) {
     where.push(`(search_plain_match(l.summary, ?)=1 OR search_plain_match(COALESCE(l.entity_id, ''), ?)=1
@@ -61,13 +85,13 @@ export function searchAudit(filters: { q?: string; actorType?: string; action?: 
   if (filters.action) { where.push('l.action=?'); params.push(filters.action); }
   if (filters.entityType) { where.push('l.entity_type=?'); params.push(filters.entityType); }
   if (filters.projectId) { where.push('l.project_id=?'); params.push(filters.projectId); }
-  if (filters.from) { where.push('l.created_at>=?'); params.push(`${filters.from}T00:00:00.000Z`); }
-  if (filters.to) { where.push('l.created_at<=?'); params.push(`${filters.to}T23:59:59.999Z`); }
+  if (filters.from) { where.push('l.created_at>=?'); params.push(localDateBoundary(filters.from, false)); }
+  if (filters.to) { where.push('l.created_at<=?'); params.push(localDateBoundary(filters.to, true)); }
   const page = Math.max(1, Number(filters.page) || 1);
   const pageSize = Math.min(100, Math.max(20, Number(filters.pageSize) || 50));
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const total = row<{ count: number }>(`SELECT COUNT(*) AS count ${auditFrom} ${clause}`, ...params)?.count || 0;
   const items = rows(`${auditSelect} ${auditFrom} ${clause}
-    ORDER BY l.created_at DESC LIMIT ? OFFSET ?`, ...params, pageSize, (page - 1) * pageSize);
-  return { items, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) };
+    ORDER BY l.created_at DESC, l.rowid DESC LIMIT ? OFFSET ?`, ...params, pageSize, (page - 1) * pageSize);
+  return { items, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), snapshot };
 }

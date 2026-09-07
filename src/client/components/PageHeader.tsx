@@ -1,7 +1,12 @@
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
 import { createPortal } from "react-dom";
+import { useTopbarSlots } from "../app-context";
 
+/**
+ * 页面标题/操作区：通过 TopbarSlotsContext 注册的挂载点 portal 到顶栏，
+ * 不再依赖静态 DOM id 暗号。
+ */
 export function PageHeader({
   title,
   actions,
@@ -13,15 +18,9 @@ export function PageHeader({
   onBack?: () => void;
   backLabel?: string;
 }) {
-  const [slots, setSlots] = useState<{ title: HTMLElement; actions: HTMLElement }>();
+  const { titleEl, actionsEl } = useTopbarSlots();
 
-  useEffect(() => {
-    const titleSlot = document.getElementById("topbar-title-slot");
-    const actionSlot = document.getElementById("topbar-action-slot");
-    if (titleSlot && actionSlot) setSlots({ title: titleSlot, actions: actionSlot });
-  }, []);
-
-  if (!slots) return null;
+  if (!titleEl) return null;
   return (
     <>
       {createPortal(
@@ -33,9 +32,9 @@ export function PageHeader({
           )}
           <h1 title={title}>{title}</h1>
         </div>,
-        slots.title,
+        titleEl,
       )}
-      {actions ? createPortal(<div className="integrated-page-actions">{actions}</div>, slots.actions) : null}
+      {actions && actionsEl ? createPortal(<div className="integrated-page-actions">{actions}</div>, actionsEl) : null}
     </>
   );
 }

@@ -25,7 +25,7 @@ const issuePage: IssuePage = {
   summary: { total: 2, inProgress: 2, deferred: 0, resolved: 0, active: 2, highPriority: 1, overdue: 1, unassigned: 0, closureRate: 0 },
 };
 
-async function mockIssues(page: Page) {
+async function mockIssues(page: Page, state: { listFailure?: boolean } = {}) {
   await page.route('**/api/**', async (route: Route) => {
     const pathname = new URL(route.request().url()).pathname;
     const json = (value: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
@@ -34,12 +34,25 @@ async function mockIssues(page: Page) {
     if (pathname === '/api/projects') return json([project]);
     if (pathname === '/api/people') return json(people);
     if (pathname === '/api/requirements') return json([]);
-    if (pathname === '/api/issues') return json(issuePage);
+    if (pathname === '/api/issues') return state.listFailure ? json({ error: '问题列表暂不可用' }, 503) : json(issuePage);
     if (pathname === '/api/issues/issue-1') return json({ ...baseIssue, updates: [] });
     if (pathname === '/api/issues/does-not-exist') return json({ error: '问题不存在' }, 404);
     return json({});
   });
 }
+
+test('问题列表失败时显示错误并可重新加载', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-1080p', '错误态只需在一个桌面视口执行');
+  const state = { listFailure: true };
+  await mockIssues(page, state);
+  await page.goto('/issues');
+  await expect(page.getByText('问题列表加载失败', { exact: true })).toBeVisible();
+  await expect(page.getByText('问题列表暂不可用', { exact: true })).toBeVisible();
+  await expect(page.getByText('没有符合条件的问题', { exact: true })).toHaveCount(0);
+  state.listFailure = false;
+  await page.getByRole('button', { name: '重新加载', exact: true }).click();
+  await expect(page.locator('.issue-data-row')).toHaveCount(2);
+});
 
 test('问题列表在低分辨率下不遮挡优先级和编辑控件', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-1080p', '在一个浏览器内覆盖多种内容宽度');
@@ -109,4 +122,28 @@ test('问题筛选、详情错误态和嵌套Esc保持正确', async ({ page }, 
   await page.goto('/issues?issueId=does-not-exist');
   await expect(page.getByText('问题详情加载失败')).toBeVisible();
   await expect(page.getByText('正在加载问题详情…')).toHaveCount(0);
+});
+
+test('问题互斥筛选会清理旧地址参数', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-1080p', '筛选状态只需在一个桌面视口执行');
+  await mockIssues(page);
+  await page.goto('/issues?active=true&overdue=true');
+
+  const filters = page.locator('.issue-filters');
+  await filters.locator('select').nth(0).selectOption('resolved');
+  let params = new URL(page.url()).searchParams;
+  expect(params.get('status')).toBe('resolved');
+  expect(params.has('active')).toBe(false);
+  expect(params.has('overdue')).toBe(false);
+
+  await filters.getByRole('button', { name: '仅逾期', exact: true }).click();
+  params = new URL(page.url()).searchParams;
+  expect(params.get('status')).toBe('active');
+  expect(params.get('overdue')).toBe('true');
+
+  await filters.getByRole('button', { name: '未分配', exact: true }).click();
+  await filters.locator('select').nth(2).selectOption('u1');
+  params = new URL(page.url()).searchParams;
+  expect(params.get('ownerId')).toBe('u1');
+  expect(params.has('unassigned')).toBe(false);
 });

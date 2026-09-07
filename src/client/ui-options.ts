@@ -1,16 +1,19 @@
 import {
   issueStatuses,
   issueStatusLabels,
+  projectStatuses,
   priorities,
   priorityLabels,
   requirementStatuses,
   requirementStatusLabels,
   riskLevels,
   riskLabels,
+  workItemStatuses,
   type IssueStatus,
   type Priority,
   type RequirementStatus,
   type RiskLevel,
+  type WorkItemStatus,
 } from "../shared/domain";
 
 export type UiOption<T extends string = string> = {
@@ -44,6 +47,32 @@ export const riskOptions: UiOption<RiskLevel>[] = riskLevels.map((value) => ({
   value,
   label: riskLabels[value],
   toneClass: `risk-badge risk-${value}`,
+}));
+
+const workItemStatusLabels: Record<WorkItemStatus, string> = {
+  not_started: "未开始",
+  in_progress: "进行中",
+  blocked: "阻塞",
+  completed: "已完成",
+  cancelled: "已取消",
+};
+
+export const workItemStatusOptions: UiOption<WorkItemStatus>[] = workItemStatuses.map((value) => ({
+  value,
+  label: workItemStatusLabels[value],
+  toneClass: `work-item-status-badge badge-${value.replaceAll("_", "-")}`,
+}));
+
+const projectStatusLabels: Record<(typeof projectStatuses)[number], string> = {
+  planned: "规划中",
+  active: "进行中",
+  completed: "已完成",
+};
+
+export const projectStatusOptions: UiOption<(typeof projectStatuses)[number]>[] = projectStatuses.map((value) => ({
+  value,
+  label: projectStatusLabels[value],
+  toneClass: `status-pill status-${value}`,
 }));
 
 export const accountRoleLabels = {

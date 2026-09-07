@@ -1,0 +1,88 @@
+import { useEffect, useRef, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { api, jsonBody, requiresWriteRecheck } from '../api';
+import { invalidateRequirementViews } from '../query-keys';
+import { canDeleteWorkItem } from '../../shared/domain';
+import type { Requirement, WorkItem } from '../types';
+import { ConfirmDialog } from './Modal';
+import { useToast } from './Toast';
+
+export function WorkItemDeleteDialog({ target, requirement, canManage, onReload, onClose }: {
+  target: WorkItem;
+  requirement: Requirement;
+  canManage: boolean;
+  onReload: () => Promise<Requirement>;
+  onClose: () => void;
+}) {
+  const client = useQueryClient();
+  const toast = useToast();
+  const [baseline, setBaseline] = useState(target);
+  const [reading, setReading] = useState(false);
+  const [needsRefresh, setNeedsRefresh] = useState(false);
+  const [refreshed, setRefreshed] = useState(false);
+  const [readError, setReadError] = useState('');
+  const submitting = useRef(false);
+  const readingRef = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const latest = requirement.workItems.find((item) => item.id === baseline.id);
+  const changed = Boolean(latest && latest.version !== baseline.version);
+  const hasHistory = (requirement.progressUpdates || []).some((entry) => entry.workItemId === baseline.id);
+  const warning = !canManage ? '当前需求不允许管理工作项，请关闭确认窗口。'
+    : !latest ? '工作项已被删除，请关闭确认窗口。'
+    : !canDeleteWorkItem(latest, hasHistory) ? '工作项已有执行信息或进展历史，不能删除。'
+    : changed ? '工作项已更新，请重新读取并核对后再确认删除。' : '';
+  const readLatest = async () => {
+    if (readingRef.current) return null;
+    readingRef.current = true; setReading(true); setNeedsRefresh(true); setReadError('');
+    try {
+      const fresh = await onReload();
+      if (!mounted.current) return null;
+      const item = fresh.workItems.find((entry) => entry.id === baseline.id);
+      if (item) setBaseline(item);
+      setNeedsRefresh(false); setRefreshed(true);
+      return fresh;
+    } catch (caught) {
+      if (mounted.current) setReadError(caught instanceof Error ? caught.message : '工作项读取失败');
+      return null;
+    } finally {
+      readingRef.current = false;
+      if (mounted.current) setReading(false);
+    }
+  };
+  const mutation = useMutation({
+    mutationFn: (item: WorkItem) => api(`/api/work-items/${item.id}`, { method: 'DELETE', body: jsonBody({ expectedVersion: item.version }) }),
+    onSuccess: () => {
+      invalidateRequirementViews(client, baseline.requirementId);
+      if (mounted.current) onClose();
+    },
+    onError: async (error) => {
+      if (!mounted.current) return;
+      setNeedsRefresh(true);
+      if (requiresWriteRecheck(error)) {
+        const fresh = await readLatest();
+        if (fresh && !fresh.workItems.some((item) => item.id === baseline.id) && mounted.current) {
+          invalidateRequirementViews(client, baseline.requirementId);
+          toast.success('已核对最新状态：工作项已删除');
+          onClose();
+        }
+      }
+    },
+    onSettled: () => { submitting.current = false; },
+  });
+  const pending = mutation.isPending || reading;
+  const blocked = Boolean(warning) || needsRefresh;
+  return <ConfirmDialog title="删除工作项" description={<>
+    <p>工作项“<strong>{baseline.title}</strong>”将从需求计划中删除。此操作仅适用于尚未开始、0%且没有执行信息和进展历史的工作项。</p>
+    {warning && <p className="form-error" role="alert">{warning}</p>}
+    {readError && <p className="form-error" role="alert">{readError}</p>}
+    {refreshed && <p>已读取最新工作项，请核对名称和删除条件后再确认。</p>}
+    {(changed || needsRefresh) && <button type="button" className="ghost-button" disabled={pending} onClick={() => void readLatest()}>重新读取工作项</button>}
+  </>} confirmLabel="确认删除" pendingLabel="处理中…" danger pending={pending} disabled={blocked} error={mutation.error?.message}
+    onClose={() => { if (!submitting.current && !readingRef.current) onClose(); }}
+    onConfirm={() => {
+      if (submitting.current || readingRef.current || blocked) return;
+      submitting.current = true;
+      mutation.mutate(baseline);
+    }} />;
+}

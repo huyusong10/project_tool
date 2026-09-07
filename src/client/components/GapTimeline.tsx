@@ -3,8 +3,12 @@ import { format } from "date-fns";
 import { Ban, Check, Circle, CircleAlert, LocateFixed, Play } from "lucide-react";
 import { calculateWorkItemGap, requirementStatusLabels, todayIso } from "../../shared/domain";
 import type { ProgressUpdate, WorkItem } from "../types";
+import { progressUpdateDisplayValue } from "../progress-trend";
 import { useGanttTooltip } from "./GanttTooltip";
-import { EmptyState } from "./Modal";
+import { StatusBadge } from "./Badge";
+import { EmptyState } from "./Feedback";
+import { ViewTabs } from "./ViewTabs";
+import { WorkdayCalendarNotice } from "./WorkdayCalendarNotice";
 import {
   buildBusinessDayTimeline,
   GanttMilestoneMarker,
@@ -26,12 +30,8 @@ const statusFilters: Array<{ value: Exclude<StatusFilter, "all">; label: string 
   { value: "cancelled", label: "已取消" },
 ];
 
-function toDate(value?: string | null) {
-  return toGanttDate(value);
-}
-
 function dateLabel(value?: string | null, empty = "—") {
-  const parsed = toDate(value);
+  const parsed = toGanttDate(value);
   return parsed ? format(parsed, "yyyy/MM/dd") : empty;
 }
 
@@ -51,30 +51,34 @@ function WorkStatusIcon({ status, size = 12 }: { status: string; size?: number }
   return <Circle size={size} />;
 }
 
-function WorkItemTimelinePopover({ item, updates }: { item: WorkItem; updates: ProgressUpdate[] }) {
-  const gap = calculateWorkItemGap(item);
+function WorkItemTimelinePopover({ item, updates, asOfDate }: { item: WorkItem; updates: ProgressUpdate[]; asOfDate: string }) {
+  const gap = calculateWorkItemGap(item, asOfDate);
   const observedEnd = item.actualEnd || (item.actualStart ? gap.observedEnd : null);
   const related = updates.filter((update) => update.workItemId === item.id).slice(0, 2);
   return <>
     <header className="gantt-popover-header">
       <div><strong>{item.title}</strong><span>{item.assigneeNames?.join("、") || item.ownerName || "未分配"}</span></div>
-      <span className={`status-pill status-${item.status}`}>{statusLabel(item.status)}</span>
+      <StatusBadge kind="requirement" value={item.status} />
     </header>
     <dl className="gantt-popover-metrics">
       <div><dt>实际进度</dt><dd>{item.progress}%</dd></div>
       <div><dt>计划周期</dt><dd>{dateLabel(item.plannedStart)} — {dateLabel(item.plannedEnd)}</dd></div>
       <div><dt>实际周期</dt><dd>{dateLabel(item.actualStart, "未开始")} — {dateLabel(observedEnd, "未完成")}</dd></div>
       {item.milestoneLabel && <div><dt>里程碑</dt><dd>{item.milestoneLabel} · {item.status === "completed" ? "已达成" : item.status === "cancelled" ? "已取消" : "待达成"}</dd></div>}
-      <div><dt>计划 / 实际工期</dt><dd>{gap.planDuration || 0}天 / {gap.actualDuration || 0}天</dd></div>
-      <div><dt>完成 / 耗时偏差</dt><dd className={gap.finishVariance > 0 || gap.durationVariance > 0 ? "danger-text" : ""}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}天 / {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}天</dd></div>
+      <div><dt>计划 / 实际工期</dt><dd>{gap.planDuration || 0}个工作日 / {gap.actualDuration || 0}个工作日</dd></div>
+      <div><dt>完成 / 耗时偏差</dt><dd className={gap.finishVariance > 0 || gap.durationVariance > 0 ? "danger-text" : ""}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}个工作日 / {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}个工作日</dd></div>
     </dl>
     {item.blockedReason && <p className="gantt-popover-blocked">阻塞：{item.blockedReason}</p>}
-    {related.length > 0 && <section className="gantt-popover-updates"><h4>相关进展</h4>{related.map((update) => <article key={update.id}><time>{new Date(update.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</time><div><p>{update.content}</p></div><span>{update.workItemPercent ?? item.progress}%</span></article>)}</section>}
+    {related.length > 0 && <section className="gantt-popover-updates"><h4>相关进展</h4>{related.map((update) => {
+      const displayedPercent = progressUpdateDisplayValue(update);
+      return <article key={update.id}><time>{new Date(update.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</time><div><p>{update.content}</p></div>{displayedPercent !== null && <span>{displayedPercent}%</span>}</article>;
+    })}</section>}
   </>;
 }
 
 export const GapTimeline = memo(function GapTimeline({
   items,
+  targetItemId,
   updates = [],
   canUpdateProgress,
   onUpdateProgress,
@@ -90,6 +94,7 @@ export const GapTimeline = memo(function GapTimeline({
   emptyState,
 }: {
   items: WorkItem[];
+  targetItemId?: string;
   updates?: ProgressUpdate[];
   canUpdateProgress?: (item: WorkItem) => boolean;
   onUpdateProgress?: (item: WorkItem) => void;
@@ -123,6 +128,21 @@ export const GapTimeline = memo(function GapTimeline({
     if (statusFilter !== "all" && !items.some((item) => item.status === statusFilter)) setStatusFilter("all");
   }, [items, statusFilter]);
   useEffect(() => {
+    if (!targetItemId) return;
+    const target = items.find((item) => item.id === targetItemId);
+    if (!target) return;
+    if (statusFilter !== "all" && target.status !== statusFilter) {
+      setStatusFilter("all");
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const row = Array.from(scrollRef.current?.querySelectorAll<HTMLElement>("[data-work-item-id]") || [])
+        .find((element) => element.dataset.workItemId === targetItemId);
+      row?.querySelector<HTMLElement>(".requirement-gantt-item")?.scrollIntoView({ block: "center", inline: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [items, statusFilter, targetItemId]);
+  useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
     const updateWidth = (width: number) => {
@@ -136,9 +156,10 @@ export const GapTimeline = memo(function GapTimeline({
   }, []);
   const hasTimeline = items.some((item) => item.plannedStart || item.plannedEnd || item.actualStart || item.actualEnd);
   const range = useMemo(() => buildBusinessDayTimeline(
-    items.flatMap((item) => [item.plannedStart, item.plannedEnd, item.actualStart, item.actualEnd || (item.actualStart ? calculateWorkItemGap(item).observedEnd : null)]),
+    items.flatMap((item) => [item.plannedStart, item.plannedEnd, item.actualStart, item.actualEnd || (item.actualStart ? calculateWorkItemGap(item, asOfDate).observedEnd : null)]),
     zoom,
-  ), [items, zoom]);
+    asOfDate,
+  ), [asOfDate, items, zoom]);
 
   if (!hasTimeline && !showUnscheduled) return <EmptyState title="尚无可绘制的计划" detail="工作项生成计划后，这里会展示需求进展。" />;
   const labelWidth = viewportWidth
@@ -191,9 +212,10 @@ export const GapTimeline = memo(function GapTimeline({
         </div>
         <div className="gantt-toolbar-actions">
           <button className="ghost-button" onClick={scrollToToday} disabled={!todayVisible}><LocateFixed size={15} />今天</button>
-          <div className="view-tabs" aria-label="时间粒度">{(Object.keys(ganttZoomOptions) as GanttZoom[]).map((key) => <button key={key} className={zoom === key ? "active" : ""} onClick={() => setZoom(key)}>{ganttZoomOptions[key].label}</button>)}</div>
+          <ViewTabs ariaLabel="时间粒度" value={zoom} onChange={setZoom} options={(Object.keys(ganttZoomOptions) as GanttZoom[]).map((key) => ({ value: key, label: ganttZoomOptions[key].label }))} />
         </div>
       </div>
+      <WorkdayCalendarNotice values={[format(range.start, "yyyy-MM-dd"), format(range.end, "yyyy-MM-dd")]} className="gantt-calendar-notice" />
       <div className="requirement-gantt-scroll" ref={scrollRef}>
         <div
           className={`requirement-gantt-grid${!visibleItems.length ? " is-empty" : ""}`}
@@ -215,10 +237,10 @@ export const GapTimeline = memo(function GapTimeline({
           {gapWidth > 0 && <div className="requirement-gantt-gap-head sticky-right" style={{ right: actionWidth }} role="columnheader">偏差</div>}
           {hasActions && <div className="requirement-gantt-action-head sticky-right" role="columnheader">操作</div>}
           {visibleItems.map((item) => {
-            const gap = calculateWorkItemGap(item);
+            const gap = calculateWorkItemGap(item, asOfDate);
             const observedEnd = item.actualEnd || (item.actualStart ? gap.observedEnd : null);
-            const tooltipProps = tooltip.bind(<WorkItemTimelinePopover item={item} updates={updates} />);
-            return <div className="requirement-gantt-row" role="row" key={item.id}>
+            const tooltipProps = tooltip.bind(<WorkItemTimelinePopover item={item} updates={updates} asOfDate={asOfDate} />);
+            return <div className={`requirement-gantt-row${item.id === targetItemId ? " is-target" : ""}`} data-work-item-id={item.id} role="row" key={item.id}>
               <div className={`requirement-gantt-item item-status-${statusClass(item.status)}${item.ownerId ? "" : " is-unassigned"} sticky-left`} role="rowheader">
                 <div>
                   {onItemClick
@@ -251,7 +273,7 @@ export const GapTimeline = memo(function GapTimeline({
                 {todayVisible && <i className="gantt-today-line" style={{ left: (todayOffset + 1) * cellWidth }} title={`截至 ${asOfDate}`} />}
               </div>
               {gapWidth > 0 && <div className="requirement-gap-summary sticky-right" style={{ right: actionWidth }} role="cell">
-                {item.actualStart ? <><strong className={gap.finishVariance > 0 ? "gap-late" : gap.finishVariance < 0 ? "gap-early" : ""}>{gap.finishVariance > 0 ? `延期 +${gap.finishVariance}天` : gap.finishVariance < 0 ? `提前 ${Math.abs(gap.finishVariance)}天` : "按期"}</strong><small>耗时 {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}天</small></> : <span>未开始</span>}
+                {item.actualStart ? <><strong className={gap.finishVariance > 0 ? "gap-late" : gap.finishVariance < 0 ? "gap-early" : ""}>{gap.finishVariance > 0 ? `延期 +${gap.finishVariance}工作日` : gap.finishVariance < 0 ? `提前 ${Math.abs(gap.finishVariance)}工作日` : "按期"}</strong><small>耗时 {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}工作日</small></> : <span>未开始</span>}
               </div>}
               {hasActions && <div className="requirement-gantt-actions sticky-right" role="cell">{renderActions?.(item)}</div>}
             </div>;

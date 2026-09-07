@@ -14,8 +14,11 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, Check, ChevronDown, ChevronLeft, ChevronRight, LoaderCircle, Search, X } from "lucide-react";
+import { requiresWriteRecheck } from "../api";
 import type { UiOption } from "../ui-options";
+import { useBusinessDate } from "../app-context";
 import { rankSearchItems } from "../../shared/search";
+import { WorkdayCalendarNotice } from "./WorkdayCalendarNotice";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 type DisplayMode = "single" | "stacked" | "badge";
@@ -42,6 +45,18 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "保存失败，请重试";
 }
 
+function canReturnFocus(anchor: RefObject<HTMLElement | null>) {
+  const focused = document.activeElement;
+  return !focused || focused === document.body || Boolean(anchor.current?.contains(focused));
+}
+
+/** 弹层关闭后归还焦点；异步返回时用户已移到其他控件则保持当前焦点。 */
+function focusTrigger(anchor: RefObject<HTMLElement | null>) {
+  window.requestAnimationFrame(() => {
+    if (canReturnFocus(anchor)) anchor.current?.querySelector<HTMLElement>(".inline-edit-trigger")?.focus();
+  });
+}
+
 function SaveFeedback({ state, error }: { state: SaveState; error: string }) {
   if (state === "saving") return <LoaderCircle className="inline-edit-spinner" size={14} aria-label="保存中" />;
   if (state === "saved") return <Check className="inline-edit-success" size={14} aria-label="已保存" />;
@@ -56,13 +71,19 @@ function EditorError({ error }: { error: string }) {
 function useSaveState() {
   const [state, setState] = useState<SaveState>("idle");
   const [error, setError] = useState("");
+  const [reloadRequired, setReloadRequired] = useState(false);
   const timer = useRef<number | undefined>(undefined);
+  const saving = useRef(false);
+  const isSaving = useCallback(() => saving.current, []);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
   const save = useCallback(async (operation: () => Promise<unknown>) => {
+    if (saving.current) return false;
+    saving.current = true;
     window.clearTimeout(timer.current);
     setError("");
+    setReloadRequired(false);
     setState("saving");
     try {
       await operation();
@@ -71,32 +92,115 @@ function useSaveState() {
       return true;
     } catch (caught) {
       setError(errorMessage(caught));
+      setReloadRequired(requiresWriteRecheck(caught));
       setState("error");
       return false;
-    }
+    } finally { saving.current = false; }
   }, []);
 
   const clearError = useCallback(() => {
+    if (saving.current) return;
     setError("");
+    setReloadRequired(false);
     setState("idle");
   }, []);
 
   const fail = useCallback((message: string) => {
+    if (saving.current) return;
     window.clearTimeout(timer.current);
     setError(message);
+    setReloadRequired(false);
     setState("error");
   }, []);
 
-  return { state, error, save, clearError, fail };
+  return { state, error, reloadRequired, save, clearError, fail, isSaving };
 }
 
-type BaseProps = {
+type Revision = number | string;
+
+type BaseProps<TRevision extends Revision = number> = {
   label: string;
   className?: string;
   disabled?: boolean;
   placeholder?: string;
   displayMode?: DisplayMode;
+  revision?: TRevision;
+  revisionSubject?: string;
+  onReloadRevision?: () => Promise<TRevision>;
 };
+
+type RevisionGuard<TRevision extends Revision> = {
+  baselineRevision: TRevision | undefined;
+  changed: boolean;
+  capture: () => void;
+  ensureCurrent: () => boolean;
+  onReload: (() => Promise<TRevision>) | undefined;
+  refreshed: boolean;
+  refreshing: boolean;
+  reload: () => Promise<void>;
+};
+
+function useRevisionGuard<TRevision extends Revision>({
+  revision,
+  subject = "记录",
+  onReload,
+  feedback,
+}: {
+  revision?: TRevision;
+  subject?: string;
+  onReload?: () => Promise<TRevision>;
+  feedback: ReturnType<typeof useSaveState>;
+}): RevisionGuard<TRevision> {
+  const [baselineRevision, setBaselineRevision] = useState(revision);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshed, setRefreshed] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const changed = revision !== undefined && baselineRevision !== undefined && revision !== baselineRevision;
+  const capture = useCallback(() => {
+    setBaselineRevision(revision);
+    setRefreshed(false);
+  }, [revision]);
+  const ensureCurrent = useCallback(() => {
+    if (feedback.reloadRequired) return false;
+    if (!changed) return true;
+    feedback.fail(`${subject}已更新。草稿已保留，请重新读取并核对后保存。`);
+    return false;
+  }, [changed, feedback, subject]);
+  const reload = useCallback(async () => {
+    if (!onReload || refreshing) return;
+    setRefreshing(true);
+    try {
+      const latestRevision = await onReload();
+      if (!mounted.current) return;
+      setBaselineRevision(latestRevision);
+      setRefreshed(true);
+      feedback.clearError();
+    } catch (caught) {
+      if (mounted.current) feedback.fail(errorMessage(caught));
+    } finally {
+      if (mounted.current) setRefreshing(false);
+    }
+  }, [feedback, onReload, refreshing]);
+  return { baselineRevision, changed, capture, ensureCurrent, onReload, refreshed, refreshing, reload };
+}
+
+function RevisionNotice<TRevision extends Revision>({
+  guard,
+  showReload,
+  subject = "记录",
+}: {
+  guard: RevisionGuard<TRevision>;
+  showReload: boolean;
+  subject?: string;
+}) {
+  if (!guard.onReload || (!guard.changed && !guard.refreshed && !showReload)) return null;
+  return <div className="inline-editor-revision">
+    {guard.changed && !showReload && <p role="alert">{subject}已更新，当前草稿尚未提交。</p>}
+    {guard.refreshed && !guard.changed && <p>已读取最新{subject}（版本 {guard.baselineRevision}），草稿已保留，请核对后保存。</p>}
+    {(guard.changed || showReload) && <button type="button" className="ghost-button" disabled={guard.refreshing} onClick={() => void guard.reload()}>{guard.refreshing ? "读取中…" : `重新读取${subject}`}</button>}
+  </div>;
+}
 
 export function EditableCell({
   label,
@@ -171,6 +275,7 @@ export function AnchoredPopover({
   const editorId = useId();
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, left: 0, width, ready: false });
+  const [ownershipReady, setOwnershipReady] = useState(false);
 
   const reposition = useCallback(() => {
     const anchor = anchorRef.current;
@@ -207,14 +312,24 @@ export function AnchoredPopover({
   }, [open, reposition]);
 
   useEffect(() => {
-    if (!open || !activate || !deactivate) return;
+    if (!open || !activate || !deactivate) {
+      setOwnershipReady(false);
+      return;
+    }
+    setOwnershipReady(false);
     activate(editorId);
-    return () => deactivate(editorId);
+    // 等上下文确认本浮层成为当前编辑器后，再响应其他编辑器的抢占。
+    // 否则从旧浮层直接切换操作菜单时，会读取到上一帧的 activeId 并立即关闭自己。
+    const frame = window.requestAnimationFrame(() => setOwnershipReady(true));
+    return () => {
+      window.cancelAnimationFrame(frame);
+      deactivate(editorId);
+    };
   }, [activate, deactivate, editorId, open]);
 
   useEffect(() => {
-    if (open && context?.activeId && context.activeId !== editorId) onSuperseded();
-  }, [context?.activeId, editorId, onSuperseded, open]);
+    if (open && ownershipReady && context?.activeId && context.activeId !== editorId) onSuperseded();
+  }, [context?.activeId, editorId, onSuperseded, open, ownershipReady]);
 
   useEffect(() => {
     if (!open) return;
@@ -251,7 +366,7 @@ export function AnchoredPopover({
   );
 }
 
-export function InlineTextCell({
+export function InlineTextCell<TRevision extends Revision = number>({
   value,
   onSave,
   label,
@@ -260,10 +375,13 @@ export function InlineTextCell({
   required = false,
   placeholder = "点击编辑",
   displayMode = "single",
+  revision,
+  revisionSubject = "记录",
+  onReloadRevision,
   renderValue,
-}: BaseProps & {
+}: BaseProps<TRevision> & {
   value: string | null | undefined;
-  onSave: (value: string) => Promise<unknown>;
+  onSave: (value: string, expectedRevision?: TRevision) => Promise<unknown>;
   required?: boolean;
   renderValue?: (value: string) => ReactNode;
 }) {
@@ -274,54 +392,65 @@ export function InlineTextCell({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(currentValue);
   const feedback = useSaveState();
+  const revisionGuard = useRevisionGuard({ revision, subject: revisionSubject, onReload: onReloadRevision, feedback });
 
-  useEffect(() => { if (!open && feedback.state !== "saving") setDraft(currentValue); }, [currentValue, feedback.state, open]);
+  useEffect(() => { if (!open && feedback.state !== "saving" && feedback.state !== "error") setDraft(currentValue); }, [currentValue, feedback.state, open]);
   useEffect(() => { if (open) window.requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.select(); }); }, [open]);
 
   const cancel = useCallback(() => {
     setDraft(currentValue);
     setOpen(false);
     feedback.clearError();
+    focusTrigger(anchorRef);
   }, [currentValue, feedback]);
 
-  const commit = useCallback(async (closeBeforeSave = false) => {
+  const commit = useCallback(async (closeBeforeSave = false, refocus = false) => {
     if (committing.current) return;
     const next = draft.trim();
     if (required && !next) {
       feedback.fail(`${label}不能为空`);
+      if (closeBeforeSave && !refocus) setOpen(false);
       return;
     }
+    if (!revisionGuard.ensureCurrent()) return;
     if (next === currentValue) {
       setOpen(false);
+      if (refocus) focusTrigger(anchorRef);
       return;
     }
     if (closeBeforeSave) setOpen(false);
     committing.current = true;
-    const saved = await feedback.save(() => onSave(next));
+    const saved = await feedback.save(() => onSave(next, revisionGuard.baselineRevision));
     committing.current = false;
-    if (saved) setOpen(false);
-    else if (closeBeforeSave) setOpen(true);
-  }, [currentValue, draft, feedback, label, onSave, required]);
+    if (saved) {
+      setOpen(false);
+      if (refocus) focusTrigger(anchorRef);
+    } else if (closeBeforeSave && canReturnFocus(anchorRef)) setOpen(true);
+  }, [currentValue, draft, feedback, label, onSave, required, revisionGuard]);
 
   const display = renderValue ? renderValue(currentValue) : currentValue || <span className="is-placeholder">{placeholder}</span>;
   return <div ref={anchorRef} className="inline-edit-anchor">
     <EditableCell label={label} display={display} fullText={currentValue || placeholder} open={open} disabled={disabled} state={feedback.state} error={feedback.error} displayMode={displayMode} className={className} onOpen={() => {
+      if (feedback.state !== "error") {
+        setDraft(currentValue);
+        revisionGuard.capture();
+      }
       feedback.clearError();
-      setDraft(currentValue);
       setOpen(true);
     }}>
       <AnchoredPopover anchorRef={anchorRef} open={open} width={280} matchAnchor onOutside={() => void commit(true)} onSuperseded={() => void commit(true)} onEscape={cancel} className="inline-text-popover">
         <label className="inline-editor-field"><span>{label}</span><input ref={inputRef} value={draft} placeholder={placeholder} aria-label={label} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
-          if (event.key === "Enter") { event.preventDefault(); void commit(true); }
+          if (event.key === "Enter") { event.preventDefault(); void commit(true, true); }
         }} /></label>
         <EditorError error={feedback.error} />
+        <RevisionNotice guard={revisionGuard} showReload={feedback.state === "error"} subject={revisionSubject} />
         <p className="inline-editor-hint">Enter保存 · Esc取消</p>
       </AnchoredPopover>
     </EditableCell>
   </div>;
 }
 
-export function InlineSelectCell({
+export function InlineSelectCell<TRevision extends Revision = number>({
   value,
   options,
   onSave,
@@ -330,13 +459,16 @@ export function InlineSelectCell({
   disabled = false,
   placeholder = "请选择",
   displayMode = "single",
+  revision,
+  revisionSubject = "记录",
+  onReloadRevision,
   renderValue,
   renderOption,
   reason,
-}: BaseProps & {
+}: BaseProps<TRevision> & {
   value: string | null | undefined;
   options: InlineOption[];
-  onSave: (value: string, reason?: string) => Promise<unknown>;
+  onSave: (value: string, reason?: string, expectedRevision?: TRevision) => Promise<unknown>;
   renderValue?: (value: string, option?: InlineOption) => ReactNode;
   renderOption?: (option: InlineOption, selected: boolean) => ReactNode;
   reason?: {
@@ -350,13 +482,21 @@ export function InlineSelectCell({
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const knownOptions = useRef(new Map(options.map((option) => [option.value, option])));
+  for (const option of options) knownOptions.current.set(option.value, option);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [pendingValue, setPendingValue] = useState<string | null>(null);
   const [reasonText, setReasonText] = useState("");
   const feedback = useSaveState();
-  const selected = options.find((option) => option.value === currentValue);
+  const revisionGuard = useRevisionGuard({ revision, subject: revisionSubject, onReload: onReloadRevision, feedback });
+  const listId = useId();
+  const currentOption = options.find((option) => option.value === currentValue);
+  const knownCurrentOption = currentValue ? knownOptions.current.get(currentValue) : undefined;
+  const selected = currentOption || (knownCurrentOption ? { ...knownCurrentOption, label: `${knownCurrentOption.label}（已不可用）` } : undefined);
+  const pendingOptionUnavailable = pendingValue !== null && !options.some((option) => option.value === pendingValue);
+  const pendingOptionLabel = pendingValue === null ? "所选项" : knownOptions.current.get(pendingValue)?.label || "所选项";
   const searchable = options.length > 7;
   const filtered = useMemo(() => {
     return rankSearchItems(options, query, (option) => [{ text: option.label, weight: 100 }, option.description, option.keywords]);
@@ -370,18 +510,27 @@ export function InlineSelectCell({
   }, [currentValue, filtered, open, searchable]);
 
   useEffect(() => {
+    if (!open) return;
+    listRef.current?.querySelector(".is-active")?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, open]);
+
+  useEffect(() => {
     if (open && pendingValue !== null) reasonRef.current?.focus();
   }, [open, pendingValue]);
 
-  const cancel = useCallback(() => {
+  const cancel = useCallback((refocus = true) => {
     setOpen(false);
-    setQuery("");
-    setPendingValue(null);
-    setReasonText("");
-    feedback.clearError();
+    if (!feedback.isSaving()) {
+      setQuery("");
+      setPendingValue(null);
+      setReasonText("");
+      feedback.clearError();
+    }
+    if (refocus) focusTrigger(anchorRef);
   }, [feedback]);
 
   const choose = useCallback(async (next: string) => {
+    if (feedback.isSaving()) return;
     if (next === currentValue) {
       cancel();
       return;
@@ -392,25 +541,33 @@ export function InlineSelectCell({
       feedback.clearError();
       return;
     }
-    const saved = await feedback.save(() => onSave(next, undefined));
+    setPendingValue(next);
+    if (!revisionGuard.ensureCurrent()) return;
+    const saved = await feedback.save(() => onSave(next, undefined, revisionGuard.baselineRevision));
     if (saved) {
       setOpen(false);
       setQuery("");
+      setPendingValue(null);
+      focusTrigger(anchorRef);
     }
-  }, [cancel, currentValue, feedback, onSave, reason]);
+  }, [cancel, currentValue, feedback, onSave, reason, revisionGuard]);
 
   const commit = useCallback(async () => {
+    if (feedback.isSaving()) return;
     if (pendingValue === null) return;
+    if (pendingOptionUnavailable) return feedback.fail(`${pendingOptionLabel}已不可用，请重新选择`);
     const normalizedReason = reasonText.trim();
     if (reason?.required && !normalizedReason) return feedback.fail(`${reason.label || "变更原因"}不能为空`);
-    const saved = await feedback.save(() => onSave(pendingValue, normalizedReason || undefined));
+    if (!revisionGuard.ensureCurrent()) return;
+    const saved = await feedback.save(() => onSave(pendingValue, normalizedReason || undefined, revisionGuard.baselineRevision));
     if (saved) {
       setOpen(false);
       setQuery("");
       setPendingValue(null);
       setReasonText("");
+      focusTrigger(anchorRef);
     }
-  }, [feedback, onSave, pendingValue, reason?.label, reason?.required, reasonText]);
+  }, [feedback, onSave, pendingOptionLabel, pendingOptionUnavailable, pendingValue, reason?.label, reason?.required, reasonText, revisionGuard]);
 
   const keyDown = (event: ReactKeyboardEvent) => {
     if (!filtered.length) return;
@@ -424,25 +581,30 @@ export function InlineSelectCell({
     : selected?.label || <span className="is-placeholder">{placeholder}</span>;
   return <div ref={anchorRef} className="inline-edit-anchor">
     <EditableCell label={label} display={display} fullText={selected?.label || placeholder} open={open} disabled={disabled} state={feedback.state} error={feedback.error} displayMode={displayMode} className={className} onOpen={() => {
+      if (feedback.state !== "error") {
+        setPendingValue(null);
+        setReasonText("");
+        revisionGuard.capture();
+      }
       feedback.clearError();
       setQuery("");
-      setPendingValue(null);
-      setReasonText("");
       setOpen(true);
     }}>
-      <AnchoredPopover anchorRef={anchorRef} open={open} width={300} matchAnchor onOutside={cancel} onEscape={cancel} className={`inline-select-popover${pendingValue !== null ? " has-pending" : ""}`}>
-        <div className="inline-picker-heading"><strong>{label}</strong><button type="button" onClick={cancel} aria-label={`关闭${label}`}><X size={14} /></button></div>
-        {searchable && <label className="inline-picker-search"><Search size={14} /><input ref={searchRef} value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={keyDown} placeholder={`搜索${label}`} /></label>}
-        <div ref={listRef} className="inline-option-list" role="listbox" tabIndex={searchable ? -1 : 0} aria-label={label} onKeyDown={keyDown}>
+      <AnchoredPopover anchorRef={anchorRef} open={open} width={300} matchAnchor onOutside={() => cancel(false)} onEscape={cancel} className={`inline-select-popover${reason && pendingValue !== null ? " has-pending" : ""}`}>
+        <div className="inline-picker-heading"><strong>{label}</strong><button type="button" onClick={() => cancel()} aria-label={`关闭${label}`}><X size={14} /></button></div>
+        {searchable && <label className="inline-picker-search"><Search size={14} /><input ref={searchRef} role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls={listId} aria-activedescendant={filtered[activeIndex] ? `${listId}-option-${activeIndex}` : undefined} value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={keyDown} placeholder={`搜索${label}`} /></label>}
+        <div ref={listRef} id={listId} className="inline-option-list" role="listbox" tabIndex={searchable ? -1 : 0} aria-label={label} aria-activedescendant={filtered[activeIndex] ? `${listId}-option-${activeIndex}` : undefined} onKeyDown={keyDown}>
           {filtered.map((option, index) => {
             const isSelected = option.value === (pendingValue ?? currentValue);
             return <button
               type="button"
+              id={`${listId}-option-${index}`}
               role="option"
               aria-selected={isSelected}
               className={`${isSelected ? "is-selected" : ""}${index === activeIndex ? " is-active" : ""}`}
               key={option.value}
               title={option.label}
+              disabled={feedback.state === "saving"}
               onMouseEnter={() => setActiveIndex(index)}
               onClick={() => void choose(option.value)}
             >
@@ -453,10 +615,12 @@ export function InlineSelectCell({
           {!filtered.length && <p className="inline-picker-empty">没有匹配选项</p>}
         </div>
         {reason && pendingValue !== null && <>
-          <label className="inline-select-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea ref={reasonRef} rows={3} value={reasonText} onChange={(event) => setReasonText(event.target.value)} aria-label={reason.label || "变更原因"} placeholder={reason.placeholder || "请说明本次变更原因"} /></label>
-          <div className="inline-select-actions"><button type="button" className="ghost-button" onClick={cancel}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving"} onClick={() => void commit()}>保存</button></div>
+          <label className="inline-select-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea ref={reasonRef} rows={3} readOnly={feedback.state === "saving"} value={reasonText} onChange={(event) => setReasonText(event.target.value)} aria-label={reason.label || "变更原因"} placeholder={reason.placeholder || "请说明本次变更原因"} /></label>
+          <div className="inline-select-actions"><button type="button" className="ghost-button" onClick={() => cancel()}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || pendingOptionUnavailable} onClick={() => void commit()}>保存</button></div>
         </>}
-        <EditorError error={feedback.error} />
+        <EditorError error={pendingOptionUnavailable ? `${pendingOptionLabel}已不可用，请重新选择` : feedback.error} />
+        <RevisionNotice guard={revisionGuard} showReload={feedback.state === "error"} subject={revisionSubject} />
+        {!reason && pendingValue !== null && (revisionGuard.changed || revisionGuard.refreshed || feedback.state === "error") && <div className="inline-select-actions"><button type="button" className="ghost-button" onClick={() => cancel()}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || pendingOptionUnavailable} onClick={() => void commit()}>保存所选</button></div>}
       </AnchoredPopover>
     </EditableCell>
   </div>;
@@ -491,7 +655,7 @@ function calendarDays(month: Date) {
   return Array.from({ length: 42 }, (_, index) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + index, 12));
 }
 
-export function InlineDateCell({
+export function InlineDateCell<TRevision extends Revision = number>({
   value,
   onSave,
   label,
@@ -500,10 +664,13 @@ export function InlineDateCell({
   allowClear = true,
   placeholder = "未设置",
   displayMode = "single",
+  revision,
+  revisionSubject = "记录",
+  onReloadRevision,
   reason,
-}: BaseProps & {
+}: BaseProps<TRevision> & {
   value: string | null | undefined;
-  onSave: (value: string | null, reason?: string) => Promise<unknown>;
+  onSave: (value: string | null, reason?: string, expectedRevision?: TRevision) => Promise<unknown>;
   allowClear?: boolean;
   reason?: {
     required?: boolean;
@@ -512,57 +679,67 @@ export function InlineDateCell({
     help?: string;
   };
 }) {
+  const { businessDate: today } = useBusinessDate();
   const currentValue = value || "";
   const anchorRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(currentValue);
   const [reasonText, setReasonText] = useState("");
-  const [visibleMonth, setVisibleMonth] = useState(() => dateFromIso(currentValue) || new Date());
+  const [visibleMonth, setVisibleMonth] = useState(() => dateFromIso(currentValue) || dateFromIso(today)!);
   const feedback = useSaveState();
+  const revisionGuard = useRevisionGuard({ revision, subject: revisionSubject, onReload: onReloadRevision, feedback });
 
   useEffect(() => {
-    if (!open && feedback.state !== "saving") setDraft(currentValue);
+    if (!open && feedback.state !== "saving" && feedback.state !== "error") setDraft(currentValue);
   }, [currentValue, feedback.state, open]);
 
-  const cancel = useCallback(() => {
-    setDraft(currentValue);
-    setReasonText("");
+  const cancel = useCallback((refocus = true) => {
+    if (!feedback.isSaving()) {
+      setDraft(currentValue);
+      setReasonText("");
+      feedback.clearError();
+    }
     setOpen(false);
-    feedback.clearError();
+    if (refocus) focusTrigger(anchorRef);
   }, [currentValue, feedback]);
 
   const openPicker = useCallback(() => {
+    if (feedback.state !== "error") {
+      setDraft(currentValue);
+      setReasonText("");
+      revisionGuard.capture();
+    }
+    setVisibleMonth(dateFromIso(feedback.state === "error" ? draft : currentValue) || dateFromIso(today)!);
     feedback.clearError();
-    setDraft(currentValue);
-    setReasonText("");
-    setVisibleMonth(dateFromIso(currentValue) || new Date());
     setOpen(true);
-  }, [currentValue, feedback]);
+  }, [currentValue, draft, feedback, revisionGuard, today]);
 
   const commit = useCallback(async () => {
+    if (feedback.isSaving()) return;
     if (!allowClear && !draft) return feedback.fail(`${label}不能为空`);
+    if (!revisionGuard.ensureCurrent()) return;
     if (draft === currentValue) {
       setOpen(false);
       setReasonText("");
+      focusTrigger(anchorRef);
       return;
     }
     const normalizedReason = reasonText.trim();
     if (reason?.required && !normalizedReason) return feedback.fail(`${reason.label || "变更原因"}不能为空`);
-    const saved = await feedback.save(() => onSave(draft || null, normalizedReason || undefined));
+    const saved = await feedback.save(() => onSave(draft || null, normalizedReason || undefined, revisionGuard.baselineRevision));
     if (saved) {
       setOpen(false);
       setReasonText("");
+      focusTrigger(anchorRef);
     }
-  }, [allowClear, currentValue, draft, feedback, label, onSave, reason?.label, reason?.required, reasonText]);
+  }, [allowClear, currentValue, draft, feedback, label, onSave, reason?.label, reason?.required, reasonText, revisionGuard]);
 
   const monthDays = calendarDays(visibleMonth);
-  const today = dateToIso(new Date());
-
   return <div ref={anchorRef} className="inline-edit-anchor">
     <EditableCell label={label} display={currentValue || <span className="is-placeholder">{placeholder}</span>} fullText={currentValue || placeholder} open={open} disabled={disabled} state={feedback.state} error={feedback.error} displayMode={displayMode} className={className} onOpen={() => {
       openPicker();
     }}>
-      <AnchoredPopover anchorRef={anchorRef} open={open} width={320} onOutside={cancel} onEscape={cancel} onSuperseded={cancel} className="inline-date-popover">
+      <AnchoredPopover anchorRef={anchorRef} open={open} width={320} onOutside={() => cancel(false)} onEscape={cancel} onSuperseded={() => cancel(false)} className="inline-date-popover">
         <div className="inline-date-editor">
           <header>
             <button type="button" aria-label="上一个月" onClick={() => setVisibleMonth((month) => moveMonth(month, -1))}><ChevronLeft size={16} /></button>
@@ -574,14 +751,16 @@ export function InlineDateCell({
             {monthDays.map((date) => {
               const iso = dateToIso(date);
               const outside = date.getMonth() !== visibleMonth.getMonth();
-              return <button type="button" role="gridcell" key={iso} className={`${outside ? "is-outside" : ""}${draft === iso ? " is-selected" : ""}${today === iso ? " is-today" : ""}`} aria-selected={draft === iso} aria-label={iso} onClick={() => setDraft(iso)}>{date.getDate()}</button>;
+              return <button type="button" role="gridcell" key={iso} disabled={feedback.state === "saving"} className={`${outside ? "is-outside" : ""}${draft === iso ? " is-selected" : ""}${today === iso ? " is-today" : ""}`} aria-selected={draft === iso} aria-label={iso} onClick={() => setDraft(iso)}>{date.getDate()}</button>;
             })}
           </div>
-          {reason && draft !== currentValue && <label className="inline-date-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea rows={3} autoFocus value={reasonText} onChange={(event) => setReasonText(event.target.value)} placeholder={reason.placeholder || "请说明本次调整原因"} />{reason.help && <small>{reason.help}</small>}</label>}
+          <WorkdayCalendarNotice values={[draft]} />
+          {reason && (draft !== currentValue || feedback.state === "saving") && <label className="inline-date-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea rows={3} autoFocus readOnly={feedback.state === "saving"} value={reasonText} onChange={(event) => setReasonText(event.target.value)} placeholder={reason.placeholder || "请说明本次调整原因"} />{reason.help && <small>{reason.help}</small>}</label>}
           <EditorError error={feedback.error} />
+          <RevisionNotice guard={revisionGuard} showReload={feedback.state === "error"} subject={revisionSubject} />
           <footer>
-            <div>{allowClear && <button type="button" className="inline-date-clear" onClick={() => setDraft("")}>清除</button>}<button type="button" className="inline-date-today" onClick={() => { setDraft(today); setVisibleMonth(new Date()); }}>今天</button></div>
-            <div><button type="button" className="ghost-button" onClick={cancel}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || draft === currentValue} onClick={() => void commit()}>保存</button></div>
+            <div>{allowClear && <button type="button" disabled={feedback.state === "saving"} className="inline-date-clear" onClick={() => setDraft("")}>清除</button>}<button type="button" disabled={feedback.state === "saving"} className="inline-date-today" onClick={() => { setDraft(today); setVisibleMonth(dateFromIso(today)!); }}>今天</button></div>
+            <div><button type="button" className="ghost-button" onClick={() => cancel()}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || draft === currentValue} onClick={() => void commit()}>保存</button></div>
           </footer>
         </div>
       </AnchoredPopover>
@@ -589,7 +768,7 @@ export function InlineDateCell({
   </div>;
 }
 
-export function InlineMultiSelectCell({
+export function InlineMultiSelectCell<TRevision extends Revision = number>({
   value,
   options,
   onSave,
@@ -598,41 +777,66 @@ export function InlineMultiSelectCell({
   disabled = false,
   placeholder = "未选择",
   displayMode = "single",
+  revision,
+  revisionSubject = "记录",
+  onReloadRevision,
   renderValue,
   excludedValues = [],
-}: BaseProps & {
+}: BaseProps<TRevision> & {
   value: string[];
   options: InlineOption[];
-  onSave: (value: string[]) => Promise<unknown>;
+  onSave: (value: string[], expectedRevision?: TRevision) => Promise<unknown>;
   renderValue?: (selected: InlineOption[]) => ReactNode;
   excludedValues?: string[];
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
+  const knownOptions = useRef(new Map(options.map((option) => [option.value, option])));
+  for (const option of options) knownOptions.current.set(option.value, option);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const [search, setSearch] = useState("");
   const feedback = useSaveState();
+  const revisionGuard = useRevisionGuard({ revision, subject: revisionSubject, onReload: onReloadRevision, feedback });
   const normalizedValue = [...value].sort().join("|");
   const normalizedDraft = [...draft].sort().join("|");
-  const available = options.filter((option) => !excludedValues.includes(option.value));
-  const selected = available.filter((option) => value.includes(option.value));
+  const liveOptions = options.filter((option) => !excludedValues.includes(option.value));
+  const unavailableDraftValues = draft.filter((optionValue) => !liveOptions.some((option) => option.value === optionValue));
+  const unavailableDraftOptions: InlineOption[] = unavailableDraftValues.map((optionValue) => {
+    const known = knownOptions.current.get(optionValue);
+    return { value: optionValue, label: known?.label || "已选择项", description: "已不可用，请取消选择" };
+  });
+  const available = [...liveOptions, ...unavailableDraftOptions];
+  const selected = value.flatMap((optionValue) => {
+    const live = liveOptions.find((option) => option.value === optionValue);
+    if (live) return [live];
+    const known = knownOptions.current.get(optionValue);
+    return known ? [{ ...known, label: `${known.label}（已不可用）` }] : [];
+  });
+  const unavailableDraftLabel = unavailableDraftValues.map((optionValue) => knownOptions.current.get(optionValue)?.label || "已选择项").join("、");
+  const unavailableDraftError = unavailableDraftValues.length ? `${unavailableDraftLabel}已不可用，请取消选择后保存。` : "";
   const visible = rankSearchItems(available, search, (option) => [{ text: option.label, weight: 100 }, option.description, option.keywords]);
 
-  useEffect(() => { if (!open && feedback.state !== "saving") setDraft(value); }, [feedback.state, normalizedValue, open, value]);
+  useEffect(() => { if (!open && feedback.state !== "saving" && feedback.state !== "error") setDraft(value); }, [feedback.state, normalizedValue, open, value]);
 
-  const cancel = useCallback(() => {
-    setDraft(value);
+  const cancel = useCallback((refocus = true) => {
+    if (!feedback.isSaving()) {
+      setDraft(value);
+      feedback.clearError();
+    }
     setOpen(false);
     setSearch("");
-    feedback.clearError();
+    if (refocus) focusTrigger(anchorRef);
   }, [feedback, value]);
 
   const commit = useCallback(async () => {
-    if (normalizedDraft === normalizedValue) { setOpen(false); setSearch(""); return; }
+    if (feedback.isSaving()) return;
+    if (unavailableDraftError) return feedback.fail(unavailableDraftError);
+    if (!revisionGuard.ensureCurrent()) return;
+    if (normalizedDraft === normalizedValue) { setOpen(false); setSearch(""); focusTrigger(anchorRef); return; }
     const next = [...draft];
-    const saved = await feedback.save(() => onSave(next));
-    if (saved) { setOpen(false); setSearch(""); }
-  }, [draft, feedback, normalizedDraft, normalizedValue, onSave]);
+    const saved = await feedback.save(() => onSave(next, revisionGuard.baselineRevision));
+    if (saved) { setOpen(false); setSearch(""); focusTrigger(anchorRef); }
+  }, [draft, feedback, normalizedDraft, normalizedValue, onSave, revisionGuard, unavailableDraftError]);
 
   const display = renderValue
     ? renderValue(selected)
@@ -640,28 +844,30 @@ export function InlineMultiSelectCell({
   const fullText = selected.map((option) => option.label).join("、") || placeholder;
   return <div ref={anchorRef} className="inline-edit-anchor">
     <EditableCell label={label} display={display} fullText={fullText} open={open} disabled={disabled} state={feedback.state} error={feedback.error} displayMode={displayMode} className={className} onOpen={() => {
+      if (feedback.state !== "error") setDraft(value);
+      if (feedback.state !== "error") revisionGuard.capture();
       feedback.clearError();
-      setDraft(value);
       setSearch("");
       setOpen(true);
     }}>
-      <AnchoredPopover anchorRef={anchorRef} open={open} width={320} matchAnchor onOutside={cancel} onEscape={cancel} className="inline-multi-popover">
+      <AnchoredPopover anchorRef={anchorRef} open={open} width={320} matchAnchor onOutside={() => cancel(false)} onEscape={cancel} className="inline-multi-popover">
         <div className="inline-picker-heading"><strong>{label}</strong><span>已选 {draft.length} 项</span></div>
         {available.length > 6 && <label className="inline-picker-search"><Search size={14} /><input autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`搜索${label}`} /></label>}
         <div className="inline-multi-options" role="listbox" aria-multiselectable="true">
           {visible.map((option) => {
             const checked = draft.includes(option.value);
             return <label key={option.value} className={checked ? "is-selected" : ""} title={option.label}>
-              <input type="checkbox" checked={checked} onChange={(event) => setDraft((current) => event.target.checked ? [...current, option.value] : current.filter((id) => id !== option.value))} />
+              <input type="checkbox" checked={checked} disabled={feedback.state === "saving"} onChange={(event) => setDraft((current) => event.target.checked ? [...current, option.value] : current.filter((id) => id !== option.value))} />
               <span><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
             </label>;
           })}
           {!visible.length && <p className="inline-picker-empty">没有匹配选项</p>}
         </div>
-        <EditorError error={feedback.error} />
+        <EditorError error={unavailableDraftError || feedback.error} />
+        <RevisionNotice guard={revisionGuard} showReload={feedback.state === "error"} subject={revisionSubject} />
         <footer className="inline-multi-actions">
-          <button type="button" onClick={() => setDraft([])}>清空</button>
-          <div><button type="button" className="ghost-button" onClick={cancel}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving"} onClick={() => void commit()}>完成</button></div>
+          <button type="button" disabled={feedback.state === "saving"} onClick={() => setDraft([])}>清空</button>
+          <div><button type="button" className="ghost-button" onClick={() => cancel()}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || Boolean(unavailableDraftError)} onClick={() => void commit()}>完成</button></div>
         </footer>
       </AnchoredPopover>
     </EditableCell>

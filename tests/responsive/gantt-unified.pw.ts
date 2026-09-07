@@ -83,6 +83,82 @@ async function mockGanttData(page: Page, progressRequests: Array<Record<string, 
   });
 }
 
+test('超范围甘特图提示工作日日历回退', async ({ page }) => {
+  await mockGanttData(page);
+  await page.route('**/api/projects', (route) => route.fulfill({ json: [{
+    id: 'p1', name: '测试项目', status: 'active', plannedStart: '2027-01-04', plannedEnd: '2027-01-29',
+    defaultTemplateId: 't1', createdAt: '2026-09-01', updatedAt: '2026-09-01',
+  }] }));
+  await page.goto('/');
+  await expect(page.locator('.project-gantt-panel').getByRole('status')).toContainText('将按周一至周五计算');
+});
+
+test('工作项来源链接定位并高亮目标行', async ({ page }) => {
+  await mockGanttData(page);
+  await page.goto('/requirements/r1?workItemId=w1');
+  const target = page.locator('[data-work-item-id="w1"]');
+  await expect(target).toHaveClass(/is-target/);
+  await expect(target.locator('.requirement-gantt-item')).toContainText('接口开发');
+});
+
+test('工作项甘特偏差统一使用需求业务日期', async ({ page }) => {
+  await mockGanttData(page);
+  await page.route('**/api/requirements/r1', (route) => route.fulfill({ json: {
+    ...requirement,
+    asOfDate: '2026-09-03',
+    workItems: [{ ...workItem, plannedEnd: '2026-09-02' }],
+  } }));
+  await page.goto('/requirements/r1');
+  const row = page.locator('.requirement-gantt-row').filter({ hasText: '接口开发' });
+  await expect(row.locator('.requirement-gap-summary')).toContainText('延期 +1工作日');
+  await row.locator('.gantt-bar-hitbox').focus();
+  await expect(page.locator('.gantt-popover-metrics')).toContainText('3个工作日');
+});
+
+test("需求历史和趋势图使用同时间的最新进度", async ({ page }, testInfo) => {
+  await mockGanttData(page);
+  const progressUpdates = [
+    { id: 'a-new', percent: 90, content: '最后写入：验收准备完成', createdAt: '2026-09-03T12:00:00.000Z' },
+    { id: 'z-old', percent: 20, content: '同一时间的较早记录', createdAt: '2026-09-03T12:00:00.000Z' },
+    { id: 'previous-day', percent: 10, content: '前一天的记录', createdAt: '2026-09-02T12:00:00.000Z' },
+  ].map((entry) => ({ ...entry, requirementId: 'r1', workItemId: 'w1', workItemTitle: '接口开发', workItemPercent: entry.percent, eventType: 'progress', updatedAt: entry.createdAt }));
+  await page.route('**/api/requirements/r1', (route) => route.fulfill({ json: {
+    ...requirement, progress: 90, workItems: [{ ...workItem, progress: 90 }], progressUpdates,
+  } }));
+  await page.goto('/requirements/r1');
+  await expect(page.locator('.progress-feed > article').first()).toContainText('最后写入：验收准备完成');
+  const chart = page.getByRole('img', { name: '需求计划与实际进度趋势', exact: true });
+  await chart.scrollIntoViewIfNeeded();
+  await expect(chart.locator('canvas')).toBeVisible();
+  const box = (await chart.boundingBox())!;
+  await chart.hover({ position: { x: box.width - 35, y: 130 } });
+  await expect(chart).toContainText('09/03');
+  await expect(chart).toContainText(/实际进度\s*90/);
+  await page.screenshot({ path: testInfo.outputPath('history-trend.png'), animations: 'disabled' });
+});
+
+test("关联工作项的纯说明不显示需求进度或当前工作项进度", async ({ page }) => {
+  await mockGanttData(page);
+  const note = {
+    id: 'work-note', requirementId: 'r1', workItemId: 'w1', workItemTitle: '接口开发', percent: 61,
+    workItemPercent: null, content: '仅补充联调说明，没有更新完成度', eventType: 'note',
+    createdAt: '2026-09-03T12:00:00.000Z', updatedAt: '2026-09-03T12:00:00.000Z',
+  };
+  await page.route('**/api/requirements/r1', (route) => route.fulfill({ json: { ...requirement, progressUpdates: [note] } }));
+  await page.goto('/requirements/r1');
+
+  const history = page.locator('.progress-feed > article').filter({ hasText: note.content });
+  await expect(history.locator('.progress-marker')).toHaveText('—');
+  await expect(history.locator('.progress-marker')).not.toContainText('61%');
+  await expect(history.locator('.progress-marker')).not.toContainText('40%');
+
+  const workRow = page.locator('.requirement-gantt-row').filter({ hasText: '接口开发' });
+  await workRow.locator('.gantt-bar-hitbox').focus();
+  const updates = page.locator('.gantt-popover-updates');
+  await expect(updates).toContainText(note.content);
+  await expect(updates.locator('article > span')).toHaveCount(0);
+});
+
 test("项目与需求甘特统一展示状态进度及今日进度差", async ({ page }, testInfo) => {
   test.skip(!["laptop-1366", "hidpi-3k-200", "desktop-1080p"].includes(testInfo.project.name), "统一甘特图仅验证代表性桌面视口");
   const progressRequests: Array<Record<string, unknown>> = [];
@@ -164,6 +240,8 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   const completedEarlyRow = page.locator(".requirement-gantt-row").filter({ hasText: "提前完成项" });
   await expect(activeWorkRow.locator(".gantt-progress-marker")).toHaveText("40");
   await expect(completedLateRow.locator(".gantt-progress-marker")).toHaveText("100");
+  await expect(completedLateRow.locator(".requirement-gap-summary")).toContainText("延期 +2工作日");
+  await expect(completedEarlyRow.locator(".requirement-gap-summary")).toContainText("提前 2工作日");
   await expect(completedLateRow.locator(".unified-gantt-actual")).toHaveCSS("background-color", "rgb(45, 108, 223)");
   await expect(completedLateRow.locator(".unified-gantt-delay")).toHaveCSS("background-color", "rgb(45, 108, 223)");
   await expect(completedLateRow.locator(".unified-gantt-delay")).toHaveCSS("border-top-color", "rgb(216, 74, 74)");

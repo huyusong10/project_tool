@@ -59,10 +59,15 @@ describe('内置样板项目', () => {
     const now = new Date().toISOString();
     const externalProjectId = 'sample-test-external-project';
     const retainedPersonId = sample.SAMPLE_PERSON_IDS[0];
+    const archivedPersonId = sample.SAMPLE_PERSON_IDS[1];
+    const futureVersion = '2099-01-01T00:00:00.000Z';
     sqlite.prepare(`INSERT INTO projects (id,name,status,created_at,updated_at) VALUES (?, '外部项目', 'active', ?, ?)`)
       .run(externalProjectId, now, now);
     sqlite.prepare(`INSERT INTO project_people (project_id,person_id,project_role,created_at) VALUES (?, ?, 'member', ?)`)
       .run(externalProjectId, retainedPersonId, now);
+    sqlite.prepare("UPDATE accounts SET status='disabled', updated_at=? WHERE person_id=?").run(futureVersion, retainedPersonId);
+    sqlite.prepare('UPDATE people SET updated_at=? WHERE id=?').run(futureVersion, archivedPersonId);
+    sqlite.prepare('UPDATE accounts SET updated_at=? WHERE person_id=?').run(futureVersion, archivedPersonId);
 
     expect(() => services.archiveProject(sample.SAMPLE_PROJECT_ID, actor)).toThrow('活跃需求');
     sqlite.prepare(`UPDATE requirements SET status='cancelled', progress=MIN(progress,99), accepted_at=NULL WHERE project_id=? AND deleted_at IS NULL`).run(sample.SAMPLE_PROJECT_ID);
@@ -74,17 +79,32 @@ describe('内置样板项目', () => {
       .toMatchObject({ active: 1, deletedAt: null });
     expect(sqlite.prepare("SELECT COUNT(*) AS count FROM people WHERE id LIKE 'sample-v1-person-%' AND deleted_at IS NOT NULL").get())
       .toEqual({ count: 5 });
+    const archivedVersions = sqlite.prepare(`SELECT p.updated_at AS personUpdatedAt, a.updated_at AS accountUpdatedAt
+      FROM people p JOIN accounts a ON a.person_id=p.id WHERE p.id=?`).get(archivedPersonId) as { personUpdatedAt: string; accountUpdatedAt: string };
+    expect(Date.parse(archivedVersions.personUpdatedAt)).toBeGreaterThan(Date.parse(futureVersion));
+    expect(Date.parse(archivedVersions.accountUpdatedAt)).toBeGreaterThan(Date.parse(futureVersion));
+    expect(sqlite.prepare('SELECT status, updated_at AS updatedAt FROM accounts WHERE person_id=?').get(retainedPersonId))
+      .toEqual({ status: 'disabled', updatedAt: futureVersion });
 
     services.restoreProject(sample.SAMPLE_PROJECT_ID, actor);
     expect(sqlite.prepare("SELECT COUNT(*) AS count FROM people WHERE id LIKE 'sample-v1-person-%' AND active=1 AND deleted_at IS NULL").get())
       .toEqual({ count: 6 });
+    const restoredVersions = sqlite.prepare(`SELECT p.updated_at AS personUpdatedAt, a.updated_at AS accountUpdatedAt
+      FROM people p JOIN accounts a ON a.person_id=p.id WHERE p.id=?`).get(archivedPersonId) as { personUpdatedAt: string; accountUpdatedAt: string };
+    expect(Date.parse(restoredVersions.personUpdatedAt)).toBeGreaterThan(Date.parse(archivedVersions.personUpdatedAt));
+    expect(Date.parse(restoredVersions.accountUpdatedAt)).toBeGreaterThan(Date.parse(archivedVersions.accountUpdatedAt));
+    expect(sqlite.prepare('SELECT status, updated_at AS updatedAt FROM accounts WHERE person_id=?').get(retainedPersonId))
+      .toEqual({ status: 'disabled', updatedAt: futureVersion });
 
     services.archiveProject(sample.SAMPLE_PROJECT_ID, actor);
-    services.permanentlyDeleteArchive('projects', sample.SAMPLE_PROJECT_ID, actor, { confirmName: '研发协同功能样板（可删除）' });
+    const currentArchive = sqlite.prepare('SELECT deleted_at AS deletedAt FROM projects WHERE id=?').get(sample.SAMPLE_PROJECT_ID) as { deletedAt: string };
+    services.permanentlyDeleteArchive('projects', sample.SAMPLE_PROJECT_ID, actor, {
+      confirmName: '研发协同功能样板（可删除）', expectedDeletedAt: currentArchive.deletedAt,
+    });
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM projects WHERE id=?').get(sample.SAMPLE_PROJECT_ID)).toEqual({ count: 0 });
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM people WHERE id=?').get(retainedPersonId)).toEqual({ count: 1 });
     expect(sqlite.prepare("SELECT COUNT(*) AS count FROM people WHERE id LIKE 'sample-v1-person-%'").get()).toEqual({ count: 1 });
-    expect(sqlite.prepare('SELECT status FROM accounts WHERE person_id=?').get(retainedPersonId)).toEqual({ status: 'active' });
+    expect(sqlite.prepare('SELECT status FROM accounts WHERE person_id=?').get(retainedPersonId)).toEqual({ status: 'disabled' });
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM system_meta WHERE key=?').get(sample.SAMPLE_META_KEY)).toEqual({ count: 1 });
     expect(sample.ensureBuiltInSampleProject(sqlite, true)).toBe(false);
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM projects WHERE id=?').get(sample.SAMPLE_PROJECT_ID)).toEqual({ count: 0 });

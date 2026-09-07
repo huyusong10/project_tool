@@ -22,7 +22,7 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
     const frame = requestAnimationFrame(() => {
       const card = cardRef.current;
       if (!card || card.contains(document.activeElement)) return;
-      const initial = card.querySelector<HTMLElement>('[autofocus], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]):not(.icon-button)');
+      const initial = card.querySelector<HTMLElement>('[autofocus]:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), button:not(:disabled):not(.icon-button)');
       (initial || card).focus();
     });
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -37,8 +37,8 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
         return;
       }
       if (event.key !== 'Tab') return;
-      const focusable = Array.from(card.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'))
-        .filter((element) => element.getClientRects().length > 0);
+      const focusable = Array.from(card.querySelectorAll<HTMLElement>('button, input, textarea, select, [href], [tabindex]:not([tabindex="-1"])'))
+        .filter((element) => !element.matches(':disabled') && element.getClientRects().length > 0);
       if (!focusable.length) {
         event.preventDefault();
         card.focus();
@@ -72,8 +72,50 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
   return typeof document === 'undefined' ? content : createPortal(content, document.body);
 }
 
-export function EmptyState({ title, detail, action }: { title: string; detail: string; action?: ReactNode }) {
-  return <div className="empty-state"><strong>{title}</strong><p>{detail}</p>{action}</div>;
+export function useSynchronousPendingLock(pending: boolean) {
+  const [submitted, setSubmitted] = useState(false);
+  const submittingRef = useRef(false);
+  const pendingRef = useRef(pending);
+  const pendingSeenRef = useRef(false);
+  const resetTimerRef = useRef<number | undefined>(undefined);
+  pendingRef.current = pending;
+  useEffect(() => {
+    if (pending) {
+      pendingSeenRef.current = true;
+      if (resetTimerRef.current !== undefined) window.clearTimeout(resetTimerRef.current);
+      return;
+    }
+    if (pendingSeenRef.current) {
+      pendingSeenRef.current = false;
+      submittingRef.current = false;
+      setSubmitted(false);
+    }
+  }, [pending]);
+  useEffect(() => () => {
+    if (resetTimerRef.current !== undefined) window.clearTimeout(resetTimerRef.current);
+  }, []);
+  const run = (action: () => void) => {
+    if (submittingRef.current || pendingRef.current) return;
+    submittingRef.current = true;
+    setSubmitted(true);
+    try {
+      action();
+    } catch (error) {
+      submittingRef.current = false;
+      setSubmitted(false);
+      throw error;
+    }
+    resetTimerRef.current = window.setTimeout(() => {
+      if (pendingRef.current || pendingSeenRef.current) return;
+      submittingRef.current = false;
+      setSubmitted(false);
+    }, 0);
+  };
+  return {
+    busy: pending || submitted,
+    canClose: () => !submittingRef.current && !pendingRef.current,
+    run,
+  };
 }
 
 export function ConfirmDialog({
@@ -99,11 +141,19 @@ export function ConfirmDialog({
   onClose: () => void;
   onConfirm: () => void;
 }) {
-  return <Modal title={title} width={500} onClose={onClose} closable={!pending}>
+  const lock = useSynchronousPendingLock(pending);
+  const close = () => {
+    if (!lock.canClose()) return;
+    onClose();
+  };
+  const confirm = () => {
+    if (!disabled) lock.run(onConfirm);
+  };
+  return <Modal title={title} width={500} onClose={close} closable={!lock.busy}>
     <div className={`confirm-dialog${danger ? ' is-danger' : ''}`}>
       <div className="confirm-dialog-message"><span className="confirm-dialog-icon"><AlertTriangle size={21} /></span><div>{description}</div></div>
       {error && <p className="form-error" role="alert">{error}</p>}
-      <div className="form-actions"><button type="button" className="ghost-button" disabled={pending} onClick={onClose}>取消</button><button type="button" autoFocus className={`primary-button${danger ? ' danger-button' : ''}`} disabled={pending || disabled} onClick={onConfirm}>{pending ? pendingLabel : confirmLabel}</button></div>
+      <div className="form-actions"><button type="button" className="ghost-button" disabled={lock.busy} onClick={close}>取消</button><button type="button" autoFocus className={`primary-button${danger ? ' danger-button' : ''}`} disabled={lock.busy || disabled} onClick={confirm}>{lock.busy ? pendingLabel : confirmLabel}</button></div>
     </div>
   </Modal>;
 }
@@ -145,6 +195,10 @@ export function TextPromptModal({
   pending = false,
   danger = false,
   error,
+  blocked = false,
+  notice,
+  refreshing = false,
+  onRefresh,
   onClose,
   onConfirm,
 }: {
@@ -157,24 +211,34 @@ export function TextPromptModal({
   pending?: boolean;
   danger?: boolean;
   error?: string;
+  blocked?: boolean;
+  notice?: ReactNode;
+  refreshing?: boolean;
+  onRefresh?: () => void;
   onClose: () => void;
   onConfirm: (value: string) => void;
 }) {
   const [value, setValue] = useState('');
   const normalized = value.trim();
   const matches = expectedValue === undefined || value === expectedValue;
-  return <Modal title={title} width={500} onClose={onClose} closable={!pending}>
+  const lock = useSynchronousPendingLock(pending || refreshing);
+  const close = () => {
+    if (lock.canClose()) onClose();
+  };
+  return <Modal title={title} width={500} onClose={close} closable={!lock.busy}>
     <form className="text-prompt-form" onSubmit={(event) => {
       event.preventDefault();
-      if (normalized && matches && !pending) onConfirm(expectedValue === undefined ? normalized : value);
+      if (normalized && matches && !lock.busy && !blocked) lock.run(() => onConfirm(expectedValue === undefined ? normalized : value));
     }}>
       {description && <div className={danger ? 'text-prompt-description is-danger' : 'text-prompt-description'}>{description}</div>}
+      {notice}
       <label className="field field-full"><span>{label}</span>{expectedValue === undefined
-        ? <textarea autoFocus rows={4} value={value} onChange={(event) => setValue(event.target.value)} placeholder={placeholder} />
-        : <input autoFocus value={value} onChange={(event) => setValue(event.target.value)} placeholder={placeholder || expectedValue} autoComplete="off" />}</label>
+        ? <textarea autoFocus rows={4} disabled={lock.busy} value={value} onChange={(event) => setValue(event.target.value)} placeholder={placeholder} />
+        : <input autoFocus disabled={lock.busy} value={value} onChange={(event) => setValue(event.target.value)} placeholder={placeholder || expectedValue} autoComplete="off" />}</label>
       {expectedValue !== undefined && <p className="text-prompt-match">请输入完整名称：<strong>{expectedValue}</strong></p>}
       {error && <p className="form-error">{error}</p>}
-      <div className="form-actions"><button type="button" className="ghost-button" disabled={pending} onClick={onClose}>取消</button><button className={`primary-button${danger ? ' danger-button' : ''}`} disabled={!normalized || !matches || pending}>{pending ? '处理中…' : confirmLabel}</button></div>
+      {onRefresh && <div><button type="button" className="ghost-button" disabled={lock.busy} onClick={() => lock.run(onRefresh)}>{refreshing ? '读取中…' : '重新读取需求'}</button></div>}
+      <div className="form-actions"><button type="button" className="ghost-button" disabled={lock.busy} onClick={close}>取消</button><button className={`primary-button${danger ? ' danger-button' : ''}`} disabled={!normalized || !matches || lock.busy || blocked}>{lock.busy ? '处理中…' : confirmLabel}</button></div>
     </form>
   </Modal>;
 }

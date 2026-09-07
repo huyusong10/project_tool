@@ -1,11 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { sqlite } from './database';
 import { hashPassword, normalizeUsername, verifyPassword, type Actor } from './auth';
-import { addCalendarDays, deriveWorkItemStatus, isOverdueByWorkday, todayIso } from '../shared/domain';
+import { addCalendarDays, deriveWorkItemStatus, isOverdueByWorkday, startOfWeekIso, todayIso } from '../shared/domain';
 import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
 import { isBusinessDay } from '../shared/workday';
 import { listRequirements } from './services/requirements';
+import { deriveRequirementActionReasons, deriveWorkItemActionReasons } from './services/actions';
 import { AppError, type AppErrorCode } from './errors';
+import { accountPersonAvailableSql } from './account-access';
+import { assertExpectedUpdatedAt, chunkValues, nextUpdatedAt } from './services/support';
+import { assertAdmin, requireAuthorizationActor } from './authorization';
 
 type JsonObject = Record<string, unknown>;
 const nowIso = () => new Date().toISOString();
@@ -24,6 +28,28 @@ function fail(message: string, statusCode = 400): never {
 function audit(actor: Actor, action: string, entityId: string | null, summary: string) {
   sqlite.prepare(`INSERT INTO audit_logs (id, actor_type, actor_id, action, entity_type, entity_id, summary, created_at)
     VALUES (?, ?, ?, ?, 'account', ?, ?, ?)`).run(randomUUID(), actor.type, actor.id, action, entityId, summary, nowIso());
+}
+
+function assertAccountPersonAvailable(personId: string | null) {
+  if (!personId) return;
+  if (!sqlite.prepare('SELECT 1 FROM people WHERE id=? AND active=1 AND deleted_at IS NULL').get(personId)) {
+    fail('人员已停用或归档，请先恢复人员', 409);
+  }
+}
+
+function assertActiveAdministratorRemains() {
+  const active = sqlite.prepare(`SELECT 1 FROM accounts
+    WHERE global_role='admin' AND status='active' AND deleted_at IS NULL LIMIT 1`).get();
+  if (!active) fail('系统至少需要保留一个可用管理员', 409);
+}
+
+function assertCurrentAdministrator(actor: Actor, selfUpdateAccountId?: string) {
+  if (selfUpdateAccountId && actor.accountId === selfUpdateAccountId) return;
+  if (!actor.accountId) {
+    if (actor.globalRole !== 'admin') fail('此功能仅管理员可用', 403);
+    return;
+  }
+  assertAdmin(requireAuthorizationActor(actor));
 }
 
 function uniqueUsername(username: string, exceptId?: string) {
@@ -63,16 +89,25 @@ export function createAccountForPerson(personId: string, name: string, active = 
 export function findAccountForLogin(username: string) {
   return sqlite.prepare(`SELECT id, username, password_hash AS passwordHash, person_id AS personId,
     global_role AS globalRole, status, must_change_password AS mustChangePassword,
-    session_version AS sessionVersion, is_builtin AS isBuiltin
-    FROM accounts WHERE normalized_username=? AND deleted_at IS NULL`).get(normalizeUsername(username)) as {
+    session_version AS sessionVersion, is_builtin AS isBuiltin, ${accountPersonAvailableSql} AS personAvailable
+    FROM accounts a WHERE normalized_username=? AND deleted_at IS NULL`).get(normalizeUsername(username)) as {
       id: string; username: string; passwordHash: string; personId: string | null;
       globalRole: 'user' | 'admin'; status: 'active' | 'disabled'; mustChangePassword: number;
-      sessionVersion: number; isBuiltin: number;
+      sessionVersion: number; isBuiltin: number; personAvailable: number;
     } | undefined;
 }
 
-export function markLogin(accountId: string) {
-  sqlite.prepare('UPDATE accounts SET last_login_at=?, updated_at=? WHERE id=? AND deleted_at IS NULL').run(nowIso(), nowIso(), accountId);
+export function markLogin(accountId: string, expectedSessionVersion: number, expectedPasswordHash: string) {
+  const loggedAt = nowIso();
+  return sqlite.transaction(() => {
+    const changed = sqlite.prepare(`UPDATE accounts AS a SET last_login_at=?
+      WHERE a.id=? AND a.session_version=? AND a.password_hash=? AND a.status='active' AND a.deleted_at IS NULL
+        AND ${accountPersonAvailableSql}`).run(loggedAt, accountId, expectedSessionVersion, expectedPasswordHash);
+    if (!changed.changes) return false;
+    return Boolean(sqlite.prepare(`SELECT 1 FROM accounts a
+      WHERE a.id=? AND a.session_version=? AND a.password_hash=? AND a.status='active' AND a.deleted_at IS NULL
+        AND ${accountPersonAvailableSql}`).get(accountId, expectedSessionVersion, expectedPasswordHash));
+  })();
 }
 
 export function listAccounts() {
@@ -114,9 +149,14 @@ export function listAccounts() {
 }
 
 export function updateAccount(id: string, input: JsonObject, actor: Actor) {
+  if (Object.keys(input).some((key) => !['username', 'role', 'status', 'managedProjectIds', 'expectedUpdatedAt'].includes(key))) {
+    fail('账号编辑不能提交未声明字段');
+  }
   const current = sqlite.prepare(`SELECT id, username, normalized_username AS normalizedUsername, person_id AS personId,
-    global_role AS globalRole, status, is_builtin AS isBuiltin FROM accounts WHERE id=? AND deleted_at IS NULL`).get(id) as any;
+    global_role AS globalRole, status, is_builtin AS isBuiltin, updated_at AS updatedAt, ${accountPersonAvailableSql} AS personAvailable
+    FROM accounts a WHERE id=? AND deleted_at IS NULL`).get(id) as any;
   if (!current) fail('账号不存在', 404);
+  assertExpectedUpdatedAt(input, current.updatedAt, '账号');
   const role = input.role === undefined
     ? (current.globalRole === 'admin' ? 'admin' : undefined)
     : String(input.role);
@@ -124,6 +164,7 @@ export function updateAccount(id: string, input: JsonObject, actor: Actor) {
   if (role && !['user', 'admin'].includes(role)) fail('账号角色不合法');
   const status = input.status === undefined ? current.status : String(input.status);
   if (!['active', 'disabled'].includes(status)) fail('账号状态不合法');
+  if (status === 'active' && !current.personAvailable) fail('人员已停用或归档，请先恢复人员', 409);
   if (current.isBuiltin && (status !== 'active' || (role && role !== 'admin'))) fail('内置admin账号不能停用或降级');
   const login = input.username === undefined
     ? { username: current.username, normalized: current.normalizedUsername }
@@ -137,19 +178,40 @@ export function updateAccount(id: string, input: JsonObject, actor: Actor) {
     if (!remaining.count) fail('系统至少需要保留一个可用管理员');
   }
 
-  sqlite.prepare(`UPDATE accounts SET username=?, normalized_username=?, global_role=?, status=?, updated_at=? WHERE id=?`)
-    .run(login.username, login.normalized, globalRole, status, nowIso(), id);
-  audit(actor, 'update', id, `更新账号：${login.username}`);
+  if (login.username === current.username && login.normalized === current.normalizedUsername
+    && globalRole === current.globalRole && status === current.status) {
+    sqlite.transaction(() => {
+      if (status === 'active') assertAccountPersonAvailable(current.personId);
+      assertCurrentAdministrator(actor, id);
+    })();
+    return listAccounts().find((account) => account.id === id)!;
+  }
+
+  const updatedAt = nextUpdatedAt(current.updatedAt);
+  sqlite.transaction(() => {
+    const changed = sqlite.prepare(`UPDATE accounts SET username=?, normalized_username=?, global_role=?, status=?,
+      session_version=session_version+?, updated_at=? WHERE id=? AND updated_at=? AND deleted_at IS NULL`)
+      .run(login.username, login.normalized, globalRole, status, status !== current.status ? 1 : 0, updatedAt, id, current.updatedAt);
+    if (!changed.changes) throw new AppError('账号已被其他用户修改，请重新打开后再保存', 409, 'STALE_WRITE', { currentUpdatedAt: current.updatedAt });
+    if (status === 'active') assertAccountPersonAvailable(current.personId);
+    if (current.globalRole === 'admin' && current.status === 'active' && (globalRole !== 'admin' || status !== 'active')) {
+      assertActiveAdministratorRemains();
+    }
+    assertCurrentAdministrator(actor, id);
+    audit(actor, 'update', id, `更新账号：${login.username}`);
+  })();
   return listAccounts().find((account) => account.id === id)!;
 }
 
-export function deleteAccount(id: string, actor: Actor) {
+export function deleteAccount(id: string, input: JsonObject, actor: Actor) {
+  if (Object.keys(input).some((key) => key !== 'expectedUpdatedAt')) fail('账号删除不能提交未声明字段');
   const account = sqlite.prepare(`SELECT id, username, person_id AS personId, global_role AS globalRole,
-    status, is_builtin AS isBuiltin FROM accounts WHERE id=? AND deleted_at IS NULL`).get(id) as {
+    status, is_builtin AS isBuiltin, updated_at AS updatedAt FROM accounts WHERE id=? AND deleted_at IS NULL`).get(id) as {
       id: string; username: string; personId: string | null; globalRole: 'user' | 'admin';
-      status: 'active' | 'disabled'; isBuiltin: number;
+      status: 'active' | 'disabled'; isBuiltin: number; updatedAt: string;
     } | undefined;
   if (!account) fail('账号不存在', 404);
+  assertExpectedUpdatedAt(input, account.updatedAt, '账号');
   if (account.isBuiltin) fail('内置admin账号不能删除');
   if (actor.accountId === id) fail('不能删除当前登录账号');
   if (account.globalRole === 'admin' && account.status === 'active') {
@@ -158,80 +220,106 @@ export function deleteAccount(id: string, actor: Actor) {
     if (!remaining.count) fail('系统至少需要保留一个可用管理员');
   }
 
-  const now = nowIso();
+  const updatedAt = nextUpdatedAt(account.updatedAt);
   sqlite.transaction(() => {
-    sqlite.prepare(`UPDATE accounts SET status='disabled', deleted_at=?, session_version=session_version+1, updated_at=?
-      WHERE id=? AND deleted_at IS NULL`).run(now, now, id);
-    sqlite.prepare('UPDATE api_tokens SET revoked_at=COALESCE(revoked_at, ?) WHERE account_id=?').run(now, id);
+    const changed = sqlite.prepare(`UPDATE accounts SET status='disabled', deleted_at=?, session_version=session_version+1, updated_at=?
+      WHERE id=? AND updated_at=? AND deleted_at IS NULL`).run(updatedAt, updatedAt, id, account.updatedAt);
+    if (!changed.changes) throw new AppError('账号已被其他用户修改，请重新打开后再删除', 409, 'STALE_WRITE');
+    sqlite.prepare('UPDATE api_tokens SET revoked_at=COALESCE(revoked_at, ?) WHERE account_id=?').run(updatedAt, id);
+    if (account.globalRole === 'admin' && account.status === 'active') assertActiveAdministratorRemains();
+    assertCurrentAdministrator(actor);
+    audit(actor, 'delete', id, `删除账号登录能力：${account.username}`);
   })();
-  audit(actor, 'delete', id, `删除账号登录能力：${account.username}`);
   return { ok: true };
 }
 
-export function openAccountForPerson(personId: string, actor: Actor) {
+export function openAccountForPerson(personId: string, input: JsonObject, actor: Actor) {
+  if (Object.keys(input).some((key) => key !== 'expectedAccountDeletedAt')) fail('开通账号不能提交未声明字段');
   const person = sqlite.prepare(`SELECT id, name, active FROM people
     WHERE id=? AND deleted_at IS NULL`).get(personId) as { id: string; name: string; active: number } | undefined;
   if (!person) fail('人员不存在', 404);
   if (!person.active) fail('人员已停用，请先恢复人员', 409);
-  const existing = sqlite.prepare(`SELECT id, username, deleted_at AS deletedAt FROM accounts
-    WHERE person_id=?`).get(personId) as { id: string; username: string; deletedAt: string | null } | undefined;
+  const existing = sqlite.prepare(`SELECT id, username, updated_at AS updatedAt, deleted_at AS deletedAt FROM accounts
+    WHERE person_id=?`).get(personId) as { id: string; username: string; updatedAt: string; deletedAt: string | null } | undefined;
+  const expectedDeletedAt = input.expectedAccountDeletedAt;
+  if (expectedDeletedAt !== undefined && expectedDeletedAt !== (existing?.deletedAt || null)) {
+    throw new AppError('账号状态已被其他用户修改，请刷新后重试', 409, 'STALE_WRITE', {
+      currentAccountDeletedAt: existing?.deletedAt || null,
+    });
+  }
   if (existing && !existing.deletedAt) fail('该人员已有可用账号', 409);
 
   let accountId = existing?.id;
-  const now = nowIso();
+  const now = existing ? nextUpdatedAt(existing.updatedAt) : nowIso();
   sqlite.transaction(() => {
     if (existing) {
-      sqlite.prepare(`UPDATE accounts SET password_hash=?, global_role='user', status='active',
+      const changed = sqlite.prepare(`UPDATE accounts SET password_hash=?, global_role='user', status='active',
         must_change_password=1, session_version=session_version+1, deleted_at=NULL, updated_at=?
-        WHERE id=?`).run(hashPassword('888888'), now, existing.id);
+        WHERE id=? AND updated_at=? AND deleted_at=?`).run(hashPassword('888888'), now, existing.id, existing.updatedAt, existing.deletedAt);
+      if (!changed.changes) throw new AppError('账号状态已被其他用户修改，请刷新后重试', 409, 'STALE_WRITE');
       sqlite.prepare(`UPDATE api_tokens SET revoked_at=COALESCE(revoked_at, ?)
         WHERE account_id=?`).run(now, existing.id);
     } else {
       accountId = createAccountForPerson(personId, person.name, true);
     }
+    assertAccountPersonAvailable(personId);
+    assertCurrentAdministrator(actor);
+    audit(actor, 'create', accountId || null, `${existing ? '重新开通' : '开通'}账号：${existing?.username || person.name}`);
   })();
-  audit(actor, 'create', accountId || null, `${existing ? '重新开通' : '开通'}账号：${existing?.username || person.name}`);
   return {
     account: listAccounts().find((account) => account.id === accountId)!,
     temporaryPassword: '888888',
   };
 }
 
-export function resetAccountPassword(id: string, actor: Actor) {
-  const account = sqlite.prepare('SELECT username FROM accounts WHERE id=? AND deleted_at IS NULL').get(id) as { username: string } | undefined;
+export function resetAccountPassword(id: string, input: JsonObject, actor: Actor) {
+  if (Object.keys(input).some((key) => key !== 'expectedUpdatedAt')) fail('重置密码不能提交未声明字段');
+  const account = sqlite.prepare('SELECT username, updated_at AS updatedAt FROM accounts WHERE id=? AND deleted_at IS NULL').get(id) as { username: string; updatedAt: string } | undefined;
   if (!account) fail('账号不存在', 404);
-  const now = nowIso();
+  assertExpectedUpdatedAt(input, account.updatedAt, '账号');
+  const updatedAt = nextUpdatedAt(account.updatedAt);
   sqlite.transaction(() => {
-    sqlite.prepare(`UPDATE accounts SET password_hash=?, must_change_password=1,
-      session_version=session_version+1, updated_at=? WHERE id=?`).run(hashPassword('888888'), now, id);
-    sqlite.prepare('UPDATE api_tokens SET revoked_at=COALESCE(revoked_at, ?) WHERE account_id=?').run(now, id);
+    const changed = sqlite.prepare(`UPDATE accounts SET password_hash=?, must_change_password=1,
+      session_version=session_version+1, updated_at=? WHERE id=? AND updated_at=? AND deleted_at IS NULL`)
+      .run(hashPassword('888888'), updatedAt, id, account.updatedAt);
+    if (!changed.changes) throw new AppError('账号已被其他用户修改，请重新打开后再重置密码', 409, 'STALE_WRITE');
+    sqlite.prepare('UPDATE api_tokens SET revoked_at=COALESCE(revoked_at, ?) WHERE account_id=?').run(updatedAt, id);
+    assertCurrentAdministrator(actor);
+    audit(actor, 'reset_password', id, `重置账号密码：${account.username}`);
   })();
-  audit(actor, 'reset_password', id, `重置账号密码：${account.username}`);
   return { ok: true, temporaryPassword: '888888' };
 }
 
 export function changeOwnPassword(accountId: string, currentPassword: string, newPassword: string, actor: Actor) {
-  const account = sqlite.prepare('SELECT username, password_hash AS passwordHash, session_version AS sessionVersion FROM accounts WHERE id=? AND deleted_at IS NULL')
-    .get(accountId) as { username: string; passwordHash: string; sessionVersion: number } | undefined;
+  const account = sqlite.prepare(`SELECT username, password_hash AS passwordHash, session_version AS sessionVersion,
+    updated_at AS updatedAt FROM accounts WHERE id=? AND deleted_at IS NULL`)
+    .get(accountId) as { username: string; passwordHash: string; sessionVersion: number; updatedAt: string } | undefined;
   if (!account) fail('账号不存在', 404);
   if (!verifyPassword(currentPassword, account.passwordHash)) fail('当前密码错误');
   if (newPassword.length < 8) fail('新密码至少需要8个字符');
   if (currentPassword === newPassword) fail('新密码不能与当前密码相同');
   const sessionVersion = account.sessionVersion + 1;
-  sqlite.prepare(`UPDATE accounts SET password_hash=?, must_change_password=0,
-    session_version=?, updated_at=? WHERE id=?`).run(hashPassword(newPassword), sessionVersion, nowIso(), accountId);
-  audit(actor, 'change_password', accountId, `修改账号密码：${account.username}`);
+  const updatedAt = nextUpdatedAt(account.updatedAt);
+  sqlite.transaction(() => {
+    const changed = sqlite.prepare(`UPDATE accounts SET password_hash=?, must_change_password=0,
+      session_version=?, updated_at=? WHERE id=? AND session_version=? AND updated_at=? AND deleted_at IS NULL`)
+      .run(hashPassword(newPassword), sessionVersion, updatedAt, accountId, account.sessionVersion, account.updatedAt);
+    if (!changed.changes) throw new AppError('账号已被其他操作修改，请重新登录后再修改密码', 409, 'STALE_WRITE');
+    audit(actor, 'change_password', accountId, `修改账号密码：${account.username}`);
+  })();
   return { ok: true, sessionVersion };
 }
 
 export function getMyWork(accountId: string) {
+  const today = todayIso();
   const account = sqlite.prepare(`SELECT person_id AS personId FROM accounts WHERE id=? AND status='active' AND deleted_at IS NULL`).get(accountId) as { personId: string | null } | undefined;
   if (!account?.personId) return {
+    asOfDate: today,
     summary: { total: 0, notStarted: 0, inProgress: 0, blocked: 0, completed: 0, overdue: 0 },
     requirements: [], items: [], completionTrend: [], upcoming: [], recentProgress: [],
   };
   const rawItems = sqlite.prepare(`SELECT w.id, w.requirement_id AS requirementId, r.title AS requirementTitle,
-    r.project_id AS projectId, pr.name AS projectName, w.title, w.owner_id AS ownerId,
+    r.project_id AS projectId, pr.name AS projectName, r.status AS requirementStatus, w.title, w.owner_id AS ownerId,
     owner.name AS ownerName, w.status, w.planned_start AS plannedStart, w.planned_end AS plannedEnd,
     w.actual_start AS actualStart, w.actual_end AS actualEnd, w.forecast_end AS forecastEnd,
     w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.milestone_label AS milestoneLabel,
@@ -245,7 +333,6 @@ export function getMyWork(accountId: string) {
       (w.owner_id=? OR EXISTS (SELECT 1 FROM work_item_collaborators c WHERE c.work_item_id=w.id AND c.person_id=?))
     ORDER BY CASE WHEN w.actual_end IS NULL THEN 0 ELSE 1 END, COALESCE(w.planned_end, '9999-12-31'), w.updated_at DESC`)
     .all(account.personId, account.personId, account.personId, account.personId) as any[];
-  const today = todayIso();
   const items = rawItems.map((item) => {
     const status = deriveWorkItemStatus(item);
     return { ...item, status, overdue: !['completed', 'cancelled'].includes(status) && isOverdueByWorkday(item.plannedEnd, today) };
@@ -261,16 +348,16 @@ export function getMyWork(accountId: string) {
   const accessibleProjects = new Set((sqlite.prepare(`SELECT pp.project_id AS projectId FROM project_people pp
     JOIN projects p ON p.id=pp.project_id WHERE pp.person_id=? AND p.deleted_at IS NULL`)
     .all(account.personId) as Array<{ projectId: string }>).map((item) => item.projectId));
-  const ownedRequirements = listRequirements({ ownerId: account.personId })
+  const ownedRequirements = listRequirements({ ownerId: account.personId }, today)
     .filter((requirement) => accessibleProjects.has(requirement.projectId));
   const requirementIds = ownedRequirements.map((requirement) => requirement.id);
   const issueActionCounts = new Map<string, number>();
-  if (requirementIds.length) {
-    const placeholders = requirementIds.map(() => '?').join(',');
+  for (const batch of chunkValues(requirementIds, 899)) {
+    const placeholders = batch.map(() => '?').join(',');
     const counts = sqlite.prepare(`SELECT requirement_id AS requirementId, COUNT(*) AS count FROM issues
       WHERE requirement_id IN (${placeholders}) AND status<>'resolved'
         AND (owner_id IS NULL OR business_day_delta(due_date, ?)>0)
-      GROUP BY requirement_id`).all(...requirementIds, today) as Array<{ requirementId: string; count: number }>;
+      GROUP BY requirement_id`).all(...batch, today) as Array<{ requirementId: string; count: number }>;
     counts.forEach((item) => issueActionCounts.set(item.requirementId, Number(item.count)));
   }
   const requirements = ownedRequirements.map((requirement) => {
@@ -278,9 +365,8 @@ export function getMyWork(accountId: string) {
     const planningReasons: string[] = [];
     if (!activeItems.length) planningReasons.push('缺少工作项');
     else if (activeItems.some((item) => !item.plannedStart || !item.plannedEnd)) planningReasons.push('排期不完整');
-    const hasRequirementAction = requirement.status === 'planning' || requirement.highRisk || requirement.delayed || requirement.status === 'pending_acceptance';
-    const workItemActions = activeItems.filter((item) => !['completed', 'cancelled'].includes(item.status)
-      && (item.status === 'blocked' || !item.ownerId)).length;
+    const hasRequirementAction = deriveRequirementActionReasons(requirement).length > 0;
+    const workItemActions = activeItems.filter((item) => deriveWorkItemActionReasons(item).length > 0).length;
     return {
       id: requirement.id, projectId: requirement.projectId, projectName: requirement.projectName,
       title: requirement.title, status: requirement.status, priority: requirement.priority,
@@ -293,10 +379,7 @@ export function getMyWork(accountId: string) {
   });
   const weekly = new Map<string, number>();
   for (const item of items.filter((value) => value.actualEnd)) {
-    const date = new Date(`${item.actualEnd}T12:00:00`);
-    const day = date.getDay() || 7;
-    date.setDate(date.getDate() - day + 1);
-    const key = date.toISOString().slice(0, 10);
+    const key = startOfWeekIso(item.actualEnd!);
     weekly.set(key, (weekly.get(key) || 0) + 1);
   }
   const completionTrend = [...weekly.entries()].sort(([left], [right]) => left.localeCompare(right)).slice(-8)
@@ -312,12 +395,12 @@ export function getMyWork(accountId: string) {
   }));
   const recentProgress = sqlite.prepare(`SELECT u.id, u.requirement_id AS requirementId, r.title AS requirementTitle,
     u.work_item_id AS workItemId, w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content,
-    u.created_at AS createdAt, u.updated_at AS updatedAt
+    u.event_type AS eventType, u.created_at AS createdAt, u.updated_at AS updatedAt
     FROM progress_updates u JOIN requirements r ON r.id=u.requirement_id
     JOIN projects pr ON pr.id=r.project_id
     JOIN project_people access ON access.project_id=r.project_id AND access.person_id=?
     LEFT JOIN work_items w ON w.id=u.work_item_id
     WHERE u.created_by_account_id=? AND r.deleted_at IS NULL AND pr.deleted_at IS NULL
-    ORDER BY u.created_at DESC LIMIT 8`).all(account.personId, accountId);
-  return { summary, requirements, items, completionTrend, upcoming, recentProgress };
+    ORDER BY u.created_at DESC, u.rowid DESC LIMIT 8`).all(account.personId, accountId);
+  return { asOfDate: today, summary, requirements, items, completionTrend, upcoming, recentProgress };
 }

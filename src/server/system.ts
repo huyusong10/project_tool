@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import { config } from './config';
 import { sqlite } from './database';
-import { listBackups } from './backups';
+import { listRestorableBackups } from './backups';
+import { readRestoreStatus } from './restore-status';
 
 function fileSize(filename: string) {
   try {
@@ -19,8 +20,9 @@ function nextBackupAt(now = new Date()) {
 }
 
 export function getSystemOverview() {
-  const backups = listBackups();
-  const lastBackupAt = backups[0]?.createdAt ?? null;
+  const backups = listRestorableBackups();
+  const restorableBackups = backups.filter((backup) => backup.restorable);
+  const lastBackupAt = restorableBackups[0]?.createdAt ?? null;
   const mainSizeBytes = fileSize(config.dbPath);
   const walSizeBytes = fileSize(`${config.dbPath}-wal`);
   const shmSizeBytes = fileSize(`${config.dbPath}-shm`);
@@ -50,6 +52,7 @@ export function getSystemOverview() {
     },
     backups: {
       count: backups.length,
+      restorableCount: restorableBackups.length,
       totalSizeBytes: backups.reduce((total, backup) => total + backup.size, 0),
       lastCreatedAt: lastBackupAt,
       overdue: !lastBackupAt || now - new Date(lastBackupAt).getTime() > 26 * 60 * 60 * 1000,
@@ -57,6 +60,7 @@ export function getSystemOverview() {
       maxCount: config.backupMaxCount,
       nextScheduledAt: nextBackupAt(),
     },
+    lastRestore: readRestoreStatus(config.dbPath),
   };
 }
 
@@ -73,11 +77,12 @@ export function checkDatabaseIntegrity() {
       message: ok ? '数据库结构与数据页校验正常' : messages.slice(0, 5).join('；'),
     };
   } catch (error) {
+    console.error('[system] database integrity check failed', error);
     return {
       ok: false,
       checkedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt,
-      message: error instanceof Error ? error.message : '数据库完整性检查失败',
+      message: '数据库完整性检查失败',
     };
   }
 }

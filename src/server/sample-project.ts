@@ -1,7 +1,21 @@
 import type Database from 'better-sqlite3';
 import { addBusinessDays, todayIso } from '../shared/domain';
+import { AppError } from './errors';
 
 type SqliteDatabase = Database.Database;
+
+function nextResourceTimestamp(current: string, floor: string) {
+  const currentTime = Date.parse(current);
+  const floorTime = Date.parse(floor);
+  return new Date(Math.max(
+    Number.isFinite(floorTime) ? floorTime : Date.now(),
+    Number.isFinite(currentTime) ? currentTime + 1 : 0,
+  )).toISOString();
+}
+
+function sampleWriteConflict(): never {
+  throw new AppError('样板人员或账号已被其他用户修改，请重试', 409, 'STALE_WRITE');
+}
 
 export const SAMPLE_PROJECT_ID = 'sample-project-v1';
 export const SAMPLE_META_KEY = 'sample_project_v1';
@@ -254,13 +268,13 @@ export function ensureBuiltInSampleProject(sqlite: SqliteDatabase, enabled: bool
     const actualNames = new Map<PersonKey, string>();
     const insertPerson = sqlite.prepare(`INSERT INTO people (id, name, job_title, active, created_at, updated_at)
       VALUES (?, ?, ?, 1, ?, ?)`);
-    const insertMembership = sqlite.prepare(`INSERT INTO project_people (project_id, person_id, project_role, created_at)
-      VALUES (?, ?, ?, ?)`);
+    const insertMembership = sqlite.prepare(`INSERT INTO project_people (project_id, person_id, project_role, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)`);
     for (const person of people) {
       const name = uniquePersonName(sqlite, person.name);
       actualNames.set(person.key, name);
       insertPerson.run(person.id, name, person.jobTitle, at(-36), at(-36));
-      insertMembership.run(SAMPLE_PROJECT_ID, person.id, person.role, at(-36));
+      insertMembership.run(SAMPLE_PROJECT_ID, person.id, person.role, at(-36), at(-36));
     }
 
     const insertTemplate = sqlite.prepare(`INSERT INTO work_item_templates
@@ -381,34 +395,64 @@ export function linkSampleProgressAuthors(sqlite: SqliteDatabase) {
 }
 
 export function archiveUnusedSamplePeople(sqlite: SqliteDatabase, now: string, preserveAccountId?: string) {
-  const archivePerson = sqlite.prepare('UPDATE people SET active=0, deleted_at=?, updated_at=? WHERE id=? AND deleted_at IS NULL');
-  const disableAccount = sqlite.prepare(`UPDATE accounts SET status='disabled', session_version=session_version+1, updated_at=?
+  const getPerson = sqlite.prepare('SELECT updated_at AS updatedAt FROM people WHERE id=? AND deleted_at IS NULL');
+  const getAccount = sqlite.prepare(`SELECT id, updated_at AS updatedAt FROM accounts
     WHERE person_id=? AND is_builtin=0 AND deleted_at IS NULL AND (? IS NULL OR id<>?)`);
+  const archivePerson = sqlite.prepare(`UPDATE people SET active=0, deleted_at=?, updated_at=?
+    WHERE id=? AND updated_at=? AND deleted_at IS NULL`);
+  const disableAccount = sqlite.prepare(`UPDATE accounts SET status='disabled', session_version=session_version+1, updated_at=?
+    WHERE id=? AND updated_at=? AND deleted_at IS NULL`);
   for (const personId of SAMPLE_PERSON_IDS) {
     if (samplePersonUsedOutside(sqlite, personId)) continue;
-    archivePerson.run(now, now, personId);
-    disableAccount.run(now, personId, preserveAccountId || null, preserveAccountId || null);
+    const person = getPerson.get(personId) as { updatedAt: string } | undefined;
+    if (!person) continue;
+    const personUpdatedAt = nextResourceTimestamp(person.updatedAt, now);
+    if (!archivePerson.run(personUpdatedAt, personUpdatedAt, personId, person.updatedAt).changes) sampleWriteConflict();
+    const account = getAccount.get(personId, preserveAccountId || null, preserveAccountId || null) as { id: string; updatedAt: string } | undefined;
+    if (!account) continue;
+    const accountUpdatedAt = nextResourceTimestamp(account.updatedAt, now);
+    if (!disableAccount.run(accountUpdatedAt, account.id, account.updatedAt).changes) sampleWriteConflict();
   }
 }
 
 export function restoreSamplePeople(sqlite: SqliteDatabase, now: string) {
-  const restorePerson = sqlite.prepare('UPDATE people SET active=1, deleted_at=NULL, updated_at=? WHERE id=? AND deleted_at IS NOT NULL');
-  const enableAccount = sqlite.prepare(`UPDATE accounts SET status='active', updated_at=? WHERE person_id=? AND is_builtin=0 AND deleted_at IS NULL`);
+  const getPerson = sqlite.prepare('SELECT updated_at AS updatedAt FROM people WHERE id=? AND deleted_at IS NOT NULL');
+  const getAccount = sqlite.prepare('SELECT id, updated_at AS updatedAt FROM accounts WHERE person_id=? AND is_builtin=0 AND deleted_at IS NULL');
+  const restorePerson = sqlite.prepare(`UPDATE people SET active=1, deleted_at=NULL, updated_at=?
+    WHERE id=? AND updated_at=? AND deleted_at IS NOT NULL`);
+  const enableAccount = sqlite.prepare(`UPDATE accounts SET status='active', updated_at=?
+    WHERE id=? AND updated_at=? AND deleted_at IS NULL`);
   for (const personId of SAMPLE_PERSON_IDS) {
-    restorePerson.run(now, personId);
-    enableAccount.run(now, personId);
+    const person = getPerson.get(personId) as { updatedAt: string } | undefined;
+    if (!person) continue;
+    const personUpdatedAt = nextResourceTimestamp(person.updatedAt, now);
+    if (!restorePerson.run(personUpdatedAt, personId, person.updatedAt).changes) sampleWriteConflict();
+    const account = getAccount.get(personId) as { id: string; updatedAt: string } | undefined;
+    if (!account) continue;
+    const accountUpdatedAt = nextResourceTimestamp(account.updatedAt, now);
+    if (!enableAccount.run(accountUpdatedAt, account.id, account.updatedAt).changes) sampleWriteConflict();
   }
 }
 
 export function deleteOrReleaseSamplePeople(sqlite: SqliteDatabase, now: string) {
   const deleteAccounts = sqlite.prepare('DELETE FROM accounts WHERE person_id=? AND is_builtin=0');
   const deletePerson = sqlite.prepare('DELETE FROM people WHERE id=?');
-  const releasePerson = sqlite.prepare('UPDATE people SET active=1, deleted_at=NULL, updated_at=? WHERE id=?');
-  const releaseAccount = sqlite.prepare(`UPDATE accounts SET status='active', updated_at=? WHERE person_id=? AND is_builtin=0 AND deleted_at IS NULL`);
+  const getArchivedPerson = sqlite.prepare('SELECT updated_at AS updatedAt FROM people WHERE id=? AND deleted_at IS NOT NULL');
+  const getAccount = sqlite.prepare('SELECT id, updated_at AS updatedAt FROM accounts WHERE person_id=? AND is_builtin=0 AND deleted_at IS NULL');
+  const releasePerson = sqlite.prepare(`UPDATE people SET active=1, deleted_at=NULL, updated_at=?
+    WHERE id=? AND updated_at=? AND deleted_at IS NOT NULL`);
+  const releaseAccount = sqlite.prepare(`UPDATE accounts SET status='active', updated_at=?
+    WHERE id=? AND updated_at=? AND deleted_at IS NULL`);
   for (const personId of SAMPLE_PERSON_IDS) {
     if (samplePersonUsedOutside(sqlite, personId)) {
-      releasePerson.run(now, personId);
-      releaseAccount.run(now, personId);
+      const person = getArchivedPerson.get(personId) as { updatedAt: string } | undefined;
+      if (!person) continue;
+      const personUpdatedAt = nextResourceTimestamp(person.updatedAt, now);
+      if (!releasePerson.run(personUpdatedAt, personId, person.updatedAt).changes) sampleWriteConflict();
+      const account = getAccount.get(personId) as { id: string; updatedAt: string } | undefined;
+      if (!account) continue;
+      const accountUpdatedAt = nextResourceTimestamp(account.updatedAt, now);
+      if (!releaseAccount.run(accountUpdatedAt, account.id, account.updatedAt).changes) sampleWriteConflict();
     } else {
       deleteAccounts.run(personId);
       deletePerson.run(personId);

@@ -3,6 +3,7 @@ import { sqlite } from './database';
 import { verifySessionToken, type AccountRole, type Actor } from './auth';
 import type { ProjectRole } from '../shared/domain';
 import { forbidden, notFound } from './errors';
+import { accountPersonAvailableSql } from './account-access';
 
 export type SessionActor = Actor & {
   accountId: string;
@@ -24,12 +25,27 @@ export type AuthorizationActor = Pick<Actor, 'type' | 'id' | 'label'> & {
   globalRole: AccountRole;
 };
 
+export function requireAuthorizationActor(actor: Actor): AuthorizationActor {
+  if (!actor.accountId || !actor.globalRole) forbidden('当前账号状态无效，请重新登录');
+  const current = sqlite.prepare(`SELECT a.person_id AS personId, a.global_role AS globalRole
+    FROM accounts a WHERE a.id=? AND a.status='active' AND a.deleted_at IS NULL
+      AND ${accountPersonAvailableSql}`).get(actor.accountId) as {
+      personId: string | null; globalRole: AccountRole;
+    } | undefined;
+  if (!current) forbidden('当前账号或人员状态已变化，请重新登录');
+  return {
+    type: actor.type, id: actor.id, label: actor.label,
+    accountId: actor.accountId, personId: current.personId, globalRole: current.globalRole,
+  };
+}
+
 export function sessionActor(token?: string): SessionActor | null {
   const payload = verifySessionToken(token);
   if (!payload) return null;
   const account = sqlite.prepare(`SELECT id, username, person_id AS personId, global_role AS globalRole,
     must_change_password AS mustChangePassword, session_version AS sessionVersion
-    FROM accounts WHERE id=? AND status='active' AND deleted_at IS NULL`).get(payload.accountId) as {
+    FROM accounts a WHERE id=? AND status='active' AND deleted_at IS NULL
+      AND ${accountPersonAvailableSql}`).get(payload.accountId) as {
       id: string; username: string; personId: string | null; globalRole: AccountRole;
       mustChangePassword: number; sessionVersion: number;
     } | undefined;
@@ -48,8 +64,10 @@ export function actorFromRequest(request: FastifyRequest): SessionActor {
 
 export function managedProjectIds(actor: AuthorizationActor) {
   if (!actor.personId) return [];
-  return (sqlite.prepare(`SELECT project_id AS projectId FROM project_people
-    WHERE person_id=? AND project_role='manager' ORDER BY project_id`).all(actor.personId) as Array<{ projectId: string }>)
+  return (sqlite.prepare(`SELECT pp.project_id AS projectId FROM project_people pp
+    JOIN projects p ON p.id=pp.project_id
+    WHERE pp.person_id=? AND pp.project_role='manager' AND p.deleted_at IS NULL
+    ORDER BY pp.project_id`).all(actor.personId) as Array<{ projectId: string }>)
     .map((item) => item.projectId);
 }
 
@@ -229,6 +247,7 @@ export function assertCanAddProgress(actor: AuthorizationActor, requirementId: s
   const projectId = requirement.projectId;
   if (canManageProject(actor, projectId)) return;
   if (!canContributeProject(actor, projectId)) forbidden('只有当前项目成员可以追加说明');
-  if (workItemId && isRequirementOwner(actor, requirementId)) return;
-  if (workItemId && !isWorkItemAssignee(actor, workItemId)) forbidden('普通用户只能更新分配给自己的工作项');
+  if (isRequirementOwner(actor, requirementId)) return;
+  if (!workItemId) forbidden('只有需求负责人、项目经理或管理员可以追加需求级说明');
+  if (!isWorkItemAssignee(actor, workItemId)) forbidden('普通用户只能更新分配给自己的工作项');
 }

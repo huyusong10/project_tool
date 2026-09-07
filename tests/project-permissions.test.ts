@@ -63,9 +63,32 @@ describe('项目内项目经理配置', () => {
     expect(lastManagerDemotion.statusCode).toBe(409);
     expect(lastManagerDemotion.json().error).toContain('至少需要保留一名项目经理');
 
+    const secondSnapshot = (await app.inject({ method: 'GET', url: `/api/projects/${projectId}/members`, headers: { cookie: adminCookie } })).json()
+      .find((person: { id: string }) => person.id === secondId);
+    expect(secondSnapshot.membershipUpdatedAt).toEqual(expect.any(String));
+    const promotedSecond = await app.inject({ method: 'PUT', url: `/api/projects/${projectId}/members/${secondId}`, headers: { cookie: adminCookie }, payload: {
+      role: 'manager', expectedMembershipUpdatedAt: secondSnapshot.membershipUpdatedAt,
+    } });
+    expect(promotedSecond.statusCode).toBe(200);
+    expect(promotedSecond.json().membershipUpdatedAt).not.toBe(secondSnapshot.membershipUpdatedAt);
+    const staleRole = await app.inject({ method: 'PUT', url: `/api/projects/${projectId}/members/${secondId}`, headers: { cookie: adminCookie }, payload: {
+      role: 'viewer', expectedMembershipUpdatedAt: secondSnapshot.membershipUpdatedAt,
+    } });
+    expect(staleRole.statusCode).toBe(409);
+    expect(staleRole.json().code).toBe('STALE_WRITE');
+    const staleRemoval = await app.inject({ method: 'DELETE', url: `/api/projects/${projectId}/members/${secondId}`, headers: { cookie: adminCookie }, payload: {
+      expectedMembershipUpdatedAt: secondSnapshot.membershipUpdatedAt,
+    } });
+    expect(staleRemoval.statusCode).toBe(409);
+    expect(staleRemoval.json().code).toBe('STALE_WRITE');
+
     const listed = (await app.inject({ method: 'GET', url: '/api/accounts', headers: { cookie: adminCookie } })).json()
       .find((account: { personId: string }) => account.personId === firstId);
     expect(listed).toMatchObject({ globalRole: 'user', role: 'project_manager' });
     expect(listed.managedProjects).toEqual([{ id: projectId, name: '权限分层测试项目' }]);
+
+    expect((await app.inject({ method: 'DELETE', url: `/api/projects/${projectId}`, headers: { cookie: adminCookie } })).statusCode).toBe(200);
+    const archivedSession = (await app.inject({ method: 'GET', url: '/api/session', headers: { cookie: managerCookie } })).json();
+    expect(archivedSession).toMatchObject({ authenticated: true, role: 'user', managedProjectIds: [] });
   });
 });

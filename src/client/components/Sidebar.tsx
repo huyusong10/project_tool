@@ -1,68 +1,17 @@
-import { useEffect, useLayoutEffect, useState, type ComponentType, type SVGProps } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { NavLink } from "react-router-dom";
-import {
-  Archive,
-  BarChart3,
-  BriefcaseBusiness,
-  CircleAlert,
-  ClipboardList,
-  FileClock,
-  FolderCog,
-  GanttChartSquare,
-  ListChecks,
-  Network,
-  PanelLeftClose,
-  PanelLeftOpen,
-  ScanSearch,
-  ServerCog,
-  SlidersHorizontal,
-  UsersRound,
-  Workflow,
-} from "lucide-react";
-import type { Session, SystemBranding } from "../types";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { api } from "../api";
+import type { SystemBranding } from "../types";
+import { useProjects, useSession } from "../app-context";
 import { canManageProject, isAdmin } from "../permissions";
-import { BrandLogo } from "./BrandLogo";
+import { keys } from "../query-keys";
+import { navGroupsFor } from "../routes";
+import { BrandLogo, defaultBranding } from "./BrandLogo";
 
-type NavIcon = ComponentType<SVGProps<SVGSVGElement> & { size?: string | number }>;
-type NavItem = { label: string; to: string; icon: NavIcon; end?: boolean; visible?: boolean };
-type NavGroup = { label: string; items: NavItem[] };
 type TooltipState = { anchor: HTMLElement; label: string; group: string };
-
-function groupsFor(session: Session, selectedProjectId: string): NavGroup[] {
-  const managesCurrentProject = canManageProject(session, selectedProjectId);
-  const admin = isAdmin(session);
-  if (!session.authenticated) return [];
-  return [
-    { label: "工作台", items: [
-      { label: "项目进展", to: "/", icon: GanttChartSquare, end: true },
-      { label: "统计分析", to: "/analytics", icon: BarChart3 },
-    ] },
-    { label: "个人", items: [
-      { label: "我的工作", to: "/my-work", icon: ClipboardList },
-      { label: "个人设置", to: "/settings", icon: SlidersHorizontal },
-    ] },
-    { label: "项目空间", items: [
-      { label: "需求管理", to: "/requirements", icon: ListChecks },
-      { label: "异常行动", to: "/actions", icon: CircleAlert },
-      { label: "问题跟踪", to: "/issues", icon: CircleAlert },
-      { label: "人员矩阵", to: "/people", icon: Network },
-      { label: "流程设计", to: "/templates", icon: Workflow },
-      { label: "项目设置", to: "/project-settings", icon: FolderCog, visible: managesCurrentProject },
-      { label: "项目日志", to: "/logs", icon: FileClock, visible: !admin && managesCurrentProject },
-    ] },
-    { label: "平台治理", items: [
-      { label: "项目中心", to: "/projects", icon: BriefcaseBusiness, visible: admin },
-      { label: "人员与权限", to: "/resources", icon: UsersRound, visible: admin },
-      { label: "归档中心", to: "/archives", icon: Archive, visible: admin },
-    ] },
-    { label: "平台运维", items: [
-      { label: "系统管理", to: "/system", icon: ServerCog, visible: admin },
-      { label: "操作审计", to: "/logs", icon: ScanSearch, visible: admin },
-    ] },
-  ].map((group) => ({ ...group, items: group.items.filter((item: NavItem) => item.visible !== false) }))
-    .filter((group) => group.items.length);
-}
 
 function NavigationTooltip({ value }: { value: TooltipState | null }) {
   const [position, setPosition] = useState({ left: 0, top: 0 });
@@ -90,21 +39,19 @@ function NavigationTooltip({ value }: { value: TooltipState | null }) {
   );
 }
 
-export function Sidebar({
-  session,
-  selectedProjectId,
-  collapsed,
-  onToggle,
-  branding,
-}: {
-  session: Session;
-  selectedProjectId: string;
-  collapsed: boolean;
-  onToggle: () => void;
-  branding: SystemBranding;
-}) {
+export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  const { session } = useSession();
+  const { selectedProjectId } = useProjects();
+  const { data: branding = defaultBranding } = useQuery({
+    queryKey: [...keys.branding],
+    queryFn: ({ signal }) => api<SystemBranding>("/api/branding", { signal }),
+  });
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
-  const groups = groupsFor(session, selectedProjectId);
+  const groups = navGroupsFor({
+    authenticated: session.authenticated,
+    admin: isAdmin(session),
+    managesCurrentProject: canManageProject(session, selectedProjectId),
+  });
   useEffect(() => setTooltip(null), [collapsed]);
   const showTooltip = (anchor: HTMLElement, label: string, group: string) => {
     if (collapsed) setTooltip({ anchor, label, group });

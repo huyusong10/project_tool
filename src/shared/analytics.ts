@@ -1,3 +1,5 @@
+import { requirementStatusLabels, requirementStatuses, workItemStatuses } from "./domain";
+
 export const analyticsVisualizations = ["kpi", "bar", "line", "donut", "table"] as const;
 export const analyticsPanelSizes = ["small", "medium", "large"] as const;
 export const analyticsTimeScopes = ["snapshot", "range", "future30"] as const;
@@ -73,20 +75,18 @@ export type AnalyticsPanelResult = {
   snapshot: boolean;
   error?: string;
 };
-export type AnalyticsQueryResponse = { results: AnalyticsPanelResult[] };
+export type AnalyticsQueryResponse = { asOfDate: string; range: AnalyticsRange; results: AnalyticsPanelResult[] };
 export type AnalyticsLayoutResponse = {
   layout: AnalyticsLayout;
   source: "default" | "personal";
   canCustomize: boolean;
+  updatedAt: string | null;
 };
 
 const snapshotVisualizations: AnalyticsVisualization[] = ["kpi", "bar", "donut", "table"];
 const groupedVisualizations: AnalyticsVisualization[] = ["bar", "line", "donut", "table"];
-const statusOptions = [
-  { value: "planning", label: "待规划" }, { value: "not_started", label: "未开始" },
-  { value: "in_progress", label: "进行中" }, { value: "blocked", label: "阻塞" },
-  { value: "completed", label: "已完成" }, { value: "cancelled", label: "已取消" },
-];
+const requirementStatusOptions = requirementStatuses.map((value) => ({ value, label: requirementStatusLabels[value] }));
+const workItemStatusOptions = workItemStatuses.map((value) => ({ value, label: requirementStatusLabels[value] }));
 const issueStatusOptions = [
   { value: "in_progress", label: "处理中" },
   { value: "deferred", label: "挂起" }, { value: "resolved", label: "已解决" },
@@ -120,7 +120,7 @@ export const analyticsCatalog: AnalyticsCatalog = {
         { id: "week", label: "周" }, { id: "day", label: "日期" },
       ],
       filters: [
-        { id: "status", label: "状态", options: statusOptions }, { id: "priority", label: "优先级", options: priorityOptions },
+        { id: "status", label: "状态", options: requirementStatusOptions }, { id: "priority", label: "优先级", options: priorityOptions },
         { id: "risk", label: "风险", options: riskOptions },
       ],
     },
@@ -133,7 +133,7 @@ export const analyticsCatalog: AnalyticsCatalog = {
         { id: "average_cycle_days", label: "平均实际周期", unit: "days", dimensions: ["owner", "week"], visualizations: ["kpi", "bar", "line", "table"] },
       ],
       dimensions: [{ id: "status", label: "状态" }, { id: "owner", label: "负责人" }, { id: "week", label: "周" }],
-      filters: [{ id: "status", label: "状态", options: statusOptions }],
+      filters: [{ id: "status", label: "状态", options: workItemStatusOptions }],
     },
     {
       id: "issues", label: "问题",

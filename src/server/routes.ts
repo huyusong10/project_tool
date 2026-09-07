@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z, type ZodType } from 'zod';
+import { todayIso } from '../shared/domain';
 import { config } from './config';
 import { createSessionToken, verifyPassword } from './auth';
 import {
@@ -7,7 +8,7 @@ import {
   assertProjectManager, assertProjectMember, assertProjectReadable, assertProjectResourceManager, assertProjectResourceReadable,
   assertRequirementOwnerOrManager, assertWorkItemParticipantOrManager, assertWorkItemRequirementOwnerOrManager,
   canManageProject, canUpdateIssueProgress, isAdmin,
-  managedProjectIds, projectIdForIssue, projectIdForRequirement, projectIdForTemplate, projectIdForWorkItem, sessionActor,
+  managedProjectIds, projectIdForIssue, projectIdForRequirement, projectIdForTemplate, projectIdForWorkItem, requireAuthorizationActor, sessionActor,
 } from './authorization';
 import {
   changeOwnPassword, deleteAccount, findAccountForLogin, getMyWork, listAccounts, markLogin, openAccountForPerson,
@@ -15,56 +16,101 @@ import {
 } from './accounts';
 import {
   acceptRequirement, addIssueUpdate, addProgress, addProjectPerson, applyRequirementPlan, applyTemplate, archivePerson, archiveProject, archiveRequirement, archiveTemplate,
-  blockWorkItem, cancelRequirement, cancelWorkItem, completeWorkItem, copyTemplate, correctIssue, correctWorkItem, createPerson, createProject, createRequirement, createTemplate,
+  blockWorkItem, cancelRequirement, cancelWorkItem, completeWorkItem, copyTemplate, correctIssue, correctRequirement, correctWorkItem, createPerson, createProject, createRequirement, createTemplate,
   createIssue, createWorkItem, deleteIssueUpdate, deleteProgress, deleteWorkItem, getDashboard, getIssue, getPeopleConcurrency, getRequirement, issueToken,
   listActionItems, listArchives, listAudit, listIssues, listPeople, listPeopleCandidates, listProjects, listRequirements, listTemplates, listTokens, previewRequirementPlan,
   permanentlyDeleteArchive, recordAudit, removeProjectPerson, reorderWorkItems, reopenIssue, reopenWorkItem, reselectRequirementTemplate, rescheduleRequirement, resolveIssue, restorePerson, restoreProject, restoreRequirement, restoreTemplate, resumeIssue, revokeToken, searchAudit, startWorkItem,
   deferIssue, unblockWorkItem, updateIssue, updateIssueUpdate, updatePerson, updateProgress, updateProject, updateRequirement, updateTemplate, updateWorkItem,
 } from './services';
-import { createBackup, deleteBackup, listBackups, scheduleRestore } from './backups';
+import { createBackup, deleteBackup, listRestorableBackups, recordRestoreAudit, scheduleRestore } from './backups';
+import { completeRequirementAsPlanned, completeWorkItemAsPlanned } from './services';
 import { checkDatabaseIntegrity, getSystemOverview } from './system';
 import { getBranding, getBrandingLogo, updateBranding } from './branding';
 import {
   getAnalyticsCatalog, getAnalyticsLayout, queryAnalytics, resetAnalyticsLayout, saveAnalyticsLayout,
 } from './analytics';
 import {
+  accountCommandSchema,
+  accountInputSchema,
+  analyticsQueryInputSchema,
+  apiTokenInputSchema,
   actionItemsInputSchema,
+  applyRequirementPlanInputSchema,
+  applyTemplateInputSchema,
+  archiveListInputSchema,
   archiveDeleteInputSchema,
+  archiveRestoreInputSchema,
   archiveParamsSchema,
+  auditListInputSchema,
+  backupDeleteInputSchema,
+  backupRestoreInputSchema,
+  brandingInputSchema,
+  changePasswordInputSchema,
   contentCommandSchema,
+  completeAsPlannedInputSchema,
+  copyTemplateInputSchema,
+  createIssueInputSchema,
+  createPersonInputSchema,
+  createProjectInputSchema,
   createRequirementInputSchema,
+  createTemplateInputSchema,
+  createWorkItemInputSchema,
+  emptyCommandInputSchema,
   expectedVersionInputSchema,
   idParamsSchema,
-  issueInputSchema,
+  issueCorrectionInputSchema,
   issueListInputSchema,
+  issueUpdateHistoryInputSchema,
   issueUpdateInputSchema,
   issueUpdateParamsSchema,
-  personInputSchema,
+  loginInputSchema,
+  openAccountInputSchema,
+  personCommandSchema,
+  updatePersonInputSchema,
+  peopleListInputSchema,
+  personCandidatesInputSchema,
   progressInputSchema,
+  progressHistoryUpdateInputSchema,
+  previewRequirementPlanInputSchema,
   peopleConcurrencyInputSchema,
+  projectArchiveInputSchema,
   projectInputSchema,
+  projectListInputSchema,
+  projectMemberCommandSchema,
   projectMemberInputSchema,
   projectParamsSchema,
   projectPersonParamsSchema,
+  projectResourceListInputSchema,
+  projectScopeInputSchema,
   reasonCommandSchema,
+  requirementCorrectionInputSchema,
+  reopenIssueInputSchema,
+  reopenWorkItemInputSchema,
+  requirementListInputSchema,
   reorderWorkItemsInputSchema,
   rescheduleRequirementInputSchema,
   reselectRequirementTemplateInputSchema,
-  templateInputSchema,
+  templateCommandSchema,
+  updateTemplateInputSchema,
   updateRequirementInputSchema,
-  workItemCommandSchema,
-  workItemInputSchema,
+  updateIssueInputSchema,
+  updateWorkItemInputSchema,
+  workItemCorrectionSchema,
 } from '../shared/contracts';
 
 const recordSchema = z.record(z.string(), z.unknown());
-const querySchema = z.object({
-  projectId: z.string().optional(), includeDeleted: z.string().optional(), q: z.string().optional(),
-  limit: z.string().optional(), page: z.string().optional(), pageSize: z.string().optional(),
-}).passthrough();
-const auditListQuerySchema = z.object({
+const auditSearchQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  actorType: z.string().trim().max(50).optional(),
+  action: z.string().trim().max(100).optional(),
+  entityType: z.string().trim().max(100).optional(),
   projectId: z.string().trim().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(100),
-});
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(20).max(100).default(50),
+  snapshot: z.coerce.number().int().nonnegative().optional(),
+}).strict().refine((input) => !input.from || !input.to || input.from <= input.to, { message: '开始日期不能晚于结束日期', path: ['to'] });
 
 function parse<T>(schema: ZodType<T>, value: unknown): T {
   return schema.parse(value ?? {});
@@ -74,16 +120,12 @@ function params<T>(request: FastifyRequest, schema: ZodType<T>) {
   return parse(schema, request.params);
 }
 
-function query(request: FastifyRequest) {
-  return parse(querySchema, request.query);
-}
-
 function idOf(request: FastifyRequest) {
   return params(request, idParamsSchema).id;
 }
 
 function sessionOf(request: FastifyRequest) {
-  return sessionActor(request.cookies.pm_session);
+  return sessionActor(request.cookies[config.sessionCookieName]);
 }
 
 function body(request: FastifyRequest) {
@@ -126,7 +168,7 @@ function sessionPayload(actor: ReturnType<typeof sessionOf>) {
 }
 
 function setSessionCookie(reply: FastifyReply, accountId: string, sessionVersion: number) {
-  reply.setCookie('pm_session', createSessionToken(accountId, sessionVersion), {
+  reply.setCookie(config.sessionCookieName, createSessionToken(accountId, sessionVersion), {
     httpOnly: true, sameSite: 'strict', secure: false, path: '/', maxAge: config.sessionHours * 60 * 60,
   });
 }
@@ -145,41 +187,56 @@ export function registerApiRoutes(app: FastifyInstance) {
   app.decorateRequest('actor', null);
   app.get('/api/session', async (request) => sessionPayload(sessionOf(request)));
   app.post('/api/login', { config: { rateLimit: { max: config.nodeEnv === 'test' ? 100 : 8, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const input = body(request); const account = findAccountForLogin(String(input.username || ''));
-    if (!account || !verifyPassword(String(input.password || ''), account.passwordHash)) return reply.code(401).send({ error: '用户名或密码错误' });
+    const input = parsedBody(request, loginInputSchema); const account = findAccountForLogin(input.username);
+    if (!account || !verifyPassword(input.password, account.passwordHash)) return reply.code(401).send({ error: '用户名或密码错误' });
     if (account.status !== 'active') return reply.code(403).send({ error: '账号已停用，请联系管理员' });
-    markLogin(account.id); setSessionCookie(reply, account.id, account.sessionVersion);
-    return sessionPayload(sessionActor(createSessionToken(account.id, account.sessionVersion)));
+    if (!account.personAvailable) return reply.code(403).send({ error: '人员已停用或归档，请联系管理员恢复人员' });
+    if (!markLogin(account.id, account.sessionVersion, account.passwordHash)) {
+      return reply.code(409).send({ error: '账号状态已变化，请重新登录', code: 'STALE_WRITE' });
+    }
+    const token = createSessionToken(account.id, account.sessionVersion);
+    const actor = sessionActor(token);
+    if (!actor) return reply.code(409).send({ error: '账号状态已变化，请重新登录', code: 'STALE_WRITE' });
+    setSessionCookie(reply, account.id, account.sessionVersion);
+    return sessionPayload(actor);
   });
-  app.post('/api/logout', async (_request, reply) => { reply.clearCookie('pm_session', { path: '/' }); return { ok: true }; });
+  app.post('/api/logout', async (request, reply) => {
+    parsedBody(request, emptyCommandInputSchema);
+    reply.clearCookie(config.sessionCookieName, { path: '/' });
+    return { ok: true };
+  });
   app.post('/api/account/change-password', { preHandler: requireAuthenticated }, async (request, reply) => {
-    const actor = actorFromRequest(request); const input = body(request);
-    const result = changeOwnPassword(actor.accountId, String(input.currentPassword || ''), String(input.newPassword || ''), actor);
+    const actor = actorFromRequest(request); const input = parsedBody(request, changePasswordInputSchema);
+    const result = changeOwnPassword(actor.accountId, input.currentPassword, input.newPassword, actor);
     setSessionCookie(reply, actor.accountId, result.sessionVersion);
     return { ...result, session: sessionPayload(sessionActor(createSessionToken(actor.accountId, result.sessionVersion))) };
   });
   app.get('/api/accounts', { preHandler: requireAdmin }, async () => listAccounts());
-  app.patch('/api/accounts/:id', { preHandler: requireAdmin }, async (request) => updateAccount(idOf(request), body(request), actorFromRequest(request)));
-  app.post('/api/accounts/:id/reset-password', { preHandler: requireAdmin }, async (request) => resetAccountPassword(idOf(request), actorFromRequest(request)));
-  app.delete('/api/accounts/:id', { preHandler: requireAdmin }, async (request) => deleteAccount(idOf(request), actorFromRequest(request)));
-  app.post('/api/people/:id/account', { preHandler: requireAdmin }, async (request) => openAccountForPerson(idOf(request), actorFromRequest(request)));
+  app.patch('/api/accounts/:id', { preHandler: requireAdmin }, async (request) => updateAccount(idOf(request), parsedBody(request, accountInputSchema), actorFromRequest(request)));
+  app.post('/api/accounts/:id/reset-password', { preHandler: requireAdmin }, async (request) => resetAccountPassword(idOf(request), parsedBody(request, accountCommandSchema), actorFromRequest(request)));
+  app.delete('/api/accounts/:id', { preHandler: requireAdmin }, async (request) => deleteAccount(idOf(request), parsedBody(request, accountCommandSchema), actorFromRequest(request)));
+  app.post('/api/people/:id/account', { preHandler: requireAdmin }, async (request) => openAccountForPerson(idOf(request), parsedBody(request, openAccountInputSchema), actorFromRequest(request)));
   app.get('/api/my-work', { preHandler: requireReady }, async (request) => getMyWork(actorFromRequest(request).accountId));
 
-  app.get('/api/projects', { preHandler: requireReady }, async (request) => listProjects(query(request).includeDeleted === 'true', actorFromRequest(request)));
-  app.post('/api/projects', { preHandler: requireAdmin }, async (request) => createProject(parsedBody(request, projectInputSchema), actorFromRequest(request)));
+  app.get('/api/projects', { preHandler: requireReady }, async (request) => {
+    const input = parsedQuery(request, projectListInputSchema);
+    return listProjects(input.includeDeleted, actorFromRequest(request));
+  });
+  app.post('/api/projects', { preHandler: requireAdmin }, async (request) => createProject(parsedBody(request, createProjectInputSchema), actorFromRequest(request)));
   app.patch('/api/projects/:id', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectManager(actor, id);
     return updateProject(id, parsedBody(request, projectInputSchema), actor);
   });
   app.delete('/api/projects/:id', { preHandler: requireAdmin }, async (request) => {
-    const input = request.body ? body(request) : {};
-    return archiveProject(idOf(request), actorFromRequest(request), { force: input.force === true });
+    const input = parsedBody(request, projectArchiveInputSchema);
+    return archiveProject(idOf(request), actorFromRequest(request), input);
   });
-  app.post('/api/projects/:id/restore', { preHandler: requireAdmin }, async (request) => restoreProject(idOf(request), actorFromRequest(request)));
+  app.post('/api/projects/:id/restore', { preHandler: requireAdmin }, async (request) => restoreProject(idOf(request), actorFromRequest(request), parsedBody(request, archiveRestoreInputSchema)));
   app.get('/api/dashboard', { preHandler: requireReady }, async (request) => {
-    const projectId = String(query(request).projectId || ''); const actor = actorFromRequest(request); assertProjectReadable(actor, projectId);
-    const dashboard = getDashboard(projectId);
-    return { ...dashboard, actions: listActionItems({ projectId, page: 1, pageSize: 5 }, actor, dashboard.requirements) };
+    const { projectId } = parsedQuery(request, projectScopeInputSchema); const actor = actorFromRequest(request); assertProjectReadable(actor, projectId);
+    const asOfDate = todayIso();
+    const dashboard = getDashboard(projectId, asOfDate);
+    return { ...dashboard, actions: listActionItems({ projectId, page: 1, pageSize: 5 }, actor, dashboard.requirements, asOfDate) };
   });
   app.get('/api/action-items', { preHandler: requireReady }, async (request) => {
     const input = parsedQuery(request, actionItemsInputSchema); const actor = actorFromRequest(request);
@@ -188,7 +245,7 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
   app.get('/api/analytics/catalog', async () => getAnalyticsCatalog());
   app.post('/api/analytics/query', { preHandler: requireReady }, async (request) => {
-    const input = body(request); assertProjectReadable(actorFromRequest(request), String(input.projectId || ''));
+    const input = parsedBody(request, analyticsQueryInputSchema); assertProjectReadable(actorFromRequest(request), input.projectId);
     return queryAnalytics(input);
   });
   app.get('/api/analytics/layout', { preHandler: requireReady }, async (request) => {
@@ -201,21 +258,18 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
   app.delete('/api/analytics/layout', { preHandler: requireReady }, async (request) => {
     const actor = actorFromRequest(request);
-    return resetAnalyticsLayout(actor.accountId, actor);
+    return resetAnalyticsLayout(actor.accountId, body(request), actor);
   });
 
   app.get('/api/requirements', { preHandler: requireReady }, async (request) => {
-    const input = query(request); const projectId = String(input.projectId || ''); assertProjectReadable(actorFromRequest(request), projectId);
-    return listRequirements({
-      projectId,
-      includeDeleted: input.includeDeleted === 'true',
-      status: typeof input.status === 'string' ? input.status : undefined,
-      view: typeof input.view === 'string' ? input.view : undefined,
-    });
+    const input = parsedQuery(request, requirementListInputSchema); const actor = actorFromRequest(request);
+    if (input.includeDeleted) assertProjectManager(actor, input.projectId); else assertProjectReadable(actor, input.projectId);
+    return listRequirements(input);
   });
   app.get('/api/requirements/:id', { preHandler: requireReady }, async (request) => {
-    const id = idOf(request); assertProjectResourceReadable(actorFromRequest(request), projectIdForRequirement(id), '需求不存在');
-    return getRequirement(id, query(request).includeDeleted === 'true');
+    const id = idOf(request); const input = parsedQuery(request, projectListInputSchema); const actor = actorFromRequest(request); const projectId = projectIdForRequirement(id);
+    if (input.includeDeleted) assertProjectResourceManager(actor, projectId, '需求不存在'); else assertProjectResourceReadable(actor, projectId, '需求不存在');
+    return getRequirement(id, input.includeDeleted);
   });
   app.post('/api/requirements', { preHandler: requireReady }, async (request) => {
     const input = parsedBody(request, createRequirementInputSchema); const actor = actorFromRequest(request); assertProjectManager(actor, input.projectId);
@@ -225,9 +279,21 @@ export function registerApiRoutes(app: FastifyInstance) {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
     return updateRequirement(id, parsedBody(request, updateRequirementInputSchema), actor);
   });
+  app.post('/api/requirements/:id/correct', { preHandler: requireReady }, async (request) => {
+    const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
+    return correctRequirement(id, parsedBody(request, requirementCorrectionInputSchema), actor);
+  });
   app.post('/api/requirements/:id/accept', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
     return acceptRequirement(id, parsedBody(request, contentCommandSchema), actor);
+  });
+  app.post('/api/requirements/:id/complete-as-planned', { preHandler: requireReady }, async (request) => {
+    const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
+    return completeRequirementAsPlanned(id, parsedBody(request, completeAsPlannedInputSchema), actor);
+  });
+  app.post('/api/work-items/:id/complete-as-planned', { preHandler: requireReady }, async (request) => {
+    const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在');
+    return completeWorkItemAsPlanned(id, parsedBody(request, completeAsPlannedInputSchema), actor);
   });
   app.post('/api/requirements/:id/cancel', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
@@ -247,23 +313,23 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
   app.post('/api/requirements/:id/restore', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
-    return restoreRequirement(id, actor);
+    return restoreRequirement(id, actor, parsedBody(request, archiveRestoreInputSchema));
   });
   app.post('/api/requirements/:id/apply-template', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
-    return applyTemplate(id, body(request), actor);
+    return applyTemplate(id, parsedBody(request, applyTemplateInputSchema), actor);
   });
   app.post('/api/requirements/:id/plan-preview', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); assertProjectResourceManager(actorFromRequest(request), projectIdForRequirement(id), '需求不存在');
-    return previewRequirementPlan(id, body(request));
+    return previewRequirementPlan(id, parsedBody(request, previewRequirementPlanInputSchema));
   });
   app.post('/api/requirements/:id/apply-plan', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
-    return applyRequirementPlan(id, body(request), actor);
+    return applyRequirementPlan(id, parsedBody(request, applyRequirementPlanInputSchema), actor);
   });
   app.post('/api/requirements/:id/work-items', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertRequirementOwnerOrManager(actor, id);
-    return createWorkItem(id, parsedBody(request, workItemInputSchema), actor);
+    return createWorkItem(id, parsedBody(request, createWorkItemInputSchema), actor);
   });
   app.post('/api/requirements/:id/reorder-work-items', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertRequirementOwnerOrManager(actor, id);
@@ -276,44 +342,46 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
 
   app.patch('/api/work-items/:id', { preHandler: requireReady }, async (request) => {
-    const id = idOf(request); const input = parsedBody(request, workItemInputSchema); const actor = actorFromRequest(request);
+    const id = idOf(request); const actor = actorFromRequest(request);
     assertWorkItemRequirementOwnerOrManager(actor, id);
-    return updateWorkItem(id, input, actor);
+    return updateWorkItem(id, parsedBody(request, updateWorkItemInputSchema), actor);
   });
-  for (const [action, handler] of [
-    ['start', (id: string, input: any, actor: any) => startWorkItem(id, input, actor)],
-    ['complete', (id: string, input: any, actor: any) => completeWorkItem(id, input, actor)],
-    ['block', (id: string, input: any, actor: any) => blockWorkItem(id, input, actor)],
-    ['unblock', (id: string, input: any, actor: any) => unblockWorkItem(id, input, actor)],
+  for (const [action, handler, inputSchema] of [
+    ['start', (id: string, input: any, actor: any) => startWorkItem(id, input, actor), expectedVersionInputSchema],
+    ['complete', (id: string, input: any, actor: any) => completeWorkItem(id, input, actor), contentCommandSchema],
+    ['block', (id: string, input: any, actor: any) => blockWorkItem(id, input, actor), reasonCommandSchema],
+    ['unblock', (id: string, input: any, actor: any) => unblockWorkItem(id, input, actor), expectedVersionInputSchema],
   ] as const) {
     app.post(`/api/work-items/:id/${action}`, { preHandler: requireReady }, async (request) => {
-      const id = idOf(request); const actor = actorFromRequest(request); assertWorkItemParticipantOrManager(actor, id);
-      return handler(id, parsedBody(request, workItemCommandSchema), actor);
+      const id = idOf(request); const input = parsedBody(request, inputSchema); const actor = actorFromRequest(request);
+      assertWorkItemParticipantOrManager(actor, id);
+      return handler(id, input, actor);
     });
   }
   app.post('/api/work-items/:id/cancel', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertWorkItemRequirementOwnerOrManager(actor, id);
-    return cancelWorkItem(id, parsedBody(request, workItemCommandSchema), actor);
+    return cancelWorkItem(id, parsedBody(request, reasonCommandSchema), actor);
   });
   app.post('/api/work-items/:id/reopen', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertWorkItemRequirementOwnerOrManager(actor, id);
-    return reopenWorkItem(id, parsedBody(request, workItemCommandSchema), actor);
+    return reopenWorkItem(id, parsedBody(request, reopenWorkItemInputSchema), actor);
   });
   app.post('/api/work-items/:id/correct', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在');
-    return correctWorkItem(id, parsedBody(request, workItemCommandSchema), actor);
+    return correctWorkItem(id, parsedBody(request, workItemCorrectionSchema), actor);
   });
   app.delete('/api/work-items/:id', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertWorkItemRequirementOwnerOrManager(actor, id);
-    return deleteWorkItem(id, parsedBody(request, workItemCommandSchema), actor);
+    return deleteWorkItem(id, parsedBody(request, expectedVersionInputSchema), actor);
   });
   app.patch('/api/progress/:id', { preHandler: requireReady }, async (request) => {
-    const id = idOf(request); const actor = actorFromRequest(request); const input = body(request);
+    const id = idOf(request); const actor = actorFromRequest(request); const input = parsedBody(request, progressHistoryUpdateInputSchema);
     assertProgressOwnerOrManager(actor, id, Object.prototype.hasOwnProperty.call(input, 'workItemId') ? (input.workItemId ? String(input.workItemId) : null) : undefined);
     return updateProgress(id, input, actor);
   });
   app.delete('/api/progress/:id', { preHandler: requireReady }, async (request) => {
-    const id = idOf(request); const actor = actorFromRequest(request); assertProgressOwnerOrManager(actor, id);
+    const id = idOf(request); parsedBody(request, emptyCommandInputSchema);
+    const actor = actorFromRequest(request); assertProgressOwnerOrManager(actor, id);
     return deleteProgress(id, actor);
   });
 
@@ -326,22 +394,34 @@ export function registerApiRoutes(app: FastifyInstance) {
     return getIssue(id);
   });
   app.post('/api/issues', { preHandler: requireReady }, async (request) => {
-    const input = parsedBody(request, issueInputSchema); const actor = actorFromRequest(request); const projectId = String(input.projectId || '');
+    const input = parsedBody(request, createIssueInputSchema); const actor = actorFromRequest(request); const projectId = input.projectId;
     assertProjectMember(actor, projectId);
-    return createIssue(canManageProject(actor, projectId) ? input : { ...input, ownerId: null, progress: 0 }, actor);
+    return createIssue(canManageProject(actor, projectId) ? input : { ...input, ownerId: null }, actor);
   });
   app.patch('/api/issues/:id', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在');
-    return updateIssue(id, parsedBody(request, issueInputSchema), actor);
+    return updateIssue(id, parsedBody(request, updateIssueInputSchema), actor);
   });
-  for (const [action, handler] of [
-    ['defer', deferIssue], ['resume', resumeIssue], ['resolve', resolveIssue], ['reopen', reopenIssue], ['correct', correctIssue],
-  ] as const) {
-    app.post(`/api/issues/:id/${action}`, { preHandler: requireReady }, async (request) => {
-      const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在');
-      return handler(id, parsedBody(request, workItemCommandSchema), actor);
-    });
-  }
+  app.post('/api/issues/:id/defer', { preHandler: requireReady }, async (request) => {
+    const id = idOf(request); const input = parsedBody(request, reasonCommandSchema); const actor = actorFromRequest(request);
+    assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在'); return deferIssue(id, input, actor);
+  });
+  app.post('/api/issues/:id/resume', { preHandler: requireReady }, async (request) => {
+    const id = idOf(request); const input = parsedBody(request, reasonCommandSchema); const actor = actorFromRequest(request);
+    assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在'); return resumeIssue(id, input, actor);
+  });
+  app.post('/api/issues/:id/resolve', { preHandler: requireReady }, async (request) => {
+    const id = idOf(request); const input = parsedBody(request, contentCommandSchema); const actor = actorFromRequest(request);
+    assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在'); return resolveIssue(id, input, actor);
+  });
+  app.post('/api/issues/:id/reopen', { preHandler: requireReady }, async (request) => {
+    const id = idOf(request); const input = parsedBody(request, reopenIssueInputSchema); const actor = actorFromRequest(request);
+    assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在'); return reopenIssue(id, input, actor);
+  });
+  app.post('/api/issues/:id/correct', { preHandler: requireReady }, async (request) => {
+    const id = idOf(request); const input = parsedBody(request, issueCorrectionInputSchema); const actor = actorFromRequest(request);
+    assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在'); return correctIssue(id, input, actor);
+  });
   app.post('/api/issues/:id/updates', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); const projectId = projectIdForIssue(id);
     assertProjectResourceReadable(actor, projectId, '问题不存在'); assertProjectMember(actor, projectId);
@@ -352,71 +432,81 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
   app.patch('/api/issues/:id/updates/:updateId', { preHandler: requireReady }, async (request) => {
     const { id, updateId } = params(request, issueUpdateParamsSchema); const actor = actorFromRequest(request);
+    const input = parsedBody(request, issueUpdateHistoryInputSchema);
     assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在');
-    return updateIssueUpdate(id, updateId, body(request), actor);
+    return updateIssueUpdate(id, updateId, input, actor);
   });
   app.delete('/api/issues/:id/updates/:updateId', { preHandler: requireReady }, async (request) => {
-    const { id, updateId } = params(request, issueUpdateParamsSchema); const actor = actorFromRequest(request);
+    const { id, updateId } = params(request, issueUpdateParamsSchema); parsedBody(request, emptyCommandInputSchema);
+    const actor = actorFromRequest(request);
     assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在');
     return deleteIssueUpdate(id, updateId, actor);
   });
 
   app.get('/api/people', { preHandler: requireReady }, async (request) => {
-    const input = query(request); const actor = actorFromRequest(request); const projectId = String(input.projectId || '');
-    if (projectId) assertProjectReadable(actor, projectId); else assertAdmin(actor);
-    return listPeople(input.includeDeleted === 'true', projectId || undefined);
+    const input = parsedQuery(request, peopleListInputSchema); const actor = actorFromRequest(request); const projectId = input.projectId || '';
+    if (!projectId) assertAdmin(actor);
+    else if (input.includeDeleted) assertProjectManager(actor, projectId);
+    else assertProjectReadable(actor, projectId);
+    return listPeople(input.includeDeleted, projectId || undefined);
   });
   app.get('/api/people/candidates', { preHandler: requireReady }, async (request) => {
-    const input = query(request); const projectId = String(input.projectId || ''); assertProjectManager(actorFromRequest(request), projectId);
-    return listPeopleCandidates(projectId, String(input.q || ''));
+    const input = parsedQuery(request, personCandidatesInputSchema); assertProjectManager(actorFromRequest(request), input.projectId);
+    return listPeopleCandidates(input.projectId, input.q || '');
   });
-  app.post('/api/people', { preHandler: requireAdmin }, async (request) => createPerson(parsedBody(request, personInputSchema), actorFromRequest(request)));
-  app.patch('/api/people/:id', { preHandler: requireAdmin }, async (request) => updatePerson(idOf(request), parsedBody(request, personInputSchema), actorFromRequest(request)));
-  app.delete('/api/people/:id', { preHandler: requireAdmin }, async (request) => archivePerson(idOf(request), actorFromRequest(request)));
-  app.post('/api/people/:id/restore', { preHandler: requireAdmin }, async (request) => restorePerson(idOf(request), actorFromRequest(request)));
+  app.post('/api/people', { preHandler: requireAdmin }, async (request) => createPerson(parsedBody(request, createPersonInputSchema), actorFromRequest(request)));
+  app.patch('/api/people/:id', { preHandler: requireAdmin }, async (request) => updatePerson(idOf(request), parsedBody(request, updatePersonInputSchema), actorFromRequest(request)));
+  app.delete('/api/people/:id', { preHandler: requireAdmin }, async (request) => archivePerson(idOf(request), parsedBody(request, personCommandSchema), actorFromRequest(request)));
+  app.post('/api/people/:id/restore', { preHandler: requireAdmin }, async (request) => restorePerson(idOf(request), actorFromRequest(request), parsedBody(request, archiveRestoreInputSchema)));
   app.get('/api/projects/:projectId/members', { preHandler: requireReady }, async (request) => {
     const { projectId } = params(request, projectParamsSchema); assertProjectReadable(actorFromRequest(request), projectId);
     return listPeople(false, projectId);
   });
   app.put('/api/projects/:projectId/members/:personId', { preHandler: requireReady }, async (request) => {
     const { projectId, personId } = params(request, projectPersonParamsSchema); const actor = actorFromRequest(request);
-    assertProjectManager(actor, projectId); return addProjectPerson(projectId, personId, actor, parsedBody(request, projectMemberInputSchema).role);
+    const input = parsedBody(request, projectMemberInputSchema);
+    assertProjectManager(actor, projectId); return addProjectPerson(projectId, personId, actor, input.role, input.expectedMembershipUpdatedAt);
   });
   app.delete('/api/projects/:projectId/members/:personId', { preHandler: requireReady }, async (request) => {
     const { projectId, personId } = params(request, projectPersonParamsSchema); const actor = actorFromRequest(request);
-    assertProjectManager(actor, projectId); return removeProjectPerson(projectId, personId, actor);
+    const input = parsedBody(request, projectMemberCommandSchema);
+    assertProjectManager(actor, projectId); return removeProjectPerson(projectId, personId, actor, input.expectedMembershipUpdatedAt);
   });
   app.post('/api/projects/:projectId/people/:personId', { preHandler: requireReady }, async (request) => {
     const { projectId, personId } = params(request, projectPersonParamsSchema); const actor = actorFromRequest(request);
-    assertProjectManager(actor, projectId); return addProjectPerson(projectId, personId, actor, parsedBody(request, projectMemberInputSchema).role);
+    const input = parsedBody(request, projectMemberInputSchema);
+    assertProjectManager(actor, projectId); return addProjectPerson(projectId, personId, actor, input.role, input.expectedMembershipUpdatedAt);
   });
   app.delete('/api/projects/:projectId/people/:personId', { preHandler: requireReady }, async (request) => {
     const { projectId, personId } = params(request, projectPersonParamsSchema); const actor = actorFromRequest(request);
-    assertProjectManager(actor, projectId); return removeProjectPerson(projectId, personId, actor);
+    const input = parsedBody(request, projectMemberCommandSchema);
+    assertProjectManager(actor, projectId); return removeProjectPerson(projectId, personId, actor, input.expectedMembershipUpdatedAt);
   });
 
   app.get('/api/templates', { preHandler: requireReady }, async (request) => {
-    const input = query(request); const projectId = String(input.projectId || ''); assertProjectReadable(actorFromRequest(request), projectId);
-    return listTemplates(projectId, input.includeDeleted === 'true');
+    const input = parsedQuery(request, projectResourceListInputSchema); const actor = actorFromRequest(request);
+    if (input.includeDeleted) assertProjectManager(actor, input.projectId); else assertProjectReadable(actor, input.projectId);
+    return listTemplates(input.projectId, input.includeDeleted);
   });
   app.post('/api/templates', { preHandler: requireReady }, async (request) => {
-    const input = parsedBody(request, templateInputSchema); assertProjectManager(actorFromRequest(request), String(input.projectId || ''));
+    const input = parsedBody(request, createTemplateInputSchema); assertProjectManager(actorFromRequest(request), input.projectId);
     return createTemplate(input, actorFromRequest(request));
   });
   app.patch('/api/templates/:id', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); assertProjectResourceManager(actorFromRequest(request), projectIdForTemplate(id), '流程设计不存在');
-    return updateTemplate(id, parsedBody(request, templateInputSchema), actorFromRequest(request));
+    return updateTemplate(id, parsedBody(request, updateTemplateInputSchema), actorFromRequest(request));
   });
   app.delete('/api/templates/:id', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); assertProjectResourceManager(actorFromRequest(request), projectIdForTemplate(id), '流程设计不存在');
-    return archiveTemplate(id, actorFromRequest(request));
+    return archiveTemplate(id, actorFromRequest(request), parsedBody(request, templateCommandSchema));
   });
   app.post('/api/templates/:id/restore', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); assertProjectResourceManager(actorFromRequest(request), projectIdForTemplate(id), '流程设计不存在');
-    return restoreTemplate(id, actorFromRequest(request));
+    return restoreTemplate(id, actorFromRequest(request), parsedBody(request, archiveRestoreInputSchema));
   });
   app.post('/api/projects/:projectId/templates/:sourceTemplateId/copy', { preHandler: requireReady }, async (request) => {
-    const { projectId, sourceTemplateId } = params(request, z.object({ projectId: z.string().min(1), sourceTemplateId: z.string().min(1) })); const actor = actorFromRequest(request);
+    const { projectId, sourceTemplateId } = params(request, copyTemplateInputSchema); const actor = actorFromRequest(request);
+    parsedBody(request, emptyCommandInputSchema);
     assertProjectManager(actor, projectId); assertProjectResourceReadable(actor, projectIdForTemplate(sourceTemplateId), '来源流程不存在');
     return copyTemplate(projectId, sourceTemplateId, actor);
   });
@@ -427,7 +517,7 @@ export function registerApiRoutes(app: FastifyInstance) {
     return getPeopleConcurrency({ ...input, projectId: projectId || undefined, includeExternalAggregate: Boolean(projectId && canManageProject(actor, projectId)) });
   });
   app.get('/api/archives', { preHandler: requireReady }, async (request) => {
-    const actor = actorFromRequest(request); const projectId = String(query(request).projectId || '');
+    const actor = actorFromRequest(request); const { projectId = '' } = parsedQuery(request, archiveListInputSchema);
     if (isAdmin(actor) && !projectId) return listArchives();
     assertProjectManager(actor, projectId); return listArchives(projectId);
   });
@@ -437,52 +527,74 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/tokens', { preHandler: requireReady }, async (request) => listTokens(actorFromRequest(request).accountId));
-  app.post('/api/tokens', { preHandler: requireReady }, async (request) => issueToken(body(request), actorFromRequest(request)));
-  app.delete('/api/tokens/:id', { preHandler: requireReady }, async (request) => revokeToken(idOf(request), actorFromRequest(request)));
+  app.post('/api/tokens', { preHandler: requireReady }, async (request) => issueToken(parsedBody(request, apiTokenInputSchema), actorFromRequest(request)));
+  app.delete('/api/tokens/:id', { preHandler: requireReady }, async (request) => {
+    parsedBody(request, emptyCommandInputSchema);
+    return revokeToken(idOf(request), actorFromRequest(request));
+  });
   app.get('/api/admin/tokens', { preHandler: requireAdmin }, async () => listTokens(undefined, true));
-  app.delete('/api/admin/tokens/:id', { preHandler: requireAdmin }, async (request) => revokeToken(idOf(request), actorFromRequest(request), true));
+  app.delete('/api/admin/tokens/:id', { preHandler: requireAdmin }, async (request) => {
+    parsedBody(request, emptyCommandInputSchema);
+    return revokeToken(idOf(request), actorFromRequest(request), true);
+  });
   app.get('/api/audit', { preHandler: requireReady }, async (request) => {
-    const input = parsedQuery(request, auditListQuerySchema); const actor = actorFromRequest(request); const projectId = input.projectId || '';
+    const input = parsedQuery(request, auditListInputSchema); const actor = actorFromRequest(request); const projectId = input.projectId || '';
     if (!isAdmin(actor)) assertProjectManager(actor, projectId);
     return listAudit(input.limit, projectId || undefined);
   });
   app.get('/api/audit/search', { preHandler: requireReady }, async (request) => {
-    const input = query(request); const actor = actorFromRequest(request); const projectId = String(input.projectId || '');
+    const input = parsedQuery(request, auditSearchQuerySchema); const actor = actorFromRequest(request); const projectId = input.projectId || '';
     if (!isAdmin(actor)) assertProjectManager(actor, projectId);
     return searchAudit({
       q: input.q,
-      actorType: typeof input.actorType === 'string' ? input.actorType : undefined,
-      action: typeof input.action === 'string' ? input.action : undefined,
-      entityType: typeof input.entityType === 'string' ? input.entityType : undefined,
+      actorType: input.actorType,
+      action: input.action,
+      entityType: input.entityType,
       projectId: projectId || undefined,
-      from: typeof input.from === 'string' ? input.from : undefined,
-      to: typeof input.to === 'string' ? input.to : undefined,
-      page: input.page ? Number(input.page) : undefined,
-      pageSize: input.pageSize ? Number(input.pageSize) : undefined,
+      from: input.from,
+      to: input.to,
+      page: input.page,
+      pageSize: input.pageSize,
+      snapshot: input.snapshot,
     });
   });
 
   app.get('/api/system/overview', { preHandler: requireAdmin }, async () => getSystemOverview());
-  app.post('/api/system/database-check', { preHandler: requireAdmin }, async () => checkDatabaseIntegrity());
+  app.post('/api/system/database-check', { preHandler: requireAdmin }, async (request) => {
+    parsedBody(request, emptyCommandInputSchema);
+    return checkDatabaseIntegrity();
+  });
   app.put('/api/system/branding', { preHandler: requireAdmin }, async (request) => {
     const actor = actorFromRequest(request);
-    const result = updateBranding(body(request));
-    recordAudit(actor, 'update', 'system_branding', 'default', `更新系统品牌：${result.systemName}（${result.shortName}）`);
-    return result;
+    return updateBranding(parsedBody(request, brandingInputSchema), actor);
   });
-  app.get('/api/backups', { preHandler: requireAdmin }, async () => listBackups());
+  app.get('/api/backups', { preHandler: requireAdmin }, async () => listRestorableBackups());
   app.post('/api/backups', { preHandler: requireAdmin }, async (request) => {
-    const actor = actorFromRequest(request); const result = await createBackup();
-    recordAudit(actor, 'create', 'backup', result.name, `创建数据库备份：${result.name}`); return result;
+    parsedBody(request, emptyCommandInputSchema);
+    const actor = actorFromRequest(request);
+    return createBackup({ beforeCommit: (backup) => {
+      assertAdmin(requireAuthorizationActor(actor));
+      recordAudit(actor, 'create', 'backup', backup.name, `创建数据库备份：${backup.name}`);
+    } });
   });
   app.delete('/api/backups/:name', { preHandler: requireAdmin }, async (request) => {
-    const { name } = params(request, z.object({ name: z.string().min(1) })); const actor = actorFromRequest(request);
-    const result = deleteBackup(name); recordAudit(actor, 'delete', 'backup', name, `删除数据库备份：${name}`); return result;
+    const { name } = params(request, z.object({ name: z.string().min(1) }).strict()); const actor = actorFromRequest(request);
+    const input = parsedBody(request, backupDeleteInputSchema);
+    return deleteBackup(name, input.expectedFingerprint, () => {
+      assertAdmin(requireAuthorizationActor(actor));
+      recordAudit(actor, 'delete', 'backup', name, `删除数据库备份：${name}`);
+    });
   });
   app.post('/api/backups/restore', { preHandler: requireAdmin }, async (request) => {
-    const name = String(body(request).name || ''); const actor = actorFromRequest(request);
-    const result = await scheduleRestore(name);
-    recordAudit(actor, 'restore', 'backup', name, `恢复数据库备份：${name}；恢复前备份：${result.safetyBackupName}`);
-    return result;
+    const input = parsedBody(request, backupRestoreInputSchema); const actor = actorFromRequest(request);
+    return scheduleRestore(input.name, input.expectedFingerprint, (safetyBackup, replacement) => {
+      assertAdmin(requireAuthorizationActor(actor));
+      recordRestoreAudit(replacement, {
+        actorType: actor.type,
+        actorId: actor.id,
+        entityId: input.name,
+        summary: `恢复数据库备份：${input.name}；恢复前备份：${safetyBackup.name}`,
+      });
+    });
   });
 }

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { defaultAnalyticsLayout, type AnalyticsQueryResponse } from '../src/shared/analytics';
 import type { AuthorizationActor } from '../src/server/authorization';
 
@@ -15,6 +15,8 @@ process.env.SESSION_SECRET = 'performance-test-session-secret-more-than-32-chars
 let sqlite: import('better-sqlite3').Database;
 let getDashboard: (projectId?: string) => unknown;
 let getPeopleConcurrency: (filters?: { projectId?: string }) => unknown;
+let listRequirements: typeof import('../src/server/services/requirements').listRequirements;
+let getCancellationHistory: typeof import('../src/server/services/work-item-history').getCancellationHistory;
 let queryAnalytics: (input: unknown) => AnalyticsQueryResponse;
 let listActionItems: typeof import('../src/server/services/actions').listActionItems;
 let projectId = '';
@@ -23,6 +25,8 @@ beforeAll(async () => {
   const database = await import('../src/server/database');
   sqlite = database.sqlite;
   ({ getDashboard, getPeopleConcurrency } = await import('../src/server/services'));
+  ({ listRequirements } = await import('../src/server/services/requirements'));
+  ({ getCancellationHistory } = await import('../src/server/services/work-item-history'));
   ({ queryAnalytics } = await import('../src/server/analytics'));
   ({ listActionItems } = await import('../src/server/services/actions'));
   projectId = randomUUID();
@@ -93,6 +97,25 @@ describe('看板性能', () => {
     expect(maximumElapsed).toBeLessThan(3000);
   });
 
+  it('人员峰值按每个面板的时间策略独立取数', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-05T04:00:00.000Z'));
+    try {
+      const result = queryAnalytics({
+        projectId,
+        range: { from: '2025-01-01', to: '2025-01-10' },
+        panels: [
+          { id: 'people-past', title: '历史峰值', dataset: 'people', measure: 'peak_concurrency', visualization: 'kpi', size: 'small', timeScope: 'range' },
+          { id: 'people-future', title: '未来峰值', dataset: 'people', measure: 'peak_concurrency', visualization: 'kpi', size: 'small', timeScope: 'future30' },
+        ],
+      });
+      expect(result.results[0].rows[0].value).toBe(0);
+      expect(result.results[1].rows[0].value).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('行动中心在2秒内完成，且查询次数不随需求数量增长', () => {
     const actor: AuthorizationActor = {
       type: 'user', id: 'performance-admin', label: 'performance-admin',
@@ -111,6 +134,37 @@ describe('看板性能', () => {
       expect(result.total).toBeGreaterThan(0);
       expect(elapsed).toBeLessThan(2000);
       expect(prepareCount).toBeLessThanOrEqual(6);
+    } finally {
+      sqlite.prepare = originalPrepare as typeof sqlite.prepare;
+    }
+  });
+
+  it('需求批量读取和取消历史不会生成超过900个参数的IN查询', () => {
+    const now = new Date().toISOString();
+    const insertRequirement = sqlite.prepare(`INSERT INTO requirements
+      (id,project_id,title,status,planned_start,planned_end,progress,risk_level,accepted_at,created_at,updated_at)
+      VALUES (?, ?, ?, 'not_started', NULL, NULL, 0, 'low', NULL, ?, ?)`);
+    sqlite.transaction(() => {
+      for (let index = 0; index < 450; index += 1) {
+        insertRequirement.run(randomUUID(), projectId, `分块需求 ${index + 1}`, now, now);
+      }
+    })();
+
+    const originalPrepare = sqlite.prepare.bind(sqlite);
+    const parameterCounts: number[] = [];
+    sqlite.prepare = ((...args: Parameters<typeof sqlite.prepare>) => {
+      const sql = String(args[0]);
+      if (sql.includes(' IN (')) parameterCounts.push(sql.match(/\?/g)?.length || 0);
+      return originalPrepare(...args);
+    }) as typeof sqlite.prepare;
+    try {
+      expect(listRequirements({ projectId })).toHaveLength(950);
+      const requirementIds = Array.from({ length: 901 }, () => randomUUID());
+      const statuses = new Map(requirementIds.map((id) => [id, 'cancelled']));
+      const history = getCancellationHistory([], statuses, requirementIds);
+      expect(history.requirementDates.size).toBe(0);
+      expect(parameterCounts.filter((count) => count === 900).length).toBeGreaterThanOrEqual(3);
+      expect(Math.max(...parameterCounts)).toBeLessThanOrEqual(900);
     } finally {
       sqlite.prepare = originalPrepare as typeof sqlite.prepare;
     }

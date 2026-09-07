@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type Query } from "@tanstack/react-query";
 import {
   Archive,
   Clock3,
@@ -9,42 +9,84 @@ import {
   ShieldCheck,
   Trash2,
 } from "lucide-react";
-import { api, jsonBody } from "../api";
-import { useApp } from "../app-context";
+import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
+import { useSession, useUiActions } from "../app-context";
+import { invalidateAuditViews, invalidateSystemViews, keys } from "../query-keys";
+import { formatBytes, formatUptime, relativeTime } from "../format";
 import type {
   Backup,
   DatabaseIntegrityCheck,
   SystemBranding,
   SystemOverview,
 } from "../types";
-import { ConfirmDialog, EmptyState, Modal } from "../components/Modal";
+import { ConfirmDialog, Modal, useSynchronousPendingLock } from "../components/Modal";
+import { EmptyState, LoadingState } from "../components/Feedback";
 import { PageHeader } from "../components/PageHeader";
 import { BrandLogo, defaultBranding } from "../components/BrandLogo";
+import { useMinuteClock } from "../use-minute-clock";
+import { canonicalizeLabel } from "../../shared/search";
 
-function formatStorageSize(bytes = 0) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+type BrandingSaveInput = {
+  systemName: string;
+  shortName: string;
+  expectedUpdatedAt: string | null;
+  logoDataUrl?: string | null;
+};
+
+async function brandingMatchesInput(latest: SystemBranding, input: BrandingSaveInput) {
+  if (latest.systemName !== canonicalizeLabel(input.systemName)
+    || latest.shortName !== canonicalizeLabel(input.shortName)) return false;
+  if (!Object.prototype.hasOwnProperty.call(input, "logoDataUrl")) return true;
+  if (input.logoDataUrl === null) return latest.logoUrl === null;
+  if (!input.logoDataUrl || !latest.logoUrl) return false;
+  try {
+    const [expected, actual] = await Promise.all([
+      fetch(input.logoDataUrl).then((response) => response.arrayBuffer()),
+      fetch(latest.logoUrl, { cache: "no-store", credentials: "same-origin" }).then((response) => {
+        if (!response.ok) throw new Error("Logo读取失败");
+        return response.arrayBuffer();
+      }),
+    ]);
+    if (expected.byteLength !== actual.byteLength) return false;
+    const expectedBytes = new Uint8Array(expected);
+    const actualBytes = new Uint8Array(actual);
+    return expectedBytes.every((value, index) => value === actualBytes[index]);
+  } catch {
+    return false;
+  }
 }
 
-function formatUptime(seconds = 0) {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (days) return `${days}天${hours}小时`;
-  if (hours) return `${hours}小时${minutes}分钟`;
-  return `${Math.max(1, minutes)}分钟`;
+async function waitForServiceRestart(previousStartedAt: string | undefined, operationId: string, signal: AbortSignal) {
+  let baseline = previousStartedAt;
+  let disconnected = false;
+  const deadline = Date.now() + 60_000;
+  while (!signal.aborted && Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+    if (signal.aborted) return false;
+    try {
+      const response = await fetch(`/api/system/overview?restoreProbe=${Date.now()}`, {
+        cache: "no-store",
+        credentials: "same-origin",
+        signal,
+      });
+      if (response.status === 401 || response.status === 403) return true;
+      if (!response.ok) { disconnected = true; continue; }
+      const current = await response.json() as SystemOverview;
+      if (operationId && current.lastRestore?.operationId === operationId && current.lastRestore.outcome === 'rolled_back') return true;
+      if (!baseline) baseline = current.service.startedAt;
+      else if (disconnected || current.service.startedAt !== baseline) return true;
+    } catch (error) {
+      if (signal.aborted || error instanceof DOMException && error.name === "AbortError") return false;
+      disconnected = true;
+    }
+  }
+  return false;
 }
 
-function relativeTime(value: string | null) {
-  if (!value) return "尚未备份";
-  const difference = Date.now() - new Date(value).getTime();
-  if (difference < 60_000) return "刚刚";
-  if (difference < 3_600_000) return `${Math.floor(difference / 60_000)}分钟前`;
-  if (difference < 86_400_000) return `${Math.floor(difference / 3_600_000)}小时前`;
-  return `${Math.floor(difference / 86_400_000)}天前`;
-}
+type RestoreReloadProbe = { controller: AbortController; task: Promise<boolean> };
+let restoreReloadProbe: RestoreReloadProbe | null = null;
+const SYSTEM_REFRESH_INTERVAL_MS = 60_000;
+const BACKUP_OVERDUE_MS = 26 * 60 * 60 * 1000;
 
 function BrandingSettingsCard() {
   const client = useQueryClient();
@@ -52,32 +94,78 @@ function BrandingSettingsCard() {
   const [systemName, setSystemName] = useState(defaultBranding.systemName);
   const [shortName, setShortName] = useState(defaultBranding.shortName);
   const [logoDraft, setLogoDraft] = useState<string | null | undefined>(undefined);
+  const [baselineUpdatedAt, setBaselineUpdatedAt] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
   const [localError, setLocalError] = useState("");
+  const [saveNeedsRecheck, setSaveNeedsRecheck] = useState(false);
   const brandingQuery = useQuery({
-    queryKey: ["branding"],
-    queryFn: () => api<SystemBranding>("/api/branding"),
+    queryKey: keys.branding,
+    queryFn: ({ signal }) => api<SystemBranding>("/api/branding", { signal }),
   });
   const branding = brandingQuery.data ?? defaultBranding;
   useEffect(() => {
-    if (!brandingQuery.data) return;
+    if (!brandingQuery.data || dirty) return;
     setSystemName(brandingQuery.data.systemName);
     setShortName(brandingQuery.data.shortName);
     setLogoDraft(undefined);
-  }, [brandingQuery.data]);
+    setBaselineUpdatedAt(brandingQuery.data.updatedAt);
+  }, [brandingQuery.data, dirty]);
+  const stale = Boolean(dirty && brandingQuery.data && brandingQuery.data.updatedAt !== baselineUpdatedAt);
   const save = useMutation({
-    mutationFn: () => {
-      const payload: Record<string, unknown> = { systemName, shortName };
-      if (logoDraft !== undefined) payload.logoDataUrl = logoDraft;
-      return api<SystemBranding>("/api/system/branding", { method: "PUT", body: jsonBody(payload) });
+    mutationFn: (input: BrandingSaveInput) =>
+      api<SystemBranding>("/api/system/branding", { method: "PUT", body: jsonBody(input) }),
+    onMutate: async () => {
+      await client.cancelQueries({ queryKey: keys.branding, exact: true });
+      const query = client.getQueryCache().find({ queryKey: keys.branding, exact: true });
+      return { query, data: query?.state.data } as { query: Query | undefined; data: unknown };
     },
-    onSuccess: (result) => {
-      client.setQueryData(["branding"], result);
+    onSuccess: (result, _input, snapshot) => {
+      setSaveNeedsRecheck(false);
+      const currentQuery = client.getQueryCache().find({ queryKey: keys.branding, exact: true });
+      const ownsCache = Boolean(snapshot?.query && currentQuery === snapshot.query && currentQuery.state.data === snapshot.data);
+      const current = currentQuery?.state.data as SystemBranding | undefined;
+      if (ownsCache) client.setQueryData(keys.branding, result);
+      const displayed = ownsCache || !current ? result : current;
+      setSystemName(displayed.systemName);
+      setShortName(displayed.shortName);
+      setBaselineUpdatedAt(displayed.updatedAt);
+      invalidateAuditViews(client);
       setLogoDraft(undefined);
-      setMessage("品牌设置已保存");
+      setDirty(false);
+      setMessage(ownsCache ? "品牌设置已保存" : "保存已完成，并已显示服务器最新设置");
       setLocalError("");
+      void client.invalidateQueries({ queryKey: keys.branding });
+    },
+    onError: async (error, input) => {
+      if (isWriteOutcomeUnknown(error)) {
+        try {
+          const latest = await api<SystemBranding>("/api/branding", { readOnly: true });
+          client.setQueryData(keys.branding, latest);
+          if (await brandingMatchesInput(latest, input)) {
+            setSystemName(latest.systemName);
+            setShortName(latest.shortName);
+            setBaselineUpdatedAt(latest.updatedAt);
+            setLogoDraft(undefined);
+            setDirty(false);
+            setSaveNeedsRecheck(false);
+            setMessage("品牌设置已保存");
+            setLocalError("");
+            save.reset();
+            invalidateAuditViews(client);
+            void client.invalidateQueries({ queryKey: keys.branding });
+            return;
+          }
+        } catch {
+          // 保留原写入异常；品牌字段与 Logo 必须全部匹配才能确认保存成功。
+        }
+      }
+      if (!requiresWriteRecheck(error)) return;
+      setSaveNeedsRecheck(true);
+      void client.invalidateQueries({ queryKey: keys.branding });
     },
   });
+  const saveLock = useSynchronousPendingLock(save.isPending);
   const previewBranding: SystemBranding = {
     systemName: systemName.trim() || defaultBranding.systemName,
     shortName: shortName.trim() || defaultBranding.shortName,
@@ -96,86 +184,241 @@ function BrandingSettingsCard() {
       setLocalError("Logo文件不能超过512KB");
       return;
     }
+    setDirty(true);
     const reader = new FileReader();
     reader.onload = () => setLogoDraft(String(reader.result || ""));
     reader.onerror = () => setLocalError("Logo读取失败，请重新选择");
     reader.readAsDataURL(file);
   };
+  const loadLatestBranding = async () => {
+    const result = await brandingQuery.refetch();
+    if (result.error || !result.data) return;
+    setSystemName(result.data.systemName); setShortName(result.data.shortName);
+    setLogoDraft(undefined); setBaselineUpdatedAt(result.data.updatedAt); setDirty(false);
+    setSaveNeedsRecheck(false); setMessage(""); setLocalError(""); save.reset();
+  };
   return <article className="panel system-detail-panel system-branding-panel">
     <header><div><h2>品牌设置</h2><p>统一侧边栏、登录界面和浏览器标签的系统标识</p></div></header>
+    {brandingQuery.isLoading && !brandingQuery.data ? <LoadingState label="正在加载品牌设置…" className="stable-panel-state" />
+      : brandingQuery.error && !brandingQuery.data ? <EmptyState title="品牌设置加载失败" detail={brandingQuery.error.message || "暂时无法读取品牌设置，请稍后重试。"} action={<button className="ghost-button" disabled={brandingQuery.isFetching} onClick={() => void brandingQuery.refetch()}>重新加载</button>} /> : <>
+    {brandingQuery.error && <div className="warning-banner">品牌设置刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={brandingQuery.isFetching} onClick={() => void brandingQuery.refetch()}>重新加载</button></div>}
+    {saveNeedsRecheck ? <div className="warning-banner">保存结果需要核对，当前草稿不会再次提交。<button type="button" className="ghost-button" disabled={saveLock.busy || brandingQuery.isFetching} onClick={() => void loadLatestBranding()}>{brandingQuery.isFetching ? "读取中…" : "重新读取品牌设置"}</button></div>
+      : stale && <div className="warning-banner">服务器上的品牌设置已经更新，当前草稿保持不变。<button type="button" className="ghost-button" disabled={saveLock.busy || brandingQuery.isFetching} onClick={() => void loadLatestBranding()}>{brandingQuery.isFetching ? "读取中…" : "使用最新设置"}</button></div>}
     <div className="system-branding-content">
       <div className="system-branding-preview">
         <BrandLogo branding={previewBranding} />
         <div><strong>{previewBranding.systemName}</strong><span>展开与折叠状态使用同一Logo</span></div>
       </div>
-      <form className="system-branding-form" onSubmit={(event) => { event.preventDefault(); setMessage(""); setLocalError(""); save.mutate(); }}>
-        <label className="field"><span>系统名称</span><input value={systemName} maxLength={20} required onChange={(event) => setSystemName(event.target.value)} /></label>
-        <label className="field"><span>系统简称</span><input value={shortName} maxLength={4} required onChange={(event) => setShortName(event.target.value)} /></label>
+      <form className="system-branding-form" onSubmit={(event) => { event.preventDefault(); if (stale || saveNeedsRecheck) return; saveLock.run(() => { setMessage(""); setLocalError(""); save.mutate({ systemName, shortName, expectedUpdatedAt: baselineUpdatedAt, ...(logoDraft !== undefined ? { logoDataUrl: logoDraft } : {}) }); }); }}>
+        <label className="field"><span>系统名称</span><input value={systemName} maxLength={20} required disabled={saveLock.busy} onChange={(event) => { setSystemName(event.target.value); setDirty(true); setMessage(""); }} /></label>
+        <label className="field"><span>系统简称</span><input value={shortName} maxLength={4} required disabled={saveLock.busy} onChange={(event) => { setShortName(event.target.value); setDirty(true); setMessage(""); }} /></label>
         <div className="system-branding-logo-field">
           <span>系统Logo</span>
           <div>
             <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(event) => selectLogo(event.target.files?.[0])} />
-            <button type="button" className="ghost-button" onClick={() => fileRef.current?.click()}><ImagePlus size={15} />选择图片</button>
-            {previewBranding.logoUrl && <button type="button" className="ghost-button" onClick={() => { setLogoDraft(null); if (fileRef.current) fileRef.current.value = ""; }}>移除Logo</button>}
+            <button type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => fileRef.current?.click()}><ImagePlus size={15} />选择图片</button>
+            {previewBranding.logoUrl && <button type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => { setLogoDraft(null); setDirty(true); setMessage(""); if (fileRef.current) fileRef.current.value = ""; }}>移除Logo</button>}
           </div>
           <small>支持PNG、JPEG、WebP，最大512KB，建议使用正方形图片。</small>
         </div>
         {(localError || save.error) && <p className="form-error system-branding-feedback">{localError || save.error?.message}</p>}
         {message && <p className="system-operation-success system-branding-feedback"><ShieldCheck size={14} />{message}</p>}
         <div className="system-branding-actions">
-          <button type="button" className="ghost-button" onClick={() => { setSystemName(defaultBranding.systemName); setShortName(defaultBranding.shortName); setLogoDraft(null); setMessage(""); setLocalError(""); }}>恢复默认值</button>
-          <button className="primary-button" disabled={save.isPending || brandingQuery.isLoading}>{save.isPending ? "保存中…" : "保存品牌设置"}</button>
+          <button type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => { setSystemName(defaultBranding.systemName); setShortName(defaultBranding.shortName); setLogoDraft(null); setDirty(true); setMessage(""); setLocalError(""); }}>恢复默认值</button>
+          <button className="primary-button" disabled={saveLock.busy || brandingQuery.isLoading || stale || saveNeedsRecheck}>{saveLock.busy ? "保存中…" : "保存品牌设置"}</button>
         </div>
       </form>
     </div>
+    </>}
   </article>;
 }
 
 export function SystemPage() {
-  const { session, openLogin } = useApp();
+  const { session } = useSession();
+  const { openLogin } = useUiActions();
   const client = useQueryClient();
+  const now = useMinuteClock();
   const [restoreTarget, setRestoreTarget] = useState<Backup>();
   const [deleteTarget, setDeleteTarget] = useState<Backup>();
   const [feedback, setFeedback] = useState("");
+  const [backupNeedsRecheck, setBackupNeedsRecheck] = useState(false);
+  const [restoreNeedsRecheck, setRestoreNeedsRecheck] = useState(false);
+  const [deleteNeedsRecheck, setDeleteNeedsRecheck] = useState(false);
+  const [restoreWaitError, setRestoreWaitError] = useState("");
+  const [restoreWaitPending, setRestoreWaitPending] = useState(() => Boolean(restoreReloadProbe));
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    const activeProbe = restoreReloadProbe;
+    if (activeProbe) void activeProbe.task.then((restarted) => {
+      if (!mounted.current || activeProbe.controller.signal.aborted) return;
+      setRestoreWaitPending(false);
+      if (!restarted) setRestoreWaitError("服务未在60秒内恢复，请手动刷新页面确认状态。");
+    });
+    return () => { mounted.current = false; };
+  }, []);
   const overviewQuery = useQuery({
-    queryKey: ["system-overview"],
-    queryFn: () => api<SystemOverview>("/api/system/overview"),
+    queryKey: keys.systemOverview,
+    queryFn: ({ signal }) => api<SystemOverview>("/api/system/overview", { signal }),
     enabled: session.authenticated,
+    refetchInterval: SYSTEM_REFRESH_INTERVAL_MS,
+    refetchOnWindowFocus: true,
   });
   const backupsQuery = useQuery({
-    queryKey: ["backups"],
-    queryFn: () => api<Backup[]>("/api/backups"),
+    queryKey: keys.backups,
+    queryFn: ({ signal }) => api<Backup[]>("/api/backups", { signal }),
     enabled: session.authenticated,
+    refetchInterval: SYSTEM_REFRESH_INTERVAL_MS,
+    refetchOnWindowFocus: true,
   });
   const refreshSystemData = () => {
-    void client.invalidateQueries({ queryKey: ["backups"] });
-    void client.invalidateQueries({ queryKey: ["system-overview"] });
+    invalidateSystemViews(client);
+  };
+  const startRestoreWait = (operationId?: string) => {
+    setRestoreWaitError("");
+    restoreReloadProbe?.controller.abort();
+    const controller = new AbortController();
+    const probe: RestoreReloadProbe = {
+      controller,
+      task: waitForServiceRestart(overviewQuery.data?.service.startedAt, operationId || "", controller.signal),
+    };
+    restoreReloadProbe = probe;
+    setRestoreWaitPending(true);
+    void probe.task.then((restarted) => {
+      if (controller.signal.aborted) return;
+      if (restoreReloadProbe === probe) restoreReloadProbe = null;
+      if (restarted) window.location.reload();
+      else if (mounted.current) {
+        setRestoreWaitPending(false);
+        setRestoreWaitError("服务未在60秒内恢复，请手动刷新页面确认状态。");
+      }
+    });
   };
   const backup = useMutation({
     mutationFn: () => api<Backup>("/api/backups", { method: "POST" }),
     onSuccess: (result) => {
+      setBackupNeedsRecheck(false);
       setFeedback(`备份已创建：${result.name}`);
       refreshSystemData();
     },
+    onError: (error) => {
+      if (!requiresWriteRecheck(error)) return;
+      setBackupNeedsRecheck(true);
+      refreshSystemData();
+    },
   });
+  const backupLock = useSynchronousPendingLock(backup.isPending);
   const restore = useMutation({
-    mutationFn: (name: string) =>
-      api<{ ok: boolean; message: string; safetyBackupName: string }>("/api/backups/restore", { method: "POST", body: jsonBody({ name }) }),
-    onSuccess: (result) => setFeedback(result.message),
+    mutationFn: (backup: Backup) =>
+      api<{ ok: boolean; message: string; safetyBackupName: string; operationId: string }>("/api/backups/restore", {
+        method: "POST", body: jsonBody({ name: backup.name, expectedFingerprint: backup.fingerprint }),
+      }),
+    onSuccess: (result) => {
+      setRestoreNeedsRecheck(false);
+      setFeedback(result.message);
+      startRestoreWait(result.operationId);
+    },
+    onError: (error) => {
+      if (!requiresWriteRecheck(error)) return;
+      setRestoreNeedsRecheck(true);
+      refreshSystemData();
+      if (isWriteOutcomeUnknown(error)) {
+        setFeedback("恢复请求结果暂时无法确认，正在检测服务是否已重启。");
+        startRestoreWait();
+      }
+    },
   });
+  const restoreLock = useSynchronousPendingLock(restore.isPending);
   const deleteBackup = useMutation({
-    mutationFn: (name: string) => api(`/api/backups/${encodeURIComponent(name)}`, { method: "DELETE" }),
-    onSuccess: (_result, name) => {
+    mutationFn: (backup: Backup) => api(`/api/backups/${encodeURIComponent(backup.name)}`, {
+      method: "DELETE", body: jsonBody({ expectedFingerprint: backup.fingerprint }),
+    }),
+    onSuccess: (_result, backup) => {
+      setDeleteNeedsRecheck(false);
       setDeleteTarget(undefined);
-      setFeedback(`备份已删除：${name}`);
+      setFeedback(`备份已删除：${backup.name}`);
+      refreshSystemData();
+    },
+    onError: async (error, backup) => {
+      if (isWriteOutcomeUnknown(error)) {
+        try {
+          const latest = await api<Backup[]>("/api/backups", { readOnly: true });
+          client.setQueryData(keys.backups, latest);
+          if (!latest.some((item) => item.name === backup.name)) {
+            setDeleteNeedsRecheck(false);
+            setDeleteTarget(undefined);
+            setFeedback(`备份已删除：${backup.name}`);
+            deleteBackup.reset();
+            refreshSystemData();
+            return;
+          }
+        } catch {
+          // 保留原写入异常；目标文件仍存在或列表读取失败时不能确认删除成功。
+        }
+      }
+      if (!requiresWriteRecheck(error)) return;
+      setDeleteNeedsRecheck(true);
       refreshSystemData();
     },
   });
   const integrityCheck = useMutation({
-    mutationFn: () => api<DatabaseIntegrityCheck>("/api/system/database-check", { method: "POST" }),
+    mutationFn: () => api<DatabaseIntegrityCheck>("/api/system/database-check", { method: "POST", readOnly: true }),
   });
+  const integrityLock = useSynchronousPendingLock(integrityCheck.isPending);
+  const maintenanceBusy = backupLock.busy || restoreLock.busy || deleteBackup.isPending || restoreWaitPending;
+  const maintenanceStateUnverified = !overviewQuery.data || Boolean(overviewQuery.error) || Boolean(backupsQuery.error);
+  const maintenanceBlocked = maintenanceBusy || backupNeedsRecheck || restoreNeedsRecheck || deleteNeedsRecheck
+    || maintenanceStateUnverified || overviewQuery.data?.lastRestore?.outcome === 'pending';
+  const recheckBackups = async () => {
+    const result = await backupsQuery.refetch();
+    if (result.error || !result.data) return;
+    setBackupNeedsRecheck(false); setDeleteNeedsRecheck(false);
+    backup.reset(); deleteBackup.reset();
+    if (deleteTarget) {
+      const latest = result.data.find((item) => item.name === deleteTarget.name);
+      // 不把已确认的危险操作自动改绑到同名新文件；原文件确实消失时关闭确认。
+      if (!latest) setDeleteTarget(undefined);
+    }
+  };
+  const recheckRestore = async () => {
+    const result = await overviewQuery.refetch();
+    if (result.error || !result.data) return;
+    if (result.data.lastRestore?.outcome === 'pending') {
+      setRestoreNeedsRecheck(true);
+      restore.reset();
+      startRestoreWait(result.data.lastRestore.operationId);
+      return;
+    }
+    setRestoreNeedsRecheck(false);
+    restore.reset();
+  };
+  const clearMaintenanceFeedback = () => {
+    restoreReloadProbe?.controller.abort();
+    restoreReloadProbe = null;
+    setRestoreWaitPending(false);
+    setRestoreWaitError("");
+    setFeedback("");
+    setBackupNeedsRecheck(false); setRestoreNeedsRecheck(false); setDeleteNeedsRecheck(false);
+    backup.reset();
+    restore.reset();
+    deleteBackup.reset();
+  };
   const overview = overviewQuery.data;
   const backups = backupsQuery.data ?? [];
+  const latestRestoreTarget = restoreTarget && backupsQuery.data
+    ? backupsQuery.data.find((item) => item.name === restoreTarget.name)
+    : undefined;
+  const restoreTargetStale = Boolean(restoreTarget && backupsQuery.data
+    && (!latestRestoreTarget || latestRestoreTarget.fingerprint !== restoreTarget.fingerprint));
+  const latestDeleteTarget = deleteTarget && backupsQuery.data
+    ? backupsQuery.data.find((item) => item.name === deleteTarget.name)
+    : undefined;
+  const deleteTargetStale = Boolean(deleteTarget && backupsQuery.data
+    && (!latestDeleteTarget || latestDeleteTarget.fingerprint !== deleteTarget.fingerprint));
+  const startedAt = overview ? new Date(overview.service.startedAt).getTime() : Number.NaN;
+  const uptimeSeconds = Number.isFinite(startedAt) ? Math.max(0, Math.floor((now - startedAt) / 1000)) : overview?.service.uptimeSeconds;
+  const lastBackupAt = overview?.backups.lastCreatedAt ? new Date(overview.backups.lastCreatedAt).getTime() : Number.NaN;
+  const backupOverdue = Boolean(overview && (!Number.isFinite(lastBackupAt) || now - lastBackupAt > BACKUP_OVERDUE_MS));
   const operationError = backup.error || deleteBackup.error || restore.error;
   if (!session.authenticated)
     return (
@@ -199,22 +442,29 @@ export function SystemPage() {
       <PageHeader title="系统管理" />
       <div className="page-content">
         <div className="system-page">
+          {restoreWaitPending && !restoreTarget && <div className="warning-banner">数据库恢复已安排，服务重启后页面将自动刷新；其他维护操作暂不可用。</div>}
+          {restoreNeedsRecheck && !restoreTarget && !restoreWaitPending && !restoreWaitError && <div className="warning-banner">数据库恢复结果需要核对，其他维护操作暂不可用。<button type="button" className="ghost-button" disabled={overviewQuery.isFetching} onClick={() => void recheckRestore()}>{overviewQuery.isFetching ? "读取中…" : "重新读取系统状态"}</button></div>}
+          {restoreWaitError && !restoreTarget && <div className="warning-banner">{restoreWaitError}<button type="button" className="ghost-button" onClick={() => window.location.reload()}>立即刷新</button></div>}
+          {!restoreWaitPending && overview?.lastRestore?.outcome === 'succeeded' && <div className="system-operation-success"><ShieldCheck size={14} />最近一次数据库恢复已完成：{overview.lastRestore.backupName}（{new Date(overview.lastRestore.updatedAt).toLocaleString("zh-CN", { hour12: false })}）</div>}
+          {!restoreWaitPending && overview?.lastRestore?.outcome === 'rolled_back' && <div className="warning-banner">{overview.lastRestore.message}。目标备份：{overview.lastRestore.backupName}{overview.lastRestore.failedDatabase ? `；失败库已保留为 ${overview.lastRestore.failedDatabase}` : ""}</div>}
+          {!restoreWaitPending && overview?.lastRestore?.outcome === 'pending' && <div className="warning-banner">上次数据库恢复尚未确认结果，请检查服务日志后再执行新的恢复。</div>}
+          {overviewQuery.error && <div className="warning-banner">系统概览{overview ? "刷新" : "加载"}失败，{overview ? "当前展示的是上次成功结果，维护操作暂不可用。" : "运行状态未确认，维护操作暂不可用。"}<button className="ghost-button" disabled={overviewQuery.isFetching} onClick={() => void overviewQuery.refetch()}>重新加载</button></div>}
           <section className="system-overview-grid" aria-label="系统概览">
             <article className="system-overview-card system-overview-running">
               <ShieldCheck size={22} />
-              <div><span>运行状态</span><strong>{overview ? "运行正常" : overviewQuery.isLoading ? "读取中" : "状态未知"}</strong><small>{overview ? `已运行 ${formatUptime(overview.service.uptimeSeconds)}` : "等待系统响应"}</small></div>
+              <div><span>运行状态</span><strong>{overview ? "运行正常" : overviewQuery.isLoading ? "读取中" : "状态未知"}</strong><small>{overview ? `已运行 ${formatUptime(uptimeSeconds)}` : "等待系统响应"}</small></div>
             </article>
             <article className="system-overview-card">
               <DatabaseBackup size={22} />
-              <div><span>数据库大小</span><strong>{overview ? formatStorageSize(overview.database.totalSizeBytes) : "—"}</strong><small>{overview ? `${overview.database.journalMode} 模式` : "包含数据库运行文件"}</small></div>
+              <div><span>数据库大小</span><strong>{overview ? formatBytes(overview.database.totalSizeBytes) : "—"}</strong><small>{overview ? `${overview.database.journalMode} 模式` : "包含数据库运行文件"}</small></div>
             </article>
-            <article className={`system-overview-card ${overview?.backups.overdue ? "system-overview-warning" : ""}`}>
+            <article className={`system-overview-card ${backupOverdue ? "system-overview-warning" : ""}`}>
               <Clock3 size={22} />
-              <div><span>最近备份</span><strong>{relativeTime(overview?.backups.lastCreatedAt ?? null)}</strong><small>{overview?.backups.overdue ? "已超过安全备份周期" : overview?.backups.lastCreatedAt ? new Date(overview.backups.lastCreatedAt).toLocaleString("zh-CN", { hour12: false }) : "请立即创建首份备份"}</small></div>
+              <div><span>最近备份</span><strong>{relativeTime(overview?.backups.lastCreatedAt ?? null, "尚未备份", now)}</strong><small>{backupOverdue ? "已超过安全备份周期" : overview?.backups.lastCreatedAt ? new Date(overview.backups.lastCreatedAt).toLocaleString("zh-CN", { hour12: false }) : "请立即创建首份备份"}</small></div>
             </article>
             <article className="system-overview-card">
               <Archive size={22} />
-              <div><span>备份空间</span><strong>{overview ? `${overview.backups.count} 份 · ${formatStorageSize(overview.backups.totalSizeBytes)}` : "—"}</strong><small>{overview ? `保留 ${overview.backups.retentionDays} 天，最多 ${overview.backups.maxCount} 份` : "读取备份策略"}</small></div>
+              <div><span>备份空间</span><strong>{overview ? `${overview.backups.count} 份 · ${formatBytes(overview.backups.totalSizeBytes)}` : "—"}</strong><small>{overview ? overview.backups.restorableCount < overview.backups.count ? `${overview.backups.restorableCount} 份可恢复，请检查异常文件` : `保留 ${overview.backups.retentionDays} 天，最多 ${overview.backups.maxCount} 份` : "读取备份策略"}</small></div>
             </article>
           </section>
 
@@ -226,11 +476,11 @@ export function SystemPage() {
             </div>
             <button
               className="primary-button"
-              disabled={backup.isPending}
-              onClick={() => { setFeedback(""); backup.mutate(); }}
+              disabled={maintenanceBlocked}
+              onClick={() => backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(); })}
             >
               <DatabaseBackup size={15} />
-              {backup.isPending ? "正在备份…" : "立即备份"}
+              {backupLock.busy ? "正在备份…" : "立即备份"}
             </button>
           </header>
           <div className="system-backup-policy">
@@ -238,25 +488,28 @@ export function SystemPage() {
             <span>下次自动备份 <strong>{overview ? new Date(overview.backups.nextScheduledAt).toLocaleString("zh-CN", { hour12: false }) : "—"}</strong></span>
             {feedback && <span className="system-operation-success"><ShieldCheck size={14} />{feedback}</span>}
             {operationError && <span className="system-operation-error">{operationError.message}</span>}
+            {(backupNeedsRecheck || deleteNeedsRecheck) && <button type="button" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void recheckBackups()}>{backupsQuery.isFetching ? "读取中…" : "重新读取备份列表"}</button>}
           </div>
           <div className="system-backup-table-wrap">
-            <table className="system-backup-table">
+            {backupsQuery.error && backupsQuery.data && <div className="warning-banner">备份列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void backupsQuery.refetch()}>重新加载</button></div>}
+            {backupsQuery.data && <table className="system-backup-table">
               <thead><tr><th>备份时间</th><th>文件名</th><th>大小</th><th>距今</th><th>操作</th></tr></thead>
               <tbody>
                 {backups.map((item) => <tr key={item.name}>
                   <td>{new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false })}</td>
-                  <td><strong title={item.name}>{item.name}</strong></td>
-                  <td>{formatStorageSize(item.size)}</td>
-                  <td>{relativeTime(item.createdAt)}</td>
+                  <td><strong title={item.name}>{item.name}</strong>{item.restorable === false && <small className="system-backup-file-error" title={item.validationError ?? undefined}>不可恢复：{item.validationError || "文件校验失败"}</small>}</td>
+                  <td>{formatBytes(item.size)}</td>
+                  <td>{relativeTime(item.createdAt, "尚未备份", now)}</td>
                   <td><div className="system-backup-actions">
-                    <button className="inline-action-button" disabled={restore.isPending} onClick={() => { setFeedback(""); setRestoreTarget(item); }}><RefreshCcw size={14} />恢复</button>
-                    <button className="inline-action-button danger" disabled={deleteBackup.isPending && deleteBackup.variables === item.name} onClick={() => { deleteBackup.reset(); setDeleteTarget(item); }}><Trash2 size={14} />{deleteBackup.isPending && deleteBackup.variables === item.name ? "删除中" : "删除"}</button>
+                    <button className="inline-action-button" disabled={maintenanceBlocked || item.restorable === false} title={item.restorable === false ? item.validationError || "该文件不能恢复" : undefined} onClick={() => { clearMaintenanceFeedback(); setRestoreTarget(item); }}><RefreshCcw size={14} />恢复</button>
+                    <button className="inline-action-button danger" disabled={maintenanceBlocked} onClick={() => { clearMaintenanceFeedback(); setDeleteTarget(item); }}><Trash2 size={14} />{deleteBackup.isPending && deleteBackup.variables?.name === item.name ? "删除中" : "删除"}</button>
                   </div></td>
                 </tr>)}
               </tbody>
-            </table>
-            {backupsQuery.isLoading && <div className="system-table-state">正在读取备份…</div>}
-            {!backupsQuery.isLoading && !backups.length && <EmptyState title="暂无备份" detail="可立即创建第一份备份。" />}
+            </table>}
+            {backupsQuery.isLoading && !backupsQuery.data && <LoadingState className="system-table-state" label="正在读取备份…" />}
+            {backupsQuery.error && !backupsQuery.data && <EmptyState title="备份列表加载失败" detail={backupsQuery.error.message || "暂时无法读取备份，请稍后重试。"} action={<button className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void backupsQuery.refetch()}>重新加载</button>} />}
+            {backupsQuery.data && !backups.length && <EmptyState title="暂无备份" detail="可立即创建第一份备份。" />}
           </div>
           </article>
 
@@ -275,7 +528,7 @@ export function SystemPage() {
               </div>
             </article>
             <article className="panel system-detail-panel system-check-panel">
-              <header><div><h2>数据库健康检查</h2><p>检查SQLite结构和数据页，不修改业务数据</p></div><button className="ghost-button" disabled={integrityCheck.isPending} onClick={() => integrityCheck.mutate()}><ShieldCheck size={15} />{integrityCheck.isPending ? "检查中…" : "立即检查"}</button></header>
+              <header><div><h2>数据库健康检查</h2><p>检查SQLite结构和数据页，不修改业务数据</p></div><button className="ghost-button" disabled={integrityLock.busy} onClick={() => integrityLock.run(() => integrityCheck.mutate())}><ShieldCheck size={15} />{integrityLock.busy ? "检查中…" : "立即检查"}</button></header>
               <div className="system-check-content">
                 <div className={`system-check-state ${integrityCheck.data ? integrityCheck.data.ok ? "is-success" : "is-error" : ""}`}>
                   <ShieldCheck size={30} />
@@ -289,16 +542,21 @@ export function SystemPage() {
           </section>
         </div>
 
-        {restoreTarget && <Modal title="恢复数据库备份" width={600} closable={!restore.isPending} onClose={() => { if (!restore.isPending) setRestoreTarget(undefined); }}>
+        {restoreTarget && <Modal title="恢复数据库备份" width={600} closable={!restoreLock.busy && !restore.data} onClose={() => { if (restoreLock.canClose() && !restore.data) setRestoreTarget(undefined); }}>
           <div className="system-restore-dialog">
             <div className="system-restore-warning"><RefreshCcw size={22} /><div><strong>恢复后当前数据库将被替换</strong><p>系统会先校验目标备份并自动备份当前数据，然后重启服务。</p></div></div>
-            <dl><div><dt>备份文件</dt><dd title={restoreTarget.name}>{restoreTarget.name}</dd></div><div><dt>备份时间</dt><dd>{new Date(restoreTarget.createdAt).toLocaleString("zh-CN", { hour12: false })}</dd></div><div><dt>文件大小</dt><dd>{formatStorageSize(restoreTarget.size)}</dd></div></dl>
+            <dl><div><dt>备份文件</dt><dd title={restoreTarget.name}>{restoreTarget.name}</dd></div><div><dt>备份时间</dt><dd>{new Date(restoreTarget.createdAt).toLocaleString("zh-CN", { hour12: false })}</dd></div><div><dt>文件大小</dt><dd>{formatBytes(restoreTarget.size)}</dd></div></dl>
+            {restoreTargetStale && <p className="form-error" role="alert">备份文件已被后台删除或替换，请关闭窗口并从最新列表重新选择。</p>}
+            {backupsQuery.error && <div className="warning-banner" role="alert">备份列表刷新失败，当前文件状态未确认。<button type="button" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void recheckBackups()}>{backupsQuery.isFetching ? "读取中…" : "重新读取备份列表"}</button></div>}
             {restore.error && <p className="form-error">{restore.error.message}</p>}
+            {restoreNeedsRecheck && <div className="warning-banner">恢复结果需要核对，当前备份不会再次提交。{!restoreWaitPending && <button type="button" className="ghost-button" disabled={overviewQuery.isFetching} onClick={() => void recheckRestore()}>{overviewQuery.isFetching ? "读取中…" : "重新读取系统状态"}</button>}</div>}
             {restore.data && <p className="system-operation-success"><ShieldCheck size={14} />{restore.data.message}</p>}
-            <div className="form-actions"><button className="ghost-button" disabled={restore.isPending} onClick={() => setRestoreTarget(undefined)}>取消</button><button className="primary-button" disabled={restore.isPending || Boolean(restore.data)} onClick={() => restore.mutate(restoreTarget.name)}><RefreshCcw size={15} />{restore.isPending ? "正在校验并备份…" : restore.data ? "等待服务重启" : "确认恢复"}</button></div>
+            {restore.data && !restoreWaitError && <p>服务恢复后页面会自动刷新并重新校验当前账号权限。</p>}
+            {restoreWaitError && <p className="form-error">{restoreWaitError} <button type="button" className="ghost-button" onClick={() => window.location.reload()}>立即刷新</button></p>}
+            <div className="form-actions"><button className="ghost-button" disabled={restoreLock.busy || Boolean(restore.data)} onClick={() => { if (restoreLock.canClose() && !restore.data) setRestoreTarget(undefined); }}>取消</button><button className="primary-button" disabled={maintenanceBlocked || restoreTargetStale || Boolean(restore.data)} onClick={() => { if (maintenanceBlocked || restoreTargetStale || restore.data) return; restoreLock.run(() => restore.mutate(restoreTarget)); }}><RefreshCcw size={15} />{restoreLock.busy ? "正在校验并备份…" : restore.data ? "等待服务重启" : restoreNeedsRecheck ? "等待核对" : "确认恢复"}</button></div>
           </div>
         </Modal>}
-        {deleteTarget && <ConfirmDialog title="删除数据库备份" description={<>备份“<strong>{deleteTarget.name}</strong>”将被永久删除，删除后无法用于数据库恢复。</>} confirmLabel="永久删除" pendingLabel="删除中…" danger pending={deleteBackup.isPending} error={deleteBackup.error?.message} onClose={() => setDeleteTarget(undefined)} onConfirm={() => deleteBackup.mutate(deleteTarget.name)} />}
+        {deleteTarget && <ConfirmDialog title="删除数据库备份" description={<><p>备份“<strong>{deleteTarget.name}</strong>”将被永久删除，删除后无法用于数据库恢复。</p>{deleteTargetStale && <p className="form-error" role="alert">备份文件已被后台删除或替换，请关闭窗口并从最新列表重新选择。</p>}{(backupsQuery.error || deleteNeedsRecheck) && <div className="warning-banner" role="alert">{backupsQuery.error ? "备份列表刷新失败，当前文件状态未确认。" : "删除结果需要核对，当前备份不会再次提交。"}<button type="button" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void recheckBackups()}>{backupsQuery.isFetching ? "读取中…" : "重新读取备份列表"}</button></div>}</>} confirmLabel="永久删除" pendingLabel="删除中…" danger pending={deleteBackup.isPending} disabled={maintenanceBlocked || deleteTargetStale} error={deleteBackup.error?.message} onClose={() => setDeleteTarget(undefined)} onConfirm={() => { if (!maintenanceBlocked && !deleteTargetStale) deleteBackup.mutate(deleteTarget); }} />}
       </div>
     </>
   );

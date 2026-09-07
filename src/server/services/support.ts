@@ -16,12 +16,36 @@ export function row<T = JsonObject>(sql: string, ...params: unknown[]): T | unde
   return sqlite.prepare(sql).get(...params) as T | undefined;
 }
 
+/** Keep generated IN clauses below SQLite's parameter limit, including older builds that default to 999. */
+export function chunkValues<T>(values: readonly T[], size = 900): T[][] {
+  const chunks: T[][] = [];
+  for (let offset = 0; offset < values.length; offset += size) chunks.push(values.slice(offset, offset + size));
+  return chunks;
+}
+
 export function assertExpectedVersion(input: JsonObject, currentVersion: number) {
   if (input.expectedVersion === undefined || input.expectedVersion === null || input.expectedVersion === '') fail('缺少expectedVersion，请刷新数据后重试');
   const expected = Number(input.expectedVersion);
   if (!Number.isInteger(expected) || expected < 1) fail('数据版本不合法');
   if (expected !== currentVersion) fail('数据已被其他用户修改，请刷新后重试', 'STALE_WRITE', 409, undefined, currentVersion);
   return expected;
+}
+
+export function assertVersionedWrite(result: { changes: number }, subject = '数据') {
+  if (!result.changes) fail(`${subject}已被其他用户修改，请刷新后重试`, 'STALE_WRITE', 409);
+}
+
+export function assertExpectedUpdatedAt(input: JsonObject, currentUpdatedAt: string, subject = '数据') {
+  if (input.expectedUpdatedAt === undefined) return;
+  if (typeof input.expectedUpdatedAt !== 'string' || input.expectedUpdatedAt !== currentUpdatedAt) {
+    fail(`${subject}已被其他用户修改，请重新打开后再保存`, 'STALE_WRITE', 409, { currentUpdatedAt });
+  }
+}
+
+export function nextUpdatedAt(currentUpdatedAt: string) {
+  const current = Date.parse(currentUpdatedAt);
+  const now = Date.now();
+  return new Date(Number.isFinite(current) ? Math.max(now, current + 1) : now).toISOString();
 }
 
 export function assertTransition(current: string, allowed: readonly string[], action: string) {

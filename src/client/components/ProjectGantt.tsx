@@ -1,14 +1,16 @@
 import { useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import { CircleAlert, LocateFixed, RotateCcw } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { ArrowRight, CircleAlert, LocateFixed, RotateCcw } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { priorityLabels, requirementStatusLabels, riskLabels, signedProgressVariance, todayIso } from "../../shared/domain";
 import { matchesSearch, searchScore } from "../../shared/search";
 import type { Requirement } from "../types";
-import { EmptyState } from "./Modal";
+import { progressUpdateDisplayValue } from "../progress-trend";
+import { EmptyState } from "./Feedback";
 import { useGanttTooltip } from "./GanttTooltip";
 import { ResizablePanel } from "./ResizablePanel";
 import { SearchInput } from "./SearchInput";
+import { WorkdayCalendarNotice } from "./WorkdayCalendarNotice";
 import {
   buildBusinessDayTimeline,
   GanttMilestoneMarker,
@@ -100,6 +102,9 @@ function activeRiskClass(requirement: Requirement) {
 }
 
 function requirementActualRange(requirement: Requirement, asOfDate: string) {
+  if (requirement.actualStart !== undefined || requirement.actualEnd !== undefined) {
+    return { start: requirement.actualStart || null, end: requirement.actualEnd || null };
+  }
   const starts = requirement.workItems.map((item) => item.actualStart).filter(Boolean) as string[];
   if (!starts.length) return { start: null, end: null };
   const start = starts.sort()[0];
@@ -128,7 +133,7 @@ function RequirementPopover({ requirement, asOfDate }: { requirement: Requiremen
         ? <span className={`risk-badge risk-${requirement.riskLevel}`}>{risk}</span>
         : <span className="risk-badge risk-pending">待评估</span>)}
       {Boolean(requirement.issueSummary?.active) && <span className={requirement.issueSummary?.overdue ? "gantt-issue-summary overdue" : "gantt-issue-summary"}>问题 {requirement.issueSummary?.active}{requirement.issueSummary?.overdue ? ` · 逾期 ${requirement.issueSummary.overdue}` : ""}</span>}
-      {requirement.delayed && <em>延期 +{Math.max(1, requirement.finishVariance)}天</em>}
+      {requirement.delayed && <em>延期 +{Math.max(1, requirement.finishVariance)}个工作日</em>}
     </div>
     <dl className="gantt-popover-metrics">
       <div><dt>计划周期</dt><dd>{dateLabel(requirement.plannedStart)} — {dateLabel(requirement.plannedEnd)}</dd></div>
@@ -145,7 +150,7 @@ function RequirementPopover({ requirement, asOfDate }: { requirement: Requiremen
     <section className="gantt-popover-updates">
       <h4>近期进展{updates.length ? `（${updates.length}）` : ""}</h4>
       {updates.map((update) => {
-        const displayedPercent = update.workItemId ? update.workItemPercent : update.percent;
+        const displayedPercent = progressUpdateDisplayValue(update);
         return <article key={update.id}>
           <time>{new Date(update.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</time>
           <div>{update.workItemTitle && <b>{update.workItemTitle}</b>}<p>{update.content}</p></div>
@@ -154,6 +159,9 @@ function RequirementPopover({ requirement, asOfDate }: { requirement: Requiremen
       })}
       {!updates.length && <p className="gantt-popover-empty">暂无进展记录</p>}
     </section>
+    <footer className="gantt-popover-footer">
+      <Link to={`/requirements/${requirement.id}`}>查看需求详情<ArrowRight size={13} /></Link>
+    </footer>
   </>;
 }
 
@@ -173,7 +181,14 @@ export function ProjectGantt({
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const ganttTooltip = useGanttTooltip();
-  const [zoom, setZoom] = useState<GanttZoom>("day");
+  const [zoom, setZoom] = useState<GanttZoom>(() => {
+    const stored = window.localStorage.getItem(`project-manage:gantt-zoom:${resizeStorageKey}`);
+    return stored && stored in ganttZoomOptions ? stored as GanttZoom : "day";
+  });
+  const changeZoom = (key: GanttZoom) => {
+    setZoom(key);
+    window.localStorage.setItem(`project-manage:gantt-zoom:${resizeStorageKey}`, key);
+  };
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
@@ -236,8 +251,8 @@ export function ProjectGantt({
         values.push(requirement.plannedStart, requirement.plannedEnd, requirement.effectiveEnd);
       }
     });
-    return buildBusinessDayTimeline(values, zoom);
-  }, [projectEnd, projectStart, requirements, zoom]);
+    return buildBusinessDayTimeline(values, zoom, asOfDate);
+  }, [asOfDate, projectEnd, projectStart, requirements, zoom]);
 
   const timelineWidth = range.days * option.cellWidth;
   const dates = range.dates;
@@ -277,13 +292,14 @@ export function ProjectGantt({
           </button>
           <div className="view-tabs" aria-label="时间粒度">
             {(Object.keys(ganttZoomOptions) as GanttZoom[]).map((key) => (
-              <button key={key} className={zoom === key ? "active" : ""} onClick={() => setZoom(key)}>
+              <button key={key} className={zoom === key ? "active" : ""} onClick={() => changeZoom(key)}>
                 {ganttZoomOptions[key].label}
               </button>
             ))}
           </div>
         </div>
       </header>
+      <WorkdayCalendarNotice values={[format(range.start, "yyyy-MM-dd"), format(range.end, "yyyy-MM-dd")]} className="gantt-calendar-notice" />
       <div className="gantt-filter-bar" aria-label="项目进展筛选">
         <SearchInput className="gantt-filter-search" value={search} onChange={setSearch} placeholder="搜索需求、工作项或拼音" />
         <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="按状态筛选">
@@ -358,7 +374,7 @@ export function ProjectGantt({
                         {!isClosedRequirement(requirement) && (requirement.riskEvaluated
                           ? healthLabel && <span className={`gantt-risk-chip ${healthClass}`}>{healthLabel}</span>
                           : <span className="gantt-risk-chip pending">待评估</span>)}
-                        {requirement.delayed && <em>延期 {Math.max(1, requirement.finishVariance)} 天</em>}
+                        {requirement.delayed && <em>延期 {Math.max(1, requirement.finishVariance)} 个工作日</em>}
                         {Boolean(requirement.issueSummary?.active) && (
                           <button
                             className={requirement.issueSummary?.overdue ? "gantt-issue-link overdue" : "gantt-issue-link"}

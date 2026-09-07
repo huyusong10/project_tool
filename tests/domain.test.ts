@@ -2,16 +2,22 @@ import { describe, expect, it } from 'vitest';
 import {
   addBusinessDays, businessDateFromDateTime, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
   deriveRequirementScheduleRange, deriveWorkItemStatus, ganttProgressDisplay, issueActionsByStatus, plannedDatesFromOffset, plannedStartFromDeadline, requirementActionsByStatus, riskLevelFromProgressGap, signedProgressVariance, workItemActionsByStatus, workItemPlannedProgress,
-  isOverdueByWorkday,
+  isOverdueByWorkday, startOfWeekIso,
 } from '../src/shared/domain';
-import { isBusinessDay, isValidIsoDate } from '../src/shared/workday';
-import { isoDateSchema, peopleConcurrencyInputSchema, reorderWorkItemsInputSchema, templateInputSchema } from '../src/shared/contracts';
+import { hasWorkdayCalendarFallback, isBusinessDay, isValidIsoDate } from '../src/shared/workday';
+import { isoDateSchema, issueInputSchema, peopleConcurrencyInputSchema, reorderWorkItemsInputSchema, templateInputSchema } from '../src/shared/contracts';
+import { analyticsCatalog } from '../src/shared/analytics';
 
 describe('工作日、排期与Gap规则', () => {
   it('排除周末并按偏移和工期生成计划', () => {
     expect(businessDaysInclusive('2026-09-04', '2026-09-07')).toBe(2);
     expect(businessDayDelta('2026-09-04', '2026-09-07')).toBe(1);
     expect(plannedDatesFromOffset('2026-09-04', 1, 3)).toEqual({ plannedStart: '2026-09-07', plannedEnd: '2026-09-09' });
+  });
+
+  it('按纯业务日期计算周一，不受运行时区影响', () => {
+    expect(startOfWeekIso('2026-09-04')).toBe('2026-08-31');
+    expect(startOfWeekIso('2026-09-06')).toBe('2026-08-31');
   });
 
   it('按流程最晚结束偏移从截止日期倒排开始日期', () => {
@@ -31,6 +37,8 @@ describe('工作日、排期与Gap规则', () => {
     expect(plannedDatesFromOffset('2026-02-13', 1, 2)).toEqual({ plannedStart: '2026-02-14', plannedEnd: '2026-02-24' });
     expect(plannedStartFromDeadline('2026-02-24', [{ startOffsetDays: 0, durationDays: 2 }])).toBe('2026-02-14');
     expect(isBusinessDay('2027-02-15')).toBe(true);
+    expect(hasWorkdayCalendarFallback(['2026-12-31'])).toBe(false);
+    expect(hasWorkdayCalendarFallback(['2026-12-31', '2027-01-01'])).toBe(true);
   });
 
   it('拒绝不存在的自然日，并按工作日判断是否逾期', () => {
@@ -56,6 +64,12 @@ describe('工作日、排期与Gap规则', () => {
     expect(reorderWorkItemsInputSchema.safeParse({ ids: ['a', 'a'], expectedVersion: 1 }).success).toBe(false);
   });
 
+  it('问题输入契约声明范围标识和发现日期', () => {
+    expect(issueInputSchema.keyof().options).toEqual(expect.arrayContaining(['sourceRef', 'discoveredAt']));
+    expect(issueInputSchema.safeParse({ sourceRef: 'DCIM-36', discoveredAt: '2026-09-05' }).success).toBe(true);
+    expect(issueInputSchema.safeParse({ discoveredAt: '2026-02-31' }).success).toBe(false);
+  });
+
   it('计算并排计划和实际的完成及耗时偏差', () => {
     const gap = calculateWorkItemGap({ status: 'completed', plannedStart: '2026-09-01', plannedEnd: '2026-09-04', actualStart: '2026-09-01', actualEnd: '2026-09-08' });
     expect(gap.planDuration).toBe(4);
@@ -66,6 +80,13 @@ describe('工作日、排期与Gap规则', () => {
 });
 
 describe('自动状态、进度和风险', () => {
+  it('分析筛选分别使用完整的需求和工作项状态', () => {
+    const statuses = (dataset: string) => analyticsCatalog.datasets.find((item) => item.id === dataset)!
+      .filters.find((filter) => filter.id === 'status')!.options.map((option) => option.value);
+    expect(statuses('requirements')).toEqual(['planning', 'not_started', 'in_progress', 'blocked', 'pending_acceptance', 'completed', 'cancelled']);
+    expect(statuses('work_items')).toEqual(['not_started', 'in_progress', 'blocked', 'completed', 'cancelled']);
+  });
+
   it('集中声明工作项、需求和问题的状态操作入口', () => {
     expect(workItemActionsByStatus.in_progress).toEqual(['progress', 'block', 'complete', 'cancel']);
     expect(workItemActionsByStatus.completed).toEqual(['reopen', 'correct']);

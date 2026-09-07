@@ -1,0 +1,215 @@
+import { expect, test, type Page, type Route } from '@playwright/test';
+import type { Archives } from '../../src/client/types';
+
+const archivedRequirement = {
+  id: 'r1', title: '历史需求', deletedAt: '2026-09-04T10:00:00.000Z',
+  workItemCount: 2, progressCount: 3, linkedIssueCount: 0,
+};
+const archivedPerson = {
+  id: 'u1', title: '历史成员', jobTitle: '测试工程师', deletedAt: '2026-09-04T09:00:00.000Z',
+};
+
+async function mockArchiveCenter(page: Page, content: Archives = { projects: [], requirements: [archivedRequirement], people: [], templates: [] }) {
+  let cleared = false;
+  let loadFailure = false;
+  await page.route('**/api/**', async (route: Route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    const json = (value: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
+    if (pathname === '/api/branding') return json({ systemName: '项目管理', shortName: 'PM', logoUrl: null, updatedAt: null });
+    if (pathname === '/api/session') return json({ authenticated: true, accountId: 'admin', username: 'admin', role: 'admin', globalRole: 'admin', personId: null, mustChangePassword: false, managedProjectIds: [] });
+    if (pathname === '/api/projects') return json([]);
+    if (pathname === '/api/archives') return loadFailure
+      ? json({ error: '归档列表暂不可用' }, 503)
+      : json(cleared ? { projects: [], requirements: [], people: [], templates: [] } : content);
+    return json({});
+  });
+  return {
+    clear: () => { cleared = true; },
+    failLoad: () => { loadFailure = true; },
+    recoverLoad: () => { loadFailure = false; },
+  };
+}
+
+test('归档列表失败时显示错误并可重新加载', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-1080p', '错误态只需在一个桌面视口执行');
+  const state = await mockArchiveCenter(page);
+  state.failLoad();
+  await page.goto('/archives');
+  await expect(page.getByText('归档列表加载失败', { exact: true })).toBeVisible();
+  await expect(page.getByText('归档列表暂不可用', { exact: true })).toBeVisible();
+  await expect(page.getByText('没有符合条件的归档内容', { exact: true })).toHaveCount(0);
+  state.recoverLoad();
+  await page.getByRole('button', { name: '重新加载', exact: true }).click();
+  await expect(page.getByText('历史需求', { exact: true })).toBeVisible();
+});
+
+test('归档恢复连点只提交一次，请求期间锁定当前操作', async ({ page }) => {
+  const state = await mockArchiveCenter(page);
+  let requests = 0;
+  const payloads: Array<Record<string, unknown>> = [];
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/api/requirements/r1/restore', async (route) => {
+    requests++;
+    payloads.push(route.request().postDataJSON());
+    await pending;
+    if (requests > 1) return route.fulfill({ status: 404, json: { error: '归档需求不存在' } });
+    state.clear();
+    return route.fulfill({ json: { id: 'r1', title: '历史需求', version: 4 } });
+  });
+  try {
+    await page.goto('/archives');
+    const restore = page.getByRole('button', { name: '恢复' });
+    await restore.dblclick();
+    await expect.poll(() => requests).toBe(1);
+    expect(payloads).toEqual([{ expectedDeletedAt: archivedRequirement.deletedAt }]);
+    await expect(restore).toBeDisabled();
+    await expect(restore).toContainText('恢复中');
+    release();
+    await expect(restore).toHaveCount(0);
+    await expect(page.getByText('归档需求不存在')).toHaveCount(0);
+  } finally { release(); }
+});
+
+test('归档恢复已落库但响应异常时重读列表并移除旧归档项', async ({ page }) => {
+  const state = await mockArchiveCenter(page);
+  let requests = 0;
+  await page.route('**/api/requirements/r1/restore', (route) => {
+    requests += 1;
+    state.clear();
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/archives');
+  await page.getByRole('button', { name: '恢复', exact: true }).click();
+  await expect(page.getByText('历史需求', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('已核对最新状态：内容已移出归档列表', { exact: true })).toBeVisible();
+  expect(requests).toBe(1);
+});
+
+test('需求永久删除连点只提交一次', async ({ page }) => {
+  const state = await mockArchiveCenter(page);
+  let requests = 0;
+  const payloads: unknown[] = [];
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/api/archives/requirements/r1', async (route) => {
+    requests++;
+    payloads.push(route.request().postDataJSON());
+    await pending;
+    if (requests > 1) return route.fulfill({ status: 404, json: { error: '归档需求不存在' } });
+    state.clear();
+    return route.fulfill({ json: { ok: true } });
+  });
+  try {
+    await page.goto('/archives');
+    await page.locator('tr').filter({ hasText: '历史需求' }).getByRole('button', { name: '删除' }).click();
+    const dialog = page.getByRole('dialog', { name: '永久删除需求' });
+    await dialog.getByRole('textbox').fill('历史需求');
+    const confirm = dialog.getByRole('button', { name: '永久删除' });
+    await confirm.dblclick();
+    await expect.poll(() => requests).toBe(1);
+    expect(payloads).toEqual([{ confirmName: '历史需求', expectedDeletedAt: archivedRequirement.deletedAt }]);
+    await expect(dialog.getByRole('button', { name: '处理中…', exact: true })).toBeDisabled();
+    release();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByText('归档需求不存在')).toHaveCount(0);
+  } finally { release(); }
+});
+
+test('需求永久删除提交同一事件周期内不能被 Escape 关闭', async ({ page }) => {
+  const state = await mockArchiveCenter(page);
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/api/archives/requirements/r1', async (route) => {
+    await pending;
+    state.clear();
+    return route.fulfill({ json: { ok: true } });
+  });
+  try {
+    await page.goto('/archives');
+    await page.locator('tr').filter({ hasText: '历史需求' }).getByRole('button', { name: '删除' }).click();
+    const dialog = page.getByRole('dialog', { name: '永久删除需求' });
+    await dialog.getByRole('textbox').fill('历史需求');
+    await dialog.getByRole('button', { name: '永久删除' }).evaluate((button) => {
+      (button as HTMLButtonElement).click();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    await expect(dialog).toBeVisible();
+    release();
+    await expect(dialog).toHaveCount(0);
+  } finally { release(); }
+});
+
+test('需求永久删除失败后保留名称并允许重试', async ({ page }) => {
+  const state = await mockArchiveCenter(page);
+  let requests = 0;
+  await page.route('**/api/archives/requirements/r1', async (route) => {
+    requests++;
+    if (requests === 1) return route.fulfill({ status: 500, json: { error: '删除暂时失败' } });
+    state.clear();
+    return route.fulfill({ json: { ok: true } });
+  });
+  await page.goto('/archives');
+  await page.locator('tr').filter({ hasText: '历史需求' }).getByRole('button', { name: '删除' }).click();
+  const dialog = page.getByRole('dialog', { name: '永久删除需求' });
+  const input = dialog.getByRole('textbox');
+  await input.fill('历史需求');
+  await dialog.getByRole('button', { name: '永久删除' }).click();
+  await expect(dialog.getByText('删除暂时失败')).toBeVisible();
+  await expect(input).toHaveValue('历史需求');
+  await expect(dialog.getByRole('button', { name: '永久删除' })).toBeEnabled();
+  await dialog.getByRole('button', { name: '永久删除' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(requests).toBe(2);
+});
+
+test('永久删除后响应异常且目标离开归档时停止危险重试', async ({ page }) => {
+  const state = await mockArchiveCenter(page);
+  let requests = 0;
+  await page.route('**/api/archives/requirements/r1', (route) => {
+    requests += 1;
+    state.clear();
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'deleted' });
+  });
+
+  await page.goto('/archives');
+  await page.locator('tr').filter({ hasText: '历史需求' }).getByRole('button', { name: '删除', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '永久删除需求', exact: true });
+  await dialog.getByRole('textbox').fill('历史需求');
+  await dialog.getByRole('button', { name: '永久删除', exact: true }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText('已核对最新状态：内容已不在归档列表，请到对应业务页面确认', { exact: true })).toBeVisible();
+  await expect(page.getByText('历史需求', { exact: true })).toHaveCount(0);
+  expect(requests).toBe(1);
+});
+
+test('人员永久删除连点只提交一次', async ({ page }) => {
+  const state = await mockArchiveCenter(page, { projects: [], requirements: [], people: [archivedPerson], templates: [] });
+  let requests = 0;
+  const payloads: unknown[] = [];
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/api/archives/people/u1', async (route) => {
+    requests++;
+    payloads.push(route.request().postDataJSON());
+    await pending;
+    if (requests > 1) return route.fulfill({ status: 404, json: { error: '归档人员不存在' } });
+    state.clear();
+    return route.fulfill({ json: { ok: true } });
+  });
+  try {
+    await page.goto('/archives');
+    await page.locator('tr').filter({ hasText: '历史成员' }).getByRole('button', { name: '删除' }).click();
+    const dialog = page.getByRole('dialog', { name: '永久删除归档内容' });
+    const confirm = dialog.getByRole('button', { name: '永久删除' });
+    await confirm.dblclick();
+    await expect.poll(() => requests).toBe(1);
+    expect(payloads).toEqual([{ expectedDeletedAt: archivedPerson.deletedAt }]);
+    await expect(dialog.getByRole('button', { name: '删除中…', exact: true })).toBeDisabled();
+    release();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByText('归档人员不存在')).toHaveCount(0);
+  } finally { release(); }
+});

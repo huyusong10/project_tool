@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { addBusinessDays, businessDayDelta } from '../src/shared/domain';
 
@@ -14,6 +14,7 @@ process.env.APP_PASSWORD_HASH = 'scrypt$4c63a6f93ff4f94b031b7e7583592177$b598dbd
 process.env.SESSION_SECRET = 'test-session-secret-with-more-than-thirty-two-characters';
 
 let app: FastifyInstance;
+let origin = '';
 let cookie = '';
 let projectId = '';
 let requirementId = '';
@@ -27,13 +28,23 @@ let issueId = '';
 let memberCookie = '';
 let memberAccountId = '';
 
+async function requestMcp(headers: Record<string, string>, payload: Record<string, unknown>) {
+  const response = await fetch(`${origin}/mcp`, { method: 'POST', headers, body: JSON.stringify(payload) });
+  const body = await response.text();
+  return { statusCode: response.status, body, json: () => JSON.parse(body) };
+}
+
 beforeAll(async () => {
+  // 这些排期和当日负载断言使用固定工作日，不依赖运行机器当天是否放假。
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-09-04T04:00:00Z') });
   const module = await import('../src/server/app');
   app = await module.buildApp();
   await app.ready();
+  origin = await app.listen({ host: '127.0.0.1', port: 0 });
 });
 
 afterAll(async () => {
+  vi.useRealTimers();
   await app.close();
   const { sqlite } = await import('../src/server/database');
   if (sqlite.open) sqlite.close();
@@ -74,12 +85,43 @@ describe('自动化项目管理API', () => {
     expect(template.json().items.map((item: { milestoneLabel: string | null }) => item.milestoneLabel)).toEqual(['需求基线', '接口基线', null]);
     const originalIds = template.json().items.map((item: { id: string }) => item.id);
     const updated = await app.inject({ method: 'PATCH', url: `/api/templates/${templateId}`, headers: { cookie }, payload: {
-      name: '并行交付模板', description: '根据复盘调整工期，保留并行交付策略。', items: template.json().items.map((item: any) => ({ ...item, durationDays: item.durationDays + 1 })),
+      name: '并行交付模板', description: '根据复盘调整工期，保留并行交付策略。', expectedUpdatedAt: template.json().updatedAt,
+      items: template.json().items.map((item: any) => ({ ...item, durationDays: item.durationDays + 1 })),
     } });
+    expect(updated.statusCode, updated.body).toBe(200);
     expect(updated.json().items.map((item: { id: string }) => item.id)).toEqual(originalIds);
     expect(updated.json().description).toBe('根据复盘调整工期，保留并行交付策略。');
+    expect(updated.json().updatedAt).not.toBe(template.json().updatedAt);
+    const staleTemplate = await app.inject({ method: 'PATCH', url: `/api/templates/${templateId}`, headers: { cookie }, payload: {
+      description: '旧窗口覆盖的新说明', expectedUpdatedAt: template.json().updatedAt,
+    } });
+    expect(staleTemplate.statusCode).toBe(409);
+    expect(staleTemplate.json().code).toBe('STALE_WRITE');
+    const staleTemplateArchive = await app.inject({ method: 'DELETE', url: `/api/templates/${templateId}`, headers: { cookie }, payload: {
+      expectedUpdatedAt: template.json().updatedAt,
+    } });
+    expect(staleTemplateArchive.statusCode).toBe(409);
+    expect(staleTemplateArchive.json().code).toBe('STALE_WRITE');
+    expect((await app.inject({ method: 'GET', url: `/api/templates?projectId=${projectId}`, headers: { cookie } })).json()
+      .find((item: { id: string }) => item.id === templateId).description).toBe('根据复盘调整工期，保留并行交付策略。');
 
-    expect((await app.inject({ method: 'PATCH', url: '/api/projects/' + projectId, headers: { cookie }, payload: { defaultTemplateId: templateId } })).statusCode).toBe(200);
+    const updatedProject = await app.inject({ method: 'PATCH', url: '/api/projects/' + projectId, headers: { cookie }, payload: {
+      defaultTemplateId: templateId, expectedUpdatedAt: project.json().updatedAt,
+    } });
+    expect(updatedProject.statusCode, updatedProject.body).toBe(200);
+    expect(updatedProject.json().updatedAt).not.toBe(project.json().updatedAt);
+    const staleProject = await app.inject({ method: 'PATCH', url: '/api/projects/' + projectId, headers: { cookie }, payload: {
+      name: '旧窗口覆盖项目名', expectedUpdatedAt: project.json().updatedAt,
+    } });
+    expect(staleProject.statusCode).toBe(409);
+    expect(staleProject.json().code).toBe('STALE_WRITE');
+    const staleProjectArchive = await app.inject({ method: 'DELETE', url: `/api/projects/${projectId}`, headers: { cookie }, payload: {
+      expectedUpdatedAt: project.json().updatedAt,
+    } });
+    expect(staleProjectArchive.statusCode).toBe(409);
+    expect(staleProjectArchive.json().code).toBe('STALE_WRITE');
+    expect((await app.inject({ method: 'GET', url: '/api/projects', headers: { cookie } })).json()
+      .find((item: { id: string }) => item.id === projectId).name).toBe('集成测试项目');
     const requirement = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie }, payload: {
       projectId, title: '自动排期需求', priority: 'P1', ownerId: requirementOwnerId, plannedStart: '2026-09-04', templateId,
     } });
@@ -112,9 +154,27 @@ describe('自动化项目管理API', () => {
     expect(blocked.statusCode).toBe(409);
     expect(blocked.json()).toMatchObject({ code: 'DEPENDENCY_CONFLICT', details: { requirements: 1, issues: 1 } });
 
-    const forced = await app.inject({ method: 'DELETE', url: `/api/projects/${archiveProjectId}`, headers: { cookie: archiveCookie }, payload: { force: true } });
+    const secondRequirement = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: archiveCookie }, payload: {
+      projectId: archiveProjectId, title: '确认后新增的需求',
+    } });
+    expect(secondRequirement.statusCode).toBe(200);
+    const secondIssue = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie: archiveCookie }, payload: {
+      projectId: archiveProjectId, title: '确认后新增的问题', priority: 'P2', discoveredAt: '2026-09-03',
+    } });
+    expect(secondIssue.statusCode).toBe(200);
+    const changedImpact = await app.inject({ method: 'DELETE', url: `/api/projects/${archiveProjectId}`, headers: { cookie: archiveCookie }, payload: {
+      force: true, expectedRequirements: 1, expectedIssues: 1,
+    } });
+    expect(changedImpact.statusCode).toBe(409);
+    expect(changedImpact.json()).toMatchObject({ code: 'DEPENDENCY_CONFLICT', details: { requirements: 2, issues: 2 } });
+    expect((await app.inject({ method: 'GET', url: '/api/projects', headers: { cookie: archiveCookie } })).json()
+      .some((item: { id: string }) => item.id === archiveProjectId)).toBe(true);
+
+    const forced = await app.inject({ method: 'DELETE', url: `/api/projects/${archiveProjectId}`, headers: { cookie: archiveCookie }, payload: {
+      force: true, expectedRequirements: 2, expectedIssues: 2,
+    } });
     expect(forced.statusCode).toBe(200);
-    expect(forced.json()).toMatchObject({ ok: true, forced: true, dependencies: { requirements: 1, issues: 1 } });
+    expect(forced.json()).toMatchObject({ ok: true, forced: true, dependencies: { requirements: 2, issues: 2 } });
     expect((await app.inject({ method: 'GET', url: '/api/session', headers: { cookie: archiveCookie } })).json()).toMatchObject({ authenticated: true, username: 'admin' });
     expect((await app.inject({ method: 'GET', url: '/api/projects', headers: { cookie: archiveCookie } })).json().some((item: { id: string }) => item.id === archiveProjectId)).toBe(false);
     const archivedWrite = await app.inject({ method: 'PATCH', url: `/api/requirements/${requirement.json().id}`, headers: { cookie: archiveCookie }, payload: {
@@ -122,15 +182,29 @@ describe('自动化项目管理API', () => {
     } });
     expect(archivedWrite.statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: `/api/action-items?projectId=${archiveProjectId}`, headers: { cookie: archiveCookie } })).statusCode).toBe(403);
-    expect((await app.inject({ method: 'DELETE', url: `/api/archives/projects/${archiveProjectId}`, headers: { cookie: archiveCookie }, payload: { confirmName: '强制归档验证项目' } })).statusCode).toBe(200);
+    const archivedProject = (await app.inject({ method: 'GET', url: '/api/archives', headers: { cookie: archiveCookie } })).json().projects
+      .find((item: { id: string }) => item.id === archiveProjectId);
+    expect((await app.inject({ method: 'DELETE', url: `/api/archives/projects/${archiveProjectId}`, headers: { cookie: archiveCookie }, payload: {
+      confirmName: '强制归档验证项目', expectedDeletedAt: archivedProject.deletedAt,
+    } })).statusCode).toBe(200);
   });
 
   it('人员姓名唯一、岗位可维护并可恢复归档', async () => {
     const person = await app.inject({ method: 'POST', url: '/api/people', headers: { cookie }, payload: { projectId, name: '张三', jobTitle: '前端开发' } });
     expect(person.statusCode).toBe(200); personId = person.json().id;
-    const updated = await app.inject({ method: 'PATCH', url: `/api/people/${personId}`, headers: { cookie }, payload: { name: '张三', jobTitle: '技术负责人' } });
+    const updated = await app.inject({ method: 'PATCH', url: `/api/people/${personId}`, headers: { cookie }, payload: {
+      name: '张三', jobTitle: '技术负责人', expectedUpdatedAt: person.json().updatedAt,
+    } });
     expect(updated.statusCode).toBe(200);
     expect(updated.json()).toMatchObject({ name: '张三', jobTitle: '技术负责人' });
+    expect(updated.json().updatedAt).not.toBe(person.json().updatedAt);
+    const stale = await app.inject({ method: 'PATCH', url: `/api/people/${personId}`, headers: { cookie }, payload: {
+      jobTitle: '旧窗口岗位', expectedUpdatedAt: person.json().updatedAt,
+    } });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().code).toBe('STALE_WRITE');
+    expect((await app.inject({ method: 'GET', url: '/api/people', headers: { cookie } })).json()
+      .find((item: { id: string }) => item.id === personId).jobTitle).toBe('技术负责人');
     expect((await app.inject({ method: 'POST', url: '/api/people', headers: { cookie }, payload: { projectId, name: '  张三  ' } })).statusCode).toBe(400);
     await app.inject({ method: 'DELETE', url: `/api/people/${personId}`, headers: { cookie } });
     const archives = await app.inject({ method: 'GET', url: '/api/archives', headers: { cookie } });
@@ -169,12 +243,14 @@ describe('自动化项目管理API', () => {
     expect(searched.json().summary).toMatchObject({ total: 1, active: 1, inProgress: 1, highPriority: 1, overdue: 1, closureRate: 0 });
     const linkedDashboard = await app.inject({ method: 'GET', url: `/api/dashboard?projectId=${projectId}`, headers: { cookie } });
     expect(linkedDashboard.json().requirements[0].issueSummary).toEqual({ active: 1, overdue: 1 });
+    expect((await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie } })).json().issueSummary).toEqual({ active: 1, overdue: 1 });
     expect((await app.inject({ method: 'PATCH', url: `/api/issues/${issueId}`, headers: { cookie }, payload: { status: 'resolved', expectedVersion: created.json().version } })).statusCode).toBe(400);
     const resolved = await app.inject({ method: 'POST', url: `/api/issues/${issueId}/resolve`, headers: { cookie }, payload: { content: '证书已签发，问题闭环', expectedVersion: created.json().version } });
     expect(resolved.statusCode).toBe(200);
     expect(resolved.json()).toMatchObject({ status: 'resolved', overdue: false });
     expect(resolved.json().resolvedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(resolved.json().updates.map((item: { content: string }) => item.content)).toEqual(expect.arrayContaining(['测试证书已经申请', '证书已签发，问题闭环']));
+    expect((await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie } })).json().issueSummary).toEqual({ active: 0, overdue: 0 });
     const publicIssue = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
       projectId, title: '公共部署风险', impact: '影响多个需求交付', priority: 'P0', discoveredAt: '2026-09-01', dueDate: '2000-01-01',
     } });
@@ -201,6 +277,31 @@ describe('自动化项目管理API', () => {
     expect(deferredByUpdate.json()).toMatchObject({ status: 'deferred', dueDate: null, overdue: false });
     const dashboardWithoutDeferred = await app.inject({ method: 'GET', url: `/api/dashboard?projectId=${projectId}`, headers: { cookie } });
     expect(dashboardWithoutDeferred.json().issues.attention.every((item: { status: string }) => item.status === 'in_progress')).toBe(true);
+
+    const attentionTarget = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
+      projectId, title: '不能被挂起问题挤出的热点', status: 'in_progress', priority: 'P3', discoveredAt: '2026-09-01', dueDate: '2999-12-31',
+    } });
+    const temporaryIssueIds = [attentionTarget.json().id as string];
+    for (let index = 0; index < 10; index += 1) {
+      const blocker = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
+        projectId, title: `热点截断挂起项${index}`, priority: 'P0', discoveredAt: '2026-09-01', dueDate: '2999-12-31',
+      } });
+      temporaryIssueIds.push(blocker.json().id);
+      const deferredBlocker = await app.inject({ method: 'POST', url: `/api/issues/${blocker.json().id}/defer`, headers: { cookie }, payload: {
+        reason: '构造热点截断边界', expectedVersion: blocker.json().version,
+      } });
+      expect(deferredBlocker.statusCode, deferredBlocker.body).toBe(200);
+    }
+    const crowdedDashboard = await app.inject({ method: 'GET', url: `/api/dashboard?projectId=${projectId}`, headers: { cookie } });
+    expect(crowdedDashboard.json().issues.attention).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: attentionTarget.json().id, status: 'in_progress' }),
+    ]));
+    const { sqlite } = await import('../src/server/database');
+    const placeholders = temporaryIssueIds.map(() => '?').join(',');
+    sqlite.transaction(() => {
+      sqlite.prepare(`DELETE FROM issue_updates WHERE issue_id IN (${placeholders})`).run(...temporaryIssueIds);
+      sqlite.prepare(`DELETE FROM issues WHERE id IN (${placeholders})`).run(...temporaryIssueIds);
+    })();
   });
 
   it('统计目录公开，项目查询和个人布局受账号权限保护', async () => {
@@ -241,6 +342,11 @@ describe('自动化项目管理API', () => {
     } });
     expect(archiveExcluded.json().results[0].rows[0].value).toBe(1);
     expect(archiveExcluded.json().results[1].rows[0]).toMatchObject({ value: 5, secondaryValue: 1 });
+    const hiddenIssues = await app.inject({ method: 'GET', url: `/api/issues?projectId=${projectId}`, headers: { cookie } });
+    expect(hiddenIssues.json().items).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: archivedIssueId })]));
+    const hiddenIssueDetail = await app.inject({ method: 'GET', url: `/api/issues/${archivedIssueId}`, headers: { cookie } });
+    expect(hiddenIssueDetail.statusCode).toBe(404);
+    expect(hiddenIssueDetail.json()).toMatchObject({ code: 'NOT_FOUND' });
     sqlite.prepare('DELETE FROM issues WHERE id=?').run(archivedIssueId);
     sqlite.prepare('DELETE FROM requirements WHERE id=?').run(archivedRequirementId);
 
@@ -255,7 +361,7 @@ describe('自动化项目管理API', () => {
     } });
     expect(isolatedFailure.statusCode).toBe(200);
     expect(isolatedFailure.json().results[0].error).toBeUndefined();
-    expect(isolatedFailure.json().results[1].error).toBeTruthy();
+    expect(isolatedFailure.json().results[1].error).toBe('图表查询失败');
     sqlite.prepare('DELETE FROM issues WHERE id=?').run(malformedIssueId);
 
     const requirementIds = [randomUUID(), randomUUID()];
@@ -279,9 +385,20 @@ describe('自动化项目管理API', () => {
     sqlite.prepare(`DELETE FROM requirements WHERE id IN (?,?)`).run(...requirementIds);
 
     expect((await app.inject({ method: 'PUT', url: '/api/analytics/layout', payload: { version: 1, panels: [panels[0]] } })).statusCode).toBe(401);
-    const saved = await app.inject({ method: 'PUT', url: '/api/analytics/layout', headers: { cookie }, payload: { version: 1, panels: [panels[0]] } });
-    expect(saved.json()).toMatchObject({ source: 'personal', canCustomize: true, layout: { version: 1, panels: [{ id: 'active-test' }] } });
-    expect((await app.inject({ method: 'GET', url: '/api/analytics/layout', headers: { cookie } })).json()).toMatchObject({ source: 'personal' });
+    const initialLayout = await app.inject({ method: 'GET', url: '/api/analytics/layout', headers: { cookie } });
+    expect(initialLayout.json()).toMatchObject({ source: 'default', updatedAt: null });
+    const saved = await app.inject({ method: 'PUT', url: '/api/analytics/layout', headers: { cookie }, payload: {
+      version: 1, panels: [panels[0]], expectedUpdatedAt: initialLayout.json().updatedAt,
+    } });
+    expect(saved.json()).toMatchObject({ source: 'personal', canCustomize: true, updatedAt: expect.any(String), layout: { version: 1, panels: [{ id: 'active-test' }] } });
+    const staleSave = await app.inject({ method: 'PUT', url: '/api/analytics/layout', headers: { cookie }, payload: {
+      version: 1, panels: [panels[1]], expectedUpdatedAt: initialLayout.json().updatedAt,
+    } });
+    expect(staleSave.statusCode).toBe(409);
+    expect(staleSave.json()).toMatchObject({ code: 'STALE_WRITE', details: { currentUpdatedAt: saved.json().updatedAt } });
+    expect((await app.inject({ method: 'GET', url: '/api/analytics/layout', headers: { cookie } })).json()).toMatchObject({
+      source: 'personal', updatedAt: saved.json().updatedAt, layout: { panels: [{ id: 'active-test' }] },
+    });
     const otherLogin = await app.inject({ method: 'POST', url: '/api/login', payload: { username: '李四', password: '888888' } });
     const otherCookie = String(otherLogin.headers['set-cookie']).split(';')[0];
     expect((await app.inject({ method: 'GET', url: '/api/analytics/layout', headers: { cookie: otherCookie } })).statusCode).toBe(403);
@@ -292,9 +409,13 @@ describe('自动化项目管理API', () => {
 
     const session = (await app.inject({ method: 'GET', url: '/api/session', headers: { cookie } })).json();
     sqlite.prepare('UPDATE analytics_layouts SET config_json=? WHERE account_id=?').run('{broken', session.accountId);
-    expect((await app.inject({ method: 'GET', url: '/api/analytics/layout', headers: { cookie } })).json()).toMatchObject({ source: 'default', layout: { version: 1 } });
-    const reset = await app.inject({ method: 'DELETE', url: '/api/analytics/layout', headers: { cookie } });
-    expect(reset.json()).toMatchObject({ source: 'default', canCustomize: true });
+    const malformedLayout = await app.inject({ method: 'GET', url: '/api/analytics/layout', headers: { cookie } });
+    expect(malformedLayout.json()).toMatchObject({ source: 'default', updatedAt: saved.json().updatedAt, layout: { version: 1 } });
+    const staleReset = await app.inject({ method: 'DELETE', url: '/api/analytics/layout', headers: { cookie }, payload: { expectedUpdatedAt: null } });
+    expect(staleReset.statusCode).toBe(409);
+    expect((await app.inject({ method: 'GET', url: '/api/analytics/layout', headers: { cookie } })).json()).toMatchObject({ updatedAt: saved.json().updatedAt });
+    const reset = await app.inject({ method: 'DELETE', url: '/api/analytics/layout', headers: { cookie }, payload: { expectedUpdatedAt: malformedLayout.json().updatedAt } });
+    expect(reset.json()).toMatchObject({ source: 'default', canCustomize: true, updatedAt: null });
     const audit = await app.inject({ method: 'GET', url: '/api/audit/search?entityType=analytics_layout&pageSize=20', headers: { cookie } });
     expect(audit.json().items.map((item: { action: string }) => item.action)).toEqual(expect.arrayContaining(['update', 'reset']));
   });
@@ -539,12 +660,78 @@ describe('自动化项目管理API', () => {
   it('人员并发统计使用负责人和计划/实际区间', async () => {
     const response = await app.inject({ method: 'GET', url: `/api/analytics/people-concurrency?projectId=${projectId}&personId=${personId}`, headers: { cookie } });
     expect(response.statusCode).toBe(200);
+    expect(response.json().asOfDate).toBe('2026-09-04');
     const person = response.json().people[0];
     expect(person.name).toBe('张三');
     expect(person.currentCount).toBeGreaterThanOrEqual(1);
     const collaboratorResponse = await app.inject({ method: 'GET', url: `/api/analytics/people-concurrency?projectId=${projectId}&personId=${collaboratorPersonId}`, headers: { cookie } });
     expect(collaboratorResponse.json().people[0]).toMatchObject({ name: '李四' });
     expect(collaboratorResponse.json().people[0].currentCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('已启动工作项随需求取消后仍保留取消前的实际投入', async () => {
+    vi.setSystemTime(new Date('2026-09-04T04:00:00Z'));
+    try {
+      const created = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie }, payload: {
+        projectId, title: '取消前实际投入', ownerId: requirementOwnerId, templateId, plannedStart: '2026-09-04',
+      } });
+      const item = created.json().workItems[0];
+      const assigned = await app.inject({ method: 'PATCH', url: `/api/work-items/${item.id}`, headers: { cookie }, payload: {
+        ownerId: personId, expectedVersion: item.version,
+      } });
+      const started = await app.inject({ method: 'POST', url: `/api/work-items/${item.id}/start`, headers: { cookie }, payload: {
+        expectedVersion: assigned.json().version,
+      } });
+      expect(started.statusCode, started.body).toBe(200);
+      vi.setSystemTime(new Date('2026-09-07T04:00:00Z'));
+      const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } });
+      const setCookie = login.headers['set-cookie'];
+      const laterCookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie!).split(';')[0];
+      const current = await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie: laterCookie } });
+      const cancelled = await app.inject({ method: 'POST', url: `/api/requirements/${created.json().id}/cancel`, headers: { cookie: laterCookie }, payload: {
+        reason: '停止历史项目', expectedVersion: current.json().version,
+      } });
+      expect(cancelled.statusCode, cancelled.body).toBe(200);
+      expect(cancelled.json()).toMatchObject({ actualStart: '2026-09-04', actualEnd: '2026-09-07' });
+      vi.setSystemTime(new Date('2026-09-08T04:00:00Z'));
+      const nextLogin = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } });
+      const nextSetCookie = nextLogin.headers['set-cookie'];
+      const nextCookie = (Array.isArray(nextSetCookie) ? nextSetCookie[0] : nextSetCookie!).split(';')[0];
+      const cancelledItem = cancelled.json().workItems.find((entry: { id: string }) => entry.id === item.id);
+      expect(cancelledItem.cancelledAt).toBe('2026-09-07');
+      const invalidCorrection = await app.inject({ method: 'POST', url: `/api/work-items/${item.id}/correct`, headers: { cookie: nextCookie }, payload: {
+        actualStart: '2026-09-08', reason: '错误地移到取消之后', expectedVersion: cancelledItem.version,
+      } });
+      expect(invalidCorrection.statusCode).toBe(400);
+      expect(invalidCorrection.json().error).toContain('不能晚于取消日期');
+      const { getPeopleConcurrency } = await import('../src/server/services');
+      const result = getPeopleConcurrency({ projectId, personId, from: '2026-09-04', to: '2026-09-08' });
+      const itemIds = (date: string) => result.people[0].days.find((day) => day.date === date)?.items.map((entry) => entry.id) || [];
+      expect(itemIds('2026-09-04')).toContain(item.id);
+      expect(itemIds('2026-09-07')).toContain(item.id);
+      expect(itemIds('2026-09-08')).not.toContain(item.id);
+    } finally {
+      vi.setSystemTime(new Date('2026-09-04T04:00:00Z'));
+    }
+  });
+
+  it('补充流程拒绝数组冒充数据版本', async () => {
+    const current = (await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie } })).json();
+    const response = await app.inject({ method: 'POST', url: `/api/requirements/${requirementId}/apply-template`, headers: { cookie }, payload: {
+      templateId, expectedVersion: [current.version],
+    } });
+    expect(response.statusCode, response.body).toBe(400);
+  });
+
+  it('周末并发区间没有工作日，不能虚构当日负载', async () => {
+    const { getPeopleConcurrency } = await import('../src/server/services');
+    vi.setSystemTime(new Date('2026-09-05T04:00:00Z'));
+    try {
+      const result = getPeopleConcurrency({ projectId, personId, from: '2026-09-05', to: '2026-09-06' });
+      expect(result.dates).toEqual([]);
+      expect(result.people[0]).toMatchObject({ name: '张三', days: [], currentCount: 0, peakCount: 0 });
+      expect(result.currentTop).toEqual([]);
+    } finally { vi.setSystemTime(new Date('2026-09-04T04:00:00Z')); }
   });
 
   it('只能永久删除归档内容并安全处理关联数据', async () => {
@@ -574,12 +761,20 @@ describe('自动化项目管理API', () => {
     const unassigned = await app.inject({ method: 'PATCH', url: `/api/work-items/${disposableWorkItemId}`, headers: { cookie }, payload: { ownerId: null, expectedVersion: assigned.json().version } });
     expect(unassigned.statusCode).toBe(200);
     await app.inject({ method: 'DELETE', url: `/api/people/${disposablePersonId}`, headers: { cookie } });
-    expect((await app.inject({ method: 'DELETE', url: `/api/archives/people/${disposablePersonId}`, headers: { cookie } })).statusCode).toBe(200);
+    const personArchive = (await app.inject({ method: 'GET', url: '/api/archives', headers: { cookie } })).json().people
+      .find((item: { id: string }) => item.id === disposablePersonId);
+    expect((await app.inject({ method: 'DELETE', url: `/api/archives/people/${disposablePersonId}`, headers: { cookie }, payload: {
+      expectedDeletedAt: personArchive.deletedAt,
+    } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: `/api/requirements/${disposableRequirementId}`, headers: { cookie } })).json().workItems[0].ownerId).toBeNull();
 
     expect((await app.inject({ method: 'PATCH', url: `/api/projects/${disposableProjectId}`, headers: { cookie }, payload: { defaultTemplateId: originalDefaultTemplateId } })).statusCode).toBe(200);
     await app.inject({ method: 'DELETE', url: `/api/templates/${disposableTemplateId}`, headers: { cookie } });
-    expect((await app.inject({ method: 'DELETE', url: `/api/archives/templates/${disposableTemplateId}`, headers: { cookie } })).statusCode).toBe(409);
+    const templateArchive = (await app.inject({ method: 'GET', url: '/api/archives', headers: { cookie } })).json().templates
+      .find((item: { id: string }) => item.id === disposableTemplateId);
+    expect((await app.inject({ method: 'DELETE', url: `/api/archives/templates/${disposableTemplateId}`, headers: { cookie }, payload: {
+      expectedDeletedAt: templateArchive.deletedAt,
+    } })).statusCode).toBe(409);
     const beforeCancel = (await app.inject({ method: 'GET', url: `/api/requirements/${disposableRequirementId}`, headers: { cookie } })).json();
     const cancelled = await app.inject({ method: 'POST', url: `/api/requirements/${disposableRequirementId}/cancel`, headers: { cookie }, payload: { reason: '清理测试数据', expectedVersion: beforeCancel.version } });
     expect(cancelled.statusCode).toBe(200);
@@ -587,15 +782,26 @@ describe('自动化项目管理API', () => {
     const archivePreview = (await app.inject({ method: 'GET', url: '/api/archives', headers: { cookie } })).json();
     expect(archivePreview.requirements.find((item: { id: string }) => item.id === disposableRequirementId))
       .toMatchObject({ workItemCount: 1, progressCount: 1, linkedIssueCount: 0 });
-    expect((await app.inject({ method: 'DELETE', url: `/api/archives/requirements/${disposableRequirementId}`, headers: { cookie }, payload: { confirmName: '待永久删除需求' } })).statusCode).toBe(200);
+    const requirementArchive = archivePreview.requirements.find((item: { id: string }) => item.id === disposableRequirementId);
+    expect((await app.inject({ method: 'DELETE', url: `/api/archives/requirements/${disposableRequirementId}`, headers: { cookie }, payload: {
+      confirmName: '待永久删除需求', expectedDeletedAt: requirementArchive.deletedAt,
+    } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/archives', headers: { cookie } })).json().requirements.some((item: { id: string }) => item.id === disposableRequirementId)).toBe(false);
-    expect((await app.inject({ method: 'DELETE', url: `/api/archives/templates/${disposableTemplateId}`, headers: { cookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'DELETE', url: `/api/archives/templates/${disposableTemplateId}`, headers: { cookie }, payload: {
+      expectedDeletedAt: templateArchive.deletedAt,
+    } })).statusCode).toBe(200);
+    const { sqlite } = await import('../src/server/database');
+    expect(sqlite.prepare("SELECT project_id AS projectId FROM audit_logs WHERE action='permanent_delete' AND entity_type='requirement' AND entity_id=?").get(disposableRequirementId)).toEqual({ projectId: disposableProjectId });
+    expect(sqlite.prepare("SELECT project_id AS projectId FROM audit_logs WHERE action='permanent_delete' AND entity_type='template' AND entity_id=?").get(disposableTemplateId)).toEqual({ projectId: disposableProjectId });
 
     await app.inject({ method: 'DELETE', url: `/api/projects/${disposableProjectId}`, headers: { cookie } });
     const projectArchivePreview = (await app.inject({ method: 'GET', url: '/api/archives', headers: { cookie } })).json();
     expect(projectArchivePreview.projects.find((item: { id: string }) => item.id === disposableProjectId))
       .toMatchObject({ requirementCount: 0, workItemCount: 0, issueCount: 0, templateCount: 1 });
-    expect((await app.inject({ method: 'DELETE', url: `/api/archives/projects/${disposableProjectId}`, headers: { cookie }, payload: { confirmName: '待永久删除项目' } })).statusCode).toBe(200);
+    const disposableProjectArchive = projectArchivePreview.projects.find((item: { id: string }) => item.id === disposableProjectId);
+    expect((await app.inject({ method: 'DELETE', url: `/api/archives/projects/${disposableProjectId}`, headers: { cookie }, payload: {
+      confirmName: '待永久删除项目', expectedDeletedAt: disposableProjectArchive.deletedAt,
+    } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/projects?includeDeleted=true', headers: { cookie } })).json().some((item: { id: string }) => item.id === disposableProjectId)).toBe(false);
   });
 
@@ -613,20 +819,24 @@ describe('自动化项目管理API', () => {
     );
     expect((await app.inject({ method: 'DELETE', url: `/api/tokens/${tokenId}`, headers: { cookie } })).statusCode).toBe(403);
     const headers = { authorization: `Bearer ${token}`, accept: 'application/json, text/event-stream', 'content-type': 'application/json' };
-    const initialize = await app.inject({ method: 'POST', url: '/mcp', headers, payload: { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2026-07-28', capabilities: {}, clientInfo: { name: 'vitest', version: '1.0.0' } } } });
+    const initialize = await requestMcp(headers, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2026-07-28', capabilities: {}, clientInfo: { name: 'vitest', version: '1.0.0' } } });
     expect(initialize.statusCode).toBe(200);
-    await app.inject({ method: 'POST', url: '/mcp', headers, payload: { jsonrpc: '2.0', method: 'notifications/initialized' } });
-    const call = await app.inject({ method: 'POST', url: '/mcp', headers, payload: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'people_concurrency', arguments: { projectId } } } });
+    await requestMcp(headers, { jsonrpc: '2.0', method: 'notifications/initialized' });
+    const call = await requestMcp(headers, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'people_concurrency', arguments: { projectId } } });
     expect(call.statusCode).toBe(200);
     expect(JSON.stringify(call.json())).toContain('张三');
-    const write = await app.inject({ method: 'POST', url: '/mcp', headers, payload: { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'add_progress', arguments: { requirementId, content: 'MCP来源识别测试' } } } });
+    const write = await requestMcp(headers, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'add_progress', arguments: { requirementId, content: 'MCP来源识别测试' } } });
     expect(write.statusCode).toBe(200);
     expect((await app.inject({ method: 'PATCH', url: `/api/accounts/${memberAccountId}`, headers: { cookie }, payload: { status: 'disabled' } })).statusCode).toBe(200);
-    expect((await app.inject({ method: 'POST', url: '/mcp', headers, payload: { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'list_projects', arguments: {} } } })).statusCode).toBe(401);
+    expect((await requestMcp(headers, { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'list_projects', arguments: {} } })).statusCode).toBe(401);
     expect((await app.inject({ method: 'PATCH', url: `/api/accounts/${memberAccountId}`, headers: { cookie }, payload: { status: 'active' } })).statusCode).toBe(200);
-    expect((await app.inject({ method: 'POST', url: '/mcp', headers, payload: { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'list_projects', arguments: {} } } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/projects', headers: { cookie: memberCookie } })).statusCode).toBe(401);
+    const freshLogin = await app.inject({ method: 'POST', url: '/api/login', payload: { username: '李四', password: 'new-password-123' } });
+    expect(freshLogin.statusCode).toBe(200);
+    memberCookie = String(freshLogin.headers['set-cookie']).split(';')[0];
+    expect((await requestMcp(headers, { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'list_projects', arguments: {} } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'DELETE', url: `/api/admin/tokens/${tokenId}`, headers: { cookie } })).statusCode).toBe(200);
-    expect((await app.inject({ method: 'POST', url: '/mcp', headers, payload: { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'list_projects', arguments: {} } } })).statusCode).toBe(401);
+    expect((await requestMcp(headers, { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'list_projects', arguments: {} } })).statusCode).toBe(401);
   });
 
   it('手动备份可主动删除，操作日志支持筛选搜索', async () => {
@@ -654,7 +864,18 @@ describe('自动化项目管理API', () => {
     const filtered = await app.inject({ method: 'GET', url: '/api/audit/search?q=%E5%AE%8C%E6%88%90&action=complete&page=1&pageSize=20', headers: { cookie } });
     expect(filtered.statusCode).toBe(200);
     expect(filtered.json().items.every((item: { action: string; summary: string }) => item.action === 'complete' && item.summary.includes('完成'))).toBe(true);
-    expect((await app.inject({ method: 'DELETE', url: `/api/backups/${encodeURIComponent(response.json().name)}`, headers: { cookie } })).statusCode).toBe(200);
+    const changedTime = new Date(Date.now() + 2000);
+    fs.utimesSync(backupPath, changedTime, changedTime);
+    const staleDelete = await app.inject({ method: 'DELETE', url: `/api/backups/${encodeURIComponent(response.json().name)}`, headers: { cookie }, payload: {
+      expectedFingerprint: response.json().fingerprint,
+    } });
+    expect(staleDelete.statusCode).toBe(409);
+    expect(fs.existsSync(backupPath)).toBe(true);
+    const currentBackup = (await app.inject({ method: 'GET', url: '/api/backups', headers: { cookie } })).json()
+      .find((item: { name: string }) => item.name === response.json().name);
+    expect((await app.inject({ method: 'DELETE', url: `/api/backups/${encodeURIComponent(response.json().name)}`, headers: { cookie }, payload: {
+      expectedFingerprint: currentBackup.fingerprint,
+    } })).statusCode).toBe(200);
     expect(fs.existsSync(backupPath)).toBe(false);
     const backupAudit = await app.inject({ method: 'GET', url: '/api/audit/search?entityType=backup&pageSize=20', headers: { cookie } });
     expect(backupAudit.json().items.some((item: { action: string }) => item.action === 'delete')).toBe(true);
@@ -793,7 +1014,9 @@ describe('自动化项目管理API', () => {
       reason: '验收发现遗漏，返工', progress: 80, expectedVersion: completed.json().version,
     } });
     expect(reopened.json()).toMatchObject({ status: 'in_progress', progress: 80, actualEnd: null });
-    expect((await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie } })).json()).toMatchObject({ status: 'in_progress', acceptedAt: null });
+    expect((await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie } })).json()).toMatchObject({
+      status: 'in_progress', acceptedAt: null, acceptedByAccountId: null,
+    });
 
     const issue = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie }, payload: {
       projectId, title: '状态机问题', priority: 'P2', discoveredAt: '2026-09-02', dueDate: '2026-09-10',

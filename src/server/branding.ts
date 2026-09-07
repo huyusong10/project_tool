@@ -1,6 +1,10 @@
 import { sqlite } from './database';
-import { fail } from './errors';
+import { AppError, fail } from './errors';
+import { nextUpdatedAt } from './services/support';
 import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
+import type { Actor } from './auth';
+import { assertAdmin, requireAuthorizationActor } from './authorization';
+import { recordAudit } from './services/audit';
 
 const BRANDING_META_KEY = 'system-branding';
 const DEFAULT_SYSTEM_NAME = '项目管理';
@@ -54,7 +58,8 @@ function readStoredBranding(row = brandingRow()): { value: StoredBranding; updat
       updatedAt: row.updatedAt,
     };
   } catch {
-    return { value: defaultStoredBranding(), updatedAt: null };
+    // 即使历史值损坏，也保留真实版本，管理员保存默认值时仍需通过并发校验。
+    return { value: defaultStoredBranding(), updatedAt: row.updatedAt };
   }
 }
 
@@ -102,14 +107,26 @@ export function getBrandingLogo() {
   };
 }
 
-export function updateBranding(input: Record<string, unknown>) {
+export function updateBranding(input: Record<string, unknown>, actor: Actor) {
+  return sqlite.transaction(() => updateBrandingInTransaction(input, actor))();
+}
+
+function updateBrandingInTransaction(input: Record<string, unknown>, actor: Actor) {
+  if (Object.keys(input).some((key) => !['systemName', 'shortName', 'logoDataUrl', 'expectedUpdatedAt'].includes(key))) {
+    fail('品牌设置不能提交未声明字段');
+  }
   if (textSafetyIssue(input.systemName, false) || textSafetyIssue(input.shortName, false)) fail('系统名称包含不支持的控制字符');
   const systemName = canonicalizeLabel(input.systemName);
   const shortName = canonicalizeLabel(input.shortName);
   if (!systemName || characterCount(systemName) > 20) fail('系统名称需为1～20个字符');
   if (!shortName || characterCount(shortName) > 4) fail('系统简称需为1～4个字符');
 
-  const current = readStoredBranding().value;
+  const existing = brandingRow();
+  const currentUpdatedAt = existing?.updatedAt || null;
+  if (Object.prototype.hasOwnProperty.call(input, 'expectedUpdatedAt') && input.expectedUpdatedAt !== currentUpdatedAt) {
+    throw new AppError('品牌设置已被其他管理员修改，请刷新后重试', 409, 'STALE_WRITE', { currentUpdatedAt });
+  }
+  const current = readStoredBranding(existing).value;
   let logoMimeType = current.logoMimeType;
   let logoBase64 = current.logoBase64;
   if (Object.prototype.hasOwnProperty.call(input, 'logoDataUrl')) {
@@ -118,10 +135,27 @@ export function updateBranding(input: Record<string, unknown>) {
     logoBase64 = logo.base64;
   }
 
-  const now = new Date().toISOString();
   const value: StoredBranding = { systemName, shortName, logoMimeType, logoBase64 };
-  sqlite.prepare(`INSERT INTO system_meta (key, value, created_at, updated_at) VALUES (?, ?, ?, ?)
-    ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`)
-    .run(BRANDING_META_KEY, JSON.stringify(value), now, now);
-  return publicBranding(value, now);
+  const serialized = JSON.stringify(value);
+  const unchanged = existing
+    ? existing.value === serialized
+    : JSON.stringify(current) === serialized;
+  if (unchanged) {
+    assertAdmin(requireAuthorizationActor(actor));
+    return publicBranding(current, currentUpdatedAt);
+  }
+  const now = currentUpdatedAt ? nextUpdatedAt(currentUpdatedAt) : new Date().toISOString();
+  const changed = existing
+    ? sqlite.prepare('UPDATE system_meta SET value=?, updated_at=? WHERE key=? AND updated_at=?')
+      .run(serialized, now, BRANDING_META_KEY, existing.updatedAt)
+    : sqlite.prepare('INSERT OR IGNORE INTO system_meta (key, value, created_at, updated_at) VALUES (?, ?, ?, ?)')
+      .run(BRANDING_META_KEY, serialized, now, now);
+  if (!changed.changes) {
+    const latestUpdatedAt = brandingRow()?.updatedAt || null;
+    throw new AppError('品牌设置已被其他管理员修改，请刷新后重试', 409, 'STALE_WRITE', { currentUpdatedAt: latestUpdatedAt });
+  }
+  assertAdmin(requireAuthorizationActor(actor));
+  const result = publicBranding(value, now);
+  recordAudit(actor, 'update', 'system_branding', 'default', `更新系统品牌：${result.systemName}（${result.shortName}）`);
+  return result;
 }

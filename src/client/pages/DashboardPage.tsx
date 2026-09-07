@@ -11,41 +11,16 @@ import {
   Plus,
 } from "lucide-react";
 import { api } from "../api";
-import { useApp } from "../app-context";
+import { useProjects, useSession, useUiActions } from "../app-context";
+import { keys } from "../query-keys";
 import type { Dashboard } from "../types";
 import { issueStatusLabels } from "../../shared/domain";
-import { EmptyState, Modal } from "../components/Modal";
+import { EmptyState, LoadingState } from "../components/Feedback";
+import { MetricCard } from "../components/MetricCard";
 import { ProjectGantt } from "../components/ProjectGantt";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectForm } from "../components/ManagementForms";
 import { isAdmin } from "../permissions";
-
-function Kpi({
-  label,
-  value,
-  detail,
-  tone,
-  icon: Icon,
-}: {
-  label: string;
-  value: string | number;
-  detail: string;
-  tone: string;
-  icon: typeof Clock3;
-}) {
-  return (
-    <article className={`stat-card stat-${tone}`}>
-      <div className="stat-icon">
-        <Icon size={18} />
-      </div>
-      <div>
-        <p>{label}</p>
-        <strong>{value}</strong>
-        <span>{detail}</span>
-      </div>
-    </article>
-  );
-}
 
 function IssueHealth({ issues }: { issues?: Dashboard["issues"] }) {
   const summary = issues?.summary;
@@ -102,18 +77,16 @@ function ActionOverview({ actions }: { actions?: Dashboard["actions"] }) {
 }
 
 export function DashboardPage() {
-  const {
-    projects,
-    selectedProjectId,
-    session,
-    openLogin,
-  } = useApp();
+  const { session } = useSession();
+  const { projects, selectedProjectId } = useProjects();
+  const { openLogin } = useUiActions();
   const [modal, setModal] = useState<"project" | null>(null);
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["dashboard", selectedProjectId],
-    queryFn: () =>
+    queryKey: [...keys.dashboard, selectedProjectId],
+    queryFn: ({ signal }) =>
       api<Dashboard>(
         `/api/dashboard${selectedProjectId ? `?projectId=${selectedProjectId}` : ""}`,
+        { signal },
       ),
     enabled: Boolean(selectedProjectId),
   });
@@ -142,16 +115,14 @@ export function DashboardPage() {
             }
           />
           {modal === "project" && (
-            <Modal title="新建项目" onClose={() => setModal(null)}>
-              <ProjectForm onClose={() => setModal(null)} />
-            </Modal>
+            <ProjectForm onClose={() => setModal(null)} />
           )}
         </div>
       </>
     );
   if (selectedProjectId && isLoading && !data) return <>
     <PageHeader title="项目进展" />
-    <div className="page-content"><div className="loading-block">加载项目进展…</div></div>
+    <div className="page-content"><LoadingState className="loading-block" label="加载项目进展…" /></div>
   </>;
   if (error && !data) return <>
     <PageHeader title="项目进展" />
@@ -163,28 +134,28 @@ export function DashboardPage() {
       <div className="page-content dashboard-page">
         {error && data && <div className="warning-banner">数据刷新失败，当前展示的是上次成功结果。<button className="ghost-button" onClick={() => void refetch()}>重新加载</button></div>}
         <section className="stats-grid dashboard-top-stats">
-        <Kpi
+        <MetricCard
           label="开发中需求"
           value={data?.summary.active ?? "—"}
           detail={`全部 ${data?.summary.total || 0} 项`}
           icon={CircleDot}
           tone="blue"
         />
-        <Kpi
+        <MetricCard
           label="已完成需求"
           value={data?.summary.completed ?? "—"}
           detail={`完成率 ${data?.summary.completionRate || 0}%`}
           icon={CheckCircle2}
           tone="green"
         />
-        <Kpi
+        <MetricCard
           label="延期需求"
           value={data?.summary.delayed ?? "—"}
           detail="按计划与实际自动判断"
           icon={Clock3}
           tone="red"
         />
-        <Kpi
+        <MetricCard
           label="高风险需求"
           value={data?.summary.highRisk ?? "—"}
           detail="优先级 × 进度Gap，阻塞/延期覆盖"
@@ -194,7 +165,7 @@ export function DashboardPage() {
         </section>
         <ProjectGantt
           requirements={data?.requirements || []}
-          asOfDate={data?.requirements[0]?.asOfDate}
+          asOfDate={data?.asOfDate}
           projectStart={projects.find((project) => project.id === selectedProjectId)?.plannedStart}
           projectEnd={projects.find((project) => project.id === selectedProjectId)?.plannedEnd}
           resizeStorageKey={`${session.accountId || session.username || "guest"}:dashboard-gantt`}
@@ -203,9 +174,7 @@ export function DashboardPage() {
         <PublicIssueAttention issues={data?.issues?.attention || []} />
         <ActionOverview actions={data?.actions} />
         {modal === "project" && (
-        <Modal title="新建项目" onClose={() => setModal(null)}>
-          <ProjectForm onClose={() => setModal(null)} />
-        </Modal>
+        <ProjectForm onClose={() => setModal(null)} />
         )}
       </div>
     </>

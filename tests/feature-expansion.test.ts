@@ -13,6 +13,7 @@ process.env.APP_PASSWORD_HASH = 'scrypt$4c63a6f93ff4f94b031b7e7583592177$b598dbd
 process.env.SESSION_SECRET = 'feature-expansion-test-session-secret-123456789';
 
 let app: FastifyInstance;
+let origin = '';
 let adminCookie = '';
 let ownerCookie = '';
 let replacementCookie = '';
@@ -48,12 +49,17 @@ const mcpHeaders = (token: string) => ({
   'content-type': 'application/json',
 });
 
+async function sendMcp(token: string, payload: Record<string, unknown>) {
+  const response = await fetch(`${origin}/mcp`, {
+    method: 'POST', headers: mcpHeaders(token), body: JSON.stringify(payload),
+  });
+  const body = await response.text();
+  expect(response.status, body).toBe(200);
+  return JSON.parse(body);
+}
+
 async function callMcp(token: string, id: number, name: string, args: Record<string, unknown>) {
-  const response = await app.inject({ method: 'POST', url: '/mcp', headers: mcpHeaders(token), payload: {
-    jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args },
-  } });
-  expect(response.statusCode).toBe(200);
-  return response.json();
+  return sendMcp(token, { jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
 }
 
 function mcpValue(payload: any) {
@@ -65,6 +71,7 @@ beforeAll(async () => {
   const module = await import('../src/server/app');
   app = await module.buildApp();
   await app.ready();
+  origin = await app.listen({ host: '127.0.0.1', port: 0 });
   const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } });
   adminCookie = responseCookie(login);
   const project = await app.inject({ method: 'POST', url: '/api/projects', headers: { cookie: adminCookie }, payload: { name: '功能扩充验收项目' } });
@@ -100,6 +107,31 @@ afterAll(async () => {
 });
 
 describe('功能扩充契约', () => {
+  it('行动中心返回服务端采用的业务日期', async () => {
+    await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
+      projectId, title: '行动中心日期契约',
+    } });
+    const response = await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}`, headers: { cookie: adminCookie } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().asOfDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('普通项目成员可通过 REST 和 MCP 创建未分派问题', async () => {
+    const rest = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie: memberCookie }, payload: {
+      projectId, title: '成员 REST 提交问题', ownerId,
+    } });
+    expect(rest.statusCode, rest.body).toBe(200);
+    expect(rest.json()).toMatchObject({ title: '成员 REST 提交问题', status: 'in_progress', progress: 0, ownerId: null });
+
+    const issued = await app.inject({ method: 'POST', url: '/api/tokens', headers: { cookie: memberCookie }, payload: { name: '成员创建问题验证' } });
+    expect(issued.statusCode, issued.body).toBe(200);
+    const mcp = await callMcp(issued.json().token, 800, 'create_issue', {
+      projectId, title: '成员 MCP 提交问题', ownerId,
+    });
+    expect(mcp.result?.isError).not.toBe(true);
+    expect(mcpValue(mcp)).toMatchObject({ title: '成员 MCP 提交问题', status: 'in_progress', progress: 0, ownerId: null });
+  });
+
   it('支持轻量待规划需求、自动就绪和执行后负责人约束', async () => {
     const draft = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
       projectId, templateId, title: '只填标题的需求', background: '客户需要缩短交付时间',
@@ -204,6 +236,7 @@ describe('功能扩充契约', () => {
     const workAction = actions.json().items.find((item: any) => item.id === `work_item:${blockedWorkItemId}`);
     expect(workAction.reasonCodes).toEqual(expect.arrayContaining(['blocked', 'unassigned']));
     expect(workAction.severity).toBe('high');
+    expect(workAction.targetPath).toBe(`/requirements/${requirementId}?workItemId=${blockedWorkItemId}`);
     const issueAction = actions.json().items.find((item: any) => item.id === `issue:${issueId}`);
     expect(issueAction.reasonCodes).toEqual(expect.arrayContaining(['overdue', 'unassigned']));
     expect(issueAction.severity).toBe('high');
@@ -217,23 +250,113 @@ describe('功能扩充契约', () => {
     expect((await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}`, headers: { cookie: viewerCookie } })).json().total).toBe(0);
     const filtered = (await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&severity=high&reason=blocked`, headers: { cookie: adminCookie } })).json();
     expect(filtered.items).toEqual([expect.objectContaining({ id: `work_item:${blockedWorkItemId}`, severity: 'high' })]);
+    expect(filtered.summary).toEqual(actions.json().summary);
+    expect(filtered.total).toBe(1);
+    const lastPage = (await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&severity=high&reason=blocked&page=99&pageSize=1`, headers: { cookie: adminCookie } })).json();
+    expect(lastPage).toMatchObject({ total: 1, page: 1, pages: 1, items: [expect.objectContaining({ id: `work_item:${blockedWorkItemId}` })] });
     expect((await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&reason=unknown`, headers: { cookie: adminCookie } })).statusCode).toBe(400);
     const { sqlite } = await import('../src/server/database');
     expect(sqlite.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='action_items'").get()).toEqual({ count: 0 });
   });
 
+  it('待验收需求允许补负责人并关闭缺失行动，但继续锁定计划', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
+      projectId, title: '待验收历史缺负责人', plannedStart: '2026-02-13',
+    } });
+    expect(created.statusCode, created.body).toBe(200);
+    let current = created.json();
+    expect(current).toMatchObject({ status: 'planning', ownerId: null });
+    for (const original of current.workItems) {
+      const item = current.workItems.find((entry: { id: string }) => entry.id === original.id);
+      const completed = await app.inject({ method: 'POST', url: `/api/work-items/${item.id}/complete-as-planned`, headers: { cookie: adminCookie }, payload: {
+        expectedVersion: item.version,
+      } });
+      expect(completed.statusCode, completed.body).toBe(200);
+      current = (await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie: adminCookie } })).json();
+    }
+    expect(current).toMatchObject({ status: 'pending_acceptance', ownerId: null, progress: 100 });
+
+    const before = (await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&pageSize=100`, headers: { cookie: adminCookie } })).json();
+    expect(before.items.find((item: { sourceId: string }) => item.sourceId === current.id)?.reasonCodes)
+      .toEqual(expect.arrayContaining(['missing_owner', 'pending_acceptance']));
+
+    const assigned = await app.inject({ method: 'PATCH', url: `/api/requirements/${current.id}`, headers: { cookie: adminCookie }, payload: {
+      ownerId: replacementId, background: '补齐历史负责人', expectedVersion: current.version,
+    } });
+    expect(assigned.statusCode, assigned.body).toBe(200);
+    expect(assigned.json()).toMatchObject({ status: 'pending_acceptance', ownerId: replacementId, background: '补齐历史负责人' });
+    const after = (await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&pageSize=100`, headers: { cookie: adminCookie } })).json();
+    expect(after.items.find((item: { sourceId: string }) => item.sourceId === current.id)?.reasonCodes).toEqual(['pending_acceptance']);
+
+    const rescheduled = await app.inject({ method: 'POST', url: `/api/requirements/${current.id}/reschedule`, headers: { cookie: adminCookie }, payload: {
+      scheduleMode: 'start', plannedStart: '2026-02-14', expectedVersion: assigned.json().version, reason: '不应调整',
+    } });
+    expect(rescheduled.statusCode).toBe(409);
+    expect(rescheduled.json().code).toBe('TERMINAL_LOCKED');
+    const cleared = await app.inject({ method: 'PATCH', url: `/api/requirements/${current.id}`, headers: { cookie: adminCookie }, payload: {
+      ownerId: null, expectedVersion: assigned.json().version,
+    } });
+    expect(cleared.statusCode).toBe(409);
+    expect(cleared.json().code).toBe('DEPENDENCY_CONFLICT');
+  });
+
+  it('已完成需求的历史延期不再计为待处理行动', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
+      projectId, ownerId: replacementId, title: '延期后已完成需求', plannedStart: '2026-02-13',
+    } });
+    const completed = await app.inject({ method: 'POST', url: `/api/requirements/${created.json().id}/complete-as-planned`, headers: { cookie: adminCookie }, payload: {
+      expectedVersion: created.json().version,
+    } });
+    expect(completed.statusCode, completed.body).toBe(200);
+    const lastItem = completed.json().workItems.at(-1);
+    const corrected = await app.inject({ method: 'POST', url: `/api/work-items/${lastItem.id}/correct`, headers: { cookie: adminCookie }, payload: {
+      actualStart: lastItem.actualStart, actualEnd: '2026-09-04', reason: '补录实际延期完成日', expectedVersion: lastItem.version,
+    } });
+    expect(corrected.statusCode, corrected.body).toBe(200);
+    const latest = (await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie: adminCookie } })).json();
+    expect(latest).toMatchObject({ status: 'completed', delayed: true });
+
+    const mine = (await app.inject({ method: 'GET', url: '/api/my-work', headers: { cookie: replacementCookie } })).json();
+    expect(mine.requirements.find((item: { id: string }) => item.id === latest.id)?.actionCount).toBe(0);
+    const actions = (await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&pageSize=100`, headers: { cookie: replacementCookie } })).json();
+    expect(actions.items.some((item: { sourceType: string; sourceId: string }) => item.sourceType === 'requirement' && item.sourceId === latest.id)).toBe(false);
+  });
+
+  it('我的工作返回父需求状态并由服务端拒绝待规划工作项启动', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
+      projectId, title: '待规划但已分派工作项', plannedStart: '2026-09-04',
+    } });
+    expect(created.json().status).toBe('planning');
+    const initialItem = created.json().workItems[0];
+    const assigned = await app.inject({ method: 'PATCH', url: `/api/work-items/${initialItem.id}`, headers: { cookie: adminCookie }, payload: {
+      ownerId, expectedVersion: initialItem.version,
+    } });
+    expect(assigned.statusCode, assigned.body).toBe(200);
+    const mine = (await app.inject({ method: 'GET', url: '/api/my-work', headers: { cookie: ownerCookie } })).json();
+    expect(mine.items.find((item: { id: string }) => item.id === initialItem.id)).toMatchObject({ requirementStatus: 'planning' });
+    const started = await app.inject({ method: 'POST', url: `/api/work-items/${initialItem.id}/start`, headers: { cookie: ownerCookie }, payload: {
+      expectedVersion: assigned.json().version,
+    } });
+    expect(started.statusCode).toBe(409);
+    expect(started.json().code).toBe('DEPENDENCY_CONFLICT');
+  });
+
   it('MCP与REST共用查询结果、权限和业务错误码', async () => {
     const issued = await app.inject({ method: 'POST', url: '/api/tokens', headers: { cookie: replacementCookie }, payload: { name: '功能扩充MCP' } });
     const token = issued.json().token as string;
-    const tools = await app.inject({ method: 'POST', url: '/mcp', headers: mcpHeaders(token), payload: {
+    const tools = await sendMcp(token, {
       jsonrpc: '2.0', id: 1, method: 'tools/list', params: {},
-    } });
-    const toolNames = tools.json().result.tools.map((tool: { name: string }) => tool.name);
+    });
+    const toolNames = tools.result.tools.map((tool: { name: string }) => tool.name);
     expect(toolNames).toEqual(expect.arrayContaining([
       'get_my_work', 'list_action_items', 'list_issues', 'get_issue', 'update_progress', 'delete_progress',
       'update_issue_update', 'delete_issue_update', 'list_project_members', 'set_project_member_role',
-      'list_person_candidates', 'copy_template', 'get_analytics_catalog', 'query_analytics',
+      'list_person_candidates', 'copy_template', 'get_analytics_catalog', 'query_analytics', 'correct_requirement',
     ]));
+    const toolDescriptions = new Map(tools.result.tools.map((tool: { name: string; description?: string }) => [tool.name, tool.description || '']));
+    expect(toolDescriptions.get('update_requirement')).toContain('负责人和辅助信息');
+    expect(toolDescriptions.get('reopen_work_item')).toContain('需求负责人或项目经理');
+    expect(toolDescriptions.get('correct_requirement')).toContain('保持');
 
     const restActions = (await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&pageSize=100`, headers: { cookie: replacementCookie } })).json();
     const mcpActions = mcpValue(await callMcp(token, 2, 'list_action_items', { projectId, pageSize: 100 }));
@@ -254,6 +377,313 @@ describe('功能扩充契约', () => {
     });
     const mcpInvalid = await callMcp(token, 7, 'list_action_items', { projectId, reason: 'unknown' });
     expect(mcpInvalid.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    for (const [path, tool] of [['/api/dashboard?projectId=%20', 'dashboard_summary'], ['/api/archives?projectId=%20', 'list_archives']] as const) {
+      const restInvalidProject = await app.inject({ method: 'GET', url: path, headers: { cookie: replacementCookie } });
+      expect(restInvalidProject.statusCode).toBe(400);
+      expect(restInvalidProject.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+      const mcpInvalidProject = await callMcp(token, 70 + path.length, tool, { projectId: ' ' });
+      expect(mcpInvalidProject.result).toMatchObject({
+        isError: true,
+        structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+      });
+    }
+    const restInvalidCopy = await app.inject({
+      method: 'POST', url: '/api/projects/%20/templates/%20/copy', headers: { cookie: replacementCookie },
+    });
+    expect(restInvalidCopy.statusCode).toBe(400);
+    expect(restInvalidCopy.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpInvalidCopy = await callMcp(token, 71, 'copy_template', { projectId: ' ', sourceTemplateId: ' ' });
+    expect(mcpInvalidCopy.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const adminIssued = await app.inject({ method: 'POST', url: '/api/tokens', headers: { cookie: adminCookie }, payload: { name: '审计范围MCP' } });
+    const adminToken = adminIssued.json().token as string;
+    const restProjectAudit = await app.inject({
+      method: 'GET', url: `/api/audit?projectId=${projectId}&limit=500`, headers: { cookie: adminCookie },
+    });
+    expect(restProjectAudit.statusCode).toBe(200);
+    const mcpProjectAudit = mcpValue(await callMcp(adminToken, 72, 'list_audit_logs', { projectId, limit: 500 }));
+    expect(mcpProjectAudit).toEqual(restProjectAudit.json());
+    const restManagerCandidate = await app.inject({ method: 'POST', url: '/api/people', headers: { cookie: adminCookie }, payload: {
+      name: `REST候选经理-${randomUUID()}`, jobTitle: '候选经理',
+    } });
+    const restManager = await app.inject({
+      method: 'POST', url: `/api/projects/${projectId}/people/${restManagerCandidate.json().id}`, headers: { cookie: adminCookie }, payload: { role: 'manager' },
+    });
+    expect(restManager.statusCode).toBe(200);
+    expect(restManager.json()).toMatchObject({ projectRole: 'manager' });
+    const mcpManagerCandidate = await app.inject({ method: 'POST', url: '/api/people', headers: { cookie: adminCookie }, payload: {
+      name: `MCP候选经理-${randomUUID()}`, jobTitle: '候选经理',
+    } });
+    const mcpManager = await callMcp(adminToken, 73, 'add_project_person', {
+      projectId, personId: mcpManagerCandidate.json().id, role: 'manager',
+    });
+    expect(mcpManager.result?.isError).not.toBe(true);
+    expect(mcpValue(mcpManager)).toMatchObject({ projectRole: 'manager' });
+    const otherProject = await app.inject({ method: 'POST', url: '/api/projects', headers: { cookie: adminCookie }, payload: {
+      name: `问题不可迁移项目-${randomUUID()}`,
+    } });
+    const issueBeforeMove = (await app.inject({ method: 'GET', url: `/api/issues/${issueId}`, headers: { cookie: adminCookie } })).json();
+    const restIssueMove = await app.inject({ method: 'PATCH', url: `/api/issues/${issueId}`, headers: { cookie: adminCookie }, payload: {
+      projectId: otherProject.json().id, expectedVersion: issueBeforeMove.version,
+    } });
+    expect(restIssueMove.statusCode).toBe(400);
+    expect(restIssueMove.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpIssueMove = await callMcp(adminToken, 74, 'update_issue', {
+      id: issueId, projectId: otherProject.json().id, expectedVersion: issueBeforeMove.version,
+    });
+    expect(mcpIssueMove.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const templateBeforeMove = (await app.inject({
+      method: 'GET', url: `/api/templates?projectId=${projectId}`, headers: { cookie: adminCookie },
+    })).json().find((entry: { id: string }) => entry.id === templateId);
+    const restTemplateMove = await app.inject({ method: 'PATCH', url: `/api/templates/${templateId}`, headers: { cookie: adminCookie }, payload: {
+      projectId: otherProject.json().id, expectedUpdatedAt: templateBeforeMove.updatedAt,
+    } });
+    expect(restTemplateMove.statusCode).toBe(400);
+    expect(restTemplateMove.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpTemplateMove = await callMcp(adminToken, 75, 'update_template', {
+      id: templateId, projectId: otherProject.json().id, expectedUpdatedAt: templateBeforeMove.updatedAt,
+    });
+    expect(mcpTemplateMove.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const foreignTemplate = (await app.inject({
+      method: 'GET', url: `/api/templates?projectId=${otherProject.json().id}`, headers: { cookie: adminCookie },
+    })).json()[0];
+    const foreignItems = templateBeforeMove.items.map((entry: Record<string, unknown>, index: number) => ({
+      ...entry, id: index === 0 ? foreignTemplate.items[0].id : entry.id,
+    }));
+    const restForeignTemplateItem = await app.inject({ method: 'PATCH', url: `/api/templates/${templateId}`, headers: { cookie: adminCookie }, payload: {
+      items: foreignItems, expectedUpdatedAt: templateBeforeMove.updatedAt,
+    } });
+    expect(restForeignTemplateItem.statusCode).toBe(400);
+    expect(restForeignTemplateItem.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpForeignTemplateItem = await callMcp(adminToken, 77, 'update_template', {
+      id: templateId, items: foreignItems, expectedUpdatedAt: templateBeforeMove.updatedAt,
+    });
+    expect(mcpForeignTemplateItem.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const clientIdentifiedItem = [{
+      id: `client-item-${randomUUID()}`, title: '不应接受客户端ID', startOffsetDays: 0, durationDays: 1, sortOrder: 0,
+    }];
+    const restIdentifiedTemplate = await app.inject({ method: 'POST', url: '/api/templates', headers: { cookie: adminCookie }, payload: {
+      projectId, name: `REST客户端步骤ID-${randomUUID()}`, items: clientIdentifiedItem,
+    } });
+    expect(restIdentifiedTemplate.statusCode).toBe(400);
+    expect(restIdentifiedTemplate.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpIdentifiedTemplate = await callMcp(adminToken, 78, 'create_template', {
+      projectId, name: `MCP客户端步骤ID-${randomUUID()}`, items: clientIdentifiedItem,
+    });
+    expect(mcpIdentifiedTemplate.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const newTemplateItems = templateBeforeMove.items.map(({ id: _id, ...entry }: Record<string, unknown>) => entry);
+    const restVersionedTemplate = await app.inject({ method: 'POST', url: '/api/templates', headers: { cookie: adminCookie }, payload: {
+      projectId, name: `REST带版本新流程-${randomUUID()}`, items: newTemplateItems, expectedUpdatedAt: templateBeforeMove.updatedAt,
+    } });
+    expect(restVersionedTemplate.statusCode).toBe(400);
+    expect(restVersionedTemplate.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpVersionedTemplate = await callMcp(adminToken, 85, 'create_template', {
+      projectId, name: `MCP带版本新流程-${randomUUID()}`, items: newTemplateItems, expectedUpdatedAt: templateBeforeMove.updatedAt,
+    });
+    expect(mcpVersionedTemplate.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const restIgnoredCreateMode = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
+      projectId, title: `REST冲突创建模式-${randomUUID()}`, plannedStart: '2026-09-07', scheduleMode: 'deadline',
+    } });
+    expect(restIgnoredCreateMode.statusCode).toBe(400);
+    expect(restIgnoredCreateMode.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpIgnoredCreateMode = await callMcp(adminToken, 79, 'create_requirement', {
+      projectId, title: `MCP冲突创建模式-${randomUUID()}`, plannedStart: '2026-09-07', scheduleMode: 'deadline',
+    });
+    expect(mcpIgnoredCreateMode.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const requirementBeforeSortedCreate = (await app.inject({
+      method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie: adminCookie },
+    })).json();
+    const sortedCreateInput = {
+      title: `指定排序新增-${randomUUID()}`, sortOrder: 0, expectedVersion: requirementBeforeSortedCreate.version, reason: '验证新增排序语义',
+    };
+    const restSortedCreate = await app.inject({
+      method: 'POST', url: `/api/requirements/${requirementId}/work-items`, headers: { cookie: adminCookie }, payload: sortedCreateInput,
+    });
+    expect(restSortedCreate.statusCode).toBe(400);
+    expect(restSortedCreate.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpSortedCreate = await callMcp(adminToken, 80, 'create_work_item', { requirementId, ...sortedCreateInput });
+    expect(mcpSortedCreate.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const requirementBeforeExecutionCreate = (await app.inject({
+      method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie: adminCookie },
+    })).json();
+    const executionCreateInput = {
+      title: `带执行态新增-${randomUUID()}`,
+      expectedVersion: requirementBeforeExecutionCreate.version,
+      reason: '验证新建执行态字段',
+      status: 'completed',
+      progress: 100,
+      actualStart: '2026-09-01',
+      actualEnd: '2026-09-02',
+    };
+    const restExecutionCreate = await app.inject({
+      method: 'POST', url: `/api/requirements/${requirementId}/work-items`, headers: { cookie: adminCookie }, payload: executionCreateInput,
+    });
+    expect(restExecutionCreate.statusCode).toBe(400);
+    expect(restExecutionCreate.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpExecutionCreate = await callMcp(adminToken, 86, 'create_work_item', { requirementId, ...executionCreateInput });
+    expect(mcpExecutionCreate.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const requirementBeforeDualAssignees = (await app.inject({
+      method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie: adminCookie },
+    })).json();
+    const dualAssigneeItem = requirementBeforeDualAssignees.workItems.find((entry: { status: string }) => entry.status === 'not_started');
+    const dualAssigneesInput = { collaboratorIds: [], assigneeIds: [], expectedVersion: dualAssigneeItem.version, reason: '验证双字段冲突' };
+    const restDualAssignees = await app.inject({
+      method: 'PATCH', url: `/api/work-items/${dualAssigneeItem.id}`, headers: { cookie: adminCookie }, payload: dualAssigneesInput,
+    });
+    expect(restDualAssignees.statusCode).toBe(400);
+    expect(restDualAssignees.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpDualAssignees = await callMcp(adminToken, 81, 'update_work_item', { id: dualAssigneeItem.id, ...dualAssigneesInput });
+    expect(mcpDualAssignees.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const restIssueWithExecution = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie: adminCookie }, payload: {
+      projectId, title: `REST带执行态问题-${randomUUID()}`, progress: 50, expectedVersion: 1,
+    } });
+    expect(restIssueWithExecution.statusCode).toBe(400);
+    expect(restIssueWithExecution.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpIssueWithExecution = await callMcp(adminToken, 82, 'create_issue', {
+      projectId, title: `MCP带执行态问题-${randomUUID()}`, progress: 50, expectedVersion: 1,
+    });
+    expect(mcpIssueWithExecution.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const invalidProjectCreate = {
+      name: `REST带默认流程项目-${randomUUID()}`,
+      defaultTemplateId: templateId,
+      expectedUpdatedAt: new Date().toISOString(),
+    };
+    const restProjectWithUpdateFields = await app.inject({
+      method: 'POST', url: '/api/projects', headers: { cookie: adminCookie }, payload: invalidProjectCreate,
+    });
+    expect(restProjectWithUpdateFields.statusCode).toBe(400);
+    expect(restProjectWithUpdateFields.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpProjectWithUpdateFields = await callMcp(adminToken, 83, 'create_project', {
+      ...invalidProjectCreate, name: `MCP带默认流程项目-${randomUUID()}`,
+    });
+    expect(mcpProjectWithUpdateFields.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const invalidPersonCreate = {
+      name: `REST停用人员-${randomUUID()}`,
+      jobTitle: '契约验证',
+      active: false,
+      expectedUpdatedAt: new Date().toISOString(),
+    };
+    const restPersonWithUpdateFields = await app.inject({
+      method: 'POST', url: '/api/people', headers: { cookie: adminCookie }, payload: invalidPersonCreate,
+    });
+    expect(restPersonWithUpdateFields.statusCode).toBe(400);
+    expect(restPersonWithUpdateFields.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpPersonWithUpdateFields = await callMcp(adminToken, 84, 'create_person', {
+      ...invalidPersonCreate, name: `MCP停用人员-${randomUUID()}`,
+    });
+    expect(mcpPersonWithUpdateFields.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const personBeforeProjectEdit = (await app.inject({
+      method: 'GET', url: `/api/people?projectId=${projectId}`, headers: { cookie: adminCookie },
+    })).json().find((entry: { id: string }) => entry.id === ownerId);
+    const restPersonProjectEdit = await app.inject({ method: 'PATCH', url: `/api/people/${ownerId}`, headers: { cookie: adminCookie }, payload: {
+      projectId: otherProject.json().id, expectedUpdatedAt: personBeforeProjectEdit.updatedAt,
+    } });
+    expect(restPersonProjectEdit.statusCode).toBe(400);
+    expect(restPersonProjectEdit.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpPersonProjectEdit = await callMcp(adminToken, 76, 'update_person', {
+      id: ownerId, projectId: otherProject.json().id, expectedUpdatedAt: personBeforeProjectEdit.updatedAt,
+    });
+    expect(mcpPersonProjectEdit.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const invalidAnalytics = { range: { from: '2026-09-01', to: '2026-09-30' }, panels: [{}] };
+    const restInvalidAnalytics = await app.inject({
+      method: 'POST', url: '/api/analytics/query', headers: { cookie: replacementCookie }, payload: invalidAnalytics,
+    });
+    expect(restInvalidAnalytics.statusCode).toBe(400);
+    expect(restInvalidAnalytics.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const mcpInvalidAnalytics = await callMcp(token, 8, 'query_analytics', invalidAnalytics);
+    expect(mcpInvalidAnalytics.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const restInvalidProgress = await app.inject({
+      method: 'PATCH', url: '/api/progress/missing-progress', headers: { cookie: replacementCookie }, payload: { workItemPercent: 100 },
+    });
+    expect(restInvalidProgress.statusCode).toBe(400);
+    const mcpInvalidProgress = await callMcp(token, 9, 'update_progress', { id: 'missing-progress', workItemPercent: 100 });
+    expect(mcpInvalidProgress.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const restInvalidIssueUpdate = await app.inject({
+      method: 'PATCH', url: '/api/issues/missing-issue/updates/missing-update', headers: { cookie: replacementCookie }, payload: { progress: 100 },
+    });
+    expect(restInvalidIssueUpdate.statusCode).toBe(400);
+    const mcpInvalidIssueUpdate = await callMcp(token, 10, 'update_issue_update', { id: 'missing-issue', updateId: 'missing-update', progress: 100 });
+    expect(mcpInvalidIssueUpdate.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    expect(JSON.stringify(mcpValue(await callMcp(token, 11, 'list_issues', { projectId: `  ${projectId}  ` })))).toContain(issueId);
+    const restInvalidIssueFilters = await app.inject({
+      method: 'GET', url: `/api/issues?projectId=${projectId}&status=resolved&active=true`, headers: { cookie: replacementCookie },
+    });
+    expect(restInvalidIssueFilters.statusCode).toBe(400);
+    const mcpInvalidIssueFilters = await callMcp(token, 14, 'list_issues', { projectId, status: 'resolved', active: true });
+    expect(mcpInvalidIssueFilters.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: restInvalidIssueFilters.json().code } },
+    });
+    const pendingItem = current.workItems.find((item: { status: string }) => item.status === 'not_started');
+    expect(pendingItem).toBeTruthy();
+    const restIncompleteCommand = await app.inject({
+      method: 'POST', url: `/api/work-items/${pendingItem.id}/complete`, headers: { cookie: replacementCookie }, payload: { expectedVersion: pendingItem.version },
+    });
+    expect(restIncompleteCommand.statusCode).toBe(400);
+    const mcpIncompleteCommand = await callMcp(token, 12, 'complete_work_item', { id: pendingItem.id, expectedVersion: pendingItem.version });
+    expect(mcpIncompleteCommand.result).toMatchObject({
+      isError: true,
+      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+    });
+    const restIncompleteIssueCommand = await app.inject({
+      method: 'POST', url: '/api/issues/missing-issue/resolve', headers: { cookie: replacementCookie }, payload: { expectedVersion: 1 },
+    });
+    expect(restIncompleteIssueCommand.statusCode).toBe(400);
+    const mcpIncompleteIssueCommand = await callMcp(token, 13, 'resolve_issue', { id: 'missing-issue', expectedVersion: 1 });
+    expect(mcpIncompleteIssueCommand.result).toMatchObject({
       isError: true,
       structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
     });

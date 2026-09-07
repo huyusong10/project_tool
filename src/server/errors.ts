@@ -72,6 +72,13 @@ export function errorResponse(error: unknown) {
     };
   }
   const candidate = error as { statusCode?: unknown; message?: unknown; code?: unknown };
+  if (candidate?.code === 'SQLITE_CONSTRAINT_UNIQUE' || candidate?.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') {
+    return {
+      statusCode: 409,
+      payload: { error: '相同数据已被其他操作创建，请刷新后重试', code: 'DEPENDENCY_CONFLICT' },
+      known: true,
+    };
+  }
   if (Number.isInteger(candidate?.statusCode) && Number(candidate.statusCode) >= 400 && Number(candidate.statusCode) < 500) {
     return {
       statusCode: Number(candidate.statusCode),

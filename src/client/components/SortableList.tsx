@@ -9,7 +9,7 @@ import {
   type Active,
   type Over,
 } from "@dnd-kit/core";
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 type DraggableState = ReturnType<typeof useDraggable>;
 
@@ -19,6 +19,8 @@ export type SortableListItemState = {
   handleListeners: DraggableState["listeners"];
   isDragging: boolean;
   isOver: boolean;
+  /** 拖拽位移（如需跟随光标的视觉位移，translate3d 到渲染节点）。 */
+  transform: DraggableState["transform"];
 };
 
 type SortableListProps<T> = {
@@ -66,37 +68,53 @@ function SortableItem<T>({
     handleListeners: draggable.listeners,
     isDragging: activeId === id,
     isOver: overId === id && activeId !== id,
+    transform: draggable.transform,
   });
 }
 
 export function SortableList<T>({ items, getId, onReorder, renderItem, disabled = false }: SortableListProps<T>) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
+  const startedIds = useRef("");
+  const invalidated = useRef(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor),
   );
   const ids = useMemo(() => items.map(getId), [getId, items]);
+  const idsKey = ids.join("\u0000");
   const clear = () => {
     setActiveId(null);
     setOverId(null);
   };
   const activeKey = (active: Active | null) => active ? String(active.id) : null;
   const overKey = (over: Over | null) => over ? String(over.id) : null;
+  useEffect(() => {
+    if (!activeId || startedIds.current === idsKey) return;
+    invalidated.current = true;
+    setActiveId(null);
+    setOverId(null);
+  }, [activeId, idsKey]);
 
   return <DndContext
     sensors={sensors}
     onDragStart={({ active }) => {
       const key = activeKey(active);
+      startedIds.current = idsKey;
+      invalidated.current = false;
       setActiveId(key);
       setOverId(key);
     }}
     onDragOver={({ over }) => setOverId(overKey(over))}
-    onDragCancel={clear}
+    onDragCancel={() => { startedIds.current = ""; invalidated.current = false; clear(); }}
     onDragEnd={({ active, over }) => {
+      const invalid = invalidated.current || startedIds.current !== idsKey;
+      startedIds.current = "";
+      invalidated.current = false;
       const fromIndex = ids.indexOf(String(active.id));
       const toIndex = over ? ids.indexOf(String(over.id)) : -1;
       clear();
+      if (invalid) return;
       if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
       void onReorder(moveItem(items, fromIndex, toIndex), fromIndex, toIndex);
     }}

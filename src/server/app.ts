@@ -23,7 +23,7 @@ export async function buildApp() {
   app.get('/health', async () => ({ status: 'ok', time: new Date().toISOString(), service: 'project-manage' }));
   registerApiRoutes(app);
   registerMcpRoute(app, (token) => token ? authenticateApiToken(token) : null);
-  const distDir = path.join(config.rootDir, 'dist');
+  const distDir = config.webDistDir;
   if (fs.existsSync(distDir)) {
     const assetsDir = path.join(distDir, 'assets');
     if (fs.existsSync(assetsDir)) {

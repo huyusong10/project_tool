@@ -1,27 +1,28 @@
 import {
   addCalendarDays,
   businessDaysInclusive,
-  deriveWorkItemStatus,
   requirementStatuses,
   riskLevels,
   todayIso,
 } from '../../shared/domain';
-import { listRequirements } from './requirements';
+import { listRequirements, requirementCompletionDate } from './requirements';
 import { listIssues } from './issues';
 import { rows } from './support';
 import { fail } from '../errors';
 import { isValidIsoDate } from '../../shared/workday';
+import { getWorkItemCancellationDates } from './work-item-history';
 
 type PersonRow = { id: string; name: string; jobTitle: string | null };
 type ConcurrencyItem = {
   id: string; title: string; personId: string; status: string;
   plannedStart: string | null; plannedEnd: string | null;
   actualStart: string | null; actualEnd: string | null; blockedAt: string | null;
-  requirementId: string; requirementTitle: string;
+  requirementId: string; requirementTitle: string; requirementStatus: string; updatedAt: string;
 };
+type EffectiveConcurrencyItem = ConcurrencyItem & { effectiveActualEnd: string };
 
-export function getPeopleConcurrency(filters: { projectId?: string; personId?: string; jobTitle?: string; from?: string; to?: string; includeExternalAggregate?: boolean } = {}) {
-  const from = filters.from || todayIso(); const to = filters.to || addCalendarDays(from, 6);
+export function getPeopleConcurrency(filters: { projectId?: string; personId?: string; jobTitle?: string; from?: string; to?: string; includeExternalAggregate?: boolean } = {}, asOfDate = todayIso()) {
+  const from = filters.from || asOfDate; const to = filters.to || addCalendarDays(from, 6);
   if (!isValidIsoDate(from) || !isValidIsoDate(to) || from > to) fail('人员并发查询日期范围不合法');
   if (to > addCalendarDays(from, 1830)) fail('人员并发查询范围不能超过5年');
   const dates: string[] = [];
@@ -36,9 +37,10 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
   const people = rows<PersonRow>(`SELECT p.id, p.name, p.job_title AS jobTitle FROM people p WHERE ${where.join(' AND ')} ORDER BY p.name`, ...params);
   const itemWhere = ['a.personId IS NOT NULL', 'r.deleted_at IS NULL', 'pr.deleted_at IS NULL']; const itemParams: unknown[] = [];
   if (filters.projectId) { itemWhere.push('r.project_id=?'); itemParams.push(filters.projectId); }
-  const items = rows<ConcurrencyItem>(`SELECT w.id, w.title, a.personId, w.status, w.planned_start AS plannedStart,
+  const rawItems = rows<ConcurrencyItem>(`SELECT w.id, w.title, a.personId, w.status, w.planned_start AS plannedStart,
     w.planned_end AS plannedEnd, w.actual_start AS actualStart, w.actual_end AS actualEnd,
-    w.blocked_at AS blockedAt, r.id AS requirementId, r.title AS requirementTitle
+    w.blocked_at AS blockedAt, w.updated_at AS updatedAt, r.id AS requirementId, r.title AS requirementTitle,
+    r.status AS requirementStatus
     FROM work_items w
     JOIN requirements r ON r.id=w.requirement_id
     JOIN projects pr ON pr.id=r.project_id
@@ -47,15 +49,21 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
       UNION
       SELECT work_item_id AS workItemId, person_id AS personId FROM work_item_collaborators
     ) a ON a.workItemId=w.id
-    WHERE ${itemWhere.join(' AND ')}`, ...itemParams)
-    .filter((item) => deriveWorkItemStatus(item) !== 'cancelled');
-  const itemsByPerson = new Map<string, ConcurrencyItem[]>();
+    WHERE ${itemWhere.join(' AND ')}`, ...itemParams);
+  const cancellationDates = getWorkItemCancellationDates(
+    rawItems,
+    new Map(rawItems.map((item) => [item.requirementId, item.requirementStatus])),
+  );
+  const items = rawItems.map((item) => {
+    if (item.status !== 'cancelled') return { ...item, effectiveActualEnd: item.actualEnd || asOfDate };
+    return { ...item, effectiveActualEnd: cancellationDates.get(item.id)! };
+  });
+  const itemsByPerson = new Map<string, EffectiveConcurrencyItem[]>();
   for (const item of items) {
     const group = itemsByPerson.get(item.personId) || [];
     group.push(item);
     itemsByPerson.set(item.personId, group);
   }
-  const today = todayIso();
   const externalCounts = new Map<string, number>();
   if (filters.projectId && filters.includeExternalAggregate) {
     const external = rows<{ personId: string; count: number }>(`SELECT a.personId, COUNT(DISTINCT w.id) AS count
@@ -66,40 +74,42 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
       ) a ON a.workItemId=w.id
       WHERE r.project_id<>? AND r.deleted_at IS NULL AND pr.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled')
         AND w.actual_start IS NOT NULL AND w.actual_start<=? AND (w.actual_end IS NULL OR w.actual_end>=?)
-      GROUP BY a.personId`, filters.projectId, today, today);
+      GROUP BY a.personId`, filters.projectId, asOfDate, asOfDate);
     external.forEach((item) => externalCounts.set(item.personId, Number(item.count)));
   }
   const result = people.map((person) => {
     const owned = itemsByPerson.get(person.id) || [];
     const days = dates.map((date) => {
-      const plannedItems = owned.filter((item) => item.status !== 'completed' && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd);
-      const actualItems = owned.filter((item) => item.actualStart && date >= item.actualStart && date <= (item.actualEnd || today));
-      const selected = date <= today ? actualItems : plannedItems;
+      const plannedItems = owned.filter((item) => !['completed', 'cancelled'].includes(item.status) && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd);
+      const actualItems = owned.filter((item) => item.actualStart && date >= item.actualStart && date <= item.effectiveActualEnd);
+      const selected = date <= asOfDate ? actualItems : plannedItems;
       return { date, count: selected.length, plannedCount: plannedItems.length, actualCount: actualItems.length, items: selected.map((item) => ({ id: item.id, title: item.title, requirementId: item.requirementId, requirementTitle: item.requirementTitle })) };
     });
     return {
       ...person,
-      currentCount: days.find((day) => day.date === today)?.count || 0,
+      currentCount: days.find((day) => day.date === asOfDate)?.count || 0,
       externalCurrentCount: filters.includeExternalAggregate ? externalCounts.get(person.id) || 0 : undefined,
       peakCount: Math.max(0, ...days.map((day) => day.count)),
       days,
     };
   });
-  return { from, to, dates, people: result, currentTop: [...result].filter((person) => person.currentCount > 0).sort((a, b) => b.currentCount - a.currentCount).slice(0, 5) };
+  return { asOfDate, from, to, dates, people: result, currentTop: [...result].filter((person) => person.currentCount > 0).sort((a, b) => b.currentCount - a.currentCount).slice(0, 5) };
 }
 
-export function getDashboard(projectId?: string) {
-  const requirements = listRequirements({ projectId });
-  const recentProgress = rows<{ id: string; requirementId: string; workItemId: string | null; workItemTitle: string | null; percent: number; workItemPercent: number | null; content: string; createdAt: string; updatedAt: string }>(`
-    SELECT id, requirementId, workItemId, workItemTitle, percent, workItemPercent, content, createdAt, updatedAt FROM (
+export function getDashboard(projectId?: string, asOfDate = todayIso()) {
+  const requirements = listRequirements({ projectId }, asOfDate);
+  const recentProgress = rows<{ id: string; requirementId: string; workItemId: string | null; workItemTitle: string | null; percent: number; workItemPercent: number | null; content: string; eventType: string; createdAt: string; updatedAt: string }>(`
+    SELECT id, requirementId, workItemId, workItemTitle, percent, workItemPercent, content, eventType, createdAt, updatedAt FROM (
       SELECT u.id, u.requirement_id AS requirementId, u.work_item_id AS workItemId,
-        w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content, u.created_at AS createdAt, u.updated_at AS updatedAt,
-        ROW_NUMBER() OVER (PARTITION BY u.requirement_id ORDER BY u.created_at DESC, u.id DESC) AS rank
+        w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content, u.event_type AS eventType,
+        u.created_at AS createdAt, u.updated_at AS updatedAt,
+        u.rowid AS writeOrder,
+        ROW_NUMBER() OVER (PARTITION BY u.requirement_id ORDER BY u.created_at DESC, u.rowid DESC) AS rank
       FROM progress_updates u
       LEFT JOIN work_items w ON w.id=u.work_item_id
       JOIN requirements r ON r.id=u.requirement_id
       WHERE r.deleted_at IS NULL ${projectId ? 'AND r.project_id=?' : ''}
-    ) ranked WHERE rank<=3 ORDER BY createdAt DESC`, ...(projectId ? [projectId] : []));
+    ) ranked WHERE rank<=3 ORDER BY createdAt DESC, writeOrder DESC`, ...(projectId ? [projectId] : []));
   const recentByRequirement = new Map<string, typeof recentProgress>();
   for (const update of recentProgress) recentByRequirement.set(update.requirementId, [...(recentByRequirement.get(update.requirementId) || []), update]);
   const requirementIssueCounts = rows<{ requirementId: string; active: number; overdue: number }>(`
@@ -107,7 +117,7 @@ export function getDashboard(projectId?: string) {
       SUM(CASE WHEN due_date IS NOT NULL AND business_day_delta(due_date, ?)>0 THEN 1 ELSE 0 END) AS overdue
     FROM issues
     WHERE requirement_id IS NOT NULL AND status<>'resolved' ${projectId ? 'AND project_id=?' : ''}
-    GROUP BY requirement_id`, todayIso(), ...(projectId ? [projectId] : []));
+    GROUP BY requirement_id`, asOfDate, ...(projectId ? [projectId] : []));
   const issuesByRequirement = new Map(requirementIssueCounts.map((item) => [item.requirementId, {
     active: Number(item.active || 0), overdue: Number(item.overdue || 0),
   }]));
@@ -129,17 +139,20 @@ export function getDashboard(projectId?: string) {
   }
   const statuses = requirementStatuses.map((status) => ({ status, count: statusCounts.get(status) || 0 }));
   const risks = riskLevels.map((risk) => ({ risk, count: riskCounts.get(risk) || 0 }));
-  const weeks: Array<{ week: string; completed: number }> = []; const now = new Date();
+  const weeks: Array<{ week: string; completed: number }> = [];
+  const monday = addCalendarDays(asOfDate, -((new Date(`${asOfDate}T00:00:00Z`).getUTCDay() + 6) % 7));
+  const completionDates = requirements.map(requirementCompletionDate).filter((date): date is string => Boolean(date));
   for (let i = 11; i >= 0; i -= 1) {
-    const start = new Date(now); start.setDate(now.getDate() - now.getDay() - i * 7 + 1); start.setHours(0, 0, 0, 0);
-    const end = new Date(start); end.setDate(start.getDate() + 7);
-    weeks.push({ week: `${start.getMonth() + 1}/${start.getDate()}`, completed: requirements.filter((item) => item.status === 'completed' && new Date(item.updatedAt) >= start && new Date(item.updatedAt) < end).length });
+    const start = addCalendarDays(monday, -i * 7);
+    const end = addCalendarDays(start, 7);
+    weeks.push({ week: `${Number(start.slice(5, 7))}/${Number(start.slice(8, 10))}`, completed: completionDates.filter((date) => date >= start && date < end).length });
   }
   const varianceTop = requirements.filter((item) => (item.finishVariance ?? 0) > 0).sort((a, b) => (b.finishVariance ?? 0) - (a.finishVariance ?? 0)).slice(0, 10)
     .map((item) => ({ id: item.id, title: item.title, variance: item.finishVariance }));
-  const issuePage = listIssues({ projectId, scope: 'public', page: 1, pageSize: 10 });
-  const attention = issuePage.items.filter((item) => item.status === 'in_progress').slice(0, 5);
+  const issuePage = listIssues({ projectId, scope: 'public', status: 'in_progress', page: 1, pageSize: 5 }, asOfDate);
+  const attention = issuePage.items;
   return {
+    asOfDate,
     summary: { total: requirements.length, active, completed, delayed, highRisk, completionRate },
     requirements: dashboardRequirements,
     issues: { summary: issuePage.summary, attention },

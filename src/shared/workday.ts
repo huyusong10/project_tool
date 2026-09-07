@@ -31,8 +31,62 @@ export function isWorkdayCalendarCovered(value?: string | null) {
   return year >= workdayCalendarCoverage.fromYear && year <= workdayCalendarCoverage.toYear;
 }
 
+export function hasWorkdayCalendarFallback(values: Array<string | null | undefined>) {
+  return values.some((value) => isValidIsoDate(value) && !isWorkdayCalendarCovered(value));
+}
+
 export function isBusinessDay(value: string) {
   if (!isValidIsoDate(value)) return false;
   if (!isWorkdayCalendarCovered(value)) return isWeekday(value);
   return chineseDays.isWorkday(value);
+}
+
+const dayMilliseconds = 86_400_000;
+// 每年最多366项；仅缓存节假日库覆盖的23年，不随用户查询范围增长。
+const yearAdjustments = new Map<number, Int16Array>();
+
+function weekdayCount(start: number, end: number) {
+  const days = (end - start) / dayMilliseconds + 1;
+  let count = Math.floor(days / 7) * 5;
+  const firstWeekday = new Date(start).getUTCDay();
+  for (let offset = 0; offset < days % 7; offset += 1) {
+    const weekday = (firstWeekday + offset) % 7;
+    if (weekday !== 0 && weekday !== 6) count += 1;
+  }
+  return count;
+}
+
+function adjustmentsForYear(year: number) {
+  const cached = yearAdjustments.get(year);
+  if (cached) return cached;
+  const first = Date.UTC(year, 0, 1);
+  const days = (Date.UTC(year + 1, 0, 1) - first) / dayMilliseconds;
+  const prefix = new Int16Array(days + 1);
+  for (let index = 0; index < days; index += 1) {
+    const date = new Date(first + index * dayMilliseconds);
+    const weekday = date.getUTCDay();
+    const adjustment = Number(isBusinessDay(date.toISOString().slice(0, 10))) - Number(weekday !== 0 && weekday !== 6);
+    prefix[index + 1] = prefix[index] + adjustment;
+  }
+  yearAdjustments.set(year, prefix);
+  return prefix;
+}
+
+export function countBusinessDays(start?: string | null, end?: string | null): number {
+  if (!isValidIsoDate(start) || !isValidIsoDate(end)) return 0;
+  if (start > end) return -countBusinessDays(end, start);
+  const first = Date.parse(`${start}T00:00:00Z`);
+  const last = Date.parse(`${end}T00:00:00Z`);
+  let count = weekdayCount(first, last);
+  const firstCoveredYear = Math.max(yearOf(start), workdayCalendarCoverage.fromYear);
+  const lastCoveredYear = Math.min(yearOf(end), workdayCalendarCoverage.toYear);
+  for (let year = firstCoveredYear; year <= lastCoveredYear; year += 1) {
+    const yearStart = Date.UTC(year, 0, 1);
+    const yearEnd = Date.UTC(year + 1, 0, 1) - dayMilliseconds;
+    const from = (Math.max(first, yearStart) - yearStart) / dayMilliseconds;
+    const to = (Math.min(last, yearEnd) - yearStart) / dayMilliseconds + 1;
+    const adjustments = adjustmentsForYear(year);
+    count += adjustments[to] - adjustments[from];
+  }
+  return count;
 }

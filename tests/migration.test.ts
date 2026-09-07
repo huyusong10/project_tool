@@ -12,6 +12,7 @@ let migratedDb: InstanceType<typeof Database> | null = null;
 afterAll(() => {
   migratedDb?.close();
   for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${dbPath}${suffix}`, { force: true });
+  for (const suffix of ['', '-wal', '-shm', '-journal']) fs.rmSync(`${dbPath}.restore${suffix}`, { force: true });
   fs.rmSync(backupDir, { recursive: true, force: true });
 });
 
@@ -49,10 +50,21 @@ describe('正式库增量迁移', () => {
     expect(first.status, first.stderr).toBe(0); expect(second.status, second.stderr).toBe(0);
     const migrationBackups = fs.readdirSync(backupDir).filter((name) => name.endsWith('.db'));
     expect(migrationBackups).toHaveLength(1);
+    expect(fs.readdirSync(backupDir)).toEqual(migrationBackups);
     const migrationBackup = new Database(path.join(backupDir, migrationBackups[0]), { readonly: true });
     expect(migrationBackup.prepare('SELECT COUNT(*) AS count FROM work_items').get()).toEqual({ count: 2 });
     expect((migrationBackup.pragma('integrity_check') as Array<{ integrity_check: string }>)[0].integrity_check).toBe('ok');
     migrationBackup.close();
+
+    const restoreScript = `const backups=await import('./src/server/backups.ts'); const database=await import('./src/server/database.ts'); const prepared=await backups.prepareRestore(${JSON.stringify(migrationBackups[0])}); console.log('prepared=' + prepared.source); database.sqlite.close();`;
+    const restored = spawnSync(process.execPath, ['--import', 'tsx', '--eval', restoreScript], { cwd: process.cwd(), env, encoding: 'utf8' });
+    expect(restored.status, restored.stderr).toBe(0);
+    expect(restored.stdout).toContain(`prepared=${dbPath}.restore`);
+    const restoredCopy = new Database(`${dbPath}.restore`, { readonly: true });
+    expect(restoredCopy.prepare('SELECT title FROM requirements WHERE id=?').get('r1')).toEqual({ title: '原需求' });
+    expect(restoredCopy.prepare("SELECT 1 AS present FROM sqlite_schema WHERE type='table' AND name='accounts'").get()).toEqual({ present: 1 });
+    expect((restoredCopy.pragma('integrity_check') as Array<{ integrity_check: string }>)[0].integrity_check).toBe('ok');
+    restoredCopy.close();
 
     const migrated = migratedDb = new Database(dbPath, { readonly: true });
     expect(migrated.prepare('SELECT COUNT(*) AS count FROM work_items').get()).toEqual({ count: 2 });

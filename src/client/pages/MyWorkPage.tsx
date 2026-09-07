@@ -1,56 +1,35 @@
-import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Check, CircleStop, Clock3, MessageSquarePlus, Play } from 'lucide-react';
 import { api, jsonBody } from '../api';
-import { useApp } from '../app-context';
-import { invalidateRequirementViews } from '../query-invalidation';
-import type { MyWork, MyWorkItem } from '../types';
+import { useSession } from '../app-context';
+import { invalidateRequirementViews, keys } from '../query-keys';
+import { cacheResourceUpdate, useResourceQuery } from '../use-resource-query';
+import type { MyWork, MyWorkItem, Requirement } from '../types';
 import { requirementStatusLabels } from '../../shared/domain';
 import { Chart } from '../components/Chart';
 import { GapTimeline } from '../components/GapTimeline';
-import { EmptyState, Modal } from '../components/Modal';
+import { EmptyState, LoadingState, RefreshNotice } from '../components/Feedback';
 import { PageHeader } from '../components/PageHeader';
-import { ProgressInput } from '../components/ProgressInput';
+import { ProgressForm } from '../components/ProgressForm';
 import { ResizablePanel } from '../components/ResizablePanel';
 import { WorkItemActions } from '../components/WorkItemActions';
-
-function ProgressForm({ item, onClose }: { item: MyWorkItem; onClose: () => void }) {
-  const client = useQueryClient();
-  const [progress, setProgress] = useState(item.progress);
-  const mutation = useMutation({
-    mutationFn: (value: { content: string; workItemPercent?: number }) => api(`/api/requirements/${item.requirementId}/progress`, {
-      method: 'POST', body: jsonBody({ ...value, workItemId: item.id, expectedVersion: item.version }),
-    }),
-    onSuccess: () => {
-      invalidateRequirementViews(client, item.requirementId);
-      onClose();
-    },
-  });
-  return <form className="form-grid" onSubmit={(event) => {
-    event.preventDefault();
-    const value = { content: String(new FormData(event.currentTarget).get('content') || '') };
-    mutation.mutate(item.status === 'in_progress' ? { ...value, workItemPercent: progress } : value);
-  }}>
-    <div className="my-work-context field-full"><strong>{item.title}</strong><span>{item.projectName} · {item.requirementTitle}</span></div>
-    {item.status === 'in_progress' && <ProgressInput name="workItemPercent" value={progress} onChange={setProgress} max={99} />}
-    {item.status === 'blocked' && <p className="field-help field-full">工作项处于阻塞状态，只能补充说明；解除阻塞后才能继续提高进度。</p>}
-    <label className="field field-full"><span>具体进展</span><textarea name="content" rows={5} required autoFocus placeholder="说明完成了什么、当前结果或下一步" /></label>
-    {mutation.error && <p className="form-error field-full">{mutation.error.message}</p>}
-    <div className="form-actions field-full"><button type="button" className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" disabled={mutation.isPending}>保存进展</button></div>
-  </form>;
-}
+import { ViewTabs } from '../components/ViewTabs';
 
 export function MyWorkPage() {
   const client = useQueryClient(); const navigate = useNavigate();
-  const { session } = useApp();
+  const { session } = useSession();
   const [filter, setFilter] = useState('active');
   const [progressItem, setProgressItem] = useState<MyWorkItem>();
-  const { data, isLoading, error, refetch } = useQuery({ queryKey: ['my-work'], queryFn: () => api<MyWork>('/api/my-work') });
+  const { data, isLoading, error, refetch, isFetching, unavailable } = useResourceQuery<MyWork>(keys.myWork, '/api/my-work');
+  useEffect(() => {
+    if (unavailable && error) setProgressItem(undefined);
+  }, [error, unavailable]);
   const items = (data?.items || []).filter((item) => filter === 'all' || (filter === 'active' ? !['completed', 'cancelled'].includes(item.status) : item.status === filter));
   const action = useMutation({
-    mutationFn: ({ item, action, content, reason }: { item: MyWorkItem; action: string; content?: string; reason?: string }) => api(`/api/work-items/${item.id}/${action}`, {
-      method: 'POST', body: jsonBody({ expectedVersion: item.version, content, reason }),
+    mutationFn: ({ item, action, content, reason, expectedVersion = item.version }: { item: MyWorkItem; action: string; content?: string; reason?: string; expectedVersion?: number }) => api(`/api/work-items/${item.id}/${action}`, {
+      method: 'POST', body: jsonBody({ expectedVersion, content, reason }),
     }),
     onSuccess: (_result, variables) => {
       invalidateRequirementViews(client, variables.item.requirementId);
@@ -70,8 +49,10 @@ export function MyWorkPage() {
   return <>
     <PageHeader title="我的工作" />
     <div className="page-content my-work-page">
-      {error && <EmptyState title="我的工作加载失败" detail={error.message} action={<button className="ghost-button" onClick={() => void refetch()}>重新加载</button>} />}
-      {!error && <>
+      {isLoading && <LoadingState className="stable-panel-state" label="正在加载我的工作…" />}
+      {!isLoading && unavailable && <EmptyState title="我的工作加载失败" detail={error?.message || '暂无可用数据，请重新加载。'} action={<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button>} />}
+      {!unavailable && <>
+      {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
       <section className="my-work-summary">
         {metrics.map(({ label, value, Icon }) => <article key={label}><Icon size={19} /><span>{label}</span><strong>{value}</strong></article>)}
       </section>
@@ -91,16 +72,20 @@ export function MyWorkPage() {
         defaultHeight={520}
         minHeight={360}
       >
-        <header><div><h2>分配给我的工作项</h2><p>主负责人和协作工作都会显示</p></div><div className="view-tabs">{[['active', '当前'], ['not_started', '未开始'], ['in_progress', '进行中'], ['blocked', '阻塞'], ['completed', '已完成'], ['all', '全部']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}</button>)}</div></header>
-        {isLoading && !data ? <div className="stable-panel-state">正在加载工作项…</div> : <GapTimeline
+        <header><div><h2>分配给我的工作项</h2><p>主负责人和协作工作都会显示</p></div><ViewTabs value={filter} onChange={setFilter} options={[['active', '当前'], ['not_started', '未开始'], ['in_progress', '进行中'], ['blocked', '阻塞'], ['completed', '已完成'], ['all', '全部']].map(([value, label]) => ({ value, label }))} /></header>
+        {isLoading && !data ? <LoadingState className="stable-panel-state" label="正在加载工作项…" /> : <GapTimeline
           items={items}
+          asOfDate={data?.asOfDate}
           showStatusFilters={false}
           showGapSummary={false}
           showUnscheduled
           actionColumnWidth={164}
           ariaLabel="分配给我的工作项甘特图"
           emptyState={{ message: '当前筛选下没有工作项', actionLabel: '查看全部', onAction: () => setFilter('all') }}
-          onItemClick={(baseItem) => navigate(`/requirements/${(baseItem as MyWorkItem).requirementId}`)}
+          onItemClick={(baseItem) => {
+            const item = baseItem as MyWorkItem;
+            navigate(`/requirements/${item.requirementId}?workItemId=${encodeURIComponent(item.id)}`);
+          }}
           renderItemMeta={(baseItem) => {
             const item = baseItem as MyWorkItem;
             return <><small title={`${item.projectName} · ${item.requirementTitle}`}>{item.projectName} · {item.requirementTitle}</small><em className="my-work-assignment-badge">{item.assignmentType === 'owner' ? '主责' : '协作'}</em>{item.overdue && <em className="my-work-overdue-badge">延期</em>}</>;
@@ -109,7 +94,18 @@ export function MyWorkPage() {
             const item = baseItem as MyWorkItem;
             return <div className="my-work-gantt-actions">
               {['in_progress', 'blocked'].includes(item.status) && <button className="my-work-progress-action" onClick={() => setProgressItem(item)} title="写进展" aria-label={`为${item.title}写进展`}><MessageSquarePlus size={15} /><span>进展</span></button>}
-              <WorkItemActions item={item} onAction={(nextAction, text) => action.mutateAsync({ item, action: nextAction, ...(nextAction === 'block' ? { reason: text } : { content: text }) })} />
+              <WorkItemActions item={item} startDisabledReason={item.requirementStatus === 'planning' ? '需求尚未完成规划，请联系需求负责人或项目经理补齐负责人和排期。' : undefined} onAction={(nextAction, text, expectedVersion) => action.mutateAsync({ item, action: nextAction, expectedVersion, ...(nextAction === 'block' ? { reason: text } : { content: text }) })} onReload={async () => {
+                const [latest, requirement] = await Promise.all([
+                  refetch({ throwOnError: true }),
+                  api<Requirement>(`/api/requirements/${item.requirementId}`),
+                ]);
+                const current = latest.data?.items.find((entry) => entry.id === item.id);
+                if (!current) throw new Error('工作项已不在我的工作中，请关闭操作面板。');
+                return {
+                  item: current,
+                  updates: (requirement.progressUpdates || []).filter((update) => update.workItemId === item.id),
+                };
+              }} />
             </div>;
           }}
         />}
@@ -117,6 +113,20 @@ export function MyWorkPage() {
       <section className="my-work-charts"><article className="panel"><header><div><h2>完成趋势</h2><p>近8个有完成记录的自然周</p></div></header><Chart option={charts.completion} height={230} ariaLabel="我的工作完成趋势" /></article><article className="panel"><header><div><h2>近期并发</h2><p>未来10个工作日的计划工作项数</p></div></header><Chart option={charts.upcoming} height={230} ariaLabel="我的近期工作并发趋势" /></article></section>
       </>}
     </div>
-    {progressItem && <Modal title="添加工作进展" onClose={() => setProgressItem(undefined)}><ProgressForm item={progressItem} onClose={() => setProgressItem(undefined)} /></Modal>}
+    {progressItem && !unavailable && <ProgressForm
+      key={progressItem.id}
+      title="添加工作进展"
+      submitLabel="保存进展"
+      requirementId={progressItem.requirementId}
+      scope={{ items: (data?.items || []).filter((item) => item.id === progressItem.id), updates: (data?.recentProgress || []).filter((update) => update.requirementId === progressItem.requirementId), allowRequirementNote: false }}
+      loadScope={async () => {
+        const latest = await api<MyWork>('/api/my-work');
+        cacheResourceUpdate(client, keys.myWork, latest);
+        return { items: latest.items.filter((item) => item.id === progressItem.id), updates: latest.recentProgress.filter((update) => update.requirementId === progressItem.requirementId), allowRequirementNote: false };
+      }}
+      contextLabel={`${progressItem.projectName} · ${progressItem.requirementTitle}`}
+      fixedItemId={progressItem.id}
+      onClose={() => setProgressItem(undefined)}
+    />}
   </>;
 }

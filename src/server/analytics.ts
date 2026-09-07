@@ -1,7 +1,8 @@
 import { sqlite } from './database';
 import { getPeopleConcurrency } from './services/reporting';
-import { listRequirements, type RequirementRecord } from './services/requirements';
+import { listRequirements, requirementCompletionDate } from './services/requirements';
 import { recordAudit } from './services/audit';
+import { nextUpdatedAt } from './services/support';
 import type { Actor } from './auth';
 import {
   analyticsCatalog,
@@ -23,22 +24,25 @@ import {
 import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
 import {
   addCalendarDays,
+  businessDateFromDateTime,
   businessDayDelta,
   businessDaysInclusive,
   priorityLabels,
   requirementStatusLabels,
   riskLabels,
+  startOfWeekIso,
   todayIso,
 } from '../shared/domain';
-import { fail } from './errors';
+import { AppError, fail, forbidden } from './errors';
 import { isValidIsoDate } from '../shared/workday';
+import { requireAuthorizationActor } from './authorization';
 
 type GenericRecord = Record<string, any>;
 type AnalyticsContext = {
   requirements: GenericRecord[];
   workItems: GenericRecord[];
   issues: GenericRecord[];
-  people: GenericRecord[];
+  peopleByRange: Map<string, GenericRecord[]>;
   progress: GenericRecord[];
   errors: Record<string, string>;
 };
@@ -51,8 +55,26 @@ function cloneDefaultLayout(): AnalyticsLayout {
   return JSON.parse(JSON.stringify(defaultAnalyticsLayout)) as AnalyticsLayout;
 }
 
+type AnalyticsLayoutRow = { configJson: string; updatedAt: string };
+
+function analyticsLayoutRow(accountId: string) {
+  return sqlite.prepare('SELECT config_json AS configJson, updated_at AS updatedAt FROM analytics_layouts WHERE account_id=?')
+    .get(accountId) as AnalyticsLayoutRow | undefined;
+}
+
+function assertExpectedLayoutUpdatedAt(value: unknown, currentUpdatedAt: string | null, action = '保存') {
+  if (!value || typeof value !== 'object' || !Object.prototype.hasOwnProperty.call(value, 'expectedUpdatedAt')) return;
+  if ((value as Record<string, unknown>).expectedUpdatedAt !== currentUpdatedAt) {
+    throw new AppError(`个人分析布局已被其他会话修改，请重新读取后再${action}`, 409, 'STALE_WRITE', { currentUpdatedAt });
+  }
+}
+
 function validationError(message: string): never {
   fail(message);
+}
+
+function rejectUnknownKeys(value: Record<string, unknown>, allowed: readonly string[], message: string) {
+  if (Object.keys(value).some((key) => !allowed.includes(key))) validationError(message);
 }
 
 function stringArray(value: unknown) {
@@ -63,6 +85,17 @@ function stringArray(value: unknown) {
 function validatePanel(value: unknown, index: number): AnalyticsPanelConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) validationError(`第${index + 1}个图表配置不合法`);
   const panel = value as Record<string, unknown>;
+  rejectUnknownKeys(panel, [
+    'id', 'title', 'dataset', 'measure', 'secondaryMeasure', 'dimension', 'visualization',
+    'size', 'timeScope', 'filters', 'sort', 'limit',
+  ], `第${index + 1}个图表包含未声明字段`);
+  const requiredStrings = ['id', 'title', 'dataset', 'measure', 'visualization', 'size', 'timeScope'];
+  const optionalStrings = ['secondaryMeasure', 'dimension', 'sort'];
+  if (requiredStrings.some((key) => typeof panel[key] !== 'string')
+    || optionalStrings.some((key) => panel[key] !== undefined && typeof panel[key] !== 'string')
+    || (panel.limit !== undefined && typeof panel.limit !== 'number')) {
+    validationError(`第${index + 1}个图表字段类型不合法`);
+  }
   const id = String(panel.id || '').trim();
   if (textSafetyIssue(panel.title, false)) validationError(`第${index + 1}个图表标题包含不支持的控制字符`);
   const title = canonicalizeLabel(panel.title);
@@ -118,6 +151,7 @@ function validatePanel(value: unknown, index: number): AnalyticsPanelConfig {
 export function validateAnalyticsLayout(value: unknown): AnalyticsLayout {
   if (!value || typeof value !== 'object' || Array.isArray(value)) validationError('分析布局格式不合法');
   const layout = value as Record<string, unknown>;
+  rejectUnknownKeys(layout, ['version', 'panels', 'expectedUpdatedAt'], '分析布局不能包含未声明字段');
   if (layout.version !== 1) validationError('分析布局版本不支持');
   if (!Array.isArray(layout.panels) || layout.panels.length < 1 || layout.panels.length > 24) validationError('分析布局需包含1到24个图表');
   const panels = layout.panels.map(validatePanel);
@@ -128,6 +162,7 @@ export function validateAnalyticsLayout(value: unknown): AnalyticsLayout {
 function validateRange(value: unknown): AnalyticsRange {
   if (!value || typeof value !== 'object') validationError('分析时间范围不能为空');
   const range = value as Record<string, unknown>;
+  rejectUnknownKeys(range, ['from', 'to'], '分析时间范围不能包含未声明字段');
   const from = String(range.from || ''); const to = String(range.to || '');
   if (!isValidIsoDate(from) || !isValidIsoDate(to) || from > to) validationError('分析时间范围不合法');
   if (businessDaysInclusive(from, to) > 1320) validationError('分析时间范围不能超过5年');
@@ -139,46 +174,90 @@ export function getAnalyticsCatalog() {
 }
 
 export function getAnalyticsLayout(accountId?: string | null, canCustomize = false): AnalyticsLayoutResponse {
-  if (!accountId) return { layout: cloneDefaultLayout(), source: 'default', canCustomize: false };
-  const saved = sqlite.prepare('SELECT config_json AS configJson FROM analytics_layouts WHERE account_id=?').get(accountId) as { configJson: string } | undefined;
-  if (!saved) return { layout: cloneDefaultLayout(), source: 'default', canCustomize };
+  if (!accountId) return { layout: cloneDefaultLayout(), source: 'default', canCustomize: false, updatedAt: null };
+  const saved = analyticsLayoutRow(accountId);
+  if (!saved) return { layout: cloneDefaultLayout(), source: 'default', canCustomize, updatedAt: null };
   try {
-    return { layout: validateAnalyticsLayout(JSON.parse(saved.configJson)), source: 'personal', canCustomize };
+    return { layout: validateAnalyticsLayout(JSON.parse(saved.configJson)), source: 'personal', canCustomize, updatedAt: saved.updatedAt };
   } catch {
-    return { layout: cloneDefaultLayout(), source: 'default', canCustomize };
+    return { layout: cloneDefaultLayout(), source: 'default', canCustomize, updatedAt: saved.updatedAt };
   }
 }
 
 export function saveAnalyticsLayout(accountId: string, value: unknown, actor: Actor) {
   const layout = validateAnalyticsLayout(value);
-  const now = new Date().toISOString();
-  sqlite.prepare(`INSERT INTO analytics_layouts (account_id, config_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?) ON CONFLICT(account_id) DO UPDATE SET config_json=excluded.config_json, updated_at=excluded.updated_at`)
-    .run(accountId, JSON.stringify(layout), now, now);
+  return sqlite.transaction(() => saveAnalyticsLayoutInTransaction(accountId, value, actor, layout))();
+}
+
+function assertCurrentLayoutAccount(accountId: string, actor: Actor) {
+  if (requireAuthorizationActor(actor).accountId !== accountId) forbidden('只能修改自己的分析布局');
+}
+
+function saveAnalyticsLayoutInTransaction(accountId: string, value: unknown, actor: Actor, layout: AnalyticsLayout) {
+  const existing = analyticsLayoutRow(accountId);
+  const currentUpdatedAt = existing?.updatedAt || null;
+  assertExpectedLayoutUpdatedAt(value, currentUpdatedAt);
+  const serialized = JSON.stringify(layout);
+  let unchanged = false;
+  if (existing) {
+    try {
+      unchanged = JSON.stringify(validateAnalyticsLayout(JSON.parse(existing.configJson))) === serialized;
+    } catch {
+      // 损坏的历史配置仍通过本次保存修复。
+    }
+  }
+  if (unchanged) {
+    assertCurrentLayoutAccount(accountId, actor);
+    return { layout, source: 'personal' as const, canCustomize: true, updatedAt: existing!.updatedAt };
+  }
+  const now = currentUpdatedAt ? nextUpdatedAt(currentUpdatedAt) : new Date().toISOString();
+  const changed = existing
+    ? sqlite.prepare('UPDATE analytics_layouts SET config_json=?, updated_at=? WHERE account_id=? AND updated_at=?')
+      .run(serialized, now, accountId, existing.updatedAt)
+    : sqlite.prepare('INSERT OR IGNORE INTO analytics_layouts (account_id, config_json, created_at, updated_at) VALUES (?, ?, ?, ?)')
+      .run(accountId, serialized, now, now);
+  if (!changed.changes) {
+    throw new AppError('个人分析布局已被其他会话修改，请重新读取后再保存', 409, 'STALE_WRITE', {
+      currentUpdatedAt: analyticsLayoutRow(accountId)?.updatedAt || null,
+    });
+  }
+  assertCurrentLayoutAccount(accountId, actor);
   recordAudit(actor, 'update', 'analytics_layout', accountId, `保存统计分析布局：${layout.panels.length}个图表`);
-  return { layout, source: 'personal' as const, canCustomize: true };
+  return { layout, source: 'personal' as const, canCustomize: true, updatedAt: now };
 }
 
-export function resetAnalyticsLayout(accountId: string, actor: Actor) {
-  sqlite.prepare('DELETE FROM analytics_layouts WHERE account_id=?').run(accountId);
+export function resetAnalyticsLayout(accountId: string, value: unknown, actor: Actor) {
+  return sqlite.transaction(() => resetAnalyticsLayoutInTransaction(accountId, value, actor))();
+}
+
+function resetAnalyticsLayoutInTransaction(accountId: string, value: unknown, actor: Actor) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) validationError('恢复默认布局参数不合法');
+  rejectUnknownKeys(value as Record<string, unknown>, ['expectedUpdatedAt'], '恢复默认布局不能包含未声明字段');
+  const existing = analyticsLayoutRow(accountId);
+  const currentUpdatedAt = existing?.updatedAt || null;
+  assertExpectedLayoutUpdatedAt(value, currentUpdatedAt, '恢复默认');
+  if (!existing) {
+    assertCurrentLayoutAccount(accountId, actor);
+    return { layout: cloneDefaultLayout(), source: 'default' as const, canCustomize: true, updatedAt: null };
+  }
+  const changed = sqlite.prepare('DELETE FROM analytics_layouts WHERE account_id=? AND updated_at=?').run(accountId, existing.updatedAt);
+  if (!changed.changes) {
+    throw new AppError('个人分析布局已被其他会话修改，请重新读取后再恢复默认', 409, 'STALE_WRITE', {
+      currentUpdatedAt: analyticsLayoutRow(accountId)?.updatedAt || null,
+    });
+  }
+  assertCurrentLayoutAccount(accountId, actor);
   recordAudit(actor, 'reset', 'analytics_layout', accountId, '恢复统计分析默认布局');
-  return { layout: cloneDefaultLayout(), source: 'default' as const, canCustomize: true };
+  return { layout: cloneDefaultLayout(), source: 'default' as const, canCustomize: true, updatedAt: null };
 }
 
-function requirementCompletionDate(requirement: RequirementRecord) {
-  if (requirement.status !== 'completed') return null;
-  const items = (requirement.workItems || []).filter((item) => item.status !== 'cancelled');
-  if (!items.length || items.some((item) => !item.actualEnd)) return null;
-  return items.map((item) => item.actualEnd!).sort().at(-1) || null;
-}
-
-function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: AnalyticsRange): AnalyticsContext {
+function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: AnalyticsRange, asOfDate: string): AnalyticsContext {
   const datasets = new Set(panels.map((panel) => panel.dataset));
   let requirementRows: GenericRecord[] = [];
   let workItems: GenericRecord[] = [];
   let issues: GenericRecord[] = [];
   let progress: GenericRecord[] = [];
-  let people: GenericRecord[] = [];
+  const peopleByRange = new Map<string, GenericRecord[]>();
   const errors: Record<string, string> = {};
   const messageOf = (dataset: string, error: unknown) => {
     console.error(`[analytics] failed to load ${dataset}`, error);
@@ -186,7 +265,7 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
   };
   if (datasets.has('requirements') || datasets.has('work_items')) {
     try {
-      const requirements = listRequirements({ projectId });
+      const requirements = listRequirements({ projectId }, asOfDate);
       requirementRows = requirements.map((requirement) => ({
         ...requirement,
         template: requirement.templateName || '未绑定流程', owner: requirement.ownerName || '未分配',
@@ -220,26 +299,21 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
   } catch (error) { errors.progress = messageOf('progress', error); }
   if (datasets.has('people')) {
     try {
-      const today = todayIso();
-      const loadedPeople = getPeopleConcurrency({
-        projectId,
-        from: range.from < today ? range.from : today,
-        to: range.to > today ? range.to : today,
-      }).people;
-      people = loadedPeople.map((person) => {
-        const days = person.days.filter((day) => day.date >= range.from && day.date <= range.to);
-        return {
+      const ranges = new Map(panels.filter((panel) => panel.dataset === 'people').map((panel) => {
+        const panelRange = peopleRange(panel, range, asOfDate);
+        return [rangeKey(panelRange), panelRange];
+      }));
+      for (const [key, panelRange] of ranges) {
+        const loadedPeople = getPeopleConcurrency({ projectId, from: panelRange.from, to: panelRange.to }, asOfDate).people;
+        peopleByRange.set(key, loadedPeople.map((person) => ({
           ...person,
-          days,
-          peakCount: Math.max(0, ...days.map((day) => day.count)),
-          currentCount: person.days.find((day) => day.date === today)?.count || 0,
           person: person.name,
           job_title: person.jobTitle || '岗位未设置',
-        };
-      });
+        })));
+      }
     } catch (error) { errors.people = messageOf('people', error); }
   }
-  return { requirements: requirementRows, workItems, issues, progress, people, errors };
+  return { requirements: requirementRows, workItems, issues, progress, peopleByRange, errors };
 }
 
 function inRange(value: string | null | undefined, range: AnalyticsRange) {
@@ -251,24 +325,32 @@ function eventDate(dataset: string, measure: string, record: GenericRecord) {
     if (measure === 'completed_count' || measure === 'on_time_rate') return record.completedAt;
     if (measure === 'due_count') return record.plannedEnd;
     if (measure === 'finish_variance') return record.completedAt || record.plannedEnd;
-    return record.createdAt?.slice(0, 10);
+    return record.createdAt ? businessDateFromDateTime(record.createdAt) : null;
   }
   if (dataset === 'work_items') {
     if (measure === 'completed_count' || measure === 'on_time_rate' || measure === 'average_cycle_days') return record.actualEnd;
-    return record.createdAt?.slice(0, 10);
+    return record.createdAt ? businessDateFromDateTime(record.createdAt) : null;
   }
   if (dataset === 'issues') {
     if (measure === 'resolved_count' || measure === 'average_resolution_days') return record.resolvedAt;
     return record.discoveredAt;
   }
-  if (dataset === 'progress') return record.createdAt?.slice(0, 10);
+  if (dataset === 'progress') return record.createdAt ? businessDateFromDateTime(record.createdAt) : null;
   return null;
 }
 
-function effectiveRange(panel: AnalyticsPanelConfig, globalRange: AnalyticsRange): AnalyticsRange | null {
+function effectiveRange(panel: AnalyticsPanelConfig, globalRange: AnalyticsRange, asOfDate: string): AnalyticsRange | null {
   if (panel.timeScope === 'snapshot') return null;
-  if (panel.timeScope === 'future30') return { from: todayIso(), to: addCalendarDays(todayIso(), 30) };
+  if (panel.timeScope === 'future30') return { from: asOfDate, to: addCalendarDays(asOfDate, 30) };
   return globalRange;
+}
+
+function peopleRange(panel: AnalyticsPanelConfig, globalRange: AnalyticsRange, asOfDate: string): AnalyticsRange {
+  return effectiveRange(panel, globalRange, asOfDate) || { from: asOfDate, to: asOfDate };
+}
+
+function rangeKey(range: AnalyticsRange) {
+  return `${range.from}:${range.to}`;
 }
 
 function applyPanelFilters(records: GenericRecord[], panel: AnalyticsPanelConfig) {
@@ -279,8 +361,8 @@ function applyPanelFilters(records: GenericRecord[], panel: AnalyticsPanelConfig
   }));
 }
 
-function eligibleRecords(dataset: string, measure: string, records: GenericRecord[], panel: AnalyticsPanelConfig, globalRange: AnalyticsRange) {
-  const range = effectiveRange(panel, globalRange);
+function eligibleRecords(dataset: string, measure: string, records: GenericRecord[], panel: AnalyticsPanelConfig, globalRange: AnalyticsRange, asOfDate: string) {
+  const range = effectiveRange(panel, globalRange, asOfDate);
   let result = records;
   if (range && dataset !== 'people') result = result.filter((record) => inRange(eventDate(dataset, measure, record), range));
   if (dataset === 'requirements') {
@@ -298,7 +380,7 @@ function eligibleRecords(dataset: string, measure: string, records: GenericRecor
     if (measure === 'active_count') result = result.filter((record) => record.status !== 'resolved');
     if (measure === 'resolved_count' || measure === 'average_resolution_days') result = result.filter((record) => Boolean(record.resolvedAt));
     if (measure === 'closure_rate') result = result.filter((record) => record.status === 'resolved' || Boolean(record.discoveredAt));
-    if (measure === 'overdue_count') result = result.filter((record) => record.status !== 'resolved' && businessDayDelta(record.dueDate, todayIso()) > 0);
+    if (measure === 'overdue_count') result = result.filter((record) => record.status !== 'resolved' && businessDayDelta(record.dueDate, asOfDate) > 0);
   }
   return result;
 }
@@ -329,12 +411,6 @@ function measureValue(dataset: string, measure: string, records: GenericRecord[]
   return records.length;
 }
 
-function startOfWeek(value: string) {
-  const date = new Date(`${value}T00:00:00Z`);
-  const day = date.getUTCDay();
-  return addCalendarDays(value, -(day === 0 ? 6 : day - 1));
-}
-
 function shortDate(value: string) {
   return `${value.slice(5, 7)}/${value.slice(8, 10)}`;
 }
@@ -343,7 +419,7 @@ function dimensionValue(dataset: string, dimension: string, record: GenericRecor
   if (dimension === 'week' || dimension === 'day') {
     const date = eventDate(dataset, measure, record);
     if (!date) return { key: 'unknown', label: '日期未知' };
-    const key = dimension === 'week' ? startOfWeek(date) : date;
+    const key = dimension === 'week' ? startOfWeekIso(date) : date;
     return { key, label: dimension === 'week' ? `${shortDate(key)}周` : shortDate(key) };
   }
   const raw = dimension === 'requirement' ? (record.title || record.requirement)
@@ -360,14 +436,14 @@ function dimensionValue(dataset: string, dimension: string, record: GenericRecor
   return { key, label: key === 'unknown' ? '未设置' : key };
 }
 
-function aggregateMeasure(context: AnalyticsContext, panel: AnalyticsPanelConfig, measure: string, range: AnalyticsRange) {
+function aggregateMeasure(context: AnalyticsContext, panel: AnalyticsPanelConfig, measure: string, range: AnalyticsRange, asOfDate: string) {
   const sources: Record<string, GenericRecord[]> = {
     requirements: context.requirements, work_items: context.workItems, issues: context.issues,
-    people: context.people, progress: context.progress,
+    people: context.peopleByRange.get(rangeKey(peopleRange(panel, range, asOfDate))) || [], progress: context.progress,
   };
   const source = sources[panel.dataset] || [];
   const filtered = applyPanelFilters(source, panel);
-  const eligible = eligibleRecords(panel.dataset, measure, filtered, panel, range);
+  const eligible = eligibleRecords(panel.dataset, measure, filtered, panel, range, asOfDate);
   if (!panel.dimension) return new Map([['total', { key: 'total', label: '总计', value: measureValue(panel.dataset, measure, eligible) }]]);
   const groups = new Map<string, { key: string; label: string; records: GenericRecord[] }>();
   for (const record of eligible) {
@@ -380,13 +456,13 @@ function aggregateMeasure(context: AnalyticsContext, panel: AnalyticsPanelConfig
   }]));
 }
 
-function queryPanel(context: AnalyticsContext, panel: AnalyticsPanelConfig, range: AnalyticsRange): AnalyticsPanelResult {
+function queryPanel(context: AnalyticsContext, panel: AnalyticsPanelConfig, range: AnalyticsRange, asOfDate: string): AnalyticsPanelResult {
   if (context.errors[panel.dataset]) throw new Error(context.errors[panel.dataset]);
   const measure = catalogMeasure(panel.dataset, panel.measure)!;
   const dimensionLabel = catalogDataset(panel.dataset)?.dimensions.find((dimension) => dimension.id === panel.dimension)?.label;
-  const primary = aggregateMeasure(context, panel, panel.measure, range);
+  const primary = aggregateMeasure(context, panel, panel.measure, range, asOfDate);
   const secondaryDefinition = panel.secondaryMeasure ? catalogMeasure(panel.dataset, panel.secondaryMeasure) : undefined;
-  const secondary = panel.secondaryMeasure ? aggregateMeasure(context, panel, panel.secondaryMeasure, range) : new Map();
+  const secondary = panel.secondaryMeasure ? aggregateMeasure(context, panel, panel.secondaryMeasure, range, asOfDate) : new Map();
   const keys = [...new Set([...primary.keys(), ...secondary.keys()])];
   let rows: AnalyticsDataRow[] = keys.map((key) => ({
     key,
@@ -410,22 +486,25 @@ function queryPanel(context: AnalyticsContext, panel: AnalyticsPanelConfig, rang
 export function queryAnalytics(value: unknown): AnalyticsQueryResponse {
   if (!value || typeof value !== 'object' || Array.isArray(value)) validationError('分析查询格式不合法');
   const input = value as Record<string, unknown>;
+  rejectUnknownKeys(input, ['projectId', 'range', 'panels'], '分析查询不能包含未声明字段');
   const projectId = String(input.projectId || '').trim();
   if (!projectId || !sqlite.prepare('SELECT id FROM projects WHERE id=? AND deleted_at IS NULL').get(projectId)) validationError('请选择有效项目');
   const range = validateRange(input.range);
   const layout = validateAnalyticsLayout({ version: 1, panels: input.panels });
-  const context = loadContext(projectId, layout.panels, range);
+  const asOfDate = todayIso();
+  const context = loadContext(projectId, layout.panels, range, asOfDate);
   const results = layout.panels.map((panel) => {
     try {
-      return queryPanel(context, panel, range);
+      return queryPanel(context, panel, range, asOfDate);
     } catch (error) {
+      console.error(`[analytics] failed to query panel ${panel.id}`, error);
       const measure = catalogMeasure(panel.dataset, panel.measure);
       return {
         panelId: panel.id, rows: [], measureLabel: measure?.label || panel.measure,
         unit: measure?.unit || 'count', snapshot: panel.timeScope === 'snapshot',
-        error: error instanceof Error ? error.message : '图表查询失败',
+        error: '图表查询失败',
       } as AnalyticsPanelResult;
     }
   });
-  return { results };
+  return { asOfDate, range, results };
 }

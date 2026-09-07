@@ -10,8 +10,11 @@ import { ensureBuiltInSampleProject, linkSampleProgressAuthors } from './sample-
 import { canonicalizeLabel, matchesPlainText, searchScore } from '../shared/search';
 import { businessDayDelta } from '../shared/domain';
 import * as schema from './schema';
+import { inspectDatabaseConsistency } from './database-validation';
+import { recoverInterruptedDatabaseSwap } from './database-swap';
 
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
+recoverInterruptedDatabaseSwap(config.dbPath);
 
 export const sqlite = new Database(config.dbPath);
 sqlite.pragma('journal_mode = WAL');
@@ -44,13 +47,20 @@ async function backupBeforePendingMigration() {
   let destination = path.join(config.backupDir, `project-manage-pre-migration-${stamp}.db`);
   let suffix = 1;
   while (fs.existsSync(destination)) destination = path.join(config.backupDir, `project-manage-pre-migration-${stamp}-${suffix++}.db`);
-  await sqlite.backup(destination);
-  const check = new Database(destination, { readonly: true });
+  const temporaryDestination = `${destination}.partial-${randomUUID()}`;
   try {
-    const integrity = check.pragma('integrity_check') as Array<{ integrity_check: string }>;
-    if (integrity[0]?.integrity_check !== 'ok') throw new Error('迁移前数据库备份校验失败');
+    await sqlite.backup(temporaryDestination);
+    const check = new Database(temporaryDestination, { readonly: true });
+    try {
+      const integrity = check.pragma('integrity_check') as Array<{ integrity_check: string }>;
+      if (integrity[0]?.integrity_check !== 'ok') throw new Error('迁移前数据库备份校验失败');
+    } finally {
+      check.close();
+    }
+    if (fs.existsSync(destination)) throw new Error('迁移前数据库备份文件名冲突');
+    fs.renameSync(temporaryDestination, destination);
   } finally {
-    check.close();
+    for (const sidecar of ['', '-wal', '-shm', '-journal']) fs.rmSync(`${temporaryDestination}${sidecar}`, { force: true });
   }
 }
 
@@ -145,35 +155,12 @@ ensureBuiltInSampleProject(sqlite, config.seedDemo);
 bootstrapAccounts();
 linkSampleProgressAuthors(sqlite);
 
-const foreignKeyViolations = sqlite.pragma('foreign_key_check') as Array<Record<string, unknown>>;
-if (foreignKeyViolations.length) throw new Error(`数据库迁移后存在${foreignKeyViolations.length}条外键异常`);
-const projectScopeViolations = sqlite.prepare(`SELECT
-  (SELECT COUNT(*) FROM projects p JOIN work_item_templates t ON t.id=p.default_template_id WHERE t.project_id<>p.id) AS projectDefaults,
-  (SELECT COUNT(*) FROM requirements r JOIN work_item_templates t ON t.id=r.template_id WHERE t.project_id<>r.project_id) AS requirementTemplates,
-  (SELECT COUNT(*) FROM work_items w JOIN requirements r ON r.id=w.requirement_id
-    JOIN template_items i ON i.id=w.template_item_id JOIN work_item_templates t ON t.id=i.template_id
-    WHERE t.project_id<>r.project_id) AS workItemTemplates`).get() as {
-      projectDefaults: number; requirementTemplates: number; workItemTemplates: number;
-    };
-if (projectScopeViolations.projectDefaults || projectScopeViolations.requirementTemplates || projectScopeViolations.workItemTemplates) {
+const databaseConsistency = inspectDatabaseConsistency(sqlite);
+if (databaseConsistency.foreignKeys) throw new Error(`数据库迁移后存在${databaseConsistency.foreignKeys}条外键异常`);
+if (databaseConsistency.projectScope.projectDefaults || databaseConsistency.projectScope.requirementTemplates || databaseConsistency.projectScope.workItemTemplates) {
   throw new Error('数据库迁移后存在跨项目流程引用，服务已拒绝启动');
 }
-const stateViolations = sqlite.prepare(`SELECT
-  (SELECT COUNT(*) FROM work_items WHERE
-    (status='not_started' AND (progress<>0 OR actual_start IS NOT NULL OR actual_end IS NOT NULL OR blocked_at IS NOT NULL)) OR
-    (status='in_progress' AND (progress>=100 OR actual_start IS NULL OR actual_end IS NOT NULL OR blocked_at IS NOT NULL)) OR
-    (status='blocked' AND (progress>=100 OR actual_start IS NULL OR actual_end IS NOT NULL OR blocked_at IS NULL OR blocked_reason IS NULL)) OR
-    (status='completed' AND (progress<>100 OR actual_start IS NULL OR actual_end IS NULL OR blocked_at IS NOT NULL)) OR
-    (status='cancelled' AND (progress>=100 OR actual_end IS NOT NULL OR blocked_at IS NOT NULL))) AS workItems,
-  (SELECT COUNT(*) FROM requirements WHERE
-    (status='completed' AND (progress<>100 OR accepted_at IS NULL)) OR
-    (status='pending_acceptance' AND (progress<>100 OR accepted_at IS NOT NULL)) OR
-    (status NOT IN ('completed','pending_acceptance','cancelled') AND (progress>=100 OR accepted_at IS NOT NULL))) AS requirements,
-  (SELECT COUNT(*) FROM issues WHERE
-    (status='resolved' AND (progress<>100 OR resolved_at IS NULL)) OR
-    (status<>'resolved' AND (progress>=100 OR resolved_at IS NOT NULL)) OR
-    (status='deferred' AND due_date IS NOT NULL)) AS issues`).get() as { workItems: number; requirements: number; issues: number };
-if (stateViolations.workItems || stateViolations.requirements || stateViolations.issues) {
-  throw new Error(`数据库状态一致性校验失败：工作项${stateViolations.workItems}、需求${stateViolations.requirements}、问题${stateViolations.issues}`);
+if (databaseConsistency.state.workItems || databaseConsistency.state.requirements || databaseConsistency.state.issues) {
+  throw new Error(`数据库状态一致性校验失败：工作项${databaseConsistency.state.workItems}、需求${databaseConsistency.state.requirements}、问题${databaseConsistency.state.issues}`);
 }
 sqlite.pragma('optimize');

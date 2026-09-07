@@ -32,10 +32,10 @@ export function businessDateIndex(date: Date, dates: Date[], edge: "start" | "en
   return -1;
 }
 
-export function buildBusinessDayTimeline(values: Array<string | null | undefined>, zoom: GanttZoom) {
+export function buildBusinessDayTimeline(values: Array<string | null | undefined>, zoom: GanttZoom, asOfDate = todayIso()) {
   const option = ganttZoomOptions[zoom];
   const parsed = values.map(toGanttDate).filter(Boolean) as Date[];
-  const today = toGanttDate(todayIso()) || startOfDay(new Date());
+  const today = toGanttDate(asOfDate) || toGanttDate(todayIso()) || startOfDay(new Date());
   const earliest = parsed.length ? new Date(Math.min(...parsed.map((date) => date.getTime()))) : today;
   const latest = parsed.length ? new Date(Math.max(...parsed.map((date) => date.getTime()))) : today;
   const start = toGanttDate(addBusinessDays(format(earliest, "yyyy-MM-dd"), -option.padding))!;

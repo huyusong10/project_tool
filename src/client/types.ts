@@ -22,6 +22,8 @@ export type ProjectPermission = {
 export type Person = {
   id: string; name: string; jobTitle: string | null; active: boolean | number;
   projectRole?: 'viewer' | 'member' | 'manager'; username?: string | null; accountStatus?: 'active' | 'disabled' | null;
+  accountDeletedAt?: string | null;
+  membershipUpdatedAt?: string | null;
   createdAt: string; updatedAt: string; deletedAt?: string | null;
 };
 export type TemplateItem = {
@@ -36,6 +38,7 @@ export type WorkItem = {
   collaborators: Array<{ id: string; name: string; jobTitle: string | null }>;
   assigneeIds: string[]; assigneeNames: string[];
   status: string; plannedStart: string | null; plannedEnd: string | null; actualStart: string | null; actualEnd: string | null;
+  cancelledAt?: string | null;
   forecastEnd: string | null; blockedAt: string | null; blockedReason: string | null;
   milestoneLabel: string | null;
   progress: number;
@@ -70,6 +73,7 @@ export type Requirement = {
   background?: string | null; acceptanceCriteria?: string | null; referenceUrl?: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number; progressGap: number;
   asOfDate?: string; scheduleComplete?: boolean;
+  actualStart?: string | null; actualEnd?: string | null;
   acceptedAt: string | null; acceptedByAccountId: string | null; version: number;
   riskLevel: string; riskEvaluated: boolean; riskReason: string; priority: string; createdAt: string; updatedAt: string; deletedAt?: string | null;
   workItems: WorkItem[]; progressUpdates?: ProgressUpdate[]; recentProgressUpdates?: ProgressUpdate[]; delayed: boolean; highRisk: boolean;
@@ -78,6 +82,7 @@ export type Requirement = {
   scheduleVarianceDays?: number | null; scheduleReferenceDate?: string | null;
 };
 export type Dashboard = {
+  asOfDate: string;
   summary: { total: number; active: number; completed: number; delayed: number; highRisk: number; completionRate: number };
   requirements: Requirement[];
   issues: { summary: IssuePage["summary"]; attention: Issue[] };
@@ -91,9 +96,10 @@ export type Dashboard = {
 };
 export type PlanPreview = {
   requirementId: string; templateId: string; baseStart: string;
+  requirementVersion: number; previewToken: string;
   entries: Array<{
     templateItemId: string; workItemId: string | null; title: string; currentStart: string | null; currentEnd: string | null;
-    proposedStart: string; proposedEnd: string; willChange: boolean; reason: 'missing_item' | 'missing_plan' | 'unchanged';
+    milestoneLabel?: string | null; proposedStart: string; proposedEnd: string; willChange: boolean; reason: 'missing_item' | 'missing_plan' | 'terminal' | 'unchanged';
   }>;
 };
 export type ConcurrencyDay = {
@@ -101,6 +107,7 @@ export type ConcurrencyDay = {
   items: Array<{ id: string; title: string; requirementId: string; requirementTitle: string }>;
 };
 export type PeopleConcurrency = {
+  asOfDate: string;
   from: string; to: string; dates: string[];
   people: Array<{ id: string; name: string; jobTitle: string | null; currentCount: number; externalCurrentCount?: number; peakCount: number; days: ConcurrencyDay[] }>;
   currentTop: Array<{ id: string; name: string; jobTitle: string | null; currentCount: number; externalCurrentCount?: number; peakCount: number }>;
@@ -115,8 +122,11 @@ export type ArchiveItem = {
 };
 export type ApiToken = { id: string; name: string; prefix: string; accountId: string; accountName?: string | null; expiresAt: string | null; lastUsedAt: string | null; revokedAt: string | null; createdAt: string };
 export type AuditLog = { id: string; actorType: string; actorId: string | null; actorName: string | null; tokenName: string | null; action: string; entityType: string; entityId: string | null; projectId: string | null; projectName?: string | null; summary: string; createdAt: string };
-export type AuditPage = { items: AuditLog[]; total: number; page: number; pageSize: number; pages: number };
-export type Backup = { name: string; size: number; createdAt: string };
+export type AuditPage = { items: AuditLog[]; total: number; page: number; pageSize: number; pages: number; snapshot: number };
+export type Backup = {
+  name: string; size: number; createdAt: string; fingerprint: string;
+  restorable?: boolean; validationError?: string | null;
+};
 export type SystemOverview = {
   status: 'ok';
   service: {
@@ -128,9 +138,13 @@ export type SystemOverview = {
     shmSizeBytes: number; totalSizeBytes: number; journalMode: string;
   };
   backups: {
-    count: number; totalSizeBytes: number; lastCreatedAt: string | null; overdue: boolean;
+    count: number; restorableCount: number; totalSizeBytes: number; lastCreatedAt: string | null; overdue: boolean;
     retentionDays: number; maxCount: number; nextScheduledAt: string;
   };
+  lastRestore: {
+    operationId: string; outcome: 'pending' | 'succeeded' | 'rolled_back'; backupName: string;
+    safetyBackupName: string; updatedAt: string; message: string; failedDatabase: string | null;
+  } | null;
 };
 export type DatabaseIntegrityCheck = { ok: boolean; checkedAt: string; durationMs: number; message: string };
 export type SystemBranding = {
@@ -147,7 +161,8 @@ export type Account = {
   activeAssignments: { requirements: number; workItems: number; issues: number };
 };
 export type MyWorkItem = WorkItem & {
-  projectId: string; projectName: string; requirementTitle: string; assignmentType: 'owner' | 'collaborator'; overdue: boolean;
+  projectId: string; projectName: string; requirementTitle: string; requirementStatus: string;
+  assignmentType: 'owner' | 'collaborator'; overdue: boolean;
 };
 export type MyOwnedRequirement = {
   id: string; projectId: string; projectName: string; title: string; status: string; priority: string;
@@ -156,6 +171,7 @@ export type MyOwnedRequirement = {
   actionCount: number; updatedAt: string;
 };
 export type MyWork = {
+  asOfDate: string;
   summary: { total: number; notStarted: number; inProgress: number; blocked: number; completed: number; overdue: number };
   requirements: MyOwnedRequirement[];
   items: MyWorkItem[];

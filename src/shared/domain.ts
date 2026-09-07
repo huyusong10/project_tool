@@ -1,8 +1,9 @@
-import { isBusinessDay, isValidIsoDate } from './workday';
+import { countBusinessDays, isBusinessDay, isValidIsoDate } from './workday';
 
 export const requirementStatuses = ['planning', 'not_started', 'in_progress', 'blocked', 'pending_acceptance', 'completed', 'cancelled'] as const;
 export const workItemStatuses = ['not_started', 'in_progress', 'blocked', 'completed', 'cancelled'] as const;
 export const issueStatuses = ['in_progress', 'deferred', 'resolved'] as const;
+export const projectStatuses = ['planned', 'active', 'completed'] as const;
 export const riskLevels = ['low', 'medium', 'high'] as const;
 export const priorities = ['P0', 'P1', 'P2', 'P3'] as const;
 export const projectRoles = ['viewer', 'member', 'manager'] as const;
@@ -13,6 +14,7 @@ export const maxTemplateDurationDays = 1830;
 export type RequirementStatus = (typeof requirementStatuses)[number];
 export type WorkItemStatus = (typeof workItemStatuses)[number];
 export type IssueStatus = (typeof issueStatuses)[number];
+export type ProjectStatus = (typeof projectStatuses)[number];
 export type RiskLevel = (typeof riskLevels)[number];
 export type Priority = (typeof priorities)[number];
 export type ProjectRole = (typeof projectRoles)[number];
@@ -99,6 +101,11 @@ export function addCalendarDays(value: string, days: number): string {
   return isoDate(date);
 }
 
+export function startOfWeekIso(value: string): string {
+  const day = parseIsoDate(value).getUTCDay();
+  return addCalendarDays(value, -(day === 0 ? 6 : day - 1));
+}
+
 export function addBusinessDays(value: string, days: number): string {
   let cursor = parseIsoDate(value);
   const direction = days < 0 ? -1 : 1;
@@ -126,22 +133,17 @@ export function plannedStartFromDeadline(deadline: string, items: Array<{ startO
 }
 
 export function businessDaysInclusive(start?: string | null, end?: string | null): number {
-  if (!isValidIsoDate(start) || !isValidIsoDate(end)) return 0;
-  let cursor = parseIsoDate(start);
-  const target = parseIsoDate(end);
-  if (cursor > target) return -businessDaysInclusive(end, start);
-  let total = 0;
-  while (cursor <= target) {
-    if (isBusinessDay(isoDate(cursor))) total += 1;
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return total;
+  return countBusinessDays(start, end);
 }
 
 export function businessDayDelta(planned?: string | null, actual?: string | null): number {
   if (!isValidIsoDate(planned) || !isValidIsoDate(actual) || planned === actual) return 0;
   if (actual > planned) return Math.max(0, businessDaysInclusive(addCalendarDays(planned, 1), actual));
   return -Math.max(0, businessDaysInclusive(addCalendarDays(actual, 1), planned));
+}
+
+export function rebaseBusinessDate(value: string, currentAnchor: string, targetAnchor: string) {
+  return addBusinessDays(targetAnchor, businessDayDelta(currentAnchor, value));
 }
 
 export function isOverdueByWorkday(due?: string | null, asOf = todayIso()): boolean {
@@ -188,6 +190,11 @@ export const issueActionsByStatus = {
 
 export function isTerminalWorkItemStatus(status: string): boolean {
   return terminalWorkItemStatuses.includes(status as WorkItemStatus);
+}
+
+export function canDeleteWorkItem(item: WorkItemLike & { blockedReason?: string | null }, hasHistory: boolean): boolean {
+  return item.status === 'not_started' && item.progress === 0 && !hasHistory
+    && !item.actualStart && !item.actualEnd && !item.blockedAt && !item.blockedReason;
 }
 
 export function isTerminalRequirementStatus(status: string): boolean {
