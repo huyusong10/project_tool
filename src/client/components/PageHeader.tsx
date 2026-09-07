@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useTopbarSlots } from "../app-context";
+import { useGanttTooltip } from "./GanttTooltip";
 
 /**
  * 页面标题/操作区：通过 TopbarSlotsContext 注册的挂载点 portal 到顶栏，
@@ -19,10 +20,12 @@ export function PageHeader({
   backLabel?: string;
 }) {
   const { titleEl, actionsEl } = useTopbarSlots();
+  const fullTitle = useGanttTooltip();
 
   if (!titleEl) return null;
   return (
     <>
+      {fullTitle.tooltip}
       {createPortal(
         <div className="integrated-page-title">
           {onBack && (
@@ -30,7 +33,7 @@ export function PageHeader({
               <ArrowLeft size={17} />
             </button>
           )}
-          <h1 title={title}>{title}</h1>
+          <h1 tabIndex={0} {...fullTitle.bind(<div className="page-title-full">{title}</div>)}>{title}</h1>
         </div>,
         titleEl,
       )}
