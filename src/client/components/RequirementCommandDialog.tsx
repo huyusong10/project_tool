@@ -90,7 +90,10 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
     if (readingRef.current) return null;
     readingRef.current = true; setReading(true); setNeedsRefresh(true); setReadError(null);
     try {
-      const latest = await onReload();
+      // 归档命令必须能读到已归档需求，否则归档生效后的读取恒为 404。
+      const latest = action === 'archive'
+        ? await api<Requirement>(`/api/requirements/${baseline.id}?includeDeleted=true`, { readOnly: true })
+        : await onReload();
       if (!mounted.current) return null;
       setBaseline(latest); setNeedsRefresh(false); setRefreshed(true);
       return latest;
@@ -116,46 +119,56 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
     },
     onError: async (error, input) => {
       if (!mounted.current) return;
+      // 确定性校验错误（如 400 VALIDATION_ERROR）重读也不会改变结果，直接展示错误即可。
+      if (!requiresWriteRecheck(error)) return;
       setNeedsRefresh(true);
-      if (requiresWriteRecheck(error)) {
-        if (action === 'archive' && isWriteOutcomeUnknown(error)) {
-          readingRef.current = true; setReading(true); setReadError(null);
-          try {
-            const latest = await api<Requirement>(`/api/requirements/${baseline.id}?includeDeleted=true`, { readOnly: true });
-            if (latest.deletedAt && latest.version === baseline.version + 1 && mounted.current) {
-              invalidateArchiveViews(client);
-              toast.success('已核对最新状态：需求已归档');
-              onClose();
-              onArchived();
-              return;
-            }
-          } catch (caught) {
-            if (mounted.current) setReadError(caught instanceof Error ? caught : new Error('需求归档状态读取失败'));
-          } finally {
-            readingRef.current = false;
-            if (mounted.current) setReading(false);
+      if (action === 'archive' && isWriteOutcomeUnknown(error)) {
+        readingRef.current = true; setReading(true); setReadError(null);
+        try {
+          const latest = await api<Requirement>(`/api/requirements/${baseline.id}?includeDeleted=true`, { readOnly: true });
+          if (latest.deletedAt && latest.version === baseline.version + 1 && mounted.current) {
+            invalidateArchiveViews(client);
+            toast.success('已核对最新状态：需求已归档');
+            onClose();
+            onArchived();
+            return;
           }
+        } catch (caught) {
+          if (mounted.current) setReadError(caught instanceof Error ? caught : new Error('需求归档状态读取失败'));
+        } finally {
+          readingRef.current = false;
+          if (mounted.current) setReading(false);
         }
-        const expected = baseline;
-        const latest = await readLatest();
-        if (action === 'complete-as-planned' && latest && matchesPlannedCompletion(latest, expected, session.accountId) && mounted.current) {
-          invalidateRequirementViews(client, baseline.id);
-          toast.success('已核对最新状态：需求已按期补录完成');
+      }
+      const expected = baseline;
+      const latest = await readLatest();
+      if (action === 'archive') {
+        // 版本冲突等场景下需求可能已被并发归档；读到已归档状态即按归档成功收尾。
+        if (latest?.deletedAt && mounted.current) {
+          invalidateArchiveViews(client);
+          toast.success('已核对最新状态：需求已归档');
           onClose();
-          return;
+          onArchived();
         }
-        const reconciled = reconciledCommands[action];
-        const expectedContent = canonicalizeContent(action === 'accept' ? input.content : action === 'cancel' ? input.reason : undefined);
-        if (reconciled && expectedContent && latest?.status === reconciled.status
-          && latest.version === expected.version + 1
-          && latest.progressUpdates?.some((update) => update.workItemId === null
-            && update.eventType === reconciled.eventType && update.content === expectedContent
-            && update.createdByAccountId === session.accountId && update.createdAt === latest.updatedAt)
-          && mounted.current) {
-          invalidateRequirementViews(client, baseline.id);
-          toast.success(reconciled.message);
-          onClose();
-        }
+        return;
+      }
+      if (action === 'complete-as-planned' && latest && matchesPlannedCompletion(latest, expected, session.accountId) && mounted.current) {
+        invalidateRequirementViews(client, baseline.id);
+        toast.success('已核对最新状态：需求已按期补录完成');
+        onClose();
+        return;
+      }
+      const reconciled = reconciledCommands[action];
+      const expectedContent = canonicalizeContent(action === 'accept' ? input.content : action === 'cancel' ? input.reason : undefined);
+      if (reconciled && expectedContent && latest?.status === reconciled.status
+        && latest.version === expected.version + 1
+        && latest.progressUpdates?.some((update) => update.workItemId === null
+          && update.eventType === reconciled.eventType && update.content === expectedContent
+          && update.createdByAccountId === session.accountId && update.createdAt === latest.updatedAt)
+        && mounted.current) {
+        invalidateRequirementViews(client, baseline.id);
+        toast.success(reconciled.message);
+        onClose();
       }
     },
     onSettled: () => { submitting.current = false; },

@@ -76,7 +76,7 @@ export const createProjectInputSchema = z.object({
   status: z.enum(projectStatuses).optional(),
 }).strict().refine((input) => !input.plannedStart || !input.plannedEnd || input.plannedStart <= input.plannedEnd, {
   message: '项目计划完成日期不能早于计划开始日期',
-}).passthrough();
+});
 export const projectArchiveInputSchema = z.object({
   force: z.boolean().optional(),
   expectedUpdatedAt: z.string().datetime().optional(),

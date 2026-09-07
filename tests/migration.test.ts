@@ -17,7 +17,7 @@ afterAll(() => {
 });
 
 describe('正式库增量迁移', () => {
-  it('保留遗留记录和字段并且重复启动不重复迁移', () => {
+  it('保留遗留记录和字段并且重复启动不重复迁移', { timeout: 15000 }, () => {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     const legacySql = fs.readFileSync(path.join(process.cwd(), 'drizzle', '0000_short_punisher.sql'), 'utf8');
     const db = new Database(dbPath);

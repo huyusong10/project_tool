@@ -30,6 +30,8 @@ export function clearBusinessQueries(client: QueryClient, keepProjects = false) 
 
 /** 登录/退出的已确认结果立即生效，取消旧会话读取，不能等待另一次请求才切换身份。 */
 export async function commitSession(client: QueryClient, session: Session | null) {
+  // 先作废旧身份的请求再等待取消；否则 await 窗口内完成的旧请求可能在清理之后回填业务缓存。
+  invalidateAccessRequests();
   await client.cancelQueries({ queryKey: keys.session });
   clearBusinessQueries(client);
   client.setQueryData<Session | null>(keys.session, session);

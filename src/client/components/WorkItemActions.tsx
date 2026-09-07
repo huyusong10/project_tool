@@ -108,6 +108,7 @@ export function WorkItemActions({
         if (latest && outcome.matches(latest) && mounted.current) {
           invalidateRequirementViews(client, item.requirementId);
           setPanel(null);
+          setError("");
           toast.success(outcome.reconciledMessage);
         }
       }
@@ -145,7 +146,8 @@ export function WorkItemActions({
     && update.eventType === eventType
     && update.content === canonicalizeContent(content)
     && update.createdByAccountId === session.accountId
-    && update.createdAt === latest.item.updatedAt);
+    // 旧取消数据靠 updated_at 推断取消日期时纠错会保留原 updated_at（见 services.ts correctWorkItem），此时事件时间不等于记录时间。
+    && (update.createdAt === latest.item.updatedAt || latest.item.updatedAt === item.updatedAt));
   const matchesCommandEvent = (
     latest: WorkItemReloadSnapshot,
     expectedVersion: number,
