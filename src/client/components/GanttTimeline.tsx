@@ -121,6 +121,7 @@ const progressStatusLabels: Record<string, string> = {
   not_started: "未开始",
   in_progress: "进行中",
   blocked: "阻塞",
+  pending_acceptance: "待验收",
   completed: "已完成",
   cancelled: "已取消",
 };

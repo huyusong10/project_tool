@@ -6,17 +6,19 @@ export const themes = [
   { id: "midnight", label: "午夜控制台", detail: "深炭 · 薄荷 · 低亮度" },
   { id: "soft", label: "柔彩悬浮", detail: "浅紫 · 柔彩 · 轻阴影" },
   { id: "industrial", label: "工业黄黑", detail: "黑黄 · 方正 · 强网格" },
-  { id: "dcim", label: "DCIM 石墨橙", detail: "石墨 · 品牌橙 · 细描边" },
+  { id: "dcim", label: "杰瑞橙", detail: "石墨 · 米灰 · 橙色点缀" },
 ] as const;
 export type Theme = typeof themes[number]["id"];
 const storageKey = "project-manage:theme";
 const listeners = new Set<() => void>();
-let current: Theme = "forest";
+export const defaultTheme: Theme = "dcim";
+let current: Theme = defaultTheme;
 let initialized = false;
 
 export function resolveTheme(value: string | null): Theme {
   if (value === "dark") return "midnight";
-  return themes.some((theme) => theme.id === value) ? value as Theme : "forest";
+  if (value === "light") return "forest";
+  return themes.some((theme) => theme.id === value) ? value as Theme : defaultTheme;
 }
 export function getTheme(): Theme { return current; }
 export function applyTheme(theme: Theme) {
@@ -45,5 +47,5 @@ export function useTheme(): Theme {
   return useSyncExternalStore((notify) => {
     listeners.add(notify);
     return () => listeners.delete(notify);
-  }, getTheme, () => "forest");
+  }, getTheme, () => defaultTheme);
 }

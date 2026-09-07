@@ -25,7 +25,8 @@ export const GanttDateTracks = memo(function GanttDateTracks({
   const actual = ganttInterval(actualStart, actualEnd, dates, cellWidth) || point(actualStart || actualEnd, dates, cellWidth);
   const value = ganttProgressDisplay(status, progress);
   const terminal = ["completed", "pending_acceptance", "cancelled"].includes(status);
-  const label = status === "cancelled" ? "已取消" : !actualStart && ["not_started", "planning"].includes(status) ? "未开始" : `完成 ${value}%`;
+  const label = status === "cancelled" ? "已取消" : status === "pending_acceptance" ? `${value}% · 待验收` : !actualStart && ["not_started", "planning"].includes(status) ? "未开始" : `完成 ${value}%`;
+  const lateLeft = actual && plan && plannedEnd && actualEnd && actualEnd > plannedEnd ? Math.max(actual.left, plan.right) : null;
   const total = dates.length * cellWidth;
   const endpoint = actual?.right ?? plan?.left ?? 0;
   const labelWidth = 112;
@@ -36,6 +37,7 @@ export const GanttDateTracks = memo(function GanttDateTracks({
   return <>
     {plan && <span className={`gantt-date-plan${plan.width === 0 ? " is-date-point" : ""}${!scheduleComplete ? " is-partial-plan" : ""}`} style={{ left: plan.left, width: plan.width }} data-start={plannedStart} data-end={plannedEnd} />}
     {actual && <span className={`gantt-date-actual gantt-status-${status.replaceAll("_", "-")}${actual.width === 0 ? " is-date-point" : ""}${!terminal ? " is-ongoing" : ""}`} style={{ left: actual.left, width: actual.width }} data-start={actualStart} data-end={actualEnd} />}
+    {actual && lateLeft !== null && <span className="gantt-date-delay" style={{ left: lateLeft, width: Math.max(3, actual.right - lateLeft) }} />}
     {plan && <span className="gantt-date-deadline" style={{ left: plan.right }} />}
     {(!plan || !scheduleComplete || !plannedStart || !plannedEnd) && <span className="gantt-date-unplanned">{plan ? "排期不完整" : "待排期"}</span>}
     {interactionProps && (plan || actual) && <span className="gantt-date-hitbox" style={{ left: Math.max(0, left - 4), width: Math.max(28, right - left + 8) }} tabIndex={0} aria-label={title} {...interactionProps} />}

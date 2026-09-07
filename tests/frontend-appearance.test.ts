@@ -11,8 +11,8 @@ describe("appearance preferences", () => {
     expect(resolveTheme("dcim")).toBe("dcim");
     expect(resolveTheme("light")).toBe("forest");
     expect(resolveTheme("dark")).toBe("midnight");
-    expect(resolveTheme("invalid")).toBe("forest");
-    expect(resolveTheme(null)).toBe("forest");
+    expect(resolveTheme("invalid")).toBe("dcim");
+    expect(resolveTheme(null)).toBe("dcim");
     for (const theme of themes) expect(resolveTheme(theme.id)).toBe(theme.id);
   });
   test("business category colors do not depend on series order", () => {

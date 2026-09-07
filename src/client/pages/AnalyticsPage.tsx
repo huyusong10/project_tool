@@ -52,8 +52,8 @@ function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) 
       data: primary,
       smooth: panel.visualization === "line",
       symbolSize: 7,
-      lineStyle: { width: 3, color: "var(--accent)" },
-      itemStyle: { color: "var(--accent)", borderRadius: panel.visualization === "bar" ? 4 : undefined },
+      lineStyle: { width: 3, color: "var(--chart-line)" },
+      itemStyle: { color: panel.visualization === "bar" ? "var(--chart-bar)" : "var(--chart-line)", borderRadius: panel.visualization === "bar" ? 4 : undefined },
       areaStyle: panel.visualization === "line" ? { color: "var(--chart-area)" } : undefined,
     },
     ...(result.secondaryMeasureLabel ? [{
@@ -62,8 +62,8 @@ function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) 
       data: secondary,
       smooth: panel.visualization === "line",
       symbolSize: 7,
-      lineStyle: { width: 2, color: "var(--warning)" },
-      itemStyle: { color: "var(--warning)", borderRadius: panel.visualization === "bar" ? 4 : undefined },
+      lineStyle: { width: 2, color: "var(--chart-secondary)" },
+      itemStyle: { color: "var(--chart-secondary)", borderRadius: panel.visualization === "bar" ? 4 : undefined },
     }] : []),
   ];
   if (panel.visualization === "donut") return {
@@ -72,7 +72,7 @@ function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) 
     series: [{
       name: result.measureLabel, type: "pie", radius: ["46%", "70%"], center: ["50%", "44%"],
       label: { show: false }, data: result.rows.map((row) => ({ name: row.label, value: row.value, itemStyle: { color: chartCategoryColor(panel.dimension, row.key) } })),
-      color: ["var(--accent)", "var(--success)", "var(--warning)", "var(--text-muted)", "var(--purple)", "var(--danger)", "var(--info)"],
+      color: ["var(--chart-line)", "var(--success)", "var(--warning)", "var(--text-muted)", "var(--purple)", "var(--danger)", "var(--info)"],
     }],
   };
   const horizontal = panel.visualization === "bar" && ["requirement", "person", "owner"].includes(panel.dimension || "");

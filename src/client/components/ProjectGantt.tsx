@@ -131,7 +131,7 @@ function RequirementPopover({ requirement, asOfDate }: { requirement: Requiremen
       <div><dt>进度偏差</dt><dd className={variance < 0 ? "danger-text" : variance > 0 ? "safe-text" : ""}>{progressVarianceText(requirement)}</dd></div>
       <div><dt>风险判定</dt><dd className={requirement.riskLevel === "high" && requirement.riskEvaluated ? "danger-text" : ""}>{requirement.riskReason}</dd></div>
     </dl>
-    <div className="gantt-popover-progress-compare" aria-label={`实际进度${requirement.progress}%，截至${asOfDate}应达${requirement.plannedProgress}%`}>
+    <div className={`gantt-popover-progress-compare gantt-status-${requirement.status.replaceAll("_", "-")}`} aria-label={`实际进度${requirement.progress}%，截至${asOfDate}应达${requirement.plannedProgress}%`}>
       <div><span>实际</span><i><b style={{ width: `${requirement.progress}%` }} /></i><strong>{requirement.progress}%</strong></div>
       <div><span>应达</span><i><b className="is-expected" style={{ width: `${requirement.plannedProgress}%` }} /></i><strong>{requirement.plannedProgress}%</strong></div>
     </div>
@@ -269,7 +269,7 @@ export function ProjectGantt({
       <header className="project-gantt-toolbar">
         <div className="gantt-legend" aria-label="甘特图图例">
           <span><i className="legend-plan-pill" />计划</span>
-          <span title={viewMode === "split" ? "实际执行日期跨度，完成度另行标注" : "实际进度按完成度映射到计划时间轴"}><i className="legend-actual" />{viewMode === "split" ? "实际日期" : "实际进度"}</span>
+          <span title={`${viewMode === "split" ? "实际执行日期跨度，完成度另行标注" : "实际进度按完成度映射到计划时间轴"}；蓝色执行中，绿色已完成或待验收，琥珀条纹阻塞，灰色断纹已取消，红色描边延期`}><i className="legend-actual" />{viewMode === "split" ? "实际日期" : "实际进度"}</span>
           <span><i className="legend-today" />截至 {format(toGanttDate(asOfDate)!, "MM/dd")}</span>
           {viewMode === "overlay" && <><span><i className="legend-behind" />落后段</span><span><i className="legend-ahead" />领先段</span><span><i className="legend-delayed" />延期段</span></>}
           <span><i className="legend-milestone" />里程碑</span>
@@ -363,6 +363,7 @@ export function ProjectGantt({
                       </button>
                       <div>
                         <span className={`priority-badge priority-${requirement.priority.toLowerCase()}`}>{priorityLabels[requirement.priority as keyof typeof priorityLabels] || requirement.priority}</span>
+                        {requirement.status === "pending_acceptance" && <span className="gantt-risk-chip pending">待验收</span>}
                         {!isClosedRequirement(requirement) && (requirement.riskEvaluated
                           ? healthLabel && <span className={`gantt-risk-chip ${healthClass}`}>{healthLabel}</span>
                           : <span className="gantt-risk-chip pending">待评估</span>)}

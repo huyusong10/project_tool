@@ -208,7 +208,7 @@ export const GapTimeline = memo(function GapTimeline({
           </div>}
           <div className="gantt-legend" aria-label="计划实际图例">
             <span><i className="legend-plan-pill" />计划</span>
-            <span><i className="legend-actual" />实际</span>
+            <span title="蓝色执行中，绿色已完成，琥珀条纹阻塞，灰色断纹已取消，红色描边延期"><i className="legend-actual" />实际</span>
             {viewMode === "overlay" && <><span><i className="legend-delayed" />延期</span><span><i className="legend-early" />提前</span></>}
             <span><i className="legend-milestone" />里程碑</span>
           </div>

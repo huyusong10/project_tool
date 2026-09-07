@@ -2,7 +2,7 @@
 export function chartCategoryColor(dimension: string | undefined, key: string): string | undefined {
   const roles: Record<string, Record<string, string>> = {
     risk: { high: "danger", medium: "warning", low: "success", unassessed: "text-muted" },
-    status: { in_progress: "accent", completed: "success", resolved: "success", blocked: "warning", deferred: "warning", cancelled: "text-muted", planning: "text-muted", not_started: "text-muted", pending_acceptance: "purple" },
+    status: { in_progress: "chart-line", completed: "success", resolved: "success", blocked: "warning", deferred: "warning", cancelled: "text-muted", planning: "text-muted", not_started: "text-muted", pending_acceptance: "purple" },
     priority: { P0: "danger", P1: "warning", P2: "info", P3: "text-muted" },
   };
   const role = dimension ? roles[dimension]?.[key] : undefined;

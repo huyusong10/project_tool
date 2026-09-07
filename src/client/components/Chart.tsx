@@ -40,7 +40,7 @@ export function Chart({ option, height = 240, ariaLabel }: { option: Record<stri
       if (resolved.legend) resolved.legend = { ...resolved.legend as object, ...(selected ? { selected } : {}) };
       const font = getComputedStyle(ref.current).fontFamily;
       chart.setOption({
-        color: ['--accent','--success','--warning','--purple','--danger','--info'].map(colors.resolve),
+        color: ['--chart-line','--success','--warning','--purple','--danger','--info'].map(colors.resolve),
         ...resolved,
         textStyle: { fontFamily: font, color: text, ...resolved.textStyle as object },
         tooltip: { backgroundColor: colors.resolve('--bg-surface'), borderColor: line, textStyle: { color: text }, ...resolved.tooltip as object },

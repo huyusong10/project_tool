@@ -133,8 +133,8 @@ export function RequirementPage() {
           smooth: true,
           symbolSize: 8,
           data: dailyTrend.map((item) => item.actualProgress),
-          lineStyle: { color: "var(--accent)", width: 3 },
-          itemStyle: { color: "var(--accent)" },
+          lineStyle: { color: "var(--chart-line)", width: 3 },
+          itemStyle: { color: "var(--chart-line)" },
           areaStyle: { color: "var(--chart-area)" },
         },
         {

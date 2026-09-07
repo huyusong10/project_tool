@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockGanttData, requirement, workItem } from "./gantt-fixture";
 
-const skins = [ ["swiss", "瑞士排版"], ["forest", "暖纸森林"], ["midnight", "午夜控制台"], ["soft", "柔彩悬浮"], ["industrial", "工业黄黑"], ["dcim", "DCIM 石墨橙"] ];
+const skins = [ ["swiss", "瑞士排版"], ["forest", "暖纸森林"], ["midnight", "午夜控制台"], ["soft", "柔彩悬浮"], ["industrial", "工业黄黑"], ["dcim", "杰瑞橙"] ];
 async function chooseSkin(page: Page, label: string) {
   await page.getByRole("button", { name: /^切换风格/ }).click();
   await page.getByRole("menuitemradio", { name: new RegExp(label) }).click();
