@@ -1,4 +1,4 @@
-/* 五套固定美术风格；几何布局仍由公共组件与 responsive.css 控制。 */
+/* 固定美术风格；几何布局仍由公共组件与 responsive.css 控制。 */
 :root, [data-theme="forest"] {
   color-scheme: light;
   --bg-page: #f1f2e9;
@@ -170,6 +170,42 @@
   --shadow-1: none;
 }
 
+/* Figma DCIM 主页 1:11327：石墨面板、品牌橙、冷灰文字。 */
+[data-theme="dcim"] {
+  color-scheme: dark;
+  --bg-page: #0e0f13;
+  --bg-surface: #14161b;
+  --bg-surface-subtle: #1a1c22;
+  --text-primary: #d1d1d1;
+  --text-secondary: #b8c2ce;
+  --text-muted: #939ca8;
+  --border-default: #2c2e32;
+  --border-strong: #494c55;
+  --accent: #ea5514;
+  --accent-hover: #ff864d;
+  --on-accent: #160e0a;
+  --sidebar-base: #111216;
+  --sidebar-text: #b9bec7;
+  --sidebar-text-strong: #ededee;
+  --success: #65b89a;
+  --success-text: #8fd7ba;
+  --warning: #daa127;
+  --warning-text: #efbe60;
+  --danger: #ef5555;
+  --danger-text: #ff9090;
+  --info: #7ba7d5;
+  --info-text: #a2c9ef;
+  --purple: #9b83cb;
+  --purple-text: #c3afed;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --font-heading: var(--font-sans);
+  --font-numeric: var(--font-sans);
+  --shadow-1: none;
+}
+
 :root, [data-theme] {
   --accent-ink: var(--accent);
   --text-faint: var(--text-muted);
@@ -206,6 +242,27 @@
 }
 [data-theme="industrial"] { --accent-ink: #765e08; --accent-hover: #6b5700; --accent-soft: #f8edb9; --accent-border: #b29a40; }
 [data-theme="midnight"] { --shadow-2: 0 8px 24px #00000055; --shadow-3: 0 16px 42px #00000077; --backdrop-bg: #050d13aa; }
+[data-theme="dcim"] {
+  --accent-ink: #fa874f;
+  --accent-soft: #29201d;
+  --accent-border: #794125;
+  --sidebar-hover-bg: #242023;
+  --sidebar-divider: #2c2e32;
+  --topbar-bg: #19191e;
+  --shadow-2: 0 8px 24px #00000055;
+  --shadow-3: 0 16px 42px #00000080;
+  --backdrop-bg: #07090dc9;
+  --gantt-plan-fill: #2b2a35;
+  --gantt-plan-border: #a5a1ae;
+}
+[data-theme="dcim"] .topbar { background: linear-gradient(105deg, #17191d, #251d1b); }
+[data-theme="dcim"] .brand-logo { box-shadow: none; }
+[data-theme="dcim"] .brand-logo.has-image { background: transparent; }
+[data-theme="dcim"] .session-button { color: var(--text-secondary); background: transparent; }
+[data-theme="dcim"] .session-button:hover { color: var(--accent-ink); background: var(--accent-soft); }
+[data-theme="dcim"] .sidebar-nav a.active { color: var(--accent-ink); background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
+[data-theme="dcim"] .primary-button:not(.danger-button) { color: #ffffff; background: #c44710; border-color: #c44710; box-shadow: none; }
+[data-theme="dcim"] .primary-button:not(.danger-button):hover:not(:disabled) { background: #ae3c0c; border-color: #ae3c0c; }
 .integrated-page-title h1, .panel > header h2 { font-family: var(--font-heading); }
 .stat-value, .stat-card strong, .gantt-progress-marker, .table-progress b { font-family: var(--font-numeric); font-variant-numeric: tabular-nums; }
 :focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }

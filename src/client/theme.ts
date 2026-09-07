@@ -6,6 +6,7 @@ export const themes = [
   { id: "midnight", label: "午夜控制台", detail: "深炭 · 薄荷 · 低亮度" },
   { id: "soft", label: "柔彩悬浮", detail: "浅紫 · 柔彩 · 轻阴影" },
   { id: "industrial", label: "工业黄黑", detail: "黑黄 · 方正 · 强网格" },
+  { id: "dcim", label: "DCIM 石墨橙", detail: "石墨 · 品牌橙 · 细描边" },
 ] as const;
 export type Theme = typeof themes[number]["id"];
 const storageKey = "project-manage:theme";

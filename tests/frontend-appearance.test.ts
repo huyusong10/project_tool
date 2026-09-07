@@ -6,8 +6,9 @@ import { requirementActualRange, workItemActualRange, workItemDisplayGap } from 
 import type { Requirement, WorkItem } from "../src/client/types";
 
 describe("appearance preferences", () => {
-  test("five skins and legacy preferences resolve without a sixth theme", () => {
-    expect(themes).toHaveLength(5);
+  test("six skins including DCIM preserve existing and legacy preferences", () => {
+    expect(themes).toHaveLength(6);
+    expect(resolveTheme("dcim")).toBe("dcim");
     expect(resolveTheme("light")).toBe("forest");
     expect(resolveTheme("dark")).toBe("midnight");
     expect(resolveTheme("invalid")).toBe("forest");

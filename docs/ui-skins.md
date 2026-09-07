@@ -1,6 +1,8 @@
 # 界面风格与甘特图
 
-右上角调色板按钮提供瑞士排版、暖纸森林、午夜控制台、柔彩悬浮、工业黄黑五套风格。默认暖纸森林。旧亮色偏好迁移到暖纸森林，旧暗色迁移到午夜控制台。
+右上角调色板按钮提供瑞士排版、暖纸森林、午夜控制台、柔彩悬浮、工业黄黑、DCIM 石墨橙六套风格。默认暖纸森林。旧亮色偏好迁移到暖纸森林，旧暗色迁移到午夜控制台。
+
+DCIM 石墨橙参考 [Figma DCIM 首页](https://www.figma.com/design/u4h9gFYTOSiyndcXem3qfg/DCIM?node-id=1-11327)：采用 `#0e0f13` 背景、`#14161b` 面板和 `#ea5514` 品牌橙，保留细描边、冷灰文字及蓝紫辅助色。按钮底色加深以保证小字号文字对比度，现有布局不变。
 
 ## 使用
 
@@ -15,7 +17,7 @@
 
 | 文件 | 职责 |
 |---|---|
-| `src/client/theme.ts`、`themes.css` | 五套风格、偏好迁移、语义样式变量 |
+| `src/client/theme.ts`、`themes.css` | 六套风格、偏好迁移、语义样式变量 |
 | `src/client/styles.css`、`responsive.css` | 公共组件及现有布局 |
 | `src/client/chart-theme.ts`、`components/Chart.tsx` | Canvas 配色解析、业务分类颜色、图表实例更新 |
 | `src/client/gantt-geometry.ts` | 工作日投影、日期索引、区间与网格计算 |
@@ -41,6 +43,6 @@
 - `npm run verify`：运行时、lint、单元及集成测试、构建。
 - PowerShell 执行 `$env:PLAYWRIGHT_PORT='3221'`，然后 `npm run test:responsive`：现有六种桌面分辨率回归，测试使用独立临时数据库。
 - `frontend-appearance.test.ts` 检查偏好迁移、颜色解析、日期边界、取消截止。
-- `appearance.pw.ts` 检查五套风格、三处甘特入口、三种时间粒度、长标题、存储故障、账号隔离、编辑草稿和画布复用。
+- `appearance.pw.ts` 检查六套风格、三处甘特入口、三种时间粒度、长标题、存储故障、账号隔离、编辑草稿和画布复用。
 
 当前 worktree 的真实数据截图与布局对比存于 `data/ui-review/`，原版对照存于 `data/ui-baseline/`。这些本地数据不提交到 Git。

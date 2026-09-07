@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockGanttData, requirement, workItem } from "./gantt-fixture";
 
-const skins = [ ["swiss", "瑞士排版"], ["forest", "暖纸森林"], ["midnight", "午夜控制台"], ["soft", "柔彩悬浮"], ["industrial", "工业黄黑"] ];
+const skins = [ ["swiss", "瑞士排版"], ["forest", "暖纸森林"], ["midnight", "午夜控制台"], ["soft", "柔彩悬浮"], ["industrial", "工业黄黑"], ["dcim", "DCIM 石墨橙"] ];
 async function chooseSkin(page: Page, label: string) {
   await page.getByRole("button", { name: /^切换风格/ }).click();
   await page.getByRole("menuitemradio", { name: new RegExp(label) }).click();
@@ -86,7 +86,7 @@ test("迁移暗色偏好；存储不可用时仍可切换皮肤", async ({ page 
   await expect(page.locator("html")).toHaveAttribute("data-theme", "soft");
 });
 
-test("五套配色切换复用图表画布，保留进展记录", async ({ page }) => {
+test("全部配色切换复用图表画布，保留进展记录", async ({ page }) => {
   await mockGanttData(page);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
