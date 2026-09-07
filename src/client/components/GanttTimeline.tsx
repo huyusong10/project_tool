@@ -1,80 +1,9 @@
-import { type CSSProperties, type HTMLAttributes } from "react";
-import { eachDayOfInterval, format, isValid, parseISO, startOfDay } from "date-fns";
-import { addBusinessDays, ganttProgressDisplay, isOverdueByWorkday, todayIso } from "../../shared/domain";
-import { isBusinessDay } from "../../shared/workday";
-import { ganttWeekOffsets } from "../gantt-calendar";
-
-export type GanttZoom = "day" | "week" | "month";
-
-export const ganttZoomOptions: Record<GanttZoom, { label: string; cellWidth: number; padding: number; minimumDays: number }> = {
-  day: { label: "日", cellWidth: 40, padding: 3, minimumDays: 21 },
-  week: { label: "周", cellWidth: 15, padding: 7, minimumDays: 56 },
-  month: { label: "月", cellWidth: 6, padding: 15, minimumDays: 180 },
-};
-
+import { memo, type HTMLAttributes } from "react";
+import { format } from "date-fns";
+import { ganttProgressDisplay, isOverdueByWorkday, todayIso } from "../../shared/domain";
+import { businessDateIndex, ganttInterval, ganttTodayPosition, ganttTrackStyle, toGanttDate, type GanttZoom } from "../gantt-geometry";
+export { buildBusinessDayTimeline, businessDateIndex, ganttInterval, ganttTodayPosition, ganttTrackStyle, ganttZoomOptions, toGanttDate, type GanttZoom } from "../gantt-geometry";
 const weekdayLabels = ["日", "一", "二", "三", "四", "五", "六"];
-
-export function toGanttDate(value?: string | null) {
-  if (!value) return null;
-  const parsed = parseISO(value);
-  return isValid(parsed) ? startOfDay(parsed) : null;
-}
-
-export function businessDateIndex(date: Date, dates: Date[], edge: "start" | "end") {
-  const timestamp = startOfDay(date).getTime();
-  if (edge === "start") {
-    const index = dates.findIndex((candidate) => candidate.getTime() >= timestamp);
-    return index < 0 ? dates.length : index;
-  }
-  for (let index = dates.length - 1; index >= 0; index -= 1) {
-    if (dates[index].getTime() <= timestamp) return index;
-  }
-  return -1;
-}
-
-export function buildBusinessDayTimeline(values: Array<string | null | undefined>, zoom: GanttZoom, asOfDate = todayIso()) {
-  const option = ganttZoomOptions[zoom];
-  const parsed = values.map(toGanttDate).filter(Boolean) as Date[];
-  const today = toGanttDate(asOfDate) || toGanttDate(todayIso()) || startOfDay(new Date());
-  const earliest = parsed.length ? new Date(Math.min(...parsed.map((date) => date.getTime()))) : today;
-  const latest = parsed.length ? new Date(Math.max(...parsed.map((date) => date.getTime()))) : today;
-  const start = toGanttDate(addBusinessDays(format(earliest, "yyyy-MM-dd"), -option.padding))!;
-  let end = toGanttDate(addBusinessDays(format(latest, "yyyy-MM-dd"), option.padding))!;
-  let dates = eachDayOfInterval({ start, end }).filter((date) => isBusinessDay(format(date, "yyyy-MM-dd")));
-  if (dates.length < option.minimumDays) {
-    end = toGanttDate(addBusinessDays(format(start, "yyyy-MM-dd"), option.minimumDays - 1))!;
-    dates = eachDayOfInterval({ start, end }).filter((date) => isBusinessDay(format(date, "yyyy-MM-dd")));
-  }
-  return {
-    start,
-    end,
-    dates,
-    days: dates.length,
-  };
-}
-
-export function ganttTrackStyle(dates: Date[], cellWidth: number): CSSProperties {
-  const mondayOffsets = ganttWeekOffsets(dates, cellWidth);
-  const weekBackgrounds = mondayOffsets.map(() => "linear-gradient(var(--gantt-week-line), var(--gantt-week-line))");
-  return {
-    width: dates.length * cellWidth,
-    "--gantt-cell": `${cellWidth}px`,
-    "--gantt-week-line": "rgba(148, 163, 184, .7)",
-    "--gantt-day-line": "#edf1f5",
-    backgroundImage: [...weekBackgrounds, `repeating-linear-gradient(to right,var(--gantt-day-line) 0,var(--gantt-day-line) 1px,transparent 1px,transparent ${cellWidth}px)`].join(","),
-    backgroundPosition: [...mondayOffsets.map((offset) => `${offset}px 0`), "0 0"].join(","),
-    backgroundSize: [...mondayOffsets.map(() => "1px 100%"), "auto"].join(","),
-    backgroundRepeat: [...mondayOffsets.map(() => "no-repeat"), "repeat"].join(","),
-  } as CSSProperties;
-}
-
-export function ganttTodayPosition(dates: Date[], asOfDate = todayIso()) {
-  const today = toGanttDate(asOfDate) || toGanttDate(todayIso())!;
-  const offset = businessDateIndex(today, dates, "end");
-  const nextOffset = businessDateIndex(today, dates, "start");
-  const visible = offset >= 0 && nextOffset < dates.length;
-  return { offset, visible, asOfDate: format(today, "yyyy-MM-dd") };
-}
 
 function markerVisible(dates: Date[], zoom: GanttZoom, index: number) {
   const date = dates[index];
@@ -89,7 +18,7 @@ function markerWidth(dates: Date[], zoom: GanttZoom, index: number, cellWidth: n
   return (next < 0 ? dates.length - index : next - index) * cellWidth;
 }
 
-export function GanttScale({
+export const GanttScale = memo(function GanttScale({
   dates,
   zoom,
   cellWidth,
@@ -119,7 +48,7 @@ export function GanttScale({
     >{zoom !== "month" && <span>{zoom === "day" ? `周${weekdayLabels[date.getDay()]}` : format(date, "dd")}</span>}</i>)}
     {todayVisible && <i className="gantt-today-line" style={{ left: (todayOffset + 1) * cellWidth }} />}
   </div>;
-}
+});
 
 export function GanttPlanActualBars({
   plannedStart,
@@ -180,17 +109,6 @@ export function GanttPlanActualBars({
       ariaLabel={progressAriaLabel}
     />}
   </>;
-}
-
-function ganttInterval(startValue: string | null | undefined, endValue: string | null | undefined, dates: Date[], cellWidth: number) {
-  const start = toGanttDate(startValue);
-  const end = toGanttDate(endValue);
-  if (!start || !end) return null;
-  const startIndex = businessDateIndex(start, dates, "start");
-  const endIndex = businessDateIndex(end, dates, "end");
-  if (startIndex >= dates.length || endIndex < startIndex) return null;
-  const left = startIndex * cellWidth;
-  return { left, width: Math.max(cellWidth, (endIndex - startIndex + 1) * cellWidth), right: (endIndex + 1) * cellWidth };
 }
 
 function normalizedProgress(status: string, progress: number) {
@@ -378,6 +296,7 @@ export function GanttMilestoneMarker({
   zoom = "day",
   placement,
   asOfDate = todayIso(),
+  interactionProps,
 }: {
   label?: string | null;
   plannedEnd?: string | null;
@@ -388,6 +307,7 @@ export function GanttMilestoneMarker({
   zoom?: GanttZoom;
   placement?: GanttMilestonePlacement;
   asOfDate?: string;
+  interactionProps?: HTMLAttributes<HTMLElement>;
 }) {
   const milestone = label?.trim();
   const plannedDate = toGanttDate(plannedEnd);
@@ -405,6 +325,7 @@ export function GanttMilestoneMarker({
     className={`gantt-milestone-marker milestone-${state} milestone-lane-${lane}`}
     style={{ left }}
     title={`${milestone} · ${stateLabel} · 计划 ${plannedEnd}${actualEnd ? ` · 实际 ${actualEnd}` : ""}`}
+    {...interactionProps}
     tabIndex={0}
     aria-label={`${milestone}，${stateLabel}，计划${plannedEnd}`}
   ><i />{showLabel && <b style={{ left: labelLeft - left, width: labelWidth }}>{milestone}</b>}</span>;

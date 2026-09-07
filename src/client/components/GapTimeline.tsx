@@ -1,13 +1,16 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { format } from "date-fns";
 import { Ban, Check, Circle, CircleAlert, LocateFixed, Play } from "lucide-react";
-import { calculateWorkItemGap, requirementStatusLabels, todayIso } from "../../shared/domain";
+import { requirementStatusLabels, todayIso } from "../../shared/domain";
 import type { ProgressUpdate, WorkItem } from "../types";
 import { progressUpdateDisplayValue } from "../progress-trend";
 import { useGanttTooltip } from "./GanttTooltip";
 import { StatusBadge } from "./Badge";
 import { EmptyState } from "./Feedback";
 import { ViewTabs } from "./ViewTabs";
+import { GanttViewSwitch, useGanttView } from "./GanttViewSwitch";
+import { GanttDateTracks } from "./GanttDateTracks";
+import { workItemDisplayGap, workItemActualRange } from "../gantt-actual";
 import {
   buildBusinessDayTimeline,
   GanttMilestoneMarker,
@@ -51,8 +54,8 @@ function WorkStatusIcon({ status, size = 12 }: { status: string; size?: number }
 }
 
 function WorkItemTimelinePopover({ item, updates, asOfDate }: { item: WorkItem; updates: ProgressUpdate[]; asOfDate: string }) {
-  const gap = calculateWorkItemGap(item, asOfDate);
-  const observedEnd = item.actualEnd || (item.actualStart ? gap.observedEnd : null);
+  const gap = workItemDisplayGap(item, asOfDate);
+  const observedEnd = gap.observedEnd;
   const related = updates.filter((update) => update.workItemId === item.id).slice(0, 2);
   return <>
     <header className="gantt-popover-header">
@@ -62,10 +65,10 @@ function WorkItemTimelinePopover({ item, updates, asOfDate }: { item: WorkItem; 
     <dl className="gantt-popover-metrics">
       <div><dt>实际进度</dt><dd>{item.progress}%</dd></div>
       <div><dt>计划周期</dt><dd>{dateLabel(item.plannedStart)} — {dateLabel(item.plannedEnd)}</dd></div>
-      <div><dt>实际周期</dt><dd>{dateLabel(item.actualStart, "未开始")} — {dateLabel(observedEnd, "未完成")}</dd></div>
+      <div><dt>实际执行跨度</dt><dd>{dateLabel(item.actualStart, "未开始")} — {dateLabel(observedEnd, "结束日期缺失")}{gap.actual.ongoing && observedEnd ? "（截至统计日）" : ""}</dd></div>
       {item.milestoneLabel && <div><dt>里程碑</dt><dd>{item.milestoneLabel} · {item.status === "completed" ? "已达成" : item.status === "cancelled" ? "已取消" : "待达成"}</dd></div>}
-      <div><dt>计划 / 实际工期</dt><dd>{gap.planDuration || 0}个工作日 / {gap.actualDuration || 0}个工作日</dd></div>
-      <div><dt>完成 / 耗时偏差</dt><dd className={gap.finishVariance > 0 || gap.durationVariance > 0 ? "danger-text" : ""}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}个工作日 / {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}个工作日</dd></div>
+      <div><dt>计划 / 实际工期</dt><dd>{item.plannedStart && item.plannedEnd ? `${gap.planDuration}个工作日` : "—"} / {gap.actual.start && gap.actual.end ? `${gap.actualDuration}个工作日` : "—"}</dd></div>
+      {item.status !== "cancelled" && <div><dt>完成 / 耗时偏差</dt><dd className={gap.finishVariance > 0 || gap.durationVariance > 0 ? "danger-text" : ""}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}个工作日 / {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}个工作日</dd></div>}
     </dl>
     {item.blockedReason && <p className="gantt-popover-blocked">阻塞：{item.blockedReason}</p>}
     {related.length > 0 && <section className="gantt-popover-updates"><h4>相关进展</h4>{related.map((update) => {
@@ -109,6 +112,8 @@ export const GapTimeline = memo(function GapTimeline({
   emptyState?: { message: string; actionLabel?: string; onAction?: () => void };
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [viewMode, setViewMode] = useGanttView();
+  const Bars = viewMode === "split" ? GanttDateTracks : GanttPlanActualBars;
   const [zoom, setZoom] = useState<GanttZoom>("day");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -155,12 +160,11 @@ export const GapTimeline = memo(function GapTimeline({
   }, []);
   const hasTimeline = items.some((item) => item.plannedStart || item.plannedEnd || item.actualStart || item.actualEnd);
   const range = useMemo(() => buildBusinessDayTimeline(
-    items.flatMap((item) => [item.plannedStart, item.plannedEnd, item.actualStart, item.actualEnd || (item.actualStart ? calculateWorkItemGap(item, asOfDate).observedEnd : null)]),
+    items.flatMap((item) => [item.plannedStart, item.plannedEnd, item.actualStart, workItemActualRange(item, asOfDate).end]),
     zoom,
     asOfDate,
   ), [asOfDate, items, zoom]);
 
-  if (!hasTimeline && !showUnscheduled) return <EmptyState title="尚无可绘制的计划" detail="工作项生成计划后，这里会展示需求进展。" />;
   const labelWidth = viewportWidth
     ? Math.max(190, Math.min(230, Math.round(viewportWidth * 0.22)))
     : 230;
@@ -172,14 +176,15 @@ export const GapTimeline = memo(function GapTimeline({
   const timelineWidth = Math.max(range.days * option.cellWidth, viewportWidth - fixedColumnsWidth);
   const cellWidth = timelineWidth / range.days;
   const dates = range.dates;
-  const trackStyle = ganttTrackStyle(dates, cellWidth);
+  const trackStyle = useMemo(() => ganttTrackStyle(dates, cellWidth), [dates, cellWidth]);
   const { offset: todayOffset, visible: todayVisible } = ganttTodayPosition(dates, asOfDate);
   const scrollToToday = () => {
     if (!todayVisible || !scrollRef.current) return;
     const visibleWidth = Math.max(280, scrollRef.current.clientWidth - fixedColumnsWidth);
-    scrollRef.current.scrollTo({ left: Math.max(0, labelWidth + (todayOffset + 1) * cellWidth - visibleWidth / 2), behavior: "smooth" });
+    scrollRef.current.scrollTo({ left: Math.max(0, (todayOffset + 1) * cellWidth - visibleWidth / 2), behavior: "smooth" });
   };
 
+  if (!hasTimeline && !showUnscheduled) return <EmptyState title="尚无可绘制的计划" detail="工作项生成计划后，这里会展示需求进展。" />;
   return (
     <div className="requirement-gantt">
       <div className="requirement-gantt-toolbar">
@@ -204,12 +209,12 @@ export const GapTimeline = memo(function GapTimeline({
           <div className="gantt-legend" aria-label="计划实际图例">
             <span><i className="legend-plan-pill" />计划</span>
             <span><i className="legend-actual" />实际</span>
-            <span><i className="legend-delayed" />延期</span>
-            <span><i className="legend-early" />提前</span>
+            {viewMode === "overlay" && <><span><i className="legend-delayed" />延期</span><span><i className="legend-early" />提前</span></>}
             <span><i className="legend-milestone" />里程碑</span>
           </div>
         </div>
         <div className="gantt-toolbar-actions">
+          <GanttViewSwitch value={viewMode} onChange={setViewMode} />
           <button className="ghost-button" onClick={scrollToToday} disabled={!todayVisible}><LocateFixed size={15} />今天</button>
           <ViewTabs ariaLabel="时间粒度" value={zoom} onChange={setZoom} options={(Object.keys(ganttZoomOptions) as GanttZoom[]).map((key) => ({ value: key, label: ganttZoomOptions[key].label }))} />
         </div>
@@ -235,8 +240,8 @@ export const GapTimeline = memo(function GapTimeline({
           {gapWidth > 0 && <div className="requirement-gantt-gap-head sticky-right" style={{ right: actionWidth }} role="columnheader">偏差</div>}
           {hasActions && <div className="requirement-gantt-action-head sticky-right" role="columnheader">操作</div>}
           {visibleItems.map((item) => {
-            const gap = calculateWorkItemGap(item, asOfDate);
-            const observedEnd = item.actualEnd || (item.actualStart ? gap.observedEnd : null);
+            const gap = workItemDisplayGap(item, asOfDate);
+            const observedEnd = gap.observedEnd;
             const tooltipProps = tooltip.bind(<WorkItemTimelinePopover item={item} updates={updates} asOfDate={asOfDate} />);
             return <div className={`requirement-gantt-row${item.id === targetItemId ? " is-target" : ""}`} data-work-item-id={item.id} role="row" key={item.id}>
               <div className={`requirement-gantt-item item-status-${statusClass(item.status)}${item.ownerId ? "" : " is-unassigned"} sticky-left`} role="rowheader">
@@ -252,8 +257,8 @@ export const GapTimeline = memo(function GapTimeline({
                   </span>
                 </div>
               </div>
-              <div className="requirement-gantt-track unified-gantt-track" style={trackStyle} role="cell">
-                <GanttPlanActualBars
+              <div className={`requirement-gantt-track unified-gantt-track${viewMode === "split" ? " gantt-split-track" : ""}`} style={trackStyle} role="cell">
+                <Bars
                   plannedStart={item.plannedStart}
                   plannedEnd={item.plannedEnd}
                   actualStart={item.actualStart}
@@ -267,11 +272,11 @@ export const GapTimeline = memo(function GapTimeline({
                   interactionProps={tooltipProps}
                   showUnscheduled={showUnscheduled}
                 />
-                <GanttMilestoneMarker label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={cellWidth} zoom={zoom} asOfDate={asOfDate} />
+                <GanttMilestoneMarker label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={cellWidth} zoom={zoom} asOfDate={asOfDate} interactionProps={tooltipProps} />
                 {todayVisible && <i className="gantt-today-line" style={{ left: (todayOffset + 1) * cellWidth }} title={`截至 ${asOfDate}`} />}
               </div>
               {gapWidth > 0 && <div className="requirement-gap-summary sticky-right" style={{ right: actionWidth }} role="cell">
-                {item.actualStart ? <><strong className={gap.finishVariance > 0 ? "gap-late" : gap.finishVariance < 0 ? "gap-early" : ""}>{gap.finishVariance > 0 ? `延期 +${gap.finishVariance}工作日` : gap.finishVariance < 0 ? `提前 ${Math.abs(gap.finishVariance)}工作日` : "按期"}</strong><small>耗时 {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}工作日</small></> : <span>未开始</span>}
+                {item.status === "cancelled" ? <span>已取消</span> : item.actualStart && !observedEnd ? <span>实际日期不完整</span> : item.actualStart ? <><strong className={gap.finishVariance > 0 ? "gap-late" : gap.finishVariance < 0 ? "gap-early" : ""}>{gap.finishVariance > 0 ? `延期 +${gap.finishVariance}工作日` : gap.finishVariance < 0 ? `${item.status === "completed" ? "提前" : "距截止"} ${Math.abs(gap.finishVariance)}工作日` : "按期"}</strong><small>耗时 {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}工作日</small></> : <span>未开始</span>}
               </div>}
               {hasActions && <div className="requirement-gantt-actions sticky-right" role="cell">{renderActions?.(item)}</div>}
             </div>;
