@@ -31,7 +31,7 @@ test("project selection persists and respects page scope", async ({ page }) => {
   await selectProject(page, firstName);
   await page.reload();
   await expect(page.locator(".project-switcher-name")).toHaveText(firstName);
-  const dashboardSwitcherLeft = await page.locator(".project-switcher").evaluate((element) => element.getBoundingClientRect().left);
+  const dashboardTopbarHeight = await page.locator(".topbar").evaluate((element) => element.getBoundingClientRect().height);
 
   await page.goto("/my-work");
   await expect(page.locator(".project-scope-indicator")).toHaveText("跨项目");
@@ -81,9 +81,18 @@ test("project selection persists and respects page scope", async ({ page }) => {
   await page.goto(`/requirements/${requirement.id}`);
   await expect(page.locator(".project-switcher-name")).toHaveText(firstName);
   await expect(page.locator(".integrated-page-title h1")).toHaveAttribute("title", requirementTitle);
-  const detailSwitcherLeft = await page.locator(".project-switcher").evaluate((element) => element.getBoundingClientRect().left);
-  expect(Math.abs(detailSwitcherLeft - dashboardSwitcherLeft)).toBeLessThanOrEqual(1);
-  expect(await page.locator(".integrated-page-title h1").evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  const title = page.locator(".integrated-page-title h1");
+  const titleBox = (await title.boundingBox())!;
+  const switcherBox = (await page.locator(".project-switcher").boundingBox())!;
+  // 极长项目名和操作区先保留空间；标题仍至少保留原来的可读宽度。
+  expect(titleBox.width).toBeGreaterThanOrEqual(80);
+  expect(switcherBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width);
+  expect(await page.locator(".topbar").evaluate((element) => element.getBoundingClientRect().height)).toBe(dashboardTopbarHeight);
+  if (await title.evaluate((element) => element.scrollWidth > element.clientWidth)) {
+    await title.focus();
+    await expect(page.locator(".page-title-full")).toHaveText(requirementTitle);
+    await page.keyboard.press("Escape");
+  }
   await selectProject(page, secondName);
   await expect(page).toHaveURL(/\/requirements$/);
   await expect(page.locator(".project-switcher-name")).toHaveText(secondName);

@@ -76,7 +76,9 @@ export function App() {
   const toast = useToast();
   const [loginOpen, setLoginOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("project-manage:sidebar-collapsed") === "true");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return window.localStorage.getItem("project-manage:sidebar-collapsed") === "true"; } catch { return false; }
+  });
   const [titleEl, setTitleEl] = useState<HTMLElement | null>(null);
   const [actionsEl, setActionsEl] = useState<HTMLElement | null>(null);
   const [businessDate, setBusinessDate] = useState(todayIso);
@@ -129,7 +131,7 @@ export function App() {
   });
 
   useEffect(() => {
-    window.localStorage.setItem("project-manage:sidebar-collapsed", String(sidebarCollapsed));
+    try { window.localStorage.setItem("project-manage:sidebar-collapsed", String(sidebarCollapsed)); } catch { /* 当前页面仍可收起侧栏。 */ }
   }, [sidebarCollapsed]);
 
   const openLogin = useCallback(() => setLoginOpen(true), []);

@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronDown, LogIn, LogOut, Moon, Sun } from "lucide-react";
+import { Check, ChevronDown, LogIn, LogOut } from "lucide-react";
 import { api, isWriteOutcomeUnknown } from "../api";
 import { useProjects, useSession, useTopbarSlots, useUiActions } from "../app-context";
 import { invalidate, keys } from "../query-keys";
 import { commitSession, guestSession } from "../session-cache";
-import { toggleTheme, useTheme } from "../theme";
+import { ThemePicker } from "./ThemePicker";
 import { AnchoredPopover } from "./InlineEdit";
 import { useSynchronousPendingLock } from "./Modal";
 import { useToast } from "./Toast";
@@ -50,7 +50,6 @@ export function Topbar({ scope, projectSelectionReady }: { scope: PageScope; pro
   const { session } = useSession();
   const { openLogin } = useUiActions();
   const { setTitleEl, setActionsEl } = useTopbarSlots();
-  const theme = useTheme();
   const client = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast();
@@ -88,15 +87,7 @@ export function Topbar({ scope, projectSelectionReady }: { scope: PageScope; pro
       </div>
       <div className="top-actions">
         <div id="topbar-action-slot" ref={setActionsEl} />
-        <button
-          type="button"
-          className="icon-button theme-toggle"
-          aria-label={theme === "dark" ? "切换到亮色主题" : "切换到暗色主题"}
-          title={theme === "dark" ? "切换到亮色主题" : "切换到暗色主题"}
-          onClick={toggleTheme}
-        >
-          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
+        <ThemePicker />
         <div className="topbar-account">
           {session.authenticated ? (
             <>

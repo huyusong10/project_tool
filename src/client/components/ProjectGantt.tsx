@@ -10,6 +10,10 @@ import { EmptyState } from "./Feedback";
 import { useGanttTooltip } from "./GanttTooltip";
 import { ResizablePanel } from "./ResizablePanel";
 import { SearchInput } from "./SearchInput";
+import { GanttDateTracks } from "./GanttDateTracks";
+import { motionScrollBehavior } from "../motion";
+import { GanttViewSwitch, useGanttView } from "./GanttViewSwitch";
+import { requirementActualRange } from "../gantt-actual";
 import {
   buildBusinessDayTimeline,
   GanttMilestoneMarker,
@@ -100,20 +104,6 @@ function activeRiskClass(requirement: Requirement) {
   return ` gantt-risk-${requirement.riskLevel}`;
 }
 
-function requirementActualRange(requirement: Requirement, asOfDate: string) {
-  if (requirement.actualStart !== undefined || requirement.actualEnd !== undefined) {
-    return { start: requirement.actualStart || null, end: requirement.actualEnd || null };
-  }
-  const starts = requirement.workItems.map((item) => item.actualStart).filter(Boolean) as string[];
-  if (!starts.length) return { start: null, end: null };
-  const start = starts.sort()[0];
-  const completedEnds = requirement.workItems.map((item) => item.actualEnd).filter(Boolean) as string[];
-  const end = requirement.status === "completed" || requirement.status === "pending_acceptance" || requirement.status === "cancelled"
-    ? completedEnds.sort().at(-1) || start
-    : asOfDate;
-  return { start, end };
-}
-
 function RequirementPopover({ requirement, asOfDate }: { requirement: Requirement; asOfDate: string }) {
   const updates = requirement.recentProgressUpdates || [];
   const risk = riskLabels[requirement.riskLevel as keyof typeof riskLabels] || requirement.riskLevel;
@@ -136,13 +126,13 @@ function RequirementPopover({ requirement, asOfDate }: { requirement: Requiremen
     </div>
     <dl className="gantt-popover-metrics">
       <div><dt>计划周期</dt><dd>{dateLabel(requirement.plannedStart)} — {dateLabel(requirement.plannedEnd)}</dd></div>
-      <div><dt>实际周期</dt><dd>{dateLabel(actual.start, "未开始")} — {dateLabel(actual.end, "未完成")}</dd></div>
+      <div><dt>实际执行跨度</dt><dd>{dateLabel(actual.start, "未开始")} — {dateLabel(actual.end, "结束日期缺失")}{!["completed", "pending_acceptance", "cancelled"].includes(requirement.status) && actual.end ? "（截至统计日）" : ""}<small className="gantt-range-note">含阻塞和间断，不代表净工作量</small></dd></div>
       <div><dt>截至 {format(toGanttDate(asOfDate)!, "MM/dd")} 应达</dt><dd>{requirement.plannedProgress}%</dd></div>
       <div><dt>当前实际进度</dt><dd>{requirement.progress}%</dd></div>
       <div><dt>进度偏差</dt><dd className={variance < 0 ? "danger-text" : variance > 0 ? "safe-text" : ""}>{progressVarianceText(requirement)}</dd></div>
       <div><dt>风险判定</dt><dd className={requirement.riskLevel === "high" && requirement.riskEvaluated ? "danger-text" : ""}>{requirement.riskReason}</dd></div>
     </dl>
-    <div className="gantt-popover-progress-compare" aria-label={`实际进度${requirement.progress}%，截至${asOfDate}应达${requirement.plannedProgress}%`}>
+    <div className={`gantt-popover-progress-compare gantt-status-${requirement.status.replaceAll("_", "-")}`} aria-label={`实际进度${requirement.progress}%，截至${asOfDate}应达${requirement.plannedProgress}%`}>
       <div><span>实际</span><i><b style={{ width: `${requirement.progress}%` }} /></i><strong>{requirement.progress}%</strong></div>
       <div><span>应达</span><i><b className="is-expected" style={{ width: `${requirement.plannedProgress}%` }} /></i><strong>{requirement.plannedProgress}%</strong></div>
     </div>
@@ -180,13 +170,16 @@ export function ProjectGantt({
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const ganttTooltip = useGanttTooltip();
+  const [viewMode, setViewMode] = useGanttView();
   const [zoom, setZoom] = useState<GanttZoom>(() => {
-    const stored = window.localStorage.getItem(`project-manage:gantt-zoom:${resizeStorageKey}`);
-    return stored && stored in ganttZoomOptions ? stored as GanttZoom : "day";
+    try {
+      const stored = window.localStorage.getItem(`project-manage:gantt-zoom:${resizeStorageKey}`);
+      return stored && stored in ganttZoomOptions ? stored as GanttZoom : "day";
+    } catch { return "day"; }
   });
   const changeZoom = (key: GanttZoom) => {
     setZoom(key);
-    window.localStorage.setItem(`project-manage:gantt-zoom:${resizeStorageKey}`, key);
+    try { window.localStorage.setItem(`project-manage:gantt-zoom:${resizeStorageKey}`, key); } catch { /* 本次页面仍可缩放。 */ }
   };
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -246,6 +239,8 @@ export function ProjectGantt({
   const range = useMemo(() => {
     const values: Array<string | null | undefined> = [projectStart, projectEnd];
     requirements.forEach((requirement) => {
+      const actual = requirementActualRange(requirement, asOfDate);
+      values.push(actual.start, actual.end, requirement.plannedStart, requirement.plannedEnd);
       if (hasCompleteSchedule(requirement) || isClosedRequirement(requirement)) {
         values.push(requirement.plannedStart, requirement.plannedEnd, requirement.effectiveEnd);
       }
@@ -255,7 +250,7 @@ export function ProjectGantt({
 
   const timelineWidth = range.days * option.cellWidth;
   const dates = range.dates;
-  const trackStyle = ganttTrackStyle(dates, option.cellWidth);
+  const trackStyle = useMemo(() => ganttTrackStyle(dates, option.cellWidth), [dates, option.cellWidth]);
   const { offset: todayOffset, visible: todayVisible } = ganttTodayPosition(dates, asOfDate);
 
   const scrollToToday = () => {
@@ -265,8 +260,8 @@ export function ProjectGantt({
       ?.getBoundingClientRect().width ?? 360;
     const visibleTimeline = Math.max(300, scrollRef.current.clientWidth - leftColumn);
     scrollRef.current.scrollTo({
-      left: Math.max(0, leftColumn + (todayOffset + 1) * option.cellWidth - visibleTimeline / 2),
-      behavior: "smooth",
+      left: Math.max(0, (todayOffset + 1) * option.cellWidth - visibleTimeline / 2),
+      behavior: motionScrollBehavior(),
     });
   };
 
@@ -275,17 +270,16 @@ export function ProjectGantt({
       <header className="project-gantt-toolbar">
         <div className="gantt-legend" aria-label="甘特图图例">
           <span><i className="legend-plan-pill" />计划</span>
-          <span title="按实际完成度折算到计划时间轴的位置"><i className="legend-actual" />实际进度</span>
+          <span title={`${viewMode === "split" ? "实际执行日期跨度，完成度另行标注" : "实际进度按完成度映射到计划时间轴"}；蓝色执行中，绿色已完成或待验收，琥珀条纹阻塞，灰色断纹已取消，红色描边延期`}><i className="legend-actual" />{viewMode === "split" ? "实际日期" : "实际进度"}</span>
           <span><i className="legend-today" />截至 {format(toGanttDate(asOfDate)!, "MM/dd")}</span>
-          <span><i className="legend-behind" />落后段</span>
-          <span><i className="legend-ahead" />领先段</span>
-          <span><i className="legend-delayed" />延期段</span>
+          {viewMode === "overlay" && <><span><i className="legend-behind" />落后段</span><span><i className="legend-ahead" />领先段</span><span><i className="legend-delayed" />延期段</span></>}
           <span><i className="legend-milestone" />里程碑</span>
           <span><i className="legend-risk-medium" />中风险</span>
           <span><i className="legend-risk-high" />高风险</span>
           <span className="gantt-axis-note">横轴按工作日显示</span>
         </div>
         <div className="gantt-toolbar-actions">
+          <GanttViewSwitch value={viewMode} onChange={setViewMode} />
           <button className="ghost-button" onClick={scrollToToday} disabled={!todayVisible} title={todayVisible ? "定位到今天" : "今天不在当前项目时间范围内"}>
             <LocateFixed size={15} /> 今天
           </button>
@@ -345,6 +339,7 @@ export function ProjectGantt({
             </div>
             <GanttScale dates={dates} zoom={zoom} cellWidth={option.cellWidth} todayOffset={todayOffset} todayVisible={todayVisible} />
             {visibleRequirements.map((requirement) => {
+              const actual = requirementActualRange(requirement, asOfDate);
               const scheduleComplete = hasCompleteSchedule(requirement);
               const showPlan = scheduleComplete || isClosedRequirement(requirement);
               const tooltipProps = ganttTooltip.bind(<RequirementPopover requirement={requirement} asOfDate={asOfDate} />);
@@ -369,6 +364,7 @@ export function ProjectGantt({
                       </button>
                       <div>
                         <span className={`priority-badge priority-${requirement.priority.toLowerCase()}`}>{priorityLabels[requirement.priority as keyof typeof priorityLabels] || requirement.priority}</span>
+                        {requirement.status === "pending_acceptance" && <span className="gantt-risk-chip pending">待验收</span>}
                         {!isClosedRequirement(requirement) && (requirement.riskEvaluated
                           ? healthLabel && <span className={`gantt-risk-chip ${healthClass}`}>{healthLabel}</span>
                           : <span className="gantt-risk-chip pending">待评估</span>)}
@@ -386,8 +382,13 @@ export function ProjectGantt({
                       </div>
                     </div>
                   </div>
-                  <div className="gantt-track unified-gantt-track" style={trackStyle} role="cell">
-                    <GanttProgressComparison
+                  <div className={`gantt-track unified-gantt-track${viewMode === "split" ? " gantt-split-track" : ""}`} style={trackStyle} role="cell">
+                    {viewMode === "split" ? <GanttDateTracks
+                      plannedStart={requirement.plannedStart} plannedEnd={requirement.plannedEnd}
+                      actualStart={actual.start} actualEnd={actual.end} status={requirement.status} scheduleComplete={scheduleComplete}
+                      progress={requirement.progress} dates={dates} cellWidth={option.cellWidth}
+                      interactionProps={tooltipProps}
+                    /> : <GanttProgressComparison
                       plannedStart={showPlan ? requirement.plannedStart : null}
                       plannedEnd={showPlan ? requirement.plannedEnd : null}
                       effectiveEnd={requirement.effectiveEnd}
@@ -399,8 +400,14 @@ export function ProjectGantt({
                       asOfDate={asOfDate}
                       interactionProps={tooltipProps}
                       showUnscheduled
-                    />
-                    {milestoneItems.map((item) => <GanttMilestoneMarker key={item.id} label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={option.cellWidth} zoom={zoom} placement={milestonePlacements.get(item.id)} asOfDate={asOfDate} />)}
+                    />}
+                    {milestoneItems.map((item) => {
+                      const samePosition = milestoneItems.filter((other) => milestonePlacements.get(other.id)?.left === milestonePlacements.get(item.id)?.left);
+                      return <GanttMilestoneMarker key={item.id} label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={option.cellWidth} zoom={zoom} placement={milestonePlacements.get(item.id)} asOfDate={asOfDate} interactionProps={ganttTooltip.bind(<>
+                        <header className="gantt-popover-header"><strong>里程碑{samePosition.length > 1 ? `（${samePosition.length}项）` : ""}</strong></header>
+                        <dl className="gantt-popover-metrics">{samePosition.map((milestone) => <div key={milestone.id}><dt>{milestone.milestoneLabel}</dt><dd>{statusLabel(milestone.status)}<br />计划 {dateLabel(milestone.plannedEnd)}{milestone.actualEnd && <> · 实际 {dateLabel(milestone.actualEnd)}</>}</dd></div>)}</dl>
+                      </>)} />;
+                    })}
                     {todayVisible && <i className="gantt-today-line" style={{ left: (todayOffset + 1) * option.cellWidth }} title={`截至 ${asOfDate}`} />}
                   </div>
                 </div>

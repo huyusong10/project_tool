@@ -112,19 +112,19 @@ export function RequirementPage() {
       });
       return ({
       tooltip: { trigger: "axis" },
-      legend: { top: 4, right: 16, data: ["实际进度", "计划进度"], textStyle: { color: "#718096", fontSize: 12 } },
+      legend: { top: 4, right: 16, data: ["实际进度", "计划进度"], textStyle: { color: "var(--text-muted)", fontSize: 12 } },
       grid: { left: 42, right: 18, top: 42, bottom: 34 },
       xAxis: {
         type: "category",
         data: dailyTrend.map(({ date }) => `${date.slice(5, 7)}/${date.slice(8, 10)}`),
-        axisLabel: { color: "#718096" },
+        axisLabel: { color: "var(--text-muted)" },
       },
       yAxis: {
         type: "value",
         min: 0,
         max: 100,
-        axisLabel: { formatter: "{value}%", color: "#718096" },
-        splitLine: { lineStyle: { color: "#eef1f5" } },
+        axisLabel: { formatter: "{value}%", color: "var(--text-muted)" },
+        splitLine: { lineStyle: { color: "var(--divider)" } },
       },
       series: [
         {
@@ -133,9 +133,9 @@ export function RequirementPage() {
           smooth: true,
           symbolSize: 8,
           data: dailyTrend.map((item) => item.actualProgress),
-          lineStyle: { color: "#2d6cdf", width: 3 },
-          itemStyle: { color: "#2d6cdf" },
-          areaStyle: { color: "rgba(45,108,223,.12)" },
+          lineStyle: { color: "var(--chart-line)", width: 3 },
+          itemStyle: { color: "var(--chart-line)" },
+          areaStyle: { color: "var(--chart-area)" },
         },
         {
           name: "计划进度",
@@ -143,8 +143,8 @@ export function RequirementPage() {
           smooth: false,
           symbolSize: 6,
           data: plannedValues,
-          lineStyle: { color: "#91a3bc", width: 2, type: "dashed" },
-          itemStyle: { color: "#91a3bc" },
+          lineStyle: { color: "var(--text-faint)", width: 2, type: "dashed" },
+          itemStyle: { color: "var(--text-faint)" },
         },
       ],
     });

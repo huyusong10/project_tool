@@ -31,7 +31,8 @@ export function useProjectSelection({
     }
     if (!projectsFetched || !accountKey) return;
     setSelection((current) => {
-      const storedProjectId = window.localStorage.getItem(storageKeyFor(accountKey)) || "";
+      let storedProjectId = "";
+      try { storedProjectId = window.localStorage.getItem(storageKeyFor(accountKey)) || ""; } catch { /* 使用当前选择或第一个可访问项目。 */ }
       const candidate = current.accountKey === accountKey ? current.projectId : storedProjectId;
       const projectId = projects.some((project) => project.id === candidate) ? candidate : projects[0]?.id || "";
       if (current.accountKey === accountKey && current.projectId === projectId) return current;
@@ -48,8 +49,10 @@ export function useProjectSelection({
   useEffect(() => {
     if (!projectSelectionReady || !accountKey) return;
     const storageKey = storageKeyFor(accountKey);
-    if (selectedProjectId) window.localStorage.setItem(storageKey, selectedProjectId);
-    else window.localStorage.removeItem(storageKey);
+    try {
+      if (selectedProjectId) window.localStorage.setItem(storageKey, selectedProjectId);
+      else window.localStorage.removeItem(storageKey);
+    } catch { /* 存储不可用不影响本次页面的项目选择。 */ }
   }, [projectSelectionReady, selectedProjectId, accountKey]);
 
   const setSelectedProjectId = useCallback((projectId: string) => {
