@@ -1,3 +1,4 @@
+import { motionScrollBehavior } from "../motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
@@ -117,7 +118,7 @@ export function ConcurrencyPanel() {
     <div className="human-matrix-frame">
       <header className="human-matrix-heading">
         <div><span>工作日并发度</span><strong>{format(parseISO(firstDate), "MM月dd日")}—{format(parseISO(firstWindowEnd), "MM月dd日")}</strong></div>
-        <div><span>从今天开始 · 已加载至 {format(parseISO(loadedTo), "MM月dd日")}</span><button type="button" onClick={() => matrixScrollRef.current?.scrollTo({ left: 0, behavior: "smooth" })}><LocateFixed size={14} />回到今天</button></div>
+        <div><span>从今天开始 · 已加载至 {format(parseISO(loadedTo), "MM月dd日")}</span><button type="button" onClick={() => matrixScrollRef.current?.scrollTo({ left: 0, behavior: motionScrollBehavior() })}><LocateFixed size={14} />回到今天</button></div>
       </header>
       <div className="human-matrix-scroll" ref={matrixScrollRef} onScroll={(event) => {
         const element = event.currentTarget;

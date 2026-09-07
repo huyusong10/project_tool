@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockGanttData, requirement, workItem } from "./gantt-fixture";
 
-const skins = ["swiss", "forest", "midnight", "soft", "industrial", "dcim"];
+const skins = ["classic", "swiss", "forest", "midnight", "soft", "industrial", "dcim"];
 const cases = [
   { status: "planning", progress: 0, actualStart: null, actualEnd: null },
   { status: "in_progress", progress: 99.6, actualStart: "2026-09-01", actualEnd: "2026-09-14" },
@@ -19,13 +19,14 @@ async function changeSkin(page: Page, skin: string) {
   await expect(page.locator("html")).toHaveAttribute("data-theme", skin);
 }
 
-test("杰瑞橙默认生效，保留已选皮肤和旧明暗偏好", async ({ page }) => {
+test("夜间默认杰瑞橙，保留已选皮肤并迁移旧明暗偏好", async ({ page }) => {
   await mockGanttData(page);
+  await page.emulateMedia({ colorScheme: "dark" });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
   await expect(page.getByRole("button", { name: "切换风格，当前杰瑞橙" })).toBeVisible();
-  for (const [stored, expected] of [["forest", "forest"], ["light", "forest"], ["dark", "midnight"], ["invalid", "dcim"]]) {
+  for (const [stored, expected] of [["forest", "forest"], ["light", "classic"], ["dark", "dcim"], ["invalid", "dcim"]]) {
     await page.evaluate((value) => localStorage.setItem("project-manage:theme", value), stored);
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-theme", expected);
@@ -48,7 +49,7 @@ test("杰瑞橙默认生效，保留已选皮肤和旧明暗偏好", async ({ pa
 });
 
 for (const surface of ["home", "detail"] as const) for (const mode of ["overlay", "split"] as const) {
-  test(`${surface} ${mode}：六套皮肤共用完成、执行、阻塞、取消和延期色`, async ({ page }, info) => {
+  test(`${surface} ${mode}：七套皮肤共用完成、执行、阻塞、取消和延期色`, async ({ page }, info) => {
     await mockGanttData(page);
     const rows = cases.filter((item) => surface === "home" || item.status !== "pending_acceptance");
     await page.route("**/api/dashboard**", (route) => route.fulfill({ json: {

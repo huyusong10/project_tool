@@ -5,12 +5,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App';
 import { ToastProvider } from './components/Toast';
 import { initTheme } from './theme';
+import { initMotion } from './motion';
 import './tokens.css';
 import './styles.css';
 import './themes.css';
 import './responsive.css';
 
 initTheme();
+initMotion();
 
 const queryClient = new QueryClient({
   defaultOptions: {

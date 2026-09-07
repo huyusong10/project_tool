@@ -10,6 +10,7 @@ import { EmptyState } from "./Feedback";
 import { ViewTabs } from "./ViewTabs";
 import { GanttViewSwitch, useGanttView } from "./GanttViewSwitch";
 import { GanttDateTracks } from "./GanttDateTracks";
+import { motionScrollBehavior } from "../motion";
 import { workItemDisplayGap, workItemActualRange } from "../gantt-actual";
 import {
   buildBusinessDayTimeline,
@@ -181,7 +182,7 @@ export const GapTimeline = memo(function GapTimeline({
   const scrollToToday = () => {
     if (!todayVisible || !scrollRef.current) return;
     const visibleWidth = Math.max(280, scrollRef.current.clientWidth - fixedColumnsWidth);
-    scrollRef.current.scrollTo({ left: Math.max(0, (todayOffset + 1) * cellWidth - visibleWidth / 2), behavior: "smooth" });
+    scrollRef.current.scrollTo({ left: Math.max(0, (todayOffset + 1) * cellWidth - visibleWidth / 2), behavior: motionScrollBehavior() });
   };
 
   if (!hasTimeline && !showUnscheduled) return <EmptyState title="尚无可绘制的计划" detail="工作项生成计划后，这里会展示需求进展。" />;

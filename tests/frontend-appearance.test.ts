@@ -1,18 +1,21 @@
 import { describe, expect, test } from "vitest";
-import { resolveTheme, themes } from "../src/client/theme";
+import { resolveTheme, resolveThemePreference, themes } from "../src/client/theme";
 import { chartCategoryColor, resolveChartTokens } from "../src/client/chart-theme";
 import { buildBusinessDayTimeline, businessDateIndex, ganttInterval, toGanttDate } from "../src/client/gantt-geometry";
 import { requirementActualRange, workItemActualRange, workItemDisplayGap } from "../src/client/gantt-actual";
 import type { Requirement, WorkItem } from "../src/client/types";
 
 describe("appearance preferences", () => {
-  test("six skins including DCIM preserve existing and legacy preferences", () => {
-    expect(themes).toHaveLength(6);
+  test("seven skins preserve explicit choices and resolve day/night defaults", () => {
+    expect(themes).toHaveLength(7);
     expect(resolveTheme("dcim")).toBe("dcim");
-    expect(resolveTheme("light")).toBe("forest");
-    expect(resolveTheme("dark")).toBe("midnight");
-    expect(resolveTheme("invalid")).toBe("dcim");
-    expect(resolveTheme(null)).toBe("dcim");
+    expect(resolveTheme("light")).toBe("classic");
+    expect(resolveTheme("dark")).toBe("dcim");
+    expect(resolveTheme("invalid")).toBe("classic");
+    expect(resolveTheme(null)).toBe("classic");
+    expect(resolveTheme(null, true)).toBe("dcim");
+    expect(resolveTheme("system", true)).toBe("dcim");
+    expect(resolveThemePreference(null)).toBe("system");
     for (const theme of themes) expect(resolveTheme(theme.id)).toBe(theme.id);
   });
   test("business category colors do not depend on series order", () => {

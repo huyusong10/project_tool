@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockGanttData, requirement, workItem } from "./gantt-fixture";
 
-const skins = [ ["swiss", "瑞士排版"], ["forest", "暖纸森林"], ["midnight", "午夜控制台"], ["soft", "柔彩悬浮"], ["industrial", "工业黄黑"], ["dcim", "杰瑞橙"] ];
+const skins = [ ["classic", "经典蓝白"], ["swiss", "瑞士排版"], ["forest", "暖纸森林"], ["midnight", "午夜控制台"], ["soft", "柔彩悬浮"], ["industrial", "工业黄黑"], ["dcim", "杰瑞橙"] ];
 async function chooseSkin(page: Page, label: string) {
   await page.getByRole("button", { name: /^切换风格/ }).click();
-  await page.getByRole("menuitemradio", { name: new RegExp(label) }).click();
+  await page.getByRole("menuitemradio", { name: new RegExp("^" + label) }).click();
 }
 
 for (const [skin, label] of skins) test(`${label}：布局、双轨三种粒度、长标题与完整提示`, async ({ page }, info) => {
@@ -71,7 +71,7 @@ test("换肤保留编辑草稿、菜单键盘选择不触发提交", async ({ pa
   await page.getByRole("dialog").getByRole("button", { name: "取消", exact: true }).click();
   const trigger = page.getByRole("button", { name: /^切换风格/ });
   await trigger.focus(); await page.keyboard.press("ArrowDown"); await page.keyboard.press("Home"); await page.keyboard.press("Enter");
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "swiss");
+  await expect(page.locator("html")).toHaveAttribute("data-theme-preference", "system");
   await expect(trigger).toBeFocused();
   expect(writes).toEqual([]);
 });
@@ -80,7 +80,7 @@ test("迁移暗色偏好；存储不可用时仍可切换皮肤", async ({ page 
   await mockGanttData(page);
   await page.addInitScript(() => localStorage.setItem("project-manage:theme", "dark"));
   await page.goto("/");
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "midnight");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dcim");
   await page.evaluate(() => { Storage.prototype.setItem = () => { throw new Error("blocked storage"); }; });
   await chooseSkin(page, "柔彩悬浮");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "soft");

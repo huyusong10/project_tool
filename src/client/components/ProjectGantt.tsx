@@ -11,6 +11,7 @@ import { useGanttTooltip } from "./GanttTooltip";
 import { ResizablePanel } from "./ResizablePanel";
 import { SearchInput } from "./SearchInput";
 import { GanttDateTracks } from "./GanttDateTracks";
+import { motionScrollBehavior } from "../motion";
 import { GanttViewSwitch, useGanttView } from "./GanttViewSwitch";
 import { requirementActualRange } from "../gantt-actual";
 import {
@@ -260,7 +261,7 @@ export function ProjectGantt({
     const visibleTimeline = Math.max(300, scrollRef.current.clientWidth - leftColumn);
     scrollRef.current.scrollTo({
       left: Math.max(0, (todayOffset + 1) * option.cellWidth - visibleTimeline / 2),
-      behavior: "smooth",
+      behavior: motionScrollBehavior(),
     });
   };
 

@@ -170,8 +170,8 @@
   --shadow-1: none;
 }
 
-/* 杰瑞橙参考 Figma DCIM 主页 1:11327；无已保存偏好时首屏也使用该风格。 */
-:root:not([data-theme]), [data-theme="dcim"] {
+/* 默认夜间风格：杰瑞橙，参考 Figma DCIM 主页 1:11327。 */
+[data-theme="dcim"] {
   color-scheme: dark;
   --bg-page: #0e0f13;
   --bg-surface: #14161b;
@@ -255,7 +255,7 @@
   --chart-area: color-mix(in srgb, var(--chart-line) 14%, transparent);
   --chart-success-area: color-mix(in srgb, var(--success) 14%, transparent);
 }
-:root:not([data-theme]), [data-theme="midnight"], [data-theme="dcim"] {
+[data-theme="midnight"], [data-theme="dcim"] {
   --gantt-running: #7899bc;
   --gantt-completed: #78ad93;
   --gantt-blocked: #cda658;
@@ -264,9 +264,53 @@
   --gantt-milestone: #aa93d0;
   --gantt-on-bar: #101719;
 }
+:root:not([data-theme]), [data-theme="classic"] {
+  color-scheme: light;
+  --bg-page: var(--gray-50);
+  --bg-surface: #ffffff;
+  --bg-surface-subtle: var(--gray-25);
+  --bg-hover: var(--gray-100);
+  --bg-active: var(--blue-50);
+  --text-primary: var(--gray-900);
+  --text-secondary: var(--gray-700);
+  --text-muted: var(--gray-600);
+  --text-faint: #64748b;
+  --border-default: var(--gray-200);
+  --border-strong: var(--gray-250);
+  --divider: var(--gray-100);
+  --accent: var(--blue-600);
+  --accent-hover: var(--blue-700);
+  --accent-soft: var(--blue-50);
+  --accent-border: var(--blue-200);
+  --on-accent: #ffffff;
+  --success: var(--green-600); --success-text: var(--green-700); --success-bg: var(--green-50); --success-border: var(--green-100);
+  --warning: var(--amber-500); --warning-text: var(--amber-700); --warning-bg: var(--amber-50); --warning-border: var(--amber-100);
+  --danger: var(--red-500); --danger-text: var(--red-700); --danger-bg: var(--red-50); --danger-border: var(--red-100);
+  --info: var(--blue-600); --info-text: var(--blue-700); --info-bg: var(--blue-50); --info-border: var(--blue-100);
+  --purple: var(--purple-500); --purple-text: var(--purple-700); --purple-bg: var(--purple-50);
+  /* 侧栏 */
+  --sidebar-bg: linear-gradient(180deg, var(--navy-800) 0%, var(--navy-900) 100%);
+  --sidebar-text: #aebdcd;
+  --sidebar-text-strong: #ffffff;
+  --sidebar-text-muted: #62758c;
+  --sidebar-hover-bg: rgba(255, 255, 255, .06);
+  --sidebar-divider: rgba(255, 255, 255, .08);
+  /* 顶栏 */
+  --topbar-bg: rgba(255, 255, 255, .97);
+  /* 阴影与聚焦环 */
+  --shadow-1: 0 3px 12px rgba(30, 49, 75, .05);
+  --shadow-2: 0 10px 28px rgba(17, 34, 56, .12);
+  --shadow-3: 0 14px 34px rgba(17, 34, 56, .18);
+  --focus-ring: 0 0 0 3px rgba(45, 108, 223, .18);
+  --backdrop-bg: rgba(23, 36, 56, .32);
+  --sidebar-base: var(--navy-800);
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 12px;
+  --font-heading: var(--font-sans);
+  --font-numeric: var(--font-sans);
+}
 [data-theme="industrial"] { --accent-ink: #765e08; --accent-hover: #6b5700; --accent-soft: #f8edb9; --accent-border: #b29a40; }
 [data-theme="midnight"] { --shadow-2: 0 8px 24px #00000055; --shadow-3: 0 16px 42px #00000077; --backdrop-bg: #050d13aa; }
-:root:not([data-theme]), [data-theme="dcim"] {
+[data-theme="dcim"] {
   --accent-ink: #fa874f;
   --accent-soft: #29201d;
   --accent-border: #794125;
@@ -303,11 +347,14 @@
 .integrated-page-title h1 { color: var(--text-primary); }
 .page-title-full { overflow-wrap: anywhere; color: var(--text-primary); font-size: 15px; }
 .theme-picker { position: relative; flex: none; }
-.theme-menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: var(--z-popover); width: min(292px, calc(100vw - 24px)); padding: 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-3); }
+.theme-menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: var(--z-popover); width: min(292px, calc(100vw - 24px)); max-height: calc(100dvh - 80px); overflow-y: auto; overscroll-behavior: contain; padding: 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-3); }
 .theme-menu button { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 60px; padding: 9px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-primary); text-align: left; }
 .theme-menu button:hover, .theme-menu button[aria-checked="true"] { background: var(--bg-hover); }
 .theme-menu button > span:nth-child(2) { flex: 1; }
 .theme-menu strong { display: block; font-size: 14px; font-weight: 650; }
+.theme-auto-icon { display: grid; place-items: center; width: 43px; height: 30px; flex: none; color: var(--text-muted); }
+.theme-menu button:first-child { border-bottom: 1px solid var(--divider); border-radius: 0; margin-bottom: 4px; }
+.theme-menu button:nth-child(4) { margin-top: 4px; border-top: 1px solid var(--divider); }
 .theme-menu small { display: block; color: var(--text-muted); font-size: 12px; margin-top: 3px; }
 .theme-swatch { display: flex; width: 43px; height: 30px; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--bg-page); }
 .theme-swatch i { flex: 1; background: var(--sidebar-bg); }
