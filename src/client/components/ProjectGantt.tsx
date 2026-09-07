@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { ArrowRight, CircleAlert, LocateFixed, RotateCcw } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { priorityLabels, requirementStatusLabels, riskLabels, signedProgressVariance, todayIso } from "../../shared/domain";
-import { matchesSearch, searchScore } from "../../shared/search";
+import { matchesSearch } from "../../shared/search";
 import type { Requirement } from "../types";
 import { progressUpdateDisplayValue } from "../progress-trend";
 import { EmptyState } from "./Feedback";
@@ -29,7 +29,7 @@ import {
 
 type RequirementSort = "deadline" | "priority" | "risk" | "progress" | "updated";
 const priorityOrder: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
-const riskOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+const riskOrder: Record<string, number> = { high: 0, medium: 1, pending: 2, low: 3 };
 
 function compareDeadline(left: Requirement, right: Requirement) {
   if (!left.plannedEnd && !right.plannedEnd) return 0;
@@ -54,7 +54,11 @@ function compareRequirements(left: Requirement, right: Requirement, sort: Requir
   if (leftClosed !== rightClosed) return leftClosed ? 1 : -1;
   let result = 0;
   if (sort === "priority") result = (priorityOrder[left.priority] ?? 99) - (priorityOrder[right.priority] ?? 99);
-  else if (sort === "risk") result = (riskOrder[left.highRisk ? "high" : left.riskLevel] ?? 99) - (riskOrder[right.highRisk ? "high" : right.riskLevel] ?? 99);
+  else if (sort === "risk") {
+    const group = (r: Requirement) => r.pathRisk?.blockedCritical ? 0 : r.pathRisk?.critical ? 1 : r.pathRisk?.minFloat != null && r.pathRisk.minFloat <= 2 ? 2 : 3;
+    result = (riskOrder[left.riskEvaluated ? left.riskLevel : "pending"] ?? 99) - (riskOrder[right.riskEvaluated ? right.riskLevel : "pending"] ?? 99)
+      || group(left) - group(right) || (left.pathRisk?.minFloat ?? Number.MAX_SAFE_INTEGER) - (right.pathRisk?.minFloat ?? Number.MAX_SAFE_INTEGER);
+  }
   else if (sort === "progress") result = left.progress - right.progress;
   else if (sort === "updated") result = right.updatedAt.localeCompare(left.updatedAt);
   else result = compareDeadline(left, right);
@@ -187,7 +191,7 @@ export function ProjectGantt({
   const [risk, setRisk] = useState("");
   const [personId, setPersonId] = useState("");
   const [schedule, setSchedule] = useState("");
-  const [sort, setSort] = useState<RequirementSort>("deadline");
+  const [sort, setSort] = useState<RequirementSort>("risk");
   const option = ganttZoomOptions[zoom];
   const asOfDate = asOfDateProp || requirements[0]?.asOfDate || todayIso();
 
@@ -218,11 +222,6 @@ export function ProjectGantt({
         && (!personId || requirement.workItems.some((item) => item.assigneeIds?.includes(personId) || item.ownerId === personId))
         && matchesSchedule;
     }).sort((left, right) => {
-      if (search.trim()) {
-        const score = searchScore([{ text: right.title, weight: 100 }, ...right.workItems.map((item) => ({ text: item.title, weight: 20 }))], search)
-          - searchScore([{ text: left.title, weight: 100 }, ...left.workItems.map((item) => ({ text: item.title, weight: 20 }))], search);
-        if (score !== 0) return score;
-      }
       return compareRequirements(left, right, sort);
     });
   }, [personId, priority, requirements, risk, schedule, search, sort, status]);

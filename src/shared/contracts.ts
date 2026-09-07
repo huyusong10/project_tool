@@ -178,6 +178,7 @@ export const workItemInputSchema = z.object({
 }).passthrough();
 
 export const expectedVersionInputSchema = z.object({ expectedVersion: expectedVersionSchema }).passthrough();
+export const startWorkItemInputSchema=expectedVersionInputSchema.extend({reason:z.string().trim().min(1).optional(),expectedDependencyRevision:z.number().int().nonnegative().optional()});
 export const reasonCommandSchema = expectedVersionInputSchema.extend({ reason: z.string().trim().min(1) });
 export const contentCommandSchema = expectedVersionInputSchema.extend({ content: z.string().trim().min(1) });
 export const completeAsPlannedInputSchema = z.object({
@@ -294,6 +295,8 @@ export const issueUpdateHistoryInputSchema = z.object({
 
 export const templateItemSchema = z.object({
   id: z.string().optional(),
+  clientKey: z.string().min(1).optional(),
+  predecessorKeys: z.array(z.string().min(1)).max(maxTemplateItems).optional(),
   title: z.string().trim().min(1),
   startOffsetDays: z.number().int().min(0).max(maxTemplateOffsetDays),
   durationDays: z.number().int().min(1).max(maxTemplateDurationDays),
@@ -303,6 +306,7 @@ export const templateItemSchema = z.object({
 export const createTemplateItemSchema = templateItemSchema.extend({ id: z.never().optional() });
 
 export const templateInputSchema = z.object({
+  dependencyMode: z.enum(['legacy','dependencies']).optional(),
   projectId: idSchema.optional(),
   name: z.string().trim().min(1).optional(),
   description: z.string().max(2000).optional(),
@@ -310,6 +314,7 @@ export const templateInputSchema = z.object({
   expectedUpdatedAt: z.string().datetime().optional(),
 }).strict();
 export const createTemplateInputSchema = templateInputSchema.pick({
+  dependencyMode: true,
   projectId: true,
   name: true,
   description: true,

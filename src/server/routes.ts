@@ -57,6 +57,7 @@ import {
   createWorkItemInputSchema,
   emptyCommandInputSchema,
   expectedVersionInputSchema,
+  startWorkItemInputSchema,
   idParamsSchema,
   issueCorrectionInputSchema,
   issueListInputSchema,
@@ -145,7 +146,7 @@ async function requireAuthenticated(request: FastifyRequest, reply: FastifyReply
   if (!request.actor) return reply.code(401).send({ error: '请先登录' });
 }
 
-async function requireReady(request: FastifyRequest, reply: FastifyReply) {
+export async function requireReady(request: FastifyRequest, reply: FastifyReply) {
   await requireAuthenticated(request, reply);
   if (reply.sent) return;
   if (request.actor?.mustChangePassword) return reply.code(403).send({ error: '请先修改初始密码', code: 'PASSWORD_CHANGE_REQUIRED' });
@@ -347,7 +348,7 @@ export function registerApiRoutes(app: FastifyInstance) {
     return updateWorkItem(id, parsedBody(request, updateWorkItemInputSchema), actor);
   });
   for (const [action, handler, inputSchema] of [
-    ['start', (id: string, input: any, actor: any) => startWorkItem(id, input, actor), expectedVersionInputSchema],
+    ['start', (id: string, input: any, actor: any) => startWorkItem(id, input, actor), startWorkItemInputSchema],
     ['complete', (id: string, input: any, actor: any) => completeWorkItem(id, input, actor), contentCommandSchema],
     ['block', (id: string, input: any, actor: any) => blockWorkItem(id, input, actor), reasonCommandSchema],
     ['unblock', (id: string, input: any, actor: any) => unblockWorkItem(id, input, actor), expectedVersionInputSchema],

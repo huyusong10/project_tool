@@ -45,6 +45,7 @@ function matchesPlannedCompletion(latest: Requirement, baseline: Requirement, ac
 function commandWarning(action: RequirementCommand, requirement: Requirement, today: string) {
   if (action === 'accept') return requirement.status === 'pending_acceptance' ? '' : '需求已不在待验收状态，请关闭后重新选择操作。';
   if (action === 'archive') {
+    if (requirement.deletedAt) return '需求已归档，不能重复提交。';
     if (!['completed', 'cancelled'].includes(requirement.status)) return '需求必须先完成验收或取消，才能归档。';
     if (requirement.issueSummary?.active) return `需求仍有 ${requirement.issueSummary.active} 个未解决问题，不能归档。`;
     return '';
@@ -143,8 +144,8 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
       const expected = baseline;
       const latest = await readLatest();
       if (action === 'archive') {
-        // 版本冲突等场景下需求可能已被并发归档；读到已归档状态即按归档成功收尾。
-        if (latest?.deletedAt && mounted.current) {
+        // 响应不明时必须匹配本次版本，不能把恢复后再次归档误认成本次写入。
+        if (latest?.deletedAt && (!isWriteOutcomeUnknown(error) || latest.version === expected.version + 1) && mounted.current) {
           invalidateArchiveViews(client);
           toast.success('已核对最新状态：需求已归档');
           onClose();

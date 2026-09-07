@@ -1,3 +1,4 @@
+import { startConditions } from './services/paths';
 import { randomUUID } from 'node:crypto';
 import { sqlite } from './database';
 import { hashPassword, normalizeUsername, verifyPassword, type Actor } from './auth';
@@ -333,9 +334,11 @@ export function getMyWork(accountId: string) {
       (w.owner_id=? OR EXISTS (SELECT 1 FROM work_item_collaborators c WHERE c.work_item_id=w.id AND c.person_id=?))
     ORDER BY CASE WHEN w.actual_end IS NULL THEN 0 ELSE 1 END, COALESCE(w.planned_end, '9999-12-31'), w.updated_at DESC`)
     .all(account.personId, account.personId, account.personId, account.personId) as any[];
+  const conditionReqIds=[...new Set(rawItems.filter(i=>i.status==='not_started').map(i=>String(i.requirementId)))];
+  const conditions=new Map(chunkValues(conditionReqIds,200).flatMap(ids=>[...startConditions(ids)]));
   const items = rawItems.map((item) => {
     const status = deriveWorkItemStatus(item);
-    return { ...item, status, overdue: !['completed', 'cancelled'].includes(status) && isOverdueByWorkday(item.plannedEnd, today) };
+    return { ...item, ...conditions.get(item.id), status, overdue: !['completed', 'cancelled'].includes(status) && isOverdueByWorkday(item.plannedEnd, today) };
   });
   const summary = {
     total: items.filter((item) => item.status !== 'cancelled').length,

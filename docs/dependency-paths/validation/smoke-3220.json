@@ -1,0 +1,10 @@
+{
+  "base": "http://127.0.0.1:3220",
+  "projectId": "925c2cc7-fedd-4276-bff5-b0c86b49bef9",
+  "forecast": "2026-09-17",
+  "cookie": "pm_paths_3220",
+  "apiOrigins": [
+    "http://127.0.0.1:3220"
+  ],
+  "errors": []
+}

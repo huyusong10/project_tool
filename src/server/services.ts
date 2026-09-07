@@ -52,6 +52,8 @@ import {
 } from './services/requirements';
 import { recordAudit as audit, recordAudits } from './services/audit';
 import { getCancellationHistory } from './services/work-item-history';
+import { assertStartConditions, adjustForecastClock } from './services/paths';
+import { prepareTemplateGraph, saveTemplateGraph, instantiateTemplateGraph } from './services/path-templates';
 import {
   assertExpectedVersion,
   assertExpectedUpdatedAt,
@@ -103,7 +105,7 @@ export type ProjectRecord = {
   isSample: boolean; projectRole?: ProjectRole; canManage?: boolean;
 };
 
-type TemplateItemInput = { id?: string; title: string; startOffsetDays: number; durationDays: number; milestoneLabel: string | null; sortOrder: number };
+type TemplateItemInput = { id?: string; clientKey?: string; predecessorKeys?: string[]; title: string; startOffsetDays: number; durationDays: number; milestoneLabel: string | null; sortOrder: number };
 
 function assertCurrentAdmin(actor: Actor) {
   if (!actor.accountId) {
@@ -635,7 +637,7 @@ function parseTemplateItems(input: unknown): TemplateItemInput[] {
     if (!value || typeof value !== 'object' || Array.isArray(value)) fail('流程工作项格式不正确');
     const item = value as JsonObject;
     if (Object.keys(item).some((key) => ![
-      'id', 'title', 'startOffsetDays', 'durationDays', 'milestoneLabel', 'sortOrder',
+      'id', 'clientKey', 'predecessorKeys', 'title', 'startOffsetDays', 'durationDays', 'milestoneLabel', 'sortOrder',
     ].includes(key))) fail('流程工作项不能提交未声明字段');
     const startOffsetDays = Number(item.startOffsetDays ?? index);
     const durationDays = Number(item.durationDays ?? 1);
@@ -643,6 +645,8 @@ function parseTemplateItems(input: unknown): TemplateItemInput[] {
     if (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > maxTemplateDurationDays) fail(`工期必须是1到${maxTemplateDurationDays}之间的整数`);
     return {
       id: nullableText(item.id) || undefined,
+      clientKey: nullableText(item.clientKey) || undefined,
+      predecessorKeys: item.predecessorKeys === undefined ? undefined : Array.isArray(item.predecessorKeys) ? item.predecessorKeys.map(String) : fail('前置工作项格式不正确'),
       title: requireLabel(item.title, '工作项名称'), startOffsetDays, durationDays,
       milestoneLabel: milestoneLabel(item.milestoneLabel),
       sortOrder: Number.isInteger(Number(item.sortOrder)) ? Number(item.sortOrder) : index,
@@ -651,20 +655,21 @@ function parseTemplateItems(input: unknown): TemplateItemInput[] {
 }
 
 function templateItemsUnchanged(templateId: string, items: TemplateItemInput[]) {
-  const current = rows<Required<TemplateItemInput>>(`SELECT id, title, sort_order AS sortOrder,
+  const current = rows<Required<TemplateItemInput>&{predecessorIds:string}>(`SELECT id, title, sort_order AS sortOrder, predecessor_ids AS predecessorIds,
     start_offset_days AS startOffsetDays, duration_days AS durationDays, milestone_label AS milestoneLabel
     FROM template_items WHERE template_id=? AND deleted_at IS NULL ORDER BY sort_order, rowid`, templateId);
   return current.length === items.length && items.every((item, index) => {
     const existing = current[index];
     return item.id === existing.id && item.title === existing.title && index === existing.sortOrder
       && item.startOffsetDays === existing.startOffsetDays && item.durationDays === existing.durationDays
-      && item.milestoneLabel === existing.milestoneLabel;
+      && item.milestoneLabel === existing.milestoneLabel
+      && JSON.stringify((JSON.parse(existing.predecessorIds) as string[]).sort()) === JSON.stringify((item.predecessorKeys||[]).map(key=>items.find(i=>(i.clientKey||i.id)===key)?.id).sort());
   });
 }
 
 export function listTemplates(projectId?: string | null, includeDeleted = false) {
   if (projectId) requireActiveProject(projectId);
-  const templates = rows<any>(`SELECT id, project_id AS projectId, name, description, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt
+  const templates = rows<any>(`SELECT id, project_id AS projectId, name, description, dependency_mode AS dependencyMode, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt
     FROM work_item_templates ${projectId ? 'WHERE project_id=?' : includeDeleted ? '' : 'WHERE deleted_at IS NULL'}
     ${projectId && !includeDeleted ? 'AND deleted_at IS NULL' : ''} ORDER BY created_at`, ...(projectId ? [projectId] : []));
   const itemWhere = [
@@ -672,12 +677,12 @@ export function listTemplates(projectId?: string | null, includeDeleted = false)
     ...(!includeDeleted ? ['t.deleted_at IS NULL', 'i.deleted_at IS NULL'] : []),
   ];
   const items = rows<any>(`SELECT i.id, i.template_id AS templateId, i.title, i.sort_order AS sortOrder,
-    i.start_offset_days AS startOffsetDays, i.duration_days AS durationDays, i.milestone_label AS milestoneLabel, i.deleted_at AS deletedAt
+    i.start_offset_days AS startOffsetDays, i.duration_days AS durationDays, i.predecessor_ids AS predecessorIds, i.milestone_label AS milestoneLabel, i.deleted_at AS deletedAt
     FROM template_items i JOIN work_item_templates t ON t.id=i.template_id
     ${itemWhere.length ? `WHERE ${itemWhere.join(' AND ')}` : ''} ORDER BY i.sort_order`, ...(projectId ? [projectId] : []));
   return templates.map((template) => ({
     ...template,
-    items: items.filter((item) => item.templateId === template.id && (includeDeleted || !item.deletedAt)),
+    items: items.filter((item) => item.templateId === template.id && (includeDeleted || !item.deletedAt)).map(item => ({ ...item, predecessorIds: JSON.parse(item.predecessorIds) })),
   }));
 }
 
@@ -689,7 +694,7 @@ function assertUniqueTemplateName(projectId: string, name: string, exceptId?: st
 }
 
 export function createTemplate(input: JsonObject, actor: Actor) {
-  if (Object.keys(input).some((key) => !['projectId', 'name', 'description', 'items'].includes(key))) {
+  if (Object.keys(input).some((key) => !['projectId', 'name', 'description', 'items', 'dependencyMode'].includes(key))) {
     fail('新建流程不能提交未声明字段');
   }
   if (Object.prototype.hasOwnProperty.call(input, 'expectedUpdatedAt')) {
@@ -700,13 +705,15 @@ export function createTemplate(input: JsonObject, actor: Actor) {
   const name = requireLabel(input.name, '流程名称');
   assertUniqueTemplateName(projectId, name);
   const description = templateDescription(input.description);
-  const items = parseTemplateItems(input.items);
+  const mode = String(input.dependencyMode || 'legacy');
+  const items = prepareTemplateGraph(parseTemplateItems(input.items), mode);
   if (!items.length) fail('模板至少需要一个工作项');
   const tx = sqlite.transaction(() => {
     sqlite.prepare('INSERT INTO work_item_templates (id, project_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, projectId, name, description, now, now);
     const insert = sqlite.prepare(`INSERT INTO template_items
       (id, template_id, title, sort_order, start_offset_days, duration_days, milestone_label) VALUES (?, ?, ?, ?, ?, ?, ?)`);
     items.forEach((item, index) => insert.run(randomUUID(), id, item.title, index, item.startOffsetDays, item.durationDays, item.milestoneLabel));
+    saveTemplateGraph(id, mode, items);
     requireActiveProject(projectId, true);
     assertProjectManager(requireAuthorizationActor(actor), projectId);
     audit(actor, 'create', 'template', id, `创建流程：${name}`);
@@ -716,7 +723,7 @@ export function createTemplate(input: JsonObject, actor: Actor) {
 }
 
 export function updateTemplate(id: string, input: JsonObject, actor: Actor) {
-  if (Object.keys(input).some((key) => !['name', 'description', 'items', 'expectedUpdatedAt'].includes(key))) {
+  if (Object.keys(input).some((key) => !['name', 'description', 'items', 'expectedUpdatedAt', 'dependencyMode'].includes(key))) {
     fail('流程编辑不能提交未声明字段');
   }
   const current = row<{ projectId: string; name: string; description: string; updatedAt: string }>('SELECT project_id AS projectId, name, description, updated_at AS updatedAt FROM work_item_templates WHERE id=? AND deleted_at IS NULL', id);
@@ -728,7 +735,11 @@ export function updateTemplate(id: string, input: JsonObject, actor: Actor) {
   const name = input.name === undefined ? current.name : requireLabel(input.name, '模板名称');
   assertUniqueTemplateName(current.projectId, name, id);
   const description = input.description === undefined ? current.description : templateDescription(input.description);
-  const items = input.items === undefined ? null : parseTemplateItems(input.items);
+  const oldMode = row<{mode:string}>('SELECT dependency_mode AS mode FROM work_item_templates WHERE id=?',id)!.mode;
+  const mode = String(input.dependencyMode || oldMode);
+  if (oldMode === 'dependencies' && mode !== oldMode) fail('已启用依赖的流程不能退回偏移模式');
+  if (mode !== oldMode && input.items === undefined) fail('切换模式必须核对全部工作项');
+  const items = input.items === undefined ? null : prepareTemplateGraph(parseTemplateItems(input.items), mode);
   if (items && !items.length) fail('模板至少需要一个工作项');
   if (items) {
     const submittedIds = items.flatMap((item) => item.id ? [item.id] : []);
@@ -740,7 +751,7 @@ export function updateTemplate(id: string, input: JsonObject, actor: Actor) {
       fail('流程工作项已失效或不属于当前流程，请刷新后重试');
     }
   }
-  if (name === current.name && description === current.description && (!items || templateItemsUnchanged(id, items))) {
+  if (mode === oldMode && name === current.name && description === current.description && (!items || templateItemsUnchanged(id, items))) {
     sqlite.transaction(() => {
       requireActiveProject(current.projectId, true);
       assertProjectManager(requireAuthorizationActor(actor), current.projectId);
@@ -767,6 +778,7 @@ export function updateTemplate(id: string, input: JsonObject, actor: Actor) {
         }
       });
       for (const itemId of existing) if (!kept.has(itemId)) sqlite.prepare('UPDATE template_items SET deleted_at=? WHERE id=?').run(updatedAt, itemId);
+      saveTemplateGraph(id, mode, items);
     }
     requireActiveProject(current.projectId, true);
     assertProjectManager(requireAuthorizationActor(actor), current.projectId);
@@ -778,8 +790,8 @@ export function updateTemplate(id: string, input: JsonObject, actor: Actor) {
 
 export function copyTemplate(targetProjectId: string, sourceTemplateId: string, actor: Actor) {
   requireActiveProject(targetProjectId);
-  const source = row<{ projectId: string; name: string; description: string; updatedAt: string }>(
-    `SELECT project_id AS projectId, name, description, updated_at AS updatedAt
+  const source = row<{ projectId: string; name: string; description: string; updatedAt: string; dependencyMode:string }>(
+    `SELECT project_id AS projectId, name, description, updated_at AS updatedAt, dependency_mode AS dependencyMode
       FROM work_item_templates WHERE id=? AND deleted_at IS NULL`, sourceTemplateId,
   );
   if (!source) notFound('来源流程不存在');
@@ -787,11 +799,13 @@ export function copyTemplate(targetProjectId: string, sourceTemplateId: string, 
   while (row('SELECT 1 FROM work_item_templates WHERE project_id=? AND deleted_at IS NULL AND lower(trim(name))=lower(trim(?))', targetProjectId, name)) {
     name = `${source.name}（副本${suffix++}）`;
   }
-  const items = activeTemplateItems(sourceTemplateId).map((item) => ({
+  const sourceItems = listTemplates(source.projectId).find(t=>t.id===sourceTemplateId)!.items as Array<{id:string;predecessorIds:string[];title:string;startOffsetDays:number;durationDays:number;milestoneLabel:string|null;sortOrder:number}>;
+  const items = sourceItems.map((item) => ({
+    clientKey:item.id, predecessorKeys:item.predecessorIds,
     title: item.title, startOffsetDays: item.startOffsetDays, durationDays: item.durationDays, milestoneLabel: item.milestoneLabel, sortOrder: item.sortOrder,
   }));
   return sqlite.transaction(() => {
-    const copied = createTemplate({ projectId: targetProjectId, name, description: source.description, items }, actor);
+    const copied = createTemplate({ projectId: targetProjectId, name, description: source.description, dependencyMode:source.dependencyMode, items }, actor);
     const latestSource = row<{ updatedAt: string }>(
       'SELECT updated_at AS updatedAt FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL',
       sourceTemplateId, source.projectId,
@@ -855,6 +869,7 @@ function activeTemplateItems(templateId: string) {
 }
 
 function applyTemplateInternal(requirementId: string, templateId: string, baseStart: string) {
+  const createdIds: string[] = [];
   const items = activeTemplateItems(templateId);
   if (!items.length) fail('模板没有可用工作项');
   const existing = new Set(rows<{ templateItemId: string | null; title: string }>(
@@ -868,8 +883,10 @@ function applyTemplateInternal(requirementId: string, templateId: string, baseSt
   for (const item of items) {
     if (existing.has(item.id) || existing.has(item.title)) continue;
     const plan = plannedDatesFromOffset(baseStart, item.startOffsetDays, item.durationDays);
-    insert.run(randomUUID(), requirementId, item.id, item.title, item.milestoneLabel, plan.plannedStart, plan.plannedEnd, nextOrder++, now, now);
+    const workId = randomUUID(); createdIds.push(workId);
+    insert.run(workId, requirementId, item.id, item.title, item.milestoneLabel, plan.plannedStart, plan.plannedEnd, nextOrder++, now, now);
   }
+  instantiateTemplateGraph(requirementId, templateId, createdIds, baseStart);
 }
 
 function syncStoredRequirementState(requirementId: string, updatedAt = nowIso(), incrementVersion = true, expectedVersion?: number) {
@@ -1312,7 +1329,9 @@ export function previewRequirementPlan(requirementId: string, input: JsonObject)
       reason: terminal ? 'terminal' : !existing ? 'missing_item' : !existing.plannedStart || !existing.plannedEnd ? 'missing_plan' : 'unchanged',
     };
   });
-  const preview = { requirementId, requirementVersion: requirement.version, templateId, baseStart, entries };
+  const pathRevision=row<{value:number}>('SELECT analysis_revision AS value FROM projects WHERE id=?',requirement.projectId)!.value;
+  const templateUpdatedAt=row<{value:string}>('SELECT updated_at AS value FROM work_item_templates WHERE id=?',templateId)!.value;
+  const preview = { requirementId, requirementVersion: requirement.version, pathRevision, templateUpdatedAt, asOfDate:todayIso(), templateId, baseStart, entries };
   // 校验实际展示的日期和流程内容，不持久化预览状态。
   const previewToken = createHash('sha256').update(JSON.stringify(preview)).digest('hex');
   return { ...preview, previewToken };
@@ -1339,6 +1358,8 @@ export function applyRequirementPlan(requirementId: string, input: JsonObject, a
   }
   const now = nowIso();
   const tx = sqlite.transaction(() => {
+    const createdIds:string[]=[];
+    if(previewRequirementPlan(requirementId,input).previewToken!==preview.previewToken)fail('排期预览已失效，请重新预览','STALE_WRITE',409);
     let nextOrder = (row<{ maxOrder: number | null }>('SELECT MAX(sort_order) AS maxOrder FROM work_items WHERE requirement_id=?', requirementId)?.maxOrder ?? -1) + 1;
     for (const item of preview.entries) {
       if (!selected.has(item.templateItemId) || !item.willChange) continue;
@@ -1347,13 +1368,15 @@ export function applyRequirementPlan(requirementId: string, input: JsonObject, a
           WHERE id=? AND status NOT IN ('completed','cancelled')`)
           .run(item.proposedStart, item.proposedEnd, now, item.workItemId);
       } else {
+        const createdId=randomUUID();createdIds.push(createdId);
         sqlite.prepare(`INSERT INTO work_items
           (id, requirement_id, template_item_id, title, milestone_label, status, planned_start, planned_end, sort_order, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, 'not_started', ?, ?, ?, ?, ?)`).run(
-          randomUUID(), requirementId, item.templateItemId, item.title, item.milestoneLabel, item.proposedStart, item.proposedEnd, nextOrder++, now, now,
+          createdId, requirementId, item.templateItemId, item.title, item.milestoneLabel, item.proposedStart, item.proposedEnd, nextOrder++, now, now,
         );
       }
     }
+    instantiateTemplateGraph(requirementId,preview.templateId,createdIds,preview.baseStart);
     const changed = sqlite.prepare('UPDATE requirements SET planned_start=?, version=version+1, updated_at=? WHERE id=? AND version=?')
       .run(preview.baseStart, now, requirementId, requirement.version);
     assertVersionedWrite(changed, '需求');
@@ -1518,7 +1541,7 @@ function validateWorkItemActualDates(actualStart: string | null, actualEnd: stri
 function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unblock' | 'cancel', input: JsonObject, actor: Actor) {
   const allowedFields = new Set([
     'expectedVersion',
-    ...(action === 'complete' ? ['content'] : action === 'block' || action === 'cancel' ? ['reason'] : []),
+    ...(action === 'complete' ? ['content'] : action === 'block' || action === 'cancel' ? ['reason'] : action === 'start' ? ['reason','expectedDependencyRevision'] : []),
   ]);
   if (Object.keys(input).some((key) => !allowedFields.has(key))) {
     const labels = { start: '开始', complete: '完成', block: '阻塞', unblock: '解除阻塞', cancel: '取消' } as const;
@@ -1533,7 +1556,7 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unb
   const eventContent = action === 'complete' ? requireText(input.content, '完成说明')
     : action === 'block' ? requireText(input.reason, '阻塞原因')
       : action === 'cancel' ? requireText(input.reason, '取消原因')
-        : `${labels[action]}工作项`;
+        : action==='start' && nullableText(input.reason) ? requireText(input.reason,'执行例外原因') : `${labels[action]}工作项`;
   if (action === 'start') {
     assertTransition(current.status, ['not_started'], '开始');
     const requirement = getRequirement(current.requirementId);
@@ -1549,6 +1572,8 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unb
   if (action === 'unblock') assertTransition(current.status, ['blocked'], '解除阻塞');
   if (action === 'cancel') assertTransition(current.status, ['not_started', 'in_progress', 'blocked'], '取消');
   sqlite.transaction(() => {
+    if(action==='start') assertStartConditions(id,current.requirementId,input);
+    if(action==='block'||action==='unblock')adjustForecastClock(id,action,today);
     const changed = action === 'start'
       ? sqlite.prepare(`UPDATE work_items SET actual_start=?, status='in_progress', version=version+1, updated_at=? WHERE id=? AND version=?`).run(today, now, id, current.version)
       : action === 'complete'
@@ -1743,6 +1768,7 @@ export function deleteWorkItem(id: string, input: JsonObject, actor: Actor) {
     fail('只有未开始、0%且无执行信息和进展历史的工作项可以删除，其他工作项请使用取消', 'DEPENDENCY_CONFLICT');
   }
   sqlite.transaction(() => {
+    if(row('SELECT 1 FROM dependency_edges WHERE source_work_item_id=? OR target_work_item_id=? LIMIT 1',id,id))fail('工作项仍有交付依赖，请先在路径分析中移除关联','DEPENDENCY_CONFLICT');
     const deleted = sqlite.prepare('DELETE FROM work_items WHERE id=? AND version=?').run(id, current.version);
     assertVersionedWrite(deleted, '工作项');
     syncStoredRequirementState(current.requirementId, nowIso(), true, requirement.version);

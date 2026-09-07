@@ -27,13 +27,16 @@ export type Person = {
   createdAt: string; updatedAt: string; deletedAt?: string | null;
 };
 export type TemplateItem = {
+  predecessorIds?: string[];
   id: string; templateId: string; title: string; sortOrder: number;
   startOffsetDays: number; durationDays: number; milestoneLabel: string | null; deletedAt?: string | null;
 };
 export type WorkItemTemplate = {
+  dependencyMode?: 'legacy' | 'dependencies';
   id: string; projectId: string; name: string; description: string; createdAt: string; updatedAt: string; deletedAt?: string | null; items: TemplateItem[];
 };
 export type WorkItem = {
+  dependencyRevision?:number; unmetPredecessors?:Array<{id:string;title:string}>;
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
   collaborators: Array<{ id: string; name: string; jobTitle: string | null }>;
   assigneeIds: string[]; assigneeNames: string[];
@@ -69,6 +72,7 @@ export type IssuePage = {
   };
 };
 export type Requirement = {
+  pathRisk?: import('../shared/paths').PathRisk;
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   background?: string | null; acceptanceCriteria?: string | null; referenceUrl?: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number; progressGap: number;

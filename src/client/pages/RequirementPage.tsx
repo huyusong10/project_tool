@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
 import {
   AlertTriangle,
   Archive,
@@ -36,6 +36,7 @@ import { WorkItemSettingsDialog } from "../components/WorkItemSettingsDialog";
 import { canManageProject } from "../permissions";
 import { dailyProgressTrend, progressUpdateDisplayValue } from "../progress-trend";
 import { RequirementCommandDialog, type RequirementCommand } from "../components/RequirementCommandDialog";
+import { PathAnalysisPanel } from "../components/PathAnalysisPanel";
 
 const emptyPeople: Person[] = [];
 const emptyTemplates: WorkItemTemplate[] = [];
@@ -45,7 +46,10 @@ const progressReferenceLabel = (update?: ProgressUpdate) => update ? `${formatDa
 export function RequirementPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pathLocation=useLocation();
+  const pathView = searchParams.get('view') === 'path';
+  const openPathView = () => { const params = new URLSearchParams(searchParams); params.set('view','path'); setSearchParams(params,{state:pathLocation.state}); };
   const client = useQueryClient();
   const { session } = useSession();
   const { projects, syncProjectContext } = useProjects();
@@ -91,10 +95,10 @@ export function RequirementPage() {
   const templates = templatesQuery.data || emptyTemplates;
   const people = peopleQuery.data || emptyPeople;
   const itemAction = useMutation({
-    mutationFn: ({ item, action, content, expectedVersion = item.version }: { item: WorkItem; action: string; content?: string; expectedVersion?: number }) =>
+    mutationFn: ({ item, action, content, expectedDependencyRevision, expectedVersion = item.version }: { item: WorkItem; expectedDependencyRevision?:number; action: string; content?: string; expectedVersion?: number }) =>
       api(`/api/work-items/${item.id}/${action}`, {
         method: "POST",
-        body: jsonBody({ expectedVersion, ...(action === "complete" ? { content } : content ? { reason: content } : {}) }),
+        body: jsonBody({ expectedVersion, expectedDependencyRevision, ...(action === "complete" ? { content } : content ? { reason: content } : {}) }),
       }),
     onSuccess: () => {
       invalidateRequirementViews(client, id);
@@ -342,7 +346,7 @@ export function RequirementPage() {
         </article>
       </section>
       <ResizablePanel
-        className="panel detail-panel requirement-progress-panel stable-workspace-panel"
+        className={`panel detail-panel requirement-progress-panel stable-workspace-panel${pathView ? " requirement-path-panel" : ""}`}
         storageKey={`${session.accountId || session.username || "guest"}:requirement-gantt`}
         defaultHeight={600}
         minHeight={420}
@@ -350,6 +354,7 @@ export function RequirementPage() {
         <header>
           <div>
             <h2>需求进展</h2>
+            <div className="path-view-switch"><button className="ghost-button" aria-pressed={!pathView} onClick={()=>{const params=new URLSearchParams(searchParams);params.delete('view');setSearchParams(params,{state:pathLocation.state});}}>进度甘特</button><button className="ghost-button" aria-pressed={pathView} onClick={openPathView}>路径分析</button></div>
           </div>
           {canManageWorkItems && (
             <div className="panel-actions">
@@ -364,7 +369,7 @@ export function RequirementPage() {
             </div>
           )}
         </header>
-        <GapTimeline
+        {pathView ? <PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement}/> : <GapTimeline
           items={requirement.workItems}
           targetItemId={searchParams.get("workItemId") || undefined}
           asOfDate={requirement.asOfDate}
@@ -374,7 +379,7 @@ export function RequirementPage() {
           renderActions={(item) => canOperateItem(item)
             ? <WorkItemActions
                 item={item}
-                onAction={(action, content, expectedVersion) => itemAction.mutateAsync({ item, action, content, expectedVersion })}
+                onAction={(action, content, expectedVersion, expectedDependencyRevision) => itemAction.mutateAsync({ item, action, content, expectedVersion, expectedDependencyRevision })}
                 onSaveDates={canManage ? (dates, expectedVersion) => saveWorkItem(item, dates, expectedVersion) : undefined}
                 onCompleteAsPlanned={canManage && !requirementLocked ? (expectedVersion) => itemAction.mutateAsync({ item, action: "complete-as-planned", expectedVersion }) : undefined}
                 onCancel={(reason, expectedVersion) => itemAction.mutateAsync({ item, action: "cancel", content: reason, expectedVersion })}
@@ -396,7 +401,7 @@ export function RequirementPage() {
             : <span className={`work-action-state is-readonly status-${item.status}`}>
                 {requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}
               </span>}
-        />
+        />}
       </ResizablePanel>
       {workEditorOpen && canManageWorkItems && (
         <WorkItemSettingsDialog
@@ -404,6 +409,7 @@ export function RequirementPage() {
           people={people}
           canManageRequirement={canManage}
           onClose={() => setWorkEditorOpen(false)}
+          onOpenDependencies={()=>{setWorkEditorOpen(false);openPathView();}}
           onOpenPlan={() => {
             setWorkEditorOpen(false);
             setModal("template");

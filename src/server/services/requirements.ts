@@ -4,8 +4,11 @@ import { notFound } from '../errors';
 import { businessDateFromDateTime, calculateWorkItemGap, deriveRequirementMetrics, todayIso } from '../../shared/domain';
 import { getCancellationHistory } from './work-item-history';
 import { chunkValues } from './support';
+import { getPathAnalysis, startConditions } from './paths';
+import type { PathRisk } from '../../shared/paths';
 
 export type WorkItemRecord = {
+  dependencyRevision?:number; unmetPredecessors?:Array<{id:string;title:string}>;
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; actualStart: string | null; actualEnd: string | null;
   cancelledAt?: string | null;
@@ -15,6 +18,7 @@ export type WorkItemRecord = {
 };
 
 export type RequirementRecord = {
+  pathRisk?: PathRisk; pathEnabled?:number;
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   background: string | null; acceptanceCriteria: string | null; referenceUrl: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number; progressGap?: number;
@@ -33,7 +37,8 @@ export const requirementSelect = `SELECT r.id, r.project_id AS projectId, pr.nam
   r.owner_id AS ownerId, p.name AS ownerName, r.status, r.planned_start AS plannedStart,
   r.planned_end AS plannedEnd, r.progress, r.risk_level AS riskLevel, r.priority,
   r.accepted_at AS acceptedAt, r.accepted_by_account_id AS acceptedByAccountId, r.version,
-  r.created_at AS createdAt, r.updated_at AS updatedAt, r.deleted_at AS deletedAt
+  r.created_at AS createdAt, r.updated_at AS updatedAt, r.deleted_at AS deletedAt,
+  (EXISTS(SELECT 1 FROM requirements reviewed WHERE reviewed.project_id=r.project_id AND reviewed.dependencies_reviewed_at IS NOT NULL) OR EXISTS(SELECT 1 FROM dependency_edges dep WHERE dep.project_id=r.project_id)) AS pathEnabled
   FROM requirements r JOIN projects pr ON pr.id = r.project_id
   LEFT JOIN people p ON p.id = r.owner_id
   LEFT JOIN work_item_templates t ON t.id = r.template_id`;
@@ -50,10 +55,11 @@ export const workItemSelect = `SELECT w.id, w.requirement_id AS requirementId, w
   w.planned_start AS plannedStart, w.planned_end AS plannedEnd,
   w.actual_start AS actualStart, w.actual_end AS actualEnd, w.forecast_end AS forecastEnd,
   w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.milestone_label AS milestoneLabel, w.progress,
-  w.sort_order AS sortOrder, w.version, w.created_at AS createdAt, w.updated_at AS updatedAt
+  w.sort_order AS sortOrder, w.version, w.created_at AS createdAt, w.updated_at AS updatedAt,
+  (w.status='not_started' AND EXISTS(SELECT 1 FROM dependency_edges dep WHERE dep.target_requirement_id=w.requirement_id)) AS hasDependencies
   FROM work_items w LEFT JOIN people p ON p.id = w.owner_id`;
 
-type WorkItemRow = Omit<WorkItemRecord, 'collaborators' | 'assigneeIds' | 'assigneeNames'>;
+type WorkItemRow = Omit<WorkItemRecord, 'collaborators' | 'assigneeIds' | 'assigneeNames'> & {hasDependencies:number};
 type CollaboratorRow = { workItemId: string; id: string; name: string; jobTitle: string | null };
 
 function rows<T>(sql: string, ...params: unknown[]) {
@@ -96,12 +102,15 @@ function loadWorkItemsByRequirementIds(requirementIds: string[], requirementStat
     : [];
   const cancellationHistory = getCancellationHistory(items, requirementStatuses, cancelledRequirements);
 
-  for (const item of items) {
+  const conditionReqIds=[...new Set(items.filter(i=>i.hasDependencies).map(i=>i.requirementId))];
+  const conditions=new Map(conditionReqIds.flatMap((_,i)=>i%200===0?[...startConditions(conditionReqIds.slice(i,i+200))]:[]));
+  for (const {hasDependencies:_hasDependencies,...item} of items) {
     const itemCollaborators = (collaboratorsByWorkItem.get(item.id) || [])
       .filter((person) => person.id !== item.ownerId)
       .map(({ workItemId: _workItemId, ...person }) => person);
     result.get(item.requirementId)!.push({
       ...item,
+      ...conditions.get(item.id),
       cancelledAt: cancellationHistory.workItemDates.get(item.id) || null,
       collaborators: itemCollaborators,
       assigneeIds: [item.ownerId, ...itemCollaborators.map((person) => person.id)].filter(Boolean) as string[],
@@ -133,8 +142,9 @@ function requirementActualRange(requirement: RequirementRecord, workItems: WorkI
 function enrichRequirement(requirement: RequirementRecord, workItems: WorkItemRecord[], asOfDate: string, cancelledAt?: string): RequirementRecord {
   const metrics = deriveRequirementMetrics(requirement, workItems, asOfDate, config.highRiskDelayDays);
   const gaps = workItems.map((item) => calculateWorkItemGap(item, asOfDate));
+  const {pathEnabled:_pathEnabled,...value}=requirement;
   return {
-    ...requirement, ...metrics, ...requirementActualRange(requirement, workItems, asOfDate, cancelledAt), asOfDate,
+    ...value, ...metrics, ...requirementActualRange(requirement, workItems, asOfDate, cancelledAt), asOfDate,
     workItems,
     durationVariance: gaps.length ? Math.max(...gaps.map((gap) => gap.durationVariance), 0) : 0,
   };
@@ -156,6 +166,11 @@ export function listRequirements(filters: { projectId?: string; ownerId?: string
     asOfDate,
     loadedWorkItems.requirementCancellationDates.get(requirement.id),
   ));
+  const analyses = new Map([...new Set(requirements.filter(r=>r.pathEnabled).map(r => r.projectId))].map(projectId => [projectId, getPathAnalysis(projectId, undefined, asOfDate)]));
+  result = result.map(r => {
+    const pathRisk = analyses.get(r.projectId)?.risks[r.id];
+    return pathRisk ? { ...r, ...pathRisk, pathRisk } : r;
+  });
   if (filters.status) result = result.filter((item) => item.status === filters.status);
   if (filters.view === 'delayed') result = result.filter((item) => item.delayed);
   if (filters.view === 'high_risk') result = result.filter((item) => item.highRisk);
@@ -184,5 +199,6 @@ export function getRequirement(id: string, includeDeleted = false) {
     COALESCE(SUM(CASE WHEN due_date IS NOT NULL AND business_day_delta(due_date, ?)>0 THEN 1 ELSE 0 END), 0) AS overdue
     FROM issues WHERE requirement_id=? AND status<>'resolved'`, asOfDate, id) || { active: 0, overdue: 0 };
   const issueSummary = { active: Number(issueCounts.active || 0), overdue: Number(issueCounts.overdue || 0) };
-  return { ...result, progressUpdates, issueSummary };
+  const pathRisk = requirement.pathEnabled ? getPathAnalysis(requirement.projectId, undefined, asOfDate).risks[id] : undefined;
+  return { ...result, ...(pathRisk ? { ...pathRisk, pathRisk } : {}), progressUpdates, issueSummary };
 }

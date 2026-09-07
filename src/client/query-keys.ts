@@ -6,6 +6,7 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
  * 新增视图时只需在对应 helper 里登记一次。
  */
 export const keys = {
+  paths: ["path-analysis"] as const,
   session: ["session"] as const,
   branding: ["branding"] as const,
   projects: ["projects"] as const,
@@ -51,6 +52,7 @@ export function invalidateAuditViews(client: QueryClient) {
 /** 北京时间跨日后，刷新所有依赖“今天”推导状态、风险、逾期或区间的数据。 */
 export function invalidateBusinessDateViews(client: QueryClient) {
   invalidateMany(client, [
+    keys.paths,
     keys.dashboard, keys.requirements, keys.requirementDetails,
     keys.issues, keys.issueDetails, keys.myWork, keys.actionItems,
     keys.peopleConcurrency, keys.analyticsData, keys.analyticsPreview,
@@ -59,6 +61,8 @@ export function invalidateBusinessDateViews(client: QueryClient) {
 
 /** 需求域：需求变更还会影响账号页的在办需求和工作项计数。 */
 const requirementViewKeys: QueryKey[] = [
+  [...keys.paths],
+  [...keys.requirementDetails],
   [...keys.requirements],
   // 问题响应包含关联需求名称；需求改名后必须同步刷新问题列表与已打开详情。
   [...keys.issues],

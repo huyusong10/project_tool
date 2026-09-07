@@ -1,0 +1,10 @@
+import { z } from 'zod';
+import { idSchema } from './contracts';
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => { const d = new Date(`${v}T00:00:00Z`); return !Number.isNaN(+d) && d.toISOString().slice(0, 10) === v; }, '日期不合法');
+export const pathQuery = z.object({ target: z.string().min(1).optional() }).strict();
+export const pathVersion = z.object({ expectedRevision: z.number().int().nonnegative() }).strict();
+export const dependencyInput = pathVersion.extend({ sourceRequirementId: idSchema, sourceWorkItemId: idSchema.nullable().default(null), targetRequirementId: idSchema, targetWorkItemId: idSchema.nullable().default(null) }).strict();
+export const pathEstimateInput = pathVersion.extend({ durationDays: z.number().int().min(1).max(3660).nullable().optional(), earliestStart: date.nullable().optional(), unblockEstimate: date.nullable().optional(), forecastEnd: date.nullable().optional() }).strict();
+export const reviewDependenciesInput = pathVersion.extend({ forecastAcceptance: date.nullable().optional(), reviewed: z.boolean().optional() }).strict();
+export const dependencyPlanInput = z.object({ baseStart: date, expectedRevision: z.number().int().nonnegative() }).strict();
+export const applyDependencyPlanInput = dependencyPlanInput.extend({ previewToken: z.string().min(1) }).strict();

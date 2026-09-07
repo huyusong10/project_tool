@@ -10,6 +10,7 @@ import {
 } from '../../shared/action-items';
 import { listRequirements, type RequirementRecord } from './requirements';
 import { rows } from './support';
+import { getPathAnalysis } from './paths';
 
 type Filters = {
   projectId: string;
@@ -32,6 +33,7 @@ type IssueRow = {
 };
 
 const reasonSeverity: Record<ActionReasonCode, ActionSeverity> = {
+  path_blocked: 'high',
   planning: 'low',
   missing_owner: 'low',
   missing_work_items: 'low',
@@ -106,8 +108,11 @@ export function listActionItems(
   const personId = actor.personId;
   const today = asOfDate;
   const items: ActionItem[] = [];
+  const requirements=loadedRequirements||listRequirements({projectId:filters.projectId},today);
+  const pathAnalysis=requirements.some(r=>r.pathRisk)?getPathAnalysis(filters.projectId,undefined,asOfDate):undefined;
+  const pathBlockers=new Map(pathAnalysis?.blockers.filter(b=>b.workItemId&&b.critical).map(b=>[b.workItemId!,b])||[]);
 
-  for (const requirement of loadedRequirements || listRequirements({ projectId: filters.projectId }, today)) {
+  for (const requirement of requirements) {
     if (!manager && requirement.ownerId !== personId) continue;
     const reasonCodes = deriveRequirementActionReasons(requirement);
     if (!reasonCodes.length) continue;
@@ -133,6 +138,8 @@ export function listActionItems(
   for (const workItem of workItems) {
     if (!manager && workItem.requirementOwnerId !== personId && workItem.ownerId !== personId && !workItem.actorCollaborator) continue;
     const reasonCodes = deriveWorkItemActionReasons(workItem);
+    const pathBlocker=pathBlockers.get(workItem.id);
+    if(pathBlocker)reasonCodes.push('path_blocked');
     if (!reasonCodes.length) continue;
     items.push(makeItem({
       sourceType: 'work_item', sourceId: workItem.id, projectId: filters.projectId,
@@ -140,7 +147,7 @@ export function listActionItems(
       reasonCodes, ownerId: workItem.ownerId, ownerName: workItem.ownerName, dueDate: workItem.plannedEnd,
       overdueWorkdays: isOverdueByWorkday(workItem.plannedEnd, today)
         ? Math.max(0, businessDayDelta(workItem.plannedEnd, today)) : 0,
-      targetPath: `/requirements/${workItem.requirementId}?workItemId=${encodeURIComponent(workItem.id)}`, updatedAt: workItem.updatedAt,
+      targetPath: `/requirements/${workItem.requirementId}?workItemId=${encodeURIComponent(workItem.id)}${pathBlocker?'&view=path&target=project':''}`, updatedAt: workItem.updatedAt,
     }));
   }
 

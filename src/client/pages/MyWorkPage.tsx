@@ -28,8 +28,8 @@ export function MyWorkPage() {
   }, [error, unavailable]);
   const items = (data?.items || []).filter((item) => filter === 'all' || (filter === 'active' ? !['completed', 'cancelled'].includes(item.status) : item.status === filter));
   const action = useMutation({
-    mutationFn: ({ item, action, content, reason, expectedVersion = item.version }: { item: MyWorkItem; action: string; content?: string; reason?: string; expectedVersion?: number }) => api(`/api/work-items/${item.id}/${action}`, {
-      method: 'POST', body: jsonBody({ expectedVersion, content, reason }),
+    mutationFn: ({ item, action, content, reason, expectedDependencyRevision, expectedVersion = item.version }: { item: MyWorkItem; expectedDependencyRevision?:number; action: string; content?: string; reason?: string; expectedVersion?: number }) => api(`/api/work-items/${item.id}/${action}`, {
+      method: 'POST', body: jsonBody({ expectedVersion, content, reason, expectedDependencyRevision }),
     }),
     onSuccess: (_result, variables) => {
       invalidateRequirementViews(client, variables.item.requirementId);
@@ -94,7 +94,7 @@ export function MyWorkPage() {
             const item = baseItem as MyWorkItem;
             return <div className="my-work-gantt-actions">
               {['in_progress', 'blocked'].includes(item.status) && <button className="my-work-progress-action" onClick={() => setProgressItem(item)} title="写进展" aria-label={`为${item.title}写进展`}><MessageSquarePlus size={15} /><span>进展</span></button>}
-              <WorkItemActions item={item} startDisabledReason={item.requirementStatus === 'planning' ? '需求尚未完成规划，请联系需求负责人或项目经理补齐负责人和排期。' : undefined} onAction={(nextAction, text, expectedVersion) => action.mutateAsync({ item, action: nextAction, expectedVersion, ...(nextAction === 'block' ? { reason: text } : { content: text }) })} onReload={async () => {
+              <WorkItemActions item={item} startDisabledReason={item.requirementStatus === 'planning' ? '需求尚未完成规划，请联系需求负责人或项目经理补齐负责人和排期。' : undefined} onAction={(nextAction, text, expectedVersion, expectedDependencyRevision) => action.mutateAsync({ item, action: nextAction, expectedVersion, expectedDependencyRevision, ...(['block','start'].includes(nextAction) ? { reason: text } : { content: text }) })} onReload={async () => {
                 const [latest, requirement] = await Promise.all([
                   refetch({ throwOnError: true }),
                   api<Requirement>(`/api/requirements/${item.requirementId}`),

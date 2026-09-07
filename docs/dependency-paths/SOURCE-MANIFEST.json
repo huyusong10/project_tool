@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1.0",
+  "capturedAt": "2026-09-07T14:52:49+08:00",
+  "scopeId": "SDS-PATH",
+  "codeCommit": "9e0420903cb2797266fbf20b3ec7b4e477afcc1d",
+  "sources": [
+    { "id": "U1", "kind": "user-message", "locator": "当前对话：目前的这个需求管理系统缺少一个很重要的功能，需求的关联管理", "requirements": ["需求之间的前后依赖", "识别关键路径和瓶颈", "控制系统复杂度"] },
+    { "id": "U2", "kind": "user-message", "locator": "当前对话：其实大的需求有相互依赖，小的需求内部的工作项也有相互依赖", "requirements": ["需求与工作项两层依赖", "流程模板可配置前后依赖", "降低用户录入负担", "阶段成果与等待条件"] },
+    { "id": "U3", "kind": "user-message", "locator": "当前对话：OK，同步也要有对应的关键路径分析系统", "requirements": ["同期交付关键路径分析", "提高关键路径风险", "默认甘特图高风险优先", "增加路径阻塞分析页", "本轮分析并给出系统设计"] },
+    { "id": "U4", "kind": "user-instructions", "locator": "当前对话提供的 AGENTS.md instructions", "requirements": ["不要过度设计", "文档精炼，使用草图与表格", "事实与提案区分"] },
+    { "id": "U5", "kind": "user-message", "locator": "当前对话：看上去交付依赖图绘制的很不好，主要是线条和箭头", "requirements": ["改善连线与箭头", "同时支持需求级及工作项级路径分析", "明确两层之间的关系"] },
+    { "id": "U6", "kind": "user-message", "locator": "当前对话：这个交付依赖图要动态生成，你确定我们当前的脚本可以很好地生成对应的效果图吗？有没有什么更好的方案？", "requirements": ["核对当前脚本的动态布局能力", "比较动态依赖图生成方案", "明确验证依据与限制"] },
+    { "id": "LAYOUT-REFERENCE", "kind": "primary-web", "url": "https://eclipse.dev/elk/reference/algorithms/org-eclipse-elk-layered.html", "use": "核对分层布局、端口和路由能力；当前草图未集成 ELK" },
+    { "id": "REACT-FLOW-LAYOUT", "kind": "primary-web", "url": "https://reactflow.dev/learn/layouting/layouting", "use": "核对渲染与布局的职责、ELK 与 Dagre 的适用差异" },
+    { "id": "ELK-JSON", "kind": "primary-web", "url": "https://eclipse.dev/elk/documentation/tooldevelopers/graphdatastructure/jsonformat.html", "use": "核对边的起终点及拐点结构" },
+    { "id": "ELK-JS", "kind": "primary-web", "url": "https://github.com/kieler/elkjs", "use": "核对布局引擎职责及 Worker 支持；未进行性能实测" },
+    { "id": "CODE-README", "kind": "repository", "path": "../../README.md", "anchor": "主要能力、使用要点、数据与备份" },
+    { "id": "CODE-MODEL", "kind": "repository", "path": "../../src/server/schema.ts", "anchor": "requirements、workItems、templateItems" },
+    { "id": "CODE-FLOW", "kind": "repository", "path": "../../src/client/components/TemplateForm.tsx", "anchor": "开始偏移、工期及模板甘特图" },
+    { "id": "CODE-PLAN", "kind": "repository", "path": "../../src/server/services.ts", "anchor": "applyTemplateInternal、previewRequirementPlan、applyRequirementPlan" },
+    { "id": "CODE-METRICS", "kind": "repository", "path": "../../src/shared/domain.ts", "anchor": "deriveRequirementMetrics、calculateWorkItemGap" },
+    { "id": "CODE-GANTT", "kind": "repository", "path": "../../src/client/components/ProjectGantt.tsx", "anchor": "compareRequirements、sort 初值、搜索相关度排序" },
+    { "id": "CODE-ACTIONS", "kind": "repository", "path": "../../src/server/services/actions.ts", "anchor": "deriveRequirementActionReasons、listActionItems" },
+    { "id": "CODE-REPORT", "kind": "repository", "path": "../../src/server/services/reporting.ts", "anchor": "getPeopleConcurrency、getDashboard" },
+    { "id": "CODE-ROUTES", "kind": "repository", "path": "../../src/client/routes.ts", "anchor": "appRoutes 项目作用域及工作台入口" },
+    { "id": "CPM-REFERENCE", "kind": "primary-web", "url": "https://support.microsoft.com/en-us/project/manage-your-project-s-critical-path", "use": "关键路径、浮动时间和多目标分析的概念核对；本篇产品阈值不归因于此" },
+    { "id": "RESOURCE-REFERENCE", "kind": "primary-web", "url": "https://www.pmi.org/learning/library/scheduling-resource-leveling-project-progression-8006", "use": "区分依赖网络排期与资源调平" }
+  ]
+}

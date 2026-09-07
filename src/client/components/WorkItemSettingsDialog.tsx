@@ -50,6 +50,7 @@ export function WorkItemSettingsDialog({
   canManageRequirement,
   onClose,
   onOpenPlan,
+  onOpenDependencies,
   onReload,
 }: {
   requirement: Requirement;
@@ -57,6 +58,7 @@ export function WorkItemSettingsDialog({
   canManageRequirement: boolean;
   onClose: () => void;
   onOpenPlan: () => void;
+  onOpenDependencies?: () => void;
   onReload: () => Promise<Requirement>;
 }) {
   const client = useQueryClient();
@@ -259,6 +261,7 @@ export function WorkItemSettingsDialog({
         <div className="work-editor-modal-toolbar">
           <span>配置名称、人员、计划日期和顺序；日常推进请直接在甘特图操作</span>
           <div className="panel-actions">
+            {onOpenDependencies&&<button className="ghost-button" onClick={onOpenDependencies}>前置关系与工期</button>}
             {canManageRequirement && (!requirement.workItems.length || requirement.workItems.some((item) => !['completed', 'cancelled'].includes(item.status) && (!item.plannedStart || !item.plannedEnd))) && <button className="ghost-button" onClick={onOpenPlan}>补全计划</button>}
             <button className="primary-button" disabled={Boolean(newItem) || createItem.isPending || createReading} onClick={startNewItem}><Plus size={15} />添加工作项</button>
           </div>

@@ -1,9 +1,10 @@
 export const actionReasonCodes = [
   'planning', 'missing_owner', 'missing_work_items', 'incomplete_schedule', 'high_risk',
-  'delayed', 'pending_acceptance', 'blocked', 'unassigned', 'overdue',
+  'delayed', 'pending_acceptance', 'blocked', 'unassigned', 'overdue', 'path_blocked',
 ] as const;
 
 export const actionReasonLabels = {
+  path_blocked: '交付路径受阻',
   planning: '待规划',
   missing_owner: '缺少需求负责人',
   missing_work_items: '缺少工作项',

@@ -8,6 +8,7 @@ import { FormDisclosure, FormError, FormField, FormSubmitActions } from "./Form"
 import { EmptyState, LoadingState } from "./Feedback";
 import { Modal } from "./Modal";
 import { projectStatusOptions } from "../ui-options";
+import { hasWorkdayCalendarFallback } from '../../shared/workday';
 import { plannedDatesFromOffset, plannedStartFromDeadline } from "../../shared/domain";
 import { canonicalizeContent, canonicalizeLabel } from "../../shared/search";
 import { useToast } from "./Toast";
@@ -319,6 +320,7 @@ export function RequirementForm({
         <FormField label={scheduleMode === "start" ? "计划开始" : "截止日期"} full className="schedule-date-field">
           <input key={scheduleMode} name={scheduleMode === "start" ? "plannedStart" : "plannedEnd"} type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} />
         </FormField>
+        <>{hasWorkdayCalendarFallback([scheduleDate])&&<p role="status" className="field-help field-full">该日期超出当前法定工作日日历覆盖范围，将按周一至周五计算。</p>}</>
         <p className="field-help field-full">日期可留空：只保存所选流程，需求保持待规划；填写日期后才会自动生成工作项。{scheduleMode === "deadline" ? " 截止日期需为工作日。" : ""}</p>
       </FormDisclosure>
       {(templatesQuery.error || peopleQuery.error) && <div className="warning-banner field-full">部分辅助选项加载失败，仍可创建待规划需求并稍后补充。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching || peopleQuery.isFetching} onClick={() => void Promise.all([templatesQuery.refetch(), peopleQuery.refetch()])}>重新加载</button></div>}

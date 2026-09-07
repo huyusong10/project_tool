@@ -2,6 +2,38 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockGanttData, requirement, workItem } from "./gantt-fixture";
 import { isBusinessDay } from "../../src/shared/workday";
 
+test('甘特默认优先展示风险与关键阻塞，数据刷新保留主动排序', async ({ page }) => {
+  await mockGanttData(page);
+  const rows = [
+    { ...requirement, id: 'low', title: '低风险', riskLevel: 'low', priority: 'P0' },
+    { ...requirement, id: 'pending', title: '待评估', riskEvaluated: false, priority: 'P1' },
+    { ...requirement, id: 'medium', title: '中风险', priority: 'P2' },
+    { ...requirement, id: 'high', title: '高风险', riskLevel: 'high', priority: 'P3', pathRisk: { critical: false, blockedCritical: false, minFloat: 3 } },
+    { ...requirement, id: 'blocked', title: '关键阻塞', riskLevel: 'high', priority: 'P3', pathRisk: { critical: true, blockedCritical: true, minFloat: 0 } },
+    { ...requirement, id: 'closed', title: '已结束', status: 'completed', riskLevel: 'high', priority: 'P0' },
+  ];
+  let reads = 0;
+  await page.route('**/api/dashboard**', route => {
+    reads++;
+    return route.fulfill({ json: {
+      summary: { total: rows.length, active: 5, completed: 1, delayed: 0, highRisk: 2, completionRate: 17 },
+      requirements: reads === 1 ? rows : [...rows].reverse(),
+      issues: { summary: {}, attention: [] }, charts: { statuses: [], risks: [], weeks: [], varianceTop: [] },
+    } });
+  });
+  await page.goto('/');
+  const titles = page.locator('.gantt-requirement-link');
+  await expect(titles).toHaveText(['关键阻塞', '高风险', '中风险', '待评估', '低风险', '已结束']);
+  await page.getByLabel('需求排序', { exact: true }).selectOption('priority');
+  const chosenOrder = await titles.allTextContents();
+  expect(chosenOrder.slice(0, 3)).toEqual(['低风险', '待评估', '中风险']);
+  const before = reads;
+  await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
+  await expect.poll(() => reads).toBeGreaterThan(before);
+  await expect(page.getByLabel('需求排序', { exact: true })).toHaveValue('priority');
+  await expect(titles).toHaveText(chosenOrder);
+});
+
 async function expectOnlyBusinessDays(locator: ReturnType<Page["locator"]>) {
   const dates = await locator.evaluateAll((ticks) => ticks.map((tick) => tick.getAttribute("data-date") || ""));
   expect(dates.length).toBeGreaterThan(0);

@@ -20,6 +20,7 @@ export const projects = sqliteTable('projects', {
   plannedStart: text('planned_start'),
   plannedEnd: text('planned_end'),
   defaultTemplateId: text('default_template_id'),
+  analysisRevision: integer('analysis_revision').notNull().default(0),
   ...timestamps,
   deletedAt: text('deleted_at'),
 }, (table) => [index('idx_projects_deleted_at').on(table.deletedAt)]);
@@ -85,6 +86,7 @@ export const workItemTemplates = sqliteTable('work_item_templates', {
   projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
+  dependencyMode: text('dependency_mode').notNull().default('legacy'),
   ...timestamps,
   deletedAt: text('deleted_at'),
 }, (table) => [
@@ -102,6 +104,7 @@ export const templateItems = sqliteTable('template_items', {
   startOffsetDays: integer('start_offset_days').notNull().default(0),
   durationDays: integer('duration_days').notNull().default(1),
   milestoneLabel: text('milestone_label'),
+  predecessorIds: text('predecessor_ids').notNull().default('[]'),
   deletedAt: text('deleted_at'),
 }, (table) => [
   check('template_items_offset_nonnegative', sql`${table.startOffsetDays} >= 0`),
@@ -124,6 +127,9 @@ export const requirements = sqliteTable('requirements', {
   progress: integer('progress').notNull().default(0),
   riskLevel: text('risk_level').notNull().default('low'),
   priority: text('priority').notNull().default('P2'),
+  dependenciesReviewedAt: text('dependencies_reviewed_at'),
+  scheduleAnchor: text('schedule_anchor'),
+  forecastAcceptance: text('forecast_acceptance'),
   acceptedAt: text('accepted_at'),
   acceptedByAccountId: text('accepted_by_account_id').references(() => accounts.id, { onDelete: 'set null' }),
   version: integer('version').notNull().default(1),
@@ -155,6 +161,11 @@ export const workItems = sqliteTable('work_items', {
   actualStart: text('actual_start'),
   actualEnd: text('actual_end'),
   forecastEnd: text('forecast_end'),
+  durationDays: integer('duration_days'),
+  earliestStart: text('earliest_start'),
+  unblockEstimate: text('unblock_estimate'),
+  forecastDuration: integer('forecast_duration'),
+  forecastReadyAt: text('forecast_ready_at'),
   blockedAt: text('blocked_at'),
   blockedReason: text('blocked_reason'),
   milestoneLabel: text('milestone_label'),
@@ -175,6 +186,22 @@ export const workItems = sqliteTable('work_items', {
   index('idx_work_items_requirement_order').on(table.requirementId, table.sortOrder),
   index('idx_work_items_status').on(table.status),
   index('idx_work_items_owner_schedule').on(table.ownerId, table.plannedStart, table.plannedEnd),
+]);
+
+export const dependencyEdges = sqliteTable('dependency_edges', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  sourceRequirementId: text('source_requirement_id').notNull().references(() => requirements.id),
+  sourceWorkItemId: text('source_work_item_id').references(() => workItems.id),
+  targetRequirementId: text('target_requirement_id').notNull().references(() => requirements.id),
+  targetWorkItemId: text('target_work_item_id').references(() => workItems.id),
+  origin: text('origin').notNull().default('manual'),
+  ...timestamps,
+}, (table) => [
+  index('idx_dependency_project').on(table.projectId),
+  index('idx_dependency_target').on(table.targetRequirementId),
+  index('idx_dependency_source').on(table.sourceRequirementId),
+  uniqueIndex('idx_dependency_endpoints').on(table.sourceRequirementId, sql`coalesce(source_work_item_id, '')`, table.targetRequirementId, sql`coalesce(target_work_item_id, '')`),
 ]);
 
 export const workItemCollaborators = sqliteTable('work_item_collaborators', {
