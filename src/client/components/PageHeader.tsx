@@ -21,6 +21,7 @@ export function PageHeader({
 }) {
   const { titleEl, actionsEl } = useTopbarSlots();
   const fullTitle = useGanttTooltip();
+  const titleEvents = fullTitle.bind(<div className="page-title-full">{title}</div>);
 
   if (!titleEl) return null;
   return (
@@ -33,7 +34,11 @@ export function PageHeader({
               <ArrowLeft size={17} />
             </button>
           )}
-          <h1 tabIndex={0} {...fullTitle.bind(<div className="page-title-full">{title}</div>)}>{title}</h1>
+          <h1 title={title} tabIndex={0} {...titleEvents}
+            onPointerEnter={(event) => { if (event.currentTarget.scrollWidth > event.currentTarget.clientWidth) titleEvents.onPointerEnter(event); }}
+            onPointerMove={(event) => { if (event.currentTarget.scrollWidth > event.currentTarget.clientWidth) titleEvents.onPointerMove(event); }}
+            onFocus={(event) => { if (event.currentTarget.scrollWidth > event.currentTarget.clientWidth) titleEvents.onFocus(event); }}
+          >{title}</h1>
         </div>,
         titleEl,
       )}

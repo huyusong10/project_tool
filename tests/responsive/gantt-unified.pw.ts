@@ -1,4 +1,5 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { mockGanttData, requirement, workItem } from "./gantt-fixture";
 import { isBusinessDay } from "../../src/shared/workday";
 
 async function expectOnlyBusinessDays(locator: ReturnType<Page["locator"]>) {
@@ -10,77 +11,6 @@ async function expectOnlyBusinessDays(locator: ReturnType<Page["locator"]>) {
     const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
     return weekday === 0 || weekday === 6;
   }), "法定调休周末应作为工作日出现在时间轴中").toBe(true);
-}
-
-const workItem = {
-  id: "w1", requirementId: "r1", templateItemId: "ti1", title: "接口开发", ownerId: "u1", ownerName: "张三",
-  collaborators: [], assigneeIds: ["u1"], assigneeNames: ["张三"], status: "in_progress",
-  plannedStart: "2026-09-01", plannedEnd: "2026-09-10", actualStart: "2026-09-01", actualEnd: null,
-  forecastEnd: null, blockedAt: null, blockedReason: null, milestoneLabel: "接口基线", progress: 40, sortOrder: 0,
-  version: 1, createdAt: "2026-09-01", updatedAt: "2026-09-02",
-};
-
-const completedLateWorkItem = {
-  ...workItem,
-  id: "w-late",
-  title: "延期完成项",
-  status: "completed",
-  plannedEnd: "2026-09-10",
-  actualEnd: "2026-09-14",
-  milestoneLabel: null,
-  progress: 100,
-};
-
-const completedEarlyWorkItem = {
-  ...workItem,
-  id: "w-early",
-  title: "提前完成项",
-  status: "completed",
-  plannedEnd: "2026-09-10",
-  actualEnd: "2026-09-08",
-  milestoneLabel: null,
-  progress: 100,
-};
-
-const requirement = {
-  id: "r1", projectId: "p1", projectName: "测试项目", templateId: "t1", templateName: "研发流程",
-  title: "统一甘特样式", ownerId: null, ownerName: null, status: "in_progress", plannedStart: "2026-09-01",
-  plannedEnd: "2026-09-10", progress: 61, plannedProgress: 91, progressGap: 30, riskLevel: "medium",
-  asOfDate: "2026-09-03", scheduleComplete: true,
-  riskEvaluated: true, riskReason: "P1进度Gap 30%", priority: "P1", createdAt: "2026-09-01", updatedAt: "2026-09-02",
-  workItems: [workItem, completedLateWorkItem, completedEarlyWorkItem], progressUpdates: [], recentProgressUpdates: [{
-    id: "u1", requirementId: "r1", workItemId: "w1", workItemTitle: "接口开发", percent: 61, workItemPercent: 40,
-    content: "完成接口权限校验与异常分支联调，补充回归场景并记录后续优化建议，等待产品侧确认边界。",
-    createdAt: "2026-09-02T10:00:00.000Z", updatedAt: "2026-09-02T10:00:00.000Z",
-  }], delayed: false, highRisk: false,
-  finishVariance: 0, durationVariance: 0, effectiveEnd: "2026-09-10", issueSummary: { active: 0, overdue: 0 },
-};
-
-async function mockGanttData(page: Page, progressRequests: Array<Record<string, unknown>> = []) {
-  await page.route("**/api/**", async (route: Route) => {
-    const pathname = new URL(route.request().url()).pathname;
-    const json = (value: unknown) => route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
-    if (pathname === "/api/session") return json({ authenticated: true, accountId: "admin", username: "admin", role: "admin", globalRole: "admin", personId: null, mustChangePassword: false, managedProjectIds: [] });
-    if (pathname === "/api/projects") return json([{ id: "p1", name: "测试项目", status: "active", plannedStart: "2026-09-01", plannedEnd: "2026-09-30", defaultTemplateId: "t1", createdAt: "2026-09-01", updatedAt: "2026-09-01" }]);
-    if (pathname === "/api/dashboard") return json({
-      summary: { total: 2, active: 2, completed: 0, delayed: 0, highRisk: 0, completionRate: 0 },
-      requirements: [requirement, { ...requirement, id: "r2", title: "领先计划流程", progress: 70, plannedProgress: 50, progressGap: 0, riskLevel: "low", riskReason: "进展正常", workItems: [
-        { ...workItem, id: "w2", requirementId: "r2", plannedEnd: "2026-09-09", milestoneLabel: "方案评审" },
-        { ...workItem, id: "w3", requirementId: "r2", plannedEnd: "2026-09-10", milestoneLabel: "验收通过" },
-        { ...workItem, id: "w4", requirementId: "r2", plannedEnd: "2026-09-10", milestoneLabel: "正式上线" },
-      ] }],
-      issues: { summary: { total: 0, inProgress: 0, deferred: 0, resolved: 0, active: 0, highPriority: 0, overdue: 0, unassigned: 0, closureRate: 0 }, attention: [] },
-      charts: { statuses: [], risks: [], weeks: [], varianceTop: [] },
-    });
-    if (pathname === "/api/requirements/r1/progress" && route.request().method() === "POST") {
-      progressRequests.push(route.request().postDataJSON() as Record<string, unknown>);
-      return json(requirement);
-    }
-    if (pathname === "/api/requirements/r1") return json(requirement);
-    if (pathname === "/api/templates") return json([]);
-    if (pathname === "/api/people") return json([]);
-    return json({});
-  });
 }
 
 test("超期未完成需求的欠账段延伸覆盖延期区", async ({ page }) => {
@@ -182,16 +112,16 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   await page.goto("/");
   await expect(page.locator(".project-gantt-grid")).toBeVisible();
   await expect(page.locator(".project-gantt-toolbar .gantt-legend").getByText("实际进度", { exact: true })).toBeVisible();
-  await expect(page.locator(".project-gantt-toolbar .view-tabs button.active")).toHaveText("日");
+  await expect(page.locator(".project-gantt-toolbar .view-tabs[aria-label=时间粒度] button.active")).toHaveText("日");
   await expect(page.locator(".project-gantt-grid .unified-gantt-plan")).toHaveCount(2);
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-actual")).toHaveCount(2);
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveCount(1);
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveText("");
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveCSS("border-top-style", "dashed");
-  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveCSS("border-top-color", "rgb(216, 74, 74)");
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveCSS("border-top-color", await themeColor(page, "--danger"));
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).not.toHaveCSS("background-image", "none");
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-ahead")).toHaveCount(1);
-  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-ahead")).toHaveCSS("border-top-color", "rgb(29, 154, 108)");
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-ahead")).toHaveCSS("border-top-color", await themeColor(page, "--success"));
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-target")).toHaveCount(0);
   await expect(page.locator(".project-gantt-grid .unified-gantt-plan-end")).toHaveCount(2);
   await expect(page.locator(".project-gantt-grid .unified-gantt-label")).toHaveCount(0);
@@ -245,7 +175,7 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   await page.goto("/requirements/r1");
   await expect(page.locator(".requirement-gantt-grid")).toBeVisible();
   await expect(page.locator(".requirement-progress-panel").getByRole("button", { name: "调整卡片高度" })).toBeVisible();
-  await expect(page.locator(".requirement-gantt-toolbar .view-tabs button.active")).toHaveText("日");
+  await expect(page.locator(".requirement-gantt-toolbar .view-tabs[aria-label=时间粒度] button.active")).toHaveText("日");
   await expect(page.locator(".requirement-gantt-grid .unified-gantt-plan")).toHaveCount(3);
   await expect(page.locator(".requirement-gantt-grid .unified-gantt-actual")).toHaveCount(3);
   await expect(page.locator(".requirement-gantt-grid .unified-gantt-plan-end")).toHaveCount(3);
@@ -257,11 +187,11 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   await expect(completedLateRow.locator(".gantt-progress-marker")).toHaveText("100");
   await expect(completedLateRow.locator(".requirement-gap-summary")).toContainText("延期 +2工作日");
   await expect(completedEarlyRow.locator(".requirement-gap-summary")).toContainText("提前 2工作日");
-  await expect(completedLateRow.locator(".unified-gantt-actual")).toHaveCSS("background-color", "rgb(45, 108, 223)");
-  await expect(completedLateRow.locator(".unified-gantt-delay")).toHaveCSS("background-color", "rgb(45, 108, 223)");
-  await expect(completedLateRow.locator(".unified-gantt-delay")).toHaveCSS("border-top-color", "rgb(216, 74, 74)");
-  await expect(completedEarlyRow.locator(".unified-gantt-actual")).toHaveCSS("background-color", "rgb(45, 108, 223)");
-  await expect(completedEarlyRow.locator(".unified-gantt-early")).toHaveCSS("border-top-color", "rgb(29, 154, 108)");
+  await expect(completedLateRow.locator(".unified-gantt-actual")).toHaveCSS("background-color", await themeColor(page, "--accent"));
+  await expect(completedLateRow.locator(".unified-gantt-delay")).toHaveCSS("background-color", await themeColor(page, "--accent"));
+  await expect(completedLateRow.locator(".unified-gantt-delay")).toHaveCSS("border-top-color", await themeColor(page, "--danger"));
+  await expect(completedEarlyRow.locator(".unified-gantt-actual")).toHaveCSS("background-color", await themeColor(page, "--accent"));
+  await expect(completedEarlyRow.locator(".unified-gantt-early")).toHaveCSS("border-top-color", await themeColor(page, "--success"));
   await expect(completedEarlyRow.locator(".unified-gantt-early")).not.toHaveCSS("background-image", "none");
   await expect(page.locator(".requirement-gantt-grid .gantt-milestone-marker")).toContainText("接口基线");
   await activeWorkRow.locator(".gantt-progress-marker").click();
@@ -303,3 +233,10 @@ test("时间轴元素横向滚动时不会覆盖左侧标题", async ({ page }, 
   expect(layer.coveredByLabel).toBe(true);
   expect(layer.isolated).toBe("isolate");
 });
+
+async function themeColor(page: Page, token: string) {
+  return page.evaluate((name) => {
+    const element = document.createElement("span"); element.style.color = `var(${name})`; document.body.append(element);
+    const color = getComputedStyle(element).color; element.remove(); return color;
+  }, token);
+}
