@@ -83,14 +83,29 @@ async function mockGanttData(page: Page, progressRequests: Array<Record<string, 
   });
 }
 
-test('超范围甘特图提示工作日日历回退', async ({ page }) => {
+test("超期未完成需求的欠账段延伸覆盖延期区", async ({ page }) => {
   await mockGanttData(page);
-  await page.route('**/api/projects', (route) => route.fulfill({ json: [{
-    id: 'p1', name: '测试项目', status: 'active', plannedStart: '2027-01-04', plannedEnd: '2027-01-29',
-    defaultTemplateId: 't1', createdAt: '2026-09-01', updatedAt: '2026-09-01',
-  }] }));
-  await page.goto('/');
-  await expect(page.locator('.project-gantt-panel').getByRole('status')).toContainText('将按周一至周五计算');
+  const overdue = { ...requirement, plannedEnd: "2026-09-02", effectiveEnd: "2026-09-04", plannedProgress: 100, progress: 60, progressGap: 40, delayed: true, finishVariance: 2 };
+  await page.route("**/api/dashboard**", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    summary: { total: 1, active: 1, completed: 0, delayed: 1, highRisk: 0, completionRate: 0 },
+    requirements: [overdue],
+    issues: { summary: { total: 0, inProgress: 0, deferred: 0, resolved: 0, active: 0, highPriority: 0, overdue: 0, unassigned: 0, closureRate: 0 }, attention: [] },
+    charts: { statuses: [], risks: [], weeks: [], varianceTop: [] },
+  }) }));
+  await page.goto("/");
+  const row = page.locator(".gantt-row").filter({ hasText: "统一甘特样式" });
+  const behind = row.locator(".unified-gantt-progress-gap.is-behind");
+  const delay = row.locator(".unified-gantt-delay");
+  await expect(delay).toHaveCount(1);
+  await expect(delay).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  // 延期区不再自画边框，避免与欠账段的虚线框相位错开叠成实线
+  await expect(delay).toHaveCSS("border-top-width", "0px");
+  const behindBox = await behind.boundingBox();
+  const delayBox = await delay.boundingBox();
+  expect(behindBox).not.toBeNull();
+  expect(delayBox).not.toBeNull();
+  // 欠账段右缘延伸到延期区末端，不在原计划结束点截断
+  expect(Math.abs((behindBox!.x + behindBox!.width) - (delayBox!.x + delayBox!.width))).toBeLessThanOrEqual(2);
 });
 
 test('工作项来源链接定位并高亮目标行', async ({ page }) => {

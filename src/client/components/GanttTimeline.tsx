@@ -277,7 +277,11 @@ export function GanttProgressComparison({
   const ahead = !isTerminal && actualValue > expectedValue;
   const extended = ganttInterval(plannedStart, effectiveEnd, dates, cellWidth);
   const delayWidth = extended ? Math.max(0, extended.right - plan.right) : 0;
-  const behindWidth = Math.max(0, expectedPoint - actualPoint);
+  // 已超期（expectedPoint 顶到计划结束点）且截止被推迟时，欠账段延伸覆盖延期区，不在原计划结束点截断。
+  const behindEnd = delayWidth > 0 && expectedPoint >= plan.right && extended ? extended.right : expectedPoint;
+  const behindWidth = Math.max(0, behindEnd - actualPoint);
+  // 超期未完成的延期区只是欠账（由欠账段覆盖填充），不再用实心蓝填充；已完成但延期的仍实心，代表实际工作在延期期内发生。
+  const delayUnfilled = !isTerminal && expectedPoint >= plan.right;
   const aheadWidth = Math.max(0, actualPoint - expectedPoint);
   const variance = actualValue - expectedValue;
   const comparisonLabel = isTerminal || variance === 0
@@ -290,7 +294,7 @@ export function GanttProgressComparison({
     {actualValue > 0 && <span className={`unified-gantt-progress-actual gantt-status-${statusClass}`} style={{ left: plan.left, width: actualPoint - plan.left }} />}
     {behind && <span className="unified-gantt-progress-gap is-behind" style={{ left: actualPoint, width: behindWidth }} />}
     {ahead && <span className="unified-gantt-progress-gap is-ahead" style={{ left: expectedPoint, width: aheadWidth }} />}
-    {delayWidth > 0 && <span className={`unified-gantt-delay gantt-status-${statusClass}`} style={{ left: plan.right, width: delayWidth }} />}
+    {delayWidth > 0 && <span className={`unified-gantt-delay${delayUnfilled ? " is-unfilled" : ""} gantt-status-${statusClass}`} style={{ left: plan.right, width: delayWidth }} />}
     <span className="unified-gantt-plan-end" style={{ left: plan.right }} />
     {interactionProps && <span
       className="gantt-bar-hitbox"
