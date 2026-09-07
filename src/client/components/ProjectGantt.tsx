@@ -10,7 +10,6 @@ import { EmptyState } from "./Feedback";
 import { useGanttTooltip } from "./GanttTooltip";
 import { ResizablePanel } from "./ResizablePanel";
 import { SearchInput } from "./SearchInput";
-import { WorkdayCalendarNotice } from "./WorkdayCalendarNotice";
 import {
   buildBusinessDayTimeline,
   GanttMilestoneMarker,
@@ -299,7 +298,6 @@ export function ProjectGantt({
           </div>
         </div>
       </header>
-      <WorkdayCalendarNotice values={[format(range.start, "yyyy-MM-dd"), format(range.end, "yyyy-MM-dd")]} className="gantt-calendar-notice" />
       <div className="gantt-filter-bar" aria-label="项目进展筛选">
         <SearchInput className="gantt-filter-search" value={search} onChange={setSearch} placeholder="搜索需求、工作项或拼音" />
         <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="按状态筛选">

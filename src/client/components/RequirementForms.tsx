@@ -8,7 +8,6 @@ import type { Person, PlanPreview, Requirement, WorkItemTemplate } from "../type
 import { plannedDatesFromOffset, plannedStartFromDeadline, rebaseBusinessDate } from "../../shared/domain";
 import { ConfirmDialog, Modal } from "./Modal";
 import { FormError, FormField, FormSubmitActions } from "./Form";
-import { WorkdayCalendarNotice } from "./WorkdayCalendarNotice";
 import { useToast } from "./Toast";
 import { canonicalizeContent, canonicalizeLabel } from "../../shared/search";
 
@@ -561,7 +560,6 @@ export function RequirementScheduleForm({
           }}
         />
       </FormField>
-      <WorkdayCalendarNotice values={[scheduleDate]} className="field-full" />
       <FormField label="绑定流程" full>
         <select value={templateId} disabled={!templatesQuery.data} onChange={(event) => {
           const value = event.target.value;
@@ -754,7 +752,6 @@ export function PlanForm({ requirement, templates, onClose }: { requirement: Req
       <div className="form-grid">
         <FormField label="流程设计"><select value={templateId} onChange={(event) => { if (submitting.current) return; setTemplateId(event.target.value); resetPreview(); }}>{selectedTemplateUnavailable && <option value={templateId}>{knownTemplates.current.get(templateId) || "已选择流程"}（已不可用，请重新选择）</option>}{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</select></FormField>
         <FormField label="计划开始"><input type="date" value={baseStart} onChange={(event) => { if (submitting.current) return; setBaseStart(event.target.value); resetPreview(); }} /></FormField>
-        <WorkdayCalendarNotice values={[baseStart, ...(preview?.entries.flatMap((item) => [item.proposedStart, item.proposedEnd]) || [])]} className="field-full" />
       </div>
       {hasExecution && <FormField label="变更原因" full><textarea rows={2} value={reason} onChange={(event) => setReason(event.target.value)} required placeholder="需求已开始执行，请说明补排或调整原因" /></FormField>}
       {!preview && <div className="form-actions"><button className="primary-button" disabled={locked || !templateId || !baseStart || selectedTemplateUnavailable} onClick={() => {

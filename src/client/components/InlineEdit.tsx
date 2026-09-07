@@ -18,7 +18,6 @@ import { requiresWriteRecheck } from "../api";
 import type { UiOption } from "../ui-options";
 import { useBusinessDate } from "../app-context";
 import { rankSearchItems } from "../../shared/search";
-import { WorkdayCalendarNotice } from "./WorkdayCalendarNotice";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 type DisplayMode = "single" | "stacked" | "badge";
@@ -754,7 +753,6 @@ export function InlineDateCell<TRevision extends Revision = number>({
               return <button type="button" role="gridcell" key={iso} disabled={feedback.state === "saving"} className={`${outside ? "is-outside" : ""}${draft === iso ? " is-selected" : ""}${today === iso ? " is-today" : ""}`} aria-selected={draft === iso} aria-label={iso} onClick={() => setDraft(iso)}>{date.getDate()}</button>;
             })}
           </div>
-          <WorkdayCalendarNotice values={[draft]} />
           {reason && (draft !== currentValue || feedback.state === "saving") && <label className="inline-date-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea rows={3} autoFocus readOnly={feedback.state === "saving"} value={reasonText} onChange={(event) => setReasonText(event.target.value)} placeholder={reason.placeholder || "请说明本次调整原因"} />{reason.help && <small>{reason.help}</small>}</label>}
           <EditorError error={feedback.error} />
           <RevisionNotice guard={revisionGuard} showReload={feedback.state === "error"} subject={revisionSubject} />

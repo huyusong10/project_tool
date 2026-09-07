@@ -8,7 +8,6 @@ import { useGanttTooltip } from "./GanttTooltip";
 import { StatusBadge } from "./Badge";
 import { EmptyState } from "./Feedback";
 import { ViewTabs } from "./ViewTabs";
-import { WorkdayCalendarNotice } from "./WorkdayCalendarNotice";
 import {
   buildBusinessDayTimeline,
   GanttMilestoneMarker,
@@ -215,7 +214,6 @@ export const GapTimeline = memo(function GapTimeline({
           <ViewTabs ariaLabel="时间粒度" value={zoom} onChange={setZoom} options={(Object.keys(ganttZoomOptions) as GanttZoom[]).map((key) => ({ value: key, label: ganttZoomOptions[key].label }))} />
         </div>
       </div>
-      <WorkdayCalendarNotice values={[format(range.start, "yyyy-MM-dd"), format(range.end, "yyyy-MM-dd")]} className="gantt-calendar-notice" />
       <div className="requirement-gantt-scroll" ref={scrollRef}>
         <div
           className={`requirement-gantt-grid${!visibleItems.length ? " is-empty" : ""}`}
