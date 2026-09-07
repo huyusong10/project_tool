@@ -6,7 +6,7 @@ import { api, jsonBody } from "../api";
 import { useProjects, useSession } from "../app-context";
 import { invalidateRequirementViews, keys } from "../query-keys";
 import type { Requirement } from "../types";
-import { isTerminalRequirementStatus, riskLabels } from "../../shared/domain";
+import { isTerminalRequirementStatus } from "../../shared/domain";
 import { matchesSearch, searchScore } from "../../shared/search";
 import { EmptyState } from "../components/Feedback";
 import { StatusBadge } from "../components/Badge";
@@ -269,10 +269,8 @@ export function RequirementsPage() {
                 <td>
                   <DataCell density="compact" primary={!item.riskEvaluated ? (
                     <span className="risk-badge risk-pending">待评估</span>
-                  ) : item.highRisk ? (
-                    <StatusBadge kind="risk" value="high" />
                   ) : (
-                    riskLabels[item.riskLevel as keyof typeof riskLabels]
+                    <StatusBadge kind="risk" value={item.highRisk ? "high" : item.riskLevel} />
                   )} />
                 </td>
                 <td><DataCell density="compact" primary={item.plannedEnd || "待排期"} /></td>

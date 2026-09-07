@@ -1898,6 +1898,36 @@ test("新增工作项人员刷新失效后保留姓名并要求清理选择", as
   expect(submissions[0]).toMatchObject({ title: "人员变化草稿", ownerId: null, assigneeIds: [], expectedVersion: 1 });
 });
 
+test("新增工作项显示在列表末尾并自动滚动到草稿", async ({ page }) => {
+  const workItems = Array.from({ length: 14 }, (_, index) => ({
+    ...structuredClone(workItem),
+    id: `append-${index}`,
+    templateItemId: null,
+    title: `已有工作项${index + 1}`,
+    milestoneLabel: null,
+    sortOrder: index,
+  }));
+  await mockApplication(page, [], { requirement: { workItems } });
+  await page.goto("/requirements/r1");
+  await page.getByRole("button", { name: "工作项设置", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "工作项设置", exact: true });
+  const scrollArea = editor.locator(".work-editor-scroll");
+
+  await editor.getByRole("button", { name: "添加工作项", exact: true }).click();
+
+  const newRow = editor.locator("tbody > tr.work-inline-new-row");
+  await expect(newRow).toHaveCount(1);
+  await expect(editor.locator("tbody > tr").last()).toHaveClass(/work-inline-new-row/);
+  await expect(newRow.getByRole("button", { name: /新工作项名称/ })).toBeFocused();
+  await expect.poll(() => scrollArea.evaluate((element) => Math.round(element.scrollTop + element.clientHeight - element.scrollHeight))).toBeGreaterThanOrEqual(-2);
+});
+
+test("需求列表为已评估的中风险显示统一徽章", async ({ page }) => {
+  await mockApplication(page, [], { requirement: { riskLevel: "medium", riskEvaluated: true, highRisk: false } });
+  await page.goto("/requirements");
+  await expect(page.locator(".requirements-table .risk-badge.risk-medium")).toHaveText("中风险");
+});
+
 test("终态工作项在设置页保持只读，历史日期仅由受控修正入口处理", async ({ page }) => {
   await mockApplication(page, [], { workItem: { status: "completed", progress: 100, actualStart: "2026-09-01", actualEnd: "2026-09-03" } });
   await page.goto("/requirements/r1");
