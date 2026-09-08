@@ -1,5 +1,7 @@
 # 图形编辑工作区试用说明
 
+浮层、关系诊断与线路的后续修正见 [画布浮层与连线修正](./CANVAS-REFINEMENT.md)。
+
 2026-09-08 更新。基线 `ce2084a`，分支 `codex/dependency-paths`，目录 `D:\tools\project-manage-paths`。本轮未合并。
 
 | 入口 | 地址 |

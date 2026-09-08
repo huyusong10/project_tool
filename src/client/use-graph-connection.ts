@@ -1,7 +1,8 @@
 import {useEffect,useRef,useState,type RefObject} from 'react';
+import type {GraphConnectionIssue} from './components/DependencyGraph';
 import type {Point} from './path-layout';
 export type ConnectionSide='left'|'right'|'top'|'bottom';
-type Issue={message:string;nodeIds?:string[]};
+type Issue=GraphConnectionIssue;
 type Gesture={reconnectEnd?:'source'|'target';source:string;side:ConnectionSide;point:Point;origin:Point;pointerId:number|null;moved:boolean;target?:string;issue?:Issue|null};
 type Options={container:RefObject<HTMLDivElement|null>;enabled:boolean;validate:(source:string,target:string,reconnectEnd?:'source'|'target')=>Issue|null;
   connect:(source:string,target:string,side:ConnectionSide,reconnectEnd?:'source'|'target')=>void;invalid:(issue:Issue)=>void;dropEmpty?:(source:string,point:Point)=>void};

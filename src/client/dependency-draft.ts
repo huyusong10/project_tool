@@ -38,5 +38,5 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges): Pa
 export function dependencyIssue(data: PathAnalysis, changes: DependencyChanges) {
   const network = draftNetwork(data, changes);
   try { topologicalOrder(network.nodes.map(n => n.id), network.edges); return null; }
-  catch (error) { return { message: (error as Error).message, nodeIds: error instanceof DependencyCycleError ? error.nodeIds : [], edgeIds: error instanceof DependencyCycleError ? error.edgeIds : [] }; }
+  catch (error) { return { kind:error instanceof DependencyCycleError?'cycle' as const:undefined, message: (error as Error).message, nodeIds: error instanceof DependencyCycleError ? error.nodeIds : [], edgeIds: error instanceof DependencyCycleError ? error.edgeIds : [] }; }
 }

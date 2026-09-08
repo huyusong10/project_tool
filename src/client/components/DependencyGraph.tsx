@@ -5,25 +5,25 @@ import { ReactFlow, ReactFlowProvider, Background, Handle, Position, BaseEdge, u
 import ELK from 'elkjs/lib/elk-api';
 import workerUrl from 'elkjs/lib/elk-worker.min.js?url';
 import '@xyflow/react/dist/style.css';
-import { type RoutedLayout, type Point } from '../path-layout';
+import { roundedRoutePath, type RoutedLayout, type Point } from '../path-layout';
 import { stableGraphLayout } from '../graph-layout';
 import {useGraphConnection,type ConnectionSide} from '../use-graph-connection';
 import {graphMotion,graphMotionFrame} from '../graph-motion';
 import type { GraphCard, GraphLink } from '../path-projection';
-import {Minus,Plus,Scan,LayoutGrid,LocateFixed} from 'lucide-react';
+import {Minus,Plus,Scan,LayoutGrid,LocateFixed,X,LoaderCircle} from 'lucide-react';
 import {vacantPosition,vacantGroup} from '../fixed-routing';
 import { requirementStatusLabels, riskLabels } from '../../shared/domain';
 
 type CardData = GraphCard & { rename?:(id:string,title:string)=>void; vertical: boolean; editing: boolean; highlighted: boolean; invalid: boolean; retiring?:boolean; context?:boolean; connection?:string };
 type CardNode = Node<CardData, 'delivery'>;
-type RouteEdge = Edge<{ route?: RoutedLayout['edges'][string]; critical: boolean; labelText: string; opacity:number; dimmed?:boolean; filtered?:boolean }, 'delivery'>;
-export type GraphConnectionIssue = { message: string; nodeIds?: string[]; edgeIds?: string[] };
+type RouteEdge = Edge<{ route?: RoutedLayout['edges'][string]; critical: boolean; labelText: string; opacity:number; invalid?:boolean; filtered?:boolean }, 'delivery'>;
+export type GraphConnectionIssue = { message: string; nodeIds?: string[]; edgeIds?: string[]; kind?: 'duplicate'|'cycle'; attempt?:{source:string;target:string} };
 export type DependencyGraphProps = {
   cards: GraphCard[]; links: GraphLink[]; selected: string; onSelect: (id: string) => void; viewKey: string;
   children?: ReactNode; visibleIds?:string[]; emphasizedIds?:string[]; contextIds?:string[]; onExitFocus?:()=>void; editing?: boolean; selectedEdge?: string; onEdgeSelect?: (id: string) => void;
   onConnect?: (source: string, target: string) => void;
   validateConnection?: (source: string, target: string) => GraphConnectionIssue | null;
-  onInvalid?: (issue: GraphConnectionIssue) => void; onDropEmpty?: (source: string,position:Point) => void;
+  onInvalid?: (issue: GraphConnectionIssue) => void; onInspectIssue?:(issue:GraphConnectionIssue)=>void; onClearIssue?:()=>void; invalidEdges?:string[]; onDismissOverlays?:()=>boolean; onDropEmpty?: (source: string,position:Point) => void;
   highlighted?: string[]; invalidNodes?: string[]; locate?: { id: string; sequence: number };
   reconnect?:{id:string;source:string;target:string}; onReconnect?:(source:string,target:string)=>void; validateReconnect?:(source:string,target:string)=>GraphConnectionIssue|null;
   focusId?:string; onUndo?:()=>void; onRedo?:()=>void;
@@ -59,23 +59,32 @@ const Card = memo(function Card({ id, data, selected }: NodeProps<CardNode>) {
   </div>;
 });
 const RoutedEdge=memo(function RoutedEdge({ id, data, selected }: EdgeProps<RouteEdge>) {
-  const markerId = useId().replace(/:/g, '_'), zoom=useStore(state=>state.transform[2]);
-  if (!data?.route) return null;
-  const points = data.route.points.map(p => ({ ...p })), last = points.at(-1)!, previous = points.at(-2)!;
-  const length = Math.hypot(last.x - previous.x, last.y - previous.y), gap = Math.min(6 / zoom,10, length / 3);
-  if (length) { last.x -= (last.x - previous.x) / length * gap; last.y -= (last.y - previous.y) / length * gap; }
-  const path = points.map((p, i) => (i ? 'L' : 'M') + ' ' + p.x + ' ' + p.y).join(' ');
-  const color = selected ? 'var(--danger)' : data.critical ? 'var(--accent)' : 'var(--text-faint)', label = data.route.label;
-  return <g className="graph-routed-edge" opacity={data.opacity} style={{pointerEvents:data.opacity===0?'none':undefined}}><g className={'graph-edge-presentation'+(data.dimmed?' is-dimmed':'')+(data.filtered?' is-filtered':'')}><title>{data.labelText}</title><defs><marker id={markerId} viewBox="0 0 8 8" refX="8" refY="4" markerWidth={Math.min(14,8 / zoom)} markerHeight={Math.min(14,8 / zoom)} markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill={color}/></marker></defs>
-    <BaseEdge id={id} path={path} markerEnd={'url(#' + markerId + ')'} interactionWidth={20} style={{ stroke: color, strokeWidth: selected ? 2.8 : data.critical ? 2.2 : 1.3, vectorEffect: 'non-scaling-stroke' }}/>
-    {label && <g className="dependency-edge-label"><rect x={label.x - 3} y={label.y} width={label.width + 6} height={20} rx={4}/><text x={label.x} y={label.y + 14}>{data.labelText}</text></g>}</g></g>;
+  const markerId=useId().replace(/:/g,'_'),zoom=useStore(state=>state.transform[2]);
+  const color=data?.invalid?'var(--danger)':selected||data?.critical?'var(--accent)':'var(--text-faint)';
+  // Focus only changes the presentation group; retain the SVG geometry and labels.
+  const drawing=useMemo(()=>{
+    if(!data?.route)return null;
+    const points=data.route.points.map(p=>({...p})),last=points.at(-1)!,previous=points.at(-2)!;
+    const length=Math.hypot(last.x-previous.x,last.y-previous.y),gap=Math.min(6/zoom,10,length/3);
+    if(length){last.x-=(last.x-previous.x)/length*gap;last.y-=(last.y-previous.y)/length*gap;}
+    const path=roundedRoutePath(points),label=data.route.label;
+    return <><defs><marker id={markerId} viewBox="0 0 8 8" refX="8" refY="4" markerWidth={Math.min(14,8/zoom)} markerHeight={Math.min(14,8/zoom)} markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill={color}/></marker></defs>
+      <BaseEdge id={id} path={path} markerEnd={'url(#'+markerId+')'} interactionWidth={20} style={{stroke:color,strokeWidth:selected?2.8:data.critical?2.2:1.3,vectorEffect:'non-scaling-stroke'}}/>
+      {label&&<g className="dependency-edge-label"><rect x={label.x-3} y={label.y} width={label.width+6} height={20} rx={4}/><text x={label.x} y={label.y+14}>{data.labelText}</text></g>}</>;
+  },[id,data?.route,data?.labelText,data?.critical,selected,color,markerId,zoom]);
+  if(!data||!drawing)return null;
+  return <g className="graph-routed-edge" opacity={data.opacity} style={{pointerEvents:data.opacity===0?'none':undefined}}><g className={'graph-edge-presentation'+(data.invalid?' is-invalid':'')+(data.filtered?' is-filtered':'')}><title>{data.labelText}</title>{drawing}</g></g>;
 });
 const nodeTypes = { delivery: Card }, edgeTypes = { delivery: RoutedEdge };
 function Graph(props: DependencyGraphProps) {
   const {cards,links,selected,onSelect,viewKey,editing=false}=props;
   const container=useRef<HTMLDivElement>(null),[vertical]=useState(false),[error,setError]=useState('');
-  const [phase,setPhase]=useState('initial'),[arrange,setArrange]=useState(0),[rendered,setRendered]=useState(false);
+  const [phase,setPhase]=useState('initial'),[arrange,setArrange]=useState(0),[retry,setRetry]=useState(0),[rendered,setRendered]=useState(false);
+  const [slowBusy,setSlowBusy]=useState(false),[connectionIssue,setConnectionIssue]=useState<GraphConnectionIssue|null>(null),routingError=useRef(false);
   const busy=phase!=='ready'&&phase!=='error',flow=useReactFlow<CardNode>(),viewport=useViewport();
+  useEffect(()=>{if(!busy){setSlowBusy(false);return;}const timer=setTimeout(()=>setSlowBusy(true),800);return()=>clearTimeout(timer);},[busy]);
+  const dismissError=()=>{setError('');setConnectionIssue(null);props.onClearIssue?.();};
+  useEffect(()=>{if(connectionIssue&&props.invalidNodes&&!props.invalidNodes.length){setConnectionIssue(null);setError('');}},[connectionIssue,props.invalidNodes]);
   const [nodes,setNodes,onNodesChange]=useNodesState<CardNode>([]),initialized=useNodesInitialized();
   const [selectedIds,setSelectedIds]=useState<string[]>(selected?[selected]:[]),[dragTick,setDragTick]=useState(0);
   const selectionChanged=useCallback(({nodes:selectedNodes}:{nodes:CardNode[]})=>{const ids=selectedNodes.map(n=>n.id).sort();setSelectedIds(old=>JSON.stringify([...old].sort())===JSON.stringify(ids)?old:ids);},[]);
@@ -109,8 +118,8 @@ function Graph(props: DependencyGraphProps) {
     return (reconnectEnd?props.validateReconnect?.(source,target):props.validateConnection?.(source,target))||null;
   };
   const connection=useGraphConnection({container,enabled:editing,validate,
-    connect:(source,target,side,reconnectEnd)=>{anchor.current=source;setError('');setFeedback({source,target,side});if(reconnectEnd)props.onReconnect?.(source,target);else props.onConnect?.(source,target);},
-    invalid:issue=>{setError(issue.message);props.onInvalid?.(issue);},dropEmpty:(source,point)=>props.onDropEmpty?.(source,flow.screenToFlowPosition(point))});
+    connect:(source,target,side,reconnectEnd)=>{anchor.current=source;dismissError();setFeedback({source,target,side});if(reconnectEnd)props.onReconnect?.(source,target);else props.onConnect?.(source,target);},
+    invalid:issue=>{routingError.current=false;setError(issue.message);setConnectionIssue(issue);props.onInvalid?.(issue);},dropEmpty:(source,point)=>props.onDropEmpty?.(source,flow.screenToFlowPosition(point))});
   const connectionRef=connection.current;
   const activeSource=connection.gesture?.source||feedback?.source,activeTarget=connection.gesture?.target||feedback?.target,invalidTarget=!!connection.gesture?.issue;
   useEffect(()=>{if(feedback&&!busy){const timer=setTimeout(()=>setFeedback(null),600);return()=>clearTimeout(timer);}},[feedback,busy]);
@@ -132,16 +141,18 @@ function Graph(props: DependencyGraphProps) {
           highlighted:!!props.highlighted?.includes(card.id),invalid:!!props.invalidNodes?.includes(card.id),
           connection:card.id===activeSource?'source':card.id===activeTarget?invalidTarget?'invalid':'target':undefined};
         const stableData=old&&Object.keys(data).every(key=>data[key as keyof CardData]===old.data[key as keyof CardData])?old.data:data;
-        return {id:card.id,type:'delivery',position:displayPositions.current.get(card.id)||old?.position||{x:0,y:0},measured:old?.measured,selected:selectedIds.includes(card.id),
-          className:[visible?'':'graph-node-hidden',props.focusId&&props.emphasizedIds&&!props.emphasizedIds.includes(card.id)?'graph-node-dim':''].join(' '),ariaLabel:card.title,
+        const next:CardNode={id:card.id,type:'delivery',position:displayPositions.current.get(card.id)||old?.position||props.positions?.[card.id]||{x:0,y:0},measured:old?.measured,selected:selectedIds.includes(card.id),
+          className:visible?'':'graph-node-hidden',ariaLabel:card.title,
           data:stableData,
           style:{width:['start','acceptance'].includes(card.kind)?184:244,opacity:displayOpacities.current.get(card.id)??old?.style?.opacity??0,
             pointerEvents:(displayOpacities.current.get(card.id)??old?.style?.opacity??0)===0?'none':undefined}};
+        return old&&old.data===next.data&&old.selected===next.selected&&old.className===next.className&&old.ariaLabel===next.ariaLabel&&old.position.x===next.position.x&&old.position.y===next.position.y&&old.style?.width===next.style?.width&&old.style?.opacity===next.style?.opacity&&old.style?.pointerEvents===next.style?.pointerEvents?old:next;
       });
       // Keep deleted cards until the outgoing frame has faded; exclude them from layout inputs.
-      return [...updated,...previous.filter(n=>!ids.has(n.id)).map(n=>({...n,data:{...n.data,retiring:true,editing:false}}))];
+      const next=[...updated,...previous.filter(n=>!ids.has(n.id)).map(n=>n.data.retiring?n:{...n,data:{...n.data,retiring:true,editing:false}})];
+      return next.length===previous.length&&next.every((n,i)=>n===previous[i])?previous:next;
     });
-  },[cards,links,scene,selected,selectedIds,vertical,editing,rename,props.visibleIds,props.emphasizedIds,props.focusId,props.contextIds,props.highlighted,props.invalidNodes,activeSource,activeTarget,invalidTarget,setNodes]);
+  },[cards,links,scene,selected,selectedIds,vertical,editing,rename,props.visibleIds,props.contextIds,props.highlighted,props.invalidNodes,props.positions,activeSource,activeTarget,invalidTarget,setNodes]);
   const measuredLinks=useMemo(()=>{
     const context=document.createElement('canvas').getContext('2d');if(context)context.font='12px '+getComputedStyle(document.body).fontFamily;
     return links.map(e=>({...e,labelWidth:e.label?Math.ceil(context?.measureText(e.label).width||44)+8:undefined}));
@@ -174,12 +185,13 @@ function Graph(props: DependencyGraphProps) {
     await flow.setViewport({x:(left+right)/2-(x+width/2)*zoom,y:(top+bottom)/2-(y+height/2)*zoom,zoom},{duration:animate&&!reduced()?260:0});
   },[flow,available]);
   const geometry=nodes.filter(n=>!n.data.retiring).map(n=>[n.id,n.measured?.width,n.measured?.height]);
-  const structure=JSON.stringify([geometry,measuredLinks.map(e=>[e.id,e.source,e.target,e.label,e.labelWidth]),vertical,arrange,props.positions]);
+  const structure=JSON.stringify([geometry,measuredLinks.map(e=>[e.id,e.source,e.target,e.label,e.labelWidth]),vertical,arrange,retry,props.positions]);
   useEffect(()=>{
     const activeNodes=nodes.filter(n=>!n.data.retiring);
     if(!initialized||!engine.current||activeNodes.some(n=>!n.measured?.width||!n.measured?.height)){
       if(!cards.length){setNodes([]);setScene(null);layoutRef.current=null;setPhase('ready');}return;
     }
+    const canvasElement=container.current;
     let cancelled=false,frame=0,timer:ReturnType<typeof setTimeout>;
     const id=++generation.current,requested=performance.now(),initial=first.current,reset=lastArrange.current!==arrange||lastDirection.current!==vertical;
     const directionChanged=lastDirection.current!==vertical,anchorId=anchor.current||selected;
@@ -191,7 +203,11 @@ function Graph(props: DependencyGraphProps) {
         const savedPositions={...(layoutRef.current?.nodes||{}),...(props.positions||{})};
         let layout:RoutedLayout;
         if(!reset&&Object.keys(savedPositions).length){const positioned=activeNodes.filter(n=>savedPositions[n.id]).map(n=>({id:n.id,...savedPositions[n.id],width:n.measured!.width!,height:n.measured!.height!}));for(const n of activeNodes)if(!savedPositions[n.id]){const p=vacantPosition(positioned,n.id,{x:Math.max(0,...positioned.map(n=>n.x+n.width))+64,y:32},n.measured!.width!,n.measured!.height!);savedPositions[n.id]=p;positioned.push({id:n.id,...p,width:n.measured!.width!,height:n.measured!.height!});}layout=await fixedRoute(savedPositions,activeNodes);}
-        else layout=await stableGraphLayout(engine.current!,activeNodes.map(n=>({id:n.id,width:n.measured!.width!,height:n.measured!.height!})),measuredLinks,vertical,null,anchorId,true);
+        else {
+          const arranged=await stableGraphLayout(engine.current!,activeNodes.map(n=>({id:n.id,width:n.measured!.width!,height:n.measured!.height!})),measuredLinks,vertical,null,anchorId,true);
+          layout=await fixedRoute(arranged.nodes,activeNodes);
+        }
+        if(links.some(e=>!layout.edges[e.id]?.points.length))throw new Error('部分连线尚未更新，请重试。');
         if(cancelled||id!==generation.current)return;
         performance.measure('pm-path-layout',{start,end:performance.now()});
         const startNodes=flow.getNodes(),positions=new Map(startNodes.map(n=>[n.id,displayPositions.current.get(n.id)||n.position])),old=sceneRef.current;
@@ -200,6 +216,8 @@ function Graph(props: DependencyGraphProps) {
         const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
         const finish=async()=>{
           if(cancelled)return;
+          container.current?.querySelectorAll<SVGGElement>('.graph-routed-edge').forEach(e=>{e.setAttribute('opacity','1');e.style.pointerEvents='';});
+          if(routingError.current){routingError.current=false;setError('');}
           displayPositions.current=new Map(Object.entries(layout.nodes));
           displayOpacities.current=new Map(Object.keys(layout.nodes).map(key=>[key,1]));
           container.current?.querySelectorAll<HTMLElement>('.react-flow__node').forEach(element=>{const p=layout.nodes[element.dataset.id!];if(p){element.style.transform='translate('+p.x+'px, '+p.y+'px)';element.style.opacity='1';element.style.pointerEvents='';}});
@@ -219,7 +237,8 @@ function Graph(props: DependencyGraphProps) {
         let edgeElements=[...container.current!.querySelectorAll<SVGGElement>('.react-flow__edge')].filter(e=>affected.has(e.dataset.id!)).map(e=>e.querySelector<SVGGElement>('.graph-routed-edge')!);
         const edgeStartOpacity=new Map(edgeElements.filter(Boolean).map(element=>[element,Number(element.getAttribute('opacity')??1)]));
         const started=last;
-        const before=anchorId&&positions.get(anchorId),after=anchorId&&layout.nodes[anchorId];
+        // Only explicit auto-arrange preserves a previous anchor by moving the viewport.
+        const before=reset&&anchorId&&old?.layout.nodes[anchorId]&&positions.get(anchorId),after=anchorId&&layout.nodes[anchorId];
         const tick=(now:number)=>{
           if(cancelled||id!==generation.current)return;
           const delta=now-last;last=now;
@@ -247,10 +266,24 @@ function Graph(props: DependencyGraphProps) {
           else frame=requestAnimationFrame(tick);
         };
         frame=requestAnimationFrame(tick);
-      }catch(caught){if(!cancelled){setError(caught instanceof Error?caught.message:String(caught));setPhase('error');setFeedback(null);}}
+      }catch(caught){if(!cancelled){
+        routingError.current=true;setConnectionIssue(null);setError((caught instanceof Error?caught.message:String(caught))+(layoutRef.current?' 保留上次有效画面。':''));setPhase('error');setFeedback(null);
+        const previous=layoutRef.current;
+        if(previous){
+          displayPositions.current=new Map(Object.entries(previous.nodes));
+          setScene(current=>current?{...current,layout:previous,links:current.links.filter(e=>previous.edges[e.id])}:null);
+          setNodes(current=>current.map(n=>({...n,position:previous.nodes[n.id]||n.position,style:{...n.style,opacity:1,pointerEvents:undefined}})));
+          container.current?.querySelectorAll<HTMLElement>('.react-flow__node').forEach(e=>{const p=previous.nodes[e.dataset.id!];if(p){e.style.transform='translate('+p.x+'px, '+p.y+'px)';e.style.opacity='1';}});
+        }
+        setEdgeFade({ids:new Set(),opacity:1});container.current?.querySelectorAll<SVGGElement>('.graph-routed-edge').forEach(e=>{e.setAttribute('opacity','1');e.style.pointerEvents='';});
+      }}
     };
     timer=setTimeout(()=>void run(),initial?0:graphMotion.wait);
-    return()=>{cancelled=true;clearTimeout(timer);cancelAnimationFrame(frame);};
+    return()=>{cancelled=true;clearTimeout(timer);cancelAnimationFrame(frame);
+      // DOM animation can be interrupted before React publishes a new opacity.
+      canvasElement?.querySelectorAll<SVGGElement>('.graph-routed-edge').forEach(e=>{e.setAttribute('opacity','1');e.style.pointerEvents='';});
+      setEdgeFade({ids:new Set(),opacity:1});
+    };
     // Geometry and topology alone schedule layouts. Decoration, visibility and selection are projections.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[structure,initialized,setNodes]);
@@ -264,8 +297,15 @@ function Graph(props: DependencyGraphProps) {
   const edges=useMemo<RouteEdge[]>(()=>(scene?.links||[]).map(e=>({...e,type:'delivery',sourceHandle:'route-out',targetHandle:'route-in',
     className:props.visibleIds&&(!props.visibleIds.includes(e.source)||!props.visibleIds.includes(e.target))?'graph-edge-hidden':'',
     label:undefined,selected:e.id===props.selectedEdge,reconnectable:false,
-    data:{route:scene?.layout.edges[e.id],critical:(linkById.get(e.id)||e).critical,labelText:e.label||'',dimmed:!!props.focusId&&!!props.emphasizedIds&&(!props.emphasizedIds.includes(e.source)||!props.emphasizedIds.includes(e.target)),filtered:!!props.visibleIds&&(!props.visibleIds.includes(e.source)||!props.visibleIds.includes(e.target)),opacity:edgeFade.ids.has(e.id)?edgeFade.opacity:1}
-  })),[scene,linkById,props.selectedEdge,props.visibleIds,props.focusId,props.emphasizedIds,edgeFade]);
+    data:{route:scene?.layout.edges[e.id],invalid:props.invalidEdges?.includes(e.id),critical:(linkById.get(e.id)||e).critical,labelText:e.label||'',filtered:!!props.visibleIds&&(!props.visibleIds.includes(e.source)||!props.visibleIds.includes(e.target)),opacity:edgeFade.ids.has(e.id)?edgeFade.opacity:1}
+  })),[scene,linkById,props.selectedEdge,props.visibleIds,props.invalidEdges,edgeFade]);
+  // Focus is presentation only: do not rebuild React Flow's node/edge store for it.
+  // Reapply after a geometry commit, which may replace the corresponding DOM nodes.
+  useLayoutEffect(()=>{
+    const emphasized=new Set(props.emphasizedIds||[]),focused=!!props.focusId;
+    container.current?.querySelectorAll<HTMLElement>('.react-flow__node').forEach(e=>e.classList.toggle('graph-node-dim',focused&&!emphasized.has(e.dataset.id!)));
+    container.current?.querySelectorAll<HTMLElement>('.react-flow__edge').forEach(e=>{const edge=linkById.get(e.dataset.id!);e.querySelector('.graph-edge-presentation')?.classList.toggle('is-dimmed',focused&&!!edge&&(!emphasized.has(edge.source)||!emphasized.has(edge.target)));});
+  },[props.focusId,props.emphasizedIds,linkById,nodes,edges]);
   const restoreDrag=()=>{const d=drag.current;if(!d)return;displayPositions.current=new Map(Object.entries(d.original));setNodes(ns=>ns.map(n=>({...n,position:d.original[n.id]||n.position})));setEdgeFade({ids:new Set(),opacity:1});};
   const commitMove=(positions:Record<string,Point>)=>{displayPositions.current=new Map(Object.entries(positions));setNodes(ns=>ns.map(n=>({...n,position:positions[n.id]||n.position})));props.onPositions?.(positions,vertical?'down':'right');};
   const positioned=()=>flow.getNodes().map(n=>({id:n.id,...n.position,width:n.measured?.width||244,height:n.measured?.height||154}));
@@ -281,7 +321,7 @@ function Graph(props: DependencyGraphProps) {
   };
   const from=previewSource?screenPoint(previewSource,previewSide):null,to=gesture?.point||(feedback?screenPoint(feedback.target):null),rect=container.current?.getBoundingClientRect();
   const showPreview=!!gesture||!!feedback&&['waiting','layout'].includes(phase);
-  const hint=gesture?.issue?.message||(gesture?.target?cards.find(c=>c.id===gesture.source)?.title+' 完成后 '+cards.find(c=>c.id===gesture.target)?.title+' 开始':gesture?'拖到后续卡片，或点击卡片完成连接':feedback?'依赖已加入草稿'+(busy?'，正在调整布局':''):'');
+  const hint=gesture?.issue?.message||(gesture?.target?cards.find(c=>c.id===gesture.source)?.title+' 完成后 '+cards.find(c=>c.id===gesture.target)?.title+' 开始':gesture?'拖到后续卡片，或点击卡片完成连接':feedback?'依赖已加入草稿':'');
   return <div className="dependency-canvas" ref={container} role="region" tabIndex={0} aria-label="动态交付依赖图"
     data-layout-ready={!busy} data-layout-phase={phase} data-rendered-layout={rendered} data-connection-active={!!gesture}
     onPointerDownCapture={event=>{
@@ -308,11 +348,11 @@ function Graph(props: DependencyGraphProps) {
       if(editing&&event.key==='F2'&&selected&&!['start','acceptance','project'].includes(cards.find(c=>c.id===selected)?.kind||'')){event.preventDefault();const el=container.current?.querySelector<HTMLElement>('[data-inline-title="'+CSS.escape(selected)+'"]');if(el){el.contentEditable='true';el.focus();const range=document.createRange();range.selectNodeContents(el);window.getSelection()?.removeAllRanges();window.getSelection()?.addRange(range);}}
       if(editing&&event.key.startsWith('Arrow')&&selectedIds.length){event.preventDefault();const delta=event.shiftKey?10:1,p={...layoutRef.current?.nodes};for(const id of selectedIds){const n=flow.getNode(id);if(n)p[id]={x:n.position.x+(event.key==='ArrowLeft'?-delta:event.key==='ArrowRight'?delta:0),y:n.position.y+(event.key==='ArrowUp'?-delta:event.key==='ArrowDown'?delta:0)};}commitMove(p);}
       if(event.key==='Escape'&&drag.current){event.preventDefault();drag.current.cancelled=true;restoreDrag();return;}
-      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(connectionRef.current)connection.cancel();else {props.onExitFocus?.();if(!props.focusId&&!props.placing){setSelectedIds([]);onSelect('');}}setError('');}
+      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(connectionRef.current)connection.cancel();else if(props.onDismissOverlays?.()){dismissError();return;}else {props.onExitFocus?.();if(!props.focusId&&!props.placing){setSelectedIds([]);onSelect('');}}dismissError();}
     }}>
-    {busy&&!hint&&<div className="dependency-layout-notice" role="status">{phase==='initial'?'正在自动排布…':phase==='waiting'||phase==='layout'?'正在计算布局…':'正在调整布局…'}</div>}
-    {hint&&<div className={'dependency-layout-notice graph-connection-hint'+(gesture?.issue?' is-invalid':'')} role="status">{hint}</div>}
-    {error&&<div className="dependency-layout-notice warning-banner" role="alert">{error}<button onClick={()=>setError('')}>关闭</button></div>}
+    {!rendered&&slowBusy&&<div className="graph-initial-loader" role="status"><LoaderCircle size={20}/>正在准备画布</div>}
+    {hint&&<div className={'dependency-layout-notice graph-connection-hint'+(gesture?.issue?' is-invalid':'')} style={gesture&&rect?{left:Math.max(12,Math.min(gesture.point.x-rect.left+16,rect.width-260)),top:Math.max((container.current?.querySelector('.graph-toolbar')?.getBoundingClientRect().height||48)+12,Math.min(gesture.point.y-rect.top+20,rect.height-110)),transform:'none'}:undefined} role="status">{hint}</div>}
+    {error&&<div className="dependency-layout-notice graph-error-notice" role="alert"><span>{error}</span>{connectionIssue?.kind&&props.onInspectIssue&&<button className="ghost-button" onClick={()=>{props.onInspectIssue?.(connectionIssue);setError('');}}>{connectionIssue.kind==='duplicate'?'查看已有关系':'查看循环路径'}</button>}{routingError.current&&<button className="ghost-button" onClick={()=>setRetry(n=>n+1)}>重试连线</button>}<button className="graph-notice-close" aria-label="关闭提示" title="关闭提示" onClick={dismissError}><X size={16}/></button></div>}
     <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
       nodesDraggable={editing} nodesConnectable={false} deleteKeyCode={null} autoPanOnNodeFocus={false} autoPanOnConnect={false}
       zoomOnScroll zoomOnPinch zoomOnDoubleClick={false} panOnScroll={false} preventScrolling zoomActivationKeyCode={null}
@@ -341,7 +381,7 @@ function Graph(props: DependencyGraphProps) {
     {drag.current&&<svg className="graph-drag-lines" aria-hidden="true">{links.filter(e=>drag.current!.ids.includes(e.source)||drag.current!.ids.includes(e.target)).map(e=>{const a=flow.getNode(e.source),b=flow.getNode(e.target);if(!a||!b)return null;const x=(a.position.x+(a.measured?.width||244)/2)*viewport.zoom+viewport.x,y=(a.position.y+(a.measured?.height||154)/2)*viewport.zoom+viewport.y,tx=(b.position.x+(b.measured?.width||244)/2)*viewport.zoom+viewport.x,ty=(b.position.y+(b.measured?.height||154)/2)*viewport.zoom+viewport.y;return <path key={e.id} d={'M '+x+' '+y+' L '+tx+' '+ty}/>;})}{flow.getNodes().filter(n=>!drag.current!.ids.includes(n.id)).flatMap(n=>drag.current!.ids.flatMap(id=>{const moving=flow.getNode(id);if(!moving)return [];const lines=[];if(Math.abs(n.position.x-moving.position.x)<5){const x=n.position.x*viewport.zoom+viewport.x;lines.push(<line key={id+n.id+'x'} x1={x} x2={x} y1={0} y2="100%"/>);}if(Math.abs(n.position.y-moving.position.y)<5){const y=n.position.y*viewport.zoom+viewport.y;lines.push(<line key={id+n.id+'y'} y1={y} y2={y} x1={0} x2="100%"/>);}return lines;}))}</svg>}
     {drag.current?.copy&&rect&&<div className="graph-copy-preview" data-drag-tick={dragTick}>{drag.current.ids.map(id=>{const p=drag.current!.original[id],n=flow.getNode(id);return p&&n?<div key={id} style={{left:p.x*viewport.zoom+viewport.x,top:p.y*viewport.zoom+viewport.y,width:(n.measured?.width||244)*viewport.zoom,height:(n.measured?.height||154)*viewport.zoom}}>{n.data.title}</div>:null;})}</div>}
     {props.children}
-    <div className="graph-view-controls nopan nodrag nowheel">
+    <div className="graph-view-controls nopan nodrag nowheel"><span className="graph-layout-status" role="status" aria-label={slowBusy?'正在更新连线':undefined} title={slowBusy?'正在更新连线':undefined}>{slowBusy&&<LoaderCircle size={14}/>}</span>
       <button className="ghost-button" aria-label="缩小画布" title="缩小画布" onClick={()=>void flow.zoomOut()}><Minus size={16}/></button><span>{Math.round(viewport.zoom*100)}%</span>
       <button className="ghost-button" aria-label="放大画布" title="放大画布" onClick={()=>void flow.zoomIn()}><Plus size={16}/></button>
       <button className="ghost-button" aria-label="定位所选节点" title="定位所选节点" disabled={!selected} onClick={()=>locate(selected)}><LocateFixed size={16}/></button><button className="ghost-button" aria-label="适配视图" title="适配视图" onClick={()=>void fitAvailable(true,props.focusId?props.emphasizedIds:props.visibleIds,true)}><Scan size={16}/></button>

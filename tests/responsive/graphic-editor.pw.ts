@@ -19,6 +19,56 @@ async function fixture(page:Page){
  return {project,a,b,analysis};
 }
 const ready=(page:Page)=>expect(page.locator('[data-layout-ready="true"]')).toBeVisible({timeout:20000});
+const viewportValue=(page:Page)=>page.locator('.react-flow__viewport').evaluate(e=>(e as HTMLElement).style.transform);
+const positionsValue=(page:Page)=>page.locator('.react-flow__node').evaluateAll(nodes=>Object.fromEntries(nodes.map(n=>[(n as HTMLElement).dataset.id,(n as HTMLElement).style.transform])));
+const blank=(page:Page)=>page.locator('.react-flow__pane').click({position:{x:12,y:300}});
+
+test('新增里程碑与连线不移动已有视口，提示紧凑，循环说明包含真实部分交付',async({page},info)=>{
+ const {a,b,analysis}=await fixture(page);await page.goto('/paths?pathScope=all');await ready(page);
+ const beforeViewport=await viewportValue(page),beforePositions=await positionsValue(page),revision=(await analysis()).revision;
+ await page.getByLabel('编辑画布',{exact:true}).click();await page.getByLabel('添加元素',{exact:true}).click();await page.locator('.graph-elements').getByRole('button',{name:'里程碑',exact:true}).click();
+ const canvas=(await page.locator('.dependency-canvas').boundingBox())!;await page.mouse.click(canvas.x+canvas.width*.5,canvas.y+canvas.height*.7);await expect(page.locator('.react-flow__node')).toHaveCount(3);await ready(page);
+ expect(await viewportValue(page)).toBe(beforeViewport);const after=await positionsValue(page);for(const [id,value] of Object.entries(beforePositions))expect(after[id]).toBe(value);
+ await blank(page);const source=page.locator('.react-flow__node[data-id="'+b.id+'"]'),target=page.locator('.react-flow__node[data-id="'+a.id+'"]');
+ await source.locator('.business-handle[data-side="top"]').click();const notice=page.locator('.graph-connection-hint');await expect(notice).toBeVisible();expect((await notice.boundingBox())!.height).toBeLessThan(90);expect((await notice.boundingBox())!.width).toBeLessThanOrEqual(251);
+ await target.locator('.dependency-card').click({position:{x:80,y:45}});await expect(page.locator('.graph-error-notice')).toContainText('循环');expect((await page.locator('.graph-error-notice').boundingBox())!.height).toBeLessThan(120);
+ await page.getByRole('button',{name:'查看循环路径',exact:true}).click();await expect(page.locator('.graph-cycle-path')).toContainText(a.title);await expect(page.locator('.graph-cycle-path')).toContainText(b.title);await expect(page.locator('.graph-edge-presentation.is-invalid')).not.toHaveCount(0);
+ expect(await viewportValue(page)).toBe(beforeViewport);expect((await analysis()).revision).toBe(revision);await expect(page.getByText('正在计算布局…',{exact:true})).toHaveCount(0);await page.waitForTimeout(220);await page.screenshot({path:info.outputPath('cycle-diagnostic.png')});
+ await page.locator('.graph-auxiliary').getByRole('button',{name:'关闭',exact:true}).click();await expect(page.locator('.graph-error-notice')).toHaveCount(0);await ready(page);expect(await viewportValue(page)).toBe(beforeViewport);
+});
+
+test('添加菜单、分析抽屉和属性按外部点击或Esc关闭，输入草稿保留',async({page},info)=>{
+ const {a}=await fixture(page);await page.goto('/paths?pathScope=all');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();
+ await page.getByLabel('添加元素',{exact:true}).click();await expect(page.locator('.graph-element-menu')).toHaveAttribute('open','');await blank(page);await expect(page.locator('.graph-element-menu')).not.toHaveAttribute('open','');
+ await page.getByLabel('添加元素',{exact:true}).click();await page.keyboard.press('Escape');await expect(page.locator('.graph-element-menu')).not.toHaveAttribute('open','');
+ await page.locator('.react-flow__node[data-id="'+a.id+'"] .dependency-card').click();await page.getByLabel('元素名称').fill('属性关闭前保存的草稿');await page.getByLabel('元素负责人').focus();await expect(page.locator('.graph-detail[aria-hidden="false"]')).toBeVisible();await blank(page);await expect(page.locator('.graph-detail[aria-hidden="false"]')).toHaveCount(0);
+ await page.locator('.react-flow__node[data-id="'+a.id+'"] .dependency-card').click();await expect(page.getByLabel('元素名称')).toHaveValue('属性关闭前保存的草稿');
+ await page.getByLabel('元素名称').fill('点击画布时保留未失焦输入');await blank(page);await expect(page.locator('.graph-detail[aria-hidden="false"]')).toHaveCount(0);await page.locator('.react-flow__node[data-id="'+a.id+'"] .dependency-card').click();await expect(page.getByLabel('元素名称')).toHaveValue('点击画布时保留未失焦输入');
+ await page.getByRole('button',{name:'余量',exact:true}).click();await expect(page.locator('.path-float-distribution')).toBeVisible();expect((await page.locator('.graph-auxiliary').boundingBox())!.height).toBeLessThan(230);const entries=await page.locator('.path-float-distribution button').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().y));expect(new Set(entries).size).toBe(1);
+ const before=await viewportValue(page);await page.locator('.path-float-distribution button').last().click();await expect(page.locator('.path-float-results')).toBeVisible();expect(await viewportValue(page)).toBe(before);await page.keyboard.press('Escape');await expect(page.locator('.graph-auxiliary[aria-hidden="false"]')).toHaveCount(0);
+ await page.getByRole('button',{name:'余量',exact:true}).click();await blank(page);await expect(page.locator('.graph-auxiliary[aria-hidden="false"]')).toHaveCount(0);
+ await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'余量',exact:true}).click();await expect(page.locator('.path-float-distribution')).toBeVisible();const drawer=(await page.locator('.graph-auxiliary').boundingBox())!,footer=(await page.locator('.graph-footer').boundingBox())!,controls=(await page.locator('.graph-view-controls').boundingBox())!;expect(drawer.y+drawer.height).toBeLessThanOrEqual(Math.min(footer.y,controls.y)-10);await page.waitForTimeout(220);await page.screenshot({path:info.outputPath('drawers-narrow.png')});
+});
+
+test('重复连线可定位已有草稿关系，快速撤销重做后线路完整且正式数据不变',async({page})=>{
+ const {a,b,analysis}=await fixture(page);await page.addInitScript(()=>{
+  const Base=window.Worker;window.Worker=class extends Base{set onmessage(handler:((this:Worker,event:MessageEvent)=>unknown)|null){let count=0;super.onmessage=handler?event=>{setTimeout(()=>handler.call(this,event),++count%2?120:10);}:null;}};
+ });await page.goto('/paths?pathScope=all');await ready(page);const revision=(await analysis()).revision,before=await viewportValue(page);await page.getByLabel('编辑画布',{exact:true}).click();
+ const source=page.locator('.react-flow__node[data-id="'+a.id+'"]'),target=page.locator('.react-flow__node[data-id="'+b.id+'"]');
+ const connect=async()=>{await source.locator('.business-handle[data-side="bottom"]').click();await target.locator('.dependency-card').click({position:{x:80,y:45}});};
+ await connect();await ready(page);await connect();await expect(page.getByRole('button',{name:'查看已有关系',exact:true})).toBeVisible();await page.getByRole('button',{name:'查看已有关系',exact:true}).click();await expect(page.locator('.graph-relation-list')).toContainText('验收后开始');
+ await page.locator('.graph-auxiliary').getByRole('button',{name:'关闭',exact:true}).click();for(let i=0;i<3;i++){await page.getByLabel('撤销',{exact:true}).click();await page.getByLabel('重做',{exact:true}).click();}await ready(page);
+ expect(await viewportValue(page)).toBe(before);await expect.poll(()=>page.locator('.graph-routed-edge').evaluateAll(es=>es.map(e=>Number(e.getAttribute('opacity'))))).toEqual([1]);await expect(page.locator('.react-flow__edge-path')).toHaveCount(1);expect((await analysis()).revision).toBe(revision);
+});
+
+test('路由失败保留上一份节点和线路，重试后应用草稿位置且视口不动',async({page})=>{
+ const {a,analysis}=await fixture(page);
+ await page.route('**/fixed-routing.worker*.js',async route=>{const response=await route.fetch();await route.fulfill({response,body:await response.text()+';{const handle=self.onmessage;let calls=0;self.onmessage=e=>{if(++calls===2)self.postMessage({id:e.data.id,error:"模拟路由失败"});else handle(e);};}'});});
+ await page.goto('/paths?pathScope=all');await ready(page);const previous=await positionsValue(page),view=await viewportValue(page),revision=(await analysis()).revision;await page.getByLabel('编辑画布',{exact:true}).click();
+ const node=page.locator('.react-flow__node[data-id="'+a.id+'"]'),box=(await node.boundingBox())!;await page.mouse.move(box.x+80,box.y+40);await page.mouse.down();await page.mouse.move(box.x+112,box.y+88,{steps:8});await page.mouse.up();
+ await expect(page.locator('.graph-error-notice')).toContainText('保留上次有效画面');expect(await positionsValue(page)).toEqual(previous);expect(await viewportValue(page)).toBe(view);expect(await page.locator('.graph-routed-edge').getAttribute('opacity')).toBe('1');
+ await page.getByRole('button',{name:'重试连线',exact:true}).click();await ready(page);await expect(page.locator('.graph-error-notice')).toHaveCount(0);expect((await positionsValue(page))[a.id]).not.toBe(previous[a.id]);expect(await viewportValue(page)).toBe(view);expect((await analysis()).revision).toBe(revision);
+});
 
 test('紧凑工作区：移动、Alt复制、独立里程碑、草稿恢复与原子保存',async({page},testInfo)=>{
  const {project,analysis}=await fixture(page);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/templates?edit=new');await ready(page);

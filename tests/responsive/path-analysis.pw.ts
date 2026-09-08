@@ -85,7 +85,7 @@ test('拖线与点击连接点创建；循环指出端点；流程属性与并�
  // Explicitly clear before adding through business handles. These handles are separate from ELK's route ports.
  await page.getByRole('button',{name:'清空',exact:true}).last().click();await ready(page);
  await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();
- if(await page.locator('.graph-auxiliary').count())await page.locator('.graph-auxiliary').getByRole('button',{name:'关闭',exact:true}).click();
+ if(await page.locator('.graph-auxiliary[aria-hidden="false"]').count())await page.locator('.graph-auxiliary[aria-hidden="false"]').getByRole('button',{name:'关闭',exact:true}).click();
  await page.getByRole('button',{name:'适配视图',exact:true}).click();await page.waitForTimeout(300);
  const source=page.locator('.react-flow__node').filter({hasText:'设计'}).locator('.business-handle[data-side="left"]');
  const dest=page.locator('.react-flow__node').filter({hasText:'并行审核'}).locator('.dependency-card');
@@ -129,7 +129,7 @@ test('真实拖线建立合法跨需求往返；搜索不裁图，退出聚焦�
  await page.getByRole('button',{name:'编辑画布',exact:true}).click();await openMore(page);await page.getByLabel('添加元素',{exact:true}).click();await page.locator('.graph-elements').getByRole('button',{name:'已有对象',exact:true}).click();
  await page.getByLabel('搜索已有对象',{exact:true}).fill('集成验证');await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:'集成验证'}).filter({hasText:a.title}).click();await ready(page);
  await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();
- if(await page.locator('.graph-auxiliary').count())await page.locator('.graph-auxiliary').getByRole('button',{name:'关闭',exact:true}).click();
+ if(await page.locator('.graph-auxiliary[aria-hidden="false"]').count())await page.locator('.graph-auxiliary[aria-hidden="false"]').getByRole('button',{name:'关闭',exact:true}).click();
  await page.getByRole('button',{name:'适配视图',exact:true}).click();await page.waitForTimeout(300);
  const from=page.locator('.react-flow__node[data-id="'+b.workItems[1].id+'"] .business-handle[data-side="left"]');
  const to=page.locator('.react-flow__node[data-id="'+a.workItems[1].id+'"] .dependency-card');

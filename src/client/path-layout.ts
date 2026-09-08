@@ -2,6 +2,17 @@ import type { ElkNode } from 'elkjs/lib/elk-api';
 export type LayoutNode = { id: string; width: number; height: number };
 export type LayoutEdge = { id: string; source: string; target: string; label?: string; labelWidth?:number };
 export type Point = { x: number; y: number };
+export function roundedRoutePath(points:Point[],radius=6):string{
+  if(!points.length)return '';
+  let path=`M ${points[0].x} ${points[0].y}`;
+  for(let i=1;i<points.length-1;i++){
+    const a=points[i-1],b=points[i],c=points[i+1],before=Math.hypot(b.x-a.x,b.y-a.y),after=Math.hypot(c.x-b.x,c.y-b.y),r=Math.min(radius,before/2,after/2);
+    if(!r)continue;
+    const p={x:b.x-(b.x-a.x)*r/before,y:b.y-(b.y-a.y)*r/before},q={x:b.x+(c.x-b.x)*r/after,y:b.y+(c.y-b.y)*r/after};
+    path+=` L ${p.x} ${p.y} Q ${b.x} ${b.y} ${q.x} ${q.y}`;
+  }
+  const end=points.at(-1)!;return path+` L ${end.x} ${end.y}`;
+}
 export type RoutedLayout = { nodes: Record<string, Point>; edges: Record<string, { points: Point[]; label: (Point & {width:number}) | null }>; width: number; height: number };
 export const inputPort = (edgeId: string) => `in:${edgeId}`;
 export const outputPort = (edgeId: string) => `out:${edgeId}`;
