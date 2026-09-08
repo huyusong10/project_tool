@@ -62,6 +62,7 @@ export function useGraphConnection(options:Options){
   return {gesture,current,cancel,begin,choose,
     pointerDown(event:React.PointerEvent<HTMLDivElement>){
       const element=event.target as HTMLElement;
+      if(event.button!==0){cancel();return;}
       if(element.closest('.graph-overlay,.graph-view-controls,.dependency-layout-notice')){cancel();return;}
       if(current.current?.pointerId===null){event.preventDefault();event.stopPropagation();suppressClick.current=true;finish({x:event.clientX,y:event.clientY},false);setTimeout(()=>{suppressClick.current=false;},0);return;}
       const handle=element.closest<HTMLElement>('.business-handle'),node=handle?.closest<HTMLElement>('.react-flow__node');

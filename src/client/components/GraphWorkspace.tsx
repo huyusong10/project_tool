@@ -5,7 +5,7 @@ import {useDismissLayer} from '../use-dismiss-layer';
 import {FindTool} from './EditorToolbar';
 type PanelSize='compact'|'timeline'|'expanded';
 function FloatingPanel({content,side,replacement,contentKey,analysis=false,size='compact',onDismiss}:{onDismiss?:()=>void;analysis?:boolean;size?:PanelSize;content:ReactNode;side:'left'|'right';replacement:boolean;contentKey?:string}){
-  const ref=useRef<HTMLElement>(null);
+  const ref=useRef<HTMLElement>(null),hadFocus=useRef(false);
   useDismissLayer(ref,!!content&&!!onDismiss,()=>onDismiss?.(),side==='right'?'.graph-overlay,.graph-view-controls,.react-flow__node,.react-flow__edge,.dependency-layout-notice':'.graph-toolbar,.graph-tool-rail,.graph-finder,.graph-footer,.graph-view-controls,.dependency-layout-notice');
   const [retained,setRetained]=useState(content?{content,contentKey,analysis,size}:null),geometry=useRef<CSSProperties|undefined>(undefined);
   useLayoutEffect(()=>{
@@ -15,11 +15,14 @@ function FloatingPanel({content,side,replacement,contentKey,analysis=false,size=
       const measure=()=>{geometry.current={left:element.offsetLeft,top:element.offsetTop,right:'auto',bottom:'auto',width:element.offsetWidth,height:element.offsetHeight,maxWidth:'none',maxHeight:'none'};};
       measure();const observer=new ResizeObserver(measure);observer.observe(element);return()=>observer.disconnect();
     }
+    const active=document.activeElement;
+    if(hadFocus.current&&(active===document.body||active instanceof Node&&ref.current?.contains(active)))ref.current?.closest<HTMLElement>('.dependency-canvas')?.focus({preventScroll:true});
+    hadFocus.current=false;
     const timer=setTimeout(()=>setRetained(null),matchMedia('(prefers-reduced-motion:reduce)').matches?0:200);return()=>clearTimeout(timer);
   },[content,contentKey,analysis,size]);
   const shown=content?{content,contentKey,analysis,size}:retained;
   if(!shown||!content&&replacement&&matchMedia('(max-width:800px)').matches)return null;
-  return <aside ref={ref} className={(side==='right'?'graph-detail':'graph-auxiliary')+' graph-overlay nopan nodrag nowheel'+(!content?' is-leaving':'')} data-graph-panel={shown.analysis?'bottom':side} data-size={shown.size} style={!content?geometry.current:undefined} aria-hidden={!content} inert={!content}><div key={shown.contentKey} className="graph-panel-content">{shown.content}</div></aside>;
+  return <aside ref={ref} onFocusCapture={()=>{hadFocus.current=true;}} onBlurCapture={e=>{if(e.relatedTarget instanceof Node&&!e.currentTarget.contains(e.relatedTarget))hadFocus.current=false;}} className={(side==='right'?'graph-detail':'graph-auxiliary')+' graph-overlay nopan nodrag nowheel'+(!content?' is-leaving':'')} data-graph-panel={shown.analysis?'bottom':side} data-size={shown.size} style={!content?geometry.current:undefined} aria-hidden={!content} inert={!content}><div key={shown.contentKey} className="graph-panel-content">{shown.content}</div></aside>;
 }
 export function GraphWorkspace({ toolbar, detail, auxiliary, footer, finder,palette,analysis=false,auxiliarySize='compact',onDismissDetail,onDismissAuxiliary, ...graph }: ComponentProps<typeof DependencyGraph> & {
   onDismissDetail?:()=>void;onDismissAuxiliary?:()=>void;toolbar: ReactNode; detail?: ReactNode; auxiliary?: ReactNode; footer?: ReactNode;finder?:ReactNode;palette?:ReactNode;analysis?:boolean;auxiliarySize?:PanelSize;
@@ -46,7 +49,12 @@ export function GraphWorkspace({ toolbar, detail, auxiliary, footer, finder,pale
     const observer=new ResizeObserver(update);[element,toolbar,footer,controls,element.querySelector('.graph-finder')].filter((e):e is HTMLElement=>!!e).forEach(e=>observer.observe(e));update();
     return()=>observer.disconnect();
   },[finding]);
-  return <section ref={root} className={'graph-workspace graph-editor-workspace'+(finding?' has-finder':'')+(analysis?' has-analysis':'')+(detail?' has-inspector':'')} aria-label="交付依赖工作区" onKeyDown={e=>{if(e.key==='Escape'&&!e.defaultPrevented&&root.current?.querySelector('.dependency-canvas')?.getAttribute('data-connection-active')!=='true'){if(auxiliary){e.preventDefault();onDismissAuxiliary?.();}else if(detail){e.preventDefault();onDismissDetail?.();}}}}>
+  return <section ref={root} className={'graph-workspace graph-editor-workspace'+(finding?' has-finder':'')+(analysis?' has-analysis':'')+(detail?' has-inspector':'')} aria-label="交付依赖工作区" onKeyDown={e=>{if(e.key!=='Escape'||e.defaultPrevented||e.nativeEvent.isComposing||e.nativeEvent.keyCode===229||root.current?.querySelector('.dependency-canvas')?.getAttribute('data-connection-active')==='true')return;
+      const target=e.target as HTMLElement;
+      if(target.closest('.graph-finder')){e.preventDefault();e.stopPropagation();setFinding(false);root.current?.querySelector<HTMLElement>('.graph-tool-rail [aria-label="查找与筛选"]')?.focus({preventScroll:true});}
+      else if(target.closest('.graph-auxiliary')&&auxiliary){e.preventDefault();e.stopPropagation();onDismissAuxiliary?.();root.current?.querySelector<HTMLElement>('.dependency-canvas')?.focus({preventScroll:true});}
+      else if(target.closest('.graph-detail')&&detail){e.preventDefault();e.stopPropagation();onDismissDetail?.();root.current?.querySelector<HTMLElement>('.dependency-canvas')?.focus({preventScroll:true});}
+    }}>
     <DependencyGraph {...graph} onDismissOverlays={()=>{if(auxiliary){onDismissAuxiliary?.();return true;}if(detail){onDismissDetail?.();return true;}if(finding){setFinding(false);return true;}return false;}} onSearch={()=>{setFinding(true);graph.onSearch?.();requestAnimationFrame(()=>root.current?.querySelector<HTMLInputElement>('.graph-finder input')?.focus());}}>
       <div className="graph-toolbar graph-overlay nopan nodrag nowheel" data-graph-panel="top">{toolbar}</div>
       <div className="graph-tool-rail graph-overlay nopan nodrag nowheel" data-graph-panel="left">{palette}{finder&&<FindTool onClick={()=>setFinding(v=>!v)}/>}</div>

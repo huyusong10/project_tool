@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ReactFlow, ReactFlowProvider, Background, Handle, Position, BaseEdge, useNodesState, useNodesInitialized,
   useReactFlow, useUpdateNodeInternals, useViewport, useStore, type Node, type NodeProps, type EdgeProps,
-  type Edge, type Viewport } from '@xyflow/react';
+  type Edge, type Viewport, type NodeChange } from '@xyflow/react';
 import ELK from 'elkjs/lib/elk-api';
 import workerUrl from 'elkjs/lib/elk-worker.min.js?url';
 import '@xyflow/react/dist/style.css';
@@ -50,9 +50,10 @@ const Card = memo(function Card({ id, data, selected }: NodeProps<CardNode>) {
     <Handle id="route-in" type="target" position={side(true)} className="route-handle" isConnectable={false}/>
     <div className="dependency-card-top"><span>{data.kind==='template'?'流程工作':data.kind==='milestone'?'里程碑':data.external ? '关联需求' : data.critical ? '关键路径' : requirementStatusLabels[data.status as keyof typeof requirementStatusLabels] || '交付条件'}</span>
       {data.kind!=='template'&&<span className={'risk-badge risk-' + data.risk}>{['completed', 'cancelled'].includes(data.status) ? '已结束' : riskLabels[data.risk as keyof typeof riskLabels] || '待评估'}</span>}</div>
-    <strong title={data.title} tabIndex={data.editing?0:undefined} data-inline-title={id} onDoubleClick={e=>{if(!data.editing||!data.rename||['start','acceptance','project'].includes(data.kind))return;e.stopPropagation();e.currentTarget.contentEditable='true';e.currentTarget.focus();const range=document.createRange();range.selectNodeContents(e.currentTarget);const selection=window.getSelection();selection?.removeAllRanges();selection?.addRange(range);}}
-      onBlur={e=>{if(e.currentTarget.contentEditable==='true'){e.currentTarget.contentEditable='false';const title=e.currentTarget.textContent?.trim();if(title&&title!==data.title)data.rename?.(id,title);else e.currentTarget.textContent=data.title;}}}
-      onKeyDown={e=>{if(e.currentTarget.contentEditable!=='true')return;e.stopPropagation();if(e.key==='Enter'){e.preventDefault();e.currentTarget.blur();}if(e.key==='Escape'){e.currentTarget.textContent=data.title;e.currentTarget.blur();}}}>{data.title}</strong><small title={data.subtitle}>{data.subtitle}</small>
+    <strong title={data.title} tabIndex={data.editing?0:undefined} data-inline-title={id} onDoubleClick={e=>{if(!data.editing||!data.rename||['start','acceptance','project'].includes(data.kind))return;e.stopPropagation();e.currentTarget.contentEditable='true';e.currentTarget.classList.add('nodrag','nopan');e.currentTarget.focus();const range=document.createRange();range.selectNodeContents(e.currentTarget);const selection=window.getSelection();selection?.removeAllRanges();selection?.addRange(range);}}
+      onBlur={e=>{if(e.currentTarget.contentEditable==='true'){e.currentTarget.contentEditable='false';e.currentTarget.classList.remove('nodrag','nopan');const title=e.currentTarget.textContent?.trim();if(title&&title!==data.title)data.rename?.(id,title);else e.currentTarget.textContent=data.title;}}}
+      onClick={e=>{if(e.currentTarget.contentEditable==='true')e.stopPropagation();}}
+      onKeyDown={e=>{if(e.currentTarget.contentEditable!=='true')return;e.stopPropagation();if(e.nativeEvent.isComposing||e.nativeEvent.keyCode===229)return;if(e.key==='Enter'){e.preventDefault();e.currentTarget.blur();}if(e.key==='Escape'){e.currentTarget.textContent=data.title;e.currentTarget.blur();}}}>{data.title}</strong><small title={data.subtitle}>{data.subtitle}</small>
     <div className="dependency-card-bottom"><span>{data.forecast || '交付待确认'}</span>{data.kind!=='template'&&<span>{data.floatDays === null ? '余量待确认' : '余量 ' + data.floatDays + ' 天'}</span>}</div>
     <small>{data.context?'关联上下文':data.unknown ? '交付条件待确认' : data.hiddenCount ? '另有 ' + data.hiddenCount + ' 条关系' : '\u00a0'}</small>
     <Handle id="route-out" type="source" position={side(false)} className="route-handle" isConnectable={false}/>
@@ -86,12 +87,22 @@ function Graph(props: DependencyGraphProps) {
   useEffect(()=>{if(!busy){setSlowBusy(false);return;}const timer=setTimeout(()=>setSlowBusy(true),800);return()=>clearTimeout(timer);},[busy]);
   const dismissError=()=>{setError('');setConnectionIssue(null);props.onClearIssue?.();};
   useEffect(()=>{if(connectionIssue&&props.invalidNodes&&!props.invalidNodes.length){setConnectionIssue(null);setError('');}},[connectionIssue,props.invalidNodes]);
-  const [nodes,setNodes,onNodesChange]=useNodesState<CardNode>([]),initialized=useNodesInitialized();
-  const [selectedIds,setSelectedIds]=useState<string[]>(selected?[selected]:[]),[dragTick,setDragTick]=useState(0);
-  const selectionChanged=useCallback(({nodes:selectedNodes}:{nodes:CardNode[]})=>{const ids=selectedNodes.map(n=>n.id).sort();setSelectedIds(old=>JSON.stringify([...old].sort())===JSON.stringify(ids)?old:ids);},[]);
+  const [nodes,setNodes,applyNodeChanges]=useNodesState<CardNode>([]),initialized=useNodesInitialized();
+  const [selectedIds,setSelectionState]=useState<string[]>(selected?[selected]:[]),[dragTick,setDragTick]=useState(0);
+  const selectionRef=useRef(selectedIds);
+  const setSelectedIds=useCallback((value:string[]|((old:string[])=>string[]))=>{const next=typeof value==='function'?value(selectionRef.current):value;selectionRef.current=next;setSelectionState(next);},[]);
+  // Selection changes enter through the controlled node updates only. Reading them
+  // back from onSelectionChange races controlled props when an edge deselects nodes.
+  const onNodesChange=useCallback((changes:NodeChange<CardNode>[])=>{
+    const selection=changes.filter(c=>c.type==='select');
+    if(selection.length)setSelectedIds(old=>{const ids=new Set(old);for(const c of selection){if(c.selected)ids.add(c.id);else ids.delete(c.id);}const next=[...ids].sort();return JSON.stringify([...old].sort())===JSON.stringify(next)?old:next;});
+    applyNodeChanges(changes);
+  },[applyNodeChanges,setSelectedIds]);
+  const canvasSelection=useRef<string|null>(null);
+  const selectFromCanvas=(id:string)=>{canvasSelection.current=id;onSelect(id);};
   const drag=useRef<{ids:string[];original:Record<string,Point>;copy:boolean;cancelled?:boolean}|null>(null),manualPending=useRef(false),clipboard=useRef<{ids:string[];nodes:ReturnType<typeof positioned>;snapshot?:unknown}>({ids:[],nodes:[]}),latestProps=useRef(props);latestProps.current=props;
   const rename=useCallback((id:string,title:string)=>latestProps.current.onRename?.(id,title),[]);
-  useEffect(()=>{setSelectedIds(old=>selected&&!old.includes(selected)?[selected]:old);},[selected]);
+  useEffect(()=>{if(canvasSelection.current===selected){canvasSelection.current=null;return;}canvasSelection.current=null;setSelectedIds(selected?[selected]:[]);},[selected,setSelectedIds]);
   const router=useRef<Worker|null>(null),requests=useRef(new Map<number,{resolve:(l:RoutedLayout)=>void;reject:(e:Error)=>void}>()),routeSequence=useRef(0);
   useEffect(()=>{const worker=new Worker(new URL('../fixed-routing.worker.ts',import.meta.url),{type:'module'});router.current=worker;worker.onmessage=e=>{const request=requests.current.get(e.data.id);if(request){requests.current.delete(e.data.id);if(e.data.error)request.reject(new Error(e.data.error));else request.resolve(e.data.layout);}};const pending=requests.current;return()=>{worker.terminate();for(const r of pending.values())r.reject(new Error('画布已关闭'));pending.clear();};},[]);
   const fixedRoute=(positions:Record<string,Point>,activeNodes:CardNode[])=>new Promise<RoutedLayout>((resolve,reject)=>{const id=++routeSequence.current;requests.current.set(id,{resolve,reject});router.current!.postMessage({id,nodes:activeNodes.map(n=>({id:n.id,width:n.measured!.width!,height:n.measured!.height!,...positions[n.id]})),edges:measuredLinks});});
@@ -106,6 +117,12 @@ function Graph(props: DependencyGraphProps) {
   const viewportRef=useRef(viewport);viewportRef.current=viewport;
   const visibleRef=useRef(props.visibleIds);visibleRef.current=props.visibleIds;
   const baseKey=viewKey+(vertical?':down':':right'),viewportKey=baseKey+':current';
+  // Unsaved diagrams need an origin for undoing their first move, including after
+  // restoring a local draft. This display cache never becomes a formal layout.
+  const originKey='pm-graph-view:'+baseKey+':layout-origin';
+  const originCache=useRef<Record<string,Point>|null>(null);
+  if(!originCache.current)try{const raw=JSON.parse(localStorage.getItem(originKey)||'{}') as Record<string,Point>;originCache.current=Object.fromEntries(Object.entries(raw).filter(([,p])=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y)));}catch{originCache.current={};}
+  const layoutOrigin=originCache.current;
   const focusWas=useRef(props.focusId||'');
   const reduced=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
   const beforeFocus=useRef<Viewport|null>(readViewport(baseKey+':before-focus')||null);
@@ -201,7 +218,7 @@ function Graph(props: DependencyGraphProps) {
       if(cancelled)return;
       const start=performance.now();performance.measure('pm-path-layout-wait',{start:requested,end:start});setPhase('layout');
       try{
-        const savedPositions={...(layoutRef.current?.nodes||{}),...(props.positions||{})};
+        const savedPositions={...(layoutRef.current?.nodes||{}),...(!initial?layoutOrigin:{}),...(props.positions||{})};
         let layout:RoutedLayout;
         if(!reset&&Object.keys(savedPositions).length){const positioned=activeNodes.filter(n=>savedPositions[n.id]).map(n=>({id:n.id,...savedPositions[n.id],width:n.measured!.width!,height:n.measured!.height!}));for(const n of activeNodes)if(!savedPositions[n.id]){const p=vacantPosition(positioned,n.id,{x:Math.max(0,...positioned.map(n=>n.x+n.width))+64,y:32},n.measured!.width!,n.measured!.height!);savedPositions[n.id]=p;positioned.push({id:n.id,...p,width:n.measured!.width!,height:n.measured!.height!});}layout=await fixedRoute(savedPositions,activeNodes);}
         else {
@@ -213,7 +230,7 @@ function Graph(props: DependencyGraphProps) {
         performance.measure('pm-path-layout',{start,end:performance.now()});
         // Snapshot after the gesture ends. A result arriving during a drag must not
         // remember its intermediate position and replay it after Esc.
-        while(connectionRef.current||drag.current){await new Promise(resolve=>setTimeout(resolve,16));if(cancelled||id!==generation.current)return;}
+        while(connectionRef.current||drag.current&&!drag.current.cancelled){await new Promise(resolve=>setTimeout(resolve,16));if(cancelled||id!==generation.current)return;}
         const startNodes=flow.getNodes(),positions=new Map(startNodes.map(n=>[n.id,displayPositions.current.get(n.id)||n.position])),old=sceneRef.current;
         const moved=new Set(Object.keys(layout.nodes).filter(key=>positions.has(key)&&(positions.get(key)!.x!==layout.nodes[key].x||positions.get(key)!.y!==layout.nodes[key].y)));
         const affected=new Set([...(old?.links||[]),...links].filter(e=>moved.has(e.source)||moved.has(e.target)||JSON.stringify(old?.layout.edges[e.id])!==JSON.stringify(layout.edges[e.id])).map(e=>e.id));
@@ -227,6 +244,8 @@ function Graph(props: DependencyGraphProps) {
           container.current?.querySelectorAll<HTMLElement>('.react-flow__node').forEach(element=>{const p=layout.nodes[element.dataset.id!];if(p){element.style.transform='translate('+p.x+'px, '+p.y+'px)';element.style.opacity='1';element.style.pointerEvents='';element.style.willChange='';}});
           setNodes(current=>current.filter(n=>!!layout.nodes[n.id]).map(n=>({...n,position:layout.nodes[n.id],style:{...n.style,opacity:1,pointerEvents:undefined}})));
           setScene({layout,links});layoutRef.current=layout;manualPending.current=false;setEdgeFade({ids:new Set(),opacity:1});setFeedback(null);
+          let captured=false;for(const [key,point] of Object.entries(layout.nodes))if(!layoutOrigin[key]||initial&&!Object.keys(props.positions||{}).length){layoutOrigin[key]={x:point.x,y:point.y};captured=true;}
+          if(captured)try{localStorage.setItem(originKey,JSON.stringify(layoutOrigin));}catch{/* In-memory undo remains available. */}
           latestProps.current.onLayoutReady?.(layout.nodes);lastArrange.current=arrange;lastDirection.current=vertical;first.current=false;if(reset&&editing)latestProps.current.onPositions?.(layout.nodes,vertical?'down':'right');
           if(initial){
 
@@ -248,7 +267,7 @@ function Graph(props: DependencyGraphProps) {
         const tick=(now:number)=>{
           if(cancelled||id!==generation.current)return;
           const delta=now-last;last=now;
-          if(connectionRef.current||drag.current||published&&committedScene.current?.layout!==layout){frame=requestAnimationFrame(tick);return;}
+          if(connectionRef.current||drag.current&&!drag.current.cancelled||published&&committedScene.current?.layout!==layout){frame=requestAnimationFrame(tick);return;}
           elapsed+=delta;
           const state=graphMotionFrame(elapsed,moved.size>0);container.current!.dataset.layoutPhase=state.phase;
           if(state.position===1&&!published){setScene({layout,links});setEdgeFade({ids:affected,opacity:0});published=true;}
@@ -322,6 +341,11 @@ function Graph(props: DependencyGraphProps) {
     container.current?.querySelectorAll<HTMLElement>('.react-flow__edge').forEach(e=>{const edge=linkById.get(e.dataset.id!);e.querySelector('.graph-edge-presentation')?.classList.toggle('is-dimmed',focused&&!!edge&&(!emphasized.has(edge.source)||!emphasized.has(edge.target)));});
   },[props.focusId,props.emphasizedIds,linkById,nodes,edges]);
   const restoreDrag=()=>{const d=drag.current;if(!d)return;displayPositions.current=new Map(Object.entries(d.original));manualPending.current=Object.entries(d.original).some(([id,p])=>p.x!==layoutRef.current?.nodes[id]?.x||p.y!==layoutRef.current?.nodes[id]?.y);setNodes(ns=>ns.map(n=>({...n,position:d.original[n.id]||n.position})));setEdgeFade({ids:new Set(),opacity:1});setDragTick(t=>t+1);};
+  const cancelDrag=()=>{if(!drag.current)return false;drag.current.cancelled=true;restoreDrag();return true;};
+  const interruptDrag=useRef(cancelDrag);interruptDrag.current=cancelDrag;
+  useEffect(()=>{const cancel=()=>{interruptDrag.current();},hidden=()=>{if(document.hidden)cancel();};window.addEventListener('blur',cancel);document.addEventListener('pointercancel',cancel);document.addEventListener('visibilitychange',hidden);return()=>{window.removeEventListener('blur',cancel);document.removeEventListener('pointercancel',cancel);document.removeEventListener('visibilitychange',hidden);};},[]);
+  const actionableIds=selectedIds.filter(id=>cards.some(c=>c.id===id)&&(!props.visibleIds||props.visibleIds.includes(id)));
+  const editableIds=actionableIds.filter(id=>!['start','acceptance','project'].includes(cards.find(c=>c.id===id)?.kind||''));
   const displayedPositions=()=>Object.fromEntries(flow.getNodes().map(n=>[n.id,{...(displayPositions.current.get(n.id)||n.position)}]));
   const commitMove=(positions:Record<string,Point>)=>{if(JSON.stringify(positions)!==JSON.stringify(props.positions))generation.current++;manualPending.current=true;lastArrange.current=arrange;displayPositions.current=new Map(Object.entries(positions));setNodes(ns=>ns.map(n=>({...n,position:positions[n.id]||n.position})));props.onPositions?.(positions,vertical?'down':'right');};
   const positioned=()=>flow.getNodes().map(n=>({id:n.id,...n.position,width:n.measured?.width||244,height:n.measured?.height||154}));
@@ -346,9 +370,9 @@ function Graph(props: DependencyGraphProps) {
     data-layout-ready={!busy} data-layout-phase={phase} data-rendered-layout={rendered} data-connection-active={!!gesture}
     onPointerDownCapture={event=>{
       const endpoint=(event.target as HTMLElement).closest<HTMLElement>('[data-reconnect-end]');
-      if(endpoint&&props.reconnect){event.preventDefault();event.stopPropagation();const end=endpoint.dataset.reconnectEnd as 'source'|'target';connection.begin(end==='source'?props.reconnect.target:props.reconnect.source,'right',{x:event.clientX,y:event.clientY},event.pointerId,end);return;}
+      if(endpoint&&props.reconnect&&event.button===0){event.preventDefault();event.stopPropagation();const end=endpoint.dataset.reconnectEnd as 'source'|'target';connection.begin(end==='source'?props.reconnect.target:props.reconnect.source,'right',{x:event.clientX,y:event.clientY},event.pointerId,end);return;}
       connection.pointerDown(event);
-      if(!event.isPropagationStopped()&&!(event.target as HTMLElement).closest('.graph-overlay,.graph-view-controls,input,button,select,textarea'))event.currentTarget.focus({preventScroll:true});
+      if(!event.isPropagationStopped()&&!(event.target as HTMLElement).closest('.graph-overlay,.graph-view-controls,input,button,select,textarea,[contenteditable=true]'))event.currentTarget.focus({preventScroll:true});
     }}
     onDragOver={e=>{if(editing&&e.dataTransfer.types.includes('application/pm-element')){e.preventDefault();e.dataTransfer.dropEffect='copy';}}}
     onDrop={e=>{if(!editing||(e.target as HTMLElement).closest('.graph-overlay,.graph-view-controls'))return;const kind=e.dataTransfer.getData('application/pm-element');if(kind){e.preventDefault();createAt(kind,flow.screenToFlowPosition({x:e.clientX,y:e.clientY}));}}}
@@ -356,6 +380,9 @@ function Graph(props: DependencyGraphProps) {
     onMouseDownCapture={event=>{if(event.button===1)event.preventDefault();}}
     onAuxClick={event=>{if(event.button===1)event.preventDefault();}}
     onKeyDownCapture={event=>{
+      if(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229)return;
+      const mod=event.ctrlKey||event.metaKey,key=event.key.toLowerCase();
+      if(mod&&key==='s'){event.preventDefault();event.stopPropagation();if(cancelDrag())return;connection.cancel();const active=document.activeElement;if(active instanceof HTMLElement&&container.current?.contains(active))active.blur();requestAnimationFrame(()=>latestProps.current.onSave?.());return;}
       if((event.target as HTMLElement).closest('.graph-overlay,.graph-view-controls,input,textarea,select,[contenteditable=true]'))return;
       const handle=(event.target as HTMLElement).closest<HTMLElement>('.business-handle');
       if(editing&&handle&&['Enter',' '].includes(event.key)){
@@ -365,14 +392,14 @@ function Graph(props: DependencyGraphProps) {
         const node=(event.target as HTMLElement).closest<HTMLElement>('.react-flow__node:not(.graph-node-hidden)');
         if(node?.dataset.id){event.preventDefault();event.stopPropagation();connection.choose(node.dataset.id);return;}
       }
-      if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'&&(props.onUndo||props.onRedo)){event.preventDefault();connection.cancel();if(event.shiftKey)props.onRedo?.();else props.onUndo?.();}
-      const mod=event.ctrlKey||event.metaKey,key=event.key.toLowerCase();
-      if(mod&&['s','f','c','v'].includes(key)){event.preventDefault();if(key==='s')props.onSave?.();if(key==='f')props.onSearch?.();if(key==='c')clipboard.current={ids:[...selectedIds],nodes:positioned(),snapshot:props.onCopy?.(selectedIds)};if(key==='v'&&editing)duplicate(clipboard.current.ids,32,clipboard.current.snapshot,clipboard.current.nodes);}
-      if(editing&&event.key==='Delete'){event.preventDefault();props.onDelete?.(selectedIds,props.selectedEdge);}
-      if(editing&&event.key==='F2'&&selected&&!['start','acceptance','project'].includes(cards.find(c=>c.id===selected)?.kind||'')){event.preventDefault();const el=container.current?.querySelector<HTMLElement>('[data-inline-title="'+CSS.escape(selected)+'"]');if(el){el.contentEditable='true';el.focus();const range=document.createRange();range.selectNodeContents(el);window.getSelection()?.removeAllRanges();window.getSelection()?.addRange(range);}}
-      if(editing&&event.key.startsWith('Arrow')&&selectedIds.length){event.preventDefault();event.stopPropagation();const delta=event.shiftKey?10:1,p=displayedPositions();for(const id of selectedIds){const n=p[id];if(n)p[id]={x:n.x+(event.key==='ArrowLeft'?-delta:event.key==='ArrowRight'?delta:0),y:n.y+(event.key==='ArrowUp'?-delta:event.key==='ArrowDown'?delta:0)};}commitMove(p);}
-      if(event.key==='Escape'&&drag.current){event.preventDefault();event.stopPropagation();drag.current.cancelled=true;restoreDrag();return;}
-      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(connectionRef.current)connection.cancel();else if(props.onDismissOverlays?.()){dismissError();return;}else {props.onExitFocus?.();if(!props.focusId&&!props.placing){setSelectedIds([]);onSelect('');}}dismissError();}
+      if(mod&&key==='z'&&(props.onUndo||props.onRedo)){event.preventDefault();event.stopPropagation();if(cancelDrag())return;connection.cancel();if(event.shiftKey)props.onRedo?.();else props.onUndo?.();return;}
+      if(mod&&key==='a'){event.preventDefault();event.stopPropagation();selectFromCanvas('');setSelectedIds(cards.filter(c=>!props.visibleIds||props.visibleIds.includes(c.id)).map(c=>c.id));return;}
+      if(mod&&['f','c','v'].includes(key)){event.preventDefault();event.stopPropagation();if(key==='f')props.onSearch?.();if(key==='c')clipboard.current={ids:props.selectedEdge?[]:[...editableIds],nodes:positioned(),snapshot:props.onCopy?.(editableIds)};if(key==='v'&&editing&&clipboard.current.ids.length)duplicate(clipboard.current.ids,32,clipboard.current.snapshot,clipboard.current.nodes);return;}
+      if(editing&&event.key==='Delete'){event.preventDefault();event.stopPropagation();if(editableIds.length||props.selectedEdge)props.onDelete?.(editableIds,props.selectedEdge);return;}
+      if(editing&&event.key==='F2'&&actionableIds.includes(selected)&&!props.selectedEdge&&!['start','acceptance','project'].includes(cards.find(c=>c.id===selected)?.kind||'')){event.preventDefault();const el=container.current?.querySelector<HTMLElement>('[data-inline-title="'+CSS.escape(selected)+'"]');if(el){el.contentEditable='true';el.classList.add('nodrag','nopan');el.focus();const range=document.createRange();range.selectNodeContents(el);window.getSelection()?.removeAllRanges();window.getSelection()?.addRange(range);}}
+      if(editing&&event.key.startsWith('Arrow')&&actionableIds.length&&!props.selectedEdge){event.preventDefault();event.stopPropagation();const delta=event.shiftKey?10:1,p=displayedPositions();for(const id of actionableIds){const n=p[id];if(n)p[id]={x:n.x+(event.key==='ArrowLeft'?-delta:event.key==='ArrowRight'?delta:0),y:n.y+(event.key==='ArrowUp'?-delta:event.key==='ArrowDown'?delta:0)};}commitMove(p);}
+      if(event.key==='Escape'&&drag.current){event.preventDefault();event.stopPropagation();cancelDrag();return;}
+      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(connectionRef.current)connection.cancel();else if(props.placing){props.onExitFocus?.();return;}else if(props.onDismissOverlays?.()){dismissError();return;}else {props.onExitFocus?.();if(!props.focusId&&!props.placing){setSelectedIds([]);selectFromCanvas('');}}dismissError();}
     }}>
     {!rendered&&slowBusy&&<div className="graph-initial-loader" role="status"><LoaderCircle size={20}/>正在准备画布</div>}
     {hint&&<div className={'dependency-layout-notice graph-connection-hint'+(gesture?.issue?' is-invalid':'')} style={gesture&&rect?{left:Math.max(12,Math.min(gesture.point.x-rect.left+16,rect.width-260)),top:Math.max((container.current?.querySelector('.graph-toolbar')?.getBoundingClientRect().height||48)+12,Math.min(gesture.point.y-rect.top+20,rect.height-110)),transform:'none'}:undefined} role="status">{hint}</div>}
@@ -382,16 +409,15 @@ function Graph(props: DependencyGraphProps) {
       zoomOnScroll zoomOnPinch zoomOnDoubleClick={false} panOnScroll={false} preventScrolling zoomActivationKeyCode={null}
       panActivationKeyCode="Space" panOnDrag={[0,1]} selectionKeyCode="Shift" multiSelectionKeyCode={["Control","Meta"]} connectOnClick={false}
       snapToGrid snapGrid={[8,8]}
-      onPaneClick={event=>{if(props.placing&&editing)createAt(props.placing,flow.screenToFlowPosition({x:event.clientX,y:event.clientY}));else {setSelectedIds([]);onSelect('');}}}
-      onSelectionChange={selectionChanged}
-      onNodeDragStart={(event,node)=>{onSelect(node.id);const ids=selectedIds.includes(node.id)?selectedIds:[node.id];setSelectedIds(ids);manualPending.current=true;drag.current={ids,original:displayedPositions(),copy:'altKey' in event&&event.altKey};setEdgeFade({ids:new Set(links.filter(e=>ids.includes(e.source)||ids.includes(e.target)).map(e=>e.id)),opacity:0});}}
-      onNodeDrag={(_,node,dragged)=>{if(drag.current?.cancelled){restoreDrag();return;}for(const n of dragged.length?dragged:[node])displayPositions.current.set(n.id,n.position);setDragTick(t=>t+1);}}
+      onPaneClick={event=>{if(props.placing&&editing)createAt(props.placing,flow.screenToFlowPosition({x:event.clientX,y:event.clientY}));else {setSelectedIds([]);selectFromCanvas('');}}}
+      onNodeDragStart={(event,node)=>{selectFromCanvas(node.id);const ids=selectedIds.includes(node.id)?selectedIds:[node.id];setSelectedIds(ids);manualPending.current=true;drag.current={ids,original:displayedPositions(),copy:'altKey' in event&&event.altKey};setEdgeFade({ids:new Set(links.filter(e=>ids.includes(e.source)||ids.includes(e.target)).map(e=>e.id)),opacity:0});}}
+      onNodeDrag={(_,node,dragged)=>{if(!drag.current)return;if(drag.current.cancelled){restoreDrag();return;}for(const n of dragged.length?dragged:[node])displayPositions.current.set(n.id,n.position);setDragTick(t=>t+1);}}
       onNodeDragStop={(event,node,dragged)=>{const d=drag.current;if(!d)return;const el='clientX' in event?document.elementFromPoint(event.clientX,event.clientY):null;const invalid=d.cancelled||!el||!container.current?.contains(el)||!!el.closest('.graph-overlay,.graph-view-controls');if(invalid){restoreDrag();drag.current=null;return;}
         const targets=Object.fromEntries((dragged.length?dragged:[node]).filter(n=>d.ids.includes(n.id)).map(n=>[n.id,n.position]));
         if(d.copy){restoreDrag();drag.current=null;props.onDuplicate?.(d.ids,vacantGroup(positioned(),targets,true));}
         else {const final={...d.original,...vacantGroup(positioned(),targets)};drag.current=null;commitMove(final);}
       }}
-      onNodeClick={(event,node)=>{if(!connection.choose(node.id)){if(!event.ctrlKey&&!event.metaKey)setSelectedIds([node.id]);onSelect(node.id);}}} onEdgeClick={(_,edge)=>props.onEdgeSelect?.(edge.id)}
+      onNodeClick={(event,node)=>{if(!connection.choose(node.id)){if(!event.ctrlKey&&!event.metaKey)setSelectedIds([node.id]);const ids=selectionRef.current;selectFromCanvas(ids.includes(node.id)?node.id:ids.at(-1)||'');}}} onEdgeClick={(_,edge)=>{setSelectedIds([]);selectFromCanvas('');props.onEdgeSelect?.(edge.id);}}
       onMoveEnd={(_,v)=>{if(!busy&&!first.current)saveViewport(keyRef.current,v);}} minZoom={.02} maxZoom={1.5} fitView={false}>
       <Background gap={24} size={1}/>
     </ReactFlow>

@@ -120,7 +120,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
     void onReload().catch(()=>{});
   });
   const data=useMemo(()=>draft.preview?.analysis||draftNetwork(formal,draft.changes),[draft.preview,formal,draft.changes]);
-  const editing=draft.active&&!draft.pending&&!draft.loading&&!draft.readOnly,selected=params.get('pathNode')||params.get('workItemId')||'',search=params.get('pathSearch')||'';
+  const editing=draft.active&&!draft.busy&&!draft.pending&&!draft.loading&&!draft.readOnly,selected=params.get('pathNode')||params.get('workItemId')||'',search=params.get('pathSearch')||'';
   const viewStorage='pm-path-view:'+(session.accountId||'guest')+':'+formal.projectId+':'+(focus||'all');
   const viewLoaded=useRef(false);
   useEffect(()=>{

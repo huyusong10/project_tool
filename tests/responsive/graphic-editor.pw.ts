@@ -193,3 +193,78 @@ test('路由等待期间连续微移不同节点不回退，Esc 取消后继续�
  await node(0).focus();await page.keyboard.press('Shift+ArrowRight');await expect(page.locator('.dependency-canvas')).toHaveAttribute('data-layout-phase','layout');
  const pending=await positionsValue(page),liveBox=(await node(0).boundingBox())!;await page.mouse.move(liveBox.x+80,liveBox.y+12);await page.mouse.down();await page.mouse.move(liveBox.x+112,liveBox.y+36,{steps:4});await page.waitForTimeout(750);await page.keyboard.press('Escape');await page.mouse.up();await ready(page);expect(await positionsValue(page)).toEqual(pending);await expect(page.locator('.graph-pending-route')).toHaveCount(0);
 });
+
+test('深度交互：原位改名保留光标与中文输入确认，Esc 不提交名称',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);
+ const title=page.locator('.react-flow__node strong').first(),node=page.locator('.react-flow__node').first();await title.dblclick();await expect(title).toHaveAttribute('contenteditable','true');
+ await title.click();await expect(title).toHaveAttribute('contenteditable','true');await expect(title).toBeFocused();const position=await node.getAttribute('style');
+ await title.fill('中文名称');await title.dispatchEvent('compositionstart');await title.dispatchEvent('keydown',{key:'Enter',code:'Enter',isComposing:true});await expect(title).toHaveAttribute('contenteditable','true');await title.dispatchEvent('compositionend');
+ await page.keyboard.press('End');await page.keyboard.type(' A B');expect(await node.getAttribute('style')).toBe(position);await page.keyboard.press('Escape');await expect(title).toHaveText('方案交付');await expect(title).not.toHaveAttribute('contenteditable','true');
+});
+
+test('深度交互：Ctrl 多选可反选，选中关系后不再移动或复制旧节点',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);const nodes=page.locator('.react-flow__node'),first=nodes.nth(0),second=nodes.nth(1);
+ await first.locator('.dependency-card').click();await second.locator('.dependency-card').click({modifiers:['Control']});await expect(page.locator('.react-flow__node.selected')).toHaveCount(2);
+ await second.locator('.dependency-card').click({modifiers:['Control']});await expect(page.locator('.react-flow__node.selected')).toHaveCount(1);await expect(first).toHaveClass(/selected/);
+ await clickFirstEdge(page);await expect(page.locator('.react-flow__node.selected')).toHaveCount(0);const before=await positionsValue(page);await page.locator('.dependency-canvas').focus();await page.keyboard.press('ArrowRight');await page.keyboard.press('Control+c');await page.keyboard.press('Control+v');await ready(page);expect(await positionsValue(page)).toEqual(before);await expect(nodes).toHaveCount(2);
+});
+
+test('深度交互：属性输入框内 Ctrl+S 保存当前内容',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);await page.locator('.react-flow__node .dependency-card').first().click();const field=page.getByLabel('元素名称');
+ await field.fill('保存输入框内容');const sent=page.waitForRequest(r=>r.url().endsWith('/api/templates/'+a.templateId)&&r.method()==='PATCH',{timeout:4000});await page.keyboard.press('Control+s');const request=await sent;expect(request.postDataJSON().items[0].title).toBe('保存输入框内容');await expect(page.getByLabel('撤销',{exact:true})).toBeDisabled();
+});
+
+test('深度交互：Esc 优先取消放置，不误关闭属性后继续新增',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);await page.locator('.react-flow__node .dependency-card').first().click();await page.getByLabel('添加元素',{exact:true}).click();await page.locator('.graph-elements').getByRole('button',{name:'工作项',exact:true}).click();await page.locator('.dependency-canvas').focus();await page.keyboard.press('Escape');await blank(page);await ready(page);await expect(page.locator('.react-flow__node')).toHaveCount(2);await expect(page.getByLabel('撤销',{exact:true})).toBeDisabled();
+});
+
+test('深度交互：拖动中窗口失焦后恢复原位，后续移动不形成修改',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);const before=await positionsValue(page),box=(await page.locator('.react-flow__node').first().boundingBox())!;
+ await page.mouse.move(box.x+70,box.y+12);await page.mouse.down();await page.mouse.move(box.x+120,box.y+44,{steps:6});await expect(page.locator('.graph-pending-route').first()).toBeVisible();await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await page.mouse.move(box.x+140,box.y+64,{steps:4});await page.mouse.up();await ready(page);expect(await positionsValue(page)).toEqual(before);await expect(page.locator('.graph-pending-route')).toHaveCount(0);await expect(page.getByLabel('撤销',{exact:true})).toBeDisabled();
+ await page.locator('.dependency-canvas').focus();await page.keyboard.press('Control+a');await expect(page.locator('.react-flow__node.selected')).toHaveCount(2);await clickFirstEdge(page);await expect(page.locator('.react-flow__edge.selected')).toHaveCount(1);await expect(page.locator('.react-flow__node.selected')).toHaveCount(0);expect(await positionsValue(page)).toEqual(before);
+});
+
+test('深度交互：点击连线后右键取消，不误建关系',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);const first=page.locator('.react-flow__node').first(),second=page.locator('.react-flow__node').nth(1);
+ await second.locator('.business-handle[data-side=bottom]').click();await expect(page.locator('.dependency-canvas')).toHaveAttribute('data-connection-active','true');await first.locator('.dependency-card').click({button:'right'});await expect(page.locator('.dependency-canvas')).toHaveAttribute('data-connection-active','false');await expect(page.locator('.graph-error-notice')).toHaveCount(0);await expect(page.getByLabel('撤销',{exact:true})).toBeDisabled();await expect(page.locator('.react-flow__edge')).toHaveCount(1);
+});
+
+test('深度交互：搜索中 Esc 关闭当前查找层并恢复键盘焦点',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);await page.locator('.react-flow__node .dependency-card').first().click();await page.locator('.dependency-canvas').focus();await page.keyboard.press('Control+f');const search=page.getByLabel('搜索流程节点');await expect(search).toBeFocused();await search.fill('方案');await page.keyboard.press('Escape');await expect(page.locator('.graph-finder')).toHaveCount(0);await expect(page.getByLabel('查找与筛选',{exact:true})).toBeFocused();
+});
+
+
+test('深度交互：项目原位改名后立即 Ctrl+S 预览并保存新名称，失败保留草稿',async({page})=>{
+ const {a,analysis}=await fixture(page);await page.goto('/paths?pathScope=all');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();const node=page.locator('.react-flow__node[data-id="'+a.id+'"]'),title=node.locator('strong');await title.dblclick();await title.fill('快捷保存的新名称');
+ const saved=page.waitForResponse(r=>r.url().includes('/dependency-changes/apply')&&r.request().method()==='POST');await page.keyboard.press('Control+s');expect((await saved).ok()).toBe(true);await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();expect((await analysis()).requirements.find(r=>r.id===a.id)?.title).toBe('快捷保存的新名称');
+ await page.getByLabel('编辑画布',{exact:true}).click();await title.dblclick();await title.fill('预览失败的名称');await page.route('**/dependency-changes/preview',r=>r.fulfill({status:400,json:{error:'模拟预览校验失败'}}));await page.keyboard.press('Control+s');await expect(page.locator('.graph-status-slot')).toContainText('未保存');expect((await analysis()).requirements.find(r=>r.id===a.id)?.title).toBe('快捷保存的新名称');await expect(title).toHaveText('预览失败的名称');
+});
+
+
+test('深度交互：Ctrl+A 后微移与一次撤销，多选反选后属性对应剩余节点',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);const before=await positionsValue(page),first=page.locator('.react-flow__node').first(),second=page.locator('.react-flow__node').nth(1);
+ await first.locator('.dependency-card').click();await second.locator('.dependency-card').click({modifiers:['Control']});await first.locator('.dependency-card').click({modifiers:['Control']});await expect(page.locator('.react-flow__node.selected')).toHaveCount(1);await expect(page.getByLabel('元素名称')).toHaveValue('集成验证');
+ await page.locator('.dependency-canvas').focus();await page.keyboard.press('Control+a');await expect(page.locator('.react-flow__node.selected')).toHaveCount(2);await page.keyboard.press('Shift+ArrowDown');await ready(page);const moved=await positionsValue(page);for(const [id,transform]of Object.entries(before))expect(translateY(String(transform)).y+10).toBe(translateY(moved[id]).y);
+ await page.reload();await ready(page);await page.locator('.dependency-canvas').focus();await page.keyboard.press('Control+z');await ready(page);expect(await positionsValue(page)).toEqual(before);
+});
+
+function translateY(transform:string){return {y:Number(transform.match(/translate\([^,]+,\s*(-?[\d.]+)px\)/)?.[1])};}
+
+async function clickFirstEdge(page:Page){
+ const point=await page.locator('.react-flow__edge-path').first().evaluate(element=>{
+  const edge=element as SVGPathElement,point=edge.getPointAtLength(edge.getTotalLength()/2),matrix=edge.getScreenCTM()!;
+  return {x:point.x*matrix.a+point.y*matrix.c+matrix.e,y:point.x*matrix.b+point.y*matrix.d+matrix.f};
+ });
+ await page.mouse.click(point.x,point.y);
+}
+
+test('深度交互：输入框保留文字撤销，全局快捷键不删除内置验收',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/requirements/'+a.id+'?view=path');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();const acceptance=page.locator('.react-flow__node').filter({hasText:'验收'}).last();await acceptance.dispatchEvent('click');await page.locator('.dependency-canvas').focus();await page.keyboard.press('Delete');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByLabel('撤销',{exact:true})).toBeDisabled();
+ await page.locator('.react-flow__node[data-id="'+a.workItems[0].id+'"] .dependency-card').click();const input=page.getByLabel('元素名称');await input.focus();await page.keyboard.press('End');await page.keyboard.insertText('补充');await page.keyboard.press('Control+z');await expect(input).toHaveValue('方案交付');await page.keyboard.press('Control+a');await page.keyboard.insertText('文字选择');await expect(input).toHaveValue('文字选择');
+});
+
+
+test('深度交互：关闭浮层后键盘继续作用于画布，切换输入框不抢焦点',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);await page.locator('.react-flow__node .dependency-card').first().click();await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();await expect(page.locator('.dependency-canvas')).toBeFocused();await page.keyboard.press('Control+f');await expect(page.getByLabel('搜索流程节点')).toBeFocused();
+ await page.getByLabel('流程属性',{exact:true}).click();const field=page.getByLabel('流程名称');await field.focus();await page.keyboard.press('Escape');await expect(page.locator('.dependency-canvas')).toBeFocused();await expect(page.locator('.graph-auxiliary[aria-hidden="false"]')).toHaveCount(0);
+});

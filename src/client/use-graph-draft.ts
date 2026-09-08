@@ -115,17 +115,23 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     return false;
   };
   const save = async () => {
-    if (!pendingReady||history.loading||history.readOnly||saving.current || (!pending && (!latest.current || conflict || !count))) return false;
+    if (!pendingReady||history.loading||history.readOnly||saving.current || (!pending && (conflict || !count))) return false;
     saving.current = true; setBusy(true);
-    const batch = pending || { ...input, batchId: crypto.randomUUID(), previewToken: latest.current!.previewToken };
+    let batch = pending;
     try {
-      if (pending && await checkReceipt(batch)) return true;
+      if (batch && await checkReceipt(batch)) return true;
+      // Ctrl+S can arrive immediately after an input blur. Preview that exact
+      // snapshot before saving instead of ignoring the shortcut or using an old token.
+      if (!batch) {
+        const confirmed = latest.current || await api<DependencyChangePreview>('/api/projects/' + data.projectId + '/dependency-changes/preview', { method: 'POST', body: jsonBody(input), readOnly: true });
+        batch = { ...input, batchId: crypto.randomUUID(), previewToken: confirmed.previewToken };
+      }
       await writeDraftRecord(pendingKey,batch);storePending(batch);
       const receipt=await api<DependencyChangeReceipt>('/api/projects/' + data.projectId + '/dependency-changes/apply', { method: 'POST', body: jsonBody(batch) });
       success(receipt); return true;
     } catch (caught) {
       const failure = caught as Error;
-      if (isWriteOutcomeUnknown(failure) || failure instanceof ApiError && failure.status >= 500) {
+      if (batch && (isWriteOutcomeUnknown(failure) || failure instanceof ApiError && failure.status >= 500)) {
         try { if (await checkReceipt(batch)) return true; } catch { /* Keep the exact batch for a later receipt check. */ }
         setError(new Error('提交结果待核对。修改已保留，请查询回执后重试同一批次。'));
       } else { storePending(null); setError(failure); latest.current = null; setPreview(null);if(failure instanceof ApiError&&[401,403].includes(failure.status))history.reset();setPreviewAttempt(n=>n+1); onSaved(); }
