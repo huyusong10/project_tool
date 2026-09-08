@@ -1,8 +1,12 @@
+import {useWorkspaceParams} from '../use-workspace-view';
+import {editorAdapter} from '../editor-adapter';
+import {EditorField} from './EditorField';
+import {useEditorInteraction} from '../use-editor-interaction';
 import type {GraphConnectionIssue} from './DependencyGraph';
 import {flushSync} from 'react-dom';
 import { useCallback,useEffect,useMemo,useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api, ApiError,jsonBody, requiresWriteRecheck } from '../api';
 import {ListChecks,Link2,Copy,Trash2,LocateFixed,GitBranch,FilePenLine,Maximize2,Minimize2} from 'lucide-react';
 import {EditorToolbar,EditorPalette,EditorInfo} from './EditorToolbar';
@@ -87,7 +91,7 @@ function PathEditor({editor,data,requirement,manager,onClose,onReload}:{editor:E
 
 
 export function PathAnalysisPanel({projectId,requirement,onExit}:{projectId:string;requirement?:PathRequirementContext;onExit?:()=>void}) {
-  const [params]=useSearchParams();
+  const [params]=useWorkspaceParams();
   const {session}=useSession();
   const target=params.get('target')||(requirement?acceptanceId(requirement.id):'project');
   const query=useResourceQuery<PathAnalysis>([...keys.paths,projectId,requirement?.id||'all',target],
@@ -101,18 +105,17 @@ export function PathAnalysisPanel({projectId,requirement,onExit}:{projectId:stri
 function EstimateFields({node,structure,onChange}:{node:PathNode;structure:boolean;onChange:(patch:DependencyChanges['estimates'][number])=>void}) {
   return <div className="graph-fields">{(['durationDays','earliestStart','unblockEstimate','forecastEnd'] as const).filter(k=>k!=='durationDays'&&(structure||k!=='earliestStart')).map(key=>
     <label className="field" key={key}><span>{{durationDays:'预计工期（工作日）',earliestStart:'最早开始',unblockEstimate:'预计解阻',forecastEnd:'人工预测完成'}[key]}</span>
-      <input key={key+String(node.estimate[key])} aria-label={{durationDays:'预计工期',earliestStart:'最早开始',unblockEstimate:'预计解阻',forecastEnd:'人工预测完成'}[key]}
-        type={key==='durationDays'?'number':'date'} min={key==='durationDays'?1:undefined} max={key==='durationDays'?3660:undefined} defaultValue={node.estimate[key]??''}
-        onBlur={e=>{const value=e.target.value?(key==='durationDays'?Number(e.target.value):e.target.value):null;if(value!==node.estimate[key])onChange({workItemId:node.id,[key]:value});}}/></label>)}
+      <EditorField fieldKey={node.id+':'+key} aria-label={{durationDays:'预计工期',earliestStart:'最早开始',unblockEstimate:'预计解阻',forecastEnd:'人工预测完成'}[key]} type={key==='durationDays'?'number':'date'} min={key==='durationDays'?1:undefined} max={key==='durationDays'?3660:undefined} value={String(node.estimate[key]??'')} onCommit={value=>onChange({workItemId:node.id,[key]:value?(key==='durationDays'?Number(value):value):null})}/></label>)}
     <small>字段修改加入草稿。保存预测后，计划日期仍需单独预览并应用。</small></div>;
 }
 function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:PathAnalysis;requirement?:PathRequirementContext;target:string;onExit?:()=>void;onReload:()=>Promise<PathAnalysis>}) {
-  const [params,setParams]=useSearchParams(),location=useLocation(),navigate=useNavigate(),client=useQueryClient(),{session}=useSession();
-  const [leaving,setLeaving]=useState(false);
+  const [params,setParams]=useWorkspaceParams(),location=useLocation(),navigate=useNavigate(),client=useQueryClient(),{session}=useSession();
+  const [leaving,setLeaving]=useState(false),mounted=useRef(true);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const focus=requirement?.id,manager=canManageProject(session,formal.projectId),canEdit=manager||!!requirement&&requirement.ownerId===session.personId;
   const draft=useDependencyDraft(session.accountId||'guest',formal,target,receipt=>{
     invalidateRequirementViews(client,focus);
-    if(receipt){const scope=(session.accountId||'guest')+':'+formal.projectId,ids=receipt.addedIds;
+    if(receipt&&mounted.current){const scope=(session.accountId||'guest')+':'+formal.projectId,ids=receipt.addedIds;
       const restoredOrigin=readPathOrigin(scope+':'+location.key,location.state);
       remapEditorViews(scope,ids);
       navigate(remapEditorUrl(location.pathname+location.search,ids),{replace:true,state:{...location.state,pathOrigin:remapEditorOrigin(restoredOrigin,ids)}});
@@ -120,7 +123,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
     void onReload().catch(()=>{});
   });
   const data=useMemo(()=>draft.preview?.analysis||draftNetwork(formal,draft.changes),[draft.preview,formal,draft.changes]);
-  const editing=draft.active&&!draft.busy&&!draft.pending&&!draft.loading&&!draft.readOnly,selected=params.get('pathNode')||params.get('workItemId')||'',search=params.get('pathSearch')||'';
+  const editing=draft.active&&!draft.busy&&!draft.pending&&!draft.loading&&!draft.readOnly,search=params.get('pathSearch')||'';
   const viewStorage='pm-path-view:'+(session.accountId||'guest')+':'+formal.projectId+':'+(focus||'all');
   const viewLoaded=useRef(false);
   useEffect(()=>{
@@ -133,18 +136,18 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const livePositions=useRef<Record<string,Point>>({});
   const layoutScope=focus?'requirement:'+focus:'global',layoutValue=data.layouts?.find(l=>l.scope===layoutScope&&l.direction==='right'),formalLayout=formal.layouts?.find(l=>l.scope===layoutScope&&l.direction==='right');
   const withLayout=(changes:DependencyChanges,positions:Record<string,Point>):DependencyChanges=>({...changes,layouts:[...(changes.layouts||[]).filter(l=>l.scope!==layoutScope||l.direction!=='right'),{scope:layoutScope,direction:'right',expectedVersion:formalLayout?.version||0,positions}]});
-  const [edgeId,setEdgeId]=useState(''),[relationId,setRelationId]=useState('');
+  const [relationId,setRelationId]=useState('');
+  const {interaction,selected,edgeId,setEdgeId,select}=useEditorInteraction(params.get('pathNode')||params.get('workItemId')||'',selection=>{setParam('pathNode',selection.kind==='nodes'?selection.primary:'');setRelationId('');setInspector(selection.kind!=='none');if(narrow())setPanel('');});
   const inspector=(params.get('pathInspector')||(matchMedia('(max-width:800px)').matches?'closed':'open'))==='open'&&(!!selected||!!edgeId||!!relationId),setInspector=(value:boolean)=>setParam('pathInspector',value?'open':'closed');
   const [locate,setLocate]=useState<{id:string;sequence:number}>();
   const [imported,setImported]=useState<string[]>(()=>selected?[selected]:[]),[issue,setIssue]=useState<GraphConnectionIssue>(),[confirmDiscard,setConfirmDiscard]=useState(false);
   const [guard,setGuard]=useState<null|(()=>void)>(null),[editor,setEditor]=useState<Editor|null>(null);
   useEffect(()=>{const media=matchMedia('(max-width: 800px)'),changed=()=>{if(media.matches){const next=new URLSearchParams(params);next.delete('pathPanel');next.set('pathInspector','closed');setParams(next,{replace:true,state:location.state});}};media.addEventListener('change',changed);return()=>media.removeEventListener('change',changed);},[params,setParams,location.state]);
   useEffect(()=>setIssue(undefined),[draft.changes]);
-  const branchParam=params.get('pathBranch')||'',[branch,setBranch]=useState(branchParam);
-  useEffect(()=>setBranch(branchParam),[branchParam]);
-  const setParam=(name:string,value:string)=>{if(name==='pathBranch')setBranch(value);const next=params;if(value)next.set(name,value);else next.delete(name);setParams(new URLSearchParams(next),{replace:true,state:location.state});};
+  const branch=params.get('pathBranch')||'';
+  const setParam=(name:string,value:string)=>{const next=params;if(value)next.set(name,value);else next.delete(name);setParams(new URLSearchParams(next),{replace:true,state:location.state});};
   const narrow=()=>matchMedia('(max-width: 800px)').matches;
-  const select=(id:string)=>{setParam('pathNode',id);setEdgeId('');setRelationId('');setInspector(true);if(narrow())setPanel('');};
+
   const openPanel=(name:string)=>{setPanel(panel===name?'':name);if(narrow())setInspector(false);};
   const originKey=(session.accountId||'guest')+':'+formal.projectId+':'+location.key;
   const origin=readPathOrigin(originKey,location.state);
@@ -171,16 +174,18 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
     if(draft.count&&!draft.preview)value.cards=value.cards.map(c=>({...c,forecast:null,floatDays:null,critical:false,unknown:true}));
     return value;
   },[data,focus,imported,draft.count,draft.preview,draft.changes.entities,layoutValue?.positions,panel,issue]);
-  const [filters,setFilters]=useState(()=>readPathFilters(params,!!focus));
-  const filterSignature=JSON.stringify(readPathFilters(params,!!focus));
-  useEffect(()=>setFilters(JSON.parse(filterSignature)),[filterSignature]);
-  const applyFilters=(value:ReturnType<typeof readPathFilters>)=>{setFilters(value);setParams(writePathFilters(params,value),{replace:true,state:location.state});};
+  // Focus, selection and navigation do not change the filter projection.
+  const filterValues=JSON.stringify(readPathFilters(params,!!focus));
+  const filters=useMemo(()=>JSON.parse(filterValues) as ReturnType<typeof readPathFilters>,[filterValues]);
+  const applyFilters=(value:ReturnType<typeof readPathFilters>)=>{setParams(writePathFilters(params,value),{replace:true,state:location.state});};
   const sorted=useMemo(()=>[...graph.cards].sort((a,b)=>compareRiskRequirements(cardFilterItem(a,data),cardFilterItem(b,data))),[graph.cards,data]);
   const matching=useMemo(()=>sorted.filter(c=>draft.changes.entities?.some(e=>e.op==='create'&&e.id===c.id)||matchesRequirementFilters(cardFilterItem(c,data),filters)),[sorted,data,filters,draft.changes.entities]);
   const ids=useMemo(()=>graphContext(new Set(matching.map(c=>c.id)),graph.links),[matching,graph.links]);
   const visibleIds=useMemo(()=>[...new Set([...ids,...panel==='connectionIssue'?(issue?.nodeIds||[]).map(id=>focus?id:data.nodes.find(n=>n.id===id)?.requirementId||id):[]])],[ids,panel,issue,focus,data.nodes]),contextIds=useMemo(()=>visibleIds.filter(id=>!matching.some(c=>c.id===id)),[visibleIds,matching]);
   const emphasized=useMemo(()=>branch?graphBranch(branch,focus?data.edges:graph.links):ids,[branch,focus,data.edges,graph.links,ids]);
   const emphasizedIds=useMemo(()=>visibleIds.filter(id=>emphasized.has(id)),[visibleIds,emphasized]);
+  const invalidEdges=useMemo(()=>graph.links.filter(e=>(issue?.edgeIds||[]).some(id=>id===e.id||e.dependencyIds.includes(id))).map(e=>e.id),[graph.links,issue?.edgeIds]);
+  const invalidNodes=useMemo(()=>(issue?.nodeIds||draft.issue?.nodeIds||[]).map(id=>focus?id:formal.nodes.find(n=>n.id===id)?.requirementId||id),[issue?.nodeIds,draft.issue?.nodeIds,focus,formal.nodes]);
   const floatScope=params.get('pathFloat');
   const floatMatch=useCallback((c:GraphCard)=>!floatScope||(floatScope==='unknown'?c.floatDays===null:floatScope==='critical'?c.floatDays===0:floatScope==='near'?c.floatDays!==null&&c.floatDays>0&&c.floatDays<=2:c.floatDays!==null&&c.floatDays>2),[floatScope]);
   const searchCards=useMemo(()=>{
@@ -189,10 +194,11 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
     return [...graph.cards,...others];
   },[graph.cards,data,focus]);
   const results=useMemo(()=>search?searchCards.filter(c=>cardSearch(c,data,search)&&floatMatch(c)).sort((a,b)=>compareRiskRequirements(cardFilterItem(a,data),cardFilterItem(b,data))):sorted.filter(floatMatch),[search,searchCards,sorted,data,floatMatch]);
+  const highlighted=useMemo(()=>search||floatScope?results.map(c=>c.id):[],[search,floatScope,results]);
   const listed=useMemo(()=>search?results:matching.filter(floatMatch),[search,results,matching,floatMatch]);
   const locateNode=(id:string)=>{
     if(focus&&!graph.cards.some(c=>c.id===id))setImported(current=>[...new Set([...current,id])]);
-    if(!ids.has(id)){const next=writePathFilters(params,emptyRequirementFilters());next.delete('pathBranch');setBranch('');setParams(next,{replace:true,state:location.state});}
+    if(!ids.has(id)){const next=writePathFilters(params,emptyRequirementFilters());next.delete('pathBranch');setParams(next,{replace:true,state:location.state});}
     else if(branch&&!emphasized.has(id))setParam('pathBranch','');
     setLocate({id,sequence:Date.now()});
   };
@@ -273,7 +279,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const duplicate=(selectedIds:string[],positions:Record<string,Point>,snapshot?:unknown)=>{if(!editing||!canEdit)return;positions=vacantGroup(graph.cards.map(c=>({id:c.id,...livePositions.current[c.id],width:244,height:154})),positions,true);const copied=copyEntities((snapshot as PathAnalysis)||data,draft.changes,selectedIds,focus);draft.change(withLayout(copied.changes,{...livePositions.current,...layoutValue?.positions,...Object.fromEntries(Object.entries(positions).filter(([id])=>copied.mapping[id]).map(([id,p])=>[copied.mapping[id],p]))}));if(copied.mapping[selectedIds[0]])select(copied.mapping[selectedIds[0]]);};
   const currentEntity=selectedCard?entityFor(selectedCard.id):null,milestone=data.milestones?.find(m=>m.id===selected);
   const objectValue=currentEntity?.entity==='requirement'?{...data.requirements.find(r=>r.id===selected),...currentEntity.data}:currentEntity?.entity==='milestone'?{...milestone,...currentEntity.data}:{title:node?.title,ownerId:node?.ownerId,assigneeIds:node?.assigneeIds,...node?.estimate,arrangement:node?.arrangement,arrangementAnchor:node?.arrangementAnchor,...currentEntity?.data};
-  const toolbar=<EditorToolbar title={focus?requirement!.title:formal.projectName+' · 交付依赖'} back={origin?()=>void goBack():onExit||(()=>navigate('/'))} backLabel={origin?'返回'+origin.label:focus?'查看需求详情':'返回项目进展'} editing={draft.active} begin={draft.begin} canEdit={canEdit||canEstimate} undo={draft.undo} redo={draft.redo} canUndo={draft.canUndo&&!draft.readOnly&&!draft.loading&&!draft.pending} canRedo={draft.canRedo&&!draft.readOnly&&!draft.loading&&!draft.pending} save={()=>void draft.save()} canSave={!draft.loading&&!draft.readOnly&&!!(draft.pending||draft.preview&&!draft.conflict)} busy={draft.busy} discard={()=>draft.count?setConfirmDiscard(true):draft.cancel()}
+  const toolbar=<EditorToolbar title={focus?requirement!.title:formal.projectName+' · 交付依赖'} back={origin?()=>void goBack():onExit||(()=>navigate('/'))} backLabel={origin?'返回'+origin.label:focus?'查看需求详情':'返回项目进展'} editing={draft.active} begin={draft.begin} canEdit={canEdit||canEstimate} undo={()=>commands.dispatch({type:'undo'})} redo={()=>commands.dispatch({type:'redo'})} canUndo={draft.canUndo&&!draft.readOnly&&!draft.loading&&!draft.pending} canRedo={draft.canRedo&&!draft.readOnly&&!draft.loading&&!draft.pending} save={()=>void draft.save()} canSave={!draft.loading&&!draft.readOnly&&!!(draft.pending||!draft.conflict&&(draft.count||Object.keys(draft.fields).length))} busy={draft.busy} discard={()=>draft.count?setConfirmDiscard(true):draft.cancel()}
     context={<>{focus?<select aria-label="分析目标" value={target} onChange={e=>setParam('target',e.target.value)}><option value={acceptanceId(focus)}>本需求验收</option><option value="project">项目交付</option>{data.nodes.filter(n=>n.requirementId===focus&&n.kind==='milestone').map(n=><option key={n.id} value={n.id}>{n.title}</option>)}{!data.nodes.some(n=>n.id===target&&n.requirementId===focus)&&target!=='project'&&<option value={target}>{data.targetLabel}</option>}</select>:<select aria-label="分析目标" value={target} onChange={e=>setParam('target',e.target.value)}><option value="project">项目交付</option>{data.nodes.filter(n=>n.kind==='milestone'&&!n.requirementId).map(n=><option key={n.id} value={n.id}>{n.title}</option>)}</select>}<span title={'目标 '+(data.targetDate||'未设置')}>预计 {data.forecastEnd||'待确认'} · {data.deadlineSlack===null?'余量待确认':data.deadlineSlack+' 天余量'}</span></>}
     status={<>{branch&&<button className="ghost-button" onClick={()=>setParam('pathBranch','')}>退出聚焦</button>}<span title={draft.storageError||issue?.message||draft.error?.message||''}>{draft.loading?'恢复草稿…':draft.storageError?'本机保存失败':draft.conflict?'版本冲突':draft.readOnly?'其他页面编辑中':draft.count?(draft.restored?'已恢复草稿 · ':'')+draft.count+' 项未保存':draft.active?'编辑中':location.state?.pathNotice||'正式分析'}</span>{(draft.error||draft.conflict||issue)&&<button className="ghost-button danger-text" aria-label={draft.conflict?'版本冲突 · 查看修改':'查看草稿错误'} title="查看草稿修改与错误" onClick={()=>openPanel(issue?.kind?'connectionIssue':'changes')}>!</button>}</>}
     extra={<>{draft.active&&<button className="ghost-button" aria-label="草稿状态" title="查看本机草稿与冲突" onClick={()=>openPanel('changes')}><FilePenLine size={17}/></button>}<EditorInfo onClick={()=>openPanel('summary')}/><button className="ghost-button" aria-label="关系明细" title="关系明细" onClick={()=>openPanel('relations')}><Link2 size={17}/></button>{focus&&canEdit&&!editing&&!req?.dependenciesReviewedAt&&<button className="ghost-button" title="核对依赖" aria-label="核对依赖" onClick={()=>guarded(()=>setEditor({kind:'review'}))}><ListChecks size={17}/></button>}</>}/>;
@@ -287,12 +293,12 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
       }}/>}
     </>:selectedCard&&<><p>{selectedCard.subtitle}</p><p>{data.risks[selectedCard.requirementId]?.riskReason}</p><p>{node?.source}</p>{node?.unknownReasons.length?<p className="danger-text">{node.unknownReasons.join('；')}</p>:null}
       {branch&&!emphasized.has(selected)&&<p className="graph-outside-notice">此节点在分支外，定位后返回全图。</p>}
-      <div className="editor-selection-tools"><button title="定位" aria-label="定位" onClick={()=>locateNode(selected)}><LocateFixed size={16}/></button><button title={branch===selected?'退出聚焦':'聚焦分支'} aria-label={branch===selected?'退出聚焦':branch?'聚焦此分支':'聚焦分支'} onClick={()=>setParam('pathBranch',branch===selected?'':selected)}><GitBranch size={16}/></button>{editing&&canEdit&&currentEntity&&<><button title="复制（Alt 拖动 / Ctrl+C、V）" aria-label="复制元素" onClick={()=>duplicate([selected],{[selected]:{x:(livePositions.current[selected]?.x||0)+32,y:(livePositions.current[selected]?.y||0)+32}})}><Copy size={16}/></button><button title="删除（Delete）" aria-label="删除元素" onClick={()=>setDeleting([selected])}><Trash2 size={16}/></button></>}</div><div className="button-row">
+      <div className="editor-selection-tools"><button title="定位" aria-label="定位" onClick={()=>locateNode(selected)}><LocateFixed size={16}/></button><button title={branch===selected?'退出聚焦':'聚焦分支'} aria-label={branch===selected?'退出聚焦':branch?'聚焦此分支':'聚焦分支'} onClick={()=>setParam('pathBranch',branch===selected?'':selected)}><GitBranch size={16}/></button>{editing&&canEdit&&currentEntity&&<><button title="复制（Alt 拖动 / Ctrl+C、V）" aria-label="复制元素" onClick={()=>commands.dispatch({type:'duplicate',ids:[selected],positions:{[selected]:{x:(livePositions.current[selected]?.x||0)+32,y:(livePositions.current[selected]?.y||0)+32}}})}><Copy size={16}/></button><button title="删除（Delete）" aria-label="删除元素" onClick={()=>commands.dispatch({type:'delete',ids:[selected]})}><Trash2 size={16}/></button></>}</div><div className="button-row">
         {selectedCard.requirementId&&(!focus||selectedCard.external)&&<button className="primary-button" onClick={()=>directTo(selectedCard.requirementId,selectedCard.workItemId)}>进入需求路径</button>}
         {focus&&node?.workItemId&&node.requirementId===focus&&<button className="ghost-button" onClick={()=>guarded(()=>{const p=new URLSearchParams(params);p.delete('view');p.set('workItemId',node.id);setParams(p,{state:location.state});})}>定位并处理工作项</button>}
       </div>
       {selectedCard&&<button className="ghost-button graph-node-relations" onClick={()=>openPanel('nodeRelations')}>已有关联 {nodeRelations.length} 条{nodeRelations.some(d=>d.sourceWorkItemId||d.targetWorkItemId)?' · 含部分交付':''}</button>}
-      {editing&&canEdit&&currentEntity&&(!selectedCard.external||manager)&&<EditorObjectProperties projectId={data.projectId} entity={currentEntity.entity} value={{...objectValue,priority:objectValue.priority as EditorEntityChange['data']['priority']}} onChange={patch=>patchEntity(selected,patch)} anchors={data.nodes.filter(n=>n.kind==='milestone'&&n.id!==selected).map(n=>({id:n.id,title:n.title}))}/>}
+      {editing&&canEdit&&currentEntity&&(!selectedCard.external||manager)&&<EditorObjectProperties objectId={selected} projectId={data.projectId} entity={currentEntity.entity} value={{...objectValue,priority:objectValue.priority as EditorEntityChange['data']['priority']}} onChange={fields=>commands.dispatch({type:'properties',id:selected,fields})} anchors={data.nodes.filter(n=>n.kind==='milestone'&&n.id!==selected).map(n=>({id:n.id,title:n.title}))}/>}
       {milestone&&!editing&&canEdit&&<button className="ghost-button" onClick={()=>guarded(()=>void api('/api/milestones/'+milestone.id+'/'+(milestone.achievedAt?'reopen':'achieve'),{method:'POST',body:jsonBody({expectedVersion:milestone.version})}).then(()=>{invalidateRequirementViews(client,focus);void onReload();}).catch(e=>setIssue({message:e.message})))}>{milestone.achievedAt?'重新打开里程碑':'确认里程碑达成'}</button>}
       {editing&&canEstimate&&node?.kind==='work'&&!draft.changes.entities?.some(c=>c.id===node.id&&c.op==='create')&&<EstimateFields key={node.id} node={node} structure={canEdit} onChange={patch=>{
         if(draft.changes.entities?.some(c=>c.id===node.id&&c.op==='create')){const {workItemId:_id,...fields}=patch;patchEntity(node.id,fields);return;}const existing=draft.changes.estimates.find(p=>p.workItemId===patch.workItemId);
@@ -330,15 +336,16 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
     </>}
   </>:undefined;
   if(leaving)return <div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace"><LoadingState label="正在打开路径…"/></section></div>;
-  return <div className="path-analysis immersive-path"><GraphWorkspace cards={graph.cards} links={graph.links} visibleIds={visibleIds} contextIds={contextIds} emphasizedIds={emphasizedIds} onExitFocus={()=>{if(placing)setPlacing('');else setParam('pathBranch','');}} selected={selected} onSelect={select} auxiliarySize={panel==='schedule'&&datedSchedule?expandedSchedule?'expanded':'timeline':'compact'}
+  const commands=editorAdapter({properties:patchEntity,move:positions=>draft.change(withLayout(draft.changes,positions)),rename:(id,title)=>patchEntity(id,{title}),create:createEntity,duplicate:duplicate,delete:(ids,edgeId)=>{const e=graph.links.find(e=>e.id===edgeId);if(e?.dependencyIds.length===1)draft.change(remove(e.dependencyIds[0]));else if(edgeId){setEdgeId(edgeId);setInspector(true);}else setDeleting(ids);},connect:connect,reconnect:(source,destination)=>{const problem=validateReconnect(source,destination);if(problem)setIssue(problem);else{draft.change(reconnectChanges(source,destination));setRelationId('');setEdgeId('');}},undo:editing?draft.undo:undefined,redo:editing?draft.redo:undefined,save:()=>void draft.save(),copy:()=>structuredClone(data)},editing&&canEdit);
+  return <div className="path-analysis immersive-path"><GraphWorkspace onRevealField={key=>{const card=graph.cards.find(c=>key==='title:'+c.id||key.startsWith(c.id+':'));if(card)select(card.id);}} auxiliaryKey={panel} commands={commands} interaction={interaction} document={draft} cards={graph.cards} links={graph.links} visibleIds={visibleIds} contextIds={contextIds} emphasizedIds={emphasizedIds} onExitFocus={()=>{if(placing)setPlacing('');else setParam('pathBranch','');}} auxiliarySize={panel==='schedule'&&datedSchedule?expandedSchedule?'expanded':'timeline':'compact'}
     reconnect={canReconnect?{id:reconnectRelation!.id,source:focus?dependencySource(reconnectRelation!):reconnectRelation!.sourceRequirementId||reconnectRelation!.sourceMilestoneId!,target:focus?dependencyTarget(reconnectRelation!):reconnectRelation!.targetRequirementId||reconnectRelation!.targetMilestoneId!}:undefined}
-    validateReconnect={validateReconnect} onReconnect={(source,destination)=>{const problem=validateReconnect(source,destination);if(problem)setIssue(problem);else{draft.change(reconnectChanges(source,destination));setRelationId('');setEdgeId('');}}}
-    positions={layoutValue?.positions} onLayoutReady={positions=>{livePositions.current=positions;}} onPositions={positions=>draft.change(withLayout(draft.changes,positions))} onCopy={()=>structuredClone(data)} onDuplicate={duplicate} onDelete={(ids,edgeId)=>{const e=graph.links.find(e=>e.id===edgeId);if(e?.dependencyIds.length===1)draft.change(remove(e.dependencyIds[0]));else if(edgeId){setEdgeId(edgeId);setInspector(true);}else setDeleting(ids);}} onRename={(id,title)=>patchEntity(id,{title})} onCreate={createEntity} placing={placing} onSave={()=>void draft.save()} onSearch={()=>openPanel('nodes')}
+    validateReconnect={validateReconnect}
+    positions={layoutValue?.positions} onLayoutReady={positions=>{livePositions.current=positions;}} placing={placing} onSearch={()=>openPanel('nodes')}
     palette={<EditorPalette types={focus?manager?['work','milestone','requirement','existing']:['work','milestone','existing']:['requirement','milestone','existing']} placing={placing} onPlace={kind=>{if(!draft.active)draft.begin();if(kind==='existing'){openPanel('import');setPlacing('');}else setPlacing(kind);}} disabled={!canEdit||draft.loading||draft.readOnly||!!draft.pending}/>} analysis={['schedule','blockers','float'].includes(panel)}
     onDismissDetail={()=>setInspector(false)} onDismissAuxiliary={()=>setPanel('')}
-    viewKey={(session.accountId||'guest')+':'+formal.projectId+':'+(focus||'all')} toolbar={toolbar} finder={finder} detail={detail} auxiliary={auxiliary} selectedEdge={edgeId}
-    onEdgeSelect={id=>{setEdgeId(id);setRelationId('');setInspector(true);if(narrow())setPanel('');}} editing={editing&&canEdit} onConnect={connect} validateConnection={validate} onInvalid={setIssue} onInspectIssue={value=>{setIssue(value);openPanel('connectionIssue');}} onClearIssue={()=>{setIssue(undefined);if(panel==='connectionIssue')setPanel('');}} invalidEdges={graph.links.filter(e=>(issue?.edgeIds||[]).some(id=>id===e.id||e.dependencyIds.includes(id))).map(e=>e.id)}
-    highlighted={search||params.get('pathFloat')?results.map(c=>c.id):[]} invalidNodes={(issue?.nodeIds||draft.issue?.nodeIds||[]).map(id=>focus?id:formal.nodes.find(n=>n.id===id)?.requirementId||id)} locate={locate} focusId={branch||''} onUndo={editing?draft.undo:undefined} onRedo={editing?draft.redo:undefined}
+    viewKey={(session.accountId||'guest')+':'+formal.projectId+':'+(focus||'all')} toolbar={toolbar} finder={finder} detail={detail} auxiliary={auxiliary}
+    editing={editing&&canEdit} validateConnection={validate} onInvalid={setIssue} onInspectIssue={value=>{setIssue(value);openPanel('connectionIssue');}} onClearIssue={()=>{setIssue(undefined);if(panel==='connectionIssue')setPanel('');}} invalidEdges={invalidEdges}
+    highlighted={highlighted} invalidNodes={invalidNodes} locate={locate} focusId={branch||''}
     footer={<><button className="ghost-button" onClick={()=>openPanel('blockers')}>阻塞 {data.blockers.length}</button><button className="ghost-button" onClick={()=>openPanel('float')}>余量</button>
 
       <button className="ghost-button" onClick={()=>openPanel('schedule')}>排期预览</button>

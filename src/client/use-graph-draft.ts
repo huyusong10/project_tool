@@ -1,5 +1,6 @@
+import {EditorSession,newHistory,readHistory,type HistoryCommand} from './editor-session';
 import {rebaseEditor} from './editor-rebase';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {readDraftRecord,writeDraftRecord,clearDraftRecords,ownsDraft,takeDraft,releaseDraft} from './graph-draft-storage';
 import { api, ApiError, isWriteOutcomeUnknown, jsonBody } from './api';
 import type { DependencyChanges, DependencyChangePreview, DependencyChangeReceipt, DependencyChangesInput } from '../shared/path-contracts';
@@ -7,63 +8,57 @@ import type { PathAnalysis } from '../shared/paths';
 
 const prefix = 'pm-graph-draft:';
 export function clearGraphDrafts(accountId?: string) {
+  for(const [key,session] of sessions)if(key.startsWith(prefix+(accountId?accountId+':':''))){session.blocked=true;session.notify();sessions.delete(key);}
   void clearDraftRecords(prefix+(accountId?accountId+':':'')).catch(()=>{});
   if (typeof sessionStorage === 'undefined') return;
   for(const storage of [sessionStorage,localStorage])for (const key of Object.keys(storage)) if ([prefix,'pm-path-origin:','pm-path-view:','pm-graph-view:','pm-detail-scroll:','pm-editor-new-template:','pm-editor-lease:pm-graph-draft:'].some(p=>key.startsWith(p+(accountId?accountId+':':'')))) storage.removeItem(key);
 }
 export function clearProjectGraphDrafts(accountId:string,projectId:string){
-  const base=prefix+accountId+':'+projectId;void clearDraftRecords(base).catch(()=>{});
+  const base=prefix+accountId+':'+projectId;for(const [key,session] of sessions)if(key===base||key.startsWith(base+':')){session.blocked=true;session.notify();sessions.delete(key);}void clearDraftRecords(base).catch(()=>{});
   for(const storage of [sessionStorage,localStorage])for(const key of Object.keys(storage))if(key===base||key.startsWith(base+':')||['pm-path-origin:','pm-path-view:','pm-graph-view:','pm-detail-scroll:','pm-editor-new-template:','pm-editor-lease:pm-graph-draft:'].some(p=>(key===p+accountId+':'+projectId||key.startsWith(p+accountId+':'+projectId+':'))))storage.removeItem(key);
 }
-type History<T> = { version: string; values: T[]; index: number; active: boolean; baseline?:T; server?:PathAnalysis };
-export function useGraphHistory<T>(key: string, initial: T, version: string, source?:PathAnalysis) {
-  const storageKey = prefix + key, initialRef = useRef(initial);
-  const [state, setState] = useState<History<T>>(() => {
-    try {
-      const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null') as History<T> | null;
-      if (saved && Array.isArray(saved.values) && saved.index >= 0 && saved.index < saved.values.length) return saved;
-    } catch { /* Invalid or unavailable session storage starts a fresh draft. */ }
-    return { version, values: [initial], index: 0, active: false,server:source };
-  });
-  const [loading,setLoading]=useState(true),[storageError,setStorageError]=useState(''),[restored,setRestored]=useState(false),[readOnly,setReadOnly]=useState(false);
-  const ref = useRef(state); ref.current = state;
-  const ready=useRef(false),beginRequested=useRef(false);
-  useEffect(()=>{let cancelled=false;ready.current=false;setLoading(true);
-    void readDraftRecord<History<T>>(storageKey).then(saved=>{if(cancelled)return;
-      if(saved&&Array.isArray(saved.values)&&saved.index>=0&&saved.index<saved.values.length){ref.current=saved;setState(saved);setRestored(saved.active);}
-      else if(ref.current.active){void writeDraftRecord(storageKey,ref.current).catch(()=>setStorageError('本机草稿保存失败，关闭页面可能丢失修改'));}
-      ready.current=true;setLoading(false);if(beginRequested.current){ref.current={...ref.current,active:true};setState(ref.current);}
-      setReadOnly(!ownsDraft(storageKey,ref.current.active));
-    }).catch(()=>{if(!cancelled){ready.current=true;setLoading(false);setStorageError('本机存储不可用，草稿仅保留在当前页面');}});
-    const refresh=()=>setReadOnly(!ownsDraft(storageKey,ref.current.active)),timer=setInterval(refresh,15000),leave=()=>releaseDraft(storageKey);
-    window.addEventListener('storage',refresh);window.addEventListener('pagehide',leave);
-    return()=>{cancelled=true;clearInterval(timer);window.removeEventListener('storage',refresh);window.removeEventListener('pagehide',leave);releaseDraft(storageKey);};
-  },[storageKey]);
-  const editingGroup=useRef<string|null>(null);
-  const update = (next: History<T>) => {
-    if(!ready.current){beginRequested.current=next.active;return;}
-    if(!ownsDraft(storageKey,true)){setReadOnly(true);return;}
-    if(next.values.length>101){const drop=next.values.length-101;next={...next,baseline:next.baseline||next.values[0],values:next.values.slice(drop),index:Math.max(0,next.index-drop)};}
-    ref.current = next; setState(next);
-    void writeDraftRecord(storageKey,next.active?next:undefined).then(()=>setStorageError('')).catch(()=>setStorageError('本机草稿保存失败，关闭页面可能丢失修改'));
-    try { if (next.active) sessionStorage.setItem(storageKey, JSON.stringify(next)); else sessionStorage.removeItem(storageKey); } catch { /* In-memory draft remains usable. */ }
+const sessions=new Map<string,EditorSession<unknown>>();
+export function useGraphHistory<T>(key:string,initial:T,version:string,source?:PathAnalysis){
+  const storageKey=prefix+key;
+  let session=sessions.get(storageKey) as EditorSession<T>|undefined;
+  if(!session){session=new EditorSession(newHistory(initial,version,source));sessions.set(storageKey,session as EditorSession<unknown>);}
+  const current=session;
+  useSyncExternalStore(current.subscribe,current.snapshot);
+  const latest=useRef({initial,version,source});latest.current={initial,version,source};
+  const persist=()=>current.persist(async state=>{if(current.blocked)return;await writeDraftRecord(storageKey,state.active||Object.keys(state.fields).length||Object.keys(state.layouts).length?state:undefined);sessionStorage.removeItem(storageKey);});
+  const dispatch=(command:HistoryCommand<T>)=>{
+    if(current.loading||current.readOnly||current.blocked)return false;
+    if(command.type!=='layout-baseline'&&!ownsDraft(storageKey,true)){current.readOnly=true;current.notify();return false;}
+    const changed=current.dispatch(command);if(changed)void persist();return changed;
   };
+  useEffect(()=>{
+    let stopped=false;current.mounts++;if(!current.loading){current.readOnly=!ownsDraft(storageKey,current.state.active||!!Object.keys(current.state.fields).length);current.notify();}
+    if(current.loading)void (async()=>{
+      try{
+        const stored=await readDraftRecord<unknown>(storageKey),legacy=stored===undefined?JSON.parse(sessionStorage.getItem(storageKey)||'null'):undefined;
+        const restored=readHistory<T>(stored??legacy);
+        if(restored){current.state=restored;current.restored=restored.active;current.stored=true;if(legacy){await writeDraftRecord(storageKey,restored);sessionStorage.removeItem(storageKey);}}
+      }catch(error){current.error=(error as Error).message.includes('原记录')?(error as Error).message:'本机存储不可用，草稿仅保留在当前页面';current.blocked=(error as Error).message.includes('原记录');}
+      current.loading=false;current.readOnly=!ownsDraft(storageKey,current.state.active||!!Object.keys(current.state.fields).length);current.notify();
+    })();
+    const refresh=()=>{if(stopped)return;const denied=!ownsDraft(storageKey,current.state.active||!!Object.keys(current.state.fields).length);if(denied!==current.readOnly){current.readOnly=denied;current.notify();}},leave=()=>{current.readOnly=true;void current.flush();releaseDraft(storageKey);};
+    const timer=setInterval(refresh,15000);window.addEventListener('storage',refresh);window.addEventListener('pagehide',leave);
+    return()=>{stopped=true;clearInterval(timer);window.removeEventListener('storage',refresh);window.removeEventListener('pagehide',leave);void current.flush();if(--current.mounts===0)queueMicrotask(()=>{if(!current.mounts&&!current.saving)releaseDraft(storageKey);});};
+  },[current,storageKey]);
+  const state=current.state;
   return {
-    source:state.server,baseline:state.baseline||state.values[0],value: state.values[state.index], active: state.active, version: state.version, dirty: JSON.stringify(state.values[state.index])!==JSON.stringify(state.baseline||state.values[0]),
-    loading,storageError,restored,readOnly,takeOver:async()=>{const saved=await readDraftRecord<History<T>>(storageKey);takeDraft(storageKey);if(saved){ref.current=saved;setState(saved);}setReadOnly(false);},
-    canUndo: state.index > 0, canRedo: state.index < state.values.length - 1,
-    begin: () => update({ ...ref.current, active: true }),
-    endGroup: () => {editingGroup.current=null;},
-    change: (value: T, group?: string) => {
-      const old = ref.current; if (JSON.stringify(old.values[old.index]) === JSON.stringify(value)) return;
-      if(group&&editingGroup.current===group&&old.index>0){update({...old,values:[...old.values.slice(0,old.index),value]});return;}
-      editingGroup.current=group||null;
-      update({ ...old, active: true, server:old.values.length===1?source:old.server||source,values: [...old.values.slice(0, old.index + 1), value], index: old.index + 1 });
-    },
-    undo: () => { editingGroup.current=null; const old = ref.current; if (old.index) update({ ...old, index: old.index - 1 }); },
-    redo: () => { editingGroup.current=null; const old = ref.current; if (old.index + 1 < old.values.length) update({ ...old, index: old.index + 1 }); },
-    reset: (next = initialRef.current, nextVersion = version) => update({ version: nextVersion, values: [next],baseline:next, index: 0, active: false,server:source }),
-    rebase: (nextVersion: string, value = ref.current.values[ref.current.index]) => update({ ...ref.current, version: nextVersion,server:source,baseline:initial,values: [initial, value], index: 1 }),
+    session:current,dispatch,flush:current.flush,busy:current.saving,setBusy:(value:boolean)=>{current.setSaving(value);if(!value&&!current.mounts)releaseDraft(storageKey);},source:state.server,baseline:state.baseline||state.values[0],value:state.values[state.index],active:state.active,version:state.version,
+    dirty:JSON.stringify(state.values[state.index])!==JSON.stringify(state.baseline||state.values[0]),loading:current.loading,storageError:current.error,stored:current.stored,restored:current.restored,readOnly:current.readOnly||current.blocked,
+    fields:state.fields,layoutBaselines:state.layouts,
+    setField:(key:string,buffer?:import('./editor-session').FieldBuffer)=>dispatch({type:'field',key,buffer}),
+    captureLayout:(scope:string,positions:Record<string,import('./path-layout').Point>)=>dispatch({type:'layout-baseline',scope,positions}),
+    takeOver:async()=>{const saved=readHistory<T>(await readDraftRecord(storageKey));takeDraft(storageKey);if(saved)current.state=saved;current.readOnly=false;current.notify();},
+    canUndo:state.index>0,canRedo:state.index+1<state.values.length,
+    begin:()=>dispatch({type:'begin'}),endGroup:()=>dispatch({type:'end-group'}),
+    change:(value:T,group?:string)=>dispatch({type:'change',value,group}),
+    undo:()=>dispatch({type:'undo'}),redo:()=>dispatch({type:'redo'}),
+    reset:(next=latest.current.initial,nextVersion=latest.current.version)=>dispatch({type:'reset',value:next,version:nextVersion,server:latest.current.source}),
+    rebase:(nextVersion:string,value=current.state.values[current.state.index])=>dispatch({type:'rebase',value,baseline:latest.current.initial,version:nextVersion,server:latest.current.source}),
   };
 }
 const empty: DependencyChanges = { add: [], remove: [], estimates: [] };
@@ -76,9 +71,9 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     try { return JSON.parse(sessionStorage.getItem(pendingKey) || 'null'); } catch { return null; }
   });
   const [preview, setPreview] = useState<DependencyChangePreview | null>(null), [error, setError] = useState<Error | null>(null);
-  const [busy, setBusy] = useState(false), [previewing, setPreviewing] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [previewAttempt,setPreviewAttempt]=useState(0);
-  const saving = useRef(false), generation = useRef(0), latest = useRef<DependencyChangePreview | null>(null);
+  const generation = useRef(0), latest = useRef<DependencyChangePreview | null>(null);
   const denied=useRef(()=>{});denied.current=()=>{history.reset();onSaved();};
   const changes = history.value, count = changes.add.length + changes.remove.length + changes.estimates.length+(changes.entities?.length||0)+(changes.layouts?.length||0);
   const resolutionVersion=JSON.stringify([data.revision,data.layouts?.map(l=>[l.scope,l.direction,l.version])]);
@@ -87,6 +82,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
   const rebased=rebaseEditor(history.source,data,changes,resolutions);
   const conflict = count > 0 && (Number(history.version) !== data.revision || (changes.layouts||[]).some(l=>l.expectedVersion!==(data.layouts?.find(v=>v.scope===l.scope&&v.direction===l.direction)?.version||0)));
   const input: DependencyChangesInput = { expectedRevision: count ? Number(history.version) : data.revision, target, changes };
+  const saveInput=()=>({expectedRevision:Number(history.session.state.version),target,changes:history.session.state.values[history.session.state.index]});
   const fingerprint = JSON.stringify(input);
   useEffect(() => {
     const current = ++generation.current; setPreview(null); latest.current = null;
@@ -115,16 +111,17 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     return false;
   };
   const save = async () => {
-    if (!pendingReady||history.loading||history.readOnly||saving.current || (!pending && (conflict || !count))) return false;
-    saving.current = true; setBusy(true);
+    if (!pendingReady||history.loading||history.readOnly||history.session.saving || Object.values(history.session.state.fields).some(f=>f.error) || (!pending && (conflict || JSON.stringify(history.session.state.values[history.session.state.index])===JSON.stringify(empty)))) return false;
+    history.setBusy(true);
     let batch = pending;
     try {
       if (batch && await checkReceipt(batch)) return true;
       // Ctrl+S can arrive immediately after an input blur. Preview that exact
       // snapshot before saving instead of ignoring the shortcut or using an old token.
       if (!batch) {
-        const confirmed = latest.current || await api<DependencyChangePreview>('/api/projects/' + data.projectId + '/dependency-changes/preview', { method: 'POST', body: jsonBody(input), readOnly: true });
-        batch = { ...input, batchId: crypto.randomUUID(), previewToken: confirmed.previewToken };
+        const exact=saveInput();
+        const confirmed = JSON.stringify(exact)===fingerprint&&latest.current || await api<DependencyChangePreview>('/api/projects/' + data.projectId + '/dependency-changes/preview', { method: 'POST', body: jsonBody(exact), readOnly: true });
+        batch = { ...exact, batchId: crypto.randomUUID(), previewToken: confirmed.previewToken };
       }
       await writeDraftRecord(pendingKey,batch);storePending(batch);
       const receipt=await api<DependencyChangeReceipt>('/api/projects/' + data.projectId + '/dependency-changes/apply', { method: 'POST', body: jsonBody(batch) });
@@ -136,13 +133,13 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
         setError(new Error('提交结果待核对。修改已保留，请查询回执后重试同一批次。'));
       } else { storePending(null); setError(failure); latest.current = null; setPreview(null);if(failure instanceof ApiError&&[401,403].includes(failure.status))history.reset();setPreviewAttempt(n=>n+1); onSaved(); }
       return false;
-    } finally { saving.current = false; setBusy(false); }
+    } finally { history.setBusy(false); }
   };
   return {
-    ...history,loading:history.loading||!pendingReady,changes,count,conflict,conflicts:conflict?rebased.conflicts:[],unresolved:rebased.pending.length,resolveConflict:(key:string,value:'draft'|'server')=>setResolutionState(old=>({version:resolutionVersion,values:{...(old.version===resolutionVersion?old.values:{}),[key]:value}})),preview, previewing, busy, pending, error, save,retryPreview:()=>setPreviewAttempt(n=>n+1),
+    ...history,loading:history.loading||!pendingReady,changes,count,conflict,conflicts:conflict?rebased.conflicts:[],unresolved:rebased.pending.length,resolveConflict:(key:string,value:'draft'|'server')=>setResolutionState(old=>({version:resolutionVersion,values:{...(old.version===resolutionVersion?old.values:{}),[key]:value}})),preview, previewing, pending, error, save,retryPreview:()=>setPreviewAttempt(n=>n+1),
     issue: error instanceof ApiError ? error.details as { nodeIds?: string[]; edgeIds?: string[] } | undefined : undefined,
     cancel: () => { if (!pending) { history.reset(empty, String(data.revision)); setError(null); } },
-    change: (next: DependencyChanges) => { if (!pending && !saving.current && JSON.stringify(next)!==JSON.stringify(changes)) { latest.current = null; setPreview(null); setError(null); if (!count && Number(history.version) !== data.revision) history.rebase(String(data.revision), next); else history.change(next); } },
+    change: (next: DependencyChanges) => { if (!pending && !history.session.saving && JSON.stringify(next)!==JSON.stringify(changes)) { latest.current = null; setPreview(null); setError(null); if (!count && Number(history.version) !== data.revision) history.rebase(String(data.revision), next); else history.change(next); } },
     rebase: () => {
       if(rebased.pending.length)return;history.rebase(String(data.revision),rebased.changes);setResolutionState({version:resolutionVersion,values:{}});
       setError(null);

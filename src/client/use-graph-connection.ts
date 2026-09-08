@@ -1,10 +1,12 @@
+import type {EditorInteraction} from './editor-interaction';
+import type {WorkspaceRuntime} from './workspace-runtime';
 import {useEffect,useRef,useState,type RefObject} from 'react';
 import type {GraphConnectionIssue} from './components/DependencyGraph';
 import type {Point} from './path-layout';
 export type ConnectionSide='left'|'right'|'top'|'bottom';
 type Issue=GraphConnectionIssue;
-type Gesture={reconnectEnd?:'source'|'target';source:string;side:ConnectionSide;point:Point;origin:Point;pointerId:number|null;moved:boolean;target?:string;issue?:Issue|null};
-type Options={container:RefObject<HTMLDivElement|null>;enabled:boolean;validate:(source:string,target:string,reconnectEnd?:'source'|'target')=>Issue|null;
+type Gesture={ticket:number;reconnectEnd?:'source'|'target';source:string;side:ConnectionSide;point:Point;origin:Point;pointerId:number|null;moved:boolean;target?:string;issue?:Issue|null};
+type Options={interaction:EditorInteraction;runtime:WorkspaceRuntime;container:RefObject<HTMLDivElement|null>;enabled:boolean;validate:(source:string,target:string,reconnectEnd?:'source'|'target')=>Issue|null;
   connect:(source:string,target:string,side:ConnectionSide,reconnectEnd?:'source'|'target')=>void;invalid:(issue:Issue)=>void;dropEmpty?:(source:string,point:Point)=>void};
 /** The whole card is a destination. A gesture has one completion path, independent of route handles. */
 export function useGraphConnection(options:Options){
@@ -13,7 +15,7 @@ export function useGraphConnection(options:Options){
   const update=(value:Gesture|null)=>{current.current=value;setGesture(value);};
   const hit=(point:Point)=>{
     const root=latest.current.container.current,element=document.elementFromPoint(point.x,point.y);
-    if(!root||!element||!root.contains(element)||element.closest('.graph-overlay,.graph-view-controls,.dependency-layout-notice'))return {inside:false};
+    if(!root||!element||!root.contains(element)||latest.current.runtime.covers(element))return {inside:false};
     const node=element.closest<HTMLElement>('.react-flow__node:not(.graph-node-hidden)');
     return {inside:!!element.closest('.react-flow')&&!element.closest('.react-flow__edge'),id:node?.dataset.id};
   };
@@ -21,21 +23,22 @@ export function useGraphConnection(options:Options){
     const target=hit(point).id;
     return {...value,point,target,issue:target===value.target?value.issue:target?latest.current.validate(value.reconnectEnd==='source'?target:value.source,value.reconnectEnd==='source'?value.source:target,value.reconnectEnd):null};
   };
-  const cancel=()=>update(null);
+  const cancel=()=>{const value=current.current;update(null);if(value&&options.interaction.isCurrent(value.ticket))options.interaction.cancel();};
   const choose=(target:string)=>{
-    const value=current.current;if(!value)return false;update(null);
-    const issue=latest.current.validate(value.reconnectEnd==='source'?target:value.source,value.reconnectEnd==='source'?value.source:target,value.reconnectEnd);if(issue)latest.current.invalid(issue);else latest.current.connect(value.reconnectEnd==='source'?target:value.source,value.reconnectEnd==='source'?value.source:target,value.side,value.reconnectEnd);
-    return true;
+    const value=current.current;if(!value||!options.interaction.isCurrent(value.ticket))return false;update(null);
+    const issue=latest.current.validate(value.reconnectEnd==='source'?target:value.source,value.reconnectEnd==='source'?value.source:target,value.reconnectEnd);if(issue)latest.current.invalid(issue);else options.interaction.complete(value.ticket,()=>latest.current.connect(value.reconnectEnd==='source'?target:value.source,value.reconnectEnd==='source'?value.source:target,value.side,value.reconnectEnd));
+    if(issue)options.interaction.cancel();return true;
   };
   const finish=(point:Point,allowEmpty:boolean)=>{
     const value=current.current;if(!value)return;const target=hit(point);
-    if(!target.inside){update(null);return;}
+    if(!target.inside){cancel();return;}
     if(target.id)choose(target.id);
-    else {update(null);if(allowEmpty&&!value.reconnectEnd)latest.current.dropEmpty?.(value.source,point);}
+    else {update(null);options.interaction.complete(value.ticket,()=>{if(allowEmpty&&!value.reconnectEnd)latest.current.dropEmpty?.(value.source,point);});}
   };
   const begin=(source:string,side:ConnectionSide,point:Point,pointerId:number|null,reconnectEnd?:'source'|'target')=>{
     if(!latest.current.enabled)return;
-    update({source,side,point,origin:point,pointerId,moved:false,reconnectEnd});
+    const ticket=options.interaction.begin(reconnectEnd?'reconnect':'connect',()=>update(null));
+    update({ticket,source,side,point,origin:point,pointerId,moved:false,reconnectEnd});
     latest.current.container.current?.focus({preventScroll:true});
   };
   // Native listeners keep the gesture alive outside the canvas without capturing the drop target.
@@ -50,20 +53,18 @@ export function useGraphConnection(options:Options){
       if(value.moved){suppressClick.current=true;handlers.current.finish({x:event.clientX,y:event.clientY},true);setTimeout(()=>{suppressClick.current=false;},0);}
       else update({...value,pointerId:null});
     };
-    const cancelEvent=()=>handlers.current.cancel();
     const focus=(event:FocusEvent)=>{const value=current.current,target=event.target;if(!value||value.pointerId!==null||!(target instanceof HTMLElement)||!latest.current.container.current?.contains(target))return;
       const node=target.closest<HTMLElement>('.react-flow__node:not(.graph-node-hidden)');if(!node||target.closest('.business-handle'))return;
       const box=node.getBoundingClientRect();update(handlers.current.resolve(value,{x:box.x+box.width/2,y:box.y+box.height/2}));
     };
-    document.addEventListener('pointermove',move);document.addEventListener('pointerup',up);document.addEventListener('pointercancel',cancelEvent);document.addEventListener('focusin',focus);window.addEventListener('blur',cancelEvent);
-    return()=>{document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);document.removeEventListener('pointercancel',cancelEvent);document.removeEventListener('focusin',focus);window.removeEventListener('blur',cancelEvent);};
-  },[]);
+    return options.runtime.subscribe({move,up,focus});
+  },[options.runtime]);
   useEffect(()=>{if(!options.enabled)handlers.current.cancel();},[options.enabled]);
   return {gesture,current,cancel,begin,choose,
     pointerDown(event:React.PointerEvent<HTMLDivElement>){
       const element=event.target as HTMLElement;
       if(event.button!==0){cancel();return;}
-      if(element.closest('.graph-overlay,.graph-view-controls,.dependency-layout-notice')){cancel();return;}
+      if(latest.current.runtime.covers(element)){cancel();return;}
       if(current.current?.pointerId===null){event.preventDefault();event.stopPropagation();suppressClick.current=true;finish({x:event.clientX,y:event.clientY},false);setTimeout(()=>{suppressClick.current=false;},0);return;}
       const handle=element.closest<HTMLElement>('.business-handle'),node=handle?.closest<HTMLElement>('.react-flow__node');
       if(handle&&node?.dataset.id&&event.button===0){event.preventDefault();event.stopPropagation();begin(node.dataset.id,handle.dataset.side as ConnectionSide,{x:event.clientX,y:event.clientY},event.pointerId);}

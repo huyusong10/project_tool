@@ -1,12 +1,13 @@
-import { useEffect,useLayoutEffect,useRef,useState,type ComponentProps,type CSSProperties,type ReactNode } from 'react';
+import { useEffect,useLayoutEffect,useRef,useState,useContext,type ComponentProps,type CSSProperties,type ReactNode } from 'react';
 import { DependencyGraph } from './DependencyGraph';
 import '../paths.css';
-import {useDismissLayer} from '../use-dismiss-layer';
+import {WorkspaceRuntime,WorkspaceRuntimeContext,useWorkspaceLayer,useWorkspaceEvents,type WorkspaceDocument} from '../workspace-runtime';
+import {flushSync} from 'react-dom';
 import {FindTool} from './EditorToolbar';
 type PanelSize='compact'|'timeline'|'expanded';
 function FloatingPanel({content,side,replacement,contentKey,analysis=false,size='compact',onDismiss}:{onDismiss?:()=>void;analysis?:boolean;size?:PanelSize;content:ReactNode;side:'left'|'right';replacement:boolean;contentKey?:string}){
   const ref=useRef<HTMLElement>(null),hadFocus=useRef(false);
-  useDismissLayer(ref,!!content&&!!onDismiss,()=>onDismiss?.(),side==='right'?'.graph-overlay,.graph-view-controls,.react-flow__node,.react-flow__edge,.dependency-layout-notice':'.graph-toolbar,.graph-tool-rail,.graph-finder,.graph-footer,.graph-view-controls,.dependency-layout-notice');
+  useWorkspaceLayer(ref,!!content&&!!onDismiss,side==='right'?'detail':'auxiliary',()=>onDismiss?.(),contentKey);
   const [retained,setRetained]=useState(content?{content,contentKey,analysis,size}:null),geometry=useRef<CSSProperties|undefined>(undefined);
   useLayoutEffect(()=>{
     if(content){
@@ -16,7 +17,7 @@ function FloatingPanel({content,side,replacement,contentKey,analysis=false,size=
       measure();const observer=new ResizeObserver(measure);observer.observe(element);return()=>observer.disconnect();
     }
     const active=document.activeElement;
-    if(hadFocus.current&&(active===document.body||active instanceof Node&&ref.current?.contains(active)))ref.current?.closest<HTMLElement>('.dependency-canvas')?.focus({preventScroll:true});
+    if(hadFocus.current&&(active===document.body||active instanceof Node&&ref.current?.contains(active)))ref.current?.closest<HTMLElement>('.graph-workspace')?.querySelector<HTMLElement>('.dependency-canvas')?.focus({preventScroll:true});
     hadFocus.current=false;
     const timer=setTimeout(()=>setRetained(null),matchMedia('(prefers-reduced-motion:reduce)').matches?0:200);return()=>clearTimeout(timer);
   },[content,contentKey,analysis,size]);
@@ -24,13 +25,15 @@ function FloatingPanel({content,side,replacement,contentKey,analysis=false,size=
   if(!shown||!content&&replacement&&matchMedia('(max-width:800px)').matches)return null;
   return <aside ref={ref} onFocusCapture={()=>{hadFocus.current=true;}} onBlurCapture={e=>{if(e.relatedTarget instanceof Node&&!e.currentTarget.contains(e.relatedTarget))hadFocus.current=false;}} className={(side==='right'?'graph-detail':'graph-auxiliary')+' graph-overlay nopan nodrag nowheel'+(!content?' is-leaving':'')} data-graph-panel={shown.analysis?'bottom':side} data-size={shown.size} style={!content?geometry.current:undefined} aria-hidden={!content} inert={!content}><div key={shown.contentKey} className="graph-panel-content">{shown.content}</div></aside>;
 }
-export function GraphWorkspace({ toolbar, detail, auxiliary, footer, finder,palette,analysis=false,auxiliarySize='compact',onDismissDetail,onDismissAuxiliary, ...graph }: ComponentProps<typeof DependencyGraph> & {
-  onDismissDetail?:()=>void;onDismissAuxiliary?:()=>void;toolbar: ReactNode; detail?: ReactNode; auxiliary?: ReactNode; footer?: ReactNode;finder?:ReactNode;palette?:ReactNode;analysis?:boolean;auxiliarySize?:PanelSize;
+function Workspace({ document:editorDocument, auxiliaryKey, toolbar, detail, auxiliary, footer, finder,palette,analysis=false,auxiliarySize='compact',onDismissDetail,onDismissAuxiliary, ...graph }: ComponentProps<typeof DependencyGraph> & {
+  document:WorkspaceDocument;auxiliaryKey?:string;onDismissDetail?:()=>void;onDismissAuxiliary?:()=>void;toolbar: ReactNode; detail?: ReactNode; auxiliary?: ReactNode; footer?: ReactNode;finder?:ReactNode;palette?:ReactNode;analysis?:boolean;auxiliarySize?:PanelSize;
 }) {
   const root=useRef<HTMLElement>(null),finderRef=useRef<HTMLDivElement>(null);
+  const runtime=useContext(WorkspaceRuntimeContext)!;runtime.document=editorDocument;runtime.interaction=graph.interaction;runtime.revealField=graph.onRevealField;runtime.save=()=>{graph.commands.dispatch({type:'save'});};useWorkspaceEvents(runtime,root);
+  const requestSave=()=>{if(runtime.composing){runtime.saveRequested=true;return;}if(runtime.interaction?.operation&&runtime.interaction.operation.kind!=='field'){runtime.cancel();return;}let valid=false;flushSync(()=>{valid=runtime.commitFields();});if(valid)runtime.save?.();};
   const finderKey='pm-graph-view:'+graph.viewKey+':finder';
   const [finding,setFinding]=useState(()=>{try{return localStorage.getItem(finderKey)==='true';}catch{return false;}});
-  useDismissLayer(finderRef,finding,()=>setFinding(false),'.graph-tool-rail,.graph-auxiliary,.graph-toolbar,.graph-footer,.graph-view-controls');
+  useWorkspaceLayer(finderRef,finding,'finder',()=>setFinding(false));
   useEffect(()=>{try{localStorage.setItem(finderKey,String(finding));}catch{/* View is still usable. */}},[finderKey,finding]);
   useEffect(()=>{
     const element=root.current;if(!element)return;
@@ -49,19 +52,20 @@ export function GraphWorkspace({ toolbar, detail, auxiliary, footer, finder,pale
     const observer=new ResizeObserver(update);[element,toolbar,footer,controls,element.querySelector('.graph-finder')].filter((e):e is HTMLElement=>!!e).forEach(e=>observer.observe(e));update();
     return()=>observer.disconnect();
   },[finding]);
-  return <section ref={root} className={'graph-workspace graph-editor-workspace'+(finding?' has-finder':'')+(analysis?' has-analysis':'')+(detail?' has-inspector':'')} aria-label="交付依赖工作区" onKeyDown={e=>{if(e.key!=='Escape'||e.defaultPrevented||e.nativeEvent.isComposing||e.nativeEvent.keyCode===229||root.current?.querySelector('.dependency-canvas')?.getAttribute('data-connection-active')==='true')return;
-      const target=e.target as HTMLElement;
-      if(target.closest('.graph-finder')){e.preventDefault();e.stopPropagation();setFinding(false);root.current?.querySelector<HTMLElement>('.graph-tool-rail [aria-label="查找与筛选"]')?.focus({preventScroll:true});}
-      else if(target.closest('.graph-auxiliary')&&auxiliary){e.preventDefault();e.stopPropagation();onDismissAuxiliary?.();root.current?.querySelector<HTMLElement>('.dependency-canvas')?.focus({preventScroll:true});}
-      else if(target.closest('.graph-detail')&&detail){e.preventDefault();e.stopPropagation();onDismissDetail?.();root.current?.querySelector<HTMLElement>('.dependency-canvas')?.focus({preventScroll:true});}
-    }}>
-    <DependencyGraph {...graph} onDismissOverlays={()=>{if(auxiliary){onDismissAuxiliary?.();return true;}if(detail){onDismissDetail?.();return true;}if(finding){setFinding(false);return true;}return false;}} onSearch={()=>{setFinding(true);graph.onSearch?.();requestAnimationFrame(()=>root.current?.querySelector<HTMLInputElement>('.graph-finder input')?.focus());}}>
-      <div className="graph-toolbar graph-overlay nopan nodrag nowheel" data-graph-panel="top">{toolbar}</div>
-      <div className="graph-tool-rail graph-overlay nopan nodrag nowheel" data-graph-panel="left">{palette}{finder&&<FindTool onClick={()=>setFinding(v=>!v)}/>}</div>
+  return <section ref={root} className={'graph-workspace graph-editor-workspace'+(finding?' has-finder':'')+(analysis?' has-analysis':'')+(detail?' has-inspector':'')} aria-label="交付依赖工作区" onCompositionStart={()=>{runtime.composing=true;}} onCompositionEnd={()=>{runtime.composing=false;if(runtime.saveRequested){runtime.saveRequested=false;queueMicrotask(requestSave);}}}
+    onClickCapture={e=>{if((e.target as HTMLElement).closest('[aria-label="保存修改"]')){e.preventDefault();e.stopPropagation();requestSave();}}}
+    onKeyDownCapture={e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();e.stopPropagation();requestSave();}}}
+    onKeyDown={e=>{const input=(e.target as HTMLElement).closest('input,textarea,select,[contenteditable=true]');if(!e.defaultPrevented&&!input&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.stopPropagation();if(!runtime.interaction?.cancel())graph.commands.dispatch({type:e.shiftKey?'redo':'undo'});return;}if(e.key!=='Escape'||e.defaultPrevented||e.nativeEvent.isComposing)return;if(runtime.interaction?.operation){e.preventDefault();e.stopPropagation();runtime.cancel();return;}if(runtime.dismiss(e.target as Element)){e.preventDefault();e.stopPropagation();}}}>
+
+    <DependencyGraph {...graph} originPositions={editorDocument.layoutBaselines[graph.viewKey]} onOrigin={positions=>editorDocument.captureLayout(graph.viewKey,positions)} onDismissOverlays={()=>runtime.dismiss()} onSearch={()=>{setFinding(true);graph.onSearch?.();requestAnimationFrame(()=>root.current?.querySelector<HTMLInputElement>('.graph-finder input')?.focus());}}/>
+      <div className="graph-toolbar graph-overlay nopan nodrag nowheel" data-graph-panel="top" data-workspace-zone="tools">{toolbar}</div>
+      <div className="graph-tool-rail graph-overlay nopan nodrag nowheel" data-graph-panel="left" data-workspace-zone="tools">{palette}{finder&&<FindTool onClick={()=>setFinding(v=>!v)}/>}</div>
       {finder&&finding&&<div ref={finderRef} className="graph-finder graph-overlay nopan nodrag nowheel" data-graph-panel="left">{finder}</div>}
-      <FloatingPanel onDismiss={onDismissDetail} content={detail} side="right" replacement={!!auxiliary} contentKey={graph.selected+'|'+(graph.selectedEdge||'')}/>
-      <FloatingPanel onDismiss={onDismissAuxiliary} analysis={analysis} size={auxiliarySize} content={auxiliary} side="left" replacement={!!detail}/>
-      <div className="graph-footer graph-overlay nopan nodrag nowheel" data-graph-panel="bottom">{footer}</div>
-    </DependencyGraph>
+      <FloatingPanel onDismiss={onDismissDetail} content={detail} side="right" replacement={!!auxiliary} contentKey={JSON.stringify(graph.interaction.selection)}/>
+      <FloatingPanel contentKey={auxiliaryKey} onDismiss={onDismissAuxiliary} analysis={analysis} size={auxiliarySize} content={auxiliary} side="left" replacement={!!detail}/>
+      <div className="graph-footer graph-overlay nopan nodrag nowheel" data-graph-panel="bottom" data-workspace-zone="tools">{footer}</div>
+
   </section>;
 }
+
+export function GraphWorkspace(props:ComponentProps<typeof Workspace>){const [runtime]=useState(()=>new WorkspaceRuntime());return <WorkspaceRuntimeContext.Provider value={runtime}><Workspace {...props}/></WorkspaceRuntimeContext.Provider>;}

@@ -61,13 +61,13 @@ test('重复连线可定位已有草稿关系，快速撤销重做后线路完�
  expect(await viewportValue(page)).toBe(before);await expect.poll(()=>page.locator('.graph-routed-edge').evaluateAll(es=>es.map(e=>Number(e.getAttribute('opacity'))))).toEqual([1]);await expect(page.locator('.react-flow__edge-path')).toHaveCount(1);expect((await analysis()).revision).toBe(revision);
 });
 
-test('路由失败保留上一份节点和线路，重试后应用草稿位置且视口不动',async({page})=>{
+test('路由失败保留当前修改和临时线，重试不回退节点或视口',async({page})=>{
  const {a,analysis}=await fixture(page);
  await page.route('**/fixed-routing.worker*.js',async route=>{const response=await route.fetch();await route.fulfill({response,body:await response.text()+';{const handle=self.onmessage;let calls=0;self.onmessage=e=>{if(++calls===2)self.postMessage({id:e.data.id,error:"模拟路由失败"});else handle(e);};}'});});
  await page.goto('/paths?pathScope=all');await ready(page);const previous=await positionsValue(page),view=await viewportValue(page),revision=(await analysis()).revision;await page.getByLabel('编辑画布',{exact:true}).click();
  const node=page.locator('.react-flow__node[data-id="'+a.id+'"]'),box=(await node.boundingBox())!;await page.mouse.move(box.x+80,box.y+40);await page.mouse.down();await page.mouse.move(box.x+112,box.y+88,{steps:8});await page.mouse.up();
- await expect(page.locator('.graph-error-notice')).toContainText('保留上次有效画面');expect(await positionsValue(page)).toEqual(previous);expect(await viewportValue(page)).toBe(view);expect(await page.locator('.graph-routed-edge').getAttribute('opacity')).toBe('1');
- await page.getByRole('button',{name:'重试连线',exact:true}).click();await ready(page);await expect(page.locator('.graph-error-notice')).toHaveCount(0);expect((await positionsValue(page))[a.id]).not.toBe(previous[a.id]);expect(await viewportValue(page)).toBe(view);expect((await analysis()).revision).toBe(revision);
+ await expect(page.locator('.graph-error-notice')).toContainText('当前修改和临时连线已保留');const requested=await positionsValue(page);expect(requested[a.id]).not.toBe(previous[a.id]);expect(await viewportValue(page)).toBe(view);await expect(page.locator('.graph-pending-route').first()).toBeVisible();
+ await page.getByRole('button',{name:'重试连线',exact:true}).click();await ready(page);await expect(page.locator('.graph-error-notice')).toHaveCount(0);expect(await positionsValue(page)).toEqual(requested);expect(await viewportValue(page)).toBe(view);expect((await analysis()).revision).toBe(revision);
 });
 
 test('紧凑工作区：移动、Alt复制、独立里程碑、草稿恢复与原子保存',async({page},testInfo)=>{
@@ -266,5 +266,45 @@ test('深度交互：输入框保留文字撤销，全局快捷键不删除内�
 
 test('深度交互：关闭浮层后键盘继续作用于画布，切换输入框不抢焦点',async({page})=>{
  const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);await page.locator('.react-flow__node .dependency-card').first().click();await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();await expect(page.locator('.dependency-canvas')).toBeFocused();await page.keyboard.press('Control+f');await expect(page.getByLabel('搜索流程节点')).toBeFocused();
- await page.getByLabel('流程属性',{exact:true}).click();const field=page.getByLabel('流程名称');await field.focus();await page.keyboard.press('Escape');await expect(page.locator('.dependency-canvas')).toBeFocused();await expect(page.locator('.graph-auxiliary[aria-hidden="false"]')).toHaveCount(0);
+ await page.getByLabel('流程属性',{exact:true}).click();const field=page.getByLabel('流程名称');await field.focus();await page.keyboard.press('Escape');await expect(page.getByLabel('流程属性',{exact:true})).toBeFocused();await expect(page.locator('.graph-auxiliary[aria-hidden="false"]')).toHaveCount(0);
+});
+
+
+test('重构：无效字段返回及刷新后恢复，Esc 回退字段并可继续编辑',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);await page.locator('.react-flow__node .dependency-card').first().click();const input=page.getByLabel('元素名称');await input.fill('');await input.blur();await expect(input).toHaveAttribute('aria-invalid','true');await page.getByRole('button',{name:'返回流程列表',exact:true}).click();await page.goto('/templates?edit='+a.templateId);await ready(page);await page.locator('.react-flow__node .dependency-card').first().click();await expect(input).toHaveValue('');await expect(input).toHaveAttribute('aria-invalid','true');await page.reload();await ready(page);await page.locator('.react-flow__node .dependency-card').first().click();await input.focus();await page.keyboard.press('Escape');await expect(input).toHaveValue('方案交付');await input.fill('恢复后的名称');await input.blur();await expect(page.locator('.react-flow__node strong').first()).toHaveText('恢复后的名称');
+});
+
+test('重构：输入法组合中的保存延后一次，结束后提交当前文本',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);await page.locator('.react-flow__node .dependency-card').first().click();const input=page.getByLabel('元素名称');await input.focus();await input.dispatchEvent('compositionstart');await input.fill('中文组合保存');let writes=0;page.on('request',r=>{if(r.method()==='PATCH'&&r.url().endsWith('/api/templates/'+a.templateId))writes++;});await page.keyboard.press('Control+s');await page.keyboard.press('Control+s');expect(writes).toBe(0);const request=page.waitForRequest(r=>r.method()==='PATCH'&&r.url().endsWith('/api/templates/'+a.templateId));await input.dispatchEvent('compositionend');expect((await request).postDataJSON().items[0].title).toBe('中文组合保存');await expect(page.getByLabel('撤销',{exact:true})).toBeDisabled();expect(writes).toBe(1);
+});
+
+test('重构：未放置元素在失焦时取消，随后点击不创建对象',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);await page.getByLabel('添加元素',{exact:true}).click();await page.locator('.graph-elements').getByRole('button',{name:'工作项',exact:true}).click();await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await blank(page);await expect(page.locator('.react-flow__node')).toHaveCount(2);await expect(page.getByLabel('撤销',{exact:true})).toBeDisabled();
+});
+
+test('重构：旧 session 草稿迁入 IndexedDB，内容与撤销历史不丢失',async({page})=>{
+ const {a,project}=await fixture(page);const account=(await(await page.request.get('/api/session')).json()).accountId,key='pm-graph-draft:'+account+':'+project.id;
+ const analysis=await(await page.request.get('/api/projects/'+project.id+'/path-analysis')).json();await page.addInitScript(({key,analysis,a})=>{if(localStorage.getItem('migration-seeded'))return;localStorage.setItem('migration-seeded','1');const empty={add:[],remove:[],estimates:[]};sessionStorage.setItem(key,JSON.stringify({version:String(analysis.revision),values:[empty,{...empty,entities:[{entity:'requirement',op:'update',id:a.id,expectedVersion:a.version,data:{title:'旧会话修改'}}]}],index:1,active:true,server:analysis}));},{key,analysis,a});
+ await page.goto('/paths?pathScope=all');await ready(page);await expect(page.locator('.react-flow__node[data-id="'+a.id+'"] strong')).toHaveText('旧会话修改');expect(await page.evaluate(key=>sessionStorage.getItem(key),key)).toBeNull();await page.reload();await ready(page);await page.locator('.dependency-canvas').focus();await page.keyboard.press('Control+z');await expect(page.locator('.react-flow__node[data-id="'+a.id+'"] strong')).toHaveText(a.title);
+});
+
+test('重构：保存布局后及后台刷新后不回跳，正式布局和显示位置一致',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/paths?pathScope=all');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();await page.locator('.react-flow__node[data-id="'+a.id+'"] .dependency-card').click();await page.locator('.dependency-canvas').focus();await page.keyboard.press('Shift+ArrowRight');await ready(page);const position=await positionsValue(page);await page.getByLabel('保存修改',{exact:true}).click();await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();await ready(page);expect(await positionsValue(page)).toEqual(position);await page.reload();await ready(page);expect(await positionsValue(page)).toEqual(position);
+});
+
+
+test('重构：保存中跨画布禁止编辑，完成后保持当前导航位置',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/paths?pathScope=all');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();const node=page.locator('.react-flow__node[data-id="'+a.id+'"]');await node.locator('strong').dblclick();await node.locator('strong').fill('跨画布保存');await page.keyboard.press('Enter');
+ let release!:()=>void;const barrier=new Promise<void>(resolve=>release=resolve);await page.route('**/dependency-changes/apply',async route=>{await barrier;await route.continue();});const pending=page.waitForRequest(r=>r.url().endsWith('/dependency-changes/apply'));await page.getByLabel('保存修改',{exact:true}).click();await pending;
+ await node.locator('.dependency-card').click();await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp('/requirements/'+a.id));await expect(page.getByLabel('保存修改',{exact:true})).toBeDisabled();await expect(page.locator('.business-handle')).toHaveCount(0);const response=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/apply'));release();expect((await response).ok()).toBe(true);await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();await expect(page).toHaveURL(new RegExp('/requirements/'+a.id));
+});
+
+
+test('重构：关闭属性后保存会返回无效字段，原文保留且不提交',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);await page.locator('.react-flow__node .dependency-card').first().click();const field=page.getByLabel('元素名称');await field.fill('');await field.blur();await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();await expect(page.locator('.graph-detail')).toHaveCount(0);let writes=0;page.on('request',r=>{if(r.method()==='PATCH'&&r.url().endsWith('/api/templates/'+a.templateId))writes++;});await page.getByLabel('保存修改',{exact:true}).click();await expect(field).toHaveValue('');await expect(field).toHaveAttribute('aria-invalid','true');await expect(field).toBeFocused();expect(writes).toBe(0);
+});
+
+
+test('重构：原位取消不会被属性副本重新提交，继续操作和刷新仍保留原名',async({page})=>{
+ const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);const title=page.locator('.react-flow__node strong').first();await title.dblclick();await title.fill('取消的原位名称');await page.keyboard.press('Escape');await page.locator('.react-flow__node .dependency-card').nth(1).click();await expect(title).toHaveText('方案交付');await expect(page.getByLabel('撤销',{exact:true})).toBeDisabled();await page.reload();await ready(page);await expect(title).toHaveText('方案交付');await expect(page.getByLabel('撤销',{exact:true})).toBeDisabled();
 });

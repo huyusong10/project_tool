@@ -1,10 +1,10 @@
 import {useEffect,useState,useRef,type ReactNode} from 'react';
-import {useDismissLayer} from '../use-dismiss-layer';
+import {useWorkspaceLayer} from '../workspace-runtime';
 import {ArrowLeft,Undo2,Redo2,Save,Pencil,X,Plus,Square,Diamond,Workflow,Search,Info,Ellipsis} from 'lucide-react';
 function ToolMenu({label,icon,children,className}:{label:string;icon:ReactNode;children:ReactNode;className:string}){
   const ref=useRef<HTMLDetailsElement>(null),[open,setOpen]=useState(false);
-  useDismissLayer(ref,open,()=>{if(ref.current)ref.current.open=false;});
-  useEffect(()=>{if(!open)return;const leave=(e:FocusEvent)=>{if(e.relatedTarget instanceof Node&&!ref.current?.contains(e.relatedTarget)){if(ref.current)ref.current.open=false;}};const element=ref.current!;element.addEventListener('focusout',leave);return()=>element.removeEventListener('focusout',leave);},[open]);
+  useWorkspaceLayer(ref,open,'menu',()=>{if(ref.current)ref.current.open=false;});
+
   return <details ref={ref} className={className} onToggle={e=>setOpen(e.currentTarget.open)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();if(ref.current){ref.current.open=false;ref.current.querySelector<HTMLElement>('summary')?.focus();}}}}><summary aria-label={label} title={label}>{icon}</summary>{children}</details>;
 }
 export function EditorToolbar({title,back,backLabel,context,status,editing,canEdit=true,undo,redo,canUndo,canRedo,save,canSave=true,discard,begin,busy,extra}:{title:string;back?:()=>void;backLabel?:string;context?:ReactNode;status?:ReactNode;editing:boolean;canEdit?:boolean;undo?:()=>void;redo?:()=>void;canUndo?:boolean;canRedo?:boolean;save?:()=>void;canSave?:boolean;discard?:()=>void;begin?:()=>void;busy?:boolean;extra?:ReactNode}){

@@ -163,9 +163,9 @@ test('新增项目保留当前草稿，退出登录清理会话草稿',async({pa
  await page.request.post('/api/projects',{data:{name:'新增项目不影响草稿'+Date.now()}});
  await page.evaluate(()=>{window.dispatchEvent(new Event('offline'));window.dispatchEvent(new Event('online'));});
  await expect(page.locator('.graph-status-slot').filter({hasText:'1 项未保存'})).toBeVisible();
- expect(await page.evaluate(()=>Object.keys(sessionStorage).filter(k=>k.startsWith('pm-graph-draft:')).length)).toBeGreaterThan(0);
+ expect(await activeStoredDrafts(page)).toBeGreaterThan(0);
  await page.getByRole('link',{name:'项目进展',exact:true}).click();await page.getByRole('button',{name:'退出',exact:true}).click();
- await expect.poll(()=>page.evaluate(()=>Object.keys(sessionStorage).filter(k=>k.startsWith('pm-graph-draft:')).length)).toBe(0);
+ await expect.poll(()=>activeStoredDrafts(page)).toBe(0);
 });
 test('独立分支聚焦保留完整坐标和线路，刷新及范围外定位正确恢复',async({page})=>{
  const {project,a,b}=await fixture(page);
@@ -394,3 +394,5 @@ test('20/80/200 节点拖动反馈与预览箭头保持响应，取消不修改�
  }
  fs.writeFileSync('.preview/qa/gesture-drag-performance.json',JSON.stringify(results,null,2));await info.attach('drag-performance',{body:JSON.stringify(results),contentType:'application/json'});
 });
+
+async function activeStoredDrafts(page:import('@playwright/test').Page){return page.evaluate(()=>new Promise<number>((resolve,reject)=>{const request=indexedDB.open('pm-editor-drafts-v1',1);request.onsuccess=()=>{const db=request.result;if(!db.objectStoreNames.contains('drafts')){db.close();resolve(0);return;}const query=db.transaction('drafts').objectStore('drafts').getAll();query.onsuccess=()=>{resolve(query.result.filter(v=>v?.active).length);db.close();};query.onerror=()=>reject(query.error);};request.onerror=()=>reject(request.error);}));}
