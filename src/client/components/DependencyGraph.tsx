@@ -12,6 +12,7 @@ import {graphMotion,graphMotionFrame} from '../graph-motion';
 import type { GraphCard, GraphLink } from '../path-projection';
 import {Minus,Plus,Scan,LayoutGrid,LocateFixed,X,LoaderCircle} from 'lucide-react';
 import {vacantPosition,vacantGroup} from '../fixed-routing';
+import {facingSide,previewCurve,staleRouteIds,type PreviewBox} from '../graph-preview';
 import { requirementStatusLabels, riskLabels } from '../../shared/domain';
 
 type CardData = GraphCard & { rename?:(id:string,title:string)=>void; vertical: boolean; editing: boolean; highlighted: boolean; invalid: boolean; retiring?:boolean; context?:boolean; connection?:string };
@@ -88,7 +89,7 @@ function Graph(props: DependencyGraphProps) {
   const [nodes,setNodes,onNodesChange]=useNodesState<CardNode>([]),initialized=useNodesInitialized();
   const [selectedIds,setSelectedIds]=useState<string[]>(selected?[selected]:[]),[dragTick,setDragTick]=useState(0);
   const selectionChanged=useCallback(({nodes:selectedNodes}:{nodes:CardNode[]})=>{const ids=selectedNodes.map(n=>n.id).sort();setSelectedIds(old=>JSON.stringify([...old].sort())===JSON.stringify(ids)?old:ids);},[]);
-  const drag=useRef<{ids:string[];original:Record<string,Point>;copy:boolean;cancelled?:boolean}|null>(null),clipboard=useRef<{ids:string[];nodes:ReturnType<typeof positioned>;snapshot?:unknown}>({ids:[],nodes:[]}),latestProps=useRef(props);latestProps.current=props;
+  const drag=useRef<{ids:string[];original:Record<string,Point>;copy:boolean;cancelled?:boolean}|null>(null),manualPending=useRef(false),clipboard=useRef<{ids:string[];nodes:ReturnType<typeof positioned>;snapshot?:unknown}>({ids:[],nodes:[]}),latestProps=useRef(props);latestProps.current=props;
   const rename=useCallback((id:string,title:string)=>latestProps.current.onRename?.(id,title),[]);
   useEffect(()=>{setSelectedIds(old=>selected&&!old.includes(selected)?[selected]:old);},[selected]);
   const router=useRef<Worker|null>(null),requests=useRef(new Map<number,{resolve:(l:RoutedLayout)=>void;reject:(e:Error)=>void}>()),routeSequence=useRef(0);
@@ -210,6 +211,9 @@ function Graph(props: DependencyGraphProps) {
         if(links.some(e=>!layout.edges[e.id]?.points.length))throw new Error('部分连线尚未更新，请重试。');
         if(cancelled||id!==generation.current)return;
         performance.measure('pm-path-layout',{start,end:performance.now()});
+        // Snapshot after the gesture ends. A result arriving during a drag must not
+        // remember its intermediate position and replay it after Esc.
+        while(connectionRef.current||drag.current){await new Promise(resolve=>setTimeout(resolve,16));if(cancelled||id!==generation.current)return;}
         const startNodes=flow.getNodes(),positions=new Map(startNodes.map(n=>[n.id,displayPositions.current.get(n.id)||n.position])),old=sceneRef.current;
         const moved=new Set(Object.keys(layout.nodes).filter(key=>positions.has(key)&&(positions.get(key)!.x!==layout.nodes[key].x||positions.get(key)!.y!==layout.nodes[key].y)));
         const affected=new Set([...(old?.links||[]),...links].filter(e=>moved.has(e.source)||moved.has(e.target)||JSON.stringify(old?.layout.edges[e.id])!==JSON.stringify(layout.edges[e.id])).map(e=>e.id));
@@ -220,9 +224,9 @@ function Graph(props: DependencyGraphProps) {
           if(routingError.current){routingError.current=false;setError('');}
           displayPositions.current=new Map(Object.entries(layout.nodes));
           displayOpacities.current=new Map(Object.keys(layout.nodes).map(key=>[key,1]));
-          container.current?.querySelectorAll<HTMLElement>('.react-flow__node').forEach(element=>{const p=layout.nodes[element.dataset.id!];if(p){element.style.transform='translate('+p.x+'px, '+p.y+'px)';element.style.opacity='1';element.style.pointerEvents='';}});
+          container.current?.querySelectorAll<HTMLElement>('.react-flow__node').forEach(element=>{const p=layout.nodes[element.dataset.id!];if(p){element.style.transform='translate('+p.x+'px, '+p.y+'px)';element.style.opacity='1';element.style.pointerEvents='';element.style.willChange='';}});
           setNodes(current=>current.filter(n=>!!layout.nodes[n.id]).map(n=>({...n,position:layout.nodes[n.id],style:{...n.style,opacity:1,pointerEvents:undefined}})));
-          setScene({layout,links});layoutRef.current=layout;setEdgeFade({ids:new Set(),opacity:1});setFeedback(null);
+          setScene({layout,links});layoutRef.current=layout;manualPending.current=false;setEdgeFade({ids:new Set(),opacity:1});setFeedback(null);
           latestProps.current.onLayoutReady?.(layout.nodes);lastArrange.current=arrange;lastDirection.current=vertical;first.current=false;if(reset&&editing)latestProps.current.onPositions?.(layout.nodes,vertical?'down':'right');
           if(initial){
 
@@ -237,6 +241,8 @@ function Graph(props: DependencyGraphProps) {
         let edgeElements=[...container.current!.querySelectorAll<SVGGElement>('.react-flow__edge')].filter(e=>affected.has(e.dataset.id!)).map(e=>e.querySelector<SVGGElement>('.graph-routed-edge')!);
         const edgeStartOpacity=new Map(edgeElements.filter(Boolean).map(element=>[element,Number(element.getAttribute('opacity')??1)]));
         const started=last;
+        // Promote only the cards that move, and only for this transition.
+        for(const [key,element] of elements)if(moved.has(key))element.style.willChange='transform';
         // Only explicit auto-arrange preserves a previous anchor by moving the viewport.
         const before=reset&&anchorId&&old?.layout.nodes[anchorId]&&positions.get(anchorId),after=anchorId&&layout.nodes[anchorId];
         const tick=(now:number)=>{
@@ -253,6 +259,7 @@ function Graph(props: DependencyGraphProps) {
             const target=layout.nodes[key],origin=positions.get(key);
             if(!target){element.style.opacity=String(state.oldOpacity);displayOpacities.current.set(key,state.oldOpacity);element.style.pointerEvents='none';continue;}
             const added=!old?.layout.nodes[key];
+            if(!added&&!moved.has(key))continue;
             const position=origin&&!added?{x:origin.x+(target.x-origin.x)*state.position,y:origin.y+(target.y-origin.y)*state.position}:target;
             const opacity=added?state.newOpacity:1;
             displayPositions.current.set(key,position);displayOpacities.current.set(key,opacity);element.style.transform='translate('+position.x+'px, '+position.y+'px)';element.style.opacity=String(opacity);element.style.pointerEvents=opacity===0?'none':'';
@@ -278,9 +285,10 @@ function Graph(props: DependencyGraphProps) {
         setEdgeFade({ids:new Set(),opacity:1});container.current?.querySelectorAll<SVGGElement>('.graph-routed-edge').forEach(e=>{e.setAttribute('opacity','1');e.style.pointerEvents='';});
       }}
     };
-    timer=setTimeout(()=>void run(),initial?0:graphMotion.wait);
+    timer=setTimeout(()=>void run(),initial?0:manualPending.current?80:graphMotion.wait);
     return()=>{cancelled=true;clearTimeout(timer);cancelAnimationFrame(frame);
       // DOM animation can be interrupted before React publishes a new opacity.
+      canvasElement?.querySelectorAll<HTMLElement>('.react-flow__node').forEach(e=>{e.style.willChange='';});
       canvasElement?.querySelectorAll<SVGGElement>('.graph-routed-edge').forEach(e=>{e.setAttribute('opacity','1');e.style.pointerEvents='';});
       setEdgeFade({ids:new Set(),opacity:1});
     };
@@ -294,11 +302,18 @@ function Graph(props: DependencyGraphProps) {
   },[flow,available]);
   useEffect(()=>{if(props.locate&&!busy&&layoutRef.current?.nodes[props.locate.id]&&located.current!==props.locate.sequence){located.current=props.locate.sequence;locate(props.locate.id);}},[props.locate,busy,locate]);
   const linkById=useMemo(()=>new Map(links.map(e=>[e.id,e])),[links]);
+  const currentBoxes=new Map(nodes.filter(n=>!n.data.retiring).map(n=>[n.id,{...(displayPositions.current.get(n.id)||n.position),width:n.measured?.width||244,height:n.measured?.height||154}]));
+  // Auto-arrange already owns edge visibility through its animation clock. Only manual
+  // movement needs the extra stale-geometry guard; avoid rescanning every moving card.
+  const staleRoutes=manualPending.current?staleRouteIds(scene?.layout||null,links,currentBoxes,drag.current&&!drag.current.cancelled?drag.current.ids:[]):new Set(links.filter(e=>!scene?.layout.edges[e.id]).map(e=>e.id));
+  const staleKey=JSON.stringify([...staleRoutes].sort());
   const edges=useMemo<RouteEdge[]>(()=>(scene?.links||[]).map(e=>({...e,type:'delivery',sourceHandle:'route-out',targetHandle:'route-in',
-    className:props.visibleIds&&(!props.visibleIds.includes(e.source)||!props.visibleIds.includes(e.target))?'graph-edge-hidden':'',
+    className:(props.visibleIds&&(!props.visibleIds.includes(e.source)||!props.visibleIds.includes(e.target))?'graph-edge-hidden':'')+(staleRoutes.has(e.id)||!linkById.has(e.id)||linkById.get(e.id)?.source!==e.source||linkById.get(e.id)?.target!==e.target?' graph-route-stale':''),
     label:undefined,selected:e.id===props.selectedEdge,reconnectable:false,
     data:{route:scene?.layout.edges[e.id],invalid:props.invalidEdges?.includes(e.id),critical:(linkById.get(e.id)||e).critical,labelText:e.label||'',filtered:!!props.visibleIds&&(!props.visibleIds.includes(e.source)||!props.visibleIds.includes(e.target)),opacity:edgeFade.ids.has(e.id)?edgeFade.opacity:1}
-  })),[scene,linkById,props.selectedEdge,props.visibleIds,props.invalidEdges,edgeFade]);
+  // The key changes only when route validity changes, not on every pointer movement.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  })),[scene,linkById,props.selectedEdge,props.visibleIds,props.invalidEdges,edgeFade,staleKey]);
   // Focus is presentation only: do not rebuild React Flow's node/edge store for it.
   // Reapply after a geometry commit, which may replace the corresponding DOM nodes.
   useLayoutEffect(()=>{
@@ -306,22 +321,27 @@ function Graph(props: DependencyGraphProps) {
     container.current?.querySelectorAll<HTMLElement>('.react-flow__node').forEach(e=>e.classList.toggle('graph-node-dim',focused&&!emphasized.has(e.dataset.id!)));
     container.current?.querySelectorAll<HTMLElement>('.react-flow__edge').forEach(e=>{const edge=linkById.get(e.dataset.id!);e.querySelector('.graph-edge-presentation')?.classList.toggle('is-dimmed',focused&&!!edge&&(!emphasized.has(edge.source)||!emphasized.has(edge.target)));});
   },[props.focusId,props.emphasizedIds,linkById,nodes,edges]);
-  const restoreDrag=()=>{const d=drag.current;if(!d)return;displayPositions.current=new Map(Object.entries(d.original));setNodes(ns=>ns.map(n=>({...n,position:d.original[n.id]||n.position})));setEdgeFade({ids:new Set(),opacity:1});};
-  const commitMove=(positions:Record<string,Point>)=>{displayPositions.current=new Map(Object.entries(positions));setNodes(ns=>ns.map(n=>({...n,position:positions[n.id]||n.position})));props.onPositions?.(positions,vertical?'down':'right');};
+  const restoreDrag=()=>{const d=drag.current;if(!d)return;displayPositions.current=new Map(Object.entries(d.original));manualPending.current=Object.entries(d.original).some(([id,p])=>p.x!==layoutRef.current?.nodes[id]?.x||p.y!==layoutRef.current?.nodes[id]?.y);setNodes(ns=>ns.map(n=>({...n,position:d.original[n.id]||n.position})));setEdgeFade({ids:new Set(),opacity:1});setDragTick(t=>t+1);};
+  const displayedPositions=()=>Object.fromEntries(flow.getNodes().map(n=>[n.id,{...(displayPositions.current.get(n.id)||n.position)}]));
+  const commitMove=(positions:Record<string,Point>)=>{if(JSON.stringify(positions)!==JSON.stringify(props.positions))generation.current++;manualPending.current=true;lastArrange.current=arrange;displayPositions.current=new Map(Object.entries(positions));setNodes(ns=>ns.map(n=>({...n,position:positions[n.id]||n.position})));props.onPositions?.(positions,vertical?'down':'right');};
   const positioned=()=>flow.getNodes().map(n=>({id:n.id,...n.position,width:n.measured?.width||244,height:n.measured?.height||154}));
   const duplicate=(ids:string[],offset=32,snapshot?:unknown,original=positioned())=>{const current=positioned(),all=[...current,...original.filter(n=>!current.some(c=>c.id===n.id))];props.onDuplicate?.(ids,vacantGroup(all,Object.fromEntries(ids.flatMap(id=>{const p=original.find(n=>n.id===id);return p?[[id,{x:p.x+offset,y:p.y+offset}]]:[]})),true),snapshot);};
   const createAt=(kind:string,point:Point)=>props.onCreate?.(kind,vacantPosition(positioned(),'__new__',point));
   const gesture=connection.gesture;
-  const previewSource=gesture?.source||feedback?.source,previewSide=gesture?.side||feedback?.side||'right';
   const screenPoint=(id:string,side?:ConnectionSide)=>{
     const node=flow.getNode(id);if(!node)return null;
     const w=node.measured?.width||244,h=node.measured?.height||154;
     const position=displayPositions.current.get(id)||node.position;
     return flow.flowToScreenPosition({x:position.x+(side==='left'?0:side==='right'?w:w/2),y:position.y+(side==='top'?0:side==='bottom'?h:h/2)});
   };
-  const from=previewSource?screenPoint(previewSource,previewSide):null,to=gesture?.point||(feedback?screenPoint(feedback.target):null),rect=container.current?.getBoundingClientRect();
-  const showPreview=!!gesture||!!feedback&&['waiting','layout'].includes(phase);
-  const hint=gesture?.issue?.message||(gesture?.target?cards.find(c=>c.id===gesture.source)?.title+' 完成后 '+cards.find(c=>c.id===gesture.target)?.title+' 开始':gesture?'拖到后续卡片，或点击卡片完成连接':feedback?'依赖已加入草稿':'');
+  const rect=container.current?.getBoundingClientRect(),previewMarker=useId().replace(/:/g,'_');
+  const screenBox=(id:string):PreviewBox|null=>{const box=currentBoxes.get(id);return box?{x:box.x*viewport.zoom+viewport.x,y:box.y*viewport.zoom+viewport.y,width:box.width*viewport.zoom,height:box.height*viewport.zoom}:null;};
+  const fixed=gesture&&screenBox(gesture.source),candidate=gesture?.target&&screenBox(gesture.target),pointer=gesture&&rect?{x:gesture.point.x-rect.left,y:gesture.point.y-rect.top}:null;
+  const liveCurve=fixed&&pointer?(gesture?.reconnectEnd==='source'?candidate?previewCurve(candidate,fixed):previewCurve(fixed,pointer,undefined,true):previewCurve(fixed,candidate||pointer,gesture?.side)):null;
+  const pendingLinks=rendered?links.filter(e=>staleRoutes.has(e.id)&&(manualPending.current||!scene?.layout.edges[e.id])&&(!props.visibleIds||props.visibleIds.includes(e.source)&&props.visibleIds.includes(e.target))):[];
+  const pendingCurve=(e:GraphLink)=>{const a=screenBox(e.source),b=screenBox(e.target);if(!a||!b)return null;const route=scene?.layout.edges[e.id],oldA=scene?.layout.nodes[e.source],oldB=scene?.layout.nodes[e.target];return previewCurve(a,b,route&&oldA?facingSide({...currentBoxes.get(e.source)!,...oldA},route.points[0]):undefined,false,route&&oldB?facingSide({...currentBoxes.get(e.target)!,...oldB},route.points.at(-1)!):undefined);};
+  const hintSource=gesture?.reconnectEnd==='source'?gesture.target:gesture?.source,hintTarget=gesture?.reconnectEnd==='source'?gesture.source:gesture?.target;
+  const hint=gesture?.issue?.message||(gesture?.target?cards.find(c=>c.id===hintSource)?.title+' 完成后 '+cards.find(c=>c.id===hintTarget)?.title+' 开始':gesture?gesture.reconnectEnd==='source'?'选择新的前置卡片，完成后进入当前后续':'拖到后续卡片，或点击卡片完成连接':'');
   return <div className="dependency-canvas" ref={container} role="region" tabIndex={0} aria-label="动态交付依赖图"
     data-layout-ready={!busy} data-layout-phase={phase} data-rendered-layout={rendered} data-connection-active={!!gesture}
     onPointerDownCapture={event=>{
@@ -337,6 +357,10 @@ function Graph(props: DependencyGraphProps) {
     onAuxClick={event=>{if(event.button===1)event.preventDefault();}}
     onKeyDownCapture={event=>{
       if((event.target as HTMLElement).closest('.graph-overlay,.graph-view-controls,input,textarea,select,[contenteditable=true]'))return;
+      const handle=(event.target as HTMLElement).closest<HTMLElement>('.business-handle');
+      if(editing&&handle&&['Enter',' '].includes(event.key)){
+        const node=handle.closest<HTMLElement>('.react-flow__node');if(node?.dataset.id){event.preventDefault();event.stopPropagation();if(!connection.choose(node.dataset.id)){const box=handle.getBoundingClientRect();connection.begin(node.dataset.id,handle.dataset.side as ConnectionSide,{x:box.x+box.width/2,y:box.y+box.height/2},null);}return;}
+      }
       if(connectionRef.current&&['Enter',' '].includes(event.key)&&!(event.target as HTMLElement).closest('.business-handle')){
         const node=(event.target as HTMLElement).closest<HTMLElement>('.react-flow__node:not(.graph-node-hidden)');
         if(node?.dataset.id){event.preventDefault();event.stopPropagation();connection.choose(node.dataset.id);return;}
@@ -346,8 +370,8 @@ function Graph(props: DependencyGraphProps) {
       if(mod&&['s','f','c','v'].includes(key)){event.preventDefault();if(key==='s')props.onSave?.();if(key==='f')props.onSearch?.();if(key==='c')clipboard.current={ids:[...selectedIds],nodes:positioned(),snapshot:props.onCopy?.(selectedIds)};if(key==='v'&&editing)duplicate(clipboard.current.ids,32,clipboard.current.snapshot,clipboard.current.nodes);}
       if(editing&&event.key==='Delete'){event.preventDefault();props.onDelete?.(selectedIds,props.selectedEdge);}
       if(editing&&event.key==='F2'&&selected&&!['start','acceptance','project'].includes(cards.find(c=>c.id===selected)?.kind||'')){event.preventDefault();const el=container.current?.querySelector<HTMLElement>('[data-inline-title="'+CSS.escape(selected)+'"]');if(el){el.contentEditable='true';el.focus();const range=document.createRange();range.selectNodeContents(el);window.getSelection()?.removeAllRanges();window.getSelection()?.addRange(range);}}
-      if(editing&&event.key.startsWith('Arrow')&&selectedIds.length){event.preventDefault();const delta=event.shiftKey?10:1,p={...layoutRef.current?.nodes};for(const id of selectedIds){const n=flow.getNode(id);if(n)p[id]={x:n.position.x+(event.key==='ArrowLeft'?-delta:event.key==='ArrowRight'?delta:0),y:n.position.y+(event.key==='ArrowUp'?-delta:event.key==='ArrowDown'?delta:0)};}commitMove(p);}
-      if(event.key==='Escape'&&drag.current){event.preventDefault();drag.current.cancelled=true;restoreDrag();return;}
+      if(editing&&event.key.startsWith('Arrow')&&selectedIds.length){event.preventDefault();event.stopPropagation();const delta=event.shiftKey?10:1,p=displayedPositions();for(const id of selectedIds){const n=p[id];if(n)p[id]={x:n.x+(event.key==='ArrowLeft'?-delta:event.key==='ArrowRight'?delta:0),y:n.y+(event.key==='ArrowUp'?-delta:event.key==='ArrowDown'?delta:0)};}commitMove(p);}
+      if(event.key==='Escape'&&drag.current){event.preventDefault();event.stopPropagation();drag.current.cancelled=true;restoreDrag();return;}
       if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(connectionRef.current)connection.cancel();else if(props.onDismissOverlays?.()){dismissError();return;}else {props.onExitFocus?.();if(!props.focusId&&!props.placing){setSelectedIds([]);onSelect('');}}dismissError();}
     }}>
     {!rendered&&slowBusy&&<div className="graph-initial-loader" role="status"><LoaderCircle size={20}/>正在准备画布</div>}
@@ -360,28 +384,30 @@ function Graph(props: DependencyGraphProps) {
       snapToGrid snapGrid={[8,8]}
       onPaneClick={event=>{if(props.placing&&editing)createAt(props.placing,flow.screenToFlowPosition({x:event.clientX,y:event.clientY}));else {setSelectedIds([]);onSelect('');}}}
       onSelectionChange={selectionChanged}
-      onNodeDragStart={(event,node)=>{onSelect(node.id);const ids=selectedIds.includes(node.id)?selectedIds:[node.id];setSelectedIds(ids);drag.current={ids,original:Object.fromEntries(flow.getNodes().map(n=>[n.id,{...n.position}])),copy:'altKey' in event&&event.altKey};setEdgeFade({ids:new Set(links.filter(e=>ids.includes(e.source)||ids.includes(e.target)).map(e=>e.id)),opacity:0});}}
-      onNodeDrag={(_,node,dragged)=>{for(const n of dragged.length?dragged:[node])displayPositions.current.set(n.id,n.position);setDragTick(t=>t+1);}}
+      onNodeDragStart={(event,node)=>{onSelect(node.id);const ids=selectedIds.includes(node.id)?selectedIds:[node.id];setSelectedIds(ids);manualPending.current=true;drag.current={ids,original:displayedPositions(),copy:'altKey' in event&&event.altKey};setEdgeFade({ids:new Set(links.filter(e=>ids.includes(e.source)||ids.includes(e.target)).map(e=>e.id)),opacity:0});}}
+      onNodeDrag={(_,node,dragged)=>{if(drag.current?.cancelled){restoreDrag();return;}for(const n of dragged.length?dragged:[node])displayPositions.current.set(n.id,n.position);setDragTick(t=>t+1);}}
       onNodeDragStop={(event,node,dragged)=>{const d=drag.current;if(!d)return;const el='clientX' in event?document.elementFromPoint(event.clientX,event.clientY):null;const invalid=d.cancelled||!el||!container.current?.contains(el)||!!el.closest('.graph-overlay,.graph-view-controls');if(invalid){restoreDrag();drag.current=null;return;}
         const targets=Object.fromEntries((dragged.length?dragged:[node]).filter(n=>d.ids.includes(n.id)).map(n=>[n.id,n.position]));
         if(d.copy){restoreDrag();drag.current=null;props.onDuplicate?.(d.ids,vacantGroup(positioned(),targets,true));}
-        else {const final={...d.original,...vacantGroup(positioned(),targets)};drag.current=null;commitMove(final);setEdgeFade({ids:new Set(),opacity:1});}
+        else {const final={...d.original,...vacantGroup(positioned(),targets)};drag.current=null;commitMove(final);}
       }}
       onNodeClick={(event,node)=>{if(!connection.choose(node.id)){if(!event.ctrlKey&&!event.metaKey)setSelectedIds([node.id]);onSelect(node.id);}}} onEdgeClick={(_,edge)=>props.onEdgeSelect?.(edge.id)}
       onMoveEnd={(_,v)=>{if(!busy&&!first.current)saveViewport(keyRef.current,v);}} minZoom={.02} maxZoom={1.5} fitView={false}>
       <Background gap={24} size={1}/>
     </ReactFlow>
-    {showPreview&&from&&to&&rect&&<svg className={'graph-connection-preview'+(gesture?.issue?' is-invalid':'')} aria-hidden="true">
-      <path d={'M '+(from.x-rect.left)+' '+(from.y-rect.top)+' L '+(to.x-rect.left)+' '+(to.y-rect.top)}/>
+    {(liveCurve||pendingLinks.length>0)&&<svg className={'graph-connection-preview'+(gesture?.issue?' is-invalid':'')} aria-hidden="true">
+      <defs><marker id={previewMarker} viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="context-stroke"/></marker></defs>
+      {pendingLinks.map(e=>{const curve=pendingCurve(e);return curve?<path key={e.id} className="graph-preview-path graph-pending-route" data-edge-id={e.id} d={curve.d} markerEnd={'url(#'+previewMarker+')'}/>:null;})}
+      {liveCurve?.d&&<path className={'graph-preview-path graph-live-connection'+(gesture?.issue?' is-invalid':'')} d={liveCurve.d} markerEnd={'url(#'+previewMarker+')'}/>}
     </svg>}
     {editing&&!busy&&props.reconnect&&(['source','target'] as const).map(end=>{
       const point=screenPoint(props.reconnect![end],end==='source'?'right':'left');if(!point||!rect)return null;
       return <button key={end} className="graph-reconnect-handle nopan nodrag" data-reconnect-end={end} aria-label={end==='source'?'拖动改接前置':'拖动改接后续'} style={{left:point.x-rect.left,top:point.y-rect.top}} onClick={e=>{if(e.detail===0)connection.begin(end==='source'?props.reconnect!.target:props.reconnect!.source,'right',point,null,end);}}/>;
     })}
-    {drag.current&&<svg className="graph-drag-lines" aria-hidden="true">{links.filter(e=>drag.current!.ids.includes(e.source)||drag.current!.ids.includes(e.target)).map(e=>{const a=flow.getNode(e.source),b=flow.getNode(e.target);if(!a||!b)return null;const x=(a.position.x+(a.measured?.width||244)/2)*viewport.zoom+viewport.x,y=(a.position.y+(a.measured?.height||154)/2)*viewport.zoom+viewport.y,tx=(b.position.x+(b.measured?.width||244)/2)*viewport.zoom+viewport.x,ty=(b.position.y+(b.measured?.height||154)/2)*viewport.zoom+viewport.y;return <path key={e.id} d={'M '+x+' '+y+' L '+tx+' '+ty}/>;})}{flow.getNodes().filter(n=>!drag.current!.ids.includes(n.id)).flatMap(n=>drag.current!.ids.flatMap(id=>{const moving=flow.getNode(id);if(!moving)return [];const lines=[];if(Math.abs(n.position.x-moving.position.x)<5){const x=n.position.x*viewport.zoom+viewport.x;lines.push(<line key={id+n.id+'x'} x1={x} x2={x} y1={0} y2="100%"/>);}if(Math.abs(n.position.y-moving.position.y)<5){const y=n.position.y*viewport.zoom+viewport.y;lines.push(<line key={id+n.id+'y'} y1={y} y2={y} x1={0} x2="100%"/>);}return lines;}))}</svg>}
-    {drag.current?.copy&&rect&&<div className="graph-copy-preview" data-drag-tick={dragTick}>{drag.current.ids.map(id=>{const p=drag.current!.original[id],n=flow.getNode(id);return p&&n?<div key={id} style={{left:p.x*viewport.zoom+viewport.x,top:p.y*viewport.zoom+viewport.y,width:(n.measured?.width||244)*viewport.zoom,height:(n.measured?.height||154)*viewport.zoom}}>{n.data.title}</div>:null;})}</div>}
+    {drag.current&&!drag.current.cancelled&&<svg className="graph-drag-lines" aria-hidden="true">{flow.getNodes().filter(n=>!drag.current!.ids.includes(n.id)).flatMap(n=>drag.current!.ids.flatMap(id=>{const moving=flow.getNode(id);if(!moving)return [];const lines=[];if(Math.abs(n.position.x-moving.position.x)<5){const x=n.position.x*viewport.zoom+viewport.x;lines.push(<line key={id+n.id+'x'} x1={x} x2={x} y1={0} y2="100%"/>);}if(Math.abs(n.position.y-moving.position.y)<5){const y=n.position.y*viewport.zoom+viewport.y;lines.push(<line key={id+n.id+'y'} y1={y} y2={y} x1={0} x2="100%"/>);}return lines;}))}</svg>}
+    {drag.current?.copy&&!drag.current.cancelled&&rect&&<div className="graph-copy-preview" data-drag-tick={dragTick}>{drag.current.ids.map(id=>{const p=drag.current!.original[id],n=flow.getNode(id);return p&&n?<div key={id} style={{left:p.x*viewport.zoom+viewport.x,top:p.y*viewport.zoom+viewport.y,width:(n.measured?.width||244)*viewport.zoom,height:(n.measured?.height||154)*viewport.zoom}}>{n.data.title}</div>:null;})}</div>}
     {props.children}
-    <div className="graph-view-controls nopan nodrag nowheel"><span className="graph-layout-status" role="status" aria-label={slowBusy?'正在更新连线':undefined} title={slowBusy?'正在更新连线':undefined}>{slowBusy&&<LoaderCircle size={14}/>}</span>
+    <div className="graph-view-controls nopan nodrag nowheel"><span className="graph-layout-status" role="status" aria-label={slowBusy&&!gesture&&!drag.current?'正在更新连线':undefined} title={slowBusy&&!gesture&&!drag.current?'正在更新连线':undefined}>{slowBusy&&!gesture&&!drag.current&&<LoaderCircle size={14}/>}</span>
       <button className="ghost-button" aria-label="缩小画布" title="缩小画布" onClick={()=>void flow.zoomOut()}><Minus size={16}/></button><span>{Math.round(viewport.zoom*100)}%</span>
       <button className="ghost-button" aria-label="放大画布" title="放大画布" onClick={()=>void flow.zoomIn()}><Plus size={16}/></button>
       <button className="ghost-button" aria-label="定位所选节点" title="定位所选节点" disabled={!selected} onClick={()=>locate(selected)}><LocateFixed size={16}/></button><button className="ghost-button" aria-label="适配视图" title="适配视图" onClick={()=>void fitAvailable(true,props.focusId?props.emphasizedIds:props.visibleIds,true)}><Scan size={16}/></button>

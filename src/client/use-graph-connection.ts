@@ -51,8 +51,12 @@ export function useGraphConnection(options:Options){
       else update({...value,pointerId:null});
     };
     const cancelEvent=()=>handlers.current.cancel();
-    document.addEventListener('pointermove',move);document.addEventListener('pointerup',up);document.addEventListener('pointercancel',cancelEvent);window.addEventListener('blur',cancelEvent);
-    return()=>{document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);document.removeEventListener('pointercancel',cancelEvent);window.removeEventListener('blur',cancelEvent);};
+    const focus=(event:FocusEvent)=>{const value=current.current,target=event.target;if(!value||value.pointerId!==null||!(target instanceof HTMLElement)||!latest.current.container.current?.contains(target))return;
+      const node=target.closest<HTMLElement>('.react-flow__node:not(.graph-node-hidden)');if(!node||target.closest('.business-handle'))return;
+      const box=node.getBoundingClientRect();update(handlers.current.resolve(value,{x:box.x+box.width/2,y:box.y+box.height/2}));
+    };
+    document.addEventListener('pointermove',move);document.addEventListener('pointerup',up);document.addEventListener('pointercancel',cancelEvent);document.addEventListener('focusin',focus);window.addEventListener('blur',cancelEvent);
+    return()=>{document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);document.removeEventListener('pointercancel',cancelEvent);document.removeEventListener('focusin',focus);window.removeEventListener('blur',cancelEvent);};
   },[]);
   useEffect(()=>{if(!options.enabled)handlers.current.cancel();},[options.enabled]);
   return {gesture,current,cancel,begin,choose,

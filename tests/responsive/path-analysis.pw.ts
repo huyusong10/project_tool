@@ -373,3 +373,24 @@ test('工作区图上改接一次提交并可撤销，历史模板转换先预�
  await page.goto('/templates?edit='+legacy.id);await ready(page);await expect(page.locator('.business-handle')).toHaveCount(0);await page.getByLabel('流程属性',{exact:true}).click();await page.getByRole('button',{name:'转换为依赖流程'}).click();await expect(page.getByRole('dialog')).toContainText('原偏移');await page.getByRole('button',{name:'确认转换，加入草稿'}).click();await ready(page);await expect(page.locator('.business-handle')).toHaveCount(8);
  expect((await(await page.request.get('/api/templates?projectId='+project.id)).json() as WorkItemTemplate[]).find(t=>t.id===legacy.id)?.dependencyMode).toBe('legacy');
 });
+
+
+test('20/80/200 节点拖动反馈与预览箭头保持响应，取消不修改布局',async({page},info)=>{
+ test.setTimeout(90000);const {project}=await fixture(page),results:unknown[]=[];
+ for(const count of [20,80,200]){
+  const requirements=Array.from({length:count},(_,i)=>({...req('r'+i),projectId:project.id,title:'手势需求 '+i})),workItems=requirements.map((r,i)=>work('w'+i,r.id,1)),dependencies:PathInput['dependencies']=[];
+  for(let i=1;i<count;i++)for(const delta of [1,3,7])if(i>=delta)dependencies.push({id:`e${i}-${delta}`,projectId:project.id,sourceRequirementId:'r'+(i-delta),sourceWorkItemId:'w'+(i-delta),targetRequirementId:'r'+i,targetWorkItemId:'w'+i,origin:'manual'});
+  for(let i=12;dependencies.length<count*3;i++){const from=(i-11)%(count-11);dependencies.push({id:'extra'+i,projectId:project.id,sourceRequirementId:'r'+from,sourceWorkItemId:'w'+from,targetRequirementId:'r'+(from+11),targetWorkItemId:'w'+(from+11),origin:'manual'});}
+  const data=analysePaths({projectId:project.id,projectName:project.name,revision:0,projectEnd:null,asOfDate:'2026-09-07',requirements,workItems,dependencies});const pattern=`**/api/projects/${project.id}/path-analysis**`;await page.route(pattern,r=>r.fulfill({json:data}));await page.goto('/paths?pathScope=all');await ready(page);if(await page.getByLabel('编辑画布',{exact:true}).isVisible())await page.getByLabel('编辑画布',{exact:true}).click();
+  const node=page.locator('.react-flow__node[data-id=r0]');await node.dispatchEvent('click');await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();await page.waitForTimeout(220);for(let i=0;i<12;i++)await page.getByLabel('放大画布',{exact:true}).click();await page.getByLabel('定位所选节点',{exact:true}).click();await page.waitForTimeout(280);
+  const before=await node.getAttribute('style'),box=(await node.boundingBox())!,x=box.x+box.width*.35,y=box.y+12;
+  await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+12,y,{steps:2});await expect(page.locator('.graph-pending-route').first()).toBeVisible();
+  const observation=page.evaluate(async()=>{const intervals:number[]=[],latency:number[]=[];let moving=false,active=true,last=performance.now(),frame=0;const node=document.querySelector<HTMLElement>('.react-flow__node[data-id=r0]')!;
+   let displayed=node.style.transform;const move=(e:PointerEvent)=>{if(e.buttons!==1)return;moving=true;const began=performance.now();requestAnimationFrame(()=>{if(node.style.transform!==displayed&&document.querySelector('.graph-pending-route[marker-end]')){latency.push(performance.now()-began);displayed=node.style.transform;}});};
+   const tick=(now:number)=>{if(!active)return;if(moving)intervals.push(now-last);last=now;frame=requestAnimationFrame(tick);};document.addEventListener('pointermove',move,true);frame=requestAnimationFrame(tick);
+   await new Promise<void>(resolve=>document.addEventListener('pointerup',()=>resolve(),{once:true}));active=false;document.removeEventListener('pointermove',move,true);cancelAnimationFrame(frame);const p95=(values:number[])=>[...values].sort((a,b)=>a-b)[Math.max(0,Math.ceil(values.length*.95)-1)]||0;return {frameSamples:intervals.length,feedbackSamples:latency.length,p95FrameMs:p95(intervals),p95FeedbackMs:p95(latency)};
+  });
+  await page.mouse.move(x+332,y,{steps:40});await page.keyboard.press('Escape');await page.mouse.up();const measured=await observation;await info.attach('drag-'+count,{body:JSON.stringify(measured),contentType:'application/json'});await ready(page);expect(await node.getAttribute('style')).toBe(before);await expect(page.locator('.graph-pending-route')).toHaveCount(0);expect(measured.frameSamples).toBeGreaterThan(20);expect(measured.feedbackSamples).toBeGreaterThan(20);expect(measured.p95FeedbackMs).toBeLessThanOrEqual(100);expect(measured.p95FrameMs).toBeLessThanOrEqual(33);results.push({nodes:count,edges:dependencies.length,...measured});await page.unroute(pattern);
+ }
+ fs.writeFileSync('.preview/qa/gesture-drag-performance.json',JSON.stringify(results,null,2));await info.attach('drag-performance',{body:JSON.stringify(results),contentType:'application/json'});
+});
