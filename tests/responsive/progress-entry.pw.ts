@@ -318,6 +318,24 @@ for (const role of ['member', 'owner'] as const) {
   });
 }
 
+test('完成工作项允许留空说明并保留可选提示', async ({ page }) => {
+  const state = await fixture(page);
+  await page.route('**/api/work-items/w1/complete', async (route) => {
+    state.requests.push(route.request().postDataJSON());
+    state.requirement.workItems[0] = { ...state.requirement.workItems[0], status: 'completed', progress: 100, version: 2 };
+    return route.fulfill({ json: state.requirement.workItems[0] });
+  });
+  await page.goto('/requirements/r1');
+  await page.getByRole('button', { name: '完成', exact: true }).first().click();
+  const popover = page.locator('.inline-edit-popover');
+  await expect(popover.getByText('可留空，系统会记录“完成工作项”', { exact: true })).toBeVisible();
+  await expect(popover.getByRole('textbox', { name: '完成说明', exact: true })).toHaveValue('');
+  await expect(popover.getByRole('button', { name: '确认完成', exact: true })).toBeEnabled();
+  await popover.getByRole('button', { name: '确认完成', exact: true }).click();
+  await expect(popover).toHaveCount(0);
+  expect(state.requests).toEqual([{ expectedVersion: 1 }]);
+});
+
 for (const source of ['detail', 'my-work'] as const) {
   test(`${source}完成操作固定草稿版本，冲突重读失败后显式恢复再提交`, async ({ page }, testInfo) => {
     const state = await fixture(page);

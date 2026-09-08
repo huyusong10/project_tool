@@ -34,7 +34,7 @@ import { AnchoredPopover } from "../components/InlineEdit";
 import { WorkItemActions } from "../components/WorkItemActions";
 import { WorkItemSettingsDialog } from "../components/WorkItemSettingsDialog";
 import { canManageProject } from "../permissions";
-import { dailyProgressTrend, progressUpdateDisplayValue } from "../progress-trend";
+import { dailyProgressTrend, progressHistoryMetadata } from "../progress-trend";
 import { RequirementCommandDialog, type RequirementCommand } from "../components/RequirementCommandDialog";
 
 const emptyPeople: Person[] = [];
@@ -150,6 +150,10 @@ export function RequirementPage() {
     });
     },
     [requirement],
+  );
+  const progressHistory = useMemo(
+    () => progressHistoryMetadata(requirement?.progressUpdates || []),
+    [requirement?.progressUpdates],
   );
   if (isLoading)
     return (
@@ -420,11 +424,19 @@ export function RequirementPage() {
           <header><div><h2>进展记录</h2></div></header>
           <div className="progress-feed">
             {requirement.progressUpdates?.map((item) => {
-              const displayedPercent = progressUpdateDisplayValue(item);
+              const metadata = progressHistory.get(item.id)!;
               return <article key={item.id}>
-                <div className={`progress-marker${displayedPercent === null ? " is-note" : ""}`}>{displayedPercent === null ? "—" : `${displayedPercent}%`}</div>
-                <div><header><strong>{formatDateTime(item.createdAt)}</strong>{item.workItemTitle && <span>{item.workItemTitle}</span>}</header><p>{item.content}</p>{item.supersedesId && <small className="progress-correction-reference">更正：{progressReferenceLabel(progressById.get(item.supersedesId))}</small>}</div>
-                <span className="progress-event-type">{progressEventLabels[item.eventType] || "记录"}</span>
+                <div className={`progress-marker${metadata.transitionLabel === "—" ? " is-note" : item.eventType === "start" ? " is-start" : item.eventType === "complete" ? " is-complete" : ""}`} title={metadata.transitionTitle}>{metadata.transitionLabel}</div>
+                <div className="progress-record-main">
+                  <header className="progress-record-summary"><strong>{item.workItemTitle || "需求"}</strong><span>{item.content}</span></header>
+                  <footer className="progress-record-meta">
+                    <span><small>记录时间</small>{formatDateTime(item.createdAt)}</span>
+                    <span><small>距上次记录</small>{metadata.elapsedLabel}</span>
+                    <span><small>操作人</small>{item.createdByName || "系统记录"}</span>
+                    <span><small>需求总进度</small>{item.percent}%</span>
+                  </footer>
+                  {item.supersedesId && <small className="progress-correction-reference">更正：{progressReferenceLabel(progressById.get(item.supersedesId))}</small>}
+                </div>
               </article>;
             })}
             {!requirement.progressUpdates?.length && <EmptyState title="暂无进展" detail="增加进展后，这里会显示具体完成内容。" />}

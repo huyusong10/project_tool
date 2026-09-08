@@ -180,6 +180,7 @@ export const workItemInputSchema = z.object({
 export const expectedVersionInputSchema = z.object({ expectedVersion: expectedVersionSchema }).passthrough();
 export const reasonCommandSchema = expectedVersionInputSchema.extend({ reason: z.string().trim().min(1) });
 export const contentCommandSchema = expectedVersionInputSchema.extend({ content: z.string().trim().min(1) });
+export const optionalContentCommandSchema = expectedVersionInputSchema.extend({ content: z.string().trim().optional() });
 export const completeAsPlannedInputSchema = z.object({
   expectedVersion: expectedVersionSchema,
   content: z.string().trim().min(1).max(10000).default('历史补录，按计划完成'),

@@ -104,6 +104,46 @@ test("关联工作项的纯说明不显示需求进度或当前工作项进度",
   await expect(updates.locator('article > span')).toHaveCount(0);
 });
 
+test("进展记录展示同一工作项的完成度变化、耗时和操作人", async ({ page }) => {
+  await mockGanttData(page);
+  const progressUpdates = [
+    {
+      id: 'latest', requirementId: 'r1', workItemId: 'w1', workItemTitle: '联调', percent: 40,
+      workItemPercent: 40, content: '代码返回后端修改中', eventType: 'progress',
+      createdByAccountId: 'admin', createdByName: '程中林',
+      createdAt: '2026-09-04T17:07:33+08:00', updatedAt: '2026-09-04T17:07:33+08:00',
+    },
+    {
+      id: 'other', requirementId: 'r1', workItemId: 'w2', workItemTitle: '数据开发', percent: 30,
+      workItemPercent: 90, content: '其他工作项的记录', eventType: 'progress',
+      createdByAccountId: 'admin', createdByName: '张三',
+      createdAt: '2026-09-04T10:00:00+08:00', updatedAt: '2026-09-04T10:00:00+08:00',
+    },
+    {
+      id: 'start', requirementId: 'r1', workItemId: 'w1', workItemTitle: '联调', percent: 0,
+      workItemPercent: 0, content: '开始工作项', eventType: 'start',
+      createdByAccountId: 'admin', createdByName: '程中林',
+      createdAt: '2026-09-03T20:12:17+08:00', updatedAt: '2026-09-03T20:12:17+08:00',
+    },
+  ];
+  await page.route('**/api/requirements/r1', (route) => route.fulfill({ json: { ...requirement, progressUpdates } }));
+  await page.goto('/requirements/r1');
+
+  const latest = page.locator('.progress-feed > article').filter({ hasText: '代码返回后端修改中' });
+  await expect(latest.locator('.progress-marker')).toHaveText('0 → 40%');
+  await expect(latest.locator('.progress-record-summary')).toContainText('联调');
+  await expect(latest.locator('.progress-record-summary')).toContainText('代码返回后端修改中');
+  await expect(latest.locator('.progress-event-type')).toHaveCount(0);
+  const itemBox = await latest.locator('.progress-record-summary strong').boundingBox();
+  const contentBox = await latest.locator('.progress-record-summary span').boundingBox();
+  expect(itemBox).not.toBeNull();
+  expect(contentBox).not.toBeNull();
+  expect(Math.abs(itemBox!.y - contentBox!.y)).toBeLessThanOrEqual(3);
+  await expect(latest.locator('.progress-record-meta')).toContainText('程中林');
+  await expect(latest.locator('.progress-record-meta')).toContainText(/距上次记录\s*20小时55分钟/);
+  await expect(latest.locator('.progress-record-meta')).toContainText(/需求总进度\s*40%/);
+});
+
 test("项目与需求甘特统一展示状态进度及今日进度差", async ({ page }, testInfo) => {
   test.skip(!["laptop-1366", "hidpi-3k-200", "desktop-1080p"].includes(testInfo.project.name), "统一甘特图仅验证代表性桌面视口");
   const progressRequests: Array<Record<string, unknown>> = [];

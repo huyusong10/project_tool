@@ -32,6 +32,7 @@ import {
   applyRequirementPlanInputSchema,
   applyTemplateInputSchema,
   contentCommandSchema,
+  optionalContentCommandSchema,
   completeAsPlannedInputSchema,
   copyTemplateInputSchema,
   createIssueInputSchema,
@@ -204,7 +205,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('start_work_item', { description: '开始工作项并自动记录实际开始', inputSchema: expectedVersionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertWorkItemParticipantOrManager(actor, id); return json(startWorkItem(id, input, actor));
   });
-  registerTool('complete_work_item', { description: '完成工作项并记录完成说明', inputSchema: contentCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('complete_work_item', { description: '完成工作项；完成说明可选', inputSchema: optionalContentCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertWorkItemParticipantOrManager(actor, id); return json(completeWorkItem(id, input, actor));
   });
   registerTool('block_work_item', { description: '标记工作项阻塞', inputSchema: reasonCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {

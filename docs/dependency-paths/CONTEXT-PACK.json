@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "1.0",
+  "capturedAt": "2026-09-07T14:52:49+08:00",
+  "moduleId": "MDS-PATH",
+  "note": "仅为组合校验声明。pageId 使用本地路径定位，不代表已发布 Confluence。所有设计为 DRAFT。",
+  "upstreamItems": [
+    { "id": "U1", "layer": "USER", "pageId": "SOURCE-MANIFEST.json#U1", "version": 1, "status": "CONFIRMED" },
+    { "id": "U2", "layer": "USER", "pageId": "SOURCE-MANIFEST.json#U2", "version": 1, "status": "CONFIRMED" },
+    { "id": "U3", "layer": "USER", "pageId": "SOURCE-MANIFEST.json#U3", "version": 1, "status": "CONFIRMED" },
+    { "id": "U5", "layer": "USER", "pageId": "SOURCE-MANIFEST.json#U5", "version": 1, "status": "CONFIRMED" },
+    { "id": "U6", "layer": "USER", "pageId": "SOURCE-MANIFEST.json#U6", "version": 1, "status": "CONFIRMED" },
+    { "id": "SDS-SCOPE-01", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-SCOPE-02", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-SCOPE-03", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-SCOPE-04", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-XCUT-01", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-XCUT-02", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-XCUT-03", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-XCUT-04", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-XCUT-05", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-XCUT-06", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-XCUT-07", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-XCUT-08", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-QG-01", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-QG-02", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-QG-03", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-QG-04", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" },
+    { "id": "SDS-QG-05", "layer": "SDS", "pageId": "SDS.md", "version": 1, "status": "PROVISIONAL" }
+  ],
+  "elements": [
+    { "elementId": "PATH-FLOW", "requirementSources": ["U2"], "inherits": ["SDS-SCOPE-02", "SDS-XCUT-01", "SDS-XCUT-04", "SDS-QG-01"], "ownsFacts": ["MDS-FACT-01"], "producesContracts": ["MDS-CONTRACT-01"], "consumesContracts": ["MDS-CONTRACT-02", "MDS-CONTRACT-03"] },
+    { "elementId": "PATH-RELATION", "requirementSources": ["U1", "U2"], "inherits": ["SDS-SCOPE-01", "SDS-SCOPE-04", "SDS-XCUT-02", "SDS-XCUT-04", "SDS-XCUT-07", "SDS-QG-03"], "ownsFacts": ["MDS-FACT-02"], "producesContracts": ["MDS-CONTRACT-02"], "consumesContracts": ["EXISTING-BUSINESS-FACTS"] },
+    { "elementId": "PATH-ANALYSIS", "requirementSources": ["U1", "U3"], "inherits": ["SDS-SCOPE-03", "SDS-XCUT-01", "SDS-XCUT-03", "SDS-XCUT-05", "SDS-XCUT-08", "SDS-QG-02", "SDS-QG-05"], "producesContracts": ["MDS-CONTRACT-03"], "consumesContracts": ["MDS-CONTRACT-02", "EXISTING-BUSINESS-FACTS"] },
+    { "elementId": "PATH-RISK", "requirementSources": ["U3"], "inherits": ["SDS-SCOPE-03", "SDS-XCUT-02", "SDS-XCUT-05", "SDS-XCUT-06"], "producesContracts": ["MDS-CONTRACT-04"], "consumesContracts": ["MDS-CONTRACT-03", "EXISTING-BUSINESS-FACTS"] },
+    { "elementId": "PATH-VIEW", "requirementSources": ["U2", "U3", "U5", "U6"], "inherits": ["SDS-SCOPE-03", "SDS-XCUT-02", "SDS-XCUT-03", "SDS-QG-04"], "consumesContracts": ["MDS-CONTRACT-01", "MDS-CONTRACT-02", "MDS-CONTRACT-03", "MDS-CONTRACT-04"] }
+  ],
+  "externalContracts": ["EXISTING-BUSINESS-FACTS"],
+  "acps": []
+}

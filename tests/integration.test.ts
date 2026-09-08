@@ -432,17 +432,17 @@ describe('自动化项目管理API', () => {
     expect(collaborative.json().assigneeIds).toEqual([personId, collaboratorPersonId]);
     const started = await app.inject({ method: 'POST', url: `/api/work-items/${firstWorkItemId}/start`, headers: { cookie }, payload: { expectedVersion: collaborative.json().version } });
     expect(started.json().status).toBe('in_progress');
-    const completed = await app.inject({ method: 'POST', url: `/api/work-items/${firstWorkItemId}/complete`, headers: { cookie }, payload: { content: '完成设计评审', expectedVersion: started.json().version } });
+    const completed = await app.inject({ method: 'POST', url: `/api/work-items/${firstWorkItemId}/complete`, headers: { cookie }, payload: { expectedVersion: started.json().version } });
     expect(completed.json().status).toBe('completed');
     const rejectedProgress = await app.inject({ method: 'POST', url: `/api/requirements/${requirementId}/progress`, headers: { cookie }, payload: { content: '尝试覆盖终态', workItemId: firstWorkItemId, workItemPercent: 99, expectedVersion: completed.json().version } });
     expect(rejectedProgress.statusCode).toBe(409);
     expect(rejectedProgress.json().code).toBe('TERMINAL_LOCKED');
     const progress = (await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie } })).json();
     expect(progress.progress).toBeGreaterThan(0);
-    expect(progress.progressUpdates[0]).toMatchObject({ content: '完成设计评审', eventType: 'complete' });
+    expect(progress.progressUpdates[0]).toMatchObject({ content: '完成工作项', eventType: 'complete' });
     const dashboard = await app.inject({ method: 'GET', url: `/api/dashboard?projectId=${projectId}`, headers: { cookie } });
     expect(dashboard.json().requirements[0].recentProgressUpdates).toEqual(expect.arrayContaining([
-      expect.objectContaining({ content: '完成设计评审', workItemId: firstWorkItemId, workItemPercent: 100 }),
+      expect.objectContaining({ content: '完成工作项', workItemId: firstWorkItemId, workItemPercent: 100 }),
     ]));
 
     const second = progress.workItems[1];

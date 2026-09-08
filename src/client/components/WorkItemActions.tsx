@@ -138,7 +138,7 @@ export function WorkItemActions({
   </>;
   const textConfig: Record<TextPanel, { title: string; label: string; placeholder: string; confirm: string }> = {
     block: { title: "标记工作项阻塞", label: "阻塞原因", placeholder: "说明当前阻塞点", confirm: "确认阻塞" },
-    complete: { title: "完成工作项", label: "完成说明", placeholder: "说明交付结果或验证结论", confirm: "确认完成" },
+    complete: { title: "完成工作项", label: "完成说明", placeholder: "可选：补充交付结果或验证结论", confirm: "确认完成" },
     reopen: { title: "重开工作项", label: "返工原因", placeholder: "说明为什么需要重开或返工", confirm: "确认重开" },
     cancel: { title: "取消工作项", label: "取消原因", placeholder: "说明为什么取消该工作项", confirm: "确认取消" },
   };
@@ -159,9 +159,9 @@ export function WorkItemActions({
     && matchesEvent(latest, eventType, content);
 
   const submitText = () => {
-    if (!textPanel || !reason.trim()) return;
+    if (!textPanel || (textPanel !== "complete" && !reason.trim())) return;
     const expectedVersion = baselineVersion;
-    const expectedContent = reason.trim();
+    const expectedContent = reason.trim() || "完成工作项";
     if (textPanel === "cancel") {
       if (onCancel) void run(() => onCancel(expectedContent, expectedVersion), {
         matches: (latest) => matchesCommandEvent(latest, expectedVersion, "cancel", expectedContent, (value) => value.status === "cancelled"),
@@ -170,7 +170,7 @@ export function WorkItemActions({
       return;
     }
     const expectedStatus = textPanel === "complete" ? "completed" : textPanel === "block" ? "blocked" : null;
-    void run(() => onAction(textPanel, expectedContent, expectedVersion), {
+    void run(() => onAction(textPanel, textPanel === "complete" && !reason.trim() ? undefined : expectedContent, expectedVersion), {
       matches: (latest) => matchesCommandEvent(latest, expectedVersion, textPanel, expectedContent, (value) => expectedStatus
         ? value.status === expectedStatus
         : ["not_started", "in_progress"].includes(value.status)),
@@ -207,9 +207,10 @@ export function WorkItemActions({
       {textPanel && <form className="inline-action-form" onSubmit={(event) => { event.preventDefault(); submitText(); }}>
         <header><strong>{textConfig[textPanel].title}</strong><button type="button" disabled={pending} onClick={() => setPanel(null)} aria-label="关闭"><X size={16} /></button></header>
         <label><span>{textConfig[textPanel].label}</span><textarea autoFocus readOnly={pending} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={textConfig[textPanel].placeholder} /></label>
+        {textPanel === "complete" && <small className="form-hint">可留空，系统会记录“完成工作项”</small>}
         {error && <p className="form-error">{error}</p>}
         {readNotice}
-        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || blocked || !reason.trim()}>{pending ? "提交中" : textConfig[textPanel].confirm}</button></footer>
+        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || blocked || (textPanel !== "complete" && !reason.trim())}>{pending ? "提交中" : textConfig[textPanel].confirm}</button></footer>
       </form>}
       {panel === "dates" && <form className="inline-action-form" noValidate onSubmit={(event) => {
         event.preventDefault();

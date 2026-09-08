@@ -110,7 +110,7 @@ test('问题筛选、详情错误态和嵌套Esc保持正确', async ({ page }, 
   const dialog = page.getByRole('dialog', { name: '问题详情' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: /关联需求：/ }).click();
-  const search = dialog.getByPlaceholder('搜索需求编号或名称');
+  const search = page.getByPlaceholder('搜索需求编号或名称');
   await expect(search).toBeVisible();
   await search.press('Escape');
   await expect(search).toBeHidden();

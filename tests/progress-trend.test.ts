@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dailyProgressTrend, progressUpdateDisplayValue } from "../src/client/progress-trend";
+import { dailyProgressTrend, progressHistoryMetadata, progressUpdateDisplayValue } from "../src/client/progress-trend";
 
 describe("进度趋势", () => {
   it("同一时间使用接口返回的最新记录，不比较随机ID", () => {
@@ -30,5 +30,15 @@ describe("进展数字显示", () => {
     expect(progressUpdateDisplayValue({ workItemId: "w1", workItemPercent: 40, percent: 70 })).toBe(40);
     expect(progressUpdateDisplayValue({ workItemId: "w1", workItemPercent: null, percent: 70 })).toBeNull();
     expect(progressUpdateDisplayValue({ workItemId: null, workItemPercent: null, percent: 70 })).toBe(70);
+  });
+
+  it("按同一工作项显示完成度变化和距上次记录耗时", () => {
+    const metadata = progressHistoryMetadata([
+      { id: "latest", requirementId: "r1", workItemId: "w1", workItemTitle: "联调", percent: 40, workItemPercent: 40, content: "推进", eventType: "progress", createdAt: "2026-09-04T17:07:33+08:00", updatedAt: "2026-09-04T17:07:33+08:00" },
+      { id: "other", requirementId: "r1", workItemId: "w2", workItemTitle: "数据开发", percent: 30, workItemPercent: 90, content: "推进", eventType: "progress", createdAt: "2026-09-04T10:00:00+08:00", updatedAt: "2026-09-04T10:00:00+08:00" },
+      { id: "start", requirementId: "r1", workItemId: "w1", workItemTitle: "联调", percent: 0, workItemPercent: 0, content: "开始工作项", eventType: "start", createdAt: "2026-09-03T20:12:17+08:00", updatedAt: "2026-09-03T20:12:17+08:00" },
+    ]);
+    expect(metadata.get("start")).toMatchObject({ transitionLabel: "首次 · 0%", elapsedLabel: "首次记录" });
+    expect(metadata.get("latest")).toMatchObject({ transitionLabel: "0 → 40%", elapsedLabel: "20小时55分钟" });
   });
 });

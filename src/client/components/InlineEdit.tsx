@@ -1,5 +1,6 @@
 import {
   createContext,
+  type AriaRole,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type RefObject,
@@ -257,6 +258,7 @@ export function AnchoredPopover({
   className = "",
   width = 320,
   matchAnchor = false,
+  role = "dialog",
 }: {
   anchorRef: RefObject<HTMLElement | null>;
   open: boolean;
@@ -267,6 +269,7 @@ export function AnchoredPopover({
   className?: string;
   width?: number;
   matchAnchor?: boolean;
+  role?: AriaRole;
 }) {
   const context = useContext(InlineEditContext);
   const activate = context?.activate;
@@ -358,7 +361,7 @@ export function AnchoredPopover({
       ref={popoverRef}
       className={`inline-edit-popover ${className}`.trim()}
       style={{ top: position.top, left: position.left, width: position.width, visibility: position.ready ? "visible" : "hidden" }}
-      role="dialog"
+      role={role}
       onClick={(event) => event.stopPropagation()}
     >
       {children}

@@ -126,6 +126,63 @@ test('新建问题已落库但响应异常时核对本次新增问题', async ({
   expect(state.writes).toHaveLength(1);
 });
 
+test('项目经理新建问题时可以直接选择负责人', async ({ page }) => {
+  const state = await fixture(page, 'manager');
+  await page.goto('/issues');
+  await page.getByRole('button', { name: '新建问题', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '新建问题', exact: true });
+  await dialog.getByRole('textbox', { name: '问题标题', exact: true }).fill('创建时直接分配负责人');
+  await dialog.getByRole('button', { name: '负责人：未分配', exact: true }).click();
+  await page.getByRole('listbox', { name: '负责人', exact: true }).getByRole('option', { name: '李四', exact: true }).click();
+  await dialog.getByRole('button', { name: '创建问题', exact: true }).click();
+
+  await expect(dialog).toHaveCount(0);
+  expect(state.writes).toHaveLength(1);
+  expect(state.writes[0].body).toMatchObject({ projectId: 'p1', title: '创建时直接分配负责人', ownerId: 'u2' });
+});
+
+test('问题搜索选择浮层不改变弹窗滚动布局', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'laptop-1366', '滚动布局回归只需在一个窄桌面视口执行');
+  await fixture(page, 'manager');
+  await page.route('**/api/people', (route) => route.fulfill({ json: Array.from({ length: 14 }, (_, index) => ({
+    id: `u${index + 1}`,
+    name: index === 0 ? '张三' : index === 1 ? '李四' : `成员${index + 1}`,
+    active: 1,
+    projectRole: 'member',
+  })) }));
+  await page.goto('/issues');
+  await page.getByRole('button', { name: '新建问题', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '新建问题', exact: true });
+  const body = dialog.locator('.modal-body');
+
+  for (const label of ['关联需求', '负责人', '提出人']) {
+    const before = await body.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientWidth: element.clientWidth }));
+    await dialog.getByRole('button', { name: new RegExp(`^${label}：`) }).click();
+    const listbox = page.getByRole('listbox', { name: label, exact: true });
+    const popover = page.locator('body > .issue-search-select-menu');
+    await expect(listbox).toBeVisible();
+    await expect(popover).toBeVisible();
+    const after = await body.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientWidth: element.clientWidth }));
+    expect(after).toEqual(before);
+    const bounds = await popover.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.y).toBeGreaterThanOrEqual(12);
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(768 - 12);
+    await page.keyboard.press('Escape');
+    await expect(popover).toBeHidden();
+    await expect(dialog.getByRole('button', { name: new RegExp(`^${label}：`) })).toBeFocused();
+  }
+});
+
+test('普通成员新建问题时不显示负责人选择', async ({ page }) => {
+  await fixture(page, 'member');
+  await page.goto('/issues');
+  await page.getByRole('button', { name: '新建问题', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '新建问题', exact: true });
+  await expect(dialog.getByRole('button', { name: /^负责人：/ })).toHaveCount(0);
+  await expect(dialog.getByText('由项目经理分配负责人并确认关闭', { exact: false })).toBeVisible();
+});
+
 async function openForm(page: Page, form: 'basic' | 'updates') {
   await page.goto('/issues?issueId=i1');
   if (form === 'basic') await page.getByRole('tab', { name: '基本信息', exact: true }).click();

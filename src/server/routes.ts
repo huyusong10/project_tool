@@ -47,6 +47,7 @@ import {
   brandingInputSchema,
   changePasswordInputSchema,
   contentCommandSchema,
+  optionalContentCommandSchema,
   completeAsPlannedInputSchema,
   copyTemplateInputSchema,
   createIssueInputSchema,
@@ -348,7 +349,7 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
   for (const [action, handler, inputSchema] of [
     ['start', (id: string, input: any, actor: any) => startWorkItem(id, input, actor), expectedVersionInputSchema],
-    ['complete', (id: string, input: any, actor: any) => completeWorkItem(id, input, actor), contentCommandSchema],
+    ['complete', (id: string, input: any, actor: any) => completeWorkItem(id, input, actor), optionalContentCommandSchema],
     ['block', (id: string, input: any, actor: any) => blockWorkItem(id, input, actor), reasonCommandSchema],
     ['unblock', (id: string, input: any, actor: any) => unblockWorkItem(id, input, actor), expectedVersionInputSchema],
   ] as const) {

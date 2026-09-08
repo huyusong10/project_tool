@@ -1530,7 +1530,7 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unb
   assertExpectedVersion(input, current.version);
   const today = todayIso(); const now = nowIso();
   const labels = { start: '开始', complete: '完成', block: '阻塞', unblock: '解除阻塞', cancel: '取消' } as const;
-  const eventContent = action === 'complete' ? requireText(input.content, '完成说明')
+  const eventContent = action === 'complete' ? nullableText(input.content) || '完成工作项'
     : action === 'block' ? requireText(input.reason, '阻塞原因')
       : action === 'cancel' ? requireText(input.reason, '取消原因')
         : `${labels[action]}工作项`;

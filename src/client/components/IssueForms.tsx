@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, CheckCircle2, ChevronDown, Search } from "lucide-react";
 import { api, ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
@@ -13,6 +13,7 @@ import { StatusBadge } from "./Badge";
 import { ProgressInput } from "./ProgressInput";
 import { priorityOptions } from "../ui-options";
 import { useToast } from "./Toast";
+import { AnchoredPopover } from "./InlineEdit";
 
 type BusyChange = (pending: boolean) => void;
 
@@ -146,7 +147,7 @@ function SearchSelectField({
   pinnedValues?: string[];
   helper?: string;
 }) {
-  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const selected = options.find((option) => option.value === value);
@@ -163,35 +164,27 @@ function SearchSelectField({
     if (!visibleOptions.some((current) => current.value === option.value)) visibleOptions.push(option);
   }
 
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-        setQuery("");
-      }
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
+  const close = useCallback((restoreFocus = false) => {
+    setOpen(false);
+    setQuery("");
+    if (restoreFocus) window.requestAnimationFrame(() => triggerRef.current?.focus());
+  }, []);
 
   return <FieldShell label={label} help={helper} className="issue-search-select-field" asLabel={false}>
-    <div ref={rootRef} className={`issue-search-select${open ? " is-open" : ""}`}>
+    <div className={`issue-search-select${open ? " is-open" : ""}`}>
       <input type="hidden" name={name} value={value} readOnly />
-      <button type="button" aria-haspopup="listbox" aria-expanded={open} aria-label={`${label}：${selected?.label || value || placeholder}`} onClick={() => { setOpen((current) => !current); setQuery(""); }}>
+      <button ref={triggerRef} type="button" aria-haspopup="listbox" aria-expanded={open} aria-label={`${label}：${selected?.label || value || placeholder}`} onClick={() => { setOpen((current) => !current); setQuery(""); }}>
         <span className={!selected && !value ? "is-placeholder" : ""}>{selected?.label || value || placeholder}</span><ChevronDown size={15} />
       </button>
-      {open && <div className="issue-search-select-menu">
-        <label><Search size={14} /><input autoFocus value={query} placeholder={searchPlaceholder || `搜索${label}`} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
-          if (event.key === "Escape") { event.preventDefault(); setOpen(false); setQuery(""); }
-        }} /></label>
+      <AnchoredPopover anchorRef={triggerRef} open={open} onOutside={() => close()} onEscape={() => close(true)} width={360} matchAnchor role="presentation" className="issue-search-select-menu">
+        <label><Search size={14} /><input autoFocus value={query} placeholder={searchPlaceholder || `搜索${label}`} onChange={(event) => setQuery(event.target.value)} /></label>
         <div role="listbox" aria-label={label}>
-          {visibleOptions.map((option) => <button type="button" role="option" aria-selected={option.value === value} key={option.value || "__empty"} onClick={() => { onChange(option.value); setOpen(false); setQuery(""); }}>
+          {visibleOptions.map((option) => <button type="button" role="option" aria-selected={option.value === value} key={option.value || "__empty"} onClick={() => { onChange(option.value); close(true); }}>
             <span><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>{option.value === value && <Check size={15} />}
           </button>)}
           {!visibleOptions.length && <p>没有匹配选项</p>}
         </div>
-      </div>}
+      </AnchoredPopover>
     </div>
   </FieldShell>;
 }
@@ -241,7 +234,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
     if (blocked || busy) return;
     const attemptedAt = new Date().toISOString();
     const payload = { ...draft, dueDate: deferred ? null : draft.dueDate || null,
-      ownerId: current ? draft.ownerId || null : null,
+      ownerId: canManage ? draft.ownerId || null : null,
       ...(current ? { expectedVersion: current.version } : { projectId }),
     };
     void editor.save(
@@ -277,7 +270,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
             && item.requirementId === (draft.requirementId || null)
             && item.sourceRef === (canonicalizeLabel(draft.sourceRef) || null)
             && item.priority === draft.priority
-            && item.ownerId === null
+            && item.ownerId === (canManage ? draft.ownerId || null : null)
             && item.reporter === (canonicalizeLabel(draft.reporter) || null)
             && item.discoveredAt === draft.discoveredAt
             && item.dueDate === (draft.dueDate || null));
@@ -296,7 +289,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
       <FieldShell label="范围标识"><input name="sourceRef" value={draft.sourceRef} onChange={(event) => change("sourceRef", event.target.value)} placeholder="可选，如 DCIM-36" /></FieldShell>
       {issue && <FieldShell label="当前状态" help="在详情顶部点击状态可挂起、解决或重开" className="issue-readonly-field" asLabel={false}><StatusBadge kind="issue" value={issue.status} /></FieldShell>}
       <FieldShell label="优先级"><select name="priority" value={draft.priority} onChange={(event) => change("priority", event.target.value)}>{priorityOptions.map(({ value, label }) => <option value={value} key={value}>{label}</option>)}</select></FieldShell>
-      {canManage && issue && <SearchSelectField label="负责人" name="ownerId" value={draft.ownerId} options={ownerOptions} onChange={(value) => change("ownerId", value)} pinnedValues={[""]} searchPlaceholder="搜索负责人姓名" />}
+      {canManage && <SearchSelectField label="负责人" name="ownerId" value={draft.ownerId} options={ownerOptions} onChange={(value) => change("ownerId", value)} pinnedValues={[""]} searchPlaceholder="搜索负责人姓名" />}
       <SearchSelectField label="提出人" name="reporter" value={draft.reporter} options={reporterOptions} onChange={(value) => change("reporter", value)} pinnedValues={[""]} searchPlaceholder="搜索项目成员" helper={current?.reporter && !people.some((person) => person.name === current.reporter) ? "当前值为历史自由文本，重新选择后将使用项目成员姓名" : undefined} />
       <FieldShell label="发现日期"><input name="discoveredAt" type="date" required value={draft.discoveredAt} onChange={(event) => change("discoveredAt", event.target.value)} /></FieldShell>
       <FieldShell label="目标日期" help={deferred ? "挂起问题不设置目标日期" : undefined}><input name="dueDate" type="date" value={deferred ? "" : draft.dueDate} disabled={deferred} onChange={(event) => change("dueDate", event.target.value)} /></FieldShell>

@@ -132,6 +132,14 @@ describe('功能扩充契约', () => {
     expect(mcpValue(mcp)).toMatchObject({ title: '成员 MCP 提交问题', status: 'in_progress', progress: 0, ownerId: null });
   });
 
+  it('项目管理员创建问题时可以直接指定负责人', async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie: adminCookie }, payload: {
+      projectId, title: '创建时分配负责人', ownerId,
+    } });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({ title: '创建时分配负责人', status: 'in_progress', ownerId });
+  });
+
   it('支持轻量待规划需求、自动就绪和执行后负责人约束', async () => {
     const draft = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
       projectId, templateId, title: '只填标题的需求', background: '客户需要缩短交付时间',
@@ -669,14 +677,15 @@ describe('功能扩充契约', () => {
     });
     const pendingItem = current.workItems.find((item: { status: string }) => item.status === 'not_started');
     expect(pendingItem).toBeTruthy();
-    const restIncompleteCommand = await app.inject({
+    const restOptionalCompleteCommand = await app.inject({
       method: 'POST', url: `/api/work-items/${pendingItem.id}/complete`, headers: { cookie: replacementCookie }, payload: { expectedVersion: pendingItem.version },
     });
-    expect(restIncompleteCommand.statusCode).toBe(400);
-    const mcpIncompleteCommand = await callMcp(token, 12, 'complete_work_item', { id: pendingItem.id, expectedVersion: pendingItem.version });
-    expect(mcpIncompleteCommand.result).toMatchObject({
+    expect(restOptionalCompleteCommand.statusCode).toBe(409);
+    expect(restOptionalCompleteCommand.json()).toMatchObject({ code: 'INVALID_TRANSITION' });
+    const mcpOptionalCompleteCommand = await callMcp(token, 12, 'complete_work_item', { id: pendingItem.id, expectedVersion: pendingItem.version });
+    expect(mcpOptionalCompleteCommand.result).toMatchObject({
       isError: true,
-      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+      structuredContent: { statusCode: 409, error: { code: 'INVALID_TRANSITION' } },
     });
     const restIncompleteIssueCommand = await app.inject({
       method: 'POST', url: '/api/issues/missing-issue/resolve', headers: { cookie: replacementCookie }, payload: { expectedVersion: 1 },
