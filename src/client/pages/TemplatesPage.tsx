@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Edit3, Plus } from "lucide-react";
+import { Archive, Edit3, Plus, Diamond } from "lucide-react";
 import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useProjects, useSession } from "../app-context";
 import { invalidateTemplateViews, keys } from "../query-keys";
@@ -13,6 +13,16 @@ import { TemplateForm } from "../components/TemplateForm";
 import { EmptyState } from "../components/Feedback";
 
 const emptyTemplates: WorkItemTemplate[] = [];
+
+function TemplateItems({items}:{items:WorkItemTemplate['items']}) {
+  let workNumber=0;
+  const migratedSources=new Set(items.filter(i=>i.kind==='milestone'&&i.id.startsWith('milestone:')).map(i=>i.id.slice('milestone:'.length)));
+  const independentLabels=new Set(items.filter(i=>i.kind==='milestone').flatMap(i=>(i.predecessorIds||[]).map(id=>id+'\0'+i.title)));
+  return <ol>{items.map(item=>{
+    const milestone=item.kind==='milestone',legacyLabel=item.milestoneLabel&&!migratedSources.has(item.id)&&!independentLabels.has(item.id+'\0'+item.milestoneLabel)?item.milestoneLabel:null;
+    return <li key={item.id}><span aria-label={milestone?'里程碑':undefined}>{milestone?<Diamond size={14}/>:++workNumber}</span><div><b>{item.title}</b><small>第{item.startOffsetDays+1}个工作日 · {milestone?'里程碑':`持续${item.durationDays}个工作日`}{!milestone&&legacyLabel&&<em>◆ {legacyLabel}</em>}</small></div></li>;
+  })}</ol>;
+}
 
 export function TemplatesPage() {
   const { session } = useSession();
@@ -114,14 +124,7 @@ export function TemplatesPage() {
               )}
             </header>
             {template.description && <p className="template-description" title={template.description}>{template.description}</p>}
-            <ol>
-              {template.items.map((item) => (
-                <li key={item.id}>
-                  <span>{item.sortOrder + 1}</span>
-                  <div><b>{item.title}</b><small>第{item.startOffsetDays + 1}个工作日 · 持续{item.durationDays}个工作日{item.milestoneLabel && <em>◆ {item.milestoneLabel}</em>}</small></div>
-                </li>
-              ))}
-            </ol>
+            <TemplateItems items={template.items}/>
           </article>
         ))}
         </section>

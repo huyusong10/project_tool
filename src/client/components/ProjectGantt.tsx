@@ -1,6 +1,6 @@
 import {useViewPreference} from "../use-view-preference";
 import { useMemo, useRef, useState } from "react";
-import { format } from "date-fns";
+import { addMonths, format } from "date-fns";
 import { ArrowRight, CircleAlert, LocateFixed, RotateCcw } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { priorityLabels, requirementStatusLabels, riskLabels, signedProgressVariance, todayIso } from "../../shared/domain";
@@ -190,6 +190,7 @@ export function ProjectGantt({
   const [personId, setPersonId] = useViewPreference<string>(resizeStorageKey+':personId',"");
   const [schedule, setSchedule] = useViewPreference<string>(resizeStorageKey+':schedule',"");
   const [sort, setSort] = useViewPreference<RequirementSort>(resizeStorageKey+':sort',"risk");
+  const [extendedUntil,setExtendedUntil]=useViewPreference<string>(resizeStorageKey+':timeline-end','');
   const option = ganttZoomOptions[zoom];
   const asOfDate = asOfDateProp || requirements[0]?.asOfDate || todayIso();
 
@@ -243,8 +244,8 @@ export function ProjectGantt({
         values.push(requirement.plannedStart, requirement.plannedEnd, requirement.effectiveEnd);
       }
     });
-    return buildBusinessDayTimeline(values, zoom, asOfDate);
-  }, [asOfDate, projectEnd, projectStart, requirements, zoom]);
+    return buildBusinessDayTimeline(values, zoom, asOfDate,extendedUntil);
+  }, [asOfDate, projectEnd, projectStart, requirements, zoom,extendedUntil]);
 
   const timelineWidth = range.days * option.cellWidth;
   const dates = range.dates;
@@ -287,6 +288,11 @@ export function ProjectGantt({
                 {ganttZoomOptions[key].label}
               </button>
             ))}
+          </div>
+          <div className="gantt-range-actions" role="group" aria-label="时间范围">
+            <span title={format(range.start,'yyyy-MM-dd')+' — '+format(range.end,'yyyy-MM-dd')}>{format(range.start,'MM/dd')}—{format(range.end,'MM/dd')}</span>
+            <button className="ghost-button" aria-label="向后扩展一个月" title="向后扩展一个月，横向滚动查看；不修改排期" onClick={()=>setExtendedUntil(format(addMonths(range.end,1),'yyyy-MM-dd'))}><ArrowRight size={15}/>向后扩展</button>
+            <button className="ghost-button" aria-label="恢复自动时间范围" title="恢复按项目排期计算的时间范围" disabled={!extendedUntil} onClick={()=>setExtendedUntil('')}><RotateCcw size={15}/></button>
           </div>
         </div>
       </header>

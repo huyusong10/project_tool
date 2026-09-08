@@ -141,9 +141,9 @@ body:has(.graph-workspace){overflow:hidden}
 .graph-status-slot>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.graph-status-slot>button{max-width:55%;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
 .graph-finder{left:16px;top:var(--graph-toolbar-bottom,166px);height:44px;box-sizing:border-box;display:flex;gap:5px;align-items:center;padding:5px 7px;max-width:calc(100% - 32px)}
 .graph-finder input{width:216px;min-width:65px;flex:1}.graph-finder button{font-size:12px;padding:5px 7px;white-space:nowrap;min-height:32px}
-.graph-workspace .graph-detail,.graph-workspace .graph-auxiliary{animation:graph-panel-enter 200ms ease-out;transition:opacity 200ms ease-out,transform 200ms ease-out}
+.graph-workspace .graph-detail,.graph-workspace .graph-auxiliary{opacity:1;transform:translateY(0);transition:opacity 200ms ease-out,transform 200ms ease-out}
 .graph-workspace .graph-detail.is-leaving,.graph-workspace .graph-auxiliary.is-leaving{opacity:0;transform:translateY(8px);pointer-events:none}
-@keyframes graph-panel-enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@starting-style{.graph-workspace .graph-detail,.graph-workspace .graph-auxiliary{opacity:0;transform:translateY(8px)}}
 .graph-detail .graph-panel-content{animation:graph-content-enter 160ms ease-out}@keyframes graph-content-enter{from{opacity:0}to{opacity:1}}
 .graph-workspace .dependency-card{transition:opacity 180ms ease-out,box-shadow 180ms ease-out,outline-color 180ms ease-out}
 .graph-workspace .graph-node-dim .dependency-card{opacity:.35}
@@ -219,9 +219,13 @@ body:has(.graph-workspace){overflow:hidden}
 /* Equal specificity across panel variants keeps production minification and narrow layouts identical. */
 .graph-workspace :is(.graph-detail,.graph-auxiliary){top:60px;bottom:auto;height:auto;max-height:calc(100% - 60px - var(--graph-bottom-clearance,76px));width:300px;max-width:calc(100% - 32px);padding:16px;overflow:auto;box-sizing:border-box}
 .graph-workspace .graph-detail{right:16px}.graph-workspace .graph-auxiliary{left:72px;width:312px}
-.graph-workspace:where(.has-finder) .graph-auxiliary{top:var(--graph-find-bottom,120px);max-height:calc(100% - var(--graph-find-bottom,120px) - var(--graph-bottom-clearance,76px))}
+.graph-workspace:where(.has-finder) .graph-auxiliary:where(:not([data-graph-panel=bottom])){top:var(--graph-find-bottom,120px);max-height:calc(100% - var(--graph-find-bottom,120px) - var(--graph-bottom-clearance,76px))}
 .graph-workspace:where(.has-inspector){--graph-inspector-gap:328px}
-.graph-workspace:where(.has-analysis) .graph-auxiliary{top:auto;bottom:var(--graph-bottom-clearance,76px);left:72px;right:var(--graph-inspector-gap,16px);width:auto;max-width:none;max-height:min(38%,400px)}
+.graph-workspace .graph-auxiliary:where([data-graph-panel=bottom]){top:auto;bottom:var(--graph-bottom-clearance,76px);left:72px;right:auto;width:min(var(--graph-auxiliary-width,480px),calc(100% - 72px - var(--graph-inspector-gap,16px)));max-width:none;max-height:min(42%,400px)}
+.graph-workspace .graph-auxiliary:where([data-size=timeline]){--graph-auxiliary-width:800px}.graph-workspace .graph-auxiliary:where([data-size=expanded]){--graph-auxiliary-width:1200px}
 .graph-view-controls>.graph-layout-status{width:16px;min-width:16px}
 .graph-node-dim .dependency-card.invalid{opacity:1}
 @media(max-width:800px){.graph-workspace :is(.graph-detail,.graph-auxiliary){inset:auto 8px var(--graph-bottom-clearance,124px);width:auto;max-width:none;max-height:min(42%,calc(100% - 112px - var(--graph-bottom-clearance,124px)));padding:12px}}
+.graph-panel-heading-actions{display:flex;align-items:center;gap:8px}.graph-panel-heading-actions>button{display:grid;place-items:center}
+.editor-selection-tools{gap:8px}.graph-overlay .editor-selection-tools+.button-row{margin-top:12px;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}.graph-overlay .editor-selection-tools+.button-row:empty{display:none}.graph-node-relations{margin-top:12px}
+.path-draft-gantt.is-undated{min-width:0}.path-draft-gantt.is-undated .path-draft-gantt-row{grid-template-columns:minmax(0,1fr)}.path-draft-gantt.is-undated button{white-space:normal;overflow-wrap:anywhere;line-height:1.6}

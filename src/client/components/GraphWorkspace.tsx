@@ -1,18 +1,28 @@
-import { useEffect,useRef,useState,type ComponentProps,type ReactNode } from 'react';
+import { useEffect,useLayoutEffect,useRef,useState,type ComponentProps,type CSSProperties,type ReactNode } from 'react';
 import { DependencyGraph } from './DependencyGraph';
 import '../paths.css';
 import {useDismissLayer} from '../use-dismiss-layer';
 import {FindTool} from './EditorToolbar';
-function FloatingPanel({content,side,replacement,contentKey,analysis=false,onDismiss}:{onDismiss?:()=>void;analysis?:boolean;content:ReactNode;side:'left'|'right';replacement:boolean;contentKey?:string}){
+type PanelSize='compact'|'timeline'|'expanded';
+function FloatingPanel({content,side,replacement,contentKey,analysis=false,size='compact',onDismiss}:{onDismiss?:()=>void;analysis?:boolean;size?:PanelSize;content:ReactNode;side:'left'|'right';replacement:boolean;contentKey?:string}){
   const ref=useRef<HTMLElement>(null);
   useDismissLayer(ref,!!content&&!!onDismiss,()=>onDismiss?.(),side==='right'?'.graph-overlay,.graph-view-controls,.react-flow__node,.react-flow__edge,.dependency-layout-notice':'.graph-toolbar,.graph-tool-rail,.graph-finder,.graph-footer,.graph-view-controls,.dependency-layout-notice');
-  const [retained,setRetained]=useState(content);
-  useEffect(()=>{if(content)setRetained(content);else {const timer=setTimeout(()=>setRetained(undefined),200);return()=>clearTimeout(timer);}},[content]);
-  if(!content&&(!retained||replacement&&matchMedia('(max-width:800px)').matches))return null;
-  return <aside ref={ref} className={(side==='right'?'graph-detail':'graph-auxiliary')+' graph-overlay nopan nodrag nowheel'+(!content?' is-leaving':'')} data-graph-panel={analysis?'bottom':side} aria-hidden={!content} inert={!content}><div key={contentKey} className="graph-panel-content">{content||retained}</div></aside>;
+  const [retained,setRetained]=useState(content?{content,contentKey,analysis,size}:null),geometry=useRef<CSSProperties|undefined>(undefined);
+  useLayoutEffect(()=>{
+    if(content){
+      setRetained({content,contentKey,analysis,size});
+      const element=ref.current!;
+      const measure=()=>{geometry.current={left:element.offsetLeft,top:element.offsetTop,right:'auto',bottom:'auto',width:element.offsetWidth,height:element.offsetHeight,maxWidth:'none',maxHeight:'none'};};
+      measure();const observer=new ResizeObserver(measure);observer.observe(element);return()=>observer.disconnect();
+    }
+    const timer=setTimeout(()=>setRetained(null),matchMedia('(prefers-reduced-motion:reduce)').matches?0:200);return()=>clearTimeout(timer);
+  },[content,contentKey,analysis,size]);
+  const shown=content?{content,contentKey,analysis,size}:retained;
+  if(!shown||!content&&replacement&&matchMedia('(max-width:800px)').matches)return null;
+  return <aside ref={ref} className={(side==='right'?'graph-detail':'graph-auxiliary')+' graph-overlay nopan nodrag nowheel'+(!content?' is-leaving':'')} data-graph-panel={shown.analysis?'bottom':side} data-size={shown.size} style={!content?geometry.current:undefined} aria-hidden={!content} inert={!content}><div key={shown.contentKey} className="graph-panel-content">{shown.content}</div></aside>;
 }
-export function GraphWorkspace({ toolbar, detail, auxiliary, footer, finder,palette,analysis=false,onDismissDetail,onDismissAuxiliary, ...graph }: ComponentProps<typeof DependencyGraph> & {
-  onDismissDetail?:()=>void;onDismissAuxiliary?:()=>void;toolbar: ReactNode; detail?: ReactNode; auxiliary?: ReactNode; footer?: ReactNode;finder?:ReactNode;palette?:ReactNode;analysis?:boolean;
+export function GraphWorkspace({ toolbar, detail, auxiliary, footer, finder,palette,analysis=false,auxiliarySize='compact',onDismissDetail,onDismissAuxiliary, ...graph }: ComponentProps<typeof DependencyGraph> & {
+  onDismissDetail?:()=>void;onDismissAuxiliary?:()=>void;toolbar: ReactNode; detail?: ReactNode; auxiliary?: ReactNode; footer?: ReactNode;finder?:ReactNode;palette?:ReactNode;analysis?:boolean;auxiliarySize?:PanelSize;
 }) {
   const root=useRef<HTMLElement>(null),finderRef=useRef<HTMLDivElement>(null);
   const finderKey='pm-graph-view:'+graph.viewKey+':finder';
@@ -42,7 +52,7 @@ export function GraphWorkspace({ toolbar, detail, auxiliary, footer, finder,pale
       <div className="graph-tool-rail graph-overlay nopan nodrag nowheel" data-graph-panel="left">{palette}{finder&&<FindTool onClick={()=>setFinding(v=>!v)}/>}</div>
       {finder&&finding&&<div ref={finderRef} className="graph-finder graph-overlay nopan nodrag nowheel" data-graph-panel="left">{finder}</div>}
       <FloatingPanel onDismiss={onDismissDetail} content={detail} side="right" replacement={!!auxiliary} contentKey={graph.selected+'|'+(graph.selectedEdge||'')}/>
-      <FloatingPanel onDismiss={onDismissAuxiliary} analysis={analysis} content={auxiliary} side="left" replacement={!!detail}/>
+      <FloatingPanel onDismiss={onDismissAuxiliary} analysis={analysis} size={auxiliarySize} content={auxiliary} side="left" replacement={!!detail}/>
       <div className="graph-footer graph-overlay nopan nodrag nowheel" data-graph-panel="bottom">{footer}</div>
     </DependencyGraph>
   </section>;

@@ -122,3 +122,37 @@ test('项目里程碑拖线与前置勾选共享同一关系，修改仅在保�
  await check.uncheck();await expect(check).not.toBeChecked();await page.getByLabel('撤销',{exact:true}).click();await expect(check).toBeChecked();expect((await analysis()).dependencies.some(d=>d.targetMilestoneId===id)).toBe(false);
  await expect(page.getByLabel('保存修改')).toBeEnabled();await page.getByLabel('保存修改').click();await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();expect((await analysis()).dependencies.filter(d=>d.targetMilestoneId===id&&d.sourceRequirementId===a.id)).toHaveLength(1);
 });
+
+test('分析浮层限宽，关闭逐帧保持原矩形，快速切换不闪回旧内容',async({page},info)=>{
+ const {project,a,analysis}=await fixture(page),data=await analysis();
+ for(const n of data.nodes){n.plannedStart=null;n.plannedEnd=null;n.forecastStart=null;n.forecastEnd=null;}
+ await page.route('**/api/projects/'+project.id+'/path-analysis**',r=>r.fulfill({json:data}));
+ await page.goto('/paths?pathScope=all');await ready(page);await page.locator('.react-flow__node[data-id="'+a.id+'"] .dependency-card').click();await page.waitForTimeout(220);
+ const spacing=await page.locator('.graph-detail').evaluate(e=>{const icons=e.querySelector('.editor-selection-tools')!.getBoundingClientRect(),actions=e.querySelector('.button-row')!.getBoundingClientRect();return actions.top-icons.bottom;});expect(spacing).toBeGreaterThanOrEqual(11);
+ await page.getByRole('button',{name:'排期预览',exact:true}).click();await page.waitForTimeout(230);
+ const panel=page.locator('.graph-auxiliary[aria-hidden="false"]');expect((await panel.boundingBox())!.width).toBeLessThanOrEqual(480);await expect(panel.locator('.path-draft-gantt-track')).toHaveCount(0);expect(await panel.evaluate(e=>e.scrollWidth-e.clientWidth)).toBeLessThanOrEqual(1);
+ await page.screenshot({path:info.outputPath('compact-undated-panel.png')});
+ const sample=await page.evaluate(async()=>{const read=()=>{const e=document.querySelector<HTMLElement>('.graph-auxiliary');if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,opacity:Number(getComputedStyle(e).opacity)};};const before=read()!,frames:ReturnType<typeof read>[]=[];[...document.querySelectorAll<HTMLButtonElement>('.graph-auxiliary button')].find(b=>b.textContent==='关闭')!.click();await new Promise<void>(resolve=>{const start=performance.now();const tick=()=>{frames.push(read());if(performance.now()-start<250)requestAnimationFrame(tick);else resolve();};requestAnimationFrame(tick);});return {before,frames};});
+ expect(sample.frames.filter(Boolean).length).toBeGreaterThan(2);for(const frame of sample.frames){if(!frame)continue;expect(Math.abs(frame.width-sample.before.width)).toBeLessThan(1);expect(Math.abs(frame.height-sample.before.height)).toBeLessThan(1);expect(Math.abs(frame.x-sample.before.x)).toBeLessThan(1);expect(frame.y).toBeGreaterThanOrEqual(sample.before.y-.5);expect(frame.y).toBeLessThanOrEqual(sample.before.y+8.5);}expect(sample.frames.at(-1)).toBeNull();
+ await info.attach('close-frames',{body:JSON.stringify(sample),contentType:'application/json'});
+ await page.getByRole('button',{name:'排期预览',exact:true}).click();await page.waitForTimeout(35);await page.locator('.graph-auxiliary[aria-hidden="false"]').getByRole('button',{name:'关闭',exact:true}).click();await page.getByRole('button',{name:'余量',exact:true}).click();await page.waitForTimeout(260);await expect(page.locator('.graph-auxiliary h3')).toHaveText('余量分布');await expect(page.locator('.graph-auxiliary')).toHaveCount(1);
+ await page.emulateMedia({reducedMotion:'reduce'});await page.locator('.graph-auxiliary').getByRole('button',{name:'关闭',exact:true}).click();await expect(page.locator('.graph-auxiliary')).toHaveCount(0);
+});
+
+test('有效排期图默认限宽，可主动展开，窄屏独立滚动且画布不跳动',async({page},info)=>{
+ const {project,analysis}=await fixture(page),data=await analysis();for(const n of data.nodes.filter(n=>n.kind==='acceptance')){n.plannedStart='2026-09-07';n.plannedEnd='2026-09-10';n.forecastStart='2026-09-08';n.forecastEnd='2026-09-11';}
+ await page.route('**/api/projects/'+project.id+'/path-analysis**',r=>r.fulfill({json:data}));await page.goto('/paths?pathScope=all');await ready(page);const view=await viewportValue(page),positions=await positionsValue(page);
+ await page.getByRole('button',{name:'排期预览',exact:true}).click();await page.waitForTimeout(220);const panel=page.locator('.graph-auxiliary'),width=(await panel.boundingBox())!.width;expect(width).toBeLessThanOrEqual(800);await page.getByLabel('展开排期图',{exact:true}).click();await expect(panel).toHaveAttribute('data-size','expanded');expect((await panel.boundingBox())!.width).toBeGreaterThan(width);expect(await viewportValue(page)).toBe(view);expect(await positionsValue(page)).toEqual(positions);
+ await page.getByLabel('收起排期图',{exact:true}).click();await expect(panel).toHaveAttribute('data-size','timeline');expect((await panel.boundingBox())!.width).toBe(width);
+ await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'排期预览',exact:true}).click();await page.waitForTimeout(230);const box=(await panel.boundingBox())!,controls=(await page.locator('.graph-view-controls').boundingBox())!;expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(390);expect(box.y+box.height).toBeLessThan(controls.y-10);await page.screenshot({path:info.outputPath('dated-panel-narrow.png')});
+});
+
+test('流程列表隐藏迁移排序值，工作项连续编号，里程碑不重复也不显示零工期',async({page})=>{
+ const {project}=await fixture(page);
+ const templates=await(await page.request.get('/api/templates?projectId='+project.id)).json() as WorkItemTemplate[];
+ const t=templates.find(t=>t.name==='依赖流程')!,work=t.items[1];work.milestoneLabel='可验收';
+ t.items.push({...work,id:'milestone:'+work.id,title:'可验收',kind:'milestone',sortOrder:10001,startOffsetDays:5,durationDays:0,milestoneLabel:null,predecessorIds:[work.id]});
+ await page.route('**/api/templates?*',r=>r.fulfill({json:templates}));await page.goto('/templates');const card=page.locator('.template-card').filter({hasText:'依赖流程'});
+ await expect(card.locator('ol>li>span').filter({hasNot:page.locator('svg')})).toHaveText(['1','2']);await expect(card.locator('ol>li').filter({hasText:'可验收'})).toHaveCount(1);await expect(card.getByLabel('里程碑',{exact:true})).toBeVisible();await expect(card).not.toContainText('10002');await expect(card).not.toContainText('持续0');
+ await card.getByRole('button',{name:'编辑流程 依赖流程',exact:true}).click();await ready(page);await page.getByRole('button',{name:'返回流程列表',exact:true}).click();await expect(card).toBeVisible();await expect(card.locator('ol>li')).toHaveCount(3);
+});
