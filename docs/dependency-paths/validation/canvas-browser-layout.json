@@ -1,0 +1,17 @@
+{
+  "samples": 20,
+  "p50Ms": 1111.300000011921,
+  "p95Ms": 1289.2999999970198,
+  "maxMs": 1313.199999988079,
+  "browser": "msedge",
+  "nodes": 200,
+  "edges": 600,
+  "measuredAt": "2026-09-08T01:40:53.864Z",
+  "device": {
+    "cpu": "Intel(R) Core(TM) i9-14900K",
+    "logicalCpus": 24,
+    "memoryGiB": 32,
+    "node": "v24.15.0",
+    "os": "10.0.22631"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "checkedAt": "2026-09-08T01:45:09.472Z",
+  "tables": {
+    "requirements": {
+      "count": 9,
+      "unchanged": true
+    },
+    "work_items": {
+      "count": 17,
+      "unchanged": true
+    },
+    "dependency_edges": {
+      "count": 14,
+      "unchanged": true
+    },
+    "work_item_templates": {
+      "count": 6,
+      "unchanged": true
+    },
+    "template_items": {
+      "count": 17,
+      "unchanged": true
+    }
+  },
+  "migration": false
+}

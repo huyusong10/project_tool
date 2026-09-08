@@ -35,7 +35,7 @@ export async function stableGraphLayout(engine: Engine, nodes: LayoutNode[], edg
     if(!layout){layout=await layoutDependencyGraph(engine,localNodes,localEdges,vertical);cache.set(key,layout);if(cache.size>80)cache.delete(cache.keys().next().value!);}
     return {ids,layout,retained:false};
   }));
-  components.sort((a,b)=>Number(b.retained)-Number(a.retained)||Number(b.ids.includes(anchorId||''))-Number(a.ids.includes(anchorId||'')));
+  components.sort((a,b)=>Number(b.retained)-Number(a.retained)||(previous?Number(b.ids.includes(anchorId||''))-Number(a.ids.includes(anchorId||'')):0));
   type Bounds={left:number;top:number;right:number;bottom:number};
   const placed:Bounds[]=[];let bottom=24;
   for(const {ids,layout,retained} of components){

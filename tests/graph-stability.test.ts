@@ -14,6 +14,7 @@ it('连通范围缓存、合并与拆分保留其他范围和操作锚点，扩�
  const edges:LayoutEdge[]=[{id:'s01',source:'stable0',target:'stable1'},{id:'s23',source:'stable2',target:'stable3'},{id:'s45',source:'stable4',target:'stable5'}];
  let calls=0;const engine={layout:(...args:Parameters<typeof elk.layout>)=>{calls++;return elk.layout(...args);}};
  const first=await stableGraphLayout(engine,nodes,edges,false,null);
+ const refreshed=await stableGraphLayout(engine,nodes,edges,false,null,'stable4');expect(refreshed.nodes).toEqual(first.nodes);expect(refreshed.edges).toEqual(first.edges);
  const cached=await stableGraphLayout(engine,nodes,edges,false,first,'stable2');expect(cached.nodes).toEqual(first.nodes);expect(calls).toBe(3);
  const added=[...edges,{id:'s12',source:'stable1',target:'stable2'}];
  const merged=await stableGraphLayout(engine,nodes,added,false,cached,'stable1');

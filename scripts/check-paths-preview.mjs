@@ -25,7 +25,8 @@ const templates=await (await context.request.get(`${base}/api/templates?projectI
 await page.goto(`${base}/templates?edit=${templates[0].id}`);await page.locator('[data-layout-ready="true"]').waitFor({timeout:30000});
 await page.screenshot({path:'.preview/qa/template-canvas.png',fullPage:true});
 const req=analysis.requirements.find(r=>r.title==='订单业务上线');
-await page.goto(`${base}/requirements/${req.id}?view=path&target=project`);await page.locator('[data-layout-ready="true"]').waitFor({timeout:30000});
+const selected=analysis.nodes.find(n=>n.kind==='work'&&n.requirementId===req.id);
+await page.goto(`${base}/requirements/${req.id}?view=path&target=project&pathNode=${selected.id}`);await page.locator('[data-layout-ready="true"]').waitFor({timeout:30000});
 await page.screenshot({path:'.preview/qa/requirement.png',fullPage:true});
 await page.setViewportSize({width:390,height:844});await page.waitForFunction(()=>document.querySelector('.dependency-canvas')?.getAttribute('data-layout-ready')==='true');
 await page.screenshot({path:'.preview/qa/narrow.png',fullPage:true});

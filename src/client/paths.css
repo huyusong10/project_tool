@@ -62,7 +62,7 @@ body:has(.graph-workspace){overflow:hidden}
 .path-analysis.immersive-path{padding:0;flex:1;min-height:0;display:flex;overflow:hidden}
 .graph-workspace{flex:1;min-height:0;min-width:0;position:relative;width:100%;color:var(--text-primary)}
 .graph-workspace .dependency-canvas{height:100%;min-height:0;border-radius:0;border:0;background:var(--bg-page);outline:0}
-.graph-workspace .dependency-canvas.is-active{box-shadow:inset 0 0 0 2px var(--accent)}
+.graph-workspace .dependency-canvas:focus-visible{box-shadow:inset 0 0 0 2px var(--accent)}
 .graph-overlay,.graph-view-controls{position:absolute;z-index:10;background:var(--bg-surface);border:1px solid var(--divider);box-shadow:0 8px 28px #00000014;border-radius:12px;overscroll-behavior:contain}
 .graph-toolbar{left:16px;right:16px;top:14px;padding:12px 16px;max-height:40%;overflow:auto}
 .graph-toolbar-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
@@ -71,16 +71,17 @@ body:has(.graph-workspace){overflow:hidden}
 .graph-delivery-summary{margin-top:8px;justify-content:flex-start;gap:16px}
 .graph-toolbar .button-row{flex-wrap:wrap;gap:6px}
 .graph-toolbar button,.graph-footer button,.graph-view-controls button{font-size:12px;padding:6px 9px;white-space:nowrap}
-.graph-workspace .graph-detail,.graph-workspace .graph-auxiliary{top:140px;bottom:106px;width:300px;max-width:calc(100% - 32px);padding:16px;overflow:auto;box-sizing:border-box}
+.graph-workspace .graph-detail,.graph-workspace .graph-auxiliary{top:var(--graph-toolbar-bottom,140px);bottom:auto;height:auto;max-height:calc(100% - var(--graph-toolbar-bottom,140px) - var(--graph-bottom-clearance,76px));width:300px;max-width:calc(100% - 32px);padding:16px;overflow:auto;box-sizing:border-box}
 .graph-workspace .graph-detail{right:16px}.graph-workspace .graph-auxiliary{left:16px;width:312px}
-.graph-panel-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px}
-.graph-panel-heading h3{margin:3px 0;font-size:14px;overflow-wrap:anywhere}
-.graph-panel-heading button{font-size:12px;padding:3px 6px}
+.graph-panel-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.graph-panel-heading h3{margin:0;font-size:14px;overflow-wrap:anywhere}
+.graph-panel-heading button{font-size:12px;padding:3px 6px;min-height:32px;flex-shrink:0}
 .graph-overlay p{font-size:13px;line-height:1.7;overflow-wrap:anywhere}
 .graph-overlay small{font-size:12px;color:var(--text-muted);line-height:1.6}
 .graph-overlay .button-row{gap:6px;flex-wrap:wrap}
-.graph-footer{left:16px;bottom:16px;padding:7px;display:flex;flex-wrap:wrap;gap:3px;max-width:calc(100% - 32px)}
-.graph-view-controls{right:16px;bottom:62px;display:flex;align-items:center;gap:3px;padding:6px;font-size:12px;color:var(--text-muted)}
+.graph-footer{left:16px;bottom:16px;padding:6px;display:flex;align-items:center;flex-wrap:nowrap;gap:3px;max-width:calc(100% - 32px);overflow:auto;box-sizing:border-box}
+.graph-view-controls{right:16px;bottom:16px;display:flex;align-items:center;gap:3px;padding:6px;font-size:12px;color:var(--text-muted);box-sizing:border-box}
+.graph-workspace[data-stacked=true] .graph-view-controls{bottom:calc(var(--graph-footer-height,46px) + 28px)}
 .graph-fields{display:grid;gap:10px;margin-top:14px}.graph-fields .field{margin:0}
 .graph-overlay input:not([type=checkbox]),.graph-overlay select,.graph-overlay textarea{box-sizing:border-box;max-width:100%;border:1px solid var(--border-default);border-radius:7px;padding:8px 9px;background:var(--bg-surface);color:var(--text-primary);font:inherit;font-size:13px}
 .graph-auxiliary>input,.graph-auxiliary>select{width:100%;margin-bottom:10px}
@@ -105,18 +106,20 @@ body:has(.graph-workspace){overflow:hidden}
 .graph-workspace .dependency-card.search-match{box-shadow:0 0 0 3px var(--accent)}
 .graph-workspace .dependency-card.invalid{outline:3px solid var(--danger)}
 .graph-workspace .dependency-card .route-handle{opacity:0;pointer-events:none}
-.graph-workspace .dependency-card .business-handle{width:14px;height:14px;border:2px solid var(--bg-surface);background:var(--accent);box-shadow:0 0 0 2px var(--accent);cursor:crosshair}
-.graph-workspace .dependency-card .business-handle:after{content:'';position:absolute;inset:-7px}
-.graph-workspace .dependency-layout-notice{top:auto;bottom:112px;left:50%;right:auto;transform:translateX(-50%);width:max-content;max-width:80%;z-index:15;padding:8px 12px;background:var(--bg-surface);border:1px solid var(--divider);border-radius:8px;pointer-events:auto}
+.graph-workspace .dependency-card .business-handle{position:absolute;width:28px;height:28px;padding:0;border:0;background:transparent;cursor:crosshair;z-index:5;border-radius:50%;opacity:.55;display:grid;place-items:center}
+.graph-workspace .dependency-card .business-handle:after{content:'';width:12px;height:12px;border:2px solid var(--bg-surface);background:var(--accent);box-shadow:0 0 0 1px var(--accent);border-radius:50%}
+.business-handle[data-side=left]{left:0;top:50%;transform:translate(-50%,-50%)}.business-handle[data-side=right]{right:0;top:50%;transform:translate(50%,-50%)}.business-handle[data-side=top]{left:50%;top:0;transform:translate(-50%,-50%)}.business-handle[data-side=bottom]{left:50%;bottom:0;transform:translate(-50%,50%)}
+.graph-workspace .dependency-card:hover .business-handle,.graph-workspace .dependency-card.selected .business-handle,.graph-workspace .business-handle:focus-visible{opacity:1}
+.graph-workspace .dependency-layout-notice{top:auto;bottom:var(--graph-bottom-clearance,76px);left:50%;right:auto;transform:translateX(-50%);width:max-content;max-width:80%;z-index:15;padding:8px 12px;background:var(--bg-surface);border:1px solid var(--divider);border-radius:8px;pointer-events:auto}
 .graph-workspace .dependency-canvas[data-layout-ready="false"] .react-flow__edges{opacity:0}
 @media(max-width:800px){
  .graph-workspace .graph-toolbar{top:8px;left:8px;right:8px;padding:9px;max-height:35%}
  .graph-toolbar-row>strong{max-width:100%;width:100%;font-size:13px}.graph-toolbar-row{gap:6px}
  .graph-delivery-summary{gap:6px;font-size:11px}.graph-delivery-summary>span:last-of-type{display:none}
- .graph-workspace .graph-detail,.graph-workspace .graph-auxiliary{left:8px;right:8px;top:auto;bottom:108px;width:auto;max-width:none;max-height:42%;padding:12px}
- .graph-view-controls{bottom:60px;right:8px;max-width:calc(100% - 16px)}
+ .graph-workspace .graph-detail,.graph-workspace .graph-auxiliary{left:8px;right:8px;top:auto;bottom:var(--graph-bottom-clearance,124px);width:auto;max-width:none;max-height:min(42%,calc(100% - var(--graph-toolbar-bottom,140px) - var(--graph-bottom-clearance,124px) - 12px));padding:12px}
+ .graph-view-controls{right:8px;max-width:calc(100% - 16px)}
  .graph-view-controls button{padding:5px 6px;font-size:11px}
- .graph-footer{left:8px;right:8px;bottom:8px;max-width:none;flex-wrap:nowrap;overflow:auto;padding:5px}
+ .graph-footer{left:8px;right:8px;bottom:16px;max-width:none;flex-wrap:nowrap;overflow:auto;padding:6px}
  .graph-footer button{padding:5px 7px}.graph-toolbar small{display:none}
 }
 
@@ -124,3 +127,11 @@ body:has(.graph-workspace){overflow:hidden}
 @media(min-width:801px){.graph-workspace .graph-detail,.graph-workspace .graph-auxiliary{top:var(--graph-toolbar-bottom,140px)}}
 .graph-overlay .button-row{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.graph-toolbar button,.graph-toolbar a,.graph-view-controls button,.graph-footer button{min-height:32px}
 .graph-workspace .dependency-canvas[data-rendered-layout="true"][data-layout-ready="false"] .react-flow__nodes,.graph-workspace .dependency-canvas[data-rendered-layout="true"][data-layout-ready="false"] .react-flow__edges{opacity:1}
+.graph-title-group{display:flex;align-items:center;gap:12px;min-width:0;flex:1;flex-wrap:wrap}.graph-title-group strong{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.graph-back-link{border:0;background:transparent;color:var(--text-muted);font:inherit;font-size:12px;cursor:pointer;padding:4px 0;text-decoration:none}.graph-back-link:hover{color:var(--accent)}
+.graph-focus-banner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--accent)}
+.graph-node-hidden{visibility:hidden!important;pointer-events:none!important}.graph-outside-notice{color:var(--accent)}
+.dependency-card.connection-source{outline:2px solid var(--accent)}.dependency-card.connection-target{box-shadow:0 0 0 4px var(--accent)}.dependency-card.connection-invalid{box-shadow:0 0 0 4px var(--danger)}
+.graph-connection-preview{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4;overflow:hidden}.graph-connection-preview path{fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:6 5}.graph-connection-preview.is-invalid path{stroke:var(--danger)}
+.graph-connection-hint{pointer-events:none!important}.graph-connection-hint.is-invalid{color:var(--danger)}
+.graph-workspace[data-stacked=true] .graph-footer{max-width:calc(100% - 32px)}

@@ -101,6 +101,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const [inspector,setInspector]=useState(!!selected),[locate,setLocate]=useState<{id:string;sequence:number}>();
   const [imported,setImported]=useState<string[]>([]),[issue,setIssue]=useState<{message:string;nodeIds?:string[]}>(),[confirmDiscard,setConfirmDiscard]=useState(false);
   const [guard,setGuard]=useState<null|(()=>void)>(null),[editor,setEditor]=useState<Editor|null>(null);
+  useEffect(()=>{const media=matchMedia('(max-width: 800px)'),changed=()=>{if(media.matches)setPanel('');};media.addEventListener('change',changed);return()=>media.removeEventListener('change',changed);},[]);
   useEffect(()=>setIssue(undefined),[draft.changes]);
   const setParam=(name:string,value:string)=>{const next=new URLSearchParams(params);if(value)next.set(name,value);else next.delete(name);setParams(next,{replace:true,state:location.state});};
   const narrow=()=>matchMedia('(max-width: 800px)').matches;
@@ -129,6 +130,9 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
     for(const direction of ['source','target'] as const){const seen=new Set([branch]),queue=[branch];for(let i=0;i<queue.length;i++)for(const e of graph.links)if(e[direction]===queue[i]){const id=e[direction==='source'?'target':'source'];if(!seen.has(id)){seen.add(id);queue.push(id);ids.add(id);}}}
     return {cards:graph.cards.filter(c=>ids.has(c.id)),links:graph.links.filter(e=>ids.has(e.source)&&ids.has(e.target))};
   },[graph,branch]);
+  const visibleIds=useMemo(()=>visible.cards.map(c=>c.id),[visible]);
+  const listed=results.filter(c=>!branch||!!search||visibleIds.includes(c.id));
+  const locateNode=(id:string)=>{if(branch&&!visibleIds.includes(id))setParam('pathBranch','');setLocate({id,sequence:Date.now()});};
   const selectedCard=graph.cards.find(c=>c.id===selected),node=data.nodes.find(n=>n.id===selected);
   const selectedEdge=graph.links.find(e=>e.id===edgeId),selectedRelation=data.dependencies.find(d=>d.id===relationId);
   const editableRelation=(d:PathAnalysis['dependencies'][number])=>manager||canEdit&&d.sourceRequirementId===focus&&d.targetRequirementId===focus;
@@ -161,9 +165,9 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const req=data.requirements.find(r=>r.id===focus),returnPath=(location.state as {pathReturn?:string}|null)?.pathReturn;
   const nodesPanel=<><input aria-label="筛选图中节点" value={search} placeholder="搜索名称或负责人，只高亮结果" onChange={e=>setParam('pathSearch',e.target.value)}/>
     {!focus&&<select aria-label="图显示范围" value={params.get('pathScope')==='all'?'all':'attention'} onChange={e=>setParam('pathScope',e.target.value)}><option value="attention">关键与异常范围</option><option value="all">全部需求</option></select>}
-    <div className="path-node-list">{results.map(c=><div className="graph-list-row" key={c.id}><button className={selected===c.id?'selected':''} onClick={()=>select(c.id)}>{c.title}<small>{c.forecast||'待确认'} · {riskLabels[c.risk as keyof typeof riskLabels]||'待评估'}</small></button><button className="ghost-button" onClick={()=>setLocate({id:c.id,sequence:Date.now()})}>定位</button></div>)}</div></>;
-  const toolbar=<><div className="graph-toolbar-row"><strong>{focus?requirement!.title:'项目交付依赖'}</strong>
-    <div className="button-row">{focus&&<Link className="ghost-button" to={returnPath?.startsWith('/paths')?returnPath:'/paths'}>全局分析</Link>}{onExit&&<button className="ghost-button" onClick={()=>guarded(onExit)}>退出路径</button>}
+    <div className="path-node-list">{listed.map(c=><div className="graph-list-row" key={c.id}><button className={selected===c.id?'selected':''} onClick={()=>select(c.id)}>{c.title}<small>{branch&&!visibleIds.includes(c.id)?'分支外 · ':''}{c.forecast||'待确认'} · {riskLabels[c.risk as keyof typeof riskLabels]||'待评估'}</small></button><button className="ghost-button" onClick={()=>locateNode(c.id)}>定位</button></div>)}</div></>;
+  const toolbar=<><div className="graph-toolbar-row"><div className="graph-title-group">{focus&&<Link className="graph-back-link" to={returnPath?.startsWith('/paths')?returnPath:'/paths'}>全局分析</Link>}{onExit&&<button className="graph-back-link" onClick={()=>guarded(onExit)}>返回需求</button>}<strong>{focus?requirement!.title:'项目交付依赖'}</strong></div>
+    <div className="button-row">
       {draft.active?<><span className="draft-badge">{draft.count} 项未保存</span><button className="ghost-button" disabled={!draft.canUndo||!!draft.pending||draft.busy} onClick={draft.undo}>撤销</button><button className="ghost-button" disabled={!draft.canRedo||!!draft.pending||draft.busy} onClick={draft.redo}>重做</button>
         <button className="primary-button" disabled={draft.busy||!draft.pending&&(!draft.preview||draft.conflict)} onClick={()=>void draft.save()}>{draft.busy?'保存中…':draft.pending?'查询回执并重试':'保存修改'}</button>
         <button className="ghost-button" disabled={!!draft.pending||draft.busy} onClick={()=>draft.count?setConfirmDiscard(true):draft.cancel()}>取消编辑</button></>:
@@ -177,8 +181,8 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
       <span>目标 {data.targetDate||'未设日期'} · {draft.count&&!draft.preview?'余量待预览':data.deadlineSlack===null?'余量待确认':'余量 '+data.deadlineSlack+' 天'}</span>
       <button className="ghost-button" onClick={()=>openPanel('summary')}>分析说明</button>
     </div>
-    {editing&&canEdit&&<small>{focus?'从完成出口拖到开始入口，或依次点击两个连接点。':'需求连线表示：前置需求验收后，后续需求开始。部分交付请进入需求内部配置。'}</small>}
-    {branch&&<button className="ghost-button" onClick={()=>setParam('pathBranch','')}>退出分支聚焦</button>}
+    {editing&&canEdit&&<small>{focus?'从任意一侧连接点拖到后续卡片，或点击连接点后点击卡片。':'从前置需求拖到后续需求，表示验收后开始。部分交付请进入需求内部配置。'}</small>}
+    {branch&&<div className="graph-focus-banner"><span>正在查看 {graph.cards.find(c=>c.id===branch)?.title||'已移除节点'} 分支 · 显示 {visible.cards.length}／{graph.cards.length} 个节点</span><button className="ghost-button" onClick={()=>setParam('pathBranch','')}>返回全图</button></div>}
     {(issue||draft.error)&&<div role="alert" className="form-error">{issue?.message||draft.error?.message}{issue?.nodeIds?.length?<small>{issue.nodeIds.slice(0,7).map(label).join(' → ')}</small>:null}<button className="ghost-button" onClick={()=>{setIssue(undefined);openPanel('changes');}}>查看修改</button>{draft.error&&!draft.pending&&<button className="ghost-button" disabled={draft.previewing||draft.conflict} onClick={draft.retryPreview}>重新预览</button>}</div>}
     {draft.conflict&&<div className="warning-banner">服务端版本 {formal.revision}，草稿基于 {draft.version}。修改已保留。<button className="ghost-button" onClick={()=>openPanel('changes')}>核对冲突</button></div>}
   </>;
@@ -191,7 +195,8 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
         const problem=dependencyIssue(formal,next);if(problem)setIssue(problem);else{draft.change(next);setRelationId(edge.clientId);setEdgeId('');}
       }}/>}
     </>:selectedCard&&<><p>{selectedCard.subtitle}</p><p>{data.risks[selectedCard.requirementId]?.riskReason}</p><p>{node?.source}</p>{node?.unknownReasons.length?<p className="danger-text">{node.unknownReasons.join('；')}</p>:null}
-      <div className="button-row"><button className="ghost-button" onClick={()=>setLocate({id:selected,sequence:Date.now()})}>定位</button><button className="ghost-button" onClick={()=>setParam('pathBranch',selected)}>聚焦分支</button>
+      {branch&&!visibleIds.includes(selected)&&<p className="graph-outside-notice">此节点在分支外，定位后返回全图。</p>}
+      <div className="button-row"><button className="ghost-button" onClick={()=>locateNode(selected)}>定位</button><button className="ghost-button" onClick={()=>setParam('pathBranch',selected)}>聚焦分支</button>
         {(!focus||selectedCard.external)&&<button className="primary-button" onClick={()=>directTo(selectedCard.requirementId,selectedCard.workItemId)}>进入需求路径</button>}
         {focus&&node?.workItemId&&node.requirementId===focus&&<button className="ghost-button" onClick={()=>guarded(()=>{const p=new URLSearchParams(params);p.delete('view');p.set('workItemId',node.id);setParams(p,{state:location.state});})}>定位并处理工作项</button>}
       </div>
@@ -226,7 +231,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
       {draft.conflict&&<><p>请核对上述修改与最新值。已删除的关系会从移除列表中剔除；其他修改按您填写的值重新预览。</p><button className="primary-button" onClick={draft.rebase}>已核对，按最新版本重新预览</button></>}
     </>}
   </>:undefined;
-  return <div className="path-analysis immersive-path"><GraphWorkspace cards={visible.cards} links={visible.links} selected={selected} onSelect={select}
+  return <div className="path-analysis immersive-path"><GraphWorkspace cards={graph.cards} links={graph.links} visibleIds={visibleIds} selected={selected} onSelect={select}
     viewKey={(session.accountId||'guest')+':'+formal.projectId+':'+(focus||'all')} toolbar={toolbar} detail={detail} auxiliary={auxiliary} selectedEdge={edgeId}
     onEdgeSelect={id=>{setEdgeId(id);setRelationId('');setInspector(true);if(narrow())setPanel('');}} editing={editing&&canEdit} onConnect={connect} validateConnection={validate} onInvalid={setIssue}
     highlighted={search||params.get('pathFloat')?results.map(c=>c.id):[]} invalidNodes={(issue?.nodeIds||draft.issue?.nodeIds||[]).map(id=>focus?id:formal.nodes.find(n=>n.id===id)?.requirementId||id)} locate={locate} focusId={branch||''} onUndo={editing?draft.undo:undefined} onRedo={editing?draft.redo:undefined}

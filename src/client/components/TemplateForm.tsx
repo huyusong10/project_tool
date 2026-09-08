@@ -59,6 +59,7 @@ export function TemplateForm({template,templateUnavailable=false,projectId,onClo
   const draft=useGraphHistory((session.accountId||'guest')+':'+projectId+':template:'+(template?.id||'new'),initial,template?.updatedAt||'new');
   const value=draft.value,selected=params.get('templateNode')||value.items[0]?.clientKey||'',item=value.items.find(i=>i.clientKey===selected);
   const [panel,setPanel]=useState('settings'),[inspector,setInspector]=useState(!matchMedia('(max-width:800px)').matches);
+  useEffect(()=>{const media=matchMedia('(max-width: 800px)'),changed=()=>{if(media.matches)setPanel('');};media.addEventListener('change',changed);return()=>media.removeEventListener('change',changed);},[]);
   const [locate,setLocate]=useState<{id:string;sequence:number}>(),[selectedEdge,setSelectedEdge]=useState('');
   const [error,setError]=useState(''),[invalidNodes,setInvalidNodes]=useState<string[]>([]);
   const [creating,setCreating]=useState<{predecessors:string[]}|null>(null),[createTitle,setCreateTitle]=useState(''),[createDuration,setCreateDuration]=useState(1);
@@ -124,10 +125,10 @@ export function TemplateForm({template,templateUnavailable=false,projectId,onClo
     viewKey={(session.accountId||'guest')+':'+projectId+':template:'+(template?.id||'new')} editing={value.dependencyMode==='dependencies'&&!locked&&!needsCheck&&!mutation.isPending}
     onConnect={connect} validateConnection={validate} onInvalid={i=>{setError(i.message);setInvalidNodes(i.nodeIds||[]);}} invalidNodes={invalidNodes}
     onDropEmpty={source=>beginCreate([source])} selectedEdge={selectedEdge} onEdgeSelect={id=>{setSelectedEdge(id);setInspector(true);if(matchMedia('(max-width:800px)').matches)setPanel('');}} locate={locate} onUndo={!mutation.isPending&&!needsCheck?draft.undo:undefined} onRedo={!mutation.isPending&&!needsCheck?draft.redo:undefined}
-    toolbar={<><div className="graph-toolbar-row"><strong>{template?'编辑流程':'新建流程'} · {value.name||'未命名'}</strong><div className="button-row">
+    toolbar={<><div className="graph-toolbar-row"><div className="graph-title-group"><button className="graph-back-link" disabled={mutation.isPending} onClick={()=>dirty?setDiscard(true):(draft.reset(),onClose())}>退出编辑</button><strong>{template?'编辑流程':'新建流程'} · {value.name||'未命名'}</strong></div><div className="button-row">
       <span className="draft-badge">{dirty?'未保存修改':'编辑草稿'}</span><button className="ghost-button" disabled={!draft.canUndo||mutation.isPending||needsCheck} onClick={draft.undo}>撤销</button><button className="ghost-button" disabled={!draft.canRedo||mutation.isPending||needsCheck} onClick={draft.redo}>重做</button>
       <button className="primary-button" disabled={mutation.isPending||changed||needsCheck||locked||!!layout.error} onClick={save}>{mutation.isPending?'保存中…':'保存流程'}</button>
-      <button className="ghost-button" disabled={mutation.isPending} onClick={()=>dirty?setDiscard(true):(draft.reset(),onClose())}>退出编辑</button></div></div>
+      </div></div>
       <div className="graph-delivery-summary">{value.dependencyMode==='dependencies'?'依赖排期':'历史偏移排期'} · {value.items.length} 个工作项 · 共 {Math.max(...layout.items.map(i=>i.startOffsetDays+i.durationDays),1)} 个工作日<span>修改流程用于新需求。</span></div>
       {(error||layout.error||mutation.error)&&<div className="form-error" role="alert">{error||layout.error||mutation.error?.message}</div>}
       {(changed||needsCheck)&&<div className="warning-banner">流程版本或提交结果需要核对，草稿已保留。<button className="ghost-button" onClick={()=>openPanel('conflict')}>查看并核对</button></div>}
