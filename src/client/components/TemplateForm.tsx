@@ -5,10 +5,11 @@ import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../a
 import { invalidateTemplateViews, keys } from '../query-keys';
 import type { WorkItemTemplate } from '../types';
 import { Modal } from './Modal';
-import { canonicalizeContent, canonicalizeLabel } from '../../shared/search';
+import { canonicalizeContent, canonicalizeLabel, matchesSearch } from '../../shared/search';
 import { resolveTemplateOffsets, suggestTemplatePredecessors } from '../../shared/path-template';
 import { DependencyCycleError } from '../../shared/paths';
 import { useGraphHistory } from '../use-graph-draft';
+import {graphBranch} from '../path-view';
 import { GraphWorkspace } from './GraphWorkspace';
 import { PredecessorPicker } from './PredecessorPicker';
 import { useSession } from '../app-context';
@@ -57,9 +58,13 @@ export function TemplateForm({template,templateUnavailable=false,projectId,onClo
   const toast=useToast();
   const initial=useRef(initialDraft(template)).current;
   const draft=useGraphHistory((session.accountId||'guest')+':'+projectId+':template:'+(template?.id||'new'),initial,template?.updatedAt||'new');
-  const value=draft.value,selected=params.get('templateNode')||value.items[0]?.clientKey||'',item=value.items.find(i=>i.clientKey===selected);
-  const [panel,setPanel]=useState('settings'),[inspector,setInspector]=useState(!matchMedia('(max-width:800px)').matches);
-  useEffect(()=>{const media=matchMedia('(max-width: 800px)'),changed=()=>{if(media.matches)setPanel('');};media.addEventListener('change',changed);return()=>media.removeEventListener('change',changed);},[]);
+  const value=draft.value,selected=params.get('templateNode')||'',item=value.items.find(i=>i.clientKey===selected);
+  const [panel,setPanel]=useState(''),[inspector,setInspector]=useState(!!selected);
+  useEffect(()=>{const media=matchMedia('(max-width: 800px)'),changed=()=>{if(media.matches){setPanel('');setInspector(false);}};media.addEventListener('change',changed);return()=>media.removeEventListener('change',changed);},[]);
+  const [search,setSearch]=useState('');
+  const branchParam=params.get('templateBranch')||'',[branch,setBranchValue]=useState(branchParam);
+  useEffect(()=>setBranchValue(branchParam),[branchParam]);
+  const setBranch=(id:string)=>{setBranchValue(id);const next=new URLSearchParams(params);if(id)next.set('templateBranch',id);else next.delete('templateBranch');setParams(next,{replace:true});};
   const [locate,setLocate]=useState<{id:string;sequence:number}>(),[selectedEdge,setSelectedEdge]=useState('');
   const [error,setError]=useState(''),[invalidNodes,setInvalidNodes]=useState<string[]>([]);
   const [creating,setCreating]=useState<{predecessors:string[]}|null>(null),[createTitle,setCreateTitle]=useState(''),[createDuration,setCreateDuration]=useState(1);
@@ -112,6 +117,14 @@ export function TemplateForm({template,templateUnavailable=false,projectId,onClo
   const cards:GraphCard[]=layout.items.map(i=>({id:i.clientKey,requirementId:projectId,workItemId:i.clientKey,kind:'template',title:i.title||'未命名工作项',subtitle:i.milestoneLabel?'里程碑 · '+i.milestoneLabel:i.durationDays+' 个工作日',status:'planning',risk:'low',forecast:'第 '+(i.startOffsetDays+1)+'—'+(i.startOffsetDays+i.durationDays)+' 工作日',floatDays:null,critical:false,unknown:false,external:false,hiddenCount:0}));
   const links=value.dependencyMode==='dependencies'?value.items.flatMap(i=>i.predecessorKeys.map(source=>({id:source+'>'+i.clientKey,source,target:i.clientKey,critical:false,dependencyIds:[source+'>'+i.clientKey]}))):[];
   const edge=links.find(e=>e.id===selectedEdge);
+  const emphasized=branch?[...graphBranch(branch,links)]:cards.map(c=>c.id);
+  const reconnectChanges=(source:string,target:string)=>({...value,items:value.items.map(i=>({...i,predecessorKeys:[...i.predecessorKeys.filter(k=>!(i.clientKey===edge!.target&&k===edge!.source)),...(i.clientKey===target?[source]:[])]}))});
+  const validateReconnect=(source:string,target:string)=>{
+    if(!edge)return {message:'请先选择关系'};
+    if(source===target)return {message:'不能依赖自身'};
+    if(links.some(e=>e.id!==edge.id&&e.source===source&&e.target===target))return {message:'这条依赖已经存在'};
+    try{resolveTemplateOffsets(reconnectChanges(source,target).items);return null;}catch(caught){return {message:(caught as Error).message};}
+  };
   const affected=links.filter(e=>e.source===deleteId||e.target===deleteId);
   const names=(id:string)=>value.items.find(i=>i.clientKey===id)?.title||'失效工作项';
   const save=()=>{
@@ -121,30 +134,33 @@ export function TemplateForm({template,templateUnavailable=false,projectId,onClo
     const input:TemplateFormInput={...value,...template?{expectedUpdatedAt:draft.version}:{projectId},items:layout.items.map((i,index)=>({...i,sortOrder:index}))};
     lastInput.current=input;submitting.current=true;mutation.mutate(input);
   };
-  return <div className="path-analysis immersive-path template-flow-workspace"><GraphWorkspace cards={cards} links={links} selected={selected} onSelect={select}
+  return <div className="path-analysis immersive-path template-flow-workspace"><GraphWorkspace cards={cards} links={links} selected={selected} focusId={branch} emphasizedIds={emphasized} onExitFocus={()=>setBranch('')} highlighted={search?cards.filter(c=>matchesSearch([{text:c.title,weight:1}],search)).map(c=>c.id):[]} reconnect={edge} validateReconnect={validateReconnect} onReconnect={(source,target)=>{const problem=validateReconnect(source,target);if(problem)setError(problem.message);else{update(reconnectChanges(source,target));setSelectedEdge('');}}} onSelect={select}
     viewKey={(session.accountId||'guest')+':'+projectId+':template:'+(template?.id||'new')} editing={value.dependencyMode==='dependencies'&&!locked&&!needsCheck&&!mutation.isPending}
     onConnect={connect} validateConnection={validate} onInvalid={i=>{setError(i.message);setInvalidNodes(i.nodeIds||[]);}} invalidNodes={invalidNodes}
     onDropEmpty={source=>beginCreate([source])} selectedEdge={selectedEdge} onEdgeSelect={id=>{setSelectedEdge(id);setInspector(true);if(matchMedia('(max-width:800px)').matches)setPanel('');}} locate={locate} onUndo={!mutation.isPending&&!needsCheck?draft.undo:undefined} onRedo={!mutation.isPending&&!needsCheck?draft.redo:undefined}
+    finder={<><input aria-label="搜索流程节点" placeholder="搜索工作项／拼音" value={search} onChange={e=>{setSearch(e.target.value);setPanel('nodes');}}/><button className="ghost-button" onClick={()=>openPanel('nodes')}>节点 {cards.length}</button><button className="ghost-button" onClick={()=>openPanel('settings')}>流程属性</button></>}
     toolbar={<><div className="graph-toolbar-row"><div className="graph-title-group"><button className="graph-back-link" disabled={mutation.isPending} onClick={()=>dirty?setDiscard(true):(draft.reset(),onClose())}>退出编辑</button><strong>{template?'编辑流程':'新建流程'} · {value.name||'未命名'}</strong></div><div className="button-row">
       <span className="draft-badge">{dirty?'未保存修改':'编辑草稿'}</span><button className="ghost-button" disabled={!draft.canUndo||mutation.isPending||needsCheck} onClick={draft.undo}>撤销</button><button className="ghost-button" disabled={!draft.canRedo||mutation.isPending||needsCheck} onClick={draft.redo}>重做</button>
       <button className="primary-button" disabled={mutation.isPending||changed||needsCheck||locked||!!layout.error} onClick={save}>{mutation.isPending?'保存中…':'保存流程'}</button>
       </div></div>
       <div className="graph-delivery-summary">{value.dependencyMode==='dependencies'?'依赖排期':'历史偏移排期'} · {value.items.length} 个工作项 · 共 {Math.max(...layout.items.map(i=>i.startOffsetDays+i.durationDays),1)} 个工作日<span>修改流程用于新需求。</span></div>
-      {(error||layout.error||mutation.error)&&<div className="form-error" role="alert">{error||layout.error||mutation.error?.message}</div>}
-      {(changed||needsCheck)&&<div className="warning-banner">流程版本或提交结果需要核对，草稿已保留。<button className="ghost-button" onClick={()=>openPanel('conflict')}>查看并核对</button></div>}
-      {locked&&<div className="warning-banner">流程不可编辑或权限已变化。</div>}
+      <div className="graph-status-slot"><span>{branch?'聚焦 '+names(branch):value.dependencyMode==='legacy'?'历史偏移模式：转换后可拖线编辑依赖。':'从连接点拖到后续卡片，或拖到空白处新增后续。'}</span>
+        {branch&&<button className="ghost-button" onClick={()=>setBranch('')}>退出聚焦</button>}
+        {value.dependencyMode==='legacy'&&<button className="ghost-button" onClick={()=>setSuggestion(suggestTemplatePredecessors(value.items.map(i=>({...i}))))}>转换为依赖流程</button>}
+        {(error||layout.error||mutation.error||changed||needsCheck||locked)&&<button className="ghost-button danger-text" onClick={()=>openPanel('conflict')}>查看错误或冲突</button>}
+      </div>
     </>}
     detail={inspector?<><div className="graph-panel-heading"><h3>{edge?'前置关系':item?.title||'选择工作项'}</h3><button className="ghost-button" onClick={()=>setInspector(false)}>关闭</button></div>
       {edge?<><p>{names(edge.source)} 完成后，{names(edge.target)} 开始。</p><button className="ghost-button" disabled={mutation.isPending||needsCheck} onClick={()=>{update({...value,items:value.items.map(i=>i.clientKey===edge.target?{...i,predecessorKeys:i.predecessorKeys.filter(k=>k!==edge.source)}:i)});setSelectedEdge('');}}>移除选中关系</button>
-        <PredecessorPicker label="改接前置（选择后替换）" value={[]} options={value.items.filter(i=>i.clientKey!==edge.target&&i.clientKey!==edge.source).map(i=>({id:i.clientKey,title:i.title}))} onChange={ids=>{const source=ids.at(-1);if(source)update({...value,items:value.items.map(i=>i.clientKey===edge.target?{...i,predecessorKeys:[...new Set([...i.predecessorKeys.filter(k=>k!==edge.source),source])]}:i)});}}/></>:item&&<fieldset className="graph-form-fieldset" disabled={mutation.isPending||locked||needsCheck}><div className="graph-fields" key={item.clientKey}>
+        <details className="graph-more-relations"><summary>更多关系操作</summary><PredecessorPicker label="改接前置（选择后替换）" value={[]} options={value.items.filter(i=>i.clientKey!==edge.target&&i.clientKey!==edge.source).map(i=>({id:i.clientKey,title:i.title}))} onChange={ids=>{const source=ids.at(-1);if(source)update({...value,items:value.items.map(i=>i.clientKey===edge.target?{...i,predecessorKeys:[...new Set([...i.predecessorKeys.filter(k=>k!==edge.source),source])]}:i)});}}/></details></>:item&&<fieldset className="graph-form-fieldset" disabled={mutation.isPending||locked||needsCheck}><div className="graph-fields" key={item.clientKey}>
         <label className="field"><span>工作项名称</span><input aria-label="工作项名称" value={item.title} required onChange={e=>updateItem({title:e.target.value},'title')} onBlur={draft.endGroup}/></label>
         <label className="field"><span>预计工期（工作日）</span><input aria-label="预计工期" key={item.durationDays} type="number" min={1} max={3660} defaultValue={item.durationDays} onBlur={e=>updateItem({durationDays:Math.max(1,Math.min(3660,Number(e.target.value)||1))})}/></label>
         <label className="field"><span>里程碑（可选）</span><input aria-label="里程碑名称" value={item.milestoneLabel||''} maxLength={80} onChange={e=>updateItem({milestoneLabel:e.target.value||null},'milestone')} onBlur={draft.endGroup}/></label>
         {value.dependencyMode==='legacy'&&<label className="field"><span>开始偏移（工作日）</span><input aria-label="开始偏移" key={item.startOffsetDays} type="number" min={0} defaultValue={item.startOffsetDays} onBlur={e=>updateItem({startOffsetDays:Math.max(0,Number(e.target.value)||0)})}/></label>}
       </div>
-      {value.dependencyMode==='dependencies'&&<PredecessorPicker label="前置工作项" value={item.predecessorKeys} options={value.items.filter(i=>i.clientKey!==selected).map(i=>({id:i.clientKey,title:i.title}))} onChange={ids=>updateItem({predecessorKeys:ids})}/>}
-      <div className="button-row graph-item-actions"><button className="ghost-button" onClick={()=>setLocate({id:selected,sequence:Date.now()})}>定位</button>
-        <button className="ghost-button" onClick={()=>beginCreate(value.dependencyMode==='dependencies'?[selected]:[])}>接在后面</button><button className="ghost-button" onClick={()=>beginCreate(value.dependencyMode==='dependencies'?item.predecessorKeys:[])}>添加并行工作</button>
+      {value.dependencyMode==='dependencies'&&<details className="graph-more-relations"><summary>更多关系操作</summary><PredecessorPicker label="前置工作项" value={item.predecessorKeys} options={value.items.filter(i=>i.clientKey!==selected).map(i=>({id:i.clientKey,title:i.title}))} onChange={ids=>updateItem({predecessorKeys:ids})}/></details>}
+      <div className="button-row graph-item-actions"><button className="ghost-button" onClick={()=>setBranch(branch===selected?'':selected)}>{branch===selected?'退出聚焦':branch?'聚焦此分支':'聚焦分支'}</button><button className="ghost-button" onClick={()=>setLocate({id:selected,sequence:Date.now()})}>定位</button>
+        <button className="ghost-button" onClick={()=>beginCreate(value.dependencyMode==='dependencies'?[selected]:[])}>新增后续</button><button className="ghost-button" onClick={()=>beginCreate(value.dependencyMode==='dependencies'?item.predecessorKeys:[])}>新增并行</button>
         <button className="ghost-button danger-text" disabled={value.items.length===1} onClick={()=>setDeleteId(selected)}>删除工作项</button></div>
       </fieldset>}
     </>:undefined}
@@ -153,23 +169,23 @@ export function TemplateForm({template,templateUnavailable=false,projectId,onClo
         <label className="field"><span>设计说明</span><textarea name="description" aria-label="设计说明" value={value.description} rows={5} maxLength={2000} onChange={e=>update({...value,description:e.target.value},'description')} onBlur={draft.endGroup}/></label></div>
         {value.dependencyMode==='legacy'&&<><p>原偏移值仍然保留。依赖建议只有核对并确认后才启用。</p><button className="ghost-button" onClick={()=>setSuggestion(suggestTemplatePredecessors(value.items.map(i=>({...i}))))}>生成依赖建议</button></>}
       </fieldset>}
-      {panel==='nodes'&&<div className="path-node-list">{cards.map(c=><div className="graph-list-row" key={c.id}><button className={selected===c.id?'selected':''} onClick={()=>select(c.id)}>{c.title}<small>{c.subtitle}</small></button><button className="ghost-button" onClick={()=>setLocate({id:c.id,sequence:Date.now()})}>定位</button></div>)}</div>}
+      {panel==='nodes'&&<div className="path-node-list">{cards.filter(c=>matchesSearch([{text:c.title,weight:1}],search)).map(c=><div className="graph-list-row" key={c.id}><button className={selected===c.id?'selected':''} onClick={()=>select(c.id)}>{c.title}<small>{c.subtitle}</small></button><button className="ghost-button" onClick={()=>setLocate({id:c.id,sequence:Date.now()})}>定位</button></div>)}</div>}
       {panel==='schedule'&&<><p>相对工作日按全部前置完成计算。</p><div className="template-relative-plan">{layout.items.map(i=><div key={i.clientKey}><strong>{i.title}</strong><small>第 {i.startOffsetDays+1}—{i.startOffsetDays+i.durationDays} 工作日</small>
         <span><i style={{marginLeft:(i.startOffsetDays/Math.max(...layout.items.map(p=>p.startOffsetDays+p.durationDays),1)*100)+'%',width:(i.durationDays/Math.max(...layout.items.map(p=>p.startOffsetDays+p.durationDays),1)*100)+'%'}}/></span>{i.milestoneLabel&&<small>里程碑：{i.milestoneLabel}</small>}</div>)}</div></>}
-      {panel==='conflict'&&<><p>草稿版本：{draft.version}</p><p>最新版本：{template?.updatedAt||'新流程'}</p>
+      {panel==='conflict'&&<>{(error||layout.error||mutation.error||locked)&&<div role="alert" className="form-error">{error||layout.error||mutation.error?.message||'流程不可编辑或权限已变化。'}</div>}<p>草稿版本：{draft.version}</p><p>最新版本：{template?.updatedAt||'新流程'}</p>
         {needsCheck&&<button className="ghost-button" disabled={checking} onClick={()=>{setChecking(true);void (async()=>{try{if(lastInput.current&&await checkSaved(lastInput.current))return;setNeedsCheck(false);mutation.reset();setError('已重新读取，未确认原提交成功。请核对最新流程后再保存。');}catch(caught){setError((caught as Error).message);}finally{setChecking(false);}})();}}>重新读取并核对提交</button>}
         {changed&&template&&<><p>最新名称：{template.name}</p>{template.items.map(i=><p key={i.id}>{i.title} · {i.durationDays} 工日 · {i.predecessorIds?.length||0} 个前置</p>)}
           <button className="primary-button" disabled={needsCheck} onClick={()=>draft.rebase(template.updatedAt)}>已核对，保留草稿并使用最新版本</button>
           <button className="ghost-button" onClick={()=>{draft.reset(initialDraft(template),template.updatedAt);draft.begin();setNeedsCheck(false);mutation.reset();}}>使用最新流程</button></>}
       </>}
     </>:undefined}
-    footer={<><button className="ghost-button" onClick={()=>openPanel('settings')}>流程属性</button><button className="ghost-button" onClick={()=>openPanel('nodes')}>节点 {cards.length}</button><button className="ghost-button" onClick={()=>openPanel('schedule')}>排期预览</button>
+    footer={<><button className="ghost-button" onClick={()=>openPanel('schedule')}>排期预览</button>
       <button className="ghost-button" disabled={mutation.isPending||locked||needsCheck} onClick={()=>beginCreate([])}>添加独立工作</button></>}/>
     {creating&&<Modal title="创建工作项" width={420} onClose={()=>setCreating(null)}><form onSubmit={e=>{e.preventDefault();const id=crypto.randomUUID();update({...value,items:[...value.items,{clientKey:id,title:createTitle.trim(),durationDays:createDuration,startOffsetDays:value.dependencyMode==='legacy'?Math.max(...value.items.map(i=>i.startOffsetDays+i.durationDays),0):0,predecessorKeys:creating.predecessors,milestoneLabel:null,sortOrder:value.items.length}]});setCreating(null);select(id);}}>
       <label className="field"><span>标题</span><input aria-label="新工作项标题" value={createTitle} onChange={e=>setCreateTitle(e.target.value)} required pattern=".*\S.*"/></label><label className="field"><span>工期（工作日）</span><input aria-label="新工作项工期" type="number" min={1} max={3660} value={createDuration} onChange={e=>setCreateDuration(Number(e.target.value))} required/></label>
       <p>{creating.predecessors.length?'前置：'+creating.predecessors.map(names).join('、'):'独立工作，无前置'}</p><div className="button-row"><button type="button" className="ghost-button" onClick={()=>setCreating(null)}>取消</button><button className="primary-button">加入流程</button></div></form></Modal>}
     {deleteId&&<Modal title="删除工作项" width={470} onClose={()=>setDeleteId('')}><p>删除「{names(deleteId)}」及以下 {affected.length} 条关系。前后工作不会自动串接。</p>{affected.map(e=><p key={e.id}>{names(e.source)} → {names(e.target)}</p>)}<div className="button-row"><button className="ghost-button" onClick={()=>setDeleteId('')}>取消</button><button className="primary-button" onClick={()=>{update({...value,items:value.items.filter(i=>i.clientKey!==deleteId).map((i,index)=>({...i,sortOrder:index,predecessorKeys:i.predecessorKeys.filter(k=>k!==deleteId)}))});setDeleteId('');setInspector(false);}}>确认删除</button></div></Modal>}
-    {suggestion&&<Modal title="核对依赖建议" width={560} onClose={()=>setSuggestion(null)}><p>确认后切换依赖模式，日期按关系和工期重新计算。</p>{suggestion.map(i=><p key={i.clientKey}>{i.title}：{i.predecessorKeys.map(names).join('、')||'独立开始'}</p>)}<div className="button-row"><button className="ghost-button" onClick={()=>setSuggestion(null)}>保留原偏移</button><button className="primary-button" onClick={()=>{update({...value,dependencyMode:'dependencies',items:suggestion});setSuggestion(null);}}>已核对，启用依赖</button></div></Modal>}
+    {suggestion&&<Modal title="核对依赖建议" width={560} onClose={()=>setSuggestion(null)}><p>确认后切换依赖模式，日期按关系和工期重新计算。</p><table className="template-conversion-diff"><thead><tr><th>工作项／前置</th><th>原偏移</th><th>建议偏移</th></tr></thead><tbody>{resolveTemplateOffsets(suggestion).map(i=><tr key={i.clientKey}><td>{i.title}<small>{i.predecessorKeys.map(names).join('、')||'独立开始'}</small></td><td>第 {(value.items.find(w=>w.clientKey===i.clientKey)?.startOffsetDays||0)+1} 日</td><td>第 {i.startOffsetDays+1} 日</td></tr>)}</tbody></table><div className="button-row"><button className="ghost-button" onClick={()=>setSuggestion(null)}>保留原偏移</button><button className="primary-button" onClick={()=>{update({...value,dependencyMode:'dependencies',items:suggestion});setSuggestion(null);}}>已核对，启用依赖</button></div></Modal>}
     {discard&&<Modal title="放弃流程草稿" width={430} onClose={()=>setDiscard(false)}><p>尚未保存的修改将被丢弃。</p><div className="button-row"><button className="ghost-button" onClick={()=>setDiscard(false)}>继续编辑</button><button className="primary-button" onClick={()=>{draft.reset();onClose();}}>放弃草稿</button></div></Modal>}
   </div>;
 }

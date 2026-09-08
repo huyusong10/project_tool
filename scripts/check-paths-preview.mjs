@@ -22,7 +22,7 @@ const preview=await context.request.post(`${base}/api/projects/${project.id}/dep
 if(!preview.ok()||!(await preview.json()).previewToken)throw new Error('批量预览接口未就绪');
 if((await (await context.request.get(`${base}/api/projects/${project.id}/path-analysis`)).json()).revision!==analysis.revision)throw new Error('预览改变了正式版本');
 const templates=await (await context.request.get(`${base}/api/templates?projectId=${project.id}`)).json();
-await page.goto(`${base}/templates?edit=${templates[0].id}`);await page.locator('[data-layout-ready="true"]').waitFor({timeout:30000});
+await page.goto(`${base}/templates?edit=${(templates.find(t=>t.dependencyMode==='dependencies')||templates[0]).id}`);await page.locator('[data-layout-ready="true"]').waitFor({timeout:30000});
 await page.screenshot({path:'.preview/qa/template-canvas.png',fullPage:true});
 const req=analysis.requirements.find(r=>r.title==='订单业务上线');
 const selected=analysis.nodes.find(n=>n.kind==='work'&&n.requirementId===req.id);

@@ -135,3 +135,41 @@ body:has(.graph-workspace){overflow:hidden}
 .graph-connection-preview{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4;overflow:hidden}.graph-connection-preview path{fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:6 5}.graph-connection-preview.is-invalid path{stroke:var(--danger)}
 .graph-connection-hint{pointer-events:none!important}.graph-connection-hint.is-invalid{color:var(--danger)}
 .graph-workspace[data-stacked=true] .graph-footer{max-width:calc(100% - 32px)}
+
+/* Stable workspace chrome; presentation opacity is separate from layout opacity. */
+.graph-workspace .graph-toolbar{height:140px;max-height:none;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between}
+.graph-title-group{flex-wrap:nowrap;overflow:hidden}.graph-title-group .graph-back-link{max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
+.graph-toolbar-row{flex-wrap:nowrap;min-width:0}.graph-toolbar-row>.button-row{flex-wrap:nowrap;overflow:auto;max-width:62%;flex-shrink:0}
+.graph-title-group strong{min-width:0}.graph-delivery-summary{white-space:nowrap;overflow:auto;flex-shrink:0;margin-top:0}
+.graph-status-slot{height:32px;min-height:32px;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-muted);overflow:hidden}
+.graph-status-slot>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.graph-status-slot>button{max-width:55%;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.graph-finder{left:16px;top:var(--graph-toolbar-bottom,166px);height:44px;box-sizing:border-box;display:flex;gap:5px;align-items:center;padding:5px 7px;max-width:calc(100% - 32px)}
+.graph-finder input{width:216px;min-width:65px;flex:1}.graph-finder button{font-size:12px;padding:5px 7px;white-space:nowrap;min-height:32px}
+.graph-workspace:has(.graph-finder) .graph-detail,.graph-workspace:has(.graph-finder) .graph-auxiliary{top:calc(var(--graph-toolbar-bottom,166px) + 56px);max-height:calc(100% - var(--graph-toolbar-bottom,166px) - 56px - var(--graph-bottom-clearance,76px))}
+.graph-workspace .graph-detail,.graph-workspace .graph-auxiliary{animation:graph-panel-enter 200ms ease-out;transition:opacity 200ms ease-out,transform 200ms ease-out}
+.graph-workspace .graph-detail.is-leaving,.graph-workspace .graph-auxiliary.is-leaving{opacity:0;transform:translateY(8px);pointer-events:none}
+@keyframes graph-panel-enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.graph-detail .graph-panel-content{animation:graph-content-enter 160ms ease-out}@keyframes graph-content-enter{from{opacity:0}to{opacity:1}}
+.graph-workspace .dependency-card{transition:opacity 180ms ease-out,box-shadow 180ms ease-out,outline-color 180ms ease-out}
+.graph-workspace .graph-node-dim .dependency-card{opacity:.35}
+.graph-workspace .graph-node-dim:hover .dependency-card,.graph-workspace .graph-node-dim:focus-within .dependency-card,.graph-workspace .graph-node-dim.selected .dependency-card,.dependency-canvas[data-connection-active=true] .graph-node-dim .dependency-card{opacity:1}
+.graph-workspace .graph-node-hidden{visibility:hidden!important;pointer-events:none!important;transition:visibility 0s linear 180ms}
+.graph-workspace .graph-node-hidden .dependency-card{opacity:0!important}.graph-workspace .react-flow__node:not(.graph-node-hidden){visibility:visible;transition:visibility 0s}
+.graph-edge-presentation{transition:opacity 180ms ease-out;opacity:1}.graph-edge-presentation.is-dimmed{opacity:.18}.react-flow__edge.selected .graph-edge-presentation{opacity:1}
+.graph-edge-presentation.is-filtered{opacity:0!important}.graph-edge-hidden{visibility:hidden;pointer-events:none;transition:visibility 0s linear 180ms}
+.graph-workspace .dependency-canvas[data-rendered-layout=true] .react-flow{animation:graph-content-enter 160ms ease-out}
+.path-filter-options fieldset{border:0;border-top:1px solid var(--divider);padding:10px 0;margin:8px 0}.path-filter-options legend{font-size:12px;color:var(--text-muted)}
+.path-filter-options fieldset>div,.graph-filter-presets{display:flex;flex-wrap:wrap;gap:8px}.path-filter-options label{display:inline-flex;align-items:center;gap:4px;font-size:12px}.graph-filter-presets button{padding:5px 7px;font-size:12px}
+.graph-result-count{color:var(--text-muted)}.graph-more-relations{font-size:12px;margin-top:12px}.graph-more-relations summary{cursor:pointer;color:var(--accent)}
+.graph-loading-shell{min-height:70dvh;align-items:center;justify-content:center}
+.graph-reconnect-handle{position:absolute;width:26px;height:26px;border-radius:50%;border:2px solid var(--accent);background:var(--bg-surface);z-index:5;transform:translate(-50%,-50%);cursor:crosshair;padding:0;font-size:0}
+@media(max-width:800px){
+ .graph-workspace .graph-toolbar{height:152px;padding:9px}.graph-toolbar-row:first-child{flex-wrap:wrap;gap:4px}.graph-toolbar-row>.button-row{max-width:100%;width:100%;justify-content:flex-end}.graph-title-group{width:100%;flex:auto}.graph-title-group .graph-back-link{max-width:125px}
+ .graph-status-slot{gap:5px}.graph-status-slot>span{font-size:11px}.graph-finder{left:8px;right:8px;max-width:none}.graph-finder input{width:80px}.graph-finder button{padding:4px;font-size:11px}
+ .graph-workspace:has(.graph-finder) .graph-detail,.graph-workspace:has(.graph-finder) .graph-auxiliary{top:auto;max-height:min(42%,calc(100% - var(--graph-toolbar-bottom,166px) - 56px - var(--graph-bottom-clearance,124px) - 12px))}
+}
+@media(prefers-reduced-motion:reduce){.graph-workspace *,.graph-workspace *:before,.graph-workspace *:after{animation:none!important;transition:none!important}}
+
+.graph-delivery-summary{display:flex;align-items:center;gap:12px}.template-conversion-diff{width:100%;border-collapse:collapse;font-size:13px}.template-conversion-diff td,.template-conversion-diff th{padding:10px;text-align:left;border-bottom:1px solid var(--divider)}.template-conversion-diff small{display:block;color:var(--text-muted)}
+
+.dependency-canvas[data-connection-active=false][data-layout-phase="moving"] .graph-connection-preview,.dependency-canvas[data-connection-active=false][data-layout-phase="fade-out"] .graph-connection-preview,.dependency-canvas[data-connection-active=false][data-layout-phase="fade-in"] .graph-connection-preview{visibility:hidden}

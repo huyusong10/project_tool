@@ -19,16 +19,21 @@ export const dependencySelect = `SELECT id, project_id AS projectId, source_requ
 export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInput {
   const project = one<{ name: string; revision: number; plannedEnd: string | null }>('SELECT name, analysis_revision AS revision, planned_end AS plannedEnd FROM projects WHERE id=?', projectId);
   if (!project) notFound('项目不存在');
-  const requirements = all<PathRequirement>(`SELECT r.id, r.project_id AS projectId, r.title, r.status, r.priority, p.name AS ownerName,
+  const requirements = all<PathRequirement>(`SELECT r.id, r.project_id AS projectId, r.title, r.status, r.priority, r.owner_id AS ownerId, p.name AS ownerName,
     r.planned_start AS plannedStart, r.planned_end AS plannedEnd, r.accepted_at AS acceptedAt, r.deleted_at AS deletedAt,
     r.dependencies_reviewed_at AS dependenciesReviewedAt, r.schedule_anchor AS scheduleAnchor, r.forecast_acceptance AS forecastAcceptance
     FROM requirements r LEFT JOIN people p ON p.id=r.owner_id WHERE r.project_id=? ORDER BY r.id`, projectId);
-  const workItems = all<PathWork>(`SELECT w.id, w.requirement_id AS requirementId, w.title, w.status, w.progress,
+  const workItems = all<PathWork>(`SELECT w.id, w.requirement_id AS requirementId, w.title, w.status, w.progress, w.owner_id AS ownerId,
     w.planned_start AS plannedStart, w.planned_end AS plannedEnd, w.actual_start AS actualStart, w.actual_end AS actualEnd,
     w.duration_days AS durationDays, w.earliest_start AS earliestStart, w.unblock_estimate AS unblockEstimate,
     w.forecast_end AS forecastEnd, w.forecast_duration AS forecastDuration, w.forecast_ready_at AS forecastReadyAt,
     w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.milestone_label AS milestoneLabel, p.name AS ownerName
     FROM work_items w JOIN requirements r ON r.id=w.requirement_id LEFT JOIN people p ON p.id=w.owner_id WHERE r.project_id=? ORDER BY w.id`, projectId);
+  const people=all<{workItemId:string;id:string;name:string}>(`SELECT c.work_item_id AS workItemId,p.id,p.name FROM work_item_collaborators c JOIN people p ON p.id=c.person_id JOIN work_items w ON w.id=c.work_item_id JOIN requirements r ON r.id=w.requirement_id WHERE r.project_id=? ORDER BY p.name`,projectId);
+  const byWork=new Map<string,typeof people>();for(const p of people)byWork.set(p.workItemId,[...(byWork.get(p.workItemId)||[]),p]);
+  const byReq=new Map<string,Map<string,string>>();
+  for(const w of workItems){const assigned=new Map((byWork.get(w.id)||[]).map(p=>[p.id,p.name]));if(w.ownerId)assigned.set(w.ownerId,w.ownerName||'未命名人员');w.assigneeIds=[...assigned.keys()];w.assigneeNames=[...assigned.values()];const group=byReq.get(w.requirementId)||new Map<string,string>();for(const [id,name] of assigned)group.set(id,name);byReq.set(w.requirementId,group);}
+  for(const r of requirements){r.assigneeIds=[...(byReq.get(r.id)?.keys()||[])];r.assigneeNames=[...(byReq.get(r.id)?.values()||[])];}
   return { projectId, projectName: project.name, revision: project.revision, projectEnd: project.plannedEnd, highRiskDelayDays: config.highRiskDelayDays, asOfDate, requirements, workItems,
     dependencies: all<Dependency>(`${dependencySelect} WHERE project_id=? ORDER BY id`, projectId) };
 }

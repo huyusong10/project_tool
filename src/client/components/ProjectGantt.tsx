@@ -1,8 +1,10 @@
+import {useViewPreference} from "../use-view-preference";
 import { useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { ArrowRight, CircleAlert, LocateFixed, RotateCcw } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { priorityLabels, requirementStatusLabels, riskLabels, signedProgressVariance, todayIso } from "../../shared/domain";
+import {compareRiskRequirements,matchesRequirementFilters,emptyRequirementFilters,unfinishedStatuses} from "../../shared/requirement-view";
 import { matchesSearch } from "../../shared/search";
 import type { Requirement } from "../types";
 import { progressUpdateDisplayValue } from "../progress-trend";
@@ -29,7 +31,7 @@ import {
 
 type RequirementSort = "deadline" | "priority" | "risk" | "progress" | "updated";
 const priorityOrder: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
-const riskOrder: Record<string, number> = { high: 0, medium: 1, pending: 2, low: 3 };
+
 
 function compareDeadline(left: Requirement, right: Requirement) {
   if (!left.plannedEnd && !right.plannedEnd) return 0;
@@ -54,11 +56,7 @@ function compareRequirements(left: Requirement, right: Requirement, sort: Requir
   if (leftClosed !== rightClosed) return leftClosed ? 1 : -1;
   let result = 0;
   if (sort === "priority") result = (priorityOrder[left.priority] ?? 99) - (priorityOrder[right.priority] ?? 99);
-  else if (sort === "risk") {
-    const group = (r: Requirement) => r.pathRisk?.blockedCritical ? 0 : r.pathRisk?.critical ? 1 : r.pathRisk?.minFloat != null && r.pathRisk.minFloat <= 2 ? 2 : 3;
-    result = (riskOrder[left.riskEvaluated ? left.riskLevel : "pending"] ?? 99) - (riskOrder[right.riskEvaluated ? right.riskLevel : "pending"] ?? 99)
-      || group(left) - group(right) || (left.pathRisk?.minFloat ?? Number.MAX_SAFE_INTEGER) - (right.pathRisk?.minFloat ?? Number.MAX_SAFE_INTEGER);
-  }
+  else if (sort === "risk") return compareRiskRequirements(left,right);
   else if (sort === "progress") result = left.progress - right.progress;
   else if (sort === "updated") result = right.updatedAt.localeCompare(left.updatedAt);
   else result = compareDeadline(left, right);
@@ -185,13 +183,13 @@ export function ProjectGantt({
     setZoom(key);
     try { window.localStorage.setItem(`project-manage:gantt-zoom:${resizeStorageKey}`, key); } catch { /* 本次页面仍可缩放。 */ }
   };
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
-  const [priority, setPriority] = useState("");
-  const [risk, setRisk] = useState("");
-  const [personId, setPersonId] = useState("");
-  const [schedule, setSchedule] = useState("");
-  const [sort, setSort] = useState<RequirementSort>("risk");
+  const [search, setSearch] = useViewPreference<string>(resizeStorageKey+':search',"");
+  const [status, setStatus] = useViewPreference<string>(resizeStorageKey+':status',"unfinished");
+  const [priority, setPriority] = useViewPreference<string>(resizeStorageKey+':priority',"");
+  const [risk, setRisk] = useViewPreference<string>(resizeStorageKey+':risk',"");
+  const [personId, setPersonId] = useViewPreference<string>(resizeStorageKey+':personId',"");
+  const [schedule, setSchedule] = useViewPreference<string>(resizeStorageKey+':schedule',"");
+  const [sort, setSort] = useViewPreference<RequirementSort>(resizeStorageKey+':sort',"risk");
   const option = ganttZoomOptions[zoom];
   const asOfDate = asOfDateProp || requirements[0]?.asOfDate || todayIso();
 
@@ -216,19 +214,20 @@ export function ProjectGantt({
         || (schedule === "on_track" && scheduleComplete && !requirement.delayed)
         || (schedule === "unplanned" && !scheduleComplete);
       return matchesKeyword
-        && (!status || requirement.status === status)
+        && matchesRequirementFilters(requirement,{...emptyRequirementFilters(),statuses:status==='unfinished'?unfinishedStatuses:status?[status]:[]})
         && (!priority || requirement.priority === priority)
-        && (!risk || (requirement.riskEvaluated && requirement.riskLevel === risk))
+        && (!risk || (requirement.riskEvaluated?requirement.riskLevel:"pending")===risk)
         && (!personId || requirement.workItems.some((item) => item.assigneeIds?.includes(personId) || item.ownerId === personId))
         && matchesSchedule;
     }).sort((left, right) => {
       return compareRequirements(left, right, sort);
     });
   }, [personId, priority, requirements, risk, schedule, search, sort, status]);
-  const hasFilters = Boolean(search || status || priority || risk || personId || schedule);
+  const hasFilters = Boolean(search || status!=="unfinished" || priority || risk || personId || schedule || sort!=="risk");
   const resetFilters = () => {
+    setSort("risk");
     setSearch("");
-    setStatus("");
+    setStatus("unfinished");
     setPriority("");
     setRisk("");
     setPersonId("");
@@ -294,7 +293,7 @@ export function ProjectGantt({
       <div className="gantt-filter-bar" aria-label="项目进展筛选">
         <SearchInput className="gantt-filter-search" value={search} onChange={setSearch} placeholder="搜索需求、工作项或拼音" />
         <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="按状态筛选">
-          <option value="">全部状态</option>
+          <option value="unfinished">未结束</option><option value="">全部状态</option>
           {Object.entries(requirementStatusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
         </select>
         <select value={priority} onChange={(event) => setPriority(event.target.value)} aria-label="按优先级筛选">
@@ -303,7 +302,7 @@ export function ProjectGantt({
         </select>
         <select value={risk} onChange={(event) => setRisk(event.target.value)} aria-label="按风险筛选">
           <option value="">全部风险</option>
-          {Object.entries(riskLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+          <option value="pending">待评估</option>{Object.entries(riskLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
         </select>
         <select value={personId} onChange={(event) => setPersonId(event.target.value)} aria-label="按人员筛选">
           <option value="">全部人员</option>

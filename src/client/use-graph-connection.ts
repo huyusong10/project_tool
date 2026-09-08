@@ -2,9 +2,9 @@ import {useEffect,useRef,useState,type RefObject} from 'react';
 import type {Point} from './path-layout';
 export type ConnectionSide='left'|'right'|'top'|'bottom';
 type Issue={message:string;nodeIds?:string[]};
-type Gesture={source:string;side:ConnectionSide;point:Point;origin:Point;pointerId:number|null;moved:boolean;target?:string;issue?:Issue|null};
-type Options={container:RefObject<HTMLDivElement|null>;enabled:boolean;validate:(source:string,target:string)=>Issue|null;
-  connect:(source:string,target:string,side:ConnectionSide)=>void;invalid:(issue:Issue)=>void;dropEmpty?:(source:string)=>void};
+type Gesture={reconnectEnd?:'source'|'target';source:string;side:ConnectionSide;point:Point;origin:Point;pointerId:number|null;moved:boolean;target?:string;issue?:Issue|null};
+type Options={container:RefObject<HTMLDivElement|null>;enabled:boolean;validate:(source:string,target:string,reconnectEnd?:'source'|'target')=>Issue|null;
+  connect:(source:string,target:string,side:ConnectionSide,reconnectEnd?:'source'|'target')=>void;invalid:(issue:Issue)=>void;dropEmpty?:(source:string)=>void};
 /** The whole card is a destination. A gesture has one completion path, independent of route handles. */
 export function useGraphConnection(options:Options){
   const latest=useRef(options);latest.current=options;
@@ -14,27 +14,27 @@ export function useGraphConnection(options:Options){
     const root=latest.current.container.current,element=document.elementFromPoint(point.x,point.y);
     if(!root||!element||!root.contains(element)||element.closest('.graph-overlay,.graph-view-controls,.dependency-layout-notice'))return {inside:false};
     const node=element.closest<HTMLElement>('.react-flow__node:not(.graph-node-hidden)');
-    return {inside:!!element.closest('.react-flow'),id:node?.dataset.id};
+    return {inside:!!element.closest('.react-flow')&&!element.closest('.react-flow__edge'),id:node?.dataset.id};
   };
   const resolve=(value:Gesture,point:Point):Gesture=>{
     const target=hit(point).id;
-    return {...value,point,target,issue:target===value.target?value.issue:target?latest.current.validate(value.source,target):null};
+    return {...value,point,target,issue:target===value.target?value.issue:target?latest.current.validate(value.reconnectEnd==='source'?target:value.source,value.reconnectEnd==='source'?value.source:target,value.reconnectEnd):null};
   };
   const cancel=()=>update(null);
   const choose=(target:string)=>{
     const value=current.current;if(!value)return false;update(null);
-    const issue=latest.current.validate(value.source,target);if(issue)latest.current.invalid(issue);else latest.current.connect(value.source,target,value.side);
+    const issue=latest.current.validate(value.source,target);if(issue)latest.current.invalid(issue);else latest.current.connect(value.reconnectEnd==='source'?target:value.source,value.reconnectEnd==='source'?value.source:target,value.side,value.reconnectEnd);
     return true;
   };
   const finish=(point:Point,allowEmpty:boolean)=>{
     const value=current.current;if(!value)return;const target=hit(point);
     if(!target.inside){update(null);return;}
     if(target.id)choose(target.id);
-    else {update(null);if(allowEmpty)latest.current.dropEmpty?.(value.source);}
+    else {update(null);if(allowEmpty&&!value.reconnectEnd)latest.current.dropEmpty?.(value.source);}
   };
-  const begin=(source:string,side:ConnectionSide,point:Point,pointerId:number|null)=>{
+  const begin=(source:string,side:ConnectionSide,point:Point,pointerId:number|null,reconnectEnd?:'source'|'target')=>{
     if(!latest.current.enabled)return;
-    update({source,side,point,origin:point,pointerId,moved:false});
+    update({source,side,point,origin:point,pointerId,moved:false,reconnectEnd});
     latest.current.container.current?.focus({preventScroll:true});
   };
   // Native listeners keep the gesture alive outside the canvas without capturing the drop target.

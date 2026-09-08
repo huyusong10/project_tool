@@ -1,10 +1,11 @@
-import { addBusinessDays, businessDayDelta, businessDaysInclusive, deriveRequirementMetrics, type RiskLevel } from './domain';
+import { addBusinessDays, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics, type RiskLevel } from './domain';
 
 export type Dependency = {
   id: string; projectId: string; sourceRequirementId: string; sourceWorkItemId: string | null;
   targetRequirementId: string; targetWorkItemId: string | null; origin: string;
 };
 export type PathWork = {
+  ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[];
   id: string; requirementId: string; title: string; status: string; progress: number;
   plannedStart: string | null; plannedEnd: string | null; actualStart: string | null; actualEnd: string | null;
   durationDays: number | null; earliestStart: string | null; unblockEstimate: string | null;
@@ -12,6 +13,7 @@ export type PathWork = {
   blockedAt: string | null; blockedReason: string | null; milestoneLabel: string | null; ownerName: string | null;
 };
 export type PathRequirement = {
+  ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[]; delayed?:boolean; scheduleComplete?:boolean;
   id: string; projectId: string; title: string; status: string; priority: string; ownerName: string | null;
   plannedStart: string | null; plannedEnd: string | null; acceptedAt: string | null;
   dependenciesReviewedAt: string | null; scheduleAnchor: string | null; forecastAcceptance: string | null; deletedAt: string | null;
@@ -21,6 +23,7 @@ export type PathInput = {
   requirements: PathRequirement[]; workItems: PathWork[]; dependencies: Dependency[];
 };
 export type PathNode = {
+  ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[]; delayed?:boolean; scheduleComplete?:boolean;
   id: string; requirementId: string | null; workItemId: string | null; kind: 'work' | 'start' | 'acceptance' | 'project';
   title: string; status: string; ownerName: string | null; milestoneLabel: string | null;
   plannedStart: string | null; plannedEnd: string | null; forecastStart: string | null; forecastEnd: string | null;
@@ -142,7 +145,8 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     for (const w of works.get(r.id)!) {
       if (w.status === 'cancelled' && !referenced.has(w.id)) continue;
       const n = add(w.id, r.id, 'work', w.title);
-      Object.assign(n, { status: w.status, ownerName: w.ownerName, milestoneLabel: w.milestoneLabel, plannedStart: w.plannedStart, plannedEnd: w.plannedEnd });
+      Object.assign(n, { status: w.status, ownerName: w.ownerName, milestoneLabel: w.milestoneLabel, ownerId:w.ownerId,assigneeIds:w.assigneeIds,assigneeNames:w.assigneeNames, plannedStart: w.plannedStart, plannedEnd: w.plannedEnd,
+        delayed:w.status!=='cancelled'&&calculateWorkItemGap(w,input.asOfDate).finishVariance>0,scheduleComplete:!!w.plannedStart&&!!w.plannedEnd });
       n.estimate={durationDays:w.durationDays,earliestStart:w.earliestStart,unblockEstimate:w.unblockEstimate,forecastEnd:w.forecastEnd};
       const duration = w.durationDays ?? (w.plannedStart && w.plannedEnd ? businessDaysInclusive(w.plannedStart, w.plannedEnd) : null);
       n.planDuration = duration ?? 0; n.planRelease = w.earliestStart ? toStart(w.earliestStart) : start.planRelease;
@@ -248,8 +252,10 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     }
   }
   const risks: Record<string, PathRisk> = {};
+  const viewMetrics=new Map<string,{delayed:boolean;scheduleComplete:boolean}>();
   for (const r of input.requirements) {
     const items = works.get(r.id)!, metrics = deriveRequirementMetrics(r, items, input.asOfDate, input.highRiskDelayDays);
+    viewMetrics.set(r.id,{delayed:metrics.delayed,scheduleComplete:metrics.scheduleComplete});
     const workNodes = items.map(w => byId.get(w.id)).filter((n): n is Internal => !!n);
     const reqNodes = [...workNodes, byId.get(startId(r.id))!, byId.get(acceptanceId(r.id))!];
     const key = reqNodes.some(n => global.critical.has(n.id));
@@ -302,5 +308,5 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     deadlineSlack: current.complete && (eligible.length || requestedTarget !== projectTarget) && targetDate ? toFinish(targetDate) - target.earliestFinish : null, complete: current.complete,
     coverage: { reviewed: input.requirements.filter(r => !r.deletedAt && r.dependenciesReviewedAt).length, total: input.requirements.filter(r => !r.deletedAt).length, unplanned },
     nodes: nodes.map(({ release: _r, fixed: _f, planDuration: _pd, planRelease: _pr, planFinish: _pf, planStart: _ps, actualStart: _as, ...n }) => n),
-    edges, requirements: input.requirements.filter(r => !r.deletedAt), dependencies: input.dependencies, risks, blockers };
+    edges, requirements: input.requirements.filter(r => !r.deletedAt).map(r=>({...r,...viewMetrics.get(r.id)})), dependencies: input.dependencies, risks, blockers };
 }

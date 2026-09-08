@@ -23,7 +23,12 @@ test('甘特默认优先展示风险与关键阻塞，数据刷新保留主动�
   });
   await page.goto('/');
   const titles = page.locator('.gantt-requirement-link');
+  await expect(titles).toHaveText(['关键阻塞', '高风险', '中风险', '待评估', '低风险']);
+  await page.getByLabel('按状态筛选',{exact:true}).selectOption('');
   await expect(titles).toHaveText(['关键阻塞', '高风险', '中风险', '待评估', '低风险', '已结束']);
+  await page.reload();await expect(page.getByLabel('按状态筛选',{exact:true})).toHaveValue('');
+  await expect(titles).toHaveText(['关键阻塞', '高风险', '中风险', '待评估', '低风险', '已结束']);
+  await page.getByLabel('按状态筛选',{exact:true}).selectOption('unfinished');
   await page.getByLabel('需求排序', { exact: true }).selectOption('priority');
   const chosenOrder = await titles.allTextContents();
   expect(chosenOrder.slice(0, 3)).toEqual(['低风险', '待评估', '中风险']);
@@ -32,6 +37,10 @@ test('甘特默认优先展示风险与关键阻塞，数据刷新保留主动�
   await expect.poll(() => reads).toBeGreaterThan(before);
   await expect(page.getByLabel('需求排序', { exact: true })).toHaveValue('priority');
   await expect(titles).toHaveText(chosenOrder);
+  await page.reload();await expect(page.getByLabel('需求排序',{exact:true})).toHaveValue('priority');
+  await page.getByTitle('清除全部筛选',{exact:true}).click();
+  await expect(page.getByLabel('需求排序',{exact:true})).toHaveValue('risk');
+  await expect(titles).toHaveText(['关键阻塞', '高风险', '中风险', '待评估', '低风险']);
 });
 
 async function expectOnlyBusinessDays(locator: ReturnType<Page["locator"]>) {

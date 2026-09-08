@@ -1,0 +1,36 @@
+{
+  "checkedAt": "2026-09-08T03:53:45.124Z",
+  "baseline": "0199059",
+  "workspace": "D:\\tools\\project-manage-paths",
+  "preserved": true,
+  "tables": {
+    "requirements": {
+      "count": 9,
+      "hash": "8f07aabadc277fbb1169c0b219dc9e6b79c9c77e8ff2cb59faac084ac2170b9a"
+    },
+    "work_items": {
+      "count": 17,
+      "hash": "a9fede6cb650b9759700eced4f8a5c152d17ebf34e30880af2557cfc687af7a7"
+    },
+    "dependency_edges": {
+      "count": 14,
+      "hash": "c78092d174ce27ec2bdb182dc55854a73a8104d276d249d397513b5fe5b6f673"
+    },
+    "work_item_templates": {
+      "count": 6,
+      "hash": "c31ad6b50a270256a5ff2f6a442eeaccf9813b14c55a6607eba13b753cb985c6"
+    },
+    "template_items": {
+      "count": 17,
+      "hash": "32f04326b40f7b69dfcb26aacabbf9421e3311fe426a31945cdd910b982e0bd3"
+    }
+  },
+  "originalService": {
+    "healthStatus": 200,
+    "actions": "本轮未对 3210 执行构建、迁移或重启"
+  },
+  "previewBackups": [
+    "workspace-1788836182237.db",
+    "workspace-delivery-1788838855647.db"
+  ]
+}

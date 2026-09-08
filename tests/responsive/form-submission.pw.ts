@@ -52,6 +52,11 @@ const scenarios = [
   { name: '编辑流程', path: '/templates', trigger: '编辑流程 测试流程', endpoint: '/api/templates/t1', method: 'PATCH', kind: 'template', field: '流程名称', submit: '保存流程' },
 ] as const;
 
+async function openTemplateFields(page:Page){
+ const editor=page.locator('.template-flow-workspace');await editor.locator('[data-layout-ready="true"]').waitFor();
+ await editor.getByRole('button',{name:/^节点 \d/}).click();await editor.locator('.graph-list-row>button:first-child').first().click();
+ await editor.getByRole('button',{name:'流程属性',exact:true}).click();
+}
 test('超出法定工作日日历范围时提示回退规则', async ({ page }) => {
   await mockForms(page);
   await page.goto('/requirements');
@@ -347,7 +352,7 @@ test('编辑流程后台刷新后不携带新版本覆盖旧草稿', async ({ pa
 
   await page.goto('/templates');
   await page.getByRole('button', { name: '编辑流程 测试流程', exact: true }).click();
-  const dialog = page.locator('.template-flow-workspace');
+  const dialog = page.locator('.template-flow-workspace');await openTemplateFields(page);
   const name = dialog.getByLabel('流程名称', { exact: true });
   const description = dialog.locator('textarea[name="description"]');
   const firstItem = dialog.getByLabel('工作项名称', {exact:true});
@@ -362,14 +367,14 @@ test('编辑流程后台刷新后不携带新版本覆盖旧草稿', async ({ pa
     items: serverTemplate.items.map((item, index) => index === 0 ? { ...item, title: '后台更新的工作项', durationDays: 4 } : item),
   };
   await reconnect(page);
-  await expect(dialog.locator('.warning-banner')).toContainText('需要核对');
+  await expect(dialog.getByRole('button',{name:'查看错误或冲突',exact:true})).toBeVisible();
   await expect(name).toHaveValue('尚未保存的流程草稿');
   await expect(firstItem).toHaveValue('尚未保存的工作项');
-  await expect(dialog.locator('.warning-banner')).toContainText('草稿已保留');
+  await expect(dialog.locator('.draft-badge')).toContainText('未保存');
   await expect(dialog.getByRole('button', { name: '保存流程', exact: true })).toBeDisabled();
   expect(requests).toHaveLength(0);
 
-  await dialog.getByRole('button', { name: '查看并核对', exact: true }).click();
+  await dialog.getByRole('button', { name: '查看错误或冲突', exact: true }).click();
   await dialog.getByRole('button', { name: '使用最新流程', exact: true }).click();
   await dialog.getByRole('button', { name: '流程属性', exact: true }).click();
   await expect(name).toHaveValue('后台更新的流程');
@@ -406,7 +411,7 @@ test('流程设计已落库但响应异常时核对完整有序工作项', async
 
   await page.goto('/templates');
   await page.getByRole('button', { name: '编辑流程 测试流程', exact: true }).click();
-  const dialog = page.locator('.template-flow-workspace');
+  const dialog = page.locator('.template-flow-workspace');await openTemplateFields(page);
   await dialog.getByLabel('流程名称', { exact: true }).fill('核对后的流程');
   await dialog.getByRole('textbox', { name: '设计说明', exact: true }).fill('核对完整工作项');
   const firstInputs = dialog.getByLabel('工作项名称', {exact:true});
@@ -445,7 +450,7 @@ test('新建流程已落库但响应异常时核对本次新增流程', async ({
   await page.goto('/templates');
   await expect(page.locator('.template-card .template-name-line')).toContainText('测试流程');
   await page.getByRole('button', { name: '新建流程', exact: true }).click();
-  const dialog = page.locator('.template-flow-workspace');
+  const dialog = page.locator('.template-flow-workspace');await openTemplateFields(page);
   await dialog.getByLabel('流程名称', { exact: true }).fill('  异常响应流程  ');
   await dialog.getByLabel('设计说明', { exact: true }).fill('  核对全部工作项  ');
   const firstInputs = dialog.getByLabel('工作项名称', {exact:true});
@@ -552,7 +557,7 @@ for (const scenario of scenarios.filter(s=>s.kind==='template')) test(scenario.n
   });
   try {
     await page.goto(scenario.path);await page.getByRole('button',{name:scenario.trigger,exact:true}).click();
-    const editor=page.locator('.template-flow-workspace');
+    const editor=page.locator('.template-flow-workspace');await openTemplateFields(page);
     await editor.getByLabel('流程名称',{exact:true}).fill('保留这份草稿');
     await editor.getByLabel('设计说明',{exact:true}).fill('不可丢失的设计说明');
     await editor.getByLabel('工作项名称',{exact:true}).fill('设计修订');
@@ -564,10 +569,9 @@ for (const scenario of scenarios.filter(s=>s.kind==='template')) test(scenario.n
     await expect(editor.getByLabel('工作项名称',{exact:true})).toBeDisabled();
     await expect(editor.getByLabel('流程名称',{exact:true})).toBeDisabled();
     await page.keyboard.press('Escape');await expect(editor).toBeVisible();
-    release();await expect(editor.getByRole('alert')).toContainText('暂时无法保存');
+    release();await editor.getByRole('button',{name:'查看错误或冲突',exact:true}).click();await expect(editor.getByRole('alert')).toContainText('暂时无法保存');
     await expect(editor.getByLabel('工作项名称',{exact:true})).toHaveValue('设计修订');
     await expect(editor.getByRole('button',{name:'保存流程',exact:true})).toBeDisabled();
-    await editor.getByRole('button',{name:'查看并核对',exact:true}).click();
     await editor.getByRole('button',{name:'重新读取并核对提交',exact:true}).click();
     await expect(editor.getByRole('button',{name:'保存流程',exact:true})).toBeEnabled();
     await editor.getByRole('button',{name:'保存流程',exact:true}).click();await expect(editor).toHaveCount(0);

@@ -168,7 +168,7 @@ export function DashboardPage() {
           asOfDate={data?.asOfDate}
           projectStart={projects.find((project) => project.id === selectedProjectId)?.plannedStart}
           projectEnd={projects.find((project) => project.id === selectedProjectId)?.plannedEnd}
-          resizeStorageKey={`${session.accountId || session.username || "guest"}:dashboard-gantt`}
+          resizeStorageKey={`${session.accountId || session.username || "guest"}:${selectedProjectId}:dashboard-gantt`}
         />
         <IssueHealth issues={data?.issues} />
         <PublicIssueAttention issues={data?.issues?.attention || []} />

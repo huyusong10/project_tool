@@ -14,7 +14,8 @@ import {
   PencilLine,
   Plus,
 } from "lucide-react";
-import { api, jsonBody } from "../api";
+import { api, ApiError, jsonBody } from "../api";
+import { clearProjectGraphDrafts } from "../use-graph-draft";
 import { useProjects, useSession } from "../app-context";
 import { invalidateRequirementViews, keys } from "../query-keys";
 import { cacheResourceUpdate, useResourceQuery } from "../use-resource-query";
@@ -49,8 +50,6 @@ export function RequirementPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const pathLocation=useLocation();
   const pathView = searchParams.get('view') === 'path';
-  const openPathView = () => { sessionStorage.setItem('pm-detail-scroll:'+id,String(window.scrollY)); const params = new URLSearchParams(searchParams); params.set('view','path'); setSearchParams(params,{state:pathLocation.state}); };
-  useEffect(()=>{if(!pathView&&!searchParams.get('workItemId'))requestAnimationFrame(()=>window.scrollTo(0,Number(sessionStorage.getItem('pm-detail-scroll:'+id)||0)));},[pathView,id,searchParams]);
   const client = useQueryClient();
   const { session } = useSession();
   const { projects, syncProjectContext } = useProjects();
@@ -70,14 +69,27 @@ export function RequirementPage() {
     isFetching,
     unavailable,
   } = useResourceQuery<Requirement>(keys.requirement(id), `/api/requirements/${id}`, Boolean(id));
+  const lastPathProject=useRef<string|undefined>(undefined);
+  useEffect(()=>{if(requirement?.projectId)lastPathProject.current=requirement.projectId;},[requirement?.projectId]);
+  const scrollKey='pm-detail-scroll:'+(session.accountId||'guest')+':'+(requirement?.projectId||'')+':'+id,workTarget=searchParams.get('workItemId');
+  const openPathView = () => {
+    try{sessionStorage.setItem(scrollKey,JSON.stringify({window:window.scrollY,main:document.querySelector('main')?.scrollTop||0}));}catch{/* Navigation remains available. */}
+    const params=new URLSearchParams(searchParams);params.set('view','path');setSearchParams(params,{state:pathLocation.state});
+  };
+  useEffect(()=>{
+    if(pathView||workTarget||isLoading)return;
+    const frame=requestAnimationFrame(()=>{try{const saved=JSON.parse(sessionStorage.getItem(scrollKey)||'null');if(saved){window.scrollTo(0,saved.window);document.querySelector('main')?.scrollTo(0,saved.main);}}catch{/* Ignore invalid saved positions. */}});
+    return()=>cancelAnimationFrame(frame);
+  },[pathView,workTarget,isLoading,scrollKey]);
   useEffect(() => {
     if (!unavailable || !error) return;
+    if(error instanceof ApiError&&[401,403].includes(error.status)&&lastPathProject.current)clearProjectGraphDrafts(session.accountId||'guest',lastPathProject.current);
     setModal(null);
     setProgressItemId(null);
     setWorkEditorOpen(false);
     setCommand(null);
     setActionMenuOpen(false);
-  }, [error, unavailable]);
+  }, [error, unavailable,session.accountId]);
   useEffect(() => {
     if (!requirement?.projectId) return;
     if (projects.some((project) => project.id === requirement.projectId))
@@ -156,6 +168,7 @@ export function RequirementPage() {
     },
     [requirement],
   );
+  if(isLoading&&pathView)return <><PageHeader title="需求路径"/><div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace"><LoadingState label="正在读取需求路径…"/></section></div></>;
   if (isLoading)
     return (
       <>

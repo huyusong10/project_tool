@@ -6,11 +6,11 @@ import type { PathAnalysis } from '../shared/paths';
 const prefix = 'pm-graph-draft:';
 export function clearGraphDrafts(accountId?: string) {
   if (typeof sessionStorage === 'undefined') return;
-  for (const key of Object.keys(sessionStorage)) if (key.startsWith(prefix + (accountId ? accountId + ':' : ''))) sessionStorage.removeItem(key);
+  for (const key of Object.keys(sessionStorage)) if ([prefix,'pm-path-origin:','pm-path-view:','pm-graph-view:','pm-detail-scroll:'].some(p=>key.startsWith(p+(accountId?accountId+':':'')))) sessionStorage.removeItem(key);
 }
 export function clearProjectGraphDrafts(accountId:string,projectId:string){
   const base=prefix+accountId+':'+projectId;
-  for(const key of Object.keys(sessionStorage))if(key===base||key.startsWith(base+':'))sessionStorage.removeItem(key);
+  for(const key of Object.keys(sessionStorage))if(key===base||key.startsWith(base+':')||['pm-path-origin:','pm-path-view:','pm-graph-view:','pm-detail-scroll:'].some(p=>key.startsWith(p+accountId+':'+projectId+':')))sessionStorage.removeItem(key);
 }
 type History<T> = { version: string; values: T[]; index: number; active: boolean };
 export function useGraphHistory<T>(key: string, initial: T, version: string) {
