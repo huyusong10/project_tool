@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { todayIso } from '../shared/domain';
 import { pathQuery, dependencyInput, pathVersion, reviewDependenciesInput, pathEstimateInput, dependencyPlanInput, applyDependencyPlanInput, dependencyChangesInput, applyDependencyChangesInput } from '../shared/path-contracts';
 import { applyDependencyChanges, getDependencyChangeReceipt, previewDependencyChanges } from './services/path-changes';
+import {milestoneCommand,readDiagramLayouts} from './services/milestones';
 import { readPathAnalysis, addDependency, removeDependency, reviewDependencies, updatePathEstimate, previewDependencyPlan, applyDependencyPlan } from './services/paths';
 import {
   assertAdmin, assertCanAddProgress, assertProgressOwnerOrManager, assertProjectManager, assertProjectMember, assertProjectReadable,
@@ -114,6 +115,8 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     }) as ToolCallback<InputArgs>);
   };
 
+  registerTool('get_diagram_layouts',{description:'读取已保存的团队画布位置与布局版本',inputSchema:z.object({projectId:idSchema})},async({projectId})=>json(readDiagramLayouts(projectId,actor)));
+  registerTool('milestone_command',{description:'人工确认或重新打开独立里程碑，记录操作者和时间',inputSchema:z.object({id:idSchema,action:z.enum(['achieve','reopen']),expectedVersion:z.number().int().positive()})},async({id,action,...input})=>json(milestoneCommand(id,action,input,actor)));
   registerTool('get_path_analysis', { description: '查询完整项目网络的关键路径、交付预测、风险和阻塞来源；target可为project、acceptance:需求ID或工作项ID', inputSchema: pathQuery.extend({ projectId: idSchema }) }, async ({ projectId, target }) => json(readPathAnalysis(projectId, target, actor)));
   registerTool('preview_dependency_changes', { description: '预览整批依赖与工期修改，不保存正式数据', inputSchema: dependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(previewDependencyChanges(projectId, input, actor)));
   registerTool('apply_dependency_changes', { description: '按预览凭据原子提交依赖与工期批次；相同批次标识不会重复写入', inputSchema: applyDependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(applyDependencyChanges(projectId, input, actor)));

@@ -37,14 +37,16 @@ import { WorkItemSettingsDialog } from "../components/WorkItemSettingsDialog";
 import { canManageProject } from "../permissions";
 import { dailyProgressTrend, progressUpdateDisplayValue } from "../progress-trend";
 import { RequirementCommandDialog, type RequirementCommand } from "../components/RequirementCommandDialog";
-import { PathAnalysisPanel } from "../components/PathAnalysisPanel";
+import {readDraftRecord} from '../graph-draft-storage';
+import type {DependencyChanges} from '../../shared/path-contracts';
+import { PathAnalysisPanel,type PathRequirementContext } from "../components/PathAnalysisPanel";
 
 const emptyPeople: Person[] = [];
 const emptyTemplates: WorkItemTemplate[] = [];
 const progressEventLabels: Record<string, string> = { note: "说明", progress: "进展", start: "开始", block: "阻塞", unblock: "解阻", complete: "完成", reopen: "返工", correction: "纠错", accept: "验收", cancel: "取消" };
 const progressReferenceLabel = (update?: ProgressUpdate) => update ? `${formatDateTime(update.createdAt)} · ${progressEventLabels[update.eventType] || update.eventType}` : "原记录不可用";
 
-export function RequirementPage() {
+function SavedRequirementPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -243,7 +245,7 @@ export function RequirementPage() {
       : "待评估";
   const riskClass = riskClosed || !requirement.riskEvaluated ? "risk-pending" : `risk-${requirement.riskLevel}`;
   const progressById = new Map((requirement.progressUpdates || []).map((update) => [update.id, update]));
-  if (pathView) return <><PageHeader title={requirement.title}/><PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement} onExit={()=>{const params=new URLSearchParams(searchParams);params.delete('view');params.delete('workItemId');setSearchParams(params,{state:pathLocation.state});}}/></>;
+  if (pathView) return <><PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement} onExit={()=>{const params=new URLSearchParams(searchParams);params.delete('view');params.delete('workItemId');setSearchParams(params,{state:pathLocation.state});}}/></>;
   return (
     <>
       <PageHeader
@@ -384,7 +386,7 @@ export function RequirementPage() {
             </div>
           )}
         </header>
-        {pathView ? <PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement}/> : <GapTimeline
+        {pathView ? <PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement}/> : <GapTimeline milestones={requirement.milestones}
           items={requirement.workItems}
           targetItemId={searchParams.get("workItemId") || undefined}
           asOfDate={requirement.asOfDate}
@@ -492,4 +494,16 @@ export function RequirementPage() {
       </div>
     </>
   );
+}
+
+export function RequirementPage(){
+ const [params]=useSearchParams();return params.get('draftProject')?<DraftRequirementPage projectId={params.get('draftProject')!}/>:<SavedRequirementPage/>;
+}
+function DraftRequirementPage({projectId}:{projectId:string}){
+ const {id=''}=useParams(),{session}=useSession(),navigate=useNavigate();
+ const [item,setItem]=useState<PathRequirementContext|null|undefined>(undefined);
+ useEffect(()=>{let cancelled=false;void readDraftRecord<{values:DependencyChanges[];index:number}>('pm-graph-draft:'+(session.accountId||'guest')+':'+projectId).then(h=>{const c=h?.values[h.index].entities?.find(c=>c.id===id&&c.entity==='requirement'&&c.op==='create');if(!cancelled)setItem(c?{id,projectId,title:c.data.title||'新需求',ownerId:c.data.ownerId||null,workItems:[],status:'planning'}:null);}).catch(()=>{if(!cancelled)setItem(null);});return()=>{cancelled=true;};},[id,projectId,session.accountId]);
+ if(item===undefined)return <LoadingState label="正在恢复需求草稿…"/>;
+ if(!item)return <EmptyState title="本机需求草稿不存在" detail="请返回全局画布检查草稿。" action={<button onClick={()=>navigate('/paths')}>返回项目全局</button>}/>;
+ return <PathAnalysisPanel key={id} projectId={projectId} requirement={item} onExit={()=>navigate('/paths')}/>;
 }

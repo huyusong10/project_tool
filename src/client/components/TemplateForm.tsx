@@ -1,191 +1,104 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
-import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
-import { invalidateTemplateViews, keys } from '../query-keys';
-import type { WorkItemTemplate } from '../types';
-import { Modal } from './Modal';
-import { canonicalizeContent, canonicalizeLabel, matchesSearch } from '../../shared/search';
-import { resolveTemplateOffsets, suggestTemplatePredecessors } from '../../shared/path-template';
-import { DependencyCycleError } from '../../shared/paths';
-import { useGraphHistory } from '../use-graph-draft';
+import {useEffect,useMemo,useRef,useState} from 'react';
+import {useQueryClient} from '@tanstack/react-query';
+import {useSearchParams} from 'react-router-dom';
+import {Settings,GitBranch,Copy,Trash2,Plus,LocateFixed,Diamond} from 'lucide-react';
+import {api,isWriteOutcomeUnknown,jsonBody} from '../api';
+import {useSession} from '../app-context';
+import {canManageProject} from '../permissions';
+import {keys,invalidateTemplateViews} from '../query-keys';
+import type {WorkItemTemplate} from '../types';
+import {useGraphHistory} from '../use-graph-draft';
+import {readDraftRecord,writeDraftRecord} from '../graph-draft-storage';
+import {resolveTemplateOffsets,suggestTemplatePredecessors,type TemplateDependencyItem} from '../../shared/path-template';
+import {DependencyCycleError} from '../../shared/paths';
+import {matchesSearch} from '../../shared/search';
 import {graphBranch} from '../path-view';
-import { GraphWorkspace } from './GraphWorkspace';
-import { PredecessorPicker } from './PredecessorPicker';
-import { useSession } from '../app-context';
-import type { GraphCard } from '../path-projection';
-import { canManageProject } from '../permissions';
-import {useToast} from './Toast';
-type TemplateFormInput = {
-  dependencyMode?: 'legacy' | 'dependencies';
-  projectId?: string;
-  name: string;
-  description: string;
-  expectedUpdatedAt?: string;
-  items: Array<{ id?: string; clientKey?: string; predecessorKeys?: string[]; title: string; startOffsetDays: number; durationDays: number; milestoneLabel: string | null; sortOrder: number }>;
-};
+import type {GraphCard} from '../path-projection';
+import {vacantGroup,vacantPosition} from '../fixed-routing';
+import type {Point} from '../path-layout';
+import {GraphWorkspace} from './GraphWorkspace';
+import {EditorToolbar,EditorPalette} from './EditorToolbar';
+import {PredecessorPicker} from './PredecessorPicker';
+import {Modal} from './Modal';
 
-function matchesTemplateDraft(template: WorkItemTemplate, input: TemplateFormInput) {
-  return template.name === canonicalizeLabel(input.name)
-    && (template.dependencyMode || 'legacy') === (input.dependencyMode || 'legacy')
-    && template.description === canonicalizeContent(input.description)
-    && template.items.length === input.items.length
-    && input.items.every((item, index) => {
-      const latest = template.items[index];
-      return latest?.sortOrder === index
-        && (!item.id || latest.id === item.id)
-        && latest.title === canonicalizeLabel(item.title)
-        && latest.startOffsetDays === item.startOffsetDays
-        && latest.durationDays === item.durationDays
-        && (input.dependencyMode !== 'dependencies' || JSON.stringify([...(latest.predecessorIds || [])].sort()) === JSON.stringify((item.predecessorKeys || []).map(k => template.items[input.items.findIndex(i => (i.clientKey || i.id) === k)]?.id).sort()))
-        && latest.milestoneLabel === (canonicalizeLabel(item.milestoneLabel) || null);
-    });
+type Item=TemplateDependencyItem&{clientKey:string;predecessorKeys:string[];milestoneLabel:string|null;sortOrder:number};
+type Draft={name:string;description:string;dependencyMode:'legacy'|'dependencies';items:Item[];positions:Record<string,Point>;layoutVersion:number};
+function initialDraft(template?:WorkItemTemplate):Draft{
+  const items:Item[]=template?template.items.map(i=>({...i,clientKey:i.id,kind:i.kind||'work',predecessorKeys:i.predecessorIds||[],milestoneLabel:null})):[{clientKey:crypto.randomUUID(),title:'新工作项',kind:'work',durationDays:1,startOffsetDays:0,predecessorKeys:[],milestoneLabel:null,sortOrder:0}];
+  return {name:template?.name||'',description:template?.description||'',dependencyMode:template?.dependencyMode||'dependencies',items,positions:template?.layout?.positions||{},layoutVersion:template?.layout?.version||0};
 }
-
-
-type Item = { id?: string; clientKey: string; title: string; predecessorKeys: string[]; startOffsetDays: number; durationDays: number; milestoneLabel: string | null; sortOrder: number };
-type Draft = { name: string; description: string; dependencyMode: 'legacy'|'dependencies'; items: Item[] };
-function initialDraft(template?: WorkItemTemplate): Draft {
-  const items: Item[] = template ? template.items.map(i=>({id:i.id,clientKey:i.id,title:i.title,startOffsetDays:i.startOffsetDays,durationDays:i.durationDays,milestoneLabel:i.milestoneLabel,sortOrder:i.sortOrder,predecessorKeys:i.predecessorIds||[]})):
-    ['设计','开发','测试','发布'].map((title,index)=>({clientKey:crypto.randomUUID(),title,predecessorKeys:[],startOffsetDays:[0,2,7,10][index],durationDays:[2,5,3,1][index],milestoneLabel:index===3?'发布基线':null,sortOrder:index}));
-  if(!template)items.forEach((item,i)=>{if(i)item.predecessorKeys=[items[i-1].clientKey];});
-  return {name:template?.name||'',description:template?.description||'',dependencyMode:template?.dependencyMode||(template?'legacy':'dependencies'),items};
+function rebaseTemplate(base:Draft,server:Draft,current:Draft,choices:Record<string,'draft'|'server'>){
+ const conflicts:Array<{key:string;title:string;server:unknown;draft:unknown;canKeep:boolean}>=[],same=(a:unknown,b:unknown)=>JSON.stringify(a??null)===JSON.stringify(b??null);
+ const field=(key:string,title:string,b:unknown,n:unknown,d:unknown)=>{if(same(b,d))return n;if(same(b,n)||same(n,d))return d;conflicts.push({key,title,server:n,draft:d,canKeep:true});return choices[key]==='server'?n:d;};
+ const merged={...server,items:[] as Item[]};for(const k of ['name','description','dependencyMode','positions'] as const)Object.assign(merged,{[k]:field(k,k,base[k],server[k],current[k])});
+ for(const item of current.items){const b=base.items.find(i=>i.clientKey===item.clientKey),n=server.items.find(i=>i.clientKey===item.clientKey);if(!b){merged.items.push(item);continue;}if(!n){if(!same(item,b)){conflicts.push({key:item.clientKey,title:item.title+' 已删除',server:null,draft:item,canKeep:false});}continue;}const value={...n};for(const k of Object.keys(item) as Array<keyof Item>)Object.assign(value,{[k]:field(item.clientKey+':'+k,item.title+' · '+k,b[k],n[k],item[k])});merged.items.push(value);}
+ for(const n of server.items)if(!current.items.some(i=>i.clientKey===n.clientKey)){const b=base.items.find(i=>i.clientKey===n.clientKey);if(!b)merged.items.push(n);else if(!same(b,n)){conflicts.push({key:n.clientKey,title:n.title+' 删除冲突',server:n,draft:'删除',canKeep:true});if(choices[n.clientKey]==='server')merged.items.push(n);}}
+ merged.items=merged.items.map(i=>({...i,predecessorKeys:i.predecessorKeys.filter(id=>merged.items.some(n=>n.clientKey===id))}));merged.positions=Object.fromEntries(Object.entries(merged.positions).filter(([id])=>merged.items.some(i=>i.clientKey===id)));
+ return {merged,conflicts,pending:conflicts.filter(c=>!choices[c.key]).length};
 }
-export function TemplateForm({template,templateUnavailable=false,projectId,onClose}:{
-  template?:WorkItemTemplate;templateUnavailable?:boolean;projectId:string;onClose:()=>void;
-}) {
-  const client=useQueryClient(),{session}=useSession(),[params,setParams]=useSearchParams();
-  const toast=useToast();
-  const initial=useRef(initialDraft(template)).current;
-  const draft=useGraphHistory((session.accountId||'guest')+':'+projectId+':template:'+(template?.id||'new'),initial,template?.updatedAt||'new');
-  const value=draft.value,selected=params.get('templateNode')||'',item=value.items.find(i=>i.clientKey===selected);
-  const [panel,setPanel]=useState(''),[inspector,setInspector]=useState(!!selected);
-  useEffect(()=>{const media=matchMedia('(max-width: 800px)'),changed=()=>{if(media.matches){setPanel('');setInspector(false);}};media.addEventListener('change',changed);return()=>media.removeEventListener('change',changed);},[]);
-  const [search,setSearch]=useState('');
-  const branchParam=params.get('templateBranch')||'',[branch,setBranchValue]=useState(branchParam);
-  useEffect(()=>setBranchValue(branchParam),[branchParam]);
-  const setBranch=(id:string)=>{setBranchValue(id);const next=new URLSearchParams(params);if(id)next.set('templateBranch',id);else next.delete('templateBranch');setParams(next,{replace:true});};
-  const [locate,setLocate]=useState<{id:string;sequence:number}>(),[selectedEdge,setSelectedEdge]=useState('');
-  const [error,setError]=useState(''),[invalidNodes,setInvalidNodes]=useState<string[]>([]);
-  const [creating,setCreating]=useState<{predecessors:string[]}|null>(null),[createTitle,setCreateTitle]=useState(''),[createDuration,setCreateDuration]=useState(1);
-  const [deleteId,setDeleteId]=useState(''),[discard,setDiscard]=useState(false),[suggestion,setSuggestion]=useState<Item[]|null>(null);
-  const [needsCheck,setNeedsCheck]=useState(false),[checking,setChecking]=useState(false);
-  const submitting=useRef(false),mounted=useRef(true);
-  const initialIds=useRef(new Set((client.getQueryData<WorkItemTemplate[]>([...keys.templates,projectId])||[]).map(t=>t.id)));
-  const lastInput=useRef<TemplateFormInput|null>(null);
-  useEffect(()=>{mounted.current=true;draft.begin();return()=>{mounted.current=false;};
-    // Persist this mounted editor; background refresh must not replace its baseline.
+export function TemplateForm({template,templateUnavailable=false,projectId,onClose,onSaved}:{template?:WorkItemTemplate;templateUnavailable?:boolean;projectId:string;onClose:()=>void;onSaved?:(value:WorkItemTemplate,selectedId?:string)=>void}){
+  const {session}=useSession(),client=useQueryClient(),[params,setParams]=useSearchParams();
+  const newKey='pm-editor-new-template:'+(session.accountId||'guest')+':'+projectId;
+  const [newId]=useState(()=>params.get('draft')||localStorage.getItem(newKey)||crypto.randomUUID()),identity=template?.id||newId;
+  const key=(session.accountId||'guest')+':'+projectId+':template:'+identity,viewKey=key;
+  const personalKey='pm-path-view:'+key;
+  const [personal]=useState<{node?:string;panel?:string;inspector?:boolean;search?:string}>(()=>{try{return JSON.parse(localStorage.getItem(personalKey)||'{}');}catch{return {};}});
+  const draft=useGraphHistory(key,initialDraft(template),template?.updatedAt||'new'),value=draft.value;
+  const livePositions=useRef(value.positions);
+  const [panel,setPanel]=useState(personal.panel||''),[placing,setPlacing]=useState(''),[inspector,setInspector]=useState(!!personal.inspector),[edgeId,setEdgeId]=useState(''),[error,setError]=useState('');
+  const [branch,setBranch]=useState(params.get('templateBranch')||''),[search,setSearch]=useState(params.get('templateSearch')||personal.search||''),[locate,setLocate]=useState<{id:string;sequence:number}>();
+  const [emptyCreate,setEmptyCreate]=useState<{source:string;position:Point;title:string}|null>(null);
+  const [busy,setBusy]=useState(false),[discard,setDiscard]=useState(false),[deleting,setDeleting]=useState<string[]>([]),[suggestion,setSuggestion]=useState<Item[]|null>(null);
+  const pendingKey='pm-graph-draft:'+key+':submission',[pending,setPending]=useState<Record<string,unknown>|null>(null),saving=useRef(false),[pendingReady,setPendingReady]=useState(false);
+  const selected=params.has('templateNode')?params.get('templateNode')||'':personal.node||'',item=value.items.find(i=>i.clientKey===selected);
+  const conflictVersion=template?.updatedAt||'new';const [choiceState,setChoiceState]=useState<{version:string;values:Record<string,'draft'|'server'>}>({version:conflictVersion,values:{}});const conflictChoices=choiceState.version===conflictVersion?choiceState.values:{};const setConflictChoices=(value:Record<string,'draft'|'server'>|((old:Record<string,'draft'|'server'>)=>Record<string,'draft'|'server'>))=>setChoiceState(old=>({version:conflictVersion,values:typeof value==='function'?value(old.version===conflictVersion?old.values:{}):value}));const merged=template?rebaseTemplate(draft.baseline,initialDraft(template),value,conflictChoices):null;
+  const changed=!!template&&draft.version!==template.updatedAt,locked=templateUnavailable||!canManageProject(session,projectId)||draft.loading||draft.readOnly||busy||!!pending;
+  useEffect(()=>{draft.begin();if(!template)localStorage.setItem(newKey,newId);if(!template&&!params.get('draft')){const p=new URLSearchParams(params);p.set('draft',newId);setParams(p,{replace:true});}void readDraftRecord<Record<string,unknown>>(pendingKey).then(saved=>{if(saved)setPending(saved);}).catch(()=>{}).finally(()=>setPendingReady(true));
+    // A mounted editor owns one persistent document.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
-  const changed=!!template&&draft.version!==template.updatedAt;
-  const locked=templateUnavailable||!canManageProject(session,projectId);
-  const layout=useMemo(()=>{
-    try {return {items:value.dependencyMode==='dependencies'?resolveTemplateOffsets(value.items.map(i=>({...i}))):value.items,error:''};}
-    catch(caught){return {items:value.items,error:(caught as Error).message};}
-  },[value]);
-  const dirty=draft.dirty;
-  const finish=()=>{draft.reset();invalidateTemplateViews(client);onClose();};
-  const checkSaved=async(input:TemplateFormInput)=>{
-    const latest=await api<WorkItemTemplate[]>('/api/templates?projectId='+encodeURIComponent(projectId),{readOnly:true});
-    client.setQueryData([...keys.templates,projectId],latest);
-    const matches=latest.filter(t=>template?t.id===template.id&&matchesTemplateDraft(t,input):!initialIds.current.has(t.id)&&matchesTemplateDraft(t,input));
-    if(matches.length===1){if(mounted.current){toast.success(template?'已核对最新状态：流程设计已保存':'已核对最新状态：流程已创建');finish();}return true;}return false;
-  };
-  const mutation=useMutation({mutationFn:(input:TemplateFormInput)=>api(template?'/api/templates/'+template.id:'/api/templates',{method:template?'PATCH':'POST',body:jsonBody(input)}),
-    onSuccess:finish,onError:async(caught,input)=>{
-      if(isWriteOutcomeUnknown(caught)){try{if(await checkSaved(input))return;}catch{/* Preserve the draft while the result is unknown. */}}
-      if(requiresWriteRecheck(caught))setNeedsCheck(true);
-    },onSettled:()=>{submitting.current=false;}});
-  const update=(next:Draft,group?:string)=>{
-    if(mutation.isPending||locked||needsCheck)return;
-    try { if(next.dependencyMode==='dependencies')resolveTemplateOffsets(next.items.map(i=>({...i})));setError('');setInvalidNodes([]);draft.change(next,group); }
-    catch(caught){setError((caught as Error).message);setInvalidNodes(caught instanceof DependencyCycleError?caught.nodeIds:[]);}
-  };
-  const updateItem=(patch:Partial<Item>,group?:string)=>update({...value,items:value.items.map(i=>i.clientKey===selected?{...i,...patch}:i)},group?selected+':'+group:undefined);
-  const select=(id:string)=>{
-    const next=new URLSearchParams(params);next.set('templateNode',id);setParams(next,{replace:true});setSelectedEdge('');setInspector(true);if(matchMedia('(max-width:800px)').matches)setPanel('');
-  };
-  const openPanel=(name:string)=>{setPanel(panel===name?'':name);if(matchMedia('(max-width:800px)').matches)setInspector(false);};
-  const validate=(source:string,target:string)=>{
-    if(source===target)return {message:'不能依赖自身',nodeIds:[source]};
-    if(value.items.find(i=>i.clientKey===target)?.predecessorKeys.includes(source))return {message:'这条依赖已经存在',nodeIds:[source,target]};
-    try{resolveTemplateOffsets(value.items.map(i=>({...i,predecessorKeys:i.clientKey===target?[...i.predecessorKeys,source]:i.predecessorKeys})));return null;}
-    catch(caught){return {message:(caught as Error).message,nodeIds:caught instanceof DependencyCycleError?caught.nodeIds:[]};}
-  };
-  const connect=(source:string,target:string)=>update({...value,items:value.items.map(i=>i.clientKey===target?{...i,predecessorKeys:[...i.predecessorKeys,source]}:i)});
-  const beginCreate=(predecessors:string[])=>{setCreating({predecessors});setCreateTitle('');setCreateDuration(1);};
-  const cards:GraphCard[]=layout.items.map(i=>({id:i.clientKey,requirementId:projectId,workItemId:i.clientKey,kind:'template',title:i.title||'未命名工作项',subtitle:i.milestoneLabel?'里程碑 · '+i.milestoneLabel:i.durationDays+' 个工作日',status:'planning',risk:'low',forecast:'第 '+(i.startOffsetDays+1)+'—'+(i.startOffsetDays+i.durationDays)+' 工作日',floatDays:null,critical:false,unknown:false,external:false,hiddenCount:0}));
+  const layout=useMemo(()=>{try{return {items:value.dependencyMode==='dependencies'?resolveTemplateOffsets(value.items.map(i=>({...i}))):value.items,error:''};}catch(e){return {items:value.items,error:(e as Error).message};}},[value]);
+  useEffect(()=>{try{localStorage.setItem(personalKey,JSON.stringify({node:selected,panel,inspector,search}));}catch{/* Personal view stays available in memory. */}},[personalKey,selected,panel,inspector,search]);
+  const select=(id:string)=>{const p=new URLSearchParams(params);p.set('templateNode',id);setParams(p,{replace:true});setEdgeId('');setInspector(!!id);if(matchMedia('(max-width:800px)').matches)setPanel('');};
+  const update=(next:Draft,group?:string)=>{if(locked)return;try{if(next.dependencyMode==='dependencies')resolveTemplateOffsets(next.items.map(i=>({...i})));draft.change(next,group);setError('');}catch(e){setError((e as Error).message);}};
+  const patch=(id:string,fields:Partial<Item>,group?:string)=>update({...value,items:value.items.map(i=>i.clientKey===id?{...i,...fields}:i)},group);
+  const names=(id:string)=>value.items.find(i=>i.clientKey===id)?.title||'失效元素';
   const links=value.dependencyMode==='dependencies'?value.items.flatMap(i=>i.predecessorKeys.map(source=>({id:source+'>'+i.clientKey,source,target:i.clientKey,critical:false,dependencyIds:[source+'>'+i.clientKey]}))):[];
-  const edge=links.find(e=>e.id===selectedEdge);
-  const emphasized=branch?[...graphBranch(branch,links)]:cards.map(c=>c.id);
-  const reconnectChanges=(source:string,target:string)=>({...value,items:value.items.map(i=>({...i,predecessorKeys:[...i.predecessorKeys.filter(k=>!(i.clientKey===edge!.target&&k===edge!.source)),...(i.clientKey===target?[source]:[])]}))});
-  const validateReconnect=(source:string,target:string)=>{
-    if(!edge)return {message:'请先选择关系'};
-    if(source===target)return {message:'不能依赖自身'};
-    if(links.some(e=>e.id!==edge.id&&e.source===source&&e.target===target))return {message:'这条依赖已经存在'};
-    try{resolveTemplateOffsets(reconnectChanges(source,target).items);return null;}catch(caught){return {message:(caught as Error).message};}
+  const edge=links.find(e=>e.id===edgeId);
+  const cards:GraphCard[]=layout.items.map(i=>({id:i.clientKey,requirementId:projectId,workItemId:i.kind==='milestone'?null:i.clientKey,kind:i.kind==='milestone'?'milestone':'template',title:i.title,subtitle:i.kind==='milestone'?'零工期里程碑':i.durationDays+' 个工作日 · '+(i.arrangement==='late'?'靠近交付点':'尽早安排'),status:'planning',risk:'low',forecast:i.kind==='milestone'?'第 '+Math.max(1,i.startOffsetDays)+' 工作日':'第 '+(i.startOffsetDays+1)+'—'+(i.startOffsetDays+i.durationDays)+' 工作日',floatDays:null,critical:false,unknown:false,external:false,hiddenCount:0}));
+  const validate=(source:string,target:string,replacing=false)=>{if(source===target)return {message:'不能依赖自身'};if(links.some(e=>e.source===source&&e.target===target&&(!replacing||e.id!==edge?.id)))return {message:'这条依赖已经存在'};try{resolveTemplateOffsets(value.items.map(i=>({...i,predecessorKeys:[...i.predecessorKeys.filter(k=>!(replacing&&i.clientKey===edge?.target&&k===edge.source)),...(i.clientKey===target?[source]:[])]})));return null;}catch(e){return {message:(e as Error).message,nodeIds:e instanceof DependencyCycleError?e.nodeIds:[]};}};
+  const connect=(source:string,target:string,replacing=false)=>{const issue=validate(source,target,replacing);if(issue){setError(issue.message);return;}update({...value,items:value.items.map(i=>({...i,predecessorKeys:[...i.predecessorKeys.filter(k=>!(replacing&&i.clientKey===edge?.target&&k===edge.source)),...(i.clientKey===target?[source]:[])]}))});if(replacing)setEdgeId('');};
+  const create=(kind:string,position:Point,predecessors:string[]=[],title?:string)=>{if(locked)return;const id=crypto.randomUUID();position=vacantPosition(cards.map(c=>({id:c.id,...livePositions.current[c.id],width:244,height:154})),id,position);update({...value,items:[...value.items,{clientKey:id,kind:kind==='milestone'?'milestone':'work',title:title||(kind==='milestone'?'新里程碑':'新工作项'),durationDays:kind==='milestone'?0:1,startOffsetDays:0,predecessorKeys:predecessors,milestoneLabel:null,sortOrder:value.items.length,confirmationMode:'auto'}],positions:{...livePositions.current,...value.positions,[id]:position}});select(id);setPlacing('');};
+  const duplicate=(ids:string[],positions:Record<string,Point>,snapshot?:unknown)=>{positions=vacantGroup(cards.map(c=>({id:c.id,...livePositions.current[c.id],width:244,height:154})),positions,true);const map=Object.fromEntries(ids.map(id=>[id,crypto.randomUUID()])),copies=((snapshot as Item[])||value.items).filter(i=>map[i.clientKey]).map(i=>({...i,id:undefined,clientKey:map[i.clientKey],title:i.title+' 副本',predecessorKeys:i.predecessorKeys.filter(k=>map[k]).map(k=>map[k]),arrangementAnchor:map[i.arrangementAnchor||'']||null,sortOrder:0}));update({...value,items:[...value.items,...copies].map((i,index)=>({...i,sortOrder:index})),positions:{...livePositions.current,...value.positions,...Object.fromEntries(Object.entries(positions).filter(([id])=>map[id]).map(([id,p])=>[map[id],p]))}});if(copies[0])select(copies[0].clientKey);};
+  const remove=()=>{const ids=new Set(deleting);update({...value,items:value.items.filter(i=>!ids.has(i.clientKey)).map((i,index)=>({...i,sortOrder:index,predecessorKeys:i.predecessorKeys.filter(k=>!ids.has(k)),arrangementAnchor:ids.has(i.arrangementAnchor||'')?null:i.arrangementAnchor})),positions:Object.fromEntries(Object.entries(value.positions).filter(([id])=>!ids.has(id)))});setDeleting([]);select('');};
+  const finish=(saved:WorkItemTemplate)=>{if(!template)localStorage.removeItem(newKey);void writeDraftRecord(pendingKey,undefined);setPending(null);const mapped=Object.fromEntries(value.items.map((i,index)=>[i.clientKey,saved.items[index]?.id]));
+    if(!template){for(const storageKey of Object.keys(localStorage))if(storageKey.startsWith('pm-graph-view:'+viewKey))localStorage.setItem(storageKey.replace(viewKey,(session.accountId||'guest')+':'+projectId+':template:'+saved.id),localStorage.getItem(storageKey)!);}
+    try{localStorage.setItem('pm-path-view:'+(session.accountId||'guest')+':'+projectId+':template:'+saved.id,JSON.stringify({node:mapped[selected]||'',panel,inspector,search}));}catch{/* Keep the current inspector in memory. */}
+    client.setQueryData<WorkItemTemplate[]>([...keys.templates,projectId],old=>[...(old||[]).filter(t=>t.id!==saved.id),saved]);draft.reset(initialDraft(saved),saved.updatedAt);draft.begin();invalidateTemplateViews(client);if(mapped[selected]){const p=new URLSearchParams(params);p.set('templateNode',mapped[selected]);setParams(p,{replace:true});}onSaved?.(saved,mapped[selected]);
   };
-  const affected=links.filter(e=>e.source===deleteId||e.target===deleteId);
-  const names=(id:string)=>value.items.find(i=>i.clientKey===id)?.title||'失效工作项';
-  const save=()=>{
-    if(submitting.current||changed||needsCheck||locked||layout.error)return;
-    if(!value.name.trim()){setError('请填写流程名称');setPanel('settings');return;}
-    if(value.items.some(i=>!i.title.trim())){setError('工作项标题不能为空');return;}
-    const input:TemplateFormInput={...value,...template?{expectedUpdatedAt:draft.version}:{projectId},items:layout.items.map((i,index)=>({...i,sortOrder:index}))};
-    lastInput.current=input;submitting.current=true;mutation.mutate(input);
+  const save=async()=>{if(!pendingReady||saving.current||draft.loading||draft.readOnly||!pending&&(changed||layout.error))return;if(!pending&&(!value.name.trim()||!value.items.length)){setError(!value.name.trim()?'请填写流程名称':'流程至少保留一个元素');setPanel('settings');return;}
+    const body=pending||{name:value.name,description:value.description,dependencyMode:value.dependencyMode,...template?{expectedUpdatedAt:draft.version}:{projectId},items:layout.items.map((i,index)=>({id:i.id,clientKey:i.clientKey,predecessorKeys:i.predecessorKeys,title:i.title,startOffsetDays:i.startOffsetDays,durationDays:i.durationDays,kind:i.kind||'work',arrangement:i.arrangement||'early',arrangementAnchor:i.arrangementAnchor||null,confirmationMode:i.confirmationMode||'auto',milestoneLabel:null,sortOrder:index})),layout:{direction:'right',expectedVersion:value.layoutVersion,positions:Object.fromEntries(Object.entries({...livePositions.current,...value.positions}).filter(([id])=>value.items.some(i=>i.clientKey===id)))},batchId:crypto.randomUUID()};
+    saving.current=true;setBusy(true);setError('');try{if(pending){const receipt=await api<{status:string;addedIds?:Record<string,string>}>('/api/projects/'+projectId+'/dependency-changes/'+pending.batchId,{readOnly:true});if(receipt.status==='applied'){const templates=await api<WorkItemTemplate[]>('/api/templates?projectId='+projectId,{readOnly:true});const saved=templates.find(t=>t.id===receipt.addedIds?.$template);if(!saved)throw new Error('提交已完成，但流程目前不可访问');finish(saved);return;}}await writeDraftRecord(pendingKey,body);setPending(body);const saved=await api<WorkItemTemplate>(template?'/api/templates/'+template.id:'/api/templates',{method:template?'PATCH':'POST',body:jsonBody(body)});finish(saved);}catch(e){setError((e as Error).message);if(!isWriteOutcomeUnknown(e)&&!((e as {status?:number}).status!>=500)){setPending(null);void writeDraftRecord(pendingKey,undefined);}setPanel('conflict');}finally{saving.current=false;setBusy(false);}
   };
-  return <div className="path-analysis immersive-path template-flow-workspace"><GraphWorkspace cards={cards} links={links} selected={selected} focusId={branch} emphasizedIds={emphasized} onExitFocus={()=>setBranch('')} highlighted={search?cards.filter(c=>matchesSearch([{text:c.title,weight:1}],search)).map(c=>c.id):[]} reconnect={edge} validateReconnect={validateReconnect} onReconnect={(source,target)=>{const problem=validateReconnect(source,target);if(problem)setError(problem.message);else{update(reconnectChanges(source,target));setSelectedEdge('');}}} onSelect={select}
-    viewKey={(session.accountId||'guest')+':'+projectId+':template:'+(template?.id||'new')} editing={value.dependencyMode==='dependencies'&&!locked&&!needsCheck&&!mutation.isPending}
-    onConnect={connect} validateConnection={validate} onInvalid={i=>{setError(i.message);setInvalidNodes(i.nodeIds||[]);}} invalidNodes={invalidNodes}
-    onDropEmpty={source=>beginCreate([source])} selectedEdge={selectedEdge} onEdgeSelect={id=>{setSelectedEdge(id);setInspector(true);if(matchMedia('(max-width:800px)').matches)setPanel('');}} locate={locate} onUndo={!mutation.isPending&&!needsCheck?draft.undo:undefined} onRedo={!mutation.isPending&&!needsCheck?draft.redo:undefined}
-    finder={<><input aria-label="搜索流程节点" placeholder="搜索工作项／拼音" value={search} onChange={e=>{setSearch(e.target.value);setPanel('nodes');}}/><button className="ghost-button" onClick={()=>openPanel('nodes')}>节点 {cards.length}</button><button className="ghost-button" onClick={()=>openPanel('settings')}>流程属性</button></>}
-    toolbar={<><div className="graph-toolbar-row"><div className="graph-title-group"><button className="graph-back-link" disabled={mutation.isPending} onClick={()=>dirty?setDiscard(true):(draft.reset(),onClose())}>退出编辑</button><strong>{template?'编辑流程':'新建流程'} · {value.name||'未命名'}</strong></div><div className="button-row">
-      <span className="draft-badge">{dirty?'未保存修改':'编辑草稿'}</span><button className="ghost-button" disabled={!draft.canUndo||mutation.isPending||needsCheck} onClick={draft.undo}>撤销</button><button className="ghost-button" disabled={!draft.canRedo||mutation.isPending||needsCheck} onClick={draft.redo}>重做</button>
-      <button className="primary-button" disabled={mutation.isPending||changed||needsCheck||locked||!!layout.error} onClick={save}>{mutation.isPending?'保存中…':'保存流程'}</button>
-      </div></div>
-      <div className="graph-delivery-summary">{value.dependencyMode==='dependencies'?'依赖排期':'历史偏移排期'} · {value.items.length} 个工作项 · 共 {Math.max(...layout.items.map(i=>i.startOffsetDays+i.durationDays),1)} 个工作日<span>修改流程用于新需求。</span></div>
-      <div className="graph-status-slot"><span>{branch?'聚焦 '+names(branch):value.dependencyMode==='legacy'?'历史偏移模式：转换后可拖线编辑依赖。':'从连接点拖到后续卡片，或拖到空白处新增后续。'}</span>
-        {branch&&<button className="ghost-button" onClick={()=>setBranch('')}>退出聚焦</button>}
-        {value.dependencyMode==='legacy'&&<button className="ghost-button" onClick={()=>setSuggestion(suggestTemplatePredecessors(value.items.map(i=>({...i}))))}>转换为依赖流程</button>}
-        {(error||layout.error||mutation.error||changed||needsCheck||locked)&&<button className="ghost-button danger-text" onClick={()=>openPanel('conflict')}>查看错误或冲突</button>}
-      </div>
-    </>}
-    detail={inspector?<><div className="graph-panel-heading"><h3>{edge?'前置关系':item?.title||'选择工作项'}</h3><button className="ghost-button" onClick={()=>setInspector(false)}>关闭</button></div>
-      {edge?<><p>{names(edge.source)} 完成后，{names(edge.target)} 开始。</p><button className="ghost-button" disabled={mutation.isPending||needsCheck} onClick={()=>{update({...value,items:value.items.map(i=>i.clientKey===edge.target?{...i,predecessorKeys:i.predecessorKeys.filter(k=>k!==edge.source)}:i)});setSelectedEdge('');}}>移除选中关系</button>
-        <details className="graph-more-relations"><summary>更多关系操作</summary><PredecessorPicker label="改接前置（选择后替换）" value={[]} options={value.items.filter(i=>i.clientKey!==edge.target&&i.clientKey!==edge.source).map(i=>({id:i.clientKey,title:i.title}))} onChange={ids=>{const source=ids.at(-1);if(source)update({...value,items:value.items.map(i=>i.clientKey===edge.target?{...i,predecessorKeys:[...new Set([...i.predecessorKeys.filter(k=>k!==edge.source),source])]}:i)});}}/></details></>:item&&<fieldset className="graph-form-fieldset" disabled={mutation.isPending||locked||needsCheck}><div className="graph-fields" key={item.clientKey}>
-        <label className="field"><span>工作项名称</span><input aria-label="工作项名称" value={item.title} required onChange={e=>updateItem({title:e.target.value},'title')} onBlur={draft.endGroup}/></label>
-        <label className="field"><span>预计工期（工作日）</span><input aria-label="预计工期" key={item.durationDays} type="number" min={1} max={3660} defaultValue={item.durationDays} onBlur={e=>updateItem({durationDays:Math.max(1,Math.min(3660,Number(e.target.value)||1))})}/></label>
-        <label className="field"><span>里程碑（可选）</span><input aria-label="里程碑名称" value={item.milestoneLabel||''} maxLength={80} onChange={e=>updateItem({milestoneLabel:e.target.value||null},'milestone')} onBlur={draft.endGroup}/></label>
-        {value.dependencyMode==='legacy'&&<label className="field"><span>开始偏移（工作日）</span><input aria-label="开始偏移" key={item.startOffsetDays} type="number" min={0} defaultValue={item.startOffsetDays} onBlur={e=>updateItem({startOffsetDays:Math.max(0,Number(e.target.value)||0)})}/></label>}
-      </div>
-      {value.dependencyMode==='dependencies'&&<details className="graph-more-relations"><summary>更多关系操作</summary><PredecessorPicker label="前置工作项" value={item.predecessorKeys} options={value.items.filter(i=>i.clientKey!==selected).map(i=>({id:i.clientKey,title:i.title}))} onChange={ids=>updateItem({predecessorKeys:ids})}/></details>}
-      <div className="button-row graph-item-actions"><button className="ghost-button" onClick={()=>setBranch(branch===selected?'':selected)}>{branch===selected?'退出聚焦':branch?'聚焦此分支':'聚焦分支'}</button><button className="ghost-button" onClick={()=>setLocate({id:selected,sequence:Date.now()})}>定位</button>
-        <button className="ghost-button" onClick={()=>beginCreate(value.dependencyMode==='dependencies'?[selected]:[])}>新增后续</button><button className="ghost-button" onClick={()=>beginCreate(value.dependencyMode==='dependencies'?item.predecessorKeys:[])}>新增并行</button>
-        <button className="ghost-button danger-text" disabled={value.items.length===1} onClick={()=>setDeleteId(selected)}>删除工作项</button></div>
-      </fieldset>}
-    </>:undefined}
-    auxiliary={panel?<><div className="graph-panel-heading"><h3>{{settings:'流程属性',nodes:'节点列表',schedule:'排期预览',conflict:'版本与提交核对'}[panel]}</h3><button className="ghost-button" onClick={()=>setPanel('')}>关闭</button></div>
-      {panel==='settings'&&<fieldset className="graph-form-fieldset" disabled={mutation.isPending||locked||needsCheck}><div className="graph-fields"><label className="field"><span>流程名称</span><input name="name" aria-label="流程名称" value={value.name} required onChange={e=>update({...value,name:e.target.value},'name')} onBlur={draft.endGroup}/></label>
-        <label className="field"><span>设计说明</span><textarea name="description" aria-label="设计说明" value={value.description} rows={5} maxLength={2000} onChange={e=>update({...value,description:e.target.value},'description')} onBlur={draft.endGroup}/></label></div>
-        {value.dependencyMode==='legacy'&&<><p>原偏移值仍然保留。依赖建议只有核对并确认后才启用。</p><button className="ghost-button" onClick={()=>setSuggestion(suggestTemplatePredecessors(value.items.map(i=>({...i}))))}>生成依赖建议</button></>}
-      </fieldset>}
-      {panel==='nodes'&&<div className="path-node-list">{cards.filter(c=>matchesSearch([{text:c.title,weight:1}],search)).map(c=><div className="graph-list-row" key={c.id}><button className={selected===c.id?'selected':''} onClick={()=>select(c.id)}>{c.title}<small>{c.subtitle}</small></button><button className="ghost-button" onClick={()=>setLocate({id:c.id,sequence:Date.now()})}>定位</button></div>)}</div>}
-      {panel==='schedule'&&<><p>相对工作日按全部前置完成计算。</p><div className="template-relative-plan">{layout.items.map(i=><div key={i.clientKey}><strong>{i.title}</strong><small>第 {i.startOffsetDays+1}—{i.startOffsetDays+i.durationDays} 工作日</small>
-        <span><i style={{marginLeft:(i.startOffsetDays/Math.max(...layout.items.map(p=>p.startOffsetDays+p.durationDays),1)*100)+'%',width:(i.durationDays/Math.max(...layout.items.map(p=>p.startOffsetDays+p.durationDays),1)*100)+'%'}}/></span>{i.milestoneLabel&&<small>里程碑：{i.milestoneLabel}</small>}</div>)}</div></>}
-      {panel==='conflict'&&<>{(error||layout.error||mutation.error||locked)&&<div role="alert" className="form-error">{error||layout.error||mutation.error?.message||'流程不可编辑或权限已变化。'}</div>}<p>草稿版本：{draft.version}</p><p>最新版本：{template?.updatedAt||'新流程'}</p>
-        {needsCheck&&<button className="ghost-button" disabled={checking} onClick={()=>{setChecking(true);void (async()=>{try{if(lastInput.current&&await checkSaved(lastInput.current))return;setNeedsCheck(false);mutation.reset();setError('已重新读取，未确认原提交成功。请核对最新流程后再保存。');}catch(caught){setError((caught as Error).message);}finally{setChecking(false);}})();}}>重新读取并核对提交</button>}
-        {changed&&template&&<><p>最新名称：{template.name}</p>{template.items.map(i=><p key={i.id}>{i.title} · {i.durationDays} 工日 · {i.predecessorIds?.length||0} 个前置</p>)}
-          <button className="primary-button" disabled={needsCheck} onClick={()=>draft.rebase(template.updatedAt)}>已核对，保留草稿并使用最新版本</button>
-          <button className="ghost-button" onClick={()=>{draft.reset(initialDraft(template),template.updatedAt);draft.begin();setNeedsCheck(false);mutation.reset();}}>使用最新流程</button></>}
-      </>}
-    </>:undefined}
-    footer={<><button className="ghost-button" onClick={()=>openPanel('schedule')}>排期预览</button>
-      <button className="ghost-button" disabled={mutation.isPending||locked||needsCheck} onClick={()=>beginCreate([])}>添加独立工作</button></>}/>
-    {creating&&<Modal title="创建工作项" width={420} onClose={()=>setCreating(null)}><form onSubmit={e=>{e.preventDefault();const id=crypto.randomUUID();update({...value,items:[...value.items,{clientKey:id,title:createTitle.trim(),durationDays:createDuration,startOffsetDays:value.dependencyMode==='legacy'?Math.max(...value.items.map(i=>i.startOffsetDays+i.durationDays),0):0,predecessorKeys:creating.predecessors,milestoneLabel:null,sortOrder:value.items.length}]});setCreating(null);select(id);}}>
-      <label className="field"><span>标题</span><input aria-label="新工作项标题" value={createTitle} onChange={e=>setCreateTitle(e.target.value)} required pattern=".*\S.*"/></label><label className="field"><span>工期（工作日）</span><input aria-label="新工作项工期" type="number" min={1} max={3660} value={createDuration} onChange={e=>setCreateDuration(Number(e.target.value))} required/></label>
-      <p>{creating.predecessors.length?'前置：'+creating.predecessors.map(names).join('、'):'独立工作，无前置'}</p><div className="button-row"><button type="button" className="ghost-button" onClick={()=>setCreating(null)}>取消</button><button className="primary-button">加入流程</button></div></form></Modal>}
-    {deleteId&&<Modal title="删除工作项" width={470} onClose={()=>setDeleteId('')}><p>删除「{names(deleteId)}」及以下 {affected.length} 条关系。前后工作不会自动串接。</p>{affected.map(e=><p key={e.id}>{names(e.source)} → {names(e.target)}</p>)}<div className="button-row"><button className="ghost-button" onClick={()=>setDeleteId('')}>取消</button><button className="primary-button" onClick={()=>{update({...value,items:value.items.filter(i=>i.clientKey!==deleteId).map((i,index)=>({...i,sortOrder:index,predecessorKeys:i.predecessorKeys.filter(k=>k!==deleteId)}))});setDeleteId('');setInspector(false);}}>确认删除</button></div></Modal>}
-    {suggestion&&<Modal title="核对依赖建议" width={560} onClose={()=>setSuggestion(null)}><p>确认后切换依赖模式，日期按关系和工期重新计算。</p><table className="template-conversion-diff"><thead><tr><th>工作项／前置</th><th>原偏移</th><th>建议偏移</th></tr></thead><tbody>{resolveTemplateOffsets(suggestion).map(i=><tr key={i.clientKey}><td>{i.title}<small>{i.predecessorKeys.map(names).join('、')||'独立开始'}</small></td><td>第 {(value.items.find(w=>w.clientKey===i.clientKey)?.startOffsetDays||0)+1} 日</td><td>第 {i.startOffsetDays+1} 日</td></tr>)}</tbody></table><div className="button-row"><button className="ghost-button" onClick={()=>setSuggestion(null)}>保留原偏移</button><button className="primary-button" onClick={()=>{update({...value,dependencyMode:'dependencies',items:suggestion});setSuggestion(null);}}>已核对，启用依赖</button></div></Modal>}
-    {discard&&<Modal title="放弃流程草稿" width={430} onClose={()=>setDiscard(false)}><p>尚未保存的修改将被丢弃。</p><div className="button-row"><button className="ghost-button" onClick={()=>setDiscard(false)}>继续编辑</button><button className="primary-button" onClick={()=>{draft.reset();onClose();}}>放弃草稿</button></div></Modal>}
+  const open=(name:string)=>{setPanel(panel===name?'':name);if(matchMedia('(max-width:800px)').matches)setInspector(false);};
+  const focus=(id:string)=>{const next=branch===id?'':id;setBranch(next);const p=new URLSearchParams(params);if(next)p.set('templateBranch',next);else p.delete('templateBranch');setParams(p,{replace:true});};
+  const controls=item?<div className="editor-selection-tools"><button title="聚焦分支" aria-label={branch===selected?'退出聚焦':'聚焦分支'} onClick={()=>focus(selected)}><GitBranch size={16}/></button><button title="定位" aria-label="定位" onClick={()=>setLocate({id:selected,sequence:Date.now()})}><LocateFixed size={16}/></button><button disabled={locked} title="复制" aria-label="复制元素" onClick={()=>duplicate([selected],{[selected]:{x:(livePositions.current[selected]?.x||0)+32,y:(livePositions.current[selected]?.y||0)+32}})}><Copy size={16}/></button><button disabled={locked} title="新增后续" aria-label="新增后续" onClick={()=>create('work',{x:(livePositions.current[selected]?.x||0)+320,y:livePositions.current[selected]?.y||0},[selected])}><Plus size={16}/></button><button disabled={locked} title="新增并行" aria-label="新增并行" onClick={()=>create('work',{x:livePositions.current[selected]?.x||0,y:(livePositions.current[selected]?.y||0)+210},item.predecessorKeys)}><WorkflowIcon/></button><button disabled={locked} title="删除元素" aria-label="删除元素" onClick={()=>setDeleting([selected])}><Trash2 size={16}/></button></div>:null;
+  return <div className="path-analysis immersive-path template-flow-workspace"><GraphWorkspace cards={cards} links={links} selected={selected} onSelect={select} viewKey={viewKey} onLayoutReady={positions=>{livePositions.current=positions;}} editing={!locked&&value.dependencyMode==='dependencies'} positions={value.positions} onPositions={positions=>update({...value,positions})} onCopy={()=>structuredClone(value.items)} onDuplicate={duplicate} onDelete={(ids,edgeId)=>{if(edgeId){const e=links.find(e=>e.id===edgeId);if(e)patch(e.target,{predecessorKeys:value.items.find(i=>i.clientKey===e.target)!.predecessorKeys.filter(id=>id!==e.source)});setEdgeId('');}else setDeleting(ids);}} onRename={(id,title)=>patch(id,{title})} onCreate={create} placing={placing} onSave={()=>void save()} onSearch={()=>open('nodes')}
+    onConnect={connect} validateConnection={validate} onInvalid={issue=>setError(issue.message)} onDropEmpty={(source,position)=>setEmptyCreate({source,position,title:''})} selectedEdge={edgeId} onEdgeSelect={id=>{setEdgeId(id);setInspector(true);}} reconnect={edge} validateReconnect={(a,b)=>validate(a,b,true)} onReconnect={(a,b)=>connect(a,b,true)} onUndo={!locked?draft.undo:undefined} onRedo={!locked?draft.redo:undefined} focusId={branch} emphasizedIds={branch?[...graphBranch(branch,links)]:undefined} onExitFocus={()=>{if(placing)setPlacing('');else if(branch)focus(branch);else select('');}} locate={locate} highlighted={search?cards.filter(c=>matchesSearch([{text:c.title,weight:1}],search)).map(c=>c.id):[]}
+    toolbar={<EditorToolbar title={value.name||'新建流程'} backLabel="返回流程列表" back={onClose} editing canUndo={draft.canUndo&&!locked} canRedo={draft.canRedo&&!locked} undo={draft.undo} redo={draft.redo} save={()=>void save()} canSave={!changed&&!layout.error&&!draft.loading&&!draft.readOnly} discard={()=>setDiscard(true)} busy={busy} context={<span>{value.dependencyMode==='legacy'?'历史偏移':'依赖流程'} · {value.items.filter(i=>i.kind!=='milestone').length} 工作项 · {value.items.filter(i=>i.kind==='milestone').length} 里程碑</span>} status={<>{branch&&<button className="ghost-button" onClick={()=>focus(branch)}>退出聚焦</button>}<span title={draft.storageError||error||''}>{draft.storageError?'本机保存失败':error?'存在错误':draft.readOnly?'其他页面编辑中':draft.dirty?'草稿已保留':'编辑中'}</span></>} extra={<button className="ghost-button" title="流程属性" aria-label="流程属性" onClick={()=>open('settings')}><Settings size={17}/></button>}/>}
+    palette={<EditorPalette types={['work','milestone']} placing={placing} onPlace={setPlacing} disabled={locked||value.dependencyMode==='legacy'}/>}
+    finder={<><input aria-label="搜索流程节点" placeholder="搜索元素／拼音" value={search} onChange={e=>{setSearch(e.target.value);setPanel('nodes');}}/><button className="ghost-button" onClick={()=>open('nodes')}>节点 {cards.length}</button></>}
+    detail={inspector?<><div className="graph-panel-heading"><h3>{edge?'关系':item?.title||'选择元素'}</h3><button className="ghost-button" onClick={()=>setInspector(false)}>关闭</button></div>{edge?<><p>{names(edge.source)} → {names(edge.target)}</p><button className="ghost-button" disabled={locked} onClick={()=>{patch(edge.target,{predecessorKeys:value.items.find(i=>i.clientKey===edge.target)!.predecessorKeys.filter(id=>id!==edge.source)});setEdgeId('');}}>移除关系</button></>:item&&<><fieldset className="graph-form-fieldset" disabled={locked}><div className="graph-fields"><label className="field"><span>名称</span><input aria-label="元素名称" value={item.title} onChange={e=>patch(selected,{title:e.target.value},selected+':title')} onBlur={draft.endGroup}/></label>{item.kind!=='milestone'?<><label className="field"><span>工期（工作日）</span><input aria-label="预计工期" type="number" min={1} value={item.durationDays} onChange={e=>patch(selected,{durationDays:Math.max(1,Number(e.target.value)||1)})}/></label><label className="field"><span>安排方式</span><select aria-label="安排方式" value={item.arrangement||'early'} onChange={e=>patch(selected,{arrangement:e.target.value as 'early'})}><option value="early">尽早安排</option><option value="late">靠近交付点安排</option></select></label>{item.arrangement==='late'&&<label className="field"><span>交付点</span><select value={item.arrangementAnchor||''} onChange={e=>patch(selected,{arrangementAnchor:e.target.value||null})}><option value="">流程完成点</option>{value.items.filter(i=>i.kind==='milestone'&&i.clientKey!==selected).map(i=><option key={i.clientKey} value={i.clientKey}>{i.title}</option>)}</select></label>}</>:<label className="field"><span>达成方式</span><select value={item.confirmationMode||'auto'} onChange={e=>patch(selected,{confirmationMode:e.target.value as 'auto'})}><option value="auto">前置完成后达成</option><option value="manual">人工确认</option></select></label>}{value.dependencyMode==='legacy'&&<label className="field"><span>原开始偏移</span><input type="number" min={0} value={item.startOffsetDays} onChange={e=>patch(selected,{startOffsetDays:Math.max(0,Number(e.target.value))})}/></label>}</div><details className="graph-more-relations"><summary>更多关系操作</summary><PredecessorPicker value={item.predecessorKeys} options={value.items.filter(i=>i.clientKey!==selected).map(i=>({id:i.clientKey,title:i.title}))} onChange={predecessorKeys=>patch(selected,{predecessorKeys})}/></details></fieldset>{controls}</>}</>:undefined}
+    analysis={panel==='schedule'} auxiliary={panel?<><div className="graph-panel-heading"><h3>{({nodes:'元素列表',settings:'流程属性',schedule:'排期预览',conflict:'草稿与冲突'} as Record<string,string>)[panel]}</h3><button className="ghost-button" onClick={()=>setPanel('')}>关闭</button></div>
+      {panel==='settings'&&<><label className="field"><span>流程名称</span><input aria-label="流程名称" value={value.name} onChange={e=>update({...value,name:e.target.value},'name')} onBlur={draft.endGroup}/></label><label className="field"><span>设计说明</span><textarea value={value.description} onChange={e=>update({...value,description:e.target.value},'description')} onBlur={draft.endGroup}/></label>{value.dependencyMode==='legacy'&&<><p>历史偏移值保留，核对差异后才转换。</p><button className="ghost-button" onClick={()=>setSuggestion(suggestTemplatePredecessors(value.items))}>转换为依赖流程</button></>}</>}
+      {panel==='nodes'&&cards.filter(c=>matchesSearch([{text:c.title,weight:1}],search)).map(c=><div className="graph-list-row" key={c.id}><button onClick={()=>select(c.id)}>{c.title}<small>{c.subtitle}</small></button><button className="ghost-button" onClick={()=>setLocate({id:c.id,sequence:Date.now()})}>定位</button></div>)}
+      {panel==='schedule'&&<div className="template-relative-plan">{layout.items.map(i=><div key={i.clientKey}><strong>{i.title}</strong><small>{cards.find(c=>c.id===i.clientKey)?.forecast}</small><span><i className={i.kind==='milestone'?'milestone-diamond':''} style={{marginLeft:(i.startOffsetDays/Math.max(1,...layout.items.map(i=>i.startOffsetDays+i.durationDays))*100)+'%',width:i.kind==='milestone'?10:(i.durationDays/Math.max(1,...layout.items.map(i=>i.startOffsetDays+i.durationDays))*100)+'%'}}/></span></div>)}</div>}
+      {(error||layout.error||draft.storageError)&&<p className="form-error" role="alert">{error||layout.error||draft.storageError}</p>}{draft.readOnly&&<button className="ghost-button" onClick={draft.takeOver}>接管此草稿</button>}{changed&&<><p>服务端流程已修改，当前草稿保留。</p>{merged?.conflicts.map(c=><div className="editor-conflict" key={c.key}><strong>{c.title}</strong><p>服务端：{JSON.stringify(c.server)}</p><p>草稿：{JSON.stringify(c.draft)}</p><div className="button-row"><button className="ghost-button" onClick={()=>setConflictChoices(v=>({...v,[c.key]:'server'}))}>使用服务端</button>{c.canKeep&&<button className="ghost-button" onClick={()=>setConflictChoices(v=>({...v,[c.key]:'draft'}))}>保留草稿</button>}</div></div>)}<button className="ghost-button" disabled={!!merged?.pending} onClick={()=>{draft.rebase(template!.updatedAt,merged!.merged);setConflictChoices({});setError('');}}>已核对，使用最新版本预览</button></>}{pending&&<button className="ghost-button" onClick={()=>void save()}>查询原批次并重试</button>}
+    </>:undefined} footer={<><button className="ghost-button" onClick={()=>open('schedule')}>甘特预览</button><button className="ghost-button" onClick={()=>open('conflict')}>草稿状态</button></>}/>
+    {emptyCreate&&<Modal title="新增后续工作" onClose={()=>setEmptyCreate(null)}><form onSubmit={e=>{e.preventDefault();if(!emptyCreate.title.trim())return;create('work',emptyCreate.position,[emptyCreate.source],emptyCreate.title.trim());setEmptyCreate(null);}}><label className="field"><span>工作项名称</span><input autoFocus required aria-label="新工作项标题" value={emptyCreate.title} onChange={e=>setEmptyCreate({...emptyCreate,title:e.target.value})}/></label><button className="primary-button" type="submit">加入流程</button></form></Modal>}
+    {discard&&<Modal title="放弃修改" onClose={()=>setDiscard(false)}><p>只清除本机未保存修改。</p><button className="primary-button" disabled={!!pending} onClick={()=>{draft.reset(initialDraft(template),template?.updatedAt||'new');draft.begin();setDiscard(false);}}>放弃修改</button></Modal>}
+    {!!deleting.length&&<Modal title="删除元素" onClose={()=>setDeleting([])}><p>删除 {deleting.map(names).join('、')}，同时移除 {links.filter(e=>deleting.includes(e.source)||deleting.includes(e.target)).length} 条关系，不自动串接前后元素。</p><button className="primary-button" disabled={value.items.length===deleting.length} onClick={remove}>确认删除</button></Modal>}
+    {suggestion&&<Modal title="核对依赖与排期差异" onClose={()=>setSuggestion(null)}><table className="template-conversion-diff"><thead><tr><th>元素</th><th>原偏移</th><th>建议偏移</th></tr></thead><tbody>{(()=>{try{return resolveTemplateOffsets(suggestion.map(i=>({...i}))).map(i=><tr key={i.clientKey}><td>{i.title}</td><td>{value.items.find(n=>n.clientKey===i.clientKey)?.startOffsetDays}</td><td>{i.startOffsetDays}</td></tr>);}catch(e){return <tr><td colSpan={3}>{(e as Error).message}</td></tr>;}})()}</tbody></table><button className="primary-button" onClick={()=>{update({...value,dependencyMode:'dependencies',items:suggestion});setSuggestion(null);}}>确认转换，加入草稿</button></Modal>}
   </div>;
 }
+function WorkflowIcon(){return <Diamond size={16}/>;}

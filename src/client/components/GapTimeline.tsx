@@ -82,6 +82,7 @@ function WorkItemTimelinePopover({ item, updates, asOfDate }: { item: WorkItem; 
 export const GapTimeline = memo(function GapTimeline({
   items,
   targetItemId,
+  milestones=[],
   updates = [],
   canUpdateProgress,
   onUpdateProgress,
@@ -97,6 +98,7 @@ export const GapTimeline = memo(function GapTimeline({
   emptyState,
 }: {
   items: WorkItem[];
+  milestones?:import('../../shared/paths').PathMilestone[];
   targetItemId?: string;
   updates?: ProgressUpdate[];
   canUpdateProgress?: (item: WorkItem) => boolean;
@@ -159,12 +161,12 @@ export const GapTimeline = memo(function GapTimeline({
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const hasTimeline = items.some((item) => item.plannedStart || item.plannedEnd || item.actualStart || item.actualEnd);
+  const hasTimeline = milestones.some(m=>m.targetDate||m.achievedAt||m.forecastEnd)||items.some((item) => item.plannedStart || item.plannedEnd || item.actualStart || item.actualEnd);
   const range = useMemo(() => buildBusinessDayTimeline(
-    items.flatMap((item) => [item.plannedStart, item.plannedEnd, item.actualStart, workItemActualRange(item, asOfDate).end]),
+    [...items.flatMap((item) => [item.plannedStart, item.plannedEnd, item.actualStart, workItemActualRange(item, asOfDate).end]),...milestones.flatMap(m=>[m.targetDate,m.achievedAt,m.forecastEnd])],
     zoom,
     asOfDate,
-  ), [asOfDate, items, zoom]);
+  ), [asOfDate, items, zoom,milestones]);
 
   const labelWidth = viewportWidth
     ? Math.max(190, Math.min(230, Math.round(viewportWidth * 0.22)))
@@ -254,7 +256,7 @@ export const GapTimeline = memo(function GapTimeline({
                     {renderItemMeta ? renderItemMeta(item) : item.ownerId
                       ? <small>{item.assigneeNames?.join("、") || item.ownerName}</small>
                       : <small className="work-item-owner-warning"><CircleAlert size={11} />未设置负责人{item.collaborators?.length ? ` · ${item.collaborators.length}人协作` : ""}</small>}
-                    {item.milestoneLabel && <span className="work-item-milestone-chip" title={`里程碑：${item.milestoneLabel}`}>◆ {item.milestoneLabel}</span>}
+                    {item.milestoneLabel && !milestones.length && <span className="work-item-milestone-chip" title={`里程碑：${item.milestoneLabel}`}>◆ {item.milestoneLabel}</span>}
                   </span>
                 </div>
               </div>
@@ -273,7 +275,7 @@ export const GapTimeline = memo(function GapTimeline({
                   interactionProps={tooltipProps}
                   showUnscheduled={showUnscheduled}
                 />
-                <GanttMilestoneMarker label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={cellWidth} zoom={zoom} asOfDate={asOfDate} interactionProps={tooltipProps} />
+                <GanttMilestoneMarker label={milestones.length?null:item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={cellWidth} zoom={zoom} asOfDate={asOfDate} interactionProps={tooltipProps} />
                 {todayVisible && <i className="gantt-today-line" style={{ left: (todayOffset + 1) * cellWidth }} title={`截至 ${asOfDate}`} />}
               </div>
               {gapWidth > 0 && <div className="requirement-gap-summary sticky-right" style={{ right: actionWidth }} role="cell">
@@ -282,6 +284,7 @@ export const GapTimeline = memo(function GapTimeline({
               {hasActions && <div className="requirement-gantt-actions sticky-right" role="cell">{renderActions?.(item)}</div>}
             </div>;
           })}
+          {milestones.map(m=><div className="requirement-gantt-row" role="row" key={m.id}><div className="requirement-gantt-item sticky-left" role="rowheader"><strong>◇ {m.title}</strong><small>{m.achievedAt?'已达成':m.confirmationMode==='manual'?'等待人工确认':'等待前置完成'}</small></div><div className="requirement-gantt-track unified-gantt-track" style={trackStyle} role="cell"><GanttMilestoneMarker label={m.title} plannedEnd={m.targetDate||m.achievedAt||m.forecastEnd} actualEnd={m.achievedAt} status={m.cancelled?'cancelled':m.achievedAt?'completed':'not_started'} dates={dates} cellWidth={cellWidth} zoom={zoom} asOfDate={asOfDate}/>{!m.targetDate&&!m.achievedAt&&!m.forecastEnd&&<small>交付日期待确认</small>}</div>{gapWidth>0&&<div className="requirement-gap-summary sticky-right" style={{right:actionWidth}}>里程碑</div>}{hasActions&&<div className="requirement-gantt-actions sticky-right"/>}</div>)}
           {!visibleItems.length && <div className="requirement-gantt-filter-empty"><span>{emptyState?.message || "当前状态下没有工作项"}</span>{(emptyState?.onAction || statusFilter !== "all") && <button type="button" onClick={emptyState?.onAction || (() => setStatusFilter("all"))}>{emptyState?.actionLabel || "查看全部"}</button>}</div>}
         </div>
       </div>

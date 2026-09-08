@@ -141,7 +141,7 @@ export function WorkItemActions({
     {(needsRefresh||dependencyStale) && <button type="button" className="ghost-button" disabled={pending} onClick={() => void refresh()}>重新读取工作项</button>}
   </>;
   const textConfig: Record<TextPanel, { title: string; label: string; placeholder: string; confirm: string }> = {
-    start: { title: "前置未交付，记录执行例外",label:"提前开始原因",placeholder:"说明为何可以提前开始；原依赖仍会保留",confirm:"记录说明并开始" },
+    start: { title: "核对前置尾项",label:"补充说明（可选）",placeholder:"确认剩余内容不影响当前工作；尾项仍保留跟踪",confirm:"确认可以开始" },
     block: { title: "标记工作项阻塞", label: "阻塞原因", placeholder: "说明当前阻塞点", confirm: "确认阻塞" },
     complete: { title: "完成工作项", label: "完成说明", placeholder: "说明交付结果或验证结论", confirm: "确认完成" },
     reopen: { title: "重开工作项", label: "返工原因", placeholder: "说明为什么需要重开或返工", confirm: "确认重开" },
@@ -164,9 +164,9 @@ export function WorkItemActions({
     && matchesEvent(latest, eventType, content);
 
   const submitText = () => {
-    if (!textPanel || !reason.trim()) return;
+    if (!textPanel || (textPanel!=="start"&&!reason.trim())) return;
     const expectedVersion = baselineVersion;
-    const expectedContent = reason.trim();
+    const expectedContent = reason.trim()||(textPanel==="start"?"人工确认可以先开展，前置尾项继续跟踪":"");
     if (textPanel === "cancel") {
       if (onCancel) void run(() => onCancel(expectedContent, expectedVersion), {
         matches: (latest) => matchesCommandEvent(latest, expectedVersion, "cancel", expectedContent, (value) => value.status === "cancelled"),
@@ -215,7 +215,7 @@ export function WorkItemActions({
         <label><span>{textConfig[textPanel].label}</span><textarea autoFocus readOnly={pending} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={textConfig[textPanel].placeholder} /></label>
         {error && <p className="form-error">{error}</p>}
         {readNotice}
-        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || blocked || !reason.trim()}>{pending ? "提交中" : textConfig[textPanel].confirm}</button></footer>
+        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || blocked || (textPanel!=="start"&&!reason.trim())}>{pending ? "提交中" : textConfig[textPanel].confirm}</button></footer>
       </form>}
       {panel === "dates" && <form className="inline-action-form" noValidate onSubmit={(event) => {
         event.preventDefault();

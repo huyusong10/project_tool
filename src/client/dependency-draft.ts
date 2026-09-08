@@ -1,22 +1,39 @@
-import { acceptanceId, startId, topologicalOrder, DependencyCycleError, type PathAnalysis } from '../shared/paths';
+import { acceptanceId, startId, topologicalOrder, DependencyCycleError,dependencySource,dependencyTarget, type PathAnalysis,type PathNode,type PathRequirement } from '../shared/paths';
 import type { DependencyChanges } from '../shared/path-contracts';
 export function draftNetwork(data: PathAnalysis, changes: DependencyChanges): PathAnalysis {
-  if (!changes.add.length && !changes.remove.length && !changes.estimates.length) return data;
+  if (!changes.add.length && !changes.remove.length && !changes.estimates.length&&!changes.entities?.length&&!changes.layouts?.length) return data;
   const dependencies = [...data.dependencies.filter(d => !changes.remove.includes(d.id)), ...changes.add.map(({ clientId, ...d }) => ({ ...d, id: clientId, projectId: data.projectId, origin: 'manual' }))];
-  const nodes = data.nodes.map(n => {
+  let nodes = data.nodes.map(n => {
     const patch = changes.estimates.find(e => e.workItemId === n.id);
     return patch ? { ...n, estimate: { ...n.estimate, ...patch } } : n;
   });
-  const edges = data.edges.filter(e => !e.dependencyId && !e.source.startsWith('start:'));
-  const internalTargets=new Set(dependencies.filter(d=>d.sourceRequirementId===d.targetRequirementId&&d.sourceWorkItemId&&d.targetWorkItemId).map(d=>d.targetWorkItemId));
+  let requirements=data.requirements.map(r=>({...r})),milestones=[...(data.milestones||[])];const risks={...data.risks};
+  const addNode=(id:string,requirementId:string|null,kind:PathNode['kind'],title:string):PathNode=>({id,requirementId,kind,title,workItemId:kind==='work'?id:null,status:'not_started',ownerName:null,milestoneLabel:null,plannedStart:null,plannedEnd:null,forecastStart:null,forecastEnd:null,remainingDays:kind==='work'?1:0,earliestStart:0,earliestFinish:0,floatDays:null,critical:false,planCritical:false,nearCritical:false,inScope:false,unknownReasons:['未保存预览'],ownReasons:[],source:'草稿',riskLevel:'low',complete:false,estimate:{durationDays:kind==='work'?1:null,earliestStart:null,unblockEstimate:null,forecastEnd:null}});
+  for(const c of changes.entities||[]){
+    if(c.entity==='requirement'){
+      if(c.op==='create'){
+        requirements.push({id:c.id,projectId:data.projectId,title:c.data.title||'未命名需求',status:'planning',priority:c.data.priority||'P2',ownerName:null,plannedStart:null,plannedEnd:null,acceptedAt:null,dependenciesReviewedAt:null,scheduleAnchor:null,forecastAcceptance:null,deletedAt:null,...c.data} as PathRequirement);
+        nodes.push(addNode(startId(c.id),c.id,'start','开始条件'),addNode(acceptanceId(c.id),c.id,'acceptance','需求验收'));
+        risks[c.id]={riskLevel:'low',riskEvaluated:false,riskReason:'未保存需求',highRisk:false,critical:false,criticalCount:0,minFloat:null,blockedCritical:false,complete:false};
+      }else if(c.op==='update')requirements=requirements.map(r=>r.id===c.id?{...r,...c.data}:r);
+      else {requirements=requirements.filter(r=>r.id!==c.id);nodes=nodes.filter(n=>n.requirementId!==c.id);}
+    }else {
+      if(c.op==='create'){const n=addNode(c.id,c.requirementId||null,c.entity==='milestone'?'milestone':'work',c.data.title||'未命名');Object.assign(n,c.data);n.estimate.durationDays=c.entity==='work'?c.data.durationDays||1:null;nodes.push(n);if(c.entity==='milestone')milestones.push({id:c.id,projectId:data.projectId,requirementId:c.requirementId||null,title:n.title,targetDate:c.data.targetDate||null,confirmationMode:c.data.confirmationMode||'auto',achievedAt:null,version:1});}
+      else if(c.op==='update'){nodes=nodes.map(n=>n.id===c.id?{...n,...c.data,estimate:{...n.estimate,...c.data.durationDays!==undefined?{durationDays:c.data.durationDays}:{}}}:n);milestones=milestones.map(m=>m.id===c.id?{...m,...c.data}:m);}
+      else {nodes=nodes.filter(n=>n.id!==c.id);milestones=milestones.filter(m=>m.id!==c.id);}
+    }
+  }
+  const nodeIds=new Set(nodes.map(n=>n.id)),edges = data.edges.filter(e => !e.dependencyId && !e.source.startsWith('start:')&&nodeIds.has(e.source)&&nodeIds.has(e.target));
+  for(const n of nodes)if(n.requirementId&&['work','milestone'].includes(n.kind)&&!edges.some(e=>e.source===n.id&&e.target===acceptanceId(n.requirementId!)))edges.push({id:n.id+'>'+acceptanceId(n.requirementId),source:n.id,target:acceptanceId(n.requirementId),dependencyId:null,critical:false});
+  const internalTargets=new Set(dependencies.filter(d=>d.sourceRequirementId===d.targetRequirementId&&(d.sourceWorkItemId||d.sourceMilestoneId)&&d.targetWorkItemId).map(d=>d.targetWorkItemId));
   for (const n of nodes.filter(n => n.kind === 'start')) {
     const works = nodes.filter(w => w.kind === 'work' && w.requirementId === n.requirementId);
     if (!works.some(w => w.status !== 'cancelled')) edges.push({ id: n.id + '>' + acceptanceId(n.requirementId!), source: n.id, target: acceptanceId(n.requirementId!), dependencyId: null, critical: false });
     for (const w of works) if (!internalTargets.has(w.id))
       edges.push({ id: n.id + '>' + w.id, source: n.id, target: w.id, dependencyId: null, critical: false });
   }
-  dependencies.forEach(d => edges.push({ id: d.id, source: d.sourceWorkItemId || acceptanceId(d.sourceRequirementId), target: d.targetWorkItemId || startId(d.targetRequirementId), dependencyId: d.id, critical: false }));
-  return { ...data, nodes, dependencies, edges };
+  dependencies.forEach(d => edges.push({ id: d.id, source:dependencySource(d), target:dependencyTarget(d), dependencyId: d.id, critical: false }));
+  return { ...data, nodes, dependencies, edges,requirements,risks,milestones,layouts:[...(data.layouts||[]).filter(l=>!changes.layouts?.some(c=>c.scope===l.scope&&c.direction===l.direction)),...(changes.layouts||[]).map(l=>({...l,version:l.expectedVersion}))] };
 }
 export function dependencyIssue(data: PathAnalysis, changes: DependencyChanges) {
   const network = draftNetwork(data, changes);

@@ -20,7 +20,7 @@ export function TemplatesPage() {
   const client = useQueryClient();
   const [params,setParams]=useSearchParams();
   const [editingSnapshot,setEditingSnapshot]=useState<WorkItemTemplate|null>(null);
-  const setEditing=(value:WorkItemTemplate|null|undefined)=>{setEditingSnapshot(value||null);const next=new URLSearchParams(params);next.delete('templateNode');if(value===undefined)next.delete('edit');else next.set('edit',value?.id||'new');setParams(next);};
+  const setEditing=(value:WorkItemTemplate|null|undefined)=>{setEditingSnapshot(value||null);const next=new URLSearchParams(params);next.delete('templateNode');if(value)next.delete('draft');if(value===undefined)next.delete('edit');else next.set('edit',value?.id||'new');setParams(next);};
   const [archiveTarget, setArchiveTarget] = useState<WorkItemTemplate | null>(null);
   const [archiveNeedsReopen, setArchiveNeedsReopen] = useState(false);
   const archiveSubmitting = useRef(false);
@@ -74,9 +74,9 @@ export function TemplatesPage() {
     archiveSubmitting.current = true;
     archive.mutate(template);
   };
-  if (editing !== undefined && canManage) return <><PageHeader title="流程设计"/><TemplateForm key={selectedProjectId+':'+(editing?.id||'new')}
+  if (editing !== undefined && canManage) return <><TemplateForm key={selectedProjectId+':'+(editing?.id||'new')}
     template={editing ? data.find(t=>t.id===editing.id)||editing : undefined} templateUnavailable={Boolean(editing&&loadedTemplates&&!data.some(t=>t.id===editing.id))}
-    projectId={selectedProjectId} onClose={()=>setEditing(undefined)}/></>;
+    projectId={selectedProjectId} onClose={()=>setEditing(undefined)} onSaved={(value,node)=>{setEditingSnapshot(value);const p=new URLSearchParams(params);p.set('edit',value.id);p.delete('draft');if(node)p.set('templateNode',node);setParams(p,{replace:true});}}/></>;
   return (
     <>
       <PageHeader
@@ -97,7 +97,7 @@ export function TemplatesPage() {
             <header>
               <div>
                 <strong className="template-name-line">{template.name}{project?.defaultTemplateId === template.id && <span className="template-default-badge">项目默认</span>}</strong>
-                <small>{template.items.length}个工作项 · {template.items.filter((item) => item.milestoneLabel).length}个里程碑</small>
+                <small>{template.items.filter(i=>i.kind!=='milestone').length}个工作项 · {template.items.filter((item) => item.kind==='milestone').length}个里程碑</small>
               </div>
               {canManage && (
                 <div className="row-actions">

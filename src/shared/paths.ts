@@ -1,10 +1,16 @@
 import { addBusinessDays, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics, type RiskLevel } from './domain';
+import {arrangeLate,type Arrangement} from './late-schedule';
 
 export type Dependency = {
   id: string; projectId: string; sourceRequirementId: string; sourceWorkItemId: string | null;
   targetRequirementId: string; targetWorkItemId: string | null; origin: string;
+  sourceMilestoneId?:string|null; targetMilestoneId?:string|null;
 };
+export type PathMilestone={forecastEnd?:string|null;id:string;projectId:string;requirementId:string|null;title:string;targetDate:string|null;confirmationMode:'auto'|'manual';achievedAt:string|null;version:number;cancelled?:boolean};
+export type DiagramLayout={scope:string;direction:'right'|'down';version:number;positions:Record<string,{x:number;y:number}>};
 export type PathWork = {
+  version?:number;
+  arrangement?:Arrangement; arrangementAnchor?:string|null; acknowledgedDependencies?:string[];
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[];
   id: string; requirementId: string; title: string; status: string; progress: number;
   plannedStart: string | null; plannedEnd: string | null; actualStart: string | null; actualEnd: string | null;
@@ -13,6 +19,7 @@ export type PathWork = {
   blockedAt: string | null; blockedReason: string | null; milestoneLabel: string | null; ownerName: string | null;
 };
 export type PathRequirement = {
+  acknowledgedDependencies?:string[]; version?:number; background?:string|null;acceptanceCriteria?:string|null;referenceUrl?:string|null;templateId?:string|null;
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[]; delayed?:boolean; scheduleComplete?:boolean;
   id: string; projectId: string; title: string; status: string; priority: string; ownerName: string | null;
   plannedStart: string | null; plannedEnd: string | null; acceptedAt: string | null;
@@ -21,10 +28,13 @@ export type PathRequirement = {
 export type PathInput = {
   projectId: string; projectName: string; revision: number; highRiskDelayDays?: number; projectEnd: string | null; asOfDate: string;
   requirements: PathRequirement[]; workItems: PathWork[]; dependencies: Dependency[];
+  milestones?:PathMilestone[]; layouts?:DiagramLayout[];
 };
 export type PathNode = {
+  version?:number;
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[]; delayed?:boolean; scheduleComplete?:boolean;
-  id: string; requirementId: string | null; workItemId: string | null; kind: 'work' | 'start' | 'acceptance' | 'project';
+  id: string; requirementId: string | null; workItemId: string | null; kind: 'work' | 'start' | 'acceptance' | 'project' | 'milestone';
+  arrangement?:Arrangement; arrangementAnchor?:string|null; scheduledStart?:string|null; scheduledEnd?:string|null; scheduleBuffer?:number|null; startAcknowledged?:boolean;
   title: string; status: string; ownerName: string | null; milestoneLabel: string | null;
   plannedStart: string | null; plannedEnd: string | null; forecastStart: string | null; forecastEnd: string | null;
   remainingDays: number; earliestStart: number; earliestFinish: number; floatDays: number | null;
@@ -43,7 +53,10 @@ export type PathAnalysis = {
   complete: boolean; coverage: { reviewed: number; total: number; unplanned: number };
   nodes: PathNode[]; edges: PathEdge[]; requirements: PathRequirement[]; dependencies: Dependency[];
   risks: Record<string, PathRisk>; blockers: PathBlocker[];
+  milestones?:PathMilestone[]; layouts?:DiagramLayout[];
 };
+export const dependencySource=(d:Dependency)=>d.sourceMilestoneId||d.sourceWorkItemId||acceptanceId(d.sourceRequirementId);
+export const dependencyTarget=(d:Dependency)=>d.targetMilestoneId||d.targetWorkItemId||startId(d.targetRequirementId);
 
 export const startId = (id: string) => `start:${id}`;
 export const acceptanceId = (id: string) => `acceptance:${id}`;
@@ -145,9 +158,10 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     for (const w of works.get(r.id)!) {
       if (w.status === 'cancelled' && !referenced.has(w.id)) continue;
       const n = add(w.id, r.id, 'work', w.title);
-      Object.assign(n, { status: w.status, ownerName: w.ownerName, milestoneLabel: w.milestoneLabel, ownerId:w.ownerId,assigneeIds:w.assigneeIds,assigneeNames:w.assigneeNames, plannedStart: w.plannedStart, plannedEnd: w.plannedEnd,
+      Object.assign(n, { version:w.version,status: w.status, ownerName: w.ownerName, milestoneLabel: w.milestoneLabel, ownerId:w.ownerId,assigneeIds:w.assigneeIds,assigneeNames:w.assigneeNames, plannedStart: w.plannedStart, plannedEnd: w.plannedEnd,
         delayed:w.status!=='cancelled'&&calculateWorkItemGap(w,input.asOfDate).finishVariance>0,scheduleComplete:!!w.plannedStart&&!!w.plannedEnd });
       n.estimate={durationDays:w.durationDays,earliestStart:w.earliestStart,unblockEstimate:w.unblockEstimate,forecastEnd:w.forecastEnd};
+      n.arrangement=w.arrangement||'early';n.arrangementAnchor=w.arrangementAnchor;
       const duration = w.durationDays ?? (w.plannedStart && w.plannedEnd ? businessDaysInclusive(w.plannedStart, w.plannedEnd) : null);
       n.planDuration = duration ?? 0; n.planRelease = w.earliestStart ? toStart(w.earliestStart) : start.planRelease;
       n.remainingDays = w.actualStart ? Math.max(1, Math.ceil((duration ?? 0) * (1 - w.progress / 100))) : duration ?? 0;
@@ -176,20 +190,35 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     }
     if (!active.length) link(start.id, end.id);
   }
-  for (const d of input.dependencies) link(d.sourceWorkItemId || acceptanceId(d.sourceRequirementId), d.targetWorkItemId || startId(d.targetRequirementId), d.id);
-  const internalTargets = new Set(input.dependencies.filter(d => d.sourceRequirementId === d.targetRequirementId && d.sourceWorkItemId && d.targetWorkItemId).map(d => d.targetWorkItemId!));
+  for(const m of input.milestones||[]){
+    const n=add(m.id,m.requirementId,'milestone',m.title);n.plannedEnd=m.targetDate;n.source='零工期里程碑';
+    if(m.achievedAt){n.complete=true;n.fixed=toFinish(m.achievedAt);n.status='completed';n.source='实际达成';}
+    else if(m.cancelled){n.status='cancelled';n.ownReasons.push('前置里程碑已取消');}
+    else if(m.confirmationMode==='manual'||!input.dependencies.some(d=>d.targetMilestoneId===m.id)){
+      if(m.targetDate&&m.targetDate>=input.asOfDate)n.release=toFinish(m.targetDate);
+      else n.ownReasons.push('里程碑等待人工确认，日期待确认');
+    }
+    if(m.requirementId&&!m.cancelled)link(m.id,acceptanceId(m.requirementId));
+  }
+  for (const d of input.dependencies) link(dependencySource(d),dependencyTarget(d),d.id);
+  const internalTargets = new Set(input.dependencies.filter(d => d.sourceRequirementId === d.targetRequirementId && (d.sourceWorkItemId||d.sourceMilestoneId) && d.targetWorkItemId).map(d => d.targetWorkItemId!));
   for (const n of nodes) if (n.kind === 'work' && !internalTargets.has(n.id)) link(startId(n.requirementId!), n.id);
   add(projectTarget, null, 'project', `${input.projectName} · 项目交付`);
   const eligible = input.requirements.filter(r => !r.deletedAt && !['completed', 'cancelled', 'planning'].includes(r.status));
   eligible.forEach(r => link(acceptanceId(r.id), projectTarget));
+  (input.milestones||[]).filter(m=>!m.requirementId&&!m.cancelled).forEach(m=>link(m.id,projectTarget));
   const byId = new Map(nodes.map(n => [n.id, n]));
   if (!byId.has(requestedTarget)) throw new Error('分析目标不存在');
   const order = topologicalOrder(nodes.map(n => n.id), edges);
   const incoming = new Map(nodes.map(n => [n.id, [] as PathEdge[]])), outgoing = new Map(nodes.map(n => [n.id, [] as PathEdge[]]));
   edges.forEach(e => { incoming.get(e.target)!.push(e); outgoing.get(e.source)!.push(e); });
+  const workById=new Map(input.workItems.map(w=>[w.id,w]));
+  const acknowledged=(n:Internal,e:PathEdge)=>!!e.dependencyId&&(n.kind==='start'?reqById.get(n.requirementId!)?.acknowledgedDependencies:workById.get(n.id)?.acknowledgedDependencies)?.includes(e.dependencyId);
+  const forecastParents=(n:Internal)=>incoming.get(n.id)!.filter(e=>!acknowledged(n,e)).map(e=>byId.get(e.source)!);
   for (const id of order) {
-    const n = byId.get(id)!, parents = incoming.get(id)!.map(e => byId.get(e.source)!);
-    n.planStart = Math.max(n.planRelease, ...parents.map(p => p.planFinish)); n.planFinish = n.planStart + n.planDuration;
+    const n = byId.get(id)!, parents = forecastParents(n);
+    n.startAcknowledged=incoming.get(id)!.some(e=>acknowledged(n,e));
+    n.planStart = Math.max(n.planRelease, ...incoming.get(id)!.map(e=>byId.get(e.source)!.planFinish)); n.planFinish = n.planStart + n.planDuration;
     if (n.fixed !== null) { n.earliestStart = n.earliestFinish = n.fixed; n.unknownReasons = []; }
     else {
       n.earliestStart = Math.max(n.release, ...parents.map(p => n.actualStart!==null&&p.complete?p.earliestFinish-1:p.earliestFinish));
@@ -198,19 +227,19 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
       n.unknownReasons = [...new Set([...n.ownReasons, ...parents.flatMap(p => p.unknownReasons)])];
     }
     n.forecastStart = n.unknownReasons.length ? null : dateAt(n.earliestStart);
-    n.forecastEnd = n.unknownReasons.length ? null : n.kind==='start' ? dateAt(n.earliestStart) : endDate(n.earliestFinish);
+    n.forecastEnd = n.unknownReasons.length ? null : n.kind==='start' ? dateAt(n.earliestStart) : endDate(n.earliestFinish);if(n.kind==='milestone'||n.kind==='acceptance')n.forecastStart=n.forecastEnd;
   }
-  const scopeOf = (target: string) => {
+  const scopeOf = (target: string, plan=false) => {
     const set = new Set<string>([target]), queue = [target];
     for (let i = 0; i < queue.length; i++) {
       // Fulfilled events are boundaries; current rework upstream cannot undo recorded delivery.
       if (byId.get(queue[i])!.complete) continue;
-      for (const e of incoming.get(queue[i])!) if (!set.has(e.source)) { set.add(e.source); queue.push(e.source); }
+      for (const e of incoming.get(queue[i])!) if ((plan||!acknowledged(byId.get(e.target)!,e))&&!set.has(e.source)) { set.add(e.source); queue.push(e.source); }
     }
     return set;
   };
   const criticalFor = (target: string, plan = false) => {
-    const scope = scopeOf(target), latest = new Map<string, number>(), floats = new Map<string, number>(), critical = new Set<string>();
+    const scope = scopeOf(target,plan), latest = new Map<string, number>(), floats = new Map<string, number>(), critical = new Set<string>();
     const t = byId.get(target)!; latest.set(target, plan ? t.planFinish : t.earliestFinish);
     const complete = plan ? [...scope].every(id => !byId.get(id)!.ownReasons.some(x => ['预计工期缺失', '依赖尚未核对', '缺少有效工作项'].includes(x))) : !t.unknownReasons.length;
     if (complete) for (let i = order.length - 1; i >= 0; i--) {
@@ -219,12 +248,14 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
       const ls = lf - (plan ? n.planDuration : n.remainingDays);
       const f = Math.max(0, ls - (plan ? n.planStart : n.earliestStart)); floats.set(id, f);
       if (f === 0 && !n.complete) critical.add(id);
-      if (!n.complete) for (const e of incoming.get(id)!) latest.set(e.source, Math.min(latest.get(e.source) ?? Infinity, ls));
+      if (!n.complete) for (const e of incoming.get(id)!.filter(e=>plan||!acknowledged(n,e))) latest.set(e.source, Math.min(latest.get(e.source) ?? Infinity, ls));
     }
     return { scope, floats, critical, complete };
   };
   const current = criticalFor(requestedTarget), plan = criticalFor(requestedTarget, true);
   const global = criticalFor(projectTarget), globalPlan = criticalFor(projectTarget, true);
+  const arranged=arrangeLate(order,nodes.map(n=>({id:n.id,start:n.earliestStart,finish:n.earliestFinish,duration:n.remainingDays,arrangement:n.arrangement,anchor:n.arrangementAnchor,movable:n.status==='not_started'&&n.kind==='work',reliable:!n.unknownReasons.length})),edges.filter(e=>!acknowledged(byId.get(e.target)!,e)));
+  for(const n of nodes){const s=arranged.get(n.id)!,unreliable=n.unknownReasons.length||n.arrangement==='late'&&s.buffer===null;n.scheduledStart=unreliable?null:dateAt(s.start);n.scheduledEnd=unreliable?null:n.kind==='start'?dateAt(s.start):endDate(s.finish);if(n.kind==='milestone'||n.kind==='acceptance')n.scheduledStart=n.scheduledEnd;n.scheduleBuffer=n.complete?null:s.buffer;if(n.arrangement==='late'&&n.status==='not_started'){n.forecastStart=n.scheduledStart;n.forecastEnd=n.scheduledEnd;}}
   const lateDrivers = new Set<string>();
   for (const r of input.requirements) {
     const end = byId.get(acceptanceId(r.id))!;
@@ -232,7 +263,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
       const queue = [end.id], visited = new Set(queue);
       for (let i = 0; i < queue.length; i++) {
         const n = byId.get(queue[i])!; if (n.complete) continue; lateDrivers.add(n.id);
-        for (const e of incoming.get(n.id)!) if (byId.get(e.source)!.earliestFinish === n.earliestStart && !visited.has(e.source)) { visited.add(e.source); queue.push(e.source); }
+        for (const e of incoming.get(n.id)!) if (!acknowledged(n,e) && byId.get(e.source)!.earliestFinish === n.earliestStart && !visited.has(e.source)) { visited.add(e.source); queue.push(e.source); }
       }
     }
   }
@@ -240,7 +271,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
   // Attribute an overdue wait to its actionable source, rather than duplicating every waiting successor.
   const roots=new Map<string,Set<string>>(), waitingReasons=new Map<string,Set<string>>();
   for(const id of order){
-    const n=byId.get(id)!,parents=incoming.get(id)!.map(e=>byId.get(e.source)!).filter(p=>!p.complete);
+    const n=byId.get(id)!,parents=forecastParents(n).filter(p=>!p.complete);
     if(n.complete){roots.set(id,new Set());continue;}
     const inherited=new Set(parents.flatMap(p=>[...roots.get(p.id)!]));
     roots.set(id,n.kind==='work'&&n.status!=='not_started'?new Set([id]):inherited.size?inherited:n.kind==='start'||n.kind==='project'?new Set():new Set([id]));
@@ -257,12 +288,12 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     const items = works.get(r.id)!, metrics = deriveRequirementMetrics(r, items, input.asOfDate, input.highRiskDelayDays);
     viewMetrics.set(r.id,{delayed:metrics.delayed,scheduleComplete:metrics.scheduleComplete});
     const workNodes = items.map(w => byId.get(w.id)).filter((n): n is Internal => !!n);
-    const reqNodes = [...workNodes, byId.get(startId(r.id))!, byId.get(acceptanceId(r.id))!];
+    const reqNodes = [...nodes.filter(n=>n.kind==='milestone'&&n.requirementId===r.id),...workNodes, byId.get(startId(r.id))!, byId.get(acceptanceId(r.id))!];
     const key = reqNodes.some(n => global.critical.has(n.id));
-    const fs = workNodes.flatMap(n => global.floats.has(n.id) && !n.complete ? [global.floats.get(n.id)!] : []);
+    const fs = workNodes.flatMap(n => global.floats.has(n.id) && !n.complete ? [Math.min(global.floats.get(n.id)!,n.scheduleBuffer??Infinity)] : []);
     const blocked = reqNodes.some(n => (global.critical.has(n.id) || globalPlan.critical.has(n.id)) && (n.status === 'blocked' || waitingReasons.has(n.id) || n.unknownReasons.some(x => /验收|取消|解除|解阻|过期|已开始/.test(x))));
     let risk = metrics.riskLevel; const reasons: string[] = metrics.riskEvaluated && metrics.riskLevel !== 'low' ? [metrics.riskReason] : [];
-    if (key) { risk = risk === 'low' ? 'medium' : 'high'; reasons.push('位于项目交付关键路径，余量为 0'); }
+    if (key||workNodes.some(n=>n.arrangement==='late'&&n.scheduleBuffer===0&&!n.complete)) { risk = risk === 'low' ? 'medium' : 'high'; reasons.push(key?'位于项目交付关键路径，余量为 0':'后置安排已用尽排期缓冲'); }
     else if (fs.some(f => f > 0 && f <= 2)) { if (risk === 'low') risk = 'medium'; reasons.push('临近关键路径，余量不超过 2 个工作日'); }
     if (blocked || reqNodes.some(n => lateDrivers.has(n.id))) { risk = 'high'; reasons.push(blocked ? '关键交付条件发生阻塞' : '位于预计延期目标的驱动路径'); }
     const complete = !byId.get(acceptanceId(r.id))!.unknownReasons.length;
@@ -274,13 +305,13 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
   for (const n of nodes) {
     n.inScope = current.scope.has(n.id); n.critical = current.critical.has(n.id); n.planCritical = plan.critical.has(n.id);
     n.floatDays = n.complete ? null : current.floats.get(n.id) ?? null; n.nearCritical = n.floatDays !== null && n.floatDays > 0 && n.floatDays <= 2;
-    n.riskLevel = n.requirementId ? risks[n.requirementId].riskLevel : 'low';
+    n.riskLevel = n.requirementId ? risks[n.requirementId].riskLevel : n.kind==='milestone'&&!n.complete?(lateDrivers.has(n.id)||n.plannedEnd&&n.forecastEnd&&n.forecastEnd>n.plannedEnd||(global.critical.has(n.id)||globalPlan.critical.has(n.id))&&n.ownReasons.length?'high':global.critical.has(n.id)?'medium':'low'):'low';
   }
-  edges.forEach(e => { e.critical = current.critical.has(e.source) && current.critical.has(e.target) && byId.get(e.source)!.earliestFinish === byId.get(e.target)!.earliestStart; });
+  edges.forEach(e => { e.critical = !acknowledged(byId.get(e.target)!,e) && current.critical.has(e.source) && current.critical.has(e.target) && byId.get(e.source)!.earliestFinish === byId.get(e.target)!.earliestStart; });
   const blockers: PathBlocker[] = [];
   const itemById = new Map(input.workItems.map(w => [w.id, w]));
   for (const n of nodes) {
-    if (!n.inScope || !n.requirementId || n.complete || n.kind === 'start') continue;
+    if (!n.inScope || !n.requirementId&&n.kind!=='milestone' || n.complete || n.kind === 'start') continue;
     const w = itemById.get(n.id);
     const reasons = [...(waitingReasons.get(n.id)||[]), ...n.ownReasons.filter(x => x !== '依赖尚未核对' && x !== '预计工期缺失' && x !== '缺少有效工作项')];
     if (n.kind === 'work' && n.status === 'blocked') reasons.unshift(w?.blockedReason || '执行阻塞');
@@ -289,12 +320,12 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     if (!reasons.length) continue;
     const visited = new Set<string>([n.id]), queue = [n.id], affected = new Set<string>(), targets = new Set<string>();
     for (let i = 0; i < queue.length; i++) for (const e of outgoing.get(queue[i])!) {
-      const child = byId.get(e.target)!; if (visited.has(child.id) || child.complete) continue;
+      const child = byId.get(e.target)!; if (visited.has(child.id) || child.complete || acknowledged(child,e)) continue;
       visited.add(child.id); queue.push(child.id);
       if (child.requirementId && child.requirementId !== n.requirementId && !['completed', 'cancelled'].includes(reqById.get(child.requirementId)!.status)) affected.add(child.requirementId);
       if (child.kind === 'acceptance' || child.kind === 'project') targets.add(child.id);
     }
-    blockers.push({ nodeId: n.id, requirementId: n.requirementId, workItemId: n.workItemId, title: n.title, ownerName: n.ownerName,
+    blockers.push({ nodeId: n.id, requirementId: n.requirementId||'', workItemId: n.workItemId, title: n.title, ownerName: n.ownerName,
       reasons: [...new Set(reasons)], affectedRequirementIds: [...affected], targetCount: targets.size,
       critical: n.critical || n.planCritical, waitingDays: w?.blockedAt ? Math.max(0, businessDayDelta(w.blockedAt.slice(0, 10), input.asOfDate)) : 0, riskLevel: n.riskLevel });
   }
@@ -304,9 +335,9 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
   const targetDate = requestedTarget === projectTarget ? input.projectEnd : target.kind === 'acceptance' ? reqById.get(target.requirementId!)!.plannedEnd : target.plannedEnd;
   const unplanned = input.requirements.filter(r => !r.deletedAt && r.status === 'planning').length;
   return { projectId: input.projectId, projectName: input.projectName, revision: input.revision, asOfDate: input.asOfDate, calendarVersion: 'chinese-days-1.5.9',
-    target: requestedTarget, targetLabel: target.title, targetDate, forecastEnd: eligible.length || requestedTarget !== projectTarget ? target.forecastEnd : null,
-    deadlineSlack: current.complete && (eligible.length || requestedTarget !== projectTarget) && targetDate ? toFinish(targetDate) - target.earliestFinish : null, complete: current.complete,
+    target: requestedTarget, targetLabel: target.title, targetDate, forecastEnd: eligible.length || input.milestones?.some(m=>!m.requirementId&&!m.cancelled) || requestedTarget !== projectTarget ? target.forecastEnd : null,
+    deadlineSlack: current.complete && (eligible.length || input.milestones?.some(m=>!m.requirementId&&!m.cancelled) || requestedTarget !== projectTarget) && targetDate ? toFinish(targetDate) - target.earliestFinish : null, complete: current.complete,
     coverage: { reviewed: input.requirements.filter(r => !r.deletedAt && r.dependenciesReviewedAt).length, total: input.requirements.filter(r => !r.deletedAt).length, unplanned },
     nodes: nodes.map(({ release: _r, fixed: _f, planDuration: _pd, planRelease: _pr, planFinish: _pf, planStart: _ps, actualStart: _as, ...n }) => n),
-    edges, requirements: input.requirements.filter(r => !r.deletedAt).map(r=>({...r,...viewMetrics.get(r.id)})), dependencies: input.dependencies, risks, blockers };
+    edges, requirements: input.requirements.filter(r => !r.deletedAt).map(r=>({...r,...viewMetrics.get(r.id)})), dependencies: input.dependencies, risks, blockers,milestones:input.milestones||[],layouts:input.layouts||[] };
 }

@@ -199,6 +199,8 @@ export function getRequirement(id: string, includeDeleted = false) {
     COALESCE(SUM(CASE WHEN due_date IS NOT NULL AND business_day_delta(due_date, ?)>0 THEN 1 ELSE 0 END), 0) AS overdue
     FROM issues WHERE requirement_id=? AND status<>'resolved'`, asOfDate, id) || { active: 0, overdue: 0 };
   const issueSummary = { active: Number(issueCounts.active || 0), overdue: Number(issueCounts.overdue || 0) };
-  const pathRisk = requirement.pathEnabled ? getPathAnalysis(requirement.projectId, undefined, asOfDate).risks[id] : undefined;
-  return { ...result, ...(pathRisk ? { ...pathRisk, pathRisk } : {}), progressUpdates, issueSummary };
+  const pathAnalysis = requirement.pathEnabled ? getPathAnalysis(requirement.projectId, undefined, asOfDate) : undefined,pathRisk=pathAnalysis?.risks[id];
+  const milestones=rows<import('../../shared/paths').PathMilestone>('SELECT id,project_id AS projectId,requirement_id AS requirementId,title,target_date AS targetDate,confirmation_mode AS confirmationMode,achieved_at AS achievedAt,version,cancelled FROM milestones WHERE requirement_id=?',id);
+  for(const m of milestones)m.forecastEnd=pathAnalysis?.nodes.find(n=>n.id===m.id)?.forecastEnd||null;
+  return { ...result,milestones, ...(pathRisk ? { ...pathRisk, pathRisk } : {}), progressUpdates, issueSummary };
 }

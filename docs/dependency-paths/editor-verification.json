@@ -1,0 +1,241 @@
+{
+  "editor-performance": {
+    "measuredAt": "2026-09-08T07:32:07.973Z",
+    "device": {
+      "cpu": "Intel(R) Core(TM) i9-14900K",
+      "logicalCpus": 24,
+      "memoryGiB": 32,
+      "os": "win32 10.0.22631",
+      "node": "v24.15.0"
+    },
+    "analysis": {
+      "nodes": 2000,
+      "edges": 6000,
+      "serial": {
+        "samples": 20,
+        "p50Ms": 61.6,
+        "p95Ms": 80.5,
+        "maxMs": 89.2
+      },
+      "allBlocked": {
+        "samples": 20,
+        "p50Ms": 355.3,
+        "p95Ms": 399.7,
+        "maxMs": 400.2
+      }
+    },
+    "layouts": {
+      "20": {
+        "nodes": 20,
+        "edges": 60,
+        "layout": {
+          "samples": 20,
+          "p50Ms": 44.6,
+          "p95Ms": 50.7,
+          "maxMs": 70.5
+        },
+        "routing": {
+          "samples": 20,
+          "p50Ms": 1.6,
+          "p95Ms": 2.5,
+          "maxMs": 2.5
+        }
+      },
+      "80": {
+        "nodes": 80,
+        "edges": 240,
+        "layout": {
+          "samples": 20,
+          "p50Ms": 112.9,
+          "p95Ms": 114.4,
+          "maxMs": 126.4
+        },
+        "routing": {
+          "samples": 20,
+          "p50Ms": 9.7,
+          "p95Ms": 10.9,
+          "maxMs": 12.8
+        }
+      },
+      "200": {
+        "nodes": 200,
+        "edges": 600,
+        "layout": {
+          "samples": 20,
+          "p50Ms": 251,
+          "p95Ms": 263.1,
+          "maxMs": 265.1
+        },
+        "routing": {
+          "samples": 20,
+          "p50Ms": 42.4,
+          "p95Ms": 49.1,
+          "maxMs": 61.2
+        }
+      }
+    }
+  },
+  "browser-layout": {
+    "samples": 20,
+    "p50Ms": 1035.4000000059605,
+    "p95Ms": 1123.5999999940395,
+    "maxMs": 1145.199999988079,
+    "browser": "msedge",
+    "nodes": 200,
+    "edges": 600
+  },
+  "canvas-motion": [
+    {
+      "nodes": 20,
+      "frames": 23,
+      "p95FrameMs": 10.900000000000091,
+      "maxFrameMs": 11.100000000000364,
+      "waitMs": 250.79999999701977,
+      "layoutMs": 0.7000000029802322,
+      "transitionMs": 208.49999999403963,
+      "feedback": {
+        "samples": 20,
+        "p95Ms": 23.200000002980232,
+        "maxMs": 23.299999997019768
+      }
+    },
+    {
+      "nodes": 80,
+      "frames": 19,
+      "p95FrameMs": 21.59999999999991,
+      "maxFrameMs": 21.59999999999991,
+      "waitMs": 253.29999999701977,
+      "layoutMs": 141.90000000596046,
+      "transitionMs": 447.30000000298014,
+      "feedback": {
+        "samples": 20,
+        "p95Ms": 52.6000000089407,
+        "maxMs": 55.099999994039536
+      }
+    },
+    {
+      "nodes": 200,
+      "frames": 19,
+      "p95FrameMs": 21.400000000000546,
+      "maxFrameMs": 21.400000000000546,
+      "waitMs": 255.5,
+      "layoutMs": 1120.2999999970198,
+      "transitionMs": 443.4999999970196,
+      "feedback": {
+        "samples": 20,
+        "p95Ms": 93.79999999701977,
+        "maxMs": 95.09999999403954
+      }
+    }
+  ],
+  "editor-migration": {
+    "checkedAt": "2026-09-08T08:18:58.474Z",
+    "backup": "D:\\tools\\project-manage-paths\\.preview\\backups\\editor-before-1788855538408.db",
+    "copy": "D:\\tools\\project-manage-paths\\.preview\\qa\\editor-migration-1788855538408.db",
+    "counts": {
+      "requirements": 9,
+      "work_items": 17,
+      "dependency_edges": 22,
+      "work_item_templates": 6,
+      "template_items": 21,
+      "progress_updates": 9,
+      "audit_logs": 51,
+      "milestones": 8,
+      "diagram_layouts": 0
+    },
+    "legacyMilestones": 8,
+    "oldRowsUnchanged": true,
+    "repeatMigrationUnchanged": true,
+    "foreignKeys": "ok",
+    "integrity": "ok",
+    "historicalHash": "d65ce0fc1b24adf783351a9f5bdd8c5d3e288944bb9efe16f829f6ca664faca2"
+  },
+  "editor-live-upgrade": {
+    "checkedAt": "2026-09-08T08:19:13.959Z",
+    "backup": "D:\\tools\\project-manage-paths\\.preview\\backups\\editor-before-1788855538408.db",
+    "originalCounts": {
+      "requirements": 9,
+      "work_items": 17,
+      "dependency_edges": 14,
+      "work_item_templates": 6,
+      "template_items": 17,
+      "progress_updates": 9,
+      "audit_logs": 51
+    },
+    "oldRowsUnchanged": true,
+    "foreignKeys": "ok",
+    "integrity": "ok",
+    "milestones": 8
+  },
+  "editor-isolation-before": [
+    {
+      "Port": 3210,
+      "Pid": 52188,
+      "Started": "2026-09-08T02:48:39.8354830Z"
+    },
+    {
+      "Port": 3220,
+      "Pid": 26104,
+      "Started": "2026-09-08T03:41:07.7613846Z"
+    }
+  ],
+  "editor-isolation-after": [
+    {
+      "Port": 3210,
+      "Pid": 52188,
+      "Started": "2026-09-08T02:48:39.8354830Z"
+    },
+    {
+      "Port": 3220,
+      "Pid": 29064,
+      "Started": "2026-09-08T08:19:11.8425399Z"
+    },
+    {
+      "Port": 5174,
+      "Pid": 47464,
+      "Started": "2026-09-08T08:19:37.5781663Z"
+    }
+  ],
+  "smoke-3220": {
+    "base": "http://127.0.0.1:3220",
+    "projectId": "925c2cc7-fedd-4276-bff5-b0c86b49bef9",
+    "forecast": "2026-09-17",
+    "cookie": "pm_paths_3220",
+    "batchPreview": true,
+    "templateCanvas": true,
+    "apiOrigins": [
+      "http://127.0.0.1:3220"
+    ],
+    "errors": []
+  },
+  "smoke-5174": {
+    "base": "http://127.0.0.1:5174",
+    "projectId": "925c2cc7-fedd-4276-bff5-b0c86b49bef9",
+    "forecast": "2026-09-17",
+    "cookie": "pm_paths_3220",
+    "batchPreview": true,
+    "templateCanvas": true,
+    "apiOrigins": [
+      "http://127.0.0.1:5174"
+    ],
+    "errors": []
+  },
+  "verification": {
+    "businessTests": 490,
+    "businessFiles": 48,
+    "typecheck": "passed",
+    "lint": "passed",
+    "build": "passed",
+    "browserRegression": {
+      "fullRunPassed": 52,
+      "fullRunSkipped": 2,
+      "navigationFixRecheckPassed": 3,
+      "milestoneAndConnectionRecheckPassed": 4,
+      "browserCloseReopenPassed": 1
+    },
+    "notes": [
+      "并发修改后的快速导航问题已修复；对应测试与往返测试补测通过。",
+      "甘特的专用视口用例按原有 project 条件执行；完整回归中的两项跳过不是功能失败。"
+    ]
+  }
+}

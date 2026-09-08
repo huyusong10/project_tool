@@ -6,10 +6,13 @@ import { acceptanceId } from '../shared/paths';
 import { pathQuery } from '../shared/path-contracts';
 import { readPathAnalysis, pathProjectForRequirement, addDependency, removeDependency, reviewDependencies, updatePathEstimate, previewDependencyPlan, applyDependencyPlan } from './services/paths';
 import { applyDependencyChanges, getDependencyChangeReceipt, previewDependencyChanges } from './services/path-changes';
+import {milestoneCommand,readDiagramLayouts} from './services/milestones';
 const params = z.object({ id: z.string().min(1) });
 export function registerPathRoutes(root: FastifyInstance) {
   root.register(async app => {
   app.addHook('preHandler', requireReady);
+  app.get('/api/projects/:id/diagram-layouts',async request=>readDiagramLayouts(params.parse(request.params).id,actorFromRequest(request)));
+  for(const action of ['achieve','reopen'] as const)app.post('/api/milestones/:id/'+action,async request=>milestoneCommand(params.parse(request.params).id,action,z.object({expectedVersion:z.number().int().positive()}).strict().parse(request.body),actorFromRequest(request)));
   app.post('/api/projects/:id/dependency-changes/preview', async request => previewDependencyChanges(params.parse(request.params).id, request.body, actorFromRequest(request)));
   app.post('/api/projects/:id/dependency-changes/apply', async request => applyDependencyChanges(params.parse(request.params).id, request.body, actorFromRequest(request)));
   app.get('/api/projects/:id/dependency-changes/:batchId', async request => {

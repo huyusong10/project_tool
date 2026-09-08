@@ -147,7 +147,7 @@ it('开始复核全部前置；执行例外记录原因且旧依赖版本不能�
  expect((await post(`/api/work-items/${w.id}/start`,{expectedVersion:item.version})).statusCode).toBe(409);
  expect((await post(`/api/work-items/${w.id}/start`,{expectedVersion:item.version,reason:'先验证独立部分',expectedDependencyRevision:0})).statusCode).toBe(409);
  const started=await post(`/api/work-items/${w.id}/start`,{expectedVersion:item.version,reason:'先验证独立部分',expectedDependencyRevision:item.dependencyRevision});expect(started.statusCode,started.body).toBe(200);
- expect((await detail(a.id)).progressUpdates!.some(u=>u.eventType==='start'&&u.content==='先验证独立部分')).toBe(true);expect((await analysis(projectId)).forecastEnd).toBeNull();
+ expect((await detail(a.id)).progressUpdates!.some(u=>u.eventType==='start'&&u.content==='先验证独立部分')).toBe(true);expect((await analysis(projectId)).nodes.find(n=>n.id===w.id)?.unknownReasons).toEqual([]);
 });
 it('未登录、跨项目、普通成员和需求负责人权限由服务端裁决',async()=>{
  const f=await fixture();expect((await request('GET',`/api/projects/${f.projectId}/path-analysis`,undefined,'')).statusCode).toBe(401);
@@ -170,4 +170,64 @@ it('人工预计工作量在阻塞及解阻时暂停计时，历史预测日期�
  const {sqlite}=await import('../src/server/database');const {adjustForecastClock}=await import('../src/server/services/paths');const before=sqlite.prepare('SELECT forecast_duration AS duration FROM work_items WHERE id=?').get(w.id) as {duration:number};
  adjustForecastClock(w.id,'block',addBusinessDays(todayIso(),1));adjustForecastClock(w.id,'unblock',addBusinessDays(todayIso(),4));const clock=sqlite.prepare('SELECT forecast_duration AS duration,forecast_ready_at AS ready FROM work_items WHERE id=?').get(w.id) as {duration:number;ready:string};expect(clock.duration).toBe(before.duration-1);expect(clock.ready).toBe(addBusinessDays(todayIso(),4));
  item=(await detail(a.id)).workItems[0];expect(item.forecastEnd).toBe(addBusinessDays(todayIso(),5));
+});
+
+it('图形批次：创建需求、工作项、独立里程碑与共享位置，预览不写库，重复提交只创建一次',async()=>{
+ const {projectId,owner}=await fixture(),{sqlite}=await import('../src/server/database');
+ const r=randomUUID(),w=randomUUID(),m=randomUUID(),edge=randomUUID();
+ const counts=()=>['requirements','work_items','milestones','diagram_layouts','audit_logs'].map(t=>sqlite.prepare('SELECT COUNT(*) AS n FROM '+t).get());
+ const before=counts(),changes:DependencyChanges={add:[{clientId:edge,sourceRequirementId:r,sourceWorkItemId:w,targetRequirementId:r,targetMilestoneId:m,targetWorkItemId:null}],remove:[],estimates:[],entities:[
+ {entity:'requirement',op:'create',id:r,data:{title:'画布新增',ownerId:owner.id,priority:'P1'}},
+ {entity:'work',op:'create',id:w,requirementId:r,data:{title:'新增工作',durationDays:1,ownerId:owner.id}},
+ {entity:'milestone',op:'create',id:m,requirementId:r,data:{title:'独立交付',confirmationMode:'auto'}}],layouts:[{scope:'requirement:'+r,direction:'right',expectedVersion:0,positions:{[w]:{x:20,y:30},[m]:{x:400,y:30}}}]};
+ const {input,response,preview}=await batchPreview(projectId,changes);expect(response.statusCode,response.body).toBe(200);expect(counts()).toEqual(before);
+ const body={...input,batchId:randomUUID(),previewToken:preview.previewToken};const saved=await post('/api/projects/'+projectId+'/dependency-changes/apply',body);expect(saved.statusCode,saved.body).toBe(200);
+ const receipt=saved.json<DependencyChangeReceipt>(),actual=await detail(receipt.addedIds[r]);expect(actual.workItems).toHaveLength(1);expect(actual.workItems[0].id).toBe(receipt.addedIds[w]);
+ const graph=await analysis(projectId);expect(graph.milestones?.find(n=>n.id===receipt.addedIds[m])?.requirementId).toBe(actual.id);expect(graph.layouts?.find(l=>l.scope==='requirement:'+actual.id)?.positions[receipt.addedIds[w]]).toEqual({x:20,y:30});
+ const after=counts();expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',body)).json()).toEqual(receipt);expect(counts()).toEqual(after);
+ const layoutOnly=await batchPreview(projectId,{add:[],remove:[],estimates:[],layouts:[{scope:'global',direction:'right',expectedVersion:0,positions:{[actual.id]:{x:120,y:50}}}]});expect(layoutOnly.response.statusCode,layoutOnly.response.body).toBe(200);
+ expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',{...layoutOnly.input,batchId:randomUUID(),previewToken:layoutOnly.preview.previewToken})).statusCode).toBe(200);expect((await analysis(projectId)).revision).toBe(graph.revision);
+});
+it('里程碑流程保存与实例化不生成零工期工作项，模板批次有幂等回执',async()=>{
+ const {projectId,owner}=await fixture(),a=randomUUID(),m=randomUUID(),batchId=randomUUID();
+ const body={projectId,batchId,name:'里程碑流程',dependencyMode:'dependencies',items:[{clientKey:a,title:'工作',durationDays:1,startOffsetDays:0,sortOrder:0,predecessorKeys:[],kind:'work'},{clientKey:m,title:'交付',durationDays:0,startOffsetDays:1,sortOrder:1,predecessorKeys:[a],kind:'milestone'}],layout:{direction:'right',expectedVersion:0,positions:{[a]:{x:0,y:0},[m]:{x:320,y:0}}}};
+ const saved=await post('/api/templates',body);expect(saved.statusCode,saved.body).toBe(200);const template=saved.json<WorkItemTemplate>();expect((await post('/api/templates',body)).json()).toEqual(template);
+ const receipt=(await request('GET','/api/projects/'+projectId+'/dependency-changes/'+batchId)).json();expect(receipt.addedIds.$template).toBe(template.id);
+ const req=await post('/api/requirements',{projectId,title:'里程碑需求',templateId:template.id,ownerId:owner.id,plannedStart:addBusinessDays(todayIso(),0)});expect(req.statusCode,req.body).toBe(200);const r=req.json<Requirement>();expect(r.workItems).toHaveLength(1);
+ const graph=await analysis(projectId),mile=graph.milestones?.find(n=>n.requirementId===r.id);expect(mile?.title).toBe('交付');expect(graph.nodes.find(n=>n.id===mile?.id)?.remainingDays).toBe(0);
+});
+
+it('独立里程碑自动达成与人工确认、返工和验收后重新交付均保留历史',async()=>{
+ const {projectId,a,owner}=await fixture(),m=randomUUID(),manual=randomUUID();
+ const changes:DependencyChanges={add:[{clientId:randomUUID(),sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:a.id,targetWorkItemId:null,targetMilestoneId:m}],remove:[],estimates:[],entities:[{entity:'milestone',op:'create',id:m,requirementId:a.id,data:{title:'阶段交付'}},{entity:'milestone',op:'create',id:manual,requirementId:a.id,data:{title:'人工确认',confirmationMode:'manual'}}]};
+ const preview=await batchPreview(projectId,changes);expect(preview.response.statusCode,preview.response.body).toBe(200);expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',{...preview.input,batchId:randomUUID(),previewToken:preview.preview.previewToken})).statusCode).toBe(200);
+ const mile=async(id:string)=>(await analysis(projectId)).milestones!.find(n=>n.id===id)!;
+ expect((await mile(manual)).achievedAt).toBeNull();
+ expect((await post('/api/milestones/'+m+'/achieve',{expectedVersion:1})).statusCode).toBe(400);
+ const work=a.workItems[0];await request('PATCH','/api/work-items/'+work.id,{expectedVersion:work.version,ownerId:owner.id});let w=(await detail(a.id)).workItems[0];expect((await post('/api/work-items/'+w.id+'/start',{expectedVersion:w.version})).statusCode).toBe(200);w=(await detail(a.id)).workItems[0];expect((await post('/api/work-items/'+w.id+'/complete',{expectedVersion:w.version,content:'完成前置'})).statusCode).toBe(200);
+ expect((await mile(m)).achievedAt).toBe(todayIso());expect((await mile(manual)).achievedAt).toBeNull();
+ w=(await detail(a.id)).workItems[0];expect((await post('/api/work-items/'+w.id+'/reopen',{expectedVersion:w.version,reason:'补充验证'})).statusCode).toBe(200);expect((await mile(m)).achievedAt).toBe(todayIso());
+ expect((await post('/api/milestones/'+manual+'/achieve',{expectedVersion:1})).statusCode).toBe(200);
+ const {sqlite}=await import('../src/server/database');sqlite.prepare("UPDATE work_items SET status='completed',progress=100,actual_start=?,actual_end=? WHERE requirement_id=?").run(todayIso(),todayIso(),a.id);sqlite.prepare("UPDATE requirements SET status='completed',progress=100,accepted_at=? WHERE id=?").run(todayIso(),a.id);
+ const opened=await post('/api/milestones/'+m+'/reopen',{expectedVersion:(await mile(m)).version});expect(opened.statusCode,opened.body).toBe(200);expect((await mile(m)).achievedAt).toBeNull();expect((await mile(m)).confirmationMode).toBe('manual');expect((await detail(a.id)).status).toBe('pending_acceptance');expect((await detail(a.id)).progressUpdates!.some(u=>u.content.includes('原验收日期'))).toBe(true);
+ const deletion=await batchPreview(projectId,{add:[],remove:[],estimates:[],entities:[{entity:'milestone',op:'delete',id:m,requirementId:a.id,expectedVersion:(await mile(m)).version,data:{}}]});expect(deletion.response.statusCode).toBe(409);expect(await mile(m)).toBeDefined();
+ expect((await post('/api/requirements/'+a.id+'/accept',{expectedVersion:(await detail(a.id)).version,content:'验收'})).statusCode).not.toBe(200);
+});
+it('实体与布局批次失败整批回滚；工期安排 REST 与 MCP 保持一致',async()=>{
+ const {projectId,a}=await fixture(),{sqlite}=await import('../src/server/database'),id=randomUUID();
+ const p=await batchPreview(projectId,{add:[],remove:[],estimates:[],entities:[{entity:'milestone',op:'create',id,data:{title:'回滚里程碑'}}],layouts:[{scope:'global',direction:'right',expectedVersion:0,positions:{[id]:{x:0,y:0}}}]});expect(p.response.statusCode,p.response.body).toBe(200);
+ sqlite.exec("CREATE TRIGGER editor_reject_audit BEFORE INSERT ON audit_logs WHEN NEW.action='apply_dependency_changes' BEGIN SELECT RAISE(ABORT,'editor audit failure'); END");
+ const batchId=randomUUID();try{expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',{...p.input,batchId,previewToken:p.preview.previewToken})).statusCode).toBe(500);}finally{sqlite.exec('DROP TRIGGER editor_reject_audit');}
+ expect(sqlite.prepare('SELECT id FROM milestones WHERE id=?').get(id)).toBeUndefined();expect(sqlite.prepare("SELECT 1 FROM diagram_layouts WHERE project_id=? AND scope='global'").get(projectId)).toBeUndefined();expect((await request('GET','/api/projects/'+projectId+'/dependency-changes/'+batchId)).json().status).toBe('not_found');
+ const changed=await request('PATCH','/api/work-items/'+a.workItems[1].id+'/path-estimate',{expectedRevision:(await analysis(projectId)).revision,arrangement:'late'});expect(changed.statusCode,changed.body).toBe(200);expect((await analysis(projectId)).nodes.find(n=>n.id===a.workItems[1].id)?.arrangement).toBe('late');expect((await mcp('get_path_analysis',{projectId})).result.nodes.find((n:{id:string})=>n.id===a.workItems[1].id).arrangement).toBe('late');
+});
+
+it('只有里程碑的流程也能实例化，不制造工作项；截止日批次预览与实际日期一致',async()=>{
+ const {projectId,owner}=await fixture();
+ const saved=await post('/api/templates',{projectId,name:'纯里程碑流程',dependencyMode:'dependencies',items:[{clientKey:'m',title:'启动确认',kind:'milestone',durationDays:0,startOffsetDays:0,sortOrder:0,predecessorKeys:[],confirmationMode:'manual'}]});expect(saved.statusCode,saved.body).toBe(200);
+ const template=saved.json<WorkItemTemplate>(),id=randomUUID(),date=addBusinessDays(todayIso(),5);
+ const p=await batchPreview(projectId,{add:[],remove:[],estimates:[],entities:[{entity:'requirement',op:'create',id,data:{title:'里程碑实例',ownerId:owner.id,templateId:template.id,plannedEnd:date}}]});expect(p.response.statusCode,p.response.body).toBe(200);
+ const submitted=await post('/api/projects/'+projectId+'/dependency-changes/apply',{...p.input,batchId:randomUUID(),previewToken:p.preview.previewToken});expect(submitted.statusCode,submitted.body).toBe(200);
+ const actual=await detail(submitted.json<DependencyChangeReceipt>().addedIds[id]);expect(actual.workItems).toHaveLength(0);expect(actual.plannedStart).toBe(date);
+ const graph=await analysis(projectId);expect(graph.milestones?.filter(m=>m.requirementId===actual.id)).toHaveLength(1);expect(graph.requirements.find(r=>r.id===actual.id)?.status).toBe(p.preview.analysis.requirements.find(r=>r.id===id)?.status);
 });

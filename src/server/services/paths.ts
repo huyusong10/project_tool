@@ -6,14 +6,14 @@ import { assertProjectManager, assertProjectReadable, assertRequirementOwnerOrMa
 import { config } from '../config';
 import { fail, notFound } from '../errors';
 import { recordAudit } from './audit';
-import { acceptanceId, analysePaths, type Dependency, type PathInput, type PathRequirement, type PathWork, type PathAnalysis } from '../../shared/paths';
+import { acceptanceId, analysePaths,dependencySource,dependencyTarget, type Dependency, type PathInput, type PathRequirement, type PathWork, type PathAnalysis,type PathMilestone,type DiagramLayout } from '../../shared/paths';
 import { businessDayDelta, businessDaysInclusive, todayIso } from '../../shared/domain';
 import { dependencyInput, pathVersion, pathEstimateInput, reviewDependenciesInput, dependencyPlanInput, applyDependencyPlanInput } from '../../shared/path-contracts';
 
 const all = <T>(sql: string, ...args: unknown[]) => sqlite.prepare(sql).all(...args) as T[];
 const one = <T>(sql: string, ...args: unknown[]) => sqlite.prepare(sql).get(...args) as T | undefined;
-export const dependencySelect = `SELECT id, project_id AS projectId, source_requirement_id AS sourceRequirementId, source_work_item_id AS sourceWorkItemId,
- target_requirement_id AS targetRequirementId, target_work_item_id AS targetWorkItemId, origin FROM dependency_edges`;
+export const dependencySelect = `SELECT id, project_id AS projectId, coalesce(source_requirement_id,'') AS sourceRequirementId, source_work_item_id AS sourceWorkItemId,
+ coalesce(target_requirement_id,'') AS targetRequirementId, target_work_item_id AS targetWorkItemId, source_milestone_id AS sourceMilestoneId,target_milestone_id AS targetMilestoneId, origin FROM dependency_edges`;
 
 /** Raw snapshot loader deliberately does not call listRequirements: filters and risk enrichment must not truncate the graph. */
 export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInput {
@@ -21,11 +21,12 @@ export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInp
   if (!project) notFound('项目不存在');
   const requirements = all<PathRequirement>(`SELECT r.id, r.project_id AS projectId, r.title, r.status, r.priority, r.owner_id AS ownerId, p.name AS ownerName,
     r.planned_start AS plannedStart, r.planned_end AS plannedEnd, r.accepted_at AS acceptedAt, r.deleted_at AS deletedAt,
-    r.dependencies_reviewed_at AS dependenciesReviewedAt, r.schedule_anchor AS scheduleAnchor, r.forecast_acceptance AS forecastAcceptance
+    r.dependencies_reviewed_at AS dependenciesReviewedAt, r.schedule_anchor AS scheduleAnchor, r.forecast_acceptance AS forecastAcceptance,
+    r.version,r.background,r.acceptance_criteria AS acceptanceCriteria,r.reference_url AS referenceUrl,r.template_id AS templateId,r.acknowledged_dependencies AS acknowledgedDependencies
     FROM requirements r LEFT JOIN people p ON p.id=r.owner_id WHERE r.project_id=? ORDER BY r.id`, projectId);
-  const workItems = all<PathWork>(`SELECT w.id, w.requirement_id AS requirementId, w.title, w.status, w.progress, w.owner_id AS ownerId,
+  const workItems = all<PathWork>(`SELECT w.id, w.version, w.requirement_id AS requirementId, w.title, w.status, w.progress, w.owner_id AS ownerId,
     w.planned_start AS plannedStart, w.planned_end AS plannedEnd, w.actual_start AS actualStart, w.actual_end AS actualEnd,
-    w.duration_days AS durationDays, w.earliest_start AS earliestStart, w.unblock_estimate AS unblockEstimate,
+    w.duration_days AS durationDays, w.earliest_start AS earliestStart, w.unblock_estimate AS unblockEstimate,w.arrangement,w.arrangement_anchor AS arrangementAnchor,w.acknowledged_dependencies AS acknowledgedDependencies,
     w.forecast_end AS forecastEnd, w.forecast_duration AS forecastDuration, w.forecast_ready_at AS forecastReadyAt,
     w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.milestone_label AS milestoneLabel, p.name AS ownerName
     FROM work_items w JOIN requirements r ON r.id=w.requirement_id LEFT JOIN people p ON p.id=w.owner_id WHERE r.project_id=? ORDER BY w.id`, projectId);
@@ -33,9 +34,12 @@ export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInp
   const byWork=new Map<string,typeof people>();for(const p of people)byWork.set(p.workItemId,[...(byWork.get(p.workItemId)||[]),p]);
   const byReq=new Map<string,Map<string,string>>();
   for(const w of workItems){const assigned=new Map((byWork.get(w.id)||[]).map(p=>[p.id,p.name]));if(w.ownerId)assigned.set(w.ownerId,w.ownerName||'未命名人员');w.assigneeIds=[...assigned.keys()];w.assigneeNames=[...assigned.values()];const group=byReq.get(w.requirementId)||new Map<string,string>();for(const [id,name] of assigned)group.set(id,name);byReq.set(w.requirementId,group);}
-  for(const r of requirements){r.assigneeIds=[...(byReq.get(r.id)?.keys()||[])];r.assigneeNames=[...(byReq.get(r.id)?.values()||[])];}
+  for(const r of requirements){r.assigneeIds=[...(byReq.get(r.id)?.keys()||[])];r.assigneeNames=[...(byReq.get(r.id)?.values()||[])];r.acknowledgedDependencies=JSON.parse(String(r.acknowledgedDependencies||'[]'));}
+  for(const w of workItems)w.acknowledgedDependencies=JSON.parse(String(w.acknowledgedDependencies||'[]'));
   return { projectId, projectName: project.name, revision: project.revision, projectEnd: project.plannedEnd, highRiskDelayDays: config.highRiskDelayDays, asOfDate, requirements, workItems,
-    dependencies: all<Dependency>(`${dependencySelect} WHERE project_id=? ORDER BY id`, projectId) };
+    dependencies: all<Dependency>(`${dependencySelect} WHERE project_id=? ORDER BY id`, projectId),
+    milestones:all<PathMilestone>('SELECT id,project_id AS projectId,requirement_id AS requirementId,title,target_date AS targetDate,confirmation_mode AS confirmationMode,achieved_at AS achievedAt,version,cancelled FROM milestones WHERE project_id=?',projectId),
+    layouts:all<DiagramLayout>('SELECT scope,direction,version,positions FROM diagram_layouts WHERE project_id=?',projectId).map(l=>({...l,positions:JSON.parse(String(l.positions))})) };
 }
 export function getPathAnalysis(projectId: string, target = 'project', asOfDate = todayIso()): PathAnalysis {
   return sqlite.transaction(() => {
@@ -63,15 +67,17 @@ export function checkedRevision(projectId: string, revision: number) {
 }
 export function assertRelationAccess(d: Pick<Dependency, 'projectId' | 'sourceRequirementId' | 'targetRequirementId'>, actor: Actor) {
   const current = requireAuthorizationActor(actor);
-  if (d.sourceRequirementId === d.targetRequirementId) assertRequirementOwnerOrManager(current, d.targetRequirementId);
+  if (d.targetRequirementId&&d.sourceRequirementId === d.targetRequirementId) assertRequirementOwnerOrManager(current, d.targetRequirementId);
   else assertProjectManager(current, d.projectId);
 }
 export function assertEndpoints(d: Omit<Dependency, 'id' | 'origin'>) {
-  for (const [req, work] of [[d.sourceRequirementId, d.sourceWorkItemId], [d.targetRequirementId, d.targetWorkItemId]]) {
+  for (const [req, work,milestone] of [[d.sourceRequirementId, d.sourceWorkItemId,d.sourceMilestoneId], [d.targetRequirementId, d.targetWorkItemId,d.targetMilestoneId]]) {
+    if(milestone){if(work||!one('SELECT 1 FROM milestones WHERE id=? AND project_id=? AND coalesce(requirement_id,\'\')=?',milestone,d.projectId,req))fail('里程碑端点无效');continue;}
     if (!one('SELECT 1 FROM requirements WHERE id=? AND project_id=? AND deleted_at IS NULL', req, d.projectId)) fail('依赖端点必须属于当前项目的有效需求');
     if (work && !one('SELECT 1 FROM work_items WHERE id=? AND requirement_id=?', work, req)) fail('工作项不属于所选需求');
   }
   if(one("SELECT 1 FROM requirements WHERE id=? AND status IN ('completed','cancelled')",d.targetRequirementId)||d.targetWorkItemId&&one("SELECT 1 FROM work_items WHERE id=? AND status IN ('completed','cancelled')",d.targetWorkItemId))fail('已结束的交付不能增加前置关系','TERMINAL_LOCKED');
+  if(d.targetMilestoneId&&one('SELECT 1 FROM milestones WHERE id=? AND (achieved_at IS NOT NULL OR cancelled=1)',d.targetMilestoneId))fail('已结束里程碑不能增加前置');
   if (d.sourceWorkItemId && d.sourceWorkItemId === d.targetWorkItemId) fail('工作项不能依赖自身');
 }
 export function addDependency(projectId: string, raw: unknown, actor: Actor) {
@@ -79,18 +85,18 @@ export function addDependency(projectId: string, raw: unknown, actor: Actor) {
   return sqlite.transaction(() => {
     const d = { ...value, projectId }; assertRelationAccess(d, actor); checkedRevision(projectId, expectedRevision); assertEndpoints(d);
     const input = loadPathInput(projectId);
-    if (input.dependencies.some(e => e.sourceRequirementId === d.sourceRequirementId && e.sourceWorkItemId === d.sourceWorkItemId && e.targetRequirementId === d.targetRequirementId && e.targetWorkItemId === d.targetWorkItemId)) fail('这条依赖已存在', 'DEPENDENCY_CONFLICT');
+    if (input.dependencies.some(e => dependencySource(e)===dependencySource({...d,id:'',origin:''})&&dependencyTarget(e)===dependencyTarget({...d,id:'',origin:''}))) fail('这条依赖已存在', 'DEPENDENCY_CONFLICT');
     const edge: Dependency = { ...d, id: randomUUID(), origin: 'manual' };
     try { analysePaths({ ...input, dependencies: [...input.dependencies, edge] }); } catch (error) { fail((error as Error).message, 'DEPENDENCY_CONFLICT'); }
     insertDependency(edge);
-    recordAudit(actor, 'add_dependency', 'requirement', d.targetRequirementId, '增加交付前置关系');
+    recordAudit(actor, 'add_dependency', d.targetRequirementId?'requirement':'project', d.targetRequirementId||d.projectId, '增加交付前置关系');
     return getPathAnalysis(projectId);
   }).immediate();
 }
 export function insertDependency(d: Dependency) {
   const now = new Date().toISOString();
-  sqlite.prepare(`INSERT INTO dependency_edges (id,project_id,source_requirement_id,source_work_item_id,target_requirement_id,target_work_item_id,origin,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`)
-    .run(d.id, d.projectId, d.sourceRequirementId, d.sourceWorkItemId, d.targetRequirementId, d.targetWorkItemId, d.origin, now, now);
+  sqlite.prepare(`INSERT INTO dependency_edges (id,project_id,source_requirement_id,source_work_item_id,target_requirement_id,target_work_item_id,source_milestone_id,target_milestone_id,origin,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(d.id, d.projectId, d.sourceRequirementId||null, d.sourceWorkItemId, d.targetRequirementId||null, d.targetWorkItemId,d.sourceMilestoneId||null,d.targetMilestoneId||null, d.origin, now, now);
 }
 export function removeDependency(id: string, raw: unknown, actor: Actor) {
   const { expectedRevision } = pathVersion.parse(raw);
@@ -98,7 +104,7 @@ export function removeDependency(id: string, raw: unknown, actor: Actor) {
     const d = one<Dependency>(`${dependencySelect} WHERE id=?`, id); if (!d) notFound('依赖不存在');
     assertRelationAccess(d, actor); checkedRevision(d.projectId, expectedRevision);
     sqlite.prepare('DELETE FROM dependency_edges WHERE id=?').run(id);
-    recordAudit(actor, 'remove_dependency', 'requirement', d.targetRequirementId, '移除交付前置关系');
+    recordAudit(actor, 'remove_dependency', d.targetRequirementId?'requirement':'project', d.targetRequirementId||d.projectId, '移除交付前置关系');
     return getPathAnalysis(d.projectId);
   }).immediate();
 }
@@ -122,11 +128,11 @@ export function updatePathEstimate(id: string, raw: unknown, actor: Actor) {
   return sqlite.transaction(() => {
     const w = one<{ requirementId: string; status: string }>('SELECT requirement_id AS requirementId,status FROM work_items WHERE id=?', id); if (!w) notFound('工作项不存在');
     const projectId = pathProjectForRequirement(w.requirementId), current = requireAuthorizationActor(actor);
-    if (input.durationDays !== undefined || input.earliestStart !== undefined) assertRequirementOwnerOrManager(current, w.requirementId);
+    if (input.durationDays !== undefined || input.earliestStart !== undefined || input.arrangement !== undefined || input.arrangementAnchor !== undefined) assertRequirementOwnerOrManager(current, w.requirementId);
     else assertWorkItemParticipantOrManager(current, id);
     checkedRevision(projectId, input.expectedRevision);
     const snapshot=loadPathInput(projectId);
-    const patch={durationDays:input.durationDays,earliestStart:input.earliestStart,unblockEstimate:input.unblockEstimate,forecastEnd:input.forecastEnd};
+    const patch={durationDays:input.durationDays,earliestStart:input.earliestStart,unblockEstimate:input.unblockEstimate,forecastEnd:input.forecastEnd,arrangement:input.arrangement,arrangementAnchor:input.arrangementAnchor};
     const patches=[{...patch,workItemId:id}];
     normalizePathEstimates(snapshot,patches,actor);analyseChecked(snapshot);
     persistPathEstimates(snapshot,patches);
@@ -181,13 +187,13 @@ export function startConditions(requirementIds: string[]) {
   if (!requirementIds.length) return new Map<string,{dependencyRevision:number;unmetPredecessors:Array<{id:string;title:string}>}>();
   const marks=requirementIds.map(()=>'?').join(',');
   const values=all<{workId:string;revision:number;sourceId:string|null;title:string|null}>(`SELECT w.id AS workId,p.analysis_revision AS revision,
-    CASE WHEN d.source_work_item_id IS NULL THEN r.id ELSE sw.id END AS sourceId,
-    CASE WHEN d.source_work_item_id IS NULL THEN r.title || ' · 验收' ELSE r.title || ' · ' || sw.title END AS title
+    CASE WHEN d.source_milestone_id IS NOT NULL THEN sm.id WHEN d.source_work_item_id IS NULL THEN r.id ELSE sw.id END AS sourceId,
+    CASE WHEN d.source_milestone_id IS NOT NULL THEN sm.title WHEN d.source_work_item_id IS NULL THEN r.title || ' · 验收' ELSE r.title || ' · ' || sw.title END AS title
     FROM work_items w JOIN requirements own ON own.id=w.requirement_id JOIN projects p ON p.id=own.project_id
     JOIN dependency_edges d ON d.target_requirement_id=w.requirement_id AND (d.target_work_item_id=w.id OR d.target_work_item_id IS NULL)
-    LEFT JOIN requirements r ON r.id=d.source_requirement_id LEFT JOIN work_items sw ON sw.id=d.source_work_item_id
-    WHERE w.status='not_started' AND w.requirement_id IN (${marks}) AND (
-      (d.source_work_item_id IS NULL AND NOT(r.status='completed' AND r.accepted_at IS NOT NULL)) OR
+    LEFT JOIN requirements r ON r.id=d.source_requirement_id LEFT JOIN work_items sw ON sw.id=d.source_work_item_id LEFT JOIN milestones sm ON sm.id=d.source_milestone_id
+    WHERE d.target_milestone_id IS NULL AND NOT EXISTS(SELECT 1 FROM json_each(w.acknowledged_dependencies) WHERE value=d.id) AND (d.target_work_item_id IS NOT NULL OR NOT EXISTS(SELECT 1 FROM json_each(own.acknowledged_dependencies) WHERE value=d.id)) AND w.status='not_started' AND w.requirement_id IN (${marks}) AND (
+      (d.source_milestone_id IS NOT NULL AND (sm.achieved_at IS NULL OR sm.cancelled=1)) OR (d.source_milestone_id IS NULL AND d.source_work_item_id IS NULL AND NOT(r.status='completed' AND r.accepted_at IS NOT NULL)) OR
       (d.source_work_item_id IS NOT NULL AND NOT(sw.status='completed' AND sw.actual_end IS NOT NULL)))`,...requirementIds);
   const result=new Map<string,{dependencyRevision:number;unmetPredecessors:Array<{id:string;title:string}>}>();
   for(const v of values){const value=result.get(v.workId)||{dependencyRevision:v.revision,unmetPredecessors:[]};
@@ -200,6 +206,12 @@ export function assertStartConditions(workId:string,requirementId:string,input:{
   if(!conditions?.unmetPredecessors.length)return;
   if(typeof input.reason!=='string'||!input.reason.trim())fail(`前置尚未交付：${conditions.unmetPredecessors.map(p=>p.title).join('、')}。核对后可说明执行例外原因再开始。`,'DEPENDENCY_CONFLICT',409);
   if(input.expectedDependencyRevision!==conditions.dependencyRevision)fail('前置条件已经变化，请重新读取并核对后开始','STALE_WRITE',409);
+  const snapshot=loadPathInput(pathProjectForRequirement(requirementId)),unmet=new Set(conditions.unmetPredecessors.map(p=>p.id));
+  const edges=snapshot.dependencies.filter(d=>d.targetRequirementId===requirementId&&!d.targetMilestoneId&&(!d.targetWorkItemId||d.targetWorkItemId===workId)&&unmet.has(d.sourceMilestoneId||d.sourceWorkItemId||d.sourceRequirementId));
+  const req=snapshot.requirements.find(r=>r.id===requirementId)!,work=snapshot.workItems.find(w=>w.id===workId)!;
+  sqlite.prepare('UPDATE requirements SET acknowledged_dependencies=? WHERE id=?').run(JSON.stringify([...new Set([...(req.acknowledgedDependencies||[]),...edges.filter(d=>!d.targetWorkItemId).map(d=>d.id)])]),requirementId);
+  sqlite.prepare('UPDATE work_items SET acknowledged_dependencies=? WHERE id=?').run(JSON.stringify([...new Set([...(work.acknowledgedDependencies||[]),...edges.filter(d=>d.targetWorkItemId).map(d=>d.id)])]),workId);
+  return conditions.unmetPredecessors;
 }
 
 /** Freeze a manual effort estimate during a block; waiting days must not consume remaining work. */

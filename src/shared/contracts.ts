@@ -299,13 +299,15 @@ export const templateItemSchema = z.object({
   predecessorKeys: z.array(z.string().min(1)).max(maxTemplateItems).optional(),
   title: z.string().trim().min(1),
   startOffsetDays: z.number().int().min(0).max(maxTemplateOffsetDays),
-  durationDays: z.number().int().min(1).max(maxTemplateDurationDays),
+  durationDays: z.number().int().min(0).max(maxTemplateDurationDays),
+  kind:z.enum(['work','milestone']).optional(),arrangement:z.enum(['early','late']).optional(),arrangementAnchor:z.string().nullable().optional(),confirmationMode:z.enum(['auto','manual']).optional(),
   milestoneLabel: z.string().nullable().optional(),
   sortOrder: z.number().int().min(0),
 }).strict();
 export const createTemplateItemSchema = templateItemSchema.extend({ id: z.never().optional() });
 
 export const templateInputSchema = z.object({
+  batchId:z.string().uuid().optional(),layout:z.object({direction:z.enum(['right','down']),expectedVersion:z.number().int().nonnegative(),positions:z.record(z.string(),z.object({x:z.number().finite(),y:z.number().finite()}).strict())}).strict().optional(),
   dependencyMode: z.enum(['legacy','dependencies']).optional(),
   projectId: idSchema.optional(),
   name: z.string().trim().min(1).optional(),
@@ -314,6 +316,7 @@ export const templateInputSchema = z.object({
   expectedUpdatedAt: z.string().datetime().optional(),
 }).strict();
 export const createTemplateInputSchema = templateInputSchema.pick({
+  batchId:true,layout:true,
   dependencyMode: true,
   projectId: true,
   name: true,

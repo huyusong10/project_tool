@@ -27,11 +27,13 @@ export type Person = {
   createdAt: string; updatedAt: string; deletedAt?: string | null;
 };
 export type TemplateItem = {
+  kind?:'work'|'milestone';arrangement?:'early'|'late';arrangementAnchor?:string|null;confirmationMode?:'auto'|'manual';
   predecessorIds?: string[];
   id: string; templateId: string; title: string; sortOrder: number;
   startOffsetDays: number; durationDays: number; milestoneLabel: string | null; deletedAt?: string | null;
 };
 export type WorkItemTemplate = {
+  layout?:{positions:Record<string,{x:number;y:number}>;version:number;direction:'right'|'down'};
   dependencyMode?: 'legacy' | 'dependencies';
   id: string; projectId: string; name: string; description: string; createdAt: string; updatedAt: string; deletedAt?: string | null; items: TemplateItem[];
 };
@@ -72,6 +74,7 @@ export type IssuePage = {
   };
 };
 export type Requirement = {
+  milestones?:import('../shared/paths').PathMilestone[];
   pathRisk?: import('../shared/paths').PathRisk;
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   background?: string | null; acceptanceCriteria?: string | null; referenceUrl?: string | null;
