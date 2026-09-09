@@ -1,3 +1,5 @@
+import { requirementRiskDisplay, requirementVarianceDisplay } from "../requirement-presentation";
+import { usePageBack } from "../use-page-view";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
@@ -22,7 +24,7 @@ import { cacheResourceUpdate, useResourceQuery } from "../use-resource-query";
 import { useWorkItemSave } from "../use-work-item-save";
 import { formatDateTime } from "../format";
 import type { Person, ProgressUpdate, Requirement, WorkItem, WorkItemTemplate } from "../types";
-import { requirementStatusLabels, riskLabels, workItemPlannedProgress, workItemPlannedDuration } from "../../shared/domain";
+import { requirementStatusLabels, workItemPlannedProgress, workItemPlannedDuration } from "../../shared/domain";
 import { GapTimeline } from "../components/GapTimeline";
 import { Chart } from "../components/Chart";
 import { EmptyState, LoadingState, RefreshNotice } from "../components/Feedback";
@@ -47,6 +49,7 @@ const progressEventLabels: Record<string, string> = { note: "说明", progress: 
 const progressReferenceLabel = (update?: ProgressUpdate) => update ? `${formatDateTime(update.createdAt)} · ${progressEventLabels[update.eventType] || update.eventType}` : "原记录不可用";
 
 function SavedRequirementPage() {
+  const goBack = usePageBack('/requirements');
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -174,7 +177,7 @@ function SavedRequirementPage() {
   if (isLoading)
     return (
       <>
-        <PageHeader title="需求详情" onBack={() => navigate(-1)} />
+        <PageHeader title="需求详情" onBack={goBack} />
         <div className="page-content">
           <LoadingState label="加载需求详情…" className="tall" />
         </div>
@@ -237,20 +240,15 @@ function SavedRequirementPage() {
     setProgressItemId(null);
     setModal(null);
   };
-  const riskClosed = ["pending_acceptance", "completed", "cancelled"].includes(requirement.status);
-  const riskLabel = riskClosed
-    ? "风险已关闭"
-    : requirement.riskEvaluated
-      ? riskLabels[requirement.riskLevel as keyof typeof riskLabels]
-      : "待评估";
-  const riskClass = riskClosed || !requirement.riskEvaluated ? "risk-pending" : `risk-${requirement.riskLevel}`;
+  const { closed: riskClosed, label: riskLabel, className: riskClass } = requirementRiskDisplay(requirement);
+  const variance = requirementVarianceDisplay(requirement);
   const progressById = new Map((requirement.progressUpdates || []).map((update) => [update.id, update]));
   if (pathView) return <><PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement} onExit={()=>{const params=new URLSearchParams(searchParams);params.delete('view');params.delete('workItemId');setSearchParams(params,{state:pathLocation.state});}}/></>;
   return (
     <>
       <PageHeader
         title={requirement.title}
-        onBack={() => navigate(-1)}
+        onBack={goBack}
         actions={canAddProgress || canManage ? (
           <>
             {canManage && !requirementInfoLocked && <button className="ghost-button" disabled={!peopleReady} onClick={() => setModal("info")}>
@@ -328,21 +326,9 @@ function SavedRequirementPage() {
           </small>
         </article>
         <article>
-          <span>完成偏差</span>
-          <strong
-            className={
-              requirement.finishVariance > 0 ? "danger-text" : "safe-text"
-            }
-          >
-            {requirement.finishVariance > 0
-              ? `+${requirement.finishVariance}`
-              : requirement.finishVariance}{" "}
-            工作日
-          </strong>
-          <small>
-            <Clock3 size={14} />
-            计划对比实际
-          </small>
+          <span>计划偏差</span>
+          <strong className={variance.className}>{variance.label}</strong>
+          <small><Clock3 size={14} />{variance.title}</small>
         </article>
         <article>
           <span>风险等级</span>

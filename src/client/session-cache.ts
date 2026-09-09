@@ -1,3 +1,4 @@
+import { clearPageViews } from './use-page-view';
 import type { QueryClient } from '@tanstack/react-query';
 import { keys } from './query-keys';
 import { invalidateAccessRequests } from './api';
@@ -32,6 +33,7 @@ export function clearBusinessQueries(client: QueryClient, keepProjects = false) 
 /** 登录/退出的已确认结果立即生效，取消旧会话读取，不能等待另一次请求才切换身份。 */
 export async function commitSession(client: QueryClient, session: Session | null) {
   clearGraphDrafts();
+  clearPageViews();
   // 先作废旧身份的请求再等待取消；否则 await 窗口内完成的旧请求可能在清理之后回填业务缓存。
   invalidateAccessRequests();
   await client.cancelQueries({ queryKey: keys.session });

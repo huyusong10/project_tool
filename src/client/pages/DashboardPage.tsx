@@ -135,7 +135,7 @@ export function DashboardPage() {
         {error && data && <div className="warning-banner">数据刷新失败，当前展示的是上次成功结果。<button className="ghost-button" onClick={() => void refetch()}>重新加载</button></div>}
         <section className="stats-grid dashboard-top-stats">
         <MetricCard
-          label="开发中需求"
+          label="未结束需求"
           value={data?.summary.active ?? "—"}
           detail={`全部 ${data?.summary.total || 0} 项`}
           icon={CircleDot}
@@ -158,7 +158,7 @@ export function DashboardPage() {
         <MetricCard
           label="高风险需求"
           value={data?.summary.highRisk ?? "—"}
-          detail="优先级 × 进度Gap，阻塞/延期覆盖"
+          detail="按进展、阻塞、延期和交付路径判断"
           icon={AlertTriangle}
           tone="amber"
         />

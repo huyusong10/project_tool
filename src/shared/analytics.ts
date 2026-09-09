@@ -64,6 +64,8 @@ export type AnalyticsDataRow = {
   label: string;
   value: number;
   secondaryValue?: number;
+  sampleCount?: number;
+  secondarySampleCount?: number;
 };
 export type AnalyticsPanelResult = {
   panelId: string;

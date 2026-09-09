@@ -385,6 +385,13 @@ describe('自动化项目管理API', () => {
       }],
     } });
     expect(onTime.json().results[0].rows[0].value).toBe(50);
+    expect(onTime.json().results[0].rows[0].sampleCount).toBe(2);
+    const noSamples = await app.inject({ method: 'POST', url: '/api/analytics/query', headers: { cookie }, payload: {
+      projectId, range: { from: '2030-01-01', to: '2030-01-31' }, panels: [{
+        id: 'no-samples', title: '按期率', dataset: 'requirements', measure: 'on_time_rate', visualization: 'kpi', size: 'small', timeScope: 'range',
+      }],
+    } });
+    expect(noSamples.json().results[0].rows[0]).toMatchObject({ value: 0, sampleCount: 0 });
     sqlite.prepare(`DELETE FROM requirements WHERE id IN (?,?)`).run(...requirementIds);
 
     expect((await app.inject({ method: 'PUT', url: '/api/analytics/layout', payload: { version: 1, panels: [panels[0]] } })).statusCode).toBe(401);

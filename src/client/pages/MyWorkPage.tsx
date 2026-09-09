@@ -1,3 +1,4 @@
+import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -20,9 +21,12 @@ import { ViewTabs } from '../components/ViewTabs';
 export function MyWorkPage() {
   const client = useQueryClient(); const navigate = useNavigate();
   const { session } = useSession();
-  const [filter, setFilter] = useState('active');
+  const [params, setParams] = usePageSearchParams(['filter'], true);
+  const filter = params.get('filter') || 'active';
+  const setFilter = (value: string) => setParams({ filter: value });
   const [progressItem, setProgressItem] = useState<MyWorkItem>();
   const { data, isLoading, error, refetch, isFetching, unavailable } = useResourceQuery<MyWork>(keys.myWork, '/api/my-work');
+  usePageScrollPosition(!isLoading, true);
   useEffect(() => {
     if (unavailable && error) setProgressItem(undefined);
   }, [error, unavailable]);

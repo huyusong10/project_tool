@@ -1,12 +1,13 @@
+import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Plus } from "lucide-react";
 import { api, jsonBody } from "../api";
 import { useProjects, useSession } from "../app-context";
 import { invalidateRequirementViews, keys } from "../query-keys";
 import type { Requirement } from "../types";
-import { isTerminalRequirementStatus, riskLabels } from "../../shared/domain";
+import { isTerminalRequirementStatus } from "../../shared/domain";
 import { matchesSearch, searchScore } from "../../shared/search";
 import { EmptyState } from "../components/Feedback";
 import { StatusBadge } from "../components/Badge";
@@ -17,6 +18,8 @@ import { canManageProject } from "../permissions";
 import { priorityOptions, requirementStatusOptions } from "../ui-options";
 import { DataCell } from "../components/LayoutPrimitives";
 import { SearchInput } from "../components/SearchInput";
+import { requirementRiskDisplay, requirementVarianceDisplay, requirementVarianceValue } from "../requirement-presentation";
+import { compareRiskRequirements } from "../../shared/requirement-view";
 import { useOptimisticMutation } from "../use-optimistic-mutation";
 
 type RequirementSortKey = "title" | "priority" | "status" | "progress" | "risk" | "plannedEnd" | "variance";
@@ -32,58 +35,7 @@ const requirementStatusOrder: Record<string, number> = {
   completed: 5,
   cancelled: 6,
 };
-const riskOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
 const emptyRequirements: Requirement[] = [];
-
-function requirementVarianceValue(requirement: Requirement): number | null {
-  if (requirement.status === "planning" || requirement.status === "cancelled") return null;
-  if (["completed", "pending_acceptance"].includes(requirement.status)) return requirement.finishVariance;
-  if (requirement.finishVariance > 0) return requirement.finishVariance;
-  if (requirement.status === "not_started" && requirement.progress === 0 && requirement.plannedProgress === 0) return null;
-  return requirement.scheduleVarianceDays ?? null;
-}
-
-function requirementVarianceDisplay(requirement: Requirement) {
-  const progressDetail = `实际进度 ${requirement.progress}%，计划进度 ${requirement.plannedProgress}%`;
-  if (requirement.status === "planning") {
-    return { label: "待排期", className: "muted", title: "工作项排期尚不完整，暂时无法计算计划偏差" };
-  }
-  if (requirement.status === "cancelled") {
-    return { label: "已取消", className: "muted", title: "已取消需求不再计算计划偏差" };
-  }
-  if (requirement.status === "not_started" && requirement.progress === 0 && requirement.plannedProgress === 0) {
-    return { label: "未到计划", className: "muted", title: "尚未到计划开始时间" };
-  }
-  if (["completed", "pending_acceptance"].includes(requirement.status)) {
-    if (requirement.finishVariance > 0) {
-      return { label: `延期 ${requirement.finishVariance}个工作日`, className: "danger-text", title: "实际完成日期晚于计划完成日期" };
-    }
-    if (requirement.finishVariance < 0) {
-      return { label: `提前 ${Math.abs(requirement.finishVariance)}个工作日`, className: "safe-text", title: "实际完成日期早于计划完成日期" };
-    }
-    return { label: "按期", className: "", title: "实际完成日期与计划完成日期一致" };
-  }
-  if (requirement.finishVariance > 0) {
-    return {
-      label: `已延期 ${requirement.finishVariance}个工作日`,
-      className: "danger-text",
-      title: `${progressDetail}；截至今天已超过计划完成日期`,
-    };
-  }
-
-  const variance = requirement.scheduleVarianceDays;
-  const reference = requirement.scheduleReferenceDate ? `；当前进展相当于 ${requirement.scheduleReferenceDate} 的计划` : "";
-  if (variance === null || variance === undefined) {
-    return { label: "待评估", className: "muted", title: `${progressDetail}；暂时无法换算计划偏差` };
-  }
-  if (variance > 0) {
-    return { label: `落后 ${variance}个工作日`, className: "danger-text", title: `${progressDetail}${reference}，落后 ${variance} 个工作日` };
-  }
-  if (variance < 0) {
-    return { label: `领先 ${Math.abs(variance)}个工作日`, className: "safe-text", title: `${progressDetail}${reference}，领先 ${Math.abs(variance)} 个工作日` };
-  }
-  return { label: "按计划", className: "", title: `${progressDetail}；当前进展与计划曲线一致` };
-}
 
 function compareRequirements(left: Requirement, right: Requirement, key: RequirementSortKey) {
   switch (key) {
@@ -96,7 +48,7 @@ function compareRequirements(left: Requirement, right: Requirement, key: Require
     case "progress":
       return left.progress - right.progress;
     case "risk":
-      return (riskOrder[left.highRisk ? "high" : left.riskLevel] ?? 99) - (riskOrder[right.highRisk ? "high" : right.riskLevel] ?? 99);
+      return compareRiskRequirements(left, right);
     case "variance":
       return (requirementVarianceValue(left) ?? 0) - (requirementVarianceValue(right) ?? 0);
     case "plannedEnd":
@@ -112,10 +64,13 @@ export function RequirementsPage() {
   const { selectedProjectId, projects } = useProjects();
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("current");
-  const [sortKey, setSortKey] = useState<RequirementSortKey>("plannedEnd");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [params, setParams] = usePageSearchParams(['q', 'status', 'sort', 'direction']);
+  const search = params.get('q') || '';
+  const status = params.has('status') ? params.get('status')! : 'current';
+  const sortKey = (['title','priority','status','progress','risk','plannedEnd','variance'].includes(params.get('sort') || '') ? params.get('sort') : 'plannedEnd') as RequirementSortKey;
+  const sortDirection: SortDirection = params.get('direction') === 'desc' ? 'desc' : 'asc';
+  const setSearch = (value: string) => setParams(current => { const next = new URLSearchParams(current); next.set('q', value); return next; });
+  const setStatus = (value: string) => setParams(current => { const next = new URLSearchParams(current); next.set('status', value); return next; });
   const canManage = canManageProject(session, selectedProjectId);
   const { data: loadedRequirements, error, refetch, isFetching, isLoading } = useQuery({
     queryKey: [...keys.requirements, selectedProjectId],
@@ -126,6 +81,7 @@ export function RequirementsPage() {
       ),
     enabled: Boolean(selectedProjectId),
   });
+  usePageScrollPosition(!isLoading);
   const data = loadedRequirements || emptyRequirements;
   const listUnavailable = Boolean(error && !loadedRequirements);
   const items = useMemo(() => {
@@ -176,12 +132,7 @@ export function RequirementsPage() {
   });
   const saveRequirement = (item: Requirement, input: { priority?: string }) => runRequirementSave({ item, input });
   const changeSort = (nextKey: RequirementSortKey) => {
-    if (nextKey === sortKey) {
-      setSortDirection((current) => current === "asc" ? "desc" : "asc");
-      return;
-    }
-    setSortKey(nextKey);
-    setSortDirection(nextKey === "variance" ? "desc" : "asc");
+    setParams(current => { const next = new URLSearchParams(current); next.set('sort', nextKey); next.set('direction', nextKey === sortKey ? (sortDirection === 'asc' ? 'desc' : 'asc') : nextKey === 'variance' ? 'desc' : 'asc'); return next; });
   };
   const sortableHeader = (label: string, key: RequirementSortKey) => (
     <button
@@ -246,7 +197,7 @@ export function RequirementsPage() {
                 key={item.id}
                 onClick={() => navigate(`/requirements/${item.id}`)}
               >
-                <td><DataCell density="compact" primary={<strong>{item.title}</strong>} secondary={`${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
+                <td><DataCell density="compact" primary={<strong><Link to={`/requirements/${item.id}`} style={{ color: 'inherit', textDecoration: 'none' }} onClick={event => event.stopPropagation()}>{item.title}</Link></strong>} secondary={`${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
                 <td><DataCell density="compact" primary={canManage ? <InlineSelectCell
                   value={item.priority}
                   label="需求优先级"
@@ -267,13 +218,7 @@ export function RequirementsPage() {
                   </div>} />
                 </td>
                 <td>
-                  <DataCell density="compact" primary={!item.riskEvaluated ? (
-                    <span className="risk-badge risk-pending">待评估</span>
-                  ) : item.highRisk ? (
-                    <StatusBadge kind="risk" value="high" />
-                  ) : (
-                    riskLabels[item.riskLevel as keyof typeof riskLabels]
-                  )} />
+                  <DataCell density="compact" primary={<span className={`risk-badge ${requirementRiskDisplay(item).className}`}>{requirementRiskDisplay(item).label}</span>} />
                 </td>
                 <td><DataCell density="compact" primary={item.plannedEnd || "待排期"} /></td>
                 <td className={variance.className} title={variance.title}>

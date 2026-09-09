@@ -1,4 +1,4 @@
-import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, Suspense, startTransition, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { KeyRound, LogIn } from "lucide-react";
@@ -157,19 +157,25 @@ export function App() {
 
   const changeProject = useCallback((projectId: string) => {
     if (projectId === selectedProjectId) return;
-    setSelectedProjectId(projectId);
-    if (/^\/requirements\/[^/]+$/.test(location.pathname)) {
-      navigate("/requirements");
-      return;
-    }
-    if (location.pathname === "/issues") {
-      const params = new URLSearchParams(location.search);
-      params.delete("issueId");
-      params.delete("requirementId");
-      params.delete("ownerId");
-      const search = params.toString();
-      navigate({ pathname: location.pathname, search: search ? `?${search}` : "" }, { replace: true });
-    }
+    startTransition(() => {
+      setSelectedProjectId(projectId);
+      if (/^\/requirements\/[^/]+$/.test(location.pathname)) {
+        navigate("/requirements");
+        return;
+      }
+      if (["/requirements", "/actions", "/analytics", "/people"].includes(location.pathname)) {
+        navigate({ pathname: location.pathname, search: "" }, { replace: true });
+        return;
+      }
+      if (location.pathname === "/issues") {
+        const params = new URLSearchParams(location.search);
+        params.delete("issueId");
+        params.delete("requirementId");
+        params.delete("ownerId");
+        const search = params.toString();
+        navigate({ pathname: location.pathname, search: search ? `?${search}` : "" }, { replace: true });
+      }
+    });
   }, [location.pathname, location.search, navigate, selectedProjectId, setSelectedProjectId]);
 
   const currentPageScope = pageScopeFor(location.pathname, isAdmin(session));

@@ -1,3 +1,5 @@
+import { analyticsValue } from "../analytics-presentation";
+import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { chartCategoryColor } from "../chart-theme";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,7 +34,8 @@ function cloneLayout(layout: AnalyticsLayout): AnalyticsLayout {
   return JSON.parse(JSON.stringify(layout)) as AnalyticsLayout;
 }
 
-function valueLabel(value: number, unit: AnalyticsPanelResult["unit"]) {
+function valueLabel(value: number | null, unit: AnalyticsPanelResult["unit"]) {
+  if (value === null) return "—";
   if (unit === "percent") return `${value}%`;
   if (unit === "days") return `${value}个工作日`;
   return `${value}`;
@@ -42,9 +45,9 @@ function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) 
   const labels = result.rows.map((row) => row.label);
   const primary = result.rows.map((row) => {
     const color = chartCategoryColor(panel.dimension, row.key);
-    return panel.visualization === "bar" && color ? { value: row.value, itemStyle: { color } } : row.value;
+    return panel.visualization === "bar" && color ? { value: analyticsValue(row, result.unit), itemStyle: { color } } : analyticsValue(row, result.unit);
   });
-  const secondary = result.rows.map((row) => row.secondaryValue || 0);
+  const secondary = result.rows.map((row) => analyticsValue(row, result.unit, true));
   const series = [
     {
       name: result.measureLabel,
@@ -103,12 +106,12 @@ function PanelContent({ panel, result, loading, retry }: {
   if (!result || result.error) return <EmptyState title="图表加载失败" detail={result?.error || "暂时无法读取分析数据。"} action={retry ? <button className="ghost-button" onClick={retry}><RefreshCcw size={14} />重试</button> : undefined} />;
   if (!result.rows.length) return <EmptyState title="暂无数据" detail="当前项目和时间范围内没有可展示的数据。" />;
   if (panel.visualization === "kpi") return <div className="analytics-kpi">
-    <strong>{valueLabel(result.rows[0]?.value || 0, result.unit)}</strong>
-    <span>{result.measureLabel}</span>
+    <strong>{valueLabel(analyticsValue(result.rows[0], result.unit), result.unit)}</strong>
+    <span>{analyticsValue(result.rows[0], result.unit) === null ? (panel.measure === "on_time_rate" ? "暂无完成样本" : "暂无有效样本") : result.measureLabel}</span>
   </div>;
   if (panel.visualization === "table") return <div className="analytics-table-scroll"><table className="analytics-table">
     <thead><tr><th>{result.dimensionLabel || "项目"}</th><th>{result.measureLabel}</th>{result.secondaryMeasureLabel && <th>{result.secondaryMeasureLabel}</th>}</tr></thead>
-    <tbody>{result.rows.map((row) => <tr key={row.key}><td>{row.label}</td><td>{valueLabel(row.value, result.unit)}</td>{result.secondaryMeasureLabel && <td>{valueLabel(row.secondaryValue || 0, result.unit)}</td>}</tr>)}</tbody>
+    <tbody>{result.rows.map((row) => <tr key={row.key}><td>{row.label}</td><td>{valueLabel(analyticsValue(row, result.unit), result.unit)}</td>{result.secondaryMeasureLabel && <td>{valueLabel(analyticsValue(row, result.unit, true), result.unit)}</td>}</tr>)}</tbody>
   </table></div>;
   return <Chart option={chartOption(panel, result)} height={panel.size === "large" ? 290 : 238} ariaLabel={`${panel.title}图表`} />;
 }
@@ -205,10 +208,13 @@ export function AnalyticsPage() {
   const { projects, selectedProjectId } = useProjects();
   const { businessDate: businessToday } = useBusinessDate();
   const client = useQueryClient();
-  const [preset, setPreset] = useState<RangePreset>("90");
-  const [customFrom, setCustomFrom] = useState(() => addCalendarDays(businessToday, -89));
-  const [customTo, setCustomTo] = useState(businessToday);
-  const [customRangeEdited, setCustomRangeEdited] = useState(false);
+  const [viewParams, setViewParams] = usePageSearchParams(['range', 'from', 'to']);
+  const preset = (['30','90','180','project','custom'].includes(viewParams.get('range') || '') ? viewParams.get('range') : '90') as RangePreset;
+  const customFrom = viewParams.get('from') ?? addCalendarDays(businessToday, -89);
+  const customTo = viewParams.get('to') ?? businessToday;
+  const setPreset = (value: RangePreset) => setViewParams(current => { const next = new URLSearchParams(current); next.set('range', value); return next; });
+  const setCustomFrom = (value: string) => setViewParams(current => { const next = new URLSearchParams(current); next.set('from', value); next.set('to', customTo); return next; });
+  const setCustomTo = (value: string) => setViewParams(current => { const next = new URLSearchParams(current); next.set('from', customFrom); next.set('to', value); return next; });
   const [draft, setDraft] = useState<AnalyticsLayout | null>(null);
   const [editingUpdatedAt, setEditingUpdatedAt] = useState<string | null>(null);
   const [editingPanel, setEditingPanel] = useState<AnalyticsPanelConfig | null>(null);
@@ -226,16 +232,12 @@ export function AnalyticsPage() {
   const savedLayout = layoutQuery.data?.layout || defaultAnalyticsLayout;
   const activeLayout = draft || savedLayout;
   useEffect(() => { setDraft(null); setEditingUpdatedAt(null); }, [session.accountId]);
-  useEffect(() => {
-    if (customRangeEdited) return;
-    setCustomFrom(addCalendarDays(businessToday, -89));
-    setCustomTo(businessToday);
-  }, [businessToday, customRangeEdited]);
   const dataQuery = useQuery({
     queryKey: [...keys.analyticsData, selectedProjectId, range, activeLayout],
     queryFn: ({ signal }) => api<AnalyticsQueryResponse>("/api/analytics/query", { signal, method: "POST", readOnly: true, body: jsonBody({ projectId: selectedProjectId, range, panels: activeLayout.panels }) }),
     enabled: Boolean(selectedProjectId) && (!layoutQuery.isLoading || layoutQuery.data !== undefined),
   });
+  usePageScrollPosition(!dataQuery.isLoading && !layoutQuery.isLoading);
   const dataUnavailable = Boolean(dataQuery.error && !dataQuery.data);
   const resultMap = new Map((dataQuery.data?.results || []).map((result) => [result.panelId, result]));
   const saveLayout = useMutation({
@@ -335,7 +337,7 @@ export function AnalyticsPage() {
     <div className="page-content analytics-page">
       <section className="analytics-toolbar">
         <ViewTabs ariaLabel="分析时间范围" value={preset} onChange={setPreset} options={([['30', '近30天'], ['90', '近90天'], ['180', '近180天'], ['project', '项目周期'], ['custom', '自定义']] as Array<[RangePreset, string]>).map(([value, label]) => ({ value, label }))} />
-        {preset === "custom" && <div className="analytics-custom-range"><input aria-label="分析开始日期" type="date" value={customFrom} max={customTo} onChange={(event) => { setCustomFrom(event.target.value); setCustomRangeEdited(true); }} /><span>至</span><input aria-label="分析结束日期" type="date" value={customTo} min={customFrom} onChange={(event) => { setCustomTo(event.target.value); setCustomRangeEdited(true); }} /></div>}
+        {preset === "custom" && <div className="analytics-custom-range"><input aria-label="分析开始日期" type="date" value={customFrom} max={customTo} onChange={(event) => { setCustomFrom(event.target.value); }} /><span>至</span><input aria-label="分析结束日期" type="date" value={customTo} min={customFrom} onChange={(event) => { setCustomTo(event.target.value); }} /></div>}
         <span className="analytics-range-label">{range.from} 至 {range.to}</span>
         {draft && <div className="analytics-edit-actions"><button className="ghost-button" disabled={editingBlocked || draft.panels.length >= 24} onClick={addPanel}><Plus size={15} />新增图表</button><button className="ghost-button" onClick={() => { if (!saveLock.canClose()) return; clearLayoutOperation(); setResetConfirm(true); }} disabled={editingBlocked}><RotateCcw size={15} />恢复默认</button></div>}
       </section>
