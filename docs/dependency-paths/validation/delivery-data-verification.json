@@ -1,0 +1,73 @@
+{
+  "checkedAt": "2026-09-09T05:06:47.816Z",
+  "backup": ".preview/backups/paths-before-delivery-1788929539590.db",
+  "counts": {
+    "projects": {
+      "before": 2,
+      "after": 2
+    },
+    "requirements": {
+      "before": 9,
+      "after": 9
+    },
+    "work_items": {
+      "before": 17,
+      "after": 17
+    },
+    "dependency_edges": {
+      "before": 22,
+      "after": 22
+    },
+    "milestones": {
+      "before": 8,
+      "after": 8
+    },
+    "diagram_layouts": {
+      "before": 0,
+      "after": 0
+    },
+    "work_item_templates": {
+      "before": 6,
+      "after": 6
+    },
+    "template_items": {
+      "before": 21,
+      "after": 21
+    },
+    "progress_updates": {
+      "before": 10,
+      "after": 10
+    },
+    "issues": {
+      "before": 0,
+      "after": 0
+    },
+    "issue_updates": {
+      "before": 0,
+      "after": 0
+    },
+    "audit_logs": {
+      "before": 52,
+      "after": 52
+    },
+    "dependency_change_receipts": {
+      "before": 0,
+      "after": 0
+    }
+  },
+  "derivedRevisionChanges": [
+    {
+      "project": "交付依赖试用",
+      "before": 63,
+      "after": 64,
+      "reason": "旧需求执行方式回填触发原有分析版本更新"
+    }
+  ],
+  "unexpectedChanges": [],
+  "quickCheck": [
+    {
+      "quick_check": "ok"
+    }
+  ],
+  "foreignKeys": []
+}
