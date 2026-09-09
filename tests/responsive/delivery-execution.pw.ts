@@ -65,7 +65,7 @@ test('详情移除通用进展；工作项入口实际更新所选工作项并�
  const dialog=page.getByRole('dialog',{name:'更新工作项进度',exact:true});
  await expect(dialog.getByRole('combobox')).toHaveCount(0);
  await expect(dialog.locator('.progress-item-context')).toContainText(first.title);
- await dialog.getByRole('spinbutton').fill('60');await dialog.getByLabel('具体进展',{exact:true}).fill('完成当前工作六成');
+ await dialog.getByRole('spinbutton').fill('60');await dialog.getByLabel('说明',{exact:true}).fill('完成当前工作六成');
  await dialog.getByRole('button',{name:'记录进展',exact:true}).click();await expect(dialog).toHaveCount(0);
  r=await detail(r.id);expect(r.workItems.find(w=>w.id===first.id)?.progress).toBe(60);expect(r.workItems.find(w=>w.id!==first.id)?.progress).toBe(0);expect(r.progress).toBe(30);
  expect(r.progressUpdates?.some(e=>e.workItemId===first.id&&e.workItemPercent===60&&e.eventType==='progress')).toBe(true);

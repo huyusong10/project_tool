@@ -1,7 +1,7 @@
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, jsonBody, requiresWriteRecheck } from '../api';
+import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
 import { useSession } from '../app-context';
 import { invalidateRequirementViews } from '../query-keys';
 import type { ProgressUpdate, WorkItem } from '../types';
@@ -9,8 +9,6 @@ import { requirementStatusLabels } from '../../shared/domain';
 import { FormError, FormField, FormSubmitActions } from './Form';
 import { Modal } from './Modal';
 import { ProgressInput } from './ProgressInput';
-import { useToast } from './Toast';
-import { canonicalizeContent } from '../../shared/search';
 
 export type ProgressScope = {
   items: WorkItem[];
@@ -34,22 +32,25 @@ export function ProgressForm({
 }) {
   const client = useQueryClient();
   const { session } = useSession();
-  const toast = useToast();
   const submitting = useRef(false);
-  const initialUpdateIds = useRef(new Set((scope.updates || []).map((update) => update.id)));
+  const unknownWrite = useRef<{ version: number; versioned: boolean } | null>(null);
+  const [reviewRequired, setReviewRequired] = useState(false);
   const workItemId = fixedItemId;
   const [draftItem, setDraftItem] = useState(() => scope.items.find((item) => item.id === workItemId));
+  const editsPercent = useRef(draftItem?.status === 'in_progress').current;
   const [percent, setPercent] = useState(draftItem?.progress || 0);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const currentItem = scope.items.find((item) => item.id === workItemId);
   const unavailable = Boolean(workItemId && (!currentItem || terminal(currentItem.status)));
   const changed = Boolean(currentItem && (!draftItem || currentItem.version !== draftItem.version || currentItem.status !== draftItem.status));
   const locked = scope.requirementStatus && ['pending_acceptance', 'completed', 'cancelled'].includes(scope.requirementStatus);
-  const writesPercent = Boolean(workItemId && draftItem?.status === 'in_progress');
+  const writesPercent = Boolean(workItemId && editsPercent);
   const decreasing = writesPercent && percent < (currentItem?.progress || 0);
-  const validationError = locked ? '需求已进入待验收或终态，不能再追加进展。'
+  const validationError = reviewRequired ? '无法确认刚才的提交是否生效，请先核对进展记录；本窗口不再提交，已填内容保留，可复制后关闭。'
+    : locked ? '需求已进入待验收或终态，不能再追加进展。'
     : unavailable ? '原工作项已结束或不可操作，已保留你的输入；不会自动改为需求说明。'
     : changed || needsRefresh ? '工作项已更新，请重新读取并核对；已保留你的输入。'
+    : editsPercent && draftItem?.status !== 'in_progress' ? '工作项当前不在进行中，不能更新完成度；已填说明保留，请关闭后选择对应操作。'
     : workItemId && !draftItem ? '请重新读取工作项后再提交。'
     : !workItemId ? '请选择可操作的工作项。'
     : decreasing ? '普通进展不能降低完成度，请核对最新完成度；降低完成度需由项目经理纠错。'
@@ -60,6 +61,9 @@ export function ProgressForm({
       // 找不到原项时保留ID和草稿，不重新选择其他项或转成需求说明。
       const item = latest.items.find((entry) => entry.id === workItemId);
       if (item) setDraftItem(item);
+      const unknown = unknownWrite.current;
+      // 说明不会提高工作项版本，列表中未出现说明也不能证明写入失败。
+      setReviewRequired(Boolean(unknown && (!unknown.versioned || item?.version !== unknown.version)));
       setNeedsRefresh(false);
     },
   });
@@ -71,20 +75,12 @@ export function ProgressForm({
     },
     onError: async (error, input) => {
       if (requiresWriteRecheck(error)) {
+        if (isWriteOutcomeUnknown(error)) unknownWrite.current = {
+          version: input.expectedVersion, versioned: input.workItemPercent !== undefined,
+        };
         setNeedsRefresh(true);
         try {
-          const latest = await refresh.mutateAsync();
-          const saved = latest.updates?.some((update) => !initialUpdateIds.current.has(update.id)
-            && update.content === canonicalizeContent(input.content)
-            && update.workItemId === (input.workItemId || null)
-            && update.eventType === (input.workItemPercent === undefined ? 'note' : 'progress')
-            && update.createdByAccountId === session.accountId
-            && (input.workItemPercent === undefined || update.workItemPercent === input.workItemPercent));
-          if (saved) {
-            invalidateRequirementViews(client, requirementId);
-            toast.success('已核对最新状态：进展已记录');
-            onClose();
-          }
+          await refresh.mutateAsync();
         } catch { /* 保留输入，读取失败后由用户重试。 */ }
       }
     },
@@ -109,8 +105,8 @@ export function ProgressForm({
         {writesPercent && <ProgressInput name="workItemPercent" value={percent} onChange={setPercent} max={99} />}
         {currentItem?.status === 'blocked' && <p className="field-help field-full">工作项处于阻塞状态，只能补充说明；解除阻塞后才能继续提高进度。</p>}
         {currentItem?.status === 'not_started' && <p className="field-help field-full">工作项尚未开始，只能补充说明；开始后才能填写完成度。</p>}
-        <FormField label="具体进展" full><textarea name="content" rows={5} required autoFocus placeholder="描述本次实际完成的内容" /></FormField>
-        <p className="field-help field-full">只有进行中的工作项可以填写0～99%的累计完成度；100%请使用“完成工作项”。</p>
+        <FormField label="说明" full><textarea name="content" rows={5} required autoFocus placeholder={writesPercent ? '描述本次实际完成的内容' : '说明当前情况和待处理事项'} /></FormField>
+        <p className="field-help field-full">{editsPercent ? '只有进行中的工作项可以填写0～99%的累计完成度；100%请使用“完成工作项”。' : '本次只保存说明，不改变完成度、状态和日期。'}</p>
         <FormError>{validationError || mutation.error?.message}</FormError>
         <FormError>{refresh.error?.message}</FormError>
         {(needsRefresh || changed || unavailable) && <div className="field-full"><button type="button" className="ghost-button" onClick={() => {

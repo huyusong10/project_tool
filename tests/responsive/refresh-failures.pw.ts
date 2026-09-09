@@ -103,8 +103,8 @@ test('失权后迟到的问题操作响应不能重新填回已清除的详情',
 async function openDraft(page: Page, source: Source) {
   await page.goto(urls[source]);
   if (source === 'requirement') await page.locator('.requirement-gantt-grid .gantt-progress-marker').first().click();
-  if (source === 'my-work') await page.getByRole('button', { name: '为接口开发写进展', exact: true }).click();
-  const field = source === 'issue' ? page.getByPlaceholder('记录新进展、决策或待办结果') : page.getByRole('textbox', { name: '具体进展', exact: true });
+  if (source === 'my-work') await page.getByRole('button', { name: '为接口开发更新完成度', exact: true }).click();
+  const field = source === 'issue' ? page.getByPlaceholder('记录新进展、决策或待办结果') : page.getByRole('textbox', { name: '说明', exact: true });
   await field.fill('不能丢失的草稿');
   return field;
 }

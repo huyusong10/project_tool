@@ -89,7 +89,7 @@ export function MyWorkPage() {
           showStatusFilters={false}
           showGapSummary={false}
           showUnscheduled
-          actionColumnWidth={164}
+          actionColumnWidth={190}
           ariaLabel="分配给我的工作项甘特图"
           emptyState={{ message: '当前筛选下没有工作项', actionLabel: '查看全部', onAction: () => setFilter('all') }}
           onItemClick={(baseItem) => {
@@ -104,7 +104,7 @@ export function MyWorkPage() {
             const item = baseItem as MyWorkItem;
             const direct=directEntries.find(r=>r.id===item.id);if(direct)return <button className="ghost-button" onClick={()=>navigate('/requirements/'+direct.requirementId)}>处理需求</button>;
             return <div className="my-work-gantt-actions">
-              {['in_progress', 'blocked'].includes(item.status) && <button className="my-work-progress-action" onClick={() => setProgressItem(item)} title="写进展" aria-label={`为${item.title}写进展`}><MessageSquarePlus size={15} /><span>进展</span></button>}
+              {['in_progress', 'blocked'].includes(item.status) && <button className="my-work-progress-action" onClick={() => setProgressItem(item)} title={item.status === 'blocked' ? '补充说明，不改变完成度' : '更新完成度'} aria-label={`为${item.title}${item.status === 'blocked' ? '补充说明' : '更新完成度'}`}><MessageSquarePlus size={15} /><span>{item.status === 'blocked' ? '补充说明' : '更新完成度'}</span></button>}
               <WorkItemActions item={item} startDisabledReason={item.requirementStatus === 'planning' ? '需求尚未完成规划，请联系需求负责人或项目经理补齐负责人和排期。' : undefined} onAction={(nextAction, text, expectedVersion, expectedDependencyRevision) => action.mutateAsync({ item, action: nextAction, expectedVersion, expectedDependencyRevision, ...(['block','start'].includes(nextAction) ? { reason: text } : { content: text }) })} onReload={async () => {
                 const [latest, requirement] = await Promise.all([
                   refetch({ throwOnError: true }),
@@ -126,8 +126,8 @@ export function MyWorkPage() {
     </div>
     {progressItem && !unavailable && <ProgressForm
       key={progressItem.id}
-      title="添加工作进展"
-      submitLabel="保存进展"
+      title={progressItem.status === 'blocked' ? '补充工作项说明' : '更新工作项进度'}
+      submitLabel={progressItem.status === 'blocked' ? '保存说明' : '保存进展'}
       requirementId={progressItem.requirementId}
       scope={{ items: (data?.items || []).filter((item) => item.id === progressItem.id), updates: (data?.recentProgress || []).filter((update) => update.requirementId === progressItem.requirementId) }}
       loadScope={async () => {
