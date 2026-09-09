@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {useNavigate} from 'react-router-dom';
 import {api,jsonBody,requiresWriteRecheck} from '../api';
@@ -28,6 +28,8 @@ export function DeliveryControls({requirement:r,compact=false}:{requirement:Requ
   const manager=canManageProject(session,r.projectId),owner=manager||session.personId===r.ownerId,acceptor=manager||r.acceptanceOwnerValid&&session.personId===r.acceptanceOwnerId;
   const [needsCheck,setNeedsCheck]=useState(false),[reading,setReading]=useState(false),[readError,setReadError]=useState('');
   const [modal,setModal]=useState<{action:string;base:Requirement}|null>(null),[content,setContent]=useState(''),[percent,setPercent]=useState(r.progress),[selected,setSelected]=useState<string[]>([]),[conditions,setConditions]=useState<{dependencyRevision:number;unmetPredecessors:Array<{id:string;title:string}>}|null>(null);
+  const readSequence=useRef(0);
+  useEffect(()=>()=>{readSequence.current++;},[r.id]);
   const mutation=useMutation({mutationFn:async()=>{
     if(!modal)return;await assertCleanProjectDraft(session.accountId||'guest',r.projectId);
     const b=modal.base,payload:Record<string,unknown>={expectedVersion:b.version};
@@ -38,8 +40,21 @@ export function DeliveryControls({requirement:r,compact=false}:{requirement:Requ
     else if(modal.action==='block')payload.reason=content;
     else if(conditions){payload.expectedDependencyRevision=conditions.dependencyRevision;payload.reason=content||undefined;}
     return api('/api/requirements/'+r.id+'/'+(modal.action==='note'?'progress':modal.action),{method:'POST',body:jsonBody(payload)});
-  },onSuccess:()=>{invalidateRequirementViews(client,r.id);setModal(null);setConditions(null);},onError:e=>{if(requiresWriteRecheck(e))setNeedsCheck(true);}});
-  const open=async(action:string)=>{setNeedsCheck(false);setReadError('');mutation.reset();setContent('');setSelected([]);setPercent(Math.min(r.progress,99));setConditions(null);setModal({action,base:r});if(action==='start')try{setConditions(await api('/api/requirements/'+r.id+'/start-conditions'));}catch{/* The command independently validates the latest conditions. */}};
+  },onSuccess:()=>{readSequence.current++;invalidateRequirementViews(client,r.id);setModal(null);setConditions(null);},onError:e=>{if(requiresWriteRecheck(e))setNeedsCheck(true);}});
+  const reload=async(action:string)=>{
+    const sequence=++readSequence.current;setReading(true);setReadError('');
+    try{
+      const [latest,nextConditions]=await Promise.all([
+        api<Requirement>('/api/requirements/'+r.id),
+        action==='start'?api<NonNullable<typeof conditions>>('/api/requirements/'+r.id+'/start-conditions'):Promise.resolve(null),
+      ]);
+      if(sequence!==readSequence.current)return;
+      setModal({action,base:latest});setConditions(nextConditions);setNeedsCheck(false);mutation.reset();invalidateRequirementViews(client,r.id);
+    }catch(error){if(sequence===readSequence.current){setReadError(error instanceof Error?error.message:'读取失败，请重试');setNeedsCheck(true);}}
+    finally{if(sequence===readSequence.current)setReading(false);}
+  };
+  const open=(action:string)=>{readSequence.current++;setReading(false);setNeedsCheck(false);setReadError('');mutation.reset();setContent('');setSelected([]);setPercent(Math.min(r.progress,99));setConditions(null);setModal({action,base:r});if(action==='start')void reload(action);};
+  const close=()=>{if(!mutation.isPending){readSequence.current++;setReading(false);setModal(null);}};
   const direct=r.executionMode==='direct',ended=['completed','cancelled'].includes(r.status);
   const labels:Record<string,string>={start:'开始需求',progress:'更新进度',note:'补充说明',block:'标记阻塞',unblock:'解除阻塞','submit-acceptance':'提交验收',accept:'确认验收',rework:'退回返工'};
   return <>
@@ -50,7 +65,7 @@ export function DeliveryControls({requirement:r,compact=false}:{requirement:Requ
       {manager&&!ended&&!compact&&<button className="ghost-button" onClick={()=>setModal({action:'settings',base:r})}>交付设置</button>}
     </div>
     {modal&&['split','settings'].includes(modal.action)&&<DeliveryDraftDialog requirements={[modal.base]} mode={modal.action as 'split'|'settings'} onClose={()=>setModal(null)}/>}
-    {modal&&!['split','settings'].includes(modal.action)&&<Modal title={labels[modal.action]} onClose={()=>{if(!mutation.isPending)setModal(null);}} closable={!mutation.isPending}><form onSubmit={e=>{e.preventDefault();if(!mutation.isPending)mutation.mutate();}}><fieldset className="form-fieldset" disabled={mutation.isPending}>
+    {modal&&!['split','settings'].includes(modal.action)&&<Modal title={labels[modal.action]} onClose={close} closable={!mutation.isPending}><form onSubmit={e=>{e.preventDefault();if(!mutation.isPending&&!needsCheck&&!reading)mutation.mutate();}}><fieldset className="form-fieldset" disabled={mutation.isPending}>
       <p>{modal.base.title}</p>{modal.action==='accept'&&<><p>验收标准：{modal.base.acceptanceCriteria||'尚未填写，请在验收说明中写明核对结果'}</p><p>未达成里程碑：{modal.base.milestones?.filter(m=>!m.achievedAt&&!m.cancelled).map(m=>m.title).join('、')||'无'} · 未关闭问题：{modal.base.issueSummary?.active||0}</p></>}
       {conditions?.unmetPredecessors.length? <p className="warning-banner">仍未满足：{conditions.unmetPredecessors.map(p=>p.title).join('、')}。确认后提前开始，保留这些前置。</p>:null}
       {['progress','rework'].includes(modal.action)&&modal.base.executionMode==='direct'&&<label className="field"><span>完成度</span><input aria-label="需求完成度" type="number" min={modal.action==='progress'?modal.base.progress:0} max={99} required value={percent} onChange={e=>setPercent(Number(e.target.value))}/></label>}
@@ -58,7 +73,7 @@ export function DeliveryControls({requirement:r,compact=false}:{requirement:Requ
       {modal.action==='rework'&&modal.base.executionMode!=='direct'&&modal.base.workItems.filter(w=>w.status==='completed').map(w=><label key={w.id} className="editor-person-check"><input type="checkbox" checked={selected.includes(w.id)} onChange={e=>setSelected(v=>e.target.checked?[...v,w.id]:v.filter(id=>id!==w.id))}/>{w.title}</label>)}
       {!['start','unblock'].includes(modal.action)&&<label className="field"><span>说明</span><textarea aria-label="执行说明" required value={content} onChange={e=>setContent(e.target.value)}/></label>}
       {mutation.error&&<p className="form-error">{mutation.error.message}{mutation.error.message.includes('草稿')&&<button type="button" className="ghost-button" onClick={()=>navigate('/requirements/'+r.id+'?view=path')}>查看路径草稿</button>}</p>}
-      {needsCheck&&<div className="warning-banner">本次操作需要核对最新状态。已填说明保留。<button type="button" className="ghost-button" disabled={reading} onClick={()=>{setReading(true);void api<Requirement>('/api/requirements/'+r.id).then(latest=>{setModal({...modal,base:latest});setNeedsCheck(false);mutation.reset();invalidateRequirementViews(client,r.id);}).catch(e=>setReadError(e.message)).finally(()=>setReading(false));}}>读取最新状态</button></div>}{readError&&<p className="form-error">{readError}</p>}
+      {needsCheck&&<div className="warning-banner">本次操作需要核对最新状态。已填说明保留。<button type="button" className="ghost-button" disabled={reading} onClick={()=>void reload(modal.action)}>读取最新状态</button></div>}{readError&&<p className="form-error">{readError}</p>}
       <div className="form-actions"><button className="primary-button" disabled={mutation.isPending||needsCheck||reading}>{mutation.isPending?'正在提交…':conditions?.unmetPredecessors.length?'确认可以开始':labels[modal.action]}</button></div>
     </fieldset></form></Modal>}
   </>;

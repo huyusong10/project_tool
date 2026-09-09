@@ -4,9 +4,15 @@ import { api, jsonBody } from "./api";
 import { invalidateRequirementViews, keys } from "./query-keys";
 import type { Person, Requirement, WorkItem } from "./types";
 import { useOptimisticMutation } from "./use-optimistic-mutation";
+import { useSession } from "./app-context";
+import { assertCleanRequirementDraft } from "./use-graph-draft";
+
+const correctsActualDates = (input: Record<string, unknown>) =>
+  Object.prototype.hasOwnProperty.call(input, "actualStart") || Object.prototype.hasOwnProperty.call(input, "actualEnd");
 
 export function useWorkItemSave(requirementId: string, people: Person[]) {
   const client = useQueryClient();
+  const { session } = useSession();
   const run = useOptimisticMutation<{ item: WorkItem; input: Record<string, unknown>; expectedVersion?: number }, WorkItem>({
     snapshotKeys: () => [keys.requirement(requirementId), [...keys.requirements]],
     apply: (queryClient, { item, input }) => {
@@ -32,7 +38,7 @@ export function useWorkItemSave(requirementId: string, people: Person[]) {
       } : current);
     },
     request: ({ item, input, expectedVersion = item.version }) => {
-      const isCorrection = Object.prototype.hasOwnProperty.call(input, "actualStart") || Object.prototype.hasOwnProperty.call(input, "actualEnd");
+      const isCorrection = correctsActualDates(input);
       return api<WorkItem>(`/api/work-items/${item.id}${isCorrection ? "/correct" : ""}`, {
         method: isCorrection ? "POST" : "PATCH",
         body: jsonBody({ ...input, expectedVersion }),
@@ -47,7 +53,8 @@ export function useWorkItemSave(requirementId: string, people: Person[]) {
   });
 
   return useCallback(async (item: WorkItem, input: Record<string, unknown>, expectedVersion?: number) => {
+    if (correctsActualDates(input)) await assertCleanRequirementDraft(session.accountId || 'guest', requirementId);
     await run({ item, input, expectedVersion });
     invalidateRequirementViews(client, requirementId);
-  }, [client, requirementId, run]);
+  }, [client, requirementId, run, session.accountId]);
 }
