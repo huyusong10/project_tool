@@ -97,7 +97,7 @@ export function executeDirectRequirement(id:string,action:'start'|'progress'|'bl
     const r=getRequirement(id);requireActiveProject(r.projectId);assertExpectedVersion(input,r.version);
     if(r.executionMode!=='direct')fail('此需求通过工作项推进，请操作对应工作项');
     if(action==='rework')assertRequirementAcceptor(id,actor);else assertRequirementOwnerOrManager(auth,id);
-    const allowed={start:['not_started'],progress:['in_progress','blocked'],block:['in_progress'],unblock:['blocked'],'submit-acceptance':['in_progress'],rework:['pending_acceptance','completed']};
+    const allowed={start:['not_started'],progress:['in_progress'],block:['in_progress'],unblock:['blocked'],'submit-acceptance':['in_progress'],rework:['pending_acceptance','completed']};
     if(!allowed[action].includes(r.status))fail('当前状态不能执行此操作','INVALID_TRANSITION');
     const now=new Date().toISOString(),today=todayIso();let sets='',args:unknown[]=[];
     let content=input.content||input.reason||({start:'开始需求',unblock:'解除阻塞'} as Record<string,string>)[action]||'';
@@ -113,7 +113,11 @@ export function executeDirectRequirement(id:string,action:'start'|'progress'|'bl
         content+='；提前开始，未满足前置：'+conditions.unmetPredecessors.map(x=>x.title).join('、');
       }
       sets="status='in_progress',actual_start=?";args=[today];
-    }else if(action==='progress'){if(input.progress===undefined)fail('请填写需求进度');content=requireText(content,'进展说明');sets='progress=?';args=[input.progress];}
+    }else if(action==='progress'){
+      if(input.progress===undefined)fail('请填写需求进度');
+      if(input.progress<r.progress)fail('普通进展不能降低完成度，请由项目经理执行纠错');
+      content=requireText(content,'进展说明');sets='progress=?';args=[input.progress];
+    }
     else if(action==='block'){content=requireText(content,'阻塞原因');sets="status='blocked',blocked_at=?,blocked_reason=?";args=[now,content];}
     else if(action==='unblock'){sets="status='in_progress',blocked_at=NULL,blocked_reason=NULL";}
     else if(action==='submit-acceptance'){content=requireText(content,'交付说明');sets="status='pending_acceptance',progress=100,actual_end=?";args=[today];}

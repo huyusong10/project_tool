@@ -56,6 +56,23 @@ it('候选不能开始，撤出已执行需求保留事实并要求理由',async
  expect((await req('PATCH','/api/requirements/'+r.id,{expectedVersion:started.version,deliveryScope:'candidate'})).statusCode).toBe(400);
  const saved=await req('PATCH','/api/requirements/'+r.id,{expectedVersion:started.version,deliveryScope:'candidate',reason:'本期暂不交付'});expect(saved.statusCode,saved.body).toBe(200);expect(saved.json().status).toBe('in_progress');expect(saved.json().readinessIssues).toContain('范围外执行');
 });
+it('直接需求普通更新不能降低完成度，拒绝时不写历史或版本',async()=>{
+ const {r}=await fixture();await command(r.id,'start');await command(r.id,'progress',{content:'完成六成',requirementPercent:60});
+ const before=await detail(r.id);
+ const rejected=await command(r.id,'progress',{content:'误填两成',requirementPercent:20});
+ expect(rejected.statusCode,rejected.body).toBe(400);
+ const after=await detail(r.id);expect(after.progress).toBe(60);expect(after.version).toBe(before.version);expect(after.progressUpdates).toEqual(before.progressUpdates);
+});
+it('阻塞的直接需求只能补充说明，解阻后才能继续提高完成度',async()=>{
+ const {r}=await fixture();await command(r.id,'start');await command(r.id,'progress',{content:'完成六成',requirementPercent:60});await command(r.id,'block',{reason:'等待环境'});
+ const before=await detail(r.id);
+ const rejected=await command(r.id,'progress',{content:'不应推进',requirementPercent:70});expect(rejected.statusCode,rejected.body).toBe(409);expect(rejected.json().code).toBe('INVALID_TRANSITION');
+ expect((await detail(r.id)).version).toBe(before.version);
+ const note=await command(r.id,'progress',{content:'补充阻塞处理记录'});expect(note.statusCode,note.body).toBe(200);
+ const after=await detail(r.id);expect(after.status).toBe('blocked');expect(after.progress).toBe(60);expect(after.blockedAt).toBe(before.blockedAt);
+ expect(after.progressUpdates?.[0]).toMatchObject({eventType:'note',content:'补充阻塞处理记录',percent:60});
+ await command(r.id,'unblock');expect((await command(r.id,'progress',{content:'解阻后推进',requirementPercent:70})).statusCode).toBe(200);
+});
 it('拆分预览不写库，原子保存后保留30%基线并计算到65%',async()=>{
  const {r,projectId,owner}=await fixture();await command(r.id,'start');await command(r.id,'progress',{content:'前期工作完成',requirementPercent:30});
  const current=await detail(r.id),before=await analysis(projectId),a=randomUUID(),b=randomUUID();

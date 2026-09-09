@@ -22,7 +22,7 @@ import { cacheResourceUpdate, useResourceQuery } from "../use-resource-query";
 import { useWorkItemSave } from "../use-work-item-save";
 import { formatDateTime } from "../format";
 import type { Person, ProgressUpdate, Requirement, WorkItem, WorkItemTemplate } from "../types";
-import { requirementStatusLabels, workItemPlannedProgress, workItemPlannedDuration } from "../../shared/domain";
+import { requirementStatusLabels, requirementPlannedProgress } from "../../shared/domain";
 import { GapTimeline } from "../components/GapTimeline";
 import { Chart } from "../components/Chart";
 import { EmptyState, LoadingState, RefreshNotice } from "../components/Feedback";
@@ -123,14 +123,10 @@ function SavedRequirementPage() {
   const progressOption = useMemo(
     () => {
       const dailyTrend = dailyProgressTrend(requirement?.progressUpdates || []);
-      const items = (requirement?.workItems || []).filter((item) => item.status !== "cancelled");
-      const totalWeight = items.reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
-      const plannedValues = dailyTrend.map(({ date }) => {
-        const plannedWeight = items.reduce((sum, item) => sum + workItemPlannedDuration(item) * workItemPlannedProgress(item, date) / 100, 0);
-        return totalWeight ? Math.round((plannedWeight / totalWeight) * 100) : 0;
-      });
+      const plannedValues = dailyTrend.map(({ date }) => requirement
+        ? requirementPlannedProgress(requirement, requirement.workItems || [], date) : null);
       return ({
-      tooltip: { trigger: "axis" },
+      tooltip: { trigger: "axis", valueFormatter: (value: unknown) => typeof value === 'number' ? `${value}%` : '待确认' },
       legend: { top: 4, right: 16, data: ["实际进度", "计划进度"], textStyle: { color: "var(--text-muted)", fontSize: 12 } },
       grid: { left: 42, right: 18, top: 42, bottom: 34 },
       xAxis: {

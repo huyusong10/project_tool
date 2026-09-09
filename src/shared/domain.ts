@@ -239,6 +239,22 @@ export function workItemPlannedProgress(item: WorkItemLike, today = todayIso()):
   return Math.min(100, Math.round((elapsed / workItemPlannedDuration(item)) * 100));
 }
 
+/** 未排齐有效执行项时没有可靠计划百分比；需求趋势和汇总使用同一权重及拆分基线。 */
+export function requirementPlannedProgress(
+  requirement: DeliveryFields & {status?: string; plannedStart?: string | null; plannedEnd?: string | null},
+  workItems: WorkItemLike[],
+  today = todayIso(),
+): number | null {
+  const direct = requirement.executionMode === 'direct';
+  const items = (direct ? [{...requirement, status: requirement.status || 'not_started'}] : workItems)
+    .filter(item => deriveWorkItemStatus(item) !== 'cancelled');
+  if (!items.length || items.some(item => !item.plannedStart || !item.plannedEnd)) return null;
+  const total = items.reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
+  const planned = items.reduce((sum, item) => sum + workItemPlannedDuration(item) * workItemPlannedProgress(item, today), 0) / total;
+  const base = direct ? 0 : requirement.splitBaseProgress || 0;
+  return Math.round(base + (100 - base) * planned / 100);
+}
+
 export function workItemActualProgress(item: WorkItemLike): number {
   if (deriveWorkItemStatus(item) === 'completed') return 100;
   const progress = Number(item.progress ?? 0);
@@ -346,13 +362,10 @@ export function deriveRequirementMetrics(
   const actualWeightedProgress = activeItems.reduce(
     (sum, item) => sum + item.plannedDuration * workItemActualProgress(item), 0,
   );
-  const plannedWeightedProgress = activeItems.reduce(
-    (sum, item) => sum + item.plannedDuration * plannedProgressWithDuration(item, today), 0,
-  );
   const base=direct?0:requirement.splitBaseProgress||0;
   const remainingProgress=totalWeight ? actualWeightedProgress / totalWeight : 0;
   const progress = direct ? requirement.progress||0 : Math.min(status==='pending_acceptance'||status==='completed'?100:99,Math.round(base+(100-base)*remainingProgress/100));
-  const plannedProgress = totalWeight ? Math.round(base+(100-base)*(plannedWeightedProgress / totalWeight)/100) : 0;
+  const plannedProgress = requirementPlannedProgress(requirement, workItems, today) ?? 0;
   const scheduleVariance = scheduleVarianceFromProgress(activeItems, base?remainingProgress:progress, today);
 
   const actualEnds = activeItems.map((item) => item.actualEnd).filter((value): value is string => Boolean(value));
