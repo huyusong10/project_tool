@@ -20,7 +20,7 @@ test('直接执行无需工作项，详情执行到验收；列表和路径的�
  const pending=await detail(r.id);expect(pending.status).toBe('pending_acceptance');expect(pending.acceptedAt).toBeNull();
  await page.goto('/requirements');await expect(page.locator('tbody tr').filter({hasText:r.title})).toContainText(pending.processingPriority!);
  const path=await(await page.request.get('/api/projects/'+projectId+'/path-analysis')).json();expect(path.risks[r.id].processingPriority).toBe(pending.processingPriority);
- await page.goto('/requirements/'+r.id);await page.getByRole('button',{name:'确认验收',exact:true}).click();await page.getByLabel('执行说明').fill('验收测试通过');await page.getByRole('dialog').getByRole('button',{name:'确认验收',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);expect((await detail(r.id)).acceptedAt).toBeTruthy();
+ await page.goto('/requirements/'+r.id);await page.getByRole('button',{name:'确认验收',exact:true}).click();await page.getByLabel('验收说明').fill('验收测试通过');await page.getByRole('dialog').getByRole('button',{name:'确认验收',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);expect((await detail(r.id)).acceptedAt).toBeTruthy();
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:info.outputPath('direct-acceptance-390.png')});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 test('拆分进入共享草稿；离开、刷新、恢复、保存后保留30%基线',async({page},info)=>{
@@ -28,7 +28,7 @@ test('拆分进入共享草稿；离开、刷新、恢复、保存后保留30%�
  await page.request.post('/api/requirements/'+r.id+'/start',{data:{expectedVersion:r.version}});let current=await detail(r.id);
  await page.request.post('/api/requirements/'+r.id+'/progress',{data:{expectedVersion:current.version,requirementPercent:30,content:'前期完成'}});
  await page.goto('/requirements/'+r.id);await page.getByRole('button',{name:'拆分剩余工作',exact:true}).click();await page.getByLabel('剩余工作项').fill('剩余开发\n剩余验证');await page.getByRole('button',{name:'加入草稿并预览',exact:true}).click();
- await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();expect((await detail(r.id)).workItems).toHaveLength(0);
+ await expect(page.getByRole('dialog')).toContainText('将一起保存');expect((await detail(r.id)).workItems).toHaveLength(0);
  await page.goto('/requirements/'+r.id);await page.getByRole('button',{name:'更新进度',exact:true}).click();await page.getByLabel('执行说明').fill('不应与草稿混写');await page.getByRole('dialog').getByRole('button',{name:'更新进度',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('未保存业务草稿');
  await page.goto('/requirements/'+r.id+'?view=path');await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();await page.reload();await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();await expect(page.locator('.graph-toolbar')).toContainText('未保存');
  await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect.poll(async()=> (await detail(r.id)).executionMode).toBe('work_items');current=await detail(r.id);expect(current.workItems).toHaveLength(2);expect(current.progress).toBe(30);
@@ -38,8 +38,8 @@ test('范围批量修改只进入草稿，筛选保持条件，保存后正式�
  const {create,detail}=await fixture(page),a=await create('范围一'),b=await create('范围二');await page.goto('/requirements');
  for(const title of [a.title,b.title])await page.locator('tbody tr').filter({hasText:title}).getByRole('checkbox').check();
  await page.getByRole('button',{name:'调整所选交付范围'}).click();await page.getByRole('dialog').getByLabel('交付范围',{exact:true}).selectOption('candidate');await page.getByRole('button',{name:'加入草稿并预览',exact:true}).click();
- await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();expect((await detail(a.id)).deliveryScope).toBe('committed');
- await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect.poll(async()=> (await detail(a.id)).deliveryScope).toBe('candidate');
+ await expect(page.getByRole('dialog')).toContainText('将一起保存');expect((await detail(a.id)).deliveryScope).toBe('committed');
+ await page.getByRole('checkbox',{name:'已核对本次及已有草稿，整批保存'}).check();await page.getByRole('button',{name:'确认保存全部修改',exact:true}).click();await expect.poll(async()=> (await detail(a.id)).deliveryScope).toBe('candidate');
  await page.goto('/requirements?deliveryScope=candidate');await expect(page.locator('tbody tr')).toHaveCount(2);await page.reload();await expect(page.getByLabel('交付范围筛选')).toHaveValue('candidate');
 });
 test('普通新增未选流程直接执行，选择流程则实例化未排期工作',async({page})=>{
@@ -65,7 +65,7 @@ test('详情移除通用进展；工作项入口实际更新所选工作项并�
  const dialog=page.getByRole('dialog',{name:'更新工作项进度',exact:true});
  await expect(dialog.getByRole('combobox')).toHaveCount(0);
  await expect(dialog.locator('.progress-item-context')).toContainText(first.title);
- await dialog.getByRole('spinbutton').fill('60');await dialog.getByLabel('具体进展',{exact:true}).fill('完成当前工作六成');
+ await dialog.getByRole('spinbutton').fill('60');await dialog.getByLabel('说明',{exact:true}).fill('完成当前工作六成');
  await dialog.getByRole('button',{name:'记录进展',exact:true}).click();await expect(dialog).toHaveCount(0);
  r=await detail(r.id);expect(r.workItems.find(w=>w.id===first.id)?.progress).toBe(60);expect(r.workItems.find(w=>w.id!==first.id)?.progress).toBe(0);expect(r.progress).toBe(30);
  expect(r.progressUpdates?.some(e=>e.workItemId===first.id&&e.workItemPercent===60&&e.eventType==='progress')).toBe(true);

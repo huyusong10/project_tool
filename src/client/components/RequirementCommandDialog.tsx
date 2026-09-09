@@ -9,7 +9,6 @@ import { requirementStatusLabels } from '../../shared/domain';
 import { Modal } from './Modal';
 import { FormError, FormField } from './Form';
 import { useToast } from './Toast';
-import { canonicalizeContent } from '../../shared/search';
 
 export type RequirementCommand = 'complete-as-planned' | 'accept' | 'cancel' | 'archive';
 const commands = {
@@ -18,30 +17,6 @@ const commands = {
   cancel: { title: '取消需求', confirm: '确认取消' },
   archive: { title: '归档需求', confirm: '确认归档' },
 };
-
-const reconciledCommands: Partial<Record<RequirementCommand, { status: string; eventType: string; message: string }>> = {
-  accept: { status: 'completed', eventType: 'accept', message: '已核对最新状态：需求已验收' },
-  cancel: { status: 'cancelled', eventType: 'cancel', message: '已核对最新状态：需求已取消' },
-};
-
-function matchesPlannedCompletion(latest: Requirement, baseline: Requirement, accountId?: string) {
-  const pending = baseline.workItems.filter((item) => !['completed', 'cancelled'].includes(item.status));
-  const accepted = latest.progressUpdates?.some((update) => update.workItemId === null
-    && update.eventType === 'accept' && update.content === '历史补录，按计划完成；确认验收'
-    && update.createdByAccountId === accountId && update.createdAt === latest.updatedAt);
-  return latest.status === 'completed' && latest.version === baseline.version + 2
-    && pending.length > 0 && accepted && pending.every((expected) => {
-    const item = latest.workItems.find((entry) => entry.id === expected.id);
-    const content = `历史补录，按计划完成（${expected.plannedStart} 至 ${expected.plannedEnd}）`;
-    return item?.status === 'completed'
-      && item.version === expected.version + 1
-      && item.actualStart === expected.plannedStart
-      && item.actualEnd === expected.plannedEnd
-      && latest.progressUpdates?.some((update) => update.workItemId === expected.id
-        && update.eventType === 'complete' && update.content === content
-        && update.createdByAccountId === accountId && update.createdAt === item.updatedAt);
-  });
-}
 
 function commandWarning(action: RequirementCommand, requirement: Requirement, today: string) {
   if (action === 'accept') return requirement.status === 'pending_acceptance' ? '' : '需求已不在待验收状态，请关闭后重新选择操作。';
@@ -83,6 +58,7 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
   const [refreshed, setRefreshed] = useState(false);
   const [readError, setReadError] = useState<Error | null>(null);
   const submitting = useRef(false);
+  const unknownVersion=useRef<number|null>(null);const [reviewRequired,setReviewRequired]=useState(false);
   const readingRef = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -97,6 +73,7 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
         ? await api<Requirement>(`/api/requirements/${baseline.id}?includeDeleted=true`, { readOnly: true })
         : await onReload();
       if (!mounted.current) return null;
+      setReviewRequired(unknownVersion.current!==null&&latest.version!==unknownVersion.current);
       setBaseline(latest); setNeedsRefresh(false); setRefreshed(true);
       return latest;
     } catch (caught) {
@@ -108,7 +85,7 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
     }
   };
   const mutation = useMutation({
-    mutationFn: async (input: { expectedVersion: number; content?: string; reason?: string }) => {await assertCleanRequirementDraft(session.accountId||'guest',baseline.id);return api(`/api/requirements/${baseline.id}${action === 'archive' ? '' : `/${action}`}`, {
+    mutationFn: async (input: { expectedVersion: number; content?: string; reason?: string }) => {await assertCleanRequirementDraft(session.accountId||'guest',baseline.id,{action});return api(`/api/requirements/${baseline.id}${action === 'archive' ? '' : `/${action}`}`, {
       method: action === 'archive' ? 'DELETE' : 'POST', body: jsonBody(input),
     });},
     onSuccess: () => {
@@ -120,64 +97,15 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
       if (action === 'archive') onArchived();
     },
     onError: async (error, input) => {
-      if (!mounted.current) return;
-      // 确定性校验错误（如 400 VALIDATION_ERROR）重读也不会改变结果，直接展示错误即可。
-      if (!requiresWriteRecheck(error)) return;
-      setNeedsRefresh(true);
-      if (action === 'archive' && isWriteOutcomeUnknown(error)) {
-        readingRef.current = true; setReading(true); setReadError(null);
-        try {
-          const latest = await api<Requirement>(`/api/requirements/${baseline.id}?includeDeleted=true`, { readOnly: true });
-          if (latest.deletedAt && latest.version === baseline.version + 1 && mounted.current) {
-            invalidateArchiveViews(client);
-            toast.success('已核对最新状态：需求已归档');
-            onClose();
-            onArchived();
-            return;
-          }
-        } catch (caught) {
-          if (mounted.current) setReadError(caught instanceof Error ? caught : new Error('需求归档状态读取失败'));
-        } finally {
-          readingRef.current = false;
-          if (mounted.current) setReading(false);
-        }
-      }
-      const expected = baseline;
-      const latest = await readLatest();
-      if (action === 'archive') {
-        // 响应不明时必须匹配本次版本，不能把恢复后再次归档误认成本次写入。
-        if (latest?.deletedAt && (!isWriteOutcomeUnknown(error) || latest.version === expected.version + 1) && mounted.current) {
-          invalidateArchiveViews(client);
-          toast.success('已核对最新状态：需求已归档');
-          onClose();
-          onArchived();
-        }
-        return;
-      }
-      if (action === 'complete-as-planned' && latest && matchesPlannedCompletion(latest, expected, session.accountId) && mounted.current) {
-        invalidateRequirementViews(client, baseline.id);
-        toast.success('已核对最新状态：需求已按期补录完成');
-        onClose();
-        return;
-      }
-      const reconciled = reconciledCommands[action];
-      const expectedContent = canonicalizeContent(action === 'accept' ? input.content : action === 'cancel' ? input.reason : undefined);
-      if (reconciled && expectedContent && latest?.status === reconciled.status
-        && latest.version === expected.version + 1
-        && latest.progressUpdates?.some((update) => update.workItemId === null
-          && update.eventType === reconciled.eventType && update.content === expectedContent
-          && update.createdByAccountId === session.accountId && update.createdAt === latest.updatedAt)
-        && mounted.current) {
-        invalidateRequirementViews(client, baseline.id);
-        toast.success(reconciled.message);
-        onClose();
-      }
+      if(!mounted.current||!requiresWriteRecheck(error))return;
+      if(isWriteOutcomeUnknown(error))unknownVersion.current=input.expectedVersion;
+      setNeedsRefresh(true);await readLatest();
     },
     onSettled: () => { submitting.current = false; },
   });
   const warning = commandWarning(action, baseline, today);
   const pending = mutation.isPending || reading;
-  const blocked = changed || needsRefresh || Boolean(warning);
+  const blocked = changed || needsRefresh || reviewRequired || Boolean(warning);
   const needsText = action === 'accept' || action === 'cancel';
   const pendingItems = baseline.workItems.filter((item) => !['completed', 'cancelled'].includes(item.status));
   const close = () => { if (!submitting.current && !readingRef.current) onClose(); };
@@ -195,11 +123,16 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
         {!!pendingItems.length && <ul className="requirement-command-plan">{pendingItems.map((item) => <li key={item.id}><strong>{item.title}</strong><span>{item.plannedStart || '未排期'} → {item.plannedEnd || '未排期'}</span></li>)}</ul>}
         <p>用于录入过去已经按期交付的需求：一次完成所有未执行工作项并通过验收。补录说明自动填写，操作会完整保留审计记录。</p>
       </>}
-      {action === 'accept' && <p>验收后需求将计入已完成需求和完成率，请填写验收结论。</p>}
+      {action === 'accept' && <>
+        <p>验收标准：{baseline.acceptanceCriteria || '尚未填写，请在验收说明中写明核对结果'}</p>
+        <p>未达成里程碑：{baseline.milestones?.filter(item => !item.achievedAt && !item.cancelled).map(item => item.title).join('、') || '无'} · 未关闭问题：{baseline.issueSummary?.active || 0}</p>
+        <p>验收后需求将计入已完成需求和完成率，请填写验收结论。</p>
+      </>}
       {action === 'cancel' && <p>将取消 {pendingItems.length} 个未结束工作项。已完成工作项和历史记录保持不变。</p>}
       {action === 'archive' && <p>需求将从日常页面隐藏，历史数据仍会保留并可在归档中心恢复。</p>}
       {needsText && <FormField label={action === 'accept' ? '验收说明' : '取消原因'} full><textarea autoFocus required rows={4} disabled={pending} value={text} onChange={(event) => setText(event.target.value)} /></FormField>}
       <FormError>{mutation.error?.message}</FormError>
+      {reviewRequired&&<p className="warning-banner">提交结果仍待核对，当前版本已变化。本窗口不再提交；请核对执行记录，已填说明保留。</p>}
       <FormError>{warning}</FormError>
       <FormError>{changed ? '需求已更新，请重新读取并核对后再确认；原确认内容已保留。' : undefined}</FormError>
       <FormError>{readError?.message}</FormError>

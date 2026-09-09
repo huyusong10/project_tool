@@ -1,5 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { dailyProgressTrend, progressHistoryMetadata, progressUpdateDisplayValue } from "../src/client/progress-trend";
+import {deriveRequirementMetrics,requirementPlannedProgress} from '../src/shared/domain';
+
+describe('需求计划进度',()=>{
+  const item={status:'in_progress',progress:50,plannedStart:'2026-09-01',plannedEnd:'2026-09-04'};
+  it('直接执行没有工作项时仍使用需求日期，拆分后保留基线',()=>{
+    const direct={executionMode:'direct' as const,...item,plannedEnd:'2026-09-10'};
+    expect(requirementPlannedProgress(direct,[],'2026-09-09')).toBe(88);
+    const split={executionMode:'work_items' as const,splitBaseProgress:30};
+    expect(requirementPlannedProgress(split,[item],'2026-09-03')).toBe(83);
+    expect(requirementPlannedProgress(split,[item],'2026-09-03')).toBe(deriveRequirementMetrics(split,[item],'2026-09-03').plannedProgress);
+  });
+  it('排期不完整时不伪造零进度，已取消工作项不影响有效计划',()=>{
+    expect(requirementPlannedProgress({executionMode:'direct'},[],'2026-09-03')).toBeNull();
+    expect(requirementPlannedProgress({},[item,{status:'not_started',plannedStart:null,plannedEnd:null}],'2026-09-03')).toBeNull();
+    expect(requirementPlannedProgress({},[item,{status:'cancelled'}],'2026-09-03')).toBe(75);
+  });
+});
 
 describe("进度趋势", () => {
   it("同一时间使用接口返回的最新记录，不比较随机ID", () => {

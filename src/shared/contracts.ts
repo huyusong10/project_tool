@@ -88,7 +88,7 @@ export const projectArchiveInputSchema = z.object({
   message: '只有强制归档可以提交已确认的影响数量',
 }).strict();
 
-export const requirementInputSchema = z.object({
+export const requirementInputSchema = z.object({blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema,
   deliveryScope:z.enum(['committed','candidate']).optional(),executionMode:z.enum(['direct','work_items']).optional(),acceptanceOwnerId:optionalIdSchema,durationDays:z.number().int().min(1).max(3660).nullable().optional(),forecastEnd:optionalDateSchema,unblockEstimate:optionalDateSchema,
   projectId: idSchema.optional(),
   title: z.string().trim().min(1).optional(),
@@ -126,7 +126,7 @@ export const createRequirementInputSchema = requirementInputSchema.pick({
   message: '计划开始和截止日期只能选择一项',
 });
 
-export const updateRequirementInputSchema = requirementInputSchema.pick({
+export const updateRequirementInputSchema = requirementInputSchema.pick({blockedCoordinatorId:true,blockedNextReviewAt:true,blockedIssueId:true,
   deliveryScope:true,executionMode:true,acceptanceOwnerId:true,durationDays:true,forecastEnd:true,unblockEstimate:true,reason:true,
   title: true, priority: true, ownerId: true, background: true,
   acceptanceCriteria: true, referenceUrl: true, expectedVersion: true,
@@ -167,7 +167,7 @@ export const applyTemplateInputSchema = z.object({
   reason: z.string().trim().min(1).optional(),
 }).strict();
 
-export const workItemInputSchema = z.object({
+export const workItemInputSchema = z.object({blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema,
   title: z.string().trim().min(1).optional(),
   ownerId: z.string().nullable().optional(),
   collaboratorIds: z.array(idSchema).optional(),
@@ -182,7 +182,7 @@ export const workItemInputSchema = z.object({
 
 export const expectedVersionInputSchema = z.object({ expectedVersion: expectedVersionSchema }).passthrough();
 export const startWorkItemInputSchema=expectedVersionInputSchema.extend({reason:z.string().trim().min(1).optional(),expectedDependencyRevision:z.number().int().nonnegative().optional()});
-export const reasonCommandSchema = expectedVersionInputSchema.extend({ reason: z.string().trim().min(1) });
+export const reasonCommandSchema = expectedVersionInputSchema.extend({blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema, reason: z.string().trim().min(1) });
 export const contentCommandSchema = expectedVersionInputSchema.extend({ content: z.string().trim().min(1) });
 export const optionalContentCommandSchema = expectedVersionInputSchema.extend({ content: z.string().trim().optional() });
 export const completeAsPlannedInputSchema = z.object({
@@ -253,7 +253,7 @@ export const progressHistoryUpdateInputSchema = z.object({
   expectedVersion: expectedVersionSchema.optional(),
 }).strict();
 
-export const issueInputSchema = z.object({
+export const issueInputSchema = z.object({nextReviewAt:optionalDateSchema,
   projectId: idSchema.optional(),
   title: z.string().trim().min(1).optional(),
   impact: z.string().nullable().optional(),
@@ -267,7 +267,7 @@ export const issueInputSchema = z.object({
   expectedVersion: expectedVersionSchema.optional(),
 }).passthrough();
 
-export const createIssueInputSchema = issueInputSchema.pick({
+export const createIssueInputSchema = issueInputSchema.pick({nextReviewAt:true,
   projectId: true,
   title: true,
   impact: true,
@@ -515,4 +515,4 @@ export const projectPeopleConcurrencyInputSchema = peopleConcurrencyInputSchema.
   { message: '项目ID不能为空', path: ['projectId'] },
 );
 
-export const directRequirementCommandSchema=z.object({expectedVersion:expectedVersionSchema,content:z.string().trim().optional(),reason:z.string().trim().optional(),progress:z.number().int().min(0).max(99).optional(),expectedDependencyRevision:z.number().int().nonnegative().optional()}).strict();
+export const directRequirementCommandSchema=z.object({blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema,expectedVersion:expectedVersionSchema,content:z.string().trim().optional(),reason:z.string().trim().optional(),progress:z.number().int().min(0).max(99).optional(),expectedDependencyRevision:z.number().int().nonnegative().optional()}).strict();

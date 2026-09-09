@@ -5,7 +5,7 @@ import {scryptSync,randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import type {FastifyInstance} from 'fastify';
 import type {PathAnalysis} from '../src/shared/paths';
-import type {Requirement,WorkItemTemplate} from '../src/client/types';
+import type {Requirement,WorkItem,WorkItemTemplate} from '../src/client/types';
 import {addBusinessDays,todayIso} from '../src/shared/domain';
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'pm-path-api-'));
 import type {DependencyChanges,DependencyChangePreview,DependencyChangeReceipt} from '../src/shared/path-contracts';
@@ -111,7 +111,7 @@ it('模板复制和实例化保留前置；旧模板不推断关系或改写历�
  const copy=await post(`/api/projects/${f.projectId}/templates/${f.template.id}/copy`,{});expect(copy.statusCode,copy.body).toBe(200);
  const copied=copy.json<WorkItemTemplate>();expect(copied.dependencyMode).toBe('dependencies');expect(copied.items[1].predecessorIds).toEqual([copied.items[0].id]);
  const old=await fixture(true),before=(await detail(old.a.id)).workItems;expect((await analysis(old.projectId)).dependencies).toEqual([]);expect((await analysis(old.projectId)).forecastEnd).toBeNull();
- await post(`/api/requirements/${old.a.id}/dependency-review`,{expectedRevision:(await analysis(old.projectId)).revision,reviewed:true});expect((await detail(old.a.id)).workItems).toEqual(before);
+ await post(`/api/requirements/${old.a.id}/dependency-review`,{expectedRevision:(await analysis(old.projectId)).revision,reviewed:true});const stripDerived=(items:WorkItem[])=>items.map(({forecastBasis:_basis,...w})=>w);expect(stripDerived((await detail(old.a.id)).workItems)).toEqual(stripDerived(before));
 });
 it('部分交付允许 A设计→B开发→A联调；执行循环拒绝且版本不变',async()=>{
  const {projectId,a,b}=await fixture();expect((await add(projectId,a.id,a.workItems[0].id,b.id,b.workItems[1].id)).statusCode).toBe(200);

@@ -5,11 +5,11 @@ import { isBusinessDay } from "../../src/shared/workday";
 test('甘特默认优先展示风险与关键阻塞，数据刷新保留主动排序', async ({ page }) => {
   await mockGanttData(page);
   const rows = [
-    { ...requirement, id: 'low', title: '低风险', riskLevel: 'low', priority: 'P0' },
-    { ...requirement, id: 'pending', title: '待评估', riskEvaluated: false, priority: 'P1' },
-    { ...requirement, id: 'medium', title: '中风险', priority: 'P2' },
-    { ...requirement, id: 'high', title: '高风险', riskLevel: 'high', priority: 'P3', pathRisk: { critical: false, blockedCritical: false, minFloat: 3 } },
-    { ...requirement, id: 'blocked', title: '关键阻塞', riskLevel: 'high', priority: 'P3', pathRisk: { critical: true, blockedCritical: true, minFloat: 0 } },
+    { ...requirement, id: 'low', title: '低风险', riskLevel: 'low', priority: 'P0',processingPriority:'P3' },
+    { ...requirement, id: 'pending', title: '待评估', riskEvaluated: false, priority: 'P1',processingPriority:'P2' },
+    { ...requirement, id: 'medium', title: '中风险', priority: 'P2',processingPriority:'P2' },
+    { ...requirement, id: 'high', title: '高风险', riskLevel: 'high', priority: 'P3',processingPriority:'P1', pathRisk: { critical: false, blockedCritical: false, minFloat: 3 } },
+    { ...requirement, id: 'blocked', title: '关键阻塞', riskLevel: 'high', priority: 'P3',processingPriority:'P0', pathRisk: { critical: true, blockedCritical: true, minFloat: 0 } },
     { ...requirement, id: 'closed', title: '已结束', status: 'completed', riskLevel: 'high', priority: 'P0' },
   ];
   let reads = 0;
@@ -31,14 +31,14 @@ test('甘特默认优先展示风险与关键阻塞，数据刷新保留主动�
   await page.getByLabel('按状态筛选',{exact:true}).selectOption('unfinished');
   await page.getByLabel('需求排序', { exact: true }).selectOption('priority');
   const chosenOrder = await titles.allTextContents();
-  expect(chosenOrder.slice(0, 3)).toEqual(['低风险', '待评估', '中风险']);
+  expect(chosenOrder.slice(0, 3)).toEqual(['关键阻塞', '高风险', '中风险']);
   const before = reads;
   await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
   await expect.poll(() => reads).toBeGreaterThan(before);
   await expect(page.getByLabel('需求排序', { exact: true })).toHaveValue('priority');
   await expect(titles).toHaveText(chosenOrder);
   await page.reload();await expect(page.getByLabel('需求排序',{exact:true})).toHaveValue('priority');
-  await page.getByTitle('清除全部筛选',{exact:true}).click();
+  await page.getByTitle('重置为进行中和风险排序',{exact:true}).click();
   await expect(page.getByLabel('需求排序',{exact:true})).toHaveValue('risk');
   await expect(titles).toHaveText(['关键阻塞', '高风险', '中风险', '待评估', '低风险']);
 });

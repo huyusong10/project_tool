@@ -3,7 +3,9 @@ import { useMemo } from "react";
 import { format } from "date-fns";
 import { ArrowRight, CircleAlert, RotateCcw } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { priorityLabels, requirementStatusLabels, riskLabels, signedProgressVariance, todayIso } from "../../shared/domain";
+import { requirementStatusLabels, riskLabels, signedProgressVariance, todayIso } from "../../shared/domain";
+import {compareProcessingPriority,processingPriorityLabels} from '../../shared/delivery';
+import {ProcessingPriorityBadge} from './Badge';
 import {compareRiskRequirements,matchesRequirementFilters,emptyRequirementFilters,unfinishedStatuses} from "../../shared/requirement-view";
 import { matchesSearch } from "../../shared/search";
 import type { Requirement } from "../types";
@@ -28,7 +30,6 @@ import {
 } from "./GanttTimeline";
 
 type RequirementSort = "deadline" | "priority" | "risk" | "progress" | "updated";
-const priorityOrder: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 
 
 function compareDeadline(left: Requirement, right: Requirement) {
@@ -53,7 +54,7 @@ function compareRequirements(left: Requirement, right: Requirement, sort: Requir
   const rightClosed = right.status === "completed" || right.status === "cancelled";
   if (leftClosed !== rightClosed) return leftClosed ? 1 : -1;
   let result = 0;
-  if (sort === "priority") result = (priorityOrder[left.priority] ?? 99) - (priorityOrder[right.priority] ?? 99);
+  if (sort === "priority") return compareProcessingPriority(left,right);
   else if (sort === "risk") return compareRiskRequirements(left,right);
   else if (sort === "progress") result = left.progress - right.progress;
   else if (sort === "updated") result = right.updatedAt.localeCompare(left.updatedAt);
@@ -61,7 +62,7 @@ function compareRequirements(left: Requirement, right: Requirement, sort: Requir
   if (result !== 0) return result;
   const deadlineResult = compareDeadline(left, right);
   if (deadlineResult !== 0) return deadlineResult;
-  const priorityResult = (priorityOrder[left.priority] ?? 99) - (priorityOrder[right.priority] ?? 99);
+  const priorityResult = compareProcessingPriority(left,right);
   return priorityResult || compareRequirementIdentity(left, right);
 }
 
@@ -113,7 +114,7 @@ function RequirementPopover({ requirement, asOfDate }: { requirement: Requiremen
   return <>
     <header className="gantt-popover-header">
       <div><strong>{requirement.title}</strong><span>{requirement.projectName}</span></div>
-      <span className={`priority-badge priority-${requirement.priority.toLowerCase()}`}>{priorityLabels[requirement.priority as keyof typeof priorityLabels] || requirement.priority}</span>
+      <ProcessingPriorityBadge requirement={requirement}/>
     </header>
     <div className="gantt-popover-badges">
       <span className={`status-pill status-${requirement.status}`}>{statusLabel(requirement.status)}</span>
@@ -171,7 +172,7 @@ export function ProjectGantt({
   const ganttTooltip = useGanttTooltip();
   const [viewMode, setViewMode] = useGanttView();
   const [search, setSearch] = useViewPreference<string>(resizeStorageKey+':search',"");
-  const [status, setStatus] = useViewPreference<string>(resizeStorageKey+':status',"unfinished");
+  const [status, setStatus] = useViewPreference<string>(resizeStorageKey+':status-v2',"in_progress",{key:resizeStorageKey+':status',defaultValue:'unfinished'});
   const [priority, setPriority] = useViewPreference<string>(resizeStorageKey+':priority',"");
   const [risk, setRisk] = useViewPreference<string>(resizeStorageKey+':risk',"");
   const [personId, setPersonId] = useViewPreference<string>(resizeStorageKey+':personId',"");
@@ -181,11 +182,11 @@ export function ProjectGantt({
 
   const people = useMemo(() => {
     const owners = new Map<string, string>();
-    requirements.forEach((requirement) => requirement.workItems.forEach((item) => {
+    requirements.forEach((requirement) => {if(requirement.ownerId&&requirement.ownerName)owners.set(requirement.ownerId,requirement.ownerName);requirement.workItems.forEach((item) => {
       if (item.assigneeIds?.length && item.assigneeNames?.length) {
         item.assigneeIds.forEach((id, index) => owners.set(id, item.assigneeNames[index]));
       } else if (item.ownerId && item.ownerName) owners.set(item.ownerId, item.ownerName);
-    }));
+    });});
     return [...owners.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
   }, [requirements]);
   const visibleRequirements = useMemo(() => {
@@ -201,19 +202,19 @@ export function ProjectGantt({
         || (schedule === "unplanned" && !scheduleComplete);
       return matchesKeyword
         && matchesRequirementFilters(requirement,{...emptyRequirementFilters(),statuses:status==='unfinished'?unfinishedStatuses:status?[status]:[]})
-        && (!priority || requirement.priority === priority)
+        && (!priority || requirement.processingPriority === priority)
         && (!risk || (requirement.riskEvaluated?requirement.riskLevel:"pending")===risk)
-        && (!personId || requirement.workItems.some((item) => item.assigneeIds?.includes(personId) || item.ownerId === personId))
+        && (!personId || requirement.ownerId===personId || requirement.workItems.some((item) => item.assigneeIds?.includes(personId) || item.ownerId === personId))
         && matchesSchedule;
     }).sort((left, right) => {
       return compareRequirements(left, right, sort);
     });
   }, [personId, priority, requirements, risk, schedule, search, sort, status]);
-  const hasFilters = Boolean(search || status!=="unfinished" || priority || risk || personId || schedule || sort!=="risk");
-  const resetFilters = () => {
+  const hasFilters = Boolean(search || status!=="in_progress" || priority || risk || personId || schedule || sort!=="risk");
+  const resetFilters = (nextStatus='in_progress') => {
     setSort("risk");
     setSearch("");
-    setStatus("unfinished");
+    setStatus(nextStatus);
     setPriority("");
     setRisk("");
     setPersonId("");
@@ -258,12 +259,12 @@ export function ProjectGantt({
       <div className="gantt-filter-bar" aria-label="项目进展筛选">
         <SearchInput className="gantt-filter-search" value={search} onChange={setSearch} placeholder="搜索需求、工作项或拼音" />
         <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="按状态筛选">
-          <option value="unfinished">未结束</option><option value="">全部状态</option>
-          {Object.entries(requirementStatusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+          <option value="unfinished">未结束 · {requirements.filter(r=>!isClosedRequirement(r)).length}</option><option value="">全部状态 · {requirements.length}</option>
+          {Object.entries(requirementStatusLabels).map(([value, label]) => <option value={value} key={value}>{label} · {requirements.filter(r=>r.status===value).length}</option>)}
         </select>
         <select value={priority} onChange={(event) => setPriority(event.target.value)} aria-label="按优先级筛选">
           <option value="">全部优先级</option>
-          {Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+          {Object.entries(processingPriorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
         </select>
         <select value={risk} onChange={(event) => setRisk(event.target.value)} aria-label="按风险筛选">
           <option value="">全部风险</option>
@@ -271,6 +272,7 @@ export function ProjectGantt({
         </select>
         <select value={personId} onChange={(event) => setPersonId(event.target.value)} aria-label="按人员筛选">
           <option value="">全部人员</option>
+          {personId&&!people.some(p=>p.id===personId)&&<option value={personId}>当前人员（无匹配需求）</option>}
           {people.map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}
         </select>
         <select value={schedule} onChange={(event) => setSchedule(event.target.value)} aria-label="按排期筛选">
@@ -287,12 +289,12 @@ export function ProjectGantt({
           <option value="updated">最近更新 · 新优先</option>
         </select>
         <span className="gantt-filter-result">{visibleRequirements.length} / {requirements.length} 项</span>
-        <button className="gantt-reset-button" onClick={resetFilters} disabled={!hasFilters} title="清除全部筛选">
-          <RotateCcw size={15} /> 清除
+        <button className="gantt-reset-button" onClick={()=>resetFilters()} disabled={!hasFilters} title="重置为进行中和风险排序">
+          <RotateCcw size={15} /> 重置
         </button>
       </div>
       {!visibleRequirements.length ? (
-        <EmptyState title="暂无可展示需求" detail="调整筛选条件，或新建需求后查看项目排期。" />
+        <EmptyState title={!requirements.length?'项目暂无需求':status==='in_progress'&&!search&&!priority&&!risk&&!personId&&!schedule?'当前没有进行中的需求':'没有匹配的需求'} detail={requirements.length?'筛选只影响此图，项目统计仍包含完整范围。可切换状态查看未开始、阻塞或待验收需求。':'新建需求后即可查看项目排期。'} action={requirements.length?<button className="ghost-button" onClick={()=>resetFilters(status==='in_progress'?'unfinished':'in_progress')}>{status==='in_progress'?'查看未结束需求':'重置筛选'}</button>:undefined}/>
       ) : (
         <div className="project-gantt-scroll gantt-navigation-surface" ref={navigation.attach} tabIndex={0} aria-label="项目甘特时间轴，可左右拖动浏览">
           <div className="project-gantt-grid" style={{ width: `calc(var(--project-gantt-label-width) + ${timelineWidth}px)` }} role="table" aria-label="项目进展甘特图">
@@ -326,7 +328,7 @@ export function ProjectGantt({
                         {requirement.title}
                       </button>
                       <div>
-                        <span className={`priority-badge priority-${requirement.priority.toLowerCase()}`}>{priorityLabels[requirement.priority as keyof typeof priorityLabels] || requirement.priority}</span>
+                        <ProcessingPriorityBadge requirement={requirement}/>
                         {requirement.status === "pending_acceptance" && <span className="gantt-risk-chip pending">待验收</span>}
                         {!isClosedRequirement(requirement) && (requirement.riskEvaluated
                           ? healthLabel && <span className={`gantt-risk-chip ${healthClass}`}>{healthLabel}</span>

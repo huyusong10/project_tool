@@ -11,14 +11,14 @@ export function rebaseEditor(base:PathAnalysis|undefined,server:PathAnalysis,inp
   if(!now||('status' in now&&['completed','cancelled'].includes(String(now.status))&&c.op!=='delete'))return resolve(c.id,c.data.title||c.id,'对象状态',old,now,'继续编辑',false)!=='server';
   if(c.op==='delete'&&now.version!==c.expectedVersion){const keep=resolve(c.id,String(now.title),'删除对象',old,now,'删除')!=='server';c.expectedVersion=now.version;return keep;}
   for(const [field,value] of Object.entries(c.data)){
-   if(field==='reason')continue;const a=old?.[field as keyof typeof old],b=now[field as keyof typeof now];
+   if(field==='reason')continue;const read=(value:typeof old)=>field==='reviewForecast'?value&&('forecastReview' in value?value.forecastReview:'forecastBasis' in value?value.forecastBasis?.review:undefined):value?.[field as keyof typeof value];const a=read(old),b=read(now);
    if(!equal(a,b)&&!equal(b,value)&&resolve(c.id+':'+field,String(now.title),field,a,b,value)==='server')delete c.data[field as keyof typeof c.data];
   }
   c.expectedVersion=now.version;return c.op==='delete'||Object.keys(c.data).some(k=>k!=='reason');
  });
  const created=new Set(changes.entities?.filter(c=>c.op==='create').map(c=>c.id));
  changes.estimates=changes.estimates.filter(c=>{if(created.has(c.workItemId))return true;const old=base?.nodes.find(n=>n.id===c.workItemId),now=server.nodes.find(n=>n.id===c.workItemId);if(!now)return resolve(c.workItemId,c.workItemId,'工作项已失效',old,null,c,false)!=='server';
-  for(const [field,value] of Object.entries(c)){if(field==='workItemId')continue;const a=old?.estimate[field as keyof typeof old.estimate],b=now.estimate[field as keyof typeof now.estimate];if(!equal(a,b)&&!equal(b,value)&&resolve(c.workItemId+':'+field,now.title,field,a,b,value)==='server')delete c[field as keyof typeof c];}return Object.keys(c).length>1;});
+  for(const [field,value] of Object.entries(c)){if(field==='workItemId')continue;const a=field==='reviewForecast'?old?.forecastBasis?.review:old?.estimate[field as keyof typeof old.estimate],b=field==='reviewForecast'?now.forecastBasis?.review:now.estimate[field as keyof typeof now.estimate];if(!equal(a,b)&&!equal(b,value)&&resolve(c.workItemId+':'+field,now.title,field,a,b,value)==='server')delete c[field as keyof typeof c];}return Object.keys(c).length>1;});
  changes.layouts=(changes.layouts||[]).filter(l=>{const current=server.layouts?.find(n=>n.scope===l.scope&&n.direction===l.direction);if((current?.version||0)!==l.expectedVersion){const result=resolve('layout:'+l.scope,l.scope,'共享布局',base?.layouts?.find(n=>n.scope===l.scope)?.positions,current?.positions,l.positions);if(result==='server')return false;l.expectedVersion=current?.version||0;}return true;});
  const endpointExists=(id:string)=>created.has(id)||!!entity(server,id);
  changes.add=changes.add.filter(e=>{
@@ -29,4 +29,16 @@ export function rebaseEditor(base:PathAnalysis|undefined,server:PathAnalysis,inp
  });
  changes.remove=changes.remove.filter(id=>server.dependencies.some(e=>e.id===id));
  return {changes,conflicts,pending:conflicts.filter(c=>!choices[c.key])};
+}
+
+/** Rebase every undo step; conflicts from an older step remain reviewable. */
+export function rebaseEditorHistory(base:PathAnalysis|undefined,server:PathAnalysis,values:DependencyChanges[],index:number,choices:Record<string,'draft'|'server'>={}){
+ const results=values.map((value,i)=>{
+  const prefix=i===index?'':'history:'+i+':';
+  const local=Object.fromEntries(Object.entries(choices).filter(([k])=>!prefix||k.startsWith(prefix)).map(([k,v])=>[prefix?k.slice(prefix.length):k,v]));
+  const result=rebaseEditor(base,server,value,local);
+  const decorate=(c:EditorConflict)=>({...c,key:prefix+c.key,title:(prefix?'撤销步骤 '+i+' · ':'')+c.title});
+  return {...result,conflicts:result.conflicts.map(decorate),pending:result.pending.map(decorate)};
+ });
+ return {values:results.map(r=>r.changes),current:results[index].changes,conflicts:results.flatMap(r=>r.conflicts),pending:results.flatMap(r=>r.pending)};
 }

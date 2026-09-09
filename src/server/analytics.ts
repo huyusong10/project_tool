@@ -270,7 +270,7 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
         ...requirement,priority:requirement.processingPriority||'unassessed',deliveryScope:requirement.deliveryScope||'committed',
         template: requirement.templateName || '未绑定流程', owner: requirement.ownerName || '未分配',
         risk: requirement.riskEvaluated ? requirement.riskLevel : 'unassessed',
-        completedAt: requirementCompletionDate(requirement),
+        completedAt: requirementCompletionDate(requirement),firstCommitmentEnd:requirement.commitment?.first?.targetDate||null,latestCommitmentEnd:requirement.commitment?.latest?.targetDate||null,
       }));
       workItems = requirements.flatMap((requirement) => (requirement.workItems || []).map((item) => ({
         ...item, requirementTitle: requirement.title, owner: item.ownerName || '未分配',
@@ -322,7 +322,7 @@ function inRange(value: string | null | undefined, range: AnalyticsRange) {
 
 function eventDate(dataset: string, measure: string, record: GenericRecord) {
   if (dataset === 'requirements') {
-    if (measure === 'completed_count' || measure === 'on_time_rate') return record.completedAt;
+    if (['completed_count','on_time_rate','commitment_on_time_rate','latest_commitment_on_time_rate'].includes(measure)) return record.completedAt;
     if (measure === 'due_count') return record.plannedEnd;
     if (measure === 'finish_variance') return record.completedAt || record.plannedEnd;
     return record.createdAt ? businessDateFromDateTime(record.createdAt) : null;
@@ -367,7 +367,9 @@ function eligibleRecords(dataset: string, measure: string, records: GenericRecor
   if (range && dataset !== 'people') result = result.filter((record) => inRange(eventDate(dataset, measure, record), range));
   if (dataset === 'requirements') {
     if (measure === 'active_count') result = result.filter((record) => !['completed', 'cancelled'].includes(record.status));
-    if (measure === 'completed_count' || measure === 'on_time_rate') result = result.filter((record) => Boolean(record.completedAt));
+    if (['completed_count','on_time_rate','commitment_on_time_rate','latest_commitment_on_time_rate'].includes(measure)) result = result.filter((record) => Boolean(record.completedAt));
+    if (measure === 'commitment_on_time_rate') result=result.filter(r=>!!r.firstCommitmentEnd&&r.status==='completed'&&r.deliveryScope!=='candidate');
+    if (measure === 'latest_commitment_on_time_rate') result=result.filter(r=>!!r.latestCommitmentEnd&&r.status==='completed'&&r.deliveryScope!=='candidate');
     if (measure === 'on_time_rate') result = result.filter((record) => Boolean(record.plannedEnd));
     if (measure === 'delayed_count') result = result.filter((record) => record.delayed);
     if (measure === 'finish_variance') result = result.filter((record) => Number(record.finishVariance || 0) > 0);
@@ -392,6 +394,7 @@ function round(value: number) {
 function measureValue(dataset: string, measure: string, records: GenericRecord[]) {
   if (!records.length) return 0;
   if (dataset === 'requirements') {
+    if (measure === 'commitment_on_time_rate'||measure==='latest_commitment_on_time_rate') return round(records.filter(r=>r.completedAt<=(measure==='commitment_on_time_rate'?r.firstCommitmentEnd:r.latestCommitmentEnd)).length/records.length*100);
     if (measure === 'on_time_rate') return round(records.filter((record) => businessDayDelta(record.plannedEnd, record.completedAt) <= 0).length / records.length * 100);
     if (measure === 'finish_variance') return round(records.reduce((sum, record) => sum + Number(record.finishVariance || 0), 0) / records.length);
   }

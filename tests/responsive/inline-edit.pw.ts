@@ -365,8 +365,8 @@ test('需求排期已落库但响应异常时核对需求与全部工作项日�
   await dialog.getByLabel('计划开始', { exact: true }).fill('2026-09-02');
   await dialog.getByRole('button', { name: '保存排期', exact: true }).click();
 
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByText('已核对最新状态：需求排期已保存', { exact: true })).toBeVisible();
+  await expect(dialog).toContainText('提交结果待核对');
+  await expect(dialog.getByRole('button',{name:'保存排期',exact:true})).toBeDisabled();
   expect(submissions).toBe(1);
 });
 
@@ -396,8 +396,8 @@ test('旧版非工作日排期已保存但响应异常时按统一锚点核对',
   await dialog.getByLabel('变更原因', { exact: true }).fill('调整剩余有效工作项计划');
   await dialog.getByRole('button', { name: '保存排期', exact: true }).click();
 
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByText('已核对最新状态：需求排期已保存', { exact: true })).toBeVisible();
+  await expect(dialog).toContainText('提交结果待核对');
+  await expect(dialog.getByRole('button',{name:'保存排期',exact:true})).toBeDisabled();
   expect(submissions).toBe(1);
 });
 
@@ -445,8 +445,8 @@ test('重选流程已落库但响应异常时核对新流程生成的完整计�
   await dialog.getByRole('button', { name: '保存排期', exact: true }).click();
   await page.getByRole('dialog', { name: '切换需求流程', exact: true }).getByRole('button', { name: '确认切换', exact: true }).click();
 
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByText('已核对最新状态：需求排期已保存', { exact: true })).toBeVisible();
+  await expect(dialog).toContainText('提交结果待核对');
+  await expect(dialog.getByRole('button',{name:'保存排期',exact:true})).toBeDisabled();
   expect(submissions).toBe(1);
 });
 
@@ -473,8 +473,8 @@ test('首次生成计划已落库但响应异常时核对全部模板工作项',
   await dialog.getByLabel('计划开始', { exact: true }).fill('2026-09-10');
   await dialog.getByRole('button', { name: '保存排期', exact: true }).click();
 
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByText('已核对最新状态：需求排期已保存', { exact: true })).toBeVisible();
+  await expect(dialog).toContainText('提交结果待核对');
+  await expect(dialog.getByRole('button',{name:'保存排期',exact:true})).toBeDisabled();
   expect(submissions).toBe(1);
 });
 
@@ -586,8 +586,8 @@ test('按模板补全已落库但响应异常时核对需求日期和全部变�
   await dialog.getByRole('button', { name: '生成差异预览', exact: true }).click();
   await dialog.getByRole('button', { name: '确认补全', exact: true }).click();
 
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByText('已核对最新状态：工作计划已补全', { exact: true })).toBeVisible();
+  await expect(dialog).toContainText('提交结果待核对');
+  await expect(dialog.getByRole('button',{name:'确认补全',exact:true})).toHaveCount(0);
   expect(applied).toBe(1);
 });
 
@@ -851,7 +851,7 @@ test("编辑需求未修改时同步最新字段，修改后按字段重读且�
   current = { ...current, version: 2, title: '未编辑时的新标题', priority: 'P1', ownerId: 'u2', ownerName: '李四', background: '最新背景' };
   await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
   await expect(title).toHaveValue('未编辑时的新标题');
-  await expect(priority).toHaveValue('P1');
+  await expect(priority).toHaveCount(0);
   await expect(owner).toHaveValue('u2');
   await expect(background).toHaveValue('最新背景');
   await title.fill('我填写的标题');
@@ -862,7 +862,7 @@ test("编辑需求未修改时同步最新字段，修改后按字段重读且�
   await expect(dialog.getByRole('button', { name: '保存信息', exact: true })).toBeDisabled();
   await dialog.getByRole('button', { name: '重新读取需求', exact: true }).click();
   await expect(title).toHaveValue('我填写的标题');
-  await expect(priority).toHaveValue('P0');
+  await expect(priority).toHaveCount(0);
   await expect(owner).toHaveValue('u1');
   await expect(background).toHaveValue('他人的新背景');
   await expect(dialog).toContainText('未修改字段已同步');
@@ -899,8 +899,8 @@ test('需求信息已落库但响应异常时核对完整字段并关闭', async
   await dialog.getByRole('textbox', { name: '需求背景（可选）', exact: true }).fill('完整字段核对');
   await dialog.getByRole('button', { name: '保存信息', exact: true }).click();
 
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByText('已核对最新状态：需求信息已保存', { exact: true })).toBeVisible();
+  await expect(dialog).toContainText('提交结果待核对');
+  await expect(dialog.getByRole('button',{name:'保存信息',exact:true})).toBeDisabled();
   await expect(page.getByRole('heading', { name: '异常 响应后保存的信息', exact: true })).toBeVisible();
   expect(submissions).toBe(1);
 });
@@ -938,7 +938,7 @@ test("编辑需求409重读失败保留输入，显式恢复后使用最新版�
   await expect(dialog.getByRole('button', { name: '保存信息', exact: true })).toBeDisabled();
   readFailure = 0;
   await dialog.getByRole('button', { name: '重新读取需求', exact: true }).click();
-  await expect(dialog.getByRole('combobox', { name: '优先级', exact: true })).toHaveValue('P0');
+  await expect(dialog.getByRole('combobox', { name: '优先级', exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('textbox', { name: '需求背景（可选）', exact: true })).toHaveValue('冲突后的背景');
   await expect(title).toHaveValue('保留的需求标题');
   await expect(owner).toHaveValue('u2');
@@ -1219,8 +1219,8 @@ test('需求历史补录已落库但响应异常时核对全部实际日期和�
   const dialog = page.getByRole('dialog', { name: '按期完成（历史补录）', exact: true });
   await dialog.getByRole('button', { name: '确认按期完成', exact: true }).click();
 
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByText('已核对最新状态：需求已按期补录完成', { exact: true })).toBeVisible();
+  await expect(dialog).toContainText('提交结果仍待核对');
+  await expect(dialog.getByRole('button',{name:'确认按期完成',exact:true})).toBeDisabled();
 });
 
 test('取消需求响应异常时核对本次取消原因而非只看终态', async ({ page }) => {
@@ -1273,8 +1273,8 @@ test('取消需求响应异常时核对本次取消原因而非只看终态', as
   eventMode = 'matching';
   await page.reload();
   const matched = await cancel();
-  await expect(matched).toHaveCount(0);
-  await expect(page.getByText('已核对最新状态：需求已取消', { exact: true })).toBeVisible();
+  await expect(matched).toContainText('提交结果仍待核对');
+  await expect(matched.getByRole('button',{name:'确认取消',exact:true})).toBeDisabled();
 });
 
 test("工作项纠错历史显示被更正记录", async ({ page }) => {
@@ -1327,7 +1327,7 @@ test("已取消需求保留工作项受控修正，但不开放重开和推进",
   await expect.poll(() => patches.length).toBe(1);
   expect(patches[0]).toEqual({
     path: "/api/work-items/w1/correct",
-    body: { actualStart: "2026-08-31", actualEnd: null, reason: "修正取消前的历史日期", expectedVersion: 1 },
+    body: { actualStart: "2026-08-31", actualEnd: null, reason: "修正取消前的历史日期", supersedesId: null, expectedVersion: 1 },
   });
 });
 
@@ -1457,8 +1457,8 @@ test("工作项历史补录成功但响应异常时读取状态并避免重复�
   await page.getByRole("button", { name: "按期完成（历史补录）", exact: true }).click();
   await page.getByRole("button", { name: "确认补录完成", exact: true }).click();
 
-  await expect(page.locator(".inline-edit-popover")).toHaveCount(0);
-  await expect(page.getByText("已核对最新状态：工作项已按计划补录完成", { exact: true })).toBeVisible();
+  await expect(page.locator(".inline-edit-popover")).toContainText("提交结果仍待核对");
+  await expect(page.getByRole("button",{name:"确认补录完成",exact:true})).toBeDisabled();
   await expect(page.getByRole("img", { name: "已完成", exact: true })).toBeVisible();
   expect(submissions).toBe(1);
 });
@@ -1530,8 +1530,9 @@ for (const [eventAccountId, reconciled] of [['admin', true], ['other-account', f
     await popover.getByLabel('纠错原因', { exact: true }).fill('核对实际开始日期');
     await popover.getByRole('button', { name: '保存纠错', exact: true }).click();
 
-    await expect(popover).toHaveCount(reconciled ? 0 : 1);
-    await expect(page.getByText('已核对最新状态：实际日期已修正', { exact: true })).toHaveCount(reconciled ? 1 : 0);
+    await expect(popover).toContainText('提交结果仍待核对');
+    await expect(popover.getByRole('button',{name:'保存纠错',exact:true})).toBeDisabled();
+    await expect(page.getByText('已核对最新状态：实际日期已修正', { exact: true })).toHaveCount(0);
   });
 }
 
@@ -1612,13 +1613,9 @@ for (const recordMatchingEvent of [true, false]) {
     await popover.getByRole('textbox', { name: '完成说明', exact: true }).fill('完成历史交付');
     await popover.getByRole('button', { name: '确认完成', exact: true }).click();
 
-    if (recordMatchingEvent) {
-      await expect(popover).toHaveCount(0);
-      await expect(page.getByText('已核对最新状态：工作项已完成', { exact: true })).toBeVisible();
-    } else {
-      await expect(popover).toBeVisible();
-      await expect(page.getByText('已核对最新状态：工作项已完成', { exact: true })).toHaveCount(0);
-    }
+    await expect(popover).toContainText('提交结果仍待核对');
+    await expect(popover.getByRole('textbox',{name:'完成说明',exact:true})).toHaveValue('完成历史交付');
+    await expect(popover.getByRole('button',{name:'确认完成',exact:true})).toBeDisabled();
   });
 }
 
@@ -1934,7 +1931,7 @@ test("终态工作项在设置页保持只读，历史日期仅由受控修正�
   await page.getByRole("button", { name: "工作项设置", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "工作项设置", exact: true });
   const firstRow = dialog.locator("tbody tr").first();
-  for (const name of [/工作项名称：设计/, /里程碑名称：需求基线/, /主负责人：未分配/, /协作人员：无协作人员/, /计划开始：2026-09-01/, /计划完成：2026-09-03/]) {
+  for (const name of [/工作项名称：设计/, /主负责人：未分配/, /协作人员：无协作人员/, /计划开始：2026-09-01/, /计划完成：2026-09-03/]) {
     await expect(firstRow.getByRole("button", { name })).toBeDisabled();
   }
 });
@@ -2133,66 +2130,25 @@ for (const kind of ['单选', '带原因单选', '日期', '多选'] as const) {
   });
 }
 
-test("需求列表较早保存失败不回滚另一行的已保存优先级", async ({ page }) => {
-  await mockApplication(page, []);
-  const secondRequirement: Requirement = {
-    ...structuredClone(requirement),
-    id: "r2",
-    title: "第二需求",
-    plannedStart: "2026-09-04",
-    plannedEnd: "2026-09-08",
-    workItems: [],
-  };
-  let serverRequirements = [structuredClone(requirement), secondRequirement];
-  let reads = 0;
-  let firstStarted = false;
-  let releaseFirst!: () => void;
-  const firstResponse = new Promise<void>((resolve) => { releaseFirst = resolve; });
-  const submissions: Array<{ id: string; body: Record<string, unknown> }> = [];
-  await page.route("**/api/requirements?*", (route) => {
-    reads++;
-    return route.fulfill({ json: serverRequirements });
-  });
-  await page.route("**/api/requirements/r1", async (route) => {
-    if (route.request().method() !== "PATCH") return route.fallback();
-    submissions.push({ id: "r1", body: route.request().postDataJSON() });
-    firstStarted = true;
-    await firstResponse;
-    return route.fulfill({ status: 500, json: { error: "第一条保存失败" } });
-  });
-  await page.route("**/api/requirements/r2", (route) => {
-    if (route.request().method() !== "PATCH") return route.fallback();
-    const body = route.request().postDataJSON();
-    submissions.push({ id: "r2", body });
-    const saved = { ...serverRequirements[1], priority: String(body.priority), version: 2 } as Requirement;
-    serverRequirements = [serverRequirements[0], saved];
-    return route.fulfill({ json: saved });
-  });
-  try {
-    await page.goto("/requirements");
-    const firstRow = page.locator(".requirements-table tbody tr").filter({ hasText: "原需求" });
-    const secondRow = page.locator(".requirements-table tbody tr").filter({ hasText: "第二需求" });
-    await firstRow.getByRole("button", { name: /需求优先级/ }).click();
-    await page.getByRole("option", { name: "P1 · 高", exact: true }).click();
-    await expect.poll(() => firstStarted).toBe(true);
-    await page.keyboard.press("Escape");
-    await expect(page.locator(".inline-select-popover")).toHaveCount(0);
-    const readsBeforeSecondSave = reads;
-    await secondRow.getByRole("button", { name: /需求优先级/ }).click();
-    await page.getByRole("option", { name: "P0 · 紧急", exact: true }).click();
-    await expect.poll(() => submissions).toHaveLength(2);
-    await expect(secondRow.getByText("P0 · 紧急", { exact: true })).toBeVisible();
-    await expect.poll(() => reads).toBeGreaterThan(readsBeforeSecondSave);
-    const readsBeforeFailure = reads;
-    releaseFirst();
-    await expect.poll(() => reads).toBeGreaterThan(readsBeforeFailure);
-    await expect(firstRow.getByText("P2 · 中", { exact: true })).toBeVisible();
-    await expect(secondRow.getByText("P0 · 紧急", { exact: true })).toBeVisible();
-    expect(submissions).toEqual([
-      { id: "r1", body: { priority: "P1", expectedVersion: 1 } },
-      { id: "r2", body: { priority: "P0", expectedVersion: 1 } },
-    ]);
-  } finally { releaseFirst(); }
+test("需求列表自动优先级随后台结果更新，不提供人工写入入口", async ({ page }) => {
+  const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
+  await mockApplication(page, writes);
+  let current = [
+    {...structuredClone(requirement), processingPriority: 'P2', priorityReasons: ['交付信息待评估']},
+    {...structuredClone(requirement), id: 'r2', title: '第二需求', processingPriority: 'P1', priorityReasons: ['当前交付风险高']},
+  ];
+  await page.route('**/api/requirements?*', route => route.fulfill({json:current}));
+  await page.goto('/requirements');
+  const first = page.locator('.requirements-table tbody tr').filter({hasText:'原需求'});
+  const second = page.locator('.requirements-table tbody tr').filter({hasText:'第二需求'});
+  await expect(first).toContainText('P2 · 正常');
+  await expect(second).toContainText('P1 · 高');
+  await expect(page.getByRole('button',{name:/需求优先级/})).toHaveCount(0);
+  current = [current[0], {...current[1],processingPriority:'P0',priorityReasons:['关键交付路径受阻']}];
+  await page.evaluate(() => {window.dispatchEvent(new Event('offline'));window.dispatchEvent(new Event('online'));});
+  await expect(second).toContainText('P0 · 紧急');
+  await expect(first).toContainText('P2 · 正常');
+  expect(writes).toEqual([]);
 });
 
 test("管理表格支持原地编辑、显式状态命令和失败回滚", async ({ page }, testInfo) => {
@@ -2202,13 +2158,8 @@ test("管理表格支持原地编辑、显式状态命令和失败回滚", async
 
   await page.goto("/requirements");
   const requirementBefore = await geometry(page, ".requirements-table");
-  await page.getByRole("button", { name: /需求优先级/ }).click();
-  await expect(page.locator(".inline-edit-popover")).toHaveCount(1);
-  expectStable(requirementBefore, await geometry(page, ".requirements-table"));
-  await expect(page.getByRole("option", { name: "P1 · 高", exact: true })).toBeVisible();
-  await page.getByRole("option", { name: "P1 · 高", exact: true }).click();
-  await expect.poll(() => patches.some((entry) => entry.body.priority === "P1")).toBe(true);
-  await expect(page.getByText("P1 · 高", { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", {name:/需求优先级/})).toHaveCount(0);
+  expect(patches).toEqual([]);
   expectStable(requirementBefore, await geometry(page, ".requirements-table"));
 
   await page.goto("/requirements/r1");
@@ -2323,7 +2274,7 @@ test("日期翻月不提交，执行中工作项在统一浮窗填写调整原�
   expect(browserDialogs).toEqual([]);
 });
 
-test("流程里程碑在需求甘特图展示并可单独调整", async ({ page }, testInfo) => {
+test("历史里程碑标签继续显示，工作项设置不再写入嵌入式里程碑", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-1080p", "交互流程只需在一个桌面视口执行");
   const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
   await mockApplication(page, patches);
@@ -2333,10 +2284,8 @@ test("流程里程碑在需求甘特图展示并可单独调整", async ({ page 
   await expect(page.locator(".gantt-milestone-marker")).toContainText("需求基线");
 
   await page.getByRole("button", { name: /工作项设置|编辑工作项/ }).click();
-  await page.getByRole("button", { name: /里程碑名称：需求基线/ }).click();
-  await page.getByLabel("里程碑名称", { exact: true }).fill("接口基线");
-  await page.getByLabel("里程碑名称", { exact: true }).press("Enter");
-  await expect.poll(() => patches.some((entry) => entry.path === "/api/work-items/w1" && entry.body.milestoneLabel === "接口基线")).toBe(true);
+  await expect(page.getByRole("button", { name: /里程碑名称：需求基线/ })).toHaveCount(0);
+  expect(patches).toEqual([]);
 });
 
 test("删除工作项成功后关闭确认并保留设置窗口，不产生重复删除", async ({ page }) => {
@@ -2378,8 +2327,8 @@ test("删除工作项已落库但响应异常时核对列表并避免重复删�
   await page.getByRole('button', { name: '删除设计', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '删除工作项', exact: true });
   await dialog.getByRole('button', { name: '确认删除', exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByText('已核对最新状态：工作项已删除', { exact: true })).toBeVisible();
+  await expect(dialog).toContainText('删除结果待核对');
+  await expect(dialog.getByRole('button',{name:'确认删除',exact:true})).toBeDisabled();
   await expect(page.getByRole('dialog', { name: '工作项设置', exact: true })).toBeVisible();
   await expect(page.locator('.work-inline-table tbody')).not.toContainText('设计');
   expect(submissions).toBe(1);
@@ -2413,8 +2362,8 @@ for (const change of ['renamed', 'started', 'noted', 'removed', 'locked'] as con
     const previousReads = reads;
     await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
     await expect.poll(() => reads).toBeGreaterThan(previousReads);
-    await expect(dialog.getByRole('button', { name: '确认删除', exact: true })).toBeDisabled();
-    await expect(dialog).toContainText('设计');
+    if(change==='locked')await expect(dialog).toHaveCount(0);
+    else {await expect(dialog.getByRole('button', { name: '确认删除', exact: true })).toBeDisabled();await expect(dialog).toContainText('设计');}
     expect(submissions).toHaveLength(0);
   });
 }
@@ -2719,9 +2668,9 @@ test('新增工作项已落库但响应异常时按完整草稿核对且不重�
   await page.getByLabel('新工作项名称', { exact: true }).press('Enter');
   await page.getByRole('button', { name: '保存', exact: true }).click();
 
-  await expect(page.getByText('已核对最新状态：工作项已创建', { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText('提交结果待核对');
   await expect(page.locator('.work-inline-table tbody')).toContainText('异常 响应后新增');
-  await expect(page.getByRole('button', { name: /新工作项名称/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /新工作项名称/ })).toBeVisible();
   expect(submissions).toHaveLength(1);
 });
 
@@ -2915,9 +2864,9 @@ test('工作项顺序已落库但响应异常时核对完整顺序且不重复�
   await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
   await page.mouse.up();
 
-  await expect(page.getByText('已核对最新状态：工作项顺序已保存', { exact: true })).toBeVisible();
+  await expect(editor).toContainText('提交结果待核对');
   await expect(editor.locator('.work-inline-table tbody tr').first()).toContainText('开发');
-  await expect(editor.locator('.warning-banner')).toHaveCount(0);
+  await expect(editor.getByRole('button',{name:/拖动.*调整顺序/}).first()).toBeDisabled();
   expect(submissions).toHaveLength(1);
   expect(submissions[0].ids).toEqual(['w2', 'w1']);
 });
@@ -2997,37 +2946,27 @@ test("工作项使用统一拖动手柄调整顺序", async ({ page }, testInfo)
   await expect(page.locator(".work-inline-table tbody tr").nth(0)).toContainText("开发");
 });
 
-test("流程工作项复用统一拖动排序底座", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop-1080p", "拖拽流程只需在一个桌面视口执行");
-  const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
-  await mockApplication(page, patches);
-  await page.goto("/templates");
-  await page.getByRole("button", { name: "编辑流程 研发流程" }).click();
-
-  const handles = page.getByRole("button", { name: /拖动.*调整顺序/ });
-  await expect(handles).toHaveCount(2);
-  const first = await handles.nth(0).boundingBox();
-  const second = await handles.nth(1).boundingBox();
-  expect(first).not.toBeNull();
-  expect(second).not.toBeNull();
-  await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
-  await page.mouse.up();
-
-  await expect(page.locator(".template-editor-row").nth(0).locator("input").first()).toHaveValue("开发");
-  await expect(page.locator(".template-editor-row").nth(1).locator("input").first()).toHaveValue("设计");
+test("流程编辑进入共享画布，工作项可选中并返回列表", async ({ page }) => {
+  await mockApplication(page, []);
+  await page.goto('/templates');
+  await page.getByRole('button', {name:'编辑流程 研发流程'}).click();
+  await expect(page.locator('.react-flow__node')).toHaveCount(2);
+  await page.locator('.react-flow__node').filter({hasText:'设计'}).click();
+  await expect(page.getByLabel('元素名称')).toHaveValue('设计');
+  await page.getByRole('button',{name:'返回流程列表'}).click();
+  await expect(page.getByRole('button',{name:'编辑流程 研发流程'})).toBeVisible();
 });
 
 test("编辑浮层在常用分辨率下保持表格几何稳定", async ({ page }, testInfo) => {
   test.skip(!["laptop-1366", "hidpi-3k-200", "desktop-1080p", "desktop-qhd"].includes(testInfo.project.name), "仅检查验收分辨率");
   const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
   await mockApplication(page, patches);
-  await page.goto("/requirements");
-  const before = await geometry(page, ".requirements-table");
-  await page.getByRole("button", { name: /需求优先级/ }).click();
+  await page.goto("/requirements/r1");
+  await page.getByRole("button",{name:"工作项设置",exact:true}).click();
+  const before = await geometry(page, ".work-inline-table");
+  await page.getByRole("button", { name: /主负责人：未分配/ }).first().click();
   await expect(page.locator(".inline-edit-popover")).toBeVisible();
-  expectStable(before, await geometry(page, ".requirements-table"));
+  expectStable(before, await geometry(page, ".work-inline-table"));
   const popover = await page.locator(".inline-edit-popover").boundingBox();
   const viewport = page.viewportSize();
   expect(popover).not.toBeNull();
@@ -3052,9 +2991,9 @@ test("当前需求筛选同时排除已完成和已取消需求", async ({ page 
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText("当前执行需求");
 
-  await page.locator(".filter-bar select").selectOption("");
+  await page.locator(".filter-bar select").filter({has:page.locator('option[value="cancelled"]')}).selectOption("");
   await expect(rows).toHaveCount(3);
-  await page.locator(".filter-bar select").selectOption("cancelled");
+  await page.locator(".filter-bar select").filter({has:page.locator('option[value="cancelled"]')}).selectOption("cancelled");
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText("已经取消需求");
 });
@@ -3136,7 +3075,9 @@ test("公共数据单元格统一编辑态与次级信息的可见起点", async
 
   await page.goto("/requirements");
   const requirementTitle = ".requirements-table tbody tr:first-child td:first-child .data-cell";
-  expect(Math.abs(await textLeft(`${requirementTitle} .data-cell-primary`) - await textLeft(`${requirementTitle} .data-cell-secondary`))).toBeLessThanOrEqual(1);
+  const primaryLeft = await page.locator(`${requirementTitle} .data-cell-primary`).evaluate(e=>e.getBoundingClientRect().left);
+  // 可选行以复选框起点对齐单元格，标题在复选框后显示。
+  expect(Math.abs(primaryLeft - await textLeft(`${requirementTitle} .data-cell-secondary`))).toBeLessThanOrEqual(1);
   const priorityBounds = await page.locator(".requirements-table tbody tr:first-child td:nth-child(2)").evaluate((cell) => {
     const cellRect = cell.getBoundingClientRect();
     const badgeRect = cell.querySelector<HTMLElement>('.priority-badge')!.getBoundingClientRect();

@@ -7,7 +7,7 @@ export type HistoryCommand<T>=
   |{type:'change';value:T;group?:string}
   |{type:'begin'|'undo'|'redo'|'end-group'}
   |{type:'reset';value:T;version:string;server?:PathAnalysis}
-  |{type:'rebase';value:T;baseline:T;version:string;server?:PathAnalysis}
+  |{type:'rebase';value:T;values?:T[];baseline:T;version:string;server?:PathAnalysis}
   |{type:'layout-baseline';scope:string;positions:Record<string,Point>}
   |{type:'field';key:string;buffer?:FieldBuffer};
 export function newHistory<T>(value:T,version:string,server?:PathAnalysis):EditorHistory<T>{return {formatVersion:2,version,values:[value],index:0,active:false,server,layouts:{},fields:{}};}
@@ -26,7 +26,7 @@ export function historyTransition<T>(state:EditorHistory<T>,command:HistoryComma
     case 'undo':return state.index?{...state,index:state.index-1}:state;
     case 'redo':return state.index+1<state.values.length?{...state,index:state.index+1}:state;
     case 'reset':return newHistory(command.value,command.version,command.server);
-    case 'rebase':return {...state,version:command.version,baseline:command.baseline,server:command.server,values:[command.baseline,command.value],index:1};
+    case 'rebase':return {...state,version:command.version,baseline:command.baseline,server:command.server,values:command.values||[command.baseline,command.value],index:command.values?state.index:1};
     case 'layout-baseline':return state.layouts[command.scope]?state:{...state,layouts:{...state.layouts,[command.scope]:structuredClone(command.positions)}};
     case 'field':{const fields={...state.fields};if(command.buffer)fields[command.key]=command.buffer;else delete fields[command.key];return same(fields,state.fields)?state:{...state,fields};}
     case 'change':{

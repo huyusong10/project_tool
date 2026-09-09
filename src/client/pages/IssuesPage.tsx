@@ -187,7 +187,7 @@ function IssueDetail({
     </nav>
     <section id="issue-panel-basic" className="issue-settings-panel issue-settings-basic" role="tabpanel" aria-labelledby="issue-tab-basic" hidden={tab !== "basic"}>
       {!canEditIssue ? <div className="issue-readonly-detail">
-        <dl><div><dt>问题影响</dt><dd>{issue.impact || "暂无影响说明"}</dd></div><div><dt>关联范围</dt><dd>{issueScope(issue)}</dd></div><div><dt>负责人</dt><dd>{issue.ownerName || "未分配"}</dd></div><div><dt>提出人</dt><dd>{issue.reporter || "未指定"}</dd></div><div><dt>发现日期</dt><dd>{issue.discoveredAt}</dd></div><div><dt>目标日期</dt><dd>{issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"}</dd></div>{issue.status === "resolved" && <div><dt>解决日期</dt><dd>{issue.resolvedAt || "未记录"}</dd></div>}</dl>
+        <dl><div><dt>问题影响</dt><dd>{issue.impact || "暂无影响说明"}</dd></div><div><dt>关联范围</dt><dd>{issueScope(issue)}</dd></div><div><dt>负责人</dt><dd>{issue.ownerName || "未分配"}</dd></div><div><dt>提出人</dt><dd>{issue.reporter || "未指定"}</dd></div><div><dt>发现日期</dt><dd>{issue.discoveredAt}</dd></div><div><dt>下次核对</dt><dd>{issue.nextReviewAt||"未设置"}</dd></div><div><dt>目标日期</dt><dd>{issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"}</dd></div>{issue.status === "resolved" && <div><dt>解决日期</dt><dd>{issue.resolvedAt || "未记录"}</dd></div>}</dl>
       </div> : <IssueForm issue={issue} projectId={projectId} people={people} requirements={requirements} canManage defaultReporter={defaultReporter} autoFocusTitle={tab === "basic"} onClose={onClose} busy={pending} onPendingChange={onPendingChange} />}
     </section>
     <section id="issue-panel-updates" className="issue-settings-panel issue-settings-updates" role="tabpanel" aria-labelledby="issue-tab-updates" hidden={tab !== "updates"}>

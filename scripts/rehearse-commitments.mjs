@@ -1,0 +1,21 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
+import Database from 'better-sqlite3';
+import {parse} from 'dotenv';
+const root=process.cwd();if(path.basename(root)!=='project-manage-debug')throw new Error('只允许在调试 worktree 演练');
+const env=parse(fs.readFileSync('.env')),source=path.resolve(env.DB_PATH);if(source!==path.join(root,'.preview','debug.db'))throw new Error('数据库必须是独立 debug.db');
+const stamp=new Date().toISOString().replace(/[:.]/g,'-'),folder=path.join(root,'.preview','backups','commitments-'+stamp);fs.mkdirSync(folder,{recursive:true});
+const before=new Database(source,{readonly:true,fileMustExist:true});const backup=path.join(folder,'debug-before.db');await before.backup(backup);before.close();
+for(const dir of ['dist','dist-server'])if(fs.existsSync(dir))fs.cpSync(dir,path.join(folder,dir),{recursive:true});
+const copy=path.join(folder,'rehearsal.db');fs.copyFileSync(backup,copy);
+const q=s=>'"'+s.replaceAll('"','""')+'"',hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const read=db=>{const tables=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name<>'__drizzle_migrations' ORDER BY name").all();return tables.map(({name})=>{const columns=db.pragma('table_info('+q(name)+')').map(c=>c.name),rows=db.prepare('SELECT '+columns.map(q).join(',')+' FROM '+q(name)+' ORDER BY rowid').all();return {name,columns,count:rows.length,hash:hash(rows)};});};
+let db=new Database(copy);const old=read(db);db.close();
+const run=()=>spawnSync(process.execPath,['--import','tsx','--eval',"const {sqlite}=await import('./src/server/database.ts'); sqlite.close();"],{cwd:root,env:{...process.env,...env,DB_PATH:copy,BACKUP_DIR:path.join(folder,'migration-backups'),SEED_DEMO:'0'},encoding:'utf8'});
+const migration=run();if(migration.status!==0){fs.writeFileSync(path.join(folder,'migration-error.txt'),migration.stderr+ migration.stdout);throw new Error('迁移演练失败，详情保留在备份目录');}
+db=new Database(copy);const checks=old.map(table=>{const rows=db.prepare('SELECT '+table.columns.map(q).join(',')+' FROM '+q(table.name)+' ORDER BY rowid').all();return {table:table.name,count:rows.length,originalCount:table.count,unchanged:table.hash===hash(rows)};});const integrity=db.pragma('integrity_check'),foreignKeys=db.pragma('foreign_key_check'),snapshot=read(db);db.close();
+if(checks.some(c=>!c.unchanged)||integrity[0].integrity_check!=='ok'||foreignKeys.length)throw new Error('迁移改变原记录或完整性异常');
+const repeat=run();if(repeat.status!==0)throw new Error('重复启动失败');db=new Database(copy);const repeatUnchanged=hash(read(db))===hash(snapshot);db.close();if(!repeatUnchanged)throw new Error('重复启动修改记录');
+const result={createdAt:new Date().toISOString(),folder,backup,rehearsal:copy,checks,integrity,foreignKeys,repeatUnchanged};fs.mkdirSync('.preview/qa',{recursive:true});fs.writeFileSync('.preview/qa/commitments-migration.json',JSON.stringify(result,null,2));console.log(JSON.stringify({folder,tables:checks.length,rows:checks.reduce((n,c)=>n+c.count,0),originalColumnsUnchanged:true,integrity,repeatUnchanged},null,2));

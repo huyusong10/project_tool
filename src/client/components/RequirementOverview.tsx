@@ -1,3 +1,5 @@
+import {CommitmentComparison} from './CommitmentComparison';
+import {ForecastFacts} from './ExecutionReview';
 import { useRef, useState } from 'react';
 import { Info, ExternalLink } from 'lucide-react';
 import type { Requirement } from '../types';
@@ -45,11 +47,12 @@ export function RequirementOverview({ requirement: r }: { requirement: Requireme
         <div><dt>验收标准</dt><dd>{r.acceptanceCriteria || '尚未填写'}</dd></div>
         {r.referenceUrl && <div><dt>参考链接</dt><dd><a href={r.referenceUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />打开辅助资料</a></dd></div>}
         <div><dt>进度</dt><dd>{progressHint}</dd></div>
+<div><dt>首次交付承诺</dt><dd>{r.commitment?.first?.targetDate||"未确认日期"}</dd></div><div><dt>最近交付承诺</dt><dd>{r.commitment?.latest?.targetDate||"未确认日期"}</dd></div><div><dt>执行完成／验收</dt><dd>{r.executionCompletedAt||"未完成"} ／ {r.acceptedAt||"未验收"}</dd></div>
         <div><dt>计划偏差</dt><dd>{variance.title}</dd></div>
         <div><dt>风险</dt><dd>{r.riskReason || risk.label}</dd></div>
         <div><dt>处理优先级</dt><dd>{r.priorityReasons?.join('；') || '暂无计算原因'}</dd></div>
         <div><dt>最近更新</dt><dd>{formatDateTime(r.updatedAt)}{!direct && ` · ${r.workItems.length} 个工作项`}</dd></div>
-      </dl>
+      </dl><CommitmentComparison value={r} plannedEnd={r.plannedEnd}/><ForecastFacts basis={r.forecastBasis} coordination={r.blockerCoordination}/>
     </AnchoredPopover>
   </section>;
 }

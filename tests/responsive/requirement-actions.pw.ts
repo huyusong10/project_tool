@@ -160,7 +160,7 @@ for (const action of ['accept', 'cancel'] as const) {
   });
 }
 
-test('归档异常成功响应通过归档视图核对结果并返回首页', async ({ page }) => {
+test('归档响应不明保留确认窗口，不以目标状态推断成功', async ({ page }) => {
   const state = await fixture(page, 'archive');
   await page.route('**/api/requirements/r1', (route) => {
     if (route.request().method() === 'GET') return route.fallback();
@@ -170,8 +170,9 @@ test('归档异常成功响应通过归档视图核对结果并返回首页', as
   });
   const dialog = await openCommand(page, 'archive');
   await dialog.getByRole('button', { name: '确认归档', exact: true }).click();
-  await expect(page.getByText('已核对最新状态：需求已归档', { exact: true })).toBeVisible();
-  await expect(page).toHaveURL('/');
+  await expect(dialog).toContainText('提交结果仍待核对');
+  await expect(dialog.getByRole('button', {name:'确认归档',exact:true})).toBeDisabled();
+  await expect(page).toHaveURL('/requirements/r1');
   expect(state.writes).toHaveLength(1);
 });
 
@@ -239,8 +240,9 @@ test('历史补录异常成功响应不自动重发，核对已完成状态后�
   });
   const dialog = await openCommand(page, 'complete-as-planned');
   await dialog.getByRole('button', { name: '确认按期完成', exact: true }).click();
-  await expect(page.getByText('已核对最新状态：需求已按期补录完成', { exact: true })).toBeVisible();
-  await expect(dialog).toHaveCount(0);
+  await expect(dialog).toContainText('提交结果仍待核对');
+  await expect(dialog.getByRole('button',{name:'确认按期完成',exact:true})).toBeDisabled();
+  await dialog.getByRole('button',{name:'关闭',exact:true}).click();
   await page.getByRole('button', { name: '需求操作', exact: true }).click();
   await expect(page.getByRole('button', { name: '按期完成（历史补录）', exact: true })).toHaveCount(0);
   expect(state.writes).toHaveLength(1);
@@ -308,7 +310,7 @@ test('已完成需求可从操作菜单受控纠错且不提交交付字段', as
 });
 
 for (const action of ['accept', 'cancel'] as const) {
-  test(`${action}异常成功响应核对目标状态后关闭确认且不重复提交`, async ({ page }) => {
+  test(`${action}异常响应核对状态后保留说明且禁止重复提交`, async ({ page }) => {
     const state = await fixture(page, action);
     await page.route(`**/api/requirements/r1/${action}`, (route) => {
       state.writes.push(route.request().postDataJSON());
@@ -328,8 +330,9 @@ for (const action of ['accept', 'cancel'] as const) {
     const dialog = await openCommand(page, action);
     await dialog.getByRole('textbox', { name: labels[action].field, exact: true }).fill('异常响应核对说明');
     await dialog.getByRole('button', { name: labels[action].confirm, exact: true }).click();
-    await expect(page.getByText(action === 'accept' ? '已核对最新状态：需求已验收' : '已核对最新状态：需求已取消', { exact: true })).toBeVisible();
-    await expect(dialog).toHaveCount(0);
+    await expect(dialog).toContainText('提交结果仍待核对');
+    await expect(dialog.getByRole('textbox',{name:labels[action].field,exact:true})).toHaveValue('异常响应核对说明');
+    await expect(dialog.getByRole('button',{name:labels[action].confirm,exact:true})).toBeDisabled();
     expect(state.writes).toHaveLength(1);
   });
 }

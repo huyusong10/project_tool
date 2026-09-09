@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, jsonBody, requiresWriteRecheck } from "../api";
+import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useProjects } from "../app-context";
 import { invalidateProjectViews, invalidateRequirementViews, keys } from "../query-keys";
 import type { Person, Project, Requirement, WorkItemTemplate } from "../types";
@@ -9,8 +9,7 @@ import { EmptyState, LoadingState } from "./Feedback";
 import { Modal } from "./Modal";
 import { projectStatusOptions } from "../ui-options";
 import { hasWorkdayCalendarFallback } from '../../shared/workday';
-import { plannedDatesFromOffset, plannedStartFromDeadline } from "../../shared/domain";
-import { canonicalizeContent, canonicalizeLabel } from "../../shared/search";
+import { canonicalizeLabel } from "../../shared/search";
 import { useToast } from "./Toast";
 
 type ProjectFormInput = {
@@ -36,51 +35,6 @@ type RequirementFormInput = {
   plannedStart?: string;
   plannedEnd?: string;
 };
-
-function matchesCreatedRequirement(
-  requirement: Requirement,
-  input: RequirementFormInput,
-  sourceIds: ReadonlySet<string>,
-  defaultTemplateId: string,
-  templates: WorkItemTemplate[],
-) {
-  if (sourceIds.has(requirement.id)) return false;
-  const hasSchedule = Boolean(input.plannedStart || input.plannedEnd);
-  const fallbackTemplate = templates.find((item) => item.name === "DCIM AI工作流") || templates[0];
-  const expectedTemplateId = input.executionMode==='direct'?'':input.templateId || (hasSchedule ? defaultTemplateId || fallbackTemplate?.id || "" : "");
-  if (hasSchedule && !expectedTemplateId&&input.executionMode!=='direct') return false;
-  if (requirement.projectId !== input.projectId
-    || requirement.title !== canonicalizeLabel(input.title)
-    || requirement.priority !== (input.priority || "P2")
-    || requirement.ownerId !== (input.ownerId || null)
-    || requirement.background !== (canonicalizeContent(input.background) || null)
-    || requirement.acceptanceCriteria !== (canonicalizeContent(input.acceptanceCriteria) || null)
-    || requirement.referenceUrl !== (canonicalizeContent(input.referenceUrl) || null)
-    || requirement.templateId !== (expectedTemplateId || null)||input.executionMode&&requirement.executionMode!==input.executionMode||requirement.deliveryScope!==(input.deliveryScope||'committed')) return false;
-  if(input.executionMode==='direct')return requirement.workItems.length===0&&requirement.plannedStart===(input.plannedStart||null)&&requirement.plannedEnd===(input.plannedEnd||null);
-  if (!hasSchedule) {
-    return requirement.plannedStart === null && requirement.plannedEnd === null && (input.executionMode==='work_items'&&input.templateId?requirement.workItems.length===templates.find(t=>t.id===input.templateId)?.items.filter(i=>i.kind!=='milestone'&&!i.deletedAt).length:requirement.workItems.length===0);
-  }
-  const selectedTemplate = templates.find((item) => item.id === expectedTemplateId);
-  if (!selectedTemplate) return false;
-  const templateItems = selectedTemplate.items.filter((item) => !item.deletedAt).sort((left, right) => left.sortOrder - right.sortOrder);
-  if (!templateItems.length || requirement.workItems.length !== templateItems.length) return false;
-  const baseStart = input.plannedStart || plannedStartFromDeadline(input.plannedEnd!, templateItems);
-  const expectedItems = templateItems.map((item) => ({
-    ...plannedDatesFromOffset(baseStart, item.startOffsetDays, item.durationDays),
-    templateItemId: item.id,
-    title: item.title,
-    milestoneLabel: item.milestoneLabel,
-  }));
-  return requirement.plannedStart === expectedItems.map((item) => item.plannedStart).sort()[0]
-    && requirement.plannedEnd === expectedItems.map((item) => item.plannedEnd).sort().at(-1)
-    && expectedItems.every((expected) => requirement.workItems.some((item) =>
-      item.templateItemId === expected.templateItemId
-      && item.title === expected.title
-      && item.milestoneLabel === expected.milestoneLabel
-      && item.plannedStart === expected.plannedStart
-      && item.plannedEnd === expected.plannedEnd));
-}
 
 export function ProjectForm({
   project,
@@ -204,18 +158,8 @@ export function RequirementForm({
   onClose: () => void;
 }) {
   const client = useQueryClient();
-  const toast = useToast();
   const submitting = useRef(false);
-  const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const initialRequirementIds = useRef<Set<string> | null | undefined>(undefined);
-  if (initialRequirementIds.current === undefined) {
-    const queryKey = [...keys.requirements, projectId];
-    const cached = client.getQueryData<Requirement[]>(queryKey);
-    initialRequirementIds.current = client.getQueryState(queryKey)?.status === "success" && cached
-      ? new Set(cached.map((requirement) => requirement.id))
-      : null;
-  }
+  const [unknown,setUnknown]=useState(false);
   const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">("start");
   const [scheduleDate, setScheduleDate] = useState("");
   const [ownerId, setOwnerId] = useState("");
@@ -240,21 +184,7 @@ export function RequirementForm({
       invalidateRequirementViews(client);
       onClose();
     },
-    onError: async (error, input) => {
-      const sourceIds = initialRequirementIds.current;
-      if (!sourceIds || !requiresWriteRecheck(error)) return;
-      try {
-        const latest = await api<Requirement[]>(`/api/requirements?projectId=${encodeURIComponent(projectId)}`, { readOnly: true });
-        const matches = latest.filter((requirement) => matchesCreatedRequirement(requirement, input, sourceIds, defaultTemplateId, templates));
-        if (matches.length === 1 && mounted.current) {
-          invalidateRequirementViews(client, matches[0].id);
-          toast.success("已核对最新状态：需求已创建");
-          onClose();
-        }
-      } catch {
-        // 保留原写入错误和草稿，避免把读取失败误判为创建成功。
-      }
-    },
+    onError: error=>{if(isWriteOutcomeUnknown(error))setUnknown(true);},
     onSettled: () => { submitting.current = false; },
   });
   return (
@@ -262,7 +192,7 @@ export function RequirementForm({
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        if (submitting.current) return;
+        if (submitting.current||unknown) return;
         submitting.current = true;
         const values = Object.fromEntries(new FormData(event.currentTarget));
         mutation.mutate({ ...values, templateId:templateId||undefined, executionMode:templateId?"work_items":"direct", projectId } as RequirementFormInput);
@@ -326,7 +256,8 @@ export function RequirementForm({
         <FormField label="参考链接" full><input name="referenceUrl" type="url" placeholder="https://…" /></FormField>
       </FormDisclosure>
       <FormError>{mutation.error?.message}</FormError>
-      <FormSubmitActions submitLabel="创建需求" pending={mutation.isPending} onCancel={onClose} />
+      {unknown&&<FormError>创建结果待核对，输入已保留。请检查需求列表和操作记录，本窗口不会重复创建。</FormError>}
+      <FormSubmitActions disabled={unknown} submitLabel="创建需求" pending={mutation.isPending} onCancel={onClose} />
       </fieldset>
     </form>
     </Modal>

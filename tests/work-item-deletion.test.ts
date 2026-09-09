@@ -1,3 +1,4 @@
+import {mcpRequest} from './mcp-request';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -35,11 +36,9 @@ async function remove(protocol: 'REST' | 'MCP', id: string, expectedVersion: num
     const response = await app.inject({ method: 'DELETE', url: `/api/work-items/${id}`, headers: { cookie }, payload: { expectedVersion } });
     return { statusCode: response.statusCode, body: response.json() };
   }
-  const response = await fetch(`${origin}/mcp`, { method: 'POST', headers: {
-    authorization: `Bearer ${token}`, accept: 'application/json, text/event-stream', 'content-type': 'application/json', connection: 'close',
-  }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'delete_work_item', arguments: { id, expectedVersion } } }) });
-  expect(response.status).toBe(200);
-  const payload = await response.json() as { result: { structuredContent: { statusCode?: number; result: unknown } } };
+  const response=await mcpRequest(origin,token,'delete_work_item',{id,expectedVersion});
+  expect(response.statusCode).toBe(200);
+  const payload=JSON.parse(response.body) as { result: { structuredContent: { statusCode?: number; result: unknown } } };
   return { statusCode: payload.result.structuredContent.statusCode || 200, body: payload.result.structuredContent.result };
 }
 beforeAll(async () => {

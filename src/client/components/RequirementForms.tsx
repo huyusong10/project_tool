@@ -1,11 +1,12 @@
+import {CommitmentComparison} from './CommitmentComparison';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, WandSparkles } from "lucide-react";
-import { api, ApiError, jsonBody, requiresWriteRecheck } from "../api";
+import { api, ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { invalidateRequirementViews, keys } from "../query-keys";
 import { readResourceFresh, ResourceReadInvalidatedError } from "../use-resource-query";
 import type { Person, PlanPreview, Requirement, WorkItemTemplate } from "../types";
-import { plannedDatesFromOffset, plannedStartFromDeadline, rebaseBusinessDate } from "../../shared/domain";
+import { rebaseBusinessDate } from "../../shared/domain";
 import { ConfirmDialog, Modal } from "./Modal";
 import { FormError, FormField, FormSubmitActions } from "./Form";
 import { useToast } from "./Toast";
@@ -32,8 +33,8 @@ export function RequirementInfoForm({
   people: Person[];
   onClose: () => void;
 }) {
+  const [unknown,setUnknown]=useState(false);
   const client = useQueryClient();
-  const toast = useToast();
   const submitting = useRef(false);
   const readingRef = useRef(false);
   const mounted = useRef(true);
@@ -97,27 +98,11 @@ export function RequirementInfoForm({
       invalidateRequirementViews(client, requirement.id);
       onClose();
     },
-    onError: async (error) => {
-      if (requiresWriteRecheck(error)) {
-        const latest = await read();
-        if (latest
-          && latest.title === canonicalizeLabel(draft.title)
-          && latest.priority === draft.priority
-          && latest.ownerId === (draft.ownerId || null)
-          && latest.background === (canonicalizeContent(draft.background) || null)
-          && latest.acceptanceCriteria === (canonicalizeContent(draft.acceptanceCriteria) || null)
-          && latest.referenceUrl === (canonicalizeContent(draft.referenceUrl) || null)
-          && mounted.current) {
-          invalidateRequirementViews(client, requirement.id);
-          toast.success("已核对最新状态：需求信息已保存");
-          onClose();
-        }
-      }
-    },
+    onError:async error=>{if(isWriteOutcomeUnknown(error))setUnknown(true);if(requiresWriteRecheck(error)){await read();}},
     onSettled: () => { submitting.current = false; },
   });
   const locked = ["completed", "cancelled"].includes(current.status);
-  const blocked = changed || needsRefresh || locked || draftOwnerUnavailable;
+  const blocked = unknown || changed || needsRefresh || locked || draftOwnerUnavailable;
   const pending = mutation.isPending || reading;
   return <Modal title="编辑需求信息" closable={!pending} onClose={() => { if (!submitting.current && !readingRef.current) onClose(); }}><form onSubmit={(event) => {
     event.preventDefault();
@@ -142,7 +127,7 @@ export function RequirementInfoForm({
     <FormField label="需求背景（可选）" full><textarea name="background" rows={3} value={draft.background} onChange={(event) => change("background", event.target.value)} /></FormField>
     <FormField label="验收标准（可选）" full><textarea name="acceptanceCriteria" rows={3} value={draft.acceptanceCriteria} onChange={(event) => change("acceptanceCriteria", event.target.value)} /></FormField>
     <FormField label="参考链接（可选）" full><input name="referenceUrl" type="url" value={draft.referenceUrl} onChange={(event) => change("referenceUrl", event.target.value)} placeholder="https://…" /></FormField>
-    <FormError>{mutation.error?.message}</FormError>
+    {unknown&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
     <FormError>{changed ? "需求已更新，请重新读取并核对；已保留你的输入。" : undefined}</FormError>
     <FormError>{draftOwnerUnavailable ? "所选负责人已不可用，请重新选择。" : undefined}</FormError>
     <FormError>{locked ? "需求已完成或取消，不能继续编辑信息。" : undefined}</FormError>
@@ -163,6 +148,7 @@ export function RequirementCorrectionForm({
   people: Person[];
   onClose: () => void;
 }) {
+  const [unknown,setUnknown]=useState(false);
   const client = useQueryClient();
   const toast = useToast();
   const mounted = useRef(true);
@@ -224,7 +210,6 @@ export function RequirementCorrectionForm({
   };
   type CorrectionMutation = {
     body: Record<string, unknown>;
-    expected: ReturnType<typeof normalizedDraft> & { reason: string; supersedesId: string | null; version: number; status: string };
   };
   const mutation = useMutation({
     mutationFn: ({ body }: CorrectionMutation) => api<Requirement>(`/api/requirements/${requirement.id}/correct`, { method: "POST", body: jsonBody(body) }),
@@ -233,22 +218,7 @@ export function RequirementCorrectionForm({
       toast.success("需求纠错已记录");
       onClose();
     },
-    onError: async (error, value) => {
-      if (!requiresWriteRecheck(error)) return;
-      const latest = await read();
-      const expected = value.expected;
-      if (latest && latest.version > expected.version && latest.status === expected.status
-        && latest.title === expected.title && latest.priority === expected.priority && latest.ownerId === expected.ownerId
-        && latest.background === expected.background && latest.acceptanceCriteria === expected.acceptanceCriteria
-        && latest.referenceUrl === expected.referenceUrl
-        && latest.progressUpdates?.some((update) => update.eventType === "correction" && update.workItemId === null
-          && update.content === expected.reason && (update.supersedesId || null) === expected.supersedesId)
-        && mounted.current) {
-        invalidateRequirementViews(client, requirement.id);
-        toast.success("已核对最新状态：需求纠错已记录");
-        onClose();
-      }
-    },
+    onError:async error=>{if(isWriteOutcomeUnknown(error))setUnknown(true);if(requiresWriteRecheck(error)){await read();}},
     onSettled: () => { submitting.current = false; },
   });
   const candidates = (baseline.progressUpdates || []).filter((update) => !update.workItemId);
@@ -258,13 +228,12 @@ export function RequirementCorrectionForm({
     : !reason.trim() ? "请填写纠错原因。"
     : !informationChanged && !supersedesId ? "请至少修改一项需求信息，或关联一条需要更正的历史记录。" : "";
   const pending = mutation.isPending || reading;
-  const blocked = pending || changed || needsRefresh || !terminal || Boolean(validation);
+  const blocked = unknown || pending || changed || needsRefresh || !terminal || Boolean(validation);
   const close = () => { if (!submitting.current && !readingRef.current) onClose(); };
   return <Modal title="需求受控纠错" closable={!pending} onClose={close}><form onSubmit={(event) => {
     event.preventDefault();
     if (submitting.current || blocked) return;
     submitting.current = true;
-    const expected = { ...normalizedDraft(), reason: canonicalizeContent(reason), supersedesId: supersedesId || null, version: baseline.version, status: baseline.status };
     mutation.mutate({
       body: {
         ...draft,
@@ -273,7 +242,6 @@ export function RequirementCorrectionForm({
         reason: reason.trim(),
         supersedesId: supersedesId || null,
       },
-      expected,
     });
   }}>
     <fieldset className="form-grid form-fieldset" disabled={pending}>
@@ -290,7 +258,7 @@ export function RequirementCorrectionForm({
       <FormField label="参考链接（可选）" full><input aria-label="纠错后的参考链接" type="url" value={draft.referenceUrl} onChange={(event) => change("referenceUrl", event.target.value)} placeholder="https://…" /></FormField>
       {!!candidates.length && <FormField label="关联历史记录（可选）" full><select aria-label="需求纠错关联历史记录" value={supersedesId} onChange={(event) => setSupersedesId(event.target.value)}><option value="">不指定</option>{candidates.map((update) => <option value={update.id} key={update.id}>{new Date(update.createdAt).toLocaleDateString("zh-CN")} · {update.content.slice(0, 36)}</option>)}</select></FormField>}
       <FormField label="纠错原因（必填）" full><textarea aria-label="需求纠错原因" rows={2} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明原信息哪里有误，以及核对依据" /></FormField>
-      <FormError>{mutation.error?.message}</FormError>
+      {unknown&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
       <FormError>{validation}</FormError>
       <FormError>{changed ? "需求已更新，请重新读取并核对；已保留你的输入。" : undefined}</FormError>
       <FormError>{!terminal ? "需求状态已变化，当前不能使用终态纠错。" : undefined}</FormError>
@@ -314,56 +282,7 @@ type ScheduleChange = {
     reason?: string;
   };
   templateName: string;
-  expected?: {
-    templateId: string | null;
-    plannedStart: string | null;
-    plannedEnd: string | null;
-    workItems: Array<{
-      id?: string;
-      templateItemId?: string;
-      title?: string;
-      milestoneLabel?: string | null;
-      plannedStart: string | null;
-      plannedEnd: string | null;
-    }>;
-  };
 };
-
-function matchesSchedule(requirement: Requirement, expected: NonNullable<ScheduleChange["expected"]>) {
-  return requirement.templateId === expected.templateId
-    && requirement.plannedStart === expected.plannedStart
-    && requirement.plannedEnd === expected.plannedEnd
-    && requirement.workItems.length === expected.workItems.length
-    && expected.workItems.every((item) => {
-      const latest = requirement.workItems.find((entry) => item.id ? entry.id === item.id : entry.templateItemId === item.templateItemId);
-      return latest?.plannedStart === item.plannedStart
-        && latest.plannedEnd === item.plannedEnd
-        && (item.title === undefined || latest.title === item.title)
-        && (item.milestoneLabel === undefined || latest.milestoneLabel === item.milestoneLabel);
-    });
-}
-
-function generatedScheduleExpectation(
-  template: WorkItemTemplate | undefined,
-  scheduleMode: "start" | "deadline",
-  scheduleDate: string,
-): ScheduleChange["expected"] {
-  const templateItems = template?.items.filter((item) => !item.deletedAt).sort((left, right) => left.sortOrder - right.sortOrder);
-  if (!template || !templateItems?.length || !scheduleDate) return undefined;
-  const baseStart = scheduleMode === "start" ? scheduleDate : plannedStartFromDeadline(scheduleDate, templateItems);
-  const workItems = templateItems.map((item) => ({
-    templateItemId: item.id,
-    title: item.title,
-    milestoneLabel: item.milestoneLabel,
-    ...plannedDatesFromOffset(baseStart, item.startOffsetDays, item.durationDays),
-  }));
-  return {
-    templateId: template.id,
-    plannedStart: workItems.map((item) => item.plannedStart).sort()[0] || null,
-    plannedEnd: workItems.map((item) => item.plannedEnd).sort().at(-1) || null,
-    workItems,
-  };
-}
 
 export function RequirementScheduleForm({
   requirement,
@@ -372,8 +291,8 @@ export function RequirementScheduleForm({
   requirement: Requirement;
   onClose: () => void;
 }) {
+  const [unknown,setUnknown]=useState(false);
   const client = useQueryClient();
-  const toast = useToast();
   const submitting = useRef(false);
   const readingRef = useRef(false);
   const mounted = useRef(true);
@@ -457,28 +376,17 @@ export function RequirementScheduleForm({
       invalidateRequirementViews(client, requirement.id);
       onClose();
     },
-    onError: async (error, change) => {
-      if (requiresWriteRecheck(error)) {
-        setPendingSubmit(null);
-        setNeedsRefresh(true);
-        const latest = await read();
-        if (latest && change.expected && matchesSchedule(latest, change.expected) && mounted.current) {
-          invalidateRequirementViews(client, requirement.id);
-          toast.success("已核对最新状态：需求排期已保存");
-          onClose();
-        }
-      }
-    },
+    onError:async error=>{if(isWriteOutcomeUnknown(error))setUnknown(true);if(requiresWriteRecheck(error)){setPendingSubmit(null);await read();}},
     onSettled: () => { submitting.current = false; },
   });
   const pending = mutation.isPending || reading;
   const submit = (change: ScheduleChange) => {
-    if (submitting.current || changed || needsRefresh || locked || selectedTemplateUnavailable) return;
+    if (submitting.current || unknown || changed || needsRefresh || locked || selectedTemplateUnavailable) return;
     submitting.current = true;
     mutation.mutate(change);
   };
   const switchMode = (mode: "start" | "deadline") => {
-    if (submitting.current || pendingSubmit || mode === scheduleMode) return;
+    if (submitting.current || unknown || pendingSubmit || mode === scheduleMode) return;
     if (mode === "start") dirtyFields.current.delete("mode");
     else dirtyFields.current.add("mode");
     dirtyFields.current.delete("date");
@@ -490,7 +398,7 @@ export function RequirementScheduleForm({
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        if (submitting.current || pendingSubmit || changed || needsRefresh || locked || selectedTemplateUnavailable) return;
+        if (submitting.current || unknown || pendingSubmit || changed || needsRefresh || locked || selectedTemplateUnavailable) return;
         const change: ScheduleChange = {
           endpoint: templateChanged ? "reselect-template" : "reschedule",
           templateName: templates.find((template) => template.id === templateId)?.name || baseRequirement.templateName || "未绑定",
@@ -501,27 +409,6 @@ export function RequirementScheduleForm({
             ...((!!baseRequirement.actualStart||baseRequirement.workItems.some((item) => item.status !== "not_started")) ? { reason } : {}),
             ...(templateChanged ? { templateId, confirmTemplateReset: true } : {}),
           },
-          expected: (() => {
-            const anchor = scheduleMode === "start" ? baseRequirement.plannedStart : baseRequirement.plannedEnd;
-            if (templateChanged || !anchor) {
-              return generatedScheduleExpectation(
-                templates.find((template) => template.id === templateId),
-                scheduleMode,
-                scheduleDate,
-              );
-            }
-            const rebase = (value: string | null) => value ? rebaseBusinessDate(value, anchor, scheduleDate) : null;
-            return {
-              templateId: baseRequirement.templateId,
-              plannedStart: rebase(baseRequirement.plannedStart),
-              plannedEnd: rebase(baseRequirement.plannedEnd),
-              workItems: baseRequirement.workItems.map((item) => ({
-                id: item.id,
-                plannedStart: item.status === "cancelled" ? item.plannedStart : rebase(item.plannedStart),
-                plannedEnd: item.status === "cancelled" ? item.plannedEnd : rebase(item.plannedEnd),
-              })),
-            };
-          })(),
         };
         if (templateChanged) { mutation.reset(); setPendingSubmit(change); return; }
         submit(change);
@@ -575,106 +462,30 @@ export function RequirementScheduleForm({
         if (value) dirtyFields.current.add("reason"); else dirtyFields.current.delete("reason");
         setReason(value);
       }} placeholder="需求已开始执行，请说明调整排期的原因" /></FormField>}
-      <p className="field-help field-full">{baseRequirement.executionMode==='direct'?"保存需求计划日期；预计工期未知时保留未确定的一端。":baseRequirement.workItems.length
+      <CommitmentComparison value={baseRequirement} plannedEnd={scheduleMode==="deadline"?scheduleDate:baseRequirement.plannedStart&&baseRequirement.plannedEnd&&scheduleDate?rebaseBusinessDate(baseRequirement.plannedEnd,baseRequirement.plannedStart,scheduleDate):undefined}/><p className="field-help field-full">{baseRequirement.executionMode==='direct'?"保存需求计划日期；预计工期未知时保留未确定的一端。":baseRequirement.workItems.length
         ? "修改日期会整体平移已有工作项，保留相对间隔、人员和实际日期；每个工作项仍可单独修改自定义计划。"
         : "保存后按当前流程生成工作项；需求负责人与全部排期就绪后自动进入未开始。"} 流程设计后续变更不会同步到当前需求。</p>
-      <FormError>{mutation.error?.message}</FormError>
+      {unknown&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
       <FormError>{readError?.message}</FormError>
       {changed && <FormError>需求计划已在其他位置更新，请重新加载；已修改的排期草稿会保留。</FormError>}
       {selectedTemplateUnavailable && <FormError>所选流程已不可用，请重新选择后保存。</FormError>}
       {locked && <FormError>需求已进入待验收或终态，不能继续调整计划。</FormError>}
       {refreshed && <p className="field-help field-full">已读取最新计划；未修改字段已同步，已输入内容保持不变。</p>}
       {(changed || needsRefresh) && <div className="field-full"><button type="button" className="ghost-button" disabled={pending} onClick={() => void reload()}>重新加载当前计划</button></div>}
-      <FormSubmitActions submitLabel="保存排期" onCancel={onClose} pending={pending} disabled={changed || needsRefresh || locked || selectedTemplateUnavailable} />
+      <FormSubmitActions submitLabel="保存排期" onCancel={onClose} pending={pending} disabled={unknown || changed || needsRefresh || locked || selectedTemplateUnavailable} />
       </fieldset>
     </form>
     </Modal>
     {pendingSubmit && <ConfirmDialog title="切换需求流程" description={<>
       <p>目标流程：{pendingSubmit.templateName}<br />{pendingSubmit.input.scheduleMode === "start" ? "计划开始" : "计划完成"}：{pendingSubmit.input.plannedStart || pendingSubmit.input.plannedEnd}</p>
       <p>切换流程会替换当前未执行工作项、人员分配和计划，并按新流程重新生成；需求级说明将保留。</p>
-    </>} confirmLabel="确认切换" pendingLabel="切换中…" danger pending={pending} disabled={changed || needsRefresh || locked || selectedTemplateUnavailable} error={changed ? "需求计划已更新，请取消后重新加载当前计划。" : locked ? "需求已进入待验收或终态，不能继续调整计划。" : selectedTemplateUnavailable ? "所选流程已不可用，请取消后重新选择。" : mutation.error?.message} onClose={() => { if (!submitting.current) setPendingSubmit(null); }} onConfirm={() => submit(pendingSubmit)} />}
+    </>} confirmLabel="确认切换" pendingLabel="切换中…" danger pending={pending} disabled={unknown || changed || needsRefresh || locked || selectedTemplateUnavailable} error={changed ? "需求计划已更新，请取消后重新加载当前计划。" : locked ? "需求已进入待验收或终态，不能继续调整计划。" : selectedTemplateUnavailable ? "所选流程已不可用，请取消后重新选择。" : mutation.error?.message} onClose={() => { if (!submitting.current) setPendingSubmit(null); }} onConfirm={() => submit(pendingSubmit)} />}
   </>;
 }
 
-function planApplyExpectation(requirement: Requirement, preview: PlanPreview) {
-  const workItems = requirement.workItems.map((item) => ({
-    id: item.id,
-    templateItemId: item.templateItemId,
-    title: item.title,
-    milestoneLabel: item.milestoneLabel,
-    status: item.status,
-    plannedStart: item.plannedStart,
-    plannedEnd: item.plannedEnd,
-  }));
-  const changedItems: Array<{
-    id?: string;
-    templateItemId: string;
-    title?: string;
-    milestoneLabel?: string | null;
-    plannedStart: string;
-    plannedEnd: string;
-  }> = [];
-  for (const entry of preview.entries.filter((item) => item.willChange)) {
-    if (entry.workItemId) {
-      const existing = workItems.find((item) => item.id === entry.workItemId);
-      if (existing) {
-        existing.plannedStart ||= entry.proposedStart;
-        existing.plannedEnd ||= entry.proposedEnd;
-      }
-      changedItems.push({
-        id: entry.workItemId,
-        templateItemId: entry.templateItemId,
-        plannedStart: entry.proposedStart,
-        plannedEnd: entry.proposedEnd,
-      });
-    } else {
-      workItems.push({
-        id: "",
-        templateItemId: entry.templateItemId,
-        title: entry.title,
-        milestoneLabel: entry.milestoneLabel ?? null,
-        status: "not_started",
-        plannedStart: entry.proposedStart,
-        plannedEnd: entry.proposedEnd,
-      });
-      changedItems.push({
-        templateItemId: entry.templateItemId,
-        title: entry.title,
-        milestoneLabel: entry.milestoneLabel,
-        plannedStart: entry.proposedStart,
-        plannedEnd: entry.proposedEnd,
-      });
-    }
-  }
-  const activeItems = workItems.filter((item) => item.status !== "cancelled");
-  const plannedStarts = activeItems.flatMap((item) => item.plannedStart ? [item.plannedStart] : []).sort();
-  const plannedEnds = activeItems.flatMap((item) => item.plannedEnd ? [item.plannedEnd] : []).sort();
-  return {
-    minimumVersion: preview.requirementVersion + 1,
-    plannedStart: plannedStarts[0] || null,
-    plannedEnd: plannedEnds.at(-1) || null,
-    workItemCount: workItems.length,
-    changedItems,
-  };
-}
-
-function matchesAppliedPlan(requirement: Requirement, expected: ReturnType<typeof planApplyExpectation>) {
-  return requirement.version >= expected.minimumVersion
-    && requirement.plannedStart === expected.plannedStart
-    && requirement.plannedEnd === expected.plannedEnd
-    && requirement.workItems.length === expected.workItemCount
-    && expected.changedItems.every((item) => {
-      const latest = requirement.workItems.find((entry) => item.id ? entry.id === item.id : entry.templateItemId === item.templateItemId);
-      return latest?.plannedStart === item.plannedStart
-        && latest.plannedEnd === item.plannedEnd
-        && (item.title === undefined || latest.title === item.title)
-        && (item.milestoneLabel === undefined || latest.milestoneLabel === item.milestoneLabel);
-    });
-}
-
 export function PlanForm({ requirement, templates, onClose }: { requirement: Requirement; templates: WorkItemTemplate[]; onClose: () => void }) {
+  const [unknown,setUnknown]=useState(false);
   const client = useQueryClient();
-  const toast = useToast();
   const submitting = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -700,7 +511,7 @@ export function PlanForm({ requirement, templates, onClose }: { requirement: Req
     onSettled: () => { submitting.current = false; },
   });
   const applyMutation = useMutation({
-    mutationFn: ({ preview: confirmed, reason: explanation, expected: _expected }: { preview: PlanPreview; reason: string; expected: ReturnType<typeof planApplyExpectation> }) => api(`/api/requirements/${confirmed.requirementId}/apply-plan`, {
+    mutationFn: ({ preview: confirmed, reason: explanation }: { preview: PlanPreview; reason: string }) => api(`/api/requirements/${confirmed.requirementId}/apply-plan`, {
       method: "POST",
       body: jsonBody({ templateId: confirmed.templateId, baseStart: confirmed.baseStart, expectedVersion: confirmed.requirementVersion, previewToken: confirmed.previewToken, reason: explanation.trim() || undefined, templateItemIds: confirmed.entries.filter((item) => item.willChange).map((item) => item.templateItemId) }),
     }),
@@ -708,23 +519,7 @@ export function PlanForm({ requirement, templates, onClose }: { requirement: Req
       invalidateRequirementViews(client, input.preview.requirementId);
       onClose();
     },
-    onError: async (error, input) => {
-      if (requiresWriteRecheck(error)) {
-        try {
-          const latest = await readResourceFresh<Requirement>(client, keys.requirement(requirement.id), `/api/requirements/${requirement.id}`, () => mounted.current);
-          if (mounted.current && matchesAppliedPlan(latest, input.expected)) {
-            invalidateRequirementViews(client, requirement.id);
-            toast.success("已核对最新状态：工作计划已补全");
-            onClose();
-            return;
-          }
-        } catch {
-          // 保留原写入错误，由用户重新预览确认当前状态。
-        }
-        setPreview(undefined);
-        invalidateRequirementViews(client, requirement.id);
-      }
-    },
+    onError:async error=>{if(isWriteOutcomeUnknown(error))setUnknown(true);if(requiresWriteRecheck(error)){try{await readResourceFresh<Requirement>(client,keys.requirement(requirement.id),'/api/requirements/'+requirement.id,()=>mounted.current);}catch{/* Keep input and error. */}setPreview(undefined);invalidateRequirementViews(client,requirement.id);}},
     onSettled: () => { submitting.current = false; },
   });
   const pending = previewMutation.isPending || applyMutation.isPending;
@@ -758,10 +553,10 @@ export function PlanForm({ requirement, templates, onClose }: { requirement: Req
       }}><WandSparkles size={15} />生成差异预览</button></div>}
       {selectedTemplateUnavailable && <FormError full={false}>所选流程已不可用，请重新选择。</FormError>}
       {locked && <FormError full={false}>需求已进入待验收或终态，不能继续补全计划。</FormError>}
-      <FormError full={false}>{previewMutation.error?.message}</FormError>
+      {unknown&&<FormError full={false}>刚才的提交结果待核对，已填内容保留。请核对操作记录，本窗口不会重复提交。</FormError>}<FormError full={false}>{previewMutation.error?.message}</FormError>
       <FormError full={false}>{invalidEntry ? `工作项「${invalidEntry.title}」补全后的开始日期晚于完成日期，请调整计划开始或先编辑该工作项` : applyMutation.error?.message}</FormError>
       {preview && <>
-        <div className="plan-preview-list">
+        <CommitmentComparison value={requirement} plannedEnd={preview.entries.map(i=>i.proposedEnd||i.currentEnd||'').sort().at(-1)||null}/><div className="plan-preview-list">
           {preview.entries.map((item) => <div key={item.templateItemId} className={item.willChange ? "will-change" : "unchanged"}>
             <strong>{item.title}</strong><span>{item.currentStart || "空"} → {item.currentEnd || "空"}</span><b>→</b><span>{item.proposedStart} → {item.proposedEnd}</span><em>{item.reason === "missing_item" ? "新增" : item.reason === "missing_plan" ? "补空值" : item.reason === "terminal" ? "终态保留" : "保持"}</em>
           </div>)}
@@ -769,10 +564,10 @@ export function PlanForm({ requirement, templates, onClose }: { requirement: Req
         <p className="field-help">仅补充空日期或缺失工作项，已有计划和实际日期不会覆盖。</p>
         {requirementPreviewStale && <FormError full={false}>需求已更新，当前差异预览已失效，请重新预览。</FormError>}
         {templatePreviewStale && <FormError full={false}>流程设计已更新，当前差异预览已失效，请重新预览。</FormError>}
-        <div className="form-actions"><button className="ghost-button" onClick={resetPreview}>重新预览</button><button className="primary-button" disabled={previewStale || selectedTemplateUnavailable || Boolean(invalidEntry) || !preview.entries.some((item) => item.willChange) || hasExecution && !reason.trim()} onClick={() => {
+        <div className="form-actions"><button className="ghost-button" onClick={resetPreview}>重新预览</button><button className="primary-button" disabled={unknown || previewStale || selectedTemplateUnavailable || Boolean(invalidEntry) || !preview.entries.some((item) => item.willChange) || hasExecution && !reason.trim()} onClick={() => {
           if (submitting.current) return;
           submitting.current = true;
-          applyMutation.mutate({ preview, reason, expected: planApplyExpectation(requirement, preview) });
+          applyMutation.mutate({ preview, reason });
         }}>确认补全</button></div>
       </>}
     </fieldset>

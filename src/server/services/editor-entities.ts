@@ -1,11 +1,13 @@
+import {validateCoordination} from './blocker-coordination';
+import {coordinationKeys} from '../../shared/blocker-coordination';
 import {validateDeliveryFields,updateDeliveryRequirement} from './delivery-execution';
 import {sqlite} from '../database';
 import type {Actor} from '../auth';
-import {assertProjectManager,assertRequirementOwnerOrManager,requireAuthorizationActor} from '../authorization';
+import {assertProjectManager,assertRequirementOwnerOrManager,assertWorkItemParticipantOrManager,requireAuthorizationActor} from '../authorization';
 import {fail,notFound} from '../errors';
 import {requireLabel} from './support';
 import {createRequirementInputSchema,updateRequirementInputSchema,createWorkItemInputSchema,updateWorkItemInputSchema} from '../../shared/contracts';
-import {addBusinessDays,businessDaysInclusive,plannedDatesFromOffset,plannedStartFromDeadline,canDeleteWorkItem} from '../../shared/domain';
+import {addBusinessDays,businessDaysInclusive,plannedDatesFromOffset,plannedStartFromDeadline,canDeleteWorkItem,deriveRequirementMetrics} from '../../shared/domain';
 import {type PathInput,type PathRequirement} from '../../shared/paths';
 import type {EditorEntityChange,DependencyChanges} from '../../shared/path-contracts';
 import {createRequirement,updateRequirement,archiveRequirement,createWorkItem,updateWorkItem,deleteWorkItem,listTemplates} from '../services';
@@ -21,6 +23,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
   snapshot.milestones||=[];
   const expanded=new Map<string,Array<{clientId:string;templateItemId:string;kind:string}>>();
   for(const c of [...changes].sort((a,b)=>Number(b.entity==='requirement')-Number(a.entity==='requirement'))){
+    if(c.data.reviewForecast&&c.entity!=='requirement')fail('工作项预测核对请通过估算修改提交');
     const table=entityTable[c.entity],row=sqlite.prepare('SELECT * FROM '+table+' WHERE id=?').get(c.id) as Record<string,unknown>|undefined;
     if(c.op==='create'&&row)fail('新增对象标识已存在');
     if(c.op!=='create'&&(!row||row.version!==c.expectedVersion))fail('对象版本已变化，请核对草稿','STALE_WRITE',409,{entityIds:[c.id]});
@@ -28,7 +31,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     const requirementId=c.entity==='requirement'?c.id:c.requirementId||String(row?.requirement_id||'');
     const req=snapshot.requirements.find(r=>r.id===requirementId);
     if(c.entity==='requirement'&&c.op==='create'||!requirementId||created.has(requirementId))assertProjectManager(current,snapshot.projectId);
-    else {if(!req||req.deletedAt)notFound('需求不存在');assertRequirementOwnerOrManager(current,requirementId);}
+    else {if(!req||req.deletedAt)notFound('需求不存在');if(c.entity==='work'&&c.op==='update'&&Object.keys(c.data).every(k=>coordinationKeys.some(key=>key===k)||k==='reason'))assertWorkItemParticipantOrManager(current,c.id);else assertRequirementOwnerOrManager(current,requirementId);}
     if(c.entity==='milestone'&&row?.project_id!==undefined&&row.project_id!==snapshot.projectId)notFound('里程碑不属于当前项目');
     if(req&&['completed','cancelled'].includes(req.status)&&c.op!=='delete')fail('已结束需求不能修改结构','TERMINAL_LOCKED');
     if(c.entity!=='requirement'&&req?.status==='pending_acceptance')fail('待验收需求不能修改结构','TERMINAL_LOCKED');
@@ -36,6 +39,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     assertEditorAssignees(snapshot.projectId,[c.data.ownerId,...c.data.assigneeIds||[]]);
     for(const key of ['plannedStart','plannedEnd','targetDate'] as const)if(c.data[key]&&businessDaysInclusive(c.data[key]!,c.data[key]!)!==1)fail('排期日期必须是工作日');
     if(c.data.plannedStart&&c.data.plannedEnd&&c.data.plannedStart>c.data.plannedEnd)fail('计划完成日期不能早于计划开始日期');
+    if(coordinationKeys.some(k=>c.data[k]!==undefined)){const original=c.entity==='requirement'?req:snapshot.workItems.find(w=>w.id===c.id);if(c.op!=='update'||!original||original.status!=='blocked')fail('只有阻塞对象可以修改协调信息');Object.assign(c.data,validateCoordination(snapshot.projectId,{...original,...c.data}));}
     if(c.entity==='requirement'){
       if(c.op==='create'){
         const {reason:_creationReason,...creation}=c.data;
@@ -66,7 +70,9 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
           const dates=snapshot.workItems.filter(w=>w.requirementId===c.id).flatMap(w=>w.plannedEnd?[w.plannedEnd]:[]).sort();r.plannedEnd=dates.at(-1)||null;r.status=snapshot.workItems.some(w=>w.requirementId===c.id)?'not_started':'planning';
         }
       }else if(c.op==='update'){
-        updateRequirementInputSchema.parse({...c.data,expectedVersion:c.expectedVersion});
+        const {reviewForecast:_reviewForecast,...editable}=c.data;
+        if(c.data.reviewForecast&&req!.executionMode!=='direct')fail('分解需求请核对具体工作项的估算');
+        updateRequirementInputSchema.parse({...editable,expectedVersion:c.expectedVersion});
         validateDeliveryFields(snapshot.projectId,c.data,actor,req as Parameters<typeof validateDeliveryFields>[3]);
         if(c.data.executionMode&&c.data.executionMode!==req!.executionMode){
           if(c.data.executionMode==='direct')fail('画布不支持将有工作项的需求切回直接执行');
@@ -93,6 +99,12 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     }
   }
   for(const c of changes)if(c.entity==='requirement'&&c.op==='create'&&!expanded.has(c.id)){const r=snapshot.requirements.find(r=>r.id===c.id)!;r.dependenciesReviewedAt=new Date().toISOString();r.scheduleAnchor=r.plannedStart||snapshot.asOfDate;}
+  // The preview and commitment snapshot use the same dates that work-item writes derive.
+  for(const id of new Set(changes.filter(c=>c.entity==='work').map(c=>c.requirementId||snapshot.workItems.find(w=>w.id===c.id)?.requirementId))){
+    const r=snapshot.requirements.find(r=>r.id===id);if(!r||r.executionMode==='direct')continue;
+    const metrics=deriveRequirementMetrics(r,snapshot.workItems.filter(w=>w.requirementId===id),snapshot.asOfDate,snapshot.highRiskDelayDays);
+    r.plannedStart=metrics.plannedStart;r.plannedEnd=metrics.plannedEnd;r.progress=metrics.progress;r.status=metrics.status;
+  }
   return expanded;
 }
 
@@ -112,13 +124,13 @@ export function prepareEditorLayouts(snapshot:PathInput,layouts:NonNullable<Depe
 export function persistEditorEntities(snapshot:PathInput,changes:EditorEntityChange[],expanded:Map<string,Array<{clientId:string;templateItemId:string;kind:string}>>,actor:Actor){
   const ids:Record<string,string>={},now=new Date().toISOString();
   for(const c of [...changes].sort((a,b)=>Number(b.entity==='requirement')-Number(a.entity==='requirement'))){
-    const data={...c.data},reqId=ids[c.requirementId||'']||c.requirementId;
+    const {reviewForecast:_review,...data}=c.data,reqId=ids[c.requirementId||'']||c.requirementId;
     if(c.entity==='requirement'){
       if(c.op==='create'){
         delete data.reason;
         const r=createRequirement({...data,templateId:data.templateId||undefined,projectId:snapshot.projectId},actor,true);ids[c.id]=r.id;if(!expanded.has(c.id))sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=?,schedule_anchor=? WHERE id=?').run(now,snapshot.requirements.find(value=>value.id===c.id)?.scheduleAnchor||snapshot.asOfDate,r.id);
         for(const e of expanded.get(c.id)||[]){const record=e.kind==='milestone'?sqlite.prepare('SELECT id FROM milestones WHERE requirement_id=? AND template_item_id=?').get(r.id,e.templateItemId) as {id:string}|undefined:r.workItems?.find(w=>w.templateItemId===e.templateItemId);if(record)ids[e.clientId]=record.id;}
-      }else if(c.op==='update'){if(data.executionMode||Object.keys(data).some(k=>['deliveryScope','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate'].includes(k)))updateDeliveryRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor,!!data.executionMode,true);else updateRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor);}
+      }else if(c.op==='update'){if(_review&&Object.keys(data).every(k=>k==='reason')){sqlite.prepare('UPDATE requirements SET version=version+1,updated_at=? WHERE id=?').run(now,c.id);}else if(data.executionMode||Object.keys(data).some(k=>['deliveryScope','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',...coordinationKeys].includes(k)))updateDeliveryRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor,!!data.executionMode,true);else updateRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor);}
       else archiveRequirement(c.id,{expectedVersion:c.expectedVersion},actor);
     }else if(c.entity==='work'){
       const {durationDays,arrangement,arrangementAnchor,...fields}=data;

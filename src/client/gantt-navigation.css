@@ -28,6 +28,9 @@
 .path-draft-gantt.is-dated .path-draft-gantt-track i { top:30px; }
 .path-draft-gantt.is-dated .path-draft-gantt-track i.plan { top:15px; }
 @media(max-width:600px) {
+ .my-work-list > header .view-tabs { width:100%; min-width:0; overflow-x:auto; }
+ .my-work-list > header .view-tabs button { flex:none; white-space:nowrap; }
+ .requirement-gantt-toolbar { max-height:132px; overflow-y:auto; overscroll-behavior:contain; align-items:flex-start; }
  .project-gantt-panel.project-gantt-panel { --project-gantt-label-width:clamp(70px,40cqw,150px); }
  .gantt-navigation-surface .gantt-requirement-link { max-width:120px; }
  .gantt-navigation-surface .gantt-requirement-info { padding-inline:8px; }

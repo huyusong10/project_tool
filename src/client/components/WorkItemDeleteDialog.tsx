@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, jsonBody, requiresWriteRecheck } from '../api';
+import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
 import { invalidateRequirementViews } from '../query-keys';
 import { canDeleteWorkItem } from '../../shared/domain';
 import type { Requirement, WorkItem } from '../types';
 import { ConfirmDialog } from './Modal';
-import { useToast } from './Toast';
 
 export function WorkItemDeleteDialog({ target, requirement, canManage, onReload, onClose }: {
   target: WorkItem;
@@ -15,7 +14,7 @@ export function WorkItemDeleteDialog({ target, requirement, canManage, onReload,
   onClose: () => void;
 }) {
   const client = useQueryClient();
-  const toast = useToast();
+  const [unknown,setUnknown]=useState(false);
   const [baseline, setBaseline] = useState(target);
   const [reading, setReading] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(false);
@@ -60,23 +59,19 @@ export function WorkItemDeleteDialog({ target, requirement, canManage, onReload,
       if (!mounted.current) return;
       setNeedsRefresh(true);
       if (requiresWriteRecheck(error)) {
-        const fresh = await readLatest();
-        if (fresh && !fresh.workItems.some((item) => item.id === baseline.id) && mounted.current) {
-          invalidateRequirementViews(client, baseline.requirementId);
-          toast.success('已核对最新状态：工作项已删除');
-          onClose();
-        }
+        if(isWriteOutcomeUnknown(error))setUnknown(true);
+        await readLatest();
       }
     },
     onSettled: () => { submitting.current = false; },
   });
   const pending = mutation.isPending || reading;
-  const blocked = Boolean(warning) || needsRefresh;
+  const blocked = unknown || Boolean(warning) || needsRefresh;
   return <ConfirmDialog title="删除工作项" description={<>
     <p>工作项“<strong>{baseline.title}</strong>”将从需求计划中删除。此操作仅适用于尚未开始、0%且没有执行信息和进展历史的工作项。</p>
     {warning && <p className="form-error" role="alert">{warning}</p>}
     {readError && <p className="form-error" role="alert">{readError}</p>}
-    {refreshed && <p>已读取最新工作项，请核对名称和删除条件后再确认。</p>}
+    {unknown&&<p>删除结果待核对，本窗口不会重复提交。请核对操作记录。</p>}{refreshed && <p>已读取最新工作项，请核对名称和删除条件后再确认。</p>}
     {(changed || needsRefresh) && <button type="button" className="ghost-button" disabled={pending} onClick={() => void readLatest()}>重新读取工作项</button>}
   </>} confirmLabel="确认删除" pendingLabel="处理中…" danger pending={pending} disabled={blocked} error={mutation.error?.message}
     onClose={() => { if (!submitting.current && !readingRef.current) onClose(); }}

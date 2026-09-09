@@ -61,8 +61,8 @@ async function openProgress(page: Page, source: 'detail' | 'my-work', itemIndex 
     await page.locator('.requirement-gantt-grid .gantt-progress-marker').nth(itemIndex).click();
     return page.getByRole('dialog', { name: '更新工作项进度', exact: true });
   }
-  await page.getByRole('button', { name: '为接口开发写进展', exact: true }).click();
-  return page.getByRole('dialog', { name: '添加工作进展', exact: true });
+  await page.getByRole('button', { name: /^为接口开发(更新完成度|补充说明)$/, exact: true }).click();
+  return page.getByRole('dialog', { name: /^(更新工作项进度|补充工作项说明)$/, exact: true });
 }
 
 for (const status of ['not_started', 'blocked'] as const) {
@@ -75,13 +75,23 @@ for (const status of ['not_started', 'blocked'] as const) {
     expect(state.requests).toHaveLength(0);
   });
 }
-for (const [source, status] of [['my-work', 'blocked']] as const) {
-  test(`${source} ${status}只追加关联说明，不发送完成度`, async ({ page }) => {
-    const state = await fixture(page, status);
-    const dialog = await openProgress(page, source);
+for (const width of [390, 1366]) {
+  test(`my-work blocked ${width}px只追加关联说明，按钮不重叠`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    const state = await fixture(page, 'blocked');
+    await page.goto('/my-work');
+    const note = page.getByRole('button', { name: '为接口开发补充说明', exact: true });
+    const next = page.locator('.my-work-gantt-actions').first().locator('.work-next-action');
+    await expect(note).toBeVisible();await expect(next).toBeVisible();
+    const a=(await note.boundingBox())!,b=(await next.boundingBox())!;
+    expect(a.x+a.width<=b.x||b.x+b.width<=a.x||a.y+a.height<=b.y||b.y+b.height<=a.y).toBe(true);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width+1);
+    await note.click();
+    const dialog = page.getByRole('dialog', { name: '补充工作项说明', exact: true });
     await expect(dialog.getByRole('spinbutton')).toHaveCount(0);
-    await dialog.getByRole('textbox', { name: '具体进展', exact: true }).fill('保留工作项关联的说明');
-    await dialog.getByRole('button', { name: '保存进展', exact: true }).click();
+    await dialog.getByRole('textbox', { name: '说明', exact: true }).fill('保留工作项关联的说明');
+    await dialog.screenshot({ path: testInfo.outputPath('work-note.png'), animations:'disabled' });
+    await dialog.getByRole('button', { name: '保存说明', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     expect(state.requests).toEqual([{ content: '保留工作项关联的说明', workItemId: 'w1', expectedVersion: 1 }]);
   });
@@ -96,7 +106,7 @@ for (const source of ['detail', 'my-work'] as const) {
         await route.fulfill({ status: 200, contentType: kind === 'html' ? 'text/html' : 'application/json', body });
       });
       const dialog = await openProgress(page, source);
-      const content = dialog.getByRole('textbox', { name: '具体进展', exact: true });
+      const content = dialog.getByRole('textbox', { name: '说明', exact: true });
       const percent = dialog.getByRole('spinbutton');
       await content.fill('操作结果需要核对，不能假装保存成功');
       await percent.fill('60');
@@ -112,7 +122,7 @@ for (const source of ['detail', 'my-work'] as const) {
     });
   }
 
-  test(`${source}进展已落库但响应异常时核对新记录并关闭`, async ({ page }) => {
+  test(`${source}进展响应丢失且版本变化时保留原文，不根据相同记录认定成功`, async ({ page }) => {
     const state = await fixture(page);
     await page.route('**/api/requirements/r1/progress', async (route) => {
       const input = route.request().postDataJSON();
@@ -127,11 +137,13 @@ for (const source of ['detail', 'my-work'] as const) {
       await route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
     });
     const dialog = await openProgress(page, source);
-    await dialog.getByRole('textbox', { name: '具体进展', exact: true }).fill('Cafe\u0301 需要读取后确认的新进展');
+    await dialog.getByRole('textbox', { name: '说明', exact: true }).fill('Cafe\u0301 需要读取后确认的新进展');
     await dialog.getByRole('spinbutton').fill('60');
     await dialog.getByRole('button', { name: source === 'detail' ? '记录进展' : '保存进展', exact: true }).click();
-    await expect(dialog).toHaveCount(0);
-    await expect(page.getByText('已核对最新状态：进展已记录', { exact: true })).toBeVisible();
+    await expect(dialog).toContainText('请先核对进展记录');
+    await expect(dialog.getByRole('button', { name: source === 'detail' ? '记录进展' : '保存进展', exact: true })).toBeDisabled();
+    await expect(dialog.getByRole('textbox', { name: '说明', exact: true })).toHaveValue('Cafe\u0301 需要读取后确认的新进展');
+    await expect(page.getByText('已核对最新状态：进展已记录', { exact: true })).toHaveCount(0);
     expect(state.requests).toHaveLength(1);
   });
 
@@ -153,9 +165,9 @@ for (const source of ['detail', 'my-work'] as const) {
       await route.fulfill({ status: 200, contentType: 'text/html', body: 'saved elsewhere' });
     });
     const dialog = await openProgress(page, 'my-work');
-    const content = dialog.getByRole('textbox', { name: '具体进展', exact: true });
+    const content = dialog.getByRole('textbox', { name: '说明', exact: true });
     await content.fill('解除阻塞工作项');
-    await dialog.getByRole('button', { name: '保存进展', exact: true }).click();
+    await dialog.getByRole('button', { name: '保存说明', exact: true }).click();
 
     await expect(dialog).toBeVisible();
     await expect(content).toHaveValue('解除阻塞工作项');
@@ -180,7 +192,7 @@ for (const source of ['detail', 'my-work'] as const) {
       await route.fulfill({ status: 200, contentType: 'text/html', body: 'saved elsewhere' });
     });
     const dialog = await openProgress(page, 'detail');
-    const content = dialog.getByRole('textbox', { name: '具体进展', exact: true });
+    const content = dialog.getByRole('textbox', { name: '说明', exact: true });
     await content.fill('相同内容的并发进展');
     await dialog.getByRole('spinbutton').fill('60');
     await dialog.getByRole('button', { name: '记录进展', exact: true }).click();
@@ -208,7 +220,7 @@ for (const source of ['detail', 'my-work'] as const) {
     try {
       const dialog = await openProgress(page, source);
       const saveName = source === 'detail' ? '记录进展' : '保存进展';
-      const content = dialog.getByRole('textbox', { name: '具体进展', exact: true });
+      const content = dialog.getByRole('textbox', { name: '说明', exact: true });
       const percent = dialog.getByRole('spinbutton');
       await content.fill('我的工作结果和说明');
       await percent.fill('60');
@@ -250,7 +262,7 @@ for (const source of ['detail', 'my-work'] as const) {
   test(`${source}后台更新工作项后不能用新版本悄悄提交旧草稿`, async ({ page }) => {
     const state = await fixture(page);
     const dialog = await openProgress(page, source);
-    await dialog.getByRole('textbox', { name: '具体进展', exact: true }).fill('保留正在输入的内容');
+    await dialog.getByRole('textbox', { name: '说明', exact: true }).fill('保留正在输入的内容');
     await dialog.getByRole('spinbutton').fill('75');
     state.requirement.workItems[0] = { ...state.requirement.workItems[0], progress: 50, version: 2 };
     const previousReads = state.reads;
@@ -268,11 +280,50 @@ for (const source of ['detail', 'my-work'] as const) {
   });
 }
 
+test('工作项版本冲突不把同账号另一个页面的相同进展误认成本次成功',async({page})=>{
+ const state=await fixture(page);
+ await page.route('**/api/requirements/r1/progress',route=>{
+  const input=route.request().postDataJSON();state.requests.push(input);
+  state.requirement.workItems[0]={...state.requirement.workItems[0],version:2,progress:60};
+  state.requirement.progressUpdates=[{id:'other-tab',requirementId:'r1',workItemId:'w1',workItemTitle:'接口开发',percent:60,workItemPercent:60,content:input.content,eventType:'progress',createdByAccountId:'admin',createdAt:'2026-09-09T01:00:00Z',updatedAt:'2026-09-09T01:00:00Z'}];
+  return route.fulfill({status:409,json:{code:'STALE_WRITE',error:'工作项版本冲突'}});
+ });
+ const dialog=await openProgress(page,'detail');await dialog.getByRole('textbox',{name:'说明',exact:true}).fill('联调完成');await dialog.getByRole('spinbutton').fill('60');
+ await dialog.getByRole('button',{name:'记录进展',exact:true}).click();
+ await expect(dialog).toBeVisible();await expect(dialog).toContainText('当前完成度 60%');
+ await expect(page.getByText('已核对最新状态：进展已记录',{exact:true})).toHaveCount(0);expect(state.requests).toHaveLength(1);
+});
+
+test('工作项说明响应丢失后，即使未读到记录也不能重复写入',async({page})=>{
+ const state=await fixture(page,'blocked');
+ await page.route('**/api/requirements/r1/progress',route=>{state.requests.push(route.request().postDataJSON());return route.abort('failed');});
+ const dialog=await openProgress(page,'my-work');await dialog.getByRole('textbox',{name:'说明',exact:true}).fill('等待接口');
+ await dialog.getByRole('button',{name:'保存说明',exact:true}).click();
+ await expect(dialog).toContainText('请先核对进展记录');await expect(dialog.getByRole('button',{name:'保存说明',exact:true})).toBeDisabled();expect(state.requests).toHaveLength(1);
+});
+
+for(const originalStatus of ['blocked','in_progress'] as const){
+ test(`${originalStatus}工作项刷新后保留原操作含义，不在说明与完成度间切换`,async({page})=>{
+  const state=await fixture(page,originalStatus),dialog=await openProgress(page,'my-work');
+  await dialog.getByRole('textbox',{name:'说明',exact:true}).fill('保留原操作的内容');
+  state.requirement.workItems[0]={...state.requirement.workItems[0],status:originalStatus==='blocked'?'in_progress':'blocked',version:2};
+  const reads=state.reads;await page.evaluate(()=>{window.dispatchEvent(new Event('offline'));window.dispatchEvent(new Event('online'));});await expect.poll(()=>state.reads).toBeGreaterThan(reads);
+  await dialog.getByRole('button',{name:'重新读取工作项',exact:true}).click();
+  if(originalStatus==='blocked'){
+   await expect(dialog.getByRole('spinbutton')).toHaveCount(0);await dialog.getByRole('button',{name:'保存说明',exact:true}).click();
+   await expect(dialog).toHaveCount(0);expect(state.requests).toEqual([{content:'保留原操作的内容',workItemId:'w1',expectedVersion:2}]);
+  }else{
+   await expect(dialog).toContainText('不能更新完成度');await expect(dialog.getByRole('button',{name:'保存进展',exact:true})).toBeDisabled();
+   await expect(dialog.getByRole('textbox',{name:'说明',exact:true})).toHaveValue('保留原操作的内容');expect(state.requests).toHaveLength(0);
+  }
+ });
+}
+
 for (const next of ['completed', 'removed'] as const) {
   test(`已选择的工作项${next}后不悄悄退化为需求说明`, async ({ page }) => {
     const state = await fixture(page);
     const dialog = await openProgress(page, 'detail');
-    await dialog.getByRole('textbox', { name: '具体进展', exact: true }).fill('不能丢失关联的输入');
+    await dialog.getByRole('textbox', { name: '说明', exact: true }).fill('不能丢失关联的输入');
     state.requirement.workItems = next === 'removed' ? state.requirement.workItems.slice(1) : state.requirement.workItems.map((item) => item.id === 'w1' ? { ...item, status: 'completed', progress: 100, actualEnd: '2026-09-04', version: 2 } : item);
     const previousReads = state.reads;
     await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
@@ -282,7 +333,7 @@ for (const next of ['completed', 'removed'] as const) {
     await expect(dialog.locator('.progress-item-context')).toContainText('接口开发');
     await dialog.locator('form').evaluate((form) => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
     expect(state.requests).toHaveLength(0);
-    await expect(dialog.getByRole('textbox', { name: '具体进展', exact: true })).toHaveValue('不能丢失关联的输入');
+    await expect(dialog.getByRole('textbox', { name: '说明', exact: true })).toHaveValue('不能丢失关联的输入');
   });
 }
 
@@ -295,14 +346,14 @@ for (const source of ['detail', 'my-work'] as const) {
       await page.locator('.requirement-gantt-grid .gantt-progress-marker').first().click();
       dialog = page.getByRole('dialog', { name: '更新工作项进度', exact: true });
     } else dialog = await openProgress(page, source);
-    await dialog.getByRole('textbox', { name: '具体进展', exact: true }).fill('固定关联的草稿');
+    await dialog.getByRole('textbox', { name: '说明', exact: true }).fill('固定关联的草稿');
     state.requirement.workItems[0] = { ...state.requirement.workItems[0], status: 'completed', progress: 100, actualEnd: '2026-09-04', version: 2 };
     const previousReads = state.reads;
     await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
     await expect.poll(() => state.reads).toBeGreaterThan(previousReads);
     await expect(dialog.getByRole('button', { name: source === 'detail' ? '记录进展' : '保存进展', exact: true })).toBeDisabled();
     await expect(dialog.getByRole('combobox')).toHaveCount(0);
-    await expect(dialog.getByRole('textbox', { name: '具体进展', exact: true })).toHaveValue('固定关联的草稿');
+    await expect(dialog.getByRole('textbox', { name: '说明', exact: true })).toHaveValue('固定关联的草稿');
     await dialog.locator('form').evaluate((form) => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
     expect(state.requests).toHaveLength(0);
   });
@@ -313,7 +364,7 @@ for (const role of ['member', 'owner'] as const) {
     const state = await fixture(page, 'in_progress', role);
     const dialog = await openProgress(page, 'detail', role === 'owner' ? 1 : 0);
     await expect(dialog.getByRole('combobox')).toHaveCount(0);
-    await dialog.getByRole('textbox', { name: '具体进展', exact: true }).fill('权限范围内更新进展');
+    await dialog.getByRole('textbox', { name: '说明', exact: true }).fill('权限范围内更新进展');
     await dialog.getByRole('spinbutton').fill('75');
     await dialog.getByRole('button', { name: '记录进展', exact: true }).click();
     await expect(dialog).toHaveCount(0);

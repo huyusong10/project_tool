@@ -1,5 +1,6 @@
+import {executionDraftConflicts,type ExecutionCommand} from '../shared/execution-draft';
 import {EditorSession,newHistory,readHistory,type HistoryCommand} from './editor-session';
-import {rebaseEditor} from './editor-rebase';
+import {rebaseEditorHistory} from './editor-rebase';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {readDraftRecord,writeDraftRecord,clearDraftRecords,ownsDraft,takeDraft,releaseDraft} from './graph-draft-storage';
 import { api, ApiError, isWriteOutcomeUnknown, jsonBody } from './api';
@@ -18,16 +19,19 @@ export function clearProjectGraphDrafts(accountId:string,projectId:string){
   for(const storage of [sessionStorage,localStorage])for(const key of Object.keys(storage))if(key===base||key.startsWith(base+':')||['pm-path-origin:','pm-path-view:','pm-graph-view:','pm-detail-scroll:','pm-editor-new-template:','pm-editor-lease:pm-graph-draft:'].some(p=>(key===p+accountId+':'+projectId||key.startsWith(p+accountId+':'+projectId+':'))))storage.removeItem(key);
 }
 const sessions=new Map<string,EditorSession<unknown>>();
-export async function assertCleanProjectDraft(accountId:string,projectId:string){
-  const key=prefix+accountId+':'+projectId;
-  const session=sessions.get(key);
+export async function assertCleanProjectDraft(accountId:string,projectId:string,command?:ExecutionCommand){
+  const key=prefix+accountId+':'+projectId,session=sessions.get(key);
   const state=(!session?.loading?session?.state:undefined)||readHistory<DependencyChanges>((await readDraftRecord(key))??JSON.parse(sessionStorage.getItem(key)||'null'));
+  if(await readDraftRecord(key+':submission')||sessionStorage.getItem(key+':submission'))throw new Error('项目有待核对提交，请先查询原批次回执');
   const changes=state?.values[state.index] as DependencyChanges|undefined;
-  if(changes&&(changes.add.length||changes.remove.length||changes.estimates.length||changes.entities?.length)||state&&Object.keys(state.fields).length||(await readDraftRecord(key+':submission')||sessionStorage.getItem(key+':submission')))throw new Error('项目有未保存业务草稿，请进入路径工作区保存或放弃后，再执行此操作');
+  if(!changes)return;
+  const conflicts=command?executionDraftConflicts(changes,state?.server,command):changes.add.length||changes.remove.length||changes.estimates.length||changes.entities?.length?['项目业务修改']:[];
+  const fields=Object.keys(state?.fields||{}).filter(key=>!command||key.includes(command.workItemId||command.requirementId));
+  if(conflicts.length||fields.length)throw new Error('本次操作涉及未保存业务草稿：'+[...conflicts,...fields.map(()=>'未完成字段')].join('、')+'。请保存或处理这些修改后再执行');
 }
-export async function assertCleanRequirementDraft(accountId:string,requirementId:string){
+export async function assertCleanRequirementDraft(accountId:string,requirementId:string,command?:Omit<ExecutionCommand,'requirementId'>){
   const r=await api<{projectId:string}>('/api/requirements/'+requirementId,{readOnly:true});
-  await assertCleanProjectDraft(accountId,r.projectId);
+  await assertCleanProjectDraft(accountId,r.projectId,{requirementId,...command});
 }
 export function useGraphHistory<T>(key:string,initial:T,version:string,source?:PathAnalysis){
   const storageKey=prefix+key;
@@ -69,7 +73,7 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
     change:(value:T,group?:string)=>dispatch({type:'change',value,group}),
     undo:()=>dispatch({type:'undo'}),redo:()=>dispatch({type:'redo'}),
     reset:(next=latest.current.initial,nextVersion=latest.current.version)=>dispatch({type:'reset',value:next,version:nextVersion,server:latest.current.source}),
-    rebase:(nextVersion:string,value=current.state.values[current.state.index])=>dispatch({type:'rebase',value,baseline:latest.current.initial,version:nextVersion,server:latest.current.source}),
+    rebase:(nextVersion:string,value=current.state.values[current.state.index],values?:T[])=>dispatch({type:'rebase',value,values,baseline:latest.current.initial,version:nextVersion,server:latest.current.source}),
   };
 }
 const empty: DependencyChanges = { add: [], remove: [], estimates: [] };
@@ -86,12 +90,17 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
   const [previewAttempt,setPreviewAttempt]=useState(0);
   const generation = useRef(0), latest = useRef<DependencyChangePreview | null>(null);
   const denied=useRef(()=>{});denied.current=()=>{history.reset();onSaved();};
-  const changes = history.value, count = changes.add.length + changes.remove.length + changes.estimates.length+(changes.entities?.length||0)+(changes.layouts?.length||0);
+  const changes = history.value, count = changes.add.length + changes.remove.length + changes.estimates.length+(changes.entities?.length||0)+(changes.layouts?.length||0)+Number(!!changes.commitment);
   const resolutionVersion=JSON.stringify([data.revision,data.layouts?.map(l=>[l.scope,l.direction,l.version])]);
   const [resolutionState,setResolutionState]=useState<{version:string;values:Record<string,'draft'|'server'>}>({version:resolutionVersion,values:{}});
   const resolutions=resolutionState.version===resolutionVersion?resolutionState.values:{};
-  const rebased=rebaseEditor(history.source,data,changes,resolutions);
-  const conflict = count > 0 && (Number(history.version) !== data.revision || (changes.layouts||[]).some(l=>l.expectedVersion!==(data.layouts?.find(v=>v.scope===l.scope&&v.direction===l.direction)?.version||0)));
+  const rebased=rebaseEditorHistory(history.source,data,history.session.state.values,history.session.state.index,resolutions);
+  const conflict = history.session.state.values.some(v=>v.add.length||v.remove.length||v.estimates.length||v.entities?.length||v.layouts?.length||v.commitment) && (Number(history.version) !== data.revision || history.session.state.values.some(v=>(v.layouts||[]).some(l=>l.expectedVersion!==(data.layouts?.find(d=>d.scope===l.scope&&d.direction===l.direction)?.version||0))));
+  useEffect(()=>{
+    if(!conflict||history.loading||history.readOnly||history.busy||pending)return;
+    if(rebased.pending.length)return;
+    history.rebase(String(data.revision),rebased.current,rebased.values);
+  });
   const input: DependencyChangesInput = { expectedRevision: count ? Number(history.version) : data.revision, target, changes };
   const saveInput=()=>({expectedRevision:Number(history.session.state.version),target,changes:history.session.state.values[history.session.state.index]});
   const fingerprint = JSON.stringify(input);
@@ -152,7 +161,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     cancel: () => { if (!pending) { history.reset(empty, String(data.revision)); setError(null); } },
     change: (next: DependencyChanges) => { if (!pending && !history.session.saving && JSON.stringify(next)!==JSON.stringify(changes)) { latest.current = null; setPreview(null); setError(null); if (!count && Number(history.version) !== data.revision) history.rebase(String(data.revision), next); else history.change(next); } },
     rebase: () => {
-      if(rebased.pending.length)return;history.rebase(String(data.revision),rebased.changes);setResolutionState({version:resolutionVersion,values:{}});
+      if(rebased.pending.length)return;history.rebase(String(data.revision),rebased.current,rebased.values);setResolutionState({version:resolutionVersion,values:{}});
       setError(null);
     },
   };

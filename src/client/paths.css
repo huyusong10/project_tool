@@ -228,3 +228,17 @@ body:has(.graph-workspace){overflow:hidden}
 .delivery-target{border:1px solid var(--divider);border-radius:8px;padding:10px;min-width:0}.delivery-target summary{cursor:pointer;overflow-wrap:anywhere}.delivery-target summary small{display:block;margin-top:6px;color:var(--text-muted)}.delivery-target[open] .delivery-endpoint-picker{margin-top:10px}
 .delivery-condition>small{color:var(--text-muted);line-height:1.6}.delivery-condition-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.delivery-condition-links button{display:flex;align-items:center;justify-content:center;gap:4px;min-height:36px;padding:6px 4px;font-size:12px}.delivery-condition-links svg{flex-shrink:0}
 .delivery-condition-error{color:var(--danger);line-height:1.6;overflow-wrap:anywhere}.delivery-condition-error button{display:block;margin-top:8px}
+
+/* Delivery dialogs keep content inside their own scrollable body. */
+.delivery-batch-review { display:grid; gap:12px; min-width:0; }
+.delivery-batch-review ul,.commitment-history ul { margin:0; padding-left:20px; overflow-wrap:anywhere; }
+.delivery-batch-review li { margin:6px 0; }
+.delivery-batch-review dl,.forecast-facts,.commitment-summary { display:grid; gap:8px; margin:8px 0; }
+.delivery-batch-review dl>div,.forecast-facts>div,.commitment-summary>div { display:grid; grid-template-columns:108px minmax(0,1fr); gap:12px; }
+.delivery-batch-review dd,.forecast-facts dd,.commitment-summary dd { margin:0; overflow-wrap:anywhere; }
+.delivery-batch-review dt,.forecast-facts dt,.commitment-summary dt { color:var(--text-muted); }
+.commitment-history details { padding:12px 0; border-top:1px solid var(--divider); }
+.delivery-batch-review .form-actions { flex-wrap:wrap; gap:8px; }
+@media(max-width:600px){.delivery-batch-review dl>div,.forecast-facts>div,.commitment-summary>div{grid-template-columns:88px minmax(0,1fr);gap:8px;}}
+
+.commitment-comparison{display:grid;gap:6px;padding:10px;border:1px solid var(--divider);border-radius:8px;font-size:12px;overflow-wrap:anywhere}
