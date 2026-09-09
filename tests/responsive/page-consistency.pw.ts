@@ -68,12 +68,12 @@ test('长列表往返恢复滚动；侧栏重新进入恢复原筛选；显式�
 test('异常行动的自动优先级和分页在往返后保持', async ({ page }) => {
   await setup(page);
   await page.goto('/actions?severity=high&page=2');
-  await expect(page.getByLabel('严重度')).toHaveValue('high');
+  await expect(page.getByLabel('处理优先级')).toHaveValue('high');
   await page.getByRole('button', { name: /处理验收阻塞/ }).click();
   await expect(page.locator('.requirement-page')).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/severity=high&page=2/);
-  await expect(page.getByLabel('严重度')).toHaveValue('high');
+  await expect(page.getByLabel('处理优先级')).toHaveValue('high');
   await page.goto('/actions');
   await expect(page).toHaveURL(/page=2/);
 });

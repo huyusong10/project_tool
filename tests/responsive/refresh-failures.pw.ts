@@ -28,7 +28,7 @@ const issue: Issue = {
 };
 const readPaths = { requirement: '/api/requirements/r1', 'my-work': '/api/my-work', issue: '/api/issues/i1' };
 const urls = { requirement: '/requirements/r1', 'my-work': '/my-work', issue: '/issues?projectId=p1&issueId=i1' };
-const resourceSelectors = { requirement: '.requirement-brief', 'my-work': '.my-work-summary', issue: '.issue-settings-shell' };
+const resourceSelectors = { requirement: '.requirement-overview', 'my-work': '.my-work-summary', issue: '.issue-settings-shell' };
 
 async function fixture(page: Page, source: Source) {
   const state = { failure: 0 as number | 'network' | keyof typeof invalidBodies, errorBody: undefined as string | undefined, failedReads: 0, reads: 0 };
@@ -158,10 +158,10 @@ for (const resource of ['session', 'projects'] as const) {
     root.failure = 503;
     await page.getByRole('button', { name: '重新加载', exact: true }).click();
     await expect(page.getByText(`${resource}读取失败 503`, { exact: true })).toBeVisible();
-    await expect(page.locator('.requirement-brief')).toHaveCount(0);
+    await expect(page.locator('.requirement-overview')).toHaveCount(0);
     root.failure = 0;
     await page.getByRole('button', { name: '重新加载', exact: true }).click();
-    await expect(page.locator('.requirement-brief')).toBeVisible();
+    await expect(page.locator('.requirement-overview')).toBeVisible();
     await expect(field).toHaveCount(0);
   });
 
@@ -171,11 +171,11 @@ for (const resource of ['session', 'projects'] as const) {
     root.failure = 503;
     await page.goto(urls.requirement);
     await expect(page.getByText(`${resource}读取失败 503`, { exact: true })).toBeVisible();
-    await expect(page.locator('.requirement-brief')).toHaveCount(0);
+    await expect(page.locator('.requirement-overview')).toHaveCount(0);
     await expect(page.getByText('尚未创建项目', { exact: true })).toHaveCount(0);
     root.failure = 0;
     await page.getByRole('button', { name: '重新加载', exact: true }).click();
-    await expect(page.locator('.requirement-brief')).toBeVisible();
+    await expect(page.locator('.requirement-overview')).toBeVisible();
   });
 }
 
@@ -193,7 +193,7 @@ test('全局读取 退出成功后会话503也必须立即清除身份', async (
   });
   try {
     await page.goto(urls.requirement);
-    await expect(page.locator('.requirement-brief')).toBeVisible();
+    await expect(page.locator('.requirement-overview')).toBeVisible();
     await page.getByRole('button', { name: '退出', exact: true }).evaluate((button) => {
       (button as HTMLButtonElement).click();
       (button as HTMLButtonElement).click();
@@ -203,7 +203,7 @@ test('全局读取 退出成功后会话503也必须立即清除身份', async (
   } finally { releaseLogout(); }
   await expect(page.getByRole('heading', { name: '登录项目工作台', exact: true })).toBeVisible();
   await expect(page.locator('.session-button')).toHaveCount(0);
-  await expect(page.locator('.requirement-brief')).toHaveCount(0);
+  await expect(page.locator('.requirement-overview')).toHaveCount(0);
 });
 
 test('全局读取 整站503保留草稿，资源401后会话503必须关闭旧页面', async ({ page }) => {
@@ -220,10 +220,10 @@ test('全局读取 整站503保留草稿，资源401后会话503必须关闭旧�
   await expect(page.getByRole('heading', { name: '登录状态加载失败', exact: true })).toBeVisible();
   await expect(page.locator('.session-button')).toHaveCount(0);
   await expect(field).toHaveCount(0);
-  await expect(page.locator('.requirement-brief')).toHaveCount(0);
+  await expect(page.locator('.requirement-overview')).toHaveCount(0);
   session.failure = projects.failure = state.failure = 0;
   await page.getByRole('button', { name: '重新加载', exact: true }).click();
-  await expect(page.locator('.requirement-brief')).toBeVisible();
+  await expect(page.locator('.requirement-overview')).toBeVisible();
 });
 
 for (const change of ['account', 'password', 'role'] as const) {
@@ -253,7 +253,7 @@ test('全局读取 项目授权移除后不能因详情503继续展示旧数据'
   state.failure = 503;
   await refresh(page);
   await expect(page.getByText('读取失败 503', { exact: true })).toBeVisible();
-  await expect(page.locator('.requirement-brief')).toHaveCount(0);
+  await expect(page.locator('.requirement-overview')).toHaveCount(0);
   await expect(field).toHaveCount(0);
 });
 

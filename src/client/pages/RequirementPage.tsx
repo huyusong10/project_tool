@@ -1,19 +1,16 @@
 import {assertCleanRequirementDraft} from '../use-graph-draft';
-import {DeliveryControls,ProcessingPriorityBadge} from '../components/DeliveryControls';
-import { requirementRiskDisplay, requirementVarianceDisplay } from "../requirement-presentation";
+import { RequirementOverview } from '../components/RequirementOverview';
+import { directRequirementTimelineItem } from '../requirement-timeline';
 import { usePageBack } from "../use-page-view";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
 import {
-  AlertTriangle,
   Archive,
   CalendarDays,
   Check,
   CircleStop,
-  Clock3,
   Edit3,
-  ExternalLink,
   MoreHorizontal,
   PencilLine,
   Plus,
@@ -30,7 +27,6 @@ import { requirementStatusLabels, workItemPlannedProgress, workItemPlannedDurati
 import { GapTimeline } from "../components/GapTimeline";
 import { Chart } from "../components/Chart";
 import { EmptyState, LoadingState, RefreshNotice } from "../components/Feedback";
-import { StatusBadge } from "../components/Badge";
 import { PageHeader } from "../components/PageHeader";
 import { PlanForm, RequirementCorrectionForm, RequirementInfoForm, RequirementScheduleForm } from "../components/RequirementForms";
 import { ProgressForm, type ProgressScope } from "../components/ProgressForm";
@@ -242,8 +238,9 @@ function SavedRequirementPage() {
     setProgressItemId(null);
     setModal(null);
   };
-  const { closed: riskClosed, label: riskLabel, className: riskClass } = requirementRiskDisplay(requirement);
-  const variance = requirementVarianceDisplay(requirement);
+  const direct = requirement.executionMode === 'direct';
+  const timelineItems = direct ? [directRequirementTimelineItem(requirement)] : requirement.workItems;
+  const timelineUpdates = direct ? (requirement.progressUpdates || []).map(update => ({...update, workItemId: requirement.id})) : requirement.progressUpdates || [];
   const progressById = new Map((requirement.progressUpdates || []).map((update) => [update.id, update]));
   if (pathView) return <><PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement} onExit={()=>{const params=new URLSearchParams(searchParams);params.delete('view');params.delete('workItemId');setSearchParams(params,{state:pathLocation.state});}}/></>;
   return (
@@ -284,72 +281,7 @@ function SavedRequirementPage() {
       <div className="page-content requirement-page">
         {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
         {supportingError && <div className="warning-banner">{supportingDataReady ? "人员与流程数据刷新失败，当前使用上次成功结果。" : "人员或流程数据加载失败，相关编辑操作暂不可用。"}<button className="ghost-button" disabled={peopleQuery.isFetching || templatesQuery.isFetching} onClick={() => void Promise.all([peopleQuery.refetch(), templatesQuery.refetch()])}>重新加载</button></div>}
-        {requirement.status === "pending_acceptance" && <section className="requirement-acceptance-banner">
-          <div><Check size={18} /><span><strong>执行工作已完成，等待验收</strong><small>验收后才会计入已完成需求和完成率</small></span></div>
-
-        </section>}
-        <DeliveryControls requirement={requirement}/><div className="requirement-context-strip">
-          <div className="hero-badges">
-            <span>{requirement.projectName}</span>
-            <StatusBadge kind="requirement" value={requirement.status} />
-            <ProcessingPriorityBadge requirement={requirement}/>
-            {riskClosed || !requirement.riskEvaluated ? (
-              <span className={`risk-badge ${riskClass}`}>{riskLabel}</span>
-            ) : (
-              <StatusBadge kind="risk" value={requirement.riskLevel} />
-            )}
-          </div>
-          <span>共{requirement.workItems.length}个工作项 · 最近更新 {formatDateTime(requirement.updatedAt)}</span>
-        </div>
-      <section className="panel requirement-brief">
-        <div><span>需求负责人</span><strong>{requirement.ownerName || "待指定"}</strong></div>
-        {requirement.background && <div><span>需求背景</span><p>{requirement.background}</p></div>}
-        {requirement.acceptanceCriteria && <div><span>验收标准</span><p>{requirement.acceptanceCriteria}</p></div>}
-        {requirement.referenceUrl && <div><span>参考链接</span><a href={requirement.referenceUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />打开辅助资料</a></div>}
-      </section>
-      <section className="detail-kpis">
-        <article>
-          <span>当前进度</span>
-          <strong>{requirement.progress}%</strong>
-          <div className="progress-row">
-            <i style={{ width: `${requirement.progress}%` }} />
-          </div>
-          <small>计划进度 {requirement.plannedProgress}% · {requirement.executionMode==='direct'?'直接记录完成度':'自动按工期加权'}</small>
-        </article>
-        <article>
-          <span>计划周期</span>
-          <strong>
-            {requirement.plannedStart || "待排期"} →{" "}
-            {requirement.plannedEnd || "待排期"}
-          </strong>
-          <small>
-            <CalendarDays size={14} />
-            按工作日计算
-          </small>
-        </article>
-        <article>
-          <span>计划偏差</span>
-          <strong className={variance.className}>{variance.label}</strong>
-          <small><Clock3 size={14} />{variance.title}</small>
-        </article>
-        <article>
-          <span>风险等级</span>
-          <strong>{riskLabel}</strong>
-          <small>
-            {requirement.riskEvaluated && requirement.riskLevel !== "low" ? (
-              <>
-                <AlertTriangle size={14} />
-                {requirement.riskReason}
-              </>
-            ) : (
-              <>
-                <Check size={14} />
-                {requirement.riskReason}
-              </>
-            )}
-          </small>
-        </article>
-      </section>
+        <RequirementOverview key={requirement.id} requirement={requirement}/>
       <ResizablePanel
         className={`panel detail-panel requirement-progress-panel stable-workspace-panel${pathView ? " requirement-path-panel" : ""}`}
         storageKey={`${session.accountId || session.username || "guest"}:requirement-gantt`}
@@ -375,13 +307,18 @@ function SavedRequirementPage() {
           )}
         </header>
         {pathView ? <PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement}/> : <GapTimeline key={requirement.id} storageKey={`${requirement.projectId}:${requirement.id}:gantt`} milestones={requirement.milestones}
-          items={requirement.workItems}
+          items={timelineItems}
+          itemLabel={direct ? "需求执行" : "工作项"}
+          executionStatus={direct ? requirement.status : undefined}
+          showStatusFilters={!direct}
+          showUnscheduled
+          ariaLabel={direct ? "需求直接执行甘特图" : "需求工作项进展甘特图"}
           targetItemId={searchParams.get("workItemId") || undefined}
           asOfDate={requirement.asOfDate}
-          updates={requirement.progressUpdates || []}
-          canUpdateProgress={canUpdateItemProgress}
+          updates={timelineUpdates}
+          canUpdateProgress={direct ? undefined : canUpdateItemProgress}
           onUpdateProgress={(item) => openProgress(item.id)}
-          renderActions={(item) => canOperateItem(item)
+          renderActions={direct ? undefined : (item) => canOperateItem(item)
             ? <WorkItemActions
                 item={item}
                 onAction={(action, content, expectedVersion, expectedDependencyRevision) => itemAction.mutateAsync({ item, action, content, expectedVersion, expectedDependencyRevision })}

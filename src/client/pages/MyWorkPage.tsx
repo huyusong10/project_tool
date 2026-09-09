@@ -1,5 +1,8 @@
+import {ProcessingPriorityBadge} from '../components/Badge';
+import {directRequirementTimelineItem} from '../requirement-timeline';
+import {requirementRiskDisplay} from '../requirement-presentation';
 import {assertCleanRequirementDraft} from '../use-graph-draft';
-import {ProcessingPriorityBadge,DeliveryControls} from '../components/DeliveryControls';
+import {DeliveryControls} from '../components/DeliveryControls';
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -32,7 +35,7 @@ export function MyWorkPage() {
   useEffect(() => {
     if (unavailable && error) setProgressItem(undefined);
   }, [error, unavailable]);
-  const directEntries=(data?.requirements||[]).filter(r=>r.executionMode==='direct').map(r=>({...r,id:r.id,templateItemId:null,milestoneLabel:null,sortOrder:0,requirementStatus:r.status,ownerId:r.ownerId||null,ownerName:r.ownerName||null,actualStart:r.actualStart||null,actualEnd:r.actualEnd||null,forecastEnd:r.forecastEnd||null,blockedAt:r.blockedAt||null,blockedReason:r.blockedReason||null,createdAt:r.createdAt||r.updatedAt,version:r.version||1,requirementId:r.id,requirementTitle:r.title,assignmentType:'owner',collaborators:[],assigneeIds:r.ownerId?[r.ownerId]:[],assigneeNames:r.ownerName?[r.ownerName]:[],overdue:r.delayed,status:r.status==='pending_acceptance'?'completed':r.status,deliveryRequirement:r} as MyWorkItem & {deliveryRequirement:typeof r}));
+  const directEntries=(data?.requirements||[]).filter(r=>r.executionMode==='direct').map(r=>({...r,...directRequirementTimelineItem(r as Requirement),requirementStatus:r.status,requirementTitle:r.title,assignmentType:'owner',overdue:r.delayed,deliveryRequirement:r} as MyWorkItem & {deliveryRequirement:typeof r}));
   const items = [...(data?.items || []),...directEntries].filter((item) => filter === 'all' || (filter === 'active' ? !['completed', 'cancelled'].includes(item.status) : item.status === filter));
   const action = useMutation({
     mutationFn: async ({ item, action, content, reason, expectedDependencyRevision, expectedVersion = item.version }: { item: MyWorkItem; expectedDependencyRevision?:number; action: string; content?: string; reason?: string; expectedVersion?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId);return api(`/api/work-items/${item.id}/${action}`, {
@@ -66,10 +69,10 @@ export function MyWorkPage() {
       {!!data?.requirements.length && <section className="panel my-owned-requirements">
         <header><div><h2>我负责的需求</h2><p>规划完整度、交付风险和待处理事项</p></div></header>
         <div className="my-owned-requirement-grid">
-          {data.requirements.map((requirement) => <div key={requirement.id}><button onClick={() => navigate(`/requirements/${requirement.id}`)}>
+          {data.requirements.map((requirement) => <div className="my-owned-requirement-card" key={requirement.id}><button className="my-owned-requirement-link" onClick={() => navigate(`/requirements/${requirement.id}`)}>
             <div><ProcessingPriorityBadge requirement={requirement}/><strong>{requirement.title}</strong></div>
             <p>{requirement.projectName} · {requirement.plannedStart || "待排期"} → {requirement.plannedEnd || "待排期"}</p>
-            <footer><span className={`status-pill status-${requirement.status}`}>{requirementStatusLabels[requirement.status as keyof typeof requirementStatusLabels] || requirement.status}</span><span>{requirement.planningReasons.join("、") || (requirement.highRisk ? "高风险" : requirement.delayed ? "已延期" : "计划正常")}</span><b>{requirement.actionCount} 项待处理</b></footer>
+            <footer><span className={`status-pill status-${requirement.status}`}>{requirementStatusLabels[requirement.status as keyof typeof requirementStatusLabels] || requirement.status}</span><span>{requirement.planningReasons.join("、") || requirement.readinessIssues?.join('、') || requirementRiskDisplay(requirement as Requirement).label}</span><b>{requirement.actionCount} 项待处理</b></footer>
           </button>{requirement.executionMode==='direct'&&<DeliveryControls requirement={requirement as Requirement} compact/>}</div>)}
         </div>
       </section>}

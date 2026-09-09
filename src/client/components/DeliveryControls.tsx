@@ -7,15 +7,11 @@ import {canManageProject} from '../permissions';
 import {invalidateRequirementViews,keys} from '../query-keys';
 import {assertCleanProjectDraft,useDependencyDraft} from '../use-graph-draft';
 import {changeEntity} from '../editor-commands';
-import {processingPriorityLabels} from '../../shared/delivery';
 import type {Requirement,Person} from '../types';
 import type {PathAnalysis} from '../../shared/paths';
 import type {DeliveryImpact,DeliveryTargetChange} from '../../shared/delivery-impact';
 import {Modal} from './Modal';
 
-export function ProcessingPriorityBadge({requirement:r}:{requirement:Partial<Requirement>}){
-  return <span title={r.priorityReasons?.join('；')} className="status-badge">{r.processingPriority?processingPriorityLabels[r.processingPriority]:r.deliveryScope==='candidate'?'候选':'—'}</span>;
-}
 export function DeliveryControlsForId({id}:{id:string}){
   const query=useQuery({queryKey:keys.requirement(id),queryFn:()=>api<Requirement>('/api/requirements/'+id)});
   return query.data?<DeliveryControls requirement={query.data} compact/>:null;
@@ -45,8 +41,8 @@ export function DeliveryControls({requirement:r,compact=false}:{requirement:Requ
   const open=async(action:string)=>{setNeedsCheck(false);setReadError('');mutation.reset();setContent('');setSelected([]);setPercent(Math.min(r.progress,99));setConditions(null);setModal({action,base:r});if(action==='start')try{setConditions(await api('/api/requirements/'+r.id+'/start-conditions'));}catch{/* The command independently validates the latest conditions. */}};
   const direct=r.executionMode==='direct',ended=['completed','cancelled'].includes(r.status);
   const labels:Record<string,string>={start:'开始需求',progress:'更新进度',block:'标记阻塞',unblock:'解除阻塞','submit-acceptance':'提交验收',accept:'确认验收',rework:'退回返工'};
-  return <>{!compact&&<div className="requirement-context-strip"><span>{r.deliveryScope==='candidate'?'候选':'纳入交付'} · {direct?'直接执行':'工作项分解'} · 验收：{r.acceptanceOwnerName||'项目经理'}</span><span>{r.readinessIssues?.join(' · ')}</span></div>}
-    <div className="button-row">
+  return <>
+    <div className="button-row delivery-controls">
       {direct&&owner&&!ended&&<>{r.status==='not_started'&&<button disabled={r.deliveryScope==='candidate'} title={r.deliveryScope==='candidate'?'请项目经理先在交付设置中纳入交付':undefined} className="primary-button" onClick={()=>void open('start')}>开始需求</button>}{['in_progress','blocked'].includes(r.status)&&<button className="ghost-button" onClick={()=>void open('progress')}>更新进度</button>}{r.status==='in_progress'&&<><button className="ghost-button" onClick={()=>void open('block')}>标记阻塞</button><button className="primary-button" onClick={()=>void open('submit-acceptance')}>提交验收</button></>}{r.status==='blocked'&&<button className="ghost-button" onClick={()=>void open('unblock')}>解除阻塞</button>}{['not_started','in_progress'].includes(r.status)&&!compact&&<button className="ghost-button" onClick={()=>setModal({action:'split',base:r})}>拆分剩余工作</button>}</>}
       {acceptor&&r.status==='pending_acceptance'&&<button className="primary-button" onClick={()=>void open('accept')}>确认验收</button>}
       {acceptor&&['pending_acceptance','completed'].includes(r.status)&&<button className="ghost-button" onClick={()=>void open('rework')}>退回返工</button>}

@@ -89,10 +89,6 @@ textarea {
   grid-column: span 1;
 }
 
-.detail-kpis {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
-}
-
 .form-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--field-min-width)), 1fr));
 }
@@ -101,7 +97,6 @@ textarea {
 .gantt-filter-bar,
 .project-gantt-toolbar,
 .requirement-gantt-toolbar,
-.requirement-context-strip,
 .hero-badges,
 .form-actions,
 .panel-actions,
@@ -317,16 +312,9 @@ textarea {
     margin-left: 0;
   }
 
-  .stats-grid,
-  .detail-kpis {
+  .stats-grid {
     grid-template-columns: 1fr;
   }
-
-  .requirement-context-strip > span {
-    width: 100%;
-    white-space: normal;
-  }
-  .detail-kpis > article { min-width: 0; }
 
   .progress-feed > article { grid-template-columns: 42px minmax(0,1fr); gap: 8px; }
   .progress-feed article header { flex-wrap: wrap; }
@@ -710,8 +698,6 @@ textarea {
 @media (max-width: 760px) {
   .people-access-filters .search-box, .people-access-filters select { width: 100%; min-width: 0; }
   .people-access-filters > span { margin-left: 0; }
-  .requirement-acceptance-banner { align-items: stretch; flex-direction: column; }
-  .requirement-acceptance-banner .primary-button { width: 100%; }
   .issue-state-actions.is-compact { flex-wrap: wrap; }
   .system-grid { grid-template-columns: 1fr; }
   .project-members-panel > header { align-items: flex-start; flex-direction: column; }
@@ -739,4 +725,44 @@ textarea {
   .inline-date-range { grid-template-columns: 1fr; align-items: stretch; gap: 2px; }
   .inline-date-range > span { display: none; }
   .account-inline-projects, .inline-action-date-grid { grid-template-columns: 1fr; }
+}
+
+/* Requirement summary keeps the timeline near the top; details open in an overlay. */
+@container page-content (max-width: 900px) {
+  .requirement-overview-meta { flex-wrap: wrap; row-gap: 4px; overflow: visible; }
+  .requirement-overview-delivery { flex-basis: 100%; }
+  .requirement-overview-owner { flex: 1; }
+  .detail-kpis { grid-template-columns: 1fr 1.5fr; gap: 4px 12px; }
+  .requirement-overview-actions { max-width: 50%; }
+  .requirement-overview-actions .delivery-controls { flex-wrap: wrap; justify-content: flex-end; }
+}
+@container page-content (max-width: 600px) {
+  .requirement-overview-top { flex-wrap: wrap; }
+  .requirement-overview-meta { flex-basis: 100%; }
+  .requirement-overview-actions { max-width: none; flex: 1 1 100%; flex-wrap: wrap; }
+  .requirement-overview-actions button { min-height: 40px; }
+  .requirement-overview-actions .delivery-controls { flex: 1 1 100%; min-width: 0; justify-content: flex-start; }
+  .detail-kpis { grid-template-columns: minmax(0,1fr); gap: 2px; }
+  .requirement-progress-panel > header > div:first-child { flex-wrap: wrap; gap: 8px; }
+  .action-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .action-summary article { min-height: 64px; padding: 8px; gap: 6px; grid-template-columns: 28px minmax(0,1fr) auto; }
+  .action-summary svg { width: 28px; height: 28px; padding: 5px; }
+  .action-summary strong { font-size: 20px; }
+  .action-item { grid-template-columns: 80px minmax(0,1fr) 16px; gap: 6px 10px; padding: 12px; }
+  .action-item-main { grid-column: 2; }
+  .action-item-meta { grid-column: 2; grid-row: 2; }
+  .action-item > svg { grid-column: 3; grid-row: 1 / span 2; }
+  .my-owned-requirement-grid { grid-template-columns: minmax(0,1fr); }
+  .my-owned-requirement-grid footer { display: flex; flex-wrap: wrap; }
+}
+@container page-content (max-width: 350px) {
+  .action-summary { grid-template-columns: minmax(0,1fr); gap: 6px; }
+  .action-summary article { min-height: 48px; grid-template-columns: 20px minmax(0,1fr) auto; }
+  .action-summary svg { width: 20px; height: 20px; padding: 0; background: none; }
+  .action-summary span { font-size: 12px; }
+  .action-item { grid-template-columns: minmax(0,1fr) 16px; }
+  .action-priority { grid-column: 1; grid-row: 1; }
+  .action-item-main { grid-column: 1 / -1; grid-row: 2; }
+  .action-item-meta { grid-column: 1 / -1; grid-row: 3; }
+  .action-item > svg { grid-column: 2; grid-row: 1; }
 }

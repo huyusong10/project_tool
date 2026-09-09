@@ -51,14 +51,14 @@ function WorkStatusIcon({ status, size = 12 }: { status: string; size?: number }
   return <Circle size={size} />;
 }
 
-function WorkItemTimelinePopover({ item, updates, asOfDate }: { item: WorkItem; updates: ProgressUpdate[]; asOfDate: string }) {
+function WorkItemTimelinePopover({ item, updates, asOfDate, executionStatus }: { item: WorkItem; updates: ProgressUpdate[]; asOfDate: string; executionStatus?: string }) {
   const gap = workItemDisplayGap(item, asOfDate);
   const observedEnd = gap.observedEnd;
   const related = updates.filter((update) => update.workItemId === item.id).slice(0, 2);
   return <>
     <header className="gantt-popover-header">
       <div><strong>{item.title}</strong><span>{item.assigneeNames?.join("、") || item.ownerName || "未分配"}</span></div>
-      <StatusBadge kind="requirement" value={item.status} />
+      <StatusBadge kind="requirement" value={executionStatus || item.status} />
     </header>
     <dl className="gantt-popover-metrics">
       <div><dt>实际进度</dt><dd>{item.progress}%</dd></div>
@@ -66,7 +66,7 @@ function WorkItemTimelinePopover({ item, updates, asOfDate }: { item: WorkItem; 
       <div><dt>实际执行跨度</dt><dd>{dateLabel(item.actualStart, "未开始")} — {dateLabel(observedEnd, "结束日期缺失")}{gap.actual.ongoing && observedEnd ? "（截至统计日）" : ""}</dd></div>
       {item.milestoneLabel && <div><dt>里程碑</dt><dd>{item.milestoneLabel} · {item.status === "completed" ? "已达成" : item.status === "cancelled" ? "已取消" : "待达成"}</dd></div>}
       <div><dt>计划 / 实际工期</dt><dd>{item.plannedStart && item.plannedEnd ? `${gap.planDuration}个工作日` : "—"} / {gap.actual.start && gap.actual.end ? `${gap.actualDuration}个工作日` : "—"}</dd></div>
-      {item.status !== "cancelled" && <div><dt>完成 / 耗时偏差</dt><dd className={gap.finishVariance > 0 || gap.durationVariance > 0 ? "danger-text" : ""}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}个工作日 / {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}个工作日</dd></div>}
+      {item.status !== "cancelled" && <div><dt>完成 / 耗时偏差</dt>{!item.plannedStart || !item.plannedEnd ? <dd>待排期</dd> : !gap.actual.start || !gap.actual.end ? <dd>实际日期待确认</dd> : <dd className={gap.finishVariance > 0 || gap.durationVariance > 0 ? "danger-text" : ""}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}个工作日 / {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}个工作日</dd>}</div>}
     </dl>
     {item.blockedReason && <p className="gantt-popover-blocked">阻塞：{item.blockedReason}</p>}
     {related.length > 0 && <section className="gantt-popover-updates"><h4>相关进展</h4>{related.map((update) => {
@@ -78,6 +78,8 @@ function WorkItemTimelinePopover({ item, updates, asOfDate }: { item: WorkItem; 
 
 export const GapTimeline = memo(function GapTimeline({
   items,
+  itemLabel = '工作项',
+  executionStatus,
   storageKey = "my-work",
   targetItemId,
   milestones=[],
@@ -96,6 +98,8 @@ export const GapTimeline = memo(function GapTimeline({
   emptyState,
 }: {
   items: WorkItem[];
+  itemLabel?: string;
+  executionStatus?: string;
   storageKey?: string;
   milestones?:import('../../shared/paths').PathMilestone[];
   targetItemId?: string;
@@ -206,7 +210,7 @@ export const GapTimeline = memo(function GapTimeline({
           aria-label={ariaLabel}
         >
           <div data-gantt-fixed className="requirement-gantt-corner sticky-left" role="columnheader">
-            <strong>工作项</strong>
+            <strong>{itemLabel}</strong>
             <span>
               {visibleItems.length === items.length ? `${items.length}项` : `${visibleItems.length}/${items.length}项`}
               {visibleUnassignedCount > 0 && <em> · {visibleUnassignedCount}项未分配</em>}
@@ -218,7 +222,7 @@ export const GapTimeline = memo(function GapTimeline({
           {visibleItems.map((item) => {
             const gap = workItemDisplayGap(item, asOfDate);
             const observedEnd = gap.observedEnd;
-            const tooltipProps = tooltip.bind(<WorkItemTimelinePopover item={item} updates={updates} asOfDate={asOfDate} />);
+            const tooltipProps = tooltip.bind(<WorkItemTimelinePopover item={item} updates={updates} asOfDate={asOfDate} executionStatus={executionStatus} />);
             return <div className={`requirement-gantt-row${item.id === targetItemId ? " is-target" : ""}`} data-work-item-id={item.id} role="row" key={item.id}>
               <div className={`requirement-gantt-item item-status-${statusClass(item.status)}${item.ownerId ? "" : " is-unassigned"} sticky-left`} role="rowheader">
                 <div>
@@ -253,7 +257,7 @@ export const GapTimeline = memo(function GapTimeline({
                 {todayVisible && <i className="gantt-today-line" style={{ left: (todayOffset + 1) * cellWidth }} title={`截至 ${asOfDate}`} />}
               </div>
               {gapWidth > 0 && <div className="requirement-gap-summary sticky-right" style={{ right: actionWidth }} role="cell">
-                {item.status === "cancelled" ? <span>已取消</span> : item.actualStart && !observedEnd ? <span>实际日期不完整</span> : item.actualStart ? <><strong className={gap.finishVariance > 0 ? "gap-late" : gap.finishVariance < 0 ? "gap-early" : ""}>{gap.finishVariance > 0 ? `延期 +${gap.finishVariance}工作日` : gap.finishVariance < 0 ? `${item.status === "completed" ? "提前" : "距截止"} ${Math.abs(gap.finishVariance)}工作日` : "按期"}</strong><small>耗时 {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}工作日</small></> : <span>未开始</span>}
+                {item.status === "cancelled" ? <span>已取消</span> : !item.plannedStart || !item.plannedEnd ? <span>待排期</span> : item.actualStart && !observedEnd ? <span>实际日期不完整</span> : item.actualStart ? <><strong className={gap.finishVariance > 0 ? "gap-late" : gap.finishVariance < 0 ? "gap-early" : ""}>{gap.finishVariance > 0 ? `延期 +${gap.finishVariance}工作日` : gap.finishVariance < 0 ? `${item.status === "completed" ? "提前" : "距截止"} ${Math.abs(gap.finishVariance)}工作日` : "按期"}</strong><small>耗时 {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}工作日</small></> : <span>未开始</span>}
               </div>}
               {actionWidth > 0 && <div className="requirement-gantt-actions sticky-right" role="cell">{renderActions?.(item)}</div>}
             </div>;

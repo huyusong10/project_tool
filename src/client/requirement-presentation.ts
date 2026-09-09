@@ -18,7 +18,7 @@ export function requirementVarianceValue(requirement: Requirement): number | nul
 export function requirementVarianceDisplay(requirement: Requirement) {
   const progressDetail = `实际进度 ${requirement.progress}%，计划进度 ${requirement.plannedProgress}%`;
   if (requirement.status !== "cancelled" && (requirement.status === "planning" || requirement.scheduleComplete === false || !requirement.plannedStart || !requirement.plannedEnd)) {
-    return { label: "待排期", className: "muted", title: "工作项排期尚不完整，暂时无法计算计划偏差" };
+    return { label: "待排期", className: "muted", title: `${requirement.executionMode === 'direct' ? '需求' : '工作项'}排期尚不完整，暂时无法计算计划偏差` };
   }
   if (requirement.status === "cancelled") {
     return { label: "已取消", className: "muted", title: "已取消需求不再计算计划偏差" };

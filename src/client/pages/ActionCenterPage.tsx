@@ -1,9 +1,9 @@
-import {processingPriorityLabels} from '../../shared/delivery';
+import {ProcessingPriorityBadge} from '../components/Badge';
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, CircleAlert, ListTodo, UserRound } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CircleAlert, ListTodo, ArrowDown } from 'lucide-react';
 import { api } from '../api';
 import { useProjects } from '../app-context';
 import { keys } from '../query-keys';
@@ -50,14 +50,14 @@ export function ActionCenterPage() {
       {error && data && <div className="warning-banner">行动项刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
       <section className="action-summary">
         <article><ListTodo size={19} /><span>全部行动</span><strong>{data?.summary.total || 0}</strong></article>
-        <article className="is-high"><AlertTriangle size={19} /><span>高优先级</span><strong>{data?.summary.high || 0}</strong></article>
-        <article className="is-medium"><CircleAlert size={19} /><span>中优先级</span><strong>{data?.summary.medium || 0}</strong></article>
-        <article><UserRound size={19} /><span>待规划</span><strong>{data?.summary.byReason.planning || 0}</strong></article>
+        <article className="is-high"><AlertTriangle size={19} /><span>紧急 / 高 <small>P0 / P1</small></span><strong>{data?.summary.high || 0}</strong></article>
+        <article className="is-normal"><CircleAlert size={19} /><span>正常 <small>P2</small></span><strong>{data?.summary.medium || 0}</strong></article>
+        <article><ArrowDown size={19} /><span>较低 <small>P3</small></span><strong>{data?.summary.low || 0}</strong></article>
       </section>
       <section className="panel action-center-list">
         <header><div><h2>待处理事项</h2><p>由需求、工作项和问题状态实时推导，处理源数据后自动消失{data?.asOfDate ? ` · 截至 ${data.asOfDate}` : ''}</p></div></header>
         <FilterBar className="action-center-filters" result={`${data?.total || 0} 项`}>
-          <select aria-label="严重度" value={severity} onChange={(event) => updateFilter('severity', event.target.value)}><option value="">全部严重度</option><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select>
+          <select aria-label="处理优先级" value={severity} onChange={(event) => updateFilter('severity', event.target.value)}><option value="">全部处理优先级</option><option value="high">P0 紧急 / P1 高</option><option value="medium">P2 正常</option><option value="low">P3 较低</option></select>
           <select aria-label="行动原因" value={reason} onChange={(event) => updateFilter('reason', event.target.value)}><option value="">全部原因</option>{reasonOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
           <select aria-label="负责人" value={ownerId} onChange={(event) => updateFilter('ownerId', event.target.value)}>
             <option value="">全部负责人</option>
@@ -69,7 +69,7 @@ export function ActionCenterPage() {
         <div className="action-items">
           {isLoading && !data && <LoadingState label="正在加载行动项…" className="stable-panel-state" />}
           {data?.items.map((item) => <button key={item.id} className={`action-item action-${item.severity}`} onClick={() => navigate(item.targetPath)}>
-            <span className="action-severity" title={item.priorityReasons?.join('；')}>{item.processingPriority?processingPriorityLabels[item.processingPriority]:severityLabels[item.severity]}</span>
+            <div className="action-priority">{item.processingPriority ? <ProcessingPriorityBadge requirement={item}/> : <span className={`action-severity action-${item.severity}`}>{severityLabels[item.severity]}</span>}</div>
             <div className="action-item-main"><div><strong>{item.title}</strong>{item.contextTitle && <small>{item.contextTitle}</small>}</div><p>{item.reasons.map((entry) => entry.label).join(' · ')}</p>{!!item.affectedRequirements?.length&&<small title={item.affectedRequirements.map(r=>r.title).join('、')}>影响 {item.affectedRequirements.length} 个交付需求 · {item.affectedRequirements.map(r=>r.title).join('、')}</small>}</div>
             <div className="action-item-meta"><span>{item.ownerName || '未分派'}</span><span>{item.dueDate || '无截止日期'}{item.overdueWorkdays ? ` · 逾期${item.overdueWorkdays}个工作日` : ''}</span></div>
             <ArrowRight size={16} />

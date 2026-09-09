@@ -1,4 +1,5 @@
-import {ProcessingPriorityBadge,DeliveryDraftDialog} from '../components/DeliveryControls';
+import {ProcessingPriorityBadge} from '../components/Badge';
+import {DeliveryDraftDialog} from '../components/DeliveryControls';
 import {compareProcessingPriority} from '../../shared/delivery';
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { useMemo, useState } from "react";
