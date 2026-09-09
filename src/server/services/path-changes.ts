@@ -125,7 +125,7 @@ export function applyDependencyChanges(projectId: string, raw: unknown, actor: A
       const final=loadPathInput(projectId),mapped={...input.changes,estimates:input.changes.estimates.map(p=>({...p,workItemId:mapId(p.workItemId)!})),entities:input.changes.entities?.map(p=>({...p,id:mapId(p.id)!}))};
       // Reviews must reference the persisted endpoint IDs, including objects created in this batch.
       for(const p of mapped.estimates)if(p.reviewForecast)final.workItems.find(w=>w.id===p.workItemId)!.forecastReview=null;
-      for(const p of mapped.entities||[])if(p.data.reviewForecast)final.requirements.find(r=>r.id===p.id)!.forecastReview=null;
+      for(const p of mapped.entities||[])if(p.entity==='requirement'&&p.data.reviewForecast)final.requirements.find(r=>r.id===p.id)!.forecastReview=null;
       recordForecastReviews(final,analyse(final,input.target),mapped,actor);persistForecastReviews(final,mapped);
     }
     for(const layout of input.changes.layouts||[]){

@@ -23,7 +23,7 @@ export function compareCommitments(before: DeliveryCommitment | null, after: Del
 }
 /** Selection is chronological; a missing date in the first commitment is not backfilled. */
 export function requirementCommitments(history: DeliveryCommitment[], id: string, acceptedAt?: string | null) {
-  const entries = history.filter(c => (!acceptedAt || c.confirmedAt.slice(0, 10) <= acceptedAt.slice(0, 10)) && c.items.some(i => i.kind === 'requirement' && i.id === id))
+  const entries = history.filter(c => (!acceptedAt || (acceptedAt.length>10?c.confirmedAt<=acceptedAt:c.confirmedAt.slice(0, 10)<=acceptedAt)) && c.items.some(i => i.kind === 'requirement' && i.id === id))
     .sort((a,b) => a.confirmedAt.localeCompare(b.confirmedAt) || a.id.localeCompare(b.id));
   const first = entries[0], latest = entries.at(-1);
   return {first: first?.items.find(i => i.id === id) || null, latest: latest?.items.find(i => i.id === id) || null,

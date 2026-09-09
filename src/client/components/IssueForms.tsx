@@ -195,6 +195,7 @@ function issueFields(issue: Issue | undefined, reporter: string | null | undefin
     title: issue?.title || "", impact: issue?.impact || "", requirementId: issue?.requirementId || "",
     sourceRef: issue?.sourceRef || "", priority: issue?.priority || "P2", ownerId: issue?.ownerId || "",
     reporter: issue ? issue.reporter || "" : reporter || "", discoveredAt: issue?.discoveredAt || today,
+    nextReviewAt:issue?.nextReviewAt||"",
     dueDate: issue?.status === "deferred" ? "" : issue?.dueDate || "",
   };
 }
@@ -292,6 +293,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
       {canManage && <SearchSelectField label="负责人" name="ownerId" value={draft.ownerId} options={ownerOptions} onChange={(value) => change("ownerId", value)} pinnedValues={[""]} searchPlaceholder="搜索负责人姓名" />}
       <SearchSelectField label="提出人" name="reporter" value={draft.reporter} options={reporterOptions} onChange={(value) => change("reporter", value)} pinnedValues={[""]} searchPlaceholder="搜索项目成员" helper={current?.reporter && !people.some((person) => person.name === current.reporter) ? "当前值为历史自由文本，重新选择后将使用项目成员姓名" : undefined} />
       <FieldShell label="发现日期"><input name="discoveredAt" type="date" required value={draft.discoveredAt} onChange={(event) => change("discoveredAt", event.target.value)} /></FieldShell>
+      <FieldShell label="下次核对日期" help="用于跟进提醒，与解决目标日期分开"><input name="nextReviewAt" type="date" value={draft.nextReviewAt} onChange={event=>change("nextReviewAt",event.target.value)}/></FieldShell>
       <FieldShell label="目标日期" help={deferred ? "挂起问题不设置目标日期" : undefined}><input name="dueDate" type="date" value={deferred ? "" : draft.dueDate} disabled={deferred} onChange={(event) => change("dueDate", event.target.value)} /></FieldShell>
       <DraftNotice editor={editor} warning={resolved ? "问题已解决，不能保存修改；已保留本次输入。" : null} />
       <div className="form-actions field-full"><button type="button" className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" disabled={blocked}>{editor.pending ? "保存中…" : issue ? "保存修改" : "创建问题"}</button></div>

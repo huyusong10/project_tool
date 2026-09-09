@@ -23,6 +23,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
   snapshot.milestones||=[];
   const expanded=new Map<string,Array<{clientId:string;templateItemId:string;kind:string}>>();
   for(const c of [...changes].sort((a,b)=>Number(b.entity==='requirement')-Number(a.entity==='requirement'))){
+    if(c.data.reviewForecast&&c.entity!=='requirement')fail('工作项预测核对请通过估算修改提交');
     const table=entityTable[c.entity],row=sqlite.prepare('SELECT * FROM '+table+' WHERE id=?').get(c.id) as Record<string,unknown>|undefined;
     if(c.op==='create'&&row)fail('新增对象标识已存在');
     if(c.op!=='create'&&(!row||row.version!==c.expectedVersion))fail('对象版本已变化，请核对草稿','STALE_WRITE',409,{entityIds:[c.id]});

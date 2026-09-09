@@ -2,6 +2,7 @@ import type {PathAnalysis,PathInput,PathNode} from './paths';
 export type ForecastReview = {
   confirmedAt:string; confirmedBy:string; confirmedName?:string; remainingDays:number|null; forecastEnd:string|null;
   progress:number; actualStart:string|null; predecessorBasis:string;
+  invalidatedAt?:string;
 };
 export type ForecastBasis = {
   source:string; review:ForecastReview|null; needsReview:boolean; reasons:string[];
@@ -35,6 +36,7 @@ export function decorateForecastBasis(input:PathInput,analysis:PathAnalysis):Pat
     n.blockerCoordination=value?.blockerCoordination;
     const review=value?.forecastReview||null,reasons=[...n.unknownReasons];
     if(review&&value){
+      if(review.invalidatedAt)reasons.push('执行基线已变化：工作已返工，请重新核对');
       if((value.progress||0)<review.progress||(value.actualStart||null)!==review.actualStart)reasons.push('执行基线已变化，请重新核对');
       if(review.predecessorBasis!==predecessorBasis(n.id,analysis))reasons.push('前置交付条件已变化，请重新核对');
       if(review.forecastEnd&&review.forecastEnd<input.asOfDate&&!['completed','cancelled'].includes(n.status))reasons.push('上次确认的预计日期已过期');

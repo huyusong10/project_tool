@@ -1,3 +1,6 @@
+import {DeliveryBatchReview} from './DeliveryBatchReview';
+import {ProjectCommitmentControl} from './ProjectCommitments';
+import {ExecutionReviewControl} from './ExecutionReview';
 import {useEffect,useRef,useState} from 'react';
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {useNavigate} from 'react-router-dom';
@@ -9,7 +12,7 @@ import {assertCleanProjectDraft,useDependencyDraft} from '../use-graph-draft';
 import {changeEntity} from '../editor-commands';
 import type {Requirement,Person} from '../types';
 import type {PathAnalysis} from '../../shared/paths';
-import type {DeliveryImpact,DeliveryTargetChange} from '../../shared/delivery-impact';
+
 import {Modal} from './Modal';
 import {RequirementCommandDialog} from './RequirementCommandDialog';
 import {readResourceFresh} from '../use-resource-query';
@@ -17,13 +20,6 @@ import {readResourceFresh} from '../use-resource-query';
 export function DeliveryControlsForId({id}:{id:string}){
   const query=useQuery({queryKey:keys.requirement(id),queryFn:()=>api<Requirement>('/api/requirements/'+id)});
   return query.data?<DeliveryControls requirement={query.data} compact/>:null;
-}
-export function DeliveryImpactTable({entries,target}:{entries:DeliveryImpact[];target?:DeliveryTargetChange}){
-  const goal=target&&<p className="field-help">{target.after.label} · 目标 {target.before.date||'待确认'} → {target.after.date||'待确认'} · 预计 {target.before.complete?target.before.forecast||'待确认':'待确认'} → {target.after.complete?target.after.forecast||'待确认':'待确认'}</p>;
-  if(!entries.length)return <>{goal}<p className="field-help">交付预测、范围和风险没有变化。</p></>;
-  const risk:Record<string,string>={high:'高',medium:'中',low:'低',unknown:'待评估'};
-  const scope:Record<string,string>={committed:'纳入交付',candidate:'候选',absent:'不在范围'};
-  return <div className="delivery-impact-list">{goal}{entries.map(e=><div className="graph-list-row" key={e.requirementId}><strong>{e.title}</strong><small>{scope[e.beforeScope]} → {scope[e.afterScope]} · 预计 {e.beforeForecast||'待确认'} → {e.afterForecast||'待确认'}</small><small>优先级 {e.beforePriority||'—'} → {e.afterPriority||'—'} · 风险 {risk[e.beforeRisk]} → {risk[e.afterRisk]} · 缓冲 {e.beforeBuffer??'待确认'} → {e.afterBuffer??'待确认'}</small><small>{e.ownerName||'项目经理'} · {e.reasons.join('；')}</small>{e.outsideExecuting&&<small className="warning-text">范围外仍在执行，工作与关系保留</small>}{(!!e.beforeSources?.length||!!e.afterSources?.length)&&<small>阻塞来源：{e.beforeSources?.map(s=>s.title).join('、')||'无'} → {e.afterSources?.map(s=>s.title).join('、')||'无'}</small>}</div>)}</div>;
 }
 function executionWarning(action:string,r:Requirement){
   const allowed:Record<string,string[]>={start:['not_started'],progress:['in_progress'],note:['blocked'],block:['in_progress'],unblock:['blocked'],'submit-acceptance':['in_progress'],rework:['pending_acceptance','completed']};
@@ -43,7 +39,7 @@ export function DeliveryControls({requirement:r,compact=false}:{requirement:Requ
   const [reviewRequired,setReviewRequired]=useState(false);
   useEffect(()=>()=>{readSequence.current++;},[r.id]);
   const mutation=useMutation({mutationFn:async()=>{
-    if(!modal)return;await assertCleanProjectDraft(session.accountId||'guest',r.projectId);
+    if(!modal)return;await assertCleanProjectDraft(session.accountId||'guest',r.projectId,{requirementId:r.id,action:modal.action});
     const b=modal.base,payload:Record<string,unknown>={expectedVersion:b.version};
     if(modal.action==='progress'){payload.content=content;payload.requirementPercent=percent;}
     else if(modal.action==='note')payload.content=content;
@@ -78,6 +74,7 @@ export function DeliveryControls({requirement:r,compact=false}:{requirement:Requ
   const warning=modal?executionWarning(modal.action,modal.base):'';
   return <>
     <div className="button-row delivery-controls">
+      {direct&&<ExecutionReviewControl requirementId={r.id}/>}
       {direct&&owner&&!ended&&<>{r.status==='not_started'&&<button disabled={r.deliveryScope==='candidate'} title={r.deliveryScope==='candidate'?'请项目经理先在交付设置中纳入交付':undefined} className="primary-button" onClick={()=>void open('start')}>开始需求</button>}{r.status==='in_progress'&&<button className="ghost-button" onClick={()=>void open('progress')}>更新进度</button>}{r.status==='in_progress'&&<><button className="ghost-button" onClick={()=>void open('block')}>标记阻塞</button><button className="primary-button" onClick={()=>void open('submit-acceptance')}>提交验收</button></>}{r.status==='blocked'&&<><button className="ghost-button" onClick={()=>void open('note')}>补充说明</button><button className="ghost-button" onClick={()=>void open('unblock')}>解除阻塞</button></>}{['not_started','in_progress'].includes(r.status)&&!compact&&<button className="ghost-button" onClick={()=>setModal({action:'split',base:r})}>拆分剩余工作</button>}</>}
       {acceptor&&r.status==='pending_acceptance'&&<button className="primary-button" onClick={()=>void open('accept')}>确认验收</button>}
       {acceptor&&['pending_acceptance','completed'].includes(r.status)&&<button className="ghost-button" onClick={()=>void open('rework')}>退回返工</button>}
@@ -108,11 +105,15 @@ export function DeliveryDraftDialog({requirements,mode,onClose}:{requirements:Re
   return <Modal title={mode==='split'?'拆分剩余工作':mode==='scope'?'批量调整交付范围':'交付设置'} onClose={onClose}>{query.data?<DeliveryDraftForm data={query.data} requirements={requirements} mode={mode} onClose={onClose}/>:<p>{query.error?.message||'正在读取交付信息…'}</p>}</Modal>;
 }
 function DeliveryDraftForm({data,requirements,mode,onClose}:{data:PathAnalysis;requirements:Requirement[];mode:'split'|'settings'|'scope';onClose:()=>void}){
-  const {session}=useSession(),navigate=useNavigate(),client=useQueryClient(),r=requirements[0];
+  const {session}=useSession(),client=useQueryClient(),r=requirements[0];
   const draft=useDependencyDraft(session.accountId||'guest',data,'project',()=>invalidateRequirementViews(client));
   const [scope,setScope]=useState(r.deliveryScope||'committed'),[acceptor,setAcceptor]=useState(r.acceptanceOwnerId||''),[duration,setDuration]=useState(String(r.durationDays||'')),[forecast,setForecast]=useState(r.forecastEnd||''),[unblock,setUnblock]=useState(r.unblockEstimate||''),[reason,setReason]=useState(''),[names,setNames]=useState(''),[error,setError]=useState('');
+  const [review,setReview]=useState(false);const initialized=useRef(false);
+  useEffect(()=>{if(draft.loading||initialized.current)return;initialized.current=true;const existing=draft.changes.entities?.find(c=>c.id===r.id&&c.op==='update');const value={...r,...data.requirements.find(v=>v.id===r.id),...existing?.data};setScope(value.deliveryScope||'committed');setAcceptor(value.acceptanceOwnerId||'');setDuration(String(value.durationDays||''));setForecast(value.forecastEnd||'');setUnblock(value.unblockEstimate||'');},[draft.loading,draft.changes.entities,r,data.requirements]);
   const people=useQuery({queryKey:[...keys.people,r.projectId],queryFn:()=>api<Person[]>('/api/people?projectId='+r.projectId)});
-  const add=()=>{
+  const joining=useRef(false);
+  const add=async()=>{
+    if(joining.current)return;
     let next=draft.changes;
     if(mode==='split'){
       const titles=names.split('\n').map(v=>v.trim()).filter(Boolean);if(!titles.length){setError('请至少填写一个剩余工作项');return;}
@@ -120,13 +121,19 @@ function DeliveryDraftForm({data,requirements,mode,onClose}:{data:PathAnalysis;r
       for(const title of titles)next=changeEntity(next,{entity:'work',op:'create',id:crypto.randomUUID(),requirementId:r.id,data:{title,ownerId:r.ownerId,durationDays:1,reason:reason||'拆分剩余工作'}});
     }else for(const value of requirements){
       if(scope==='candidate'&&value.deliveryScope!=='candidate'&&['in_progress','blocked','pending_acceptance'].includes(value.status)&&!reason.trim()){setError('撤出已执行需求时请填写原因');return;}
-      next=changeEntity(next,{entity:'requirement',op:'update',id:value.id,expectedVersion:value.version,data:{deliveryScope:scope,reason:reason||undefined,...(mode==='settings'?{acceptanceOwnerId:acceptor||null,...(r.executionMode==='direct'?{durationDays:duration?Number(duration):null,forecastEnd:forecast||null,unblockEstimate:unblock||null}:{})}:{})}});
+      const original={...value,...data.requirements.find(r=>r.id===value.id),...next.entities?.find(c=>c.id===value.id)?.data};
+      const desired={deliveryScope:scope,...(mode==='settings'?{acceptanceOwnerId:acceptor||null,...(r.executionMode==='direct'?{durationDays:duration?Number(duration):null,forecastEnd:forecast||null,unblockEstimate:unblock||null}:{})}:{})};
+      const changed=Object.fromEntries(Object.entries(desired).filter(([key,v])=>JSON.stringify(v??null)!==JSON.stringify(original[key as keyof typeof original]??null)));
+      if(Object.keys(changed).length)next=changeEntity(next,{entity:'requirement',op:'update',id:value.id,expectedVersion:value.version,data:{...changed,...(reason?{reason}:{})}});
     }
-    draft.begin();draft.change(next);onClose();navigate(mode==='scope'?'/paths':'/requirements/'+r.id+'?view=path');
+    if(!next.add.length&&!next.remove.length&&!next.estimates.length&&!next.entities?.length&&!next.layouts?.length&&!next.commitment){setError('没有需要保存的修改');return;}
+    joining.current=true;draft.begin();draft.change(next);await draft.flush();joining.current=false;setReview(true);
   };
-  return <form onSubmit={e=>{e.preventDefault();add();}}><fieldset className="form-fieldset" disabled={draft.loading||draft.readOnly||!!draft.pending||draft.busy}><p>加入项目共享草稿后预览，点击工作区保存才生效。已有草稿 {draft.count} 项。</p>
+  if(review)return <DeliveryBatchReview draft={draft} data={data} onSaved={onClose}/>;
+  return <form onSubmit={e=>{e.preventDefault();void add();}}><fieldset className="form-fieldset" disabled={draft.loading||draft.readOnly||!!draft.pending||draft.busy}><p>在本窗口预览并整批保存，无需跳转画布。已有草稿 {draft.count} 项。</p>
     {mode==='split'?<><p>已完成 {r.progress}% 保留为基线。每行填写一个剩余工作项，默认一个工作日，可在画布中调整。</p><textarea aria-label="剩余工作项" required rows={5} value={names} onChange={e=>setNames(e.target.value)}/></>:<label className="field"><span>交付范围</span><select aria-label="交付范围" value={scope} onChange={e=>setScope(e.target.value as 'committed'|'candidate')}><option value="committed">纳入交付</option><option value="candidate">候选</option></select></label>}
     {mode==='settings'&&<><label className="field"><span>验收人</span><select aria-label="验收人" value={acceptor} onChange={e=>setAcceptor(e.target.value)}><option value="">项目经理</option>{acceptor&&!people.data?.some(p=>p.id===acceptor)&&<option value={acceptor}>原验收人（需重新核对）</option>}{people.data?.filter(p=>p.active&&p.accountStatus==='active'&&p.projectRole!=='viewer').map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>{r.executionMode==='direct'&&<><label className="field"><span>预计工期（工作日）</span><input type="number" min={1} max={3660} value={duration} onChange={e=>setDuration(e.target.value)}/></label><label className="field"><span>预计执行完成</span><input type="date" value={forecast} onChange={e=>setForecast(e.target.value)}/></label><label className="field"><span>预计解除阻塞</span><input type="date" value={unblock} onChange={e=>setUnblock(e.target.value)}/></label></>}</>}
+    {mode==='settings'&&<ProjectCommitmentControl projectId={r.projectId}/>}
     <label className="field"><span>变更说明</span><textarea value={reason} onChange={e=>setReason(e.target.value)}/></label>{(error||draft.storageError)&&<p className="form-error">{error||draft.storageError}</p>}<div className="form-actions"><button className="primary-button">加入草稿并预览</button></div>
   </fieldset></form>;
 }

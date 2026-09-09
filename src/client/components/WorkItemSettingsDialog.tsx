@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
-import { api, ApiError, jsonBody, requiresWriteRecheck } from "../api";
+import { api, ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { invalidateRequirementViews } from "../query-keys";
 import type { Person, Requirement, WorkItem } from "../types";
 import { useWorkItemSave } from "../use-work-item-save";
@@ -13,8 +13,6 @@ import { InlineDateCell, InlineMultiSelectCell, InlineSelectCell, InlineTextCell
 import { Modal, TextPromptModal } from "./Modal";
 import { SortableList } from "./SortableList";
 import { WorkItemDeleteDialog } from "./WorkItemDeleteDialog";
-import { useToast } from "./Toast";
-import { canonicalizeLabel } from "../../shared/search";
 
 type NewWorkItemDraft = {
   title: string;
@@ -32,17 +30,6 @@ type NewWorkItemDraft = {
 type WorkItemPrompt =
   | { kind: "reorder"; ids: string[]; sourceIds: string[]; baselineVersion: number; baselineStatus: Requirement["status"] }
   | { kind: "new-item" };
-
-function matchesCreatedItem(item: WorkItem, draft: NewWorkItemDraft) {
-  const expectedAssignees = [...new Set([draft.ownerId, ...draft.collaboratorIds].filter(Boolean))].sort();
-  return !draft.sourceIds.includes(item.id)
-    && item.title === canonicalizeLabel(draft.title)
-    && item.milestoneLabel === (canonicalizeLabel(draft.milestoneLabel) || null)
-    && item.ownerId === (draft.ownerId || null)
-    && [...item.assigneeIds].sort().join("\0") === expectedAssignees.join("\0")
-    && item.plannedStart === (draft.plannedStart || null)
-    && item.plannedEnd === (draft.plannedEnd || null);
-}
 
 export function WorkItemSettingsDialog({
   requirement,
@@ -62,7 +49,7 @@ export function WorkItemSettingsDialog({
   onReload: () => Promise<Requirement>;
 }) {
   const client = useQueryClient();
-  const toast = useToast();
+  const [createUnknown,setCreateUnknown]=useState(false),[reorderUnknown,setReorderUnknown]=useState(false);
   const [newItem, setNewItem] = useState<NewWorkItemDraft | null>(null);
   const [prompt, setPrompt] = useState<WorkItemPrompt | null>(null);
   const [createNeedsRefresh, setCreateNeedsRefresh] = useState(false);
@@ -87,7 +74,7 @@ export function WorkItemSettingsDialog({
   const workItemHistoryIds = new Set((requirement.progressUpdates || []).map((entry) => entry.workItemId));
   const createChanged = Boolean(newItem && (requirement.version !== newItem.baselineVersion || requirement.status !== newItem.baselineStatus));
   const newItemHasUnavailablePeople = Boolean(newItem && [newItem.ownerId, ...newItem.collaboratorIds].some((personId) => personId && !eligiblePersonIds.has(personId)));
-  const createBlocked = createChanged || createNeedsRefresh || createReading || requirementLocked || newItemHasUnavailablePeople;
+  const createBlocked = createUnknown || createChanged || createNeedsRefresh || createReading || requirementLocked || newItemHasUnavailablePeople;
   const reorderPrompt = prompt?.kind === "reorder" ? prompt : null;
   const currentWorkItemIds = requirement.workItems.map((item) => item.id);
   const reorderListChanged = Boolean(reorderPrompt && (reorderPrompt.sourceIds.length !== currentWorkItemIds.length
@@ -128,18 +115,14 @@ export function WorkItemSettingsDialog({
       setReorderReadError("");
       invalidateRequirementViews(client, requirement.id);
     },
-    onError: async (failure, input) => {
+    onError: async failure => {
+      if(isWriteOutcomeUnknown(failure))setReorderUnknown(true);
       if (failure instanceof ApiError && failure.status === 400) return;
       setReorderNeedsRefresh(true);
       if (!requiresWriteRecheck(failure)) return;
       reorderReadingRef.current = true; setReorderReading(true); setReorderReadError("");
       try {
-        const latest = await onReload();
-        if (latest.workItems.map((item) => item.id).join("\0") === input.ids.join("\0")) {
-          setPrompt(null); setReorderNeedsRefresh(false);
-          invalidateRequirementViews(client, requirement.id);
-          toast.success("已核对最新状态：工作项顺序已保存");
-        }
+        await onReload();
       } catch (caught) {
         setReorderReadError(caught instanceof Error ? caught.message : "需求读取失败");
       } finally {
@@ -171,19 +154,14 @@ export function WorkItemSettingsDialog({
       setCreateRefreshed(false);
       invalidateRequirementViews(client, requirement.id);
     },
-    onError: async (failure, draft) => {
+    onError: async failure => {
+      if(isWriteOutcomeUnknown(failure))setCreateUnknown(true);
       if (failure instanceof ApiError && failure.status === 400) return;
       setCreateNeedsRefresh(true);
       if (!requiresWriteRecheck(failure)) return;
       createReadingRef.current = true; setCreateReading(true); setCreateReadError("");
       try {
         const latest = await onReload();
-        if (latest.workItems.some((item) => matchesCreatedItem(item, draft))) {
-          setNewItem(null); setPrompt(null); setCreateNeedsRefresh(false); setCreateRefreshed(false);
-          invalidateRequirementViews(client, requirement.id);
-          toast.success("已核对最新状态：工作项已创建");
-          return;
-        }
         setNewItem((current) => current ? { ...current, baselineVersion: latest.version, baselineStatus: latest.status } : current);
         setCreateNeedsRefresh(false); setCreateRefreshed(true);
       } catch (caught) {
@@ -196,7 +174,7 @@ export function WorkItemSettingsDialog({
   });
 
   const reorderWorkItems = (nextItems: WorkItem[]) => {
-    if (reorderSubmitting.current || reorderNeedsRefresh || reorderReading) return;
+    if (reorderSubmitting.current || reorderUnknown || reorderNeedsRefresh || reorderReading) return;
     const ids = nextItems.map((item) => item.id);
     const baseline = {
       version: requirement.version,
@@ -294,6 +272,7 @@ export function WorkItemSettingsDialog({
           </div>
         </div>
         <FormError full={false}>{reorderItems.error?.message}</FormError>
+        {(createUnknown||reorderUnknown)&&<p role="alert" className="warning-banner">刚才的提交结果待核对，输入已保留。请检查操作记录，本窗口不会重复提交。</p>}
         {!reorderPrompt && reorderNeedsRefresh && <div className="warning-banner">工作项顺序未保存，请重新读取需求后再拖动排序。<button type="button" className="ghost-button" disabled={reorderReading} onClick={() => void reloadDirectReorder()}>{reorderReading ? "读取中…" : "重新读取需求"}</button>{reorderReadError && <FormError full={false}>{reorderReadError}</FormError>}</div>}
         <div className="work-editor-scroll" ref={editorScrollRef}><table className="work-inline-table">
           <thead><tr><th>工作项</th><th>主负责人</th><th>协作人员</th><th>计划开始</th><th>计划完成</th><th>状态 / 偏差</th><th>操作</th></tr></thead>
@@ -301,7 +280,7 @@ export function WorkItemSettingsDialog({
           <SortableList
             items={requirement.workItems}
             getId={(item) => item.id}
-            disabled={reorderItems.isPending || reorderNeedsRefresh || reorderReading}
+            disabled={reorderItems.isPending || reorderUnknown || reorderNeedsRefresh || reorderReading}
             onReorder={reorderWorkItems}
             renderItem={(item, _index, sortable) => {
               const gap = calculateWorkItemGap(item, requirement.asOfDate);
@@ -325,7 +304,7 @@ export function WorkItemSettingsDialog({
                 <td><InlineDateCell {...revisionProps} disabled={itemLocked} value={item.plannedEnd} label="计划完成" reason={item.status === "not_started" ? undefined : { required: true, label: "调整原因", placeholder: "请说明计划完成日期调整原因" }} onSave={(plannedEnd, reason, expectedVersion) => saveWorkItem(item, { plannedEnd, ...(reason ? { reason } : {}) }, expectedVersion)} /></td>
                 <td><div className="work-inline-status"><StatusBadge kind="workItem" value={item.status} /><b className={gap.finishVariance > 0 ? "danger-text" : "safe-text"}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}工作日</b><span className="work-item-inline-progress"><i><b style={{ width: `${item.progress}%` }} /></i>{item.progress}%</span>{item.blockedReason && <small title={item.blockedReason}>阻塞：{item.blockedReason}</small>}</div></td>
                 <td><div className="work-setting-actions">
-                  <button type="button" className="sortable-drag-handle" aria-label={`拖动${item.title}调整顺序`} title="按住拖动调整顺序" disabled={reorderItems.isPending || reorderNeedsRefresh || reorderReading} {...sortable.handleAttributes} {...sortable.handleListeners}><GripVertical size={16} /></button>
+                  <button type="button" className="sortable-drag-handle" aria-label={`拖动${item.title}调整顺序`} title="按住拖动调整顺序" disabled={reorderItems.isPending || reorderUnknown || reorderNeedsRefresh || reorderReading} {...sortable.handleAttributes} {...sortable.handleListeners}><GripVertical size={16} /></button>
                   {item.status === "not_started" && <button type="button" className="danger" aria-label={`删除${item.title}`} title={canDelete ? "删除" : "已有执行信息或进展历史，不能删除"} disabled={!canDelete} onClick={() => setRemoveTarget(item)}><Trash2 size={14} /></button>}
                 </div></td>
               </tr>;
@@ -363,7 +342,7 @@ export function WorkItemSettingsDialog({
       confirmLabel={{ reorder: "确认调整", "new-item": "确认新增" }[prompt.kind]}
       pending={prompt.kind === "reorder" ? reorderItems.isPending : createItem.isPending}
       refreshing={prompt.kind === "reorder" ? reorderReading : createReading}
-      blocked={prompt.kind === "reorder" ? reorderChanged || reorderListChanged || reorderNeedsRefresh : createBlocked}
+      blocked={prompt.kind === "reorder" ? reorderUnknown || reorderChanged || reorderListChanged || reorderNeedsRefresh : createBlocked}
       notice={prompt.kind === "reorder" ? <FormError>{reorderListChanged ? "工作项列表已变化，请关闭后重新拖动排序。" : reorderChanged ? "需求已更新，请重新读取并核对后再确认；调整原因已保留。" : reorderReadError || undefined}</FormError> : <>
         <FormError>{createChanged ? "需求已更新，请重新读取并核对后再确认；新增草稿和原因已保留。" : createReadError || undefined}</FormError>
         <FormError>{newItemHasUnavailablePeople ? "新增工作项选择的人员已不可用，请取消确认并重新选择。" : undefined}</FormError>

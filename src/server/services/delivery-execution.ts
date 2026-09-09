@@ -1,3 +1,4 @@
+import {invalidateForecastReview} from './forecast-reviews';
 import {validateCoordination,persistCoordination} from './blocker-coordination';
 import {coordinationKeys} from '../../shared/blocker-coordination';
 import {randomUUID} from 'node:crypto';
@@ -132,7 +133,7 @@ export function executeDirectRequirement(id:string,action:'start'|'progress'|'bl
       sqlite.prepare('UPDATE requirements SET forecast_duration=?,forecast_ready_at=? WHERE id=?').run(effort,today,id);
     }
     const updated=sqlite.prepare('UPDATE requirements SET '+sets+',version=version+1,updated_at=? WHERE id=? AND version=?').run(...args,now,id,r.version);
-    assertVersionedWrite(updated,'需求');if(action==='block'){const v=validateCoordination(r.projectId,input);persistCoordination('requirement',id,r.projectId,v,actor);}event(id,action,content,actor);settleMilestones(r.projectId,actor);
+    assertVersionedWrite(updated,'需求');if(action==='rework')invalidateForecastReview('requirement',id);if(action==='block'){const v=validateCoordination(r.projectId,input);persistCoordination('requirement',id,r.projectId,v,actor);}event(id,action,content,actor);settleMilestones(r.projectId,actor);
     return getRequirement(id);
   }).immediate();
 }
@@ -147,7 +148,7 @@ export function returnRequirement(id:string,input:JsonObject,actor:Actor){
     requireActiveProject(r.projectId);
     for(const wid of new Set(ids))sqlite.prepare("UPDATE work_items SET status=CASE WHEN actual_start IS NULL THEN 'not_started' ELSE 'in_progress' END,progress=CASE WHEN actual_start IS NULL THEN 0 ELSE 99 END,actual_end=NULL,version=version+1,updated_at=? WHERE id=?").run(new Date().toISOString(),wid);
     const updated=sqlite.prepare("UPDATE requirements SET status='in_progress',progress=99,accepted_at=NULL,accepted_by_account_id=NULL,version=version+1,updated_at=? WHERE id=? AND version=?").run(new Date().toISOString(),id,r.version);
-    assertVersionedWrite(updated,'需求');assertRequirementAcceptor(id,actor);
+    assertVersionedWrite(updated,'需求');for(const wid of new Set(ids))invalidateForecastReview('work',wid);assertRequirementAcceptor(id,actor);
     event(id,'rework',reason+'；返工项：'+ids.join('、')+'；原验收日期：'+(r.acceptedAt||'尚未验收'),actor);
   }).immediate();return getRequirement(id);
 }

@@ -71,7 +71,7 @@ export function ActionCenterPage() {
           {data?.items.map((item) => <button key={item.id} className={`action-item action-${item.severity}`} onClick={() => navigate(item.targetPath)}>
             <div className="action-priority">{item.processingPriority ? <ProcessingPriorityBadge requirement={item}/> : <span className={`action-severity action-${item.severity}`}>{severityLabels[item.severity]}</span>}</div>
             <div className="action-item-main"><div><strong>{item.title}</strong>{item.contextTitle && <small>{item.contextTitle}</small>}</div><p>{item.reasons.map((entry) => entry.label).join(' · ')}</p>{!!item.affectedRequirements?.length&&<small title={item.affectedRequirements.map(r=>r.title).join('、')}>影响 {item.affectedRequirements.length} 个交付需求 · {item.affectedRequirements.map(r=>r.title).join('、')}</small>}</div>
-            <div className="action-item-meta"><span>{item.ownerName || '未分派'}</span><span>{item.dueDate || '无截止日期'}{item.overdueWorkdays ? ` · 逾期${item.overdueWorkdays}个工作日` : ''}</span></div>
+            <div className="action-item-meta"><span>{item.ownerName || '未分派'}</span>{item.nextReviewAt&&<span>下次核对 {item.nextReviewAt}</span>}<span>{item.dueDate || '无截止日期'}{item.overdueWorkdays ? ` · 逾期${item.overdueWorkdays}个工作日` : ''}</span></div>
             <ArrowRight size={16} />
           </button>)}
           {data && !data.items.length && !isLoading && <EmptyState title="当前没有待处理事项" detail="筛选范围内的需求、工作项和问题均无客观异常。" />}

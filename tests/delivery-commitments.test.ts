@@ -1,3 +1,4 @@
+import {mcpRequest} from './mcp-request';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -55,6 +56,7 @@ it('历史不补造，首次缺日期不从后续补齐，最近记录不取验�
   expect(requirementCommitments([],'r').first).toBeNull();
   const selected=requirementCommitments([c('2026-09-01',null),c('2026-09-03','2026-09-10'),c('2026-09-11','2026-09-30')],'r','2026-09-10');
   expect(selected.first?.targetDate).toBeNull();expect(selected.latest?.targetDate).toBe('2026-09-10');
+  const timed=[c('2026-09-01','2026-09-02'),{...c('2026-09-01','2026-09-30'),id:'later',confirmedAt:'2026-09-01T10:00:00Z'}];expect(requirementCommitments(timed,'r','2026-09-01T08:00:00Z').latest?.targetDate).toBe('2026-09-02');
 });
 it('核对剩余工期不改变完成度、实际日期和确认计划',async()=>{
   const {projectId,r}=await fixture();await post('/api/requirements/'+r.id+'/start',{expectedVersion:r.version});
@@ -124,5 +126,31 @@ it('承诺统计采用验收期间样本，首次与最近日期独立，历史�
  sqlite.prepare("UPDATE requirements SET status='completed',progress=100,accepted_at='2026-09-09' WHERE id=?").run(r.id);
  const summary=await get<{first:{rate:number|null;sampleCount:number};latest:{rate:number|null;sampleCount:number}}>('/api/projects/'+projectId+'/delivery-commitments/summary?from=2026-09-01&to=2026-09-30');expect(summary.first).toMatchObject({rate:0,sampleCount:1});expect(summary.latest).toMatchObject({rate:100,sampleCount:1});
  const empty=await get<typeof summary>('/api/projects/'+projectId+'/delivery-commitments/summary?from=2026-10-01&to=2026-10-31');expect(empty.first).toMatchObject({rate:null,sampleCount:0});
+ sqlite.prepare("UPDATE requirements SET delivery_scope='candidate' WHERE id=?").run(r.id);const withdrawn=await get<{first:{sampleCount:number};withdrawnOrCancelled:number}>('/api/projects/'+projectId+'/delivery-commitments/summary');expect(withdrawn.first.sampleCount).toBe(0);expect(withdrawn.withdrawnOrCancelled).toBe(1);
  expect((await request('GET','/api/projects/'+projectId+'/delivery-commitments/summary?from=2026-10-01&to=2026-09-01')).statusCode).toBe(400);
+});
+
+it('返工明确使原核对失效，保留确认记录；进度高于核对时也不能复用旧预测',async()=>{
+ const {projectId,r}=await fixture();await post('/api/requirements/'+r.id+'/start',{expectedVersion:r.version});let current=await get<Requirement>('/api/requirements/'+r.id);
+ let b=await batch(projectId,{entities:[{entity:'requirement',op:'update',id:r.id,expectedVersion:current.version,data:{reviewForecast:{remainingDays:3}}}]});expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',b.body)).statusCode).toBe(200);
+ current=await get('/api/requirements/'+r.id);const original=current.forecastReview;expect((await post('/api/requirements/'+r.id+'/submit-acceptance',{expectedVersion:current.version,content:'完成'})).statusCode).toBe(200);
+ current=await get('/api/requirements/'+r.id);expect((await post('/api/requirements/'+r.id+'/rework',{expectedVersion:current.version,progress:99,reason:'补充交付'})).statusCode).toBe(200);
+ current=await get('/api/requirements/'+r.id);expect(current.progress).toBe(99);expect(current.forecastReview?.confirmedAt).toBe(original?.confirmedAt);expect(current.forecastReview?.invalidatedAt).toBeTruthy();expect(current.forecastBasis?.reasons.join('')).toContain('返工');
+ expect((await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis')).nodes.find(n=>n.id==='execute:'+r.id)?.forecastEnd).toBeNull();
+ b=await batch(projectId,{entities:[{entity:'requirement',op:'update',id:r.id,expectedVersion:current.version,data:{reviewForecast:{remainingDays:1}}}]});expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',b.body)).statusCode).toBe(200);expect((await get<Requirement>('/api/requirements/'+r.id)).forecastReview?.invalidatedAt).toBeUndefined();
+});
+
+it('REST 与 MCP 复用承诺、核对及批次回执，日期参数按相同规则校验',async()=>{
+ const {projectId,r}=await fixture(),origin=await app.listen({host:'127.0.0.1',port:0}),token=(await post('/api/tokens',{name:'承诺契约'})).json().token;
+ const call=async(name:string,args:Record<string,unknown>)=>{const response=await mcpRequest(origin,token,name,args);expect(response.statusCode).toBe(200);return JSON.parse(response.body).result.structuredContent;};
+ const a=await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis'),input={projectId,expectedRevision:a.revision,target:'project',changes:{add:[],remove:[],estimates:[],entities:[{entity:'requirement',op:'update',id:r.id,expectedVersion:r.version,data:{reviewForecast:{remainingDays:4}}}],commitment:{reason:''}}};
+ const preview=await call('preview_dependency_changes',input);expect(preview.statusCode||200,JSON.stringify(preview)).toBe(200);
+ expect(await get('/api/projects/'+projectId+'/delivery-commitments')).toEqual([]);
+ const body={...input,batchId:randomUUID(),previewToken:preview.result.previewToken};const saved=await call('apply_dependency_changes',body);expect(saved.statusCode||200,JSON.stringify(saved)).toBe(200);
+ expect(await call('apply_dependency_changes',body)).toEqual(saved);
+ const history=await get<DeliveryCommitment[]>('/api/projects/'+projectId+'/delivery-commitments');expect((await call('list_delivery_commitments',{projectId})).result).toEqual(history);
+ expect((await call('get_delivery_commitment',{projectId,commitmentId:history[0].id})).result).toEqual(await get('/api/projects/'+projectId+'/delivery-commitments/'+history[0].id));
+ expect((await call('get_delivery_commitment_summary',{projectId})).result).toEqual(await get('/api/projects/'+projectId+'/delivery-commitments/summary'));
+ expect((await call('get_delivery_commitment_summary',{projectId,from:'invalid'})).statusCode).toBe(400);
+ expect((await get<Requirement>('/api/requirements/'+r.id)).forecastReview?.remainingDays).toBe(4);
 });

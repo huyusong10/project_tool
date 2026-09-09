@@ -3,6 +3,10 @@ import type {Actor} from '../auth';
 import type {PathInput,PathAnalysis} from '../../shared/paths';
 import {predecessorBasis,type ForecastReview} from '../../shared/forecast-basis';
 import type {DependencyChanges} from '../../shared/path-contracts';
+export function invalidateForecastReview(kind:'requirement'|'work',id:string){
+  const table=kind==='requirement'?'requirements':'work_items';
+  sqlite.prepare(`UPDATE ${table} SET forecast_review=json_set(forecast_review,'$.invalidatedAt',?) WHERE id=? AND forecast_review IS NOT NULL`).run(new Date().toISOString(),id);
+}
 export function recordForecastReviews(snapshot:PathInput,analysis:PathAnalysis,changes:DependencyChanges,actor:Actor) {
   const now=new Date().toISOString();
   for(const [id,isWork,review] of [

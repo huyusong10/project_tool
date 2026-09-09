@@ -1,3 +1,4 @@
+import {invalidateForecastReview} from './services/forecast-reviews';
 import {validateCoordination,persistCoordination} from './services/blocker-coordination';
 import {coordinationKeys} from '../shared/blocker-coordination';
 import {rescheduleDirectRequirement,createDirectRequirement,updateDeliveryRequirement,executeDirectRequirement,validateDeliveryFields,assertRequirementAcceptor} from './services/delivery-execution';
@@ -1757,6 +1758,7 @@ export function reopenWorkItem(id: string, input: JsonObject, actor: Actor) {
     syncStoredRequirementState(current.requirementId, now, true, requirement.version);
     requireActiveProject(requirement.projectId, true);
     assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
+    invalidateForecastReview('work',id);
     appendRequirementEvent(current.requirementId, 'reopen', reason, actor, id, nextProgress, null, now);
     audit(actor, 'reopen', 'work_item', id, `重开工作项：${current.title}`);
     assertProjectAssignees(current.requirementId, [requirement.ownerId, item.ownerId, ...item.collaborators.map((person) => person.id)], true);

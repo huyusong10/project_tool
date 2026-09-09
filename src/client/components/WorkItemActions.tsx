@@ -1,22 +1,19 @@
+import {ExecutionReviewDialog} from './ExecutionReview';
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Check, CircleStop, MoreHorizontal, Play, RotateCcw, X } from "lucide-react";
-import { requiresWriteRecheck } from "../api";
-import { useBusinessDate, useSession } from "../app-context";
+import { CalendarDays, ClipboardCheck, Check, CircleStop, MoreHorizontal, Play, RotateCcw, X } from "lucide-react";
+import { isWriteOutcomeUnknown, requiresWriteRecheck } from "../api";
+import { useBusinessDate } from "../app-context";
 import { invalidateRequirementViews } from "../query-keys";
 import type { ProgressUpdate, WorkItem } from "../types";
-import { canonicalizeContent } from "../../shared/search";
+
 import { AnchoredPopover } from "./InlineEdit";
 import { useToast } from "./Toast";
 
 type TextPanel = "start" | "block" | "complete" | "reopen" | "cancel";
 type Panel = TextPanel | "dates" | "menu" | "backfill";
 export type WorkItemReloadSnapshot = { item: WorkItem; updates: ProgressUpdate[] };
-type ExpectedOutcome = {
-  matches: (latest: WorkItemReloadSnapshot) => boolean;
-  reconciledMessage: string;
-  successMessage?: string;
-};
+type ExpectedOutcome = {successMessage?: string};
 
 export function WorkItemActions({
   item,
@@ -46,8 +43,9 @@ export function WorkItemActions({
   const client = useQueryClient();
   const toast = useToast();
   const { businessDate: today } = useBusinessDate();
-  const { session } = useSession();
+
   const anchorRef = useRef<HTMLDivElement>(null);
+  const [reviewOpen,setReviewOpen]=useState(false);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [reason, setReason] = useState(item.blockedReason || "");
   const [actualStart, setActualStart] = useState(item.actualStart || "");
@@ -57,6 +55,7 @@ export function WorkItemActions({
   const [baselineVersion, setBaselineVersion] = useState(item.version);
   const [dependencyRevision,setDependencyRevision]=useState(item.dependencyRevision);
   const submitting = useRef(false);
+  const unknownVersion=useRef<number|null>(null);const [reviewRequired,setReviewRequired]=useState(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [error, setError] = useState("");
@@ -67,6 +66,7 @@ export function WorkItemActions({
 
   const openPanel = (next: Panel) => {
     // 输入和版本一起取自打开操作面板时的记录，后台刷新不能替换草稿的版本。
+    unknownVersion.current=null;setReviewRequired(false);
     setBaselineVersion(item.version);setDependencyRevision(item.dependencyRevision);
     if (next === "dates") {
       setActualStart(item.actualStart || "");
@@ -80,6 +80,7 @@ export function WorkItemActions({
     try {
       const latest = await onReload();
       if (!mounted.current) return null;
+      setReviewRequired(unknownVersion.current!==null&&latest.item.version!==unknownVersion.current);
       setBaselineVersion(latest.item.version);setDependencyRevision(latest.item.dependencyRevision); setNeedsRefresh(false); setRefreshed(true);
       return latest;
     } catch (caught) {
@@ -94,7 +95,7 @@ export function WorkItemActions({
     finally { submitting.current = false; if (mounted.current) setPending(false); }
   };
   const run = async (operation: () => Promise<unknown>, outcome: ExpectedOutcome) => {
-    if (submitting.current || (panel && needsRefresh) || operationUnavailable) return;
+    if (submitting.current || reviewRequired || (panel && needsRefresh) || operationUnavailable) return;
     submitting.current = true;
     setPending(true); setError("");
     try {
@@ -105,13 +106,8 @@ export function WorkItemActions({
       if (!mounted.current) return;
       setError(caught instanceof Error ? caught.message : "操作失败，请重试");
       if (requiresWriteRecheck(caught)) {
-        const latest = await readLatest();
-        if (latest && outcome.matches(latest) && mounted.current) {
-          invalidateRequirementViews(client, item.requirementId);
-          setPanel(null);
-          setError("");
-          toast.success(outcome.reconciledMessage);
-        }
+        if(isWriteOutcomeUnknown(caught))unknownVersion.current=panel?baselineVersion:item.version;
+        await readLatest();invalidateRequirementViews(client,item.requirementId);
       }
     } finally { submitting.current = false; if (mounted.current) setPending(false); }
   };
@@ -132,8 +128,9 @@ export function WorkItemActions({
     : textPanel === "reopen" ? !["completed", "cancelled"].includes(item.status)
     : textPanel === "cancel" ? ["completed", "cancelled"].includes(item.status) : false;
   const dependencyStale=textPanel==="start"&&dependencyRevision!==item.dependencyRevision;
-  const blocked = needsRefresh || operationUnavailable || dependencyStale;
+  const blocked = needsRefresh || operationUnavailable || dependencyStale || reviewRequired;
   const readNotice = <>
+    {reviewRequired&&<p className="form-error">提交结果仍待核对，版本已变化。本窗口不再提交，请核对执行记录；已填内容保留。</p>}
     {refreshed && <p>已读取最新工作项（版本 {baselineVersion}），本次输入已保留，请核对后重试。</p>}
     {operationUnavailable && <p className="form-error" role="alert">工作项状态已变化，请关闭后重新选择操作。</p>}
     {readError && <p className="form-error" role="alert">{readError}</p>}
@@ -147,55 +144,22 @@ export function WorkItemActions({
     reopen: { title: "重开工作项", label: "返工原因", placeholder: "说明为什么需要重开或返工", confirm: "确认重开" },
     cancel: { title: "取消工作项", label: "取消原因", placeholder: "说明为什么取消该工作项", confirm: "确认取消" },
   };
-  const matchesEvent = (latest: WorkItemReloadSnapshot, eventType: string, content: string) => latest.updates.some((update) => update.workItemId === item.id
-    && update.eventType === eventType
-    && update.content === canonicalizeContent(content)
-    && update.createdByAccountId === session.accountId
-    // 旧取消数据靠 updated_at 推断取消日期时纠错会保留原 updated_at（见 services.ts correctWorkItem），此时事件时间不等于记录时间。
-    && (update.createdAt === latest.item.updatedAt || latest.item.updatedAt === item.updatedAt));
-  const matchesCommandEvent = (
-    latest: WorkItemReloadSnapshot,
-    expectedVersion: number,
-    eventType: string,
-    content: string,
-    matchesItem: (value: WorkItem) => boolean,
-  ) => latest.item.version === expectedVersion + 1
-    && matchesItem(latest.item)
-    && matchesEvent(latest, eventType, content);
-
   const submitText = () => {
     if (!textPanel || (!["start", "complete"].includes(textPanel)&&!reason.trim())) return;
     const expectedVersion = baselineVersion;
     const expectedContent = reason.trim()||(textPanel==="start"?"人工确认可以先开展，前置尾项继续跟踪":"完成工作项");
     if (textPanel === "cancel") {
-      if (onCancel) void run(() => onCancel(expectedContent, expectedVersion), {
-        matches: (latest) => matchesCommandEvent(latest, expectedVersion, "cancel", expectedContent, (value) => value.status === "cancelled"),
-        reconciledMessage: "已核对最新状态：工作项已取消",
-      });
+      if (onCancel) void run(() => onCancel(expectedContent, expectedVersion), {});
       return;
     }
-    const expectedStatus = textPanel === "start" ? "in_progress" : textPanel === "complete" ? "completed" : textPanel === "block" ? "blocked" : null;
-    void run(() => onAction(textPanel, textPanel === "complete" && !reason.trim() ? undefined : expectedContent, expectedVersion, textPanel === "start" ? dependencyRevision : undefined), {
-      matches: (latest) => matchesCommandEvent(latest, expectedVersion, textPanel, expectedContent, (value) => expectedStatus
-        ? value.status === expectedStatus
-        : ["not_started", "in_progress"].includes(value.status)),
-      reconciledMessage: textPanel === "start" ? "已核对最新状态：工作项已开始" : textPanel === "complete" ? "已核对最新状态：工作项已完成"
-        : textPanel === "block" ? "已核对最新状态：工作项已阻塞"
-          : "已核对最新状态：工作项已重开",
-    });
+    void run(() => onAction(textPanel, textPanel === "complete" && !reason.trim() ? undefined : expectedContent, expectedVersion, textPanel === "start" ? dependencyRevision : undefined), {});
   };
 
   return <div className="work-item-actions" ref={anchorRef} onClick={(event) => event.stopPropagation()}>
     <div className="work-item-action-row">
-      {!stateChangesDisabled && item.status === "not_started" && <button className="work-next-action" disabled={pending || Boolean(startDisabledReason)} title={startDisabledReason} onClick={() => item.unmetPredecessors?.length ? openPanel("start") : void run(() => onAction("start", undefined, item.version), {
-        matches: (latest) => matchesCommandEvent(latest, item.version, "start", "开始工作项", (value) => value.status === "in_progress"),
-        reconciledMessage: "已核对最新状态：工作项已开始",
-      })}><Play size={14} />{startDisabledReason ? "待规划" : pending ? "提交中" : "开始"}</button>}
+      {!stateChangesDisabled && item.status === "not_started" && <button className="work-next-action" disabled={pending || Boolean(startDisabledReason)} title={startDisabledReason} onClick={() => item.unmetPredecessors?.length ? openPanel("start") : void run(() => onAction("start", undefined, item.version), {})}><Play size={14} />{startDisabledReason ? "待规划" : pending ? "提交中" : "开始"}</button>}
       {!stateChangesDisabled && item.status === "in_progress" && <button className="work-next-action" disabled={pending} onClick={() => openPanel("complete")}><Check size={14} />完成</button>}
-      {!stateChangesDisabled && item.status === "blocked" && <button className="work-next-action" disabled={pending} onClick={() => void run(() => onAction("unblock", undefined, item.version), {
-        matches: (latest) => matchesCommandEvent(latest, item.version, "unblock", "解除阻塞工作项", (value) => value.status === "in_progress"),
-        reconciledMessage: "已核对最新状态：工作项已解除阻塞",
-      })}><RotateCcw size={14} />{pending ? "提交中" : "解除阻塞"}</button>}
+      {!stateChangesDisabled && item.status === "blocked" && <button className="work-next-action" disabled={pending} onClick={() => void run(() => onAction("unblock", undefined, item.version), {})}><RotateCcw size={14} />{pending ? "提交中" : "解除阻塞"}</button>}
       {item.status === "completed" && <span className="work-action-state is-completed is-icon-only" role="img" aria-label="已完成" title="已完成"><Check size={16} /></span>}
       {item.status === "cancelled" && <span className="work-action-state is-cancelled is-icon-only" role="img" aria-label="已取消" title="已取消"><CircleStop size={16} /></span>}
       {canOpenMenu && <button type="button" className="action-menu-trigger" aria-label="更多工作项操作" title="更多操作" aria-haspopup="dialog" aria-expanded={panel !== null} disabled={pending} onClick={() => panel === "menu" ? setPanel(null) : openPanel("menu")}><MoreHorizontal size={16} /></button>}
@@ -203,6 +167,7 @@ export function WorkItemActions({
     {error && panel === null && <small className="work-action-error" title={error}>{error}</small>}
     <AnchoredPopover anchorRef={anchorRef} open={panel !== null} onOutside={() => { if (!pending) setPanel(null); }} width={panel === "menu" ? 210 : 390} className={panel === "menu" ? "action-menu" : ""}>
       {panel === "menu" && <>
+        <button type="button" onClick={()=>{setPanel(null);setReviewOpen(true);}}><ClipboardCheck size={14}/>预测依据与阻塞协调</button>
         {canCorrect && <button type="button" onClick={() => openPanel("dates")}><CalendarDays size={14} />受控修正实际日期</button>}
         {canBackfill && <button type="button" onClick={() => openPanel("backfill")}><Check size={14} />按期完成（历史补录）</button>}
         {canBlock && <button onClick={() => openPanel("block")}><CircleStop size={14} />标记阻塞</button>}
@@ -238,15 +203,7 @@ export function WorkItemActions({
         setValidationError(nextValidationError);
         if (!nextValidationError && onSaveDates) void run(
           () => onSaveDates({ actualStart: actualStart || null, actualEnd: correctedEnd || null, reason: reason.trim(), supersedesId: supersedesId || null }, baselineVersion),
-          {
-            matches: (latest) => latest.item.version === baselineVersion + 1
-              && latest.item.status === item.status
-              && latest.item.actualStart === (actualStart || null)
-              && latest.item.actualEnd === (correctedEnd || null)
-              && matchesEvent(latest, "correction", reason.trim()),
-            successMessage: "实际日期已修正",
-            reconciledMessage: "已核对最新状态：实际日期已修正",
-          },
+          {successMessage:"实际日期已修正"},
         );
       }}>
         <header><strong>受控修正实际日期</strong><button type="button" disabled={pending} onClick={() => setPanel(null)} aria-label="关闭"><X size={16} /></button></header>
@@ -271,16 +228,9 @@ export function WorkItemActions({
         {backfillUnavailable && <p className="form-error" role="alert">{backfillUnavailable}</p>}
         {error && <p className="form-error" role="alert">{error}</p>}
         {readNotice}
-        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => setPanel(null)}>取消</button><button type="button" className="primary-button" disabled={pending || blocked || Boolean(backfillUnavailable)} onClick={() => { if (onCompleteAsPlanned) void run(() => onCompleteAsPlanned(baselineVersion), {
-          matches: (latest) => latest.item.version === baselineVersion + 1
-            && latest.item.status === "completed"
-            && latest.item.actualStart === item.plannedStart
-            && latest.item.actualEnd === item.plannedEnd
-            && matchesEvent(latest, "complete", `历史补录，按计划完成（${item.plannedStart} 至 ${item.plannedEnd}）`),
-          successMessage: "工作项已按计划补录完成",
-          reconciledMessage: "已核对最新状态：工作项已按计划补录完成",
-        }); }}>{pending ? "提交中" : "确认补录完成"}</button></footer>
+        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => setPanel(null)}>取消</button><button type="button" className="primary-button" disabled={pending || blocked || Boolean(backfillUnavailable)} onClick={() => { if (onCompleteAsPlanned) void run(() => onCompleteAsPlanned(baselineVersion), {successMessage:"工作项已按计划补录完成"}); }}>{pending ? "提交中" : "确认补录完成"}</button></footer>
       </div>}
     </AnchoredPopover>
+    {reviewOpen&&<ExecutionReviewDialog requirementId={item.requirementId} workItemId={item.id} onClose={()=>setReviewOpen(false)}/>}
   </div>;
 }

@@ -19,7 +19,7 @@ export function workItemDisplayGap(item: WorkItem, asOfDate: string) {
 
 export function requirementActualRange(requirement: Requirement, asOfDate: string) {
   if (requirement.actualStart !== undefined || requirement.actualEnd !== undefined) {
-    return { start: valid(requirement.actualStart), end: valid(requirement.actualEnd) };
+    return { start: valid(requirement.actualStart), end: valid(requirement.observationEnd===undefined?requirement.actualEnd:requirement.observationEnd) };
   }
   const ranges = requirement.workItems.map((item) => workItemActualRange(item, asOfDate));
   const start = ranges.map((range) => range.start).filter((date): date is string => Boolean(date)).sort()[0] || null;

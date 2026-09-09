@@ -38,7 +38,7 @@ export function MyWorkPage() {
   const directEntries=(data?.requirements||[]).filter(r=>r.executionMode==='direct').map(r=>({...r,...directRequirementTimelineItem(r as Requirement),requirementStatus:r.status,requirementTitle:r.title,assignmentType:'owner',overdue:r.delayed,deliveryRequirement:r} as MyWorkItem & {deliveryRequirement:typeof r}));
   const items = [...(data?.items || []),...directEntries].filter((item) => filter === 'all' || (filter === 'active' ? !['completed', 'cancelled'].includes(item.status) : item.status === filter));
   const action = useMutation({
-    mutationFn: async ({ item, action, content, reason, expectedDependencyRevision, expectedVersion = item.version }: { item: MyWorkItem; expectedDependencyRevision?:number; action: string; content?: string; reason?: string; expectedVersion?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId);return api(`/api/work-items/${item.id}/${action}`, {
+    mutationFn: async ({ item, action, content, reason, expectedDependencyRevision, expectedVersion = item.version }: { item: MyWorkItem; expectedDependencyRevision?:number; action: string; content?: string; reason?: string; expectedVersion?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId,{workItemId:item.id,action});return api(`/api/work-items/${item.id}/${action}`, {
       method: 'POST', body: jsonBody({ expectedVersion, content, reason, expectedDependencyRevision }),
     });},
     onSuccess: (_result, variables) => {

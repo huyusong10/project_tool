@@ -53,7 +53,7 @@ export function useWorkItemSave(requirementId: string, people: Person[]) {
   });
 
   return useCallback(async (item: WorkItem, input: Record<string, unknown>, expectedVersion?: number) => {
-    if (correctsActualDates(input)) await assertCleanRequirementDraft(session.accountId || 'guest', requirementId);
+    if (correctsActualDates(input)) await assertCleanRequirementDraft(session.accountId || 'guest', requirementId,{workItemId:item.id,action:'structure'});
     await run({ item, input, expectedVersion });
     invalidateRequirementViews(client, requirementId);
   }, [client, requirementId, run, session.accountId]);

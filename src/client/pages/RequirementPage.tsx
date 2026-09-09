@@ -111,7 +111,7 @@ function SavedRequirementPage() {
   const people = peopleQuery.data || emptyPeople;
   const itemAction = useMutation({
     mutationFn: async ({ item, action, content, expectedDependencyRevision, expectedVersion = item.version }: { item: WorkItem; expectedDependencyRevision?:number; action: string; content?: string; expectedVersion?: number }) => {
-      await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId);return api(`/api/work-items/${item.id}/${action}`, {
+      await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId,{workItemId:item.id,action});return api(`/api/work-items/${item.id}/${action}`, {
         method: "POST",
         body: jsonBody({ expectedVersion, expectedDependencyRevision, ...(action === "complete" ? { content } : content ? { reason: content } : {}) }),
       });},

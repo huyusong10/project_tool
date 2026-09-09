@@ -368,8 +368,8 @@ function eligibleRecords(dataset: string, measure: string, records: GenericRecor
   if (dataset === 'requirements') {
     if (measure === 'active_count') result = result.filter((record) => !['completed', 'cancelled'].includes(record.status));
     if (['completed_count','on_time_rate','commitment_on_time_rate','latest_commitment_on_time_rate'].includes(measure)) result = result.filter((record) => Boolean(record.completedAt));
-    if (measure === 'commitment_on_time_rate') result=result.filter(r=>!!r.firstCommitmentEnd);
-    if (measure === 'latest_commitment_on_time_rate') result=result.filter(r=>!!r.latestCommitmentEnd);
+    if (measure === 'commitment_on_time_rate') result=result.filter(r=>!!r.firstCommitmentEnd&&r.status==='completed'&&r.deliveryScope!=='candidate');
+    if (measure === 'latest_commitment_on_time_rate') result=result.filter(r=>!!r.latestCommitmentEnd&&r.status==='completed'&&r.deliveryScope!=='candidate');
     if (measure === 'on_time_rate') result = result.filter((record) => Boolean(record.plannedEnd));
     if (measure === 'delayed_count') result = result.filter((record) => record.delayed);
     if (measure === 'finish_variance') result = result.filter((record) => Number(record.finishVariance || 0) > 0);

@@ -68,7 +68,7 @@ export function ProgressForm({
     },
   });
   const mutation = useMutation({
-    mutationFn: async (input: { content: string; workItemId: string; expectedVersion: number; workItemPercent?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',requirementId);return api(`/api/requirements/${requirementId}/progress`, { method: 'POST', body: jsonBody(input) });},
+    mutationFn: async (input: { content: string; workItemId: string; expectedVersion: number; workItemPercent?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',requirementId,{workItemId:input.workItemId,action:input.workItemPercent===undefined?'note':'progress'});return api(`/api/requirements/${requirementId}/progress`, { method: 'POST', body: jsonBody(input) });},
     onSuccess: () => {
       invalidateRequirementViews(client, requirementId);
       onClose();

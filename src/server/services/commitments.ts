@@ -17,7 +17,7 @@ export function listDeliveryCommitments(projectId:string,actor:Actor) {
 export function getDeliveryCommitment(projectId:string,id:string,actor:Actor) {
   const history=listDeliveryCommitments(projectId,actor).reverse(),index=history.findIndex(c=>c.id===id);
   if(index<0)notFound('交付承诺不存在');
-  return {...history[index],differences:compareCommitments(history[index-1]||null,history[index])};
+  return {...history[index],previousTargetDate:history[index-1]?.targetDate||null,differences:compareCommitments(history[index-1]||null,history[index])};
 }
 export function prepareCommitment(snapshot:PathInput,change:{reason:string;milestoneId?:string|null},actor:Actor) {
   assertProjectManager(requireAuthorizationActor(actor),snapshot.projectId);
@@ -45,6 +45,7 @@ export function deliveryCommitmentSummary(projectId:string,actor:Actor,from?:str
   for(const r of requirements){
     const c=requirementCommitments(history,r.id,r.acceptedAt);
     if(c.first&&(r.deliveryScope==='candidate'||r.status==='cancelled'))result.withdrawnOrCancelled++;
+    if(r.deliveryScope==='candidate'||r.status==='cancelled')continue;
     if(c.first?.targetDate&&c.first.targetDate<today&&!['completed','cancelled'].includes(r.status)&&r.deliveryScope!=='candidate')result.overdueOpen++;
     const accepted=r.acceptedAt?.slice(0,10);if(r.status!=='completed'||!accepted||from&&accepted<from||to&&accepted>to)continue;
     result.acceptedCount++;if(!c.first)result.withoutCommitment++;else if(!c.first.targetDate)result.missingFirstDate++;
