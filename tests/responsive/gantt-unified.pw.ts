@@ -204,6 +204,9 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   await delayedRow.locator(".gantt-track").hover({ position: { x: 4, y: 4 } });
   await expect(page.locator(".gantt-popover")).toBeHidden();
   await delayedRow.locator(".gantt-bar-hitbox").hover();
+  // Hover may scroll an offscreen bar into view. Move again after the scroll settles.
+  await page.waitForTimeout(150);
+  await delayedRow.locator(".gantt-bar-hitbox").hover({ position: { x: 12, y: 12 } });
   await expect(page.locator(".gantt-popover")).toBeVisible();
   await expect(page.locator(".gantt-popover-updates")).toContainText("完成接口权限校验与异常分支联调");
   await expect(page.locator(".gantt-popover-updates article > span")).toHaveText("40%");
@@ -253,7 +256,11 @@ test("时间轴元素横向滚动时不会覆盖左侧标题", async ({ page }, 
   await page.goto("/");
 
   const scroll = page.locator(".project-gantt-scroll");
-  await scroll.evaluate((element) => { element.scrollLeft = element.scrollWidth - element.clientWidth; });
+  await scroll.evaluate((element) => {
+    const marker = element.querySelector<HTMLElement>('.gantt-progress-marker')!;
+    const label = element.querySelector<HTMLElement>('.gantt-requirement-info')!;
+    element.scrollLeft += marker.getBoundingClientRect().left - label.getBoundingClientRect().right + 18;
+  });
   await page.waitForTimeout(100);
   const layer = await page.locator(".gantt-row").filter({ hasText: "统一甘特样式" }).evaluate((row) => {
     const label = row.querySelector<HTMLElement>(".gantt-requirement-info")!;
@@ -281,14 +288,3 @@ async function themeColor(page: Page, token: string) {
     const color = getComputedStyle(element).color; element.remove(); return color;
   }, token);
 }
-
-test('项目甘特可向后扩展并恢复自动范围，横向滚动、刷新与排期保持正确',async({page},info)=>{
- await mockGanttData(page);const writes:string[]=[];page.on('request',r=>{if(r.method()!=='GET'&&r.url().includes('/api/'))writes.push(r.url());});await page.goto('/');await page.locator('.project-gantt-grid').waitFor();
- const snapshot=()=>page.locator('.project-gantt-scroll').evaluate(e=>({dates:[...e.querySelectorAll('[data-date]')].map(n=>n.getAttribute('data-date')),width:e.scrollWidth,scroll:e.scrollLeft}));
- const original=await snapshot(),bars=await page.locator('.unified-gantt-plan').evaluateAll(es=>es.map(e=>e.getAttribute('style')));expect(bars.length).toBeGreaterThan(0);await page.getByLabel('向后扩展一个月',{exact:true}).click();const first=await snapshot();expect(first.dates.length).toBeGreaterThan(original.dates.length);expect(first.dates.slice(0,original.dates.length)).toEqual(original.dates);expect(first.scroll).toBe(original.scroll);
- await page.getByLabel('向后扩展一个月',{exact:true}).click();const expanded=await snapshot();expect(expanded.dates.length).toBeGreaterThan(first.dates.length);expect(expanded.dates.at(-1)!>'2026-09-30').toBe(true);
- await page.locator('.project-gantt-scroll').evaluate(e=>e.scrollLeft=e.scrollWidth);expect((await snapshot()).scroll).toBeGreaterThan(0);expect(await page.locator('.unified-gantt-plan').evaluateAll(es=>es.map(e=>e.getAttribute('style')))).toEqual(bars);
- await page.reload();await page.locator('.project-gantt-grid').waitFor();expect((await snapshot()).dates).toEqual(expanded.dates);
- await page.getByLabel('恢复自动时间范围',{exact:true}).click();expect((await snapshot()).dates).toEqual(original.dates);await expect(page.getByLabel('恢复自动时间范围',{exact:true})).toBeDisabled();expect(writes).toEqual([]);
- await page.setViewportSize({width:390,height:844});const toolbar=page.locator('.gantt-toolbar-actions');await expect(toolbar).toBeVisible();await toolbar.scrollIntoViewIfNeeded();const geometry=await toolbar.evaluate(e=>{const parent=e.getBoundingClientRect();return {left:parent.left,right:parent.right,children:[...e.children].map(c=>{const b=c.getBoundingClientRect();return {left:b.left,right:b.right};})};});expect(geometry.left).toBeGreaterThanOrEqual(0);expect(geometry.right).toBeLessThanOrEqual(390);for(const box of geometry.children){expect(box.left).toBeGreaterThanOrEqual(geometry.left);expect(box.right).toBeLessThanOrEqual(geometry.right);}await page.screenshot({path:info.outputPath('gantt-range-narrow.png')});
-});

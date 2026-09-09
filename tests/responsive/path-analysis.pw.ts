@@ -21,6 +21,21 @@ async function fixture(page:Page){
 const ready=(page:Page)=>expect(page.locator('[data-layout-ready="true"]')).toBeVisible({timeout:20000});
 const viewport=(page:Page)=>page.locator('.react-flow__viewport').evaluate(n=>(n as HTMLElement).style.transform);
 const openMore=async(page:Page)=>{const details=page.locator('.graph-detail .graph-more-relations');if(await details.count()&&(await details.first().getAttribute('open'))===null)await details.first().locator('summary').click();};
+
+test('排期预览可独立拖动跨月并恢复，画布视口和正式数据不变化',async({page},info)=>{
+ const {analysis}=await fixture(page);const before=await analysis();await page.emulateMedia({reducedMotion:'reduce'});
+ await page.goto('/paths');await ready(page);
+ await page.getByRole('button',{name:'排期预览',exact:true}).click();
+ const surface=page.locator('.path-gantt-scroll');await expect(surface).toHaveAttribute('data-gantt-ready','true');
+ const view=await viewport(page),initial=await surface.evaluate(e=>e.scrollLeft),box=(await surface.boundingBox())!;
+ await page.mouse.move(box.x+box.width-25,box.y+20);await page.mouse.down();await page.mouse.move(box.x+180,box.y+20,{steps:14});await page.mouse.up();
+ await expect.poll(()=>surface.evaluate(e=>e.scrollLeft)).toBeGreaterThan(initial);expect(await viewport(page)).toBe(view);
+ await page.getByLabel('跳转到日期',{exact:true}).fill('2027-01-12');await page.getByLabel('跳转到日期',{exact:true}).press('Enter');await expect(page.locator('.path-draft-gantt .gantt-visible-range')).toContainText('2027/01');
+ const range=await page.locator('.path-draft-gantt .gantt-visible-range').textContent();await page.locator('.graph-auxiliary[aria-hidden="false"]').getByRole('button',{name:'关闭',exact:true}).click();
+ await page.getByRole('button',{name:'排期预览',exact:true}).click();await expect(surface).toHaveAttribute('data-gantt-ready','true');expect(await page.locator('.path-draft-gantt .gantt-visible-range').textContent()).toBe(range);
+ expect((await analysis()).revision).toBe(before.revision);expect(await viewport(page)).toBe(view);
+ await page.screenshot({path:info.outputPath('path-gantt-navigation.png')});
+});
 const selectList=async(page:Page,title:string)=>{if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:title}).first().click();};
 test('全局→需求→外部交付→返回，选择不移动视口且刷新恢复',async({page})=>{
  const {a,b,analysis}=await fixture(page);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));

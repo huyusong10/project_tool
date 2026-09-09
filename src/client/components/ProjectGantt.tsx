@@ -1,7 +1,7 @@
 import {useViewPreference} from "../use-view-preference";
-import { useMemo, useRef, useState } from "react";
-import { addMonths, format } from "date-fns";
-import { ArrowRight, CircleAlert, LocateFixed, RotateCcw } from "lucide-react";
+import { useMemo } from "react";
+import { format } from "date-fns";
+import { ArrowRight, CircleAlert, RotateCcw } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { priorityLabels, requirementStatusLabels, riskLabels, signedProgressVariance, todayIso } from "../../shared/domain";
 import {compareRiskRequirements,matchesRequirementFilters,emptyRequirementFilters,unfinishedStatuses} from "../../shared/requirement-view";
@@ -13,20 +13,18 @@ import { useGanttTooltip } from "./GanttTooltip";
 import { ResizablePanel } from "./ResizablePanel";
 import { SearchInput } from "./SearchInput";
 import { GanttDateTracks } from "./GanttDateTracks";
-import { motionScrollBehavior } from "../motion";
+import { useGanttNavigation } from "../use-gantt-navigation";
+import { GanttNavigation, GanttScrollbar } from "./GanttNavigation";
 import { GanttViewSwitch, useGanttView } from "./GanttViewSwitch";
 import { requirementActualRange } from "../gantt-actual";
 import {
-  buildBusinessDayTimeline,
   GanttMilestoneMarker,
   GanttProgressComparison,
   GanttScale,
   ganttTodayPosition,
   ganttTrackStyle,
-  ganttZoomOptions,
   layoutGanttMilestones,
   toGanttDate,
-  type GanttZoom,
 } from "./GanttTimeline";
 
 type RequirementSort = "deadline" | "priority" | "risk" | "progress" | "updated";
@@ -170,19 +168,8 @@ export function ProjectGantt({
   resizeStorageKey: string;
 }) {
   const navigate = useNavigate();
-  const scrollRef = useRef<HTMLDivElement>(null);
   const ganttTooltip = useGanttTooltip();
   const [viewMode, setViewMode] = useGanttView();
-  const [zoom, setZoom] = useState<GanttZoom>(() => {
-    try {
-      const stored = window.localStorage.getItem(`project-manage:gantt-zoom:${resizeStorageKey}`);
-      return stored && stored in ganttZoomOptions ? stored as GanttZoom : "day";
-    } catch { return "day"; }
-  });
-  const changeZoom = (key: GanttZoom) => {
-    setZoom(key);
-    try { window.localStorage.setItem(`project-manage:gantt-zoom:${resizeStorageKey}`, key); } catch { /* 本次页面仍可缩放。 */ }
-  };
   const [search, setSearch] = useViewPreference<string>(resizeStorageKey+':search',"");
   const [status, setStatus] = useViewPreference<string>(resizeStorageKey+':status',"unfinished");
   const [priority, setPriority] = useViewPreference<string>(resizeStorageKey+':priority',"");
@@ -190,8 +177,6 @@ export function ProjectGantt({
   const [personId, setPersonId] = useViewPreference<string>(resizeStorageKey+':personId',"");
   const [schedule, setSchedule] = useViewPreference<string>(resizeStorageKey+':schedule',"");
   const [sort, setSort] = useViewPreference<RequirementSort>(resizeStorageKey+':sort',"risk");
-  const [extendedUntil,setExtendedUntil]=useViewPreference<string>(resizeStorageKey+':timeline-end','');
-  const option = ganttZoomOptions[zoom];
   const asOfDate = asOfDateProp || requirements[0]?.asOfDate || todayIso();
 
   const people = useMemo(() => {
@@ -235,7 +220,7 @@ export function ProjectGantt({
     setSchedule("");
   };
 
-  const range = useMemo(() => {
+  const timelineValues = useMemo(() => {
     const values: Array<string | null | undefined> = [projectStart, projectEnd];
     requirements.forEach((requirement) => {
       const actual = requirementActualRange(requirement, asOfDate);
@@ -244,25 +229,13 @@ export function ProjectGantt({
         values.push(requirement.plannedStart, requirement.plannedEnd, requirement.effectiveEnd);
       }
     });
-    return buildBusinessDayTimeline(values, zoom, asOfDate,extendedUntil);
-  }, [asOfDate, projectEnd, projectStart, requirements, zoom,extendedUntil]);
+    return values;
+  }, [asOfDate, projectEnd, projectStart, requirements]);
 
-  const timelineWidth = range.days * option.cellWidth;
-  const dates = range.dates;
-  const trackStyle = useMemo(() => ganttTrackStyle(dates, option.cellWidth), [dates, option.cellWidth]);
+  const navigation = useGanttNavigation({ values: timelineValues, asOfDate, storageKey: resizeStorageKey, legacyKey: resizeStorageKey, onPan: ganttTooltip.close });
+  const { dates, zoom, cellWidth, timelineWidth } = navigation;
+  const trackStyle = useMemo(() => ganttTrackStyle(dates, cellWidth), [dates, cellWidth]);
   const { offset: todayOffset, visible: todayVisible } = ganttTodayPosition(dates, asOfDate);
-
-  const scrollToToday = () => {
-    if (!todayVisible || !scrollRef.current) return;
-    const leftColumn = scrollRef.current
-      .querySelector<HTMLElement>(".gantt-corner")
-      ?.getBoundingClientRect().width ?? 360;
-    const visibleTimeline = Math.max(300, scrollRef.current.clientWidth - leftColumn);
-    scrollRef.current.scrollTo({
-      left: Math.max(0, (todayOffset + 1) * option.cellWidth - visibleTimeline / 2),
-      behavior: motionScrollBehavior(),
-    });
-  };
 
   return (
     <ResizablePanel className="project-gantt-panel stable-workspace-panel" storageKey={resizeStorageKey} defaultHeight={560} minHeight={420}>
@@ -279,21 +252,7 @@ export function ProjectGantt({
         </div>
         <div className="gantt-toolbar-actions">
           <GanttViewSwitch value={viewMode} onChange={setViewMode} />
-          <button className="ghost-button" onClick={scrollToToday} disabled={!todayVisible} title={todayVisible ? "定位到今天" : "今天不在当前项目时间范围内"}>
-            <LocateFixed size={15} /> 今天
-          </button>
-          <div className="view-tabs" aria-label="时间粒度">
-            {(Object.keys(ganttZoomOptions) as GanttZoom[]).map((key) => (
-              <button key={key} className={zoom === key ? "active" : ""} onClick={() => changeZoom(key)}>
-                {ganttZoomOptions[key].label}
-              </button>
-            ))}
-          </div>
-          <div className="gantt-range-actions" role="group" aria-label="时间范围">
-            <span title={format(range.start,'yyyy-MM-dd')+' — '+format(range.end,'yyyy-MM-dd')}>{format(range.start,'MM/dd')}—{format(range.end,'MM/dd')}</span>
-            <button className="ghost-button" aria-label="向后扩展一个月" title="向后扩展一个月，横向滚动查看；不修改排期" onClick={()=>setExtendedUntil(format(addMonths(range.end,1),'yyyy-MM-dd'))}><ArrowRight size={15}/>向后扩展</button>
-            <button className="ghost-button" aria-label="恢复自动时间范围" title="恢复按项目排期计算的时间范围" disabled={!extendedUntil} onClick={()=>setExtendedUntil('')}><RotateCcw size={15}/></button>
-          </div>
+          <GanttNavigation navigation={navigation} />
         </div>
       </header>
       <div className="gantt-filter-bar" aria-label="项目进展筛选">
@@ -335,13 +294,13 @@ export function ProjectGantt({
       {!visibleRequirements.length ? (
         <EmptyState title="暂无可展示需求" detail="调整筛选条件，或新建需求后查看项目排期。" />
       ) : (
-        <div className="project-gantt-scroll" ref={scrollRef}>
+        <div className="project-gantt-scroll gantt-navigation-surface" ref={navigation.attach} tabIndex={0} aria-label="项目甘特时间轴，可左右拖动浏览">
           <div className="project-gantt-grid" style={{ width: `calc(var(--project-gantt-label-width) + ${timelineWidth}px)` }} role="table" aria-label="项目进展甘特图">
-            <div className="gantt-corner gantt-sticky-left" role="columnheader">
+            <div data-gantt-fixed className="gantt-corner gantt-sticky-left" role="columnheader">
               <strong>需求</strong>
               <span>{visibleRequirements.length} 项需求</span>
             </div>
-            <GanttScale dates={dates} zoom={zoom} cellWidth={option.cellWidth} todayOffset={todayOffset} todayVisible={todayVisible} />
+            <GanttScale dates={dates} zoom={zoom} cellWidth={cellWidth} todayOffset={todayOffset} todayVisible={todayVisible} />
             {visibleRequirements.map((requirement) => {
               const actual = requirementActualRange(requirement, asOfDate);
               const scheduleComplete = hasCompleteSchedule(requirement);
@@ -356,7 +315,7 @@ export function ProjectGantt({
               const milestonePlacements = new Map(layoutGanttMilestones(
                 milestoneItems.map((item) => ({ id: item.id, label: item.milestoneLabel, plannedEnd: item.plannedEnd })),
                 dates,
-                option.cellWidth,
+                cellWidth,
                 zoom,
               ).map((placement) => [placement.id, placement]));
               return (
@@ -390,14 +349,14 @@ export function ProjectGantt({
                     {viewMode === "split" ? <GanttDateTracks
                       plannedStart={requirement.plannedStart} plannedEnd={requirement.plannedEnd}
                       actualStart={actual.start} actualEnd={actual.end} status={requirement.status} scheduleComplete={scheduleComplete}
-                      progress={requirement.progress} dates={dates} cellWidth={option.cellWidth}
+                      progress={requirement.progress} dates={dates} cellWidth={cellWidth}
                       interactionProps={tooltipProps}
                     /> : <GanttProgressComparison
                       plannedStart={showPlan ? requirement.plannedStart : null}
                       plannedEnd={showPlan ? requirement.plannedEnd : null}
                       effectiveEnd={requirement.effectiveEnd}
                       dates={dates}
-                      cellWidth={option.cellWidth}
+                      cellWidth={cellWidth}
                       status={requirement.status}
                       progress={requirement.progress}
                       plannedProgress={requirement.plannedProgress}
@@ -407,12 +366,12 @@ export function ProjectGantt({
                     />}
                     {milestoneItems.map((item) => {
                       const samePosition = milestoneItems.filter((other) => milestonePlacements.get(other.id)?.left === milestonePlacements.get(item.id)?.left);
-                      return <GanttMilestoneMarker key={item.id} label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={option.cellWidth} zoom={zoom} placement={milestonePlacements.get(item.id)} asOfDate={asOfDate} interactionProps={ganttTooltip.bind(<>
+                      return <GanttMilestoneMarker key={item.id} label={item.milestoneLabel} plannedEnd={item.plannedEnd} actualEnd={item.actualEnd} status={item.status} dates={dates} cellWidth={cellWidth} zoom={zoom} placement={milestonePlacements.get(item.id)} asOfDate={asOfDate} interactionProps={ganttTooltip.bind(<>
                         <header className="gantt-popover-header"><strong>里程碑{samePosition.length > 1 ? `（${samePosition.length}项）` : ""}</strong></header>
                         <dl className="gantt-popover-metrics">{samePosition.map((milestone) => <div key={milestone.id}><dt>{milestone.milestoneLabel}</dt><dd>{statusLabel(milestone.status)}<br />计划 {dateLabel(milestone.plannedEnd)}{milestone.actualEnd && <> · 实际 {dateLabel(milestone.actualEnd)}</>}</dd></div>)}</dl>
                       </>)} />;
                     })}
-                    {todayVisible && <i className="gantt-today-line" style={{ left: (todayOffset + 1) * option.cellWidth }} title={`截至 ${asOfDate}`} />}
+                    {todayVisible && <i className="gantt-today-line" style={{ left: (todayOffset + 1) * cellWidth }} title={`截至 ${asOfDate}`} />}
                   </div>
                 </div>
               );
@@ -420,6 +379,7 @@ export function ProjectGantt({
           </div>
         </div>
       )}
+      <GanttScrollbar navigation={navigation} />
       {ganttTooltip.tooltip}
     </ResizablePanel>
   );

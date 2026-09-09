@@ -386,7 +386,7 @@ function SavedRequirementPage() {
             </div>
           )}
         </header>
-        {pathView ? <PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement}/> : <GapTimeline milestones={requirement.milestones}
+        {pathView ? <PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement}/> : <GapTimeline key={requirement.id} storageKey={`${requirement.projectId}:${requirement.id}:gantt`} milestones={requirement.milestones}
           items={requirement.workItems}
           targetItemId={searchParams.get("workItemId") || undefined}
           asOfDate={requirement.asOfDate}

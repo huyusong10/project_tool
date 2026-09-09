@@ -32,7 +32,7 @@ export function businessDateIndex(date: Date, dates: Date[], edge: "start" | "en
   return edge === "start" ? left : left - 1;
 }
 
-export function buildBusinessDayTimeline(values: Array<string | null | undefined>, zoom: GanttZoom, asOfDate = todayIso(), throughDate?:string|null) {
+export function buildBusinessDayTimeline(values: Array<string | null | undefined>, zoom: GanttZoom, asOfDate = todayIso()) {
   const option = ganttZoomOptions[zoom];
   const parsed = values.map(toGanttDate).filter(Boolean) as Date[];
   const today = toGanttDate(asOfDate) || toGanttDate(todayIso()) || startOfDay(new Date());
@@ -45,8 +45,6 @@ export function buildBusinessDayTimeline(values: Array<string | null | undefined
     end = toGanttDate(addBusinessDays(format(start, "yyyy-MM-dd"), option.minimumDays - 1))!;
     dates = eachDayOfInterval({ start, end }).filter((date) => isBusinessDay(format(date, "yyyy-MM-dd")));
   }
-  const requestedEnd=toGanttDate(throughDate);
-  if(requestedEnd&&requestedEnd>end){end=requestedEnd;dates=eachDayOfInterval({start,end}).filter(date=>isBusinessDay(format(date,'yyyy-MM-dd')));}
   return {
     start,
     end,
