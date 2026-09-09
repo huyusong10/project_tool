@@ -51,6 +51,18 @@ it('再次确认要求说明，过期批次失败不留下快照',async()=>{
   expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',b.body)).statusCode).toBe(409);
   expect(await get<DeliveryCommitment[]>('/api/projects/'+projectId+'/delivery-commitments')).toHaveLength(1);
 });
+it('范围变化由既有行动提示经理，首次确认前不催办；再次确认后提示消失',async()=>{
+  const {projectId,r}=await fixture();
+  const actions=()=>get<{items:Array<{sourceId:string;reasonCodes:string[];ownerName:string}>}>('/api/action-items?projectId='+projectId+'&pageSize=100');
+  expect((await actions()).items.some(i=>i.reasonCodes.includes('commitment_scope'))).toBe(false);
+  let b=await batch(projectId,{commitment:{reason:''}});expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',b.body)).statusCode).toBe(200);
+  const {sqlite}=await import('../src/server/database');sqlite.prepare("UPDATE requirements SET delivery_scope='candidate' WHERE id=?").run(r.id);
+  const changed=(await actions()).items.find(i=>i.sourceId===r.id);expect(changed?.reasonCodes).toContain('commitment_scope');expect(changed?.ownerName).toBe('项目经理');
+  b=await batch(projectId,{commitment:{reason:'本次撤出'}});expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',b.body)).statusCode).toBe(200);
+  expect((await actions()).items.some(i=>i.reasonCodes.includes('commitment_scope'))).toBe(false);
+  sqlite.prepare("UPDATE requirements SET delivery_scope='committed' WHERE id=?").run(r.id);
+  expect((await actions()).items.find(i=>i.sourceId===r.id)?.reasonCodes).toContain('commitment_scope');
+});
 it('历史不补造，首次缺日期不从后续补齐，最近记录不取验收之后的确认',()=>{
   const c=(date:string,targetDate:string|null):DeliveryCommitment=>({id:date,projectId:'p',projectName:'项目',targetDate:null,milestoneId:null,milestoneTitle:null,reason:'',confirmedAt:date+'T00:00:00Z',confirmedBy:'a',items:[{id:'r',kind:'requirement',title:'需求',targetDate,acceptanceCriteria:null}]});
   expect(requirementCommitments([],'r').first).toBeNull();
@@ -138,6 +150,13 @@ it('返工明确使原核对失效，保留确认记录；进度高于核对时�
  current=await get('/api/requirements/'+r.id);expect(current.progress).toBe(99);expect(current.forecastReview?.confirmedAt).toBe(original?.confirmedAt);expect(current.forecastReview?.invalidatedAt).toBeTruthy();expect(current.forecastBasis?.reasons.join('')).toContain('返工');
  expect((await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis')).nodes.find(n=>n.id==='execute:'+r.id)?.forecastEnd).toBeNull();
  b=await batch(projectId,{entities:[{entity:'requirement',op:'update',id:r.id,expectedVersion:current.version,data:{reviewForecast:{remainingDays:1}}}]});expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',b.body)).statusCode).toBe(200);expect((await get<Requirement>('/api/requirements/'+r.id)).forecastReview?.invalidatedAt).toBeUndefined();
+});
+it('人员并发列出同一执行人的其他工作和交付日期，不平移预测',async()=>{
+ const {projectId,r,owner}=await fixture();await post('/api/requirements/'+r.id+'/start',{expectedVersion:r.version});
+ const before=await get<Requirement>('/api/requirements/'+r.id);
+ const other=(await post('/api/requirements',{projectId,ownerId:owner.id,title:'并发交付',executionMode:'direct',plannedStart:todayIso(),durationDays:2})).json<Requirement>();
+ await post('/api/requirements/'+other.id+'/start',{expectedVersion:other.version});
+ const after=await get<Requirement>('/api/requirements/'+r.id);expect(after.forecastBasis?.concurrentWorkCount).toBe(1);expect(after.forecastBasis?.concurrentWork?.map(w=>w.requirementId)).toEqual([other.id]);expect(after.forecastBasis?.concurrentWork?.[0].title).toBeTruthy();expect(after.forecastEnd).toBe(before.forecastEnd);
 });
 
 it('REST 与 MCP 复用承诺、核对及批次回执，日期参数按相同规则校验',async()=>{

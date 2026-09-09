@@ -28,7 +28,7 @@ test('拆分进入共享草稿；离开、刷新、恢复、保存后保留30%�
  await page.request.post('/api/requirements/'+r.id+'/start',{data:{expectedVersion:r.version}});let current=await detail(r.id);
  await page.request.post('/api/requirements/'+r.id+'/progress',{data:{expectedVersion:current.version,requirementPercent:30,content:'前期完成'}});
  await page.goto('/requirements/'+r.id);await page.getByRole('button',{name:'拆分剩余工作',exact:true}).click();await page.getByLabel('剩余工作项').fill('剩余开发\n剩余验证');await page.getByRole('button',{name:'加入草稿并预览',exact:true}).click();
- await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();expect((await detail(r.id)).workItems).toHaveLength(0);
+ await expect(page.getByRole('dialog')).toContainText('将一起保存');expect((await detail(r.id)).workItems).toHaveLength(0);
  await page.goto('/requirements/'+r.id);await page.getByRole('button',{name:'更新进度',exact:true}).click();await page.getByLabel('执行说明').fill('不应与草稿混写');await page.getByRole('dialog').getByRole('button',{name:'更新进度',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('未保存业务草稿');
  await page.goto('/requirements/'+r.id+'?view=path');await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();await page.reload();await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();await expect(page.locator('.graph-toolbar')).toContainText('未保存');
  await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect.poll(async()=> (await detail(r.id)).executionMode).toBe('work_items');current=await detail(r.id);expect(current.workItems).toHaveLength(2);expect(current.progress).toBe(30);
@@ -38,8 +38,8 @@ test('范围批量修改只进入草稿，筛选保持条件，保存后正式�
  const {create,detail}=await fixture(page),a=await create('范围一'),b=await create('范围二');await page.goto('/requirements');
  for(const title of [a.title,b.title])await page.locator('tbody tr').filter({hasText:title}).getByRole('checkbox').check();
  await page.getByRole('button',{name:'调整所选交付范围'}).click();await page.getByRole('dialog').getByLabel('交付范围',{exact:true}).selectOption('candidate');await page.getByRole('button',{name:'加入草稿并预览',exact:true}).click();
- await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();expect((await detail(a.id)).deliveryScope).toBe('committed');
- await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect.poll(async()=> (await detail(a.id)).deliveryScope).toBe('candidate');
+ await expect(page.getByRole('dialog')).toContainText('将一起保存');expect((await detail(a.id)).deliveryScope).toBe('committed');
+ await page.getByRole('checkbox',{name:'已核对本次及已有草稿，整批保存'}).check();await page.getByRole('button',{name:'确认保存全部修改',exact:true}).click();await expect.poll(async()=> (await detail(a.id)).deliveryScope).toBe('candidate');
  await page.goto('/requirements?deliveryScope=candidate');await expect(page.locator('tbody tr')).toHaveCount(2);await page.reload();await expect(page.getByLabel('交付范围筛选')).toHaveValue('candidate');
 });
 test('普通新增未选流程直接执行，选择流程则实例化未排期工作',async({page})=>{

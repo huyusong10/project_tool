@@ -13,6 +13,7 @@ import {
 import { requirementAnalysisSnapshots,listRequirements, type RequirementRecord } from './requirements';
 import { rows } from './support';
 import { getPathAnalysis } from './paths';
+import { loadLatestCommitment } from './commitments';
 
 type Filters = {
   projectId: string;
@@ -34,7 +35,7 @@ type IssueRow = {
   title: string; ownerId: string | null; ownerName: string | null; dueDate: string | null; nextReviewAt:string|null; updatedAt: string;
 };
 
-const reasonSeverity: Record<ActionReasonCode, ActionSeverity> = {forecast_review:'medium',blocker_resolved:'medium',follow_up:'medium',
+const reasonSeverity: Record<ActionReasonCode, ActionSeverity> = {forecast_review:'medium',blocker_resolved:'medium',follow_up:'medium',commitment_scope:'medium',
   outside_delivery:'medium',acceptor_unavailable:'medium',
   path_blocked: 'high',
   planning: 'low',
@@ -116,6 +117,8 @@ export function listActionItems(
   const today = asOfDate;
   const items: ActionItem[] = [];
   const requirements=loadedRequirements||listRequirements({projectId:filters.projectId},today);
+  const latestCommitment=manager?loadLatestCommitment(filters.projectId):undefined;
+  const committedIds=new Set(latestCommitment?.items.filter(i=>i.kind==='requirement').map(i=>i.id));
   const pathAnalysis=requirementAnalysisSnapshots.get(requirements)?.get(filters.projectId)||(requirements.some(r=>r.pathRisk)?getPathAnalysis(filters.projectId,undefined,asOfDate):undefined);
   const requirementsById=new Map(requirements.map(r=>[r.id,r]));
   const pathNodes=new Map(pathAnalysis?.nodes.map(n=>[n.id,n])||[]);
@@ -125,8 +128,10 @@ export function listActionItems(
 
   for (const requirement of requirements) {
     if (!manager && requirement.ownerId !== personId&&!(requirement.acceptanceOwnerValid&&requirement.acceptanceOwnerId===personId)&&requirement.blockerCoordination?.coordinatorId!==personId) continue;
-    if(requirement.deliveryScope==='candidate'&&!requirement.pathRisk?.inDeliveryNetwork&&!['in_progress','blocked','pending_acceptance'].includes(requirement.status))continue;
+    const scopeChanged=!!latestCommitment&&requirement.status!=='completed'&&committedIds.has(requirement.id)!==(requirement.deliveryScope!=='candidate'&&requirement.status!=='cancelled');
+    if(!scopeChanged&&requirement.deliveryScope==='candidate'&&!requirement.pathRisk?.inDeliveryNetwork&&!['in_progress','blocked','pending_acceptance'].includes(requirement.status))continue;
     const reasonCodes = deriveRequirementActionReasons(requirement);
+    if(scopeChanged)reasonCodes.push('commitment_scope');
     if(requirement.forecastBasis?.needsReview)reasonCodes.push('forecast_review');
     if (!reasonCodes.length) continue;
     items.push(makeItem({
@@ -244,6 +249,7 @@ export function listActionItems(
     grouped.reasonCodes=[...reasons];grouped.reasons=grouped.reasonCodes.map(code=>({code,label:actionReasonLabels[code]}));grouped.affectedRequirements=[...affected.values()];grouped.affectedRequirementIds=[...affected.keys()];items.push(grouped);
   }
   const byReason: Partial<Record<ActionReasonCode, number>> = {};
+  for(const item of items)if(item.reasonCodes.includes('commitment_scope')){item.ownerId=null;item.ownerName='项目经理';}
   for (const item of items) for (const reason of item.reasonCodes) byReason[reason] = (byReason[reason] || 0) + 1;
   const summary = {
     total: items.length,

@@ -2,9 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {randomUUID} from 'node:crypto';
-const directory=path.resolve('.preview');if(path.basename(process.cwd())!=='project-manage-paths')throw new Error('只能在隔离工作区运行');fs.mkdirSync(directory,{recursive:true});
+const directory=path.resolve('.preview');if(!['project-manage-paths','project-manage-debug'].includes(path.basename(process.cwd())))throw new Error('只能在隔离工作区运行');fs.mkdirSync(directory,{recursive:true});
 const dbPath=path.join(directory,`benchmark-${randomUUID()}.db`);Object.assign(process.env,{DB_PATH:dbPath,BACKUP_DIR:path.join(directory,'benchmark-backups'),SEED_DEMO:'0'});
 const {sqlite}=await import('../src/server/database');const {getPathAnalysis}=await import('../src/server/services/paths');const {listActionItems}=await import('../src/server/services/actions');
+const basisHelpers=await import('../src/shared/forecast-basis');
 const now=new Date().toISOString(),day='2026-09-07';
 try{
  sqlite.transaction(()=>{
@@ -26,8 +27,15 @@ try{
  for(let i=0;i<10;i++)sqlite.prepare('UPDATE dependency_edges SET source_requirement_id=?,source_work_item_id=NULL WHERE id=?').run('d'+i,'e'+(5990+i));
  })();
  const mixed=measure();sqlite.prepare("UPDATE work_items SET status='blocked',actual_start=?,blocked_at=?,blocked_reason='环境未就绪'").run(day,now);const allBlocked=measure();
+ sqlite.transaction(()=>{
+ for(let i=0;i<100;i++)sqlite.prepare("INSERT INTO issues(id,project_id,title,status,discovered_at,next_review_at,created_at,updated_at)VALUES(?,'p',?,'in_progress',?,?,?,?)").run('issue'+i,'阻塞来源'+i,day,day,now,now);
+ const basis=getPathAnalysis('p','project',day);const {predecessorBasis}=basisHelpers;
+ for(let i=0;i<2000;i++)sqlite.prepare('UPDATE work_items SET blocked_issue_id=?,forecast_review=? WHERE id=?').run('issue'+Math.floor(i/20),JSON.stringify({confirmedBy:'bench',confirmedAt:now,remainingDays:1,forecastEnd:null,progress:0,actualStart:day,predecessorBasis:predecessorBasis('w'+i,basis)}),'w'+i);
+ const commitment={id:'commitment',projectId:'p',projectName:'性能验证',targetDate:'2026-12-31',milestoneId:null,milestoneTitle:null,reason:'性能验证',confirmedAt:now,confirmedBy:'bench',items:Array.from({length:100},(_,i)=>({id:'r'+i,kind:'requirement',title:'需求'+i,targetDate:'2026-09-30',acceptanceCriteria:null}))};
+ sqlite.prepare('INSERT INTO delivery_commitments(id,project_id,confirmed_at,snapshot)VALUES(?,?,?,?)').run(commitment.id,'p',now,JSON.stringify(commitment));
+ })();const reviewedAndLinked=measure();
  const actionValues:number[]=[];const actor={type:'user' as const,id:'bench',label:'基准管理员',accountId:'bench',personId:null,globalRole:'admin' as const};
  for(let i=0;i<21;i++){const t=performance.now();JSON.stringify(listActionItems({projectId:'p',pageSize:100},actor,undefined,day));if(i)actionValues.push(performance.now()-t);}actionValues.sort((a,b)=>a-b);const actions={samples:20,p95Ms:+actionValues[18].toFixed(1),maxMs:+actionValues[19].toFixed(1)};
- const result={mixed,actions,directRequirements:100,candidateRequirements:20,measuredAt:new Date().toISOString(),device:{cpu:os.cpus()[0].model,logicalCpus:os.cpus().length,memoryGiB:Math.round(os.totalmem()/2**30),node:process.version},workItems:2000,dependencies:6000,includes:'SQLite完整快照、项目关键路径、阻塞汇总、JSON序列化；单进程顺序采样',serial,allBlocked};fs.mkdirSync('.preview/qa',{recursive:true});fs.writeFileSync('.preview/qa/delivery-performance.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result,null,2));
- if(serial.p95Ms>1000||mixed.p95Ms>1000||allBlocked.p95Ms>1000||actions.p95Ms>1000)process.exitCode=1;
+ const result={reviewedAndLinked,linkedIssues:100,reviewedWorkItems:2000,mixed,actions,directRequirements:100,candidateRequirements:20,measuredAt:new Date().toISOString(),device:{cpu:os.cpus()[0].model,logicalCpus:os.cpus().length,memoryGiB:Math.round(os.totalmem()/2**30),node:process.version},workItems:2000,dependencies:6000,includes:'SQLite完整快照、项目关键路径、阻塞汇总、JSON序列化；单进程顺序采样',serial,allBlocked};fs.mkdirSync('.preview/qa',{recursive:true});fs.writeFileSync('.preview/qa/delivery-performance.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result,null,2));
+ if(serial.p95Ms>1000||mixed.p95Ms>1000||allBlocked.p95Ms>1000||actions.p95Ms>1000||reviewedAndLinked.p95Ms>1000)process.exitCode=1;
 }finally{sqlite.close();for(const suffix of ['','-wal','-shm'])fs.rmSync(dbPath+suffix,{force:true});}

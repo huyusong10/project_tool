@@ -299,7 +299,7 @@ test('新建项目已落库但响应异常时核对本次新增项目', async ({
   expect(requests).toBe(1);
 });
 
-test('新建需求已落库但响应异常时核对本次新增记录', async ({ page }) => {
+test('新建需求响应异常保留输入，不以同名记录推断成功', async ({ page }) => {
   await mockForms(page);
   let created: Requirement | undefined;
   let requests = 0;
@@ -326,7 +326,7 @@ test('新建需求已落库但响应异常时核对本次新增记录', async ({
   await page.getByRole('button', { name: '新建需求', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '新建需求', exact: true });
   await dialog.getByLabel('需求标题', { exact: true }).fill('  异常响应需求  ');
-  await dialog.getByRole('combobox', { name: '优先级', exact: true }).selectOption('P1');
+  await expect(dialog.getByRole('combobox', { name: '优先级', exact: true })).toHaveCount(0);
   await dialog.getByRole('combobox', { name: '需求负责人（可稍后指定）', exact: true }).selectOption('u1');
   await dialog.getByRole('button', { name: /补充信息/ }).click();
   await dialog.getByLabel('需求背景', { exact: true }).fill('  需要核对  ');
@@ -334,9 +334,11 @@ test('新建需求已落库但响应异常时核对本次新增记录', async ({
   await dialog.getByLabel('参考链接', { exact: true }).fill('https://example.com/requirement');
   await dialog.getByRole('button', { name: '创建需求', exact: true }).click();
 
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByText('已核对最新状态：需求已创建', { exact: true })).toBeVisible();
-  await expect(page.getByRole('cell', { name: /异常响应需求/ })).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button',{name:'创建需求',exact:true})).toBeDisabled();
+  await expect(page.getByText('已核对最新状态：需求已创建', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByLabel('需求标题',{exact:true})).toHaveValue('  异常响应需求  ');
+  await expect(dialog).toContainText('创建结果待核对');
   expect(requests).toBe(1);
 });
 

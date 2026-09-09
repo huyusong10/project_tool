@@ -1,10 +1,10 @@
 export const actionReasonCodes = [
-  'forecast_review','blocker_resolved','follow_up',
+  'forecast_review','blocker_resolved','follow_up','commitment_scope',
   'planning', 'missing_owner', 'missing_work_items', 'incomplete_schedule', 'high_risk',
   'delayed', 'pending_acceptance', 'blocked', 'unassigned', 'overdue', 'path_blocked', 'outside_delivery', 'acceptor_unavailable',
 ] as const;
 
-export const actionReasonLabels = {forecast_review:'核对交付预测',blocker_resolved:'关联问题已解决，请确认解阻',follow_up:'到期跟进',
+export const actionReasonLabels = {forecast_review:'核对交付预测',blocker_resolved:'关联问题已解决，请确认解阻',follow_up:'到期跟进',commitment_scope:'交付范围变化待核对',
   outside_delivery:'范围外执行',acceptor_unavailable:'验收人已失效',
   path_blocked: '交付路径受阻',
   planning: '待规划',

@@ -7,6 +7,7 @@ export type ForecastReview = {
 export type ForecastBasis = {
   source:string; review:ForecastReview|null; needsReview:boolean; reasons:string[];
   concurrentWorkCount:number;
+  concurrentWork?:Array<{id:string;requirementId:string|null;title:string;requirementTitle:string;forecastEnd:string|null;critical:boolean}>;
 };
 export type ExecutionMetadata = {
   blockerCoordination?:import('./blocker-coordination').BlockerCoordination;
@@ -31,6 +32,8 @@ export function decorateForecastBasis(input:PathInput,analysis:PathAnalysis):Pat
   for(const n of analysis.nodes){if(!['work','execution'].includes(n.kind)||!['in_progress','blocked'].includes(n.status))continue;
     for(const id of new Set([n.ownerId,...n.assigneeIds||[]].filter((v):v is string=>!!v))){const set=activeByPerson.get(id)||new Set<string>();set.add(n.id);activeByPerson.set(id,set);}
   }
+  const nodesById=new Map(analysis.nodes.map(n=>[n.id,n]));
+  const concurrencyGroups=new Map<string,{ids:Set<string>;sample:PathNode[]}>();
   for(const n of analysis.nodes){
     const value=n.workItemId?work.get(n.workItemId):n.kind==='execution'?requirements.get(n.requirementId!):undefined;
     n.blockerCoordination=value?.blockerCoordination;
@@ -42,9 +45,12 @@ export function decorateForecastBasis(input:PathInput,analysis:PathAnalysis):Pat
       if(review.forecastEnd&&review.forecastEnd<input.asOfDate&&!['completed','cancelled'].includes(n.status))reasons.push('上次确认的预计日期已过期');
     }
     const ended=['completed','cancelled'].includes(n.status);
+    const people=[...new Set([n.ownerId,...n.assigneeIds||[]].filter((id):id is string=>!!id))].sort(),groupKey=JSON.stringify(people);
+    let group=concurrencyGroups.get(groupKey);
+    if(!group){const ids=new Set(people.flatMap(id=>[...activeByPerson.get(id)||[]]));group={ids,sample:[...ids].slice(0,11).map(id=>nodesById.get(id)!)};concurrencyGroups.set(groupKey,group);}
     n.forecastBasis={source:ended?'实际执行记录':n.kind==='acceptance'?'验收安排':review?'负责人确认；'+n.source:n.source,
       review,reasons:[...new Set(reasons)],needsReview:!ended&&['work','execution'].includes(n.kind)&&(n.critical||n.riskLevel==='high')&&reasons.some(r=>/过期|变化|解除|工期|预测/.test(r)),
-      concurrentWorkCount:Math.max(0,...[n.ownerId,...n.assigneeIds||[]].filter((id):id is string=>!!id).map(id=>(activeByPerson.get(id)?.size||0)-Number(activeByPerson.get(id)?.has(n.id))))};
+      concurrentWorkCount:group.ids.size-Number(group.ids.has(n.id)),concurrentWork:group.sample.filter(item=>item.id!==n.id).slice(0,10).map(item=>({id:item.id,requirementId:item.requirementId,title:item.title,requirementTitle:requirements.get(item.requirementId||'')?.title||'',forecastEnd:item.forecastEnd,critical:item.critical}))};
   }
   return analysis;
 }

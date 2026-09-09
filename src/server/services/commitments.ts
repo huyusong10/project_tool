@@ -8,7 +8,11 @@ import {todayIso} from '../../shared/domain';
 import {optionalDateSchema} from '../../shared/contracts';
 
 export function loadCommitments(projectId:string):DeliveryCommitment[] {
-  return (sqlite.prepare('SELECT snapshot FROM delivery_commitments WHERE project_id=? ORDER BY confirmed_at,id').all(projectId) as {snapshot:string}[]).map(r=>JSON.parse(r.snapshot));
+  return (sqlite.prepare('SELECT snapshot FROM delivery_commitments WHERE project_id=? ORDER BY confirmed_at,rowid').all(projectId) as {snapshot:string}[]).map(r=>JSON.parse(r.snapshot));
+}
+export function loadLatestCommitment(projectId:string):DeliveryCommitment|undefined {
+  const row=sqlite.prepare('SELECT snapshot FROM delivery_commitments WHERE project_id=? ORDER BY confirmed_at DESC,rowid DESC LIMIT 1').get(projectId) as {snapshot:string}|undefined;
+  return row?JSON.parse(row.snapshot):undefined;
 }
 export function listDeliveryCommitments(projectId:string,actor:Actor) {
   assertProjectReadable(requireAuthorizationActor(actor),projectId);
@@ -21,7 +25,7 @@ export function getDeliveryCommitment(projectId:string,id:string,actor:Actor) {
 }
 export function prepareCommitment(snapshot:PathInput,change:{reason:string;milestoneId?:string|null},actor:Actor) {
   assertProjectManager(requireAuthorizationActor(actor),snapshot.projectId);
-  const previous=loadCommitments(snapshot.projectId).at(-1)||null;
+  const previous=loadLatestCommitment(snapshot.projectId)||null;
   if(previous&&!change.reason.trim())fail('再次确认交付承诺时请填写变更说明');
   const milestone=change.milestoneId?snapshot.milestones?.find(m=>m.id===change.milestoneId&&!m.requirementId&&!m.cancelled):null;
   if(change.milestoneId&&!milestone)fail('请选择当前项目的有效项目里程碑');
