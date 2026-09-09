@@ -43,7 +43,8 @@ export function remapEditorUrl(url:string,ids:Record<string,string>){
   const parsed=new URL(url,location.origin),map=(id:string)=>ids[id]||((id.startsWith('acceptance:')||id.startsWith('start:'))?id.split(':')[0]+':'+(ids[id.slice(id.indexOf(':')+1)]||id.slice(id.indexOf(':')+1)):id);
   const requirement=/^\/requirements\/([^/]+)/.exec(parsed.pathname)?.[1];
   if(requirement&&ids[requirement]){parsed.pathname='/requirements/'+ids[requirement];parsed.searchParams.delete('draftProject');}
-  for(const key of ['pathNode','workItemId','pathBranch','target']){const value=parsed.searchParams.get(key);if(value)parsed.searchParams.set(key,map(value));}
+  for(const key of ['pathNode','workItemId','pathBranch','target','pathRelation']){const value=parsed.searchParams.get(key);if(value)parsed.searchParams.set(key,map(value));}
+  const edge=parsed.searchParams.get('pathEdge');if(edge)parsed.searchParams.set('pathEdge',ids[edge]||edge.split('>').map(map).join('>'));
   return parsed.pathname+parsed.search+parsed.hash;
 }
 export function remapEditorOrigin(origin:PathOrigin|undefined,ids:Record<string,string>):PathOrigin|undefined{return origin?{...origin,url:remapEditorUrl(origin.url,ids),parent:remapEditorOrigin(origin.parent,ids)}:undefined;}

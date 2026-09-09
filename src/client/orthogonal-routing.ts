@@ -131,6 +131,17 @@ export function routeOrthogonalGraph(nodes:Node[],edges:LayoutEdge[]):RoutedLayo
         }
         if(label)break;
       }
+      // Stacked cards can have a purely vertical route. Keep its text horizontal,
+      // beside the segment, while checking the same card/line/label obstacles.
+      if(!label)for(const s of segments(points).filter(s=>!horizontal(s)).sort((a,b)=>length(b.a,b.b)-length(a.a,a.b))){
+        if(length(s.a,s.b)<40)continue;
+        const y=(s.a.y+s.b.y)/2-10;
+        for(const x of [s.a.x+12,s.a.x-width-12]){
+          const r={left:x-5,right:x+width+5,top:y-3,bottom:y+23};
+          if(![...boxes,...labels].some(b=>intersects(b,r))&&!occupied.some(s=>!clear(s.a,s.b,[r]))){label={x,y,width};labels.push(r);break;}
+        }
+        if(label)break;
+      }
     }
     layout.edges[edge.id].label=label;
   }

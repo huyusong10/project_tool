@@ -5,7 +5,7 @@ import type {Requirement,WorkItemTemplate} from '../../src/client/types';
 import {addBusinessDays,todayIso} from '../../src/shared/domain';
 
 
-async function fixture(page:Page){
+async function fixture(page:Page,crossDependency=true){
  const login=await page.request.post('/api/login',{data:{username:'admin',password:'41_xc7q0qOjo4Inw!'}});expect(login.ok()).toBe(true);
  const session=await(await page.request.get('/api/session')).json();const name=`图验证${Date.now()}`;
  const project=await(await page.request.post('/api/projects',{data:{name,plannedEnd:addBusinessDays(todayIso(),3)}})).json();
@@ -14,7 +14,7 @@ async function fixture(page:Page){
  const create=async(title:string)=>await(await page.request.post('/api/requirements',{data:{projectId:project.id,templateId:template.id,ownerId:owner.id,title,plannedStart:addBusinessDays(todayIso(),0)}})).json() as Requirement;
  const a=await create('接口基础交付'),b=await create('订单交付');
  const analysis=async()=>await(await page.request.get(`/api/projects/${project.id}/path-analysis`)).json() as PathAnalysis;
- await page.request.post(`/api/projects/${project.id}/dependencies`,{data:{sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:b.workItems[1].id,expectedRevision:(await analysis()).revision}});
+ if(crossDependency)await page.request.post(`/api/projects/${project.id}/dependencies`,{data:{sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:b.workItems[1].id,expectedRevision:(await analysis()).revision}});
  await page.addInitScript(({account,id})=>localStorage.setItem(`project-manage:selected-project:${account}`,id),{account:session.accountId,id:project.id});
  return {project,a,b,analysis};
 }
@@ -307,4 +307,63 @@ test('重构：关闭属性后保存会返回无效字段，原文保留且不�
 
 test('重构：原位取消不会被属性副本重新提交，继续操作和刷新仍保留原名',async({page})=>{
  const {a}=await fixture(page);await page.goto('/templates?edit='+a.templateId);await ready(page);const title=page.locator('.react-flow__node strong').first();await title.dblclick();await title.fill('取消的原位名称');await page.keyboard.press('Escape');await page.locator('.react-flow__node .dependency-card').nth(1).click();await expect(title).toHaveText('方案交付');await expect(page.getByLabel('撤销',{exact:true})).toBeDisabled();await page.reload();await ready(page);await expect(title).toHaveText('方案交付');await expect(page.getByLabel('撤销',{exact:true})).toBeDisabled();
+});
+
+test('全局交付条件：直接拉线、细化、撤销、返回和保存只替换当前关系',async({page},info)=>{
+ const {a,b,analysis}=await fixture(page,false);await page.goto('/paths?pathScope=all');await ready(page);
+ const formal=await analysis(),view=await viewportValue(page),positions=await positionsValue(page);
+ await page.getByLabel('编辑画布',{exact:true}).click();
+ await page.locator('.react-flow__node[data-id="'+a.id+'"] .business-handle[data-side="right"]').click();
+ await page.locator('.react-flow__node[data-id="'+b.id+'"] .dependency-card').click({position:{x:80,y:45}});await ready(page);
+ const edge=page.locator('.react-flow__edge[data-id="'+a.id+'>'+b.id+'"]');
+ await expect(edge.locator('.dependency-edge-label')).toHaveText('验收后开始');await edge.locator('.dependency-edge-label').click();
+ await expect(page.getByLabel('等待什么完成',{exact:true})).toHaveValue('acceptance:'+a.id);
+ await expect(page.locator('.delivery-target')).not.toHaveAttribute('open','');
+ await page.getByLabel('等待什么完成',{exact:true}).selectOption(a.workItems[0].id);await ready(page);
+ await expect(edge.locator('.dependency-edge-label')).toHaveText('方案交付后开始');
+ expect((await analysis()).dependencies).toEqual(formal.dependencies);expect(await viewportValue(page)).toBe(view);expect(await positionsValue(page)).toEqual(positions);
+ await page.getByLabel('撤销',{exact:true}).click();await expect(page.getByLabel('等待什么完成',{exact:true})).toHaveValue('acceptance:'+a.id);
+ await page.getByLabel('重做',{exact:true}).click();await expect(page.getByLabel('等待什么完成',{exact:true})).toHaveValue(a.workItems[0].id);
+ await page.locator('.delivery-target summary').click();await page.getByLabel('完成后允许什么开始',{exact:true}).selectOption(b.workItems[1].id);await ready(page);
+ await expect(edge.locator('.dependency-edge-label')).toHaveText('方案交付 → 集成验证');
+ const back=page.url();await page.getByRole('button',{name:'查看前置交付',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp('/requirements/'+a.id));await expect(page).toHaveURL(new RegExp('pathNode='+a.workItems[0].id));
+ await page.getByRole('button',{name:'返回项目全局',exact:true}).click();await ready(page);expect(page.url()).toBe(back);expect(await viewportValue(page)).toBe(view);
+ await expect(page.getByLabel('等待什么完成',{exact:true})).toHaveValue(a.workItems[0].id);await page.reload();await ready(page);await expect(page.getByLabel('完成后允许什么开始',{exact:true})).toHaveValue(b.workItems[1].id);
+ await page.getByLabel('保存修改',{exact:true}).click();await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();await ready(page);
+ const result=await analysis(),cross=result.dependencies.filter(d=>d.sourceRequirementId===a.id&&d.targetRequirementId===b.id);
+ expect(cross).toHaveLength(1);expect(cross[0]).toMatchObject({sourceWorkItemId:a.workItems[0].id,targetWorkItemId:b.workItems[1].id});expect(await positionsValue(page)).toEqual(positions);
+ await expect(page.locator('.delivery-condition')).toBeVisible();await page.screenshot({path:info.outputPath('delivery-condition-saved.png')});
+});
+
+test('全局交付条件：聚合明细不误改整组，重复拒绝，390px可用',async({page},info)=>{
+ const {project,a,b,analysis}=await fixture(page);
+ const response=await page.request.post('/api/projects/'+project.id+'/dependencies',{data:{sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:b.workItems[0].id,expectedRevision:(await analysis()).revision}});expect(response.ok()).toBe(true);
+ await page.goto('/paths?pathScope=all');await ready(page);const formal=await analysis();
+ await page.getByLabel('编辑画布',{exact:true}).click();const edge=page.locator('.react-flow__edge[data-id="'+a.id+'>'+b.id+'"]');await expect(edge.locator('.dependency-edge-label')).toHaveText('2 条交付关系');await edge.locator('.dependency-edge-label').click();
+ await expect(page.getByLabel('等待什么完成',{exact:true})).toHaveCount(0);await expect(page.locator('.graph-detail')).toContainText('请选择一条');
+ await page.locator('.graph-detail .graph-relation-list>div>button:first-child').filter({hasText:'订单交付 · 方案交付'}).click();
+ await page.getByLabel('完成后允许什么开始',{exact:true}).selectOption(b.workItems[1].id);await expect(page.locator('.delivery-condition [role="alert"]')).toContainText('已存在相同交付条件');expect((await analysis()).dependencies).toEqual(formal.dependencies);
+ await expect(page.getByLabel('完成后允许什么开始',{exact:true})).toHaveValue(b.workItems[0].id);
+ await page.getByRole('button',{name:'返回全部 2 条关系',exact:true}).click();await expect(page.getByLabel('等待什么完成',{exact:true})).toHaveCount(0);
+ await page.locator('.graph-detail .graph-relation-list>div>button:first-child').filter({hasText:'订单交付 · 集成验证'}).click();
+ await page.getByLabel('等待什么完成',{exact:true}).selectOption(a.workItems[1].id);await ready(page);expect((await analysis()).dependencies).toEqual(formal.dependencies);
+ await page.setViewportSize({width:390,height:844});await page.getByLabel('更多工具').click();await page.getByLabel('关系明细',{exact:true}).click();
+ await page.locator('.graph-auxiliary .graph-relation-list>div>button:first-child').filter({hasText:'订单交付 · 集成验证'}).click();await page.reload();await ready(page);await expect(page.getByLabel('等待什么完成',{exact:true})).toHaveValue(a.workItems[1].id);
+ await expect(edge).toHaveClass(/selected/);
+ const panel=page.locator('.graph-detail[aria-hidden="false"]');const box=(await panel.boundingBox())!;expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(390);expect(await panel.evaluate(e=>e.scrollWidth-e.clientWidth)).toBeLessThanOrEqual(1);
+ await page.screenshot({path:info.outputPath('delivery-condition-390.png')});
+ await page.getByLabel('保存修改',{exact:true}).click();await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();
+ const cross=(await analysis()).dependencies.filter(d=>d.sourceRequirementId===a.id&&d.targetRequirementId===b.id);expect(cross).toHaveLength(2);
+ expect(cross.find(d=>d.targetWorkItemId===b.workItems[0].id)?.sourceWorkItemId).toBe(a.workItems[0].id);expect(cross.find(d=>d.targetWorkItemId===b.workItems[1].id)?.sourceWorkItemId).toBe(a.workItems[1].id);
+});
+
+test('全局交付条件：按拼音查找需求里程碑，选择后保持草稿不写正式关系',async({page})=>{
+ const {project,a,b,analysis}=await fixture(page,false),milestone=crypto.randomUUID();
+ const body={expectedRevision:(await analysis()).revision,target:'project',changes:{add:[{clientId:crypto.randomUUID(),sourceRequirementId:a.id,sourceWorkItemId:null,targetRequirementId:b.id,targetWorkItemId:null}],remove:[],estimates:[],entities:[{id:milestone,entity:'milestone',op:'create',requirementId:a.id,data:{title:'设计确认',confirmationMode:'manual'}},...Array.from({length:4},(_,i)=>({id:crypto.randomUUID(),entity:'work',op:'create',requirementId:a.id,data:{title:'补充任务'+i,durationDays:1}}))]}};
+ const previewResponse=await page.request.post('/api/projects/'+project.id+'/dependency-changes/preview',{data:body});expect(previewResponse.ok()).toBe(true);const preview=await previewResponse.json();
+ const applied=await page.request.post('/api/projects/'+project.id+'/dependency-changes/apply',{data:{...body,batchId:crypto.randomUUID(),previewToken:preview.previewToken}});expect(applied.ok()).toBe(true);const receipt=await applied.json(),milestoneId=receipt.addedIds[milestone];
+ await page.goto('/paths?pathScope=all');await ready(page);const formal=await analysis();await page.getByLabel('编辑画布',{exact:true}).click();
+ const edge=page.locator('.react-flow__edge[data-id="'+a.id+'>'+b.id+'"]');await edge.locator('.dependency-edge-label').click();
+ await page.getByLabel('搜索等待什么完成',{exact:true}).fill('sjqr');await page.getByLabel('等待什么完成',{exact:true}).selectOption(milestoneId);await ready(page);await expect(edge.locator('.dependency-edge-label')).toHaveText('设计确认后开始');
+ expect((await analysis()).dependencies).toEqual(formal.dependencies);await page.getByLabel('撤销',{exact:true}).click();await expect(page.getByLabel('等待什么完成',{exact:true})).toHaveValue('acceptance:'+a.id);
 });

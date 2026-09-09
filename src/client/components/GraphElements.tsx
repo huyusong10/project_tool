@@ -6,7 +6,7 @@ import {requirementStatusLabels,riskLabels} from '../../shared/domain';
 import {EditorField} from './EditorField';
 export type CardData = GraphCard & { rename?:(id:string,title:string)=>void; vertical: boolean; editing: boolean; highlighted: boolean; invalid: boolean; retiring?:boolean; context?:boolean; connection?:string };
 export type CardNode = Node<CardData, 'delivery'>;
-export type RouteEdge = Edge<{ route?: RoutedLayout['edges'][string]; critical: boolean; labelText: string; opacity:number; invalid?:boolean; filtered?:boolean }, 'delivery'>;
+export type RouteEdge = Edge<{ route?: RoutedLayout['edges'][string]; critical: boolean; labelText: string; description?:string; opacity:number; invalid?:boolean; filtered?:boolean }, 'delivery'>;
 const Card = memo(function Card({ id, data, selected }: NodeProps<CardNode>) {
   const update = useUpdateNodeInternals(), key = String(data.vertical);
   const previous = useRef(key);
@@ -40,6 +40,6 @@ const RoutedEdge=memo(function RoutedEdge({ id, data, selected }: EdgeProps<Rout
       {label&&<g className="dependency-edge-label"><rect x={label.x-3} y={label.y} width={label.width+6} height={20} rx={4}/><text x={label.x} y={label.y+14}>{data.labelText}</text></g>}</>;
   },[id,data?.route,data?.labelText,data?.critical,selected,color,markerId,zoom]);
   if(!data||!drawing)return null;
-  return <g className="graph-routed-edge" opacity={data.opacity} style={{pointerEvents:data.opacity===0?'none':undefined}}><g className={'graph-edge-presentation'+(data.invalid?' is-invalid':'')+(data.filtered?' is-filtered':'')}><title>{data.labelText}</title>{drawing}</g></g>;
+  return <g className="graph-routed-edge" opacity={data.opacity} style={{pointerEvents:data.opacity===0?'none':undefined}}><g className={'graph-edge-presentation'+(data.invalid?' is-invalid':'')+(data.filtered?' is-filtered':'')}><title>{data.description||data.labelText}</title>{drawing}</g></g>;
 });
 export const nodeTypes = { delivery: Card }, edgeTypes = { delivery: RoutedEdge };

@@ -30,4 +30,5 @@ export type EditorCommand=
  |{type:'duplicate';ids:string[];positions:Record<string,Point>;snapshot?:unknown}
  |{type:'delete';ids:string[];edgeId?:string}
  |{type:'connect'|'reconnect';source:string;target:string}
+ |{type:'replaceRelation';id:string;source:string;target:string}
  |{type:'undo'|'redo'|'save'};

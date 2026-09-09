@@ -31,6 +31,10 @@ it('汇合线分开接入，转角与箭头留有距离；无假汇合与反向�
   expect(routes.edges['merge-ac'].points.at(-1)!.y).not.toBe(routes.edges['merge-bc'].points.at(-1)!.y);
   for(const route of Object.values(routes.edges)){const a=route.points.at(-2)!,b=route.points.at(-1)!;expect(Math.hypot(a.x-b.x,a.y-b.y)).toBeGreaterThanOrEqual(28);}
 });
+it('上下排列的卡片旁显示水平交付标签，文字不跨卡片或线路',()=>{
+  const nodes=[{id:'stack-a',x:0,y:0,width:244,height:154},{id:'stack-b',x:0,y:260,width:244,height:154}],edges=[{id:'stack',source:'stack-a',target:'stack-b',label:'方案交付后开始',labelWidth:110}];
+  const routes=routeFixedGraph(nodes,edges);validate(nodes,edges,routes);expect(routes.edges.stack.label).not.toBeNull();expect(routes.edges.stack.points).toHaveLength(2);
+});
 it('新增障碍使缓存直线重新寻路，其他节点坐标不变',()=>{
   const nodes=[{id:'cache-a',x:0,y:0,width:244,height:154},{id:'cache-b',x:850,y:0,width:244,height:154}],edges=[{id:'cache-ab',source:'cache-a',target:'cache-b'}];
   const original=routeFixedGraph(nodes,edges);expect(original.edges['cache-ab'].points).toHaveLength(2);

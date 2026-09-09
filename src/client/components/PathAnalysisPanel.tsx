@@ -24,6 +24,8 @@ import { acceptanceId, startId,dependencySource,dependencyTarget, type PathAnaly
 import { addBusinessDays, riskLabels, todayIso } from '../../shared/domain';
 import { hasWorkdayCalendarFallback } from '../../shared/workday';
 import { projectPathGraph } from '../path-projection';
+import {relationCaption,relationDescription,replaceDeliveryCondition} from '../path-relations';
+import {DeliveryCondition} from './DeliveryCondition';
 import {PathGantt,hasPathGanttDates} from './PathGantt';
 import { Modal } from './Modal';
 import { EmptyState, LoadingState } from './Feedback';
@@ -136,8 +138,9 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const livePositions=useRef<Record<string,Point>>({});
   const layoutScope=focus?'requirement:'+focus:'global',layoutValue=data.layouts?.find(l=>l.scope===layoutScope&&l.direction==='right'),formalLayout=formal.layouts?.find(l=>l.scope===layoutScope&&l.direction==='right');
   const withLayout=(changes:DependencyChanges,positions:Record<string,Point>):DependencyChanges=>({...changes,layouts:[...(changes.layouts||[]).filter(l=>l.scope!==layoutScope||l.direction!=='right'),{scope:layoutScope,direction:'right',expectedVersion:formalLayout?.version||0,positions}]});
-  const [relationId,setRelationId]=useState('');
-  const {interaction,selected,edgeId,setEdgeId,select}=useEditorInteraction(params.get('pathNode')||params.get('workItemId')||'',selection=>{setParam('pathNode',selection.kind==='nodes'?selection.primary:'');setRelationId('');setInspector(selection.kind!=='none');if(narrow())setPanel('');});
+  const [relationId,updateRelationId]=useState(params.get('pathRelation')||'');
+  const setRelationId=(id:string)=>{updateRelationId(id);setParam('pathRelation',id);};
+  const {interaction,selected,edgeId,setEdgeId,select}=useEditorInteraction(params.get('pathNode')||params.get('workItemId')||'',selection=>{setParam('pathNode',selection.kind==='nodes'?selection.primary:'');setParam('pathEdge',selection.kind==='edge'?selection.id:'');setRelationId('');setInspector(selection.kind!=='none');if(narrow())setPanel('');},params.get('pathEdge')||'');
   const inspector=(params.get('pathInspector')||(matchMedia('(max-width:800px)').matches?'closed':'open'))==='open'&&(!!selected||!!edgeId||!!relationId),setInspector=(value:boolean)=>setParam('pathInspector',value?'open':'closed');
   const [locate,setLocate]=useState<{id:string;sequence:number}>();
   const [imported,setImported]=useState<string[]>(()=>selected?[selected]:[]),[issue,setIssue]=useState<GraphConnectionIssue>(),[confirmDiscard,setConfirmDiscard]=useState(false);
@@ -207,8 +210,17 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   if(focus)for(const n of data.nodes)if(n.ownerId)owners.set(n.ownerId,n.ownerName||'未命名人员');
   const filterCount=Object.values(filters).reduce<number>((sum,v)=>sum+(Array.isArray(v)?v.length:Number(v)),0);
   const selectedCard=searchCards.find(c=>c.id===selected),node=data.nodes.find(n=>n.id===selected);
-  const selectedEdge=graph.links.find(e=>e.id===edgeId),selectedRelation=data.dependencies.find(d=>d.id===relationId);
+  const selectedEdge=graph.links.find(e=>e.id===edgeId),selectedRelation=data.dependencies.find(d=>d.id===(relationId|| (selectedEdge?.dependencyIds.length===1?selectedEdge.dependencyIds[0]:'')))
+    ||(selectedEdge?.dependencyIds.length===1?data.dependencies.find(d=>d.id===selectedEdge.dependencyIds[0]):undefined);
   const editableRelation=(d:PathAnalysis['dependencies'][number])=>manager||canEdit&&d.sourceRequirementId===focus&&d.targetRequirementId===focus;
+  const replaceRelation=(id:string,source:string,destination:string)=>{
+    const original=data.dependencies.find(d=>d.id===id);
+    if(!editing||!original||!editableRelation(original)){setIssue({message:'当前无权修改这条交付关系'});return;}
+    const result=replaceDeliveryCondition(data,draft.changes,id,source,destination,crypto.randomUUID());
+    if('issue' in result){setIssue(result.issue);return;}
+    if(result.changes!==draft.changes)draft.change(result.changes);
+    setRelationId(result.relationId);setInspector(true);setIssue(undefined);
+  };
   const remove=(id:string,changes=draft.changes):DependencyChanges=>({...changes,add:changes.add.filter(e=>e.clientId!==id),remove:formal.dependencies.some(e=>e.id===id)?[...new Set([...changes.remove,id])]:changes.remove});
   const proposal=(source:string,destination:string):DependencyChanges['add'][number]|null=>{
     const a=graph.cards.find(c=>c.id===source),b=graph.cards.find(c=>c.id===destination);if(!a||!b)return null;
@@ -242,7 +254,12 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const issueCard=(id:string)=>focus?id:data.nodes.find(n=>n.id===id)?.requirementId||id;
   const nodeRelations=data.dependencies.filter(d=>focus?dependencySource(d)===selected||dependencyTarget(d)===selected:d.sourceRequirementId===selected||d.targetRequirementId===selected||d.sourceMilestoneId===selected||d.targetMilestoneId===selected);
   const issueRelations=data.dependencies.filter(d=>issue?.edgeIds?.includes(d.id));
-  const relationLabel=(d:PathAnalysis['dependencies'][number])=>label(dependencySource(d))+' → '+label(dependencyTarget(d));
+  const relationLabel=(d:PathAnalysis['dependencies'][number])=>relationDescription(data,d);
+  const locateEndpoint=(id:string)=>{
+    const n=data.nodes.find(n=>n.id===id);
+    if(n?.requirementId&&n.requirementId!==focus)directTo(n.requirementId,id);
+    else{select(id);locateNode(id);}
+  };
   const relationCard=(d:PathAnalysis['dependencies'][number],source:boolean)=>{
     const exact=source?d.sourceMilestoneId||d.sourceWorkItemId:d.targetMilestoneId||d.targetWorkItemId;
     if(exact)return exact;const id=source?d.sourceRequirementId:d.targetRequirementId;
@@ -250,10 +267,11 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   };
   const incoming=data.dependencies.filter(d=>relationCard(d,false)===selected&&(focus||!d.sourceWorkItemId&&!d.targetWorkItemId));
 
-  const displayRelations=selectedEdge?data.dependencies.filter(d=>selectedEdge.dependencyIds.includes(d.id)):data.dependencies.filter(d=>focus?(d.sourceRequirementId===focus||d.targetRequirementId===focus):d.sourceRequirementId!==d.targetRequirementId||!d.sourceRequirementId&&!!d.sourceMilestoneId);
+  const scopeRelations=data.dependencies.filter(d=>focus?(d.sourceRequirementId===focus||d.targetRequirementId===focus):d.sourceRequirementId!==d.targetRequirementId||!d.sourceRequirementId&&!!d.sourceMilestoneId);
+  const displayRelations=selectedEdge?data.dependencies.filter(d=>selectedEdge.dependencyIds.includes(d.id)):scopeRelations;
   const relationList=(relations:typeof data.dependencies)=><div className="graph-relation-list">{relations.length?relations.map(d=><div key={d.id}>
-    <button className={relationId===d.id?'selected':''} onClick={()=>{setRelationId(d.id);setInspector(true);if(narrow())setPanel('');}}>{relationLabel(d)}<small>{d.sourceMilestoneId||d.targetMilestoneId?'里程碑关系':d.sourceWorkItemId||d.targetWorkItemId?'部分交付':'验收后开始'} · {d.origin==='template'?'模板关系':'自定义关系'} · {formal.dependencies.some(e=>e.id===d.id)?'已保存':'未保存'}</small></button>
-    {editing&&editableRelation(d)&&relationId===d.id&&<button className="ghost-button" onClick={()=>{draft.change(remove(d.id));setRelationId('');}}>移除选中关系</button>}
+    <button className={selectedRelation?.id===d.id?'selected':''} onClick={()=>{setIssue(undefined);const edge=graph.links.find(e=>e.dependencyIds.includes(d.id));if(edge)setEdgeId(edge.id);else select('');setRelationId(d.id);setInspector(true);if(narrow())setPanel('');}}>{relationLabel(d)}<small>{relationCaption(data,d)} · {d.origin==='template'?'模板关系':'自定义关系'} · {formal.dependencies.some(e=>e.id===d.id)?'已保存':'未保存'}</small></button>
+    {editing&&editableRelation(d)&&selectedRelation?.id===d.id&&<button className="ghost-button" onClick={()=>{draft.change(remove(d.id));setRelationId('');}}>移除选中关系</button>}
   </div>):<p>当前没有关系。</p>}</div>;
   const work=requirement?.workItems.find(w=>w.id===selected),canEstimate=!!work&&!['completed','cancelled'].includes(work.status)&&(canEdit||!!session.personId&&work.assigneeIds.includes(session.personId));
   const req=data.requirements.find(r=>r.id===focus);
@@ -284,20 +302,18 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
     status={<>{branch&&<button className="ghost-button" onClick={()=>setParam('pathBranch','')}>退出聚焦</button>}<span title={draft.storageError||issue?.message||draft.error?.message||''}>{draft.loading?'恢复草稿…':draft.storageError?'本机保存失败':draft.conflict?'版本冲突':draft.readOnly?'其他页面编辑中':draft.count?(draft.restored?'已恢复草稿 · ':'')+draft.count+' 项未保存':draft.active?'编辑中':location.state?.pathNotice||'正式分析'}</span>{(draft.error||draft.conflict||issue)&&<button className="ghost-button danger-text" aria-label={draft.conflict?'版本冲突 · 查看修改':'查看草稿错误'} title="查看草稿修改与错误" onClick={()=>openPanel(issue?.kind?'connectionIssue':'changes')}>!</button>}</>}
     extra={<>{draft.active&&<button className="ghost-button" aria-label="草稿状态" title="查看本机草稿与冲突" onClick={()=>openPanel('changes')}><FilePenLine size={17}/></button>}<EditorInfo onClick={()=>openPanel('summary')}/><button className="ghost-button" aria-label="关系明细" title="关系明细" onClick={()=>openPanel('relations')}><Link2 size={17}/></button>{focus&&canEdit&&!editing&&!req?.dependenciesReviewedAt&&<button className="ghost-button" title="核对依赖" aria-label="核对依赖" onClick={()=>guarded(()=>setEditor({kind:'review'}))}><ListChecks size={17}/></button>}</>}/>;
   const detail=inspector?<><div className="graph-panel-heading"><h3>{selectedRelation?'关系详情':selectedEdge?'交付关系':selectedCard?.title||'选择节点或连线'}</h3><button className="ghost-button" onClick={()=>setInspector(false)}>关闭</button></div>
-    {selectedEdge||selectedRelation?<>{relationList(selectedRelation?[selectedRelation]:displayRelations)}
-      {editing&&selectedRelation&&editableRelation(selectedRelation)&&<PredecessorPicker label="改接前置（选择后替换）" value={[]} options={graph.cards.filter(c=>c.kind!=='start').map(c=>({id:c.id,title:c.title}))} onChange={ids=>{
-        const source=ids.at(-1);if(!source)return;const destination=relationCard(selectedRelation,false);
-        if(!focus&&(selectedRelation.sourceWorkItemId||selectedRelation.targetWorkItemId)){directTo(selectedRelation.targetRequirementId,selectedRelation.targetWorkItemId);return;}
-        const edge=proposal(source,destination)!;const next=remove(selectedRelation.id);next.add.push(edge);
-        const problem=dependencyIssue(formal,next);if(problem)setIssue(problem);else{draft.change(next);setRelationId(edge.clientId);setEdgeId('');}
-      }}/>}
+    {selectedEdge||selectedRelation?<>
+      {!selectedRelation&&<p className="field-help">这条线汇总了 {displayRelations.length} 条关系，请选择一条查看或调整交付条件。</p>}
+      {selectedEdge&&selectedEdge.dependencyIds.length>1&&selectedRelation&&<button className="ghost-button" onClick={()=>setRelationId('')}>返回全部 {selectedEdge.dependencyIds.length} 条关系</button>}
+      {relationList(selectedRelation?[selectedRelation]:displayRelations)}
+      {selectedRelation&&<DeliveryCondition data={data} relation={selectedRelation} editable={editing&&editableRelation(selectedRelation)} disabledReason={!editableRelation(selectedRelation)?'跨需求关系由项目经理维护':!editing?'开启编辑后可调整交付条件':undefined} issue={issue} onInspectIssue={()=>openPanel('connectionIssue')} onChange={(source,destination)=>commands.dispatch({type:'replaceRelation',id:selectedRelation.id,source,target:destination})} onLocate={locateEndpoint}/>}
     </>:selectedCard&&<><p>{selectedCard.subtitle}</p><p>{data.risks[selectedCard.requirementId]?.riskReason}</p><p>{node?.source}</p>{node?.unknownReasons.length?<p className="danger-text">{node.unknownReasons.join('；')}</p>:null}
       {branch&&!emphasized.has(selected)&&<p className="graph-outside-notice">此节点在分支外，定位后返回全图。</p>}
       <div className="editor-selection-tools"><button title="定位" aria-label="定位" onClick={()=>locateNode(selected)}><LocateFixed size={16}/></button><button title={branch===selected?'退出聚焦':'聚焦分支'} aria-label={branch===selected?'退出聚焦':branch?'聚焦此分支':'聚焦分支'} onClick={()=>setParam('pathBranch',branch===selected?'':selected)}><GitBranch size={16}/></button>{editing&&canEdit&&currentEntity&&<><button title="复制（Alt 拖动 / Ctrl+C、V）" aria-label="复制元素" onClick={()=>commands.dispatch({type:'duplicate',ids:[selected],positions:{[selected]:{x:(livePositions.current[selected]?.x||0)+32,y:(livePositions.current[selected]?.y||0)+32}}})}><Copy size={16}/></button><button title="删除（Delete）" aria-label="删除元素" onClick={()=>commands.dispatch({type:'delete',ids:[selected]})}><Trash2 size={16}/></button></>}</div><div className="button-row">
         {selectedCard.requirementId&&(!focus||selectedCard.external)&&<button className="primary-button" onClick={()=>directTo(selectedCard.requirementId,selectedCard.workItemId)}>进入需求路径</button>}
         {focus&&node?.workItemId&&node.requirementId===focus&&<button className="ghost-button" onClick={()=>guarded(()=>{const p=new URLSearchParams(params);p.delete('view');p.set('workItemId',node.id);setParams(p,{state:location.state});})}>定位并处理工作项</button>}
       </div>
-      {selectedCard&&<button className="ghost-button graph-node-relations" onClick={()=>openPanel('nodeRelations')}>已有关联 {nodeRelations.length} 条{nodeRelations.some(d=>d.sourceWorkItemId||d.targetWorkItemId)?' · 含部分交付':''}</button>}
+      {selectedCard&&<button className="ghost-button graph-node-relations" onClick={()=>openPanel('nodeRelations')}>已有关联 {nodeRelations.length} 条{nodeRelations.some(d=>d.sourceWorkItemId||d.targetWorkItemId)?' · 含指定环节':''}</button>}
       {editing&&canEdit&&currentEntity&&(!selectedCard.external||manager)&&<EditorObjectProperties objectId={selected} projectId={data.projectId} entity={currentEntity.entity} value={{...objectValue,priority:objectValue.priority as EditorEntityChange['data']['priority']}} onChange={fields=>commands.dispatch({type:'properties',id:selected,fields})} anchors={data.nodes.filter(n=>n.kind==='milestone'&&n.id!==selected).map(n=>({id:n.id,title:n.title}))}/>}
       {milestone&&!editing&&canEdit&&<button className="ghost-button" onClick={()=>guarded(()=>void api('/api/milestones/'+milestone.id+'/'+(milestone.achievedAt?'reopen':'achieve'),{method:'POST',body:jsonBody({expectedVersion:milestone.version})}).then(()=>{invalidateRequirementViews(client,focus);void onReload();}).catch(e=>setIssue({message:e.message})))}>{milestone.achievedAt?'重新打开里程碑':'确认里程碑达成'}</button>}
       {editing&&canEstimate&&node?.kind==='work'&&!draft.changes.entities?.some(c=>c.id===node.id&&c.op==='create')&&<EstimateFields key={node.id} node={node} structure={canEdit} onChange={patch=>{
@@ -320,6 +336,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const scheduleNodes=focus?data.nodes.filter(n=>n.requirementId===focus&&n.kind!=='start'):data.nodes.filter(n=>n.kind==='acceptance'||n.kind==='milestone'&&!n.requirementId),datedSchedule=hasPathGanttDates(scheduleNodes),expandedSchedule=params.get('pathScheduleExpanded')==='1';
   const auxiliary=panel?<><div className="graph-panel-heading"><h3>{{filters:'筛选条件',nodes:'节点列表',blockers:'阻塞源排行',float:'余量分布',relations:'关系明细',import:'添加已有对象',summary:'分析说明',schedule:'交付排期预览',changes:'修改与冲突',connectionIssue:'连线检查',nodeRelations:'节点关联'}[panel]}</h3><div className="graph-panel-heading-actions">{panel==='schedule'&&datedSchedule&&<button className="ghost-button" aria-label={expandedSchedule?'收起排期图':'展开排期图'} title={expandedSchedule?'收起排期图':'展开排期图'} onClick={()=>setParam('pathScheduleExpanded',expandedSchedule?'':'1')}>{expandedSchedule?<Minimize2 size={15}/>:<Maximize2 size={15}/>}</button>}<button className="ghost-button" onClick={()=>setPanel('')}>关闭</button></div></div>
     {(panel==='nodes'||panel==='filters')&&nodesPanel}
+    {panel==='relations'&&relationList(scopeRelations)}
     {panel==='blockers'&&<>{!data.blockers.length&&<p>当前没有阻塞源。</p>}{data.blockers.map(b=><div className="graph-list-row" key={b.nodeId}><button onClick={()=>{if(!focus)select(b.requirementId||b.nodeId);else if(graph.cards.some(c=>c.id===b.nodeId))select(b.nodeId);else directTo(b.requirementId,b.workItemId);}}><strong>{b.title}</strong><small>{b.reasons.join('；')} · {b.ownerName||'未分派'}</small><small>{b.affectedRequirementIds.length} 个下游需求{b.critical?' · 关键阻塞':''}</small><span className="path-impact-bar"><i style={{width:Math.min(100,b.affectedRequirementIds.length/Math.max(1,data.coverage.total)*100)+'%'}}/></span></button></div>)}</>}
     {panel==='float'&&<><div className="path-float-distribution">{[{id:'critical',label:'0 天'},{id:'near',label:'1—2 天'},{id:'other',label:'大于 2 天'},{id:'unknown',label:'待确认'}].map(b=><button key={b.id} aria-pressed={params.get('pathFloat')===b.id} onClick={()=>setParam('pathFloat',params.get('pathFloat')===b.id?'':b.id)} className={params.get('pathFloat')===b.id?'selected':''}>{b.label}<strong>{matching.filter(c=>b.id==='critical'?c.floatDays===0:b.id==='near'?c.floatDays!==null&&c.floatDays>0&&c.floatDays<=2:b.id==='other'?c.floatDays!==null&&c.floatDays>2:c.floatDays===null).length}</strong></button>)}</div><small>当前匹配 {matching.length} 项；选择余量区间查看对应节点。</small>{params.get('pathFloat')&&<div className="path-float-results">{matching.filter(floatMatch).map(c=><div className="graph-list-row" key={c.id}><button onClick={()=>select(c.id)}>{c.title}<small>{c.forecast||'交付待确认'} · {riskLabels[c.risk as keyof typeof riskLabels]}</small></button><button className="ghost-button" onClick={()=>locateNode(c.id)}>定位</button></div>)}{!matching.some(floatMatch)&&<p>此区间没有匹配节点。</p>}</div>}</>}
     {panel==='nodeRelations'&&relationList(nodeRelations)}
@@ -336,7 +353,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
     </>}
   </>:undefined;
   if(leaving)return <div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace"><LoadingState label="正在打开路径…"/></section></div>;
-  const commands=editorAdapter({properties:patchEntity,move:positions=>draft.change(withLayout(draft.changes,positions)),rename:(id,title)=>patchEntity(id,{title}),create:createEntity,duplicate:duplicate,delete:(ids,edgeId)=>{const e=graph.links.find(e=>e.id===edgeId);if(e?.dependencyIds.length===1)draft.change(remove(e.dependencyIds[0]));else if(edgeId){setEdgeId(edgeId);setInspector(true);}else setDeleting(ids);},connect:connect,reconnect:(source,destination)=>{const problem=validateReconnect(source,destination);if(problem)setIssue(problem);else{draft.change(reconnectChanges(source,destination));setRelationId('');setEdgeId('');}},undo:editing?draft.undo:undefined,redo:editing?draft.redo:undefined,save:()=>void draft.save(),copy:()=>structuredClone(data)},editing&&canEdit);
+  const commands=editorAdapter({properties:patchEntity,move:positions=>draft.change(withLayout(draft.changes,positions)),rename:(id,title)=>patchEntity(id,{title}),create:createEntity,duplicate:duplicate,replaceRelation,delete:(ids,edgeId)=>{const e=graph.links.find(e=>e.id===edgeId);if(e?.dependencyIds.length===1)draft.change(remove(e.dependencyIds[0]));else if(edgeId){setEdgeId(edgeId);setInspector(true);}else setDeleting(ids);},connect:connect,reconnect:(source,destination)=>{const problem=validateReconnect(source,destination);if(problem)setIssue(problem);else{draft.change(reconnectChanges(source,destination));setRelationId('');setEdgeId('');}},undo:editing?draft.undo:undefined,redo:editing?draft.redo:undefined,save:()=>void draft.save(),copy:()=>structuredClone(data)},editing&&canEdit);
   return <div className="path-analysis immersive-path"><GraphWorkspace onRevealField={key=>{const card=graph.cards.find(c=>key==='title:'+c.id||key.startsWith(c.id+':'));if(card)select(card.id);}} auxiliaryKey={panel} commands={commands} interaction={interaction} document={draft} cards={graph.cards} links={graph.links} visibleIds={visibleIds} contextIds={contextIds} emphasizedIds={emphasizedIds} onExitFocus={()=>{if(placing)setPlacing('');else setParam('pathBranch','');}} auxiliarySize={panel==='schedule'&&datedSchedule?expandedSchedule?'expanded':'timeline':'compact'}
     reconnect={canReconnect?{id:reconnectRelation!.id,source:focus?dependencySource(reconnectRelation!):reconnectRelation!.sourceRequirementId||reconnectRelation!.sourceMilestoneId!,target:focus?dependencyTarget(reconnectRelation!):reconnectRelation!.targetRequirementId||reconnectRelation!.targetMilestoneId!}:undefined}
     validateReconnect={validateReconnect}

@@ -272,7 +272,7 @@ export function GraphScene(props: DependencyGraphProps) {
   const edges=useMemo<RouteEdge[]>(()=>(scene?.links||[]).map(e=>({...e,type:'delivery',sourceHandle:'route-out',targetHandle:'route-in',
     className:(props.visibleIds&&(!props.visibleIds.includes(e.source)||!props.visibleIds.includes(e.target))?'graph-edge-hidden':'')+(staleRoutes.has(e.id)||!linkById.has(e.id)||linkById.get(e.id)?.source!==e.source||linkById.get(e.id)?.target!==e.target?' graph-route-stale':''),
     label:undefined,selected:e.id===selectedEdge,reconnectable:false,
-    data:{route:scene?.layout.edges[e.id],invalid:props.invalidEdges?.includes(e.id),critical:(linkById.get(e.id)||e).critical,labelText:e.label||'',filtered:!!props.visibleIds&&(!props.visibleIds.includes(e.source)||!props.visibleIds.includes(e.target)),opacity:edgeFade.ids.has(e.id)?edgeFade.opacity:1}
+    data:{route:scene?.layout.edges[e.id],invalid:props.invalidEdges?.includes(e.id),critical:(linkById.get(e.id)||e).critical,labelText:e.label||'',description:(linkById.get(e.id)||e).description,filtered:!!props.visibleIds&&(!props.visibleIds.includes(e.source)||!props.visibleIds.includes(e.target)),opacity:edgeFade.ids.has(e.id)?edgeFade.opacity:1}
   // The key changes only when route validity changes, not on every pointer movement.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   })),[scene,linkById,selectedEdge,props.visibleIds,props.invalidEdges,edgeFade,staleKey]);
