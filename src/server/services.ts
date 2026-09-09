@@ -1,3 +1,5 @@
+import {validateCoordination,persistCoordination} from './services/blocker-coordination';
+import {coordinationKeys} from '../shared/blocker-coordination';
 import {rescheduleDirectRequirement,createDirectRequirement,updateDeliveryRequirement,executeDirectRequirement,validateDeliveryFields,assertRequirementAcceptor} from './services/delivery-execution';
 import { createHash, randomUUID } from 'node:crypto';
 import { sqlite } from './database';
@@ -1156,7 +1158,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor) {
 }
 
 export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
-  if(['deliveryScope','executionMode','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate'].some(k=>input[k]!==undefined)||getRequirement(id).executionMode==='direct')return updateDeliveryRequirement(id,input,actor);
+  if(['deliveryScope','executionMode','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',...coordinationKeys].some(k=>input[k]!==undefined)||getRequirement(id).executionMode==='direct')return updateDeliveryRequirement(id,input,actor);
   const commandFields = ['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'plannedStart', 'plannedEnd', 'scheduleMode', 'templateId', 'confirmTemplateReset'];
   if (commandFields.some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
     fail('需求状态、进度、验收、排期和流程不能通过普通编辑修改，请使用对应操作命令');
@@ -1521,7 +1523,7 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
   if (workItemExecutionKeys.some((key) => Object.prototype.hasOwnProperty.call(input, key))) fail('状态、进度和实际日期不能通过普通编辑修改，请使用对应操作命令');
   if (Object.keys(input).some((key) => ![
     'expectedVersion', 'title', 'ownerId', 'collaboratorIds', 'assigneeIds',
-    'plannedStart', 'plannedEnd', 'sortOrder', 'milestoneLabel', 'reason',
+    'plannedStart', 'plannedEnd', 'sortOrder', 'milestoneLabel', 'reason',...coordinationKeys,
   ].includes(key))) fail('工作项编辑不能提交未声明字段');
   const title = input.title === undefined ? current.title : requireLabel(input.title, '工作项标题');
   const milestone = input.milestoneLabel === undefined ? current.milestoneLabel : milestoneLabel(input.milestoneLabel);
@@ -1543,10 +1545,11 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
   const structuralChanged = title !== current.title || milestone !== current.milestoneLabel || ownerId !== current.ownerId
     || collaboratorsChanged || scheduleChanged || input.sortOrder !== undefined && Number(input.sortOrder) !== current.sortOrder;
   if (requirementHasExecution && structuralChanged && !nullableText(input.reason)) fail('需求已开始执行，调整工作项结构、负责人或排期时必须填写变更原因');
-  if (!structuralChanged) {
+  const coordinationChanged=coordinationKeys.some(k=>input[k]!==undefined);const coordination=coordinationChanged?validateCoordination(requirement.projectId,{...current,...input}):undefined;if(coordinationChanged&&current.status!=='blocked')fail('只有阻塞对象可以修改协调信息');
+  if (!structuralChanged&&!coordinationChanged) {
     sqlite.transaction(() => {
       requireActiveProject(requirement.projectId, true);
-      assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
+      if(coordinationChanged&&!structuralChanged)assertWorkItemParticipantOrManager(requireAuthorizationActor(actor),id);else assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
       assertProjectAssignees(current.requirementId, [ownerId, ...nextCollaboratorIds], true);
     })();
     return requirement.workItems!.find((item) => item.id === id);
@@ -1559,11 +1562,12 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
       input.sortOrder === undefined ? current.sortOrder : Number(input.sortOrder), now, id, current.version,
     );
     assertVersionedWrite(result, '工作项');
+    if(coordination)persistCoordination('work',id,requirement.projectId,coordination,actor);
     if (collaboratorIds !== undefined) syncWorkItemCollaborators(id, collaboratorIds);
     else if (ownerId) sqlite.prepare('DELETE FROM work_item_collaborators WHERE work_item_id=? AND person_id=?').run(id, ownerId);
     syncStoredRequirementState(current.requirementId, now, true, requirement.version);
     requireActiveProject(requirement.projectId, true);
-    assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
+    if(coordinationChanged&&!structuralChanged)assertWorkItemParticipantOrManager(requireAuthorizationActor(actor),id);else assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
     if (requirementHasExecution && structuralChanged) appendRequirementEvent(current.requirementId, 'correction', requireText(input.reason, '变更原因'), actor, id, current.progress, null, now);
     audit(actor, 'update', 'work_item', id, `更新工作项：${title}`);
     assertProjectAssignees(current.requirementId, [ownerId, ...nextCollaboratorIds], true);
@@ -1580,6 +1584,7 @@ function validateWorkItemActualDates(actualStart: string | null, actualEnd: stri
 function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unblock' | 'cancel', input: JsonObject, actor: Actor) {
   const allowedFields = new Set([
     'expectedVersion',
+    ...(action === 'block'?coordinationKeys:[]),
     ...(action === 'complete' ? ['content'] : action === 'block' || action === 'cancel' ? ['reason'] : action === 'start' ? ['reason','expectedDependencyRevision'] : []),
   ]);
   if (Object.keys(input).some((key) => !allowedFields.has(key))) {
@@ -1592,7 +1597,7 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unb
   assertExpectedVersion(input, current.version);
   const today = todayIso(); const now = nowIso();
   const labels = { start: '开始', complete: '完成', block: '阻塞', unblock: '解除阻塞', cancel: '取消' } as const;
-  const eventContent = action === 'complete' ? nullableText(input.content) || '完成工作项'
+  let eventContent = action === 'complete' ? nullableText(input.content) || '完成工作项'
     : action === 'block' ? requireText(input.reason, '阻塞原因')
       : action === 'cancel' ? requireText(input.reason, '取消原因')
         : action==='start' && nullableText(input.reason) ? requireText(input.reason,'执行例外原因') : `${labels[action]}工作项`;
@@ -1628,6 +1633,7 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unb
     syncStoredRequirementState(current.requirementId, now, true, parentRequirement.version);
     requireActiveProject(parentRequirement.projectId, true);
     assertWorkItemParticipantOrManager(requireAuthorizationActor(actor), id);
+    if(action==='block'){const v=validateCoordination(parentRequirement.projectId,input);persistCoordination('work',id,parentRequirement.projectId,v,actor);}
     const nextProgress = action === 'complete' ? 100 : current.progress;
     appendRequirementEvent(current.requirementId, action, eventContent, actor, id, nextProgress, null, now);
     if(acknowledged?.length)audit(actor,'confirm_start_conditions','work_item',id,'确认前置尾项：'+acknowledged.map(p=>p.title+' ['+p.id+']').join('、'));

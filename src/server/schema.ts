@@ -126,6 +126,10 @@ export const requirements = sqliteTable('requirements', {
   actualEnd: text('actual_end'),
   blockedAt: text('blocked_at'),
   blockedReason: text('blocked_reason'),
+  forecastReview: text('forecast_review'),
+  blockedCoordinatorId: text('blocked_coordinator_id').references(() => people.id),
+  blockedNextReviewAt: text('blocked_next_review_at'),
+  blockedIssueId: text('blocked_issue_id'),
   durationDays: integer('duration_days'),
   forecastEnd: text('forecast_end'),
   unblockEstimate: text('unblock_estimate'),
@@ -190,6 +194,10 @@ export const workItems = sqliteTable('work_items', {
   forecastReadyAt: text('forecast_ready_at'),
   blockedAt: text('blocked_at'),
   blockedReason: text('blocked_reason'),
+  forecastReview: text('forecast_review'),
+  blockedCoordinatorId: text('blocked_coordinator_id').references(() => people.id),
+  blockedNextReviewAt: text('blocked_next_review_at'),
+  blockedIssueId: text('blocked_issue_id'),
   milestoneLabel: text('milestone_label'),
   progress: integer('progress').notNull().default(0),
   sortOrder: integer('sort_order').notNull().default(0),
@@ -271,6 +279,7 @@ export const issues = sqliteTable('issues', {
   projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   requirementId: text('requirement_id').references(() => requirements.id, { onDelete: 'set null' }),
   sourceRef: text('source_ref'),
+  nextReviewAt: text('next_review_at'),
   title: text('title').notNull(),
   impact: text('impact'),
   reporter: text('reporter'),
@@ -348,3 +357,5 @@ export const dependencyChangeReceipts = sqliteTable('dependency_change_receipts'
   addedIds: text('added_ids').notNull(),
   createdAt: text('created_at').notNull(),
 }, table => [index('idx_dependency_receipt_project').on(table.projectId)]);
+
+export const deliveryCommitments = sqliteTable('delivery_commitments', {id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id),confirmedAt:text('confirmed_at').notNull(),snapshot:text('snapshot').notNull()},t=>[index('delivery_commitments_project_date').on(t.projectId,t.confirmedAt)]);

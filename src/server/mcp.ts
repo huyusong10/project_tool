@@ -1,3 +1,4 @@
+import {listDeliveryCommitments,getDeliveryCommitment,deliveryCommitmentSummary} from './services/commitments';
 import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor} from './services/delivery-execution';
 import {directRequirementCommandSchema} from '../shared/contracts';
 import type { FastifyInstance } from 'fastify';
@@ -120,6 +121,9 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
 
   registerTool('get_diagram_layouts',{description:'读取已保存的团队画布位置与布局版本',inputSchema:z.object({projectId:idSchema})},async({projectId})=>json(readDiagramLayouts(projectId,actor)));
   registerTool('milestone_command',{description:'人工确认或重新打开独立里程碑，记录操作者和时间',inputSchema:z.object({id:idSchema,action:z.enum(['achieve','reopen']),expectedVersion:z.number().int().positive()})},async({id,action,...input})=>json(milestoneCommand(id,action,input,actor)));
+  registerTool('list_delivery_commitments', {description:'读取项目整体交付承诺历史；确认承诺使用项目批量预览与保存',inputSchema:z.object({projectId:idSchema})},async({projectId})=>json(listDeliveryCommitments(projectId,actor)));
+  registerTool('get_delivery_commitment', {description:'读取不可修改的承诺快照及与上一次确认的差异',inputSchema:z.object({projectId:idSchema,commitmentId:idSchema})},async({projectId,commitmentId})=>json(getDeliveryCommitment(projectId,commitmentId,actor)));
+  registerTool('get_delivery_commitment_summary', {description:'按验收期间比较首次承诺和最近确认；无有效样本返回 null，同时返回覆盖数量。旧 on_time_rate 为当前计划口径。',inputSchema:z.object({projectId:idSchema,from:z.string().optional(),to:z.string().optional()})},async({projectId,from,to})=>json(deliveryCommitmentSummary(projectId,actor,from,to)));
   registerTool('get_path_analysis', { description: '查询完整项目网络的关键路径、交付预测、风险和阻塞来源；target可为project、acceptance:需求ID或工作项ID', inputSchema: pathQuery.extend({ projectId: idSchema }) }, async ({ projectId, target }) => json(readPathAnalysis(projectId, target, actor)));
   registerTool('preview_dependency_changes', { description: '预览整批依赖与工期修改，不保存正式数据', inputSchema: dependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(previewDependencyChanges(projectId, input, actor)));
   registerTool('apply_dependency_changes', { description: '按预览凭据原子提交依赖与工期批次；相同批次标识不会重复写入', inputSchema: applyDependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(applyDependencyChanges(projectId, input, actor)));

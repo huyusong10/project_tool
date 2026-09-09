@@ -1,4 +1,8 @@
-import {normalizeDirectEstimates,persistDirectEstimates} from './direct-estimates';
+import {recordForecastReviews,persistForecastReviews} from './forecast-reviews';
+import {loadBlockerCoordination} from './blocker-coordination';
+import {decorateForecastBasis} from '../../shared/forecast-basis';
+import {prepareCommitment,persistCommitment} from './commitments';
+import {persistDirectEstimates} from './direct-estimates';
 import {deliveryImpact,deliveryTargetChange} from '../../shared/delivery-impact';
 import {analyseChecked as analyse,normalizePathEstimates,persistPathEstimates} from './path-estimates';
 import { createHash, randomUUID } from 'node:crypto';
@@ -24,7 +28,7 @@ function prepare(projectId: string, input: DependencyChangesInput, actor: Actor)
   const { add, remove, estimates,entities=[],layouts=[] } = input.changes;
   const removed=snapshot.dependencies.filter(e=>remove.includes(e.id));
   const beforeEstimates=new Map(snapshot.workItems.filter(w=>estimates.some(p=>p.workItemId===w.id)).map(w=>[w.id,{durationDays:w.durationDays,earliestStart:w.earliestStart,unblockEstimate:w.unblockEstimate,forecastEnd:w.forecastEnd}]));
-  if (!add.length && !remove.length && !estimates.length&&!entities.length&&!layouts.length) fail('没有需要保存的修改');
+  if (!add.length && !remove.length && !estimates.length&&!entities.length&&!layouts.length&&!input.changes.commitment) fail('没有需要保存的修改');
   if (new Set(remove).size !== remove.length || new Set(add.map(e => e.clientId)).size !== add.length
     || new Set(estimates.map(e => e.workItemId)).size !== estimates.length) fail('批次中存在重复修改');
   for (const id of remove) {
@@ -34,6 +38,11 @@ function prepare(projectId: string, input: DependencyChangesInput, actor: Actor)
   }
   snapshot.dependencies = snapshot.dependencies.filter(e => !remove.includes(e.id));
   const expanded=prepareEditorEntities(snapshot,entities,actor);
+  if(entities.some(c=>Object.keys(c.data).some(k=>k.startsWith('blocked')))){
+    const blocked=[...snapshot.requirements,...snapshot.workItems].filter(v=>v.status==='blocked');
+    const coordinations=loadBlockerCoordination(projectId,blocked.map(v=>({id:v.id,owner_id:v.ownerId||null,blocked_coordinator_id:v.blockedCoordinatorId||null,blocked_next_review_at:v.blockedNextReviewAt||null,blocked_issue_id:v.blockedIssueId||null})));
+    for(const value of blocked)value.blockerCoordination=coordinations[value.id];
+  }
   prepareEditorLayouts(snapshot,layouts,actor);
   const createdRequirements=new Set(entities.filter(c=>c.entity==='requirement'&&c.op==='create').map(c=>c.id));
   for (const { clientId, ...value } of add) {
@@ -48,16 +57,17 @@ function prepare(projectId: string, input: DependencyChangesInput, actor: Actor)
     if (snapshot.dependencies.some(e => e.id === clientId)) fail('新增关系标识重复');
     snapshot.dependencies.push(edge);
   }
-  normalizePathEstimates(snapshot,estimates,actor);
-  const directEstimateIds=entities.filter(c=>c.entity==='requirement'&&c.op!=='delete'&&c.data.forecastEnd!==undefined).map(c=>c.id);
-  normalizeDirectEstimates(snapshot,directEstimateIds);
+  normalizePathEstimates(snapshot,estimates,actor,entities);
+  const directEstimateIds=entities.filter(c=>c.entity==='requirement'&&c.op!=='delete'&&(c.data.forecastEnd!==undefined||c.data.reviewForecast)).map(c=>c.id);
   const analysis = analyse(snapshot, input.target);
+  recordForecastReviews(snapshot,analysis,input.changes,actor);decorateForecastBasis(snapshot,analysis);
   const validIds=new Set([...analysis.nodes.map(n=>n.id),...snapshot.requirements.map(r=>r.id)]);
   for(const layout of layouts)for(const id of Object.keys(layout.positions))if(!validIds.has(id))fail('布局包含失效节点');
-  return { snapshot, analysis, expanded,directEstimateIds,expectedRevision: input.expectedRevision, asOfDate: snapshot.asOfDate,
-    differences:{target:deliveryTargetChange(before,analysis),impact:deliveryImpact(before,analysis),added:add,removed,entities,estimates:estimates.map(p=>({workItemId:p.workItemId,before:beforeEstimates.get(p.workItemId)!,after:analysis.nodes.find(n=>n.id===p.workItemId)!.estimate}))},
-    previewToken: hash({ contract:'delivery-execution-v1', projectId, ...input, asOfDate: snapshot.asOfDate }),
-    count: add.length + remove.length + estimates.length+entities.length+layouts.length };
+  const commitment=input.changes.commitment?prepareCommitment(snapshot,input.changes.commitment,actor):undefined;
+  return { snapshot, analysis,commitment, expanded,directEstimateIds,expectedRevision: input.expectedRevision, asOfDate: snapshot.asOfDate,
+    differences:{commitment,target:deliveryTargetChange(before,analysis),impact:deliveryImpact(before,analysis),added:add,removed,entities,estimates:estimates.map(p=>({workItemId:p.workItemId,before:beforeEstimates.get(p.workItemId)!,after:analysis.nodes.find(n=>n.id===p.workItemId)!.estimate}))},
+    previewToken: hash({ contract:'delivery-commitments-v1', projectId, ...input, asOfDate: snapshot.asOfDate }),
+    count: add.length + remove.length + estimates.length+entities.length+layouts.length+Number(!!input.changes.commitment) };
 }
 
 export function previewDependencyChanges(projectId: string, raw: unknown, actor: Actor) {
@@ -111,11 +121,19 @@ export function applyDependencyChanges(projectId: string, raw: unknown, actor: A
     persistPathEstimates({...prepared.snapshot,workItems:prepared.snapshot.workItems.map(w=>({...w,id:mapId(w.id)!,arrangementAnchor:mapId(w.arrangementAnchor)}))},input.changes.estimates.map(p=>({...p,workItemId:mapId(p.workItemId)!})));
     persistDirectEstimates(prepared.snapshot,prepared.directEstimateIds,addedIds);
     if(input.changes.add.length||input.changes.remove.length||input.changes.entities?.length)settleMilestones(projectId,actor);
+    if(input.changes.estimates.some(p=>p.reviewForecast)||input.changes.entities?.some(p=>p.data.reviewForecast)){
+      const final=loadPathInput(projectId),mapped={...input.changes,estimates:input.changes.estimates.map(p=>({...p,workItemId:mapId(p.workItemId)!})),entities:input.changes.entities?.map(p=>({...p,id:mapId(p.id)!}))};
+      // Reviews must reference the persisted endpoint IDs, including objects created in this batch.
+      for(const p of mapped.estimates)if(p.reviewForecast)final.workItems.find(w=>w.id===p.workItemId)!.forecastReview=null;
+      for(const p of mapped.entities||[])if(p.data.reviewForecast)final.requirements.find(r=>r.id===p.id)!.forecastReview=null;
+      recordForecastReviews(final,analyse(final,input.target),mapped,actor);persistForecastReviews(final,mapped);
+    }
     for(const layout of input.changes.layouts||[]){
       const mapped=(id:string)=>id.startsWith('execute:')?'execute:'+mapId(id.slice(8)):id.startsWith('start:')?'start:'+mapId(id.slice(6)):id.startsWith('acceptance:')?'acceptance:'+mapId(id.slice(11)):mapId(id)!;
       const scope=layout.scope.startsWith('requirement:')?'requirement:'+mapId(layout.scope.slice(12)):layout.scope;
       sqlite.prepare('INSERT INTO diagram_layouts(project_id,scope,direction,positions,version,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(project_id,scope,direction) DO UPDATE SET positions=excluded.positions,version=excluded.version,updated_at=excluded.updated_at').run(projectId,scope,layout.direction,JSON.stringify(Object.fromEntries(Object.entries(layout.positions).map(([id,p])=>[mapped(id),p]))),layout.expectedVersion+1,now);
     }
+    if(prepared.commitment){const commitment=persistCommitment(prepared.commitment.value,batchId,addedIds,now);recordAudit(actor,'confirm_delivery_commitment','project',projectId,'确认项目交付承诺：'+commitment.reason);}
     recordAudit(actor, 'apply_dependency_changes', 'project', projectId, '保存 ' + prepared.count + ' 项画布修改');
     const revision = (sqlite.prepare('SELECT analysis_revision AS revision FROM projects WHERE id=?').get(projectId) as { revision: number }).revision;
     sqlite.prepare('INSERT INTO dependency_change_receipts (batch_id,project_id,actor_type,actor_id,content_hash,committed_revision,added_ids,created_at) VALUES (?,?,?,?,?,?,?,?)')

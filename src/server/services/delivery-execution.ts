@@ -1,3 +1,5 @@
+import {validateCoordination,persistCoordination} from './blocker-coordination';
+import {coordinationKeys} from '../../shared/blocker-coordination';
 import {randomUUID} from 'node:crypto';
 import {sqlite} from '../database';
 import type {Actor} from '../auth';
@@ -71,7 +73,8 @@ export function updateDeliveryRequirement(id:string,raw:JsonObject,actor:Actor,s
     if(nextMode==='work_items'&&r.executionMode==='direct'&&!split)fail('请通过拆分预览和整批保存建立剩余工作项');
     if(['blocked','pending_acceptance'].includes(r.status))fail('请先解除阻塞或返工，再拆分需求');
   }
-  const columns={...deliveryColumns,title:'title',ownerId:'owner_id',background:'background',acceptanceCriteria:'acceptance_criteria',referenceUrl:'reference_url',priority:'priority'};
+  const coordinationChanged=coordinationKeys.some(k=>value[k]!==undefined);if(coordinationChanged){if(r.status!=='blocked')fail('只有阻塞对象可以修改协调信息');Object.assign(value,validateCoordination(r.projectId,{...r,...value}));}
+  const columns={blockedCoordinatorId:'blocked_coordinator_id',blockedNextReviewAt:'blocked_next_review_at',blockedIssueId:'blocked_issue_id',...deliveryColumns,title:'title',ownerId:'owner_id',background:'background',acceptanceCriteria:'acceptance_criteria',referenceUrl:'reference_url',priority:'priority'};
   const changes=Object.entries(value).filter(([k])=>k in columns),now=new Date().toISOString();
   if(!changes.length)fail('没有需要保存的修改');
   sqlite.transaction(()=>{
@@ -80,6 +83,7 @@ export function updateDeliveryRequirement(id:string,raw:JsonObject,actor:Actor,s
     const extra=split&&r.executionMode==='direct'&&nextMode==='work_items'?',split_base_progress=?,split_at=?':'';
     const updated=sqlite.prepare('UPDATE requirements SET '+setters.join(',')+extra+',version=version+1,updated_at=? WHERE id=? AND version=?').run(...changes.map(([,v])=>v??null),...(extra?[Math.min(99,r.progress),now]:[]),now,id,r.version);
     assertVersionedWrite(updated,'需求');
+    if(coordinationChanged)persistCoordination('requirement',id,r.projectId,value,actor);
     if(value.forecastEnd!==undefined&&!split&&!deferNormalization)refreshDirectForecast(id);
     if(extra)event(id,'split','拆分剩余工作；已完成基线 '+r.progress+'%。'+(value.reason||''),actor);
     else recordAudit(actor,'update','requirement',id,'修改需求：'+r.title+(value.reason?'；'+value.reason:''));
@@ -94,6 +98,7 @@ export function directStartConditions(id:string){
 export function executeDirectRequirement(id:string,action:'start'|'progress'|'block'|'unblock'|'submit-acceptance'|'rework',raw:JsonObject,actor:Actor){
   const input=directRequirementCommandSchema.parse(raw),auth=requireAuthorizationActor(actor);
   return sqlite.transaction(()=>{
+    if(action!=='block'&&coordinationKeys.some(k=>input[k]!==undefined))fail('只有阻塞命令可以同时设置协调信息');
     const r=getRequirement(id);requireActiveProject(r.projectId);assertExpectedVersion(input,r.version);
     if(r.executionMode!=='direct')fail('此需求通过工作项推进，请操作对应工作项');
     if(action==='rework')assertRequirementAcceptor(id,actor);else assertRequirementOwnerOrManager(auth,id);
@@ -127,7 +132,7 @@ export function executeDirectRequirement(id:string,action:'start'|'progress'|'bl
       sqlite.prepare('UPDATE requirements SET forecast_duration=?,forecast_ready_at=? WHERE id=?').run(effort,today,id);
     }
     const updated=sqlite.prepare('UPDATE requirements SET '+sets+',version=version+1,updated_at=? WHERE id=? AND version=?').run(...args,now,id,r.version);
-    assertVersionedWrite(updated,'需求');event(id,action,content,actor);settleMilestones(r.projectId,actor);
+    assertVersionedWrite(updated,'需求');if(action==='block'){const v=validateCoordination(r.projectId,input);persistCoordination('requirement',id,r.projectId,v,actor);}event(id,action,content,actor);settleMilestones(r.projectId,actor);
     return getRequirement(id);
   }).immediate();
 }

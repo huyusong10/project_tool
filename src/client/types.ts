@@ -37,7 +37,7 @@ export type WorkItemTemplate = {
   dependencyMode?: 'legacy' | 'dependencies';
   id: string; projectId: string; name: string; description: string; createdAt: string; updatedAt: string; deletedAt?: string | null; items: TemplateItem[];
 };
-export type WorkItem = {
+export type WorkItem = import('../shared/forecast-basis').ExecutionMetadata & {
   durationDays?:number|null;
   dependencyRevision?:number; unmetPredecessors?:Array<{id:string;title:string}>;
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
@@ -60,6 +60,7 @@ export type IssueUpdate = {
   createdByAccountId: string | null; createdByName: string | null; createdAt: string; updatedAt: string;
 };
 export type Issue = {
+  nextReviewAt?:string|null;
   id: string; projectId: string; projectName: string; requirementId: string | null; requirementTitle: string | null;
   sourceRef: string | null; title: string; impact: string | null; reporter: string | null;
   ownerId: string | null; ownerName: string | null; status: string; priority: string; progress: number;

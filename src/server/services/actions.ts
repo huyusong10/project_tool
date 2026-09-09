@@ -31,10 +31,10 @@ type WorkItemRow = {
 
 type IssueRow = {
   id: string; requirementId: string | null; requirementTitle: string | null; requirementOwnerId: string | null;
-  title: string; ownerId: string | null; ownerName: string | null; dueDate: string | null; updatedAt: string;
+  title: string; ownerId: string | null; ownerName: string | null; dueDate: string | null; nextReviewAt:string|null; updatedAt: string;
 };
 
-const reasonSeverity: Record<ActionReasonCode, ActionSeverity> = {
+const reasonSeverity: Record<ActionReasonCode, ActionSeverity> = {forecast_review:'medium',blocker_resolved:'medium',follow_up:'medium',
   outside_delivery:'medium',acceptor_unavailable:'medium',
   path_blocked: 'high',
   planning: 'low',
@@ -124,9 +124,10 @@ export function listActionItems(
   const pathBlockers=new Map(pathAnalysis?.blockers.filter(b=>b.workItemId&&b.critical).map(b=>[b.workItemId!,b])||[]);
 
   for (const requirement of requirements) {
-    if (!manager && requirement.ownerId !== personId&&!(requirement.acceptanceOwnerValid&&requirement.acceptanceOwnerId===personId)) continue;
+    if (!manager && requirement.ownerId !== personId&&!(requirement.acceptanceOwnerValid&&requirement.acceptanceOwnerId===personId)&&requirement.blockerCoordination?.coordinatorId!==personId) continue;
     if(requirement.deliveryScope==='candidate'&&!requirement.pathRisk?.inDeliveryNetwork&&!['in_progress','blocked','pending_acceptance'].includes(requirement.status))continue;
     const reasonCodes = deriveRequirementActionReasons(requirement);
+    if(requirement.forecastBasis?.needsReview)reasonCodes.push('forecast_review');
     if (!reasonCodes.length) continue;
     items.push(makeItem({
       sourceType: 'requirement', sourceId: requirement.id, projectId: requirement.projectId,
@@ -149,9 +150,10 @@ export function listActionItems(
       AND w.status NOT IN ('completed','cancelled')`, personId, personId, filters.projectId);
   const workById=new Map(workItems.map(w=>[w.id,w]));
   for (const workItem of workItems) {
-    if (!manager && workItem.requirementOwnerId !== personId && workItem.ownerId !== personId && !workItem.actorCollaborator) continue;
+    if (!manager && workItem.requirementOwnerId !== personId && workItem.ownerId !== personId && !workItem.actorCollaborator&&pathNodes.get(workItem.id)?.blockerCoordination?.coordinatorId!==personId) continue;
     const parent=requirementsById.get(workItem.requirementId);if(parent?.deliveryScope==='candidate'&&!parent.pathRisk?.inDeliveryNetwork)continue;
     const reasonCodes = deriveWorkItemActionReasons(workItem);
+    if(pathNodes.get(workItem.id)?.forecastBasis?.needsReview)reasonCodes.push('forecast_review');
     const pathBlocker=pathBlockers.get(workItem.id);
     if(pathBlocker)reasonCodes.push('path_blocked');
     if (!reasonCodes.length) continue;
@@ -167,7 +169,7 @@ export function listActionItems(
 
   const issues = rows<IssueRow>(`SELECT i.id, i.requirement_id AS requirementId, r.title AS requirementTitle,
     r.owner_id AS requirementOwnerId, i.title, i.owner_id AS ownerId, p.name AS ownerName,
-    i.due_date AS dueDate, i.updated_at AS updatedAt
+    i.due_date AS dueDate, i.next_review_at AS nextReviewAt, i.updated_at AS updatedAt
     FROM issues i LEFT JOIN requirements r ON r.id=i.requirement_id
     LEFT JOIN people p ON p.id=i.owner_id
     WHERE i.project_id=? AND i.status<>'resolved'
@@ -177,17 +179,18 @@ export function listActionItems(
     const reasonCodes: ActionReasonCode[] = [];
     if (isOverdueByWorkday(issue.dueDate, today)) reasonCodes.push('overdue');
     if (!issue.ownerId) reasonCodes.push('unassigned');
+    if(issue.nextReviewAt&&issue.nextReviewAt<=today)reasonCodes.push('follow_up');
     if (!reasonCodes.length) continue;
     items.push(makeItem({
       sourceType: 'issue', sourceId: issue.id, projectId: filters.projectId,
       requirementId: issue.requirementId, contextTitle: issue.requirementTitle, title: issue.title,
-      reasonCodes, ownerId: issue.ownerId, ownerName: issue.ownerName, dueDate: issue.dueDate,
+      reasonCodes, ownerId: issue.ownerId, ownerName: issue.ownerName, dueDate: issue.dueDate, nextReviewAt:issue.nextReviewAt,
       overdueWorkdays: isOverdueByWorkday(issue.dueDate, today) ? Math.max(0, businessDayDelta(issue.dueDate, today)) : 0,
       targetPath: `/issues?issueId=${encodeURIComponent(issue.id)}`, updatedAt: issue.updatedAt,
     }));
   }
 
-  const visibleIds=new Set(requirements.filter(r=>manager||r.ownerId===personId||r.acceptanceOwnerValid&&r.acceptanceOwnerId===personId||workItems.some(w=>w.requirementId===r.id&&(w.ownerId===personId||w.actorCollaborator))).map(r=>r.id));
+  const visibleIds=new Set(requirements.filter(r=>manager||r.ownerId===personId||r.acceptanceOwnerValid&&r.acceptanceOwnerId===personId||r.blockerCoordination?.coordinatorId===personId||workItems.some(w=>w.requirementId===r.id&&(w.ownerId===personId||w.actorCollaborator||pathNodes.get(w.id)?.blockerCoordination?.coordinatorId===personId))).map(r=>r.id));
   for(const b of pathAnalysis?.blockers||[]){
     const node=pathNodes.get(b.nodeId);if(!node)continue;
     if(!manager&&(!b.requirementId||!visibleIds.has(b.requirementId)))continue;
@@ -207,6 +210,10 @@ export function listActionItems(
       affectedRequirementIds:affected,riskLevel:whole?parent?.riskLevel:(item.severity==='high'?'high':'medium'),riskEvaluated:whole?parent?.riskEvaluated:true,
       inDeliveryNetwork:whole?parent?.pathRisk?.inDeliveryNetwork:node?.inScope,anomalySince:whole?parent?.prioritySince:workById.get(item.sourceId)?.blockedAt,blockedAt:parent?.blockedAt||null};
     Object.assign(item,processingPriority(facts,today),{affectedRequirementIds:affected,minFloat:facts.minFloat,riskLevel:facts.riskLevel,riskEvaluated:facts.riskEvaluated});
+    const coordination=whole?parent?.blockerCoordination:node?.blockerCoordination;
+    if(coordination&&item.reasonCodes.some(c=>c==='blocked'||c==='path_blocked')){item.ownerId=coordination.coordinatorId;item.ownerName=coordination.coordinatorName;item.nextReviewAt=coordination.nextReviewAt;item.coordinationIssueId=coordination.issueId;
+      if(coordination.issueResolved)item.reasonCodes.push('blocker_resolved');else if(coordination.nextReviewAt&&coordination.nextReviewAt<=today)item.reasonCodes.push('follow_up');
+      item.reasons=item.reasonCodes.map(code=>({code,label:actionReasonLabels[code]}));}
     item.severity=item.processingPriority==='P0'||item.processingPriority==='P1'?'high':item.processingPriority==='P3'?'low':'medium';
   }
   // Suppress only path-derived parent risk already represented by a visible source. Independent reasons remain.
@@ -218,6 +225,23 @@ export function listActionItems(
     const allBlockedExplained=(parent.workItems||[]).filter(w=>w.status==='blocked').every(w=>sources.some(s=>s.sourceType==='work_item'&&s.sourceId===w.id));
     const pure=item.reasonCodes.every(c=>c==='high_risk'&&!base.highRisk||c==='blocked'&&parent.executionMode!=='direct'&&allBlockedExplained);
     if(pure)items.splice(i,1);
+  }
+  // Typed issue references are the only cross-object grouping key. Keep independent reasons on their source.
+  const linkedIssues=issues.map(i=>({...i,status:'in_progress'}));
+  for(const issue of linkedIssues){if(issue.status==='resolved')continue;
+    const sources=items.filter(i=>i.coordinationIssueId===issue.id&&i.reasonCodes.some(c=>c==='blocked'||c==='path_blocked'));if(!sources.length)continue;
+    const existing=items.find(i=>i.sourceType==='issue'&&i.sourceId===issue.id);
+    const strongest=[...sources,...existing?[existing]:[]].sort((a,b)=>compareProcessingPriority({...a,status:'blocked'},{...b,status:'blocked'}))[0];
+    const grouped={...strongest,id:'issue:'+issue.id,sourceType:'issue' as const,sourceId:issue.id,title:issue.title,contextTitle:null,requirementId:issue.requirementId,targetPath:'/issues?issueId='+encodeURIComponent(issue.id)};
+    const reasons=new Set<ActionReasonCode>(existing?.reasonCodes||[]),affected=new Map<string,{id:string;title:string}>();
+    for(const source of sources){for(const r of source.affectedRequirements||[])affected.set(r.id,r);for(const code of source.reasonCodes)if(['blocked','path_blocked','follow_up'].includes(code))reasons.add(code);
+      source.reasonCodes=source.reasonCodes.filter(c=>!['blocked','path_blocked','follow_up'].includes(c));source.reasons=source.reasonCodes.map(code=>({code,label:actionReasonLabels[code]}));
+      if(!source.reasonCodes.length)items.splice(items.indexOf(source),1);
+      else {const original=source.sourceType==='requirement'?requirementsById.get(source.sourceId):workById.get(source.sourceId);source.ownerId=original?.ownerId||null;source.ownerName=original?.ownerName||'项目经理';source.coordinationIssueId=null;source.nextReviewAt=null;}
+    }
+    for(const r of existing?.affectedRequirements||[])affected.set(r.id,r);
+    if(existing)items.splice(items.indexOf(existing),1);
+    grouped.reasonCodes=[...reasons];grouped.reasons=grouped.reasonCodes.map(code=>({code,label:actionReasonLabels[code]}));grouped.affectedRequirements=[...affected.values()];grouped.affectedRequirementIds=[...affected.keys()];items.push(grouped);
   }
   const byReason: Partial<Record<ActionReasonCode, number>> = {};
   for (const item of items) for (const reason of item.reasonCodes) byReason[reason] = (byReason[reason] || 0) + 1;

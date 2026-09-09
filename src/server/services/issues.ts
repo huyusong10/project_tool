@@ -33,6 +33,7 @@ export type IssueUpdateRecord = {
 };
 
 export type IssueRecord = {
+  nextReviewAt:string|null;
   id: string; projectId: string; projectName: string; requirementId: string | null; requirementTitle: string | null;
   sourceRef: string | null; title: string; impact: string | null; reporter: string | null;
   ownerId: string | null; ownerName: string | null; status: string; priority: string; progress: number;
@@ -42,7 +43,7 @@ export type IssueRecord = {
 };
 
 // 同毫秒记录按表内写入顺序排序；随机UUID不代表事件先后。
-const issueSelect = `SELECT i.id, i.project_id AS projectId, pr.name AS projectName,
+const issueSelect = `SELECT i.next_review_at AS nextReviewAt,i.id, i.project_id AS projectId, pr.name AS projectName,
   i.requirement_id AS requirementId, r.title AS requirementTitle, i.source_ref AS sourceRef,
   i.title, i.impact, i.reporter, i.owner_id AS ownerId, p.name AS ownerName,
   i.status, i.priority, i.progress, i.discovered_at AS discoveredAt, i.due_date AS dueDate,
@@ -195,7 +196,7 @@ export function getIssue(id: string, includeArchivedParent = false) {
 export function createIssue(input: JsonObject, actor: Actor) {
   if (Object.keys(input).some((key) => ![
     'projectId', 'title', 'impact', 'reporter', 'sourceRef', 'ownerId', 'requirementId',
-    'priority', 'discoveredAt', 'dueDate',
+    'priority', 'discoveredAt', 'dueDate', 'nextReviewAt',
   ].includes(key))) fail('新建问题不能提交未声明字段');
   if (['status', 'progress', 'resolvedAt', 'expectedVersion'].some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
     fail('新建问题不能提交状态、完成度、解决日期或版本字段');
@@ -215,6 +216,7 @@ export function createIssue(input: JsonObject, actor: Actor) {
       id, projectId, requirementId, nullableLabel(input.sourceRef, '来源标识'), title, nullableText(input.impact),
       nullableLabel(input.reporter, '提出人'), issueOwner(projectId, input.ownerId), 'in_progress', priority, 0, discoveredAt, dueDate, null, now, now,
     );
+    sqlite.prepare('UPDATE issues SET next_review_at=? WHERE id=?').run(nullableDate(input.nextReviewAt,'下次核对日期'),id);
     requireActiveProject(projectId, true);
     if (requirementId) issueRequirement(projectId, requirementId, true);
     issueOwner(projectId, input.ownerId, true);
@@ -239,7 +241,7 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
   }
   if (Object.keys(input).some((key) => ![
     'expectedVersion', 'projectId', 'title', 'impact', 'reporter', 'sourceRef',
-    'ownerId', 'requirementId', 'priority', 'discoveredAt', 'dueDate',
+    'ownerId', 'requirementId', 'priority', 'discoveredAt', 'dueDate', 'nextReviewAt',
   ].includes(key))) fail('问题编辑不能提交未声明字段');
   const title = input.title === undefined ? current.title : requireLabel(input.title, '问题标题');
   const requirementId = input.requirementId === undefined ? current.requirementId : issueRequirement(projectId, input.requirementId);
@@ -250,7 +252,8 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
   const reporter = input.reporter === undefined ? current.reporter : nullableLabel(input.reporter, '提出人');
   const discoveredAt = input.discoveredAt === undefined ? current.discoveredAt : requireDate(input.discoveredAt, '发现日期');
   const dueDate = current.status === 'deferred' ? null : input.dueDate === undefined ? current.dueDate : nullableDate(input.dueDate, '目标日期');
-  const changedFields = title !== current.title || requirementId !== current.requirementId || sourceRef !== current.sourceRef
+  const nextReviewAt=input.nextReviewAt===undefined?current.nextReviewAt:nullableDate(input.nextReviewAt,'下次核对日期');
+  const changedFields = nextReviewAt!==current.nextReviewAt||title !== current.title || requirementId !== current.requirementId || sourceRef !== current.sourceRef
     || impact !== current.impact || reporter !== current.reporter || ownerId !== current.ownerId
     || priority !== current.priority || discoveredAt !== current.discoveredAt || dueDate !== current.dueDate;
   if (!changedFields) {
@@ -265,8 +268,8 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
   const now = nowIso();
   sqlite.transaction(() => {
     const changed = sqlite.prepare(`UPDATE issues SET requirement_id=?, source_ref=?, title=?, impact=?, reporter=?, owner_id=?,
-      priority=?, discovered_at=?, due_date=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(
-      requirementId, sourceRef, title, impact, reporter, ownerId, priority, discoveredAt, dueDate, now, id, current.version,
+      priority=?, discovered_at=?, due_date=?, next_review_at=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(
+      requirementId, sourceRef, title, impact, reporter, ownerId, priority, discoveredAt, dueDate, nextReviewAt, now, id, current.version,
     );
     assertVersionedWrite(changed, '问题');
     audit(actor, 'update', 'issue', id, `更新问题：${title}`);

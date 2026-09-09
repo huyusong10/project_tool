@@ -1,3 +1,4 @@
+import {decorateForecastBasis} from './forecast-basis';
 import {type DeliveryFields,type ProcessingResult,processingPriority} from './delivery';
 import { addBusinessDays, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics, type RiskLevel } from './domain';
 import {arrangeLate,type Arrangement} from './late-schedule';
@@ -9,7 +10,7 @@ export type Dependency = {
 };
 export type PathMilestone={forecastEnd?:string|null;id:string;projectId:string;requirementId:string|null;title:string;targetDate:string|null;confirmationMode:'auto'|'manual';achievedAt:string|null;version:number;cancelled?:boolean};
 export type DiagramLayout={scope:string;direction:'right'|'down';version:number;positions:Record<string,{x:number;y:number}>};
-export type PathWork = {
+export type PathWork = import('./forecast-basis').ExecutionMetadata & {
   version?:number;
   arrangement?:Arrangement; arrangementAnchor?:string|null; acknowledgedDependencies?:string[];
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[];
@@ -33,6 +34,8 @@ export type PathInput = {
   milestones?:PathMilestone[]; layouts?:DiagramLayout[];
 };
 export type PathNode = {
+  blockerCoordination?:import('./blocker-coordination').BlockerCoordination;
+  forecastBasis?:import('./forecast-basis').ForecastBasis;
   version?:number;
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[]; delayed?:boolean; scheduleComplete?:boolean;
   id: string; requirementId: string | null; workItemId: string | null; kind: 'execution' | 'work' | 'start' | 'acceptance' | 'project' | 'milestone';
@@ -116,7 +119,7 @@ export function topologicalOrder(ids: string[], edges: Array<{ source: string; t
 
 type Internal = PathNode & { release: number; fixed: number | null; planDuration: number; planRelease: number; planFinish: number; planStart: number; actualStart: number | null };
 
-export function analysePaths(input: PathInput, requestedTarget = projectTarget): PathAnalysis {
+export function analysePaths(input: PathInput, requestedTarget = projectTarget, invalidReviews?:ReadonlySet<string>): PathAnalysis {
   const base = addBusinessDays(input.asOfDate, 0);
   const dates=new Map<number,string>(), starts=new Map<string,number>(), finishes=new Map<string,number>();
   dates.set(0,base);let firstDate=0,lastDate=0;
@@ -173,7 +176,8 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
       n.source = w.actualStart ? '按进度估算剩余工期' : '预计工期';
       if (w.status === 'completed' && w.actualEnd) { n.fixed = toFinish(w.actualEnd); n.remainingDays = 0; n.complete = true; n.source = '实际完成'; }
       else {
-        if (!duration) n.ownReasons.push('预计工期缺失');
+        if (!duration&&!(w.forecastEnd&&w.forecastDuration&&w.forecastReadyAt)) n.ownReasons.push('预计工期缺失');
+        if(invalidReviews?.has(n.id))n.ownReasons.push('上次预测核对已失效，请重新核对');
         if (!r.dependenciesReviewedAt) n.ownReasons.push('依赖尚未核对');
         if (w.status === 'cancelled') n.ownReasons.push('前置工作已取消');
         if (w.status === 'blocked') {
@@ -345,10 +349,12 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
   const target = byId.get(requestedTarget)!;
   const targetDate = requestedTarget === projectTarget ? input.projectEnd : target.kind === 'acceptance' ? reqById.get(target.requirementId!)!.plannedEnd : target.plannedEnd;
   const unplanned = input.requirements.filter(r => !r.deletedAt && r.status === 'planning').length;
-  return { projectId: input.projectId, projectName: input.projectName, revision: input.revision, asOfDate: input.asOfDate, calendarVersion: 'chinese-days-1.5.9',
+  const result=decorateForecastBasis(input,{ projectId: input.projectId, projectName: input.projectName, revision: input.revision, asOfDate: input.asOfDate, calendarVersion: 'chinese-days-1.5.9',
     target: requestedTarget, targetLabel: target.title, targetDate, forecastEnd: eligible.length || input.milestones?.some(m=>!m.requirementId&&!m.cancelled) || requestedTarget !== projectTarget ? target.forecastEnd : null,
     deadlineSlack: current.complete && (eligible.length || input.milestones?.some(m=>!m.requirementId&&!m.cancelled) || requestedTarget !== projectTarget) && targetDate ? toFinish(targetDate) - target.earliestFinish : null, complete: current.complete,
     coverage: { reviewed: input.requirements.filter(r => !r.deletedAt && r.dependenciesReviewedAt).length, total: input.requirements.filter(r => !r.deletedAt).length, unplanned },
     nodes: nodes.map(({ release: _r, fixed: _f, planDuration: _pd, planRelease: _pr, planFinish: _pf, planStart: _ps, actualStart: _as, ...n }) => n),
-    edges, requirements: input.requirements.filter(r => !r.deletedAt).map(r=>({...r,...viewMetrics.get(r.id),...risks[r.id],processingPriority:risks[r.id].processingPriority,priorityReasons:risks[r.id].priorityReasons,affectedRequirementIds:risks[r.id].affectedRequirementIds,priorityAsOfDate:input.asOfDate})), dependencies: input.dependencies, risks, blockers,milestones:input.milestones||[],layouts:input.layouts||[] };
+    edges, requirements: input.requirements.filter(r => !r.deletedAt).map(r=>({...r,...viewMetrics.get(r.id),...risks[r.id],processingPriority:risks[r.id].processingPriority,priorityReasons:risks[r.id].priorityReasons,affectedRequirementIds:risks[r.id].affectedRequirementIds,priorityAsOfDate:input.asOfDate})), dependencies: input.dependencies, risks, blockers,milestones:input.milestones||[],layouts:input.layouts||[] });
+  if(!invalidReviews){const stale=new Set(result.nodes.filter(n=>!n.complete&&n.forecastBasis?.review&&n.forecastBasis.reasons.some(r=>/基线已变化|前置交付条件已变化|上次确认的预计日期已过期/.test(r))).map(n=>n.id));if(stale.size)return analysePaths(input,requestedTarget,stale);}
+  return result;
 }
