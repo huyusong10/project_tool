@@ -164,3 +164,12 @@ it('历史待规划的直接需求在详情和路径统一为未开始，失效�
  expect((await detail(r.id)).readinessIssues?.join('')).toContain('负责人已失效');expect((await command(r.id,'start')).statusCode).toBe(400);
  const action=(await req('GET','/api/action-items?projectId='+projectId)).json().items.find((i:{sourceId:string})=>i.sourceId===r.id);expect(action.ownerName).toBe('项目经理');expect(action.reasonCodes).toContain('missing_owner');
 });
+
+it('直接执行提交验收后释放未来负荷，取消日期使用业务日期及原记录',async()=>{
+ const today=todayIso(),tomorrow=addBusinessDays(today,1),{r,projectId,owner}=await fixture({plannedStart:today,durationDays:3});
+ await command(r.id,'start');await command(r.id,'submit-acceptance',{content:'工作已交付，等待验收'});
+ const matrix=(await req('GET','/api/analytics/people-concurrency?projectId='+projectId+'&from='+today+'&to='+tomorrow)).json();expect(matrix.people.find((p:{id:string})=>p.id===owner.id).days.find((d:{date:string})=>d.date===tomorrow).count).toBe(0);
+ await command(r.id,'rework',{reason:'返工核对',progress:90});await command(r.id,'cancel',{reason:'停止执行'});
+ const {sqlite}=await import('../src/server/database');sqlite.prepare("UPDATE requirements SET updated_at='2030-01-01T00:00:00.000Z' WHERE id=?").run(r.id);
+ expect((await detail(r.id)).actualEnd).toBe(today);
+});

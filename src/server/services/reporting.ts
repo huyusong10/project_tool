@@ -59,7 +59,6 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
     new Map(rawItems.map((item) => [item.requirementId, item.requirementStatus])),
   );
   const items = rawItems.map((item) => {
-    if(directItems.includes(item)&&item.status==='cancelled')return {...item,effectiveActualEnd:item.updatedAt.slice(0,10)};
     if (item.status !== 'cancelled') return { ...item, effectiveActualEnd: item.actualEnd || asOfDate };
     return { ...item, effectiveActualEnd: cancellationDates.get(item.id)! };
   });
@@ -87,7 +86,7 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
   const result = people.map((person) => {
     const owned = itemsByPerson.get(person.id) || [];
     const days = dates.map((date) => {
-      const plannedItems = owned.filter((item) => !['completed', 'cancelled'].includes(item.status) && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd);
+      const plannedItems = owned.filter((item) => !['completed', 'cancelled', 'pending_acceptance'].includes(item.status) && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd);
       const actualItems = owned.filter((item) => item.actualStart && date >= item.actualStart && date <= item.effectiveActualEnd);
       const selected = date <= asOfDate ? actualItems : plannedItems;
       return { date, count: selected.length, plannedCount: plannedItems.length, actualCount: actualItems.length, items: selected.map((item) => ({ id: item.id, title: item.title, requirementId: item.requirementId, requirementTitle: item.requirementTitle })) };
