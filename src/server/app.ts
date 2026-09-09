@@ -7,6 +7,7 @@ import fastifyStatic from '@fastify/static';
 import { config } from './config';
 import './database';
 import { registerApiRoutes } from './routes';
+import { registerPathRoutes } from './path-routes';
 import { registerMcpRoute } from './mcp';
 import { authenticateApiToken } from './services';
 import { errorResponse } from './errors';
@@ -22,6 +23,7 @@ export async function buildApp() {
   });
   app.get('/health', async () => ({ status: 'ok', time: new Date().toISOString(), service: 'project-manage' }));
   registerApiRoutes(app);
+  registerPathRoutes(app);
   registerMcpRoute(app, (token) => token ? authenticateApiToken(token) : null);
   const distDir = config.webDistDir;
   if (fs.existsSync(distDir)) {

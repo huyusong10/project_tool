@@ -131,9 +131,7 @@ export function RequirementInfoForm({
   }}>
     <fieldset className="form-grid form-fieldset" disabled={pending}>
     <FormField label="需求标题" full><input name="title" value={draft.title} onChange={(event) => change("title", event.target.value)} required autoFocus /></FormField>
-    <FormField label="优先级"><select name="priority" value={draft.priority} onChange={(event) => change("priority", event.target.value)}>
-      <option value="P0">P0 · 紧急</option><option value="P1">P1 · 高</option><option value="P2">P2 · 中</option><option value="P3">P3 · 低</option>
-    </select></FormField>
+    <p className="field-help">处理优先级按风险和依赖自动计算。</p>
     <FormField label="需求负责人"><select value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
       <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
       {baseRequirement.ownerId && !ownerOptions.some((person) => person.id === baseRequirement.ownerId) && <option value={baseRequirement.ownerId}>{baseRequirement.ownerName || "历史负责人"} · 历史负责人</option>}
@@ -148,7 +146,7 @@ export function RequirementInfoForm({
     <FormError>{changed ? "需求已更新，请重新读取并核对；已保留你的输入。" : undefined}</FormError>
     <FormError>{draftOwnerUnavailable ? "所选负责人已不可用，请重新选择。" : undefined}</FormError>
     <FormError>{locked ? "需求已完成或取消，不能继续编辑信息。" : undefined}</FormError>
-    {refreshed && <p className="field-help field-full">已读取最新需求；未修改字段已同步，已输入内容保持不变。当前：{baseRequirement.title} · {baseRequirement.priority} · 负责人 {baseRequirement.ownerName || "未指定"}</p>}
+    {refreshed && <p className="field-help field-full">已读取最新需求；未修改字段已同步，已输入内容保持不变。当前：{baseRequirement.title} · {baseRequirement.processingPriority||'待评估'} · 负责人 {baseRequirement.ownerName || "未指定"}</p>}
     {readError && <FormError>{readError.message}</FormError>}
     {(changed || needsRefresh) && <div className="field-full"><button type="button" className="ghost-button" disabled={pending} onClick={() => void read()}>重新读取需求</button></div>}
     <FormSubmitActions submitLabel="保存信息" onCancel={onClose} pending={pending} disabled={blocked} />
@@ -281,9 +279,7 @@ export function RequirementCorrectionForm({
     <fieldset className="form-grid form-fieldset" disabled={pending}>
       <p className="field-help field-full">仅修正需求基本信息，不改变状态、进度、验收结果、排期或流程；系统会追加纠错记录。</p>
       <FormField label="需求标题" full><input aria-label="纠错后的需求标题" value={draft.title} onChange={(event) => change("title", event.target.value)} required autoFocus /></FormField>
-      <FormField label="优先级"><select aria-label="纠错后的优先级" value={draft.priority} onChange={(event) => change("priority", event.target.value)}>
-        <option value="P0">P0 · 紧急</option><option value="P1">P1 · 高</option><option value="P2">P2 · 中</option><option value="P3">P3 · 低</option>
-      </select></FormField>
+
       <FormField label="需求负责人"><select aria-label="纠错后的需求负责人" value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
         <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
         {baseline.ownerId && !ownerOptions.some((person) => person.id === baseline.ownerId) && <option value={baseline.ownerId}>{baseline.ownerName || "历史负责人"} · 历史负责人</option>}
@@ -502,7 +498,7 @@ export function RequirementScheduleForm({
             scheduleMode,
             ...(scheduleMode === "start" ? { plannedStart: scheduleDate } : { plannedEnd: scheduleDate }),
             expectedVersion: baseRequirement.version,
-            ...(baseRequirement.workItems.some((item) => item.status !== "not_started") ? { reason } : {}),
+            ...((!!baseRequirement.actualStart||baseRequirement.workItems.some((item) => item.status !== "not_started")) ? { reason } : {}),
             ...(templateChanged ? { templateId, confirmTemplateReset: true } : {}),
           },
           expected: (() => {
@@ -537,11 +533,11 @@ export function RequirementScheduleForm({
         <div className="schedule-mode-switch" role="radiogroup" aria-label="排期方式">
           <button type="button" className={scheduleMode === "start" ? "is-active" : ""} role="radio" aria-checked={scheduleMode === "start"} onClick={() => switchMode("start")}>
             <strong>按开始日期正排</strong>
-            <small>{baseRequirement.workItems.length ? "整体平移现有工作项，以选定日期开始" : "按当前流程生成工作项和计划"}</small>
+            <small>{baseRequirement.executionMode==='direct'?"按预计工期计算需求计划，保留实际日期":baseRequirement.workItems.length ? "整体平移现有工作项，以选定日期开始" : "按当前流程生成工作项和计划"}</small>
           </button>
           <button type="button" className={scheduleMode === "deadline" ? "is-active" : ""} role="radio" aria-checked={scheduleMode === "deadline"} onClick={() => switchMode("deadline")}>
             <strong>按截止日期倒排</strong>
-            <small>{baseRequirement.workItems.length ? "整体平移现有工作项，以选定日期结束" : "按当前流程倒排生成工作项和计划"}</small>
+            <small>{baseRequirement.executionMode==='direct'?"以选定日期完成，按预计工期反推开始":baseRequirement.workItems.length ? "整体平移现有工作项，以选定日期结束" : "按当前流程倒排生成工作项和计划"}</small>
           </button>
         </div>
       </FormField>
@@ -560,7 +556,7 @@ export function RequirementScheduleForm({
           }}
         />
       </FormField>
-      <FormField label="绑定流程" full>
+      {baseRequirement.executionMode!=='direct'&&<FormField label="绑定流程" full>
         <select value={templateId} disabled={!templatesQuery.data} onChange={(event) => {
           const value = event.target.value;
           if (value === (baseRequirement.templateId || "")) dirtyFields.current.delete("template"); else dirtyFields.current.add("template");
@@ -572,14 +568,14 @@ export function RequirementScheduleForm({
           {templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
         </select>
       </FormField>
-      {templatesQuery.error && <div className="warning-banner field-full">流程列表加载失败，当前只能调整日期，不能切换流程。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</button></div>}
+      }{templatesQuery.error && <div className="warning-banner field-full">流程列表加载失败，当前只能调整日期，不能切换流程。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</button></div>}
       {templateChanged && <p className="template-reset-warning field-full"><AlertTriangle size={16} />切换后会替换未执行工作项并按新流程重新排期；需求级说明保留。</p>}
-      {baseRequirement.workItems.some((item) => item.status !== "not_started") && <FormField label="变更原因" full><textarea name="reason" rows={3} required value={reason} onChange={(event) => {
+      {(!!baseRequirement.actualStart||baseRequirement.workItems.some((item) => item.status !== "not_started")) && <FormField label="变更原因" full><textarea name="reason" rows={3} required value={reason} onChange={(event) => {
         const value = event.target.value;
         if (value) dirtyFields.current.add("reason"); else dirtyFields.current.delete("reason");
         setReason(value);
       }} placeholder="需求已开始执行，请说明调整排期的原因" /></FormField>}
-      <p className="field-help field-full">{baseRequirement.workItems.length
+      <p className="field-help field-full">{baseRequirement.executionMode==='direct'?"保存需求计划日期；预计工期未知时保留未确定的一端。":baseRequirement.workItems.length
         ? "修改日期会整体平移已有工作项，保留相对间隔、人员和实际日期；每个工作项仍可单独修改自定义计划。"
         : "保存后按当前流程生成工作项；需求负责人与全部排期就绪后自动进入未开始。"} 流程设计后续变更不会同步到当前需求。</p>
       <FormError>{mutation.error?.message}</FormError>

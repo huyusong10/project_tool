@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Edit3, Plus } from "lucide-react";
+import { Archive, Edit3, Plus, Diamond } from "lucide-react";
 import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useProjects, useSession } from "../app-context";
 import { invalidateTemplateViews, keys } from "../query-keys";
@@ -13,13 +14,23 @@ import { EmptyState } from "../components/Feedback";
 
 const emptyTemplates: WorkItemTemplate[] = [];
 
+function TemplateItems({items}:{items:WorkItemTemplate['items']}) {
+  let workNumber=0;
+  const migratedSources=new Set(items.filter(i=>i.kind==='milestone'&&i.id.startsWith('milestone:')).map(i=>i.id.slice('milestone:'.length)));
+  const independentLabels=new Set(items.filter(i=>i.kind==='milestone').flatMap(i=>(i.predecessorIds||[]).map(id=>id+'\0'+i.title)));
+  return <ol>{items.map(item=>{
+    const milestone=item.kind==='milestone',legacyLabel=item.milestoneLabel&&!migratedSources.has(item.id)&&!independentLabels.has(item.id+'\0'+item.milestoneLabel)?item.milestoneLabel:null;
+    return <li key={item.id}><span aria-label={milestone?'里程碑':undefined}>{milestone?<Diamond size={14}/>:++workNumber}</span><div><b>{item.title}</b><small>第{item.startOffsetDays+1}个工作日 · {milestone?'里程碑':`持续${item.durationDays}个工作日`}{!milestone&&legacyLabel&&<em>◆ {legacyLabel}</em>}</small></div></li>;
+  })}</ol>;
+}
+
 export function TemplatesPage() {
   const { session } = useSession();
   const { projects, selectedProjectId } = useProjects();
   const client = useQueryClient();
-  const [editing, setEditing] = useState<WorkItemTemplate | null | undefined>(
-    undefined,
-  );
+  const [params,setParams]=useSearchParams();
+  const [editingSnapshot,setEditingSnapshot]=useState<WorkItemTemplate|null>(null);
+  const setEditing=(value:WorkItemTemplate|null|undefined)=>{setEditingSnapshot(value||null);const next=new URLSearchParams(params);next.delete('templateNode');if(value)next.delete('draft');if(value===undefined)next.delete('edit');else next.set('edit',value?.id||'new');setParams(next);};
   const [archiveTarget, setArchiveTarget] = useState<WorkItemTemplate | null>(null);
   const [archiveNeedsReopen, setArchiveNeedsReopen] = useState(false);
   const archiveSubmitting = useRef(false);
@@ -29,6 +40,7 @@ export function TemplatesPage() {
     enabled: Boolean(selectedProjectId),
   });
   const data = loadedTemplates || emptyTemplates;
+  const editing=params.get('edit')==='new'?null:params.get('edit')?(data.find(t=>t.id===params.get('edit'))||editingSnapshot||undefined):undefined;
   const listUnavailable = Boolean(error && !loadedTemplates);
   const canManage = canManageProject(session, selectedProjectId);
   const project = projects.find((item) => item.id === selectedProjectId);
@@ -72,6 +84,9 @@ export function TemplatesPage() {
     archiveSubmitting.current = true;
     archive.mutate(template);
   };
+  if (editing !== undefined && canManage) return <><TemplateForm key={selectedProjectId+':'+(editing?.id||'new')}
+    template={editing ? data.find(t=>t.id===editing.id)||editing : undefined} templateUnavailable={Boolean(editing&&loadedTemplates&&!data.some(t=>t.id===editing.id))}
+    projectId={selectedProjectId} onClose={()=>setEditing(undefined)} onSaved={(value,node)=>{setEditingSnapshot(value);const p=new URLSearchParams(params);p.set('edit',value.id);p.delete('draft');if(node)p.set('templateNode',node);setParams(p,{replace:true});}}/></>;
   return (
     <>
       <PageHeader
@@ -92,7 +107,7 @@ export function TemplatesPage() {
             <header>
               <div>
                 <strong className="template-name-line">{template.name}{project?.defaultTemplateId === template.id && <span className="template-default-badge">项目默认</span>}</strong>
-                <small>{template.items.length}个工作项 · {template.items.filter((item) => item.milestoneLabel).length}个里程碑</small>
+                <small>{template.items.filter(i=>i.kind!=='milestone').length}个工作项 · {template.items.filter((item) => item.kind==='milestone').length}个里程碑</small>
               </div>
               {canManage && (
                 <div className="row-actions">
@@ -109,14 +124,7 @@ export function TemplatesPage() {
               )}
             </header>
             {template.description && <p className="template-description" title={template.description}>{template.description}</p>}
-            <ol>
-              {template.items.map((item) => (
-                <li key={item.id}>
-                  <span>{item.sortOrder + 1}</span>
-                  <div><b>{item.title}</b><small>第{item.startOffsetDays + 1}个工作日 · 持续{item.durationDays}个工作日{item.milestoneLabel && <em>◆ {item.milestoneLabel}</em>}</small></div>
-                </li>
-              ))}
-            </ol>
+            <TemplateItems items={template.items}/>
           </article>
         ))}
         </section>

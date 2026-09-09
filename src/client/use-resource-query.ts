@@ -10,16 +10,22 @@ export function cacheResourceUpdate<T>(client: QueryClient, queryKey: QueryKey, 
   if (client.getQueryData(queryKey) !== null) client.setQueryData(queryKey, data);
 }
 
-/** 显式重读可以恢复已拒绝的缓存；请求期间出现的新拒绝结果优先于迟到的成功响应。 */
-export async function readResourceFresh<T>(client: QueryClient, queryKey: QueryKey, path: string, isActive: () => boolean) {
+/** 后台刷新和显式重读都不能覆盖请求期间出现的新拒绝结果。 */
+async function readResourceSnapshot<T>(client: QueryClient, queryKey: QueryKey, path: string, isActive: () => boolean, signal?: AbortSignal) {
   const beforeRead = client.getQueryState<T | null>(queryKey);
-  const data = await api<T>(path);
+  const data = await api<T>(path, { signal });
   if (!isActive()) return data;
   const current = client.getQueryState<T | null>(queryKey);
   if (current?.data === null && (beforeRead?.data !== null || current.dataUpdateCount !== beforeRead.dataUpdateCount)) {
     throw new ResourceReadInvalidatedError();
   }
-  client.setQueryData(queryKey, data);
+  return data;
+}
+
+/** 显式重读可以恢复已拒绝的缓存。 */
+export async function readResourceFresh<T>(client: QueryClient, queryKey: QueryKey, path: string, isActive: () => boolean) {
+  const data = await readResourceSnapshot<T>(client, queryKey, path, isActive);
+  if (isActive()) client.setQueryData(queryKey, data);
   return data;
 }
 
@@ -31,7 +37,7 @@ export function useResourceQuery<T>(queryKey: QueryKey, path: string, enabled = 
     enabled,
     queryFn: async ({ signal }) => {
       try {
-        const data = await api<T>(path, { signal });
+        const data = await readResourceSnapshot<T>(client, queryKey, path, () => !signal.aborted, signal);
         if (!signal.aborted) onRead?.(data);
         return data;
       } catch (error) {

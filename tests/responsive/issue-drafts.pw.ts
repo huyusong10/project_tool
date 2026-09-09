@@ -285,6 +285,8 @@ test('问题受控纠错成功但响应损坏时读回事件且不重复提交',
   await page.getByRole('button', { name: '受控纠错', exact: true }).click();
   const form = page.locator('.issue-correction-form');
   await form.getByLabel('问题纠错原因', { exact: true }).fill('补充原记录纠错说明');
+  await expect(form.getByRole('button', { name: '保存纠错', exact: true })).toBeDisabled();
+  await form.getByLabel('纠错后的问题标题', { exact: true }).fill('核对后的问题标题');
   await form.getByRole('button', { name: '保存纠错', exact: true }).click();
 
   await expect(form).toHaveCount(0);
@@ -545,10 +547,12 @@ test(`问题状态 ${location}详情失权后迟到的冲突重读不能恢复�
   state.writeFailure = 409;
   try {
     await submit.click();
-    await expect.poll(() => reads).toBe(1);
+    // 详情刷新与保存后的读回可以并行；等待首个请求被挂起即可。
+    await expect.poll(() => reads).toBeGreaterThanOrEqual(1);
     if (location === 'list') await page.locator('.issue-title-button').click();
     else await refresh(page);
-    await expect(page.getByText('问题访问已撤销', { exact: true })).toBeVisible();
+    await expect(page.getByText(/^(问题访问已撤销|问题不存在或当前账号无权访问。)$/)).toBeVisible();
+    await expect(page.locator('.issue-settings-shell')).toHaveCount(0);
     const lateResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/issues/i1' && response.status() === 200);
     release();
     await lateResponse;

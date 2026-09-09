@@ -1,0 +1,76 @@
+{
+  "measuredAt": "2026-09-09T04:42:00.271Z",
+  "device": {
+    "cpu": "Intel(R) Core(TM) i9-14900K",
+    "logicalCpus": 24,
+    "memoryGiB": 32,
+    "os": "win32 10.0.22631",
+    "node": "v24.15.0"
+  },
+  "analysis": {
+    "nodes": 2000,
+    "edges": 6000,
+    "serial": {
+      "samples": 20,
+      "p50Ms": 90.2,
+      "p95Ms": 126.4,
+      "maxMs": 126.4
+    },
+    "allBlocked": {
+      "samples": 20,
+      "p50Ms": 471.4,
+      "p95Ms": 687.8,
+      "maxMs": 708.9
+    }
+  },
+  "layouts": {
+    "20": {
+      "nodes": 20,
+      "edges": 60,
+      "layout": {
+        "samples": 20,
+        "p50Ms": 57.4,
+        "p95Ms": 75.5,
+        "maxMs": 77
+      },
+      "routing": {
+        "samples": 20,
+        "p50Ms": 5.2,
+        "p95Ms": 8.3,
+        "maxMs": 8.8
+      }
+    },
+    "80": {
+      "nodes": 80,
+      "edges": 240,
+      "layout": {
+        "samples": 20,
+        "p50Ms": 150.5,
+        "p95Ms": 166.9,
+        "maxMs": 197.1
+      },
+      "routing": {
+        "samples": 20,
+        "p50Ms": 47.2,
+        "p95Ms": 75.4,
+        "maxMs": 79.2
+      }
+    },
+    "200": {
+      "nodes": 200,
+      "edges": 600,
+      "layout": {
+        "samples": 20,
+        "p50Ms": 363.6,
+        "p95Ms": 416.8,
+        "maxMs": 419.5
+      },
+      "routing": {
+        "samples": 20,
+        "p50Ms": 219.4,
+        "p95Ms": 248.4,
+        "maxMs": 304
+      }
+    }
+  }
+}

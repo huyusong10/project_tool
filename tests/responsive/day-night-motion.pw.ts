@@ -14,12 +14,19 @@ test("系统日夜切换保留筛选、滚动与草稿；手选风格不被覆�
   const search = page.locator(".gantt-filter-search input");
   await search.fill("统一甘特");
   const scroll = page.locator(".project-gantt-scroll");
+  await expect(scroll).toHaveAttribute('data-gantt-ready', 'true');
+  const visibleAnchor = () => scroll.evaluate(e => {
+    const boundary = e.getBoundingClientRect().left + (e.querySelector('[data-gantt-fixed]')?.getBoundingClientRect().width || 0);
+    const tick = [...e.querySelectorAll<HTMLElement>('[data-date]')].find(t => t.getBoundingClientRect().right > boundary + 1);
+    return { date: tick?.dataset.date, offset: Math.round((tick?.getBoundingClientRect().left || 0) - boundary) };
+  });
   await scroll.evaluate((e) => { e.scrollLeft = 80; });
-  const before = await scroll.evaluate((e) => e.scrollLeft);
+  const before = await visibleAnchor();
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dcim");
   await expect(search).toHaveValue("统一甘特");
-  expect(await scroll.evaluate((e) => e.scrollLeft)).toBe(before);
+  // 自动补入左侧日期会改变 scrollLeft；屏幕上的日期与位置应保持不变。
+  await expect.poll(visibleAnchor).toEqual(before);
   await choose(page, "经典蓝白");
   await page.emulateMedia({ colorScheme: "light" });
   await page.emulateMedia({ colorScheme: "dark" });

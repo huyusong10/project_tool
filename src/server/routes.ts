@@ -1,3 +1,5 @@
+import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor,directStartConditions} from './services/delivery-execution';
+import {directRequirementCommandSchema,idSchema} from '../shared/contracts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z, type ZodType } from 'zod';
 import { todayIso } from '../shared/domain';
@@ -58,6 +60,7 @@ import {
   createWorkItemInputSchema,
   emptyCommandInputSchema,
   expectedVersionInputSchema,
+  startWorkItemInputSchema,
   idParamsSchema,
   issueCorrectionInputSchema,
   issueListInputSchema,
@@ -146,7 +149,7 @@ async function requireAuthenticated(request: FastifyRequest, reply: FastifyReply
   if (!request.actor) return reply.code(401).send({ error: '请先登录' });
 }
 
-async function requireReady(request: FastifyRequest, reply: FastifyReply) {
+export async function requireReady(request: FastifyRequest, reply: FastifyReply) {
   await requireAuthenticated(request, reply);
   if (reply.sent) return;
   if (request.actor?.mustChangePassword) return reply.code(403).send({ error: '请先修改初始密码', code: 'PASSWORD_CHANGE_REQUIRED' });
@@ -284,8 +287,11 @@ export function registerApiRoutes(app: FastifyInstance) {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
     return correctRequirement(id, parsedBody(request, requirementCorrectionInputSchema), actor);
   });
+  for(const action of ['start','block','unblock','submit-acceptance'] as const)app.post('/api/requirements/:id/'+action,{preHandler:requireReady},async request=>executeDirectRequirement(idOf(request),action,parsedBody(request,directRequirementCommandSchema),actorFromRequest(request)));
+  app.get('/api/requirements/:id/start-conditions',{preHandler:requireReady},async request=>{const id=idOf(request);assertRequirementOwnerOrManager(actorFromRequest(request),id);return directStartConditions(id);});
+  app.post('/api/requirements/:id/rework',{preHandler:requireReady},async request=>returnRequirement(idOf(request),parsedBody(request,reasonCommandSchema.extend({workItemIds:z.array(idSchema).optional(),progress:z.number().int().min(0).max(99).optional()})),actorFromRequest(request)));
   app.post('/api/requirements/:id/accept', { preHandler: requireReady }, async (request) => {
-    const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
+    const id = idOf(request); const actor = actorFromRequest(request); assertRequirementAcceptor(id,actor);
     return acceptRequirement(id, parsedBody(request, contentCommandSchema), actor);
   });
   app.post('/api/requirements/:id/complete-as-planned', { preHandler: requireReady }, async (request) => {
@@ -348,7 +354,7 @@ export function registerApiRoutes(app: FastifyInstance) {
     return updateWorkItem(id, parsedBody(request, updateWorkItemInputSchema), actor);
   });
   for (const [action, handler, inputSchema] of [
-    ['start', (id: string, input: any, actor: any) => startWorkItem(id, input, actor), expectedVersionInputSchema],
+    ['start', (id: string, input: any, actor: any) => startWorkItem(id, input, actor), startWorkItemInputSchema],
     ['complete', (id: string, input: any, actor: any) => completeWorkItem(id, input, actor), optionalContentCommandSchema],
     ['block', (id: string, input: any, actor: any) => blockWorkItem(id, input, actor), reasonCommandSchema],
     ['unblock', (id: string, input: any, actor: any) => unblockWorkItem(id, input, actor), expectedVersionInputSchema],

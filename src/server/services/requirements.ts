@@ -1,11 +1,16 @@
+import {type DeliveryFields,type ProcessingResult,deliveryReadiness,processingPriority} from '../../shared/delivery';
 import { sqlite } from '../database';
 import { config } from '../config';
 import { notFound } from '../errors';
 import { businessDateFromDateTime, calculateWorkItemGap, deriveRequirementMetrics, todayIso } from '../../shared/domain';
 import { getCancellationHistory } from './work-item-history';
 import { chunkValues } from './support';
+import { getPathAnalysis, startConditions } from './paths';
+import type { PathRisk } from '../../shared/paths';
 
 export type WorkItemRecord = {
+  durationDays?:number|null;
+  dependencyRevision?:number; unmetPredecessors?:Array<{id:string;title:string}>;
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; actualStart: string | null; actualEnd: string | null;
   cancelledAt?: string | null;
@@ -14,7 +19,9 @@ export type WorkItemRecord = {
   assigneeIds: string[]; assigneeNames: string[];
 };
 
-export type RequirementRecord = {
+export type RequirementRecord = DeliveryFields & Partial<ProcessingResult> & {
+  readinessIssues?:string[];
+  pathRisk?: PathRisk; pathEnabled?:number;
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   background: string | null; acceptanceCriteria: string | null; referenceUrl: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number; progressGap?: number;
@@ -27,33 +34,37 @@ export type RequirementRecord = {
   issueSummary?: { active: number; overdue: number };
 };
 
-export const requirementSelect = `SELECT r.id, r.project_id AS projectId, pr.name AS projectName,
+export const requirementSelect = `SELECT EXISTS(SELECT 1 FROM project_people op JOIN accounts oa ON oa.person_id=op.person_id JOIN people person ON person.id=op.person_id WHERE op.project_id=r.project_id AND op.person_id=r.owner_id AND op.project_role IN ('member','manager') AND oa.status='active' AND oa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS ownerValid,r.delivery_scope AS deliveryScope,r.execution_mode AS executionMode,r.acceptance_owner_id AS acceptanceOwnerId,
+    r.actual_start AS actualStart,r.actual_end AS actualEnd,r.blocked_at AS blockedAt,r.blocked_reason AS blockedReason,
+    r.forecast_duration AS forecastDuration,r.forecast_ready_at AS forecastReadyAt,r.duration_days AS durationDays,r.forecast_end AS forecastEnd,r.unblock_estimate AS unblockEstimate,r.split_base_progress AS splitBaseProgress,r.split_at AS splitAt,
+    (SELECT name FROM people WHERE id=r.acceptance_owner_id) AS acceptanceOwnerName,
+    EXISTS(SELECT 1 FROM project_people ap JOIN accounts aa ON aa.person_id=ap.person_id JOIN people person ON person.id=ap.person_id WHERE ap.project_id=r.project_id AND ap.person_id=r.acceptance_owner_id AND ap.project_role IN ('member','manager') AND aa.status='active' AND aa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS acceptanceOwnerValid,r.id, r.project_id AS projectId, pr.name AS projectName,
   r.template_id AS templateId, t.name AS templateName, r.title,
   r.background, r.acceptance_criteria AS acceptanceCriteria, r.reference_url AS referenceUrl,
   r.owner_id AS ownerId, p.name AS ownerName, r.status, r.planned_start AS plannedStart,
   r.planned_end AS plannedEnd, r.progress, r.risk_level AS riskLevel, r.priority,
   r.accepted_at AS acceptedAt, r.accepted_by_account_id AS acceptedByAccountId, r.version,
-  r.created_at AS createdAt, r.updated_at AS updatedAt, r.deleted_at AS deletedAt
+  r.created_at AS createdAt, r.updated_at AS updatedAt, r.deleted_at AS deletedAt,
+  (EXISTS(SELECT 1 FROM requirements reviewed WHERE reviewed.project_id=r.project_id AND reviewed.dependencies_reviewed_at IS NOT NULL) OR EXISTS(SELECT 1 FROM dependency_edges dep WHERE dep.project_id=r.project_id)) AS pathEnabled
   FROM requirements r JOIN projects pr ON pr.id = r.project_id
   LEFT JOIN people p ON p.id = r.owner_id
   LEFT JOIN work_item_templates t ON t.id = r.template_id`;
 
 export function requirementCompletionDate(requirement: RequirementRecord) {
   if (requirement.status !== 'completed') return null;
-  const items = (requirement.workItems || []).filter((item) => item.status !== 'cancelled');
-  if (!items.length || items.some((item) => !item.actualEnd)) return null;
-  return items.map((item) => item.actualEnd!).sort().at(-1) || null;
+  return requirement.acceptedAt?.slice(0,10)||null;
 }
 
-export const workItemSelect = `SELECT w.id, w.requirement_id AS requirementId, w.template_item_id AS templateItemId,
+export const workItemSelect = `SELECT w.duration_days AS durationDays,w.id, w.requirement_id AS requirementId, w.template_item_id AS templateItemId,
   w.title, w.owner_id AS ownerId, p.name AS ownerName, w.status,
   w.planned_start AS plannedStart, w.planned_end AS plannedEnd,
   w.actual_start AS actualStart, w.actual_end AS actualEnd, w.forecast_end AS forecastEnd,
   w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.milestone_label AS milestoneLabel, w.progress,
-  w.sort_order AS sortOrder, w.version, w.created_at AS createdAt, w.updated_at AS updatedAt
+  w.sort_order AS sortOrder, w.version, w.created_at AS createdAt, w.updated_at AS updatedAt,
+  (w.status='not_started' AND EXISTS(SELECT 1 FROM dependency_edges dep WHERE dep.target_requirement_id=w.requirement_id)) AS hasDependencies
   FROM work_items w LEFT JOIN people p ON p.id = w.owner_id`;
 
-type WorkItemRow = Omit<WorkItemRecord, 'collaborators' | 'assigneeIds' | 'assigneeNames'>;
+type WorkItemRow = Omit<WorkItemRecord, 'collaborators' | 'assigneeIds' | 'assigneeNames'> & {hasDependencies:number};
 type CollaboratorRow = { workItemId: string; id: string; name: string; jobTitle: string | null };
 
 function rows<T>(sql: string, ...params: unknown[]) {
@@ -96,12 +107,15 @@ function loadWorkItemsByRequirementIds(requirementIds: string[], requirementStat
     : [];
   const cancellationHistory = getCancellationHistory(items, requirementStatuses, cancelledRequirements);
 
-  for (const item of items) {
+  const conditionReqIds=[...new Set(items.filter(i=>i.hasDependencies).map(i=>i.requirementId))];
+  const conditions=new Map(conditionReqIds.flatMap((_,i)=>i%200===0?[...startConditions(conditionReqIds.slice(i,i+200))]:[]));
+  for (const {hasDependencies:_hasDependencies,...item} of items) {
     const itemCollaborators = (collaboratorsByWorkItem.get(item.id) || [])
       .filter((person) => person.id !== item.ownerId)
       .map(({ workItemId: _workItemId, ...person }) => person);
     result.get(item.requirementId)!.push({
       ...item,
+      ...conditions.get(item.id),
       cancelledAt: cancellationHistory.workItemDates.get(item.id) || null,
       collaborators: itemCollaborators,
       assigneeIds: [item.ownerId, ...itemCollaborators.map((person) => person.id)].filter(Boolean) as string[],
@@ -116,8 +130,13 @@ export function getWorkItems(requirementId: string) {
 }
 
 function requirementActualRange(requirement: RequirementRecord, workItems: WorkItemRecord[], asOfDate: string, cancelledAt?: string) {
+  if(requirement.executionMode==='direct'){
+    const start=requirement.actualStart||null;
+    const stop=requirement.status==='cancelled'&&start?(cancelledAt||businessDateFromDateTime(requirement.updatedAt)):null;
+    return {actualStart:start,actualEnd:requirement.actualEnd||(stop&&start?(stop<start?start:stop):['in_progress','blocked'].includes(requirement.status)&&start?asOfDate:null)};
+  }
   const actualStarts = workItems.map((item) => item.actualStart).filter((value): value is string => Boolean(value)).sort();
-  const actualStart = actualStarts[0] || null;
+  const actualStart = [requirement.actualStart,...actualStarts].filter((v):v is string=>!!v).sort()[0]||null;
   if (!actualStart) return { actualStart: null, actualEnd: null };
   if (requirement.status === 'cancelled') {
     const stop = cancelledAt || businessDateFromDateTime(requirement.updatedAt);
@@ -133,14 +152,17 @@ function requirementActualRange(requirement: RequirementRecord, workItems: WorkI
 function enrichRequirement(requirement: RequirementRecord, workItems: WorkItemRecord[], asOfDate: string, cancelledAt?: string): RequirementRecord {
   const metrics = deriveRequirementMetrics(requirement, workItems, asOfDate, config.highRiskDelayDays);
   const gaps = workItems.map((item) => calculateWorkItemGap(item, asOfDate));
+  const {pathEnabled:_pathEnabled,...value}=requirement;
   return {
-    ...requirement, ...metrics, ...requirementActualRange(requirement, workItems, asOfDate, cancelledAt), asOfDate,
+    ...value, ...metrics, ...requirementActualRange(requirement, workItems, asOfDate, cancelledAt), asOfDate,
+    readinessIssues:deliveryReadiness({...requirement,...metrics},workItems,metrics.scheduleComplete),
     workItems,
     durationVariance: gaps.length ? Math.max(...gaps.map((gap) => gap.durationVariance), 0) : 0,
   };
 }
 
-export function listRequirements(filters: { projectId?: string; ownerId?: string; includeDeleted?: boolean; view?: string; status?: string } = {}, asOfDate = todayIso()) {
+export const requirementAnalysisSnapshots=new WeakMap<RequirementRecord[],Map<string,import('../../shared/paths').PathAnalysis>>();
+export function listRequirements(filters: { deliveryScope?:'committed'|'candidate';projectId?: string; ownerId?: string; includeDeleted?: boolean; view?: string; status?: string } = {}, asOfDate = todayIso()) {
   const where = [filters.includeDeleted ? '1=1' : 'r.deleted_at IS NULL'];
   const params: unknown[] = [];
   if (filters.projectId) { where.push('r.project_id=?'); params.push(filters.projectId); }
@@ -156,9 +178,16 @@ export function listRequirements(filters: { projectId?: string; ownerId?: string
     asOfDate,
     loadedWorkItems.requirementCancellationDates.get(requirement.id),
   ));
+  const analyses = new Map([...new Set(requirements.map(r => r.projectId))].map(projectId => [projectId, getPathAnalysis(projectId, undefined, asOfDate)]));
+  result = result.map(r => {
+    const pathRisk = analyses.get(r.projectId)?.risks[r.id];
+    return pathRisk ? { ...r, ...pathRisk, pathRisk } : {...r,...processingPriority(r,asOfDate)};
+  });
+  if(filters.deliveryScope)result=result.filter(r=>r.deliveryScope===filters.deliveryScope);
   if (filters.status) result = result.filter((item) => item.status === filters.status);
   if (filters.view === 'delayed') result = result.filter((item) => item.delayed);
   if (filters.view === 'high_risk') result = result.filter((item) => item.highRisk);
+  requirementAnalysisSnapshots.set(result,analyses);
   return result;
 }
 
@@ -184,5 +213,8 @@ export function getRequirement(id: string, includeDeleted = false) {
     COALESCE(SUM(CASE WHEN due_date IS NOT NULL AND business_day_delta(due_date, ?)>0 THEN 1 ELSE 0 END), 0) AS overdue
     FROM issues WHERE requirement_id=? AND status<>'resolved'`, asOfDate, id) || { active: 0, overdue: 0 };
   const issueSummary = { active: Number(issueCounts.active || 0), overdue: Number(issueCounts.overdue || 0) };
-  return { ...result, progressUpdates, issueSummary };
+  const pathAnalysis = getPathAnalysis(requirement.projectId, undefined, asOfDate),pathRisk=pathAnalysis?.risks[id];
+  const milestones=rows<import('../../shared/paths').PathMilestone>('SELECT id,project_id AS projectId,requirement_id AS requirementId,title,target_date AS targetDate,confirmation_mode AS confirmationMode,achieved_at AS achievedAt,version,cancelled FROM milestones WHERE requirement_id=?',id);
+  for(const m of milestones)m.forecastEnd=pathAnalysis?.nodes.find(n=>n.id===m.id)?.forecastEnd||null;
+  return { ...result,milestones, ...(pathRisk ? { ...pathRisk, pathRisk } : {}), progressUpdates, issueSummary };
 }

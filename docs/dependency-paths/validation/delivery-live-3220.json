@@ -1,0 +1,139 @@
+{
+  "base": "http://127.0.0.1:3220",
+  "checkedAt": "2026-09-09T05:06:36.433Z",
+  "changes": [
+    {
+      "project": "路径异常试用",
+      "beforeForecast": null,
+      "afterForecast": null,
+      "complete": false,
+      "requirements": [
+        {
+          "id": "3f20ba40-a510-4807-aaee-a605efdfd838",
+          "title": "A 平台设计与联调",
+          "status": "in_progress",
+          "progress": 0,
+          "risk": "high",
+          "scope": "committed",
+          "mode": "work_items",
+          "priority": "P0",
+          "workItems": 2,
+          "beforeStatus": "in_progress",
+          "beforeRisk": "high"
+        },
+        {
+          "id": "5a1f8097-78b0-4903-9c9f-a2bc6915a063",
+          "title": "E 等待验收",
+          "status": "pending_acceptance",
+          "progress": 100,
+          "risk": "unknown",
+          "scope": "committed",
+          "mode": "work_items",
+          "priority": "P2",
+          "workItems": 2,
+          "beforeStatus": "pending_acceptance",
+          "beforeRisk": "unknown"
+        },
+        {
+          "id": "29f11d45-2635-4640-8f60-be03921ef533",
+          "title": "C 已取消的交付点",
+          "status": "not_started",
+          "progress": 0,
+          "risk": "high",
+          "scope": "committed",
+          "mode": "work_items",
+          "priority": "P1",
+          "workItems": 2,
+          "beforeStatus": "not_started",
+          "beforeRisk": "high"
+        },
+        {
+          "id": "3094dabd-8492-4318-bc69-3345d1096958",
+          "title": "D 等待被取消交付",
+          "status": "not_started",
+          "progress": 0,
+          "risk": "high",
+          "scope": "committed",
+          "mode": "work_items",
+          "priority": "P1",
+          "workItems": 2,
+          "beforeStatus": "not_started",
+          "beforeRisk": "high"
+        },
+        {
+          "id": "d287ed0c-9489-42cf-914e-1fffd4076647",
+          "title": "B 业务开发与联调",
+          "status": "not_started",
+          "progress": 0,
+          "risk": "high",
+          "scope": "committed",
+          "mode": "work_items",
+          "priority": "P0",
+          "workItems": 2,
+          "beforeStatus": "not_started",
+          "beforeRisk": "high"
+        }
+      ]
+    },
+    {
+      "project": "交付依赖试用",
+      "beforeForecast": "2026-09-17",
+      "afterForecast": null,
+      "complete": false,
+      "requirements": [
+        {
+          "id": "f5c67118-2e63-4cca-b60d-fe4528128e7c",
+          "title": "待规划的后续报表需求",
+          "status": "not_started",
+          "progress": 0,
+          "risk": "unknown",
+          "scope": "committed",
+          "mode": "direct",
+          "priority": "P2",
+          "workItems": 0,
+          "beforeStatus": "planning",
+          "beforeRisk": "unknown"
+        },
+        {
+          "id": "3c1bef7a-29ad-4afb-b61f-56c30b16648f",
+          "title": "基础接口交付",
+          "status": "blocked",
+          "progress": 0,
+          "risk": "high",
+          "scope": "committed",
+          "mode": "work_items",
+          "priority": "P0",
+          "workItems": 3,
+          "beforeStatus": "blocked",
+          "beforeRisk": "high"
+        },
+        {
+          "id": "4ce981e6-ed36-4861-91a6-242a0e21e338",
+          "title": "版本验证与发布",
+          "status": "not_started",
+          "progress": 0,
+          "risk": "high",
+          "scope": "committed",
+          "mode": "work_items",
+          "priority": "P0",
+          "workItems": 2,
+          "beforeStatus": "not_started",
+          "beforeRisk": "high"
+        },
+        {
+          "id": "7eac54ab-bc11-4618-bb75-996a483e4431",
+          "title": "订单业务上线",
+          "status": "not_started",
+          "progress": 0,
+          "risk": "high",
+          "scope": "committed",
+          "mode": "work_items",
+          "priority": "P0",
+          "workItems": 2,
+          "beforeStatus": "not_started",
+          "beforeRisk": "high"
+        }
+      ]
+    }
+  ]
+}

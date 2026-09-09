@@ -50,6 +50,7 @@ export function WorkItemSettingsDialog({
   canManageRequirement,
   onClose,
   onOpenPlan,
+  onOpenDependencies,
   onReload,
 }: {
   requirement: Requirement;
@@ -57,6 +58,7 @@ export function WorkItemSettingsDialog({
   canManageRequirement: boolean;
   onClose: () => void;
   onOpenPlan: () => void;
+  onOpenDependencies?: () => void;
   onReload: () => Promise<Requirement>;
 }) {
   const client = useQueryClient();
@@ -286,6 +288,7 @@ export function WorkItemSettingsDialog({
         <div className="work-editor-modal-toolbar">
           <span>配置名称、人员、计划日期和顺序；日常推进请直接在甘特图操作</span>
           <div className="panel-actions">
+            {onOpenDependencies&&<button className="ghost-button" onClick={onOpenDependencies}>前置关系与工期</button>}
             {canManageRequirement && (!requirement.workItems.length || requirement.workItems.some((item) => !['completed', 'cancelled'].includes(item.status) && (!item.plannedStart || !item.plannedEnd))) && <button className="ghost-button" onClick={onOpenPlan}>补全计划</button>}
             <button className="primary-button" disabled={Boolean(newItem) || createItem.isPending || createReading} onClick={startNewItem}><Plus size={15} />添加工作项</button>
           </div>
@@ -315,7 +318,7 @@ export function WorkItemSettingsDialog({
               const revisionProps = { revision: item.version, revisionSubject: "工作项", onReloadRevision: () => reloadWorkItemRevision(item.id) };
               const canDelete = canDeleteWorkItem(item, workItemHistoryIds.has(item.id));
               return <tr ref={sortable.setNodeRef} className={`sortable-item${sortable.isDragging ? " is-dragging" : ""}${sortable.isOver ? " is-over" : ""}`}>
-                <td><div className="work-item-name-editor"><InlineTextCell {...revisionProps} disabled={itemLocked} value={item.title} label="工作项名称" required onSave={(title, expectedVersion) => saveWorkItem(item, { title }, expectedVersion)} /><InlineTextCell {...revisionProps} disabled={itemLocked} value={item.milestoneLabel} label="里程碑名称" placeholder="添加里程碑" onSave={(milestoneLabel, expectedVersion) => saveWorkItem(item, { milestoneLabel: milestoneLabel || null }, expectedVersion)} renderValue={(value) => <span className="work-item-milestone-edit">◆ {value}</span>} /></div></td>
+                <td><div className="work-item-name-editor"><InlineTextCell {...revisionProps} disabled={itemLocked} value={item.title} label="工作项名称" required onSave={(title, expectedVersion) => saveWorkItem(item, { title }, expectedVersion)} /></div></td>
                 <td><InlineSelectCell {...revisionProps} disabled={itemLocked} value={item.ownerId} label="主负责人" options={[{ value: "", label: "未分配" }, ...assignmentOptions]} reason={requirement.workItems.some((workItem) => workItem.status !== "not_started") ? { required: true, label: "调整原因", placeholder: "需求已开始执行，请说明切换主负责人的原因" } : undefined} onSave={(ownerId, reason, expectedVersion) => saveWorkItem(item, { ownerId: ownerId || null, assigneeIds: [ownerId, ...item.collaborators.map((person) => person.id).filter((personId) => personId !== ownerId)].filter(Boolean), ...(reason ? { reason } : {}) }, expectedVersion)} placeholder="未分配" /></td>
                 <td><InlineMultiSelectCell {...revisionProps} disabled={itemLocked} value={item.collaborators.map((person) => person.id)} label="协作人员" options={assignmentOptions} excludedValues={item.ownerId ? [item.ownerId] : []} onSave={(collaboratorIds, expectedVersion) => saveWorkItem(item, { assigneeIds: [item.ownerId, ...collaboratorIds].filter(Boolean) }, expectedVersion)} placeholder="无协作人员" renderValue={(selected) => selected.length ? <span className="inline-person-summary">{selected.slice(0, 2).map((person) => person.label).join("、")}{selected.length > 2 ? ` +${selected.length - 2}` : ""}</span> : "无协作人员"} /></td>
                 <td><InlineDateCell {...revisionProps} disabled={itemLocked} value={item.plannedStart} label="计划开始" reason={item.status === "not_started" ? undefined : { required: true, label: "调整原因", placeholder: "请说明计划开始日期调整原因" }} onSave={(plannedStart, reason, expectedVersion) => saveWorkItem(item, { plannedStart, ...(reason ? { reason } : {}) }, expectedVersion)} /></td>
@@ -329,7 +332,7 @@ export function WorkItemSettingsDialog({
             }}
           />
           {newItem && <tr ref={newItemRowRef} className="work-inline-new-row">
-            <td><div className="work-item-name-editor"><InlineTextCell disabled={createItem.isPending || createReading} value={newItem.title} label="新工作项名称" required placeholder="填写名称" onSave={async (title) => setNewItem((current) => current && ({ ...current, title }))} /><InlineTextCell disabled={createItem.isPending || createReading} value={newItem.milestoneLabel} label="新工作项里程碑" placeholder="添加里程碑" onSave={async (milestoneLabel) => setNewItem((current) => current && ({ ...current, milestoneLabel }))} renderValue={(value) => <span className="work-item-milestone-edit">◆ {value}</span>} /></div></td>
+            <td><div className="work-item-name-editor"><InlineTextCell disabled={createItem.isPending || createReading} value={newItem.title} label="新工作项名称" required placeholder="填写名称" onSave={async (title) => setNewItem((current) => current && ({ ...current, title }))} /></div></td>
             <td><InlineSelectCell disabled={createItem.isPending || createReading} value={newItem.ownerId} label="新工作项主负责人" options={[{ value: "", label: "未分配" }, ...eligiblePeople.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))]} onSave={async (ownerId) => setNewItem((current) => current && ({ ...current, ownerId, collaboratorIds: current.collaboratorIds.filter((personId) => personId !== ownerId) }))} placeholder="未分配" /></td>
             <td><InlineMultiSelectCell disabled={createItem.isPending || createReading} value={newItem.collaboratorIds} label="新工作项协作人员" options={eligiblePeople.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))} excludedValues={newItem.ownerId ? [newItem.ownerId] : []} onSave={async (collaboratorIds) => setNewItem((current) => current && ({ ...current, collaboratorIds }))} placeholder="选择人员" /></td>
             <td><InlineDateCell disabled={createItem.isPending || createReading} value={newItem.plannedStart} label="新工作项计划开始" onSave={async (plannedStart) => setNewItem((current) => current && ({ ...current, plannedStart: plannedStart || "" }))} /></td>

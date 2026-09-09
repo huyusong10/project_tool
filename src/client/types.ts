@@ -27,13 +27,19 @@ export type Person = {
   createdAt: string; updatedAt: string; deletedAt?: string | null;
 };
 export type TemplateItem = {
+  kind?:'work'|'milestone';arrangement?:'early'|'late';arrangementAnchor?:string|null;confirmationMode?:'auto'|'manual';
+  predecessorIds?: string[];
   id: string; templateId: string; title: string; sortOrder: number;
   startOffsetDays: number; durationDays: number; milestoneLabel: string | null; deletedAt?: string | null;
 };
 export type WorkItemTemplate = {
+  layout?:{positions:Record<string,{x:number;y:number}>;version:number;direction:'right'|'down'};
+  dependencyMode?: 'legacy' | 'dependencies';
   id: string; projectId: string; name: string; description: string; createdAt: string; updatedAt: string; deletedAt?: string | null; items: TemplateItem[];
 };
 export type WorkItem = {
+  durationDays?:number|null;
+  dependencyRevision?:number; unmetPredecessors?:Array<{id:string;title:string}>;
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
   collaborators: Array<{ id: string; name: string; jobTitle: string | null }>;
   assigneeIds: string[]; assigneeNames: string[];
@@ -68,7 +74,10 @@ export type IssuePage = {
     active: number; highPriority: number; overdue: number; unassigned: number; closureRate: number;
   };
 };
-export type Requirement = {
+export type Requirement = import('../shared/delivery').DeliveryFields & Partial<import('../shared/delivery').ProcessingResult> & {
+  readinessIssues?:string[];
+  milestones?:import('../shared/paths').PathMilestone[];
+  pathRisk?: import('../shared/paths').PathRisk;
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   background?: string | null; acceptanceCriteria?: string | null; referenceUrl?: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number; progressGap: number;
@@ -164,7 +173,7 @@ export type MyWorkItem = WorkItem & {
   projectId: string; projectName: string; requirementTitle: string; requirementStatus: string;
   assignmentType: 'owner' | 'collaborator'; overdue: boolean;
 };
-export type MyOwnedRequirement = {
+export type MyOwnedRequirement = Partial<Requirement> & {
   id: string; projectId: string; projectName: string; title: string; status: string; priority: string;
   plannedStart: string | null; plannedEnd: string | null; progress: number; riskLevel: string;
   riskEvaluated: boolean; delayed: boolean; highRisk: boolean; planningReasons: string[];

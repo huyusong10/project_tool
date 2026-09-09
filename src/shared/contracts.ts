@@ -89,6 +89,7 @@ export const projectArchiveInputSchema = z.object({
 }).strict();
 
 export const requirementInputSchema = z.object({
+  deliveryScope:z.enum(['committed','candidate']).optional(),executionMode:z.enum(['direct','work_items']).optional(),acceptanceOwnerId:optionalIdSchema,durationDays:z.number().int().min(1).max(3660).nullable().optional(),forecastEnd:optionalDateSchema,unblockEstimate:optionalDateSchema,
   projectId: idSchema.optional(),
   title: z.string().trim().min(1).optional(),
   priority: z.enum(priorities).optional(),
@@ -106,6 +107,7 @@ export const requirementInputSchema = z.object({
 }).passthrough();
 
 export const createRequirementInputSchema = requirementInputSchema.pick({
+  deliveryScope:true,executionMode:true,acceptanceOwnerId:true,durationDays:true,forecastEnd:true,unblockEstimate:true,
   projectId: true,
   title: true,
   priority: true,
@@ -125,6 +127,7 @@ export const createRequirementInputSchema = requirementInputSchema.pick({
 });
 
 export const updateRequirementInputSchema = requirementInputSchema.pick({
+  deliveryScope:true,executionMode:true,acceptanceOwnerId:true,durationDays:true,forecastEnd:true,unblockEstimate:true,reason:true,
   title: true, priority: true, ownerId: true, background: true,
   acceptanceCriteria: true, referenceUrl: true, expectedVersion: true,
 }).extend({ expectedVersion: expectedVersionSchema });
@@ -178,6 +181,7 @@ export const workItemInputSchema = z.object({
 }).passthrough();
 
 export const expectedVersionInputSchema = z.object({ expectedVersion: expectedVersionSchema }).passthrough();
+export const startWorkItemInputSchema=expectedVersionInputSchema.extend({reason:z.string().trim().min(1).optional(),expectedDependencyRevision:z.number().int().nonnegative().optional()});
 export const reasonCommandSchema = expectedVersionInputSchema.extend({ reason: z.string().trim().min(1) });
 export const contentCommandSchema = expectedVersionInputSchema.extend({ content: z.string().trim().min(1) });
 export const optionalContentCommandSchema = expectedVersionInputSchema.extend({ content: z.string().trim().optional() });
@@ -222,6 +226,7 @@ export const issueCorrectionInputSchema = issueCommandSchema.omit({ content: tru
 });
 
 export const progressInputSchema = z.object({
+  requirementPercent:z.number().int().min(0).max(99).optional(),
   content: z.string().trim().min(1),
   workItemId: z.string().nullable().optional(),
   workItemPercent: z.number().int().min(0).max(99).optional(),
@@ -295,15 +300,20 @@ export const issueUpdateHistoryInputSchema = z.object({
 
 export const templateItemSchema = z.object({
   id: z.string().optional(),
+  clientKey: z.string().min(1).optional(),
+  predecessorKeys: z.array(z.string().min(1)).max(maxTemplateItems).optional(),
   title: z.string().trim().min(1),
   startOffsetDays: z.number().int().min(0).max(maxTemplateOffsetDays),
-  durationDays: z.number().int().min(1).max(maxTemplateDurationDays),
+  durationDays: z.number().int().min(0).max(maxTemplateDurationDays),
+  kind:z.enum(['work','milestone']).optional(),arrangement:z.enum(['early','late']).optional(),arrangementAnchor:z.string().nullable().optional(),confirmationMode:z.enum(['auto','manual']).optional(),
   milestoneLabel: z.string().nullable().optional(),
   sortOrder: z.number().int().min(0),
 }).strict();
 export const createTemplateItemSchema = templateItemSchema.extend({ id: z.never().optional() });
 
 export const templateInputSchema = z.object({
+  batchId:z.string().uuid().optional(),layout:z.object({direction:z.enum(['right','down']),expectedVersion:z.number().int().nonnegative(),positions:z.record(z.string(),z.object({x:z.number().finite(),y:z.number().finite()}).strict())}).strict().optional(),
+  dependencyMode: z.enum(['legacy','dependencies']).optional(),
   projectId: idSchema.optional(),
   name: z.string().trim().min(1).optional(),
   description: z.string().max(2000).optional(),
@@ -311,6 +321,8 @@ export const templateInputSchema = z.object({
   expectedUpdatedAt: z.string().datetime().optional(),
 }).strict();
 export const createTemplateInputSchema = templateInputSchema.pick({
+  batchId:true,layout:true,
+  dependencyMode: true,
   projectId: true,
   name: true,
   description: true,
@@ -421,6 +433,7 @@ export const personCandidatesInputSchema = z.object({
 }).strict();
 
 export const requirementListInputSchema = z.object({
+  deliveryScope:z.enum(['committed','candidate']).optional(),
   projectId: idSchema,
   status: z.enum(requirementStatuses).optional(),
   view: z.enum(['delayed', 'high_risk']).optional(),
@@ -501,3 +514,5 @@ export const projectPeopleConcurrencyInputSchema = peopleConcurrencyInputSchema.
   (input) => Boolean(input.projectId),
   { message: '项目ID不能为空', path: ['projectId'] },
 );
+
+export const directRequirementCommandSchema=z.object({expectedVersion:expectedVersionSchema,content:z.string().trim().optional(),reason:z.string().trim().optional(),progress:z.number().int().min(0).max(99).optional(),expectedDependencyRevision:z.number().int().nonnegative().optional()}).strict();

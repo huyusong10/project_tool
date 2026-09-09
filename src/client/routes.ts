@@ -44,6 +44,7 @@ export type AppRoute = {
 };
 
 const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
+const PathsPage = lazy(() => import("./pages/PathsPage").then((module) => ({ default: module.PathsPage })));
 const MyWorkPage = lazy(() => import("./pages/MyWorkPage").then((module) => ({ default: module.MyWorkPage })));
 const ActionCenterPage = lazy(() => import("./pages/ActionCenterPage").then((module) => ({ default: module.ActionCenterPage })));
 const RequirementsPage = lazy(() => import("./pages/RequirementsPage").then((module) => ({ default: module.RequirementsPage })));
@@ -68,6 +69,7 @@ export const appRoutes: AppRoute[] = [
     path: "/", scope: "project", access: "all", component: DashboardPage,
     nav: [{ group: "工作台", label: "项目进展", icon: GanttChartSquare, end: true }],
   },
+  { path: "/paths", scope: "project", access: "all", component: PathsPage, nav: [{ group: "工作台", label: "路径分析", icon: Network }] },
   {
     path: "/analytics", scope: "project", access: "all", component: AnalyticsPage,
     nav: [{ group: "工作台", label: "统计分析", icon: BarChart3 }],

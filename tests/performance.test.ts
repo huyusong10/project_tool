@@ -133,7 +133,8 @@ describe('看板性能', () => {
       const elapsed = performance.now() - start;
       expect(result.total).toBeGreaterThan(0);
       expect(elapsed).toBeLessThan(2000);
-      expect(prepareCount).toBeLessThanOrEqual(6);
+      // Includes one complete project network snapshot (7 fixed queries).
+      expect(prepareCount).toBeLessThanOrEqual(13);
     } finally {
       sqlite.prepare = originalPrepare as typeof sqlite.prepare;
     }

@@ -9,7 +9,7 @@ import { canonicalizeContent } from "../../shared/search";
 import { AnchoredPopover } from "./InlineEdit";
 import { useToast } from "./Toast";
 
-type TextPanel = "block" | "complete" | "reopen" | "cancel";
+type TextPanel = "start" | "block" | "complete" | "reopen" | "cancel";
 type Panel = TextPanel | "dates" | "menu" | "backfill";
 export type WorkItemReloadSnapshot = { item: WorkItem; updates: ProgressUpdate[] };
 type ExpectedOutcome = {
@@ -32,7 +32,7 @@ export function WorkItemActions({
   startDisabledReason,
 }: {
   item: WorkItem;
-  onAction: (action: "start" | "complete" | "block" | "unblock" | "reopen", content: string | undefined, expectedVersion: number) => Promise<unknown>;
+  onAction: (action: "start" | "complete" | "block" | "unblock" | "reopen", content: string | undefined, expectedVersion: number, expectedDependencyRevision?:number) => Promise<unknown>;
   onSaveDates?: (input: { actualStart: string | null; actualEnd: string | null; reason: string; supersedesId: string | null }, expectedVersion: number) => Promise<unknown>;
   onCancel?: (reason: string, expectedVersion: number) => Promise<unknown>;
   onCompleteAsPlanned?: (expectedVersion: number) => Promise<unknown>;
@@ -55,6 +55,7 @@ export function WorkItemActions({
   const [supersedesId, setSupersedesId] = useState("");
   const [pending, setPending] = useState(false);
   const [baselineVersion, setBaselineVersion] = useState(item.version);
+  const [dependencyRevision,setDependencyRevision]=useState(item.dependencyRevision);
   const submitting = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -66,7 +67,7 @@ export function WorkItemActions({
 
   const openPanel = (next: Panel) => {
     // 输入和版本一起取自打开操作面板时的记录，后台刷新不能替换草稿的版本。
-    setBaselineVersion(item.version);
+    setBaselineVersion(item.version);setDependencyRevision(item.dependencyRevision);
     if (next === "dates") {
       setActualStart(item.actualStart || "");
       setActualEnd(item.actualEnd || "");
@@ -79,7 +80,7 @@ export function WorkItemActions({
     try {
       const latest = await onReload();
       if (!mounted.current) return null;
-      setBaselineVersion(latest.item.version); setNeedsRefresh(false); setRefreshed(true);
+      setBaselineVersion(latest.item.version);setDependencyRevision(latest.item.dependencyRevision); setNeedsRefresh(false); setRefreshed(true);
       return latest;
     } catch (caught) {
       if (mounted.current) setReadError(caught instanceof Error ? caught.message : "工作项读取失败");
@@ -126,17 +127,21 @@ export function WorkItemActions({
   const textPanel = panel && panel !== "dates" && panel !== "menu" && panel !== "backfill" ? panel : null;
   const operationUnavailable = panel === "dates" ? item.status === "not_started"
     : panel === "backfill" ? item.status !== "not_started"
+    : textPanel === "start" ? item.status !== "not_started"
     : textPanel === "complete" || textPanel === "block" ? item.status !== "in_progress"
     : textPanel === "reopen" ? !["completed", "cancelled"].includes(item.status)
     : textPanel === "cancel" ? ["completed", "cancelled"].includes(item.status) : false;
-  const blocked = needsRefresh || operationUnavailable;
+  const dependencyStale=textPanel==="start"&&dependencyRevision!==item.dependencyRevision;
+  const blocked = needsRefresh || operationUnavailable || dependencyStale;
   const readNotice = <>
     {refreshed && <p>已读取最新工作项（版本 {baselineVersion}），本次输入已保留，请核对后重试。</p>}
     {operationUnavailable && <p className="form-error" role="alert">工作项状态已变化，请关闭后重新选择操作。</p>}
     {readError && <p className="form-error" role="alert">{readError}</p>}
-    {needsRefresh && <button type="button" className="ghost-button" disabled={pending} onClick={() => void refresh()}>重新读取工作项</button>}
+    {dependencyStale&&<p className="form-error">前置条件已变化，请重新读取后核对。</p>}
+    {(needsRefresh||dependencyStale) && <button type="button" className="ghost-button" disabled={pending} onClick={() => void refresh()}>重新读取工作项</button>}
   </>;
   const textConfig: Record<TextPanel, { title: string; label: string; placeholder: string; confirm: string }> = {
+    start: { title: "核对前置尾项",label:"补充说明（可选）",placeholder:"确认剩余内容不影响当前工作；尾项仍保留跟踪",confirm:"确认可以开始" },
     block: { title: "标记工作项阻塞", label: "阻塞原因", placeholder: "说明当前阻塞点", confirm: "确认阻塞" },
     complete: { title: "完成工作项", label: "完成说明", placeholder: "可选：补充交付结果或验证结论", confirm: "确认完成" },
     reopen: { title: "重开工作项", label: "返工原因", placeholder: "说明为什么需要重开或返工", confirm: "确认重开" },
@@ -159,9 +164,9 @@ export function WorkItemActions({
     && matchesEvent(latest, eventType, content);
 
   const submitText = () => {
-    if (!textPanel || (textPanel !== "complete" && !reason.trim())) return;
+    if (!textPanel || (!["start", "complete"].includes(textPanel)&&!reason.trim())) return;
     const expectedVersion = baselineVersion;
-    const expectedContent = reason.trim() || "完成工作项";
+    const expectedContent = reason.trim()||(textPanel==="start"?"人工确认可以先开展，前置尾项继续跟踪":"完成工作项");
     if (textPanel === "cancel") {
       if (onCancel) void run(() => onCancel(expectedContent, expectedVersion), {
         matches: (latest) => matchesCommandEvent(latest, expectedVersion, "cancel", expectedContent, (value) => value.status === "cancelled"),
@@ -169,12 +174,12 @@ export function WorkItemActions({
       });
       return;
     }
-    const expectedStatus = textPanel === "complete" ? "completed" : textPanel === "block" ? "blocked" : null;
-    void run(() => onAction(textPanel, textPanel === "complete" && !reason.trim() ? undefined : expectedContent, expectedVersion), {
+    const expectedStatus = textPanel === "start" ? "in_progress" : textPanel === "complete" ? "completed" : textPanel === "block" ? "blocked" : null;
+    void run(() => onAction(textPanel, textPanel === "complete" && !reason.trim() ? undefined : expectedContent, expectedVersion, textPanel === "start" ? dependencyRevision : undefined), {
       matches: (latest) => matchesCommandEvent(latest, expectedVersion, textPanel, expectedContent, (value) => expectedStatus
         ? value.status === expectedStatus
         : ["not_started", "in_progress"].includes(value.status)),
-      reconciledMessage: textPanel === "complete" ? "已核对最新状态：工作项已完成"
+      reconciledMessage: textPanel === "start" ? "已核对最新状态：工作项已开始" : textPanel === "complete" ? "已核对最新状态：工作项已完成"
         : textPanel === "block" ? "已核对最新状态：工作项已阻塞"
           : "已核对最新状态：工作项已重开",
     });
@@ -182,7 +187,7 @@ export function WorkItemActions({
 
   return <div className="work-item-actions" ref={anchorRef} onClick={(event) => event.stopPropagation()}>
     <div className="work-item-action-row">
-      {!stateChangesDisabled && item.status === "not_started" && <button className="work-next-action" disabled={pending || Boolean(startDisabledReason)} title={startDisabledReason} onClick={() => void run(() => onAction("start", undefined, item.version), {
+      {!stateChangesDisabled && item.status === "not_started" && <button className="work-next-action" disabled={pending || Boolean(startDisabledReason)} title={startDisabledReason} onClick={() => item.unmetPredecessors?.length ? openPanel("start") : void run(() => onAction("start", undefined, item.version), {
         matches: (latest) => matchesCommandEvent(latest, item.version, "start", "开始工作项", (value) => value.status === "in_progress"),
         reconciledMessage: "已核对最新状态：工作项已开始",
       })}><Play size={14} />{startDisabledReason ? "待规划" : pending ? "提交中" : "开始"}</button>}
@@ -206,11 +211,12 @@ export function WorkItemActions({
       </>}
       {textPanel && <form className="inline-action-form" onSubmit={(event) => { event.preventDefault(); submitText(); }}>
         <header><strong>{textConfig[textPanel].title}</strong><button type="button" disabled={pending} onClick={() => setPanel(null)} aria-label="关闭"><X size={16} /></button></header>
+        {textPanel === "start" && <p>尚未交付：{item.unmetPredecessors?.map(p=>p.title).join("、")}</p>}
         <label><span>{textConfig[textPanel].label}</span><textarea autoFocus readOnly={pending} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={textConfig[textPanel].placeholder} /></label>
         {textPanel === "complete" && <small className="form-hint">可留空，系统会记录“完成工作项”</small>}
         {error && <p className="form-error">{error}</p>}
         {readNotice}
-        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || blocked || (textPanel !== "complete" && !reason.trim())}>{pending ? "提交中" : textConfig[textPanel].confirm}</button></footer>
+        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || blocked || (!["start", "complete"].includes(textPanel)&&!reason.trim())}>{pending ? "提交中" : textConfig[textPanel].confirm}</button></footer>
       </form>}
       {panel === "dates" && <form className="inline-action-form" noValidate onSubmit={(event) => {
         event.preventDefault();

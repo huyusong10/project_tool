@@ -1,8 +1,14 @@
+import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor} from './services/delivery-execution';
+import {directRequirementCommandSchema} from '../shared/contracts';
 import type { FastifyInstance } from 'fastify';
 import { McpServer, type StandardSchemaWithJSON, type ToolCallback } from '@modelcontextprotocol/server';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import { z } from 'zod';
 import { todayIso } from '../shared/domain';
+import { pathQuery, dependencyInput, pathVersion, reviewDependenciesInput, pathEstimateInput, dependencyPlanInput, applyDependencyPlanInput, dependencyChangesInput, applyDependencyChangesInput } from '../shared/path-contracts';
+import { applyDependencyChanges, getDependencyChangeReceipt, previewDependencyChanges } from './services/path-changes';
+import {milestoneCommand,readDiagramLayouts} from './services/milestones';
+import { readPathAnalysis, addDependency, removeDependency, reviewDependencies, updatePathEstimate, previewDependencyPlan, applyDependencyPlan } from './services/paths';
 import {
   assertAdmin, assertCanAddProgress, assertProgressOwnerOrManager, assertProjectManager, assertProjectMember, assertProjectReadable,
   assertProjectResourceManager, assertProjectResourceReadable, assertRequirementOwnerOrManager,
@@ -43,6 +49,7 @@ import {
   createWorkItemInputSchema,
   emptyCommandInputSchema,
   expectedVersionInputSchema,
+  startWorkItemInputSchema,
   idParamsSchema,
   idSchema,
   issueCorrectionInputSchema,
@@ -111,6 +118,18 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     }) as ToolCallback<InputArgs>);
   };
 
+  registerTool('get_diagram_layouts',{description:'读取已保存的团队画布位置与布局版本',inputSchema:z.object({projectId:idSchema})},async({projectId})=>json(readDiagramLayouts(projectId,actor)));
+  registerTool('milestone_command',{description:'人工确认或重新打开独立里程碑，记录操作者和时间',inputSchema:z.object({id:idSchema,action:z.enum(['achieve','reopen']),expectedVersion:z.number().int().positive()})},async({id,action,...input})=>json(milestoneCommand(id,action,input,actor)));
+  registerTool('get_path_analysis', { description: '查询完整项目网络的关键路径、交付预测、风险和阻塞来源；target可为project、acceptance:需求ID或工作项ID', inputSchema: pathQuery.extend({ projectId: idSchema }) }, async ({ projectId, target }) => json(readPathAnalysis(projectId, target, actor)));
+  registerTool('preview_dependency_changes', { description: '预览整批依赖与工期修改，不保存正式数据', inputSchema: dependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(previewDependencyChanges(projectId, input, actor)));
+  registerTool('apply_dependency_changes', { description: '按预览凭据原子提交依赖与工期批次；相同批次标识不会重复写入', inputSchema: applyDependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(applyDependencyChanges(projectId, input, actor)));
+  registerTool('get_dependency_change_receipt', { description: '查询本次依赖批次的提交回执', inputSchema: z.object({ projectId: idSchema, batchId: z.string().uuid() }) }, async ({ projectId, batchId }) => json(getDependencyChangeReceipt(projectId, batchId, actor)));
+  registerTool('add_dependency', { description: '增加完成后开始的依赖，必须提供最新项目分析版本', inputSchema: dependencyInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(addDependency(projectId, input, actor)));
+  registerTool('remove_dependency', { description: '移除依赖', inputSchema: pathVersion.extend({ id: idSchema }) }, async ({ id, ...input }) => json(removeDependency(id, input, actor)));
+  registerTool('review_dependencies', { description: '核对需求全部前置或设置预计验收日', inputSchema: reviewDependenciesInput.extend({ id: idSchema }) }, async ({ id, ...input }) => json(reviewDependencies(id, input, actor)));
+  registerTool('update_path_estimate', { description: '设置工作项工期、最早开始、解阻日期或人工预测', inputSchema: pathEstimateInput.extend({ id: idSchema }) }, async ({ id, ...input }) => json(updatePathEstimate(id, input, actor)));
+  registerTool('preview_dependency_plan', { description: '按依赖预览需求及下游未开始工作的计划差异', inputSchema: dependencyPlanInput.extend({ id: idSchema }) }, async ({ id, ...input }) => json(previewDependencyPlan(id, input, actor)));
+  registerTool('apply_dependency_plan', { description: '应用已核对的依赖排期预览', inputSchema: applyDependencyPlanInput.extend({ id: idSchema }) }, async ({ id, ...input }) => json(applyDependencyPlan(id, input, actor)));
   registerTool('dashboard_summary', { description: '查询项目看板、自动风险和图表', inputSchema: projectScopeInputSchema }, async ({ projectId }) => {
     assertProjectReadable(actor, projectId); const asOfDate = todayIso(); const dashboard = getDashboard(projectId, asOfDate);
     return json({ ...dashboard, actions: listActionItems({ projectId, pageSize: 5 }, actor, dashboard.requirements, asOfDate) });
@@ -156,7 +175,9 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     if (includeDeleted) assertProjectResourceManager(actor, projectId, '需求不存在'); else assertProjectResourceReadable(actor, projectId, '需求不存在');
     return json(getRequirement(id, includeDeleted));
   });
-  registerTool('create_requirement', { description: '轻量创建待规划需求；提供计划开始或截止日期时按模板生成工作项', inputSchema: createRequirementInputSchema }, async (input) => {
+  for(const action of ['start','block','unblock','submit-acceptance'] as const)registerTool(action.replace('-','_')+'_requirement',{description:'推进直接执行需求；不修改依赖或自动开始其他工作',inputSchema:directRequirementCommandSchema.extend({id:idSchema})},async({id,...input})=>json(executeDirectRequirement(id,action,input,actor)));
+  registerTool('return_requirement',{description:'指定验收人或经理退回需求；分解需求须指定返工工作项',inputSchema:directRequirementCommandSchema.extend({id:idSchema,workItemIds:z.array(idSchema).optional()})},async({id,...input})=>json(returnRequirement(id,input,actor)));
+  registerTool('create_requirement', { description: '创建需求；executionMode=direct 直接执行，work_items 按流程分解。priority 为兼容历史字段，不影响自动处理优先级', inputSchema: createRequirementInputSchema }, async (input) => {
     assertProjectManager(actor, input.projectId); return json(createRequirement(input, actor));
   });
   registerTool('update_requirement', { description: '修改非终态需求的标题、优先级、负责人和辅助信息；不修改状态、排期或流程', inputSchema: updateRequirementInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
@@ -174,8 +195,8 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('archive_requirement', { description: '归档需求', inputSchema: expectedVersionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在'); return json(archiveRequirement(id, input, actor));
   });
-  registerTool('accept_requirement', { description: '项目经理确认验收待验收需求', inputSchema: contentCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
-    assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在'); return json(acceptRequirement(id, input, actor));
+  registerTool('accept_requirement', { description: '指定验收人或项目经理确认验收；经理代验写入记录', inputSchema: contentCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+    assertRequirementAcceptor(id,actor); return json(acceptRequirement(id, input, actor));
   });
   registerTool('complete_requirement_as_planned', { description: '经理历史补录：未执行工作项按过去计划日期完成，并验收需求；保留已完成或取消记录', inputSchema: completeAsPlannedInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在'); return json(completeRequirementAsPlanned(id, input, actor));
@@ -202,7 +223,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('update_work_item', { description: '修改工作项元数据、负责人和计划日期；执行数据需使用状态命令', inputSchema: updateWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertWorkItemRequirementOwnerOrManager(actor, id); return json(updateWorkItem(id, input, actor));
   });
-  registerTool('start_work_item', { description: '开始工作项并自动记录实际开始', inputSchema: expectedVersionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('start_work_item', { description: '开始工作项并自动记录实际开始；前置未满足时须记录例外原因并提交 dependencyRevision', inputSchema: startWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertWorkItemParticipantOrManager(actor, id); return json(startWorkItem(id, input, actor));
   });
   registerTool('complete_work_item', { description: '完成工作项；完成说明可选', inputSchema: optionalContentCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {

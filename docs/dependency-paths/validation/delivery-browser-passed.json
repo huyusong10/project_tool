@@ -1,0 +1,462 @@
+[
+  {
+    "suite": "tests\\responsive\\appearance.pw.ts",
+    "name": "甘特视图偏好按账号隔离",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\appearance.pw.ts",
+    "name": "工业黄黑：布局、双轨三种粒度、长标题与完整提示",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\appearance.pw.ts",
+    "name": "换肤保留编辑草稿、菜单键盘选择不触发提交",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\appearance.pw.ts",
+    "name": "杰瑞橙：布局、双轨三种粒度、长标题与完整提示",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\appearance.pw.ts",
+    "name": "经典蓝白：布局、双轨三种粒度、长标题与完整提示",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\appearance.pw.ts",
+    "name": "暖纸森林：布局、双轨三种粒度、长标题与完整提示",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\appearance.pw.ts",
+    "name": "迁移暗色偏好；存储不可用时仍可切换皮肤",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\appearance.pw.ts",
+    "name": "全部配色切换复用图表画布，保留进展记录",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\appearance.pw.ts",
+    "name": "柔彩悬浮：布局、双轨三种粒度、长标题与完整提示",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\appearance.pw.ts",
+    "name": "瑞士排版：布局、双轨三种粒度、长标题与完整提示",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\appearance.pw.ts",
+    "name": "实际点击换肤菜单不会触发人员姓名编辑器的离开提交",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\appearance.pw.ts",
+    "name": "我的工作复用双轨与皮肤，百分比不改变执行日期跨度",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\appearance.pw.ts",
+    "name": "午夜控制台：布局、双轨三种粒度、长标题与完整提示",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\day-night-motion.pw.ts",
+    "name": "减少动态效果覆盖菜单、图表与今天定位；换肤复用画布",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\day-night-motion.pw.ts",
+    "name": "密集图表与甘特无持续动画，侧栏一次落位",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\day-night-motion.pw.ts",
+    "name": "日夜偏好跨标签同步，菜单可见且可用键盘选择",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\day-night-motion.pw.ts",
+    "name": "系统日夜切换保留筛选、滚动与草稿；手选风格不被覆盖",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\delivery-execution.pw.ts",
+    "name": "拆分进入共享草稿；离开、刷新、恢复、保存后保留30%基线",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\delivery-execution.pw.ts",
+    "name": "范围批量修改只进入草稿，筛选保持条件，保存后正式范围更新",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\delivery-execution.pw.ts",
+    "name": "普通新增未选流程直接执行，选择流程则实例化未排期工作",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\delivery-execution.pw.ts",
+    "name": "直接执行无需工作项，详情执行到验收；列表和路径的优先级一致",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\gantt-navigation.pw.ts",
+    "name": "底部滚动条、触控板和 Shift 滚轮可横移；普通滚轮保持纵向；空筛选恢复视图",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\gantt-navigation.pw.ts",
+    "name": "需求内部拖动、失焦结束、窄屏与主题下保持可浏览",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\gantt-navigation.pw.ts",
+    "name": "真实拖动跨月跨年、向左补日期、缩放和页面往返均保持日期锚点",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "本机存储失败给出提示，保存失败保留当前编辑并且不写正式数据",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "多标签页显式接管草稿，撤销不影响正式数据",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "分析浮层限宽，关闭逐帧保持原矩形，快速切换不闪回旧内容",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "关闭浏览器后从同一本机草稿恢复内容、撤销和视口",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "紧凑工作区：移动、Alt复制、独立里程碑、草稿恢复与原子保存",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "流程列表隐藏迁移排序值，工作项连续编号，里程碑不重复也不显示零工期",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "路由等待期间连续微移不同节点不回退，Esc 取消后继续拖动不遗留修改",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "路由失败保留当前修改和临时线，重试不回退节点或视口",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "全局交付条件：按拼音查找需求里程碑，选择后保持草稿不写正式关系",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "全局交付条件：聚合明细不误改整组，重复拒绝，390px可用",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "全局交付条件：直接拉线、细化、撤销、返回和保存只替换当前关系",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "全局新增需求只加入草稿，进入其内部继续创建，保存后可原路返回",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "深度交互：点击连线后右键取消，不误建关系",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "深度交互：关闭浮层后键盘继续作用于画布，切换输入框不抢焦点",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "深度交互：输入框保留文字撤销，全局快捷键不删除内置验收",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "深度交互：属性输入框内 Ctrl+S 保存当前内容",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "深度交互：搜索中 Esc 关闭当前查找层并恢复键盘焦点",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "深度交互：拖动中窗口失焦后恢复原位，后续移动不形成修改",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "深度交互：项目原位改名后立即 Ctrl+S 预览并保存新名称，失败保留草稿",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "深度交互：原位改名保留光标与中文输入确认，Esc 不提交名称",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "深度交互：Ctrl 多选可反选，选中关系后不再移动或复制旧节点",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "深度交互：Ctrl+A 后微移与一次撤销，多选反选后属性对应剩余节点",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "深度交互：Esc 优先取消放置，不误关闭属性后继续新增",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "四侧预览吸附卡片边缘，改接前置箭头与提示方向一致，键盘连接不平移",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "添加菜单、分析抽屉和属性按外部点击或Esc关闭，输入草稿保留",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "项目里程碑拖线与前置勾选共享同一关系，修改仅在保存后生效",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "新增里程碑与连线不移动已有视口，提示紧凑，循环说明包含真实部分交付",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "有效排期图默认限宽，可主动展开，窄屏独立滚动且画布不跳动",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "重复连线可定位已有草稿关系，快速撤销重做后线路完整且正式数据不变",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "重构：保存布局后及后台刷新后不回跳，正式布局和显示位置一致",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "重构：保存中跨画布禁止编辑，完成后保持当前导航位置",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "重构：关闭属性后保存会返回无效字段，原文保留且不提交",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "重构：旧 session 草稿迁入 IndexedDB，内容与撤销历史不丢失",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "重构：输入法组合中的保存延后一次，结束后提交当前文本",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "重构：未放置元素在失焦时取消，随后点击不创建对象",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "重构：无效字段返回及刷新后恢复，Esc 回退字段并可继续编辑",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "重构：原位取消不会被属性副本重新提交，继续操作和刷新仍保留原名",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "global：拖动至路由完成逐帧不显示旧线，临时线有箭头且保留草稿",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "requirement：拖动至路由完成逐帧不显示旧线，临时线有箭头且保留草稿",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\graphic-editor.pw.ts",
+    "name": "template：拖动至路由完成逐帧不显示旧线，临时线有箭头且保留草稿",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\page-consistency.pw.ts",
+    "name": "列表与详情共享风险和偏差含义，返回、刷新恢复查询和排序",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\page-consistency.pw.ts",
+    "name": "统计页区分零数量、无完成样本和真实零按期率，并恢复时间范围",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\page-consistency.pw.ts",
+    "name": "问题全部状态与分页在刷新后保持",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\page-consistency.pw.ts",
+    "name": "项目之间分别记忆筛选，显式链接不混入历史条件",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\page-consistency.pw.ts",
+    "name": "异常行动的自动优先级和分页在往返后保持",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\page-consistency.pw.ts",
+    "name": "长列表往返恢复滚动；侧栏重新进入恢复原筛选；显式链接优先",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "20/80/200 个可见节点真实 Worker 布局，200 节点 600 边 p95 不超过 2 秒",
+    "viewport": "office-1280"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "20/80/200 节点拖动反馈与预览箭头保持响应，取消不修改布局",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "并发修改保留草稿，核对新版本后重新预览；执行入口先处理草稿",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "草稿勾选、取消、撤销重做、恢复、批量保存与响应丢失回执",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "独立分支聚焦保留完整坐标和线路，刷新及范围外定位正确恢复",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "返回来源失去权限时回到项目全局，不重复跳转",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "浮层矩形无相交，底部对齐，390px 两行工具栏与减少动态效果",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "工作区聚焦只变淡、原按钮退出、顶部固定且动画无重排",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "工作区筛选补上下文、完整拼音搜索与默认范围不改变布局",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "工作区图上改接一次提交并可撤销，历史模板转换先预览",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "连线取消不误建节点，循环与重复拒绝，空白创建和键盘连接共用方向规则",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "内部搜索项目外部工作，选择不扩图，明确定位后加入并支持刷新",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "排期预览可独立拖动跨月并恢复，画布视口和正式数据不变化",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "全局→需求→外部交付→返回，选择不移动视口且刷新恢复",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "权限拒绝时清除当前项目草稿，正式数据保持原状",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "四侧连接到整张卡片，方向一致且每个手势只写一次，只路由线路且保留节点位置",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "所有主题和窄屏保持完整画布，颜色与面板变化不移动节点",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "拖线与点击连接点创建；循环指出端点；流程属性与并行创建",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "新增项目保留当前草稿，退出登录清理会话草稿",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "延迟布局与连续撤销重做只发布最新结构，拖线期间节点保持静止",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "真实拖线建立合法跨需求往返；搜索不裁图，退出聚焦恢复视口",
+    "viewport": "desktop-1080p"
+  },
+  {
+    "suite": "tests\\responsive\\path-analysis.pw.ts",
+    "name": "左键及中键平移、滚轮缩放；浮层隔离且定位才移动画布",
+    "viewport": "desktop-1080p"
+  }
+]

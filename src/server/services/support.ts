@@ -1,5 +1,5 @@
 import { sqlite } from '../database';
-import { fail } from '../errors';
+import { fail,notFound } from '../errors';
 import { isTerminalRequirementStatus, isTerminalWorkItemStatus } from '../../shared/domain';
 import { canonicalizeContent, canonicalizeLabel, textSafetyIssue } from '../../shared/search';
 import { isValidIsoDate } from '../../shared/workday';
@@ -126,4 +126,10 @@ export function requireProgress(value: unknown, field = '完成度') {
   const progress = Number(value);
   if (!Number.isInteger(progress) || progress < 0 || progress > 100) fail(`${field}必须是0到100的整数`);
   return progress;
+}
+
+export function requireActiveProject(projectId:string,afterWrite=false){
+  if(row('SELECT id FROM projects WHERE id=? AND deleted_at IS NULL',projectId))return;
+  if(afterWrite)fail('项目已归档，不能继续写入','DEPENDENCY_CONFLICT',409);
+  notFound('项目不存在');
 }

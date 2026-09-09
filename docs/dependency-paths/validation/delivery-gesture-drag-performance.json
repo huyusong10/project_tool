@@ -1,0 +1,26 @@
+[
+  {
+    "nodes": 20,
+    "edges": 60,
+    "frameSamples": 42,
+    "feedbackSamples": 39,
+    "p95FrameMs": 10.700000000000273,
+    "p95FeedbackMs": 0.30000001192092896
+  },
+  {
+    "nodes": 80,
+    "edges": 240,
+    "frameSamples": 44,
+    "feedbackSamples": 26,
+    "p95FrameMs": 10.800000000000182,
+    "p95FeedbackMs": 0.30000001192092896
+  },
+  {
+    "nodes": 200,
+    "edges": 600,
+    "frameSamples": 86,
+    "feedbackSamples": 26,
+    "p95FrameMs": 11.099999999999454,
+    "p95FeedbackMs": 0.699999988079071
+  }
+]

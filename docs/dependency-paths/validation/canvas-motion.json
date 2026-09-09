@@ -1,0 +1,26 @@
+[
+  {
+    "nodes": 20,
+    "frames": 24,
+    "maxFrameMs": 10.100000000000136,
+    "waitMs": 252.09999999403954,
+    "layoutMs": 13.799999997019768,
+    "transitionMs": 449.69999999403944
+  },
+  {
+    "nodes": 80,
+    "frames": 23,
+    "maxFrameMs": 20,
+    "waitMs": 252,
+    "layoutMs": 100.30000001192093,
+    "transitionMs": 444.80000000298014
+  },
+  {
+    "nodes": 200,
+    "frames": 13,
+    "maxFrameMs": 60,
+    "waitMs": 492.79999999701977,
+    "layoutMs": 1234.7000000029802,
+    "transitionMs": 730.6000000000004
+  }
+]

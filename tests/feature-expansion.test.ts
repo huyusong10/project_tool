@@ -169,7 +169,7 @@ describe('功能扩充契约', () => {
     const ownerCleared = await app.inject({ method: 'PATCH', url: `/api/requirements/${draft.json().id}`, headers: { cookie: adminCookie }, payload: {
       ownerId: null, expectedVersion: planned.json().version,
     } });
-    expect(ownerCleared.json().status).toBe('planning');
+    expect(ownerCleared.json().status).toBe('not_started');
     const reassigned = await app.inject({ method: 'PATCH', url: `/api/requirements/${draft.json().id}`, headers: { cookie: adminCookie }, payload: {
       ownerId, expectedVersion: ownerCleared.json().version,
     } });
@@ -240,7 +240,7 @@ describe('功能扩充契约', () => {
     expect(actions.statusCode).toBe(200);
     const draftAction = actions.json().items.find((item: any) => item.id === `requirement:${draft.json().id}`);
     expect(draftAction.reasonCodes).toEqual(expect.arrayContaining(['planning', 'missing_owner', 'missing_work_items']));
-    expect(draftAction.severity).toBe('low');
+    expect(draftAction.severity).toBe('medium');expect(draftAction.processingPriority).toBe('P2');
     const workAction = actions.json().items.find((item: any) => item.id === `work_item:${blockedWorkItemId}`);
     expect(workAction.reasonCodes).toEqual(expect.arrayContaining(['blocked', 'unassigned']));
     expect(workAction.severity).toBe('high');
@@ -273,7 +273,7 @@ describe('功能扩充契约', () => {
     } });
     expect(created.statusCode, created.body).toBe(200);
     let current = created.json();
-    expect(current).toMatchObject({ status: 'planning', ownerId: null });
+    expect(current).toMatchObject({ status: 'not_started', ownerId: null });
     for (const original of current.workItems) {
       const item = current.workItems.find((entry: { id: string }) => entry.id === original.id);
       const completed = await app.inject({ method: 'POST', url: `/api/work-items/${item.id}/complete-as-planned`, headers: { cookie: adminCookie }, payload: {
@@ -294,7 +294,7 @@ describe('功能扩充契约', () => {
     expect(assigned.statusCode, assigned.body).toBe(200);
     expect(assigned.json()).toMatchObject({ status: 'pending_acceptance', ownerId: replacementId, background: '补齐历史负责人' });
     const after = (await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&pageSize=100`, headers: { cookie: adminCookie } })).json();
-    expect(after.items.find((item: { sourceId: string }) => item.sourceId === current.id)?.reasonCodes).toEqual(['pending_acceptance']);
+    expect(after.items.find((item: { sourceId: string }) => item.sourceId === current.id)?.reasonCodes).toContain('pending_acceptance');
 
     const rescheduled = await app.inject({ method: 'POST', url: `/api/requirements/${current.id}/reschedule`, headers: { cookie: adminCookie }, payload: {
       scheduleMode: 'start', plannedStart: '2026-02-14', expectedVersion: assigned.json().version, reason: '不应调整',
@@ -330,18 +330,18 @@ describe('功能扩充契约', () => {
     expect(actions.items.some((item: { sourceType: string; sourceId: string }) => item.sourceType === 'requirement' && item.sourceId === latest.id)).toBe(false);
   });
 
-  it('我的工作返回父需求状态并由服务端拒绝待规划工作项启动', async () => {
+  it('资料完整性独立于执行状态；服务端仍拒绝缺少需求负责人的启动', async () => {
     const created = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
       projectId, title: '待规划但已分派工作项', plannedStart: '2026-09-04',
     } });
-    expect(created.json().status).toBe('planning');
+    expect(created.json().status).toBe('not_started');
     const initialItem = created.json().workItems[0];
     const assigned = await app.inject({ method: 'PATCH', url: `/api/work-items/${initialItem.id}`, headers: { cookie: adminCookie }, payload: {
       ownerId, expectedVersion: initialItem.version,
     } });
     expect(assigned.statusCode, assigned.body).toBe(200);
     const mine = (await app.inject({ method: 'GET', url: '/api/my-work', headers: { cookie: ownerCookie } })).json();
-    expect(mine.items.find((item: { id: string }) => item.id === initialItem.id)).toMatchObject({ requirementStatus: 'planning' });
+    expect(mine.items.find((item: { id: string }) => item.id === initialItem.id)).toMatchObject({ requirementStatus: 'not_started' });
     const started = await app.inject({ method: 'POST', url: `/api/work-items/${initialItem.id}/start`, headers: { cookie: ownerCookie }, payload: {
       expectedVersion: assigned.json().version,
     } });

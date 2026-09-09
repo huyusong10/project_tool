@@ -50,6 +50,10 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
       SELECT work_item_id AS workItemId, person_id AS personId FROM work_item_collaborators
     ) a ON a.workItemId=w.id
     WHERE ${itemWhere.join(' AND ')}`, ...itemParams);
+  const directWhere=["r.execution_mode='direct'",'r.owner_id IS NOT NULL','r.deleted_at IS NULL','pr.deleted_at IS NULL'];const directArgs:unknown[]=[];
+  if(filters.projectId){directWhere.push('r.project_id=?');directArgs.push(filters.projectId);}
+  const directItems=rows<ConcurrencyItem>(`SELECT r.id,r.title,r.owner_id AS personId,r.status,r.planned_start AS plannedStart,r.planned_end AS plannedEnd,r.actual_start AS actualStart,r.actual_end AS actualEnd,r.blocked_at AS blockedAt,r.updated_at AS updatedAt,r.id AS requirementId,r.title AS requirementTitle,r.status AS requirementStatus FROM requirements r JOIN projects pr ON pr.id=r.project_id WHERE ${directWhere.join(' AND ')}`,...directArgs);
+  rawItems.push(...directItems);
   const cancellationDates = getWorkItemCancellationDates(
     rawItems,
     new Map(rawItems.map((item) => [item.requirementId, item.requirementStatus])),
@@ -76,11 +80,13 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
         AND w.actual_start IS NOT NULL AND w.actual_start<=? AND (w.actual_end IS NULL OR w.actual_end>=?)
       GROUP BY a.personId`, filters.projectId, asOfDate, asOfDate);
     external.forEach((item) => externalCounts.set(item.personId, Number(item.count)));
+    const directExternal=rows<{personId:string;count:number}>("SELECT r.owner_id AS personId,COUNT(*) AS count FROM requirements r JOIN projects p ON p.id=r.project_id WHERE r.project_id<>? AND r.execution_mode='direct' AND r.deleted_at IS NULL AND p.deleted_at IS NULL AND r.status IN ('in_progress','blocked') AND r.actual_start IS NOT NULL AND r.actual_start<=? GROUP BY r.owner_id",filters.projectId,asOfDate);
+    for(const item of directExternal)externalCounts.set(item.personId,(externalCounts.get(item.personId)||0)+Number(item.count));
   }
   const result = people.map((person) => {
     const owned = itemsByPerson.get(person.id) || [];
     const days = dates.map((date) => {
-      const plannedItems = owned.filter((item) => !['completed', 'cancelled'].includes(item.status) && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd);
+      const plannedItems = owned.filter((item) => !['completed', 'cancelled', 'pending_acceptance'].includes(item.status) && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd);
       const actualItems = owned.filter((item) => item.actualStart && date >= item.actualStart && date <= item.effectiveActualEnd);
       const selected = date <= asOfDate ? actualItems : plannedItems;
       return { date, count: selected.length, plannedCount: plannedItems.length, actualCount: actualItems.length, items: selected.map((item) => ({ id: item.id, title: item.title, requirementId: item.requirementId, requirementTitle: item.requirementTitle })) };

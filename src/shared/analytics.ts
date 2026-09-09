@@ -64,6 +64,8 @@ export type AnalyticsDataRow = {
   label: string;
   value: number;
   secondaryValue?: number;
+  sampleCount?: number;
+  secondarySampleCount?: number;
 };
 export type AnalyticsPanelResult = {
   panelId: string;
@@ -109,7 +111,7 @@ export const analyticsCatalog: AnalyticsCatalog = {
         { id: "count", label: "需求数量", unit: "count", dimensions: ["status", "priority", "risk", "template", "owner", "week"], visualizations: ["kpi", ...groupedVisualizations] },
         { id: "active_count", label: "活跃需求", unit: "count", dimensions: ["priority", "risk", "template", "owner"], visualizations: snapshotVisualizations },
         { id: "completed_count", label: "完成需求", unit: "count", dimensions: ["week", "priority", "template", "owner"], visualizations: ["kpi", ...groupedVisualizations] },
-        { id: "on_time_rate", label: "按期完成率", unit: "percent", dimensions: ["priority", "template", "owner"], visualizations: snapshotVisualizations },
+        { id: "on_time_rate", label: "按期交付率", unit: "percent", dimensions: ["priority", "template", "owner"], visualizations: snapshotVisualizations },
         { id: "delayed_count", label: "延期需求", unit: "count", dimensions: ["priority", "risk", "template", "owner"], visualizations: snapshotVisualizations },
         { id: "finish_variance", label: "完成偏差", unit: "days", dimensions: ["requirement", "priority", "risk", "template", "owner"], visualizations: ["kpi", "bar", "table"] },
         { id: "due_count", label: "到期需求", unit: "count", dimensions: ["day", "week", "priority", "owner"], visualizations: ["kpi", "bar", "line", "table"] },
@@ -119,7 +121,7 @@ export const analyticsCatalog: AnalyticsCatalog = {
         { id: "template", label: "流程" }, { id: "owner", label: "负责人" }, { id: "requirement", label: "需求" },
         { id: "week", label: "周" }, { id: "day", label: "日期" },
       ],
-      filters: [
+      filters: [{id:"deliveryScope",label:"交付范围",options:[{value:"committed",label:"纳入交付"},{value:"candidate",label:"候选"}]},
         { id: "status", label: "状态", options: requirementStatusOptions }, { id: "priority", label: "优先级", options: priorityOptions },
         { id: "risk", label: "风险", options: riskOptions },
       ],

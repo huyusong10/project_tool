@@ -61,6 +61,7 @@ for (const surface of ["home", "detail"] as const) for (const mode of ["overlay"
       ...requirement, asOfDate: "2026-09-14", workItems: rows.map((item) => ({ ...workItem, ...item, status: item.status === "planning" ? "not_started" : item.status, id: item.status, title: item.status, milestoneLabel: null, cancelledAt: "2026-09-03" })),
     } }));
     await page.goto(surface === "home" ? "/" : "/requirements/r1");
+    if (surface === 'home') await page.getByLabel('按状态筛选', { exact: true }).selectOption('');
     if (mode === "split") {
       await page.getByRole("button", { name: /^甘特显示方式/ }).click();
       const menu = (await page.locator(".gantt-view-options").boundingBox())!;

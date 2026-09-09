@@ -202,8 +202,8 @@ describe('自动状态、进度和风险', () => {
       { status: 'not_started', plannedStart: '2026-09-08', plannedEnd: '2026-09-08' },
     ], '2026-09-01');
     expect(medium.progressGap).toBe(50);
-    expect(medium.riskLevel).toBe('medium');
-    expect(medium.riskReason).toContain('P3进度Gap 50%');
+    expect(medium.riskLevel).toBe('high');
+    expect(medium.riskReason).toContain('进度Gap 50%');
     const closed = deriveRequirementMetrics({ status: 'in_progress', priority: 'P0', acceptedAt: '2026-09-04' }, [
       { status: 'completed', plannedStart: '2026-09-01', plannedEnd: '2026-09-01', actualStart: '2026-09-01', actualEnd: '2026-09-04' },
     ], '2026-09-04');

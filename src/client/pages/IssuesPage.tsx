@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -207,7 +207,7 @@ function IssueDetail({
 export function IssuesPage() {
   const { session } = useSession();
   const { selectedProjectId } = useProjects();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = usePageSearchParams(['q','status','active','priority','ownerId','scope','requirementId','overdue','unassigned','page']);
   const linkedQuery = searchParams.toString();
   const initialLinkedParams = new URLSearchParams(linkedQuery);
   const [keyword, setKeyword] = useState(initialLinkedParams.get("q") || "");
@@ -218,7 +218,7 @@ export function IssuesPage() {
   const [scope, setScope] = useState(initialLinkedParams.get("scope") === "public" ? "public" : initialLinkedParams.get("requirementId") || "");
   const [overdue, setOverdue] = useState(initialLinkedParams.get("overdue") === "true");
   const [unassigned, setUnassigned] = useState(initialLinkedParams.get("unassigned") === "true");
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => Math.max(1, Math.trunc(Number(initialLinkedParams.get('page')) || 1)));
   const [selectedIssueId, setSelectedIssueId] = useState<string | undefined>(initialLinkedParams.get("issueId") || undefined);
   const [detailTab, setDetailTab] = useState<"basic" | "updates">("updates");
   const [formIssue, setFormIssue] = useState<Issue | null | undefined>(undefined);
@@ -244,7 +244,7 @@ export function IssuesPage() {
     setOverdue(linked.get("overdue") === "true");
     setUnassigned(linked.get("unassigned") === "true");
     setSelectedIssueId(linked.get("issueId") || undefined);
-    setPage(1);
+    setPage(Math.max(1, Math.trunc(Number(linked.get("page")) || 1)));
   }, [linkedQuery]);
   const peopleQuery = useQuery({ queryKey: [...keys.people, selectedProjectId], queryFn: ({ signal }) => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`, { signal }), enabled: Boolean(selectedProjectId) });
   const people = peopleQuery.data || emptyPeople;
@@ -260,6 +260,7 @@ export function IssuesPage() {
     const staleRequirement = Boolean(scope && scope !== "public" && !requirements.some((requirement) => requirement.id === scope));
     if (!staleOwner && !staleRequirement) return;
     const next = new URLSearchParams(linkedQuery);
+    next.delete("page");
     if (staleOwner) {
       setOwnerId("");
       next.delete("ownerId");
@@ -294,8 +295,8 @@ export function IssuesPage() {
   useEffect(() => {
     if (!data) return;
     const lastPage = Math.max(1, data.pages);
-    if (page > lastPage) setPage(lastPage);
-  }, [data, page]);
+    if (page > lastPage) { setPage(lastPage); setSearchParams(current => { const next = new URLSearchParams(current); next.set("page", String(lastPage)); return next; }); }
+  }, [data, page, setSearchParams]);
   const runIssueSave = useOptimisticMutation<{ issue: Issue; input: Record<string, unknown> }, Issue>({
     snapshotKeys: ({ issue }) => [[...keys.issues, selectedProjectId], keys.issue(issue.id)],
     apply: (queryClient, { issue, input }) => {
@@ -333,6 +334,7 @@ export function IssuesPage() {
     update();
     setPage(1);
     const next = new URLSearchParams(linkedQuery);
+    next.delete("page");
     if (value) next.set(key, value); else next.delete(key);
     setSearchParams(next, { replace: true });
   };
@@ -340,8 +342,9 @@ export function IssuesPage() {
     setStatus(value);
     setPage(1);
     const next = new URLSearchParams(linkedQuery);
+    next.delete("page");
     next.delete("active");
-    if (value) next.set("status", value); else next.delete("status");
+    next.set("status", value);
     if (value === "resolved") {
       setOverdue(false);
       next.delete("overdue");
@@ -352,6 +355,7 @@ export function IssuesPage() {
     setOwnerId(value);
     setPage(1);
     const next = new URLSearchParams(linkedQuery);
+    next.delete("page");
     if (value) {
       next.set("ownerId", value);
       setUnassigned(false);
@@ -362,6 +366,7 @@ export function IssuesPage() {
   const changeScope = (value: string) => {
     setScope(value); setPage(1);
     const next = new URLSearchParams(linkedQuery);
+    next.delete("page");
     next.delete("scope"); next.delete("requirementId");
     if (value === "public") next.set("scope", "public");
     else if (value) next.set("requirementId", value);
@@ -372,6 +377,7 @@ export function IssuesPage() {
     setOverdue(enabled);
     setPage(1);
     const next = new URLSearchParams(linkedQuery);
+    next.delete("page");
     if (enabled) {
       next.set("overdue", "true");
       if (status === "resolved") {
@@ -387,6 +393,7 @@ export function IssuesPage() {
     setUnassigned(enabled);
     setPage(1);
     const next = new URLSearchParams(linkedQuery);
+    next.delete("page");
     if (enabled) {
       next.set("unassigned", "true");
       setOwnerId("");
@@ -396,6 +403,7 @@ export function IssuesPage() {
   };
   const clearFilters = () => { setKeyword(""); setStatus("in_progress"); setPriority(""); setOwnerId(""); setScope(""); setOverdue(false); setUnassigned(false); setPage(1); setSearchParams({}, { replace: true }); };
   const hasFilters = Boolean(keyword || status !== "in_progress" || priority || ownerId || scope || overdue || unassigned);
+  usePageScrollPosition(!isLoading);
   const listUnavailable = Boolean(error && !data);
   const summary = data?.summary || { total: 0, inProgress: 0, deferred: 0, resolved: 0, active: 0, highPriority: 0, overdue: 0, unassigned: 0, closureRate: 0 };
   const openIssue = (id: string, tab: "basic" | "updates") => {
@@ -441,7 +449,7 @@ export function IssuesPage() {
         empty={listUnavailable
           ? <EmptyState title="问题列表加载失败" detail={error?.message || "暂时无法读取问题数据。"} action={<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button>} />
           : !data?.items.length && !isLoading ? <EmptyState title="没有符合条件的问题" detail="调整筛选条件，或新建一条公共问题。" /> : null}
-        footer={!listUnavailable ? <Pagination page={data?.page || 1} pages={data?.pages || 1} onChange={setPage} /> : null}
+        footer={!listUnavailable ? <Pagination page={data?.page || 1} pages={data?.pages || 1} onChange={(value) => { setPage(value); const next = new URLSearchParams(linkedQuery); next.set("page", String(value)); setSearchParams(next); }} /> : null}
       >
         {data?.items.map((issue) => <AdaptiveDataRow className={`issue-data-row${issue.overdue ? " is-overdue" : ""}`} key={issue.id}>
           <AdaptiveDataCell column="issue" className="issue-data-primary"><button type="button" className="issue-title-button" onClick={() => openIssue(issue.id, "basic")}><DataCell primary={<strong>{issue.title}</strong>} secondary={issue.impact || "暂无影响说明"} /></button></AdaptiveDataCell>

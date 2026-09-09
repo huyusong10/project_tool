@@ -2,6 +2,47 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockGanttData, requirement, workItem } from "./gantt-fixture";
 import { isBusinessDay } from "../../src/shared/workday";
 
+test('甘特默认优先展示风险与关键阻塞，数据刷新保留主动排序', async ({ page }) => {
+  await mockGanttData(page);
+  const rows = [
+    { ...requirement, id: 'low', title: '低风险', riskLevel: 'low', priority: 'P0' },
+    { ...requirement, id: 'pending', title: '待评估', riskEvaluated: false, priority: 'P1' },
+    { ...requirement, id: 'medium', title: '中风险', priority: 'P2' },
+    { ...requirement, id: 'high', title: '高风险', riskLevel: 'high', priority: 'P3', pathRisk: { critical: false, blockedCritical: false, minFloat: 3 } },
+    { ...requirement, id: 'blocked', title: '关键阻塞', riskLevel: 'high', priority: 'P3', pathRisk: { critical: true, blockedCritical: true, minFloat: 0 } },
+    { ...requirement, id: 'closed', title: '已结束', status: 'completed', riskLevel: 'high', priority: 'P0' },
+  ];
+  let reads = 0;
+  await page.route('**/api/dashboard**', route => {
+    reads++;
+    return route.fulfill({ json: {
+      summary: { total: rows.length, active: 5, completed: 1, delayed: 0, highRisk: 2, completionRate: 17 },
+      requirements: reads === 1 ? rows : [...rows].reverse(),
+      issues: { summary: {}, attention: [] }, charts: { statuses: [], risks: [], weeks: [], varianceTop: [] },
+    } });
+  });
+  await page.goto('/');
+  const titles = page.locator('.gantt-requirement-link');
+  await expect(titles).toHaveText(['关键阻塞', '高风险', '中风险', '待评估', '低风险']);
+  await page.getByLabel('按状态筛选',{exact:true}).selectOption('');
+  await expect(titles).toHaveText(['关键阻塞', '高风险', '中风险', '待评估', '低风险', '已结束']);
+  await page.reload();await expect(page.getByLabel('按状态筛选',{exact:true})).toHaveValue('');
+  await expect(titles).toHaveText(['关键阻塞', '高风险', '中风险', '待评估', '低风险', '已结束']);
+  await page.getByLabel('按状态筛选',{exact:true}).selectOption('unfinished');
+  await page.getByLabel('需求排序', { exact: true }).selectOption('priority');
+  const chosenOrder = await titles.allTextContents();
+  expect(chosenOrder.slice(0, 3)).toEqual(['低风险', '待评估', '中风险']);
+  const before = reads;
+  await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
+  await expect.poll(() => reads).toBeGreaterThan(before);
+  await expect(page.getByLabel('需求排序', { exact: true })).toHaveValue('priority');
+  await expect(titles).toHaveText(chosenOrder);
+  await page.reload();await expect(page.getByLabel('需求排序',{exact:true})).toHaveValue('priority');
+  await page.getByTitle('清除全部筛选',{exact:true}).click();
+  await expect(page.getByLabel('需求排序',{exact:true})).toHaveValue('risk');
+  await expect(titles).toHaveText(['关键阻塞', '高风险', '中风险', '待评估', '低风险']);
+});
+
 async function expectOnlyBusinessDays(locator: ReturnType<Page["locator"]>) {
   const dates = await locator.evaluateAll((ticks) => ticks.map((tick) => tick.getAttribute("data-date") || ""));
   expect(dates.length).toBeGreaterThan(0);
@@ -203,6 +244,9 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   await delayedRow.locator(".gantt-track").hover({ position: { x: 4, y: 4 } });
   await expect(page.locator(".gantt-popover")).toBeHidden();
   await delayedRow.locator(".gantt-bar-hitbox").hover();
+  // Hover may scroll an offscreen bar into view. Move again after the scroll settles.
+  await page.waitForTimeout(150);
+  await delayedRow.locator(".gantt-bar-hitbox").hover({ position: { x: 12, y: 12 } });
   await expect(page.locator(".gantt-popover")).toBeVisible();
   await expect(page.locator(".gantt-popover-updates")).toContainText("完成接口权限校验与异常分支联调");
   await expect(page.locator(".gantt-popover-updates article > span")).toHaveText("40%");
@@ -252,7 +296,11 @@ test("时间轴元素横向滚动时不会覆盖左侧标题", async ({ page }, 
   await page.goto("/");
 
   const scroll = page.locator(".project-gantt-scroll");
-  await scroll.evaluate((element) => { element.scrollLeft = element.scrollWidth - element.clientWidth; });
+  await scroll.evaluate((element) => {
+    const marker = element.querySelector<HTMLElement>('.gantt-progress-marker')!;
+    const label = element.querySelector<HTMLElement>('.gantt-requirement-info')!;
+    element.scrollLeft += marker.getBoundingClientRect().left - label.getBoundingClientRect().right + 18;
+  });
   await page.waitForTimeout(100);
   const layer = await page.locator(".gantt-row").filter({ hasText: "统一甘特样式" }).evaluate((row) => {
     const label = row.querySelector<HTMLElement>(".gantt-requirement-info")!;

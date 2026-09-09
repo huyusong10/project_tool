@@ -9,8 +9,10 @@ export default defineConfig(({ mode }) => {
   plugins: [react()],
   root: '.',
   server: {
+    watch: { ignored: ['**/.playwright/**', '**/.preview/**', '**/dist-server/**', '**/test-results/**'] },
     host: '0.0.0.0',
-    port: 5173,
+    port: Number(process.env.VITE_PORT || env.VITE_PORT || '5173'),
+    strictPort: true,
     proxy: {
       '/api': apiTarget,
       '/health': apiTarget,

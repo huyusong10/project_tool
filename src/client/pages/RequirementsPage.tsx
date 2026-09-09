@@ -1,10 +1,14 @@
+import {ProcessingPriorityBadge} from '../components/Badge';
+import {DeliveryDraftDialog} from '../components/DeliveryControls';
+import {compareProcessingPriority} from '../../shared/delivery';
+import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Plus } from "lucide-react";
-import { api, jsonBody } from "../api";
+import { api } from "../api";
 import { useProjects, useSession } from "../app-context";
-import { invalidateRequirementViews, keys } from "../query-keys";
+import { keys } from "../query-keys";
 import type { Requirement } from "../types";
 import { isTerminalRequirementStatus } from "../../shared/domain";
 import { matchesSearch, searchScore } from "../../shared/search";
@@ -12,17 +16,16 @@ import { EmptyState } from "../components/Feedback";
 import { StatusBadge } from "../components/Badge";
 import { PageHeader } from "../components/PageHeader";
 import { RequirementForm } from "../components/ManagementForms";
-import { InlineSelectCell } from "../components/InlineEdit";
 import { canManageProject } from "../permissions";
-import { priorityOptions, requirementStatusOptions } from "../ui-options";
+import { requirementStatusOptions } from "../ui-options";
 import { DataCell } from "../components/LayoutPrimitives";
 import { SearchInput } from "../components/SearchInput";
-import { useOptimisticMutation } from "../use-optimistic-mutation";
+import { requirementRiskDisplay, requirementVarianceDisplay, requirementVarianceValue } from "../requirement-presentation";
+import { compareRiskRequirements } from "../../shared/requirement-view";
 
 type RequirementSortKey = "title" | "priority" | "status" | "progress" | "risk" | "plannedEnd" | "variance";
 type SortDirection = "asc" | "desc";
 
-const priorityOrder: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 const requirementStatusOrder: Record<string, number> = {
   blocked: 0,
   in_progress: 1,
@@ -32,71 +35,20 @@ const requirementStatusOrder: Record<string, number> = {
   completed: 5,
   cancelled: 6,
 };
-const riskOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
 const emptyRequirements: Requirement[] = [];
-
-function requirementVarianceValue(requirement: Requirement): number | null {
-  if (requirement.status === "planning" || requirement.status === "cancelled") return null;
-  if (["completed", "pending_acceptance"].includes(requirement.status)) return requirement.finishVariance;
-  if (requirement.finishVariance > 0) return requirement.finishVariance;
-  if (requirement.status === "not_started" && requirement.progress === 0 && requirement.plannedProgress === 0) return null;
-  return requirement.scheduleVarianceDays ?? null;
-}
-
-function requirementVarianceDisplay(requirement: Requirement) {
-  const progressDetail = `实际进度 ${requirement.progress}%，计划进度 ${requirement.plannedProgress}%`;
-  if (requirement.status === "planning") {
-    return { label: "待排期", className: "muted", title: "工作项排期尚不完整，暂时无法计算计划偏差" };
-  }
-  if (requirement.status === "cancelled") {
-    return { label: "已取消", className: "muted", title: "已取消需求不再计算计划偏差" };
-  }
-  if (requirement.status === "not_started" && requirement.progress === 0 && requirement.plannedProgress === 0) {
-    return { label: "未到计划", className: "muted", title: "尚未到计划开始时间" };
-  }
-  if (["completed", "pending_acceptance"].includes(requirement.status)) {
-    if (requirement.finishVariance > 0) {
-      return { label: `延期 ${requirement.finishVariance}个工作日`, className: "danger-text", title: "实际完成日期晚于计划完成日期" };
-    }
-    if (requirement.finishVariance < 0) {
-      return { label: `提前 ${Math.abs(requirement.finishVariance)}个工作日`, className: "safe-text", title: "实际完成日期早于计划完成日期" };
-    }
-    return { label: "按期", className: "", title: "实际完成日期与计划完成日期一致" };
-  }
-  if (requirement.finishVariance > 0) {
-    return {
-      label: `已延期 ${requirement.finishVariance}个工作日`,
-      className: "danger-text",
-      title: `${progressDetail}；截至今天已超过计划完成日期`,
-    };
-  }
-
-  const variance = requirement.scheduleVarianceDays;
-  const reference = requirement.scheduleReferenceDate ? `；当前进展相当于 ${requirement.scheduleReferenceDate} 的计划` : "";
-  if (variance === null || variance === undefined) {
-    return { label: "待评估", className: "muted", title: `${progressDetail}；暂时无法换算计划偏差` };
-  }
-  if (variance > 0) {
-    return { label: `落后 ${variance}个工作日`, className: "danger-text", title: `${progressDetail}${reference}，落后 ${variance} 个工作日` };
-  }
-  if (variance < 0) {
-    return { label: `领先 ${Math.abs(variance)}个工作日`, className: "safe-text", title: `${progressDetail}${reference}，领先 ${Math.abs(variance)} 个工作日` };
-  }
-  return { label: "按计划", className: "", title: `${progressDetail}；当前进展与计划曲线一致` };
-}
 
 function compareRequirements(left: Requirement, right: Requirement, key: RequirementSortKey) {
   switch (key) {
     case "title":
       return left.title.localeCompare(right.title, "zh-CN");
     case "priority":
-      return (priorityOrder[left.priority] ?? 99) - (priorityOrder[right.priority] ?? 99);
+      return compareProcessingPriority(left,right);
     case "status":
       return (requirementStatusOrder[left.status] ?? 99) - (requirementStatusOrder[right.status] ?? 99);
     case "progress":
       return left.progress - right.progress;
     case "risk":
-      return (riskOrder[left.highRisk ? "high" : left.riskLevel] ?? 99) - (riskOrder[right.highRisk ? "high" : right.riskLevel] ?? 99);
+      return compareRiskRequirements(left, right);
     case "variance":
       return (requirementVarianceValue(left) ?? 0) - (requirementVarianceValue(right) ?? 0);
     case "plannedEnd":
@@ -112,10 +64,15 @@ export function RequirementsPage() {
   const { selectedProjectId, projects } = useProjects();
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("current");
-  const [sortKey, setSortKey] = useState<RequirementSortKey>("plannedEnd");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [selectedIds,setSelectedIds]=useState<string[]>([]),[scopeDialog,setScopeDialog]=useState(false);
+  const [params, setParams] = usePageSearchParams(['q', 'status', 'sort', 'direction','deliveryScope']);
+  const search = params.get('q') || '';
+  const deliveryScope=params.get('deliveryScope')||'';
+  const status = params.has('status') ? params.get('status')! : 'current';
+  const sortKey = (['title','priority','status','progress','risk','plannedEnd','variance'].includes(params.get('sort') || '') ? params.get('sort') : 'plannedEnd') as RequirementSortKey;
+  const sortDirection: SortDirection = params.get('direction') === 'desc' ? 'desc' : 'asc';
+  const setSearch = (value: string) => setParams(current => { const next = new URLSearchParams(current); next.set('q', value); return next; });
+  const setStatus = (value: string) => setParams(current => { const next = new URLSearchParams(current); next.set('status', value); return next; });
   const canManage = canManageProject(session, selectedProjectId);
   const { data: loadedRequirements, error, refetch, isFetching, isLoading } = useQuery({
     queryKey: [...keys.requirements, selectedProjectId],
@@ -126,6 +83,7 @@ export function RequirementsPage() {
       ),
     enabled: Boolean(selectedProjectId),
   });
+  usePageScrollPosition(!isLoading);
   const data = loadedRequirements || emptyRequirements;
   const listUnavailable = Boolean(error && !loadedRequirements);
   const items = useMemo(() => {
@@ -135,7 +93,7 @@ export function RequirementsPage() {
           { text: item.title, weight: 100 },
           { text: item.ownerName, weight: 40 },
         ], search) &&
-        (status === "current" ? !isTerminalRequirementStatus(item.status) : !status || item.status === status),
+        (status === "current" ? !isTerminalRequirementStatus(item.status) : !status || item.status === status)&&(!deliveryScope||(item.deliveryScope||'committed')===deliveryScope),
       )
       .sort((left, right) => {
         if (search.trim()) {
@@ -160,28 +118,9 @@ export function RequirementsPage() {
         if (priorityResult !== 0) return priorityResult;
         return left.title.localeCompare(right.title, "zh-CN");
       });
-  }, [data, search, sortDirection, sortKey, status]);
-  const runRequirementSave = useOptimisticMutation<{ item: Requirement; input: { priority?: string } }, Requirement>({
-    snapshotKeys: ({ item }) => [[...keys.requirements, selectedProjectId], keys.requirement(item.id)],
-    apply: (queryClient, { item, input }) => {
-      queryClient.setQueryData<Requirement[]>([...keys.requirements, selectedProjectId], (current = []) => current.map((entry) => entry.id === item.id && entry.version <= item.version ? { ...entry, ...input } : entry));
-      queryClient.setQueryData<Requirement>(keys.requirement(item.id), (current) => current && current.version <= item.version ? { ...current, ...input } : current);
-    },
-    request: ({ item, input }) => api<Requirement>(`/api/requirements/${item.id}`, { method: "PATCH", body: jsonBody({ ...input, expectedVersion: item.version }) }),
-    commit: (queryClient, saved) => {
-      queryClient.setQueryData<Requirement[]>([...keys.requirements, selectedProjectId], (current = []) => current.map((entry) => entry.id === saved.id && entry.version <= saved.version ? saved : entry));
-      queryClient.setQueryData<Requirement>(keys.requirement(saved.id), (current) => current && current.version <= saved.version ? saved : current);
-      invalidateRequirementViews(queryClient, saved.id);
-    },
-  });
-  const saveRequirement = (item: Requirement, input: { priority?: string }) => runRequirementSave({ item, input });
+  }, [data, search, sortDirection, sortKey, status,deliveryScope]);
   const changeSort = (nextKey: RequirementSortKey) => {
-    if (nextKey === sortKey) {
-      setSortDirection((current) => current === "asc" ? "desc" : "asc");
-      return;
-    }
-    setSortKey(nextKey);
-    setSortDirection(nextKey === "variance" ? "desc" : "asc");
+    setParams(current => { const next = new URLSearchParams(current); next.set('sort', nextKey); next.set('direction', nextKey === sortKey ? (sortDirection === 'asc' ? 'desc' : 'asc') : nextKey === 'variance' ? 'desc' : 'asc'); return next; });
   };
   const sortableHeader = (label: string, key: RequirementSortKey) => (
     <button
@@ -196,6 +135,7 @@ export function RequirementsPage() {
   );
   return (
     <>
+      {scopeDialog&&<DeliveryDraftDialog requirements={data.filter(r=>selectedIds.includes(r.id))} mode="scope" onClose={()=>setScopeDialog(false)}/>}
       <PageHeader
         title="需求管理"
         actions={canManage ? (
@@ -207,6 +147,8 @@ export function RequirementsPage() {
       />
       <div className="page-content">
         <div className="filter-bar">
+        <select aria-label="交付范围筛选" value={deliveryScope} onChange={e=>setParams(current=>{const next=new URLSearchParams(current);if(e.target.value)next.set('deliveryScope',e.target.value);else next.delete('deliveryScope');return next;})}><option value="">全部范围</option><option value="committed">纳入交付</option><option value="candidate">候选</option></select>
+        {canManage&&selectedIds.some(id=>data.some(r=>r.id===id))&&<button className="ghost-button" onClick={()=>setScopeDialog(true)}>调整所选交付范围</button>}
         <SearchInput value={search} onChange={setSearch} placeholder="搜索需求或负责人" />
         <select
           value={status}
@@ -246,15 +188,8 @@ export function RequirementsPage() {
                 key={item.id}
                 onClick={() => navigate(`/requirements/${item.id}`)}
               >
-                <td><DataCell density="compact" primary={<strong>{item.title}</strong>} secondary={`${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
-                <td><DataCell density="compact" primary={canManage ? <InlineSelectCell
-                  value={item.priority}
-                  label="需求优先级"
-                  options={priorityOptions}
-                  displayMode="badge"
-                  onSave={(priority) => saveRequirement(item, { priority })}
-                  renderValue={(value) => <StatusBadge kind="priority" value={value} />}
-                /> : <StatusBadge kind="priority" value={item.priority} />} /></td>
+                <td><DataCell density="compact" primary={<strong>{canManage&&!isTerminalRequirementStatus(item.status)&&<input type="checkbox" style={{marginRight:8,verticalAlign:'middle'}} aria-label={'选择需求 '+item.title} checked={selectedIds.includes(item.id)} onClick={e=>e.stopPropagation()} onChange={e=>setSelectedIds(ids=>e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id))}/>}<Link to={`/requirements/${item.id}`} style={{ color: 'inherit', textDecoration: 'none' }} onClick={event => event.stopPropagation()}>{item.title}</Link></strong>} secondary={`${item.deliveryScope==='candidate'?'候选 · ':''}${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
+                <td><DataCell density="compact" primary={<ProcessingPriorityBadge requirement={item}/>} /></td>
                 <td>
                   <DataCell density="compact" primary={<StatusBadge kind="requirement" value={item.status} />} />
                 </td>
@@ -267,11 +202,7 @@ export function RequirementsPage() {
                   </div>} />
                 </td>
                 <td>
-                  <DataCell density="compact" primary={!item.riskEvaluated ? (
-                    <span className="risk-badge risk-pending">待评估</span>
-                  ) : (
-                    <StatusBadge kind="risk" value={item.highRisk ? "high" : item.riskLevel} />
-                  )} />
+                  <DataCell density="compact" primary={<span className={`risk-badge ${requirementRiskDisplay(item).className}`}>{requirementRiskDisplay(item).label}</span>} />
                 </td>
                 <td><DataCell density="compact" primary={item.plannedEnd || "待排期"} /></td>
                 <td className={variance.className} title={variance.title}>

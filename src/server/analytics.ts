@@ -267,7 +267,7 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
     try {
       const requirements = listRequirements({ projectId }, asOfDate);
       requirementRows = requirements.map((requirement) => ({
-        ...requirement,
+        ...requirement,priority:requirement.processingPriority||'unassessed',deliveryScope:requirement.deliveryScope||'committed',
         template: requirement.templateName || '未绑定流程', owner: requirement.ownerName || '未分配',
         risk: requirement.riskEvaluated ? requirement.riskLevel : 'unassessed',
         completedAt: requirementCompletionDate(requirement),
@@ -444,7 +444,7 @@ function aggregateMeasure(context: AnalyticsContext, panel: AnalyticsPanelConfig
   const source = sources[panel.dataset] || [];
   const filtered = applyPanelFilters(source, panel);
   const eligible = eligibleRecords(panel.dataset, measure, filtered, panel, range, asOfDate);
-  if (!panel.dimension) return new Map([['total', { key: 'total', label: '总计', value: measureValue(panel.dataset, measure, eligible) }]]);
+  if (!panel.dimension) return new Map([['total', { key: 'total', label: '总计', value: measureValue(panel.dataset, measure, eligible), sampleCount: eligible.length }]]);
   const groups = new Map<string, { key: string; label: string; records: GenericRecord[] }>();
   for (const record of eligible) {
     const dimension = dimensionValue(panel.dataset, panel.dimension, record, measure);
@@ -452,7 +452,7 @@ function aggregateMeasure(context: AnalyticsContext, panel: AnalyticsPanelConfig
     current.records.push(record); groups.set(dimension.key, current);
   }
   return new Map([...groups.entries()].map(([key, group]) => [key, {
-    key, label: group.label, value: measureValue(panel.dataset, measure, group.records),
+    key, label: group.label, value: measureValue(panel.dataset, measure, group.records), sampleCount: group.records.length,
   }]));
 }
 
@@ -468,7 +468,10 @@ function queryPanel(context: AnalyticsContext, panel: AnalyticsPanelConfig, rang
     key,
     label: primary.get(key)?.label || secondary.get(key)?.label || key,
     value: primary.get(key)?.value || 0,
-    ...(panel.secondaryMeasure ? { secondaryValue: secondary.get(key)?.value || 0 } : {}),
+    ...(measure.unit !== 'count' ? { sampleCount: primary.get(key)?.sampleCount || 0 } : {}),
+    ...(panel.secondaryMeasure ? { secondaryValue: secondary.get(key)?.value || 0,
+      ...(measure.unit !== 'count' ? { secondarySampleCount: secondary.get(key)?.sampleCount || 0 } : {}),
+    } : {}),
   }));
   const chronological = panel.dimension === 'week' || panel.dimension === 'day';
   const direction = panel.sort || (chronological ? 'asc' : 'desc');

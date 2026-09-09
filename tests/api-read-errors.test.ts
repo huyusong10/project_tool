@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import { api, ApiError, isTemporaryReadError, NetworkError, requiresWriteRecheck, setUnauthorizedHandler } from '../src/client/api';
-import { cacheResourceUpdate } from '../src/client/use-resource-query';
+import { cacheResourceUpdate, readResourceFresh, ResourceReadInvalidatedError } from '../src/client/use-resource-query';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -96,5 +96,24 @@ it('已拒绝的详情不能被迟到操作恢复，保留拒绝原因，成功�
     await client.fetchQuery({ queryKey, queryFn: async () => ({ id: 'i1', version: 3 }) });
     cacheResourceUpdate(client, queryKey, { id: 'i1', version: 4 });
     expect(client.getQueryData(queryKey)).toEqual({ id: 'i1', version: 4 });
+  } finally { client.clear(); }
+});
+
+it.each([false, true])('读取期间出现新的拒绝时，迟到响应不能恢复详情（原缓存已拒绝：%s）', async (initiallyDenied) => {
+  const client = new QueryClient();
+  const queryKey = ['issue', 'i1'];
+  let release!: (response: Response) => void;
+  vi.stubGlobal('fetch', vi.fn().mockImplementationOnce(() => new Promise<Response>((resolve) => { release = resolve; }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'i1', version: 3 }))));
+  try {
+    client.setQueryData(queryKey, initiallyDenied ? null : { id: 'i1', version: 1 });
+    const pending = readResourceFresh(client, queryKey, '/api/issues/i1', () => true);
+    const rejected = expect(pending).rejects.toBeInstanceOf(ResourceReadInvalidatedError);
+    client.setQueryData(queryKey, null);
+    release(new Response(JSON.stringify({ id: 'i1', version: 2 })));
+    await rejected;
+    expect(client.getQueryData(queryKey)).toBeNull();
+    await readResourceFresh(client, queryKey, '/api/issues/i1', () => true);
+    expect(client.getQueryData(queryKey)).toEqual({ id: 'i1', version: 3 });
   } finally { client.clear(); }
 });

@@ -79,7 +79,8 @@ export function searchScore(fields: SearchField[], rawQuery: unknown) {
 
   for (const field of values) {
     const normalized = normalizeSearchText(field.text);
-    best = Math.max(best, directScore(normalized, query) + field.weight);
+    const direct = directScore(normalized, query);
+    if (direct > 0) best = Math.max(best, direct + field.weight);
     if (!field.pinyin || !latinPinyinQuery.test(query) || !hanText.test(normalized)) continue;
     const indexes = match(normalized, compactQuery, {
       continuous: true,

@@ -26,10 +26,12 @@ export function useGanttTooltip() {
   useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
   const bind = (content: ReactNode) => ({
     onPointerEnter: (event: PointerEvent<HTMLElement>) => {
+      if (event.buttons) return;
       cancelClose(); store.set({ x: event.clientX, y: event.clientY, content });
     },
     onPointerMove: (event: PointerEvent<HTMLElement>) => {
-      if (store.getSnapshot()) store.set({ x: event.clientX, y: event.clientY, content });
+      if (event.buttons) return;
+      cancelClose(); store.set({ x: event.clientX, y: event.clientY, content });
     },
     onPointerLeave: closeSoon,
     onFocus: (event: FocusEvent<HTMLElement>) => {
@@ -38,7 +40,7 @@ export function useGanttTooltip() {
     },
     onBlur: closeSoon,
   });
-  return { bind, tooltip: <TooltipLayer store={store} onEnter={cancelClose} onLeave={closeSoon} /> };
+  return { bind, close: () => { cancelClose(); store.set(null); }, tooltip: <TooltipLayer store={store} onEnter={cancelClose} onLeave={closeSoon} /> };
 }
 
 function TooltipLayer({ store, onEnter, onLeave }: { store: TooltipStore; onEnter: () => void; onLeave: () => void }) {

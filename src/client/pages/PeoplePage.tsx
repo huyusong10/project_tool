@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { api } from "../api";
 import { useProjects } from "../app-context";
 import { keys } from "../query-keys";
@@ -15,13 +15,14 @@ const emptyPeople: Person[] = [];
 
 export function PeoplePage() {
   const { selectedProjectId, projects } = useProjects();
-  const [viewParams, setViewParams] = useSearchParams();
+  const [viewParams, setViewParams] = usePageSearchParams(['view']);
   const view = viewParams.get("view") === "analysis" ? "analysis" : "matrix";
   const { data: loadedPeople, error, refetch, isFetching, isLoading } = useQuery({
     queryKey: [...keys.people, selectedProjectId],
     queryFn: ({ signal }) => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`, { signal }),
     enabled: Boolean(selectedProjectId),
   });
+  usePageScrollPosition(!isLoading);
   const data = loadedPeople || emptyPeople;
   const listUnavailable = Boolean(error && !loadedPeople);
   const groups = useMemo(() => {
