@@ -85,3 +85,55 @@ for(const entry of ['overview','menu'] as const){
   await expect(dialog.getByLabel('验收说明',{exact:true})).toBeVisible();await expect(dialog.getByRole('button',{name:'确认验收',exact:true})).toBeDisabled();
  });
 }
+
+for(const persisted of [true,false]){
+ test(`直接进度响应丢失且${persisted?'版本变化时禁止直接重复提交':'版本未变时可安全重试'}`,async({page})=>{
+  await mockGanttData(page);let writes=0;
+  let current={...requirement,executionMode:'direct',status:'in_progress',version:1,progress:30,workItems:[]};
+  await page.route('**/api/requirements/r1',route=>route.fulfill({json:current}));
+  await page.route('**/api/requirements/r1/progress',route=>{
+   writes++;
+   if(writes===1){if(persisted)current={...current,progress:60,version:2};return route.abort('failed');}
+   current={...current,progress:60,version:2};return route.fulfill({json:current});
+  });
+  await page.goto('/requirements/r1');await page.getByRole('button',{name:'更新进度',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'更新进度',exact:true}),submit=dialog.getByRole('button',{name:'更新进度',exact:true});
+  await dialog.getByLabel('需求完成度').fill('60');await dialog.getByLabel('执行说明').fill('接口已联通');await submit.click();
+  await dialog.getByRole('button',{name:'读取最新状态',exact:true}).click();
+  if(persisted){
+   await expect(dialog).toContainText('请先核对进展记录');await expect(submit).toBeDisabled();
+   await expect(dialog.getByLabel('执行说明')).toHaveValue('接口已联通');expect(writes).toBe(1);
+  }else{await expect(submit).toBeEnabled();await submit.click();await expect(dialog).toHaveCount(0);expect(writes).toBe(2);}
+ });
+}
+
+test('直接执行在同一帧收到两次提交只写一次',async({page})=>{
+ await mockGanttData(page);let writes=0;
+ await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,executionMode:'direct',status:'in_progress',version:1,progress:30,workItems:[]}}));
+ await page.route('**/api/requirements/r1/progress',route=>{writes++;return route.fulfill({json:{ok:true}});});
+ await page.goto('/requirements/r1');await page.getByRole('button',{name:'更新进度',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'更新进度',exact:true});await dialog.getByLabel('执行说明').fill('只记录一次');
+ await dialog.locator('form').evaluate(form=>{form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});
+ await expect(dialog).toHaveCount(0);expect(writes).toBe(1);
+});
+
+test('重新读取后直接执行状态不再允许原操作时保留说明并禁用提交',async({page})=>{
+ await mockGanttData(page);let writes=0;
+ let current={...requirement,executionMode:'direct',status:'in_progress',version:1,progress:30,workItems:[]};
+ await page.route('**/api/requirements/r1',route=>route.fulfill({json:current}));
+ await page.route('**/api/requirements/r1/progress',route=>{writes++;current={...current,status:'blocked',version:2};return route.fulfill({status:409,json:{error:'需求已更新',code:'STALE_WRITE'}});});
+ await page.goto('/requirements/r1');await page.getByRole('button',{name:'更新进度',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'更新进度',exact:true}),submit=dialog.getByRole('button',{name:'更新进度',exact:true});
+ await dialog.getByLabel('执行说明').fill('等待核对');await submit.click();await dialog.getByRole('button',{name:'读取最新状态',exact:true}).click();
+ await expect(dialog).toContainText('当前状态不支持此操作');await expect(submit).toBeDisabled();await expect(dialog.getByLabel('执行说明')).toHaveValue('等待核对');expect(writes).toBe(1);
+});
+
+test('说明响应丢失后版本未变也不推断失败或重复写入',async({page})=>{
+ await mockGanttData(page);let writes=0;
+ await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,executionMode:'direct',status:'blocked',version:1,progress:30,workItems:[]}}));
+ await page.route('**/api/requirements/r1/progress',route=>{writes++;return route.abort('failed');});
+ await page.goto('/requirements/r1');await page.getByRole('button',{name:'补充说明',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'补充说明',exact:true});await dialog.getByLabel('执行说明').fill('正在等待第三方');
+ await dialog.getByRole('button',{name:'补充说明',exact:true}).click();await dialog.getByRole('button',{name:'读取最新状态',exact:true}).click();
+ await expect(dialog).toContainText('请先核对进展记录');await expect(dialog.getByRole('button',{name:'补充说明',exact:true})).toBeDisabled();expect(writes).toBe(1);
+});

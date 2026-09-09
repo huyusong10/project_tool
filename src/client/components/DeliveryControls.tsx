@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {useNavigate} from 'react-router-dom';
-import {api,jsonBody,requiresWriteRecheck} from '../api';
+import {api,isWriteOutcomeUnknown,jsonBody,requiresWriteRecheck} from '../api';
 import {useSession} from '../app-context';
 import {canManageProject} from '../permissions';
 import {invalidateRequirementViews,keys} from '../query-keys';
@@ -25,12 +25,22 @@ export function DeliveryImpactTable({entries,target}:{entries:DeliveryImpact[];t
   const scope:Record<string,string>={committed:'纳入交付',candidate:'候选',absent:'不在范围'};
   return <div className="delivery-impact-list">{goal}{entries.map(e=><div className="graph-list-row" key={e.requirementId}><strong>{e.title}</strong><small>{scope[e.beforeScope]} → {scope[e.afterScope]} · 预计 {e.beforeForecast||'待确认'} → {e.afterForecast||'待确认'}</small><small>优先级 {e.beforePriority||'—'} → {e.afterPriority||'—'} · 风险 {risk[e.beforeRisk]} → {risk[e.afterRisk]} · 缓冲 {e.beforeBuffer??'待确认'} → {e.afterBuffer??'待确认'}</small><small>{e.ownerName||'项目经理'} · {e.reasons.join('；')}</small>{e.outsideExecuting&&<small className="warning-text">范围外仍在执行，工作与关系保留</small>}{(!!e.beforeSources?.length||!!e.afterSources?.length)&&<small>阻塞来源：{e.beforeSources?.map(s=>s.title).join('、')||'无'} → {e.afterSources?.map(s=>s.title).join('、')||'无'}</small>}</div>)}</div>;
 }
+function executionWarning(action:string,r:Requirement){
+  const allowed:Record<string,string[]>={start:['not_started'],progress:['in_progress'],note:['blocked'],block:['in_progress'],unblock:['blocked'],'submit-acceptance':['in_progress'],rework:['pending_acceptance','completed']};
+  if(!allowed[action])return '';
+  if(r.deletedAt||!allowed[action].includes(r.status))return '当前状态不支持此操作，请关闭窗口后重新选择；已填说明保留。';
+  if(action!=='rework'&&r.executionMode!=='direct')return '需求已改为工作项分解，请操作对应工作项。';
+  if(action==='start'&&r.deliveryScope==='candidate')return '请项目经理先将需求纳入交付。';
+  return '';
+}
 export function DeliveryControls({requirement:r,compact=false}:{requirement:Requirement;compact?:boolean}){
   const {session}=useSession(),client=useQueryClient(),navigate=useNavigate();
   const manager=canManageProject(session,r.projectId),owner=manager||session.personId===r.ownerId,acceptor=manager||r.acceptanceOwnerValid&&session.personId===r.acceptanceOwnerId;
   const [needsCheck,setNeedsCheck]=useState(false),[reading,setReading]=useState(false),[readError,setReadError]=useState('');
   const [modal,setModal]=useState<{action:string;base:Requirement}|null>(null),[content,setContent]=useState(''),[percent,setPercent]=useState(r.progress),[selected,setSelected]=useState<string[]>([]),[conditions,setConditions]=useState<{dependencyRevision:number;unmetPredecessors:Array<{id:string;title:string}>}|null>(null);
   const readSequence=useRef(0);
+  const submitting=useRef(false),unknownWrite=useRef<{version:number;versioned:boolean}|null>(null);
+  const [reviewRequired,setReviewRequired]=useState(false);
   useEffect(()=>()=>{readSequence.current++;},[r.id]);
   const mutation=useMutation({mutationFn:async()=>{
     if(!modal)return;await assertCleanProjectDraft(session.accountId||'guest',r.projectId);
@@ -42,7 +52,10 @@ export function DeliveryControls({requirement:r,compact=false}:{requirement:Requ
     else if(modal.action==='block')payload.reason=content;
     else if(conditions){payload.expectedDependencyRevision=conditions.dependencyRevision;payload.reason=content||undefined;}
     return api('/api/requirements/'+r.id+'/'+(modal.action==='note'?'progress':modal.action),{method:'POST',body:jsonBody(payload)});
-  },onSuccess:()=>{readSequence.current++;invalidateRequirementViews(client,r.id);setModal(null);setConditions(null);},onError:e=>{if(requiresWriteRecheck(e))setNeedsCheck(true);}});
+  },onSuccess:()=>{readSequence.current++;invalidateRequirementViews(client,r.id);setModal(null);setConditions(null);},onError:e=>{
+    if(isWriteOutcomeUnknown(e)&&modal)unknownWrite.current={version:modal.base.version,versioned:modal.action!=='note'};
+    if(requiresWriteRecheck(e))setNeedsCheck(true);
+  },onSettled:()=>{submitting.current=false;}});
   const reload=async(action:string)=>{
     const sequence=++readSequence.current;setReading(true);setReadError('');
     try{
@@ -51,14 +64,18 @@ export function DeliveryControls({requirement:r,compact=false}:{requirement:Requ
         action==='start'?api<NonNullable<typeof conditions>>('/api/requirements/'+r.id+'/start-conditions'):Promise.resolve(null),
       ]);
       if(sequence!==readSequence.current)return;
+      // 说明记录不增加需求版本，不能凭版本未变认定未写入。
+      const unknown=unknownWrite.current;
+      setReviewRequired(Boolean(unknown&&(!unknown.versioned||latest.version!==unknown.version)));
       setModal({action,base:latest});setConditions(nextConditions);setNeedsCheck(false);mutation.reset();invalidateRequirementViews(client,r.id);
     }catch(error){if(sequence===readSequence.current){setReadError(error instanceof Error?error.message:'读取失败，请重试');setNeedsCheck(true);}}
     finally{if(sequence===readSequence.current)setReading(false);}
   };
-  const open=(action:string)=>{readSequence.current++;setReading(false);setNeedsCheck(false);setReadError('');mutation.reset();setContent('');setSelected([]);setPercent(Math.min(r.progress,99));setConditions(null);setModal({action,base:r});if(action==='start')void reload(action);};
-  const close=()=>{if(!mutation.isPending){readSequence.current++;setReading(false);setModal(null);}};
+  const open=(action:string)=>{readSequence.current++;unknownWrite.current=null;setReviewRequired(false);setReading(false);setNeedsCheck(false);setReadError('');mutation.reset();setContent('');setSelected([]);setPercent(Math.min(r.progress,99));setConditions(null);setModal({action,base:r});if(action==='start')void reload(action);};
+  const close=()=>{if(!submitting.current&&!mutation.isPending){readSequence.current++;setReading(false);setModal(null);}};
   const direct=r.executionMode==='direct',ended=['completed','cancelled'].includes(r.status);
   const labels:Record<string,string>={start:'开始需求',progress:'更新进度',note:'补充说明',block:'标记阻塞',unblock:'解除阻塞','submit-acceptance':'提交验收',accept:'确认验收',rework:'退回返工'};
+  const warning=modal?executionWarning(modal.action,modal.base):'';
   return <>
     <div className="button-row delivery-controls">
       {direct&&owner&&!ended&&<>{r.status==='not_started'&&<button disabled={r.deliveryScope==='candidate'} title={r.deliveryScope==='candidate'?'请项目经理先在交付设置中纳入交付':undefined} className="primary-button" onClick={()=>void open('start')}>开始需求</button>}{r.status==='in_progress'&&<button className="ghost-button" onClick={()=>void open('progress')}>更新进度</button>}{r.status==='in_progress'&&<><button className="ghost-button" onClick={()=>void open('block')}>标记阻塞</button><button className="primary-button" onClick={()=>void open('submit-acceptance')}>提交验收</button></>}{r.status==='blocked'&&<><button className="ghost-button" onClick={()=>void open('note')}>补充说明</button><button className="ghost-button" onClick={()=>void open('unblock')}>解除阻塞</button></>}{['not_started','in_progress'].includes(r.status)&&!compact&&<button className="ghost-button" onClick={()=>setModal({action:'split',base:r})}>拆分剩余工作</button>}</>}
@@ -71,7 +88,7 @@ export function DeliveryControls({requirement:r,compact=false}:{requirement:Requ
       const sequence=readSequence.current;
       return readResourceFresh<Requirement>(client,keys.requirement(r.id),'/api/requirements/'+r.id,()=>sequence===readSequence.current);
     }} onClose={close} onArchived={()=>{}}/>}
-    {modal&&!['split','settings','accept'].includes(modal.action)&&<Modal title={labels[modal.action]} onClose={close} closable={!mutation.isPending}><form onSubmit={e=>{e.preventDefault();if(!mutation.isPending&&!needsCheck&&!reading)mutation.mutate();}}><fieldset className="form-fieldset" disabled={mutation.isPending}>
+    {modal&&!['split','settings','accept'].includes(modal.action)&&<Modal title={labels[modal.action]} onClose={close} closable={!mutation.isPending}><form onSubmit={e=>{e.preventDefault();if(!submitting.current&&!mutation.isPending&&!needsCheck&&!reading&&!reviewRequired&&!warning){submitting.current=true;mutation.mutate();}}}><fieldset className="form-fieldset" disabled={mutation.isPending}>
       <p>{modal.base.title}</p>
       {conditions?.unmetPredecessors.length? <p className="warning-banner">仍未满足：{conditions.unmetPredecessors.map(p=>p.title).join('、')}。确认后提前开始，保留这些前置。</p>:null}
       {['progress','rework'].includes(modal.action)&&modal.base.executionMode==='direct'&&<label className="field"><span>完成度</span><input aria-label="需求完成度" type="number" min={modal.action==='progress'?modal.base.progress:0} max={99} required value={percent} onChange={e=>setPercent(Number(e.target.value))}/></label>}
@@ -80,7 +97,9 @@ export function DeliveryControls({requirement:r,compact=false}:{requirement:Requ
       {!['start','unblock'].includes(modal.action)&&<label className="field"><span>说明</span><textarea aria-label="执行说明" required value={content} onChange={e=>setContent(e.target.value)}/></label>}
       {mutation.error&&<p className="form-error">{mutation.error.message}{mutation.error.message.includes('草稿')&&<button type="button" className="ghost-button" onClick={()=>navigate('/requirements/'+r.id+'?view=path')}>查看路径草稿</button>}</p>}
       {needsCheck&&<div className="warning-banner">本次操作需要核对最新状态。已填说明保留。<button type="button" className="ghost-button" disabled={reading} onClick={()=>void reload(modal.action)}>读取最新状态</button></div>}{readError&&<p className="form-error">{readError}</p>}
-      <div className="form-actions"><button className="primary-button" disabled={mutation.isPending||needsCheck||reading}>{mutation.isPending?'正在提交…':conditions?.unmetPredecessors.length?'确认可以开始':labels[modal.action]}</button></div>
+      {warning&&<p className="warning-banner">{warning}</p>}
+      {reviewRequired&&<p className="warning-banner">已读取最新状态，仍无法确认刚才的提交是否生效。请先核对进展记录；为避免重复写入，本窗口不再提交。已填说明保留，可复制后关闭窗口。</p>}
+      <div className="form-actions"><button className="primary-button" disabled={mutation.isPending||needsCheck||reading||reviewRequired||!!warning}>{mutation.isPending?'正在提交…':conditions?.unmetPredecessors.length?'确认可以开始':labels[modal.action]}</button></div>
     </fieldset></form></Modal>}
   </>;
 }
