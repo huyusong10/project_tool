@@ -1,3 +1,4 @@
+import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, jsonBody, requiresWriteRecheck } from '../api';
@@ -65,8 +66,7 @@ export function ProgressForm({
     },
   });
   const mutation = useMutation({
-    mutationFn: (input: { content: string; workItemId?: string; expectedVersion?: number; workItemPercent?: number }) =>
-      api(`/api/requirements/${requirementId}/progress`, { method: 'POST', body: jsonBody(input) }),
+    mutationFn: async (input: { content: string; workItemId?: string; expectedVersion?: number; workItemPercent?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',requirementId);return api(`/api/requirements/${requirementId}/progress`, { method: 'POST', body: jsonBody(input) });},
     onSuccess: () => {
       invalidateRequirementViews(client, requirementId);
       onClose();

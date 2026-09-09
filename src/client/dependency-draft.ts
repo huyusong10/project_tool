@@ -23,11 +23,17 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges): Pa
       else {nodes=nodes.filter(n=>n.id!==c.id);milestones=milestones.filter(m=>m.id!==c.id);}
     }
   }
+  nodes=nodes.filter(n=>n.kind!=='execution'||requirements.some(r=>r.id===n.requirementId&&r.executionMode==='direct'));
+  for(const r of requirements)if(r.executionMode==='direct'){
+    const old=nodes.find(n=>n.id==='execute:'+r.id),n=old||addNode('execute:'+r.id,r.id,'execution',r.title);
+    Object.assign(n,{title:r.title,status:r.status,ownerId:r.ownerId,ownerName:r.ownerName});
+    if(!old)nodes.push(n);
+  }
   const nodeIds=new Set(nodes.map(n=>n.id)),edges = data.edges.filter(e => !e.dependencyId && !e.source.startsWith('start:')&&nodeIds.has(e.source)&&nodeIds.has(e.target));
-  for(const n of nodes)if(n.requirementId&&['work','milestone'].includes(n.kind)&&!edges.some(e=>e.source===n.id&&e.target===acceptanceId(n.requirementId!)))edges.push({id:n.id+'>'+acceptanceId(n.requirementId),source:n.id,target:acceptanceId(n.requirementId),dependencyId:null,critical:false});
+  for(const n of nodes)if(n.requirementId&&['work','execution','milestone'].includes(n.kind)&&!edges.some(e=>e.source===n.id&&e.target===acceptanceId(n.requirementId!)))edges.push({id:n.id+'>'+acceptanceId(n.requirementId),source:n.id,target:acceptanceId(n.requirementId),dependencyId:null,critical:false});
   const internalTargets=new Set(dependencies.filter(d=>d.sourceRequirementId===d.targetRequirementId&&(d.sourceWorkItemId||d.sourceMilestoneId)&&d.targetWorkItemId).map(d=>d.targetWorkItemId));
   for (const n of nodes.filter(n => n.kind === 'start')) {
-    const works = nodes.filter(w => w.kind === 'work' && w.requirementId === n.requirementId);
+    const works = nodes.filter(w => ['work','execution'].includes(w.kind) && w.requirementId === n.requirementId);
     if (!works.some(w => w.status !== 'cancelled')) edges.push({ id: n.id + '>' + acceptanceId(n.requirementId!), source: n.id, target: acceptanceId(n.requirementId!), dependencyId: null, critical: false });
     for (const w of works) if (!internalTargets.has(w.id))
       edges.push({ id: n.id + '>' + w.id, source: n.id, target: w.id, dependencyId: null, critical: false });

@@ -1,3 +1,4 @@
+import {processingPriorityLabels} from '../../shared/delivery';
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -68,8 +69,8 @@ export function ActionCenterPage() {
         <div className="action-items">
           {isLoading && !data && <LoadingState label="正在加载行动项…" className="stable-panel-state" />}
           {data?.items.map((item) => <button key={item.id} className={`action-item action-${item.severity}`} onClick={() => navigate(item.targetPath)}>
-            <span className="action-severity">{severityLabels[item.severity]}</span>
-            <div className="action-item-main"><div><strong>{item.title}</strong>{item.contextTitle && <small>{item.contextTitle}</small>}</div><p>{item.reasons.map((entry) => entry.label).join(' · ')}</p></div>
+            <span className="action-severity" title={item.priorityReasons?.join('；')}>{item.processingPriority?processingPriorityLabels[item.processingPriority]:severityLabels[item.severity]}</span>
+            <div className="action-item-main"><div><strong>{item.title}</strong>{item.contextTitle && <small>{item.contextTitle}</small>}</div><p>{item.reasons.map((entry) => entry.label).join(' · ')}</p>{!!item.affectedRequirements?.length&&<small title={item.affectedRequirements.map(r=>r.title).join('、')}>影响 {item.affectedRequirements.length} 个交付需求 · {item.affectedRequirements.map(r=>r.title).join('、')}</small>}</div>
             <div className="action-item-meta"><span>{item.ownerName || '未分派'}</span><span>{item.dueDate || '无截止日期'}{item.overdueWorkdays ? ` · 逾期${item.overdueWorkdays}个工作日` : ''}</span></div>
             <ArrowRight size={16} />
           </button>)}

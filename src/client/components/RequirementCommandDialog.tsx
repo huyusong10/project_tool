@@ -1,3 +1,4 @@
+import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
@@ -107,9 +108,9 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
     }
   };
   const mutation = useMutation({
-    mutationFn: (input: { expectedVersion: number; content?: string; reason?: string }) => api(`/api/requirements/${baseline.id}${action === 'archive' ? '' : `/${action}`}`, {
+    mutationFn: async (input: { expectedVersion: number; content?: string; reason?: string }) => {await assertCleanRequirementDraft(session.accountId||'guest',baseline.id);return api(`/api/requirements/${baseline.id}${action === 'archive' ? '' : `/${action}`}`, {
       method: action === 'archive' ? 'DELETE' : 'POST', body: jsonBody(input),
-    }),
+    });},
     onSuccess: () => {
       if (action === 'archive') invalidateArchiveViews(client);
       else invalidateRequirementViews(client, baseline.id);

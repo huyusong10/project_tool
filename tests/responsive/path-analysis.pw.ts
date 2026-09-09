@@ -46,7 +46,7 @@ test('全局→需求→外部交付→返回，选择不移动视口且刷新�
  await page.reload();await ready(page);await expect(page.getByLabel('分析目标',{exact:true})).toHaveValue('project');
  const local=await(await page.request.get('/api/requirements/'+b.id+'/path-analysis')).json() as PathAnalysis;expect(local.risks[b.id]).toEqual(risk);
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();
- await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:'方案交付'}).last().click();
+ await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:'方案交付'}).filter({hasText:a.title}).click();
  await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp(a.id));
  await page.getByRole('button',{name:'返回'+b.title+'路径',exact:true}).click();await ready(page);await page.getByRole('button',{name:'返回项目全局',exact:true}).click();await ready(page);expect(page.url()).toBe(globalUrl);
  await expect.poll(()=>viewport(page)).toBe(before);expect(errors).toEqual([]);
@@ -134,7 +134,7 @@ test('并发修改保留草稿，核对新版本后重新预览；执行入口�
  await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await expect(page.getByLabel('分析目标',{exact:true})).toBeVisible();await ready(page);
  await expect(page.locator('.graph-status-slot').filter({hasText:'1 项未保存'})).toBeVisible();
- await selectList(page,'方案交付');await page.getByRole('button',{name:'定位并处理工作项',exact:true}).click();
+ await selectList(page,'方案交付');await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:'方案交付'}).filter({hasText:b.title}).click();await page.getByRole('button',{name:'定位并处理工作项',exact:true}).click();
  await expect(page.getByRole('dialog',{name:'处理未保存修改'})).toBeVisible();await page.getByRole('button',{name:'继续编辑',exact:true}).click();
  await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect(page.getByRole('button',{name:'编辑画布',exact:true})).toBeVisible();
  expect((await analysis()).nodes.find(n=>n.id===b.workItems[0].id)?.estimate.durationDays).toBe(6);
@@ -354,7 +354,7 @@ test('内部搜索项目外部工作，选择不扩图，明确定位后加入�
 
 test('返回来源失去权限时回到项目全局，不重复跳转',async({page})=>{
  const {a,b}=await fixture(page);await page.goto('/requirements/'+b.id+'?view=path');await ready(page);
- if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();await page.locator('.graph-list-row>button:first-child').filter({hasText:'方案交付'}).last().click();
+ if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();await page.locator('.graph-list-row>button:first-child').filter({hasText:'方案交付'}).filter({hasText:a.title}).click();
  await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp(a.id));
  await page.route('**/api/requirements/'+b.id,route=>route.fulfill({status:403,json:{message:'无权读取该需求',code:'FORBIDDEN'}}));
  await page.getByRole('button',{name:'返回'+b.title+'路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(/\/paths/);await expect(page.locator('.graph-status-slot')).toContainText('来源已删除或不可访问');

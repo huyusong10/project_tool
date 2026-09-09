@@ -18,6 +18,17 @@ export function clearProjectGraphDrafts(accountId:string,projectId:string){
   for(const storage of [sessionStorage,localStorage])for(const key of Object.keys(storage))if(key===base||key.startsWith(base+':')||['pm-path-origin:','pm-path-view:','pm-graph-view:','pm-detail-scroll:','pm-editor-new-template:','pm-editor-lease:pm-graph-draft:'].some(p=>(key===p+accountId+':'+projectId||key.startsWith(p+accountId+':'+projectId+':'))))storage.removeItem(key);
 }
 const sessions=new Map<string,EditorSession<unknown>>();
+export async function assertCleanProjectDraft(accountId:string,projectId:string){
+  const key=prefix+accountId+':'+projectId;
+  const session=sessions.get(key);
+  const state=(!session?.loading?session?.state:undefined)||readHistory<DependencyChanges>((await readDraftRecord(key))??JSON.parse(sessionStorage.getItem(key)||'null'));
+  const changes=state?.values[state.index] as DependencyChanges|undefined;
+  if(changes&&(changes.add.length||changes.remove.length||changes.estimates.length||changes.entities?.length)||state&&Object.keys(state.fields).length||(await readDraftRecord(key+':submission')||sessionStorage.getItem(key+':submission')))throw new Error('项目有未保存业务草稿，请进入路径工作区保存或放弃后，再执行此操作');
+}
+export async function assertCleanRequirementDraft(accountId:string,requirementId:string){
+  const r=await api<{projectId:string}>('/api/requirements/'+requirementId,{readOnly:true});
+  await assertCleanProjectDraft(accountId,r.projectId);
+}
 export function useGraphHistory<T>(key:string,initial:T,version:string,source?:PathAnalysis){
   const storageKey=prefix+key;
   let session=sessions.get(storageKey) as EditorSession<T>|undefined;

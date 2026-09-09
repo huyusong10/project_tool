@@ -1,3 +1,5 @@
+import {assertCleanRequirementDraft} from '../use-graph-draft';
+import {DeliveryControls,ProcessingPriorityBadge} from '../components/DeliveryControls';
 import { requirementRiskDisplay, requirementVarianceDisplay } from "../requirement-presentation";
 import { usePageBack } from "../use-page-view";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -113,11 +115,11 @@ function SavedRequirementPage() {
   const templates = templatesQuery.data || emptyTemplates;
   const people = peopleQuery.data || emptyPeople;
   const itemAction = useMutation({
-    mutationFn: ({ item, action, content, expectedDependencyRevision, expectedVersion = item.version }: { item: WorkItem; expectedDependencyRevision?:number; action: string; content?: string; expectedVersion?: number }) =>
-      api(`/api/work-items/${item.id}/${action}`, {
+    mutationFn: async ({ item, action, content, expectedDependencyRevision, expectedVersion = item.version }: { item: WorkItem; expectedDependencyRevision?:number; action: string; content?: string; expectedVersion?: number }) => {
+      await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId);return api(`/api/work-items/${item.id}/${action}`, {
         method: "POST",
         body: jsonBody({ expectedVersion, expectedDependencyRevision, ...(action === "complete" ? { content } : content ? { reason: content } : {}) }),
-      }),
+      });},
     onSuccess: () => {
       invalidateRequirementViews(client, id);
     },
@@ -269,7 +271,7 @@ function SavedRequirementPage() {
             {canManage && <div ref={actionAnchor}>
               <button type="button" className="ghost-button" aria-label="需求操作" aria-expanded={actionMenuOpen} onClick={() => setActionMenuOpen((open) => !open)}><MoreHorizontal size={16} />操作</button>
               <AnchoredPopover anchorRef={actionAnchor} open={actionMenuOpen} onOutside={() => setActionMenuOpen(false)} width={230} className="action-menu">
-                {!['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status) && <button type="button" onClick={() => { setActionMenuOpen(false); setCommand('complete-as-planned'); }}><Check size={15} />按期完成（历史补录）</button>}
+                {requirement.executionMode!=='direct'&&!['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status) && <button type="button" onClick={() => { setActionMenuOpen(false); setCommand('complete-as-planned'); }}><Check size={15} />按期完成（历史补录）</button>}
                 {requirement.status === 'pending_acceptance' && <button type="button" onClick={() => { setActionMenuOpen(false); setCommand('accept'); }}><Check size={15} />确认验收</button>}
                 {!['completed', 'cancelled'].includes(requirement.status) && <button type="button" className="danger" onClick={() => { setActionMenuOpen(false); setCommand('cancel'); }}><CircleStop size={15} />取消需求</button>}
                 {['completed', 'cancelled'].includes(requirement.status) && <button type="button" onClick={() => { setActionMenuOpen(false); setModal('correction'); }}><PencilLine size={15} />受控纠错</button>}
@@ -283,14 +285,14 @@ function SavedRequirementPage() {
         {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
         {supportingError && <div className="warning-banner">{supportingDataReady ? "人员与流程数据刷新失败，当前使用上次成功结果。" : "人员或流程数据加载失败，相关编辑操作暂不可用。"}<button className="ghost-button" disabled={peopleQuery.isFetching || templatesQuery.isFetching} onClick={() => void Promise.all([peopleQuery.refetch(), templatesQuery.refetch()])}>重新加载</button></div>}
         {requirement.status === "pending_acceptance" && <section className="requirement-acceptance-banner">
-          <div><Check size={18} /><span><strong>所有工作项已完成，等待项目经理验收</strong><small>验收后才会计入已完成需求和完成率</small></span></div>
-          {canManage && <button className="primary-button" onClick={() => setCommand('accept')}><Check size={15} />确认验收</button>}
+          <div><Check size={18} /><span><strong>执行工作已完成，等待验收</strong><small>验收后才会计入已完成需求和完成率</small></span></div>
+
         </section>}
-        <div className="requirement-context-strip">
+        <DeliveryControls requirement={requirement}/><div className="requirement-context-strip">
           <div className="hero-badges">
             <span>{requirement.projectName}</span>
             <StatusBadge kind="requirement" value={requirement.status} />
-            <StatusBadge kind="priority" value={requirement.priority} />
+            <ProcessingPriorityBadge requirement={requirement}/>
             {riskClosed || !requirement.riskEvaluated ? (
               <span className={`risk-badge ${riskClass}`}>{riskLabel}</span>
             ) : (
@@ -359,7 +361,7 @@ function SavedRequirementPage() {
             <h2>需求进展</h2>
             <div className="path-view-switch"><button className="ghost-button" aria-pressed={!pathView} onClick={()=>{const params=new URLSearchParams(searchParams);params.delete('view');setSearchParams(params,{state:pathLocation.state});}}>进度甘特</button><button className="ghost-button" aria-pressed={pathView} onClick={openPathView}>路径分析</button></div>
           </div>
-          {canManageWorkItems && (
+          {canManageWorkItems && requirement.executionMode!=='direct' && (
             <div className="panel-actions">
               <button
                 className="ghost-button"

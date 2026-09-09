@@ -27,11 +27,12 @@ for (const [skin, label] of skins) test(`${label}：布局、双轨三种粒度�
   await page.screenshot({ path: info.outputPath(`${skin}-home.png`), animations: "disabled" });
   const scroll = page.locator(".project-gantt-scroll");
   await scroll.evaluate((element) => { element.scrollLeft = 80; });
-  const initialScroll = await scroll.evaluate((element) => element.scrollLeft);
+  await expect.poll(()=>scroll.evaluate(e=>e.scrollLeft)).toBeGreaterThan(80);
+  const initialRange = await page.locator('.project-gantt-panel .gantt-visible-range').textContent();
   await page.getByRole("button", { name: /^甘特显示方式/ }).click();
   await page.getByRole("button", { name: "计划·实际双轨", exact: true }).click();
   await expect(page.locator(".gantt-date-actual")).toHaveCount(2);
-  expect(await scroll.evaluate((element) => element.scrollLeft)).toBe(initialScroll);
+  expect(await page.locator('.project-gantt-panel .gantt-visible-range').textContent()).toBe(initialRange);
   for (const zoom of ["日", "周", "月"]) {
     await page.getByLabel("时间粒度").getByRole("button", { name: zoom, exact: true }).click();
     await expect(page.locator(".gantt-date-plan").first()).toBeAttached();

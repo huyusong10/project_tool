@@ -1,3 +1,5 @@
+import {assertCleanRequirementDraft} from '../use-graph-draft';
+import {ProcessingPriorityBadge,DeliveryControls} from '../components/DeliveryControls';
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -30,11 +32,12 @@ export function MyWorkPage() {
   useEffect(() => {
     if (unavailable && error) setProgressItem(undefined);
   }, [error, unavailable]);
-  const items = (data?.items || []).filter((item) => filter === 'all' || (filter === 'active' ? !['completed', 'cancelled'].includes(item.status) : item.status === filter));
+  const directEntries=(data?.requirements||[]).filter(r=>r.executionMode==='direct').map(r=>({...r,id:r.id,templateItemId:null,milestoneLabel:null,sortOrder:0,requirementStatus:r.status,ownerId:r.ownerId||null,ownerName:r.ownerName||null,actualStart:r.actualStart||null,actualEnd:r.actualEnd||null,forecastEnd:r.forecastEnd||null,blockedAt:r.blockedAt||null,blockedReason:r.blockedReason||null,createdAt:r.createdAt||r.updatedAt,version:r.version||1,requirementId:r.id,requirementTitle:r.title,assignmentType:'owner',collaborators:[],assigneeIds:r.ownerId?[r.ownerId]:[],assigneeNames:r.ownerName?[r.ownerName]:[],overdue:r.delayed,status:r.status==='pending_acceptance'?'completed':r.status,deliveryRequirement:r} as MyWorkItem & {deliveryRequirement:typeof r}));
+  const items = [...(data?.items || []),...directEntries].filter((item) => filter === 'all' || (filter === 'active' ? !['completed', 'cancelled'].includes(item.status) : item.status === filter));
   const action = useMutation({
-    mutationFn: ({ item, action, content, reason, expectedDependencyRevision, expectedVersion = item.version }: { item: MyWorkItem; expectedDependencyRevision?:number; action: string; content?: string; reason?: string; expectedVersion?: number }) => api(`/api/work-items/${item.id}/${action}`, {
+    mutationFn: async ({ item, action, content, reason, expectedDependencyRevision, expectedVersion = item.version }: { item: MyWorkItem; expectedDependencyRevision?:number; action: string; content?: string; reason?: string; expectedVersion?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId);return api(`/api/work-items/${item.id}/${action}`, {
       method: 'POST', body: jsonBody({ expectedVersion, content, reason, expectedDependencyRevision }),
-    }),
+    });},
     onSuccess: (_result, variables) => {
       invalidateRequirementViews(client, variables.item.requirementId);
     },
@@ -63,11 +66,11 @@ export function MyWorkPage() {
       {!!data?.requirements.length && <section className="panel my-owned-requirements">
         <header><div><h2>我负责的需求</h2><p>规划完整度、交付风险和待处理事项</p></div></header>
         <div className="my-owned-requirement-grid">
-          {data.requirements.map((requirement) => <button key={requirement.id} onClick={() => navigate(`/requirements/${requirement.id}`)}>
-            <div><span className={`priority-badge priority-${requirement.priority.toLowerCase()}`}>{requirement.priority}</span><strong>{requirement.title}</strong></div>
+          {data.requirements.map((requirement) => <div key={requirement.id}><button onClick={() => navigate(`/requirements/${requirement.id}`)}>
+            <div><ProcessingPriorityBadge requirement={requirement}/><strong>{requirement.title}</strong></div>
             <p>{requirement.projectName} · {requirement.plannedStart || "待排期"} → {requirement.plannedEnd || "待排期"}</p>
             <footer><span className={`status-pill status-${requirement.status}`}>{requirementStatusLabels[requirement.status as keyof typeof requirementStatusLabels] || requirement.status}</span><span>{requirement.planningReasons.join("、") || (requirement.highRisk ? "高风险" : requirement.delayed ? "已延期" : "计划正常")}</span><b>{requirement.actionCount} 项待处理</b></footer>
-          </button>)}
+          </button>{requirement.executionMode==='direct'&&<DeliveryControls requirement={requirement as Requirement} compact/>}</div>)}
         </div>
       </section>}
       <ResizablePanel
@@ -76,7 +79,7 @@ export function MyWorkPage() {
         defaultHeight={520}
         minHeight={360}
       >
-        <header><div><h2>分配给我的工作项</h2><p>主负责人和协作工作都会显示</p></div><ViewTabs value={filter} onChange={setFilter} options={[['active', '当前'], ['not_started', '未开始'], ['in_progress', '进行中'], ['blocked', '阻塞'], ['completed', '已完成'], ['all', '全部']].map(([value, label]) => ({ value, label }))} /></header>
+        <header><div><h2>分配给我的工作</h2><p>直接执行需求、主负责和协作工作</p></div><ViewTabs value={filter} onChange={setFilter} options={[['active', '当前'], ['not_started', '未开始'], ['in_progress', '进行中'], ['blocked', '阻塞'], ['completed', '已完成'], ['all', '全部']].map(([value, label]) => ({ value, label }))} /></header>
         {isLoading && !data ? <LoadingState className="stable-panel-state" label="正在加载工作项…" /> : <GapTimeline
           items={items}
           asOfDate={data?.asOfDate}
@@ -88,7 +91,7 @@ export function MyWorkPage() {
           emptyState={{ message: '当前筛选下没有工作项', actionLabel: '查看全部', onAction: () => setFilter('all') }}
           onItemClick={(baseItem) => {
             const item = baseItem as MyWorkItem;
-            navigate(`/requirements/${item.requirementId}?workItemId=${encodeURIComponent(item.id)}`);
+            navigate(directEntries.some(r=>r.id===item.id)?`/requirements/${item.requirementId}`:`/requirements/${item.requirementId}?workItemId=${encodeURIComponent(item.id)}`);
           }}
           renderItemMeta={(baseItem) => {
             const item = baseItem as MyWorkItem;
@@ -96,6 +99,7 @@ export function MyWorkPage() {
           }}
           renderActions={(baseItem) => {
             const item = baseItem as MyWorkItem;
+            const direct=directEntries.find(r=>r.id===item.id);if(direct)return <button className="ghost-button" onClick={()=>navigate('/requirements/'+direct.requirementId)}>处理需求</button>;
             return <div className="my-work-gantt-actions">
               {['in_progress', 'blocked'].includes(item.status) && <button className="my-work-progress-action" onClick={() => setProgressItem(item)} title="写进展" aria-label={`为${item.title}写进展`}><MessageSquarePlus size={15} /><span>进展</span></button>}
               <WorkItemActions item={item} startDisabledReason={item.requirementStatus === 'planning' ? '需求尚未完成规划，请联系需求负责人或项目经理补齐负责人和排期。' : undefined} onAction={(nextAction, text, expectedVersion, expectedDependencyRevision) => action.mutateAsync({ item, action: nextAction, expectedVersion, expectedDependencyRevision, ...(['block','start'].includes(nextAction) ? { reason: text } : { content: text }) })} onReload={async () => {

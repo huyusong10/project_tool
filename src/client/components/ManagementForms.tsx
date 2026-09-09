@@ -24,7 +24,9 @@ type ProjectFormInput = {
 
 type RequirementFormInput = {
   projectId: string;
-  templateId: string;
+  templateId?: string;
+  executionMode?: 'direct'|'work_items';
+  deliveryScope?: 'committed'|'candidate';
   title: string;
   priority: string;
   ownerId: string;
@@ -45,8 +47,8 @@ function matchesCreatedRequirement(
   if (sourceIds.has(requirement.id)) return false;
   const hasSchedule = Boolean(input.plannedStart || input.plannedEnd);
   const fallbackTemplate = templates.find((item) => item.name === "DCIM AI工作流") || templates[0];
-  const expectedTemplateId = input.templateId || (hasSchedule ? defaultTemplateId || fallbackTemplate?.id || "" : "");
-  if (hasSchedule && !expectedTemplateId) return false;
+  const expectedTemplateId = input.executionMode==='direct'?'':input.templateId || (hasSchedule ? defaultTemplateId || fallbackTemplate?.id || "" : "");
+  if (hasSchedule && !expectedTemplateId&&input.executionMode!=='direct') return false;
   if (requirement.projectId !== input.projectId
     || requirement.title !== canonicalizeLabel(input.title)
     || requirement.priority !== (input.priority || "P2")
@@ -54,9 +56,10 @@ function matchesCreatedRequirement(
     || requirement.background !== (canonicalizeContent(input.background) || null)
     || requirement.acceptanceCriteria !== (canonicalizeContent(input.acceptanceCriteria) || null)
     || requirement.referenceUrl !== (canonicalizeContent(input.referenceUrl) || null)
-    || requirement.templateId !== (expectedTemplateId || null)) return false;
+    || requirement.templateId !== (expectedTemplateId || null)||input.executionMode&&requirement.executionMode!==input.executionMode||requirement.deliveryScope!==(input.deliveryScope||'committed')) return false;
+  if(input.executionMode==='direct')return requirement.workItems.length===0&&requirement.plannedStart===(input.plannedStart||null)&&requirement.plannedEnd===(input.plannedEnd||null);
   if (!hasSchedule) {
-    return requirement.plannedStart === null && requirement.plannedEnd === null && requirement.workItems.length === 0;
+    return requirement.plannedStart === null && requirement.plannedEnd === null && (input.executionMode==='work_items'&&input.templateId?requirement.workItems.length===templates.find(t=>t.id===input.templateId)?.items.filter(i=>i.kind!=='milestone'&&!i.deletedAt).length:requirement.workItems.length===0);
   }
   const selectedTemplate = templates.find((item) => item.id === expectedTemplateId);
   if (!selectedTemplate) return false;
@@ -262,21 +265,14 @@ export function RequirementForm({
         if (submitting.current) return;
         submitting.current = true;
         const values = Object.fromEntries(new FormData(event.currentTarget));
-        mutation.mutate({ ...values, templateId, projectId } as RequirementFormInput);
+        mutation.mutate({ ...values, templateId:templateId||undefined, executionMode:templateId?"work_items":"direct", projectId } as RequirementFormInput);
       }}
     >
       <fieldset className="form-grid form-fieldset" disabled={mutation.isPending}>
       <FormField label="需求标题" full>
         <input name="title" required autoFocus />
       </FormField>
-      <FormField label="优先级">
-        <select name="priority" defaultValue="P2">
-          <option value="P0">P0 · 紧急</option>
-          <option value="P1">P1 · 高</option>
-          <option value="P2">P2 · 中</option>
-          <option value="P3">P3 · 低</option>
-        </select>
-      </FormField>
+      <FormField label="交付范围"><select name="deliveryScope" defaultValue="committed"><option value="committed">纳入交付</option><option value="candidate">候选</option></select></FormField>
       <FormField label="需求负责人（可稍后指定）">
         <select name="ownerId" value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
           <option value="">待指定</option>
@@ -284,7 +280,7 @@ export function RequirementForm({
           {people.filter((person) => person.active && person.projectRole !== "viewer").map((person) => <option key={person.id} value={person.id}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}</option>)}
         </select>
       </FormField>
-      <FormDisclosure label="流程与排期" hint="可选：可只选流程，排期稍后补充">
+      <FormDisclosure label="流程与排期" hint={templateId?'已选流程：'+(templates.find(t=>t.id===templateId)?.name||'项目默认流程'):'未选流程，直接执行；可稍后拆分'}>
         <FormField label="流程设计" full>
           <select name="templateId" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
             <option value="">暂不选择流程</option>
@@ -321,9 +317,9 @@ export function RequirementForm({
           <input key={scheduleMode} name={scheduleMode === "start" ? "plannedStart" : "plannedEnd"} type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} />
         </FormField>
         <>{hasWorkdayCalendarFallback([scheduleDate])&&<p role="status" className="field-help field-full">该日期超出当前法定工作日日历覆盖范围，将按周一至周五计算。</p>}</>
-        <p className="field-help field-full">日期可留空：只保存所选流程，需求保持待规划；填写日期后才会自动生成工作项。{scheduleMode === "deadline" ? " 截止日期需为工作日。" : ""}</p>
+        <p className="field-help field-full">不选流程时直接执行；选定流程后生成工作项。日期可留空，后续再预览排期。{scheduleMode === "deadline" ? " 截止日期需为工作日。" : ""}</p>
       </FormDisclosure>
-      {(templatesQuery.error || peopleQuery.error) && <div className="warning-banner field-full">部分辅助选项加载失败，仍可创建待规划需求并稍后补充。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching || peopleQuery.isFetching} onClick={() => void Promise.all([templatesQuery.refetch(), peopleQuery.refetch()])}>重新加载</button></div>}
+      {(templatesQuery.error || peopleQuery.error) && <div className="warning-banner field-full">部分辅助选项加载失败，仍可创建直接执行需求并稍后补充。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching || peopleQuery.isFetching} onClick={() => void Promise.all([templatesQuery.refetch(), peopleQuery.refetch()])}>重新加载</button></div>}
       <FormDisclosure label="补充信息" hint="可选：背景、验收标准和参考链接">
         <FormField label="需求背景" full><textarea name="background" rows={3} placeholder="为什么要做，可留空" /></FormField>
         <FormField label="验收标准" full><textarea name="acceptanceCriteria" rows={3} placeholder="如何判断完成，可留空" /></FormField>
