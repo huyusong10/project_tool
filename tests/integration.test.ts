@@ -374,10 +374,10 @@ describe('自动化项目管理API', () => {
     const insertWorkItem = sqlite.prepare(`INSERT INTO work_items
       (id,requirement_id,title,status,planned_start,planned_end,actual_start,actual_end,progress,sort_order,created_at,updated_at)
       VALUES (?,? ,?,'completed','2026-09-01','2026-09-10','2026-09-01',?,100, ?,?,?)`);
-    insertRequirement.run(requirementIds[0], projectId, '按期完成需求', now, now, now);
+    insertRequirement.run(requirementIds[0], projectId, '按期完成需求', '2026-09-09', now, now);
     insertWorkItem.run(randomUUID(), requirementIds[0], '先完成工作项', '2026-09-08', 0, now, now);
     insertWorkItem.run(randomUUID(), requirementIds[0], '最后完成工作项', '2026-09-09', 1, now, now);
-    insertRequirement.run(requirementIds[1], projectId, '延期完成需求', now, now, now);
+    insertRequirement.run(requirementIds[1], projectId, '延期完成需求', '2026-09-11', now, now);
     insertWorkItem.run(randomUUID(), requirementIds[1], '延期工作项', '2026-09-11', 0, now, now);
     const onTime = await app.inject({ method: 'POST', url: '/api/analytics/query', headers: { cookie }, payload: {
       projectId, range: { from: '2026-09-01', to: '2026-09-30' }, panels: [{

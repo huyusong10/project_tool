@@ -1,3 +1,4 @@
+import {type DeliveryFields,type ProcessingResult,processingPriority} from './delivery';
 import { addBusinessDays, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics, type RiskLevel } from './domain';
 import {arrangeLate,type Arrangement} from './late-schedule';
 
@@ -18,7 +19,8 @@ export type PathWork = {
   forecastEnd: string | null; forecastDuration: number | null; forecastReadyAt: string | null;
   blockedAt: string | null; blockedReason: string | null; milestoneLabel: string | null; ownerName: string | null;
 };
-export type PathRequirement = {
+export type PathRequirement = DeliveryFields & Partial<ProcessingResult> & {
+  createdAt?:string;updatedAt?:string;
   acknowledgedDependencies?:string[]; version?:number; background?:string|null;acceptanceCriteria?:string|null;referenceUrl?:string|null;templateId?:string|null;
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[]; delayed?:boolean; scheduleComplete?:boolean;
   id: string; projectId: string; title: string; status: string; priority: string; ownerName: string | null;
@@ -33,7 +35,7 @@ export type PathInput = {
 export type PathNode = {
   version?:number;
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[]; delayed?:boolean; scheduleComplete?:boolean;
-  id: string; requirementId: string | null; workItemId: string | null; kind: 'work' | 'start' | 'acceptance' | 'project' | 'milestone';
+  id: string; requirementId: string | null; workItemId: string | null; kind: 'execution' | 'work' | 'start' | 'acceptance' | 'project' | 'milestone';
   arrangement?:Arrangement; arrangementAnchor?:string|null; scheduledStart?:string|null; scheduledEnd?:string|null; scheduleBuffer?:number|null; startAcknowledged?:boolean;
   title: string; status: string; ownerName: string | null; milestoneLabel: string | null;
   plannedStart: string | null; plannedEnd: string | null; forecastStart: string | null; forecastEnd: string | null;
@@ -43,7 +45,7 @@ export type PathNode = {
   estimate: {durationDays:number|null;earliestStart:string|null;unblockEstimate:string|null;forecastEnd:string|null};
 };
 export type PathEdge = { id: string; source: string; target: string; dependencyId: string | null; critical: boolean };
-export type PathRisk = { riskLevel: RiskLevel; riskEvaluated: boolean; riskReason: string; highRisk: boolean;
+export type PathRisk = Partial<ProcessingResult> & { drivesLateTarget?:boolean;inDeliveryNetwork?:boolean; riskLevel: RiskLevel; riskEvaluated: boolean; riskReason: string; highRisk: boolean;
   critical: boolean; criticalCount: number; minFloat: number | null; blockedCritical: boolean; complete: boolean };
 export type PathBlocker = { nodeId: string; requirementId: string; workItemId: string | null; title: string; ownerName: string | null;
   reasons: string[]; affectedRequirementIds: string[]; targetCount: number; critical: boolean; waitingDays: number; riskLevel: RiskLevel };
@@ -126,6 +128,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
   const reqById = new Map(input.requirements.map(r => [r.id, r]));
   const works = new Map(input.requirements.map(r => [r.id, [] as PathWork[]]));
   input.workItems.forEach(w => works.get(w.requirementId)?.push(w));
+  for(const r of input.requirements)if(r.executionMode==='direct')works.get(r.id)!.push({id:'execute:'+r.id,requirementId:r.id,title:r.title,status:['completed','pending_acceptance'].includes(r.status)?'completed':r.status==='planning'?'not_started':r.status,progress:r.progress||0,plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,actualStart:r.actualStart||null,actualEnd:r.actualEnd||null,durationDays:r.durationDays||null,earliestStart:null,unblockEstimate:r.unblockEstimate||null,forecastEnd:r.forecastEnd||null,forecastDuration:r.forecastDuration||null,forecastReadyAt:r.forecastReadyAt||null,blockedAt:r.blockedAt||null,blockedReason:r.blockedReason||null,milestoneLabel:null,ownerName:r.ownerName,ownerId:r.ownerId,assigneeIds:r.ownerId?[r.ownerId]:[],assigneeNames:r.ownerName?[r.ownerName]:[]});
   const referenced = new Set(input.dependencies.flatMap(d => [d.sourceWorkItemId, d.targetWorkItemId].filter((x): x is string => !!x)));
   const add = (id: string, requirementId: string | null, kind: Internal['kind'], title: string): Internal => {
     const n: Internal = { id, requirementId, workItemId: kind === 'work' ? id : null, kind, title, status: 'not_started', ownerName: null,
@@ -142,7 +145,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     start.release = r.scheduleAnchor ? Math.max(0, toStart(r.scheduleAnchor)) : 0;
     start.planRelease = toStart(r.scheduleAnchor || r.plannedStart || base);
     const end = add(acceptanceId(r.id), r.id, 'acceptance', `${r.title} · 验收`);
-    end.ownerName = r.ownerName; end.status = r.status; end.plannedEnd = r.plannedEnd;
+    end.ownerName = r.acceptanceOwnerName || '项目经理'; end.ownerId=r.acceptanceOwnerId; end.status = r.status; end.plannedEnd = r.plannedEnd;
     end.source = '假设工作完成后当日验收';
     if (r.acceptedAt && r.status === 'completed') { end.fixed = toFinish(r.acceptedAt); end.complete = true; end.source = '实际验收'; }
     else if (r.status === 'cancelled') end.ownReasons.push('前置需求已取消');
@@ -157,7 +160,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     if (!r.dependenciesReviewedAt && !end.complete) end.ownReasons.push('依赖尚未核对');
     for (const w of works.get(r.id)!) {
       if (w.status === 'cancelled' && !referenced.has(w.id)) continue;
-      const n = add(w.id, r.id, 'work', w.title);
+      const n = add(w.id, r.id, r.executionMode==='direct'?'execution':'work', w.title);
       Object.assign(n, { version:w.version,status: w.status, ownerName: w.ownerName, milestoneLabel: w.milestoneLabel, ownerId:w.ownerId,assigneeIds:w.assigneeIds,assigneeNames:w.assigneeNames, plannedStart: w.plannedStart, plannedEnd: w.plannedEnd,
         delayed:w.status!=='cancelled'&&calculateWorkItemGap(w,input.asOfDate).finishVariance>0,scheduleComplete:!!w.plannedStart&&!!w.plannedEnd });
       n.estimate={durationDays:w.durationDays,earliestStart:w.earliestStart,unblockEstimate:w.unblockEstimate,forecastEnd:w.forecastEnd};
@@ -202,9 +205,9 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
   }
   for (const d of input.dependencies) link(dependencySource(d),dependencyTarget(d),d.id);
   const internalTargets = new Set(input.dependencies.filter(d => d.sourceRequirementId === d.targetRequirementId && (d.sourceWorkItemId||d.sourceMilestoneId) && d.targetWorkItemId).map(d => d.targetWorkItemId!));
-  for (const n of nodes) if (n.kind === 'work' && !internalTargets.has(n.id)) link(startId(n.requirementId!), n.id);
+  for (const n of nodes) if ((n.kind === 'work'||n.kind==='execution') && !internalTargets.has(n.id)) link(startId(n.requirementId!), n.id);
   add(projectTarget, null, 'project', `${input.projectName} · 项目交付`);
-  const eligible = input.requirements.filter(r => !r.deletedAt && !['completed', 'cancelled', 'planning'].includes(r.status));
+  const eligible = input.requirements.filter(r => !r.deletedAt && !['completed', 'cancelled'].includes(r.status)&&r.deliveryScope!=='candidate');
   eligible.forEach(r => link(acceptanceId(r.id), projectTarget));
   (input.milestones||[]).filter(m=>!m.requirementId&&!m.cancelled).forEach(m=>link(m.id,projectTarget));
   const byId = new Map(nodes.map(n => [n.id, n]));
@@ -283,10 +286,11 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     }
   }
   const risks: Record<string, PathRisk> = {};
-  const viewMetrics=new Map<string,{delayed:boolean;scheduleComplete:boolean}>();
+  const eligibleIds=new Set(eligible.map(r=>r.id));
+  const viewMetrics=new Map<string,ReturnType<typeof deriveRequirementMetrics>>();
   for (const r of input.requirements) {
-    const items = works.get(r.id)!, metrics = deriveRequirementMetrics(r, items, input.asOfDate, input.highRiskDelayDays);
-    viewMetrics.set(r.id,{delayed:metrics.delayed,scheduleComplete:metrics.scheduleComplete});
+    const items = works.get(r.id)!, metrics = deriveRequirementMetrics(r, r.executionMode==='direct'?[]:items, input.asOfDate, input.highRiskDelayDays);
+    viewMetrics.set(r.id,metrics);
     const workNodes = items.map(w => byId.get(w.id)).filter((n): n is Internal => !!n);
     const reqNodes = [...nodes.filter(n=>n.kind==='milestone'&&n.requirementId===r.id),...workNodes, byId.get(startId(r.id))!, byId.get(acceptanceId(r.id))!];
     const key = reqNodes.some(n => global.critical.has(n.id));
@@ -299,8 +303,14 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     const complete = !byId.get(acceptanceId(r.id))!.unknownReasons.length;
     const ended = ['completed', 'cancelled'].includes(r.status);
     risks[r.id] = { riskLevel: ended ? 'low' : risk, riskEvaluated: !ended && (metrics.riskEvaluated || risk !== 'low'), riskReason: reasons.join('；') || metrics.riskReason,
-      highRisk: !ended && risk === 'high', critical: key, criticalCount: workNodes.filter(n => global.critical.has(n.id)).length,
-      minFloat: fs.length ? Math.min(...fs) : null, blockedCritical: blocked, complete };
+      highRisk: !ended && risk === 'high', critical: key, criticalCount: workNodes.filter(n => n.kind==='work'&&global.critical.has(n.id)).length,
+      minFloat: fs.length ? Math.min(...fs) : null, blockedCritical: blocked, complete,
+      drivesLateTarget:reqNodes.some(n=>lateDrivers.has(n.id)),inDeliveryNetwork:reqNodes.some(n=>global.scope.has(n.id)) };
+    const affected = new Set<string>(), seen=new Set(reqNodes.map(n=>n.id)), queue=[...seen];
+    for(let i=0;i<queue.length;i++)for(const e of outgoing.get(queue[i])||[]){const child=byId.get(e.target)!;if(child.complete||acknowledged(child,e))continue;if(child.kind==='acceptance'&&eligibleIds.has(child.requirementId!))affected.add(child.requirementId!);if(!seen.has(child.id)){seen.add(child.id);queue.push(child.id);}}
+    if(eligibleIds.has(r.id))affected.add(r.id);
+    const anomalySince=[r.blockedAt,...items.filter(w=>w.status==='blocked').map(w=>w.blockedAt),...(metrics.delayed&&metrics.plannedEnd?[addBusinessDays(metrics.plannedEnd,1)]:[])].filter((d):d is string=>!!d).sort()[0]||null;
+    Object.assign(risks[r.id],processingPriority({...r,...risks[r.id],anomalySince,affectedRequirementIds:[...affected]},input.asOfDate));
   }
   for (const n of nodes) {
     n.inScope = current.scope.has(n.id); n.critical = current.critical.has(n.id); n.planCritical = plan.critical.has(n.id);
@@ -309,14 +319,14 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
   }
   edges.forEach(e => { e.critical = !acknowledged(byId.get(e.target)!,e) && current.critical.has(e.source) && current.critical.has(e.target) && byId.get(e.source)!.earliestFinish === byId.get(e.target)!.earliestStart; });
   const blockers: PathBlocker[] = [];
-  const itemById = new Map(input.workItems.map(w => [w.id, w]));
+  const itemById = new Map([...works.values()].flat().map(w => [w.id, w]));
   for (const n of nodes) {
     if (!n.inScope || !n.requirementId&&n.kind!=='milestone' || n.complete || n.kind === 'start') continue;
     const w = itemById.get(n.id);
     const reasons = [...(waitingReasons.get(n.id)||[]), ...n.ownReasons.filter(x => x !== '依赖尚未核对' && x !== '预计工期缺失' && x !== '缺少有效工作项')];
-    if (n.kind === 'work' && n.status === 'blocked') reasons.unshift(w?.blockedReason || '执行阻塞');
+    if (['work','execution'].includes(n.kind) && n.status === 'blocked') reasons.unshift(w?.blockedReason || '执行阻塞');
     // A predecessor that is late without a manual block is actionable only once its promise is missed.
-    if (!reasons.length && n.plannedEnd && n.plannedEnd < input.asOfDate && n.kind === 'work') reasons.push('交付日期已过，工作尚未完成');
+    if (!reasons.length && n.plannedEnd && n.plannedEnd < input.asOfDate && ['work','execution'].includes(n.kind)) reasons.push('交付日期已过，工作尚未完成');
     if (!reasons.length) continue;
     const visited = new Set<string>([n.id]), queue = [n.id], affected = new Set<string>(), targets = new Set<string>();
     for (let i = 0; i < queue.length; i++) for (const e of outgoing.get(queue[i])!) {
@@ -339,5 +349,5 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     deadlineSlack: current.complete && (eligible.length || input.milestones?.some(m=>!m.requirementId&&!m.cancelled) || requestedTarget !== projectTarget) && targetDate ? toFinish(targetDate) - target.earliestFinish : null, complete: current.complete,
     coverage: { reviewed: input.requirements.filter(r => !r.deletedAt && r.dependenciesReviewedAt).length, total: input.requirements.filter(r => !r.deletedAt).length, unplanned },
     nodes: nodes.map(({ release: _r, fixed: _f, planDuration: _pd, planRelease: _pr, planFinish: _pf, planStart: _ps, actualStart: _as, ...n }) => n),
-    edges, requirements: input.requirements.filter(r => !r.deletedAt).map(r=>({...r,...viewMetrics.get(r.id)})), dependencies: input.dependencies, risks, blockers,milestones:input.milestones||[],layouts:input.layouts||[] };
+    edges, requirements: input.requirements.filter(r => !r.deletedAt).map(r=>({...r,...viewMetrics.get(r.id),...risks[r.id],processingPriority:risks[r.id].processingPriority,priorityReasons:risks[r.id].priorityReasons,affectedRequirementIds:risks[r.id].affectedRequirementIds,priorityAsOfDate:input.asOfDate})), dependencies: input.dependencies, risks, blockers,milestones:input.milestones||[],layouts:input.layouts||[] };
 }

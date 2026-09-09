@@ -1,10 +1,11 @@
+import {validateDeliveryFields,updateDeliveryRequirement} from './delivery-execution';
 import {sqlite} from '../database';
 import type {Actor} from '../auth';
 import {assertProjectManager,assertRequirementOwnerOrManager,requireAuthorizationActor} from '../authorization';
 import {fail,notFound} from '../errors';
 import {requireLabel} from './support';
 import {createRequirementInputSchema,updateRequirementInputSchema,createWorkItemInputSchema,updateWorkItemInputSchema} from '../../shared/contracts';
-import {businessDaysInclusive,plannedDatesFromOffset,plannedStartFromDeadline,canDeleteWorkItem} from '../../shared/domain';
+import {addBusinessDays,businessDaysInclusive,plannedDatesFromOffset,plannedStartFromDeadline,canDeleteWorkItem} from '../../shared/domain';
 import {type PathInput,type PathRequirement} from '../../shared/paths';
 import type {EditorEntityChange,DependencyChanges} from '../../shared/path-contracts';
 import {createRequirement,updateRequirement,archiveRequirement,createWorkItem,updateWorkItem,deleteWorkItem,listTemplates} from '../services';
@@ -37,32 +38,48 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     if(c.data.plannedStart&&c.data.plannedEnd&&c.data.plannedStart>c.data.plannedEnd)fail('计划完成日期不能早于计划开始日期');
     if(c.entity==='requirement'){
       if(c.op==='create'){
-        const value=createRequirementInputSchema.parse({...c.data,projectId:snapshot.projectId,templateId:c.data.templateId||undefined});
+        const {reason:_creationReason,...creation}=c.data;
+        const value=createRequirementInputSchema.parse({...creation,projectId:snapshot.projectId,templateId:c.data.templateId||undefined});
         let template=value.templateId?listTemplates(snapshot.projectId).find(t=>t.id===value.templateId):undefined;
         if(value.templateId&&!template)fail('请选择当前项目的有效流程设计');
-        if((value.plannedStart||value.plannedEnd)&&!template){const project=sqlite.prepare('SELECT default_template_id AS id FROM projects WHERE id=?').get(snapshot.projectId) as {id:string|null};template=listTemplates(snapshot.projectId).find(t=>t.id===project.id)||listTemplates(snapshot.projectId)[0];}
-        if((value.plannedStart||value.plannedEnd)&&!template)fail('立即规划时请选择有效流程');
-        const base=value.plannedStart||(value.plannedEnd?plannedStartFromDeadline(value.plannedEnd,template!.items.filter((i:{kind?:string})=>i.kind!=='milestone')):null);
+        if(value.executionMode!=='direct'&&(value.plannedStart||value.plannedEnd)&&!template){const project=sqlite.prepare('SELECT default_template_id AS id FROM projects WHERE id=?').get(snapshot.projectId) as {id:string|null};template=listTemplates(snapshot.projectId).find(t=>t.id===project.id)||listTemplates(snapshot.projectId)[0];}
+        if(value.executionMode!=='direct'&&(value.plannedStart||value.plannedEnd)&&!template)fail('立即规划时请选择有效流程');
+        validateDeliveryFields(snapshot.projectId,value,actor);
+        const base=value.plannedStart||(value.plannedEnd&&template?plannedStartFromDeadline(value.plannedEnd,template.items.filter((i:{kind?:string})=>i.kind!=='milestone')):null);
         const r:PathRequirement={...value,id:c.id,projectId:snapshot.projectId,status:'planning',ownerName:null,plannedStart:base||null,plannedEnd:null,acceptedAt:null,dependenciesReviewedAt:null,scheduleAnchor:base||null,forecastAcceptance:null,deletedAt:null,version:1};
+        if(value.executionMode==='direct'){
+          if(value.templateId)fail('直接执行不能同时使用流程');
+          r.status='not_started';r.plannedEnd=value.plannedEnd||null;r.executionMode='direct';r.progress=0;
+          if(value.durationDays){if(r.plannedStart)r.plannedEnd=addBusinessDays(r.plannedStart,value.durationDays-1);else if(r.plannedEnd)r.plannedStart=addBusinessDays(r.plannedEnd,1-value.durationDays);}
+          r.scheduleAnchor=r.plannedStart;
+        }
         snapshot.requirements.push(r);
-        if(base&&template){
+        if(template&&(base||value.executionMode==='work_items')){
           const mapping=new Map<string,string>(template.items.map((i:{id:string})=>[i.id,c.id+':template:'+i.id]));
           expanded.set(c.id,template.items.map((i:{id:string;kind?:string})=>({clientId:mapping.get(i.id)!,templateItemId:i.id,kind:i.kind||'work'})));
           for(const item of template.items){const id=mapping.get(item.id)!;
             if(item.kind==='milestone')snapshot.milestones.push({id,projectId:snapshot.projectId,requirementId:c.id,title:item.title,targetDate:null,confirmationMode:item.confirmationMode||'auto',achievedAt:null,version:1});
-            else {const dates=plannedDatesFromOffset(base,item.startOffsetDays,item.durationDays);snapshot.workItems.push({...workDefaults,...dates,id,requirementId:c.id,title:item.title,durationDays:item.durationDays,arrangement:item.arrangement||'early',arrangementAnchor:mapping.get(item.arrangementAnchor)||null});}
+            else {const dates=base?plannedDatesFromOffset(base,item.startOffsetDays,item.durationDays):{plannedStart:null,plannedEnd:null};snapshot.workItems.push({...workDefaults,...dates,id,requirementId:c.id,title:item.title,durationDays:item.durationDays,arrangement:item.arrangement||'early',arrangementAnchor:mapping.get(item.arrangementAnchor)||null});}
             if(template.dependencyMode==='dependencies'||item.kind==='milestone')for(const pred of item.predecessorIds||[]){const previous=template.items.find((i:{id:string})=>i.id===pred);snapshot.dependencies.push({id:id+':from:'+pred,projectId:snapshot.projectId,sourceRequirementId:c.id,targetRequirementId:c.id,sourceWorkItemId:previous.kind==='milestone'?null:mapping.get(pred)!,sourceMilestoneId:previous.kind==='milestone'?mapping.get(pred):null,targetWorkItemId:item.kind==='milestone'?null:id,targetMilestoneId:item.kind==='milestone'?id:null,origin:'template'});}
           }
           if(template.dependencyMode==='dependencies')r.dependenciesReviewedAt=new Date().toISOString();
-          const dates=snapshot.workItems.filter(w=>w.requirementId===c.id).flatMap(w=>w.plannedEnd?[w.plannedEnd]:[]).sort();r.plannedEnd=dates.at(-1)||null;r.status=value.ownerId&&dates.length?'not_started':'planning';
+          const dates=snapshot.workItems.filter(w=>w.requirementId===c.id).flatMap(w=>w.plannedEnd?[w.plannedEnd]:[]).sort();r.plannedEnd=dates.at(-1)||null;r.status=snapshot.workItems.some(w=>w.requirementId===c.id)?'not_started':'planning';
         }
       }else if(c.op==='update'){
-        updateRequirementInputSchema.parse({...c.data,expectedVersion:c.expectedVersion});Object.assign(req!,c.data);
+        updateRequirementInputSchema.parse({...c.data,expectedVersion:c.expectedVersion});
+        validateDeliveryFields(snapshot.projectId,c.data,actor,req as Parameters<typeof validateDeliveryFields>[3]);
+        if(c.data.executionMode&&c.data.executionMode!==req!.executionMode){
+          if(c.data.executionMode==='direct')fail('画布不支持将有工作项的需求切回直接执行');
+          if(['blocked','pending_acceptance'].includes(req!.status))fail('请先解阻或返工，再拆分');
+          if(!changes.some(x=>x.entity==='work'&&x.op==='create'&&x.requirementId===req!.id))fail('拆分必须同时建立剩余工作项');
+          req!.splitBaseProgress=Math.min(99,req!.progress||0);req!.splitAt=new Date().toISOString();
+        }
+        Object.assign(req!,c.data);
       }else {if(!['completed','cancelled'].includes(req!.status))fail('未结束需求请使用取消，不能从画布直接归档');req!.deletedAt=new Date().toISOString();}
     }else if(c.entity==='work'){
       if(c.op!=='delete'){const fields=Object.fromEntries(Object.entries(c.data).filter(([key])=>!['durationDays','arrangement','arrangementAnchor'].includes(key)));(c.op==='create'?createWorkItemInputSchema:updateWorkItemInputSchema).parse({...fields,expectedVersion:c.expectedVersion||1});}
       if(c.op==='create'){
-        if(!req)notFound('所属需求不存在');if(snapshot.workItems.some(w=>w.requirementId===req.id&&w.status!=='not_started')&&!c.data.reason?.trim())fail('需求已执行，新增工作项请填写变更原因');
+        if(!req)notFound('所属需求不存在');if(req.executionMode==='direct')fail('请先选择拆分剩余工作');if(snapshot.workItems.some(w=>w.requirementId===req.id&&w.status!=='not_started')&&!c.data.reason?.trim())fail('需求已执行，新增工作项请填写变更原因');
         snapshot.workItems.push({...workDefaults,...c.data,id:c.id,requirementId:req.id,title:requireLabel(c.data.title,'工作项标题')});
       }else {const w=snapshot.workItems.find(w=>w.id===c.id);if(!w||w.requirementId!==requirementId)notFound('工作项不存在');
         if(c.op==='delete'){if(!canDeleteWorkItem({...w,version:Number(row!.version)} as Parameters<typeof canDeleteWorkItem>[0],!!sqlite.prepare('SELECT 1 FROM progress_updates WHERE work_item_id=? LIMIT 1').get(c.id)))fail('有执行记录的工作项请使用取消');snapshot.workItems=snapshot.workItems.filter(w=>w.id!==c.id);}
@@ -75,7 +92,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
       else {if(!m)notFound('里程碑不存在');if(m.achievedAt)fail('已达成里程碑请先重新打开');if(c.op==='delete'){if(sqlite.prepare("SELECT 1 FROM audit_logs WHERE entity_type='milestone' AND entity_id=? AND action IN ('achieve','reopen') LIMIT 1").get(c.id))fail('里程碑已有达成记录，不能删除历史对象');snapshot.milestones=snapshot.milestones.filter(m=>m.id!==c.id);}else Object.assign(m,c.data);}
     }
   }
-  for(const c of changes)if(c.entity==='requirement'&&c.op==='create'&&!expanded.has(c.id)){const r=snapshot.requirements.find(r=>r.id===c.id)!;r.dependenciesReviewedAt=new Date().toISOString();r.scheduleAnchor=snapshot.asOfDate;}
+  for(const c of changes)if(c.entity==='requirement'&&c.op==='create'&&!expanded.has(c.id)){const r=snapshot.requirements.find(r=>r.id===c.id)!;r.dependenciesReviewedAt=new Date().toISOString();r.scheduleAnchor=r.plannedStart||snapshot.asOfDate;}
   return expanded;
 }
 
@@ -98,9 +115,10 @@ export function persistEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     const data={...c.data},reqId=ids[c.requirementId||'']||c.requirementId;
     if(c.entity==='requirement'){
       if(c.op==='create'){
-        const r=createRequirement({...data,templateId:data.templateId||undefined,projectId:snapshot.projectId},actor);ids[c.id]=r.id;if(!expanded.has(c.id))sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=?,schedule_anchor=? WHERE id=?').run(now,snapshot.asOfDate,r.id);
+        delete data.reason;
+        const r=createRequirement({...data,templateId:data.templateId||undefined,projectId:snapshot.projectId},actor,true);ids[c.id]=r.id;if(!expanded.has(c.id))sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=?,schedule_anchor=? WHERE id=?').run(now,snapshot.requirements.find(value=>value.id===c.id)?.scheduleAnchor||snapshot.asOfDate,r.id);
         for(const e of expanded.get(c.id)||[]){const record=e.kind==='milestone'?sqlite.prepare('SELECT id FROM milestones WHERE requirement_id=? AND template_item_id=?').get(r.id,e.templateItemId) as {id:string}|undefined:r.workItems?.find(w=>w.templateItemId===e.templateItemId);if(record)ids[e.clientId]=record.id;}
-      }else if(c.op==='update')updateRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor);
+      }else if(c.op==='update'){if(data.executionMode||Object.keys(data).some(k=>['deliveryScope','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate'].includes(k)))updateDeliveryRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor,!!data.executionMode,true);else updateRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor);}
       else archiveRequirement(c.id,{expectedVersion:c.expectedVersion},actor);
     }else if(c.entity==='work'){
       const {durationDays,arrangement,arrangementAnchor,...fields}=data;

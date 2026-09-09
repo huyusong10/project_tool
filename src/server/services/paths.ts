@@ -1,3 +1,4 @@
+import {deliveryImpact} from '../../shared/delivery-impact';
 import {analyseChecked,normalizePathEstimates,persistPathEstimates} from './path-estimates';
 import { randomUUID, createHash } from 'node:crypto';
 import { sqlite } from '../database';
@@ -19,7 +20,11 @@ export const dependencySelect = `SELECT id, project_id AS projectId, coalesce(so
 export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInput {
   const project = one<{ name: string; revision: number; plannedEnd: string | null }>('SELECT name, analysis_revision AS revision, planned_end AS plannedEnd FROM projects WHERE id=?', projectId);
   if (!project) notFound('项目不存在');
-  const requirements = all<PathRequirement>(`SELECT r.id, r.project_id AS projectId, r.title, r.status, r.priority, r.owner_id AS ownerId, p.name AS ownerName,
+  const requirements = all<PathRequirement>(`SELECT EXISTS(SELECT 1 FROM project_people op JOIN accounts oa ON oa.person_id=op.person_id JOIN people person ON person.id=op.person_id WHERE op.project_id=r.project_id AND op.person_id=r.owner_id AND op.project_role IN ('member','manager') AND oa.status='active' AND oa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS ownerValid,r.delivery_scope AS deliveryScope,r.execution_mode AS executionMode,r.acceptance_owner_id AS acceptanceOwnerId,
+    r.actual_start AS actualStart,r.actual_end AS actualEnd,r.blocked_at AS blockedAt,r.blocked_reason AS blockedReason,
+    r.forecast_duration AS forecastDuration,r.forecast_ready_at AS forecastReadyAt,r.duration_days AS durationDays,r.forecast_end AS forecastEnd,r.unblock_estimate AS unblockEstimate,r.split_base_progress AS splitBaseProgress,r.split_at AS splitAt,
+    (SELECT name FROM people WHERE id=r.acceptance_owner_id) AS acceptanceOwnerName,
+    EXISTS(SELECT 1 FROM project_people ap JOIN accounts aa ON aa.person_id=ap.person_id JOIN people person ON person.id=ap.person_id WHERE ap.project_id=r.project_id AND ap.person_id=r.acceptance_owner_id AND ap.project_role IN ('member','manager') AND aa.status='active' AND aa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS acceptanceOwnerValid,r.progress,r.created_at AS createdAt,r.updated_at AS updatedAt,r.id, r.project_id AS projectId, r.title, r.status, r.priority, r.owner_id AS ownerId, p.name AS ownerName,
     r.planned_start AS plannedStart, r.planned_end AS plannedEnd, r.accepted_at AS acceptedAt, r.deleted_at AS deletedAt,
     r.dependencies_reviewed_at AS dependenciesReviewedAt, r.schedule_anchor AS scheduleAnchor, r.forecast_acceptance AS forecastAcceptance,
     r.version,r.background,r.acceptance_criteria AS acceptanceCriteria,r.reference_url AS referenceUrl,r.template_id AS templateId,r.acknowledged_dependencies AS acknowledgedDependencies
@@ -42,10 +47,7 @@ export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInp
     layouts:all<DiagramLayout>('SELECT scope,direction,version,positions FROM diagram_layouts WHERE project_id=?',projectId).map(l=>({...l,positions:JSON.parse(String(l.positions))})) };
 }
 export function getPathAnalysis(projectId: string, target = 'project', asOfDate = todayIso()): PathAnalysis {
-  return sqlite.transaction(() => {
-    const input = loadPathInput(projectId, asOfDate);
-    try { return analysePaths(input, target); } catch (error) { fail((error as Error).message, 'DEPENDENCY_CONFLICT'); }
-  })();
+  return sqlite.transaction(()=>{try{return analysePaths(loadPathInput(projectId,asOfDate),target);}catch(error){fail((error as Error).message,'DEPENDENCY_CONFLICT');}})();
 }
 export function readPathAnalysis(projectId: string, target: string | undefined, actor: Actor) {
   assertProjectReadable(requireAuthorizationActor(actor), projectId);
@@ -146,6 +148,7 @@ export function previewDependencyPlan(id: string, raw: unknown, actor: Actor) {
   if (baseStart < todayIso() || businessDaysInclusive(baseStart, baseStart) !== 1) fail('开始锚点必须为今天或之后的工作日');
   return sqlite.transaction(() => {
     const input = loadPathInput(projectId);
+    const before=analysePaths(input);
     const current = input.requirements.find(r => r.id === id)!;
     if (['completed', 'cancelled'].includes(current.status)) fail('已结束需求不能重排', 'TERMINAL_LOCKED');
     current.scheduleAnchor = baseStart;
@@ -154,11 +157,11 @@ export function previewDependencyPlan(id: string, raw: unknown, actor: Actor) {
     // Include affected downstream requirements. Started work is a fixed execution fact.
     const scope = new Set([id]); let changed = true;
     while (changed) { changed = false; for (const e of input.dependencies) if (scope.has(e.sourceRequirementId) && !scope.has(e.targetRequirementId)) { scope.add(e.targetRequirementId); changed = true; } }
-    const entries = analysis.nodes.filter(n => n.kind === 'work' && scope.has(n.requirementId!) && n.status === 'not_started').map(n => ({
-      workItemId: n.id, requirementId: n.requirementId!, title: n.title, currentStart: n.plannedStart, currentEnd: n.plannedEnd,
+    const entries = analysis.nodes.filter(n => ['work','execution'].includes(n.kind) && scope.has(n.requirementId!) && n.status === 'not_started').map(n => ({
+      workItemId: n.id,kind:n.kind, requirementId: n.requirementId!, title: n.title, currentStart: n.plannedStart, currentEnd: n.plannedEnd,
       proposedStart: n.forecastStart, proposedEnd: n.forecastEnd, reasons: n.unknownReasons,
     }));
-    const preview = { requirementId: id, projectId, baseStart, expectedRevision, asOfDate: input.asOfDate, entries };
+    const preview = { requirementId: id, projectId, baseStart, expectedRevision, asOfDate: input.asOfDate, entries,impact:deliveryImpact(before,analysis) };
     return { ...preview, previewToken: createHash('sha256').update(JSON.stringify(preview)).digest('hex'), applicable: entries.length > 0 && entries.every(e => !!e.proposedStart && !!e.proposedEnd) };
   })();
 }
@@ -172,10 +175,11 @@ export function applyDependencyPlan(id: string, raw: unknown, actor: Actor) {
     sqlite.prepare('UPDATE requirements SET schedule_anchor=?,version=version+1,updated_at=? WHERE id=?').run(input.baseStart, now, id);
     const affected = new Set<string>();
     for (const e of preview.entries) {
-      sqlite.prepare("UPDATE work_items SET planned_start=?,planned_end=?,version=version+1,updated_at=? WHERE id=? AND status='not_started'").run(e.proposedStart, e.proposedEnd, now, e.workItemId);
+      if(e.kind==='execution')sqlite.prepare("UPDATE requirements SET planned_start=?,planned_end=?,version=version+1,updated_at=? WHERE id=? AND status='not_started'").run(e.proposedStart,e.proposedEnd,now,e.requirementId);
+      else sqlite.prepare("UPDATE work_items SET planned_start=?,planned_end=?,version=version+1,updated_at=? WHERE id=? AND status='not_started'").run(e.proposedStart, e.proposedEnd, now, e.workItemId);
       affected.add(e.requirementId);
     }
-    for (const requirementId of affected) sqlite.prepare(`UPDATE requirements SET planned_start=(SELECT MIN(planned_start) FROM work_items WHERE requirement_id=? AND status<>'cancelled'),
+    for (const requirementId of affected) if(!preview.entries.some(e=>e.requirementId===requirementId&&e.kind==='execution'))sqlite.prepare(`UPDATE requirements SET planned_start=(SELECT MIN(planned_start) FROM work_items WHERE requirement_id=? AND status<>'cancelled'),
       planned_end=(SELECT MAX(planned_end) FROM work_items WHERE requirement_id=? AND status<>'cancelled'),version=version+1,updated_at=? WHERE id=?`).run(requirementId, requirementId, now, requirementId);
     recordAudit(actor, 'apply_dependency_plan', 'requirement', id, `按依赖调整 ${preview.entries.length} 项未开始工作，涉及 ${affected.size} 个需求`);
     return getPathAnalysis(preview.projectId, acceptanceId(id));

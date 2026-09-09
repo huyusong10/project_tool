@@ -1,9 +1,10 @@
 export const actionReasonCodes = [
   'planning', 'missing_owner', 'missing_work_items', 'incomplete_schedule', 'high_risk',
-  'delayed', 'pending_acceptance', 'blocked', 'unassigned', 'overdue', 'path_blocked',
+  'delayed', 'pending_acceptance', 'blocked', 'unassigned', 'overdue', 'path_blocked', 'outside_delivery', 'acceptor_unavailable',
 ] as const;
 
 export const actionReasonLabels = {
+  outside_delivery:'范围外执行',acceptor_unavailable:'验收人已失效',
   path_blocked: '交付路径受阻',
   planning: '待规划',
   missing_owner: '缺少需求负责人',
@@ -12,21 +13,22 @@ export const actionReasonLabels = {
   high_risk: '高风险',
   delayed: '需求延期',
   pending_acceptance: '待验收',
-  blocked: '工作项阻塞',
+  blocked: '执行阻塞',
   unassigned: '未分派',
   overdue: '问题逾期',
 } as const;
 
 export type ActionReasonCode = typeof actionReasonCodes[number];
 export type ActionSeverity = 'high' | 'medium' | 'low';
-export type ActionSourceType = 'requirement' | 'work_item' | 'issue';
+export type ActionSourceType = 'requirement' | 'work_item' | 'issue' | 'milestone';
 
 export type ActionReason = {
   code: ActionReasonCode;
   label: string;
 };
 
-export type ActionItem = {
+export type ActionItem = Partial<import('./delivery').ProcessingResult> & {
+  affectedRequirements?:Array<{id:string;title:string}>;minFloat?:number|null;riskLevel?:string;riskEvaluated?:boolean;
   id: string;
   sourceType: ActionSourceType;
   sourceId: string;

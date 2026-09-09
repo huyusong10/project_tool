@@ -267,7 +267,7 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
     try {
       const requirements = listRequirements({ projectId }, asOfDate);
       requirementRows = requirements.map((requirement) => ({
-        ...requirement,
+        ...requirement,priority:requirement.processingPriority||'unassessed',deliveryScope:requirement.deliveryScope||'committed',
         template: requirement.templateName || '未绑定流程', owner: requirement.ownerName || '未分配',
         risk: requirement.riskEvaluated ? requirement.riskLevel : 'unassessed',
         completedAt: requirementCompletionDate(requirement),

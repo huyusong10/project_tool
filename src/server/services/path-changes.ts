@@ -1,3 +1,5 @@
+import {normalizeDirectEstimates,persistDirectEstimates} from './direct-estimates';
+import {deliveryImpact,deliveryTargetChange} from '../../shared/delivery-impact';
 import {analyseChecked as analyse,normalizePathEstimates,persistPathEstimates} from './path-estimates';
 import { createHash, randomUUID } from 'node:crypto';
 import { sqlite } from '../database';
@@ -18,6 +20,7 @@ function prepare(projectId: string, input: DependencyChangesInput, actor: Actor)
   assertProjectReadable(current, projectId);
   checkedRevision(projectId, input.expectedRevision);
   const snapshot = loadPathInput(projectId);
+  const before=analyse(structuredClone(snapshot), input.target);
   const { add, remove, estimates,entities=[],layouts=[] } = input.changes;
   const removed=snapshot.dependencies.filter(e=>remove.includes(e.id));
   const beforeEstimates=new Map(snapshot.workItems.filter(w=>estimates.some(p=>p.workItemId===w.id)).map(w=>[w.id,{durationDays:w.durationDays,earliestStart:w.earliestStart,unblockEstimate:w.unblockEstimate,forecastEnd:w.forecastEnd}]));
@@ -46,12 +49,14 @@ function prepare(projectId: string, input: DependencyChangesInput, actor: Actor)
     snapshot.dependencies.push(edge);
   }
   normalizePathEstimates(snapshot,estimates,actor);
+  const directEstimateIds=entities.filter(c=>c.entity==='requirement'&&c.op!=='delete'&&c.data.forecastEnd!==undefined).map(c=>c.id);
+  normalizeDirectEstimates(snapshot,directEstimateIds);
   const analysis = analyse(snapshot, input.target);
   const validIds=new Set([...analysis.nodes.map(n=>n.id),...snapshot.requirements.map(r=>r.id)]);
   for(const layout of layouts)for(const id of Object.keys(layout.positions))if(!validIds.has(id))fail('布局包含失效节点');
-  return { snapshot, analysis, expanded,expectedRevision: input.expectedRevision, asOfDate: snapshot.asOfDate,
-    differences:{added:add,removed,entities,estimates:estimates.map(p=>({workItemId:p.workItemId,before:beforeEstimates.get(p.workItemId)!,after:analysis.nodes.find(n=>n.id===p.workItemId)!.estimate}))},
-    previewToken: hash({ projectId, ...input, asOfDate: snapshot.asOfDate }),
+  return { snapshot, analysis, expanded,directEstimateIds,expectedRevision: input.expectedRevision, asOfDate: snapshot.asOfDate,
+    differences:{target:deliveryTargetChange(before,analysis),impact:deliveryImpact(before,analysis),added:add,removed,entities,estimates:estimates.map(p=>({workItemId:p.workItemId,before:beforeEstimates.get(p.workItemId)!,after:analysis.nodes.find(n=>n.id===p.workItemId)!.estimate}))},
+    previewToken: hash({ contract:'delivery-execution-v1', projectId, ...input, asOfDate: snapshot.asOfDate }),
     count: add.length + remove.length + estimates.length+entities.length+layouts.length };
 }
 
@@ -104,9 +109,10 @@ export function applyDependencyChanges(projectId: string, raw: unknown, actor: A
         targetRequirementId: mapId(edge.targetRequirementId)||'', targetWorkItemId: mapId(edge.targetWorkItemId),sourceMilestoneId:mapId(edge.sourceMilestoneId),targetMilestoneId:mapId(edge.targetMilestoneId), origin: 'manual' });
     }
     persistPathEstimates({...prepared.snapshot,workItems:prepared.snapshot.workItems.map(w=>({...w,id:mapId(w.id)!,arrangementAnchor:mapId(w.arrangementAnchor)}))},input.changes.estimates.map(p=>({...p,workItemId:mapId(p.workItemId)!})));
+    persistDirectEstimates(prepared.snapshot,prepared.directEstimateIds,addedIds);
     if(input.changes.add.length||input.changes.remove.length||input.changes.entities?.length)settleMilestones(projectId,actor);
     for(const layout of input.changes.layouts||[]){
-      const mapped=(id:string)=>id.startsWith('start:')?'start:'+mapId(id.slice(6)):id.startsWith('acceptance:')?'acceptance:'+mapId(id.slice(11)):mapId(id)!;
+      const mapped=(id:string)=>id.startsWith('execute:')?'execute:'+mapId(id.slice(8)):id.startsWith('start:')?'start:'+mapId(id.slice(6)):id.startsWith('acceptance:')?'acceptance:'+mapId(id.slice(11)):mapId(id)!;
       const scope=layout.scope.startsWith('requirement:')?'requirement:'+mapId(layout.scope.slice(12)):layout.scope;
       sqlite.prepare('INSERT INTO diagram_layouts(project_id,scope,direction,positions,version,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(project_id,scope,direction) DO UPDATE SET positions=excluded.positions,version=excluded.version,updated_at=excluded.updated_at').run(projectId,scope,layout.direction,JSON.stringify(Object.fromEntries(Object.entries(layout.positions).map(([id,p])=>[mapped(id),p]))),layout.expectedVersion+1,now);
     }

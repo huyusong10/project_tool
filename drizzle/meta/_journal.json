@@ -162,6 +162,13 @@
       "when": 1788847789682,
       "tag": "0022_graphic_editor",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1788924700000,
+      "tag": "0023_delivery_execution",
+      "breakpoints": true
     }
   ]
 }

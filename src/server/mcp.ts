@@ -1,3 +1,5 @@
+import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor} from './services/delivery-execution';
+import {directRequirementCommandSchema} from '../shared/contracts';
 import type { FastifyInstance } from 'fastify';
 import { McpServer, type StandardSchemaWithJSON, type ToolCallback } from '@modelcontextprotocol/server';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
@@ -172,7 +174,9 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     if (includeDeleted) assertProjectResourceManager(actor, projectId, '需求不存在'); else assertProjectResourceReadable(actor, projectId, '需求不存在');
     return json(getRequirement(id, includeDeleted));
   });
-  registerTool('create_requirement', { description: '轻量创建待规划需求；提供计划开始或截止日期时按模板生成工作项', inputSchema: createRequirementInputSchema }, async (input) => {
+  for(const action of ['start','block','unblock','submit-acceptance'] as const)registerTool(action.replace('-','_')+'_requirement',{description:'推进直接执行需求；不修改依赖或自动开始其他工作',inputSchema:directRequirementCommandSchema.extend({id:idSchema})},async({id,...input})=>json(executeDirectRequirement(id,action,input,actor)));
+  registerTool('return_requirement',{description:'指定验收人或经理退回需求；分解需求须指定返工工作项',inputSchema:directRequirementCommandSchema.extend({id:idSchema,workItemIds:z.array(idSchema).optional()})},async({id,...input})=>json(returnRequirement(id,input,actor)));
+  registerTool('create_requirement', { description: '创建需求；executionMode=direct 直接执行，work_items 按流程分解。priority 为兼容历史字段，不影响自动处理优先级', inputSchema: createRequirementInputSchema }, async (input) => {
     assertProjectManager(actor, input.projectId); return json(createRequirement(input, actor));
   });
   registerTool('update_requirement', { description: '修改非终态需求的标题、优先级、负责人和辅助信息；不修改状态、排期或流程', inputSchema: updateRequirementInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
@@ -190,8 +194,8 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('archive_requirement', { description: '归档需求', inputSchema: expectedVersionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在'); return json(archiveRequirement(id, input, actor));
   });
-  registerTool('accept_requirement', { description: '项目经理确认验收待验收需求', inputSchema: contentCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
-    assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在'); return json(acceptRequirement(id, input, actor));
+  registerTool('accept_requirement', { description: '指定验收人或项目经理确认验收；经理代验写入记录', inputSchema: contentCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+    assertRequirementAcceptor(id,actor); return json(acceptRequirement(id, input, actor));
   });
   registerTool('complete_requirement_as_planned', { description: '经理历史补录：未执行工作项按过去计划日期完成，并验收需求；保留已完成或取消记录', inputSchema: completeAsPlannedInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在'); return json(completeRequirementAsPlanned(id, input, actor));

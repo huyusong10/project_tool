@@ -1,3 +1,5 @@
+import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor,directStartConditions} from './services/delivery-execution';
+import {directRequirementCommandSchema,idSchema} from '../shared/contracts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z, type ZodType } from 'zod';
 import { todayIso } from '../shared/domain';
@@ -284,8 +286,11 @@ export function registerApiRoutes(app: FastifyInstance) {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
     return correctRequirement(id, parsedBody(request, requirementCorrectionInputSchema), actor);
   });
+  for(const action of ['start','block','unblock','submit-acceptance'] as const)app.post('/api/requirements/:id/'+action,{preHandler:requireReady},async request=>executeDirectRequirement(idOf(request),action,parsedBody(request,directRequirementCommandSchema),actorFromRequest(request)));
+  app.get('/api/requirements/:id/start-conditions',{preHandler:requireReady},async request=>{const id=idOf(request);assertRequirementOwnerOrManager(actorFromRequest(request),id);return directStartConditions(id);});
+  app.post('/api/requirements/:id/rework',{preHandler:requireReady},async request=>returnRequirement(idOf(request),parsedBody(request,reasonCommandSchema.extend({workItemIds:z.array(idSchema).optional(),progress:z.number().int().min(0).max(99).optional()})),actorFromRequest(request)));
   app.post('/api/requirements/:id/accept', { preHandler: requireReady }, async (request) => {
-    const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
+    const id = idOf(request); const actor = actorFromRequest(request); assertRequirementAcceptor(id,actor);
     return acceptRequirement(id, parsedBody(request, contentCommandSchema), actor);
   });
   app.post('/api/requirements/:id/complete-as-planned', { preHandler: requireReady }, async (request) => {

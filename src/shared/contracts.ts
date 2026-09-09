@@ -89,6 +89,7 @@ export const projectArchiveInputSchema = z.object({
 }).strict();
 
 export const requirementInputSchema = z.object({
+  deliveryScope:z.enum(['committed','candidate']).optional(),executionMode:z.enum(['direct','work_items']).optional(),acceptanceOwnerId:optionalIdSchema,durationDays:z.number().int().min(1).max(3660).nullable().optional(),forecastEnd:optionalDateSchema,unblockEstimate:optionalDateSchema,
   projectId: idSchema.optional(),
   title: z.string().trim().min(1).optional(),
   priority: z.enum(priorities).optional(),
@@ -106,6 +107,7 @@ export const requirementInputSchema = z.object({
 }).passthrough();
 
 export const createRequirementInputSchema = requirementInputSchema.pick({
+  deliveryScope:true,executionMode:true,acceptanceOwnerId:true,durationDays:true,forecastEnd:true,unblockEstimate:true,
   projectId: true,
   title: true,
   priority: true,
@@ -125,6 +127,7 @@ export const createRequirementInputSchema = requirementInputSchema.pick({
 });
 
 export const updateRequirementInputSchema = requirementInputSchema.pick({
+  deliveryScope:true,executionMode:true,acceptanceOwnerId:true,durationDays:true,forecastEnd:true,unblockEstimate:true,reason:true,
   title: true, priority: true, ownerId: true, background: true,
   acceptanceCriteria: true, referenceUrl: true, expectedVersion: true,
 }).extend({ expectedVersion: expectedVersionSchema });
@@ -222,6 +225,7 @@ export const issueCorrectionInputSchema = issueCommandSchema.omit({ content: tru
 });
 
 export const progressInputSchema = z.object({
+  requirementPercent:z.number().int().min(0).max(99).optional(),
   content: z.string().trim().min(1),
   workItemId: z.string().nullable().optional(),
   workItemPercent: z.number().int().min(0).max(99).optional(),
@@ -428,6 +432,7 @@ export const personCandidatesInputSchema = z.object({
 }).strict();
 
 export const requirementListInputSchema = z.object({
+  deliveryScope:z.enum(['committed','candidate']).optional(),
   projectId: idSchema,
   status: z.enum(requirementStatuses).optional(),
   view: z.enum(['delayed', 'high_risk']).optional(),
@@ -508,3 +513,5 @@ export const projectPeopleConcurrencyInputSchema = peopleConcurrencyInputSchema.
   (input) => Boolean(input.projectId),
   { message: '项目ID不能为空', path: ['projectId'] },
 );
+
+export const directRequirementCommandSchema=z.object({expectedVersion:expectedVersionSchema,content:z.string().trim().optional(),reason:z.string().trim().optional(),progress:z.number().int().min(0).max(99).optional(),expectedDependencyRevision:z.number().int().nonnegative().optional()}).strict();

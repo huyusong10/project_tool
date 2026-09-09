@@ -1,3 +1,5 @@
+import {compareProcessingPriority,processingPriority} from '../../shared/delivery';
+import {deriveRequirementMetrics} from '../../shared/domain';
 import type { AuthorizationActor } from '../authorization';
 import { canContributeProject, canManageProject } from '../authorization';
 import { businessDayDelta, isOverdueByWorkday, todayIso } from '../../shared/domain';
@@ -8,7 +10,7 @@ import {
   type ActionReasonCode,
   type ActionSeverity,
 } from '../../shared/action-items';
-import { listRequirements, type RequirementRecord } from './requirements';
+import { requirementAnalysisSnapshots,listRequirements, type RequirementRecord } from './requirements';
 import { rows } from './support';
 import { getPathAnalysis } from './paths';
 
@@ -24,7 +26,7 @@ type Filters = {
 type WorkItemRow = {
   id: string; requirementId: string; requirementTitle: string; requirementOwnerId: string | null;
   title: string; ownerId: string | null; ownerName: string | null; status: string;
-  plannedEnd: string | null; updatedAt: string; actorCollaborator: number;
+  blockedAt:string|null; plannedEnd: string | null; updatedAt: string; actorCollaborator: number;
 };
 
 type IssueRow = {
@@ -33,6 +35,7 @@ type IssueRow = {
 };
 
 const reasonSeverity: Record<ActionReasonCode, ActionSeverity> = {
+  outside_delivery:'medium',acceptor_unavailable:'medium',
   path_blocked: 'high',
   planning: 'low',
   missing_owner: 'low',
@@ -49,14 +52,18 @@ const reasonSeverity: Record<ActionReasonCode, ActionSeverity> = {
 const severityWeight: Record<ActionSeverity, number> = { high: 3, medium: 2, low: 1 };
 
 export function deriveRequirementActionReasons(requirement: Pick<RequirementRecord,
-  'status' | 'ownerId' | 'highRisk' | 'delayed' | 'workItems'>): ActionReasonCode[] {
+  'status' | 'ownerId' | 'ownerValid' | 'highRisk' | 'delayed' | 'workItems' | 'deliveryScope' | 'executionMode' | 'acceptanceOwnerId' | 'acceptanceOwnerValid' | 'scheduleComplete' | 'readinessIssues'>): ActionReasonCode[] {
   if (['completed', 'cancelled'].includes(requirement.status)) return [];
   const activeWorkItems = (requirement.workItems || []).filter((item) => item.status !== 'cancelled');
   const reasonCodes: ActionReasonCode[] = [];
+  if(requirement.deliveryScope==='candidate'&&['in_progress','blocked','pending_acceptance'].includes(requirement.status))reasonCodes.push('outside_delivery');
+  if(requirement.acceptanceOwnerId&&!requirement.acceptanceOwnerValid)reasonCodes.push('acceptor_unavailable');
   if (requirement.status === 'planning') reasonCodes.push('planning');
-  if (!requirement.ownerId) reasonCodes.push('missing_owner');
-  if (!activeWorkItems.length) reasonCodes.push('missing_work_items');
+  if (!requirement.ownerId||requirement.ownerValid!==undefined&&!requirement.ownerValid) reasonCodes.push('missing_owner');
+  if (!activeWorkItems.length&&requirement.executionMode!=='direct') reasonCodes.push('missing_work_items');
   else if (activeWorkItems.some((item) => !item.plannedStart || !item.plannedEnd)) reasonCodes.push('incomplete_schedule');
+  if(requirement.executionMode==='direct'&&requirement.scheduleComplete===false)reasonCodes.push('incomplete_schedule');
+  if(requirement.executionMode==='direct'&&requirement.status==='blocked')reasonCodes.push('blocked');
   if (requirement.highRisk) reasonCodes.push('high_risk');
   if (requirement.delayed) reasonCodes.push('delayed');
   if (requirement.status === 'pending_acceptance') reasonCodes.push('pending_acceptance');
@@ -109,17 +116,22 @@ export function listActionItems(
   const today = asOfDate;
   const items: ActionItem[] = [];
   const requirements=loadedRequirements||listRequirements({projectId:filters.projectId},today);
-  const pathAnalysis=requirements.some(r=>r.pathRisk)?getPathAnalysis(filters.projectId,undefined,asOfDate):undefined;
+  const pathAnalysis=requirementAnalysisSnapshots.get(requirements)?.get(filters.projectId)||(requirements.some(r=>r.pathRisk)?getPathAnalysis(filters.projectId,undefined,asOfDate):undefined);
+  const requirementsById=new Map(requirements.map(r=>[r.id,r]));
+  const pathNodes=new Map(pathAnalysis?.nodes.map(n=>[n.id,n])||[]);
+  const sourcesById=new Map<string,NonNullable<typeof pathAnalysis>['blockers'][number]>();
+  for(const source of pathAnalysis?.blockers||[]){for(const id of [source.nodeId,source.workItemId,...(/^(execute|acceptance):/.test(source.nodeId)?[source.requirementId]:[])])if(id&&!sourcesById.has(id))sourcesById.set(id,source);}
   const pathBlockers=new Map(pathAnalysis?.blockers.filter(b=>b.workItemId&&b.critical).map(b=>[b.workItemId!,b])||[]);
 
   for (const requirement of requirements) {
-    if (!manager && requirement.ownerId !== personId) continue;
+    if (!manager && requirement.ownerId !== personId&&!(requirement.acceptanceOwnerValid&&requirement.acceptanceOwnerId===personId)) continue;
+    if(requirement.deliveryScope==='candidate'&&!requirement.pathRisk?.inDeliveryNetwork&&!['in_progress','blocked','pending_acceptance'].includes(requirement.status))continue;
     const reasonCodes = deriveRequirementActionReasons(requirement);
     if (!reasonCodes.length) continue;
     items.push(makeItem({
       sourceType: 'requirement', sourceId: requirement.id, projectId: requirement.projectId,
       requirementId: requirement.id, contextTitle: null, title: requirement.title, reasonCodes,
-      ownerId: requirement.ownerId, ownerName: requirement.ownerName, dueDate: requirement.plannedEnd,
+      ownerId: reasonCodes.some(c=>c==='missing_owner'||c==='acceptor_unavailable')?null:requirement.status==='pending_acceptance'?requirement.acceptanceOwnerValid?requirement.acceptanceOwnerId||null:null:requirement.ownerId, ownerName: reasonCodes.some(c=>c==='missing_owner'||c==='acceptor_unavailable')?'项目经理':requirement.status==='pending_acceptance'?requirement.acceptanceOwnerValid?requirement.acceptanceOwnerName||'项目经理':'项目经理':requirement.ownerName||'项目经理', dueDate: requirement.plannedEnd,
       overdueWorkdays: requirement.delayed ? Math.max(0, requirement.finishVariance || 0) : 0,
       targetPath: `/requirements/${requirement.id}`, updatedAt: requirement.updatedAt,
     }));
@@ -127,7 +139,7 @@ export function listActionItems(
 
   const workItems = rows<WorkItemRow>(`SELECT w.id, w.requirement_id AS requirementId, r.title AS requirementTitle,
     r.owner_id AS requirementOwnerId, w.title, w.owner_id AS ownerId, p.name AS ownerName, w.status,
-    w.planned_end AS plannedEnd, w.updated_at AS updatedAt,
+    w.planned_end AS plannedEnd,w.blocked_at AS blockedAt, w.updated_at AS updatedAt,
     CASE WHEN ? IS NOT NULL AND EXISTS (
       SELECT 1 FROM work_item_collaborators c WHERE c.work_item_id=w.id AND c.person_id=?
     ) THEN 1 ELSE 0 END AS actorCollaborator
@@ -135,8 +147,10 @@ export function listActionItems(
     LEFT JOIN people p ON p.id=w.owner_id
     WHERE r.project_id=? AND r.deleted_at IS NULL AND r.status NOT IN ('completed','cancelled')
       AND w.status NOT IN ('completed','cancelled')`, personId, personId, filters.projectId);
+  const workById=new Map(workItems.map(w=>[w.id,w]));
   for (const workItem of workItems) {
     if (!manager && workItem.requirementOwnerId !== personId && workItem.ownerId !== personId && !workItem.actorCollaborator) continue;
+    const parent=requirementsById.get(workItem.requirementId);if(parent?.deliveryScope==='candidate'&&!parent.pathRisk?.inDeliveryNetwork)continue;
     const reasonCodes = deriveWorkItemActionReasons(workItem);
     const pathBlocker=pathBlockers.get(workItem.id);
     if(pathBlocker)reasonCodes.push('path_blocked');
@@ -173,6 +187,38 @@ export function listActionItems(
     }));
   }
 
+  const visibleIds=new Set(requirements.filter(r=>manager||r.ownerId===personId||r.acceptanceOwnerValid&&r.acceptanceOwnerId===personId||workItems.some(w=>w.requirementId===r.id&&(w.ownerId===personId||w.actorCollaborator))).map(r=>r.id));
+  for(const b of pathAnalysis?.blockers||[]){
+    const node=pathNodes.get(b.nodeId);if(!node)continue;
+    if(!manager&&(!b.requirementId||!visibleIds.has(b.requirementId)))continue;
+    if(node.kind==='milestone'&&!items.some(i=>i.sourceId===node.id))items.push(makeItem({sourceType:'milestone',sourceId:node.id,projectId:filters.projectId,requirementId:node.requirementId,contextTitle:null,title:node.title,reasonCodes:['path_blocked'],ownerId:null,ownerName:'项目经理',dueDate:node.plannedEnd,overdueWorkdays:0,targetPath:node.requirementId?'/requirements/'+node.requirementId+'?view=path&pathSelected='+node.id:'/paths?pathSelected='+node.id,updatedAt:today}));
+  }
+  for(const item of items){
+    const parent=requirementsById.get(item.requirementId||''),source=sourcesById.get(item.sourceId);
+    const affected=[...new Set([...(source?.affectedRequirementIds||parent?.affectedRequirementIds||[]),...(parent&&parent.deliveryScope!=='candidate'?[parent.id]:[])])].filter(id=>visibleIds.has(id));
+    item.affectedRequirements=affected.map(id=>({id,title:requirementsById.get(id)!.title}));
+    const node=pathNodes.get(item.sourceType==='requirement'?'execute:'+item.sourceId:item.sourceId);
+    const whole=item.sourceType==='requirement',known=node&&!node.unknownReasons.length;
+    const facts={...parent,...(whole?parent?.pathRisk:{}),id:item.id,status:item.reasonCodes.includes('blocked')?'blocked':'in_progress',
+      blockedCritical:whole?parent?.pathRisk?.blockedCritical:!!source?.critical&&item.reasonCodes.some(c=>['blocked','path_blocked'].includes(c)),
+      critical:whole?parent?.pathRisk?.critical:node?.critical,complete:whole?parent?.pathRisk?.complete:!!known,
+      minFloat:whole?parent?.pathRisk?.minFloat:node?.scheduleBuffer??node?.floatDays,
+      drivesLateTarget:whole?parent?.pathRisk?.drivesLateTarget:!!known&&!!node?.critical&&!!parent?.pathRisk?.drivesLateTarget,
+      affectedRequirementIds:affected,riskLevel:whole?parent?.riskLevel:(item.severity==='high'?'high':'medium'),riskEvaluated:whole?parent?.riskEvaluated:true,
+      inDeliveryNetwork:whole?parent?.pathRisk?.inDeliveryNetwork:node?.inScope,anomalySince:whole?parent?.prioritySince:workById.get(item.sourceId)?.blockedAt,blockedAt:parent?.blockedAt||null};
+    Object.assign(item,processingPriority(facts,today),{affectedRequirementIds:affected,minFloat:facts.minFloat,riskLevel:facts.riskLevel,riskEvaluated:facts.riskEvaluated});
+    item.severity=item.processingPriority==='P0'||item.processingPriority==='P1'?'high':item.processingPriority==='P3'?'low':'medium';
+  }
+  // Suppress only path-derived parent risk already represented by a visible source. Independent reasons remain.
+  for(let i=items.length-1;i>=0;i--){const item=items[i];if(item.sourceType!=='requirement'||item.reasonCodes.some(c=>c!=='high_risk'&&c!=='blocked'))continue;
+    const parent=requirementsById.get(item.sourceId)!;
+    const sources=items.filter(x=>x!==item&&x.affectedRequirementIds?.includes(parent.id));
+    if(!sources.length)continue;
+    const base=deriveRequirementMetrics({...parent,status:parent.status==='blocked'?'in_progress':parent.status},(parent.workItems||[]).map(w=>w.status==='blocked'?{...w,status:'in_progress'}:w),today);
+    const allBlockedExplained=(parent.workItems||[]).filter(w=>w.status==='blocked').every(w=>sources.some(s=>s.sourceType==='work_item'&&s.sourceId===w.id));
+    const pure=item.reasonCodes.every(c=>c==='high_risk'&&!base.highRisk||c==='blocked'&&parent.executionMode!=='direct'&&allBlockedExplained);
+    if(pure)items.splice(i,1);
+  }
   const byReason: Partial<Record<ActionReasonCode, number>> = {};
   for (const item of items) for (const reason of item.reasonCodes) byReason[reason] = (byReason[reason] || 0) + 1;
   const summary = {
@@ -200,11 +246,7 @@ export function listActionItems(
   if (filters.severity) filtered = filtered.filter((item) => item.severity === filters.severity);
   if (filters.reason) filtered = filtered.filter((item) => item.reasonCodes.includes(filters.reason as ActionReasonCode));
   if (filters.ownerId) filtered = filtered.filter((item) => filters.ownerId === 'unassigned' ? !item.ownerId : item.ownerId === filters.ownerId);
-  filtered.sort((left, right) => severityWeight[right.severity] - severityWeight[left.severity]
-    || right.overdueWorkdays - left.overdueWorkdays
-    || (left.dueDate || '9999-12-31').localeCompare(right.dueDate || '9999-12-31')
-    || right.updatedAt.localeCompare(left.updatedAt)
-    || left.id.localeCompare(right.id));
+  filtered.sort((a,b)=>compareProcessingPriority({...a,status:'in_progress',plannedEnd:a.dueDate},{...b,status:'in_progress',plannedEnd:b.dueDate}));
 
   const total = filtered.length;
   const pages = total ? Math.ceil(total / pageSize) : 0;

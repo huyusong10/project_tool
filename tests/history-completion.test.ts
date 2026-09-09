@@ -53,7 +53,7 @@ afterAll(async () => {
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
-it('按计划补录工作项、整条需求原子验收，重复提交不生成记录，历史完成不计入本周', async () => {
+it('按计划补录工作项、整条需求原子验收，重复提交不生成记录，按验收日期计入本周交付', async () => {
   const { sqlite } = await import('../src/server/database');
   let requirement = await createHistory();
   const first = requirement.workItems![0];
@@ -78,7 +78,7 @@ it('按计划补录工作项、整条需求原子验收，重复提交不生成�
   expect((await getRequirement(requirement.id))).toEqual(result.json());
   const dashboard = await app.inject({ method: 'GET', url: `/api/dashboard?projectId=${projectId}`, headers: { cookie } });
   expect(dashboard.json().summary.completed).toBe(1);
-  expect(dashboard.json().charts.weeks.every((week: { completed: number }) => week.completed === 0)).toBe(true);
+  expect(dashboard.json().charts.weeks.reduce((sum:number,week:{completed:number})=>sum+week.completed,0)).toBe(1);
 });
 
 it('缺排期、未来计划和已有执行记录均拒绝，整条补录失败不会部分写入', async () => {
@@ -236,7 +236,8 @@ it('200个工作项整单补录保持常量级查询准备并写全事件和审�
   expect(completed.statusCode, completed.body).toBe(200);
   expect(completed.json<RequirementRecord>()).toMatchObject({ status: 'completed', progress: 100, version: current.version + 2 });
   expect(completed.json<RequirementRecord>().workItems).toHaveLength(200);
-  expect(prepareCount).toBeLessThan(60);
+  // Delivery metrics now read the complete project graph on command boundaries.
+  expect(prepareCount).toBeLessThan(85);
   expect(sqlite.prepare(`SELECT COUNT(*) AS count FROM progress_updates
     WHERE requirement_id=? AND work_item_id IS NOT NULL AND event_type='complete'`).get(requirement.id)).toEqual({ count: 200 });
   expect(sqlite.prepare(`SELECT COUNT(*) AS count FROM audit_logs

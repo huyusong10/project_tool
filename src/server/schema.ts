@@ -117,6 +117,20 @@ export const templateItems = sqliteTable('template_items', {
 ]);
 
 export const requirements = sqliteTable('requirements', {
+  forecastDuration: integer('forecast_duration'),
+  forecastReadyAt: text('forecast_ready_at'),
+  deliveryScope: text('delivery_scope').notNull().default('committed'),
+  executionMode: text('execution_mode').notNull().default('work_items'),
+  acceptanceOwnerId: text('acceptance_owner_id').references(() => people.id),
+  actualStart: text('actual_start'),
+  actualEnd: text('actual_end'),
+  blockedAt: text('blocked_at'),
+  blockedReason: text('blocked_reason'),
+  durationDays: integer('duration_days'),
+  forecastEnd: text('forecast_end'),
+  unblockEstimate: text('unblock_estimate'),
+  splitBaseProgress: integer('split_base_progress').notNull().default(0),
+  splitAt: text('split_at'),
   id: text('id').primaryKey(),
   projectId: text('project_id').notNull().references(() => projects.id),
   templateId: text('template_id').references(() => workItemTemplates.id, { onDelete: 'set null' }),

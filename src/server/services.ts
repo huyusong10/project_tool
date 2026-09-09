@@ -1,3 +1,4 @@
+import {rescheduleDirectRequirement,createDirectRequirement,updateDeliveryRequirement,executeDirectRequirement,validateDeliveryFields,assertRequirementAcceptor} from './services/delivery-execution';
 import { createHash, randomUUID } from 'node:crypto';
 import { sqlite } from './database';
 import type { Actor } from './auth';
@@ -56,6 +57,7 @@ import { assertStartConditions, adjustForecastClock } from './services/paths';
 import {settleMilestones} from './services/milestones';
 import { prepareTemplateGraph, saveTemplateGraph, instantiateTemplateGraph } from './services/path-templates';
 import {
+  requireActiveProject,
   assertExpectedVersion,
   assertExpectedUpdatedAt,
   assertTransition,
@@ -320,11 +322,6 @@ export function listPeople(includeDeleted = false, projectId?: string) {
     FROM people p ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY p.active DESC, p.name`, ...(projectId ? [projectId, projectId, ...params] : params));
 }
 
-function requireActiveProject(projectId: string, afterWrite = false) {
-  if (row('SELECT id FROM projects WHERE id=? AND deleted_at IS NULL', projectId)) return;
-  if (afterWrite) fail('项目已归档，不能继续写入', 'DEPENDENCY_CONFLICT', 409);
-  notFound('项目不存在');
-}
 
 export function listPeopleCandidates(projectId: string, q = '') {
   requireActiveProject(projectId);
@@ -980,10 +977,11 @@ function shiftRequirementWorkItems(requirementId: string, currentAnchor: string,
   }
 }
 
-export function createRequirement(input: JsonObject, actor: Actor) {
+export function createRequirement(input: JsonObject, actor: Actor, deferNormalization=false) {
+  if(input.executionMode==='direct')return createDirectRequirement(input,actor,deferNormalization);
   if (Object.keys(input).some((key) => ![
     'projectId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl',
-    'plannedStart', 'plannedEnd', 'templateId',
+    'plannedStart', 'plannedEnd', 'templateId','deliveryScope','executionMode','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',
   ].includes(key))) fail('新建需求不能提交未声明字段');
   const commandFields = ['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'scheduleMode', 'confirmTemplateReset', 'expectedVersion', 'reason'];
   if (commandFields.some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
@@ -1025,7 +1023,10 @@ export function createRequirement(input: JsonObject, actor: Actor) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planning', ?, 0, 'low', ?, ?, ?)`).run(
       id, projectId, templateId, title, background, acceptanceCriteria, referenceUrl, ownerId, plannedStart, priority, now, now,
     );
+    validateDeliveryFields(projectId,input,actor);
+    sqlite.prepare('UPDATE requirements SET delivery_scope=?,acceptance_owner_id=? WHERE id=?').run(input.deliveryScope||'committed',input.acceptanceOwnerId||null,id);
     if (plannedStart && templateId) applyTemplateInternal(id, templateId, plannedStart);
+    else if(templateId&&input.executionMode==='work_items'){applyTemplateInternal(id,templateId,todayIso());sqlite.prepare('UPDATE work_items SET planned_start=NULL,planned_end=NULL WHERE requirement_id=?').run(id);}
     updateStoredRequirementSchedule(id);
     requirementOwner(projectId, ownerId, true);
     requireActiveProject(projectId, true);
@@ -1155,6 +1156,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor) {
 }
 
 export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
+  if(['deliveryScope','executionMode','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate'].some(k=>input[k]!==undefined)||getRequirement(id).executionMode==='direct')return updateDeliveryRequirement(id,input,actor);
   const commandFields = ['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'plannedStart', 'plannedEnd', 'scheduleMode', 'templateId', 'confirmTemplateReset'];
   if (commandFields.some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
     fail('需求状态、进度、验收、排期和流程不能通过普通编辑修改，请使用对应操作命令');
@@ -1213,6 +1215,7 @@ export function correctRequirement(id: string, input: JsonObject, actor: Actor) 
 }
 
 export function rescheduleRequirement(id: string, input: JsonObject, actor: Actor) {
+  if(getRequirement(id).executionMode==='direct')return rescheduleDirectRequirement(id,input,actor);
   if (input.plannedStart === undefined && input.plannedEnd === undefined) fail('请设置计划开始或计划完成日期');
   if (['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'templateId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl']
     .some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
@@ -1225,6 +1228,7 @@ export function rescheduleRequirement(id: string, input: JsonObject, actor: Acto
 }
 
 export function reselectRequirementTemplate(id: string, input: JsonObject, actor: Actor) {
+  if(getRequirement(id).executionMode==='direct')fail('请通过拆分剩余工作预览并保存流程变化');
   if (Object.keys(input).some((key) => ![
     'templateId', 'expectedVersion', 'plannedStart', 'plannedEnd', 'scheduleMode', 'reason',
   ].includes(key))) fail('流程重选命令不能提交未声明字段');
@@ -1257,19 +1261,20 @@ export function archiveRequirement(id: string, input: JsonObject, actor: Actor) 
 
 export function acceptRequirement(id: string, input: JsonObject, actor: Actor) {
   if (Object.keys(input).some((key) => key !== 'expectedVersion' && key !== 'content')) fail('验收命令不能提交无关的需求字段');
+  assertRequirementAcceptor(id,actor);
   const current = getRequirement(id);
   assertExpectedVersion(input, current.version);
   assertTransition(current.status, ['pending_acceptance'], '验收');
-  if(sqlite.prepare('SELECT 1 FROM milestones WHERE requirement_id=? AND achieved_at IS NULL AND cancelled=0 LIMIT 1').get(id))fail('尚有未达成里程碑，请先完成交付或确认里程碑');
-  const content = requireText(input.content, '验收说明'); const now = nowIso();
+  const content = requireText(input.content, '验收说明')+(current.acceptanceOwnerId&&current.acceptanceOwnerId!==requireAuthorizationActor(actor).personId?'；项目经理代验，指定验收人：'+(current.acceptanceOwnerName||current.acceptanceOwnerId):''); const now = nowIso();
   sqlite.transaction(() => {
+    if(sqlite.prepare('SELECT 1 FROM milestones WHERE requirement_id=? AND achieved_at IS NULL AND cancelled=0 LIMIT 1').get(id))fail('尚有未达成里程碑，请先完成交付或确认里程碑');
     const changed = sqlite.prepare(`UPDATE requirements SET status='completed', progress=100, accepted_at=?, accepted_by_account_id=?,
       version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, actor.accountId || null, now, id, current.version);
     assertVersionedWrite(changed, '需求');
     appendRequirementEvent(id, 'accept', content, actor, null, null, null, now);
     audit(actor, 'accept', 'requirement', id, `验收需求：${current.title}`);settleMilestones(current.projectId,actor);
     requireActiveProject(current.projectId, true);
-    assertProjectManager(requireAuthorizationActor(actor), current.projectId);
+    assertRequirementAcceptor(id,actor);
   })();
   return getRequirement(id);
 }
@@ -1315,6 +1320,7 @@ export function restoreRequirement(id: string, actor: Actor, input: JsonObject =
 }
 
 export function applyTemplate(requirementId: string, input: JsonObject, actor: Actor) {
+  if(getRequirement(requirementId).executionMode==='direct')fail('请通过拆分剩余工作预览并保存流程变化');
   if (Object.keys(input).some((key) => !['templateId', 'expectedVersion', 'reason'].includes(key))) {
     fail('补充流程命令不能提交未声明字段');
   }
@@ -1337,6 +1343,7 @@ export function applyTemplate(requirementId: string, input: JsonObject, actor: A
 }
 
 export function previewRequirementPlan(requirementId: string, input: JsonObject) {
+  if(getRequirement(requirementId).executionMode==='direct')fail('直接执行需求使用需求排期；分解工作请先拆分剩余工作');
   const requirement = getRequirement(requirementId, true);
   const templateId = requireText(input.templateId, '流程设计');
   if (!row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, requirement.projectId)) fail('流程设计不属于当前项目');
@@ -1368,6 +1375,7 @@ export function previewRequirementPlan(requirementId: string, input: JsonObject)
 }
 
 export function applyRequirementPlan(requirementId: string, input: JsonObject, actor: Actor) {
+  if(getRequirement(requirementId).executionMode==='direct')fail('直接执行需求使用需求排期；分解工作请先拆分剩余工作');
   if (Object.keys(input).some((key) => ![
     'templateId', 'baseStart', 'expectedVersion', 'templateItemIds', 'reason', 'previewToken',
   ].includes(key))) fail('应用计划命令不能提交未声明字段');
@@ -1461,6 +1469,7 @@ function syncWorkItemCollaborators(workItemId: string, collaboratorIds: string[]
 }
 
 export function createWorkItem(requirementId: string, input: JsonObject, actor: Actor) {
+  if(getRequirement(requirementId).executionMode==='direct')fail('请先在草稿中选择拆分剩余工作，再整批保存');
   if (Object.keys(input).some((key) => ![
     'title', 'ownerId', 'collaboratorIds', 'assigneeIds', 'plannedStart', 'plannedEnd',
     'milestoneLabel', 'expectedVersion', 'reason',
@@ -1590,9 +1599,11 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unb
   if (action === 'start') {
     assertTransition(current.status, ['not_started'], '开始');
     const requirement = getRequirement(current.requirementId);
-    if (requirement.status === 'planning') fail('需求尚未完成规划，请先指定需求负责人并补齐全部工作项排期', 'DEPENDENCY_CONFLICT', 409);
+    if(requirement.deliveryScope==='candidate')fail('请项目经理先将需求纳入交付');
+    if(!requirement.ownerId||!requirement.ownerValid)fail('开始前请指定有效需求负责人','DEPENDENCY_CONFLICT',409);
+    validateDeliveryFields(requirement.projectId,{ownerId:current.ownerId},actor);
     if (!current.ownerId) fail('开始工作项前请指定负责人');
-    if (!current.plannedStart || !current.plannedEnd) fail('开始工作项前请完善计划日期');
+
   }
   if (action === 'complete') {
     assertTransition(current.status, ['in_progress'], '完成');
@@ -1861,6 +1872,7 @@ export function reorderWorkItems(requirementId: string, ids: string[], actor: Ac
 }
 
 export function addProgress(requirementId: string, input: JsonObject, actor: Actor) {
+  if(input.requirementPercent!==undefined){if(input.workItemId||input.workItemPercent!==undefined)fail('需求进度不能与工作项进度同时提交');return executeDirectRequirement(requirementId,'progress',{expectedVersion:input.expectedVersion,content:input.content,progress:input.requirementPercent},actor);}
   if (Object.keys(input).some((key) => !['content', 'workItemId', 'workItemPercent', 'expectedVersion'].includes(key))) {
     fail('进展命令不能提交无关的需求或工作项字段');
   }

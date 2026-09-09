@@ -45,7 +45,7 @@ it('待验收及过期预测必须重新确认；空项目不能承诺日期',()
  const input=pathFixture();input.requirements[2].status='pending_acceptance';expect(analysePaths(input).forecastEnd).toBeNull();
  input.requirements[2].forecastAcceptance=date(12);expect(analysePaths(input).forecastEnd).toBe(date(12));
  input.requirements[2].forecastAcceptance=date(-1);expect(analysePaths(input).forecastEnd).toBeNull();
- input.requirements.forEach(r=>r.status='planning');expect(analysePaths(input)).toMatchObject({forecastEnd:null,deadlineSlack:null});
+ input.requirements.forEach(r=>{r.status='planning';r.deliveryScope='candidate';});expect(analysePaths(input)).toMatchObject({forecastEnd:null,deadlineSlack:null});
 });
 it('人工预测保留剩余工期，不能在前置推迟后压缩交付；未知日期不当零工期',()=>{
  const input=pathFixture();Object.assign(input.workItems[4],{forecastEnd:date(8),forecastDuration:3,forecastReadyAt:date(6)});

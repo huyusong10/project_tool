@@ -365,12 +365,12 @@ export function getMyWork(accountId: string) {
   }
   const requirements = ownedRequirements.map((requirement) => {
     const activeItems = (requirement.workItems || []).filter((item) => item.status !== 'cancelled');
-    const planningReasons: string[] = [];
-    if (!activeItems.length) planningReasons.push('缺少工作项');
-    else if (activeItems.some((item) => !item.plannedStart || !item.plannedEnd)) planningReasons.push('排期不完整');
+    const planningReasons: string[] = [...(requirement.readinessIssues||[])];
+
     const hasRequirementAction = deriveRequirementActionReasons(requirement).length > 0;
     const workItemActions = activeItems.filter((item) => deriveWorkItemActionReasons(item).length > 0).length;
     return {
+      ...requirement,
       id: requirement.id, projectId: requirement.projectId, projectName: requirement.projectName,
       title: requirement.title, status: requirement.status, priority: requirement.priority,
       plannedStart: requirement.plannedStart, plannedEnd: requirement.plannedEnd,
@@ -380,7 +380,10 @@ export function getMyWork(accountId: string) {
       updatedAt: requirement.updatedAt,
     };
   });
+  const direct=ownedRequirements.filter(r=>r.executionMode==='direct'&&r.status!=='cancelled');
+  summary.total+=direct.length;summary.notStarted+=direct.filter(r=>r.status==='not_started').length;summary.inProgress+=direct.filter(r=>r.status==='in_progress').length;summary.blocked+=direct.filter(r=>r.status==='blocked').length;summary.completed+=direct.filter(r=>['completed','pending_acceptance'].includes(r.status)).length;summary.overdue+=direct.filter(r=>r.delayed).length;
   const weekly = new Map<string, number>();
+  for(const r of direct)if(r.actualEnd&&['completed','pending_acceptance'].includes(r.status)){const key=startOfWeekIso(r.actualEnd);weekly.set(key,(weekly.get(key)||0)+1);}
   for (const item of items.filter((value) => value.actualEnd)) {
     const key = startOfWeekIso(item.actualEnd!);
     weekly.set(key, (weekly.get(key) || 0) + 1);
@@ -394,7 +397,7 @@ export function getMyWork(accountId: string) {
   }
   const upcoming = upcomingDates.map((date) => ({
     date,
-    count: items.filter((item) => !['completed', 'cancelled'].includes(item.status) && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd).length,
+    count: items.filter((item) => !['completed', 'cancelled'].includes(item.status) && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd).length+direct.filter(r=>!['completed','cancelled','pending_acceptance'].includes(r.status)&&r.plannedStart&&r.plannedEnd&&date>=r.plannedStart&&date<=r.plannedEnd).length,
   }));
   const recentProgress = sqlite.prepare(`SELECT u.id, u.requirement_id AS requirementId, r.title AS requirementTitle,
     u.work_item_id AS workItemId, w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content,

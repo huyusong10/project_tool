@@ -2,7 +2,7 @@ import {matchesSearch} from '../src/shared/search';
 import {describe,it,expect} from 'vitest';
 import {emptyRequirementFilters,matchesRequirementFilters,compareRiskRequirements,unfinishedStatuses,type RequirementViewItem} from '../src/shared/requirement-view';
 import {readPathFilters,writePathFilters,graphBranch,graphContext} from '../src/client/path-view';
-const item:RequirementViewItem={title:'需求',status:'in_progress',riskLevel:'high',riskEvaluated:true,ownerId:'owner',assigneeIds:['a','b'],priority:'P1',scheduleComplete:true,pathRisk:{critical:true,minFloat:0}};
+const item:RequirementViewItem={title:'需求',status:'in_progress',riskLevel:'high',riskEvaluated:true,ownerId:'owner',assigneeIds:['a','b'],priority:'P3',processingPriority:'P1',scheduleComplete:true,pathRisk:{critical:true,minFloat:0}};
 describe('需求显示规则',()=>{
  it('加权搜索不会把无匹配的需求选入结果',()=>{expect(matchesSearch([{text:'订单交付',weight:100}],'dingdan')).toBe(true);expect(matchesSearch([{text:'接口基础',weight:100}],'订单')).toBe(false);});
  it('未结束默认包含待规划及验收；明确全部与旧链接保持兼容',()=>{expect(readPathFilters(new URLSearchParams()).statuses).toEqual(unfinishedStatuses);expect(readPathFilters(new URLSearchParams('pathScope=all')).statuses).toEqual([]);expect(readPathFilters(new URLSearchParams('pathScope=attention')).attention).toBe(true);expect(readPathFilters(new URLSearchParams(),true).statuses).toEqual([]);});
