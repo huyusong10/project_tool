@@ -11,6 +11,8 @@ import type {Requirement,Person} from '../types';
 import type {PathAnalysis} from '../../shared/paths';
 import type {DeliveryImpact,DeliveryTargetChange} from '../../shared/delivery-impact';
 import {Modal} from './Modal';
+import {RequirementCommandDialog} from './RequirementCommandDialog';
+import {readResourceFresh} from '../use-resource-query';
 
 export function DeliveryControlsForId({id}:{id:string}){
   const query=useQuery({queryKey:keys.requirement(id),queryFn:()=>api<Requirement>('/api/requirements/'+id)});
@@ -36,7 +38,7 @@ export function DeliveryControls({requirement:r,compact=false}:{requirement:Requ
     if(modal.action==='progress'){payload.content=content;payload.requirementPercent=percent;}
     else if(modal.action==='note')payload.content=content;
     else if(modal.action==='rework'){payload.reason=content;payload.progress=Math.min(percent,99);if(b.executionMode!=='direct')payload.workItemIds=selected;}
-    else if(['accept','submit-acceptance'].includes(modal.action))payload.content=content;
+    else if(modal.action==='submit-acceptance')payload.content=content;
     else if(modal.action==='block')payload.reason=content;
     else if(conditions){payload.expectedDependencyRevision=conditions.dependencyRevision;payload.reason=content||undefined;}
     return api('/api/requirements/'+r.id+'/'+(modal.action==='note'?'progress':modal.action),{method:'POST',body:jsonBody(payload)});
@@ -65,8 +67,12 @@ export function DeliveryControls({requirement:r,compact=false}:{requirement:Requ
       {manager&&!ended&&!compact&&<button className="ghost-button" onClick={()=>setModal({action:'settings',base:r})}>交付设置</button>}
     </div>
     {modal&&['split','settings'].includes(modal.action)&&<DeliveryDraftDialog requirements={[modal.base]} mode={modal.action as 'split'|'settings'} onClose={()=>setModal(null)}/>}
-    {modal&&!['split','settings'].includes(modal.action)&&<Modal title={labels[modal.action]} onClose={close} closable={!mutation.isPending}><form onSubmit={e=>{e.preventDefault();if(!mutation.isPending&&!needsCheck&&!reading)mutation.mutate();}}><fieldset className="form-fieldset" disabled={mutation.isPending}>
-      <p>{modal.base.title}</p>{modal.action==='accept'&&<><p>验收标准：{modal.base.acceptanceCriteria||'尚未填写，请在验收说明中写明核对结果'}</p><p>未达成里程碑：{modal.base.milestones?.filter(m=>!m.achievedAt&&!m.cancelled).map(m=>m.title).join('、')||'无'} · 未关闭问题：{modal.base.issueSummary?.active||0}</p></>}
+    {modal?.action==='accept'&&<RequirementCommandDialog action="accept" requirement={r} onReload={()=>{
+      const sequence=readSequence.current;
+      return readResourceFresh<Requirement>(client,keys.requirement(r.id),'/api/requirements/'+r.id,()=>sequence===readSequence.current);
+    }} onClose={close} onArchived={()=>{}}/>}
+    {modal&&!['split','settings','accept'].includes(modal.action)&&<Modal title={labels[modal.action]} onClose={close} closable={!mutation.isPending}><form onSubmit={e=>{e.preventDefault();if(!mutation.isPending&&!needsCheck&&!reading)mutation.mutate();}}><fieldset className="form-fieldset" disabled={mutation.isPending}>
+      <p>{modal.base.title}</p>
       {conditions?.unmetPredecessors.length? <p className="warning-banner">仍未满足：{conditions.unmetPredecessors.map(p=>p.title).join('、')}。确认后提前开始，保留这些前置。</p>:null}
       {['progress','rework'].includes(modal.action)&&modal.base.executionMode==='direct'&&<label className="field"><span>完成度</span><input aria-label="需求完成度" type="number" min={modal.action==='progress'?modal.base.progress:0} max={99} required value={percent} onChange={e=>setPercent(Number(e.target.value))}/></label>}
       {modal.action==='note'&&<p className="field-help">需求处于阻塞状态，只能补充说明；解除阻塞后才能继续提高完成度。</p>}

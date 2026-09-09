@@ -73,3 +73,15 @@ test('存在项目草稿时实际日期更正不请求接口，处理草稿后�
  await page.evaluate(()=>sessionStorage.removeItem('pm-graph-draft:admin:p1'));await page.getByRole('button',{name:'保存纠错',exact:true}).click();
  await expect.poll(()=>writes.length).toBe(1);expect(writes[0]).toMatchObject({actualStart:'2026-08-31',reason:'核对执行日期',expectedVersion:1});
 });
+
+for(const entry of ['overview','menu'] as const){
+ test(`${entry}验收入口展示同一核对材料和说明字段`,async({page})=>{
+  await mockGanttData(page);
+  await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,version:1,status:'pending_acceptance',progress:100,acceptanceCriteria:'确认接口与文档交付',issueSummary:{active:2,overdue:0},milestones:[{id:'m1',title:'发布核对',achievedAt:null,cancelled:false}]}}));
+  await page.goto('/requirements/r1');
+  if(entry==='menu')await page.getByRole('button',{name:'需求操作',exact:true}).click();
+  await (entry==='menu'?page.locator('.action-menu'):page.locator('.requirement-overview')).getByRole('button',{name:'确认验收',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'确认验收',exact:true});await expect(dialog).toContainText('确认接口与文档交付');await expect(dialog).toContainText('发布核对');await expect(dialog).toContainText('未关闭问题：2');
+  await expect(dialog.getByLabel('验收说明',{exact:true})).toBeVisible();await expect(dialog.getByRole('button',{name:'确认验收',exact:true})).toBeDisabled();
+ });
+}

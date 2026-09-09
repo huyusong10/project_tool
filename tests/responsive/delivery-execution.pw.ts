@@ -20,7 +20,7 @@ test('直接执行无需工作项，详情执行到验收；列表和路径的�
  const pending=await detail(r.id);expect(pending.status).toBe('pending_acceptance');expect(pending.acceptedAt).toBeNull();
  await page.goto('/requirements');await expect(page.locator('tbody tr').filter({hasText:r.title})).toContainText(pending.processingPriority!);
  const path=await(await page.request.get('/api/projects/'+projectId+'/path-analysis')).json();expect(path.risks[r.id].processingPriority).toBe(pending.processingPriority);
- await page.goto('/requirements/'+r.id);await page.getByRole('button',{name:'确认验收',exact:true}).click();await page.getByLabel('执行说明').fill('验收测试通过');await page.getByRole('dialog').getByRole('button',{name:'确认验收',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);expect((await detail(r.id)).acceptedAt).toBeTruthy();
+ await page.goto('/requirements/'+r.id);await page.getByRole('button',{name:'确认验收',exact:true}).click();await page.getByLabel('验收说明').fill('验收测试通过');await page.getByRole('dialog').getByRole('button',{name:'确认验收',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);expect((await detail(r.id)).acceptedAt).toBeTruthy();
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:info.outputPath('direct-acceptance-390.png')});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 test('拆分进入共享草稿；离开、刷新、恢复、保存后保留30%基线',async({page},info)=>{

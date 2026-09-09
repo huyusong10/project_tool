@@ -195,7 +195,11 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
         {!!pendingItems.length && <ul className="requirement-command-plan">{pendingItems.map((item) => <li key={item.id}><strong>{item.title}</strong><span>{item.plannedStart || '未排期'} → {item.plannedEnd || '未排期'}</span></li>)}</ul>}
         <p>用于录入过去已经按期交付的需求：一次完成所有未执行工作项并通过验收。补录说明自动填写，操作会完整保留审计记录。</p>
       </>}
-      {action === 'accept' && <p>验收后需求将计入已完成需求和完成率，请填写验收结论。</p>}
+      {action === 'accept' && <>
+        <p>验收标准：{baseline.acceptanceCriteria || '尚未填写，请在验收说明中写明核对结果'}</p>
+        <p>未达成里程碑：{baseline.milestones?.filter(item => !item.achievedAt && !item.cancelled).map(item => item.title).join('、') || '无'} · 未关闭问题：{baseline.issueSummary?.active || 0}</p>
+        <p>验收后需求将计入已完成需求和完成率，请填写验收结论。</p>
+      </>}
       {action === 'cancel' && <p>将取消 {pendingItems.length} 个未结束工作项。已完成工作项和历史记录保持不变。</p>}
       {action === 'archive' && <p>需求将从日常页面隐藏，历史数据仍会保留并可在归档中心恢复。</p>}
       {needsText && <FormField label={action === 'accept' ? '验收说明' : '取消原因'} full><textarea autoFocus required rows={4} disabled={pending} value={text} onChange={(event) => setText(event.target.value)} /></FormField>}
