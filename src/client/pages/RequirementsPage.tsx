@@ -187,7 +187,7 @@ export function RequirementsPage() {
                 key={item.id}
                 onClick={() => navigate(`/requirements/${item.id}`)}
               >
-                <td><DataCell density="compact" primary={<strong>{canManage&&!isTerminalRequirementStatus(item.status)&&<input type="checkbox" aria-label={'选择需求 '+item.title} checked={selectedIds.includes(item.id)} onClick={e=>e.stopPropagation()} onChange={e=>setSelectedIds(ids=>e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id))}/>}<Link to={`/requirements/${item.id}`} style={{ color: 'inherit', textDecoration: 'none' }} onClick={event => event.stopPropagation()}>{item.title}</Link></strong>} secondary={`${item.deliveryScope==='candidate'?'候选 · ':''}${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
+                <td><DataCell density="compact" primary={<strong>{canManage&&!isTerminalRequirementStatus(item.status)&&<input type="checkbox" style={{marginRight:8,verticalAlign:'middle'}} aria-label={'选择需求 '+item.title} checked={selectedIds.includes(item.id)} onClick={e=>e.stopPropagation()} onChange={e=>setSelectedIds(ids=>e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id))}/>}<Link to={`/requirements/${item.id}`} style={{ color: 'inherit', textDecoration: 'none' }} onClick={event => event.stopPropagation()}>{item.title}</Link></strong>} secondary={`${item.deliveryScope==='candidate'?'候选 · ':''}${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
                 <td><DataCell density="compact" primary={<ProcessingPriorityBadge requirement={item}/>} /></td>
                 <td>
                   <DataCell density="compact" primary={<StatusBadge kind="requirement" value={item.status} />} />

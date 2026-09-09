@@ -378,7 +378,7 @@ export function deriveRequirementMetrics(
         : '缺少完整排期，暂无法评估风险';
   } else if (status === 'blocked') {
     riskLevel = 'high';
-    riskReason = '存在阻塞工作项，直接判定为高风险';
+    riskReason = direct?'需求执行受阻，直接判定为高风险':'存在阻塞工作项，直接判定为高风险';
   } else if (finishVariance >= highRiskDelayDays) {
     riskLevel = 'high';
     riskReason = `已延期${finishVariance}个工作日，直接判定为高风险`;

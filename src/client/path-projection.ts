@@ -9,7 +9,7 @@ export function projectPathGraph(a:PathAnalysis, focus?:string, attention=false)
   if(!focus) {
     const cards:GraphCard[]=a.requirements.map(r=>{
       const risk=a.risks[r.id], n=nodeMap.get(acceptanceId(r.id))!;
-      return {id:r.id,requirementId:r.id,workItemId:null,kind:'requirement',title:r.title,subtitle:`${risk.criticalCount} 项关键工作 · ${r.ownerName||'未分派'}`,status:r.status,risk:risk.riskEvaluated?risk.riskLevel:'pending',forecast:n.forecastEnd,floatDays:risk.minFloat,critical:risk.critical,unknown:!risk.complete||['completed','cancelled'].includes(r.status)&&a.blockers.some(b=>b.requirementId===r.id),external:false,hiddenCount:0};
+      return {id:r.id,requirementId:r.id,workItemId:null,kind:'requirement',title:r.title,subtitle:`${r.executionMode==='direct'?'直接执行':risk.criticalCount+' 项关键工作'} · ${r.ownerName||'未分派'}`,status:r.status,risk:risk.riskEvaluated?risk.riskLevel:'pending',forecast:n.forecastEnd,floatDays:risk.minFloat,critical:risk.critical,unknown:!risk.complete||['completed','cancelled'].includes(r.status)&&a.blockers.some(b=>b.requirementId===r.id),external:false,hiddenCount:0};
     });
     for(const n of a.nodes.filter(n=>n.kind==='milestone'&&!n.requirementId))cards.push({id:n.id,requirementId:'',workItemId:null,kind:'milestone',title:n.title,subtitle:'项目里程碑',status:n.status,risk:n.riskLevel,forecast:n.forecastEnd,floatDays:n.floatDays,critical:n.critical,unknown:!!n.unknownReasons.length,external:false,hiddenCount:0});
     const ids=new Set(cards.map(n=>n.id)), grouped=new Map<string,GraphLink>();

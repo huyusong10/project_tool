@@ -15,7 +15,7 @@ test('直接执行无需工作项，详情执行到验收；列表和路径的�
  await page.goto('/requirements/'+r.id);await page.getByRole('button',{name:'开始需求',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始需求',exact:true}).click();
  await expect(page.getByRole('dialog')).toHaveCount(0);await page.getByRole('button',{name:'更新进度',exact:true}).click();
  await page.getByLabel('需求完成度').fill('30');await page.getByLabel('执行说明').fill('接口已完成三成');await page.getByRole('dialog').getByRole('button',{name:'更新进度',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
- expect((await detail(r.id)).progress).toBe(30);expect((await detail(r.id)).workItems).toHaveLength(0);
+ expect((await detail(r.id)).progress).toBe(30);expect((await detail(r.id)).workItems).toHaveLength(0);await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);await page.setViewportSize({width:1920,height:1080});
  await page.getByRole('button',{name:'提交验收',exact:true}).click();await page.getByLabel('执行说明').fill('交付材料已核对');await page.getByRole('dialog').getByRole('button',{name:'提交验收',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
  const pending=await detail(r.id);expect(pending.status).toBe('pending_acceptance');expect(pending.acceptedAt).toBeNull();
  await page.goto('/requirements');await expect(page.locator('tbody tr').filter({hasText:r.title})).toContainText(pending.processingPriority!);

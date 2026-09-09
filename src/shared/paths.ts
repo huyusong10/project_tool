@@ -302,7 +302,8 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     if (blocked || reqNodes.some(n => lateDrivers.has(n.id))) { risk = 'high'; reasons.push(blocked ? '关键交付条件发生阻塞' : '位于预计延期目标的驱动路径'); }
     const complete = !byId.get(acceptanceId(r.id))!.unknownReasons.length;
     const ended = ['completed', 'cancelled'].includes(r.status);
-    risks[r.id] = { riskLevel: ended ? 'low' : risk, riskEvaluated: !ended && (metrics.riskEvaluated || risk !== 'low'), riskReason: reasons.join('；') || metrics.riskReason,
+    risks[r.id] = { riskLevel: ended ? 'low' : risk, riskEvaluated: !ended && (risk !== 'low' || metrics.riskEvaluated && complete),
+      riskReason: reasons.join('；') || (!complete && risk === 'low' ? '交付条件待确认：' + byId.get(acceptanceId(r.id))!.unknownReasons.join('；') : metrics.riskReason),
       highRisk: !ended && risk === 'high', critical: key, criticalCount: workNodes.filter(n => n.kind==='work'&&global.critical.has(n.id)).length,
       minFloat: fs.length ? Math.min(...fs) : null, blockedCritical: blocked, complete,
       drivesLateTarget:reqNodes.some(n=>lateDrivers.has(n.id)),inDeliveryNetwork:reqNodes.some(n=>global.scope.has(n.id)) };

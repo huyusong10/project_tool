@@ -314,7 +314,7 @@ function SavedRequirementPage() {
           <div className="progress-row">
             <i style={{ width: `${requirement.progress}%` }} />
           </div>
-          <small>计划进度 {requirement.plannedProgress}% · 自动按工期加权</small>
+          <small>计划进度 {requirement.plannedProgress}% · {requirement.executionMode==='direct'?'直接记录完成度':'自动按工期加权'}</small>
         </article>
         <article>
           <span>计划周期</span>

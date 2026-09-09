@@ -326,6 +326,11 @@ textarea {
     width: 100%;
     white-space: normal;
   }
+  .detail-kpis > article { min-width: 0; }
+
+  .progress-feed > article { grid-template-columns: 42px minmax(0,1fr); gap: 8px; }
+  .progress-feed article header { flex-wrap: wrap; }
+  .progress-feed > article > button { grid-column: 2; justify-self: end; }
 
   .issue-meta-grid {
     grid-template-columns: 1fr;

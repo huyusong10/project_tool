@@ -173,3 +173,10 @@ it('直接执行提交验收后释放未来负荷，取消日期使用业务日�
  const {sqlite}=await import('../src/server/database');sqlite.prepare("UPDATE requirements SET updated_at='2030-01-01T00:00:00.000Z' WHERE id=?").run(r.id);
  expect((await detail(r.id)).actualEnd).toBe(today);
 });
+
+it('工作完成但验收日期未知时，非关键分支不显示为可靠低风险',async()=>{
+ const {projectId,owner}=await fixture({durationDays:10,plannedStart:todayIso()});
+ const r=(await post('/api/requirements',{projectId,title:'等待验收确认',ownerId:owner.id,executionMode:'direct',durationDays:1,plannedStart:todayIso()})).json<Requirement>();
+ await command(r.id,'start');await command(r.id,'submit-acceptance',{content:'工作已完成'});
+ const value=await detail(r.id);expect(value.pathRisk?.complete).toBe(false);expect(value.riskLevel).toBe('low');expect(value.riskEvaluated).toBe(false);expect(value.processingPriority).not.toBe('P3');
+});
