@@ -13,7 +13,6 @@ import {
   Edit3,
   MoreHorizontal,
   PencilLine,
-  Plus,
 } from "lucide-react";
 import { api, ApiError, jsonBody } from "../api";
 import { clearProjectGraphDrafts } from "../use-graph-draft";
@@ -208,10 +207,6 @@ function SavedRequirementPage() {
   const requirementInfoLocked = ["completed", "cancelled"].includes(requirement.status);
   const requirementLocked = ["pending_acceptance", "completed", "cancelled"].includes(requirement.status);
   const canManageWorkItems = supportingDataReady && (canManage || isRequirementOwner) && !requirementLocked;
-  const participatesInActiveItem = Boolean(session.personId && requirement.workItems.some((item) =>
-    !["completed", "cancelled"].includes(item.status) && item.assigneeIds.includes(session.personId!),
-  ));
-  const canAddProgress = canContribute && !requirementLocked && (canManage || isRequirementOwner || participatesInActiveItem);
   const canUpdateItemProgress = (item: WorkItem) => item.status === "in_progress"
     && canContribute
     && (canManage || isRequirementOwner || Boolean(session.personId && item.assigneeIds.includes(session.personId)));
@@ -221,7 +216,7 @@ function SavedRequirementPage() {
   const executionHistoryIds = new Set((requirement.progressUpdates || [])
     .filter((entry) => entry.workItemId && !["note", "correction"].includes(entry.eventType))
     .map((entry) => entry.workItemId));
-  const openProgress = (itemId: string | null = null) => {
+  const openProgress = (itemId: string) => {
     setProgressItemId(itemId);
     setModal("progress");
   };
@@ -230,7 +225,6 @@ function SavedRequirementPage() {
     return {
       items: managesRequirement ? current.workItems : canContribute ? current.workItems.filter((item) => Boolean(session.personId && item.assigneeIds.includes(session.personId))) : [],
       updates: current.progressUpdates || [],
-      allowRequirementNote: managesRequirement,
       requirementStatus: current.status,
     };
   };
@@ -248,7 +242,7 @@ function SavedRequirementPage() {
       <PageHeader
         title={requirement.title}
         onBack={goBack}
-        actions={canAddProgress || canManage ? (
+        actions={canManage ? (
           <>
             {canManage && !requirementInfoLocked && <button className="ghost-button" disabled={!peopleReady} onClick={() => setModal("info")}>
               <Edit3 size={15} />
@@ -257,13 +251,6 @@ function SavedRequirementPage() {
             {canManage && !requirementLocked && <button className="ghost-button" onClick={() => setModal("schedule")}>
               <CalendarDays size={15} />
               调整计划
-            </button>}
-            {canAddProgress && <button
-              className="primary-button"
-              onClick={() => openProgress()}
-            >
-              <Plus size={15} />
-              增加进展
             </button>}
             {canManage && <div ref={actionAnchor}>
               <button type="button" className="ghost-button" aria-label="需求操作" aria-expanded={actionMenuOpen} onClick={() => setActionMenuOpen((open) => !open)}><MoreHorizontal size={16} />操作</button>
@@ -375,12 +362,12 @@ function SavedRequirementPage() {
                 <span className="progress-event-type">{progressEventLabels[item.eventType] || "记录"}</span>
               </article>;
             })}
-            {!requirement.progressUpdates?.length && <EmptyState title="暂无进展" detail="增加进展后，这里会显示具体完成内容。" />}
+            {!requirement.progressUpdates?.length && <EmptyState title="暂无进展" detail={direct ? "开始需求或更新完成度后，这里会显示执行记录。" : "开始工作项、更新完成度或完成工作项后，这里会显示执行记录。"} />}
           </div>
         </article>
         <article className="panel progress-detail-card">
           <header><div><h2>进度趋势</h2></div></header>
-          {requirement.progressUpdates?.length ? <Chart option={progressOption} height={270} ariaLabel="需求计划与实际进度趋势" /> : <EmptyState title="暂无趋势" detail="增加第一条进展后自动生成趋势图。" />}
+          {requirement.progressUpdates?.length ? <Chart option={progressOption} height={270} ariaLabel="需求计划与实际进度趋势" /> : <EmptyState title="暂无趋势" detail="产生执行记录后自动生成趋势图。" />}
         </article>
       </section>
       {modal === "info" && (
@@ -392,10 +379,10 @@ function SavedRequirementPage() {
       {modal === "schedule" && (
         <RequirementScheduleForm key={requirement.id} requirement={requirement} onClose={() => setModal(null)} />
       )}
-      {modal === "progress" && (
+      {modal === "progress" && progressItemId && (
         <ProgressForm
-          key={`${requirement.id}:${progressItemId || "note"}`}
-          title={progressItemId ? "更新工作项进度" : "增加进展"}
+          key={`${requirement.id}:${progressItemId}`}
+          title="更新工作项进度"
           requirementId={requirement.id}
           scope={progressScope(requirement)}
           loadScope={async () => {

@@ -12,7 +12,7 @@ async function fixture(page:Page){
 }
 test('直接执行无需工作项，详情执行到验收；列表和路径的优先级一致',async({page},info)=>{
  const {create,detail,projectId}=await fixture(page),r=await create('直接交付检查');
- await page.goto('/requirements/'+r.id);await page.getByRole('button',{name:'开始需求',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始需求',exact:true}).click();
+ await page.goto('/requirements/'+r.id);await expect(page.getByRole('button',{name:'增加进展',exact:true})).toHaveCount(0);await page.getByRole('button',{name:'开始需求',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始需求',exact:true}).click();
  await expect(page.getByRole('dialog')).toHaveCount(0);await page.getByRole('button',{name:'更新进度',exact:true}).click();
  await page.getByLabel('需求完成度').fill('30');await page.getByLabel('执行说明').fill('接口已完成三成');await page.getByRole('dialog').getByRole('button',{name:'更新进度',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
  expect((await detail(r.id)).progress).toBe(30);expect((await detail(r.id)).workItems).toHaveLength(0);await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);await page.setViewportSize({width:1920,height:1080});
@@ -47,4 +47,28 @@ test('普通新增未选流程直接执行，选择流程则实例化未排期�
  await page.getByRole('dialog').getByLabel('需求标题').fill('表单直接需求');await page.getByRole('button',{name:/流程与排期/}).click();await page.getByRole('combobox',{name:'流程设计',exact:true}).selectOption('');await page.getByRole('button',{name:'创建需求',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
  const rs=await(await page.request.get('/api/requirements?projectId='+projectId)).json() as Requirement[];expect(rs.find(r=>r.title==='表单直接需求')?.executionMode).toBe('direct');
  expect(rs.find(r=>r.title==='表单直接需求')?.workItems).toHaveLength(0);
+});
+
+test('详情移除通用进展；工作项入口实际更新所选工作项并汇总需求',async({page})=>{
+ const {projectId,owner,detail}=await fixture(page);
+ const created=await page.request.post('/api/requirements',{data:{projectId,title:'工作项进度归属检查',executionMode:'work_items',ownerId:owner.id}});
+ expect(created.ok()).toBe(true);let r=await created.json() as Requirement;
+ for(const title of ['当前工作','其他工作']){
+  const response=await page.request.post('/api/requirements/'+r.id+'/work-items',{data:{expectedVersion:r.version,title,ownerId:owner.id,plannedStart:'2026-09-01',plannedEnd:'2026-09-10'}});
+  expect(response.ok(),await response.text()).toBe(true);r=await detail(r.id);
+ }
+ const first=r.workItems[0];expect((await page.request.post('/api/work-items/'+first.id+'/start',{data:{expectedVersion:first.version}})).ok()).toBe(true);
+ await page.goto('/requirements/'+r.id);
+ await expect(page.locator('.requirement-overview')).toHaveCount(1);
+ await expect(page.getByRole('button',{name:'增加进展',exact:true})).toHaveCount(0);
+ await page.locator('.requirement-gantt-grid button.gantt-progress-marker').click();
+ const dialog=page.getByRole('dialog',{name:'更新工作项进度',exact:true});
+ await expect(dialog.getByRole('combobox')).toHaveCount(0);
+ await expect(dialog.locator('.progress-item-context')).toContainText(first.title);
+ await dialog.getByRole('spinbutton').fill('60');await dialog.getByLabel('具体进展',{exact:true}).fill('完成当前工作六成');
+ await dialog.getByRole('button',{name:'记录进展',exact:true}).click();await expect(dialog).toHaveCount(0);
+ r=await detail(r.id);expect(r.workItems.find(w=>w.id===first.id)?.progress).toBe(60);expect(r.workItems.find(w=>w.id!==first.id)?.progress).toBe(0);expect(r.progress).toBe(30);
+ expect(r.progressUpdates?.some(e=>e.workItemId===first.id&&e.workItemPercent===60&&e.eventType==='progress')).toBe(true);
+ await expect(page.locator('.requirement-overview .detail-kpis').first()).toContainText('30%');
+ await page.reload();await expect(page.locator('.requirement-overview')).toHaveCount(1);await expect(page.locator('.requirement-overview .detail-kpis').first()).toContainText('30%');
 });

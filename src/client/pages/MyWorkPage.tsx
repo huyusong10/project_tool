@@ -129,11 +129,11 @@ export function MyWorkPage() {
       title="添加工作进展"
       submitLabel="保存进展"
       requirementId={progressItem.requirementId}
-      scope={{ items: (data?.items || []).filter((item) => item.id === progressItem.id), updates: (data?.recentProgress || []).filter((update) => update.requirementId === progressItem.requirementId), allowRequirementNote: false }}
+      scope={{ items: (data?.items || []).filter((item) => item.id === progressItem.id), updates: (data?.recentProgress || []).filter((update) => update.requirementId === progressItem.requirementId) }}
       loadScope={async () => {
         const latest = await api<MyWork>('/api/my-work');
         cacheResourceUpdate(client, keys.myWork, latest);
-        return { items: latest.items.filter((item) => item.id === progressItem.id), updates: latest.recentProgress.filter((update) => update.requirementId === progressItem.requirementId), allowRequirementNote: false };
+        return { items: latest.items.filter((item) => item.id === progressItem.id), updates: latest.recentProgress.filter((update) => update.requirementId === progressItem.requirementId) };
       }}
       contextLabel={`${progressItem.projectName} · ${progressItem.requirementTitle}`}
       fixedItemId={progressItem.id}
