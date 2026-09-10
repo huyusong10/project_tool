@@ -1462,9 +1462,10 @@ function assertProjectAssignees(requirementId: string, ids: Array<string | null>
     count += row<{ count: number }>(`SELECT COUNT(*) AS count FROM project_people pp
       JOIN people p ON p.id=pp.person_id
       WHERE pp.project_id=? AND pp.person_id IN (${placeholders}) AND pp.project_role IN ('member','manager')
-        AND p.deleted_at IS NULL AND p.active=1`, requirement.projectId, ...batch)?.count || 0;
+        AND p.deleted_at IS NULL AND p.active=1
+        AND EXISTS (SELECT 1 FROM accounts a WHERE a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL)`, requirement.projectId, ...batch)?.count || 0;
   }
-  if (count !== assigneeIds.length) fail('负责人必须是当前项目中已启用的成员或项目经理', conflict ? 'DEPENDENCY_CONFLICT' : 'VALIDATION_ERROR', conflict ? 409 : 400);
+  if (count !== assigneeIds.length) fail('负责人必须是当前项目中账号有效的成员或项目经理', conflict ? 'DEPENDENCY_CONFLICT' : 'VALIDATION_ERROR', conflict ? 409 : 400);
 }
 
 function syncWorkItemCollaborators(workItemId: string, collaboratorIds: string[]) {
@@ -1535,7 +1536,8 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
   const previousCollaboratorIds = rows<{ personId: string }>('SELECT person_id AS personId FROM work_item_collaborators WHERE work_item_id=?', id)
     .map((item) => item.personId);
   const nextCollaboratorIds = (collaboratorIds ?? previousCollaboratorIds).filter((personId) => personId !== ownerId);
-  assertProjectAssignees(current.requirementId, [ownerId, ...nextCollaboratorIds]);
+  const newAssigneeIds = [ownerId !== current.ownerId ? ownerId : null, ...nextCollaboratorIds.filter(personId => !previousCollaboratorIds.includes(personId))];
+  assertProjectAssignees(current.requirementId, newAssigneeIds);
   const plannedStart = input.plannedStart === undefined ? current.plannedStart : nullableDate(input.plannedStart, '计划开始');
   const plannedEnd = input.plannedEnd === undefined ? current.plannedEnd : nullableDate(input.plannedEnd, '计划完成');
   if (plannedStart && businessDaysInclusive(plannedStart, plannedStart) !== 1) fail('计划开始需为工作日');
@@ -1554,7 +1556,7 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
     sqlite.transaction(() => {
       requireActiveProject(requirement.projectId, true);
       if(coordinationChanged&&!structuralChanged)assertCoordinationAccess('work',id,input,actor);else assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
-      assertProjectAssignees(current.requirementId, [ownerId, ...nextCollaboratorIds], true);
+      assertProjectAssignees(current.requirementId, newAssigneeIds, true);
     })();
     return requirement.workItems!.find((item) => item.id === id);
   }
@@ -1574,7 +1576,7 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
     if(coordinationChanged&&!structuralChanged)assertCoordinationAccess('work',id,input,actor);else assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
     if (requirementHasExecution && structuralChanged) appendRequirementEvent(current.requirementId, 'correction', requireText(input.reason, '变更原因'), actor, id, current.progress, null, now);
     audit(actor, 'update', 'work_item', id, `更新工作项：${title}`);
-    assertProjectAssignees(current.requirementId, [ownerId, ...nextCollaboratorIds], true);
+    assertProjectAssignees(current.requirementId, newAssigneeIds, true);
   })();
   return getRequirement(current.requirementId).workItems!.find((item) => item.id === id);
 }

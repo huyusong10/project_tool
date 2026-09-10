@@ -499,7 +499,7 @@ export function InlineSelectCell<TRevision extends Revision = number>({
   const currentOption = options.find((option) => option.value === currentValue);
   const knownCurrentOption = currentValue ? knownOptions.current.get(currentValue) : undefined;
   const selected = currentOption || (knownCurrentOption ? { ...knownCurrentOption, label: `${knownCurrentOption.label}（已不可用）` } : undefined);
-  const pendingOptionUnavailable = pendingValue !== null && !options.some((option) => option.value === pendingValue);
+  const pendingOptionUnavailable = pendingValue !== null && !options.some((option) => option.value === pendingValue && !option.disabled);
   const pendingOptionLabel = pendingValue === null ? "所选项" : knownOptions.current.get(pendingValue)?.label || "所选项";
   const searchable = options.length > 7;
   const filtered = useMemo(() => {
@@ -535,6 +535,7 @@ export function InlineSelectCell<TRevision extends Revision = number>({
 
   const choose = useCallback(async (next: string) => {
     if (feedback.isSaving()) return;
+    if (options.find(option => option.value === next)?.disabled) return;
     if (next === currentValue) {
       cancel();
       return;
@@ -554,7 +555,7 @@ export function InlineSelectCell<TRevision extends Revision = number>({
       setPendingValue(null);
       focusTrigger(anchorRef);
     }
-  }, [cancel, currentValue, feedback, onSave, reason, revisionGuard]);
+  }, [cancel, currentValue, feedback, onSave, options, reason, revisionGuard]);
 
   const commit = useCallback(async () => {
     if (feedback.isSaving()) return;
@@ -608,7 +609,7 @@ export function InlineSelectCell<TRevision extends Revision = number>({
               className={`${isSelected ? "is-selected" : ""}${index === activeIndex ? " is-active" : ""}`}
               key={option.value}
               title={option.label}
-              disabled={feedback.state === "saving"}
+              disabled={feedback.state === "saving" || option.disabled}
               onMouseEnter={() => setActiveIndex(index)}
               onClick={() => void choose(option.value)}
             >
@@ -785,12 +786,14 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
   onReloadRevision,
   renderValue,
   excludedValues = [],
+  reason,
 }: BaseProps<TRevision> & {
   value: string[];
   options: InlineOption[];
-  onSave: (value: string[], expectedRevision?: TRevision) => Promise<unknown>;
+  onSave: (value: string[], expectedRevision?: TRevision, reason?: string) => Promise<unknown>;
   renderValue?: (selected: InlineOption[]) => ReactNode;
   excludedValues?: string[];
+  reason?: { required?: boolean; label?: string; placeholder?: string };
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const knownOptions = useRef(new Map(options.map((option) => [option.value, option])));
@@ -798,11 +801,12 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const [search, setSearch] = useState("");
+  const [reasonText, setReasonText] = useState("");
   const feedback = useSaveState();
   const revisionGuard = useRevisionGuard({ revision, subject: revisionSubject, onReload: onReloadRevision, feedback });
   const normalizedValue = [...value].sort().join("|");
   const normalizedDraft = [...draft].sort().join("|");
-  const liveOptions = options.filter((option) => !excludedValues.includes(option.value));
+  const liveOptions = options.filter((option) => !excludedValues.includes(option.value) && !option.disabled);
   const unavailableDraftValues = draft.filter((optionValue) => !liveOptions.some((option) => option.value === optionValue));
   const unavailableDraftOptions: InlineOption[] = unavailableDraftValues.map((optionValue) => {
     const known = knownOptions.current.get(optionValue);
@@ -836,10 +840,11 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
     if (unavailableDraftError) return feedback.fail(unavailableDraftError);
     if (!revisionGuard.ensureCurrent()) return;
     if (normalizedDraft === normalizedValue) { setOpen(false); setSearch(""); focusTrigger(anchorRef); return; }
+    if (reason?.required && !reasonText.trim()) return feedback.fail(`${reason.label || '变更原因'}不能为空`);
     const next = [...draft];
-    const saved = await feedback.save(() => onSave(next, revisionGuard.baselineRevision));
+    const saved = await feedback.save(() => onSave(next, revisionGuard.baselineRevision, reasonText.trim() || undefined));
     if (saved) { setOpen(false); setSearch(""); focusTrigger(anchorRef); }
-  }, [draft, feedback, normalizedDraft, normalizedValue, onSave, revisionGuard, unavailableDraftError]);
+  }, [draft, feedback, normalizedDraft, normalizedValue, onSave, reason, reasonText, revisionGuard, unavailableDraftError]);
 
   const display = renderValue
     ? renderValue(selected)
@@ -847,7 +852,7 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
   const fullText = selected.map((option) => option.label).join("、") || placeholder;
   return <div ref={anchorRef} className="inline-edit-anchor">
     <EditableCell label={label} display={display} fullText={fullText} open={open} disabled={disabled} state={feedback.state} error={feedback.error} displayMode={displayMode} className={className} onOpen={() => {
-      if (feedback.state !== "error") setDraft(value);
+      if (feedback.state !== "error") { setDraft(value); setReasonText(''); }
       if (feedback.state !== "error") revisionGuard.capture();
       feedback.clearError();
       setSearch("");
@@ -866,6 +871,7 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
           })}
           {!visible.length && <p className="inline-picker-empty">没有匹配选项</p>}
         </div>
+        {reason && normalizedDraft !== normalizedValue && <label className="inline-select-reason"><span>{reason.label || '变更原因'}{reason.required && <em>必填</em>}</span><textarea aria-label={reason.label || '变更原因'} rows={3} readOnly={feedback.state === 'saving'} value={reasonText} onChange={e=>setReasonText(e.target.value)} placeholder={reason.placeholder || '请说明本次变更原因'}/></label>}
         <EditorError error={unavailableDraftError || feedback.error} />
         <RevisionNotice guard={revisionGuard} showReload={feedback.state === "error"} subject={revisionSubject} />
         <footer className="inline-multi-actions">

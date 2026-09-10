@@ -22,6 +22,7 @@ export type UiOption<T extends string = string> = {
   description?: string;
   keywords?: string;
   toneClass?: string;
+  disabled?: boolean;
 };
 
 export const priorityOptions: UiOption<Priority>[] = priorities.map((value) => ({
