@@ -130,7 +130,7 @@ export const updateRequirementInputSchema = requirementInputSchema.pick({blocked
   deliveryScope:true,executionMode:true,acceptanceOwnerId:true,durationDays:true,forecastEnd:true,unblockEstimate:true,reason:true,
   title: true, priority: true, ownerId: true, background: true,
   acceptanceCriteria: true, referenceUrl: true, expectedVersion: true,
-}).extend({ expectedVersion: expectedVersionSchema });
+}).extend({ expectedVersion: expectedVersionSchema }).strict();
 
 export const requirementCorrectionInputSchema = updateRequirementInputSchema.extend({
   reason: z.string().trim().min(1),
@@ -242,7 +242,7 @@ export const createWorkItemInputSchema = workItemInputSchema.omit({ sortOrder: t
 
 export const updateWorkItemInputSchema = workItemInputSchema.extend({
   expectedVersion: expectedVersionSchema,
-}).refine((input) => input.collaboratorIds === undefined || input.assigneeIds === undefined, {
+}).strict().refine((input) => input.collaboratorIds === undefined || input.assigneeIds === undefined, {
   message: '协作人员与参与人员字段不能同时提交',
 });
 
