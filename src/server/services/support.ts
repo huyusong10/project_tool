@@ -81,6 +81,14 @@ export function nullableText(value: unknown) {
   return text || null;
 }
 
+/** Use the persisted text form when calculating previews and commitment snapshots. */
+export function normalizeRequirementText<T extends {title?:string;background?:string|null;acceptanceCriteria?:string|null;referenceUrl?:string|null}>(input:T):T {
+  const value={...input};
+  if(value.title!==undefined)value.title=requireLabel(value.title,'需求标题');
+  for(const key of ['background','acceptanceCriteria','referenceUrl'] as const)if(value[key]!==undefined)value[key]=nullableText(value[key]);
+  return value;
+}
+
 export function requireLabel(value: unknown, field: string, maxLength = 200) {
   assertSafeText(value, field, false);
   const text = canonicalizeLabel(value);
