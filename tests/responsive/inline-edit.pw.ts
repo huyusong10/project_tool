@@ -1804,14 +1804,16 @@ test("工作项负责人、协作者和日期共用版本快照，重读时保�
   await firstRow.getByRole("button", { name: /协作人员：无协作人员/ }).click();
   popover = page.locator(".inline-multi-popover");
   await popover.getByRole("checkbox", { name: /李四/ }).check();
+  await popover.getByRole('textbox', { name: '调整原因', exact: true }).fill('保留协作者调整说明');
   await pushBackgroundUpdate({ title: "后台再次更新标题" });
   await expect(popover.getByRole("button", { name: "完成", exact: true })).toBeDisabled();
   expect(submissions).toHaveLength(2);
   await reloadDraft(popover, 6);
   await expect(popover.getByRole("checkbox", { name: /李四/ })).toBeChecked();
+  await expect(popover.getByRole('textbox', { name: '调整原因', exact: true })).toHaveValue('保留协作者调整说明');
   await popover.getByRole("button", { name: "完成", exact: true }).click();
   await expect.poll(() => submissions.length).toBe(3);
-  expect(submissions[2]).toMatchObject({ assigneeIds: ["u1", "u2"], expectedVersion: 6 });
+  expect(submissions[2]).toMatchObject({ assigneeIds: ["u1", "u2"], expectedVersion: 6, reason: '保留协作者调整说明' });
 });
 
 test("执行中工作项待确认的负责人失效后禁止提交旧人员", async ({ page }) => {

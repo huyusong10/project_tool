@@ -18,7 +18,7 @@ const workDefaults={status:'not_started',progress:0,plannedStart:null,plannedEnd
 const entityTable={requirement:'requirements',work:'work_items',milestone:'milestones'};
 type TemplateExpansion=DraftTemplateInstance & {version:string;items:Array<{clientId:string;templateItemId:string;kind:string}>};
 export function assertEditorAssignees(projectId:string,ids:Array<string|null|undefined>){
-  for(const id of new Set(ids.filter(Boolean)))if(!sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id WHERE pp.project_id=? AND pp.person_id=? AND pp.project_role IN ('member','manager') AND p.active=1 AND p.deleted_at IS NULL").get(projectId,id))fail('负责人必须是当前项目中已启用的成员或项目经理');
+  for(const id of new Set(ids.filter(Boolean)))if(!sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id WHERE pp.project_id=? AND pp.person_id=? AND pp.project_role IN ('member','manager') AND p.active=1 AND p.deleted_at IS NULL AND EXISTS (SELECT 1 FROM accounts a WHERE a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL)").get(projectId,id))fail('负责人必须是当前项目中账号有效的成员或项目经理');
 }
 export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityChange[],actor:Actor){
   const current=requireAuthorizationActor(actor),created=new Set(changes.filter(c=>c.op==='create').map(c=>c.id));
@@ -41,7 +41,12 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     if(req&&['completed','cancelled'].includes(req.status)&&c.op!=='delete')fail('已结束需求不能修改结构','TERMINAL_LOCKED');
     if(c.entity!=='requirement'&&req?.status==='pending_acceptance')fail('待验收需求不能修改结构','TERMINAL_LOCKED');
     if(c.data.title!==undefined)c.data.title=requireLabel(c.data.title,'名称');
-    assertEditorAssignees(snapshot.projectId,[c.data.ownerId,...c.data.assigneeIds||[]]);
+    const previousWork=c.entity==='work'&&c.op==='update'?snapshot.workItems.find(w=>w.id===c.id):undefined;
+    if(previousWork){
+      const nextOwner=c.data.ownerId===undefined?previousWork.ownerId:c.data.ownerId;
+      const previousCollaborators=(previousWork.assigneeIds||[]).filter(id=>id!==previousWork.ownerId);
+      assertEditorAssignees(snapshot.projectId,[nextOwner!==previousWork.ownerId?nextOwner:null,...(c.data.assigneeIds||[]).filter(id=>id!==nextOwner&&!previousCollaborators.includes(id))]);
+    }else assertEditorAssignees(snapshot.projectId,[c.data.ownerId,...c.data.assigneeIds||[]]);
     for(const key of ['plannedStart','plannedEnd','targetDate'] as const)if(c.data[key]&&businessDaysInclusive(c.data[key]!,c.data[key]!)!==1)fail('排期日期必须是工作日');
     if(c.data.plannedStart&&c.data.plannedEnd&&c.data.plannedStart>c.data.plannedEnd)fail('计划完成日期不能早于计划开始日期');
     if(coordinationKeys.some(k=>c.data[k]!==undefined)){const original=c.entity==='requirement'?req:snapshot.workItems.find(w=>w.id===c.id);if(c.op!=='update'||!original||original.status!=='blocked')fail('只有阻塞对象可以修改协调信息');const normalized=validateCoordination(snapshot.projectId,{...original,...c.data});for(const key of coordinationKeys)if(c.data[key]!==undefined||c.data.blockedIssueId)c.data[key]=normalized[key];}

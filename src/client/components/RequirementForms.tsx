@@ -1,3 +1,4 @@
+import {isAssignablePerson} from '../assignable-people';
 import {CommitmentComparison} from './CommitmentComparison';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -57,7 +58,7 @@ export function RequirementInfoForm({
   }, [baseRequirement.version, requirement]);
   const current = requirement.version > baseRequirement.version ? requirement : baseRequirement;
   const hasExecution = current.workItems.some((item) => item.status !== "not_started" || item.progress > 0 || item.actualStart);
-  const eligiblePeople = people.filter((person) => person.active && person.projectRole !== "viewer");
+  const eligiblePeople = people.filter(isAssignablePerson);
   const currentOwner = baseRequirement.ownerId ? people.find((person) => person.id === baseRequirement.ownerId) : undefined;
   const draftOwner = draft.ownerId ? people.find((person) => person.id === draft.ownerId) : undefined;
   const ownerOptions = currentOwner && !eligiblePeople.some((person) => person.id === currentOwner.id)
@@ -121,7 +122,7 @@ export function RequirementInfoForm({
       <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
       {baseRequirement.ownerId && !ownerOptions.some((person) => person.id === baseRequirement.ownerId) && <option value={baseRequirement.ownerId}>{baseRequirement.ownerName || "历史负责人"} · 历史负责人</option>}
       {draft.ownerId && draft.ownerId !== baseRequirement.ownerId && !ownerOptions.some((person) => person.id === draft.ownerId) && <option value={draft.ownerId}>{draftOwner?.name || knownPeople.current.get(draft.ownerId) || "已选择负责人"} · 已不可用，请重新选择</option>}
-      {ownerOptions.map((person) => <option value={person.id} key={person.id}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}{person === currentOwner && !eligiblePeople.includes(person) ? " · 历史负责人" : ""}</option>)}
+      {ownerOptions.map((person) => <option value={person.id} key={person.id} disabled={!isAssignablePerson(person)}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}{person === currentOwner && !eligiblePeople.includes(person) ? " · 历史负责人" : ""}</option>)}
     </select></FormField>
     {hasExecution && <p className="field-help field-full">需求已开始执行，负责人可以更换但不能清空。</p>}
     <FormField label="需求背景（可选）" full><textarea name="background" rows={3} value={draft.background} onChange={(event) => change("background", event.target.value)} /></FormField>
@@ -167,7 +168,7 @@ export function RequirementCorrectionForm({
     || (requirement.version === baseline.version && requirement.status !== baseline.status);
   const terminal = ["completed", "cancelled"].includes(baseline.status);
   const hasExecution = baseline.workItems.some((item) => item.status !== "not_started" || item.progress > 0 || item.actualStart);
-  const eligiblePeople = people.filter((person) => person.active && person.projectRole !== "viewer");
+  const eligiblePeople = people.filter(isAssignablePerson);
   const currentOwner = baseline.ownerId ? people.find((person) => person.id === baseline.ownerId) : undefined;
   const ownerOptions = currentOwner && !eligiblePeople.some((person) => person.id === currentOwner.id)
     ? [currentOwner, ...eligiblePeople]
@@ -251,7 +252,7 @@ export function RequirementCorrectionForm({
       <FormField label="需求负责人"><select aria-label="纠错后的需求负责人" value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
         <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
         {baseline.ownerId && !ownerOptions.some((person) => person.id === baseline.ownerId) && <option value={baseline.ownerId}>{baseline.ownerName || "历史负责人"} · 历史负责人</option>}
-        {ownerOptions.map((person) => <option value={person.id} key={person.id}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}{person === currentOwner && !eligiblePeople.includes(person) ? " · 历史负责人" : ""}</option>)}
+        {ownerOptions.map((person) => <option value={person.id} key={person.id} disabled={!isAssignablePerson(person)}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}{person === currentOwner && !eligiblePeople.includes(person) ? " · 历史负责人" : ""}</option>)}
       </select></FormField>
       <FormField label="需求背景（可选）" full><textarea aria-label="纠错后的需求背景" rows={3} value={draft.background} onChange={(event) => change("background", event.target.value)} /></FormField>
       <FormField label="验收标准（可选）" full><textarea aria-label="纠错后的验收标准" rows={3} value={draft.acceptanceCriteria} onChange={(event) => change("acceptanceCriteria", event.target.value)} /></FormField>

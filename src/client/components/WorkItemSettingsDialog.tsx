@@ -1,3 +1,4 @@
+import {isAssignablePerson} from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
@@ -69,7 +70,7 @@ export function WorkItemSettingsDialog({
   const reorderReadingRef = useRef(false);
   const saveWorkItem = useWorkItemSave(requirement.id, people);
   const requirementLocked = ["pending_acceptance", "completed", "cancelled"].includes(requirement.status);
-  const eligiblePeople = people.filter((person) => person.active && person.projectRole !== "viewer");
+  const eligiblePeople = people.filter(isAssignablePerson);
   const eligiblePersonIds = new Set(eligiblePeople.map((person) => person.id));
   const workItemHistoryIds = new Set((requirement.progressUpdates || []).map((entry) => entry.workItemId));
   const createChanged = Boolean(newItem && (requirement.version !== newItem.baselineVersion || requirement.status !== newItem.baselineStatus));
@@ -273,7 +274,7 @@ export function WorkItemSettingsDialog({
         </div>
         <FormError full={false}>{reorderItems.error?.message}</FormError>
         {(createUnknown||reorderUnknown)&&<p role="alert" className="warning-banner">刚才的提交结果待核对，输入已保留。请检查操作记录，本窗口不会重复提交。</p>}
-        {!reorderPrompt && reorderNeedsRefresh && <div className="warning-banner">工作项顺序未保存，请重新读取需求后再拖动排序。<button type="button" className="ghost-button" disabled={reorderReading} onClick={() => void reloadDirectReorder()}>{reorderReading ? "读取中…" : "重新读取需求"}</button>{reorderReadError && <FormError full={false}>{reorderReadError}</FormError>}</div>}
+        {!reorderPrompt && reorderNeedsRefresh && <div className="warning-banner">工作项顺序未保存，请重新读取需求后再拖动排序。<button type="button" className="ghost-button" disabled={reorderReading || reorderItems.isPending} onClick={() => void reloadDirectReorder()}>{reorderReading ? "读取中…" : "重新读取需求"}</button>{reorderReadError && <FormError full={false}>{reorderReadError}</FormError>}</div>}
         <div className="work-editor-scroll" ref={editorScrollRef}><table className="work-inline-table">
           <thead><tr><th>工作项</th><th>主负责人</th><th>协作人员</th><th>计划开始</th><th>计划完成</th><th>状态 / 偏差</th><th>操作</th></tr></thead>
           <tbody>
@@ -291,7 +292,9 @@ export function WorkItemSettingsDialog({
                 ...item.collaborators.filter((collaborator) => !eligiblePeople.some((person) => person.id === collaborator.id)),
               ];
               const assignmentOptions = [...eligiblePeople, ...historicalPeople].map((person) => ({
-                value: person.id, label: person.name, description: person.jobTitle || "岗位未设置",
+                value: person.id, label: person.name,
+                description: eligiblePersonIds.has(person.id) ? person.jobTitle || "岗位未设置" : "已不可用，请重新分配",
+                disabled: !eligiblePersonIds.has(person.id),
               }));
               const itemLocked = ["completed", "cancelled"].includes(item.status);
               const revisionProps = { revision: item.version, revisionSubject: "工作项", onReloadRevision: () => reloadWorkItemRevision(item.id) };
@@ -299,7 +302,7 @@ export function WorkItemSettingsDialog({
               return <tr ref={sortable.setNodeRef} className={`sortable-item${sortable.isDragging ? " is-dragging" : ""}${sortable.isOver ? " is-over" : ""}`}>
                 <td><div className="work-item-name-editor"><InlineTextCell {...revisionProps} disabled={itemLocked} value={item.title} label="工作项名称" required onSave={(title, expectedVersion) => saveWorkItem(item, { title }, expectedVersion)} /></div></td>
                 <td><InlineSelectCell {...revisionProps} disabled={itemLocked} value={item.ownerId} label="主负责人" options={[{ value: "", label: "未分配" }, ...assignmentOptions]} reason={requirement.workItems.some((workItem) => workItem.status !== "not_started") ? { required: true, label: "调整原因", placeholder: "需求已开始执行，请说明切换主负责人的原因" } : undefined} onSave={(ownerId, reason, expectedVersion) => saveWorkItem(item, { ownerId: ownerId || null, assigneeIds: [ownerId, ...item.collaborators.map((person) => person.id).filter((personId) => personId !== ownerId)].filter(Boolean), ...(reason ? { reason } : {}) }, expectedVersion)} placeholder="未分配" /></td>
-                <td><InlineMultiSelectCell {...revisionProps} disabled={itemLocked} value={item.collaborators.map((person) => person.id)} label="协作人员" options={assignmentOptions} excludedValues={item.ownerId ? [item.ownerId] : []} onSave={(collaboratorIds, expectedVersion) => saveWorkItem(item, { assigneeIds: [item.ownerId, ...collaboratorIds].filter(Boolean) }, expectedVersion)} placeholder="无协作人员" renderValue={(selected) => selected.length ? <span className="inline-person-summary">{selected.slice(0, 2).map((person) => person.label).join("、")}{selected.length > 2 ? ` +${selected.length - 2}` : ""}</span> : "无协作人员"} /></td>
+                <td><InlineMultiSelectCell {...revisionProps} disabled={itemLocked} value={item.collaborators.map((person) => person.id)} label="协作人员" options={assignmentOptions} reason={requirement.workItems.some(w=>w.status!=="not_started")?{required:true,label:"调整原因",placeholder:"请说明协作人员调整原因"}:undefined} excludedValues={item.ownerId ? [item.ownerId] : []} onSave={(collaboratorIds, expectedVersion, reason) => saveWorkItem(item, { assigneeIds: [item.ownerId, ...collaboratorIds].filter(Boolean), ...(reason?{reason}:{}) }, expectedVersion)} placeholder="无协作人员" renderValue={(selected) => selected.length ? <span className="inline-person-summary">{selected.slice(0, 2).map((person) => person.label).join("、")}{selected.length > 2 ? ` +${selected.length - 2}` : ""}</span> : "无协作人员"} /></td>
                 <td><InlineDateCell {...revisionProps} disabled={itemLocked} value={item.plannedStart} label="计划开始" reason={item.status === "not_started" ? undefined : { required: true, label: "调整原因", placeholder: "请说明计划开始日期调整原因" }} onSave={(plannedStart, reason, expectedVersion) => saveWorkItem(item, { plannedStart, ...(reason ? { reason } : {}) }, expectedVersion)} /></td>
                 <td><InlineDateCell {...revisionProps} disabled={itemLocked} value={item.plannedEnd} label="计划完成" reason={item.status === "not_started" ? undefined : { required: true, label: "调整原因", placeholder: "请说明计划完成日期调整原因" }} onSave={(plannedEnd, reason, expectedVersion) => saveWorkItem(item, { plannedEnd, ...(reason ? { reason } : {}) }, expectedVersion)} /></td>
                 <td><div className="work-inline-status"><StatusBadge kind="workItem" value={item.status} /><b className={gap.finishVariance > 0 ? "danger-text" : "safe-text"}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}工作日</b><span className="work-item-inline-progress"><i><b style={{ width: `${item.progress}%` }} /></i>{item.progress}%</span>{item.blockedReason && <small title={item.blockedReason}>阻塞：{item.blockedReason}</small>}</div></td>

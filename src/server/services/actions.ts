@@ -26,7 +26,7 @@ type Filters = {
 
 type WorkItemRow = {
   id: string; requirementId: string; requirementTitle: string; requirementOwnerId: string | null;
-  title: string; ownerId: string | null; ownerName: string | null; status: string;
+  title: string; ownerId: string | null; ownerName: string | null; ownerValid: number; status: string;
   blockedAt:string|null; plannedEnd: string | null; updatedAt: string; actorCollaborator: number;
 };
 
@@ -47,6 +47,7 @@ const reasonSeverity: Record<ActionReasonCode, ActionSeverity> = {forecast_revie
   pending_acceptance: 'medium',
   blocked: 'high',
   unassigned: 'medium',
+  owner_unavailable: 'medium',
   overdue: 'high',
 };
 
@@ -71,11 +72,12 @@ export function deriveRequirementActionReasons(requirement: Pick<RequirementReco
   return reasonCodes;
 }
 
-export function deriveWorkItemActionReasons(workItem: { status: string; ownerId: string | null }): ActionReasonCode[] {
+export function deriveWorkItemActionReasons(workItem: { status: string; ownerId: string | null; ownerValid?: number | boolean }): ActionReasonCode[] {
   if (['completed', 'cancelled'].includes(workItem.status)) return [];
   const reasonCodes: ActionReasonCode[] = [];
   if (workItem.status === 'blocked') reasonCodes.push('blocked');
   if (!workItem.ownerId) reasonCodes.push('unassigned');
+  else if (workItem.ownerValid !== undefined && !workItem.ownerValid) reasonCodes.push('owner_unavailable');
   return reasonCodes;
 }
 
@@ -146,6 +148,9 @@ export function listActionItems(
   const workItems = rows<WorkItemRow>(`SELECT w.id, w.requirement_id AS requirementId, r.title AS requirementTitle,
     r.owner_id AS requirementOwnerId, w.title, w.owner_id AS ownerId, p.name AS ownerName, w.status,
     w.planned_end AS plannedEnd,w.blocked_at AS blockedAt, w.updated_at AS updatedAt,
+    EXISTS (SELECT 1 FROM project_people pp JOIN accounts a ON a.person_id=pp.person_id
+      WHERE pp.project_id=r.project_id AND pp.person_id=w.owner_id AND pp.project_role IN ('member','manager')
+        AND p.active=1 AND p.deleted_at IS NULL AND a.status='active' AND a.deleted_at IS NULL) AS ownerValid,
     CASE WHEN ? IS NOT NULL AND EXISTS (
       SELECT 1 FROM work_item_collaborators c WHERE c.work_item_id=w.id AND c.person_id=?
     ) THEN 1 ELSE 0 END AS actorCollaborator
@@ -253,6 +258,11 @@ export function listActionItems(
   for(const item of items)if(item.reasonCodes.includes('commitment_scope')){item.ownerId=null;item.ownerName='项目经理';}
   for(const item of items){
     if(!['requirement','work_item'].includes(item.sourceType)||!item.requirementId)continue;
+    if(item.reasonCodes.includes('owner_unavailable')){
+      item.ownerId=null;item.ownerName='项目经理';
+      item.targetPath='/requirements/'+item.requirementId+'?'+new URLSearchParams({workItemId:item.sourceId});
+      continue;
+    }
     const parent=requirementsById.get(item.requirementId),work=item.sourceType==='work_item'?workById.get(item.sourceId):undefined;
     const canExecute=manager||!!personId&&(parent?.ownerId===personId||work?.ownerId===personId||!!work?.actorCollaborator);
     const canAccept=manager||!!personId&&parent?.acceptanceOwnerValid&&parent.acceptanceOwnerId===personId;

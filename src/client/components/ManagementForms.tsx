@@ -1,3 +1,4 @@
+import {isAssignablePerson} from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
@@ -206,8 +207,8 @@ export function RequirementForm({
       <FormField label="需求负责人（可稍后指定）">
         <select name="ownerId" value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
           <option value="">待指定</option>
-          {ownerId && !people.some((person) => person.id === ownerId && person.active && person.projectRole !== "viewer") && <option value={ownerId}>已不可用的负责人（请重新选择）</option>}
-          {people.filter((person) => person.active && person.projectRole !== "viewer").map((person) => <option key={person.id} value={person.id}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}</option>)}
+          {ownerId && !people.some((person) => person.id === ownerId && isAssignablePerson(person)) && <option value={ownerId}>已不可用的负责人（请重新选择）</option>}
+          {people.filter(isAssignablePerson).map((person) => <option key={person.id} value={person.id}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}</option>)}
         </select>
       </FormField>
       <FormDisclosure label="流程与排期" hint={templateId?'已选流程：'+(templates.find(t=>t.id===templateId)?.name||'项目默认流程'):'未选流程，直接执行；可稍后拆分'}>

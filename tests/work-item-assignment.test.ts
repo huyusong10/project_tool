@@ -114,10 +114,12 @@ it('大批量协作者校验分块执行并完整保存', async () => {
   const now = new Date().toISOString();
   const personIds = Array.from({ length: 901 }, () => randomUUID());
   const insertPerson = sqlite.prepare('INSERT INTO people (id,name,active,created_at,updated_at) VALUES (?,?,1,?,?)');
+  const insertAccount = sqlite.prepare("INSERT INTO accounts (id,person_id,username,normalized_username,password_hash,created_at,updated_at) VALUES (?,?,?,?,?,?,?)");
   const insertMembership = sqlite.prepare("INSERT INTO project_people (project_id,person_id,project_role,created_at,updated_at) VALUES (?,?,'member',?,?)");
   sqlite.transaction(() => {
     personIds.forEach((personId, index) => {
       insertPerson.run(personId, `批量协作者${index + 1}`, now, now);
+      insertAccount.run(randomUUID(), personId, `batch-${personId}`, `batch-${personId}`, process.env.APP_PASSWORD_HASH, now, now);
       insertMembership.run(projectId, personId, now, now);
     });
   })();
