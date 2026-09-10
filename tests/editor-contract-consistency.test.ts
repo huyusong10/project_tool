@@ -217,3 +217,44 @@ for(const durationDays of [null,4])it(`直接执行需求工期 ${durationDays} 
  const local=draftNetwork(analysis,input.changes),server=response.json<DependencyChangePreview>().analysis;
  expect(local.nodes.find(n=>n.id==='execute:'+r.id)!.estimate).toEqual(server.nodes.find(n=>n.id==='execute:'+r.id)!.estimate);
 });
+for(const mode of ['direct','work_items'] as const)it(`${mode} 修改负责人和验收人，预览责任信息与保存后相同`,async()=>{
+ const {projectId,requirement:r}=await fixture(mode);
+ const person=(await request('POST','/api/people',{projectId,name:'接手人'+randomUUID()})).json();
+ const before=await snapshot(),{input,response}=await preview(projectId,{entities:[{entity:'requirement',op:'update',id:r.id,expectedVersion:r.version,data:{ownerId:person.id,acceptanceOwnerId:person.id}}]});
+ expect(response.statusCode,response.body).toBe(200);expect(await snapshot()).toEqual(before);const p=response.json<DependencyChangePreview>();
+ const saved=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...input,batchId:randomUUID(),previewToken:p.previewToken});expect(saved.statusCode,saved.body).toBe(200);
+ const formal=(await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis')).requirements.find(n=>n.id===r.id)!,projected=p.analysis.requirements.find(n=>n.id===r.id)!;
+ for(const key of ['ownerId','ownerName','ownerValid','acceptanceOwnerId','acceptanceOwnerName','acceptanceOwnerValid'] as const)expect.soft(projected[key],key).toEqual(formal[key]);
+ expect(p.differences.impact?.find(i=>i.requirementId===r.id)?.ownerName).toBe(person.name);
+});
+for(const operation of ['change-owner','replace-assignees','clear-assignees','create'] as const)it(`工作项 ${operation} 的参与人、需求汇总与保存后相同`,async()=>{
+ const {projectId,requirement:r,ownerId}=await fixture('work_items');
+ const person=(await request('POST','/api/people',{projectId,name:'参与人'+randomUUID()})).json();
+ const work=(await request('POST','/api/requirements/'+r.id+'/work-items',{expectedVersion:r.version,title:'参与人验证',ownerId,assigneeIds:[person.id]})).json();
+ const id=operation==='create'?randomUUID():work.id;
+ const data=operation==='change-owner'?{ownerId:person.id}:operation==='clear-assignees'?{assigneeIds:[]}:operation==='replace-assignees'?{assigneeIds:[person.id,ownerId,person.id]}:{title:'新增参与人',ownerId,assigneeIds:[person.id]};
+ const {input,response}=await preview(projectId,{entities:[{entity:'work',op:operation==='create'?'create':'update',id,requirementId:r.id,expectedVersion:operation==='create'?undefined:work.version,data}]});
+ expect(response.statusCode,response.body).toBe(200);const p=response.json<DependencyChangePreview>();
+ const saved=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...input,batchId:randomUUID(),previewToken:p.previewToken});expect(saved.statusCode,saved.body).toBe(200);
+ const formal=await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis'),realId=saved.json().addedIds[id]||id;
+ const assigned=(n:{assigneeIds?:string[];assigneeNames?:string[]})=>n.assigneeIds?.map((id,i)=>[id,n.assigneeNames?.[i]]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+ const pn=p.analysis.nodes.find(n=>n.id===id)!,fn=formal.nodes.find(n=>n.id===realId)!;
+ expect.soft(pn.ownerName).toBe(fn.ownerName);expect.soft(assigned(pn)).toEqual(assigned(fn));
+ expect(assigned(p.analysis.requirements.find(n=>n.id===r.id)!)).toEqual(assigned(formal.requirements.find(n=>n.id===r.id)!));
+});
+for(const entity of ['requirement','work'] as const)it(`阻塞${entity}交接负责人后，预览协调人与正式行动一致`,async()=>{
+ const {projectId,requirement:r,ownerId}=await fixture(entity==='work'?'work_items':'direct');
+ const base=entity==='work'?(await request('POST','/api/requirements/'+r.id+'/work-items',{expectedVersion:r.version,title:'待交接工作',ownerId})).json():r;
+ const path=(entity==='work'?'/api/work-items/':'/api/requirements/')+base.id;
+ const started=await request('POST',path+'/start',{expectedVersion:base.version});expect(started.statusCode,started.body).toBe(200);
+ const detail=await get<Requirement>('/api/requirements/'+r.id),current=entity==='work'?detail.workItems.find(w=>w.id===base.id)!:detail;
+ const blocked=await request('POST',path+'/block',{expectedVersion:current.version,reason:'环境未就绪'});expect(blocked.statusCode,blocked.body).toBe(200);
+ const afterBlock=await get<Requirement>('/api/requirements/'+r.id),work=entity==='work'?afterBlock.workItems.find(w=>w.id===base.id)!:afterBlock;
+ const person=(await request('POST','/api/people',{projectId,name:'交接协调'+randomUUID()})).json();
+ const {input,response}=await preview(projectId,{entities:[{entity,op:'update',id:base.id,requirementId:entity==='work'?r.id:undefined,expectedVersion:work.version,data:{ownerId:person.id,reason:'负责人交接'}}]});expect(response.statusCode,response.body).toBe(200);
+ const p=response.json<DependencyChangePreview>(),nodeId=entity==='work'?base.id:'execute:'+r.id;
+ expect(p.analysis.nodes.find(n=>n.id===nodeId)?.blockerCoordination?.coordinatorId).toBe(person.id);
+ const saved=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...input,batchId:randomUUID(),previewToken:p.previewToken});expect(saved.statusCode,saved.body).toBe(200);
+ const formal=await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis');expect(formal.nodes.find(n=>n.id===nodeId)?.blockerCoordination).toEqual(p.analysis.nodes.find(n=>n.id===nodeId)?.blockerCoordination);
+ const actions=await get<{items:Array<{sourceId:string;ownerId:string|null}>}>('/api/action-items?projectId='+projectId);expect(actions.items.find(i=>i.sourceId===base.id)?.ownerId).toBe(person.id);
+});

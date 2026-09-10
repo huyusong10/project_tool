@@ -1,4 +1,5 @@
 import {validateCoordination,isCoordinationEdit,assertCoordinationAccess} from './blocker-coordination';
+import {refreshPathAssignments} from './path-assignments';
 import {coordinationKeys} from '../../shared/blocker-coordination';
 import {validateDeliveryFields,updateDeliveryRequirement} from './delivery-execution';
 import {sqlite} from '../database';
@@ -90,7 +91,9 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
         snapshot.workItems.push({...workDefaults,...c.data,id:c.id,requirementId:req.id,title:requireLabel(c.data.title,'工作项标题')});
       }else {const w=snapshot.workItems.find(w=>w.id===c.id);if(!w||w.requirementId!==requirementId)notFound('工作项不存在');
         if(c.op==='delete'){if(!canDeleteWorkItem({...w,version:Number(row!.version)} as Parameters<typeof canDeleteWorkItem>[0],!!sqlite.prepare('SELECT 1 FROM progress_updates WHERE work_item_id=? LIMIT 1').get(c.id)))fail('有执行记录的工作项请使用取消');snapshot.workItems=snapshot.workItems.filter(w=>w.id!==c.id);}
-        else {if(snapshot.workItems.some(item=>item.requirementId===w.requirementId&&item.status!=='not_started')&&Object.entries(c.data).some(([key,value])=>['title','ownerId','assigneeIds','plannedStart','plannedEnd'].includes(key)&&JSON.stringify(value)!==JSON.stringify(w[key as keyof typeof w]))&&!c.data.reason?.trim())fail('需求已开始执行，调整工作项结构、负责人或排期时必须填写变更原因');if(['completed','cancelled'].includes(w.status))fail('已结束工作项不能编辑','TERMINAL_LOCKED');Object.assign(w,c.data);}
+        else {if(snapshot.workItems.some(item=>item.requirementId===w.requirementId&&item.status!=='not_started')&&Object.entries(c.data).some(([key,value])=>['title','ownerId','assigneeIds','plannedStart','plannedEnd'].includes(key)&&JSON.stringify(value)!==JSON.stringify(w[key as keyof typeof w]))&&!c.data.reason?.trim())fail('需求已开始执行，调整工作项结构、负责人或排期时必须填写变更原因');if(['completed','cancelled'].includes(w.status))fail('已结束工作项不能编辑','TERMINAL_LOCKED');
+          const collaborators=c.data.assigneeIds??w.assigneeIds?.filter(id=>id!==w.ownerId)??[];
+          Object.assign(w,c.data,{assigneeIds:collaborators});}
       }
     }else{
       if(Object.keys(c.data).some(key=>!['title','targetDate','confirmationMode'].includes(key)))fail('里程碑包含不支持的属性');
@@ -106,6 +109,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     const metrics=deriveRequirementMetrics(r,snapshot.workItems.filter(w=>w.requirementId===id),snapshot.asOfDate,snapshot.highRiskDelayDays);
     r.plannedStart=metrics.plannedStart;r.plannedEnd=metrics.plannedEnd;r.progress=metrics.progress;r.status=metrics.status;
   }
+  if(changes.length)refreshPathAssignments(snapshot);
   return expanded;
 }
 
