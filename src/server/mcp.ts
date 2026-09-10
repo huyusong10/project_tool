@@ -1,4 +1,5 @@
 import {listDeliveryCommitments,getDeliveryCommitment,deliveryCommitmentSummary} from './services/commitments';
+import {isCoordinationEdit,assertCoordinationAccess} from './services/blocker-coordination';
 import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor} from './services/delivery-execution';
 import {directRequirementCommandSchema} from '../shared/contracts';
 import type { FastifyInstance } from 'fastify';
@@ -185,7 +186,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     assertProjectManager(actor, input.projectId); return json(createRequirement(input, actor));
   });
   registerTool('update_requirement', { description: '修改非终态需求的标题、优先级、负责人和辅助信息；不修改状态、排期或流程', inputSchema: updateRequirementInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
-    assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在'); return json(updateRequirement(id, input, actor));
+    if(isCoordinationEdit(input))assertCoordinationAccess('requirement',id,input,actor);else assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在'); return json(updateRequirement(id, input, actor));
   });
   registerTool('correct_requirement', { description: '项目经理修正已完成或已取消需求的基本信息；保持交付状态并追加不可变纠错记录', inputSchema: requirementCorrectionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在'); return json(correctRequirement(id, input, actor));
@@ -225,7 +226,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     assertRequirementOwnerOrManager(actor, requirementId); return json(createWorkItem(requirementId, input, actor));
   });
   registerTool('update_work_item', { description: '修改工作项元数据、负责人和计划日期；执行数据需使用状态命令', inputSchema: updateWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
-    assertWorkItemRequirementOwnerOrManager(actor, id); return json(updateWorkItem(id, input, actor));
+    if(isCoordinationEdit(input))assertCoordinationAccess('work',id,input,actor);else assertWorkItemRequirementOwnerOrManager(actor, id); return json(updateWorkItem(id, input, actor));
   });
   registerTool('start_work_item', { description: '开始工作项并自动记录实际开始；前置未满足时须记录例外原因并提交 dependencyRevision', inputSchema: startWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertWorkItemParticipantOrManager(actor, id); return json(startWorkItem(id, input, actor));

@@ -130,7 +130,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     if (receipt.status === 'applied') { success(receipt); return true; }
     return false;
   };
-  const save = async () => {
+  const save = async (allowApply?: (preview:DependencyChangePreview)=>boolean) => {
     if (!pendingReady||history.loading||history.readOnly||history.session.saving || Object.values(history.session.state.fields).some(f=>f.error) || (!pending && (conflict || JSON.stringify(history.session.state.values[history.session.state.index])===JSON.stringify(empty)))) return false;
     history.setBusy(true);
     let batch = pending;
@@ -141,6 +141,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
       if (!batch) {
         const exact=saveInput();
         const confirmed = JSON.stringify(exact)===fingerprint&&latest.current || await api<DependencyChangePreview>('/api/projects/' + data.projectId + '/dependency-changes/preview', { method: 'POST', body: jsonBody(exact), readOnly: true });
+        if(allowApply&&!allowApply(confirmed)){setPreview(confirmed);latest.current=confirmed;return false;}
         batch = { ...exact, batchId: crypto.randomUUID(), previewToken: confirmed.previewToken };
       }
       await writeDraftRecord(pendingKey,batch);storePending(batch);

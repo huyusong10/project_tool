@@ -1,5 +1,6 @@
 import {invalidateForecastReview} from './forecast-reviews';
-import {validateCoordination,persistCoordination} from './blocker-coordination';
+import {preserveRecordedAcceptance} from './acceptance-history';
+import {validateCoordination,persistCoordination,isCoordinationEdit,assertCoordinationAccess} from './blocker-coordination';
 import {coordinationKeys} from '../../shared/blocker-coordination';
 import {randomUUID} from 'node:crypto';
 import {sqlite} from '../database';
@@ -64,7 +65,7 @@ export function createDirectRequirement(raw:JsonObject,actor:Actor,deferNormaliz
 }
 export function updateDeliveryRequirement(id:string,raw:JsonObject,actor:Actor,split=false,deferNormalization=false){
   const value=updateRequirementInputSchema.parse(raw),r=getRequirement(id),auth=requireAuthorizationActor(actor);
-  assertRequirementOwnerOrManager(auth,id);assertExpectedVersion(value,r.version);
+  if(isCoordinationEdit(value))assertCoordinationAccess('requirement',id,value,actor);else assertRequirementOwnerOrManager(auth,id);assertExpectedVersion(value,r.version);
   if(['completed','cancelled'].includes(r.status))fail('已结束需求不能编辑');
   validateDeliveryFields(r.projectId,value,actor,r);
   requireActiveProject(r.projectId);
@@ -127,7 +128,7 @@ export function executeDirectRequirement(id:string,action:'start'|'progress'|'bl
     else if(action==='block'){content=requireText(content,'阻塞原因');sets="status='blocked',blocked_at=?,blocked_reason=?";args=[now,content];}
     else if(action==='unblock'){sets="status='in_progress',blocked_at=NULL,blocked_reason=NULL";}
     else if(action==='submit-acceptance'){content=requireText(content,'交付说明');sets="status='pending_acceptance',progress=100,actual_end=?";args=[today];}
-    else{content=requireText(content,'返工原因')+'；原验收日期：'+(r.acceptedAt||'尚未验收');sets="status='in_progress',progress=?,actual_end=NULL,accepted_at=NULL,accepted_by_account_id=NULL";args=[input.progress??99];}
+    else{content=requireText(content,'返工原因')+'；原验收日期：'+(r.acceptedAt||'尚未验收');preserveRecordedAcceptance(id);sets="status='in_progress',progress=?,actual_end=NULL,accepted_at=NULL,accepted_by_account_id=NULL";args=[input.progress??99];}
     if(['block','unblock'].includes(action)&&r.forecastDuration&&r.forecastReadyAt){
       const effort=action==='block'?Math.max(1,r.forecastDuration-Math.max(0,businessDayDelta(r.forecastReadyAt,today))):r.forecastDuration;
       sqlite.prepare('UPDATE requirements SET forecast_duration=?,forecast_ready_at=? WHERE id=?').run(effort,today,id);
@@ -146,6 +147,7 @@ export function returnRequirement(id:string,input:JsonObject,actor:Actor){
   if(!ids.length||ids.some(id=>!r.workItems?.some(w=>w.id===id&&w.status==='completed')))fail('请选择需要返工的已完成工作项');
   sqlite.transaction(()=>{
     requireActiveProject(r.projectId);
+    preserveRecordedAcceptance(id);
     for(const wid of new Set(ids))sqlite.prepare("UPDATE work_items SET status=CASE WHEN actual_start IS NULL THEN 'not_started' ELSE 'in_progress' END,progress=CASE WHEN actual_start IS NULL THEN 0 ELSE 99 END,actual_end=NULL,version=version+1,updated_at=? WHERE id=?").run(new Date().toISOString(),wid);
     const updated=sqlite.prepare("UPDATE requirements SET status='in_progress',progress=99,accepted_at=NULL,accepted_by_account_id=NULL,version=version+1,updated_at=? WHERE id=? AND version=?").run(new Date().toISOString(),id,r.version);
     assertVersionedWrite(updated,'需求');for(const wid of new Set(ids))invalidateForecastReview('work',wid);assertRequirementAcceptor(id,actor);

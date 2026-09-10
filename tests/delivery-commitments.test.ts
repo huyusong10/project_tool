@@ -138,7 +138,7 @@ it('承诺统计采用验收期间样本，首次与最近日期独立，历史�
  sqlite.prepare("UPDATE requirements SET status='completed',progress=100,accepted_at='2026-09-09' WHERE id=?").run(r.id);
  const summary=await get<{first:{rate:number|null;sampleCount:number};latest:{rate:number|null;sampleCount:number}}>('/api/projects/'+projectId+'/delivery-commitments/summary?from=2026-09-01&to=2026-09-30');expect(summary.first).toMatchObject({rate:0,sampleCount:1});expect(summary.latest).toMatchObject({rate:100,sampleCount:1});
  const empty=await get<typeof summary>('/api/projects/'+projectId+'/delivery-commitments/summary?from=2026-10-01&to=2026-10-31');expect(empty.first).toMatchObject({rate:null,sampleCount:0});
- sqlite.prepare("UPDATE requirements SET delivery_scope='candidate' WHERE id=?").run(r.id);const withdrawn=await get<{first:{sampleCount:number};withdrawnOrCancelled:number}>('/api/projects/'+projectId+'/delivery-commitments/summary');expect(withdrawn.first.sampleCount).toBe(0);expect(withdrawn.withdrawnOrCancelled).toBe(1);
+ sqlite.prepare("UPDATE requirements SET delivery_scope='candidate' WHERE id=?").run(r.id);const withdrawn=await get<{first:{sampleCount:number};withdrawnOrCancelled:number}>('/api/projects/'+projectId+'/delivery-commitments/summary');expect(withdrawn.first.sampleCount).toBe(1);expect(withdrawn.withdrawnOrCancelled).toBe(1);
  expect((await request('GET','/api/projects/'+projectId+'/delivery-commitments/summary?from=2026-10-01&to=2026-09-01')).statusCode).toBe(400);
 });
 
@@ -172,4 +172,59 @@ it('REST 与 MCP 复用承诺、核对及批次回执，日期参数按相同规
  expect((await call('get_delivery_commitment_summary',{projectId})).result).toEqual(await get('/api/projects/'+projectId+'/delivery-commitments/summary'));
  expect((await call('get_delivery_commitment_summary',{projectId,from:'invalid'})).statusCode).toBe(400);
  expect((await get<Requirement>('/api/requirements/'+r.id)).forecastReview?.remainingDays).toBe(4);
+});
+
+it('新增需求默认没有依赖，历史未核对状态保留；预览不写正式记录',async()=>{
+ const {projectId,r}=await fixture();const {sqlite}=await import('../src/server/database');
+ const create=await post('/api/requirements',{projectId,title:'默认无前置',executionMode:'work_items'});expect(create.statusCode,create.body).toBe(200);const created=create.json<Requirement>();
+ let graph=await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis');expect(graph.requirements.find(x=>x.id===created.id)?.dependenciesReviewedAt).toBeTruthy();expect(graph.dependencies).toHaveLength(0);
+ sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=NULL WHERE id=?').run(r.id);
+ const b=await batch(projectId,{entities:[{entity:'requirement',op:'create',id:'new-preview',data:{title:'预览无前置',executionMode:'direct'}}]});expect(b.preview.statusCode,b.preview.body).toBe(200);
+ expect(b.preview.json().analysis.requirements.find((v:{id:string})=>v.id==='new-preview').dependenciesReviewedAt).toBeTruthy();expect(sqlite.prepare("SELECT 1 FROM requirements WHERE id='new-preview'").get()).toBeUndefined();
+ graph=await get('/api/projects/'+projectId+'/path-analysis');expect(graph.requirements.find(x=>x.id===r.id)?.dependenciesReviewedAt).toBeNull();
+});
+it('承诺差异区分交付、取消、主动撤出；返工和归档不抹掉历史验收统计',async()=>{
+ const {projectId,r,owner}=await fixture(),{sqlite}=await import('../src/server/database'),{persistCommitment}=await import('../src/server/services/commitments');
+ const extra=async(title:string)=>(await post('/api/requirements',{projectId,title,ownerId:owner.id,executionMode:'direct'})).json<Requirement>();const cancelled=await extra('取消'),removed=await extra('候选');
+ const value:DeliveryCommitment={id:'',projectId,projectName:'测试',targetDate:'2026-09-30',milestoneId:null,milestoneTitle:null,reason:'',confirmedAt:'',confirmedBy:'admin',items:[r,cancelled,removed].map(v=>({id:v.id,kind:'requirement',title:v.title,targetDate:'2026-09-09',acceptanceCriteria:null}))};
+ persistCommitment(value,randomUUID(),{},'2026-09-01T00:00:00.000Z');
+ sqlite.prepare("UPDATE requirements SET status='completed',progress=100,accepted_at='2026-09-08T16:30:00.000Z' WHERE id=?").run(r.id);sqlite.prepare("UPDATE requirements SET status='cancelled' WHERE id=?").run(cancelled.id);sqlite.prepare("UPDATE requirements SET delivery_scope='candidate' WHERE id=?").run(removed.id);
+ const b=await batch(projectId,{commitment:{reason:'确认剩余交付'}});expect(b.preview.statusCode,b.preview.body).toBe(200);const changes=b.preview.json().differences.commitment.differences;expect(changes.find((c:{id:string})=>c.id===r.id)?.change).toBe('delivered');expect(changes.find((c:{id:string})=>c.id===cancelled.id)?.change).toBe('cancelled');expect(changes.find((c:{id:string})=>c.id===removed.id)?.change).toBe('removed');
+ const current=await get<Requirement>('/api/requirements/'+r.id),rework=await post('/api/requirements/'+r.id+'/rework',{expectedVersion:current.version,progress:90,reason:'补充验证'});expect(rework.statusCode,rework.body).toBe(200);
+ expect((await get<Requirement>('/api/requirements/'+r.id)).acceptedAt).toBeNull();
+ const url='/api/projects/'+projectId+'/delivery-commitments/summary?from=2026-09-09&to=2026-09-09';let summary=await get<{first:{rate:number;sampleCount:number};acceptedCount:number}>(url);expect(summary.first).toMatchObject({rate:100,sampleCount:1});
+ sqlite.prepare("UPDATE requirements SET progress=100,accepted_at='2026-09-12',status='completed',deleted_at='2026-09-13' WHERE id=?").run(r.id);
+ summary=await get(url);expect(summary.first.sampleCount).toBe(1);
+ const analytics=await post('/api/analytics/query',{projectId,range:{from:'2026-09-09',to:'2026-09-09'},panels:[{id:'first',title:'首次承诺',dataset:'requirements',measure:'commitment_on_time_rate',visualization:'kpi',size:'small',timeScope:'range'}]});
+ expect(analytics.statusCode,analytics.body).toBe(200);expect(analytics.json().results[0].rows[0].value).toBe(100);
+});
+it('协调人可以整批保存跟进说明和日期，但不能改估算、改派、解阻或混入结构修改',async()=>{
+ const {projectId,r}=await fixture();const person=(await post('/api/people',{projectId,name:'协调权限'+randomUUID()})).json();
+ const login=await app.inject({method:'POST',url:'/api/login',payload:{username:person.name,password:'888888'}}),first=String(login.headers['set-cookie']).split(';')[0];
+ const reset=await app.inject({method:'POST',url:'/api/account/change-password',headers:{cookie:first},payload:{currentPassword:'888888',newPassword:'Follow-up-password!23'}}),member=String(reset.headers['set-cookie']).split(';')[0];
+ await post('/api/requirements/'+r.id+'/start',{expectedVersion:r.version});let current=await get<Requirement>('/api/requirements/'+r.id);await post('/api/requirements/'+r.id+'/block',{expectedVersion:current.version,reason:'等待',blockedCoordinatorId:person.id});current=await get('/api/requirements/'+r.id);
+ const send=(suffix:string,payload:unknown)=>app.inject({method:'POST',url:'/api/projects/'+projectId+'/dependency-changes/'+suffix,headers:{cookie:member},payload:payload as Record<string,unknown>});
+ let graph=await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis');const patch={entity:'requirement',op:'update',id:r.id,expectedVersion:current.version,data:{blockedNextReviewAt:addBusinessDays(todayIso(),1),reason:'已联系接口负责人'}};
+ const input={expectedRevision:graph.revision,target:'project',changes:{add:[],remove:[],estimates:[],entities:[patch]}};const preview=await send('preview',input);expect(preview.statusCode,preview.body).toBe(200);
+ expect((await get<Requirement>('/api/requirements/'+r.id)).blockedNextReviewAt).toBeNull();
+ const apply=await send('apply',{...input,batchId:randomUUID(),previewToken:preview.json().previewToken});expect(apply.statusCode,apply.body).toBe(200);current=await get('/api/requirements/'+r.id);expect(current.status).toBe('blocked');expect(current.progress).toBe(0);expect(current.blockedNextReviewAt).toBe(patch.data.blockedNextReviewAt);expect(current.progressUpdates?.some(p=>p.content.includes('已联系接口负责人')&&p.eventType==='note')).toBe(true);
+ graph=await get('/api/projects/'+projectId+'/path-analysis');for(const data of [{blockedNextReviewAt:todayIso(),title:'越权名称'},{blockedCoordinatorId:r.ownerId},{reviewForecast:{remainingDays:1}}]){const denied=await send('preview',{...input,expectedRevision:graph.revision,changes:{...input.changes,entities:[{...patch,expectedVersion:current.version,data}]}});expect(denied.statusCode,denied.body).toBe(403);}
+ expect((await app.inject({method:'POST',url:'/api/requirements/'+r.id+'/unblock',headers:{cookie:member},payload:{expectedVersion:current.version}})).statusCode).toBe(403);
+ const actions=await app.inject({method:'GET',url:'/api/action-items?projectId='+projectId,headers:{cookie:member}});expect(actions.json().items.find((i:{sourceId:string})=>i.sourceId===r.id).targetPath).toContain('action=follow-up');
+
+ const rest=await app.inject({method:'PATCH',url:'/api/requirements/'+r.id,headers:{cookie:member},payload:{expectedVersion:current.version,blockedNextReviewAt:todayIso(),reason:'REST 跟进'}});expect(rest.statusCode,rest.body).toBe(200);current=rest.json();
+ const tokenResponse=await app.inject({method:'POST',url:'/api/tokens',headers:{cookie:member},payload:{name:'协调 MCP'}});expect(tokenResponse.statusCode,tokenResponse.body).toBe(200);
+ if(!app.server.listening)await app.listen({host:'127.0.0.1',port:0});const address=app.server.address() as {port:number};
+ const response=await mcpRequest('http://127.0.0.1:'+address.port,tokenResponse.json().token,'update_requirement',{id:r.id,expectedVersion:current.version,blockedNextReviewAt:addBusinessDays(todayIso(),2),reason:'MCP 跟进'});const result=JSON.parse(response.body).result.structuredContent;expect(result.statusCode||200,JSON.stringify(result)).toBe(200);
+ const split=(await post('/api/requirements',{projectId,title:'工作项协调',ownerId:r.ownerId,executionMode:'work_items'})).json<Requirement>();const workResponse=await post('/api/requirements/'+split.id+'/work-items',{expectedVersion:split.version,title:'环境验证',ownerId:r.ownerId});expect(workResponse.statusCode,workResponse.body).toBe(200);let w=workResponse.json();
+ expect((await post('/api/work-items/'+w.id+'/start',{expectedVersion:w.version})).statusCode).toBe(200);w=(await get<Requirement>('/api/requirements/'+split.id)).workItems[0];expect((await post('/api/work-items/'+w.id+'/block',{expectedVersion:w.version,reason:'环境',blockedCoordinatorId:person.id})).statusCode).toBe(200);w=(await get<Requirement>('/api/requirements/'+split.id)).workItems[0];
+ const wb=await batch(projectId,{entities:[{entity:'work',op:'update',id:w.id,requirementId:split.id,expectedVersion:w.version,data:{blockedNextReviewAt:todayIso(),reason:'工作项跟进'}}]});const wp=await send('preview',wb.input);expect(wp.statusCode,wp.body).toBe(200);const wa=await send('apply',{...wb.body,previewToken:wp.json().previewToken});expect(wa.statusCode,wa.body).toBe(200);expect((await get<Requirement>('/api/requirements/'+split.id)).workItems[0].status).toBe('blocked');
+ expect((await app.inject({method:'GET',url:'/api/projects/default-project/change-version',headers:{cookie:member}})).statusCode).toBe(403);
+});
+it('项目变更检测只读且隔离项目；执行说明和成员修改可被发现',async()=>{
+ const {projectId,r}=await fixture(),{projectId:other}=await fixture(),{sqlite}=await import('../src/server/database');const version=()=>get<{version:string}>('/api/projects/'+projectId+'/change-version');
+ const before=await version();expect(before.version).toMatch(/^[a-f0-9]{64}$/);const audit=()=>sqlite.prepare('SELECT count(*) n FROM audit_logs').get();const count=audit();expect(await version()).toEqual(before);expect(audit()).toEqual(count);
+ await post('/api/requirements',{projectId:other,title:'其他项目',executionMode:'direct'});expect(await version()).toEqual(before);
+ await post('/api/requirements/'+r.id+'/progress',{content:'只补充说明'});expect(await version()).not.toEqual(before);
+ const changed=await version();await post('/api/people',{projectId,name:'新增成员'+randomUUID()});expect(await version()).not.toEqual(changed);
 });

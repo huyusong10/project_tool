@@ -1,4 +1,5 @@
 import {listDeliveryCommitments,getDeliveryCommitment,deliveryCommitmentSummary} from './services/commitments';
+import {projectChangeVersion} from './services/project-change-version';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireReady } from './routes';
@@ -12,6 +13,7 @@ const params = z.object({ id: z.string().min(1) });
 export function registerPathRoutes(root: FastifyInstance) {
   root.register(async app => {
   app.addHook('preHandler', requireReady);
+  app.get('/api/projects/:id/change-version',async request=>projectChangeVersion(params.parse(request.params).id,actorFromRequest(request)));
   app.get('/api/projects/:id/diagram-layouts',async request=>readDiagramLayouts(params.parse(request.params).id,actorFromRequest(request)));
   for(const action of ['achieve','reopen'] as const)app.post('/api/milestones/:id/'+action,async request=>milestoneCommand(params.parse(request.params).id,action,z.object({expectedVersion:z.number().int().positive()}).strict().parse(request.body),actorFromRequest(request)));
   app.get('/api/projects/:id/delivery-commitments/summary',async request=>{const q=z.object({from:z.string().optional(),to:z.string().optional()}).parse(request.query);return deliveryCommitmentSummary(params.parse(request.params).id,actorFromRequest(request),q.from,q.to);});
