@@ -23,6 +23,35 @@ const viewportValue=(page:Page)=>page.locator('.react-flow__viewport').evaluate(
 const positionsValue=(page:Page)=>page.locator('.react-flow__node').evaluateAll(nodes=>Object.fromEntries(nodes.map(n=>[(n as HTMLElement).dataset.id,(n as HTMLElement).style.transform])));
 const blank=(page:Page)=>page.locator('.react-flow__pane').click({position:{x:12,y:300}});
 
+test('批量交付：拖线到新里程碑并后置安排，继续改名后保存和刷新保持一致',async({page})=>{
+ const {a,analysis}=await fixture(page,false),before=await analysis();
+ await page.goto('/requirements/'+a.id+'?view=path');await ready(page);
+ await page.getByLabel('编辑画布',{exact:true}).click();await page.getByLabel('添加元素',{exact:true}).click();
+ await page.locator('.graph-elements').getByRole('button',{name:'里程碑',exact:true}).click();
+ const canvas=(await page.locator('.dependency-canvas').boundingBox())!;
+ await page.mouse.click(canvas.x+canvas.width*.58,canvas.y+canvas.height*.72);
+ await page.getByLabel('元素名称',{exact:true}).fill('批次交付点');await page.getByLabel('元素名称',{exact:true}).blur();await ready(page);await blank(page);
+ const milestone=page.locator('.react-flow__node').filter({hasText:'批次交付点'}),mileId=(await milestone.getAttribute('data-id'))!;
+ const work=page.locator('.react-flow__node[data-id="'+a.workItems[1].id+'"]');
+ const handle=(await work.locator('.business-handle[data-side="bottom"]').boundingBox())!,target=(await milestone.locator('.dependency-card').boundingBox())!;
+ await page.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2);await page.mouse.down();
+ await page.mouse.move(target.x+target.width/2,target.y+target.height/2,{steps:12});await page.mouse.up();
+ await work.locator('.dependency-card').click();await page.getByLabel('安排方式',{exact:true}).selectOption('late');await page.getByRole('combobox',{name:'交付点',exact:true}).selectOption(mileId);
+ await page.locator('.react-flow__node[data-id="'+a.workItems[0].id+'"] .dependency-card').click();
+ await page.getByLabel('元素名称',{exact:true}).fill('一起保存的方案');await page.getByLabel('元素名称',{exact:true}).blur();
+ await expect(page.locator('[data-draft-stored="true"]')).toBeVisible();
+ const untouched=await analysis();expect(untouched.revision).toBe(before.revision);expect(untouched.milestones?.some(m=>m.id===mileId)).toBe(false);
+ const applied=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/apply')&&r.request().method()==='POST');
+ await page.getByLabel('保存修改',{exact:true}).click();const response=await applied;expect(response.ok(),await response.text()).toBe(true);
+ await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();
+ const formal=await analysis(),saved=formal.nodes.find(n=>n.id===a.workItems[1].id)!;
+ expect(saved.arrangementAnchor).toBe(mileId);expect(saved.arrangement).toBe('late');expect(saved.forecastEnd).toBeTruthy();
+ expect(formal.dependencies.some(d=>d.sourceWorkItemId===saved.id&&d.targetMilestoneId===mileId)).toBe(true);
+ await page.reload();await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();await work.locator('.dependency-card').click();
+ await expect(page.getByRole('combobox',{name:'交付点',exact:true})).toHaveValue(mileId);
+ await expect(page.locator('.react-flow__node[data-id="'+a.workItems[0].id+'"]')).toContainText('一起保存的方案');
+});
+
 for(const scope of ['global','work'] as const)test(`责任一致性：${scope} 更换负责人预览立即对应新人，撤销和保存一致`,async({page})=>{
  const {project,a,analysis}=await fixture(page,false),person=await(await page.request.post('/api/people',{data:{projectId:project.id,name:'接手人'+Date.now()}})).json();
  const id=scope==='global'?a.id:a.workItems[0].id,readOwner=async()=>{const data=await analysis();return scope==='global'?data.requirements.find(r=>r.id===id)!.ownerId:data.nodes.find(n=>n.id===id)!.ownerId;};

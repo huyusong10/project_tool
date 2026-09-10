@@ -61,10 +61,10 @@ export function createDirectRequirement(raw:JsonObject,actor:Actor,deferNormaliz
     if(v.forecastEnd&&!deferNormalization)refreshDirectForecast(id);
     recordAudit(actor,'create','requirement',id,'创建直接执行需求：'+v.title);
   }).immediate();
-  return getRequirement(id);
+  return getRequirement(id,false,!deferNormalization);
 }
 export function updateDeliveryRequirement(id:string,raw:JsonObject,actor:Actor,split=false,deferNormalization=false){
-  const value=normalizeRequirementText(updateRequirementInputSchema.parse(raw)),r=getRequirement(id),auth=requireAuthorizationActor(actor);
+  const value=normalizeRequirementText(updateRequirementInputSchema.parse(raw)),r=getRequirement(id,false,!deferNormalization),auth=requireAuthorizationActor(actor);
   if(isCoordinationEdit(value))assertCoordinationAccess('requirement',id,value,actor);else assertRequirementOwnerOrManager(auth,id);assertExpectedVersion(value,r.version);
   if(['completed','cancelled'].includes(r.status))fail('已结束需求不能编辑');
   validateDeliveryFields(r.projectId,value,actor,r);
@@ -90,7 +90,7 @@ export function updateDeliveryRequirement(id:string,raw:JsonObject,actor:Actor,s
     if(extra)event(id,'split','拆分剩余工作；已完成基线 '+r.progress+'%。'+(value.reason||''),actor);
     else recordAudit(actor,'update','requirement',id,'修改需求：'+r.title+(value.reason?'；'+value.reason:''));
   }).immediate();
-  return getRequirement(id);
+  return getRequirement(id,false,!deferNormalization);
 }
 export function directStartConditions(id:string){
   const r=getRequirement(id),snapshot=loadPathInput(r.projectId),analysis=analysePaths(snapshot),own=snapshot.requirements.find(x=>x.id===id)!;

@@ -196,7 +196,8 @@ export function listRequirements(filters: { deliveryScope?:'committed'|'candidat
   return result;
 }
 
-export function getRequirement(id: string, includeDeleted = false) {
+/** Batch writers read execution facts while their final dependency network is still being assembled. */
+export function getRequirement(id: string, includeDeleted = false, withPathAnalysis = true) {
   const requirement = row<RequirementRecord>(`${requirementSelect} WHERE r.id=? ${includeDeleted ? '' : 'AND r.deleted_at IS NULL'}`, id);
   if (!requirement) notFound('需求不存在');
   const asOfDate = todayIso();
@@ -218,11 +219,13 @@ export function getRequirement(id: string, includeDeleted = false) {
     COALESCE(SUM(CASE WHEN due_date IS NOT NULL AND business_day_delta(due_date, ?)>0 THEN 1 ELSE 0 END), 0) AS overdue
     FROM issues WHERE requirement_id=? AND status<>'resolved'`, asOfDate, id) || { active: 0, overdue: 0 };
   const issueSummary = { active: Number(issueCounts.active || 0), overdue: Number(issueCounts.overdue || 0) };
-  const pathAnalysis = getPathAnalysis(requirement.projectId, undefined, asOfDate),pathRisk=pathAnalysis?.risks[id];
+  const pathAnalysis = withPathAnalysis ? getPathAnalysis(requirement.projectId, undefined, asOfDate) : undefined,pathRisk=pathAnalysis?.risks[id];
   const milestones=rows<import('../../shared/paths').PathMilestone>('SELECT id,project_id AS projectId,requirement_id AS requirementId,title,target_date AS targetDate,confirmation_mode AS confirmationMode,achieved_at AS achievedAt,version,cancelled FROM milestones WHERE requirement_id=?',id);
   for(const m of milestones)m.forecastEnd=pathAnalysis?.nodes.find(n=>n.id===m.id)?.forecastEnd||null;
-  result.forecastBasis=nodeForecastBasis(pathAnalysis.nodes,id);result.blockerCoordination=pathAnalysis.nodes.find(n=>n.id==='execute:'+id)?.blockerCoordination;result.commitment=pathAnalysis.requirements.find(n=>n.id===id)?.commitment;
-  const facts=pathAnalysis.requirements.find(n=>n.id===id);Object.assign(result,{executionForecastEnd:facts?.executionForecastEnd,acceptanceForecastEnd:facts?.acceptanceForecastEnd,acceptanceAssumed:facts?.acceptanceAssumed});
-  for(const w of result.workItems||[])Object.assign(w,{forecastBasis:pathAnalysis.nodes.find(n=>n.id===w.id)?.forecastBasis,blockerCoordination:pathAnalysis.nodes.find(n=>n.id===w.id)?.blockerCoordination});
+  if(pathAnalysis){
+    result.forecastBasis=nodeForecastBasis(pathAnalysis.nodes,id);result.blockerCoordination=pathAnalysis.nodes.find(n=>n.id==='execute:'+id)?.blockerCoordination;result.commitment=pathAnalysis.requirements.find(n=>n.id===id)?.commitment;
+    const facts=pathAnalysis.requirements.find(n=>n.id===id);Object.assign(result,{executionForecastEnd:facts?.executionForecastEnd,acceptanceForecastEnd:facts?.acceptanceForecastEnd,acceptanceAssumed:facts?.acceptanceAssumed});
+    for(const w of result.workItems||[])Object.assign(w,{forecastBasis:pathAnalysis.nodes.find(n=>n.id===w.id)?.forecastBasis,blockerCoordination:pathAnalysis.nodes.find(n=>n.id===w.id)?.blockerCoordination});
+  }
   return { ...result,milestones, ...(pathRisk ? { ...pathRisk, pathRisk } : {}), progressUpdates, issueSummary };
 }

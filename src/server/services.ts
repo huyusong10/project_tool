@@ -897,7 +897,7 @@ function activeTemplateItems(templateId: string) {
     FROM template_items WHERE template_id=? AND deleted_at IS NULL AND kind='work' ORDER BY sort_order`, templateId);
 }
 
-function applyTemplateInternal(requirementId: string, templateId: string, baseStart: string) {
+function applyTemplateInternal(requirementId: string, templateId: string, baseStart: string, deferAnalysis=false) {
   const createdIds: string[] = [];
   const items = activeTemplateItems(templateId);
   if (!items.length && !row("SELECT 1 FROM template_items WHERE template_id=? AND deleted_at IS NULL AND kind='milestone' LIMIT 1", templateId)) fail('模板没有可用元素');
@@ -915,7 +915,7 @@ function applyTemplateInternal(requirementId: string, templateId: string, baseSt
     const workId = randomUUID(); createdIds.push(workId);
     insert.run(workId, requirementId, item.id, item.title, item.milestoneLabel, plan.plannedStart, plan.plannedEnd, nextOrder++, now, now);
   }
-  instantiateTemplateGraph(requirementId, templateId, createdIds, baseStart);
+  instantiateTemplateGraph(requirementId, templateId, createdIds, baseStart, deferAnalysis);
 }
 
 function syncStoredRequirementState(requirementId: string, updatedAt = nowIso(), incrementVersion = true, expectedVersion?: number) {
@@ -1028,8 +1028,8 @@ export function createRequirement(input: JsonObject, actor: Actor, deferNormaliz
     );
     validateDeliveryFields(projectId,input,actor);
     sqlite.prepare('UPDATE requirements SET delivery_scope=?,acceptance_owner_id=? WHERE id=?').run(input.deliveryScope||'committed',input.acceptanceOwnerId||null,id);
-    if (plannedStart && templateId) applyTemplateInternal(id, templateId, plannedStart);
-    else if(templateId&&input.executionMode==='work_items'){applyTemplateInternal(id,templateId,todayIso());sqlite.prepare('UPDATE work_items SET planned_start=NULL,planned_end=NULL WHERE requirement_id=?').run(id);}
+    if (plannedStart && templateId) applyTemplateInternal(id, templateId, plannedStart, deferNormalization);
+    else if(templateId&&input.executionMode==='work_items'){applyTemplateInternal(id,templateId,todayIso(),deferNormalization);sqlite.prepare('UPDATE work_items SET planned_start=NULL,planned_end=NULL WHERE requirement_id=?').run(id);}
     updateStoredRequirementSchedule(id);
     sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=? WHERE id=?').run(now,id);
     requirementOwner(projectId, ownerId, true);
@@ -1038,11 +1038,11 @@ export function createRequirement(input: JsonObject, actor: Actor, deferNormaliz
     audit(actor, 'create', 'requirement', id, plannedStart ? `创建需求并生成工作项：${title}` : `创建待规划需求：${title}`);
   });
   tx();
-  return getRequirement(id);
+  return getRequirement(id, false, !deferNormalization);
 }
 
-function changeRequirement(id: string, input: JsonObject, actor: Actor) {
-  const current = getRequirement(id);
+function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAnalysis=false) {
+  const current = getRequirement(id, false, !deferAnalysis);
   assertExpectedVersion(input, current.version);
   if (['completed', 'cancelled'].includes(current.status)) {
     fail('已完成或已取消需求已锁定，请使用返工或纠错操作', 'TERMINAL_LOCKED');
@@ -1156,11 +1156,11 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor) {
     assertProjectManager(requireAuthorizationActor(actor), current.projectId);
     audit(actor, auditAction, 'requirement', id, auditSummary);
   })();
-  return getRequirement(id);
+  return getRequirement(id, false, !deferAnalysis);
 }
 
-export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
-  if(['deliveryScope','executionMode','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',...coordinationKeys].some(k=>input[k]!==undefined)||getRequirement(id).executionMode==='direct')return updateDeliveryRequirement(id,input,actor);
+export function updateRequirement(id: string, input: JsonObject, actor: Actor, deferAnalysis=false) {
+  if(['deliveryScope','executionMode','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',...coordinationKeys].some(k=>input[k]!==undefined)||getRequirement(id, false, !deferAnalysis).executionMode==='direct')return updateDeliveryRequirement(id,input,actor,false,deferAnalysis);
   const commandFields = ['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'plannedStart', 'plannedEnd', 'scheduleMode', 'templateId', 'confirmTemplateReset'];
   if (commandFields.some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
     fail('需求状态、进度、验收、排期和流程不能通过普通编辑修改，请使用对应操作命令');
@@ -1168,7 +1168,7 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor) {
   if (Object.keys(input).some((key) => ![
     'expectedVersion', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl',
   ].includes(key))) fail('需求编辑不能提交未声明字段');
-  return changeRequirement(id, input, actor);
+  return changeRequirement(id, input, actor, deferAnalysis);
 }
 
 export function correctRequirement(id: string, input: JsonObject, actor: Actor) {
@@ -1244,9 +1244,9 @@ export function reselectRequirementTemplate(id: string, input: JsonObject, actor
   return changeRequirement(id, { ...input, confirmTemplateReset: true }, actor);
 }
 
-export function archiveRequirement(id: string, input: JsonObject, actor: Actor) {
+export function archiveRequirement(id: string, input: JsonObject, actor: Actor, deferAnalysis=false) {
   if (Object.keys(input).some((key) => key !== 'expectedVersion')) fail('归档命令不能提交无关的需求字段');
-  const current = getRequirement(id);
+  const current = getRequirement(id, false, !deferAnalysis);
   assertExpectedVersion(input, current.version);
   if (!['completed', 'cancelled'].includes(current.status)) fail('需求必须先完成验收或取消，才能归档', 'DEPENDENCY_CONFLICT');
   const now = nextUpdatedAt(current.updatedAt);
@@ -1472,13 +1472,13 @@ function syncWorkItemCollaborators(workItemId: string, collaboratorIds: string[]
   collaboratorIds.forEach((personId) => insert.run(workItemId, personId));
 }
 
-export function createWorkItem(requirementId: string, input: JsonObject, actor: Actor) {
-  if(getRequirement(requirementId).executionMode==='direct')fail('请先在草稿中选择拆分剩余工作，再整批保存');
+export function createWorkItem(requirementId: string, input: JsonObject, actor: Actor, deferAnalysis=false) {
+  if(getRequirement(requirementId, false, !deferAnalysis).executionMode==='direct')fail('请先在草稿中选择拆分剩余工作，再整批保存');
   if (Object.keys(input).some((key) => ![
     'title', 'ownerId', 'collaboratorIds', 'assigneeIds', 'plannedStart', 'plannedEnd',
     'milestoneLabel', 'expectedVersion', 'reason',
   ].includes(key))) fail('新建工作项不能提交未声明字段');
-  const requirement = getRequirement(requirementId);
+  const requirement = getRequirement(requirementId, false, !deferAnalysis);
   assertExpectedVersion(input, requirement.version);
   if (workItemExecutionKeys.some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
     fail('新建工作项不能提交状态、进度、实际日期或阻塞信息');
@@ -1516,13 +1516,13 @@ export function createWorkItem(requirementId: string, input: JsonObject, actor: 
     audit(actor, 'create', 'work_item', id, `新增工作项：${title}${collaboratorIds.length ? `（${collaboratorIds.length + (ownerId ? 1 : 0)}人协作）` : ''}`);
     assertProjectAssignees(requirementId, [ownerId, ...collaboratorIds], true);
   })();
-  return getRequirement(requirementId).workItems!.find((item) => item.id === id);
+  return getRequirement(requirementId, false, !deferAnalysis).workItems!.find((item) => item.id === id);
 }
 
-export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
+export function updateWorkItem(id: string, input: JsonObject, actor: Actor, deferAnalysis=false) {
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) notFound('工作项不存在');
-  const requirement = getRequirement(current.requirementId);
+  const requirement = getRequirement(current.requirementId, false, !deferAnalysis);
   assertExpectedVersion(input, current.version);
   if (isTerminalWorkItemStatus(current.status)) fail('已完成或已取消的工作项已锁定，请使用重开或纠错操作', 'TERMINAL_LOCKED');
   if (workItemExecutionKeys.some((key) => Object.prototype.hasOwnProperty.call(input, key))) fail('状态、进度和实际日期不能通过普通编辑修改，请使用对应操作命令');
@@ -1578,7 +1578,7 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
     audit(actor, 'update', 'work_item', id, `更新工作项：${title}`);
     assertProjectAssignees(current.requirementId, [ownerId, ...nextCollaboratorIds], true);
   })();
-  return getRequirement(current.requirementId).workItems!.find((item) => item.id === id);
+  return getRequirement(current.requirementId, false, !deferAnalysis).workItems!.find((item) => item.id === id);
 }
 
 function validateWorkItemActualDates(actualStart: string | null, actualEnd: string | null, today = todayIso()) {
@@ -1820,11 +1820,11 @@ export function correctWorkItem(id: string, input: JsonObject, actor: Actor) {
   return getRequirement(current.requirementId).workItems!.find((item) => item.id === id);
 }
 
-export function deleteWorkItem(id: string, input: JsonObject, actor: Actor) {
+export function deleteWorkItem(id: string, input: JsonObject, actor: Actor, deferAnalysis=false) {
   if (Object.keys(input).some((key) => key !== 'expectedVersion')) fail('删除命令不能提交无关的工作项字段');
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) notFound('工作项不存在');
-  const requirement = getRequirement(current.requirementId);
+  const requirement = getRequirement(current.requirementId, false, !deferAnalysis);
   assertExpectedVersion(input, current.version);
   if (['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status)) fail('当前需求已锁定，不能删除工作项', 'TERMINAL_LOCKED');
   if (!canDeleteWorkItem(current, Boolean(row('SELECT 1 FROM progress_updates WHERE work_item_id=? LIMIT 1', id)))) {

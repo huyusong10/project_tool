@@ -38,8 +38,102 @@ async function fixture(executionMode:'direct'|'work_items'){
 }
 async function snapshot(){
  const {sqlite}=await import('../src/server/database');
- return ['requirements','work_items','dependency_edges','audit_logs','progress_updates','dependency_change_receipts'].map(table=>sqlite.prepare('SELECT * FROM '+table+' ORDER BY rowid').all());
+ return ['requirements','work_items','milestones','diagram_layouts','delivery_commitments','dependency_edges','audit_logs','progress_updates','dependency_change_receipts'].map(table=>sqlite.prepare('SELECT * FROM '+table+' ORDER BY rowid').all());
 }
+
+for(const anchorKind of ['forward-work','acceptance','milestone'] as const)for(const estimatePatch of [false,true]){
+ it(`同批次新对象的 ${anchorKind} 排期锚点在${estimatePatch?'估算':'属性'}保存后仍指向正式对象`,async()=>{
+  const {projectId,ownerId}=await fixture('work_items');
+  const r=randomUUID(),w=randomUUID(),next=randomUUID(),m=randomUUID();
+  const anchor=anchorKind==='acceptance'?'acceptance:'+r:anchorKind==='milestone'?m:next;
+  const fields={arrangement:'late' as const,arrangementAnchor:anchor};
+  const changes:Partial<DependencyChanges>={entities:[
+   {entity:'requirement',op:'create',id:r,data:{title:'新交付',ownerId,executionMode:'work_items'}},
+   {entity:'work',op:'create',id:w,requirementId:r,data:{title:'接口交付',ownerId,durationDays:1,...estimatePatch?{}:fields}},
+   {entity:'work',op:'create',id:next,requirementId:r,data:{title:'文档整理',ownerId,durationDays:5}},
+   {entity:'milestone',op:'create',id:m,requirementId:r,data:{title:'共同交付'}},
+  ],add:[
+   {clientId:randomUUID(),sourceRequirementId:r,sourceWorkItemId:w,targetRequirementId:r,...anchorKind==='forward-work'?{targetWorkItemId:next}:{targetWorkItemId:null,targetMilestoneId:m}},
+   {clientId:randomUUID(),sourceRequirementId:r,sourceWorkItemId:next,targetRequirementId:r,targetWorkItemId:null,targetMilestoneId:m},
+  ],estimates:estimatePatch?[{workItemId:w,...fields}]:[],layouts:[{scope:'requirement:'+r,direction:'right',expectedVersion:0,positions:{[w]:{x:20,y:30},['acceptance:'+r]:{x:400,y:30}}}]};
+  const before=await snapshot(),{input,response}=await preview(projectId,changes);
+  expect(response.statusCode,response.body).toBe(200);expect(await snapshot()).toEqual(before);
+  const projected=response.json<DependencyChangePreview>(),body={...input,batchId:randomUUID(),previewToken:projected.previewToken};
+  const saved=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',body);
+  expect(saved.statusCode,saved.body).toBe(200);const ids=saved.json().addedIds;
+  const formal=await request('GET','/api/projects/'+projectId+'/path-analysis');
+  expect(formal.statusCode,formal.body).toBe(200);
+  const graph=formal.json<PathAnalysis>(),node=graph.nodes.find(n=>n.id===ids[w])!,p=projected.analysis.nodes.find(n=>n.id===w)!;
+  expect(node.arrangementAnchor).toBe(anchorKind==='acceptance'?'acceptance:'+ids[r]:ids[anchor]);
+  expect([node.scheduledStart,node.scheduledEnd,node.scheduleBuffer]).toEqual([p.scheduledStart,p.scheduledEnd,p.scheduleBuffer]);
+  expect(graph.layouts?.find(l=>l.scope==='requirement:'+ids[r])?.positions).toEqual({[ids[w]]:{x:20,y:30},['acceptance:'+ids[r]]:{x:400,y:30}});
+  const persisted=await snapshot(),repeat=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',body);
+  expect(repeat.json()).toEqual(saved.json());expect(await snapshot()).toEqual(persisted);
+ });
+}
+
+it('已有后置工作改接交付点，同时修改需求、创建模板需求和直接需求，只分析最终网络',async()=>{
+ const {projectId,requirement:r,ownerId}=await fixture('work_items');
+ const w=randomUUID(),m=randomUUID(),edge=randomUUID();
+ const initial=await preview(projectId,{entities:[
+  {entity:'work',op:'create',id:w,requirementId:r.id,data:{title:'接口',ownerId,arrangement:'late',arrangementAnchor:m}},
+  {entity:'milestone',op:'create',id:m,requirementId:r.id,data:{title:'旧交付点'}},
+ ],add:[{clientId:edge,sourceRequirementId:r.id,sourceWorkItemId:w,targetRequirementId:r.id,targetWorkItemId:null,targetMilestoneId:m}]});
+ expect(initial.response.statusCode,initial.response.body).toBe(200);
+ const saved=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...initial.input,batchId:randomUUID(),previewToken:initial.response.json().previewToken});
+ expect(saved.statusCode,saved.body).toBe(200);const ids=saved.json().addedIds;
+ const templateResult=await request('POST','/api/templates',{projectId,name:'带里程碑的流程',dependencyMode:'dependencies',items:[
+  {clientKey:'work',title:'流程工作',kind:'work',durationDays:2,startOffsetDays:0,sortOrder:0,predecessorKeys:[],arrangement:'late',arrangementAnchor:'milestone'},
+  {clientKey:'milestone',title:'流程交付',kind:'milestone',durationDays:0,startOffsetDays:2,sortOrder:1,predecessorKeys:['work']},
+ ]});expect(templateResult.statusCode,templateResult.body).toBe(200);const template=templateResult.json();
+ const current=await get<Requirement>('/api/requirements/'+r.id),work=current.workItems[0],replacement=randomUUID(),direct=randomUUID(),fromTemplate=randomUUID();
+ const before=await snapshot(),next=await preview(projectId,{remove:[ids[edge]],add:[{clientId:randomUUID(),sourceRequirementId:r.id,sourceWorkItemId:work.id,targetRequirementId:r.id,targetWorkItemId:null,targetMilestoneId:replacement}],entities:[
+  {entity:'requirement',op:'update',id:r.id,expectedVersion:current.version,data:{background:'调整后的交付说明'}},
+  {entity:'requirement',op:'create',id:direct,data:{title:'直接交付',ownerId,executionMode:'direct',durationDays:2}},
+  {entity:'requirement',op:'create',id:fromTemplate,data:{title:'流程交付需求',ownerId,executionMode:'work_items',templateId:template.id}},
+  {entity:'work',op:'update',id:work.id,requirementId:r.id,expectedVersion:work.version,data:{title:'更新接口',arrangementAnchor:replacement}},
+  {entity:'milestone',op:'delete',id:m,requirementId:r.id,expectedVersion:1,data:{}},
+  {entity:'milestone',op:'create',id:replacement,requirementId:r.id,data:{title:'新交付点'}},
+ ],commitment:{reason:'改接并补充交付范围'}});
+ expect(next.response.statusCode,next.response.body).toBe(200);expect(await snapshot()).toEqual(before);
+ const committed=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...next.input,batchId:randomUUID(),previewToken:next.response.json().previewToken});
+ expect(committed.statusCode,committed.body).toBe(200);const mapped=committed.json().addedIds;
+ const formal=await request('GET','/api/projects/'+projectId+'/path-analysis');expect(formal.statusCode,formal.body).toBe(200);const graph=formal.json<PathAnalysis>();
+ expect(graph.nodes.find(n=>n.id===work.id)?.arrangementAnchor).toBe(replacement);expect(graph.nodes.some(n=>n.id===m)).toBe(false);
+ const templateWorkId=fromTemplate+':template:'+template.items.find((i:{kind:string})=>i.kind==='work').id;
+ const templateMilestoneId=fromTemplate+':template:'+template.items.find((i:{kind:string})=>i.kind==='milestone').id;
+ expect(graph.nodes.find(n=>n.id===mapped[templateWorkId])?.arrangementAnchor).toBe(mapped[templateMilestoneId]);
+ expect(graph.requirements.find(n=>n.id===mapped[direct])?.executionMode).toBe('direct');
+ const history=await get<DeliveryCommitment[]>('/api/projects/'+projectId+'/delivery-commitments');
+ expect(history[0].items.map(i=>i.id)).toEqual(expect.arrayContaining([r.id,mapped[direct],mapped[fromTemplate]]));
+ expect((await get<Requirement>('/api/requirements/'+r.id)).background).toBe('调整后的交付说明');
+});
+
+it('批次写入后的最终网络校验失败时，实体、估算、审计与回执全部回滚',async()=>{
+ const {projectId,requirement:r,ownerId}=await fixture('work_items'),w=randomUUID(),m=randomUUID();
+ const before=await snapshot(),p=await preview(projectId,{entities:[
+  {entity:'work',op:'create',id:w,requirementId:r.id,data:{title:'待校验工作',ownerId,arrangement:'late',arrangementAnchor:m}},
+  {entity:'milestone',op:'create',id:m,requirementId:r.id,data:{title:'交付点'}},
+ ],add:[{clientId:randomUUID(),sourceRequirementId:r.id,sourceWorkItemId:w,targetRequirementId:r.id,targetWorkItemId:null,targetMilestoneId:m}]});
+ expect(p.response.statusCode,p.response.body).toBe(200);
+ const {sqlite}=await import('../src/server/database');
+ // Simulate a persistence defect after relation insertion; success must not be acknowledged.
+ sqlite.exec("CREATE TEMP TRIGGER corrupt_saved_anchor AFTER INSERT ON dependency_edges BEGIN UPDATE work_items SET arrangement_anchor='invalid-saved-anchor' WHERE id=NEW.source_work_item_id; END");
+ try{
+  const result=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...p.input,batchId:randomUUID(),previewToken:p.response.json().previewToken});
+  expect(result.statusCode,result.body).toBe(409);expect(result.json().code).toBe('DEPENDENCY_CONFLICT');
+  expect(await snapshot()).toEqual(before);
+ }finally{sqlite.exec('DROP TRIGGER corrupt_saved_anchor');}
+});
+
+it('预览后创建对象的负责人失效，不能绕过成员校验写入部分批次',async()=>{
+ const {projectId,requirement:r,ownerId}=await fixture('work_items'),id=randomUUID();
+ const p=await preview(projectId,{entities:[{entity:'work',op:'create',id,requirementId:r.id,data:{title:'等待保存',ownerId,durationDays:2}}]});
+ expect(p.response.statusCode,p.response.body).toBe(200);
+ const {sqlite}=await import('../src/server/database');sqlite.prepare('UPDATE people SET active=0 WHERE id=?').run(ownerId);
+ const before=await snapshot(),result=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...p.input,batchId:randomUUID(),previewToken:p.response.json().previewToken});
+ expect(result.statusCode,result.body).not.toBe(200);expect(await snapshot()).toEqual(before);
+});
 async function preview(projectId:string,changes:Partial<DependencyChanges>){
  const analysis=await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis');
  const input={expectedRevision:analysis.revision,target:'project',changes:{add:[],remove:[],estimates:[],...changes}};

@@ -14,7 +14,7 @@ import { applyDependencyChangesInput, dependencyChangesInput, type DependencyCha
 import { assertRelationAccess, checkedRevision, insertDependency, loadPathInput } from './paths';
 import { recordAudit } from './audit';
 import {prepareEditorEntities,prepareEditorLayouts,persistEditorEntities} from './editor-entities';
-import {dependencySource,dependencyTarget} from '../../shared/paths';
+import {dependencySource,dependencyTarget,remapPathNodeId} from '../../shared/paths';
 import {settleMilestones} from './milestones';
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -118,18 +118,20 @@ export function applyDependencyChanges(projectId: string, raw: unknown, actor: A
       insertDependency({ id, projectId, sourceRequirementId: mapId(edge.sourceRequirementId)||'', sourceWorkItemId: mapId(edge.sourceWorkItemId),
         targetRequirementId: mapId(edge.targetRequirementId)||'', targetWorkItemId: mapId(edge.targetWorkItemId),sourceMilestoneId:mapId(edge.sourceMilestoneId),targetMilestoneId:mapId(edge.targetMilestoneId), origin: 'manual' });
     }
-    persistPathEstimates({...prepared.snapshot,workItems:prepared.snapshot.workItems.map(w=>({...w,id:mapId(w.id)!,arrangementAnchor:mapId(w.arrangementAnchor)}))},input.changes.estimates.map(p=>({...p,workItemId:mapId(p.workItemId)!})));
+    persistPathEstimates({...prepared.snapshot,workItems:prepared.snapshot.workItems.map(w=>({...w,id:mapId(w.id)!,arrangementAnchor:w.arrangementAnchor?remapPathNodeId(w.arrangementAnchor,addedIds):null}))},input.changes.estimates.map(p=>({...p,workItemId:mapId(p.workItemId)!})));
     persistDirectEstimates(prepared.snapshot,prepared.directEstimateIds,addedIds);
     if(input.changes.add.length||input.changes.remove.length||input.changes.entities?.length)settleMilestones(projectId,actor);
+    // Validate the persisted final network before writing a success receipt, never an intermediate graph.
+    const final=loadPathInput(projectId),finalTarget=remapPathNodeId(input.target,addedIds);
     if(input.changes.estimates.some(p=>p.reviewForecast)||input.changes.entities?.some(p=>p.data.reviewForecast)){
-      const final=loadPathInput(projectId),mapped={...input.changes,estimates:input.changes.estimates.map(p=>({...p,workItemId:mapId(p.workItemId)!})),entities:input.changes.entities?.map(p=>({...p,id:mapId(p.id)!}))};
+      const mapped={...input.changes,estimates:input.changes.estimates.map(p=>({...p,workItemId:mapId(p.workItemId)!})),entities:input.changes.entities?.map(p=>({...p,id:mapId(p.id)!}))};
       // Reviews must reference the persisted endpoint IDs, including objects created in this batch.
       for(const p of mapped.estimates)if(p.reviewForecast)final.workItems.find(w=>w.id===p.workItemId)!.forecastReview=null;
       for(const p of mapped.entities||[])if(p.entity==='requirement'&&p.data.reviewForecast)final.requirements.find(r=>r.id===p.id)!.forecastReview=null;
-      recordForecastReviews(final,analyse(final,input.target),mapped,actor);persistForecastReviews(final,mapped);
-    }
+      recordForecastReviews(final,analyse(final,finalTarget),mapped,actor);persistForecastReviews(final,mapped);
+    }else analyse(final,finalTarget);
     for(const layout of input.changes.layouts||[]){
-      const mapped=(id:string)=>id.startsWith('execute:')?'execute:'+mapId(id.slice(8)):id.startsWith('start:')?'start:'+mapId(id.slice(6)):id.startsWith('acceptance:')?'acceptance:'+mapId(id.slice(11)):mapId(id)!;
+      const mapped=(id:string)=>remapPathNodeId(id,addedIds);
       const scope=layout.scope.startsWith('requirement:')?'requirement:'+mapId(layout.scope.slice(12)):layout.scope;
       sqlite.prepare('INSERT INTO diagram_layouts(project_id,scope,direction,positions,version,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(project_id,scope,direction) DO UPDATE SET positions=excluded.positions,version=excluded.version,updated_at=excluded.updated_at').run(projectId,scope,layout.direction,JSON.stringify(Object.fromEntries(Object.entries(layout.positions).map(([id,p])=>[mapped(id),p]))),layout.expectedVersion+1,now);
     }
