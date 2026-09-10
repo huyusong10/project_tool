@@ -4,8 +4,9 @@ import {assertProjectManager,assertProjectReadable,requireAuthorizationActor} fr
 import {fail,notFound} from '../errors';
 import type {PathInput} from '../../shared/paths';
 import {compareCommitments,requirementCommitments,type DeliveryCommitment} from '../../shared/commitments';
-import {todayIso} from '../../shared/domain';
+import {todayIso,businessDateFromDateTime} from '../../shared/domain';
 import {optionalDateSchema} from '../../shared/contracts';
+import {loadAcceptanceHistory} from './acceptance-history';
 
 export function loadCommitments(projectId:string):DeliveryCommitment[] {
   return (sqlite.prepare('SELECT snapshot FROM delivery_commitments WHERE project_id=? ORDER BY confirmed_at,rowid').all(projectId) as {snapshot:string}[]).map(r=>JSON.parse(r.snapshot));
@@ -33,10 +34,16 @@ export function prepareCommitment(snapshot:PathInput,change:{reason:string;miles
     milestoneId:milestone?.id||null,milestoneTitle:milestone?.title||null,reason:change.reason.trim(),confirmedAt:new Date().toISOString(),confirmedBy:actor.accountId||actor.id,confirmedName:actor.label,
     items:[...snapshot.requirements.filter(r=>!r.deletedAt&&r.deliveryScope!=='candidate'&&!['completed','cancelled'].includes(r.status)).map(r=>({id:r.id,kind:'requirement' as const,title:r.title,targetDate:r.plannedEnd,acceptanceCriteria:r.acceptanceCriteria||null})),
       ...(snapshot.milestones||[]).filter(m=>!m.requirementId&&!m.cancelled&&!m.achievedAt).map(m=>({id:m.id,kind:'milestone' as const,title:m.title,targetDate:m.targetDate,acceptanceCriteria:null}))]};
+  const included=new Set(value.items.map(i=>i.id));
+  value.departures=(previous?.items||[]).filter(i=>!included.has(i.id)).map(i=>{
+    const r=i.kind==='requirement'?snapshot.requirements.find(r=>r.id===i.id):null;
+    const m=i.kind==='milestone'?snapshot.milestones?.find(m=>m.id===i.id):null;
+    return {...i,outcome:r?.status==='completed'&&r.acceptedAt||m?.achievedAt?'delivered':r?.status==='cancelled'||m?.cancelled?'cancelled':'removed'};
+  });
   return {value,differences:compareCommitments(previous,value),previousTargetDate:previous?.targetDate||null};
 }
 export function persistCommitment(value:DeliveryCommitment,id:string,mapping:Record<string,string>,now:string) {
-  const saved={...value,id,confirmedAt:now,milestoneId:value.milestoneId?mapping[value.milestoneId]||value.milestoneId:null,items:value.items.map(i=>({...i,id:mapping[i.id]||i.id}))};
+  const saved={...value,id,confirmedAt:now,milestoneId:value.milestoneId?mapping[value.milestoneId]||value.milestoneId:null,items:value.items.map(i=>({...i,id:mapping[i.id]||i.id})),departures:value.departures?.map(i=>({...i,id:mapping[i.id]||i.id}))};
   sqlite.prepare('INSERT INTO delivery_commitments(id,project_id,confirmed_at,snapshot) VALUES (?,?,?,?)').run(id,value.projectId,now,JSON.stringify(saved));
   return saved;
 }
@@ -44,14 +51,19 @@ export function deliveryCommitmentSummary(projectId:string,actor:Actor,from?:str
   assertProjectReadable(requireAuthorizationActor(actor),projectId);
   optionalDateSchema.parse(from);optionalDateSchema.parse(to);if(from&&to&&from>to)fail('统计开始日期不能晚于结束日期');
   const history=loadCommitments(projectId),today=todayIso();
-  const requirements=sqlite.prepare('SELECT id,status,delivery_scope AS deliveryScope,accepted_at AS acceptedAt FROM requirements WHERE project_id=? AND deleted_at IS NULL').all(projectId) as {id:string;status:string;deliveryScope:string;acceptedAt:string|null}[];
-  const result={first:{sampleCount:0,onTimeCount:0,rate:null as number|null},latest:{sampleCount:0,onTimeCount:0,rate:null as number|null},acceptedCount:0,withoutCommitment:0,missingFirstDate:0,overdueOpen:0,withdrawnOrCancelled:0};
+  const requirements=sqlite.prepare('SELECT id,status,delivery_scope AS deliveryScope,accepted_at AS acceptedAt,deleted_at AS deletedAt FROM requirements WHERE project_id=?').all(projectId) as {id:string;status:string;deliveryScope:string;acceptedAt:string|null;deletedAt:string|null}[];
+  const records=loadAcceptanceHistory(projectId),firstAcceptance=new Map<string,string>();
+  const inPeriod=(at:string)=>{const date=businessDateFromDateTime(at);return (!from||date>=from)&&(!to||date<=to);};
+  const result={first:{sampleCount:0,onTimeCount:0,rate:null as number|null},latest:{sampleCount:0,onTimeCount:0,rate:null as number|null},acceptedCount:0,withoutCommitment:0,missingFirstDate:0,overdueOpen:0,withdrawnOrCancelled:0,reworkCount:0,reacceptedCount:0};
+  for(const event of records){
+    if(event.eventType==='accept'){if(!firstAcceptance.has(event.requirementId))firstAcceptance.set(event.requirementId,event.occurredAt);else if(inPeriod(event.occurredAt))result.reacceptedCount++;}
+    else if(inPeriod(event.occurredAt))result.reworkCount++;
+  }
   for(const r of requirements){
-    const c=requirementCommitments(history,r.id,r.acceptedAt);
+    const acceptedAt=firstAcceptance.get(r.id)||r.acceptedAt,c=requirementCommitments(history,r.id,acceptedAt);
     if(c.first&&(r.deliveryScope==='candidate'||r.status==='cancelled'))result.withdrawnOrCancelled++;
-    if(r.deliveryScope==='candidate'||r.status==='cancelled')continue;
-    if(c.first?.targetDate&&c.first.targetDate<today&&!['completed','cancelled'].includes(r.status)&&r.deliveryScope!=='candidate')result.overdueOpen++;
-    const accepted=r.acceptedAt?.slice(0,10);if(r.status!=='completed'||!accepted||from&&accepted<from||to&&accepted>to)continue;
+    if(!r.deletedAt&&c.first?.targetDate&&c.first.targetDate<today&&!['completed','cancelled'].includes(r.status)&&r.deliveryScope!=='candidate')result.overdueOpen++;
+    const accepted=acceptedAt?businessDateFromDateTime(acceptedAt):null;if(!acceptedAt||!accepted||!inPeriod(acceptedAt))continue;
     result.acceptedCount++;if(!c.first)result.withoutCommitment++;else if(!c.first.targetDate)result.missingFirstDate++;
     for(const key of ['first','latest'] as const){const date=c[key]?.targetDate;if(!date)continue;result[key].sampleCount++;if(accepted<=date)result[key].onTimeCount++;}
   }

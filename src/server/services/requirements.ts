@@ -183,7 +183,7 @@ export function listRequirements(filters: { deliveryScope?:'committed'|'candidat
   ));
   const analyses = new Map([...new Set(requirements.map(r => r.projectId))].map(projectId => [projectId, getPathAnalysis(projectId, undefined, asOfDate)]));
   result = result.map(r => {
-    const analysis=analyses.get(r.projectId)!;r.forecastBasis=nodeForecastBasis(analysis.nodes,r.id);r.blockerCoordination=analysis.nodes.find(n=>n.id==='execute:'+r.id)?.blockerCoordination;r.commitment=analysis.requirements.find(n=>n.id===r.id)?.commitment;
+    const analysis=analyses.get(r.projectId)!,facts=analysis.requirements.find(n=>n.id===r.id);r.forecastBasis=nodeForecastBasis(analysis.nodes,r.id);r.blockerCoordination=analysis.nodes.find(n=>n.id==='execute:'+r.id)?.blockerCoordination;r.commitment=facts?.commitment;Object.assign(r,{executionForecastEnd:facts?.executionForecastEnd,acceptanceForecastEnd:facts?.acceptanceForecastEnd,acceptanceAssumed:facts?.acceptanceAssumed});
     for(const w of r.workItems||[])Object.assign(w,{forecastBasis:analysis.nodes.find(n=>n.id===w.id)?.forecastBasis,blockerCoordination:analysis.nodes.find(n=>n.id===w.id)?.blockerCoordination});
     const pathRisk = analyses.get(r.projectId)?.risks[r.id];
     return pathRisk ? { ...r, ...pathRisk, pathRisk } : {...r,...processingPriority(r,asOfDate)};
@@ -222,6 +222,7 @@ export function getRequirement(id: string, includeDeleted = false) {
   const milestones=rows<import('../../shared/paths').PathMilestone>('SELECT id,project_id AS projectId,requirement_id AS requirementId,title,target_date AS targetDate,confirmation_mode AS confirmationMode,achieved_at AS achievedAt,version,cancelled FROM milestones WHERE requirement_id=?',id);
   for(const m of milestones)m.forecastEnd=pathAnalysis?.nodes.find(n=>n.id===m.id)?.forecastEnd||null;
   result.forecastBasis=nodeForecastBasis(pathAnalysis.nodes,id);result.blockerCoordination=pathAnalysis.nodes.find(n=>n.id==='execute:'+id)?.blockerCoordination;result.commitment=pathAnalysis.requirements.find(n=>n.id===id)?.commitment;
+  const facts=pathAnalysis.requirements.find(n=>n.id===id);Object.assign(result,{executionForecastEnd:facts?.executionForecastEnd,acceptanceForecastEnd:facts?.acceptanceForecastEnd,acceptanceAssumed:facts?.acceptanceAssumed});
   for(const w of result.workItems||[])Object.assign(w,{forecastBasis:pathAnalysis.nodes.find(n=>n.id===w.id)?.forecastBasis,blockerCoordination:pathAnalysis.nodes.find(n=>n.id===w.id)?.blockerCoordination});
   return { ...result,milestones, ...(pathRisk ? { ...pathRisk, pathRisk } : {}), progressUpdates, issueSummary };
 }

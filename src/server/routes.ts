@@ -1,4 +1,5 @@
 import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor,directStartConditions} from './services/delivery-execution';
+import {isCoordinationEdit,assertCoordinationAccess} from './services/blocker-coordination';
 import {directRequirementCommandSchema,idSchema} from '../shared/contracts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z, type ZodType } from 'zod';
@@ -280,7 +281,8 @@ export function registerApiRoutes(app: FastifyInstance) {
     return createRequirement(input, actor);
   });
   app.patch('/api/requirements/:id', { preHandler: requireReady }, async (request) => {
-    const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
+    const id = idOf(request), actor = actorFromRequest(request);
+    if(isCoordinationEdit(request.body))assertCoordinationAccess('requirement',id,request.body,actor);else assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
     return updateRequirement(id, parsedBody(request, updateRequirementInputSchema), actor);
   });
   app.post('/api/requirements/:id/correct', { preHandler: requireReady }, async (request) => {
@@ -349,8 +351,8 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
 
   app.patch('/api/work-items/:id', { preHandler: requireReady }, async (request) => {
-    const id = idOf(request); const actor = actorFromRequest(request);
-    assertWorkItemRequirementOwnerOrManager(actor, id);
+    const id = idOf(request), actor = actorFromRequest(request);
+    if(isCoordinationEdit(request.body))assertCoordinationAccess('work',id,request.body,actor);else assertWorkItemRequirementOwnerOrManager(actor, id);
     return updateWorkItem(id, parsedBody(request, updateWorkItemInputSchema), actor);
   });
   for (const [action, handler, inputSchema] of [

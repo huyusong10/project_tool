@@ -1,9 +1,9 @@
-import {validateCoordination} from './blocker-coordination';
+import {validateCoordination,isCoordinationEdit,assertCoordinationAccess} from './blocker-coordination';
 import {coordinationKeys} from '../../shared/blocker-coordination';
 import {validateDeliveryFields,updateDeliveryRequirement} from './delivery-execution';
 import {sqlite} from '../database';
 import type {Actor} from '../auth';
-import {assertProjectManager,assertRequirementOwnerOrManager,assertWorkItemParticipantOrManager,requireAuthorizationActor} from '../authorization';
+import {assertProjectManager,assertRequirementOwnerOrManager,requireAuthorizationActor} from '../authorization';
 import {fail,notFound} from '../errors';
 import {requireLabel} from './support';
 import {createRequirementInputSchema,updateRequirementInputSchema,createWorkItemInputSchema,updateWorkItemInputSchema} from '../../shared/contracts';
@@ -31,7 +31,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     const requirementId=c.entity==='requirement'?c.id:c.requirementId||String(row?.requirement_id||'');
     const req=snapshot.requirements.find(r=>r.id===requirementId);
     if(c.entity==='requirement'&&c.op==='create'||!requirementId||created.has(requirementId))assertProjectManager(current,snapshot.projectId);
-    else {if(!req||req.deletedAt)notFound('需求不存在');if(c.entity==='work'&&c.op==='update'&&Object.keys(c.data).every(k=>coordinationKeys.some(key=>key===k)||k==='reason'))assertWorkItemParticipantOrManager(current,c.id);else assertRequirementOwnerOrManager(current,requirementId);}
+    else {if(!req||req.deletedAt)notFound('需求不存在');if(c.entity!=='milestone'&&c.op==='update'&&isCoordinationEdit(c.data))assertCoordinationAccess(c.entity,c.id,c.data,actor);else assertRequirementOwnerOrManager(current,requirementId);}
     if(c.entity==='milestone'&&row?.project_id!==undefined&&row.project_id!==snapshot.projectId)notFound('里程碑不属于当前项目');
     if(req&&['completed','cancelled'].includes(req.status)&&c.op!=='delete')fail('已结束需求不能修改结构','TERMINAL_LOCKED');
     if(c.entity!=='requirement'&&req?.status==='pending_acceptance')fail('待验收需求不能修改结构','TERMINAL_LOCKED');
@@ -39,7 +39,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     assertEditorAssignees(snapshot.projectId,[c.data.ownerId,...c.data.assigneeIds||[]]);
     for(const key of ['plannedStart','plannedEnd','targetDate'] as const)if(c.data[key]&&businessDaysInclusive(c.data[key]!,c.data[key]!)!==1)fail('排期日期必须是工作日');
     if(c.data.plannedStart&&c.data.plannedEnd&&c.data.plannedStart>c.data.plannedEnd)fail('计划完成日期不能早于计划开始日期');
-    if(coordinationKeys.some(k=>c.data[k]!==undefined)){const original=c.entity==='requirement'?req:snapshot.workItems.find(w=>w.id===c.id);if(c.op!=='update'||!original||original.status!=='blocked')fail('只有阻塞对象可以修改协调信息');Object.assign(c.data,validateCoordination(snapshot.projectId,{...original,...c.data}));}
+    if(coordinationKeys.some(k=>c.data[k]!==undefined)){const original=c.entity==='requirement'?req:snapshot.workItems.find(w=>w.id===c.id);if(c.op!=='update'||!original||original.status!=='blocked')fail('只有阻塞对象可以修改协调信息');const normalized=validateCoordination(snapshot.projectId,{...original,...c.data});for(const key of coordinationKeys)if(c.data[key]!==undefined||c.data.blockedIssueId)c.data[key]=normalized[key];}
     if(c.entity==='requirement'){
       if(c.op==='create'){
         const {reason:_creationReason,...creation}=c.data;
@@ -50,7 +50,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
         if(value.executionMode!=='direct'&&(value.plannedStart||value.plannedEnd)&&!template)fail('立即规划时请选择有效流程');
         validateDeliveryFields(snapshot.projectId,value,actor);
         const base=value.plannedStart||(value.plannedEnd&&template?plannedStartFromDeadline(value.plannedEnd,template.items.filter((i:{kind?:string})=>i.kind!=='milestone')):null);
-        const r:PathRequirement={...value,id:c.id,projectId:snapshot.projectId,status:'planning',ownerName:null,plannedStart:base||null,plannedEnd:null,acceptedAt:null,dependenciesReviewedAt:null,scheduleAnchor:base||null,forecastAcceptance:null,deletedAt:null,version:1};
+        const r:PathRequirement={...value,id:c.id,projectId:snapshot.projectId,status:'planning',ownerName:null,plannedStart:base||null,plannedEnd:null,acceptedAt:null,dependenciesReviewedAt:new Date().toISOString(),scheduleAnchor:base||null,forecastAcceptance:null,deletedAt:null,version:1};
         if(value.executionMode==='direct'){
           if(value.templateId)fail('直接执行不能同时使用流程');
           r.status='not_started';r.plannedEnd=value.plannedEnd||null;r.executionMode='direct';r.progress=0;

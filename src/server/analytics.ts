@@ -2,6 +2,9 @@ import { sqlite } from './database';
 import { getPeopleConcurrency } from './services/reporting';
 import { listRequirements, requirementCompletionDate } from './services/requirements';
 import { recordAudit } from './services/audit';
+import {firstAcceptanceDates} from './services/acceptance-history';
+import {loadCommitments} from './services/commitments';
+import {requirementCommitments} from '../shared/commitments';
 import { nextUpdatedAt } from './services/support';
 import type { Actor } from './auth';
 import {
@@ -265,14 +268,19 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
   };
   if (datasets.has('requirements') || datasets.has('work_items')) {
     try {
-      const requirements = listRequirements({ projectId }, asOfDate);
+      const historyNeeded=panels.some(p=>[p.measure,p.secondaryMeasure].some(m=>m&&['commitment_on_time_rate','latest_commitment_on_time_rate'].includes(m)));
+      const requirements = listRequirements({ projectId,includeDeleted:historyNeeded }, asOfDate);
+      const acceptances=historyNeeded?firstAcceptanceDates(projectId):new Map<string,string>(),commitments=historyNeeded?loadCommitments(projectId):[];
       requirementRows = requirements.map((requirement) => ({
         ...requirement,priority:requirement.processingPriority||'unassessed',deliveryScope:requirement.deliveryScope||'committed',
         template: requirement.templateName || '未绑定流程', owner: requirement.ownerName || '未分配',
         risk: requirement.riskEvaluated ? requirement.riskLevel : 'unassessed',
-        completedAt: requirementCompletionDate(requirement),firstCommitmentEnd:requirement.commitment?.first?.targetDate||null,latestCommitmentEnd:requirement.commitment?.latest?.targetDate||null,
+        completedAt: requirementCompletionDate(requirement),
+        firstAcceptedAt:(acceptances.get(requirement.id)||requirement.acceptedAt)?businessDateFromDateTime(acceptances.get(requirement.id)||requirement.acceptedAt!):null,
+        firstCommitmentEnd:requirementCommitments(commitments,requirement.id,acceptances.get(requirement.id)||requirement.acceptedAt).first?.targetDate||null,
+        latestCommitmentEnd:requirementCommitments(commitments,requirement.id,acceptances.get(requirement.id)||requirement.acceptedAt).latest?.targetDate||null,
       }));
-      workItems = requirements.flatMap((requirement) => (requirement.workItems || []).map((item) => ({
+      workItems = requirements.filter(r=>!r.deletedAt).flatMap((requirement) => (requirement.workItems || []).map((item) => ({
         ...item, requirementTitle: requirement.title, owner: item.ownerName || '未分配',
       })));
     } catch (error) {
@@ -322,7 +330,8 @@ function inRange(value: string | null | undefined, range: AnalyticsRange) {
 
 function eventDate(dataset: string, measure: string, record: GenericRecord) {
   if (dataset === 'requirements') {
-    if (['completed_count','on_time_rate','commitment_on_time_rate','latest_commitment_on_time_rate'].includes(measure)) return record.completedAt;
+    if (['commitment_on_time_rate','latest_commitment_on_time_rate'].includes(measure)) return record.firstAcceptedAt;
+    if (['completed_count','on_time_rate'].includes(measure)) return record.completedAt;
     if (measure === 'due_count') return record.plannedEnd;
     if (measure === 'finish_variance') return record.completedAt || record.plannedEnd;
     return record.createdAt ? businessDateFromDateTime(record.createdAt) : null;
@@ -366,10 +375,11 @@ function eligibleRecords(dataset: string, measure: string, records: GenericRecor
   let result = records;
   if (range && dataset !== 'people') result = result.filter((record) => inRange(eventDate(dataset, measure, record), range));
   if (dataset === 'requirements') {
+    if(!['commitment_on_time_rate','latest_commitment_on_time_rate'].includes(measure))result=result.filter(r=>!r.deletedAt);
     if (measure === 'active_count') result = result.filter((record) => !['completed', 'cancelled'].includes(record.status));
-    if (['completed_count','on_time_rate','commitment_on_time_rate','latest_commitment_on_time_rate'].includes(measure)) result = result.filter((record) => Boolean(record.completedAt));
-    if (measure === 'commitment_on_time_rate') result=result.filter(r=>!!r.firstCommitmentEnd&&r.status==='completed'&&r.deliveryScope!=='candidate');
-    if (measure === 'latest_commitment_on_time_rate') result=result.filter(r=>!!r.latestCommitmentEnd&&r.status==='completed'&&r.deliveryScope!=='candidate');
+    if (['completed_count','on_time_rate'].includes(measure)) result = result.filter((record) => Boolean(record.completedAt));
+    if (measure === 'commitment_on_time_rate') result=result.filter(r=>!!r.firstCommitmentEnd&&!!r.firstAcceptedAt);
+    if (measure === 'latest_commitment_on_time_rate') result=result.filter(r=>!!r.latestCommitmentEnd&&!!r.firstAcceptedAt);
     if (measure === 'on_time_rate') result = result.filter((record) => Boolean(record.plannedEnd));
     if (measure === 'delayed_count') result = result.filter((record) => record.delayed);
     if (measure === 'finish_variance') result = result.filter((record) => Number(record.finishVariance || 0) > 0);
@@ -394,7 +404,7 @@ function round(value: number) {
 function measureValue(dataset: string, measure: string, records: GenericRecord[]) {
   if (!records.length) return 0;
   if (dataset === 'requirements') {
-    if (measure === 'commitment_on_time_rate'||measure==='latest_commitment_on_time_rate') return round(records.filter(r=>r.completedAt<=(measure==='commitment_on_time_rate'?r.firstCommitmentEnd:r.latestCommitmentEnd)).length/records.length*100);
+    if (measure === 'commitment_on_time_rate'||measure==='latest_commitment_on_time_rate') return round(records.filter(r=>r.firstAcceptedAt<=(measure==='commitment_on_time_rate'?r.firstCommitmentEnd:r.latestCommitmentEnd)).length/records.length*100);
     if (measure === 'on_time_rate') return round(records.filter((record) => businessDayDelta(record.plannedEnd, record.completedAt) <= 0).length / records.length * 100);
     if (measure === 'finish_variance') return round(records.reduce((sum, record) => sum + Number(record.finishVariance || 0), 0) / records.length);
   }

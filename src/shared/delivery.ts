@@ -3,6 +3,7 @@ export type ExecutionMode = 'direct' | 'work_items';
 export type ProcessingPriority = 'P0' | 'P1' | 'P2' | 'P3';
 export type DeliveryFields = import('./forecast-basis').ExecutionMetadata & {
   executionCompletedAt?:string|null; observationEnd?:string|null;
+  executionForecastEnd?:string|null;acceptanceForecastEnd?:string|null;acceptanceAssumed?:boolean;
   commitment?:ReturnType<typeof import('./commitments').requirementCommitments>;
   ownerValid?:boolean; deliveryScope?: DeliveryScope; executionMode?: ExecutionMode; acceptanceOwnerId?: string | null;
   acceptanceOwnerName?: string | null; acceptanceOwnerValid?: boolean;

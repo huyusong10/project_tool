@@ -250,6 +250,19 @@ export function listActionItems(
   }
   const byReason: Partial<Record<ActionReasonCode, number>> = {};
   for(const item of items)if(item.reasonCodes.includes('commitment_scope')){item.ownerId=null;item.ownerName='项目经理';}
+  for(const item of items){
+    if(!['requirement','work_item'].includes(item.sourceType)||!item.requirementId)continue;
+    const parent=requirementsById.get(item.requirementId),work=item.sourceType==='work_item'?workById.get(item.sourceId):undefined;
+    const canExecute=manager||!!personId&&(parent?.ownerId===personId||work?.ownerId===personId||!!work?.actorCollaborator);
+    const canAccept=manager||!!personId&&parent?.acceptanceOwnerValid&&parent.acceptanceOwnerId===personId;
+    const codes=item.reasonCodes;
+    const action=codes.includes('pending_acceptance')&&canAccept?'accept'
+      :codes.includes('commitment_scope')&&manager?'delivery-settings'
+      :codes.includes('blocker_resolved')?null
+      :codes.some(c=>c==='blocked'||c==='follow_up')&&(canExecute||!!personId&&item.ownerId===personId)?'follow-up'
+      :codes.includes('forecast_review')&&canExecute?'forecast':null;
+    if(action)item.targetPath='/requirements/'+item.requirementId+'?'+new URLSearchParams({...(work?{workItemId:work.id}:{}),action});
+  }
   for (const item of items) for (const reason of item.reasonCodes) byReason[reason] = (byReason[reason] || 0) + 1;
   const summary = {
     total: items.length,

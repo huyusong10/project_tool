@@ -110,7 +110,7 @@ it('模板复制和实例化保留前置；旧模板不推断关系或改写历�
  const f=await fixture();const initial=await analysis(f.projectId);expect(initial.dependencies).toHaveLength(4);expect(initial.coverage.reviewed).toBe(2);
  const copy=await post(`/api/projects/${f.projectId}/templates/${f.template.id}/copy`,{});expect(copy.statusCode,copy.body).toBe(200);
  const copied=copy.json<WorkItemTemplate>();expect(copied.dependencyMode).toBe('dependencies');expect(copied.items[1].predecessorIds).toEqual([copied.items[0].id]);
- const old=await fixture(true),before=(await detail(old.a.id)).workItems;expect((await analysis(old.projectId)).dependencies).toEqual([]);expect((await analysis(old.projectId)).forecastEnd).toBeNull();
+ const old=await fixture(true),before=(await detail(old.a.id)).workItems;expect((await analysis(old.projectId)).dependencies).toEqual([]);expect((await analysis(old.projectId)).coverage.reviewed).toBe(2);const {sqlite}=await import('../src/server/database');sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=NULL WHERE id=?').run(old.a.id);expect((await analysis(old.projectId)).forecastEnd).toBeNull();
  await post(`/api/requirements/${old.a.id}/dependency-review`,{expectedRevision:(await analysis(old.projectId)).revision,reviewed:true});const stripDerived=(items:WorkItem[])=>items.map(({forecastBasis:_basis,...w})=>w);expect(stripDerived((await detail(old.a.id)).workItems)).toEqual(stripDerived(before));
 });
 it('部分交付允许 A设计→B开发→A联调；执行循环拒绝且版本不变',async()=>{

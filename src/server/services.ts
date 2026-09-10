@@ -1,5 +1,5 @@
 import {invalidateForecastReview} from './services/forecast-reviews';
-import {validateCoordination,persistCoordination} from './services/blocker-coordination';
+import {validateCoordination,persistCoordination,assertCoordinationAccess} from './services/blocker-coordination';
 import {coordinationKeys} from '../shared/blocker-coordination';
 import {rescheduleDirectRequirement,createDirectRequirement,updateDeliveryRequirement,executeDirectRequirement,validateDeliveryFields,assertRequirementAcceptor} from './services/delivery-execution';
 import { createHash, randomUUID } from 'node:crypto';
@@ -1031,6 +1031,7 @@ export function createRequirement(input: JsonObject, actor: Actor, deferNormaliz
     if (plannedStart && templateId) applyTemplateInternal(id, templateId, plannedStart);
     else if(templateId&&input.executionMode==='work_items'){applyTemplateInternal(id,templateId,todayIso());sqlite.prepare('UPDATE work_items SET planned_start=NULL,planned_end=NULL WHERE requirement_id=?').run(id);}
     updateStoredRequirementSchedule(id);
+    sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=? WHERE id=?').run(now,id);
     requirementOwner(projectId, ownerId, true);
     requireActiveProject(projectId, true);
     assertProjectManager(requireAuthorizationActor(actor), projectId);
@@ -1547,10 +1548,11 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
     || collaboratorsChanged || scheduleChanged || input.sortOrder !== undefined && Number(input.sortOrder) !== current.sortOrder;
   if (requirementHasExecution && structuralChanged && !nullableText(input.reason)) fail('需求已开始执行，调整工作项结构、负责人或排期时必须填写变更原因');
   const coordinationChanged=coordinationKeys.some(k=>input[k]!==undefined);const coordination=coordinationChanged?validateCoordination(requirement.projectId,{...current,...input}):undefined;if(coordinationChanged&&current.status!=='blocked')fail('只有阻塞对象可以修改协调信息');
+  if(coordinationChanged&&!structuralChanged)assertCoordinationAccess('work',id,input,actor);
   if (!structuralChanged&&!coordinationChanged) {
     sqlite.transaction(() => {
       requireActiveProject(requirement.projectId, true);
-      if(coordinationChanged&&!structuralChanged)assertWorkItemParticipantOrManager(requireAuthorizationActor(actor),id);else assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
+      if(coordinationChanged&&!structuralChanged)assertCoordinationAccess('work',id,input,actor);else assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
       assertProjectAssignees(current.requirementId, [ownerId, ...nextCollaboratorIds], true);
     })();
     return requirement.workItems!.find((item) => item.id === id);
@@ -1563,12 +1565,12 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor) {
       input.sortOrder === undefined ? current.sortOrder : Number(input.sortOrder), now, id, current.version,
     );
     assertVersionedWrite(result, '工作项');
-    if(coordination)persistCoordination('work',id,requirement.projectId,coordination,actor);
+    if(coordination)persistCoordination('work',id,requirement.projectId,{...coordination,reason:input.reason},actor);
     if (collaboratorIds !== undefined) syncWorkItemCollaborators(id, collaboratorIds);
     else if (ownerId) sqlite.prepare('DELETE FROM work_item_collaborators WHERE work_item_id=? AND person_id=?').run(id, ownerId);
     syncStoredRequirementState(current.requirementId, now, true, requirement.version);
     requireActiveProject(requirement.projectId, true);
-    if(coordinationChanged&&!structuralChanged)assertWorkItemParticipantOrManager(requireAuthorizationActor(actor),id);else assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
+    if(coordinationChanged&&!structuralChanged)assertCoordinationAccess('work',id,input,actor);else assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
     if (requirementHasExecution && structuralChanged) appendRequirementEvent(current.requirementId, 'correction', requireText(input.reason, '变更原因'), actor, id, current.progress, null, now);
     audit(actor, 'update', 'work_item', id, `更新工作项：${title}`);
     assertProjectAssignees(current.requirementId, [ownerId, ...nextCollaboratorIds], true);

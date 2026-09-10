@@ -48,10 +48,13 @@ export function decorateForecastBasis(input:PathInput,analysis:PathAnalysis):Pat
     const people=[...new Set([n.ownerId,...n.assigneeIds||[]].filter((id):id is string=>!!id))].sort(),groupKey=JSON.stringify(people);
     let group=concurrencyGroups.get(groupKey);
     if(!group){const ids=new Set(people.flatMap(id=>[...activeByPerson.get(id)||[]]));group={ids,sample:[...ids].slice(0,11).map(id=>nodesById.get(id)!)};concurrencyGroups.set(groupKey,group);}
-    n.forecastBasis={source:ended?'实际执行记录':n.kind==='acceptance'?'验收安排':review?'负责人确认；'+n.source:n.source,
+    n.forecastBasis={source:ended?n.kind==='acceptance'?'实际验收记录':'实际执行记录':review?'负责人确认；'+n.source:n.source,
       review,reasons:[...new Set(reasons)],needsReview:!ended&&['work','execution'].includes(n.kind)&&(n.critical||n.riskLevel==='high')&&reasons.some(r=>/过期|变化|解除|工期|预测/.test(r)),
       concurrentWorkCount:group.ids.size-Number(group.ids.has(n.id)),concurrentWork:group.sample.filter(item=>item.id!==n.id).slice(0,10).map(item=>({id:item.id,requirementId:item.requirementId,title:item.title,requirementTitle:requirements.get(item.requirementId||'')?.title||'',forecastEnd:item.forecastEnd,critical:item.critical}))};
   }
+  const executions=new Map<string,PathNode[]>();
+  for(const n of analysis.nodes)if(n.requirementId&&['work','execution'].includes(n.kind)&&n.status!=='cancelled'){const group=executions.get(n.requirementId)||[];group.push(n);executions.set(n.requirementId,group);}
+  for(const r of analysis.requirements){const work=executions.get(r.id)||[],acceptance=nodesById.get('acceptance:'+r.id);Object.assign(r,{executionForecastEnd:work.length&&work.every(n=>n.forecastEnd)?work.map(n=>n.forecastEnd!).sort().at(-1):null,acceptanceForecastEnd:acceptance?.forecastEnd||null,acceptanceAssumed:acceptance?.source==='假设工作完成后当日验收'});}
   return analysis;
 }
 export function nodeForecastBasis(nodes:PathNode[],requirementId:string) {

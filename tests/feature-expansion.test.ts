@@ -244,7 +244,7 @@ describe('功能扩充契约', () => {
     const workAction = actions.json().items.find((item: any) => item.id === `work_item:${blockedWorkItemId}`);
     expect(workAction.reasonCodes).toEqual(expect.arrayContaining(['blocked', 'unassigned']));
     expect(workAction.severity).toBe('high');
-    expect(workAction.targetPath).toBe(`/requirements/${requirementId}?workItemId=${blockedWorkItemId}`);
+    expect(workAction.targetPath).toBe(`/requirements/${requirementId}?workItemId=${blockedWorkItemId}&action=follow-up`);
     const issueAction = actions.json().items.find((item: any) => item.id === `issue:${issueId}`);
     expect(issueAction.reasonCodes).toEqual(expect.arrayContaining(['overdue', 'unassigned']));
     expect(issueAction.severity).toBe('high');
