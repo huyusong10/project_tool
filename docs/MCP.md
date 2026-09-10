@@ -2,6 +2,8 @@
 
 端点为 `/mcp`，使用无状态 HTTP POST 和个人 Token。Token 继承账号的项目权限。成功数据在 `structuredContent.result`；业务错误返回 `isError: true`、`structuredContent.error` 和 `statusCode`。
 
+Agent 录入流程维护在 [project-manage-intake skill](../skills/project-manage-intake/SKILL.md)。修改本文涉及的工具、参数或业务口径时，同步更新 skill；生产构建会安装仓库中的版本。
+
 ## 选择工具
 
 | 任务 | 工具 | 返回 |

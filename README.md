@@ -62,6 +62,14 @@ MCP覆盖需求、工作项、问题、行动项、我的工作、项目成员�
 
 工作项、需求和进展支持独立分页查询；拓扑支持需求汇总、局部上下游、自动布局及 SVG 导出。工具选用、参数和批量图编辑示例见 [MCP 使用说明](docs/MCP.md)。
 
+### Codex skill
+
+[project-manage-intake](skills/project-manage-intake/SKILL.md) 随仓库维护，包含需求拆分规则、MCP 操作和 LOG／ORG 示例。修改 MCP 契约或业务规则时，同步更新此目录及相应案例。
+
+`npm run build` 在应用构建成功后，将整份 skill 同步到 `$CODEX_HOME/skills/project-manage-intake`；未设置 `CODEX_HOME` 时使用当前用户的 `~/.codex/skills/project-manage-intake`。同步替换该 skill 的旧文件，不影响其他技能；失败会使构建命令失败。仅更新技能可运行 `npm run sync:codex-skill`。测试构建 `build:test-ui` 不同步用户技能。
+
+维护时修改仓库内的 `skills/project-manage-intake/`，安装目录会在下次构建时覆盖。Agent 可用 `$project-manage-intake` 调用；MCP 连接和账号权限仍使用客户端已有配置。
+
 ## 使用要点
 
 - 新建需求只需标题；未填日期时保存为待规划，填入开始或截止日期时按流程自动生成工作项。
@@ -96,7 +104,8 @@ MCP覆盖需求、工作项、问题、行动项、我的工作、项目成员�
 
 ```powershell
 npm run dev       # 前后端开发模式
-npm run build     # 类型检查并构建
+npm run build     # 类型检查、构建并同步 Codex skill
+npm run sync:codex-skill # 仅同步仓库中的 skill
 npm run lint      # 轻量代码检查
 npm test          # 单元、集成和性能测试
 npm run test:responsive # 六组常用视口的布局守护测试（使用本机 Edge）

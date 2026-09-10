@@ -1,0 +1,4 @@
+interface:
+  display_name: "项目需求录入与交付"
+  short_description: "将不同粒度的需求整理为可追溯、可安排、可验收的项目交付"
+  default_prompt: "使用 $project-manage-intake 将这些需求整理并录入项目管理系统，说明拆分、来源范围和待安排事项。"
