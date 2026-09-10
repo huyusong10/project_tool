@@ -1,7 +1,7 @@
 import {createContext,useContext,useEffect,useRef,type RefObject} from 'react';
 import type {EditorInteraction} from './editor-interaction';
 import type {FieldBuffer} from './editor-session';
-export type WorkspaceDocument={fields:Record<string,FieldBuffer>;setField:(key:string,buffer?:FieldBuffer)=>unknown;captureLayout:(scope:string,positions:Record<string,import('./path-layout').Point>)=>unknown;layoutBaselines:Record<string,Record<string,import('./path-layout').Point>>;flush:()=>Promise<void>};
+export type WorkspaceDocument={fields:Record<string,FieldBuffer>;fieldEpoch:number;isFieldActive:(key:string)=>boolean;setField:(key:string,buffer?:FieldBuffer)=>unknown;captureLayout:(scope:string,positions:Record<string,import('./path-layout').Point>)=>unknown;layoutBaselines:Record<string,Record<string,import('./path-layout').Point>>;flush:()=>Promise<void>};
 export type LayerKind='menu'|'finder'|'detail'|'auxiliary';
 type Layer={element:()=>HTMLElement|null;kind:LayerKind;close:()=>void;trigger:HTMLElement|null};
 type PointerHandlers={move?:(e:PointerEvent)=>void;up?:(e:PointerEvent)=>void;focus?:(e:FocusEvent)=>void};

@@ -8,8 +8,12 @@ export function EditorField({fieldKey,value,onCommit,inline=false,multiline=fals
   const element=useRef<HTMLInputElement&HTMLTextAreaElement&HTMLElement>(null),state=useRef({raw,original:saved?.original??value,dirty:!!saved});
   const latest=useRef({value,onCommit});latest.current={value,onCommit};
   const ticket=useRef<number|undefined>(undefined);
+  const epoch=runtime.document?.fieldEpoch,fieldEpoch=useRef(epoch);
   const release=()=>{if(runtime.fieldOwner?.owner===owner)runtime.fieldOwner=undefined;};
   const finish=(cancel=false)=>{
+    if(runtime.document?.isFieldActive(fieldKey)===false||fieldEpoch.current!==runtime.document?.fieldEpoch){
+      if(ticket.current!==undefined)runtime.interaction?.complete(ticket.current,()=>{});ticket.current=undefined;release();return true;
+    }
     if(!state.current.dirty&&!editing){if(ticket.current!==undefined)runtime.interaction?.complete(ticket.current,()=>{});ticket.current=undefined;release();return true;}
     const text=cancel?state.current.original:state.current.raw;
     const invalid=!cancel&&(input.required&&!text.trim()?'请填写名称':input.type==='number'&&(!text.trim()||!Number.isFinite(Number(text))||Number(text)<Number(input.min??0)||input.max!==undefined&&Number(text)>Number(input.max))?'请输入有效工期':'');
@@ -25,6 +29,7 @@ export function EditorField({fieldKey,value,onCommit,inline=false,multiline=fals
   useEffect(()=>{const handlers={commit:()=>actions.current.commit(),focus:()=>actions.current.focus(),cancel:()=>actions.current.cancel()};const id=Symbol(fieldKey);runtime.fields.set(id,handlers);if(!inline&&runtime.pendingField===fieldKey){runtime.pendingField=undefined;requestAnimationFrame(()=>handlers.focus());}return()=>{handlers.commit();runtime.fields.delete(id);};},[runtime,fieldKey,inline]);
   useEffect(()=>{if(saved&&!state.current.dirty){state.current={raw:saved.value,original:saved.original,dirty:true};setRaw(saved.value);setError(saved.error||'');}},[saved]);
   useEffect(()=>{if(!state.current.dirty){state.current.raw=value;state.current.original=value;setRaw(value);}},[value]);
+  useEffect(()=>{if(fieldEpoch.current===epoch)return;fieldEpoch.current=epoch;const value=latest.current.value;state.current={raw:value,original:value,dirty:false};setRaw(value);setError('');setEditing(false);},[epoch]);
   const change=(text:string)=>{state.current.raw=text;state.current.dirty=true;setRaw(text);runtime.document?.setField(fieldKey,{value:text,original:state.current.original});};
   const start=()=>{state.current.original=latest.current.value;ticket.current=runtime.interaction?.begin('field',()=>actions.current.cancel());runtime.fieldOwner={key:fieldKey,owner};};
   const key=(event:React.KeyboardEvent<HTMLElement>)=>{

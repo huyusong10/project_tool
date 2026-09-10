@@ -3,6 +3,7 @@ import type {PathAnalysis} from '../shared/paths';
 
 export type FieldBuffer={value:string;original:string;error?:string};
 export type EditorHistory<T>={formatVersion:2;version:string;values:T[];index:number;active:boolean;baseline?:T;server?:PathAnalysis;layouts:Record<string,Record<string,Point>>;fields:Record<string,FieldBuffer>};
+export type FieldAvailability<T>=(state:EditorHistory<T>,key:string)=>boolean;
 export type HistoryCommand<T>=
   |{type:'change';value:T;group?:string}
   |{type:'begin'|'undo'|'redo'|'end-group'}
@@ -42,6 +43,14 @@ export function historyTransition<T>(state:EditorHistory<T>,command:HistoryComma
 /** One in-memory document survives route mounts; disk writes keep command order. */
 export class EditorSession<T>{
   state:EditorHistory<T>;mounts=0;loading=true;saving=false;readOnly=false;error='';stored=false;restored=false;blocked=false;
+  fieldEpoch=0;fieldAvailability?:FieldAvailability<T>;
+  isFieldActive=(key:string)=>this.fieldAvailability?.(this.state,key)??true;
+  private fieldCache?:{state:EditorHistory<T>;availability?:FieldAvailability<T>;fields:Record<string,FieldBuffer>};
+  get fields(){
+    if(this.fieldCache?.state===this.state&&this.fieldCache.availability===this.fieldAvailability)return this.fieldCache.fields;
+    const fields=Object.fromEntries(Object.entries(this.state.fields).filter(([key])=>this.isFieldActive(key)));
+    this.fieldCache={state:this.state,availability:this.fieldAvailability,fields};return fields;
+  }
   private listeners=new Set<()=>void>();private group:string|null=null;private sequence=0;private writeQueue=Promise.resolve();private revision=0;
   constructor(initial:EditorHistory<T>){this.state=initial;}
   subscribe=(listener:()=>void)=>{this.listeners.add(listener);return()=>{this.listeners.delete(listener);};};
@@ -52,7 +61,7 @@ export class EditorSession<T>{
     if(this.loading||this.readOnly||this.blocked||this.saving&&['change','undo','redo','rebase'].includes(command.type))return false;
     const next=historyTransition(this.state,command,this.group);
     this.group=command.type==='change'?command.group||null:command.type==='field'||command.type==='layout-baseline'?this.group:null;
-    if(next===this.state)return false;this.state=next;this.stored=false;this.notify();return true;
+    if(next===this.state)return false;if(command.type==='reset')this.fieldEpoch++;this.state=next;this.stored=false;this.notify();return true;
   }
   persist(write:(state:EditorHistory<T>)=>Promise<void>){
     const state=this.state,sequence=++this.sequence;
