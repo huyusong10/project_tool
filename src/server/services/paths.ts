@@ -1,4 +1,5 @@
 import {loadBlockerCoordination} from './blocker-coordination';
+import {refreshPathAssignments} from './path-assignments';
 import {loadCommitments} from './commitments';
 import {requirementCommitments} from '../../shared/commitments';
 import {recordForecastReviews,persistForecastReviews} from './forecast-reviews';
@@ -24,29 +25,27 @@ export const dependencySelect = `SELECT id, project_id AS projectId, coalesce(so
 export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInput {
   const project = one<{ name: string; revision: number; plannedEnd: string | null }>('SELECT name, analysis_revision AS revision, planned_end AS plannedEnd FROM projects WHERE id=?', projectId);
   if (!project) notFound('项目不存在');
-  const requirements = all<PathRequirement>(`SELECT EXISTS(SELECT 1 FROM project_people op JOIN accounts oa ON oa.person_id=op.person_id JOIN people person ON person.id=op.person_id WHERE op.project_id=r.project_id AND op.person_id=r.owner_id AND op.project_role IN ('member','manager') AND oa.status='active' AND oa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS ownerValid,r.delivery_scope AS deliveryScope,r.execution_mode AS executionMode,r.acceptance_owner_id AS acceptanceOwnerId,
+  const requirements = all<PathRequirement>(`SELECT r.delivery_scope AS deliveryScope,r.execution_mode AS executionMode,r.acceptance_owner_id AS acceptanceOwnerId,
     r.forecast_review AS forecastReview,r.blocked_coordinator_id AS blockedCoordinatorId,r.blocked_next_review_at AS blockedNextReviewAt,r.blocked_issue_id AS blockedIssueId,r.actual_start AS actualStart,r.actual_end AS actualEnd,r.blocked_at AS blockedAt,r.blocked_reason AS blockedReason,
     r.forecast_duration AS forecastDuration,r.forecast_ready_at AS forecastReadyAt,r.duration_days AS durationDays,r.forecast_end AS forecastEnd,r.unblock_estimate AS unblockEstimate,r.split_base_progress AS splitBaseProgress,r.split_at AS splitAt,
-    (SELECT name FROM people WHERE id=r.acceptance_owner_id) AS acceptanceOwnerName,
-    EXISTS(SELECT 1 FROM project_people ap JOIN accounts aa ON aa.person_id=ap.person_id JOIN people person ON person.id=ap.person_id WHERE ap.project_id=r.project_id AND ap.person_id=r.acceptance_owner_id AND ap.project_role IN ('member','manager') AND aa.status='active' AND aa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS acceptanceOwnerValid,r.progress,r.created_at AS createdAt,r.updated_at AS updatedAt,r.id, r.project_id AS projectId, r.title, r.status, r.priority, r.owner_id AS ownerId, p.name AS ownerName,
+    r.progress,r.created_at AS createdAt,r.updated_at AS updatedAt,r.id, r.project_id AS projectId, r.title, r.status, r.priority, r.owner_id AS ownerId,
     r.planned_start AS plannedStart, r.planned_end AS plannedEnd, r.accepted_at AS acceptedAt, r.deleted_at AS deletedAt,
     r.dependencies_reviewed_at AS dependenciesReviewedAt, r.schedule_anchor AS scheduleAnchor, r.forecast_acceptance AS forecastAcceptance,
     r.version,r.background,r.acceptance_criteria AS acceptanceCriteria,r.reference_url AS referenceUrl,r.template_id AS templateId,r.acknowledged_dependencies AS acknowledgedDependencies
-    FROM requirements r LEFT JOIN people p ON p.id=r.owner_id WHERE r.project_id=? ORDER BY r.id`, projectId);
+    FROM requirements r WHERE r.project_id=? ORDER BY r.id`, projectId);
   const workItems = all<PathWork>(`SELECT w.id, w.version, w.requirement_id AS requirementId, w.title, w.status, w.progress, w.owner_id AS ownerId,
+    (SELECT json_group_array(c.person_id) FROM work_item_collaborators c WHERE c.work_item_id=w.id) AS assigneeIds,
     w.planned_start AS plannedStart, w.planned_end AS plannedEnd, w.forecast_review AS forecastReview,w.blocked_coordinator_id AS blockedCoordinatorId,w.blocked_next_review_at AS blockedNextReviewAt,w.blocked_issue_id AS blockedIssueId,w.actual_start AS actualStart, w.actual_end AS actualEnd,
     w.duration_days AS durationDays, w.earliest_start AS earliestStart, w.unblock_estimate AS unblockEstimate,w.arrangement,w.arrangement_anchor AS arrangementAnchor,w.acknowledged_dependencies AS acknowledgedDependencies,
     w.forecast_end AS forecastEnd, w.forecast_duration AS forecastDuration, w.forecast_ready_at AS forecastReadyAt,
-    w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.milestone_label AS milestoneLabel, p.name AS ownerName
-    FROM work_items w JOIN requirements r ON r.id=w.requirement_id LEFT JOIN people p ON p.id=w.owner_id WHERE r.project_id=? ORDER BY w.id`, projectId);
+    w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.milestone_label AS milestoneLabel
+    FROM work_items w JOIN requirements r ON r.id=w.requirement_id WHERE r.project_id=? ORDER BY w.id`, projectId);
   for(const value of [...requirements,...workItems])value.forecastReview=value.forecastReview?JSON.parse(String(value.forecastReview)):null;
   const commitments=loadCommitments(projectId);for(const r of requirements)r.commitment=requirementCommitments(commitments,r.id,r.acceptedAt);
   const coordinations=[...requirements,...workItems].some(v=>v.status==='blocked')?loadBlockerCoordination(projectId):{};for(const value of [...requirements,...workItems])value.blockerCoordination=coordinations[value.id];
-  const people=all<{workItemId:string;id:string;name:string}>(`SELECT c.work_item_id AS workItemId,p.id,p.name FROM work_item_collaborators c JOIN people p ON p.id=c.person_id JOIN work_items w ON w.id=c.work_item_id JOIN requirements r ON r.id=w.requirement_id WHERE r.project_id=? ORDER BY p.name`,projectId);
-  const byWork=new Map<string,typeof people>();for(const p of people)byWork.set(p.workItemId,[...(byWork.get(p.workItemId)||[]),p]);
-  const byReq=new Map<string,Map<string,string>>();
-  for(const w of workItems){const assigned=new Map((byWork.get(w.id)||[]).map(p=>[p.id,p.name]));if(w.ownerId)assigned.set(w.ownerId,w.ownerName||'未命名人员');w.assigneeIds=[...assigned.keys()];w.assigneeNames=[...assigned.values()];const group=byReq.get(w.requirementId)||new Map<string,string>();for(const [id,name] of assigned)group.set(id,name);byReq.set(w.requirementId,group);}
-  for(const r of requirements){r.assigneeIds=[...(byReq.get(r.id)?.keys()||[])];r.assigneeNames=[...(byReq.get(r.id)?.values()||[])];r.acknowledgedDependencies=JSON.parse(String(r.acknowledgedDependencies||'[]'));}
+  for(const w of workItems)w.assigneeIds=JSON.parse(String(w.assigneeIds||'[]'));
+  refreshPathAssignments({projectId,requirements,workItems});
+  for(const r of requirements)r.acknowledgedDependencies=JSON.parse(String(r.acknowledgedDependencies||'[]'));
   for(const w of workItems)w.acknowledgedDependencies=JSON.parse(String(w.acknowledgedDependencies||'[]'));
   return { projectId, projectName: project.name, revision: project.revision, projectEnd: project.plannedEnd, highRiskDelayDays: config.highRiskDelayDays, asOfDate, requirements, workItems,
     dependencies: all<Dependency>(`${dependencySelect} WHERE project_id=? ORDER BY id`, projectId),

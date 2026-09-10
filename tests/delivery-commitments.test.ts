@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {randomUUID,scryptSync} from 'node:crypto';
-import {afterAll,beforeAll,expect,it} from 'vitest';
+import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import type {FastifyInstance} from 'fastify';
 import type {PathAnalysis} from '../src/shared/paths';
 import type {Requirement} from '../src/client/types';
@@ -227,4 +227,35 @@ it('项目变更检测只读且隔离项目；执行说明和成员修改可被�
  await post('/api/requirements',{projectId:other,title:'其他项目',executionMode:'direct'});expect(await version()).toEqual(before);
  await post('/api/requirements/'+r.id+'/progress',{content:'只补充说明'});expect(await version()).not.toEqual(before);
  const changed=await version();await post('/api/people',{projectId,name:'新增成员'+randomUUID()});expect(await version()).not.toEqual(changed);
+});
+it('同一毫秒修改问题，后台版本仍反映新的业务事实',async()=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  const {projectId}=await fixture();const issue=(await post('/api/issues',{projectId,title:'环境协调'})).json();
+  const version=()=>get<{version:string}>('/api/projects/'+projectId+'/change-version'),before=await version();
+  const changed=await request('PATCH','/api/issues/'+issue.id,{expectedVersion:issue.version,title:'环境协调已更新'});expect(changed.statusCode,changed.body).toBe(200);
+  expect(changed.json().updatedAt).toBe(issue.updatedAt);expect(changed.json().version).toBe(issue.version+1);
+  expect(await version()).not.toEqual(before);
+ }finally{vi.useRealTimers();}
+});
+it('另一流程的较新时间不能遮住当前流程的修改',async()=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  const {projectId}=await fixture();const create=async(name:string)=>(await post('/api/templates',{projectId,name,items:[{title:'工作',durationDays:1,startOffsetDays:0,sortOrder:0}]})).json();
+  const a=await create('流程甲');let b=await create('流程乙');
+  for(const name of ['流程乙一','流程乙二']){const res=await request('PATCH','/api/templates/'+b.id,{expectedUpdatedAt:b.updatedAt,name});expect(res.statusCode,res.body).toBe(200);b=res.json();}
+  const version=()=>get<{version:string}>('/api/projects/'+projectId+'/change-version'),before=await version();
+  const changed=await request('PATCH','/api/templates/'+a.id,{expectedUpdatedAt:a.updatedAt,name:'流程甲已更新'});expect(changed.statusCode,changed.body).toBe(200);
+  expect(changed.json().updatedAt<b.updatedAt).toBe(true);expect(await version()).not.toEqual(before);
+ }finally{vi.useRealTimers();}
+});
+it('同一毫秒只保存布局也能刷新其他页面，且不改变分析版本',async()=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  const {projectId,r}=await fixture(),analysis=()=>get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis');
+  const save=async(x:number,expectedVersion:number)=>{const b=await batch(projectId,{layouts:[{scope:'global',direction:'right',expectedVersion,positions:{[r.id]:{x,y:0}}}]});expect(b.preview.statusCode,b.preview.body).toBe(200);const applied=await post('/api/projects/'+projectId+'/dependency-changes/apply',b.body);expect(applied.statusCode,applied.body).toBe(200);};
+  await save(10,0);const before=await get<{version:string}>('/api/projects/'+projectId+'/change-version'),first=await analysis();
+  await save(20,1);const after=await analysis();expect(after.revision).toBe(first.revision);expect(after.layouts?.[0].positions[r.id].x).toBe(20);
+  expect(await get('/api/projects/'+projectId+'/change-version')).not.toEqual(before);
+ }finally{vi.useRealTimers();}
 });

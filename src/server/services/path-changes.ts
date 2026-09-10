@@ -38,7 +38,7 @@ function prepare(projectId: string, input: DependencyChangesInput, actor: Actor)
   }
   snapshot.dependencies = snapshot.dependencies.filter(e => !remove.includes(e.id));
   const expanded=prepareEditorEntities(snapshot,entities,actor);
-  if(entities.some(c=>Object.keys(c.data).some(k=>k.startsWith('blocked')))){
+  if(entities.some(c=>c.data.ownerId!==undefined||Object.keys(c.data).some(k=>k.startsWith('blocked')))){
     const blocked=[...snapshot.requirements,...snapshot.workItems].filter(v=>v.status==='blocked');
     const coordinations=loadBlockerCoordination(projectId,blocked.map(v=>({id:v.id,owner_id:v.ownerId||null,blocked_coordinator_id:v.blockedCoordinatorId||null,blocked_next_review_at:v.blockedNextReviewAt||null,blocked_issue_id:v.blockedIssueId||null})));
     for(const value of blocked)value.blockerCoordination=coordinations[value.id];

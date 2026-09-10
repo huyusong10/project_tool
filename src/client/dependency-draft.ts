@@ -23,7 +23,7 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges): Pa
   nodes=nodes.filter(n=>n.kind!=='execution'||requirements.some(r=>r.id===n.requirementId&&r.executionMode==='direct'));
   for(const r of requirements)if(r.executionMode==='direct'){
     const old=nodes.find(n=>n.id==='execute:'+r.id),n=old||addNode('execute:'+r.id,r.id,'execution',r.title);
-    Object.assign(n,{title:r.title,status:r.status,ownerId:r.ownerId,ownerName:r.ownerName});
+    Object.assign(n,{title:r.title,status:r.status,ownerId:r.ownerId,ownerName:r.ownerName,estimate:{...n.estimate,durationDays:r.durationDays??null,forecastEnd:r.forecastEnd??null,unblockEstimate:r.unblockEstimate??null}});
     if(!old)nodes.push(n);
   }
   // Estimates apply after entity edits, matching the server's final snapshot, including new nodes.

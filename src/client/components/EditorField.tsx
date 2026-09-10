@@ -12,7 +12,9 @@ export function EditorField({fieldKey,value,onCommit,inline=false,multiline=fals
   const finish=(cancel=false)=>{
     if(!state.current.dirty&&!editing){if(ticket.current!==undefined)runtime.interaction?.complete(ticket.current,()=>{});ticket.current=undefined;release();return true;}
     const text=cancel?state.current.original:state.current.raw;
-    const invalid=!cancel&&(input.required&&!text.trim()?'请填写名称':input.type==='number'&&(!text.trim()||!Number.isFinite(Number(text))||Number(text)<Number(input.min??0)||input.max!==undefined&&Number(text)>Number(input.max))?'请输入有效工期':'');
+    // Numeric fields are whole workdays. Validate the buffer even after its input unmounts.
+    const invalidNumber=input.type==='number'&&(element.current?.validity.valid===false||!!text.trim()&&(!Number.isInteger(Number(text))||Number(text)<Number(input.min??0)||input.max!==undefined&&Number(text)>Number(input.max)));
+    const invalid=!cancel&&(invalidNumber?'请输入有效工期':input.required&&!text.trim()?'请填写名称':'');
     if(invalid){setError(invalid);runtime.document?.setField(fieldKey,{value:text,original:state.current.original,error:invalid});if(ticket.current!==undefined)runtime.interaction?.complete(ticket.current,()=>{});ticket.current=undefined;release();return false;}
     if(inline&&element.current)element.current.textContent=text;
     state.current={raw:text,original:text,dirty:false};setRaw(text);setError('');setEditing(false);
