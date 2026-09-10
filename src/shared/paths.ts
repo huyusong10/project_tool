@@ -65,6 +65,12 @@ export const dependencyTarget=(d:Dependency)=>d.targetMilestoneId||d.targetWorkI
 
 export const startId = (id: string) => `start:${id}`;
 export const acceptanceId = (id: string) => `acceptance:${id}`;
+/** Virtual execution nodes keep their role while their owning requirement receives a saved ID. */
+export function remapPathNodeId(id:string,mapping:Readonly<Record<string,string>>):string {
+  if(mapping[id])return mapping[id];
+  for(const prefix of ['start:','acceptance:','execute:'])if(id.startsWith(prefix))return prefix+(mapping[id.slice(prefix.length)]||id.slice(prefix.length));
+  return id;
+}
 export const projectTarget = 'project';
 
 export class DependencyCycleError extends Error {

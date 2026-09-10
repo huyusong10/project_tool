@@ -1,5 +1,6 @@
 import {validateCoordination,isCoordinationEdit,assertCoordinationAccess} from './blocker-coordination';
 import {refreshPathAssignments} from './path-assignments';
+import {templateInstanceKey,type DraftTemplateInstance} from '../../shared/template-instance';
 import {coordinationKeys} from '../../shared/blocker-coordination';
 import {validateDeliveryFields,updateDeliveryRequirement} from './delivery-execution';
 import {sqlite} from '../database';
@@ -9,12 +10,13 @@ import {fail,notFound} from '../errors';
 import {requireLabel,normalizeRequirementText} from './support';
 import {createRequirementInputSchema,updateRequirementInputSchema,createWorkItemInputSchema,updateWorkItemInputSchema} from '../../shared/contracts';
 import {addBusinessDays,businessDaysInclusive,plannedDatesFromOffset,plannedStartFromDeadline,canDeleteWorkItem,deriveRequirementMetrics} from '../../shared/domain';
-import {type PathInput,type PathRequirement} from '../../shared/paths';
+import {remapPathNodeId,type PathInput,type PathRequirement} from '../../shared/paths';
 import type {EditorEntityChange,DependencyChanges} from '../../shared/path-contracts';
 import {createRequirement,updateRequirement,archiveRequirement,createWorkItem,updateWorkItem,deleteWorkItem,listTemplates} from '../services';
 
 const workDefaults={status:'not_started',progress:0,plannedStart:null,plannedEnd:null,actualStart:null,actualEnd:null,durationDays:1,earliestStart:null,unblockEstimate:null,forecastEnd:null,forecastDuration:null,forecastReadyAt:null,blockedAt:null,blockedReason:null,milestoneLabel:null,ownerName:null};
 const entityTable={requirement:'requirements',work:'work_items',milestone:'milestones'};
+type TemplateExpansion=DraftTemplateInstance & {version:string;items:Array<{clientId:string;templateItemId:string;kind:string}>};
 export function assertEditorAssignees(projectId:string,ids:Array<string|null|undefined>){
   for(const id of new Set(ids.filter(Boolean)))if(!sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id WHERE pp.project_id=? AND pp.person_id=? AND pp.project_role IN ('member','manager') AND p.active=1 AND p.deleted_at IS NULL").get(projectId,id))fail('负责人必须是当前项目中已启用的成员或项目经理');
 }
@@ -22,12 +24,14 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
   const current=requireAuthorizationActor(actor),created=new Set(changes.filter(c=>c.op==='create').map(c=>c.id));
   if(new Set(changes.map(c=>c.id)).size!==changes.length)fail('同一对象不能在批次中重复提交');
   snapshot.milestones||=[];
-  const expanded=new Map<string,Array<{clientId:string;templateItemId:string;kind:string}>>();
+  const expanded=new Map<string,TemplateExpansion>();
   for(const c of [...changes].sort((a,b)=>Number(b.entity==='requirement')-Number(a.entity==='requirement'))){
     if(c.data.reviewForecast&&c.entity!=='requirement')fail('工作项预测核对请通过估算修改提交');
-    const table=entityTable[c.entity],row=sqlite.prepare('SELECT * FROM '+table+' WHERE id=?').get(c.id) as Record<string,unknown>|undefined;
+    const table=entityTable[c.entity],generated=expanded.get(c.requirementId||'')?.items.find(e=>e.clientId===c.id&&e.kind===c.entity);
+    const stored=sqlite.prepare('SELECT * FROM '+table+' WHERE id=?').get(c.id) as Record<string,unknown>|undefined;
+    const row=stored||(generated?{id:c.id,requirement_id:c.requirementId,project_id:snapshot.projectId,version:1}:undefined);
     if(c.op==='create'&&row)fail('新增对象标识已存在');
-    if(c.op!=='create'&&(!row||row.version!==c.expectedVersion))fail('对象版本已变化，请核对草稿','STALE_WRITE',409,{entityIds:[c.id]});
+    if(c.op!=='create'&&(!row||row.version!==(c.expectedVersion??(generated?1:undefined))))fail('对象版本已变化，请核对草稿','STALE_WRITE',409,{entityIds:[c.id]});
     if(row&&c.entity!=='requirement'&&c.requirementId!==undefined&&(c.requirementId||null)!==(row.requirement_id||null))fail('不能更改对象归属');
     const requirementId=c.entity==='requirement'?c.id:c.requirementId||String(row?.requirement_id||'');
     const req=snapshot.requirements.find(r=>r.id===requirementId);
@@ -61,12 +65,15 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
         snapshot.requirements.push(r);
         if(template&&(base||value.executionMode==='work_items')){
           const mapping=new Map<string,string>(template.items.map((i:{id:string})=>[i.id,c.id+':template:'+i.id]));
-          expanded.set(c.id,template.items.map((i:{id:string;kind?:string})=>({clientId:mapping.get(i.id)!,templateItemId:i.id,kind:i.kind||'work'})));
+          const expansion:TemplateExpansion={requirementId:c.id,key:templateInstanceKey(c),version:template.updatedAt,entities:[],dependencies:[],items:template.items.map((i:{id:string;kind?:string})=>({clientId:mapping.get(i.id)!,templateItemId:i.id,kind:i.kind||'work'}))};
+          expanded.set(c.id,expansion);
           for(const item of template.items){const id=mapping.get(item.id)!;
             if(item.kind==='milestone')snapshot.milestones.push({id,projectId:snapshot.projectId,requirementId:c.id,title:item.title,targetDate:null,confirmationMode:item.confirmationMode||'auto',achievedAt:null,version:1});
             else {const dates=base?plannedDatesFromOffset(base,item.startOffsetDays,item.durationDays):{plannedStart:null,plannedEnd:null};snapshot.workItems.push({...workDefaults,...dates,id,requirementId:c.id,title:item.title,durationDays:item.durationDays,arrangement:item.arrangement||'early',arrangementAnchor:mapping.get(item.arrangementAnchor)||null});}
             if(template.dependencyMode==='dependencies'||item.kind==='milestone')for(const pred of item.predecessorIds||[]){const previous=template.items.find((i:{id:string})=>i.id===pred);snapshot.dependencies.push({id:id+':from:'+pred,projectId:snapshot.projectId,sourceRequirementId:c.id,targetRequirementId:c.id,sourceWorkItemId:previous.kind==='milestone'?null:mapping.get(pred)!,sourceMilestoneId:previous.kind==='milestone'?mapping.get(pred):null,targetWorkItemId:item.kind==='milestone'?null:id,targetMilestoneId:item.kind==='milestone'?id:null,origin:'template'});}
           }
+          expansion.dependencies=snapshot.dependencies.filter(d=>d.sourceRequirementId===c.id&&d.targetRequirementId===c.id).map(d=>({...d}));
+          expansion.entities=[...snapshot.workItems.filter(w=>w.requirementId===c.id).map(w=>({entity:'work' as const,op:'create' as const,id:w.id,requirementId:c.id,data:{title:w.title,ownerId:w.ownerId||null,plannedStart:w.plannedStart,plannedEnd:w.plannedEnd,durationDays:w.durationDays,arrangement:w.arrangement,arrangementAnchor:w.arrangementAnchor}})),...snapshot.milestones.filter(m=>m.requirementId===c.id).map(m=>({entity:'milestone' as const,op:'create' as const,id:m.id,requirementId:c.id,data:{title:m.title,targetDate:m.targetDate,confirmationMode:m.confirmationMode}}))];
           if(template.dependencyMode==='dependencies')r.dependenciesReviewedAt=new Date().toISOString();
           const dates=snapshot.workItems.filter(w=>w.requirementId===c.id).flatMap(w=>w.plannedEnd?[w.plannedEnd]:[]).sort();r.plannedEnd=dates.at(-1)||null;r.status=snapshot.workItems.some(w=>w.requirementId===c.id)?'not_started':'planning';
         }
@@ -126,31 +133,38 @@ export function prepareEditorLayouts(snapshot:PathInput,layouts:NonNullable<Depe
   }
 }
 
-export function persistEditorEntities(snapshot:PathInput,changes:EditorEntityChange[],expanded:Map<string,Array<{clientId:string;templateItemId:string;kind:string}>>,actor:Actor){
+export function persistEditorEntities(snapshot:PathInput,changes:EditorEntityChange[],expanded:Map<string,TemplateExpansion>,actor:Actor,removed:string[]=[]){
   const ids:Record<string,string>={},now=new Date().toISOString();
   for(const c of [...changes].sort((a,b)=>Number(b.entity==='requirement')-Number(a.entity==='requirement'))){
-    const {reviewForecast:_review,...data}=c.data,reqId=ids[c.requirementId||'']||c.requirementId;
+    const {reviewForecast:_review,...data}=c.data,reqId=ids[c.requirementId||'']||c.requirementId,entityId=ids[c.id]||c.id;
     if(c.entity==='requirement'){
       if(c.op==='create'){
         delete data.reason;
         const r=createRequirement({...data,templateId:data.templateId||undefined,projectId:snapshot.projectId},actor,true);ids[c.id]=r.id;if(!expanded.has(c.id))sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=?,schedule_anchor=? WHERE id=?').run(now,snapshot.requirements.find(value=>value.id===c.id)?.scheduleAnchor||snapshot.asOfDate,r.id);
-        for(const e of expanded.get(c.id)||[]){const record=e.kind==='milestone'?sqlite.prepare('SELECT id FROM milestones WHERE requirement_id=? AND template_item_id=?').get(r.id,e.templateItemId) as {id:string}|undefined:r.workItems?.find(w=>w.templateItemId===e.templateItemId);if(record)ids[e.clientId]=record.id;}
-      }else if(c.op==='update'){if(_review&&Object.keys(data).every(k=>k==='reason')){sqlite.prepare('UPDATE requirements SET version=version+1,updated_at=? WHERE id=?').run(now,c.id);}else if(data.executionMode||Object.keys(data).some(k=>['deliveryScope','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',...coordinationKeys].includes(k)))updateDeliveryRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor,!!data.executionMode,true);else updateRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor);}
-      else archiveRequirement(c.id,{expectedVersion:c.expectedVersion},actor);
+        for(const e of expanded.get(c.id)?.items||[]){const record=e.kind==='milestone'?sqlite.prepare('SELECT id FROM milestones WHERE requirement_id=? AND template_item_id=?').get(r.id,e.templateItemId) as {id:string}|undefined:r.workItems?.find(w=>w.templateItemId===e.templateItemId);if(!record)fail('流程实例化结果不完整');ids[e.clientId]=record.id;}
+        for(const e of expanded.get(c.id)?.dependencies||[]){
+          const record=sqlite.prepare('SELECT id FROM dependency_edges WHERE source_requirement_id=? AND target_requirement_id=? AND source_work_item_id IS ? AND target_work_item_id IS ? AND source_milestone_id IS ? AND target_milestone_id IS ?').get(r.id,r.id,e.sourceWorkItemId?ids[e.sourceWorkItemId]:null,e.targetWorkItemId?ids[e.targetWorkItemId]:null,e.sourceMilestoneId?ids[e.sourceMilestoneId]:null,e.targetMilestoneId?ids[e.targetMilestoneId]:null) as {id:string}|undefined;
+          if(!record)fail('流程实例化关系不完整');ids[e.id]=record.id;
+          if(removed.includes(e.id))sqlite.prepare('DELETE FROM dependency_edges WHERE id=?').run(record.id);
+        }
+      }else if(c.op==='update'){if(_review&&Object.keys(data).every(k=>k==='reason')){sqlite.prepare('UPDATE requirements SET version=version+1,updated_at=? WHERE id=?').run(now,c.id);}else if(data.executionMode||Object.keys(data).some(k=>['deliveryScope','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',...coordinationKeys].includes(k)))updateDeliveryRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor,!!data.executionMode,true);else updateRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor,true);}
+      else archiveRequirement(c.id,{expectedVersion:c.expectedVersion},actor,true);
     }else if(c.entity==='work'){
-      const {durationDays,arrangement,arrangementAnchor,...fields}=data;
-      if(c.op==='create'){const r=sqlite.prepare('SELECT version FROM requirements WHERE id=?').get(reqId) as {version:number};const w=createWorkItem(reqId!,{...fields,expectedVersion:r.version},actor)!;ids[c.id]=w.id;}
-      else if(c.op==='update')updateWorkItem(c.id,{...fields,expectedVersion:c.expectedVersion},actor);
-      else deleteWorkItem(c.id,{expectedVersion:c.expectedVersion},actor);
-      if(c.op==='create'||c.op==='update'&&(durationDays!==undefined||arrangement!==undefined||arrangementAnchor!==undefined)){
-        const w=snapshot.workItems.find(w=>w.id===c.id)!;sqlite.prepare('UPDATE work_items SET duration_days=?,arrangement=?,arrangement_anchor=?,version=version+1 WHERE id=?').run(w.durationDays,w.arrangement||'early',ids[w.arrangementAnchor||'']||w.arrangementAnchor||null,ids[c.id]||c.id);
-      }
+      const {durationDays:_durationDays,arrangement:_arrangement,arrangementAnchor:_arrangementAnchor,...fields}=data;
+      if(c.op==='create'){const r=sqlite.prepare('SELECT version FROM requirements WHERE id=?').get(reqId) as {version:number};const w=createWorkItem(reqId!,{...fields,expectedVersion:r.version},actor,true)!;ids[c.id]=w.id;}
+      else if(c.op==='update')updateWorkItem(entityId,{...fields,expectedVersion:c.expectedVersion??1},actor,true);
+      else deleteWorkItem(entityId,{expectedVersion:c.expectedVersion??1},actor,true);
     }else{
       const m=snapshot.milestones?.find(m=>m.id===c.id);
       if(c.op==='create'){ids[c.id]=c.id;sqlite.prepare('INSERT INTO milestones(id,project_id,requirement_id,title,target_date,confirmation_mode,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(c.id,snapshot.projectId,reqId||null,m!.title,m!.targetDate,m!.confirmationMode,now,now);}
-      else if(c.op==='update')sqlite.prepare('UPDATE milestones SET title=?,target_date=?,confirmation_mode=?,version=version+1,updated_at=? WHERE id=?').run(m!.title,m!.targetDate,m!.confirmationMode,now,c.id);
-      else sqlite.prepare('DELETE FROM milestones WHERE id=?').run(c.id);
+      else if(c.op==='update')sqlite.prepare('UPDATE milestones SET title=?,target_date=?,confirmation_mode=?,version=version+1,updated_at=? WHERE id=?').run(m!.title,m!.targetDate,m!.confirmationMode,now,entityId);
+      else sqlite.prepare('DELETE FROM milestones WHERE id=?').run(entityId);
     }
+  }
+  // Resolve estimates only after every new endpoint has its final ID, including forward references.
+  for(const c of changes)if(c.entity==='work'&&(c.op==='create'||c.op==='update'&&['durationDays','arrangement','arrangementAnchor'].some(key=>key in c.data))){
+    const w=snapshot.workItems.find(w=>w.id===c.id)!;
+    sqlite.prepare('UPDATE work_items SET duration_days=?,arrangement=?,arrangement_anchor=?,version=version+1 WHERE id=?').run(w.durationDays,w.arrangement||'early',w.arrangementAnchor?remapPathNodeId(w.arrangementAnchor,ids):null,ids[c.id]||c.id);
   }
   return ids;
 }

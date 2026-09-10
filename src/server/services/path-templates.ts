@@ -19,7 +19,7 @@ export function saveTemplateGraph(templateId: string, mode: string, items: Templ
   const update=sqlite.prepare('UPDATE template_items SET predecessor_ids=?,arrangement=?,arrangement_anchor=?,confirmation_mode=? WHERE id=?');
   items.forEach((item,i)=> update.run(JSON.stringify(mode==='dependencies'||item.kind==='milestone' ? (item.predecessorKeys||[]).map(k=>mapping.get(k)!) : []),item.arrangement||'early',mapping.get(item.arrangementAnchor||'')||null,item.confirmationMode||'auto',saved[i].id));
 }
-export function instantiateTemplateGraph(requirementId: string, templateId: string, createdIds: string[], baseStart: string) {
+export function instantiateTemplateGraph(requirementId: string, templateId: string, createdIds: string[], baseStart: string, deferAnalysis=false) {
   const template = sqlite.prepare('SELECT dependency_mode AS mode FROM work_item_templates WHERE id=?').get(templateId) as {mode:string};
   const req=sqlite.prepare('SELECT project_id AS projectId FROM requirements WHERE id=?').get(requirementId) as {projectId:string};
   const items=sqlite.prepare('SELECT id,title,kind,confirmation_mode AS confirmationMode,arrangement,arrangement_anchor AS arrangementAnchor,predecessor_ids AS predecessors,duration_days AS duration FROM template_items WHERE template_id=? AND deleted_at IS NULL').all(templateId) as Array<{id:string;title:string;kind:string;confirmationMode:string;arrangement:string;arrangementAnchor:string|null;predecessors:string;duration:number}>;
@@ -41,7 +41,7 @@ export function instantiateTemplateGraph(requirementId: string, templateId: stri
       insertDependency({id:randomUUID(),projectId:req.projectId,sourceRequirementId:requirementId,sourceWorkItemId:milestone?null:source,sourceMilestoneId:milestone?source:null,targetRequirementId:requirementId,targetWorkItemId:item.kind==='milestone'?null:target,targetMilestoneId:item.kind==='milestone'?target:null,origin:'template'});
     }
   }
-  getPathAnalysis(req.projectId);
+  if(!deferAnalysis)getPathAnalysis(req.projectId);
   // Only a wholly generated new instance is automatically reviewed. Mixed historical work remains explicit.
   if(template.mode==='dependencies'&&work.every(w=>created.has(w.id))) sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=?,schedule_anchor=? WHERE id=?').run(new Date().toISOString(),baseStart,requirementId);
 }

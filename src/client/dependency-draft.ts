@@ -1,12 +1,14 @@
 import { acceptanceId, startId, topologicalOrder, DependencyCycleError,dependencySource,dependencyTarget, type PathAnalysis,type PathNode,type PathRequirement } from '../shared/paths';
 import type { DependencyChanges } from '../shared/path-contracts';
-export function draftNetwork(data: PathAnalysis, changes: DependencyChanges): PathAnalysis {
+import {templateInstanceKey,type DraftTemplateInstance} from '../shared/template-instance';
+export function draftNetwork(data: PathAnalysis, changes: DependencyChanges, instances:DraftTemplateInstance[]=[]): PathAnalysis {
   if (!changes.add.length && !changes.remove.length && !changes.estimates.length&&!changes.entities?.length&&!changes.layouts?.length) return data;
-  const dependencies = [...data.dependencies.filter(d => !changes.remove.includes(d.id)), ...changes.add.map(({ clientId, ...d }) => ({ ...d, id: clientId, projectId: data.projectId, origin: 'manual' }))];
+  const templates=instances.filter(t=>changes.entities?.some(c=>c.entity==='requirement'&&c.op==='create'&&t.key===templateInstanceKey(c)));
+  const dependencies = [...data.dependencies,...templates.flatMap(t=>t.dependencies)].filter(d=>!changes.remove.includes(d.id)).concat(changes.add.map(({ clientId, ...d }) => ({ ...d, id: clientId, projectId: data.projectId, origin: 'manual' })));
   let nodes = data.nodes.map(n => ({...n}));
   let requirements=data.requirements.map(r=>({...r})),milestones=[...(data.milestones||[])];const risks={...data.risks};
   const addNode=(id:string,requirementId:string|null,kind:PathNode['kind'],title:string):PathNode=>({id,requirementId,kind,title,workItemId:kind==='work'?id:null,status:'not_started',ownerName:null,milestoneLabel:null,plannedStart:null,plannedEnd:null,forecastStart:null,forecastEnd:null,remainingDays:kind==='work'?1:0,earliestStart:0,earliestFinish:0,floatDays:null,critical:false,planCritical:false,nearCritical:false,inScope:false,unknownReasons:['未保存预览'],ownReasons:[],source:'草稿',riskLevel:'low',complete:false,estimate:{durationDays:kind==='work'?1:null,earliestStart:null,unblockEstimate:null,forecastEnd:null}});
-  for(const c of changes.entities||[]){
+  for(const c of [...(changes.entities||[]).filter(c=>c.entity==='requirement'),...templates.flatMap(t=>t.entities),...(changes.entities||[]).filter(c=>c.entity!=='requirement')]){
     if(c.entity==='requirement'){
       if(c.op==='create'){
         requirements.push({id:c.id,projectId:data.projectId,title:c.data.title||'未命名需求',status:'planning',priority:c.data.priority||'P2',ownerName:null,plannedStart:null,plannedEnd:null,acceptedAt:null,dependenciesReviewedAt:null,scheduleAnchor:null,forecastAcceptance:null,deletedAt:null,...c.data} as PathRequirement);
@@ -45,8 +47,8 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges): Pa
   dependencies.forEach(d => edges.push({ id: d.id, source:dependencySource(d), target:dependencyTarget(d), dependencyId: d.id, critical: false }));
   return { ...data, nodes, dependencies, edges,requirements,risks,milestones,layouts:[...(data.layouts||[]).filter(l=>!changes.layouts?.some(c=>c.scope===l.scope&&c.direction===l.direction)),...(changes.layouts||[]).map(l=>({...l,version:l.expectedVersion}))] };
 }
-export function dependencyIssue(data: PathAnalysis, changes: DependencyChanges) {
-  const network = draftNetwork(data, changes);
+export function dependencyIssue(data: PathAnalysis, changes: DependencyChanges,instances:DraftTemplateInstance[]=[]) {
+  const network = draftNetwork(data, changes,instances);
   try { topologicalOrder(network.nodes.map(n => n.id), network.edges); return null; }
   catch (error) { return { kind:error instanceof DependencyCycleError?'cycle' as const:undefined, message: (error as Error).message, nodeIds: error instanceof DependencyCycleError ? error.nodeIds : [], edgeIds: error instanceof DependencyCycleError ? error.edgeIds : [] }; }
 }

@@ -37,6 +37,7 @@ export const applyDependencyChangesInput = dependencyChangesInput.extend({
 export type DependencyChanges = z.infer<typeof dependencyChanges>;
 export type DependencyChangesInput = z.infer<typeof dependencyChangesInput>;
 export type DependencyChangePreview = {
+  templateInstances?:import('./template-instance').DraftTemplateInstance[];
   analysis: import('./paths').PathAnalysis; expectedRevision: number; asOfDate: string;
   previewToken: string; count: number;
   differences: {
