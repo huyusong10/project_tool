@@ -66,10 +66,18 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
   return {
     session:current,dispatch,flush:current.flush,busy:current.saving,setBusy:(value:boolean)=>{current.setSaving(value);if(!value&&!current.mounts)releaseDraft(storageKey);},source:state.server,baseline:state.baseline||state.values[0],value:state.values[state.index],active:state.active,version:state.version,
     dirty:JSON.stringify(state.values[state.index])!==JSON.stringify(state.baseline||state.values[0]),loading:current.loading,storageError:current.error,stored:current.stored,restored:current.restored,readOnly:current.readOnly||current.blocked,
-    get fields(){return current.fields;},get fieldEpoch(){return current.fieldEpoch;},isFieldActive:current.isFieldActive,layoutBaselines:state.layouts,
+    get fields(){return current.fields;},get fieldEpoch(){return current.fieldEpoch;},get pendingField(){return current.pendingField;},requestField:current.requestField,isFieldActive:current.isFieldActive,layoutBaselines:state.layouts,
     setField:(key:string,buffer?:import('./editor-session').FieldBuffer)=>dispatch({type:'field',key,buffer}),
     captureLayout:(scope:string,positions:Record<string,import('./path-layout').Point>)=>dispatch({type:'layout-baseline',scope,positions}),
-    takeOver:async()=>{const saved=readHistory<T>(await readDraftRecord(storageKey));takeDraft(storageKey);if(saved)current.state={...saved,server:saved.server||latest.current.source};current.readOnly=false;current.notify();},
+    takeOver:async()=>{
+      if(current.loading||current.saving||current.blocked)return;
+      current.loading=true;current.notify();
+      try{
+        await current.flush();const saved=readHistory<T>(await readDraftRecord(storageKey));takeDraft(storageKey);
+        current.adopt(saved?{...saved,server:saved.server||latest.current.source}:newHistory(latest.current.initial,latest.current.version,latest.current.source));current.readOnly=false;
+      }catch(error){current.error='无法接管草稿：'+(error as Error).message;current.readOnly=true;}
+      finally{current.loading=false;current.notify();}
+    },
     canUndo:state.index>0,canRedo:state.index+1<state.values.length,
     begin:()=>dispatch({type:'begin'}),endGroup:()=>dispatch({type:'end-group'}),
     change:(value:T,group?:string)=>dispatch({type:'change',value,group}),
@@ -160,7 +168,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
   };
   return {
     ...history,loading:history.loading||!pendingReady,changes,count,conflict,conflicts:conflict?rebased.conflicts:[],unresolved:rebased.pending.length,resolveConflict:(key:string,value:'draft'|'server')=>setResolutionState(old=>({version:resolutionVersion,values:{...(old.version===resolutionVersion?old.values:{}),[key]:value}})),preview, previewing, pending, error, save,retryPreview:()=>setPreviewAttempt(n=>n+1),
-    get fields(){return history.fields;},get fieldEpoch(){return history.fieldEpoch;},
+    get fields(){return history.fields;},get fieldEpoch(){return history.fieldEpoch;},get pendingField(){return history.pendingField;},
     issue: error instanceof ApiError ? error.details as { nodeIds?: string[]; edgeIds?: string[] } | undefined : undefined,
     cancel: () => { if (!pending) { history.reset(empty, String(data.revision)); setError(null); } },
     change: (next: DependencyChanges) => { if (!pending && !history.session.saving && JSON.stringify(next)!==JSON.stringify(changes)) { latest.current = null; setPreview(null); setError(null); if (!count && Number(history.version) !== data.revision) history.rebase(String(data.revision), next); else history.change(next); } },

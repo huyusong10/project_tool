@@ -25,11 +25,13 @@ export function EditorField({fieldKey,value,onCommit,inline=false,multiline=fals
     if(ticket.current!==undefined){runtime.interaction?.complete(ticket.current,()=>{});ticket.current=undefined;}
     release();return true;
   };
-  const actions=useRef({commit:()=>inline&&!editing?true:finish(),focus:()=>element.current?.focus(),cancel:()=>{finish(true);}});actions.current={commit:()=>inline&&!editing?true:finish(),focus:()=>element.current?.focus(),cancel:()=>{finish(true);}};
-  useEffect(()=>{const handlers={commit:()=>actions.current.commit(),focus:()=>actions.current.focus(),cancel:()=>actions.current.cancel()};const id=Symbol(fieldKey);runtime.fields.set(id,handlers);if(!inline&&runtime.pendingField===fieldKey){runtime.pendingField=undefined;requestAnimationFrame(()=>handlers.focus());}return()=>{handlers.commit();runtime.fields.delete(id);};},[runtime,fieldKey,inline]);
+  const focus=()=>{const node=element.current;if(!node||!node.isConnected||node.matches(':disabled')||node.closest('[inert],[aria-hidden="true"]')||inline&&!editing)return false;for(let parent=node.parentElement;parent;parent=parent.parentElement)if(parent instanceof HTMLDetailsElement)parent.open=true;node.focus({preventScroll:true});if(document.activeElement!==node)return false;node.scrollIntoView({block:'nearest',inline:'nearest'});return true;};
+  const actions=useRef({commit:()=>inline&&!editing?true:finish(),focus,cancel:()=>{finish(true);}});actions.current={commit:()=>inline&&!editing?true:finish(),focus,cancel:()=>{finish(true);}};
+  useEffect(()=>{const handlers={key:fieldKey,commit:()=>actions.current.commit(),focus:()=>actions.current.focus(),cancel:()=>actions.current.cancel()};const id=Symbol(fieldKey);runtime.fields.set(id,handlers);return()=>{handlers.commit();runtime.fields.delete(id);};},[runtime,fieldKey,inline]);
+  useEffect(()=>{if(runtime.document?.pendingField===fieldKey)runtime.focusPendingField();});
   useEffect(()=>{if(saved&&!state.current.dirty){state.current={raw:saved.value,original:saved.original,dirty:true};setRaw(saved.value);setError(saved.error||'');}},[saved]);
   useEffect(()=>{if(!state.current.dirty){state.current.raw=value;state.current.original=value;setRaw(value);}},[value]);
-  useEffect(()=>{if(fieldEpoch.current===epoch)return;fieldEpoch.current=epoch;const value=latest.current.value;state.current={raw:value,original:value,dirty:false};setRaw(value);setError('');setEditing(false);},[epoch]);
+  useEffect(()=>{if(fieldEpoch.current===epoch)return;fieldEpoch.current=epoch;const buffer=inline?undefined:runtime.document?.fields[fieldKey],value=buffer?.value??latest.current.value;state.current={raw:value,original:buffer?.original??latest.current.value,dirty:!!buffer};setRaw(value);setError(buffer?.error||'');setEditing(false);},[epoch,runtime,fieldKey,inline]);
   const change=(text:string)=>{state.current.raw=text;state.current.dirty=true;setRaw(text);runtime.document?.setField(fieldKey,{value:text,original:state.current.original});};
   const start=()=>{state.current.original=latest.current.value;ticket.current=runtime.interaction?.begin('field',()=>actions.current.cancel());runtime.fieldOwner={key:fieldKey,owner};};
   const key=(event:React.KeyboardEvent<HTMLElement>)=>{

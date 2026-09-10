@@ -50,4 +50,15 @@ describe('field buffers follow document membership',()=>{
   const session=project();session.dispatch({type:'field',key:'legacy-key',buffer:invalid});expect(session.fields['legacy-key']).toEqual(invalid);
   const unavailable=newHistory(empty,'1');unavailable.fields={'title:unknown':invalid};expect(projectFieldActive(unavailable,'title:unknown')).toBe(true);
  });
+ it('adopting another tab replaces stale buffers and preserves its undo history',()=>{
+  const old=project();old.dispatch({type:'field',key:'title:w',buffer:invalid});old.requestField('title:w');const epoch=old.fieldEpoch;
+  const latest=project();latest.dispatch({type:'change',value:{...empty,entities:[{...entity('w','update','r'),data:{title:'新名称'}}]}});latest.dispatch({type:'field',key:'w:duration',buffer:{original:'2',value:'0',error:'工期无效'}});
+  old.adopt(latest.state);expect(old.fieldEpoch).toBe(epoch+1);expect(old.fields).toEqual(latest.fields);expect(old.pendingField).toBeUndefined();expect(old.state.values).toEqual(latest.state.values);old.dispatch({type:'undo'});expect(old.state.values[old.state.index]).toEqual(empty);expect(old.fields['w:duration'].value).toBe('0');
+ });
+ it('deleting a requested object cancels navigation without refocusing it after undo',()=>{
+  const session=project();session.dispatch({type:'field',key:'title:w',buffer:invalid});session.requestField('title:w');session.dispatch({type:'change',value:{...empty,entities:[entity('w','delete','r')]}});expect(session.pendingField).toBeUndefined();session.dispatch({type:'undo'});expect(session.fields['title:w']).toEqual(invalid);expect(session.pendingField).toBeUndefined();
+ });
+ it('late persistence acknowledgements cannot relabel an adopted snapshot',async()=>{
+  const session=project();let release!:()=>void;const waiting=new Promise<void>(resolve=>release=resolve);session.persist(async()=>{await waiting;throw new Error('older write failed');});session.adopt(newHistory(empty,'2',source));release();await session.flush();expect(session.error).toBe('');expect(session.stored).toBe(true);expect(session.state.version).toBe('2');
+ });
 });

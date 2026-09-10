@@ -6,6 +6,7 @@ import {DeliveryImpactTable} from './DeliveryImpactTable';
 import {useWorkspaceParams} from '../use-workspace-view';
 import {editorAdapter} from '../editor-adapter';
 import {EditorField} from './EditorField';
+import {fieldObjectId} from '../editor-fields';
 import {useEditorInteraction} from '../use-editor-interaction';
 import type {GraphConnectionIssue} from './DependencyGraph';
 import {flushSync} from 'react-dom';
@@ -161,9 +162,10 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const originKey=(session.accountId||'guest')+':'+formal.projectId+':'+location.key;
   const origin=readPathOrigin(originKey,location.state);
   useEffect(()=>savePathOrigin(originKey,origin),[originKey,origin]);
+  const navigatePath=(url:string)=>{flushSync(()=>setLeaving(true));navigate(url,{state:{pathOrigin:{url:location.pathname+location.search,label:focus?requirement!.title+'路径':'项目全局',parent:origin}}});};
   const directTo=(requirementId:string,workItemId?:string|null)=>{
-    const p=new URLSearchParams({view:'path',target});if(workItemId)p.set('pathNode',workItemId);if(draft.changes.entities?.some(c=>c.id===requirementId&&c.op==='create'))p.set('draftProject',formal.projectId);
-    flushSync(()=>setLeaving(true));navigate('/requirements/'+requirementId+'?'+p,{state:{pathOrigin:{url:location.pathname+location.search,label:focus?requirement!.title+'路径':'项目全局',parent:origin}}});
+    const p=new URLSearchParams({view:'path',target});if(workItemId){p.set('pathNode',workItemId);p.set('pathInspector','open');}if(draft.changes.entities?.some(c=>c.id===requirementId&&c.op==='create'))p.set('draftProject',formal.projectId);
+    navigatePath('/requirements/'+requirementId+'?'+p);
   };
   const goBack=async()=>{
     if(!origin)return;const id=/^\/requirements\/([^/?]+)/.exec(origin.url)?.[1];
@@ -366,7 +368,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   </>:undefined;
   if(leaving)return <div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace"><LoadingState label="正在打开路径…"/></section></div>;
   const commands=editorAdapter({properties:patchEntity,move:positions=>draft.change(withLayout(draft.changes,positions)),rename:(id,title)=>patchEntity(id,{title}),create:createEntity,duplicate:duplicate,replaceRelation,delete:(ids,edgeId)=>{const e=graph.links.find(e=>e.id===edgeId);if(e?.dependencyIds.length===1)draft.change(remove(e.dependencyIds[0]));else if(edgeId){setEdgeId(edgeId);setInspector(true);}else setDeleting(ids);},connect:connect,reconnect:(source,destination)=>{const problem=validateReconnect(source,destination);if(problem)setIssue(problem);else{draft.change(reconnectChanges(source,destination));setRelationId('');setEdgeId('');}},undo:editing?draft.undo:undefined,redo:editing?draft.redo:undefined,save:()=>void draft.save(),copy:()=>structuredClone(data)},editing&&canEdit);
-  return <div className="path-analysis immersive-path"><GraphWorkspace onRevealField={key=>{const card=graph.cards.find(c=>key==='title:'+c.id||key.startsWith(c.id+':'));if(card)select(card.id);}} auxiliaryKey={panel} commands={commands} interaction={interaction} document={draft} cards={graph.cards} links={graph.links} visibleIds={visibleIds} contextIds={contextIds} emphasizedIds={emphasizedIds} onExitFocus={()=>{if(placing)setPlacing('');else setParam('pathBranch','');}} auxiliarySize={panel==='schedule'&&datedSchedule?expandedSchedule?'expanded':'timeline':'compact'}
+  return <div className="path-analysis immersive-path"><GraphWorkspace onRevealField={key=>{const id=fieldObjectId(key),card=graph.cards.find(c=>c.id===id);if(card){select(card.id);return;}const node=data.nodes.find(n=>n.id===id);if(node?.requirementId){directTo(node.requirementId,node.id);return;}if(id&&(data.requirements.some(r=>r.id===id)||data.milestones?.some(m=>m.id===id)))navigatePath('/paths?'+new URLSearchParams({pathScope:'all',target,pathNode:id,pathInspector:'open'}));else setIssue({message:'无法定位待修正字段，请查看草稿所属对象是否仍可编辑。'});}} auxiliaryKey={panel} commands={commands} interaction={interaction} document={draft} cards={graph.cards} links={graph.links} visibleIds={visibleIds} contextIds={contextIds} emphasizedIds={emphasizedIds} onExitFocus={()=>{if(placing)setPlacing('');else setParam('pathBranch','');}} auxiliarySize={panel==='schedule'&&datedSchedule?expandedSchedule?'expanded':'timeline':'compact'}
     reconnect={canReconnect?{id:reconnectRelation!.id,source:focus?dependencySource(reconnectRelation!):reconnectRelation!.sourceRequirementId||reconnectRelation!.sourceMilestoneId!,target:focus?dependencyTarget(reconnectRelation!):reconnectRelation!.targetRequirementId||reconnectRelation!.targetMilestoneId!}:undefined}
     validateReconnect={validateReconnect}
     positions={layoutValue?.positions} onLayoutReady={positions=>{livePositions.current=positions;}} placing={placing} onSearch={()=>openPanel('nodes')}

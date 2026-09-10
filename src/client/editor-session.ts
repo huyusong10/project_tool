@@ -44,6 +44,9 @@ export function historyTransition<T>(state:EditorHistory<T>,command:HistoryComma
 export class EditorSession<T>{
   state:EditorHistory<T>;mounts=0;loading=true;saving=false;readOnly=false;error='';stored=false;restored=false;blocked=false;
   fieldEpoch=0;fieldAvailability?:FieldAvailability<T>;
+  pendingField?:string;
+  requestField=(key?:string)=>{if(this.pendingField===key)return;this.pendingField=key;this.notify();};
+  adopt(state:EditorHistory<T>){this.state=state;this.fieldEpoch++;this.group=null;this.sequence++;this.pendingField=undefined;this.error='';this.stored=true;this.restored=state.active;this.notify();}
   isFieldActive=(key:string)=>this.fieldAvailability?.(this.state,key)??true;
   private fieldCache?:{state:EditorHistory<T>;availability?:FieldAvailability<T>;fields:Record<string,FieldBuffer>};
   get fields(){
@@ -61,7 +64,7 @@ export class EditorSession<T>{
     if(this.loading||this.readOnly||this.blocked||this.saving&&['change','undo','redo','rebase'].includes(command.type))return false;
     const next=historyTransition(this.state,command,this.group);
     this.group=command.type==='change'?command.group||null:command.type==='field'||command.type==='layout-baseline'?this.group:null;
-    if(next===this.state)return false;if(command.type==='reset')this.fieldEpoch++;this.state=next;this.stored=false;this.notify();return true;
+    if(next===this.state)return false;if(command.type==='reset'){this.fieldEpoch++;this.pendingField=undefined;}this.state=next;if(this.pendingField&&!this.isFieldActive(this.pendingField))this.pendingField=undefined;this.stored=false;this.notify();return true;
   }
   persist(write:(state:EditorHistory<T>)=>Promise<void>){
     const state=this.state,sequence=++this.sequence;
