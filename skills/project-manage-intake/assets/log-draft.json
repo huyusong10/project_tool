@@ -1,0 +1,254 @@
+{
+  "formatVersion": 1,
+  "documents": [
+    {
+      "key": "confluence:6595117",
+      "title": "LOG 需求说明书（MPS）",
+      "url": "",
+      "version": "24",
+      "complete": false,
+      "clauses": [
+        {
+          "key": "f-006-query",
+          "section": "功能需求",
+          "externalId": "DCIM‑LOG‑006",
+          "title": "日志查询",
+          "priority": "P0",
+          "content": "支持按时间、级别、用户/应用身份、IP/终端、租户、站点/资源、业务对象、操作结果和关联标识进行组合筛选；  支持分页、排序和条件重置；  支持单条日志详情展开，展示完整结构化字段；"
+        },
+        {
+          "key": "f-008-access",
+          "section": "功能需求",
+          "externalId": "DCIM‑LOG‑008",
+          "title": "日志权限与租户隔离",
+          "priority": "P0",
+          "content": "查询、详情、导出、策略配置和完整性核查均须鉴权；  按租户、角色、区域/资源和职责范围过滤数据；  禁止跨租户和越权访问；拒绝行为留存安全审计记录。"
+        },
+        {
+          "key": "f-013-time",
+          "section": "功能需求",
+          "externalId": "DCIM‑LOG‑013",
+          "title": "日志时间统一",
+          "priority": "P1",
+          "content": "日志使用统一时钟基准并保留原始事件时间；  涉及设备、补传或异步处理时，能够区分事件时间、平台接收时间和处理时间；  展示按用户时区转换，排序不丢失原始时间语义。"
+        },
+        {
+          "key": "f-013-health",
+          "section": "功能需求",
+          "externalId": "DCIM‑LOG‑013",
+          "title": "日志模块自身监控",
+          "priority": "P1",
+          "content": "提供接入量、失败量、格式异常、积压、存储容量、归档/清理任务、完整性校验和外部对接状态；  提供边缘日志回传速率、回传失败数量、本地缓冲队列长度。  提供开放 API 调用量、失败、限流次数指标。",
+          "deferredReason": "案例约定：本次先安排查询、权限与时间统一；自身监控暂缓，后续按实际范围决定。"
+        },
+        {
+          "key": "phase-1",
+          "section": "开发顺序与阶段安排",
+          "externalId": "",
+          "title": "Phase 1 基础准备",
+          "content": "Phase 1：数据、后端主导。确定 001 模型、字段字典及 008/009/012 的权限、脱敏、审计保护规则，完成 005 基础存储与样例数据，使下游具备开工条件。\nPhase 1 达到开工条件不代表 008/009/012 已全部完成。这些需求随 Phase 2 的查询、导出、配置和核查持续实现，UX/前端参与页面表现与验证，最终整体验收。"
+        }
+      ]
+    }
+  ],
+  "entities": [
+    {
+      "id": "case-log:log-query",
+      "entity": "requirement",
+      "group": "LOG 日志管理",
+      "data": {
+        "title": "日志查询",
+        "background": "建议拆分案例；验收条件为建议，须结合实际范围核对。人员、日期、工期未提供。",
+        "acceptanceCriteria": "授权范围内的组合筛选、分页、排序、重置和详情与源数据一致；页面与接口使用同一筛选口径。",
+        "tags": [
+          "建议拆分",
+          "功能开发",
+          "边缘",
+          "中心"
+        ],
+        "deliveryScope": "candidate",
+        "ownerId": null
+      }
+    },
+    {
+      "id": "case-log:log-query:api",
+      "entity": "work",
+      "requirementId": "case-log:log-query",
+      "data": {
+        "title": "查询接口",
+        "ownerId": null,
+        "durationDays": null
+      }
+    },
+    {
+      "id": "case-log:log-query:mock",
+      "entity": "work",
+      "requirementId": "case-log:log-query",
+      "data": {
+        "title": "页面 Mock",
+        "ownerId": null,
+        "durationDays": null
+      }
+    },
+    {
+      "id": "case-log:log-query:integration",
+      "entity": "work",
+      "requirementId": "case-log:log-query",
+      "data": {
+        "title": "接口页面联调",
+        "ownerId": null,
+        "durationDays": null
+      }
+    },
+    {
+      "id": "case-log:log-access",
+      "entity": "requirement",
+      "group": "LOG 日志管理",
+      "data": {
+        "title": "日志权限与租户隔离",
+        "background": "建议拆分案例；验收条件为建议，须结合实际范围核对。人员、日期、工期未提供。",
+        "acceptanceCriteria": "规则与拒绝样例先供下游使用；查询、详情、导出、配置及完整性核查的越权被拒绝且可审计，全部入口核对后才申请验收。",
+        "tags": [
+          "建议拆分",
+          "基础准备",
+          "功能开发",
+          "边缘",
+          "中心"
+        ],
+        "deliveryScope": "candidate",
+        "ownerId": null
+      }
+    },
+    {
+      "id": "case-log:log-access:rules",
+      "entity": "work",
+      "requirementId": "case-log:log-access",
+      "data": {
+        "title": "权限规则与拒绝样例",
+        "ownerId": null,
+        "durationDays": null
+      }
+    },
+    {
+      "id": "case-log:log-access:verify",
+      "entity": "work",
+      "requirementId": "case-log:log-access",
+      "data": {
+        "title": "全部调用入口鉴权验证",
+        "ownerId": null,
+        "durationDays": null
+      }
+    },
+    {
+      "id": "case-log:log-time",
+      "entity": "requirement",
+      "group": "LOG 日志管理",
+      "data": {
+        "title": "日志时间统一",
+        "background": "建议拆分案例；验收条件为建议，须结合实际范围核对。人员、日期、工期未提供。",
+        "acceptanceCriteria": "保留原始事件时间，区分平台接收和处理时间；展示转换用户时区，排序保持原始时间语义。",
+        "tags": [
+          "建议拆分",
+          "边缘",
+          "中心"
+        ],
+        "deliveryScope": "candidate",
+        "ownerId": null
+      }
+    }
+  ],
+  "references": [],
+  "links": [
+    {
+      "requirementId": "case-log:log-query",
+      "workItemId": null,
+      "document": "confluence:6595117",
+      "clause": "f-006-query",
+      "scope": "实现查询接口、页面与联调；按查询功能条款验收。"
+    },
+    {
+      "requirementId": "case-log:log-query",
+      "workItemId": null,
+      "document": "confluence:6595117",
+      "clause": "f-008-access",
+      "scope": "查询和详情执行已确认的权限规则；权限规则及其他入口由权限交付统一维护。"
+    },
+    {
+      "requirementId": "case-log:log-access",
+      "workItemId": null,
+      "document": "confluence:6595117",
+      "clause": "f-008-access",
+      "scope": "明确权限规则并验证所有调用入口；基础规则就绪不等于整体权限已验收。"
+    },
+    {
+      "requirementId": "case-log:log-access",
+      "workItemId": null,
+      "document": "confluence:6595117",
+      "clause": "phase-1",
+      "scope": "仅落实权限规则和拒绝样例的开工条件，不承担整个 Phase 1 的其他功能。"
+    },
+    {
+      "requirementId": "case-log:log-time",
+      "workItemId": null,
+      "document": "confluence:6595117",
+      "clause": "f-013-time",
+      "scope": "落实时间统一条款，不包含同号的日志模块自身监控。"
+    },
+    {
+      "requirementId": "case-log:log-query",
+      "workItemId": "case-log:log-query:api",
+      "document": "confluence:6595117",
+      "clause": "f-006-query",
+      "scope": "查询接口实施出处。"
+    },
+    {
+      "requirementId": "case-log:log-access",
+      "workItemId": "case-log:log-access:rules",
+      "document": "confluence:6595117",
+      "clause": "f-008-access",
+      "scope": "形成供下游使用的权限规则与拒绝样例。"
+    }
+  ],
+  "dependencies": [
+    {
+      "clientId": "case-log:edge:0",
+      "sourceRequirementId": "case-log:log-access",
+      "sourceWorkItemId": "case-log:log-access:rules",
+      "targetRequirementId": "case-log:log-query",
+      "targetWorkItemId": "case-log:log-query:api"
+    },
+    {
+      "clientId": "case-log:edge:1",
+      "sourceRequirementId": "case-log:log-access",
+      "sourceWorkItemId": "case-log:log-access:rules",
+      "targetRequirementId": "case-log:log-query",
+      "targetWorkItemId": "case-log:log-query:mock"
+    },
+    {
+      "clientId": "case-log:edge:2",
+      "sourceRequirementId": "case-log:log-query",
+      "sourceWorkItemId": "case-log:log-query:api",
+      "targetRequirementId": "case-log:log-query",
+      "targetWorkItemId": "case-log:log-query:integration"
+    },
+    {
+      "clientId": "case-log:edge:3",
+      "sourceRequirementId": "case-log:log-query",
+      "sourceWorkItemId": "case-log:log-query:mock",
+      "targetRequirementId": "case-log:log-query",
+      "targetWorkItemId": "case-log:log-query:integration"
+    },
+    {
+      "clientId": "case-log:edge:4",
+      "sourceRequirementId": "case-log:log-query",
+      "sourceWorkItemId": "case-log:log-query:integration",
+      "targetRequirementId": "case-log:log-access",
+      "targetWorkItemId": "case-log:log-access:verify"
+    }
+  ],
+  "templates": [],
+  "questions": [
+    "建议拆分；人员、工期和排期由人类核对。"
+  ],
+  "positions": {}
+}

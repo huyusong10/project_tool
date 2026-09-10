@@ -22,8 +22,15 @@ import { ProgressForm } from '../components/ProgressForm';
 import { ResizablePanel } from '../components/ResizablePanel';
 import { WorkItemActions } from '../components/WorkItemActions';
 import { ViewTabs } from '../components/ViewTabs';
+import {useSearchParams} from 'react-router-dom';
+import {PersonalDraftsPage} from './PersonalDraftsPage';
 
 export function MyWorkPage() {
+  const [params,setParams]=useSearchParams();
+  const space=params.get('space')==='drafts'?'drafts':'execution';
+  return <><ViewTabs ariaLabel="我的工作空间" value={space} onChange={v=>setParams(v==='drafts'?{space:'drafts'}:{})} options={[{value:'execution',label:'执行工作'},{value:'drafts',label:'个人草稿'}]}/>{space==='drafts'?<PersonalDraftsPage/>:<ExecutionWork/>}</>;
+}
+function ExecutionWork() {
   const client = useQueryClient(); const navigate = useNavigate();
   const { session } = useSession();
   const [params, setParams] = usePageSearchParams(['filter'], true);

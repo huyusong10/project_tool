@@ -1,0 +1,348 @@
+{
+  "formatVersion": 1,
+  "documents": [
+    {
+      "key": "confluence:10423063",
+      "title": "ORG 需求说明书（MPS）",
+      "url": "",
+      "version": "18",
+      "complete": false,
+      "clauses": [
+        {
+          "key": "functional-001",
+          "section": "功能需求",
+          "externalId": "DCIM-ORG-001",
+          "title": "租户管理",
+          "priority": "P0",
+          "content": "• **基本管理**：支持租户新增、编辑、启用/禁用、删除、列表查询与详情查看；租户创建与删除仅中心平台管理员可执行；边缘不新建租户（首次部署一次性创建本地唯一租户）。  • **字段**：租户名称（必填，全局唯一，重名拒绝）、租户编码（必填，用户手工录入，后台不校验）、联系人、联系电话、邮箱、租户状态、备注；列表展示名称、编码、联系人、电话、已分配站点数、租户用户数、关联资产数、租户状态、创建时间。  • **生命周期**：状态机为启用 / 禁用两态，本期按两态落地、不再规划冻结/注销/归档等商业生命周期扩展；禁用后用户组-租户关系保留但鉴权全部拒绝，北向 API 凭证、集成应用同步失效。  • **站点分配**：支持从租户侧分配站点（多选、全选），一站同一时间仅归属一个租户（单 Site 单租户）；归属关系单一事实源存储（仅存站点实体，租户侧派生查询），禁止双向冗余。【参照 NetBox 设计】*程总双向冗余实测已漂移（2/5 租户不一致，见附录议题 2），故改采单向外键 + 派生查询。*  • **删除管控**：删除前校验无业务数据，属高危操作需二次确认；删除后同步边缘（标记 tenant\\_id 失效、边缘置失效态停回传、历史数据人工处置），中心拒收失效 tenant\\_id 回传并审计。  • **租户组**：支持租户组树形分层聚合（如按客户类型、行业），仅用于聚合统计与筛选展示，**不参与 RBAC 鉴权**。"
+        },
+        {
+          "key": "functional-002",
+          "section": "功能需求",
+          "externalId": "DCIM-ORG-002",
+          "title": "站点管理",
+          "priority": "P0",
+          "content": "• **基本管理**：支持站点新增、编辑、启用/禁用、删除、列表查询。站点 ID 由中心创建生成；本期默认采用边缘本地手动配置 site\\_id/tenant\\_id 完成纳管，中心自动下发为后续可选能力（非本期优先级）。Site 是资产的集合，所有资产挂 Site 下，业务数据绑定 `tenant_id + site_id` 双标识。  • **字段**（15 个）：站点名称（必填）、站点编码（必填，用户手工录入，后台不校验）、站点类型、归属租户（可选，可暂不分配，后续经唯一分配入口指定）、物理地址、纬度、经度、运维联系人、联系电话、建筑面积、设计机柜数、设计总功率(MW)、设计制冷容量(MW)、站点状态、备注。类型枚举：IDC 机房 / 边缘节点 / 微模块机房。站点全部字段统一由平台管理员维护，租户管理员对站点只读。  • **状态机**：正常 / 在建 / 停用 / 报废（停用=临时可恢复，报废=退役终态）。禁用后中心停止接收该边缘上报数据；边缘本地仍独立运行，不影响客户现场运维。  • **归属变更**：仅平台管理员、**唯一入口**（编辑表单「归属租户」只读不可直接改绑）；变更前强制校验站点下无关联资产/机柜/在网设备/未闭环工单，高危操作需二次确认并提示级联影响；变更后原租户相关数据权限策略、告警规则、北向推送配置自动失效并审计，级联「失效」统一为**禁用而非删除**，原配置保留可追溯。【参照 NetBox 设计】*程总双入口可被编辑路径绕过且无级联（见附录议题 3），故改采「唯一入口 + 前置校验 + 级联失效 + 全程审计」。*  • **位置导航**：位置归属站点（位置侧 site\\_id 必填，见 DCIM-ORG-003），站点不存储所属位置字段；站点列表支持跳转位置管理页并按站点过滤位置树。  • **字段规范**：经纬度为数值型（decimal），建筑面积数值+单位分离，支持聚合计算；站点编码由用户手工录入、后台不校验（评审后决议，见附录议题 6）。【参照 NetBox 设计】*程总经纬度/面积为字符串（见附录议题 5），故改采数值化 + 单位分离。*"
+        },
+        {
+          "key": "functional-003",
+          "section": "功能需求",
+          "externalId": "DCIM-ORG-003",
+          "title": "位置管理",
+          "priority": "P0",
+          "content": "• **基本管理**：支持位置新增、编辑、启用/禁用、删除、列表查询、筛选、导出；位置全部层级仅在边缘本地创建/编辑/删除，中心仅镜像展示。  • **字段**：位置名称（必填）、位置编码（必填，用户手工录入，后台不校验）、位置类型、状态、上级位置、物理地址、纬度、经度、面积（㎡，数值化）、排序号、备注；经纬度用于地图定位与地理视图，面积数值化支撑按位置层级的容量、能耗聚合统计。  • **归属约束（核心）**：所有位置必须归属某个站点（site\\_id 必填），不跨站点；租户信息由站点向上追溯 `site_id → tenant_id` 获得，不直接存储。【参照 NetBox 设计】*程总位置直接携带归属租户且支持「全局（平台级）」归属，与「位置全部归属某个 Site」冲突、泄露平台拓扑（见附录议题 1），故改采位置强制挂站点、租户由站点派生。*  • **树形层级**：位置为站点内部树形层级，默认模板 Room → Row → Cabinet → USlot（U 位插槽，设备最小挂载粒度，也可挂 Cabinet/Room），站点内部拓扑由客户自定义（Site 为归属容器、非位置层级节点）；上级位置编辑时自动排除自身及子树防环；保存时校验父子类型层级（允许跳级、禁止类型倒挂），Room 及以上不允许悬空；位置树面板左树右表联动过滤，节点带资产数徽标。【参照 NetBox 设计补充】*程总类型约束仅前端控制、模型层无校验，本文增加保存时层级校验（前后端双校验）。*  • **资产关系**：每项物理资产必须关联一个 Location，资产归属由 Location 向上追溯 site\\_id → tenant\\_id；资产位置变更留存历史用于轨迹溯源；位置删除前校验下属资产已迁移；位置详情视图含基础信息 + 关联站点 + 关联资产（带计数）分 Tab 展示，关联站点可跳回站点管理页。"
+        },
+        {
+          "key": "quality-security",
+          "section": "DFX需求",
+          "externalId": "DCIM-ORG-001",
+          "title": "安全性需求",
+          "priority": "P0",
+          "content": "具备完善的防越权机制，拦截 URL 绕过、接口越权、参数篡改等非法操作（如篡改站点归属租户、跨租户查询位置树）；站点归属变更、租户删除等高危操作需二次确认；资源变更全程留痕（审计事件由 FUN-02 日志模块承接留存，只增不改、不可删除）；租户数据严格隔离，禁止跨租户数据泄露。"
+        },
+        {
+          "key": "quality-consistency",
+          "section": "DFX需求",
+          "externalId": "DCIM-ORG-004",
+          "title": "一致性需求",
+          "priority": "P0",
+          "content": "归属关系单一事实源存储（站点的归属租户仅存于站点实体、位置的归属站点仅存于位置实体，均不反向冗余），统计计数全部派生查询，禁止双向冗余；边缘—中心两级数据以边缘为权威源，中心镜像最终一致，网络恢复后自动补传；租户 ID、站点 ID 两级全局唯一且中心-边缘一致。"
+        },
+        {
+          "key": "acceptance-audit",
+          "section": "验收需求",
+          "externalId": "",
+          "title": "审计协同验收",
+          "content": "本模块资源变更、归属变更、视角切换等行为产生的审计事件，能正确交付 FUN-02 日志模块承接记录（对象锚定、全字段快照、request\\_id），不丢失、可追溯（审计的存储、查询、留存由 FUN-02 验收，不在本模块验收范围）。"
+        }
+      ]
+    },
+    {
+      "key": "confluence:6595117",
+      "title": "LOG 需求说明书（MPS）",
+      "url": "",
+      "version": "24",
+      "complete": false,
+      "clauses": [
+        {
+          "key": "f-002-ingestion",
+          "section": "功能需求",
+          "externalId": "DCIM‑LOG‑002",
+          "title": "多源日志采集和接入",
+          "priority": "P0",
+          "content": "支持接入应用、数据库、中间件、采集网关、任务、开放接口及外部集成产生的日志；  能够识别来源和实例；  接入失败、格式异常或身份不明时不得静默丢弃。"
+        }
+      ]
+    }
+  ],
+  "entities": [
+    {
+      "id": "case-org:org-tenant",
+      "entity": "requirement",
+      "group": "ORG 组织管理",
+      "data": {
+        "title": "租户资料维护与查询",
+        "background": "建议拆分；依据来源条款提出，负责人和排期由项目经理后续确认。",
+        "acceptanceCriteria": "租户名称重名被拒绝；编码按原文人工录入；列表详情和派生统计符合资料维护范围。",
+        "tags": [
+          "建议拆分",
+          "中心"
+        ],
+        "deliveryScope": "candidate",
+        "ownerId": null
+      }
+    },
+    {
+      "id": "case-org:org-tenant-lifecycle",
+      "entity": "requirement",
+      "group": "ORG 组织管理",
+      "data": {
+        "title": "租户禁用删除及访问失效",
+        "background": "建议拆分；依据来源条款提出，负责人和排期由项目经理后续确认。",
+        "acceptanceCriteria": "禁用拒绝用户及 API 凭证访问；删除说明关联数据阻碍并二次确认；失效 tenant_id 回传被拒绝且产生审计事件。",
+        "tags": [
+          "建议拆分",
+          "中心",
+          "边缘"
+        ],
+        "deliveryScope": "candidate",
+        "ownerId": null
+      }
+    },
+    {
+      "id": "case-org:org-site",
+      "entity": "requirement",
+      "group": "ORG 组织管理",
+      "data": {
+        "title": "站点创建与边缘纳管",
+        "background": "建议拆分；依据来源条款提出，负责人和排期由项目经理后续确认。",
+        "acceptanceCriteria": "中心与边缘 ID 一致；租户管理员不可编辑站点；中心停收与边缘独立运行边界正确。",
+        "tags": [
+          "建议拆分",
+          "中心",
+          "边缘"
+        ],
+        "deliveryScope": "candidate",
+        "ownerId": null
+      }
+    },
+    {
+      "id": "case-org:org-assignment",
+      "entity": "requirement",
+      "group": "ORG 组织管理",
+      "data": {
+        "title": "站点归属变更",
+        "background": "建议拆分；依据来源条款提出，负责人和排期由项目经理后续确认。",
+        "acceptanceCriteria": "一站一租户；编辑表单不可绕过变更入口；阻碍明确提示；二次确认后旧权限、告警规则、推送配置禁用并保留记录。",
+        "tags": [
+          "建议拆分",
+          "中心"
+        ],
+        "deliveryScope": "candidate",
+        "ownerId": null
+      }
+    },
+    {
+      "id": "case-org:org-assignment:checks",
+      "entity": "work",
+      "requirementId": "case-org:org-assignment",
+      "data": {
+        "title": "归属变更前置检查",
+        "ownerId": null,
+        "durationDays": null
+      }
+    },
+    {
+      "id": "case-org:org-assignment:switch",
+      "entity": "work",
+      "requirementId": "case-org:org-assignment",
+      "data": {
+        "title": "归属切换与级联失效",
+        "ownerId": null,
+        "durationDays": null
+      }
+    },
+    {
+      "id": "case-org:org-assignment:verify",
+      "entity": "work",
+      "requirementId": "case-org:org-assignment",
+      "data": {
+        "title": "变更验证",
+        "ownerId": null,
+        "durationDays": null
+      }
+    },
+    {
+      "id": "case-org:org-location",
+      "entity": "requirement",
+      "group": "ORG 组织管理",
+      "data": {
+        "title": "边缘位置树管理",
+        "background": "建议拆分；依据来源条款提出，负责人和排期由项目经理后续确认。",
+        "acceptanceCriteria": "位置挂有效站点；租户由站点派生；自身和子树不可作父节点；类型倒挂被拒绝；有关联资产时删除说明处理要求。",
+        "tags": [
+          "建议拆分",
+          "边缘"
+        ],
+        "deliveryScope": "candidate",
+        "ownerId": null
+      }
+    },
+    {
+      "id": "case-org:org-sync",
+      "entity": "requirement",
+      "group": "ORG 组织管理",
+      "data": {
+        "title": "边缘与中心资源同步",
+        "background": "建议拆分；依据来源条款提出，负责人和排期由项目经理后续确认。",
+        "acceptanceCriteria": "中心镜像与边缘权威数据一致；断网独立运行，恢复补传；审计携带对象锚定、快照和 request_id 并可追溯。",
+        "tags": [
+          "建议拆分",
+          "中心",
+          "边缘"
+        ],
+        "deliveryScope": "candidate",
+        "ownerId": null
+      }
+    },
+    {
+      "id": "case-org:log-ingestion",
+      "entity": "requirement",
+      "group": "LOG 日志管理",
+      "data": {
+        "title": "多源日志采集和接入",
+        "background": "建议拆分案例；验收条件为建议，须结合实际范围核对。人员、日期、工期未提供。",
+        "acceptanceCriteria": "识别来源及实例；异常不静默丢弃；ORG 事件包含对象锚定、快照、request_id 且能追溯。",
+        "tags": [
+          "建议拆分",
+          "边缘",
+          "中心"
+        ],
+        "deliveryScope": "candidate",
+        "ownerId": null
+      }
+    }
+  ],
+  "references": [],
+  "links": [
+    {
+      "requirementId": "case-org:org-tenant",
+      "workItemId": null,
+      "document": "confluence:10423063",
+      "clause": "functional-001",
+      "scope": "落实租户资料新增、编辑、列表详情、重名校验及聚合查询。禁用删除与站点分配分别安排。"
+    },
+    {
+      "requirementId": "case-org:org-tenant-lifecycle",
+      "workItemId": null,
+      "document": "confluence:10423063",
+      "clause": "functional-001",
+      "scope": "落实启用禁用、删除前置检查及中心边缘访问失效；保留关系与历史。"
+    },
+    {
+      "requirementId": "case-org:org-tenant-lifecycle",
+      "workItemId": null,
+      "document": "confluence:10423063",
+      "clause": "quality-security",
+      "scope": "落实启用禁用、删除前置检查及中心边缘访问失效；保留关系与历史。"
+    },
+    {
+      "requirementId": "case-org:org-site",
+      "workItemId": null,
+      "document": "confluence:10423063",
+      "clause": "functional-002",
+      "scope": "中心生成站点 ID，平台维护站点字段，边缘手工配置纳管；站点状态和只读边界符合原文。"
+    },
+    {
+      "requirementId": "case-org:org-assignment",
+      "workItemId": null,
+      "document": "confluence:10423063",
+      "clause": "functional-001",
+      "scope": "租户分配和站点归属变更复用同一入口和事实源，只安排一次；实现前置检查及级联禁用。"
+    },
+    {
+      "requirementId": "case-org:org-assignment",
+      "workItemId": null,
+      "document": "confluence:10423063",
+      "clause": "functional-002",
+      "scope": "租户分配和站点归属变更复用同一入口和事实源，只安排一次；实现前置检查及级联禁用。"
+    },
+    {
+      "requirementId": "case-org:org-assignment",
+      "workItemId": null,
+      "document": "confluence:10423063",
+      "clause": "quality-security",
+      "scope": "租户分配和站点归属变更复用同一入口和事实源，只安排一次；实现前置检查及级联禁用。"
+    },
+    {
+      "requirementId": "case-org:org-assignment",
+      "workItemId": null,
+      "document": "confluence:10423063",
+      "clause": "quality-consistency",
+      "scope": "租户分配和站点归属变更复用同一入口和事实源，只安排一次；实现前置检查及级联禁用。"
+    },
+    {
+      "requirementId": "case-org:org-location",
+      "workItemId": null,
+      "document": "confluence:10423063",
+      "clause": "functional-003",
+      "scope": "边缘维护位置树和字段；落实挂站点、禁止跨站点、防环、层级校验和资产删除前检查。"
+    },
+    {
+      "requirementId": "case-org:org-location",
+      "workItemId": null,
+      "document": "confluence:10423063",
+      "clause": "quality-consistency",
+      "scope": "边缘维护位置树和字段；落实挂站点、禁止跨站点、防环、层级校验和资产删除前检查。"
+    },
+    {
+      "requirementId": "case-org:org-sync",
+      "workItemId": null,
+      "document": "confluence:10423063",
+      "clause": "quality-consistency",
+      "scope": "同步资源权威数据及租户/站点 ID；产生并交付审计事件。LOG 的接收、存储、查询与留存复用 LOG 交付。"
+    },
+    {
+      "requirementId": "case-org:org-sync",
+      "workItemId": null,
+      "document": "confluence:10423063",
+      "clause": "acceptance-audit",
+      "scope": "同步资源权威数据及租户/站点 ID；产生并交付审计事件。LOG 的接收、存储、查询与留存复用 LOG 交付。"
+    },
+    {
+      "requirementId": "case-org:log-ingestion",
+      "workItemId": null,
+      "document": "confluence:6595117",
+      "clause": "f-002-ingestion",
+      "scope": "LOG 接收日志事件，复用同一接入交付；本示例不重复创建存储和查询工作。"
+    },
+    {
+      "requirementId": "case-org:log-ingestion",
+      "workItemId": null,
+      "document": "confluence:10423063",
+      "clause": "acceptance-audit",
+      "scope": "接收 ORG 交付的审计事件；ORG 负责事件产生与交付，LOG 负责接收。"
+    }
+  ],
+  "dependencies": [
+    {
+      "clientId": "case-org:edge:0",
+      "sourceRequirementId": "case-org:org-assignment",
+      "sourceWorkItemId": "case-org:org-assignment:checks",
+      "targetRequirementId": "case-org:org-assignment",
+      "targetWorkItemId": "case-org:org-assignment:switch"
+    },
+    {
+      "clientId": "case-org:edge:1",
+      "sourceRequirementId": "case-org:org-assignment",
+      "sourceWorkItemId": "case-org:org-assignment:switch",
+      "targetRequirementId": "case-org:org-assignment",
+      "targetWorkItemId": "case-org:org-assignment:verify"
+    }
+  ],
+  "templates": [],
+  "questions": [
+    "建议拆分；人员、工期和排期由人类核对。"
+  ],
+  "positions": {}
+}

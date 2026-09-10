@@ -1,4 +1,4 @@
 interface:
-  display_name: "需求录入、拓扑与计划"
-  short_description: "整理原始需求并录入系统，分解工作、构建依赖拓扑及制定计划"
-  default_prompt: "使用 $project-manage-intake，优先按原始需求录入系统，按需分解工作或套用工作流，建立依赖拓扑并制定计划，人员留给人类确定。"
+  display_name: "个人需求草稿、拓扑与计划"
+  short_description: "整理需求、工作与依赖，保存个人草稿并交本人审核发布"
+  default_prompt: "使用 $project-manage-intake，优先按可验证原始需求整理个人草稿，分解工作或展开工作流、建立依赖拓扑和预览计划。保存到我的工作，交本人审核发布，人员留给人类确定。"

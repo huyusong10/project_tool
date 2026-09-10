@@ -973,3 +973,33 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent-ink); box
 
 .gantt-toolbar-actions{flex-wrap:wrap;max-width:100%}
 .template-card li>span:has(svg){display:grid;place-items:center}
+.personal-drafts { display:grid; gap:16px; padding:20px 24px; min-width:0; }
+.personal-drafts.draft-dialog { padding:0; }
+.personal-drafts button:not(.react-flow__controls-button) { padding:8px 12px; border:1px solid var(--border-default); border-radius:6px; color:var(--text-primary); background:var(--bg-surface); font:inherit; font-size:13px; cursor:pointer; }
+.personal-drafts button:not(:disabled):hover { border-color:var(--accent); color:var(--accent); }
+.personal-drafts button.primary { color:white; background:var(--accent); border-color:var(--accent); }
+.personal-drafts button:disabled { opacity:.5; cursor:default; }
+.personal-drafts .view-tabs button.active { background:var(--accent-soft); color:var(--accent); }
+.personal-drafts p { color:var(--text-muted); line-height:1.65; margin:0; }
+.personal-drafts label { display:grid; gap:6px; font-size:13px; min-width:0; }
+.personal-drafts input:not([type=checkbox]):not([type=radio]), .personal-drafts select, .personal-drafts textarea { width:100%; min-width:0; padding:9px 10px; border:1px solid var(--border-default); border-radius:6px; background:var(--bg-surface); color:var(--text-primary); }
+.personal-drafts textarea { min-height:80px; resize:vertical; }
+.draft-toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.draft-toolbar > label { min-width:160px; flex:1; }
+.draft-toolbar select { max-width:360px; }
+.draft-toolbar code { overflow-wrap:anywhere; font-size:11px; color:var(--text-muted); }
+.draft-title { font-weight:600; }.draft-title input { font-size:20px; }
+.draft-stack,.draft-fields { display:grid; gap:14px; min-width:0; }
+.draft-fields.compact { grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); }
+.draft-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; }
+.draft-list-item { display:grid; gap:8px; text-align:left; padding:20px; border:1px solid var(--border-default); background:var(--bg-surface); color:var(--text-primary); border-radius:10px; }
+.draft-list-item strong { font-size:17px; }.draft-list-item span,.draft-list-item small { color:var(--text-muted); }
+.draft-card { min-width:0; padding:20px; border:1px solid var(--border-default); border-radius:10px; background:var(--bg-surface); display:grid; gap:16px; }
+.draft-card h3 { margin:0; }.draft-work { display:grid; grid-template-columns:minmax(160px,2fr) minmax(140px,1fr) minmax(140px,1fr) auto; gap:12px; align-items:end; border-left:3px solid var(--accent); padding:12px; background:var(--bg-page); }
+.draft-notice { padding:14px 18px; background:var(--accent-soft); border-radius:8px; overflow-wrap:anywhere; }.draft-error { color:var(--danger-text); white-space:pre-wrap; }
+.draft-source { border-top:1px solid var(--border-default); padding-top:14px; }.draft-source summary { cursor:pointer; padding-bottom:12px; }
+.draft-clause { display:grid; gap:12px; padding:14px 0; border-bottom:1px solid var(--border-default); }
+.draft-graph { height:580px; min-height:360px; border:1px solid var(--border-default); border-radius:10px; background:var(--bg-page); }
+.draft-table-scroll { overflow:auto; }.draft-table-scroll table { min-width:600px; width:100%; }.draft-table-scroll th,.draft-table-scroll td { padding:10px; text-align:left; border-bottom:1px solid var(--border-default); }
+.draft-conflict { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:14px 0; border-bottom:1px solid var(--border-default); }.draft-conflict strong { grid-column:1/-1; overflow-wrap:anywhere; }.draft-conflict pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:220px; overflow:auto; }
+@media(max-width:700px) { .personal-drafts { padding:16px 10px; }.draft-work,.draft-fields.compact,.draft-conflict { grid-template-columns:1fr; }.draft-card { padding:14px; }.draft-toolbar select { max-width:100%; }.draft-toolbar > label { min-width:100%; }.draft-graph { height:460px; }.draft-list { grid-template-columns:1fr; } }

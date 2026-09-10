@@ -19,18 +19,19 @@ import {settleMilestones} from './milestones';
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 /** Preview and commit use the same final network, never a sequence of public single-item writes. */
-function prepare(projectId: string, input: DependencyChangesInput, actor: Actor) {
+function prepare(projectId: string, input: DependencyChangesInput, actor: Actor, privateProjection=false) {
   const current = requireAuthorizationActor(actor);
   assertProjectReadable(current, projectId);
   checkedRevision(projectId, input.expectedRevision);
   const snapshot = loadPathInput(projectId);
   const before=analyse(structuredClone(snapshot), input.target);
   const { add, remove, estimates,entities=[],layouts=[] } = input.changes;
+  if(privateProjection&&(remove.length||estimates.length||layouts.length||input.changes.commitment||entities.some(c=>c.op!=='create')))fail('个人草稿不得修改正式对象、估算、画布或承诺');
   const beforeEstimates=new Map(snapshot.workItems.filter(w=>estimates.some(p=>p.workItemId===w.id)).map(w=>[w.id,{durationDays:w.durationDays,earliestStart:w.earliestStart,unblockEstimate:w.unblockEstimate,forecastEnd:w.forecastEnd}]));
   if (!add.length && !remove.length && !estimates.length&&!entities.length&&!layouts.length&&!input.changes.commitment) fail('没有需要保存的修改');
   if (new Set(remove).size !== remove.length || new Set(add.map(e => e.clientId)).size !== add.length
     || new Set(estimates.map(e => e.workItemId)).size !== estimates.length) fail('批次中存在重复修改');
-  const expanded=prepareEditorEntities(snapshot,entities,actor);
+  const expanded=prepareEditorEntities(snapshot,entities,actor,privateProjection);
   const removed=snapshot.dependencies.filter(e=>remove.includes(e.id));
   for(const id of remove){
     const edge=snapshot.dependencies.find(e=>e.id===id);
@@ -48,7 +49,7 @@ function prepare(projectId: string, input: DependencyChangesInput, actor: Actor)
   const createdRequirements=new Set(entities.filter(c=>c.entity==='requirement'&&c.op==='create').map(c=>c.id));
   for (const { clientId, ...value } of add) {
     const edge = { ...value, id: clientId, projectId, origin: 'manual' };
-    if(createdRequirements.has(edge.sourceRequirementId)||createdRequirements.has(edge.targetRequirementId))assertProjectManager(current,projectId);else assertRelationAccess(edge, actor);
+    if(!privateProjection){if(createdRequirements.has(edge.sourceRequirementId)||createdRequirements.has(edge.targetRequirementId))assertProjectManager(current,projectId);else assertRelationAccess(edge, actor);}
     for(const [req,work,milestone] of [[edge.sourceRequirementId,edge.sourceWorkItemId,edge.sourceMilestoneId],[edge.targetRequirementId,edge.targetWorkItemId,edge.targetMilestoneId]]){
       if(milestone){if(work||!snapshot.milestones?.some(m=>m.id===milestone&&(m.requirementId||'')===req&&!m.cancelled))fail('里程碑端点无效');}
       else {if(!snapshot.requirements.some(r=>r.id===req&&!r.deletedAt))fail('需求端点无效');if(work&&!snapshot.workItems.some(w=>w.id===work&&w.requirementId===req))fail('工作项端点无效');}
@@ -76,6 +77,16 @@ export function previewDependencyChanges(projectId: string, raw: unknown, actor:
     const result = prepare(projectId, dependencyChangesInput.parse(raw), actor);
     return { analysis: result.analysis, expectedRevision: result.expectedRevision, asOfDate: result.asOfDate,
       previewToken: result.previewToken, count: result.count, differences:result.differences,templateInstances:[...result.expanded.values()].map(({requirementId,key,entities,dependencies})=>({requirementId,key,entities,dependencies})) };
+  })();
+}
+
+/** No write route calls this: private drafts may project only new objects and added relations. */
+export function previewPersonalDraftChanges(projectId:string,raw:unknown,actor:Actor) {
+  return sqlite.transaction(()=>{
+    const result=prepare(projectId,dependencyChangesInput.parse(raw),actor,true);
+    return {analysis:result.analysis,expectedRevision:result.expectedRevision,asOfDate:result.asOfDate,
+      previewToken:result.previewToken,count:result.count,differences:result.differences,
+      templateInstances:[...result.expanded.values()].map(({requirementId,key,entities,dependencies})=>({requirementId,key,entities,dependencies}))};
   })();
 }
 

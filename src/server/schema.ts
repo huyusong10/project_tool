@@ -381,3 +381,15 @@ export const sourceLinks=sqliteTable('source_links',{
 export const requirementImportReceipts=sqliteTable('requirement_import_receipts',{
   batchId:text('batch_id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id,{onDelete:'cascade'}),actorId:text('actor_id').notNull(),contentHash:text('content_hash').notNull(),result:text('result').notNull(),createdAt:text('created_at').notNull(),
 });
+
+export const requirementDrafts = sqliteTable('requirement_drafts', {
+  id:text('id').primaryKey(), accountId:text('account_id').notNull().references(()=>accounts.id),
+  projectId:text('project_id').notNull().references(()=>projects.id), title:text('title').notNull(),
+  content:text('content').notNull(), version:integer('version').notNull().default(1),
+  status:text('status').notNull().default('draft'), source:text('source').notNull(), receipt:text('receipt'), ...timestamps,
+},t=>[index('requirement_drafts_owner_updated').on(t.accountId,t.updatedAt)]);
+export const requirementDraftRequests = sqliteTable('requirement_draft_requests', {
+  accountId:text('account_id').notNull().references(()=>accounts.id),requestId:text('request_id').notNull(),
+  draftId:text('draft_id').notNull().references(()=>requirementDrafts.id),kind:text('kind').notNull(),
+  contentHash:text('content_hash').notNull(),result:text('result').notNull(),createdAt:text('created_at').notNull(),
+},t=>[uniqueIndex('requirement_draft_requests_key').on(t.accountId,t.requestId)]);

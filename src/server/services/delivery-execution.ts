@@ -25,8 +25,13 @@ function refreshDirectForecast(id:string){
 
 export const deliveryColumns={deliveryScope:'delivery_scope',executionMode:'execution_mode',acceptanceOwnerId:'acceptance_owner_id',durationDays:'duration_days',forecastEnd:'forecast_end',unblockEstimate:'unblock_estimate'} as const;
 export function validateDeliveryFields(projectId:string,value:JsonObject,actor:Actor,current?:RequirementRecord){
-  const auth=requireAuthorizationActor(actor);validateOrganization(projectId,value);
+  const auth=requireAuthorizationActor(actor);
   if(value.deliveryScope!==undefined&&value.deliveryScope!==current?.deliveryScope||value.acceptanceOwnerId!==undefined&&value.acceptanceOwnerId!==current?.acceptanceOwnerId)assertProjectManager(auth,projectId);
+  validateDeliveryData(projectId,value,current);
+}
+/** Business validation shared with private, read-only plan projection. */
+export function validateDeliveryData(projectId:string,value:JsonObject,current?:RequirementRecord){
+  validateOrganization(projectId,value);
   if(value.acceptanceOwnerId){const valid=sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id JOIN accounts a ON a.person_id=p.id WHERE pp.project_id=? AND p.id=? AND pp.project_role IN ('manager','member') AND p.active=1 AND p.deleted_at IS NULL AND a.status='active' AND a.deleted_at IS NULL").get(projectId,value.acceptanceOwnerId);if(!valid)fail('验收人必须是有有效账号的当前项目成员');}
   if(value.ownerId&&!sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id JOIN accounts a ON a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL WHERE pp.project_id=? AND p.id=? AND pp.project_role IN ('member','manager') AND p.active=1 AND p.deleted_at IS NULL").get(projectId,value.ownerId))fail('负责人必须是有效项目成员');
   if(current&&value.deliveryScope==='candidate'&&current.deliveryScope!=='candidate'&&['in_progress','blocked','pending_acceptance'].includes(current.status)&&!String(value.reason||'').trim())fail('撤出已执行需求时请填写原因');

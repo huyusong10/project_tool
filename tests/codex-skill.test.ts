@@ -12,7 +12,7 @@ const name = 'project-manage-intake';
 afterAll(() => fs.rmSync(directory, { recursive: true, force: true }));
 
 function run(codexHome: string, cwd = directory) {
-  return spawnSync(process.execPath, [script], { cwd, encoding: 'utf8', env: { ...process.env, CODEX_HOME: codexHome } });
+  return spawnSync(process.execPath, [script], { cwd, encoding: 'utf8', env: { ...process.env, SKIP_CODEX_SKILL_SYNC:'0', ALLOW_CODEX_SKILL_SYNC:'1', CODEX_HOME: codexHome } });
 }
 function contents(root: string, prefix = ''): Record<string, string> {
   return Object.assign({}, ...fs.readdirSync(path.join(root, prefix), { withFileTypes: true }).map(entry => {
@@ -50,4 +50,14 @@ it('目标是普通文件时明确失败并保留原文件', () => {
   fs.writeFileSync(target, 'Do not replace a non-directory');
   expect(run(codexHome).status).not.toBe(0);
   expect(fs.readFileSync(target, 'utf8')).toBe('Do not replace a non-directory');
+});
+
+it('禁用标志优先，不创建目标目录；附属 worktree 默认也不安装',()=>{
+  const target=path.join(directory,'disabled');
+  const result=spawnSync(process.execPath,[script],{encoding:'utf8',env:{...process.env,CODEX_HOME:target,SKIP_CODEX_SKILL_SYNC:'1',ALLOW_CODEX_SKILL_SYNC:'1'}});
+  expect(result.status,result.stderr).toBe(0);expect(result.stdout).toContain('skipped');expect(fs.existsSync(target)).toBe(false);
+  if(fs.statSync(fileURLToPath(new URL('../.git',import.meta.url))).isFile()){
+    const linked=spawnSync(process.execPath,[script],{encoding:'utf8',env:{...process.env,CODEX_HOME:target,SKIP_CODEX_SKILL_SYNC:'0',ALLOW_CODEX_SKILL_SYNC:'0'}});
+    expect(linked.status).toBe(0);expect(linked.stdout).toContain('skipped');expect(fs.existsSync(target)).toBe(false);
+  }
 });

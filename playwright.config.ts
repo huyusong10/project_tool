@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 import os from "node:os";
 import path from "node:path";
 
-const testPort = Number(process.env.PLAYWRIGHT_PORT || 3211);
+const testPort = Number(process.env.PLAYWRIGHT_PORT || (path.basename(process.cwd()) === 'project-manage-drafts' ? 3243 : 3211));
 const testRunId = String(process.pid);
 
 const viewports = [

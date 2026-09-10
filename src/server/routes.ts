@@ -1,4 +1,5 @@
 import {registerIntakeRoutes} from './intake-api';
+import {registerRequirementDraftRoutes} from './requirement-draft-api';
 import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor,directStartConditions} from './services/delivery-execution';
 import {isCoordinationEdit,assertCoordinationAccess} from './services/blocker-coordination';
 import {directRequirementCommandSchema,idSchema} from '../shared/contracts';
@@ -181,6 +182,7 @@ function setSessionCookie(reply: FastifyReply, accountId: string, sessionVersion
 
 export function registerApiRoutes(app: FastifyInstance) {
   registerIntakeRoutes(app,requireReady);
+  registerRequirementDraftRoutes(app,requireReady);
   app.get('/api/branding', async () => getBranding());
   app.get('/api/branding/logo', async (_request, reply) => {
     const logo = getBrandingLogo();

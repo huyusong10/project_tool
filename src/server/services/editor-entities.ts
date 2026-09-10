@@ -2,10 +2,10 @@ import {validateCoordination,isCoordinationEdit,assertCoordinationAccess} from '
 import {refreshPathAssignments} from './path-assignments';
 import {templateInstanceKey,type DraftTemplateInstance} from '../../shared/template-instance';
 import {coordinationKeys} from '../../shared/blocker-coordination';
-import {validateDeliveryFields,updateDeliveryRequirement} from './delivery-execution';
+import {validateDeliveryFields,validateDeliveryData,updateDeliveryRequirement} from './delivery-execution';
 import {sqlite} from '../database';
 import type {Actor} from '../auth';
-import {assertProjectManager,assertRequirementOwnerOrManager,requireAuthorizationActor} from '../authorization';
+import {assertProjectReadable,assertProjectManager,assertRequirementOwnerOrManager,requireAuthorizationActor} from '../authorization';
 import {fail,notFound} from '../errors';
 import {requireLabel,normalizeRequirementText} from './support';
 import {createRequirementInputSchema,updateRequirementInputSchema,createWorkItemInputSchema,updateWorkItemInputSchema} from '../../shared/contracts';
@@ -20,8 +20,12 @@ type TemplateExpansion=DraftTemplateInstance & {version:string;items:Array<{clie
 export function assertEditorAssignees(projectId:string,ids:Array<string|null|undefined>){
   for(const id of new Set(ids.filter(Boolean)))if(!sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id WHERE pp.project_id=? AND pp.person_id=? AND pp.project_role IN ('member','manager') AND p.active=1 AND p.deleted_at IS NULL AND EXISTS (SELECT 1 FROM accounts a WHERE a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL)").get(projectId,id))fail('负责人必须是当前项目中账号有效的成员或项目经理');
 }
-export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityChange[],actor:Actor){
+export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityChange[],actor:Actor,privateProjection=false){
   const current=requireAuthorizationActor(actor),created=new Set(changes.filter(c=>c.op==='create').map(c=>c.id));
+  if(privateProjection){
+    assertProjectReadable(current,snapshot.projectId);
+    if(changes.some(c=>c.op!=='create'||c.entity!=='requirement'&&c.requirementId&&!created.has(c.requirementId)))fail('个人草稿只能预览新增对象，已有成果只读');
+  }
   if(new Set(changes.map(c=>c.id)).size!==changes.length)fail('同一对象不能在批次中重复提交');
   snapshot.milestones||=[];
   const expanded=new Map<string,TemplateExpansion>();
@@ -35,7 +39,8 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     if(row&&c.entity!=='requirement'&&c.requirementId!==undefined&&(c.requirementId||null)!==(row.requirement_id||null))fail('不能更改对象归属');
     const requirementId=c.entity==='requirement'?c.id:c.requirementId||String(row?.requirement_id||'');
     const req=snapshot.requirements.find(r=>r.id===requirementId);
-    if(c.entity==='requirement'&&c.op==='create'||!requirementId||created.has(requirementId))assertProjectManager(current,snapshot.projectId);
+    if(privateProjection){ /* Read access was checked above; this function only changes the snapshot. */ }
+    else if(c.entity==='requirement'&&c.op==='create'||!requirementId||created.has(requirementId))assertProjectManager(current,snapshot.projectId);
     else {if(!req||req.deletedAt)notFound('需求不存在');if(c.entity!=='milestone'&&c.op==='update'&&isCoordinationEdit(c.data))assertCoordinationAccess(c.entity,c.id,c.data,actor);else assertRequirementOwnerOrManager(current,requirementId);}
     if(c.entity==='milestone'&&row?.project_id!==undefined&&row.project_id!==snapshot.projectId)notFound('里程碑不属于当前项目');
     if(req&&['completed','cancelled'].includes(req.status)&&c.op!=='delete')fail('已结束需求不能修改结构','TERMINAL_LOCKED');
@@ -58,7 +63,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
         if(value.templateId&&!template)fail('请选择当前项目的有效流程设计');
         if(value.executionMode!=='direct'&&(value.plannedStart||value.plannedEnd)&&!template){const project=sqlite.prepare('SELECT default_template_id AS id FROM projects WHERE id=?').get(snapshot.projectId) as {id:string|null};template=listTemplates(snapshot.projectId).find(t=>t.id===project.id)||listTemplates(snapshot.projectId)[0];}
         if(value.executionMode!=='direct'&&(value.plannedStart||value.plannedEnd)&&!template)fail('立即规划时请选择有效流程');
-        validateDeliveryFields(snapshot.projectId,value,actor);
+        if(privateProjection)validateDeliveryData(snapshot.projectId,value);else validateDeliveryFields(snapshot.projectId,value,actor);
         const base=value.plannedStart||(value.plannedEnd&&template?plannedStartFromDeadline(value.plannedEnd,template.items.filter((i:{kind?:string})=>i.kind!=='milestone')):null);
         const r:PathRequirement={...value,id:c.id,projectId:snapshot.projectId,status:'planning',ownerName:null,plannedStart:base||null,plannedEnd:null,acceptedAt:null,dependenciesReviewedAt:new Date().toISOString(),scheduleAnchor:base||null,forecastAcceptance:null,deletedAt:null,version:1};
         if(value.executionMode==='direct'){

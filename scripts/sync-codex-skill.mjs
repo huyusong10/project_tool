@@ -4,6 +4,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
+const repository = fileURLToPath(new URL('..', import.meta.url));
+const linkedWorktree = fs.statSync(path.join(repository, '.git'), { throwIfNoEntry: false })?.isFile();
+// Inherited CODEX_HOME must never implicitly opt a linked worktree into global installation.
+if (process.env.SKIP_CODEX_SKILL_SYNC === '1' || (linkedWorktree && process.env.ALLOW_CODEX_SKILL_SYNC !== '1')) {
+  console.log('Codex skill sync skipped (disabled or linked worktree).');
+  process.exit(0);
+}
+
 const name = 'project-manage-intake';
 const source = fs.realpathSync(fileURLToPath(new URL(`../skills/${name}`, import.meta.url)));
 const codexHome = path.resolve(process.env.CODEX_HOME?.trim() || path.join(os.homedir(), '.codex'));

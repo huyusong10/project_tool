@@ -11,7 +11,7 @@ export const groupInput = z.object({ id: key.optional(), name: label, sortOrder:
 export const groupDeleteInput = z.object({ expectedVersion: version }).strict();
 export const organizationInput = z.object({ requirements: z.array(z.object({ id: key, expectedVersion: version }).strict()).min(1).max(1000), ...organizationFields }).strict().refine(v => v.groupId !== undefined || v.tags !== undefined, '请选择分组或标签');
 export const sourceClauseInput = z.object({ key, section: text.default(''), externalId: text.default(''), title: label, content: text.default(''), priority: text.default(''), deferredReason: text.optional() }).strict();
-export const sourceDocumentInput = z.object({ key, title: label, url: z.string().url().refine(v => /^https?:\/\//i.test(v), '来源仅支持HTTP或HTTPS'), version: key, complete: z.boolean().default(false), clauses: z.array(sourceClauseInput).max(2000) }).strict();
+export const sourceDocumentInput = z.object({ key, title: label, url: z.union([z.literal(''),z.string().url().refine(v => /^https?:\/\//i.test(v), '来源仅支持HTTP或HTTPS')]).default(''), version: z.string().trim().max(200).default(''), complete: z.boolean().default(false), clauses: z.array(sourceClauseInput).max(2000) }).strict();
 export const sourceWriteInput = z.object({ expectedRevision: z.string(), documents: z.array(sourceDocumentInput).min(1).max(50) }).strict();
 export const sourceLinkInput = z.object({ requirementId: key, workItemId: key.nullable().default(null), clauseId: key, scope: text.refine(v => !!v, '请填写本次落实范围'), expectedVersion: version, reason: text.optional(), reviewedRevisionId: key.optional() }).strict();
 export const sourceLinkDeleteInput = z.object({ requirementId: key, expectedVersion: version, reason: text.optional() }).strict();

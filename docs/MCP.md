@@ -2,7 +2,25 @@
 
 端点为 `/mcp`，使用无状态 HTTP POST 和个人 Token。Token 继承账号的项目权限。成功数据在 `structuredContent.result`；业务错误返回 `isError: true`、`structuredContent.error` 和 `statusCode`。
 
-Agent 录入流程维护在 [project-manage-intake skill](../skills/project-manage-intake/SKILL.md)。修改本文涉及的工具、参数或业务口径时，同步更新 skill；生产构建会安装仓库中的版本。
+Agent 录入流程维护在 [project-manage-intake skill](../skills/project-manage-intake/SKILL.md)。修改工具、参数或业务口径时同步更新仓库 skill。附属 worktree 默认跳过全局安装，SKIP_CODEX_SKILL_SYNC=1 可显式禁用；主工作区保留原构建同步行为。
+
+## 默认先录入个人草稿
+
+| 操作 | MCP 工具 |
+|---|---|
+| 创建和接续本人方案 | create_requirement_draft、list_requirement_drafts、get_requirement_draft |
+| 版本校验后保存 | update_requirement_draft |
+| 校验需求、来源和执行网络 | preview_requirement_draft |
+| 展开工作流，保留模板版本和结果 | preview_requirement_draft_template |
+| 用正式项目与本草稿分析排期 | preview_requirement_draft_plan |
+| 关闭但保留本人草稿 | close_requirement_draft |
+| 查询网页发布批次 | get_requirement_draft_publish_receipt |
+
+创建时必须选择 projectId，以 Token 对应的 accountId 归属；同账号不同 Token 可接续，其他管理员也不可读取。list_requirement_drafts 可跨本人有草稿的项目查询，默认每页 30 条，返回 items、total、page、pageSize、revision。
+
+创建与保存使用 requestId，保存使用 expectedVersion；冲突时读取并按字段合并，不覆盖新版本。正文允许不完整，但拒绝结构和跨项目引用错误。已有正式成果只读引用，新增分配默认留空。来源可无地址和原始版本，保留正文及内部修订标识。
+
+MCP 不提供发布工具。本人在“我的工作 → 个人草稿”审核，具备项目管理权限后由网页登录会话发布。发布绑定已保存版本、项目版本、预览凭据及批次 ID，失败整批回滚。原正式写入工具保持兼容，仅在用户明确要求直接修改正式项目时使用。调用示例见 [个人草稿使用说明](personal-drafts-usage.md)。
 
 ## 选择工具
 
