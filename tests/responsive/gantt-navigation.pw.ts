@@ -68,6 +68,7 @@ test('需求内部拖动、失焦结束、窄屏与主题下保持可浏览',asy
   await page.setViewportSize({width:390,height:844});await page.emulateMedia({colorScheme:'dark'});await page.waitForTimeout(80);
   const panel=page.locator('.requirement-gantt');const bounds=await panel.boundingBox();expect(bounds!.width).toBeLessThanOrEqual(390);
   await expect(page.locator('.requirement-gantt .gantt-navigation-scrollbar')).toBeVisible();await page.getByLabel('跳转到日期',{exact:true}).fill('2026-12-15');await page.getByLabel('跳转到日期',{exact:true}).press('Enter');await expect.poll(async()=>(await snapshot(surface)).center).toBe('2026-12-15');
+  await page.getByRole('button',{name:'展开侧边栏',exact:true}).click();await expect.poll(async()=>(await snapshot(surface)).center).toBe('2026-12-15');
   await page.getByRole('button',{name:'收起侧边栏',exact:true}).click();await expect.poll(async()=>(await snapshot(surface)).center).toBe('2026-12-15');
   const row=await surface.locator('.requirement-gantt-item').first().boundingBox(),track=await surface.boundingBox();expect(row!.x).toBeCloseTo(track!.x,0);
   await expect(page.locator('.requirement-gantt .gantt-scroll-thumb')).toBeVisible();
