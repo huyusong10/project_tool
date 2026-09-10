@@ -64,3 +64,23 @@ IndexedDB 格式仍为版本 2。删除对象的输入在保存或显式放弃�
 证据：`.preview/qa/navigation-before.json`、`navigation-business-verified.json`、`navigation-browser-verified.json`、`navigation-build-final.log`、`navigation-lint-final.log`、`navigation-runtime-final.log`、`navigation-isolation-recheck.log`。六个既有工作目录及服务前后摘要一致，见 `navigation-protected-before/after.json`；临时端口 3242 已关闭。
 
 下一轮检查本机草稿写入队列与接管边界，以及待核对提交在多标签页间的恢复。
+
+## 2026-09-10：成员执行与跨页面记录
+
+按“我的工作 → 开始 → 阻塞与说明 → 完成度 → 完成工作 → 经理验收”检查真实成员操作。未排期工作项可以正常开始；补充说明不修改进度，完成工作后仍须验收。这些操作规则保持不变。
+
+发现“我的工作”另行拼装简化工作项，遗漏取消日期、参与人、估算核对和阻塞协调字段。详情有完整记录，个人甘特却可能不显示已取消工作的实际时间条。
+
+| 修改 | 结果 |
+|---|---|
+| 复用详情的工作项批量读取 | 取消日期、主责与协作人员、估算和阻塞原始记录一致 |
+| 先按账号参与范围筛选，再补全数据 | 不返回同需求中未分配给本人的其他工作项，不逐项查询需求 |
+| 沿用取消记录与时间轴计算 | 两种甘特视图在取消日结束实际时间条；取消不计入完成趋势 |
+
+验证：590 / 590 业务测试、7 / 7 Edge 浏览器场景通过。新增普通协作成员完整执行、经理验收、取消时间条、参与人、390px 和两种甘特视图检查；既有直接执行、拆分草稿、批量范围及详情进度回归通过。类型检查、Lint、原生运行时检查和构建通过。
+
+证据：`.preview/qa/journey-before.json`、`journey-business-final.json`、`journey-browser.json`、`journey-typecheck.log`、`journey-lint.log`、`journey-runtime.log`、`journey-build.log`。初次浏览器运行已走通执行和验收，末尾两个断言使用了不存在的 CSS 类名；按实际时间轴和时间条修正选择器后通过。
+
+无接口写入契约或数据库迁移。六个既有工作目录、构建、配置和监听进程的前后摘要一致，见 `journey-protected-before/after.json`；测试端口 3242 已释放。
+
+后续按“异常行动 → 处理来源 → 验收交接 → 返回”继续检查，草稿接管与未知提交检查保留。

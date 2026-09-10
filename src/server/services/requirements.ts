@@ -76,7 +76,7 @@ function row<T>(sql: string, ...params: unknown[]) {
   return sqlite.prepare(sql).get(...params) as T | undefined;
 }
 
-function loadWorkItemsByRequirementIds(requirementIds: string[], requirementStatuses?: ReadonlyMap<string, string>) {
+export function loadWorkItemsByRequirementIds(requirementIds: string[], requirementStatuses?: ReadonlyMap<string, string>) {
   const result = new Map(requirementIds.map((requirementId) => [requirementId, [] as WorkItemRecord[]]));
   if (!requirementIds.length) return { workItems: result, requirementCancellationDates: new Map<string, string>() };
 
