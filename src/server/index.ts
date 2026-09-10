@@ -2,6 +2,7 @@ import process from 'node:process';
 import { assertRuntimeConfig, config } from './config';
 import { clearDatabaseSwapRollback, rollbackFailedDatabaseSwap } from './database-swap';
 import { readRestoreStatus, writeRestoreStatus } from './restore-status';
+import { isServerAlreadyRunning } from './startup';
 
 if (process.argv.includes('--recover-database-swap')) {
   const pending = readRestoreStatus(config.dbPath);
@@ -23,6 +24,16 @@ if (process.argv.includes('--recover-database-swap')) {
 }
 
 assertRuntimeConfig();
+
+try {
+  if (await isServerAlreadyRunning(config)) {
+    console.log(`项目管理系统已在运行：http://localhost:${config.port}，无需重复启动。`);
+    process.exit(0);
+  }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : '无法确认服务端口是否可用');
+  process.exit(64); // Startup was refused before opening the database; do not recover a database swap.
+}
 
 const { buildApp } = await import('./app');
 const { startBackupScheduler } = await import('./backups');

@@ -28,6 +28,8 @@ TypeScript、React、Vite、Fastify、SQLite、Drizzle 和 ECharts。默认开�
 3. 本机访问 `http://localhost:3210`；局域网其他电脑访问 `http://本机IP:3210`。
 4. 未登录时只显示登录入口；登录后的可见与可写范围由账号角色决定。
 
+`run-server.ps1` 和 `npm start` 会在打开数据库前检查端口。已有正常运行的项目管理服务时，显示访问地址并退出；其他程序占用端口时，明确提示端口冲突。
+
 内置账号为 `admin`，密码沿用首次配置时设置的密码。安装完成后建议立即运行：
 
 ```powershell
