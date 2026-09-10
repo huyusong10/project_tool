@@ -1501,11 +1501,14 @@ export function createWorkItem(requirementId: string, input: JsonObject, actor: 
   if (plannedEnd && businessDaysInclusive(plannedEnd, plannedEnd) !== 1) fail('计划完成需为工作日');
   if (plannedStart && plannedEnd && plannedStart > plannedEnd) fail('计划完成日期不能早于计划开始日期');
   sqlite.transaction(() => {
+    const reviewed = row<{ reviewedAt: string | null }>('SELECT dependencies_reviewed_at AS reviewedAt FROM requirements WHERE id=?', requirementId)?.reviewedAt;
     sqlite.prepare(`INSERT INTO work_items
       (id, requirement_id, title, owner_id, milestone_label, status, planned_start, planned_end, progress, sort_order, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, 'not_started', ?, ?, 0, ?, ?, ?)`).run(
       id, requirementId, title, ownerId, milestone, plannedStart, plannedEnd, max + 1, now, now,
     );
+    // Explicitly adding independent work preserves the previously checked dependency facts.
+    if (reviewed) sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=? WHERE id=?').run(reviewed, requirementId);
     syncWorkItemCollaborators(id, collaboratorIds);
     syncStoredRequirementState(requirementId, now, true, requirement.version);
     requireActiveProject(requirement.projectId, true);
