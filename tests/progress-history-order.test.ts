@@ -121,7 +121,7 @@ it('我的工作对超过900条负责需求分块统计问题行动且不漏首�
   const requirementIds = Array.from({ length: 901 }, () => randomUUID());
   const insertRequirement = sqlite.prepare(`INSERT INTO requirements
     (id,project_id,title,owner_id,status,progress,risk_level,priority,created_at,updated_at)
-    VALUES (?, ?, ?, ?, 'planning', 0, 'low', 'P2', ?, ?)`);
+    VALUES (?, ?, ?, ?, 'not_started', 0, 'low', 'P2', ?, ?)`);
   const insertIssue = sqlite.prepare(`INSERT INTO issues
     (id,project_id,requirement_id,title,status,priority,progress,discovered_at,created_at,updated_at)
     VALUES (?, ?, ?, ?, 'in_progress', 'P2', 0, '2026-09-03', ?, ?)`);

@@ -20,6 +20,27 @@ async function fixture(page:Page){
 }
 const ready=(page:Page)=>expect(page.locator('[data-layout-ready="true"]')).toBeVisible({timeout:20000});
 const viewport=(page:Page)=>page.locator('.react-flow__viewport').evaluate(n=>(n as HTMLElement).style.transform);
+
+test('重进路径分析时恢复离屏视口会自动显示节点，正常视口保持不变',async({page})=>{
+ const {project,analysis}=await fixture(page),before=await analysis();
+ const session=await(await page.request.get('/api/session')).json();
+ const key=`pm-graph-view:${session.accountId}:${project.id}:all:right:current`;
+ await page.goto('/paths?pathScope=all');await ready(page);
+ const normal=await viewport(page);
+ await page.reload();await ready(page);expect(await viewport(page)).toBe(normal);
+ await page.goto('/requirements');
+ await page.evaluate(({key})=>localStorage.setItem(key,JSON.stringify({x:-100000,y:-100000,zoom:1})),{key});
+ await page.goto('/paths?pathScope=all');await ready(page);
+ const inView=async()=>page.locator('.react-flow__node:not(.graph-node-hidden)').evaluateAll(nodes=>{
+   const canvas=document.querySelector('.dependency-canvas')!.getBoundingClientRect();
+   return nodes.filter(node=>{const box=node.getBoundingClientRect();return box.right>canvas.left&&box.left<canvas.right&&box.bottom>canvas.top&&box.top<canvas.bottom;}).length;
+ });
+ await expect.poll(inView).toBeGreaterThan(0);
+ const cached=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)!),key);
+ expect(cached.x).not.toBe(-100000);expect(cached.y).not.toBe(-100000);
+ const restored=await viewport(page);await page.reload();await ready(page);expect(await viewport(page)).toBe(restored);
+ expect(await analysis()).toEqual(before);
+});
 const openMore=async(page:Page)=>{const details=page.locator('.graph-detail .graph-more-relations');if(await details.count()&&(await details.first().getAttribute('open'))===null)await details.first().locator('summary').click();};
 
 test('排期预览可独立拖动跨月并恢复，画布视口和正式数据不变化',async({page},info)=>{
@@ -37,11 +58,18 @@ test('排期预览可独立拖动跨月并恢复，画布视口和正式数据�
  await page.screenshot({path:info.outputPath('path-gantt-navigation.png')});
 });
 const selectList=async(page:Page,title:string)=>{if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:title}).first().click();};
-test('全局→需求→外部交付→返回，选择不移动视口且刷新恢复',async({page})=>{
+test('全局主按钮打开需求详情，路径入口和原路返回保留视口',async({page})=>{
  const {a,b,analysis}=await fixture(page);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/paths?pathScope=all');await ready(page);const before=await viewport(page);
  await selectList(page,b.title);expect(await viewport(page)).toBe(before);
  const globalUrl=page.url();const risk=(await analysis()).risks[b.id];
+ await expect(page.locator('.graph-detail .primary-button')).toHaveText('查看需求详情');
+ await page.getByRole('button',{name:'查看需求详情',exact:true}).click();
+ await expect(page).toHaveURL(new RegExp('/requirements/'+b.id+'$'));
+ await expect(page.getByRole('heading',{name:b.title,exact:true})).toBeVisible();
+ await expect(page.getByRole('table',{name:'需求工作项进展甘特图'})).toBeVisible();
+ await page.getByRole('button',{name:'返回',exact:true}).click();await ready(page);expect(page.url()).toBe(globalUrl);
+ await expect.poll(()=>viewport(page)).toBe(before);
  await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await ready(page);await expect(page.getByLabel('分析目标',{exact:true})).toHaveValue('project');
  await page.reload();await ready(page);await expect(page.getByLabel('分析目标',{exact:true})).toHaveValue('project');
  const local=await(await page.request.get('/api/requirements/'+b.id+'/path-analysis')).json() as PathAnalysis;expect(local.risks[b.id]).toEqual(risk);

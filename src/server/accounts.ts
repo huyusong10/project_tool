@@ -344,7 +344,7 @@ export function getMyWork(accountId: string) {
     total: items.filter((item) => item.status !== 'cancelled').length,
     notStarted: items.filter((item) => item.status === 'not_started').length,
     inProgress: items.filter((item) => item.status === 'in_progress').length,
-    blocked: items.filter((item) => item.status === 'blocked').length,
+    blocked: 0,
     completed: items.filter((item) => item.status === 'completed').length,
     overdue: items.filter((item) => item.overdue).length,
   };

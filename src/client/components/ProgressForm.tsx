@@ -47,7 +47,7 @@ export function ProgressForm({
   const writesPercent = Boolean(workItemId && editsPercent);
   const decreasing = writesPercent && percent < (currentItem?.progress || 0);
   const validationError = reviewRequired ? '无法确认刚才的提交是否生效，请先核对进展记录；本窗口不再提交，已填内容保留，可复制后关闭。'
-    : locked ? '需求已进入待验收或终态，不能再追加进展。'
+    : locked ? '需求已完成或取消，不能再追加进展。'
     : unavailable ? '原工作项已结束或不可操作，已保留你的输入；不会自动改为需求说明。'
     : changed || needsRefresh ? '工作项已更新，请重新读取并核对；已保留你的输入。'
     : editsPercent && draftItem?.status !== 'in_progress' ? '工作项当前不在进行中，不能更新完成度；已填说明保留，请关闭后选择对应操作。'
@@ -103,7 +103,6 @@ export function ProgressForm({
         <div className="progress-item-context field-full"><span>工作项</span><strong>{currentItem?.title || draftItem?.title || '原工作项不可用'}</strong><small>{contextLabel}</small></div>
         {workItemId && <p className="field-help field-full">当前完成度 {currentItem?.progress ?? draftItem?.progress ?? 0}% · {requirementStatusLabels[(currentItem?.status || draftItem?.status) as keyof typeof requirementStatusLabels] || '不可操作'}</p>}
         {writesPercent && <ProgressInput name="workItemPercent" value={percent} onChange={setPercent} max={99} />}
-        {currentItem?.status === 'blocked' && <p className="field-help field-full">工作项处于阻塞状态，只能补充说明；解除阻塞后才能继续提高进度。</p>}
         {currentItem?.status === 'not_started' && <p className="field-help field-full">工作项尚未开始，只能补充说明；开始后才能填写完成度。</p>}
         <FormField label="说明" full><textarea name="content" rows={5} required autoFocus placeholder={writesPercent ? '描述本次实际完成的内容' : '说明当前情况和待处理事项'} /></FormField>
         <p className="field-help field-full">{editsPercent ? '只有进行中的工作项可以填写0～99%的累计完成度；100%请使用“完成工作项”。' : '本次只保存说明，不改变完成度、状态和日期。'}</p>

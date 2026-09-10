@@ -117,8 +117,8 @@ export const templateItems = sqliteTable('template_items', {
 ]);
 
 export const requirements = sqliteTable('requirements', {
+  sourceNotes: text('source_notes'),
   groupId: text('group_id').references(() => requirementGroups.id, { onDelete: 'set null' }),
-  tags: text('tags').notNull().default('[]'),
   forecastDuration: integer('forecast_duration'),
   forecastReadyAt: text('forecast_ready_at'),
   deliveryScope: text('delivery_scope').notNull().default('committed'),
@@ -145,7 +145,7 @@ export const requirements = sqliteTable('requirements', {
   acceptanceCriteria: text('acceptance_criteria'),
   referenceUrl: text('reference_url'),
   ownerId: text('owner_id').references(() => people.id),
-  status: text('status').notNull().default('planning'),
+  status: text('status').notNull().default('not_started'),
   plannedStart: text('planned_start'),
   plannedEnd: text('planned_end'),
   progress: integer('progress').notNull().default(0),
@@ -162,12 +162,10 @@ export const requirements = sqliteTable('requirements', {
   deletedAt: text('deleted_at'),
 }, (table) => [
   check('requirements_progress_range', sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
-  check('requirements_status_valid', sql`${table.status} IN ('planning', 'not_started', 'in_progress', 'blocked', 'pending_acceptance', 'completed', 'cancelled')`),
+  check('requirements_status_valid', sql`${table.status} IN ('not_started', 'in_progress', 'completed', 'cancelled')`),
   check('requirements_terminal_consistent', sql`(
-    (${table.status} = 'completed' AND ${table.progress} = 100 AND ${table.acceptedAt} IS NOT NULL) OR
-    (${table.status} = 'pending_acceptance' AND ${table.progress} = 100 AND ${table.acceptedAt} IS NULL) OR
-    (${table.status} = 'cancelled' AND ${table.acceptedAt} IS NULL) OR
-    (${table.status} NOT IN ('completed', 'pending_acceptance', 'cancelled') AND ${table.progress} < 100 AND ${table.acceptedAt} IS NULL)
+    (${table.status} = 'completed' AND ${table.progress} = 100) OR
+    (${table.status} <> 'completed' AND ${table.progress} < 100)
   )`),
   index('requirements_group').on(table.groupId),
   index('idx_requirements_project_status').on(table.projectId, table.status, table.deletedAt),
@@ -208,11 +206,10 @@ export const workItems = sqliteTable('work_items', {
   ...timestamps,
 }, (table) => [
   check('work_items_progress_range', sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
-  check('work_items_status_valid', sql`${table.status} IN ('not_started', 'in_progress', 'blocked', 'completed', 'cancelled')`),
+  check('work_items_status_valid', sql`${table.status} IN ('not_started', 'in_progress', 'completed', 'cancelled')`),
   check('work_items_state_consistent', sql`(
     (${table.status} = 'not_started' AND ${table.progress} = 0 AND ${table.actualStart} IS NULL AND ${table.actualEnd} IS NULL AND ${table.blockedAt} IS NULL) OR
     (${table.status} = 'in_progress' AND ${table.progress} < 100 AND ${table.actualStart} IS NOT NULL AND ${table.actualEnd} IS NULL AND ${table.blockedAt} IS NULL) OR
-    (${table.status} = 'blocked' AND ${table.progress} < 100 AND ${table.actualStart} IS NOT NULL AND ${table.actualEnd} IS NULL AND ${table.blockedAt} IS NOT NULL) OR
     (${table.status} = 'completed' AND ${table.progress} = 100 AND ${table.actualStart} IS NOT NULL AND ${table.actualEnd} IS NOT NULL AND ${table.blockedAt} IS NULL) OR
     (${table.status} = 'cancelled' AND ${table.progress} < 100 AND ${table.actualEnd} IS NULL AND ${table.blockedAt} IS NULL)
   )`),

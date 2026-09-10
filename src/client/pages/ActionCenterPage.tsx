@@ -1,4 +1,4 @@
-import {ProcessingPriorityBadge} from '../components/Badge';
+
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -21,7 +21,7 @@ export function ActionCenterPage() {
   const { selectedProjectId } = useProjects();
   const navigate = useNavigate();
   const [params, setParams] = usePageSearchParams(['severity', 'reason', 'ownerId', 'page']);
-  const severity = params.get('severity') || '', reason = params.get('reason') || '', ownerId = params.get('ownerId') || '';
+  const severity = params.get('severity') || '', reason = params.get('reason') && params.get('reason')! in actionReasonLabels ? params.get('reason')! : '', ownerId = params.get('ownerId') || '';
   const page = Math.max(1, Math.trunc(Number(params.get('page')) || 1));
   const updateFilter = (key: string, value: string) => setParams(current => { const next = new URLSearchParams(current); next.set(key, value); next.delete('page'); return next; });
   const setPage = (value: number) => setParams(current => { const next = new URLSearchParams(current); next.set('page', String(value)); return next; });
@@ -50,9 +50,9 @@ export function ActionCenterPage() {
       {error && data && <div className="warning-banner">行动项刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
       <section className="action-summary">
         <article><ListTodo size={19} /><span>全部行动</span><strong>{data?.summary.total || 0}</strong></article>
-        <article className="is-high"><AlertTriangle size={19} /><span>紧急 / 高 <small>P0 / P1</small></span><strong>{data?.summary.high || 0}</strong></article>
-        <article className="is-normal"><CircleAlert size={19} /><span>正常 <small>P2</small></span><strong>{data?.summary.medium || 0}</strong></article>
-        <article><ArrowDown size={19} /><span>较低 <small>P3</small></span><strong>{data?.summary.low || 0}</strong></article>
+        <article className="is-high"><AlertTriangle size={19} /><span>优先处理</span><strong>{data?.summary.high || 0}</strong></article>
+        <article className="is-normal"><CircleAlert size={19} /><span>需要处理</span><strong>{data?.summary.medium || 0}</strong></article>
+        <article><ArrowDown size={19} /><span>资料待补齐</span><strong>{data?.summary.low || 0}</strong></article>
       </section>
       <section className="panel action-center-list">
         <header><div><h2>待处理事项</h2><p>由需求、工作项和问题状态实时推导，处理源数据后自动消失{data?.asOfDate ? ` · 截至 ${data.asOfDate}` : ''}</p></div></header>
@@ -69,7 +69,7 @@ export function ActionCenterPage() {
         <div className="action-items">
           {isLoading && !data && <LoadingState label="正在加载行动项…" className="stable-panel-state" />}
           {data?.items.map((item) => <button key={item.id} className={`action-item action-${item.severity}`} onClick={() => navigate(item.targetPath)}>
-            <div className="action-priority">{item.processingPriority ? <ProcessingPriorityBadge requirement={item}/> : <span className={`action-severity action-${item.severity}`}>{severityLabels[item.severity]}</span>}</div>
+            <div className="action-priority">{<span className={`action-severity action-${item.severity}`}>{severityLabels[item.severity]}</span>}</div>
             <div className="action-item-main"><div><strong>{item.title}</strong>{item.contextTitle && <small>{item.contextTitle}</small>}</div><p>{item.reasons.map((entry) => entry.label).join(' · ')}</p>{!!item.affectedRequirements?.length&&<small title={item.affectedRequirements.map(r=>r.title).join('、')}>影响 {item.affectedRequirements.length} 个交付需求 · {item.affectedRequirements.map(r=>r.title).join('、')}</small>}</div>
             <div className="action-item-meta"><span>{item.ownerName || '未分派'}</span>{item.nextReviewAt&&<span>下次核对 {item.nextReviewAt}</span>}<span>{item.dueDate || '无截止日期'}{item.overdueWorkdays ? ` · 逾期${item.overdueWorkdays}个工作日` : ''}</span></div>
             <ArrowRight size={16} />

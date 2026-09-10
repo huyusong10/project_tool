@@ -158,12 +158,13 @@ export function DashboardPage() {
         <MetricCard
           label="高风险需求"
           value={data?.summary.highRisk ?? "—"}
-          detail="按进展、阻塞、延期和交付路径判断"
+          detail="按进展、延期和依赖关系判断"
           icon={AlertTriangle}
           tone="amber"
         />
         </section>
         <ProjectGantt
+          projectId={selectedProjectId || undefined}
           requirements={data?.requirements || []}
           asOfDate={data?.asOfDate}
           projectStart={projects.find((project) => project.id === selectedProjectId)?.plannedStart}

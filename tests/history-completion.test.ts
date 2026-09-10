@@ -21,7 +21,7 @@ let token = '';
 
 const post = (url: string, payload: Record<string, unknown>) => app.inject({ method: 'POST', url, headers: { cookie }, payload });
 async function createHistory() {
-  const created = await post('/api/requirements', { projectId, title: '历史需求', plannedStart: '2020-01-02' });
+  const created = await post('/api/requirements', {templateId: await defaultTemplate(projectId),  projectId, title: '历史需求', plannedStart: '2020-01-02' });
   expect(created.statusCode, created.body).toBe(200);
   return created.json<RequirementRecord>();
 }
@@ -53,7 +53,7 @@ afterAll(async () => {
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
-it('按计划补录工作项、整条需求原子验收，重复提交不生成记录，按验收日期计入本周交付', async () => {
+it('按计划补录工作项、整条需求原子完成，重复提交不生成记录，按工作日期计入完成趋势', async () => {
   const { sqlite } = await import('../src/server/database');
   let requirement = await createHistory();
   const first = requirement.workItems![0];
@@ -78,7 +78,7 @@ it('按计划补录工作项、整条需求原子验收，重复提交不生成�
   expect((await getRequirement(requirement.id))).toEqual(result.json());
   const dashboard = await app.inject({ method: 'GET', url: `/api/dashboard?projectId=${projectId}`, headers: { cookie } });
   expect(dashboard.json().summary.completed).toBe(1);
-  expect(dashboard.json().charts.weeks.reduce((sum:number,week:{completed:number})=>sum+week.completed,0)).toBe(1);
+  expect(dashboard.json().charts.weeks.reduce((sum:number,week:{completed:number})=>sum+week.completed,0)).toBe(0);
 });
 
 it('缺排期、未来计划和已有执行记录均拒绝，整条补录失败不会部分写入', async () => {
@@ -167,7 +167,7 @@ it('未开始工作项的非执行纠错不阻止历史补录', async () => {
   expect(completed.json()).toMatchObject({ status: 'completed', progress: 100, actualStart: rescheduledItem.plannedStart, actualEnd: rescheduledItem.plannedEnd });
 });
 
-it('全部工作项已完成后不能用历史补录绕过正常验收', async () => {
+it('全部工作项已完成后不能重复补录', async () => {
   let requirement = await createHistory();
   for (const initial of requirement.workItems!) {
     const current = requirement.workItems!.find((item) => item.id === initial.id)!;
@@ -175,11 +175,10 @@ it('全部工作项已完成后不能用历史补录绕过正常验收', async (
     expect(completed.statusCode, completed.body).toBe(200);
     requirement = await getRequirement(requirement.id);
   }
-  expect(requirement.status).toBe('pending_acceptance');
+  expect(requirement.status).toBe('completed');
   const result = await post(`/api/requirements/${requirement.id}/complete-as-planned`, { expectedVersion: requirement.version });
   expect(result.statusCode, result.body).toBe(409);
-  expect(result.json().error).toContain('正常验收');
-  expect((await getRequirement(requirement.id)).status).toBe('pending_acceptance');
+  expect((await getRequirement(requirement.id)).status).toBe('completed');
 });
 
 it('REST/MCP共用补录规则，普通成员不能补录', async () => {
@@ -234,7 +233,7 @@ it('200个工作项整单补录保持常量级查询准备并写全事件和审�
   }
 
   expect(completed.statusCode, completed.body).toBe(200);
-  expect(completed.json<RequirementRecord>()).toMatchObject({ status: 'completed', progress: 100, version: current.version + 2 });
+  expect(completed.json<RequirementRecord>()).toMatchObject({ status: 'completed', progress: 100, version: current.version + 1 });
   expect(completed.json<RequirementRecord>().workItems).toHaveLength(200);
   // Delivery metrics now read the complete project graph on command boundaries.
   expect(prepareCount).toBeLessThan(85);
@@ -244,3 +243,5 @@ it('200个工作项整单补录保持常量级查询准备并写全事件和审�
     WHERE project_id=? AND entity_type='work_item' AND action='complete'
       AND entity_id IN (SELECT id FROM work_items WHERE requirement_id=?)`).get(projectId, requirement.id)).toEqual({ count: 200 });
 });
+
+async function defaultTemplate(projectId:string){const response=await app.inject({url:"/api/templates?projectId="+projectId,headers:{cookie}});return response.json<Array<{id:string}>>()[0].id;}

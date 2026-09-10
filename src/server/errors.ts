@@ -1,6 +1,7 @@
 import { ZodError } from 'zod';
 
 export type AppErrorCode =
+  | 'WORKFLOW_RETIRED'
   | 'VALIDATION_ERROR'
   | 'UNAUTHENTICATED'
   | 'FORBIDDEN'

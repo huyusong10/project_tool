@@ -6,7 +6,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { Requirement } from '../src/client/types';
 import type { ActionItemsPage } from '../src/shared/action-items';
-import type { PathAnalysis } from '../src/shared/paths';
+
 import { addBusinessDays, todayIso } from '../src/shared/domain';
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-action-journey-'));
@@ -45,7 +45,7 @@ async function fixture(mode: 'direct' | 'work_items') {
   };
   const owner = await person('需求主责'), executor = mode === 'direct' ? owner : await person('工作项主责');
   const coordinator = await person('问题协调');
-  let requirement = (await request('POST', '/api/requirements', { projectId: project.id, ownerId: owner.id, title: '需要跟进的交付', executionMode: mode, durationDays: 2 })).json<Requirement>();
+  let requirement = (await request('POST', '/api/requirements', { projectId: project.id, ownerId: owner.id, title: '需要跟进的交付',  durationDays: 2 })).json<Requirement>();
   const detail = async () => (await request('GET', '/api/requirements/' + requirement.id)).json<Requirement>();
   if (mode === 'work_items') {
     await request('POST', `/api/requirements/${requirement.id}/work-items`, { expectedVersion: requirement.version, title: '待跟进的接口', ownerId: executor.id, plannedStart: todayIso(), plannedEnd: addBusinessDays(todayIso(), 1) });
@@ -60,56 +60,23 @@ async function fixture(mode: 'direct' | 'work_items') {
   return { project, owner, executor, coordinator, requirement, sourceId, detail, command, actions };
 }
 
-it('撤出已开工需求不会让工作项负责人的阻塞行动消失，未开工候选仍不产生补齐行动', async () => {
-  const f = await fixture('work_items');
-  await f.command('start');
-  await f.command('block', { reason: '等待核对环境' });
-  expect((await f.actions()).items.find(item => item.sourceId === f.sourceId)?.reasonCodes).toContain('blocked');
-  const current = await f.detail();
-  await request('PATCH', '/api/requirements/' + current.id, { expectedVersion: current.version, deliveryScope: 'candidate', reason: '移出本期交付，现有工作继续' });
-  expect((await f.detail()).workItems[0].status).toBe('blocked');
-  const item = (await f.actions()).items.find(item => item.sourceId === f.sourceId);
-  expect(item?.reasonCodes).toContain('blocked');
-  expect(item?.targetPath).toContain('action=follow-up');
-  await f.command('unblock');
-  expect((await f.actions()).items.find(item => item.sourceId === f.sourceId)?.reasonCodes || []).not.toContain('blocked');
-  const waiting = (await request('POST', '/api/requirements', { projectId: f.project.id, ownerId: f.executor.id, title: '候选尚未安排', executionMode: 'work_items', deliveryScope: 'candidate' })).json<Requirement>();
-  await request('POST', `/api/requirements/${waiting.id}/work-items`, { expectedVersion: waiting.version, title: '候选未分派工作' });
-  expect((await f.actions()).items.some(item => item.requirementId === waiting.id)).toBe(false);
+it('未安排需求与未分派工作都进入同一行动列表',async()=>{
+ const f=await fixture('work_items');
+ const waiting=(await request('POST','/api/requirements',{projectId:f.project.id,ownerId:f.executor.id,title:'尚未安排的需求'})).json<Requirement>();
+ await request('POST',`/api/requirements/${waiting.id}/work-items`,{expectedVersion:waiting.version,title:'未分派工作'});
+ const actions=await f.actions(admin);
+ expect(actions.items.some(i=>i.requirementId===waiting.id)).toBe(true);
+ expect(actions.items.flatMap(i=>i.reasonCodes)).not.toEqual(expect.arrayContaining(['blocked','candidate','forecast_review']));
 });
-
-it.each(['direct', 'work_items'] as const)('%s：问题解决后交给执行人确认解阻，不沿用问题的下次跟进日期或路径浏览入口', async mode => {
-  const f = await fixture(mode);
-  if (mode === 'work_items') {
-    const analysis = async () => (await request('GET', `/api/projects/${f.project.id}/path-analysis`)).json<PathAnalysis>();
-    await request('POST', `/api/requirements/${f.requirement.id}/dependency-review`, { expectedRevision: (await analysis()).revision, reviewed: true, forecastAcceptance: addBusinessDays(todayIso(), 1) });
-    await request('PATCH', `/api/work-items/${f.sourceId}/path-estimate`, { expectedRevision: (await analysis()).revision, durationDays: 2, unblockEstimate: todayIso() });
-  }
-  const issue = (await request('POST', '/api/issues', { projectId: f.project.id, ownerId: f.coordinator.id, title: '供应环境恢复', discoveredAt: todayIso(), nextReviewAt: addBusinessDays(todayIso(), 5) })).json();
-  await f.command('start');
-  await f.command('block', { reason: '供应环境不可用', blockedIssueId: issue.id });
-  if (mode === 'work_items') {
-    const analysis = (await request('GET', `/api/projects/${f.project.id}/path-analysis`)).json<PathAnalysis>();
-    expect(analysis.blockers.find(item => item.workItemId === f.sourceId)?.critical).toBe(true);
-  }
-  const grouped = (await f.actions(f.coordinator.cookie)).items.find(item => item.sourceId === issue.id);
-  expect(grouped).toMatchObject({ sourceType: 'issue', ownerId: f.coordinator.id });
-  await request('POST', `/api/issues/${issue.id}/resolve`, { expectedVersion: issue.version, content: '环境已经恢复' });
-  const current = await f.detail();
-  expect(mode === 'direct' ? current.status : current.workItems[0].status).toBe('blocked');
-  expect((mode === 'direct' ? current : current.workItems[0]).blockerCoordination).toMatchObject({ coordinatorId: f.executor.id, nextReviewAt: null, issueResolved: true });
-  const item = (await f.actions(f.executor.cookie, '&ownerId=' + f.executor.id)).items.find(item => item.sourceId === f.sourceId);
-  expect(item).toMatchObject({ ownerId: f.executor.id, ownerName: f.executor.name });
-  expect(item?.reasonCodes).toContain('blocker_resolved');
-  expect.soft(item?.nextReviewAt).toBeNull();
-  const target = new URL(item!.targetPath, 'http://localhost');
-  expect(target.pathname).toBe('/requirements/' + f.requirement.id);
-  expect(target.searchParams.get('view')).toBeNull();
-  if (mode === 'work_items') expect(target.searchParams.get('workItemId')).toBe(f.sourceId);
-  expect((await f.actions(f.coordinator.cookie)).items.some(entry => entry.reasonCodes.includes('blocker_resolved'))).toBe(false);
-  const denied = await app.inject({ method: 'POST', url: `/api/${mode === 'direct' ? 'requirements' : 'work-items'}/${f.sourceId}/unblock`, headers: { cookie: f.coordinator.cookie }, payload: { expectedVersion: mode === 'direct' ? current.version : current.workItems[0].version } });
-  expect(denied.statusCode).toBe(403);
-  await f.command('unblock');
-  expect((await f.actions()).items.some(entry => entry.reasonCodes.includes('blocker_resolved'))).toBe(false);
-  expect((await request('GET', '/api/issues/' + issue.id)).json()).toMatchObject({ status: 'resolved', nextReviewAt: addBusinessDays(todayIso(), 5) });
+it.each(['direct','work_items'] as const)('%s 问题和工作分别推进，不需要解阻确认',async mode=>{
+ const f=await fixture(mode);
+ const issue=(await request('POST','/api/issues',{projectId:f.project.id,requirementId:f.requirement.id,ownerId:f.coordinator.id,title:'环境待恢复',discoveredAt:todayIso()})).json();
+ await f.command('start');
+ const r=await f.detail(),item=mode==='direct'?r:r.workItems[0];
+ await request('POST',`/api/requirements/${r.id}/progress`,{expectedVersion:item.version,...mode==='work_items'?{workItemId:item.id}:{},content:'等待环境恢复'});
+ await request('POST',`/api/issues/${issue.id}/resolve`,{expectedVersion:issue.version,content:'环境已恢复'});
+ const before=await f.detail();expect(mode==='direct'?before.status:before.workItems[0].status).toBe('in_progress');
+ await f.command('complete',{content:'验证完成'});
+ expect(await f.detail()).toMatchObject({status:'completed',progress:100,acceptedAt:null});
+ expect((await f.actions()).items.some(i=>i.requirementId===r.id)).toBe(false);
 });

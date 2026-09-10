@@ -125,7 +125,7 @@ export function topologicalOrder(ids: string[], edges: Array<{ source: string; t
 
 type Internal = PathNode & { release: number; fixed: number | null; planDuration: number; planRelease: number; planFinish: number; planStart: number; actualStart: number | null };
 
-export function analysePaths(input: PathInput, requestedTarget = projectTarget, invalidReviews?:ReadonlySet<string>): PathAnalysis {
+export function analysePaths(input: PathInput, requestedTarget = projectTarget): PathAnalysis {
   const base = addBusinessDays(input.asOfDate, 0);
   const dates=new Map<number,string>(), starts=new Map<string,number>(), finishes=new Map<string,number>();
   dates.set(0,base);let firstDate=0,lastDate=0;
@@ -137,7 +137,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget, 
   const reqById = new Map(input.requirements.map(r => [r.id, r]));
   const works = new Map(input.requirements.map(r => [r.id, [] as PathWork[]]));
   input.workItems.forEach(w => works.get(w.requirementId)?.push(w));
-  for(const r of input.requirements)if(r.executionMode==='direct')works.get(r.id)!.push({id:'execute:'+r.id,requirementId:r.id,title:r.title,status:['completed','pending_acceptance'].includes(r.status)?'completed':r.status==='planning'?'not_started':r.status,progress:r.progress||0,plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,actualStart:r.actualStart||null,actualEnd:r.actualEnd||null,durationDays:r.durationDays||null,earliestStart:null,unblockEstimate:r.unblockEstimate||null,forecastEnd:r.forecastEnd||null,forecastDuration:r.forecastDuration||null,forecastReadyAt:r.forecastReadyAt||null,blockedAt:r.blockedAt||null,blockedReason:r.blockedReason||null,milestoneLabel:null,ownerName:r.ownerName,ownerId:r.ownerId,assigneeIds:r.ownerId?[r.ownerId]:[],assigneeNames:r.ownerName?[r.ownerName]:[]});
+  for(const r of input.requirements)if(r.executionMode==='direct')works.get(r.id)!.push({id:'execute:'+r.id,requirementId:r.id,title:r.title,status:r.status,progress:r.progress||0,plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,actualStart:r.actualStart||null,actualEnd:r.actualEnd||null,durationDays:r.durationDays||null,earliestStart:null,unblockEstimate:r.unblockEstimate||null,forecastEnd:r.forecastEnd||null,forecastDuration:r.forecastDuration||null,forecastReadyAt:r.forecastReadyAt||null,blockedAt:r.blockedAt||null,blockedReason:r.blockedReason||null,milestoneLabel:null,ownerName:r.ownerName,ownerId:r.ownerId,assigneeIds:r.ownerId?[r.ownerId]:[],assigneeNames:r.ownerName?[r.ownerName]:[]});
   const referenced = new Set(input.dependencies.flatMap(d => [d.sourceWorkItemId, d.targetWorkItemId].filter((x): x is string => !!x)));
   const add = (id: string, requirementId: string | null, kind: Internal['kind'], title: string): Internal => {
     const n: Internal = { id, requirementId, workItemId: kind === 'work' ? id : null, kind, title, status: 'not_started', ownerName: null,
@@ -153,20 +153,19 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget, 
     const start = add(startId(r.id), r.id, 'start', `${r.title} · 开始条件`);
     start.release = r.scheduleAnchor ? Math.max(0, toStart(r.scheduleAnchor)) : 0;
     start.planRelease = toStart(r.scheduleAnchor || r.plannedStart || base);
-    const end = add(acceptanceId(r.id), r.id, 'acceptance', `${r.title} · 验收`);
-    end.ownerName = r.acceptanceOwnerName || '项目经理'; end.ownerId=r.acceptanceOwnerId; end.status = r.status; end.plannedEnd = r.plannedEnd;
-    end.source = '假设工作完成后当日验收';
-    if (r.acceptedAt && r.status === 'completed') { end.fixed = toFinish(r.acceptedAt); end.complete = true; end.source = '实际验收'; }
-    else if (r.status === 'cancelled') end.ownReasons.push('前置需求已取消');
-    else if (r.status === 'pending_acceptance') {
-      if (r.forecastAcceptance && r.forecastAcceptance >= input.asOfDate) { end.release = toFinish(r.forecastAcceptance); end.source = '预计验收日期'; }
-      else end.ownReasons.push(r.forecastAcceptance ? '预计验收日期已过期' : '等待验收，日期待确认');
-    }
     const active = works.get(r.id)!.filter(w => w.status !== 'cancelled');
+    const end = add(acceptanceId(r.id), r.id, 'acceptance', `${r.title} · 完成`);
+    end.ownerName = r.ownerName; end.ownerId=r.ownerId; end.status = r.status; end.plannedEnd = r.plannedEnd;
+    end.source = '按工作完成日期计算';
+    if (r.status === 'completed' || active.length && active.every(w=>w.status==='completed')) {
+      const dates=active.map(w=>w.actualEnd).filter((v):v is string=>!!v).sort();
+      end.complete=true;
+      if(dates.length===active.length&&dates.length)end.fixed=toFinish(dates.at(-1)!);
+      else end.ownReasons.push('实际完成日期未记录');
+    } else if (r.status === 'cancelled') end.ownReasons.push('前置需求已取消');
     const actualStarts = active.flatMap(w => w.actualStart ? [toStart(w.actualStart)] : []);
     if (actualStarts.length) { start.release = Math.min(...actualStarts); start.actualStart = start.release; }
     if (!active.length && !end.complete) end.ownReasons.push('缺少有效工作项');
-    if (!r.dependenciesReviewedAt && !end.complete) end.ownReasons.push('依赖尚未核对');
     for (const w of works.get(r.id)!) {
       if (w.status === 'cancelled' && !referenced.has(w.id)) continue;
       const n = add(w.id, r.id, r.executionMode==='direct'?'execution':'work', w.title);
@@ -183,13 +182,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget, 
       if (w.status === 'completed' && w.actualEnd) { n.fixed = toFinish(w.actualEnd); n.remainingDays = 0; n.complete = true; n.source = '实际完成'; }
       else {
         if (!duration&&!(w.forecastEnd&&w.forecastDuration&&w.forecastReadyAt)) n.ownReasons.push('预计工期缺失');
-        if(invalidReviews?.has(n.id))n.ownReasons.push('上次预测核对已失效，请重新核对');
-        if (!r.dependenciesReviewedAt) n.ownReasons.push('依赖尚未核对');
         if (w.status === 'cancelled') n.ownReasons.push('前置工作已取消');
-        if (w.status === 'blocked') {
-          if (w.unblockEstimate && w.unblockEstimate >= input.asOfDate) { n.release = Math.max(n.release, toStart(w.unblockEstimate)); n.source += '，假设按预计日期解除阻塞'; }
-          else n.ownReasons.push(w.unblockEstimate ? '预计解阻日期已过期' : '解除阻塞时间未知');
-        }
         if (w.forecastEnd) {
           if (w.forecastEnd < input.asOfDate) n.ownReasons.push('人工预测已过期');
           else if (w.forecastDuration && w.forecastReadyAt) {
@@ -211,13 +204,13 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget, 
       if(m.targetDate&&m.targetDate>=input.asOfDate)n.release=toFinish(m.targetDate);
       else n.ownReasons.push('里程碑等待人工确认，日期待确认');
     }
-    if(m.requirementId&&!m.cancelled)link(m.id,acceptanceId(m.requirementId));
+    // Milestones are independent dates; only explicit dependency edges affect work completion.
   }
   for (const d of input.dependencies) link(dependencySource(d),dependencyTarget(d),d.id);
   const internalTargets = new Set(input.dependencies.filter(d => d.sourceRequirementId === d.targetRequirementId && (d.sourceWorkItemId||d.sourceMilestoneId) && d.targetWorkItemId).map(d => d.targetWorkItemId!));
   for (const n of nodes) if ((n.kind === 'work'||n.kind==='execution') && !internalTargets.has(n.id)) link(startId(n.requirementId!), n.id);
   add(projectTarget, null, 'project', `${input.projectName} · 项目交付`);
-  const eligible = input.requirements.filter(r => !r.deletedAt && !['completed', 'cancelled'].includes(r.status)&&r.deliveryScope!=='candidate');
+  const eligible = input.requirements.filter(r => !r.deletedAt && !['completed', 'cancelled'].includes(r.status));
   eligible.forEach(r => link(acceptanceId(r.id), projectTarget));
   (input.milestones||[]).filter(m=>!m.requirementId&&!m.cancelled).forEach(m=>link(m.id,projectTarget));
   const byId = new Map(nodes.map(n => [n.id, n]));
@@ -361,6 +354,6 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget, 
     coverage: { reviewed: input.requirements.filter(r => !r.deletedAt && r.dependenciesReviewedAt).length, total: input.requirements.filter(r => !r.deletedAt).length, unplanned },
     nodes: nodes.map(({ release: _r, fixed: _f, planDuration: _pd, planRelease: _pr, planFinish: _pf, planStart: _ps, actualStart: _as, ...n }) => n),
     edges, requirements: input.requirements.filter(r => !r.deletedAt).map(r=>({...r,...viewMetrics.get(r.id),...risks[r.id],processingPriority:risks[r.id].processingPriority,priorityReasons:risks[r.id].priorityReasons,affectedRequirementIds:risks[r.id].affectedRequirementIds,priorityAsOfDate:input.asOfDate})), dependencies: input.dependencies, risks, blockers,milestones:input.milestones||[],layouts:input.layouts||[] });
-  if(!invalidReviews){const stale=new Set(result.nodes.filter(n=>!n.complete&&n.forecastBasis?.review&&n.forecastBasis.reasons.some(r=>/基线已变化|前置交付条件已变化|上次确认的预计日期已过期/.test(r))).map(n=>n.id));if(stale.size)return analysePaths(input,requestedTarget,stale);}
+
   return result;
 }

@@ -87,7 +87,12 @@ function stringArray(value: unknown) {
 
 function validatePanel(value: unknown, index: number): AnalyticsPanelConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) validationError(`第${index + 1}个图表配置不合法`);
-  const panel = value as Record<string, unknown>;
+  const panel = {...value} as Record<string, unknown>;
+  if(panel.dataset==='requirements'){
+    for(const key of ['measure','secondaryMeasure'])if(['commitment_on_time_rate','latest_commitment_on_time_rate'].includes(String(panel[key])))panel[key]='on_time_rate';
+    if(typeof panel.title==='string'&&/按(首次|最近)承诺交付率/.test(panel.title))panel.title='按期完成率';
+    if(panel.filters&&typeof panel.filters==='object'){panel.filters={...panel.filters};delete (panel.filters as Record<string,unknown>).deliveryScope;}
+  }
   rejectUnknownKeys(panel, [
     'id', 'title', 'dataset', 'measure', 'secondaryMeasure', 'dimension', 'visualization',
     'size', 'timeScope', 'filters', 'sort', 'limit',

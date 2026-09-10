@@ -1,4 +1,3 @@
-import {ProjectCommitmentControl} from '../components/ProjectCommitments';
 import { useDeferredValue, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type Query } from "@tanstack/react-query";
 import { Archive, Edit3, RotateCcw, UserMinus, UserPlus } from "lucide-react";
@@ -142,7 +141,7 @@ export function ProjectSettingsPage() {
     restore.mutate({ projectId: selectedProjectId, entity, id, expectedDeletedAt });
   };
   return <>
-    <PageHeader title="项目设置" actions={project?<><ProjectCommitmentControl projectId={project.id}/>{canManage?<button className="primary-button" onClick={() => setEditing(true)}><Edit3 size={15} />编辑项目</button>:null}</>:null} />
+    <PageHeader title="项目设置" actions={project?<><></>{canManage?<button className="primary-button" onClick={() => setEditing(true)}><Edit3 size={15} />编辑项目</button>:null}</>:null} />
     <div className="page-content">
       {!project ? <EmptyState title="暂无可访问项目" detail="请联系管理员分配项目权限。" /> : <>
         <section className="panel project-settings-summary">

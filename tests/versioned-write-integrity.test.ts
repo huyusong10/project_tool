@@ -36,7 +36,7 @@ afterAll(async () => {
 
 it('数据库拒绝主记录更新时返回冲突，并回滚随后追加的历史', async () => {
   const { sqlite } = await import('../src/server/database');
-  const requirement = (await post('/api/requirements', {
+  const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '受控写入需求', plannedStart: '2020-01-02',
   })).json();
 
@@ -88,7 +88,7 @@ it('数据库拒绝主记录更新时返回冲突，并回滚随后追加的历�
 
 it('历史补录在父需求归档或版本变化时整体回滚', async () => {
   const { sqlite } = await import('../src/server/database');
-  const single = (await post('/api/requirements', {
+  const single = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '补录归档竞争需求', plannedStart: '2020-01-02',
   })).json();
   const singleItem = single.workItems[0];
@@ -109,7 +109,7 @@ it('历史补录在父需求归档或版本变化时整体回滚', async () => {
   expect(sqlite.prepare('SELECT COUNT(*) AS count FROM progress_updates WHERE requirement_id=?').get(single.id)).toEqual(singleProgress);
   sqlite.exec('DROP TRIGGER archive_requirement_during_planned_completion');
 
-  const whole = (await post('/api/requirements', {
+  const whole = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '补录版本竞争需求', plannedStart: '2020-02-03',
   })).json();
   sqlite.exec(`CREATE TEMP TRIGGER change_requirement_during_planned_completion BEFORE UPDATE OF status ON work_items
@@ -129,7 +129,7 @@ it('历史补录在父需求归档或版本变化时整体回滚', async () => {
 
 it('工作项编辑与进度写入会锁定父需求版本', async () => {
   const { sqlite } = await import('../src/server/database');
-  const requirement = (await post('/api/requirements', {
+  const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '工作项父版本竞争需求', plannedStart: '2020-03-02',
   })).json();
   const item = requirement.workItems[0];
@@ -171,7 +171,7 @@ it('工作项编辑与进度写入会锁定父需求版本', async () => {
 it('成员在工作项写入期间失权时业务修改一起回滚', async () => {
   const { sqlite } = await import('../src/server/database');
   const owner = (await post('/api/people', { projectId, name: '并发失权需求负责人' })).json();
-  const requirement = (await post('/api/requirements', {
+  const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, ownerId: owner.id, title: '并发失权需求', plannedStart: '2020-04-01',
   })).json();
   const item = requirement.workItems[0];
@@ -368,7 +368,7 @@ it('流程与需求审计失败时业务数据整体回滚', async () => {
     WHEN NEW.entity_type='requirement' AND NEW.action='create' AND NEW.summary='创建需求并生成工作项：不应脱离审计创建的需求' BEGIN
       SELECT RAISE(ABORT, 'reject requirement create audit');
     END`);
-  const requirement = await post('/api/requirements', {
+  const requirement = await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '不应脱离审计创建的需求', plannedStart: '2020-05-06',
   });
   expect(requirement.statusCode).toBe(500);
@@ -381,7 +381,7 @@ it('流程与需求审计失败时业务数据整体回滚', async () => {
 it('工作项删除、排序和进展审计失败时业务数据整体回滚', async () => {
   const { sqlite } = await import('../src/server/database');
 
-  const deletedRequirement = (await post('/api/requirements', {
+  const deletedRequirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '工作项删除审计回滚', plannedStart: '2020-06-01',
   })).json();
   const deletedItem = deletedRequirement.workItems[0];
@@ -395,7 +395,7 @@ it('工作项删除、排序和进展审计失败时业务数据整体回滚', a
   expect(sqlite.prepare('SELECT version FROM requirements WHERE id=?').get(deletedRequirement.id)).toEqual({ version: deletedRequirement.version });
   sqlite.exec('DROP TRIGGER reject_work_item_delete_audit');
 
-  const reorderedRequirement = (await post('/api/requirements', {
+  const reorderedRequirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '工作项排序审计回滚', plannedStart: '2020-07-01',
   })).json();
   const originalOrder = reorderedRequirement.workItems.map((item: { id: string }) => item.id);
@@ -543,7 +543,7 @@ it('无版本说明在获得写锁后重查终态，晚到记录不会越过取�
   expect(progressResult.statusCode).toBe(409);
   expect(progressResult.json()).toMatchObject({ code: 'TERMINAL_LOCKED' });
   expect(sqlite.prepare('SELECT status, version FROM requirements WHERE id=?').get(requirement.id)).toEqual({
-    status: 'planning', version: requirement.version,
+    status: 'not_started', version: requirement.version,
   });
   expect(sqlite.prepare('SELECT COUNT(*) AS count FROM progress_updates WHERE requirement_id=?').get(requirement.id)).toEqual({ count: 0 });
   sqlite.exec('DROP TRIGGER cancel_before_note');
@@ -569,7 +569,7 @@ it('归档与新建在同一写锁后复核父子状态，不会留下活跃孤�
   sqlite.exec(`CREATE TEMP TRIGGER add_requirement_during_project_archive BEFORE UPDATE OF deleted_at ON projects
     WHEN OLD.id='${emptyProject.id}' AND NEW.deleted_at IS NOT NULL BEGIN
       INSERT INTO requirements (id, project_id, title, status, progress, risk_level, priority, created_at, updated_at)
-      VALUES ('archive-race-requirement', OLD.id, '并发创建需求', 'planning', 0, 'low', 'P2', OLD.updated_at, OLD.updated_at);
+      VALUES ('archive-race-requirement', OLD.id, '并发创建需求', 'not_started', 0, 'low', 'P2', OLD.updated_at, OLD.updated_at);
     END`);
   const projectArchive = await remove(`/api/projects/${emptyProject.id}`, { expectedUpdatedAt: emptyProject.updatedAt });
   expect(projectArchive.statusCode).toBe(409);
@@ -671,7 +671,7 @@ it('流程恢复归档和成员移除不会越过并发项目归档', async () =
 it('需求、工作项和进展写入会在写锁后复核父项目', async () => {
   const { sqlite } = await import('../src/server/database');
   const ownedProject = (await post('/api/projects', { name: '业务写入归档竞争项目' })).json();
-  const requirement = (await post('/api/requirements', {
+  const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(ownedProject.id),
     projectId: ownedProject.id, title: '原需求标题', plannedStart: '2020-01-02',
   })).json();
 
@@ -828,7 +828,7 @@ it('工作项负责人、协作者和问题负责人写入后复核人员有效�
   const { sqlite } = await import('../src/server/database');
   const ownedProject = (await post('/api/projects', { name: '多入口人员分派竞争项目' })).json();
   const person = (await post('/api/people', { projectId: ownedProject.id, name: '多入口并发人员' })).json();
-  const requirement = (await post('/api/requirements', {
+  const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(ownedProject.id),
     projectId: ownedProject.id, title: '多入口并发需求', plannedStart: '2020-01-02',
   })).json();
   const item = requirement.workItems[0];
@@ -1025,3 +1025,5 @@ it('登录落库前账号变化时返回冲突且不签发Cookie', async () => {
   });
   sqlite.exec('DROP TRIGGER disable_account_during_login');
 });
+
+async function defaultTemplate(projectId:string){const response=await app.inject({url:"/api/templates?projectId="+projectId,headers:{cookie}});return response.json<Array<{id:string}>>()[0].id;}

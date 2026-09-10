@@ -2283,8 +2283,8 @@ test("历史里程碑标签继续显示，工作项设置不再写入嵌入式�
   await mockApplication(page, patches);
 
   await page.goto("/requirements/r1");
-  await expect(page.locator(".gantt-milestone-marker")).toBeVisible();
-  await expect(page.locator(".gantt-milestone-marker")).toContainText("需求基线");
+  await expect(page.locator(".gantt-milestone-label")).toBeVisible();
+  await expect(page.locator(".gantt-milestone-label")).toContainText("需求基线");
 
   await page.getByRole("button", { name: /工作项设置|编辑工作项/ }).click();
   await expect(page.getByRole("button", { name: /里程碑名称：需求基线/ })).toHaveCount(0);

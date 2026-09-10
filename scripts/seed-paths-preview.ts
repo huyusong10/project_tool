@@ -27,10 +27,10 @@ addDependency(projectId,{expectedRevision:getPathAnalysis(projectId).revision,so
 const first=svc.getRequirement(a.id).workItems!.find(w=>w.title==='接口实现')!;
 svc.startWorkItem(first.id,{expectedVersion:first.version},actor);
 const started=svc.getRequirement(a.id).workItems!.find(w=>w.id===first.id)!;
-svc.blockWorkItem(first.id,{expectedVersion:started.version,reason:'等待联调环境开通（试用样例）'},actor);
-updatePathEstimate(first.id,{expectedRevision:getPathAnalysis(projectId).revision,unblockEstimate:addBusinessDays(start,2)},actor);
-svc.createRequirement({projectId,title:'待规划的后续报表需求'},actor);
+svc.addProgress(a.id,{workItemId:first.id,expectedVersion:started.version,content:'等待联调环境开通（试用样例）'},actor);
+updatePathEstimate(first.id,{expectedRevision:getPathAnalysis(projectId).revision,earliestStart:addBusinessDays(start,2)},actor);
+svc.createRequirement({projectId,title:'未排期的后续报表需求'},actor);
 // Use the project commitment independently of template-derived baseline dates.
-sqlite.prepare('UPDATE requirements SET planned_end=? WHERE project_id=? AND status<>?').run(due,projectId,'planning');
+sqlite.prepare('UPDATE requirements SET planned_end=? WHERE project_id=? AND planned_start IS NOT NULL').run(due,projectId);
 console.log(JSON.stringify({projectId,requirements:requirements.map(r=>({id:r.id,title:r.title})),analysis:getPathAnalysis(projectId).forecastEnd}));
 sqlite.close();

@@ -71,7 +71,7 @@ const archivedTemplate = {
   ],
 } as const;
 
-type WorkState = 'not_started' | 'in_progress' | 'blocked' | 'completed' | 'cancelled';
+type WorkState = 'not_started' | 'in_progress' | 'completed' | 'cancelled';
 type WorkSpec = {
   key: string;
   title: string;
@@ -130,7 +130,7 @@ const requirements: RequirementSpec[] = [
       clarify: { owner: 'pm', state: 'completed', progress: 100, actualStart: -18, actualEnd: -17 },
       design: { owner: 'architect', collaborators: ['pm'], state: 'completed', progress: 100, actualStart: -16, actualEnd: -14 },
       frontend: { owner: 'frontend', collaborators: ['architect'], state: 'in_progress', progress: 55, actualStart: -12, forecastEnd: 2 },
-      backend: { owner: 'backend', collaborators: ['architect'], state: 'blocked', progress: 35, actualStart: -12, forecastEnd: 5, blockedReason: '等待外部身份平台提供稳定的鉴权接口' },
+      backend: { owner: 'backend', collaborators: ['architect'], state: 'in_progress', progress: 35, actualStart: -12, forecastEnd: 5, blockedReason: '等待外部身份平台提供稳定的鉴权接口' },
       integration: { owner: 'test', collaborators: ['frontend', 'backend'] },
       test: { owner: 'test', collaborators: ['pm'] },
       release: { owner: 'backend', collaborators: ['test'] },
@@ -312,8 +312,7 @@ export function ensureBuiltInSampleProject(sqlite: SqliteDatabase, enabled: bool
       const totalWeight = activeItems.reduce((sum, item) => sum + item.duration, 0);
       const progress = totalWeight ? Math.round(activeItems.reduce((sum, item) => sum + item.duration * (item.progress || 0), 0) / totalWeight) : 0;
       const allCompleted = activeItems.length > 0 && activeItems.every((item) => item.state === 'completed');
-      const storedStatus = requirement.status || (requirement.items.some((item) => item.state === 'blocked') ? 'blocked'
-        : allCompleted ? 'completed'
+      const storedStatus = requirement.status || (allCompleted ? 'completed'
           : requirement.items.some((item) => ['in_progress', 'completed'].includes(item.state || 'not_started')) ? 'in_progress' : 'not_started');
       const storedProgress = storedStatus === 'completed' ? 100 : storedStatus === 'cancelled' ? Math.min(progress, 99) : progress;
       const acceptedAt = storedStatus === 'completed' ? at(requirement.start + plannedEndOffset) : null;
@@ -326,7 +325,7 @@ export function ensureBuiltInSampleProject(sqlite: SqliteDatabase, enabled: bool
         const workItemId = `sample-v1-work-${requirement.key}-${item.key}`;
         workItemIds.set(`${requirement.key}:${item.key}`, workItemId);
         const state = item.state || 'not_started';
-        const blockedAt = state === 'blocked' ? at(-2) : null;
+        const blockedAt = null;
         insertWorkItem.run(
           workItemId, requirementId, item.templateItemId || null, item.title,
           item.owner ? personByKey[item.owner].id : null, state,

@@ -8,13 +8,6 @@ import {
   workItemStatusOptions,
   type UiOption,
 } from "../ui-options";
-import type { ProcessingResult, DeliveryFields } from '../../shared/delivery';
-import { processingPriorityLabels } from '../../shared/delivery';
-
-export function ProcessingPriorityBadge({ requirement: r, className = '' }: { requirement: Partial<ProcessingResult & Pick<DeliveryFields, 'deliveryScope'>>; className?: string }) {
-  return <span title={r.priorityReasons?.join('；')} className={`priority-badge priority-${r.processingPriority?.toLowerCase() || 'candidate'} ${className}`}>{r.processingPriority ? processingPriorityLabels[r.processingPriority] : r.deliveryScope === 'candidate' ? '候选' : '—'}</span>;
-}
-
 type StatusBadgeKind = "requirement" | "issue" | "priority" | "risk" | "account" | "workItem" | "project";
 
 const optionLookup: Record<StatusBadgeKind, UiOption[]> = {

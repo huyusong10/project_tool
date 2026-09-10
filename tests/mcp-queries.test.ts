@@ -66,8 +66,8 @@ async function fixture() {
     { clientId: randomUUID(), sourceRequirementId: keys.a, sourceWorkItemId: keys.w2, targetRequirementId: keys.b, targetWorkItemId: keys.w3 },
     { clientId: randomUUID(), sourceRequirementId: keys.b, sourceWorkItemId: keys.w3, targetRequirementId: keys.b, targetWorkItemId: null, targetMilestoneId: keys.m },
   ], remove: [], estimates: [], entities: [
-    { entity: 'requirement', op: 'create', id: keys.a, data: { title: '接口交付', executionMode: 'work_items', ownerId: owner.id } },
-    { entity: 'requirement', op: 'create', id: keys.b, data: { title: '页面交付', executionMode: 'work_items', ownerId: collaborator.id } },
+    { entity: 'requirement', op: 'create', id: keys.a, data: { title: '接口交付',  ownerId: owner.id } },
+    { entity: 'requirement', op: 'create', id: keys.b, data: { title: '页面交付',  ownerId: collaborator.id } },
     { entity: 'work', op: 'create', id: keys.w1, requirementId: keys.a, data: { title: '设计 <外部&输入>', ownerId: owner.id, assigneeIds: [owner.id, collaborator.id], durationDays: 2, plannedStart: start, plannedEnd: end } },
     { entity: 'work', op: 'create', id: keys.w2, requirementId: keys.a, data: { title: '开发', durationDays: 2 } },
     { entity: 'work', op: 'create', id: keys.w3, requirementId: keys.b, data: { title: '联调', ownerId: collaborator.id, durationDays: 1 } },
@@ -88,7 +88,7 @@ async function fixture() {
 it('MCP发布可发现的查询工具、严格输入与只读标记，批次描述包含实体、布局及回执', async () => {
   const response = await mcpRpcRequest(origin, token, 'tools/list', {});
   const tools = JSON.parse(response.body).result.tools as Array<{ name: string; description: string; inputSchema: { properties: Record<string, unknown> }; annotations: { readOnlyHint: boolean } }>;
-  for (const name of ['get_work_item', 'list_work_items', 'query_requirements', 'list_progress_updates', 'get_path_graph', 'get_project_change_version', 'get_requirement_start_conditions'])
+  for (const name of ['get_work_item', 'list_work_items', 'query_requirements', 'list_progress_updates', 'get_path_graph', 'get_project_change_version'])
     expect(tools.find(t => t.name === name)?.annotations.readOnlyHint).toBe(true);
   expect(tools.find(t => t.name === 'apply_dependency_changes')?.annotations.readOnlyHint).toBe(false);
   expect(tools.find(t => t.name === 'preview_dependency_changes')?.description).toContain('layouts');
@@ -124,6 +124,28 @@ it('需求分页默认精简字段，支持参与人和关键词，兼容原列�
   expect((await call<Page<Requirement>>('query_requirements', { projectId: f.projectId, ownerId: f.owner.id })).items.map(r => r.id)).toEqual([f.ids.a]);
   const legacy = await call<Requirement[]>('list_requirements', { projectId: f.projectId });
   expect(Array.isArray(legacy)).toBe(true); expect(legacy.flatMap(r => r.workItems)).toHaveLength(3);
+});
+
+it('REST、MCP和延期筛选按工作完成日期计算，等待或确认验收不增加延期', async () => {
+  const f = await fixture(), { sqlite } = await import('../src/server/database');
+  sqlite.prepare("UPDATE work_items SET status='completed',progress=100,planned_start='2026-08-19',planned_end='2026-08-28',actual_start='2026-08-19',actual_end='2026-08-28' WHERE requirement_id IN (?,?)").run(f.ids.a, f.ids.b);
+  sqlite.prepare("UPDATE work_items SET actual_end='2026-09-01' WHERE id=?").run(f.ids.w3);
+  for (const acceptedAt of [null, '2026-09-04T10:46:36.014Z']) {
+    sqlite.prepare('UPDATE requirements SET status=?,progress=100,accepted_at=? WHERE id IN (?,?)').run('completed', acceptedAt, f.ids.a, f.ids.b);
+    const rest = await get<Requirement>('/api/requirements/' + f.ids.a);
+    expect(rest).toMatchObject({ status: 'completed', progress: 100,
+      acceptedAt, effectiveEnd: '2026-08-28', finishVariance: 0, delayed: false });
+    expect(await call<Requirement>('get_requirement', { id: f.ids.a })).toEqual(rest);
+    const input = { projectId: f.projectId, view: 'delayed' };
+    const page = await call<Page<Requirement>>('query_requirements', input);
+    expect(page.items.map(r => r.id)).toEqual([f.ids.b]);
+    expect(page.items[0]).toMatchObject({ effectiveEnd: '2026-09-01', finishVariance: 2, delayed: true });
+    expect(await get('/api/requirements/query?' + new URLSearchParams(input))).toEqual(page);
+    expect((await call<Requirement[]>('list_requirements', input)).map(r => r.id)).toEqual([f.ids.b]);
+    const dashboard = await get<{ summary: { delayed: number }; requirements: Requirement[] }>('/api/dashboard?projectId=' + f.projectId);
+    expect(dashboard.summary.delayed).toBe(1);
+    expect(dashboard.requirements.find(r => r.id === f.ids.a)).toMatchObject({ finishVariance: 0, delayed: false });
+  }
 });
 
 it('进展按北京时间自然日筛选，同时间倒序和snapshot分页不受新记录影响', async () => {
@@ -223,10 +245,16 @@ it('MCP图形批次遇到旧布局版本整批拒绝，未创建实体也没有�
   expect(await call('get_dependency_change_receipt', { projectId: f.projectId, batchId })).toEqual({ status: 'not_found' });
 });
 
-it('直接执行需求前置读取与REST一致', async () => {
-  const f = await fixture();
-  const direct = await post<Requirement>('/api/requirements', { projectId: f.projectId, title: '直接执行', executionMode: 'direct', ownerId: f.owner.id });
-  expect(await call('get_requirement_start_conditions', { id: direct.id })).toEqual(await get('/api/requirements/' + direct.id + '/start-conditions'));
+it('MCP 不暴露已移除工具和字段，原始需求可直接完成',async()=>{
+ const response=await mcpRpcRequest(origin,token,'tools/list',{}),catalog=JSON.parse(response.body).result.tools as Array<{name:string;inputSchema:{properties:Record<string,unknown>}}>;
+ const names=catalog.map(t=>t.name);
+ for(const name of ['get_requirement_start_conditions','accept_requirement','block_work_item','unblock_work_item','review_dependencies','list_delivery_commitments','get_delivery_commitment','get_delivery_commitment_summary','update_progress','delete_progress','update_issue_update','delete_issue_update','upsert_source_document','upsert_source_clauses','link_requirement_source'])expect(names).not.toContain(name);
+ for(const name of ['create_requirement','update_requirement'])for(const field of ['deliveryScope','executionMode','priority','acceptanceOwnerId','unblockEstimate'])expect(catalog.find(t=>t.name===name)!.inputSchema.properties).not.toHaveProperty(field);
+ const f=await fixture(),r=await call<Requirement>('create_requirement',{projectId:f.projectId,title:'原始需求',background:'原文：支持直接执行',ownerId:f.owner.id});
+ expect(r).toMatchObject({status:'not_started',workItems:[],background:'原文：支持直接执行'});
+ const started=await call<Requirement>('start_requirement',{id:r.id,expectedVersion:r.version});
+ const completed=await call<Requirement>('complete_requirement',{id:r.id,expectedVersion:started.version,content:'完成验证'});
+ expect(completed).toMatchObject({status:'completed',progress:100,acceptedAt:null,actualEnd:todayIso()});
 });
 
 it('REST/MCP一致拒绝非法日期、冲突条件、未声明字段和错误图视图', async () => {

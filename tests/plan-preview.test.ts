@@ -49,7 +49,7 @@ async function fixture() {
   const template = (await post('/api/templates', { projectId, name: '补全流程', items: [
     { title: '实现', startOffsetDays: 0, durationDays: 2, sortOrder: 0 },
   ] })).json<WorkItemTemplate>();
-  const created = await post('/api/requirements', { projectId, templateId: template.id, title: '补全需求' });
+  const created = await post('/api/requirements', { projectId, title: '补全需求' });
   expect(created.statusCode, created.body).toBe(200);
   return { template, requirement: created.json<Requirement>(), input: { templateId: template.id, baseStart: '2026-09-01' } };
 }

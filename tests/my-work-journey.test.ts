@@ -40,7 +40,7 @@ async function fixture() {
   const collaborator = (await request('POST', '/api/people', { projectId: project.id, name: '协作旅程' + sequence })).json();
   const login = cookieOf(await request('POST', '/api/login', { username: collaborator.name, password: '888888' }, ''));
   const member = cookieOf(await request('POST', '/api/account/change-password', { currentPassword: '888888', newPassword: password }, login));
-  const r = (await request('POST', '/api/requirements', { projectId: project.id, title: '协作交付', executionMode: 'work_items', ownerId: owner.id })).json<Requirement>();
+  const r = (await request('POST', '/api/requirements', { projectId: project.id, title: '协作交付',  ownerId: owner.id })).json<Requirement>();
   await request('POST', `/api/requirements/${r.id}/work-items`, { expectedVersion: r.version, title: '无排期的协作工作', ownerId: owner.id, collaboratorIds: [collaborator.id] });
   const detail = async () => (await request('GET', '/api/requirements/' + r.id)).json<Requirement>();
   const myWork = async () => (await request('GET', '/api/my-work', undefined, member)).json<MyWork>();
@@ -52,34 +52,31 @@ async function fixture() {
   return { detail, myWork, command, work, owner, collaborator };
 }
 
-it('协作成员从我的工作开始、补充说明到完成；待验收不伪造验收事实', async () => {
+it('协作成员从我的工作开始、补充说明到完成；自动完成且不伪造验收事实', async () => {
   const { detail, myWork, command, work } = await fixture();
   expect((await myWork()).items[0]).toMatchObject({ id: work.id, assignmentType: 'collaborator', plannedStart: null, plannedEnd: null });
   await command('start');
-  await command('block', { reason: '等待接口确认' });
   const before = await detail();
   await request('POST', `/api/requirements/${before.id}/progress`, { workItemId: work.id, expectedVersion: before.workItems[0].version, content: '接口负责人正在核对' });
-  expect((await detail()).workItems[0]).toMatchObject({ status: 'blocked', progress: 0, actualEnd: null });
-  await command('unblock');
+  expect((await detail()).workItems[0]).toMatchObject({ status: 'in_progress', progress: 0, actualEnd: null });
   await command('complete', { content: '接口已核对并交付' });
   const completed = await detail(), result = await myWork();
-  expect(completed).toMatchObject({ status: 'pending_acceptance', acceptedAt: null, progress: 100 });
+  expect(completed).toMatchObject({ status: 'completed', acceptedAt: null, progress: 100 });
   expect(result.summary).toMatchObject({ inProgress: 0, blocked: 0, completed: 1 });
   expect(result.completionTrend.reduce((sum, item) => sum + item.completed, 0)).toBe(1);
-  expect(result.items[0]).toMatchObject({ status: 'completed', actualEnd: todayIso(), requirementStatus: 'pending_acceptance' });
+  expect(result.items[0]).toMatchObject({ status: 'completed', actualEnd: todayIso(), requirementStatus: 'completed' });
 });
 
-it('我的工作与详情共用估算、参与人和阻塞记录，只返回本人参与项', async () => {
+it('我的工作与详情共用估算、参与人和执行记录，只返回本人参与项', async () => {
   const { detail, myWork, command, work, owner } = await fixture();
   const r = await detail();
   await request('POST', `/api/requirements/${r.id}/work-items`, { expectedVersion: r.version, title: '其他人的工作', ownerId: owner.id });
   await command('start');
   const analysis = (await request('GET', `/api/projects/${r.projectId}/path-analysis`)).json();
-  await request('PATCH', `/api/work-items/${work.id}/path-estimate`, { expectedRevision: analysis.revision, durationDays: 3, reviewForecast: { remainingDays: 3 } });
-  await command('block', { reason: '等待规格', blockedCoordinatorId: owner.id, blockedNextReviewAt: todayIso() });
+  await request('PATCH', `/api/work-items/${work.id}/path-estimate`, { expectedRevision: analysis.revision, durationDays: 3 });
   const { forecastBasis: _basis, blockerCoordination: _coordination, ...blocked } = (await detail()).workItems[0];
   expect(blocked.durationDays).toBe(3);
-  expect(blocked.forecastReview?.confirmedAt).toBeTruthy();
+  expect(blocked.forecastReview).toBeNull();
   const result = await myWork();
   expect(result.items).toHaveLength(1);
   expect(result.items.find(item => item.id === work.id)).toMatchObject(blocked);

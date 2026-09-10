@@ -30,11 +30,11 @@ describe('执行、草稿和预测依据',()=>{
   expect(result.pending).toHaveLength(1);expect(result.pending[0].key).toBe('history:1:A:title');
   const resolved=rebaseEditorHistory(base,server,[empty,old,empty],2,{[result.pending[0].key]:'server'});expect(resolved.pending).toEqual([]);expect(resolved.values[1].entities).toEqual([]);
  });
- it('核对后前置变化让预测转为未知，姓名修改不失效',()=>{
+ it('前置变化自动重算预测，姓名修改不影响日期',()=>{
   const input=pathFixture(),a=analysePaths(input),w=input.workItems.find(w=>w.id==='B2')!;
   w.forecastReview={confirmedAt:date(0),confirmedBy:'a',remainingDays:2,forecastEnd:a.nodes.find(n=>n.id==='B2')!.forecastEnd,actualStart:null,progress:0,predecessorBasis:predecessorBasis(w.id,a)};
   expect(analysePaths(input).nodes.find(n=>n.id==='B2')!.forecastEnd).toBeTruthy();
   input.requirements[0].title='新名字';expect(analysePaths(input).nodes.find(n=>n.id==='B2')!.forecastEnd).toBeTruthy();
-  input.workItems.find(w=>w.id==='A1')!.durationDays=8;const changed=analysePaths(input);expect(changed.nodes.find(n=>n.id==='B2')!.forecastEnd).toBeNull();expect(changed.forecastEnd).toBeNull();expect(changed.nodes.find(n=>n.id==='B2')!.forecastBasis?.reasons.join('')).toContain('变化');
+  input.workItems.find(w=>w.id==='A1')!.durationDays=8;const changed=analysePaths(input);expect(changed.nodes.find(n=>n.id==='B2')!.forecastEnd! > a.nodes.find(n=>n.id==='B2')!.forecastEnd!).toBe(true);expect(changed.forecastEnd).toBeTruthy();
  });
 });

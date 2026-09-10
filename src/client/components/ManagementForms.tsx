@@ -1,4 +1,4 @@
-import {OrganizationFields,parseTags} from './RequirementIntake';
+import {OrganizationFields} from './RequirementIntake';
 import {isAssignablePerson} from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,13 +24,10 @@ type ProjectFormInput = {
 };
 
 type RequirementFormInput = {
-  groupId?:string|null;tags?:string[];
+  groupId?:string|null;
   projectId: string;
   templateId?: string;
-  executionMode?: 'direct'|'work_items';
-  deliveryScope?: 'committed'|'candidate';
   title: string;
-  priority: string;
   ownerId: string;
   background: string;
   acceptanceCriteria: string;
@@ -166,9 +163,7 @@ export function RequirementForm({
   const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">("start");
   const [scheduleDate, setScheduleDate] = useState("");
   const [ownerId, setOwnerId] = useState("");
-  const { projects } = useProjects();
-  const defaultTemplateId = projects.find((project) => project.id === projectId)?.defaultTemplateId || "";
-  const [templateId, setTemplateId] = useState(defaultTemplateId);
+  const [templateId, setTemplateId] = useState("");
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, projectId],
     queryFn: ({ signal }) => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(projectId)}`, { signal }),
@@ -198,7 +193,7 @@ export function RequirementForm({
         if (submitting.current||unknown) return;
         submitting.current = true;
         const values = Object.fromEntries(new FormData(event.currentTarget));
-        mutation.mutate({ ...values,title:String(values.title||''),priority:String(values.priority||'P2'),ownerId,background:String(values.background||''),acceptanceCriteria:String(values.acceptanceCriteria||''),referenceUrl:String(values.referenceUrl||''),groupId:String(values.groupId||'')||null,tags:parseTags(String(values.tags||'')), templateId:templateId||undefined, executionMode:templateId?"work_items":"direct", projectId } as RequirementFormInput);
+        mutation.mutate({ ...values,title:String(values.title||''),ownerId,background:String(values.background||''),acceptanceCriteria:String(values.acceptanceCriteria||''),referenceUrl:String(values.referenceUrl||''),groupId:String(values.groupId||'')||null, templateId:templateId||undefined, projectId } as RequirementFormInput);
       }}
     >
       <fieldset className="form-grid form-fieldset" disabled={mutation.isPending}>
@@ -206,7 +201,6 @@ export function RequirementForm({
         <input name="title" required autoFocus />
       </FormField>
       <OrganizationFields projectId={projectId}/>
-      <FormField label="交付范围"><select name="deliveryScope" defaultValue="committed"><option value="committed">纳入交付</option><option value="candidate">候选</option></select></FormField>
       <FormField label="需求负责人（可稍后指定）">
         <select name="ownerId" value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
           <option value="">待指定</option>
@@ -254,9 +248,9 @@ export function RequirementForm({
         <p className="field-help field-full">不选流程时直接执行；选定流程后生成工作项。日期可留空，后续再预览排期。{scheduleMode === "deadline" ? " 截止日期需为工作日。" : ""}</p>
       </FormDisclosure>
       {(templatesQuery.error || peopleQuery.error) && <div className="warning-banner field-full">部分辅助选项加载失败，仍可创建直接执行需求并稍后补充。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching || peopleQuery.isFetching} onClick={() => void Promise.all([templatesQuery.refetch(), peopleQuery.refetch()])}>重新加载</button></div>}
-      <FormDisclosure label="补充信息" hint="可选：背景、验收标准和参考链接">
+      <FormDisclosure label="补充信息" hint="可选：背景、完成标准和参考链接">
         <FormField label="需求背景" full><textarea name="background" rows={3} placeholder="为什么要做，可留空" /></FormField>
-        <FormField label="验收标准" full><textarea name="acceptanceCriteria" rows={3} placeholder="如何判断完成，可留空" /></FormField>
+        <FormField label="完成标准" full><textarea name="acceptanceCriteria" rows={3} placeholder="如何判断完成，可留空" /></FormField>
         <FormField label="参考链接" full><input name="referenceUrl" type="url" placeholder="https://…" /></FormField>
       </FormDisclosure>
       <FormError>{mutation.error?.message}</FormError>

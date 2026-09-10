@@ -18,7 +18,13 @@ let app: FastifyInstance, cookie = '', origin = '', token = '', sequence = 0;
 const post = (url: string, payload: Record<string, unknown>) => app.inject({ method: 'POST', url, headers: { cookie }, payload });
 const get = async <T>(url: string) => (await app.inject({ url, headers: { cookie } })).json<T>();
 const detail = (id: string) => get<Requirement>('/api/requirements/' + id);
-const summary = (projectId: string) => get<{ acceptedCount: number; reworkCount: number; reacceptedCount: number }>(`/api/projects/${projectId}/delivery-commitments/summary`);
+const summary = async (projectId:string) => {
+ const {sqlite}=await import('../src/server/database');
+ const events=sqlite.prepare("SELECT p.event_type AS type FROM progress_updates p JOIN requirements r ON r.id=p.requirement_id WHERE r.project_id=? AND p.work_item_id IS NULL AND p.event_type IN ('accept','rework','reopen')").all(projectId) as Array<{type:string}>;
+ const legacy=sqlite.prepare('SELECT count(*) n FROM requirements WHERE project_id=? AND accepted_at IS NOT NULL').get(projectId) as {n:number};
+ const count=events.filter(e=>e.type==='accept').length;
+ return {acceptedCount:Math.max(count,legacy.n),reworkCount:events.filter(e=>e.type!=='accept').length,reacceptedCount:Math.max(0,count-1)};
+};
 const command = async (id: string, action: string, payload: Record<string, unknown>) => post(`/api/requirements/${id}/${action}`, { expectedVersion: (await detail(id)).version, ...payload });
 
 beforeAll(async () => {
@@ -52,13 +58,14 @@ async function completedRequirement() {
     const completed = await post(`/api/work-items/${w.id}/complete-as-planned`, { expectedVersion: assigned.json().version });
     expect(completed.statusCode, completed.body).toBe(200);
   }
-  expect((await detail(r.id)).status).toBe('pending_acceptance');
+  expect((await detail(r.id)).status).toBe('completed');
   return { r: await detail(r.id), projectId };
 }
 
-it.each(['REST', 'MCP'] as const)('%s 工作项重开保留首次验收，记一次需求返工；后续另一工作项重开不重复计数，再次验收另计', async protocol => {
+it.each(['REST', 'MCP'] as const)('%s 工作项重开保留首次验收，记一次需求返工；后续另一工作项重开不重复计数，再次完成不增加验收记录', async protocol => {
   const { r, projectId } = await completedRequirement();
-  expect((await command(r.id, 'accept', { content: '首次交付已验收' })).statusCode).toBe(200);
+  const {sqlite}=await import('../src/server/database');
+  sqlite.prepare("UPDATE requirements SET accepted_at='2020-02-03T10:00:00.000Z' WHERE id=?").run(r.id);
   expect(await summary(projectId)).toMatchObject({ acceptedCount: 1, reworkCount: 0 });
   const accepted = await detail(r.id);
   for (const w of accepted.workItems) {
@@ -78,8 +85,8 @@ it.each(['REST', 'MCP'] as const)('%s 工作项重开保留首次验收，记一
   expect(reopened).toMatchObject({ status: 'in_progress', acceptedAt: null, progress: 40 });
   expect(await summary(projectId)).toMatchObject({ acceptedCount: 1, reworkCount: 1, reacceptedCount: 0 });
   for (const w of reopened.workItems) expect((await post(`/api/work-items/${w.id}/complete`, { expectedVersion: w.version, content: '返工验证完成' })).statusCode).toBe(200);
-  expect((await command(r.id, 'accept', { content: '再次验收通过' })).statusCode).toBe(200);
-  expect(await summary(projectId)).toMatchObject({ acceptedCount: 1, reworkCount: 1, reacceptedCount: 1 });
+  expect(await detail(r.id)).toMatchObject({status:'completed',acceptedAt:null});
+  expect(await summary(projectId)).toMatchObject({ acceptedCount: 1, reworkCount: 1, reacceptedCount: 0 });
 });
 
 it('重开事务失败时，补存验收、工作项和需求历史一起回滚', async () => {

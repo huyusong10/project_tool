@@ -23,6 +23,40 @@ const viewportValue=(page:Page)=>page.locator('.react-flow__viewport').evaluate(
 const positionsValue=(page:Page)=>page.locator('.react-flow__node').evaluateAll(nodes=>Object.fromEntries(nodes.map(n=>[(n as HTMLElement).dataset.id,(n as HTMLElement).style.transform])));
 const blank=(page:Page)=>page.locator('.react-flow__pane').click({position:{x:12,y:300}});
 
+for(const scope of ['全局路径','需求路径','流程设计'] as const){
+ test(`画布文字选择：${scope}拖动和全选不选中文字，编辑仍可选字`,async({page})=>{
+  const {a}=await fixture(page);
+  await page.goto(scope==='全局路径'?'/paths?pathScope=all':scope==='需求路径'?`/requirements/${a.id}?view=path`:`/templates?edit=${a.templateId}`);
+  await ready(page);
+  const canvas=page.locator('.dependency-canvas'),label=page.locator(scope==='流程设计'?'.dependency-card-top span':'.dependency-edge-label text').first();
+  await expect(label).toBeVisible();
+  await label.click({clickCount:3});
+  expect(await page.evaluate(()=>window.getSelection()?.toString())).toBe('');
+  const bounds=(await label.boundingBox())!;
+  await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
+  await page.mouse.down();await page.mouse.move(bounds.x+bounds.width+50,bounds.y+35,{steps:8});await page.mouse.up();
+  expect(await page.evaluate(()=>window.getSelection()?.toString())).toBe('');
+  await canvas.focus();await page.keyboard.press('Control+a');
+  const count=await page.locator('.react-flow__node:not(.graph-node-hidden)').count();
+  await expect(page.locator('.react-flow__node.selected')).toHaveCount(count);
+  expect(await page.evaluate(()=>window.getSelection()?.toString())).toBe('');
+  await blank(page);
+  if(scope!=='流程设计')await page.getByLabel('编辑画布',{exact:true}).click();
+  const title=scope==='全局路径'?page.locator(`[data-inline-title="${a.id}"]`):scope==='需求路径'?page.locator(`[data-inline-title="${a.workItems[0].id}"]`):page.locator('.dependency-card strong').first();
+  const original=(await title.textContent())!;
+  await title.dblclick();await expect(title).toHaveAttribute('contenteditable','true');
+  await page.keyboard.press('Control+a');
+  expect(await page.evaluate(()=>window.getSelection()?.toString())).toBe(original);
+  await page.keyboard.insertText('临时名称');await expect(title).toHaveText('临时名称');
+  await page.keyboard.press('Escape');await expect(title).toHaveText(original);
+  await title.click();const field=page.getByLabel('元素名称',{exact:true});
+  await field.focus();await page.keyboard.press('Control+a');
+  expect(await field.evaluate((node:HTMLInputElement)=>node.value.slice(node.selectionStart??0,node.selectionEnd??0))).toBe(original);
+  await page.keyboard.insertText('属性临时名称');await expect(field).toHaveValue('属性临时名称');
+  await page.keyboard.press('Escape');await expect(field).toHaveValue(original);
+ });
+}
+
 test('模板实例：首次保存前改名复制删除、慢预览、刷新及撤销保持节点和草稿',async({page})=>{
  const {a,project,analysis}=await fixture(page,false),initial=await analysis();
  await page.goto('/paths?pathScope=all');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();await page.getByLabel('添加元素',{exact:true}).click();
@@ -277,8 +311,9 @@ test('全局新增需求只加入草稿，进入其内部继续创建，保存�
  const {analysis}=await fixture(page);await page.goto('/paths?pathScope=all');await ready(page);const initial=await analysis();
  await page.getByRole('button',{name:'编辑画布',exact:true}).click();await page.getByLabel('添加元素',{exact:true}).click();await page.locator('.graph-elements').getByRole('button',{name:'需求',exact:true}).click();const b=(await page.locator('.dependency-canvas').boundingBox())!;await page.mouse.click(b.x+b.width*.6,b.y+b.height*.68);
  await page.getByRole('dialog').getByLabel('需求标题').fill('草稿新需求');await page.getByRole('button',{name:'加入草稿',exact:true}).click();await ready(page);expect((await analysis()).requirements).toHaveLength(initial.requirements.length);
+ await expect(page.locator('.graph-detail .primary-button')).toHaveText('进入需求路径');await expect(page.locator('.graph-detail').getByRole('button',{name:'查看需求详情',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(/draftProject=/);await expect(page.locator('.graph-editor-title>strong')).toHaveText('草稿新需求');
- await page.getByLabel('添加元素',{exact:true}).click();await page.locator('.graph-elements').getByRole('button',{name:'工作项',exact:true}).click();const box=(await page.locator('.dependency-canvas').boundingBox())!;await page.mouse.click(box.x+box.width*.45,box.y+box.height*.6);await page.getByRole('button',{name:'确认拆分并加入工作项',exact:true}).click();await ready(page);
+ await page.getByLabel('添加元素',{exact:true}).click();await page.locator('.graph-elements').getByRole('button',{name:'工作项',exact:true}).click();const box=(await page.locator('.dependency-canvas').boundingBox())!;await page.mouse.click(box.x+box.width*.45,box.y+box.height*.6);await ready(page);await expect(page.getByRole('heading',{name:'新工作项',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect(page).not.toHaveURL(/draftProject=/);await ready(page);expect((await analysis()).requirements).toHaveLength(initial.requirements.length+1);
  await page.getByRole('button',{name:'返回项目全局',exact:true}).click();await ready(page);await expect(page).toHaveURL(/paths/);await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);expect((await page.locator('.graph-toolbar').boundingBox())!.height).toBeLessThanOrEqual(88);await page.screenshot({path:testInfo.outputPath('editor-narrow.png')});
 });

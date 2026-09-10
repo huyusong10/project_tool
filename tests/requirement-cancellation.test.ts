@@ -45,10 +45,10 @@ async function createScenario(scenario: string) {
     { title: '实现', startOffsetDays: 0, durationDays: 1, sortOrder: 0 },
     { title: '验收准备', startOffsetDays: 3, durationDays: 2, sortOrder: 1 },
   ] })).json().id;
-  const created = await post('/api/requirements', { projectId, ownerId, templateId, title: `取消场景：${scenario}`, ...(scenario === 'planning' ? {} : { plannedStart: '2020-01-02' }) });
+  const created = await post('/api/requirements', { projectId, ownerId, templateId, title: `取消场景：${scenario}`, ...(scenario === 'not_started' ? {} : { plannedStart: '2020-01-02' }) });
   expect(created.statusCode, created.body).toBe(200);
   const requirement = created.json<Detail>();
-  if (scenario === 'planning') return detail(requirement.id);
+  if (scenario === 'not_started') return detail(requirement.id);
   if (scenario === 'mixed' || scenario === 'pending_acceptance') {
     const completedItems = scenario === 'mixed' ? requirement.workItems!.slice(0, 1) : requirement.workItems!;
     for (const item of completedItems) {
@@ -64,9 +64,7 @@ async function createScenario(scenario: string) {
     expect(started.statusCode, started.body).toBe(200);
     const progressed = await post(`/api/requirements/${requirement.id}/progress`, { workItemId: item.id, expectedVersion: started.json().version, content: '保留执行进度', workItemPercent: 40 });
     expect(progressed.statusCode, progressed.body).toBe(200);
-    const progressedItem = progressed.json<Detail>().workItems!.find((entry) => entry.id === item.id)!;
-    const blocked = await post(`/api/work-items/${item.id}/block`, { expectedVersion: progressedItem.version, reason: '等待外部输入' });
-    expect(blocked.statusCode, blocked.body).toBe(200);
+
   }
   return detail(requirement.id);
 }
@@ -88,10 +86,10 @@ afterAll(async () => {
 });
 
 for (const protocol of ['REST', 'MCP'] as const) {
-  it.each(['mixed', 'executing', 'planning', 'pending_acceptance'])(`${protocol}取消%s需求：存储、详情、取消记录和看板聚合一致`, async (scenario) => {
+  it.each(['mixed', 'executing', 'not_started'])(`${protocol}取消%s需求：存储、详情、取消记录和看板聚合一致`, async (scenario) => {
     const before = await createScenario(scenario);
     if (scenario === 'mixed' || scenario === 'executing') {
-      expect(before.status).toBe('blocked');
+      expect(before.status).toBe('in_progress');
       expect(before.progress).toBeGreaterThan(0);
       expect(before.progress).toBeLessThan(100);
     } else expect(before.status).toBe(scenario);
@@ -138,3 +136,10 @@ for (const protocol of ['REST', 'MCP'] as const) {
     expect(staleArchive.statusCode).toBe(409);
   });
 }
+
+it.each(['REST','MCP'] as const)('%s 已完成需求先返工才可取消', async protocol => {
+ const before=await createScenario('pending_acceptance');
+ expect(before.status).toBe('completed');
+ expect((await cancel(protocol,before)).statusCode).toBe(409);
+ expect(await detail(before.id)).toEqual(before);
+});

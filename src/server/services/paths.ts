@@ -25,7 +25,7 @@ export const dependencySelect = `SELECT id, project_id AS projectId, coalesce(so
 export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInput {
   const project = one<{ name: string; revision: number; plannedEnd: string | null }>('SELECT name, analysis_revision AS revision, planned_end AS plannedEnd FROM projects WHERE id=?', projectId);
   if (!project) notFound('项目不存在');
-  const requirements = all<PathRequirement>(`SELECT r.group_id AS groupId,r.tags,(SELECT name FROM requirement_groups WHERE id=r.group_id) AS groupName,r.delivery_scope AS deliveryScope,r.execution_mode AS executionMode,r.acceptance_owner_id AS acceptanceOwnerId,
+  const requirements = all<PathRequirement>(`SELECT r.group_id AS groupId,(SELECT name FROM requirement_groups WHERE id=r.group_id) AS groupName,r.delivery_scope AS deliveryScope,r.execution_mode AS executionMode,r.acceptance_owner_id AS acceptanceOwnerId,
     r.forecast_review AS forecastReview,r.blocked_coordinator_id AS blockedCoordinatorId,r.blocked_next_review_at AS blockedNextReviewAt,r.blocked_issue_id AS blockedIssueId,r.actual_start AS actualStart,r.actual_end AS actualEnd,r.blocked_at AS blockedAt,r.blocked_reason AS blockedReason,
     r.forecast_duration AS forecastDuration,r.forecast_ready_at AS forecastReadyAt,r.duration_days AS durationDays,r.forecast_end AS forecastEnd,r.unblock_estimate AS unblockEstimate,r.split_base_progress AS splitBaseProgress,r.split_at AS splitAt,
     r.progress,r.created_at AS createdAt,r.updated_at AS updatedAt,r.id, r.project_id AS projectId, r.title, r.status, r.priority, r.owner_id AS ownerId,
@@ -33,7 +33,6 @@ export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInp
     r.dependencies_reviewed_at AS dependenciesReviewedAt, r.schedule_anchor AS scheduleAnchor, r.forecast_acceptance AS forecastAcceptance,
     r.version,r.background,r.acceptance_criteria AS acceptanceCriteria,r.reference_url AS referenceUrl,r.template_id AS templateId,r.acknowledged_dependencies AS acknowledgedDependencies
     FROM requirements r WHERE r.project_id=? ORDER BY r.id`, projectId);
-  for(const r of requirements)r.tags=typeof r.tags==='string'?JSON.parse(r.tags):r.tags||[];
   const workItems = all<PathWork>(`SELECT w.id, w.version, w.requirement_id AS requirementId, w.title, w.status, w.progress, w.owner_id AS ownerId,
     (SELECT json_group_array(c.person_id) FROM work_item_collaborators c WHERE c.work_item_id=w.id) AS assigneeIds,
     w.planned_start AS plannedStart, w.planned_end AS plannedEnd, w.forecast_review AS forecastReview,w.blocked_coordinator_id AS blockedCoordinatorId,w.blocked_next_review_at AS blockedNextReviewAt,w.blocked_issue_id AS blockedIssueId,w.actual_start AS actualStart, w.actual_end AS actualEnd,

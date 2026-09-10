@@ -83,20 +83,20 @@ describe('自动状态、进度和风险', () => {
   it('分析筛选分别使用完整的需求和工作项状态', () => {
     const statuses = (dataset: string) => analyticsCatalog.datasets.find((item) => item.id === dataset)!
       .filters.find((filter) => filter.id === 'status')!.options.map((option) => option.value);
-    expect(statuses('requirements')).toEqual(['planning', 'not_started', 'in_progress', 'blocked', 'pending_acceptance', 'completed', 'cancelled']);
-    expect(statuses('work_items')).toEqual(['not_started', 'in_progress', 'blocked', 'completed', 'cancelled']);
+    expect(statuses('requirements')).toEqual(['not_started', 'in_progress', 'completed', 'cancelled']);
+    expect(statuses('work_items')).toEqual(['not_started', 'in_progress', 'completed', 'cancelled']);
   });
 
   it('集中声明工作项、需求和问题的状态操作入口', () => {
-    expect(workItemActionsByStatus.in_progress).toEqual(['progress', 'block', 'complete', 'cancel']);
+    expect(workItemActionsByStatus.in_progress).toEqual(['progress', 'complete', 'cancel']);
     expect(workItemActionsByStatus.completed).toEqual(['reopen', 'correct']);
-    expect(requirementActionsByStatus.pending_acceptance).toEqual(['accept', 'rework', 'cancel']);
+    expect(requirementActionsByStatus.completed).toEqual(['rework', 'correct', 'archive']);
     expect(issueActionsByStatus.resolved).toEqual(['reopen', 'correct']);
   });
   it('工作项以持久化状态为权威，不再由日期静默改写', () => {
     expect(deriveWorkItemStatus({ status: 'not_started', actualStart: '2026-09-01', actualEnd: '2026-09-02' })).toBe('not_started');
     expect(deriveWorkItemStatus({ status: 'in_progress', actualStart: '2026-09-01' })).toBe('in_progress');
-    expect(deriveWorkItemStatus({ status: 'blocked', blockedAt: '2026-09-01T00:00:00Z' })).toBe('blocked');
+    expect(deriveWorkItemStatus({ status: 'cancelled', actualStart: '2026-09-01' })).toBe('cancelled');
   });
 
   it('需求排期边界统一由有效工作项聚合', () => {
@@ -185,6 +185,37 @@ describe('自动状态、进度和风险', () => {
     expect(ganttProgressDisplay('cancelled', 30)).toBe('—');
     expect(ganttProgressDisplay('in_progress', -8)).toBe(0);
     expect(ganttProgressDisplay('in_progress', 108)).toBe(100);
+  });
+
+  it.each([null, '2026-09-04T10:46:36.014Z'])('工作按期完成后不随等待验收或验收确认时间增加延期：%s', acceptedAt => {
+    const items = [
+      { status: 'completed', plannedStart: '2026-08-19', plannedEnd: '2026-08-28', actualStart: '2026-08-19', actualEnd: '2026-08-28' },
+      { status: 'completed', plannedStart: '2026-08-19', plannedEnd: '2026-08-24', actualStart: '2026-08-19', actualEnd: '2026-08-24' },
+      { status: 'cancelled', plannedStart: '2026-08-19', plannedEnd: '2026-09-30', actualStart: '2026-08-19', actualEnd: '2026-09-10' },
+    ];
+    for (const today of ['2026-09-04', '2026-09-10']) {
+      expect(deriveRequirementMetrics({ acceptedAt }, items, today)).toMatchObject({
+        status: 'completed', progress: 100,
+        effectiveEnd: '2026-08-28', finishVariance: 0, delayed: false,
+      });
+    }
+  });
+
+  it.each([
+    ['2026-08-27', -1], ['2026-09-01', 2],
+  ])('工作完成日期 %s 决定实际提前或延期，不受确认时间影响', (actualEnd, finishVariance) => {
+    for (const acceptedAt of [null, '2026-09-10']) {
+      const metrics = deriveRequirementMetrics({ acceptedAt }, [
+        { status: 'completed', plannedStart: '2026-08-19', plannedEnd: '2026-08-28', actualStart: '2026-08-19', actualEnd },
+      ], '2026-09-10');
+      expect(metrics).toMatchObject({ effectiveEnd: actualEnd, finishVariance, delayed: finishVariance > 0 });
+    }
+  });
+
+  it.each(['completed'])('直接执行需求 %s 按实际结束日期计算偏差', status => {
+    expect(deriveRequirementMetrics({ executionMode: 'direct', status, progress: 100,
+      plannedStart: '2026-08-19', plannedEnd: '2026-08-28', actualStart: '2026-08-19', actualEnd: '2026-08-28', acceptedAt: '2026-09-04',
+    }, [], '2026-09-10')).toMatchObject({ effectiveEnd: '2026-08-28', finishVariance: 0, delayed: false });
   });
 
   it('阻塞或延期三工作日覆盖Gap规则，已关闭需求不再计算当前风险', () => {

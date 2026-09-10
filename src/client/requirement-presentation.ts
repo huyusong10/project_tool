@@ -1,5 +1,5 @@
 import type { Requirement } from "./types";
-import { businessDateFromDateTime, isTerminalRequirementStatus, riskLabels, type RiskLevel } from "../shared/domain";
+import { isTerminalRequirementStatus, riskLabels, type RiskLevel } from "../shared/domain";
 
 export function requirementRiskDisplay(requirement: Pick<Requirement, "status" | "riskEvaluated" | "riskLevel">) {
   const closed = isTerminalRequirementStatus(requirement.status);
@@ -9,7 +9,7 @@ export function requirementRiskDisplay(requirement: Pick<Requirement, "status" |
 
 export function requirementVarianceValue(requirement: Requirement): number | null {
   if (requirement.status === "planning" || requirement.status === "cancelled" || requirement.scheduleComplete === false || !requirement.plannedStart || !requirement.plannedEnd) return null;
-  if (["completed", "pending_acceptance"].includes(requirement.status)) return requirement.finishVariance;
+  if (requirement.status === "completed") return requirement.effectiveEnd === null ? null : requirement.finishVariance;
   if (requirement.finishVariance > 0) return requirement.finishVariance;
   if (requirement.status === "not_started" && requirement.progress === 0 && requirement.plannedProgress === 0) return null;
   return requirement.scheduleVarianceDays ?? null;
@@ -26,7 +26,8 @@ export function requirementVarianceDisplay(requirement: Requirement) {
   if (requirement.status === "not_started" && requirement.progress === 0 && requirement.plannedProgress === 0) {
     return { label: "未到计划", className: "muted", title: "尚未到计划开始时间" };
   }
-  if (["completed", "pending_acceptance"].includes(requirement.status)) {
+  if (requirement.status === "completed") {
+    if (requirement.effectiveEnd === null) return { label: "完成日期缺失", className: "muted", title: "请补录实际完成日期后再计算偏差" };
     if (requirement.finishVariance > 0) {
       return { label: `延期 ${requirement.finishVariance}个工作日`, className: "danger-text", title: "实际完成日期晚于计划完成日期" };
     }
@@ -58,8 +59,7 @@ export function requirementVarianceDisplay(requirement: Requirement) {
 }
 
 export function requirementDeliveryDate(r:Requirement){
-  if(r.status==='completed')return {label:'验收完成',value:r.acceptedAt?businessDateFromDateTime(r.acceptedAt):'日期未记录',help:'以实际验收记录为准'};
-  if(r.status==='pending_acceptance')return {label:'预计验收',value:r.acceptanceForecastEnd||'待安排',help:r.acceptanceAssumed?'按工作完成后当日验收估算，尚未确认验收安排':'执行已结束，验收后才计入交付'};
+  if(r.status==='completed')return {label:'工作完成',value:r.executionCompletedAt||r.actualEnd||'日期未记录',help:'以最后一个有效工作项的实际完成日期为准'};
   if(r.status==='cancelled')return {label:'已取消',value:'—',help:'保留原计划与执行记录'};
-  return {label:'预计工作完成',value:r.executionForecastEnd||'待确认',help:'按执行工作估算；项目交付预测仍包含验收'};
+  return {label:'预计工作完成',value:r.executionForecastEnd||'待确认',help:'根据工作进度、工期和依赖估算'};
 }

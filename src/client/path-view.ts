@@ -1,10 +1,10 @@
-import {emptyRequirementFilters,unfinishedStatuses,type RequirementFilters} from '../shared/requirement-view';
+import {emptyRequirementFilters,unfinishedStatuses,normalizeRequirementStatusFilter,type RequirementFilters} from '../shared/requirement-view';
 import type {PathAnalysis} from '../shared/paths';
 import type {GraphCard} from './path-projection';
 import {matchesSearch} from '../shared/search';
 export function cardFilterItem(c:GraphCard,data:PathAnalysis){
   const r=data.requirements.find(r=>r.id===c.requirementId),n=data.nodes.find(n=>n.id===c.id),risk=data.risks[c.requirementId];
-  return {id:c.id,title:c.title,status:c.status,groupId:r?.groupId,tags:r?.tags,deliveryScope:r?.deliveryScope,...risk,ownerId:c.kind==='requirement'?r?.ownerId:n?.ownerId,
+  return {id:c.id,title:c.title,status:c.status,groupId:r?.groupId,deliveryScope:r?.deliveryScope,...risk,ownerId:c.kind==='requirement'?r?.ownerId:n?.ownerId,
     assigneeIds:c.kind==='requirement'?r?.assigneeIds:n?.assigneeIds,riskLevel:c.risk,riskEvaluated:c.risk!=='pending',unknown:c.unknown,
     delayed:c.kind==='work'?n?.delayed:r?.delayed,
     scheduleComplete:c.kind==='work'?n?.scheduleComplete:r?.scheduleComplete,plannedEnd:n?.plannedEnd||r?.plannedEnd,
@@ -14,16 +14,18 @@ export function cardSearch(c:GraphCard,data:PathAnalysis,search:string){
   const works=c.kind==='requirement'?data.nodes.filter(n=>n.kind==='work'&&n.requirementId===c.id):[];
   return matchesSearch([{text:c.title,weight:100},{text:c.subtitle,weight:20},...works.map(n=>({text:n.title,weight:20}))],search);
 }
-export const filterKeys={groups:'pathGroups',tags:'pathTags',deliveryScopes:'pathDeliveryScope',statuses:'pathStatuses',risks:'pathRisks',owners:'pathOwners',participants:'pathPeople',priorities:'pathPriorities',schedule:'pathSchedule'} as const;
+export const filterKeys={groups:'pathGroups',deliveryScopes:'pathDeliveryScope',statuses:'pathStatuses',risks:'pathRisks',owners:'pathOwners',participants:'pathPeople',priorities:'pathPriorities',schedule:'pathSchedule'} as const;
 export function readPathFilters(params:URLSearchParams,internal=false):RequirementFilters {
   const f=emptyRequirementFilters();
-  for(const [key,param] of Object.entries(filterKeys)){const value=params.get(param)||'';if(key==='tags'&&value.startsWith('[')){try{const tags:unknown=JSON.parse(value);if(Array.isArray(tags)&&tags.every(t=>typeof t==='string'))f.tags=tags;}catch{/* Ignore an invalid filter URL. */}}else f[key as keyof typeof filterKeys]=value.split(',').filter(Boolean);}
+  for(const [key,param] of Object.entries(filterKeys))f[key as keyof typeof filterKeys]=(params.get(param)||'').split(',').filter(Boolean);
+  f.statuses=[...new Set(f.statuses.flatMap(status=>status==='unfinished'?unfinishedStatuses:[normalizeRequirementStatusFilter(status)]).filter(Boolean))];
+  f.deliveryScopes=[];f.priorities=[];
   if(!params.has('pathStatuses')&&!params.has('pathScope')&&!internal)f.statuses=[...unfinishedStatuses];
   f.critical=params.get('pathCritical')==='1';f.attention=params.get('pathScope')==='attention';return f;
 }
 export function writePathFilters(params:URLSearchParams,f:RequirementFilters){
-  const next=new URLSearchParams(params);next.set('pathScope',f.attention?'attention':'custom');
-  for(const [key,param] of Object.entries(filterKeys)){const values=f[key as keyof typeof filterKeys]||[];if(values.length)next.set(param,key==='tags'?JSON.stringify(values):values.join(','));else next.delete(param);}
+  const next=new URLSearchParams(params);next.delete('pathTags');next.set('pathScope',f.attention?'attention':'custom');
+  for(const [key,param] of Object.entries(filterKeys)){const values=f[key as keyof typeof filterKeys]||[];if(values.length)next.set(param,values.join(','));else next.delete(param);}
   next.set('pathStatuses',f.statuses.join(','));if(f.critical)next.set('pathCritical','1');else next.delete('pathCritical');return next;
 }
 export function graphBranch(id:string,links:Array<{source:string;target:string}>){

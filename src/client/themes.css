@@ -380,9 +380,6 @@ button.gantt-date-progress { cursor: pointer; }
 .gantt-date-hitbox { position: absolute; top: calc(var(--date-plan-top) - 4px); height: calc(var(--date-actual-top) - var(--date-plan-top) + 16px); z-index: 6; cursor: help; }
 .gantt-date-unplanned { position: absolute; top: calc(var(--date-plan-top) - 6px); left: 8px; color: var(--text-muted); font-size: 12px; }
 .gantt-range-note { display: block; margin-top: 3px; color: var(--text-muted); font-size: 12px; }
-.requirement-gantt-track.gantt-split-track .gantt-milestone-marker > b { display: none; }
-.gantt-track.gantt-split-track .gantt-milestone-marker.milestone-lane-1 > b { top: -1px; bottom: auto; }
-.gantt-track.gantt-split-track .gantt-milestone-marker.milestone-lane-1:not(:focus) > b { display: none; }
 
 [data-theme="industrial"] .primary-button:hover:not(:disabled):not(.danger-button) { background: #e0b617; border-color: #e0b617; }
 

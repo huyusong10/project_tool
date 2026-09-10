@@ -1,4 +1,4 @@
-import {ProcessingPriorityBadge} from '../components/Badge';
+
 import {directRequirementTimelineItem} from '../requirement-timeline';
 import {requirementRiskDisplay} from '../requirement-presentation';
 import {assertCleanRequirementDraft} from '../use-graph-draft';
@@ -7,7 +7,7 @@ import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Check, CircleStop, Clock3, MessageSquarePlus, Play } from 'lucide-react';
+import { AlertTriangle, Check, Clock3, MessageSquarePlus, Play } from 'lucide-react';
 import { api, jsonBody } from '../api';
 import { useSession } from '../app-context';
 import { invalidateRequirementViews, keys } from '../query-keys';
@@ -27,7 +27,8 @@ export function MyWorkPage() {
   const client = useQueryClient(); const navigate = useNavigate();
   const { session } = useSession();
   const [params, setParams] = usePageSearchParams(['filter'], true);
-  const filter = params.get('filter') || 'active';
+  const requestedFilter = params.get('filter');
+  const filter = requestedFilter && ['active','all','not_started','in_progress','completed','cancelled'].includes(requestedFilter) ? requestedFilter : 'active';
   const setFilter = (value: string) => setParams({ filter: value });
   const [progressItem, setProgressItem] = useState<MyWorkItem>();
   const { data, isLoading, error, refetch, isFetching, unavailable } = useResourceQuery<MyWork>(keys.myWork, '/api/my-work');
@@ -52,7 +53,6 @@ export function MyWorkPage() {
   const metrics: Array<{ label: string; value: number; Icon: typeof Clock3 }> = [
     { label: '待开始', value: data?.summary.notStarted || 0, Icon: Clock3 },
     { label: '进行中', value: data?.summary.inProgress || 0, Icon: Play },
-    { label: '阻塞', value: data?.summary.blocked || 0, Icon: CircleStop },
     { label: '已延期', value: data?.summary.overdue || 0, Icon: AlertTriangle },
     { label: '已完成', value: data?.summary.completed || 0, Icon: Check },
   ];
@@ -67,10 +67,10 @@ export function MyWorkPage() {
         {metrics.map(({ label, value, Icon }) => <article key={label}><Icon size={19} /><span>{label}</span><strong>{value}</strong></article>)}
       </section>
       {!!data?.requirements.length && <section className="panel my-owned-requirements">
-        <header><div><h2>我负责的需求</h2><p>规划完整度、交付风险和待处理事项</p></div></header>
+        <header><div><h2>我负责的需求</h2><p>计划、进展和待处理事项</p></div></header>
         <div className="my-owned-requirement-grid">
           {data.requirements.map((requirement) => <div className="my-owned-requirement-card" key={requirement.id}><button className="my-owned-requirement-link" onClick={() => navigate(`/requirements/${requirement.id}`)}>
-            <div><ProcessingPriorityBadge requirement={requirement}/><strong>{requirement.title}</strong></div>
+            <div><strong>{requirement.title}</strong></div>
             <p>{requirement.projectName} · {requirement.plannedStart || "待排期"} → {requirement.plannedEnd || "待排期"}</p>
             <footer><span className={`status-pill status-${requirement.status}`}>{requirementStatusLabels[requirement.status as keyof typeof requirementStatusLabels] || requirement.status}</span><span>{requirement.planningReasons.join("、") || requirement.readinessIssues?.join('、') || requirementRiskDisplay(requirement as Requirement).label}</span><b>{requirement.actionCount} 项待处理</b></footer>
           </button>{requirement.executionMode==='direct'&&<DeliveryControls requirement={requirement as Requirement} compact/>}</div>)}
@@ -82,7 +82,7 @@ export function MyWorkPage() {
         defaultHeight={520}
         minHeight={360}
       >
-        <header><div><h2>分配给我的工作</h2><p>直接执行需求、主负责和协作工作</p></div><ViewTabs value={filter} onChange={setFilter} options={[['active', '当前'], ['not_started', '未开始'], ['in_progress', '进行中'], ['blocked', '阻塞'], ['completed', '已完成'], ['all', '全部']].map(([value, label]) => ({ value, label }))} /></header>
+        <header><div><h2>分配给我的工作</h2><p>直接执行需求、主负责和协作工作</p></div><ViewTabs value={filter} onChange={setFilter} options={[['active', '当前'], ['not_started', '未开始'], ['in_progress', '进行中'], ['completed', '已完成'], ['all', '全部']].map(([value, label]) => ({ value, label }))} /></header>
         {isLoading && !data ? <LoadingState className="stable-panel-state" label="正在加载工作项…" /> : <GapTimeline
           items={items}
           asOfDate={data?.asOfDate}

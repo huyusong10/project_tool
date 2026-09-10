@@ -1,7 +1,7 @@
 import { memo, type HTMLAttributes } from "react";
 import { format } from "date-fns";
-import { ganttProgressDisplay, isOverdueByWorkday, todayIso } from "../../shared/domain";
-import { businessDateIndex, ganttInterval, ganttTodayPosition, ganttTrackStyle, toGanttDate, type GanttZoom } from "../gantt-geometry";
+import { ganttProgressDisplay } from "../../shared/domain";
+import { ganttInterval, ganttTodayPosition, ganttTrackStyle, type GanttZoom } from "../gantt-geometry";
 export { buildBusinessDayTimeline, businessDateIndex, ganttInterval, ganttTodayPosition, ganttTrackStyle, ganttZoomOptions, toGanttDate, type GanttZoom } from "../gantt-geometry";
 const weekdayLabels = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -117,11 +117,8 @@ function normalizedProgress(status: string, progress: number) {
 }
 
 const progressStatusLabels: Record<string, string> = {
-  planning: "待规划",
   not_started: "未开始",
   in_progress: "进行中",
-  blocked: "阻塞",
-  pending_acceptance: "待验收",
   completed: "已完成",
   cancelled: "已取消",
 };
@@ -231,103 +228,4 @@ export function GanttProgressComparison({
       tooltipSide={tooltipSide}
     />
   </>;
-}
-
-export type GanttMilestonePlacement = {
-  id: string;
-  left: number;
-  labelLeft: number;
-  labelWidth: number;
-  lane: 0 | 1;
-  showLabel: boolean;
-};
-
-type GanttMilestoneInput = { id: string; label?: string | null; plannedEnd?: string | null };
-
-function milestoneLabelWidth(label: string, zoom: GanttZoom) {
-  const estimated = Array.from(label).reduce((width, character) => width + (/[^\u0000-\u00ff]/.test(character) ? 11 : 7), 12);
-  const maximum = zoom === "day" ? 128 : zoom === "week" ? 106 : 88;
-  return Math.min(maximum, Math.max(42, estimated));
-}
-
-export function layoutGanttMilestones(
-  items: GanttMilestoneInput[],
-  dates: Date[],
-  cellWidth: number,
-  zoom: GanttZoom = "day",
-) {
-  const totalWidth = dates.length * cellWidth;
-  const padding = 4;
-  const gap = 5;
-  const occupied: Array<Array<{ start: number; end: number }>> = [[], []];
-  return items
-    .map((item) => {
-      const plannedDate = toGanttDate(item.plannedEnd);
-      const label = item.label?.trim();
-      if (!plannedDate || !label) return null;
-      const endIndex = businessDateIndex(plannedDate, dates, "end");
-      if (endIndex < 0 || endIndex >= dates.length) return null;
-      return { item, label, left: (endIndex + 1) * cellWidth, labelWidth: milestoneLabelWidth(label, zoom) };
-    })
-    .filter(Boolean)
-    .sort((left, right) => left!.left - right!.left)
-    .map((entry) => {
-      const { item, left, labelWidth } = entry!;
-      const rightCandidate = Math.min(totalWidth - padding - labelWidth, Math.max(padding, left + 7));
-      const leftCandidate = Math.min(totalWidth - padding - labelWidth, Math.max(padding, left - 7 - labelWidth));
-      const candidates = left > totalWidth / 2 ? [leftCandidate, rightCandidate] : [rightCandidate, leftCandidate];
-      for (const lane of [0, 1] as const) {
-        const labelLeft = candidates.find((candidate) => !occupied[lane].some((range) => candidate < range.end + gap && candidate + labelWidth > range.start - gap));
-        if (labelLeft !== undefined) {
-          occupied[lane].push({ start: labelLeft, end: labelLeft + labelWidth });
-          return { id: item.id, left, labelLeft, labelWidth, lane, showLabel: true } satisfies GanttMilestonePlacement;
-        }
-      }
-      return { id: item.id, left, labelLeft: rightCandidate, labelWidth, lane: 0, showLabel: false } satisfies GanttMilestonePlacement;
-    });
-}
-
-export function GanttMilestoneMarker({
-  label,
-  plannedEnd,
-  actualEnd,
-  status,
-  dates,
-  cellWidth,
-  zoom = "day",
-  placement,
-  asOfDate = todayIso(),
-  interactionProps,
-}: {
-  label?: string | null;
-  plannedEnd?: string | null;
-  actualEnd?: string | null;
-  status: string;
-  dates: Date[];
-  cellWidth: number;
-  zoom?: GanttZoom;
-  placement?: GanttMilestonePlacement;
-  asOfDate?: string;
-  interactionProps?: HTMLAttributes<HTMLElement>;
-}) {
-  const milestone = label?.trim();
-  const plannedDate = toGanttDate(plannedEnd);
-  if (!milestone || !plannedDate) return null;
-  const endIndex = businessDateIndex(plannedDate, dates, "end");
-  if (endIndex < 0 || endIndex >= dates.length) return null;
-  const reached = status === "completed" || Boolean(actualEnd);
-  const state = status === "cancelled" ? "cancelled" : reached ? "reached" : isOverdueByWorkday(plannedEnd, asOfDate) ? "overdue" : "planned";
-  const stateLabel = state === "cancelled" ? "已取消" : state === "reached" ? "已达成" : state === "overdue" ? "已逾期" : "计划中";
-  const fallbackPlacement = layoutGanttMilestones([{ id: "milestone", label: milestone, plannedEnd }], dates, cellWidth, zoom)[0];
-  const resolvedPlacement = placement || fallbackPlacement;
-  if (!resolvedPlacement) return null;
-  const { left, labelLeft, labelWidth, lane, showLabel } = resolvedPlacement;
-  return <span
-    className={`gantt-milestone-marker milestone-${state} milestone-lane-${lane}`}
-    style={{ left }}
-    title={`${milestone} · ${stateLabel} · 计划 ${plannedEnd}${actualEnd ? ` · 实际 ${actualEnd}` : ""}`}
-    {...interactionProps}
-    tabIndex={0}
-    aria-label={`${milestone}，${stateLabel}，计划${plannedEnd}`}
-  ><i />{showLabel && <b style={{ left: labelLeft - left, width: labelWidth }}>{milestone}</b>}</span>;
 }

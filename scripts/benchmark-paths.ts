@@ -15,7 +15,7 @@ const runs=Number(process.env.PATH_BENCH_RUNS||20);
 const timings:number[]=[];
 for(let i=0;i<runs+2;i++){const start=performance.now();analysePaths(input);if(i>1)timings.push(performance.now()-start);}
 // Every node is an actionable source: measure deduplicated downstream impact as well.
-input.workItems.forEach(w=>{w.blockedAt=date(-2);w.blockedReason='环境阻塞';w.status='blocked';w.unblockEstimate=date(2);});
+input.workItems.forEach(w=>{w.status='in_progress';w.actualStart=date(-2);w.durationDays=null;w.plannedEnd=null;});
 const blocked:number[]=[];
 for(let i=0;i<runs+1;i++){const start=performance.now();analysePaths(input);if(i)blocked.push(performance.now()-start);}
 const engine=new ELK();const layouts:Record<string,unknown>={};
@@ -26,5 +26,5 @@ for(const count of [20,80,200]){
  const values:number[]=[];for(let i=0;i<runs+1;i++){const start=performance.now();await layoutDependencyGraph(engine,nodes,edges);if(i)values.push(performance.now()-start);}
  layouts[String(count)]={nodes:count,edges:edges.length,...stats(values)};
 }
-const result={measuredAt:new Date().toISOString(),device:{cpu:os.cpus()[0].model,logicalCpus:os.cpus().length,memoryGiB:Math.round(os.totalmem()/2**30),os:`${os.platform()} ${os.release()}`,node:process.version},analysis:{nodes:2000,edges:6000,serial:stats(timings),allBlocked:stats(blocked)},layouts};
+const result={measuredAt:new Date().toISOString(),device:{cpu:os.cpus()[0].model,logicalCpus:os.cpus().length,memoryGiB:Math.round(os.totalmem()/2**30),os:`${os.platform()} ${os.release()}`,node:process.version},analysis:{nodes:2000,edges:6000,serial:stats(timings),unestimated:stats(blocked)},layouts};
 fs.mkdirSync('.preview/qa',{recursive:true});fs.writeFileSync('.preview/qa/performance.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result,null,2));

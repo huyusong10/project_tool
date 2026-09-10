@@ -58,7 +58,7 @@ import {
 } from './services/requirements';
 import { recordAudit as audit, recordAudits } from './services/audit';
 import { getCancellationHistory } from './services/work-item-history';
-import { assertStartConditions, adjustForecastClock } from './services/paths';
+
 import {settleMilestones} from './services/milestones';
 import { prepareTemplateGraph, saveTemplateGraph, instantiateTemplateGraph } from './services/path-templates';
 import {
@@ -918,12 +918,20 @@ function applyTemplateInternal(requirementId: string, templateId: string, baseSt
     insert.run(workId, requirementId, item.id, item.title, item.milestoneLabel, plan.plannedStart, plan.plannedEnd, nextOrder++, now, now);
   }
   instantiateTemplateGraph(requirementId, templateId, createdIds, baseStart, deferAnalysis);
+  return createdIds;
 }
 
 function syncStoredRequirementState(requirementId: string, updatedAt = nowIso(), incrementVersion = true, expectedVersion?: number) {
   const requirement = row<RequirementRecord>(`${requirementSelect} WHERE r.id=?`, requirementId);
   if (!requirement) notFound('需求不存在');
   const workItems = getWorkItems(requirementId);
+  const nextMode=workItems.length?'work_items':'direct';
+  if(requirement.executionMode!==nextMode){
+    const base=nextMode==='work_items'?Math.min(99,requirement.progress):0;
+    const splitAt=nextMode==='work_items'&&requirement.actualStart?updatedAt:null;
+    sqlite.prepare('UPDATE requirements SET execution_mode=?,split_base_progress=?,split_at=? WHERE id=?').run(nextMode,base,splitAt,requirementId);
+    Object.assign(requirement,{executionMode:nextMode,splitBaseProgress:base,splitAt});
+  }
   const metrics = deriveRequirementMetrics(requirement, workItems, todayIso(), config.highRiskDelayDays);
   const acceptedAt = metrics.status === 'completed' ? requirement.acceptedAt : null;
   const changed = sqlite.prepare(`UPDATE requirements SET status=?, progress=?, planned_start=?, planned_end=?, risk_level=?, accepted_at=?,
@@ -983,9 +991,9 @@ function shiftRequirementWorkItems(requirementId: string, currentAnchor: string,
 }
 
 export function createRequirement(input: JsonObject, actor: Actor, deferNormalization=false) {
-  if(input.executionMode==='direct')return createDirectRequirement(input,actor,deferNormalization);
+  if(!input.templateId)return createDirectRequirement({...input,executionMode:'direct'},actor,deferNormalization);
   if (Object.keys(input).some((key) => ![
-    'groupId','tags','projectId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl',
+    'groupId','projectId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl',
     'plannedStart', 'plannedEnd', 'templateId','deliveryScope','executionMode','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',
   ].includes(key))) fail('新建需求不能提交未声明字段');
   const commandFields = ['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'scheduleMode', 'confirmTemplateReset', 'expectedVersion', 'reason'];
@@ -1025,19 +1033,19 @@ export function createRequirement(input: JsonObject, actor: Actor, deferNormaliz
     sqlite.prepare(`INSERT INTO requirements
       (id, project_id, template_id, title, background, acceptance_criteria, reference_url, owner_id,
         status, planned_start, progress, risk_level, priority, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planning', ?, 0, 'low', ?, ?, ?)`).run(
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'not_started', ?, 0, 'low', ?, ?, ?)`).run(
       id, projectId, templateId, title, background, acceptanceCriteria, referenceUrl, ownerId, plannedStart, priority, now, now,
     );
     validateDeliveryFields(projectId,input,actor);persistOrganization(id,projectId,input);
     sqlite.prepare('UPDATE requirements SET delivery_scope=?,acceptance_owner_id=? WHERE id=?').run(input.deliveryScope||'committed',input.acceptanceOwnerId||null,id);
     if (plannedStart && templateId) applyTemplateInternal(id, templateId, plannedStart, deferNormalization);
-    else if(templateId&&input.executionMode==='work_items'){applyTemplateInternal(id,templateId,todayIso(),deferNormalization);sqlite.prepare('UPDATE work_items SET planned_start=NULL,planned_end=NULL WHERE requirement_id=?').run(id);}
+    else if(templateId){applyTemplateInternal(id,templateId,todayIso(),deferNormalization);sqlite.prepare('UPDATE work_items SET planned_start=NULL,planned_end=NULL WHERE requirement_id=?').run(id);}
     updateStoredRequirementSchedule(id);
     sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=? WHERE id=?').run(now,id);
     requirementOwner(projectId, ownerId, true);
     requireActiveProject(projectId, true);
     assertProjectManager(requireAuthorizationActor(actor), projectId);
-    audit(actor, 'create', 'requirement', id, plannedStart ? `创建需求并生成工作项：${title}` : `创建待规划需求：${title}`);
+    audit(actor, 'create', 'requirement', id, plannedStart ? `创建需求并生成工作项：${title}` : `创建需求：${title}`);
   });
   tx();
   return getRequirement(id, false, !deferNormalization);
@@ -1131,7 +1139,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
   sqlite.transaction(() => {
     if (templateChanged && templateId) {
       sqlite.prepare('DELETE FROM work_items WHERE requirement_id=?').run(id);
-      const changed = sqlite.prepare(`UPDATE requirements SET template_id=?, title=?, status='planning', planned_start=?,
+      const changed = sqlite.prepare(`UPDATE requirements SET template_id=?, title=?, status='not_started', planned_start=?,
         planned_end=NULL, progress=0, risk_level='low', priority=?, owner_id=?, background=?, acceptance_criteria=?, reference_url=?,
         accepted_at=NULL, accepted_by_account_id=NULL,
         version=version+1, updated_at=? WHERE id=? AND version=?`)
@@ -1162,7 +1170,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
 }
 
 export function updateRequirement(id: string, input: JsonObject, actor: Actor, deferAnalysis=false) {
-  if(['groupId','tags','deliveryScope','executionMode','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',...coordinationKeys].some(k=>input[k]!==undefined)||getRequirement(id, false, !deferAnalysis).executionMode==='direct')return updateDeliveryRequirement(id,input,actor,false,deferAnalysis);
+  if(['groupId','deliveryScope','executionMode','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',...coordinationKeys].some(k=>input[k]!==undefined)||getRequirement(id, false, !deferAnalysis).executionMode==='direct')return updateDeliveryRequirement(id,input,actor,false,deferAnalysis);
   const commandFields = ['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'plannedStart', 'plannedEnd', 'scheduleMode', 'templateId', 'confirmTemplateReset'];
   if (commandFields.some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
     fail('需求状态、进度、验收、排期和流程不能通过普通编辑修改，请使用对应操作命令');
@@ -1175,7 +1183,7 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor, d
 
 export function correctRequirement(id: string, input: JsonObject, actor: Actor) {
   if (Object.keys(input).some((key) => ![
-    'groupId','tags','expectedVersion', 'reason', 'supersedesId', 'title', 'priority', 'ownerId',
+    'groupId','expectedVersion', 'reason', 'supersedesId', 'title', 'priority', 'ownerId',
     'background', 'acceptanceCriteria', 'referenceUrl',
   ].includes(key))) fail('需求纠错不能提交未声明字段');
   const current = getRequirement(id);
@@ -1201,7 +1209,7 @@ export function correctRequirement(id: string, input: JsonObject, actor: Actor) 
   if (supersedesId && !row('SELECT id FROM progress_updates WHERE id=? AND requirement_id=? AND work_item_id IS NULL', supersedesId, id)) {
     fail('纠错引用记录不存在或不是当前需求的需求级记录');
   }
-  const factsChanged = (input.groupId!==undefined&&(input.groupId||null)!==(current.groupId||null))||(input.tags!==undefined&&JSON.stringify(input.tags)!==JSON.stringify(current.tags||[]))||title !== current.title || priority !== current.priority || ownerId !== current.ownerId
+  const factsChanged = (input.groupId!==undefined&&(input.groupId||null)!==(current.groupId||null))||title !== current.title || priority !== current.priority || ownerId !== current.ownerId
     || background !== current.background || acceptanceCriteria !== current.acceptanceCriteria || referenceUrl !== current.referenceUrl;
   if (!factsChanged && !supersedesId) fail('没有需要纠错的需求信息，请修改字段或关联历史记录');
   const now = nowIso();
@@ -1235,7 +1243,6 @@ export function rescheduleRequirement(id: string, input: JsonObject, actor: Acto
 }
 
 export function reselectRequirementTemplate(id: string, input: JsonObject, actor: Actor) {
-  if(getRequirement(id).executionMode==='direct')fail('请通过拆分剩余工作预览并保存流程变化');
   if (Object.keys(input).some((key) => ![
     'templateId', 'expectedVersion', 'plannedStart', 'plannedEnd', 'scheduleMode', 'reason',
   ].includes(key))) fail('流程重选命令不能提交未声明字段');
@@ -1327,7 +1334,6 @@ export function restoreRequirement(id: string, actor: Actor, input: JsonObject =
 }
 
 export function applyTemplate(requirementId: string, input: JsonObject, actor: Actor) {
-  if(getRequirement(requirementId).executionMode==='direct')fail('请通过拆分剩余工作预览并保存流程变化');
   if (Object.keys(input).some((key) => !['templateId', 'expectedVersion', 'reason'].includes(key))) {
     fail('补充流程命令不能提交未声明字段');
   }
@@ -1336,10 +1342,10 @@ export function applyTemplate(requirementId: string, input: JsonObject, actor: A
   const templateId = requireText(input.templateId, '流程设计');
   if (['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status)) fail('终态需求不能补充工作项', 'TERMINAL_LOCKED');
   if (requirement.workItems!.some((item) => item.status !== 'not_started') && !nullableText(input.reason)) fail('需求已开始执行，补充流程工作项时必须填写变更原因');
-  if (!requirement.plannedStart) fail('需求缺少计划开始日期');
   if (!row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, requirement.projectId)) fail('流程设计不属于当前项目');
   const tx = sqlite.transaction(() => {
-    applyTemplateInternal(requirementId, templateId, requirement.plannedStart!);
+    const added=applyTemplateInternal(requirementId, templateId, requirement.plannedStart||todayIso());
+    if(!requirement.plannedStart){const clear=sqlite.prepare('UPDATE work_items SET planned_start=NULL,planned_end=NULL WHERE id=?');for(const id of added)clear.run(id);}
     syncStoredRequirementState(requirementId, nowIso(), true, requirement.version);
     requireActiveProject(requirement.projectId, true);
     assertProjectManager(requireAuthorizationActor(actor), requirement.projectId);
@@ -1350,7 +1356,6 @@ export function applyTemplate(requirementId: string, input: JsonObject, actor: A
 }
 
 export function previewRequirementPlan(requirementId: string, input: JsonObject) {
-  if(getRequirement(requirementId).executionMode==='direct')fail('直接执行需求使用需求排期；分解工作请先拆分剩余工作');
   const requirement = getRequirement(requirementId, true);
   const templateId = requireText(input.templateId, '流程设计');
   if (!row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, requirement.projectId)) fail('流程设计不属于当前项目');
@@ -1382,7 +1387,6 @@ export function previewRequirementPlan(requirementId: string, input: JsonObject)
 }
 
 export function applyRequirementPlan(requirementId: string, input: JsonObject, actor: Actor) {
-  if(getRequirement(requirementId).executionMode==='direct')fail('直接执行需求使用需求排期；分解工作请先拆分剩余工作');
   if (Object.keys(input).some((key) => ![
     'templateId', 'baseStart', 'expectedVersion', 'templateItemIds', 'reason', 'previewToken',
   ].includes(key))) fail('应用计划命令不能提交未声明字段');
@@ -1477,7 +1481,6 @@ function syncWorkItemCollaborators(workItemId: string, collaboratorIds: string[]
 }
 
 export function createWorkItem(requirementId: string, input: JsonObject, actor: Actor, deferAnalysis=false) {
-  if(getRequirement(requirementId, false, !deferAnalysis).executionMode==='direct')fail('请先在草稿中选择拆分剩余工作，再整批保存');
   if (Object.keys(input).some((key) => ![
     'title', 'ownerId', 'collaboratorIds', 'assigneeIds', 'plannedStart', 'plannedEnd',
     'milestoneLabel', 'expectedVersion', 'reason',
@@ -1505,6 +1508,9 @@ export function createWorkItem(requirementId: string, input: JsonObject, actor: 
   if (plannedEnd && businessDaysInclusive(plannedEnd, plannedEnd) !== 1) fail('计划完成需为工作日');
   if (plannedStart && plannedEnd && plannedStart > plannedEnd) fail('计划完成日期不能早于计划开始日期');
   sqlite.transaction(() => {
+    if (requirement.executionMode === 'direct') {
+      sqlite.prepare("UPDATE requirements SET execution_mode='work_items',split_base_progress=?,split_at=? WHERE id=?").run(Math.min(99,requirement.progress),requirement.actualStart ? now : null,requirementId);
+    }
     const reviewed = row<{ reviewedAt: string | null }>('SELECT dependencies_reviewed_at AS reviewedAt FROM requirements WHERE id=?', requirementId)?.reviewedAt;
     sqlite.prepare(`INSERT INTO work_items
       (id, requirement_id, title, owner_id, milestone_label, status, planned_start, planned_end, progress, sort_order, created_at, updated_at)
@@ -1592,14 +1598,13 @@ function validateWorkItemActualDates(actualStart: string | null, actualEnd: stri
   if (actualEnd && actualEnd > today) fail('实际完成日期不能晚于今天');
 }
 
-function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unblock' | 'cancel', input: JsonObject, actor: Actor) {
+function workItemEvent(id: string, action: 'start' | 'complete' | 'cancel', input: JsonObject, actor: Actor) {
   const allowedFields = new Set([
     'expectedVersion',
-    ...(action === 'block'?coordinationKeys:[]),
-    ...(action === 'complete' ? ['content'] : action === 'block' || action === 'cancel' ? ['reason'] : action === 'start' ? ['reason','expectedDependencyRevision'] : []),
+    ...(action === 'complete' ? ['content'] : action === 'cancel' ? ['reason'] : action === 'start' ? ['reason'] : []),
   ]);
   if (Object.keys(input).some((key) => !allowedFields.has(key))) {
-    const labels = { start: '开始', complete: '完成', block: '阻塞', unblock: '解除阻塞', cancel: '取消' } as const;
+    const labels = { start: '开始', complete: '完成', cancel: '取消' } as const;
     fail(`${labels[action]}命令不能提交无关的工作项字段`);
   }
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
@@ -1607,15 +1612,13 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unb
   const parentRequirement = getRequirement(current.requirementId);
   assertExpectedVersion(input, current.version);
   const today = todayIso(); const now = nowIso();
-  const labels = { start: '开始', complete: '完成', block: '阻塞', unblock: '解除阻塞', cancel: '取消' } as const;
-  let eventContent = action === 'complete' ? nullableText(input.content) || '完成工作项'
-    : action === 'block' ? requireText(input.reason, '阻塞原因')
-      : action === 'cancel' ? requireText(input.reason, '取消原因')
+  const labels = { start: '开始', complete: '完成', cancel: '取消' } as const;
+  const eventContent = action === 'complete' ? nullableText(input.content) || '完成工作项'
+    : action === 'cancel' ? requireText(input.reason, '取消原因')
         : action==='start' && nullableText(input.reason) ? requireText(input.reason,'执行例外原因') : `${labels[action]}工作项`;
   if (action === 'start') {
     assertTransition(current.status, ['not_started'], '开始');
     const requirement = getRequirement(current.requirementId);
-    if(requirement.deliveryScope==='candidate')fail('请项目经理先将需求纳入交付');
     if(!requirement.ownerId||!requirement.ownerValid)fail('开始前请指定有效需求负责人','DEPENDENCY_CONFLICT',409);
     validateDeliveryFields(requirement.projectId,{ownerId:current.ownerId},actor);
     if (!current.ownerId) fail('开始工作项前请指定负责人');
@@ -1625,29 +1628,19 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unb
     assertTransition(current.status, ['in_progress'], '完成');
     validateWorkItemActualDates(current.actualStart, today, today);
   }
-  if (action === 'block') assertTransition(current.status, ['in_progress'], '阻塞');
-  if (action === 'unblock') assertTransition(current.status, ['blocked'], '解除阻塞');
-  if (action === 'cancel') assertTransition(current.status, ['not_started', 'in_progress', 'blocked'], '取消');
+  if (action === 'cancel') assertTransition(current.status, ['not_started', 'in_progress'], '取消');
   sqlite.transaction(() => {
-    const acknowledged=action==='start'?assertStartConditions(id,current.requirementId,input):undefined;
-    if(action==='block'||action==='unblock')adjustForecastClock(id,action,today);
     const changed = action === 'start'
       ? sqlite.prepare(`UPDATE work_items SET actual_start=?, status='in_progress', version=version+1, updated_at=? WHERE id=? AND version=?`).run(today, now, id, current.version)
       : action === 'complete'
         ? sqlite.prepare(`UPDATE work_items SET actual_end=?, progress=100, status='completed', blocked_at=NULL, blocked_reason=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(today, now, id, current.version)
-        : action === 'block'
-          ? sqlite.prepare(`UPDATE work_items SET blocked_at=?, blocked_reason=?, status='blocked', version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, eventContent, now, id, current.version)
-          : action === 'unblock'
-            ? sqlite.prepare(`UPDATE work_items SET blocked_at=NULL, blocked_reason=NULL, status='in_progress', version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version)
-            : sqlite.prepare(`UPDATE work_items SET status='cancelled', progress=min(progress,99), actual_end=NULL, blocked_at=NULL, blocked_reason=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version);
+        : sqlite.prepare(`UPDATE work_items SET status='cancelled', progress=min(progress,99), actual_end=NULL, blocked_at=NULL, blocked_reason=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version);
     assertVersionedWrite(changed, '工作项');
     syncStoredRequirementState(current.requirementId, now, true, parentRequirement.version);
     requireActiveProject(parentRequirement.projectId, true);
     assertWorkItemParticipantOrManager(requireAuthorizationActor(actor), id);
-    if(action==='block'){const v=validateCoordination(parentRequirement.projectId,input);persistCoordination('work',id,parentRequirement.projectId,v,actor);}
     const nextProgress = action === 'complete' ? 100 : current.progress;
     appendRequirementEvent(current.requirementId, action, eventContent, actor, id, nextProgress, null, now);
-    if(acknowledged?.length)audit(actor,'confirm_start_conditions','work_item',id,'确认前置尾项：'+acknowledged.map(p=>p.title+' ['+p.id+']').join('、'));
     audit(actor, action, 'work_item', id, `${labels[action]}工作项：${current.title}`);settleMilestones(parentRequirement.projectId,actor);
   })();
   return getRequirement(current.requirementId).workItems!.find((item) => item.id === id);
@@ -1655,8 +1648,8 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'block' | 'unb
 
 export const startWorkItem = (id: string, input: JsonObject, actor: Actor) => workItemEvent(id, 'start', input, actor);
 export const completeWorkItem = (id: string, input: JsonObject, actor: Actor) => workItemEvent(id, 'complete', input, actor);
-export const blockWorkItem = (id: string, input: JsonObject, actor: Actor) => workItemEvent(id, 'block', input, actor);
-export const unblockWorkItem = (id: string, input: JsonObject, actor: Actor) => workItemEvent(id, 'unblock', input, actor);
+export const blockWorkItem = (_id: string, _input: JsonObject, _actor: Actor) => fail('阻塞操作已移除，请在进展中记录情况','WORKFLOW_RETIRED',410);
+export const unblockWorkItem = (_id: string, _input: JsonObject, _actor: Actor) => fail('解除阻塞操作已移除','WORKFLOW_RETIRED',410);
 export const cancelWorkItem = (id: string, input: JsonObject, actor: Actor) => workItemEvent(id, 'cancel', input, actor);
 
 function validatePlannedCompletion(requirement: RequirementRecord, items: WorkItemRecord[]) {
@@ -1724,21 +1717,20 @@ export function completeRequirementAsPlanned(id: string, input: JsonObject, acto
   const active = (current.workItems || []).filter((item) => item.status !== 'cancelled');
   if (!active.length) fail('请先添加有效工作项并补齐计划日期', 'DEPENDENCY_CONFLICT', 409);
   const pending = active.filter((item) => item.status !== 'completed');
-  if (!pending.length) fail('所有工作项均已完成，请使用正常验收并填写验收说明', 'DEPENDENCY_CONFLICT', 409);
+  if (!pending.length) fail('所有工作项均已完成', 'DEPENDENCY_CONFLICT', 409);
   validatePlannedCompletion(current, pending);
   const content = requireText(input.content ?? '历史补录，按计划完成', '补录说明');
   return sqlite.transaction(() => {
     recordPlannedCompletions(current, pending, content, actor, current.version);
-    return acceptRequirement(id, { expectedVersion: current.version + 1, content: `${content}；确认验收` }, actor);
+    requireActiveProject(current.projectId,true);
+    assertProjectManager(requireAuthorizationActor(actor),current.projectId);
+    return getRequirement(id);
   })();
 }
 
 export function reopenRequirementForMilestone(id:string,title:string,actor:Actor){
   const r=getRequirement(id);requireActiveProject(r.projectId,true);assertRequirementOwnerOrManager(requireAuthorizationActor(actor),id);
-  if(r.status!=='completed')return;
-  sqlite.prepare("UPDATE requirements SET status='pending_acceptance',accepted_at=NULL,accepted_by_account_id=NULL WHERE id=?").run(id);
-  syncStoredRequirementState(id,nowIso(),true,r.version);
-  appendRequirementEvent(id,'reopen','重新交付里程碑：'+title+'；原验收日期 '+(r.acceptedAt||'无'),actor);
+  appendRequirementEvent(id,'note','重新打开里程碑：'+title,actor);
 }
 
 export function reopenWorkItem(id: string, input: JsonObject, actor: Actor) {

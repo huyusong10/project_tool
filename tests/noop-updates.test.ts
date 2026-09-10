@@ -50,7 +50,7 @@ afterAll(async () => {
 
 it('REST和MCP保存未变化的需求、工作项与问题时不增加版本或审计', async () => {
   const person = (await post('/api/people', { projectId, name: '负责人' })).json();
-  const requirement = (await post('/api/requirements', {
+  const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '保持不变的需求', ownerId: person.id, background: '背景', plannedStart: '2020-01-02',
   })).json();
   const workItem = requirement.workItems[0];
@@ -255,7 +255,7 @@ it('个人分析布局拒绝错拼并发字段且不覆盖或删除当前布局'
 
 it('工作项相同排序保持版本不变，真实排序只更新移动项并记录执行中原因', async () => {
   const person = (await post('/api/people', { projectId, name: '排序测试负责人' })).json();
-  const requirement = (await post('/api/requirements', {
+  const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '工作项排序幂等测试', ownerId: person.id, plannedStart: '2020-01-02',
   })).json();
   const initialIds = requirement.workItems.map((item: { id: string }) => item.id);
@@ -316,3 +316,5 @@ it('工作项相同排序保持版本不变，真实排序只更新移动项并�
     expect.objectContaining({ eventType: 'correction', content: '执行中调整交付先后顺序', workItemId: null }),
   ]));
 });
+
+async function defaultTemplate(projectId:string){const response=await app.inject({url:"/api/templates?projectId="+projectId,headers:{cookie}});return response.json<Array<{id:string}>>()[0].id;}

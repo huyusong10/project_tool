@@ -53,14 +53,14 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     if(c.entity==='requirement'){
       if(c.op==='create'){
         const {reason:_creationReason,...creation}=c.data;
-        const value=normalizeRequirementText(createRequirementInputSchema.parse({...creation,projectId:snapshot.projectId,templateId:c.data.templateId||undefined}));
+        const value=normalizeRequirementText(createRequirementInputSchema.parse({...creation,executionMode:c.data.templateId?'work_items':'direct',projectId:snapshot.projectId,templateId:c.data.templateId||undefined}));
         let template=value.templateId?listTemplates(snapshot.projectId).find(t=>t.id===value.templateId):undefined;
         if(value.templateId&&!template)fail('请选择当前项目的有效流程设计');
         if(value.executionMode!=='direct'&&(value.plannedStart||value.plannedEnd)&&!template){const project=sqlite.prepare('SELECT default_template_id AS id FROM projects WHERE id=?').get(snapshot.projectId) as {id:string|null};template=listTemplates(snapshot.projectId).find(t=>t.id===project.id)||listTemplates(snapshot.projectId)[0];}
         if(value.executionMode!=='direct'&&(value.plannedStart||value.plannedEnd)&&!template)fail('立即规划时请选择有效流程');
         validateDeliveryFields(snapshot.projectId,value,actor);
         const base=value.plannedStart||(value.plannedEnd&&template?plannedStartFromDeadline(value.plannedEnd,template.items.filter((i:{kind?:string})=>i.kind!=='milestone')):null);
-        const r:PathRequirement={...value,id:c.id,projectId:snapshot.projectId,status:'planning',ownerName:null,plannedStart:base||null,plannedEnd:null,acceptedAt:null,dependenciesReviewedAt:new Date().toISOString(),scheduleAnchor:base||null,forecastAcceptance:null,deletedAt:null,version:1};
+        const r:PathRequirement={...value,id:c.id,projectId:snapshot.projectId,status:'not_started',ownerName:null,plannedStart:base||null,plannedEnd:null,acceptedAt:null,dependenciesReviewedAt:new Date().toISOString(),scheduleAnchor:base||null,forecastAcceptance:null,deletedAt:null,version:1};
         if(value.executionMode==='direct'){
           if(value.templateId)fail('直接执行不能同时使用流程');
           r.status='not_started';r.plannedEnd=value.plannedEnd||null;r.executionMode='direct';r.progress=0;
@@ -80,7 +80,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
           expansion.dependencies=snapshot.dependencies.filter(d=>d.sourceRequirementId===c.id&&d.targetRequirementId===c.id).map(d=>({...d}));
           expansion.entities=[...snapshot.workItems.filter(w=>w.requirementId===c.id).map(w=>({entity:'work' as const,op:'create' as const,id:w.id,requirementId:c.id,data:{title:w.title,ownerId:w.ownerId||null,plannedStart:w.plannedStart,plannedEnd:w.plannedEnd,durationDays:w.durationDays,arrangement:w.arrangement,arrangementAnchor:w.arrangementAnchor}})),...snapshot.milestones.filter(m=>m.requirementId===c.id).map(m=>({entity:'milestone' as const,op:'create' as const,id:m.id,requirementId:c.id,data:{title:m.title,targetDate:m.targetDate,confirmationMode:m.confirmationMode}}))];
           if(template.dependencyMode==='dependencies')r.dependenciesReviewedAt=new Date().toISOString();
-          const dates=snapshot.workItems.filter(w=>w.requirementId===c.id).flatMap(w=>w.plannedEnd?[w.plannedEnd]:[]).sort();r.plannedEnd=dates.at(-1)||null;r.status=snapshot.workItems.some(w=>w.requirementId===c.id)?'not_started':'planning';
+          const dates=snapshot.workItems.filter(w=>w.requirementId===c.id).flatMap(w=>w.plannedEnd?[w.plannedEnd]:[]).sort();r.plannedEnd=dates.at(-1)||null;r.status=snapshot.workItems.some(w=>w.requirementId===c.id)?'not_started':'not_started';
         }
       }else if(c.op==='update'){
         const {reviewForecast:_reviewForecast,...editable}=c.data;
@@ -99,7 +99,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     }else if(c.entity==='work'){
       if(c.op!=='delete'){const fields=Object.fromEntries(Object.entries(c.data).filter(([key])=>!['durationDays','arrangement','arrangementAnchor'].includes(key)));(c.op==='create'?createWorkItemInputSchema:updateWorkItemInputSchema).parse({...fields,expectedVersion:c.expectedVersion||1});}
       if(c.op==='create'){
-        if(!req)notFound('所属需求不存在');if(req.executionMode==='direct')fail('请先选择拆分剩余工作');if(snapshot.workItems.some(w=>w.requirementId===req.id&&w.status!=='not_started')&&!c.data.reason?.trim())fail('需求已执行，新增工作项请填写变更原因');
+        if(!req)notFound('所属需求不存在');if(req.executionMode==='direct'){req.splitBaseProgress=Math.min(99,req.progress||0);req.splitAt=req.actualStart?new Date().toISOString():null;req.executionMode='work_items';}if(snapshot.workItems.some(w=>w.requirementId===req.id&&w.status!=='not_started')&&!c.data.reason?.trim())fail('需求已执行，新增工作项请填写变更原因');
         snapshot.workItems.push({...workDefaults,...c.data,id:c.id,requirementId:req.id,title:requireLabel(c.data.title,'工作项标题')});
       }else {const w=snapshot.workItems.find(w=>w.id===c.id);if(!w||w.requirementId!==requirementId)notFound('工作项不存在');
         if(c.op==='delete'){if(!canDeleteWorkItem({...w,version:Number(row!.version)} as Parameters<typeof canDeleteWorkItem>[0],!!sqlite.prepare('SELECT 1 FROM progress_updates WHERE work_item_id=? LIMIT 1').get(c.id)))fail('有执行记录的工作项请使用取消');snapshot.workItems=snapshot.workItems.filter(w=>w.id!==c.id);}
@@ -152,7 +152,7 @@ export function persistEditorEntities(snapshot:PathInput,changes:EditorEntityCha
           if(!record)fail('流程实例化关系不完整');ids[e.id]=record.id;
           if(removed.includes(e.id))sqlite.prepare('DELETE FROM dependency_edges WHERE id=?').run(record.id);
         }
-      }else if(c.op==='update'){if(_review&&Object.keys(data).every(k=>k==='reason')){sqlite.prepare('UPDATE requirements SET version=version+1,updated_at=? WHERE id=?').run(now,c.id);}else if(data.executionMode||Object.keys(data).some(k=>['deliveryScope','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',...coordinationKeys].includes(k)))updateDeliveryRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor,!!data.executionMode,true);else updateRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor,true);}
+      }else if(c.op==='update'){if(Object.keys(data).every(k=>k==='reason'))continue;if(_review&&Object.keys(data).every(k=>k==='reason')){sqlite.prepare('UPDATE requirements SET version=version+1,updated_at=? WHERE id=?').run(now,c.id);}else if(data.executionMode||Object.keys(data).some(k=>['deliveryScope','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',...coordinationKeys].includes(k)))updateDeliveryRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor,!!data.executionMode,true);else updateRequirement(c.id,{...data,expectedVersion:c.expectedVersion},actor,true);}
       else archiveRequirement(c.id,{expectedVersion:c.expectedVersion},actor,true);
     }else if(c.entity==='work'){
       const {durationDays:_durationDays,arrangement:_arrangement,arrangementAnchor:_arrangementAnchor,...fields}=data;

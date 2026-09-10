@@ -1,61 +1,42 @@
 ---
 name: project-manage-intake
-description: 通过 MCP 将可验证的原始需求整理并录入 project-manage，按需拆分、合并或重组需求，分解工作项或套用工作流，构建依赖拓扑并制定计划。用于需求录入、补充拆分和计划安排；人员由人类确定。
+description: 通过 MCP 将原始需求直接录入 project-manage，按需拆分或合并需求、添加工作项、套用模板、建立依赖及安排计划。用于需求录入和计划安排；人员由人类确定。
 ---
 
-# 需求录入、拓扑与计划
+# 需求录入与计划
 
-按“原始需求 → 系统需求 → 工作项／工作流 → 依赖拓扑 → 计划”推进。优先保持原始需求的划分和含义，粒度服从可验证的交付结果。
+原始需求直接形成系统需求。保留原文、原编号和出处；只在实际需要独立安排与完成时拆成多个需求。多人协作时添加工作项或套用模板，无工作项时直接推进需求。
 
-## 需求与工作项
+## 录入
 
-| 输入情况 | 处理方式 |
-|---|---|
-| 原始需求已有明确范围和验收条件 | 尽量一条原始需求对应一个系统需求 |
-| 条款过粗，包含需要分别验收的交付 | 拆成多个需求，说明各自落实的原始范围 |
-| 多条要求共同定义同一交付，或存在重复 | 可以合并、重组，保留各条要求与交付的对应关系 |
-| 一个交付需要多个实施步骤或阶段 | 保持一个需求，拆工作项或套用现有工作流 |
-| 小需求可直接完成并验收 | 直接执行，不再创建同名工作项 |
+1. 用 query_requirements、list_work_items 查询已有记录，详情用 get_requirement、get_work_item。分页读完相关结果，不按相似标题直接覆盖。
+2. 需求说明 background 保留原始内容，referenceUrl 保存真实来源地址，acceptanceCriteria 写可观察的完成标准。来源未知可留空；不编造人员、日期或原文。
+3. 小批量用 create_requirement；批量用 preview_requirement_import → apply_requirement_import。导入格式为 formatVersion=2，仅包含 requirements 和可选 dependencies；工作项放在需求的 workItems 中。示例见 assets/log-intake.json、assets/org-intake.json。
+4. 更新已有需求使用 action=update、真实 existingId 和读取的 expectedVersion。省略的字段保持原值；已结束需求使用详情纠错。重复内容选择跳过或更新，只有明确是另一件事时才确认另建。
 
-需求写清交付范围和可观察的验收结果；工作项写清实际产出。不要把岗位、章节或每个页面自动变成独立需求，也不要为了统一层级而改写原始需求。事实、建议和待确认内容分开表达。
+使用分组整理需求，不使用标签。创建和编辑使用 groupId，导入使用 group；先读取已有分组并复用。
 
-## 操作顺序
+负责人和协作者按用户给定的人选填写；未给人选则新增留空、已有分配保留。未分配和未排期不阻断录入。
 
-1. 核对已有记录。定位目标项目，通过已连接的 MCP 查询已有需求、工作项、来源及工作流。复用已有成果，核对 ID 和范围，不按相似标题覆盖；工具参数以当前 schema 为准。
-2. 整理并录入需求。给出简短的“原始要求—系统需求—落实范围—验收条件”映射。新建议默认 candidate；分组表达模块，标签表达阶段或部署侧。保留已提供的来源编号、版本和内容，不编造资料；重复编号使用不同稳定 key，已有来源沿用系统 key，版本变化保留历史。
-3. 分解实际工作。需求范围确定后，再拆工作项；现有工作流适用时复用其工作和依赖，不机械套用前端／后端／测试三件套。直接需求转工作项执行用实体批次切换 executionMode 并创建工作项；已执行的需求只拆剩余工作，保留进展。需求与工作项也可在同一导入批次保存。
-4. 建立依赖拓扑。逐项检查前置条件、后续交付、并行工作和共享成果，将真实关系保存到系统，不能只写在描述中；按下面的规则校验完整网络。
-5. 制定计划。根据拓扑、工作流、有依据的工期和用户给定的起点／目标预览排期。可提出标明假设的估算，不把未知日期和工期当成已确认值；依据不足时先形成相对顺序并列出待确认项。检查完整项目的下游影响，必要时设置阶段里程碑，再保存授权范围内的计划。
+## 工作与依赖
 
-不替人类选择负责人、协作者或验收人：新增记录留空，已有分配保留。缺少人选不阻断需求整理、工作项分解和拓扑建立；计划说明尚未经过人员资源确认。录入不代表正式承诺、实际开工或完成验收。
+- create_work_item 直接添加工作项，不需要切换执行模式。已开始的需求只拆剩余工作，系统保留已有进度基线。
+- 复用流程用 list_templates、apply_template；按模板排期用 preview_requirement_plan → apply_requirement_plan。
+- 依赖表示提供成果的工作完成后，下游可以开始。优先连接具体工作项；等待上游整体完成时才连接需求完成端点。路径标识 acceptance:需求ID 为兼容已有布局保留，含义是工作完成。
+- 同一文档、模块或章节顺序不自动构成依赖。共享成果只安排一次，不为连成一张图而加线。
+- 实体、依赖和布局可通过 preview_dependency_changes → apply_dependency_changes 一批保存。临时实体 ID 可在同批次互相引用。
+- get_path_analysis 检查完整网络、循环和下游影响；get_path_graph 查看局部拓扑或导出 SVG。按依赖排期用 preview_dependency_plan → apply_dependency_plan。
 
-## 拓扑规则
+没有工期或日期依据时保留未知，可给出标明假设的建议。缺少计划会影响项目整体预测；不把部分已排期工作当成整个项目的完成日期。
 
-- 连线表示真实的“完成后才能开始”。优先连接提供前置成果的具体工作项；只有确实要等上游整项验收时，才连接需求整体验收端点。
-- 同一来源、同一模块或文档顺序不自动构成依赖。能并行的工作保留并行；不确定的关系列为待确认，不猜测连线。
-- 共享成果只安排一次，其他需求引用它或依赖它，不复制工作量。需求之间可以分阶段互相提供成果；是否成环以完整执行网络为准。
-- 用完整路径分析检查循环、遗漏前置和交付影响；局部图用于解释关系，不能代替完整项目预测。没有依赖的需求可以独立执行，不为连成一张图而加线。
+## 执行与保存
 
-## MCP 使用要点
+需求和工作项统一使用未开始、进行中、已完成；取消保留为退出操作。全部有效工作项完成后需求自动完成，不再提交或确认验收。实际需要的验证、验收可作为有负责人和计划的工作项。
 
-| 目的 | 工具 |
-|---|---|
-| 查重与查缺口 | query_requirements、list_work_items；详情用 get_requirement、get_work_item；来源用 get_requirement_intake |
-| 录入需求与来源 | preview_requirement_import → apply_requirement_import；小需求可用 create_requirement，显式设置 candidate 和 direct |
-| 复用工作流 | list_templates、apply_template；排期用 preview_requirement_plan → apply_requirement_plan |
-| 保存工作项、依赖或里程碑 | preview_dependency_changes → apply_dependency_changes；changes.entities 修改实体，add/remove 修改依赖 |
-| 检查拓扑与制定计划 | get_path_analysis 查看完整网络；get_path_graph 查看内部／上下游关系；preview_dependency_plan → apply_dependency_plan 预览并保存依赖排期 |
+无工作项时用 start_requirement、add_progress（requirementPercent）、complete_requirement；有工作项时用 start_work_item、add_progress（workItemId/workItemPercent）、complete_work_item。遇到困难写进展或问题，不标记阻塞。
 
-分页查询读完相关 pages；query_requirements 默认不带工作项，需要时传 includeWorkItems=true。检查未安排事项时不要加日期筛选，且同时检查直接执行需求。
+MCP 不再使用条款关联、落实范围、交付范围、执行模式切换、阻塞协调、预测核对或承诺确认工具。参数以当前工具 schema 为准。
 
-导入使用 formatVersion=1，工作项放在对应需求的 workItems 中，links 写落实范围，dependencies 写真实前置。选摘材料保持 complete=false；已有交付用 action=link 和真实 existingId 关联。原始来源地址未提供时不编造，先录入交付安排，来源后补。
+核对预览、版本及影响后保存。用户已授权录入或安排时继续保存；只要求方案时保留草稿。提交保存 batchId 和原请求；结果未知先查 get_requirement_import_receipt 或 get_dependency_change_receipt，重试复用原批次及内容。
 
-核对预览、版本和依赖影响后保存；修改内容须重新预览。用户已授权录入／安排时继续保存，只要求方案或预览时交付草稿。导入和实体批次保存请求及 batchId；结果未知先查对应回执，重试复用原批次和内容。缺少工具或权限时保留草稿并说明缺口。
-
-## 案例包与交付
-
-需要案例时读取本地文件：references/examples.md 直接解释 LOG／ORG 的拆分与拓扑；assets/log-intake.json、assets/org-intake.json 提供结构化草稿。案例要点已在包内，不另行查找案例原文。
-
-案例包不含原文链接，documents[].url 留空。实际导入前仅填入用户提供的来源地址；没有地址时将 documents 和 links 置空，先导入需求、工作项和依赖，保留案例映射供后续补充来源。
-
-完成后简要交付：原始要求与系统需求的对应关系、工作项／工作流、已保存的拓扑、计划及其假设、仍需人类决定的事项，并区分已保存与草稿。
+需要拆分案例时读取 [案例说明](references/examples.md)。完成后简要列出已保存的需求、工作和依赖、计划假设，以及仍需人类决定的事项。

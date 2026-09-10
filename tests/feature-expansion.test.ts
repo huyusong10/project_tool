@@ -140,17 +140,17 @@ describe('功能扩充契约', () => {
     expect(response.json()).toMatchObject({ title: '创建时分配负责人', status: 'in_progress', ownerId });
   });
 
-  it('支持轻量待规划需求、自动就绪和执行后负责人约束', async () => {
+  it('无日期套用模板、按计划执行和执行后负责人约束', async () => {
     const draft = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
       projectId, templateId, title: '只填标题的需求', background: '客户需要缩短交付时间',
       acceptanceCriteria: '关键链路验收通过', referenceUrl: 'https://example.com/spec',
     } });
     expect(draft.statusCode).toBe(200);
     expect(draft.json()).toMatchObject({
-      status: 'planning', priority: 'P2', ownerId: null, templateId, plannedStart: null, plannedEnd: null,
+      status: 'not_started', priority: 'P2', ownerId: null, templateId, plannedStart: null, plannedEnd: null,
       background: '客户需要缩短交付时间', acceptanceCriteria: '关键链路验收通过', referenceUrl: 'https://example.com/spec',
     });
-    expect(draft.json().workItems).toEqual([]);
+    expect(draft.json().workItems.length).toBeGreaterThan(0);
     expect((await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
       projectId, title: '非法链接', referenceUrl: 'ftp://example.com/file',
     } })).statusCode).toBe(400);
@@ -158,9 +158,9 @@ describe('功能扩充契约', () => {
     const owned = await app.inject({ method: 'PATCH', url: `/api/requirements/${draft.json().id}`, headers: { cookie: adminCookie }, payload: {
       ownerId, expectedVersion: draft.json().version,
     } });
-    expect(owned.json().status).toBe('planning');
-    const planned = await app.inject({ method: 'POST', url: `/api/requirements/${draft.json().id}/reschedule`, headers: { cookie: adminCookie }, payload: {
-      scheduleMode: 'start', plannedStart: '2026-02-13', expectedVersion: owned.json().version,
+    expect(owned.json().status).toBe('not_started');
+    const planned = await app.inject({ method: 'POST', url: `/api/requirements/${draft.json().id}/apply-plan`, headers: { cookie: adminCookie }, payload: {
+      templateId, baseStart: '2026-02-13', expectedVersion: owned.json().version,
     } });
     expect(planned.statusCode).toBe(200);
     expect(planned.json().status).toBe('not_started');
@@ -226,10 +226,7 @@ describe('功能扩充契约', () => {
     const unassigned = await app.inject({ method: 'PATCH', url: `/api/work-items/${first.id}`, headers: { cookie: adminCookie }, payload: {
       ownerId: null, expectedVersion: first.version, reason: '构造未分派阻塞场景',
     } });
-    const blocked = await app.inject({ method: 'POST', url: `/api/work-items/${first.id}/block`, headers: { cookie: adminCookie }, payload: {
-      reason: '外部依赖未就绪', expectedVersion: unassigned.json().version,
-    } });
-    expect(blocked.json().status).toBe('blocked');
+    expect(unassigned.statusCode,unassigned.body).toBe(200);
     blockedWorkItemId = first.id;
     const issue = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie: adminCookie }, payload: {
       projectId, requirementId, title: '逾期且未分派的问题', dueDate: '2026-08-31', priority: 'P1',
@@ -239,12 +236,12 @@ describe('功能扩充契约', () => {
     const actions = await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&pageSize=100`, headers: { cookie: adminCookie } });
     expect(actions.statusCode).toBe(200);
     const draftAction = actions.json().items.find((item: any) => item.id === `requirement:${draft.json().id}`);
-    expect(draftAction.reasonCodes).toEqual(expect.arrayContaining(['planning', 'missing_owner', 'missing_work_items']));
-    expect(draftAction.severity).toBe('medium');expect(draftAction.processingPriority).toBe('P2');
+    expect(draftAction.reasonCodes).toEqual(expect.arrayContaining(['missing_owner', 'incomplete_schedule']));
+    expect(draftAction.severity).toBe('low');expect(draftAction.processingPriority).toBe('P2');
     const workAction = actions.json().items.find((item: any) => item.id === `work_item:${blockedWorkItemId}`);
-    expect(workAction.reasonCodes).toEqual(expect.arrayContaining(['blocked', 'unassigned']));
-    expect(workAction.severity).toBe('high');
-    expect(workAction.targetPath).toBe(`/requirements/${requirementId}?workItemId=${blockedWorkItemId}&action=follow-up`);
+    expect(workAction.reasonCodes).toEqual(expect.arrayContaining(['unassigned']));
+    expect(workAction.severity).toBe('medium');
+    expect(workAction.targetPath).toContain(`/requirements/${requirementId}?workItemId=${blockedWorkItemId}`);
     const issueAction = actions.json().items.find((item: any) => item.id === `issue:${issueId}`);
     expect(issueAction.reasonCodes).toEqual(expect.arrayContaining(['overdue', 'unassigned']));
     expect(issueAction.severity).toBe('high');
@@ -256,20 +253,17 @@ describe('功能扩充契约', () => {
     expect(ownerActions.items.map((item: any) => item.id)).not.toContain(`requirement:${draft.json().id}`);
     expect((await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}`, headers: { cookie: memberCookie } })).json().total).toBe(0);
     expect((await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}`, headers: { cookie: viewerCookie } })).json().total).toBe(0);
-    const filtered = (await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&severity=high&reason=blocked`, headers: { cookie: adminCookie } })).json();
-    expect(filtered.items).toEqual([expect.objectContaining({ id: `work_item:${blockedWorkItemId}`, severity: 'high' })]);
+    const filtered=(await app.inject({url:`/api/action-items?projectId=${projectId}&reason=unassigned&pageSize=100`,headers:{cookie:adminCookie}})).json();
+    expect(filtered.items.every((i:{reasonCodes:string[]})=>i.reasonCodes.includes('unassigned'))).toBe(true);
     expect(filtered.summary).toEqual(actions.json().summary);
-    expect(filtered.total).toBe(1);
-    const lastPage = (await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&severity=high&reason=blocked&page=99&pageSize=1`, headers: { cookie: adminCookie } })).json();
-    expect(lastPage).toMatchObject({ total: 1, page: 1, pages: 1, items: [expect.objectContaining({ id: `work_item:${blockedWorkItemId}` })] });
     expect((await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&reason=unknown`, headers: { cookie: adminCookie } })).statusCode).toBe(400);
     const { sqlite } = await import('../src/server/database');
     expect(sqlite.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='action_items'").get()).toEqual({ count: 0 });
   });
 
-  it('待验收需求允许补负责人并关闭缺失行动，但继续锁定计划', async () => {
+  it('工作全部完成后关闭待处理行动并锁定普通修改', async () => {
     const created = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
-      projectId, title: '待验收历史缺负责人', plannedStart: '2026-02-13',
+      projectId, templateId, title: '已完成历史缺负责人', plannedStart: '2026-02-13',
     } });
     expect(created.statusCode, created.body).toBe(200);
     let current = created.json();
@@ -282,35 +276,19 @@ describe('功能扩充契约', () => {
       expect(completed.statusCode, completed.body).toBe(200);
       current = (await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie: adminCookie } })).json();
     }
-    expect(current).toMatchObject({ status: 'pending_acceptance', ownerId: null, progress: 100 });
+    expect(current).toMatchObject({ status: 'completed', ownerId: null, progress: 100 });
 
-    const before = (await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&pageSize=100`, headers: { cookie: adminCookie } })).json();
-    expect(before.items.find((item: { sourceId: string }) => item.sourceId === current.id)?.reasonCodes)
-      .toEqual(expect.arrayContaining(['missing_owner', 'pending_acceptance']));
-
-    const assigned = await app.inject({ method: 'PATCH', url: `/api/requirements/${current.id}`, headers: { cookie: adminCookie }, payload: {
-      ownerId: replacementId, background: '补齐历史负责人', expectedVersion: current.version,
-    } });
-    expect(assigned.statusCode, assigned.body).toBe(200);
-    expect(assigned.json()).toMatchObject({ status: 'pending_acceptance', ownerId: replacementId, background: '补齐历史负责人' });
-    const after = (await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&pageSize=100`, headers: { cookie: adminCookie } })).json();
-    expect(after.items.find((item: { sourceId: string }) => item.sourceId === current.id)?.reasonCodes).toContain('pending_acceptance');
-
-    const rescheduled = await app.inject({ method: 'POST', url: `/api/requirements/${current.id}/reschedule`, headers: { cookie: adminCookie }, payload: {
-      scheduleMode: 'start', plannedStart: '2026-02-14', expectedVersion: assigned.json().version, reason: '不应调整',
-    } });
+    const actions=(await app.inject({url:`/api/action-items?projectId=${projectId}&pageSize=100`,headers:{cookie:adminCookie}})).json();
+    expect(actions.items.some((i:{sourceId:string})=>i.sourceId===current.id)).toBe(false);
+    const edited=await app.inject({method:'PATCH',url:`/api/requirements/${current.id}`,headers:{cookie:adminCookie},payload:{ownerId:replacementId,expectedVersion:current.version}});
+    expect(edited.statusCode).toBe(409);
+    const rescheduled=await app.inject({method:'POST',url:`/api/requirements/${current.id}/reschedule`,headers:{cookie:adminCookie},payload:{expectedVersion:current.version,scheduleMode:'start',plannedStart:'2026-02-14',reason:'不应调整'}});
     expect(rescheduled.statusCode).toBe(409);
-    expect(rescheduled.json().code).toBe('TERMINAL_LOCKED');
-    const cleared = await app.inject({ method: 'PATCH', url: `/api/requirements/${current.id}`, headers: { cookie: adminCookie }, payload: {
-      ownerId: null, expectedVersion: assigned.json().version,
-    } });
-    expect(cleared.statusCode).toBe(409);
-    expect(cleared.json().code).toBe('DEPENDENCY_CONFLICT');
   });
 
   it('已完成需求的历史延期不再计为待处理行动', async () => {
     const created = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
-      projectId, ownerId: replacementId, title: '延期后已完成需求', plannedStart: '2026-02-13',
+      projectId, templateId, ownerId: replacementId, title: '延期后已完成需求', plannedStart: '2026-02-13',
     } });
     const completed = await app.inject({ method: 'POST', url: `/api/requirements/${created.json().id}/complete-as-planned`, headers: { cookie: adminCookie }, payload: {
       expectedVersion: created.json().version,
@@ -332,7 +310,7 @@ describe('功能扩充契约', () => {
 
   it('资料完整性独立于执行状态；服务端仍拒绝缺少需求负责人的启动', async () => {
     const created = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
-      projectId, title: '待规划但已分派工作项', plannedStart: '2026-09-04',
+      projectId, templateId, title: '未开始但已分派工作项', plannedStart: '2026-09-04',
     } });
     expect(created.json().status).toBe('not_started');
     const initialItem = created.json().workItems[0];
@@ -357,12 +335,11 @@ describe('功能扩充契约', () => {
     });
     const toolNames = tools.result.tools.map((tool: { name: string }) => tool.name);
     expect(toolNames).toEqual(expect.arrayContaining([
-      'get_my_work', 'list_action_items', 'list_issues', 'get_issue', 'update_progress', 'delete_progress',
-      'update_issue_update', 'delete_issue_update', 'list_project_members', 'set_project_member_role',
+      'get_my_work', 'list_action_items', 'list_issues', 'get_issue', 'list_project_members', 'set_project_member_role',
       'list_person_candidates', 'copy_template', 'get_analytics_catalog', 'query_analytics', 'correct_requirement',
     ]));
     const toolDescriptions = new Map(tools.result.tools.map((tool: { name: string; description?: string }) => [tool.name, tool.description || '']));
-    expect(toolDescriptions.get('update_requirement')).toContain('负责人和辅助信息');
+    expect(toolDescriptions.get('update_requirement')).toContain('负责人和说明');
     expect(toolDescriptions.get('reopen_work_item')).toContain('需求负责人或项目经理');
     expect(toolDescriptions.get('correct_requirement')).toContain('保持');
 
@@ -652,19 +629,13 @@ describe('功能扩充契约', () => {
     });
     expect(restInvalidProgress.statusCode).toBe(400);
     const mcpInvalidProgress = await callMcp(token, 9, 'update_progress', { id: 'missing-progress', workItemPercent: 100 });
-    expect(mcpInvalidProgress.result).toMatchObject({
-      isError: true,
-      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
-    });
+    expect(mcpInvalidProgress.error).toMatchObject({code:-32602});
     const restInvalidIssueUpdate = await app.inject({
       method: 'PATCH', url: '/api/issues/missing-issue/updates/missing-update', headers: { cookie: replacementCookie }, payload: { progress: 100 },
     });
     expect(restInvalidIssueUpdate.statusCode).toBe(400);
     const mcpInvalidIssueUpdate = await callMcp(token, 10, 'update_issue_update', { id: 'missing-issue', updateId: 'missing-update', progress: 100 });
-    expect(mcpInvalidIssueUpdate.result).toMatchObject({
-      isError: true,
-      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
-    });
+    expect(mcpInvalidIssueUpdate.error).toMatchObject({code:-32602});
     expect(JSON.stringify(mcpValue(await callMcp(token, 11, 'list_issues', { projectId: `  ${projectId}  ` })))).toContain(issueId);
     const restInvalidIssueFilters = await app.inject({
       method: 'GET', url: `/api/issues?projectId=${projectId}&status=resolved&active=true`, headers: { cookie: replacementCookie },

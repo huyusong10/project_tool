@@ -37,19 +37,13 @@ export function decorateForecastBasis(input:PathInput,analysis:PathAnalysis):Pat
   for(const n of analysis.nodes){
     const value=n.workItemId?work.get(n.workItemId):n.kind==='execution'?requirements.get(n.requirementId!):undefined;
     n.blockerCoordination=value?.blockerCoordination;
-    const review=value?.forecastReview||null,reasons=[...n.unknownReasons];
-    if(review&&value){
-      if(review.invalidatedAt)reasons.push('执行基线已变化：工作已返工，请重新核对');
-      if((value.progress||0)<review.progress||(value.actualStart||null)!==review.actualStart)reasons.push('执行基线已变化，请重新核对');
-      if(review.predecessorBasis!==predecessorBasis(n.id,analysis))reasons.push('前置交付条件已变化，请重新核对');
-      if(review.forecastEnd&&review.forecastEnd<input.asOfDate&&!['completed','cancelled'].includes(n.status))reasons.push('上次确认的预计日期已过期');
-    }
+    const reasons=[...n.unknownReasons];
     const ended=['completed','cancelled'].includes(n.status);
     const people=[...new Set([n.ownerId,...n.assigneeIds||[]].filter((id):id is string=>!!id))].sort(),groupKey=JSON.stringify(people);
     let group=concurrencyGroups.get(groupKey);
     if(!group){const ids=new Set(people.flatMap(id=>[...activeByPerson.get(id)||[]]));group={ids,sample:[...ids].slice(0,11).map(id=>nodesById.get(id)!)};concurrencyGroups.set(groupKey,group);}
-    n.forecastBasis={source:ended?n.kind==='acceptance'?'实际验收记录':'实际执行记录':review?'负责人确认；'+n.source:n.source,
-      review,reasons:[...new Set(reasons)],needsReview:!ended&&['work','execution'].includes(n.kind)&&(n.critical||n.riskLevel==='high')&&reasons.some(r=>/过期|变化|解除|工期|预测/.test(r)),
+    n.forecastBasis={source:ended?'实际执行记录':n.source,
+      review:null,reasons:[...new Set(reasons)],needsReview:false,
       concurrentWorkCount:group.ids.size-Number(group.ids.has(n.id)),concurrentWork:group.sample.filter(item=>item.id!==n.id).slice(0,10).map(item=>({id:item.id,requirementId:item.requirementId,title:item.title,requirementTitle:requirements.get(item.requirementId||'')?.title||'',forecastEnd:item.forecastEnd,critical:item.critical}))};
   }
   const executions=new Map<string,PathNode[]>();

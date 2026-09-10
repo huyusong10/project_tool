@@ -11,8 +11,8 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges, ins
   for(const c of [...(changes.entities||[]).filter(c=>c.entity==='requirement'),...templates.flatMap(t=>t.entities),...(changes.entities||[]).filter(c=>c.entity!=='requirement')]){
     if(c.entity==='requirement'){
       if(c.op==='create'){
-        requirements.push({id:c.id,projectId:data.projectId,title:c.data.title||'未命名需求',status:'planning',priority:c.data.priority||'P2',ownerName:null,plannedStart:null,plannedEnd:null,acceptedAt:null,dependenciesReviewedAt:null,scheduleAnchor:null,forecastAcceptance:null,deletedAt:null,...c.data} as PathRequirement);
-        nodes.push(addNode(startId(c.id),c.id,'start','开始条件'),addNode(acceptanceId(c.id),c.id,'acceptance','需求验收'));
+        requirements.push({id:c.id,projectId:data.projectId,title:c.data.title||'未命名需求',status:'not_started',priority:c.data.priority||'P2',ownerName:null,plannedStart:null,plannedEnd:null,acceptedAt:null,dependenciesReviewedAt:null,scheduleAnchor:null,forecastAcceptance:null,deletedAt:null,...c.data} as PathRequirement);
+        nodes.push(addNode(startId(c.id),c.id,'start','开始条件'),addNode(acceptanceId(c.id),c.id,'acceptance','工作完成'));
         risks[c.id]={riskLevel:'low',riskEvaluated:false,riskReason:'未保存需求',highRisk:false,critical:false,criticalCount:0,minFloat:null,blockedCritical:false,complete:false};
       }else if(c.op==='update')requirements=requirements.map(r=>r.id===c.id?{...r,...c.data}:r);
       else {requirements=requirements.filter(r=>r.id!==c.id);nodes=nodes.filter(n=>n.requirementId!==c.id);}
@@ -22,6 +22,7 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges, ins
       else {nodes=nodes.filter(n=>n.id!==c.id);milestones=milestones.filter(m=>m.id!==c.id);}
     }
   }
+  for(const r of requirements)r.executionMode=nodes.some(n=>n.requirementId===r.id&&n.kind==='work')?'work_items':'direct';
   nodes=nodes.filter(n=>n.kind!=='execution'||requirements.some(r=>r.id===n.requirementId&&r.executionMode==='direct'));
   for(const r of requirements)if(r.executionMode==='direct'){
     const old=nodes.find(n=>n.id==='execute:'+r.id),n=old||addNode('execute:'+r.id,r.id,'execution',r.title);
@@ -36,7 +37,7 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges, ins
     return {...n,estimate:{...n.estimate,...estimate},...arrangement!==undefined?{arrangement}:{},...arrangementAnchor!==undefined?{arrangementAnchor}:{}};
   });
   const nodeIds=new Set(nodes.map(n=>n.id)),edges = data.edges.filter(e => !e.dependencyId && !e.source.startsWith('start:')&&nodeIds.has(e.source)&&nodeIds.has(e.target));
-  for(const n of nodes)if(n.requirementId&&['work','execution','milestone'].includes(n.kind)&&!edges.some(e=>e.source===n.id&&e.target===acceptanceId(n.requirementId!)))edges.push({id:n.id+'>'+acceptanceId(n.requirementId),source:n.id,target:acceptanceId(n.requirementId),dependencyId:null,critical:false});
+  for(const n of nodes)if(n.requirementId&&['work','execution'].includes(n.kind)&&!edges.some(e=>e.source===n.id&&e.target===acceptanceId(n.requirementId!)))edges.push({id:n.id+'>'+acceptanceId(n.requirementId),source:n.id,target:acceptanceId(n.requirementId),dependencyId:null,critical:false});
   const internalTargets=new Set(dependencies.filter(d=>d.sourceRequirementId===d.targetRequirementId&&(d.sourceWorkItemId||d.sourceMilestoneId)&&d.targetWorkItemId).map(d=>d.targetWorkItemId));
   for (const n of nodes.filter(n => n.kind === 'start')) {
     const works = nodes.filter(w => ['work','execution'].includes(w.kind) && w.requirementId === n.requirementId);

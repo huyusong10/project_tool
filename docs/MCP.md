@@ -12,7 +12,7 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 | 按条件分页查需求 | `query_requirements` | 分页对象，默认省略工作项 |
 | 读取项目全部需求和工作项 | `list_requirements` | 原有数组，每项包含 `workItems` |
 | 读取需求及完整进展 | `get_requirement` | 需求、工作项、里程碑、进展和指标 |
-| 按 ID 读取工作项 | `get_work_item` | 执行、分工、计划、阻塞、预测依据及版本 |
+| 按 ID 读取工作项 | `get_work_item` | 执行、分工、计划、预计完成及版本 |
 | 按人、时间或状态查工作项 | `list_work_items` | 分页对象 |
 | 查询项目进展历史 | `list_progress_updates` | 分页对象及历史快照编号 |
 | 查询我的工作 | `get_my_work` | 当前账号负责和协作的工作、近期进展 |
@@ -21,7 +21,7 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 | 判断是否需要刷新项目 | `get_project_change_version` | `version`，包括业务日期及共享布局变化 |
 | 查询完整执行网络 | `get_path_analysis` | `nodes`、`edges`、依赖、关键性、余量、风险、预测 |
 | 查询拓扑视图或导出图 | `get_path_graph` | `cards`、`links`、范围数量、已保存布局，可附自动布局／SVG |
-| 整理分组、来源与导入 | `get_requirement_intake`、`preview_requirement_import`、`apply_requirement_import` 等 | [工具列表与导入契约](requirement-intake.md#rest-与-mcp) |
+| 整理分组与导入原始需求 | `get_requirement_intake`、`preview_requirement_import`、`apply_requirement_import` 等 | [工具列表与导入契约](requirement-intake.md#rest-与-mcp) |
 
 `get_my_work` 按 Token 绑定账号查询；它的近期进展是该账号发布的最近 8 条。项目历史应使用 `list_progress_updates`。
 
@@ -31,11 +31,11 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 
 | 工具 | 筛选参数 |
 |---|---|
-| `query_requirements` | `q`、`groupId`、`tag`、`ownerId`、`participantId`、`status`、`deliveryScope`、`view=delayed/high_risk`、`from/to`、`includeDeleted`；`includeWorkItems=true` 附带工作项 |
+| `query_requirements` | `q`、`groupId`、`ownerId`、`participantId`、`status`、`view=delayed/high_risk`、`from/to`、`includeDeleted`；`includeWorkItems=true` 附带工作项 |
 | `list_work_items` | `requirementId`、`q`、`ownerId`、`participantId`、`status`、`active`、`overdue`、`unassigned`、`from/to` |
 | `list_progress_updates` | `requirementId`、`workItemId`、`authorAccountId`、`eventType`、正文关键词 `q`、`from/to`、`snapshot` |
 
-`ownerId` 只匹配负责人。工作项的 `participantId` 匹配负责人或协作者；需求的 `participantId` 匹配需求负责人或其工作项参与人。需求关键词匹配标题、背景、验收标准及负责人姓名；工作项关键词匹配工作项或所属需求标题。
+`ownerId` 只匹配负责人。工作项的 `participantId` 匹配负责人或协作者；需求的 `participantId` 匹配需求负责人或其工作项参与人。需求关键词匹配标题、需求说明、完成标准及负责人姓名；工作项关键词匹配工作项或所属需求标题。
 
 需求和工作项的 `from/to` 匹配与指定日期范围相交的计划。只有一个计划日期时按该日期匹配；没有计划日期时不匹配日期筛选。进展的 `from/to` 按北京时间自然日匹配发布时间，包含首尾日。
 
@@ -77,7 +77,7 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 ## 图编辑批次
 
 1. 读取 `get_path_analysis` 的 `revision`，作为 `expectedRevision`。布局版本从 `get_diagram_layouts` 或 `get_path_graph.savedLayout` 取得。
-2. 调用 `preview_dependency_changes`。`changes` 可包含依赖 `add/remove`、工期 `estimates`、实体 `entities`、布局 `layouts` 和交付承诺 `commitment`。
+2. 调用 `preview_dependency_changes`。`changes` 可包含依赖 `add/remove`、工期 `estimates`、实体 `entities`和布局 `layouts`。
 3. 核对 `differences` 后，将原输入和返回的 `previewToken` 原样传给 `apply_dependency_changes`，并生成一个 `batchId` UUID。
 4. 用回执 `addedIds` 将客户端临时 ID 替换为正式 ID。结果不确定时先用原 `batchId` 查询 `get_dependency_change_receipt`；重试复用原批次 ID 和输入。
 
@@ -99,6 +99,16 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 | `list_progress_updates` | `/api/progress-updates` |
 | `get_path_graph` | `/api/projects/:id/path-graph` |
 | `get_project_change_version` | `/api/projects/:id/change-version` |
-| `get_requirement_start_conditions` | `/api/requirements/:id/start-conditions` |
 
 分页筛选通过查询参数传入。读取现有对象时，无权访问与对象不存在均返回 404；按项目查询无权项目返回 403。归档需求查询仅供经理或管理员使用。
+
+
+## 简化工作流
+
+需求和工作项统一使用 `not_started/in_progress/completed/cancelled`。缺少日期只提示未排期；全部有效工作项完成，需求自动完成。无工作项时用 `start_requirement`、`add_progress`、`complete_requirement`；有工作项时使用对应工作项操作。`return_requirement` 或 `reopen_work_item` 记录返工。
+
+完成偏差使用实际工作结束日期。`acceptedAt` 只保留历史；`actualEnd` 表示实际完成，`observationEnd` 表示甘特统计截止日，两者不能互换。迁移后的原文与出处在需求 `sourceNotes` 中。
+
+工具目录已移除来源条款、来源关联、阻塞/解阻、确认验收、预测核对、前置确认、交付承诺以及覆盖/删除历史的工具。新请求不接受 `deliveryScope/executionMode/acceptanceOwnerId/priority/unblockEstimate` 及阻塞协调字段。原始需求导入使用 `formatVersion:2`。
+
+拓扑中的 `acceptance:需求ID` 保留为历史布局兼容 ID，现在表示工作完成，不要求执行验收操作。独立里程碑只有显式依赖才影响其他工作。

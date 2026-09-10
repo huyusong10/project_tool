@@ -12,7 +12,7 @@ const dateError = { message: '开始日期不能晚于结束日期', path: ['to'
 const q = z.string().trim().max(200).optional();
 const flag = z.union([z.boolean(), z.enum(['true', 'false'])]).transform(v => v === true || v === 'true');
 
-export const requirementQuerySchema = requirementListInputSchema.extend({
+export const requirementQuerySchema = requirementListInputSchema.omit({deliveryScope:true}).extend({
   q, ownerId: idSchema.optional(), participantId: idSchema.optional(),
   ...dateFields, ...pageFields, includeWorkItems: flag.default(false),
 }).refine(orderedDates, dateError);

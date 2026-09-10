@@ -8,7 +8,7 @@ const base = { status: 'in_progress', title: '需求', riskEvaluated: true, risk
 
 describe('跨页面数据表达', () => {
   it('未排期和无法计算不显示为零偏差', () => {
-    const pending = { ...base, status: 'planning', plannedStart: null, plannedEnd: null, scheduleComplete: false };
+    const pending = { ...base, status: 'not_started', plannedStart: null, plannedEnd: null, scheduleComplete: false };
     expect(requirementVarianceValue(pending)).toBeNull();
     expect(requirementVarianceDisplay(pending).label).toBe('待排期');
     expect(requirementVarianceDisplay({ ...base, scheduleVarianceDays: null }).label).toBe('待评估');

@@ -1,7 +1,9 @@
+import {dependencyChangesInput,applyDependencyChangesInput,pathEstimateInput} from '../shared/workflow-contracts';
+import {createRequirementInputSchema,updateRequirementInputSchema,requirementCorrectionInputSchema,createWorkItemInputSchema,updateWorkItemInputSchema,startWorkItemInputSchema,reasonCommandSchema,rescheduleRequirementInputSchema} from '../shared/workflow-contracts';
 import {intakeOperations} from './intake-api';
-import {listDeliveryCommitments,getDeliveryCommitment,deliveryCommitmentSummary} from './services/commitments';
+
 import {isCoordinationEdit,assertCoordinationAccess} from './services/blocker-coordination';
-import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor,directStartConditions} from './services/delivery-execution';
+import { executeDirectRequirement, returnRequirement } from './services/delivery-execution';
 import { queryRequirements, queryWorkItems, readWorkItem, queryProgressUpdates } from './services/queries';
 import { readPathGraph } from './services/path-graph';
 import { projectChangeVersion } from './services/project-change-version';
@@ -12,89 +14,17 @@ import { McpServer, type StandardSchemaWithJSON, type ToolCallback } from '@mode
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import { z } from 'zod';
 import { todayIso } from '../shared/domain';
-import { pathQuery, dependencyInput, pathVersion, reviewDependenciesInput, pathEstimateInput, dependencyPlanInput, applyDependencyPlanInput, dependencyChangesInput, applyDependencyChangesInput } from '../shared/path-contracts';
+import { pathQuery, dependencyInput, pathVersion, dependencyPlanInput, applyDependencyPlanInput } from '../shared/path-contracts';
 import { applyDependencyChanges, getDependencyChangeReceipt, previewDependencyChanges } from './services/path-changes';
 import {milestoneCommand,readDiagramLayouts} from './services/milestones';
-import { readPathAnalysis, addDependency, removeDependency, reviewDependencies, updatePathEstimate, previewDependencyPlan, applyDependencyPlan } from './services/paths';
-import {
-  assertAdmin, assertCanAddProgress, assertProgressOwnerOrManager, assertProjectManager, assertProjectMember, assertProjectReadable,
-  assertProjectResourceManager, assertProjectResourceReadable, assertRequirementOwnerOrManager,
-  assertWorkItemParticipantOrManager, assertWorkItemRequirementOwnerOrManager, canManageProject, canUpdateIssueProgress,
-  isAdmin, projectIdForIssue, projectIdForRequirement, projectIdForTemplate, projectIdForWorkItem,
-  type AuthorizationActor,
-} from './authorization';
-import {
-  acceptRequirement, addProgress, addProjectPerson, applyRequirementPlan, applyTemplate, archivePerson, archiveProject, archiveRequirement, archiveTemplate,
-  addIssueUpdate, blockWorkItem, cancelRequirement, cancelWorkItem, completeWorkItem, correctIssue, correctRequirement, correctWorkItem, createIssue, createPerson, createProject, createRequirement, createTemplate,
-  copyTemplate, createWorkItem, deleteIssueUpdate, deleteProgress, deleteWorkItem, getDashboard, getIssue, getPeopleConcurrency, getRequirement, listActionItems, listArchives,
-  listAudit, listIssues, listPeople, listPeopleCandidates, listProjects, listRequirements, listTemplates, permanentlyDeleteArchive, previewRequirementPlan, removeProjectPerson, reorderWorkItems,
-  deferIssue, reopenIssue, reopenWorkItem, reselectRequirementTemplate, rescheduleRequirement, resolveIssue, restorePerson, restoreProject, restoreRequirement, restoreTemplate, resumeIssue, startWorkItem, unblockWorkItem, updateIssue, updatePerson,
-  updateIssueUpdate, updateProgress, updateProject, updateRequirement, updateTemplate, updateWorkItem,
-} from './services';
+import { readPathAnalysis, addDependency, removeDependency, updatePathEstimate, previewDependencyPlan, applyDependencyPlan } from './services/paths';
+import { assertAdmin, assertCanAddProgress, assertProjectManager, assertProjectMember, assertProjectReadable, assertProjectResourceManager, assertProjectResourceReadable, assertRequirementOwnerOrManager, assertWorkItemParticipantOrManager, assertWorkItemRequirementOwnerOrManager, canManageProject, canUpdateIssueProgress, isAdmin, projectIdForIssue, projectIdForRequirement, projectIdForTemplate, projectIdForWorkItem, type AuthorizationActor } from './authorization';
+import { addProgress, addProjectPerson, applyRequirementPlan, applyTemplate, archivePerson, archiveProject, archiveRequirement, archiveTemplate, addIssueUpdate, cancelRequirement, cancelWorkItem, completeWorkItem, correctIssue, correctRequirement, correctWorkItem, createIssue, createPerson, createProject, createRequirement, createTemplate, copyTemplate, createWorkItem, deleteWorkItem, getDashboard, getIssue, getPeopleConcurrency, getRequirement, listActionItems, listArchives, listAudit, listIssues, listPeople, listPeopleCandidates, listProjects, listRequirements, listTemplates, permanentlyDeleteArchive, previewRequirementPlan, removeProjectPerson, reorderWorkItems, deferIssue, reopenIssue, reopenWorkItem, reselectRequirementTemplate, rescheduleRequirement, resolveIssue, restorePerson, restoreProject, restoreRequirement, restoreTemplate, resumeIssue, startWorkItem, updateIssue, updatePerson, updateProject, updateRequirement, updateTemplate, updateWorkItem } from './services';
 import { getMyWork } from './accounts';
 import { completeRequirementAsPlanned, completeWorkItemAsPlanned } from './services';
 import { getAnalyticsCatalog, queryAnalytics } from './analytics';
 import { errorResponse } from './errors';
-import {
-  actionItemsInputSchema,
-  analyticsQueryInputSchema,
-  archiveDeleteInputSchema,
-  archiveListInputSchema,
-  archiveRestoreInputSchema,
-  auditListInputSchema,
-  applyRequirementPlanInputSchema,
-  applyTemplateInputSchema,
-  contentCommandSchema,
-  optionalContentCommandSchema,
-  completeAsPlannedInputSchema,
-  copyTemplateInputSchema,
-  createIssueInputSchema,
-  createPersonInputSchema,
-  createProjectInputSchema,
-  createRequirementInputSchema,
-  createTemplateInputSchema,
-  createWorkItemInputSchema,
-  emptyCommandInputSchema,
-  expectedVersionInputSchema,
-  startWorkItemInputSchema,
-  idParamsSchema,
-  idSchema,
-  issueCorrectionInputSchema,
-  issueListInputSchema,
-  issueUpdateParamsSchema,
-  issueUpdateHistoryInputSchema,
-  issueUpdateInputSchema,
-  projectPeopleConcurrencyInputSchema,
-  peopleListInputSchema,
-  personCandidatesInputSchema,
-  personCommandSchema,
-  updatePersonInputSchema,
-  progressInputSchema,
-  progressHistoryUpdateInputSchema,
-  previewRequirementPlanInputSchema,
-  projectArchiveInputSchema,
-  projectInputSchema,
-  projectListInputSchema,
-  projectMemberMutationCommandSchema,
-  projectMemberMutationInputSchema,
-  projectParamsSchema,
-  projectResourceListInputSchema,
-  projectScopeInputSchema,
-  rescheduleRequirementInputSchema,
-  reselectRequirementTemplateInputSchema,
-  reasonCommandSchema,
-  requirementCorrectionInputSchema,
-  reopenIssueInputSchema,
-  reopenWorkItemInputSchema,
-  requirementListInputSchema,
-  reorderWorkItemsInputSchema,
-  templateCommandSchema,
-  updateTemplateInputSchema,
-  updateRequirementInputSchema,
-  updateIssueInputSchema,
-  updateWorkItemInputSchema,
-  workItemCorrectionSchema,
-} from '../shared/contracts';
+import { actionItemsInputSchema, analyticsQueryInputSchema, archiveDeleteInputSchema, archiveListInputSchema, archiveRestoreInputSchema, auditListInputSchema, applyRequirementPlanInputSchema, applyTemplateInputSchema, contentCommandSchema, optionalContentCommandSchema, completeAsPlannedInputSchema, copyTemplateInputSchema, createIssueInputSchema, createPersonInputSchema, createProjectInputSchema, createTemplateInputSchema, emptyCommandInputSchema, expectedVersionInputSchema, idParamsSchema, idSchema, issueCorrectionInputSchema, issueListInputSchema, issueUpdateInputSchema, projectPeopleConcurrencyInputSchema, peopleListInputSchema, personCandidatesInputSchema, personCommandSchema, updatePersonInputSchema, progressInputSchema, previewRequirementPlanInputSchema, projectArchiveInputSchema, projectInputSchema, projectListInputSchema, projectMemberMutationCommandSchema, projectMemberMutationInputSchema, projectParamsSchema, projectResourceListInputSchema, projectScopeInputSchema, reselectRequirementTemplateInputSchema, reopenIssueInputSchema, reopenWorkItemInputSchema, requirementListInputSchema, reorderWorkItemsInputSchema, templateCommandSchema, updateTemplateInputSchema, updateIssueInputSchema, workItemCorrectionSchema } from '../shared/contracts';
 
 const json = (value: unknown) => ({
   content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }],
@@ -127,26 +57,21 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   };
 
   for(const op of intakeOperations)registerTool(op.name,{description:op.description,inputSchema:op.inputSchema},async input=>json(op.execute(input,actor)));
-  registerTool('query_requirements', { description: '分页查询需求：支持关键词、分组 groupId、标签 tag、负责人、参与人、状态、交付范围、高风险/延期及计划日期区间相交筛选。默认省略工作项，includeWorkItems=true 返回工作项。返回 items/total/page/pageSize/pages；旧 list_requirements 仍返回完整数组。', inputSchema: requirementQuerySchema }, async input => json(queryRequirements(input, actor)));
+  registerTool('query_requirements', { description: '分页查询需求：支持关键词、分组 groupId、负责人、参与人、状态、高风险/延期及计划日期区间相交筛选。默认省略工作项，includeWorkItems=true 返回工作项。返回 items/total/page/pageSize/pages；旧 list_requirements 仍返回完整数组。', inputSchema: requirementQuerySchema }, async input => json(queryRequirements(input, actor)));
   registerTool('list_work_items', { description: '分页查询项目内工作项，支持需求、关键词、负责人 ownerId、负责人或协作者 participantId、状态、未完成 active、逾期 overdue、未分派 unassigned。from/to 按计划区间相交筛选，未排期不匹配日期。返回完整工作项字段及所属需求、项目、预测依据和版本。', inputSchema: workItemQuerySchema }, async input => json(queryWorkItems(input, actor)));
-  registerTool('get_work_item', { description: '按工作项 ID 读取执行详情、负责人和协作者、计划与实际日期、阻塞及预测依据、未满足前置和版本。进展历史使用 list_progress_updates。', inputSchema: idParamsSchema }, async ({ id }) => json(readWorkItem(id, actor)));
+  registerTool('get_work_item', { description: '按工作项 ID 读取执行详情、负责人和协作者、计划与实际日期、进度及预测依据、未满足前置和版本。进展历史使用 list_progress_updates。', inputSchema: idParamsSchema }, async ({ id }) => json(readWorkItem(id, actor)));
   registerTool('list_progress_updates', { description: '分页读取项目进展历史，可按需求、工作项、发布账号、事件类型和正文关键词筛选。from/to 为北京时间自然日，含首尾日；按发布时间及写入顺序倒序。翻页原样传入首次返回的 snapshot，避免新记录挤动分页。', inputSchema: progressQuerySchema }, async input => json(queryProgressUpdates(input, actor)));
   registerTool('get_project_change_version', { description: '轻量读取项目变更版本，用于比较是否需要刷新；包括业务日期、分析版本及共享布局等，不执行路径分析。返回 version。', inputSchema: projectScopeInputSchema }, async ({ projectId }) => json(projectChangeVersion(projectId, actor)));
-  registerTool('get_requirement_start_conditions', { description: '需求负责人或经理读取直接执行需求的未满足前置；工作项前置见 get_work_item。', inputSchema: idParamsSchema }, async ({ id }) => { assertRequirementOwnerOrManager(actor, id); return json(directStartConditions(id)); });
   registerTool('get_path_graph', { description: '读取与网页共用的拓扑视图 cards/links。view=project 为需求汇总，view=requirement 必须传 requirementId，展示内部及直接外部节点；target 决定关键性分析目标。可用 rootNodeId、traversal、depth 查询上下游，q 过滤节点。返回省略数量和可见节点的已存布局；保存前用 get_diagram_layouts 读取完整坐标再合并，避免覆盖隐藏坐标。layout=auto 计算新布局及折线，format=svg 额外导出 SVG 文本。自动布局使用固定卡片尺寸，最多 200 节点/1000 关系，不保存坐标；保存用批次 changes.layouts。', inputSchema: pathGraphQuerySchema }, async input => json(await readPathGraph(input, actor)));
   registerTool('get_diagram_layouts',{description:'读取已保存的团队画布位置与布局版本；scope 为 global 或 requirement:需求ID，direction 为 right/down。保存通过 preview_dependency_changes/apply_dependency_changes 的 changes.layouts，expectedVersion 使用本结果 version；不存在的布局为 0。',inputSchema:z.object({projectId:idSchema})},async({projectId})=>json(readDiagramLayouts(projectId,actor)));
   registerTool('milestone_command',{description:'人工确认或重新打开独立里程碑，记录操作者和时间',inputSchema:z.object({id:idSchema,action:z.enum(['achieve','reopen']),expectedVersion:z.number().int().positive()})},async({id,action,...input})=>json(milestoneCommand(id,action,input,actor)));
-  registerTool('list_delivery_commitments', {description:'读取项目整体交付承诺历史；确认承诺使用项目批量预览与保存',inputSchema:z.object({projectId:idSchema})},async({projectId})=>json(listDeliveryCommitments(projectId,actor)));
-  registerTool('get_delivery_commitment', {description:'读取不可修改的承诺快照及与上一次确认的差异',inputSchema:z.object({projectId:idSchema,commitmentId:idSchema})},async({projectId,commitmentId})=>json(getDeliveryCommitment(projectId,commitmentId,actor)));
-  registerTool('get_delivery_commitment_summary', {description:'按验收期间比较首次承诺和最近确认；无有效样本返回 null，同时返回覆盖数量。旧 on_time_rate 为当前计划口径。',inputSchema:z.object({projectId:idSchema,from:z.string().optional(),to:z.string().optional()})},async({projectId,from,to})=>json(deliveryCommitmentSummary(projectId,actor,from,to)));
-  registerTool('get_path_analysis', { description: '查询完整项目执行网络 nodes/edges、依赖、关键性、余量、交付预测、风险与阻塞来源；target 可为 project、acceptance:需求ID、工作项ID或里程碑ID。始终返回全图，局部或需求汇总图使用 get_path_graph；revision 用于批次 expectedRevision。', inputSchema: pathQuery.extend({ projectId: idSchema }) }, async ({ projectId, target }) => json(readPathAnalysis(projectId, target, actor)));
-  registerTool('preview_dependency_changes', { description: '预览原子批次，不保存：changes.add/remove 为依赖，estimates 为工作项估算，entities 支持需求/工作项/里程碑的 create/update/delete，layouts 为共享坐标，commitment 为交付承诺。实体创建 id 和连线 clientId 使用客户端临时唯一 ID，可在同批次互相引用；修改实体需 expectedVersion。布局 scope=global 或 requirement:需求ID，expectedVersion 为已存布局版本或 0。返回 analysis、differences、previewToken；确认后原样提交本输入和凭据。', inputSchema: dependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(previewDependencyChanges(projectId, input, actor)));
-  registerTool('apply_dependency_changes', { description: '原子提交已预览的依赖、估算、实体、布局及交付承诺。原样传入预览输入和 previewToken，另生成 batchId UUID；同一批次重试复用 batchId。回执 addedIds 将临时实体/关系 ID 映射为正式 ID。版本或跨日失效时重新预览；结果不确定先查询 get_dependency_change_receipt。', inputSchema: applyDependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(applyDependencyChanges(projectId, input, actor)));
+  registerTool('get_path_analysis', { description: '查询完整项目执行网络 nodes/edges、依赖、关键性、余量、交付预测、日期偏差和影响来源；target 可为 project、acceptance:需求ID、工作项ID或里程碑ID。始终返回全图，局部或需求汇总图使用 get_path_graph；revision 用于批次 expectedRevision。', inputSchema: pathQuery.extend({ projectId: idSchema }) }, async ({ projectId, target }) => json(readPathAnalysis(projectId, target, actor)));
+  registerTool('preview_dependency_changes', { description: '预览原子批次，不保存：changes.add/remove 为依赖，estimates 为工作项估算，entities 支持需求/工作项/里程碑的 create/update/delete，layouts 为共享坐标。实体创建 id 和连线 clientId 使用客户端临时唯一 ID，可在同批次互相引用；修改实体需 expectedVersion。布局 scope=global 或 requirement:需求ID，expectedVersion 为已存布局版本或 0。返回 analysis、differences、previewToken；确认后原样提交本输入和凭据。', inputSchema: dependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(previewDependencyChanges(projectId, input, actor)));
+  registerTool('apply_dependency_changes', { description: '原子提交已预览的依赖、估算、实体和布局。原样传入预览输入和 previewToken，另生成 batchId UUID；同一批次重试复用 batchId。回执 addedIds 将临时实体/关系 ID 映射为正式 ID。版本或跨日失效时重新预览；结果不确定先查询 get_dependency_change_receipt。', inputSchema: applyDependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(applyDependencyChanges(projectId, input, actor)));
   registerTool('get_dependency_change_receipt', { description: '查询本次依赖批次的提交回执', inputSchema: z.object({ projectId: idSchema, batchId: z.string().uuid() }) }, async ({ projectId, batchId }) => json(getDependencyChangeReceipt(projectId, batchId, actor)));
   registerTool('add_dependency', { description: '增加完成后开始的依赖，必须提供最新项目分析版本', inputSchema: dependencyInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(addDependency(projectId, input, actor)));
   registerTool('remove_dependency', { description: '移除依赖', inputSchema: pathVersion.extend({ id: idSchema }) }, async ({ id, ...input }) => json(removeDependency(id, input, actor)));
-  registerTool('review_dependencies', { description: '核对需求全部前置或设置预计验收日', inputSchema: reviewDependenciesInput.extend({ id: idSchema }) }, async ({ id, ...input }) => json(reviewDependencies(id, input, actor)));
-  registerTool('update_path_estimate', { description: '设置工作项工期、最早开始、解阻日期或人工预测', inputSchema: pathEstimateInput.extend({ id: idSchema }) }, async ({ id, ...input }) => json(updatePathEstimate(id, input, actor)));
+  registerTool('update_path_estimate', { description: '设置工作项工期、最早开始、人工预测日期', inputSchema: pathEstimateInput.extend({ id: idSchema }) }, async ({ id, ...input }) => json(updatePathEstimate(id, input, actor)));
   registerTool('preview_dependency_plan', { description: '按依赖预览需求及下游未开始工作的计划差异', inputSchema: dependencyPlanInput.extend({ id: idSchema }) }, async ({ id, ...input }) => json(previewDependencyPlan(id, input, actor)));
   registerTool('apply_dependency_plan', { description: '应用已核对的依赖排期预览', inputSchema: applyDependencyPlanInput.extend({ id: idSchema }) }, async ({ id, ...input }) => json(applyDependencyPlan(id, input, actor)));
   registerTool('dashboard_summary', { description: '查询项目看板、自动风险和图表', inputSchema: projectScopeInputSchema }, async ({ projectId }) => {
@@ -185,7 +110,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     assertAdmin(actor); return json(restoreProject(id, actor, input));
   });
 
-  registerTool('list_requirements', { description: '按项目、状态、交付范围及延期/高风险筛选需求；返回数组，每项包含 workItems。精确筛选和分页使用 query_requirements；完整进展历史使用 get_requirement 或 list_progress_updates。', inputSchema: requirementListInputSchema }, async (input) => {
+  registerTool('list_requirements', { description: '按项目、状态及延期/高风险筛选需求；返回数组，每项包含 workItems。精确筛选和分页使用 query_requirements；完整进展历史使用 get_requirement 或 list_progress_updates。', inputSchema: requirementListInputSchema }, async (input) => {
     if (input.includeDeleted) assertProjectManager(actor, input.projectId); else assertProjectReadable(actor, input.projectId);
     return json(listRequirements(input));
   });
@@ -194,12 +119,12 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     if (includeDeleted) assertProjectResourceManager(actor, projectId, '需求不存在'); else assertProjectResourceReadable(actor, projectId, '需求不存在');
     return json(getRequirement(id, includeDeleted));
   });
-  for(const action of ['start','block','unblock','submit-acceptance'] as const)registerTool(action.replace('-','_')+'_requirement',{description:'推进直接执行需求；不修改依赖或自动开始其他工作',inputSchema:directRequirementCommandSchema.extend({id:idSchema})},async({id,...input})=>json(executeDirectRequirement(id,action,input,actor)));
-  registerTool('return_requirement',{description:'指定验收人或经理退回需求；分解需求须指定返工工作项',inputSchema:directRequirementCommandSchema.extend({id:idSchema,workItemIds:z.array(idSchema).optional()})},async({id,...input})=>json(returnRequirement(id,input,actor)));
-  registerTool('create_requirement', { description: '创建需求；executionMode=direct 直接执行，work_items 按流程分解。priority 为兼容历史字段，不影响自动处理优先级', inputSchema: createRequirementInputSchema }, async (input) => {
+  for(const action of ['start','complete'] as const)registerTool(action.replace('-','_')+'_requirement',{description:'推进直接执行需求；不修改依赖或自动开始其他工作',inputSchema:directRequirementCommandSchema.extend({id:idSchema})},async({id,...input})=>json(executeDirectRequirement(id,action,input,actor)));
+  registerTool('return_requirement',{description:'需求负责人或经理返工；有工作项时指定需要返工的工作项',inputSchema:directRequirementCommandSchema.extend({id:idSchema,workItemIds:z.array(idSchema).optional()})},async({id,...input})=>json(returnRequirement(id,input,actor)));
+  registerTool('create_requirement', { description: '创建需求，标题必填，描述、负责人和计划可稍后补齐；指定 templateId 时套用模板', inputSchema: createRequirementInputSchema }, async (input) => {
     assertProjectManager(actor, input.projectId); return json(createRequirement(input, actor));
   });
-  registerTool('update_requirement', { description: '修改非终态需求的标题、优先级、负责人和辅助信息；不修改状态、排期或流程', inputSchema: updateRequirementInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('update_requirement', { description: '修改非终态需求的标题、负责人和说明；状态通过开始、完成或返工操作更新', inputSchema: updateRequirementInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     if(isCoordinationEdit(input))assertCoordinationAccess('requirement',id,input,actor);else assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在'); return json(updateRequirement(id, input, actor));
   });
   registerTool('correct_requirement', { description: '项目经理修正已完成或已取消需求的基本信息；保持交付状态并追加不可变纠错记录', inputSchema: requirementCorrectionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
@@ -214,10 +139,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('archive_requirement', { description: '归档需求', inputSchema: expectedVersionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在'); return json(archiveRequirement(id, input, actor));
   });
-  registerTool('accept_requirement', { description: '指定验收人或项目经理确认验收；经理代验写入记录', inputSchema: contentCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
-    assertRequirementAcceptor(id,actor); return json(acceptRequirement(id, input, actor));
-  });
-  registerTool('complete_requirement_as_planned', { description: '经理历史补录：未执行工作项按过去计划日期完成，并验收需求；保留已完成或取消记录', inputSchema: completeAsPlannedInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('complete_requirement_as_planned', { description: '经理历史补录：未执行工作项按过去计划日期完成，全部有效工作完成后需求自动完成；保留已完成或取消记录', inputSchema: completeAsPlannedInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在'); return json(completeRequirementAsPlanned(id, input, actor));
   });
   registerTool('complete_work_item_as_planned', { description: '经理历史补录：仅无执行记录且计划已结束的工作项可按计划日期完成', inputSchema: completeAsPlannedInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
@@ -242,22 +164,16 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('update_work_item', { description: '修改工作项元数据、负责人和计划日期；执行数据需使用状态命令', inputSchema: updateWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     if(isCoordinationEdit(input))assertCoordinationAccess('work',id,input,actor);else assertWorkItemRequirementOwnerOrManager(actor, id); return json(updateWorkItem(id, input, actor));
   });
-  registerTool('start_work_item', { description: '开始工作项并自动记录实际开始；前置未满足时须记录例外原因并提交 dependencyRevision', inputSchema: startWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('start_work_item', { description: '开始工作项并自动记录实际开始；依赖作为排期提示，无额外确认步骤', inputSchema: startWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertWorkItemParticipantOrManager(actor, id); return json(startWorkItem(id, input, actor));
   });
   registerTool('complete_work_item', { description: '完成工作项；完成说明可选', inputSchema: optionalContentCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertWorkItemParticipantOrManager(actor, id); return json(completeWorkItem(id, input, actor));
   });
-  registerTool('block_work_item', { description: '标记工作项阻塞', inputSchema: reasonCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
-    assertWorkItemParticipantOrManager(actor, id); return json(blockWorkItem(id, input, actor));
-  });
-  registerTool('unblock_work_item', { description: '解除工作项阻塞', inputSchema: expectedVersionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
-    assertWorkItemParticipantOrManager(actor, id); return json(unblockWorkItem(id, input, actor));
-  });
   registerTool('cancel_work_item', { description: '取消工作项', inputSchema: reasonCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertWorkItemRequirementOwnerOrManager(actor, id); return json(cancelWorkItem(id, input, actor));
   });
-  registerTool('reopen_work_item', { description: '需求负责人或项目经理重开已完成或已取消工作项，并使已验收需求恢复执行', inputSchema: reopenWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('reopen_work_item', { description: '需求负责人或项目经理重开已完成或已取消工作项，并使已完成需求恢复执行', inputSchema: reopenWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertWorkItemRequirementOwnerOrManager(actor, id); return json(reopenWorkItem(id, input, actor));
   });
   registerTool('correct_work_item', { description: '项目经理受控修正工作项标题、完成度或实际日期；保持状态并追加不可变纠错记录', inputSchema: workItemCorrectionSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
@@ -272,13 +188,6 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
 
   registerTool('add_progress', { description: '追加工作项进展；完成度不能达到100%', inputSchema: progressInputSchema.safeExtend({ requirementId: idSchema }) }, async ({ requirementId, ...input }) => {
     assertCanAddProgress(actor, requirementId, input.workItemId || null); return json(addProgress(requirementId, input, actor));
-  });
-  registerTool('update_progress', { description: '尝试修改进展记录；现有只追加规则会返回明确冲突', inputSchema: progressHistoryUpdateInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
-    assertProgressOwnerOrManager(actor, id, Object.prototype.hasOwnProperty.call(input, 'workItemId') ? input.workItemId : undefined);
-    return json(updateProgress(id, input, actor));
-  });
-  registerTool('delete_progress', { description: '尝试删除进展记录；现有只追加规则会返回明确冲突', inputSchema: idParamsSchema }, async ({ id }) => {
-    assertProgressOwnerOrManager(actor, id); return json(deleteProgress(id, actor));
   });
 
   registerTool('list_issues', { description: '按项目筛选查询问题', inputSchema: issueListInputSchema }, async (input) => {
@@ -298,12 +207,6 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     const projectId = projectIdForIssue(id);
     assertProjectResourceReadable(actor, projectId, '问题不存在'); assertProjectMember(actor, projectId);
     return json(addIssueUpdate(id, input, actor, { canSetProgress: canUpdateIssueProgress(actor, id), canResolve: canManageProject(actor, projectId) }));
-  });
-  registerTool('update_issue_update', { description: '尝试修改问题进展；现有只追加规则会返回明确冲突', inputSchema: issueUpdateHistoryInputSchema.safeExtend({ id: idSchema, updateId: idSchema }) }, async ({ id, updateId, ...input }) => {
-    assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在'); return json(updateIssueUpdate(id, updateId, input, actor));
-  });
-  registerTool('delete_issue_update', { description: '尝试删除问题进展；现有只追加规则会返回明确冲突', inputSchema: issueUpdateParamsSchema }, async ({ id, updateId }) => {
-    assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在'); return json(deleteIssueUpdate(id, updateId, actor));
   });
   registerTool('defer_issue', { description: '挂起问题', inputSchema: reasonCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在'); return json(deferIssue(id, input, actor));

@@ -83,7 +83,7 @@ afterAll(async () => {
 });
 
 for (const protocol of ['REST', 'MCP'] as const) {
-  it.each(['not_started', 'in_progress', 'blocked', 'completed', 'cancelled'])(`${protocol}与表单一致地处理%s工作项，始终保留关联`, async (status) => {
+  it.each(['not_started', 'in_progress', 'completed', 'cancelled'])(`${protocol}与表单一致地处理%s工作项，始终保留关联`, async (status) => {
     const before = await fixture(status);
     const item = before.workItems[0];
     const content = `${protocol}记录${status}工作项`;

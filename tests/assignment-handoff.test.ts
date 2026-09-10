@@ -25,7 +25,7 @@ async function fixture() {
   const person = async (role: string) => (await request('POST', '/api/people', { projectId, name: role + sequence })).json() as { id: string; name: string };
   const owner = await person('需求负责人'), previous = await person('原执行人'), next = await person('新执行人');
   const templateId = (await request('POST', '/api/templates', { projectId, name: '交接流程', items: [{ title: '验证交付', startOffsetDays: 0, durationDays: 1, sortOrder: 0 }] })).json().id;
-  const created = await request('POST', '/api/requirements', { projectId, ownerId: owner.id, templateId, executionMode: 'work_items', title: '交接中的需求' });
+  const created = await request('POST', '/api/requirements', { projectId, ownerId: owner.id, templateId,  title: '交接中的需求' });
   expect(created.statusCode, created.body).toBe(200);
   const r = created.json<Requirement>(), w = r.workItems[0];
   const assigned = await request('PATCH', '/api/work-items/' + w.id, { expectedVersion: w.version, ownerId: previous.id });
@@ -89,7 +89,7 @@ it('进行中交接保留进度和开始日期；旧账号失效，新执行人�
   expect(assigned.json()).toMatchObject({ actualStart: w.actualStart, progress: 40, status: 'in_progress' });
   const completed = await request('POST', `/api/work-items/${w.id}/complete`, { expectedVersion: assigned.json().version, content: '接手后完成剩余部分' }, newCookie);
   expect(completed.statusCode, completed.body).toBe(200);
-  expect(await detail(r.id)).toMatchObject({ status: 'pending_acceptance', acceptedAt: null, progress: 100 });
+  expect(await detail(r.id)).toMatchObject({ status: 'completed', acceptedAt: null, progress: 100 });
 });
 
 it('主负责和协作者同时失效时，可以先移除旧协作者再交接，不被未改动的旧归属卡住', async () => {

@@ -1,6 +1,5 @@
-import {OrganizationFields,parseTags} from './RequirementIntake';
+import {OrganizationFields} from './RequirementIntake';
 import {isAssignablePerson} from '../assignable-people';
-import {CommitmentComparison} from './CommitmentComparison';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, WandSparkles } from "lucide-react";
@@ -8,20 +7,19 @@ import { api, ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } 
 import { invalidateRequirementViews, keys } from "../query-keys";
 import { readResourceFresh, ResourceReadInvalidatedError } from "../use-resource-query";
 import type { Person, PlanPreview, Requirement, WorkItemTemplate } from "../types";
-import { rebaseBusinessDate } from "../../shared/domain";
 import { ConfirmDialog, Modal } from "./Modal";
 import { FormError, FormField, FormSubmitActions } from "./Form";
 import { useToast } from "./Toast";
 import { canonicalizeContent, canonicalizeLabel } from "../../shared/search";
 
 type RequirementInfoDraft = {
-  groupId:string;tags:string;
+  groupId:string;
   title: string; priority: string; ownerId: string; background: string; acceptanceCriteria: string; referenceUrl: string;
 };
 
 function requirementInfoDraft(requirement: Requirement): RequirementInfoDraft {
   return {
-    groupId:requirement.groupId||'',tags:(requirement.tags||[]).join('，'),
+    groupId:requirement.groupId||'',
     title: requirement.title, priority: requirement.priority, ownerId: requirement.ownerId || "",
     background: requirement.background || "", acceptanceCriteria: requirement.acceptanceCriteria || "",
     referenceUrl: requirement.referenceUrl || "",
@@ -113,14 +111,14 @@ export function RequirementInfoForm({
     if (submitting.current || blocked) return;
     submitting.current = true;
     mutation.mutate({
-      ...draft,groupId:draft.groupId||null,tags:parseTags(draft.tags),
+      ...draft,groupId:draft.groupId||null,
       ...(draft.ownerId !== (baseRequirement.ownerId || "") ? { ownerId: draft.ownerId || null } : { ownerId: undefined }),
       expectedVersion: baseRequirement.version,
     });
   }}>
     <fieldset className="form-grid form-fieldset" disabled={pending}>
     <FormField label="需求标题" full><input name="title" value={draft.title} onChange={(event) => change("title", event.target.value)} required autoFocus /></FormField>
-    <OrganizationFields projectId={requirement.projectId} groupId={draft.groupId} tags={draft.tags} onChange={change}/>
+    <OrganizationFields projectId={requirement.projectId} groupId={draft.groupId} onChange={change}/>
     <p className="field-help">处理优先级按风险和依赖自动计算。</p>
     <FormField label="需求负责人"><select value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
       <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
@@ -179,9 +177,8 @@ export function RequirementCorrectionForm({
     : eligiblePeople;
   const ownerUnavailable = Boolean(draft.ownerId && draft.ownerId !== baseline.ownerId && !ownerOptions.some((person) => person.id === draft.ownerId));
   const change = (field: keyof RequirementInfoDraft, value: string) => setDraft((previous) => ({ ...previous, [field]: value }));
-  const normalizedDraft = () => ({groupId:draft.groupId||null,tags:parseTags(draft.tags),
+  const normalizedDraft = () => ({groupId:draft.groupId||null,
     title: canonicalizeLabel(draft.title),
-    priority: draft.priority,
     ownerId: draft.ownerId || null,
     background: canonicalizeContent(draft.background) || null,
     acceptanceCriteria: canonicalizeContent(draft.acceptanceCriteria) || null,
@@ -189,7 +186,7 @@ export function RequirementCorrectionForm({
   });
   const informationChanged = (() => {
     const value = normalizedDraft();
-    return value.groupId!==(baseline.groupId||null)||JSON.stringify(value.tags)!==JSON.stringify(baseline.tags||[])||value.title !== baseline.title || value.priority !== baseline.priority || value.ownerId !== (baseline.ownerId || null)
+    return value.groupId!==(baseline.groupId||null)||value.title !== baseline.title || value.ownerId !== (baseline.ownerId || null)
       || value.background !== (baseline.background || null) || value.acceptanceCriteria !== (baseline.acceptanceCriteria || null)
       || value.referenceUrl !== (baseline.referenceUrl || null);
   })();
@@ -241,7 +238,7 @@ export function RequirementCorrectionForm({
     submitting.current = true;
     mutation.mutate({
       body: {
-        ...draft,groupId:draft.groupId||null,tags:parseTags(draft.tags),
+        ...draft,groupId:draft.groupId||null,
         ...(draft.ownerId !== (baseline.ownerId || "") ? { ownerId: draft.ownerId || null } : { ownerId: undefined }),
         expectedVersion: baseline.version,
         reason: reason.trim(),
@@ -253,7 +250,7 @@ export function RequirementCorrectionForm({
       <p className="field-help field-full">仅修正需求基本信息，不改变状态、进度、验收结果、排期或流程；系统会追加纠错记录。</p>
       <FormField label="需求标题" full><input aria-label="纠错后的需求标题" value={draft.title} onChange={(event) => change("title", event.target.value)} required autoFocus /></FormField>
 
-      <OrganizationFields projectId={requirement.projectId} groupId={draft.groupId} tags={draft.tags} onChange={change}/>
+      <OrganizationFields projectId={requirement.projectId} groupId={draft.groupId} onChange={change}/>
       <FormField label="需求负责人"><select aria-label="纠错后的需求负责人" value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
         <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
         {baseline.ownerId && !ownerOptions.some((person) => person.id === baseline.ownerId) && <option value={baseline.ownerId}>{baseline.ownerName || "历史负责人"} · 历史负责人</option>}
@@ -468,14 +465,14 @@ export function RequirementScheduleForm({
         if (value) dirtyFields.current.add("reason"); else dirtyFields.current.delete("reason");
         setReason(value);
       }} placeholder="需求已开始执行，请说明调整排期的原因" /></FormField>}
-      <CommitmentComparison value={baseRequirement} plannedEnd={scheduleMode==="deadline"?scheduleDate:baseRequirement.plannedStart&&baseRequirement.plannedEnd&&scheduleDate?rebaseBusinessDate(baseRequirement.plannedEnd,baseRequirement.plannedStart,scheduleDate):undefined}/><p className="field-help field-full">{baseRequirement.executionMode==='direct'?"保存需求计划日期；预计工期未知时保留未确定的一端。":baseRequirement.workItems.length
+      <></><p className="field-help field-full">{baseRequirement.executionMode==='direct'?"保存需求计划日期；预计工期未知时保留未确定的一端。":baseRequirement.workItems.length
         ? "修改日期会整体平移已有工作项，保留相对间隔、人员和实际日期；每个工作项仍可单独修改自定义计划。"
         : "保存后按当前流程生成工作项；需求负责人与全部排期就绪后自动进入未开始。"} 流程设计后续变更不会同步到当前需求。</p>
       {unknown&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
       <FormError>{readError?.message}</FormError>
       {changed && <FormError>需求计划已在其他位置更新，请重新加载；已修改的排期草稿会保留。</FormError>}
       {selectedTemplateUnavailable && <FormError>所选流程已不可用，请重新选择后保存。</FormError>}
-      {locked && <FormError>需求已进入待验收或终态，不能继续调整计划。</FormError>}
+      {locked && <FormError>需求已完成或取消，不能继续调整计划。</FormError>}
       {refreshed && <p className="field-help field-full">已读取最新计划；未修改字段已同步，已输入内容保持不变。</p>}
       {(changed || needsRefresh) && <div className="field-full"><button type="button" className="ghost-button" disabled={pending} onClick={() => void reload()}>重新加载当前计划</button></div>}
       <FormSubmitActions submitLabel="保存排期" onCancel={onClose} pending={pending} disabled={unknown || changed || needsRefresh || locked || selectedTemplateUnavailable} />
@@ -485,7 +482,7 @@ export function RequirementScheduleForm({
     {pendingSubmit && <ConfirmDialog title="切换需求流程" description={<>
       <p>目标流程：{pendingSubmit.templateName}<br />{pendingSubmit.input.scheduleMode === "start" ? "计划开始" : "计划完成"}：{pendingSubmit.input.plannedStart || pendingSubmit.input.plannedEnd}</p>
       <p>切换流程会替换当前未执行工作项、人员分配和计划，并按新流程重新生成；需求级说明将保留。</p>
-    </>} confirmLabel="确认切换" pendingLabel="切换中…" danger pending={pending} disabled={unknown || changed || needsRefresh || locked || selectedTemplateUnavailable} error={changed ? "需求计划已更新，请取消后重新加载当前计划。" : locked ? "需求已进入待验收或终态，不能继续调整计划。" : selectedTemplateUnavailable ? "所选流程已不可用，请取消后重新选择。" : mutation.error?.message} onClose={() => { if (!submitting.current) setPendingSubmit(null); }} onConfirm={() => submit(pendingSubmit)} />}
+    </>} confirmLabel="确认切换" pendingLabel="切换中…" danger pending={pending} disabled={unknown || changed || needsRefresh || locked || selectedTemplateUnavailable} error={changed ? "需求计划已更新，请取消后重新加载当前计划。" : locked ? "需求已完成或取消，不能继续调整计划。" : selectedTemplateUnavailable ? "所选流程已不可用，请取消后重新选择。" : mutation.error?.message} onClose={() => { if (!submitting.current) setPendingSubmit(null); }} onConfirm={() => submit(pendingSubmit)} />}
   </>;
 }
 
@@ -558,11 +555,11 @@ export function PlanForm({ requirement, templates, onClose }: { requirement: Req
         previewMutation.mutate({ templateId, baseStart, templateUpdatedAt: selectedTemplate?.updatedAt || null });
       }}><WandSparkles size={15} />生成差异预览</button></div>}
       {selectedTemplateUnavailable && <FormError full={false}>所选流程已不可用，请重新选择。</FormError>}
-      {locked && <FormError full={false}>需求已进入待验收或终态，不能继续补全计划。</FormError>}
+      {locked && <FormError full={false}>需求已完成或取消，不能继续补全计划。</FormError>}
       {unknown&&<FormError full={false}>刚才的提交结果待核对，已填内容保留。请核对操作记录，本窗口不会重复提交。</FormError>}<FormError full={false}>{previewMutation.error?.message}</FormError>
       <FormError full={false}>{invalidEntry ? `工作项「${invalidEntry.title}」补全后的开始日期晚于完成日期，请调整计划开始或先编辑该工作项` : applyMutation.error?.message}</FormError>
       {preview && <>
-        <CommitmentComparison value={requirement} plannedEnd={preview.entries.map(i=>i.proposedEnd||i.currentEnd||'').sort().at(-1)||null}/><div className="plan-preview-list">
+        <></><div className="plan-preview-list">
           {preview.entries.map((item) => <div key={item.templateItemId} className={item.willChange ? "will-change" : "unchanged"}>
             <strong>{item.title}</strong><span>{item.currentStart || "空"} → {item.currentEnd || "空"}</span><b>→</b><span>{item.proposedStart} → {item.proposedEnd}</span><em>{item.reason === "missing_item" ? "新增" : item.reason === "missing_plan" ? "补空值" : item.reason === "terminal" ? "终态保留" : "保持"}</em>
           </div>)}

@@ -57,7 +57,7 @@ it('执行后修改协作者必须说明原因，REST与MCP一致并保留纠错
   const owner = (await post('/api/people', { projectId, name: '工作项负责人' })).json();
   const firstCollaborator = (await post('/api/people', { projectId, name: '首位协作者' })).json();
   const secondCollaborator = (await post('/api/people', { projectId, name: '后续协作者' })).json();
-  const requirement = (await post('/api/requirements', {
+  const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '执行中调整协作者', ownerId: owner.id, plannedStart: '2020-01-02',
   })).json();
   const initial = requirement.workItems[0];
@@ -109,7 +109,7 @@ it('执行后修改协作者必须说明原因，REST与MCP一致并保留纠错
 
 it('大批量协作者校验分块执行并完整保存', async () => {
   const { sqlite } = await import('../src/server/database');
-  const requirement = (await post('/api/requirements', { projectId, title: '大批量协作者', plannedStart: '2020-01-02' })).json();
+  const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),  projectId, title: '大批量协作者', plannedStart: '2020-01-02' })).json();
   const item = requirement.workItems[0];
   const now = new Date().toISOString();
   const personIds = Array.from({ length: 901 }, () => randomUUID());
@@ -146,3 +146,5 @@ it('大批量协作者校验分块执行并完整保存', async () => {
   expect(new Set(response.json().assigneeIds)).toEqual(new Set(personIds));
   expect(maximumParameters).toBeLessThanOrEqual(900);
 });
+
+async function defaultTemplate(projectId:string){const response=await app.inject({url:"/api/templates?projectId="+projectId,headers:{cookie}});return response.json<Array<{id:string}>>()[0].id;}

@@ -31,13 +31,13 @@ export function inspectDatabaseConsistency(database: DatabaseReader): DatabaseCo
     (SELECT COUNT(*) FROM work_items WHERE
       (status='not_started' AND (progress<>0 OR actual_start IS NOT NULL OR actual_end IS NOT NULL OR blocked_at IS NOT NULL)) OR
       (status='in_progress' AND (progress>=100 OR actual_start IS NULL OR actual_end IS NOT NULL OR blocked_at IS NOT NULL)) OR
-      (status='blocked' AND (progress>=100 OR actual_start IS NULL OR actual_end IS NOT NULL OR blocked_at IS NULL OR blocked_reason IS NULL)) OR
+      status NOT IN ('not_started','in_progress','completed','cancelled') OR
       (status='completed' AND (progress<>100 OR actual_start IS NULL OR actual_end IS NULL OR blocked_at IS NOT NULL)) OR
       (status='cancelled' AND (progress>=100 OR actual_end IS NOT NULL OR blocked_at IS NOT NULL))) AS workItems,
     (SELECT COUNT(*) FROM requirements WHERE
-      (status='completed' AND (progress<>100 OR accepted_at IS NULL)) OR
-      (status='pending_acceptance' AND (progress<>100 OR accepted_at IS NOT NULL)) OR
-      (status NOT IN ('completed','pending_acceptance','cancelled') AND (progress>=100 OR accepted_at IS NOT NULL))) AS requirements,
+      status NOT IN ('not_started','in_progress','completed','cancelled') OR
+      (status='completed' AND progress<>100) OR
+      (status<>'completed' AND progress>=100)) AS requirements,
     (SELECT COUNT(*) FROM issues WHERE
       (status='resolved' AND (progress<>100 OR resolved_at IS NULL)) OR
       (status<>'resolved' AND (progress>=100 OR resolved_at IS NOT NULL)) OR

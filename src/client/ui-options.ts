@@ -53,7 +53,6 @@ export const riskOptions: UiOption<RiskLevel>[] = riskLevels.map((value) => ({
 const workItemStatusLabels: Record<WorkItemStatus, string> = {
   not_started: "未开始",
   in_progress: "进行中",
-  blocked: "阻塞",
   completed: "已完成",
   cancelled: "已取消",
 };

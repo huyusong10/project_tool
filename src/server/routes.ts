@@ -1,3 +1,4 @@
+import {createRequirementInputSchema,updateRequirementInputSchema,requirementCorrectionInputSchema,createWorkItemInputSchema,updateWorkItemInputSchema,startWorkItemInputSchema,reasonCommandSchema,rescheduleRequirementInputSchema} from '../shared/workflow-contracts';
 import {registerIntakeRoutes} from './intake-api';
 import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor,directStartConditions} from './services/delivery-execution';
 import {isCoordinationEdit,assertCoordinationAccess} from './services/blocker-coordination';
@@ -57,12 +58,12 @@ import {
   createIssueInputSchema,
   createPersonInputSchema,
   createProjectInputSchema,
-  createRequirementInputSchema,
+
   createTemplateInputSchema,
-  createWorkItemInputSchema,
+
   emptyCommandInputSchema,
   expectedVersionInputSchema,
-  startWorkItemInputSchema,
+
   idParamsSchema,
   issueCorrectionInputSchema,
   issueListInputSchema,
@@ -88,19 +89,19 @@ import {
   projectPersonParamsSchema,
   projectResourceListInputSchema,
   projectScopeInputSchema,
-  reasonCommandSchema,
-  requirementCorrectionInputSchema,
+
+
   reopenIssueInputSchema,
   reopenWorkItemInputSchema,
   requirementListInputSchema,
   reorderWorkItemsInputSchema,
-  rescheduleRequirementInputSchema,
+
   reselectRequirementTemplateInputSchema,
   templateCommandSchema,
   updateTemplateInputSchema,
-  updateRequirementInputSchema,
+
   updateIssueInputSchema,
-  updateWorkItemInputSchema,
+
   workItemCorrectionSchema,
 } from '../shared/contracts';
 
@@ -155,6 +156,7 @@ export async function requireReady(request: FastifyRequest, reply: FastifyReply)
   await requireAuthenticated(request, reply);
   if (reply.sent) return;
   if (request.actor?.mustChangePassword) return reply.code(403).send({ error: '请先修改初始密码', code: 'PASSWORD_CHANGE_REQUIRED' });
+  if (/\/(?:accept|submit-acceptance|block|unblock|dependency-review|start-conditions)(?:\?|$)|\/requirement-source|\/delivery-commitments/.test(request.url)) return reply.code(410).send({error:'此工作流已移除。请使用需求、工作项、计划和进展操作。',code:'WORKFLOW_RETIRED'});
 }
 
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply) {
@@ -291,7 +293,7 @@ export function registerApiRoutes(app: FastifyInstance) {
     const id = idOf(request); const actor = actorFromRequest(request); assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在');
     return correctRequirement(id, parsedBody(request, requirementCorrectionInputSchema), actor);
   });
-  for(const action of ['start','block','unblock','submit-acceptance'] as const)app.post('/api/requirements/:id/'+action,{preHandler:requireReady},async request=>executeDirectRequirement(idOf(request),action,parsedBody(request,directRequirementCommandSchema),actorFromRequest(request)));
+  for(const action of ['start','complete'] as const)app.post('/api/requirements/:id/'+action,{preHandler:requireReady},async request=>executeDirectRequirement(idOf(request),action,parsedBody(request,directRequirementCommandSchema),actorFromRequest(request)));
   app.get('/api/requirements/:id/start-conditions',{preHandler:requireReady},async request=>{const id=idOf(request);assertRequirementOwnerOrManager(actorFromRequest(request),id);return directStartConditions(id);});
   app.post('/api/requirements/:id/rework',{preHandler:requireReady},async request=>returnRequirement(idOf(request),parsedBody(request,reasonCommandSchema.extend({workItemIds:z.array(idSchema).optional(),progress:z.number().int().min(0).max(99).optional()})),actorFromRequest(request)));
   app.post('/api/requirements/:id/accept', { preHandler: requireReady }, async (request) => {

@@ -19,7 +19,7 @@ try{
   for(let i=12;count<6000;i++)e.run(`e${count++}`,`r${Math.floor((i-11)/20)}`,`w${i-11}`,`r${Math.floor(i/20)}`,`w${i}`,now,now);
  })();
  const measure=()=>{const values:number[]=[];for(let i=0;i<21;i++){const start=performance.now();JSON.stringify(getPathAnalysis('p','project',day));if(i)values.push(performance.now()-start);}values.sort((a,b)=>a-b);return {samples:values.length,p50Ms:+values[10].toFixed(1),p95Ms:+values[18].toFixed(1),maxMs:+values[19].toFixed(1)};};
- const serial=measure();sqlite.prepare("UPDATE work_items SET status='blocked',actual_start=?,blocked_at=?,blocked_reason='环境未就绪'").run(day,now);const allBlocked=measure();
- const result={measuredAt:new Date().toISOString(),device:{cpu:os.cpus()[0].model,logicalCpus:os.cpus().length,memoryGiB:Math.round(os.totalmem()/2**30),node:process.version},workItems:2000,dependencies:6000,includes:'SQLite完整快照、项目关键路径、阻塞汇总、JSON序列化；单进程顺序采样',serial,allBlocked};fs.mkdirSync('.preview/qa',{recursive:true});fs.writeFileSync('.preview/qa/server-performance.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result,null,2));
- if(serial.p95Ms>1000||allBlocked.p95Ms>1000)process.exitCode=1;
+ const serial=measure();sqlite.prepare("UPDATE work_items SET status='in_progress',actual_start=?,duration_days=NULL,planned_end=NULL").run(day);const unestimated=measure();
+ const result={measuredAt:new Date().toISOString(),device:{cpu:os.cpus()[0].model,logicalCpus:os.cpus().length,memoryGiB:Math.round(os.totalmem()/2**30),node:process.version},workItems:2000,dependencies:6000,includes:'SQLite完整快照、项目关键路径、依赖影响汇总、JSON序列化；单进程顺序采样',serial,unestimated};fs.mkdirSync('.preview/qa',{recursive:true});fs.writeFileSync('.preview/qa/server-performance.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result,null,2));
+ if(serial.p95Ms>1000||unestimated.p95Ms>1000)process.exitCode=1;
 }finally{sqlite.close();for(const suffix of ['','-wal','-shm'])fs.rmSync(dbPath+suffix,{force:true});}

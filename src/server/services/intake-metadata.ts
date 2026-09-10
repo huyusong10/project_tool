@@ -5,7 +5,7 @@ import { assertProjectReadable, assertProjectManager, assertRequirementOwnerOrMa
 import { fail, notFound } from '../errors';
 import { requireActiveProject } from './support';
 import { recordAudit } from './audit';
-import { groupInput, organizationInput, tagsSchema, sourceWriteInput, sourceLinkInput, sourceLinkDeleteInput, deferClauseInput, type IntakeCatalog, type RequirementGroup, type SourceDocument, type SourceClause, type SourceRevision, type SourceLink, type Organization, type SourceDocumentInput } from '../../shared/intake';
+import { groupInput, organizationInput, sourceWriteInput, sourceLinkInput, sourceLinkDeleteInput, deferClauseInput, type IntakeCatalog, type RequirementGroup, type SourceDocument, type SourceClause, type SourceRevision, type SourceLink, type Organization, type SourceDocumentInput } from '../../shared/intake';
 
 export function intakeRevision(projectId: string) {
   const row = sqlite.prepare('SELECT analysis_revision FROM projects WHERE id=? AND deleted_at IS NULL').get(projectId) as {analysis_revision:number}|undefined;
@@ -17,12 +17,10 @@ export function assertIntakeRevision(projectId:string, revision:string) {
 }
 export function validateOrganization(projectId:string, value:Organization) {
   if(value.groupId && !sqlite.prepare('SELECT 1 FROM requirement_groups WHERE id=? AND project_id=?').get(value.groupId,projectId)) fail('分组不属于当前项目');
-  if(value.tags !== undefined) tagsSchema.parse(value.tags);
 }
 export function persistOrganization(id:string, projectId:string, value:Organization) {
   validateOrganization(projectId,value);
   if(value.groupId!==undefined) sqlite.prepare('UPDATE requirements SET group_id=? WHERE id=?').run(value.groupId||null,id);
-  if(value.tags!==undefined) sqlite.prepare('UPDATE requirements SET tags=? WHERE id=?').run(JSON.stringify(tagsSchema.parse(value.tags)),id);
 }
 export function readIntakeCatalog(projectId:string, actor:Actor):IntakeCatalog {
   assertProjectReadable(requireAuthorizationActor(actor),projectId);
@@ -38,8 +36,7 @@ export function readIntakeCatalog(projectId:string, actor:Actor):IntakeCatalog {
     c.links=links.filter(l=>l.clauseId===c.id).map(l=>({...l,reviewed:byRevision.get(l.reviewedRevisionId)!,needsReview:l.reviewedRevisionId!==c.currentRevisionId}));
   }
   for(const d of documents){d.complete=Boolean(d.complete);d.clauses=clauses.filter(c=>c.documentId===d.id);}
-  const tags=[...new Set((sqlite.prepare('SELECT tags FROM requirements WHERE project_id=? AND deleted_at IS NULL').all(projectId) as Array<{tags:string}>).flatMap(r=>JSON.parse(r.tags) as string[]))].sort();
-  return {revision:intakeRevision(projectId),groups,tags,documents};
+  return {revision:intakeRevision(projectId),groups,documents};
 }
 export function saveGroup(projectId:string, raw:unknown, actor:Actor) {
   const input=groupInput.parse(raw);
@@ -78,7 +75,7 @@ export function updateOrganization(projectId:string,raw:unknown,actor:Actor) {
       if(['completed','cancelled'].includes(current.status))fail('已结束需求请使用纠错修改资料');
       persistOrganization(r.id,projectId,input);
       sqlite.prepare('UPDATE requirements SET version=version+1,updated_at=? WHERE id=?').run(new Date().toISOString(),r.id);
-      recordAudit(actor,'update','requirement',r.id,'调整需求分组与标签');
+      recordAudit(actor,'update','requirement',r.id,'调整需求分组');
     }
     return readIntakeCatalog(projectId,actor);
   }).immediate();

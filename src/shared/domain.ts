@@ -1,8 +1,8 @@
 import type { DeliveryFields } from './delivery';
 import { countBusinessDays, isBusinessDay, isValidIsoDate } from './workday';
 
-export const requirementStatuses = ['planning', 'not_started', 'in_progress', 'blocked', 'pending_acceptance', 'completed', 'cancelled'] as const;
-export const workItemStatuses = ['not_started', 'in_progress', 'blocked', 'completed', 'cancelled'] as const;
+export const requirementStatuses = ['not_started', 'in_progress', 'completed', 'cancelled'] as const;
+export const workItemStatuses = ['not_started', 'in_progress', 'completed', 'cancelled'] as const;
 export const issueStatuses = ['in_progress', 'deferred', 'resolved'] as const;
 export const projectStatuses = ['planned', 'active', 'completed'] as const;
 export const riskLevels = ['low', 'medium', 'high'] as const;
@@ -21,11 +21,8 @@ export type Priority = (typeof priorities)[number];
 export type ProjectRole = (typeof projectRoles)[number];
 
 export const requirementStatusLabels: Record<RequirementStatus, string> = {
-  planning: '待规划',
   not_started: '未开始',
   in_progress: '进行中',
-  blocked: '阻塞',
-  pending_acceptance: '待验收',
   completed: '已完成',
   cancelled: '已取消',
 };
@@ -168,18 +165,14 @@ export const terminalRequirementStatuses: readonly RequirementStatus[] = ['compl
 
 export const workItemActionsByStatus = {
   not_started: ['start', 'cancel'],
-  in_progress: ['progress', 'block', 'complete', 'cancel'],
-  blocked: ['note', 'unblock', 'cancel'],
+  in_progress: ['progress', 'complete', 'cancel'],
   completed: ['reopen', 'correct'],
   cancelled: ['reopen', 'correct'],
 } as const satisfies Record<WorkItemStatus, readonly string[]>;
 
 export const requirementActionsByStatus = {
-  planning: ['edit', 'reschedule', 'reselect_template', 'cancel'],
   not_started: ['edit', 'reschedule', 'reselect_template', 'cancel'],
   in_progress: ['edit', 'reschedule', 'cancel'],
-  blocked: ['edit', 'reschedule', 'cancel'],
-  pending_acceptance: ['accept', 'rework', 'cancel'],
   completed: ['rework', 'correct', 'archive'],
   cancelled: ['correct', 'archive'],
 } as const satisfies Record<RequirementStatus, readonly string[]>;
@@ -313,7 +306,7 @@ function scheduleVarianceFromProgress(items: WeightedWorkItem[], actualProgress:
 }
 
 export function calculateWorkItemGap(item: WorkItemLike, today = todayIso()) {
-  const observedEnd = item.actualEnd || (item.actualStart ? today : null);
+  const observedEnd = item.actualEnd || (!isTerminalWorkItemStatus(item.status) && item.actualStart ? today : null);
   const planDuration = businessDaysInclusive(item.plannedStart, item.plannedEnd);
   const actualDuration = businessDaysInclusive(item.actualStart, observedEnd);
   return {
@@ -336,7 +329,7 @@ export function deriveRequirementMetrics(
   highRiskDelayDays = 3,
 ) {
   const direct = requirement.executionMode === 'direct';
-  const executionItems: WorkItemLike[] = direct ? [{...requirement,status:['completed','pending_acceptance'].includes(requirement.status||'')?'completed':requirement.status==='planning'?'not_started':requirement.status||'not_started',progress:requirement.progress||0}] : workItems;
+  const executionItems: WorkItemLike[] = direct ? [{...requirement,status:requirement.status||'not_started',progress:requirement.progress||0}] : workItems;
   const items = executionItems.map((item) => ({
     ...item,
     derivedStatus: deriveWorkItemStatus(item),
@@ -349,13 +342,10 @@ export function deriveRequirementMetrics(
   const derivedPlannedEnd = schedule.plannedEnd;
   let status: RequirementStatus;
   if (requirement.status === 'cancelled') status = 'cancelled';
-  else if(direct) status = requirementStatuses.includes(requirement.status as RequirementStatus)&&requirement.status!=='planning' ? requirement.status as RequirementStatus : 'not_started';
-  else if (requirement.acceptedAt && activeItems.length && activeItems.every((item) => item.derivedStatus === 'completed')) status = 'completed';
-  else if (activeItems.length && activeItems.every((item) => item.derivedStatus === 'completed')) status = 'pending_acceptance';
-  else if (activeItems.some((item) => item.derivedStatus === 'blocked')) status = 'blocked';
+  else if(direct) status = requirementStatuses.includes(requirement.status as RequirementStatus) ? requirement.status as RequirementStatus : 'not_started';
+  else if (activeItems.length && activeItems.every((item) => item.derivedStatus === 'completed')) status = 'completed';
   else if (activeItems.some((item) => ['in_progress', 'completed'].includes(item.derivedStatus))) status = 'in_progress';
-  else if (requirement.status === 'in_progress' || requirement.status === 'blocked') status = requirement.status;
-  else if (!activeItems.length) status = 'planning';
+  else if (requirement.status === 'in_progress') status = 'in_progress';
   else status = 'not_started';
 
   const totalWeight = activeItems.reduce((sum, item) => sum + item.plannedDuration, 0);
@@ -364,12 +354,13 @@ export function deriveRequirementMetrics(
   );
   const base=direct?0:requirement.splitBaseProgress||0;
   const remainingProgress=totalWeight ? actualWeightedProgress / totalWeight : 0;
-  const progress = direct ? requirement.progress||0 : Math.min(status==='pending_acceptance'||status==='completed'?100:99,Math.round(base+(100-base)*remainingProgress/100));
+  const progress = direct ? requirement.progress||0 : Math.min(status==='completed'?100:99,Math.round(base+(100-base)*remainingProgress/100));
   const plannedProgress = requirementPlannedProgress(requirement, workItems, today) ?? 0;
   const scheduleVariance = scheduleVarianceFromProgress(activeItems, base?remainingProgress:progress, today);
 
   const actualEnds = activeItems.map((item) => item.actualEnd).filter((value): value is string => Boolean(value));
-  const effectiveEnd = status==='completed' ? requirement.acceptedAt?.slice(0,10)||actualEnds.sort().at(-1)||null : status==='pending_acceptance' ? today
+  // Execution delay stops at the last work completion; accepting later does not extend it.
+  const effectiveEnd = status==='completed' ? actualEnds.length===activeItems.length ? actualEnds.sort().at(-1)||null : null
     : status === 'cancelled'
       ? derivedPlannedEnd
       : derivedPlannedEnd && today > derivedPlannedEnd ? today : derivedPlannedEnd;
@@ -378,20 +369,15 @@ export function deriveRequirementMetrics(
   const priority: Priority = 'P2';
   const threshold = riskGapThresholds[priority];
   const gapRiskLevel = riskLevelFromProgressGap(priority, progressGap);
-  const riskEvaluated = !['completed','cancelled'].includes(status) && (status==='blocked'||schedule.scheduleComplete&&Boolean(derivedPlannedEnd));
+  const riskEvaluated = !['completed','cancelled'].includes(status) && schedule.scheduleComplete&&Boolean(derivedPlannedEnd);
   let riskLevel: RiskLevel = 'low';
   let riskReason: string;
   if (!riskEvaluated) {
     riskReason = status === 'completed'
       ? '需求已完成，不再计算当前风险'
-      : status === 'pending_acceptance'
-        ? '工作项已全部完成，等待验收'
       : status === 'cancelled'
         ? '需求已取消，不再计算当前风险'
         : '缺少完整排期，暂无法评估风险';
-  } else if (status === 'blocked') {
-    riskLevel = 'high';
-    riskReason = direct?'需求执行受阻，直接判定为高风险':'存在阻塞工作项，直接判定为高风险';
   } else if (finishVariance >= highRiskDelayDays) {
     riskLevel = 'high';
     riskReason = `已延期${finishVariance}个工作日，直接判定为高风险`;
@@ -444,5 +430,5 @@ export function isHighRisk(
   today = todayIso(),
 ) {
   const metrics = deriveRequirementMetrics(requirement, workItems, today);
-  return metrics.status === 'blocked' || metrics.finishVariance >= threshold;
+  return metrics.finishVariance >= threshold;
 }

@@ -17,7 +17,7 @@
 .gantt-scroll-thumb { position:absolute; top:4px; height:9px; width:var(--gantt-scroll-width,24px); left:var(--gantt-scroll-left,0px); border-radius:6px; background:var(--text-faint); opacity:.55; cursor:grab; }
 .gantt-navigation-scrollbar:hover .gantt-scroll-thumb,.gantt-navigation-scrollbar:focus-visible .gantt-scroll-thumb { opacity:1; }
 .gantt-navigation-scrollbar:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
-.path-draft-gantt.is-dated { min-width:0; display:flex; flex-direction:column; gap:0; height:clamp(160px,calc(42dvh - 145px),255px); }
+.path-draft-gantt.is-dated { min-width:0; display:flex; flex-direction:column; gap:0; height:auto; min-height:260px; max-height:320px; isolation:isolate; }
 .path-draft-gantt.is-dated > .gantt-navigation { padding:0 0 8px; }
 .path-gantt-scroll { flex:1; min-height:70px; }
 .path-gantt-grid { display:grid; min-width:100%; }

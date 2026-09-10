@@ -107,7 +107,7 @@ export const requirementInputSchema = z.object({...organizationFields,blockedCoo
   reason: z.string().trim().min(1).optional(),
 }).passthrough();
 
-export const createRequirementInputSchema = requirementInputSchema.pick({groupId:true,tags:true,
+export const createRequirementInputSchema = requirementInputSchema.pick({groupId:true,
   deliveryScope:true,executionMode:true,acceptanceOwnerId:true,durationDays:true,forecastEnd:true,unblockEstimate:true,
   projectId: true,
   title: true,
@@ -123,12 +123,13 @@ export const createRequirementInputSchema = requirementInputSchema.pick({groupId
   projectId: idSchema,
   title: z.string().trim().min(1),
   priority: z.enum(priorities).default('P2'),
-}).strict().refine((input) => !(input.plannedStart && input.plannedEnd), {
-  message: '计划开始和截止日期只能选择一项',
+}).strict().refine((input) => !input.plannedStart || !input.plannedEnd || input.plannedStart <= input.plannedEnd, {
+  message: '计划完成日期不能早于开始日期',
 });
 
-export const updateRequirementInputSchema = requirementInputSchema.pick({groupId:true,tags:true,blockedCoordinatorId:true,blockedNextReviewAt:true,blockedIssueId:true,
+export const updateRequirementInputSchema = requirementInputSchema.pick({groupId:true,blockedCoordinatorId:true,blockedNextReviewAt:true,blockedIssueId:true,
   deliveryScope:true,executionMode:true,acceptanceOwnerId:true,durationDays:true,forecastEnd:true,unblockEstimate:true,reason:true,
+  plannedStart:true,plannedEnd:true,
   title: true, priority: true, ownerId: true, background: true,
   acceptanceCriteria: true, referenceUrl: true, expectedVersion: true,
 }).extend({ expectedVersion: expectedVersionSchema }).strict();
@@ -433,7 +434,7 @@ export const personCandidatesInputSchema = z.object({
   q: z.string().trim().max(200).optional(),
 }).strict();
 
-export const requirementListInputSchema = z.object({groupId:z.string().optional(),tag:z.string().optional(),
+export const requirementListInputSchema = z.object({groupId:z.string().optional(),
   deliveryScope:z.enum(['committed','candidate']).optional(),
   projectId: idSchema,
   status: z.enum(requirementStatuses).optional(),
@@ -516,4 +517,4 @@ export const projectPeopleConcurrencyInputSchema = peopleConcurrencyInputSchema.
   { message: '项目ID不能为空', path: ['projectId'] },
 );
 
-export const directRequirementCommandSchema=z.object({blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema,expectedVersion:expectedVersionSchema,content:z.string().trim().optional(),reason:z.string().trim().optional(),progress:z.number().int().min(0).max(99).optional(),expectedDependencyRevision:z.number().int().nonnegative().optional()}).strict();
+export const directRequirementCommandSchema=z.object({expectedVersion:expectedVersionSchema,content:z.string().trim().optional(),reason:z.string().trim().optional(),progress:z.number().int().min(0).max(99).optional(),actualEnd:optionalDateSchema}).strict();

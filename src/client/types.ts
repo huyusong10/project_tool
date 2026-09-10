@@ -80,7 +80,7 @@ export type Requirement = import('../shared/delivery').DeliveryFields & import('
   milestones?:import('../shared/paths').PathMilestone[];
   pathRisk?: import('../shared/paths').PathRisk;
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
-  background?: string | null; acceptanceCriteria?: string | null; referenceUrl?: string | null;
+  sourceNotes?: string | null; background?: string | null; acceptanceCriteria?: string | null; referenceUrl?: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number; progressGap: number;
   asOfDate?: string; scheduleComplete?: boolean;
   actualStart?: string | null; actualEnd?: string | null;

@@ -160,15 +160,15 @@ describe('第二轮深度回归', () => {
       projectId, name: '待归档流程', items: [{ title: '归档步骤', startOffsetDays: 0, durationDays: 1, sortOrder: 0 }],
     } });
     const draft = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
-      projectId, title: '待首次排期', templateId: createdTemplate.json().id,
+      projectId, title: '待首次排期',
     } });
     await app.inject({ method: 'DELETE', url: `/api/templates/${createdTemplate.json().id}`, headers: { cookie: adminCookie } });
-    const scheduled = await app.inject({ method: 'POST', url: `/api/requirements/${draft.json().id}/reschedule`, headers: { cookie: adminCookie }, payload: {
-      scheduleMode: 'start', plannedStart: '2026-09-04', expectedVersion: draft.json().version,
+    const scheduled = await app.inject({ method: 'POST', url: `/api/requirements/${draft.json().id}/apply-template`, headers: { cookie: adminCookie }, payload: {
+      templateId: createdTemplate.json().id, expectedVersion: draft.json().version,
     } });
-    expect(scheduled.statusCode).toBe(409);
+    expect(scheduled.statusCode).toBe(400);
     const current = await app.inject({ method: 'GET', url: `/api/requirements/${draft.json().id}`, headers: { cookie: adminCookie } });
-    expect(current.json()).toMatchObject({ status: 'planning', plannedStart: null, workItems: [] });
+    expect(current.json()).toMatchObject({ status: 'not_started', plannedStart: null, workItems: [] });
   });
 
   it('终态工作完成后不计入未来负载，失效负责人不能直接重开', async () => {

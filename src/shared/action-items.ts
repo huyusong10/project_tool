@@ -1,24 +1,7 @@
-export const actionReasonCodes = [
-  'forecast_review','blocker_resolved','follow_up','commitment_scope',
-  'planning', 'missing_owner', 'missing_work_items', 'incomplete_schedule', 'high_risk',
-  'delayed', 'pending_acceptance', 'blocked', 'unassigned', 'overdue', 'path_blocked', 'outside_delivery', 'acceptor_unavailable', 'owner_unavailable',
-] as const;
-
-export const actionReasonLabels = {forecast_review:'核对交付预测',blocker_resolved:'关联问题已解决，请确认解阻',follow_up:'到期跟进',commitment_scope:'交付范围变化待核对',
-  outside_delivery:'范围外执行',acceptor_unavailable:'验收人已失效',
-  path_blocked: '交付路径受阻',
-  planning: '待规划',
-  missing_owner: '缺少需求负责人',
-  missing_work_items: '缺少工作项',
-  incomplete_schedule: '排期不完整',
-  high_risk: '高风险',
-  delayed: '需求延期',
-  pending_acceptance: '待验收',
-  blocked: '执行阻塞',
-  unassigned: '未分派',
-  owner_unavailable: '负责人不可用',
-  overdue: '问题逾期',
+export const actionReasonLabels = {
+ follow_up:'到期跟进',missing_owner:'缺少需求负责人',missing_work_items:'缺少工作项',incomplete_schedule:'排期不完整',high_risk:'进度落后',delayed:'需求延期',unassigned:'未分派',overdue:'问题逾期',path_blocked:'前置或日期待补齐',owner_unavailable:'负责人不可用',
 } as const;
+export const actionReasonCodes = Object.keys(actionReasonLabels) as Array<keyof typeof actionReasonLabels>;
 
 export type ActionReasonCode = typeof actionReasonCodes[number];
 export type ActionSeverity = 'high' | 'medium' | 'low';

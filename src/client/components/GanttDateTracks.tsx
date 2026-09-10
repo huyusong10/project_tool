@@ -25,7 +25,7 @@ export const GanttDateTracks = memo(function GanttDateTracks({
   const actual = ganttInterval(actualStart, actualEnd, dates, cellWidth) || point(actualStart || actualEnd, dates, cellWidth);
   const value = ganttProgressDisplay(status, progress);
   const terminal = ["completed", "pending_acceptance", "cancelled"].includes(status);
-  const label = status === "cancelled" ? "已取消" : status === "pending_acceptance" ? `${value}% · 待验收` : !actualStart && ["not_started", "planning"].includes(status) ? "未开始" : `完成 ${value}%`;
+  const label = status === "cancelled" ? "已取消" : !actualStart && ["not_started", "planning"].includes(status) ? "未开始" : `完成 ${value}%`;
   const lateLeft = actual && plan && plannedEnd && actualEnd && actualEnd > plannedEnd ? Math.max(actual.left, plan.right) : null;
   const total = dates.length * cellWidth;
   const endpoint = actual?.right ?? plan?.left ?? 0;

@@ -1,18 +1,21 @@
 import {compareProcessingPriority,type ProcessingResult} from './delivery';
-export const unfinishedStatuses = ['planning','not_started','in_progress','blocked','pending_acceptance'];
+export const unfinishedStatuses = ['not_started','in_progress'];
+export function normalizeRequirementStatusFilter(status:string){
+  const migrated:Record<string,string>={planning:'not_started',blocked:'in_progress',pending_acceptance:'completed'};
+  return migrated[status]??(['not_started','in_progress','completed','cancelled','unfinished'].includes(status)?status:'');
+}
 export type RequirementViewItem = Partial<ProcessingResult> & import('./intake').Organization & {
   id?:string;deliveryScope?:'committed'|'candidate';
   title:string; status:string; priority?:string; ownerId?:string|null; assigneeIds?:string[];
   riskLevel:string; riskEvaluated:boolean; delayed?:boolean; scheduleComplete?:boolean; unknown?:boolean;
   plannedEnd?:string|null; pathRisk?:{processingPriority?:string|null;blockedCritical?:boolean;critical?:boolean;minFloat?:number|null};
 };
-export type RequirementFilters = {groups?:string[];tags?:string[];deliveryScopes?:string[];statuses:string[];risks:string[];owners:string[];participants:string[];priorities:string[];schedule:string[];critical:boolean;attention:boolean};
-export const emptyRequirementFilters = ():RequirementFilters=>({groups:[],tags:[],deliveryScopes:[],statuses:[],risks:[],owners:[],participants:[],priorities:[],schedule:[],critical:false,attention:false});
+export type RequirementFilters = {groups?:string[];deliveryScopes?:string[];statuses:string[];risks:string[];owners:string[];participants:string[];priorities:string[];schedule:string[];critical:boolean;attention:boolean};
+export const emptyRequirementFilters = ():RequirementFilters=>({groups:[],deliveryScopes:[],statuses:[],risks:[],owners:[],participants:[],priorities:[],schedule:[],critical:false,attention:false});
 export function matchesRequirementFilters(item:RequirementViewItem,f:RequirementFilters){
   const risk=item.riskEvaluated?item.riskLevel:'pending';
-  return (!f.groups?.length||f.groups.includes(item.groupId||'ungrouped'))&&(!f.tags?.length||f.tags.some(t=>item.tags?.includes(t)))&&(!f.deliveryScopes?.length||f.deliveryScopes.includes(item.deliveryScope||'committed'))&&(!f.statuses.length||f.statuses.includes(item.status))&&(!f.risks.length||f.risks.includes(risk))
+  return (!f.groups?.length||f.groups.includes(item.groupId||'ungrouped'))&&(!f.statuses.length||f.statuses.includes(item.status))&&(!f.risks.length||f.risks.includes(risk))
     &&(!f.owners.length||f.owners.includes(item.ownerId||''))&&(!f.participants.length||f.participants.some(id=>item.assigneeIds?.includes(id)))
-    &&(!f.priorities.length||f.priorities.includes(item.processingPriority??item.pathRisk?.processingPriority??''))
     &&(!f.schedule.length||f.schedule.some(s=>s==='delayed'?item.delayed:s==='unplanned'?!item.scheduleComplete:item.scheduleComplete&&!item.delayed))
     &&(!f.critical||!!item.pathRisk?.critical)&&(!f.attention||!!item.pathRisk?.critical||risk==='high'||risk==='pending'||!!item.unknown);
 }

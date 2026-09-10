@@ -111,9 +111,7 @@ export const analyticsCatalog: AnalyticsCatalog = {
         { id: "count", label: "需求数量", unit: "count", dimensions: ["status", "priority", "risk", "template", "owner", "week"], visualizations: ["kpi", ...groupedVisualizations] },
         { id: "active_count", label: "活跃需求", unit: "count", dimensions: ["priority", "risk", "template", "owner"], visualizations: snapshotVisualizations },
         { id: "completed_count", label: "完成需求", unit: "count", dimensions: ["week", "priority", "template", "owner"], visualizations: ["kpi", ...groupedVisualizations] },
-        { id: "commitment_on_time_rate", label: "按首次承诺交付率", unit: "percent", dimensions: ["priority", "template", "owner"], visualizations: snapshotVisualizations },
-        { id: "latest_commitment_on_time_rate", label: "按最近承诺交付率", unit: "percent", dimensions: ["priority", "template", "owner"], visualizations: snapshotVisualizations },
-        { id: "on_time_rate", label: "按当前计划交付率", unit: "percent", dimensions: ["priority", "template", "owner"], visualizations: snapshotVisualizations },
+        { id: "on_time_rate", label: "按期完成率", unit: "percent", dimensions: ["priority", "template", "owner"], visualizations: snapshotVisualizations },
         { id: "delayed_count", label: "延期需求", unit: "count", dimensions: ["priority", "risk", "template", "owner"], visualizations: snapshotVisualizations },
         { id: "finish_variance", label: "完成偏差", unit: "days", dimensions: ["requirement", "priority", "risk", "template", "owner"], visualizations: ["kpi", "bar", "table"] },
         { id: "due_count", label: "到期需求", unit: "count", dimensions: ["day", "week", "priority", "owner"], visualizations: ["kpi", "bar", "line", "table"] },
@@ -123,7 +121,7 @@ export const analyticsCatalog: AnalyticsCatalog = {
         { id: "template", label: "流程" }, { id: "owner", label: "负责人" }, { id: "requirement", label: "需求" },
         { id: "week", label: "周" }, { id: "day", label: "日期" },
       ],
-      filters: [{id:"deliveryScope",label:"交付范围",options:[{value:"committed",label:"纳入交付"},{value:"candidate",label:"候选"}]},
+      filters: [
         { id: "status", label: "状态", options: requirementStatusOptions }, { id: "priority", label: "优先级", options: priorityOptions },
         { id: "risk", label: "风险", options: riskOptions },
       ],
@@ -183,7 +181,7 @@ export const defaultAnalyticsLayout: AnalyticsLayout = {
   version: 1,
   panels: [
     { id: "active-requirements", title: "活跃需求", dataset: "requirements", measure: "active_count", visualization: "kpi", size: "small", timeScope: "snapshot" },
-    { id: "on-time-rate", title: "按首次承诺交付率", dataset: "requirements", measure: "commitment_on_time_rate", visualization: "kpi", size: "small", timeScope: "range" },
+    { id: "on-time-rate", title: "按期完成率", dataset: "requirements", measure: "on_time_rate", visualization: "kpi", size: "small", timeScope: "range" },
     { id: "delayed-requirements", title: "延期需求", dataset: "requirements", measure: "delayed_count", visualization: "kpi", size: "small", timeScope: "snapshot" },
     { id: "active-issues", title: "活跃问题", dataset: "issues", measure: "active_count", visualization: "kpi", size: "small", timeScope: "snapshot" },
     { id: "requirement-status", title: "需求状态分布", dataset: "requirements", measure: "count", dimension: "status", visualization: "donut", size: "medium", timeScope: "snapshot", sort: "desc" },

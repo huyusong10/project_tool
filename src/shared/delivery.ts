@@ -53,7 +53,5 @@ export function deliveryReadiness(r:DeliveryFields&{ownerId?:string|null;status:
   if(r.executionMode!=='direct'&&!items.some(w=>w.status!=='cancelled'))result.push('尚未建立有效工作项');
   if(!scheduleComplete)result.push('排期不完整');
   if(r.executionMode==='direct'&&!r.durationDays&&!scheduleComplete)result.push('工期待确认');
-  if(r.deliveryScope==='candidate'&&['in_progress','blocked','pending_acceptance'].includes(r.status))result.push('范围外执行');
-  if(r.acceptanceOwnerId&&!r.acceptanceOwnerValid)result.push('验收人已失效，请项目经理重新指定');
   return result;
 }

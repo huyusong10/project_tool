@@ -303,9 +303,9 @@ async function historyCommand(
     authorization: `Bearer ${token}`, accept: 'application/json, text/event-stream', 'content-type': 'application/json', connection: 'close',
   }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
   expect(response.status).toBe(200);
-  const payload = await response.json() as { result: { structuredContent: { statusCode?: number; result?: Record<string, unknown> } & Record<string, unknown> } };
-  const content = payload.result.structuredContent;
-  return { statusCode: content.statusCode || 200, body: content.result || content };
+  const payload = await response.json() as { error?:{code:number};result?:{structuredContent:{statusCode?:number;result?:Record<string,unknown>}} };
+  expect(payload.error?.code).toBe(-32602);
+  return {statusCode:400,body:payload.error};
 }
 
 async function listRequirementsCommand(protocol: 'REST' | 'MCP', input: Record<string, string>) {
@@ -384,25 +384,10 @@ async function createCompletedRequirement(targetScope = scope) {
   });
   expect(created.statusCode, created.body).toBe(200);
   const requirement = created.json<Detail>();
+  await post(`/api/requirements/${requirement.id}/progress`,{content:'历史原始说明'});
   const completed = await command('REST', 'requirement', requirement.id, 'complete-as-planned', { expectedVersion: requirement.version });
   expect(completed.statusCode, JSON.stringify(completed.body)).toBe(200);
   return detail(requirement.id);
-}
-
-async function createPendingRequirement(targetScope = scope) {
-  const created = await post('/api/requirements', {
-    projectId: targetScope.projectId, title: `待验收需求${++sequence}`, ownerId: targetScope.personId,
-    templateId: targetScope.templateId, plannedStart: '2020-01-02',
-  });
-  expect(created.statusCode, created.body).toBe(200);
-  const requirement = created.json<Detail>();
-  for (const item of requirement.workItems!) {
-    const completed = await post(`/api/work-items/${item.id}/complete-as-planned`, { expectedVersion: item.version });
-    expect(completed.statusCode, completed.body).toBe(200);
-  }
-  const pending = await detail(requirement.id);
-  expect(pending.status).toBe('pending_acceptance');
-  return pending;
 }
 
 async function createIssue(projectId = scope.projectId) {
@@ -491,7 +476,7 @@ it('MCP 重开未开始的取消工作项时不静默丢弃非零进度', async 
 for (const protocol of ['REST', 'MCP'] as const) {
   it(`${protocol}：终态需求纠错保留交付事实并追加关联记录`, async () => {
     const before = await createCompletedRequirement();
-    const source = before.progressUpdates.find((entry) => !entry.workItemId && entry.eventType === 'accept')!;
+    const source = before.progressUpdates.find((entry) => !entry.workItemId && entry.eventType === 'note')!;
     const childEvent = before.progressUpdates.find((entry) => entry.workItemId)!;
     const rejected = await command(protocol, 'requirement', before.id, 'correct', {
       expectedVersion: before.version, title: `${before.title}（修正）`, reason: '引用范围校验', supersedesId: childEvent.id,
@@ -516,7 +501,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
     }));
   });
 
-  it.each(['in_progress', 'blocked', 'completed', 'cancelled'])(`${protocol}：%s工作项不能纠错为未来实际日期`, async (status) => {
+  it.each(['in_progress', 'completed', 'cancelled'])(`${protocol}：%s工作项不能纠错为未来实际日期`, async (status) => {
     let item = await createWork();
     if (status !== 'in_progress') {
       const action = { blocked: 'block', completed: 'complete', cancelled: 'cancel' }[status]!;
@@ -666,21 +651,10 @@ for (const protocol of ['REST', 'MCP'] as const) {
     expect(completed.statusCode).toBe(400);
     expect(await detail(item.requirementId)).toEqual(before);
 
-    const blocked = await command(protocol, 'work_item', item.id, 'block', {
-      expectedVersion: item.version, reason: '等待外部输入', content: '这段内容不应被忽略',
-    });
-    expect(blocked.statusCode).toBe(400);
-    expect(await detail(item.requirementId)).toEqual(before);
+
   });
 
   it(`${protocol}：需求状态命令拒绝会被静默忽略的字段`, async () => {
-    const pending = await createPendingRequirement();
-    const accepted = await command(protocol, 'requirement', pending.id, 'accept', {
-      expectedVersion: pending.version, content: '验收通过', reason: '这段原因不应被忽略',
-    });
-    expect(accepted.statusCode).toBe(400);
-    expect(await detail(pending.id)).toEqual(pending);
-
     const created = await post('/api/requirements', { projectId: scope.projectId, title: `待取消需求${++sequence}` });
     expect(created.statusCode, created.body).toBe(200);
     const planning = await detail(created.json().id);

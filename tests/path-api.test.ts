@@ -110,8 +110,8 @@ it('模板复制和实例化保留前置；旧模板不推断关系或改写历�
  const f=await fixture();const initial=await analysis(f.projectId);expect(initial.dependencies).toHaveLength(4);expect(initial.coverage.reviewed).toBe(2);
  const copy=await post(`/api/projects/${f.projectId}/templates/${f.template.id}/copy`,{});expect(copy.statusCode,copy.body).toBe(200);
  const copied=copy.json<WorkItemTemplate>();expect(copied.dependencyMode).toBe('dependencies');expect(copied.items[1].predecessorIds).toEqual([copied.items[0].id]);
- const old=await fixture(true),before=(await detail(old.a.id)).workItems;expect((await analysis(old.projectId)).dependencies).toEqual([]);expect((await analysis(old.projectId)).coverage.reviewed).toBe(2);const {sqlite}=await import('../src/server/database');sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=NULL WHERE id=?').run(old.a.id);expect((await analysis(old.projectId)).forecastEnd).toBeNull();
- await post(`/api/requirements/${old.a.id}/dependency-review`,{expectedRevision:(await analysis(old.projectId)).revision,reviewed:true});const stripDerived=(items:WorkItem[])=>items.map(({forecastBasis:_basis,...w})=>w);expect(stripDerived((await detail(old.a.id)).workItems)).toEqual(stripDerived(before));
+ const old=await fixture(true),before=(await detail(old.a.id)).workItems;expect((await analysis(old.projectId)).dependencies).toEqual([]);expect((await analysis(old.projectId)).coverage.reviewed).toBe(2);const {sqlite}=await import('../src/server/database');sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=NULL WHERE id=?').run(old.a.id);expect((await analysis(old.projectId)).forecastEnd).toBeTruthy();
+ expect((await post(`/api/requirements/${old.a.id}/dependency-review`,{expectedRevision:(await analysis(old.projectId)).revision,reviewed:true})).statusCode).toBe(410);const stripDerived=(items:WorkItem[])=>items.map(({forecastBasis:_basis,...w})=>w);expect(stripDerived((await detail(old.a.id)).workItems)).toEqual(stripDerived(before));
 });
 it('部分交付允许 A设计→B开发→A联调；执行循环拒绝且版本不变',async()=>{
  const {projectId,a,b}=await fixture();expect((await add(projectId,a.id,a.workItems[0].id,b.id,b.workItems[1].id)).statusCode).toBe(200);
@@ -141,14 +141,16 @@ it('旧补全计划预览也绑定依赖版本，不能绕过新关系变动',as
  await add(projectId,a.id,a.workItems[0].id,b.id,b.workItems[1].id);
  const applied=await post(`/api/requirements/${a.id}/apply-plan`,{...input,expectedVersion:a.version,previewToken:preview.previewToken});expect(applied.statusCode).toBe(409);
 });
-it('开始复核全部前置；执行例外记录原因且旧依赖版本不能确认',async()=>{
- const {projectId,a,owner}=await fixture();const w=a.workItems[1];const updated=await request('PATCH',`/api/work-items/${w.id}`,{expectedVersion:w.version,ownerId:owner.id});expect(updated.statusCode,updated.body).toBe(200);
- const item=(await detail(a.id)).workItems[1];expect(item.unmetPredecessors).toHaveLength(1);
+it('前置未完成时允许记录真实开始，并保留说明和依赖',async()=>{
+ const {projectId,a,owner}=await fixture(),w=a.workItems[1];
+ const assigned=await request('PATCH',`/api/work-items/${w.id}`,{expectedVersion:w.version,ownerId:owner.id});expect(assigned.statusCode).toBe(200);
+ const item=(await detail(a.id)).workItems[1],before=await analysis(projectId);expect(item.unmetPredecessors).toHaveLength(1);
+ const started=await post(`/api/work-items/${w.id}/start`,{expectedVersion:item.version,reason:'先验证独立部分'});expect(started.statusCode,started.body).toBe(200);
+ expect((await detail(a.id)).progressUpdates!.some(u=>u.eventType==='start'&&u.content==='先验证独立部分')).toBe(true);
+ expect((await analysis(projectId)).dependencies).toEqual(before.dependencies);
  expect((await post(`/api/work-items/${w.id}/start`,{expectedVersion:item.version})).statusCode).toBe(409);
- expect((await post(`/api/work-items/${w.id}/start`,{expectedVersion:item.version,reason:'先验证独立部分',expectedDependencyRevision:0})).statusCode).toBe(409);
- const started=await post(`/api/work-items/${w.id}/start`,{expectedVersion:item.version,reason:'先验证独立部分',expectedDependencyRevision:item.dependencyRevision});expect(started.statusCode,started.body).toBe(200);
- expect((await detail(a.id)).progressUpdates!.some(u=>u.eventType==='start'&&u.content==='先验证独立部分')).toBe(true);expect((await analysis(projectId)).nodes.find(n=>n.id===w.id)?.unknownReasons).toEqual([]);
 });
+
 it('未登录、跨项目、普通成员和需求负责人权限由服务端裁决',async()=>{
  const f=await fixture();expect((await request('GET',`/api/projects/${f.projectId}/path-analysis`,undefined,'')).statusCode).toBe(401);
  const outsider=(await post('/api/projects',{name:`外部项目${++sequence}`})).json();expect((await add(f.projectId,f.a.id,f.a.workItems[0].id,outsider.id,null)).statusCode).toBe(400);
@@ -177,7 +179,7 @@ it('图形批次：创建需求、工作项、独立里程碑与共享位置，�
  const r=randomUUID(),w=randomUUID(),m=randomUUID(),edge=randomUUID();
  const counts=()=>['requirements','work_items','milestones','diagram_layouts','audit_logs'].map(t=>sqlite.prepare('SELECT COUNT(*) AS n FROM '+t).get());
  const before=counts(),changes:DependencyChanges={add:[{clientId:edge,sourceRequirementId:r,sourceWorkItemId:w,targetRequirementId:r,targetMilestoneId:m,targetWorkItemId:null}],remove:[],estimates:[],entities:[
- {entity:'requirement',op:'create',id:r,data:{title:'画布新增',ownerId:owner.id,priority:'P1'}},
+ {entity:'requirement',op:'create',id:r,data:{title:'画布新增',ownerId:owner.id}},
  {entity:'work',op:'create',id:w,requirementId:r,data:{title:'新增工作',durationDays:1,ownerId:owner.id}},
  {entity:'milestone',op:'create',id:m,requirementId:r,data:{title:'独立交付',confirmationMode:'auto'}}],layouts:[{scope:'requirement:'+r,direction:'right',expectedVersion:0,positions:{[w]:{x:20,y:30},[m]:{x:400,y:30}}}]};
  const {input,response,preview}=await batchPreview(projectId,changes);expect(response.statusCode,response.body).toBe(200);expect(counts()).toEqual(before);
@@ -209,8 +211,8 @@ it('独立里程碑自动达成与人工确认、返工和验收后重新交付�
  w=(await detail(a.id)).workItems[0];expect((await post('/api/work-items/'+w.id+'/reopen',{expectedVersion:w.version,reason:'补充验证'})).statusCode).toBe(200);expect((await mile(m)).achievedAt).toBe(todayIso());
  expect((await post('/api/milestones/'+manual+'/achieve',{expectedVersion:1})).statusCode).toBe(200);
  const {sqlite}=await import('../src/server/database');sqlite.prepare("UPDATE work_items SET status='completed',progress=100,actual_start=?,actual_end=? WHERE requirement_id=?").run(todayIso(),todayIso(),a.id);sqlite.prepare("UPDATE requirements SET status='completed',progress=100,accepted_at=? WHERE id=?").run(todayIso(),a.id);
- const opened=await post('/api/milestones/'+m+'/reopen',{expectedVersion:(await mile(m)).version});expect(opened.statusCode,opened.body).toBe(200);expect((await mile(m)).achievedAt).toBeNull();expect((await mile(m)).confirmationMode).toBe('manual');expect((await detail(a.id)).status).toBe('pending_acceptance');expect((await detail(a.id)).progressUpdates!.some(u=>u.content.includes('原验收日期'))).toBe(true);
- const deletion=await batchPreview(projectId,{add:[],remove:[],estimates:[],entities:[{entity:'milestone',op:'delete',id:m,requirementId:a.id,expectedVersion:(await mile(m)).version,data:{}}]});expect(deletion.response.statusCode).toBe(409);expect(await mile(m)).toBeDefined();
+ const opened=await post('/api/milestones/'+m+'/reopen',{expectedVersion:(await mile(m)).version});expect(opened.statusCode,opened.body).toBe(200);expect((await mile(m)).achievedAt).toBeNull();expect((await mile(m)).confirmationMode).toBe('manual');expect((await detail(a.id)).status).toBe('completed');expect((await detail(a.id)).acceptedAt).toBe(todayIso());
+ const deletion=await batchPreview(projectId,{add:[],remove:[],estimates:[],entities:[{entity:'milestone',op:'delete',id:m,requirementId:a.id,expectedVersion:(await mile(m)).version,data:{}}]});expect(deletion.response.statusCode).toBe(400);expect(await mile(m)).toBeDefined();
  expect((await post('/api/requirements/'+a.id+'/accept',{expectedVersion:(await detail(a.id)).version,content:'验收'})).statusCode).not.toBe(200);
 });
 it('实体与布局批次失败整批回滚；工期安排 REST 与 MCP 保持一致',async()=>{

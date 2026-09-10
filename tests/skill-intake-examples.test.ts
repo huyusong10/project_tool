@@ -40,11 +40,6 @@ afterAll(async () => {
 
 it.each(['log', 'org'])('%s 案例补齐来源地址后可经 MCP 录入，并查询拓扑和安排缺口', async name => {
   const draft = JSON.parse(fs.readFileSync(new URL(`../skills/project-manage-intake/assets/${name}-intake.json`, import.meta.url), 'utf8'));
-  for (const document of draft.documents) {
-    expect(document.url).toBe('');
-    // Stand-in addresses belong only to this isolated test database.
-    document.url = 'https://example.com/requirements/' + encodeURIComponent(document.key);
-  }
   const pkg = intakePackageSchema.parse(draft);
   const { id: projectId } = await call<{ id: string }>('create_project', { name: `Skill ${name}` });
   const before = await call<IntakeCatalog>('get_requirement_intake', { projectId });
@@ -58,8 +53,8 @@ it.each(['log', 'org'])('%s 案例补齐来源地址后可经 MCP 录入，并�
   expect(await call('apply_requirement_import', input)).toEqual(receipt);
   expect(await call('get_requirement_import_receipt', { projectId, batchId: input.batchId })).toEqual(receipt);
 
-  const requirements = await call<Page<Requirement>>('query_requirements', { projectId, deliveryScope: 'candidate', includeWorkItems: true, pageSize: 100 });
-  expect(requirements.total).toBe(pkg.requirements.length);
+  const requirements = await call<Page<Requirement>>('query_requirements', { projectId, includeWorkItems: true, pageSize: 100 });
+  expect(requirements.total).toBe(pkg.requirements.filter(r=>r.action!=='skip').length);
   const expectedWorks = pkg.requirements.reduce((count, r) => count + r.workItems.length, 0);
   const works = await call<Page<WorkItem>>('list_work_items', { projectId, active: true, unassigned: true, pageSize: 100 });
   expect(works.total).toBe(expectedWorks);
@@ -69,22 +64,11 @@ it.each(['log', 'org'])('%s 案例补齐来源地址后可经 MCP 录入，并�
       expect(entity.ownerId).toBeNull(); expect(entity.plannedStart).toBeNull(); expect(entity.plannedEnd).toBeNull();
     }
   }
-  const catalog = await call<IntakeCatalog>('list_requirement_sources', { projectId });
-  expect(catalog.documents).toHaveLength(pkg.documents.length);
-  expect(catalog.documents.flatMap(d => d.clauses).flatMap(c => c.links)).toHaveLength(pkg.links.length);
-  for (const document of catalog.documents) {
-    const original = pkg.documents.find(d => d.key === document.key)!;
-    expect(document.version).toBe(original.version); expect(document.complete).toBe(false);
-    expect(document.clauses).toHaveLength(original.clauses.length);
-    for (const clause of document.clauses) {
-      const originalClause = original.clauses.find(c => c.key === clause.key)!;
-      expect(clause.current.content).toBe(originalClause.content); expect(clause.current.externalId).toBe(originalClause.externalId);
-      expect(clause.deferredReason).toBe(originalClause.deferredReason ?? '');
-    }
+  for(const requirement of requirements.items){
+    const original=pkg.requirements.find(r=>r.title===requirement.title)!;
+    expect(requirement.background).toBe(original.background||null);
   }
   expect(await call('get_work_item', { id: works.items[0].id })).toMatchObject(works.items[0]);
-  const direct = requirements.items.find(r => r.executionMode === 'direct')!;
-  expect(await call('get_requirement_start_conditions', { id: direct.id })).toBeDefined();
   const history = await call<Page<unknown>>('list_progress_updates', { projectId, pageSize: 1 });
   expect(typeof history.snapshot).toBe('number');
   expect(await call('get_project_change_version', { projectId })).toHaveProperty('version');

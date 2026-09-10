@@ -45,7 +45,7 @@ describe('内置样板项目', () => {
       WHERE i.project_id=? AND u.created_by_account_id IS NOT NULL`).get(sample.SAMPLE_PROJECT_ID)).toEqual({ count: 8 });
 
     const requirements = services.listRequirements({ projectId: sample.SAMPLE_PROJECT_ID, includeDeleted: true });
-    expect(requirements.find((item) => item.id.endsWith('-permission'))).toMatchObject({ status: 'blocked', riskLevel: 'high' });
+    expect(requirements.find((item) => item.id.endsWith('-permission'))).toMatchObject({ status: 'in_progress', riskLevel: 'high' });
     expect(requirements.find((item) => item.id.endsWith('-dashboard'))).toMatchObject({ status: 'in_progress', riskLevel: 'medium' });
     expect(requirements.find((item) => item.id.endsWith('-login'))).toMatchObject({ status: 'completed', progress: 100 });
     expect(requirements.filter((item) => item.deletedAt)).toHaveLength(1);

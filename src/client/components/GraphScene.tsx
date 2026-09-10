@@ -17,12 +17,14 @@ import type { GraphLink } from '../path-projection';
 import {Minus,Plus,Scan,LayoutGrid,LocateFixed,X,LoaderCircle} from 'lucide-react';
 import {vacantPosition,vacantGroup} from '../fixed-routing';
 import {facingSide,previewCurve,staleRouteIds,type PreviewBox} from '../graph-preview';
+import {validGraphViewport,viewportShowsNode} from '../graph-viewport';
 
 const viewports = new Map<string, Viewport>();
 function readViewport(key: string): Viewport | undefined {
-  try { return viewports.get(key) || JSON.parse(localStorage.getItem('pm-graph-view:' + key) || 'null') || undefined; } catch { return undefined; }
+  try { const value=viewports.get(key)||JSON.parse(localStorage.getItem('pm-graph-view:'+key)||'null');return validGraphViewport(value)?value:undefined; } catch { return undefined; }
 }
 function saveViewport(key: string, value: Viewport) {
+  if(!validGraphViewport(value))return;
   viewports.set(key, value); try { localStorage.setItem('pm-graph-view:' + key, JSON.stringify(value)); } catch { /* Current view remains usable. */ }
 }
 export function GraphScene(props: DependencyGraphProps) {
@@ -139,16 +141,19 @@ export function GraphScene(props: DependencyGraphProps) {
     if(bottom-top<80)bottom=top+80;
     return {left,right,top,bottom};
   },[]);
-  const fitAvailable=useCallback(async(avoidPanels=true,ids:string[]|undefined=visibleRef.current,animate=false)=>{
-    const layout=layoutRef.current;if(!layout||!container.current)return;
-    const boxes=Object.entries(layout.nodes).filter(([id])=>!ids||ids.includes(id)).map(([id,p])=>{
+  const viewportBoxes=useCallback((ids:string[]|undefined=visibleRef.current)=>{
+    return Object.entries(layoutRef.current?.nodes||{}).filter(([id])=>!ids||ids.includes(id)).map(([id,p])=>{
       const n=flow.getNode(id);return {...p,width:n?.measured?.width||244,height:n?.measured?.height||154};
     });
+  },[flow]);
+  const fitAvailable=useCallback(async(avoidPanels=true,ids:string[]|undefined=visibleRef.current,animate=false)=>{
+    if(!container.current)return;
+    const boxes=viewportBoxes(ids);
     if(!boxes.length)return;
     const x=Math.min(...boxes.map(n=>n.x)),y=Math.min(...boxes.map(n=>n.y)),width=Math.max(...boxes.map(n=>n.x+n.width))-x,height=Math.max(...boxes.map(n=>n.y+n.height))-y;
     const {left,right,top,bottom}=available(avoidPanels),zoom=Math.max(.02,Math.min(1,(right-left)/width*.92,(bottom-top)/height*.92));
     await flow.setViewport({x:(left+right)/2-(x+width/2)*zoom,y:(top+bottom)/2-(y+height/2)*zoom,zoom},{duration:animate&&!reduced()?260:0});
-  },[flow,available]);
+  },[flow,available,viewportBoxes]);
   const geometry=nodes.filter(n=>!n.data.retiring).map(n=>[n.id,n.measured?.width,n.measured?.height]);
   const structure=JSON.stringify([geometry,measuredLinks.map(e=>[e.id,e.source,e.target,e.label,e.labelWidth]),vertical,arrange,retry,props.positions]);
   useEffect(()=>{
@@ -198,7 +203,10 @@ export function GraphScene(props: DependencyGraphProps) {
           if(initial){
 
             const saved=(initial||directionChanged)&&(readViewport(keyRef.current)||readViewport(baseKey+(props.focusId?':focus:'+props.focusId:':full'))||readViewport(baseKey));
-            await (saved?flow.setViewport(saved):fitAvailable(true));
+            // Re-entering after a layout or screen change must not restore an empty canvas.
+            // Floating panels alone do not invalidate a user's otherwise visible viewport.
+            await (saved&&viewportShowsNode(saved,viewportBoxes(),available(false))?flow.setViewport(saved):fitAvailable(true));
+            if(!cancelled)saveViewport(keyRef.current,flow.getViewport());
           }
           if(!cancelled){setPhase('ready');setRendered(true);}
         };
