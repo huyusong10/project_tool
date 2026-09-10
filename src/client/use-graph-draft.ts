@@ -1,5 +1,6 @@
 import {executionDraftConflicts,type ExecutionCommand} from '../shared/execution-draft';
-import {EditorSession,newHistory,readHistory,type HistoryCommand} from './editor-session';
+import {EditorSession,newHistory,readHistory,type HistoryCommand,type EditorHistory,type FieldAvailability} from './editor-session';
+import {projectFieldActive} from './editor-fields';
 import {rebaseEditorHistory} from './editor-rebase';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {readDraftRecord,writeDraftRecord,clearDraftRecords,ownsDraft,takeDraft,releaseDraft} from './graph-draft-storage';
@@ -22,23 +23,24 @@ export function clearProjectGraphDrafts(accountId:string,projectId:string){
 const sessions=new Map<string,EditorSession<unknown>>();
 export async function assertCleanProjectDraft(accountId:string,projectId:string,command?:ExecutionCommand){
   const key=prefix+accountId+':'+projectId,session=sessions.get(key);
-  const state=(!session?.loading?session?.state:undefined)||readHistory<DependencyChanges>((await readDraftRecord(key))??JSON.parse(sessionStorage.getItem(key)||'null'));
+  const state=((!session?.loading?session?.state:undefined)||readHistory<DependencyChanges>((await readDraftRecord(key))??JSON.parse(sessionStorage.getItem(key)||'null'))) as EditorHistory<DependencyChanges>|undefined;
   if(await readDraftRecord(key+':submission')||sessionStorage.getItem(key+':submission'))throw new Error('项目有待核对提交，请先查询原批次回执');
   const changes=state?.values[state.index] as DependencyChanges|undefined;
   if(!changes)return;
   const conflicts=command?executionDraftConflicts(changes,state?.server,command):changes.add.length||changes.remove.length||changes.estimates.length||changes.entities?.length?['项目业务修改']:[];
-  const fields=Object.keys(state?.fields||{}).filter(key=>!command||key.includes(command.workItemId||command.requirementId));
+  const fields=Object.keys(state?.fields||{}).filter(key=>state&&projectFieldActive(state,key)&&(!command||key.includes(command.workItemId||command.requirementId)));
   if(conflicts.length||fields.length)throw new Error('本次操作涉及未保存业务草稿：'+[...conflicts,...fields.map(()=>'未完成字段')].join('、')+'。请保存或处理这些修改后再执行');
 }
 export async function assertCleanRequirementDraft(accountId:string,requirementId:string,command?:Omit<ExecutionCommand,'requirementId'>){
   const r=await api<{projectId:string}>('/api/requirements/'+requirementId,{readOnly:true});
   await assertCleanProjectDraft(accountId,r.projectId,{requirementId,...command});
 }
-export function useGraphHistory<T>(key:string,initial:T,version:string,source?:PathAnalysis){
+export function useGraphHistory<T>(key:string,initial:T,version:string,source?:PathAnalysis,fieldAvailability?:FieldAvailability<T>){
   const storageKey=prefix+key;
   let session=sessions.get(storageKey) as EditorSession<T>|undefined;
   if(!session){session=new EditorSession(newHistory(initial,version,source));sessions.set(storageKey,session as EditorSession<unknown>);}
   const current=session;
+  current.fieldAvailability=fieldAvailability;
   useSyncExternalStore(current.subscribe,current.snapshot);
   const latest=useRef({initial,version,source});latest.current={initial,version,source};
   const persist=()=>current.persist(async state=>{if(current.blocked)return;await writeDraftRecord(storageKey,state.active||Object.keys(state.fields).length||Object.keys(state.layouts).length?state:undefined);sessionStorage.removeItem(storageKey);});
@@ -53,7 +55,7 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
       try{
         const stored=await readDraftRecord<unknown>(storageKey),legacy=stored===undefined?JSON.parse(sessionStorage.getItem(storageKey)||'null'):undefined;
         const restored=readHistory<T>(stored??legacy);
-        if(restored){current.state=restored;current.restored=restored.active;current.stored=true;if(legacy){await writeDraftRecord(storageKey,restored);sessionStorage.removeItem(storageKey);}}
+        if(restored){current.state={...restored,server:restored.server||latest.current.source};current.restored=restored.active;current.stored=true;if(legacy){await writeDraftRecord(storageKey,current.state);sessionStorage.removeItem(storageKey);}}
       }catch(error){current.error=(error as Error).message.includes('原记录')?(error as Error).message:'本机存储不可用，草稿仅保留在当前页面';current.blocked=(error as Error).message.includes('原记录');}
       current.loading=false;current.readOnly=!ownsDraft(storageKey,current.state.active||!!Object.keys(current.state.fields).length);current.notify();
     })();
@@ -65,10 +67,18 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
   return {
     session:current,dispatch,flush:current.flush,busy:current.saving,setBusy:(value:boolean)=>{current.setSaving(value);if(!value&&!current.mounts)releaseDraft(storageKey);},source:state.server,baseline:state.baseline||state.values[0],value:state.values[state.index],active:state.active,version:state.version,
     dirty:JSON.stringify(state.values[state.index])!==JSON.stringify(state.baseline||state.values[0]),loading:current.loading,storageError:current.error,stored:current.stored,restored:current.restored,readOnly:current.readOnly||current.blocked,
-    fields:state.fields,layoutBaselines:state.layouts,
+    get fields(){return current.fields;},get fieldEpoch(){return current.fieldEpoch;},get pendingField(){return current.pendingField;},requestField:current.requestField,isFieldActive:current.isFieldActive,layoutBaselines:state.layouts,
     setField:(key:string,buffer?:import('./editor-session').FieldBuffer)=>dispatch({type:'field',key,buffer}),
     captureLayout:(scope:string,positions:Record<string,import('./path-layout').Point>)=>dispatch({type:'layout-baseline',scope,positions}),
-    takeOver:async()=>{const saved=readHistory<T>(await readDraftRecord(storageKey));takeDraft(storageKey);if(saved)current.state=saved;current.readOnly=false;current.notify();},
+    takeOver:async()=>{
+      if(current.loading||current.saving||current.blocked)return;
+      current.loading=true;current.notify();
+      try{
+        await current.flush();const saved=readHistory<T>(await readDraftRecord(storageKey));takeDraft(storageKey);
+        current.adopt(saved?{...saved,server:saved.server||latest.current.source}:newHistory(latest.current.initial,latest.current.version,latest.current.source));current.readOnly=false;
+      }catch(error){current.error='无法接管草稿：'+(error as Error).message;current.readOnly=true;}
+      finally{current.loading=false;current.notify();}
+    },
     canUndo:state.index>0,canRedo:state.index+1<state.values.length,
     begin:()=>dispatch({type:'begin'}),endGroup:()=>dispatch({type:'end-group'}),
     change:(value:T,group?:string)=>dispatch({type:'change',value,group}),
@@ -80,7 +90,7 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
 const empty: DependencyChanges = { add: [], remove: [], estimates: [] };
 type PendingBatch = DependencyChangesInput & { batchId: string; previewToken: string };
 export function useDependencyDraft(accountId: string, data: PathAnalysis, target: string, onSaved: (receipt?:DependencyChangeReceipt) => void) {
-  const key = accountId + ':' + data.projectId, history = useGraphHistory(key, empty, String(data.revision),data);
+  const key = accountId + ':' + data.projectId, history = useGraphHistory(key, empty, String(data.revision),data,projectFieldActive);
   const pendingKey = prefix + key + ':submission';
   const [pendingReady,setPendingReady]=useState(false);
   const [pending, setPending] = useState<PendingBatch | null>(() => {
@@ -133,7 +143,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     return false;
   };
   const save = async (allowApply?: (preview:DependencyChangePreview)=>boolean) => {
-    if (!pendingReady||history.loading||history.readOnly||history.session.saving || Object.values(history.session.state.fields).some(f=>f.error) || (!pending && (conflict || JSON.stringify(history.session.state.values[history.session.state.index])===JSON.stringify(empty)))) return false;
+    if (!pendingReady||history.loading||history.readOnly||history.session.saving || Object.values(history.session.fields).some(f=>f.error) || (!pending && (conflict || JSON.stringify(history.session.state.values[history.session.state.index])===JSON.stringify(empty)))) return false;
     history.setBusy(true);
     let batch = pending;
     try {
@@ -161,6 +171,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
   return {
     templateInstances,
     ...history,loading:history.loading||!pendingReady,changes,count,conflict,conflicts:conflict?rebased.conflicts:[],unresolved:rebased.pending.length,resolveConflict:(key:string,value:'draft'|'server')=>setResolutionState(old=>({version:resolutionVersion,values:{...(old.version===resolutionVersion?old.values:{}),[key]:value}})),preview, previewing, pending, error, save,retryPreview:()=>setPreviewAttempt(n=>n+1),
+    get fields(){return history.fields;},get fieldEpoch(){return history.fieldEpoch;},get pendingField(){return history.pendingField;},
     issue: error instanceof ApiError ? error.details as { nodeIds?: string[]; edgeIds?: string[] } | undefined : undefined,
     cancel: () => { if (!pending) { history.reset(empty, String(data.revision)); setError(null); } },
     change: (next: DependencyChanges) => { if (!pending && !history.session.saving && JSON.stringify(next)!==JSON.stringify(changes)) { latest.current = null; setPreview(null); setError(null); if (!count && Number(history.version) !== data.revision) history.rebase(String(data.revision), next); else history.change(next); } },

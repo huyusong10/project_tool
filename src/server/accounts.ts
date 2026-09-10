@@ -1,11 +1,10 @@
-import { startConditions } from './services/paths';
 import { randomUUID } from 'node:crypto';
 import { sqlite } from './database';
 import { hashPassword, normalizeUsername, verifyPassword, type Actor } from './auth';
 import { addCalendarDays, deriveWorkItemStatus, isOverdueByWorkday, startOfWeekIso, todayIso } from '../shared/domain';
 import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
 import { isBusinessDay } from '../shared/workday';
-import { listRequirements } from './services/requirements';
+import { listRequirements, loadWorkItemsByRequirementIds } from './services/requirements';
 import { deriveRequirementActionReasons, deriveWorkItemActionReasons } from './services/actions';
 import { AppError, type AppErrorCode } from './errors';
 import { accountPersonAvailableSql } from './account-access';
@@ -320,25 +319,26 @@ export function getMyWork(accountId: string) {
     requirements: [], items: [], completionTrend: [], upcoming: [], recentProgress: [],
   };
   const rawItems = sqlite.prepare(`SELECT w.id, w.requirement_id AS requirementId, r.title AS requirementTitle,
-    r.project_id AS projectId, pr.name AS projectName, r.status AS requirementStatus, w.title, w.owner_id AS ownerId,
-    owner.name AS ownerName, w.status, w.planned_start AS plannedStart, w.planned_end AS plannedEnd,
-    w.actual_start AS actualStart, w.actual_end AS actualEnd, w.forecast_end AS forecastEnd,
-    w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.milestone_label AS milestoneLabel,
-    w.progress, w.sort_order AS sortOrder, w.version,
-    w.created_at AS createdAt, w.updated_at AS updatedAt,
+    r.project_id AS projectId, pr.name AS projectName, r.status AS requirementStatus,
     CASE WHEN w.owner_id=? THEN 'owner' ELSE 'collaborator' END AS assignmentType
     FROM work_items w JOIN requirements r ON r.id=w.requirement_id
-    JOIN projects pr ON pr.id=r.project_id LEFT JOIN people owner ON owner.id=w.owner_id
+    JOIN projects pr ON pr.id=r.project_id
     JOIN project_people access ON access.project_id=r.project_id AND access.person_id=?
     WHERE r.deleted_at IS NULL AND pr.deleted_at IS NULL AND
       (w.owner_id=? OR EXISTS (SELECT 1 FROM work_item_collaborators c WHERE c.work_item_id=w.id AND c.person_id=?))
     ORDER BY CASE WHEN w.actual_end IS NULL THEN 0 ELSE 1 END, COALESCE(w.planned_end, '9999-12-31'), w.updated_at DESC`)
-    .all(account.personId, account.personId, account.personId, account.personId) as any[];
-  const conditionReqIds=[...new Set(rawItems.filter(i=>i.status==='not_started').map(i=>String(i.requirementId)))];
-  const conditions=new Map(chunkValues(conditionReqIds,200).flatMap(ids=>[...startConditions(ids)]));
-  const items = rawItems.map((item) => {
+    .all(account.personId, account.personId, account.personId, account.personId) as Array<{
+      id: string; requirementId: string; requirementTitle: string; projectId: string;
+      projectName: string; requirementStatus: string; assignmentType: 'owner' | 'collaborator';
+    }>;
+  // 先限定当前成员可见且参与的工作，再复用详情的数据装配；不逐项读取需求。
+  const requirementStatuses = new Map(rawItems.map(item => [item.requirementId, item.requirementStatus]));
+  const loaded = loadWorkItemsByRequirementIds([...requirementStatuses.keys()], requirementStatuses);
+  const workItems = new Map([...loaded.workItems.values()].flat().map(item => [item.id, item]));
+  const items = rawItems.map((reference) => {
+    const item = { ...workItems.get(reference.id)!, ...reference };
     const status = deriveWorkItemStatus(item);
-    return { ...item, ...conditions.get(item.id), status, overdue: !['completed', 'cancelled'].includes(status) && isOverdueByWorkday(item.plannedEnd, today) };
+    return { ...item, status, overdue: !['completed', 'cancelled'].includes(status) && isOverdueByWorkday(item.plannedEnd, today) };
   });
   const summary = {
     total: items.filter((item) => item.status !== 'cancelled').length,

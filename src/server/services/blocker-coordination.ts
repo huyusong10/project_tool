@@ -45,8 +45,9 @@ export function loadBlockerCoordination(projectId:string,overrides?:Coordination
   const issues=new Map((sqlite.prepare('SELECT id,title,owner_id,next_review_at,status FROM issues WHERE project_id=?').all(projectId) as {id:string;title:string;owner_id:string|null;next_review_at:string|null;status:string}[]).map(i=>[i.id,i]));
   return Object.fromEntries(rows.map(r=>{
     const issue=r.blocked_issue_id?issues.get(r.blocked_issue_id):undefined;
-    const owner=issue?.status==='resolved'?r.owner_id:issue?issue.owner_id:r.blocked_coordinator_id||r.owner_id;
-    return [r.id,{coordinatorId:owner&&people.has(owner)?owner:null,coordinatorName:owner&&people.get(owner)||'项目经理',nextReviewAt:issue?issue.next_review_at:r.blocked_next_review_at,
-      issueId:issue?.id||null,issueTitle:issue?.title||null,issueResolved:issue?.status==='resolved'}];
+    const resolved=issue?.status==='resolved';
+    const owner=resolved?r.owner_id:issue?issue.owner_id:r.blocked_coordinator_id||r.owner_id;
+    return [r.id,{coordinatorId:owner&&people.has(owner)?owner:null,coordinatorName:owner&&people.get(owner)||'项目经理',nextReviewAt:resolved?null:issue?issue.next_review_at:r.blocked_next_review_at,
+      issueId:issue?.id||null,issueTitle:issue?.title||null,issueResolved:resolved}];
   }));
 }

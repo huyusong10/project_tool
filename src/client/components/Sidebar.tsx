@@ -39,7 +39,7 @@ function NavigationTooltip({ value }: { value: TooltipState | null }) {
   );
 }
 
-export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+export function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolean; onToggle: () => void; onNavigate?: () => void }) {
   const { session } = useSession();
   const { selectedProjectId } = useProjects();
   const { data: branding = defaultBranding } = useQuery({
@@ -83,6 +83,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
                   end={item.end}
                   key={`${group.label}-${item.label}`}
                   aria-label={item.label}
+                  onClick={onNavigate}
                   onMouseEnter={(event) => showTooltip(event.currentTarget, item.label, group.label)}
                   onMouseLeave={() => setTooltip(null)}
                   onFocus={(event) => showTooltip(event.currentTarget, item.label, group.label)}

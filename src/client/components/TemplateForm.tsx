@@ -24,6 +24,7 @@ import {GraphWorkspace} from './GraphWorkspace';
 import {EditorToolbar,EditorPalette} from './EditorToolbar';
 import {PredecessorPicker} from './PredecessorPicker';
 import {Modal} from './Modal';
+import {templateFieldActive} from '../editor-fields';
 
 type Item=TemplateDependencyItem&{clientKey:string;predecessorKeys:string[];milestoneLabel:string|null;sortOrder:number};
 type Draft={name:string;description:string;dependencyMode:'legacy'|'dependencies';items:Item[];positions:Record<string,Point>;layoutVersion:number};
@@ -47,7 +48,7 @@ export function TemplateForm({template,templateUnavailable=false,projectId,onClo
   const key=(session.accountId||'guest')+':'+projectId+':template:'+identity,viewKey=key;
   const personalKey='pm-path-view:'+key;
   const [personal]=useState<{node?:string;panel?:string;inspector?:boolean;search?:string}>(()=>{try{return JSON.parse(localStorage.getItem(personalKey)||'{}');}catch{return {};}});
-  const draft=useGraphHistory(key,initialDraft(template),template?.updatedAt||'new'),value=draft.value;
+  const draft=useGraphHistory(key,initialDraft(template),template?.updatedAt||'new',undefined,templateFieldActive),value=draft.value;
   const livePositions=useRef(value.positions),mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const [panel,setPanel]=useState(personal.panel||''),[placing,setPlacing]=useState(''),[inspector,setInspector]=useState(!!personal.inspector),[error,setError]=useState('');

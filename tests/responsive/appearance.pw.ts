@@ -7,6 +7,26 @@ async function chooseSkin(page: Page, label: string) {
   await page.getByRole("menuitemradio", { name: new RegExp("^" + label) }).click();
 }
 
+for (const [skin, label] of [...skins, ['system', '跟随系统']]) test(`${label}：390px 顶栏返回与操作按钮可点击且互不遮挡`, async ({ page }) => {
+  await mockGanttData(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/requirements/r1');
+  await chooseSkin(page, label);
+  for (const colorScheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
+    await expect(page.locator('.sidebar')).toHaveClass(/sidebar-collapsed/);
+    await page.getByRole('button', { name: '返回', exact: true }).click({ trial: true });
+    await page.getByRole('button', { name: /^切换风格/ }).click({ trial: true });
+    await page.locator('.project-switcher-button').click({ trial: true });
+    expect((await page.locator('.topbar').boundingBox())?.height).toBe(88);
+    await page.getByRole('button', { name: '编辑信息', exact: true }).click();
+    await expect(page.getByRole('dialog').getByLabel('需求标题', { exact: true })).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth), skin).toBeLessThanOrEqual(390);
+  }
+});
+
 for (const [skin, label] of skins) test(`${label}：布局、双轨三种粒度、长标题与完整提示`, async ({ page }, info) => {
   await mockGanttData(page);
   const title = "EPDS-2026-018 设备监控与告警处理：" + "跨模块联动及异常恢复的完整需求说明、".repeat(8);

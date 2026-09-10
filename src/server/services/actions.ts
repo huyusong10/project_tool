@@ -156,7 +156,8 @@ export function listActionItems(
   const workById=new Map(workItems.map(w=>[w.id,w]));
   for (const workItem of workItems) {
     if (!manager && workItem.requirementOwnerId !== personId && workItem.ownerId !== personId && !workItem.actorCollaborator&&pathNodes.get(workItem.id)?.blockerCoordination?.coordinatorId!==personId) continue;
-    const parent=requirementsById.get(workItem.requirementId);if(parent?.deliveryScope==='candidate'&&!parent.pathRisk?.inDeliveryNetwork)continue;
+    const parent=requirementsById.get(workItem.requirementId);
+    if(parent?.deliveryScope==='candidate'&&!parent.pathRisk?.inDeliveryNetwork&&!['in_progress','blocked'].includes(workItem.status))continue;
     const reasonCodes = deriveWorkItemActionReasons(workItem);
     if(pathNodes.get(workItem.id)?.forecastBasis?.needsReview)reasonCodes.push('forecast_review');
     const pathBlocker=pathBlockers.get(workItem.id);
@@ -256,9 +257,13 @@ export function listActionItems(
     const canExecute=manager||!!personId&&(parent?.ownerId===personId||work?.ownerId===personId||!!work?.actorCollaborator);
     const canAccept=manager||!!personId&&parent?.acceptanceOwnerValid&&parent.acceptanceOwnerId===personId;
     const codes=item.reasonCodes;
+    // 问题已解决后要检查执行对象；关键路径标记不能把确认解阻导向路径浏览页。
+    if(codes.includes('blocker_resolved')){
+      item.targetPath='/requirements/'+item.requirementId+(work?'?'+new URLSearchParams({workItemId:work.id}):'');
+      continue;
+    }
     const action=codes.includes('pending_acceptance')&&canAccept?'accept'
       :codes.includes('commitment_scope')&&manager?'delivery-settings'
-      :codes.includes('blocker_resolved')?null
       :codes.some(c=>c==='blocked'||c==='follow_up')&&(canExecute||!!personId&&item.ownerId===personId)?'follow-up'
       :codes.includes('forecast_review')&&canExecute?'forecast':null;
     if(action)item.targetPath='/requirements/'+item.requirementId+'?'+new URLSearchParams({...(work?{workItemId:work.id}:{}),action});

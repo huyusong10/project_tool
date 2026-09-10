@@ -1,16 +1,18 @@
 import {createContext,useContext,useEffect,useRef,type RefObject} from 'react';
 import type {EditorInteraction} from './editor-interaction';
 import type {FieldBuffer} from './editor-session';
-export type WorkspaceDocument={fields:Record<string,FieldBuffer>;setField:(key:string,buffer?:FieldBuffer)=>unknown;captureLayout:(scope:string,positions:Record<string,import('./path-layout').Point>)=>unknown;layoutBaselines:Record<string,Record<string,import('./path-layout').Point>>;flush:()=>Promise<void>};
+export type WorkspaceDocument={fields:Record<string,FieldBuffer>;fieldEpoch:number;pendingField?:string;requestField:(key?:string)=>void;isFieldActive:(key:string)=>boolean;setField:(key:string,buffer?:FieldBuffer)=>unknown;captureLayout:(scope:string,positions:Record<string,import('./path-layout').Point>)=>unknown;layoutBaselines:Record<string,Record<string,import('./path-layout').Point>>;flush:()=>Promise<void>};
 export type LayerKind='menu'|'finder'|'detail'|'auxiliary';
 type Layer={element:()=>HTMLElement|null;kind:LayerKind;close:()=>void;trigger:HTMLElement|null};
 type PointerHandlers={move?:(e:PointerEvent)=>void;up?:(e:PointerEvent)=>void;focus?:(e:FocusEvent)=>void};
 export class WorkspaceRuntime{
   root:HTMLElement|null=null;lastTrigger:HTMLElement|null=null;interaction:EditorInteraction|null=null;
   fieldOwner?:{key:string;owner:string};
-  document?:WorkspaceDocument;save?:()=>void;revealField?:(key:string)=>void;pendingField?:string;composing=false;saveRequested=false;
-  fields=new Map<symbol,{commit:()=>boolean;focus:()=>void;cancel:()=>void}>();
-  commitFields(){for(const field of this.fields.values())if(!field.commit()){field.focus();return false;}const invalid=Object.entries(this.document?.fields||{}).find(([,f])=>f.error);if(invalid){this.pendingField=invalid[0];this.revealField?.(invalid[0]);return false;}return true;}
+  document?:WorkspaceDocument;save?:()=>void;revealField?:(key:string)=>void;composing=false;saveRequested=false;
+  fields=new Map<symbol,{key:string;commit:()=>boolean;focus:()=>boolean;cancel:()=>void}>();
+  focusPendingField(){const key=this.document?.pendingField;if(!key)return;for(const field of this.fields.values())if(field.key===key&&field.focus()){this.document?.requestField();return;}}
+  private revealInvalid(key:string){this.document?.requestField(key);this.revealField?.(key);this.focusPendingField();}
+  commitFields(reveal=true){for(const field of this.fields.values())if(!field.commit()){if(reveal)this.revealInvalid(field.key);return false;}const invalid=Object.entries(this.document?.fields||{}).find(([,f])=>f.error);if(invalid){if(reveal)this.revealInvalid(invalid[0]);return false;}return true;}
   private layers=new Map<symbol,Layer>();private pointers=new Set<PointerHandlers>();
   covers(target:Element){return !!target.closest('[data-workspace-zone]')||[...this.layers.values()].some(layer=>layer.element()?.contains(target));}
   register(layer:Layer){const id=Symbol();this.layers.set(id,layer);return()=>{this.layers.delete(id);};}
@@ -44,5 +46,5 @@ export function useWorkspaceLayer(ref:RefObject<HTMLElement|null>,enabled:boolea
 }
 export function useWorkspaceEvents(runtime:WorkspaceRuntime,root:RefObject<HTMLElement|null>){
   useEffect(()=>{runtime.root=root.current;const hidden=()=>{if(document.hidden)runtime.cancel();};document.addEventListener('pointerdown',runtime.outside,true);document.addEventListener('pointermove',runtime.pointerMove);document.addEventListener('pointerup',runtime.pointerUp);document.addEventListener('pointercancel',runtime.cancel);document.addEventListener('focusin',runtime.focus);document.addEventListener('focusout',runtime.focusOut);window.addEventListener('blur',runtime.cancel);document.addEventListener('visibilitychange',hidden);
-    return()=>{runtime.commitFields();runtime.cancel();document.removeEventListener('pointerdown',runtime.outside,true);document.removeEventListener('pointermove',runtime.pointerMove);document.removeEventListener('pointerup',runtime.pointerUp);document.removeEventListener('pointercancel',runtime.cancel);document.removeEventListener('focusin',runtime.focus);document.removeEventListener('focusout',runtime.focusOut);window.removeEventListener('blur',runtime.cancel);document.removeEventListener('visibilitychange',hidden);};},[runtime,root]);
+    return()=>{runtime.commitFields(false);runtime.cancel();document.removeEventListener('pointerdown',runtime.outside,true);document.removeEventListener('pointermove',runtime.pointerMove);document.removeEventListener('pointerup',runtime.pointerUp);document.removeEventListener('pointercancel',runtime.cancel);document.removeEventListener('focusin',runtime.focus);document.removeEventListener('focusout',runtime.focusOut);window.removeEventListener('blur',runtime.cancel);document.removeEventListener('visibilitychange',hidden);};},[runtime,root]);
 }
