@@ -1792,6 +1792,7 @@ test("工作项负责人、协作者和日期共用版本快照，重读时保�
   await firstRow.getByRole("button", { name: /计划开始：2026-09-01/ }).click();
   popover = page.locator(".inline-date-popover");
   await popover.getByRole("gridcell", { name: "2026-09-02", exact: true }).click();
+  await popover.getByRole("textbox", { name: "调整原因", exact: true }).fill("保留日期草稿原因");
   await pushBackgroundUpdate({ plannedStart: "2026-09-03" });
   await expect(popover.getByRole("button", { name: "保存", exact: true })).toBeDisabled();
   expect(submissions).toHaveLength(1);
@@ -1799,11 +1800,12 @@ test("工作项负责人、协作者和日期共用版本快照，重读时保�
   await expect(popover.getByRole("gridcell", { name: "2026-09-02", exact: true })).toHaveAttribute("aria-selected", "true");
   await popover.getByRole("button", { name: "保存", exact: true }).click();
   await expect.poll(() => submissions.length).toBe(2);
-  expect(submissions[1]).toMatchObject({ plannedStart: "2026-09-02", expectedVersion: 4 });
+  expect(submissions[1]).toMatchObject({ plannedStart: "2026-09-02", reason: "保留日期草稿原因", expectedVersion: 4 });
 
   await firstRow.getByRole("button", { name: /协作人员：无协作人员/ }).click();
   popover = page.locator(".inline-multi-popover");
   await popover.getByRole("checkbox", { name: /李四/ }).check();
+  await popover.getByRole("textbox", { name: "调整原因", exact: true }).fill("保留协作者草稿原因");
   await pushBackgroundUpdate({ title: "后台再次更新标题" });
   await expect(popover.getByRole("button", { name: "完成", exact: true })).toBeDisabled();
   expect(submissions).toHaveLength(2);
@@ -1811,7 +1813,7 @@ test("工作项负责人、协作者和日期共用版本快照，重读时保�
   await expect(popover.getByRole("checkbox", { name: /李四/ })).toBeChecked();
   await popover.getByRole("button", { name: "完成", exact: true }).click();
   await expect.poll(() => submissions.length).toBe(3);
-  expect(submissions[2]).toMatchObject({ assigneeIds: ["u1", "u2"], expectedVersion: 6 });
+  expect(submissions[2]).toMatchObject({ assigneeIds: ["u1", "u2"], reason: "保留协作者草稿原因", expectedVersion: 6 });
 });
 
 test("执行中工作项待确认的负责人失效后禁止提交旧人员", async ({ page }) => {

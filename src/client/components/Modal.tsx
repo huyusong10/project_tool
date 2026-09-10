@@ -26,7 +26,7 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
       (initial || card).focus();
     });
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
+      if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
       const card = cardRef.current;
       if (!card) return;
       const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'));
