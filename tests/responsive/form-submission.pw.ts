@@ -495,7 +495,7 @@ for (const scenario of scenarios.filter(s=>s.kind!=='template') as Array<(typeof
         await dialog.getByLabel('计划开始', { exact: true }).fill('2020-01-02');
         await dialog.getByLabel('计划完成', { exact: true }).fill('2020-01-06');
       } else if (scenario.kind === 'requirement') {
-        await dialog.getByRole('combobox', { name: '优先级', exact: true }).selectOption('P1');
+        await expect(dialog.getByRole('combobox', { name: '优先级', exact: true })).toHaveCount(0);
         await dialog.getByRole('button', { name: /流程与排期/ }).click();
         await dialog.getByRole('combobox', { name: '流程设计', exact: true }).selectOption('t1');
         await dialog.getByLabel('计划开始', { exact: true }).fill('2020-01-02');
@@ -510,7 +510,7 @@ for (const scenario of scenarios.filter(s=>s.kind!=='template') as Array<(typeof
       await dialog.getByRole('button', { name: scenario.submit, exact: true }).click();
       await expect.poll(() => requests.length).toBe(1);
       expect(requests[0]).toMatchObject(scenario.kind === 'requirement'
-        ? { title: '保留这份草稿', priority: 'P1', projectId: 'p1', plannedStart: '2020-01-02', templateId: 't1', background: '不可丢失的背景' }
+        ? { title: '保留这份草稿', projectId: 'p1', plannedStart: '2020-01-02', templateId: 't1', background: '不可丢失的背景' }
         : scenario.kind === 'project'
           ? { name: '保留这份草稿', plannedStart: '2020-01-02', plannedEnd: '2020-01-06' }
           : { name: '保留这份草稿', description: '不可丢失的设计说明', ...(scenario.name === '新建流程' ? {projectId: 'p1'} : {}) });

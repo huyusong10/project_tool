@@ -22,6 +22,7 @@ import { rankSearchItems } from "../../shared/search";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 type DisplayMode = "single" | "stacked" | "badge";
+type EditReason = { required?: boolean; label?: string; placeholder?: string; help?: string };
 
 export type InlineOption = UiOption;
 
@@ -113,7 +114,11 @@ function useSaveState() {
     setState("error");
   }, []);
 
-  return { state, error, reloadRequired, save, clearError, fail, isSaving };
+  const clearValidationError = useCallback(() => {
+    if (!reloadRequired) clearError();
+  }, [clearError, reloadRequired]);
+
+  return { state, error, reloadRequired, save, clearError, clearValidationError, fail, isSaving };
 }
 
 type Revision = number | string;
@@ -342,7 +347,7 @@ export function AnchoredPopover({
       onOutside();
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.isComposing || event.keyCode === 229) return;
       if (event.target instanceof Element && event.target.closest("[data-preserve-edit]")) return;
       event.preventDefault();
       onEscape();
@@ -383,18 +388,22 @@ export function InlineTextCell<TRevision extends Revision = number>({
   revisionSubject = "记录",
   onReloadRevision,
   renderValue,
+  reason,
 }: BaseProps<TRevision> & {
   value: string | null | undefined;
-  onSave: (value: string, expectedRevision?: TRevision) => Promise<unknown>;
+  onSave: (value: string, expectedRevision?: TRevision, reason?: string) => Promise<unknown>;
   required?: boolean;
+  reason?: EditReason;
   renderValue?: (value: string) => ReactNode;
 }) {
   const currentValue = value || "";
   const anchorRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
   const committing = useRef(false);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(currentValue);
+  const [reasonText, setReasonText] = useState("");
   const feedback = useSaveState();
   const revisionGuard = useRevisionGuard({ revision, subject: revisionSubject, onReload: onReloadRevision, feedback });
 
@@ -402,9 +411,12 @@ export function InlineTextCell<TRevision extends Revision = number>({
   useEffect(() => { if (open) window.requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.select(); }); }, [open]);
 
   const cancel = useCallback(() => {
-    setDraft(currentValue);
+    if (!committing.current) {
+      setDraft(currentValue);
+      setReasonText("");
+      feedback.clearError();
+    }
     setOpen(false);
-    feedback.clearError();
     focusTrigger(anchorRef);
   }, [currentValue, feedback]);
 
@@ -419,35 +431,48 @@ export function InlineTextCell<TRevision extends Revision = number>({
     if (!revisionGuard.ensureCurrent()) return;
     if (next === currentValue) {
       setOpen(false);
+      setReasonText("");
       if (refocus) focusTrigger(anchorRef);
+      return;
+    }
+    const normalizedReason = reasonText.trim();
+    if (reason?.required && !normalizedReason) {
+      feedback.fail(`${reason.label || "变更原因"}不能为空`);
+      if (closeBeforeSave && !refocus) setOpen(false);
+      else reasonRef.current?.focus();
       return;
     }
     if (closeBeforeSave) setOpen(false);
     committing.current = true;
-    const saved = await feedback.save(() => onSave(next, revisionGuard.baselineRevision));
+    const saved = await feedback.save(() => onSave(next, revisionGuard.baselineRevision, normalizedReason || undefined));
     committing.current = false;
     if (saved) {
       setOpen(false);
+      setReasonText("");
       if (refocus) focusTrigger(anchorRef);
     } else if (closeBeforeSave && canReturnFocus(anchorRef)) setOpen(true);
-  }, [currentValue, draft, feedback, label, onSave, required, revisionGuard]);
+  }, [currentValue, draft, feedback, label, onSave, required, reason, reasonText, revisionGuard]);
 
   const display = renderValue ? renderValue(currentValue) : currentValue || <span className="is-placeholder">{placeholder}</span>;
   return <div ref={anchorRef} className="inline-edit-anchor">
     <EditableCell label={label} display={display} fullText={currentValue || placeholder} open={open} disabled={disabled} state={feedback.state} error={feedback.error} displayMode={displayMode} className={className} onOpen={() => {
       if (feedback.state !== "error") {
         setDraft(currentValue);
+        setReasonText("");
         revisionGuard.capture();
       }
       feedback.clearError();
       setOpen(true);
     }}>
-      <AnchoredPopover anchorRef={anchorRef} open={open} width={280} matchAnchor onOutside={() => void commit(true)} onSuperseded={() => void commit(true)} onEscape={cancel} className="inline-text-popover">
-        <label className="inline-editor-field"><span>{label}</span><input ref={inputRef} value={draft} placeholder={placeholder} aria-label={label} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
+      <AnchoredPopover anchorRef={anchorRef} open={open} width={reason ? 320 : 280} matchAnchor onOutside={() => void commit(true)} onSuperseded={() => void commit(true)} onEscape={cancel} className="inline-text-popover">
+        <label className="inline-editor-field"><span>{label}</span><input ref={inputRef} value={draft} readOnly={feedback.state === "saving"} placeholder={placeholder} aria-label={label} onChange={(event) => { setDraft(event.target.value); feedback.clearValidationError(); }} onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
           if (event.key === "Enter") { event.preventDefault(); void commit(true, true); }
         }} /></label>
+        {reason && (draft.trim() !== currentValue || feedback.state === "saving") && <label className="inline-select-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea ref={reasonRef} rows={3} readOnly={feedback.state === "saving"} value={reasonText} onChange={(event) => { setReasonText(event.target.value); feedback.clearValidationError(); }} aria-label={reason.label || "变更原因"} placeholder={reason.placeholder || "请说明本次变更原因"} /></label>}
         <EditorError error={feedback.error} />
-        <RevisionNotice guard={revisionGuard} showReload={feedback.state === "error"} subject={revisionSubject} />
+        <RevisionNotice guard={revisionGuard} showReload={feedback.reloadRequired || revisionGuard.changed && feedback.state === "error"} subject={revisionSubject} />
+        {reason && <footer className="inline-multi-actions"><span /><div><button type="button" className="ghost-button" onClick={cancel}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || draft.trim() === currentValue} onClick={() => void commit(false, true)}>保存</button></div></footer>}
         <p className="inline-editor-hint">Enter保存 · Esc取消</p>
       </AnchoredPopover>
     </EditableCell>
@@ -475,11 +500,7 @@ export function InlineSelectCell<TRevision extends Revision = number>({
   onSave: (value: string, reason?: string, expectedRevision?: TRevision) => Promise<unknown>;
   renderValue?: (value: string, option?: InlineOption) => ReactNode;
   renderOption?: (option: InlineOption, selected: boolean) => ReactNode;
-  reason?: {
-    required?: boolean;
-    label?: string;
-    placeholder?: string;
-  };
+  reason?: EditReason;
 }) {
   const currentValue = value || "";
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -620,11 +641,11 @@ export function InlineSelectCell<TRevision extends Revision = number>({
           {!filtered.length && <p className="inline-picker-empty">没有匹配选项</p>}
         </div>
         {reason && pendingValue !== null && <>
-          <label className="inline-select-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea ref={reasonRef} rows={3} readOnly={feedback.state === "saving"} value={reasonText} onChange={(event) => setReasonText(event.target.value)} aria-label={reason.label || "变更原因"} placeholder={reason.placeholder || "请说明本次变更原因"} /></label>
+          <label className="inline-select-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea ref={reasonRef} rows={3} readOnly={feedback.state === "saving"} value={reasonText} onChange={(event) => { setReasonText(event.target.value); feedback.clearValidationError(); }} aria-label={reason.label || "变更原因"} placeholder={reason.placeholder || "请说明本次变更原因"} /></label>
           <div className="inline-select-actions"><button type="button" className="ghost-button" onClick={() => cancel()}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || pendingOptionUnavailable} onClick={() => void commit()}>保存</button></div>
         </>}
         <EditorError error={pendingOptionUnavailable ? `${pendingOptionLabel}已不可用，请重新选择` : feedback.error} />
-        <RevisionNotice guard={revisionGuard} showReload={feedback.state === "error"} subject={revisionSubject} />
+        <RevisionNotice guard={revisionGuard} showReload={feedback.reloadRequired || revisionGuard.changed && feedback.state === "error"} subject={revisionSubject} />
         {!reason && pendingValue !== null && (revisionGuard.changed || revisionGuard.refreshed || feedback.state === "error") && <div className="inline-select-actions"><button type="button" className="ghost-button" onClick={() => cancel()}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || pendingOptionUnavailable} onClick={() => void commit()}>保存所选</button></div>}
       </AnchoredPopover>
     </EditableCell>
@@ -677,12 +698,7 @@ export function InlineDateCell<TRevision extends Revision = number>({
   value: string | null | undefined;
   onSave: (value: string | null, reason?: string, expectedRevision?: TRevision) => Promise<unknown>;
   allowClear?: boolean;
-  reason?: {
-    required?: boolean;
-    label?: string;
-    placeholder?: string;
-    help?: string;
-  };
+  reason?: EditReason;
 }) {
   const { businessDate: today } = useBusinessDate();
   const currentValue = value || "";
@@ -756,12 +772,12 @@ export function InlineDateCell<TRevision extends Revision = number>({
             {monthDays.map((date) => {
               const iso = dateToIso(date);
               const outside = date.getMonth() !== visibleMonth.getMonth();
-              return <button type="button" role="gridcell" key={iso} disabled={feedback.state === "saving"} className={`${outside ? "is-outside" : ""}${draft === iso ? " is-selected" : ""}${today === iso ? " is-today" : ""}`} aria-selected={draft === iso} aria-label={iso} onClick={() => setDraft(iso)}>{date.getDate()}</button>;
+              return <button type="button" role="gridcell" key={iso} disabled={feedback.state === "saving"} className={`${outside ? "is-outside" : ""}${draft === iso ? " is-selected" : ""}${today === iso ? " is-today" : ""}`} aria-selected={draft === iso} aria-label={iso} onClick={() => { setDraft(iso); feedback.clearValidationError(); }}>{date.getDate()}</button>;
             })}
           </div>
-          {reason && (draft !== currentValue || feedback.state === "saving") && <label className="inline-date-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea rows={3} autoFocus readOnly={feedback.state === "saving"} value={reasonText} onChange={(event) => setReasonText(event.target.value)} placeholder={reason.placeholder || "请说明本次调整原因"} />{reason.help && <small>{reason.help}</small>}</label>}
+          {reason && (draft !== currentValue || feedback.state === "saving") && <label className="inline-date-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea rows={3} autoFocus readOnly={feedback.state === "saving"} value={reasonText} onChange={(event) => { setReasonText(event.target.value); feedback.clearValidationError(); }} aria-label={reason.label || "变更原因"} placeholder={reason.placeholder || "请说明本次调整原因"} />{reason.help && <small>{reason.help}</small>}</label>}
           <EditorError error={feedback.error} />
-          <RevisionNotice guard={revisionGuard} showReload={feedback.state === "error"} subject={revisionSubject} />
+          <RevisionNotice guard={revisionGuard} showReload={feedback.reloadRequired || revisionGuard.changed && feedback.state === "error"} subject={revisionSubject} />
           <footer>
             <div>{allowClear && <button type="button" disabled={feedback.state === "saving"} className="inline-date-clear" onClick={() => setDraft("")}>清除</button>}<button type="button" disabled={feedback.state === "saving"} className="inline-date-today" onClick={() => { setDraft(today); setVisibleMonth(dateFromIso(today)!); }}>今天</button></div>
             <div><button type="button" className="ghost-button" onClick={() => cancel()}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || draft === currentValue} onClick={() => void commit()}>保存</button></div>
@@ -791,17 +807,18 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
   value: string[];
   options: InlineOption[];
   onSave: (value: string[], expectedRevision?: TRevision, reason?: string) => Promise<unknown>;
+  reason?: EditReason;
   renderValue?: (selected: InlineOption[]) => ReactNode;
   excludedValues?: string[];
-  reason?: { required?: boolean; label?: string; placeholder?: string };
+
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const knownOptions = useRef(new Map(options.map((option) => [option.value, option])));
   for (const option of options) knownOptions.current.set(option.value, option);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
-  const [search, setSearch] = useState("");
   const [reasonText, setReasonText] = useState("");
+  const [search, setSearch] = useState("");
   const feedback = useSaveState();
   const revisionGuard = useRevisionGuard({ revision, subject: revisionSubject, onReload: onReloadRevision, feedback });
   const normalizedValue = [...value].sort().join("|");
@@ -828,6 +845,7 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
   const cancel = useCallback((refocus = true) => {
     if (!feedback.isSaving()) {
       setDraft(value);
+      setReasonText("");
       feedback.clearError();
     }
     setOpen(false);
@@ -840,10 +858,11 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
     if (unavailableDraftError) return feedback.fail(unavailableDraftError);
     if (!revisionGuard.ensureCurrent()) return;
     if (normalizedDraft === normalizedValue) { setOpen(false); setSearch(""); focusTrigger(anchorRef); return; }
-    if (reason?.required && !reasonText.trim()) return feedback.fail(`${reason.label || '变更原因'}不能为空`);
+    const normalizedReason = reasonText.trim();
+    if (reason?.required && !normalizedReason) return feedback.fail(`${reason.label || "变更原因"}不能为空`);
     const next = [...draft];
-    const saved = await feedback.save(() => onSave(next, revisionGuard.baselineRevision, reasonText.trim() || undefined));
-    if (saved) { setOpen(false); setSearch(""); focusTrigger(anchorRef); }
+    const saved = await feedback.save(() => onSave(next, revisionGuard.baselineRevision, normalizedReason || undefined));
+    if (saved) { setOpen(false); setSearch(""); setReasonText(""); focusTrigger(anchorRef); }
   }, [draft, feedback, normalizedDraft, normalizedValue, onSave, reason, reasonText, revisionGuard, unavailableDraftError]);
 
   const display = renderValue
@@ -852,7 +871,7 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
   const fullText = selected.map((option) => option.label).join("、") || placeholder;
   return <div ref={anchorRef} className="inline-edit-anchor">
     <EditableCell label={label} display={display} fullText={fullText} open={open} disabled={disabled} state={feedback.state} error={feedback.error} displayMode={displayMode} className={className} onOpen={() => {
-      if (feedback.state !== "error") { setDraft(value); setReasonText(''); }
+      if (feedback.state !== "error") { setDraft(value); setReasonText(""); }
       if (feedback.state !== "error") revisionGuard.capture();
       feedback.clearError();
       setSearch("");
@@ -865,15 +884,15 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
           {visible.map((option) => {
             const checked = draft.includes(option.value);
             return <label key={option.value} className={checked ? "is-selected" : ""} title={option.label}>
-              <input type="checkbox" checked={checked} disabled={feedback.state === "saving"} onChange={(event) => setDraft((current) => event.target.checked ? [...current, option.value] : current.filter((id) => id !== option.value))} />
+              <input type="checkbox" checked={checked} disabled={feedback.state === "saving"} onChange={(event) => { setDraft((current) => event.target.checked ? [...current, option.value] : current.filter((id) => id !== option.value)); feedback.clearValidationError(); }} />
               <span><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
             </label>;
           })}
           {!visible.length && <p className="inline-picker-empty">没有匹配选项</p>}
         </div>
-        {reason && normalizedDraft !== normalizedValue && <label className="inline-select-reason"><span>{reason.label || '变更原因'}{reason.required && <em>必填</em>}</span><textarea aria-label={reason.label || '变更原因'} rows={3} readOnly={feedback.state === 'saving'} value={reasonText} onChange={e=>setReasonText(e.target.value)} placeholder={reason.placeholder || '请说明本次变更原因'}/></label>}
+        {reason && (normalizedDraft !== normalizedValue || feedback.state === "saving") && <label className="inline-select-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea rows={3} readOnly={feedback.state === "saving"} value={reasonText} onChange={(event) => { setReasonText(event.target.value); feedback.clearValidationError(); }} aria-label={reason.label || "变更原因"} placeholder={reason.placeholder || "请说明本次变更原因"} /></label>}
         <EditorError error={unavailableDraftError || feedback.error} />
-        <RevisionNotice guard={revisionGuard} showReload={feedback.state === "error"} subject={revisionSubject} />
+        <RevisionNotice guard={revisionGuard} showReload={feedback.reloadRequired || revisionGuard.changed && feedback.state === "error"} subject={revisionSubject} />
         <footer className="inline-multi-actions">
           <button type="button" disabled={feedback.state === "saving"} onClick={() => setDraft([])}>清空</button>
           <div><button type="button" className="ghost-button" onClick={() => cancel()}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || Boolean(unavailableDraftError)} onClick={() => void commit()}>完成</button></div>
