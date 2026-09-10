@@ -1,3 +1,4 @@
+import {randomUUID} from '../random-uuid';
 import {isAssignablePerson} from '../assignable-people';
 import {saveDeliveryEdit} from '../save-delivery-edit';
 import {DeliveryBatchReview} from './DeliveryBatchReview';
@@ -122,7 +123,7 @@ function DeliveryDraftForm({data,requirements,mode,onClose}:{data:PathAnalysis;r
     if(mode==='split'){
       const titles=names.split('\n').map(v=>v.trim()).filter(Boolean);if(!titles.length){setError('请至少填写一个剩余工作项');return;}
       next=changeEntity(next,{entity:'requirement',op:'update',id:r.id,expectedVersion:Number(formBaselines.current.get(r.id)?.version??r.version),data:{executionMode:'work_items',reason:reason||'拆分剩余工作'}});
-      for(const title of titles)next=changeEntity(next,{entity:'work',op:'create',id:crypto.randomUUID(),requirementId:r.id,data:{title,ownerId:r.ownerId,durationDays:1,reason:reason||'拆分剩余工作'}});
+      for(const title of titles)next=changeEntity(next,{entity:'work',op:'create',id:randomUUID(),requirementId:r.id,data:{title,ownerId:r.ownerId,durationDays:1,reason:reason||'拆分剩余工作'}});
     }else for(const value of requirements){
       if(scope==='candidate'&&value.deliveryScope!=='candidate'&&['in_progress','blocked','pending_acceptance'].includes(value.status)&&!reason.trim()){setError('撤出已执行需求时请填写原因');return;}
       const original=formBaselines.current.get(value.id)||value;

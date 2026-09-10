@@ -37,4 +37,14 @@ export default defineConfig(
       "no-restricted-globals": ["error", { name: "alert", message: "请使用系统 ResultDialog 展示结果或错误。" }, { name: "confirm", message: "请使用系统 ConfirmDialog 处理确认操作。" }, { name: "prompt", message: "请使用系统 TextPromptModal 收集输入。" }],
     },
   },
+  {
+    files: ["src/client/**/*.{ts,tsx}"],
+    ignores: ["src/client/random-uuid.ts"],
+    rules: {
+      "no-restricted-properties": ["error", {
+        property: "randomUUID",
+        message: "浏览器 UUID 请使用 random-uuid.ts 封装，兼容局域网 HTTP。",
+      }],
+    },
+  },
 );

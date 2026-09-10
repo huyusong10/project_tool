@@ -59,6 +59,8 @@ Authorization: Bearer pm_xxx_xxx
 
 MCP覆盖需求、工作项、问题、行动项、我的工作、项目成员、流程和业务分析，与REST共用输入校验、权限和业务错误。不开放登录凭据、密码、Token管理、备份恢复、品牌及系统管理。
 
+工作项、需求和进展支持独立分页查询；拓扑支持需求汇总、局部上下游、自动布局及 SVG 导出。工具选用、参数和批量图编辑示例见 [MCP 使用说明](docs/MCP.md)。
+
 ## 使用要点
 
 - 新建需求只需标题；未填日期时保存为待规划，填入开始或截止日期时按流程自动生成工作项。
@@ -97,7 +99,10 @@ npm run build     # 类型检查并构建
 npm run lint      # 轻量代码检查
 npm test          # 单元、集成和性能测试
 npm run test:responsive # 六组常用视口的布局守护测试（使用本机 Edge）
-npm run verify    # 原生依赖、代码检查、测试与生产构建
+npm run test:http # HTTP 非安全上下文：页面、登录、会话和流程草稿（使用本机 Edge）
+npm run verify    # 原生依赖、代码检查、测试、HTTP 浏览器回归与生产构建
 ```
+
+发布前运行 `npm run verify`。HTTP 回归使用普通测试域名，避免 localhost 的浏览器安全上下文例外掩盖局域网问题；不修改正式数据库。测试端口默认 3211，被占用时设置 `$env:PLAYWRIGHT_PORT='3241'` 后再运行。前端 UUID 统一使用 `src/client/random-uuid.ts`，lint 禁止绕过封装；新增依赖安全上下文的浏览器 API 时，须检测支持情况并补充 HTTP 回归。
 
 需要开机自动启动时，以当前用户运行 `install-autostart.ps1`；移除时运行 `uninstall-autostart.ps1`。

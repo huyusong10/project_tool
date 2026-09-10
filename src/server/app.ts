@@ -8,6 +8,7 @@ import { config } from './config';
 import './database';
 import { registerApiRoutes } from './routes';
 import { registerPathRoutes } from './path-routes';
+import { registerQueryRoutes } from './query-routes';
 import { registerMcpRoute } from './mcp';
 import { authenticateApiToken } from './services';
 import { errorResponse } from './errors';
@@ -24,6 +25,7 @@ export async function buildApp() {
   app.get('/health', async () => ({ status: 'ok', time: new Date().toISOString(), service: 'project-manage' }));
   registerApiRoutes(app);
   registerPathRoutes(app);
+  registerQueryRoutes(app);
   registerMcpRoute(app, (token) => token ? authenticateApiToken(token) : null);
   const distDir = config.webDistDir;
   if (fs.existsSync(distDir)) {

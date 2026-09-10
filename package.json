@@ -14,10 +14,11 @@
     "build:test-ui": "npm run typecheck && node scripts/build-test-ui.mjs && tsup src/server/index.ts --format esm --platform node --out-dir .playwright/server --external better-sqlite3",
     "start": "node dist-server/index.js",
     "db:generate": "drizzle-kit generate",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=4",
     "test:responsive": "playwright test --config playwright.config.ts",
+    "test:http": "playwright test --config playwright.config.ts tests/responsive/http-access.pw.ts --project=office-1280",
     "test:watch": "vitest",
-    "verify": "npm run check:runtime && npm run lint && npm test && npm run build",
+    "verify": "npm run check:runtime && npm run lint && npm test && npm run test:http && npm run build",
     "start:paths": "pwsh -NoProfile -File scripts/start-paths-preview.ps1",
     "seed:paths": "tsx scripts/seed-paths-preview.ts && tsx scripts/seed-paths-exceptions.ts"
   },

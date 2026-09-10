@@ -1,3 +1,4 @@
+import {randomUUID} from '../random-uuid';
 import {CommitmentComparison} from './CommitmentComparison';
 import {ProjectCommitmentControl} from './ProjectCommitments';
 import {ExecutionReviewControl} from './ExecutionReview';
@@ -224,7 +225,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const replaceRelation=(id:string,source:string,destination:string)=>{
     const original=data.dependencies.find(d=>d.id===id);
     if(!editing||!original||!editableRelation(original)){setIssue({message:'当前无权修改这条交付关系'});return;}
-    const result=replaceDeliveryCondition(data,draft.changes,id,source,destination,crypto.randomUUID());
+    const result=replaceDeliveryCondition(data,draft.changes,id,source,destination,randomUUID());
     if('issue' in result){setIssue(result.issue);return;}
     if(result.changes!==draft.changes)draft.change(result.changes);
     setRelationId(result.relationId);setInspector(true);setIssue(undefined);
@@ -232,7 +233,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const remove=(id:string,changes=draft.changes):DependencyChanges=>({...changes,add:changes.add.filter(e=>e.clientId!==id),remove:formal.dependencies.some(e=>e.id===id)?[...new Set([...changes.remove,id])]:changes.remove});
   const proposal=(source:string,destination:string):DependencyChanges['add'][number]|null=>{
     const a=graph.cards.find(c=>c.id===source),b=graph.cards.find(c=>c.id===destination);if(!a||!b)return null;
-    return {clientId:crypto.randomUUID(),sourceRequirementId:a.requirementId,sourceWorkItemId:a.kind==='work'?a.id:null,sourceMilestoneId:a.kind==='milestone'?a.id:null,targetRequirementId:b.requirementId,targetWorkItemId:b.kind==='work'?b.id:null,targetMilestoneId:b.kind==='milestone'?b.id:null};
+    return {clientId:randomUUID(),sourceRequirementId:a.requirementId,sourceWorkItemId:a.kind==='work'?a.id:null,sourceMilestoneId:a.kind==='milestone'?a.id:null,targetRequirementId:b.requirementId,targetWorkItemId:b.kind==='work'?b.id:null,targetMilestoneId:b.kind==='milestone'?b.id:null};
   };
   const validate=(source:string,destination:string):GraphConnectionIssue|null=>{
     if(source===destination)return {message:'不能依赖自身',nodeIds:[source]};
@@ -303,7 +304,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
     const direct=kind==='work'&&data.requirements.find(r=>r.id===focus&&r.executionMode==='direct');
     if(direct&&!confirmSplit){if(['blocked','pending_acceptance','completed','cancelled'].includes(direct.status)){setIssue({message:'请先解阻或返工，再拆分剩余工作'});setPlacing('');return;}setSplitRequest({position,attributes});setPlacing('');return;}
     const initial=direct?changeEntity(draft.changes,{entity:'requirement',id:direct.id,op:'update',expectedVersion:formal.requirements.find(r=>r.id===direct.id)?.version,data:{executionMode:'work_items',reason:'在画布拆分剩余工作'}}):draft.changes;
-    const id=crypto.randomUUID(),entity=kind as EditorEntityChange['entity'],entry:EditorEntityChange={id,entity,op:'create',requirementId:entity==='requirement'?undefined:focus||null,data:attributes||(entity==='milestone'?{title:'新里程碑',confirmationMode:'auto'}:{title:'新工作项',durationDays:1,reason:requirement&&requirement.status!=='planning'&&requirement.status!=='not_started'?'在画布新增工作项':undefined})};
+    const id=randomUUID(),entity=kind as EditorEntityChange['entity'],entry:EditorEntityChange={id,entity,op:'create',requirementId:entity==='requirement'?undefined:focus||null,data:attributes||(entity==='milestone'?{title:'新里程碑',confirmationMode:'auto'}:{title:'新工作项',durationDays:1,reason:requirement&&requirement.status!=='planning'&&requirement.status!=='not_started'?'在画布新增工作项':undefined})};
     const positions={...livePositions.current,...layoutValue?.positions,[id]:position};if(direct)delete positions['execute:'+direct.id];
     draft.change(withLayout({...initial,entities:[...initial.entities||[],entry]},positions));setPlacing('');setCreatingRequirement(null);select(id);
   };

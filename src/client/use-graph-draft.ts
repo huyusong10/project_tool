@@ -1,3 +1,4 @@
+import {randomUUID} from './random-uuid';
 import {executionDraftConflicts,type ExecutionCommand} from '../shared/execution-draft';
 import {EditorSession,newHistory,readHistory,type HistoryCommand,type EditorHistory,type FieldAvailability} from './editor-session';
 import {projectFieldActive} from './editor-fields';
@@ -154,7 +155,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
         const exact=saveInput();
         const confirmed = JSON.stringify(exact)===fingerprint&&latest.current || await api<DependencyChangePreview>('/api/projects/' + data.projectId + '/dependency-changes/preview', { method: 'POST', body: jsonBody(exact), readOnly: true });
         if(allowApply&&!allowApply(confirmed)){setPreview(confirmed);latest.current=confirmed;return false;}
-        batch = { ...exact, batchId: crypto.randomUUID(), previewToken: confirmed.previewToken };
+        batch = { ...exact, batchId: randomUUID(), previewToken: confirmed.previewToken };
       }
       await writeDraftRecord(pendingKey,batch);storePending(batch);
       const receipt=await api<DependencyChangeReceipt>('/api/projects/' + data.projectId + '/dependency-changes/apply', { method: 'POST', body: jsonBody(batch) });

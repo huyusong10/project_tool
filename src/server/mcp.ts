@@ -1,6 +1,10 @@
 import {listDeliveryCommitments,getDeliveryCommitment,deliveryCommitmentSummary} from './services/commitments';
 import {isCoordinationEdit,assertCoordinationAccess} from './services/blocker-coordination';
-import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor} from './services/delivery-execution';
+import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor,directStartConditions} from './services/delivery-execution';
+import { queryRequirements, queryWorkItems, readWorkItem, queryProgressUpdates } from './services/queries';
+import { readPathGraph } from './services/path-graph';
+import { projectChangeVersion } from './services/project-change-version';
+import { requirementQuerySchema, workItemQuerySchema, progressQuerySchema, pathGraphQuerySchema } from '../shared/query-contracts';
 import {directRequirementCommandSchema} from '../shared/contracts';
 import type { FastifyInstance } from 'fastify';
 import { McpServer, type StandardSchemaWithJSON, type ToolCallback } from '@modelcontextprotocol/server';
@@ -97,7 +101,7 @@ const json = (value: unknown) => ({
 });
 
 function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown) => void) {
-  const server = new McpServer({ name: 'project-manage', version: '1.2.0' });
+  const server = new McpServer({ name: 'project-manage', version: '1.3.0' });
   const inputSchemas = new Map<string, StandardSchemaWithJSON>();
   const registerTool = <InputArgs extends StandardSchemaWithJSON>(
     name: string,
@@ -105,7 +109,8 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     callback: ToolCallback<InputArgs>,
   ) => {
     inputSchemas.set(name, config.inputSchema);
-    return server.registerTool(name, config, (async (...args: Parameters<ToolCallback<InputArgs>>) => {
+    const readOnly = /^(get_|list_|query_|preview_|dashboard_summary$|people_concurrency$)/.test(name);
+    return server.registerTool(name, { ...config, annotations: { readOnlyHint: readOnly, ...(readOnly ? { destructiveHint: false, idempotentHint: true, openWorldHint: false } : {}) } }, (async (...args: Parameters<ToolCallback<InputArgs>>) => {
     try {
       return await (callback as (...values: unknown[]) => unknown)(...(args as unknown[]));
     } catch (error) {
@@ -120,14 +125,21 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     }) as ToolCallback<InputArgs>);
   };
 
-  registerTool('get_diagram_layouts',{description:'读取已保存的团队画布位置与布局版本',inputSchema:z.object({projectId:idSchema})},async({projectId})=>json(readDiagramLayouts(projectId,actor)));
+  registerTool('query_requirements', { description: '分页查询需求：支持关键词、负责人、参与人、状态、交付范围、高风险/延期及计划日期区间相交筛选。默认省略工作项，includeWorkItems=true 返回工作项。返回 items/total/page/pageSize/pages；旧 list_requirements 仍返回完整数组。', inputSchema: requirementQuerySchema }, async input => json(queryRequirements(input, actor)));
+  registerTool('list_work_items', { description: '分页查询项目内工作项，支持需求、关键词、负责人 ownerId、负责人或协作者 participantId、状态、未完成 active、逾期 overdue、未分派 unassigned。from/to 按计划区间相交筛选，未排期不匹配日期。返回完整工作项字段及所属需求、项目、预测依据和版本。', inputSchema: workItemQuerySchema }, async input => json(queryWorkItems(input, actor)));
+  registerTool('get_work_item', { description: '按工作项 ID 读取执行详情、负责人和协作者、计划与实际日期、阻塞及预测依据、未满足前置和版本。进展历史使用 list_progress_updates。', inputSchema: idParamsSchema }, async ({ id }) => json(readWorkItem(id, actor)));
+  registerTool('list_progress_updates', { description: '分页读取项目进展历史，可按需求、工作项、发布账号、事件类型和正文关键词筛选。from/to 为北京时间自然日，含首尾日；按发布时间及写入顺序倒序。翻页原样传入首次返回的 snapshot，避免新记录挤动分页。', inputSchema: progressQuerySchema }, async input => json(queryProgressUpdates(input, actor)));
+  registerTool('get_project_change_version', { description: '轻量读取项目变更版本，用于比较是否需要刷新；包括业务日期、分析版本及共享布局等，不执行路径分析。返回 version。', inputSchema: projectScopeInputSchema }, async ({ projectId }) => json(projectChangeVersion(projectId, actor)));
+  registerTool('get_requirement_start_conditions', { description: '需求负责人或经理读取直接执行需求的未满足前置；工作项前置见 get_work_item。', inputSchema: idParamsSchema }, async ({ id }) => { assertRequirementOwnerOrManager(actor, id); return json(directStartConditions(id)); });
+  registerTool('get_path_graph', { description: '读取与网页共用的拓扑视图 cards/links。view=project 为需求汇总，view=requirement 必须传 requirementId，展示内部及直接外部节点；target 决定关键性分析目标。可用 rootNodeId、traversal、depth 查询上下游，q 过滤节点。返回省略数量和可见节点的已存布局；保存前用 get_diagram_layouts 读取完整坐标再合并，避免覆盖隐藏坐标。layout=auto 计算新布局及折线，format=svg 额外导出 SVG 文本。自动布局使用固定卡片尺寸，最多 200 节点/1000 关系，不保存坐标；保存用批次 changes.layouts。', inputSchema: pathGraphQuerySchema }, async input => json(await readPathGraph(input, actor)));
+  registerTool('get_diagram_layouts',{description:'读取已保存的团队画布位置与布局版本；scope 为 global 或 requirement:需求ID，direction 为 right/down。保存通过 preview_dependency_changes/apply_dependency_changes 的 changes.layouts，expectedVersion 使用本结果 version；不存在的布局为 0。',inputSchema:z.object({projectId:idSchema})},async({projectId})=>json(readDiagramLayouts(projectId,actor)));
   registerTool('milestone_command',{description:'人工确认或重新打开独立里程碑，记录操作者和时间',inputSchema:z.object({id:idSchema,action:z.enum(['achieve','reopen']),expectedVersion:z.number().int().positive()})},async({id,action,...input})=>json(milestoneCommand(id,action,input,actor)));
   registerTool('list_delivery_commitments', {description:'读取项目整体交付承诺历史；确认承诺使用项目批量预览与保存',inputSchema:z.object({projectId:idSchema})},async({projectId})=>json(listDeliveryCommitments(projectId,actor)));
   registerTool('get_delivery_commitment', {description:'读取不可修改的承诺快照及与上一次确认的差异',inputSchema:z.object({projectId:idSchema,commitmentId:idSchema})},async({projectId,commitmentId})=>json(getDeliveryCommitment(projectId,commitmentId,actor)));
   registerTool('get_delivery_commitment_summary', {description:'按验收期间比较首次承诺和最近确认；无有效样本返回 null，同时返回覆盖数量。旧 on_time_rate 为当前计划口径。',inputSchema:z.object({projectId:idSchema,from:z.string().optional(),to:z.string().optional()})},async({projectId,from,to})=>json(deliveryCommitmentSummary(projectId,actor,from,to)));
-  registerTool('get_path_analysis', { description: '查询完整项目网络的关键路径、交付预测、风险和阻塞来源；target可为project、acceptance:需求ID或工作项ID', inputSchema: pathQuery.extend({ projectId: idSchema }) }, async ({ projectId, target }) => json(readPathAnalysis(projectId, target, actor)));
-  registerTool('preview_dependency_changes', { description: '预览整批依赖与工期修改，不保存正式数据', inputSchema: dependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(previewDependencyChanges(projectId, input, actor)));
-  registerTool('apply_dependency_changes', { description: '按预览凭据原子提交依赖与工期批次；相同批次标识不会重复写入', inputSchema: applyDependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(applyDependencyChanges(projectId, input, actor)));
+  registerTool('get_path_analysis', { description: '查询完整项目执行网络 nodes/edges、依赖、关键性、余量、交付预测、风险与阻塞来源；target 可为 project、acceptance:需求ID、工作项ID或里程碑ID。始终返回全图，局部或需求汇总图使用 get_path_graph；revision 用于批次 expectedRevision。', inputSchema: pathQuery.extend({ projectId: idSchema }) }, async ({ projectId, target }) => json(readPathAnalysis(projectId, target, actor)));
+  registerTool('preview_dependency_changes', { description: '预览原子批次，不保存：changes.add/remove 为依赖，estimates 为工作项估算，entities 支持需求/工作项/里程碑的 create/update/delete，layouts 为共享坐标，commitment 为交付承诺。实体创建 id 和连线 clientId 使用客户端临时唯一 ID，可在同批次互相引用；修改实体需 expectedVersion。布局 scope=global 或 requirement:需求ID，expectedVersion 为已存布局版本或 0。返回 analysis、differences、previewToken；确认后原样提交本输入和凭据。', inputSchema: dependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(previewDependencyChanges(projectId, input, actor)));
+  registerTool('apply_dependency_changes', { description: '原子提交已预览的依赖、估算、实体、布局及交付承诺。原样传入预览输入和 previewToken，另生成 batchId UUID；同一批次重试复用 batchId。回执 addedIds 将临时实体/关系 ID 映射为正式 ID。版本或跨日失效时重新预览；结果不确定先查询 get_dependency_change_receipt。', inputSchema: applyDependencyChangesInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(applyDependencyChanges(projectId, input, actor)));
   registerTool('get_dependency_change_receipt', { description: '查询本次依赖批次的提交回执', inputSchema: z.object({ projectId: idSchema, batchId: z.string().uuid() }) }, async ({ projectId, batchId }) => json(getDependencyChangeReceipt(projectId, batchId, actor)));
   registerTool('add_dependency', { description: '增加完成后开始的依赖，必须提供最新项目分析版本', inputSchema: dependencyInput.extend({ projectId: idSchema }) }, async ({ projectId, ...input }) => json(addDependency(projectId, input, actor)));
   registerTool('remove_dependency', { description: '移除依赖', inputSchema: pathVersion.extend({ id: idSchema }) }, async ({ id, ...input }) => json(removeDependency(id, input, actor)));
@@ -171,7 +183,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     assertAdmin(actor); return json(restoreProject(id, actor, input));
   });
 
-  registerTool('list_requirements', { description: '筛选查询需求', inputSchema: requirementListInputSchema }, async (input) => {
+  registerTool('list_requirements', { description: '按项目、状态、交付范围及延期/高风险筛选需求；返回数组，每项包含 workItems。精确筛选和分页使用 query_requirements；完整进展历史使用 get_requirement 或 list_progress_updates。', inputSchema: requirementListInputSchema }, async (input) => {
     if (input.includeDeleted) assertProjectManager(actor, input.projectId); else assertProjectReadable(actor, input.projectId);
     return json(listRequirements(input));
   });
