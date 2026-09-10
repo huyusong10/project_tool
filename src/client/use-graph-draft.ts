@@ -6,6 +6,7 @@ import {readDraftRecord,writeDraftRecord,clearDraftRecords,ownsDraft,takeDraft,r
 import { api, ApiError, isWriteOutcomeUnknown, jsonBody } from './api';
 import type { DependencyChanges, DependencyChangePreview, DependencyChangeReceipt, DependencyChangesInput } from '../shared/path-contracts';
 import type { PathAnalysis } from '../shared/paths';
+import type {DraftTemplateInstance} from '../shared/template-instance';
 
 const prefix = 'pm-graph-draft:';
 export function clearGraphDrafts(accountId?: string) {
@@ -86,6 +87,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     try { return JSON.parse(sessionStorage.getItem(pendingKey) || 'null'); } catch { return null; }
   });
   const [preview, setPreview] = useState<DependencyChangePreview | null>(null), [error, setError] = useState<Error | null>(null);
+  const [templateInstances,setTemplateInstances]=useState<DraftTemplateInstance[]>([]);
   const [previewing, setPreviewing] = useState(false);
   const [previewAttempt,setPreviewAttempt]=useState(0);
   const generation = useRef(0), latest = useRef<DependencyChangePreview | null>(null);
@@ -112,7 +114,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
       void api<DependencyChangePreview>('/api/projects/' + data.projectId + '/dependency-changes/preview', {
         method: 'POST', body: fingerprint, readOnly: true, signal: controller.signal,
       }).then(result => {
-        if (current === generation.current) { setPreview(result); latest.current = result; setError(null); }
+        if (current === generation.current) { setPreview(result);setTemplateInstances(result.templateInstances||[]); latest.current = result; setError(null); }
       }).catch(caught => { if (current === generation.current && !controller.signal.aborted) {setError(caught);if(caught instanceof ApiError&&[401,403].includes(caught.status))denied.current();} })
         .finally(() => { if (current === generation.current) setPreviewing(false); });
     }, 180);
@@ -157,6 +159,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     } finally { history.setBusy(false); }
   };
   return {
+    templateInstances,
     ...history,loading:history.loading||!pendingReady,changes,count,conflict,conflicts:conflict?rebased.conflicts:[],unresolved:rebased.pending.length,resolveConflict:(key:string,value:'draft'|'server')=>setResolutionState(old=>({version:resolutionVersion,values:{...(old.version===resolutionVersion?old.values:{}),[key]:value}})),preview, previewing, pending, error, save,retryPreview:()=>setPreviewAttempt(n=>n+1),
     issue: error instanceof ApiError ? error.details as { nodeIds?: string[]; edgeIds?: string[] } | undefined : undefined,
     cancel: () => { if (!pending) { history.reset(empty, String(data.revision)); setError(null); } },

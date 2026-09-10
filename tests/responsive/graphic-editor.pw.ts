@@ -23,6 +23,33 @@ const viewportValue=(page:Page)=>page.locator('.react-flow__viewport').evaluate(
 const positionsValue=(page:Page)=>page.locator('.react-flow__node').evaluateAll(nodes=>Object.fromEntries(nodes.map(n=>[(n as HTMLElement).dataset.id,(n as HTMLElement).style.transform])));
 const blank=(page:Page)=>page.locator('.react-flow__pane').click({position:{x:12,y:300}});
 
+test('模板实例：首次保存前改名复制删除、慢预览、刷新及撤销保持节点和草稿',async({page})=>{
+ const {a,project,analysis}=await fixture(page,false),initial=await analysis();
+ await page.goto('/paths?pathScope=all');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();await page.getByLabel('添加元素',{exact:true}).click();
+ await page.locator('.graph-elements').getByRole('button',{name:'需求',exact:true}).click();const box=(await page.locator('.dependency-canvas').boundingBox())!;await page.mouse.click(box.x+box.width*.55,box.y+box.height*.7);
+ const dialog=page.getByRole('dialog');await dialog.getByLabel('需求标题').fill('模板草稿需求');await dialog.getByRole('combobox',{name:'流程模板',exact:true}).selectOption(a.templateId!);
+ await dialog.getByRole('button',{name:'加入草稿',exact:true}).click();await page.getByRole('button',{name:'进入需求路径',exact:true}).click();
+ const generated=page.locator('.react-flow__node').filter({hasText:'集成验证'});await expect(generated).toHaveCount(1);await ready(page);
+ const workId=(await generated.getAttribute('data-id'))!,work=page.locator('.react-flow__node[data-id="'+workId+'"]'),draftId=new URL(page.url()).pathname.split('/').at(-1)!;
+ await page.route('**/dependency-changes/preview',async route=>{await new Promise(resolve=>setTimeout(resolve,500));await route.continue();});
+ const refreshed=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/preview')&&r.status()===200&&r.request().postData()?.includes('调整后的环节')===true);
+ await page.evaluate(id=>{const state={active:true,missing:0};Object.assign(window,{templateNodeCheck:state});const frame=()=>{if(!state.active)return;if(!document.querySelector('.react-flow__node[data-id="'+id+'"]'))state.missing++;requestAnimationFrame(frame);};requestAnimationFrame(frame);},workId);
+ await work.locator('.dependency-card').click();await page.getByLabel('元素名称',{exact:true}).fill('调整后的环节');await page.getByLabel('元素名称',{exact:true}).blur();
+ await expect(work).toContainText('调整后的环节');await page.getByLabel('撤销',{exact:true}).click();await expect(work).toContainText('集成验证');await page.getByLabel('重做',{exact:true}).click();await expect(work).toContainText('调整后的环节');
+ await expect(page.locator('[data-draft-stored="true"]')).toBeVisible();
+ await refreshed;expect(await page.evaluate(()=>{const s=(window as unknown as {templateNodeCheck:{active:boolean;missing:number}}).templateNodeCheck;s.active=false;return s.missing;})).toBe(0);
+ await page.getByLabel('复制元素',{exact:true}).click();await expect(page.locator('.react-flow__node').filter({hasText:'调整后的环节 副本'})).toHaveCount(1);
+ await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();await page.locator('.react-flow__node[data-id="'+workId+'"] .dependency-card').click();await page.getByLabel('删除元素',{exact:true}).click();await page.getByRole('button',{name:'加入删除草稿',exact:true}).click();
+ await expect(page.locator('.react-flow__node[data-id="'+workId+'"]')).toHaveCount(0);await expect(page.locator('[data-draft-stored="true"]')).toBeVisible();await page.reload();
+ await expect(page.locator('.react-flow__node').filter({hasText:'调整后的环节 副本'})).toHaveCount(1);await ready(page);
+ await page.getByLabel('撤销',{exact:true}).click();await expect(page.locator('.react-flow__node[data-id="'+workId+'"]')).toHaveCount(1);await page.getByLabel('重做',{exact:true}).click();await expect(page.locator('.react-flow__node[data-id="'+workId+'"]')).toHaveCount(0);
+ expect((await analysis()).requirements).toHaveLength(initial.requirements.length);
+ const applied=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/apply')&&r.request().method()==='POST');await page.getByLabel('保存修改',{exact:true}).click();const response=await applied;expect(response.ok(),await response.text()).toBe(true);
+ const receipt=await response.json(),saved=await(await page.request.get('/api/requirements/'+receipt.addedIds[draftId])).json() as Requirement;
+ expect(saved.workItems.map(w=>w.title).sort()).toEqual(['方案交付','调整后的环节 副本'].sort());expect(saved.workItems.every(w=>w.status==='not_started')).toBe(true);
+ expect((await analysis()).requirements.filter(r=>r.projectId===project.id)).toHaveLength(initial.requirements.length+1);await expect(page).not.toHaveURL(/draftProject=/);
+});
+
 test('批量交付：拖线到新里程碑并后置安排，继续改名后保存和刷新保持一致',async({page})=>{
  const {a,analysis}=await fixture(page,false),before=await analysis();
  await page.goto('/requirements/'+a.id+'?view=path');await ready(page);

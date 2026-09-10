@@ -129,7 +129,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
     }
     void onReload().catch(()=>{});
   });
-  const data=useMemo(()=>draft.preview?.analysis||draftNetwork(formal,draft.changes),[draft.preview,formal,draft.changes]);
+  const data=useMemo(()=>draft.preview?.analysis||draftNetwork(formal,draft.changes,draft.templateInstances),[draft.preview,formal,draft.changes,draft.templateInstances]);
   const editing=draft.active&&!draft.busy&&!draft.pending&&!draft.loading&&!draft.readOnly,search=params.get('pathSearch')||'';
   const viewStorage='pm-path-view:'+(session.accountId||'guest')+':'+formal.projectId+':'+(focus||'all');
   const viewLoaded=useRef(false);
@@ -239,7 +239,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
     if(!manager&&(!canEdit||edge.sourceRequirementId!==focus||edge.targetRequirementId!==focus))return {message:'跨需求关系由项目经理维护'};
     const duplicate=data.dependencies.find(d=>d.sourceRequirementId===edge.sourceRequirementId&&d.targetRequirementId===edge.targetRequirementId&&d.sourceWorkItemId===edge.sourceWorkItemId&&d.targetWorkItemId===edge.targetWorkItemId&&(d.sourceMilestoneId||null)===(edge.sourceMilestoneId||null)&&(d.targetMilestoneId||null)===(edge.targetMilestoneId||null));
     if(duplicate)return {kind:'duplicate',message:'这条依赖已经存在',nodeIds:[source,destination],edgeIds:[duplicate.id],attempt:{source,target:destination}};
-    const problem=dependencyIssue(formal,{...draft.changes,add:[...draft.changes.add,edge]});return problem?{...problem,attempt:{source,target:destination}}:null;
+    const problem=dependencyIssue(formal,{...draft.changes,add:[...draft.changes.add,edge]},draft.templateInstances);return problem?{...problem,attempt:{source,target:destination}}:null;
   };
   const connect=(source:string,destination:string)=>{
     const error=validate(source,destination);if(error){setIssue(error);return;}
@@ -254,7 +254,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
     if(!manager&&(edge.sourceRequirementId!==focus||edge.targetRequirementId!==focus))return {message:'跨需求关系由项目经理维护'};
     const duplicate=data.dependencies.find(d=>d.id!==reconnectRelation!.id&&d.sourceRequirementId===edge.sourceRequirementId&&d.targetRequirementId===edge.targetRequirementId&&d.sourceWorkItemId===edge.sourceWorkItemId&&d.targetWorkItemId===edge.targetWorkItemId&&(d.sourceMilestoneId||null)===(edge.sourceMilestoneId||null)&&(d.targetMilestoneId||null)===(edge.targetMilestoneId||null));
     if(duplicate)return {kind:'duplicate',message:'这条依赖已经存在',nodeIds:[source,destination],edgeIds:[duplicate.id]};
-    const problem=dependencyIssue(formal,reconnectChanges(source,destination));return problem?{...problem,attempt:{source,target:destination}}:null;
+    const problem=dependencyIssue(formal,reconnectChanges(source,destination),draft.templateInstances);return problem?{...problem,attempt:{source,target:destination}}:null;
   };
   const label=(id:string)=>{const n=data.nodes.find(n=>n.id===id),r=data.requirements.find(r=>r.id===(n?.requirementId||id));return n?(['work','milestone'].includes(n.kind)&&r?r.title+' · '+n.title:n.title):r?.title||'失效端点';};
   const issueCard=(id:string)=>focus?id:data.nodes.find(n=>n.id===id)?.requirementId||id;
@@ -289,7 +289,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const finder=<><input aria-label="筛选图中节点" value={search} placeholder={focus?'搜索工作项／拼音':'搜索需求、工作项／拼音'} onChange={e=>{setParam('pathSearch',e.target.value);setPanel('nodes');}}/><button className="ghost-button" onClick={()=>openPanel('filters')}>筛选 · {filterCount}</button><button className="ghost-button" onClick={()=>openPanel('nodes')}>节点 {matching.length}</button><button className="ghost-button" onClick={()=>{setParam('pathSearch','');setParam('pathFloat','');applyFilters({...emptyRequirementFilters(),statuses:focus?[]:[...unfinishedStatuses]});}}>清空</button></>;
   const entityFor=(id:string):EditorEntityChange|null=>{
     const existing=draft.changes.entities?.find(c=>c.id===id);if(existing)return existing;
-    const r=formal.requirements.find(r=>r.id===id),n=formal.nodes.find(n=>n.id===id),m=formal.milestones?.find(m=>m.id===id);
+    const r=formal.requirements.find(r=>r.id===id),n=formal.nodes.find(n=>n.id===id)||data.nodes.find(n=>n.id===id),m=formal.milestones?.find(m=>m.id===id)||data.milestones?.find(m=>m.id===id);
     if(n?.kind==='execution'){const pending=draft.changes.entities?.find(c=>c.entity==='requirement'&&c.id===n.requirementId);if(pending)return pending;const r=formal.requirements.find(r=>r.id===n.requirementId);return r?{id:r.id,entity:'requirement',op:'update',expectedVersion:r.version,data:{}}:null;}
     if(r)return {id,entity:'requirement',op:'update',expectedVersion:r.version,data:{}};
     if(n&&['work','milestone'].includes(n.kind))return {id,entity:n.kind==='milestone'?'milestone':'work',op:'update',requirementId:n.requirementId,expectedVersion:m?.version||n.version,data:{}};
@@ -339,7 +339,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
           for(const d of current)if(!ids.includes(relationCard(d,true))&&editableRelation(d))next=remove(d.id,next);
           const existing=current.map(d=>relationCard(d,true));
           next={...next,add:[...next.add,...ids.filter(id=>!existing.includes(id)).map(id=>proposal(id,selected)!)]};
-          const problem=dependencyIssue(formal,next);if(problem)setIssue(problem);else{draft.change(next);setIssue(undefined);}
+          const problem=dependencyIssue(formal,next,draft.templateInstances);if(problem)setIssue(problem);else{draft.change(next);setIssue(undefined);}
         }}/></details>}
       {!editing&&node?.kind==='execution'&&node.requirementId&&<DeliveryControlsForId id={node.requirementId}/>}
       {!editing&&node?.kind==='acceptance'&&node.requirementId===focus&&manager&&<button className="ghost-button" onClick={()=>guarded(()=>setEditor({kind:'acceptance'}))}>预计验收日期</button>}

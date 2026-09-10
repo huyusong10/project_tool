@@ -1,16 +1,19 @@
 import type {DependencyChanges,EditorEntityChange} from '../shared/path-contracts';
 import {dependencySource,dependencyTarget,type PathAnalysis} from '../shared/paths';
+import {isDraftTemplateId} from '../shared/template-instance';
 export function changeEntity(changes:DependencyChanges,change:EditorEntityChange):DependencyChanges{
   const old=changes.entities?.find(c=>c.id===change.id);
   return {...changes,entities:[...(changes.entities||[]).filter(c=>c.id!==change.id),{...old,...change,op:old?.op==='create'?'create':change.op,data:{...old?.data,...change.data}}]};
 }
 export function deleteEntities(data:PathAnalysis,changes:DependencyChanges,ids:string[]):DependencyChanges{
   const removed=new Set(ids);for(const n of data.nodes)if(n.requirementId&&removed.has(n.requirementId))removed.add(n.id);
+  for(const c of changes.entities||[])if(c.requirementId&&removed.has(c.requirementId))removed.add(c.id);
   const edges=data.dependencies.filter(d=>removed.has(dependencySource(d))||removed.has(dependencyTarget(d))||removed.has(d.sourceRequirementId)||removed.has(d.targetRequirementId));
   const creates=new Set(changes.entities?.filter(c=>c.op==='create').map(c=>c.id));
   const entities=(changes.entities||[]).filter(c=>!removed.has(c.id));
+  const removedTemplates=(changes.entities||[]).filter(c=>removed.has(c.id));
   for(const id of ids){if(creates.has(id))continue;const r=data.requirements.find(r=>r.id===id),n=data.nodes.find(n=>n.id===id),m=data.milestones?.find(m=>m.id===id);if(!r&&!n)continue;if(n&&['start','acceptance','project','execution'].includes(n.kind))continue;entities.push({entity:r?'requirement':m?'milestone':'work',op:'delete',id,requirementId:n?.requirementId,expectedVersion:r?.version||m?.version||n?.version,data:{}});}
-  return {...changes,entities,add:changes.add.filter(d=>!edges.some(e=>e.id===d.clientId)),remove:[...new Set([...changes.remove,...edges.filter(d=>!changes.add.some(e=>e.clientId===d.id)).map(d=>d.id)])],estimates:changes.estimates.filter(e=>!removed.has(e.workItemId)),layouts:changes.layouts?.map(l=>({...l,positions:Object.fromEntries(Object.entries(l.positions).filter(([id])=>!removed.has(id)))}))};
+  return {...changes,entities,add:changes.add.filter(d=>!edges.some(e=>e.id===d.clientId)),remove:[...new Set([...changes.remove,...edges.filter(d=>!changes.add.some(e=>e.clientId===d.id)).map(d=>d.id)])].filter(id=>!isDraftTemplateId(id,removedTemplates)),estimates:changes.estimates.filter(e=>!removed.has(e.workItemId)),layouts:changes.layouts?.filter(l=>!l.scope.startsWith('requirement:')||!removed.has(l.scope.slice(12))).map(l=>({...l,positions:Object.fromEntries(Object.entries(l.positions).filter(([id])=>!removed.has(id)))}))};
 }
 export function copyEntities(data:PathAnalysis,changes:DependencyChanges,selected:string[],requirementId?:string){
   const mapping:Record<string,string>={},entities:EditorEntityChange[]=[],requirements=data.requirements.filter(r=>selected.includes(r.id));
