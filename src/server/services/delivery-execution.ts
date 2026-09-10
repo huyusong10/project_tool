@@ -40,10 +40,10 @@ export function assertRequirementAcceptor(id:string,actor:Actor){
   if(r.acceptanceOwnerId===auth.personId&&r.acceptanceOwnerValid)return;
   forbidden('只有指定验收人或项目经理可以验收和退回本需求');
 }
-function event(id:string,type:string,content:string,actor:Actor){
+function event(id:string,type:string,content:string,actor:Actor,workItem?:{id:string;progress:number}){
   const now=new Date().toISOString(),r=sqlite.prepare('SELECT progress FROM requirements WHERE id=?').get(id) as {progress:number};
-  sqlite.prepare('INSERT INTO progress_updates(id,requirement_id,percent,content,event_type,created_by_account_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(randomUUID(),id,r.progress,content,type,actor.accountId||null,now,now);
-  recordAudit(actor,type,'requirement',id,content);
+  sqlite.prepare('INSERT INTO progress_updates(id,requirement_id,work_item_id,percent,work_item_percent,content,event_type,created_by_account_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),id,workItem?.id||null,r.progress,workItem?.progress??null,content,type,actor.accountId||null,now,now);
+  recordAudit(actor,type,workItem?'work_item':'requirement',workItem?.id||id,content);
 }
 export function createDirectRequirement(raw:JsonObject,actor:Actor,deferNormalization=false){
   const v=createRequirementInputSchema.parse(raw),auth=requireAuthorizationActor(actor);requireActiveProject(v.projectId);
@@ -151,7 +151,9 @@ export function returnRequirement(id:string,input:JsonObject,actor:Actor){
     for(const wid of new Set(ids))sqlite.prepare("UPDATE work_items SET status=CASE WHEN actual_start IS NULL THEN 'not_started' ELSE 'in_progress' END,progress=CASE WHEN actual_start IS NULL THEN 0 ELSE 99 END,actual_end=NULL,version=version+1,updated_at=? WHERE id=?").run(new Date().toISOString(),wid);
     const updated=sqlite.prepare("UPDATE requirements SET status='in_progress',progress=99,accepted_at=NULL,accepted_by_account_id=NULL,version=version+1,updated_at=? WHERE id=? AND version=?").run(new Date().toISOString(),id,r.version);
     assertVersionedWrite(updated,'需求');for(const wid of new Set(ids))invalidateForecastReview('work',wid);assertRequirementAcceptor(id,actor);
-    event(id,'rework',reason+'；返工项：'+ids.join('、')+'；原验收日期：'+(r.acceptedAt||'尚未验收'),actor);
+    const returned=r.workItems!.filter(w=>ids.includes(w.id));
+    event(id,'rework',reason+'；返工项：'+returned.map(w=>w.title).join('、')+'；原验收日期：'+(r.acceptedAt||'尚未验收'),actor);
+    for(const w of returned)event(id,'rework',reason,actor,{id:w.id,progress:w.actualStart?99:0});
   }).immediate();return getRequirement(id);
 }
 

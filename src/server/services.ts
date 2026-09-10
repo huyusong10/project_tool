@@ -1,4 +1,5 @@
 import {invalidateForecastReview} from './services/forecast-reviews';
+import {preserveRecordedAcceptance} from './services/acceptance-history';
 import {validateCoordination,persistCoordination,assertCoordinationAccess} from './services/blocker-coordination';
 import {coordinationKeys} from '../shared/blocker-coordination';
 import {rescheduleDirectRequirement,createDirectRequirement,updateDeliveryRequirement,executeDirectRequirement,validateDeliveryFields,assertRequirementAcceptor} from './services/delivery-execution';
@@ -1754,6 +1755,7 @@ export function reopenWorkItem(id: string, input: JsonObject, actor: Actor) {
   const nextStatus = current.actualStart ? 'in_progress' : 'not_started'; const nextProgress = nextStatus === 'not_started' ? 0 : restoredProgress;
   const now = nowIso();
   sqlite.transaction(() => {
+    preserveRecordedAcceptance(current.requirementId);
     const changed = sqlite.prepare(`UPDATE work_items SET status=?, progress=?, actual_end=NULL, blocked_at=NULL, blocked_reason=NULL,
       version=version+1, updated_at=? WHERE id=? AND version=?`).run(nextStatus, nextProgress, now, id, current.version);
     assertVersionedWrite(changed, '工作项');
@@ -1762,6 +1764,9 @@ export function reopenWorkItem(id: string, input: JsonObject, actor: Actor) {
     assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
     invalidateForecastReview('work',id);
     appendRequirementEvent(current.requirementId, 'reopen', reason, actor, id, nextProgress, null, now);
+    if (['pending_acceptance', 'completed'].includes(requirement.status)) {
+      appendRequirementEvent(current.requirementId, 'rework', `重开工作项：${current.title}；${reason}`, actor, null, null, null, now);
+    }
     audit(actor, 'reopen', 'work_item', id, `重开工作项：${current.title}`);
     assertProjectAssignees(current.requirementId, [requirement.ownerId, item.ownerId, ...item.collaborators.map((person) => person.id)], true);
   })();
