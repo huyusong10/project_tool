@@ -14,7 +14,7 @@ import {loadPathInput} from './paths';
 import {analysePaths,dependencySource} from '../../shared/paths';
 import {recordAudit} from './audit';
 import {settleMilestones} from './milestones';
-import {requireActiveProject,assertExpectedVersion,assertVersionedWrite,requireText,type JsonObject} from './support';
+import {requireActiveProject,assertExpectedVersion,assertVersionedWrite,requireText,normalizeRequirementText,type JsonObject} from './support';
 import {normalizeDirectEstimates,persistDirectEstimates} from './direct-estimates';
 
 function refreshDirectForecast(id:string){
@@ -46,7 +46,7 @@ function event(id:string,type:string,content:string,actor:Actor){
   recordAudit(actor,type,'requirement',id,content);
 }
 export function createDirectRequirement(raw:JsonObject,actor:Actor,deferNormalization=false){
-  const v=createRequirementInputSchema.parse(raw),auth=requireAuthorizationActor(actor);requireActiveProject(v.projectId);
+  const v=normalizeRequirementText(createRequirementInputSchema.parse(raw)),auth=requireAuthorizationActor(actor);requireActiveProject(v.projectId);
   assertProjectManager(auth,v.projectId);validateDeliveryFields(v.projectId,v,actor);
   if(v.templateId)fail('直接执行不能同时使用流程；请选择工作项分解');
   const id=randomUUID(),now=new Date().toISOString();
@@ -64,7 +64,7 @@ export function createDirectRequirement(raw:JsonObject,actor:Actor,deferNormaliz
   return getRequirement(id);
 }
 export function updateDeliveryRequirement(id:string,raw:JsonObject,actor:Actor,split=false,deferNormalization=false){
-  const value=updateRequirementInputSchema.parse(raw),r=getRequirement(id),auth=requireAuthorizationActor(actor);
+  const value=normalizeRequirementText(updateRequirementInputSchema.parse(raw)),r=getRequirement(id),auth=requireAuthorizationActor(actor);
   if(isCoordinationEdit(value))assertCoordinationAccess('requirement',id,value,actor);else assertRequirementOwnerOrManager(auth,id);assertExpectedVersion(value,r.version);
   if(['completed','cancelled'].includes(r.status))fail('已结束需求不能编辑');
   validateDeliveryFields(r.projectId,value,actor,r);

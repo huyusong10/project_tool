@@ -23,6 +23,37 @@ const viewportValue=(page:Page)=>page.locator('.react-flow__viewport').evaluate(
 const positionsValue=(page:Page)=>page.locator('.react-flow__node').evaluateAll(nodes=>Object.fromEntries(nodes.map(n=>[(n as HTMLElement).dataset.id,(n as HTMLElement).style.transform])));
 const blank=(page:Page)=>page.locator('.react-flow__pane').click({position:{x:12,y:300}});
 
+test('工期一致性：未知工期保持空值，清空、刷新、撤销重做与保存一致',async({page})=>{
+ const {a,analysis}=await fixture(page,false);
+ const created=await page.request.post('/api/requirements/'+a.id+'/work-items',{data:{expectedVersion:a.version,title:'工期待确认',ownerId:a.ownerId}});
+ expect(created.ok(),await created.text()).toBe(true);const work=await created.json();
+ const formal=async()=> (await analysis()).nodes.find(n=>n.id===work.id)!.estimate.durationDays;
+ expect(await formal()).toBeNull();
+ await page.goto('/requirements/'+a.id+'?view=path');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();
+ const card=page.locator('.react-flow__node[data-id="'+work.id+'"] .dependency-card'),field=page.getByLabel('预计工期',{exact:true});
+ await card.click();await expect(field).toHaveValue('');
+ await field.fill('4');await field.blur();await expect(page.getByLabel('撤销',{exact:true})).toBeEnabled();
+ await field.fill('');await field.blur();await expect(field).toHaveAttribute('aria-invalid','false');await expect(page.locator('[data-draft-stored="true"]')).toBeVisible();
+ expect(await formal()).toBeNull();
+ await page.reload();await ready(page);await card.click();await expect(field).toHaveValue('');
+ await page.getByLabel('撤销',{exact:true}).click();await expect(field).toHaveValue('4');
+ await page.getByLabel('重做',{exact:true}).click();await expect(field).toHaveValue('');
+ const save=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/apply')&&r.request().method()==='POST');
+ await page.getByLabel('保存修改',{exact:true}).click();expect((await save).ok()).toBe(true);await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();
+ expect(await formal()).toBeNull();await page.reload();await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();await card.click();await expect(field).toHaveValue('');
+});
+
+test('工期一致性：模板仍需完整工作日，无效工期不提交并可取消',async({page})=>{
+ const {a}=await fixture(page,false);await page.goto('/templates?edit='+a.templateId);await ready(page);
+ await page.locator('.react-flow__node .dependency-card').first().click();const field=page.getByLabel('预计工期',{exact:true});await expect(field).toHaveValue('2');
+ let writes=0;page.on('request',r=>{if(r.method()==='PATCH'&&r.url().endsWith('/api/templates/'+a.templateId))writes++;});
+ await field.fill('1.5');await field.blur();await expect(field).toHaveAttribute('aria-invalid','true');
+ await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();await expect(field).toHaveCount(0);
+ await page.getByLabel('保存修改',{exact:true}).click();await expect(field).toBeFocused();expect(writes).toBe(0);
+ await field.fill('');await field.blur();await expect(field).toHaveAttribute('aria-invalid','true');
+ await field.focus();await field.press('Escape');await expect(field).toHaveValue('2');await expect(field).toHaveAttribute('aria-invalid','false');expect(writes).toBe(0);
+});
+
 test('新增里程碑与连线不移动已有视口，提示紧凑，循环说明包含真实部分交付',async({page},info)=>{
  const {a,b,analysis}=await fixture(page);await page.goto('/paths?pathScope=all');await ready(page);
  const beforeViewport=await viewportValue(page),beforePositions=await positionsValue(page),revision=(await analysis()).revision;

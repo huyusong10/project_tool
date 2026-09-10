@@ -5,7 +5,7 @@ import {sqlite} from '../database';
 import type {Actor} from '../auth';
 import {assertProjectManager,assertRequirementOwnerOrManager,requireAuthorizationActor} from '../authorization';
 import {fail,notFound} from '../errors';
-import {requireLabel} from './support';
+import {requireLabel,normalizeRequirementText} from './support';
 import {createRequirementInputSchema,updateRequirementInputSchema,createWorkItemInputSchema,updateWorkItemInputSchema} from '../../shared/contracts';
 import {addBusinessDays,businessDaysInclusive,plannedDatesFromOffset,plannedStartFromDeadline,canDeleteWorkItem,deriveRequirementMetrics} from '../../shared/domain';
 import {type PathInput,type PathRequirement} from '../../shared/paths';
@@ -43,7 +43,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     if(c.entity==='requirement'){
       if(c.op==='create'){
         const {reason:_creationReason,...creation}=c.data;
-        const value=createRequirementInputSchema.parse({...creation,projectId:snapshot.projectId,templateId:c.data.templateId||undefined});
+        const value=normalizeRequirementText(createRequirementInputSchema.parse({...creation,projectId:snapshot.projectId,templateId:c.data.templateId||undefined}));
         let template=value.templateId?listTemplates(snapshot.projectId).find(t=>t.id===value.templateId):undefined;
         if(value.templateId&&!template)fail('请选择当前项目的有效流程设计');
         if(value.executionMode!=='direct'&&(value.plannedStart||value.plannedEnd)&&!template){const project=sqlite.prepare('SELECT default_template_id AS id FROM projects WHERE id=?').get(snapshot.projectId) as {id:string|null};template=listTemplates(snapshot.projectId).find(t=>t.id===project.id)||listTemplates(snapshot.projectId)[0];}
@@ -72,7 +72,8 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
       }else if(c.op==='update'){
         const {reviewForecast:_reviewForecast,...editable}=c.data;
         if(c.data.reviewForecast&&req!.executionMode!=='direct')fail('分解需求请核对具体工作项的估算');
-        updateRequirementInputSchema.parse({...editable,expectedVersion:c.expectedVersion});
+        const {expectedVersion:_expectedVersion,...normalized}=normalizeRequirementText(updateRequirementInputSchema.parse({...editable,expectedVersion:c.expectedVersion}));
+        Object.assign(c.data,normalized);
         validateDeliveryFields(snapshot.projectId,c.data,actor,req as Parameters<typeof validateDeliveryFields>[3]);
         if(c.data.executionMode&&c.data.executionMode!==req!.executionMode){
           if(c.data.executionMode==='direct')fail('画布不支持将有工作项的需求切回直接执行');
@@ -137,7 +138,7 @@ export function persistEditorEntities(snapshot:PathInput,changes:EditorEntityCha
       if(c.op==='create'){const r=sqlite.prepare('SELECT version FROM requirements WHERE id=?').get(reqId) as {version:number};const w=createWorkItem(reqId!,{...fields,expectedVersion:r.version},actor)!;ids[c.id]=w.id;}
       else if(c.op==='update')updateWorkItem(c.id,{...fields,expectedVersion:c.expectedVersion},actor);
       else deleteWorkItem(c.id,{expectedVersion:c.expectedVersion},actor);
-      if(c.op!=='delete'&&(durationDays!==undefined||arrangement!==undefined||arrangementAnchor!==undefined)){
+      if(c.op==='create'||c.op==='update'&&(durationDays!==undefined||arrangement!==undefined||arrangementAnchor!==undefined)){
         const w=snapshot.workItems.find(w=>w.id===c.id)!;sqlite.prepare('UPDATE work_items SET duration_days=?,arrangement=?,arrangement_anchor=?,version=version+1 WHERE id=?').run(w.durationDays,w.arrangement||'early',ids[w.arrangementAnchor||'']||w.arrangementAnchor||null,ids[c.id]||c.id);
       }
     }else{
