@@ -19,6 +19,7 @@
 | 判断是否需要刷新项目 | `get_project_change_version` | `version`，包括业务日期及共享布局变化 |
 | 查询完整执行网络 | `get_path_analysis` | `nodes`、`edges`、依赖、关键性、余量、风险、预测 |
 | 查询拓扑视图或导出图 | `get_path_graph` | `cards`、`links`、范围数量、已保存布局，可附自动布局／SVG |
+| 整理分组、来源与导入 | `get_requirement_intake`、`preview_requirement_import`、`apply_requirement_import` 等 | [工具列表与导入契约](requirement-intake.md#rest-与-mcp) |
 
 `get_my_work` 按 Token 绑定账号查询；它的近期进展是该账号发布的最近 8 条。项目历史应使用 `list_progress_updates`。
 
@@ -28,7 +29,7 @@
 
 | 工具 | 筛选参数 |
 |---|---|
-| `query_requirements` | `q`、`ownerId`、`participantId`、`status`、`deliveryScope`、`view=delayed/high_risk`、`from/to`、`includeDeleted`；`includeWorkItems=true` 附带工作项 |
+| `query_requirements` | `q`、`groupId`、`tag`、`ownerId`、`participantId`、`status`、`deliveryScope`、`view=delayed/high_risk`、`from/to`、`includeDeleted`；`includeWorkItems=true` 附带工作项 |
 | `list_work_items` | `requirementId`、`q`、`ownerId`、`participantId`、`status`、`active`、`overdue`、`unassigned`、`from/to` |
 | `list_progress_updates` | `requirementId`、`workItemId`、`authorAccountId`、`eventType`、正文关键词 `q`、`from/to`、`snapshot` |
 

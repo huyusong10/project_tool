@@ -1,3 +1,4 @@
+import {OrganizationFilters,matchesOrganization} from './RequirementIntake';
 import {useViewPreference} from "../use-view-preference";
 import { useMemo } from "react";
 import { format } from "date-fns";
@@ -176,6 +177,7 @@ export function ProjectGantt({
   const [priority, setPriority] = useViewPreference<string>(resizeStorageKey+':priority',"");
   const [risk, setRisk] = useViewPreference<string>(resizeStorageKey+':risk',"");
   const [personId, setPersonId] = useViewPreference<string>(resizeStorageKey+':personId',"");
+  const [group,setGroup]=useViewPreference<string>(resizeStorageKey+':group',''),[tag,setTag]=useViewPreference<string>(resizeStorageKey+':tag','');
   const [schedule, setSchedule] = useViewPreference<string>(resizeStorageKey+':schedule',"");
   const [sort, setSort] = useViewPreference<RequirementSort>(resizeStorageKey+':sort',"risk");
   const asOfDate = asOfDateProp || requirements[0]?.asOfDate || todayIso();
@@ -200,7 +202,7 @@ export function ProjectGantt({
         || (schedule === "delayed" && requirement.delayed)
         || (schedule === "on_track" && scheduleComplete && !requirement.delayed)
         || (schedule === "unplanned" && !scheduleComplete);
-      return matchesKeyword
+      return matchesOrganization(requirement,group,tag)&&matchesKeyword
         && matchesRequirementFilters(requirement,{...emptyRequirementFilters(),statuses:status==='unfinished'?unfinishedStatuses:status?[status]:[]})
         && (!priority || requirement.processingPriority === priority)
         && (!risk || (requirement.riskEvaluated?requirement.riskLevel:"pending")===risk)
@@ -209,10 +211,10 @@ export function ProjectGantt({
     }).sort((left, right) => {
       return compareRequirements(left, right, sort);
     });
-  }, [personId, priority, requirements, risk, schedule, search, sort, status]);
-  const hasFilters = Boolean(search || status!=="in_progress" || priority || risk || personId || schedule || sort!=="risk");
+  }, [personId, priority, requirements, risk, schedule, search, sort, status,group,tag]);
+  const hasFilters = Boolean(group||tag||search || status!=="in_progress" || priority || risk || personId || schedule || sort!=="risk");
   const resetFilters = (nextStatus='in_progress') => {
-    setSort("risk");
+    setGroup("");setTag("");setSort("risk");
     setSearch("");
     setStatus(nextStatus);
     setPriority("");
@@ -257,7 +259,7 @@ export function ProjectGantt({
         </div>
       </header>
       <div className="gantt-filter-bar" aria-label="项目进展筛选">
-        <SearchInput className="gantt-filter-search" value={search} onChange={setSearch} placeholder="搜索需求、工作项或拼音" />
+        <OrganizationFilters items={requirements} group={group} tag={tag} onGroup={setGroup} onTag={setTag}/><SearchInput className="gantt-filter-search" value={search} onChange={setSearch} placeholder="搜索需求、工作项或拼音" />
         <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="按状态筛选">
           <option value="unfinished">未结束 · {requirements.filter(r=>!isClosedRequirement(r)).length}</option><option value="">全部状态 · {requirements.length}</option>
           {Object.entries(requirementStatusLabels).map(([value, label]) => <option value={value} key={value}>{label} · {requirements.filter(r=>r.status===value).length}</option>)}

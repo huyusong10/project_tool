@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { intakeExample } from '../../src/shared/intake';
 
 // 普通 HTTP 域名保留真实的非安全上下文；不覆盖浏览器的 crypto API。
 test.use({ launchOptions: { args: ['--host-resolver-rules=MAP project-manage.test 127.0.0.1', '--no-proxy-server'] } });
 
-test('局域网 HTTP 可加载、登录、恢复会话和保存流程草稿', async ({ page, baseURL }) => {
+test('局域网 HTTP 可加载、登录、恢复会话、保存流程草稿和导入需求', async ({ page, baseURL }) => {
   const login = await page.request.post('/api/login', { data: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } });
   expect(login.ok()).toBe(true);
   const session = await (await page.request.get('/api/session')).json();
@@ -49,5 +50,19 @@ test('局域网 HTTP 可加载、登录、恢复会话和保存流程草稿', as
   expect((await saved).ok()).toBe(true);
   const templates = await (await page.request.get('/api/templates?projectId=' + project.id)).json();
   expect(templates.find((template: { name: string }) => template.name === 'HTTP流程')?.items).toHaveLength(3);
+
+  await page.goto(new URL('/requirements?intakeView=import', origin).href);
+  await page.getByLabel('导入 JSON').fill(JSON.stringify(intakeExample));
+  await page.getByRole('button', { name: '读取并整理', exact: true }).click();
+  await page.getByRole('button', { name: '拆出另一份交付', exact: true }).click();
+  await expect(page.getByLabel('导入需求标题')).toHaveCount(2);
+  await page.getByLabel('合并交付到').last().selectOption({ label: '查询与详情可用' });
+  await expect(page.getByLabel('导入需求标题')).toHaveCount(1);
+  await page.getByRole('button', { name: '预览导入', exact: true }).click();
+  await page.getByRole('button', { name: '保存导入', exact: true }).click();
+  await expect(page.getByText('已保存导入结果', { exact: true })).toBeVisible();
+  const requirements = await (await page.request.get('/api/requirements?projectId=' + project.id)).json();
+  expect(requirements).toHaveLength(1);
+  expect(requirements[0].workItems).toHaveLength(2);
   expect(errors).toEqual([]);
 });

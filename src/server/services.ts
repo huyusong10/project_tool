@@ -1,3 +1,4 @@
+import {persistOrganization} from './services/intake-metadata';
 import {invalidateForecastReview} from './services/forecast-reviews';
 import {preserveRecordedAcceptance} from './services/acceptance-history';
 import {validateCoordination,persistCoordination,assertCoordinationAccess} from './services/blocker-coordination';
@@ -984,7 +985,7 @@ function shiftRequirementWorkItems(requirementId: string, currentAnchor: string,
 export function createRequirement(input: JsonObject, actor: Actor, deferNormalization=false) {
   if(input.executionMode==='direct')return createDirectRequirement(input,actor,deferNormalization);
   if (Object.keys(input).some((key) => ![
-    'projectId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl',
+    'groupId','tags','projectId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl',
     'plannedStart', 'plannedEnd', 'templateId','deliveryScope','executionMode','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',
   ].includes(key))) fail('新建需求不能提交未声明字段');
   const commandFields = ['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'scheduleMode', 'confirmTemplateReset', 'expectedVersion', 'reason'];
@@ -1027,7 +1028,7 @@ export function createRequirement(input: JsonObject, actor: Actor, deferNormaliz
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planning', ?, 0, 'low', ?, ?, ?)`).run(
       id, projectId, templateId, title, background, acceptanceCriteria, referenceUrl, ownerId, plannedStart, priority, now, now,
     );
-    validateDeliveryFields(projectId,input,actor);
+    validateDeliveryFields(projectId,input,actor);persistOrganization(id,projectId,input);
     sqlite.prepare('UPDATE requirements SET delivery_scope=?,acceptance_owner_id=? WHERE id=?').run(input.deliveryScope||'committed',input.acceptanceOwnerId||null,id);
     if (plannedStart && templateId) applyTemplateInternal(id, templateId, plannedStart, deferNormalization);
     else if(templateId&&input.executionMode==='work_items'){applyTemplateInternal(id,templateId,todayIso(),deferNormalization);sqlite.prepare('UPDATE work_items SET planned_start=NULL,planned_end=NULL WHERE requirement_id=?').run(id);}
@@ -1161,7 +1162,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
 }
 
 export function updateRequirement(id: string, input: JsonObject, actor: Actor, deferAnalysis=false) {
-  if(['deliveryScope','executionMode','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',...coordinationKeys].some(k=>input[k]!==undefined)||getRequirement(id, false, !deferAnalysis).executionMode==='direct')return updateDeliveryRequirement(id,input,actor,false,deferAnalysis);
+  if(['groupId','tags','deliveryScope','executionMode','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',...coordinationKeys].some(k=>input[k]!==undefined)||getRequirement(id, false, !deferAnalysis).executionMode==='direct')return updateDeliveryRequirement(id,input,actor,false,deferAnalysis);
   const commandFields = ['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'plannedStart', 'plannedEnd', 'scheduleMode', 'templateId', 'confirmTemplateReset'];
   if (commandFields.some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
     fail('需求状态、进度、验收、排期和流程不能通过普通编辑修改，请使用对应操作命令');
@@ -1174,7 +1175,7 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor, d
 
 export function correctRequirement(id: string, input: JsonObject, actor: Actor) {
   if (Object.keys(input).some((key) => ![
-    'expectedVersion', 'reason', 'supersedesId', 'title', 'priority', 'ownerId',
+    'groupId','tags','expectedVersion', 'reason', 'supersedesId', 'title', 'priority', 'ownerId',
     'background', 'acceptanceCriteria', 'referenceUrl',
   ].includes(key))) fail('需求纠错不能提交未声明字段');
   const current = getRequirement(id);
@@ -1200,11 +1201,12 @@ export function correctRequirement(id: string, input: JsonObject, actor: Actor) 
   if (supersedesId && !row('SELECT id FROM progress_updates WHERE id=? AND requirement_id=? AND work_item_id IS NULL', supersedesId, id)) {
     fail('纠错引用记录不存在或不是当前需求的需求级记录');
   }
-  const factsChanged = title !== current.title || priority !== current.priority || ownerId !== current.ownerId
+  const factsChanged = (input.groupId!==undefined&&(input.groupId||null)!==(current.groupId||null))||(input.tags!==undefined&&JSON.stringify(input.tags)!==JSON.stringify(current.tags||[]))||title !== current.title || priority !== current.priority || ownerId !== current.ownerId
     || background !== current.background || acceptanceCriteria !== current.acceptanceCriteria || referenceUrl !== current.referenceUrl;
   if (!factsChanged && !supersedesId) fail('没有需要纠错的需求信息，请修改字段或关联历史记录');
   const now = nowIso();
   sqlite.transaction(() => {
+    persistOrganization(id,current.projectId,input);
     const changed = sqlite.prepare(`UPDATE requirements SET title=?, priority=?, owner_id=?, background=?, acceptance_criteria=?, reference_url=?,
       version=version+1, updated_at=? WHERE id=? AND version=? AND deleted_at IS NULL`).run(
       title, priority, ownerId, background, acceptanceCriteria, referenceUrl, now, id, current.version,

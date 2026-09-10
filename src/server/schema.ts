@@ -117,6 +117,8 @@ export const templateItems = sqliteTable('template_items', {
 ]);
 
 export const requirements = sqliteTable('requirements', {
+  groupId: text('group_id').references(() => requirementGroups.id, { onDelete: 'set null' }),
+  tags: text('tags').notNull().default('[]'),
   forecastDuration: integer('forecast_duration'),
   forecastReadyAt: text('forecast_ready_at'),
   deliveryScope: text('delivery_scope').notNull().default('committed'),
@@ -167,6 +169,7 @@ export const requirements = sqliteTable('requirements', {
     (${table.status} = 'cancelled' AND ${table.acceptedAt} IS NULL) OR
     (${table.status} NOT IN ('completed', 'pending_acceptance', 'cancelled') AND ${table.progress} < 100 AND ${table.acceptedAt} IS NULL)
   )`),
+  index('requirements_group').on(table.groupId),
   index('idx_requirements_project_status').on(table.projectId, table.status, table.deletedAt),
   index('idx_requirements_template').on(table.templateId),
   index('idx_requirements_owner').on(table.ownerId),
@@ -359,3 +362,22 @@ export const dependencyChangeReceipts = sqliteTable('dependency_change_receipts'
 }, table => [index('idx_dependency_receipt_project').on(table.projectId)]);
 
 export const deliveryCommitments = sqliteTable('delivery_commitments', {id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id),confirmedAt:text('confirmed_at').notNull(),snapshot:text('snapshot').notNull()},t=>[index('delivery_commitments_project_date').on(t.projectId,t.confirmedAt)]);
+
+export const requirementGroups = sqliteTable('requirement_groups', {
+  id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id,{onDelete:'cascade'}),name:text('name').notNull(),sortOrder:integer('sort_order').notNull().default(0),version:integer('version').notNull().default(1),...timestamps,
+},t=>[uniqueIndex('requirement_groups_name').on(t.projectId,t.name)]);
+export const sourceDocuments=sqliteTable('source_documents',{
+  id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id,{onDelete:'cascade'}),key:text('source_key').notNull(),title:text('title').notNull(),url:text('url').notNull(),version:text('source_version').notNull(),complete:integer('complete',{mode:'boolean'}).notNull().default(false),...timestamps,
+},t=>[uniqueIndex('source_documents_key').on(t.projectId,t.key)]);
+export const sourceClauses=sqliteTable('source_clauses',{
+  id:text('id').primaryKey(),documentId:text('document_id').notNull().references(()=>sourceDocuments.id,{onDelete:'cascade'}),key:text('source_key').notNull(),currentRevisionId:text('current_revision_id').notNull(),deferredReason:text('deferred_reason').notNull().default(''),...timestamps,
+},t=>[uniqueIndex('source_clauses_key').on(t.documentId,t.key)]);
+export const sourceRevisions=sqliteTable('source_revisions',{
+  id:text('id').primaryKey(),clauseId:text('clause_id').notNull().references(()=>sourceClauses.id,{onDelete:'cascade'}),documentVersion:text('document_version').notNull(),section:text('section').notNull(),externalId:text('external_id').notNull(),title:text('title').notNull(),content:text('content').notNull(),priority:text('priority').notNull(),createdAt:text('created_at').notNull(),
+},t=>[index('source_revisions_clause').on(t.clauseId)]);
+export const sourceLinks=sqliteTable('source_links',{
+  id:text('id').primaryKey(),clauseId:text('clause_id').notNull().references(()=>sourceClauses.id,{onDelete:'cascade'}),requirementId:text('requirement_id').notNull().references(()=>requirements.id,{onDelete:'cascade'}),workItemId:text('work_item_id').references(()=>workItems.id,{onDelete:'cascade'}),scope:text('scope').notNull(),reviewedRevisionId:text('reviewed_revision_id').notNull().references(()=>sourceRevisions.id),...timestamps,
+},t=>[uniqueIndex('source_links_target').on(t.clauseId,t.requirementId,sql`coalesce(${t.workItemId}, '')`),index('source_links_requirement').on(t.requirementId)]);
+export const requirementImportReceipts=sqliteTable('requirement_import_receipts',{
+  batchId:text('batch_id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id,{onDelete:'cascade'}),actorId:text('actor_id').notNull(),contentHash:text('content_hash').notNull(),result:text('result').notNull(),createdAt:text('created_at').notNull(),
+});

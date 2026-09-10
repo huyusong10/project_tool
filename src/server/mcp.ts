@@ -1,3 +1,4 @@
+import {intakeOperations} from './intake-api';
 import {listDeliveryCommitments,getDeliveryCommitment,deliveryCommitmentSummary} from './services/commitments';
 import {isCoordinationEdit,assertCoordinationAccess} from './services/blocker-coordination';
 import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor,directStartConditions} from './services/delivery-execution';
@@ -125,7 +126,8 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     }) as ToolCallback<InputArgs>);
   };
 
-  registerTool('query_requirements', { description: '分页查询需求：支持关键词、负责人、参与人、状态、交付范围、高风险/延期及计划日期区间相交筛选。默认省略工作项，includeWorkItems=true 返回工作项。返回 items/total/page/pageSize/pages；旧 list_requirements 仍返回完整数组。', inputSchema: requirementQuerySchema }, async input => json(queryRequirements(input, actor)));
+  for(const op of intakeOperations)registerTool(op.name,{description:op.description,inputSchema:op.inputSchema},async input=>json(op.execute(input,actor)));
+  registerTool('query_requirements', { description: '分页查询需求：支持关键词、分组 groupId、标签 tag、负责人、参与人、状态、交付范围、高风险/延期及计划日期区间相交筛选。默认省略工作项，includeWorkItems=true 返回工作项。返回 items/total/page/pageSize/pages；旧 list_requirements 仍返回完整数组。', inputSchema: requirementQuerySchema }, async input => json(queryRequirements(input, actor)));
   registerTool('list_work_items', { description: '分页查询项目内工作项，支持需求、关键词、负责人 ownerId、负责人或协作者 participantId、状态、未完成 active、逾期 overdue、未分派 unassigned。from/to 按计划区间相交筛选，未排期不匹配日期。返回完整工作项字段及所属需求、项目、预测依据和版本。', inputSchema: workItemQuerySchema }, async input => json(queryWorkItems(input, actor)));
   registerTool('get_work_item', { description: '按工作项 ID 读取执行详情、负责人和协作者、计划与实际日期、阻塞及预测依据、未满足前置和版本。进展历史使用 list_progress_updates。', inputSchema: idParamsSchema }, async ({ id }) => json(readWorkItem(id, actor)));
   registerTool('list_progress_updates', { description: '分页读取项目进展历史，可按需求、工作项、发布账号、事件类型和正文关键词筛选。from/to 为北京时间自然日，含首尾日；按发布时间及写入顺序倒序。翻页原样传入首次返回的 snapshot，避免新记录挤动分页。', inputSchema: progressQuerySchema }, async input => json(queryProgressUpdates(input, actor)));
@@ -393,7 +395,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
 
 export function registerMcpRoute(app: FastifyInstance, authenticate: (header?: string) => AuthorizationActor | null) {
   app.route({
-    method: ['GET', 'POST', 'DELETE'], url: '/mcp',
+    method: ['GET', 'POST', 'DELETE'], url: '/mcp',bodyLimit:10*1024*1024,
     handler: async (request, reply) => {
       const authorization = request.headers.authorization;
       const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined;

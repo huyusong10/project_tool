@@ -75,7 +75,7 @@ export type IssuePage = {
     active: number; highPriority: number; overdue: number; unassigned: number; closureRate: number;
   };
 };
-export type Requirement = import('../shared/delivery').DeliveryFields & Partial<import('../shared/delivery').ProcessingResult> & {
+export type Requirement = import('../shared/delivery').DeliveryFields & import('../shared/intake').Organization & Partial<import('../shared/delivery').ProcessingResult> & {
   readinessIssues?:string[];
   milestones?:import('../shared/paths').PathMilestone[];
   pathRisk?: import('../shared/paths').PathRisk;

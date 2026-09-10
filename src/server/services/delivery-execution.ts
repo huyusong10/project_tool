@@ -1,3 +1,4 @@
+import {persistOrganization,validateOrganization} from './intake-metadata';
 import {invalidateForecastReview} from './forecast-reviews';
 import {preserveRecordedAcceptance} from './acceptance-history';
 import {validateCoordination,persistCoordination,isCoordinationEdit,assertCoordinationAccess} from './blocker-coordination';
@@ -24,7 +25,7 @@ function refreshDirectForecast(id:string){
 
 export const deliveryColumns={deliveryScope:'delivery_scope',executionMode:'execution_mode',acceptanceOwnerId:'acceptance_owner_id',durationDays:'duration_days',forecastEnd:'forecast_end',unblockEstimate:'unblock_estimate'} as const;
 export function validateDeliveryFields(projectId:string,value:JsonObject,actor:Actor,current?:RequirementRecord){
-  const auth=requireAuthorizationActor(actor);
+  const auth=requireAuthorizationActor(actor);validateOrganization(projectId,value);
   if(value.deliveryScope!==undefined&&value.deliveryScope!==current?.deliveryScope||value.acceptanceOwnerId!==undefined&&value.acceptanceOwnerId!==current?.acceptanceOwnerId)assertProjectManager(auth,projectId);
   if(value.acceptanceOwnerId){const valid=sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id JOIN accounts a ON a.person_id=p.id WHERE pp.project_id=? AND p.id=? AND pp.project_role IN ('manager','member') AND p.active=1 AND p.deleted_at IS NULL AND a.status='active' AND a.deleted_at IS NULL").get(projectId,value.acceptanceOwnerId);if(!valid)fail('验收人必须是有有效账号的当前项目成员');}
   if(value.ownerId&&!sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id JOIN accounts a ON a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL WHERE pp.project_id=? AND p.id=? AND pp.project_role IN ('member','manager') AND p.active=1 AND p.deleted_at IS NULL").get(projectId,value.ownerId))fail('负责人必须是有效项目成员');
@@ -57,7 +58,7 @@ export function createDirectRequirement(raw:JsonObject,actor:Actor,deferNormaliz
     requireActiveProject(v.projectId);assertProjectManager(requireAuthorizationActor(actor),v.projectId);
     sqlite.prepare(`INSERT INTO requirements(id,project_id,title,owner_id,background,acceptance_criteria,reference_url,status,progress,priority,delivery_scope,execution_mode,acceptance_owner_id,planned_start,planned_end,duration_days,forecast_end,unblock_estimate,dependencies_reviewed_at,created_at,updated_at)
       VALUES (?,?,?,?,?,?,?,'not_started',0,?,?,'direct',?,?,?,?,?,?,?,?,?)`).run(id,v.projectId,v.title,v.ownerId||null,v.background||null,v.acceptanceCriteria||null,v.referenceUrl||null,v.priority,v.deliveryScope||'committed',v.acceptanceOwnerId||null,start,end,v.durationDays||null,v.forecastEnd||null,v.unblockEstimate||null,now,now,now);
-    sqlite.prepare('UPDATE requirements SET schedule_anchor=? WHERE id=?').run(start,id);
+    sqlite.prepare('UPDATE requirements SET schedule_anchor=? WHERE id=?').run(start,id);persistOrganization(id,v.projectId,v);
     if(v.forecastEnd&&!deferNormalization)refreshDirectForecast(id);
     recordAudit(actor,'create','requirement',id,'创建直接执行需求：'+v.title);
   }).immediate();
@@ -78,12 +79,13 @@ export function updateDeliveryRequirement(id:string,raw:JsonObject,actor:Actor,s
   const coordinationChanged=coordinationKeys.some(k=>value[k]!==undefined);if(coordinationChanged){if(r.status!=='blocked')fail('只有阻塞对象可以修改协调信息');Object.assign(value,validateCoordination(r.projectId,{...r,...value}));}
   const columns={blockedCoordinatorId:'blocked_coordinator_id',blockedNextReviewAt:'blocked_next_review_at',blockedIssueId:'blocked_issue_id',...deliveryColumns,title:'title',ownerId:'owner_id',background:'background',acceptanceCriteria:'acceptance_criteria',referenceUrl:'reference_url',priority:'priority'};
   const changes=Object.entries(value).filter(([k])=>k in columns),now=new Date().toISOString();
-  if(!changes.length)fail('没有需要保存的修改');
+  if(!changes.length&&value.groupId===undefined&&value.tags===undefined)fail('没有需要保存的修改');
   sqlite.transaction(()=>{
     requireActiveProject(r.projectId);validateDeliveryFields(r.projectId,value,actor,r);
+    persistOrganization(id,r.projectId,value);
     const setters=changes.map(([k])=>columns[k as keyof typeof columns]+'=?');
     const extra=split&&r.executionMode==='direct'&&nextMode==='work_items'?',split_base_progress=?,split_at=?':'';
-    const updated=sqlite.prepare('UPDATE requirements SET '+setters.join(',')+extra+',version=version+1,updated_at=? WHERE id=? AND version=?').run(...changes.map(([,v])=>v??null),...(extra?[Math.min(99,r.progress),now]:[]),now,id,r.version);
+    const updated=sqlite.prepare('UPDATE requirements SET '+(setters.length?setters.join(',')+',':'')+(extra?extra.slice(1)+',':'')+'version=version+1,updated_at=? WHERE id=? AND version=?').run(...changes.map(([,v])=>v??null),...(extra?[Math.min(99,r.progress),now]:[]),now,id,r.version);
     assertVersionedWrite(updated,'需求');
     if(coordinationChanged)persistCoordination('requirement',id,r.projectId,value,actor);
     if(value.forecastEnd!==undefined&&!split&&!deferNormalization)refreshDirectForecast(id);
