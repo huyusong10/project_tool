@@ -12,6 +12,36 @@ async function loginAsAdmin(page: import("@playwright/test").Page) {
   }
 }
 
+test('窄屏默认收起导航，选择页面后收起，桌面展开偏好不被改写', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/');
+  await page.evaluate(() => localStorage.setItem('project-manage:sidebar-collapsed', 'false'));
+  await page.reload();
+  const sidebar = page.locator('.sidebar');
+  await expect(sidebar).not.toHaveClass(/sidebar-collapsed/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(sidebar).toHaveClass(/sidebar-collapsed/);
+  await page.getByRole('button', { name: '展开侧边栏', exact: true }).click();
+  await expect(sidebar).not.toHaveClass(/sidebar-collapsed/);
+  await sidebar.getByRole('link', { name: '需求管理', exact: true }).click();
+  await expect(page).toHaveURL(/\/requirements$/);
+  await expect(sidebar).toHaveClass(/sidebar-collapsed/);
+  expect(await page.evaluate(() => localStorage.getItem('project-manage:sidebar-collapsed'))).toBe('false');
+  const context = (await page.locator('.topbar-context').boundingBox())!;
+  const actions = (await page.locator('.top-actions').boundingBox())!;
+  expect(context.y + context.height).toBeLessThanOrEqual(actions.y + 1);
+  expect((await page.locator('.topbar').boundingBox())?.height).toBe(88);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await expect(sidebar).not.toHaveClass(/sidebar-collapsed/);
+  expect((await page.locator('.topbar').boundingBox())?.height).toBe(64);
+  await page.getByRole('button', { name: '收起侧边栏', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('project-manage:sidebar-collapsed'))).toBe('true');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: '展开侧边栏', exact: true }).click();
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await expect(sidebar).toHaveClass(/sidebar-collapsed/);
+});
+
 test("折叠侧边栏保留完整导航并共用同一品牌标识", async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto("/");
@@ -61,12 +91,20 @@ test("管理员可配置品牌并即时更新侧边栏", async ({ page }) => {
   await expect(page.locator(".brand-name")).toHaveText("研发项目管理");
   await expect(page.locator(".sidebar .brand-logo img")).toBeVisible();
   await expect(page).toHaveTitle("研发项目管理");
-  await expect(page.locator('head link[rel~="icon"]')).toHaveAttribute("href", /\/api\/branding\/logo\?v=/);
+  const favicon = page.locator('head link[rel~="icon"]');
+  await expect(favicon).toHaveAttribute('href', /^data:image\/png;base64,/);
+  expect(await favicon.evaluate(async element => {
+    const image = new Image();
+    image.src = (element as HTMLLinkElement).href;
+    await image.decode();
+    return [image.naturalWidth, image.naturalHeight];
+  })).toEqual([64, 64]);
 
   await panel.getByRole("button", { name: "恢复默认值" }).click();
   await panel.getByRole("button", { name: "保存品牌设置" }).click();
   await expect(page.locator(".brand-name")).toHaveText("项目管理");
   await expect(page.locator(".sidebar .brand-logo img")).toHaveAttribute("src", "/project-management-logo.png");
+  await expect(favicon).toHaveAttribute('href', '/project-management-logo.png');
   await expect(page).toHaveTitle("项目管理");
   await expect(page.locator('head link[rel~="icon"]')).toHaveAttribute("href", "/project-management-logo.png");
 });

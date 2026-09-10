@@ -659,6 +659,27 @@ textarea {
 }
 
 @media (max-width: 620px) {
+  main { padding-top: 88px; }
+  .topbar {
+    height: 88px;
+    display: grid;
+    grid-template-rows: 40px 40px;
+    gap: 0;
+    padding: 4px 8px;
+  }
+  .topbar-context { width: 100%; gap: 8px; }
+  #topbar-title-slot { flex: 1 1 0; min-width: 54px; max-width: 65%; }
+  .integrated-page-title { gap: 4px; }
+  .integrated-page-title h1 { font-size: 16px; }
+  .topbar-context .project-switcher { flex: 1 1 0; min-width: 0; padding-left: 8px; }
+  .project-switcher-button, .project-switcher-empty, .project-scope-indicator { min-width: 0; width: 100%; gap: 6px; padding-inline: 2px; }
+  .project-switcher-name { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .project-scope-indicator { overflow: hidden; white-space: nowrap; }
+  .top-actions { width: 100%; max-width: 100%; justify-content: flex-end; gap: 6px; }
+  .topbar-account { flex: 0 0 auto; }
+  #topbar-action-slot { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+  .integrated-page-actions { width: max-content; min-width: 100%; justify-content: flex-end; white-space: nowrap; }
+
   .modal-card-workspace {
     height: calc(100dvh - 24px);
   }

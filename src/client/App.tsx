@@ -81,6 +81,9 @@ export function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return window.localStorage.getItem("project-manage:sidebar-collapsed") === "true"; } catch { return false; }
   });
+  const [narrowScreen, setNarrowScreen] = useState(() => window.matchMedia('(max-width: 620px)').matches);
+  const [narrowSidebarExpanded, setNarrowSidebarExpanded] = useState(false);
+  const visibleSidebarCollapsed = narrowScreen ? !narrowSidebarExpanded : sidebarCollapsed;
   const [titleEl, setTitleEl] = useState<HTMLElement | null>(null);
   const [actionsEl, setActionsEl] = useState<HTMLElement | null>(null);
   const [businessDate, setBusinessDate] = useState(todayIso);
@@ -140,6 +143,12 @@ export function App() {
   useEffect(() => {
     try { window.localStorage.setItem("project-manage:sidebar-collapsed", String(sidebarCollapsed)); } catch { /* 当前页面仍可收起侧栏。 */ }
   }, [sidebarCollapsed]);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 620px)');
+    const change = () => { setNarrowScreen(media.matches); setNarrowSidebarExpanded(false); };
+    media.addEventListener('change', change);
+    return () => media.removeEventListener('change', change);
+  }, []);
 
   const openLogin = useCallback(() => setLoginOpen(true), []);
   const openPassword = useCallback(() => setPasswordOpen(true), []);
@@ -205,8 +214,8 @@ export function App() {
           <BusinessDateContext.Provider value={businessDateValue}>
             <UiActionsContext.Provider value={uiActionsValue}>
               <TopbarSlotsContext.Provider value={topbarSlotsValue}>
-              <div className={`app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
-              <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((value) => !value)} />
+              <div className={`app-shell${visibleSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
+              <Sidebar collapsed={visibleSidebarCollapsed} onToggle={() => narrowScreen ? setNarrowSidebarExpanded(value => !value) : setSidebarCollapsed(value => !value)} onNavigate={() => setNarrowSidebarExpanded(false)} />
               <main>
                 <Topbar scope={currentPageScope} projectSelectionReady={projectSelectionReady} />
                 {rootRefreshFailed && <div className="app-refresh-notice"><RefreshNotice
