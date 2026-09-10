@@ -20,7 +20,7 @@ export type PathWork = import('./forecast-basis').ExecutionMetadata & {
   forecastEnd: string | null; forecastDuration: number | null; forecastReadyAt: string | null;
   blockedAt: string | null; blockedReason: string | null; milestoneLabel: string | null; ownerName: string | null;
 };
-export type PathRequirement = DeliveryFields & Partial<ProcessingResult> & {
+export type PathRequirement = import('./intake').Organization & DeliveryFields & Partial<ProcessingResult> & {
   createdAt?:string;updatedAt?:string;
   acknowledgedDependencies?:string[]; version?:number; background?:string|null;acceptanceCriteria?:string|null;referenceUrl?:string|null;templateId?:string|null;
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[]; delayed?:boolean; scheduleComplete?:boolean;

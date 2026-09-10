@@ -1,0 +1,81 @@
+{
+  "formatVersion": 1,
+  "documents": [
+    {
+      "key": "example",
+      "title": "示例需求说明",
+      "url": "https://example.com/requirements",
+      "version": "1",
+      "complete": false,
+      "clauses": [
+        {
+          "key": "query",
+          "section": "功能需求",
+          "externalId": "EX-001",
+          "title": "查询与详情",
+          "content": "支持筛选和查看详情。",
+          "priority": ""
+        },
+        {
+          "key": "access",
+          "section": "验收要求",
+          "externalId": "EX-001",
+          "title": "查询权限",
+          "content": "只能查询授权范围内的数据。",
+          "priority": ""
+        }
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "key": "query-delivery",
+      "action": "create",
+      "confirmAdditional": false,
+      "title": "查询与详情可用",
+      "background": "",
+      "acceptanceCriteria": "组合筛选和详情可用；越权查询被拒绝。",
+      "group": "示例模块",
+      "tags": [
+        "中心"
+      ],
+      "deliveryScope": "candidate",
+      "workItems": [
+        {
+          "key": "api",
+          "title": "查询接口"
+        },
+        {
+          "key": "ui",
+          "title": "查询页面与联调"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "requirement": "query-delivery",
+      "document": "example",
+      "clause": "query",
+      "scope": "实现筛选与详情"
+    },
+    {
+      "requirement": "query-delivery",
+      "document": "example",
+      "clause": "access",
+      "scope": "验证授权范围"
+    }
+  ],
+  "dependencies": [
+    {
+      "source": {
+        "requirement": "query-delivery",
+        "workItem": "api"
+      },
+      "target": {
+        "requirement": "query-delivery",
+        "workItem": "ui"
+      }
+    }
+  ]
+}

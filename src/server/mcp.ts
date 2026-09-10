@@ -1,3 +1,4 @@
+import {intakeOperations} from './intake-api';
 import {listDeliveryCommitments,getDeliveryCommitment,deliveryCommitmentSummary} from './services/commitments';
 import {isCoordinationEdit,assertCoordinationAccess} from './services/blocker-coordination';
 import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor} from './services/delivery-execution';
@@ -120,6 +121,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     }) as ToolCallback<InputArgs>);
   };
 
+  for(const op of intakeOperations)registerTool(op.name,{description:op.description,inputSchema:op.inputSchema},async input=>json(op.execute(input,actor)));
   registerTool('get_diagram_layouts',{description:'读取已保存的团队画布位置与布局版本',inputSchema:z.object({projectId:idSchema})},async({projectId})=>json(readDiagramLayouts(projectId,actor)));
   registerTool('milestone_command',{description:'人工确认或重新打开独立里程碑，记录操作者和时间',inputSchema:z.object({id:idSchema,action:z.enum(['achieve','reopen']),expectedVersion:z.number().int().positive()})},async({id,action,...input})=>json(milestoneCommand(id,action,input,actor)));
   registerTool('list_delivery_commitments', {description:'读取项目整体交付承诺历史；确认承诺使用项目批量预览与保存',inputSchema:z.object({projectId:idSchema})},async({projectId})=>json(listDeliveryCommitments(projectId,actor)));
@@ -381,7 +383,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
 
 export function registerMcpRoute(app: FastifyInstance, authenticate: (header?: string) => AuthorizationActor | null) {
   app.route({
-    method: ['GET', 'POST', 'DELETE'], url: '/mcp',
+    method: ['GET', 'POST', 'DELETE'], url: '/mcp',bodyLimit:10*1024*1024,
     handler: async (request, reply) => {
       const authorization = request.headers.authorization;
       const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined;

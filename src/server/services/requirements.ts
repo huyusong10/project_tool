@@ -20,7 +20,7 @@ export type WorkItemRecord = import('../../shared/forecast-basis').ExecutionMeta
   assigneeIds: string[]; assigneeNames: string[];
 };
 
-export type RequirementRecord = DeliveryFields & Partial<ProcessingResult> & {
+export type RequirementRecord = DeliveryFields & import('../../shared/intake').Organization & Partial<ProcessingResult> & {
   readinessIssues?:string[];
   pathRisk?: PathRisk; pathEnabled?:number;
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
@@ -41,7 +41,7 @@ export const requirementSelect = `SELECT EXISTS(SELECT 1 FROM project_people op 
     (SELECT name FROM people WHERE id=r.acceptance_owner_id) AS acceptanceOwnerName,
     EXISTS(SELECT 1 FROM project_people ap JOIN accounts aa ON aa.person_id=ap.person_id JOIN people person ON person.id=ap.person_id WHERE ap.project_id=r.project_id AND ap.person_id=r.acceptance_owner_id AND ap.project_role IN ('member','manager') AND aa.status='active' AND aa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS acceptanceOwnerValid,r.id, r.project_id AS projectId, pr.name AS projectName,
   r.template_id AS templateId, t.name AS templateName, r.title,
-  r.background, r.acceptance_criteria AS acceptanceCriteria, r.reference_url AS referenceUrl,
+  r.background, r.acceptance_criteria AS acceptanceCriteria, r.reference_url AS referenceUrl, r.group_id AS groupId,r.tags,(SELECT name FROM requirement_groups WHERE id=r.group_id) AS groupName,
   r.owner_id AS ownerId, p.name AS ownerName, r.status, r.planned_start AS plannedStart,
   r.planned_end AS plannedEnd, r.progress, r.risk_level AS riskLevel, r.priority,
   r.accepted_at AS acceptedAt, r.accepted_by_account_id AS acceptedByAccountId, r.version,
@@ -151,6 +151,8 @@ function requirementActualRange(requirement: RequirementRecord, workItems: WorkI
 }
 
 function enrichRequirement(requirement: RequirementRecord, workItems: WorkItemRecord[], asOfDate: string, cancelledAt?: string): RequirementRecord {
+  requirement.tags=typeof requirement.tags==='string'?JSON.parse(requirement.tags):requirement.tags||[];
+
   const metrics = deriveRequirementMetrics(requirement, workItems, asOfDate, config.highRiskDelayDays);
   const gaps = workItems.map((item) => calculateWorkItemGap(item, asOfDate));
   const {pathEnabled:_pathEnabled,...value}=requirement;
@@ -165,7 +167,7 @@ function enrichRequirement(requirement: RequirementRecord, workItems: WorkItemRe
 }
 
 export const requirementAnalysisSnapshots=new WeakMap<RequirementRecord[],Map<string,import('../../shared/paths').PathAnalysis>>();
-export function listRequirements(filters: { deliveryScope?:'committed'|'candidate';projectId?: string; ownerId?: string; includeDeleted?: boolean; view?: string; status?: string } = {}, asOfDate = todayIso()) {
+export function listRequirements(filters: { groupId?:string;tag?:string;deliveryScope?:'committed'|'candidate';projectId?: string; ownerId?: string; includeDeleted?: boolean; view?: string; status?: string } = {}, asOfDate = todayIso()) {
   const where = [filters.includeDeleted ? '1=1' : 'r.deleted_at IS NULL'];
   const params: unknown[] = [];
   if (filters.projectId) { where.push('r.project_id=?'); params.push(filters.projectId); }
@@ -188,6 +190,8 @@ export function listRequirements(filters: { deliveryScope?:'committed'|'candidat
     const pathRisk = analyses.get(r.projectId)?.risks[r.id];
     return pathRisk ? { ...r, ...pathRisk, pathRisk } : {...r,...processingPriority(r,asOfDate)};
   });
+  if(filters.groupId!==undefined)result=result.filter(r=>(r.groupId||'')===filters.groupId);
+  if(filters.tag)result=result.filter(r=>r.tags?.includes(filters.tag!));
   if(filters.deliveryScope)result=result.filter(r=>r.deliveryScope===filters.deliveryScope);
   if (filters.status) result = result.filter((item) => item.status === filters.status);
   if (filters.view === 'delayed') result = result.filter((item) => item.delayed);

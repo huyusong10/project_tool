@@ -1,3 +1,4 @@
+import {OrganizationFields,parseTags} from './RequirementIntake';
 import {isAssignablePerson} from '../assignable-people';
 import {CommitmentComparison} from './CommitmentComparison';
 import { useEffect, useRef, useState } from "react";
@@ -14,11 +15,13 @@ import { useToast } from "./Toast";
 import { canonicalizeContent, canonicalizeLabel } from "../../shared/search";
 
 type RequirementInfoDraft = {
+  groupId:string;tags:string;
   title: string; priority: string; ownerId: string; background: string; acceptanceCriteria: string; referenceUrl: string;
 };
 
 function requirementInfoDraft(requirement: Requirement): RequirementInfoDraft {
   return {
+    groupId:requirement.groupId||'',tags:(requirement.tags||[]).join('，'),
     title: requirement.title, priority: requirement.priority, ownerId: requirement.ownerId || "",
     background: requirement.background || "", acceptanceCriteria: requirement.acceptanceCriteria || "",
     referenceUrl: requirement.referenceUrl || "",
@@ -110,13 +113,14 @@ export function RequirementInfoForm({
     if (submitting.current || blocked) return;
     submitting.current = true;
     mutation.mutate({
-      ...draft,
+      ...draft,groupId:draft.groupId||null,tags:parseTags(draft.tags),
       ...(draft.ownerId !== (baseRequirement.ownerId || "") ? { ownerId: draft.ownerId || null } : { ownerId: undefined }),
       expectedVersion: baseRequirement.version,
     });
   }}>
     <fieldset className="form-grid form-fieldset" disabled={pending}>
     <FormField label="需求标题" full><input name="title" value={draft.title} onChange={(event) => change("title", event.target.value)} required autoFocus /></FormField>
+    <OrganizationFields projectId={requirement.projectId} groupId={draft.groupId} tags={draft.tags} onChange={change}/>
     <p className="field-help">处理优先级按风险和依赖自动计算。</p>
     <FormField label="需求负责人"><select value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
       <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
@@ -175,7 +179,7 @@ export function RequirementCorrectionForm({
     : eligiblePeople;
   const ownerUnavailable = Boolean(draft.ownerId && draft.ownerId !== baseline.ownerId && !ownerOptions.some((person) => person.id === draft.ownerId));
   const change = (field: keyof RequirementInfoDraft, value: string) => setDraft((previous) => ({ ...previous, [field]: value }));
-  const normalizedDraft = () => ({
+  const normalizedDraft = () => ({groupId:draft.groupId||null,tags:parseTags(draft.tags),
     title: canonicalizeLabel(draft.title),
     priority: draft.priority,
     ownerId: draft.ownerId || null,
@@ -185,7 +189,7 @@ export function RequirementCorrectionForm({
   });
   const informationChanged = (() => {
     const value = normalizedDraft();
-    return value.title !== baseline.title || value.priority !== baseline.priority || value.ownerId !== (baseline.ownerId || null)
+    return value.groupId!==(baseline.groupId||null)||JSON.stringify(value.tags)!==JSON.stringify(baseline.tags||[])||value.title !== baseline.title || value.priority !== baseline.priority || value.ownerId !== (baseline.ownerId || null)
       || value.background !== (baseline.background || null) || value.acceptanceCriteria !== (baseline.acceptanceCriteria || null)
       || value.referenceUrl !== (baseline.referenceUrl || null);
   })();
@@ -237,7 +241,7 @@ export function RequirementCorrectionForm({
     submitting.current = true;
     mutation.mutate({
       body: {
-        ...draft,
+        ...draft,groupId:draft.groupId||null,tags:parseTags(draft.tags),
         ...(draft.ownerId !== (baseline.ownerId || "") ? { ownerId: draft.ownerId || null } : { ownerId: undefined }),
         expectedVersion: baseline.version,
         reason: reason.trim(),
@@ -249,6 +253,7 @@ export function RequirementCorrectionForm({
       <p className="field-help field-full">仅修正需求基本信息，不改变状态、进度、验收结果、排期或流程；系统会追加纠错记录。</p>
       <FormField label="需求标题" full><input aria-label="纠错后的需求标题" value={draft.title} onChange={(event) => change("title", event.target.value)} required autoFocus /></FormField>
 
+      <OrganizationFields projectId={requirement.projectId} groupId={draft.groupId} tags={draft.tags} onChange={change}/>
       <FormField label="需求负责人"><select aria-label="纠错后的需求负责人" value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
         <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
         {baseline.ownerId && !ownerOptions.some((person) => person.id === baseline.ownerId) && <option value={baseline.ownerId}>{baseline.ownerName || "历史负责人"} · 历史负责人</option>}

@@ -1,3 +1,4 @@
+import {organizationFields} from './intake';
 import { z } from 'zod';
 import { idSchema } from './contracts';
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => { const d = new Date(`${v}T00:00:00Z`); return !Number.isNaN(+d) && d.toISOString().slice(0, 10) === v; }, '日期不合法');
@@ -10,7 +11,7 @@ export const reviewDependenciesInput = pathVersion.extend({ forecastAcceptance: 
 export const dependencyPlanInput = z.object({ baseStart: date, expectedRevision: z.number().int().nonnegative() }).strict();
 export const applyDependencyPlanInput = dependencyPlanInput.extend({ previewToken: z.string().min(1) }).strict();
 
-export const editorEntityChange=z.object({entity:z.enum(['requirement','work','milestone']),op:z.enum(['create','update','delete']),id:idSchema,requirementId:idSchema.nullable().optional(),expectedVersion:z.number().int().positive().optional(),data:z.object({
+export const editorEntityChange=z.object({entity:z.enum(['requirement','work','milestone']),op:z.enum(['create','update','delete']),id:idSchema,requirementId:idSchema.nullable().optional(),expectedVersion:z.number().int().positive().optional(),data:z.object({...organizationFields,
   blockedCoordinatorId:idSchema.nullable().optional(),blockedNextReviewAt:date.nullable().optional(),blockedIssueId:idSchema.nullable().optional(),
   reviewForecast:forecastReviewInput.optional(),
   deliveryScope:z.enum(['committed','candidate']).optional(),executionMode:z.enum(['direct','work_items']).optional(),acceptanceOwnerId:idSchema.nullable().optional(),forecastEnd:date.nullable().optional(),unblockEstimate:date.nullable().optional(),

@@ -1,3 +1,4 @@
+import {OrganizationFields,parseTags} from './RequirementIntake';
 import {isAssignablePerson} from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -23,6 +24,7 @@ type ProjectFormInput = {
 };
 
 type RequirementFormInput = {
+  groupId?:string|null;tags?:string[];
   projectId: string;
   templateId?: string;
   executionMode?: 'direct'|'work_items';
@@ -196,13 +198,14 @@ export function RequirementForm({
         if (submitting.current||unknown) return;
         submitting.current = true;
         const values = Object.fromEntries(new FormData(event.currentTarget));
-        mutation.mutate({ ...values, templateId:templateId||undefined, executionMode:templateId?"work_items":"direct", projectId } as RequirementFormInput);
+        mutation.mutate({ ...values,title:String(values.title||''),priority:String(values.priority||'P2'),ownerId,background:String(values.background||''),acceptanceCriteria:String(values.acceptanceCriteria||''),referenceUrl:String(values.referenceUrl||''),groupId:String(values.groupId||'')||null,tags:parseTags(String(values.tags||'')), templateId:templateId||undefined, executionMode:templateId?"work_items":"direct", projectId } as RequirementFormInput);
       }}
     >
       <fieldset className="form-grid form-fieldset" disabled={mutation.isPending}>
       <FormField label="需求标题" full>
         <input name="title" required autoFocus />
       </FormField>
+      <OrganizationFields projectId={projectId}/>
       <FormField label="交付范围"><select name="deliveryScope" defaultValue="committed"><option value="committed">纳入交付</option><option value="candidate">候选</option></select></FormField>
       <FormField label="需求负责人（可稍后指定）">
         <select name="ownerId" value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>

@@ -1,3 +1,4 @@
+import {RequirementSources} from '../components/RequirementIntake';
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { RequirementOverview } from '../components/RequirementOverview';
 import {RequirementActionEntry} from '../components/RequirementActionEntry';
@@ -271,6 +272,7 @@ function SavedRequirementPage() {
         {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
         {supportingError && <div className="warning-banner">{supportingDataReady ? "人员与流程数据刷新失败，当前使用上次成功结果。" : "人员或流程数据加载失败，相关编辑操作暂不可用。"}<button className="ghost-button" disabled={peopleQuery.isFetching || templatesQuery.isFetching} onClick={() => void Promise.all([peopleQuery.refetch(), templatesQuery.refetch()])}>重新加载</button></div>}
         <RequirementOverview key={requirement.id} requirement={requirement}/>
+        <RequirementSources key={'sources:'+requirement.id} requirement={requirement}/>
       <ResizablePanel
         className={`panel detail-panel requirement-progress-panel stable-workspace-panel${pathView ? " requirement-path-panel" : ""}`}
         storageKey={`${session.accountId || session.username || "guest"}:requirement-gantt`}

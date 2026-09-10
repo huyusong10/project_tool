@@ -1,3 +1,4 @@
+import {organizationFields} from './intake';
 import { z } from 'zod';
 import {
   issueStatuses, maxTemplateDurationDays, maxTemplateItems, maxTemplateOffsetDays,
@@ -88,7 +89,7 @@ export const projectArchiveInputSchema = z.object({
   message: '只有强制归档可以提交已确认的影响数量',
 }).strict();
 
-export const requirementInputSchema = z.object({blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema,
+export const requirementInputSchema = z.object({...organizationFields,blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema,
   deliveryScope:z.enum(['committed','candidate']).optional(),executionMode:z.enum(['direct','work_items']).optional(),acceptanceOwnerId:optionalIdSchema,durationDays:z.number().int().min(1).max(3660).nullable().optional(),forecastEnd:optionalDateSchema,unblockEstimate:optionalDateSchema,
   projectId: idSchema.optional(),
   title: z.string().trim().min(1).optional(),
@@ -106,7 +107,7 @@ export const requirementInputSchema = z.object({blockedCoordinatorId:optionalIdS
   reason: z.string().trim().min(1).optional(),
 }).passthrough();
 
-export const createRequirementInputSchema = requirementInputSchema.pick({
+export const createRequirementInputSchema = requirementInputSchema.pick({groupId:true,tags:true,
   deliveryScope:true,executionMode:true,acceptanceOwnerId:true,durationDays:true,forecastEnd:true,unblockEstimate:true,
   projectId: true,
   title: true,
@@ -126,7 +127,7 @@ export const createRequirementInputSchema = requirementInputSchema.pick({
   message: '计划开始和截止日期只能选择一项',
 });
 
-export const updateRequirementInputSchema = requirementInputSchema.pick({blockedCoordinatorId:true,blockedNextReviewAt:true,blockedIssueId:true,
+export const updateRequirementInputSchema = requirementInputSchema.pick({groupId:true,tags:true,blockedCoordinatorId:true,blockedNextReviewAt:true,blockedIssueId:true,
   deliveryScope:true,executionMode:true,acceptanceOwnerId:true,durationDays:true,forecastEnd:true,unblockEstimate:true,reason:true,
   title: true, priority: true, ownerId: true, background: true,
   acceptanceCriteria: true, referenceUrl: true, expectedVersion: true,
@@ -432,7 +433,7 @@ export const personCandidatesInputSchema = z.object({
   q: z.string().trim().max(200).optional(),
 }).strict();
 
-export const requirementListInputSchema = z.object({
+export const requirementListInputSchema = z.object({groupId:z.string().optional(),tag:z.string().optional(),
   deliveryScope:z.enum(['committed','candidate']).optional(),
   projectId: idSchema,
   status: z.enum(requirementStatuses).optional(),

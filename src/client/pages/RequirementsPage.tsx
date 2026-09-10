@@ -1,3 +1,6 @@
+import {Fragment} from 'react';
+import {GroupManager,OrganizationBatchDialog,OrganizationFilters,matchesOrganization,SourceCatalogView,useIntake} from '../components/RequirementIntake';
+import {RequirementImport} from '../components/RequirementImport';
 import {ProcessingPriorityBadge} from '../components/Badge';
 import {DeliveryDraftDialog} from '../components/DeliveryControls';
 import {compareProcessingPriority} from '../../shared/delivery';
@@ -64,8 +67,12 @@ export function RequirementsPage() {
   const { selectedProjectId, projects } = useProjects();
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
+  const [groupManager,setGroupManager]=useState(false),[organizing,setOrganizing]=useState(false);
+  const intake=useIntake(selectedProjectId);
   const [selectedIds,setSelectedIds]=useState<string[]>([]),[scopeDialog,setScopeDialog]=useState(false);
-  const [params, setParams] = usePageSearchParams(['q', 'status', 'sort', 'direction','deliveryScope']);
+  const [params, setParams] = usePageSearchParams(['q', 'status', 'sort', 'direction','deliveryScope','group','tag','grouped','intakeView']);
+  const group=params.get('group')||'',tag=params.get('tag')||'',grouped=params.get('grouped')==='1',intakeView=params.get('intakeView')||'requirements';
+  const setView=(key:string,value:string)=>setParams(current=>{const next=new URLSearchParams(current);if(value)next.set(key,value);else next.delete(key);return next;});
   const search = params.get('q') || '';
   const deliveryScope=params.get('deliveryScope')||'';
   const status = params.has('status') ? params.get('status')! : 'current';
@@ -89,13 +96,14 @@ export function RequirementsPage() {
   const items = useMemo(() => {
     return data
       .filter((item) =>
-        matchesSearch([
+        matchesOrganization(item,group,tag)&&matchesSearch([
           { text: item.title, weight: 100 },
           { text: item.ownerName, weight: 40 },
         ], search) &&
         (status === "current" ? !isTerminalRequirementStatus(item.status) : !status || item.status === status)&&(!deliveryScope||(item.deliveryScope||'committed')===deliveryScope),
       )
       .sort((left, right) => {
+        if(grouped&&left.groupId!==right.groupId){const groups=intake.data?.groups||[];return (groups.findIndex(g=>g.id===left.groupId)+1||9999)-(groups.findIndex(g=>g.id===right.groupId)+1||9999);}
         if (search.trim()) {
           const relevance = searchScore([
             { text: right.title, weight: 100 },
@@ -118,7 +126,7 @@ export function RequirementsPage() {
         if (priorityResult !== 0) return priorityResult;
         return left.title.localeCompare(right.title, "zh-CN");
       });
-  }, [data, search, sortDirection, sortKey, status,deliveryScope]);
+  }, [data, search, sortDirection, sortKey, status,deliveryScope,group,tag,grouped,intake.data?.groups]);
   const changeSort = (nextKey: RequirementSortKey) => {
     setParams(current => { const next = new URLSearchParams(current); next.set('sort', nextKey); next.set('direction', nextKey === sortKey ? (sortDirection === 'asc' ? 'desc' : 'asc') : nextKey === 'variance' ? 'desc' : 'asc'); return next; });
   };
@@ -135,6 +143,8 @@ export function RequirementsPage() {
   );
   return (
     <>
+      {groupManager&&<GroupManager projectId={selectedProjectId} onClose={()=>setGroupManager(false)}/>}
+      {organizing&&<OrganizationBatchDialog projectId={selectedProjectId} requirements={data.filter(r=>selectedIds.includes(r.id))} onClose={()=>setOrganizing(false)}/>}
       {scopeDialog&&<DeliveryDraftDialog requirements={data.filter(r=>selectedIds.includes(r.id))} mode="scope" onClose={()=>setScopeDialog(false)}/>}
       <PageHeader
         title="需求管理"
@@ -146,7 +156,13 @@ export function RequirementsPage() {
         ) : null}
       />
       <div className="page-content">
+      <div className="intake-tabs" role="tablist" aria-label="需求视图">{[["requirements","交付需求"],["sources","来源条款"],...(canManage?[["import","导入预览"]]:[])].map(([id,label])=><button key={id} role="tab" aria-selected={intakeView===id} className="ghost-button" onClick={()=>setView("intakeView",id)}>{label}</button>)}</div>
+      {intakeView==="sources"?<SourceCatalogView key={selectedProjectId} projectId={selectedProjectId}/>:intakeView==="import"&&canManage?<RequirementImport key={session.accountId+":"+selectedProjectId} projectId={selectedProjectId}/>:<>
         <div className="filter-bar">
+        <OrganizationFilters items={data} group={group} tag={tag} onGroup={v=>setView("group",v)} onTag={v=>setView("tag",v)}/>
+        <label><input type="checkbox" checked={grouped} onChange={e=>setView("grouped",e.target.checked?"1":"")}/>按分组查看</label>
+        {canManage&&<button className="ghost-button" onClick={()=>setGroupManager(true)}>管理分组</button>}
+        {canManage&&selectedIds.length>0&&<button className="ghost-button" onClick={()=>setOrganizing(true)}>整理所选需求</button>}
         <select aria-label="交付范围筛选" value={deliveryScope} onChange={e=>setParams(current=>{const next=new URLSearchParams(current);if(e.target.value)next.set('deliveryScope',e.target.value);else next.delete('deliveryScope');return next;})}><option value="">全部范围</option><option value="committed">纳入交付</option><option value="candidate">候选</option></select>
         {canManage&&selectedIds.some(id=>data.some(r=>r.id===id))&&<button className="ghost-button" onClick={()=>setScopeDialog(true)}>调整所选交付范围</button>}
         <SearchInput value={search} onChange={setSearch} placeholder="搜索需求或负责人" />
@@ -182,13 +198,13 @@ export function RequirementsPage() {
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => {
+            {items.map((item,index) => {
               const variance = requirementVarianceDisplay(item);
-              return <tr
+              return <Fragment key={item.id}>{grouped&&(index===0||items[index-1].groupId!==item.groupId)&&<tr className="intake-group-heading"><td colSpan={7}>{item.groupName||"未分组"} · {items.filter(r=>r.groupId===item.groupId).length} 项</td></tr>}<tr
                 key={item.id}
                 onClick={() => navigate(`/requirements/${item.id}`)}
               >
-                <td><DataCell density="compact" primary={<strong>{canManage&&!isTerminalRequirementStatus(item.status)&&<input type="checkbox" style={{marginRight:8,verticalAlign:'middle'}} aria-label={'选择需求 '+item.title} checked={selectedIds.includes(item.id)} onClick={e=>e.stopPropagation()} onChange={e=>setSelectedIds(ids=>e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id))}/>}<Link to={`/requirements/${item.id}`} style={{ color: 'inherit', textDecoration: 'none' }} onClick={event => event.stopPropagation()}>{item.title}</Link></strong>} secondary={`${item.deliveryScope==='candidate'?'候选 · ':''}${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
+                <td><DataCell density="compact" primary={<strong>{canManage&&!isTerminalRequirementStatus(item.status)&&<input type="checkbox" style={{marginRight:8,verticalAlign:'middle'}} aria-label={'选择需求 '+item.title} checked={selectedIds.includes(item.id)} onClick={e=>e.stopPropagation()} onChange={e=>setSelectedIds(ids=>e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id))}/>}<Link to={`/requirements/${item.id}`} style={{ color: 'inherit', textDecoration: 'none' }} onClick={event => event.stopPropagation()}>{item.title}</Link></strong>} secondary={`${item.deliveryScope==='candidate'?'候选 · ':''}${item.groupName?item.groupName+" · ":""}${item.tags?.length?item.tags.join(" / ")+" · ":""}${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
                 <td><DataCell density="compact" primary={<ProcessingPriorityBadge requirement={item}/>} /></td>
                 <td>
                   <DataCell density="compact" primary={<StatusBadge kind="requirement" value={item.status} />} />
@@ -208,7 +224,7 @@ export function RequirementsPage() {
                 <td className={variance.className} title={variance.title}>
                   <DataCell density="compact" primary={variance.label} />
                 </td>
-              </tr>
+              </tr></Fragment>
             })}
           </tbody>
         </table>
@@ -225,6 +241,7 @@ export function RequirementsPage() {
           />
         )}
         </div>
+        </>}
         {creating && selectedProjectId && (
           <RequirementForm projectId={selectedProjectId} onClose={() => setCreating(false)} />
         )}
