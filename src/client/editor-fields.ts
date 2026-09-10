@@ -1,5 +1,6 @@
 import type {EditorHistory} from './editor-session';
 import type {DependencyChanges} from '../shared/path-contracts';
+import {isDraftTemplateId} from '../shared/template-instance';
 
 /** Field keys already use title:<object> or <object>:<property>, including client IDs with colons. */
 export function fieldObjectId(key:string){
@@ -22,9 +23,10 @@ export function projectFieldActive(state:EditorHistory<DependencyChanges>,key:st
     if(current?.op==='delete')return false;
     const node=source?.nodes.find(node=>node.id===objectId);
     const milestone=source?.milestones?.find(item=>item.id===objectId);
-    const parent=current?.requirementId||node?.requirementId||milestone?.requirementId;
+    const generated=isDraftTemplateId(objectId,changes);
+    const parent=current?.requirementId||node?.requirementId||milestone?.requirementId||(generated?objectId.slice(0,objectId.indexOf(':template:')):undefined);
     if(parent&&parent!==objectId&&!exists(parent,visited))return false;
-    if(current||node||milestone||source?.requirements.some(r=>r.id===objectId))return true;
+    if(current||node||milestone||generated||source?.requirements.some(r=>r.id===objectId))return true;
     // A complete project snapshot also excludes undone creations after redo is truncated.
     // Keep the raw buffer; refreshing or undoing can make its object available again.
     return !source;

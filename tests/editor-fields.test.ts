@@ -11,6 +11,20 @@ function project(){const session=new EditorSession(newHistory(empty,'1',source))
 const entity=(id:string,op:EditorEntityChange['op'],requirementId?:string):EditorEntityChange=>({id,op,entity:requirementId?'work':'requirement',requirementId,data:{}});
 
 describe('field buffers follow document membership',()=>{
+ it('new template work and milestone fields survive preview waits and restore before formal objects exist',()=>{
+  const session=project(),creation:EditorEntityChange={entity:'requirement',op:'create',id:'new-r',data:{templateId:'flow',executionMode:'work_items'}};
+  session.dispatch({type:'change',value:{...empty,entities:[creation]}});
+  for(const key of ['title:new-r:template:work','new-r:template:milestone:targetDate'])session.dispatch({type:'field',key,buffer:invalid});
+  expect(Object.keys(session.fields)).toHaveLength(2);
+  const restored=new EditorSession(readHistory<DependencyChanges>(JSON.parse(JSON.stringify(session.state)))!);restored.loading=false;restored.fieldAvailability=projectFieldActive;
+  expect(restored.fields).toEqual(session.fields);
+  restored.dispatch({type:'change',value:{...empty,entities:[creation,entity('new-r:template:work','delete','new-r')]}});
+  expect(Object.keys(restored.fields)).toEqual(['new-r:template:milestone:targetDate']);
+  restored.dispatch({type:'undo'});expect(Object.keys(restored.fields)).toHaveLength(2);
+  restored.dispatch({type:'undo'});expect(restored.fields).toEqual({});
+  restored.dispatch({type:'redo'});expect(Object.keys(restored.fields)).toHaveLength(2);
+  restored.dispatch({type:'change',value:empty});expect(restored.fields).toEqual({});
+ });
  it('resolves colon-containing client IDs without confusing property or title prefixes',()=>{
   expect(fieldObjectId('title:r:template:w')).toBe('r:template:w');expect(fieldObjectId('r:template:w:duration')).toBe('r:template:w');expect(fieldObjectId('unrecognized')).toBeUndefined();
  });
