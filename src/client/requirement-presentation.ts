@@ -1,5 +1,5 @@
 import type { Requirement } from "./types";
-import { isTerminalRequirementStatus, riskLabels, type RiskLevel } from "../shared/domain";
+import { businessDateFromDateTime, isTerminalRequirementStatus, riskLabels, type RiskLevel } from "../shared/domain";
 
 export function requirementRiskDisplay(requirement: Pick<Requirement, "status" | "riskEvaluated" | "riskLevel">) {
   const closed = isTerminalRequirementStatus(requirement.status);
@@ -55,4 +55,11 @@ export function requirementVarianceDisplay(requirement: Requirement) {
     return { label: `领先 ${Math.abs(variance)}个工作日`, className: "safe-text", title: `${progressDetail}${reference}，领先 ${Math.abs(variance)} 个工作日` };
   }
   return { label: "按计划", className: "", title: `${progressDetail}；当前进展与计划曲线一致` };
+}
+
+export function requirementDeliveryDate(r:Requirement){
+  if(r.status==='completed')return {label:'验收完成',value:r.acceptedAt?businessDateFromDateTime(r.acceptedAt):'日期未记录',help:'以实际验收记录为准'};
+  if(r.status==='pending_acceptance')return {label:'预计验收',value:r.acceptanceForecastEnd||'待安排',help:r.acceptanceAssumed?'按工作完成后当日验收估算，尚未确认验收安排':'执行已结束，验收后才计入交付'};
+  if(r.status==='cancelled')return {label:'已取消',value:'—',help:'保留原计划与执行记录'};
+  return {label:'预计工作完成',value:r.executionForecastEnd||'待确认',help:'按执行工作估算；项目交付预测仍包含验收'};
 }

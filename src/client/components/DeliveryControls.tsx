@@ -1,3 +1,4 @@
+import {saveDeliveryEdit} from '../save-delivery-edit';
 import {DeliveryBatchReview} from './DeliveryBatchReview';
 import {ProjectCommitmentControl} from './ProjectCommitments';
 import {ExecutionReviewControl} from './ExecutionReview';
@@ -105,35 +106,38 @@ export function DeliveryDraftDialog({requirements,mode,onClose}:{requirements:Re
   return <Modal title={mode==='split'?'拆分剩余工作':mode==='scope'?'批量调整交付范围':'交付设置'} onClose={onClose}>{query.data?<DeliveryDraftForm data={query.data} requirements={requirements} mode={mode} onClose={onClose}/>:<p>{query.error?.message||'正在读取交付信息…'}</p>}</Modal>;
 }
 function DeliveryDraftForm({data,requirements,mode,onClose}:{data:PathAnalysis;requirements:Requirement[];mode:'split'|'settings'|'scope';onClose:()=>void}){
+  const formBaselines=useRef(new Map<string,Record<string,unknown>>());
   const {session}=useSession(),client=useQueryClient(),r=requirements[0];
   const draft=useDependencyDraft(session.accountId||'guest',data,'project',()=>invalidateRequirementViews(client));
   const [scope,setScope]=useState(r.deliveryScope||'committed'),[acceptor,setAcceptor]=useState(r.acceptanceOwnerId||''),[duration,setDuration]=useState(String(r.durationDays||'')),[forecast,setForecast]=useState(r.forecastEnd||''),[unblock,setUnblock]=useState(r.unblockEstimate||''),[reason,setReason]=useState(''),[names,setNames]=useState(''),[error,setError]=useState('');
   const [review,setReview]=useState(false);const initialized=useRef(false);
-  useEffect(()=>{if(draft.loading||initialized.current)return;initialized.current=true;const existing=draft.changes.entities?.find(c=>c.id===r.id&&c.op==='update');const value={...r,...data.requirements.find(v=>v.id===r.id),...existing?.data};setScope(value.deliveryScope||'committed');setAcceptor(value.acceptanceOwnerId||'');setDuration(String(value.durationDays||''));setForecast(value.forecastEnd||'');setUnblock(value.unblockEstimate||'');},[draft.loading,draft.changes.entities,r,data.requirements]);
+  useEffect(()=>{if(draft.loading||initialized.current)return;initialized.current=true;for(const original of requirements)formBaselines.current.set(original.id,{...original,...data.requirements.find(v=>v.id===original.id),...draft.changes.entities?.find(c=>c.id===original.id&&c.op==='update')?.data});const value=formBaselines.current.get(r.id)!;setScope(value.deliveryScope as typeof scope||'committed');setAcceptor(String(value.acceptanceOwnerId||''));setDuration(String(value.durationDays||''));setForecast(String(value.forecastEnd||''));setUnblock(String(value.unblockEstimate||''));},[draft.loading,draft.changes.entities,r,data.requirements,requirements]);
   const people=useQuery({queryKey:[...keys.people,r.projectId],queryFn:()=>api<Person[]>('/api/people?projectId='+r.projectId)});
   const joining=useRef(false);
   const add=async()=>{
     if(joining.current)return;
+    if(requirements.some(v=>formBaselines.current.get(v.id)?.version!==(data.requirements.find(r=>r.id===v.id)?.version??v.version))){setError('需求资料已更新。当前输入保留，请先核对最新资料。');return;}
     let next=draft.changes;
     if(mode==='split'){
       const titles=names.split('\n').map(v=>v.trim()).filter(Boolean);if(!titles.length){setError('请至少填写一个剩余工作项');return;}
-      next=changeEntity(next,{entity:'requirement',op:'update',id:r.id,expectedVersion:r.version,data:{executionMode:'work_items',reason:reason||'拆分剩余工作'}});
+      next=changeEntity(next,{entity:'requirement',op:'update',id:r.id,expectedVersion:Number(formBaselines.current.get(r.id)?.version??r.version),data:{executionMode:'work_items',reason:reason||'拆分剩余工作'}});
       for(const title of titles)next=changeEntity(next,{entity:'work',op:'create',id:crypto.randomUUID(),requirementId:r.id,data:{title,ownerId:r.ownerId,durationDays:1,reason:reason||'拆分剩余工作'}});
     }else for(const value of requirements){
       if(scope==='candidate'&&value.deliveryScope!=='candidate'&&['in_progress','blocked','pending_acceptance'].includes(value.status)&&!reason.trim()){setError('撤出已执行需求时请填写原因');return;}
-      const original={...value,...data.requirements.find(r=>r.id===value.id),...next.entities?.find(c=>c.id===value.id)?.data};
+      const original=formBaselines.current.get(value.id)||value;
       const desired={deliveryScope:scope,...(mode==='settings'?{acceptanceOwnerId:acceptor||null,...(r.executionMode==='direct'?{durationDays:duration?Number(duration):null,forecastEnd:forecast||null,unblockEstimate:unblock||null}:{})}:{})};
       const changed=Object.fromEntries(Object.entries(desired).filter(([key,v])=>JSON.stringify(v??null)!==JSON.stringify(original[key as keyof typeof original]??null)));
-      if(Object.keys(changed).length)next=changeEntity(next,{entity:'requirement',op:'update',id:value.id,expectedVersion:value.version,data:{...changed,...(reason?{reason}:{})}});
+      if(Object.keys(changed).length)next=changeEntity(next,{entity:'requirement',op:'update',id:value.id,expectedVersion:Number(original.version),data:{...changed,...(reason?{reason}:{})}});
     }
     if(!next.add.length&&!next.remove.length&&!next.estimates.length&&!next.entities?.length&&!next.layouts?.length&&!next.commitment){setError('没有需要保存的修改');return;}
-    joining.current=true;draft.begin();draft.change(next);await draft.flush();joining.current=false;setReview(true);
+    joining.current=true;try{await saveDeliveryEdit(draft,next,r.id,()=>setReview(true),onClose,mode!=='settings');}finally{joining.current=false;}
   };
-  if(review)return <DeliveryBatchReview draft={draft} data={data} onSaved={onClose}/>;
-  return <form onSubmit={e=>{e.preventDefault();void add();}}><fieldset className="form-fieldset" disabled={draft.loading||draft.readOnly||!!draft.pending||draft.busy}><p>在本窗口预览并整批保存，无需跳转画布。已有草稿 {draft.count} 项。</p>
+  if(review||draft.pending)return <DeliveryBatchReview draft={draft} data={data} onSaved={onClose}/>;
+  return <form onSubmit={e=>{e.preventDefault();void add();}}><fieldset className="form-fieldset" disabled={draft.loading||draft.readOnly||!!draft.pending||draft.busy}>{draft.count>0&&<p>项目已有 {draft.count} 项修改，本次保存会一起核对。</p>}
     {mode==='split'?<><p>已完成 {r.progress}% 保留为基线。每行填写一个剩余工作项，默认一个工作日，可在画布中调整。</p><textarea aria-label="剩余工作项" required rows={5} value={names} onChange={e=>setNames(e.target.value)}/></>:<label className="field"><span>交付范围</span><select aria-label="交付范围" value={scope} onChange={e=>setScope(e.target.value as 'committed'|'candidate')}><option value="committed">纳入交付</option><option value="candidate">候选</option></select></label>}
     {mode==='settings'&&<><label className="field"><span>验收人</span><select aria-label="验收人" value={acceptor} onChange={e=>setAcceptor(e.target.value)}><option value="">项目经理</option>{acceptor&&!people.data?.some(p=>p.id===acceptor)&&<option value={acceptor}>原验收人（需重新核对）</option>}{people.data?.filter(p=>p.active&&p.accountStatus==='active'&&p.projectRole!=='viewer').map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>{r.executionMode==='direct'&&<><label className="field"><span>预计工期（工作日）</span><input type="number" min={1} max={3660} value={duration} onChange={e=>setDuration(e.target.value)}/></label><label className="field"><span>预计执行完成</span><input type="date" value={forecast} onChange={e=>setForecast(e.target.value)}/></label><label className="field"><span>预计解除阻塞</span><input type="date" value={unblock} onChange={e=>setUnblock(e.target.value)}/></label></>}</>}
     {mode==='settings'&&<ProjectCommitmentControl projectId={r.projectId}/>}
-    <label className="field"><span>变更说明</span><textarea value={reason} onChange={e=>setReason(e.target.value)}/></label>{(error||draft.storageError)&&<p className="form-error">{error||draft.storageError}</p>}<div className="form-actions"><button className="primary-button">加入草稿并预览</button></div>
+    {error==='需求资料已更新。当前输入保留，请先核对最新资料。'&&<div className="warning-banner">{requirements.map(v=>{const latest=data.requirements.find(r=>r.id===v.id);return <p key={v.id}>{latest?.title||v.title} · {latest?.deliveryScope==='candidate'?'候选':'纳入交付'} · 验收人 {latest?.acceptanceOwnerName||'项目经理'} · 工期 {latest?.durationDays||'待确认'}</p>;})}<button type="button" className="ghost-button" onClick={()=>{for(const v of requirements)formBaselines.current.set(v.id,{...formBaselines.current.get(v.id),version:data.requirements.find(r=>r.id===v.id)?.version??v.version});setError('');}}>已核对，保留输入</button></div>}
+    <label className="field"><span>变更说明</span><textarea value={reason} onChange={e=>setReason(e.target.value)}/></label>{(error||draft.storageError||draft.error)&&<p className="form-error">{error||draft.storageError||draft.error?.message}</p>}<div className="form-actions"><button className="primary-button">{draft.busy?'正在保存…':mode==='settings'?'保存':'查看影响并保存'}</button></div>
   </fieldset></form>;
 }

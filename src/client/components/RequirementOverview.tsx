@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { Info, ExternalLink } from 'lucide-react';
 import type { Requirement } from '../types';
 import { formatDateTime } from '../format';
-import { requirementRiskDisplay, requirementVarianceDisplay } from '../requirement-presentation';
+import { requirementRiskDisplay, requirementVarianceDisplay, requirementDeliveryDate } from '../requirement-presentation';
 import { DeliveryControls } from './DeliveryControls';
 import { ProcessingPriorityBadge, StatusBadge } from './Badge';
 import { AnchoredPopover } from './InlineEdit';
@@ -14,6 +14,7 @@ export function RequirementOverview({ requirement: r }: { requirement: Requireme
   const anchor = useRef<HTMLButtonElement>(null);
   const closeDetails = () => { setDetails(false); anchor.current?.focus(); };
   const risk = requirementRiskDisplay(r), variance = requirementVarianceDisplay(r);
+  const deliveryDate=requirementDeliveryDate(r);
   const direct = r.executionMode === 'direct';
   const delivery = `${r.deliveryScope === 'candidate' ? '候选' : '纳入交付'} · ${direct ? '直接执行' : '工作项分解'} · 验收：${r.acceptanceOwnerName || '项目经理'}`;
   const progressHint = `计划进度 ${r.plannedProgress}% · ${direct ? '直接记录完成度' : '自动按工期加权'}`;
@@ -32,7 +33,7 @@ export function RequirementOverview({ requirement: r }: { requirement: Requireme
     </div>
     <div className="detail-kpis">
       <article title={progressHint}><span>进度</span><strong>{r.progress}%</strong><div className="progress-row" aria-hidden="true"><i style={{ width: `${r.progress}%` }} /></div><small>计划 {r.plannedProgress}%</small></article>
-      <article title="计划周期，按工作日计算"><span>计划</span><strong>{r.plannedStart || '待排期'} → {r.plannedEnd || '待排期'}</strong></article>
+      <article title={deliveryDate.help+"；确认计划："+(r.plannedStart||"待排期")+" → "+(r.plannedEnd||"待排期")}><span>{deliveryDate.label}</span><strong>{deliveryDate.value}</strong></article>
       <article title={variance.title}><span>偏差</span><strong className={variance.className}>{variance.label}</strong></article>
       <article title={r.riskReason}><span>风险</span><span className={`risk-badge ${risk.className}`}>{risk.label}</span></article>
     </div>
@@ -46,7 +47,7 @@ export function RequirementOverview({ requirement: r }: { requirement: Requireme
         <div><dt>需求背景</dt><dd>{r.background || '尚未填写'}</dd></div>
         <div><dt>验收标准</dt><dd>{r.acceptanceCriteria || '尚未填写'}</dd></div>
         {r.referenceUrl && <div><dt>参考链接</dt><dd><a href={r.referenceUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />打开辅助资料</a></dd></div>}
-        <div><dt>进度</dt><dd>{progressHint}</dd></div>
+        <div><dt>确认计划</dt><dd>{r.plannedStart||"待排期"} → {r.plannedEnd||"待排期"}</dd></div><div><dt>交付预测</dt><dd>{r.acceptanceForecastEnd||"待确认"}{r.acceptanceAssumed?" · 假设工作完成后当日验收":""}</dd></div><div><dt>进度</dt><dd>{progressHint}</dd></div>
 <div><dt>首次交付承诺</dt><dd>{r.commitment?.first?.targetDate||"未确认日期"}</dd></div><div><dt>最近交付承诺</dt><dd>{r.commitment?.latest?.targetDate||"未确认日期"}</dd></div><div><dt>执行完成／验收</dt><dd>{r.executionCompletedAt||"未完成"} ／ {r.acceptedAt||"未验收"}</dd></div>
         <div><dt>计划偏差</dt><dd>{variance.title}</dd></div>
         <div><dt>风险</dt><dd>{r.riskReason || risk.label}</dd></div>

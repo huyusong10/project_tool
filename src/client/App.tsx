@@ -30,6 +30,7 @@ import { LoginDialog, PasswordDialog } from "./components/AuthForms";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoadingState, RefreshNotice } from "./components/Feedback";
 import { todayIso } from "../shared/domain";
+import {useProjectRefresh} from './use-project-refresh';
 
 const noProjects: Project[] = [];
 
@@ -134,6 +135,7 @@ export function App() {
     enabled: projectsEnabled,
     projectsFetched: !projectsQuery.unavailable,
   });
+  useProjectRefresh(selectedProjectId,session.accountId||'',projectsEnabled&&projectSelectionReady);
 
   useEffect(() => {
     try { window.localStorage.setItem("project-manage:sidebar-collapsed", String(sidebarCollapsed)); } catch { /* 当前页面仍可收起侧栏。 */ }

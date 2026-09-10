@@ -239,6 +239,8 @@ body:has(.graph-workspace){overflow:hidden}
 .delivery-batch-review dt,.forecast-facts dt,.commitment-summary dt { color:var(--text-muted); }
 .commitment-history details { padding:12px 0; border-top:1px solid var(--divider); }
 .delivery-batch-review .form-actions { flex-wrap:wrap; gap:8px; }
+.forecast-review-details { margin:12px 0; }
+.forecast-review-details summary { color:var(--text-muted); cursor:pointer; }
 @media(max-width:600px){.delivery-batch-review dl>div,.forecast-facts>div,.commitment-summary>div{grid-template-columns:88px minmax(0,1fr);gap:8px;}}
 
 .commitment-comparison{display:grid;gap:6px;padding:10px;border:1px solid var(--divider);border-radius:8px;font-size:12px;overflow-wrap:anywhere}

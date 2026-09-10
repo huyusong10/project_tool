@@ -1,5 +1,6 @@
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { RequirementOverview } from '../components/RequirementOverview';
+import {RequirementActionEntry} from '../components/RequirementActionEntry';
 import { directRequirementTimelineItem } from '../requirement-timeline';
 import { usePageBack } from "../use-page-view";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -236,9 +237,10 @@ function SavedRequirementPage() {
   const timelineItems = direct ? [directRequirementTimelineItem(requirement)] : requirement.workItems;
   const timelineUpdates = direct ? (requirement.progressUpdates || []).map(update => ({...update, workItemId: requirement.id})) : requirement.progressUpdates || [];
   const progressById = new Map((requirement.progressUpdates || []).map((update) => [update.id, update]));
-  if (pathView) return <><PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement} onExit={()=>{const params=new URLSearchParams(searchParams);params.delete('view');params.delete('workItemId');setSearchParams(params,{state:pathLocation.state});}}/></>;
+  if (pathView) return <><RequirementActionEntry requirement={requirement}/><PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement} onExit={()=>{const params=new URLSearchParams(searchParams);params.delete('view');params.delete('workItemId');setSearchParams(params,{state:pathLocation.state});}}/></>;
   return (
     <>
+      <RequirementActionEntry requirement={requirement}/>
       <PageHeader
         title={requirement.title}
         onBack={goBack}
