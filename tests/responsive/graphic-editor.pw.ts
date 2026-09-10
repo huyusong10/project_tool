@@ -23,6 +23,19 @@ const viewportValue=(page:Page)=>page.locator('.react-flow__viewport').evaluate(
 const positionsValue=(page:Page)=>page.locator('.react-flow__node').evaluateAll(nodes=>Object.fromEntries(nodes.map(n=>[(n as HTMLElement).dataset.id,(n as HTMLElement).style.transform])));
 const blank=(page:Page)=>page.locator('.react-flow__pane').click({position:{x:12,y:300}});
 
+for(const scope of ['global','work'] as const)test(`责任一致性：${scope} 更换负责人预览立即对应新人，撤销和保存一致`,async({page})=>{
+ const {project,a,analysis}=await fixture(page,false),person=await(await page.request.post('/api/people',{data:{projectId:project.id,name:'接手人'+Date.now()}})).json();
+ const id=scope==='global'?a.id:a.workItems[0].id,readOwner=async()=>{const data=await analysis();return scope==='global'?data.requirements.find(r=>r.id===id)!.ownerId:data.nodes.find(n=>n.id===id)!.ownerId;};
+ const original=await readOwner();await page.goto(scope==='global'?'/paths?pathScope=all':'/requirements/'+a.id+'?view=path');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();
+ const card=page.locator('.react-flow__node[data-id="'+id+'"] .dependency-card');await card.click();await page.getByLabel('元素负责人',{exact:true}).selectOption(person.id);
+ await expect(card).toContainText(person.name);expect(await readOwner()).toBe(original);
+ await page.getByLabel('撤销',{exact:true}).click();await expect(card).not.toContainText(person.name);
+ await page.getByLabel('重做',{exact:true}).click();await expect(card).toContainText(person.name);
+ const applied=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/apply')&&r.request().method()==='POST');await page.getByLabel('保存修改',{exact:true}).click();expect((await applied).ok()).toBe(true);
+ expect(await readOwner()).toBe(person.id);await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();await expect(card).toContainText(person.name);
+ await page.reload();await ready(page);await expect(card).toContainText(person.name);
+});
+
 test('工期一致性：未知工期保持空值，清空、刷新、撤销重做与保存一致',async({page})=>{
  const {a,analysis}=await fixture(page,false);
  const created=await page.request.post('/api/requirements/'+a.id+'/work-items',{data:{expectedVersion:a.version,title:'工期待确认',ownerId:a.ownerId}});

@@ -61,6 +61,21 @@ afterAll(() => {
 });
 
 describe('看板性能', () => {
+  it('5000条问题的后台版本检查只读且p95低于500毫秒',async()=>{
+    const {projectChangeVersion}=await import('../src/server/services/project-change-version');
+    const id=randomUUID(),now=new Date().toISOString();
+    sqlite.transaction(()=>{
+      sqlite.prepare('INSERT INTO projects(id,name,created_at,updated_at)VALUES(?,?,?,?)').run(id,'后台检查性能',now,now);
+      sqlite.prepare("INSERT INTO accounts(id,username,normalized_username,password_hash,global_role,status,created_at,updated_at)VALUES('version-bench-admin','version-bench-admin','version-bench-admin','test-only','admin','active',?,?)").run(now,now);
+      const insert=sqlite.prepare("INSERT INTO issues(id,project_id,title,status,discovered_at,created_at,updated_at)VALUES(?,?,?,'in_progress','2026-09-10',?,?)");
+      for(let i=0;i<5000;i++)insert.run(randomUUID(),id,'问题'+i,now,now);
+    })();
+    const actor:AuthorizationActor={type:'user',id:'version-bench-admin',label:'version-bench-admin',accountId:'version-bench-admin',personId:null,globalRole:'admin'};
+    const before=sqlite.prepare('SELECT total_changes() AS n').get(),times:number[]=[],baseline=projectChangeVersion(id,actor);
+    for(let i=0;i<20;i++){const start=performance.now();expect(projectChangeVersion(id,actor)).toEqual(baseline);times.push(performance.now()-start);}
+    const p95=times.sort((a,b)=>a-b)[18];expect(p95).toBeLessThan(500);expect(sqlite.prepare('SELECT total_changes() AS n').get()).toEqual(before);
+    console.info('project-refresh-performance',JSON.stringify({issues:5000,samples:20,p95Ms:+p95.toFixed(1)}));
+  });
   it('500个需求和5000个工作项在2秒内完成统计', () => {
     const start = performance.now();
     const result = getDashboard(projectId) as { summary: { total: number } };
