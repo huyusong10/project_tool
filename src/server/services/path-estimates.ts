@@ -13,11 +13,13 @@ export function analyseChecked(input:PathInput,target='project') {
 /** Normalize in memory against the complete final network before any database writes. */
 export function normalizePathEstimates(snapshot:PathInput,patches:Patches,actor:Actor,entities:NonNullable<DependencyChanges['entities']>=[]) {
   const current=requireAuthorizationActor(actor);
+  const createdWorkIds=new Set(entities.filter(c=>c.entity==='work'&&c.op==='create').map(c=>c.id));
   for(const patch of patches){
     const work=snapshot.workItems.find(w=>w.id===patch.workItemId);
     if(!work||snapshot.requirements.find(r=>r.id===work.requirementId)?.deletedAt)notFound('工作项不存在');
     if(!sqlite.prepare('SELECT 1 FROM requirements WHERE id=?').get(work.requirementId))assertProjectManager(current,snapshot.projectId);
-    else if(patch.durationDays!==undefined||patch.earliestStart!==undefined||patch.arrangement!==undefined||patch.arrangementAnchor!==undefined)assertRequirementOwnerOrManager(current,work.requirementId);
+    // A newly created work item has no persisted assignees yet; use its parent's creation permission.
+    else if(createdWorkIds.has(work.id)||patch.durationDays!==undefined||patch.earliestStart!==undefined||patch.arrangement!==undefined||patch.arrangementAnchor!==undefined)assertRequirementOwnerOrManager(current,work.requirementId);
     else assertWorkItemParticipantOrManager(current,work.id);
     if(['completed','cancelled'].includes(work.status))fail('已结束工作项不能修改当前预测','TERMINAL_LOCKED');
     if(patch.unblockEstimate&&patch.unblockEstimate<snapshot.asOfDate||patch.forecastEnd&&patch.forecastEnd<snapshot.asOfDate)fail('预计日期不能早于今天');
