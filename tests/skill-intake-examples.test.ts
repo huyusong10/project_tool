@@ -38,8 +38,14 @@ afterAll(async () => {
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
-it.each(['log', 'org'])('%s 案例可经 MCP 预览和导入，并用新查询核对范围与安排缺口', async name => {
-  const pkg = intakePackageSchema.parse(JSON.parse(fs.readFileSync(new URL(`../skills/project-manage-intake/assets/${name}-intake.json`, import.meta.url), 'utf8')));
+it.each(['log', 'org'])('%s 案例补齐来源地址后可经 MCP 录入，并查询拓扑和安排缺口', async name => {
+  const draft = JSON.parse(fs.readFileSync(new URL(`../skills/project-manage-intake/assets/${name}-intake.json`, import.meta.url), 'utf8'));
+  for (const document of draft.documents) {
+    expect(document.url).toBe('');
+    // Stand-in addresses belong only to this isolated test database.
+    document.url = 'https://example.com/requirements/' + encodeURIComponent(document.key);
+  }
+  const pkg = intakePackageSchema.parse(draft);
   const { id: projectId } = await call<{ id: string }>('create_project', { name: `Skill ${name}` });
   const before = await call<IntakeCatalog>('get_requirement_intake', { projectId });
   const preview = await call<ImportPreview>('preview_requirement_import', { projectId, package: pkg });

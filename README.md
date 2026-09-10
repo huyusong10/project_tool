@@ -64,7 +64,7 @@ MCP覆盖需求、工作项、问题、行动项、我的工作、项目成员�
 
 ### Codex skill
 
-[project-manage-intake](skills/project-manage-intake/SKILL.md) 随仓库维护，包含需求拆分规则、MCP 操作和 LOG／ORG 示例。修改 MCP 契约或业务规则时，同步更新此目录及相应案例。
+[project-manage-intake](skills/project-manage-intake/SKILL.md) 随仓库维护，说明原始需求录入、工作项／工作流、依赖拓扑及计划，人员由人类确定。LOG／ORG 案例包保留要点和结构化草稿，不含原文链接。修改 MCP 契约或业务规则时，同步更新此目录及案例。
 
 `npm run build` 在应用构建成功后，将整份 skill 同步到 `$CODEX_HOME/skills/project-manage-intake`；未设置 `CODEX_HOME` 时使用当前用户的 `~/.codex/skills/project-manage-intake`。同步替换该 skill 的旧文件，不影响其他技能；失败会使构建命令失败。仅更新技能可运行 `npm run sync:codex-skill`。测试构建 `build:test-ui` 不同步用户技能。
 
