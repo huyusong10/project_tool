@@ -7,18 +7,21 @@ export function ViewTabs<T extends string>({
   onChange,
   ariaLabel,
   className = "",
+  disabled = false,
 }: {
   options: Array<{ value: T; label: ReactNode }>;
   value: T;
   onChange: (value: T) => void;
   ariaLabel?: string;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className={`view-tabs${className ? ` ${className}` : ""}`} role="group" aria-label={ariaLabel}>
       {options.map((option) => (
         <button
           type="button"
+          disabled={disabled}
           key={option.value}
           aria-pressed={option.value === value}
           className={option.value === value ? "active" : ""}

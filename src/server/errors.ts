@@ -74,6 +74,9 @@ export function errorResponse(error: unknown) {
     };
   }
   const candidate = error as { statusCode?: unknown; message?: unknown; code?: unknown };
+  if (candidate?.code === 'SQLITE_CONSTRAINT_TRIGGER' && candidate.message === 'FEATURE_ARCHIVED') {
+    return { statusCode: 409, payload: { error: '特性已归档，请先恢复特性或调整需求归属', code: 'DEPENDENCY_CONFLICT' }, known: true };
+  }
   if (candidate?.code === 'SQLITE_CONSTRAINT_UNIQUE' || candidate?.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') {
     return {
       statusCode: 409,

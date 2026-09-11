@@ -130,6 +130,11 @@ export function prepareEditorLayouts(snapshot:PathInput,layouts:NonNullable<Depe
   if(new Set(layouts.map(l=>l.scope+':'+l.direction)).size!==layouts.length)fail('布局重复提交');
   for(const layout of layouts){
     if(layout.scope==='global')assertProjectManager(current,snapshot.projectId);
+    else if(layout.scope==='features'||layout.scope.startsWith('feature:')){
+      assertProjectManager(current,snapshot.projectId);
+      const id=layout.scope.slice(8);
+      if(layout.scope!=='features'&&id!=='ungrouped'&&!sqlite.prepare('SELECT 1 FROM requirement_groups WHERE id=? AND project_id=?').get(id,snapshot.projectId))notFound('布局特性不存在');
+    }
     else if(layout.scope.startsWith('requirement:')){const id=layout.scope.slice(12);if(!snapshot.requirements.some(r=>r.id===id&&!r.deletedAt))notFound('布局需求不存在');if(sqlite.prepare('SELECT 1 FROM requirements WHERE id=?').get(id))assertRequirementOwnerOrManager(current,id);else assertProjectManager(current,snapshot.projectId);}
     else fail('布局范围不合法');
     const old=snapshot.layouts?.find(l=>l.scope===layout.scope&&l.direction===layout.direction);

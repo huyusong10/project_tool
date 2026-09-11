@@ -38,7 +38,8 @@ export const progressQuerySchema = z.object({
 
 export const pathGraphQuerySchema = z.object({
   projectId: idSchema,
-  view: z.enum(['project', 'requirement']).default('project'),
+  view: z.enum(['project', 'requirement','features','feature']).default('project'),
+  featureId:idSchema.optional(), planning:flag.default(true), actual:flag.default(true),
   requirementId: idSchema.optional(), target: idSchema.optional(),
   rootNodeId: idSchema.optional(), traversal: z.enum(['upstream', 'downstream', 'both']).default('both'),
   depth: z.coerce.number().int().min(0).max(100).default(1),
@@ -49,7 +50,7 @@ export const pathGraphQuerySchema = z.object({
   format: z.enum(['json', 'svg']).default('json'),
 }).strict().refine(v => (v.view === 'requirement') === Boolean(v.requirementId), {
   message: '需求视图必须提供 requirementId；项目视图请省略 requirementId', path: ['requirementId'],
-});
+}).refine(v=>(v.view==='feature')===Boolean(v.featureId),{message:'特性需求视图必须提供 featureId；未归属集合使用 ungrouped',path:['featureId']});
 
 export type RequirementQuery = z.infer<typeof requirementQuerySchema>;
 export type WorkItemQuery = z.infer<typeof workItemQuerySchema>;

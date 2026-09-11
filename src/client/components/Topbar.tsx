@@ -110,8 +110,8 @@ export function Topbar({ pageIcon: PageIcon, sessionReady }: { pageIcon?: NavIco
   const compact = width !== null && width < 960, narrow = width !== null && width < 640, dense = width !== null && width < 360;
   const fullTitle = useGanttTooltip();
   const titleEvents = fullTitle.bind(<div className="page-title-full">{title}</div>);
-  const menu = <>{dense && chrome?.status && <div className="topbar-menu-status" role="status">{chrome.status}</div>}{compact && chrome?.secondaryActions}{chrome?.moreActions}</>;
-  const hasMenu = Boolean(chrome?.moreActions || compact && chrome?.secondaryActions || dense && chrome?.status);
+  const menu = <>{dense && !chrome?.persistentStatus && chrome?.status && <div className="topbar-menu-status" role="status">{chrome.status}</div>}{compact && chrome?.secondaryActions}{chrome?.moreActions}</>;
+  const hasMenu = Boolean(chrome?.moreActions || compact && chrome?.secondaryActions || dense && !chrome?.persistentStatus && chrome?.status);
   const back = chrome?.onBack || (page.back || page.phase === 'error' ? () => {
     if (page.back?.kind === 'history' && window.history.state?.idx > 0) navigate(-1);
     else navigate(page.back?.fallback || '/', {replace: true});
@@ -136,7 +136,7 @@ export function Topbar({ pageIcon: PageIcon, sessionReady }: { pageIcon?: NavIco
       </div>
       <div className="topbar-page-tools">
         {actionsReady && chrome?.context && <div id="topbar-context-slot"><div className="topbar-page-context">{chrome.context}</div></div>}
-        {actionsReady && chrome?.status && !dense && <div id="topbar-status-slot"><div className="topbar-page-status" role="status">{chrome.status}</div></div>}
+        {actionsReady && chrome?.status && (!dense || chrome.persistentStatus) && <div id="topbar-status-slot"><div className="topbar-page-status" role="status">{chrome.status}</div></div>}
         <div id="topbar-action-slot">{actionsReady ? <div className="integrated-page-actions">{!compact && chrome?.secondaryActions}{chrome?.actions}{hasMenu && <TopbarMenu label={chrome?.moreLabel || '更多操作'} disabled={chrome?.moreDisabled}>{menu}</TopbarMenu>}{page.actionRow && !chrome?.actions && !chrome?.secondaryActions && !chrome?.moreActions && <span className="topbar-readonly">只读</span>}</div> : page.actionRow && <span className="topbar-actions-placeholder shell-placeholder" aria-hidden="true"/>}</div>
       </div>
       <div className="topbar-personal">

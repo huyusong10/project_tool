@@ -5,7 +5,7 @@ import type { WorkspaceRuntime } from './workspace-runtime';
 export type PageChrome = {
   title: string; titlePending?: boolean; actions?: ReactNode; secondaryActions?: ReactNode;
   moreActions?: ReactNode; moreLabel?: string; moreDisabled?: boolean;
-  context?: ReactNode; status?: ReactNode; onBack?: () => void; backLabel?: string;
+  context?: ReactNode; status?: ReactNode; persistentStatus?: boolean; onBack?: () => void; backLabel?: string;
   runtime?: WorkspaceRuntime | null;
 };
 

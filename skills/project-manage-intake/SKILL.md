@@ -14,7 +14,7 @@ description: 通过 MCP 将原始需求直接录入 project-manage，按需拆�
 3. 小批量用 create_requirement；批量用 preview_requirement_import → apply_requirement_import。导入格式为 formatVersion=2，仅包含 requirements 和可选 dependencies；工作项放在需求的 workItems 中。示例见 assets/log-intake.json、assets/org-intake.json。
 4. 更新已有需求使用 action=update、真实 existingId 和读取的 expectedVersion。省略的字段保持原值；已结束需求使用详情纠错。重复内容选择跳过或更新，只有明确是另一件事时才确认另建。
 
-使用分组整理需求，不使用标签。创建和编辑使用 groupId，导入使用 group；先读取已有分组并复用。
+现有分组即长期特性。创建和编辑需求使用 groupId，导入使用 group；先读取已有特性并复用，不根据章节另造多层计划。
 
 负责人和协作者按用户给定的人选填写；未给人选则新增留空、已有分配保留。未分配和未排期不阻断录入。
 
@@ -28,6 +28,22 @@ description: 通过 MCP 将原始需求直接录入 project-manage，按需拆�
 - get_path_analysis 检查完整网络、循环和下游影响；get_path_graph 查看局部拓扑或导出 SVG。按依赖排期用 preview_dependency_plan → apply_dependency_plan。
 
 没有工期或日期依据时保留未知，可给出标明假设的建议。缺少计划会影响项目整体预测；不把部分已排期工作当成整个项目的完成日期。
+
+## 特性规划与总体进展
+
+用户要求查看大特性是否大体符合预期时，用 get_group_overview 读取分组总体进展。系统计数和最近进展提供依据，人工判断独立保存；不根据需求完成比例自动填写判断。
+
+用户明确要求更新总体预期或判断时，先读取分组最新 id/name/sortOrder/version，再用 save_requirement_group 携带 expectedVersion 和完整 overview：expectation、progressSummary、assessment、note。文字可为空；assessment 为 pending（待评估）、on_track（基本符合）、off_track（有偏差）、needs_adjustment（需要调整）。保留用户未要求修改的内容，不编造评估。仅整理名称或顺序时省略 overview，保留原评估时间。
+
+提交结果未知或发生版本冲突时，先读取 get_group_overview 核对，避免重复保存。原始需求录入的授权不包含代替人类判断是否符合预期。
+
+特性长期目标使用 save_requirement_group 的 description，排序使用 sortOrder。空特性可以先记录目标，不自动创建占位需求。查看关系用 get_path_graph：view=features 为顶层，view=feature 加 featureId 为特性内需求图，ungrouped 为未归属集合；旧 view=project/requirement 保持原义。
+
+用户明确给出特性先后关系时，用 list_feature_relations → save_feature_relation 维护 sourceFeatureId、targetFeatureId、note；修改传 id 和 expectedVersion。人工规划与需求实际依赖分开，规划连线不参与排期，也不自动转成需求依赖。同一章节顺序不构成规划关系。
+
+需要同时调整规划关系、执行依赖和布局时，使用现有 preview_dependency_changes → apply_dependency_changes 原子批次。changes.featureRelations 可选：create 传临时 id、sourceFeatureId、targetFeatureId、note；update 传 id、expectedVersion、note；delete 传 id、expectedVersion。所有临时 ID 保持唯一，回执 addedIds 返回正式 ID。规划循环按最终关系检查，不参与排期。结果未知先查询 get_dependency_change_receipt，不自动再次提交。
+
+归档用 archive_requirement_group，先完成、取消或移出未完成需求；restore_requirement_group 恢复。归档保留需求与规划关系，get_feature_requirements 的 state=archived 可读分页历史。delete_requirement_group 仅删除没有任何需求或规划关系的空特性。未归档的已完成、已取消需求可通过 update_requirement_organization 调整归属，保留执行事实。
 
 ## 执行与保存
 

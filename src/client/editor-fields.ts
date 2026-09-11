@@ -15,6 +15,9 @@ export function templateFieldActive<T extends {items:ReadonlyArray<{clientKey:st
 /** Keep inactive buffers on disk for undo; only objects in the current document can block saving. */
 export function projectFieldActive(state:EditorHistory<DependencyChanges>,key:string){
   const id=fieldObjectId(key);if(!id)return true;
+  const planning=state.values[state.index].featureRelations?.find(c=>c.id===id);
+  if(planning)return planning.op!=='delete';
+  if(state.server?.featureContext?.relations.some(r=>r.id===id))return true;
   const changes=state.values[state.index].entities||[];
   const source=state.server;
   const exists=(objectId:string,visited=new Set<string>()):boolean=>{

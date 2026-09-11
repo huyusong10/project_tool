@@ -50,6 +50,7 @@ function lazyPage(load: () => Promise<{default: ComponentType}>) {
 export function preloadPage(pathname: string) {
   void matchRoute(pathname)?.component.preload?.().catch(() => { /* 正式渲染时显示原加载错误。 */ });
 }
+const FeaturesPage = lazyPage(() => import("./pages/FeaturesPage").then(module => ({default:module.FeaturesPage})));
 const AnalyticsPage = lazyPage(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
 const PathsPage = lazyPage(() => import("./pages/PathsPage").then((module) => ({ default: module.PathsPage })));
 const MyWorkPage = lazyPage(() => import("./pages/MyWorkPage").then((module) => ({ default: module.MyWorkPage })));
@@ -88,6 +89,10 @@ export const appRoutes: AppRoute[] = [
   {
     path: "/settings", scope: "personal", access: "all", component: PersonalSettingsPage,
     nav: [{ group: "个人", label: "个人设置", icon: SlidersHorizontal }],
+  },
+  {
+    path: "/features", scope: "project", access: "all", component: FeaturesPage,
+    nav: [{group:"项目空间",label:"特性规划",icon:BriefcaseBusiness}],
   },
   {
     path: "/requirements", scope: "project", access: "all", component: RequirementsPage,

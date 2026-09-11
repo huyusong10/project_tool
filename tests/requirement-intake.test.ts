@@ -28,10 +28,12 @@ it('批次重试和回执查询不重复写入，批次不能换内容',async()=
   expect((await request('GET',`/api/projects/${p.id}/requirement-import/receipts/${batchId}`)).json()).toEqual(first.json());
   const changed=structuredClone(v);changed.package.requirements[0].title='另一份内容';expect((await apply(p.id,changed,batchId)).statusCode).toBe(409);
 });
-it('分组调整和删除不影响需求执行',async()=>{
+it('特性非空时拒绝删除，显式移出后可删除且不影响需求执行',async()=>{
   const p=await imported(),c=await catalog(p.id),before=(await request('GET','/api/requirements/'+p.requirementId)).json();
   const updated=await request('PATCH','/api/requirements/'+p.requirementId,{expectedVersion:before.version,groupId:c.groups[0].id});expect(updated.statusCode,updated.body).toBe(200);expect(updated.json().groupId).toBe(c.groups[0].id);expect(updated.json()).not.toHaveProperty('tags');
-  const removed=await request('DELETE',`/api/projects/${p.id}/requirement-groups/${c.groups[0].id}`,{expectedVersion:c.groups[0].version});expect(removed.statusCode,removed.body).toBe(200);
+  const removed=await request('DELETE',`/api/projects/${p.id}/requirement-groups/${c.groups[0].id}`,{expectedVersion:c.groups[0].version});expect(removed.statusCode,removed.body).toBe(409);
+  expect((await post(`/api/projects/${p.id}/requirement-organization`,{requirements:[{id:p.requirementId,expectedVersion:updated.json().version}],groupId:null})).statusCode).toBe(200);
+  expect((await request('DELETE',`/api/projects/${p.id}/requirement-groups/${c.groups[0].id}`,{expectedVersion:c.groups[0].version})).statusCode).toBe(200);
   const after=(await request('GET','/api/requirements/'+p.requirementId)).json();expect(after.workItems.map(({dependencyRevision:_revision,...w}:Record<string,unknown>)=>withoutForecastRevision(w))).toEqual(before.workItems.map(({dependencyRevision:_revision,...w}:Record<string,unknown>)=>withoutForecastRevision(w)));expect(after.progress).toBe(before.progress);expect(after.groupId).toBeNull();
 });
 it('旧标签不再返回，接口拒绝标签写入与筛选，分组仍正常工作',async()=>{

@@ -6,6 +6,10 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
  * 新增视图时只需在对应 helper 里登记一次。
  */
 export const keys = {
+  featureRequirements:["feature-requirements"] as const,
+  featureGraph:["feature-graph"] as const,
+  featureRelations:["feature-relations"] as const,
+  groupOverview:["group-overview"] as const,
   intake:["requirement-intake"] as const,
   commitments:["delivery-commitments"] as const,
   paths: ["path-analysis"] as const,
@@ -54,7 +58,7 @@ export function invalidateAuditViews(client: QueryClient) {
 /** 北京时间跨日后，刷新所有依赖“今天”推导状态、风险、逾期或区间的数据。 */
 export function invalidateBusinessDateViews(client: QueryClient) {
   invalidateMany(client, [
-    keys.paths,keys.commitments,
+    keys.paths,keys.commitments,keys.groupOverview,keys.featureGraph,
     keys.dashboard, keys.requirements, keys.requirementDetails,
     keys.issues, keys.issueDetails, keys.myWork, keys.actionItems,
     keys.peopleConcurrency, keys.analyticsData, keys.analyticsPreview,
@@ -63,6 +67,7 @@ export function invalidateBusinessDateViews(client: QueryClient) {
 
 /** 需求域：需求变更还会影响账号页的在办需求和工作项计数。 */
 const requirementViewKeys: QueryKey[] = [
+  [...keys.groupOverview], [...keys.featureRequirements], [...keys.featureGraph], [...keys.featureRelations],
   [...keys.intake],
   [...keys.paths], [...keys.commitments],
   [...keys.requirementDetails],

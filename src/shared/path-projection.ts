@@ -2,8 +2,9 @@ import { acceptanceId, type PathAnalysis } from './paths';
 import type { LayoutEdge } from './path-layout';
 import {compactRelationCaption,relationCaption,relationDescription} from './path-labels';
 export type GraphCard = { id:string; requirementId:string; workItemId:string|null; kind:string; title:string; subtitle:string; status:string; risk:string;
-  forecast:string|null; floatDays:number|null; critical:boolean; unknown:boolean; external:boolean; hiddenCount:number };
-export type GraphLink = LayoutEdge & {critical:boolean; dependencyIds:string[];description?:string};
+  forecast:string|null; floatDays:number|null; critical:boolean; unknown:boolean; external:boolean; hiddenCount:number;
+  featureId?:string; assessment?:import('./intake').GroupOverviewInput['assessment']; facts?:string; expectation?:string; archived?:boolean };
+export type GraphLink = LayoutEdge & {critical:boolean; dependencyIds:string[];description?:string;planningRelationIds?:string[];planningOnly?:boolean};
 export function projectPathGraph(a:PathAnalysis, focus?:string, attention=false):{cards:GraphCard[];links:GraphLink[]} {
   const nodeMap=new Map(a.nodes.map(n=>[n.id,n]));
   if(!focus) {

@@ -45,7 +45,7 @@ export function rememberProject(account: string, project: string) {
 }
 /** 只有对象、页面模式和明确项目参与导航身份；筛选、聚焦和视口不会重建页面。 */
 export function pageIdentity(pathname: string, params: URLSearchParams) {
-  return [pathname, ...['view','edit','draft','draftProject','projectId','issueId'].map(key => `${key}=${params.get(key) || ''}`)].join('|');
+  return [pathname, ...['view','edit','draft','draftProject','projectId','issueId','requirementId','featureId','root'].map(key => `${key}=${params.get(key) || ''}`)].join('|');
 }
 export function chooseProject(projects: Project[], explicit: string | null, remembered: string) {
   if (explicit !== null) return projects.find(project => project.id === explicit);

@@ -54,6 +54,7 @@ export type PathRisk = Partial<ProcessingResult> & { drivesLateTarget?:boolean;i
 export type PathBlocker = { nodeId: string; requirementId: string; workItemId: string | null; title: string; ownerName: string | null;
   reasons: string[]; affectedRequirementIds: string[]; targetCount: number; critical: boolean; waitingDays: number; riskLevel: RiskLevel };
 export type PathAnalysis = {
+  featureContext?:import('./features').FeatureCanvasContext;
   projectId: string; projectName: string; revision: number; asOfDate: string; calendarVersion: string;
   target: string; targetLabel: string; targetDate: string | null; forecastEnd: string | null; deadlineSlack: number | null;
   complete: boolean; coverage: { reviewed: number; total: number; unplanned: number };

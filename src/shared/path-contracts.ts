@@ -1,4 +1,5 @@
 import {organizationFields} from './intake';
+import {featureRelationChange} from './features';
 import { z } from 'zod';
 import { idSchema } from './contracts';
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => { const d = new Date(`${v}T00:00:00Z`); return !Number.isNaN(+d) && d.toISOString().slice(0, 10) === v; }, '日期不合法');
@@ -21,6 +22,7 @@ export const diagramLayoutChange=z.object({scope:idSchema,direction:z.enum(['rig
 export type EditorEntityChange=z.infer<typeof editorEntityChange>;
 
 export const dependencyChanges = z.object({
+  featureRelations:z.array(featureRelationChange).max(2000).optional(),
   commitment: z.object({reason:z.string().trim().max(2000).default(''),milestoneId:idSchema.nullable().optional()}).strict().optional(),
   add: z.array(dependencyInput.omit({ expectedRevision: true }).extend({ clientId: idSchema })).max(6000).default([]),
   remove: z.array(idSchema).max(6000).default([]),
@@ -48,6 +50,7 @@ export type DependencyChangePreview = {
     added: DependencyChanges['add']; removed: import('./paths').Dependency[];
     estimates: Array<{workItemId:string;before:import('./paths').PathNode['estimate'];after:import('./paths').PathNode['estimate']}>;
     entities?:EditorEntityChange[];
+    featureRelations?:import('./features').FeatureRelationChange[];
   };
 };
 export type DependencyChangeReceipt = {

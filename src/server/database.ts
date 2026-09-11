@@ -13,6 +13,7 @@ import * as schema from './schema';
 import { inspectDatabaseConsistency } from './database-validation';
 import { recoverInterruptedDatabaseSwap } from './database-swap';
 import { initializeLegacyWorkEstimates } from './work-estimate-migration';
+import { reconcileFeatureBranch } from './feature-branch-migration';
 
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
 recoverInterruptedDatabaseSwap(config.dbPath);
@@ -70,6 +71,7 @@ await backupBeforePendingMigration();
 export const db = drizzle(sqlite, { schema });
 sqlite.pragma('foreign_keys = OFF');
 try {
+  reconcileFeatureBranch(sqlite, path.join(config.rootDir, 'drizzle'));
   migrate(db, { migrationsFolder: path.join(config.rootDir, 'drizzle') });
 } finally {
   sqlite.pragma('foreign_keys = ON');

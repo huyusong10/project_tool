@@ -29,6 +29,7 @@ function Workspace({ document:editorDocument, auxiliaryKey, toolbar, detail, aux
   document:WorkspaceDocument;auxiliaryKey?:string;onDismissDetail?:()=>void;onDismissAuxiliary?:()=>void;toolbar: ReactNode; detail?: ReactNode; auxiliary?: ReactNode; footer?: ReactNode;finder?:ReactNode;palette?:ReactNode;analysis?:boolean;auxiliarySize?:PanelSize;
 }) {
   const root=useRef<HTMLElement>(null),finderRef=useRef<HTMLDivElement>(null);
+  const recentNodeClick=useRef<{id:string;x:number;y:number;time:number}|null>(null);
   const runtime=useContext(WorkspaceRuntimeContext)!;runtime.document=editorDocument;runtime.interaction=graph.interaction;runtime.revealField=graph.onRevealField;runtime.save=()=>{graph.commands.dispatch({type:'save'});};useWorkspaceEvents(runtime,root);
   const requestSave=()=>{if(runtime.composing){runtime.saveRequested=true;return;}if(runtime.interaction?.operation&&runtime.interaction.operation.kind!=='field'){runtime.cancel();return;}let valid=false;flushSync(()=>{valid=runtime.commitFields();});if(valid)runtime.save?.();};
   runtime.requestSave=requestSave;
@@ -54,7 +55,19 @@ function Workspace({ document:editorDocument, auxiliaryKey, toolbar, detail, aux
     return()=>observer.disconnect();
   },[finding]);
   return <section ref={root} className={'graph-workspace graph-editor-workspace'+(finding?' has-finder':'')+(analysis?' has-analysis':'')+(detail?' has-inspector':'')} aria-label="交付依赖工作区" onCompositionStart={()=>{runtime.composing=true;}} onCompositionEnd={()=>{runtime.composing=false;if(runtime.saveRequested){runtime.saveRequested=false;queueMicrotask(requestSave);}}}
-    onClickCapture={e=>{if((e.target as HTMLElement).closest('[aria-label="保存修改"]')){e.preventDefault();e.stopPropagation();requestSave();}}}
+    onClickCapture={e=>{
+      const target=e.target as HTMLElement;
+      if(target.closest('[aria-label="保存修改"]')){e.preventDefault();e.stopPropagation();requestSave();return;}
+      const node=target.closest<HTMLElement>('.react-flow__node'),previous=recentNodeClick.current;
+      // An inspector opened by the first click must not steal the node's second click.
+      if(e.detail&&!e.ctrlKey&&!e.metaKey&&!e.shiftKey&&!runtime.interaction?.operation){
+        if(!node&&target.closest('.graph-detail')&&previous&&e.timeStamp-previous.time<500&&Math.hypot(e.clientX-previous.x,e.clientY-previous.y)<6){
+          const card=graph.cards.find(c=>c.id===previous.id);if(card&&graph.onOpenNode){e.preventDefault();e.stopPropagation();recentNodeClick.current=null;runtime.commitFields(false);graph.onOpenNode(card);return;}
+        }
+        const card=node&&graph.cards.find(c=>c.id===node.dataset.id);
+        recentNodeClick.current=card&&['feature','requirement'].includes(card.kind)?{id:card.id,x:e.clientX,y:e.clientY,time:e.timeStamp}:null;
+      }else recentNodeClick.current=null;
+    }}
     onKeyDownCapture={e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();e.stopPropagation();requestSave();}}}
     onKeyDown={e=>{const input=(e.target as HTMLElement).closest('input,textarea,select,[contenteditable=true]');if(!e.defaultPrevented&&!input&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.stopPropagation();if(!runtime.interaction?.cancel())graph.commands.dispatch({type:e.shiftKey?'redo':'undo'});return;}if(e.key!=='Escape'||e.defaultPrevented||e.nativeEvent.isComposing)return;if(runtime.interaction?.operation){e.preventDefault();e.stopPropagation();runtime.cancel();return;}if(runtime.dismiss(e.target as Element)){e.preventDefault();e.stopPropagation();}}}>
 
@@ -69,4 +82,4 @@ function Workspace({ document:editorDocument, auxiliaryKey, toolbar, detail, aux
   </section>;
 }
 
-export function GraphWorkspace(props:ComponentProps<typeof Workspace>){const [runtime]=useState(()=>new WorkspaceRuntime());return <WorkspaceRuntimeContext.Provider value={runtime}><Workspace {...props}/></WorkspaceRuntimeContext.Provider>;}
+export function GraphWorkspace({navigation,...props}:ComponentProps<typeof Workspace>&{navigation?:ReactNode}){const [runtime]=useState(()=>new WorkspaceRuntime());return <WorkspaceRuntimeContext.Provider value={runtime}>{navigation}<Workspace {...props}/></WorkspaceRuntimeContext.Provider>;}

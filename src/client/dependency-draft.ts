@@ -1,8 +1,9 @@
 import { acceptanceId, startId, topologicalOrder, DependencyCycleError,dependencySource,dependencyTarget, type PathAnalysis,type PathNode,type PathRequirement } from '../shared/paths';
 import type { DependencyChanges } from '../shared/path-contracts';
+import {applyFeatureRelationDraft} from '../shared/features';
 import {templateInstanceKey,type DraftTemplateInstance} from '../shared/template-instance';
 export function draftNetwork(data: PathAnalysis, changes: DependencyChanges, instances:DraftTemplateInstance[]=[]): PathAnalysis {
-  if (!changes.add.length && !changes.remove.length && !changes.estimates.length&&!changes.entities?.length&&!changes.layouts?.length) return data;
+  if (!changes.add.length && !changes.remove.length && !changes.estimates.length&&!changes.entities?.length&&!changes.layouts?.length&&!changes.featureRelations?.length) return data;
   const templates=instances.filter(t=>changes.entities?.some(c=>c.entity==='requirement'&&c.op==='create'&&t.key===templateInstanceKey(c)));
   const dependencies = [...data.dependencies,...templates.flatMap(t=>t.dependencies)].filter(d=>!changes.remove.includes(d.id)).concat(changes.add.map(({ clientId, ...d }) => ({ ...d, id: clientId, projectId: data.projectId, origin: 'manual' })));
   let nodes = data.nodes.map(n => ({...n}));
@@ -46,7 +47,8 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges, ins
       edges.push({ id: n.id + '>' + w.id, source: n.id, target: w.id, dependencyId: null, critical: false });
   }
   dependencies.forEach(d => edges.push({ id: d.id, source:dependencySource(d), target:dependencyTarget(d), dependencyId: d.id, critical: false }));
-  return { ...data, nodes, dependencies, edges,requirements,risks,milestones,layouts:[...(data.layouts||[]).filter(l=>!changes.layouts?.some(c=>c.scope===l.scope&&c.direction===l.direction)),...(changes.layouts||[]).map(l=>({...l,version:l.expectedVersion}))] };
+  const featureContext=data.featureContext?{...data.featureContext,relations:applyFeatureRelationDraft(data.featureContext.relations,changes.featureRelations||[],data.projectId),requirements:[...data.featureContext.requirements.filter(r=>r.deletedAt),...requirements]}:undefined;
+  return { ...data,featureContext, nodes, dependencies, edges,requirements,risks,milestones,layouts:[...(data.layouts||[]).filter(l=>!changes.layouts?.some(c=>c.scope===l.scope&&c.direction===l.direction)),...(changes.layouts||[]).map(l=>({...l,version:l.expectedVersion}))] };
 }
 export function dependencyIssue(data: PathAnalysis, changes: DependencyChanges,instances:DraftTemplateInstance[]=[]) {
   const network = draftNetwork(data, changes,instances);

@@ -363,7 +363,20 @@ export const deliveryCommitments = sqliteTable('delivery_commitments', {id:text(
 
 export const requirementGroups = sqliteTable('requirement_groups', {
   id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id,{onDelete:'cascade'}),name:text('name').notNull(),sortOrder:integer('sort_order').notNull().default(0),version:integer('version').notNull().default(1),...timestamps,
+  expectation: text('expectation').notNull().default(''),
+  description: text('description').notNull().default(''), archivedAt: text('archived_at'),
+  progressSummary: text('progress_summary').notNull().default(''),
+  assessment: text('assessment').notNull().default('pending'),
+  assessmentNote: text('assessment_note').notNull().default(''),
+  assessedAt: text('assessed_at'),
+  assessedBy: text('assessed_by').references(() => accounts.id, { onDelete: 'set null' }),
 },t=>[uniqueIndex('requirement_groups_name').on(t.projectId,t.name)]);
+export const featureRelations = sqliteTable('feature_relations', {
+  id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id,{onDelete:'cascade'}),
+  sourceFeatureId:text('source_feature_id').notNull().references(()=>requirementGroups.id,{onDelete:'cascade'}),
+  targetFeatureId:text('target_feature_id').notNull().references(()=>requirementGroups.id,{onDelete:'cascade'}),
+  note:text('note').notNull().default(''),version:integer('version').notNull().default(1),...timestamps,
+},t=>[uniqueIndex('feature_relations_pair').on(t.projectId,t.sourceFeatureId,t.targetFeatureId)]);
 export const sourceDocuments=sqliteTable('source_documents',{
   id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id,{onDelete:'cascade'}),key:text('source_key').notNull(),title:text('title').notNull(),url:text('url').notNull(),version:text('source_version').notNull(),complete:integer('complete',{mode:'boolean'}).notNull().default(false),...timestamps,
 },t=>[uniqueIndex('source_documents_key').on(t.projectId,t.key)]);

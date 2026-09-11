@@ -7,7 +7,6 @@ import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { RequirementOverview } from '../components/RequirementOverview';
 import { directRequirementTimelineItem } from '../requirement-timeline';
 import { hasPageHistory, usePageBack } from "../use-page-view";
-import {usePathReturn} from "../use-path-return";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useParams, useLocation } from "react-router-dom";
@@ -137,7 +136,7 @@ function SavedRequirementPage() {
   const scrollKey='pm-detail-scroll:'+(session.accountId||'guest')+':'+(requirement?.projectId||'')+':'+id,workTarget=searchParams.get('workItemId');
   const openPathView = () => {
     try{sessionStorage.setItem(scrollKey,JSON.stringify({window:window.scrollY,main:document.querySelector('main')?.scrollTop||0}));}catch{/* Navigation remains available. */}
-    const params=new URLSearchParams(searchParams);params.set('view','path');setSearchParams(params,{replace:true,state:pathLocation.state});
+    const params=new URLSearchParams({view:'requirement',requirementId:id,root:'features',featureId:requirement?.groupId||'ungrouped'});if(workTarget){params.set('pathNode',workTarget);params.set('pathInspector','open');}navigate('/paths?'+params);
   };
   useEffect(()=>{
     if(pathView||workTarget||isLoading)return;
@@ -294,7 +293,14 @@ function SavedRequirementPage() {
   const timelineItems = direct ? [directRequirementTimelineItem(requirement)] : requirement.workItems;
   const timelineUpdates = direct ? (requirement.progressUpdates || []).map(update => ({...update, workItemId: requirement.id})) : requirement.progressUpdates || [];
   const progressById = new Map((requirement.progressUpdates || []).map((update) => [update.id, update]));
-  if (pathView) return <><PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement} onExit={()=>{const params=new URLSearchParams(searchParams);params.delete('view');params.delete('workItemId');setSearchParams(params,{replace:true,state:pathLocation.state});}}/></>;
+  if (pathView) {
+    const params=new URLSearchParams(searchParams);params.set('view','requirement');params.set('requirementId',requirement.id);
+    const from=typeof pathLocation.state?.featureReturn==='string'?new URLSearchParams(pathLocation.state.featureReturn.split('?')[1]):null;
+    params.set('root',from?.get('view')==='feature'?'features':'project');
+    if(params.get('root')==='features')params.set('featureId',requirement.groupId||'ungrouped');
+    if(params.get('workItemId'))params.set('pathNode',params.get('workItemId')!);
+    return <Navigate to={'/paths?'+params} replace state={pathLocation.state}/>;
+  }
   return (
     <>
 
@@ -496,9 +502,9 @@ export function RequirementPage(){
 }
 function DraftRequirementPage({projectId}:{projectId:string}){
  const {id=''}=useParams(),{session}=useSession(),navigate=useAppNavigate();
- const pathReturn=usePathReturn();
  const [item,setItem]=useState<PathRequirementContext|null|undefined>(undefined);
  useEffect(()=>{let cancelled=false;void readDraftRecord<{values:DependencyChanges[];index:number}>('pm-graph-draft:'+(session.accountId||'guest')+':'+projectId).then(h=>{const c=h?.values[h.index].entities?.find(c=>c.id===id&&c.entity==='requirement'&&c.op==='create');if(!cancelled)setItem(c?{id,projectId,title:c.data.title||'新需求',ownerId:c.data.ownerId||null,workItems:[],status:'not_started'}:null);}).catch(()=>{if(!cancelled)setItem(null);});return()=>{cancelled=true;};},[id,projectId,session.accountId]);
- if(!item)return <><PageHeader title="需求草稿" titlePending={item===undefined} onBack={pathReturn.back} backLabel={pathReturn.label} actions={<span/>}/><div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace">{item===undefined?<LoadingState label="正在恢复需求草稿…"/>:<EmptyState title="本机需求草稿不存在" detail="请返回全局画布检查草稿。"/>}</section></div></>;
- return <PathAnalysisPanel key={id} projectId={projectId} requirement={item} onExit={()=>navigate('/paths')}/>;
+ if(item===undefined)return <LoadingState label="正在恢复需求草稿…"/>;
+ if(!item)return <EmptyState title="本机需求草稿不存在" detail="请返回全局画布检查草稿。" action={<button onClick={()=>navigate('/paths')}>返回项目全局</button>}/>;
+ return <Navigate to={'/paths?'+new URLSearchParams({view:'requirement',requirementId:id,draftProject:projectId,root:'project'})} replace/>;
 }
