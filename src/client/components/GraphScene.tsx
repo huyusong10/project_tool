@@ -21,11 +21,21 @@ import {validGraphViewport,viewportShowsNode} from '../graph-viewport';
 
 const viewports = new Map<string, Viewport>();
 function readViewport(key: string): Viewport | undefined {
-  try { const value=viewports.get(key)||JSON.parse(localStorage.getItem('pm-graph-view:'+key)||'null');return validGraphViewport(value)?value:undefined; } catch { return undefined; }
+  try {
+    const base=key.replace(/:history:\d+$/,'');
+    const saved=base!==key?sessionStorage.getItem('pm-graph-view:'+key):null;
+    const value=viewports.get(key)||JSON.parse(saved||localStorage.getItem('pm-graph-view:'+base)||'null');
+    return validGraphViewport(value)?value:undefined;
+  } catch { return undefined; }
 }
 function saveViewport(key: string, value: Viewport) {
   if(!validGraphViewport(value))return;
-  viewports.set(key, value); try { localStorage.setItem('pm-graph-view:' + key, JSON.stringify(value)); } catch { /* Current view remains usable. */ }
+  viewports.set(key, value);
+  try {
+    const base=key.replace(/:history:\d+$/,'');
+    if(base!==key)sessionStorage.setItem('pm-graph-view:'+key,JSON.stringify(value));
+    localStorage.setItem('pm-graph-view:'+base,JSON.stringify(value));
+  } catch { /* Current view remains usable. */ }
 }
 export function GraphScene(props: DependencyGraphProps) {
   const {cards,links,viewKey,editing=false}=props;
@@ -66,7 +76,7 @@ export function GraphScene(props: DependencyGraphProps) {
   const generation=useRef(0),first=useRef(true),anchor=useRef<string|undefined>(undefined),lastArrange=useRef(0),lastDirection=useRef(false),located=useRef(0);
   const viewportRef=useRef(viewport);viewportRef.current=viewport;
   const visibleRef=useRef(props.visibleIds);visibleRef.current=props.visibleIds;
-  const baseKey=viewKey+(vertical?':down':':right'),viewportKey=baseKey+':current';
+  const baseKey=viewKey+(vertical?':down':':right'),viewportKey=baseKey+':current'+(props.historyIndex===undefined?'':':history:'+props.historyIndex);
   // Unsaved diagrams need an origin for undoing their first move, including after
   // restoring a local draft. This display cache never becomes a formal layout.
   const layoutOrigin=useRef<Record<string,Point>>(structuredClone(props.originPositions||{})).current;

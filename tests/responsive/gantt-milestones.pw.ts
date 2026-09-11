@@ -77,7 +77,7 @@ test('项目切面跨需求，需求里程碑只出现在对应需求行', async
 test('未排期需求的预测里程碑不落在进度甘特日期上，明确目标和实际达成仍显示', async ({ page }, info) => {
   await mockGanttData(page);
   const unplanned = { ...requirement, title: '未排期需求', status: 'not_started', plannedStart: null, plannedEnd: null,
-    actualStart: null, actualEnd: null, effectiveEnd: null, progress: 0, plannedProgress: 0, scheduleComplete: false, riskEvaluated: false,
+    actualStart: null, actualEnd: null, effectiveEnd: null, progress: 0, plannedProgress: null, scheduleComplete: false, riskEvaluated: false,
     workItems: requirement.workItems.map(w => ({ ...w, status: 'not_started', progress: 0, plannedStart: null, plannedEnd: null, actualStart: null, actualEnd: null })) };
   const items = [
     { id: 'forecast-only', title: '需求基线', projectId: 'p1', requirementId: 'r1', targetDate: null, achievedAt: null, confirmationMode: 'auto', version: 1 },
@@ -99,14 +99,68 @@ test('未排期需求的预测里程碑不落在进度甘特日期上，明确�
   await expect(row.locator('[data-milestone-id="forecast-only"]')).toHaveCount(0);
   await expect(row.locator('[data-milestone-id="explicit-target"]')).toHaveCount(1);
   await expect(row.locator('[data-milestone-id="actual-only"]')).toHaveCount(1);
-  await expect(row.getByRole('button', { name: '待定日期 1 项' })).toBeVisible();
+  await expect(surface.locator('.gantt-milestone-undated')).toHaveCount(0);
+  await expect(row.locator('.gantt-requirement-copy')).toContainText('未排期');
   const axisDates = await surface.locator('.gantt-scale-tick[data-date]').evaluateAll(nodes => nodes.map(n => n.getAttribute('data-date')!));
   expect(axisDates.every(date => date < '2027-01-01')).toBe(true);
-  await row.getByRole('button', { name: '待定日期 1 项' }).click();
-  await expect(page.getByRole('dialog', { name: '里程碑详情' })).toContainText('未排期');
-  await expect(page.getByRole('dialog', { name: '里程碑详情' })).toContainText('预计达成2030-12-20');
-  await page.keyboard.press('Escape');
   await surface.screenshot({ path: info.outputPath('unplanned-milestones.png') }); expect(writes).toEqual([]);
+});
+
+test('部分排期保留实际进度和已达成里程碑，不显示待定日期框、领先或虚假延期', async ({ page }, info) => {
+  await mockGanttData(page);
+  const partial = { ...requirement, title: 'EPDS-DCIM-137【租户管理】', asOfDate: '2026-09-18',
+    plannedStart: '2026-09-07', plannedEnd: '2026-09-11', scheduleComplete: false, plannedProgress: null,
+    progress: 24, progressGap: 0, riskEvaluated: false, riskLevel: 'low', riskReason: '缺少完整排期，暂无法评估风险',
+    actualStart: '2026-09-07', actualEnd: null, observationEnd: '2026-09-18', effectiveEnd: null,
+    workItems: requirement.workItems.map((w, i) => ({ ...w, plannedStart: i ? null : '2026-09-07', plannedEnd: i ? null : '2026-09-11' })),
+  };
+  const unplanned = { ...partial, id: 'r2', title: 'EPDS-DCIM-138【站点管理】', status: 'not_started',
+    progress: 0, plannedStart: null, plannedEnd: null, actualStart: null, observationEnd: null, workItems: [] };
+  const items = [
+    { ...milestones[0], title: '需求基线', targetDate: null, achievedAt: '2026-09-10' },
+    { ...milestones[2], title: '接口基线' },
+    { ...milestones[2], id: 'other', requirementId: 'r2' },
+    { ...milestones[2], id: 'project-undated', requirementId: null },
+  ];
+  await page.route('**/api/dashboard*', route => route.fulfill({ json: {
+    summary: { total: 2, active: 2, completed: 0, delayed: 0, highRisk: 0, completionRate: 0 }, requirements: [partial, unplanned],
+    issues: { summary: { total: 0, active: 0, overdue: 0 }, attention: [] }, charts: { statuses: [], risks: [], weeks: [], varianceTop: [] },
+  } }));
+  await page.route('**/api/requirements/r1', route => route.fulfill({ json: { ...partial, milestones: items.filter(m => m.requirementId === 'r1') } }));
+  await page.route('**/path-analysis*', route => route.fulfill({ json: { milestones: items, nodes: [], edges: [] } }));
+  await page.goto('/');
+  await page.getByRole('combobox', { name: '按状态筛选' }).selectOption('unfinished');
+  const surface = page.locator('.project-gantt-scroll'); await expect(surface).toHaveAttribute('data-gantt-ready', 'true');
+  await page.getByRole('button', { name: '适配全部', exact: true }).click();
+  const row = surface.locator('.gantt-row').filter({ hasText: '租户管理' });
+  await expect(surface.getByRole('button', { name: /待定日期/ })).toHaveCount(0);
+  await expect(row.locator('.gantt-requirement-copy')).toContainText('实际进度 24% · 排期不完整');
+  await expect(row).not.toContainText('领先');
+  await expect(row).not.toContainText('高风险');
+  await expect(row.locator('.unified-gantt-actual')).toHaveCount(1);
+  await expect(row.locator('.gantt-progress-marker')).toHaveAttribute('aria-label', /实际进度 24%.*2026-09-07.*2026-09-18.*截至统计日/);
+  await expect(row.locator('.unified-gantt-plan, .unified-gantt-delay, .unified-gantt-progress-gap')).toHaveCount(0);
+  await expect(row.locator('[data-milestone-id="m1"]')).toHaveCount(1);
+  await expect(row.locator('[data-milestone-id="m3"]')).toHaveCount(0);
+  const empty = surface.locator('.gantt-row').filter({ hasText: '站点管理' });
+  await expect(empty.locator('.gantt-requirement-copy')).toContainText('未排期');
+  await expect(empty.locator('.unified-gantt-actual')).toHaveCount(0);
+  await row.locator('.gantt-bar-hitbox').focus();
+  await expect(page.locator('.gantt-popover-metrics')).toContainText('待确定');
+  await expect(page.locator('.gantt-popover-progress-compare')).not.toContainText('应达');
+  await page.keyboard.press('Escape');
+  await page.locator('.project-gantt-toolbar').click({ position: { x: 5, y: 5 } });
+  await expect(surface.locator('.gantt-axis-header .gantt-milestone-rail')).toHaveCount(0);
+  await surface.screenshot({ path: info.outputPath('partial-schedule-progress.png') });
+  await page.getByRole('button', { name: /甘特显示方式，当前/ }).click();
+  await page.getByRole('button', { name: '计划·实际双轨', exact: true }).click();
+  await expect(row.locator('.gantt-date-actual')).toHaveAttribute('data-end', '2026-09-18');
+  await expect(row.locator('.gantt-date-plan')).toHaveClass(/is-partial-plan/);
+  await expect(row.locator('.gantt-date-delay, .gantt-date-deadline')).toHaveCount(0);
+  await page.goto('/requirements/r1');
+  await expect(page.locator('.requirement-overview')).toContainText('排期不完整');
+  await expect(page.locator('.requirement-overview')).not.toContainText('计划 0%');
+  await expect(page.getByRole('button', { name: '待定日期 1 项' })).toBeVisible();
 });
 test('流程预览只保留工作行，里程碑在第2日末尾切开，不新增一天', async ({ page }, info) => {
   await mockGanttData(page);

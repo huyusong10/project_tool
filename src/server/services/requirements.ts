@@ -25,7 +25,7 @@ export type RequirementRecord = DeliveryFields & import('../../shared/intake').O
   pathRisk?: PathRisk; pathEnabled?:number;
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   background: string | null; acceptanceCriteria: string | null; referenceUrl: string | null; sourceNotes?: string | null;
-  status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number; progressGap?: number;
+  status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number | null; progressGap?: number;
   scheduleComplete?: boolean;
   asOfDate?: string;
   actualStart?: string | null; actualEnd?: string | null;

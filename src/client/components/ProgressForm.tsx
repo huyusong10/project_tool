@@ -104,7 +104,7 @@ export function ProgressForm({
         {workItemId && <p className="field-help field-full">当前完成度 {currentItem?.progress ?? draftItem?.progress ?? 0}% · {requirementStatusLabels[(currentItem?.status || draftItem?.status) as keyof typeof requirementStatusLabels] || '不可操作'}</p>}
         {writesPercent && <ProgressInput name="workItemPercent" value={percent} onChange={setPercent} max={99} />}
         {currentItem?.status === 'not_started' && <p className="field-help field-full">工作项尚未开始，只能补充说明；开始后才能填写完成度。</p>}
-        <FormField label="说明" full><textarea name="content" rows={5} required autoFocus placeholder={writesPercent ? '描述本次实际完成的内容' : '说明当前情况和待处理事项'} /></FormField>
+        <FormField label={writesPercent ? "说明（可选）" : "说明"} full><textarea name="content" rows={3} required={!writesPercent} autoFocus placeholder={writesPercent ? '描述本次实际完成的内容' : '说明当前情况和待处理事项'} /></FormField>
         <p className="field-help field-full">{editsPercent ? '只有进行中的工作项可以填写0～99%的累计完成度；100%请使用“完成工作项”。' : '本次只保存说明，不改变完成度、状态和日期。'}</p>
         <FormError>{validationError || mutation.error?.message}</FormError>
         <FormError>{refresh.error?.message}</FormError>

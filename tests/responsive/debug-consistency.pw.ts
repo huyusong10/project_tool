@@ -28,15 +28,16 @@ test('开始冲突后重新读取需求并使用新版本重试',async({page})=>
   current={...current,status:'in_progress',version:3};return route.fulfill({json:current});
  });
  await page.goto('/requirements/r1');await page.getByRole('button',{name:'开始需求',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:'开始需求',exact:true});await dialog.getByRole('button',{name:'开始需求',exact:true}).click();await dialog.getByRole('button',{name:'读取最新状态',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'开始需求',exact:true});await dialog.getByRole('button',{name:'读取最新状态',exact:true}).click();
  await dialog.getByRole('button',{name:'开始需求',exact:true}).click();await expect(dialog).toHaveCount(0);expect(writes.map(w=>w.expectedVersion)).toEqual([1,2]);
 });
 test('开始窗口不再读取或确认前置条件',async({page})=>{
  await mockGanttData(page);let conditionReads=0;
  await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,executionMode:'direct',status:'not_started',version:1,workItems:[]}}));
+ await page.route('**/api/requirements/r1/start',route=>route.fulfill({json:{...requirement,executionMode:'direct',status:'in_progress',version:2,workItems:[]}}));
  await page.route('**/api/requirements/r1/start-conditions',route=>{conditionReads++;return route.fulfill({json:{dependencyRevision:1,unmetPredecessors:[]}});});
  await page.goto('/requirements/r1');await page.getByRole('button',{name:'开始需求',exact:true}).click();const dialog=page.getByRole('dialog',{name:'开始需求'});
- await expect(dialog).toBeVisible();await expect(dialog.getByText(/前置/)).toHaveCount(0);expect(conditionReads).toBe(0);
+ await expect(dialog).toHaveCount(0);expect(conditionReads).toBe(0);
 });
 test('存在同对象执行敏感草稿时实际日期更正不请求接口，处理草稿后可继续原输入',async({page})=>{
  await mockGanttData(page);let current={...workItem};const writes:Array<Record<string,unknown>>=[];

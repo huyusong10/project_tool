@@ -85,7 +85,7 @@ for (const source of ['detail', 'my-work'] as const) {
         await route.fulfill({ status: 200, contentType: kind === 'html' ? 'text/html' : 'application/json', body });
       });
       const dialog = await openProgress(page, source);
-      const content = dialog.getByRole('textbox', { name: '说明', exact: true });
+      const content = dialog.getByRole('textbox', { name: /^说明/ });
       const percent = dialog.getByRole('spinbutton');
       await content.fill('操作结果需要核对，不能假装保存成功');
       await percent.fill('60');
@@ -116,12 +116,12 @@ for (const source of ['detail', 'my-work'] as const) {
       await route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
     });
     const dialog = await openProgress(page, source);
-    await dialog.getByRole('textbox', { name: '说明', exact: true }).fill('Cafe\u0301 需要读取后确认的新进展');
+    await dialog.getByRole('textbox', { name: /^说明/ }).fill('Cafe\u0301 需要读取后确认的新进展');
     await dialog.getByRole('spinbutton').fill('60');
     await dialog.getByRole('button', { name: source === 'detail' ? '记录进展' : '保存进展', exact: true }).click();
     await expect(dialog).toContainText('请先核对进展记录');
     await expect(dialog.getByRole('button', { name: source === 'detail' ? '记录进展' : '保存进展', exact: true })).toBeDisabled();
-    await expect(dialog.getByRole('textbox', { name: '说明', exact: true })).toHaveValue('Cafe\u0301 需要读取后确认的新进展');
+    await expect(dialog.getByRole('textbox', { name: /^说明/ })).toHaveValue('Cafe\u0301 需要读取后确认的新进展');
     await expect(page.getByText('已核对最新状态：进展已记录', { exact: true })).toHaveCount(0);
     expect(state.requests).toHaveLength(1);
   });
@@ -143,7 +143,7 @@ for (const source of ['detail', 'my-work'] as const) {
       await route.fulfill({ status: 200, contentType: 'text/html', body: 'saved elsewhere' });
     });
     const dialog = await openProgress(page, 'my-work');
-    const content = dialog.getByRole('textbox', { name: '说明', exact: true });
+    const content = dialog.getByRole('textbox', { name: /^说明/ });
     await content.fill('开始工作项');
     await dialog.getByRole('spinbutton').fill('60');
     await dialog.getByRole('button', { name: '保存进展', exact: true }).click();
@@ -171,7 +171,7 @@ for (const source of ['detail', 'my-work'] as const) {
       await route.fulfill({ status: 200, contentType: 'text/html', body: 'saved elsewhere' });
     });
     const dialog = await openProgress(page, 'detail');
-    const content = dialog.getByRole('textbox', { name: '说明', exact: true });
+    const content = dialog.getByRole('textbox', { name: /^说明/ });
     await content.fill('相同内容的并发进展');
     await dialog.getByRole('spinbutton').fill('60');
     await dialog.getByRole('button', { name: '记录进展', exact: true }).click();
@@ -199,7 +199,7 @@ for (const source of ['detail', 'my-work'] as const) {
     try {
       const dialog = await openProgress(page, source);
       const saveName = source === 'detail' ? '记录进展' : '保存进展';
-      const content = dialog.getByRole('textbox', { name: '说明', exact: true });
+      const content = dialog.getByRole('textbox', { name: /^说明/ });
       const percent = dialog.getByRole('spinbutton');
       await content.fill('我的工作结果和说明');
       await percent.fill('60');
@@ -241,7 +241,7 @@ for (const source of ['detail', 'my-work'] as const) {
   test(`${source}后台更新工作项后不能用新版本悄悄提交旧草稿`, async ({ page }) => {
     const state = await fixture(page);
     const dialog = await openProgress(page, source);
-    await dialog.getByRole('textbox', { name: '说明', exact: true }).fill('保留正在输入的内容');
+    await dialog.getByRole('textbox', { name: /^说明/ }).fill('保留正在输入的内容');
     await dialog.getByRole('spinbutton').fill('75');
     state.requirement.workItems[0] = { ...state.requirement.workItems[0], progress: 50, version: 2 };
     const previousReads = state.reads;
@@ -277,7 +277,7 @@ for (const next of ['completed', 'removed'] as const) {
   test(`已选择的工作项${next}后不悄悄退化为需求说明`, async ({ page }) => {
     const state = await fixture(page);
     const dialog = await openProgress(page, 'detail');
-    await dialog.getByRole('textbox', { name: '说明', exact: true }).fill('不能丢失关联的输入');
+    await dialog.getByRole('textbox', { name: /^说明/ }).fill('不能丢失关联的输入');
     state.requirement.workItems = next === 'removed' ? state.requirement.workItems.slice(1) : state.requirement.workItems.map((item) => item.id === 'w1' ? { ...item, status: 'completed', progress: 100, actualEnd: '2026-09-04', version: 2 } : item);
     const previousReads = state.reads;
     await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
@@ -287,7 +287,7 @@ for (const next of ['completed', 'removed'] as const) {
     await expect(dialog.locator('.progress-item-context')).toContainText('接口开发');
     await dialog.locator('form').evaluate((form) => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
     expect(state.requests).toHaveLength(0);
-    await expect(dialog.getByRole('textbox', { name: '说明', exact: true })).toHaveValue('不能丢失关联的输入');
+    await expect(dialog.getByRole('textbox', { name: /^说明/ })).toHaveValue('不能丢失关联的输入');
   });
 }
 
@@ -300,14 +300,14 @@ for (const source of ['detail', 'my-work'] as const) {
       await page.locator('.requirement-gantt-grid .gantt-progress-marker').first().click();
       dialog = page.getByRole('dialog', { name: '更新工作项进度', exact: true });
     } else dialog = await openProgress(page, source);
-    await dialog.getByRole('textbox', { name: '说明', exact: true }).fill('固定关联的草稿');
+    await dialog.getByRole('textbox', { name: /^说明/ }).fill('固定关联的草稿');
     state.requirement.workItems[0] = { ...state.requirement.workItems[0], status: 'completed', progress: 100, actualEnd: '2026-09-04', version: 2 };
     const previousReads = state.reads;
     await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
     await expect.poll(() => state.reads).toBeGreaterThan(previousReads);
     await expect(dialog.getByRole('button', { name: source === 'detail' ? '记录进展' : '保存进展', exact: true })).toBeDisabled();
     await expect(dialog.getByRole('combobox')).toHaveCount(0);
-    await expect(dialog.getByRole('textbox', { name: '说明', exact: true })).toHaveValue('固定关联的草稿');
+    await expect(dialog.getByRole('textbox', { name: /^说明/ })).toHaveValue('固定关联的草稿');
     await dialog.locator('form').evaluate((form) => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
     expect(state.requests).toHaveLength(0);
   });
@@ -318,7 +318,7 @@ for (const role of ['member', 'owner'] as const) {
     const state = await fixture(page, 'in_progress', role);
     const dialog = await openProgress(page, 'detail', role === 'owner' ? 1 : 0);
     await expect(dialog.getByRole('combobox')).toHaveCount(0);
-    await dialog.getByRole('textbox', { name: '说明', exact: true }).fill('权限范围内更新进展');
+    await dialog.getByRole('textbox', { name: /^说明/ }).fill('权限范围内更新进展');
     await dialog.getByRole('spinbutton').fill('75');
     await dialog.getByRole('button', { name: '记录进展', exact: true }).click();
     await expect(dialog).toHaveCount(0);
@@ -334,10 +334,10 @@ test('完成工作项允许留空说明并保留可选提示', async ({ page }) 
     return route.fulfill({ json: state.requirement.workItems[0] });
   });
   await page.goto('/requirements/r1');
-  await page.getByRole('button', { name: '完成', exact: true }).first().click();
+  await page.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await page.getByRole('button',{name:'完成并补充说明',exact:true}).click();
   const popover = page.locator('.inline-edit-popover');
   await expect(popover.getByText('可留空，系统会记录“完成工作项”', { exact: true })).toBeVisible();
-  await expect(popover.getByRole('textbox', { name: '完成说明', exact: true })).toHaveValue('');
+  await expect(popover.getByRole('textbox', { name: '完成说明（可选）', exact: true })).toHaveValue('');
   await expect(popover.getByRole('button', { name: '确认完成', exact: true })).toBeEnabled();
   await popover.getByRole('button', { name: '确认完成', exact: true }).click();
   await expect(popover).toHaveCount(0);
@@ -357,9 +357,9 @@ for (const source of ['detail', 'my-work'] as const) {
       return route.fulfill({ json: state.requirement.workItems[0] });
     });
     await page.goto(source === 'detail' ? '/requirements/r1' : '/my-work');
-    await page.getByRole('button', { name: '完成', exact: true }).first().click();
+    await page.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await page.getByRole('button',{name:'完成并补充说明',exact:true}).click();
     const popover = page.locator('.inline-edit-popover');
-    const content = popover.getByRole('textbox', { name: '完成说明', exact: true });
+    const content = popover.getByRole('textbox', { name: '完成说明（可选）', exact: true });
     await content.fill('本次交付结果需要保留');
     state.requirement.workItems[0] = { ...state.requirement.workItems[0], progress: 60, version: 2 };
     const previousReads = state.reads;
@@ -395,9 +395,9 @@ for (const source of ['detail', 'my-work'] as const) {
     });
     try {
       await page.goto(source === 'detail' ? '/requirements/r1' : '/my-work');
-      await page.getByRole('button', { name: '完成', exact: true }).first().click();
+      await page.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await page.getByRole('button',{name:'完成并补充说明',exact:true}).click();
       const popover = page.locator('.inline-edit-popover');
-      const content = popover.getByRole('textbox', { name: '完成说明', exact: true });
+      const content = popover.getByRole('textbox', { name: '完成说明（可选）', exact: true });
       await content.fill('状态变化也不能丢失这段说明');
       await popover.getByRole('button', { name: '确认完成', exact: true }).click();
       await expect.poll(() => state.requests.length).toBe(1);
@@ -427,10 +427,10 @@ for (const source of ['detail', 'my-work'] as const) {
     });
     await page.goto(source === 'detail' ? '/requirements/r1' : '/my-work');
     await page.getByRole('button', { name: '完成', exact: true }).first().click();
-    await page.getByRole('textbox', { name: '完成说明', exact: true }).fill('失权后不能继续显示的说明');
+    await page.getByRole('textbox', { name: '完成说明（可选）', exact: true }).fill('失权后不能继续显示的说明');
     await page.getByRole('button', { name: '确认完成', exact: true }).click();
     await expect(page.locator('.inline-edit-popover')).toHaveCount(0);
-    await expect(page.getByRole('textbox', { name: '完成说明', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('textbox', { name: '完成说明（可选）', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '重新加载', exact: true })).toBeVisible();
     expect(state.requests).toHaveLength(1);
   });

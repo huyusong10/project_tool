@@ -73,7 +73,7 @@ test('模板实例：首次保存前改名复制删除、慢预览、刷新及�
  await expect(page.locator('[data-draft-stored="true"]')).toBeVisible();
  await refreshed;expect(await page.evaluate(()=>{const s=(window as unknown as {templateNodeCheck:{active:boolean;missing:number}}).templateNodeCheck;s.active=false;return s.missing;})).toBe(0);
  await page.getByLabel('复制元素',{exact:true}).click();await expect(page.locator('.react-flow__node').filter({hasText:'调整后的环节 副本'})).toHaveCount(1);
- await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();await page.locator('.react-flow__node[data-id="'+workId+'"] .dependency-card').click();await page.getByLabel('删除元素',{exact:true}).click();await page.getByRole('button',{name:'加入删除草稿',exact:true}).click();
+ await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();await page.locator('.react-flow__node[data-id="'+workId+'"] .dependency-card').click();await page.getByLabel('删除元素',{exact:true}).click();
  await expect(page.locator('.react-flow__node[data-id="'+workId+'"]')).toHaveCount(0);await expect(page.locator('[data-draft-stored="true"]')).toBeVisible();await page.reload();
  await expect(page.locator('.react-flow__node').filter({hasText:'调整后的环节 副本'})).toHaveCount(1);await ready(page);
  await page.getByLabel('撤销',{exact:true}).click();await expect(page.locator('.react-flow__node[data-id="'+workId+'"]')).toHaveCount(1);await page.getByLabel('重做',{exact:true}).click();await expect(page.locator('.react-flow__node[data-id="'+workId+'"]')).toHaveCount(0);
@@ -163,9 +163,9 @@ for(const destination of ['全局','其他需求'] as const)for(const narrow of 
  await page.locator('.react-flow__node[data-id="'+a.workItems[0].id+'"] .dependency-card').click();const title=page.getByLabel('元素名称');await title.fill('');await title.blur();await expect(title).toHaveAttribute('aria-invalid','true');
  await page.goto(destination==='全局'?'/paths?pathScope=all':'/requirements/'+b.id+'?view=path');await ready(page);const beforeUrl=page.url();const id=destination==='全局'?b.id:b.workItems[0].id;await page.locator('.react-flow__node[data-id="'+id+'"] .dependency-card').click();await title.fill('其他页面的有效修改');await title.blur();let writes=0;page.on('request',r=>{if(r.url().endsWith('/dependency-changes/apply'))writes++;});
  await page.getByLabel('保存修改',{exact:true}).click();await expect(page).toHaveURL(new RegExp('/requirements/'+a.id+'\\?'));await ready(page);await expect(title).toHaveValue('');await expect(title).toHaveAttribute('aria-invalid','true');await expect(title).toBeFocused();expect(writes).toBe(0);
- await page.getByRole('button',{name:destination==='全局'?'返回项目全局':'返回'+b.title+'路径',exact:true}).click();await expect.poll(()=>new URL(page.url()).pathname).toBe(new URL(beforeUrl).pathname);await ready(page);await expect(title).toHaveValue('其他页面的有效修改');await page.getByLabel('保存修改',{exact:true}).click();await expect(page).toHaveURL(new RegExp('/requirements/'+a.id+'\\?'));await ready(page);await expect(title).toBeFocused();
+ await page.getByRole('button',{name:'返回',exact:true}).click();await expect.poll(()=>new URL(page.url()).pathname).toBe(new URL(beforeUrl).pathname);await ready(page);await expect(title).toHaveValue('其他页面的有效修改');await page.getByLabel('保存修改',{exact:true}).click();await expect(page).toHaveURL(new RegExp('/requirements/'+a.id+'\\?'));await ready(page);await expect(title).toBeFocused();
  await title.fill('定位后修正');const saved=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/apply'));await page.keyboard.press('Control+s');expect((await saved).status()).toBe(200);expect((await analysis()).nodes.find(n=>n.id===a.workItems[0].id)?.title).toBe('定位后修正');
- await page.getByRole('button',{name:destination==='全局'?'返回项目全局':'返回'+b.title+'路径',exact:true}).click();await expect.poll(()=>new URL(page.url()).pathname).toBe(new URL(beforeUrl).pathname);await ready(page);
+ await page.getByRole('button',{name:'返回',exact:true}).click();await expect.poll(()=>new URL(page.url()).pathname).toBe(new URL(beforeUrl).pathname);await ready(page);
 });
 
 for(const scope of ['项目','模板'] as const)for(const unfinished of [false,true])test('草稿重新接管：'+scope+(unfinished?'保留对方未完成输入':'采用对方已确认字段')+'，旧字段不回写',async({page,context})=>{
@@ -181,7 +181,7 @@ for(const scope of ['项目','模板'] as const)for(const unfinished of [false,t
 test('跨页面字段：需求属性错误返回全局修正，正常返回不强制跳回错误页',async({page})=>{
  const {a,b,analysis}=await fixture(page,false);await page.goto('/paths?pathScope=all');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();await page.locator('.react-flow__node[data-id="'+a.id+'"] .dependency-card').click();const title=page.getByLabel('元素名称');await title.fill('');await title.blur();await expect(title).toHaveAttribute('aria-invalid','true');
  await page.goto('/requirements/'+b.id+'?view=path');await ready(page);await expect(page).toHaveURL(new RegExp('/requirements/'+b.id));await page.locator('.react-flow__node[data-id="'+b.workItems[0].id+'"] .dependency-card').click();await title.fill('保存后一起生效');await title.blur();await page.getByLabel('保存修改',{exact:true}).click();await expect(page).toHaveURL(/\/paths\?/);await ready(page);await expect(title).toHaveValue('');await expect(title).toBeFocused();expect((await analysis()).requirements.find(r=>r.id===a.id)?.title).toBe(a.title);
- await title.fill('需求名称已修正');const saved=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/apply'));await page.keyboard.press('Control+s');expect((await saved).status()).toBe(200);expect((await analysis()).requirements.find(r=>r.id===a.id)?.title).toBe('需求名称已修正');await page.getByRole('button',{name:'返回'+b.title+'路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp('/requirements/'+b.id));
+ await title.fill('需求名称已修正');const saved=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/apply'));await page.keyboard.press('Control+s');expect((await saved).status()).toBe(200);expect((await analysis()).requirements.find(r=>r.id===a.id)?.title).toBe('需求名称已修正');await page.getByRole('button',{name:'返回',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp('/requirements/'+b.id));
 });
 
 test('草稿重新接管：读取失败保留当前编辑人和输入，重试后才能编辑',async({page,context})=>{
@@ -196,7 +196,7 @@ test('字段生命周期：删除模板元素停用错误输入，撤销恢复�
  const {a}=await fixture(page,false);await page.goto('/templates?edit='+a.templateId);await ready(page);
  const first=page.locator('.react-flow__node').filter({hasText:'方案交付'});const id=await first.getAttribute('data-id');await first.locator('.dependency-card').click();
  const input=page.getByLabel('元素名称');await input.fill('');await input.blur();await expect(input).toHaveAttribute('aria-invalid','true');
- await page.getByLabel('删除元素',{exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'确认删除',exact:true}).click();await expect(first).toHaveCount(0);
+ await page.getByLabel('删除元素',{exact:true}).click();await expect(first).toHaveCount(0);
  await page.getByLabel('撤销',{exact:true}).click();await ready(page);await page.locator('.react-flow__node[data-id="'+id+'"] .dependency-card').click();await expect(input).toHaveValue('');await expect(input).toHaveAttribute('aria-invalid','true');
  await page.getByLabel('重做',{exact:true}).click();await expect(first).toHaveCount(0);await expect(page.getByText('草稿已保留',{exact:true})).toBeVisible();await page.reload();await ready(page);
  const saved=page.waitForResponse(r=>r.url().endsWith('/api/templates/'+a.templateId)&&r.request().method()==='PATCH',{timeout:6000});await page.getByLabel('保存修改',{exact:true}).click();expect((await saved).status()).toBe(200);
@@ -206,7 +206,7 @@ test('字段生命周期：删除模板元素停用错误输入，撤销恢复�
 test('字段生命周期：删除工作项的错误输入不阻塞共享项目草稿保存',async({page})=>{
  const {a,analysis}=await fixture(page,false);await page.goto('/requirements/'+a.id+'?view=path');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();
  const node=page.locator('.react-flow__node[data-id="'+a.workItems[0].id+'"]');await node.locator('.dependency-card').click();const input=page.getByLabel('元素名称');await input.fill('');await input.blur();await expect(input).toHaveAttribute('aria-invalid','true');
- await page.getByLabel('删除元素',{exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'加入删除草稿',exact:true}).click();await expect(node).toHaveCount(0);
+ await page.getByLabel('删除元素',{exact:true}).click();await expect(node).toHaveCount(0);
  await page.getByLabel('撤销',{exact:true}).click();await ready(page);await node.locator('.dependency-card').click();await expect(input).toHaveValue('');await expect(input).toHaveAttribute('aria-invalid','true');await page.getByLabel('重做',{exact:true}).click();await expect(node).toHaveCount(0);
  expect((await analysis()).nodes.some(n=>n.id===a.workItems[0].id)).toBe(true);
  const saved=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/apply')&&r.request().method()==='POST',{timeout:6000});await page.getByLabel('保存修改',{exact:true}).click();expect((await saved).status()).toBe(200);
@@ -315,7 +315,7 @@ test('全局新增需求只加入草稿，进入其内部继续创建，保存�
  await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(/draftProject=/);await expect(page.locator('.graph-editor-title>strong')).toHaveText('草稿新需求');
  await page.getByLabel('添加元素',{exact:true}).click();await page.locator('.graph-elements').getByRole('button',{name:'工作项',exact:true}).click();const box=(await page.locator('.dependency-canvas').boundingBox())!;await page.mouse.click(box.x+box.width*.45,box.y+box.height*.6);await ready(page);await expect(page.getByRole('heading',{name:'新工作项',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect(page).not.toHaveURL(/draftProject=/);await ready(page);expect((await analysis()).requirements).toHaveLength(initial.requirements.length+1);
- await page.getByRole('button',{name:'返回项目全局',exact:true}).click();await ready(page);await expect(page).toHaveURL(/paths/);await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);expect((await page.locator('.graph-toolbar').boundingBox())!.height).toBeLessThanOrEqual(88);await page.screenshot({path:testInfo.outputPath('editor-narrow.png')});
+ await page.getByRole('button',{name:'返回',exact:true}).click();await ready(page);await expect(page).toHaveURL(/paths/);await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);expect((await page.locator('.graph-toolbar').boundingBox())!.height).toBeLessThanOrEqual(88);await page.screenshot({path:testInfo.outputPath('editor-narrow.png')});
 });
 
 test('多标签页显式接管草稿，撤销不影响正式数据',async({page,context})=>{
@@ -579,7 +579,7 @@ test('全局交付条件：直接拉线、细化、撤销、返回和保存只�
  await page.locator('.delivery-target summary').click();await page.getByLabel('完成后允许什么开始',{exact:true}).selectOption(b.workItems[1].id);await ready(page);
  await expect(edge.locator('.dependency-edge-label')).toHaveText('方案交付 → 集成验证');
  const back=page.url();await page.getByRole('button',{name:'查看前置交付',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp('/requirements/'+a.id));await expect(page).toHaveURL(new RegExp('pathNode='+a.workItems[0].id));
- await page.getByRole('button',{name:'返回项目全局',exact:true}).click();await ready(page);expect(page.url()).toBe(back);expect(await viewportValue(page)).toBe(view);
+ await page.getByRole('button',{name:'返回',exact:true}).click();await ready(page);expect(page.url()).toBe(back);expect(await viewportValue(page)).toBe(view);
  await expect(page.getByLabel('等待什么完成',{exact:true})).toHaveValue(a.workItems[0].id);await page.reload();await ready(page);await expect(page.getByLabel('完成后允许什么开始',{exact:true})).toHaveValue(b.workItems[1].id);
  await page.getByLabel('保存修改',{exact:true}).click();await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();await ready(page);
  const result=await analysis(),cross=result.dependencies.filter(d=>d.sourceRequirementId===a.id&&d.targetRequirementId===b.id);

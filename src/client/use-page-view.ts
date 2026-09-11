@@ -77,7 +77,11 @@ export function clearPageViews() {
 export function usePageBack(fallback: string) {
   const navigate = useNavigate();
   return () => {
-    if (window.history.state?.idx > 0) navigate(-1);
-    else navigate(fallback);
+    if (hasPageHistory()) navigate(-1);
+    else navigate(fallback, { replace: true });
   };
+}
+
+export function hasPageHistory() {
+  return window.history.state?.idx > 0;
 }

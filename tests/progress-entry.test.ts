@@ -83,6 +83,15 @@ afterAll(async () => {
 });
 
 for (const protocol of ['REST', 'MCP'] as const) {
+  it(`${protocol}只填完成度即可更新，空说明不能单独提交`, async () => {
+    const before = await fixture('in_progress'), item = before.workItems[0];
+    expect((await write(protocol, before.id, { workItemId:item.id, expectedVersion:item.version, workItemPercent:45 })).statusCode).toBe(200);
+    const saved = await detail(before.id);
+    expect(saved.workItems[0]).toMatchObject({ progress:45, version:item.version+1 });
+    expect(saved.progressUpdates?.[0]).toMatchObject({content:'完成度：0% → 45%', eventType:'progress'});
+    expect((await write(protocol,before.id,{workItemId:item.id,expectedVersion:saved.workItems[0].version,content:'  '})).statusCode).toBe(400);
+    expect(await detail(before.id)).toEqual(saved);
+  });
   it.each(['not_started', 'in_progress', 'completed', 'cancelled'])(`${protocol}与表单一致地处理%s工作项，始终保留关联`, async (status) => {
     const before = await fixture(status);
     const item = before.workItems[0];

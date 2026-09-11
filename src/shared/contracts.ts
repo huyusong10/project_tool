@@ -104,7 +104,7 @@ export const requirementInputSchema = z.object({...organizationFields,blockedCoo
   templateId: z.string().optional(),
   confirmTemplateReset: z.boolean().optional(),
   expectedVersion: expectedVersionSchema.optional(),
-  reason: z.string().trim().min(1).optional(),
+  reason: z.string().trim().optional(),
 }).passthrough();
 
 export const createRequirementInputSchema = requirementInputSchema.pick({groupId:true,
@@ -135,7 +135,7 @@ export const updateRequirementInputSchema = requirementInputSchema.pick({groupId
 }).extend({ expectedVersion: expectedVersionSchema }).strict();
 
 export const requirementCorrectionInputSchema = updateRequirementInputSchema.extend({
-  reason: z.string().trim().min(1),
+  reason: z.string().trim().optional(),
   supersedesId: z.string().nullable().optional(),
 });
 
@@ -166,7 +166,7 @@ export const applyRequirementPlanInputSchema = previewRequirementPlanInputSchema
 export const applyTemplateInputSchema = z.object({
   templateId: idSchema,
   expectedVersion: expectedVersionSchema,
-  reason: z.string().trim().min(1).optional(),
+  reason: z.string().trim().optional(),
 }).strict();
 
 export const workItemInputSchema = z.object({blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema,
@@ -179,13 +179,13 @@ export const workItemInputSchema = z.object({blockedCoordinatorId:optionalIdSche
   sortOrder: z.number().int().min(0).optional(),
   milestoneLabel: z.string().nullable().optional(),
   expectedVersion: expectedVersionSchema.optional(),
-  reason: z.string().trim().min(1).optional(),
+  reason: z.string().trim().optional(),
 }).passthrough();
 
 export const expectedVersionInputSchema = z.object({ expectedVersion: expectedVersionSchema }).passthrough();
-export const startWorkItemInputSchema=expectedVersionInputSchema.extend({reason:z.string().trim().min(1).optional(),expectedDependencyRevision:z.number().int().nonnegative().optional()});
-export const reasonCommandSchema = expectedVersionInputSchema.extend({blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema, reason: z.string().trim().min(1) });
-export const contentCommandSchema = expectedVersionInputSchema.extend({ content: z.string().trim().min(1) });
+export const startWorkItemInputSchema=expectedVersionInputSchema.extend({ownerId:optionalIdSchema,requirementOwnerId:optionalIdSchema,expectedRequirementVersion:expectedVersionSchema.optional(),reason:z.string().trim().min(1).optional(),expectedDependencyRevision:z.number().int().nonnegative().optional()});
+export const reasonCommandSchema = expectedVersionInputSchema.extend({blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema, reason: z.string().trim().optional() });
+export const contentCommandSchema = expectedVersionInputSchema.extend({ content: z.string().trim().optional() });
 export const optionalContentCommandSchema = expectedVersionInputSchema.extend({ content: z.string().trim().optional() });
 export const completeAsPlannedInputSchema = z.object({
   expectedVersion: expectedVersionSchema,
@@ -200,7 +200,7 @@ export const workItemCommandSchema = expectedVersionInputSchema.extend({
 });
 
 export const workItemCorrectionSchema = workItemCommandSchema.omit({ content: true }).extend({
-  reason: z.string().trim().min(1),
+  reason: z.string().trim().optional(),
   title: z.string().trim().min(1).optional(),
   supersedesId: z.string().nullable().optional(),
 });
@@ -224,12 +224,12 @@ export const reopenIssueInputSchema = reasonCommandSchema.extend({
 });
 
 export const issueCorrectionInputSchema = issueCommandSchema.omit({ content: true }).extend({
-  reason: z.string().trim().min(1),
+  reason: z.string().trim().optional(),
 });
 
 export const progressInputSchema = z.object({
   requirementPercent:z.number().int().min(0).max(99).optional(),
-  content: z.string().trim().min(1),
+  content: z.string().trim().optional(),
   workItemId: z.string().nullable().optional(),
   workItemPercent: z.number().int().min(0).max(99).optional(),
   expectedVersion: expectedVersionSchema.optional(),
@@ -290,7 +290,7 @@ export const updateIssueInputSchema = issueInputSchema.omit({ projectId: true })
 });
 
 export const issueUpdateInputSchema = z.object({
-  content: z.string().trim().min(1),
+  content: z.string().trim().optional(),
   progress: z.number().int().min(0).max(99).optional(),
   expectedVersion: expectedVersionSchema.optional(),
 }).strict();
@@ -493,7 +493,7 @@ export const reorderWorkItemsInputSchema = z.object({
     (ids) => new Set(ids).size === ids.length,
     '工作项顺序不能包含重复ID',
   ),
-  reason: z.string().trim().min(1).optional(),
+  reason: z.string().trim().optional(),
   expectedVersion: expectedVersionSchema,
 }).strict();
 
@@ -517,4 +517,4 @@ export const projectPeopleConcurrencyInputSchema = peopleConcurrencyInputSchema.
   { message: '项目ID不能为空', path: ['projectId'] },
 );
 
-export const directRequirementCommandSchema=z.object({expectedVersion:expectedVersionSchema,content:z.string().trim().optional(),reason:z.string().trim().optional(),progress:z.number().int().min(0).max(99).optional(),actualEnd:optionalDateSchema}).strict();
+export const directRequirementCommandSchema=z.object({expectedVersion:expectedVersionSchema,ownerId:optionalIdSchema,content:z.string().trim().optional(),reason:z.string().trim().optional(),progress:z.number().int().min(0).max(99).optional(),actualEnd:optionalDateSchema}).strict();

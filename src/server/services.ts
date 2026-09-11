@@ -1,3 +1,4 @@
+import { describeChanges } from './services/support';
 import {persistOrganization} from './services/intake-metadata';
 import {invalidateForecastReview} from './services/forecast-reviews';
 import {preserveRecordedAcceptance} from './services/acceptance-history';
@@ -1103,7 +1104,6 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
           : null;
       }
     }
-    if (hasExecution && !nullableText(input.reason)) fail('需求已开始执行，调整排期时必须填写变更原因');
   }
   if (templateChanged) {
     if (hasExecution) fail('需求已有执行记录，不能重选流程；请取消后重新创建', 'INVALID_TRANSITION');
@@ -1193,7 +1193,7 @@ export function correctRequirement(id: string, input: JsonObject, actor: Actor) 
     .some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
     fail('需求纠错只能修正基本信息，不能修改状态、进度、验收、排期或流程');
   }
-  const reason = requireText(input.reason, '纠错原因');
+  const reason = nullableText(input.reason) || describeChanges(current, input);
   const title = input.title === undefined ? current.title : requireLabel(input.title, '需求标题');
   const priority = input.priority === undefined ? current.priority : ensureEnum(input.priority, priorities, '优先级');
   const ownerId = input.ownerId === undefined ? current.ownerId : requirementOwner(current.projectId, input.ownerId);
@@ -1298,7 +1298,7 @@ export function cancelRequirement(id: string, input: JsonObject, actor: Actor) {
   const current = getRequirement(id);
   assertExpectedVersion(input, current.version);
   assertTransition(current.status, ['planning', 'not_started', 'in_progress', 'blocked', 'pending_acceptance'], '取消');
-  const reason = requireText(input.reason, '取消原因'); const now = nowIso();
+  const reason = nullableText(input.reason) || '取消需求'; const now = nowIso();
   sqlite.transaction(() => {
     sqlite.prepare(`UPDATE work_items SET status='cancelled', progress=min(progress,99), actual_end=NULL,
       blocked_at=NULL, blocked_reason=NULL, version=version+1, updated_at=?
@@ -1341,7 +1341,6 @@ export function applyTemplate(requirementId: string, input: JsonObject, actor: A
   assertExpectedVersion(input, requirement.version);
   const templateId = requireText(input.templateId, '流程设计');
   if (['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status)) fail('终态需求不能补充工作项', 'TERMINAL_LOCKED');
-  if (requirement.workItems!.some((item) => item.status !== 'not_started') && !nullableText(input.reason)) fail('需求已开始执行，补充流程工作项时必须填写变更原因');
   if (!row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', templateId, requirement.projectId)) fail('流程设计不属于当前项目');
   const tx = sqlite.transaction(() => {
     const added=applyTemplateInternal(requirementId, templateId, requirement.plannedStart||todayIso());
@@ -1393,8 +1392,6 @@ export function applyRequirementPlan(requirementId: string, input: JsonObject, a
   const requirement = getRequirement(requirementId);
   assertExpectedVersion(input, requirement.version);
   if (['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status)) fail('终态需求不能修改工作计划', 'TERMINAL_LOCKED');
-  const hasExecution = requirement.workItems!.some((item) => item.status !== 'not_started');
-  if (hasExecution && !nullableText(input.reason)) fail('需求已开始执行，补全或调整计划时必须填写原因');
   const preview = previewRequirementPlan(requirementId, input);
   if (input.previewToken !== undefined && input.previewToken !== preview.previewToken) {
     fail('需求或流程已更新，原预览已失效，请重新预览后确认', 'STALE_WRITE', 409, undefined, requirement.version);
@@ -1494,9 +1491,6 @@ export function createWorkItem(requirementId: string, input: JsonObject, actor: 
     fail('新增工作项不能指定排序位置，请创建后使用工作项排序');
   }
   if (['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status)) fail('当前需求已锁定，不能新增工作项', 'TERMINAL_LOCKED');
-  if (requirement.workItems!.some((item) => item.status !== 'not_started') && !nullableText(input.reason)) {
-    fail('需求已开始执行，新增工作项时必须填写变更原因');
-  }
   const id = randomUUID(); const now = nowIso(); const title = requireLabel(input.title, '工作项标题');
   const max = row<{ value: number | null }>('SELECT MAX(sort_order) AS value FROM work_items WHERE requirement_id=?', requirementId)?.value ?? -1;
   const ownerId = nullableText(input.ownerId);
@@ -1560,7 +1554,6 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor, defe
     && [...collaboratorIds].sort().join(',') !== [...previousCollaboratorIds].sort().join(',');
   const structuralChanged = title !== current.title || milestone !== current.milestoneLabel || ownerId !== current.ownerId
     || collaboratorsChanged || scheduleChanged || input.sortOrder !== undefined && Number(input.sortOrder) !== current.sortOrder;
-  if (requirementHasExecution && structuralChanged && !nullableText(input.reason)) fail('需求已开始执行，调整工作项结构、负责人或排期时必须填写变更原因');
   const coordinationChanged=coordinationKeys.some(k=>input[k]!==undefined);const coordination=coordinationChanged?validateCoordination(requirement.projectId,{...current,...input}):undefined;if(coordinationChanged&&current.status!=='blocked')fail('只有阻塞对象可以修改协调信息');
   if(coordinationChanged&&!structuralChanged)assertCoordinationAccess('work',id,input,actor);
   if (!structuralChanged&&!coordinationChanged) {
@@ -1585,8 +1578,8 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor, defe
     syncStoredRequirementState(current.requirementId, now, true, requirement.version);
     requireActiveProject(requirement.projectId, true);
     if(coordinationChanged&&!structuralChanged)assertCoordinationAccess('work',id,input,actor);else assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
-    if (requirementHasExecution && structuralChanged) appendRequirementEvent(current.requirementId, 'correction', requireText(input.reason, '变更原因'), actor, id, current.progress, null, now);
-    audit(actor, 'update', 'work_item', id, `更新工作项：${title}`);
+    if (requirementHasExecution && structuralChanged) appendRequirementEvent(current.requirementId, 'correction', nullableText(input.reason) || describeChanges(current, input), actor, id, current.progress, null, now);
+    audit(actor, 'update', 'work_item', id, `更新工作项：${title}；${describeChanges(current, {title, ownerId, plannedStart, plannedEnd, assigneeIds:collaboratorIds})}`);
     assertProjectAssignees(current.requirementId, newAssigneeIds, true);
   })();
   return getRequirement(current.requirementId, false, !deferAnalysis).workItems!.find((item) => item.id === id);
@@ -1601,7 +1594,7 @@ function validateWorkItemActualDates(actualStart: string | null, actualEnd: stri
 function workItemEvent(id: string, action: 'start' | 'complete' | 'cancel', input: JsonObject, actor: Actor) {
   const allowedFields = new Set([
     'expectedVersion',
-    ...(action === 'complete' ? ['content'] : action === 'cancel' ? ['reason'] : action === 'start' ? ['reason'] : []),
+    ...(action === 'complete' ? ['content'] : action === 'cancel' ? ['reason'] : action === 'start' ? ['reason','ownerId','requirementOwnerId','expectedRequirementVersion'] : []),
   ]);
   if (Object.keys(input).some((key) => !allowedFields.has(key))) {
     const labels = { start: '开始', complete: '完成', cancel: '取消' } as const;
@@ -1614,14 +1607,24 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'cancel', inpu
   const today = todayIso(); const now = nowIso();
   const labels = { start: '开始', complete: '完成', cancel: '取消' } as const;
   const eventContent = action === 'complete' ? nullableText(input.content) || '完成工作项'
-    : action === 'cancel' ? requireText(input.reason, '取消原因')
+    : action === 'cancel' ? nullableText(input.reason) || '取消工作项'
         : action==='start' && nullableText(input.reason) ? requireText(input.reason,'执行例外原因') : `${labels[action]}工作项`;
+  const startOwner = input.ownerId ? String(input.ownerId) : current.ownerId;
+  const requirementStartOwner = input.requirementOwnerId ? String(input.requirementOwnerId) : parentRequirement.ownerId;
+  const assigning=action==='start'&&(input.ownerId!==undefined||input.requirementOwnerId!==undefined);
+  if(assigning){
+    assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor),id);
+    assertExpectedVersion({expectedVersion:input.expectedRequirementVersion},parentRequirement.version);
+    if(parentRequirement.ownerId&&parentRequirement.ownerValid&&requirementStartOwner!==parentRequirement.ownerId)fail('需求负责人已指定，请刷新后开始');
+    if(current.ownerId&&startOwner!==current.ownerId)fail('工作项负责人已指定，请刷新后开始');
+  }
   if (action === 'start') {
     assertTransition(current.status, ['not_started'], '开始');
     const requirement = getRequirement(current.requirementId);
-    if(!requirement.ownerId||!requirement.ownerValid)fail('开始前请指定有效需求负责人','DEPENDENCY_CONFLICT',409);
-    validateDeliveryFields(requirement.projectId,{ownerId:current.ownerId},actor);
-    if (!current.ownerId) fail('开始工作项前请指定负责人');
+    if(!requirementStartOwner)fail('开始前请指定有效需求负责人','DEPENDENCY_CONFLICT',409);
+    validateDeliveryFields(requirement.projectId,{ownerId:requirementStartOwner},actor);
+    validateDeliveryFields(requirement.projectId,{ownerId:startOwner},actor);
+    if (!startOwner) fail('开始工作项前请指定负责人');
 
   }
   if (action === 'complete') {
@@ -1630,8 +1633,13 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'cancel', inpu
   }
   if (action === 'cancel') assertTransition(current.status, ['not_started', 'in_progress'], '取消');
   sqlite.transaction(() => {
+    if(assigning){
+      if(requirementStartOwner!==parentRequirement.ownerId)assertVersionedWrite(sqlite.prepare('UPDATE requirements SET owner_id=? WHERE id=? AND version=?').run(requirementStartOwner,parentRequirement.id,parentRequirement.version),'需求');
+      if(startOwner)sqlite.prepare('DELETE FROM work_item_collaborators WHERE work_item_id=? AND person_id=?').run(id,startOwner);
+      audit(actor,'update','work_item',id,'开始时补选负责人：'+describeChanges(current,{ownerId:startOwner})+'；需求负责人ID：'+requirementStartOwner);
+    }
     const changed = action === 'start'
-      ? sqlite.prepare(`UPDATE work_items SET actual_start=?, status='in_progress', version=version+1, updated_at=? WHERE id=? AND version=?`).run(today, now, id, current.version)
+      ? sqlite.prepare(`UPDATE work_items SET actual_start=?, owner_id=?, status='in_progress', version=version+1, updated_at=? WHERE id=? AND version=?`).run(today, startOwner, now, id, current.version)
       : action === 'complete'
         ? sqlite.prepare(`UPDATE work_items SET actual_end=?, progress=100, status='completed', blocked_at=NULL, blocked_reason=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(today, now, id, current.version)
         : sqlite.prepare(`UPDATE work_items SET status='cancelled', progress=min(progress,99), actual_end=NULL, blocked_at=NULL, blocked_reason=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version);
@@ -1744,7 +1752,7 @@ export function reopenWorkItem(id: string, input: JsonObject, actor: Actor) {
   const item = requirement.workItems!.find((entry) => entry.id === id)!;
   assertProjectAssignees(current.requirementId, [requirement.ownerId, item.ownerId, ...item.collaborators.map((person) => person.id)], true);
   assertExpectedVersion(input, current.version); assertTransition(current.status, ['completed', 'cancelled'], '重开');
-  const reason = requireText(input.reason, '重开原因');
+  const reason = nullableText(input.reason) || '重新打开工作项';
   const restoredProgress = input.progress === undefined ? (current.status === 'completed' ? 99 : Math.min(current.progress, 99)) : requireProgress(input.progress, '恢复进度');
   if (restoredProgress >= 100) fail('恢复进度必须小于100%');
   if (!current.actualStart && input.progress !== undefined && restoredProgress !== 0) {
@@ -1779,7 +1787,7 @@ export function correctWorkItem(id: string, input: JsonObject, actor: Actor) {
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) notFound('工作项不存在');
   const requirement = getRequirement(current.requirementId);
-  assertExpectedVersion(input, current.version); const reason = requireText(input.reason, '纠错原因');
+  assertExpectedVersion(input, current.version); const reason = nullableText(input.reason) || describeChanges(current, input);
   const progress = input.progress === undefined ? current.progress : requireProgress(input.progress, '完成度');
   if (isTerminalWorkItemStatus(current.status) && progress !== current.progress) fail('终态工作项调整进度时必须使用重开操作', 'TERMINAL_LOCKED');
   if (progress >= 100 && current.status !== 'completed') fail('100%只能由完成操作产生');
@@ -1865,9 +1873,7 @@ export function reorderWorkItems(requirementId: string, ids: string[], actor: Ac
     })();
     return requirement.workItems;
   }
-  const hasExecution = requirement.workItems!.some((item) => item.status !== 'not_started');
-  if (hasExecution && !nullableText(input.reason)) fail('需求已开始执行，调整顺序时必须填写变更原因');
-  const reason = hasExecution ? requireText(input.reason, '变更原因') : null;
+  const reason = nullableText(input.reason) || '调整工作项顺序：' + ids.map(id => workItemsById.get(id)!.title).join(' → ');
   const now = nowIso();
   const tx = sqlite.transaction(() => {
     const update = sqlite.prepare(`UPDATE work_items SET sort_order=?, version=version+1, updated_at=?
@@ -1890,13 +1896,14 @@ export function addProgress(requirementId: string, input: JsonObject, actor: Act
   if (Object.keys(input).some((key) => !['content', 'workItemId', 'workItemPercent', 'expectedVersion'].includes(key))) {
     fail('进展命令不能提交无关的需求或工作项字段');
   }
-  const requirement = getRequirement(requirementId); const content = requireText(input.content, '具体进展');
+  const requirement = getRequirement(requirementId);
   const id = randomUUID(); const now = nowIso(); const workItemId = nullableText(input.workItemId);
   if (workItemId && !requirement.workItems!.some((item) => item.id === workItemId)) notFound('关联工作项不存在');
   if (!workItemId && input.workItemPercent !== undefined && nullableText(input.workItemPercent) !== null) fail('填写完成度前请选择工作项');
   const hasPercent = input.workItemPercent !== undefined && input.workItemPercent !== null && String(input.workItemPercent).trim() !== '';
   const workItemPercent = workItemId && hasPercent ? requireProgress(input.workItemPercent, '工作项完成度') : null;
   const workItem = workItemId ? requirement.workItems!.find((item) => item.id === workItemId)! : null;
+  const content = nullableText(input.content) || (workItemPercent !== null ? `完成度：${workItem?.progress ?? 0}% → ${workItemPercent}%` : requireText(input.content, '说明'));
   if (workItemPercent !== null && workItem) assertExpectedVersion(input, workItem.version);
   if (workItem && isTerminalWorkItemStatus(workItem.status)) fail('已完成或已取消工作项不能再提交进展', 'TERMINAL_LOCKED');
   if (workItemPercent !== null && workItem?.status !== 'in_progress') fail('只有进行中工作项可以更新完成度；请先开始或解除阻塞', 'INVALID_TRANSITION');

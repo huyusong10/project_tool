@@ -661,11 +661,11 @@ describe('功能扩充契约', () => {
     const restIncompleteIssueCommand = await app.inject({
       method: 'POST', url: '/api/issues/missing-issue/resolve', headers: { cookie: replacementCookie }, payload: { expectedVersion: 1 },
     });
-    expect(restIncompleteIssueCommand.statusCode).toBe(400);
+    expect(restIncompleteIssueCommand.statusCode).toBe(404);
     const mcpIncompleteIssueCommand = await callMcp(token, 13, 'resolve_issue', { id: 'missing-issue', expectedVersion: 1 });
     expect(mcpIncompleteIssueCommand.result).toMatchObject({
       isError: true,
-      structuredContent: { statusCode: 400, error: { code: 'VALIDATION_ERROR' } },
+      structuredContent: { statusCode: 404, error: { code: 'NOT_FOUND' } },
     });
   });
 });

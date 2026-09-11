@@ -15,7 +15,7 @@ for (const [skin, label] of [...skins, ['system', '跟随系统']]) test(`${labe
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
     await expect(page.locator('.sidebar')).toHaveClass(/sidebar-collapsed/);
-    await page.getByRole('button', { name: '返回', exact: true }).click({ trial: true });
+    await page.getByRole('button', { name: '需求列表', exact: true }).click({ trial: true });
     await page.getByRole('button', { name: /^切换风格/ }).click({ trial: true });
     await page.locator('.project-switcher-button').click({ trial: true });
     expect((await page.locator('.topbar').boundingBox())?.height).toBe(88);

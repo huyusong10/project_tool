@@ -1,3 +1,4 @@
+import {nullableText,describeChanges} from './support';
 import {persistOrganization,validateOrganization} from './intake-metadata';
 import {invalidateForecastReview} from './forecast-reviews';
 import {preserveRecordedAcceptance} from './acceptance-history';
@@ -15,7 +16,7 @@ import {loadPathInput} from './paths';
 import {analysePaths,dependencySource} from '../../shared/paths';
 import {recordAudit} from './audit';
 import {settleMilestones} from './milestones';
-import {requireActiveProject,assertExpectedVersion,assertVersionedWrite,requireText,normalizeRequirementText,type JsonObject} from './support';
+import {requireActiveProject,assertExpectedVersion,assertVersionedWrite,normalizeRequirementText,type JsonObject} from './support';
 import {normalizeDirectEstimates,persistDirectEstimates} from './direct-estimates';
 
 function refreshDirectForecast(id:string){
@@ -29,7 +30,6 @@ export function validateDeliveryFields(projectId:string,value:JsonObject,actor:A
   if(value.deliveryScope!==undefined&&value.deliveryScope!==current?.deliveryScope||value.acceptanceOwnerId!==undefined&&value.acceptanceOwnerId!==current?.acceptanceOwnerId)assertProjectManager(auth,projectId);
   if(value.acceptanceOwnerId){const valid=sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id JOIN accounts a ON a.person_id=p.id WHERE pp.project_id=? AND p.id=? AND pp.project_role IN ('manager','member') AND p.active=1 AND p.deleted_at IS NULL AND a.status='active' AND a.deleted_at IS NULL").get(projectId,value.acceptanceOwnerId);if(!valid)fail('验收人必须是有有效账号的当前项目成员');}
   if(value.ownerId&&!sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id JOIN accounts a ON a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL WHERE pp.project_id=? AND p.id=? AND pp.project_role IN ('member','manager') AND p.active=1 AND p.deleted_at IS NULL").get(projectId,value.ownerId))fail('负责人必须是有效项目成员',conflict?'DEPENDENCY_CONFLICT':'VALIDATION_ERROR',conflict?409:400);
-  if(current&&value.deliveryScope==='candidate'&&current.deliveryScope!=='candidate'&&['in_progress','blocked','pending_acceptance'].includes(current.status)&&!String(value.reason||'').trim())fail('撤出已执行需求时请填写原因');
   if(current&&value.ownerId===null&&current.actualStart)fail('需求已执行，不能清空负责人');
   for(const key of ['forecastEnd','unblockEstimate'])if(value[key]&&String(value[key])<todayIso())fail('预测日期不能早于今天');
 }
@@ -77,7 +77,6 @@ export function updateDeliveryRequirement(id:string,raw:JsonObject,actor:Actor,s
     const start=value.plannedStart===undefined?r.plannedStart:value.plannedStart,end=value.plannedEnd===undefined?r.plannedEnd:value.plannedEnd;
     if(start&&end&&start>end)fail('计划完成日期不能早于开始日期');
     for(const day of [start,end])if(day&&businessDaysInclusive(day,day)!==1)fail('计划日期必须是工作日');
-    if(r.actualStart&&!value.reason)fail('需求已开始，调整计划请填写原因');
   }
   const nextMode=value.executionMode||r.executionMode;
   if(nextMode!==r.executionMode){
@@ -99,7 +98,7 @@ export function updateDeliveryRequirement(id:string,raw:JsonObject,actor:Actor,s
     if(coordinationChanged)persistCoordination('requirement',id,r.projectId,value,actor);
     if(value.forecastEnd!==undefined&&!split&&!deferNormalization)refreshDirectForecast(id);
     if(extra)event(id,'split','拆分剩余工作；已完成基线 '+r.progress+'%。'+(value.reason||''),actor);
-    else recordAudit(actor,'update','requirement',id,'修改需求：'+r.title+(value.reason?'；'+value.reason:''));
+    else recordAudit(actor,'update','requirement',id,'修改需求：'+r.title+'；'+describeChanges(r,value)+(value.reason?'；'+value.reason:''));
     requireActiveProject(r.projectId,true);if(wasManager)assertProjectManager(requireAuthorizationActor(actor),r.projectId);else assertRequirementOwnerOrManager(requireAuthorizationActor(actor),id);validateDeliveryFields(r.projectId,value,actor,r,true);
   }).immediate();
   return getRequirement(id,false,!deferNormalization);
@@ -119,19 +118,23 @@ export function executeDirectRequirement(id:string,action:'start'|'progress'|'co
     if(!allowed[action].includes(r.status))fail('当前状态不能执行此操作','INVALID_TRANSITION');
     const now=new Date().toISOString(),today=todayIso();let sets='',args:unknown[]=[];
     let content=input.content||input.reason||({start:'开始需求',complete:'工作完成'} as Record<string,string>)[action]||'';
+    if(input.ownerId!==undefined&&action!=='start')fail('只有开始时可以补选负责人');
     if(action==='start'){
-      if(!r.ownerId)fail('开始前请指定需求负责人');validateDeliveryFields(r.projectId,{ownerId:r.ownerId},actor,r);
-      sets="status='in_progress',actual_start=?";args=[today];
+      const ownerId=input.ownerId||r.ownerId;
+      if(r.ownerId&&r.ownerValid&&input.ownerId&&input.ownerId!==r.ownerId)fail('负责人已指定，请刷新后开始');
+      if(!ownerId)fail('开始前请指定需求负责人');validateDeliveryFields(r.projectId,{ownerId},actor,r);
+      sets="status='in_progress',actual_start=?,owner_id=?";args=[today,ownerId];
+      if(ownerId!==r.ownerId)content+='；'+describeChanges(r,{ownerId});
     }else if(action==='progress'){
       if(input.progress===undefined)fail('请填写需求进度');
       if(input.progress<r.progress)fail('普通进展不能降低完成度，请执行返工或纠错');
-      content=requireText(content,'进展说明');sets='progress=?';args=[input.progress];
+      content=nullableText(content)||`完成度：${r.progress}% → ${input.progress}%`;sets='progress=?';args=[input.progress];
     }else if(action==='complete'){
       const end=input.actualEnd||today;
       if(end>today||!r.actualStart||end<r.actualStart)fail('实际完成日期应在实际开始日期和今天之间');
       sets="status='completed',progress=100,actual_end=?";args=[end];
     }else{
-      content=requireText(content,'返工原因')+'；原完成日期：'+(r.actualEnd||'未记录');
+      content=(nullableText(content)||'重新打开需求')+'；原完成日期：'+(r.actualEnd||'未记录');
       preserveRecordedAcceptance(id);sets="status='in_progress',progress=?,actual_end=NULL,accepted_at=NULL,accepted_by_account_id=NULL";args=[input.progress??99];
     }
     const updated=sqlite.prepare('UPDATE requirements SET '+sets+',version=version+1,updated_at=? WHERE id=? AND version=?').run(...args,now,id,r.version);
@@ -145,7 +148,7 @@ export function returnRequirement(id:string,input:JsonObject,actor:Actor){
   const r=getRequirement(id);if(r.executionMode==='direct')return executeDirectRequirement(id,'rework',input,actor);
   requireActiveProject(r.projectId);assertRequirementOwnerOrManager(requireAuthorizationActor(actor),id);assertExpectedVersion(input,r.version);
   if(r.status!=='completed')fail('当前需求不能退回');
-  const reason=requireText(input.reason,'退回原因'),ids=Array.isArray(input.workItemIds)?input.workItemIds.map(String):[];
+  const reason=nullableText(input.reason)||'需求返工',ids=Array.isArray(input.workItemIds)?input.workItemIds.map(String):[];
   if(!ids.length||ids.some(id=>!r.workItems?.some(w=>w.id===id&&w.status==='completed')))fail('请选择需要返工的已完成工作项');
   sqlite.transaction(()=>{
     requireActiveProject(r.projectId);
@@ -164,7 +167,7 @@ export function rescheduleDirectRequirement(id:string,raw:JsonObject,actor:Actor
   return sqlite.transaction(()=>{
     const r=getRequirement(id);requireActiveProject(r.projectId);assertProjectManager(requireAuthorizationActor(actor),r.projectId);assertExpectedVersion(value,r.version);
     if(['completed','cancelled'].includes(r.status))fail('已结束需求不能重新排期');
-    const reason=r.actualStart?requireText(value.reason,'变更原因'):value.reason||'调整计划日期';
+    const reason=nullableText(value.reason)||describeChanges(r,value);
     const duration=r.durationDays||(r.plannedStart&&r.plannedEnd?businessDaysInclusive(r.plannedStart,r.plannedEnd):null);
     const start=value.plannedStart||(value.plannedEnd&&duration?addBusinessDays(value.plannedEnd,1-duration):null);
     const end=value.plannedEnd||(value.plannedStart&&duration?addBusinessDays(value.plannedStart,duration-1):null);

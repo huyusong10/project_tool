@@ -33,13 +33,6 @@ export function graphBranch(id:string,links:Array<{source:string;target:string}>
   return ids;
 }
 export function graphContext(ids:Set<string>,links:Array<{source:string;target:string}>){const result=new Set(ids);for(const e of links)if(ids.has(e.source)||ids.has(e.target)){result.add(e.source);result.add(e.target);}return result;}
-export type PathOrigin={url:string;label:string;parent?:PathOrigin};
-const prefix='pm-path-origin:';
-export function readPathOrigin(key:string,state:unknown):PathOrigin|undefined {
-  const value=(state as {pathOrigin?:PathOrigin}|null)?.pathOrigin;
-  try {const saved=value||JSON.parse(localStorage.getItem(prefix+key)||'null');return saved&&/^\/(paths|requirements\/[^/?]+)(\?|$)/.test(saved.url)?saved:undefined;}catch{return undefined;}
-}
-export function savePathOrigin(key:string,value:PathOrigin|undefined){try {if(value)localStorage.setItem(prefix+key,JSON.stringify(value));else localStorage.removeItem(prefix+key);}catch{/* Navigation still works in memory. */}}
 
 export function remapEditorUrl(url:string,ids:Record<string,string>){
   const parsed=new URL(url,location.origin),map=(id:string)=>ids[id]||((id.startsWith('acceptance:')||id.startsWith('start:')||id.startsWith('execute:'))?id.split(':')[0]+':'+(ids[id.slice(id.indexOf(':')+1)]||id.slice(id.indexOf(':')+1)):id);
@@ -49,14 +42,24 @@ export function remapEditorUrl(url:string,ids:Record<string,string>){
   const edge=parsed.searchParams.get('pathEdge');if(edge)parsed.searchParams.set('pathEdge',ids[edge]||edge.split('>').map(map).join('>'));
   return parsed.pathname+parsed.search+parsed.hash;
 }
-export function remapEditorOrigin(origin:PathOrigin|undefined,ids:Record<string,string>):PathOrigin|undefined{return origin?{...origin,url:remapEditorUrl(origin.url,ids),parent:remapEditorOrigin(origin.parent,ids)}:undefined;}
 export function remapEditorViews(scope:string,ids:Record<string,string>){
-  try{for(const key of Object.keys(localStorage)){
-    if(!['pm-path-origin:','pm-path-view:','pm-graph-view:','pm-detail-scroll:'].some(prefix=>key.startsWith(prefix+scope+':')))continue;
+  if(Object.keys(ids).length)try{
+    const key='pm-editor-ids:'+scope;
+    sessionStorage.setItem(key,JSON.stringify({...JSON.parse(sessionStorage.getItem(key)||'{}'),...ids}));
+  }catch{/* The current URL is also remapped after saving. */}
+  try{for(const storage of [localStorage,sessionStorage])for(const key of Object.keys(storage)){
+    if(!['pm-path-view:','pm-graph-view:','pm-detail-scroll:'].some(prefix=>key.startsWith(prefix+scope+':')))continue;
     let next=key;for(const [old,id] of Object.entries(ids))next=next.replaceAll(old,id);
-    let value=localStorage.getItem(key)!;
-    if(key.startsWith('pm-path-origin:'))value=JSON.stringify(remapEditorOrigin(JSON.parse(value),ids));
+    let value=storage.getItem(key)!;
     if(key.startsWith('pm-path-view:')&&!value.startsWith('{'))value=remapEditorUrl('/paths?'+value,ids).split('?')[1]||'';
-    localStorage.setItem(next,value);if(next!==key)localStorage.removeItem(key);
+    storage.setItem(next,value);if(next!==key)storage.removeItem(key);
   }}catch{/* The current navigation state is also remapped in memory. */}
+}
+
+/** Browser history can still reference a draft ID after its batch was saved. */
+export function remapSavedEditorUrl(url:string,scope:string){
+  try{
+    const ids=JSON.parse(sessionStorage.getItem('pm-editor-ids:'+scope)||'{}');
+    return Object.keys(ids).length?remapEditorUrl(url,ids):url;
+  }catch{return url;}
 }

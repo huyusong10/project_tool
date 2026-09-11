@@ -37,12 +37,12 @@ test('普通协作成员经我的工作开始、更新完成度并完成，需�
     await actor.getByRole('button', { name: `为${work.title}更新完成度`, exact: true }).click();
     const progress = actor.getByRole('dialog', { name: '更新工作项进度', exact: true });
     await progress.getByRole('spinbutton').fill('60');
-    await progress.getByLabel('说明', { exact: true }).fill('接口核对完成六成');
+    await progress.getByLabel(/^说明/).fill('接口核对完成六成');
     await progress.getByRole('button', { name: '保存进展', exact: true }).click();
     await expect(progress).toHaveCount(0);
     expect((await detail()).progress).toBe(60);
-    await actor.getByRole('button', { name: '完成', exact: true }).click();
-    await actor.getByLabel('完成说明', { exact: true }).fill('对端核对完成，交付验证通过');
+    await actor.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await actor.getByRole('button',{name:'完成并补充说明',exact:true}).click();
+    await actor.getByLabel('完成说明（可选）', { exact: true }).fill('对端核对完成，交付验证通过');
     await actor.getByRole('button', { name: '确认完成', exact: true }).click();
     await expect.poll(async () => (await detail()).status).toBe('completed');
     const completed = await detail();

@@ -20,11 +20,13 @@ import { useGanttNavigation } from "../use-gantt-navigation";
 import { GanttNavigation, GanttScrollbar } from "./GanttNavigation";
 import { GanttViewSwitch, useGanttView } from "./GanttViewSwitch";
 import { requirementActualRange } from "../gantt-actual";
+import { requirementScheduleLabel } from '../requirement-presentation';
 import { requirementMilestones } from '../gantt-milestones';
 import { useGanttMilestoneData } from '../use-gantt-milestones';
-import { GanttMilestoneRail, GanttMilestoneCuts, GanttMilestoneUndated, useMilestoneSelection } from './GanttMilestones';
+import { GanttMilestoneRail, GanttMilestoneCuts, useMilestoneSelection } from './GanttMilestones';
 import {
   GanttProgressComparison,
+  GanttPlanActualBars,
   GanttScale,
   ganttTodayPosition,
   ganttTrackStyle,
@@ -91,11 +93,12 @@ function hasCompleteSchedule(requirement: Requirement) {
 }
 
 function progressVariance(requirement: Requirement) {
-  return signedProgressVariance(requirement.progress, requirement.plannedProgress);
+  return hasCompleteSchedule(requirement) ? signedProgressVariance(requirement.progress, requirement.plannedProgress) : null;
 }
 
 function progressVarianceText(requirement: Requirement) {
   const variance = progressVariance(requirement);
+  if (variance === null) return requirementScheduleLabel(requirement);
   if (variance < 0) return `落后${Math.abs(variance)}%`;
   if (variance > 0) return `领先${variance}%`;
   return "进度一致";
@@ -112,6 +115,7 @@ function RequirementPopover({ requirement, asOfDate }: { requirement: Requiremen
   const closed = isClosedRequirement(requirement);
   const actual = requirementActualRange(requirement, asOfDate);
   const variance = progressVariance(requirement);
+  const comparable = variance !== null;
   return <>
     <header className="gantt-popover-header">
       <div><strong>{requirement.title}</strong><span>{requirement.projectName}</span></div>
@@ -126,16 +130,16 @@ function RequirementPopover({ requirement, asOfDate }: { requirement: Requiremen
       {requirement.delayed && <em>延期 +{Math.max(1, requirement.finishVariance)}个工作日</em>}
     </div>
     <dl className="gantt-popover-metrics">
-      <div><dt>计划周期</dt><dd>{dateLabel(requirement.plannedStart)} — {dateLabel(requirement.plannedEnd)}</dd></div>
+      <div><dt>{comparable ? '计划周期' : '已排期部分'}</dt><dd>{dateLabel(requirement.plannedStart)} — {dateLabel(requirement.plannedEnd)}{!comparable && `（${requirementScheduleLabel(requirement)}）`}</dd></div>
       <div><dt>实际执行跨度</dt><dd>{dateLabel(actual.start, "未开始")} — {dateLabel(actual.end, "结束日期缺失")}{!["completed", "cancelled"].includes(requirement.status) && actual.end ? "（截至统计日）" : ""}<small className="gantt-range-note">含等待和间断，不代表净工作量</small></dd></div>
-      <div><dt>截至 {format(toGanttDate(asOfDate)!, "MM/dd")} 应达</dt><dd>{requirement.plannedProgress}%</dd></div>
+      <div><dt>截至 {format(toGanttDate(asOfDate)!, "MM/dd")} 应达</dt><dd>{comparable ? `${requirement.plannedProgress}%` : '待确定'}</dd></div>
       <div><dt>当前实际进度</dt><dd>{requirement.progress}%</dd></div>
-      <div><dt>进度偏差</dt><dd className={variance < 0 ? "danger-text" : variance > 0 ? "safe-text" : ""}>{progressVarianceText(requirement)}</dd></div>
+      <div><dt>进度偏差</dt><dd className={variance !== null && variance < 0 ? "danger-text" : variance !== null && variance > 0 ? "safe-text" : ""}>{progressVarianceText(requirement)}</dd></div>
       <div><dt>风险判定</dt><dd className={requirement.riskLevel === "high" && requirement.riskEvaluated ? "danger-text" : ""}>{requirement.riskReason}</dd></div>
     </dl>
-    <div className={`gantt-popover-progress-compare gantt-status-${requirement.status.replaceAll("_", "-")}`} aria-label={`实际进度${requirement.progress}%，截至${asOfDate}应达${requirement.plannedProgress}%`}>
+    <div className={`gantt-popover-progress-compare gantt-status-${requirement.status.replaceAll("_", "-")}`} aria-label={`实际进度${requirement.progress}%${comparable ? `，截至${asOfDate}应达${requirement.plannedProgress}%` : '，计划进度待确定'}`}>
       <div><span>实际</span><i><b style={{ width: `${requirement.progress}%` }} /></i><strong>{requirement.progress}%</strong></div>
-      <div><span>应达</span><i><b className="is-expected" style={{ width: `${requirement.plannedProgress}%` }} /></i><strong>{requirement.plannedProgress}%</strong></div>
+      {comparable && <div><span>应达</span><i><b className="is-expected" style={{ width: `${requirement.plannedProgress}%` }} /></i><strong>{requirement.plannedProgress}%</strong></div>}
     </div>
     <section className="gantt-popover-updates">
       <h4>近期进展{updates.length ? `（${updates.length}）` : ""}</h4>
@@ -189,8 +193,9 @@ export function ProjectGantt({
   const milestoneData = useGanttMilestoneData(projectId || requirements[0]?.projectId);
   const rowMilestones = useMemo(() => new Map(requirements.map(r => [r.id, requirementMilestones(
     milestoneData?.milestones?.filter(m => m.requirementId === r.id) || r.milestones, r.workItems, milestoneData?.edges,
-  ).map(m => ({ ...m, relatedIds: [r.id] }))])), [requirements, milestoneData]);
+  ).filter(m => m.targetDate || m.actualDate).map(m => ({ ...m, relatedIds: [r.id] }))])), [requirements, milestoneData]);
   const projectMilestones = useMemo(() => requirementMilestones(milestoneData?.milestones?.filter(m => !m.requirementId), [], milestoneData?.edges)
+    .filter(m => m.targetDate || m.actualDate)
     .map(m => ({ ...m, relatedIds: [...new Set(m.relatedIds.map(id => milestoneData?.nodes.find(n => n.id === id)?.requirementId).filter((id): id is string => !!id))] })), [milestoneData]);
   const allMilestones = useMemo(() => [...projectMilestones, ...[...rowMilestones.values()].flat()], [projectMilestones, rowMilestones]);
   const milestoneSelection = useMilestoneSelection(allMilestones, asOfDate, id => {
@@ -261,7 +266,7 @@ export function ProjectGantt({
       <header className="project-gantt-toolbar">
         <div className="gantt-legend" aria-label="甘特图图例">
           <span><i className="legend-plan-pill" />计划</span>
-          <span title={`${viewMode === "split" ? "实际执行日期跨度，完成度另行标注" : "实际进度按完成度映射到计划时间轴"}；蓝色执行中，绿色已完成，灰色断纹已取消，红色描边延期`}><i className="legend-actual" />{viewMode === "split" ? "实际日期" : "实际进度"}</span>
+          <span title={`${viewMode === "split" ? "实际执行日期跨度，完成度另行标注" : "排期完整时按完成度映射到计划时间轴；排期不完整时显示实际执行日期跨度"}；蓝色执行中，绿色已完成，灰色断纹已取消，红色描边延期`}><i className="legend-actual" />{viewMode === "split" ? "实际日期" : "实际进度"}</span>
           <span><i className="legend-today" />截至 {format(toGanttDate(asOfDate)!, "MM/dd")}</span>
           {viewMode === "overlay" && <><span><i className="legend-behind" />落后段</span><span><i className="legend-ahead" />领先段</span><span><i className="legend-delayed" />延期段</span></>}
           <span><i className="legend-milestone" />里程碑</span>
@@ -314,7 +319,6 @@ export function ProjectGantt({
             <div data-gantt-fixed className="gantt-corner gantt-sticky-left" role="columnheader">
               <strong>需求</strong>
               <span>{visibleRequirements.length} 项需求</span>
-              <GanttMilestoneUndated items={projectMilestones} selection={milestoneSelection} />
             </div>
             <div className="gantt-axis-header"><GanttScale dates={dates} zoom={zoom} cellWidth={cellWidth} todayOffset={todayOffset} todayVisible={todayVisible} />
               {projectMilestones.length > 0 && <GanttMilestoneRail items={projectMilestones} dates={dates} cellWidth={cellWidth} asOfDate={asOfDate} selection={milestoneSelection} />}
@@ -322,13 +326,12 @@ export function ProjectGantt({
             {visibleRequirements.map((requirement) => {
               const actual = requirementActualRange(requirement, asOfDate);
               const scheduleComplete = hasCompleteSchedule(requirement);
-              const showPlan = scheduleComplete || isClosedRequirement(requirement);
               const tooltipProps = ganttTooltip.bind(<RequirementPopover requirement={requirement} asOfDate={asOfDate} />);
               const variance = progressVariance(requirement);
               const risk = requirement.riskLevel !== "low" ? riskLabels[requirement.riskLevel as keyof typeof riskLabels] : "";
-              const varianceLabel = variance < 0 ? `落后${Math.abs(variance)}%` : variance > 0 ? `领先${variance}%` : "";
+              const varianceLabel = variance === null ? '' : variance < 0 ? `落后${Math.abs(variance)}%` : variance > 0 ? `领先${variance}%` : "";
               const healthLabel = [risk, varianceLabel].filter(Boolean).join(" · ");
-              const healthClass = requirement.riskLevel !== "low" ? requirement.riskLevel : variance > 0 ? "ahead" : "";
+              const healthClass = requirement.riskLevel !== "low" ? requirement.riskLevel : variance !== null && variance > 0 ? "ahead" : "";
               const milestoneItems = rowMilestones.get(requirement.id) || [];
               return (
                 <div className={`gantt-row${milestoneSelection.related(requirement.id) ? ' is-milestone-related' : ''}${requirement.delayed ? " is-delayed" : ""}${activeRiskClass(requirement)}`} role="row" key={requirement.id}>
@@ -337,11 +340,11 @@ export function ProjectGantt({
                       <button className="gantt-requirement-link" onClick={() => navigate(`/requirements/${requirement.id}`)} title={requirement.title}>
                         {requirement.title}
                       </button>
-                      <GanttMilestoneUndated items={milestoneItems} selection={milestoneSelection} />
+                      {!scheduleComplete && <small className="muted">{requirement.progress > 0 ? `实际进度 ${requirement.progress}% · ` : ''}{requirementScheduleLabel(requirement)}</small>}
                       <div>
                         {!isClosedRequirement(requirement) && (requirement.riskEvaluated
                           ? healthLabel && <span className={`gantt-risk-chip ${healthClass}`}>{healthLabel}</span>
-                          : <span className="gantt-risk-chip pending">待评估</span>)}
+                          : scheduleComplete && <span className="gantt-risk-chip pending">待评估</span>)}
                         {requirement.delayed && <em>延期 {Math.max(1, requirement.finishVariance)} 个工作日</em>}
                         {Boolean(requirement.issueSummary?.active) && (
                           <button
@@ -363,9 +366,14 @@ export function ProjectGantt({
                       actualStart={actual.start} actualEnd={actual.end} status={requirement.status} scheduleComplete={scheduleComplete}
                       progress={requirement.progress} dates={dates} cellWidth={cellWidth}
                       interactionProps={tooltipProps}
+                    /> : !scheduleComplete || requirement.plannedProgress === null ? <GanttPlanActualBars
+                      actualStart={actual.start} actualEnd={actual.end} status={requirement.status}
+                      progress={requirement.progress} dates={dates} cellWidth={cellWidth}
+                      progressAriaLabel={`实际进度 ${requirement.progress}%，实际执行跨度 ${actual.start || '日期未记录'} 至 ${actual.end || '日期未记录'}${!isClosedRequirement(requirement) ? '（截至统计日）' : ''}`}
+                      interactionProps={tooltipProps}
                     /> : <GanttProgressComparison
-                      plannedStart={showPlan ? requirement.plannedStart : null}
-                      plannedEnd={showPlan ? requirement.plannedEnd : null}
+                      plannedStart={requirement.plannedStart}
+                      plannedEnd={requirement.plannedEnd}
                       effectiveEnd={requirement.effectiveEnd}
                       dates={dates}
                       cellWidth={cellWidth}

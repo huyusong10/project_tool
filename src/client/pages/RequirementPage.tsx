@@ -1,10 +1,12 @@
+import type {StartAssignment} from '../components/StartAssignmentDialog';
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { RequirementOverview } from '../components/RequirementOverview';
 import { directRequirementTimelineItem } from '../requirement-timeline';
-import { usePageBack } from "../use-page-view";
+import { hasPageHistory, usePageBack } from "../use-page-view";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
+import { Navigate, useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
+import {remapSavedEditorUrl} from '../path-view';
 import {
   Archive,
   CalendarDays,
@@ -134,7 +136,7 @@ function SavedRequirementPage() {
   const scrollKey='pm-detail-scroll:'+(session.accountId||'guest')+':'+(requirement?.projectId||'')+':'+id,workTarget=searchParams.get('workItemId');
   const openPathView = () => {
     try{sessionStorage.setItem(scrollKey,JSON.stringify({window:window.scrollY,main:document.querySelector('main')?.scrollTop||0}));}catch{/* Navigation remains available. */}
-    const params=new URLSearchParams(searchParams);params.set('view','path');setSearchParams(params,{state:pathLocation.state});
+    const params=new URLSearchParams(searchParams);params.set('view','path');setSearchParams(params,{replace:true,state:pathLocation.state});
   };
   useEffect(()=>{
     if(pathView||workTarget||isLoading)return;
@@ -196,10 +198,10 @@ function SavedRequirementPage() {
     }
   };
   const itemAction = useMutation({
-    mutationFn: async ({ item, action, content, expectedDependencyRevision, expectedVersion = item.version }: { item: WorkItem; expectedDependencyRevision?:number; action: string; content?: string; expectedVersion?: number }) => {
+    mutationFn: async ({ item, action, content, expectedDependencyRevision, assignment, expectedVersion = item.version }: { item: WorkItem; expectedDependencyRevision?:number; assignment?:StartAssignment; action: string; content?: string; expectedVersion?: number }) => {
       await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId,{workItemId:item.id,action});return api(`/api/work-items/${item.id}/${action}`, {
         method: "POST",
-        body: jsonBody({ expectedVersion, expectedDependencyRevision, ...(action === "complete" ? { content } : content ? { reason: content } : {}) }),
+        body: jsonBody({ ...assignment, expectedVersion, expectedDependencyRevision, ...(action === "complete" ? { content } : content ? { reason: content } : {}) }),
       });},
     onSuccess: () => {
       invalidateRequirementViews(client, id);
@@ -260,7 +262,7 @@ function SavedRequirementPage() {
   if (isLoading)
     return (
       <>
-        <PageHeader title="需求详情" onBack={goBack} />
+        <PageHeader title="需求详情" onBack={goBack} backLabel={hasPageHistory()?"返回":"需求列表"} />
         <div className="page-content">
           <LoadingState label="加载需求详情…" className="tall" />
         </div>
@@ -277,7 +279,7 @@ function SavedRequirementPage() {
             action={
               <div className="button-row"><button className="ghost-button" onClick={() => navigate("/requirements")}>
                 返回需求管理
-              </button><button type="button" className="primary-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>
+              </button>{pathView&&<button type="button" onClick={()=>navigate("/paths",{replace:true})}>项目路径</button>}<button type="button" className="primary-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>
             }
           />
         </div>
@@ -322,13 +324,13 @@ function SavedRequirementPage() {
   const timelineItems = direct ? [directRequirementTimelineItem(requirement)] : requirement.workItems;
   const timelineUpdates = direct ? (requirement.progressUpdates || []).map(update => ({...update, workItemId: requirement.id})) : requirement.progressUpdates || [];
   const progressById = new Map((requirement.progressUpdates || []).map((update) => [update.id, update]));
-  if (pathView) return <><PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement} onExit={()=>{const params=new URLSearchParams(searchParams);params.delete('view');params.delete('workItemId');setSearchParams(params,{state:pathLocation.state});}}/></>;
+  if (pathView) return <><PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement} onExit={()=>{const params=new URLSearchParams(searchParams);params.delete('view');params.delete('workItemId');setSearchParams(params,{replace:true,state:pathLocation.state});}}/></>;
   return (
     <>
 
       <PageHeader
         title={requirement.title}
-        onBack={goBack}
+        onBack={goBack} backLabel={hasPageHistory()?"返回":"需求列表"}
         actions={canManage ? (
           <>
             {canManage && !requirementInfoLocked && <button className="ghost-button" disabled={!peopleReady || Boolean(infoRecheck)} onClick={() => { if (!infoRecheck) setModal("info"); }}>
@@ -370,7 +372,7 @@ function SavedRequirementPage() {
         <header>
           <div>
             <h2>需求进展</h2>
-            <div className="path-view-switch"><button className="ghost-button" aria-pressed={!pathView} onClick={()=>{const params=new URLSearchParams(searchParams);params.delete('view');setSearchParams(params,{state:pathLocation.state});}}>进度甘特</button><button className="ghost-button" aria-pressed={pathView} onClick={openPathView}>路径分析</button></div>
+            <div className="path-view-switch"><button className="ghost-button" aria-pressed={!pathView} onClick={()=>{const params=new URLSearchParams(searchParams);params.delete('view');setSearchParams(params,{replace:true,state:pathLocation.state});}}>进度甘特</button><button className="ghost-button" aria-pressed={pathView} onClick={openPathView}>路径分析</button></div>
           </div>
           {canManageWorkItems && (
             <div className="panel-actions">
@@ -401,7 +403,7 @@ function SavedRequirementPage() {
           renderActions={direct ? undefined : (item) => canOperateItem(item)
             ? <WorkItemActions
                 item={item}
-                onAction={(action, content, expectedVersion, expectedDependencyRevision) => itemAction.mutateAsync({ item, action, content, expectedVersion, expectedDependencyRevision })}
+                onAction={(action, content, expectedVersion, expectedDependencyRevision, assignment) => itemAction.mutateAsync({ item, action, content, expectedVersion, expectedDependencyRevision, assignment })}
                 onSaveDates={canManage ? (dates, expectedVersion) => saveWorkItem(item, dates, expectedVersion) : undefined}
                 onCompleteAsPlanned={canManage && !requirementLocked ? (expectedVersion) => itemAction.mutateAsync({ item, action: "complete-as-planned", expectedVersion }) : undefined}
                 onCancel={(reason, expectedVersion) => itemAction.mutateAsync({ item, action: "cancel", content: reason, expectedVersion })}
@@ -515,7 +517,11 @@ function SavedRequirementPage() {
 }
 
 export function RequirementPage(){
- const [params]=useSearchParams();return params.get('draftProject')?<DraftRequirementPage projectId={params.get('draftProject')!}/>:<SavedRequirementPage/>;
+ const [params]=useSearchParams(),location=useLocation(),{session}=useSession(),{selectedProjectId}=useProjects();
+ const url=location.pathname+location.search,projectId=params.get('draftProject')||selectedProjectId;
+ const savedUrl=remapSavedEditorUrl(url,(session.accountId||'guest')+':'+projectId);
+ if(params.has('draftProject')&&savedUrl!==url)return <Navigate to={savedUrl} replace state={location.state}/>;
+ return params.get('draftProject')?<DraftRequirementPage projectId={params.get('draftProject')!}/>:<SavedRequirementPage/>;
 }
 function DraftRequirementPage({projectId}:{projectId:string}){
  const {id=''}=useParams(),{session}=useSession(),navigate=useNavigate();

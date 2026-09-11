@@ -148,6 +148,25 @@ it('REST、MCP和延期筛选按工作完成日期计算，等待或确认验收
   }
 });
 
+it('MCP、REST和主页面对不完整排期返回未知计划进度，不把部分结束日期报为延期', async () => {
+  const f = await fixture(), { sqlite } = await import('../src/server/database');
+  const start = addBusinessDays(todayIso(), -5), end = addBusinessDays(todayIso(), -3);
+  sqlite.prepare("UPDATE work_items SET status='completed',progress=100,planned_start=?,planned_end=?,actual_start=?,actual_end=? WHERE id=?").run(start, end, start, end, f.ids.w1);
+  sqlite.prepare("UPDATE requirements SET status='in_progress',planned_start=?,planned_end=? WHERE id=?").run(start, end, f.ids.a);
+  const expected = { scheduleComplete: false, plannedProgress: null, scheduleVarianceDays: null, finishVariance: 0, delayed: false };
+  const rest = await get<Requirement>('/api/requirements/' + f.ids.a);
+  expect(rest.progress).toBeGreaterThan(0);
+  expect(rest).toMatchObject(expected);
+  expect(await call('get_requirement', { id: f.ids.a })).toEqual(rest);
+  expect((await call<Page<Requirement>>('query_requirements', { projectId: f.projectId })).items.find(r => r.id === f.ids.a)).toMatchObject(expected);
+  const analysis = await call<PathAnalysis>('get_path_analysis', { projectId: f.projectId, target: 'acceptance:' + f.ids.a });
+  expect(analysis).toMatchObject({ targetDate: null, deadlineSlack: null });
+  expect(analysis.requirements.find(r => r.id === f.ids.a)).toMatchObject(expected);
+  const dashboard = await get<{ requirements: Requirement[] }>('/api/dashboard?projectId=' + f.projectId);
+  expect(dashboard.requirements.find(r => r.id === f.ids.a)).toMatchObject(expected);
+  expect((await call<Page<Requirement>>('query_requirements', { projectId: f.projectId, view: 'delayed' })).items).toHaveLength(0);
+});
+
 it('进展按北京时间自然日筛选，同时间倒序和snapshot分页不受新记录影响', async () => {
   const f = await fixture(), { sqlite } = await import('../src/server/database');
   const insert = sqlite.prepare(`INSERT INTO progress_updates(id,requirement_id,work_item_id,percent,content,event_type,created_by_account_id,created_at,updated_at) VALUES (?,?,?,0,?,'note',?,?,?)`);

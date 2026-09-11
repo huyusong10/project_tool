@@ -114,7 +114,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     if (input.includeDeleted) assertProjectManager(actor, input.projectId); else assertProjectReadable(actor, input.projectId);
     return json(listRequirements(input));
   });
-  registerTool('get_requirement', { description: '获取需求、自动指标、工作项和进展', inputSchema: projectListInputSchema.safeExtend({ id: idSchema }) }, async ({ id, includeDeleted }) => {
+  registerTool('get_requirement', { description: '获取需求、自动指标、工作项和进展。排期不完整时 plannedProgress 为 null，不能计算领先/落后或将部分工作项的结束日作为需求截止日；实际进度仍有效。', inputSchema: projectListInputSchema.safeExtend({ id: idSchema }) }, async ({ id, includeDeleted }) => {
     const projectId = projectIdForRequirement(id);
     if (includeDeleted) assertProjectResourceManager(actor, projectId, '需求不存在'); else assertProjectResourceReadable(actor, projectId, '需求不存在');
     return json(getRequirement(id, includeDeleted));

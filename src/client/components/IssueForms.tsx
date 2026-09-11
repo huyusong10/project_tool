@@ -331,7 +331,7 @@ export function IssueUpdateForm({ issue, canSetProgress, onPendingChange, busy =
       (saved) => { setContent(""); setProgress(saved.progress); },
       {
         matches: (latest) => Boolean(latest.updates?.some((update) => !initialUpdateIds.current.has(update.id)
-          && update.content === canonicalizeContent(content)
+          && update.content === (canonicalizeContent(content) || (writesProgress ? `完成度：${baseline.progress}% → ${progress}%` : ""))
           && update.eventType === (writesProgress ? "progress" : "note")
           && update.createdByAccountId === session.accountId
           && (writesProgress ? update.progress === progress : update.progress === null))),
@@ -342,7 +342,7 @@ export function IssueUpdateForm({ issue, canSetProgress, onPendingChange, busy =
     <fieldset className="form-fieldset issue-update-fields" disabled={editor.pending || busy}>
       {writesProgress && <ProgressInput value={progress} onChange={(value) => { editor.setDirty(true); setProgress(value); }} max={99} label="本次进度（更新后）" />}
       {!writesProgress && <p className="field-help">本次仅记录说明，不修改完成度。</p>}
-      <textarea name="content" rows={3} required value={content} onChange={(event) => { editor.setDirty(true); setContent(event.target.value); }} placeholder="记录新进展、决策或待办结果" />
+      <textarea name="content" rows={3} required={!writesProgress} value={content} onChange={(event) => { editor.setDirty(true); setContent(event.target.value); }} placeholder={writesProgress ? "说明（可选）" : "记录新进展、决策或待办结果"} />
       <DraftNotice editor={editor} warning={warning} />
       <div className="issue-update-actions"><button className="primary-button" disabled={blocked}>{editor.pending ? "提交中…" : "追加进展"}</button></div>
     </fieldset>

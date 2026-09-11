@@ -23,6 +23,41 @@ async function fixture(extra:Record<string,unknown>={}){
  return {projectId:project.id as string,owner,r:r.json<Requirement>()};
 }
 async function command(id:string,action:string,data:Record<string,unknown>={}){const current=await detail(id);return post('/api/requirements/'+id+'/'+action,{expectedVersion:current.version,...data});}
+it('开始时补选负责人一次生效；无说明更新与返工保留事实记录',async()=>{
+ const {r,owner}=await fixture({ownerId:null});
+ expect((await command(r.id,'start',{ownerId:'missing'})).statusCode).toBe(400);expect(await detail(r.id)).toEqual(r);
+ const started=await command(r.id,'start',{ownerId:owner.id});expect(started.statusCode,started.body).toBe(200);
+ expect(started.json()).toMatchObject({ownerId:owner.id,status:'in_progress',version:r.version+1});
+ expect((await post('/api/requirements/'+r.id+'/start',{ownerId:owner.id,expectedVersion:r.version})).statusCode).toBe(409);
+ expect((await command(r.id,'progress',{requirementPercent:45})).statusCode).toBe(200);
+ expect((await detail(r.id)).progressUpdates?.[0].content).toContain('0% → 45%');
+ expect((await command(r.id,'complete')).statusCode).toBe(200);
+ expect((await command(r.id,'rework')).statusCode).toBe(200);
+ expect(await detail(r.id)).toMatchObject({progress:99,status:'in_progress',actualEnd:null});
+});
+it('工作项补选两位负责人和开始原子保存，过期父版本不留下人员或执行记录',async()=>{
+ const {r,owner}=await fixture({ownerId:null});
+ const created=await post('/api/requirements/'+r.id+'/work-items',{expectedVersion:r.version,title:'只填名称'});expect(created.statusCode,created.body).toBe(200);
+ const w=created.json(),parent=await detail(r.id);
+ const input={expectedVersion:w.version,expectedRequirementVersion:parent.version,ownerId:owner.id,requirementOwnerId:owner.id};
+ expect((await post('/api/work-items/'+w.id+'/start',{...input,expectedRequirementVersion:parent.version-1})).statusCode).toBe(409);
+ expect(await detail(r.id)).toEqual(parent);
+ expect((await post('/api/work-items/'+w.id+'/start',{...input,ownerId:'invalid-person'})).statusCode).toBe(400);
+ expect(await detail(r.id)).toEqual(parent);
+ const started=await post('/api/work-items/'+w.id+'/start',input);expect(started.statusCode,started.body).toBe(200);
+ expect(await detail(r.id)).toMatchObject({ownerId:owner.id,version:parent.version+1,workItems:[expect.objectContaining({ownerId:owner.id,status:'in_progress',version:w.version+1})]});
+ const after=await detail(r.id);expect((await post('/api/work-items/'+w.id+'/start',input)).statusCode).toBe(409);expect(await detail(r.id)).toEqual(after);
+});
+it('执行中新增、改名、调整顺序和取消无需额外原因',async()=>{
+ const {r,owner}=await fixture();await command(r.id,'start');
+ let parent=await detail(r.id);
+ const a=(await post('/api/requirements/'+r.id+'/work-items',{expectedVersion:parent.version,title:'工作甲',ownerId:owner.id})).json();
+ parent=await detail(r.id);const b=(await post('/api/requirements/'+r.id+'/work-items',{expectedVersion:parent.version,title:'工作乙'})).json();
+ const started=(await post('/api/work-items/'+a.id+'/start',{expectedVersion:a.version})).json();
+ const renamed=await req('PATCH','/api/work-items/'+a.id,{expectedVersion:started.version,title:'改名后'});expect(renamed.statusCode,renamed.body).toBe(200);
+ parent=await detail(r.id);const reordered=await post('/api/requirements/'+r.id+'/reorder-work-items',{expectedVersion:parent.version,ids:[b.id,a.id]});expect(reordered.statusCode,reordered.body).toBe(200);
+ const cancelled=await post('/api/work-items/'+a.id+'/cancel',{expectedVersion:(await detail(r.id)).workItems.find(w=>w.id===a.id)!.version});expect(cancelled.statusCode,cancelled.body).toBe(200);
+});
 it('标题即可录入，没有工作项时直接开始、更新、完成和返工',async()=>{
  const {r,projectId}=await fixture();expect(r.workItems).toEqual([]);expect(r.status).toBe('not_started');
  expect((await analysis(projectId)).nodes.some(n=>n.kind==='execution')).toBe(true);

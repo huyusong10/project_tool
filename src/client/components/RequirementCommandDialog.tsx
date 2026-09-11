@@ -149,7 +149,7 @@ export function RequirementCommandDialog({ action, requirement, recheck, onReche
   return <Modal title={commands[action].title} width={560} closable={!pending} onClose={close}>
     <form className="requirement-command-form" onSubmit={(event) => {
       event.preventDefault();
-      if (submitting.current || readingRef.current || blocked || (needsText && !text.trim())) return;
+      if (submitting.current || readingRef.current || blocked) return;
       submitting.current = true;
       mutation.mutate({ expectedVersion: baseline.version, ...(action === 'cancel' ? { reason: text.trim() } : {}) });
     }}>
@@ -161,7 +161,7 @@ export function RequirementCommandDialog({ action, requirement, recheck, onReche
       </>}
       {action === 'cancel' && <p>将取消 {pendingItems.length} 个未结束工作项。已完成工作项和历史记录保持不变。</p>}
       {action === 'archive' && <p>需求将从日常页面隐藏，历史数据仍会保留并可在归档中心恢复。</p>}
-      {needsText && <FormField label="取消原因" full><textarea autoFocus required rows={4} disabled={pending} value={text} onChange={(event) => setText(event.target.value)} /></FormField>}
+      {needsText && <FormField label="取消说明（可选）" full><textarea rows={2} disabled={pending} value={text} onChange={(event) => setText(event.target.value)} /></FormField>}
       <FormError>{mutation.error?.message}</FormError>
       {reviewRequired&&<div className="warning-banner">提交结果仍待核对，当前版本已变化。本窗口不再提交；请核对执行记录，已填说明保留。<button type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</button></div>}
       <FormError>{warning}</FormError>
@@ -171,7 +171,7 @@ export function RequirementCommandDialog({ action, requirement, recheck, onReche
       {(changed || needsRefresh) && <div><button type="button" className="ghost-button" disabled={pending} onClick={() => void readLatest()}>重新读取需求</button></div>}
       <div className="form-actions">
         <button type="button" className="ghost-button" disabled={pending} onClick={close}>取消</button>
-        <button autoFocus={!needsText} className={`primary-button${action === 'cancel' || action === 'archive' ? ' danger-button' : ''}`} disabled={pending || blocked || (needsText && !text.trim())}>{pending ? '处理中…' : commands[action].confirm}</button>
+        <button autoFocus={!needsText} className={`primary-button${action === 'cancel' || action === 'archive' ? ' danger-button' : ''}`} disabled={pending || blocked}>{pending ? '处理中…' : commands[action].confirm}</button>
       </div>
     </form>
   </Modal>;

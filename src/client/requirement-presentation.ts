@@ -7,6 +7,10 @@ export function requirementRiskDisplay(requirement: Pick<Requirement, "status" |
   return { closed, evaluated, label: closed ? "风险已关闭" : evaluated ? riskLabels[requirement.riskLevel as RiskLevel] : "待评估", className: evaluated ? `risk-${requirement.riskLevel}` : "risk-pending" };
 }
 
+export function requirementScheduleLabel(requirement: Pick<Requirement, 'plannedStart' | 'plannedEnd'>) {
+  return requirement.plannedStart || requirement.plannedEnd ? '排期不完整' : '未排期';
+}
+
 export function requirementVarianceValue(requirement: Requirement): number | null {
   if (requirement.status === "planning" || requirement.status === "cancelled" || requirement.scheduleComplete === false || !requirement.plannedStart || !requirement.plannedEnd) return null;
   if (requirement.status === "completed") return requirement.effectiveEnd === null ? null : requirement.finishVariance;
@@ -16,9 +20,9 @@ export function requirementVarianceValue(requirement: Requirement): number | nul
 }
 
 export function requirementVarianceDisplay(requirement: Requirement) {
-  const progressDetail = `实际进度 ${requirement.progress}%，计划进度 ${requirement.plannedProgress}%`;
+  const progressDetail = `实际进度 ${requirement.progress}%，${requirement.plannedProgress === null ? '计划进度待确定' : `计划进度 ${requirement.plannedProgress}%`}`;
   if (requirement.status !== "cancelled" && (requirement.status === "planning" || requirement.scheduleComplete === false || !requirement.plannedStart || !requirement.plannedEnd)) {
-    return { label: "待排期", className: "muted", title: `${requirement.executionMode === 'direct' ? '需求' : '工作项'}排期尚不完整，暂时无法计算计划偏差` };
+    return { label: requirementScheduleLabel(requirement), className: "muted", title: `${requirement.executionMode === 'direct' ? '需求' : '工作项'}排期尚不完整，暂时无法计算计划偏差` };
   }
   if (requirement.status === "cancelled") {
     return { label: "已取消", className: "muted", title: "已取消需求不再计算计划偏差" };

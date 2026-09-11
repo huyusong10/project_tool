@@ -53,7 +53,7 @@ afterAll(async () => {
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
-it('执行后修改协作者必须说明原因，REST与MCP一致并保留纠错记录', async () => {
+it('执行后修改协作者无需说明，REST与MCP保留记录并拒绝旧版本', async () => {
   const owner = (await post('/api/people', { projectId, name: '工作项负责人' })).json();
   const firstCollaborator = (await post('/api/people', { projectId, name: '首位协作者' })).json();
   const secondCollaborator = (await post('/api/people', { projectId, name: '后续协作者' })).json();
@@ -72,20 +72,20 @@ it('执行后修改协作者必须说明原因，REST与MCP一致并保留纠错
   expect(started.statusCode, started.body).toBe(200);
 
   const restRejected = await patch(`/api/work-items/${initial.id}`, {
-    collaboratorIds: [secondCollaborator.id], expectedVersion: started.json().version,
+    collaboratorIds: [], expectedVersion: started.json().version,
   });
-  expect(restRejected.statusCode).toBe(400);
-  expect(restRejected.json().error).toContain('变更原因');
+  expect(restRejected.statusCode,restRejected.body).toBe(200);
+
   const mcpRejected = await callMcp('update_work_item', {
     id: initial.id, collaboratorIds: [secondCollaborator.id], expectedVersion: started.json().version,
   });
   expect(mcpRejected.structuredContent).toMatchObject({
-    statusCode: 400,
-    error: { code: 'VALIDATION_ERROR', error: expect.stringContaining('变更原因') },
+    statusCode: 409,
+    error: { code: 'STALE_WRITE' },
   });
 
   const changed = await patch(`/api/work-items/${initial.id}`, {
-    collaboratorIds: [secondCollaborator.id], reason: '调整执行协作分工', expectedVersion: started.json().version,
+    collaboratorIds: [secondCollaborator.id], reason: '调整执行协作分工', expectedVersion: restRejected.json().version,
   });
   expect(changed.statusCode, changed.body).toBe(200);
   expect(changed.json().assigneeIds).toEqual([owner.id, secondCollaborator.id]);

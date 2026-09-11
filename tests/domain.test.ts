@@ -125,6 +125,18 @@ describe('自动状态、进度和风险', () => {
     expect(metrics.progress).toBe(33);
   });
 
+  it.each(['in_progress', 'completed'])('部分排期超过结束日不视为需求延期：%s', status => {
+    const metrics = deriveRequirementMetrics({ status }, [
+      { status: 'completed', progress: 100, plannedStart: '2026-09-07', plannedEnd: '2026-09-10', actualStart: '2026-09-07', actualEnd: '2026-09-10' },
+      { status, progress: 20, durationDays: 5, actualStart: '2026-09-11', actualEnd: status === 'completed' ? '2026-09-14' : null },
+    ], '2026-09-18');
+    expect(metrics.progress).toBeGreaterThan(0);
+    expect(metrics).toMatchObject({ scheduleComplete: false, plannedProgress: null, scheduleVarianceDays: null,
+      scheduleReferenceDate: null, finishVariance: 0, delayed: false, riskEvaluated: false });
+    expect(signedProgressVariance(metrics.progress, metrics.plannedProgress)).toBeNull();
+    if (status === 'completed') expect(metrics.effectiveEnd).toBe('2026-09-14');
+  });
+
   it('按工作项估算完成度加权实际进度，并连续计算计划进度', () => {
     const metrics = deriveRequirementMetrics({ status: 'in_progress' }, [
       { status: 'in_progress', progress: 50, plannedStart: '2026-09-01', plannedEnd: '2026-09-02', actualStart: '2026-09-01' },

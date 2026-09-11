@@ -35,7 +35,7 @@ test('逾期问题从行动打开并解决，窄屏处理后行动消失',async(
  const {project,owner}=await fixture(page);const issue=await post(page,'/api/issues',{projectId:project.id,ownerId:owner.id,title:'需要处理的逾期问题',discoveredAt:'2026-09-01',dueDate:'2026-09-02'});
  await page.setViewportSize({width:390,height:844});await page.goto('/actions?reason=overdue&ownerId='+owner.id);const action=page.locator('.action-item').filter({hasText:issue.title});await expect(action).toContainText('问题逾期');await action.click();
  const dialog=page.getByRole('dialog',{name:'问题详情'});await expect(dialog).toContainText(issue.title);await page.screenshot({path:info.outputPath('overdue-issue-390.png')});
- await dialog.locator('.issue-status-trigger').click();await page.getByRole('button',{name:/确认解决/}).click();await page.getByLabel('填写闭环说明',{exact:true}).fill('问题已经处理完成');await page.getByRole('button',{name:'确认变更',exact:true}).click();await expect(dialog.locator('.issue-status-trigger')).toContainText('已解决');
+ await dialog.locator('.issue-status-trigger').click();await page.getByRole('button',{name:/确认解决/}).click();await expect(dialog.locator('.issue-status-trigger')).toContainText('已解决');
  await dialog.getByRole('button',{name:'关闭',exact:true}).click();await expect(dialog).toHaveCount(0);
  await page.goto('/actions?reason=overdue&ownerId='+owner.id);await expect(page.locator('.action-item').filter({hasText:issue.title})).toHaveCount(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });

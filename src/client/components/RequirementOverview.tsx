@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Info, ExternalLink } from 'lucide-react';
 import type { Requirement } from '../types';
 import { formatDateTime } from '../format';
-import { requirementRiskDisplay, requirementVarianceDisplay, requirementDeliveryDate } from '../requirement-presentation';
+import { requirementRiskDisplay, requirementVarianceDisplay, requirementDeliveryDate, requirementScheduleLabel } from '../requirement-presentation';
 import { DeliveryControls } from './DeliveryControls';
 import { StatusBadge } from './Badge';
 import { AnchoredPopover } from './InlineEdit';
@@ -14,7 +14,8 @@ export function RequirementOverview({ requirement: r }: { requirement: Requireme
   const risk = requirementRiskDisplay(r), variance = requirementVarianceDisplay(r);
   const deliveryDate=requirementDeliveryDate(r);
   const direct = r.executionMode === 'direct';
-  const progressHint = `计划进度 ${r.plannedProgress}% · ${direct ? '直接记录完成度' : '自动按工期加权'}`;
+  const plannedLabel = r.scheduleComplete === false || r.plannedProgress === null ? requirementScheduleLabel(r) : `计划 ${r.plannedProgress}%`;
+  const progressHint = `${plannedLabel} · ${direct ? '直接记录完成度' : '自动按工期加权'}`;
   return <section className="requirement-overview" aria-label="需求概览">
     <div className="requirement-overview-top">
       <div className="requirement-overview-meta">
@@ -27,7 +28,7 @@ export function RequirementOverview({ requirement: r }: { requirement: Requireme
       </div>
     </div>
     <div className="detail-kpis">
-      <article title={progressHint}><span>进度</span><strong>{r.progress}%</strong><div className="progress-row" aria-hidden="true"><i style={{ width: `${r.progress}%` }} /></div><small>计划 {r.plannedProgress}%</small></article>
+      <article title={progressHint}><span>进度</span><strong>{r.progress}%</strong><div className="progress-row" aria-hidden="true"><i style={{ width: `${r.progress}%` }} /></div><small>{plannedLabel}</small></article>
       <article title={deliveryDate.help+"；当前计划："+(r.plannedStart||"待排期")+" → "+(r.plannedEnd||"待排期")}><span>{deliveryDate.label}</span><strong>{deliveryDate.value}</strong></article>
       <article title={variance.title}><span>偏差</span><strong className={variance.className}>{variance.label}</strong></article>
       <article title={r.riskReason}><span>风险</span><span className={`risk-badge ${risk.className}`}>{risk.label}</span></article>

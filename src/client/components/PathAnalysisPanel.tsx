@@ -11,6 +11,7 @@ import {flushSync} from 'react-dom';
 import { useCallback,useEffect,useMemo,useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
+import {hasPageHistory,usePageBack} from '../use-page-view';
 import { api, ApiError,jsonBody, requiresWriteRecheck } from '../api';
 import {Link2,Copy,Trash2,LocateFixed,GitBranch,FilePenLine,Maximize2,Minimize2} from 'lucide-react';
 import {EditorToolbar,EditorPalette,EditorInfo} from './EditorToolbar';
@@ -37,7 +38,7 @@ import { FormError } from './Form';
 import '../paths.css';
 import {emptyRequirementFilters,unfinishedStatuses,matchesRequirementFilters,compareRiskRequirements} from '../../shared/requirement-view';
 import {matchesSearch} from '../../shared/search';
-import {readPathFilters,writePathFilters,graphBranch,graphContext,cardFilterItem,cardSearch,readPathOrigin,savePathOrigin,remapEditorUrl,remapEditorOrigin,remapEditorViews} from '../path-view';
+import {readPathFilters,writePathFilters,graphBranch,graphContext,cardFilterItem,cardSearch,remapEditorUrl,remapEditorViews,remapSavedEditorUrl} from '../path-view';
 import {PathFilters} from './PathFilters';
 import { GraphWorkspace } from './GraphWorkspace';
 import { PredecessorPicker } from './PredecessorPicker';
@@ -120,12 +121,16 @@ function PathEditor({editor,data,requirement,manager,onClose,onReload,onPlanRech
 export function PathAnalysisPanel({projectId,requirement,onExit}:{projectId:string;requirement?:PathRequirementContext;onExit?:()=>void}) {
   const [params]=useWorkspaceParams();
   const {session}=useSession();
+  const location=useLocation(),navigate=useNavigate(),url=location.pathname+location.search;
+  const leave=usePageBack(requirement?'/paths':'/');
+  const savedUrl=remapSavedEditorUrl(url,(session.accountId||'guest')+':'+projectId);
+  useEffect(()=>{if(savedUrl!==url)navigate(savedUrl,{replace:true,state:location.state});},[savedUrl,url,navigate,location.state]);
   const target=params.get('target')||(requirement?acceptanceId(requirement.id):'project');
   const query=useResourceQuery<PathAnalysis>([...keys.paths,projectId,requirement?.id||'all',target],
     requirement&&!params.has('draftProject')?'/api/requirements/'+requirement.id+'/path-analysis?target='+encodeURIComponent(target):'/api/projects/'+projectId+'/path-analysis'+(!params.has('draftProject')?'?target='+encodeURIComponent(target):''),!!projectId);
   useEffect(()=>{if(query.error instanceof ApiError&&[401,403].includes(query.error.status))clearProjectGraphDrafts(session.accountId||'guest',projectId);},[query.error,session.accountId,projectId]);
   if(query.isLoading)return <div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace"><LoadingState label="正在分析交付依赖…"/></section></div>;
-  if(query.unavailable||!query.data)return <EmptyState title="路径分析暂不可用" detail={query.error?.message||'请选择项目'} action={<button className="ghost-button" onClick={()=>void query.refetch()}>重新加载</button>}/>;
+  if(query.unavailable||!query.data)return <EmptyState title="路径分析暂不可用" detail={query.error?.message||'请选择项目'} action={<div className="button-row"><button className="ghost-button" onClick={leave}>{hasPageHistory()?'返回':requirement?'项目路径':'项目进展'}</button><button className="ghost-button" onClick={()=>void query.refetch()}>重新加载</button></div>}/>;
   return <PathWorkspace key={projectId} data={query.data} requirement={requirement} target={target} onExit={onExit}
     onReload={async()=>{const result=await query.refetch({throwOnError:true});return result.data!;}}/>;
 }
@@ -137,6 +142,7 @@ function EstimateFields({node,structure,onChange}:{node:PathNode;structure:boole
 }
 function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:PathAnalysis;requirement?:PathRequirementContext;target:string;onExit?:()=>void;onReload:()=>Promise<PathAnalysis>}) {
   const [params,setParams]=useWorkspaceParams(),location=useLocation(),navigate=useNavigate(),client=useQueryClient(),{session}=useSession();
+  const goBack=usePageBack(requirement?'/paths':'/');
   const [leaving,setLeaving]=useState(false),mounted=useRef(true);
   const planAccountId=session.accountId||'guest',planRequirementId=requirement?.id||'',milestoneProjectId=formal.projectId;
   const [planRecheck,setPlanRecheckState]=useState<DependencyPlanRecheck|null>(()=>planRequirementId?readDependencyPlanRecheck(planAccountId,planRequirementId):null),[planRechecking,setPlanRechecking]=useState(false);
@@ -151,23 +157,24 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const draft=useDependencyDraft(session.accountId||'guest',formal,target,receipt=>{
     invalidateRequirementViews(client,focus);
     if(receipt&&mounted.current){const scope=(session.accountId||'guest')+':'+formal.projectId,ids=receipt.addedIds;
-      const restoredOrigin=readPathOrigin(scope+':'+location.key,location.state);
       remapEditorViews(scope,ids);
-      navigate(remapEditorUrl(location.pathname+location.search,ids),{replace:true,state:{...location.state,pathOrigin:remapEditorOrigin(restoredOrigin,ids)}});
+      navigate(remapEditorUrl(location.pathname+location.search,ids),{replace:true,state:location.state});
     }
     void onReload().catch(()=>{});
   });
   const data=useMemo(()=>draft.preview?.analysis||draftNetwork(formal,draft.changes,draft.templateInstances),[draft.preview,formal,draft.changes,draft.templateInstances]);
   const editing=draft.active&&!draft.busy&&!draft.pending&&!draft.loading&&!draft.readOnly,search=params.get('pathSearch')||'';
   const viewStorage='pm-path-view:'+(session.accountId||'guest')+':'+formal.projectId+':'+(focus||'all');
+  const historyViewStorage=viewStorage+':history:'+(window.history.state?.idx??0);
   const viewLoaded=useRef(false);
   useEffect(()=>{
-    try{if(!viewLoaded.current){viewLoaded.current=true;const saved=localStorage.getItem(viewStorage);if(saved&&![...params.keys()].some(k=>k.startsWith('path'))){const next=new URLSearchParams(params);for(const [k,v] of new URLSearchParams(saved))if(k.startsWith('path'))next.set(k,v);setParams(next,{replace:true,state:location.state});return;}}
+    try{if(!viewLoaded.current){viewLoaded.current=true;const saved=sessionStorage.getItem(historyViewStorage)??localStorage.getItem(viewStorage);if(saved&&![...params.keys()].some(k=>k.startsWith('path'))){const next=new URLSearchParams(params);for(const [k,v] of new URLSearchParams(saved))if(k.startsWith('path'))next.set(k,v);setParams(next,{replace:true,state:location.state});return;}}
       localStorage.setItem(viewStorage,params.toString());
+      sessionStorage.setItem(historyViewStorage,params.toString());
     }catch{/* Explicit URL navigation remains available. */}
-  },[viewStorage,params,setParams,location.state]);
+  },[viewStorage,historyViewStorage,params,setParams,location.state]);
   const panel=params.get('pathPanel')||'',setPanel=(value:string)=>{setParam('pathPanel',value);if(panel==='connectionIssue'&&value!==panel)setIssue(undefined);};
-  const [placing,setPlacing]=useState(''),[creatingRequirement,setCreatingRequirement]=useState<Point|null>(null),[deleting,setDeleting]=useState<string[]>([]);
+  const [placing,setPlacing]=useState(''),[creatingRequirement,setCreatingRequirement]=useState<Point|null>(null);
   const livePositions=useRef<Record<string,Point>>({});
   const layoutScope=focus?'requirement:'+focus:'global',layoutValue=data.layouts?.find(l=>l.scope===layoutScope&&l.direction==='right'),formalLayout=formal.layouts?.find(l=>l.scope===layoutScope&&l.direction==='right');
   const withLayout=(changes:DependencyChanges,positions:Record<string,Point>):DependencyChanges=>({...changes,layouts:[...(changes.layouts||[]).filter(l=>l.scope!==layoutScope||l.direction!=='right'),{scope:layoutScope,direction:'right',expectedVersion:formalLayout?.version||0,positions}]});
@@ -197,18 +204,10 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const narrow=()=>matchMedia('(max-width: 800px)').matches;
 
   const openPanel=(name:string)=>{setPanel(panel===name?'':name);if(narrow())setInspector(false);};
-  const originKey=(session.accountId||'guest')+':'+formal.projectId+':'+location.key;
-  const origin=readPathOrigin(originKey,location.state);
-  useEffect(()=>savePathOrigin(originKey,origin),[originKey,origin]);
-  const navigatePath=(url:string)=>{flushSync(()=>setLeaving(true));navigate(url,{state:{pathOrigin:{url:location.pathname+location.search,label:focus?requirement!.title+'路径':'项目全局',parent:origin}}});};
+  const navigatePath=(url:string)=>{flushSync(()=>setLeaving(true));navigate(url);};
   const directTo=(requirementId:string,workItemId?:string|null)=>{
     const p=new URLSearchParams({view:'path',target});if(workItemId){p.set('pathNode',workItemId);p.set('pathInspector','open');}if(draft.changes.entities?.some(c=>c.id===requirementId&&c.op==='create'))p.set('draftProject',formal.projectId);
     navigatePath('/requirements/'+requirementId+'?'+p);
-  };
-  const goBack=async()=>{
-    if(!origin)return;const id=/^\/requirements\/([^/?]+)/.exec(origin.url)?.[1];
-    try{if(id&&!new URLSearchParams(origin.url.split('?')[1]).has('draftProject'))await api('/api/requirements/'+id,{readOnly:true});flushSync(()=>setLeaving(true));navigate(origin.url,{state:{pathOrigin:origin.parent}});}
-    catch(error){if(error instanceof ApiError&&[403,404].includes(error.status))navigate('/paths',{state:{pathNotice:'来源已删除或不可访问，已返回项目全局。'}});else setIssue({message:'暂时无法读取来源，请稍后重试返回。'});}
   };
   const guarded=(action:()=>void)=>{if(draft.count||draft.pending)setGuard(()=>action);else action();};
   const milestoneApplied=(latest:PathAnalysis,value:MilestoneRecheck)=>{const current=latest.milestones?.find(item=>item.id===value.id);return !!current&&(value.action==='achieve'?!!current.achievedAt:!current.achievedAt);};
@@ -371,7 +370,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const currentEntity=selectedCard?entityFor(selectedCard.id):null,milestone=data.milestones?.find(m=>m.id===selected);
   const selectedRequirementSaved=!!selectedCard&&formal.requirements.some(r=>r.id===selectedCard.requirementId);
   const objectValue=currentEntity?.entity==='requirement'?{...data.requirements.find(r=>r.id===currentEntity.id),...currentEntity.data}:currentEntity?.entity==='milestone'?{...milestone,...currentEntity.data}:{title:node?.title,ownerId:node?.ownerId,assigneeIds:node?.assigneeIds,...node?.estimate,arrangement:node?.arrangement,arrangementAnchor:node?.arrangementAnchor,...currentEntity?.data};
-  const toolbar=<EditorToolbar title={focus?requirement!.title:formal.projectName+' · 交付依赖'} back={origin?()=>void goBack():onExit||(()=>navigate('/'))} backLabel={origin?'返回'+origin.label:focus?'查看需求详情':'返回项目进展'} editing={draft.active} begin={draft.begin} canEdit={canEdit||canEstimate} undo={()=>commands.dispatch({type:'undo'})} redo={()=>commands.dispatch({type:'redo'})} canUndo={draft.canUndo&&!draft.readOnly&&!draft.loading&&!draft.pending} canRedo={draft.canRedo&&!draft.readOnly&&!draft.loading&&!draft.pending} save={()=>void draft.save()} canSave={!draft.loading&&!draft.readOnly&&!!(draft.pending||!draft.conflict&&(draft.count||Object.keys(draft.fields).length))} busy={draft.busy} discard={()=>draft.count?setConfirmDiscard(true):draft.cancel()}
+  const toolbar=<EditorToolbar title={focus?requirement!.title:formal.projectName+' · 交付依赖'} back={()=>{flushSync(()=>setLeaving(true));goBack();}} backLabel={hasPageHistory()?'返回':focus?'项目路径':'项目进展'} navigation={focus?<>{hasPageHistory()&&<button className="ghost-button" onClick={()=>navigatePath('/paths')}>项目路径</button>}{onExit&&!params.has('draftProject')&&<button className="ghost-button" onClick={onExit}>需求详情</button>}</>:undefined} editing={draft.active} begin={draft.begin} canEdit={canEdit||canEstimate} undo={()=>commands.dispatch({type:'undo'})} redo={()=>commands.dispatch({type:'redo'})} canUndo={draft.canUndo&&!draft.readOnly&&!draft.loading&&!draft.pending} canRedo={draft.canRedo&&!draft.readOnly&&!draft.loading&&!draft.pending} save={()=>void draft.save()} canSave={!draft.loading&&!draft.readOnly&&!!(draft.pending||!draft.conflict&&(draft.count||Object.keys(draft.fields).length))} busy={draft.busy} discard={()=>draft.count?setConfirmDiscard(true):draft.cancel()}
     context={<>{focus?<select aria-label="分析目标" value={target} onChange={e=>setParam('target',e.target.value)}><option value={acceptanceId(focus)}>本需求完成</option><option value="project">项目交付</option>{data.nodes.filter(n=>n.requirementId===focus&&n.kind==='milestone').map(n=><option key={n.id} value={n.id}>{n.title}</option>)}{!data.nodes.some(n=>n.id===target&&n.requirementId===focus)&&target!=='project'&&<option value={target}>{data.targetLabel}</option>}</select>:<select aria-label="分析目标" value={target} onChange={e=>setParam('target',e.target.value)}><option value="project">项目交付</option>{data.nodes.filter(n=>n.kind==='milestone'&&!n.requirementId).map(n=><option key={n.id} value={n.id}>{n.title}</option>)}</select>}<span title={'目标 '+(data.targetDate||'未设置')}>预计 {data.forecastEnd||'待确认'} · {data.deadlineSlack===null?'余量待确认':data.deadlineSlack+' 天余量'}</span></>}
     status={<>{branch&&<button className="ghost-button" onClick={()=>setParam('pathBranch','')}>退出聚焦</button>}{milestoneRecheck&&<button className="ghost-button danger-text" disabled={milestoneRechecking} onClick={()=>void recheckMilestone()}>{milestoneRechecking?'读取中…':'重新读取里程碑结果'}</button>}{planRecheck&&<button className="ghost-button danger-text" disabled={planRechecking} onClick={()=>void recheckPlan()}>{planRechecking?'读取中…':'重新读取排期结果'}</button>}<span data-draft-stored={draft.stored} title={draft.storageError||issue?.message||draft.error?.message||(draft.stored?'草稿已保留在本机':'正在保留本机草稿')}>{draft.loading?'恢复草稿…':draft.storageError?'本机保存失败':draft.conflict?'版本冲突':draft.readOnly?'其他页面编辑中':draft.count?(draft.restored?'已恢复草稿 · ':'')+draft.count+' 项未保存':draft.active?'编辑中':location.state?.pathNotice||'正式分析'}</span>{(draft.error||draft.conflict||issue)&&<button className="ghost-button danger-text" aria-label={draft.conflict?'版本冲突 · 查看修改':'查看草稿错误'} title="查看草稿修改与错误" onClick={()=>openPanel(issue?.kind?'connectionIssue':'changes')}>!</button>}</>}
     extra={<>{draft.active&&<button className="ghost-button" aria-label="草稿状态" title="查看本机草稿与冲突" onClick={()=>openPanel('changes')}><FilePenLine size={17}/></button>}<EditorInfo onClick={()=>openPanel('summary')}/><button className="ghost-button" aria-label="关系明细" title="关系明细" onClick={()=>openPanel('relations')}><Link2 size={17}/></button></>}/>;
@@ -388,7 +387,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
           {selectedRequirementSaved&&<button className="primary-button" onClick={()=>navigatePath('/requirements/'+selectedCard.requirementId)}>查看需求详情</button>}
           <button className={selectedRequirementSaved?'ghost-button':'primary-button'} onClick={()=>directTo(selectedCard.requirementId,selectedCard.workItemId)}>进入需求路径</button>
         </>}
-        {focus&&node?.workItemId&&node.requirementId===focus&&<button className="ghost-button" onClick={()=>{const p=new URLSearchParams(params);p.delete('view');p.set('workItemId',node.id);setParams(p,{state:location.state});}}>定位并处理工作项</button>}
+        {focus&&node?.workItemId&&node.requirementId===focus&&<button className="ghost-button" onClick={()=>{const p=new URLSearchParams(params);p.delete('view');p.set('workItemId',node.id);setParams(p,{replace:true,state:location.state});}}>定位并处理工作项</button>}
       </div>
       {selectedCard&&<button className="ghost-button graph-node-relations" onClick={()=>openPanel('nodeRelations')}>已有关联 {nodeRelations.length} 条{nodeRelations.some(d=>d.sourceWorkItemId||d.targetWorkItemId)?' · 含指定环节':''}</button>}
       {editing&&canEdit&&currentEntity&&(!selectedCard.external||manager)&&<EditorObjectProperties objectId={selected} projectId={data.projectId} entity={currentEntity.entity} canManageDelivery={manager} value={{...objectValue,priority:objectValue.priority as EditorEntityChange['data']['priority']}} onChange={fields=>commands.dispatch({type:'properties',id:selected,fields})} anchors={data.nodes.filter(n=>n.kind==='milestone'&&n.id!==selected).map(n=>({id:n.id,title:n.title}))}/>}
@@ -430,14 +429,14 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
     </>}
   </>:undefined;
   if(leaving)return <div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace"><LoadingState label="正在打开…"/></section></div>;
-  const commands=editorAdapter({properties:patchEntity,move:positions=>draft.change(withLayout(draft.changes,positions)),rename:(id,title)=>patchEntity(id,{title}),create:createEntity,duplicate:duplicate,replaceRelation,delete:(ids,edgeId)=>{const e=graph.links.find(e=>e.id===edgeId);if(e?.dependencyIds.length===1)draft.change(remove(e.dependencyIds[0]));else if(edgeId){setEdgeId(edgeId);setInspector(true);}else setDeleting(ids);},connect:connect,reconnect:(source,destination)=>{const problem=validateReconnect(source,destination);if(problem)setIssue(problem);else{draft.change(reconnectChanges(source,destination));setRelationId('');setEdgeId('');}},undo:editing?draft.undo:undefined,redo:editing?draft.redo:undefined,save:()=>void draft.save(),copy:()=>structuredClone(data)},editing&&canEdit);
+  const commands=editorAdapter({properties:patchEntity,move:positions=>draft.change(withLayout(draft.changes,positions)),rename:(id,title)=>patchEntity(id,{title}),create:createEntity,duplicate:duplicate,replaceRelation,delete:(ids,edgeId)=>{const e=graph.links.find(e=>e.id===edgeId);if(e?.dependencyIds.length===1)draft.change(remove(e.dependencyIds[0]));else if(edgeId){setEdgeId(edgeId);setInspector(true);}else {draft.change(deleteEntities(data,draft.changes,ids));select('');}},connect:connect,reconnect:(source,destination)=>{const problem=validateReconnect(source,destination);if(problem)setIssue(problem);else{draft.change(reconnectChanges(source,destination));setRelationId('');setEdgeId('');}},undo:editing?draft.undo:undefined,redo:editing?draft.redo:undefined,save:()=>void draft.save(),copy:()=>structuredClone(data)},editing&&canEdit);
   return <div className="path-analysis immersive-path"><GraphWorkspace onRevealField={key=>{const id=fieldObjectId(key),card=graph.cards.find(c=>c.id===id);if(card){select(card.id);return;}const node=data.nodes.find(n=>n.id===id);if(node?.requirementId){directTo(node.requirementId,node.id);return;}if(id&&(data.requirements.some(r=>r.id===id)||data.milestones?.some(m=>m.id===id)))navigatePath('/paths?'+new URLSearchParams({pathScope:'all',target,pathNode:id,pathInspector:'open'}));else setIssue({message:'无法定位待修正字段，请查看草稿所属对象是否仍可编辑。'});}} auxiliaryKey={panel} commands={commands} interaction={interaction} document={draft} cards={graph.cards} links={graph.links} visibleIds={visibleIds} contextIds={contextIds} emphasizedIds={emphasizedIds} onExitFocus={()=>{if(placing)setPlacing('');else setParam('pathBranch','');}} auxiliarySize={panel==='schedule'&&datedSchedule?expandedSchedule?'expanded':'timeline':'compact'}
     reconnect={canReconnect?{id:reconnectRelation!.id,source:focus?dependencySource(reconnectRelation!):reconnectRelation!.sourceRequirementId||reconnectRelation!.sourceMilestoneId!,target:focus?dependencyTarget(reconnectRelation!):reconnectRelation!.targetRequirementId||reconnectRelation!.targetMilestoneId!}:undefined}
     validateReconnect={validateReconnect}
     positions={layoutValue?.positions} onLayoutReady={positions=>{livePositions.current=positions;}} placing={placing} onSearch={()=>openPanel('nodes')}
     palette={<EditorPalette types={focus?manager?['work','milestone','requirement','existing']:['work','milestone','existing']:['requirement','milestone','existing']} placing={placing} onPlace={kind=>{if(!draft.active)draft.begin();if(kind==='existing'){openPanel('import');setPlacing('');}else setPlacing(kind);}} disabled={!canEdit||draft.loading||draft.readOnly||!!draft.pending}/>} analysis={['schedule','blockers','float'].includes(panel)}
     onDismissDetail={()=>setInspector(false)} onDismissAuxiliary={()=>setPanel('')}
-    viewKey={(session.accountId||'guest')+':'+formal.projectId+':'+(focus||'all')} toolbar={toolbar} finder={finder} detail={detail} auxiliary={auxiliary}
+    viewKey={(session.accountId||'guest')+':'+formal.projectId+':'+(focus||'all')} historyIndex={window.history.state?.idx} toolbar={toolbar} finder={finder} detail={detail} auxiliary={auxiliary}
     editing={editing&&canEdit} validateConnection={validate} onInvalid={setIssue} onInspectIssue={value=>{setIssue(value);openPanel('connectionIssue');}} onClearIssue={()=>{setIssue(undefined);if(panel==='connectionIssue')setPanel('');}} invalidEdges={invalidEdges}
     highlighted={highlighted} invalidNodes={invalidNodes} locate={locate} focusId={branch||''}
     footer={<><button className="ghost-button" onClick={()=>openPanel('blockers')}>影响 {data.blockers.length}</button><button className="ghost-button" onClick={()=>openPanel('float')}>余量</button>
@@ -446,7 +445,6 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
 
     </>}/>
     {creatingRequirement&&<EditorRequirementCreate projectId={data.projectId} onClose={()=>setCreatingRequirement(null)} onCreate={value=>createEntity('requirement',creatingRequirement,value)}/>}
-    {!!deleting.length&&<Modal title="删除所选元素" onClose={()=>setDeleting([])}><p>删除 {deleting.map(label).join('、')} 及其关系。有执行记录的对象仍按现有取消／归档规则处理。</p><button className="primary-button" onClick={()=>{draft.change(deleteEntities(data,draft.changes,deleting));setDeleting([]);select('');}}>加入删除草稿</button></Modal>}
     {editor&&<PathEditor editor={editor} data={formal} requirement={requirement} manager={manager} onClose={()=>setEditor(null)} onReload={onReload} onPlanRecheckChange={setPlanRecheck} onRecheckPlan={recheckPlan}/>}
     {(confirmDiscard||guard)&&<Modal title="处理未保存修改" width={460} onClose={()=>{setConfirmDiscard(false);setGuard(null);}}><p>当前草稿尚未保存。</p><div className="button-row">
       <button className="ghost-button" onClick={()=>{setConfirmDiscard(false);setGuard(null);}}>继续编辑</button><button className="ghost-button" disabled={!!draft.pending||draft.busy} onClick={()=>{draft.cancel();setConfirmDiscard(false);const action=guard;setGuard(null);action?.();}}>放弃草稿</button>

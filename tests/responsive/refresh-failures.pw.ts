@@ -79,9 +79,9 @@ test('失权后迟到的问题操作响应不能重新填回已清除的详情',
   try {
     await page.goto(urls.issue);
     await page.locator('.issue-settings-summary .issue-status-trigger').click();
-    await page.getByRole('button', { name: /确认解决/ }).click();
+    await page.locator('.issue-status-note summary').click();
     await page.locator('.issue-status-note textarea').fill('请求已发送后权限发生变更');
-    await page.getByRole('button', { name: '确认变更', exact: true }).click();
+    await page.getByRole('button', { name: /确认解决/ }).click();
     await expect.poll(() => writes).toBe(1);
     state.failure = 403;
     await refresh(page);
@@ -104,7 +104,7 @@ async function openDraft(page: Page, source: Source) {
   await page.goto(urls[source]);
   if (source === 'requirement') await page.locator('.requirement-gantt-grid .gantt-progress-marker').first().click();
   if (source === 'my-work') await page.getByRole('button', { name: '为接口开发更新完成度', exact: true }).click();
-  const field = source === 'issue' ? page.getByPlaceholder('记录新进展、决策或待办结果') : page.getByRole('textbox', { name: '说明', exact: true });
+  const field = source === 'issue' ? page.locator('.issue-update-form textarea') : page.getByRole('textbox', { name: '说明（可选）', exact: true });
   await field.fill('不能丢失的草稿');
   return field;
 }
@@ -302,9 +302,9 @@ test('全局读取 改名不重置草稿，切换身份后迟到写响应不回�
   });
   try {
     await page.locator('.issue-settings-summary .issue-status-trigger').click();
-    await page.getByRole('button', { name: /确认解决/ }).click();
+    await page.locator('.issue-status-note summary').click();
     await page.locator('.issue-status-note textarea').fill('旧身份的待返回操作');
-    await page.getByRole('button', { name: '确认变更', exact: true }).click();
+    await page.getByRole('button', { name: /确认解决/ }).click();
     await expect.poll(() => writes).toBe(1);
     state.failure = 503;
     current = { ...adminSession, accountId: 'a2', username: '第二账号' };

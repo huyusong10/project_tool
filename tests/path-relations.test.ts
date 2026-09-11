@@ -5,13 +5,24 @@ import {draftNetwork} from '../src/client/dependency-draft';
 import {relationCaption,relationDescription,relationEndpoints,replaceDeliveryCondition} from '../src/client/path-relations';
 import {projectPathGraph} from '../src/client/path-projection';
 import type {DependencyChanges} from '../src/shared/path-contracts';
-import {remapEditorUrl} from '../src/client/path-view';
+import {remapEditorUrl,remapSavedEditorUrl,remapEditorViews} from '../src/client/path-view';
 import {editorAdapter} from '../src/client/editor-adapter';
 
 const empty=():DependencyChanges=>({add:[],remove:[],estimates:[]});
 const dependency=(id:string,sr:string,sw:string|null,tr:string,tw:string|null):Dependency=>({id,projectId:'p',sourceRequirementId:sr,sourceWorkItemId:sw,targetRequirementId:tr,targetWorkItemId:tw,origin:'manual'});
 function fixture(){const input=pathFixture();input.dependencies=input.dependencies.filter(d=>d.sourceRequirementId===d.targetRequirementId);input.dependencies.push(dependency('whole','A',null,'B',null));return analysePaths(input);}
 describe('就地交付条件',()=>{
+  it('保存后历史中的草稿地址和节点映射到正式对象，保留筛选与分析目标',()=>{
+    const storage=()=>{const values:Record<string,string>={};return {getItem:(key:string)=>values[key]||null,setItem:(key:string,value:string)=>{values[key]=value;},removeItem:(key:string)=>{delete values[key];}};};
+    vi.stubGlobal('location',{origin:'http://localhost'});vi.stubGlobal('localStorage',storage());vi.stubGlobal('sessionStorage',storage());
+    try{
+      remapEditorViews('user:project',{draft:'saved',work:'saved-work'});
+      const url=remapSavedEditorUrl('/requirements/draft?view=path&draftProject=project&pathNode=work&target=acceptance%3Adraft&pathSearch=test','user:project');
+      expect(url).toBe('/requirements/saved?view=path&pathNode=saved-work&target=acceptance%3Asaved&pathSearch=test');
+      expect(remapSavedEditorUrl(url,'user:project')).toBe(url);
+      expect(remapSavedEditorUrl('/requirements/draft?view=path','other:project')).toBe('/requirements/draft?view=path');
+    }finally{vi.unstubAllGlobals();}
+  });
   it('restores saved relation selection and maps both aggregate and execution edge ids',()=>{
     vi.stubGlobal('location',{origin:'http://127.0.0.1:3220'});
     try{

@@ -1,3 +1,4 @@
+import {describeChanges} from './support';
 import { randomUUID } from 'node:crypto';
 import { sqlite } from '../database';
 import type { Actor } from '../auth';
@@ -285,7 +286,7 @@ export function addIssueUpdate(issueId: string, input: JsonObject, actor: Actor,
   if (Object.keys(input).some((key) => !['content', 'progress', 'expectedVersion'].includes(key))) {
     fail('问题进展命令不能提交无关字段');
   }
-  const issue = getIssue(issueId, true); const content = requireText(input.content, '进展内容');
+  const issue = getIssue(issueId, true); const content = nullableText(input.content) || (input.progress !== undefined ? `完成度：${issue.progress}% → ${input.progress}%` : requireText(input.content, '说明'));
   assertIssueParentMutable(issue);
   if (issue.status === 'resolved') fail('已解决问题不能再追加进展，请先由项目经理重新打开', 'TERMINAL_LOCKED');
   const hasProgress = input.progress !== undefined && nullableText(input.progress) !== null;
@@ -326,9 +327,7 @@ function issueStateEvent(id: string, action: 'defer' | 'resume' | 'resolve', inp
   const current = getIssue(id, true); assertExpectedVersion(input, current.version); const now = nowIso();
   const today = todayIso();
   assertIssueParentMutable(current);
-  const content = action === 'defer' ? requireText(input.reason, '挂起原因')
-    : action === 'resume' ? requireText(input.reason, '恢复原因')
-      : requireText(input.content, '闭环说明');
+  const content = nullableText(action === 'resolve' ? input.content : input.reason) || ({defer:'挂起问题',resume:'恢复处理',resolve:'问题已解决'}[action]);
   if (action === 'defer') assertTransition(current.status, ['in_progress'], '挂起');
   if (action === 'resume') assertTransition(current.status, ['deferred'], '恢复');
   if (action === 'resolve') {
@@ -362,7 +361,7 @@ export function reopenIssue(id: string, input: JsonObject, actor: Actor) {
   const current = getIssue(id, true); assertExpectedVersion(input, current.version); assertTransition(current.status, ['resolved'], '重开');
   assertIssueParentMutable(current);
   if (current.ownerId) issueOwner(current.projectId, current.ownerId, true);
-  const reason = requireText(input.reason, '重开原因');
+  const reason = nullableText(input.reason) || '重新打开问题';
   const requested = input.progress === undefined ? (current.ownerId ? 99 : 0) : requireProgress(input.progress, '恢复进度');
   if (requested >= 100) fail('恢复进度必须小于100%');
   const now = nowIso();
@@ -384,7 +383,7 @@ export function correctIssue(id: string, input: JsonObject, actor: Actor) {
   if (Object.keys(input).some((key) => ![
     'expectedVersion', 'reason', 'supersedesId', 'title', 'impact', 'progress', 'resolvedAt',
   ].includes(key))) fail('问题纠错不能提交闭环说明或未声明字段');
-  const current = getIssue(id, true); assertExpectedVersion(input, current.version); const reason = requireText(input.reason, '纠错原因');
+  const current = getIssue(id, true); assertExpectedVersion(input, current.version); const reason = nullableText(input.reason) || describeChanges(current,input);
   assertIssueParentMutable(current);
   const progress = input.progress === undefined ? current.progress : requireProgress(input.progress, '问题完成度');
   if (current.status === 'resolved' && progress !== 100) fail('已解决问题降低进度时必须使用重开操作', 'TERMINAL_LOCKED');

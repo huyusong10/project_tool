@@ -98,7 +98,7 @@ export function GanttPlanActualBars({
       className="gantt-bar-hitbox"
       style={{ left: interactionLeft, width: Math.max(28, interactionRight - interactionLeft) }}
       tabIndex={0}
-      aria-label="查看工作项排期详情"
+      aria-label="查看排期详情"
       {...interactionProps}
     />}
     {markerLeft !== undefined && <GanttProgressMarker
@@ -168,7 +168,7 @@ export function GanttProgressComparison({
   effectiveEnd?: string | null;
   status: string;
   progress: number;
-  plannedProgress: number;
+  plannedProgress: number | null;
   asOfDate?: string;
   dates: Date[];
   cellWidth: number;
@@ -176,7 +176,7 @@ export function GanttProgressComparison({
   showUnscheduled?: boolean;
 }) {
   const plan = ganttInterval(plannedStart, plannedEnd, dates, cellWidth);
-  if (!plan) return showUnscheduled ? <span className="gantt-unscheduled">待排期</span> : null;
+  if (!plan || plannedProgress === null) return showUnscheduled ? <span className="gantt-unscheduled">待排期</span> : null;
   const actualValue = normalizedProgress(status, progress);
   const expectedValue = Math.min(100, Math.max(0, Math.round(plannedProgress || 0)));
   const asOf = ganttTodayPosition(dates, asOfDate);

@@ -1,7 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { analysePaths } from '../src/shared/paths';
-import { pathFixture,date } from './fixtures/path-network';
+import { pathFixture,date,req,work } from './fixtures/path-network';
 describe('交付网络', () => {
+  it('部分排期不构成整个需求截止日，真实下游截止日仍可向未排期前置传播风险', () => {
+    const input = {
+      projectId: 'p', projectName: '部分排期', revision: 1, projectEnd: date(30), asOfDate: date(0),
+      requirements: [{ ...req('up'), plannedStart: null, plannedEnd: null }, { ...req('partial'), plannedEnd: date(1) }, req('unknown')],
+      workItems: [
+        { ...work('up-1', 'up', 5), plannedStart: null, plannedEnd: null },
+        work('partial-1', 'partial', 2),
+        { ...work('partial-2', 'partial', 3), plannedStart: null, plannedEnd: null },
+      ],
+      dependencies: [{ id: 'edge', projectId: 'p', sourceRequirementId: 'up', sourceWorkItemId: 'up-1', targetRequirementId: 'partial', targetWorkItemId: 'partial-2', origin: 'manual' }],
+    };
+    const partial = analysePaths(input, 'acceptance:partial');
+    expect(partial).toMatchObject({ targetDate: null, deadlineSlack: null, complete: true });
+    expect(partial.forecastEnd).not.toBeNull();
+    for (const id of ['up', 'partial']) expect(partial.risks[id]).toMatchObject({ highRisk: false, riskEvaluated: false, drivesLateTarget: false });
+    expect(partial.nodes.find(n => n.id === 'acceptance:partial')!.plannedEnd).toBeNull();
+    Object.assign(input.workItems[2], { plannedStart: date(0), plannedEnd: date(1) });
+    const planned = analysePaths(input, 'acceptance:partial');
+    expect(planned.targetDate).toBe(date(1));
+    expect(planned.deadlineSlack).toBeLessThan(0);
+    for (const id of ['up', 'partial']) expect(planned.risks[id]).toMatchObject({ highRisk: true, riskEvaluated: true, drivesLateTarget: true });
+  });
   it('部分交付不等待整个需求；余量、工作日边界可复算', () => {
     const a = analysePaths(pathFixture());
     expect(a.forecastEnd).toBe(date(8)); expect(a.deadlineSlack).toBe(-2);

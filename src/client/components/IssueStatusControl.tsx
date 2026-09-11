@@ -31,12 +31,12 @@ function IssueStatusEditor({ issue, disabled, onPendingChange, onSaved }: {
   const invalidAction = selected && !choices.some((choice) => choice.action === selected.action);
   const warning = invalidAction ? `当前状态不支持“${selected.label}”，请重新选择操作并核对说明。` : null;
   const busy = disabled || editor.pending;
-  const blocked = busy || editor.changed || editor.needsRefresh || editor.unavailable || Boolean(invalidAction);
-  const submit = () => {
-    if (blocked || !selected || !note.trim()) return;
+  const submit = (selected: (typeof issueStateChoices)[string][number]) => {
+    if (busy || editor.changed || editor.needsRefresh || editor.unavailable) return;
+    editor.setDirty(true); setSelected(selected);
     const payload = { expectedVersion: current.version, ...(selected.action === "resolve" ? { content: note.trim() } : { reason: note.trim() }) };
     const expected = selected;
-    const expectedContent = canonicalizeContent(note);
+    const expectedContent = canonicalizeContent(note) || ({defer:"挂起问题",resume:"恢复处理",resolve:"问题已解决",reopen:"重新打开问题"}[selected.action]);
     const baselineUpdateIds = new Set((current.updates || []).map((update) => update.id));
     void editor.save(
       () => api<Issue>(`/api/issues/${current.id}/${expected.action}`, { method: "POST", body: jsonBody(payload) }),
@@ -58,12 +58,11 @@ function IssueStatusEditor({ issue, disabled, onPendingChange, onSaved }: {
   return <>
     <header><strong>变更问题状态</strong><small>当前：{issueStatusLabels[current.status as keyof typeof issueStatusLabels]}</small></header>
     <div className="issue-status-choice-list">
-      {choices.map((choice) => <button type="button" key={choice.action} disabled={busy || editor.changed || editor.needsRefresh} className={selected?.action === choice.action ? "is-selected" : ""} onClick={() => { editor.setDirty(true); setSelected(choice); }}><span className={`issue-status issue-status-${choice.target}`}>{issueStatusLabels[choice.target as keyof typeof issueStatusLabels]}</span><span>{choice.label}</span></button>)}
+      {choices.map((choice) => <button type="button" key={choice.action} disabled={busy || editor.changed || editor.needsRefresh} className={selected?.action === choice.action ? "is-selected" : ""} onClick={() => submit(choice)}><span className={`issue-status issue-status-${choice.target}`}>{issueStatusLabels[choice.target as keyof typeof issueStatusLabels]}</span><span>{choice.label}</span></button>)}
     </div>
-    {selected && <div className="issue-status-note">
-      <label><span>{selected.prompt}</span><textarea autoFocus rows={3} disabled={busy} value={note} onChange={(event) => { editor.setDirty(true); setNote(event.target.value); }} /></label>
-      <div><button type="button" className="ghost-button" disabled={busy} onClick={() => setSelected(null)}>返回</button><button type="button" className="primary-button" disabled={blocked || !note.trim()} onClick={submit}>{editor.pending ? "处理中…" : "确认变更"}</button></div>
-    </div>}
+    <details className="issue-status-note"><summary>补充说明（可选）</summary>
+      <label><span>说明</span><textarea autoFocus rows={3} disabled={busy} value={note} onChange={(event) => { editor.setDirty(true); setNote(event.target.value); }} /></label>
+    </details>
     <div className="issue-status-notice"><DraftNotice editor={editor} warning={warning} /></div>
   </>;
 }
@@ -122,7 +121,6 @@ function IssueCorrectionEditor({ issue, disabled, onPendingChange, onSaved, onCa
     : resolved && !resolvedAt ? "请选择解决日期。"
     : resolved && resolvedAt < current.discoveredAt ? `解决日期不能早于发现日期（${current.discoveredAt}）。`
     : resolved && resolvedAt > today ? "解决日期不能晚于今天。"
-    : !reason.trim() ? "请填写纠错原因。"
     : !factsChanged && !supersedesId ? "请至少修改一项问题信息，或关联一条需要更正的历史记录。" : "";
   const busy = disabled || editor.pending;
   const blocked = busy || editor.changed || editor.needsRefresh || editor.unavailable || Boolean(validation);
@@ -180,7 +178,7 @@ function IssueCorrectionEditor({ issue, disabled, onPendingChange, onSaved, onCa
       ? <label><span>解决日期</span><input aria-label="纠错后的解决日期" type="date" disabled={busy} min={current.discoveredAt} max={today} value={resolvedAt} onChange={(event) => { editor.setDirty(true); setResolvedAt(event.target.value); }} /></label>
       : <label><span>当前完成度</span><input aria-label="纠错后的问题完成度" type="number" min={0} max={99} step={1} disabled={busy} value={progress} onChange={(event) => { editor.setDirty(true); setProgress(event.target.value); }} /></label>}
     {!!updates.length && <label><span>关联历史记录（可选）</span><select aria-label="关联历史记录" disabled={busy} value={supersedesId} onChange={(event) => { editor.setDirty(true); setSupersedesId(event.target.value); }}><option value="">不指定</option>{updates.map((update) => <option value={update.id} key={update.id}>{new Date(update.createdAt).toLocaleDateString("zh-CN")} · {correctionEventLabels[update.eventType] || update.eventType} · {update.content.slice(0, 28)}</option>)}</select></label>}
-    <label><span>纠错原因（必填）</span><textarea aria-label="问题纠错原因" disabled={busy} rows={2} value={reason} onChange={(event) => { editor.setDirty(true); setReason(event.target.value); }} placeholder="说明原记录哪里有误，以及核对依据" /></label>
+    <label><span>纠错说明（可选）</span><textarea aria-label="问题纠错原因" disabled={busy} rows={2} value={reason} onChange={(event) => { editor.setDirty(true); setReason(event.target.value); }} placeholder="说明原记录哪里有误，以及核对依据" /></label>
     {validation && editor.dirty && <p className="form-error" role="alert">{validation}</p>}
     <div className="issue-status-notice"><DraftNotice editor={editor} /></div>
     <footer><button type="button" className="ghost-button" disabled={busy} onClick={onCancel}>取消</button><button className="primary-button" disabled={blocked}>{editor.pending ? "保存中…" : "保存纠错"}</button></footer>

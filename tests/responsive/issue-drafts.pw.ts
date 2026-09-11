@@ -216,7 +216,7 @@ async function openForm(page: Page, form: 'basic' | 'updates') {
   if (form === 'basic') await page.getByRole('tab', { name: '基本信息', exact: true }).click();
   const container = page.locator(form === 'basic' ? '.issue-form' : '.issue-update-form');
   await expect(container).toBeVisible();
-  const field = form === 'basic' ? container.getByRole('textbox', { name: '问题标题', exact: true }) : container.getByPlaceholder('记录新进展、决策或待办结果');
+  const field = form === 'basic' ? container.getByRole('textbox', { name: '问题标题', exact: true }) : container.locator('textarea');
   await field.fill('本次草稿');
   if (form === 'updates') await container.getByRole('spinbutton').fill('60');
   return { container, field, submit: container.getByRole('button', { name: form === 'basic' ? '保存修改' : '追加进展', exact: true }) };
@@ -227,10 +227,10 @@ async function openStatus(page: Page, location: 'list' | 'detail', action = '确
   const trigger = page.locator(location === 'detail' ? '.issue-settings-summary .issue-status-trigger' : '.issue-data-status .issue-status-trigger');
   await trigger.click();
   const container = page.locator('.issue-status-popover');
-  await container.getByRole('button', { name: new RegExp(action) }).click();
+  await container.getByText('补充说明（可选）',{exact:true}).click();
   const field = container.locator('textarea');
   await field.fill('本次状态说明');
-  return { container, field, trigger, submit: container.getByRole('button', { name: '确认变更', exact: true }) };
+  return { container, field, trigger, submit: container.getByRole('button', { name: new RegExp(action) }) };
 }
 
 test('问题详情受控纠错可修正事实并保留原因', async ({ page }) => {
@@ -242,7 +242,7 @@ test('问题详情受控纠错可修正事实并保留原因', async ({ page }) 
   await form.getByLabel('纠错后的问题标题', { exact: true }).fill('核对后的问题标题');
   await form.getByLabel('纠错后的问题影响', { exact: true }).fill('核对后的影响范围');
   await form.getByLabel('纠错后的问题完成度', { exact: true }).fill('25');
-  await expect(form.getByRole('alert')).toContainText('请填写纠错原因');
+  await expect(form.getByRole('button',{name:'保存纠错',exact:true})).toBeEnabled();
   await form.getByLabel('问题纠错原因', { exact: true }).fill('根据原始记录修正');
   await form.getByRole('button', { name: '保存纠错', exact: true }).click();
 
@@ -403,14 +403,12 @@ for (const location of ['list', 'detail'] as const) {
     await submit.click();
     await expect(container).toContainText('当前状态不支持“确认解决”');
     await expect(field).toHaveValue('本次状态说明');
-    await expect(submit).toBeDisabled();
+    await expect(submit).toHaveCount(0);
     expect(state.writes).toHaveLength(1);
     state.writeFailure = 0;
-    await container.getByRole('button', { name: /恢复处理/ }).click();
     await expect(field).toHaveValue('本次状态说明');
     await field.fill('已核对，恢复处理的新说明');
-    await expect(submit).toBeEnabled();
-    await submit.click();
+    await container.getByRole('button', { name: /恢复处理/ }).click();
     await expect(container).toHaveCount(0);
     expect(state.writes[1]).toEqual({ path: '/api/issues/i1/resume', body: { expectedVersion: 2, reason: '已核对，恢复处理的新说明' } });
   });
@@ -509,7 +507,7 @@ for (const location of ['list', 'detail'] as const) {
       await expect.poll(() => state.writes.length).toBe(1);
       await expect(field).toBeDisabled();
       await expect(trigger).toBeDisabled();
-      await expect(container.getByRole('button', { name: '返回', exact: true })).toBeDisabled();
+      await expect(container.getByRole('button', { name: '返回', exact: true })).toHaveCount(0);
       for (const button of await container.locator('.issue-status-choice-list button').all()) await expect(button).toBeDisabled();
       await page.keyboard.press('Escape');
       await page.mouse.click(5, 5);

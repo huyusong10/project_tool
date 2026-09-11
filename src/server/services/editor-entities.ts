@@ -99,11 +99,11 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     }else if(c.entity==='work'){
       if(c.op!=='delete'){const fields=Object.fromEntries(Object.entries(c.data).filter(([key])=>!['durationDays','arrangement','arrangementAnchor'].includes(key)));(c.op==='create'?createWorkItemInputSchema:updateWorkItemInputSchema).parse({...fields,expectedVersion:c.expectedVersion||1});}
       if(c.op==='create'){
-        if(!req)notFound('所属需求不存在');if(req.executionMode==='direct'){req.splitBaseProgress=Math.min(99,req.progress||0);req.splitAt=req.actualStart?new Date().toISOString():null;req.executionMode='work_items';}if(snapshot.workItems.some(w=>w.requirementId===req.id&&w.status!=='not_started')&&!c.data.reason?.trim())fail('需求已执行，新增工作项请填写变更原因');
+        if(!req)notFound('所属需求不存在');if(req.executionMode==='direct'){req.splitBaseProgress=Math.min(99,req.progress||0);req.splitAt=req.actualStart?new Date().toISOString():null;req.executionMode='work_items';}
         snapshot.workItems.push({...workDefaults,...c.data,id:c.id,requirementId:req.id,title:requireLabel(c.data.title,'工作项标题')});
       }else {const w=snapshot.workItems.find(w=>w.id===c.id);if(!w||w.requirementId!==requirementId)notFound('工作项不存在');
         if(c.op==='delete'){if(!canDeleteWorkItem({...w,version:Number(row!.version)} as Parameters<typeof canDeleteWorkItem>[0],!!sqlite.prepare('SELECT 1 FROM progress_updates WHERE work_item_id=? LIMIT 1').get(c.id)))fail('有执行记录的工作项请使用取消');snapshot.workItems=snapshot.workItems.filter(w=>w.id!==c.id);}
-        else {if(snapshot.workItems.some(item=>item.requirementId===w.requirementId&&item.status!=='not_started')&&Object.entries(c.data).some(([key,value])=>['title','ownerId','assigneeIds','plannedStart','plannedEnd'].includes(key)&&JSON.stringify(value)!==JSON.stringify(w[key as keyof typeof w]))&&!c.data.reason?.trim())fail('需求已开始执行，调整工作项结构、负责人或排期时必须填写变更原因');if(['completed','cancelled'].includes(w.status))fail('已结束工作项不能编辑','TERMINAL_LOCKED');
+        else {if(['completed','cancelled'].includes(w.status))fail('已结束工作项不能编辑','TERMINAL_LOCKED');
           const collaborators=c.data.assigneeIds??w.assigneeIds?.filter(id=>id!==w.ownerId)??[];
           Object.assign(w,c.data,{assigneeIds:collaborators});}
       }

@@ -32,9 +32,10 @@ function Workspace({ document:editorDocument, auxiliaryKey, toolbar, detail, aux
   const runtime=useContext(WorkspaceRuntimeContext)!;runtime.document=editorDocument;runtime.interaction=graph.interaction;runtime.revealField=graph.onRevealField;runtime.save=()=>{graph.commands.dispatch({type:'save'});};useWorkspaceEvents(runtime,root);
   const requestSave=()=>{if(runtime.composing){runtime.saveRequested=true;return;}if(runtime.interaction?.operation&&runtime.interaction.operation.kind!=='field'){runtime.cancel();return;}let valid=false;flushSync(()=>{valid=runtime.commitFields();});if(valid)runtime.save?.();};
   const finderKey='pm-graph-view:'+graph.viewKey+':finder';
-  const [finding,setFinding]=useState(()=>{try{return localStorage.getItem(finderKey)==='true';}catch{return false;}});
+  const finderHistoryKey=graph.historyIndex===undefined?null:finderKey+':history:'+graph.historyIndex;
+  const [finding,setFinding]=useState(()=>{try{return ((finderHistoryKey?sessionStorage.getItem(finderHistoryKey):null)??localStorage.getItem(finderKey))==='true';}catch{return false;}});
   useWorkspaceLayer(finderRef,finding,'finder',()=>setFinding(false));
-  useEffect(()=>{try{localStorage.setItem(finderKey,String(finding));}catch{/* View is still usable. */}},[finderKey,finding]);
+  useEffect(()=>{try{localStorage.setItem(finderKey,String(finding));if(finderHistoryKey)sessionStorage.setItem(finderHistoryKey,String(finding));}catch{/* View is still usable. */}},[finderKey,finderHistoryKey,finding]);
   useEffect(()=>{
     const element=root.current;if(!element)return;
     const toolbar=element.querySelector('.graph-toolbar')!,footer=element.querySelector('.graph-footer')!,controls=element.querySelector('.graph-view-controls')!;

@@ -1045,7 +1045,7 @@ test("未开始需求的工作项可直接启动并保留其他管理操作", as
 });
 
 test('开始工作项响应未知且需求回读失败时锁定直接入口', async ({ page }) => {
-  let current: Requirement = { ...structuredClone(requirement), status: 'not_started' };
+  let current: Requirement = { ...structuredClone(requirement), ownerId:'u1',ownerValid:true,workItems:[{...workItem,ownerId:'u1',ownerName:'张三'},secondWorkItem],status: 'not_started' };
   await mockApplication(page, [], { requirement: { status: 'not_started' } });
   let failRead = false;
   let submissions = 0;
@@ -1081,9 +1081,10 @@ test('工作项响应未知且回读失败时切换筛选仍保留写入锁', as
   const startedSecond = { ...secondWorkItem, status: 'in_progress' as const, actualStart: '2026-09-01', progress: 20 };
   const current: Requirement = {
     ...structuredClone(requirement),
+    ownerId:'u1',ownerValid:true,
     status: 'in_progress',
     progress: 10,
-    workItems: [structuredClone(workItem), startedSecond],
+    workItems: [{...structuredClone(workItem),ownerId:"u1",ownerName:"张三"}, startedSecond],
   };
   await mockApplication(page, [], { requirement: current });
   let failRead = false;
@@ -1125,7 +1126,7 @@ test('工作项响应未知且回读失败时离开详情再返回仍保留写�
   let submissions = 0;
   await page.route('**/api/requirements/r1', (route) => failRead
     ? route.fulfill({ status: 503, json: { error: '工作项读取暂不可用' } })
-    : route.fulfill({ json: requirement }));
+    : route.fulfill({ json: {...requirement,ownerId:"u1",ownerValid:true,workItems:[{...workItem,ownerId:"u1",ownerName:"张三"},secondWorkItem]} }));
   await page.route('**/api/work-items/w1/start', (route) => {
     submissions += 1;
     failRead = true;
@@ -1250,8 +1251,8 @@ test("工作项菜单可切换到实际日期修正和历史补录，需求可�
   await expect(page.getByLabel("实际完成", { exact: true })).toHaveCount(0);
   await page.getByLabel("实际开始", { exact: true }).fill("2026-08-31");
   await page.getByLabel("工作项纠错关联历史记录", { exact: true }).selectOption("pu-source");
-  await page.getByRole("button", { name: "保存纠错" }).click();
-  await expect(page.getByRole("alert")).toContainText("请填写纠错原因");
+
+
   await page.getByLabel("纠错原因").fill("修正历史开始日期");
   await page.getByRole("button", { name: "保存纠错" }).click();
   await expect.poll(() => patches.length).toBe(1);
@@ -1761,13 +1762,13 @@ for (const recordMatchingEvent of [true, false]) {
     });
 
     await page.goto('/requirements/r1');
-    await page.getByRole('button', { name: '完成', exact: true }).click();
+    await page.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await page.getByRole('button',{name:'完成并补充说明',exact:true}).click();
     const popover = page.locator('.inline-edit-popover');
-    await popover.getByRole('textbox', { name: '完成说明', exact: true }).fill('完成历史交付');
+    await popover.getByRole('textbox', { name: '完成说明（可选）', exact: true }).fill('完成历史交付');
     await popover.getByRole('button', { name: '确认完成', exact: true }).click();
 
     await expect(popover).toContainText('提交结果仍待核对');
-    await expect(popover.getByRole('textbox',{name:'完成说明',exact:true})).toHaveValue('完成历史交付');
+    await expect(popover.getByRole('textbox',{name:'完成说明（可选）',exact:true})).toHaveValue('完成历史交付');
     await expect(popover.getByRole('button',{name:'确认完成',exact:true})).toBeDisabled();
   });
 }
@@ -1801,9 +1802,9 @@ test('工作项完成响应异常时不把其他账号的相同命令误认成�
   });
 
   await page.goto('/requirements/r1');
-  await page.getByRole('button', { name: '完成', exact: true }).click();
+  await page.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await page.getByRole('button',{name:'完成并补充说明',exact:true}).click();
   const popover = page.locator('.inline-edit-popover');
-  await popover.getByRole('textbox', { name: '完成说明', exact: true }).fill('完成历史交付');
+  await popover.getByRole('textbox', { name: '完成说明（可选）', exact: true }).fill('完成历史交付');
   await popover.getByRole('button', { name: '确认完成', exact: true }).click();
 
   await expect(popover).toBeVisible();
@@ -1970,21 +1971,18 @@ test("工作项负责人、协作者和日期共用版本快照，重读时保�
 
   await firstRow.getByRole("button", { name: /主负责人：未分配/ }).click();
   let popover = page.locator(".inline-select-popover");
-  await popover.getByRole("option", { name: /张三/ }).click();
-  await popover.getByRole("textbox", { name: "调整原因", exact: true }).fill("保留负责人草稿");
+
   await pushBackgroundUpdate({ ownerId: "u2", ownerName: "李四", assigneeIds: ["u2"], assigneeNames: ["李四"] });
-  await expect(popover.getByRole("button", { name: "保存", exact: true })).toBeDisabled();
+  await popover.getByRole("option", {name:/张三/}).click();
   expect(submissions).toHaveLength(0);
   await reloadDraft(popover, 2);
-  await expect(popover.getByRole("textbox", { name: "调整原因", exact: true })).toHaveValue("保留负责人草稿");
-  await popover.getByRole("button", { name: "保存", exact: true }).click();
+  await popover.getByRole("option", {name:/张三/}).click();
   await expect.poll(() => submissions.length).toBe(1);
-  expect(submissions[0]).toMatchObject({ ownerId: "u1", assigneeIds: ["u1"], reason: "保留负责人草稿", expectedVersion: 2 });
+  expect(submissions[0]).toMatchObject({ ownerId: "u1", assigneeIds: ["u1"], expectedVersion: 2 });
 
   await firstRow.getByRole("button", { name: /计划开始：2026-09-01/ }).click();
   popover = page.locator(".inline-date-popover");
   await popover.getByRole("gridcell", { name: "2026-09-02", exact: true }).click();
-  await popover.getByRole("textbox", { name: "调整原因", exact: true }).fill("保留日期草稿原因");
   await pushBackgroundUpdate({ plannedStart: "2026-09-03" });
   await expect(popover.getByRole("button", { name: "保存", exact: true })).toBeDisabled();
   expect(submissions).toHaveLength(1);
@@ -1992,21 +1990,19 @@ test("工作项负责人、协作者和日期共用版本快照，重读时保�
   await expect(popover.getByRole("gridcell", { name: "2026-09-02", exact: true })).toHaveAttribute("aria-selected", "true");
   await popover.getByRole("button", { name: "保存", exact: true }).click();
   await expect.poll(() => submissions.length).toBe(2);
-  expect(submissions[1]).toMatchObject({ plannedStart: "2026-09-02", reason: "保留日期草稿原因", expectedVersion: 4 });
+  expect(submissions[1]).toMatchObject({ plannedStart: "2026-09-02", expectedVersion: 4 });
 
   await firstRow.getByRole("button", { name: /协作人员：无协作人员/ }).click();
   popover = page.locator(".inline-multi-popover");
   await popover.getByRole("checkbox", { name: /李四/ }).check();
-  await popover.getByRole("textbox", { name: "调整原因", exact: true }).fill("保留协作者草稿原因");
   await pushBackgroundUpdate({ title: "后台再次更新标题" });
   await expect(popover.getByRole("button", { name: "完成", exact: true })).toBeDisabled();
   expect(submissions).toHaveLength(2);
   await reloadDraft(popover, 6);
   await expect(popover.getByRole("checkbox", { name: /李四/ })).toBeChecked();
-  await expect(popover.getByRole('textbox', { name: '调整原因', exact: true })).toHaveValue('保留协作者草稿原因');
   await popover.getByRole("button", { name: "完成", exact: true }).click();
   await expect.poll(() => submissions.length).toBe(3);
-  expect(submissions[2]).toMatchObject({ assigneeIds: ["u1", "u2"], reason: "保留协作者草稿原因", expectedVersion: 6 });
+  expect(submissions[2]).toMatchObject({ assigneeIds: ["u1", "u2"], expectedVersion: 6 });
 });
 
 test("执行中工作项待确认的负责人失效后禁止提交旧人员", async ({ page }) => {
@@ -2028,20 +2024,18 @@ test("执行中工作项待确认的负责人失效后禁止提交旧人员", as
   const row = page.getByRole("dialog", { name: "工作项设置", exact: true }).locator("tbody tr").first();
   await row.getByRole("button", { name: /主负责人：未分配/ }).click();
   const popover = page.locator(".inline-select-popover");
-  await popover.getByRole("option", { name: /李四/ }).click();
-  await popover.getByRole("textbox", { name: "调整原因", exact: true }).fill("切换执行负责人");
+
   availablePeople = people.slice(0, 1);
   const previousReads = peopleReads;
   await page.evaluate(() => { window.dispatchEvent(new Event("offline")); window.dispatchEvent(new Event("online")); });
   await expect.poll(() => peopleReads).toBeGreaterThan(previousReads);
-  await expect(popover.getByRole("alert")).toHaveText("李四已不可用，请重新选择");
-  await expect(popover.getByRole("button", { name: "保存", exact: true })).toBeDisabled();
+  await expect(popover.getByRole("option",{name:/李四/})).toHaveCount(0);
+
   expect(submissions).toHaveLength(0);
   await popover.getByRole("option", { name: /张三/ }).click();
-  await popover.getByRole("textbox", { name: "调整原因", exact: true }).fill("改选仍有效人员");
-  await popover.getByRole("button", { name: "保存", exact: true }).click();
+
   await expect.poll(() => submissions).toHaveLength(1);
-  expect(submissions[0]).toMatchObject({ ownerId: "u1", assigneeIds: ["u1"], reason: "改选仍有效人员", expectedVersion: 1 });
+  expect(submissions[0]).toMatchObject({ ownerId: "u1", assigneeIds: ["u1"], expectedVersion: 1 });
 });
 
 test("新增工作项人员刷新失效后保留姓名并要求清理选择", async ({ page }) => {
@@ -2258,10 +2252,10 @@ test('必填文本为空时切换编辑器，只保留新浮层且不提交空�
   expect(patches).toHaveLength(0);
 });
 
-for (const kind of ['单选', '带原因单选', '日期', '多选'] as const) {
+for (const kind of ['单选', '执行中单选', '日期', '多选'] as const) {
   test(`${kind}提交中关闭仍保持锁定，失败重开保留本次输入`, async ({ page }) => {
     const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
-    await mockApplication(page, patches, kind === '带原因单选' || kind === '日期' ? { workItem: { status: 'in_progress', actualStart: '2026-09-01' } } : {});
+    await mockApplication(page, patches, kind === '执行中单选' || kind === '日期' ? { workItem: { status: 'in_progress', actualStart: '2026-09-01' } } : {});
     let requests = 0;
     let release!: () => void;
     const response = new Promise<void>((resolve) => { release = resolve; });
@@ -2281,14 +2275,10 @@ for (const kind of ['单选', '带原因单选', '日期', '多选'] as const) {
         await page.locator('.inline-multi-popover').getByRole('button', { name: '完成', exact: true }).click();
       } else if (kind === '日期') {
         await page.getByRole('gridcell', { name: '2026-09-02' }).click();
-        await page.getByPlaceholder('请说明计划开始日期调整原因').fill('保留日期调整说明');
         await page.locator('.inline-date-popover').getByRole('button', { name: '保存', exact: true }).click();
       } else {
         await page.getByRole('option').filter({ hasText: '张三' }).click();
-        if (kind === '带原因单选') {
-          await page.getByLabel('调整原因', { exact: true }).fill('保留负责人调整说明');
-          await page.locator('.inline-select-popover').getByRole('button', { name: '保存', exact: true }).click();
-        }
+
       }
       await expect.poll(() => requests).toBe(1);
       if (kind === '单选') {
@@ -2316,10 +2306,8 @@ for (const kind of ['单选', '带原因单选', '日期', '多选'] as const) {
       if (kind === '多选') await expect(page.getByRole('checkbox', { name: /李四/ })).toBeChecked();
       else if (kind === '日期') {
         await expect(page.getByRole('gridcell', { name: '2026-09-02' })).toHaveAttribute('aria-selected', 'true');
-        await expect(page.getByPlaceholder('请说明计划开始日期调整原因')).toHaveValue('保留日期调整说明');
       } else {
         await expect(page.getByRole('option').filter({ hasText: '张三' })).toHaveAttribute('aria-selected', 'true');
-        if (kind === '带原因单选') await expect(page.getByLabel('调整原因', { exact: true })).toHaveValue('保留负责人调整说明');
       }
     } finally { release(); }
   });
@@ -2389,9 +2377,8 @@ test("管理表格支持原地编辑、显式状态命令和失败回滚", async
   await issueDialog.getByRole("button", { name: "关闭" }).click();
   await page.locator(".issue-status-trigger").click();
   await page.getByRole("button", { name: /已解决.*确认解决/ }).click();
-  await page.getByLabel("填写闭环说明").fill("联调验证通过");
-  await page.getByRole("button", { name: "确认变更" }).click();
-  await expect.poll(() => patches.some((entry) => entry.path === "/api/issues/i1/resolve" && entry.body.content === "联调验证通过")).toBe(true);
+
+  await expect.poll(() => patches.some((entry) => entry.path === "/api/issues/i1/resolve" && entry.body.content === "")).toBe(true);
   await expect(page.getByRole("table").getByText("已解决", { exact: true })).toBeVisible();
 
   await page.goto("/accounts");
@@ -2410,7 +2397,7 @@ test("管理表格支持原地编辑、显式状态命令和失败回滚", async
   await expect(page.locator(".person-card .inline-edit-cell")).toHaveCount(0);
 });
 
-test("日期翻月不提交，执行中工作项在统一浮窗填写调整原因", async ({ page }, testInfo) => {
+test("日期翻月不提交，执行中工作项在统一浮窗直接保存", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-1080p", "交互流程只需在一个桌面视口执行");
   const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
   const browserDialogs: string[] = [];
@@ -2423,11 +2410,9 @@ test("日期翻月不提交，执行中工作项在统一浮窗填写调整原�
   await page.getByRole("button", { name: /主负责人：张三/ }).first().click();
   const ownerPicker = page.locator(".inline-select-popover");
   await ownerPicker.getByRole("option", { name: /李四/ }).click();
-  await expect(ownerPicker.getByPlaceholder("需求已开始执行，请说明切换主负责人的原因")).toBeVisible();
-  expect(patches.some((entry) => entry.path === "/api/work-items/w1" && entry.body.ownerId === "u2")).toBe(false);
-  await ownerPicker.getByPlaceholder("需求已开始执行，请说明切换主负责人的原因").fill("调整开发任务分工");
-  await ownerPicker.getByRole("button", { name: "保存", exact: true }).click();
-  await expect.poll(() => patches.some((entry) => entry.path === "/api/work-items/w1" && entry.body.ownerId === "u2" && entry.body.reason === "调整开发任务分工")).toBe(true);
+
+
+  await expect.poll(() => patches.some((entry) => entry.path === "/api/work-items/w1" && entry.body.ownerId === "u2")).toBe(true);
   await page.getByRole("button", { name: /计划开始：2026-09-01/ }).first().click();
   const popover = page.locator(".inline-date-popover");
   await expect(popover).toBeVisible();
@@ -2439,11 +2424,9 @@ test("日期翻月不提交，执行中工作项在统一浮窗填写调整原�
 
   await popover.getByRole("button", { name: "上一个月" }).click();
   await popover.getByRole("gridcell", { name: "2026-09-02" }).click();
-  await expect(popover.getByPlaceholder("请说明计划开始日期调整原因")).toBeVisible();
   expect(patches.some((entry) => entry.path === "/api/work-items/w1" && Object.prototype.hasOwnProperty.call(entry.body, "plannedStart"))).toBe(false);
-  await popover.getByPlaceholder("请说明计划开始日期调整原因").fill("配合联调窗口调整排期");
   await popover.getByRole("button", { name: "保存", exact: true }).click();
-  await expect.poll(() => patches.some((entry) => entry.path === "/api/work-items/w1" && entry.body.plannedStart === "2026-09-02" && entry.body.reason === "配合联调窗口调整排期")).toBe(true);
+  await expect.poll(() => patches.some((entry) => entry.path === "/api/work-items/w1" && entry.body.plannedStart === "2026-09-02")).toBe(true);
   const savedDateButton = page.getByRole("button", { name: /计划开始：2026-09-02/ }).first();
   await expect(savedDateButton.locator(".inline-edit-success")).toBeVisible();
   expect(await savedDateButton.evaluate((button) => {
@@ -2461,12 +2444,8 @@ test("日期翻月不提交，执行中工作项在统一浮窗填写调整原�
   await page.mouse.down();
   await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
   await finishPointerDrag(page);
-  const reasonDialog = page.getByRole("dialog", { name: "调整工作项顺序" });
-  await expect(reasonDialog).toBeVisible();
-  expect(patches.some((entry) => entry.path.endsWith("/reorder-work-items"))).toBe(false);
-  await reasonDialog.getByLabel("调整原因").fill("先完成开发再补充设计归档");
-  await reasonDialog.getByRole("button", { name: "确认调整" }).click();
-  await expect.poll(() => patches.some((entry) => entry.path.endsWith("/reorder-work-items") && entry.body.reason === "先完成开发再补充设计归档")).toBe(true);
+  await expect(page.getByRole("dialog",{name:"调整工作项顺序"})).toHaveCount(0);
+  await expect.poll(()=>patches.some(entry=>entry.path.endsWith("/reorder-work-items"))).toBe(true);
   expect(browserDialogs).toEqual([]);
 });
 
@@ -2724,7 +2703,7 @@ test('新增草稿期间需求更新后不能携带新版本提交旧内容', as
   expect(submissions).toHaveLength(0);
 });
 
-test('执行中新增确认期间需求更新后不能提交旧草稿', async ({ page }) => {
+test('执行中新增填写期间需求更新后不能提交旧草稿', async ({ page }) => {
   await mockApplication(page, []);
   let current = { ...structuredClone(requirement), workItems: [{ ...workItem, status: 'in_progress', actualStart: '2026-09-01' }, secondWorkItem] };
   let reads = 0;
@@ -2740,15 +2719,13 @@ test('执行中新增确认期间需求更新后不能提交旧草稿', async ({
   await page.getByRole('button', { name: /新工作项名称/ }).click();
   await page.getByLabel('新工作项名称', { exact: true }).fill('执行中新增草稿');
   await page.getByLabel('新工作项名称', { exact: true }).press('Enter');
-  await page.getByRole('button', { name: '保存', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '新增执行中工作项', exact: true });
-  await dialog.getByLabel('新增原因').fill('补充遗漏任务');
+
+  const dialog = page.getByRole('dialog', { name: '工作项设置', exact: true });
   current = { ...current, version: 2, title: '后台更新的需求' };
   const previousReads = reads;
   await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
   await expect.poll(() => reads).toBeGreaterThan(previousReads);
-  await expect(dialog.getByRole('button', { name: '确认新增', exact: true })).toBeDisabled();
-  await expect(dialog.getByLabel('新增原因')).toHaveValue('补充遗漏任务');
+  await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
   expect(submissions).toHaveLength(0);
 });
 
@@ -2783,7 +2760,7 @@ test('新增工作项提交期间锁定草稿和工作项设置窗口', async ({
   await expect.poll(() => page.getByRole('button', { name: /新工作项名称/ }).count()).toBe(0);
 });
 
-test('执行中新增提交期间锁定原因和双层窗口', async ({ page }) => {
+test('执行中新增提交期间锁定当前窗口且仅提交一次', async ({ page }) => {
   await mockApplication(page, [], { workItem: { status: 'in_progress', actualStart: '2026-09-01' } });
   let release!: () => void;
   let requests = 0;
@@ -2799,49 +2776,19 @@ test('执行中新增提交期间锁定原因和双层窗口', async ({ page }) 
   await page.getByRole('button', { name: /新工作项名称/ }).click();
   await page.getByLabel('新工作项名称', { exact: true }).fill('执行中新增');
   await page.getByLabel('新工作项名称', { exact: true }).press('Enter');
-  await page.getByRole('button', { name: '保存', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '新增执行中工作项', exact: true });
-  await dialog.getByLabel('新增原因').fill('执行中补充范围');
+
+  const dialog = page.getByRole('dialog', { name: '工作项设置', exact: true });
   try {
-    await dialog.getByRole('button', { name: '确认新增', exact: true }).dblclick();
+    await dialog.getByRole('button', { name: '保存', exact: true }).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click();});
     await expect.poll(() => requests).toBe(1);
-    await expect(dialog.getByLabel('新增原因')).toBeDisabled();
     await page.keyboard.press('Escape');
     await expect(dialog).toBeVisible();
   } finally { release(); }
-  await expect(dialog).toHaveCount(0);
+  await expect(dialog.getByRole("button",{name:/新工作项名称/})).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: '工作项设置', exact: true })).toBeVisible();
 });
 
-test('排序原因填写期间需求更新后不能携带新版本提交旧顺序', async ({ page }) => {
-  await mockApplication(page, []);
-  let current = { ...structuredClone(requirement), workItems: [{ ...workItem, status: 'in_progress', actualStart: '2026-09-01' }, secondWorkItem] };
-  let reads = 0;
-  const submissions: Array<Record<string, unknown>> = [];
-  await page.route('**/api/requirements/r1', (route) => { reads++; return route.fulfill({ json: current }); });
-  await page.route('**/api/requirements/r1/reorder-work-items', (route) => {
-    submissions.push(route.request().postDataJSON());
-    return route.fulfill({ json: [] });
-  });
-  await page.goto('/requirements/r1');
-  await page.getByRole('button', { name: '工作项设置', exact: true }).click();
-  const handles = page.getByRole('button', { name: /拖动.*调整顺序/ });
-  const first = await handles.nth(0).boundingBox();
-  const second = await handles.nth(1).boundingBox();
-  await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
-  await finishPointerDrag(page);
-  const dialog = page.getByRole('dialog', { name: '调整工作项顺序', exact: true });
-  await dialog.getByLabel('调整原因').fill('调整旧顺序');
-  current = { ...current, version: 2, title: '后台更新的需求' };
-  const previousReads = reads;
-  await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
-  await expect.poll(() => reads).toBeGreaterThan(previousReads);
-  await expect(dialog.getByRole('button', { name: '确认调整', exact: true })).toBeDisabled();
-  await expect(dialog.getByLabel('调整原因')).toHaveValue('调整旧顺序');
-  expect(submissions).toHaveLength(0);
-});
+
 
 test('新增草稿显式重读后保留内容并使用新版本提交', async ({ page }) => {
   await mockApplication(page, []);
@@ -2957,34 +2904,7 @@ test('新增工作项响应未知且需求回读失败时关闭设置仍锁定�
   await expect(entry).toBeEnabled();
 });
 
-test('排序理由显式重读后保留内容并使用新版本提交', async ({ page }) => {
-  await mockApplication(page, []);
-  let current = { ...structuredClone(requirement), workItems: [{ ...workItem, status: 'in_progress', actualStart: '2026-09-01' }, secondWorkItem] };
-  const submissions: Array<Record<string, unknown>> = [];
-  await page.route('**/api/requirements/r1', (route) => route.fulfill({ json: current }));
-  await page.route('**/api/requirements/r1/reorder-work-items', (route) => {
-    submissions.push(route.request().postDataJSON());
-    return route.fulfill({ json: [] });
-  });
-  await page.goto('/requirements/r1');
-  await page.getByRole('button', { name: '工作项设置', exact: true }).click();
-  const handles = page.getByRole('button', { name: /拖动.*调整顺序/ });
-  const first = await handles.nth(0).boundingBox();
-  const second = await handles.nth(1).boundingBox();
-  await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
-  await finishPointerDrag(page);
-  const dialog = page.getByRole('dialog', { name: '调整工作项顺序', exact: true });
-  await dialog.getByLabel('调整原因').fill('保留的调整理由');
-  current = { ...current, version: 2, title: '后台更新的需求' };
-  await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
-  await dialog.getByRole('button', { name: '重新读取需求', exact: true }).click();
-  await expect(dialog.getByLabel('调整原因')).toHaveValue('保留的调整理由');
-  await dialog.getByRole('button', { name: '确认调整', exact: true }).click();
-  await expect.poll(() => submissions).toHaveLength(1);
-  expect(submissions[0]).toEqual({ ids: ['w2', 'w1'], reason: '保留的调整理由', expectedVersion: 2 });
-});
+
 
 test('新增工作项被拒绝访问后清除工作项设置与草稿', async ({ page }) => {
   await mockApplication(page, []);
@@ -3041,7 +2961,7 @@ test('新增工作项冲突后重读失败保留草稿，成功读取后使用�
   expect(submissions[1]).toMatchObject({ title: '冲突后保留草稿', expectedVersion: 2 });
 });
 
-test('排序冲突后重读失败保留原因，成功读取后使用新版本', async ({ page }) => {
+test('排序冲突后重读失败保留操作锁，成功读取后使用新版本', async ({ page }) => {
   await mockApplication(page, []);
   let current = { ...structuredClone(requirement), workItems: [{ ...workItem, status: 'in_progress', actualStart: '2026-09-01' }, secondWorkItem] };
   let failRead = false;
@@ -3059,6 +2979,7 @@ test('排序冲突后重读失败保留原因，成功读取后使用新版本',
   });
   await page.goto('/requirements/r1');
   await page.getByRole('button', { name: '工作项设置', exact: true }).click();
+  const drag=async()=>{
   const handles = page.getByRole('button', { name: /拖动.*调整顺序/ });
   const first = await handles.nth(0).boundingBox();
   const second = await handles.nth(1).boundingBox();
@@ -3066,24 +2987,25 @@ test('排序冲突后重读失败保留原因，成功读取后使用新版本',
   await page.mouse.down();
   await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
   await finishPointerDrag(page);
-  const dialog = page.getByRole('dialog', { name: '调整工作项顺序', exact: true });
-  await dialog.getByLabel('调整原因').fill('冲突后保留理由');
-  await dialog.getByRole('button', { name: '确认调整', exact: true }).click();
-  await expect(dialog.getByRole('button', { name: '确认调整', exact: true })).toBeDisabled();
+  };
+  await drag();
+  const dialog = page.getByRole('dialog', { name: '工作项设置', exact: true });
+
+  await expect(dialog.getByRole("button",{name:/拖动.*调整顺序/}).first()).toBeDisabled();
   await dialog.getByRole('button', { name: '重新读取需求', exact: true }).click();
   await expect(dialog).toContainText('读取暂不可用');
-  await expect(dialog.getByLabel('调整原因')).toHaveValue('冲突后保留理由');
-  expect(submissions).toEqual([{ ids: ['w2', 'w1'], reason: '冲突后保留理由', expectedVersion: 1 }]);
+  expect(submissions).toEqual([{ ids: ['w2', 'w1'], expectedVersion: 1 }]);
   failRead = false;
   await dialog.getByRole('button', { name: '重新读取需求', exact: true }).click();
-  await dialog.getByRole('button', { name: '确认调整', exact: true }).click();
+  await drag();
   await expect.poll(() => submissions).toHaveLength(2);
-  expect(submissions[1]).toEqual({ ids: ['w2', 'w1'], reason: '冲突后保留理由', expectedVersion: 2 });
+  expect(submissions[1]).toEqual({ ids: ['w2', 'w1'], expectedVersion: 2 });
 });
 
-test('未执行需求直接排序冲突后必须重读再拖动', async ({ page }) => {
+for(const executing of [false,true]) {
+test(`直接排序冲突后必须重读再拖动：执行中 ${executing}`, async ({ page }) => {
   await mockApplication(page, []);
-  let current = structuredClone(requirement);
+  let current = {...structuredClone(requirement),workItems:[{...workItem,...(executing?{status:"in_progress",actualStart:"2026-09-01"}:{})},secondWorkItem]};
   const submissions: Array<Record<string, unknown>> = [];
   await page.route('**/api/requirements/r1', (route) => route.fulfill({ json: current }));
   await page.route('**/api/requirements/r1/reorder-work-items', (route) => {
@@ -3119,6 +3041,7 @@ test('未执行需求直接排序冲突后必须重读再拖动', async ({ page 
   await expect.poll(() => submissions).toHaveLength(2);
   expect(submissions[1]).toEqual({ ids: ['w2', 'w1'], expectedVersion: 2 });
 });
+}
 
 test('工作项顺序已落库但响应异常时核对完整顺序且不重复提交', async ({ page }) => {
   await mockApplication(page, []);
@@ -3154,7 +3077,7 @@ test('工作项顺序已落库但响应异常时核对完整顺序且不重复�
   expect(submissions[0].ids).toEqual(['w2', 'w1']);
 });
 
-test('排序被拒绝访问后清除理由和双层窗口', async ({ page }) => {
+test('排序被拒绝访问后关闭工作项设置', async ({ page }) => {
   await mockApplication(page, []);
   let denied = false;
   const executing = { ...requirement, workItems: [{ ...workItem, status: 'in_progress', actualStart: '2026-09-01' }, secondWorkItem] };
@@ -3173,12 +3096,9 @@ test('排序被拒绝访问后清除理由和双层窗口', async ({ page }) => 
   await page.mouse.down();
   await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
   await finishPointerDrag(page);
-  const dialog = page.getByRole('dialog', { name: '调整工作项顺序', exact: true });
-  await dialog.getByLabel('调整原因').fill('不应继续显示的理由');
-  await dialog.getByRole('button', { name: '确认调整', exact: true }).click();
   await expect(page.getByText('需求无法打开', { exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByText('不应继续显示的理由')).toHaveCount(0);
+
 });
 
 test('拖动期间工作项列表变化时取消当前排序且不提交', async ({ page }) => {

@@ -58,7 +58,7 @@ test('里程碑确认同步锁定，响应异常后回读已生效状态',async(
  let failReads=true;await page.route('**/api/requirements/'+requirement.id+'/path-analysis*',route=>failReads?route.fulfill({status:503,json:{error:'核对读取失败'}}):route.fallback());
  await reopen.click();await expect(page.getByRole('alert')).toContainText('里程碑操作结果待核对');await expect(reopen).toBeDisabled();await reopen.evaluate(element=>(element as HTMLButtonElement).click());expect(reopenWrites).toBe(1);
  expect(((await(await page.request.get('/api/requirements/'+requirement.id+'/path-analysis')).json() as PathAnalysis).milestones||[]).find(item=>item.id===milestone.id)?.achievedAt).toBeNull();
- failReads=false;await page.getByRole('button',{name:'查看需求详情',exact:true}).click();await page.getByRole('button',{name:'路径分析',exact:true}).click();await ready(page);
+ failReads=false;await page.getByRole('button',{name:'需求详情',exact:true}).click();await page.getByRole('button',{name:'路径分析',exact:true}).click();await ready(page);
  const recheck=page.getByRole('button',{name:'重新读取里程碑结果',exact:true});await expect(recheck).toBeVisible();
  const achieveAgain=page.getByRole('button',{name:'确认里程碑达成',exact:true});await expect(achieveAgain).toBeDisabled();await achieveAgain.evaluate(element=>(element as HTMLButtonElement).click());expect(writes).toBe(1);
  await recheck.click();await expect(recheck).toHaveCount(0);await expect(achieveAgain).toBeEnabled();expect(reopenWrites).toBe(1);
@@ -86,7 +86,7 @@ test('依赖排期响应未知且回读失败时跨导航保持核对锁',async(
  const dialog=page.getByRole('dialog',{name:'按依赖预览排期',exact:true}),baseStart=addBusinessDays(todayIso(),5);
  await dialog.getByLabel('需求开始锚点',{exact:true}).fill(baseStart);await dialog.getByRole('button',{name:'生成差异预览',exact:true}).click();
  await dialog.getByRole('button',{name:'应用以上计划',exact:true}).click();await expect(dialog.getByText(/操作结果暂时无法确认/)).toBeVisible();
- await dialog.getByRole('button',{name:'取消',exact:true}).click();await page.getByRole('button',{name:'查看需求详情',exact:true}).click();
+ await dialog.getByRole('button',{name:'取消',exact:true}).click();await page.getByRole('button',{name:'需求详情',exact:true}).click();
  await page.getByRole('button',{name:'路径分析',exact:true}).click();await ready(page);
  const recheck=page.getByRole('button',{name:'重新读取排期结果',exact:true});await expect(recheck).toBeVisible();
  const applyEntry=page.getByRole('button',{name:'预览并应用计划日期',exact:true});if(!await applyEntry.isVisible())await page.getByRole('button',{name:'排期预览',exact:true}).click();await expect(applyEntry).toBeDisabled();
@@ -103,7 +103,7 @@ test('依赖排期未生效时重新读取并恢复开始日期但废弃旧预�
  const dialog=page.getByRole('dialog',{name:'按依赖预览排期',exact:true}),baseStart=addBusinessDays(todayIso(),7);
  await dialog.getByLabel('需求开始锚点',{exact:true}).fill(baseStart);await dialog.getByRole('button',{name:'生成差异预览',exact:true}).click();await dialog.getByRole('button',{name:'应用以上计划',exact:true}).click();
  await expect(dialog.getByText(/操作结果暂时无法确认/)).toBeVisible();await dialog.getByRole('button',{name:'取消',exact:true}).click();
- await page.getByRole('button',{name:'查看需求详情',exact:true}).click();await page.getByRole('button',{name:'路径分析',exact:true}).click();await ready(page);
+ await page.getByRole('button',{name:'需求详情',exact:true}).click();await page.getByRole('button',{name:'路径分析',exact:true}).click();await ready(page);
  failReads=false;await page.getByRole('button',{name:'重新读取排期结果',exact:true}).click();
  const restored=page.getByRole('dialog',{name:'按依赖预览排期',exact:true});await expect(restored).toBeVisible();await expect(restored.getByLabel('需求开始锚点',{exact:true})).toHaveValue(baseStart);
  await expect(restored.getByRole('button',{name:'生成差异预览',exact:true})).toBeEnabled();await expect(restored.getByRole('button',{name:'应用以上计划',exact:true})).toBeDisabled();expect(writes).toBe(1);
@@ -142,7 +142,7 @@ test('全局主按钮打开需求详情，路径入口和原路返回保留视�
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();
  await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:'方案交付'}).filter({hasText:a.title}).click();
  await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp(a.id));
- await page.getByRole('button',{name:'返回'+b.title+'路径',exact:true}).click();await ready(page);await page.getByRole('button',{name:'返回项目全局',exact:true}).click();await ready(page);expect(page.url()).toBe(globalUrl);
+ await page.getByRole('button',{name:'返回',exact:true}).click();await ready(page);await page.getByRole('button',{name:'返回',exact:true}).click();await ready(page);expect(page.url()).toBe(globalUrl);
  await expect.poll(()=>viewport(page)).toBe(before);expect(errors).toEqual([]);
 });
 test('左键及中键平移、滚轮缩放；浮层隔离且定位才移动画布',async({page})=>{
@@ -445,12 +445,12 @@ test('内部搜索项目外部工作，选择不扩图，明确定位后加入�
  await page.reload();await ready(page);await expect(page.locator('.react-flow__node[data-id="'+outside+'"]')).toBeVisible();
 });
 
-test('返回来源失去权限时回到项目全局，不重复跳转',async({page})=>{
+test('返回来源失去权限时说明原因，提供项目路径入口',async({page})=>{
  const {a,b}=await fixture(page);await page.goto('/requirements/'+b.id+'?view=path');await ready(page);
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();await page.locator('.graph-list-row>button:first-child').filter({hasText:'方案交付'}).filter({hasText:a.title}).click();
  await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp(a.id));
  await page.route('**/api/requirements/'+b.id,route=>route.fulfill({status:403,json:{message:'无权读取该需求',code:'FORBIDDEN'}}));
- await page.getByRole('button',{name:'返回'+b.title+'路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(/\/paths/);await expect(page.locator('.graph-status-slot')).toContainText('来源已删除或不可访问');
+ await page.getByRole('button',{name:'返回',exact:true}).click();await expect(page.getByText('需求无法打开',{exact:true})).toBeVisible();await expect(page).toHaveURL(new RegExp('/requirements/'+b.id));await page.getByRole('button',{name:'项目路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(/\/paths/);
 });
 
 test('工作区聚焦只变淡、原按钮退出、顶部固定且动画无重排',async({page})=>{

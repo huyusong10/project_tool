@@ -60,9 +60,10 @@ export function riskLevelFromProgressGap(priority: Priority, progressGap: number
   return 'low';
 }
 
-export function signedProgressVariance(actualProgress: number, plannedProgress: number): number {
+export function signedProgressVariance(actualProgress: number, plannedProgress: number | null): number | null {
+  if (plannedProgress === null || !Number.isFinite(plannedProgress)) return null;
   const actual = Number.isFinite(actualProgress) ? Math.round(actualProgress) : 0;
-  const planned = Number.isFinite(plannedProgress) ? Math.round(plannedProgress) : 0;
+  const planned = Math.round(plannedProgress);
   return actual - planned;
 }
 
@@ -355,17 +356,17 @@ export function deriveRequirementMetrics(
   const base=direct?0:requirement.splitBaseProgress||0;
   const remainingProgress=totalWeight ? actualWeightedProgress / totalWeight : 0;
   const progress = direct ? requirement.progress||0 : Math.min(status==='completed'?100:99,Math.round(base+(100-base)*remainingProgress/100));
-  const plannedProgress = requirementPlannedProgress(requirement, workItems, today) ?? 0;
+  const plannedProgress = requirementPlannedProgress(requirement, workItems, today);
   const scheduleVariance = scheduleVarianceFromProgress(activeItems, base?remainingProgress:progress, today);
 
   const actualEnds = activeItems.map((item) => item.actualEnd).filter((value): value is string => Boolean(value));
   // Execution delay stops at the last work completion; accepting later does not extend it.
   const effectiveEnd = status==='completed' ? actualEnds.length===activeItems.length ? actualEnds.sort().at(-1)||null : null
-    : status === 'cancelled'
+    : !schedule.scheduleComplete ? null : status === 'cancelled'
       ? derivedPlannedEnd
       : derivedPlannedEnd && today > derivedPlannedEnd ? today : derivedPlannedEnd;
-  const finishVariance = businessDayDelta(derivedPlannedEnd, effectiveEnd);
-  const progressGap = Math.max(0, plannedProgress - progress);
+  const finishVariance = schedule.scheduleComplete ? businessDayDelta(derivedPlannedEnd, effectiveEnd) : 0;
+  const progressGap = plannedProgress === null ? 0 : Math.max(0, plannedProgress - progress);
   const priority: Priority = 'P2';
   const threshold = riskGapThresholds[priority];
   const gapRiskLevel = riskLevelFromProgressGap(priority, progressGap);

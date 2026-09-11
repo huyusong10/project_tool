@@ -49,6 +49,14 @@ async function createIssue(title = '日期状态校验') {
   return response.json<IssueRecord>();
 }
 
+it.each(['REST','MCP'] as const)('%s 问题状态切换无需说明，仍记录完整状态历史',async protocol=>{
+ let issue=await createIssue('无说明操作');
+ for(const [action,status] of [['defer','deferred'],['resume','in_progress'],['resolve','resolved'],['reopen','in_progress']]){
+   const result=await command(protocol,issue.id,action,{expectedVersion:issue.version});expect(result.statusCode,JSON.stringify(result.body)).toBe(200);
+   issue=await getIssue(issue.id);expect(issue.status).toBe(status);expect(issue.updates?.[0].content).toBeTruthy();
+ }
+});
+
 it('同毫秒的问题进展按写入顺序展示，列表最近进展与详情一致', async () => {
   const issue = await createIssue('同毫秒历史顺序');
   const { sqlite } = await import('../src/server/database');

@@ -1,3 +1,4 @@
+import type {StartAssignment} from '../components/StartAssignmentDialog';
 
 import {directRequirementTimelineItem} from '../requirement-timeline';
 import {requirementRiskDisplay} from '../requirement-presentation';
@@ -49,8 +50,8 @@ export function MyWorkPage() {
   const directEntries=(data?.requirements||[]).filter(r=>r.executionMode==='direct').map(r=>({...r,...directRequirementTimelineItem(r as Requirement),requirementStatus:r.status,requirementTitle:r.title,assignmentType:'owner',overdue:r.delayed,deliveryRequirement:r} as MyWorkItem & {deliveryRequirement:typeof r}));
   const items = [...(data?.items || []),...directEntries].filter((item) => item.id === activeActionItemId || filter === 'all' || (filter === 'active' ? !['completed', 'cancelled'].includes(item.status) : item.status === filter));
   const action = useMutation({
-    mutationFn: async ({ item, action, content, reason, expectedDependencyRevision, expectedVersion = item.version }: { item: MyWorkItem; expectedDependencyRevision?:number; action: string; content?: string; reason?: string; expectedVersion?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId,{workItemId:item.id,action});return api(`/api/work-items/${item.id}/${action}`, {
-      method: 'POST', body: jsonBody({ expectedVersion, content, reason, expectedDependencyRevision }),
+    mutationFn: async ({ item, action, content, reason, expectedDependencyRevision, assignment, expectedVersion = item.version }: { item: MyWorkItem; expectedDependencyRevision?:number; assignment?:StartAssignment; action: string; content?: string; reason?: string; expectedVersion?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId,{workItemId:item.id,action});return api(`/api/work-items/${item.id}/${action}`, {
+      method: 'POST', body: jsonBody({ ...assignment, expectedVersion, content, reason, expectedDependencyRevision }),
     });},
     onSuccess: (_result, variables) => {
       invalidateRequirementViews(client, variables.item.requirementId);
@@ -115,7 +116,7 @@ export function MyWorkPage() {
             const direct=directEntries.find(r=>r.id===item.id);if(direct)return <button className="ghost-button" onClick={()=>navigate('/requirements/'+direct.requirementId)}>处理需求</button>;
             return <div className="my-work-gantt-actions">
               {item.status === 'in_progress' && <button className="my-work-progress-action" onClick={() => setProgressItem(item)} title="更新完成度" aria-label={`为${item.title}更新完成度`}><MessageSquarePlus size={15} /><span>更新完成度</span></button>}
-              <WorkItemActions item={item} writeNeedsRecheck={workItemActionRechecks.has(item.id)} onWriteNeedsRecheckChange={(required) => setWorkItemActionRecheck(item.id, required)} onOpenChange={(open) => setActiveActionItemId((current) => open ? item.id : current === item.id ? undefined : current)} onAction={(nextAction, text, expectedVersion, expectedDependencyRevision) => action.mutateAsync({ item, action: nextAction, expectedVersion, expectedDependencyRevision, ...(nextAction === 'start' ? { reason: text } : { content: text }) })} onReload={async () => {
+              <WorkItemActions item={item} writeNeedsRecheck={workItemActionRechecks.has(item.id)} onWriteNeedsRecheckChange={(required) => setWorkItemActionRecheck(item.id, required)} onOpenChange={(open) => setActiveActionItemId((current) => open ? item.id : current === item.id ? undefined : current)} onAction={(nextAction, text, expectedVersion, expectedDependencyRevision, assignment) => action.mutateAsync({ item, action: nextAction, expectedVersion, expectedDependencyRevision, assignment, ...(nextAction === 'start' ? { reason: text } : { content: text }) })} onReload={async () => {
                 const [latest, requirement] = await Promise.all([
                   refetch({ throwOnError: true }),
                   api<Requirement>(`/api/requirements/${item.requirementId}`),

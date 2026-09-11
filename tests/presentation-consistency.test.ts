@@ -10,7 +10,8 @@ describe('跨页面数据表达', () => {
   it('未排期和无法计算不显示为零偏差', () => {
     const pending = { ...base, status: 'not_started', plannedStart: null, plannedEnd: null, scheduleComplete: false };
     expect(requirementVarianceValue(pending)).toBeNull();
-    expect(requirementVarianceDisplay(pending).label).toBe('待排期');
+    expect(requirementVarianceDisplay(pending).label).toBe('未排期');
+    expect(requirementVarianceDisplay({ ...base, scheduleComplete: false, plannedProgress: null }).label).toBe('排期不完整');
     expect(requirementVarianceDisplay({ ...base, scheduleVarianceDays: null }).label).toBe('待评估');
     expect(requirementVarianceDisplay({ ...base, scheduleVarianceDays: 0 }).label).toBe('按计划');
   });

@@ -12,11 +12,11 @@ async function fixture(page:Page){
 }
 test('无工作项需求可直接更新并完成，不再经过验收',async({page},info)=>{
  const {create,detail}=await fixture(page),r=await create('直接交付检查');
- await page.goto('/requirements/'+r.id);await expect(page.getByRole('button',{name:'增加进展',exact:true})).toHaveCount(0);await page.getByRole('button',{name:'开始需求',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始需求',exact:true}).click();
+ await page.goto('/requirements/'+r.id);await expect(page.getByRole('button',{name:'增加进展',exact:true})).toHaveCount(0);await page.getByRole('button',{name:'开始需求',exact:true}).click();
  await expect(page.getByRole('dialog')).toHaveCount(0);await page.getByRole('button',{name:'更新进度',exact:true}).click();
  await page.getByLabel('需求完成度').fill('30');await page.getByLabel('执行说明').fill('接口已完成三成');await page.getByRole('dialog').getByRole('button',{name:'更新进度',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
  expect((await detail(r.id)).progress).toBe(30);expect((await detail(r.id)).workItems).toHaveLength(0);await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);await page.setViewportSize({width:1920,height:1080});
- await page.getByRole('button',{name:'完成需求',exact:true}).click();await page.getByLabel('执行说明').fill('交付材料已核对');await page.getByRole('dialog').getByRole('button',{name:'完成需求',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+ await page.getByRole('button',{name:'完成需求',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
  const completed=await detail(r.id);expect(completed).toMatchObject({status:'completed',progress:100,acceptedAt:null});
  await page.goto('/requirements?status=completed');await expect(page.locator('tbody tr').filter({hasText:r.title})).toContainText('已完成');
  await page.goto('/requirements/'+r.id);await expect(page.getByRole('button',{name:'确认验收',exact:true})).toHaveCount(0);
