@@ -41,9 +41,18 @@
 
 ## 隔离预览
 
-- 特性规划：http://127.0.0.1:3251/features
-- 分层路径：http://127.0.0.1:3251/paths
+- 特性规划：http://127.0.0.1:3250/features
+- 分层路径：http://127.0.0.1:3250/paths
 
-数据库为 `.preview/features-preview.db`，备份目录为 `.preview/features-backups`，会话 cookie 为 `pm_features_preview`。预览由工具管理的独立前台进程运行。示例包含四个特性、七个需求和规划关系，未使用正式运行数据或凭据。登录信息保存在 `.preview/feature-preview-access.txt`。
+数据库为 `.preview/overview.db`，备份目录为 `.preview/backups`，会话 cookie 为 `pm_overview_preview`。示例保留原四个特性和七个需求，未使用正式运行数据或凭据。登录信息保存在 `.preview/preview-access.txt`。3251 自动跳转到 3250。
 
 技能同步输出使用 `.preview/codex-home`。完整检查日志、基线复现日志和截图保存在 `.preview`；这些验证产物不提交到仓库。
+
+
+### 预览运行修复
+
+旧 3250 进程仍运行旧后端，却从共享 `dist` 目录读取新前端，导致 `view=features` 被旧接口拒绝。原 3251 前台进程也未持续运行。
+
+`scripts/start-feature-preview.ps1` 将前端、后端与迁移复制到同一 `.preview/runs` 快照，再启动独立后台进程。后续构建不会覆盖正在运行的资源。启动程序校验数据库、备份、端口和会话配置，并覆盖继承的环境变量；不自动停止其他进程。启动命令为 `pwsh -NoProfile -File scripts/start-feature-preview.ps1`，已有构建可追加 `-SkipBuild`。
+
+修复验证：特性图、特性内需求图和原需求图接口均返回 200；浏览器无运行错误，特性 ID 保留，3251 跳转有效。以错误的继承数据库路径启动时，服务仍使用指定的隔离数据库。记录见 `.preview/preview-runtime-check.json`，运行信息见 `.preview/preview-runtime.json`。
