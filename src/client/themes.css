@@ -327,11 +327,9 @@
   --chart-secondary: #a598b7;
   --progress-fill: #8eabc5;
 }
-[data-theme="dcim"] .topbar { background: linear-gradient(105deg, #17191d, #251d1b); }
+[data-theme="dcim"] .topbar, [data-theme="dcim"] #root:empty::after { background: linear-gradient(105deg, #17191d, #251d1b); }
 [data-theme="dcim"] .brand-logo { box-shadow: none; }
 [data-theme="dcim"] .brand-logo.has-image { background: transparent; }
-[data-theme="dcim"] .session-button { color: var(--text-secondary); background: transparent; }
-[data-theme="dcim"] .session-button:hover { color: var(--accent-ink); background: var(--accent-soft); }
 [data-theme="dcim"] .sidebar-nav a.active { color: var(--accent-ink); background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
 [data-theme="dcim"] .primary-button:not(.danger-button) { color: #ffffff; background: #c44710; border-color: #c44710; box-shadow: none; }
 [data-theme="dcim"] .primary-button:not(.danger-button):hover:not(:disabled) { background: #ae3c0c; border-color: #ae3c0c; }
@@ -342,8 +340,6 @@
 .sidebar-nav { scrollbar-color: var(--sidebar-text-muted) transparent; }
 .sidebar-collapsed .nav-section { background: var(--sidebar-divider); }
 /* 保持顶栏单行和短标题起点；长标题可占用剩余空间。 */
-#topbar-title-slot { width: max-content; flex: 0 1 auto; min-width: min(120px, 25vw); max-width: 100%; }
-.topbar-context { overflow: visible; }
 .integrated-page-title h1 { color: var(--text-primary); }
 .page-title-full { overflow-wrap: anywhere; color: var(--text-primary); font-size: 15px; }
 .theme-picker { position: relative; flex: none; }
@@ -366,7 +362,7 @@
 
 /* 双轨只改变行内绘制，不改变固定列、行高、面板和筛选区。 */
 .gantt-split-track { --date-plan-top: 8px; --date-actual-top: 29px; }
-.gantt-track.gantt-split-track { --date-plan-top: 24px; --date-actual-top: 45px; }
+.gantt-track.gantt-split-track { --date-plan-top: calc(50% - 14.5px); --date-actual-top: calc(50% + 6.5px); }
 .gantt-date-plan, .gantt-date-actual, .gantt-date-deadline, .gantt-date-delay { position: absolute; pointer-events: none; box-sizing: border-box; }
 .gantt-date-plan { top: var(--date-plan-top); height: 6px; border: 1px solid var(--gantt-plan-border); border-radius: var(--radius-sm); background: var(--gantt-plan-fill); z-index: 2; }
 .gantt-date-actual { top: var(--date-actual-top); height: 8px; background: var(--bar-color,var(--gantt-muted)); border-radius: var(--radius-sm); z-index: 3; }
@@ -400,7 +396,7 @@ button.gantt-date-progress { cursor: pointer; }
 .gantt-date-plan.is-partial-plan { border-style: dashed; background: transparent; }
 
 [data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(1) { --surface-bg: color-mix(in srgb,var(--accent) 3%,var(--bg-surface)); }
-[data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(2) { --surface-bg: color-mix(in srgb,var(--success) 3%,var(--bg-surface)); }
-[data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(3) { --surface-bg: color-mix(in srgb,var(--danger) 3%,var(--bg-surface)); }
-[data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(4) { --surface-bg: color-mix(in srgb,var(--warning) 4%,var(--bg-surface)); }
+[data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(2) { --surface-bg: color-mix(in srgb,var(--danger) 3%,var(--bg-surface)); }
+[data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(3) { --surface-bg: color-mix(in srgb,var(--warning) 4%,var(--bg-surface)); }
+[data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(4) { --surface-bg: color-mix(in srgb,var(--success) 3%,var(--bg-surface)); }
 :is([data-theme="industrial"],[data-theme="swiss"]) :is(.sidebar-nav a.active,.primary-button,.brand-logo) { box-shadow: none; }

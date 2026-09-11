@@ -4,6 +4,8 @@ import { sqlite } from './database';
 import { listRestorableBackups } from './backups';
 import { readRestoreStatus } from './restore-status';
 
+const serviceStartedAt = new Date(Date.now() - process.uptime() * 1000).toISOString();
+
 function fileSize(filename: string) {
   try {
     return fs.statSync(filename).size;
@@ -33,7 +35,7 @@ export function getSystemOverview() {
     status: 'ok',
     service: {
       version: config.appVersion,
-      startedAt: new Date(now - process.uptime() * 1000).toISOString(),
+      startedAt: serviceStartedAt,
       uptimeSeconds: Math.floor(process.uptime()),
       environment: config.nodeEnv,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai',
@@ -49,6 +51,7 @@ export function getSystemOverview() {
       shmSizeBytes,
       totalSizeBytes: mainSizeBytes + walSizeBytes + shmSizeBytes,
       journalMode,
+      importMaxBytes: config.databaseImportMaxBytes,
     },
     backups: {
       count: backups.length,

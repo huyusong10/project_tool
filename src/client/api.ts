@@ -60,10 +60,10 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   unauthorizedHandler = handler;
 }
 
-export type ApiRequestInit = RequestInit & { readOnly?: boolean };
+export type ApiRequestInit = RequestInit & { readOnly?: boolean; responseType?: 'json' | 'blob' };
 
 export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
-  const { readOnly = false, ...requestInit } = init;
+  const { readOnly = false, responseType = 'json', ...requestInit } = init;
   const method = (requestInit.method || 'GET').toUpperCase();
   const outcomeUnknownOnTransportFailure = !readOnly && !['GET', 'HEAD', 'OPTIONS'].includes(method);
   const revision = accessRevision;
@@ -85,6 +85,17 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
   }
   assertCurrentRequest();
   if (response.ok && (response.status === 204 || response.status === 205 || method === 'HEAD')) return {} as T;
+  if (response.ok && responseType === 'blob') {
+    try {
+      if (!response.headers.get('content-type')?.startsWith('application/vnd.sqlite3')) throw new Error('下载响应类型错误');
+      const blob = await response.blob();
+      assertCurrentRequest();
+      return blob as T;
+    } catch (error) {
+      if (requestWasAborted(error, requestInit.signal) || error instanceof AccessChangedError) throw error;
+      throw new InvalidResponseError(response.status, outcomeUnknownOnTransportFailure, error);
+    }
+  }
   let data: unknown;
   try {
     data = await response.json();

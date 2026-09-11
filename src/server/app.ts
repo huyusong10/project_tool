@@ -12,11 +12,13 @@ import { registerQueryRoutes } from './query-routes';
 import { registerMcpRoute } from './mcp';
 import { authenticateApiToken } from './services';
 import { errorResponse } from './errors';
+import { registerDatabaseMaintenance } from './database-maintenance';
 
 export async function buildApp() {
   const app = Fastify({ logger: { level: config.nodeEnv === 'production' ? 'info' : 'warn' }, bodyLimit: 1024 * 1024 });
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
+  registerDatabaseMaintenance(app);
   app.setErrorHandler((error, request, reply) => {
     const response = errorResponse(error);
     if (!response.known) request.log.error({ err: error }, 'Unhandled request error');

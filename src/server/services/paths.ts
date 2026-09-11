@@ -13,7 +13,7 @@ import { config } from '../config';
 import { fail, notFound } from '../errors';
 import { recordAudit } from './audit';
 import { acceptanceId, analysePaths,dependencySource,dependencyTarget, type Dependency, type PathInput, type PathRequirement, type PathWork, type PathAnalysis,type PathMilestone,type DiagramLayout } from '../../shared/paths';
-import { businessDayDelta, businessDaysInclusive, todayIso } from '../../shared/domain';
+import { businessDayDelta, businessDaysInclusive, initialWorkEstimates, todayIso } from '../../shared/domain';
 import { dependencyInput, pathVersion, pathEstimateInput, reviewDependenciesInput, dependencyPlanInput, applyDependencyPlanInput } from '../../shared/path-contracts';
 
 const all = <T>(sql: string, ...args: unknown[]) => sqlite.prepare(sql).all(...args) as T[];
@@ -33,7 +33,7 @@ export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInp
     r.dependencies_reviewed_at AS dependenciesReviewedAt, r.schedule_anchor AS scheduleAnchor, r.forecast_acceptance AS forecastAcceptance,
     r.version,r.background,r.acceptance_criteria AS acceptanceCriteria,r.reference_url AS referenceUrl,r.template_id AS templateId,r.acknowledged_dependencies AS acknowledgedDependencies
     FROM requirements r WHERE r.project_id=? ORDER BY r.id`, projectId);
-  const workItems = all<PathWork>(`SELECT w.id, w.version, w.requirement_id AS requirementId, w.title, w.status, w.progress, w.owner_id AS ownerId,
+  const workItems = all<PathWork>(`SELECT w.progress_weight AS progressWeight,w.id, w.version, w.requirement_id AS requirementId, w.title, w.status, w.progress, w.owner_id AS ownerId,
     (SELECT json_group_array(c.person_id) FROM work_item_collaborators c WHERE c.work_item_id=w.id) AS assigneeIds,
     w.planned_start AS plannedStart, w.planned_end AS plannedEnd, w.forecast_review AS forecastReview,w.blocked_coordinator_id AS blockedCoordinatorId,w.blocked_next_review_at AS blockedNextReviewAt,w.blocked_issue_id AS blockedIssueId,w.actual_start AS actualStart, w.actual_end AS actualEnd,
     w.duration_days AS durationDays, w.earliest_start AS earliestStart, w.unblock_estimate AS unblockEstimate,w.arrangement,w.arrangement_anchor AS arrangementAnchor,w.acknowledged_dependencies AS acknowledgedDependencies,
@@ -183,7 +183,12 @@ export function applyDependencyPlan(id: string, raw: unknown, actor: Actor) {
     const affected = new Set<string>();
     for (const e of preview.entries) {
       if(e.kind==='execution')sqlite.prepare("UPDATE requirements SET planned_start=?,planned_end=?,version=version+1,updated_at=? WHERE id=? AND status='not_started'").run(e.proposedStart,e.proposedEnd,now,e.requirementId);
-      else sqlite.prepare("UPDATE work_items SET planned_start=?,planned_end=?,version=version+1,updated_at=? WHERE id=? AND status='not_started'").run(e.proposedStart, e.proposedEnd, now, e.workItemId);
+      else {
+        const work = one<PathWork>('SELECT status,planned_start AS plannedStart,planned_end AS plannedEnd,duration_days AS durationDays,progress_weight AS progressWeight FROM work_items WHERE id=?', e.workItemId)!;
+        const estimate = initialWorkEstimates(work);
+        sqlite.prepare("UPDATE work_items SET duration_days=COALESCE(duration_days,?),progress_weight=COALESCE(progress_weight,?),planned_start=?,planned_end=?,version=version+1,updated_at=? WHERE id=? AND status='not_started'")
+          .run(estimate.durationDays || businessDaysInclusive(e.proposedStart,e.proposedEnd) || null, estimate.progressWeight, e.proposedStart, e.proposedEnd, now, e.workItemId);
+      }
       affected.add(e.requirementId);
     }
     for (const requirementId of affected) if(!preview.entries.some(e=>e.requirementId===requirementId&&e.kind==='execution'))sqlite.prepare(`UPDATE requirements SET planned_start=(SELECT MIN(planned_start) FROM work_items WHERE requirement_id=? AND status<>'cancelled'),

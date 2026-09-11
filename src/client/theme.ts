@@ -1,34 +1,13 @@
 import { useSyncExternalStore } from "react";
-
-export const themes = [
-  { id: "classic", label: "经典蓝白", detail: "默认日间 · 最初配色" },
-  { id: "dcim", label: "杰瑞橙", detail: "默认夜间 · 石墨与橙色点缀" },
-  { id: "swiss", label: "瑞士排版", detail: "米白 · 砖红 · 清晰结构" },
-  { id: "forest", label: "暖纸森林", detail: "暖纸 · 松绿 · 柔和边界" },
-  { id: "midnight", label: "午夜控制台", detail: "深炭 · 薄荷 · 低亮度" },
-  { id: "soft", label: "柔彩悬浮", detail: "浅紫 · 柔彩 · 轻阴影" },
-  { id: "industrial", label: "工业黄黑", detail: "黑黄 · 方正 · 强网格" },
-] as const;
-export type Theme = typeof themes[number]["id"];
-export type ThemePreference = Theme | "system";
+import {dayTheme, resolveTheme, resolveThemePreference, type Theme, type ThemePreference} from './theme-preference';
+export {themes, dayTheme, nightTheme, resolveTheme, resolveThemePreference, type Theme, type ThemePreference} from './theme-preference';
 const storageKey = "project-manage:theme";
 const listeners = new Set<() => void>();
-export const dayTheme: Theme = "classic";
-export const nightTheme: Theme = "dcim";
 let preference: ThemePreference = "system";
 let current: Theme = dayTheme;
 let initialized = false;
 let systemScheme: MediaQueryList | undefined;
 
-export function resolveThemePreference(value: string | null): ThemePreference {
-  if (value === "dark") return nightTheme;
-  if (value === "light") return dayTheme;
-  return themes.some((theme) => theme.id === value) ? value as Theme : "system";
-}
-export function resolveTheme(value: string | null, dark = false): Theme {
-  const selected = resolveThemePreference(value);
-  return selected === "system" ? (dark ? nightTheme : dayTheme) : selected;
-}
 export function getTheme(): Theme { return current; }
 function applyPreference(value: ThemePreference) {
   preference = value;

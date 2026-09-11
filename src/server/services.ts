@@ -18,6 +18,7 @@ import {
 } from './sample-project';
 import {
   businessDaysInclusive,
+  initialWorkEstimates,
   canDeleteWorkItem,
   deriveRequirementMetrics,
   issueStatuses,
@@ -908,15 +909,15 @@ function applyTemplateInternal(requirementId: string, templateId: string, baseSt
     'SELECT template_item_id AS templateItemId, title FROM work_items WHERE requirement_id=?', requirementId,
   ).flatMap((item) => [item.templateItemId, item.title].filter(Boolean) as string[]));
   const insert = sqlite.prepare(`INSERT INTO work_items
-    (id, requirement_id, template_item_id, title, milestone_label, status, planned_start, planned_end, sort_order, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 'not_started', ?, ?, ?, ?, ?)`);
+    (id, requirement_id, template_item_id, title, milestone_label, status, planned_start, planned_end, sort_order, created_at, updated_at,duration_days,progress_weight)
+    VALUES (?, ?, ?, ?, ?, 'not_started', ?, ?, ?, ?, ?, ?, ?)`);
   const now = nowIso();
   let nextOrder = (row<{ maxOrder: number | null }>('SELECT MAX(sort_order) AS maxOrder FROM work_items WHERE requirement_id=?', requirementId)?.maxOrder ?? -1) + 1;
   for (const item of items) {
     if (existing.has(item.id) || existing.has(item.title)) continue;
     const plan = plannedDatesFromOffset(baseStart, item.startOffsetDays, item.durationDays);
     const workId = randomUUID(); createdIds.push(workId);
-    insert.run(workId, requirementId, item.id, item.title, item.milestoneLabel, plan.plannedStart, plan.plannedEnd, nextOrder++, now, now);
+    insert.run(workId, requirementId, item.id, item.title, item.milestoneLabel, plan.plannedStart, plan.plannedEnd, nextOrder++, now, now,item.durationDays,item.durationDays);
   }
   instantiateTemplateGraph(requirementId, templateId, createdIds, baseStart, deferAnalysis);
   return createdIds;
@@ -980,9 +981,10 @@ function shiftRequirementWorkItems(requirementId: string, currentAnchor: string,
     `SELECT id, planned_start AS plannedStart, planned_end AS plannedEnd FROM work_items
       WHERE requirement_id=? AND status<>'cancelled'`, requirementId,
   );
-  const update = sqlite.prepare('UPDATE work_items SET planned_start=?, planned_end=?, version=version+1, updated_at=? WHERE id=?');
+  const update = sqlite.prepare('UPDATE work_items SET duration_days=COALESCE(duration_days,?),progress_weight=COALESCE(progress_weight,?),planned_start=?, planned_end=?, version=version+1, updated_at=? WHERE id=?');
   for (const item of items) {
     update.run(
+      businessDaysInclusive(item.plannedStart,item.plannedEnd)||null,businessDaysInclusive(item.plannedStart,item.plannedEnd)||1,
       item.plannedStart ? rebaseBusinessDate(item.plannedStart, currentAnchor, targetAnchor) : null,
       item.plannedEnd ? rebaseBusinessDate(item.plannedEnd, currentAnchor, targetAnchor) : null,
       updatedAt,
@@ -1410,15 +1412,16 @@ export function applyRequirementPlan(requirementId: string, input: JsonObject, a
     for (const item of preview.entries) {
       if (!selected.has(item.templateItemId) || !item.willChange) continue;
       if (item.workItemId) {
-        sqlite.prepare(`UPDATE work_items SET planned_start=COALESCE(planned_start, ?), planned_end=COALESCE(planned_end, ?), version=version+1, updated_at=?
+        sqlite.prepare(`UPDATE work_items SET duration_days=COALESCE(duration_days,?),progress_weight=COALESCE(progress_weight,?),planned_start=COALESCE(planned_start, ?), planned_end=COALESCE(planned_end, ?), version=version+1, updated_at=?
           WHERE id=? AND status NOT IN ('completed','cancelled')`)
-          .run(item.proposedStart, item.proposedEnd, now, item.workItemId);
+          .run(businessDaysInclusive(item.proposedStart,item.proposedEnd)||null,businessDaysInclusive(item.proposedStart,item.proposedEnd)||1,item.proposedStart, item.proposedEnd, now, item.workItemId);
       } else {
         const createdId=randomUUID();createdIds.push(createdId);
         sqlite.prepare(`INSERT INTO work_items
-          (id, requirement_id, template_item_id, title, milestone_label, status, planned_start, planned_end, sort_order, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, 'not_started', ?, ?, ?, ?, ?)`).run(
+          (id, requirement_id, template_item_id, title, milestone_label, status, planned_start, planned_end, sort_order, created_at, updated_at,duration_days,progress_weight)
+          VALUES (?, ?, ?, ?, ?, 'not_started', ?, ?, ?, ?, ?, ?, ?)`).run(
           createdId, requirementId, item.templateItemId, item.title, item.milestoneLabel, item.proposedStart, item.proposedEnd, nextOrder++, now, now,
+          businessDaysInclusive(item.proposedStart,item.proposedEnd)||null,businessDaysInclusive(item.proposedStart,item.proposedEnd)||1,
         );
       }
     }
@@ -1507,9 +1510,11 @@ export function createWorkItem(requirementId: string, input: JsonObject, actor: 
     }
     const reviewed = row<{ reviewedAt: string | null }>('SELECT dependencies_reviewed_at AS reviewedAt FROM requirements WHERE id=?', requirementId)?.reviewedAt;
     sqlite.prepare(`INSERT INTO work_items
-      (id, requirement_id, title, owner_id, milestone_label, status, planned_start, planned_end, progress, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'not_started', ?, ?, 0, ?, ?, ?)`).run(
+      (id, requirement_id, title, owner_id, milestone_label, status, planned_start, planned_end, progress, sort_order, created_at, updated_at,duration_days,progress_weight)
+      VALUES (?, ?, ?, ?, ?, 'not_started', ?, ?, 0, ?, ?, ?, ?, ?)`).run(
       id, requirementId, title, ownerId, milestone, plannedStart, plannedEnd, max + 1, now, now,
+      initialWorkEstimates({ status: 'not_started', plannedStart, plannedEnd }).durationDays,
+      initialWorkEstimates({ status: 'not_started', plannedStart, plannedEnd }).progressWeight,
     );
     // Explicitly adding independent work preserves the previously checked dependency facts.
     if (reviewed) sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=? WHERE id=?').run(reviewed, requirementId);
@@ -1549,6 +1554,8 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor, defe
   if (plannedEnd && businessDaysInclusive(plannedEnd, plannedEnd) !== 1) fail('计划完成需为工作日');
   if (plannedStart && plannedEnd && plannedStart > plannedEnd) fail('计划完成日期不能早于计划开始日期');
   const scheduleChanged = plannedStart !== current.plannedStart || plannedEnd !== current.plannedEnd;
+  const estimates = initialWorkEstimates(current);
+  if (estimates.durationDays === null) estimates.durationDays = businessDaysInclusive(plannedStart, plannedEnd) || null;
   const requirementHasExecution = Boolean(row(`SELECT 1 FROM work_items WHERE requirement_id=? AND status<>'not_started' LIMIT 1`, current.requirementId));
   const collaboratorsChanged = collaboratorIds !== undefined
     && [...collaboratorIds].sort().join(',') !== [...previousCollaboratorIds].sort().join(',');
@@ -1567,9 +1574,9 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor, defe
   const now = nowIso();
   sqlite.transaction(() => {
     const result = sqlite.prepare(`UPDATE work_items SET title=?, owner_id=?, milestone_label=?, planned_start=?, planned_end=?,
-      sort_order=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(
+      sort_order=?, duration_days=?,progress_weight=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(
       title, ownerId, milestone, plannedStart, plannedEnd,
-      input.sortOrder === undefined ? current.sortOrder : Number(input.sortOrder), now, id, current.version,
+      input.sortOrder === undefined ? current.sortOrder : Number(input.sortOrder), estimates.durationDays, estimates.progressWeight, now, id, current.version,
     );
     assertVersionedWrite(result, '工作项');
     if(coordination)persistCoordination('work',id,requirement.projectId,{...coordination,reason:input.reason},actor);

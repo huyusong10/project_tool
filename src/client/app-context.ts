@@ -10,8 +10,6 @@ export type SessionContextValue = { session: Session };
 export type ProjectsContextValue = {
   projects: Project[];
   selectedProjectId: string;
-  /** 静默同步选中项目（详情页深链使用，不触发路由清理）。 */
-  syncProjectContext: (id: string) => void;
   /** 主动切换项目（带路由参数清理）。 */
   changeProject: (id: string) => void;
 };
@@ -23,19 +21,10 @@ export type UiActionsContextValue = {
 
 export type BusinessDateContextValue = { businessDate: string };
 
-/** 顶栏插槽：Topbar 注册挂载点，PageHeader 通过 portal 渲染标题与操作区。 */
-export type TopbarSlotsContextValue = {
-  titleEl: HTMLElement | null;
-  actionsEl: HTMLElement | null;
-  setTitleEl: (element: HTMLElement | null) => void;
-  setActionsEl: (element: HTMLElement | null) => void;
-};
-
 export const SessionContext = createContext<SessionContextValue | null>(null);
 export const ProjectsContext = createContext<ProjectsContextValue | null>(null);
 export const UiActionsContext = createContext<UiActionsContextValue | null>(null);
 export const BusinessDateContext = createContext<BusinessDateContextValue | null>(null);
-export const TopbarSlotsContext = createContext<TopbarSlotsContextValue | null>(null);
 
 function useRequired<T>(context: React.Context<T | null>, name: string): T {
   const value = useContext(context);
@@ -57,8 +46,4 @@ export function useUiActions() {
 
 export function useBusinessDate() {
   return useRequired(BusinessDateContext, 'BusinessDateContext');
-}
-
-export function useTopbarSlots() {
-  return useRequired(TopbarSlotsContext, 'TopbarSlotsContext');
 }

@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Locator } from '@playwright/test';
 import type { WorkItemTemplate } from '../../src/client/types';
+import { headerAction } from './topbar-helpers';
 
 async function fixture(page: Page, existing = true) {
   const post = async (url: string, data: Record<string, unknown>) => {
@@ -35,13 +36,13 @@ async function properties(editor: Locator, name: string, description?: string) {
 
 async function openProperties(editor: Locator) {
   if (!await editor.getByRole('textbox', { name: '流程名称', exact: true }).isVisible()) {
-    await editor.getByRole('button', { name: '流程属性', exact: true }).click();
+    await headerAction(editor.page(), '流程属性');
   }
 }
 
 async function openDraft(editor: Locator) {
   if (!await editor.getByText('草稿与冲突', { exact: true }).isVisible()) {
-    await editor.getByRole('button', { name: '草稿状态', exact: true }).click();
+    await headerAction(editor.page(), '草稿状态');
   }
 }
 
@@ -60,10 +61,10 @@ test('流程元素与名称即时保存，返回再进入保留里程碑、依�
   await editor.locator(`.react-flow__node[data-id="${template!.items[2].id}"]`).click();
   await editor.getByRole('textbox', { name: '元素名称', exact: true }).fill('发布基线');
   await properties(editor, '已核对交付流程', '保存前最后输入的说明');
-  await editor.getByRole('button', { name: '保存修改', exact: true }).click();
+  await editor.page().getByRole('button', { name: '保存修改', exact: true }).click();
   await expect.poll(async () => (await list()).find(t => t.id === template!.id)!.description).toBe('保存前最后输入的说明');
   await expect(editor).toBeVisible();
-  await expect(editor.getByRole('button', { name: '撤销', exact: true })).toBeDisabled();
+  await expect(editor.page().getByRole('button', { name: '撤销', exact: true })).toBeDisabled();
   const saved = (await list()).find(t => t.id === template!.id)!;
   expect(saved).toMatchObject({ id: template!.id, name: '已核对交付流程' });
   expect(saved.items[0]).toMatchObject({ id: template!.items[0].id, title: '架构设计', durationDays: 4 });
@@ -71,7 +72,7 @@ test('流程元素与名称即时保存，返回再进入保留里程碑、依�
   expect(saved.items[2]).toMatchObject({ id: template!.items[2].id, kind: 'milestone', title: '发布基线', durationDays: 0 });
   expect(saved.items[2].predecessorIds).toEqual([saved.items[1].id]);
   expect(Object.keys(saved.layout!.positions)).toHaveLength(3);
-  await editor.getByRole('button', { name: '返回流程列表', exact: true }).click();
+  await editor.page().getByRole('button', { name: '返回流程列表', exact: true }).click();
   await page.getByRole('button', { name: '编辑流程 已核对交付流程', exact: true }).click();
   await expect(editor.locator('[data-layout-ready="true"]')).toBeVisible();
   await expect(editor.locator('.react-flow__node')).toHaveCount(3);
@@ -89,13 +90,13 @@ test('流程后台更新后核对冲突，保留本次输入和服务端未冲�
   } });
   expect(response.ok(), await response.text()).toBe(true);
   await reconnect(page);
-  await expect(editor.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
+  await expect(editor.page().getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
   await expect(editor.getByRole('textbox', { name: '流程名称', exact: true })).toHaveValue('草稿交付流程');
   await openDraft(editor);
   await expect(editor.locator('.editor-conflict')).toHaveCount(1);
   await editor.getByRole('button', { name: '保留草稿', exact: true }).click();
   await editor.getByRole('button', { name: '已核对，使用最新版本预览', exact: true }).click();
-  await editor.getByRole('button', { name: '保存修改', exact: true }).click();
+  await editor.page().getByRole('button', { name: '保存修改', exact: true }).click();
   await expect.poll(async () => (await list()).find(t => t.id === template!.id)!.name).toBe('草稿交付流程');
   expect((await list()).find(t => t.id === template!.id)!.description).toBe('后台补充的说明');
   expect((await list()).find(t => t.id === template!.id)!.items[0].title).toBe('草稿架构设计');
@@ -114,7 +115,7 @@ for (const existing of [true, false]) test(`${existing ? '修改' : '新建'}流
     return route.fulfill({ status: 200, contentType: 'text/html', body: 'response lost after commit' });
   });
   await properties(editor, '异常响应后交付流程', '原批次的说明');
-  await editor.getByRole('button', { name: '保存修改', exact: true }).click();
+  await editor.page().getByRole('button', { name: '保存修改', exact: true }).click();
   await expect(editor.getByRole('button', { name: '查询原批次并重试', exact: true })).toBeVisible();
   const receipt = await (await page.request.get(`/api/projects/${project.id}/dependency-changes/${batchId}`)).json();
   expect(receipt.status).toBe('applied');
@@ -126,10 +127,10 @@ for (const existing of [true, false]) test(`${existing ? '修改' : '新建'}流
   const retry = editor.getByRole('button', { name: '查询原批次并重试', exact: true });
   await retry.click();
   await expect(editor.getByRole('button', { name: '查询原批次并重试', exact: true })).toHaveCount(0);
-  await expect(editor.getByRole('button', { name: '保存修改', exact: true })).toBeEnabled();
+  await expect(editor.page().getByRole('button', { name: '保存修改', exact: true })).toBeEnabled();
   expect(writes).toBe(1);
   expect((await list()).filter(t => t.name === '异常响应后交付流程')).toHaveLength(1);
-  await editor.getByRole('button', { name: '返回流程列表', exact: true }).click();
+  await editor.page().getByRole('button', { name: '返回流程列表', exact: true }).click();
   await page.getByRole('button', { name: '编辑流程 异常响应后交付流程', exact: true }).click();
   await expect(editor.locator('[data-layout-ready="true"]')).toBeVisible();
   expect((await list()).find(t => t.id === saved.id)!.layout).toEqual(saved.layout);
@@ -138,19 +139,19 @@ for (const existing of [true, false]) test(`${existing ? '修改' : '新建'}流
 test('流程待核对提交被另一标签接管后沿用原批次', async ({ page, context }) => {
   const { editor, template } = await fixture(page);
   await properties(editor, '跨页待核对流程', '接管后不能生成新批次');
-  await expect(editor.getByText('草稿已保留', { exact: true })).toBeVisible();
+  await expect(page.getByText('草稿已保留', { exact: true })).toBeVisible();
   const tab = await context.newPage();
   await tab.goto(page.url());
   const takeoverEditor = tab.locator('.template-flow-workspace');
   await expect(takeoverEditor.locator('[data-layout-ready="true"]')).toBeVisible();
-  await expect(takeoverEditor).toContainText('其他页面编辑中');
+  await expect(tab.getByText('其他页面编辑中', { exact: true })).toBeVisible();
   let original: Record<string, unknown> | undefined;
   await page.route(`**/api/templates/${template!.id}`, async route => {
     if (route.request().method() !== 'PATCH') return route.continue();
     original = route.request().postDataJSON();
     return route.abort('connectionfailed');
   });
-  await editor.getByRole('button', { name: '保存修改', exact: true }).click();
+  await editor.page().getByRole('button', { name: '保存修改', exact: true }).click();
   await expect.poll(() => original?.batchId).toBeTruthy();
   await openDraft(editor);
   await expect(editor.getByRole('button', { name: '查询原批次并重试', exact: true })).toBeVisible();
@@ -162,7 +163,7 @@ test('流程待核对提交被另一标签接管后沿用原批次', async ({ pa
     retried = route.request().postDataJSON();
     return route.abort('connectionfailed');
   });
-  await takeoverEditor.getByRole('button', { name: '保存修改', exact: true }).click();
+  await tab.getByRole('button', { name: '保存修改', exact: true }).click();
   await expect.poll(() => retried?.batchId).toBeTruthy();
   expect(retried).toEqual(original);
   await tab.close();
@@ -171,7 +172,7 @@ test('流程待核对提交被另一标签接管后沿用原批次', async ({ pa
 test('流程待核对通知丢失后，自动接手页面保存前读取原批次', async ({ page, context }) => {
   const { editor, template } = await fixture(page);
   await properties(editor, '通知丢失待核对流程', '自动接手仍须复用原批次');
-  await expect(editor.getByText('草稿已保留', { exact: true })).toBeVisible();
+  await expect(page.getByText('草稿已保留', { exact: true })).toBeVisible();
   const tab = await context.newPage();
   await tab.addInitScript(() => {
     const target = window as unknown as { addEventListener: (...args: unknown[]) => void };
@@ -187,26 +188,26 @@ test('流程待核对通知丢失后，自动接手页面保存前读取原批�
   await tab.goto(page.url());
   const resumedEditor = tab.locator('.template-flow-workspace');
   await expect(resumedEditor.locator('[data-layout-ready="true"]')).toBeVisible();
-  await expect(resumedEditor).toContainText('其他页面编辑中');
+  await expect(tab.getByText('其他页面编辑中', { exact: true })).toBeVisible();
   let original: Record<string, unknown> | undefined;
   await page.route(`**/api/templates/${template!.id}`, async route => {
     if (route.request().method() !== 'PATCH') return route.continue();
     original = route.request().postDataJSON();
     return route.abort('connectionfailed');
   });
-  await editor.getByRole('button', { name: '保存修改', exact: true }).click();
+  await editor.page().getByRole('button', { name: '保存修改', exact: true }).click();
   await expect.poll(() => original?.batchId).toBeTruthy();
   await openDraft(editor);
   await expect(editor.getByRole('button', { name: '查询原批次并重试', exact: true })).toBeVisible();
   await page.close();
-  await expect(resumedEditor.getByRole('button', { name: '保存修改', exact: true })).toBeEnabled();
+  await expect(tab.getByRole('button', { name: '保存修改', exact: true })).toBeEnabled();
   let retried: Record<string, unknown> | undefined;
   await tab.route(`**/api/templates/${template!.id}`, async route => {
     if (route.request().method() !== 'PATCH') return route.continue();
     retried = route.request().postDataJSON();
     return route.abort('connectionfailed');
   });
-  await resumedEditor.getByRole('button', { name: '保存修改', exact: true }).click();
+  await tab.getByRole('button', { name: '保存修改', exact: true }).click();
   await expect.poll(() => retried?.batchId).toBeTruthy();
   expect(retried).toEqual(original);
   await tab.close();
@@ -228,13 +229,13 @@ for (const outcome of ['success', 'failure'] as const) test(`流程保存中返�
   });
   try {
     await properties(editor, '等待保存的流程', '等待保存的说明');
-    await editor.getByRole('button', { name: '保存修改', exact: true }).click();
+    await editor.page().getByRole('button', { name: '保存修改', exact: true }).click();
     await expect.poll(() => submissions.length).toBe(1);
-    await expect(editor.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
-    await editor.getByRole('button', { name: '返回流程列表', exact: true }).click();
+    await expect(editor.page().getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
+    await editor.page().getByRole('button', { name: '返回流程列表', exact: true }).click();
     await page.getByRole('button', { name: '编辑流程 接口交付流程', exact: true }).click();
     await expect(editor.locator('[data-layout-ready="true"]')).toBeVisible();
-    await expect(editor.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
+    await expect(editor.page().getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
     release();
     if (outcome === 'failure') {
       await openDraft(editor);

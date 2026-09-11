@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -21,6 +21,32 @@ import { ProjectGantt } from "../components/ProjectGantt";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectForm } from "../components/ManagementForms";
 import { isAdmin } from "../permissions";
+import { dashboardOverview, type DashboardOverview, type DashboardScope } from '../../shared/dashboard';
+import { todayIso } from '../../shared/domain';
+import { useProjectGanttFilters, type ProjectGanttFilters } from '../use-project-gantt-filters';
+
+function DashboardMetrics({ overview, filters }: { overview?: DashboardOverview; filters: ProjectGanttFilters }) {
+  const count = (scope: DashboardScope) => overview?.counts[scope] ?? '—';
+  const select = (scope: DashboardScope, text: string, title?: string) => <button type="button" className="stat-detail-button"
+    onClick={() => filters.selectScope(scope)} title={title} aria-pressed={filters.isScopeSelected(scope)}>{text}</button>;
+  const range = overview ? `${overview.asOfDate.slice(5).replace('-', '/')}—${overview.dueThrough.slice(5).replace('-', '/')}` : '—';
+  return <section className="stats-grid dashboard-top-stats" aria-label="项目需求概览">
+    <MetricCard label="进行中" value={count('in_progress')} icon={CircleDot} tone="blue"
+      onClick={() => filters.selectScope('in_progress')} selected={filters.isScopeSelected('in_progress')} title="查看当前项目全部进行中的需求"
+      detail={<>{select('not_started', `未开始 ${count('not_started')}`)}{Boolean(overview?.counts.uncertain) && <> · {select('uncertain', `待确认 ${count('uncertain')}`, '未结束需求中，排期不完整或风险待评估的去重数量；不作为低风险处理')}</>}</>} />
+    <MetricCard label="需要关注" value={count('attention')} icon={AlertTriangle} tone="red"
+      onClick={() => filters.selectScope('attention')} selected={filters.isScopeSelected('attention')} title="未结束需求中，已延期或高风险的去重数量"
+      detail={<>{select('delayed', `已延期 ${count('delayed')}`)} · {select('high_risk', `未延期高风险 ${count('high_risk')}`)}</>} />
+    <MetricCard label="近期到期" value={count('due_soon')} icon={Clock3} tone="amber"
+      onClick={() => filters.selectScope('due_soon')} selected={filters.isScopeSelected('due_soon')}
+      title={`今天起五个工作日内计划结束且尚未完成，按项目工作日日历计算：${overview?.asOfDate || '—'} 至 ${overview?.dueThrough || '—'}；排期不完整的需求归入待确认`}
+      detail={<>{range} · {select('due_attention', `关注 ${count('due_attention')}`, '近期到期需求中需要关注的数量')}</>} />
+    <MetricCard label="近 7 天完成" value={count('recent_completed')} icon={CheckCircle2} tone="green"
+      onClick={() => filters.selectScope('recent_completed')} selected={filters.isScopeSelected('recent_completed')}
+      title={`按实际完成日期统计，含今日：${overview?.recentFrom || '—'} 至 ${overview?.asOfDate || '—'}；缺少完成日期的历史记录不计入`}
+      detail={select('recent_created', `同期新增 ${count('recent_created')} 项`, '同一北京时间日期范围内创建的需求，不代表净增待办量')} />
+  </section>;
+}
 
 function IssueHealth({ issues }: { issues?: Dashboard["issues"] }) {
   const summary = issues?.summary;
@@ -81,6 +107,8 @@ export function DashboardPage() {
   const { projects, selectedProjectId } = useProjects();
   const { openLogin } = useUiActions();
   const [modal, setModal] = useState<"project" | null>(null);
+  const ganttStorageKey = `${session.accountId || session.username || "guest"}:${selectedProjectId}:dashboard-gantt`;
+  const filters = useProjectGanttFilters(ganttStorageKey);
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: [...keys.dashboard, selectedProjectId],
     queryFn: ({ signal }) =>
@@ -90,6 +118,8 @@ export function DashboardPage() {
       ),
     enabled: Boolean(selectedProjectId),
   });
+  // The fallback lets the rebuilt client work with an older running server.
+  const overview = useMemo(() => data ? data.overview || dashboardOverview(data.requirements, data.asOfDate || data.requirements[0]?.asOfDate || todayIso()) : undefined, [data]);
   if (!projects.length && !isLoading)
     return (
       <>
@@ -133,43 +163,15 @@ export function DashboardPage() {
       <PageHeader title="项目进展" />
       <div className="page-content dashboard-page">
         {error && data && <div className="warning-banner">数据刷新失败，当前展示的是上次成功结果。<button className="ghost-button" onClick={() => void refetch()}>重新加载</button></div>}
-        <section className="stats-grid dashboard-top-stats">
-        <MetricCard
-          label="未结束需求"
-          value={data?.summary.active ?? "—"}
-          detail={`全部 ${data?.summary.total || 0} 项`}
-          icon={CircleDot}
-          tone="blue"
-        />
-        <MetricCard
-          label="已完成需求"
-          value={data?.summary.completed ?? "—"}
-          detail={`完成率 ${data?.summary.completionRate || 0}%`}
-          icon={CheckCircle2}
-          tone="green"
-        />
-        <MetricCard
-          label="延期需求"
-          value={data?.summary.delayed ?? "—"}
-          detail="按计划与实际自动判断"
-          icon={Clock3}
-          tone="red"
-        />
-        <MetricCard
-          label="高风险需求"
-          value={data?.summary.highRisk ?? "—"}
-          detail="按进展、延期和依赖关系判断"
-          icon={AlertTriangle}
-          tone="amber"
-        />
-        </section>
+        <DashboardMetrics overview={overview} filters={filters} />
         <ProjectGantt
           projectId={selectedProjectId || undefined}
           requirements={data?.requirements || []}
-          asOfDate={data?.asOfDate}
+          asOfDate={overview?.asOfDate}
           projectStart={projects.find((project) => project.id === selectedProjectId)?.plannedStart}
           projectEnd={projects.find((project) => project.id === selectedProjectId)?.plannedEnd}
-          resizeStorageKey={`${session.accountId || session.username || "guest"}:${selectedProjectId}:dashboard-gantt`}
+          resizeStorageKey={ganttStorageKey}
+          filters={filters}
         />
         <IssueHealth issues={data?.issues} />
         <PublicIssueAttention issues={data?.issues?.attention || []} />

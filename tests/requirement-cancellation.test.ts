@@ -106,7 +106,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
     expect(cancelled.progressUpdates).toEqual(expect.arrayContaining(before.progressUpdates));
     for (const item of before.workItems!) {
       const after = cancelled.workItems!.find((entry) => entry.id === item.id)!;
-      if (item.status === 'completed') expect(after).toEqual(item);
+      if (item.status === 'completed') expect(withoutForecastRevision(after)).toEqual(withoutForecastRevision(item));
       else expect(after).toMatchObject({ status: 'cancelled', version: item.version + 1, progress: item.progress, actualStart: item.actualStart, actualEnd: null, blockedAt: null, blockedReason: null });
       expect([after.plannedStart, after.plannedEnd]).toEqual([item.plannedStart, item.plannedEnd]);
     }
@@ -143,3 +143,4 @@ it.each(['REST','MCP'] as const)('%s 已完成需求先返工才可取消', asyn
  expect((await cancel(protocol,before)).statusCode).toBe(409);
  expect(await detail(before.id)).toEqual(before);
 });
+import { withoutForecastRevision } from './fixtures/forecast-snapshot';

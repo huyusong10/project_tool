@@ -11,6 +11,7 @@ import { rows } from './support';
 import { fail } from '../errors';
 import { isValidIsoDate } from '../../shared/workday';
 import { getWorkItemCancellationDates } from './work-item-history';
+import { dashboardOverview } from '../../shared/dashboard';
 
 type PersonRow = { id: string; name: string; jobTitle: string | null };
 type ConcurrencyItem = {
@@ -160,6 +161,7 @@ export function getDashboard(projectId?: string, asOfDate = todayIso()) {
   return {
     asOfDate,
     summary: { total: requirements.length, active, completed, delayed, highRisk, completionRate },
+    overview: dashboardOverview(requirements, asOfDate),
     requirements: dashboardRequirements,
     issues: { summary: issuePage.summary, attention },
     charts: { statuses, risks, weeks, varianceTop },

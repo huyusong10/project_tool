@@ -1,9 +1,10 @@
+import {useAppSearchParams} from './use-app-navigation';
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {useSearchParams,createSearchParams,type SetURLSearchParams} from 'react-router-dom';
+import {createSearchParams,type SetURLSearchParams} from 'react-router-dom';
 
 /** Local view updates are synchronous; router changes only import history/link navigation. */
 export function useWorkspaceParams(){
-  const [url,writeUrl]=useSearchParams(),serialized=url.toString();
+  const [url,writeUrl]=useAppSearchParams(),serialized=url.toString();
   const [view,setView]=useState(()=>new URLSearchParams(url));
   const current=useRef(view),written=useRef<string|null>(null);current.current=view;
   const setParams: SetURLSearchParams=useCallback((next,options)=>{

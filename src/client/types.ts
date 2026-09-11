@@ -38,6 +38,7 @@ export type WorkItemTemplate = {
   id: string; projectId: string; name: string; description: string; createdAt: string; updatedAt: string; deletedAt?: string | null; items: TemplateItem[];
 };
 export type WorkItem = import('../shared/forecast-basis').ExecutionMetadata & {
+  progressWeight?:number|null;
   durationDays?:number|null;
   dependencyRevision?:number; unmetPredecessors?:Array<{id:string;title:string}>;
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
@@ -93,6 +94,7 @@ export type Requirement = import('../shared/delivery').DeliveryFields & import('
 };
 export type Dashboard = {
   asOfDate: string;
+  overview?: import('../shared/dashboard').DashboardOverview;
   summary: { total: number; active: number; completed: number; delayed: number; highRisk: number; completionRate: number };
   requirements: Requirement[];
   issues: { summary: IssuePage["summary"]; attention: Issue[] };
@@ -136,6 +138,11 @@ export type AuditPage = { items: AuditLog[]; total: number; page: number; pageSi
 export type Backup = {
   name: string; size: number; createdAt: string; fingerprint: string;
   restorable?: boolean; validationError?: string | null;
+  imported?: boolean;
+};
+export type ImportedBackup = Backup & {
+  originalName: string;
+  summary: { projects: number; requirements: number; people: number };
 };
 export type SystemOverview = {
   status: 'ok';
@@ -146,6 +153,7 @@ export type SystemOverview = {
   database: {
     path: string; backupDirectory: string; mainSizeBytes: number; walSizeBytes: number;
     shmSizeBytes: number; totalSizeBytes: number; journalMode: string;
+    importMaxBytes?: number;
   };
   backups: {
     count: number; restorableCount: number; totalSizeBytes: number; lastCreatedAt: string | null; overdue: boolean;

@@ -18,7 +18,8 @@ import {
 } from "lucide-react";
 import { DashboardPage } from "./pages/DashboardPage";
 
-export type PageScope = "project" | "personal" | "platform";
+import type {PageScope} from './page-foundation';
+export type {PageScope} from './page-foundation';
 export type RouteAccess = "all" | "manager" | "admin";
 export type NavIcon = ComponentType<SVGProps<SVGSVGElement> & { size?: string | number }>;
 export type NavVisibilityContext = { admin: boolean; managesCurrentProject: boolean };
@@ -37,28 +38,34 @@ export type AppRoute = {
   /** 管理员视角下的作用域覆盖（/logs：管理员归入平台运维）。 */
   adminScope?: PageScope;
   access: RouteAccess;
-  component: LazyExoticComponent<ComponentType> | ComponentType;
-  /** project 作用域下切换项目时是否随项目重挂载（详情页为 false）。 */
-  resetOnProjectChange?: boolean;
+  component: (LazyExoticComponent<ComponentType> | ComponentType) & {preload?: () => Promise<unknown>};
   nav?: NavEntry[];
+  chrome?: { title?: string };
 };
 
-const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
-const PathsPage = lazy(() => import("./pages/PathsPage").then((module) => ({ default: module.PathsPage })));
-const MyWorkPage = lazy(() => import("./pages/MyWorkPage").then((module) => ({ default: module.MyWorkPage })));
-const ActionCenterPage = lazy(() => import("./pages/ActionCenterPage").then((module) => ({ default: module.ActionCenterPage })));
-const RequirementsPage = lazy(() => import("./pages/RequirementsPage").then((module) => ({ default: module.RequirementsPage })));
-const RequirementPage = lazy(() => import("./pages/RequirementPage").then((module) => ({ default: module.RequirementPage })));
-const IssuesPage = lazy(() => import("./pages/IssuesPage").then((module) => ({ default: module.IssuesPage })));
-const PeoplePage = lazy(() => import("./pages/PeoplePage").then((module) => ({ default: module.PeoplePage })));
-const TemplatesPage = lazy(() => import("./pages/TemplatesPage").then((module) => ({ default: module.TemplatesPage })));
-const ProjectSettingsPage = lazy(() => import("./pages/ProjectSettingsPage").then((module) => ({ default: module.ProjectSettingsPage })));
-const ProjectsPage = lazy(() => import("./pages/ProjectsPage").then((module) => ({ default: module.ProjectsPage })));
-const AccountsPage = lazy(() => import("./pages/AccountsPage").then((module) => ({ default: module.AccountsPage })));
-const ArchiveCenterPage = lazy(() => import("./pages/ArchiveCenterPage").then((module) => ({ default: module.ArchiveCenterPage })));
-const SystemPage = lazy(() => import("./pages/SystemPage").then((module) => ({ default: module.SystemPage })));
-const PersonalSettingsPage = lazy(() => import("./pages/PersonalSettingsPage").then((module) => ({ default: module.PersonalSettingsPage })));
-const LogsPage = lazy(() => import("./pages/LogsPage").then((module) => ({ default: module.LogsPage })));
+/** 导航确定后即可下载页面模块，与对象读取并行；渲染错误仍由页面边界处理。 */
+function lazyPage(load: () => Promise<{default: ComponentType}>) {
+  return Object.assign(lazy(load), {preload: load});
+}
+export function preloadPage(pathname: string) {
+  void matchRoute(pathname)?.component.preload?.().catch(() => { /* 正式渲染时显示原加载错误。 */ });
+}
+const AnalyticsPage = lazyPage(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
+const PathsPage = lazyPage(() => import("./pages/PathsPage").then((module) => ({ default: module.PathsPage })));
+const MyWorkPage = lazyPage(() => import("./pages/MyWorkPage").then((module) => ({ default: module.MyWorkPage })));
+const ActionCenterPage = lazyPage(() => import("./pages/ActionCenterPage").then((module) => ({ default: module.ActionCenterPage })));
+const RequirementsPage = lazyPage(() => import("./pages/RequirementsPage").then((module) => ({ default: module.RequirementsPage })));
+const RequirementPage = lazyPage(() => import("./pages/RequirementPage").then((module) => ({ default: module.RequirementPage })));
+const IssuesPage = lazyPage(() => import("./pages/IssuesPage").then((module) => ({ default: module.IssuesPage })));
+const PeoplePage = lazyPage(() => import("./pages/PeoplePage").then((module) => ({ default: module.PeoplePage })));
+const TemplatesPage = lazyPage(() => import("./pages/TemplatesPage").then((module) => ({ default: module.TemplatesPage })));
+const ProjectSettingsPage = lazyPage(() => import("./pages/ProjectSettingsPage").then((module) => ({ default: module.ProjectSettingsPage })));
+const ProjectsPage = lazyPage(() => import("./pages/ProjectsPage").then((module) => ({ default: module.ProjectsPage })));
+const AccountsPage = lazyPage(() => import("./pages/AccountsPage").then((module) => ({ default: module.AccountsPage })));
+const ArchiveCenterPage = lazyPage(() => import("./pages/ArchiveCenterPage").then((module) => ({ default: module.ArchiveCenterPage })));
+const SystemPage = lazyPage(() => import("./pages/SystemPage").then((module) => ({ default: module.SystemPage })));
+const PersonalSettingsPage = lazyPage(() => import("./pages/PersonalSettingsPage").then((module) => ({ default: module.PersonalSettingsPage })));
+const LogsPage = lazyPage(() => import("./pages/LogsPage").then((module) => ({ default: module.LogsPage })));
 
 /**
  * 全站路由清单：路由表、侧边栏导航、页面作用域的唯一事实来源。
@@ -86,9 +93,9 @@ export const appRoutes: AppRoute[] = [
     path: "/requirements", scope: "project", access: "all", component: RequirementsPage,
     nav: [{ group: "项目空间", label: "需求管理", icon: ListChecks }],
   },
-  { path: "/requirements/:id", scope: "project", access: "all", component: RequirementPage, resetOnProjectChange: false },
+  { path: "/requirements/:id", scope: "project", access: "all", component: RequirementPage, chrome: {title: '需求详情'} },
   {
-    path: "/actions", scope: "project", access: "all", component: ActionCenterPage,
+    path: "/actions", scope: "project", access: "all", component: ActionCenterPage, chrome: {title: '异常行动中心'},
     nav: [{ group: "项目空间", label: "异常行动", icon: CircleAlert }],
   },
   {

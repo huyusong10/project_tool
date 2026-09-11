@@ -54,9 +54,14 @@ async function expectOnlyBusinessDays(locator: ReturnType<Page["locator"]>) {
   }), "法定调休周末应作为工作日出现在时间轴中").toBe(true);
 }
 
-test("超期未完成需求的欠账段延伸覆盖延期区", async ({ page }) => {
+test("DCIM-34 实际条越过原截止日，里程碑落在执行范围内，进度变化不移动日期", async ({ page }, info) => {
   await mockGanttData(page);
-  const overdue = { ...requirement, plannedEnd: "2026-09-02", effectiveEnd: "2026-09-04", plannedProgress: 100, progress: 60, progressGap: 40, delayed: true, finishVariance: 2 };
+  const overdue = { ...requirement, title: 'EPDS-DCIM-34【角色管理】', plannedStart: '2026-08-26', plannedEnd: '2026-09-04',
+    actualStart: '2026-08-26', actualEnd: null, observationEnd: '2026-09-11', asOfDate: '2026-09-11',
+    effectiveEnd: '2026-09-11', plannedProgress: 100, progress: 96, progressGap: 4, delayed: true, finishVariance: 5 };
+  const writes: string[] = []; page.on('request', r => { if (r.url().includes('/api/') && r.method() !== 'GET') writes.push(r.url()); });
+  await page.route('**/path-analysis*', route => route.fulfill({ json: { milestones: [{ id: 'ready', title: '提测就绪',
+    projectId: 'p1', requirementId: 'r1', targetDate: null, achievedAt: '2026-09-08', confirmationMode: 'auto', version: 2 }], nodes: [], edges: [] } }));
   await page.route("**/api/dashboard**", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
     summary: { total: 1, active: 1, completed: 0, delayed: 1, highRisk: 0, completionRate: 0 },
     requirements: [overdue],
@@ -64,19 +69,35 @@ test("超期未完成需求的欠账段延伸覆盖延期区", async ({ page }) 
     charts: { statuses: [], risks: [], weeks: [], varianceTop: [] },
   }) }));
   await page.goto("/");
-  const row = page.locator(".gantt-row").filter({ hasText: "统一甘特样式" });
-  const behind = row.locator(".unified-gantt-progress-gap.is-behind");
+  const row = page.locator('.gantt-row').filter({ hasText: 'EPDS-DCIM-34' });
+  const bar = row.locator('.unified-gantt-actual');
   const delay = row.locator(".unified-gantt-delay");
+  await expect(bar).toHaveAttribute('data-start', '2026-08-26');
+  await expect(bar).toHaveAttribute('data-end', '2026-09-11');
   await expect(delay).toHaveCount(1);
-  await expect(delay).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-  // 延期区不再自画边框，避免与欠账段的虚线框相位错开叠成实线
-  await expect(delay).toHaveCSS("border-top-width", "0px");
-  const behindBox = await behind.boundingBox();
-  const delayBox = await delay.boundingBox();
-  expect(behindBox).not.toBeNull();
-  expect(delayBox).not.toBeNull();
-  // 欠账段右缘延伸到延期区末端，不在原计划结束点截断
-  expect(Math.abs((behindBox!.x + behindBox!.width) - (delayBox!.x + delayBox!.width))).toBeLessThanOrEqual(2);
+  await expect(delay).toHaveCSS('background-color', await themeColor(page, '--gantt-running'));
+  await expect(delay).toHaveCSS('border-top-color', await themeColor(page, '--gantt-delay'));
+  await expect(row.locator('.unified-gantt-progress-gap')).toHaveCount(0);
+  await expect(row.locator('.gantt-progress-marker')).toHaveText('96');
+  await expect(row.locator('.gantt-milestone-label')).toHaveText('提测就绪');
+  const geometry = () => row.evaluate(root => {
+    const left = (selector: string) => parseFloat(root.querySelector<HTMLElement>(selector)!.style.left);
+    const width = parseFloat(root.querySelector<HTMLElement>('.unified-gantt-actual')!.style.width);
+    return { start: left('.unified-gantt-actual'), end: left('.unified-gantt-actual') + width,
+      deadline: left('.unified-gantt-plan-end'), milestone: left('[data-milestone-id="ready"]'),
+      marker: left('.gantt-progress-marker'), today: left('.gantt-today-line') };
+  });
+  const original = await geometry();
+  expect(original.end).toBe(original.today); expect(original.marker).toBe(original.end);
+  expect(original.milestone).toBeGreaterThan(original.deadline);
+  expect(original.milestone).toBeLessThan(original.end);
+  await page.locator('.project-gantt-scroll').screenshot({ path: info.outputPath('dcim34-actual-dates.png') });
+  overdue.progress = 40; await page.reload(); await expect(row.locator('.gantt-progress-marker')).toHaveText('40');
+  expect(await geometry()).toEqual(original);
+  overdue.asOfDate = overdue.observationEnd = overdue.effectiveEnd = '2026-09-14';
+  await page.reload(); await expect(bar).toHaveAttribute('data-end', '2026-09-14');
+  const nextDay = await geometry(); expect(nextDay.end).toBe(nextDay.today); expect(nextDay.end).toBeGreaterThan(original.end);
+  expect(writes).toEqual([]);
 });
 
 test('工作项来源链接定位并高亮目标行', async ({ page }) => {
@@ -185,62 +206,33 @@ test("进展记录展示同一工作项的完成度变化、耗时和操作人",
   await expect(latest.locator('.progress-record-meta')).toContainText(/需求总进度\s*40%/);
 });
 
-test("项目与需求甘特统一展示状态进度及今日进度差", async ({ page }, testInfo) => {
+test("项目与需求甘特统一按实际日期展示，完成度独立标注", async ({ page }, testInfo) => {
   test.skip(!["laptop-1366", "hidpi-3k-200", "desktop-1080p"].includes(testInfo.project.name), "统一甘特图仅验证代表性桌面视口");
   const progressRequests: Array<Record<string, unknown>> = [];
   await mockGanttData(page, progressRequests);
 
   await page.goto("/");
   await expect(page.locator(".project-gantt-grid")).toBeVisible();
-  await expect(page.locator(".project-gantt-toolbar .gantt-legend").getByText("实际进度", { exact: true })).toBeVisible();
+  await expect(page.locator(".project-gantt-toolbar .gantt-legend").getByText("实际执行", { exact: true })).toBeVisible();
   await expect(page.locator(".project-gantt-toolbar .view-tabs[aria-label=时间粒度] button.active")).toHaveText("日");
   await expect(page.locator(".project-gantt-grid .unified-gantt-plan")).toHaveCount(2);
-  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-actual")).toHaveCount(2);
-  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveCount(1);
-  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveText("");
-  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveCSS("border-top-style", "dashed");
-  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).toHaveCSS("border-top-color", await themeColor(page, "--gantt-delay"));
-  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-behind")).not.toHaveCSS("background-image", "none");
-  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-ahead")).toHaveCount(1);
-  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap.is-ahead")).toHaveCSS("border-top-color", await themeColor(page, "--gantt-completed"));
+  await expect(page.locator(".project-gantt-grid .unified-gantt-actual")).toHaveCount(2);
+  await expect(page.locator(".project-gantt-grid .unified-gantt-progress-gap")).toHaveCount(0);
   await expect(page.locator(".project-gantt-grid .unified-gantt-progress-target")).toHaveCount(0);
   await expect(page.locator(".project-gantt-grid .unified-gantt-plan-end")).toHaveCount(2);
   await expect(page.locator(".project-gantt-grid .unified-gantt-label")).toHaveCount(0);
   const delayedRow = page.locator(".gantt-row").filter({ hasText: "统一甘特样式" });
   await expect(page.locator(".gantt-row").filter({ hasText: "统一甘特样式" }).locator(".gantt-progress-marker > span")).toHaveText("61");
   await expect(page.locator(".gantt-row").filter({ hasText: "领先计划流程" }).locator(".gantt-progress-marker > span")).toHaveText("70");
-  await expect(page.locator(".project-gantt-grid .gantt-progress-marker-tooltip")).toHaveCount(2);
-  await expect(delayedRow.locator(".gantt-progress-marker-tooltip")).toHaveCSS("opacity", "0");
-  await delayedRow.locator(".gantt-progress-marker").hover();
-  await expect(delayedRow.locator(".gantt-progress-marker-tooltip")).toHaveCSS("opacity", "1");
-  await expect(delayedRow.locator(".gantt-progress-marker-tooltip")).toHaveText("落后 30% · 应达 91%");
+  await expect(page.locator(".project-gantt-grid .gantt-progress-marker-tooltip")).toHaveCount(0);
   await expect(page.getByText("中风险 · 落后30%", { exact: true })).toBeVisible();
   await expect(page.getByText("领先20%", { exact: true })).toBeVisible();
   const todayLineBox = await delayedRow.locator(".gantt-today-line").boundingBox();
   const progressMarkerBox = await delayedRow.locator(".gantt-progress-marker").boundingBox();
   expect(todayLineBox).not.toBeNull();
   expect(progressMarkerBox).not.toBeNull();
-  expect(progressMarkerBox!.x + progressMarkerBox!.width / 2).toBeLessThan(todayLineBox!.x);
-  const milestoneRow = page.locator(".gantt-row").filter({ hasText: "领先计划流程" });
-  const milestoneTrackBox = await milestoneRow.locator(".gantt-track").boundingBox();
-  const milestoneLabelBoxes = await milestoneRow.locator(".gantt-milestone-label").evaluateAll((labels) => labels.map((label) => {
-    const box = label.getBoundingClientRect();
-    return { x: box.x, y: box.y, right: box.right, bottom: box.bottom };
-  }));
-  expect(milestoneTrackBox).not.toBeNull();
-  expect(milestoneLabelBoxes.length).toBeGreaterThan(0);
-  for (const box of milestoneLabelBoxes) {
-    expect(box.x).toBeGreaterThanOrEqual(milestoneTrackBox!.x - 1);
-    expect(box.right).toBeLessThanOrEqual(milestoneTrackBox!.x + milestoneTrackBox!.width + 1);
-  }
-  for (let left = 0; left < milestoneLabelBoxes.length; left += 1) {
-    for (let right = left + 1; right < milestoneLabelBoxes.length; right += 1) {
-      const a = milestoneLabelBoxes[left];
-      const b = milestoneLabelBoxes[right];
-      const overlaps = a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y;
-      expect(overlaps).toBe(false);
-    }
-  }
+  expect(progressMarkerBox!.x + progressMarkerBox!.width / 2).toBeCloseTo(todayLineBox!.x, 0);
+  await expect(page.locator(".project-gantt-grid .gantt-milestone-label")).toHaveCount(0);
   await delayedRow.locator(".gantt-track").hover({ position: { x: 4, y: 4 } });
   await expect(page.locator(".gantt-popover")).toBeHidden();
   await delayedRow.locator(".gantt-bar-hitbox").hover();
@@ -277,7 +269,7 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   await expect(completedEarlyRow.locator(".unified-gantt-actual")).toHaveCSS("background-color", await themeColor(page, "--gantt-completed"));
   await expect(completedEarlyRow.locator(".unified-gantt-early")).toHaveCSS("border-top-color", await themeColor(page, "--gantt-completed"));
   await expect(completedEarlyRow.locator(".unified-gantt-early")).not.toHaveCSS("background-image", "none");
-  await expect(page.locator(".requirement-gantt-grid .gantt-milestone-label")).toContainText("接口基线");
+  await expect(page.locator(".requirement-gantt-grid .gantt-milestone-label")).toHaveCount(0);
   await activeWorkRow.locator(".gantt-progress-marker").click();
   await expect(page.getByRole("heading", { name: "更新工作项进度" })).toBeVisible();
   await page.getByLabel("当前完成度（估算）数值").fill("80");

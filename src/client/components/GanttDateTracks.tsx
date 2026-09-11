@@ -1,6 +1,8 @@
 import { memo, type HTMLAttributes } from "react";
 import { ganttProgressDisplay } from "../../shared/domain";
 import { businessDateIndex, ganttInterval, toGanttDate } from "./GanttTimeline";
+import type { GanttForecast } from '../gantt-forecast';
+import { GanttForecastTail } from './GanttForecastTail';
 
 function point(value: string | null | undefined, dates: Date[], cellWidth: number) {
   const date = toGanttDate(value);
@@ -13,6 +15,7 @@ function point(value: string | null | undefined, dates: Date[], cellWidth: numbe
 export const GanttDateTracks = memo(function GanttDateTracks({
   plannedStart, plannedEnd, actualStart, actualEnd, status, progress, dates, cellWidth,
   onProgressClick, progressAriaLabel, interactionProps, scheduleComplete = true,
+  forecast,
 }: {
   plannedStart?: string | null; plannedEnd?: string | null;
   actualStart?: string | null; actualEnd?: string | null;
@@ -20,6 +23,7 @@ export const GanttDateTracks = memo(function GanttDateTracks({
   onProgressClick?: () => void; progressAriaLabel?: string;
   interactionProps?: HTMLAttributes<HTMLElement>;
   scheduleComplete?: boolean;
+  forecast?: GanttForecast | null;
 }) {
   const plan = ganttInterval(plannedStart, plannedEnd, dates, cellWidth) || point(plannedStart || plannedEnd, dates, cellWidth);
   const actual = ganttInterval(actualStart, actualEnd, dates, cellWidth) || point(actualStart || actualEnd, dates, cellWidth);
@@ -44,5 +48,6 @@ export const GanttDateTracks = memo(function GanttDateTracks({
     {onProgressClick
       ? <button type="button" className={`gantt-date-progress gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft }} title={title} aria-label={progressAriaLabel || title} onClick={(event) => { event.stopPropagation(); onProgressClick(); }}>{label}</button>
       : <span className={`gantt-date-progress gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft }} tabIndex={0} title={title} aria-label={title}>{label}</span>}
+    <GanttForecastTail forecast={forecast} plannedEnd={scheduleComplete && plan ? plannedEnd : null} dates={dates} cellWidth={cellWidth} interactionProps={interactionProps} />
   </>;
 });

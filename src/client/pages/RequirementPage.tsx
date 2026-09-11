@@ -1,11 +1,16 @@
+import {useAppNavigate,useAppSearchParams} from '../use-app-navigation';
+import {usePageResources} from '../page-context';
+import { Pagination } from '../components/Pagination';
+import { useListPagination } from '../use-list-pagination';
 import type {StartAssignment} from '../components/StartAssignmentDialog';
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { RequirementOverview } from '../components/RequirementOverview';
 import { directRequirementTimelineItem } from '../requirement-timeline';
 import { hasPageHistory, usePageBack } from "../use-page-view";
+import {usePathReturn} from "../use-path-return";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Navigate, useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
+import { Navigate, useParams, useLocation } from "react-router-dom";
 import {remapSavedEditorUrl} from '../path-view';
 import {
   Archive,
@@ -13,14 +18,13 @@ import {
   Check,
   CircleStop,
   Edit3,
-  MoreHorizontal,
   PencilLine,
 } from "lucide-react";
 import { api, ApiError, jsonBody } from "../api";
 import { clearProjectGraphDrafts } from "../use-graph-draft";
 import { useProjects, useSession } from "../app-context";
 import { invalidateRequirementViews, keys } from "../query-keys";
-import { cacheResourceUpdate, useResourceQuery } from "../use-resource-query";
+import { cacheResourceUpdate } from "../use-resource-query";
 import { useWorkItemSave } from "../use-work-item-save";
 import { formatDateTime } from "../format";
 import type { Person, ProgressUpdate, Requirement, WorkItem, WorkItemTemplate } from "../types";
@@ -49,7 +53,6 @@ import {
 } from "../components/RequirementForms";
 import { ProgressForm, type ProgressScope } from "../components/ProgressForm";
 import { ResizablePanel } from "../components/ResizablePanel";
-import { AnchoredPopover } from "../components/InlineEdit";
 import { WorkItemActions } from "../components/WorkItemActions";
 import { WorkItemSettingsDialog } from "../components/WorkItemSettingsDialog";
 import { canManageProject } from "../permissions";
@@ -79,14 +82,13 @@ const progressReferenceLabel = (update?: ProgressUpdate) => update ? `${formatDa
 function SavedRequirementPage() {
   const goBack = usePageBack('/requirements');
   const { id = "" } = useParams();
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useAppNavigate();
+  const [searchParams, setSearchParams] = useAppSearchParams();
   const pathLocation=useLocation();
   const pathView = searchParams.get('view') === 'path';
   const client = useQueryClient();
   const { session } = useSession();
   const actionRecheckAccountKey = session.accountId || session.username || "guest";
-  const { projects, syncProjectContext } = useProjects();
   const [modal, setModal] = useState<
     "info" | "correction" | "schedule" | "progress" | "template" | null
   >(null);
@@ -121,8 +123,6 @@ function SavedRequirementPage() {
     persistRequirementCommandRecheck(actionRecheckAccountKey, id, value);
     setCommandRecheckState(value);
   };
-  const actionAnchor = useRef<HTMLDivElement>(null);
-  const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const {
     data: requirement,
     isLoading,
@@ -130,7 +130,8 @@ function SavedRequirementPage() {
     refetch,
     isFetching,
     unavailable,
-  } = useResourceQuery<Requirement>(keys.requirement(id), `/api/requirements/${id}`, Boolean(id));
+  } = usePageResources().requirement;
+  const historyPagination = useListPagination({ items: requirement?.progressUpdates || [], id: "history", defaultPageSize: 10, ready: Boolean(requirement), loading: isFetching });
   const lastPathProject=useRef<string|undefined>(undefined);
   useEffect(()=>{if(requirement?.projectId)lastPathProject.current=requirement.projectId;},[requirement?.projectId]);
   const scrollKey='pm-detail-scroll:'+(session.accountId||'guest')+':'+(requirement?.projectId||'')+':'+id,workTarget=searchParams.get('workItemId');
@@ -150,7 +151,6 @@ function SavedRequirementPage() {
     setProgressItemId(null);
     setWorkEditorOpen(false);
     setCommand(null);
-    setActionMenuOpen(false);
   }, [error, unavailable,session.accountId]);
   useEffect(() => {
     setWorkEditorNeedsRecheck(readWorkItemSettingsRechecks(actionRecheckAccountKey).has(id));
@@ -165,11 +165,6 @@ function SavedRequirementPage() {
   const setWorkItemActionRecheck = (workItemId: string, required: boolean) => {
     setWorkItemActionRechecks(persistWorkItemActionRecheck(actionRecheckAccountKey, workItemId, required));
   };
-  useEffect(() => {
-    if (!requirement?.projectId) return;
-    if (projects.some((project) => project.id === requirement.projectId))
-      syncProjectContext(requirement.projectId);
-  }, [projects, requirement?.projectId, syncProjectContext]);
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, requirement?.projectId || ""],
     queryFn: ({ signal }) => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(requirement!.projectId)}`, { signal }),
@@ -258,33 +253,8 @@ function SavedRequirementPage() {
     () => progressHistoryMetadata(requirement?.progressUpdates || []),
     [requirement?.progressUpdates],
   );
-  if(isLoading&&pathView)return <><PageHeader title="需求路径"/><div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace"><LoadingState label="正在读取需求路径…"/></section></div></>;
-  if (isLoading)
-    return (
-      <>
-        <PageHeader title="需求详情" onBack={goBack} backLabel={hasPageHistory()?"返回":"需求列表"} />
-        <div className="page-content">
-          <LoadingState label="加载需求详情…" className="tall" />
-        </div>
-      </>
-    );
-  if (unavailable || !requirement)
-    return (
-      <>
-        <PageHeader title="需求详情" onBack={() => navigate("/requirements")} backLabel="返回需求管理" />
-        <div className="page-content">
-          <EmptyState
-            title="需求无法打开"
-            detail={error?.message || "需求不存在或已归档。"}
-            action={
-              <div className="button-row"><button className="ghost-button" onClick={() => navigate("/requirements")}>
-                返回需求管理
-              </button>{pathView&&<button type="button" onClick={()=>navigate("/paths",{replace:true})}>项目路径</button>}<button type="button" className="primary-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>
-            }
-          />
-        </div>
-      </>
-    );
+  if (!requirement || unavailable) return null;
+
   const canManage = canManageProject(session, requirement.projectId);
   const peopleReady = peopleQuery.data !== undefined;
   const supportingDataReady = peopleReady && templatesQuery.data !== undefined;
@@ -331,7 +301,9 @@ function SavedRequirementPage() {
       <PageHeader
         title={requirement.title}
         onBack={goBack} backLabel={hasPageHistory()?"返回":"需求列表"}
-        actions={canManage ? (
+        moreLabel="需求操作"
+        moreDisabled={Boolean(commandRecheck || correctionRecheck)}
+        secondaryActions={canManage ? (
           <>
             {canManage && !requirementInfoLocked && <button className="ghost-button" disabled={!peopleReady || Boolean(infoRecheck)} onClick={() => { if (!infoRecheck) setModal("info"); }}>
               <Edit3 size={15} />
@@ -341,17 +313,14 @@ function SavedRequirementPage() {
               <CalendarDays size={15} />
               调整计划
             </button>}
-            {canManage && <div ref={actionAnchor}>
-              <button type="button" className="ghost-button" aria-label="需求操作" aria-expanded={actionMenuOpen} disabled={Boolean(commandRecheck || correctionRecheck)} onClick={() => { if (!commandRecheck && !correctionRecheck) setActionMenuOpen((open) => !open); }}><MoreHorizontal size={16} />操作</button>
-              <AnchoredPopover anchorRef={actionAnchor} open={actionMenuOpen} onOutside={() => setActionMenuOpen(false)} width={230} className="action-menu">
-                {requirement.executionMode!=='direct'&&!['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status) && <button type="button" onClick={() => { setActionMenuOpen(false); setCommand('complete-as-planned'); }}><Check size={15} />按期完成（历史补录）</button>}
-                {!['completed', 'cancelled'].includes(requirement.status) && <button type="button" className="danger" onClick={() => { setActionMenuOpen(false); setCommand('cancel'); }}><CircleStop size={15} />取消需求</button>}
-                {['completed', 'cancelled'].includes(requirement.status) && <button type="button" onClick={() => { setActionMenuOpen(false); setModal('correction'); }}><PencilLine size={15} />受控纠错</button>}
-                {['completed', 'cancelled'].includes(requirement.status) && <button type="button" className="danger" onClick={() => { setActionMenuOpen(false); setCommand('archive'); }}><Archive size={15} />归档需求</button>}
-              </AnchoredPopover>
-            </div>}
           </>
         ) : null}
+        moreActions={canManage ? <>
+                {requirement.executionMode!=='direct'&&!['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" onClick={() => { setCommand('complete-as-planned'); }}><Check size={15} />按期完成（历史补录）</button>}
+                {!['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" className="danger" onClick={() => { setCommand('cancel'); }}><CircleStop size={15} />取消需求</button>}
+                {['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" onClick={() => { setModal('correction'); }}><PencilLine size={15} />受控纠错</button>}
+                {['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" className="danger" onClick={() => { setCommand('archive'); }}><Archive size={15} />归档需求</button>}
+        </> : null}
       />
       <div className="page-content requirement-page">
         {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
@@ -399,6 +368,7 @@ function SavedRequirementPage() {
           asOfDate={requirement.asOfDate}
           updates={timelineUpdates}
           canUpdateProgress={direct ? undefined : canUpdateItemProgress}
+          canEditForecast={direct ? undefined : canOperateItem}
           onUpdateProgress={(item) => openProgress(item.id)}
           renderActions={direct ? undefined : (item) => canOperateItem(item)
             ? <WorkItemActions
@@ -451,10 +421,10 @@ function SavedRequirementPage() {
         />
       )}
       <section className="detail-grid progress-detail-grid">
-        <article className="panel progress-detail-card">
+        <article className="panel progress-detail-card paged-panel">
           <header><div><h2>进展记录</h2></div></header>
-          <div className="progress-feed">
-            {requirement.progressUpdates?.map((item) => {
+          <div className="progress-feed paged-body" ref={historyPagination.scrollRef}>
+            {historyPagination.items.map((item) => {
               const metadata = progressHistory.get(item.id)!;
               return <article key={item.id}>
                 <div className={`progress-marker${metadata.transitionLabel === "—" ? " is-note" : item.eventType === "start" ? " is-start" : item.eventType === "complete" ? " is-complete" : ""}`} title={metadata.transitionTitle}>{metadata.transitionLabel}</div>
@@ -472,6 +442,7 @@ function SavedRequirementPage() {
             })}
             {!requirement.progressUpdates?.length && <EmptyState title="暂无进展" detail={direct ? "开始需求或更新完成度后，这里会显示执行记录。" : "开始工作项、更新完成度或完成工作项后，这里会显示执行记录。"} />}
           </div>
+          <Pagination {...historyPagination.props} label="需求进展分页" />
         </article>
         <article className="panel progress-detail-card">
           <header><div><h2>进度趋势</h2></div></header>
@@ -517,17 +488,17 @@ function SavedRequirementPage() {
 }
 
 export function RequirementPage(){
- const [params]=useSearchParams(),location=useLocation(),{session}=useSession(),{selectedProjectId}=useProjects();
+ const [params]=useAppSearchParams(),location=useLocation(),{session}=useSession(),{selectedProjectId}=useProjects();
  const url=location.pathname+location.search,projectId=params.get('draftProject')||selectedProjectId;
  const savedUrl=remapSavedEditorUrl(url,(session.accountId||'guest')+':'+projectId);
  if(params.has('draftProject')&&savedUrl!==url)return <Navigate to={savedUrl} replace state={location.state}/>;
  return params.get('draftProject')?<DraftRequirementPage projectId={params.get('draftProject')!}/>:<SavedRequirementPage/>;
 }
 function DraftRequirementPage({projectId}:{projectId:string}){
- const {id=''}=useParams(),{session}=useSession(),navigate=useNavigate();
+ const {id=''}=useParams(),{session}=useSession(),navigate=useAppNavigate();
+ const pathReturn=usePathReturn();
  const [item,setItem]=useState<PathRequirementContext|null|undefined>(undefined);
  useEffect(()=>{let cancelled=false;void readDraftRecord<{values:DependencyChanges[];index:number}>('pm-graph-draft:'+(session.accountId||'guest')+':'+projectId).then(h=>{const c=h?.values[h.index].entities?.find(c=>c.id===id&&c.entity==='requirement'&&c.op==='create');if(!cancelled)setItem(c?{id,projectId,title:c.data.title||'新需求',ownerId:c.data.ownerId||null,workItems:[],status:'not_started'}:null);}).catch(()=>{if(!cancelled)setItem(null);});return()=>{cancelled=true;};},[id,projectId,session.accountId]);
- if(item===undefined)return <LoadingState label="正在恢复需求草稿…"/>;
- if(!item)return <EmptyState title="本机需求草稿不存在" detail="请返回全局画布检查草稿。" action={<button onClick={()=>navigate('/paths')}>返回项目全局</button>}/>;
+ if(!item)return <><PageHeader title="需求草稿" titlePending={item===undefined} onBack={pathReturn.back} backLabel={pathReturn.label} actions={<span/>}/><div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace">{item===undefined?<LoadingState label="正在恢复需求草稿…"/>:<EmptyState title="本机需求草稿不存在" detail="请返回全局画布检查草稿。"/>}</section></div></>;
  return <PathAnalysisPanel key={id} projectId={projectId} requirement={item} onExit={()=>navigate('/paths')}/>;
 }

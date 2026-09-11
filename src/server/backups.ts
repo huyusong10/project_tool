@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { config } from './config';
@@ -10,11 +12,14 @@ import { inspectDatabaseConsistency } from './database-validation';
 import { activatePreparedDatabase, cleanupFailedDatabaseSwaps, databaseSwapRollbackPath } from './database-swap';
 import { clearRestoreStatus, readRestoreStatus, writeRestoreStatus, type RestoreStatus } from './restore-status';
 import { AppError, fail, notFound } from './errors';
+import { pauseDatabaseRequests, resumeDatabaseRequests } from './database-maintenance';
 
 fs.mkdirSync(config.backupDir, { recursive: true });
 
 const INCOMPLETE_BACKUP_RETENTION_MS = 24 * 60 * 60 * 1000;
 const INCOMPLETE_BACKUP_PATTERN = /^project-manage-(?:pre-migration-)?\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z?\.db\.partial-[0-9a-f-]{36}$/;
+const IMPORT_NAME_PATTERN = /^project-manage-import-[0-9a-f-]{36}\.db$/;
+const INCOMPLETE_IMPORT_PATTERN = /^\.database-import-[0-9a-f-]{36}(?:\.validation)?(?:-wal|-shm|-journal)?$/;
 
 function backupFilename(date = new Date()) {
   const pad = (value: number, length = 2) => String(value).padStart(length, '0');
@@ -52,6 +57,7 @@ function backupDescriptor(filename: string) {
     size: stat.size,
     createdAt: backupCreatedAt(filename, stat),
     fingerprint: backupFingerprint(filename, stat),
+    imported: IMPORT_NAME_PATTERN.test(filename),
     path: target,
   };
 }
@@ -69,6 +75,23 @@ function assertBackupUnchanged(filename: string, fingerprint: string) {
   } catch (error) {
     if (error instanceof AppError && error.code === 'STALE_WRITE') throw error;
     fail('备份文件已变化，请刷新列表后重新确认', 'STALE_WRITE', 409, { currentFingerprint: null });
+  }
+}
+
+export function openBackupDownload(filename: string, expectedFingerprint: string) {
+  const backup = backupDescriptor(filename);
+  assertBackupFingerprint(backup, expectedFingerprint);
+  const fd = fs.openSync(backup.path, 'r');
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile() || backupFingerprint(filename, stat) !== backup.fingerprint) {
+      fail('备份文件已变化，请刷新列表后重新下载', 'STALE_WRITE', 409);
+    }
+    // 固定已打开的文件，目录清理或同名替换不会把下载改绑到另一份备份。
+    return { stream: fs.createReadStream(backup.path, { fd, autoClose: true }), size: stat.size };
+  } catch (error) {
+    fs.closeSync(fd);
+    throw error;
   }
 }
 
@@ -194,7 +217,7 @@ export function cleanupOldBackups() {
   }
   const incompleteCutoff = Date.now() - INCOMPLETE_BACKUP_RETENTION_MS;
   for (const entry of fs.readdirSync(config.backupDir, { withFileTypes: true })) {
-    if (!entry.isFile() || entry.isSymbolicLink() || !INCOMPLETE_BACKUP_PATTERN.test(entry.name)) continue;
+    if (!entry.isFile() || entry.isSymbolicLink() || ![INCOMPLETE_BACKUP_PATTERN, INCOMPLETE_IMPORT_PATTERN].some((pattern) => pattern.test(entry.name))) continue;
     const target = path.join(config.backupDir, entry.name);
     try {
       const stat = fs.lstatSync(target);
@@ -315,6 +338,100 @@ function migrateAndValidateRestoreCopy(replacement: string) {
   }
 }
 
+export async function importBackup(
+  stream: Readable,
+  originalName: string,
+  beforeCommit: (backup: PublicBackup) => void,
+) {
+  if (!originalName.toLowerCase().endsWith('.db') || /[\x00-\x1f/\\]/.test(originalName) || originalName.length > 255) fail('请选择项目管理系统导出的 .db 文件');
+  if (backupInProgress || restoreScheduled) fail('已有数据库维护任务正在执行', 'DEPENDENCY_CONFLICT', 409);
+  backupInProgress = true;
+  const id = randomUUID();
+  const temporary = path.join(config.backupDir, `.database-import-${id}`);
+  const validationCopy = `${temporary}.validation`;
+  const name = `project-manage-import-${id}.db`;
+  const destination = safeBackupPath(name);
+  let published = false;
+  let size = 0;
+  try {
+    const limiter = new Transform({ transform(chunk: Buffer, _encoding, callback) {
+      size += chunk.length;
+      callback(size > config.databaseImportMaxBytes
+        ? new AppError(`数据库文件不能超过 ${config.databaseImportMaxBytes / 1024 / 1024} MB`, 413)
+        : null, chunk);
+    } });
+    // 不把 HTTP 输入流交给 pipeline 销毁，超限时仍能返回明确的 413 响应。
+    const failed = (error: Error) => limiter.destroy(error);
+    stream.once('error', failed);
+    stream.pipe(limiter);
+    try {
+      await pipeline(limiter, fs.createWriteStream(temporary, { flags: 'wx', mode: 0o600 }));
+    } finally {
+      stream.unpipe(limiter);
+      if (stream.destroyed || stream.readableEnded) stream.off('error', failed);
+      else stream.resume();
+    }
+    if (!size) fail('数据库文件为空');
+    validateDatabaseFile(temporary);
+    fs.copyFileSync(temporary, validationCopy);
+    migrateAndValidateRestoreCopy(validationCopy);
+    applyImportedAccounts(validationCopy);
+    const check = new Database(validationCopy, { readonly: true });
+    let summary: { projects: number; requirements: number; people: number };
+    try {
+      summary = check.prepare(`SELECT (SELECT COUNT(*) FROM projects) AS projects,
+        (SELECT COUNT(*) FROM requirements) AS requirements, (SELECT COUNT(*) FROM people) AS people`).get() as typeof summary;
+    } finally { check.close(); }
+    if (restoreScheduled) fail('数据库恢复任务正在执行，请稍后重新上传', 'DEPENDENCY_CONFLICT', 409);
+    fs.renameSync(temporary, destination);
+    published = true;
+    const { path: _path, ...backup } = backupDescriptor(name);
+    beforeCommit(backup);
+    backupValidationCache.set(backup.fingerprint, { restorable: true, validationError: null });
+    // 预览阶段保留文件，取消后仍可在备份列表下载、恢复或删除。
+    return { ...backup, originalName, summary, restorable: true };
+  } catch (error) {
+    if (published) fs.rmSync(destination, { force: true });
+    throw error;
+  } finally {
+    for (const filename of [temporary, validationCopy]) {
+      try { removeRestoreFiles(filename); }
+      catch (error) { console.error('清理数据库导入临时文件失败', error); }
+    }
+    backupInProgress = false;
+  }
+}
+
+function applyImportedAccounts(replacement: string) {
+  if (!/^scrypt\$[0-9a-f]+\$[0-9a-f]{128}$/i.test(config.appPasswordHash)) {
+    fail('请先配置本机 ADMIN_PASSWORD 或通过 configure.ps1 设置管理员密码');
+  }
+  const database = new Database(replacement);
+  try {
+    database.transaction(() => {
+      const builtin = database.prepare('SELECT id FROM accounts WHERE is_builtin=1').all() as Array<{ id: string }>;
+      if (builtin.length > 1) fail('导入数据库存在多个内置 admin 账号');
+      if (!builtin.length) {
+        const id = randomUUID();
+        const now = new Date().toISOString();
+        database.prepare(`INSERT INTO accounts (id, username, normalized_username, password_hash,
+          global_role, status, must_change_password, session_version, is_builtin, created_at, updated_at)
+          VALUES (?, 'admin', 'admin', ?, 'admin', 'active', 0, 0, 1, ?, ?)`).run(id, config.appPasswordHash, now, now);
+        builtin.push({ id });
+      }
+      database.prepare(`UPDATE accounts SET username='admin', normalized_username='admin', password_hash=?,
+        global_role='admin', status='active', must_change_password=0, deleted_at=NULL, person_id=NULL, updated_at=?
+        WHERE id=?`).run(config.appPasswordHash, new Date().toISOString(), builtin[0].id);
+      // 会话版本使用新随机值，防止较旧快照重新激活仍留在浏览器中的会话。
+      const updateSession = database.prepare('UPDATE accounts SET session_version=? WHERE id=?');
+      for (const account of database.prepare('SELECT id FROM accounts').all() as Array<{ id: string }>) {
+        updateSession.run(
+          Number.parseInt(randomUUID().replaceAll('-', '').slice(0, 12), 16), account.id);
+      }
+    })();
+  } finally { database.close(); }
+}
+
 function removeRestoreFiles(replacement: string) {
   for (const suffix of ['', '-wal', '-shm', '-journal']) {
     const target = `${replacement}${suffix}`;
@@ -328,7 +445,11 @@ function validateBackup(filename: string, expectedFingerprint?: string) {
   return backup;
 }
 
-export async function prepareRestore(filename: string, expectedFingerprint?: string) {
+export async function prepareRestore(filename: string, expectedFingerprint?: string, options: {
+  importDatabase?: boolean;
+  beforeSafetyBackup?: () => Promise<void>;
+} = {}) {
+  if (options.importDatabase && !IMPORT_NAME_PATTERN.test(filename)) fail('请先上传并校验要导入的数据库');
   const backup = validateBackup(filename, expectedFingerprint);
   const replacement = `${config.dbPath}.restore`;
   if (fs.existsSync(databaseSwapRollbackPath(config.dbPath))) {
@@ -342,6 +463,8 @@ export async function prepareRestore(filename: string, expectedFingerprint?: str
     assertBackupUnchanged(filename, backup.fingerprint);
     validateDatabaseFile(replacement);
     migrateAndValidateRestoreCopy(replacement);
+    if (options.importDatabase) applyImportedAccounts(replacement);
+    await options.beforeSafetyBackup?.();
     const safetyBackup = await createBackup({ cleanup: false, duringRestore: true });
     return { source: replacement, safetyBackup };
   } catch (error) {
@@ -377,7 +500,9 @@ export async function scheduleRestore(
   filename: string,
   expectedFingerprint?: string,
   beforeSchedule?: (safetyBackup: PublicBackup, replacement: string) => void,
+  options: { importDatabase?: boolean } = {},
 ) {
+  options = { ...options, importDatabase: options.importDatabase || IMPORT_NAME_PATTERN.test(filename) };
   if (restoreScheduled) fail('已有数据库恢复任务正在执行', 'DEPENDENCY_CONFLICT', 409);
   restoreScheduled = true;
   const replacement = `${config.dbPath}.restore`;
@@ -387,7 +512,7 @@ export async function scheduleRestore(
   let pendingStatus: RestoreStatus | undefined;
   let safetyBackup: Awaited<ReturnType<typeof createBackup>> | undefined;
   try {
-    const prepared = await prepareRestore(filename, expectedFingerprint);
+    const prepared = await prepareRestore(filename, expectedFingerprint, { ...options, beforeSafetyBackup: pauseDatabaseRequests });
     safetyBackup = prepared.safetyBackup;
     pendingStatus = {
       operationId,
@@ -414,6 +539,7 @@ export async function scheduleRestore(
       } catch (statusError) { console.error('数据库恢复状态回滚失败', statusError); }
     }
     restoreScheduled = false;
+    resumeDatabaseRequests();
     throw error;
   }
 
@@ -446,6 +572,7 @@ export async function scheduleRestore(
       } catch (statusError) { console.error('数据库恢复失败状态记录失败', statusError); }
       if (!databaseClosed && sqlite.open) {
         restoreScheduled = false;
+        resumeDatabaseRequests();
         removeRestoreFiles(replacement);
         return;
       }

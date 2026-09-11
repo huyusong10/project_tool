@@ -1,6 +1,8 @@
-import { useDeferredValue, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../api";
+import { useListPagination } from '../use-list-pagination';
+import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
+import { readPagination } from '../pagination';
+import { usePagedResourceQuery } from '../use-paged-resource-query';
+import { useDeferredValue, useEffect, useState } from "react";
 import { useProjects, useSession, useUiActions } from "../app-context";
 import { keys } from "../query-keys";
 import type { AuditPage } from "../types";
@@ -28,51 +30,46 @@ export function LogsPage() {
   const { selectedProjectId } = useProjects();
   const { openLogin } = useUiActions();
   const admin = isAdmin(session);
-  const [keyword, setKeyword] = useState("");
-  const deferredKeyword = useDeferredValue(keyword);
-  const [actorType, setActorType] = useState("");
-  const [action, setAction] = useState("");
-  const [entityType, setEntityType] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [page, setPage] = useState(1);
-  const [snapshot, setSnapshot] = useState<number | null>(null);
-  const params = new URLSearchParams({ page: String(page), pageSize: "50" });
-  if (deferredKeyword.trim()) params.set("q", deferredKeyword.trim());
-  if (actorType) params.set("actorType", actorType);
-  if (action) params.set("action", action);
-  if (entityType) params.set("entityType", entityType);
-  if (from) params.set("from", from);
-  if (to) params.set("to", to);
-  if (!admin && selectedProjectId) params.set("projectId", selectedProjectId);
-  if (page > 1 && snapshot !== null) params.set("snapshot", String(snapshot));
-  const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: [...keys.auditSearch, selectedProjectId, admin, deferredKeyword, actorType, action, entityType, from, to, page],
-    queryFn: ({ signal }) => api<AuditPage>(`/api/audit/search?${params}`, { signal }),
-    enabled: session.authenticated && (admin || Boolean(selectedProjectId)),
-  });
-  const resetPage = (update: () => void) => { update(); setSnapshot(null); setPage(1); };
+  const [view, setView] = usePageSearchParams(['q','actorType','action','entityType','from','to','snapshot'], admin);
+  const keyword = view.get('q') || '', deferredKeyword = useDeferredValue(keyword);
+  const actorType = view.get('actorType') || '', action = view.get('action') || '', entityType = view.get('entityType') || '';
+  const from = view.get('from') || '', to = view.get('to') || '';
+  const { page, pageSize } = readPagination(view, 50, 'main', [20, 50]);
+  const snapshot = view.get('snapshot');
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (deferredKeyword.trim()) params.set('q', deferredKeyword.trim());
+  for (const [key, value] of Object.entries({ actorType, action, entityType, from, to })) if (value) params.set(key, value);
+  if (!admin && selectedProjectId) params.set('projectId', selectedProjectId);
+  if (snapshot !== null) params.set('snapshot', snapshot);
+  const filterKey = JSON.stringify([admin ? 'platform' : selectedProjectId, deferredKeyword, actorType, action, entityType, from, to]);
+  const { data, isLoading, error, isFetching, clearError } = usePagedResourceQuery<AuditPage>(
+    [...keys.auditSearch, filterKey, page, pageSize, snapshot, refreshVersion], `/api/audit/search?${params}`, filterKey, session.authenticated && (admin || Boolean(selectedProjectId)));
+  const pagination = useListPagination({ total: data?.total || 0, filterKey, defaultPageSize: 50, options: [20, 50], personal: admin,
+    ready: Boolean(data) && !error, loading: isFetching, serverPage: data?.page, serverPageSize: data?.pageSize, failed: Boolean(error) });
+  usePageScrollPosition(!isLoading, admin);
+  useEffect(() => {
+    if (data && snapshot === null && !isFetching && !error) setView(current => { const next = new URLSearchParams(current); next.set('snapshot', String(data.snapshot)); return next; });
+  }, [data, snapshot, isFetching, error, setView]);
+  const updateFilter = (key: string, value: string) => setView(current => { const next = new URLSearchParams(current); next.set(key, value); next.set('page', '1'); next.delete('snapshot'); return next; });
+  const refetch = () => { clearError(); setView(current => { const next = new URLSearchParams(current); next.delete('snapshot'); next.set('page', '1'); return next; }); setRefreshVersion(value => value + 1); };
   const listUnavailable = Boolean(error && !data);
-  const changePage = (nextPage: number) => {
-    setSnapshot(nextPage === 1 ? null : (snapshot ?? data?.snapshot ?? null));
-    setPage(nextPage);
-  };
   if (!session.authenticated) return <><PageHeader title="操作日志" /><div className="page-content"><EmptyState title="登录后查看操作日志" detail="网页和MCP写入会统一记录。" action={<button className="primary-button" onClick={openLogin}>用户登录</button>} /></div></>;
   return <>
     <PageHeader title={admin ? "操作审计" : "项目日志"} />
     <div className="page-content logs-page">
       <FilterBar className="audit-filters">
-        <SearchInput value={keyword} onChange={(value) => resetPage(() => setKeyword(value))} placeholder="搜索用户、Token、操作内容、实体ID或拼音" />
-        <select value={actorType} onChange={(event) => resetPage(() => setActorType(event.target.value))}><option value="">全部来源</option><option value="user">用户</option><option value="token">MCP Token</option></select>
-        <select value={action} onChange={(event) => resetPage(() => setAction(event.target.value))}><option value="">全部动作</option>{Object.entries(auditActionLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
-        <select value={entityType} onChange={(event) => resetPage(() => setEntityType(event.target.value))}><option value="">全部对象</option>{Object.entries(auditEntityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
-        <label className="audit-date"><span>从</span><input type="date" value={from} onChange={(event) => resetPage(() => setFrom(event.target.value))} /></label>
-        <label className="audit-date"><span>至</span><input type="date" value={to} onChange={(event) => resetPage(() => setTo(event.target.value))} /></label>
+        <SearchInput value={keyword} onChange={(value) => updateFilter("q", value)} placeholder="搜索用户、Token、操作内容、实体ID或拼音" />
+        <select value={actorType} onChange={(event) => updateFilter("actorType", event.target.value)}><option value="">全部来源</option><option value="user">用户</option><option value="token">MCP Token</option></select>
+        <select value={action} onChange={(event) => updateFilter("action", event.target.value)}><option value="">全部动作</option>{Object.entries(auditActionLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
+        <select value={entityType} onChange={(event) => updateFilter("entityType", event.target.value)}><option value="">全部对象</option>{Object.entries(auditEntityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
+        <label className="audit-date"><span>从</span><input type="date" value={from} onChange={(event) => updateFilter("from", event.target.value)} /></label>
+        <label className="audit-date"><span>至</span><input type="date" value={to} onChange={(event) => updateFilter("to", event.target.value)} /></label>
       </FilterBar>
       {error && data && <div className="warning-banner">操作日志刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
-      <section className="panel audit-panel audit-page-panel">
-        <header><div><h2>写入记录</h2><p>共 {data?.total || 0} 条，按时间倒序</p></div></header>
-        <div className="audit-table">
+      <section className="panel audit-panel audit-page-panel paged-panel">
+        <header><div><h2>写入记录</h2><p>共 {data?.total || 0} 条，按时间倒序</p></div><button type="button" className="ghost-button" disabled={isFetching} onClick={refetch}>刷新</button></header>
+        <div className="audit-table paged-body" ref={pagination.scrollRef}>
           <div className="audit-head"><span>时间</span><span>来源</span><span>对象</span><span>动作</span><span>内容</span></div>
           {data?.items.map((item) => <div key={item.id}>
             <span>{new Date(item.createdAt).toLocaleString("zh-CN")}</span>
@@ -85,7 +82,7 @@ export function LogsPage() {
             ? <EmptyState title="操作日志加载失败" detail={error?.message || "暂时无法读取操作日志。"} action={<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button>} />
             : !data?.items.length && !isLoading && <EmptyState title="没有符合条件的日志" detail="调整搜索词或筛选条件后重试。" />}
         </div>
-        {!listUnavailable && <Pagination page={data?.page || 1} pages={data?.pages || 1} onChange={changePage} />}
+        {!listUnavailable && <Pagination {...pagination.props} label="日志分页" />}
       </section>
     </div>
   </>;

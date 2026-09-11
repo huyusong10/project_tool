@@ -12,6 +12,7 @@ import { businessDayDelta } from '../shared/domain';
 import * as schema from './schema';
 import { inspectDatabaseConsistency } from './database-validation';
 import { recoverInterruptedDatabaseSwap } from './database-swap';
+import { initializeLegacyWorkEstimates } from './work-estimate-migration';
 
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
 recoverInterruptedDatabaseSwap(config.dbPath);
@@ -154,6 +155,7 @@ function bootstrapAccounts() {
 ensureBuiltInSampleProject(sqlite, config.seedDemo);
 bootstrapAccounts();
 linkSampleProgressAuthors(sqlite);
+initializeLegacyWorkEstimates(sqlite);
 
 const databaseConsistency = inspectDatabaseConsistency(sqlite);
 if (databaseConsistency.foreignKeys) throw new Error(`数据库迁移后存在${databaseConsistency.foreignKeys}条外键异常`);

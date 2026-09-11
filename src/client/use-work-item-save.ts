@@ -10,12 +10,16 @@ import { assertCleanRequirementDraft } from "./use-graph-draft";
 const correctsActualDates = (input: Record<string, unknown>) =>
   Object.prototype.hasOwnProperty.call(input, "actualStart") || Object.prototype.hasOwnProperty.call(input, "actualEnd");
 
+const changesTimeline = (input: Record<string, unknown>) => ['plannedStart', 'plannedEnd', 'actualStart', 'actualEnd', 'progress'].some(key => key in input);
+
 export function useWorkItemSave(requirementId: string, people: Person[]) {
   const client = useQueryClient();
   const { session } = useSession();
   const run = useOptimisticMutation<{ item: WorkItem; input: Record<string, unknown>; expectedVersion?: number }, WorkItem>({
     snapshotKeys: () => [keys.requirement(requirementId), [...keys.requirements]],
     apply: (queryClient, { item, input }) => {
+      // Keep the complete timeline until the requirement query returns the new forecast snapshot.
+      if (changesTimeline(input)) return;
       const applyInput = (current: WorkItem) => {
         if (current.version > item.version) return current;
         const optimistic = { ...current, ...input } as WorkItem;
@@ -44,10 +48,11 @@ export function useWorkItemSave(requirementId: string, people: Person[]) {
         body: jsonBody({ ...input, expectedVersion }),
       });
     },
-    commit: (queryClient, saved) => {
+    commit: (queryClient, saved, { input }) => {
+      if (changesTimeline(input)) return;
       queryClient.setQueryData<Requirement>(keys.requirement(requirementId), (current) => current ? {
         ...current,
-        workItems: current.workItems.map((entry) => entry.id === saved.id && entry.version <= saved.version ? saved : entry),
+        workItems: current.workItems.map((entry) => entry.id === saved.id && entry.version <= saved.version ? { ...entry, ...saved } : entry),
       } : current);
     },
   });

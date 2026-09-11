@@ -80,7 +80,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
     expect(deleted).toEqual({ statusCode: 200, body: { ok: true } });
     const after = await detail(before.id);
     expect(after.version).toBe(before.version + 1);
-    expect(after.workItems).toEqual([before.workItems![0]]);
+    expect(after.workItems!.map(withoutForecastRevision)).toEqual([withoutForecastRevision(before.workItems![0])]);
     expect(after.plannedEnd).toBe(before.workItems![0].plannedEnd);
     expect((await remove(protocol, item.id, item.version)).statusCode).toBe(404);
     const { sqlite } = await import('../src/server/database');
@@ -99,7 +99,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
     expect(await detail(before.id)).toEqual(current);
     expect((await remove(protocol, item.id, updated.json().version)).statusCode).toBe(200);
     const after = await detail(before.id);
-    expect(after.workItems).toEqual([before.workItems![0]]);
+    expect(after.workItems!.map(withoutForecastRevision)).toEqual([withoutForecastRevision(before.workItems![0])]);
     expect(after.progressUpdates).toEqual(current.progressUpdates);
   });
 
@@ -123,3 +123,4 @@ for (const protocol of ['REST', 'MCP'] as const) {
     expect(sqlite.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='delete' AND entity_id=?").get(item.id)).toEqual({ n: 0 });
   });
 }
+import { withoutForecastRevision } from './fixtures/forecast-snapshot';

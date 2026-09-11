@@ -1,7 +1,9 @@
 import { memo, type HTMLAttributes } from "react";
 import { format } from "date-fns";
 import { ganttProgressDisplay } from "../../shared/domain";
-import { ganttInterval, ganttTodayPosition, ganttTrackStyle, type GanttZoom } from "../gantt-geometry";
+import { ganttInterval, ganttTrackStyle, type GanttZoom } from "../gantt-geometry";
+import type { GanttForecast } from '../gantt-forecast';
+import { GanttForecastTail } from './GanttForecastTail';
 export { buildBusinessDayTimeline, businessDateIndex, ganttInterval, ganttTodayPosition, ganttTrackStyle, ganttZoomOptions, toGanttDate, type GanttZoom } from "../gantt-geometry";
 const weekdayLabels = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -63,6 +65,7 @@ export function GanttPlanActualBars({
   progressAriaLabel,
   interactionProps,
   showUnscheduled = false,
+  forecast,
 }: {
   plannedStart?: string | null;
   plannedEnd?: string | null;
@@ -76,6 +79,7 @@ export function GanttPlanActualBars({
   progressAriaLabel?: string;
   interactionProps?: HTMLAttributes<HTMLElement>;
   showUnscheduled?: boolean;
+  forecast?: GanttForecast | null;
 }) {
   const plan = ganttInterval(plannedStart, plannedEnd, dates, cellWidth);
   const actual = ganttInterval(actualStart, actualEnd, dates, cellWidth);
@@ -84,13 +88,13 @@ export function GanttPlanActualBars({
   const earlyLeft = plan && actual && status === "completed" ? actual.right : 0;
   const earlyWidth = plan && actual && status === "completed" ? Math.max(0, plan.right - actual.right) : 0;
   const statusClass = status.replaceAll("_", "-");
-  const markerLeft = actual?.right ?? plan?.left;
+  const markerLeft = actual?.right;
   const interactionLeft = Math.min(plan?.left ?? Number.POSITIVE_INFINITY, actual?.left ?? Number.POSITIVE_INFINITY);
   const interactionRight = Math.max(plan?.right ?? Number.NEGATIVE_INFINITY, actual?.right ?? Number.NEGATIVE_INFINITY);
-  if (!plan && !actual && showUnscheduled) return <span className="gantt-unscheduled">待排期</span>;
   return <>
+    {!plan && !actual && showUnscheduled && <span className="gantt-unscheduled">待排期</span>}
     {plan && <span className="unified-gantt-plan" style={{ left: plan.left, width: plan.width }} />}
-    {actual && <span className={`unified-gantt-actual gantt-status-${statusClass}`} style={{ left: actual.left, width: actual.width }} />}
+    {actual && <span className={`unified-gantt-actual gantt-status-${statusClass}`} style={{ left: actual.left, width: actual.width }} data-start={actualStart} data-end={actualEnd} />}
     {earlyWidth > 0 && <span className="unified-gantt-early" style={{ left: earlyLeft, width: earlyWidth }} />}
     {delayWidth > 0 && <span className={`unified-gantt-delay gantt-status-${statusClass}`} style={{ left: delayLeft, width: delayWidth }} />}
     {plan && <span className="unified-gantt-plan-end" style={{ left: plan.right }} />}
@@ -108,6 +112,7 @@ export function GanttPlanActualBars({
       onClick={onProgressClick}
       ariaLabel={progressAriaLabel}
     />}
+    <GanttForecastTail forecast={forecast} plannedEnd={plan ? plannedEnd : null} dates={dates} cellWidth={cellWidth} interactionProps={interactionProps} />
   </>;
 }
 
@@ -148,84 +153,4 @@ export function GanttProgressMarker({
   return onClick
     ? <button type="button" className={className} style={{ left }} aria-label={label} title={label} onClick={(event) => { event.stopPropagation(); onClick(); }}>{content}</button>
     : <span className={className} style={{ left }} role="img" aria-label={label} title={supplementalLabel ? undefined : label} tabIndex={supplementalLabel ? 0 : undefined}>{content}</span>;
-}
-
-export function GanttProgressComparison({
-  plannedStart,
-  plannedEnd,
-  effectiveEnd,
-  status,
-  progress,
-  plannedProgress,
-  asOfDate,
-  dates,
-  cellWidth,
-  interactionProps,
-  showUnscheduled = false,
-}: {
-  plannedStart?: string | null;
-  plannedEnd?: string | null;
-  effectiveEnd?: string | null;
-  status: string;
-  progress: number;
-  plannedProgress: number | null;
-  asOfDate?: string;
-  dates: Date[];
-  cellWidth: number;
-  interactionProps?: HTMLAttributes<HTMLElement>;
-  showUnscheduled?: boolean;
-}) {
-  const plan = ganttInterval(plannedStart, plannedEnd, dates, cellWidth);
-  if (!plan || plannedProgress === null) return showUnscheduled ? <span className="gantt-unscheduled">待排期</span> : null;
-  const actualValue = normalizedProgress(status, progress);
-  const expectedValue = Math.min(100, Math.max(0, Math.round(plannedProgress || 0)));
-  const asOf = ganttTodayPosition(dates, asOfDate);
-  const expectedPoint = Math.min(plan.right, Math.max(plan.left, (asOf.offset + 1) * cellWidth));
-  const isTerminal = status === "completed" || status === "pending_acceptance" || status === "cancelled";
-  const actualPoint = isTerminal
-    ? plan.left + plan.width * actualValue / 100
-    : actualValue <= expectedValue
-      ? expectedValue > 0
-        ? plan.left + (expectedPoint - plan.left) * actualValue / expectedValue
-        : plan.left
-      : expectedPoint + (plan.right - expectedPoint) * (actualValue - expectedValue) / Math.max(1, 100 - expectedValue);
-  const behind = !isTerminal && actualValue < expectedValue;
-  const ahead = !isTerminal && actualValue > expectedValue;
-  const extended = ganttInterval(plannedStart, effectiveEnd, dates, cellWidth);
-  const delayWidth = extended ? Math.max(0, extended.right - plan.right) : 0;
-  // 已超期（expectedPoint 顶到计划结束点）且截止被推迟时，欠账段延伸覆盖延期区，不在原计划结束点截断。
-  const behindEnd = delayWidth > 0 && expectedPoint >= plan.right && extended ? extended.right : expectedPoint;
-  const behindWidth = Math.max(0, behindEnd - actualPoint);
-  // 超期未完成的延期区只是欠账（由欠账段覆盖填充），不再用实心蓝填充；已完成但延期的仍实心，代表实际工作在延期期内发生。
-  const delayUnfilled = !isTerminal && expectedPoint >= plan.right;
-  const aheadWidth = Math.max(0, actualPoint - expectedPoint);
-  const variance = actualValue - expectedValue;
-  const comparisonLabel = isTerminal || variance === 0
-    ? undefined
-    : `${variance < 0 ? "落后" : "领先"} ${Math.abs(variance)}% · 应达 ${expectedValue}%`;
-  const tooltipSide = actualPoint > dates.length * cellWidth - 150 ? "left" : "right";
-  const statusClass = status.replaceAll("_", "-");
-  return <>
-    <span className="unified-gantt-plan" style={{ left: plan.left, width: plan.width }} />
-    {actualValue > 0 && <span className={`unified-gantt-progress-actual gantt-status-${statusClass}`} style={{ left: plan.left, width: actualPoint - plan.left }} />}
-    {behind && <span className="unified-gantt-progress-gap is-behind" style={{ left: actualPoint, width: behindWidth }} />}
-    {ahead && <span className="unified-gantt-progress-gap is-ahead" style={{ left: expectedPoint, width: aheadWidth }} />}
-    {delayWidth > 0 && <span className={`unified-gantt-delay${delayUnfilled ? " is-unfilled" : ""} gantt-status-${statusClass}`} style={{ left: plan.right, width: delayWidth }} />}
-    <span className="unified-gantt-plan-end" style={{ left: plan.right }} />
-    {interactionProps && <span
-      className="gantt-bar-hitbox"
-      style={{ left: plan.left, width: Math.max(28, plan.width + delayWidth) }}
-      tabIndex={0}
-      aria-label="查看需求进度详情"
-      {...interactionProps}
-    />}
-    <GanttProgressMarker
-      left={actualPoint}
-      status={status}
-      progress={actualValue}
-      ariaLabel={`${progressStatusLabels[status] || status}，实际进度${actualValue}%，截至${asOf.asOfDate}应达${expectedValue}%`}
-      supplementalLabel={comparisonLabel}
-      tooltipSide={tooltipSide}
-    />
-  </>;
 }

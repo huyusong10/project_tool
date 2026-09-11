@@ -6,6 +6,7 @@ import { requirementQuerySchema, workItemQuerySchema, progressQuerySchema } from
 import { isOverdueByWorkday, todayIso } from '../../shared/domain';
 import { listRequirements, loadWorkItemsByRequirementIds } from './requirements';
 import { getPathAnalysis } from './paths';
+import { deliveryForecast } from '../../shared/forecast-basis';
 
 function pageInfo(total: number, page: number, pageSize: number) {
   return { total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) };
@@ -47,7 +48,7 @@ function workDetails(references: WorkReference[]) {
   return references.map(reference => {
     const item = work.get(reference.id)!;
     const node = analyses.get(reference.projectId)!.nodes.find(n => n.id === item.id);
-    return { ...item, ...reference, forecastBasis: node?.forecastBasis, blockerCoordination: node?.blockerCoordination,
+    return { ...item, ...reference, deliveryForecast: deliveryForecast(node, analyses.get(reference.projectId)!), forecastBasis: node?.forecastBasis, blockerCoordination: node?.blockerCoordination,
       overdue: !['completed', 'cancelled'].includes(item.status) && isOverdueByWorkday(item.plannedEnd, todayIso()) };
   });
 }

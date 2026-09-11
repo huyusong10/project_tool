@@ -71,7 +71,7 @@ it('按计划补录工作项、整条需求原子完成，重复提交不生成�
   const result = await post(`/api/requirements/${requirement.id}/complete-as-planned`, { expectedVersion: requirement.version });
   expect(result.statusCode, result.body).toBe(200);
   expect(result.json()).toMatchObject({ status: 'completed', progress: 100 });
-  expect(result.json().workItems.find((item: { id: string }) => item.id === first.id)).toEqual(completed.json());
+  expect(withoutForecastRevision(result.json().workItems.find((item: { id: string }) => item.id === first.id))).toEqual(withoutForecastRevision(completed.json()));
   expect(result.json().workItems.find((item: { id: string }) => item.id === cancelled.id).status).toBe('cancelled');
   const repeated = await post(`/api/requirements/${requirement.id}/complete-as-planned`, { expectedVersion: requirement.version });
   expect(repeated.statusCode).toBe(409);
@@ -138,7 +138,7 @@ it('整体调期不改写已取消工作项的历史计划', async () => {
     reason: '调整剩余有效工作项计划',
   });
   expect(adjusted.statusCode, adjusted.body).toBe(200);
-  expect(adjusted.json<RequirementRecord>().workItems!.find((item) => item.id === cancelledSnapshot.id)).toEqual(cancelledSnapshot);
+  expect(withoutForecastRevision(adjusted.json<RequirementRecord>().workItems!.find((item) => item.id === cancelledSnapshot.id)!)).toEqual(withoutForecastRevision(cancelledSnapshot));
   expect(adjusted.json<RequirementRecord>().workItems!.find((item) => item.id === activeBefore.id)?.plannedStart)
     .not.toBe(activeBefore.plannedStart);
 });
@@ -245,3 +245,4 @@ it('200个工作项整单补录保持常量级查询准备并写全事件和审�
 });
 
 async function defaultTemplate(projectId:string){const response=await app.inject({url:"/api/templates?projectId="+projectId,headers:{cookie}});return response.json<Array<{id:string}>>()[0].id;}
+import { withoutForecastRevision } from './fixtures/forecast-snapshot';

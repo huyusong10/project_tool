@@ -174,6 +174,7 @@ export const requirements = sqliteTable('requirements', {
 ]);
 
 export const workItems = sqliteTable('work_items', {
+  progressWeight: integer('progress_weight'),
   id: text('id').primaryKey(),
   requirementId: text('requirement_id').notNull().references(() => requirements.id, { onDelete: 'cascade' }),
   templateItemId: text('template_item_id').references(() => templateItems.id),

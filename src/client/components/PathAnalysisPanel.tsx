@@ -1,3 +1,5 @@
+import {useAppNavigate} from '../use-app-navigation';
+import { PageHeader } from './PageHeader';
 import {randomUUID} from '../random-uuid';
 import {DeliveryControlsForId} from './DeliveryControls';
 import {DeliveryImpactTable} from './DeliveryImpactTable';
@@ -7,11 +9,10 @@ import {EditorField} from './EditorField';
 import {fieldObjectId} from '../editor-fields';
 import {useEditorInteraction} from '../use-editor-interaction';
 import type {GraphConnectionIssue} from './DependencyGraph';
-import {flushSync} from 'react-dom';
 import { useCallback,useEffect,useMemo,useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useLocation, useNavigate } from 'react-router-dom';
-import {hasPageHistory,usePageBack} from '../use-page-view';
+import { useLocation } from 'react-router-dom';
+import {usePathReturn,type PathSource} from '../use-path-return';
 import { api, ApiError,jsonBody, requiresWriteRecheck } from '../api';
 import {Link2,Copy,Trash2,LocateFixed,GitBranch,FilePenLine,Maximize2,Minimize2} from 'lucide-react';
 import {EditorToolbar,EditorPalette,EditorInfo} from './EditorToolbar';
@@ -121,16 +122,17 @@ function PathEditor({editor,data,requirement,manager,onClose,onReload,onPlanRech
 export function PathAnalysisPanel({projectId,requirement,onExit}:{projectId:string;requirement?:PathRequirementContext;onExit?:()=>void}) {
   const [params]=useWorkspaceParams();
   const {session}=useSession();
-  const location=useLocation(),navigate=useNavigate(),url=location.pathname+location.search;
-  const leave=usePageBack(requirement?'/paths':'/');
+  const location=useLocation(),navigate=useAppNavigate(),url=location.pathname+location.search;
+  const pathReturn=usePathReturn();
   const savedUrl=remapSavedEditorUrl(url,(session.accountId||'guest')+':'+projectId);
   useEffect(()=>{if(savedUrl!==url)navigate(savedUrl,{replace:true,state:location.state});},[savedUrl,url,navigate,location.state]);
   const target=params.get('target')||(requirement?acceptanceId(requirement.id):'project');
   const query=useResourceQuery<PathAnalysis>([...keys.paths,projectId,requirement?.id||'all',target],
     requirement&&!params.has('draftProject')?'/api/requirements/'+requirement.id+'/path-analysis?target='+encodeURIComponent(target):'/api/projects/'+projectId+'/path-analysis'+(!params.has('draftProject')?'?target='+encodeURIComponent(target):''),!!projectId);
   useEffect(()=>{if(query.error instanceof ApiError&&[401,403].includes(query.error.status))clearProjectGraphDrafts(session.accountId||'guest',projectId);},[query.error,session.accountId,projectId]);
-  if(query.isLoading)return <div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace"><LoadingState label="正在分析交付依赖…"/></section></div>;
-  if(query.unavailable||!query.data)return <EmptyState title="路径分析暂不可用" detail={query.error?.message||'请选择项目'} action={<div className="button-row"><button className="ghost-button" onClick={leave}>{hasPageHistory()?'返回':requirement?'项目路径':'项目进展'}</button><button className="ghost-button" onClick={()=>void query.refetch()}>重新加载</button></div>}/>;
+  if(query.isLoading||query.unavailable||!query.data)return <><PageHeader title={requirement?.title||"路径分析"} titlePending={query.isLoading&&!requirement} onBack={requirement?pathReturn.back:undefined} backLabel={pathReturn.label} actions={<span/>}/><div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace">
+    {query.isLoading?<LoadingState label="正在分析交付依赖…"/>:<EmptyState title="路径分析暂不可用" detail={query.error?.message||'请选择项目'} action={<button className="ghost-button" onClick={()=>void query.refetch()}>重新加载</button>}/>}
+  </section></div></>;
   return <PathWorkspace key={projectId} data={query.data} requirement={requirement} target={target} onExit={onExit}
     onReload={async()=>{const result=await query.refetch({throwOnError:true});return result.data!;}}/>;
 }
@@ -141,9 +143,9 @@ function EstimateFields({node,structure,onChange}:{node:PathNode;structure:boole
     <small>字段修改加入草稿。保存预测后，计划日期仍需单独预览并应用。</small></div>;
 }
 function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:PathAnalysis;requirement?:PathRequirementContext;target:string;onExit?:()=>void;onReload:()=>Promise<PathAnalysis>}) {
-  const [params,setParams]=useWorkspaceParams(),location=useLocation(),navigate=useNavigate(),client=useQueryClient(),{session}=useSession();
-  const goBack=usePageBack(requirement?'/paths':'/');
-  const [leaving,setLeaving]=useState(false),mounted=useRef(true);
+  const [params,setParams]=useWorkspaceParams(),location=useLocation(),navigate=useAppNavigate(),client=useQueryClient(),{session}=useSession();
+  const pathReturn=usePathReturn();
+  const mounted=useRef(true);
   const planAccountId=session.accountId||'guest',planRequirementId=requirement?.id||'',milestoneProjectId=formal.projectId;
   const [planRecheck,setPlanRecheckState]=useState<DependencyPlanRecheck|null>(()=>planRequirementId?readDependencyPlanRecheck(planAccountId,planRequirementId):null),[planRechecking,setPlanRechecking]=useState(false);
   const setPlanRecheck=(value:DependencyPlanRecheck|null)=>{if(planRequirementId)writeDependencyPlanRecheck(planAccountId,planRequirementId,value);setPlanRecheckState(value);};
@@ -156,9 +158,12 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const focus=requirement?.id,manager=canManageProject(session,formal.projectId),canEdit=manager||!!requirement&&requirement.ownerId===session.personId;
   const draft=useDependencyDraft(session.accountId||'guest',formal,target,receipt=>{
     invalidateRequirementViews(client,focus);
-    if(receipt&&mounted.current){const scope=(session.accountId||'guest')+':'+formal.projectId,ids=receipt.addedIds;
+    if(receipt){const scope=(session.accountId||'guest')+':'+formal.projectId,ids=receipt.addedIds;
       remapEditorViews(scope,ids);
-      navigate(remapEditorUrl(location.pathname+location.search,ids),{replace:true,state:location.state});
+      // A save can finish while another route is opening. Remap only the live URL,
+      // and never replay the page/search captured when saving began.
+      const currentUrl=window.location.pathname+window.location.search,nextUrl=remapEditorUrl(currentUrl,ids);
+      if(mounted.current&&nextUrl!==currentUrl)navigate(nextUrl,{replace:true,state:window.history.state?.usr});
     }
     void onReload().catch(()=>{});
   });
@@ -204,7 +209,10 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const narrow=()=>matchMedia('(max-width: 800px)').matches;
 
   const openPanel=(name:string)=>{setPanel(panel===name?'':name);if(narrow())setInspector(false);};
-  const navigatePath=(url:string)=>{flushSync(()=>setLeaving(true));navigate(url);};
+  const navigatePath=(url:string)=>{
+    const pathSource:PathSource={projectId:formal.projectId,label:requirement?requirement.title+' · 需求路径':'项目路径',index:window.history.state?.idx??0};
+    navigate(url,{state:{pathSource}});
+  };
   const directTo=(requirementId:string,workItemId?:string|null)=>{
     const p=new URLSearchParams({view:'path',target});if(workItemId){p.set('pathNode',workItemId);p.set('pathInspector','open');}if(draft.changes.entities?.some(c=>c.id===requirementId&&c.op==='create'))p.set('draftProject',formal.projectId);
     navigatePath('/requirements/'+requirementId+'?'+p);
@@ -370,7 +378,7 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
   const currentEntity=selectedCard?entityFor(selectedCard.id):null,milestone=data.milestones?.find(m=>m.id===selected);
   const selectedRequirementSaved=!!selectedCard&&formal.requirements.some(r=>r.id===selectedCard.requirementId);
   const objectValue=currentEntity?.entity==='requirement'?{...data.requirements.find(r=>r.id===currentEntity.id),...currentEntity.data}:currentEntity?.entity==='milestone'?{...milestone,...currentEntity.data}:{title:node?.title,ownerId:node?.ownerId,assigneeIds:node?.assigneeIds,...node?.estimate,arrangement:node?.arrangement,arrangementAnchor:node?.arrangementAnchor,...currentEntity?.data};
-  const toolbar=<EditorToolbar title={focus?requirement!.title:formal.projectName+' · 交付依赖'} back={()=>{flushSync(()=>setLeaving(true));goBack();}} backLabel={hasPageHistory()?'返回':focus?'项目路径':'项目进展'} navigation={focus?<>{hasPageHistory()&&<button className="ghost-button" onClick={()=>navigatePath('/paths')}>项目路径</button>}{onExit&&!params.has('draftProject')&&<button className="ghost-button" onClick={onExit}>需求详情</button>}</>:undefined} editing={draft.active} begin={draft.begin} canEdit={canEdit||canEstimate} undo={()=>commands.dispatch({type:'undo'})} redo={()=>commands.dispatch({type:'redo'})} canUndo={draft.canUndo&&!draft.readOnly&&!draft.loading&&!draft.pending} canRedo={draft.canRedo&&!draft.readOnly&&!draft.loading&&!draft.pending} save={()=>void draft.save()} canSave={!draft.loading&&!draft.readOnly&&!!(draft.pending||!draft.conflict&&(draft.count||Object.keys(draft.fields).length))} busy={draft.busy} discard={()=>draft.count?setConfirmDiscard(true):draft.cancel()}
+  const toolbar=<EditorToolbar title={focus?requirement!.title:formal.projectName+' · 交付依赖'} back={focus?pathReturn.back:undefined} backLabel={pathReturn.label} navigation={focus?<><button className="ghost-button" onClick={()=>navigatePath('/paths')}>项目路径</button>{onExit&&!params.has('draftProject')&&<button className="ghost-button" onClick={onExit}>需求详情</button>}</>:undefined} editing={draft.active} begin={draft.begin} canEdit={canEdit||canEstimate} undo={()=>commands.dispatch({type:'undo'})} redo={()=>commands.dispatch({type:'redo'})} canUndo={draft.canUndo&&!draft.readOnly&&!draft.loading&&!draft.pending} canRedo={draft.canRedo&&!draft.readOnly&&!draft.loading&&!draft.pending} save={()=>void draft.save()} canSave={!draft.loading&&!draft.readOnly&&!!(draft.pending||!draft.conflict&&(draft.count||Object.keys(draft.fields).length))} busy={draft.busy} discard={()=>draft.count?setConfirmDiscard(true):draft.cancel()}
     context={<>{focus?<select aria-label="分析目标" value={target} onChange={e=>setParam('target',e.target.value)}><option value={acceptanceId(focus)}>本需求完成</option><option value="project">项目交付</option>{data.nodes.filter(n=>n.requirementId===focus&&n.kind==='milestone').map(n=><option key={n.id} value={n.id}>{n.title}</option>)}{!data.nodes.some(n=>n.id===target&&n.requirementId===focus)&&target!=='project'&&<option value={target}>{data.targetLabel}</option>}</select>:<select aria-label="分析目标" value={target} onChange={e=>setParam('target',e.target.value)}><option value="project">项目交付</option>{data.nodes.filter(n=>n.kind==='milestone'&&!n.requirementId).map(n=><option key={n.id} value={n.id}>{n.title}</option>)}</select>}<span title={'目标 '+(data.targetDate||'未设置')}>预计 {data.forecastEnd||'待确认'} · {data.deadlineSlack===null?'余量待确认':data.deadlineSlack+' 天余量'}</span></>}
     status={<>{branch&&<button className="ghost-button" onClick={()=>setParam('pathBranch','')}>退出聚焦</button>}{milestoneRecheck&&<button className="ghost-button danger-text" disabled={milestoneRechecking} onClick={()=>void recheckMilestone()}>{milestoneRechecking?'读取中…':'重新读取里程碑结果'}</button>}{planRecheck&&<button className="ghost-button danger-text" disabled={planRechecking} onClick={()=>void recheckPlan()}>{planRechecking?'读取中…':'重新读取排期结果'}</button>}<span data-draft-stored={draft.stored} title={draft.storageError||issue?.message||draft.error?.message||(draft.stored?'草稿已保留在本机':'正在保留本机草稿')}>{draft.loading?'恢复草稿…':draft.storageError?'本机保存失败':draft.conflict?'版本冲突':draft.readOnly?'其他页面编辑中':draft.count?(draft.restored?'已恢复草稿 · ':'')+draft.count+' 项未保存':draft.active?'编辑中':location.state?.pathNotice||'正式分析'}</span>{(draft.error||draft.conflict||issue)&&<button className="ghost-button danger-text" aria-label={draft.conflict?'版本冲突 · 查看修改':'查看草稿错误'} title="查看草稿修改与错误" onClick={()=>openPanel(issue?.kind?'connectionIssue':'changes')}>!</button>}</>}
     extra={<>{draft.active&&<button className="ghost-button" aria-label="草稿状态" title="查看本机草稿与冲突" onClick={()=>openPanel('changes')}><FilePenLine size={17}/></button>}<EditorInfo onClick={()=>openPanel('summary')}/><button className="ghost-button" aria-label="关系明细" title="关系明细" onClick={()=>openPanel('relations')}><Link2 size={17}/></button></>}/>;
@@ -428,7 +436,6 @@ function PathWorkspace({data:formal,requirement,target,onExit,onReload}:{data:Pa
       {draft.conflict&&<><p>服务端版本 {formal.revision}，草稿基于 {draft.version}。</p><p>请核对上述修改与最新值。已删除的关系会从移除列表中剔除；其他修改按您填写的值重新预览。</p><button className="primary-button" disabled={draft.unresolved>0} onClick={draft.rebase}>已核对，按最新版本重新预览</button></>}
     </>}
   </>:undefined;
-  if(leaving)return <div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace"><LoadingState label="正在打开…"/></section></div>;
   const commands=editorAdapter({properties:patchEntity,move:positions=>draft.change(withLayout(draft.changes,positions)),rename:(id,title)=>patchEntity(id,{title}),create:createEntity,duplicate:duplicate,replaceRelation,delete:(ids,edgeId)=>{const e=graph.links.find(e=>e.id===edgeId);if(e?.dependencyIds.length===1)draft.change(remove(e.dependencyIds[0]));else if(edgeId){setEdgeId(edgeId);setInspector(true);}else {draft.change(deleteEntities(data,draft.changes,ids));select('');}},connect:connect,reconnect:(source,destination)=>{const problem=validateReconnect(source,destination);if(problem)setIssue(problem);else{draft.change(reconnectChanges(source,destination));setRelationId('');setEdgeId('');}},undo:editing?draft.undo:undefined,redo:editing?draft.redo:undefined,save:()=>void draft.save(),copy:()=>structuredClone(data)},editing&&canEdit);
   return <div className="path-analysis immersive-path"><GraphWorkspace onRevealField={key=>{const id=fieldObjectId(key),card=graph.cards.find(c=>c.id===id);if(card){select(card.id);return;}const node=data.nodes.find(n=>n.id===id);if(node?.requirementId){directTo(node.requirementId,node.id);return;}if(id&&(data.requirements.some(r=>r.id===id)||data.milestones?.some(m=>m.id===id)))navigatePath('/paths?'+new URLSearchParams({pathScope:'all',target,pathNode:id,pathInspector:'open'}));else setIssue({message:'无法定位待修正字段，请查看草稿所属对象是否仍可编辑。'});}} auxiliaryKey={panel} commands={commands} interaction={interaction} document={draft} cards={graph.cards} links={graph.links} visibleIds={visibleIds} contextIds={contextIds} emphasizedIds={emphasizedIds} onExitFocus={()=>{if(placing)setPlacing('');else setParam('pathBranch','');}} auxiliarySize={panel==='schedule'&&datedSchedule?expandedSchedule?'expanded':'timeline':'compact'}
     reconnect={canReconnect?{id:reconnectRelation!.id,source:focus?dependencySource(reconnectRelation!):reconnectRelation!.sourceRequirementId||reconnectRelation!.sourceMilestoneId!,target:focus?dependencyTarget(reconnectRelation!):reconnectRelation!.targetRequirementId||reconnectRelation!.targetMilestoneId!}:undefined}

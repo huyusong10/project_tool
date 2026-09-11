@@ -1,15 +1,12 @@
 import { useEffect, useLayoutEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { NavLink } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { api } from "../api";
 import type { SystemBranding } from "../types";
 import { useProjects, useSession } from "../app-context";
 import { canManageProject, isAdmin } from "../permissions";
-import { keys } from "../query-keys";
 import { navGroupsFor } from "../routes";
-import { BrandLogo, defaultBranding } from "./BrandLogo";
+import { BrandLogo } from "./BrandLogo";
 
 type TooltipState = { anchor: HTMLElement; label: string; group: string };
 
@@ -39,13 +36,9 @@ function NavigationTooltip({ value }: { value: TooltipState | null }) {
   );
 }
 
-export function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolean; onToggle: () => void; onNavigate?: () => void }) {
+export function Sidebar({ collapsed, onToggle, onNavigate, branding, ready }: { collapsed: boolean; onToggle: () => void; onNavigate?: () => void; branding?: SystemBranding; ready: boolean }) {
   const { session } = useSession();
   const { selectedProjectId } = useProjects();
-  const { data: branding = defaultBranding } = useQuery({
-    queryKey: [...keys.branding],
-    queryFn: ({ signal }) => api<SystemBranding>("/api/branding", { signal }),
-  });
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const groups = navGroupsFor({
     authenticated: session.authenticated,
@@ -59,8 +52,8 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolea
   return (
     <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}`} aria-label="主导航">
       <div className="brand-mark">
-        <BrandLogo branding={branding} />
-        <strong className="brand-name">{branding.systemName}</strong>
+        {branding ? <BrandLogo branding={branding} /> : <span className="brand-logo shell-placeholder" aria-hidden="true"/>}
+        <strong className="brand-name">{branding?.systemName || <span className="brand-name-placeholder shell-placeholder" aria-hidden="true"/>}</strong>
         <button
           type="button"
           className="sidebar-collapse-button"
@@ -72,7 +65,7 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolea
         </button>
       </div>
       <nav className="sidebar-nav" aria-label="功能导航">
-        {groups.length ? groups.map((group, groupIndex) => (
+        {!ready ? <span className="nav-login-hint" aria-label="正在加载导航"/> : groups.length ? groups.map((group, groupIndex) => (
           <section className="nav-group" aria-label={group.label} key={group.label}>
             <span className={`nav-section${groupIndex === 0 ? " nav-section-first" : ""}`}>{group.label}</span>
             <div className="nav-group-items">

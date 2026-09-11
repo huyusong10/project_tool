@@ -1,4 +1,4 @@
-import {nodeForecastBasis} from '../../shared/forecast-basis';
+import {nodeForecastBasis, deliveryForecast, requirementDeliveryForecast} from '../../shared/forecast-basis';
 import {type DeliveryFields,type ProcessingResult,deliveryReadiness,processingPriority} from '../../shared/delivery';
 import { sqlite } from '../database';
 import { config } from '../config';
@@ -10,6 +10,7 @@ import { getPathAnalysis, startConditions } from './paths';
 import type { PathRisk } from '../../shared/paths';
 
 export type WorkItemRecord = import('../../shared/forecast-basis').ExecutionMetadata & {
+  progressWeight?:number|null;
   durationDays?:number|null;
   dependencyRevision?:number; unmetPredecessors?:Array<{id:string;title:string}>;
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
@@ -21,6 +22,7 @@ export type WorkItemRecord = import('../../shared/forecast-basis').ExecutionMeta
 };
 
 export type RequirementRecord = DeliveryFields & import('../../shared/intake').Organization & Partial<ProcessingResult> & {
+  milestones?: import('../../shared/paths').PathMilestone[];
   readinessIssues?:string[];
   pathRisk?: PathRisk; pathEnabled?:number;
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
@@ -56,7 +58,7 @@ export function requirementCompletionDate(requirement: RequirementRecord) {
   return requirement.executionCompletedAt || requirement.actualEnd || requirement.effectiveEnd || null;
 }
 
-export const workItemSelect = `SELECT w.duration_days AS durationDays,w.id, w.requirement_id AS requirementId, w.template_item_id AS templateItemId,
+export const workItemSelect = `SELECT w.progress_weight AS progressWeight,w.duration_days AS durationDays,w.id, w.requirement_id AS requirementId, w.template_item_id AS templateItemId,
   w.title, w.owner_id AS ownerId, p.name AS ownerName, w.status,
   w.planned_start AS plannedStart, w.planned_end AS plannedEnd,
   w.forecast_review AS forecastReview,w.blocked_coordinator_id AS blockedCoordinatorId,w.blocked_next_review_at AS blockedNextReviewAt,w.blocked_issue_id AS blockedIssueId,w.actual_start AS actualStart, w.actual_end AS actualEnd, w.forecast_end AS forecastEnd,
@@ -162,7 +164,10 @@ function enrichRequirement(requirement: RequirementRecord, workItems: WorkItemRe
 }
 
 export const requirementAnalysisSnapshots=new WeakMap<RequirementRecord[],Map<string,import('../../shared/paths').PathAnalysis>>();
-export function listRequirements(filters: { groupId?:string;deliveryScope?:'committed'|'candidate';projectId?: string; ownerId?: string; includeDeleted?: boolean; view?: string; status?: string } = {}, asOfDate = todayIso()) {
+export function listRequirements(...args: Parameters<typeof readRequirements>) {
+  return sqlite.transaction(() => readRequirements(...args))();
+}
+function readRequirements(filters: { groupId?:string;deliveryScope?:'committed'|'candidate';projectId?: string; ownerId?: string; includeDeleted?: boolean; view?: string; status?: string } = {}, asOfDate = todayIso()) {
   const where = [filters.includeDeleted ? '1=1' : 'r.deleted_at IS NULL'];
   const params: unknown[] = [];
   if (filters.projectId) { where.push('r.project_id=?'); params.push(filters.projectId); }
@@ -180,6 +185,10 @@ export function listRequirements(filters: { groupId?:string;deliveryScope?:'comm
   ));
   const analyses = new Map([...new Set(requirements.map(r => r.projectId))].map(projectId => [projectId, getPathAnalysis(projectId, undefined, asOfDate)]));
   result = result.map(r => {
+    const snapshot = analyses.get(r.projectId)!;
+    r.deliveryForecast = requirementDeliveryForecast(r.id, snapshot);
+    r.milestones = snapshot.milestones?.filter(m => m.requirementId === r.id) || [];
+    for (const w of r.workItems || []) w.deliveryForecast = deliveryForecast(snapshot.nodes.find(n => n.id === w.id), snapshot);
     const analysis=analyses.get(r.projectId)!,facts=analysis.requirements.find(n=>n.id===r.id);r.forecastBasis=nodeForecastBasis(analysis.nodes,r.id);r.blockerCoordination=analysis.nodes.find(n=>n.id==='execute:'+r.id)?.blockerCoordination;r.commitment=facts?.commitment;Object.assign(r,{executionForecastEnd:facts?.executionForecastEnd,acceptanceForecastEnd:facts?.acceptanceForecastEnd,acceptanceAssumed:facts?.acceptanceAssumed});
     for(const w of r.workItems||[])Object.assign(w,{forecastBasis:analysis.nodes.find(n=>n.id===w.id)?.forecastBasis,blockerCoordination:analysis.nodes.find(n=>n.id===w.id)?.blockerCoordination});
     const pathRisk = analyses.get(r.projectId)?.risks[r.id];
@@ -195,7 +204,10 @@ export function listRequirements(filters: { groupId?:string;deliveryScope?:'comm
 }
 
 /** Batch writers read execution facts while their final dependency network is still being assembled. */
-export function getRequirement(id: string, includeDeleted = false, withPathAnalysis = true) {
+export function getRequirement(...args: Parameters<typeof readRequirement>) {
+  return sqlite.transaction(() => readRequirement(...args))();
+}
+function readRequirement(id: string, includeDeleted = false, withPathAnalysis = true) {
   const requirement = row<RequirementRecord>(`${requirementSelect} WHERE r.id=? ${includeDeleted ? '' : 'AND r.deleted_at IS NULL'}`, id);
   if (!requirement) notFound('需求不存在');
   const asOfDate = todayIso();
@@ -221,6 +233,8 @@ export function getRequirement(id: string, includeDeleted = false, withPathAnaly
   const milestones=rows<import('../../shared/paths').PathMilestone>('SELECT id,project_id AS projectId,requirement_id AS requirementId,title,target_date AS targetDate,confirmation_mode AS confirmationMode,achieved_at AS achievedAt,version,cancelled FROM milestones WHERE requirement_id=?',id);
   for(const m of milestones)m.forecastEnd=pathAnalysis?.nodes.find(n=>n.id===m.id)?.forecastEnd||null;
   if(pathAnalysis){
+    result.deliveryForecast = requirementDeliveryForecast(id, pathAnalysis);
+    for (const w of result.workItems || []) w.deliveryForecast = deliveryForecast(pathAnalysis.nodes.find(n => n.id === w.id), pathAnalysis);
     result.forecastBasis=nodeForecastBasis(pathAnalysis.nodes,id);result.blockerCoordination=pathAnalysis.nodes.find(n=>n.id==='execute:'+id)?.blockerCoordination;result.commitment=pathAnalysis.requirements.find(n=>n.id===id)?.commitment;
     const facts=pathAnalysis.requirements.find(n=>n.id===id);Object.assign(result,{executionForecastEnd:facts?.executionForecastEnd,acceptanceForecastEnd:facts?.acceptanceForecastEnd,acceptanceAssumed:facts?.acceptanceAssumed});
     for(const w of result.workItems||[])Object.assign(w,{forecastBasis:pathAnalysis.nodes.find(n=>n.id===w.id)?.forecastBasis,blockerCoordination:pathAnalysis.nodes.find(n=>n.id===w.id)?.blockerCoordination});

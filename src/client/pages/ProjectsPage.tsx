@@ -1,3 +1,6 @@
+import { Pagination } from '../components/Pagination';
+import { useListPagination } from '../use-list-pagination';
+import { usePageScrollPosition } from '../use-page-view';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Archive, Plus } from "lucide-react";
@@ -111,6 +114,8 @@ export function ProjectsPage() {
     archive.mutate(input);
   };
   const recheckProjectArchive=async()=>{if(!archiveRecheck||archiveRechecking)return;setArchiveRechecking(true);try{const [latestProjects,latestArchives]=await Promise.all([api<Project[]>('/api/projects',{readOnly:true}),api<Archives>('/api/archives',{readOnly:true})]);client.setQueryData(keys.projects,latestProjects);client.setQueryData(keys.archives,latestArchives);const active=latestProjects.some(item=>item.id===archiveRecheck.id),archived=latestArchives.projects.some(item=>item.id===archiveRecheck.id);if(active!==archived){setArchiveRecheck(null);setArchiveTarget(null);setArchiveConflict(null);setArchiveError('');invalidateProjectViews(client);}}catch{/* 两份权威列表必须同时读取成功。 */}finally{setArchiveRechecking(false);}};
+  const pagination = useListPagination({ items: projects, personal: true });
+  usePageScrollPosition(true, true);
   return (
     <>
       <PageHeader
@@ -125,11 +130,11 @@ export function ProjectsPage() {
       <div className="page-content">
         {createRecheck&&<div role="alert" className="warning-banner">项目创建结果待核对，新建入口暂不可用。<button type="button" className="ghost-button" onClick={()=>setCreating(true)}>核对项目创建</button></div>}
         {archiveRecheck&&<div role="alert" className="warning-banner">“{archiveRecheck.name}”的项目归档结果待核对，其他归档操作暂不可用。<button type="button" className="ghost-button" disabled={archiveRechecking} onClick={()=>void recheckProjectArchive()}>{archiveRechecking?'读取中…':'重新读取项目与归档'}</button></div>}
-        <div className="table-panel project-table">
+        <div className="table-panel project-table paged-panel"><div className="paged-body" ref={pagination.scrollRef}>
           <table>
             <thead><tr><th>项目</th><th>计划周期</th><th>状态</th>{session.authenticated && <th>操作</th>}</tr></thead>
             <tbody>
-              {projects.map((project) => {
+              {pagination.items.map((project) => {
                 return (
                 <tr key={project.id} className={project.id === selectedProjectId ? "is-current" : ""}>
                   <td><span className="project-name-line"><strong>{project.name}</strong>{project.isSample && <span className="sample-project-badge">样板</span>}</span>{project.id === selectedProjectId && <small>当前项目</small>}</td>
@@ -154,7 +159,8 @@ export function ProjectsPage() {
                 </tr>
               );})}
             </tbody>
-          </table>
+          </table></div>
+          <Pagination {...pagination.props} label="项目列表分页" />
           {!projects.length && <EmptyState title="还没有项目" detail="创建第一个项目后即可维护需求和排期。" />}
         </div>
         {creating && (

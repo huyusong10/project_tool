@@ -13,7 +13,7 @@
     "build": "npm run typecheck && vite build && tsup src/server/index.ts --format esm --platform node --out-dir dist-server --external better-sqlite3 && npm run sync:codex-skill",
     "sync:codex-skill": "node scripts/sync-codex-skill.mjs",
     "build:test-ui": "npm run typecheck && node scripts/build-test-ui.mjs && tsup src/server/index.ts --format esm --platform node --out-dir .playwright/server --external better-sqlite3",
-    "start": "node dist-server/index.js",
+    "start": "node scripts/run-server.mjs",
     "db:generate": "drizzle-kit generate",
     "test": "vitest run --maxWorkers=4",
     "test:responsive": "playwright test --config playwright.config.ts",

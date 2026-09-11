@@ -85,7 +85,7 @@ test("project selection persists and respects page scope", async ({ page }) => {
   const switcherBox = (await page.locator(".project-switcher").boundingBox())!;
   // 极长项目名和操作区先保留空间；标题仍至少保留原来的可读宽度。
   expect(titleBox.width).toBeGreaterThanOrEqual(80);
-  expect(switcherBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width);
+  expect(switcherBox.x + switcherBox.width).toBeLessThanOrEqual(titleBox.x);
   expect(await page.locator(".topbar").evaluate((element) => element.getBoundingClientRect().height)).toBe(dashboardTopbarHeight);
   if (await title.evaluate((element) => element.scrollWidth > element.clientWidth)) {
     await title.focus();
@@ -93,7 +93,7 @@ test("project selection persists and respects page scope", async ({ page }) => {
     await page.keyboard.press("Escape");
   }
   await selectProject(page, secondName);
-  await expect(page).toHaveURL(/\/requirements$/);
+  await expect(page).toHaveURL(/\/requirements(?:\?|$)/);
   await expect(page.locator(".project-switcher-name")).toHaveText(secondName);
 
   await page.goto(`/issues?issueId=${issue.id}&ownerId=${oldPerson.id}&requirementId=${oldRequirement.id}`);

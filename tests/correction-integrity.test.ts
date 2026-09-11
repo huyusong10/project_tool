@@ -494,7 +494,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
       title: `${before.title}（修正）`, background: '补录核对后的需求背景', status: 'completed', progress: 100,
       acceptedAt: before.acceptedAt, plannedStart: before.plannedStart, plannedEnd: before.plannedEnd,
     });
-    expect(after.workItems).toEqual(before.workItems);
+    expect(after.workItems!.map(withoutForecastRevision)).toEqual(before.workItems!.map(withoutForecastRevision));
     expect(after.progressUpdates).toEqual(expect.arrayContaining(before.progressUpdates));
     expect(after.progressUpdates).toContainEqual(expect.objectContaining({
       eventType: 'correction', content: '历史标题与背景录入有误', supersedesId: source.id, workItemId: null,
@@ -1041,3 +1041,4 @@ it('REST：无参数命令拒绝附带字段', async () => {
   const logout = await app.inject({ method: 'POST', url: '/api/logout', headers: { cookie }, payload: { everywhere: true } });
   expect(logout.statusCode).toBe(400);
 });
+import { withoutForecastRevision } from './fixtures/forecast-snapshot';

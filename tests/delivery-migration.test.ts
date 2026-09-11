@@ -24,7 +24,8 @@ it('交付升级保留旧事实，只有零工作项需求采用直接执行，�
   for(let i=0;i<original.length;i++)for(const key of Object.keys(original[i]))expect(after[i][key],key).toEqual(original[i][key]);
   expect(after.map(r=>[r.id,r.delivery_scope,r.execution_mode,r.actual_start])).toEqual([['cancelled-work','committed','work_items',null],['plain','committed','direct',null],['split','committed','work_items',null]]);
   const afterWorks=db.prepare('SELECT * FROM work_items ORDER BY id').all() as Record<string,unknown>[];
-  for(let i=0;i<works.length;i++)for(const key of Object.keys(works[i]))expect(afterWorks[i][key],key).toEqual(works[i][key]);
+  for(let i=0;i<works.length;i++)for(const key of Object.keys(works[i]))expect(afterWorks[i][key],key).toEqual(key==='version'?Number(works[i][key])+1:works[i][key]);
+  expect(afterWorks.map(w=>w.progress_weight)).toEqual([1,1]);
   for(const row of [...after,...afterWorks])for(const field of ['forecast_review','blocked_coordinator_id','blocked_next_review_at','blocked_issue_id'])expect(row[field],field).toBeNull();
   expect(db.prepare('SELECT COUNT(*) AS n FROM delivery_commitments').get()).toEqual({n:0});
   expect(db.pragma('integrity_check')).toEqual([{integrity_check:'ok'}]);expect(db.pragma('foreign_key_check')).toEqual([]);

@@ -61,7 +61,7 @@ test("项目看板、我的工作和个人设置采用新的信息层级", async
   await expect(page.getByRole("table", { name: "分配给我的工作项甘特图" })).toBeVisible();
   await expect(page.locator(".my-work-list .unified-gantt-plan")).toHaveCount(1);
   await expect(page.locator(".my-work-list .gantt-progress-marker")).toHaveText("40");
-  await expect(page.getByRole("button", { name: "为SDS 文档编写更新完成度" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "为SDS 文档编写更新进度" })).toBeVisible();
   await expect(page.locator(".my-work-dates")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
   await page.getByRole("button", { name: "SDS 文档编写", exact: true }).click();

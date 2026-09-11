@@ -31,6 +31,7 @@ function Workspace({ document:editorDocument, auxiliaryKey, toolbar, detail, aux
   const root=useRef<HTMLElement>(null),finderRef=useRef<HTMLDivElement>(null);
   const runtime=useContext(WorkspaceRuntimeContext)!;runtime.document=editorDocument;runtime.interaction=graph.interaction;runtime.revealField=graph.onRevealField;runtime.save=()=>{graph.commands.dispatch({type:'save'});};useWorkspaceEvents(runtime,root);
   const requestSave=()=>{if(runtime.composing){runtime.saveRequested=true;return;}if(runtime.interaction?.operation&&runtime.interaction.operation.kind!=='field'){runtime.cancel();return;}let valid=false;flushSync(()=>{valid=runtime.commitFields();});if(valid)runtime.save?.();};
+  runtime.requestSave=requestSave;
   const finderKey='pm-graph-view:'+graph.viewKey+':finder';
   const finderHistoryKey=graph.historyIndex===undefined?null:finderKey+':history:'+graph.historyIndex;
   const [finding,setFinding]=useState(()=>{try{return ((finderHistoryKey?sessionStorage.getItem(finderHistoryKey):null)??localStorage.getItem(finderKey))==='true';}catch{return false;}});
@@ -38,19 +39,18 @@ function Workspace({ document:editorDocument, auxiliaryKey, toolbar, detail, aux
   useEffect(()=>{try{localStorage.setItem(finderKey,String(finding));if(finderHistoryKey)sessionStorage.setItem(finderHistoryKey,String(finding));}catch{/* View is still usable. */}},[finderKey,finderHistoryKey,finding]);
   useEffect(()=>{
     const element=root.current;if(!element)return;
-    const toolbar=element.querySelector('.graph-toolbar')!,footer=element.querySelector('.graph-footer')!,controls=element.querySelector('.graph-view-controls')!;
+    const footer=element.querySelector('.graph-footer')!,controls=element.querySelector('.graph-view-controls')!;
     const update=()=>{
       const box=element.getBoundingClientRect(),a=footer.getBoundingClientRect(),b=controls.getBoundingClientRect();
-      const finder=element.querySelector('.graph-finder');element.style.setProperty('--graph-find-bottom',((finder?finder.getBoundingClientRect().bottom:toolbar.getBoundingClientRect().bottom)-box.top+12)+'px');
+      const finder=element.querySelector('.graph-finder');element.style.setProperty('--graph-find-bottom',((finder?finder.getBoundingClientRect().bottom:box.top)-box.top+12)+'px');
       const stacked=box.width<801||a.width+b.width+44>box.width;
       element.dataset.stacked=String(stacked);
-      element.style.setProperty('--graph-toolbar-bottom',(toolbar.getBoundingClientRect().bottom-box.top+12)+'px');
       element.style.setProperty('--graph-footer-height',a.height+'px');
       // Reserve 12px clearance even at the 8px entry-animation offset.
       const bottom=box.bottom-Math.min(footer.getBoundingClientRect().top,controls.getBoundingClientRect().top)+20;
       element.style.setProperty('--graph-bottom-clearance',bottom+'px');
     };
-    const observer=new ResizeObserver(update);[element,toolbar,footer,controls,element.querySelector('.graph-finder')].filter((e):e is HTMLElement=>!!e).forEach(e=>observer.observe(e));update();
+    const observer=new ResizeObserver(update);[element,footer,controls,element.querySelector('.graph-finder')].filter((e):e is HTMLElement=>!!e).forEach(e=>observer.observe(e));update();
     return()=>observer.disconnect();
   },[finding]);
   return <section ref={root} className={'graph-workspace graph-editor-workspace'+(finding?' has-finder':'')+(analysis?' has-analysis':'')+(detail?' has-inspector':'')} aria-label="交付依赖工作区" onCompositionStart={()=>{runtime.composing=true;}} onCompositionEnd={()=>{runtime.composing=false;if(runtime.saveRequested){runtime.saveRequested=false;queueMicrotask(requestSave);}}}
@@ -59,7 +59,7 @@ function Workspace({ document:editorDocument, auxiliaryKey, toolbar, detail, aux
     onKeyDown={e=>{const input=(e.target as HTMLElement).closest('input,textarea,select,[contenteditable=true]');if(!e.defaultPrevented&&!input&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.stopPropagation();if(!runtime.interaction?.cancel())graph.commands.dispatch({type:e.shiftKey?'redo':'undo'});return;}if(e.key!=='Escape'||e.defaultPrevented||e.nativeEvent.isComposing)return;if(runtime.interaction?.operation){e.preventDefault();e.stopPropagation();runtime.cancel();return;}if(runtime.dismiss(e.target as Element)){e.preventDefault();e.stopPropagation();}}}>
 
     <DependencyGraph {...graph} originPositions={editorDocument.layoutBaselines[graph.viewKey]} onOrigin={positions=>editorDocument.captureLayout(graph.viewKey,positions)} onDismissOverlays={()=>runtime.dismiss()} onSearch={()=>{setFinding(true);graph.onSearch?.();requestAnimationFrame(()=>root.current?.querySelector<HTMLInputElement>('.graph-finder input')?.focus());}}/>
-      <div className="graph-toolbar graph-overlay nopan nodrag nowheel" data-graph-panel="top" data-workspace-zone="tools">{toolbar}</div>
+      {toolbar}
       <div className="graph-tool-rail graph-overlay nopan nodrag nowheel" data-graph-panel="left" data-workspace-zone="tools">{palette}{finder&&<FindTool onClick={()=>setFinding(v=>!v)}/>}</div>
       {finder&&finding&&<div ref={finderRef} className="graph-finder graph-overlay nopan nodrag nowheel" data-graph-panel="left">{finder}</div>}
       <FloatingPanel onDismiss={onDismissDetail} content={detail} side="right" replacement={!!auxiliary} contentKey={JSON.stringify(graph.interaction.selection)}/>

@@ -142,8 +142,12 @@ it('REST、MCP和延期筛选按工作完成日期计算，等待或确认验收
     expect(page.items[0]).toMatchObject({ effectiveEnd: '2026-09-01', finishVariance: 2, delayed: true });
     expect(await get('/api/requirements/query?' + new URLSearchParams(input))).toEqual(page);
     expect((await call<Requirement[]>('list_requirements', input)).map(r => r.id)).toEqual([f.ids.b]);
-    const dashboard = await get<{ summary: { delayed: number }; requirements: Requirement[] }>('/api/dashboard?projectId=' + f.projectId);
+    const dashboard = await get<import('../src/client/types').Dashboard>('/api/dashboard?projectId=' + f.projectId);
     expect(dashboard.summary.delayed).toBe(1);
+    expect(dashboard.overview?.counts.attention).toBe(0);
+    expect(dashboard.overview?.counts.delayed).toBe(0);
+    const mcpDashboard = await call<import('../src/client/types').Dashboard>('dashboard_summary', { projectId: f.projectId });
+    expect(mcpDashboard.overview).toEqual(dashboard.overview);
     expect(dashboard.requirements.find(r => r.id === f.ids.a)).toMatchObject({ finishVariance: 0, delayed: false });
   }
 });

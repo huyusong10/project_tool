@@ -3,7 +3,7 @@ import { Check, Monitor, Moon, Palette, Sun } from "lucide-react";
 import { setTheme, themes, useTheme, useThemePreference } from "../theme";
 
 /** 外观菜单不参与 InlineEdit 的编辑器抢占和自动提交。 */
-export function ThemePicker() {
+export function ThemePicker({ showLabel = false }: { showLabel?: boolean }) {
   const theme = useTheme();
   const preference = useThemePreference();
   const Icon = preference === "system" ? Monitor : theme === "classic" ? Sun : theme === "dcim" ? Moon : Palette;
@@ -28,7 +28,7 @@ export function ThemePicker() {
   }}>
     <button ref={trigger} type="button" className="icon-button theme-toggle" aria-label={`切换风格，当前${themes.find((entry) => entry.id === theme)?.label}`} title="切换风格" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen((value) => !value)} onKeyDown={(event) => {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setOpen(true); }
-    }}><Icon size={17} /></button>
+    }}><Icon size={17} />{showLabel && <span>界面风格</span>}</button>
     {open && <div id={id} ref={menu} className="theme-menu" role="menu" aria-label="选择界面风格" onKeyDown={(event) => {
       const buttons = Array.from(menu.current?.querySelectorAll<HTMLButtonElement>('button') || []);
       const index = buttons.indexOf(document.activeElement as HTMLButtonElement);

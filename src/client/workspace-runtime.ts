@@ -8,7 +8,7 @@ type PointerHandlers={move?:(e:PointerEvent)=>void;up?:(e:PointerEvent)=>void;fo
 export class WorkspaceRuntime{
   root:HTMLElement|null=null;lastTrigger:HTMLElement|null=null;interaction:EditorInteraction|null=null;
   fieldOwner?:{key:string;owner:string};
-  document?:WorkspaceDocument;save?:()=>void;revealField?:(key:string)=>void;composing=false;saveRequested=false;
+  document?:WorkspaceDocument;save?:()=>void;requestSave?:()=>void;revealField?:(key:string)=>void;composing=false;saveRequested=false;
   fields=new Map<symbol,{key:string;commit:()=>boolean;focus:()=>boolean;cancel:()=>void}>();
   focusPendingField(){const key=this.document?.pendingField;if(!key)return;for(const field of this.fields.values())if(field.key===key&&field.focus()){this.document?.requestField();return;}}
   private revealInvalid(key:string){this.document?.requestField(key);this.revealField?.(key);this.focusPendingField();}
@@ -24,7 +24,7 @@ export class WorkspaceRuntime{
   private close(layer:Layer,restore:boolean){const element=layer.element(),active=document.activeElement;layer.close();if(restore&&(active===document.body||active instanceof Node&&element?.contains(active))){const target=layer.trigger?.isConnected?layer.trigger:this.root?.querySelector<HTMLElement>('.dependency-canvas');target?.focus({preventScroll:true});}}
   dismiss(target?:Element){const layers=[...this.layers.values()].reverse();const layer=layers.find(l=>target&&l.element()?.contains(target))||layers[0];if(!layer)return false;this.close(layer,true);return true;}
   outside=(event:PointerEvent)=>{
-    const target=event.target;if(target instanceof Element&&this.root?.contains(target)){const button=target.closest<HTMLElement>('button,summary');if(button)this.lastTrigger=button;}if(!(target instanceof Element)||target.closest('[role=dialog],.modal-backdrop'))return;
+    const target=event.target;if(target instanceof Element&&(this.root?.contains(target)||target.closest('.topbar,[data-workspace-zone="tools"]'))){const button=target.closest<HTMLElement>('button,summary');if(button)this.lastTrigger=button;}if(!(target instanceof Element)||target.closest('[role=dialog],.modal-backdrop'))return;
     const layers=[...this.layers.values()].reverse(),inside=layers.find(l=>l.element()?.contains(target));
     for(const layer of layers)if(layer.kind==='menu'&&!layer.element()?.contains(target))this.close(layer,false);
     if(inside){if(this.interaction?.operation?.kind!=='field')this.cancel();return;}

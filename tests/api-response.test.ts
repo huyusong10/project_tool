@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { api, ApiError, isTemporaryReadError, setUnauthorizedHandler } from '../src/client/api';
+import { api, ApiError, InvalidResponseError, isTemporaryReadError, setUnauthorizedHandler } from '../src/client/api';
 
 afterEach(() => { vi.unstubAllGlobals(); setUnauthorizedHandler(null); });
 const respond = (response: Response) => vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
@@ -94,4 +94,17 @@ it('有效业务错误保留消息、代码、详情与并发版本', async () =
   respond(new Response(JSON.stringify(errorBody), { status: 409 }));
   const error = await api('/api/requirements/r1').catch((caught: unknown) => caught);
   expect(error).toMatchObject({ message: errorBody.error, status: 409, code: errorBody.code, details: errorBody.details, currentVersion: 5 });
+});
+
+it('数据库下载接受二进制内容，HTML 成功响应和登录失效按错误处理', async () => {
+  respond(new Response('SQLite format 3\0', { headers: { 'content-type': 'application/vnd.sqlite3' } }));
+  const blob = await api<Blob>('/api/backups/example.db/download', { responseType: 'blob' });
+  expect(await blob.text()).toBe('SQLite format 3\0');
+  respond(new Response('<html>login</html>', { headers: { 'content-type': 'text/html' } }));
+  await expect(api('/api/backups/example.db/download', { responseType: 'blob' })).rejects.toBeInstanceOf(InvalidResponseError);
+  const unauthorized = vi.fn();
+  setUnauthorizedHandler(unauthorized);
+  respond(new Response(JSON.stringify({ error: '请先登录' }), { status: 401 }));
+  await expect(api('/api/backups/example.db/download', { responseType: 'blob' })).rejects.toMatchObject({ status: 401 });
+  expect(unauthorized).toHaveBeenCalledOnce();
 });

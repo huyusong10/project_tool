@@ -1,3 +1,6 @@
+import { Pagination } from '../components/Pagination';
+import { useListPagination } from '../use-list-pagination';
+import { usePageScrollPosition } from '../use-page-view';
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type Query } from "@tanstack/react-query";
 import { Archive, Edit3, RotateCcw, UserMinus, UserPlus } from "lucide-react";
@@ -184,6 +187,10 @@ export function ProjectSettingsPage() {
     enabled: canManage && Boolean(selectedProjectId),
   });
   const projectArchives = projectArchivesQuery.data;
+  const membersPagination = useListPagination({ items: members, id: 'members', ready: Boolean(membersQuery.data), loading: membersQuery.isFetching, disabled: memberMutationBusy });
+  const archiveItems = [...(projectArchives?.requirements || []).map(item => ({...item, entity: 'requirements' as const, type: '需求'})), ...(projectArchives?.templates || []).map(item => ({...item, entity: 'templates' as const, type: '流程'}))].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt) || a.id.localeCompare(b.id));
+  const archivesPagination = useListPagination({ items: archiveItems, id: 'archives', ready: Boolean(projectArchives), loading: projectArchivesQuery.isFetching });
+  usePageScrollPosition(Boolean(membersQuery.data) && (!canManage || Boolean(projectArchives)));
   const restore = useMutation({
     mutationFn: ({ entity, id, expectedDeletedAt }: { projectId: string; entity: "requirements" | "templates"; id: string; expectedDeletedAt: string }) => api("/api/" + entity + "/" + id + "/restore", { method: "POST", body: jsonBody({ expectedDeletedAt }) }),
     onSuccess: (_saved, input) => {
@@ -233,7 +240,7 @@ export function ProjectSettingsPage() {
         <section className="panel project-settings-summary">
           <header><div><h2>{project.name}</h2><p>{project.plannedStart || "未设置开始"} — {project.plannedEnd || "未设置完成"}</p></div><StatusBadge kind="project" value={project.status} /></header>
         </section>
-        <section className="panel project-members-panel">
+        <section className="panel project-members-panel paged-panel">
           <header>
             <div><h2>项目成员</h2><p>在当前项目内配置项目经理、项目成员和观察者</p></div>
             <div className="project-member-header-actions">
@@ -243,10 +250,10 @@ export function ProjectSettingsPage() {
           </header>
           {membersNeedRecheck && <div role="alert" className="warning-banner">成员操作结果待核对，当前权限可能已变化，本窗口不会重复提交。<button className="ghost-button" disabled={membersQuery.isFetching} onClick={() => void reloadMembers()}>{membersQuery.isFetching ? "读取中…" : "重新读取成员"}</button></div>}
           {membersQuery.error && membersQuery.data && <div className="warning-banner">成员列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={membersQuery.isFetching} onClick={() => void membersQuery.refetch()}>重新加载</button></div>}
-          <div className="project-member-list">
+          <div className="project-member-list paged-body" ref={membersPagination.scrollRef}>
             {membersQuery.isLoading && !membersQuery.data && <LoadingState label="正在加载项目成员…" className="stable-panel-state" />}
             {membersQuery.error && !membersQuery.data && <EmptyState title="项目成员加载失败" detail={membersQuery.error.message || "暂时无法读取项目成员，请稍后重试。"} action={<button className="ghost-button" disabled={membersQuery.isFetching} onClick={() => void membersQuery.refetch()}>重新加载</button>} />}
-            {membersQuery.data && members.map((person) => {
+            {membersQuery.data && membersPagination.items.map((person) => {
               const roleLabel = person.projectRole === "manager" ? "项目经理" : person.projectRole === "viewer" ? "观察者" : "项目成员";
               const editable = canManage;
               return <article className={`project-member-row${canManage ? " can-manage" : ""}`} key={person.id}>
@@ -266,18 +273,20 @@ export function ProjectSettingsPage() {
             })}
             {membersQuery.data && !members.length && <EmptyState title="暂无项目成员" detail="点击“添加成员”，从平台人员中选择成员加入项目。" />}
           </div>
+          <Pagination {...membersPagination.props} label="项目成员分页" />
           {(setRole.error || remove.error) && <p className="form-error">{(setRole.error || remove.error)?.message}</p>}
         </section>
-        {canManage && <section className="panel project-members-panel">
+        {canManage && <section className="panel project-members-panel paged-panel">
           <header><div><h2>项目归档</h2><p>恢复当前项目已归档的需求或流程</p></div></header>
           {projectArchiveNeedsRecheck && <div role="alert" className="warning-banner">项目归档恢复结果待核对，当前归档事实可能已变化，本页面不会重复提交。<button className="ghost-button" disabled={projectArchivesQuery.isFetching} onClick={() => void reloadProjectArchives()}>{projectArchivesQuery.isFetching ? "读取中…" : "重新读取项目归档"}</button></div>}
           {projectArchivesQuery.error && projectArchives && <div className="warning-banner">项目归档刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={projectArchivesQuery.isFetching} onClick={() => void projectArchivesQuery.refetch()}>重新加载</button></div>}
-          <div className="compact-list">
+          <div className="compact-list paged-body" ref={archivesPagination.scrollRef}>
             {projectArchivesQuery.isLoading && !projectArchives && <LoadingState label="正在加载项目归档…" className="stable-panel-state" />}
             {projectArchivesQuery.error && !projectArchives && <EmptyState title="项目归档加载失败" detail={projectArchivesQuery.error.message || "暂时无法读取项目归档，请稍后重试。"} action={<button className="ghost-button" disabled={projectArchivesQuery.isFetching} onClick={() => void projectArchivesQuery.refetch()}>重新加载</button>} />}
-            {projectArchives && [...projectArchives.requirements.map((item) => ({ ...item, entity: "requirements" as const, type: "需求" })), ...projectArchives.templates.map((item) => ({ ...item, entity: "templates" as const, type: "流程" }))].map((item) => <div key={item.entity + item.id}><Archive size={15} /><div><strong>{item.title}</strong><span>{item.type} · {new Date(item.deletedAt).toLocaleString()}</span></div><button className="compact-text-button" disabled={Boolean(restoringKey) || projectArchiveNeedsRecheck} onClick={() => restoreArchive(item.entity, item.id, item.deletedAt)}><RotateCcw size={14} />{restoringKey === `${item.entity}:${item.id}` ? "恢复中…" : "恢复"}</button></div>)}
+            {projectArchives && archivesPagination.items.map((item) => <div key={item.entity + item.id}><Archive size={15} /><div><strong>{item.title}</strong><span>{item.type} · {new Date(item.deletedAt).toLocaleString()}</span></div><button className="compact-text-button" disabled={Boolean(restoringKey) || projectArchiveNeedsRecheck} onClick={() => restoreArchive(item.entity, item.id, item.deletedAt)}><RotateCcw size={14} />{restoringKey === `${item.entity}:${item.id}` ? "恢复中…" : "恢复"}</button></div>)}
             {projectArchives && !projectArchives.requirements.length && !projectArchives.templates.length && <EmptyState title="暂无项目归档" detail="归档需求或流程后会显示在这里。" />}
           </div>
+          <Pagination {...archivesPagination.props} label="项目归档分页" />
           {restore.error && <p className="form-error">{restore.error.message}</p>}
         </section>}
       </>}

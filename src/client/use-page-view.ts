@@ -1,6 +1,9 @@
+import {useAppNavigate,useAppSearchParams} from './use-app-navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate, useSearchParams, type SetURLSearchParams } from 'react-router-dom';
+import { useLocation, type SetURLSearchParams } from 'react-router-dom';
 import { useProjects, useSession } from './app-context';
+import {restorePageSearch} from './page-foundation';
+import {useResolvedPage} from './page-context';
 
 const prefix = 'pm-page-view:';
 
@@ -11,7 +14,7 @@ function write(key: string, value: string) {
   try { sessionStorage.setItem(key, value); } catch { /* Personal view storage must not prevent navigation. */ }
 }
 
-function usePageKey(personal: boolean) {
+export function usePageKey(personal: boolean) {
   const { session } = useSession();
   const { selectedProjectId } = useProjects();
   const { pathname } = useLocation();
@@ -22,23 +25,29 @@ function usePageKey(personal: boolean) {
 export function usePageSearchParams(allowedKeys: readonly string[], personal = false) {
   const key = usePageKey(personal);
   const location = useLocation();
-  const [initial] = useState(() => new URLSearchParams(location.search || read(key)));
-  const [urlParams, setParams] = useSearchParams();
+  const [initial] = useState(() => restorePageSearch(location.search, read(key)));
+  const initialLocationKey = useRef(location.key);
+  const [urlParams, setParams] = useAppSearchParams();
   const imported = useRef(false);
-  const params = !imported.current && !location.search ? initial : urlParams;
+  // URL 替换完成前继续使用记忆值，避免多个列表挂载时的重绘清空筛选。
+  const params = location.key === initialLocationKey.current ? initial : urlParams;
   const set: SetURLSearchParams = useCallback((next, options) => {
     setParams(next, { replace: true, state: location.state, ...options });
   }, [setParams, location.state]);
   useEffect(() => {
     if (imported.current) return;
     imported.current = true;
-    if (!location.search && initial.size) set(initial);
+    if (initial.toString() !== new URLSearchParams(location.search).toString()) set(initial);
   }, [initial, location.search, set]);
   const serialized = params.toString();
   const allowed = allowedKeys.join(',');
   useEffect(() => {
-    const value = new URLSearchParams(serialized), saved = new URLSearchParams();
-    for (const name of allowed.split(',')) if (value.has(name)) saved.set(name, value.get(name)!);
+    const value = new URLSearchParams(serialized), saved = new URLSearchParams(read(key));
+    // 同页多个列表各自保存拥有的参数，不覆盖其他列表或页面筛选。
+    for (const name of allowed.split(',')) {
+      saved.delete(name);
+      if (value.has(name)) saved.set(name, value.get(name)!);
+    }
     write(key, saved.toString());
   }, [key, serialized, allowed]);
   return [params, set] as const;
@@ -75,10 +84,11 @@ export function clearPageViews() {
 }
 
 export function usePageBack(fallback: string) {
-  const navigate = useNavigate();
+  const navigate = useAppNavigate();
+  const {back} = useResolvedPage();
   return () => {
-    if (hasPageHistory()) navigate(-1);
-    else navigate(fallback, { replace: true });
+    if ((!back || back.kind === 'history') && hasPageHistory()) navigate(-1);
+    else navigate(back?.fallback || fallback, { replace: true });
   };
 }
 

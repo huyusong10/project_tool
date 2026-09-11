@@ -175,7 +175,7 @@ it('补全计划不改写已取消工作项的历史空排期', async () => {
     templateItemIds: [template.items[0].id], reason: '尝试补全终态项',
   });
   expect(applied.statusCode).toBe(200);
-  expect((await detail(requirement.id)).workItems.find((entry) => entry.id === item.id)).toEqual(cancelledSnapshot);
+  expect(withoutForecastRevision((await detail(requirement.id)).workItems.find((entry) => entry.id === item.id)!)).toEqual(withoutForecastRevision(cancelledSnapshot));
 });
 
 it('补全计划优先匹配同名的有效工作项而非已取消历史项', async () => {
@@ -208,5 +208,6 @@ it('补全计划优先匹配同名的有效工作项而非已取消历史项', a
   expect(saved.workItems.find((entry) => entry.id === active.id)).toMatchObject({
     plannedStart: preview.entries[0].proposedStart, plannedEnd: preview.entries[0].proposedEnd,
   });
-  expect(saved.workItems.find((entry) => entry.id === cancelledSnapshot.id)).toEqual(cancelledSnapshot);
+  expect(withoutForecastRevision(saved.workItems.find((entry) => entry.id === cancelledSnapshot.id)!)).toEqual(withoutForecastRevision(cancelledSnapshot));
 });
+import { withoutForecastRevision } from './fixtures/forecast-snapshot';

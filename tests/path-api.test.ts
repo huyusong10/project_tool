@@ -106,12 +106,45 @@ async function add(projectId:string,sourceRequirementId:string,sourceWorkItemId:
 async function mcp(name:string,args:Record<string,unknown>){const result=await fetch(`${origin}/mcp`,{method:'POST',headers:{authorization:`Bearer ${token}`,accept:'application/json, text/event-stream','content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})});const body=await result.json();return body.result.structuredContent;}
 beforeAll(async()=>{app=await(await import('../src/server/app')).buildApp();origin=await app.listen({host:'127.0.0.1',port:0});const login=await request('POST','/api/login',{username:'admin',password},'');cookie=String(login.headers['set-cookie']).split(';')[0];token=(await post('/api/tokens',{name:'路径验证'})).json().token;});
 afterAll(async()=>{vi.useRealTimers();await app.close();const{sqlite}=await import('../src/server/database');if(sqlite.open)sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
+it('排期编辑贯通存储、进度、拓扑和查询；估算单独修改且不重写实际历史', async () => {
+ const {projectId,a,owner}=await fixture();
+ let w=(await detail(a.id)).workItems[0];
+ const assigned=await request('PATCH',`/api/work-items/${w.id}`,{expectedVersion:w.version,ownerId:owner.id});expect(assigned.statusCode,assigned.body).toBe(200);
+ w=(await detail(a.id)).workItems[0];
+ const start=await post(`/api/work-items/${w.id}/start`,{expectedVersion:w.version});expect(start.statusCode,start.body).toBe(200);
+ w=(await detail(a.id)).workItems[0];
+ const complete=await post(`/api/work-items/${w.id}/complete`,{expectedVersion:w.version,content:'开发完成'});expect(complete.statusCode,complete.body).toBe(200);
+ const baseline=await detail(a.id),baselineAnalysis=await analysis(projectId),build=baseline.workItems[1];
+ expect(baseline.progress).toBe(40);
+ const {sqlite}=await import('../src/server/database');
+ const facts=()=>sqlite.prepare('SELECT id,status,progress,actual_start,actual_end FROM work_items WHERE requirement_id=? ORDER BY id').all(a.id);
+ const logs=()=>sqlite.prepare('SELECT * FROM progress_updates WHERE requirement_id=? ORDER BY rowid').all(a.id);
+ const originalFacts=facts(),originalLogs=logs();
+ const unchangedHistory=()=>expect(logs().slice(0,originalLogs.length)).toEqual(originalLogs);
+ for(const patch of [{plannedEnd:addBusinessDays(todayIso(),12)},{plannedStart:null,plannedEnd:null},{plannedStart:todayIso(),plannedEnd:addBusinessDays(todayIso(),14)}]) {
+   const current=(await detail(a.id)).workItems[1];
+   const changed=await request('PATCH',`/api/work-items/${current.id}`,{expectedVersion:current.version,...patch});expect(changed.statusCode,changed.body).toBe(200);
+   const r=await detail(a.id),snapshot=await analysis(projectId),node=snapshot.nodes.find(n=>n.id===current.id)!;
+   expect(r.progress).toBe(40);expect(r.workItems[1]).toMatchObject({progressWeight:2,durationDays:2});
+   expect(r.workItems[1].deliveryForecast).toMatchObject({revision:snapshot.revision,asOfDate:snapshot.asOfDate,start:node.forecastStart,end:node.forecastEnd});
+   expect(node.forecastEnd).toBe(baselineAnalysis.nodes.find(n=>n.id===current.id)!.forecastEnd);
+   expect(r.deliveryForecast?.revision).toBe(snapshot.revision);
+   expect(facts()).toEqual(originalFacts);unchangedHistory();
+ }
+ const estimated=await request('PATCH',`/api/work-items/${build.id}/path-estimate`,{expectedRevision:(await analysis(projectId)).revision,durationDays:6});expect(estimated.statusCode,estimated.body).toBe(200);
+ const r=await detail(a.id),snapshot=await analysis(projectId),node=snapshot.nodes.find(n=>n.id===build.id)!;
+ expect(r.progress).toBe(40);expect(r.workItems[1]).toMatchObject({progressWeight:2,durationDays:6});
+ expect(node.forecastEnd! > baselineAnalysis.nodes.find(n=>n.id===build.id)!.forecastEnd!).toBe(true);
+ const single=(await request('GET',`/api/work-items/${build.id}`)).json();expect(single.deliveryForecast).toEqual(r.workItems[1].deliveryForecast);
+ const done=snapshot.nodes.find(n=>n.id===w.id)!;expect(done.forecastStart!<=done.forecastEnd!).toBe(true);expect(done.scheduledStart).toBe(done.forecastStart);
+ expect(facts()).toEqual(originalFacts);unchangedHistory();
+});
 it('模板复制和实例化保留前置；旧模板不推断关系或改写历史日期',async()=>{
  const f=await fixture();const initial=await analysis(f.projectId);expect(initial.dependencies).toHaveLength(4);expect(initial.coverage.reviewed).toBe(2);
  const copy=await post(`/api/projects/${f.projectId}/templates/${f.template.id}/copy`,{});expect(copy.statusCode,copy.body).toBe(200);
  const copied=copy.json<WorkItemTemplate>();expect(copied.dependencyMode).toBe('dependencies');expect(copied.items[1].predecessorIds).toEqual([copied.items[0].id]);
  const old=await fixture(true),before=(await detail(old.a.id)).workItems;expect((await analysis(old.projectId)).dependencies).toEqual([]);expect((await analysis(old.projectId)).coverage.reviewed).toBe(2);const {sqlite}=await import('../src/server/database');sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=NULL WHERE id=?').run(old.a.id);expect((await analysis(old.projectId)).forecastEnd).toBeTruthy();
- expect((await post(`/api/requirements/${old.a.id}/dependency-review`,{expectedRevision:(await analysis(old.projectId)).revision,reviewed:true})).statusCode).toBe(410);const stripDerived=(items:WorkItem[])=>items.map(({forecastBasis:_basis,...w})=>w);expect(stripDerived((await detail(old.a.id)).workItems)).toEqual(stripDerived(before));
+ expect((await post(`/api/requirements/${old.a.id}/dependency-review`,{expectedRevision:(await analysis(old.projectId)).revision,reviewed:true})).statusCode).toBe(410);const stripDerived=(items:WorkItem[])=>items.map(({forecastBasis:_basis,deliveryForecast:_forecast,...w})=>w);expect(stripDerived((await detail(old.a.id)).workItems)).toEqual(stripDerived(before));
 });
 it('部分交付允许 A设计→B开发→A联调；执行循环拒绝且版本不变',async()=>{
  const {projectId,a,b}=await fixture();expect((await add(projectId,a.id,a.workItems[0].id,b.id,b.workItems[1].id)).statusCode).toBe(200);

@@ -1,13 +1,18 @@
+import { Pagination } from '../components/Pagination';
+import { useListPagination } from '../use-list-pagination';
+import { usePageScrollPosition } from '../use-page-view';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type Query } from "@tanstack/react-query";
 import {
   Archive,
   Clock3,
   DatabaseBackup,
+  Download,
   ImagePlus,
   RefreshCcw,
   ShieldCheck,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useSession, useUiActions } from "../app-context";
@@ -15,6 +20,7 @@ import { invalidateAuditViews, invalidateSystemViews, keys } from "../query-keys
 import { formatBytes, formatUptime, relativeTime } from "../format";
 import type {
   Backup,
+  ImportedBackup,
   DatabaseIntegrityCheck,
   SystemBranding,
   SystemOverview,
@@ -288,7 +294,11 @@ export function SystemPage() {
   const { openLogin } = useUiActions();
   const client = useQueryClient();
   const now = useMinuteClock();
-  const [restoreTarget, setRestoreTarget] = useState<Backup>();
+  const [restoreTarget, setRestoreTarget] = useState<Backup | ImportedBackup>();
+  const importTarget = restoreTarget && 'summary' in restoreTarget ? restoreTarget : undefined;
+  const importing = Boolean(restoreTarget?.imported || importTarget);
+  const importInput = useRef<HTMLInputElement>(null);
+  const [importError, setImportError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Backup>();
   const [feedback, setFeedback] = useState("");
   const [maintenanceRecheck, setMaintenanceRecheckState] = useState<MaintenanceRecheck>(() => readMaintenanceRecheck(maintenanceAccountKey));
@@ -352,12 +362,41 @@ export function SystemPage() {
       }
     });
   };
-  const backup = useMutation({
-    mutationFn: () => api<Backup>("/api/backups", { method: "POST" }),
+  const download = useMutation({
+    mutationFn: async (item: Backup) => {
+      const blob = await api<Blob>(`/api/backups/${encodeURIComponent(item.name)}/download?expectedFingerprint=${encodeURIComponent(item.fingerprint)}`, { responseType: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url; link.download = item.name;
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      return item;
+    },
+    onSuccess: (item) => setFeedback(`下载已开始：${item.name}`),
+  });
+  const downloadLock = useSynchronousPendingLock(download.isPending);
+  const upload = useMutation({
+    mutationFn: (file: File) => api<ImportedBackup>(`/api/backups/import?filename=${encodeURIComponent(file.name)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file,
+    }),
     onSuccess: (result) => {
+      client.setQueryData<Backup[]>(keys.backups, (previous) => [result, ...(previous ?? []).filter((item) => item.name !== result.name)]);
+      setRestoreTarget(result);
+      setFeedback('文件已校验，请确认是否导入。取消后文件保留在备份列表。');
+      refreshSystemData();
+    },
+    onError: (error) => {
+      if (requiresWriteRecheck(error)) { setMaintenanceRecheck('backup'); refreshSystemData(); }
+    },
+  });
+  const uploadLock = useSynchronousPendingLock(upload.isPending);
+  const backup = useMutation({
+    mutationFn: (_downloadAfter: boolean) => api<Backup>("/api/backups", { method: "POST" }),
+    onSuccess: (result, downloadAfter) => {
       setMaintenanceRecheck(null);
       setFeedback(`备份已创建：${result.name}`);
       refreshSystemData();
+      if (downloadAfter) downloadLock.run(() => download.mutate(result));
     },
     onError: (error) => {
       if (!requiresWriteRecheck(error)) return;
@@ -367,8 +406,8 @@ export function SystemPage() {
   });
   const backupLock = useSynchronousPendingLock(backup.isPending);
   const restore = useMutation({
-    mutationFn: (backup: Backup) =>
-      api<{ ok: boolean; message: string; safetyBackupName: string; operationId: string }>("/api/backups/restore", {
+    mutationFn: (backup: Backup | ImportedBackup) =>
+      api<{ ok: boolean; message: string; safetyBackupName: string; operationId: string }>(backup.imported || 'summary' in backup ? '/api/backups/import/restore' : '/api/backups/restore', {
         method: "POST", body: jsonBody({ name: backup.name, expectedFingerprint: backup.fingerprint }),
       }),
     onSuccess: (result) => {
@@ -423,7 +462,7 @@ export function SystemPage() {
     mutationFn: () => api<DatabaseIntegrityCheck>("/api/system/database-check", { method: "POST", readOnly: true }),
   });
   const integrityLock = useSynchronousPendingLock(integrityCheck.isPending);
-  const maintenanceBusy = backupLock.busy || restoreLock.busy || deleteBackup.isPending || restoreWaitPending;
+  const maintenanceBusy = backupLock.busy || restoreLock.busy || deleteBackup.isPending || restoreWaitPending || uploadLock.busy || downloadLock.busy;
   const maintenanceStateUnverified = !overviewQuery.data || Boolean(overviewQuery.error) || Boolean(backupsQuery.error);
   const maintenanceBlocked = maintenanceBusy || backupNeedsRecheck || restoreNeedsRecheck || deleteNeedsRecheck
     || maintenanceStateUnverified || overviewQuery.data?.lastRestore?.outcome === 'pending';
@@ -431,7 +470,7 @@ export function SystemPage() {
     const result = await backupsQuery.refetch();
     if (result.error || !result.data) return;
     setMaintenanceRecheck(null);
-    backup.reset(); deleteBackup.reset();
+    backup.reset(); deleteBackup.reset(); upload.reset();
     if (deleteTarget) {
       const latest = result.data.find((item) => item.name === deleteTarget.name);
       // 不把已确认的危险操作自动改绑到同名新文件；原文件确实消失时关闭确认。
@@ -456,12 +495,16 @@ export function SystemPage() {
     setRestoreWaitPending(false);
     setRestoreWaitError("");
     setFeedback("");
+    setImportError('');
+    upload.reset(); download.reset();
     backup.reset();
     restore.reset();
     deleteBackup.reset();
   };
   const overview = overviewQuery.data;
   const backups = backupsQuery.data ?? [];
+  const backupsPagination = useListPagination({ items: backups, id: 'backups', personal: true, ready: Boolean(backupsQuery.data), loading: backupsQuery.isFetching });
+  usePageScrollPosition(Boolean(backupsQuery.data && overviewQuery.data), true);
   const latestRestoreTarget = restoreTarget && backupsQuery.data
     ? backupsQuery.data.find((item) => item.name === restoreTarget.name)
     : undefined;
@@ -476,7 +519,7 @@ export function SystemPage() {
   const uptimeSeconds = Number.isFinite(startedAt) ? Math.max(0, Math.floor((now - startedAt) / 1000)) : overview?.service.uptimeSeconds;
   const lastBackupAt = overview?.backups.lastCreatedAt ? new Date(overview.backups.lastCreatedAt).getTime() : Number.NaN;
   const backupOverdue = Boolean(overview && (!Number.isFinite(lastBackupAt) || now - lastBackupAt > BACKUP_OVERDUE_MS));
-  const operationError = backup.error || deleteBackup.error || restore.error;
+  const operationError = backup.error || deleteBackup.error || restore.error || upload.error || download.error;
   if (!session.authenticated)
     return (
       <>
@@ -525,39 +568,55 @@ export function SystemPage() {
             </article>
           </section>
 
-          <article className="panel system-backup-panel">
+          <article className="panel system-backup-panel paged-panel">
           <header>
             <div>
               <h2>数据库备份与恢复</h2>
               <p>自动备份每天02:00执行；恢复前会先保存当前数据库</p>
             </div>
+            <div className="system-database-toolbar">
+            <input ref={importInput} type="file" accept=".db" aria-label="选择数据库文件" hidden disabled={maintenanceBlocked} onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              if (!file || maintenanceBlocked) return;
+              clearMaintenanceFeedback();
+              if (!file.name.toLowerCase().endsWith('.db') || !file.size) { setImportError('请选择非空的 .db 数据库文件'); return; }
+              const maxBytes = overview?.database.importMaxBytes ?? 512 * 1024 * 1024;
+              if (file.size > maxBytes) { setImportError(`数据库文件不能超过 ${formatBytes(maxBytes)}`); return; }
+              uploadLock.run(() => upload.mutate(file));
+            }} />
+            <button className="ghost-button" disabled={maintenanceBlocked} onClick={() => importInput.current?.click()}><Upload size={15} />{uploadLock.busy ? '正在上传并校验…' : '导入数据库'}</button>
+            <button className="ghost-button" disabled={maintenanceBlocked} onClick={() => { if (!maintenanceBlocked) backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(true); }); }}><Download size={15} />{backupLock.busy && backup.variables ? '正在导出…' : downloadLock.busy ? '正在下载…' : '导出数据库'}</button>
             <button
               className="primary-button"
               disabled={maintenanceBlocked}
-              onClick={() => { if (!maintenanceBlocked) backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(); }); }}
+              onClick={() => { if (!maintenanceBlocked) backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(false); }); }}
             >
               <DatabaseBackup size={15} />
-              {backupLock.busy ? "正在备份…" : "立即备份"}
+              {backupLock.busy && !backup.variables ? "正在备份…" : "立即备份"}
             </button>
+            </div>
           </header>
           <div className="system-backup-policy">
             <span>保留策略 <strong>{overview ? `${overview.backups.retentionDays}天 / ${overview.backups.maxCount}份` : "—"}</strong></span>
             <span>下次自动备份 <strong>{overview ? new Date(overview.backups.nextScheduledAt).toLocaleString("zh-CN", { hour12: false }) : "—"}</strong></span>
             {feedback && <span className="system-operation-success"><ShieldCheck size={14} />{feedback}</span>}
             {operationError && <span className="system-operation-error">{operationError.message}</span>}
+            {importError && <span className="system-operation-error" role="alert">{importError}</span>}
             {(backupNeedsRecheck || deleteNeedsRecheck) && <button type="button" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void recheckBackups()}>{backupsQuery.isFetching ? "读取中…" : "重新读取备份列表"}</button>}
           </div>
-          <div className="system-backup-table-wrap">
+          <div className="system-backup-table-wrap paged-body" ref={backupsPagination.scrollRef}>
             {backupsQuery.error && backupsQuery.data && <div className="warning-banner">备份列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void backupsQuery.refetch()}>重新加载</button></div>}
             {backupsQuery.data && <table className="system-backup-table">
-              <thead><tr><th>备份时间</th><th>文件名</th><th>大小</th><th>距今</th><th>操作</th></tr></thead>
+              <thead><tr><th>备份／上传时间</th><th>文件名</th><th>大小</th><th>距今</th><th>操作</th></tr></thead>
               <tbody>
-                {backups.map((item) => <tr key={item.name}>
+                {backupsPagination.items.map((item) => <tr key={item.name}>
                   <td>{new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false })}</td>
                   <td><strong title={item.name}>{item.name}</strong>{item.restorable === false && <small className="system-backup-file-error" title={item.validationError ?? undefined}>不可恢复：{item.validationError || "文件校验失败"}</small>}</td>
                   <td>{formatBytes(item.size)}</td>
                   <td>{relativeTime(item.createdAt, "尚未备份", now)}</td>
                   <td><div className="system-backup-actions">
+                    <button className="inline-action-button" disabled={maintenanceBlocked} onClick={() => { if (!maintenanceBlocked) downloadLock.run(() => { clearMaintenanceFeedback(); download.mutate(item); }); }}><Download size={14} />下载</button>
                     <button className="inline-action-button" disabled={maintenanceBlocked || item.restorable === false} title={item.restorable === false ? item.validationError || "该文件不能恢复" : undefined} onClick={() => { if (maintenanceBlocked || item.restorable === false) return; clearMaintenanceFeedback(); setRestoreTarget(item); }}><RefreshCcw size={14} />恢复</button>
                     <button className="inline-action-button danger" disabled={maintenanceBlocked} onClick={() => { if (maintenanceBlocked) return; clearMaintenanceFeedback(); setDeleteTarget(item); }}><Trash2 size={14} />{deleteBackup.isPending && deleteBackup.variables?.name === item.name ? "删除中" : "删除"}</button>
                   </div></td>
@@ -568,6 +627,7 @@ export function SystemPage() {
             {backupsQuery.error && !backupsQuery.data && <EmptyState title="备份列表加载失败" detail={backupsQuery.error.message || "暂时无法读取备份，请稍后重试。"} action={<button className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void backupsQuery.refetch()}>重新加载</button>} />}
             {backupsQuery.data && !backups.length && <EmptyState title="暂无备份" detail="可立即创建第一份备份。" />}
           </div>
+            <Pagination {...backupsPagination.props} label="备份列表分页" />
           </article>
 
           <section className="system-secondary-grid">
@@ -599,10 +659,14 @@ export function SystemPage() {
           </section>
         </div>
 
-        {restoreTarget && <Modal title="恢复数据库备份" width={600} closable={!restoreLock.busy && !restore.data} onClose={() => { if (restoreLock.canClose() && !restore.data) setRestoreTarget(undefined); }}>
+        {restoreTarget && <Modal title={importing ? '导入数据库' : '恢复数据库备份'} width={600} closable={!restoreLock.busy && !restore.data} onClose={() => { if (restoreLock.canClose() && !restore.data) setRestoreTarget(undefined); }}>
           <div className="system-restore-dialog">
-            <div className="system-restore-warning"><RefreshCcw size={22} /><div><strong>恢复后当前数据库将被替换</strong><p>系统会先校验目标备份并自动备份当前数据，然后重启服务。</p></div></div>
-            <dl><div><dt>备份文件</dt><dd title={restoreTarget.name}>{restoreTarget.name}</dd></div><div><dt>备份时间</dt><dd>{new Date(restoreTarget.createdAt).toLocaleString("zh-CN", { hour12: false })}</dd></div><div><dt>文件大小</dt><dd>{formatBytes(restoreTarget.size)}</dd></div></dl>
+            <div className="system-restore-warning"><RefreshCcw size={22} /><div><strong>{importing ? '导入' : '恢复'}后当前数据库将被替换</strong><p>系统会先校验目标备份并自动备份当前数据，然后重启服务。</p></div></div>
+            <dl><div><dt>备份文件</dt><dd title={restoreTarget.name}>{restoreTarget.name}</dd></div><div><dt>{importing ? '上传时间' : '备份时间'}</dt><dd>{new Date(restoreTarget.createdAt).toLocaleString("zh-CN", { hour12: false })}</dd></div><div><dt>文件大小</dt><dd>{formatBytes(restoreTarget.size)}</dd></div></dl>
+            {importTarget && <>
+              <dl><div><dt>本地文件</dt><dd title={importTarget.originalName}>{importTarget.originalName}</dd></div><div><dt>数据数量</dt><dd>{importTarget.summary.projects} 个项目 · {importTarget.summary.requirements} 条需求 · {importTarget.summary.people} 名人员（含归档）</dd></div></dl>
+            </>}
+            {importing && <p className="system-import-note">导入将替换本机全部业务数据、账号和系统设置。admin 使用本机配置的管理员密码，其他账号保留导入文件中的密码。导入后所有用户需要重新登录。</p>}
             {restoreTargetStale && <p className="form-error" role="alert">备份文件已被后台删除或替换，请关闭窗口并从最新列表重新选择。</p>}
             {backupsQuery.error && <div className="warning-banner" role="alert">备份列表刷新失败，当前文件状态未确认。<button type="button" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void recheckBackups()}>{backupsQuery.isFetching ? "读取中…" : "重新读取备份列表"}</button></div>}
             {restore.error && <p className="form-error">{restore.error.message}</p>}
@@ -610,7 +674,7 @@ export function SystemPage() {
             {restore.data && <p className="system-operation-success"><ShieldCheck size={14} />{restore.data.message}</p>}
             {restore.data && !restoreWaitError && <p>服务恢复后页面会自动刷新并重新校验当前账号权限。</p>}
             {restoreWaitError && <p className="form-error">{restoreWaitError} <button type="button" className="ghost-button" onClick={() => window.location.reload()}>立即刷新</button></p>}
-            <div className="form-actions"><button className="ghost-button" disabled={restoreLock.busy || Boolean(restore.data)} onClick={() => { if (restoreLock.canClose() && !restore.data) setRestoreTarget(undefined); }}>取消</button><button className="primary-button" disabled={maintenanceBlocked || restoreTargetStale || Boolean(restore.data)} onClick={() => { if (maintenanceBlocked || restoreTargetStale || restore.data) return; restoreLock.run(() => restore.mutate(restoreTarget)); }}><RefreshCcw size={15} />{restoreLock.busy ? "正在校验并备份…" : restore.data ? "等待服务重启" : restoreNeedsRecheck ? "等待核对" : "确认恢复"}</button></div>
+            <div className="form-actions"><button className="ghost-button" disabled={restoreLock.busy || Boolean(restore.data)} onClick={() => { if (restoreLock.canClose() && !restore.data) setRestoreTarget(undefined); }}>取消</button><button className="primary-button" disabled={maintenanceBlocked || restoreTargetStale || Boolean(restore.data)} onClick={() => { if (maintenanceBlocked || restoreTargetStale || restore.data) return; restoreLock.run(() => restore.mutate(restoreTarget)); }}><RefreshCcw size={15} />{restoreLock.busy ? "正在校验并备份…" : restore.data ? "等待服务重启" : restoreNeedsRecheck ? "等待核对" : importing ? '确认导入并替换' : "确认恢复"}</button></div>
           </div>
         </Modal>}
         {deleteTarget && <ConfirmDialog title="删除数据库备份" description={<><p>备份“<strong>{deleteTarget.name}</strong>”将被永久删除，删除后无法用于数据库恢复。</p>{deleteTargetStale && <p className="form-error" role="alert">备份文件已被后台删除或替换，请关闭窗口并从最新列表重新选择。</p>}{(backupsQuery.error || deleteNeedsRecheck) && <div className="warning-banner" role="alert">{backupsQuery.error ? "备份列表刷新失败，当前文件状态未确认。" : "删除结果需要核对，当前备份不会再次提交。"}<button type="button" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void recheckBackups()}>{backupsQuery.isFetching ? "读取中…" : "重新读取备份列表"}</button></div>}</>} confirmLabel="永久删除" pendingLabel="删除中…" danger pending={deleteBackup.isPending} disabled={maintenanceBlocked || deleteTargetStale} error={deleteBackup.error?.message} onClose={() => setDeleteTarget(undefined)} onConfirm={() => { if (!maintenanceBlocked && !deleteTargetStale) deleteBackup.mutate(deleteTarget); }} />}

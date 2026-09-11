@@ -150,6 +150,7 @@ export function isOverdueByWorkday(due?: string | null, asOf = todayIso()): bool
 }
 
 export type WorkItemLike = {
+  progressWeight?:number|null;
   durationDays?:number|null;
   status: string;
   progress?: number | null;
@@ -226,6 +227,16 @@ export function workItemPlannedDuration(item: WorkItemLike): number {
   return Math.max(1, businessDaysInclusive(item.plannedStart, item.plannedEnd) || item.durationDays || 1);
 }
 
+/** Progress weights do not follow schedule stretching or remaining-time estimates. */
+export function workItemProgressWeight(item: WorkItemLike): number {
+  return Math.max(1, item.progressWeight ?? item.durationDays ?? workItemPlannedDuration(item));
+}
+
+export function initialWorkEstimates(item: WorkItemLike) {
+  const durationDays = item.durationDays ?? (businessDaysInclusive(item.plannedStart, item.plannedEnd) || null);
+  return { durationDays, progressWeight: item.progressWeight ?? durationDays ?? 1 };
+}
+
 export function workItemPlannedProgress(item: WorkItemLike, today = todayIso()): number {
   if (!item.plannedStart || !item.plannedEnd || today < item.plannedStart) return 0;
   if (today >= item.plannedEnd) return 100;
@@ -243,8 +254,8 @@ export function requirementPlannedProgress(
   const items = (direct ? [{...requirement, status: requirement.status || 'not_started'}] : workItems)
     .filter(item => deriveWorkItemStatus(item) !== 'cancelled');
   if (!items.length || items.some(item => !item.plannedStart || !item.plannedEnd)) return null;
-  const total = items.reduce((sum, item) => sum + workItemPlannedDuration(item), 0);
-  const planned = items.reduce((sum, item) => sum + workItemPlannedDuration(item) * workItemPlannedProgress(item, today), 0) / total;
+  const total = items.reduce((sum, item) => sum + workItemProgressWeight(item), 0);
+  const planned = items.reduce((sum, item) => sum + workItemProgressWeight(item) * workItemPlannedProgress(item, today), 0) / total;
   const base = direct ? 0 : requirement.splitBaseProgress || 0;
   return Math.round(base + (100 - base) * planned / 100);
 }
@@ -255,7 +266,7 @@ export function workItemActualProgress(item: WorkItemLike): number {
   return Number.isFinite(progress) ? Math.min(100, Math.max(0, Math.round(progress))) : 0;
 }
 
-type WeightedWorkItem = WorkItemLike & { plannedDuration: number };
+type WeightedWorkItem = WorkItemLike & { plannedDuration: number; progressWeight: number };
 
 function plannedProgressWithDuration(item: WeightedWorkItem, today: string) {
   if (!item.plannedStart || !item.plannedEnd || today < item.plannedStart) return 0;
@@ -266,7 +277,7 @@ function plannedProgressWithDuration(item: WeightedWorkItem, today: string) {
 
 function scheduleVarianceFromProgress(items: WeightedWorkItem[], actualProgress: number, today: string) {
   if (!items.length || items.some((item) => !item.plannedStart || !item.plannedEnd)) return null;
-  const totalWeight = items.reduce((sum, item) => sum + item.plannedDuration, 0);
+  const totalWeight = items.reduce((sum, item) => sum + item.progressWeight, 0);
   if (!totalWeight) return null;
 
   const plannedStarts = items.map((item) => item.plannedStart as string).sort();
@@ -274,7 +285,7 @@ function scheduleVarianceFromProgress(items: WeightedWorkItem[], actualProgress:
   const plannedStart = plannedStarts[0];
   const plannedEnd = plannedEnds.at(-1) as string;
   const plannedProgressAt = (date: string) => Math.round(items.reduce(
-    (sum, item) => sum + item.plannedDuration * plannedProgressWithDuration(item, date),
+    (sum, item) => sum + item.progressWeight * plannedProgressWithDuration(item, date),
     0,
   ) / totalWeight);
   const actual = Math.min(100, Math.max(0, Math.round(actualProgress)));
@@ -335,6 +346,7 @@ export function deriveRequirementMetrics(
     ...item,
     derivedStatus: deriveWorkItemStatus(item),
     plannedDuration: workItemPlannedDuration(item),
+    progressWeight: workItemProgressWeight(item),
   }));
   const activeItems = items.filter((item) => item.derivedStatus !== 'cancelled');
   const schedule = deriveRequirementScheduleRange(requirement, activeItems);
@@ -349,9 +361,9 @@ export function deriveRequirementMetrics(
   else if (requirement.status === 'in_progress') status = 'in_progress';
   else status = 'not_started';
 
-  const totalWeight = activeItems.reduce((sum, item) => sum + item.plannedDuration, 0);
+  const totalWeight = activeItems.reduce((sum, item) => sum + item.progressWeight, 0);
   const actualWeightedProgress = activeItems.reduce(
-    (sum, item) => sum + item.plannedDuration * workItemActualProgress(item), 0,
+    (sum, item) => sum + item.progressWeight * workItemActualProgress(item), 0,
   );
   const base=direct?0:requirement.splitBaseProgress||0;
   const remainingProgress=totalWeight ? actualWeightedProgress / totalWeight : 0;

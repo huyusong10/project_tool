@@ -68,7 +68,7 @@ for (const surface of ["home", "detail"] as const) for (const mode of ["overlay"
       expect(menu.x + menu.width).toBeLessThanOrEqual(page.viewportSize()!.width);
       await page.getByRole("button", { name: "计划·实际双轨", exact: true }).click();
     }
-    const barSelector = mode === "split" ? ".gantt-date-actual" : surface === "home" ? ".unified-gantt-progress-actual" : ".unified-gantt-actual";
+    const barSelector = mode === "split" ? ".gantt-date-actual" : ".unified-gantt-actual";
     const markerSelector = mode === "split" ? ".gantt-date-progress" : ".gantt-progress-marker";
     const bar = (status: string) => page.locator(`${barSelector}.gantt-status-${status}`);
     for (const skin of skins) {

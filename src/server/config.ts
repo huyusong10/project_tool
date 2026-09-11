@@ -2,10 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import dotenv from 'dotenv';
+import { randomBytes, scryptSync } from 'node:crypto';
 
 dotenv.config({ quiet: true });
 
 const rootDir = process.cwd();
+const adminPassword = process.env.ADMIN_PASSWORD || '';
+const adminSalt = adminPassword ? randomBytes(16).toString('hex') : '';
 
 function positiveInteger(value: string | undefined, fallback: number) {
   const parsed = Number(value);
@@ -29,7 +32,10 @@ export const config = {
   port: Number(process.env.PORT || 3210),
   dbPath: path.resolve(rootDir, process.env.DB_PATH || './data/project-manage.db'),
   backupDir: path.resolve(rootDir, process.env.BACKUP_DIR || './data/backups'),
-  appPasswordHash: process.env.APP_PASSWORD_HASH || '',
+  appPasswordHash: adminPassword
+    ? `scrypt$${adminSalt}$${scryptSync(adminPassword, adminSalt, 64).toString('hex')}`
+    : process.env.APP_PASSWORD_HASH || '',
+  databaseImportMaxBytes: positiveInteger(process.env.DATABASE_IMPORT_MAX_MB, 512) * 1024 * 1024,
   sessionSecret: process.env.SESSION_SECRET || '',
   sessionCookieName: process.env.SESSION_COOKIE_NAME || 'pm_session',
   sessionHours: Number(process.env.SESSION_HOURS || 12),
@@ -41,7 +47,8 @@ export const config = {
 };
 
 export function assertRuntimeConfig() {
-  if (!config.appPasswordHash) throw new Error('缺少 APP_PASSWORD_HASH，请先运行 configure.ps1。');
+  if (adminPassword && adminPassword.length < 10) throw new Error('ADMIN_PASSWORD 至少需要10个字符。');
+  if (!config.appPasswordHash) throw new Error('请设置 ADMIN_PASSWORD 或运行 configure.ps1。');
   if (config.sessionSecret.length < 32) throw new Error('SESSION_SECRET 至少需要32个字符，请先运行 configure.ps1。');
   if (!/^[A-Za-z0-9_-]+$/.test(config.sessionCookieName)) throw new Error('SESSION_COOKIE_NAME 只能包含字母、数字、下划线和连字符。');
 }

@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 let openModalCount = 0;
 let previousBodyOverflow = '';
 
-export function Modal({ title, children, onClose, width = 560, closable = true, layout = 'adaptive' }: { title: string; children: ReactNode; onClose: () => void; width?: number; closable?: boolean; layout?: 'adaptive' | 'workspace' }) {
+export function Modal({ title, children, onClose, width = 560, closable = true, layout = 'adaptive', placement = 'center' }: { title: string; children: ReactNode; onClose: () => void; width?: number; closable?: boolean; layout?: 'adaptive' | 'workspace'; placement?: 'center' | 'right' }) {
   const cardRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   const closableRef = useRef(closable);
@@ -62,7 +62,7 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
     };
   }, []);
   const content = (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => closable && event.target === event.currentTarget && onClose()}>
+    <div className={`modal-backdrop${placement === 'right' ? ' modal-backdrop-right' : ''}`} role="presentation" onMouseDown={(event) => closable && event.target === event.currentTarget && onClose()}>
       <section ref={cardRef} className={`modal-card modal-card-${layout}`} style={{ width, maxWidth: width ? `min(94vw, ${width}px)` : undefined }} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <header><h2 id={titleId}>{title}</h2>{closable && <button className="icon-button" aria-label="关闭" onClick={onClose}><X size={18} /></button>}</header>
         <div className={`modal-body modal-body-${layout}`}>{children}</div>

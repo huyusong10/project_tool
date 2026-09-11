@@ -32,8 +32,9 @@ function squareFavicon(url: string): Promise<string> {
   });
 }
 
-export function useDocumentBranding(branding: SystemBranding) {
+export function useDocumentBranding(branding?: SystemBranding) {
   useEffect(() => {
+    if (!branding) return;
     document.title = branding.systemName || defaultBranding.systemName;
 
     let cancelled = false;
@@ -55,7 +56,7 @@ export function useDocumentBranding(branding: SystemBranding) {
       );
     }
     return () => { cancelled = true; };
-  }, [branding.logoUrl, branding.systemName]);
+  }, [branding]);
 }
 
 export function BrandLogo({ branding, className = "" }: { branding: SystemBranding; className?: string }) {

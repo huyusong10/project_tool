@@ -33,8 +33,8 @@ test('普通协作成员经我的工作开始、更新完成度并完成，需�
     const start = actor.getByRole('button', { name: '开始', exact: true });
     await expect(start).toBeEnabled();
     await start.click();
-    await expect(actor.getByRole('button', { name: `为${work.title}更新完成度`, exact: true })).toBeVisible();
-    await actor.getByRole('button', { name: `为${work.title}更新完成度`, exact: true }).click();
+    await expect(actor.getByRole('button', { name: `为${work.title}更新进度`, exact: true })).toBeVisible();
+    await actor.getByRole('button', { name: `为${work.title}更新进度`, exact: true }).click();
     const progress = actor.getByRole('dialog', { name: '更新工作项进度', exact: true });
     await progress.getByRole('spinbutton').fill('60');
     await progress.getByLabel(/^说明/).fill('接口核对完成六成');

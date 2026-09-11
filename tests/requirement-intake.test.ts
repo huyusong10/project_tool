@@ -32,7 +32,7 @@ it('分组调整和删除不影响需求执行',async()=>{
   const p=await imported(),c=await catalog(p.id),before=(await request('GET','/api/requirements/'+p.requirementId)).json();
   const updated=await request('PATCH','/api/requirements/'+p.requirementId,{expectedVersion:before.version,groupId:c.groups[0].id});expect(updated.statusCode,updated.body).toBe(200);expect(updated.json().groupId).toBe(c.groups[0].id);expect(updated.json()).not.toHaveProperty('tags');
   const removed=await request('DELETE',`/api/projects/${p.id}/requirement-groups/${c.groups[0].id}`,{expectedVersion:c.groups[0].version});expect(removed.statusCode,removed.body).toBe(200);
-  const after=(await request('GET','/api/requirements/'+p.requirementId)).json();expect(after.workItems.map(({dependencyRevision:_revision,...w}:Record<string,unknown>)=>w)).toEqual(before.workItems.map(({dependencyRevision:_revision,...w}:Record<string,unknown>)=>w));expect(after.progress).toBe(before.progress);expect(after.groupId).toBeNull();
+  const after=(await request('GET','/api/requirements/'+p.requirementId)).json();expect(after.workItems.map(({dependencyRevision:_revision,...w}:Record<string,unknown>)=>withoutForecastRevision(w))).toEqual(before.workItems.map(({dependencyRevision:_revision,...w}:Record<string,unknown>)=>withoutForecastRevision(w)));expect(after.progress).toBe(before.progress);expect(after.groupId).toBeNull();
 });
 it('旧标签不再返回，接口拒绝标签写入与筛选，分组仍正常工作',async()=>{
   const p=await imported(),{sqlite}=await import('../src/server/database');
@@ -110,3 +110,4 @@ it('直接执行后添加第一个工作项自动汇总，保留已记录的进�
  const created=await post('/api/requirements/'+r.id+'/work-items',{expectedVersion:r.version,title:'剩余工作',ownerId:owner});expect(created.statusCode,created.body).toBe(200);
  const after=(await request('GET','/api/requirements/'+r.id)).json();expect(after).toMatchObject({executionMode:'work_items',progress:30,actualStart:r.actualStart});expect(after.workItems).toHaveLength(1);
 });
+import { withoutForecastRevision } from './fixtures/forecast-snapshot';

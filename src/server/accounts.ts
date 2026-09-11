@@ -5,6 +5,8 @@ import { addCalendarDays, deriveWorkItemStatus, isOverdueByWorkday, startOfWeekI
 import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
 import { isBusinessDay } from '../shared/workday';
 import { listRequirements, loadWorkItemsByRequirementIds } from './services/requirements';
+import { getPathAnalysis } from './services/paths';
+import { deliveryForecast } from '../shared/forecast-basis';
 import { deriveRequirementActionReasons, deriveWorkItemActionReasons } from './services/actions';
 import { AppError, type AppErrorCode } from './errors';
 import { accountPersonAvailableSql } from './account-access';
@@ -311,6 +313,9 @@ export function changeOwnPassword(accountId: string, currentPassword: string, ne
 }
 
 export function getMyWork(accountId: string) {
+  return sqlite.transaction(() => readMyWork(accountId))();
+}
+function readMyWork(accountId: string) {
   const today = todayIso();
   const account = sqlite.prepare(`SELECT person_id AS personId FROM accounts WHERE id=? AND status='active' AND deleted_at IS NULL`).get(accountId) as { personId: string | null } | undefined;
   if (!account?.personId) return {
@@ -335,8 +340,10 @@ export function getMyWork(accountId: string) {
   const requirementStatuses = new Map(rawItems.map(item => [item.requirementId, item.requirementStatus]));
   const loaded = loadWorkItemsByRequirementIds([...requirementStatuses.keys()], requirementStatuses);
   const workItems = new Map([...loaded.workItems.values()].flat().map(item => [item.id, item]));
+  const forecasts = new Map([...new Set(rawItems.map(item => item.projectId))].map(id => [id, getPathAnalysis(id, undefined, today)]));
   const items = rawItems.map((reference) => {
-    const item = { ...workItems.get(reference.id)!, ...reference };
+    const analysis = forecasts.get(reference.projectId)!;
+    const item = { ...workItems.get(reference.id)!, ...reference, deliveryForecast: deliveryForecast(analysis.nodes.find(n => n.id === reference.id), analysis) };
     const status = deriveWorkItemStatus(item);
     return { ...item, status, overdue: !['completed', 'cancelled'].includes(status) && isOverdueByWorkday(item.plannedEnd, today) };
   });

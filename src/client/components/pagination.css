@@ -1,0 +1,56 @@
+.table-pagination { container: pagination / inline-size; flex: none; min-width: 0; display: block; min-height: 54px; padding: 8px 14px; border-top: 1px solid var(--divider); color: var(--text-muted); background: var(--bg-surface); font-size: 12px; }
+.pagination-content, .pagination-summary, .pagination-controls, .pagination-numbers, .pagination-jump { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pagination-content { justify-content: space-between; flex-wrap: wrap; }
+.pagination-summary { flex-wrap: wrap; }
+.pagination-controls { margin-left: auto; }
+.pagination-numbers { gap: 4px; }
+.table-pagination button, .table-pagination select, .table-pagination input { min-height: 36px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-secondary); font: inherit; }
+.table-pagination button { min-width: 36px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
+.table-pagination select { max-width: 100%; padding: 0 4px; }
+.table-pagination button:hover:not(:disabled), .table-pagination button[aria-current=page] { color: var(--accent-ink); background: var(--accent-soft); border-color: var(--accent-border); }
+.table-pagination button:disabled, .table-pagination select:disabled { opacity: .5; cursor: default; }
+.table-pagination :is(button,select,input):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pagination-jump { display: none; white-space: nowrap; gap: 5px; }
+.pagination-jump input { width: 46px; padding: 0 3px; text-align: center; appearance: textfield; }
+.pagination-jump input::-webkit-inner-spin-button { appearance: none; }
+@container pagination (max-width: 639px) {
+  .pagination-numbers, .pagination-range { display: none; }
+  .pagination-jump { display: flex; }
+}
+@container pagination (max-width: 399px) {
+  .pagination-content { flex-direction: column; align-items: stretch; gap: 6px; }
+  .pagination-summary { justify-content: space-between; }
+  .pagination-controls { justify-content: center; margin-left: 0; }
+  .pagination-button-label { display: none; }
+  .pagination-controls > button { min-width: 40px; }
+}
+.paged-panel { container: paged-list / inline-size; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: auto; max-height: min(800px,calc(100dvh - 190px)); overflow: hidden; }
+.adaptive-data-list.paged-panel { container-name: adaptive-data-list paged-list; }
+.paged-panel > header, .paged-panel > .filter-bar, .paged-panel > .archive-toolbar, .paged-panel > .table-pagination { flex: none; }
+.paged-body { flex: 1; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.paged-panel > .paged-body { max-height: none; }
+.paged-panel > .adaptive-data-list-header { flex: none; }
+.paged-panel .adaptive-data-list-body { max-height: none; }
+.paged-panel .adaptive-data-list-footer { flex: none; }
+.paged-panel .table-pagination { border-top: 1px solid var(--divider); }
+.paged-panel .template-grid { padding: 12px; }
+.paged-panel .personal-token-list { margin: 0; border: 0; }
+.issue-update-settings { overflow: visible; }
+.issue-update-settings > .table-pagination { position: sticky; bottom: 0; z-index: 9; border-radius: 0 0 var(--radius-md) var(--radius-md); }
+@container page-content (max-width: 639px) {
+  .paged-panel { max-height: none; height: auto; overflow: visible; }
+}
+.people-group-toggle { padding: 0; border: 0; color: inherit; background: transparent; font: inherit; cursor: pointer; }
+.people-role-members[hidden] { display: none; }
+.paged-panel[data-page-scroll=true] { max-height: none; height: auto; overflow: visible; }
+.paged-panel[data-page-scroll=true] > .paged-body, .paged-panel[data-page-scroll=true] > .adaptive-data-list-body { overflow: auto; flex: none; overscroll-behavior-y: auto; }
+.paged-panel[data-page-scroll=true] > .table-pagination, .paged-panel[data-page-scroll=true] > .adaptive-data-list-footer { position: sticky; bottom: 0; z-index: 9; }
+@container paged-list (max-width: 639px) {
+  .paged-panel > .paged-body, .paged-panel > .adaptive-data-list-body { overflow: auto; flex: none; overscroll-behavior-y: auto; }
+  .paged-panel > .table-pagination, .paged-panel > .adaptive-data-list-footer { position: sticky; bottom: 0; z-index: 9; }
+}
+@media (max-height: 639px) {
+  .paged-panel { max-height: none; height: auto; overflow: visible; }
+  .paged-panel > .paged-body, .paged-panel > .adaptive-data-list-body { overflow: auto; flex: none; overscroll-behavior-y: auto; }
+  .paged-panel > .table-pagination, .paged-panel > .adaptive-data-list-footer { position: sticky; bottom: 0; z-index: 9; }
+}

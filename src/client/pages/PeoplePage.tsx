@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { api } from "../api";
@@ -10,12 +10,17 @@ import { PageHeader } from "../components/PageHeader";
 import { ConcurrencyPanel } from "../components/ConcurrencyPanel";
 import { ViewTabs } from "../components/ViewTabs";
 import { Avatar } from "../components/Avatar";
+import { SearchInput } from '../components/SearchInput';
+import { matchesSearch } from '../../shared/search';
 
 const emptyPeople: Person[] = [];
 
 export function PeoplePage() {
   const { selectedProjectId, projects } = useProjects();
-  const [viewParams, setViewParams] = usePageSearchParams(['view']);
+  const [viewParams, setViewParams] = usePageSearchParams(['view','q','jobTitle']);
+  const search = viewParams.get('q') || '', jobTitle = viewParams.get('jobTitle') || '';
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const updateView = (key: string, value: string) => setViewParams(current => { const next = new URLSearchParams(current); next.set(key, value); return next; });
   const view = viewParams.get("view") === "analysis" ? "analysis" : "matrix";
   const { data: loadedPeople, error, refetch, isFetching, isLoading } = useQuery({
     queryKey: [...keys.people, selectedProjectId],
@@ -27,7 +32,7 @@ export function PeoplePage() {
   const listUnavailable = Boolean(error && !loadedPeople);
   const groups = useMemo(() => {
     const grouped = new Map<string, Person[]>();
-    for (const person of data) {
+    for (const person of data.filter(person => (!jobTitle || (person.jobTitle?.trim() || '岗位未设置') === jobTitle) && matchesSearch([person.name, person.jobTitle], search))) {
       const jobTitle = person.jobTitle?.trim() || "岗位未设置";
       grouped.set(jobTitle, [...(grouped.get(jobTitle) || []), person]);
     }
@@ -41,7 +46,7 @@ export function PeoplePage() {
         jobTitle,
         people: people.sort((left, right) => left.name.localeCompare(right.name, "zh-CN")),
       }));
-  }, [data]);
+  }, [data, jobTitle, search]);
   return (
     <>
       <PageHeader title="人员矩阵" />
@@ -51,21 +56,22 @@ export function PeoplePage() {
           ariaLabel="人员页面视图"
           options={[{ value: "matrix", label: "人员矩阵" }, { value: "analysis", label: "人力分析" }]}
           value={view}
-          onChange={(next) => setViewParams(next === "matrix" ? {} : { view: "analysis" })}
+          onChange={(next) => updateView('view', next)}
         />
         {error && loadedPeople && <div className="warning-banner">人员列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
         {listUnavailable ? <EmptyState title="人员列表加载失败" detail={error?.message || "暂时无法读取项目人员。"} action={<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button>} /> : view === "matrix" ? <>
+        <div className="filter-bar"><SearchInput value={search} onChange={value => updateView('q', value)} placeholder="搜索姓名、岗位或拼音" /><select aria-label="岗位筛选" value={jobTitle} onChange={event => updateView('jobTitle', event.target.value)}><option value="">全部岗位</option>{[...new Set(data.map(person => person.jobTitle?.trim() || '岗位未设置'))].sort().map(title => <option key={title}>{title}</option>)}</select><span>{groups.reduce((sum, group) => sum + group.people.length, 0)} / {data.length} 人</span></div>
         <div className="people-matrix">
           {groups.map((group, groupIndex) => (
             <section className="people-role-group" key={group.jobTitle} aria-labelledby={`role-group-${groupIndex}`}>
               <header>
                 <div>
                   <span className="role-marker" />
-                  <h2 id={`role-group-${groupIndex}`}>{group.jobTitle}</h2>
+                  <h2 id={`role-group-${groupIndex}`}><button type="button" className="people-group-toggle" aria-expanded={Boolean(search || jobTitle) || !collapsed.has(group.jobTitle)} onClick={() => setCollapsed(current => { const next = new Set(current); if (next.has(group.jobTitle)) next.delete(group.jobTitle); else next.add(group.jobTitle); return next; })}>{!search && !jobTitle && collapsed.has(group.jobTitle) ? '▸' : '▾'} {group.jobTitle}</button></h2>
                 </div>
                 <span>{group.people.length}人</span>
               </header>
-              <div className="people-role-members">
+              <div className="people-role-members" hidden={!search && !jobTitle && collapsed.has(group.jobTitle)}>
                 {group.people.map((person) => (
                   <article className="person-card" key={person.id}>
                     <Avatar name={person.name} className="person-avatar" />
@@ -77,10 +83,10 @@ export function PeoplePage() {
               </div>
             </section>
           ))}
-          {!data.length && !isLoading && (
+          {!groups.length && !isLoading && (
             <EmptyState
-              title="还没有人员"
-              detail={`${projects.find((project) => project.id === selectedProjectId)?.name || "当前项目"}还没有项目成员。`}
+              title={data.length ? '没有匹配的人员' : '还没有人员'}
+              detail={data.length ? '调整姓名或岗位筛选。' : `${projects.find((project) => project.id === selectedProjectId)?.name || "当前项目"}还没有项目成员。`}
             />
           )}
         </div>

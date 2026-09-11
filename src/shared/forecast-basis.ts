@@ -10,10 +10,25 @@ export type ForecastBasis = {
   concurrentWork?:Array<{id:string;requirementId:string|null;title:string;requirementTitle:string;forecastEnd:string|null;critical:boolean}>;
 };
 export type ExecutionMetadata = {
+  deliveryForecast?: DeliveryForecast;
   blockerCoordination?:import('./blocker-coordination').BlockerCoordination;
   forecastReview?:ForecastReview|null; forecastBasis?:ForecastBasis;
   blockedCoordinatorId?:string|null; blockedNextReviewAt?:string|null; blockedIssueId?:string|null;
 };
+export type DeliveryForecast = {
+  revision: number; asOfDate: string; start: string | null; end: string | null;
+  remainingDays: number; source: string; reasons: string[];
+};
+export function deliveryForecast(node: PathNode | undefined, analysis: Pick<PathAnalysis, 'revision' | 'asOfDate'>): DeliveryForecast {
+  return { revision: analysis.revision, asOfDate: analysis.asOfDate, start: node?.forecastStart || null, end: node?.forecastEnd || null,
+    remainingDays: node?.remainingDays || 0, source: node?.source || '', reasons: node?.unknownReasons || ['缺少可用预测'] };
+}
+export function requirementDeliveryForecast(id: string, analysis: PathAnalysis): DeliveryForecast {
+  const result = deliveryForecast(analysis.nodes.find(n => n.id === `acceptance:${id}`), analysis);
+  const starts = analysis.nodes.filter(n => n.requirementId === id && ['work','execution'].includes(n.kind) && !['completed','cancelled'].includes(n.status)).map(n => n.forecastStart);
+  result.start = starts.length && starts.every(Boolean) ? (starts as string[]).sort()[0] : result.start;
+  return result;
+}
 /** Only incoming conditions matter; unrelated project edits cannot invalidate a review. */
 const predecessorCache=new WeakMap<PathAnalysis,Map<string,string>>();
 export function predecessorBasis(nodeId:string,analysis:PathAnalysis) {

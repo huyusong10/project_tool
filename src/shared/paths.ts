@@ -11,6 +11,7 @@ export type Dependency = {
 export type PathMilestone={forecastEnd?:string|null;id:string;projectId:string;requirementId:string|null;title:string;targetDate:string|null;confirmationMode:'auto'|'manual';achievedAt:string|null;version:number;cancelled?:boolean};
 export type DiagramLayout={scope:string;direction:'right'|'down';version:number;positions:Record<string,{x:number;y:number}>};
 export type PathWork = import('./forecast-basis').ExecutionMetadata & {
+  progressWeight?:number|null;
   version?:number;
   arrangement?:Arrangement; arrangementAnchor?:string|null; acknowledgedDependencies?:string[];
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[];
@@ -236,7 +237,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
       n.earliestFinish = n.earliestStart + n.remainingDays;
       n.unknownReasons = [...new Set([...n.ownReasons, ...parents.flatMap(p => p.unknownReasons)])];
     }
-    n.forecastStart = n.unknownReasons.length ? null : dateAt(n.earliestStart);
+    n.forecastStart = n.unknownReasons.length ? null : n.complete ? n.actualStart === null ? endDate(n.earliestFinish) : dateAt(n.actualStart) : dateAt(n.earliestStart);
     n.forecastEnd = n.unknownReasons.length ? null : n.kind==='start' ? dateAt(n.earliestStart) : endDate(n.earliestFinish);if(n.kind==='milestone'||n.kind==='acceptance')n.forecastStart=n.forecastEnd;
   }
   const scopeOf = (target: string, plan=false) => {
@@ -265,7 +266,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
   const current = criticalFor(requestedTarget), plan = criticalFor(requestedTarget, true);
   const global = criticalFor(projectTarget), globalPlan = criticalFor(projectTarget, true);
   const arranged=arrangeLate(order,nodes.map(n=>({id:n.id,start:n.earliestStart,finish:n.earliestFinish,duration:n.remainingDays,arrangement:n.arrangement,anchor:n.arrangementAnchor,movable:n.status==='not_started'&&n.kind==='work',reliable:!n.unknownReasons.length})),edges.filter(e=>!acknowledged(byId.get(e.target)!,e)));
-  for(const n of nodes){const s=arranged.get(n.id)!,unreliable=n.unknownReasons.length||n.arrangement==='late'&&s.buffer===null;n.scheduledStart=unreliable?null:dateAt(s.start);n.scheduledEnd=unreliable?null:n.kind==='start'?dateAt(s.start):endDate(s.finish);if(n.kind==='milestone'||n.kind==='acceptance')n.scheduledStart=n.scheduledEnd;n.scheduleBuffer=n.complete?null:s.buffer;if(n.arrangement==='late'&&n.status==='not_started'){n.forecastStart=n.scheduledStart;n.forecastEnd=n.scheduledEnd;}}
+  for(const n of nodes){const s=arranged.get(n.id)!,unreliable=n.unknownReasons.length||n.arrangement==='late'&&s.buffer===null;n.scheduledStart=n.complete?n.forecastStart:unreliable?null:dateAt(s.start);n.scheduledEnd=n.complete?n.forecastEnd:unreliable?null:n.kind==='start'?dateAt(s.start):endDate(s.finish);if(n.kind==='milestone'||n.kind==='acceptance')n.scheduledStart=n.scheduledEnd;n.scheduleBuffer=n.complete?null:s.buffer;if(n.arrangement==='late'&&n.status==='not_started'){n.forecastStart=n.scheduledStart;n.forecastEnd=n.scheduledEnd;}}
   const lateDrivers = new Set<string>();
   for (const r of input.requirements) {
     const end = byId.get(acceptanceId(r.id))!;

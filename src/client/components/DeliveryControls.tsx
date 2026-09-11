@@ -1,7 +1,7 @@
+import {useAppNavigate} from '../use-app-navigation';
 import {StartAssignmentDialog,type StartAssignment} from './StartAssignmentDialog';
 import {useEffect,useRef,useState} from 'react';
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
-import {useNavigate} from 'react-router-dom';
 import {api,isWriteOutcomeUnknown,jsonBody,requiresWriteRecheck} from '../api';
 import {useSession} from '../app-context';
 import {canManageProject} from '../permissions';
@@ -40,7 +40,7 @@ function executionWarning(action:string,r:Requirement){
   return '';
 }
 export function DeliveryControls({requirement:r}:{requirement:Requirement;compact?:boolean}){
-  const {session}=useSession(),client=useQueryClient(),navigate=useNavigate(),toast=useToast();
+  const {session}=useSession(),client=useQueryClient(),navigate=useAppNavigate(),toast=useToast();
   const manager=canManageProject(session,r.projectId),owner=manager||session.personId===r.ownerId;
   const recheckAccountKey=session.accountId||session.username||'guest';
   const [initialRecheck]=useState(()=>readDeliveryRecheck(recheckAccountKey,r.id));

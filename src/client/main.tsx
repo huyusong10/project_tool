@@ -10,6 +10,8 @@ import './tokens.css';
 import './styles.css';
 import './themes.css';
 import './responsive.css';
+import './components/pagination.css';
+import './components/topbar.css';
 
 initTheme();
 initMotion();
@@ -23,7 +25,8 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      {/* 导航先提交当前页面占位，正文由局部 Suspense 加载，不保留上一页的可操作外壳。 */}
+      <BrowserRouter useTransitions={false}>
         <ToastProvider>
           <App />
         </ToastProvider>
