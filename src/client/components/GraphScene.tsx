@@ -329,6 +329,7 @@ export function GraphScene(props: DependencyGraphProps) {
   const pendingCurve=(e:GraphLink)=>{const a=screenBox(e.source),b=screenBox(e.target);if(!a||!b)return null;const route=scene?.layout.edges[e.id],oldA=scene?.layout.nodes[e.source],oldB=scene?.layout.nodes[e.target];return previewCurve(a,b,route&&oldA?facingSide({...currentBoxes.get(e.source)!,...oldA},route.points[0]):undefined,false,route&&oldB?facingSide({...currentBoxes.get(e.target)!,...oldB},route.points.at(-1)!):undefined);};
   const hintSource=gesture?.reconnectEnd==='source'?gesture.target:gesture?.source,hintTarget=gesture?.reconnectEnd==='source'?gesture.source:gesture?.target;
   const hint=gesture?.issue?.message||(gesture?.target?cards.find(c=>c.id===hintSource)?.title+' 完成后 '+cards.find(c=>c.id===hintTarget)?.title+' 开始':gesture?gesture.reconnectEnd==='source'?'选择新的前置卡片，完成后进入当前后续':'拖到后续卡片，或点击卡片完成连接':'');
+  const openNode=(id:string)=>{const card=cards.find(c=>c.id===id);if(card&&props.onOpenNode&&!gesture&&runtime.commitFields())props.onOpenNode(card);};
   return <div className="dependency-canvas" ref={container} role="region" tabIndex={0} aria-label="动态交付依赖图"
     data-layout-ready={!busy} data-layout-phase={phase} data-rendered-layout={rendered} data-connection-active={!!gesture}
     onPointerDownCapture={event=>{
@@ -357,6 +358,7 @@ export function GraphScene(props: DependencyGraphProps) {
       }
       if(mod&&key==='z'&&(props.commands.allows('undo')||props.commands.allows('redo'))){event.preventDefault();event.stopPropagation();if(interaction.cancel())return;connection.cancel();props.commands.dispatch({type:event.shiftKey?'redo':'undo'});return;}
       if(mod&&key==='a'){event.preventDefault();event.stopPropagation();selectFromCanvas('');setSelectedIds(cards.filter(c=>!props.visibleIds||props.visibleIds.includes(c.id)).map(c=>c.id));return;}
+      if(event.key==='Enter'&&!mod&&props.onOpenNode&&!connectionRef.current){event.preventDefault();event.stopPropagation();openNode((event.target as HTMLElement).closest<HTMLElement>('.react-flow__node')?.dataset.id||selected);return;}
       if(mod&&['f','c','v'].includes(key)){event.preventDefault();event.stopPropagation();if(key==='f')props.onSearch?.();if(key==='c')clipboard.current={ids:selectedEdge?[]:[...editableIds],nodes:positioned(),snapshot:props.commands.copy(editableIds)};if(key==='v'&&editing&&clipboard.current.ids.length)duplicate(clipboard.current.ids,32,clipboard.current.snapshot,clipboard.current.nodes);return;}
       if(editing&&event.key==='Delete'){event.preventDefault();event.stopPropagation();if(editableIds.length||selectedEdge)props.commands.dispatch({type:'delete',ids:editableIds,edgeId:selectedEdge});return;}
       if(editing&&event.key==='F2'&&actionableIds.includes(selected)&&!selectedEdge&&!['start','acceptance','project'].includes(cards.find(c=>c.id===selected)?.kind||'')){event.preventDefault();const el=container.current?.querySelector<HTMLElement>('[data-inline-title="'+CSS.escape(selected)+'"]');if(el)el.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));}
@@ -370,6 +372,7 @@ export function GraphScene(props: DependencyGraphProps) {
     <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
       nodesDraggable={editing} nodesConnectable={false} deleteKeyCode={null} autoPanOnNodeFocus={false} autoPanOnConnect={false}
       zoomOnScroll zoomOnPinch zoomOnDoubleClick={false} panOnScroll={false} preventScrolling zoomActivationKeyCode={null}
+      onNodeDoubleClick={(_,node)=>openNode(node.id)}
       panActivationKeyCode="Space" panOnDrag={[0,1]} selectionKeyCode="Shift" multiSelectionKeyCode={["Control","Meta"]} connectOnClick={false}
       snapToGrid snapGrid={[8,8]}
       onPaneClick={event=>{if(props.placing&&editing)createAt(props.placing,flow.screenToFlowPosition({x:event.clientX,y:event.clientY}));else {setSelectedIds([]);selectFromCanvas('');}}}

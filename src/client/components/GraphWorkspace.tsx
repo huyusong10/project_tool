@@ -68,4 +68,4 @@ function Workspace({ document:editorDocument, auxiliaryKey, toolbar, detail, aux
   </section>;
 }
 
-export function GraphWorkspace(props:ComponentProps<typeof Workspace>){const [runtime]=useState(()=>new WorkspaceRuntime());return <WorkspaceRuntimeContext.Provider value={runtime}><Workspace {...props}/></WorkspaceRuntimeContext.Provider>;}
+export function GraphWorkspace({navigation,...props}:ComponentProps<typeof Workspace>&{navigation?:ReactNode}){const [runtime]=useState(()=>new WorkspaceRuntime());return <WorkspaceRuntimeContext.Provider value={runtime}>{navigation}<Workspace {...props}/></WorkspaceRuntimeContext.Provider>;}

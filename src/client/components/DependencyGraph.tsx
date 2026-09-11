@@ -15,6 +15,7 @@ export type DependencyGraphProps = {
   highlighted?: string[]; invalidNodes?: string[]; locate?: { id: string; sequence: number };
   reconnect?:{id:string;source:string;target:string}; validateReconnect?:(source:string,target:string)=>GraphConnectionIssue|null;
   focusId?:string;
+  onOpenNode?:(card:GraphCard)=>void;
   onLayoutReady?:(positions:Record<string,Point>)=>void;positions?:Record<string,Point>;
   placing?:string;onSearch?:()=>void;onRevealField?:(key:string)=>void;
 };

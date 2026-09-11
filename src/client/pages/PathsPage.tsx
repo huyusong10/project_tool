@@ -1,5 +1,13 @@
 import { PathAnalysisPanel } from '../components/PathAnalysisPanel';
 import { FeaturePathPanel } from '../components/FeaturePathPanel';
 import { useProjects,useSession } from '../app-context';
-import { Link,useSearchParams } from 'react-router-dom';
-export function PathsPage(){const {selectedProjectId}=useProjects(),{session}=useSession(),[params]=useSearchParams();const legacy=params.get('view')==='project'||['pathNode','pathEdge','pathRelation','pathScope'].some(key=>params.has(key));return legacy?<><div className="feature-path-bar"><Link to="/paths">特性关系图</Link><span>› 全部需求</span></div><PathAnalysisPanel key={(session.accountId||'guest')+selectedProjectId} projectId={selectedProjectId}/></>:<FeaturePathPanel key={(session.accountId||'guest')+selectedProjectId} projectId={selectedProjectId}/>;}
+import {Navigate,useSearchParams} from 'react-router-dom';
+import {useEffect,useRef} from 'react';
+import {canvasView} from '../canvas-navigation';
+export function PathsPage(){
+  const {selectedProjectId}=useProjects(),{session}=useSession(),[params,setParams]=useSearchParams(),key=(session.accountId||'guest')+':'+selectedProjectId,previous=useRef(key);
+  useEffect(()=>{if(previous.current!==key){previous.current=key;setParams({view:'features'},{replace:true});}},[key,setParams]);
+  if(previous.current!==key)return null;
+  if(!params.has('view')){const next=new URLSearchParams(params);next.set('view',canvasView(params));return <Navigate to={'/paths?'+next} replace/>;}
+  return canvasView(params)==='features'?<FeaturePathPanel key={key} projectId={selectedProjectId}/>:<PathAnalysisPanel key={key} projectId={selectedProjectId}/>;
+}

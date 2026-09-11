@@ -15,7 +15,7 @@ export function EditorToolbar({title,back,backLabel,navigation,context,status,ed
       <button className="ghost-button topbar-icon" title="撤销 · Ctrl/Cmd+Z" aria-label="撤销" disabled={!canUndo||busy} onClick={undo}><Undo2 size={17}/></button>
       <button className="ghost-button topbar-icon" title="重做 · Ctrl/Cmd+Shift+Z" aria-label="重做" disabled={!canRedo||busy} onClick={redo}><Redo2 size={17}/></button>
       <button className="primary-button" title={busy?'保存中…':'保存 · Ctrl/Cmd+S'} aria-label="保存修改" disabled={!canSave||busy} onClick={save}><Save size={17}/><span>保存</span></button>
-    </>:canEdit&&<button className="primary-button" title="编辑画布" aria-label="编辑画布" onClick={begin}><Pencil size={17}/><span>编辑</span></button>}/>;
+    </>:canEdit&&<button className="primary-button" title="编辑画布" aria-label="编辑画布" disabled={busy} onClick={begin}><Pencil size={17}/><span>编辑</span></button>}/>;
 }
 const elementLabels:Record<string,string>={requirement:'需求',work:'工作项',milestone:'里程碑',existing:'已有对象'};
 export function EditorPalette({types,placing,onPlace,disabled}:{types:string[];placing?:string;onPlace:(kind:string)=>void;disabled?:boolean}){
