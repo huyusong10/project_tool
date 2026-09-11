@@ -6,7 +6,16 @@ const text = z.string().trim().max(10000);
 const version = z.number().int().positive();
 export const organizationFields = { groupId: key.nullable().optional() };
 export type Organization = { groupId?: string | null; groupName?: string | null };
-export const groupInput = z.object({ id: key.optional(), name: label, sortOrder: z.number().int().nonnegative().default(0), expectedVersion: version.optional() }).strict();
+export const groupAssessmentLabels = { pending: '待评估', on_track: '基本符合', off_track: '有偏差', needs_adjustment: '需要调整' } as const;
+export const groupOverviewInput = z.object({
+  expectation: z.string().trim().max(2000),
+  progressSummary: z.string().trim().max(2000),
+  assessment: z.enum(['pending', 'on_track', 'off_track', 'needs_adjustment']),
+  note: z.string().trim().max(2000),
+}).strict();
+export type GroupOverviewInput = z.infer<typeof groupOverviewInput>;
+export const emptyGroupOverview: GroupOverviewInput = { expectation: '', progressSummary: '', assessment: 'pending', note: '' };
+export const groupInput = z.object({ id: key.optional(), name: label, sortOrder: z.number().int().nonnegative().default(0), expectedVersion: version.optional(), overview: groupOverviewInput.optional() }).strict();
 export const groupDeleteInput = z.object({ expectedVersion: version }).strict();
 export const organizationInput = z.object({ requirements: z.array(z.object({ id: key, expectedVersion: version }).strict()).min(1).max(1000), ...organizationFields }).strict().refine(v => v.groupId !== undefined, '请选择分组');
 export const sourceClauseInput = z.object({ key, section: text.default(''), externalId: text.default(''), title: label, content: text.default(''), priority: text.default(''), deferredReason: text.optional() }).strict();
@@ -33,7 +42,10 @@ export const importPreviewInput = z.object({ package: intakePackageSchema }).str
 export const importApplyInput = importPreviewInput.extend({ batchId: z.string().uuid(), previewToken: z.string(), expectedRevision: z.string() }).strict();
 export type IntakePackage = z.infer<typeof intakePackageSchema>;
 export type SourceDocumentInput = z.infer<typeof sourceDocumentInput>;
-export type RequirementGroup = { id: string; projectId: string; name: string; sortOrder: number; version: number };
+export type RequirementGroup = {
+  id: string; projectId: string; name: string; sortOrder: number; version: number;
+  overview: GroupOverviewInput; assessedAt: string | null; assessedBy: string | null; assessedByName: string | null;
+};
 export type SourceRevision = { id: string; documentVersion: string; section: string; externalId: string; title: string; content: string; priority: string };
 export type SourceLink = { id: string; clauseId: string; requirementId: string; workItemId: string | null; scope: string; reviewedRevisionId: string; requirementTitle: string; requirementVersion: number; workItemTitle: string | null; status: string; deliveryScope: string; deletedAt: string | null; reviewed: SourceRevision; needsReview: boolean };
 export type SourceClause = { id: string; key: string; documentId: string; deferredReason: string; current: SourceRevision; links: SourceLink[] };

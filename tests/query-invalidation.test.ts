@@ -22,7 +22,7 @@ it('问题变更同时刷新问题、行动中心、我的工作、账号在办�
 it('需求和工作项变更同时刷新问题关联名称与账号页在办计数', () => {
   const client = new QueryClient();
   const dependent = [
-    keys.requirements, keys.requirement('requirement-a'), keys.issues, keys.issue('issue-a'), keys.accounts,
+    keys.groupOverview, keys.requirements, keys.requirement('requirement-a'), keys.issues, keys.issue('issue-a'), keys.accounts,
   ];
   try {
     dependent.forEach((key) => client.setQueryData(key, { previous: true }));
@@ -37,7 +37,7 @@ for (const [name, invalidateViews] of [['项目变更', invalidateProjectViews],
   it(`${name}刷新全部受影响的派生列表与详情，不触碰品牌和个人布局`, () => {
     const client = new QueryClient();
     const dependent: QueryKey[] = [
-      keys.projects, keys.requirements, keys.requirement('r1'), keys.issues, keys.issue('i1'),
+      keys.projects, keys.groupOverview, keys.requirements, keys.requirement('r1'), keys.issues, keys.issue('i1'),
       keys.dashboard, keys.myWork, keys.actionItems, keys.peopleConcurrency,
       keys.analyticsData, keys.analyticsPreview, keys.auditSearch,
       keys.archives, keys.projectArchives, keys.people, keys.accounts,
@@ -65,7 +65,7 @@ for (const [name, invalidateViews, accessChanged] of [
     const client = new QueryClient();
     const dependent: QueryKey[] = [
       keys.accounts, [...keys.people, 'all'], [...keys.people, 'p1'], [...keys.projectMembers, 'p1'],
-      [...keys.peopleCandidates, 'p1', '旧姓名'], keys.requirements, keys.requirement('r1'),
+      [...keys.peopleCandidates, 'p1', '旧姓名'], keys.groupOverview, keys.requirements, keys.requirement('r1'),
       keys.issues, keys.issue('i1'), keys.dashboard, keys.myWork, keys.actionItems,
       keys.peopleConcurrency, keys.analyticsData, keys.analyticsPreview, keys.auditSearch,
     ];

@@ -112,3 +112,11 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 工具目录已移除来源条款、来源关联、阻塞/解阻、确认验收、预测核对、前置确认、交付承诺以及覆盖/删除历史的工具。新请求不接受 `deliveryScope/executionMode/acceptanceOwnerId/priority/unblockEstimate` 及阻塞协调字段。原始需求导入使用 `formatVersion:2`。
 
 拓扑中的 `acceptance:需求ID` 保留为历史布局兼容 ID，现在表示工作完成，不要求执行验收操作。独立里程碑只有显式依赖才影响其他工作。
+
+## 分组总体进展
+
+`get_group_overview({projectId})` 读取大致预期、进展简述、人工判断、评估人和时间，以及当前分组的需求计数和最近三条进展。取消、归档需求不计入汇总。默认判断为待评估，不按完成数量自动推断是否符合预期。
+
+`save_requirement_group` 可传 `overview: {expectation, progressSummary, assessment, note}`，四项均须提供，文字可为空；`assessment` 使用 `pending/on_track/off_track/needs_adjustment`。保存时使用最新分组的 `id/name/sortOrder/expectedVersion`。省略 `overview` 不影响已有评估。项目经理或管理员可保存。
+
+仅根据用户明确提供的判断写入评估。事实变化通过项目刷新版本更新网页，人工评估保持原值。结果未知时先调用 `get_group_overview` 核对，不直接重复保存。字段和网页行为见 [需求录入说明](requirement-intake.md#总体进展)。

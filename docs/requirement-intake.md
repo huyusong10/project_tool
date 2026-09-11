@@ -1,6 +1,6 @@
 # 原始需求录入与导入
 
-原始需求直接成为需求。原文写入需求说明，出处放在来源链接；分组用于整理模块。没有工作项时直接推进需求，需要分工时添加工作项或套用模板。
+原始需求直接成为需求。原文写入需求说明，出处放在来源链接；分组用于整理模块，也可记录总体预期与人工判断。没有工作项时直接推进需求，需要分工时添加工作项或套用模板。
 
 ## 页面操作
 
@@ -48,3 +48,19 @@ REST 路径前缀为 `/api/projects/:projectId`；MCP 参数加入 `projectId`�
 预览传 `{package}`。保存传回规范化 `package/expectedRevision/previewToken`，增加 UUID `batchId`。单项失败整批回滚；结果未知时先查回执，重试复用原批次和内容。并发修改后重新预览。
 
 项目经理管理分组和导入。批量分组传 `requirements:[{id,expectedVersion}]` 与 `groupId`；`null` 表示未分组。工具、skill 和案例随仓库同步维护。
+
+## 总体进展
+
+项目进展页按分组展示大致预期、进展简述、人工判断和最近评估时间。项目经理、管理员编辑，项目成员查看。判断包括待评估、基本符合、有偏差、需要调整；不要求填写日期。
+
+系统汇总当前分组中未归档、未取消的需求，显示完成、进行中、延期、排期不完整、近七天完成数量及最近三条进展。近七天含今天，按业务日期和实际完成日期计算。需求变化不会覆盖人工判断和评估时间。
+
+`GET /api/projects/:projectId/group-overview`（MCP：`get_group_overview`）返回 `asOfDate/recentFrom/groups/ungroupedCount`。分组含原资料、`overview`、`assessedAt/assessedBy/assessedByName`、`counts/requirements/recentUpdates`。
+
+现有分组保存接口接受可选 `overview`，提供时须完整传入下列字段，文字可为空且各最多 2000 字：
+
+```json
+{"expectation":"本季度具备试用条件","progressSummary":"基础授权完成","assessment":"on_track","note":"复杂权限场景稍慢，暂不影响试用"}
+```
+
+`assessment` 为 `pending/on_track/off_track/needs_adjustment`。服务器记录当前账号和评估时间。省略 `overview` 时保留已有评估，重命名和排序不刷新评估时间。更新仍传 `expectedVersion`；冲突或结果未知时先读取最新资料，网页保留输入供核对，修改前后内容保存在操作日志。

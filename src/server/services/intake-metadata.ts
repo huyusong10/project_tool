@@ -22,9 +22,17 @@ export function persistOrganization(id:string, projectId:string, value:Organizat
   validateOrganization(projectId,value);
   if(value.groupId!==undefined) sqlite.prepare('UPDATE requirements SET group_id=? WHERE id=?').run(value.groupId||null,id);
 }
+export function readRequirementGroups(projectId: string): RequirementGroup[] {
+  const rows = sqlite.prepare(`SELECT g.id,g.project_id AS projectId,g.name,g.sort_order AS sortOrder,g.version,
+    g.expectation,g.progress_summary AS progressSummary,g.assessment,g.assessment_note AS note,
+    g.assessed_at AS assessedAt,g.assessed_by AS assessedBy,a.username AS assessedByName
+    FROM requirement_groups g LEFT JOIN accounts a ON a.id=g.assessed_by
+    WHERE g.project_id=? ORDER BY g.sort_order,g.name,g.id`).all(projectId) as Array<Omit<RequirementGroup,'overview'> & RequirementGroup['overview']>;
+  return rows.map(({expectation,progressSummary,assessment,note,...group}) => ({...group,overview:{expectation,progressSummary,assessment,note}}));
+}
 export function readIntakeCatalog(projectId:string, actor:Actor):IntakeCatalog {
   assertProjectReadable(requireAuthorizationActor(actor),projectId);
-  const groups=sqlite.prepare('SELECT id,project_id AS projectId,name,sort_order AS sortOrder,version FROM requirement_groups WHERE project_id=? ORDER BY sort_order,name,id').all(projectId) as RequirementGroup[];
+  const groups=readRequirementGroups(projectId);
   const documents=sqlite.prepare('SELECT id,source_key AS key,title,url,source_version AS version,complete FROM source_documents WHERE project_id=? ORDER BY title,id').all(projectId) as SourceDocument[];
   const revisions=sqlite.prepare('SELECT v.id,v.document_version AS documentVersion,v.section,v.external_id AS externalId,v.title,v.content,v.priority FROM source_revisions v JOIN source_clauses c ON c.id=v.clause_id JOIN source_documents d ON d.id=c.document_id WHERE d.project_id=?').all(projectId) as SourceRevision[];
   const byRevision=new Map(revisions.map(r=>[r.id,r]));
@@ -44,13 +52,19 @@ export function saveGroup(projectId:string, raw:unknown, actor:Actor) {
     assertProjectManager(requireAuthorizationActor(actor),projectId);requireActiveProject(projectId);
     const id=input.id||randomUUID(),now=new Date().toISOString();
     const ordered=(sqlite.prepare('SELECT id FROM requirement_groups WHERE project_id=? ORDER BY sort_order,name,id').all(projectId) as Array<{id:string}>).map(g=>g.id).filter(value=>value!==id);
+    const previous=input.overview ? readRequirementGroups(projectId).find(group=>group.id===id) : undefined;
     if(input.id){
       const changed=sqlite.prepare('UPDATE requirement_groups SET name=?,sort_order=?,version=version+1,updated_at=? WHERE id=? AND project_id=? AND version=?').run(input.name,input.sortOrder,now,id,projectId,input.expectedVersion??0);
       if(!changed.changes)fail('分组已变化，请刷新核对','STALE_WRITE',409);
     }else sqlite.prepare('INSERT INTO requirement_groups(id,project_id,name,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(id,projectId,input.name,input.sortOrder,now,now);
     ordered.splice(Math.min(input.sortOrder,ordered.length),0,id);
     for(const [order,groupId] of ordered.entries())sqlite.prepare('UPDATE requirement_groups SET sort_order=?,version=version+1,updated_at=? WHERE id=? AND sort_order<>?').run(order,now,groupId,order);
-    recordAudit(actor,'update','project',projectId,'保存需求分组：'+input.name);
+    if (input.overview) {
+      const {expectation,progressSummary,assessment,note}=input.overview;
+      sqlite.prepare('UPDATE requirement_groups SET expectation=?,progress_summary=?,assessment=?,assessment_note=?,assessed_at=?,assessed_by=? WHERE id=? AND project_id=?')
+        .run(expectation,progressSummary,assessment,note,now,actor.accountId,id,projectId);
+      recordAudit(actor,'update','project',projectId,'更新分组总体进展：'+input.name+'；修改前：'+JSON.stringify(previous?.overview||null)+'；修改后：'+JSON.stringify(input.overview));
+    } else recordAudit(actor,'update','project',projectId,'保存需求分组：'+input.name);
     return readIntakeCatalog(projectId,actor);
   }).immediate();
 }

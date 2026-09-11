@@ -6,6 +6,7 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
  * 新增视图时只需在对应 helper 里登记一次。
  */
 export const keys = {
+  groupOverview:["group-overview"] as const,
   intake:["requirement-intake"] as const,
   commitments:["delivery-commitments"] as const,
   paths: ["path-analysis"] as const,
@@ -63,6 +64,7 @@ export function invalidateBusinessDateViews(client: QueryClient) {
 
 /** 需求域：需求变更还会影响账号页的在办需求和工作项计数。 */
 const requirementViewKeys: QueryKey[] = [
+  [...keys.groupOverview],
   [...keys.intake],
   [...keys.paths], [...keys.commitments],
   [...keys.requirementDetails],

@@ -29,6 +29,14 @@ description: 通过 MCP 将原始需求直接录入 project-manage，按需拆�
 
 没有工期或日期依据时保留未知，可给出标明假设的建议。缺少计划会影响项目整体预测；不把部分已排期工作当成整个项目的完成日期。
 
+## 总体进展
+
+用户要求查看大特性是否大体符合预期时，用 get_group_overview 读取分组总体进展。系统计数和最近进展提供依据，人工判断独立保存；不根据需求完成比例自动填写判断。
+
+用户明确要求更新总体预期或判断时，先读取分组最新 id/name/sortOrder/version，再用 save_requirement_group 携带 expectedVersion 和完整 overview：expectation、progressSummary、assessment、note。文字可为空；assessment 为 pending（待评估）、on_track（基本符合）、off_track（有偏差）、needs_adjustment（需要调整）。保留用户未要求修改的内容，不编造评估。仅整理名称或顺序时省略 overview，保留原评估时间。
+
+提交结果未知或发生版本冲突时，先读取 get_group_overview 核对，避免重复保存。原始需求录入的授权不包含代替人类判断是否符合预期。
+
 ## 执行与保存
 
 需求和工作项统一使用未开始、进行中、已完成；取消保留为退出操作。全部有效工作项完成后需求自动完成，不再提交或确认验收。实际需要的验证、验收可作为有负责人和计划的工作项。
