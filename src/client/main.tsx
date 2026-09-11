@@ -10,6 +10,8 @@ import './tokens.css';
 import './styles.css';
 import './themes.css';
 import './responsive.css';
+import './components/pagination.css';
+import './components/topbar.css';
 
 initTheme();
 initMotion();

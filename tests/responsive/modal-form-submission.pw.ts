@@ -782,9 +782,9 @@ test('登录与退出响应未知时按服务端会话自动完成身份切换',
   await dialog.getByLabel('密码').fill('test-password');
   await dialog.getByRole('button', { name: '用户登录', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.locator('.session-button')).toHaveText('admin');
+  await expect(page.locator('.topbar-account-name')).toHaveText('admin');
 
-  await page.getByRole('button', { name: '退出', exact: true }).click();
+  await page.getByRole('button',{name:/^账号菜单/}).click();await page.getByRole('menuitem',{ name:'退出登录', exact: true }).click();
   await expect(page.getByText('请登录', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '用户登录', exact: true }).first()).toBeVisible();
 });

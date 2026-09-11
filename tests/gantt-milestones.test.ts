@@ -1,9 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { groupMilestones, milestoneAncestors, milestoneDate, milestoneDay, milestonePosition, milestoneState, milestoneTiming, requirementMilestones, type GanttMilestone } from '../src/client/gantt-milestones';
+import { achievedMilestones, groupMilestones, milestoneAncestors, milestoneDate, milestoneDay, milestonePosition, milestoneState, milestoneTiming, requirementMilestones, type GanttMilestone } from '../src/client/gantt-milestones';
 import type { WorkItem } from '../src/client/types';
 const dates = ['2026-09-04', '2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10'].map(d => new Date(d + 'T00:00:00'));
 const m = (fields: Partial<GanttMilestone> = {}): GanttMilestone => ({ id: 'm', title: '接口基线', relatedIds: [], ...fields });
 describe('甘特里程碑切面', () => {
+  it('进度图只保留有效达成记录，按实际日期画一个点，保留目标供详情比较', () => {
+    const reached = m({ targetDate: '2030-09-10', actualDate: '2026-09-07' });
+    const items = achievedMilestones([reached, m({ id: 'planned', targetDate: '2026-09-04' }),
+      m({ id: 'forecast', forecastDate: '2026-09-08' }), m({ id: 'unknown' }),
+      m({ id: 'cancelled', cancelled: true, actualDate: '2026-09-07' }), m({ id: 'invalid', actualDate: 'invalid' })]);
+    expect(items).toHaveLength(1);
+    expect(items[0].targetDate).toBe('2030-09-10');
+    expect(milestoneDate(items[0])).toBe('2026-09-07');
+    expect(milestonePosition(items[0], dates, 40)).toBe(80);
+    expect(milestoneTiming(items[0])).toBe('实际 2026-09-07');
+    expect(milestoneDate(reached)).toBe('2030-09-10'); // The planning object is untouched.
+  });
+  it('旧标签仅在工作完成且有实际日期时显示，需求整体未完成不影响独立里程碑', () => {
+    const legacy = { id: 'w', requirementId: 'r', milestoneLabel: '旧基线', plannedEnd: '2026-09-10', status: 'in_progress' } as WorkItem;
+    expect(achievedMilestones(requirementMilestones(undefined, [legacy]))).toEqual([]);
+    expect(achievedMilestones(requirementMilestones(undefined, [{ ...legacy, status: 'completed' }]))).toEqual([]);
+    const items = requirementMilestones([{ id: 'm', title: '接口基线', requirementId: 'r', projectId: 'p', targetDate: '2026-09-10', achievedAt: '2026-09-07', confirmationMode: 'manual', version: 1 }], [legacy]);
+    expect(achievedMilestones(items).map(m => m.id)).toEqual(['m']);
+  });
   it('目标固定在当日结束边界，实际达成使用独立位置', () => {
     const item = m({ targetDate: '2026-09-10', actualDate: '2026-09-07', forecastDate: '2026-09-08' });
     expect(milestoneDate(item)).toBe('2026-09-10');

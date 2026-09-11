@@ -47,7 +47,7 @@ test("折叠侧边栏保留完整导航并共用同一品牌标识", async ({ pa
   await page.goto("/");
   await page.evaluate(() => localStorage.setItem("project-manage:sidebar-collapsed", "false"));
   await page.reload();
-  await expect(page.locator(".session-button")).toContainText("admin");
+  await expect(page.locator(".topbar-account-name")).toContainText("admin");
 
   const sidebar = page.locator(".sidebar");
   const logo = sidebar.locator(".brand-logo");

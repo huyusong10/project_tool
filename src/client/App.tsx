@@ -85,6 +85,9 @@ export function App() {
   const [narrowSidebarExpanded, setNarrowSidebarExpanded] = useState(false);
   const visibleSidebarCollapsed = narrowScreen ? !narrowSidebarExpanded : sidebarCollapsed;
   const [titleEl, setTitleEl] = useState<HTMLElement | null>(null);
+  const [contextEl, setContextEl] = useState<HTMLElement | null>(null);
+  const [statusEl, setStatusEl] = useState<HTMLElement | null>(null);
+  const [topbarWidth, setTopbarWidth] = useState(1200);
   const [actionsEl, setActionsEl] = useState<HTMLElement | null>(null);
   const [businessDate, setBusinessDate] = useState(todayIso);
   const previousBusinessDate = useRef(businessDate);
@@ -170,8 +173,16 @@ export function App() {
     if (projectId === selectedProjectId) return;
     startTransition(() => {
       setSelectedProjectId(projectId);
+      if (location.pathname === '/paths' || /^\/requirements\/[^/]+$/.test(location.pathname) && new URLSearchParams(location.search).get('view') === 'path') {
+        navigate('/paths', { state: null });
+        return;
+      }
+      if (location.pathname === '/templates') {
+        navigate('/templates', { state: null });
+        return;
+      }
       if (/^\/requirements\/[^/]+$/.test(location.pathname)) {
-        navigate("/requirements");
+        navigate("/requirements", { state: null });
         return;
       }
       if (["/requirements", "/actions", "/analytics", "/people"].includes(location.pathname)) {
@@ -199,8 +210,8 @@ export function App() {
   const uiActionsValue = useMemo(() => ({ openLogin, openPassword }), [openLogin, openPassword]);
   const businessDateValue = useMemo(() => ({ businessDate }), [businessDate]);
   const topbarSlotsValue = useMemo(
-    () => ({ titleEl, actionsEl, setTitleEl, setActionsEl }),
-    [titleEl, actionsEl],
+    () => ({ titleEl, actionsEl, contextEl, statusEl, width: topbarWidth, setTitleEl, setActionsEl, setContextEl, setStatusEl, setWidth: setTopbarWidth }),
+    [titleEl, actionsEl, contextEl, statusEl, topbarWidth],
   );
 
   if (sessionQuery.unavailable && sessionQuery.error) return <StartupError title="登录状态加载失败" error={sessionQuery.error} pending={sessionQuery.isFetching} onRetry={() => void sessionQuery.refetch()} />;

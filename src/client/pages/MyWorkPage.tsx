@@ -1,3 +1,5 @@
+import { Pagination } from '../components/Pagination';
+import { useListPagination } from '../use-list-pagination';
 import type {StartAssignment} from '../components/StartAssignmentDialog';
 
 import {directRequirementTimelineItem} from '../requirement-timeline';
@@ -8,7 +10,7 @@ import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Check, Clock3, MessageSquarePlus, Play } from 'lucide-react';
+import { AlertTriangle, Check, Clock3, PencilLine, Play } from 'lucide-react';
 import { api, jsonBody } from '../api';
 import { useSession } from '../app-context';
 import { invalidateRequirementViews, keys } from '../query-keys';
@@ -32,7 +34,7 @@ export function MyWorkPage() {
   const [params, setParams] = usePageSearchParams(['filter'], true);
   const requestedFilter = params.get('filter');
   const filter = requestedFilter && ['active','all','not_started','in_progress','completed','cancelled'].includes(requestedFilter) ? requestedFilter : 'active';
-  const setFilter = (value: string) => setParams({ filter: value });
+  const setFilter = (value: string) => setParams(current => { const next = new URLSearchParams(current); next.set('filter', value); next.set('work.page', '1'); return next; });
   const [progressItem, setProgressItem] = useState<MyWorkItem>();
   const [activeActionItemId, setActiveActionItemId] = useState<string>();
   const [workItemActionRechecks, setWorkItemActionRechecks] = useState<Set<string>>(() => readWorkItemActionRechecks(actionRecheckAccountKey));
@@ -49,6 +51,8 @@ export function MyWorkPage() {
   };
   const directEntries=(data?.requirements||[]).filter(r=>r.executionMode==='direct').map(r=>({...r,...directRequirementTimelineItem(r as Requirement),requirementStatus:r.status,requirementTitle:r.title,assignmentType:'owner',overdue:r.delayed,deliveryRequirement:r} as MyWorkItem & {deliveryRequirement:typeof r}));
   const items = [...(data?.items || []),...directEntries].filter((item) => item.id === activeActionItemId || filter === 'all' || (filter === 'active' ? !['completed', 'cancelled'].includes(item.status) : item.status === filter));
+  const workPagination = useListPagination({ items, id: 'work', personal: true, filterKey: filter, ready: Boolean(data), loading: isFetching, disabled: Boolean(activeActionItemId) });
+  const ownedPagination = useListPagination({ items: data?.requirements || [], id: 'owned', personal: true, ready: Boolean(data), loading: isFetching });
   const action = useMutation({
     mutationFn: async ({ item, action, content, reason, expectedDependencyRevision, assignment, expectedVersion = item.version }: { item: MyWorkItem; expectedDependencyRevision?:number; assignment?:StartAssignment; action: string; content?: string; reason?: string; expectedVersion?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId,{workItemId:item.id,action});return api(`/api/work-items/${item.id}/${action}`, {
       method: 'POST', body: jsonBody({ ...assignment, expectedVersion, content, reason, expectedDependencyRevision }),
@@ -77,15 +81,16 @@ export function MyWorkPage() {
       <section className="my-work-summary">
         {metrics.map(({ label, value, Icon }) => <article key={label}><Icon size={19} /><span>{label}</span><strong>{value}</strong></article>)}
       </section>
-      {!!data?.requirements.length && <section className="panel my-owned-requirements">
+      {!!data?.requirements.length && <section className="panel my-owned-requirements paged-panel">
         <header><div><h2>我负责的需求</h2><p>计划、进展和待处理事项</p></div></header>
-        <div className="my-owned-requirement-grid">
-          {data.requirements.map((requirement) => <div className="my-owned-requirement-card" key={requirement.id}><button className="my-owned-requirement-link" onClick={() => navigate(`/requirements/${requirement.id}`)}>
+        <div className="my-owned-requirement-grid paged-body" ref={ownedPagination.scrollRef}>
+          {ownedPagination.items.map((requirement) => <div className="my-owned-requirement-card" key={requirement.id}><button className="my-owned-requirement-link" onClick={() => navigate(`/requirements/${requirement.id}`)}>
             <div><strong>{requirement.title}</strong></div>
             <p>{requirement.projectName} · {requirement.plannedStart || "待排期"} → {requirement.plannedEnd || "待排期"}</p>
             <footer><span className={`status-pill status-${requirement.status}`}>{requirementStatusLabels[requirement.status as keyof typeof requirementStatusLabels] || requirement.status}</span><span>{requirement.planningReasons.join("、") || requirement.readinessIssues?.join('、') || requirementRiskDisplay(requirement as Requirement).label}</span><b>{requirement.actionCount} 项待处理</b></footer>
           </button>{requirement.executionMode==='direct'&&<DeliveryControls requirement={requirement as Requirement} compact/>}</div>)}
         </div>
+        <Pagination {...ownedPagination.props} label="我负责的需求分页" />
       </section>}
       <ResizablePanel
         className="panel my-work-list stable-workspace-panel"
@@ -95,7 +100,9 @@ export function MyWorkPage() {
       >
         <header><div><h2>分配给我的工作</h2><p>直接执行需求、主负责和协作工作</p></div><ViewTabs value={filter} onChange={setFilter} options={[['active', '当前'], ['not_started', '未开始'], ['in_progress', '进行中'], ['completed', '已完成'], ['all', '全部']].map(([value, label]) => ({ value, label }))} /></header>
         {isLoading && !data ? <LoadingState className="stable-panel-state" label="正在加载工作项…" /> : <GapTimeline
-          items={items}
+          items={workPagination.items}
+          rangeItems={items}
+          scrollElementRef={workPagination.scrollRef}
           asOfDate={data?.asOfDate}
           showStatusFilters={false}
           showGapSummary={false}
@@ -115,7 +122,7 @@ export function MyWorkPage() {
             const item = baseItem as MyWorkItem;
             const direct=directEntries.find(r=>r.id===item.id);if(direct)return <button className="ghost-button" onClick={()=>navigate('/requirements/'+direct.requirementId)}>处理需求</button>;
             return <div className="my-work-gantt-actions">
-              {item.status === 'in_progress' && <button className="my-work-progress-action" onClick={() => setProgressItem(item)} title="更新完成度" aria-label={`为${item.title}更新完成度`}><MessageSquarePlus size={15} /><span>更新完成度</span></button>}
+              {item.status === 'in_progress' && <button className="my-work-progress-action" onClick={() => setProgressItem(item)} title="更新进度" aria-label={`为${item.title}更新进度`}><PencilLine size={14} /><span>更新进度</span></button>}
               <WorkItemActions item={item} writeNeedsRecheck={workItemActionRechecks.has(item.id)} onWriteNeedsRecheckChange={(required) => setWorkItemActionRecheck(item.id, required)} onOpenChange={(open) => setActiveActionItemId((current) => open ? item.id : current === item.id ? undefined : current)} onAction={(nextAction, text, expectedVersion, expectedDependencyRevision, assignment) => action.mutateAsync({ item, action: nextAction, expectedVersion, expectedDependencyRevision, assignment, ...(nextAction === 'start' ? { reason: text } : { content: text }) })} onReload={async () => {
                 const [latest, requirement] = await Promise.all([
                   refetch({ throwOnError: true }),
@@ -131,6 +138,7 @@ export function MyWorkPage() {
             </div>;
           }}
         />}
+        {!unavailable && <Pagination {...workPagination.props} label="分配给我的工作分页" />}
       </ResizablePanel>
       <section className="my-work-charts"><article className="panel"><header><div><h2>完成趋势</h2><p>近8个有完成记录的自然周</p></div></header><Chart option={charts.completion} height={230} ariaLabel="我的工作完成趋势" /></article><article className="panel"><header><div><h2>近期并发</h2><p>未来10个工作日的计划工作项数</p></div></header><Chart option={charts.upcoming} height={230} ariaLabel="我的近期工作并发趋势" /></article></section>
       </>}

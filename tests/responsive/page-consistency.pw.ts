@@ -15,8 +15,9 @@ async function setup(page: Page) {
     return route.fulfill({ json: url.pathname === '/api/requirements' ? items : items.find(r => url.pathname === '/api/requirements/' + r.id) || requirement });
   });
   await page.route('**/api/action-items?**', route => {
-    const current = Number(new URL(route.request().url()).searchParams.get('page') || 1);
-    return route.fulfill({ json: { asOfDate: '2026-09-09', total: 40, pages: 2, page: current, pageSize: 20,
+    const params = new URL(route.request().url()).searchParams;
+    const current = Number(params.get('page') || 1), pageSize = Number(params.get('pageSize') || 10);
+    return route.fulfill({ json: { asOfDate: '2026-09-09', total: 40, pages: Math.ceil(40/pageSize), page: current, pageSize,
       summary: { total: 40, high: 40, medium: 0, low: 0, byReason: {} }, ownerOptions: [],
       items: [{ id: 'a', title: '处理进度落后', severity: 'high', reasons: [{ label: '进度落后' }], targetPath: '/requirements/risk', overdueWorkdays: 0 }],
     } });
@@ -43,13 +44,14 @@ test('列表与详情共享风险和偏差含义，返回、刷新恢复查询�
   await page.goto('/requirements?q=未排期');
   await expect(page.locator('tbody tr')).toContainText('待排期');
   await page.getByRole('link', { name: '未排期样本', exact: true }).click();
-  await expect(page.locator('.detail-kpis article').nth(2)).toContainText('待排期');
+  await expect(page.locator('.detail-kpis article').nth(2)).toContainText('未排期');
   await expect(page.locator('.detail-kpis article').nth(2)).not.toContainText('0 工作日');
 });
 
 test('长列表往返恢复滚动；侧栏重新进入恢复原筛选；显式链接优先', async ({ page }) => {
   await setup(page);
   await page.goto('/requirements?q=普通&sort=title&direction=asc');
+  await page.getByRole('navigation',{name:'需求列表分页'}).getByRole('button',{name:'下一页',exact:true}).click();
   const target = page.getByRole('link', { name: '普通样本 20', exact: true });
   await target.scrollIntoViewIfNeeded();
   const scroll = await page.evaluate(() => scrollY);
@@ -94,21 +96,22 @@ test('项目之间分别记忆筛选，显式链接不混入历史条件', async
   await expect(page.getByPlaceholder('搜索需求或负责人')).toHaveValue('普通');
   await page.goto('/requirements?status=in_progress');
   await expect(page.getByPlaceholder('搜索需求或负责人')).toHaveValue('');
-  await expect(page.locator('tbody tr')).toHaveCount(26);
+  await expect(page.locator('tbody tr')).toHaveCount(20);
+  await expect(page.getByRole('navigation',{name:'需求列表分页'})).toContainText('共 26 条');
 });
 
 test('问题全部状态与分页在刷新后保持', async ({ page }) => {
   await setup(page);
   await page.route('**/api/issues?**', route => route.fulfill({ json: {
-    items: [], total: 120, pages: 3, page: Number(new URL(route.request().url()).searchParams.get('page') || 1), pageSize: 50,
+    items: [], total: 120, pages: 6, page: Number(new URL(route.request().url()).searchParams.get('page') || 1), pageSize: 20,
     summary: { total: 120, active: 120, inProgress: 120, deferred: 0, resolved: 0, highPriority: 0, overdue: 0, unassigned: 0 },
   } }));
   await page.goto('/issues?status=&page=2');
   await expect(page).toHaveURL(/page=2/);
-  await expect(page.locator('.table-pagination')).toContainText('第 2 / 3 页');
+  await expect(page.locator('.table-pagination [aria-current=page]')).toHaveText('2');
   await page.reload();
   await expect(page).toHaveURL(/status=&page=2/);
-  await expect(page.locator('.table-pagination')).toContainText('第 2 / 3 页');
+  await expect(page.locator('.table-pagination [aria-current=page]')).toHaveText('2');
 });
 
 test('统计页区分零数量、无完成样本和真实零按期率，并恢复时间范围', async ({ page }) => {

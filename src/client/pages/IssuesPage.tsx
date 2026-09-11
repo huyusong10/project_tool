@@ -21,6 +21,9 @@ import { StatusBadge } from "../components/Badge";
 import { EmptyState, LoadingState, RefreshNotice } from "../components/Feedback";
 import { FilterBar } from "../components/FilterBar";
 import { Pagination } from "../components/Pagination";
+import { useListPagination } from '../use-list-pagination';
+import { readPagination } from '../pagination';
+import { usePagedResourceQuery } from '../use-paged-resource-query';
 import { DataCell } from "../components/LayoutPrimitives";
 import { PageHeader } from "../components/PageHeader";
 import { IssueForm, IssueUpdateForm } from "../components/IssueForms";
@@ -149,6 +152,7 @@ function IssueDetail({
   const [tab, setTab] = useState<"basic" | "updates">(initialTab);
   const { projects, syncProjectContext } = useProjects();
   const { data: issue, isLoading, error, refetch, isFetching, unavailable } = useResourceQuery<Issue>(keys.issue(issueId), `/api/issues/${issueId}`);
+  const historyPagination = useListPagination({ items: issue?.updates || [], id: "issueHistory", filterKey: issueId, defaultPageSize: 10, ready: Boolean(issue), loading: isFetching, disabled: pending });
   const issueProjectAvailable = Boolean(issue?.projectId && projects.some((project) => project.id === issue.projectId));
   useEffect(() => {
     if (!issue?.projectId || issue.projectId === projectId || !issueProjectAvailable) return;
@@ -190,14 +194,15 @@ function IssueDetail({
         <dl><div><dt>问题影响</dt><dd>{issue.impact || "暂无影响说明"}</dd></div><div><dt>关联范围</dt><dd>{issueScope(issue)}</dd></div><div><dt>负责人</dt><dd>{issue.ownerName || "未分配"}</dd></div><div><dt>提出人</dt><dd>{issue.reporter || "未指定"}</dd></div><div><dt>发现日期</dt><dd>{issue.discoveredAt}</dd></div><div><dt>下次核对</dt><dd>{issue.nextReviewAt||"未设置"}</dd></div><div><dt>目标日期</dt><dd>{issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"}</dd></div>{issue.status === "resolved" && <div><dt>解决日期</dt><dd>{issue.resolvedAt || "未记录"}</dd></div>}</dl>
       </div> : <IssueForm issue={issue} projectId={projectId} people={people} requirements={requirements} canManage defaultReporter={defaultReporter} autoFocusTitle={tab === "basic"} onClose={onClose} busy={pending} onPendingChange={onPendingChange} />}
     </section>
-    <section id="issue-panel-updates" className="issue-settings-panel issue-settings-updates" role="tabpanel" aria-labelledby="issue-tab-updates" hidden={tab !== "updates"}>
+    <section id="issue-panel-updates" className="issue-settings-panel issue-settings-updates" ref={historyPagination.scrollRef} role="tabpanel" aria-labelledby="issue-tab-updates" hidden={tab !== "updates"}>
       <div className="issue-settings-progress-entry">
         <header><div><h3>追加进展</h3><p>普通进展最高99%；100%仅由“解决问题”操作产生</p></div></header>
         {canContribute ? <IssueUpdateForm issue={issue} canSetProgress={canSetProgress} busy={pending} onPendingChange={onPendingChange} /> : <p className="issue-settings-resolved-note">当前角色可查看进展，但不能追加记录。</p>}
       </div>
       <div className="issue-update-settings">
         <header><div><h3>历史进展</h3><p>{issue.updates?.length || 0} 条只读记录；纠错会新增记录，不覆盖历史</p></div></header>
-        <div className="issue-update-settings-list">{issue.updates?.map((update) => <IssueUpdateSettingRow update={update} superseded={update.supersedesId ? updateById.get(update.supersedesId) : undefined} key={update.id} />)}</div>
+        <div className="issue-update-settings-list">{historyPagination.items.map((update) => <IssueUpdateSettingRow update={update} superseded={update.supersedesId ? updateById.get(update.supersedesId) : undefined} key={update.id} />)}</div>
+        <Pagination {...historyPagination.props} label="问题进展分页" />
         {!issue.updates?.length && <EmptyState title="暂无进展记录" detail="在上方填写进度与说明，创建第一条记录。" />}
       </div>
     </section>
@@ -209,17 +214,14 @@ export function IssuesPage() {
   const { selectedProjectId } = useProjects();
   const [searchParams, setSearchParams] = usePageSearchParams(['q','status','active','priority','ownerId','scope','requirementId','overdue','unassigned','page']);
   const linkedQuery = searchParams.toString();
-  const initialLinkedParams = new URLSearchParams(linkedQuery);
-  const [keyword, setKeyword] = useState(initialLinkedParams.get("q") || "");
+  const keyword = searchParams.get("q") || "";
   const deferredKeyword = useDeferredValue(keyword);
-  const [status, setStatus] = useState(defaultIssueStatus(initialLinkedParams));
-  const [priority, setPriority] = useState(initialLinkedParams.get("priority") || "");
-  const [ownerId, setOwnerId] = useState(initialLinkedParams.get("ownerId") || "");
-  const [scope, setScope] = useState(initialLinkedParams.get("scope") === "public" ? "public" : initialLinkedParams.get("requirementId") || "");
-  const [overdue, setOverdue] = useState(initialLinkedParams.get("overdue") === "true");
-  const [unassigned, setUnassigned] = useState(initialLinkedParams.get("unassigned") === "true");
-  const [page, setPage] = useState(() => Math.max(1, Math.trunc(Number(initialLinkedParams.get('page')) || 1)));
-  const [selectedIssueId, setSelectedIssueId] = useState<string | undefined>(initialLinkedParams.get("issueId") || undefined);
+  const status = defaultIssueStatus(searchParams);
+  const priority = searchParams.get("priority") || "", ownerId = searchParams.get("ownerId") || "";
+  const scope = searchParams.get("scope") === "public" ? "public" : searchParams.get("requirementId") || "";
+  const overdue = searchParams.get("overdue") === "true", unassigned = searchParams.get("unassigned") === "true";
+  const { page, pageSize } = readPagination(searchParams);
+  const selectedIssueId = searchParams.get("issueId") || undefined;
   const [detailTab, setDetailTab] = useState<"basic" | "updates">("updates");
   const [formIssue, setFormIssue] = useState<Issue | null | undefined>(undefined);
   const [detailPending, setDetailPending] = useState(false);
@@ -234,18 +236,6 @@ export function IssuesPage() {
     formPendingRef.current = pending;
     setFormPending(pending);
   };
-  useEffect(() => {
-    const linked = new URLSearchParams(linkedQuery);
-    setKeyword(linked.get("q") || "");
-    setStatus(defaultIssueStatus(linked));
-    setPriority(linked.get("priority") || "");
-    setOwnerId(linked.get("ownerId") || "");
-    setScope(linked.get("scope") === "public" ? "public" : linked.get("requirementId") || "");
-    setOverdue(linked.get("overdue") === "true");
-    setUnassigned(linked.get("unassigned") === "true");
-    setSelectedIssueId(linked.get("issueId") || undefined);
-    setPage(Math.max(1, Math.trunc(Number(linked.get("page")) || 1)));
-  }, [linkedQuery]);
   const peopleQuery = useQuery({ queryKey: [...keys.people, selectedProjectId], queryFn: ({ signal }) => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`, { signal }), enabled: Boolean(selectedProjectId) });
   const people = peopleQuery.data || emptyPeople;
   const eligiblePeople = people.filter((person) => person.active && person.projectRole !== "viewer");
@@ -262,14 +252,11 @@ export function IssuesPage() {
     const next = new URLSearchParams(linkedQuery);
     next.delete("page");
     if (staleOwner) {
-      setOwnerId("");
       next.delete("ownerId");
     }
     if (staleRequirement) {
-      setScope("");
       next.delete("requirementId");
     }
-    setPage(1);
     setSearchParams(next, { replace: true });
   }, [linkedQuery, ownerId, people, referenceDataReady, requirements, scope, setSearchParams]);
   const canEdit = canManageProject(session, selectedProjectId);
@@ -277,7 +264,7 @@ export function IssuesPage() {
   const canContribute = referenceDataReady && session.authenticated && !session.mustChangePassword
     && (canEdit || Boolean(session.personId && people.some((person) => person.id === session.personId && person.projectRole !== "viewer")));
   const defaultReporter = people.find((person) => person.id === session.personId)?.name || session.username;
-  const params = new URLSearchParams({ projectId: selectedProjectId, page: String(page), pageSize: "50" });
+  const params = new URLSearchParams({ projectId: selectedProjectId, page: String(page), pageSize: String(pageSize) });
   if (deferredKeyword.trim()) params.set("q", deferredKeyword.trim());
   if (status === "active") params.set("active", "true");
   else if (status) params.set("status", status);
@@ -287,16 +274,11 @@ export function IssuesPage() {
   else if (scope) params.set("requirementId", scope);
   if (overdue) params.set("overdue", "true");
   if (unassigned) params.set("unassigned", "true");
-  const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: [...keys.issues, selectedProjectId, deferredKeyword, status, priority, ownerId, scope, overdue, unassigned, page],
-    queryFn: ({ signal }) => api<IssuePage>(`/api/issues?${params}`, { signal }),
-    enabled: Boolean(selectedProjectId),
-  });
-  useEffect(() => {
-    if (!data) return;
-    const lastPage = Math.max(1, data.pages);
-    if (page > lastPage) { setPage(lastPage); setSearchParams(current => { const next = new URLSearchParams(current); next.set("page", String(lastPage)); return next; }); }
-  }, [data, page, setSearchParams]);
+  const filterKey = JSON.stringify([selectedProjectId, deferredKeyword, status, priority, ownerId, scope, overdue, unassigned]);
+  const { data, isLoading, error, refetch, isFetching } = usePagedResourceQuery<IssuePage>(
+    [...keys.issues, selectedProjectId, deferredKeyword, status, priority, ownerId, scope, overdue, unassigned, page, pageSize], `/api/issues?${params}`, filterKey, Boolean(selectedProjectId));
+  const pagination = useListPagination({ total: data?.total || 0, filterKey, ready: Boolean(data) && !error, loading: isFetching,
+    serverPage: data?.page, serverPageSize: data?.pageSize, failed: Boolean(error), disabled: detailPending || formPending });
   const runIssueSave = useOptimisticMutation<{ issue: Issue; input: Record<string, unknown> }, Issue>({
     snapshotKeys: ({ issue }) => [[...keys.issues, selectedProjectId], keys.issue(issue.id)],
     apply: (queryClient, { issue, input }) => {
@@ -330,41 +312,32 @@ export function IssuesPage() {
     },
   });
   const saveIssue = (issue: Issue, input: Record<string, unknown>) => runIssueSave({ issue, input });
-  const updateFilter = (key: string, value: string, update: () => void) => {
-    update();
-    setPage(1);
+  const updateFilter = (key: string, value: string) => {
     const next = new URLSearchParams(linkedQuery);
     next.delete("page");
     if (value) next.set(key, value); else next.delete(key);
     setSearchParams(next, { replace: true });
   };
   const changeStatus = (value: string) => {
-    setStatus(value);
-    setPage(1);
     const next = new URLSearchParams(linkedQuery);
     next.delete("page");
     next.delete("active");
     next.set("status", value);
     if (value === "resolved") {
-      setOverdue(false);
       next.delete("overdue");
     }
     setSearchParams(next, { replace: true });
   };
   const changeOwner = (value: string) => {
-    setOwnerId(value);
-    setPage(1);
     const next = new URLSearchParams(linkedQuery);
     next.delete("page");
     if (value) {
       next.set("ownerId", value);
-      setUnassigned(false);
       next.delete("unassigned");
     } else next.delete("ownerId");
     setSearchParams(next, { replace: true });
   };
   const changeScope = (value: string) => {
-    setScope(value); setPage(1);
     const next = new URLSearchParams(linkedQuery);
     next.delete("page");
     next.delete("scope"); next.delete("requirementId");
@@ -374,14 +347,11 @@ export function IssuesPage() {
   };
   const toggleOverdue = () => {
     const enabled = !overdue;
-    setOverdue(enabled);
-    setPage(1);
     const next = new URLSearchParams(linkedQuery);
     next.delete("page");
     if (enabled) {
       next.set("overdue", "true");
       if (status === "resolved") {
-        setStatus("active");
         next.delete("active");
         next.set("status", "active");
       }
@@ -390,29 +360,24 @@ export function IssuesPage() {
   };
   const toggleUnassigned = () => {
     const enabled = !unassigned;
-    setUnassigned(enabled);
-    setPage(1);
     const next = new URLSearchParams(linkedQuery);
     next.delete("page");
     if (enabled) {
       next.set("unassigned", "true");
-      setOwnerId("");
       next.delete("ownerId");
     } else next.delete("unassigned");
     setSearchParams(next, { replace: true });
   };
-  const clearFilters = () => { setKeyword(""); setStatus("in_progress"); setPriority(""); setOwnerId(""); setScope(""); setOverdue(false); setUnassigned(false); setPage(1); setSearchParams({}, { replace: true }); };
+  const clearFilters = () => setSearchParams(current => { const next = new URLSearchParams(current); for (const key of ['q','status','active','priority','ownerId','scope','requirementId','overdue','unassigned']) next.delete(key); next.set('page','1'); return next; });
   const hasFilters = Boolean(keyword || status !== "in_progress" || priority || ownerId || scope || overdue || unassigned);
   usePageScrollPosition(!isLoading);
   const listUnavailable = Boolean(error && !data);
   const summary = data?.summary || { total: 0, inProgress: 0, deferred: 0, resolved: 0, active: 0, highPriority: 0, overdue: 0, unassigned: 0, closureRate: 0 };
   const openIssue = (id: string, tab: "basic" | "updates") => {
-    setSelectedIssueId(id);
     setDetailTab(tab);
-    const next = new URLSearchParams(linkedQuery); next.set("issueId", id); setSearchParams(next, { replace: true });
+    const next = new URLSearchParams(linkedQuery); next.set("issueId", id); next.set("issueHistory.page", "1"); setSearchParams(next, { replace: true });
   };
   const closeIssue = () => {
-    setSelectedIssueId(undefined);
     const next = new URLSearchParams(linkedQuery); next.delete("issueId"); setSearchParams(next, { replace: true });
   };
   const closeIssueFromUi = () => {
@@ -433,9 +398,9 @@ export function IssuesPage() {
         <article className="issue-metric metric-overdue"><AlertTriangle size={20} /><div><span>已逾期</span><strong>{summary.overdue}</strong></div></article>
       </section>
       <FilterBar className="issue-filters" result={`${data?.total || 0} / ${summary.total} 条`} onReset={clearFilters} resetDisabled={!hasFilters}>
-        <SearchInput value={keyword} onChange={(value) => updateFilter("q", value, () => setKeyword(value))} placeholder="搜索问题、影响、人员、进展或拼音" />
+        <SearchInput value={keyword} onChange={(value) => updateFilter("q", value)} placeholder="搜索问题、影响、人员、进展或拼音" />
         <select value={status} onChange={(event) => changeStatus(event.target.value)}><option value="in_progress">处理中</option><option value="active">全部未闭环</option><option value="">全部状态</option>{statusEntries.filter(([value]) => value !== "in_progress").map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
-        <select value={priority} onChange={(event) => updateFilter("priority", event.target.value, () => setPriority(event.target.value))}><option value="">全部优先级</option>{priorityEntries.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
+        <select value={priority} onChange={(event) => updateFilter("priority", event.target.value)}><option value="">全部优先级</option>{priorityEntries.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
         <select value={ownerId} onChange={(event) => changeOwner(event.target.value)}><option value="">全部负责人</option>{people.map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
         <select value={scope} onChange={(event) => changeScope(event.target.value)}><option value="">全部范围</option><option value="public">公共问题</option>{requirements.map((requirement) => <option value={requirement.id} key={requirement.id}>{requirement.title}</option>)}</select>
         <button className={`issue-filter-toggle${overdue ? " active" : ""}`} onClick={toggleOverdue}><AlertTriangle size={14} />仅逾期</button>
@@ -444,12 +409,13 @@ export function IssuesPage() {
       {error && data && <div className="warning-banner">问题列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
       <AdaptiveDataList
         label="问题跟踪列表"
-        className="issue-data-list"
+        className="issue-data-list paged-panel"
+        bodyRef={pagination.scrollRef}
         columns={issueColumns}
         empty={listUnavailable
           ? <EmptyState title="问题列表加载失败" detail={error?.message || "暂时无法读取问题数据。"} action={<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button>} />
           : !data?.items.length && !isLoading ? <EmptyState title="没有符合条件的问题" detail="调整筛选条件，或新建一条公共问题。" /> : null}
-        footer={!listUnavailable ? <Pagination page={data?.page || 1} pages={data?.pages || 1} onChange={(value) => { setPage(value); const next = new URLSearchParams(linkedQuery); next.set("page", String(value)); setSearchParams(next); }} /> : null}
+        footer={!listUnavailable ? <Pagination {...pagination.props} label="问题列表分页" /> : null}
       >
         {data?.items.map((issue) => <AdaptiveDataRow className={`issue-data-row${issue.overdue ? " is-overdue" : ""}`} key={issue.id}>
           <AdaptiveDataCell column="issue" className="issue-data-primary"><button type="button" className="issue-title-button" onClick={() => openIssue(issue.id, "basic")}><DataCell primary={<strong>{issue.title}</strong>} secondary={issue.impact || "暂无影响说明"} /></button></AdaptiveDataCell>

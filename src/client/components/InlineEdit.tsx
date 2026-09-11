@@ -28,17 +28,23 @@ export type InlineOption = UiOption;
 
 type InlineEditContextValue = {
   activeId: string | null;
-  activate: (id: string) => void;
+  activeAnchor: HTMLElement | null;
+  activate: (id: string, anchor: HTMLElement | null) => void;
   deactivate: (id: string) => void;
 };
 
 const InlineEditContext = createContext<InlineEditContextValue | null>(null);
 
+export function useInlineEditActive(container: HTMLElement | null) {
+  const anchor = useContext(InlineEditContext)?.activeAnchor;
+  return Boolean(anchor && container?.closest('.paged-panel, .resizable-panel, .issue-update-settings')?.contains(anchor));
+}
+
 export function InlineEditProvider({ children }: { children: ReactNode }) {
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const activate = useCallback((id: string) => setActiveId(id), []);
-  const deactivate = useCallback((id: string) => setActiveId((current) => current === id ? null : current), []);
-  const value = useMemo(() => ({ activeId, activate, deactivate }), [activeId, activate, deactivate]);
+  const [active, setActive] = useState<{ id: string; anchor: HTMLElement | null } | null>(null);
+  const activate = useCallback((id: string, anchor: HTMLElement | null) => setActive({ id, anchor }), []);
+  const deactivate = useCallback((id: string) => setActive(current => current?.id === id ? null : current), []);
+  const value = useMemo(() => ({ activeId: active?.id || null, activeAnchor: active?.anchor || null, activate, deactivate }), [active, activate, deactivate]);
   return <InlineEditContext.Provider value={value}>{children}</InlineEditContext.Provider>;
 }
 
@@ -264,6 +270,7 @@ export function AnchoredPopover({
   width = 320,
   matchAnchor = false,
   role = "dialog",
+  preserveEditing = false,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
   open: boolean;
@@ -275,10 +282,11 @@ export function AnchoredPopover({
   width?: number;
   matchAnchor?: boolean;
   role?: AriaRole;
+  preserveEditing?: boolean;
 }) {
   const context = useContext(InlineEditContext);
-  const activate = context?.activate;
-  const deactivate = context?.deactivate;
+  const activate = preserveEditing ? undefined : context?.activate;
+  const deactivate = preserveEditing ? undefined : context?.deactivate;
   const editorId = useId();
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, left: 0, width, ready: false });
@@ -324,7 +332,7 @@ export function AnchoredPopover({
       return;
     }
     setOwnershipReady(false);
-    activate(editorId);
+    activate(editorId, anchorRef.current);
     // 等上下文确认本浮层成为当前编辑器后，再响应其他编辑器的抢占。
     // 否则从旧浮层直接切换操作菜单时，会读取到上一帧的 activeId 并立即关闭自己。
     const frame = window.requestAnimationFrame(() => setOwnershipReady(true));
@@ -332,7 +340,7 @@ export function AnchoredPopover({
       window.cancelAnimationFrame(frame);
       deactivate(editorId);
     };
-  }, [activate, deactivate, editorId, open]);
+  }, [activate, deactivate, editorId, open, anchorRef]);
 
   useEffect(() => {
     if (open && ownershipReady && context?.activeId && context.activeId !== editorId) onSuperseded();
@@ -342,7 +350,7 @@ export function AnchoredPopover({
     if (!open) return;
     const closeOutside = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (target instanceof Element && target.closest("[data-preserve-edit]")) return;
+      if (!preserveEditing && target instanceof Element && target.closest("[data-preserve-edit]")) return;
       if (anchorRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
       onOutside();
     };
@@ -358,7 +366,7 @@ export function AnchoredPopover({
       document.removeEventListener("pointerdown", closeOutside, true);
       document.removeEventListener("keydown", closeOnEscape, true);
     };
-  }, [anchorRef, onEscape, onOutside, open]);
+  }, [anchorRef, onEscape, onOutside, open, preserveEditing]);
 
   if (!open) return null;
   return createPortal(

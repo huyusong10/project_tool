@@ -13,7 +13,8 @@ test('项目进展默认只显示进行中，统计保持全项目；没有进�
  await expect(page.getByLabel('按状态筛选',{exact:true})).toHaveValue('in_progress');
  await expect(page.locator('.gantt-requirement-link')).toHaveText(['in_progress']);
  await expect(page.locator('.gantt-filter-result')).toHaveText('1 / 4 项');
- await expect(page.locator('.dashboard-top-stats')).toContainText('全部 4 项');
+ await expect(page.locator('.dashboard-top-stats .stat-card').first()).toContainText('未开始 1');
+ await expect(page.locator('.dashboard-top-stats .stat-card strong')).toHaveText(['1','0','0','0']);
  await expect(page.getByRole('option',{name:/阻塞/})).toHaveCount(0);
  rows.splice(rows.findIndex(r=>r.status==='in_progress'),1);
  await page.reload();await expect(page.getByText('当前没有进行中的需求',{exact:true})).toBeVisible();

@@ -221,26 +221,7 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   expect(todayLineBox).not.toBeNull();
   expect(progressMarkerBox).not.toBeNull();
   expect(progressMarkerBox!.x + progressMarkerBox!.width / 2).toBeLessThan(todayLineBox!.x);
-  const milestoneRow = page.locator(".gantt-row").filter({ hasText: "领先计划流程" });
-  const milestoneTrackBox = await milestoneRow.locator(".gantt-track").boundingBox();
-  const milestoneLabelBoxes = await milestoneRow.locator(".gantt-milestone-label").evaluateAll((labels) => labels.map((label) => {
-    const box = label.getBoundingClientRect();
-    return { x: box.x, y: box.y, right: box.right, bottom: box.bottom };
-  }));
-  expect(milestoneTrackBox).not.toBeNull();
-  expect(milestoneLabelBoxes.length).toBeGreaterThan(0);
-  for (const box of milestoneLabelBoxes) {
-    expect(box.x).toBeGreaterThanOrEqual(milestoneTrackBox!.x - 1);
-    expect(box.right).toBeLessThanOrEqual(milestoneTrackBox!.x + milestoneTrackBox!.width + 1);
-  }
-  for (let left = 0; left < milestoneLabelBoxes.length; left += 1) {
-    for (let right = left + 1; right < milestoneLabelBoxes.length; right += 1) {
-      const a = milestoneLabelBoxes[left];
-      const b = milestoneLabelBoxes[right];
-      const overlaps = a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y;
-      expect(overlaps).toBe(false);
-    }
-  }
+  await expect(page.locator(".project-gantt-grid .gantt-milestone-label")).toHaveCount(0);
   await delayedRow.locator(".gantt-track").hover({ position: { x: 4, y: 4 } });
   await expect(page.locator(".gantt-popover")).toBeHidden();
   await delayedRow.locator(".gantt-bar-hitbox").hover();
@@ -277,7 +258,7 @@ test("项目与需求甘特统一展示状态进度及今日进度差", async ({
   await expect(completedEarlyRow.locator(".unified-gantt-actual")).toHaveCSS("background-color", await themeColor(page, "--gantt-completed"));
   await expect(completedEarlyRow.locator(".unified-gantt-early")).toHaveCSS("border-top-color", await themeColor(page, "--gantt-completed"));
   await expect(completedEarlyRow.locator(".unified-gantt-early")).not.toHaveCSS("background-image", "none");
-  await expect(page.locator(".requirement-gantt-grid .gantt-milestone-label")).toContainText("接口基线");
+  await expect(page.locator(".requirement-gantt-grid .gantt-milestone-label")).toHaveCount(0);
   await activeWorkRow.locator(".gantt-progress-marker").click();
   await expect(page.getByRole("heading", { name: "更新工作项进度" })).toBeVisible();
   await page.getByLabel("当前完成度（估算）数值").fill("80");

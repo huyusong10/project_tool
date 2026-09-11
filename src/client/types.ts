@@ -93,6 +93,7 @@ export type Requirement = import('../shared/delivery').DeliveryFields & import('
 };
 export type Dashboard = {
   asOfDate: string;
+  overview?: import('../shared/dashboard').DashboardOverview;
   summary: { total: number; active: number; completed: number; delayed: number; highRisk: number; completionRate: number };
   requirements: Requirement[];
   issues: { summary: IssuePage["summary"]; attention: Issue[] };

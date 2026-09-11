@@ -27,8 +27,14 @@ export type BusinessDateContextValue = { businessDate: string };
 export type TopbarSlotsContextValue = {
   titleEl: HTMLElement | null;
   actionsEl: HTMLElement | null;
+  contextEl: HTMLElement | null;
+  statusEl: HTMLElement | null;
+  width: number;
   setTitleEl: (element: HTMLElement | null) => void;
   setActionsEl: (element: HTMLElement | null) => void;
+  setContextEl: (element: HTMLElement | null) => void;
+  setStatusEl: (element: HTMLElement | null) => void;
+  setWidth: (width: number) => void;
 };
 
 export const SessionContext = createContext<SessionContextValue | null>(null);

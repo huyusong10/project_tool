@@ -1,6 +1,7 @@
-import {useEffect,useState,useRef,type ReactNode} from 'react';
+import {useState,useRef,type ReactNode} from 'react';
+import { PageHeader } from './PageHeader';
 import {useWorkspaceLayer} from '../workspace-runtime';
-import {ArrowLeft,Undo2,Redo2,Save,Pencil,X,Plus,Square,Diamond,Workflow,Search,Info,Ellipsis} from 'lucide-react';
+import {Undo2,Redo2,Save,Pencil,X,Plus,Square,Diamond,Workflow,Search,Info} from 'lucide-react';
 function ToolMenu({label,icon,children,className}:{label:string;icon:ReactNode;children:ReactNode;className:string}){
   const ref=useRef<HTMLDetailsElement>(null),[open,setOpen]=useState(false);
   useWorkspaceLayer(ref,open,'menu',()=>{if(ref.current)ref.current.open=false;});
@@ -8,9 +9,13 @@ function ToolMenu({label,icon,children,className}:{label:string;icon:ReactNode;c
   return <details ref={ref} className={className} onToggle={e=>setOpen(e.currentTarget.open)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();if(ref.current){ref.current.open=false;ref.current.querySelector<HTMLElement>('summary')?.focus();}}}}><summary aria-label={label} title={label}>{icon}</summary>{children}</details>;
 }
 export function EditorToolbar({title,back,backLabel,navigation,context,status,editing,canEdit=true,undo,redo,canUndo,canRedo,save,canSave=true,discard,begin,busy,extra}:{title:string;back?:()=>void;backLabel?:string;navigation?:ReactNode;context?:ReactNode;status?:ReactNode;editing:boolean;canEdit?:boolean;undo?:()=>void;redo?:()=>void;canUndo?:boolean;canRedo?:boolean;save?:()=>void;canSave?:boolean;discard?:()=>void;begin?:()=>void;busy?:boolean;extra?:ReactNode}){
-  const [narrow,setNarrow]=useState(()=>matchMedia('(max-width:800px)').matches);
-  useEffect(()=>{const media=matchMedia('(max-width:800px)'),changed=()=>setNarrow(media.matches);media.addEventListener('change',changed);return()=>media.removeEventListener('change',changed);},[]);
-  return <div className="graph-editor-bar"><div className="graph-editor-title">{back&&<button className="graph-back-link" onClick={back} title={backLabel}><ArrowLeft size={16}/><span>{backLabel}</span></button>}{navigation&&<nav className="graph-page-navigation" aria-label="页面导航">{navigation}</nav>}<strong title={title}>{title}</strong></div><div className="graph-editor-context">{context}</div><div className="graph-editor-status graph-status-slot" role="status">{status}</div><div className="graph-editor-actions">{extra&&(narrow?<ToolMenu className="graph-editor-more" label="更多工具" icon={<Ellipsis size={18}/>}><div onClick={e=>e.currentTarget.closest('details')?.removeAttribute('open')}>{extra}</div></ToolMenu>:<div className="graph-editor-extra">{extra}</div>)}{editing?<><button className="ghost-button" title="撤销 · Ctrl/Cmd+Z" aria-label="撤销" disabled={!canUndo||busy} onClick={undo}><Undo2 size={17}/></button><button className="ghost-button" title="重做 · Ctrl/Cmd+Shift+Z" aria-label="重做" disabled={!canRedo||busy} onClick={redo}><Redo2 size={17}/></button><button className="primary-button" title={busy?'保存中…':'保存 · Ctrl/Cmd+S'} aria-label="保存修改" disabled={!canSave||busy} onClick={save}><Save size={17}/></button><button className="ghost-button" title="放弃修改" aria-label="放弃修改" disabled={busy} onClick={discard}><X size={17}/></button></>:canEdit&&<button className="primary-button" title="编辑画布" aria-label="编辑画布" onClick={begin}><Pencil size={17}/></button>}</div></div>;
+  return <PageHeader title={title} onBack={back} backLabel={backLabel} context={context} status={status}
+    moreActions={<>{extra}{navigation}{editing&&<button className="ghost-button" aria-label="放弃修改" disabled={busy} onClick={discard}><X size={17}/>放弃修改</button>}</>}
+    actions={editing?<>
+      <button className="ghost-button topbar-icon" title="撤销 · Ctrl/Cmd+Z" aria-label="撤销" disabled={!canUndo||busy} onClick={undo}><Undo2 size={17}/></button>
+      <button className="ghost-button topbar-icon" title="重做 · Ctrl/Cmd+Shift+Z" aria-label="重做" disabled={!canRedo||busy} onClick={redo}><Redo2 size={17}/></button>
+      <button className="primary-button" title={busy?'保存中…':'保存 · Ctrl/Cmd+S'} aria-label="保存修改" disabled={!canSave||busy} onClick={save}><Save size={17}/><span>保存</span></button>
+    </>:canEdit&&<button className="primary-button" title="编辑画布" aria-label="编辑画布" onClick={begin}><Pencil size={17}/><span>编辑</span></button>}/>;
 }
 const elementLabels:Record<string,string>={requirement:'需求',work:'工作项',milestone:'里程碑',existing:'已有对象'};
 export function EditorPalette({types,placing,onPlace,disabled}:{types:string[];placing?:string;onPlace:(kind:string)=>void;disabled?:boolean}){

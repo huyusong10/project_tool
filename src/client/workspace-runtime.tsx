@@ -24,7 +24,7 @@ export class WorkspaceRuntime{
   private close(layer:Layer,restore:boolean){const element=layer.element(),active=document.activeElement;layer.close();if(restore&&(active===document.body||active instanceof Node&&element?.contains(active))){const target=layer.trigger?.isConnected?layer.trigger:this.root?.querySelector<HTMLElement>('.dependency-canvas');target?.focus({preventScroll:true});}}
   dismiss(target?:Element){const layers=[...this.layers.values()].reverse();const layer=layers.find(l=>target&&l.element()?.contains(target))||layers[0];if(!layer)return false;this.close(layer,true);return true;}
   outside=(event:PointerEvent)=>{
-    const target=event.target;if(target instanceof Element&&this.root?.contains(target)){const button=target.closest<HTMLElement>('button,summary');if(button)this.lastTrigger=button;}if(!(target instanceof Element)||target.closest('[role=dialog],.modal-backdrop'))return;
+    const target=event.target;if(target instanceof Element&&(this.root?.contains(target)||target.closest('.topbar,[data-workspace-zone="tools"]'))){const button=target.closest<HTMLElement>('button,summary');if(button)this.lastTrigger=button;}if(!(target instanceof Element)||target.closest('[role=dialog],.modal-backdrop'))return;
     const layers=[...this.layers.values()].reverse(),inside=layers.find(l=>l.element()?.contains(target));
     for(const layer of layers)if(layer.kind==='menu'&&!layer.element()?.contains(target))this.close(layer,false);
     if(inside){if(this.interaction?.operation?.kind!=='field')this.cancel();return;}

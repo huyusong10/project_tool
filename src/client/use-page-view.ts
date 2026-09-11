@@ -11,7 +11,7 @@ function write(key: string, value: string) {
   try { sessionStorage.setItem(key, value); } catch { /* Personal view storage must not prevent navigation. */ }
 }
 
-function usePageKey(personal: boolean) {
+export function usePageKey(personal: boolean) {
   const { session } = useSession();
   const { selectedProjectId } = useProjects();
   const { pathname } = useLocation();
@@ -23,9 +23,11 @@ export function usePageSearchParams(allowedKeys: readonly string[], personal = f
   const key = usePageKey(personal);
   const location = useLocation();
   const [initial] = useState(() => new URLSearchParams(location.search || read(key)));
+  const initialLocationKey = useRef(location.key);
   const [urlParams, setParams] = useSearchParams();
   const imported = useRef(false);
-  const params = !imported.current && !location.search ? initial : urlParams;
+  // URL 替换完成前继续使用记忆值，避免多个列表挂载时的重绘清空筛选。
+  const params = location.key === initialLocationKey.current && !location.search ? initial : urlParams;
   const set: SetURLSearchParams = useCallback((next, options) => {
     setParams(next, { replace: true, state: location.state, ...options });
   }, [setParams, location.state]);
@@ -37,8 +39,12 @@ export function usePageSearchParams(allowedKeys: readonly string[], personal = f
   const serialized = params.toString();
   const allowed = allowedKeys.join(',');
   useEffect(() => {
-    const value = new URLSearchParams(serialized), saved = new URLSearchParams();
-    for (const name of allowed.split(',')) if (value.has(name)) saved.set(name, value.get(name)!);
+    const value = new URLSearchParams(serialized), saved = new URLSearchParams(read(key));
+    // 同页多个列表各自保存拥有的参数，不覆盖其他列表或页面筛选。
+    for (const name of allowed.split(',')) {
+      saved.delete(name);
+      if (value.has(name)) saved.set(name, value.get(name)!);
+    }
     write(key, saved.toString());
   }, [key, serialized, allowed]);
   return [params, set] as const;

@@ -103,7 +103,7 @@ test('失权后迟到的问题操作响应不能重新填回已清除的详情',
 async function openDraft(page: Page, source: Source) {
   await page.goto(urls[source]);
   if (source === 'requirement') await page.locator('.requirement-gantt-grid .gantt-progress-marker').first().click();
-  if (source === 'my-work') await page.getByRole('button', { name: '为接口开发更新完成度', exact: true }).click();
+  if (source === 'my-work') await page.getByRole('button', { name: '为接口开发更新进度', exact: true }).click();
   const field = source === 'issue' ? page.locator('.issue-update-form textarea') : page.getByRole('textbox', { name: '说明（可选）', exact: true });
   await field.fill('不能丢失的草稿');
   return field;
@@ -194,15 +194,15 @@ test('全局读取 退出成功后会话503也必须立即清除身份', async (
   try {
     await page.goto(urls.requirement);
     await expect(page.locator('.requirement-overview')).toBeVisible();
-    await page.getByRole('button', { name: '退出', exact: true }).evaluate((button) => {
+    await page.getByRole('button',{name:/^账号菜单/}).click();await page.getByRole('menuitem',{ name:'退出登录', exact: true }).evaluate((button) => {
       (button as HTMLButtonElement).click();
       (button as HTMLButtonElement).click();
     });
     await expect.poll(() => logoutRequests).toBe(1);
-    await expect(page.getByRole('button', { name: '退出', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button',{name:/^账号菜单/})).toBeDisabled();
   } finally { releaseLogout(); }
   await expect(page.getByRole('heading', { name: '登录项目工作台', exact: true })).toBeVisible();
-  await expect(page.locator('.session-button')).toHaveCount(0);
+  await expect(page.locator('.topbar-account-name')).toHaveCount(0);
   await expect(page.locator('.requirement-overview')).toHaveCount(0);
 });
 
@@ -218,7 +218,7 @@ test('全局读取 整站503保留草稿，资源401后会话503必须关闭旧�
   state.failure = 401;
   await refresh(page);
   await expect(page.getByRole('heading', { name: '登录状态加载失败', exact: true })).toBeVisible();
-  await expect(page.locator('.session-button')).toHaveCount(0);
+  await expect(page.locator('.topbar-account-name')).toHaveCount(0);
   await expect(field).toHaveCount(0);
   await expect(page.locator('.requirement-overview')).toHaveCount(0);
   session.failure = projects.failure = state.failure = 0;
@@ -241,7 +241,7 @@ for (const change of ['account', 'password', 'role'] as const) {
     else await expect(page.getByText('读取失败 503', { exact: true })).toBeVisible();
     await expect(page.locator('.my-work-summary')).toHaveCount(0);
     await expect(field).toHaveCount(0);
-    if (change === 'account') await expect(page.locator('.session-button')).toHaveText('第二账号');
+    if (change === 'account') await expect(page.locator('.topbar-account-name')).toHaveText('第二账号');
     if (change === 'role') await expect(page.getByRole('link', { name: '人员与权限', exact: true })).toHaveCount(0);
   });
 }
@@ -273,7 +273,7 @@ test('全局读取 登录成功后使用返回会话，后续503不误报登录�
   const dialog = page.getByRole('dialog', { name: '用户登录', exact: true });
   await dialog.getByLabel('密码', { exact: true }).fill('test-password');
   await dialog.getByRole('button', { name: '用户登录', exact: true }).click();
-  await expect(page.locator('.session-button')).toHaveText('admin');
+  await expect(page.locator('.topbar-account-name')).toHaveText('admin');
   await expect(dialog).toHaveCount(0);
   await page.getByRole('link', { name: '我的工作', exact: true }).click();
   await expect(page.locator('.my-work-summary')).toBeVisible();
@@ -287,7 +287,7 @@ test('全局读取 改名不重置草稿，切换身份后迟到写响应不回�
   const field = await openDraft(page, 'issue');
   current = { ...adminSession, username: '管理员新名字' };
   await refresh(page);
-  await expect(page.locator('.session-button')).toHaveText('管理员新名字');
+  await expect(page.locator('.topbar-account-name')).toHaveText('管理员新名字');
   await expect(field).toHaveValue('不能丢失的草稿');
   let release!: () => void;
   let returned!: () => void;
@@ -309,7 +309,7 @@ test('全局读取 改名不重置草稿，切换身份后迟到写响应不回�
     state.failure = 503;
     current = { ...adminSession, accountId: 'a2', username: '第二账号' };
     await refresh(page);
-    await expect(page.locator('.session-button')).toHaveText('第二账号');
+    await expect(page.locator('.topbar-account-name')).toHaveText('第二账号');
     await expect(page.getByText('读取失败 503', { exact: true })).toBeVisible();
     release();
     await responseReturned;

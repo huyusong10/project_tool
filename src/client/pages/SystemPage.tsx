@@ -1,3 +1,6 @@
+import { Pagination } from '../components/Pagination';
+import { useListPagination } from '../use-list-pagination';
+import { usePageScrollPosition } from '../use-page-view';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type Query } from "@tanstack/react-query";
 import {
@@ -462,6 +465,8 @@ export function SystemPage() {
   };
   const overview = overviewQuery.data;
   const backups = backupsQuery.data ?? [];
+  const backupsPagination = useListPagination({ items: backups, id: 'backups', personal: true, ready: Boolean(backupsQuery.data), loading: backupsQuery.isFetching });
+  usePageScrollPosition(Boolean(backupsQuery.data && overviewQuery.data), true);
   const latestRestoreTarget = restoreTarget && backupsQuery.data
     ? backupsQuery.data.find((item) => item.name === restoreTarget.name)
     : undefined;
@@ -525,7 +530,7 @@ export function SystemPage() {
             </article>
           </section>
 
-          <article className="panel system-backup-panel">
+          <article className="panel system-backup-panel paged-panel">
           <header>
             <div>
               <h2>数据库备份与恢复</h2>
@@ -547,12 +552,12 @@ export function SystemPage() {
             {operationError && <span className="system-operation-error">{operationError.message}</span>}
             {(backupNeedsRecheck || deleteNeedsRecheck) && <button type="button" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void recheckBackups()}>{backupsQuery.isFetching ? "读取中…" : "重新读取备份列表"}</button>}
           </div>
-          <div className="system-backup-table-wrap">
+          <div className="system-backup-table-wrap paged-body" ref={backupsPagination.scrollRef}>
             {backupsQuery.error && backupsQuery.data && <div className="warning-banner">备份列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void backupsQuery.refetch()}>重新加载</button></div>}
             {backupsQuery.data && <table className="system-backup-table">
               <thead><tr><th>备份时间</th><th>文件名</th><th>大小</th><th>距今</th><th>操作</th></tr></thead>
               <tbody>
-                {backups.map((item) => <tr key={item.name}>
+                {backupsPagination.items.map((item) => <tr key={item.name}>
                   <td>{new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false })}</td>
                   <td><strong title={item.name}>{item.name}</strong>{item.restorable === false && <small className="system-backup-file-error" title={item.validationError ?? undefined}>不可恢复：{item.validationError || "文件校验失败"}</small>}</td>
                   <td>{formatBytes(item.size)}</td>
@@ -568,6 +573,7 @@ export function SystemPage() {
             {backupsQuery.error && !backupsQuery.data && <EmptyState title="备份列表加载失败" detail={backupsQuery.error.message || "暂时无法读取备份，请稍后重试。"} action={<button className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void backupsQuery.refetch()}>重新加载</button>} />}
             {backupsQuery.data && !backups.length && <EmptyState title="暂无备份" detail="可立即创建第一份备份。" />}
           </div>
+            <Pagination {...backupsPagination.props} label="备份列表分页" />
           </article>
 
           <section className="system-secondary-grid">

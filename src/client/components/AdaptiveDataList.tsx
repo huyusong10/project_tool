@@ -1,4 +1,4 @@
-import { createContext, useContext, type CSSProperties, type ReactNode } from 'react';
+import { createContext, useContext, type CSSProperties, type ReactNode, type Ref } from 'react';
 
 export type AdaptiveDataColumn = {
   key: string;
@@ -16,13 +16,14 @@ type AdaptiveStyle = CSSProperties & {
 
 const AdaptiveColumnsContext = createContext<Record<string, AdaptiveDataColumn>>({});
 
-export function AdaptiveDataList({ label, columns, className = '', empty, footer, children }: {
+export function AdaptiveDataList({ label, columns, className = '', empty, footer, children, bodyRef }: {
   label: string;
   columns: AdaptiveDataColumn[];
   className?: string;
   empty?: ReactNode;
   footer?: ReactNode;
   children: ReactNode;
+  bodyRef?: Ref<HTMLDivElement>;
 }) {
   const columnMap = Object.fromEntries(columns.map((column) => [column.key, column]));
   const style = {
@@ -40,7 +41,7 @@ export function AdaptiveDataList({ label, columns, className = '', empty, footer
           data-align={column.align || 'start'}
         >{column.label}</span>)}
       </div>
-      <div className="adaptive-data-list-body" role="rowgroup">{children}</div>
+      <div className={`adaptive-data-list-body${bodyRef ? ' paged-body' : ''}`} ref={bodyRef} role="rowgroup">{children}</div>
       {empty && <div className="adaptive-data-list-empty">{empty}</div>}
       {footer && <div className="adaptive-data-list-footer">{footer}</div>}
     </section>

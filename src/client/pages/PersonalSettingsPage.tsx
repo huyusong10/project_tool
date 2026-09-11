@@ -1,3 +1,6 @@
+import { Pagination } from '../components/Pagination';
+import { useListPagination } from '../use-list-pagination';
+import { usePageScrollPosition } from '../use-page-view';
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleUserRound, Copy, KeyRound, PlugZap, Plus, ShieldCheck } from "lucide-react";
@@ -112,6 +115,8 @@ export function PersonalSettingsPage() {
     const rightInactive = Boolean(right.revokedAt || (right.expiresAt && new Date(right.expiresAt).getTime() <= now));
     return Number(leftInactive) - Number(rightInactive) || right.createdAt.localeCompare(left.createdAt);
   });
+  const pagination = useListPagination({ items: orderedTokens, id: 'tokens', personal: true, ready: Boolean(tokensQuery.data), loading: tokensQuery.isFetching });
+  usePageScrollPosition(Boolean(tokensQuery.data), true);
   const copyText = async (value: string, target: "endpoint" | "token") => {
     setCopied(await writeClipboardText(value) ? target : null);
   };
@@ -161,9 +166,9 @@ export function PersonalSettingsPage() {
         {tokensQuery.error && !tokensQuery.data && <div className="personal-token-error"><span>{tokensQuery.error.message}</span><button className="ghost-button" disabled={tokensQuery.isFetching} onClick={() => void tokensQuery.refetch()}>重新加载</button></div>}
         {tokensQuery.error && tokensQuery.data && <div className="warning-banner">Token 列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={tokensQuery.isFetching} onClick={() => void tokensQuery.refetch()}>重新加载</button></div>}
         {tokenListNeedsRecheck && <div className="warning-banner">Token 操作结果需要核对，创建和撤销暂不可用。<button type="button" className="ghost-button" disabled={recheckingTokens} onClick={() => void recheckTokenList()}>{recheckingTokens ? "读取中…" : "重新读取 Token 列表"}</button></div>}
-        {tokensQuery.data && tokens.length > 0 && <div className="personal-token-list" role="table" aria-label="我的 MCP Token">
+        {tokensQuery.data && tokens.length > 0 && <div className="paged-panel"><div className="personal-token-list paged-body" ref={pagination.scrollRef} role="table" aria-label="我的 MCP Token">
           <div className="personal-token-head" role="row"><span>Token</span><span>创建时间</span><span>最近使用</span><span>有效期</span><span>状态与操作</span></div>
-          {orderedTokens.map((token) => {
+          {pagination.items.map((token) => {
             const expired = Boolean(token.expiresAt && new Date(token.expiresAt).getTime() <= now);
             const status = token.revokedAt ? "已撤销" : expired ? "已过期" : "有效";
             return <div className="personal-token-row" role="row" key={token.id}>
@@ -174,9 +179,10 @@ export function PersonalSettingsPage() {
               <div><b className={status === "有效" ? "safe-text" : "muted"}>{status}</b>{status === "有效" && <button className="token-revoke-button" disabled={tokenListNeedsRecheck} onClick={() => { if (tokenListNeedsRecheck) return; revoke.reset(); setRevokeTarget(token); }}>撤销</button>}</div>
             </div>;
           })}
-        </div>}
+        </div><Pagination {...pagination.props} label="Token 列表分页" /></div>}
         {tokensQuery.data && !tokens.length && <div className="personal-token-empty"><span><KeyRound size={22} /></span><div><strong>还没有个人 Token</strong><p>为 Claude Desktop、Codex 等客户端分别创建 Token，后续可独立撤销。</p></div><button className="primary-button" disabled={tokenListNeedsRecheck} onClick={openTokenModal}><Plus size={15} />创建第一个 Token</button></div>}
         {tokensQuery.data && tokens.length > 0 && <footer className="personal-token-footer"><span>{activeTokens.length} 个有效 Token</span><small>建议不同客户端使用不同 Token，并定期撤销不再使用的凭据。</small></footer>}
+        {tokensQuery.data && !tokens.length && <Pagination {...pagination.props} label="Token 列表分页" />}
       </section>
       {tokenModal && <Modal title="创建 MCP Token" width={560} onClose={closeTokenModal} closable={!createLock.busy}>
         {newToken ? <div className="token-reveal"><ShieldCheck size={38} /><strong>Token 已创建，只显示这一次</strong><p>立即复制并保存到客户端配置中，关闭后无法再次查看。</p><div><code>{newToken}</code><button className="ghost-button" onClick={() => void copyText(newToken, "token")}><Copy size={16} />{copied === "token" ? "已复制" : "复制 Token"}</button></div><button className="primary-button" onClick={closeTokenModal}>我已安全保存</button></div>

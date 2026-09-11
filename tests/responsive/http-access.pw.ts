@@ -1,3 +1,4 @@
+import { headerAction } from './topbar-helpers';
 import { test, expect } from '@playwright/test';
 import { intakeExample } from '../../src/shared/intake';
 
@@ -32,7 +33,7 @@ test('局域网 HTTP 可登录、恢复会话、保存流程、导入需求和�
   const ready = () => expect(page.locator('[data-layout-ready="true"]')).toBeVisible({ timeout: 20000 });
   await ready();
   await expect(page.locator('.react-flow__node')).toHaveCount(1);
-  await page.getByRole('button', { name: '流程属性', exact: true }).click();
+  await headerAction(page, '流程属性');
   await page.getByLabel('流程名称', { exact: true }).fill('HTTP流程');
   await page.getByLabel('流程名称', { exact: true }).blur();
   await page.locator('.graph-auxiliary').getByRole('button', { name: '关闭', exact: true }).click();
@@ -41,7 +42,7 @@ test('局域网 HTTP 可登录、恢复会话、保存流程、导入需求和�
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
   await page.getByLabel('复制元素', { exact: true }).click();
   await expect(page.locator('.react-flow__node')).toHaveCount(3);
-  await expect(page.locator('.graph-toolbar')).toContainText('草稿已保留');
+  await expect(page.locator('.topbar')).toContainText('草稿已保留');
   await page.reload();
   await ready();
   await expect(page.locator('.react-flow__node')).toHaveCount(3);

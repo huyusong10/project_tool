@@ -1,3 +1,4 @@
+import { PageHeader } from './PageHeader';
 import {randomUUID} from '../random-uuid';
 import {DeliveryControlsForId} from './DeliveryControls';
 import {DeliveryImpactTable} from './DeliveryImpactTable';
@@ -129,8 +130,8 @@ export function PathAnalysisPanel({projectId,requirement,onExit}:{projectId:stri
   const query=useResourceQuery<PathAnalysis>([...keys.paths,projectId,requirement?.id||'all',target],
     requirement&&!params.has('draftProject')?'/api/requirements/'+requirement.id+'/path-analysis?target='+encodeURIComponent(target):'/api/projects/'+projectId+'/path-analysis'+(!params.has('draftProject')?'?target='+encodeURIComponent(target):''),!!projectId);
   useEffect(()=>{if(query.error instanceof ApiError&&[401,403].includes(query.error.status))clearProjectGraphDrafts(session.accountId||'guest',projectId);},[query.error,session.accountId,projectId]);
-  if(query.isLoading)return <div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace"><LoadingState label="正在分析交付依赖…"/></section></div>;
-  if(query.unavailable||!query.data)return <EmptyState title="路径分析暂不可用" detail={query.error?.message||'请选择项目'} action={<div className="button-row"><button className="ghost-button" onClick={leave}>{hasPageHistory()?'返回':requirement?'项目路径':'项目进展'}</button><button className="ghost-button" onClick={()=>void query.refetch()}>重新加载</button></div>}/>;
+  if(query.isLoading)return <><PageHeader title={requirement?.title||"路径分析"} onBack={leave}/><div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace"><LoadingState label="正在分析交付依赖…"/></section></div></>;
+  if(query.unavailable||!query.data)return <><PageHeader title={requirement?.title||"路径分析"} onBack={leave}/><EmptyState title="路径分析暂不可用" detail={query.error?.message||'请选择项目'} action={<div className="button-row"><button className="ghost-button" onClick={leave}>{hasPageHistory()?'返回':requirement?'项目路径':'项目进展'}</button><button className="ghost-button" onClick={()=>void query.refetch()}>重新加载</button></div>}/></>;
   return <PathWorkspace key={projectId} data={query.data} requirement={requirement} target={target} onExit={onExit}
     onReload={async()=>{const result=await query.refetch({throwOnError:true});return result.data!;}}/>;
 }

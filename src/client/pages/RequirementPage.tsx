@@ -1,3 +1,5 @@
+import { Pagination } from '../components/Pagination';
+import { useListPagination } from '../use-list-pagination';
 import type {StartAssignment} from '../components/StartAssignmentDialog';
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { RequirementOverview } from '../components/RequirementOverview';
@@ -13,7 +15,6 @@ import {
   Check,
   CircleStop,
   Edit3,
-  MoreHorizontal,
   PencilLine,
 } from "lucide-react";
 import { api, ApiError, jsonBody } from "../api";
@@ -49,7 +50,6 @@ import {
 } from "../components/RequirementForms";
 import { ProgressForm, type ProgressScope } from "../components/ProgressForm";
 import { ResizablePanel } from "../components/ResizablePanel";
-import { AnchoredPopover } from "../components/InlineEdit";
 import { WorkItemActions } from "../components/WorkItemActions";
 import { WorkItemSettingsDialog } from "../components/WorkItemSettingsDialog";
 import { canManageProject } from "../permissions";
@@ -121,8 +121,6 @@ function SavedRequirementPage() {
     persistRequirementCommandRecheck(actionRecheckAccountKey, id, value);
     setCommandRecheckState(value);
   };
-  const actionAnchor = useRef<HTMLDivElement>(null);
-  const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const {
     data: requirement,
     isLoading,
@@ -131,6 +129,7 @@ function SavedRequirementPage() {
     isFetching,
     unavailable,
   } = useResourceQuery<Requirement>(keys.requirement(id), `/api/requirements/${id}`, Boolean(id));
+  const historyPagination = useListPagination({ items: requirement?.progressUpdates || [], id: "history", defaultPageSize: 10, ready: Boolean(requirement), loading: isFetching });
   const lastPathProject=useRef<string|undefined>(undefined);
   useEffect(()=>{if(requirement?.projectId)lastPathProject.current=requirement.projectId;},[requirement?.projectId]);
   const scrollKey='pm-detail-scroll:'+(session.accountId||'guest')+':'+(requirement?.projectId||'')+':'+id,workTarget=searchParams.get('workItemId');
@@ -150,7 +149,6 @@ function SavedRequirementPage() {
     setProgressItemId(null);
     setWorkEditorOpen(false);
     setCommand(null);
-    setActionMenuOpen(false);
   }, [error, unavailable,session.accountId]);
   useEffect(() => {
     setWorkEditorNeedsRecheck(readWorkItemSettingsRechecks(actionRecheckAccountKey).has(id));
@@ -330,8 +328,10 @@ function SavedRequirementPage() {
 
       <PageHeader
         title={requirement.title}
+        moreLabel="需求操作"
+        moreDisabled={Boolean(commandRecheck || correctionRecheck)}
         onBack={goBack} backLabel={hasPageHistory()?"返回":"需求列表"}
-        actions={canManage ? (
+        secondaryActions={canManage ? (
           <>
             {canManage && !requirementInfoLocked && <button className="ghost-button" disabled={!peopleReady || Boolean(infoRecheck)} onClick={() => { if (!infoRecheck) setModal("info"); }}>
               <Edit3 size={15} />
@@ -341,17 +341,14 @@ function SavedRequirementPage() {
               <CalendarDays size={15} />
               调整计划
             </button>}
-            {canManage && <div ref={actionAnchor}>
-              <button type="button" className="ghost-button" aria-label="需求操作" aria-expanded={actionMenuOpen} disabled={Boolean(commandRecheck || correctionRecheck)} onClick={() => { if (!commandRecheck && !correctionRecheck) setActionMenuOpen((open) => !open); }}><MoreHorizontal size={16} />操作</button>
-              <AnchoredPopover anchorRef={actionAnchor} open={actionMenuOpen} onOutside={() => setActionMenuOpen(false)} width={230} className="action-menu">
-                {requirement.executionMode!=='direct'&&!['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status) && <button type="button" onClick={() => { setActionMenuOpen(false); setCommand('complete-as-planned'); }}><Check size={15} />按期完成（历史补录）</button>}
-                {!['completed', 'cancelled'].includes(requirement.status) && <button type="button" className="danger" onClick={() => { setActionMenuOpen(false); setCommand('cancel'); }}><CircleStop size={15} />取消需求</button>}
-                {['completed', 'cancelled'].includes(requirement.status) && <button type="button" onClick={() => { setActionMenuOpen(false); setModal('correction'); }}><PencilLine size={15} />受控纠错</button>}
-                {['completed', 'cancelled'].includes(requirement.status) && <button type="button" className="danger" onClick={() => { setActionMenuOpen(false); setCommand('archive'); }}><Archive size={15} />归档需求</button>}
-              </AnchoredPopover>
-            </div>}
           </>
         ) : null}
+        moreActions={canManage ? <>
+                {requirement.executionMode!=='direct'&&!['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" onClick={() => { setCommand('complete-as-planned'); }}><Check size={15} />按期完成（历史补录）</button>}
+                {!['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" className="danger" onClick={() => { setCommand('cancel'); }}><CircleStop size={15} />取消需求</button>}
+                {['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" onClick={() => { setModal('correction'); }}><PencilLine size={15} />受控纠错</button>}
+                {['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" className="danger" onClick={() => { setCommand('archive'); }}><Archive size={15} />归档需求</button>}
+        </> : null}
       />
       <div className="page-content requirement-page">
         {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
@@ -451,10 +448,10 @@ function SavedRequirementPage() {
         />
       )}
       <section className="detail-grid progress-detail-grid">
-        <article className="panel progress-detail-card">
+        <article className="panel progress-detail-card paged-panel">
           <header><div><h2>进展记录</h2></div></header>
-          <div className="progress-feed">
-            {requirement.progressUpdates?.map((item) => {
+          <div className="progress-feed paged-body" ref={historyPagination.scrollRef}>
+            {historyPagination.items.map((item) => {
               const metadata = progressHistory.get(item.id)!;
               return <article key={item.id}>
                 <div className={`progress-marker${metadata.transitionLabel === "—" ? " is-note" : item.eventType === "start" ? " is-start" : item.eventType === "complete" ? " is-complete" : ""}`} title={metadata.transitionTitle}>{metadata.transitionLabel}</div>
@@ -472,6 +469,7 @@ function SavedRequirementPage() {
             })}
             {!requirement.progressUpdates?.length && <EmptyState title="暂无进展" detail={direct ? "开始需求或更新完成度后，这里会显示执行记录。" : "开始工作项、更新完成度或完成工作项后，这里会显示执行记录。"} />}
           </div>
+          <Pagination {...historyPagination.props} label="需求进展分页" />
         </article>
         <article className="panel progress-detail-card">
           <header><div><h2>进度趋势</h2></div></header>

@@ -16,27 +16,27 @@ async function setup(page: Page) {
   await page.route('**/path-analysis*', route => route.fulfill({ json: { milestones, nodes: [{ id: 'w1', requirementId: 'r1' }, { id: 'm3', kind: 'milestone', forecastEnd: '2026-09-08' }], edges: [{ source: 'w1', target: 'm1' }, { source: 'm1', target: 'project-ms' }] } }));
   await page.emulateMedia({ reducedMotion: 'reduce' });
 }
-test('里程碑不占工作行；目标与实际独立，点击高亮前置且不写入', async ({ page }, info) => {
+test('进度甘特只显示已达成里程碑及实际日期，不显示计划目标且不写入', async ({ page }, info) => {
   await setup(page); const writes: string[] = []; page.on('request', r => { if (r.url().includes('/api/') && r.method() !== 'GET') writes.push(r.url()); });
   await page.goto('/requirements/r1');
   const surface = page.locator('.requirement-gantt-scroll'); await expect(surface).toHaveAttribute('data-gantt-ready', 'true');
   await page.getByRole('button', { name: '适配全部', exact: true }).click();
   await expect(surface.locator('.requirement-gantt-row')).toHaveCount(3);
-  await expect(surface.locator('.gantt-milestone-pin')).toHaveCount(3);
-  await expect(page.getByRole('button', { name: '待定日期 1 项' })).toBeVisible();
+  await expect(surface.locator('.gantt-milestone-pin')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /待定日期/ })).toHaveCount(0);
   const pin = surface.locator('[data-milestone-id="m1"]');
   const position = await pin.evaluate(n => Number((n as HTMLElement).style.left.replace('px', '')));
-  const tickEnd = await surface.locator('.gantt-scale-tick[data-date="2026-09-04"]').evaluate(n => parseFloat((n as HTMLElement).style.left) + parseFloat((n as HTMLElement).style.width));
+  const tickEnd = await surface.locator('.gantt-scale-tick[data-date="2026-09-03"]').evaluate(n => parseFloat((n as HTMLElement).style.left) + parseFloat((n as HTMLElement).style.width));
   expect(position).toBeCloseTo(tickEnd, 2);
-  const actual = surface.locator('[data-milestone-actual="m1"]');
-  expect(await actual.evaluate(n => parseFloat((n as HTMLElement).style.left))).toBeLessThan(position);
-  const label = surface.locator('.gantt-milestone-label[aria-label*="MPS基线"]'); await label.click();
-  await expect(page.getByRole('dialog', { name: '里程碑详情' })).toContainText('目标日期2026-09-04');
+  await expect(pin).toHaveAttribute('data-milestone-date', '2026-09-03');
+  await expect(surface.locator('[data-milestone-actual]')).toHaveCount(0);
+  const label = surface.locator('.gantt-milestone-label[aria-label*="MPS基线"]'); await expect(label).toContainText('已达成'); await label.click();
+  await expect(page.getByRole('dialog', { name: '里程碑详情' })).not.toContainText('目标日期');
   await expect(page.getByRole('dialog', { name: '里程碑详情' })).toContainText('实际达成2026-09-03');
   await expect(surface.locator('[data-work-item-id="w1"]')).toHaveClass(/is-milestone-related/);
   await expect(surface.locator('[data-work-item-id="w-late"]')).not.toHaveClass(/is-milestone-related/);
   await page.keyboard.press('Escape'); await expect(page.getByRole('dialog', { name: '里程碑详情' })).toHaveCount(0);
-  await page.getByRole('button', { name: '待定日期 1 项' }).click(); await expect(page.getByRole('dialog', { name: '里程碑详情' })).toContainText('待定发布');
+  await label.click();
   await page.locator('.requirement-gantt-toolbar').click({ position: { x: 5, y: 5 } }); await expect(page.getByRole('dialog', { name: '里程碑详情' })).toHaveCount(0);
   await surface.screenshot({ path: info.outputPath('milestone-slices.png') }); expect(writes).toEqual([]);
 });
@@ -66,22 +66,25 @@ test('切面与日期轴同步横移缩放；窄屏标签不重叠，标记带�
   await page.screenshot({ path: info.outputPath('milestone-narrow.png') });
 });
 test('项目切面跨需求，需求里程碑只出现在对应需求行', async ({ page }) => {
-  await setup(page); await page.goto('/'); const surface = page.locator('.project-gantt-scroll');
+  await setup(page);
+  await page.route('**/path-analysis*', route => route.fulfill({ json: { milestones: milestones.map(m => m.id === 'project-ms' ? { ...m, achievedAt: '2026-09-09' } : m), nodes: [], edges: [] } }));
+  await page.goto('/'); const surface = page.locator('.project-gantt-scroll');
   await expect(surface).toHaveAttribute('data-gantt-ready', 'true');
   await expect(surface.locator('.gantt-axis-header [data-milestone-id="project-ms"]')).toHaveCount(1);
   await expect(surface.locator('.gantt-axis-header [data-milestone-id="m1"]')).toHaveCount(0);
   await expect(surface.locator('.gantt-row [data-milestone-cut="project-ms"]')).toHaveCount(2);
+  await expect(surface.locator('.gantt-axis-header [data-milestone-id="project-ms"]')).toHaveAttribute('data-milestone-date', '2026-09-09');
   await expect(surface.locator('.gantt-row').filter({ hasText: '统一甘特样式' }).locator('[data-milestone-id="m1"]')).toHaveCount(1);
 });
 
-test('未排期需求的预测里程碑不落在进度甘特日期上，明确目标和实际达成仍显示', async ({ page }, info) => {
+test('未排期需求也只显示已达成标记，未达成目标和预测不扩展时间范围', async ({ page }, info) => {
   await mockGanttData(page);
   const unplanned = { ...requirement, title: '未排期需求', status: 'not_started', plannedStart: null, plannedEnd: null,
     actualStart: null, actualEnd: null, effectiveEnd: null, progress: 0, plannedProgress: null, scheduleComplete: false, riskEvaluated: false,
     workItems: requirement.workItems.map(w => ({ ...w, status: 'not_started', progress: 0, plannedStart: null, plannedEnd: null, actualStart: null, actualEnd: null })) };
   const items = [
     { id: 'forecast-only', title: '需求基线', projectId: 'p1', requirementId: 'r1', targetDate: null, achievedAt: null, confirmationMode: 'auto', version: 1 },
-    { id: 'explicit-target', title: '已设目标', projectId: 'p1', requirementId: 'r1', targetDate: '2026-09-08', achievedAt: null, confirmationMode: 'manual', version: 1 },
+    { id: 'explicit-target', title: '已设目标', projectId: 'p1', requirementId: 'r1', targetDate: '2030-12-20', achievedAt: null, confirmationMode: 'manual', version: 1 },
     { id: 'actual-only', title: '已达成基线', projectId: 'p1', requirementId: 'r1', targetDate: null, achievedAt: '2026-09-04', confirmationMode: 'auto', version: 1 },
   ];
   await page.route('**/api/dashboard*', route => route.fulfill({ json: {
@@ -97,7 +100,7 @@ test('未排期需求的预测里程碑不落在进度甘特日期上，明确�
   await page.getByRole('button', { name: '适配全部', exact: true }).click();
   const row = surface.locator('.gantt-row').filter({ hasText: '未排期需求' });
   await expect(row.locator('[data-milestone-id="forecast-only"]')).toHaveCount(0);
-  await expect(row.locator('[data-milestone-id="explicit-target"]')).toHaveCount(1);
+  await expect(row.locator('[data-milestone-id="explicit-target"]')).toHaveCount(0);
   await expect(row.locator('[data-milestone-id="actual-only"]')).toHaveCount(1);
   await expect(surface.locator('.gantt-milestone-undated')).toHaveCount(0);
   await expect(row.locator('.gantt-requirement-copy')).toContainText('未排期');
@@ -160,7 +163,7 @@ test('部分排期保留实际进度和已达成里程碑，不显示待定日�
   await page.goto('/requirements/r1');
   await expect(page.locator('.requirement-overview')).toContainText('排期不完整');
   await expect(page.locator('.requirement-overview')).not.toContainText('计划 0%');
-  await expect(page.getByRole('button', { name: '待定日期 1 项' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /待定日期/ })).toHaveCount(0);
 });
 test('流程预览只保留工作行，里程碑在第2日末尾切开，不新增一天', async ({ page }, info) => {
   await mockGanttData(page);

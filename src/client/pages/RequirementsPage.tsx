@@ -1,4 +1,6 @@
-import {Fragment, useEffect} from 'react';
+import { Pagination } from '../components/Pagination';
+import { useListPagination } from '../use-list-pagination';
+import {Fragment, useEffect, useRef} from 'react';
 import {GroupManager,OrganizationBatchDialog,OrganizationFilters,matchesOrganization,persistGroupOperationRecheck,persistOrganizationBatchRecheck,readGroupOperationRecheck,readOrganizationBatchRecheck,useIntake,type GroupOperationRecheck,type OrganizationBatchRecheck} from '../components/RequirementIntake';
 import {RequirementImport} from '../components/RequirementImport';
 import {compareProcessingPriority} from '../../shared/delivery';
@@ -132,6 +134,11 @@ export function RequirementsPage() {
         return left.title.localeCompare(right.title, "zh-CN");
       });
   }, [data, search, sortDirection, sortKey, status,group,grouped,intake.data?.groups]);
+  const filterKey = JSON.stringify([search, status, group, grouped, sortKey, sortDirection]);
+  const pagination = useListPagination({ items, filterKey, ready: Boolean(loadedRequirements), loading: isFetching });
+  const selectionFilter = JSON.stringify([search, status, group]);
+  const previousSelectionFilter = useRef(selectionFilter);
+  useEffect(() => { if (previousSelectionFilter.current !== selectionFilter && !organizationRecheck) setSelectedIds([]); previousSelectionFilter.current = selectionFilter; }, [selectionFilter, organizationRecheck]);
   const changeSort = (nextKey: RequirementSortKey) => {
     setParams(current => { const next = new URLSearchParams(current); next.set('sort', nextKey); next.set('direction', nextKey === sortKey ? (sortDirection === 'asc' ? 'desc' : 'asc') : nextKey === 'variance' ? 'desc' : 'asc'); return next; });
   };
@@ -166,7 +173,7 @@ export function RequirementsPage() {
         <OrganizationFilters items={data} group={group} onGroup={v=>setView("group",v)}/>
         <label className="requirement-group-toggle"><input type="checkbox" checked={grouped} onChange={e=>setView("grouped",e.target.checked?"1":"")}/><span>按分组查看</span></label>
         {canManage&&<button className="ghost-button" disabled={Boolean(groupRecheck)} onClick={()=>{if(!groupRecheck)setGroupManager(true);}}>管理分组</button>}
-        {canManage&&selectedIds.length>0&&<button className="ghost-button" disabled={Boolean(organizationRecheck)} onClick={()=>{if(!organizationRecheck)setOrganizing(true);}}>整理所选需求</button>}
+        {canManage&&selectedIds.length>0&&<><span>已选择 {selectedIds.length} 项</span><button className="ghost-button" disabled={Boolean(organizationRecheck)} onClick={()=>{if(!organizationRecheck)setOrganizing(true);}}>整理所选需求</button></>}
         <SearchInput value={search} onChange={setSearch} placeholder="搜索需求或负责人" />
         <select
           value={status}
@@ -189,7 +196,8 @@ export function RequirementsPage() {
       {organizationRecheck&&<div role="alert" className="warning-banner">整理结果待核对，批量整理暂不可用。<button type="button" className="ghost-button" onClick={()=>setOrganizing(true)}>核对整理结果</button></div>}
       {createRecheck&&<div role="alert" className="warning-banner">需求创建结果待核对，新建入口暂不可用。<button type="button" className="ghost-button" onClick={()=>setCreating(true)}>核对需求创建</button></div>}
       {error && loadedRequirements && <div className="warning-banner">需求列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
-      <div className="table-panel requirements-table-panel">
+      <div className="table-panel requirements-table-panel paged-panel">
+        <div className="paged-body" ref={pagination.scrollRef}>
         <table className="requirements-table">
           <thead>
             <tr>
@@ -202,9 +210,9 @@ export function RequirementsPage() {
             </tr>
           </thead>
           <tbody>
-            {items.map((item,index) => {
+            {pagination.items.map((item,index) => {
               const variance = requirementVarianceDisplay(item);
-              return <Fragment key={item.id}>{grouped&&(index===0||items[index-1].groupId!==item.groupId)&&<tr className="intake-group-heading"><td colSpan={6}>{item.groupName||"未分组"} · {items.filter(r=>r.groupId===item.groupId).length} 项</td></tr>}<tr
+              return <Fragment key={item.id}>{grouped&&(index===0||pagination.items[index-1].groupId!==item.groupId)&&<tr className="intake-group-heading"><td colSpan={6}>{item.groupName||"未分组"} · {items.filter(r=>r.groupId===item.groupId).length} 项</td></tr>}<tr
                 key={item.id}
                 onClick={() => navigate(`/requirements/${item.id}`)}
               >
@@ -231,6 +239,8 @@ export function RequirementsPage() {
             })}
           </tbody>
         </table>
+        </div>
+        {!listUnavailable && <Pagination {...pagination.props} label="需求列表分页" />}
         {listUnavailable ? (
           <EmptyState
             title="需求列表加载失败"

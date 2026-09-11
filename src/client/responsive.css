@@ -33,17 +33,12 @@ main {
   margin-left: var(--sidebar-width);
 }
 
-.topbar {
-  left: var(--sidebar-width);
-}
-
 .sidebar {
   width: var(--sidebar-width);
 }
 
 .topbar,
 .topbar-context,
-.top-actions,
 .integrated-page-actions,
 .page-content,
 .workspace,
@@ -613,73 +608,25 @@ textarea {
   :root {
     --sidebar-width: 210px;
     --page-gutter: 18px;
-    --topbar-title-width: 120px;
   }
 
-  .topbar {
-    gap: 12px;
-    padding-inline: 18px;
-  }
-
-  .topbar-context {
-    gap: 12px;
-  }
-
-  .project-switcher {
-    padding-left: 12px;
-  }
 }
 
 @media (max-width: 1199px) {
   :root {
     --sidebar-width: 190px;
     --page-gutter: 16px;
-    --topbar-title-width: 120px;
   }
 }
 
 @media (max-width: 1040px) {
   :root {
     --page-gutter: 14px;
-    --topbar-title-width: 120px;
   }
 
-  .topbar {
-    padding-inline: 14px;
-  }
-
-  .project-switcher-name {
-    max-width: 130px;
-  }
-
-  .session-badge,
-  .guest-badge {
-    display: none;
-  }
 }
 
 @media (max-width: 620px) {
-  main { padding-top: 88px; }
-  .topbar {
-    height: 88px;
-    display: grid;
-    grid-template-rows: 40px 40px;
-    gap: 0;
-    padding: 4px 8px;
-  }
-  .topbar-context { width: 100%; gap: 8px; }
-  #topbar-title-slot { flex: 1 1 0; min-width: 54px; max-width: 65%; }
-  .integrated-page-title { gap: 4px; }
-  .integrated-page-title h1 { font-size: 16px; }
-  .topbar-context .project-switcher { flex: 1 1 0; min-width: 0; padding-left: 8px; }
-  .project-switcher-button, .project-switcher-empty, .project-scope-indicator { min-width: 0; width: 100%; gap: 6px; padding-inline: 2px; }
-  .project-switcher-name { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .project-scope-indicator { overflow: hidden; white-space: nowrap; }
-  .top-actions { width: 100%; max-width: 100%; justify-content: flex-end; gap: 6px; }
-  .topbar-account { flex: 0 0 auto; }
-  #topbar-action-slot { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
-  .integrated-page-actions { width: max-content; min-width: 100%; justify-content: flex-end; white-space: nowrap; }
-
   .modal-card-workspace {
     height: calc(100dvh - 24px);
   }

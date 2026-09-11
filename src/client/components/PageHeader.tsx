@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useTopbarSlots } from "../app-context";
 import { useGanttTooltip } from "./GanttTooltip";
+import { TopbarMenu } from './TopbarMenu';
 
 /**
  * 页面标题/操作区：通过 TopbarSlotsContext 注册的挂载点 portal 到顶栏，
@@ -11,15 +12,31 @@ import { useGanttTooltip } from "./GanttTooltip";
 export function PageHeader({
   title,
   actions,
+  secondaryActions,
+  moreActions,
+  moreLabel = '更多操作',
+  moreDisabled = false,
+  context,
+  status,
   onBack,
   backLabel = "返回",
 }: {
   title: string;
   actions?: ReactNode;
+  secondaryActions?: ReactNode;
+  moreActions?: ReactNode;
+  moreLabel?: string;
+  moreDisabled?: boolean;
+  context?: ReactNode;
+  status?: ReactNode;
   onBack?: () => void;
   backLabel?: string;
 }) {
-  const { titleEl, actionsEl } = useTopbarSlots();
+  const { titleEl, actionsEl, contextEl, statusEl, width } = useTopbarSlots();
+  const compact = width < 960;
+  const dense = width < 360;
+  const menu = <>{dense && status && <div className="topbar-menu-status" role="status">{status}</div>}{compact && secondaryActions}{moreActions}</>;
+  const hasMenu = Boolean(moreActions || compact && secondaryActions || dense && status);
   const fullTitle = useGanttTooltip();
   const titleEvents = fullTitle.bind(<div className="page-title-full">{title}</div>);
 
@@ -28,10 +45,11 @@ export function PageHeader({
     <>
       {fullTitle.tooltip}
       {createPortal(
-        <div className="integrated-page-title">
+        <div className="integrated-page-title" data-workspace-zone="tools">
           {onBack && (
             <button onClick={onBack} aria-label={backLabel} title={backLabel}>
               <ArrowLeft size={17} />
+              <span>{backLabel}</span>
             </button>
           )}
           <h1 title={title} tabIndex={0} {...titleEvents}
@@ -42,7 +60,11 @@ export function PageHeader({
         </div>,
         titleEl,
       )}
-      {actions && actionsEl ? createPortal(<div className="integrated-page-actions">{actions}</div>, actionsEl) : null}
+      {context && contextEl ? createPortal(<div className="topbar-page-context" data-workspace-zone="tools">{context}</div>, contextEl) : null}
+      {status && !dense && statusEl ? createPortal(<div className="topbar-page-status" role="status" data-workspace-zone="tools">{status}</div>, statusEl) : null}
+      {(actions || secondaryActions || moreActions) && actionsEl ? createPortal(<div className="integrated-page-actions" data-workspace-zone="tools">
+        {!compact && secondaryActions}{actions}{hasMenu && <TopbarMenu label={moreLabel} disabled={moreDisabled}>{menu}</TopbarMenu>}
+      </div>, actionsEl) : null}
     </>
   );
 }

@@ -1,3 +1,6 @@
+import { Pagination } from '../components/Pagination';
+import { useListPagination } from '../use-list-pagination';
+import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, KeyRound, MoreHorizontal, Trash2, UserCog, UserPlus, UserRoundCheck, UserRoundX } from 'lucide-react';
@@ -340,10 +343,10 @@ export function PeopleAccessPage() {
   const toast = useToast();
   const { session } = useSession();
   const recheckAccountKey = session.accountId || session.username || 'guest';
-  const [keyword, setKeyword] = useState('');
-  const [jobTitle, setJobTitle] = useState('all');
-  const [role, setRole] = useState('all');
-  const [loginStatus, setLoginStatus] = useState('all');
+  const [filters, setFilters] = usePageSearchParams(['q','jobTitle','role','loginStatus'], true);
+  const keyword = filters.get('q') || '', jobTitle = filters.get('jobTitle') || 'all', role = filters.get('role') || 'all', loginStatus = filters.get('loginStatus') || 'all';
+  const updateFilter = (key: string, value: string) => setFilters(current => { const next = new URLSearchParams(current); next.set(key, value); next.set('page', '1'); return next; });
+  const setKeyword = (value: string) => updateFilter('q', value), setJobTitle = (value: string) => updateFilter('jobTitle', value), setRole = (value: string) => updateFilter('role', value), setLoginStatus = (value: string) => updateFilter('loginStatus', value);
   const [creating, setCreating] = useState(false);
   const [confirmation, setConfirmation] = useState<AccessConfirmation | null>(null);
   const [confirmationNeedsReopen, setConfirmationNeedsReopen] = useState(false);
@@ -379,6 +382,7 @@ export function PeopleAccessPage() {
   const people = peopleQuery.data || emptyPeople;
   const accounts = accountsQuery.data || emptyAccounts;
   const dataReady = peopleQuery.data !== undefined && accountsQuery.data !== undefined;
+  usePageScrollPosition(dataReady, true);
   const loadError = peopleQuery.error || accountsQuery.error;
   const retry = () => void Promise.all([peopleQuery.refetch(), accountsQuery.refetch()]);
   const reloadAccount = async (id: string) => {
@@ -433,6 +437,7 @@ export function PeopleAccessPage() {
       : 0);
   }, [jobTitle, keyword, loginStatus, role, rows]);
 
+  const pagination = useListPagination({ items: filteredRows, filterKey: JSON.stringify([keyword, jobTitle, role, loginStatus]), personal: true, ready: dataReady, loading: peopleQuery.isFetching || accountsQuery.isFetching });
   const refresh = () => {
     invalidateAccountPermissionViews(client);
   };
@@ -923,8 +928,8 @@ export function PeopleAccessPage() {
         <select aria-label="按登录状态筛选" value={loginStatus} onChange={(event) => setLoginStatus(event.target.value)}><option value="all">全部登录状态</option><option value="active">允许登录</option><option value="disabled">禁止登录</option><option value="missing">未开通账号</option></select>
         <span>{filteredRows.length} 名人员</span>
       </div>
-      {filteredRows.length ? <AdaptiveDataList label="人员与权限列表" className="account-data-list people-access-list" columns={accountColumns}>
-        {filteredRows.map(({ person, account }) => {
+      <AdaptiveDataList label="人员与权限列表" className="account-data-list people-access-list paged-panel" bodyRef={pagination.scrollRef} footer={<Pagination {...pagination.props} label="人员与权限分页" />} columns={accountColumns} empty={!filteredRows.length && !peopleQuery.isLoading && !accountsQuery.isLoading && <EmptyState title="没有符合条件的人员" detail={rows.length ? '请调整搜索或筛选条件。' : '新增人员后会自动创建登录账号。'} />}>
+        {pagination.items.map(({ person, account }) => {
           const rowSaving = savingPersonIds.has(person.id) || Boolean(account && savingAccountIds.has(account.id));
           const openingNeedsRecheck = openAccountNeedsRecheck?.id === person.id;
           const resettingNeedsRecheck = Boolean(account && resetNeedsRecheck?.id === account.id);
@@ -957,7 +962,7 @@ export function PeopleAccessPage() {
             onArchive={() => openConfirmation({ kind: 'archive', person, account })} /></AdaptiveDataCell>
         </AdaptiveDataRow>;
         })}
-      </AdaptiveDataList> : !peopleQuery.isLoading && !accountsQuery.isLoading && <EmptyState title="没有符合条件的人员" detail={rows.length ? '请调整搜索或筛选条件。' : '新增人员后会自动创建登录账号。'} />}
+      </AdaptiveDataList>
       </>}
     </div>
     {creating && <NewPersonForm recheck={createPersonNeedsRecheck} onRecheckChange={setCreatePersonNeedsRecheck} onClose={() => setCreating(false)} />}

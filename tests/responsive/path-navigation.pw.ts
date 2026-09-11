@@ -1,3 +1,4 @@
+import { headerAction } from './topbar-helpers';
 import { test, expect, type Page } from '@playwright/test';
 import { mockGanttData, requirement } from './gantt-fixture';
 import { analysePaths } from '../../src/shared/paths';
@@ -31,7 +32,7 @@ test('详情与路径切换不增加历史，返回及浏览器前进不再来�
   for (let i = 0; i < 2; i++) {
     await page.getByRole('button', { name: '路径分析', exact: true }).click(); await ready(page);
     expect(await index(page)).toBe(entry);
-    await page.getByRole('button', { name: '需求详情', exact: true }).click();
+    await headerAction(page,'需求详情');
     await expect(page.locator('.requirement-overview')).toBeVisible(); expect(await index(page)).toBe(entry);
   }
   await page.getByRole('button', { name: '返回', exact: true }).click(); await expect(page).toHaveURL(/\/$/);
@@ -60,12 +61,12 @@ test('固定项目路径入口新增访问，历史返回恢复各次全局画�
   await setup(page); await page.goto('/paths?pathScope=all'); await ready(page);
   const firstView = await viewport(page);
   await openRequirement(page, 'r1');
-  await page.getByRole('button', { name: '项目路径', exact: true }).click(); await ready(page);
+  await headerAction(page,'项目路径'); await ready(page);
   await page.getByRole('button', { name: '缩小画布', exact: true }).click();
   await expect.poll(() => viewport(page)).not.toBe(firstView);
   const secondView = await viewport(page);
   await openRequirement(page, 'r2');
-  await page.getByRole('button', { name: '项目路径', exact: true }).click(); await ready(page);
+  await headerAction(page,'项目路径'); await ready(page);
   await page.getByRole('button', { name: '缩小画布', exact: true }).click();
   await expect.poll(() => viewport(page)).not.toBe(secondView);
   await page.getByRole('button', { name: '返回', exact: true }).click(); await ready(page); await expect(page).toHaveURL(/\/requirements\/r2\?/);
@@ -82,11 +83,12 @@ test('直接打开路径有明确入口，窄屏导航不重叠', async ({ page 
   await page.goto('/requirements/r1?view=path'); await ready(page);
   await expect(page.getByRole('button', { name: '返回', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '项目路径', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '更多操作', exact: true }).click();
   await expect(page.getByRole('button', { name: '需求详情', exact: true })).toBeVisible();
-  const boxes = await page.locator('.graph-editor-title button').evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().toJSON()));
+  const boxes = await page.locator('.integrated-page-title button').evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().toJSON()));
   for (let i = 1; i < boxes.length; i++) expect(boxes[i].x).toBeGreaterThanOrEqual(boxes[i - 1].right);
   await page.screenshot({ path: info.outputPath('navigation-narrow.png') });
-  await page.getByRole('button', { name: '需求详情', exact: true }).click();
+  await headerAction(page,'需求详情');
   await expect(page.getByRole('button', { name: '需求列表', exact: true })).toBeVisible();
   expect(await index(page)).toBe(0);
 });

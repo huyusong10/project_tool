@@ -8,6 +8,7 @@ export type GanttMilestone = {
   id: string; title: string; requirementId?: string | null;
   targetDate?: string | null; forecastDate?: string | null; actualDate?: string | null;
   cancelled?: boolean; manual?: boolean; relatedIds: string[];
+  dateBasis?: 'target' | 'actual';
   offset?: number; timingLabel?: string;
 };
 export function milestoneDay(value?: string | null) {
@@ -19,22 +20,28 @@ export function milestoneDay(value?: string | null) {
   return value.includes('T') && Number.isFinite(instant.getTime()) ? format(instant, 'yyyy-MM-dd') : null;
 }
 export function milestoneDate(m: GanttMilestone, showForecast = false) {
+  if (m.dateBasis === 'actual') return milestoneDay(m.actualDate);
   return milestoneDay(m.targetDate) || milestoneDay(m.actualDate) || (showForecast ? milestoneDay(m.forecastDate) : null);
+}
+/** Progress charts show recorded achievements; planning views retain their targets. */
+export function achievedMilestones(items: GanttMilestone[]): GanttMilestone[] {
+  return items.filter(m => !m.cancelled && milestoneDay(m.actualDate))
+    .map(m => ({ ...m, dateBasis: 'actual' }));
 }
 export function milestoneState(m: GanttMilestone, asOfDate: string) {
   return m.cancelled ? 'cancelled' : m.actualDate ? 'reached'
     : m.targetDate && isOverdueByWorkday(m.targetDate, asOfDate) ? 'overdue' : 'planned';
 }
 export function milestonePosition(m: GanttMilestone, dates: Date[], cellWidth: number, actual = false, showForecast = false) {
-  if (!actual && m.offset !== undefined) return m.offset * cellWidth;
+  if (!actual && m.dateBasis !== 'actual' && m.offset !== undefined) return m.offset * cellWidth;
   const day = actual ? milestoneDay(m.actualDate) : milestoneDate(m, showForecast), date = toGanttDate(day);
   if (!date || !dates.length || date < dates[0] || date > dates.at(-1)!) return null;
   return (businessDateIndex(date, dates, 'end') + 1) * cellWidth;
 }
 export function milestoneTiming(m: GanttMilestone, showForecast = false) {
-  if (m.timingLabel) return m.timingLabel;
+  if (m.timingLabel && m.dateBasis !== 'actual') return m.timingLabel;
   const day = milestoneDate(m, showForecast);
-  return day ? `${m.targetDate ? '目标' : m.actualDate ? '实际' : '预计'} ${day}` : '日期待确认';
+  return day ? `${m.dateBasis === 'actual' ? '实际' : m.targetDate ? '目标' : m.actualDate ? '实际' : '预计'} ${day}` : '日期待确认';
 }
 export function milestoneAncestors(id: string, edges: Pick<PathEdge, 'source' | 'target'>[]) {
   const incoming = new Map<string, string[]>();
@@ -65,11 +72,15 @@ export function pathMilestones(nodes: PathNode[], edges: PathEdge[] = [], milest
       relatedIds: milestoneAncestors(n.id, edges) };
   });
 }
+export function milestoneGroupLabel(items: GanttMilestone[], sameDate = true) {
+  if (items.every(m => m.dateBasis === 'actual')) return `已达成 · ${items.length > 1 ? `${items.length} 项` : items[0].title}`;
+  return items.length > 1 ? `${sameDate ? '' : '相邻 '}${items.length} 项` : items[0].title;
+}
 export function groupMilestones(items: GanttMilestone[], dates: Date[], cellWidth: number, width: number, showForecast = false) {
   const points = items.map(item => ({ item, left: milestonePosition(item, dates, cellWidth, false, showForecast) }))
     .filter((p): p is { item: GanttMilestone; left: number } => p.left !== null).sort((a, b) => a.left - b.left || a.item.id.localeCompare(b.item.id));
   const groups: Array<{ items: GanttMilestone[]; left: number; labelLeft: number; width: number }> = [];
-  const labelWidth = (group: GanttMilestone[]) => group.length > 1 ? 64 : Math.min(150, Array.from(group[0].title).reduce((n, c) => n + (/[^\u0000-\u00ff]/.test(c) ? 11 : 7), 12));
+  const labelWidth = (group: GanttMilestone[]) => Math.min(150, Array.from(milestoneGroupLabel(group, false)).reduce((n, c) => n + (/[^\u0000-\u00ff]/.test(c) ? 11 : 7), 12));
   for (const point of points) {
     const last = groups.at(-1);
     if (last && point.left - last.left < Math.max(44, labelWidth(last.items) + 12)) { last.items.push(point.item); continue; }

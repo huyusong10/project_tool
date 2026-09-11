@@ -61,7 +61,7 @@ async function openProgress(page: Page, source: 'detail' | 'my-work', itemIndex 
     await page.locator('.requirement-gantt-grid .gantt-progress-marker').nth(itemIndex).click();
     return page.getByRole('dialog', { name: '更新工作项进度', exact: true });
   }
-  await page.getByRole('button', { name: /^为接口开发(更新完成度|补充说明)$/, exact: true }).click();
+  await page.getByRole('button', { name: /^为接口开发(更新进度|补充说明)$/, exact: true }).click();
   return page.getByRole('dialog', { name: /^(更新工作项进度|补充工作项说明)$/, exact: true });
 }
 

@@ -28,9 +28,12 @@
 .gantt-milestone-summary > strong,.gantt-milestone-summary > small { display:block; overflow-wrap:anywhere; }
 .gantt-milestone-summary small { color:var(--text-muted); margin-top:4px; }
 .gantt-milestone-details > button { margin-top:8px; max-width:100%; }
-.gantt-track > .gantt-milestone-rail { position:absolute; top:0; z-index:3; background:transparent; border:0; }
-.gantt-track > .gantt-milestone-rail .gantt-milestone-label { background:var(--bg-surface); }
-.gantt-track.unified-gantt-track.has-row-milestones { --gantt-bar-top:32px; --gantt-bar-height:22px; --date-plan-top:32px; --date-actual-top:47px; }
+.gantt-milestone-rail.is-inline { --milestone-bar-top:var(--gantt-bar-top); --milestone-bar-bottom:calc(var(--gantt-bar-top) + var(--gantt-bar-height)); position:absolute; top:0; height:100%; z-index:10; background:transparent; border:0; pointer-events:none; }
+.gantt-split-track > .gantt-milestone-rail.is-inline { --milestone-bar-top:var(--date-plan-top); --milestone-bar-bottom:calc(var(--date-actual-top) + 8px); }
+.gantt-milestone-rail.is-inline .gantt-milestone-pin { top:calc(var(--milestone-bar-top) - 3.5px); z-index:1; box-shadow:0 0 0 1px var(--bg-surface); }
+.gantt-milestone-rail.is-inline .gantt-milestone-label { top:calc(var(--milestone-bar-top) - 21px); height:18px; background:var(--bg-surface); pointer-events:auto; }
+.gantt-milestone-rail.is-inline .gantt-milestone-cut { top:var(--milestone-bar-top); bottom:calc(100% - var(--milestone-bar-bottom)); border-left-style:solid; opacity:.8; box-shadow:1px 0 0 var(--bg-surface); }
+.gantt-milestone-rail.is-inline .gantt-milestone-cut.is-selected { opacity:1; }
 .path-gantt-corner { flex-wrap:wrap; align-content:center; gap:4px; }
 .template-plan-name:is(button) { border:0; border-bottom:1px solid var(--divider); text-align:left; font:inherit; font-size:12px; color:var(--text-primary); cursor:pointer; }
 .template-milestone-plan { overflow:auto; min-width:0; }

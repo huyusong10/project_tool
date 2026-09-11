@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { format } from "date-fns";
 import { Ban, Check, Circle, CircleAlert, Play } from "lucide-react";
 import { requirementStatusLabels, todayIso } from "../../shared/domain";
@@ -12,9 +12,9 @@ import { GanttDateTracks } from "./GanttDateTracks";
 import { useGanttNavigation } from "../use-gantt-navigation";
 import { GanttNavigation, GanttScrollbar } from "./GanttNavigation";
 import { workItemDisplayGap, workItemActualRange } from "../gantt-actual";
-import { requirementMilestones } from '../gantt-milestones';
+import { achievedMilestones, milestoneDate, requirementMilestones } from '../gantt-milestones';
 import { useGanttMilestoneData } from '../use-gantt-milestones';
-import { GanttMilestoneRail, GanttMilestoneCuts, GanttMilestoneUndated, useMilestoneSelection } from './GanttMilestones';
+import { GanttMilestoneRail, GanttMilestoneCuts, useMilestoneSelection } from './GanttMilestones';
 import {
   GanttPlanActualBars,
   GanttScale,
@@ -77,6 +77,8 @@ function WorkItemTimelinePopover({ item, updates, asOfDate, executionStatus }: {
 
 export const GapTimeline = memo(function GapTimeline({
   items,
+  rangeItems = items,
+  scrollElementRef,
   itemLabel = '工作项',
   executionStatus,
   storageKey = "my-work",
@@ -98,6 +100,8 @@ export const GapTimeline = memo(function GapTimeline({
   emptyState,
 }: {
   items: WorkItem[];
+  rangeItems?: WorkItem[];
+  scrollElementRef?: (element: HTMLDivElement | null) => void;
   itemLabel?: string;
   executionStatus?: string;
   storageKey?: string;
@@ -123,11 +127,13 @@ export const GapTimeline = memo(function GapTimeline({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const tooltip = useGanttTooltip();
   const milestoneData = useGanttMilestoneData(projectId);
-  const milestoneItems = useMemo(() => requirementMilestones(milestones, items, milestoneData?.edges), [milestones, items, milestoneData?.edges]);
+  const milestoneItems = useMemo(() => achievedMilestones(requirementMilestones(milestones, rangeItems, milestoneData?.edges)), [milestones, rangeItems, milestoneData?.edges]);
   const milestoneSelection = useMilestoneSelection(milestoneItems, asOfDate);
-  const timelineValues = useMemo(() => [...items.flatMap(item => [item.plannedStart, item.plannedEnd, item.actualStart, workItemActualRange(item, asOfDate).end]), ...milestoneItems.flatMap(m => [m.targetDate, m.actualDate])], [items, milestoneItems, asOfDate]);
+  const timelineValues = useMemo(() => [...rangeItems.flatMap(item => [item.plannedStart, item.plannedEnd, item.actualStart, workItemActualRange(item, asOfDate).end]), ...milestoneItems.map(m => milestoneDate(m))], [rangeItems, milestoneItems, asOfDate]);
   const navigation = useGanttNavigation({ values: timelineValues, asOfDate, storageKey, onPan: tooltip.close });
   const { scrollRef, viewportWidth, dates, zoom, cellWidth, timelineWidth } = navigation;
+  const attach = navigation.attach;
+  const attachScroll = useCallback((element: HTMLDivElement | null) => { attach(element); scrollElementRef?.(element); }, [attach, scrollElementRef]);
   const statusCounts = useMemo(() => items.reduce<Record<string, number>>((counts, item) => {
     counts[item.status] = (counts[item.status] || 0) + 1;
     return counts;
@@ -195,7 +201,7 @@ export const GapTimeline = memo(function GapTimeline({
             <span><i className="legend-plan-pill" />计划</span>
             <span title="蓝色执行中，绿色已完成，灰色断纹已取消，红色描边延期"><i className="legend-actual" />实际</span>
             {viewMode === "overlay" && <><span><i className="legend-delayed" />延期</span><span><i className="legend-early" />提前</span></>}
-            <span><i className="legend-milestone" />里程碑</span>
+            <span><i className="legend-milestone" />已达成里程碑</span>
           </div>
         </div>
         <div className="gantt-toolbar-actions">
@@ -203,7 +209,7 @@ export const GapTimeline = memo(function GapTimeline({
           <GanttNavigation navigation={navigation} />
         </div>
       </div>
-      <div className="requirement-gantt-scroll gantt-navigation-surface" ref={navigation.attach} tabIndex={0} aria-label="工作项甘特时间轴，可左右拖动浏览">
+      <div className="requirement-gantt-scroll gantt-navigation-surface" ref={attachScroll} tabIndex={0} aria-label="工作项甘特时间轴，可左右拖动浏览">
         <div
           className={`requirement-gantt-grid${milestoneItems.length ? ' has-milestone-rail' : ''}${inlineActions ? " has-inline-actions" : ""}${!visibleItems.length ? " is-empty" : ""}`}
           style={{
@@ -219,7 +225,6 @@ export const GapTimeline = memo(function GapTimeline({
               {visibleItems.length === items.length ? `${items.length}项` : `${visibleItems.length}/${items.length}项`}
               {visibleUnassignedCount > 0 && <em> · {visibleUnassignedCount}项未分配</em>}
             </span>
-            <GanttMilestoneUndated items={milestoneItems} selection={milestoneSelection} />
           </div>
           <div className="gantt-axis-header"><GanttScale dates={dates} zoom={zoom} cellWidth={cellWidth} todayOffset={todayOffset} todayVisible={todayVisible} className="requirement-gantt-scale" />
             {milestoneItems.length > 0 && <GanttMilestoneRail items={milestoneItems} dates={dates} cellWidth={cellWidth} asOfDate={asOfDate} selection={milestoneSelection} />}

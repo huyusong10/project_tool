@@ -1,0 +1,78 @@
+.app-shell{--app-topbar-height:52px}
+.app-shell:has(.topbar[data-narrow=true] #topbar-action-slot:not(:empty)){--app-topbar-height:88px}
+.topbar{position:fixed;inset:0 0 auto var(--sidebar-width,228px);z-index:20;height:var(--app-topbar-height);box-sizing:border-box;display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--border-default);background:var(--topbar-bg);color:var(--text-primary)}
+.topbar-context{display:flex;align-items:center;gap:14px;min-width:0;flex:1}
+#topbar-title-slot{min-width:0;flex:1;border-left:1px solid var(--border-default);padding-left:14px}
+.integrated-page-title{display:flex;align-items:center;gap:8px;min-width:0}
+.integrated-page-title h1{margin:0;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:17px;font-weight:750;letter-spacing:-.25px}
+.integrated-page-title button{display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:none;max-width:150px;min-height:36px;padding:0 4px;border:0;background:transparent;color:var(--text-muted);font-size:12px;border-radius:var(--radius-sm)}
+.integrated-page-title button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.integrated-page-title button:hover{color:var(--accent-ink);background:var(--accent-soft)}
+.topbar-page-tools,.integrated-page-actions,.topbar-personal{display:flex;align-items:center;gap:8px;flex:none;min-width:0}
+.topbar-page-tools{max-width:65%}
+.topbar-personal{border-left:1px solid var(--border-default);padding-left:12px}
+#topbar-action-slot:empty,#topbar-context-slot:empty,#topbar-status-slot:empty{display:none}
+#topbar-context-slot{min-width:0;flex:0 1 auto}
+.topbar-page-context{display:flex;align-items:center;gap:8px;min-width:0;font-size:12px;color:var(--text-muted);white-space:nowrap}
+.topbar-page-context>span{overflow:hidden;text-overflow:ellipsis;max-width:190px}
+.topbar-page-context select{min-width:0;max-width:132px;height:32px;padding:0 6px;border:1px solid var(--border-default);border-radius:var(--radius-sm);background:var(--bg-surface);color:var(--text-primary);font:inherit}
+.topbar-page-status{width:100px;display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;font-size:11px;color:var(--text-muted)}
+.topbar-page-status>span{overflow:hidden;text-overflow:ellipsis}
+.topbar-page-status:has(button)>span{display:none}
+.topbar .ghost-button,.topbar .primary-button{height:36px;min-height:36px;padding:0 10px;font-size:12px;white-space:nowrap}
+.topbar .topbar-icon,.topbar .icon-button{width:36px;height:36px;min-height:36px;padding:0;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.topbar button>svg{flex:none}
+.topbar-account-name{max-width:100px;overflow:hidden;text-overflow:ellipsis}
+.project-switcher{position:relative;flex:none;min-width:0;font-size:13px;font-weight:650}
+.project-dot{flex:none;width:8px;height:8px;border-radius:3px;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.project-switcher-button,.project-switcher-empty,.project-scope-indicator{min-height:36px;display:flex;align-items:center;gap:8px;padding:0 7px;border:0;border-radius:var(--radius-sm);color:var(--text-primary);background:transparent;font-size:13px;font-weight:650;white-space:nowrap}
+.project-scope-indicator{color:var(--text-secondary)}
+.project-scope-indicator.scope-personal .project-dot{background:var(--purple);box-shadow:0 0 0 4px var(--purple-bg)}
+.project-scope-indicator.scope-platform .project-dot{background:var(--text-muted);box-shadow:0 0 0 4px var(--bg-hover)}
+.project-switcher-button:hover,.project-switcher-button[aria-expanded=true]{color:var(--accent-ink);background:var(--accent-soft)}
+.project-switcher-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-switcher-button svg{color:var(--text-faint)}
+.project-switcher-button svg.is-open{transform:rotate(180deg)}
+.project-switcher-menu{display:grid;gap:4px}
+.project-switcher-menu button{width:100%;min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 10px;border:0;border-radius:var(--radius-sm);color:var(--text-secondary);background:transparent;text-align:left}
+.project-switcher-menu button:hover,.project-switcher-menu button[aria-selected=true]{color:var(--accent-ink);background:var(--accent-soft)}
+.project-switcher-option{min-width:0;display:flex;align-items:center;gap:7px}
+.project-switcher-option>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sample-project-badge{flex:none;display:inline-flex;align-items:center;padding:2px 6px;border-radius:5px;color:var(--purple);background:var(--purple-bg);font-size:10px;font-style:normal;font-weight:750;line-height:16px}
+.topbar-menu-trigger{display:flex;flex:none}
+.topbar-menu-popover{padding:6px;overflow:visible}
+.topbar-menu-content{display:flex;flex-direction:column;gap:4px;max-height:calc(100dvh - 110px);overflow-y:auto;overscroll-behavior:contain}
+.topbar-menu-content>button,.topbar-menu-content .theme-toggle{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;min-height:38px;height:auto;padding:8px 10px;border:0;background:transparent;color:var(--text-secondary);border-radius:var(--radius-sm);font-size:13px;text-align:left}
+.topbar-menu-content>button:hover{background:var(--bg-hover)}
+.topbar-menu-content>button[aria-label]:has(svg:only-child)::after{content:attr(aria-label)}
+.topbar-menu-content>.danger{color:var(--danger-text)}
+.topbar-account-heading{padding:8px 10px;color:var(--text-muted);font-size:12px;border-bottom:1px solid var(--border-default);overflow-wrap:anywhere}
+.topbar-menu-status{padding:8px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--text-muted);font-size:12px;border-bottom:1px solid var(--border-default)}
+.topbar-menu-content:has(.theme-picker){overflow:visible}
+.topbar-menu-content .theme-menu{right:0;top:0;max-height:calc(100dvh - 100px);overflow:auto;width:min(280px,calc(100vw - 24px))}
+.topbar[data-compact=true]{gap:8px;padding-inline:10px}
+.topbar[data-compact=true] .topbar-context{gap:8px}
+.topbar[data-compact=true] #topbar-title-slot{padding-left:8px}
+.topbar[data-compact=true] .project-switcher-name{max-width:100px}
+.topbar[data-compact=true] .topbar-page-context>span{display:none}
+.topbar[data-compact=true] .topbar-page-status{width:80px}
+.topbar[data-narrow=true]{display:grid;grid-template-columns:minmax(0,1fr) 44px;grid-template-rows:1fr;gap:0 4px;padding:0 8px}
+.topbar[data-narrow=true]:has(#topbar-action-slot:not(:empty)){grid-template-rows:44px 44px}
+.topbar[data-narrow=true] .topbar-context{grid-column:1;grid-row:1;gap:6px}
+.topbar[data-narrow=true] .topbar-personal{grid-column:2;grid-row:1;padding-left:0;border:0}
+.topbar[data-narrow=true] .topbar-page-tools{grid-column:1/-1;grid-row:2;max-width:none;width:100%;gap:6px}
+.topbar[data-narrow=true] .topbar-page-tools:has(#topbar-action-slot:empty){display:none}
+.topbar[data-narrow=true] #topbar-action-slot{margin-left:auto}
+.topbar[data-narrow=true] #topbar-status-slot{min-width:0;flex:1}
+.topbar[data-narrow=true] .topbar-page-status{width:auto;font-size:10px}
+.topbar[data-narrow=true] .topbar-page-status button{padding:0 3px;font-size:10px}
+.topbar[data-narrow=true] .integrated-page-actions{gap:4px}
+.topbar[data-narrow=true] .integrated-page-title{gap:4px}
+.topbar[data-narrow=true] .integrated-page-title h1{font-size:14px}
+.topbar[data-narrow=true] .integrated-page-title button{max-width:112px;font-size:11px;padding:0}
+.topbar[data-narrow=true] .project-switcher-name{max-width:72px}
+.topbar[data-narrow=true] .project-switcher-button,.topbar[data-narrow=true] .project-scope-indicator{font-size:12px;gap:6px;padding-inline:3px}
+.topbar[data-narrow=true] .sample-project-badge{display:none}
+.topbar[data-narrow=true] .topbar-page-context select{max-width:94px}
+@media(pointer:coarse){.topbar button,.topbar .topbar-icon,.topbar .icon-button,.topbar .ghost-button,.topbar .primary-button{min-width:44px;min-height:44px}.topbar .topbar-icon,.topbar .icon-button{width:44px;height:44px}}
+@media(pointer:coarse){.topbar[data-narrow=true] .topbar-page-context select{max-width:72px;font-size:11px}.topbar[data-narrow=true] .integrated-page-actions{gap:2px}.topbar[data-narrow=true] .primary-button{padding-inline:6px}}

@@ -1,10 +1,10 @@
 
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
-import { useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { usePagedResourceQuery } from '../use-paged-resource-query';
+import { useListPagination } from '../use-list-pagination';
+import { readPagination } from '../pagination';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowRight, CircleAlert, ListTodo, ArrowDown } from 'lucide-react';
-import { api } from '../api';
 import { useProjects } from '../app-context';
 import { keys } from '../query-keys';
 import type { ActionItemsPage } from '../types';
@@ -22,24 +22,19 @@ export function ActionCenterPage() {
   const navigate = useNavigate();
   const [params, setParams] = usePageSearchParams(['severity', 'reason', 'ownerId', 'page']);
   const severity = params.get('severity') || '', reason = params.get('reason') && params.get('reason')! in actionReasonLabels ? params.get('reason')! : '', ownerId = params.get('ownerId') || '';
-  const page = Math.max(1, Math.trunc(Number(params.get('page')) || 1));
+  const { page, pageSize } = readPagination(params, 10);
   const updateFilter = (key: string, value: string) => setParams(current => { const next = new URLSearchParams(current); next.set(key, value); next.delete('page'); return next; });
-  const setPage = (value: number) => setParams(current => { const next = new URLSearchParams(current); next.set('page', String(value)); return next; });
-  const query = new URLSearchParams({ projectId: selectedProjectId, page: String(page), pageSize: '20' });
+  const clearFilters = () => setParams(current => { const next = new URLSearchParams(current); for (const key of ['severity','reason','ownerId']) next.delete(key); next.set('page','1'); return next; });
+  const query = new URLSearchParams({ projectId: selectedProjectId, page: String(page), pageSize: String(pageSize) });
   if (severity) query.set('severity', severity);
   if (reason) query.set('reason', reason);
   if (ownerId) query.set('ownerId', ownerId);
-  const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: [...keys.actionItems, selectedProjectId, severity, reason, ownerId, page],
-    queryFn: ({ signal }) => api<ActionItemsPage>(`/api/action-items?${query.toString()}`, { signal }),
-    enabled: Boolean(selectedProjectId),
-  });
+  const filterKey = JSON.stringify([selectedProjectId, severity, reason, ownerId]);
+  const { data, isLoading, error, refetch, isFetching } = usePagedResourceQuery<ActionItemsPage>(
+    [...keys.actionItems, selectedProjectId, severity, reason, ownerId, page, pageSize], `/api/action-items?${query}`, filterKey, Boolean(selectedProjectId));
+  const pagination = useListPagination({ total: data?.total || 0, defaultPageSize: 10, filterKey, ready: Boolean(data) && !error, loading: isFetching,
+    serverPage: data?.page, serverPageSize: data?.pageSize, failed: Boolean(error) });
   usePageScrollPosition(!isLoading);
-  useEffect(() => {
-    if (!data) return;
-    const lastPage = Math.max(1, data.pages);
-    if (page > lastPage) setParams(current => { const next = new URLSearchParams(current); next.set("page", String(lastPage)); return next; });
-  }, [data, page, setParams]);
   const ownerOptions = data?.ownerOptions || [];
   const selectedOwnerMissing = Boolean(ownerId && ownerId !== 'unassigned'
     && !ownerOptions.some((person) => person.id === ownerId));
@@ -54,7 +49,7 @@ export function ActionCenterPage() {
         <article className="is-normal"><CircleAlert size={19} /><span>需要处理</span><strong>{data?.summary.medium || 0}</strong></article>
         <article><ArrowDown size={19} /><span>资料待补齐</span><strong>{data?.summary.low || 0}</strong></article>
       </section>
-      <section className="panel action-center-list">
+      <section className="panel action-center-list paged-panel">
         <header><div><h2>待处理事项</h2><p>由需求、工作项和问题状态实时推导，处理源数据后自动消失{data?.asOfDate ? ` · 截至 ${data.asOfDate}` : ''}</p></div></header>
         <FilterBar className="action-center-filters" result={`${data?.total || 0} 项`}>
           <select aria-label="处理优先级" value={severity} onChange={(event) => updateFilter('severity', event.target.value)}><option value="">全部处理优先级</option><option value="high">P0 紧急 / P1 高</option><option value="medium">P2 正常</option><option value="low">P3 较低</option></select>
@@ -66,7 +61,7 @@ export function ActionCenterPage() {
             {ownerOptions.map((person) => <option value={person.id} key={person.id}>{person.name}（{person.count}）</option>)}
           </select>
         </FilterBar>
-        <div className="action-items">
+        <div className="action-items paged-body" ref={pagination.scrollRef}>
           {isLoading && !data && <LoadingState label="正在加载行动项…" className="stable-panel-state" />}
           {data?.items.map((item) => <button key={item.id} className={`action-item action-${item.severity}`} onClick={() => navigate(item.targetPath)}>
             <div className="action-priority">{<span className={`action-severity action-${item.severity}`}>{severityLabels[item.severity]}</span>}</div>
@@ -74,9 +69,9 @@ export function ActionCenterPage() {
             <div className="action-item-meta"><span>{item.ownerName || '未分派'}</span>{item.nextReviewAt&&<span>下次核对 {item.nextReviewAt}</span>}<span>{item.dueDate || '无截止日期'}{item.overdueWorkdays ? ` · 逾期${item.overdueWorkdays}个工作日` : ''}</span></div>
             <ArrowRight size={16} />
           </button>)}
-          {data && !data.items.length && !isLoading && <EmptyState title={severity||reason||ownerId?'没有匹配的待处理事项':'当前没有待处理事项'} detail={severity||reason||ownerId?'当前条件下无匹配，其他范围仍可能有待处理事项。':'当前可见范围内没有待处理事项。'} action={severity||reason||ownerId?<button className="ghost-button" onClick={()=>setParams({})}>清空筛选</button>:undefined}/>}
+          {data && !data.items.length && !isLoading && <EmptyState title={severity||reason||ownerId?'没有匹配的待处理事项':'当前没有待处理事项'} detail={severity||reason||ownerId?'当前条件下无匹配，其他范围仍可能有待处理事项。':'当前可见范围内没有待处理事项。'} action={severity||reason||ownerId?<button className="ghost-button" onClick={clearFilters}>清空筛选</button>:undefined}/>}
         </div>
-        {(data?.pages || 0) > 1 && <Pagination page={page} pages={data?.pages || 0} onChange={setPage} className="pagination" />}
+        {data && <Pagination {...pagination.props} label="待处理事项分页" />}
       </section>
       </>}
     </div>
