@@ -29,6 +29,23 @@ export function rebaseEditor(base:PathAnalysis|undefined,server:PathAnalysis,inp
   return resolve('relation:'+e.clientId,'新增依赖','关系端点已失效',base?.dependencies.find(d=>d.id===e.clientId),missing,e,false)!=='server';
  });
  changes.remove=changes.remove.filter(id=>server.dependencies.some(e=>e.id===id)||isDraftTemplateId(id,input.entities||[]));
+ if(changes.featureRelations)changes.featureRelations=changes.featureRelations.filter(c=>{
+  const old=base?.featureContext?.relations.find(r=>r.id===c.id),now=server.featureContext?.relations.find(r=>r.id===c.id);
+  const endpoints=c.op==='create'?[c.sourceFeatureId,c.targetFeatureId]:now?[now.sourceFeatureId,now.targetFeatureId]:[];
+  const invalid=c.op!=='delete'&&endpoints.some(id=>!server.featureContext?.overview.groups.some(g=>g.id===id&&!g.archivedAt));
+  if(invalid)return resolve('feature-relation:'+c.id,'规划关系','端点已归档或删除',old,now,c,false)!=='server';
+  if(c.op==='create'){
+   const duplicate=server.featureContext?.relations.find(r=>r.sourceFeatureId===c.sourceFeatureId&&r.targetFeatureId===c.targetFeatureId);
+   return !duplicate||resolve('feature-relation:'+c.id,'规划关系','相同规划关系已存在',null,duplicate,c,false)!=='server';
+  }
+  if(!now){if(c.op==='delete')return false;return resolve('feature-relation:'+c.id,'规划关系','关系已删除',old,null,c,false)!=='server';}
+  if(c.expectedVersion!==now.version){
+   if(c.op==='update'&&c.note===now.note)return false;
+   if(resolve('feature-relation:'+c.id,'规划关系',c.op==='delete'?'删除关系':'关系说明',old,now,c)==='server')return false;
+   c.expectedVersion=now.version;
+  }
+  return true;
+ });
  return {changes,conflicts,pending:conflicts.filter(c=>!choices[c.key])};
 }
 

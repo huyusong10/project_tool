@@ -3,6 +3,7 @@ import { notFound, fail } from '../errors';
 import { readPathAnalysis,loadPathInput } from './paths';
 import { sqlite } from '../database';
 import { getGroupOverview } from './group-overview';
+import {withFeatureContext} from './feature-context';
 import { readFeatureRelations } from './features';
 import { groupAssessmentLabels } from '../../shared/intake';
 import { featurePathGraph } from '../../shared/feature-projection';
@@ -52,6 +53,7 @@ export async function readPathGraph(raw: unknown, actor: AuthorizationActor) {
     if(input.requirementId&&!analysis.requirements.some(r=>r.id===input.requirementId))notFound('需求不存在');
     const target=input.target||(input.requirementId?'acceptance:'+input.requirementId:'project');
     if(target!=='project')analysis=readPathAnalysis(input.projectId,target,actor);
+    analysis=withFeatureContext(analysis,loadPathInput(input.projectId,analysis.asOfDate).requirements,actor);
     const overview=featureView?getGroupOverview(input.projectId,actor,analysis.asOfDate,'all'):undefined;
     const relations=featureView?readFeatureRelations(input.projectId):undefined;
     if(input.featureId&&input.featureId!=='ungrouped'&&!overview?.groups.some(g=>g.id===input.featureId))notFound('特性不存在');
@@ -90,7 +92,7 @@ export async function readPathGraph(raw: unknown, actor: AuthorizationActor) {
   }
   return { projectId: analysis.projectId, revision: analysis.revision, asOfDate: analysis.asOfDate,
     target: analysis.target, view: input.view, requirementId: input.requirementId || null,
-    ...(featureView?{analysis,featureId:input.featureId||null,overview,relations}:{}),
+    analysis,...(featureView?{featureId:input.featureId||null,overview,relations}:{}),
     cards, links, totalNodes: graph.cards.length, omittedNodes: graph.cards.length - cards.length, savedLayout,
     ...(layout ? { layout: { ...layout, nodeWidth: cardWidth, nodeHeight: cardHeight } } : {}),
     ...(input.format === 'svg' ? { mimeType: 'image/svg+xml', svg: graphSvg(cards, links, layout!, analysis.projectName) } : {}),

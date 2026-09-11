@@ -7,6 +7,7 @@ import { requireActiveProject } from './support';
 import { recordAudit } from './audit';
 import { groupInput, type RequirementGroup } from '../../shared/intake';
 import { featureRelationInput, type FeatureRelation, type FeatureRequirement, type FeatureRequirements } from '../../shared/features';
+import {applyFeatureRelationDraft,type FeatureRelationChange} from '../../shared/features';
 
 export function readRequirementGroups(projectId: string, state: 'active'|'archived'|'all' = 'active'): RequirementGroup[] {
   const rows = sqlite.prepare(`SELECT g.id,g.project_id AS projectId,g.name,g.sort_order AS sortOrder,g.version,g.description,g.archived_at AS archivedAt,
@@ -93,6 +94,48 @@ export function readFeatureRelations(projectId:string):FeatureRelation[] {
 export function listFeatureRelations(projectId:string,actor:Actor) {
   assertProjectReadable(requireAuthorizationActor(actor),projectId);return readFeatureRelations(projectId);
 }
+function validateFeatureRelations(relations:FeatureRelation[]) {
+  const pairs=new Set<string>(),next=new Map<string,string[]>();
+  for(const relation of relations){
+    const pair=relation.sourceFeatureId+'>'+relation.targetFeatureId;
+    if(pairs.has(pair))fail('规划关系已存在','DEPENDENCY_CONFLICT');
+    pairs.add(pair);next.set(relation.sourceFeatureId,[...(next.get(relation.sourceFeatureId)||[]),relation.targetFeatureId]);
+  }
+  const active=new Set<string>(),done=new Set<string>();
+  const visit=(id:string)=>{if(active.has(id))fail('规划关系形成循环，请核对前置与后续特性（包含保留的归档关系）','DEPENDENCY_CONFLICT');if(done.has(id))return;active.add(id);for(const child of next.get(id)||[])visit(child);active.delete(id);done.add(id);};
+  for(const id of next.keys())visit(id);
+}
+export function prepareFeatureRelationChanges(projectId:string,changes:FeatureRelationChange[],actor:Actor) {
+  const before=readFeatureRelations(projectId);
+  if(!changes.length)return {before,after:before};
+  manager(projectId,actor);
+  if(new Set(changes.map(c=>c.id)).size!==changes.length)fail('批次中存在重复的规划关系修改');
+  for(const change of changes){
+    const old=before.find(r=>r.id===change.id);
+    if(change.op==='create'){
+      if(old)fail('新增规划关系标识重复','DEPENDENCY_CONFLICT');
+      for(const id of [change.sourceFeatureId,change.targetFeatureId])if(currentFeature(projectId,id).archivedAt)fail('归档特性不能修改规划关系');
+    }else{
+      if(!old||old.version!==change.expectedVersion)fail('规划关系已变化，请读取最新资料','STALE_WRITE',409,{featureRelationIds:[change.id]});
+      if(change.op==='update')for(const id of [old.sourceFeatureId,old.targetFeatureId])if(currentFeature(projectId,id).archivedAt)fail('归档特性不能修改规划关系');
+    }
+  }
+  const after=applyFeatureRelationDraft(before,changes,projectId);validateFeatureRelations(after);
+  return {before,after};
+}
+export function persistFeatureRelationChanges(projectId:string,changes:FeatureRelationChange[],before:FeatureRelation[],actor:Actor) {
+  const ids:Record<string,string>={},now=new Date().toISOString();
+  for(const change of changes){
+    const old=before.find(r=>r.id===change.id),id=change.op==='create'?randomUUID():change.id;
+    if(change.op==='create'){
+      ids[change.id]=id;sqlite.prepare('INSERT INTO feature_relations(id,project_id,source_feature_id,target_feature_id,note,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(id,projectId,change.sourceFeatureId,change.targetFeatureId,change.note,now,now);
+    }else if(change.op==='delete')sqlite.prepare('DELETE FROM feature_relations WHERE id=?').run(id);
+    else sqlite.prepare('UPDATE feature_relations SET note=?,version=version+1,updated_at=? WHERE id=?').run(change.note,now,id);
+    const after=change.op==='delete'?null:readFeatureRelations(projectId).find(r=>r.id===id);
+    recordAudit(actor,change.op,'feature_relation',id,'规划关系；修改前：'+JSON.stringify(old??null)+'；修改后：'+JSON.stringify(after),projectId);
+  }
+  return ids;
+}
 export function saveFeatureRelation(projectId:string,raw:unknown,actor:Actor) {
   const input=featureRelationInput.parse(raw);
   return sqlite.transaction(()=>{
@@ -101,9 +144,7 @@ export function saveFeatureRelation(projectId:string,raw:unknown,actor:Actor) {
     if(input.id&&(!before||before.version!==input.expectedVersion))fail('规划关系已变化，请读取最新资料','STALE_WRITE');
     for(const id of [input.sourceFeatureId,input.targetFeatureId])if(currentFeature(projectId,id).archivedAt)fail('归档特性不能修改规划关系');
     const rest=relations.filter(r=>r.id!==input.id);
-    if(rest.some(r=>r.sourceFeatureId===input.sourceFeatureId&&r.targetFeatureId===input.targetFeatureId))fail('规划关系已存在','DEPENDENCY_CONFLICT');
-    const seen=new Set<string>(),pending=[input.targetFeatureId];
-    while(pending.length){const id=pending.pop()!;if(id===input.sourceFeatureId)fail('规划关系形成循环，请核对前置与后续特性（包含保留的归档关系）','DEPENDENCY_CONFLICT');if(seen.has(id))continue;seen.add(id);pending.push(...rest.filter(r=>r.sourceFeatureId===id).map(r=>r.targetFeatureId));}
+    validateFeatureRelations([...rest,{...input,id:input.id||'new',projectId,version:before?.version||0}]);
     const id=input.id||randomUUID(),now=new Date().toISOString();
     if(before)sqlite.prepare('UPDATE feature_relations SET source_feature_id=?,target_feature_id=?,note=?,version=version+1,updated_at=? WHERE id=?').run(input.sourceFeatureId,input.targetFeatureId,input.note,now,id);
     else sqlite.prepare('INSERT INTO feature_relations(id,project_id,source_feature_id,target_feature_id,note,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(id,projectId,input.sourceFeatureId,input.targetFeatureId,input.note,now,now);

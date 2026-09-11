@@ -9,6 +9,7 @@ import { api, ApiError, isWriteOutcomeUnknown, jsonBody } from './api';
 import type { DependencyChanges, DependencyChangePreview, DependencyChangeReceipt, DependencyChangesInput } from '../shared/path-contracts';
 import type { PathAnalysis } from '../shared/paths';
 import type {DraftTemplateInstance} from '../shared/template-instance';
+import {useLegacyFeatureDraft} from './legacy-feature-draft';
 
 const prefix = 'pm-graph-draft:';
 export function clearGraphDrafts(accountId?: string) {
@@ -98,18 +99,20 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
   const [pending, setPending] = useState<PendingBatch | null>(() => {
     try { return JSON.parse(sessionStorage.getItem(pendingKey) || 'null'); } catch { return null; }
   });
+  const legacy=useLegacyFeatureDraft(key,data.projectId,history,pending,()=>onSaved(),!scope);
   const [preview, setPreview] = useState<DependencyChangePreview | null>(null), [error, setError] = useState<Error | null>(null);
   const [templateInstances,setTemplateInstances]=useState<DraftTemplateInstance[]>([]);
   const [previewing, setPreviewing] = useState(false);
   const [previewAttempt,setPreviewAttempt]=useState(0);
   const generation = useRef(0), latest = useRef<DependencyChangePreview | null>(null);
   const denied=useRef(()=>{});denied.current=()=>{history.reset();onSaved();};
-  const changes = history.value, count = changes.add.length + changes.remove.length + changes.estimates.length+(changes.entities?.length||0)+(changes.layouts?.length||0)+Number(!!changes.commitment);
-  const resolutionVersion=JSON.stringify([data.revision,data.layouts?.map(l=>[l.scope,l.direction,l.version])]);
+  const changes = history.value, count = changes.add.length + changes.remove.length + changes.estimates.length+(changes.entities?.length||0)+(changes.layouts?.length||0)+(changes.featureRelations?.length||0)+Number(!!changes.commitment);
+  const featureVersion=(value:PathAnalysis|undefined)=>JSON.stringify([value?.featureContext?.relations,value?.featureContext?.overview.groups.map(g=>[g.id,g.archivedAt])]);
+  const resolutionVersion=JSON.stringify([data.revision,data.layouts?.map(l=>[l.scope,l.direction,l.version]),featureVersion(data)]);
   const [resolutionState,setResolutionState]=useState<{version:string;values:Record<string,'draft'|'server'>}>({version:resolutionVersion,values:{}});
   const resolutions=resolutionState.version===resolutionVersion?resolutionState.values:{};
   const rebased=rebaseEditorHistory(history.source,data,history.session.state.values,history.session.state.index,resolutions);
-  const conflict = history.session.state.values.some(v=>v.add.length||v.remove.length||v.estimates.length||v.entities?.length||v.layouts?.length||v.commitment) && (Number(history.version) !== data.revision || history.session.state.values.some(v=>(v.layouts||[]).some(l=>l.expectedVersion!==(data.layouts?.find(d=>d.scope===l.scope&&d.direction===l.direction)?.version||0))));
+  const conflict = history.session.state.values.some(v=>v.add.length||v.remove.length||v.estimates.length||v.entities?.length||v.layouts?.length||v.featureRelations?.length||v.commitment) && (Number(history.version) !== data.revision || history.session.state.values.some(v=>!!v.featureRelations?.length&&featureVersion(history.source)!==featureVersion(data)||(v.layouts||[]).some(l=>l.expectedVersion!==(data.layouts?.find(d=>d.scope===l.scope&&d.direction===l.direction)?.version||0))));
   useEffect(()=>{
     if(!conflict||history.loading||history.readOnly||history.busy||pending)return;
     if(rebased.pending.length)return;
@@ -145,7 +148,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     return false;
   };
   const save = async (allowApply?: (preview:DependencyChangePreview)=>boolean) => {
-    if (!pendingReady||history.loading||history.readOnly||history.session.saving || Object.values(history.session.fields).some(f=>f.error) || (!pending && (conflict || JSON.stringify(history.session.state.values[history.session.state.index])===JSON.stringify(empty)))) return false;
+    if (!pendingReady||history.loading||history.readOnly||history.session.saving || (!pending&&(legacy.blocked||legacy.loading)) || Object.values(history.session.fields).some(f=>f.error) || (!pending && (conflict || JSON.stringify(history.session.state.values[history.session.state.index])===JSON.stringify(empty)))) return false;
     history.setBusy(true);
     let batch = pending;
     let pendingChecked = Boolean(batch);
@@ -181,13 +184,13 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     } finally { history.setBusy(false); }
   };
   return {
-    templateInstances,
-    ...history,loading:history.loading||!pendingReady,changes,count,conflict,conflicts:conflict?rebased.conflicts:[],unresolved:rebased.pending.length,resolveConflict:(key:string,value:'draft'|'server')=>setResolutionState(old=>({version:resolutionVersion,values:{...(old.version===resolutionVersion?old.values:{}),[key]:value}})),preview, previewing, pending, error, save,retryPreview:()=>setPreviewAttempt(n=>n+1),
+    templateInstances,legacy,
+    ...history,loading:history.loading||!pendingReady||legacy.loading,readOnly:history.readOnly||legacy.blocked,changes,count,conflict,conflicts:conflict?rebased.conflicts:[],unresolved:rebased.pending.length,resolveConflict:(key:string,value:'draft'|'server')=>setResolutionState(old=>({version:resolutionVersion,values:{...(old.version===resolutionVersion?old.values:{}),[key]:value}})),preview, previewing, pending, error, save,retryPreview:()=>setPreviewAttempt(n=>n+1),
     takeOver:()=>history.takeOver(async()=>{setPending(await readDraftRecord<PendingBatch>(pendingKey)||null);}),
     get fields(){return history.fields;},get fieldEpoch(){return history.fieldEpoch;},get pendingField(){return history.pendingField;},
     issue: error instanceof ApiError ? error.details as { nodeIds?: string[]; edgeIds?: string[] } | undefined : undefined,
     cancel: () => { if (!pending) { history.reset(empty, String(data.revision)); setError(null); } },
-    change: (next: DependencyChanges) => { if (!pending && !history.session.saving && JSON.stringify(next)!==JSON.stringify(changes)) { latest.current = null; setPreview(null); setError(null); if (!count && Number(history.version) !== data.revision) history.rebase(String(data.revision), next); else history.change(next); } },
+    change: (next: DependencyChanges) => { if (!legacy.blocked&&!legacy.loading&&!pending && !history.session.saving && JSON.stringify(next)!==JSON.stringify(changes)) { latest.current = null; setPreview(null); setError(null); if (!count && Number(history.version) !== data.revision) history.rebase(String(data.revision), next); else history.change(next); } },
     rebase: () => {
       if(rebased.pending.length)return;history.rebase(String(data.revision),rebased.current,rebased.values);setResolutionState({version:resolutionVersion,values:{}});
       setError(null);
