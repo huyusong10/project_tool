@@ -49,7 +49,7 @@ test('旧草稿历史链接替换为正式地址并转入统一画布',async({pa
 
 test('顶层显示页面图标，来源变化不挤动标题，窄屏加载与返回保持88px', async ({page},info) => {
   await setup(page);await page.setViewportSize({width:390,height:844});
-  await page.goto('/');await page.getByRole('link',{name:'路径分析',exact:true}).click();await ready(page);
+  await page.goto('/');await page.getByRole('link',{name:'路径分析',exact:true}).click();await ready(page);await root(page).click();await ready(page);
   await expect(page.locator('#topbar-back-slot button')).toHaveCount(0);
   await expect(page.locator('.integrated-page-title button')).toHaveCount(0);
   const titleX=(await page.locator('.integrated-page-title h1').boundingBox())!.x;
@@ -60,10 +60,10 @@ test('顶层显示页面图标，来源变化不挤动标题，窄屏加载与�
     const sample=()=>{const bar=document.querySelector('.topbar')!,title=document.querySelector('.integrated-page-title h1');frames.push({height:bar.getBoundingClientRect().height,x:title?.getBoundingClientRect().x??-1});if(frames.length<240)requestAnimationFrame(sample);};sample();
   });
   await openRequirement(page,'r1');
-  await expect(page.getByRole('button',{name:'返回项目路径',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'返回上一画布',exact:true})).toBeVisible();
   await expect(page.locator('.integrated-page-title button')).toHaveCount(0);
   expect((await page.locator('.integrated-page-title h1').boundingBox())!.x).toBe(titleX);
-  const nav=(await page.locator('#topbar-back-slot button').boundingBox())!,rail=(await page.locator('.graph-tool-rail').boundingBox())!;
+  const nav=(await page.getByRole('button',{name:'返回上一画布',exact:true}).boundingBox())!,rail=(await page.locator('.graph-tool-rail').boundingBox())!;
   expect(rail.y-nav.y-nav.height).toBeGreaterThanOrEqual(12);
   const graph=(await page.locator('.dependency-canvas').boundingBox())!;
   await page.getByRole('button',{name:'查找与筛选',exact:true}).click();
@@ -71,7 +71,7 @@ test('顶层显示页面图标，来源变化不挤动标题，窄屏加载与�
   expect(finder.y-nav.y-nav.height).toBeGreaterThanOrEqual(12);
   expect(await page.locator('.dependency-canvas').boundingBox()).toEqual(graph);
   await page.screenshot({path:info.outputPath('return-narrow.png')});
-  await page.getByRole('button',{name:'返回项目路径',exact:true}).click();await ready(page);
+  await back(page);await ready(page);
   await expect(page).toHaveURL(/\/paths/);await expect(page.locator('#topbar-back-slot button')).toHaveCount(0);
   const frames=await page.evaluate(()=>(window as typeof window & {returnFrames:Array<{height:number;x:number}>}).returnFrames);
   expect(frames.length).toBeGreaterThan(5);
@@ -79,13 +79,15 @@ test('顶层显示页面图标，来源变化不挤动标题，窄屏加载与�
   expect([...new Set(frames.map(f=>f.x))]).toEqual([titleX]);
 });
 
-test('全局路径加载失败也没有返回，跨项目来源不用于返回',async({page})=>{
+test('根图加载失败不制造父级，旧跨项目来源不改变需求根图',async({page})=>{
   await setup(page);
-  await page.route('**/path-analysis*',route=>route.fulfill({status:503,json:{error:'模拟读取失败'}}));
-  await page.goto('/paths');await expect(page.getByText('路径分析暂不可用',{exact:true})).toBeVisible();
+  await page.route('**/path-graph*',route=>route.fulfill({status:503,json:{error:'模拟读取失败'}}));
+  await page.goto('/paths');await expect(page.getByText('模拟读取失败',{exact:true})).toBeVisible();
   await expect(page.locator('#topbar-back-slot button,.integrated-page-title button')).toHaveCount(0);
-  await page.goto('/requirements/r1?view=path');
+  await page.unrouteAll();await setup(page);
+  await page.goto('/requirements/r1?view=path');await ready(page);
   await page.evaluate(()=>history.replaceState({...history.state,idx:2,usr:{pathSource:{projectId:'other',label:'其他项目需求路径',index:1}}},''));
-  await page.reload();await expect(page.getByRole('button',{name:'返回项目路径',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'返回项目路径',exact:true}).click();await expect(page).toHaveURL(/\/paths$/);
+  await page.reload();await ready(page);await expect(page).toHaveURL(/root=project/);
+  await expect(page.getByRole('navigation',{name:'画布层级'})).toContainText('全部需求');
+  await root(page).click();await ready(page);await expect(page.locator('.canvas-breadcrumb')).toBeEmpty();
 });
