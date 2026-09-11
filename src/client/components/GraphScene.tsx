@@ -39,6 +39,7 @@ function saveViewport(key: string, value: Viewport) {
 }
 export function GraphScene(props: DependencyGraphProps) {
   const {cards,links,viewKey,editing=false}=props;
+  const allowRename=props.commands.allows('rename'),allowConnect=props.commands.allows('connect');
   const container=useRef<HTMLDivElement>(null),[vertical]=useState(false),[error,setError]=useState('');
   const [phase,setPhase]=useState('initial'),[arrange,setArrange]=useState(0),[retry,setRetry]=useState(0),[rendered,setRendered]=useState(false);
   const [slowBusy,setSlowBusy]=useState(false),[connectionIssue,setConnectionIssue]=useState<GraphConnectionIssue|null>(null),routingError=useRef(false);
@@ -94,7 +95,7 @@ export function GraphScene(props: DependencyGraphProps) {
     if(a.kind==='start'||b.kind==='acceptance')return {message:'请连接具体工作项或需求开始条件',nodeIds:[source,target]};
     return (reconnectEnd?props.validateReconnect?.(source,target):props.validateConnection?.(source,target))||null;
   };
-  const connection=useGraphConnection({container,enabled:editing,validate,interaction,runtime,
+  const connection=useGraphConnection({container,enabled:editing&&props.commands.allows('connect'),validate,interaction,runtime,
     connect:(source,target,side,reconnectEnd)=>{anchor.current=source;dismissError();setFeedback({source,target,side});if(reconnectEnd)props.commands.dispatch({type:'reconnect',source,target});else props.commands.dispatch({type:'connect',source,target});},
     invalid:issue=>{routingError.current=false;setError(issue.message);setConnectionIssue(issue);props.onInvalid?.(issue);},dropEmpty:(source,point)=>props.onDropEmpty?.(source,flow.screenToFlowPosition(point))});
   const connectionRef=connection.current;
@@ -114,7 +115,7 @@ export function GraphScene(props: DependencyGraphProps) {
       const oldById=new Map(previous.map(n=>[n.id,n])),ids=new Set(cards.map(c=>c.id));
       const updated:CardNode[]=cards.map(card=>{
         const old=oldById.get(card.id),visible=!props.visibleIds||props.visibleIds.includes(card.id);
-        const data:CardData={...card,vertical,editing,rename,retiring:false,context:props.contextIds?.includes(card.id),
+        const data:CardData={...card,vertical,editing,rename:allowRename?rename:undefined,connectable:allowConnect,retiring:false,context:props.contextIds?.includes(card.id),
           highlighted:!!props.highlighted?.includes(card.id),invalid:!!props.invalidNodes?.includes(card.id),
           connection:card.id===activeSource?'source':card.id===activeTarget?invalidTarget?'invalid':'target':undefined};
         const stableData=old&&Object.keys(data).every(key=>data[key as keyof CardData]===old.data[key as keyof CardData])?old.data:data;
@@ -129,7 +130,7 @@ export function GraphScene(props: DependencyGraphProps) {
       const next=[...updated,...previous.filter(n=>!ids.has(n.id)).map(n=>n.data.retiring?n:{...n,data:{...n.data,retiring:true,editing:false}})];
       return next.length===previous.length&&next.every((n,i)=>n===previous[i])?previous:next;
     });
-  },[cards,links,scene,selected,selectedIds,vertical,editing,rename,props.visibleIds,props.contextIds,props.highlighted,props.invalidNodes,props.positions,activeSource,activeTarget,invalidTarget,setNodes]);
+  },[cards,links,scene,selected,selectedIds,vertical,editing,rename,allowRename,allowConnect,props.visibleIds,props.contextIds,props.highlighted,props.invalidNodes,props.positions,activeSource,activeTarget,invalidTarget,setNodes]);
   const measuredLinks=useMemo(()=>{
     const context=document.createElement('canvas').getContext('2d');if(context)context.font='12px '+getComputedStyle(document.body).fontFamily;
     return links.map(e=>({...e,labelWidth:e.label?Math.ceil(context?.measureText(e.label).width||44)+8:undefined}));
@@ -290,7 +291,7 @@ export function GraphScene(props: DependencyGraphProps) {
   const edges=useMemo<RouteEdge[]>(()=>(scene?.links||[]).map(e=>({...e,type:'delivery',sourceHandle:'route-out',targetHandle:'route-in',
     className:(props.visibleIds&&(!props.visibleIds.includes(e.source)||!props.visibleIds.includes(e.target))?'graph-edge-hidden':'')+(staleRoutes.has(e.id)||!linkById.has(e.id)||linkById.get(e.id)?.source!==e.source||linkById.get(e.id)?.target!==e.target?' graph-route-stale':''),
     label:undefined,selected:e.id===selectedEdge,reconnectable:false,
-    data:{route:scene?.layout.edges[e.id],invalid:props.invalidEdges?.includes(e.id),critical:(linkById.get(e.id)||e).critical,labelText:e.label||'',description:(linkById.get(e.id)||e).description,filtered:!!props.visibleIds&&(!props.visibleIds.includes(e.source)||!props.visibleIds.includes(e.target)),opacity:edgeFade.ids.has(e.id)?edgeFade.opacity:1}
+    data:{route:scene?.layout.edges[e.id],planningOnly:(linkById.get(e.id)||e).planningOnly,invalid:props.invalidEdges?.includes(e.id),critical:(linkById.get(e.id)||e).critical,labelText:e.label||'',description:(linkById.get(e.id)||e).description,filtered:!!props.visibleIds&&(!props.visibleIds.includes(e.source)||!props.visibleIds.includes(e.target)),opacity:edgeFade.ids.has(e.id)?edgeFade.opacity:1}
   // The key changes only when route validity changes, not on every pointer movement.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   })),[scene,linkById,selectedEdge,props.visibleIds,props.invalidEdges,edgeFade,staleKey]);

@@ -1,3 +1,5 @@
+import { readRequirementGroups, saveFeature, deleteFeature } from './features';
+export { readRequirementGroups } from './features';
 import { randomUUID } from 'node:crypto';
 import { sqlite } from '../database';
 import type { Actor } from '../auth';
@@ -5,7 +7,7 @@ import { assertProjectReadable, assertProjectManager, assertRequirementOwnerOrMa
 import { fail, notFound } from '../errors';
 import { requireActiveProject } from './support';
 import { recordAudit } from './audit';
-import { groupInput, organizationInput, sourceWriteInput, sourceLinkInput, sourceLinkDeleteInput, deferClauseInput, type IntakeCatalog, type RequirementGroup, type SourceDocument, type SourceClause, type SourceRevision, type SourceLink, type Organization, type SourceDocumentInput } from '../../shared/intake';
+import { organizationInput, sourceWriteInput, sourceLinkInput, sourceLinkDeleteInput, deferClauseInput, type IntakeCatalog, type SourceDocument, type SourceClause, type SourceRevision, type SourceLink, type Organization, type SourceDocumentInput } from '../../shared/intake';
 
 export function intakeRevision(projectId: string) {
   const row = sqlite.prepare('SELECT analysis_revision FROM projects WHERE id=? AND deleted_at IS NULL').get(projectId) as {analysis_revision:number}|undefined;
@@ -21,14 +23,6 @@ export function validateOrganization(projectId:string, value:Organization) {
 export function persistOrganization(id:string, projectId:string, value:Organization) {
   validateOrganization(projectId,value);
   if(value.groupId!==undefined) sqlite.prepare('UPDATE requirements SET group_id=? WHERE id=?').run(value.groupId||null,id);
-}
-export function readRequirementGroups(projectId: string): RequirementGroup[] {
-  const rows = sqlite.prepare(`SELECT g.id,g.project_id AS projectId,g.name,g.sort_order AS sortOrder,g.version,
-    g.expectation,g.progress_summary AS progressSummary,g.assessment,g.assessment_note AS note,
-    g.assessed_at AS assessedAt,g.assessed_by AS assessedBy,a.username AS assessedByName
-    FROM requirement_groups g LEFT JOIN accounts a ON a.id=g.assessed_by
-    WHERE g.project_id=? ORDER BY g.sort_order,g.name,g.id`).all(projectId) as Array<Omit<RequirementGroup,'overview'> & RequirementGroup['overview']>;
-  return rows.map(({expectation,progressSummary,assessment,note,...group}) => ({...group,overview:{expectation,progressSummary,assessment,note}}));
 }
 export function readIntakeCatalog(projectId:string, actor:Actor):IntakeCatalog {
   assertProjectReadable(requireAuthorizationActor(actor),projectId);
@@ -46,37 +40,11 @@ export function readIntakeCatalog(projectId:string, actor:Actor):IntakeCatalog {
   for(const d of documents){d.complete=Boolean(d.complete);d.clauses=clauses.filter(c=>c.documentId===d.id);}
   return {revision:intakeRevision(projectId),groups,documents};
 }
-export function saveGroup(projectId:string, raw:unknown, actor:Actor) {
-  const input=groupInput.parse(raw);
-  return sqlite.transaction(()=>{
-    assertProjectManager(requireAuthorizationActor(actor),projectId);requireActiveProject(projectId);
-    const id=input.id||randomUUID(),now=new Date().toISOString();
-    const ordered=(sqlite.prepare('SELECT id FROM requirement_groups WHERE project_id=? ORDER BY sort_order,name,id').all(projectId) as Array<{id:string}>).map(g=>g.id).filter(value=>value!==id);
-    const previous=input.overview ? readRequirementGroups(projectId).find(group=>group.id===id) : undefined;
-    if(input.id){
-      const changed=sqlite.prepare('UPDATE requirement_groups SET name=?,sort_order=?,version=version+1,updated_at=? WHERE id=? AND project_id=? AND version=?').run(input.name,input.sortOrder,now,id,projectId,input.expectedVersion??0);
-      if(!changed.changes)fail('分组已变化，请刷新核对','STALE_WRITE',409);
-    }else sqlite.prepare('INSERT INTO requirement_groups(id,project_id,name,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(id,projectId,input.name,input.sortOrder,now,now);
-    ordered.splice(Math.min(input.sortOrder,ordered.length),0,id);
-    for(const [order,groupId] of ordered.entries())sqlite.prepare('UPDATE requirement_groups SET sort_order=?,version=version+1,updated_at=? WHERE id=? AND sort_order<>?').run(order,now,groupId,order);
-    if (input.overview) {
-      const {expectation,progressSummary,assessment,note}=input.overview;
-      sqlite.prepare('UPDATE requirement_groups SET expectation=?,progress_summary=?,assessment=?,assessment_note=?,assessed_at=?,assessed_by=? WHERE id=? AND project_id=?')
-        .run(expectation,progressSummary,assessment,note,now,actor.accountId,id,projectId);
-      recordAudit(actor,'update','project',projectId,'更新分组总体进展：'+input.name+'；修改前：'+JSON.stringify(previous?.overview||null)+'；修改后：'+JSON.stringify(input.overview));
-    } else recordAudit(actor,'update','project',projectId,'保存需求分组：'+input.name);
-    return readIntakeCatalog(projectId,actor);
-  }).immediate();
+export function saveGroup(projectId:string,raw:unknown,actor:Actor) {
+  return sqlite.transaction(()=>{saveFeature(projectId,raw,actor);return readIntakeCatalog(projectId,actor);}).immediate();
 }
 export function deleteGroup(projectId:string,id:string,expectedVersion:number,actor:Actor) {
-  return sqlite.transaction(()=>{
-    assertProjectManager(requireAuthorizationActor(actor),projectId);requireActiveProject(projectId);
-    if(!sqlite.prepare('SELECT 1 FROM requirement_groups WHERE id=? AND project_id=? AND version=?').get(id,projectId,expectedVersion))fail('分组已变化，请刷新核对','STALE_WRITE',409);
-    sqlite.prepare('UPDATE requirements SET group_id=NULL,version=version+1,updated_at=? WHERE group_id=?').run(new Date().toISOString(),id);
-    sqlite.prepare('DELETE FROM requirement_groups WHERE id=?').run(id);
-    recordAudit(actor,'update','project',projectId,'删除分组，所属需求移入未分组');
-    return readIntakeCatalog(projectId,actor);
-  }).immediate();
+  return sqlite.transaction(()=>{deleteFeature(projectId,id,expectedVersion,actor);return readIntakeCatalog(projectId,actor);}).immediate();
 }
 export function updateOrganization(projectId:string,raw:unknown,actor:Actor) {
   const input=organizationInput.parse(raw);
@@ -84,12 +52,11 @@ export function updateOrganization(projectId:string,raw:unknown,actor:Actor) {
     assertProjectManager(requireAuthorizationActor(actor),projectId);requireActiveProject(projectId);validateOrganization(projectId,input);
     if(new Set(input.requirements.map(r=>r.id)).size!==input.requirements.length)fail('所选需求重复');
     for(const r of input.requirements){
-      const current=sqlite.prepare('SELECT status FROM requirements WHERE id=? AND project_id=? AND version=? AND deleted_at IS NULL').get(r.id,projectId,r.expectedVersion) as {status:string}|undefined;
+      const current=sqlite.prepare('SELECT status,group_id AS groupId FROM requirements WHERE id=? AND project_id=? AND version=? AND deleted_at IS NULL').get(r.id,projectId,r.expectedVersion) as {status:string;groupId:string|null}|undefined;
       if(!current)fail('需求已变化，请刷新核对','STALE_WRITE',409);
-      if(['completed','cancelled'].includes(current.status))fail('已结束需求请使用纠错修改资料');
       persistOrganization(r.id,projectId,input);
       sqlite.prepare('UPDATE requirements SET version=version+1,updated_at=? WHERE id=?').run(new Date().toISOString(),r.id);
-      recordAudit(actor,'update','requirement',r.id,'调整需求分组');
+      recordAudit(actor,'update','requirement',r.id,'调整特性归属；修改前：'+JSON.stringify(current.groupId)+'；修改后：'+JSON.stringify(input.groupId));
     }
     return readIntakeCatalog(projectId,actor);
   }).immediate();

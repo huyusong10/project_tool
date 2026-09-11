@@ -63,7 +63,12 @@ function prepare(projectId: string, input: DependencyChangesInput, actor: Actor)
   const analysis = analyse(snapshot, input.target);
   recordForecastReviews(snapshot,analysis,input.changes,actor);decorateForecastBasis(snapshot,analysis);
   const validIds=new Set([...analysis.nodes.map(n=>n.id),...snapshot.requirements.map(r=>r.id)]);
-  for(const layout of layouts)for(const id of Object.keys(layout.positions))if(!validIds.has(id))fail('布局包含失效节点');
+  const featureIds=layouts.some(l=>l.scope==='features')?new Set([
+    'feature:ungrouped',
+    ...(sqlite.prepare('SELECT id FROM requirement_groups WHERE project_id=?').all(projectId) as {id:string}[]).map(g=>'feature:'+g.id),
+    ...(snapshot.milestones||[]).filter(m=>!m.requirementId).map(m=>m.id),
+  ]):new Set<string>();
+  for(const layout of layouts)for(const id of Object.keys(layout.positions))if(!(layout.scope==='features'?featureIds:validIds).has(id))fail('布局包含失效节点');
   const commitment=input.changes.commitment?prepareCommitment(snapshot,input.changes.commitment,actor):undefined;
   return { snapshot, analysis,commitment, expanded,directEstimateIds,expectedRevision: input.expectedRevision, asOfDate: snapshot.asOfDate,
     differences:{commitment,target:deliveryTargetChange(before,analysis),impact:deliveryImpact(before,analysis),added:add,removed,entities,estimates:estimates.map(p=>({workItemId:p.workItemId,before:beforeEstimates.get(p.workItemId)!,after:analysis.nodes.find(n=>n.id===p.workItemId)!.estimate}))},

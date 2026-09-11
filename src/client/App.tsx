@@ -185,7 +185,7 @@ export function App() {
         navigate("/requirements", { state: null });
         return;
       }
-      if (["/requirements", "/actions", "/analytics", "/people"].includes(location.pathname)) {
+      if (["/features", "/requirements", "/actions", "/analytics", "/people"].includes(location.pathname)) {
         navigate({ pathname: location.pathname, search: "" }, { replace: true });
         return;
       }

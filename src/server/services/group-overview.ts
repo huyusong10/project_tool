@@ -3,13 +3,13 @@ import type { Actor } from '../auth';
 import { assertProjectReadable, requireAuthorizationActor } from '../authorization';
 import { todayIso } from '../../shared/domain';
 import { summarizeGroupOverview, type GroupProgressSummary } from '../../shared/group-overview';
-import { readRequirementGroups } from './intake-metadata';
+import { readRequirementGroups } from './features';
 import { listRequirements } from './requirements';
 
-export function getGroupOverview(projectId: string, actor: Actor, asOfDate = todayIso()) {
+export function getGroupOverview(projectId: string, actor: Actor, asOfDate = todayIso(), state: 'active'|'archived'|'all' = 'active') {
   assertProjectReadable(requireAuthorizationActor(actor), projectId);
   return sqlite.transaction(() => {
-    const report = summarizeGroupOverview(readRequirementGroups(projectId), listRequirements({ projectId }, asOfDate), asOfDate);
+    const report = summarizeGroupOverview(readRequirementGroups(projectId,state), listRequirements({ projectId }, asOfDate), asOfDate);
     const updates = sqlite.prepare(`SELECT id,groupId,requirementId,requirementTitle,content,createdAt FROM (
       SELECT u.id,r.group_id AS groupId,r.id AS requirementId,r.title AS requirementTitle,u.content,u.created_at AS createdAt,
         ROW_NUMBER() OVER (PARTITION BY r.group_id ORDER BY u.created_at DESC,u.rowid DESC) AS rank

@@ -15,7 +15,7 @@ export const groupOverviewInput = z.object({
 }).strict();
 export type GroupOverviewInput = z.infer<typeof groupOverviewInput>;
 export const emptyGroupOverview: GroupOverviewInput = { expectation: '', progressSummary: '', assessment: 'pending', note: '' };
-export const groupInput = z.object({ id: key.optional(), name: label, sortOrder: z.number().int().nonnegative().default(0), expectedVersion: version.optional(), overview: groupOverviewInput.optional() }).strict();
+export const groupInput = z.object({ id: key.optional(), name: label, sortOrder: z.number().int().nonnegative().default(0), expectedVersion: version.optional(), description: text.optional(), overview: groupOverviewInput.optional() }).strict();
 export const groupDeleteInput = z.object({ expectedVersion: version }).strict();
 export const organizationInput = z.object({ requirements: z.array(z.object({ id: key, expectedVersion: version }).strict()).min(1).max(1000), ...organizationFields }).strict().refine(v => v.groupId !== undefined, '请选择分组');
 export const sourceClauseInput = z.object({ key, section: text.default(''), externalId: text.default(''), title: label, content: text.default(''), priority: text.default(''), deferredReason: text.optional() }).strict();
@@ -44,6 +44,7 @@ export type IntakePackage = z.infer<typeof intakePackageSchema>;
 export type SourceDocumentInput = z.infer<typeof sourceDocumentInput>;
 export type RequirementGroup = {
   id: string; projectId: string; name: string; sortOrder: number; version: number;
+  description: string; archivedAt: string | null;
   overview: GroupOverviewInput; assessedAt: string | null; assessedBy: string | null; assessedByName: string | null;
 };
 export type SourceRevision = { id: string; documentVersion: string; section: string; externalId: string; title: string; content: string; priority: string };

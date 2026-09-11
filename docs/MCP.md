@@ -113,10 +113,17 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 
 拓扑中的 `acceptance:需求ID` 保留为历史布局兼容 ID，现在表示工作完成，不要求执行验收操作。独立里程碑只有显式依赖才影响其他工作。
 
-## 分组总体进展
+## 特性规划与总体进展
 
 `get_group_overview({projectId})` 读取大致预期、进展简述、人工判断、评估人和时间，以及当前分组的需求计数和最近三条进展。取消、归档需求不计入汇总。默认判断为待评估，不按完成数量自动推断是否符合预期。
 
 `save_requirement_group` 可传 `overview: {expectation, progressSummary, assessment, note}`，四项均须提供，文字可为空；`assessment` 使用 `pending/on_track/off_track/needs_adjustment`。保存时使用最新分组的 `id/name/sortOrder/expectedVersion`。省略 `overview` 不影响已有评估。项目经理或管理员可保存。
 
 仅根据用户明确提供的判断写入评估。事实变化通过项目刷新版本更新网页，人工评估保持原值。结果未知时先调用 `get_group_overview` 核对，不直接重复保存。字段和网页行为见 [需求录入说明](requirement-intake.md#总体进展)。
+
+
+现有分组即长期特性。`save_requirement_group` 可传 `description`，与 `overview` 分开维护；列表和总体进展读取支持 `state=active/archived/all`。归档与恢复使用 `archive_requirement_group`、`restore_requirement_group`；`get_feature_requirements` 分页读取当前或归档需求摘要。
+
+`get_path_graph` 支持 `view=features` 顶层图、`view=feature` 加 `featureId` 的特性内需求图（`ungrouped` 为未归属集合）。`view=project` 仍表示原来的全部需求。用 `list_feature_relations`、`save_feature_relation`、`delete_feature_relation` 维护人工规划；`planning/actual` 分别控制两类连线。规划关系不参与执行分析。
+
+特性图与特性内需求图的共享布局分别使用 `features`、`feature:ID`，沿用布局版本和依赖批次保存。删除特性只允许没有需求及规划连线的空特性；非空特性先处理未完成需求再归档。[接口规则](requirement-intake.md#特性规划与关系图)。

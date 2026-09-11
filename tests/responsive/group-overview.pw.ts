@@ -1,96 +1,61 @@
-import { expect, test, type Page } from '@playwright/test';
-import type { GroupOverviewReport } from '../../src/shared/group-overview';
-import type { RequirementGroup } from '../../src/shared/intake';
-
-const panel=(page:Page)=>page.getByRole('region',{name:'总体进展',exact:true});
+import {expect,test,type Page} from '@playwright/test';
+import {headerAction} from './topbar-helpers';
+import type {RequirementGroup} from '../../src/shared/intake';
 async function fixture(page:Page){
   const login=await page.request.post('/api/login',{data:{username:'admin',password:'41_xc7q0qOjo4Inw!'}});expect(login.ok()).toBe(true);const session=await login.json();
-  const project=await(await page.request.post('/api/projects',{data:{name:'总体进展验证 '+Date.now()}})).json();
-  const group=(await(await page.request.post('/api/projects/'+project.id+'/requirement-groups',{data:{name:'权限管理',sortOrder:0}})).json()).groups[0] as RequirementGroup;
-  await page.request.post('/api/projects/'+project.id+'/requirement-groups',{data:{name:'远期探索',sortOrder:1}});
-  const requirement=await page.request.post('/api/requirements',{data:{projectId:project.id,title:'角色授权',groupId:group.id}});expect(requirement.ok(),await requirement.text()).toBe(true);
+  const project=await(await page.request.post('/api/projects',{data:{name:'特性规划验证 '+Date.now()}})).json();
+  const group=(await(await page.request.post('/api/projects/'+project.id+'/requirement-groups',{data:{name:'权限管理',description:'持续完善组织协作中的授权与审计',sortOrder:0}})).json()).groups[0] as RequirementGroup;
+  const future=(await(await page.request.post('/api/projects/'+project.id+'/requirement-groups',{data:{name:'远期探索',sortOrder:1}})).json()).groups[1] as RequirementGroup;
+  const req=await(await page.request.post('/api/requirements',{data:{projectId:project.id,title:'角色授权',groupId:group.id}})).json();
   await page.request.post('/api/requirements',{data:{projectId:project.id,title:'尚未整理的需求'}});
   await page.addInitScript(({accountId,projectId})=>localStorage.setItem('project-manage:selected-project:'+accountId,projectId),{accountId:session.accountId,projectId:project.id});
-  await page.goto('/');await expect(panel(page).getByRole('article',{name:'权限管理',exact:true})).toBeVisible();return {projectId:project.id,group,session};
+  await page.goto('/features');await expect(page.locator('.feature-card-title',{hasText:'权限管理'})).toBeVisible();return {projectId:project.id,group,future,session,req};
 }
-async function edit(page:Page){await panel(page).getByRole('button',{name:'编辑总体进展 权限管理',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();}
-async function fill(page:Page){
-  await page.getByLabel('大致预期',{exact:true}).fill('本季度具备试用条件');
-  await page.getByLabel('进展简述',{exact:true}).fill('基础授权完成，正在补充审计功能');
-  await page.getByLabel('判断',{exact:true}).selectOption('on_track');
-  await page.getByLabel('原因或变化说明',{exact:true}).fill('复杂场景稍慢，暂不影响首批试用');
-}
+const dialog=(page:Page)=>page.getByRole('dialog').last();
+async function edit(page:Page){await page.locator('.feature-card-title',{hasText:'权限管理'}).click();await dialog(page).getByRole('button',{name:'更新评估',exact:true}).click();}
+async function fill(page:Page){await page.getByLabel('大致预期',{exact:true}).fill('本季度具备试用条件');await page.getByLabel('进展简述',{exact:true}).fill('基础授权完成，继续补充审计');await page.getByLabel('判断',{exact:true}).selectOption('on_track');await page.getByLabel('原因或变化说明',{exact:true}).fill('复杂场景稍慢，暂不影响试用');}
+const ready=(page:Page)=>expect(page.locator('[data-layout-ready="true"]')).toBeVisible({timeout:20000});
 
-test('总体预期保存、展开需求、筛选跳转及各视口布局',async({page},testInfo)=>{
-  const state=await fixture(page);await edit(page);await fill(page);await page.getByRole('button',{name:'保存总体进展',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
-  const row=panel(page).getByRole('article',{name:'权限管理',exact:true});await expect(row).toContainText('基本符合');await expect(row).toContainText('本季度具备试用条件');await expect(row).toContainText('完成 0/1 个需求');
-  await expect(panel(page).getByRole('article',{name:'远期探索',exact:true})).toContainText('尚未关联需求');await expect(panel(page)).toContainText('未分组需求 1 个');
-  await row.getByRole('button',{name:'展开 权限管理',exact:true}).click();await expect(row.getByRole('link',{name:'角色授权',exact:true})).toBeVisible();await expect(row).toContainText('复杂场景稍慢');
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  const box=await panel(page).boundingBox(),gantt=await page.locator('.project-gantt').first().count() ? await page.locator('.project-gantt').first().boundingBox() : null;
-  if(box&&gantt)expect(box.y+box.height).toBeLessThanOrEqual(gantt.y+1);
-  await page.screenshot({path:testInfo.outputPath('overall.png'),fullPage:true});
-  await row.getByRole('link',{name:'查看分组需求',exact:true}).click();await expect(page).toHaveURL(new RegExp('group='+state.group.id));await expect(page.getByRole('link',{name:'角色授权',exact:true})).toBeVisible();
+test('特性卡片维护、独立评估、需求入口与首页空间',async({page},info)=>{
+ const state=await fixture(page);await edit(page);await fill(page);await dialog(page).getByRole('button',{name:'保存评估',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(1);await expect(dialog(page)).toContainText('基本符合');
+ await expect(dialog(page).getByRole('link',{name:'角色授权',exact:true})).toBeVisible();await dialog(page).getByRole('button',{name:'关闭',exact:true}).first().click();await expect(page.locator('.feature-card').first()).toContainText('本季度具备试用条件');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.screenshot({path:info.outputPath('features.png'),fullPage:true});await page.locator('.feature-card-title',{hasText:'权限管理'}).click();await dialog(page).getByRole('link',{name:'查看并整理需求'}).click();await expect(page).toHaveURL(new RegExp('group='+state.group.id));await expect(page.getByRole('link',{name:'角色授权',exact:true})).toBeVisible();
+ await page.goto('/');await expect(page.locator('.group-overview-panel')).toHaveCount(0);
+});
+test('冲突保留评估输入并读取最新内容',async({page})=>{
+ const state=await fixture(page);await edit(page);await fill(page);let intercept=true;
+ await page.route('**/api/projects/'+state.projectId+'/requirement-groups',async route=>{if(route.request().method()==='POST'&&intercept){intercept=false;const body=route.request().postDataJSON();expect((await page.request.post(route.request().url(),{data:{...body,name:'权限管理的新名称',overview:{...body.overview,expectation:'其他经理的新预期'}}})).ok()).toBe(true);}await route.continue();});
+ await dialog(page).getByRole('button',{name:'保存评估',exact:true}).click();await expect(page.getByRole('heading',{name:'服务器上的最新资料'})).toBeVisible();await expect(page.getByLabel('大致预期',{exact:true})).toHaveValue('本季度具备试用条件');await expect(dialog(page)).toContainText('其他经理的新预期');await expect(dialog(page)).toContainText('权限管理的新名称');await expect(dialog(page).getByRole('button',{name:'保存评估',exact:true})).toBeDisabled();await dialog(page).getByRole('button',{name:'保留输入，按最新资料继续'}).click();await dialog(page).getByRole('button',{name:'保存评估',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(1);await expect(page.locator('.feature-card-title',{hasText:'权限管理的新名称'})).toBeVisible();
+});
+test('响应丢失后刷新页面恢复输入，核对已生效且不重复保存',async({page})=>{
+ const state=await fixture(page);await edit(page);await fill(page);let writes=0;
+ await page.route('**/api/projects/'+state.projectId+'/requirement-groups',async route=>{if(route.request().method()==='POST'){writes++;await route.fetch();await route.abort('connectionfailed');}else await route.continue();});
+ await dialog(page).getByRole('button',{name:'保存评估',exact:true}).click();await expect(page.getByRole('button',{name:'读取最新资料',exact:true})).toBeVisible();await page.reload();await expect(page.getByLabel('大致预期',{exact:true})).toHaveValue('本季度具备试用条件');await dialog(page).getByRole('button',{name:'关闭',exact:true}).last().click();await dialog(page).getByRole('button',{name:'关闭',exact:true}).first().click();await page.getByRole('button',{name:'新建特性',exact:true}).click();await expect(page.getByRole('heading',{name:'评估特性',exact:true})).toBeVisible();await expect(page.getByLabel('大致预期',{exact:true})).toHaveValue('本季度具备试用条件');await page.getByRole('button',{name:'读取最新资料',exact:true}).click();await page.getByRole('button',{name:'已核对，操作已生效',exact:true}).click();await expect(page.getByLabel('大致预期',{exact:true})).toHaveCount(0);expect(writes).toBe(1);
+});
+test('顶层特性图建立规划关系、下钻并返回原选择',async({page},info)=>{
+ const state=await fixture(page);await page.goto('/paths');await ready(page);await expect(page.locator('.react-flow__node')).toHaveCount(3);await headerAction(page,'建立规划关系');await dialog(page).getByLabel('前置特性').selectOption(state.group.id);await dialog(page).getByLabel('后续特性').selectOption(state.future.id);await dialog(page).getByLabel('关系说明').fill('先验证授权基础');await dialog(page).getByRole('button',{name:'保存规划关系'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.react-flow__edge')).toHaveCount(1);await ready(page);
+ await page.screenshot({path:info.outputPath('feature-graph.png'),fullPage:true});await page.locator('.react-flow__node[data-id="feature:'+state.group.id+'"]').click();await page.locator('.graph-detail').getByRole('link',{name:'进入需求关系图'}).click();await ready(page);await expect(page.locator('.react-flow__node')).toHaveCount(1);await page.locator('.react-flow__node').click();await page.locator('.graph-detail').getByRole('link',{name:'进入需求路径',exact:true}).click();await ready(page);await expect(page.locator('.feature-path-bar')).toContainText('权限管理');await page.locator('.feature-path-bar').getByRole('link',{name:'权限管理',exact:true}).click();await ready(page);await expect(page.locator('.react-flow__node.selected')).toHaveCount(1);await page.locator('.feature-path-bar').getByRole('link',{name:'特性关系图',exact:true}).click();await ready(page);await expect(page.locator('.react-flow__node.selected')).toHaveCount(1);
+});
+test('移动特性节点保存独立布局，重新加载后保留坐标',async({page})=>{
+ const state=await fixture(page);await page.goto('/paths');await ready(page);const node=page.locator('.react-flow__node[data-id="feature:'+state.group.id+'"]');const box=(await node.boundingBox())!;await page.mouse.move(box.x+box.width/2,box.y+25);await page.mouse.down();await page.mouse.move(box.x+box.width/2+90,box.y+95,{steps:10});await page.mouse.up();await expect(page.locator('.graph-footer')).toContainText('布局未保存');const applied=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/apply'));await headerAction(page,'保存布局');expect((await applied).ok()).toBe(true);await expect(page.locator('.graph-footer')).not.toContainText('布局未保存');const graph=await(await page.request.get('/api/projects/'+state.projectId+'/path-graph?view=features')).json();expect(graph.savedLayout.scope).toBe('features');expect(graph.savedLayout.version).toBeGreaterThan(0);expect(graph.savedLayout.positions['feature:'+state.group.id]).toBeTruthy();await page.reload();await ready(page);const reloaded=await(await page.request.get('/api/projects/'+state.projectId+'/path-graph?view=features')).json();expect(reloaded.savedLayout.positions).toEqual(graph.savedLayout.positions);
+});
+test('空特性归档与恢复，进行中的特性不能归档',async({page})=>{
+ await fixture(page);await page.locator('.feature-card-title',{hasText:'权限管理'}).click();await dialog(page).getByRole('button',{name:'归档特性',exact:true}).click();await dialog(page).getByRole('button',{name:'归档特性',exact:true}).click();await expect(dialog(page)).toContainText('请先完成、取消或移出未完成需求');await dialog(page).getByRole('button',{name:'关闭',exact:true}).last().click();await dialog(page).getByRole('button',{name:'关闭',exact:true}).first().click();await page.locator('.feature-card-title',{hasText:'远期探索'}).click();await dialog(page).getByRole('button',{name:'归档特性',exact:true}).click();await dialog(page).getByRole('button',{name:'归档特性',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await page.getByLabel('特性状态').selectOption('archived');await page.locator('.feature-card-title',{hasText:'远期探索'}).click();await dialog(page).getByRole('button',{name:'恢复特性',exact:true}).click();await dialog(page).getByRole('button',{name:'恢复特性',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await page.getByLabel('特性状态').selectOption('active');await expect(page.locator('.feature-card-title',{hasText:'远期探索'})).toBeVisible();
+});
+test('切换项目清理旧输入，窄屏卡片和空数据可用',async({page},info)=>{
+ await fixture(page);const other=await(await page.request.post('/api/projects',{data:{name:'空项目 '+Date.now()}})).json();await page.reload();await edit(page);await fill(page);await page.locator('.project-switcher-button').evaluate((b:HTMLButtonElement)=>b.click());await page.getByRole('option',{name:other.name,exact:true}).evaluate((b:HTMLButtonElement)=>b.click());await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.feature-empty')).toContainText('暂无特性');await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'新建特性',exact:true}).click();await page.getByLabel('特性名称').fill('远期新方向');await dialog(page).getByRole('button',{name:'新建特性',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.feature-card-title')).toHaveText('远期新方向');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath('features-mobile.png'),fullPage:true});
 });
 
-test('旧版本保存被拒绝，保留输入并核对服务器新资料',async({page})=>{
-  const state=await fixture(page);await edit(page);await fill(page);
-  let intercept=true;
-  await page.route('**/api/projects/'+state.projectId+'/requirement-groups',async route=>{
-    if(route.request().method()==='POST'&&intercept){intercept=false;const body=route.request().postDataJSON();
-      const response=await page.request.post(route.request().url(),{data:{...body,overview:{...body.overview,expectation:'另一位经理修改了预期',assessment:'off_track'}}});expect(response.ok()).toBe(true);
-    }await route.continue();
-  });
-  await page.getByRole('button',{name:'保存总体进展',exact:true}).click();await expect(page.getByRole('heading',{name:'服务器上的最新资料',exact:true})).toBeVisible();
-  await expect(page.getByLabel('大致预期',{exact:true})).toHaveValue('本季度具备试用条件');await expect(page.getByRole('button',{name:'保存总体进展',exact:true})).toBeDisabled();
-  await expect(page.getByRole('dialog')).toContainText('另一位经理修改了预期');await page.getByRole('button',{name:'保留输入，按最新资料继续',exact:true}).click();
-  await page.getByRole('button',{name:'保存总体进展',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(panel(page)).toContainText('本季度具备试用条件');
+test('刷新失败保留输入，权限拒绝后清理特性和编辑状态',async({page})=>{
+ const state=await fixture(page);await edit(page);await fill(page);const endpoint='**/api/projects/'+state.projectId+'/group-overview*';
+ await page.route(endpoint,route=>route.fulfill({status:503,json:{error:'临时不可用'}}));await page.getByRole('button',{name:'刷新特性',exact:true}).evaluate((b:HTMLButtonElement)=>b.click());await expect(page.getByRole('alert').first()).toContainText('临时不可用');await expect(page.getByLabel('大致预期',{exact:true})).toHaveValue('本季度具备试用条件');
+ await page.unroute(endpoint);await page.route(endpoint,route=>route.fulfill({status:403,json:{error:'项目权限已移除'}}));await page.getByRole('button',{name:'刷新特性',exact:true}).evaluate((b:HTMLButtonElement)=>b.click());await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.feature-card')).toHaveCount(0);
 });
-
-test('保存生效但响应丢失，刷新页面后核对且不重复提交',async({page})=>{
-  const state=await fixture(page);await edit(page);await fill(page);let writes=0;
-  const endpoint='**/api/projects/'+state.projectId+'/requirement-groups';
-  await page.route(endpoint,async route=>{if(route.request().method()==='POST'){writes++;await route.fetch();await route.abort('connectionfailed');}else await route.continue();});
-  await page.getByRole('button',{name:'保存总体进展',exact:true}).click();await expect(page.getByRole('button',{name:'读取最新资料',exact:true})).toBeVisible();
-  await page.reload();await panel(page).getByRole('button',{name:'核对上次保存',exact:true}).click();await expect(page.getByLabel('大致预期',{exact:true})).toHaveValue('本季度具备试用条件');
-  await page.getByRole('button',{name:'读取最新资料',exact:true}).click();await page.getByRole('button',{name:'已核对，保存已生效',exact:true}).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);await expect(panel(page).getByRole('button',{name:'核对上次保存',exact:true})).toHaveCount(0);expect(writes).toBe(1);
+test('账号切换不恢复前一账号的编辑内容，成员只能查看',async({page})=>{
+ const state=await fixture(page),name='只读同事 '+Date.now();await page.request.post('/api/people',{data:{projectId:state.projectId,name}});await edit(page);await fill(page);
+ expect((await page.request.post('/api/login',{data:{username:name,password:'888888'}})).ok()).toBe(true);expect((await page.request.post('/api/account/change-password',{data:{currentPassword:'888888',newPassword:'feature-reader-password'}})).ok()).toBe(true);await page.reload();await expect(page.locator('.feature-card-title',{hasText:'权限管理'})).toBeVisible();await expect(page.getByLabel('大致预期',{exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'新建特性',exact:true})).toHaveCount(0);await expect(dialog(page)).toContainText('长期目标与范围');await expect(dialog(page).getByRole('button',{name:'更新评估',exact:true})).toHaveCount(0);
 });
-
-test('后台刷新故障保留页面和草稿，权限拒绝清理旧资料',async({page})=>{
-  const state=await fixture(page);await edit(page);await fill(page);const endpoint='**/api/projects/'+state.projectId+'/group-overview';
-  await page.route(endpoint,route=>route.fulfill({status:503,json:{error:'临时不可用'}}));
-  await page.evaluate(()=>{window.dispatchEvent(new Event('focus'));});
-  // 直接触发后台刷新，弹窗保持打开。
-  await panel(page).getByRole('button',{name:'刷新',exact:true}).evaluate((button:HTMLButtonElement)=>button.click());
-  await expect(panel(page).getByRole('alert')).toContainText('上次读取');await expect(page.getByLabel('大致预期',{exact:true})).toHaveValue('本季度具备试用条件');
-  await page.unroute(endpoint);await page.route(endpoint,route=>route.fulfill({status:403,json:{error:'没有项目权限'}}));
-  await panel(page).getByRole('button',{name:'刷新',exact:true}).evaluate((button:HTMLButtonElement)=>button.click());
-  await expect(page.getByRole('dialog')).toHaveCount(0);await expect(panel(page).getByRole('article')).toHaveCount(0);
-});
-
-test('切换项目清理评估草稿与旧分组，空项目提供创建入口',async({page})=>{
-  await fixture(page);const other=await(await page.request.post('/api/projects',{data:{name:'另一个项目 '+Date.now()}})).json();
-  await page.reload();await edit(page);await fill(page);
-  // 项目切换通过应用现有顶部选择器触发。
-  await page.locator('.project-switcher-button').evaluate((button:HTMLButtonElement)=>button.click());
-  await page.getByRole('option',{name:other.name,exact:true}).evaluate((button:HTMLButtonElement)=>button.click());
-  await expect(page.getByRole('dialog')).toHaveCount(0);await expect(panel(page)).toContainText('暂无分组');await expect(panel(page).getByRole('article')).toHaveCount(0);
-  await panel(page).getByRole('button',{name:'创建分组',exact:true}).click();await page.getByLabel('新分组名称',{exact:true}).fill('新方向');await page.getByRole('button',{name:'新建分组',exact:true}).click();
-  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();await expect(panel(page)).toContainText('新方向');
-});
-
-test('普通项目成员读取事实但没有评估编辑入口',async({page})=>{
-  const state=await fixture(page);const username='只读成员 '+Date.now();await page.request.post('/api/people',{data:{projectId:state.projectId,name:username}});
-  await page.request.post('/api/login',{data:{username,password:'888888'}});await page.request.post('/api/account/change-password',{data:{currentPassword:'888888',newPassword:'overview-browser-member'}});
-  await page.reload();await expect(panel(page).getByRole('article',{name:'权限管理',exact:true})).toBeVisible();await expect(panel(page).getByRole('button',{name:/编辑总体进展/})).toHaveCount(0);await expect(panel(page).getByRole('button',{name:'管理分组',exact:true})).toHaveCount(0);
-});
-
-test('需求变化刷新系统事实后仍保留原评估时间',async({page})=>{
-  const state=await fixture(page);await edit(page);await fill(page);await page.getByRole('button',{name:'保存总体进展',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
-  const read=async()=>(await(await page.request.get('/api/projects/'+state.projectId+'/group-overview')).json()) as GroupOverviewReport;
-  const before=(await read()).groups[0];
-  await page.request.post('/api/requirements',{data:{projectId:state.projectId,groupId:state.group.id,title:'新增复杂场景'}});
-  await panel(page).getByRole('button',{name:'刷新',exact:true}).click();await expect(panel(page)).toContainText('完成 0/2 个需求');
-  const after=(await read()).groups[0];expect(after.assessedAt).toBe(before.assessedAt);expect(after.overview).toEqual(before.overview);
+test('规划关系提交响应丢失后核对，不重复建立连线',async({page})=>{
+ const state=await fixture(page);await page.goto('/paths');await ready(page);await headerAction(page,'建立规划关系');await dialog(page).getByLabel('前置特性').selectOption(state.group.id);await dialog(page).getByLabel('后续特性').selectOption(state.future.id);await dialog(page).getByLabel('关系说明').fill('粗略先后安排');let writes=0;
+ await page.route('**/api/projects/'+state.projectId+'/feature-relations',async route=>{if(route.request().method()==='POST'){writes++;await route.fetch();await route.abort('connectionfailed');}else await route.continue();});await dialog(page).getByRole('button',{name:'保存规划关系'}).click();await expect(page.getByRole('button',{name:'读取最新关系'})).toBeVisible();await page.reload();await expect(page.getByLabel('关系说明')).toHaveValue('粗略先后安排');await page.getByRole('button',{name:'读取最新关系'}).click();await page.getByRole('button',{name:'已核对，操作已生效'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);expect(writes).toBe(1);
 });

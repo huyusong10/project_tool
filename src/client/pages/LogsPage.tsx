@@ -21,7 +21,7 @@ const auditActionLabels: Record<string, string> = {
   reset_password: "重置密码", change_password: "修改密码", import: "导入",
 };
 const auditEntityLabels: Record<string, string> = {
-  project: "项目", requirement: "需求", work_item: "工作项", progress: "进展",
+  feature: "特性", feature_relation: "特性规划关系", project: "项目", requirement: "需求", work_item: "工作项", progress: "进展",
   issue: "问题", issue_update: "问题进展", person: "人员", account: "账号", template: "流程设计", api_token: "MCP Token", backup: "数据库备份", system_branding: "系统品牌",
 };
 

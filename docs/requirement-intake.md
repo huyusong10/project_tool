@@ -1,6 +1,6 @@
 # 原始需求录入与导入
 
-原始需求直接成为需求。原文写入需求说明，出处放在来源链接；分组用于整理模块，也可记录总体预期与人工判断。没有工作项时直接推进需求，需要分工时添加工作项或套用模板。
+原始需求直接成为需求。原文写入需求说明，出处放在来源链接；特性用于维护长期目标、当前预期和人工判断。没有工作项时直接推进需求，需要分工时添加工作项或套用模板。
 
 ## 页面操作
 
@@ -51,7 +51,7 @@ REST 路径前缀为 `/api/projects/:projectId`；MCP 参数加入 `projectId`�
 
 ## 总体进展
 
-项目进展页按分组展示大致预期、进展简述、人工判断和最近评估时间。项目经理、管理员编辑，项目成员查看。判断包括待评估、基本符合、有偏差、需要调整；不要求填写日期。
+特性规划页和路径分析按特性展示大致预期、进展简述、人工判断和最近评估时间。项目经理、管理员编辑，项目成员查看。判断包括待评估、基本符合、有偏差、需要调整；不要求填写日期。
 
 系统汇总当前分组中未归档、未取消的需求，显示完成、进行中、延期、排期不完整、近七天完成数量及最近三条进展。近七天含今天，按业务日期和实际完成日期计算。需求变化不会覆盖人工判断和评估时间。
 
@@ -64,3 +64,27 @@ REST 路径前缀为 `/api/projects/:projectId`；MCP 参数加入 `projectId`�
 ```
 
 `assessment` 为 `pending/on_track/off_track/needs_adjustment`。服务器记录当前账号和评估时间。省略 `overview` 时保留已有评估，重命名和排序不刷新评估时间。更新仍传 `expectedVersion`；冲突或结果未知时先读取最新资料，网页保留输入供核对，修改前后内容保存在操作日志。
+
+
+## 特性规划与关系图
+
+原分组记录直接作为特性，ID、groupId 和旧工具名保留。`/features` 维护长期目标、评估、排序与归档；`/paths` 默认显示特性关系图，依次下钻到需求与工作项。首页保留执行进展。
+
+`save_requirement_group` 新增可选 `description`（长期目标与范围，最多 10000 字），省略时保留；基础资料保存省略 `overview`，评估单独保存。读取记录增加 `description/archivedAt`。`list_requirement_groups`、`get_group_overview` 的 `state` 为 `active`（默认）、`archived` 或 `all`。
+
+以下 REST 路径均带 `/api/projects/:projectId` 前缀：
+
+| REST | MCP | 行为 |
+|---|---|---|
+| `POST /requirement-groups/:groupId/archive` | `archive_requirement_group` | 所属需求均完成、取消或移出后归档 |
+| `POST /requirement-groups/:groupId/restore` | `restore_requirement_group` | 恢复特性，保留关联与人工资料 |
+| `GET /requirement-groups/:groupId/requirements` | `get_feature_requirements` | `state=current/archived`，`page/pageSize` 分页历史摘要；`groupId=ungrouped` 为未归属集合 |
+| `GET /feature-relations` | `list_feature_relations` | 读取人工规划关系，包含归档特性保留的边 |
+| `POST /feature-relations` | `save_feature_relation` | `sourceFeatureId/targetFeatureId/note`；修改还需 `id/expectedVersion` |
+| `DELETE /feature-relations/:relationId` | `delete_feature_relation` | 仅删除人工关系，传 `expectedVersion` |
+
+归档、恢复、删除特性均传 `expectedVersion`。旧删除接口现在拒绝有任何需求（包含归档、取消项）或规划连线的特性。需求批量归属调整允许未归档的终态需求，不改变状态、完成日期或排期。归档特性不能接收新的需求；需求重新开启前先恢复特性或移出归属。
+
+`get_path_graph` 增加 `view=features` 和 `view=feature&featureId=...`，后者支持 `ungrouped`。旧 `view=project/requirement` 保持原义。规划关系为虚线，实际依赖为实线；同向关系合并展示，返回 `planningRelationIds` 与 `dependencyIds` 供分别查询。人工规划禁止循环（含归档边），实际依赖汇总后的双向关系不等于执行循环。
+
+布局范围新增 `features` 和 `feature:ID`（含 `feature:ungrouped`），通过现有依赖批次的 `changes.layouts` 保存。规划边独立存储，不参与执行预测或排期。日志用稳定特性 ID 记录修改前后内容；不增加独立历史版本页面。

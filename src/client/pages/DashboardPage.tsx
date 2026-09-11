@@ -1,4 +1,3 @@
-import { GroupOverviewPanel } from '../components/GroupOverview';
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -165,7 +164,6 @@ export function DashboardPage() {
       <div className="page-content dashboard-page">
         {error && data && <div className="warning-banner">数据刷新失败，当前展示的是上次成功结果。<button className="ghost-button" onClick={() => void refetch()}>重新加载</button></div>}
         <DashboardMetrics overview={overview} filters={filters} />
-        {selectedProjectId && <GroupOverviewPanel key={(session.accountId || session.username) + ':' + selectedProjectId} projectId={selectedProjectId}/>}
         <ProjectGantt
           projectId={selectedProjectId || undefined}
           requirements={data?.requirements || []}

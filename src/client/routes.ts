@@ -44,6 +44,7 @@ export type AppRoute = {
 };
 
 const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
+const FeaturesPage = lazy(() => import("./pages/FeaturesPage").then(module => ({default:module.FeaturesPage})));
 const PathsPage = lazy(() => import("./pages/PathsPage").then((module) => ({ default: module.PathsPage })));
 const MyWorkPage = lazy(() => import("./pages/MyWorkPage").then((module) => ({ default: module.MyWorkPage })));
 const ActionCenterPage = lazy(() => import("./pages/ActionCenterPage").then((module) => ({ default: module.ActionCenterPage })));
@@ -81,6 +82,10 @@ export const appRoutes: AppRoute[] = [
   {
     path: "/settings", scope: "personal", access: "all", component: PersonalSettingsPage,
     nav: [{ group: "个人", label: "个人设置", icon: SlidersHorizontal }],
+  },
+  {
+    path: "/features", scope: "project", access: "all", component: FeaturesPage,
+    nav: [{group:"项目空间",label:"特性规划",icon:BriefcaseBusiness}],
   },
   {
     path: "/requirements", scope: "project", access: "all", component: RequirementsPage,

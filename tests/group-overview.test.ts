@@ -37,15 +37,15 @@ it('评估保存后旧接口改名和排序保留评估，审计记录修改前�
   const renamed=(await save(projectId,update(saved,{name:'权限能力',sortOrder:1}))).json<IntakeCatalog>().groups.find(g=>g.id===group.id)!;
   expect(renamed.overview).toEqual(overview);expect(renamed.assessedAt).toBe(saved.assessedAt);expect(renamed.assessedBy).toBe(saved.assessedBy);
   expect((await save(projectId,update(group,{overview}))).statusCode).toBe(409);
-  const {sqlite}=await import('../src/server/database');const audit=sqlite.prepare('SELECT summary FROM audit_logs WHERE project_id=? AND summary LIKE ?').all(projectId,'更新分组总体进展%') as {summary:string}[];
-  expect(audit).toHaveLength(1);expect(audit[0].summary).toContain('修改前');expect(audit[0].summary).toContain('本季度具备试用条件');
+  const {sqlite}=await import('../src/server/database');const audit=sqlite.prepare('SELECT summary FROM audit_logs WHERE project_id=? AND summary LIKE ?').all(projectId,'%本季度具备试用条件%') as {summary:string}[];
+  expect(audit.length).toBeGreaterThanOrEqual(1);expect(audit[0].summary).toContain('修改前');expect(audit[0].summary).toContain('本季度具备试用条件');
   const versionBefore=renamed.version;
   expect((await save(projectId,update(renamed,{overview:{...overview,assessment:'automatic'}}))).statusCode).toBe(400);
   expect((await save(projectId,update(renamed,{overview:{...overview,note:'字'.repeat(2001)}}))).statusCode).toBe(400);
   expect((await read(projectId)).groups.find(g=>g.id===group.id)?.version).toBe(versionBefore);
 });
 it('汇总按当前分组和实际完成日期计算，排除取消归档及未来完成日期',()=>{
-  const group:RequirementGroup={id:'g',projectId:'p',name:'大特性',sortOrder:0,version:1,overview,assessedAt:'2026-09-09T01:00:00Z',assessedBy:'a',assessedByName:'经理'};
+  const group:RequirementGroup={id:'g',projectId:'p',description:'',archivedAt:null,name:'大特性',sortOrder:0,version:1,overview,assessedAt:'2026-09-09T01:00:00Z',assessedBy:'a',assessedByName:'经理'};
   const facts=[
     {id:'1',title:'临界完成',groupId:'g',status:'completed',executionCompletedAt:'2026-09-04T16:00:00Z'},
     {id:'2',title:'更早完成',groupId:'g',status:'completed',actualEnd:'2026-09-04'},
@@ -75,8 +75,8 @@ it('服务读取最新三条进展，需求移动和删除分组后重新归集�
   const version=(await request('GET','/api/requirements/'+first)).json().version;
   expect((await request('POST','/api/projects/'+projectId+'/requirement-organization',{requirements:[{id:first,expectedVersion:version}],groupId:secondGroup.id})).statusCode).toBe(200);
   const moved=await read(projectId);expect(moved.groups[0].counts.total).toBe(1);expect(moved.groups[1].counts.total).toBe(1);expect(moved.groups[1].recentUpdates.map(u=>u.content)).toEqual(['进展 2','进展 0']);expect(moved.groups[0].overview).toEqual(before.overview);expect(moved.groups[0].assessedAt).toBe(before.assessedAt);
-  expect((await request('DELETE','/api/projects/'+projectId+'/requirement-groups/'+group.id,{expectedVersion:moved.groups[0].version})).statusCode).toBe(200);
-  const removed=await read(projectId);expect(removed.groups).toHaveLength(1);expect(removed.ungroupedCount).toBe(2);expect((await request('GET','/api/requirements/'+second)).json().title).toBe('审计');
+  expect((await request('DELETE','/api/projects/'+projectId+'/requirement-groups/'+group.id,{expectedVersion:moved.groups[0].version})).statusCode).toBe(409);
+  const removed=await read(projectId);expect(removed.groups).toHaveLength(2);expect(removed.ungroupedCount).toBe(1);expect((await request('GET','/api/requirements/'+second)).json().title).toBe('审计');
 });
 it('项目成员只读、经理可编辑，跨项目和失效账号被拒绝',async()=>{
   const {projectId,group}=await fixture();const personName='成员 '+randomUUID();

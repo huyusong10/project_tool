@@ -91,8 +91,8 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
 }
 const empty: DependencyChanges = { add: [], remove: [], estimates: [] };
 type PendingBatch = DependencyChangesInput & { batchId: string; previewToken: string };
-export function useDependencyDraft(accountId: string, data: PathAnalysis, target: string, onSaved: (receipt?:DependencyChangeReceipt) => void) {
-  const key = accountId + ':' + data.projectId, history = useGraphHistory(key, empty, String(data.revision),data,projectFieldActive);
+export function useDependencyDraft(accountId: string, data: PathAnalysis, target: string, onSaved: (receipt?:DependencyChangeReceipt) => void, scope?:string) {
+  const key = accountId + ':' + data.projectId+(scope?':'+scope:''), history = useGraphHistory(key, empty, String(data.revision),data,projectFieldActive);
   const pendingKey = prefix + key + ':submission';
   const [pendingReady,setPendingReady]=useState(false);
   const [pending, setPending] = useState<PendingBatch | null>(() => {

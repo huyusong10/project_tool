@@ -7,7 +7,7 @@ import { directRequirementTimelineItem } from '../requirement-timeline';
 import { hasPageHistory, usePageBack } from "../use-page-view";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Navigate, useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
 import {remapSavedEditorUrl} from '../path-view';
 import {
   Archive,
@@ -322,7 +322,7 @@ function SavedRequirementPage() {
   const timelineItems = direct ? [directRequirementTimelineItem(requirement)] : requirement.workItems;
   const timelineUpdates = direct ? (requirement.progressUpdates || []).map(update => ({...update, workItemId: requirement.id})) : requirement.progressUpdates || [];
   const progressById = new Map((requirement.progressUpdates || []).map((update) => [update.id, update]));
-  if (pathView) return <><PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement} onExit={()=>{const params=new URLSearchParams(searchParams);params.delete('view');params.delete('workItemId');setSearchParams(params,{replace:true,state:pathLocation.state});}}/></>;
+  if (pathView) return <><div className="feature-path-bar"><Link to="/paths">特性关系图</Link><span>›</span><Link to={typeof pathLocation.state?.featureReturn==='string'&&pathLocation.state.featureReturn.startsWith('/paths?')?pathLocation.state.featureReturn:'/paths?view=feature&featureId='+encodeURIComponent(requirement.groupId||'ungrouped')}>{requirement.groupName||'未归属需求'}</Link><span>› {requirement.title}</span></div><PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement} onExit={()=>{const params=new URLSearchParams(searchParams);params.delete('view');params.delete('workItemId');setSearchParams(params,{replace:true,state:pathLocation.state});}}/></>;
   return (
     <>
 
