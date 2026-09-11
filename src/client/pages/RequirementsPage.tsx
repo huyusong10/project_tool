@@ -1,5 +1,5 @@
-import {Fragment} from 'react';
-import {GroupManager,OrganizationBatchDialog,OrganizationFilters,matchesOrganization,useIntake} from '../components/RequirementIntake';
+import {Fragment, useEffect} from 'react';
+import {GroupManager,OrganizationBatchDialog,OrganizationFilters,matchesOrganization,persistGroupOperationRecheck,persistOrganizationBatchRecheck,readGroupOperationRecheck,readOrganizationBatchRecheck,useIntake,type GroupOperationRecheck,type OrganizationBatchRecheck} from '../components/RequirementIntake';
 import {RequirementImport} from '../components/RequirementImport';
 import {compareProcessingPriority} from '../../shared/delivery';
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
@@ -16,7 +16,7 @@ import { matchesSearch, searchScore } from "../../shared/search";
 import { EmptyState } from "../components/Feedback";
 import { StatusBadge } from "../components/Badge";
 import { PageHeader } from "../components/PageHeader";
-import { RequirementForm } from "../components/ManagementForms";
+import { RequirementForm,persistRequirementCreateRecheck,readRequirementCreateRecheck,type RequirementCreateRecheck } from "../components/ManagementForms";
 import { canManageProject } from "../permissions";
 import { requirementStatusOptions } from "../ui-options";
 import { DataCell } from "../components/LayoutPrimitives";
@@ -64,10 +64,18 @@ export function RequirementsPage() {
   const { session } = useSession();
   const { selectedProjectId, projects } = useProjects();
   const navigate = useNavigate();
+  const recheckAccountKey=session.accountId||session.username||'guest';
   const [creating, setCreating] = useState(false);
   const [groupManager,setGroupManager]=useState(false),[organizing,setOrganizing]=useState(false);
   const intake=useIntake(selectedProjectId);
   const [selectedIds,setSelectedIds]=useState<string[]>([]);
+  const [groupRecheck,setGroupRecheckState]=useState<GroupOperationRecheck|null>(()=>readGroupOperationRecheck(recheckAccountKey,selectedProjectId));
+  const [organizationRecheck,setOrganizationRecheckState]=useState<OrganizationBatchRecheck|null>(()=>readOrganizationBatchRecheck(recheckAccountKey,selectedProjectId));
+  const [createRecheck,setCreateRecheckState]=useState<RequirementCreateRecheck|null>(()=>readRequirementCreateRecheck(recheckAccountKey,selectedProjectId));
+  const setGroupRecheck=(value:GroupOperationRecheck|null)=>{persistGroupOperationRecheck(recheckAccountKey,selectedProjectId,value);setGroupRecheckState(value);};
+  const setOrganizationRecheck=(value:OrganizationBatchRecheck|null)=>{persistOrganizationBatchRecheck(recheckAccountKey,selectedProjectId,value);setOrganizationRecheckState(value);};
+  const setCreateRecheck=(value:RequirementCreateRecheck|null)=>{persistRequirementCreateRecheck(recheckAccountKey,selectedProjectId,value);setCreateRecheckState(value);};
+  useEffect(()=>{const groupPending=readGroupOperationRecheck(recheckAccountKey,selectedProjectId),organizationPending=readOrganizationBatchRecheck(recheckAccountKey,selectedProjectId);setGroupRecheckState(groupPending);setOrganizationRecheckState(organizationPending);setCreateRecheckState(readRequirementCreateRecheck(recheckAccountKey,selectedProjectId));setSelectedIds(organizationPending?.requirementIds||[]);setCreating(false);setGroupManager(false);setOrganizing(false);},[recheckAccountKey,selectedProjectId]);
   const [params, setParams] = usePageSearchParams(['q', 'status', 'sort', 'direction','deliveryScope','group','grouped','intakeView']);
   const group=params.get('group')||'',grouped=params.get('grouped')==='1',intakeView=params.get('intakeView')||'requirements';
   const setView=(key:string,value:string)=>setParams(current=>{const next=new URLSearchParams(current);if(value)next.set(key,value);else next.delete(key);return next;});
@@ -140,12 +148,12 @@ export function RequirementsPage() {
   );
   return (
     <>
-      {groupManager&&<GroupManager projectId={selectedProjectId} onClose={()=>setGroupManager(false)}/>}
-      {organizing&&<OrganizationBatchDialog projectId={selectedProjectId} requirements={data.filter(r=>selectedIds.includes(r.id))} onClose={()=>setOrganizing(false)}/>}
+      {groupManager&&<GroupManager projectId={selectedProjectId} recheck={groupRecheck} onRecheckChange={setGroupRecheck} onClose={()=>setGroupManager(false)}/>}
+      {organizing&&<OrganizationBatchDialog projectId={selectedProjectId} requirements={data.filter(r=>(organizationRecheck?.requirementIds||selectedIds).includes(r.id))} recheck={organizationRecheck} onRecheckChange={setOrganizationRecheck} onClose={()=>setOrganizing(false)}/>}
       <PageHeader
         title="需求管理"
         actions={canManage ? (
-          <button className="primary-button" disabled={!selectedProjectId} onClick={() => setCreating(true)} title={selectedProjectId ? "新建需求" : "请先创建项目"}>
+          <button className="primary-button" disabled={!selectedProjectId||Boolean(createRecheck)} onClick={() => {if(selectedProjectId&&!createRecheck)setCreating(true);}} title={selectedProjectId ? createRecheck?'请先核对上次创建结果':"新建需求" : "请先创建项目"}>
             <Plus size={16} />
             新建需求
           </button>
@@ -157,8 +165,8 @@ export function RequirementsPage() {
         <div className="filter-bar">
         <OrganizationFilters items={data} group={group} onGroup={v=>setView("group",v)}/>
         <label className="requirement-group-toggle"><input type="checkbox" checked={grouped} onChange={e=>setView("grouped",e.target.checked?"1":"")}/><span>按分组查看</span></label>
-        {canManage&&<button className="ghost-button" onClick={()=>setGroupManager(true)}>管理分组</button>}
-        {canManage&&selectedIds.length>0&&<button className="ghost-button" onClick={()=>setOrganizing(true)}>整理所选需求</button>}
+        {canManage&&<button className="ghost-button" disabled={Boolean(groupRecheck)} onClick={()=>{if(!groupRecheck)setGroupManager(true);}}>管理分组</button>}
+        {canManage&&selectedIds.length>0&&<button className="ghost-button" disabled={Boolean(organizationRecheck)} onClick={()=>{if(!organizationRecheck)setOrganizing(true);}}>整理所选需求</button>}
         <SearchInput value={search} onChange={setSearch} placeholder="搜索需求或负责人" />
         <select
           value={status}
@@ -177,6 +185,9 @@ export function RequirementsPage() {
           · {items.length}/{data.length}项
         </span>
       </div>
+      {groupRecheck&&<div role="alert" className="warning-banner">分组操作结果待核对，其他分组操作暂不可用。<button type="button" className="ghost-button" onClick={()=>setGroupManager(true)}>核对分组操作</button></div>}
+      {organizationRecheck&&<div role="alert" className="warning-banner">整理结果待核对，批量整理暂不可用。<button type="button" className="ghost-button" onClick={()=>setOrganizing(true)}>核对整理结果</button></div>}
+      {createRecheck&&<div role="alert" className="warning-banner">需求创建结果待核对，新建入口暂不可用。<button type="button" className="ghost-button" onClick={()=>setCreating(true)}>核对需求创建</button></div>}
       {error && loadedRequirements && <div className="warning-banner">需求列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
       <div className="table-panel requirements-table-panel">
         <table className="requirements-table">
@@ -197,7 +208,7 @@ export function RequirementsPage() {
                 key={item.id}
                 onClick={() => navigate(`/requirements/${item.id}`)}
               >
-                <td><DataCell density="compact" primary={<strong>{canManage&&!isTerminalRequirementStatus(item.status)&&<input type="checkbox" style={{marginRight:8,verticalAlign:'middle'}} aria-label={'选择需求 '+item.title} checked={selectedIds.includes(item.id)} onClick={e=>e.stopPropagation()} onChange={e=>setSelectedIds(ids=>e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id))}/>}<Link to={`/requirements/${item.id}`} style={{ color: 'inherit', textDecoration: 'none' }} onClick={event => event.stopPropagation()}>{item.title}</Link></strong>} secondary={`${item.groupName?item.groupName+" · ":""}${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
+                <td><DataCell density="compact" primary={<strong>{canManage&&!isTerminalRequirementStatus(item.status)&&<input type="checkbox" style={{marginRight:8,verticalAlign:'middle'}} aria-label={'选择需求 '+item.title} checked={selectedIds.includes(item.id)} disabled={Boolean(organizationRecheck)} onClick={e=>e.stopPropagation()} onChange={e=>{if(!organizationRecheck)setSelectedIds(ids=>e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id));}}/>}<Link to={`/requirements/${item.id}`} style={{ color: 'inherit', textDecoration: 'none' }} onClick={event => event.stopPropagation()}>{item.title}</Link></strong>} secondary={`${item.groupName?item.groupName+" · ":""}${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
                 <td>
                   <DataCell density="compact" primary={<StatusBadge kind="requirement" value={item.status} />} />
                 </td>
@@ -235,7 +246,7 @@ export function RequirementsPage() {
         </div>
         </>}
         {creating && selectedProjectId && (
-          <RequirementForm projectId={selectedProjectId} onClose={() => setCreating(false)} />
+          <RequirementForm projectId={selectedProjectId} initialRequirementIds={data.map(item=>item.id)} recheck={createRecheck} onRecheckChange={setCreateRecheck} onClose={() => setCreating(false)} />
         )}
       </div>
     </>

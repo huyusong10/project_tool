@@ -9,6 +9,23 @@ import {assertCleanProjectDraft} from '../use-graph-draft';
 import type {Requirement} from '../types';
 import {Modal} from './Modal';
 
+type DeliveryAction='start'|'progress'|'complete'|'rework';
+type DeliveryRecheck={action:DeliveryAction;version:number;content:string;percent:number;selected:string[];stage:'read'|'review'};
+const deliveryActions:DeliveryAction[]=['start','progress','complete','rework'];
+function deliveryRecheckKey(accountKey:string,requirementId:string){return `project-manage:delivery-recheck:${accountKey}:${requirementId}`;}
+function readDeliveryRecheck(accountKey:string,requirementId:string):DeliveryRecheck|null{
+  try{
+    const raw=sessionStorage.getItem(deliveryRecheckKey(accountKey,requirementId));if(!raw)return null;
+    const value=JSON.parse(raw) as Partial<DeliveryRecheck>;
+    return deliveryActions.includes(value.action as DeliveryAction)&&typeof value.version==='number'&&typeof value.content==='string'
+      &&typeof value.percent==='number'&&Array.isArray(value.selected)&&value.selected.every(id=>typeof id==='string')
+      &&(value.stage==='read'||value.stage==='review')?value as DeliveryRecheck:null;
+  }catch{return null;}
+}
+function persistDeliveryRecheck(accountKey:string,requirementId:string,value:DeliveryRecheck|null){
+  try{const key=deliveryRecheckKey(accountKey,requirementId);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前组件仍保留核对锁。 */}
+}
+
 export function DeliveryControlsForId({id}:{id:string}){
   const query=useQuery({queryKey:keys.requirement(id),queryFn:()=>api<Requirement>('/api/requirements/'+id)});
   return query.data?<DeliveryControls requirement={query.data} compact/>:null;
@@ -23,12 +40,22 @@ function executionWarning(action:string,r:Requirement){
 export function DeliveryControls({requirement:r}:{requirement:Requirement;compact?:boolean}){
   const {session}=useSession(),client=useQueryClient(),navigate=useNavigate();
   const manager=canManageProject(session,r.projectId),owner=manager||session.personId===r.ownerId;
-  const [needsCheck,setNeedsCheck]=useState(false),[reading,setReading]=useState(false),[readError,setReadError]=useState('');
-  const [modal,setModal]=useState<{action:string;base:Requirement}|null>(null),[content,setContent]=useState(''),[percent,setPercent]=useState(r.progress),[selected,setSelected]=useState<string[]>([]);
+  const recheckAccountKey=session.accountId||session.username||'guest';
+  const [initialRecheck]=useState(()=>readDeliveryRecheck(recheckAccountKey,r.id));
+  const [deliveryRecheck,setDeliveryRecheckState]=useState<DeliveryRecheck|null>(initialRecheck);
+  const setDeliveryRecheck=(value:DeliveryRecheck|null)=>{persistDeliveryRecheck(recheckAccountKey,r.id,value);setDeliveryRecheckState(value);};
+  const [needsCheck,setNeedsCheck]=useState(initialRecheck?.stage==='read'),[reading,setReading]=useState(false),[readError,setReadError]=useState('');
+  const [modal,setModal]=useState<{action:DeliveryAction;base:Requirement}|null>(null),[content,setContent]=useState(initialRecheck?.content||''),[percent,setPercent]=useState(initialRecheck?.percent??r.progress),[selected,setSelected]=useState<string[]>(initialRecheck?.selected||[]);
+  const requirementRef=useRef(r);requirementRef.current=r;
   const readSequence=useRef(0);
-  const submitting=useRef(false),unknownWrite=useRef<{version:number;versioned:boolean}|null>(null);
-  const [reviewRequired,setReviewRequired]=useState(false);
+  const submitting=useRef(false),unknownWrite=useRef<{version:number;versioned:boolean}|null>(initialRecheck?{version:initialRecheck.version,versioned:true}:null);
+  const [reviewRequired,setReviewRequired]=useState(initialRecheck?.stage==='review');
   useEffect(()=>()=>{readSequence.current++;},[r.id]);
+  useEffect(()=>{
+    const next=readDeliveryRecheck(recheckAccountKey,r.id);setDeliveryRecheckState(next);
+    unknownWrite.current=next?{version:next.version,versioned:true}:null;setNeedsCheck(next?.stage==='read');setReviewRequired(next?.stage==='review');
+    setContent(next?.content||'');setPercent(next?.percent??requirementRef.current.progress);setSelected(next?.selected||[]);setModal(null);
+  },[r.id,recheckAccountKey]);
   const mutation=useMutation({mutationFn:async()=>{
     if(!modal)return;await assertCleanProjectDraft(session.accountId||'guest',r.projectId,{requirementId:r.id,action:modal.action});
     const b=modal.base,payload:Record<string,unknown>={expectedVersion:b.version};
@@ -36,31 +63,34 @@ export function DeliveryControls({requirement:r}:{requirement:Requirement;compac
     else if(modal.action==='rework'){payload.reason=content;payload.progress=Math.min(percent,99);if(b.executionMode!=='direct')payload.workItemIds=selected;}
     else if(modal.action==='complete')payload.content=content;
     return api('/api/requirements/'+r.id+'/'+modal.action,{method:'POST',body:jsonBody(payload)});
-  },onSuccess:()=>{readSequence.current++;invalidateRequirementViews(client,r.id);setModal(null);},onError:e=>{
-    if(isWriteOutcomeUnknown(e)&&modal)unknownWrite.current={version:modal.base.version,versioned:true};
+  },onMutate:()=>{if(modal){const next:DeliveryRecheck={action:modal.action,version:modal.base.version,content,percent,selected,stage:'read'};unknownWrite.current={version:next.version,versioned:true};setDeliveryRecheck(next);}},onSuccess:()=>{readSequence.current++;setDeliveryRecheck(null);unknownWrite.current=null;invalidateRequirementViews(client,r.id);setModal(null);},onError:e=>{
+    if(isWriteOutcomeUnknown(e)&&modal){unknownWrite.current={version:modal.base.version,versioned:true};setDeliveryRecheck({action:modal.action,version:modal.base.version,content,percent,selected,stage:'read'});}else{unknownWrite.current=null;setDeliveryRecheck(null);}
     if(requiresWriteRecheck(e))setNeedsCheck(true);
   },onSettled:()=>{submitting.current=false;}});
-  const reload=async(action:string)=>{
+  const reload=async(action:DeliveryAction)=>{
     const sequence=++readSequence.current;setReading(true);setReadError('');
     try{
       const latest=await api<Requirement>('/api/requirements/'+r.id);
       if(sequence!==readSequence.current)return;
       // 说明记录不增加需求版本，不能凭版本未变认定未写入。
       const unknown=unknownWrite.current;
-      setReviewRequired(Boolean(unknown&&(!unknown.versioned||latest.version!==unknown.version)));
+      const requiresReview=Boolean(unknown&&(!unknown.versioned||latest.version!==unknown.version));
+      setReviewRequired(requiresReview);
+      if(requiresReview&&deliveryRecheck)setDeliveryRecheck({...deliveryRecheck,stage:'review'});else setDeliveryRecheck(null);
       setModal({action,base:latest});setNeedsCheck(false);mutation.reset();invalidateRequirementViews(client,r.id);
     }catch(error){if(sequence===readSequence.current){setReadError(error instanceof Error?error.message:'读取失败，请重试');setNeedsCheck(true);}}
     finally{if(sequence===readSequence.current)setReading(false);}
   };
-  const open=(action:string)=>{readSequence.current++;unknownWrite.current=null;setReviewRequired(false);setReading(false);setNeedsCheck(false);setReadError('');mutation.reset();setContent('');setSelected([]);setPercent(Math.min(r.progress,99));setModal({action,base:r});};
+  const open=(action:DeliveryAction)=>{if(deliveryRecheck)return;readSequence.current++;unknownWrite.current=null;setReviewRequired(false);setReading(false);setNeedsCheck(false);setReadError('');mutation.reset();setContent('');setSelected([]);setPercent(Math.min(r.progress,99));setModal({action,base:r});};
+  const resumeRecheck=()=>{if(!deliveryRecheck)return;readSequence.current++;unknownWrite.current={version:deliveryRecheck.version,versioned:true};setContent(deliveryRecheck.content);setPercent(deliveryRecheck.percent);setSelected(deliveryRecheck.selected);setNeedsCheck(deliveryRecheck.stage==='read');setReviewRequired(deliveryRecheck.stage==='review');setReadError('');mutation.reset();setModal({action:deliveryRecheck.action,base:r});};
+  const finishReview=()=>{setDeliveryRecheck(null);unknownWrite.current=null;setReviewRequired(false);setModal(null);};
   const close=()=>{if(!submitting.current&&!mutation.isPending){readSequence.current++;setReading(false);setModal(null);}};
   const direct=r.executionMode==='direct',ended=['completed','cancelled'].includes(r.status);
   const labels:Record<string,string>={start:'开始需求',progress:'更新进度',complete:'完成需求',rework:'返工'};
   const warning=modal?executionWarning(modal.action,modal.base):'';
   return <>
     <div className="button-row delivery-controls">
-      {direct&&owner&&!ended&&<>{r.status==='not_started'&&<button className="primary-button" onClick={()=>open('start')}>开始需求</button>}{r.status==='in_progress'&&<><button className="ghost-button" onClick={()=>open('progress')}>更新进度</button><button className="primary-button" onClick={()=>open('complete')}>完成需求</button></>}</>}
-      {owner&&r.status==='completed'&&<button className="ghost-button" onClick={()=>open('rework')}>返工</button>}
+      {deliveryRecheck?<button className="ghost-button" onClick={resumeRecheck}>核对操作结果</button>:<>{direct&&owner&&!ended&&<>{r.status==='not_started'&&<button className="primary-button" onClick={()=>open('start')}>开始需求</button>}{r.status==='in_progress'&&<><button className="ghost-button" onClick={()=>open('progress')}>更新进度</button><button className="primary-button" onClick={()=>open('complete')}>完成需求</button></>}</>}{owner&&r.status==='completed'&&<button className="ghost-button" onClick={()=>open('rework')}>返工</button>}</>}
     </div>
     {modal&&<Modal title={labels[modal.action]} onClose={close} closable={!mutation.isPending}><form onSubmit={e=>{e.preventDefault();if(!submitting.current&&!mutation.isPending&&!needsCheck&&!reading&&!reviewRequired&&!warning){submitting.current=true;mutation.mutate();}}}><fieldset className="form-fieldset" disabled={mutation.isPending}>
       <p>{modal.base.title}</p>
@@ -70,7 +100,7 @@ export function DeliveryControls({requirement:r}:{requirement:Requirement;compac
       {mutation.error&&<p className="form-error">{mutation.error.message}{mutation.error.message.includes('草稿')&&<button type="button" className="ghost-button" onClick={()=>navigate('/requirements/'+r.id+'?view=path')}>查看路径草稿</button>}</p>}
       {needsCheck&&<div className="warning-banner">本次操作需要核对最新状态。已填说明保留。<button type="button" className="ghost-button" disabled={reading} onClick={()=>void reload(modal.action)}>读取最新状态</button></div>}{readError&&<p className="form-error">{readError}</p>}
       {warning&&<p className="warning-banner">{warning}</p>}
-      {reviewRequired&&<p className="warning-banner">已读取最新状态，仍无法确认刚才的提交是否生效。请先核对进展记录；为避免重复写入，本窗口不再提交。已填说明保留，可复制后关闭窗口。</p>}
+      {reviewRequired&&<div className="warning-banner">已读取最新状态，仍无法确认刚才的提交是否生效。请先核对进展记录；为避免重复写入，本窗口不再提交。已填说明保留。<button type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</button></div>}
       <div className="form-actions"><button className="primary-button" disabled={mutation.isPending||needsCheck||reading||reviewRequired||!!warning}>{mutation.isPending?'正在提交…':labels[modal.action]}</button></div>
     </fieldset></form></Modal>}
   </>;

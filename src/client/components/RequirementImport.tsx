@@ -11,20 +11,21 @@ import { DeliveryImpactTable } from './DeliveryImpactTable';
 import type { Requirement, Person } from '../types';
 
 type Attempt={batchId:string;previewToken:string;expectedRevision:string;package:IntakePackage};
-type SavedDraft={raw:string;pkg:IntakePackage|null;attempt:Attempt|null};
+type SavedDraft={raw:string;pkg:IntakePackage|null;attempt:Attempt|null;closedBatchId:string|null};
 function loadDraft(key:string):SavedDraft {
-  try{const value=JSON.parse(localStorage.getItem(key)||'null');if(value)return {raw:typeof value.raw==='string'?value.raw:'',pkg:value.pkg?(intakePackageSchema.safeParse(value.pkg).data??null):null,attempt:value.attempt||null};}catch{/* Corrupt personal draft must not prevent opening the importer. */}
-  return {raw:'',pkg:null,attempt:null};
+  try{const value=JSON.parse(localStorage.getItem(key)||'null');if(value)return {raw:typeof value.raw==='string'?value.raw:'',pkg:value.pkg?(intakePackageSchema.safeParse(value.pkg).data??null):null,attempt:value.attempt||null,closedBatchId:typeof value.closedBatchId==='string'?value.closedBatchId:null};}catch{/* Corrupt personal draft must not prevent opening the importer. */}
+  return {raw:'',pkg:null,attempt:null,closedBatchId:null};
 }
 export function RequirementImport({projectId}:{projectId:string}) {
   const {session}=useSession(),client=useQueryClient(),storageKey=`pm-intake:${session.accountId}:${projectId}`;
   const [initial]=useState(()=>loadDraft(storageKey));
-  const [raw,setRaw]=useState(initial.raw),[pkg,setPackage]=useState<IntakePackage|null>(initial.pkg),[attempt,setAttempt]=useState<Attempt|null>(initial.attempt);
+  const [raw,setRaw]=useState(initial.raw),[pkg,setPackage]=useState<IntakePackage|null>(initial.pkg),[attempt,setAttempt]=useState<Attempt|null>(initial.attempt),[closedBatchId,setClosedBatchId]=useState<string|null>(initial.closedBatchId);
   const [preview,setPreview]=useState<ImportPreview|null>(null),[result,setResult]=useState<Extract<ImportReceipt,{status:'applied'}>|null>(null),[error,setError]=useState(''),[storageError,setStorageError]=useState(''),[busy,setBusy]=useState(false),[advanced,setAdvanced]=useState(false);
-  const requestLock=useRef(false),mounted=useRef(true);
+  const requestLock=useRef(false),attemptRef=useRef(initial.attempt),mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return ()=>{mounted.current=false;};},[]);
   const persist=(next:SavedDraft)=>{try{localStorage.setItem(storageKey,JSON.stringify(next));setStorageError('');return true;}catch{setStorageError('无法保存本机草稿。请导出 JSON 备份；恢复浏览器存储后再提交。');return false;}};
-  useEffect(()=>{try{localStorage.setItem(storageKey,JSON.stringify({raw,pkg,attempt}));setStorageError('');}catch{setStorageError('本机草稿保存失败，请导出 JSON 备份。');}},[raw,pkg,attempt,storageKey]);
+  useEffect(()=>{try{localStorage.setItem(storageKey,JSON.stringify({raw,pkg,attempt,closedBatchId}));setStorageError('');}catch{setStorageError('本机草稿保存失败，请导出 JSON 备份。');}},[raw,pkg,attempt,closedBatchId,storageKey]);
+  useEffect(()=>{const receive=(event:StorageEvent)=>{if(event.key!==storageKey||!event.newValue)return;const saved=loadDraft(storageKey),current=attemptRef.current;if(saved.attempt){if(current)return;attemptRef.current=saved.attempt;setRaw(saved.raw);setPackage(saved.pkg);setAttempt(saved.attempt);setClosedBatchId(saved.closedBatchId);setPreview(null);setResult(null);setError('');return;}if(!current||saved.closedBatchId!==current.batchId)return;attemptRef.current=null;setRaw(saved.raw);setPackage(saved.pkg);setAttempt(null);setClosedBatchId(saved.closedBatchId);setPreview(null);setResult(null);setError('原待核对批次已在其他页面处理。请核对需求列表；继续导入前请重新预览。');};window.addEventListener('storage',receive);return()=>window.removeEventListener('storage',receive);},[storageKey]);
   const requirements=useQuery({queryKey:[...keys.requirements,projectId],queryFn:({signal})=>api<Requirement[]>('/api/requirements?projectId='+projectId,{signal})});
   const change=(next:IntakePackage)=>{if(attempt||requestLock.current)return;setPackage(next);setRaw(JSON.stringify(next,null,2));setPreview(null);setResult(null);setError('');};
   const editRequirement=(key:string,value:Partial<IntakePackage['requirements'][number]>)=>{if(pkg)change({...pkg,requirements:pkg.requirements.map(r=>r.key===key?{...r,...value}:r)});};
@@ -38,18 +39,19 @@ export function RequirementImport({projectId}:{projectId:string}) {
   const parse=()=>{try{change(parseInput(raw));setAdvanced(false);}catch(e){setError(e instanceof Error?e.message:'内容读取失败');}};
   const readFile=async(file:File|undefined)=>{if(!file)return;if(file.size>10*1024*1024){setError('导入文件不能超过 10MB');return;}try{const value=await file.text();setRaw(value);change(parseInput(value));}catch(e){setError(e instanceof Error?e.message:'文件读取失败');}};
   const inspect=async()=>{
-    if(!pkg||requestLock.current||attempt)return;requestLock.current=true;setBusy(true);setError('');
-    try{const value=await api<ImportPreview>(`/api/projects/${projectId}/requirement-import/preview`,{method:'POST',body:jsonBody({package:pkg})});if(!value||!Array.isArray(value.errors)||!Array.isArray(value.warnings)||!Array.isArray(value.existingMatches)||!value.counts||!value.previewToken)throw new Error('预览响应不完整，草稿已保留');if(mounted.current){setPreview(value);setPackage(intakePackageSchema.parse(value.package));}}
+    if(!pkg||requestLock.current||attemptRef.current)return;requestLock.current=true;setBusy(true);setError('');
+    try{const value=await api<ImportPreview>(`/api/projects/${projectId}/requirement-import/preview`,{method:'POST',body:jsonBody({package:pkg})});if(!value||!Array.isArray(value.errors)||!Array.isArray(value.warnings)||!Array.isArray(value.existingMatches)||!value.counts||!value.previewToken)throw new Error('预览响应不完整，草稿已保留');if(mounted.current&&!attemptRef.current){setPreview(value);setPackage(intakePackageSchema.parse(value.package));}}
     catch(e){if(mounted.current)setError(e instanceof Error?e.message:'预览失败，草稿已保留');}finally{requestLock.current=false;if(mounted.current)setBusy(false);}
   };
-  const finish=(receipt:Extract<ImportReceipt,{status:'applied'}>)=>{setResult(receipt);setAttempt(null);setPreview(null);persist({raw,pkg,attempt:null});invalidateRequirementViews(client);};
+  const finish=(receipt:Extract<ImportReceipt,{status:'applied'}>)=>{attemptRef.current=null;setResult(receipt);setAttempt(null);setClosedBatchId(receipt.batchId);setPreview(null);persist({raw,pkg,attempt:null,closedBatchId:receipt.batchId});invalidateRequirementViews(client);};
   const submit=async()=>{
-    if(!preview||preview.errors.length||requestLock.current||attempt)return;
+    if(requestLock.current||attemptRef.current)return;const shared=loadDraft(storageKey);if(shared.attempt){attemptRef.current=shared.attempt;setRaw(shared.raw);setPackage(shared.pkg);setAttempt(shared.attempt);setClosedBatchId(shared.closedBatchId);setPreview(null);setResult(null);setError('');return;}
+    if(!preview||preview.errors.length)return;
     const next:Attempt={batchId:randomUUID(),package:preview.package,previewToken:preview.previewToken,expectedRevision:preview.expectedRevision};
-    if(!persist({raw,pkg,attempt:next}))return;
-    requestLock.current=true;setAttempt(next);setBusy(true);setError('');
+    if(!persist({raw,pkg,attempt:next,closedBatchId:null}))return;
+    requestLock.current=true;attemptRef.current=next;setAttempt(next);setClosedBatchId(null);setBusy(true);setError('');
     try{const receipt=await api<ImportReceipt>(`/api/projects/${projectId}/requirement-import/apply`,{method:'POST',body:jsonBody(next)});if(receipt.status!=='applied'||!receipt.requirementIds||typeof receipt.requirementIds!=='object')throw new Error('提交结果无法确认');if(mounted.current)finish(receipt);}
-    catch(e){if(mounted.current){setError(e instanceof Error?e.message:'提交结果待核对');if(!isWriteOutcomeUnknown(e)&&e instanceof ApiError){setAttempt(null);setPreview(null);persist({raw,pkg,attempt:null});}}}
+    catch(e){if(mounted.current){setError(e instanceof Error?e.message:'提交结果待核对');if(!isWriteOutcomeUnknown(e)&&e instanceof ApiError){attemptRef.current=null;setAttempt(null);setClosedBatchId(next.batchId);setPreview(null);persist({raw,pkg,attempt:null,closedBatchId:next.batchId});}}}
     finally{requestLock.current=false;if(mounted.current)setBusy(false);}
   };
   const checkReceipt=async()=>{
@@ -60,7 +62,7 @@ export function RequirementImport({projectId}:{projectId:string}) {
   const retryOriginal=async()=>{
     if(!attempt||requestLock.current)return;requestLock.current=true;setBusy(true);setError('');
     try{const receipt=await api<ImportReceipt>(`/api/projects/${projectId}/requirement-import/apply`,{method:'POST',body:jsonBody(attempt)});if(receipt.status!=='applied'||!receipt.requirementIds||typeof receipt.requirementIds!=='object')throw new Error('提交结果无法确认');if(mounted.current)finish(receipt);}
-    catch(e){if(mounted.current){setError(e instanceof Error?e.message:'提交结果待核对');if(!isWriteOutcomeUnknown(e)&&e instanceof ApiError){setAttempt(null);setPreview(null);persist({raw,pkg,attempt:null});}}}finally{requestLock.current=false;if(mounted.current)setBusy(false);}
+    catch(e){if(mounted.current){setError(e instanceof Error?e.message:'提交结果待核对');if(!isWriteOutcomeUnknown(e)&&e instanceof ApiError){attemptRef.current=null;setAttempt(null);setClosedBatchId(attempt.batchId);setPreview(null);persist({raw,pkg,attempt:null,closedBatchId:attempt.batchId});}}}finally{requestLock.current=false;if(mounted.current)setBusy(false);}
   };
   return <div className="intake-stack">
     <div className="intake-section-head"><div><h2>导入需求</h2><p className="field-help">粘贴原始需求，每段一条：第一行是标题，其余内容保留为说明。核对后保存。</p></div><div className="button-row"><button className="ghost-button" onClick={()=>download(intakeExample,'requirement-import-example.json')}>下载工具示例</button>{pkg&&<button className="ghost-button" onClick={()=>download(pkg,'requirement-import-draft.json')}>导出草稿</button>}</div></div>

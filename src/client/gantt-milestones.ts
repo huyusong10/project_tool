@@ -18,22 +18,22 @@ export function milestoneDay(value?: string | null) {
   const instant = new Date(value);
   return value.includes('T') && Number.isFinite(instant.getTime()) ? format(instant, 'yyyy-MM-dd') : null;
 }
-export function milestoneDate(m: GanttMilestone) {
-  return milestoneDay(m.targetDate) || milestoneDay(m.actualDate) || milestoneDay(m.forecastDate);
+export function milestoneDate(m: GanttMilestone, showForecast = false) {
+  return milestoneDay(m.targetDate) || milestoneDay(m.actualDate) || (showForecast ? milestoneDay(m.forecastDate) : null);
 }
 export function milestoneState(m: GanttMilestone, asOfDate: string) {
   return m.cancelled ? 'cancelled' : m.actualDate ? 'reached'
     : m.targetDate && isOverdueByWorkday(m.targetDate, asOfDate) ? 'overdue' : 'planned';
 }
-export function milestonePosition(m: GanttMilestone, dates: Date[], cellWidth: number, actual = false) {
+export function milestonePosition(m: GanttMilestone, dates: Date[], cellWidth: number, actual = false, showForecast = false) {
   if (!actual && m.offset !== undefined) return m.offset * cellWidth;
-  const day = actual ? milestoneDay(m.actualDate) : milestoneDate(m), date = toGanttDate(day);
+  const day = actual ? milestoneDay(m.actualDate) : milestoneDate(m, showForecast), date = toGanttDate(day);
   if (!date || !dates.length || date < dates[0] || date > dates.at(-1)!) return null;
   return (businessDateIndex(date, dates, 'end') + 1) * cellWidth;
 }
-export function milestoneTiming(m: GanttMilestone) {
+export function milestoneTiming(m: GanttMilestone, showForecast = false) {
   if (m.timingLabel) return m.timingLabel;
-  const day = milestoneDate(m);
+  const day = milestoneDate(m, showForecast);
   return day ? `${m.targetDate ? '目标' : m.actualDate ? '实际' : '预计'} ${day}` : '日期待确认';
 }
 export function milestoneAncestors(id: string, edges: Pick<PathEdge, 'source' | 'target'>[]) {
@@ -65,8 +65,8 @@ export function pathMilestones(nodes: PathNode[], edges: PathEdge[] = [], milest
       relatedIds: milestoneAncestors(n.id, edges) };
   });
 }
-export function groupMilestones(items: GanttMilestone[], dates: Date[], cellWidth: number, width: number) {
-  const points = items.map(item => ({ item, left: milestonePosition(item, dates, cellWidth) }))
+export function groupMilestones(items: GanttMilestone[], dates: Date[], cellWidth: number, width: number, showForecast = false) {
+  const points = items.map(item => ({ item, left: milestonePosition(item, dates, cellWidth, false, showForecast) }))
     .filter((p): p is { item: GanttMilestone; left: number } => p.left !== null).sort((a, b) => a.left - b.left || a.item.id.localeCompare(b.item.id));
   const groups: Array<{ items: GanttMilestone[]; left: number; labelLeft: number; width: number }> = [];
   const labelWidth = (group: GanttMilestone[]) => group.length > 1 ? 64 : Math.min(150, Array.from(group[0].title).reduce((n, c) => n + (/[^\u0000-\u00ff]/.test(c) ? 11 : 7), 12));

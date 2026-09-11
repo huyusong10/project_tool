@@ -49,8 +49,8 @@ test('真实拖动跨月跨年、向左补日期、缩放和页面往返均保�
 
 test('底部滚动条、触控板和 Shift 滚轮可横移；普通滚轮保持纵向；空筛选恢复视图',async({page})=>{
   await page.goto('/');const surface=page.locator('.project-gantt-scroll');await expect(surface).toHaveAttribute('data-gantt-ready','true');
-  const initial=await snapshot(surface);await surface.hover();await page.mouse.wheel(360,0);await page.waitForTimeout(80);expect((await snapshot(surface)).left).toBeGreaterThan(initial.left);
-  await page.keyboard.down('Shift');await page.mouse.wheel(0,300);await page.keyboard.up('Shift');await page.waitForTimeout(80);const afterShift=await snapshot(surface);expect(afterShift.left).toBeGreaterThan(initial.left+400);
+  const initial=await snapshot(surface);await surface.hover();await page.mouse.wheel(360,0);await page.waitForTimeout(80);const afterTrackpad=await snapshot(surface);expect(afterTrackpad.left).toBeGreaterThan(initial.left);
+  await page.keyboard.down('Shift');await page.mouse.wheel(0,300);await page.keyboard.up('Shift');await page.waitForTimeout(80);const afterShift=await snapshot(surface);expect(afterShift.left).toBeGreaterThan(afterTrackpad.left);
   await page.mouse.wheel(0,150);await page.waitForTimeout(80);expect((await snapshot(surface)).center).toBe(afterShift.center);
   const bar=page.locator('.project-gantt-panel .gantt-navigation-scrollbar');await expect(bar).toBeVisible();
   const thumb=await bar.locator('.gantt-scroll-thumb').boundingBox();expect(thumb!.width).toBeGreaterThanOrEqual(24);

@@ -18,49 +18,26 @@ for(const mode of ['direct','split'] as const){
  });
 }
 
-test('阻塞直接需求只显示说明入口，不能编辑百分比',async({page})=>{
- await mockGanttData(page);
- await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,executionMode:'direct',status:'blocked',workItems:[],progress:60}}));
- await page.goto('/requirements/r1');
- await expect(page.getByRole('button',{name:'更新进度',exact:true})).toHaveCount(0);
- await page.getByRole('button',{name:'补充说明',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:'补充说明',exact:true});await expect(dialog.getByLabel('需求完成度')).toHaveCount(0);
- await expect(dialog).toContainText('解除阻塞后才能继续提高完成度');
-});
-
-test('开始冲突后重新核对需求和前置',async({page})=>{
- await mockGanttData(page);let reads=0;const writes:Array<Record<string,unknown>>=[];
+test('开始冲突后重新读取需求并使用新版本重试',async({page})=>{
+ await mockGanttData(page);const writes:Array<Record<string,unknown>>=[];
  let current={...requirement,executionMode:'direct',status:'not_started',progress:0,version:1,workItems:[]};
  await page.route('**/api/requirements/r1',route=>route.fulfill({json:current}));
- await page.route('**/api/requirements/r1/start-conditions',route=>{reads++;return route.fulfill({json:{dependencyRevision:reads,unmetPredecessors:[{id:'dep'+reads,title:'前置交付'+reads}]}});});
  await page.route('**/api/requirements/r1/start',route=>{
   const body=route.request().postDataJSON();writes.push(body);
-  if(writes.length===1)return route.fulfill({status:409,json:{error:'前置条件已经变化，请重新核对',code:'STALE_WRITE'}});
-  current={...current,status:'in_progress',version:2};return route.fulfill({json:current});
+  if(writes.length===1){current={...current,version:2};return route.fulfill({status:409,json:{error:'需求已经变化，请重新核对',code:'STALE_WRITE'}});}
+  current={...current,status:'in_progress',version:3};return route.fulfill({json:current});
  });
  await page.goto('/requirements/r1');await page.getByRole('button',{name:'开始需求',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:'开始需求',exact:true});await expect(dialog).toContainText('前置交付1');
- await dialog.getByRole('button',{name:'确认可以开始',exact:true}).click();await dialog.getByRole('button',{name:'读取最新状态',exact:true}).click();
- await expect(dialog).toContainText('前置交付2');await dialog.getByRole('button',{name:'确认可以开始',exact:true}).click();
- await expect(dialog).toHaveCount(0);expect(writes.map(w=>w.expectedDependencyRevision)).toEqual([1,2]);
+ const dialog=page.getByRole('dialog',{name:'开始需求',exact:true});await dialog.getByRole('button',{name:'开始需求',exact:true}).click();await dialog.getByRole('button',{name:'读取最新状态',exact:true}).click();
+ await dialog.getByRole('button',{name:'开始需求',exact:true}).click();await expect(dialog).toHaveCount(0);expect(writes.map(w=>w.expectedVersion)).toEqual([1,2]);
 });
-
-test('关闭开始窗口后，迟到的前置读取不覆盖重新打开的窗口',async({page})=>{
- await mockGanttData(page);let reads=0;let release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve;});
+test('开始窗口不再读取或确认前置条件',async({page})=>{
+ await mockGanttData(page);let conditionReads=0;
  await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,executionMode:'direct',status:'not_started',version:1,workItems:[]}}));
- await page.route('**/api/requirements/r1/start-conditions',async route=>{
-  const revision=++reads;if(revision===1)await pending;
-  return route.fulfill({json:{dependencyRevision:revision,unmetPredecessors:[{id:'d'+revision,title:'前置交付'+revision}]}});
- });
- try{
-  await page.goto('/requirements/r1');await page.getByRole('button',{name:'开始需求',exact:true}).click();await expect.poll(()=>reads).toBe(1);
-  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
-  await page.getByRole('button',{name:'开始需求',exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog).toContainText('前置交付2');
-  const late=page.waitForResponse(response=>response.url().endsWith('/start-conditions')&&response.status()===200);release();await late;
-  await expect(dialog).toContainText('前置交付2');await expect(dialog).not.toContainText('前置交付1');
- }finally{release();}
+ await page.route('**/api/requirements/r1/start-conditions',route=>{conditionReads++;return route.fulfill({json:{dependencyRevision:1,unmetPredecessors:[]}});});
+ await page.goto('/requirements/r1');await page.getByRole('button',{name:'开始需求',exact:true}).click();const dialog=page.getByRole('dialog',{name:'开始需求'});
+ await expect(dialog).toBeVisible();await expect(dialog.getByText(/前置/)).toHaveCount(0);expect(conditionReads).toBe(0);
 });
-
 test('存在同对象执行敏感草稿时实际日期更正不请求接口，处理草稿后可继续原输入',async({page})=>{
  await mockGanttData(page);let current={...workItem};const writes:Array<Record<string,unknown>>=[];
  await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,version:1,workItems:[current]}}));
@@ -74,17 +51,12 @@ test('存在同对象执行敏感草稿时实际日期更正不请求接口，�
  await expect.poll(()=>writes.length).toBe(1);expect(writes[0]).toMatchObject({actualStart:'2026-08-31',reason:'核对执行日期',expectedVersion:1});
 });
 
-for(const entry of ['overview','menu'] as const){
- test(`${entry}验收入口展示同一核对材料和说明字段`,async({page})=>{
-  await mockGanttData(page);
-  await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,version:1,status:'pending_acceptance',progress:100,acceptanceCriteria:'确认接口与文档交付',issueSummary:{active:2,overdue:0},milestones:[{id:'m1',title:'发布核对',achievedAt:null,cancelled:false}]}}));
-  await page.goto('/requirements/r1');
-  if(entry==='menu')await page.getByRole('button',{name:'需求操作',exact:true}).click();
-  await (entry==='menu'?page.locator('.action-menu'):page.locator('.requirement-overview')).getByRole('button',{name:'确认验收',exact:true}).click();
-  const dialog=page.getByRole('dialog',{name:'确认验收',exact:true});await expect(dialog).toContainText('确认接口与文档交付');await expect(dialog).toContainText('发布核对');await expect(dialog).toContainText('未关闭问题：2');
-  await expect(dialog.getByLabel('验收说明',{exact:true})).toBeVisible();await expect(dialog.getByRole('button',{name:'确认验收',exact:true})).toBeDisabled();
- });
-}
+test('工作完成后不显示验收入口，完成标准仍作为资料保留',async({page})=>{
+ await mockGanttData(page);
+ await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,executionMode:'direct',version:1,status:'completed',progress:100,acceptedAt:null,acceptanceCriteria:'确认接口与文档交付',workItems:[]}}));
+ await page.goto('/requirements/r1');await expect(page.getByRole('button',{name:'确认验收',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'需求资料与计算说明',exact:true}).click();await expect(page.locator('.requirement-overview-details')).toContainText('确认接口与文档交付');
+});
 
 for(const persisted of [true,false]){
  test(`直接进度响应丢失且${persisted?'版本变化时禁止直接重复提交':'版本未变时可安全重试'}`,async({page})=>{
@@ -107,6 +79,41 @@ for(const persisted of [true,false]){
  });
 }
 
+test('直接进度响应未知且回读失败时跨导航保留核对锁和原输入',async({page})=>{
+ await mockGanttData(page);let writes=0,failReads=false;
+ let current={...requirement,executionMode:'direct',status:'in_progress',version:1,progress:30,workItems:[]};
+ await page.route('**/api/requirements/r1',route=>failReads
+  ?route.fulfill({status:503,json:{error:'需求读取失败'}})
+  :route.fulfill({json:current}));
+ await page.route('**/api/requirements/r1/progress',route=>{
+  writes++;current={...current,progress:60,version:2};failReads=true;return route.abort('failed');
+ });
+ await page.goto('/requirements/r1');await page.getByRole('button',{name:'更新进度',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'更新进度',exact:true});
+ await dialog.getByLabel('需求完成度').fill('60');await dialog.getByLabel('执行说明').fill('接口已联通');
+ await dialog.getByRole('button',{name:'更新进度',exact:true}).click();
+ await expect(dialog).toContainText('本次操作需要核对最新状态');
+ await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'核对操作结果',exact:true})).toBeVisible();
+
+ await page.getByRole('link',{name:'项目中心',exact:true}).click();await expect(page).toHaveURL(/\/projects$/);
+ await page.goBack();await expect(page).toHaveURL(/\/requirements\/r1/);
+ await page.getByRole('button',{name:'核对操作结果',exact:true}).click();
+ await expect(dialog.getByLabel('需求完成度')).toHaveValue('60');
+ await expect(dialog.getByLabel('执行说明')).toHaveValue('接口已联通');
+ await dialog.locator('form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+ await page.waitForTimeout(100);expect(writes).toBe(1);
+
+ failReads=false;await dialog.getByRole('button',{name:'读取最新状态',exact:true}).click();
+ await expect(dialog).toContainText('请先核对进展记录');
+ await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);
+ await page.getByRole('button',{name:'核对操作结果',exact:true}).click();
+ await expect(dialog).toContainText('请先核对进展记录');
+ await expect(dialog.getByLabel('执行说明')).toHaveValue('接口已联通');
+ await dialog.getByRole('button',{name:'已核对并关闭',exact:true}).click();
+ await expect(dialog).toHaveCount(0);expect(writes).toBe(1);
+});
+
 test('直接执行在同一帧收到两次提交只写一次',async({page})=>{
  await mockGanttData(page);let writes=0;
  await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,executionMode:'direct',status:'in_progress',version:1,progress:30,workItems:[]}}));
@@ -121,19 +128,9 @@ test('重新读取后直接执行状态不再允许原操作时保留说明并�
  await mockGanttData(page);let writes=0;
  let current={...requirement,executionMode:'direct',status:'in_progress',version:1,progress:30,workItems:[]};
  await page.route('**/api/requirements/r1',route=>route.fulfill({json:current}));
- await page.route('**/api/requirements/r1/progress',route=>{writes++;current={...current,status:'blocked',version:2};return route.fulfill({status:409,json:{error:'需求已更新',code:'STALE_WRITE'}});});
+ await page.route('**/api/requirements/r1/progress',route=>{writes++;current={...current,status:'completed',progress:100,version:2};return route.fulfill({status:409,json:{error:'需求已更新',code:'STALE_WRITE'}});});
  await page.goto('/requirements/r1');await page.getByRole('button',{name:'更新进度',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'更新进度',exact:true}),submit=dialog.getByRole('button',{name:'更新进度',exact:true});
  await dialog.getByLabel('执行说明').fill('等待核对');await submit.click();await dialog.getByRole('button',{name:'读取最新状态',exact:true}).click();
  await expect(dialog).toContainText('当前状态不支持此操作');await expect(submit).toBeDisabled();await expect(dialog.getByLabel('执行说明')).toHaveValue('等待核对');expect(writes).toBe(1);
-});
-
-test('说明响应丢失后版本未变也不推断失败或重复写入',async({page})=>{
- await mockGanttData(page);let writes=0;
- await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,executionMode:'direct',status:'blocked',version:1,progress:30,workItems:[]}}));
- await page.route('**/api/requirements/r1/progress',route=>{writes++;return route.abort('failed');});
- await page.goto('/requirements/r1');await page.getByRole('button',{name:'补充说明',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:'补充说明',exact:true});await dialog.getByLabel('执行说明').fill('正在等待第三方');
- await dialog.getByRole('button',{name:'补充说明',exact:true}).click();await dialog.getByRole('button',{name:'读取最新状态',exact:true}).click();
- await expect(dialog).toContainText('请先核对进展记录');await expect(dialog.getByRole('button',{name:'补充说明',exact:true})).toBeDisabled();expect(writes).toBe(1);
 });

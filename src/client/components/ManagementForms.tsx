@@ -14,7 +14,7 @@ import { hasWorkdayCalendarFallback } from '../../shared/workday';
 import { canonicalizeLabel } from "../../shared/search";
 import { useToast } from "./Toast";
 
-type ProjectFormInput = {
+export type ProjectFormInput = {
   name: string;
   status: string;
   plannedStart: string;
@@ -22,8 +22,14 @@ type ProjectFormInput = {
   defaultTemplateId: string;
   expectedUpdatedAt?: string;
 };
+export type ProjectCreateRecheck={draft:ProjectFormInput;baselineIds:string[]};
+function projectCreateRecheckKey(accountKey:string){return `project-manage:project-create-recheck:${accountKey}`;}
+export function readProjectCreateRecheck(accountKey:string):ProjectCreateRecheck|null{
+  try{const raw=sessionStorage.getItem(projectCreateRecheckKey(accountKey));if(!raw)return null;const value=JSON.parse(raw) as Partial<ProjectCreateRecheck>,draft=value.draft as Partial<ProjectFormInput>|undefined;return typeof draft?.name==='string'&&typeof draft.status==='string'&&typeof draft.plannedStart==='string'&&typeof draft.plannedEnd==='string'&&typeof draft.defaultTemplateId==='string'&&Array.isArray(value.baselineIds)&&value.baselineIds.every(id=>typeof id==='string')?value as ProjectCreateRecheck:null;}catch{return null;}
+}
+export function persistProjectCreateRecheck(accountKey:string,value:ProjectCreateRecheck|null){try{const key=projectCreateRecheckKey(accountKey);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前页面仍保留核对锁。 */}}
 
-type RequirementFormInput = {
+export type RequirementFormInput = {
   groupId?:string|null;
   projectId: string;
   templateId?: string;
@@ -35,12 +41,22 @@ type RequirementFormInput = {
   plannedStart?: string;
   plannedEnd?: string;
 };
+export type RequirementCreateRecheck={draft:RequirementFormInput;baselineIds:string[]};
+function requirementCreateRecheckKey(accountKey:string,projectId:string){return `project-manage:requirement-create-recheck:${accountKey}:${projectId}`;}
+export function readRequirementCreateRecheck(accountKey:string,projectId:string):RequirementCreateRecheck|null{
+  try{const raw=sessionStorage.getItem(requirementCreateRecheckKey(accountKey,projectId));if(!raw)return null;const value=JSON.parse(raw) as Partial<RequirementCreateRecheck>,draft=value.draft as Partial<RequirementFormInput>|undefined;return draft?.projectId===projectId&&typeof draft.title==='string'&&typeof draft.ownerId==='string'&&typeof draft.background==='string'&&typeof draft.acceptanceCriteria==='string'&&typeof draft.referenceUrl==='string'&&Array.isArray(value.baselineIds)&&value.baselineIds.every(id=>typeof id==='string')?value as RequirementCreateRecheck:null;}catch{return null;}
+}
+export function persistRequirementCreateRecheck(accountKey:string,projectId:string,value:RequirementCreateRecheck|null){try{const key=requirementCreateRecheckKey(accountKey,projectId);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前页面仍保留核对锁。 */}}
 
 export function ProjectForm({
   project,
+  createRecheck=null,
+  onCreateRecheckChange,
   onClose,
 }: {
   project?: Project;
+  createRecheck?:ProjectCreateRecheck|null;
+  onCreateRecheckChange?:(value:ProjectCreateRecheck|null)=>void;
   onClose: () => void;
 }) {
   const client = useQueryClient();
@@ -49,13 +65,16 @@ export function ProjectForm({
   const submitting = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const initialProjectIds = useRef(new Set(projects.map((item) => item.id)));
+  const initialProjectIds = useRef(new Set(createRecheck?.baselineIds||projects.map((item) => item.id)));
   const [baseProject, setBaseProject] = useState(project);
-  const [name, setName] = useState(project?.name || "");
-  const [status, setStatus] = useState(project?.status || "active");
-  const [plannedStart, setPlannedStart] = useState(project?.plannedStart || "");
-  const [plannedEnd, setPlannedEnd] = useState(project?.plannedEnd || "");
-  const [defaultTemplateId, setDefaultTemplateId] = useState(project?.defaultTemplateId || "");
+  const createUnknown=!baseProject&&Boolean(createRecheck);
+  const [checkingCreate,setCheckingCreate]=useState(false),[createCheckError,setCreateCheckError]=useState('');
+  const initial=project||createRecheck?.draft;
+  const [name, setName] = useState(initial?.name || "");
+  const [status, setStatus] = useState(initial?.status || "active");
+  const [plannedStart, setPlannedStart] = useState(initial?.plannedStart || "");
+  const [plannedEnd, setPlannedEnd] = useState(initial?.plannedEnd || "");
+  const [defaultTemplateId, setDefaultTemplateId] = useState(initial?.defaultTemplateId || "");
   const changed = Boolean(project && baseProject && project.updatedAt !== baseProject.updatedAt);
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, project?.id || "new"],
@@ -71,11 +90,14 @@ export function ProjectForm({
         method: baseProject ? "PATCH" : "POST",
         body: jsonBody(data),
       }),
+    onMutate:data=>{if(!baseProject)onCreateRecheckChange?.({draft:data,baselineIds:createRecheck?.baselineIds||[...initialProjectIds.current]});},
     onSuccess: () => {
+      if(!baseProject)onCreateRecheckChange?.(null);
       invalidateProjectViews(client);
       onClose();
     },
     onError: async (error, input) => {
+      if(!baseProject&&!isWriteOutcomeUnknown(error))onCreateRecheckChange?.(null);
       if (!requiresWriteRecheck(error)) return;
       try {
         const latest = await api<Project[]>("/api/projects", { readOnly: true });
@@ -92,6 +114,7 @@ export function ProjectForm({
           if (created.length === 1) saved = created[0];
         }
         if (saved && mounted.current) {
+          if(!baseProject)onCreateRecheckChange?.(null);
           invalidateProjectViews(client);
           toast.success(baseProject ? "已核对最新状态：项目设置已保存" : "已核对最新状态：项目已创建");
           onClose();
@@ -102,6 +125,7 @@ export function ProjectForm({
     },
     onSettled: () => { submitting.current = false; },
   });
+  const checkCreatedProject=async()=>{if(!createRecheck||checkingCreate)return;setCheckingCreate(true);setCreateCheckError('');try{const latest=await api<Project[]>('/api/projects',{readOnly:true});client.setQueryData(keys.projects,latest);const baseline=new Set(createRecheck.baselineIds),draft=createRecheck.draft,created=latest.filter(item=>!baseline.has(item.id)&&item.name===canonicalizeLabel(draft.name)&&item.status===draft.status&&item.plannedStart===(draft.plannedStart||null)&&item.plannedEnd===(draft.plannedEnd||null)&&!item.isSample);if(created.length===1){onCreateRecheckChange?.(null);invalidateProjectViews(client);toast.success('已核对最新状态：项目已创建');onClose();return;}if(created.length===0){onCreateRecheckChange?.(null);mutation.reset();setCreateCheckError('未发现本次新增项目，已恢复原输入，可以重新提交。');return;}setCreateCheckError('发现多个可能的新项目，暂不解除锁定，请核对项目中心和操作记录。');}catch(error){setCreateCheckError(error instanceof Error?error.message:'项目列表读取失败');}finally{setCheckingCreate(false);}};
   return (
     <Modal title={project ? "编辑项目" : "新建项目"} closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
     {!templatesReady && templatesQuery.error ? <EmptyState title="项目配置加载失败" detail={templatesQuery.error.message || "暂时无法读取默认流程，请稍后重试。"} action={<button type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</button>} />
@@ -113,7 +137,7 @@ export function ProjectForm({
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        if (submitting.current || changed || selectedTemplateUnavailable) return;
+        if (submitting.current || createUnknown || changed || selectedTemplateUnavailable) return;
         submitting.current = true;
         mutation.mutate({ name, status, plannedStart, plannedEnd, defaultTemplateId, ...(baseProject ? { expectedUpdatedAt: baseProject.updatedAt } : {}) });
       }}
@@ -142,7 +166,10 @@ export function ProjectForm({
       </FormField>
       {selectedTemplateUnavailable && <FormError>所选默认流程已不可用，请重新选择。</FormError>}
       <FormError>{mutation.error?.message}</FormError>
-      <FormSubmitActions submitLabel={project ? "保存修改" : "创建项目"} pending={mutation.isPending} disabled={changed || selectedTemplateUnavailable} onCancel={onClose} />
+      {createUnknown&&<FormError>创建结果待核对。本页面不会重复创建，请读取最新项目。</FormError>}
+      {createCheckError&&<FormError>{createCheckError}</FormError>}
+      {createUnknown&&<div className="field-full"><button type="button" className="ghost-button" disabled={checkingCreate} onClick={()=>void checkCreatedProject()}>{checkingCreate?'读取中…':'读取最新项目并继续'}</button></div>}
+      <FormSubmitActions submitLabel={project ? "保存修改" : "创建项目"} pending={mutation.isPending} disabled={createUnknown || checkingCreate || changed || selectedTemplateUnavailable} onCancel={onClose} />
       </fieldset>
     </form>
     </>}
@@ -152,18 +179,27 @@ export function ProjectForm({
 
 export function RequirementForm({
   projectId,
+  initialRequirementIds,
+  recheck,
+  onRecheckChange,
   onClose,
 }: {
   projectId: string;
+  initialRequirementIds:string[];
+  recheck:RequirementCreateRecheck|null;
+  onRecheckChange:(value:RequirementCreateRecheck|null)=>void;
   onClose: () => void;
 }) {
   const client = useQueryClient();
+  const toast=useToast();
   const submitting = useRef(false);
-  const [unknown,setUnknown]=useState(false);
-  const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">("start");
-  const [scheduleDate, setScheduleDate] = useState("");
-  const [ownerId, setOwnerId] = useState("");
-  const [templateId, setTemplateId] = useState("");
+  const initial=recheck?.draft;
+  const unknown=Boolean(recheck);
+  const [checking,setChecking]=useState(false),[checkError,setCheckError]=useState('');
+  const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">(initial?.plannedEnd&&!initial.plannedStart?"deadline":"start");
+  const [scheduleDate, setScheduleDate] = useState(initial?.plannedEnd||initial?.plannedStart||"");
+  const [title,setTitle]=useState(initial?.title||''),[groupId,setGroupId]=useState(initial?.groupId||''),[ownerId, setOwnerId] = useState(initial?.ownerId||""),[templateId, setTemplateId] = useState(initial?.templateId||"");
+  const [background,setBackground]=useState(initial?.background||''),[acceptanceCriteria,setAcceptanceCriteria]=useState(initial?.acceptanceCriteria||''),[referenceUrl,setReferenceUrl]=useState(initial?.referenceUrl||'');
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, projectId],
     queryFn: ({ signal }) => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(projectId)}`, { signal }),
@@ -178,13 +214,17 @@ export function RequirementForm({
   const people = peopleQuery.data || [];
   const mutation = useMutation({
     mutationFn: (data: RequirementFormInput) => api<Requirement>("/api/requirements", { method: "POST", body: jsonBody(data) }),
+    onMutate:data=>onRecheckChange({draft:data,baselineIds:recheck?.baselineIds||initialRequirementIds}),
     onSuccess: () => {
+      onRecheckChange(null);
       invalidateRequirementViews(client);
       onClose();
     },
-    onError: error=>{if(isWriteOutcomeUnknown(error))setUnknown(true);},
+    onError: error=>{if(!isWriteOutcomeUnknown(error))onRecheckChange(null);},
     onSettled: () => { submitting.current = false; },
   });
+  const matchesDraft=(item:Requirement,draft:RequirementFormInput)=>item.projectId===projectId&&item.title===canonicalizeLabel(draft.title)&&item.ownerId===(draft.ownerId||null)&&item.background===(draft.background.trim()||null)&&item.acceptanceCriteria===(draft.acceptanceCriteria.trim()||null)&&item.referenceUrl===(draft.referenceUrl.trim()||null)&&(item.groupId||null)===(draft.groupId||null)&&(!draft.templateId||item.templateId===draft.templateId)&&(!draft.plannedStart||item.plannedStart===draft.plannedStart)&&(!draft.plannedEnd||item.plannedEnd===draft.plannedEnd);
+  const checkLatest=async()=>{if(!recheck||checking)return;setChecking(true);setCheckError('');try{const latest=await api<Requirement[]>(`/api/requirements?projectId=${encodeURIComponent(projectId)}`,{readOnly:true});client.setQueryData([...keys.requirements,projectId],latest);const baseline=new Set(recheck.baselineIds),created=latest.filter(item=>!baseline.has(item.id)&&matchesDraft(item,recheck.draft));if(created.length===1){onRecheckChange(null);invalidateRequirementViews(client,created[0].id);toast.success('已核对最新状态：需求已创建');onClose();return;}if(created.length===0){onRecheckChange(null);mutation.reset();setCheckError('未发现本次新增需求，已恢复原输入，可以重新提交。');return;}setCheckError('发现多个可能的新需求，暂不解除锁定，请核对需求列表和操作记录。');}catch(error){setCheckError(error instanceof Error?error.message:'需求列表读取失败');}finally{setChecking(false);}};
   return (
     <Modal title="新建需求" closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
     <form
@@ -192,15 +232,14 @@ export function RequirementForm({
         event.preventDefault();
         if (submitting.current||unknown) return;
         submitting.current = true;
-        const values = Object.fromEntries(new FormData(event.currentTarget));
-        mutation.mutate({ ...values,title:String(values.title||''),ownerId,background:String(values.background||''),acceptanceCriteria:String(values.acceptanceCriteria||''),referenceUrl:String(values.referenceUrl||''),groupId:String(values.groupId||'')||null, templateId:templateId||undefined, projectId } as RequirementFormInput);
+        mutation.mutate({title,ownerId,background,acceptanceCriteria,referenceUrl,groupId:groupId||null,templateId:templateId||undefined,projectId,...(scheduleDate?(scheduleMode==='start'?{plannedStart:scheduleDate}:{plannedEnd:scheduleDate}):{})});
       }}
     >
       <fieldset className="form-grid form-fieldset" disabled={mutation.isPending}>
       <FormField label="需求标题" full>
-        <input name="title" required autoFocus />
+        <input name="title" value={title} onChange={event=>setTitle(event.target.value)} required autoFocus />
       </FormField>
-      <OrganizationFields projectId={projectId}/>
+      <OrganizationFields projectId={projectId} groupId={groupId} onChange={(_,value)=>setGroupId(value)}/>
       <FormField label="需求负责人（可稍后指定）">
         <select name="ownerId" value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
           <option value="">待指定</option>
@@ -249,13 +288,15 @@ export function RequirementForm({
       </FormDisclosure>
       {(templatesQuery.error || peopleQuery.error) && <div className="warning-banner field-full">部分辅助选项加载失败，仍可创建直接执行需求并稍后补充。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching || peopleQuery.isFetching} onClick={() => void Promise.all([templatesQuery.refetch(), peopleQuery.refetch()])}>重新加载</button></div>}
       <FormDisclosure label="补充信息" hint="可选：背景、完成标准和参考链接">
-        <FormField label="需求背景" full><textarea name="background" rows={3} placeholder="为什么要做，可留空" /></FormField>
-        <FormField label="完成标准" full><textarea name="acceptanceCriteria" rows={3} placeholder="如何判断完成，可留空" /></FormField>
-        <FormField label="参考链接" full><input name="referenceUrl" type="url" placeholder="https://…" /></FormField>
+        <FormField label="需求背景" full><textarea name="background" rows={3} value={background} onChange={event=>setBackground(event.target.value)} placeholder="为什么要做，可留空" /></FormField>
+        <FormField label="完成标准" full><textarea name="acceptanceCriteria" rows={3} value={acceptanceCriteria} onChange={event=>setAcceptanceCriteria(event.target.value)} placeholder="如何判断完成，可留空" /></FormField>
+        <FormField label="参考链接" full><input name="referenceUrl" type="url" value={referenceUrl} onChange={event=>setReferenceUrl(event.target.value)} placeholder="https://…" /></FormField>
       </FormDisclosure>
       <FormError>{mutation.error?.message}</FormError>
-      {unknown&&<FormError>创建结果待核对，输入已保留。请检查需求列表和操作记录，本窗口不会重复创建。</FormError>}
-      <FormSubmitActions disabled={unknown} submitLabel="创建需求" pending={mutation.isPending} onCancel={onClose} />
+      {unknown&&<FormError>创建结果待核对，输入已保留。本页面不会重复创建，请读取最新需求。</FormError>}
+      {checkError&&<FormError>{checkError}</FormError>}
+      {unknown&&<div className="field-full"><button type="button" className="ghost-button" disabled={checking} onClick={()=>void checkLatest()}>{checking?'读取中…':'读取最新需求并继续'}</button></div>}
+      <FormSubmitActions disabled={unknown||checking} submitLabel="创建需求" pending={mutation.isPending} onCancel={onClose} />
       </fieldset>
     </form>
     </Modal>

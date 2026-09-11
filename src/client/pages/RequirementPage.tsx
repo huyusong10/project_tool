@@ -27,7 +27,24 @@ import { GapTimeline } from "../components/GapTimeline";
 import { Chart } from "../components/Chart";
 import { EmptyState, LoadingState, RefreshNotice } from "../components/Feedback";
 import { PageHeader } from "../components/PageHeader";
-import { PlanForm, RequirementCorrectionForm, RequirementInfoForm, RequirementScheduleForm } from "../components/RequirementForms";
+import {
+  persistRequirementCorrectionRecheck,
+  persistRequirementInfoRecheck,
+  persistRequirementPlanRecheck,
+  persistRequirementScheduleRecheck,
+  PlanForm,
+  readRequirementCorrectionRecheck,
+  readRequirementInfoRecheck,
+  readRequirementPlanRecheck,
+  readRequirementScheduleRecheck,
+  RequirementCorrectionForm,
+  RequirementInfoForm,
+  RequirementScheduleForm,
+  type RequirementCorrectionRecheck,
+  type RequirementInfoRecheck,
+  type RequirementPlanRecheck,
+  type RequirementScheduleRecheck,
+} from "../components/RequirementForms";
 import { ProgressForm, type ProgressScope } from "../components/ProgressForm";
 import { ResizablePanel } from "../components/ResizablePanel";
 import { AnchoredPopover } from "../components/InlineEdit";
@@ -35,10 +52,22 @@ import { WorkItemActions } from "../components/WorkItemActions";
 import { WorkItemSettingsDialog } from "../components/WorkItemSettingsDialog";
 import { canManageProject } from "../permissions";
 import { dailyProgressTrend, progressHistoryMetadata } from "../progress-trend";
-import { RequirementCommandDialog, type RequirementCommand } from "../components/RequirementCommandDialog";
+import {
+  persistRequirementCommandRecheck,
+  readRequirementCommandRecheck,
+  RequirementCommandDialog,
+  type RequirementCommand,
+  type RequirementCommandRecheck,
+} from "../components/RequirementCommandDialog";
 import {readDraftRecord} from '../graph-draft-storage';
 import type {DependencyChanges} from '../../shared/path-contracts';
 import { PathAnalysisPanel,type PathRequirementContext } from "../components/PathAnalysisPanel";
+import {
+  persistWorkItemActionRecheck,
+  persistWorkItemSettingsRecheck,
+  readWorkItemActionRechecks,
+  readWorkItemSettingsRechecks,
+} from "../work-item-write-rechecks";
 
 const emptyPeople: Person[] = [];
 const emptyTemplates: WorkItemTemplate[] = [];
@@ -54,13 +83,42 @@ function SavedRequirementPage() {
   const pathView = searchParams.get('view') === 'path';
   const client = useQueryClient();
   const { session } = useSession();
+  const actionRecheckAccountKey = session.accountId || session.username || "guest";
   const { projects, syncProjectContext } = useProjects();
   const [modal, setModal] = useState<
     "info" | "correction" | "schedule" | "progress" | "template" | null
   >(null);
   const [progressItemId, setProgressItemId] = useState<string | null>(null);
   const [workEditorOpen, setWorkEditorOpen] = useState(false);
+  const [workEditorNeedsRecheck, setWorkEditorNeedsRecheck] = useState(() => readWorkItemSettingsRechecks(actionRecheckAccountKey).has(id));
+  const [workEditorRechecking, setWorkEditorRechecking] = useState(false);
+  const [workItemActionRechecks, setWorkItemActionRechecks] = useState<Set<string>>(() => readWorkItemActionRechecks(actionRecheckAccountKey));
+  const [infoRecheck, setInfoRecheckState] = useState<RequirementInfoRecheck | null>(() => readRequirementInfoRecheck(actionRecheckAccountKey, id));
+  const setInfoRecheck = (value: RequirementInfoRecheck | null) => {
+    persistRequirementInfoRecheck(actionRecheckAccountKey, id, value);
+    setInfoRecheckState(value);
+  };
+  const [scheduleRecheck, setScheduleRecheckState] = useState<RequirementScheduleRecheck | null>(() => readRequirementScheduleRecheck(actionRecheckAccountKey, id));
+  const setScheduleRecheck = (value: RequirementScheduleRecheck | null) => {
+    persistRequirementScheduleRecheck(actionRecheckAccountKey, id, value);
+    setScheduleRecheckState(value);
+  };
+  const [planRecheck, setPlanRecheckState] = useState<RequirementPlanRecheck | null>(() => readRequirementPlanRecheck(actionRecheckAccountKey, id));
+  const setPlanRecheck = (value: RequirementPlanRecheck | null) => {
+    persistRequirementPlanRecheck(actionRecheckAccountKey, id, value);
+    setPlanRecheckState(value);
+  };
+  const [correctionRecheck, setCorrectionRecheckState] = useState<RequirementCorrectionRecheck | null>(() => readRequirementCorrectionRecheck(actionRecheckAccountKey, id));
+  const setCorrectionRecheck = (value: RequirementCorrectionRecheck | null) => {
+    persistRequirementCorrectionRecheck(actionRecheckAccountKey, id, value);
+    setCorrectionRecheckState(value);
+  };
   const [command, setCommand] = useState<RequirementCommand | null>(null);
+  const [commandRecheck, setCommandRecheckState] = useState<RequirementCommandRecheck | null>(() => readRequirementCommandRecheck(actionRecheckAccountKey, id));
+  const setCommandRecheck = (value: RequirementCommandRecheck | null) => {
+    persistRequirementCommandRecheck(actionRecheckAccountKey, id, value);
+    setCommandRecheckState(value);
+  };
   const actionAnchor = useRef<HTMLDivElement>(null);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const {
@@ -93,6 +151,19 @@ function SavedRequirementPage() {
     setActionMenuOpen(false);
   }, [error, unavailable,session.accountId]);
   useEffect(() => {
+    setWorkEditorNeedsRecheck(readWorkItemSettingsRechecks(actionRecheckAccountKey).has(id));
+    setWorkEditorRechecking(false);
+    setWorkItemActionRechecks(readWorkItemActionRechecks(actionRecheckAccountKey));
+    setInfoRecheckState(readRequirementInfoRecheck(actionRecheckAccountKey, id));
+    setScheduleRecheckState(readRequirementScheduleRecheck(actionRecheckAccountKey, id));
+    setPlanRecheckState(readRequirementPlanRecheck(actionRecheckAccountKey, id));
+    setCorrectionRecheckState(readRequirementCorrectionRecheck(actionRecheckAccountKey, id));
+    setCommandRecheckState(readRequirementCommandRecheck(actionRecheckAccountKey, id));
+  }, [actionRecheckAccountKey, id]);
+  const setWorkItemActionRecheck = (workItemId: string, required: boolean) => {
+    setWorkItemActionRechecks(persistWorkItemActionRecheck(actionRecheckAccountKey, workItemId, required));
+  };
+  useEffect(() => {
     if (!requirement?.projectId) return;
     if (projects.some((project) => project.id === requirement.projectId))
       syncProjectContext(requirement.projectId);
@@ -109,6 +180,21 @@ function SavedRequirementPage() {
   });
   const templates = templatesQuery.data || emptyTemplates;
   const people = peopleQuery.data || emptyPeople;
+  const recheckWorkEditor = async () => {
+    if (workEditorRechecking) return;
+    setWorkEditorRechecking(true);
+    try {
+      const result = await refetch({ throwOnError: true });
+      if (result.data) {
+        persistWorkItemSettingsRecheck(actionRecheckAccountKey, id, false);
+        setWorkEditorNeedsRecheck(false);
+      }
+    } catch {
+      // 保留查询错误与写入锁，直到需求能够再次读取。
+    } finally {
+      setWorkEditorRechecking(false);
+    }
+  };
   const itemAction = useMutation({
     mutationFn: async ({ item, action, content, expectedDependencyRevision, expectedVersion = item.version }: { item: WorkItem; expectedDependencyRevision?:number; action: string; content?: string; expectedVersion?: number }) => {
       await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId,{workItemId:item.id,action});return api(`/api/work-items/${item.id}/${action}`, {
@@ -245,16 +331,16 @@ function SavedRequirementPage() {
         onBack={goBack}
         actions={canManage ? (
           <>
-            {canManage && !requirementInfoLocked && <button className="ghost-button" disabled={!peopleReady} onClick={() => setModal("info")}>
+            {canManage && !requirementInfoLocked && <button className="ghost-button" disabled={!peopleReady || Boolean(infoRecheck)} onClick={() => { if (!infoRecheck) setModal("info"); }}>
               <Edit3 size={15} />
               编辑信息
             </button>}
-            {canManage && !requirementLocked && <button className="ghost-button" onClick={() => setModal("schedule")}>
+            {canManage && !requirementLocked && <button className="ghost-button" disabled={Boolean(scheduleRecheck)} onClick={() => { if (!scheduleRecheck) setModal("schedule"); }}>
               <CalendarDays size={15} />
               调整计划
             </button>}
             {canManage && <div ref={actionAnchor}>
-              <button type="button" className="ghost-button" aria-label="需求操作" aria-expanded={actionMenuOpen} onClick={() => setActionMenuOpen((open) => !open)}><MoreHorizontal size={16} />操作</button>
+              <button type="button" className="ghost-button" aria-label="需求操作" aria-expanded={actionMenuOpen} disabled={Boolean(commandRecheck || correctionRecheck)} onClick={() => { if (!commandRecheck && !correctionRecheck) setActionMenuOpen((open) => !open); }}><MoreHorizontal size={16} />操作</button>
               <AnchoredPopover anchorRef={actionAnchor} open={actionMenuOpen} onOutside={() => setActionMenuOpen(false)} width={230} className="action-menu">
                 {requirement.executionMode!=='direct'&&!['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status) && <button type="button" onClick={() => { setActionMenuOpen(false); setCommand('complete-as-planned'); }}><Check size={15} />按期完成（历史补录）</button>}
                 {!['completed', 'cancelled'].includes(requirement.status) && <button type="button" className="danger" onClick={() => { setActionMenuOpen(false); setCommand('cancel'); }}><CircleStop size={15} />取消需求</button>}
@@ -267,6 +353,12 @@ function SavedRequirementPage() {
       />
       <div className="page-content requirement-page">
         {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
+        {infoRecheck && <div className="warning-banner" role="alert">需求信息修改结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" disabled={!peopleReady} onClick={() => setModal("info")}>核对信息修改</button></div>}
+        {scheduleRecheck && <div className="warning-banner" role="alert">需求计划调整结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" onClick={() => setModal("schedule")}>核对计划调整</button></div>}
+        {planRecheck && <div className="warning-banner" role="alert">补全计划结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" disabled={templatesQuery.data === undefined} onClick={() => setModal("template")}>核对补全计划</button></div>}
+        {correctionRecheck && <div className="warning-banner" role="alert">需求受控纠错结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" disabled={!peopleReady} onClick={() => setModal("correction")}>核对受控纠错</button></div>}
+        {commandRecheck && <div className="warning-banner" role="alert">{commandRecheck.action === 'cancel' ? '取消需求' : commandRecheck.action === 'archive' ? '归档需求' : '按期完成'}结果待核对，原需求版本已锁定。<button type="button" className="ghost-button" onClick={() => setCommand(commandRecheck.action)}>核对需求操作</button></div>}
+        {workEditorNeedsRecheck && <div className="warning-banner" role="alert">工作项设置结果待核对，设置操作暂不可用。<button type="button" className="ghost-button" disabled={workEditorRechecking} onClick={() => void recheckWorkEditor()}>{workEditorRechecking ? "读取中…" : "重新读取需求"}</button></div>}
         {supportingError && <div className="warning-banner">{supportingDataReady ? "人员与流程数据刷新失败，当前使用上次成功结果。" : "人员或流程数据加载失败，相关编辑操作暂不可用。"}<button className="ghost-button" disabled={peopleQuery.isFetching || templatesQuery.isFetching} onClick={() => void Promise.all([peopleQuery.refetch(), templatesQuery.refetch()])}>重新加载</button></div>}
         <RequirementOverview key={requirement.id} requirement={requirement}/>
       <ResizablePanel
@@ -285,7 +377,8 @@ function SavedRequirementPage() {
               <button
                 className="ghost-button"
                 aria-haspopup="dialog"
-                onClick={() => setWorkEditorOpen(true)}
+                disabled={workEditorNeedsRecheck || Boolean(planRecheck)}
+                onClick={() => { if (!workEditorNeedsRecheck && !planRecheck) setWorkEditorOpen(true); }}
               >
                 <Edit3 size={15} />
                 工作项设置
@@ -325,6 +418,8 @@ function SavedRequirementPage() {
                 correctionCandidates={(requirement.progressUpdates || []).filter((update) => update.workItemId === item.id)}
                 canManage={canManage || isRequirementOwner}
                 stateChangesDisabled={requirement.status === "cancelled"}
+                writeNeedsRecheck={workItemActionRechecks.has(item.id)}
+                onWriteNeedsRecheckChange={(required) => setWorkItemActionRecheck(item.id, required)}
               />
             : <span className={`work-action-state is-readonly status-${item.status}`}>
                 {requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}
@@ -341,6 +436,10 @@ function SavedRequirementPage() {
           onOpenPlan={() => {
             setWorkEditorOpen(false);
             setModal("template");
+          }}
+          onWriteNeedsRecheck={() => {
+            persistWorkItemSettingsRecheck(actionRecheckAccountKey, id, true);
+            setWorkEditorNeedsRecheck(true);
           }}
           onReload={async () => {
             const result = await refetch({ throwOnError: true });
@@ -378,13 +477,13 @@ function SavedRequirementPage() {
         </article>
       </section>
       {modal === "info" && (
-        <RequirementInfoForm requirement={requirement} people={people} onClose={() => setModal(null)} />
+        <RequirementInfoForm requirement={requirement} people={people} recheck={infoRecheck} onRecheckChange={setInfoRecheck} onClose={() => setModal(null)} />
       )}
       {modal === "correction" && (
-        <RequirementCorrectionForm requirement={requirement} people={people} onClose={() => setModal(null)} />
+        <RequirementCorrectionForm requirement={requirement} people={people} recheck={correctionRecheck} onRecheckChange={setCorrectionRecheck} onClose={() => setModal(null)} />
       )}
       {modal === "schedule" && (
-        <RequirementScheduleForm key={requirement.id} requirement={requirement} onClose={() => setModal(null)} />
+        <RequirementScheduleForm key={requirement.id} requirement={requirement} recheck={scheduleRecheck} onRecheckChange={setScheduleRecheck} onClose={() => setModal(null)} />
       )}
       {modal === "progress" && progressItemId && (
         <ProgressForm
@@ -403,9 +502,9 @@ function SavedRequirementPage() {
         />
       )}
       {modal === "template" && (
-        <PlanForm key={requirement.id} requirement={requirement} templates={templates} onClose={() => setModal(null)} />
+        <PlanForm key={requirement.id} requirement={requirement} templates={templates} recheck={planRecheck} onRecheckChange={setPlanRecheck} onClose={() => setModal(null)} />
       )}
-      {command && <RequirementCommandDialog key={`${id}:${command}`} action={command} requirement={requirement} onClose={() => setCommand(null)} onArchived={() => navigate('/')} onReload={async () => {
+      {command && <RequirementCommandDialog key={`${id}:${command}`} action={command} requirement={requirement} recheck={commandRecheck} onRecheckChange={setCommandRecheck} onClose={() => setCommand(null)} onArchived={() => navigate('/')} onReload={async () => {
         const latest = await refetch({ throwOnError: true });
         if (!latest.data) throw new Error('需求已无法读取，请关闭操作窗口。');
         return latest.data;

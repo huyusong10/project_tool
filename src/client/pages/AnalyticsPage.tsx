@@ -34,6 +34,45 @@ function cloneLayout(layout: AnalyticsLayout): AnalyticsLayout {
   return JSON.parse(JSON.stringify(layout)) as AnalyticsLayout;
 }
 
+type AnalyticsLayoutRecheck = {
+  action: "save" | "reset";
+  draft: AnalyticsLayout;
+  expectedUpdatedAt: string | null;
+};
+
+function analyticsLayoutRecheckKey(accountKey: string) {
+  return `project-manage:analytics-layout-recheck:${accountKey}`;
+}
+
+function validStoredLayout(value: unknown): value is AnalyticsLayout {
+  if (!value || typeof value !== "object") return false;
+  const layout = value as Partial<AnalyticsLayout>;
+  return layout.version === 1 && Array.isArray(layout.panels) && layout.panels.length > 0 && layout.panels.length <= 24
+    && layout.panels.every((panel) => panel && typeof panel === "object"
+      && typeof panel.id === "string" && typeof panel.title === "string" && typeof panel.dataset === "string"
+      && typeof panel.measure === "string" && typeof panel.visualization === "string"
+      && typeof panel.size === "string" && typeof panel.timeScope === "string");
+}
+
+function readAnalyticsLayoutRecheck(accountKey: string): AnalyticsLayoutRecheck | null {
+  try {
+    const raw = sessionStorage.getItem(analyticsLayoutRecheckKey(accountKey));
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<AnalyticsLayoutRecheck>;
+    if (value.action !== "save" && value.action !== "reset" || !validStoredLayout(value.draft)
+      || value.expectedUpdatedAt !== null && typeof value.expectedUpdatedAt !== "string") return null;
+    return { action: value.action, draft: cloneLayout(value.draft), expectedUpdatedAt: value.expectedUpdatedAt };
+  } catch { return null; }
+}
+
+function persistAnalyticsLayoutRecheck(accountKey: string, value: AnalyticsLayoutRecheck | null) {
+  try {
+    const key = analyticsLayoutRecheckKey(accountKey);
+    if (value) sessionStorage.setItem(key, JSON.stringify(value));
+    else sessionStorage.removeItem(key);
+  } catch { /* 当前页面仍保留核对锁。 */ }
+}
+
 function valueLabel(value: number | null, unit: AnalyticsPanelResult["unit"]) {
   if (value === null) return "—";
   if (unit === "percent") return `${value}%`;
@@ -212,11 +251,14 @@ export function AnalyticsPage() {
   const preset = (['30','90','180','project','custom'].includes(viewParams.get('range') || '') ? viewParams.get('range') : '90') as RangePreset;
   const customFrom = viewParams.get('from') ?? addCalendarDays(businessToday, -89);
   const customTo = viewParams.get('to') ?? businessToday;
+  const layoutScope = session.accountId || session.username || "guest";
+  const initialLayoutRecheck = readAnalyticsLayoutRecheck(layoutScope);
   const setPreset = (value: RangePreset) => setViewParams(current => { const next = new URLSearchParams(current); next.set('range', value); return next; });
   const setCustomFrom = (value: string) => setViewParams(current => { const next = new URLSearchParams(current); next.set('from', value); next.set('to', customTo); return next; });
   const setCustomTo = (value: string) => setViewParams(current => { const next = new URLSearchParams(current); next.set('from', customFrom); next.set('to', value); return next; });
-  const [draft, setDraft] = useState<AnalyticsLayout | null>(null);
-  const [editingUpdatedAt, setEditingUpdatedAt] = useState<string | null>(null);
+  const [layoutRecheck, setLayoutRecheckState] = useState<AnalyticsLayoutRecheck | null>(initialLayoutRecheck);
+  const [draft, setDraft] = useState<AnalyticsLayout | null>(() => initialLayoutRecheck ? cloneLayout(initialLayoutRecheck.draft) : null);
+  const [editingUpdatedAt, setEditingUpdatedAt] = useState<string | null>(initialLayoutRecheck?.expectedUpdatedAt ?? null);
   const [editingPanel, setEditingPanel] = useState<AnalyticsPanelConfig | null>(null);
   const [resetConfirm, setResetConfirm] = useState(false);
   const project = projects.find((item) => item.id === selectedProjectId);
@@ -227,11 +269,22 @@ export function AnalyticsPage() {
     return { from: addCalendarDays(businessToday, -(days - 1)), to: businessToday };
   }, [businessToday, customFrom, customTo, preset, project?.plannedEnd, project?.plannedStart]);
   const catalogQuery = useQuery({ queryKey: keys.analyticsCatalog, queryFn: ({ signal }) => api<AnalyticsCatalog>("/api/analytics/catalog", { signal }) });
-  const layoutQuery = useQuery({ queryKey: [...keys.analyticsLayout, session.accountId || "guest"], queryFn: ({ signal }) => api<AnalyticsLayoutResponse>("/api/analytics/layout", { signal }) });
+  const layoutQuery = useQuery({ queryKey: [...keys.analyticsLayout, layoutScope], queryFn: ({ signal }) => api<AnalyticsLayoutResponse>("/api/analytics/layout", { signal }) });
   const catalog = catalogQuery.data || fallbackCatalog;
   const savedLayout = layoutQuery.data?.layout || defaultAnalyticsLayout;
   const activeLayout = draft || savedLayout;
-  useEffect(() => { setDraft(null); setEditingUpdatedAt(null); }, [session.accountId]);
+  const setLayoutRecheck = (value: AnalyticsLayoutRecheck | null) => {
+    persistAnalyticsLayoutRecheck(layoutScope, value);
+    setLayoutRecheckState(value);
+  };
+  useEffect(() => {
+    const restored = readAnalyticsLayoutRecheck(layoutScope);
+    setLayoutRecheckState(restored);
+    setDraft(restored ? cloneLayout(restored.draft) : null);
+    setEditingUpdatedAt(restored?.expectedUpdatedAt ?? null);
+    setEditingPanel(null);
+    setResetConfirm(false);
+  }, [layoutScope]);
   const dataQuery = useQuery({
     queryKey: [...keys.analyticsData, selectedProjectId, range, activeLayout],
     queryFn: ({ signal }) => api<AnalyticsQueryResponse>("/api/analytics/query", { signal, method: "POST", readOnly: true, body: jsonBody({ projectId: selectedProjectId, range, panels: activeLayout.panels }) }),
@@ -244,17 +297,20 @@ export function AnalyticsPage() {
     mutationFn: ({ layout, expectedUpdatedAt }: { layout: AnalyticsLayout; expectedUpdatedAt: string | null }) => api<AnalyticsLayoutResponse>("/api/analytics/layout", {
       method: "PUT", body: jsonBody({ ...layout, expectedUpdatedAt }),
     }),
+    onMutate: (input) => setLayoutRecheck({ action: "save", draft: cloneLayout(input.layout), expectedUpdatedAt: input.expectedUpdatedAt }),
     onSuccess: (result) => {
-      client.setQueryData([...keys.analyticsLayout, session.accountId || "guest"], result);
+      setLayoutRecheck(null);
+      client.setQueryData([...keys.analyticsLayout, layoutScope], result);
       setDraft(null); setEditingUpdatedAt(null);
     },
     onError: async (error, input) => {
-      if (!isWriteOutcomeUnknown(error)) return;
+      if (!isWriteOutcomeUnknown(error)) { setLayoutRecheck(null); return; }
       try {
         const latest = await api<AnalyticsLayoutResponse>("/api/analytics/layout", { readOnly: true });
-        client.setQueryData([...keys.analyticsLayout, session.accountId || "guest"], latest);
+        client.setQueryData([...keys.analyticsLayout, layoutScope], latest);
         if (latest.updatedAt !== input.expectedUpdatedAt
           && JSON.stringify(latest.layout) === JSON.stringify(input.layout)) {
+          setLayoutRecheck(null);
           saveLayout.reset();
           setDraft(null);
           setEditingUpdatedAt(null);
@@ -269,16 +325,19 @@ export function AnalyticsPage() {
     mutationFn: (expectedUpdatedAt: string | null) => api<AnalyticsLayoutResponse>("/api/analytics/layout", {
       method: "DELETE", body: jsonBody({ expectedUpdatedAt }),
     }),
+    onMutate: (expectedUpdatedAt) => setLayoutRecheck({ action: "reset", draft: cloneLayout(draft || savedLayout), expectedUpdatedAt }),
     onSuccess: (result) => {
-      client.setQueryData([...keys.analyticsLayout, session.accountId || "guest"], result);
+      setLayoutRecheck(null);
+      client.setQueryData([...keys.analyticsLayout, layoutScope], result);
       setResetConfirm(false); setDraft(null); setEditingUpdatedAt(null);
     },
     onError: async (error) => {
       if (isWriteOutcomeUnknown(error)) {
         try {
           const latest = await api<AnalyticsLayoutResponse>("/api/analytics/layout", { readOnly: true });
-          client.setQueryData([...keys.analyticsLayout, session.accountId || "guest"], latest);
+          client.setQueryData([...keys.analyticsLayout, layoutScope], latest);
           if (latest.source === "default" && latest.updatedAt === null) {
+            setLayoutRecheck(null);
             resetLayout.reset();
             setResetConfirm(false);
             setDraft(null);
@@ -288,11 +347,11 @@ export function AnalyticsPage() {
         } catch {
           // 保留原写入异常；读回失败不能据此判定个人布局已删除。
         }
-      }
+      } else setLayoutRecheck(null);
       if (requiresWriteRecheck(error)) setResetConfirm(false);
     },
   });
-  const layoutNeedsRecheck = [saveLayout.error, resetLayout.error].some((error) => requiresWriteRecheck(error));
+  const layoutNeedsRecheck = Boolean(layoutRecheck) || [saveLayout.error, resetLayout.error].some((error) => requiresWriteRecheck(error));
   const clearLayoutOperation = () => {
     saveLayout.reset();
     resetLayout.reset();
@@ -300,8 +359,18 @@ export function AnalyticsPage() {
   const readLatestLayout = async () => {
     const latest = await layoutQuery.refetch();
     if (latest.error || !latest.data) return;
-    setDraft(cloneLayout(latest.data.layout));
-    setEditingUpdatedAt(latest.data.updatedAt);
+    if ((layoutRecheck?.action === "save" && JSON.stringify(latest.data.layout) === JSON.stringify(layoutRecheck.draft))
+      || (layoutRecheck?.action === "reset" && latest.data.source === "default" && latest.data.updatedAt === null)) {
+      setDraft(null);
+      setEditingUpdatedAt(null);
+    } else if (layoutRecheck && latest.data.updatedAt === layoutRecheck.expectedUpdatedAt) {
+      setDraft(cloneLayout(layoutRecheck.draft));
+      setEditingUpdatedAt(latest.data.updatedAt);
+    } else {
+      setDraft(cloneLayout(latest.data.layout));
+      setEditingUpdatedAt(latest.data.updatedAt);
+    }
+    setLayoutRecheck(null);
     setResetConfirm(false);
     saveLayout.reset();
     resetLayout.reset();
@@ -309,7 +378,7 @@ export function AnalyticsPage() {
   const editingBusy = saveLock.busy || resetLayout.isPending;
   const editingBlocked = editingBusy || layoutNeedsRecheck;
   const beginEditing = () => {
-    if (!saveLock.canClose() || !catalogQuery.data || !layoutQuery.data) return;
+    if (!saveLock.canClose() || layoutRecheck || !catalogQuery.data || !layoutQuery.data) return;
     clearLayoutOperation();
     setDraft(cloneLayout(savedLayout));
     setEditingUpdatedAt(layoutQuery.data?.updatedAt || null);
@@ -330,8 +399,8 @@ export function AnalyticsPage() {
   if (!projects.length) return <><PageHeader title="统计分析" /><div className="page-content"><EmptyState title="暂无可分析项目" detail="创建项目后，这里会生成默认分析看板。" /></div></>;
   if (layoutQuery.isLoading && !layoutQuery.data) return <><PageHeader title="统计分析" /><div className="page-content"><LoadingState label="正在加载分析看板…" className="tall" /></div></>;
   return <>
-    <PageHeader title="统计分析" actions={!draft && layoutQuery.data?.canCustomize ? <button className="primary-button" disabled={!catalogQuery.data} onClick={beginEditing}><Settings2 size={15} />编辑看板</button> : draft ? <>
-      <button className="ghost-button" disabled={editingBusy} onClick={() => { if (saveLock.canClose()) { clearLayoutOperation(); setDraft(null); } }}><X size={15} />取消编辑</button>
+    <PageHeader title="统计分析" actions={!draft && layoutQuery.data?.canCustomize ? <button className="primary-button" disabled={!catalogQuery.data || Boolean(layoutRecheck)} onClick={beginEditing}><Settings2 size={15} />编辑看板</button> : draft ? <>
+      <button className="ghost-button" disabled={editingBlocked} onClick={() => { if (saveLock.canClose() && !layoutRecheck) { clearLayoutOperation(); setDraft(null); } }}><X size={15} />取消编辑</button>
       <button className="primary-button" onClick={() => saveLock.run(() => { clearLayoutOperation(); saveLayout.mutate({ layout: cloneLayout(draft), expectedUpdatedAt: editingUpdatedAt }); })} disabled={editingBlocked}><Save size={15} />保存布局</button>
     </> : null} />
     <div className="page-content analytics-page">
@@ -345,7 +414,8 @@ export function AnalyticsPage() {
       {layoutQuery.error && <div className="warning-banner">个人看板布局{layoutQuery.data ? "刷新失败，当前使用上次成功布局。" : "加载失败，当前显示系统默认布局且暂不可编辑。"}<button className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void layoutQuery.refetch()}>重新加载</button></div>}
       {catalogQuery.error && <div className="warning-banner">分析指标目录{catalogQuery.data ? "刷新失败，当前使用上次成功目录。" : "加载失败，当前可查看图表但暂不可编辑布局。"}<button className="ghost-button" disabled={catalogQuery.isFetching} onClick={() => void catalogQuery.refetch()}>重新加载</button></div>}
       {dataQuery.error && dataQuery.data && <div className="warning-banner">分析数据刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={dataQuery.isFetching} onClick={() => void dataQuery.refetch()}>重新加载</button></div>}
-      {(saveLayout.error || resetLayout.error) && <div className="analytics-layout-error"><p className="form-error">{saveLayout.error?.message || resetLayout.error?.message}</p>{layoutNeedsRecheck && <button type="button" className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void readLatestLayout()}>{layoutQuery.isFetching ? "读取中…" : "放弃草稿并读取最新布局"}</button>}</div>}
+      {layoutRecheck && <div className="warning-banner" role="alert">布局{layoutRecheck.action === "save" ? "保存" : "恢复默认"}结果待核对，原布局版本与草稿已锁定。<button type="button" className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void readLatestLayout()}>{layoutQuery.isFetching ? "读取中…" : "重新读取布局"}</button></div>}
+      {(saveLayout.error || resetLayout.error) && <div className="analytics-layout-error"><p className="form-error">{saveLayout.error?.message || resetLayout.error?.message}</p>{layoutNeedsRecheck && !layoutRecheck && <button type="button" className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void readLatestLayout()}>{layoutQuery.isFetching ? "读取中…" : "放弃草稿并读取最新布局"}</button>}</div>}
       {dataUnavailable ? <EmptyState title="分析数据加载失败" detail={dataQuery.error?.message || "暂时无法读取分析数据。"} action={<button className="ghost-button" disabled={dataQuery.isFetching} onClick={() => void dataQuery.refetch()}><RefreshCcw size={15} />重新加载</button>} /> : <section className={`analytics-grid${draft ? " is-editing" : ""}`}>
         {draft ? <SortableList
           items={activeLayout.panels}

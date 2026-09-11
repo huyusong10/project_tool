@@ -8,7 +8,7 @@ async function fixture(page: Page) {
   const person = async (name: string) => await (await page.request.post('/api/people', { data: { projectId: project.id, name: name + Date.now() } })).json() as { id: string; name: string };
   const owner = await person('需求负责人'), previous = await person('原执行人'), next = await person('接手人');
   const template = await (await page.request.post('/api/templates', { data: { projectId: project.id, name: '交接流程', items: [{ title: '交接工作', startOffsetDays: 0, durationDays: 1, sortOrder: 0 }] } })).json();
-  const response = await page.request.post('/api/requirements', { data: { projectId: project.id, ownerId: owner.id, templateId: template.id, executionMode: 'work_items', title: '需要交接的需求' } });
+  const response = await page.request.post('/api/requirements', { data: { projectId: project.id, ownerId: owner.id, templateId: template.id, title: '需要交接的需求' } });
   expect(response.ok()).toBe(true);
   const r = await response.json() as Requirement;
   const assigned = await page.request.patch('/api/work-items/' + r.workItems[0].id, { data: { expectedVersion: r.workItems[0].version, ownerId: previous.id } });
@@ -92,9 +92,9 @@ test('执行中调整协作者可以填写原因；两人失效后可逐步移�
   expect(current.progressUpdates).toEqual(expect.arrayContaining([expect.objectContaining({ content: '移除已离开的协作人员' })]));
 });
 
-test('新建和编辑需求不会重新选择停用账号，失效验收人保持明确显示', async ({ page }) => {
+test('新建和编辑需求不会重新选择停用账号，历史负责人保持明确显示', async ({ page }) => {
   const { project, previous, disable } = await fixture(page);
-  const response = await page.request.post('/api/requirements', { data: { projectId: project.id, executionMode: 'direct', ownerId: previous.id, acceptanceOwnerId: previous.id, title: '保留原责任人的需求' } });
+  const response = await page.request.post('/api/requirements', { data: { projectId: project.id, ownerId: previous.id, title: '保留原责任人的需求' } });
   expect(response.ok()).toBe(true);
   const r = await response.json() as Requirement;
   await disable(previous.id);
@@ -108,18 +108,10 @@ test('新建和编辑需求不会重新选择停用账号，失效验收人保�
   await expect(dialog.locator('option[value="' + previous.id + '"]')).toHaveJSProperty('disabled', true);
   await expect(dialog.locator('option[value="' + previous.id + '"]')).toContainText(previous.name);
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
-  await page.getByRole('button', { name: '交付设置', exact: true }).click();
-  const acceptor = page.getByLabel('验收人', { exact: true });
-  await expect(acceptor).toHaveValue(previous.id);
-  await expect(acceptor.locator('option:checked')).toContainText('需重新核对');
-  expect((await (await page.request.get('/api/requirements/' + r.id)).json()).acceptanceOwnerId).toBe(previous.id);
-  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await page.goto('/paths?pathScope=all');
   await expect(page.locator('[data-layout-ready="true"]')).toBeVisible({ timeout: 20000 });
   await page.getByLabel('编辑画布', { exact: true }).click();
   await page.locator('.react-flow__node[data-id="' + r.id + '"] .dependency-card').click();
   await expect(page.getByLabel('元素负责人')).toHaveValue(previous.id);
   await expect(page.getByLabel('元素负责人').locator('option:checked')).toContainText('已不可用');
-  await expect(page.getByRole('combobox', { name: '验收人', exact: true })).toHaveValue(previous.id);
-  await expect(page.getByRole('combobox', { name: '验收人', exact: true }).locator('option:checked')).toContainText('已不可用');
 });

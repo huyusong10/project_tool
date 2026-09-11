@@ -158,6 +158,48 @@ test('analytics layout result unknown reads back and confirms the saved layout',
   expect(requests).toBe(1);
 });
 
+test('分析布局响应未知且回读失败时跨导航保留草稿和写入锁', async ({ page }) => {
+  const server = await mockAnalytics(page);
+  let failRead = false;
+  let requests = 0;
+  await page.route('**/api/analytics/layout', (route) => {
+    if (route.request().method() === 'GET') return failRead
+      ? route.fulfill({ status: 503, json: { error: '布局暂时无法读取' } })
+      : route.fallback();
+    if (route.request().method() !== 'PUT') return route.fallback();
+    requests++;
+    const body = route.request().postDataJSON() as AnalyticsLayout & { expectedUpdatedAt: string | null };
+    server.setLayout({ version: body.version, panels: body.panels }, '2026-09-05T00:00:00.000Z');
+    failRead = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/analytics');
+  await page.getByRole('button', { name: '编辑看板', exact: true }).click();
+  await page.getByRole('button', { name: '编辑活跃需求', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '配置分析图表', exact: true });
+  await editor.getByLabel('图表标题', { exact: true }).fill('跨导航保留的活跃需求');
+  await editor.getByRole('button', { name: '应用配置', exact: true }).click();
+  const save = page.getByRole('button', { name: '保存布局', exact: true });
+  await save.click();
+  await expect(page.getByText(/操作结果暂时无法确认/)).toBeVisible();
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await page.goBack();
+  await expect(page.getByRole('alert').filter({ hasText: '布局保存结果待核对' })).toBeVisible();
+  await expect(page.getByText('跨导航保留的活跃需求', { exact: true })).toBeVisible();
+  await expect(save).toBeDisabled();
+  await save.evaluate((button) => (button as HTMLButtonElement).click());
+  expect(requests).toBe(1);
+
+  failRead = false;
+  await page.getByRole('button', { name: '重新读取布局', exact: true }).click();
+  await expect(page.getByRole('button', { name: '编辑看板', exact: true })).toBeVisible();
+  await expect(page.getByText('跨导航保留的活跃需求', { exact: true })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: '布局保存结果待核对' })).toHaveCount(0);
+  expect(requests).toBe(1);
+});
+
 test('analytics layout reset result unknown reads back and confirms the default layout', async ({ page }) => {
   await mockAnalytics(page);
   let personal = true;
@@ -184,5 +226,47 @@ test('analytics layout reset result unknown reads back and confirms the default 
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('button', { name: '编辑看板', exact: true })).toBeVisible();
   await expect(page.getByText(/操作结果暂时无法确认/)).toHaveCount(0);
+  expect(requests).toBe(1);
+});
+
+test('恢复默认布局响应未知且回读失败时跨导航保持锁定', async ({ page }) => {
+  await mockAnalytics(page);
+  let personal = true;
+  let failRead = false;
+  let requests = 0;
+  await page.route('**/api/analytics/layout', (route) => {
+    if (route.request().method() === 'GET') return failRead
+      ? route.fulfill({ status: 503, json: { error: '布局暂时无法读取' } })
+      : route.fulfill({ json: {
+        layout: defaultAnalyticsLayout,
+        source: personal ? 'personal' : 'default',
+        canCustomize: true,
+        updatedAt: personal ? '2026-09-04T00:00:00.000Z' : null,
+      } });
+    if (route.request().method() !== 'DELETE') return route.fallback();
+    requests++;
+    personal = false;
+    failRead = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'reset' });
+  });
+
+  await page.goto('/analytics');
+  await page.getByRole('button', { name: '编辑看板', exact: true }).click();
+  await page.getByRole('button', { name: '恢复默认', exact: true }).click();
+  await page.getByRole('dialog', { name: '恢复默认看板', exact: true }).getByRole('button', { name: '恢复默认', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: '布局恢复默认结果待核对' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '保存布局', exact: true })).toBeDisabled();
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await page.goBack();
+  await expect(page.getByRole('alert').filter({ hasText: '布局恢复默认结果待核对' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '保存布局', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '恢复默认', exact: true }).evaluate((button) => (button as HTMLButtonElement).click());
+  expect(requests).toBe(1);
+
+  failRead = false;
+  await page.getByRole('button', { name: '重新读取布局', exact: true }).click();
+  await expect(page.getByRole('button', { name: '编辑看板', exact: true })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: '布局恢复默认结果待核对' })).toHaveCount(0);
   expect(requests).toBe(1);
 });

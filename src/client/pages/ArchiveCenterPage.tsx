@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw, Trash2 } from "lucide-react";
 import { api, jsonBody, requiresWriteRecheck } from "../api";
@@ -11,6 +11,7 @@ import { PageHeader } from "../components/PageHeader";
 import { SearchInput } from "../components/SearchInput";
 import { formatDateTime } from "../format";
 import { useToast } from "../components/Toast";
+import { useSession } from "../app-context";
 
 const archiveEntityOptions = [
   { value: "projects", label: "项目" },
@@ -19,15 +20,47 @@ const archiveEntityOptions = [
   { value: "templates", label: "模板" },
 ] as const;
 type ArchiveEntity = (typeof archiveEntityOptions)[number]["value"];
+type ArchiveRecheck = "restore" | "delete" | null;
+
+function readArchiveRecheck(accountKey: string): ArchiveRecheck {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = window.sessionStorage.getItem(`project-manage:archive-recheck:${accountKey}`);
+    return value === "restore" || value === "delete" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistArchiveRecheck(accountKey: string, value: ArchiveRecheck) {
+  if (typeof window === "undefined") return;
+  try {
+    const key = `project-manage:archive-recheck:${accountKey}`;
+    if (value) window.sessionStorage.setItem(key, value);
+    else window.sessionStorage.removeItem(key);
+  } catch {
+    // 页面状态仍会保留锁；存储不可用时只失去跨导航恢复能力。
+  }
+}
 
 export function ArchiveCenterPage() {
   const client = useQueryClient();
   const toast = useToast();
+  const { session } = useSession();
+  const recheckAccountKey = session.accountId || session.username || "guest";
   const [keyword, setKeyword] = useState("");
   const [type, setType] = useState<"all" | ArchiveEntity>("all");
   const [deletePrompt, setDeletePrompt] = useState<{ entity: ArchiveEntity; id: string; title: string; impact: string; deletedAt: string } | null>(null);
   const [simpleDeleteTarget, setSimpleDeleteTarget] = useState<{ entity: ArchiveEntity; id: string; title: string; deletedAt: string } | null>(null);
   const [restoringKey, setRestoringKey] = useState<string | null>(null);
+  const [archiveNeedsRecheck, setArchiveNeedsRecheckState] = useState<ArchiveRecheck>(() => readArchiveRecheck(recheckAccountKey));
+  const setArchiveNeedsRecheck = (value: ArchiveRecheck) => {
+    persistArchiveRecheck(recheckAccountKey, value);
+    setArchiveNeedsRecheckState(value);
+  };
+  useEffect(() => {
+    setArchiveNeedsRecheckState(readArchiveRecheck(recheckAccountKey));
+  }, [recheckAccountKey]);
   const restoreSubmitting = useRef(false);
   const deleteSubmitting = useRef(false);
   const { data: archives, error, refetch, isFetching } = useQuery({ queryKey: keys.archives, queryFn: ({ signal }) => api<Archives>("/api/archives", { signal }) });
@@ -54,19 +87,25 @@ export function ArchiveCenterPage() {
   const restore = useMutation({
     mutationFn: ({ entity, id, expectedDeletedAt }: { entity: ArchiveEntity; id: string; expectedDeletedAt: string }) => api(`/api/${entity}/${id}/restore`, { method: "POST", body: jsonBody({ expectedDeletedAt }) }),
     onSuccess: () => {
+      setArchiveNeedsRecheck(null);
       invalidateArchiveViews(client);
     },
     onError: async (error, input) => {
       if (!requiresWriteRecheck(error)) return;
       try {
         const latest = await api<Archives>("/api/archives", { readOnly: true });
+        client.setQueryData(keys.archives, latest);
+        setArchiveNeedsRecheck(null);
         if (!latest[input.entity].some((item) => item.id === input.id)) {
           restore.reset();
           invalidateArchiveViews(client);
           toast.success("已核对最新状态：内容已移出归档列表");
+        } else {
+          restore.reset();
+          toast.info("已核对最新状态：内容仍在归档中，可以重新操作");
         }
       } catch {
-        // 保留原写入错误，归档项继续显示并允许重试。
+        setArchiveNeedsRecheck("restore");
       }
     },
     onSettled: () => {
@@ -77,6 +116,7 @@ export function ArchiveCenterPage() {
   const permanentlyDelete = useMutation({
     mutationFn: ({ entity, id, confirmName, expectedDeletedAt }: { entity: ArchiveEntity; id: string; confirmName?: string; expectedDeletedAt: string }) => api(`/api/archives/${entity}/${id}`, { method: "DELETE", body: jsonBody({ confirmName, expectedDeletedAt }) }),
     onSuccess: () => {
+      setArchiveNeedsRecheck(null);
       setDeletePrompt(null);
       setSimpleDeleteTarget(null);
       invalidateArchiveViews(client);
@@ -85,21 +125,37 @@ export function ArchiveCenterPage() {
       if (!requiresWriteRecheck(error)) return;
       try {
         const latest = await api<Archives>("/api/archives", { readOnly: true });
+        client.setQueryData(keys.archives, latest);
+        setArchiveNeedsRecheck(null);
         if (!latest[input.entity].some((item) => item.id === input.id)) {
           setDeletePrompt(null);
           setSimpleDeleteTarget(null);
           permanentlyDelete.reset();
           invalidateArchiveViews(client);
           toast.info("已核对最新状态：内容已不在归档列表，请到对应业务页面确认");
+        } else {
+          setDeletePrompt(null);
+          setSimpleDeleteTarget(null);
+          permanentlyDelete.reset();
+          toast.info("已核对最新状态：内容仍在归档中，请重新选择删除");
         }
       } catch {
-        // 保留原写入错误和确认内容，避免在结果未知时关闭窗口。
+        setArchiveNeedsRecheck("delete");
       }
     },
     onSettled: () => { deleteSubmitting.current = false; },
   });
+  const reloadArchives = async () => {
+    const result = await refetch();
+    if (result.error || !result.data) return;
+    setArchiveNeedsRecheck(null);
+    restore.reset();
+    permanentlyDelete.reset();
+    setDeletePrompt(null);
+    setSimpleDeleteTarget(null);
+  };
   const restoreArchive = (entity: ArchiveEntity, id: string, expectedDeletedAt: string) => {
-    if (restoreSubmitting.current) return;
+    if (restoreSubmitting.current || archiveNeedsRecheck) return;
     restoreSubmitting.current = true;
     restore.reset();
     permanentlyDelete.reset();
@@ -107,7 +163,7 @@ export function ArchiveCenterPage() {
     restore.mutate({ entity, id, expectedDeletedAt });
   };
   const submitPermanentDelete = (input: { entity: ArchiveEntity; id: string; confirmName?: string; expectedDeletedAt: string }) => {
-    if (deleteSubmitting.current) return;
+    if (deleteSubmitting.current || archiveNeedsRecheck) return;
     deleteSubmitting.current = true;
     permanentlyDelete.mutate(input);
   };
@@ -121,6 +177,7 @@ export function ArchiveCenterPage() {
           <select value={type} onChange={(event) => setType(event.target.value as "all" | ArchiveEntity)}><option value="all">全部类型</option>{archiveEntityOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select>
           <span>{filteredRows.length} / {rows.length} 条</span>
         </div>
+        {archiveNeedsRecheck && <div role="alert" className="warning-banner">{archiveNeedsRecheck === "restore" ? "归档恢复结果待核对" : "永久删除结果待核对"}，当前归档事实可能已变化，本页面不会重复提交。<button className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{isFetching ? "读取中…" : "重新加载归档"}</button></div>}
         {error && archives && <div className="warning-banner">归档列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
         <div className="archive-table-wrap">
           <table className="archive-table">
@@ -133,7 +190,7 @@ export function ArchiveCenterPage() {
               <td><span className={`archive-type archive-type-${item.entity}`}>{item.typeLabel}</span></td>
               <td>{item.jobTitle || "—"}</td>
               <td>{formatDateTime(item.deletedAt)}</td>
-              <td><div className="archive-row-actions"><button className="inline-action-button" title={`恢复${item.typeLabel}`} disabled={Boolean(restoringKey) || permanentlyDelete.isPending} onClick={() => restoreArchive(item.entity, item.id, item.deletedAt)}><RotateCcw size={14} />{restoring ? "恢复中…" : "恢复"}</button><button className="inline-action-button danger" title={`永久删除${item.typeLabel}`} disabled={Boolean(restoringKey) || permanentlyDelete.isPending} onClick={() => {
+              <td><div className="archive-row-actions"><button className="inline-action-button" title={`恢复${item.typeLabel}`} disabled={Boolean(restoringKey) || permanentlyDelete.isPending || Boolean(archiveNeedsRecheck)} onClick={() => restoreArchive(item.entity, item.id, item.deletedAt)}><RotateCcw size={14} />{restoring ? "恢复中…" : "恢复"}</button><button className="inline-action-button danger" title={`永久删除${item.typeLabel}`} disabled={Boolean(restoringKey) || permanentlyDelete.isPending || Boolean(archiveNeedsRecheck)} onClick={() => {
                 restore.reset();
                 if (item.entity === "projects" || item.entity === "requirements") {
                   const impact = item.entity === "projects"
@@ -155,7 +212,7 @@ export function ArchiveCenterPage() {
         {(restore.error || permanentlyDelete.error) && <p className="form-error archive-error">{(restore.error || permanentlyDelete.error)?.message}</p>}
       </section>
     </div>
-    {deletePrompt && <TextPromptModal title={`永久删除${deletePrompt.entity === "projects" ? "项目" : "需求"}`} description={`${deletePrompt.impact}\n永久删除后无法恢复。`} label="输入完整名称确认" expectedValue={deletePrompt.title} confirmLabel="永久删除" danger pending={permanentlyDelete.isPending} error={permanentlyDelete.error?.message} onClose={() => setDeletePrompt(null)} onConfirm={(confirmName) => submitPermanentDelete({ entity: deletePrompt.entity, id: deletePrompt.id, confirmName, expectedDeletedAt: deletePrompt.deletedAt })} />}
-    {simpleDeleteTarget && <ConfirmDialog title="永久删除归档内容" description={<>“<strong>{simpleDeleteTarget.title}</strong>”将被永久删除，此操作无法恢复。</>} confirmLabel="永久删除" pendingLabel="删除中…" danger pending={permanentlyDelete.isPending} error={permanentlyDelete.error?.message} onClose={() => setSimpleDeleteTarget(null)} onConfirm={() => submitPermanentDelete({ entity: simpleDeleteTarget.entity, id: simpleDeleteTarget.id, expectedDeletedAt: simpleDeleteTarget.deletedAt })} />}
+    {deletePrompt && <TextPromptModal title={`永久删除${deletePrompt.entity === "projects" ? "项目" : "需求"}`} description={`${deletePrompt.impact}\n永久删除后无法恢复。`} label="输入完整名称确认" expectedValue={deletePrompt.title} confirmLabel="永久删除" danger pending={permanentlyDelete.isPending} blocked={archiveNeedsRecheck === "delete"} notice={archiveNeedsRecheck === "delete" ? <div className="warning-banner" role="alert">永久删除结果待核对，请重新加载归档后再操作。<button type="button" className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{isFetching ? "读取中…" : "重新加载归档"}</button></div> : undefined} error={permanentlyDelete.error?.message} onClose={() => setDeletePrompt(null)} onConfirm={(confirmName) => submitPermanentDelete({ entity: deletePrompt.entity, id: deletePrompt.id, confirmName, expectedDeletedAt: deletePrompt.deletedAt })} />}
+    {simpleDeleteTarget && <ConfirmDialog title="永久删除归档内容" description={<>“<strong>{simpleDeleteTarget.title}</strong>”将被永久删除，此操作无法恢复。{archiveNeedsRecheck === "delete" && <div className="warning-banner" role="alert">永久删除结果待核对，请重新加载归档后再操作。<button type="button" className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{isFetching ? "读取中…" : "重新加载归档"}</button></div>}</>} confirmLabel="永久删除" pendingLabel="删除中…" danger pending={permanentlyDelete.isPending} disabled={archiveNeedsRecheck === "delete"} error={permanentlyDelete.error?.message} onClose={() => setSimpleDeleteTarget(null)} onConfirm={() => submitPermanentDelete({ entity: simpleDeleteTarget.entity, id: simpleDeleteTarget.id, expectedDeletedAt: simpleDeleteTarget.deletedAt })} />}
   </>;
 }

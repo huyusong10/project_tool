@@ -125,7 +125,7 @@ export const GapTimeline = memo(function GapTimeline({
   const milestoneData = useGanttMilestoneData(projectId);
   const milestoneItems = useMemo(() => requirementMilestones(milestones, items, milestoneData?.edges), [milestones, items, milestoneData?.edges]);
   const milestoneSelection = useMilestoneSelection(milestoneItems, asOfDate);
-  const timelineValues = useMemo(() => [...items.flatMap(item => [item.plannedStart, item.plannedEnd, item.actualStart, workItemActualRange(item, asOfDate).end]), ...milestoneItems.flatMap(m => [m.targetDate, m.actualDate, m.forecastDate])], [items, milestoneItems, asOfDate]);
+  const timelineValues = useMemo(() => [...items.flatMap(item => [item.plannedStart, item.plannedEnd, item.actualStart, workItemActualRange(item, asOfDate).end]), ...milestoneItems.flatMap(m => [m.targetDate, m.actualDate])], [items, milestoneItems, asOfDate]);
   const navigation = useGanttNavigation({ values: timelineValues, asOfDate, storageKey, onPan: tooltip.close });
   const { scrollRef, viewportWidth, dates, zoom, cellWidth, timelineWidth } = navigation;
   const statusCounts = useMemo(() => items.reduce<Record<string, number>>((counts, item) => {

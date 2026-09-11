@@ -20,23 +20,13 @@ async function fixture(page: Page) {
   }
   await page.addInitScript(({ account, projectId }) => localStorage.setItem('project-manage:selected-project:' + account, projectId), { account: session.accountId, projectId: project.id });
   const detail = async () => await (await page.request.get('/api/requirements/' + r.id)).json() as Requirement;
-  const summary = async () => await (await page.request.get(`/api/projects/${project.id}/delivery-commitments/summary`)).json();
   await page.goto('/requirements/' + r.id);
-  return { r, detail, summary };
+  return { r, detail };
 }
 
-async function accept(page: Page, content: string) {
-  await page.getByRole('button', { name: '确认验收', exact: true }).click();
-  await page.getByLabel('验收说明').fill(content);
-  await page.getByRole('dialog').getByRole('button', { name: '确认验收', exact: true }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-}
-
-test('验收后从工作项重开，再次完成和验收；历史说明与统计同步', async ({ page }) => {
-  const { r, detail, summary } = await fixture(page);
-  await accept(page, '首次交付通过');
-  const acceptedAt = (await detail()).acceptedAt;
-  expect(acceptedAt).toBeTruthy();
+test('工作完成后从工作项重开并再次完成，历史说明同步', async ({ page }) => {
+  const { r, detail } = await fixture(page);
+  expect(await detail()).toMatchObject({ status: 'completed', progress: 100, acceptedAt: null });
   const row = page.locator('.requirement-gantt-row').filter({ hasText: '实现接口' });
   await row.getByRole('button', { name: '更多工作项操作' }).click();
   await page.getByRole('button', { name: '重开/返工', exact: true }).click();
@@ -44,39 +34,36 @@ test('验收后从工作项重开，再次完成和验收；历史说明与统�
   await page.getByRole('button', { name: '确认重开', exact: true }).click();
   await expect(row.getByRole('button', { name: '完成', exact: true })).toBeVisible();
   await expect(page.locator('.progress-feed')).toContainText('重开工作项：实现接口');
-  expect(await summary()).toMatchObject({ acceptedCount: 1, reworkCount: 1, reacceptedCount: 0 });
   expect(await detail()).toMatchObject({ acceptedAt: null, status: 'in_progress' });
   await row.getByRole('button', { name: '完成', exact: true }).click();
   await page.getByLabel('完成说明').fill('补充边界验证完成');
   await page.getByRole('button', { name: '确认完成', exact: true }).click();
-  await expect(page.getByRole('button', { name: '确认验收', exact: true })).toBeVisible();
-  await accept(page, '补充验证通过，再次验收');
-  expect(await summary()).toMatchObject({ acceptedCount: 1, reworkCount: 1, reacceptedCount: 1 });
+  await expect.poll(async () => (await detail()).status).toBe('completed');
   const after = await detail();
-  expect(after.status).toBe('completed');
-  expect(after.progressUpdates).toEqual(expect.arrayContaining([expect.objectContaining({ eventType: 'accept', createdAt: acceptedAt })]));
+  expect(after).toMatchObject({ status: 'completed', progress: 100, acceptedAt: null });
+  expect(after.progressUpdates).toEqual(expect.arrayContaining([expect.objectContaining({ eventType: 'rework', content: expect.stringContaining('接口缺少边界验证') })]));
   await page.reload();
   await expect(page.locator('.progress-feed')).toContainText('接口缺少边界验证');
   await expect(page.locator('.progress-feed')).not.toContainText(r.workItems[0].id);
 });
 
-test('需求退回明确选择工作项，刷新后每项都有返工说明和待执行入口', async ({ page }) => {
-  const { detail, summary } = await fixture(page);
-  await page.getByRole('button', { name: '退回返工', exact: true }).click();
-  const dialog = page.getByRole('dialog');
-  await dialog.getByRole('checkbox', { name: '实现接口', exact: true }).check();
-  await dialog.getByRole('checkbox', { name: '回归验证', exact: true }).check();
-  await page.getByLabel('执行说明').fill('两项都需要补充验收证据');
-  await dialog.getByRole('button', { name: '退回返工', exact: true }).click();
-  await expect(dialog).toHaveCount(0);
+test('多个已完成工作项逐项返工，刷新后每项保留返工说明和待执行入口', async ({ page }) => {
+  const { detail } = await fixture(page);
+  for (const title of ['实现接口', '回归验证']) {
+    const row = page.locator('.requirement-gantt-row').filter({ hasText: title });
+    await row.getByRole('button', { name: '更多工作项操作' }).click();
+    await page.getByRole('button', { name: '重开/返工', exact: true }).click();
+    await page.getByLabel('返工原因').fill('两项都需要补充交付证据');
+    await page.getByRole('button', { name: '确认重开', exact: true }).click();
+  }
   await expect(page.locator('.requirement-gantt-row').getByRole('button', { name: '完成', exact: true })).toHaveCount(2);
-  expect(await summary()).toMatchObject({ acceptedCount: 0, reworkCount: 1 });
   await page.reload();
   for (const title of ['实现接口', '回归验证']) {
-    const record = page.locator('.progress-feed > article').filter({ hasText: '两项都需要补充验收证据' }).filter({ has: page.locator('strong', { hasText: title }) });
+    const record = page.locator('.progress-feed > article').filter({ hasText: '两项都需要补充交付证据' }).filter({ has: page.locator('strong', { hasText: title }) });
     await expect(record).toHaveCount(1);
   }
   const current = await detail();
   expect(current.workItems.every(w => w.status === 'in_progress' && w.actualEnd === null)).toBe(true);
-  expect(current.progressUpdates?.filter(e => e.eventType === 'rework')).toHaveLength(3);
+  expect(current.progressUpdates?.filter(e => e.eventType === 'reopen')).toHaveLength(2);
+  expect(current.progressUpdates?.filter(e => e.eventType === 'rework')).toHaveLength(1);
 });

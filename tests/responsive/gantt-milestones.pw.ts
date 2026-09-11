@@ -13,7 +13,7 @@ const milestones = [
 async function setup(page: Page) {
   await mockGanttData(page);
   await page.route('**/api/requirements/r1', route => route.fulfill({ json: { ...requirement, milestones: milestones.filter(m => m.requirementId) } }));
-  await page.route('**/path-analysis*', route => route.fulfill({ json: { milestones, nodes: [{ id: 'w1', requirementId: 'r1' }], edges: [{ source: 'w1', target: 'm1' }, { source: 'm1', target: 'project-ms' }] } }));
+  await page.route('**/path-analysis*', route => route.fulfill({ json: { milestones, nodes: [{ id: 'w1', requirementId: 'r1' }, { id: 'm3', kind: 'milestone', forecastEnd: '2026-09-08' }], edges: [{ source: 'w1', target: 'm1' }, { source: 'm1', target: 'project-ms' }] } }));
   await page.emulateMedia({ reducedMotion: 'reduce' });
 }
 test('里程碑不占工作行；目标与实际独立，点击高亮前置且不写入', async ({ page }, info) => {
@@ -73,6 +73,41 @@ test('项目切面跨需求，需求里程碑只出现在对应需求行', async
   await expect(surface.locator('.gantt-row [data-milestone-cut="project-ms"]')).toHaveCount(2);
   await expect(surface.locator('.gantt-row').filter({ hasText: '统一甘特样式' }).locator('[data-milestone-id="m1"]')).toHaveCount(1);
 });
+
+test('未排期需求的预测里程碑不落在进度甘特日期上，明确目标和实际达成仍显示', async ({ page }, info) => {
+  await mockGanttData(page);
+  const unplanned = { ...requirement, title: '未排期需求', status: 'not_started', plannedStart: null, plannedEnd: null,
+    actualStart: null, actualEnd: null, effectiveEnd: null, progress: 0, plannedProgress: 0, scheduleComplete: false, riskEvaluated: false,
+    workItems: requirement.workItems.map(w => ({ ...w, status: 'not_started', progress: 0, plannedStart: null, plannedEnd: null, actualStart: null, actualEnd: null })) };
+  const items = [
+    { id: 'forecast-only', title: '需求基线', projectId: 'p1', requirementId: 'r1', targetDate: null, achievedAt: null, confirmationMode: 'auto', version: 1 },
+    { id: 'explicit-target', title: '已设目标', projectId: 'p1', requirementId: 'r1', targetDate: '2026-09-08', achievedAt: null, confirmationMode: 'manual', version: 1 },
+    { id: 'actual-only', title: '已达成基线', projectId: 'p1', requirementId: 'r1', targetDate: null, achievedAt: '2026-09-04', confirmationMode: 'auto', version: 1 },
+  ];
+  await page.route('**/api/dashboard*', route => route.fulfill({ json: {
+    summary: { total: 1, active: 1, completed: 0, delayed: 0, highRisk: 0, completionRate: 0 }, requirements: [unplanned],
+    issues: { summary: { total: 0, active: 0, overdue: 0 }, attention: [] }, charts: { statuses: [], risks: [], weeks: [], varianceTop: [] },
+  } }));
+  await page.route('**/path-analysis*', route => route.fulfill({ json: { milestones: items,
+    nodes: [{ id: 'forecast-only', kind: 'milestone', requirementId: 'r1', forecastEnd: '2030-12-20' }], edges: [] } }));
+  const writes: string[] = []; page.on('request', request => { if (request.url().includes('/api/') && request.method() !== 'GET') writes.push(request.url()); });
+  await page.goto('/');
+  await page.getByRole('combobox', { name: '按状态筛选' }).selectOption('not_started');
+  const surface = page.locator('.project-gantt-scroll'); await expect(surface).toHaveAttribute('data-gantt-ready', 'true');
+  await page.getByRole('button', { name: '适配全部', exact: true }).click();
+  const row = surface.locator('.gantt-row').filter({ hasText: '未排期需求' });
+  await expect(row.locator('[data-milestone-id="forecast-only"]')).toHaveCount(0);
+  await expect(row.locator('[data-milestone-id="explicit-target"]')).toHaveCount(1);
+  await expect(row.locator('[data-milestone-id="actual-only"]')).toHaveCount(1);
+  await expect(row.getByRole('button', { name: '待定日期 1 项' })).toBeVisible();
+  const axisDates = await surface.locator('.gantt-scale-tick[data-date]').evaluateAll(nodes => nodes.map(n => n.getAttribute('data-date')!));
+  expect(axisDates.every(date => date < '2027-01-01')).toBe(true);
+  await row.getByRole('button', { name: '待定日期 1 项' }).click();
+  await expect(page.getByRole('dialog', { name: '里程碑详情' })).toContainText('未排期');
+  await expect(page.getByRole('dialog', { name: '里程碑详情' })).toContainText('预计达成2030-12-20');
+  await page.keyboard.press('Escape');
+  await surface.screenshot({ path: info.outputPath('unplanned-milestones.png') }); expect(writes).toEqual([]);
+});
 test('流程预览只保留工作行，里程碑在第2日末尾切开，不新增一天', async ({ page }, info) => {
   await mockGanttData(page);
   const template = { id: 't1', projectId: 'p1', name: '阶段交付流程', description: '', dependencyMode: 'dependencies', createdAt: '2026-09-01', updatedAt: '2026-09-01', items: [
@@ -98,13 +133,16 @@ test('需求路径排期预览复用切面，独立里程碑和验收点不增�
   await mockGanttData(page);
   const data = analysePaths({ projectId: 'p1', projectName: '测试项目', projectEnd: '2026-09-30', revision: 1, asOfDate: '2026-09-07',
     requirements: [{ ...req('r1'), projectId: 'p1', title: requirement.title }], workItems: [work('w1', 'r1', 2), work('w2', 'r1', 3)],
-    milestones: milestones.filter(m => m.requirementId) as PathMilestone[], dependencies: [],
+    milestones: milestones.filter(m => m.requirementId).map(m => m.id === 'm4' ? { ...m, targetDate: null } : m) as PathMilestone[],
+    dependencies: [{ id: 'work-to-milestone', projectId: 'p1', sourceRequirementId: 'r1', sourceWorkItemId: 'w1', targetRequirementId: 'r1', targetWorkItemId: null, targetMilestoneId: 'm4', origin: 'manual' }],
   });
   await page.route('**/path-analysis*', r => r.fulfill({ json: data }));
   await page.goto('/requirements/r1?view=path'); await expect(page.locator('[data-layout-ready="true"]')).toBeVisible({ timeout: 20000 });
   await page.getByRole('button', { name: '排期预览', exact: true }).click();
   const chart = page.locator('.path-draft-gantt'); await expect(chart.locator('.path-draft-gantt-row')).toHaveCount(2);
   await expect(chart.locator('.gantt-milestone-rail')).toHaveCount(1);
+  await expect(chart.locator('[data-milestone-id="m4"]')).toHaveCount(1);
+  await expect(chart.locator('.gantt-milestone-label[aria-label*="文档基线"]')).toHaveAttribute('aria-label', /预计/);
   await expect(chart.locator('.path-gantt-name').filter({ hasText: '基线' })).toHaveCount(0);
   const panelBox = (await page.locator('.graph-auxiliary').boundingBox())!, toolbarBox = (await chart.locator('.gantt-navigation').boundingBox())!, rowBox = (await chart.locator('.path-draft-gantt-track').nth(1).boundingBox())!;
   expect(toolbarBox.y).toBeGreaterThan(panelBox.y + 35);

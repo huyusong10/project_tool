@@ -13,7 +13,7 @@ function MilestoneSummary({ items, asOfDate }: { items: GanttMilestone[]; asOfDa
       {m.targetDate && <div><dt>目标日期</dt><dd>{m.targetDate}</dd></div>}
       {m.actualDate && <div><dt>实际达成</dt><dd>{m.actualDate}</dd></div>}
       {!m.actualDate && m.forecastDate && <div><dt>预计达成</dt><dd>{m.forecastDate}</dd></div>}
-      {!m.targetDate && !m.actualDate && !m.forecastDate && <div><dt>排期</dt><dd>{m.timingLabel || '日期待确认'}</dd></div>}
+      {!m.targetDate && !m.actualDate && <div><dt>排期</dt><dd>{m.timingLabel || '未排期'}</dd></div>}
     </dl>
     {m.actualDate && m.targetDate && m.actualDate !== m.targetDate && <small>{m.actualDate < m.targetDate ? '提前达成，目标日期保留' : '延期达成，目标日期保留'}</small>}
   </section>)}</>;
@@ -48,19 +48,19 @@ export function useMilestoneSelection(items: GanttMilestone[], asOfDate: string,
     </div>, document.body)}</> };
 }
 export type MilestoneSelection = ReturnType<typeof useMilestoneSelection>;
-type Props = { items: GanttMilestone[]; dates: Date[]; cellWidth: number; asOfDate: string; selection: MilestoneSelection; width?: number };
+type Props = { items: GanttMilestone[]; dates: Date[]; cellWidth: number; asOfDate: string; selection: MilestoneSelection; width?: number; showForecast?: boolean };
 
-export function GanttMilestoneRail({ items, dates, cellWidth, asOfDate, selection, width = dates.length * cellWidth }: Props) {
-  const groups = groupMilestones(items, dates, cellWidth, width);
+export function GanttMilestoneRail({ items, dates, cellWidth, asOfDate, selection, width = dates.length * cellWidth, showForecast = false }: Props) {
+  const groups = groupMilestones(items, dates, cellWidth, width, showForecast);
   return <div className="gantt-milestone-rail" aria-label="里程碑时间标记" style={{ width }}>
     {groups.map(group => {
-      const sameDate = new Set(group.items.map(m => milestoneDate(m) || m.offset)).size === 1;
+      const sameDate = new Set(group.items.map(m => milestoneDate(m, showForecast) || m.offset)).size === 1;
       const label = group.items.length > 1 ? `${sameDate ? '' : '相邻 '}${group.items.length} 项` : group.items[0].title;
       const states = group.items.map(m => milestoneState(m, asOfDate));
       const groupState = states.every(s => s === 'reached') ? 'reached' : states.every(s => s === 'cancelled') ? 'cancelled' : states.includes('overdue') ? 'overdue' : 'planned';
       return <div key={group.items.map(m => m.id).join('|')} className="gantt-milestone-group">
-        {group.items.map(m => <span key={m.id} className={`gantt-milestone-pin milestone-${milestoneState(m, asOfDate)}`} data-milestone-id={m.id} data-milestone-date={milestoneDate(m) || undefined} data-actual-separated={!!m.targetDate && !!m.actualDate && m.targetDate !== m.actualDate} style={{ left: milestonePosition(m, dates, cellWidth)! }} aria-hidden="true" />)}
-        <button type="button" className={`gantt-milestone-label milestone-${groupState}`} style={{ left: group.labelLeft, width: group.width }} aria-pressed={group.items.some(m => selection.selected.some(s => s.id === m.id))} aria-label={group.items.map(m => `${m.title}，${milestoneTiming(m)}，${stateLabels[milestoneState(m, asOfDate)]}`).join('；')} {...selection.bind(group.items)}>{label}</button>
+        {group.items.map(m => <span key={m.id} className={`gantt-milestone-pin milestone-${milestoneState(m, asOfDate)}`} data-milestone-id={m.id} data-milestone-date={milestoneDate(m, showForecast) || undefined} data-actual-separated={!!m.targetDate && !!m.actualDate && m.targetDate !== m.actualDate} style={{ left: milestonePosition(m, dates, cellWidth, false, showForecast)! }} aria-hidden="true" />)}
+        <button type="button" className={`gantt-milestone-label milestone-${groupState}`} style={{ left: group.labelLeft, width: group.width }} aria-pressed={group.items.some(m => selection.selected.some(s => s.id === m.id))} aria-label={group.items.map(m => `${m.title}，${milestoneTiming(m, showForecast)}，${stateLabels[milestoneState(m, asOfDate)]}`).join('；')} {...selection.bind(group.items)}>{label}</button>
       </div>;
     })}
     {items.filter(m => m.targetDate && m.actualDate && m.actualDate !== m.targetDate).map(m => {
@@ -69,13 +69,13 @@ export function GanttMilestoneRail({ items, dates, cellWidth, asOfDate, selectio
     })}
   </div>;
 }
-export function GanttMilestoneCuts({ items, dates, cellWidth, asOfDate, selection }: Props) {
+export function GanttMilestoneCuts({ items, dates, cellWidth, asOfDate, selection, showForecast = false }: Props) {
   return <>{items.map(m => {
-    const left = milestonePosition(m, dates, cellWidth);
+    const left = milestonePosition(m, dates, cellWidth, false, showForecast);
     return left === null ? null : <span key={m.id} className={`gantt-milestone-cut milestone-${milestoneState(m, asOfDate)}${selection.selected.some(s => s.id === m.id) ? ' is-selected' : ''}`} data-milestone-cut={m.id} aria-hidden="true" style={{ left }} />;
   })}</>;
 }
-export function GanttMilestoneUndated({ items, selection }: Pick<Props, 'items' | 'selection'>) {
-  const unknown = items.filter(m => !milestoneDate(m) && m.offset === undefined);
+export function GanttMilestoneUndated({ items, selection, showForecast = false }: Pick<Props, 'items' | 'selection' | 'showForecast'>) {
+  const unknown = items.filter(m => !milestoneDate(m, showForecast) && m.offset === undefined);
   return unknown.length ? <button type="button" className="gantt-milestone-undated" {...selection.bind(unknown)}>待定日期 {unknown.length} 项</button> : null;
 }

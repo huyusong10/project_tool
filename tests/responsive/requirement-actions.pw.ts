@@ -1,16 +1,15 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { Requirement, WorkItem } from '../../src/client/types';
 
-type Action = 'complete-as-planned' | 'accept' | 'cancel' | 'archive';
+type Action = 'complete-as-planned' | 'cancel' | 'archive';
 const labels: Record<Action, { title: string; confirm: string; field?: string }> = {
   'complete-as-planned': { title: '按期完成（历史补录）', confirm: '确认按期完成' },
-  accept: { title: '确认验收', confirm: '确认验收', field: '验收说明' },
   cancel: { title: '取消需求', confirm: '确认取消', field: '取消原因' },
   archive: { title: '归档需求', confirm: '确认归档' },
 };
 
 async function fixture(page: Page, action: Action) {
-  const completed = action === 'accept' || action === 'archive';
+  const completed = action === 'archive';
   const item: WorkItem = {
     id: 'w1', requirementId: 'r1', templateItemId: null, title: '历史设计', ownerId: null, ownerName: null,
     collaborators: [], assigneeIds: [], assigneeNames: [], status: completed ? 'completed' : 'not_started',
@@ -20,9 +19,9 @@ async function fixture(page: Page, action: Action) {
   };
   const requirement: Requirement = {
     id: 'r1', projectId: 'p1', projectName: '测试项目', title: '打开时的需求', templateId: null, templateName: null,
-    ownerId: null, ownerName: null, status: action === 'accept' ? 'pending_acceptance' : action === 'archive' ? 'completed' : 'not_started',
+    ownerId: null, ownerName: null, status: action === 'archive' ? 'completed' : 'not_started',
     plannedStart: item.plannedStart, plannedEnd: item.plannedEnd, progress: item.progress, plannedProgress: 100, progressGap: 0,
-    acceptedAt: action === 'archive' ? '2020-01-03' : null, acceptedByAccountId: null, version: 1,
+    acceptedAt: null, acceptedByAccountId: null, version: 1,
     riskLevel: 'low', riskEvaluated: false, riskReason: '', priority: 'P2', createdAt: '2020-01-02', updatedAt: '2020-01-03',
     workItems: [item], progressUpdates: [], delayed: false, highRisk: false, finishVariance: 0, durationVariance: 0,
     effectiveEnd: item.plannedEnd, issueSummary: { active: 0, overdue: 0 },
@@ -47,15 +46,13 @@ async function fixture(page: Page, action: Action) {
   });
   return state;
 }
-
 async function openCommand(page: Page, action: Action) {
   await page.goto('/requirements/r1');
   await page.getByRole('button', { name: '需求操作', exact: true }).click();
   await page.locator('.inline-edit-popover').getByRole('button', { name: labels[action].title, exact: true }).click();
   return page.getByRole('dialog', { name: labels[action].title, exact: true });
 }
-
-for (const action of ['complete-as-planned', 'accept', 'cancel', 'archive'] as const) {
+for (const action of ['complete-as-planned', 'cancel', 'archive'] as const) {
   test(`${action}确认期间后台更新不能借新版本提交，重读前保留确认快照`, async ({ page }, testInfo) => {
     const state = await fixture(page, action);
     const dialog = await openCommand(page, action);
@@ -82,7 +79,7 @@ for (const action of ['complete-as-planned', 'accept', 'cancel', 'archive'] as c
     if (testInfo.project.name === 'office-1280' && (action === 'complete-as-planned' || action === 'cancel')) await page.screenshot({ path: `data/round23-ui/${action}-review.png`, animations: 'disabled' });
     await dialog.getByRole('button', { name: labels[action].confirm, exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    expect(state.writes).toEqual([{ expectedVersion: 2, ...(action === 'accept' ? { content: '打开时填写的说明' } : action === 'cancel' ? { reason: '打开时填写的说明' } : {}) }]);
+    expect(state.writes).toEqual([{ expectedVersion: 2, ...(action === 'cancel' ? { reason: '打开时填写的说明' } : {}) }]);
     if (action === 'archive') await expect(page).toHaveURL('/');
   });
 
@@ -119,7 +116,7 @@ for (const action of ['complete-as-planned', 'accept', 'cancel', 'archive'] as c
     const state = await fixture(page, action);
     const dialog = await openCommand(page, action);
     if (labels[action].field) await dialog.getByRole('textbox', { name: labels[action].field, exact: true }).fill('状态变化前的说明');
-    state.requirement = { ...state.requirement, version: 2, status: action === 'accept' || action === 'archive' ? 'in_progress' : 'completed' };
+    state.requirement = { ...state.requirement, version: 2, status: action === 'archive' ? 'in_progress' : 'completed' };
     const previousReads = state.reads;
     await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
     await expect.poll(() => state.reads).toBeGreaterThan(previousReads);
@@ -132,7 +129,53 @@ for (const action of ['complete-as-planned', 'accept', 'cancel', 'archive'] as c
   });
 }
 
-for (const action of ['accept', 'cancel'] as const) {
+test('取消需求响应未知且回读失败时跨导航保留核对锁和原因', async ({ page }) => {
+  const state = await fixture(page, 'cancel');
+  await page.route('**/api/requirements/r1/cancel', (route) => {
+    state.writes.push(route.request().postDataJSON());
+    state.requirement = { ...state.requirement, status: 'cancelled', version: 2 };
+    state.readStatus = 503;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+  const dialog = await openCommand(page, 'cancel');
+  await dialog.getByRole('textbox', { name: '取消原因', exact: true }).fill('依赖方案终止');
+  await dialog.getByRole('button', { name: '确认取消', exact: true }).click();
+  await expect(dialog).toContainText('当前需求无法读取');
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('alert').filter({ hasText: '取消需求结果待核对' })).toBeVisible();
+  const actionButton = page.getByRole('button', { name: '需求操作', exact: true });
+  await expect(actionButton).toBeDisabled();
+  await actionButton.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.locator('.inline-edit-popover').getByRole('button', { name: '取消需求', exact: true })).toHaveCount(0);
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/requirements\/r1/);
+  await page.getByRole('button', { name: '核对需求操作', exact: true }).click();
+  await expect(dialog.getByRole('textbox', { name: '取消原因', exact: true })).toHaveValue('依赖方案终止');
+  await dialog.locator('form').evaluate((form) => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  await page.waitForTimeout(100);
+  expect(state.writes).toHaveLength(1);
+
+  state.readStatus = 0;
+  await dialog.getByRole('button', { name: '重新读取需求', exact: true }).click();
+  await expect(dialog).toContainText('提交结果仍待核对');
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('alert').filter({ hasText: '取消需求结果待核对' })).toBeVisible();
+  await page.getByRole('button', { name: '核对需求操作', exact: true }).click();
+  await expect(dialog).toContainText('提交结果仍待核对');
+  await dialog.getByRole('button', { name: '已核对并关闭', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.writes).toHaveLength(1);
+});
+
+for (const action of ['cancel'] as const) {
   test(`${action}提交期间锁定说明，关闭和重复提交无效`, async ({ page }) => {
     const state = await fixture(page, action);
     let release!: () => void;
@@ -210,26 +253,19 @@ for (const status of [403, 404]) {
     expect(state.writes).toHaveLength(1);
   });
 }
-
 test('历史补录异常成功响应不自动重发，核对已完成状态后禁止重复补录', async ({ page }) => {
   const state = await fixture(page, 'complete-as-planned');
   await page.route('**/api/requirements/r1/complete-as-planned', (route) => {
     state.writes.push(route.request().postDataJSON());
     const completionAt = '2026-09-06T09:00:00.000Z';
-    const acceptanceAt = '2026-09-06T09:00:00.001Z';
     const completedItem = {
       ...state.requirement.workItems[0], status: 'completed' as const, progress: 100,
       actualStart: '2020-01-02', actualEnd: '2020-01-03', version: 2, updatedAt: completionAt,
     };
     state.requirement = {
-      ...state.requirement, status: 'completed', progress: 100, version: 3, updatedAt: acceptanceAt,
+      ...state.requirement, status: 'completed', progress: 100, version: 3, updatedAt: completionAt,
       workItems: [completedItem],
       progressUpdates: [{
-        id: 'accept-event', requirementId: 'r1', workItemId: null, workItemTitle: null,
-        percent: 100, workItemPercent: null, content: '历史补录，按计划完成；确认验收',
-        eventType: 'accept', supersedesId: null, createdByAccountId: 'admin', createdByName: 'admin',
-        createdAt: acceptanceAt, updatedAt: acceptanceAt,
-      }, {
         id: 'complete-event', requirementId: 'r1', workItemId: 'w1', workItemTitle: completedItem.title,
         percent: 100, workItemPercent: 100, content: '历史补录，按计划完成（2020-01-02 至 2020-01-03）',
         eventType: 'complete', supersedesId: null, createdByAccountId: 'admin', createdByName: 'admin',
@@ -243,6 +279,9 @@ test('历史补录异常成功响应不自动重发，核对已完成状态后�
   await expect(dialog).toContainText('提交结果仍待核对');
   await expect(dialog.getByRole('button',{name:'确认按期完成',exact:true})).toBeDisabled();
   await dialog.getByRole('button',{name:'关闭',exact:true}).click();
+  await expect(page.getByRole('alert').filter({ hasText: '按期完成结果待核对' })).toBeVisible();
+  await page.getByRole('button', { name: '核对需求操作', exact: true }).click();
+  await dialog.getByRole('button', { name: '已核对并关闭', exact: true }).click();
   await page.getByRole('button', { name: '需求操作', exact: true }).click();
   await expect(page.getByRole('button', { name: '按期完成（历史补录）', exact: true })).toHaveCount(0);
   expect(state.writes).toHaveLength(1);
@@ -282,8 +321,8 @@ test('已完成需求可从操作菜单受控纠错且不提交交付字段', as
     ...state.requirement,
     ownerId: 'person-1', ownerName: '历史负责人', background: null, acceptanceCriteria: null, referenceUrl: null,
     progressUpdates: [{
-      id: 'accept-1', requirementId: 'r1', workItemId: null, workItemTitle: null, percent: 100, workItemPercent: null,
-      content: '原验收记录', eventType: 'accept', supersedesId: null, createdAt: '2020-01-03T08:00:00.000Z', updatedAt: '2020-01-03T08:00:00.000Z',
+      id: 'complete-1', requirementId: 'r1', workItemId: null, workItemTitle: null, percent: 100, workItemPercent: null,
+      content: '原完成记录', eventType: 'complete', supersedesId: null, createdAt: '2020-01-03T08:00:00.000Z', updatedAt: '2020-01-03T08:00:00.000Z',
     }],
   };
   await page.route('**/api/people?**', (route) => route.fulfill({ json: [{ id: 'person-1', name: '历史负责人', active: 1, projectRole: 'member' }] }));
@@ -298,18 +337,67 @@ test('已完成需求可从操作菜单受控纠错且不提交交付字段', as
   await page.getByRole('button', { name: '受控纠错', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '需求受控纠错', exact: true });
   await dialog.getByRole('textbox', { name: '纠错后的需求标题', exact: true }).fill('修正后的历史需求');
-  await dialog.getByRole('combobox', { name: '需求纠错关联历史记录', exact: true }).selectOption('accept-1');
+  await dialog.getByRole('combobox', { name: '需求纠错关联历史记录', exact: true }).selectOption('complete-1');
   await dialog.getByRole('textbox', { name: '需求纠错原因', exact: true }).fill('历史标题录入错误');
   await dialog.getByRole('button', { name: '保存纠错', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(state.writes).toHaveLength(1);
   expect(state.writes[0]).toMatchObject({
-    expectedVersion: 1, title: '修正后的历史需求', reason: '历史标题录入错误', supersedesId: 'accept-1',
+    expectedVersion: 1, title: '修正后的历史需求', reason: '历史标题录入错误', supersedesId: 'complete-1',
   });
-  for (const field of ['status', 'progress', 'acceptedAt', 'plannedStart', 'plannedEnd', 'templateId']) expect(state.writes[0]).not.toHaveProperty(field);
+  for (const field of ['status', 'progress', 'acceptedAt', 'plannedStart', 'plannedEnd', 'templateId', 'priority']) expect(state.writes[0]).not.toHaveProperty(field);
 });
 
-for (const action of ['accept', 'cancel'] as const) {
+test('需求受控纠错已落库但响应异常时跨导航保留草稿和核对锁', async ({ page }) => {
+  const state = await fixture(page, 'archive');
+  state.requirement = {
+    ...state.requirement,
+    ownerId: 'person-1', ownerName: '历史负责人', background: null, acceptanceCriteria: null, referenceUrl: null,
+    progressUpdates: [{
+      id: 'complete-1', requirementId: 'r1', workItemId: null, workItemTitle: null, percent: 100, workItemPercent: null,
+      content: '原完成记录', eventType: 'complete', supersedesId: null, createdAt: '2020-01-03T08:00:00.000Z', updatedAt: '2020-01-03T08:00:00.000Z',
+    }],
+  };
+  await page.route('**/api/people?**', (route) => route.fulfill({ json: [{ id: 'person-1', name: '历史负责人', active: 1, projectRole: 'member' }] }));
+  await page.route('**/api/requirements/r1/correct', (route) => {
+    const input = route.request().postDataJSON() as Record<string, unknown>;
+    state.writes.push(input);
+    state.requirement = { ...state.requirement, title: String(input.title).trim(), version: 2 };
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/requirements/r1');
+  await page.getByRole('button', { name: '需求操作', exact: true }).click();
+  await page.getByRole('button', { name: '受控纠错', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '需求受控纠错', exact: true });
+  await dialog.getByRole('textbox', { name: '纠错后的需求标题', exact: true }).fill(' 响应异常后的历史需求 ');
+  await dialog.getByRole('combobox', { name: '需求纠错关联历史记录', exact: true }).selectOption('complete-1');
+  await dialog.getByRole('textbox', { name: '需求纠错原因', exact: true }).fill('保留这份纠错依据');
+  await dialog.getByRole('button', { name: '保存纠错', exact: true }).click();
+  await expect(dialog).toContainText('提交结果待核对');
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+
+  const actionButton = page.getByRole('button', { name: '需求操作', exact: true });
+  await expect(page.getByRole('alert').filter({ hasText: '需求受控纠错结果待核对' })).toBeVisible();
+  await expect(actionButton).toBeDisabled();
+  await actionButton.evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(page.locator('.inline-edit-popover')).toHaveCount(0);
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await page.goBack();
+  await expect(page.getByRole('alert').filter({ hasText: '需求受控纠错结果待核对' })).toBeVisible();
+  await page.getByRole('button', { name: '核对受控纠错', exact: true }).click();
+  await expect(dialog.getByRole('textbox', { name: '纠错后的需求标题', exact: true })).toHaveValue(' 响应异常后的历史需求 ');
+  await expect(dialog.getByRole('combobox', { name: '需求纠错关联历史记录', exact: true })).toHaveValue('complete-1');
+  await expect(dialog.getByRole('textbox', { name: '需求纠错原因', exact: true })).toHaveValue('保留这份纠错依据');
+  await expect(dialog.getByRole('button', { name: '保存纠错', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: '已核对并关闭', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(actionButton).toBeEnabled();
+  expect(state.writes).toHaveLength(1);
+});
+
+for (const action of ['cancel'] as const) {
   test(`${action}异常响应核对状态后保留说明且禁止重复提交`, async ({ page }) => {
     const state = await fixture(page, action);
     await page.route(`**/api/requirements/r1/${action}`, (route) => {
@@ -317,10 +405,10 @@ for (const action of ['accept', 'cancel'] as const) {
       const updatedAt = '2026-09-06T09:00:00.000Z';
       state.requirement = {
         ...state.requirement,
-        status: action === 'accept' ? 'completed' : 'cancelled', version: 2, updatedAt,
+        status: 'cancelled', version: 2, updatedAt,
         progressUpdates: [{
           id: `${action}-event`, requirementId: 'r1', workItemId: null, workItemTitle: null,
-          percent: action === 'accept' ? 100 : 0, workItemPercent: null,
+          percent: 0, workItemPercent: null,
           content: '异常响应核对说明', eventType: action, supersedesId: null,
           createdByAccountId: 'admin', createdByName: 'admin', createdAt: updatedAt, updatedAt,
         }],
@@ -336,28 +424,3 @@ for (const action of ['accept', 'cancel'] as const) {
     expect(state.writes).toHaveLength(1);
   });
 }
-
-test('验收异常响应不把旧同值事件误认成本次验收', async ({ page }) => {
-  const state = await fixture(page, 'accept');
-  await page.route('**/api/requirements/r1/accept', (route) => {
-    state.writes.push(route.request().postDataJSON());
-    state.requirement = {
-      ...state.requirement,
-      status: 'completed', version: 4, updatedAt: '2026-09-06T10:00:00.000Z',
-      progressUpdates: [{
-        id: 'old-accept', requirementId: 'r1', workItemId: null, workItemTitle: null,
-        percent: 100, workItemPercent: null, content: '重复的验收说明', eventType: 'accept', supersedesId: null,
-        createdByAccountId: 'admin', createdByName: 'admin',
-        createdAt: '2026-09-06T09:00:00.000Z', updatedAt: '2026-09-06T09:00:00.000Z',
-      }],
-    };
-    return route.fulfill({ status: 200, contentType: 'text/html', body: '<html>unexpected response</html>' });
-  });
-  const dialog = await openCommand(page, 'accept');
-  await dialog.getByRole('textbox', { name: '验收说明', exact: true }).fill('重复的验收说明');
-  await dialog.getByRole('button', { name: '确认验收', exact: true }).click();
-
-  await expect(dialog).toBeVisible();
-  await expect(page.getByText('已核对最新状态：需求已验收', { exact: true })).toHaveCount(0);
-  expect(state.writes).toHaveLength(1);
-});

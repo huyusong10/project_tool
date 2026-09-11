@@ -11,6 +11,29 @@ import { FormError, FormField } from './Form';
 import { useToast } from './Toast';
 
 export type RequirementCommand = 'complete-as-planned' | 'cancel' | 'archive';
+export type RequirementCommandRecheck = { action: RequirementCommand; baselineVersion: number; text: string; stage: 'read' | 'review' };
+const requirementCommands: RequirementCommand[] = ['complete-as-planned', 'cancel', 'archive'];
+function requirementCommandRecheckKey(accountKey: string, requirementId: string) {
+  return `project-manage:requirement-command-recheck:${accountKey}:${requirementId}`;
+}
+export function readRequirementCommandRecheck(accountKey: string, requirementId: string): RequirementCommandRecheck | null {
+  try {
+    const raw = sessionStorage.getItem(requirementCommandRecheckKey(accountKey, requirementId));
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<RequirementCommandRecheck>;
+    return requirementCommands.includes(value.action as RequirementCommand)
+      && typeof value.baselineVersion === 'number'
+      && typeof value.text === 'string'
+      && (value.stage === 'read' || value.stage === 'review') ? value as RequirementCommandRecheck : null;
+  } catch { return null; }
+}
+export function persistRequirementCommandRecheck(accountKey: string, requirementId: string, value: RequirementCommandRecheck | null) {
+  try {
+    const key = requirementCommandRecheckKey(accountKey, requirementId);
+    if (value) sessionStorage.setItem(key, JSON.stringify(value));
+    else sessionStorage.removeItem(key);
+  } catch { /* 当前页面仍保留核对锁。 */ }
+}
 const commands = {
   'complete-as-planned': { title: '按期完成（历史补录）', confirm: '确认按期完成' },
   cancel: { title: '取消需求', confirm: '确认取消' },
@@ -38,9 +61,11 @@ function commandWarning(action: RequirementCommand, requirement: Requirement, to
   return '';
 }
 
-export function RequirementCommandDialog({ action, requirement, onReload, onClose, onArchived }: {
+export function RequirementCommandDialog({ action, requirement, recheck, onRecheckChange, onReload, onClose, onArchived }: {
   action: RequirementCommand;
   requirement: Requirement;
+  recheck: RequirementCommandRecheck | null;
+  onRecheckChange: (value: RequirementCommandRecheck | null) => void;
   onReload: () => Promise<Requirement>;
   onClose: () => void;
   onArchived: () => void;
@@ -50,13 +75,13 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
   const { businessDate: today } = useBusinessDate();
   const { session } = useSession();
   const [baseline, setBaseline] = useState(requirement);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(recheck?.text || '');
   const [reading, setReading] = useState(false);
-  const [needsRefresh, setNeedsRefresh] = useState(false);
+  const [needsRefresh, setNeedsRefresh] = useState(recheck?.stage === 'read');
   const [refreshed, setRefreshed] = useState(false);
   const [readError, setReadError] = useState<Error | null>(null);
   const submitting = useRef(false);
-  const unknownVersion=useRef<number|null>(null);const [reviewRequired,setReviewRequired]=useState(false);
+  const unknownVersion=useRef<number|null>(recheck?.baselineVersion ?? null);const [reviewRequired,setReviewRequired]=useState(recheck?.stage === 'review');
   const readingRef = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -71,7 +96,10 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
         ? await api<Requirement>(`/api/requirements/${baseline.id}?includeDeleted=true`, { readOnly: true })
         : await onReload();
       if (!mounted.current) return null;
-      setReviewRequired(unknownVersion.current!==null&&latest.version!==unknownVersion.current);
+      const requiresReview = unknownVersion.current !== null && latest.version !== unknownVersion.current;
+      setReviewRequired(requiresReview);
+      if (requiresReview) onRecheckChange({ action, baselineVersion: unknownVersion.current!, text, stage: 'review' });
+      else onRecheckChange(null);
       setBaseline(latest); setNeedsRefresh(false); setRefreshed(true);
       return latest;
     } catch (caught) {
@@ -86,7 +114,10 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
     mutationFn: async (input: { expectedVersion: number; content?: string; reason?: string }) => {await assertCleanRequirementDraft(session.accountId||'guest',baseline.id,{action});return api(`/api/requirements/${baseline.id}${action === 'archive' ? '' : `/${action}`}`, {
       method: action === 'archive' ? 'DELETE' : 'POST', body: jsonBody(input),
     });},
+    onMutate: (input) => onRecheckChange({ action, baselineVersion: input.expectedVersion, text, stage: 'read' }),
     onSuccess: () => {
+      onRecheckChange(null);
+      unknownVersion.current = null;
       if (action === 'archive') invalidateArchiveViews(client);
       else invalidateRequirementViews(client, baseline.id);
       if (!mounted.current) return;
@@ -95,8 +126,14 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
       if (action === 'archive') onArchived();
     },
     onError: async (error, input) => {
+      if (isWriteOutcomeUnknown(error)) {
+        unknownVersion.current = input.expectedVersion;
+        onRecheckChange({ action, baselineVersion: input.expectedVersion, text, stage: 'read' });
+      } else {
+        unknownVersion.current = null;
+        onRecheckChange(null);
+      }
       if(!mounted.current||!requiresWriteRecheck(error))return;
-      if(isWriteOutcomeUnknown(error))unknownVersion.current=input.expectedVersion;
       setNeedsRefresh(true);await readLatest();
     },
     onSettled: () => { submitting.current = false; },
@@ -107,6 +144,7 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
   const needsText = action === 'cancel';
   const pendingItems = baseline.workItems.filter((item) => !['completed', 'cancelled'].includes(item.status));
   const close = () => { if (!submitting.current && !readingRef.current) onClose(); };
+  const finishReview = () => { onRecheckChange(null); unknownVersion.current = null; setReviewRequired(false); onClose(); };
 
   return <Modal title={commands[action].title} width={560} closable={!pending} onClose={close}>
     <form className="requirement-command-form" onSubmit={(event) => {
@@ -125,7 +163,7 @@ export function RequirementCommandDialog({ action, requirement, onReload, onClos
       {action === 'archive' && <p>需求将从日常页面隐藏，历史数据仍会保留并可在归档中心恢复。</p>}
       {needsText && <FormField label="取消原因" full><textarea autoFocus required rows={4} disabled={pending} value={text} onChange={(event) => setText(event.target.value)} /></FormField>}
       <FormError>{mutation.error?.message}</FormError>
-      {reviewRequired&&<p className="warning-banner">提交结果仍待核对，当前版本已变化。本窗口不再提交；请核对执行记录，已填说明保留。</p>}
+      {reviewRequired&&<div className="warning-banner">提交结果仍待核对，当前版本已变化。本窗口不再提交；请核对执行记录，已填说明保留。<button type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</button></div>}
       <FormError>{warning}</FormError>
       <FormError>{changed ? '需求已更新，请重新读取并核对后再确认；原确认内容已保留。' : undefined}</FormError>
       <FormError>{readError?.message}</FormError>

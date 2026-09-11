@@ -40,6 +40,19 @@ async function loginAsAdmin(page: Page) {
   }
 }
 
+async function createActionLayoutFixture(page: Page) {
+  const projects = await (await page.context().request.get("/api/projects")).json() as Array<{ id: string }>;
+  const created = await page.context().request.post("/api/requirements", {
+    data: { projectId: projects[0].id, title: `布局检查需求-${Date.now()}` },
+  });
+  expect(created.ok(), "布局检查需要一条可见需求").toBe(true);
+  const requirement = await created.json() as { id: string; version: number };
+  const workItem = await page.context().request.post(`/api/requirements/${requirement.id}/work-items`, {
+    data: { expectedVersion: requirement.version, title: "布局检查工作项" },
+  });
+  expect(workItem.ok(), "行动中心布局检查需要一条带需求上下文的工作项").toBe(true);
+}
+
 async function assertResponsiveLayout(page: Page, route: string) {
   await page.goto(route);
   await page.waitForLoadState("networkidle");
@@ -115,6 +128,7 @@ async function assertResponsiveLayout(page: Page, route: string) {
 
 test("all primary pages obey the responsive layout contract", async ({ page }) => {
   await loginAsAdmin(page);
+  await createActionLayoutFixture(page);
   for (const route of routes) await assertResponsiveLayout(page, route);
 
   const projects = await (await page.context().request.get("/api/projects")).json() as Array<{ id: string }>;
@@ -177,23 +191,23 @@ test("project members can be searched and added from project settings", async ({
 test("lightweight requirements and the action center remain usable", async ({ page }) => {
   await loginAsAdmin(page);
   const projects = await (await page.context().request.get("/api/projects")).json() as Array<{ id: string }>;
-  const title = `响应式待规划需求-${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
+  const title = `响应式未安排需求-${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
   const created = await page.context().request.post("/api/requirements", {
     data: { projectId: projects[0].id, title },
   });
-  expect(created.ok(), "应允许仅填写标题创建待规划需求").toBe(true);
+  expect(created.ok(), "应允许仅填写标题创建未安排需求").toBe(true);
 
   await page.goto("/actions");
   await expect(page.getByRole("heading", { name: "异常行动中心" })).toBeVisible();
   await expect(page.locator(".action-item", { hasText: title })).toBeVisible();
-  await page.getByLabel("行动原因").selectOption("planning");
-  await expect(page.locator(".action-item", { hasText: title })).toContainText("待规划");
+  await page.getByLabel("行动原因").selectOption("missing_owner");
+  await expect(page.locator(".action-item", { hasText: title })).toContainText("缺少需求负责人");
 
   await page.goto("/requirements");
   await page.getByRole("button", { name: "新建需求" }).click();
   const dialog = page.getByRole("dialog", { name: "新建需求" });
   await expect(dialog.getByLabel("需求标题")).toBeVisible();
-  await expect(dialog.getByLabel("优先级")).toHaveValue("P2");
+  await expect(dialog.getByLabel("优先级")).toHaveCount(0);
   await expect(dialog.getByLabel("需求负责人（可稍后指定）")).toBeVisible();
   await expect(dialog.getByLabel("流程设计")).toBeHidden();
   await expect(dialog.getByLabel("需求背景")).toBeHidden();

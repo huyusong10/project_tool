@@ -22,22 +22,32 @@ import { ProgressForm } from '../components/ProgressForm';
 import { ResizablePanel } from '../components/ResizablePanel';
 import { WorkItemActions } from '../components/WorkItemActions';
 import { ViewTabs } from '../components/ViewTabs';
+import { persistWorkItemActionRecheck, readWorkItemActionRechecks } from '../work-item-write-rechecks';
 
 export function MyWorkPage() {
   const client = useQueryClient(); const navigate = useNavigate();
   const { session } = useSession();
+  const actionRecheckAccountKey = session.accountId || session.username || 'guest';
   const [params, setParams] = usePageSearchParams(['filter'], true);
   const requestedFilter = params.get('filter');
   const filter = requestedFilter && ['active','all','not_started','in_progress','completed','cancelled'].includes(requestedFilter) ? requestedFilter : 'active';
   const setFilter = (value: string) => setParams({ filter: value });
   const [progressItem, setProgressItem] = useState<MyWorkItem>();
+  const [activeActionItemId, setActiveActionItemId] = useState<string>();
+  const [workItemActionRechecks, setWorkItemActionRechecks] = useState<Set<string>>(() => readWorkItemActionRechecks(actionRecheckAccountKey));
   const { data, isLoading, error, refetch, isFetching, unavailable } = useResourceQuery<MyWork>(keys.myWork, '/api/my-work');
   usePageScrollPosition(!isLoading, true);
   useEffect(() => {
     if (unavailable && error) setProgressItem(undefined);
   }, [error, unavailable]);
+  useEffect(() => {
+    setWorkItemActionRechecks(readWorkItemActionRechecks(actionRecheckAccountKey));
+  }, [actionRecheckAccountKey]);
+  const setWorkItemActionRecheck = (workItemId: string, required: boolean) => {
+    setWorkItemActionRechecks(persistWorkItemActionRecheck(actionRecheckAccountKey, workItemId, required));
+  };
   const directEntries=(data?.requirements||[]).filter(r=>r.executionMode==='direct').map(r=>({...r,...directRequirementTimelineItem(r as Requirement),requirementStatus:r.status,requirementTitle:r.title,assignmentType:'owner',overdue:r.delayed,deliveryRequirement:r} as MyWorkItem & {deliveryRequirement:typeof r}));
-  const items = [...(data?.items || []),...directEntries].filter((item) => filter === 'all' || (filter === 'active' ? !['completed', 'cancelled'].includes(item.status) : item.status === filter));
+  const items = [...(data?.items || []),...directEntries].filter((item) => item.id === activeActionItemId || filter === 'all' || (filter === 'active' ? !['completed', 'cancelled'].includes(item.status) : item.status === filter));
   const action = useMutation({
     mutationFn: async ({ item, action, content, reason, expectedDependencyRevision, expectedVersion = item.version }: { item: MyWorkItem; expectedDependencyRevision?:number; action: string; content?: string; reason?: string; expectedVersion?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId,{workItemId:item.id,action});return api(`/api/work-items/${item.id}/${action}`, {
       method: 'POST', body: jsonBody({ expectedVersion, content, reason, expectedDependencyRevision }),
@@ -104,8 +114,8 @@ export function MyWorkPage() {
             const item = baseItem as MyWorkItem;
             const direct=directEntries.find(r=>r.id===item.id);if(direct)return <button className="ghost-button" onClick={()=>navigate('/requirements/'+direct.requirementId)}>处理需求</button>;
             return <div className="my-work-gantt-actions">
-              {['in_progress', 'blocked'].includes(item.status) && <button className="my-work-progress-action" onClick={() => setProgressItem(item)} title={item.status === 'blocked' ? '补充说明，不改变完成度' : '更新完成度'} aria-label={`为${item.title}${item.status === 'blocked' ? '补充说明' : '更新完成度'}`}><MessageSquarePlus size={15} /><span>{item.status === 'blocked' ? '补充说明' : '更新完成度'}</span></button>}
-              <WorkItemActions item={item} startDisabledReason={item.requirementStatus === 'planning' ? '需求尚未完成规划，请联系需求负责人或项目经理补齐负责人和排期。' : undefined} onAction={(nextAction, text, expectedVersion, expectedDependencyRevision) => action.mutateAsync({ item, action: nextAction, expectedVersion, expectedDependencyRevision, ...(['block','start'].includes(nextAction) ? { reason: text } : { content: text }) })} onReload={async () => {
+              {item.status === 'in_progress' && <button className="my-work-progress-action" onClick={() => setProgressItem(item)} title="更新完成度" aria-label={`为${item.title}更新完成度`}><MessageSquarePlus size={15} /><span>更新完成度</span></button>}
+              <WorkItemActions item={item} writeNeedsRecheck={workItemActionRechecks.has(item.id)} onWriteNeedsRecheckChange={(required) => setWorkItemActionRecheck(item.id, required)} onOpenChange={(open) => setActiveActionItemId((current) => open ? item.id : current === item.id ? undefined : current)} onAction={(nextAction, text, expectedVersion, expectedDependencyRevision) => action.mutateAsync({ item, action: nextAction, expectedVersion, expectedDependencyRevision, ...(nextAction === 'start' ? { reason: text } : { content: text }) })} onReload={async () => {
                 const [latest, requirement] = await Promise.all([
                   refetch({ throwOnError: true }),
                   api<Requirement>(`/api/requirements/${item.requirementId}`),
@@ -126,8 +136,8 @@ export function MyWorkPage() {
     </div>
     {progressItem && !unavailable && <ProgressForm
       key={progressItem.id}
-      title={progressItem.status === 'blocked' ? '补充工作项说明' : '更新工作项进度'}
-      submitLabel={progressItem.status === 'blocked' ? '保存说明' : '保存进展'}
+      title="更新工作项进度"
+      submitLabel="保存进展"
       requirementId={progressItem.requirementId}
       scope={{ items: (data?.items || []).filter((item) => item.id === progressItem.id), updates: (data?.recentProgress || []).filter((update) => update.requirementId === progressItem.requirementId) }}
       loadScope={async () => {

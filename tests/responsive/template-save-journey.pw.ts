@@ -54,6 +54,9 @@ test('流程元素与名称即时保存，返回再进入保留里程碑、依�
   await editor.locator(`.react-flow__node[data-id="${template!.items[0].id}"]`).click();
   await editor.getByRole('textbox', { name: '元素名称', exact: true }).fill('架构设计');
   await editor.getByRole('spinbutton', { name: '预计工期', exact: true }).fill('4');
+  await editor.locator('.dependency-canvas').focus();
+  await page.keyboard.press('Escape');
+  await expect(editor.locator('.graph-detail')).toHaveAttribute('aria-hidden', 'true');
   await editor.locator(`.react-flow__node[data-id="${template!.items[2].id}"]`).click();
   await editor.getByRole('textbox', { name: '元素名称', exact: true }).fill('发布基线');
   await properties(editor, '已核对交付流程', '保存前最后输入的说明');
@@ -130,6 +133,83 @@ for (const existing of [true, false]) test(`${existing ? '修改' : '新建'}流
   await page.getByRole('button', { name: '编辑流程 异常响应后交付流程', exact: true }).click();
   await expect(editor.locator('[data-layout-ready="true"]')).toBeVisible();
   expect((await list()).find(t => t.id === saved.id)!.layout).toEqual(saved.layout);
+});
+
+test('流程待核对提交被另一标签接管后沿用原批次', async ({ page, context }) => {
+  const { editor, template } = await fixture(page);
+  await properties(editor, '跨页待核对流程', '接管后不能生成新批次');
+  await expect(editor.getByText('草稿已保留', { exact: true })).toBeVisible();
+  const tab = await context.newPage();
+  await tab.goto(page.url());
+  const takeoverEditor = tab.locator('.template-flow-workspace');
+  await expect(takeoverEditor.locator('[data-layout-ready="true"]')).toBeVisible();
+  await expect(takeoverEditor).toContainText('其他页面编辑中');
+  let original: Record<string, unknown> | undefined;
+  await page.route(`**/api/templates/${template!.id}`, async route => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    original = route.request().postDataJSON();
+    return route.abort('connectionfailed');
+  });
+  await editor.getByRole('button', { name: '保存修改', exact: true }).click();
+  await expect.poll(() => original?.batchId).toBeTruthy();
+  await openDraft(editor);
+  await expect(editor.getByRole('button', { name: '查询原批次并重试', exact: true })).toBeVisible();
+  await openDraft(takeoverEditor);
+  await takeoverEditor.getByRole('button', { name: '接管此草稿', exact: true }).click();
+  let retried: Record<string, unknown> | undefined;
+  await tab.route(`**/api/templates/${template!.id}`, async route => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    retried = route.request().postDataJSON();
+    return route.abort('connectionfailed');
+  });
+  await takeoverEditor.getByRole('button', { name: '保存修改', exact: true }).click();
+  await expect.poll(() => retried?.batchId).toBeTruthy();
+  expect(retried).toEqual(original);
+  await tab.close();
+});
+
+test('流程待核对通知丢失后，自动接手页面保存前读取原批次', async ({ page, context }) => {
+  const { editor, template } = await fixture(page);
+  await properties(editor, '通知丢失待核对流程', '自动接手仍须复用原批次');
+  await expect(editor.getByText('草稿已保留', { exact: true })).toBeVisible();
+  const tab = await context.newPage();
+  await tab.addInitScript(() => {
+    const target = window as unknown as { addEventListener: (...args: unknown[]) => void };
+    const add = target.addEventListener.bind(window);
+    target.addEventListener = (...args: unknown[]) => {
+      if (args[0] === 'storage') {
+        const listener = args[1] as (event: StorageEvent) => void;
+        args[1] = (event: StorageEvent) => { if (!event.key?.endsWith(':submission:changed')) listener(event); };
+      }
+      add(...args);
+    };
+  });
+  await tab.goto(page.url());
+  const resumedEditor = tab.locator('.template-flow-workspace');
+  await expect(resumedEditor.locator('[data-layout-ready="true"]')).toBeVisible();
+  await expect(resumedEditor).toContainText('其他页面编辑中');
+  let original: Record<string, unknown> | undefined;
+  await page.route(`**/api/templates/${template!.id}`, async route => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    original = route.request().postDataJSON();
+    return route.abort('connectionfailed');
+  });
+  await editor.getByRole('button', { name: '保存修改', exact: true }).click();
+  await expect.poll(() => original?.batchId).toBeTruthy();
+  await openDraft(editor);
+  await expect(editor.getByRole('button', { name: '查询原批次并重试', exact: true })).toBeVisible();
+  await page.close();
+  await expect(resumedEditor.getByRole('button', { name: '保存修改', exact: true })).toBeEnabled();
+  let retried: Record<string, unknown> | undefined;
+  await tab.route(`**/api/templates/${template!.id}`, async route => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    retried = route.request().postDataJSON();
+    return route.abort('connectionfailed');
+  });
+  await resumedEditor.getByRole('button', { name: '保存修改', exact: true }).click();
+  await expect.poll(() => retried?.batchId).toBeTruthy();
+  expect(retried).toEqual(original);
+  await tab.close();
 });
 
 for (const outcome of ['success', 'failure'] as const) test(`流程保存中返回并重新进入，${outcome === 'success' ? '成功后恢复编辑' : '失败后保留原批次重试'}`, async ({ page }) => {

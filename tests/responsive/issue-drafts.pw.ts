@@ -4,7 +4,7 @@ import type { Issue } from '../../src/client/types';
 const issue: Issue = {
   id: 'i1', projectId: 'p1', projectName: '测试项目', requirementId: null, requirementTitle: null,
   sourceRef: null, title: '问题草稿测试', impact: '原影响', reporter: '张三', ownerId: 'u1', ownerName: '张三',
-  status: 'in_progress', priority: 'P2', progress: 40, discoveredAt: '2026-09-01', dueDate: '2026-09-10',
+  status: 'in_progress', priority: 'P2', progress: 40, discoveredAt: '2026-09-01', dueDate: '2026-09-10', nextReviewAt: null,
   resolvedAt: null, version: 1, createdAt: '2026-09-01', updatedAt: '2026-09-01', latestUpdate: null,
   latestUpdateAt: null, overdue: false, updates: [],
 };
@@ -32,7 +32,7 @@ async function fixture(page: Page, role: 'admin' | 'manager' | 'owner' | 'member
             ...state.issue, ...body, id: 'i-created', title: String(body.title).trim(),
             impact: String(body.impact || '').trim() || null, requirementId: String(body.requirementId || '') || null,
             sourceRef: String(body.sourceRef || '').trim() || null, reporter: String(body.reporter || '').trim() || null,
-            dueDate: String(body.dueDate || '') || null, ownerId: null, ownerName: null,
+            dueDate: String(body.dueDate || '') || null, nextReviewAt: String(body.nextReviewAt || '') || null, ownerId: null, ownerName: null,
             status: 'in_progress', progress: 0, version: 1,
             createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
           }
@@ -123,6 +123,34 @@ test('新建问题已落库但响应异常时核对本次新增问题', async ({
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText('已核对最新状态：问题已创建', { exact: true })).toBeVisible();
   await expect(page.getByText('异常响应新增问题', { exact: true })).toBeVisible();
+  expect(state.writes).toHaveLength(1);
+});
+
+test('新建问题核对时不能把下次核对日期不同的候选项当成本次结果', async ({ page }) => {
+  const state = await fixture(page);
+  state.stampCreate = true;
+  state.malformedWrite = true;
+  let submitted = false;
+  await page.route('**/api/issues*', (route) => {
+    if (new URL(route.request().url()).pathname !== '/api/issues') return route.fallback();
+    if (route.request().method() === 'POST') { submitted = true; return route.fallback(); }
+    if (!submitted) return route.fallback();
+    return route.fulfill({ json: {
+      items: [{ ...state.issue, nextReviewAt: '2026-09-20' }], total: 1, page: 1, pageSize: 100, pages: 1,
+      summary: { total: 1, inProgress: 1, deferred: 0, resolved: 0, active: 1, highPriority: 0, overdue: 0, unassigned: 0, closureRate: 0 },
+    } });
+  });
+  await page.goto('/issues');
+  await page.getByRole('button', { name: '新建问题', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '新建问题', exact: true });
+  await dialog.getByLabel('问题标题', { exact: true }).fill('日期不能串单的问题');
+  await dialog.getByLabel('下次核对日期').fill('2026-09-12');
+  await dialog.getByRole('button', { name: '创建问题', exact: true }).click();
+
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('下次核对日期')).toHaveValue('2026-09-12');
+  await expect(dialog.getByRole('alert')).toContainText('创建结果暂时无法确认');
+  await expect(page.getByText('已核对最新状态：问题已创建', { exact: true })).toHaveCount(0);
   expect(state.writes).toHaveLength(1);
 });
 
@@ -738,6 +766,29 @@ test('问题信息已落库但响应异常时核对完整字段并关闭', async
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByText('已核对最新状态：问题信息已保存', { exact: true })).toBeVisible();
   expect(state.writes).toHaveLength(1);
+});
+
+test('只改下次核对日期且服务端未保存时不能误报问题信息已保存', async ({ page }) => {
+  const state = await fixture(page);
+  state.issue = { ...state.issue, nextReviewAt: '2026-09-08' };
+  let writes = 0;
+  await page.route('**/api/issues/i1', (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    writes++;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+  await page.goto('/issues?issueId=i1');
+  await page.getByRole('tab', { name: '基本信息', exact: true }).click();
+  const form = page.locator('.issue-form');
+  await form.getByLabel('下次核对日期').fill('2026-09-12');
+  await form.getByRole('button', { name: '保存修改', exact: true }).click();
+
+  await expect(form).toBeVisible();
+  await expect(form.getByLabel('下次核对日期')).toHaveValue('2026-09-12');
+  await expect(form).toContainText('已读取最新问题，输入保持不变');
+  await expect(page.getByText('已核对最新状态：问题信息已保存', { exact: true })).toHaveCount(0);
+  await expect(form.getByRole('button', { name: '保存修改', exact: true })).toBeEnabled();
+  expect(writes).toBe(1);
 });
 
 test('问题草稿 他人提高完成度后保留输入，重新读取后仍禁止降低', async ({ page }) => {

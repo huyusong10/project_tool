@@ -26,6 +26,9 @@ export function WorkItemActions({
   canManage = false,
   stateChangesDisabled = false,
   startDisabledReason,
+  onOpenChange,
+  writeNeedsRecheck = false,
+  onWriteNeedsRecheckChange,
 }: {
   item: WorkItem;
   onAction: (action: "start" | "complete" | "reopen", content: string | undefined, expectedVersion: number, expectedDependencyRevision?:number) => Promise<unknown>;
@@ -38,6 +41,9 @@ export function WorkItemActions({
   canManage?: boolean;
   stateChangesDisabled?: boolean;
   startDisabledReason?: string;
+  onOpenChange?: (open: boolean) => void;
+  writeNeedsRecheck?: boolean;
+  onWriteNeedsRecheckChange?: (required: boolean) => void;
 }) {
   const client = useQueryClient();
   const toast = useToast();
@@ -53,6 +59,7 @@ export function WorkItemActions({
   const [baselineVersion, setBaselineVersion] = useState(item.version);
   const submitting = useRef(false);
   const unknownVersion=useRef<number|null>(null);const [reviewRequired,setReviewRequired]=useState(false);
+  const [unknownNeedsRead,setUnknownNeedsRead]=useState(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [error, setError] = useState("");
@@ -60,8 +67,11 @@ export function WorkItemActions({
   const [readError, setReadError] = useState("");
   const [refreshed, setRefreshed] = useState(false);
   const [validationError, setValidationError] = useState("");
+  const changePanel = (next: Panel | null) => { setPanel(next); onOpenChange?.(next !== null); };
+  const actionReviewBlocked = writeNeedsRecheck || unknownNeedsRead || reviewRequired;
 
   const openPanel = (next: Panel) => {
+    if(actionReviewBlocked)return;
     // 输入和版本一起取自打开操作面板时的记录，后台刷新不能替换草稿的版本。
     unknownVersion.current=null;setReviewRequired(false);
     setBaselineVersion(item.version);
@@ -70,14 +80,17 @@ export function WorkItemActions({
       setActualEnd(item.actualEnd || "");
       setSupersedesId("");
     }
-    setReason(""); setError(""); setReadError(""); setValidationError(""); setNeedsRefresh(false); setRefreshed(false); setPanel(next);
+    setReason(""); setError(""); setReadError(""); setValidationError(""); setNeedsRefresh(false); setRefreshed(false); changePanel(next);
   };
   const readLatest = async () => {
     setNeedsRefresh(true); setReadError("");
     try {
       const latest = await onReload();
       if (!mounted.current) return null;
-      setReviewRequired(unknownVersion.current!==null&&latest.item.version!==unknownVersion.current);
+      const unknownBaseline=unknownVersion.current;
+      setReviewRequired(unknownBaseline!==null&&latest.item.version!==unknownBaseline);
+      if(unknownBaseline!==null){unknownVersion.current=null;setUnknownNeedsRead(false);}
+      onWriteNeedsRecheckChange?.(false);
       setBaselineVersion(latest.item.version); setNeedsRefresh(false); setRefreshed(true);
       return latest;
     } catch (caught) {
@@ -92,18 +105,22 @@ export function WorkItemActions({
     finally { submitting.current = false; if (mounted.current) setPending(false); }
   };
   const run = async (operation: () => Promise<unknown>, outcome: ExpectedOutcome) => {
-    if (submitting.current || reviewRequired || (panel && needsRefresh) || operationUnavailable) return;
+    if (submitting.current || actionReviewBlocked || (panel && needsRefresh) || operationUnavailable) return;
     submitting.current = true;
     setPending(true); setError("");
     try {
       await operation();
-      setPanel(null);
+      changePanel(null);
       if (outcome.successMessage) toast.success(outcome.successMessage);
     } catch (caught) {
       if (!mounted.current) return;
       setError(caught instanceof Error ? caught.message : "操作失败，请重试");
       if (requiresWriteRecheck(caught)) {
-        if(isWriteOutcomeUnknown(caught))unknownVersion.current=panel?baselineVersion:item.version;
+        if (isWriteOutcomeUnknown(caught)) {
+          unknownVersion.current = panel ? baselineVersion : item.version;
+          setUnknownNeedsRead(true);
+          onWriteNeedsRecheckChange?.(true);
+        }
         await readLatest();invalidateRequirementViews(client,item.requirementId);
       }
     } finally { submitting.current = false; if (mounted.current) setPending(false); }
@@ -147,17 +164,24 @@ export function WorkItemActions({
     }
     void run(() => onAction(textPanel, textPanel === "complete" && !reason.trim() ? undefined : expectedContent, expectedVersion), {});
   };
+  const terminalState = item.status === "completed"
+    ? <span className="work-action-state is-completed is-icon-only" role="img" aria-label="已完成" title="已完成"><Check size={16} /></span>
+    : item.status === "cancelled"
+      ? <span className="work-action-state is-cancelled is-icon-only" role="img" aria-label="已取消" title="已取消"><CircleStop size={16} /></span>
+      : null;
 
   return <div className="work-item-actions" ref={anchorRef} onClick={(event) => event.stopPropagation()}>
     <div className="work-item-action-row">
-      {!stateChangesDisabled && item.status === "not_started" && <button className="work-next-action" disabled={pending || Boolean(startDisabledReason)} title={startDisabledReason} onClick={() => void run(() => onAction("start", undefined, item.version), {})}><Play size={14} />{startDisabledReason ? "暂不可开始" : pending ? "提交中" : "开始"}</button>}
-      {!stateChangesDisabled && item.status === "in_progress" && <button className="work-next-action" disabled={pending} onClick={() => openPanel("complete")}><Check size={14} />完成</button>}
-      {item.status === "completed" && <span className="work-action-state is-completed is-icon-only" role="img" aria-label="已完成" title="已完成"><Check size={16} /></span>}
-      {item.status === "cancelled" && <span className="work-action-state is-cancelled is-icon-only" role="img" aria-label="已取消" title="已取消"><CircleStop size={16} /></span>}
-      {canOpenMenu && <button type="button" className="action-menu-trigger" aria-label="更多工作项操作" title="更多操作" aria-haspopup="dialog" aria-expanded={panel !== null} disabled={pending} onClick={() => panel === "menu" ? setPanel(null) : openPanel("menu")}><MoreHorizontal size={16} /></button>}
+      {actionReviewBlocked ? <>{terminalState}<button type="button" className="work-next-action" disabled={pending} onClick={() => void refresh()}>重新读取工作项</button></> : <>
+        {!stateChangesDisabled && item.status === "not_started" && <button className="work-next-action" disabled={pending || Boolean(startDisabledReason)} title={startDisabledReason} onClick={() => void run(() => onAction("start", undefined, item.version), {})}><Play size={14} />{startDisabledReason ? "暂不可开始" : pending ? "提交中" : "开始"}</button>}
+        {!stateChangesDisabled && item.status === "in_progress" && <button className="work-next-action" disabled={pending} onClick={() => openPanel("complete")}><Check size={14} />完成</button>}
+        {terminalState}
+        {canOpenMenu && <button type="button" className="action-menu-trigger" aria-label="更多工作项操作" title="更多操作" aria-haspopup="dialog" aria-expanded={panel !== null} disabled={pending} onClick={() => panel === "menu" ? changePanel(null) : openPanel("menu")}><MoreHorizontal size={16} /></button>}
+      </>}
     </div>
-    {error && panel === null && <small className="work-action-error" title={error}>{error}</small>}
-    <AnchoredPopover anchorRef={anchorRef} open={panel !== null} onOutside={() => { if (!pending) setPanel(null); }} width={panel === "menu" ? 210 : 390} className={panel === "menu" ? "action-menu" : ""}>
+    {actionReviewBlocked && panel === null && <small className="work-action-error" role="alert">{unknownNeedsRead || writeNeedsRecheck ? "工作项操作结果待核对" : "提交结果仍待核对，工作项版本已变化"}{readError ? `：${readError}` : ""}</small>}
+    {error && panel === null && !actionReviewBlocked && <small className="work-action-error" title={error}>{error}</small>}
+    <AnchoredPopover anchorRef={anchorRef} open={panel !== null} onOutside={() => { if (!pending) changePanel(null); }} width={panel === "menu" ? 210 : 390} className={panel === "menu" ? "action-menu" : ""}>
       {panel === "menu" && <>
         {canCorrect && <button type="button" onClick={() => openPanel("dates")}><CalendarDays size={14} />受控修正实际日期</button>}
         {canBackfill && <button type="button" onClick={() => openPanel("backfill")}><Check size={14} />按期完成（历史补录）</button>}
@@ -165,13 +189,13 @@ export function WorkItemActions({
         {!stateChangesDisabled && canManage && onCancel && !["completed", "cancelled"].includes(item.status) && <button className="danger" onClick={() => openPanel("cancel")}><CircleStop size={14} />取消工作项</button>}
       </>}
       {textPanel && <form className="inline-action-form" onSubmit={(event) => { event.preventDefault(); submitText(); }}>
-        <header><strong>{textConfig[textPanel].title}</strong><button type="button" disabled={pending} onClick={() => setPanel(null)} aria-label="关闭"><X size={16} /></button></header>
+        <header><strong>{textConfig[textPanel].title}</strong><button type="button" disabled={pending} onClick={() => changePanel(null)} aria-label="关闭"><X size={16} /></button></header>
         {textPanel === "start" && <p>尚未交付：{item.unmetPredecessors?.map(p=>p.title).join("、")}</p>}
         <label><span>{textConfig[textPanel].label}</span><textarea autoFocus readOnly={pending} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={textConfig[textPanel].placeholder} /></label>
         {textPanel === "complete" && <small className="form-hint">可留空，系统会记录“完成工作项”</small>}
         {error && <p className="form-error">{error}</p>}
         {readNotice}
-        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || blocked || (!["start", "complete"].includes(textPanel)&&!reason.trim())}>{pending ? "提交中" : textConfig[textPanel].confirm}</button></footer>
+        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => changePanel(null)}>取消</button><button className="primary-button" disabled={pending || blocked || (!["start", "complete"].includes(textPanel)&&!reason.trim())}>{pending ? "提交中" : textConfig[textPanel].confirm}</button></footer>
       </form>}
       {panel === "dates" && <form className="inline-action-form" noValidate onSubmit={(event) => {
         event.preventDefault();
@@ -196,7 +220,7 @@ export function WorkItemActions({
           {successMessage:"实际日期已修正"},
         );
       }}>
-        <header><strong>受控修正实际日期</strong><button type="button" disabled={pending} onClick={() => setPanel(null)} aria-label="关闭"><X size={16} /></button></header>
+        <header><strong>受控修正实际日期</strong><button type="button" disabled={pending} onClick={() => changePanel(null)} aria-label="关闭"><X size={16} /></button></header>
         <p>仅修正历史实际日期，不改变工作项状态和进度；系统会保留原记录和纠错原因。</p>
         <div className="inline-action-date-grid">
           <label><span>实际开始{item.status !== "cancelled" && "（必填）"}</span><input aria-label="实际开始" type="date" disabled={pending} max={item.status === "cancelled" && item.cancelledAt ? item.cancelledAt : today} value={actualStart} onChange={(event) => { setActualStart(event.target.value); setValidationError(""); }} /></label>
@@ -209,16 +233,16 @@ export function WorkItemActions({
         {error && <p className="form-error">{error}</p>}
         {error && (actualStart !== (item.actualStart || "") || actualEnd !== (item.actualEnd || "")) && <p>当前记录：{item.actualStart || "未填写"} 至 {item.actualEnd || "未填写"}。本次输入已保留，请核对后重试。</p>}
         {readNotice}
-        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => setPanel(null)}>取消</button><button className="primary-button" disabled={pending || blocked}>{pending ? "保存中" : "保存纠错"}</button></footer>
+        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => changePanel(null)}>取消</button><button className="primary-button" disabled={pending || blocked}>{pending ? "保存中" : "保存纠错"}</button></footer>
       </form>}
       {panel === "backfill" && <div className="inline-action-form">
-        <header><strong>按期完成（历史补录）</strong><button type="button" disabled={pending} onClick={() => setPanel(null)} aria-label="关闭"><X size={16} /></button></header>
+        <header><strong>按期完成（历史补录）</strong><button type="button" disabled={pending} onClick={() => changePanel(null)} aria-label="关闭"><X size={16} /></button></header>
         <p>实际开始：{item.plannedStart || "未排期"}<br />实际完成：{item.plannedEnd || "未排期"}</p>
         <p>确认这项历史工作已按计划完成。进度将设为 100%，记录“历史补录，按计划完成”。已有执行记录或未来计划不能使用此操作。</p>
         {backfillUnavailable && <p className="form-error" role="alert">{backfillUnavailable}</p>}
         {error && <p className="form-error" role="alert">{error}</p>}
         {readNotice}
-        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => setPanel(null)}>取消</button><button type="button" className="primary-button" disabled={pending || blocked || Boolean(backfillUnavailable)} onClick={() => { if (onCompleteAsPlanned) void run(() => onCompleteAsPlanned(baselineVersion), {successMessage:"工作项已按计划补录完成"}); }}>{pending ? "提交中" : "确认补录完成"}</button></footer>
+        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => changePanel(null)}>取消</button><button type="button" className="primary-button" disabled={pending || blocked || Boolean(backfillUnavailable)} onClick={() => { if (onCompleteAsPlanned) void run(() => onCompleteAsPlanned(baselineVersion), {successMessage:"工作项已按计划补录完成"}); }}>{pending ? "提交中" : "确认补录完成"}</button></footer>
       </div>}
     </AnchoredPopover>
   </div>;

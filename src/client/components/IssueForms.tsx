@@ -250,6 +250,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
           && latest.ownerId === (draft.ownerId || null)
           && latest.reporter === (canonicalizeLabel(draft.reporter) || null)
           && latest.discoveredAt === draft.discoveredAt
+          && latest.nextReviewAt === (draft.nextReviewAt || null)
           && latest.dueDate === (deferred ? null : draft.dueDate || null),
         onReconciled: () => toast.success("已核对最新状态：问题信息已保存"),
       } : {
@@ -274,6 +275,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
             && item.ownerId === (canManage ? draft.ownerId || null : null)
             && item.reporter === (canonicalizeLabel(draft.reporter) || null)
             && item.discoveredAt === draft.discoveredAt
+            && item.nextReviewAt === (draft.nextReviewAt || null)
             && item.dueDate === (draft.dueDate || null));
           return matches.length === 1 ? matches[0] : undefined;
         },

@@ -7,7 +7,11 @@ import { GanttScale, ganttTodayPosition, ganttTrackStyle } from './GanttTimeline
 import { GanttNavigation, GanttScrollbar } from './GanttNavigation';
 import { GanttMilestoneRail, GanttMilestoneCuts, GanttMilestoneUndated, useMilestoneSelection } from './GanttMilestones';
 
-export const hasPathGanttDates = (nodes: PathNode[]) => nodes.some(n => n.plannedEnd || n.forecastEnd);
+export const hasPathGanttDates = (nodes: PathNode[], milestones: PathMilestone[] = []) => {
+  if (nodes.some(n => n.plannedEnd || n.forecastEnd)) return true;
+  const nodeIds = new Set(nodes.map(n => n.id));
+  return milestones.some(m => nodeIds.has(m.id) && (m.targetDate || m.forecastEnd || m.achievedAt));
+};
 type Props = { nodes: PathNode[]; onSelect: (node: PathNode) => void; storageKey: string; asOfDate: string;
   edges?: PathEdge[]; milestones?: PathMilestone[]; project?: boolean; requirements?: PathRequirement[]; allNodes?: PathNode[] };
 export function PathGantt({ nodes, onSelect, storageKey, asOfDate, edges = [], milestones = [], project = false, requirements = [], allNodes = nodes }: Props) {
@@ -27,9 +31,9 @@ export function PathGantt({ nodes, onSelect, storageKey, asOfDate, edges = [], m
     <GanttNavigation navigation={navigation} />
     <div className="path-gantt-scroll gantt-navigation-surface" ref={navigation.attach} tabIndex={0} aria-label="排期预览时间轴，可左右拖动浏览">
       <div className={`path-gantt-grid${milestoneItems.length ? ' has-milestone-rail' : ''}`} style={{ width: 150 + timelineWidth, gridTemplateColumns: `150px ${timelineWidth}px` }}>
-        <div className="path-gantt-corner" data-gantt-fixed><span>{project ? '需求' : '工作项'}</span><GanttMilestoneUndated items={milestoneItems} selection={selection} /></div>
+        <div className="path-gantt-corner" data-gantt-fixed><span>{project ? '需求' : '工作项'}</span><GanttMilestoneUndated items={milestoneItems} selection={selection} showForecast /></div>
         <div className="gantt-axis-header"><GanttScale dates={dates} zoom={zoom} cellWidth={cellWidth} todayOffset={offset} todayVisible={visible} />
-          {milestoneItems.length > 0 && <GanttMilestoneRail items={milestoneItems} dates={dates} cellWidth={cellWidth} asOfDate={asOfDate} selection={selection} />}
+          {milestoneItems.length > 0 && <GanttMilestoneRail items={milestoneItems} dates={dates} cellWidth={cellWidth} asOfDate={asOfDate} selection={selection} showForecast />}
         </div>
         {rows.map(n => {
           const plan = ganttInterval(n.plannedStart, n.plannedEnd, dates, cellWidth), forecast = ganttInterval(n.forecastStart, n.forecastEnd, dates, cellWidth);
@@ -37,7 +41,7 @@ export function PathGantt({ nodes, onSelect, storageKey, asOfDate, edges = [], m
           return <div className={`path-draft-gantt-row${related ? ' is-milestone-related' : ''}`} key={n.id}>
             <button className="path-gantt-name" onClick={() => onSelect(n)} title={n.title}>{n.title}<small>{n.forecastEnd || '交付待确认'}{n.arrangement === 'late' ? ' · 靠近交付' : ''}</small></button>
             <div className="path-draft-gantt-track" style={track}>
-              <GanttMilestoneCuts items={milestoneItems} dates={dates} cellWidth={cellWidth} asOfDate={asOfDate} selection={selection} />
+              <GanttMilestoneCuts items={milestoneItems} dates={dates} cellWidth={cellWidth} asOfDate={asOfDate} selection={selection} showForecast />
               {plan && <i className="plan" style={{ left: plan.left, width: plan.width }} />}
               {forecast ? <i style={{ left: forecast.left, width: forecast.width }} title={`${n.forecastStart} ～ ${n.forecastEnd}`} /> : <em>待确认</em>}
             </div>

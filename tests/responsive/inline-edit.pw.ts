@@ -22,6 +22,12 @@ function expectStable(before: Geometry, after: Geometry) {
   }
 }
 
+async function finishPointerDrag(page: Page) {
+  await page.mouse.up();
+  // dnd-kit 在拖动结束后保留 50ms 的 click 捕获，避免把 mouseup 误当成点击。
+  await page.waitForTimeout(60);
+}
+
 const project: Project = {
   id: "p1", name: "测试项目", status: "active", plannedStart: "2026-09-01", plannedEnd: "2026-09-30",
   defaultTemplateId: "t1", isSample: false, createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z",
@@ -340,7 +346,7 @@ test("调整排期：提交冲突不能抬高草稿版本，加载失败需重�
   expect(submissions[1]).toEqual({ scheduleMode: "start", plannedStart: "2026-09-10", expectedVersion: 2 });
 });
 
-test('需求排期已落库但响应异常时核对需求与全部工作项日期', async ({ page }) => {
+test('需求排期已落库但响应异常时跨导航保留草稿并核对完整计划', async ({ page }) => {
   await mockApplication(page, []);
   let current: Requirement = structuredClone(requirement);
   let submissions = 0;
@@ -367,6 +373,25 @@ test('需求排期已落库但响应异常时核对需求与全部工作项日�
 
   await expect(dialog).toContainText('提交结果待核对');
   await expect(dialog.getByRole('button',{name:'保存排期',exact:true})).toBeDisabled();
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+
+  const entry = page.getByRole('button', { name: '调整计划', exact: true });
+  await expect(page.getByRole('alert').filter({ hasText: '需求计划调整结果待核对' })).toBeVisible();
+  await expect(entry).toBeDisabled();
+  await entry.evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(dialog).toHaveCount(0);
+
+  await page.goto('/requirements');
+  await page.goto('/requirements/r1');
+  await expect(page.getByRole('alert').filter({ hasText: '需求计划调整结果待核对' })).toBeVisible();
+  await expect(entry).toBeDisabled();
+  await page.getByRole('button', { name: '核对计划调整', exact: true }).click();
+  await expect(dialog.getByLabel('计划开始', { exact: true })).toHaveValue('2026-09-02');
+  await expect(dialog.getByRole('button', { name: '保存排期', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: '已核对并关闭', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(entry).toBeEnabled();
+  await expect(page.getByRole('alert').filter({ hasText: '需求计划调整结果待核对' })).toHaveCount(0);
   expect(submissions).toBe(1);
 });
 
@@ -452,7 +477,7 @@ test('重选流程已落库但响应异常时核对新流程生成的完整计�
 
 test('首次生成计划已落库但响应异常时核对全部模板工作项', async ({ page }) => {
   await mockApplication(page, []);
-  let current: Requirement = { ...structuredClone(requirement), status: 'planning', plannedStart: null, plannedEnd: null, workItems: [] };
+  let current: Requirement = { ...structuredClone(requirement), status: 'not_started', plannedStart: null, plannedEnd: null, workItems: [] };
   let submissions = 0;
   await page.route('**/api/requirements/r1', (route) => route.fulfill({ json: current }));
   await page.route('**/api/requirements/r1/reschedule', (route) => {
@@ -550,7 +575,7 @@ test("按模板补全：预览和应用期间锁定窗口与输入，失败保�
   } finally { releasePreview(); releaseApply(); }
 });
 
-test('按模板补全已落库但响应异常时核对需求日期和全部变更项', async ({ page }) => {
+test('按模板补全已落库但响应异常时跨导航保留草稿并核对完整计划', async ({ page }) => {
   await mockApplication(page, [], { workItem: { plannedStart: null } });
   let current: Requirement = {
     ...structuredClone(requirement),
@@ -588,6 +613,26 @@ test('按模板补全已落库但响应异常时核对需求日期和全部变�
 
   await expect(dialog).toContainText('提交结果待核对');
   await expect(dialog.getByRole('button',{name:'确认补全',exact:true})).toHaveCount(0);
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+
+  const entry = page.getByRole('button', { name: /工作项设置|编辑工作项/ });
+  await expect(page.getByRole('alert').filter({ hasText: '补全计划结果待核对' })).toBeVisible();
+  await expect(entry).toBeDisabled();
+  await entry.evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(page.getByRole('dialog', { name: '工作项设置', exact: true })).toHaveCount(0);
+
+  await page.goto('/requirements');
+  await page.goto('/requirements/r1');
+  await expect(page.getByRole('alert').filter({ hasText: '补全计划结果待核对' })).toBeVisible();
+  await expect(entry).toBeDisabled();
+  await page.getByRole('button', { name: '核对补全计划', exact: true }).click();
+  await expect(dialog.getByRole('combobox', { name: '流程设计', exact: true })).toHaveValue('t1');
+  await expect(dialog.getByLabel('计划开始', { exact: true })).toHaveValue('2026-09-02');
+  await expect(dialog.getByRole('button', { name: '生成差异预览', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: '已核对并关闭', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(entry).toBeEnabled();
+  await expect(page.getByRole('alert').filter({ hasText: '补全计划结果待核对' })).toHaveCount(0);
   expect(applied).toBe(1);
 });
 
@@ -848,6 +893,8 @@ test("编辑需求未修改时同步最新字段，修改后按字段重读且�
   const priority = dialog.getByRole('combobox', { name: '优先级', exact: true });
   const owner = dialog.getByRole('combobox', { name: '需求负责人', exact: true });
   const background = dialog.getByRole('textbox', { name: '需求背景（可选）', exact: true });
+  await expect(dialog.getByRole('textbox', { name: '完成标准（可选）', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('textbox', { name: '验收标准（可选）', exact: true })).toHaveCount(0);
   current = { ...current, version: 2, title: '未编辑时的新标题', priority: 'P1', ownerId: 'u2', ownerName: '李四', background: '最新背景' };
   await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
   await expect(title).toHaveValue('未编辑时的新标题');
@@ -869,10 +916,10 @@ test("编辑需求未修改时同步最新字段，修改后按字段重读且�
   if (testInfo.project.name === 'office-1280') await page.screenshot({ path: 'data/round21-ui/info-rebased-1280.png', animations: 'disabled' });
   await dialog.getByRole('button', { name: '保存信息', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  expect(writes).toEqual([{ title: '我填写的标题', priority: 'P0', background: '他人的新背景', acceptanceCriteria: '原标准', referenceUrl: '', expectedVersion: 3 }]);
+  expect(writes).toEqual([{ groupId: null, title: '我填写的标题', background: '他人的新背景', acceptanceCriteria: '原标准', referenceUrl: '', expectedVersion: 3 }]);
 });
 
-test('需求信息已落库但响应异常时核对完整字段并关闭', async ({ page }) => {
+test('需求信息已落库但响应异常时跨导航保留草稿并核对后关闭', async ({ page }) => {
   await mockApplication(page, []);
   let current: Requirement = { ...structuredClone(requirement), ownerId: 'u1', ownerName: '张三' };
   let submissions = 0;
@@ -883,7 +930,6 @@ test('需求信息已落库但响应异常时核对完整字段并关闭', async
     current = {
       ...current,
       title: String(body.title).replace(/\s+/gu, ' ').trim(),
-      priority: String(body.priority),
       ownerId: Object.prototype.hasOwnProperty.call(body, 'ownerId') ? String(body.ownerId || '') || null : current.ownerId,
       background: String(body.background || '').trim() || null,
       acceptanceCriteria: String(body.acceptanceCriteria || '').trim() || null,
@@ -902,6 +948,26 @@ test('需求信息已落库但响应异常时核对完整字段并关闭', async
   await expect(dialog).toContainText('提交结果待核对');
   await expect(dialog.getByRole('button',{name:'保存信息',exact:true})).toBeDisabled();
   await expect(page.getByRole('heading', { name: '异常 响应后保存的信息', exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+
+  const entry = page.getByRole('button', { name: '编辑信息', exact: true });
+  await expect(page.getByRole('alert').filter({ hasText: '需求信息修改结果待核对' })).toBeVisible();
+  await expect(entry).toBeDisabled();
+  await entry.evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(dialog).toHaveCount(0);
+
+  await page.goto('/requirements');
+  await page.goto('/requirements/r1');
+  await expect(page.getByRole('alert').filter({ hasText: '需求信息修改结果待核对' })).toBeVisible();
+  await expect(entry).toBeDisabled();
+  await page.getByRole('button', { name: '核对信息修改', exact: true }).click();
+  await expect(dialog.getByLabel('需求标题', { exact: true })).toHaveValue('异常  响应后保存的信息');
+  await expect(dialog.getByRole('textbox', { name: '需求背景（可选）', exact: true })).toHaveValue('完整字段核对');
+  await expect(dialog.getByRole('button', { name: '保存信息', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: '已核对并关闭', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(entry).toBeEnabled();
+  await expect(page.getByRole('alert').filter({ hasText: '需求信息修改结果待核对' })).toHaveCount(0);
   expect(submissions).toBe(1);
 });
 
@@ -945,7 +1011,8 @@ test("编辑需求409重读失败保留输入，显式恢复后使用最新版�
   await dialog.getByRole('button', { name: '保存信息', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(writes[0].expectedVersion).toBe(1);
-  expect(writes[1]).toMatchObject({ title: '保留的需求标题', priority: 'P0', ownerId: 'u2', background: '冲突后的背景', expectedVersion: 2 });
+  expect(writes[1]).toMatchObject({ title: '保留的需求标题', ownerId: 'u2', background: '冲突后的背景', expectedVersion: 2 });
+  expect(writes[1]).not.toHaveProperty('priority');
 });
 
 test("编辑需求期间进入终态时保留输入但禁止继续保存", async ({ page }) => {
@@ -970,38 +1037,122 @@ test("编辑需求期间进入终态时保留输入但禁止继续保存", async
   expect(writes).toHaveLength(0);
 });
 
-test("待验收需求可从详情补齐负责人，但计划和执行入口保持锁定", async ({ page }) => {
-  const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
-  const completedItems = requirement.workItems.map((item) => ({
-    ...item, ownerId: "u1", ownerName: "张三", assigneeIds: ["u1"], assigneeNames: ["张三"],
-    status: "completed", progress: 100, actualStart: item.plannedStart, actualEnd: item.plannedEnd,
-  }));
-  await mockApplication(page, patches, { requirement: {
-    status: "pending_acceptance", progress: 100, plannedProgress: 100,
-    ownerId: null, ownerName: null, workItems: completedItems,
-  } });
+test("未开始需求的工作项可直接启动并保留其他管理操作", async ({ page }) => {
+  await mockApplication(page, [], { requirement: { status: 'not_started' } });
   await page.goto('/requirements/r1');
-  await expect(page.getByRole('button', { name: '编辑信息', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '调整计划', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '增加进展', exact: true })).toHaveCount(0);
-
-  await page.getByRole('button', { name: '编辑信息', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '编辑需求信息', exact: true });
-  await expect(dialog.getByRole('combobox', { name: '需求负责人', exact: true })).toHaveValue('');
-  await dialog.getByRole('combobox', { name: '需求负责人', exact: true }).selectOption('u2');
-  await dialog.getByRole('button', { name: '保存信息', exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  expect(patches.find((entry) => entry.path === '/api/requirements/r1')?.body).toMatchObject({ ownerId: 'u2', expectedVersion: 1 });
+  await expect(page.getByRole('button', { name: '开始', exact: true }).first()).toBeEnabled();
+  await expect(page.getByRole('button', { name: '更多工作项操作', exact: true }).first()).toBeVisible();
 });
 
-test("待规划需求的工作项显示不可启动原因并保留其他管理操作", async ({ page }) => {
-  await mockApplication(page, [], { requirement: { status: 'planning' } });
+test('开始工作项响应未知且需求回读失败时锁定直接入口', async ({ page }) => {
+  let current: Requirement = { ...structuredClone(requirement), status: 'not_started' };
+  await mockApplication(page, [], { requirement: { status: 'not_started' } });
+  let failRead = false;
+  let submissions = 0;
+  await page.route('**/api/requirements/r1', (route) => failRead
+    ? route.fulfill({ status: 503, json: { error: '工作项读取暂不可用' } })
+    : route.fulfill({ json: current }));
+  await page.route('**/api/work-items/w1/start', (route) => {
+    submissions += 1;
+    if (submissions === 1) {
+      const started = { ...current.workItems[0], status: 'in_progress' as const, progress: 0, actualStart: '2026-09-01', version: 2 };
+      current = { ...current, status: 'in_progress' as const, version: 2, workItems: [started, ...current.workItems.slice(1)] };
+      failRead = true;
+      return route.fulfill({ status: 200, contentType: 'text/html', body: 'started' });
+    }
+    return route.fulfill({ status: 409, json: { error: '不应重复启动工作项' } });
+  });
+
   await page.goto('/requirements/r1');
-  const waiting = page.getByRole('button', { name: '待规划', exact: true }).first();
-  await expect(waiting).toBeDisabled();
-  await expect(waiting).toHaveAttribute('title', /需求尚未完成规划/);
-  await expect(page.getByRole('button', { name: '开始', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '更多工作项操作', exact: true }).first()).toBeVisible();
+  const row = page.locator('.requirement-gantt-row[data-work-item-id="w1"]');
+  await row.getByRole('button', { name: '开始', exact: true }).click();
+  await expect(row.getByRole('alert').filter({ hasText: '工作项操作结果待核对' })).toBeVisible();
+  await expect(row.getByRole('button', { name: '开始', exact: true })).toHaveCount(0);
+  expect(submissions).toBe(1);
+
+  failRead = false;
+  await row.getByRole('button', { name: '重新读取工作项', exact: true }).click();
+  expect(submissions).toBe(1);
+  await expect(row.getByRole('button', { name: '完成', exact: true })).toBeEnabled();
+  await expect(row.getByRole('alert')).toHaveCount(0);
+});
+
+test('工作项响应未知且回读失败时切换筛选仍保留写入锁', async ({ page }) => {
+  const startedSecond = { ...secondWorkItem, status: 'in_progress' as const, actualStart: '2026-09-01', progress: 20 };
+  const current: Requirement = {
+    ...structuredClone(requirement),
+    status: 'in_progress',
+    progress: 10,
+    workItems: [structuredClone(workItem), startedSecond],
+  };
+  await mockApplication(page, [], { requirement: current });
+  let failRead = false;
+  let submissions = 0;
+  await page.route('**/api/requirements/r1', (route) => failRead
+    ? route.fulfill({ status: 503, json: { error: '工作项读取暂不可用' } })
+    : route.fulfill({ json: current }));
+  await page.route('**/api/work-items/w1/start', (route) => {
+    submissions += 1;
+    failRead = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'started' });
+  });
+
+  await page.goto('/requirements/r1');
+  let row = page.locator('.requirement-gantt-row[data-work-item-id="w1"]');
+  await row.getByRole('button', { name: '开始', exact: true }).click();
+  await expect(row.getByRole('alert').filter({ hasText: '工作项操作结果待核对' })).toBeVisible();
+
+  await page.getByRole('button', { name: '进行中 1', exact: true }).click();
+  await expect(row).toHaveCount(0);
+  await page.getByRole('button', { name: '全部 2', exact: true }).click();
+  row = page.locator('.requirement-gantt-row[data-work-item-id="w1"]');
+  await expect(row.getByRole('button', { name: '重新读取工作项', exact: true })).toBeVisible();
+  await expect(row.getByRole('button', { name: '开始', exact: true })).toHaveCount(0);
+  expect(submissions).toBe(1);
+
+  failRead = false;
+  await expect.poll(async () => {
+    const reread = row.getByRole('button', { name: '重新读取工作项', exact: true });
+    if (await reread.isEnabled().catch(() => false)) await reread.click().catch(() => undefined);
+    return row.getByRole('button', { name: '开始', exact: true }).isEnabled().catch(() => false);
+  }).toBe(true);
+  expect(submissions).toBe(1);
+});
+
+test('工作项响应未知且回读失败时离开详情再返回仍保留写入锁', async ({ page }) => {
+  await mockApplication(page, [], { requirement: { status: 'not_started' } });
+  let failRead = false;
+  let submissions = 0;
+  await page.route('**/api/requirements/r1', (route) => failRead
+    ? route.fulfill({ status: 503, json: { error: '工作项读取暂不可用' } })
+    : route.fulfill({ json: requirement }));
+  await page.route('**/api/work-items/w1/start', (route) => {
+    submissions += 1;
+    failRead = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'started' });
+  });
+
+  await page.goto('/requirements/r1');
+  let row = page.locator('.requirement-gantt-row[data-work-item-id="w1"]');
+  await row.getByRole('button', { name: '开始', exact: true }).click();
+  await expect(row.getByRole('alert').filter({ hasText: '工作项操作结果待核对' })).toBeVisible();
+
+  await page.getByRole('link', { name: '需求管理', exact: true }).click();
+  await expect(page).toHaveURL(/\/requirements$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/requirements\/r1$/);
+  row = page.locator('.requirement-gantt-row[data-work-item-id="w1"]');
+  await expect(row.getByRole('button', { name: '重新读取工作项', exact: true })).toBeVisible();
+  await expect(row.getByRole('button', { name: '开始', exact: true })).toHaveCount(0);
+  expect(submissions).toBe(1);
+
+  failRead = false;
+  await expect.poll(async () => {
+    const reread = row.getByRole('button', { name: '重新读取工作项', exact: true });
+    if (await reread.isEnabled().catch(() => false)) await reread.click().catch(() => undefined);
+    return row.getByRole('button', { name: '开始', exact: true }).isEnabled().catch(() => false);
+  }).toBe(true);
+  expect(submissions).toBe(1);
 });
 
 test("需求详情引用刷新失效时保留草稿并阻止误提交", async ({ page }) => {
@@ -1077,7 +1228,7 @@ test("需求详情引用刷新失效时保留草稿并阻止误提交", async ({
   await expect(planDialog.getByRole("button", { name: "生成差异预览", exact: true })).toBeDisabled();
 });
 
-test("工作项菜单可切换到实际日期修正和历史补录，需求可确认整条补录", async ({ page }) => {
+test("工作项菜单可切换到实际日期修正和历史补录，需求可完成整条补录", async ({ page }) => {
   const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
   await mockApplication(page, patches, {
     workItem: { status: "in_progress", actualStart: "2026-09-01" },
@@ -1108,8 +1259,7 @@ test("工作项菜单可切换到实际日期修正和历史补录，需求可�
   await expect(page.locator(".inline-edit-popover")).toHaveCount(0);
   await expect(page.getByLabel("操作反馈").getByText("实际日期已修正", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "更多工作项操作" }).first().click();
-  await page.getByRole("button", { name: "标记阻塞" }).click();
-  await expect(page.getByLabel("阻塞原因")).toBeVisible();
+  await expect(page.getByRole("button", { name: "标记阻塞" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "更多工作项操作" }).nth(1).click();
   await page.getByRole("button", { name: "按期完成（历史补录）", exact: true }).click();
@@ -1190,19 +1340,19 @@ test('需求历史补录已落库但响应异常时核对全部实际日期和�
   await page.route('**/api/requirements/r1', (route) => route.fulfill({ json: current }));
   await page.route('**/api/requirements/r1/complete-as-planned', (route) => {
     const completionAt = '2026-09-06T01:00:00.000Z';
-    const acceptanceAt = '2026-09-06T01:00:00.001Z';
+    const completedAt = '2026-09-06T01:00:00.001Z';
     const completedItems = current.workItems.map((item) => ({
       ...item, status: 'completed' as const, progress: 100, actualStart: item.plannedStart, actualEnd: item.plannedEnd,
       version: item.version + 1, updatedAt: completionAt,
     }));
     current = {
-      ...current, status: 'completed', progress: 100, version: current.version + 2, updatedAt: acceptanceAt,
+      ...current, status: 'completed', progress: 100, version: current.version + 2, updatedAt: completedAt,
       workItems: completedItems,
       progressUpdates: [{
-        id: 'backfill-accept', requirementId: 'r1', workItemId: null, workItemTitle: null,
-        percent: 100, workItemPercent: null, content: '历史补录，按计划完成；确认验收',
-        eventType: 'accept', supersedesId: null, createdByAccountId: 'admin', createdByName: '管理员',
-        createdAt: acceptanceAt, updatedAt: acceptanceAt,
+        id: 'backfill-requirement', requirementId: 'r1', workItemId: null, workItemTitle: null,
+        percent: 100, workItemPercent: null, content: '历史补录，按计划完成',
+        eventType: 'complete', supersedesId: null, createdByAccountId: 'admin', createdByName: '管理员',
+        createdAt: completedAt, updatedAt: completedAt,
       }, ...completedItems.map((item, index) => ({
         id: `backfill-${index}`, requirementId: 'r1', workItemId: item.id, workItemTitle: item.title,
         percent: 100, workItemPercent: 100, content: `历史补录，按计划完成（${item.plannedStart} 至 ${item.plannedEnd}）`,
@@ -1261,6 +1411,8 @@ test('取消需求响应异常时核对本次取消原因而非只看终态', as
   await expect(mismatched.getByText('需求已经结束，请关闭后重新选择操作。', { exact: true })).toBeVisible();
   await expect(page.getByText('已核对最新状态：需求已取消', { exact: true })).toHaveCount(0);
   await mismatched.getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('button', { name: '核对需求操作', exact: true }).click();
+  await mismatched.getByRole('button', { name: '已核对并关闭', exact: true }).click();
 
   current = structuredClone(baseline);
   eventMode = 'other-author';
@@ -1268,6 +1420,7 @@ test('取消需求响应异常时核对本次取消原因而非只看终态', as
   const otherAuthor = await cancel();
   await expect(otherAuthor).toBeVisible();
   await expect(page.getByText('已核对最新状态：需求已取消', { exact: true })).toHaveCount(0);
+  await otherAuthor.getByRole('button', { name: '已核对并关闭', exact: true }).click();
 
   current = structuredClone(baseline);
   eventMode = 'matching';
@@ -1430,7 +1583,7 @@ test("工作项历史补录成功但响应异常时读取状态并避免重复�
     const completedAt = '2026-09-05T08:00:00.000Z';
     current = {
       ...current,
-      status: "pending_acceptance",
+      status: "completed",
       progress: 100,
       version: 2,
       workItems: [{
@@ -1473,7 +1626,7 @@ test('工作项历史补录响应异常时不把其他账号的相同补录误�
   await page.route('**/api/work-items/w1/complete-as-planned', (route) => {
     const completedAt = '2026-09-05T08:00:00.000Z';
     current = {
-      ...current, status: 'pending_acceptance', progress: 100, version: 2,
+      ...current, status: 'completed', progress: 100, version: 2,
       workItems: [{
         ...current.workItems[0], status: 'completed', progress: 100,
         actualStart: '2020-01-02', actualEnd: '2020-01-03', version: 2, updatedAt: completedAt,
@@ -1545,7 +1698,7 @@ test('工作项历史补录响应异常时不把其他完成日期误认成补�
   await page.route('**/api/requirements/r1', (route) => route.fulfill({ json: current }));
   await page.route('**/api/work-items/w1/complete-as-planned', (route) => {
     current = {
-      ...current, status: 'pending_acceptance', progress: 100, version: 2,
+      ...current, status: 'completed', progress: 100, version: 2,
       workItems: [{
         ...current.workItems[0], status: 'completed', progress: 100,
         actualStart: '2020-01-06', actualEnd: '2020-01-07', version: 2,
@@ -1586,8 +1739,8 @@ for (const recordMatchingEvent of [true, false]) {
       const completedAt = '2026-09-03T08:00:00.000Z';
       current = {
         ...current,
-        status: 'pending_acceptance',
-        progress: 100,
+        status: 'in_progress',
+        progress: 50,
         version: 2,
         workItems: [{
           ...startedItem,
@@ -1632,7 +1785,7 @@ test('工作项完成响应异常时不把其他账号的相同命令误认成�
   await page.route('**/api/work-items/w1/complete', (route) => {
     const completedAt = '2026-09-03T08:00:00.000Z';
     current = {
-      ...current, status: 'pending_acceptance', progress: 100, version: 2,
+      ...current, status: 'in_progress', progress: 50, version: 2,
       workItems: [{
         ...startedItem, status: 'completed', progress: 100, actualEnd: '2026-09-03',
         version: 2, updatedAt: completedAt,
@@ -1702,6 +1855,45 @@ test("工作项名称行内编辑固定打开版本，后台更新后保留草�
   await editor.press("Enter");
   await expect.poll(() => submissions.length).toBe(1);
   expect(submissions[0]).toMatchObject({ title: "保留的标题草稿", expectedVersion: 2 });
+});
+
+test('工作项名称响应未知且需求回读失败时关闭浮层仍锁定设置', async ({ page }) => {
+  await mockApplication(page, []);
+  let failRead = false;
+  let submissions = 0;
+  await page.route('**/api/requirements/r1', (route) => failRead
+    ? route.fulfill({ status: 503, json: { error: '需求读取暂不可用' } })
+    : route.fulfill({ json: requirement }));
+  await page.route('**/api/work-items/w1', (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    submissions += 1;
+    failRead = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/requirements/r1');
+  const entry = page.getByRole('button', { name: '工作项设置', exact: true });
+  await entry.click();
+  const settings = page.getByRole('dialog', { name: '工作项设置', exact: true });
+  const nameTrigger = settings.getByRole('button', { name: /工作项名称：设计/ });
+  await nameTrigger.click();
+  const input = page.getByLabel('工作项名称', { exact: true });
+  await input.fill('待核对的工作项名称');
+  await input.press('Enter');
+
+  await expect(settings.getByRole('alert').filter({ hasText: '提交结果待核对' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '重新读取工作项', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(nameTrigger).toBeDisabled();
+  await nameTrigger.evaluate((button) => (button as HTMLButtonElement).click());
+  expect(submissions).toBe(1);
+
+  await settings.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: '工作项设置结果待核对' })).toBeVisible();
+  await expect(entry).toBeDisabled();
+  failRead = false;
+  await page.getByRole('button', { name: '重新读取需求', exact: true }).click();
+  await expect(entry).toBeEnabled();
 });
 
 test("工作项设置偏差使用需求业务日期", async ({ page }) => {
@@ -2133,24 +2325,25 @@ for (const kind of ['单选', '带原因单选', '日期', '多选'] as const) {
   });
 }
 
-test("需求列表自动优先级随后台结果更新，不提供人工写入入口", async ({ page }) => {
+test("需求列表不展示废弃优先级，只随后台更新风险", async ({ page }) => {
   const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
   await mockApplication(page, writes);
-  let current = [
-    {...structuredClone(requirement), processingPriority: 'P2', priorityReasons: ['交付信息待评估']},
-    {...structuredClone(requirement), id: 'r2', title: '第二需求', processingPriority: 'P1', priorityReasons: ['当前交付风险高']},
+  let current: Requirement[] = [
+    {...structuredClone(requirement), riskLevel: 'low' as const, riskEvaluated: true},
+    {...structuredClone(requirement), id: 'r2', title: '第二需求', riskLevel: 'high' as const, riskEvaluated: true, highRisk: true},
   ];
   await page.route('**/api/requirements?*', route => route.fulfill({json:current}));
   await page.goto('/requirements');
   const first = page.locator('.requirements-table tbody tr').filter({hasText:'原需求'});
   const second = page.locator('.requirements-table tbody tr').filter({hasText:'第二需求'});
-  await expect(first).toContainText('P2 · 正常');
-  await expect(second).toContainText('P1 · 高');
+  await expect(first).toContainText('低风险');
+  await expect(second).toContainText('高风险');
   await expect(page.getByRole('button',{name:/需求优先级/})).toHaveCount(0);
-  current = [current[0], {...current[1],processingPriority:'P0',priorityReasons:['关键交付路径受阻']}];
+  await expect(page.locator('.requirements-table')).not.toContainText(/P[012]/);
+  current = [current[0], {...current[1],riskLevel:'medium',highRisk:false}];
   await page.evaluate(() => {window.dispatchEvent(new Event('offline'));window.dispatchEvent(new Event('online'));});
-  await expect(second).toContainText('P0 · 紧急');
-  await expect(first).toContainText('P2 · 正常');
+  await expect(second).toContainText('中风险');
+  await expect(first).toContainText('低风险');
   expect(writes).toEqual([]);
 });
 
@@ -2267,7 +2460,7 @@ test("日期翻月不提交，执行中工作项在统一浮窗填写调整原�
   await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
   await page.mouse.down();
   await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
-  await page.mouse.up();
+  await finishPointerDrag(page);
   const reasonDialog = page.getByRole("dialog", { name: "调整工作项顺序" });
   await expect(reasonDialog).toBeVisible();
   expect(patches.some((entry) => entry.path.endsWith("/reorder-work-items"))).toBe(false);
@@ -2335,6 +2528,45 @@ test("删除工作项已落库但响应异常时核对列表并避免重复删�
   await expect(page.getByRole('dialog', { name: '工作项设置', exact: true })).toBeVisible();
   await expect(page.locator('.work-inline-table tbody')).not.toContainText('设计');
   expect(submissions).toBe(1);
+});
+
+test('删除工作项响应未知且需求回读失败时关闭确认仍锁定设置', async ({ page }) => {
+  await mockApplication(page, []);
+  let failRead = false;
+  let submissions = 0;
+  await page.route('**/api/requirements/r1', (route) => failRead
+    ? route.fulfill({ status: 503, json: { error: '需求读取暂不可用' } })
+    : route.fulfill({ json: requirement }));
+  await page.route('**/api/work-items/w1', (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback();
+    submissions += 1;
+    failRead = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'deleted' });
+  });
+
+  await page.goto('/requirements/r1');
+  const entry = page.getByRole('button', { name: '工作项设置', exact: true });
+  await entry.click();
+  const settings = page.getByRole('dialog', { name: '工作项设置', exact: true });
+  const remove = settings.getByRole('button', { name: '删除设计', exact: true });
+  await remove.click();
+  const confirm = page.getByRole('dialog', { name: '删除工作项', exact: true });
+  await confirm.getByRole('button', { name: '确认删除', exact: true }).click();
+  await expect(confirm).toContainText('删除结果待核对');
+  await expect(confirm).toContainText('需求读取暂不可用');
+  await confirm.getByRole('button', { name: '取消', exact: true }).click();
+
+  await expect(confirm).toHaveCount(0);
+  await expect(remove).toBeDisabled();
+  await remove.evaluate((button) => (button as HTMLButtonElement).click());
+  expect(submissions).toBe(1);
+  await settings.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: '工作项设置结果待核对' })).toBeVisible();
+  await expect(entry).toBeDisabled();
+
+  failRead = false;
+  await page.getByRole('button', { name: '重新读取需求', exact: true }).click();
+  await expect(entry).toBeEnabled();
 });
 
 for (const change of ['renamed', 'started', 'noted', 'removed', 'locked'] as const) {
@@ -2599,7 +2831,7 @@ test('排序原因填写期间需求更新后不能携带新版本提交旧顺�
   await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
   await page.mouse.down();
   await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
-  await page.mouse.up();
+  await finishPointerDrag(page);
   const dialog = page.getByRole('dialog', { name: '调整工作项顺序', exact: true });
   await dialog.getByLabel('调整原因').fill('调整旧顺序');
   current = { ...current, version: 2, title: '后台更新的需求' };
@@ -2677,6 +2909,54 @@ test('新增工作项已落库但响应异常时按完整草稿核对且不重�
   expect(submissions).toHaveLength(1);
 });
 
+test('新增工作项响应未知且需求回读失败时关闭设置仍锁定入口', async ({ page }) => {
+  await mockApplication(page, []);
+  let failRead = false;
+  let submissions = 0;
+  await page.route('**/api/requirements/r1', (route) => failRead
+    ? route.fulfill({ status: 503, json: { error: '需求读取暂不可用' } })
+    : route.fulfill({ json: requirement }));
+  await page.route('**/api/requirements/r1/work-items', (route) => {
+    submissions += 1;
+    failRead = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'created' });
+  });
+
+  await page.goto('/requirements/r1');
+  let entry = page.getByRole('button', { name: '工作项设置', exact: true });
+  await entry.click();
+  const editor = page.getByRole('dialog', { name: '工作项设置', exact: true });
+  await editor.getByRole('button', { name: '添加工作项', exact: true }).click();
+  await editor.getByRole('button', { name: /新工作项名称/ }).click();
+  await page.getByLabel('新工作项名称', { exact: true }).fill('待核对的新工作项');
+  await page.getByLabel('新工作项名称', { exact: true }).press('Enter');
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+
+  await expect(editor.getByRole('alert')).toContainText('提交结果待核对');
+  await expect(editor).toContainText('需求读取暂不可用');
+  await editor.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(page.getByRole('alert').filter({ hasText: '工作项设置结果待核对' })).toBeVisible();
+  await expect(entry).toBeDisabled();
+  await entry.evaluate((button) => (button as HTMLButtonElement).click());
+  expect(submissions).toBe(1);
+
+  await page.getByRole('link', { name: '需求管理', exact: true }).click();
+  await expect(page).toHaveURL(/\/requirements$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/requirements\/r1$/);
+  entry = page.getByRole('button', { name: '工作项设置', exact: true });
+  await expect(page.getByRole('alert').filter({ hasText: '工作项设置结果待核对' })).toBeVisible();
+  await expect(entry).toBeDisabled();
+  await entry.evaluate((button) => (button as HTMLButtonElement).click());
+  expect(submissions).toBe(1);
+
+  failRead = false;
+  await page.getByRole('button', { name: '重新读取需求', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: '工作项设置结果待核对' })).toHaveCount(0);
+  await expect(entry).toBeEnabled();
+});
+
 test('排序理由显式重读后保留内容并使用新版本提交', async ({ page }) => {
   await mockApplication(page, []);
   let current = { ...structuredClone(requirement), workItems: [{ ...workItem, status: 'in_progress', actualStart: '2026-09-01' }, secondWorkItem] };
@@ -2694,7 +2974,7 @@ test('排序理由显式重读后保留内容并使用新版本提交', async ({
   await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
   await page.mouse.down();
   await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
-  await page.mouse.up();
+  await finishPointerDrag(page);
   const dialog = page.getByRole('dialog', { name: '调整工作项顺序', exact: true });
   await dialog.getByLabel('调整原因').fill('保留的调整理由');
   current = { ...current, version: 2, title: '后台更新的需求' };
@@ -2785,7 +3065,7 @@ test('排序冲突后重读失败保留原因，成功读取后使用新版本',
   await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
   await page.mouse.down();
   await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
-  await page.mouse.up();
+  await finishPointerDrag(page);
   const dialog = page.getByRole('dialog', { name: '调整工作项顺序', exact: true });
   await dialog.getByLabel('调整原因').fill('冲突后保留理由');
   await dialog.getByRole('button', { name: '确认调整', exact: true }).click();
@@ -2824,7 +3104,7 @@ test('未执行需求直接排序冲突后必须重读再拖动', async ({ page 
     await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
     await page.mouse.down();
     await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
-    await page.mouse.up();
+    await finishPointerDrag(page);
   };
 
   await drag();
@@ -2865,7 +3145,7 @@ test('工作项顺序已落库但响应异常时核对完整顺序且不重复�
   await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
   await page.mouse.down();
   await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
-  await page.mouse.up();
+  await finishPointerDrag(page);
 
   await expect(editor).toContainText('提交结果待核对');
   await expect(editor.locator('.work-inline-table tbody tr').first()).toContainText('开发');
@@ -2892,7 +3172,7 @@ test('排序被拒绝访问后清除理由和双层窗口', async ({ page }) => 
   await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
   await page.mouse.down();
   await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
-  await page.mouse.up();
+  await finishPointerDrag(page);
   const dialog = page.getByRole('dialog', { name: '调整工作项顺序', exact: true });
   await dialog.getByLabel('调整原因').fill('不应继续显示的理由');
   await dialog.getByRole('button', { name: '确认调整', exact: true }).click();
@@ -2921,7 +3201,7 @@ test('拖动期间工作项列表变化时取消当前排序且不提交', async
   current = { ...current, version: 2, workItems: [...current.workItems, { ...secondWorkItem, id: 'w3', title: '后台新增项', sortOrder: 2 }] };
   await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
   await expect(page.getByRole('button', { name: '拖动后台新增项调整顺序' })).toBeVisible();
-  await page.mouse.up();
+  await finishPointerDrag(page);
   await expect(page.getByRole('dialog', { name: '调整工作项顺序', exact: true })).toHaveCount(0);
   expect(submissions).toHaveLength(0);
 });
@@ -2943,7 +3223,7 @@ test("工作项使用统一拖动手柄调整顺序", async ({ page }, testInfo)
   await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
   await page.mouse.down();
   await page.mouse.move(second!.x + second!.width / 2, second!.y + second!.height / 2, { steps: 12 });
-  await page.mouse.up();
+  await finishPointerDrag(page);
 
   await expect.poll(() => patches.find((entry) => entry.path.endsWith("/reorder-work-items"))?.body.ids).toEqual(["w2", "w1"]);
   await expect(page.locator(".work-inline-table tbody tr").nth(0)).toContainText("开发");
@@ -3081,13 +3361,13 @@ test("公共数据单元格统一编辑态与次级信息的可见起点", async
   const primaryLeft = await page.locator(`${requirementTitle} .data-cell-primary`).evaluate(e=>e.getBoundingClientRect().left);
   // 可选行以复选框起点对齐单元格，标题在复选框后显示。
   expect(Math.abs(primaryLeft - await textLeft(`${requirementTitle} .data-cell-secondary`))).toBeLessThanOrEqual(1);
-  const priorityBounds = await page.locator(".requirements-table tbody tr:first-child td:nth-child(2)").evaluate((cell) => {
+  const riskBounds = await page.locator(".requirements-table tbody tr:first-child td:nth-child(4)").evaluate((cell) => {
     const cellRect = cell.getBoundingClientRect();
-    const badgeRect = cell.querySelector<HTMLElement>('.priority-badge')!.getBoundingClientRect();
+    const badgeRect = cell.querySelector<HTMLElement>('.risk-badge')!.getBoundingClientRect();
     return { cellLeft: cellRect.left, cellRight: cellRect.right, badgeLeft: badgeRect.left, badgeRight: badgeRect.right };
   });
-  expect(priorityBounds.badgeLeft).toBeGreaterThanOrEqual(priorityBounds.cellLeft);
-  expect(priorityBounds.badgeRight).toBeLessThanOrEqual(priorityBounds.cellRight);
+  expect(riskBounds.badgeLeft).toBeGreaterThanOrEqual(riskBounds.cellLeft);
+  expect(riskBounds.badgeRight).toBeLessThanOrEqual(riskBounds.cellRight);
 
   await page.goto("/accounts");
   const accountStatus = ".account-data-row:first-child .account-data-status .data-cell";

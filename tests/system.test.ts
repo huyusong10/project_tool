@@ -586,8 +586,9 @@ describe('系统管理API', () => {
   it('手动备份写入中不会被当作当天成功，失败后调度器继续补偿', async () => {
     const { sqlite } = await import('../src/server/database');
     const { createBackup, startBackupScheduler, listBackups } = await import('../src/server/backups');
+    const simulatedYear = new Date().getFullYear() + 20;
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 8, 11, 2, 5, 0));
+    vi.setSystemTime(new Date(simulatedYear, 8, 11, 2, 5, 0));
     let markManualStarted!: () => void;
     let releaseManual!: () => void;
     const manualStarted = new Promise<void>((resolve) => { markManualStarted = resolve; });
@@ -616,7 +617,7 @@ describe('系统管理API', () => {
       await expect(manualBackup).rejects.toThrow('模拟手动备份失败');
       await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
       expect(attempts).toBe(2);
-      expect(listBackups().some((backup) => backup.name.startsWith('project-manage-2026-09-11T'))).toBe(true);
+      expect(listBackups().some((backup) => backup.name.startsWith(`project-manage-${simulatedYear}-09-11T`))).toBe(true);
 
       await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
       expect(attempts).toBe(2);

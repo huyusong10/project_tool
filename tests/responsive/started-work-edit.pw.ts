@@ -18,7 +18,7 @@ async function fixture(page: Page, started = true) {
   });
   const created = await post('/api/requirements', {
     projectId: project.id, title: '接口交付', ownerId: owner.id, templateId: template.id,
-    executionMode: 'work_items', plannedStart: '2026-09-01',
+    plannedStart: '2026-09-01',
   }) as Requirement;
   for (const work of created.workItems) {
     const response = await page.request.patch(`/api/work-items/${work.id}`, { data: { ownerId: owner.id, expectedVersion: work.version } });

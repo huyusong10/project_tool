@@ -6,11 +6,12 @@ import { canDeleteWorkItem } from '../../shared/domain';
 import type { Requirement, WorkItem } from '../types';
 import { ConfirmDialog } from './Modal';
 
-export function WorkItemDeleteDialog({ target, requirement, canManage, onReload, onClose }: {
+export function WorkItemDeleteDialog({ target, requirement, canManage, onReload, onWriteNeedsRecheck, onClose }: {
   target: WorkItem;
   requirement: Requirement;
   canManage: boolean;
   onReload: () => Promise<Requirement>;
+  onWriteNeedsRecheck: () => void;
   onClose: () => void;
 }) {
   const client = useQueryClient();
@@ -59,7 +60,7 @@ export function WorkItemDeleteDialog({ target, requirement, canManage, onReload,
       if (!mounted.current) return;
       setNeedsRefresh(true);
       if (requiresWriteRecheck(error)) {
-        if(isWriteOutcomeUnknown(error))setUnknown(true);
+        if(isWriteOutcomeUnknown(error)){setUnknown(true);onWriteNeedsRecheck();}
         await readLatest();
       }
     },

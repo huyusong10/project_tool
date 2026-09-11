@@ -131,15 +131,59 @@ test("个人设置在页面保持打开时自动更新 Token 到期状态", asyn
   await expect(row.getByRole("button", { name: "撤销", exact: true })).toHaveCount(0);
 });
 
-test("我的工作将待规划工作项显示为不可启动并说明原因", async ({ page }) => {
+test("我的工作允许未排期工作项开始并明确显示待排期", async ({ page }) => {
   await mockPersonalExperience(page, {
-    ...workItem, status: "not_started", progress: 0, actualStart: null, requirementStatus: "planning",
+    ...workItem, status: "not_started", progress: 0, actualStart: null, plannedStart: null, plannedEnd: null, requirementStatus: "not_started",
   });
   await page.goto('/my-work');
-  const waiting = page.getByRole('button', { name: '待规划', exact: true });
-  await expect(waiting).toBeDisabled();
-  await expect(waiting).toHaveAttribute('title', /需求尚未完成规划/);
+  await expect(page.getByRole('button', { name: '开始', exact: true })).toBeEnabled();
+  await expect(page.locator('.my-work-list .gantt-unscheduled')).toHaveText('待排期');
+  await expect(page.getByRole('button', { name: '暂不可开始', exact: true })).toHaveCount(0);
+});
+
+test('我的工作响应未知且回读失败时切换筛选仍保留写入锁', async ({ page }) => {
+  const pendingItem: MyWorkItem = {
+    ...workItem,
+    status: 'not_started',
+    progress: 0,
+    actualStart: null,
+    requirementStatus: 'not_started',
+  };
+  await mockPersonalExperience(page, pendingItem);
+  let failRead = false;
+  let submissions = 0;
+  const response = {
+    asOfDate: '2026-09-03',
+    summary: { total: 1, notStarted: 1, inProgress: 0, blocked: 0, completed: 0, overdue: 0 },
+    requirements: [],
+    items: [pendingItem],
+    completionTrend: [],
+    upcoming: [],
+    recentProgress: [],
+  };
+  await page.route('**/api/my-work', (route) => failRead
+    ? route.fulfill({ status: 503, json: { error: '我的工作读取暂不可用' } })
+    : route.fulfill({ json: response }));
+  await page.route('**/api/work-items/w1/start', (route) => {
+    submissions += 1;
+    failRead = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'started' });
+  });
+
+  await page.goto('/my-work');
+  await page.getByRole('button', { name: '开始', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: '工作项操作结果待核对' })).toBeVisible();
+  await page.getByRole('button', { name: '进行中', exact: true }).click();
+  await expect(page.getByText('当前筛选下没有工作项', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '全部', exact: true }).click();
+  await expect(page.getByRole('button', { name: '重新读取工作项', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '开始', exact: true })).toHaveCount(0);
+  expect(submissions).toBe(1);
+
+  failRead = false;
+  await page.getByRole('button', { name: '重新读取工作项', exact: true }).click();
+  await expect(page.getByRole('button', { name: '开始', exact: true })).toBeEnabled();
+  expect(submissions).toBe(1);
 });
 
 test("我的工作甘特使用响应业务日期", async ({ page }) => {

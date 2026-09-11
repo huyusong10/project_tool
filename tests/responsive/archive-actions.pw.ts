@@ -87,6 +87,47 @@ test('归档恢复已落库但响应异常时重读列表并移除旧归档项',
   expect(requests).toBe(1);
 });
 
+test('归档恢复响应未知且列表回读失败时锁定旧操作', async ({ page }) => {
+  const state = await mockArchiveCenter(page);
+  let requests = 0;
+  await page.route('**/api/requirements/r1/restore', (route) => {
+    requests += 1;
+    state.clear();
+    state.failLoad();
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/archives');
+  let restore = page.getByRole('button', { name: '恢复', exact: true });
+  await restore.click();
+  await expect(page.getByRole('alert')).toContainText('归档恢复结果待核对');
+  await expect(restore).toBeDisabled();
+  await restore.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await page.waitForTimeout(100);
+  expect(requests).toBe(1);
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/archives$/);
+  restore = page.getByRole('button', { name: '恢复', exact: true });
+  await expect(page.getByRole('alert')).toContainText('归档恢复结果待核对');
+  await expect(restore).toBeDisabled();
+  await restore.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await page.waitForTimeout(100);
+  expect(requests).toBe(1);
+
+  state.recoverLoad();
+  await page.getByRole('button', { name: '重新加载归档', exact: true }).click();
+  await expect(page.getByText('历史需求', { exact: true })).toHaveCount(0);
+});
+
 test('需求永久删除连点只提交一次', async ({ page }) => {
   const state = await mockArchiveCenter(page);
   let requests = 0;
@@ -183,6 +224,44 @@ test('永久删除后响应异常且目标离开归档时停止危险重试', as
   await expect(page.getByText('已核对最新状态：内容已不在归档列表，请到对应业务页面确认', { exact: true })).toBeVisible();
   await expect(page.getByText('历史需求', { exact: true })).toHaveCount(0);
   expect(requests).toBe(1);
+});
+
+test('永久删除响应未知且列表回读失败时锁定旧确认', async ({ page }) => {
+  const state = await mockArchiveCenter(page);
+  let requests = 0;
+  await page.route('**/api/archives/requirements/r1', (route) => {
+    requests += 1;
+    state.clear();
+    state.failLoad();
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'deleted' });
+  });
+
+  await page.goto('/archives');
+  await page.locator('tr').filter({ hasText: '历史需求' }).getByRole('button', { name: '删除', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '永久删除需求', exact: true });
+  await dialog.getByRole('textbox').fill('历史需求');
+  await dialog.getByRole('button', { name: '永久删除', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('永久删除结果待核对');
+  await expect(dialog.getByRole('button', { name: '永久删除', exact: true })).toBeDisabled();
+  await dialog.locator('form').evaluate((form) => {
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(100);
+  expect(requests).toBe(1);
+
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/archives$/);
+  await expect(page.getByRole('alert')).toContainText('永久删除结果待核对');
+  await expect(page.locator('tr').filter({ hasText: '历史需求' }).getByRole('button', { name: '删除', exact: true })).toBeDisabled();
+  expect(requests).toBe(1);
+
+  state.recoverLoad();
+  await page.getByRole('button', { name: '重新加载归档', exact: true }).click();
+  await expect(page.getByText('历史需求', { exact: true })).toHaveCount(0);
 });
 
 test('人员永久删除连点只提交一次', async ({ page }) => {

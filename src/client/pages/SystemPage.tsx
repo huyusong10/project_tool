@@ -87,8 +87,50 @@ type RestoreReloadProbe = { controller: AbortController; task: Promise<boolean> 
 let restoreReloadProbe: RestoreReloadProbe | null = null;
 const SYSTEM_REFRESH_INTERVAL_MS = 60_000;
 const BACKUP_OVERDUE_MS = 26 * 60 * 60 * 1000;
+type MaintenanceRecheck = "backup" | "restore" | "delete" | null;
 
-function BrandingSettingsCard() {
+function readMaintenanceRecheck(accountKey: string): MaintenanceRecheck {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = window.sessionStorage.getItem(`project-manage:system-maintenance-recheck:${accountKey}`);
+    return value === "backup" || value === "restore" || value === "delete" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistMaintenanceRecheck(accountKey: string, value: MaintenanceRecheck) {
+  if (typeof window === "undefined") return;
+  try {
+    const key = `project-manage:system-maintenance-recheck:${accountKey}`;
+    if (value) window.sessionStorage.setItem(key, value);
+    else window.sessionStorage.removeItem(key);
+  } catch {
+    // 页面状态仍会保留锁；存储不可用时只失去跨导航恢复能力。
+  }
+}
+
+function readBrandingRecheck(accountKey: string) {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.sessionStorage.getItem(`project-manage:branding-recheck:${accountKey}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function persistBrandingRecheck(accountKey: string, value: boolean) {
+  if (typeof window === "undefined") return;
+  try {
+    const key = `project-manage:branding-recheck:${accountKey}`;
+    if (value) window.sessionStorage.setItem(key, "1");
+    else window.sessionStorage.removeItem(key);
+  } catch {
+    // 页面状态仍会保留锁；存储不可用时只失去跨导航恢复能力。
+  }
+}
+
+function BrandingSettingsCard({ accountKey }: { accountKey: string }) {
   const client = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [systemName, setSystemName] = useState(defaultBranding.systemName);
@@ -98,7 +140,11 @@ function BrandingSettingsCard() {
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
   const [localError, setLocalError] = useState("");
-  const [saveNeedsRecheck, setSaveNeedsRecheck] = useState(false);
+  const [saveNeedsRecheck, setSaveNeedsRecheckState] = useState(() => readBrandingRecheck(accountKey));
+  const setSaveNeedsRecheck = (value: boolean) => {
+    persistBrandingRecheck(accountKey, value);
+    setSaveNeedsRecheckState(value);
+  };
   const brandingQuery = useQuery({
     queryKey: keys.branding,
     queryFn: ({ signal }) => api<SystemBranding>("/api/branding", { signal }),
@@ -111,6 +157,9 @@ function BrandingSettingsCard() {
     setLogoDraft(undefined);
     setBaselineUpdatedAt(brandingQuery.data.updatedAt);
   }, [brandingQuery.data, dirty]);
+  useEffect(() => {
+    setSaveNeedsRecheckState(readBrandingRecheck(accountKey));
+  }, [accountKey]);
   const stale = Boolean(dirty && brandingQuery.data && brandingQuery.data.updatedAt !== baselineUpdatedAt);
   const save = useMutation({
     mutationFn: (input: BrandingSaveInput) =>
@@ -235,15 +284,21 @@ function BrandingSettingsCard() {
 
 export function SystemPage() {
   const { session } = useSession();
+  const maintenanceAccountKey = session.accountId || session.username || "guest";
   const { openLogin } = useUiActions();
   const client = useQueryClient();
   const now = useMinuteClock();
   const [restoreTarget, setRestoreTarget] = useState<Backup>();
   const [deleteTarget, setDeleteTarget] = useState<Backup>();
   const [feedback, setFeedback] = useState("");
-  const [backupNeedsRecheck, setBackupNeedsRecheck] = useState(false);
-  const [restoreNeedsRecheck, setRestoreNeedsRecheck] = useState(false);
-  const [deleteNeedsRecheck, setDeleteNeedsRecheck] = useState(false);
+  const [maintenanceRecheck, setMaintenanceRecheckState] = useState<MaintenanceRecheck>(() => readMaintenanceRecheck(maintenanceAccountKey));
+  const setMaintenanceRecheck = (value: MaintenanceRecheck) => {
+    persistMaintenanceRecheck(maintenanceAccountKey, value);
+    setMaintenanceRecheckState(value);
+  };
+  const backupNeedsRecheck = maintenanceRecheck === "backup";
+  const restoreNeedsRecheck = maintenanceRecheck === "restore";
+  const deleteNeedsRecheck = maintenanceRecheck === "delete";
   const [restoreWaitError, setRestoreWaitError] = useState("");
   const [restoreWaitPending, setRestoreWaitPending] = useState(() => Boolean(restoreReloadProbe));
   const mounted = useRef(true);
@@ -257,6 +312,9 @@ export function SystemPage() {
     });
     return () => { mounted.current = false; };
   }, []);
+  useEffect(() => {
+    setMaintenanceRecheckState(readMaintenanceRecheck(maintenanceAccountKey));
+  }, [maintenanceAccountKey]);
   const overviewQuery = useQuery({
     queryKey: keys.systemOverview,
     queryFn: ({ signal }) => api<SystemOverview>("/api/system/overview", { signal }),
@@ -297,13 +355,13 @@ export function SystemPage() {
   const backup = useMutation({
     mutationFn: () => api<Backup>("/api/backups", { method: "POST" }),
     onSuccess: (result) => {
-      setBackupNeedsRecheck(false);
+      setMaintenanceRecheck(null);
       setFeedback(`备份已创建：${result.name}`);
       refreshSystemData();
     },
     onError: (error) => {
       if (!requiresWriteRecheck(error)) return;
-      setBackupNeedsRecheck(true);
+      setMaintenanceRecheck("backup");
       refreshSystemData();
     },
   });
@@ -314,13 +372,13 @@ export function SystemPage() {
         method: "POST", body: jsonBody({ name: backup.name, expectedFingerprint: backup.fingerprint }),
       }),
     onSuccess: (result) => {
-      setRestoreNeedsRecheck(false);
+      setMaintenanceRecheck(null);
       setFeedback(result.message);
       startRestoreWait(result.operationId);
     },
     onError: (error) => {
       if (!requiresWriteRecheck(error)) return;
-      setRestoreNeedsRecheck(true);
+      setMaintenanceRecheck("restore");
       refreshSystemData();
       if (isWriteOutcomeUnknown(error)) {
         setFeedback("恢复请求结果暂时无法确认，正在检测服务是否已重启。");
@@ -334,7 +392,7 @@ export function SystemPage() {
       method: "DELETE", body: jsonBody({ expectedFingerprint: backup.fingerprint }),
     }),
     onSuccess: (_result, backup) => {
-      setDeleteNeedsRecheck(false);
+      setMaintenanceRecheck(null);
       setDeleteTarget(undefined);
       setFeedback(`备份已删除：${backup.name}`);
       refreshSystemData();
@@ -345,7 +403,7 @@ export function SystemPage() {
           const latest = await api<Backup[]>("/api/backups", { readOnly: true });
           client.setQueryData(keys.backups, latest);
           if (!latest.some((item) => item.name === backup.name)) {
-            setDeleteNeedsRecheck(false);
+            setMaintenanceRecheck(null);
             setDeleteTarget(undefined);
             setFeedback(`备份已删除：${backup.name}`);
             deleteBackup.reset();
@@ -357,7 +415,7 @@ export function SystemPage() {
         }
       }
       if (!requiresWriteRecheck(error)) return;
-      setDeleteNeedsRecheck(true);
+      setMaintenanceRecheck("delete");
       refreshSystemData();
     },
   });
@@ -372,7 +430,7 @@ export function SystemPage() {
   const recheckBackups = async () => {
     const result = await backupsQuery.refetch();
     if (result.error || !result.data) return;
-    setBackupNeedsRecheck(false); setDeleteNeedsRecheck(false);
+    setMaintenanceRecheck(null);
     backup.reset(); deleteBackup.reset();
     if (deleteTarget) {
       const latest = result.data.find((item) => item.name === deleteTarget.name);
@@ -384,12 +442,12 @@ export function SystemPage() {
     const result = await overviewQuery.refetch();
     if (result.error || !result.data) return;
     if (result.data.lastRestore?.outcome === 'pending') {
-      setRestoreNeedsRecheck(true);
+      setMaintenanceRecheck("restore");
       restore.reset();
       startRestoreWait(result.data.lastRestore.operationId);
       return;
     }
-    setRestoreNeedsRecheck(false);
+    setMaintenanceRecheck(null);
     restore.reset();
   };
   const clearMaintenanceFeedback = () => {
@@ -398,7 +456,6 @@ export function SystemPage() {
     setRestoreWaitPending(false);
     setRestoreWaitError("");
     setFeedback("");
-    setBackupNeedsRecheck(false); setRestoreNeedsRecheck(false); setDeleteNeedsRecheck(false);
     backup.reset();
     restore.reset();
     deleteBackup.reset();
@@ -477,7 +534,7 @@ export function SystemPage() {
             <button
               className="primary-button"
               disabled={maintenanceBlocked}
-              onClick={() => backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(); })}
+              onClick={() => { if (!maintenanceBlocked) backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(); }); }}
             >
               <DatabaseBackup size={15} />
               {backupLock.busy ? "正在备份…" : "立即备份"}
@@ -501,8 +558,8 @@ export function SystemPage() {
                   <td>{formatBytes(item.size)}</td>
                   <td>{relativeTime(item.createdAt, "尚未备份", now)}</td>
                   <td><div className="system-backup-actions">
-                    <button className="inline-action-button" disabled={maintenanceBlocked || item.restorable === false} title={item.restorable === false ? item.validationError || "该文件不能恢复" : undefined} onClick={() => { clearMaintenanceFeedback(); setRestoreTarget(item); }}><RefreshCcw size={14} />恢复</button>
-                    <button className="inline-action-button danger" disabled={maintenanceBlocked} onClick={() => { clearMaintenanceFeedback(); setDeleteTarget(item); }}><Trash2 size={14} />{deleteBackup.isPending && deleteBackup.variables?.name === item.name ? "删除中" : "删除"}</button>
+                    <button className="inline-action-button" disabled={maintenanceBlocked || item.restorable === false} title={item.restorable === false ? item.validationError || "该文件不能恢复" : undefined} onClick={() => { if (maintenanceBlocked || item.restorable === false) return; clearMaintenanceFeedback(); setRestoreTarget(item); }}><RefreshCcw size={14} />恢复</button>
+                    <button className="inline-action-button danger" disabled={maintenanceBlocked} onClick={() => { if (maintenanceBlocked) return; clearMaintenanceFeedback(); setDeleteTarget(item); }}><Trash2 size={14} />{deleteBackup.isPending && deleteBackup.variables?.name === item.name ? "删除中" : "删除"}</button>
                   </div></td>
                 </tr>)}
               </tbody>
@@ -538,7 +595,7 @@ export function SystemPage() {
                 {integrityCheck.error && <p className="form-error">{integrityCheck.error.message}</p>}
               </div>
             </article>
-            <BrandingSettingsCard />
+            <BrandingSettingsCard accountKey={maintenanceAccountKey} />
           </section>
         </div>
 

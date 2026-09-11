@@ -17,11 +17,22 @@ describe('甘特里程碑切面', () => {
     expect(milestonePosition(m({ targetDate: '2026-09-03' }), dates, 40)).toBeNull();
   });
   it('预计和实际不会伪装成目标，未知日期不会落到今天', () => {
-    expect(milestoneTiming(m({ forecastDate: '2026-09-08' }))).toBe('预计 2026-09-08');
+    expect(milestoneTiming(m({ forecastDate: '2026-09-08' }))).toBe('日期待确认');
+    expect(milestoneTiming(m({ forecastDate: '2026-09-08' }), true)).toBe('预计 2026-09-08');
     expect(milestoneTiming(m({ actualDate: '2026-09-07' }))).toBe('实际 2026-09-07');
     expect(milestonePosition(m(), dates, 40)).toBeNull();
     expect(milestoneState(m({ cancelled: true, actualDate: '2026-09-07' }), '2026-09-15')).toBe('cancelled');
     expect(milestoneDay('garbage')).toBeNull();
+  });
+  it('进度甘特不按预测定位未排期里程碑，排期预览仍可显示预测', () => {
+    const forecast = m({ forecastDate: '2026-09-08' });
+    expect(milestoneDate(forecast)).toBeNull();
+    expect(milestonePosition(forecast, dates, 40)).toBeNull();
+    expect(groupMilestones([forecast], dates, 40, 200)).toEqual([]);
+    expect(milestoneDate(forecast, true)).toBe('2026-09-08');
+    expect(milestonePosition(forecast, dates, 40, false, true)).toBe(120);
+    expect(groupMilestones([forecast], dates, 40, 200, true)).toHaveLength(1);
+    expect(milestonePosition(m({ actualDate: '2026-09-07', forecastDate: '2026-09-08' }), dates, 40)).toBe(80);
   });
   it('同日和相邻标签合并但保留所有原对象，标签互不重叠', () => {
     for (const cell of [6, 15, 40, 80]) {

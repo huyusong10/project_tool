@@ -85,6 +85,7 @@ test('branding save locks the draft and duplicate submit', async ({ page }) => {
   const waitingSave = new Promise<void>((resolve) => { releaseSave = resolve; });
   let requests = 0;
   const payloads: Array<Record<string, unknown>> = [];
+  await page.route('**/api/branding', (route) => route.fulfill({ json: { systemName: '项目管理', shortName: 'PM', logoUrl: null, updatedAt: null } }));
   await page.route('**/api/system/branding', async (route) => {
     requests++;
     const body = route.request().postDataJSON();

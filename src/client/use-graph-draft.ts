@@ -4,7 +4,7 @@ import {EditorSession,newHistory,readHistory,type HistoryCommand,type EditorHist
 import {projectFieldActive} from './editor-fields';
 import {rebaseEditorHistory} from './editor-rebase';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import {readDraftRecord,writeDraftRecord,clearDraftRecords,ownsDraft,takeDraft,releaseDraft} from './graph-draft-storage';
+import {readDraftRecord,writeDraftRecord,writeSharedDraftRecord,watchDraftRecord,clearDraftRecords,ownsDraft,takeDraft,releaseDraft} from './graph-draft-storage';
 import { api, ApiError, isWriteOutcomeUnknown, jsonBody } from './api';
 import type { DependencyChanges, DependencyChangePreview, DependencyChangeReceipt, DependencyChangesInput } from '../shared/path-contracts';
 import type { PathAnalysis } from '../shared/paths';
@@ -71,13 +71,14 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
     get fields(){return current.fields;},get fieldEpoch(){return current.fieldEpoch;},get pendingField(){return current.pendingField;},requestField:current.requestField,isFieldActive:current.isFieldActive,layoutBaselines:state.layouts,
     setField:(key:string,buffer?:import('./editor-session').FieldBuffer)=>dispatch({type:'field',key,buffer}),
     captureLayout:(scope:string,positions:Record<string,import('./path-layout').Point>)=>dispatch({type:'layout-baseline',scope,positions}),
-    takeOver:async()=>{
-      if(current.loading||current.saving||current.blocked)return;
+    takeOver:async(beforeUnlock?:()=>Promise<void>)=>{
+      if(current.loading||current.saving||current.blocked)return false;
       current.loading=true;current.notify();
       try{
         await current.flush();const saved=readHistory<T>(await readDraftRecord(storageKey));takeDraft(storageKey);
-        current.adopt(saved?{...saved,server:saved.server||latest.current.source}:newHistory(latest.current.initial,latest.current.version,latest.current.source));current.readOnly=false;
-      }catch(error){current.error='无法接管草稿：'+(error as Error).message;current.readOnly=true;}
+        current.adopt(saved?{...saved,server:saved.server||latest.current.source}:newHistory(latest.current.initial,latest.current.version,latest.current.source));
+        await beforeUnlock?.();current.readOnly=false;return true;
+      }catch(error){current.error='无法接管草稿：'+(error as Error).message;current.readOnly=true;return false;}
       finally{current.loading=false;current.notify();}
     },
     canUndo:state.index>0,canRedo:state.index+1<state.values.length,
@@ -131,11 +132,11 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     }, 180);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [fingerprint, count, conflict, pending, data.projectId,data.asOfDate,previewAttempt]);
-  useEffect(()=>{let stopped=false;setPendingReady(false);void readDraftRecord<PendingBatch>(pendingKey).then(value=>{if(!stopped&&value)setPending(value);}).catch(()=>{}).finally(()=>{if(!stopped)setPendingReady(true);});return()=>{stopped=true;};},[pendingKey]);
-  const storePending = (value: PendingBatch | null) => {
-    void writeDraftRecord(pendingKey,value||undefined).catch(()=>{});
+  useEffect(()=>{let stopped=false;const load=()=>{if(stopped)return;setPendingReady(false);void readDraftRecord<PendingBatch>(pendingKey).then(value=>{if(!stopped)setPending(value||null);}).catch(()=>{}).finally(()=>{if(!stopped)setPendingReady(true);});};const unwatch=watchDraftRecord(pendingKey,load);load();return()=>{stopped=true;unwatch();};},[pendingKey]);
+  const updatePending = (value: PendingBatch | null) => {
     setPending(value); try { if (value) sessionStorage.setItem(pendingKey, JSON.stringify(value)); else sessionStorage.removeItem(pendingKey); } catch { /* In-memory receipt recovery still works. */ }
   };
+  const storePending = (value: PendingBatch | null) => {void writeSharedDraftRecord(pendingKey,value||undefined).catch(()=>{});updatePending(value);};
   const success = (receipt:DependencyChangeReceipt) => { storePending(null); history.reset(); setPreview(null); latest.current = null; setError(null); onSaved(receipt); };
   const checkReceipt = async (batch: PendingBatch) => {
     const receipt = await api<({ status: 'applied' } & DependencyChangeReceipt) | { status: 'not_found' }>(
@@ -147,7 +148,13 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     if (!pendingReady||history.loading||history.readOnly||history.session.saving || Object.values(history.session.fields).some(f=>f.error) || (!pending && (conflict || JSON.stringify(history.session.state.values[history.session.state.index])===JSON.stringify(empty)))) return false;
     history.setBusy(true);
     let batch = pending;
+    let pendingChecked = Boolean(batch);
     try {
+      if (!batch) {
+        batch = await readDraftRecord<PendingBatch>(pendingKey) || null;
+        pendingChecked = true;
+        if (batch) updatePending(batch);
+      }
       if (batch && await checkReceipt(batch)) return true;
       // Ctrl+S can arrive immediately after an input blur. Preview that exact
       // snapshot before saving instead of ignoring the shortcut or using an old token.
@@ -157,11 +164,15 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
         if(allowApply&&!allowApply(confirmed)){setPreview(confirmed);latest.current=confirmed;return false;}
         batch = { ...exact, batchId: randomUUID(), previewToken: confirmed.previewToken };
       }
-      await writeDraftRecord(pendingKey,batch);storePending(batch);
+      await writeSharedDraftRecord(pendingKey,batch);updatePending(batch);
       const receipt=await api<DependencyChangeReceipt>('/api/projects/' + data.projectId + '/dependency-changes/apply', { method: 'POST', body: jsonBody(batch) });
       success(receipt); return true;
     } catch (caught) {
       const failure = caught as Error;
+      if (!pendingChecked) {
+        setError(new Error('无法核对本机待提交批次，未执行保存：'+failure.message));
+        return false;
+      }
       if (batch && (isWriteOutcomeUnknown(failure) || failure instanceof ApiError && failure.status >= 500)) {
         try { if (await checkReceipt(batch)) return true; } catch { /* Keep the exact batch for a later receipt check. */ }
         setError(new Error('提交结果待核对。修改已保留，请查询回执后重试同一批次。'));
@@ -172,6 +183,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
   return {
     templateInstances,
     ...history,loading:history.loading||!pendingReady,changes,count,conflict,conflicts:conflict?rebased.conflicts:[],unresolved:rebased.pending.length,resolveConflict:(key:string,value:'draft'|'server')=>setResolutionState(old=>({version:resolutionVersion,values:{...(old.version===resolutionVersion?old.values:{}),[key]:value}})),preview, previewing, pending, error, save,retryPreview:()=>setPreviewAttempt(n=>n+1),
+    takeOver:()=>history.takeOver(async()=>{setPending(await readDraftRecord<PendingBatch>(pendingKey)||null);}),
     get fields(){return history.fields;},get fieldEpoch(){return history.fieldEpoch;},get pendingField(){return history.pendingField;},
     issue: error instanceof ApiError ? error.details as { nodeIds?: string[]; edgeIds?: string[] } | undefined : undefined,
     cancel: () => { if (!pending) { history.reset(empty, String(data.revision)); setError(null); } },

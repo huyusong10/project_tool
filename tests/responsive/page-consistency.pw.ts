@@ -6,8 +6,8 @@ async function setup(page: Page) {
   await mockGanttData(page);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const items = [
-    { ...requirement, id: 'pending', title: '待验收样本', status: 'pending_acceptance', progress: 100, riskLevel: 'high', highRisk: true, riskReason: '验收条件阻塞项目交付' },
-    { ...requirement, id: 'planning', title: '待规划样本', status: 'planning', plannedStart: null, plannedEnd: null, scheduleComplete: false, riskEvaluated: false, workItems: [] },
+    { ...requirement, id: 'risk', title: '高风险样本', status: 'in_progress', progress: 70, riskLevel: 'high', highRisk: true, riskReason: '进度落后' },
+    { ...requirement, id: 'unscheduled', title: '未排期样本', status: 'not_started', plannedStart: null, plannedEnd: null, scheduleComplete: false, riskEvaluated: false, workItems: [] },
     ...Array.from({ length: 25 }, (_, i) => ({ ...requirement, id: `r${i}`, title: `普通样本 ${String(i).padStart(2, '0')}` })),
   ];
   await page.route('**/api/requirements**', route => {
@@ -18,7 +18,7 @@ async function setup(page: Page) {
     const current = Number(new URL(route.request().url()).searchParams.get('page') || 1);
     return route.fulfill({ json: { asOfDate: '2026-09-09', total: 40, pages: 2, page: current, pageSize: 20,
       summary: { total: 40, high: 40, medium: 0, low: 0, byReason: {} }, ownerOptions: [],
-      items: [{ id: 'a', title: '处理验收阻塞', severity: 'high', reasons: [{ label: '验收阻塞' }], targetPath: '/requirements/pending', overdueWorkdays: 0 }],
+      items: [{ id: 'a', title: '处理进度落后', severity: 'high', reasons: [{ label: '进度落后' }], targetPath: '/requirements/risk', overdueWorkdays: 0 }],
     } });
   });
   return items;
@@ -27,22 +27,22 @@ async function setup(page: Page) {
 test('列表与详情共享风险和偏差含义，返回、刷新恢复查询和排序', async ({ page }) => {
   await setup(page);
   await page.goto('/requirements');
-  await page.getByPlaceholder('搜索需求或负责人').fill('待验收');
+  await page.getByPlaceholder('搜索需求或负责人').fill('高风险');
   await page.getByRole('button', { name: '风险', exact: true }).click();
   const source = page.url();
   await expect(page.locator('tbody tr')).toHaveCount(1);
   await expect(page.locator('tbody tr')).toContainText('高风险');
-  await page.getByRole('link', { name: '待验收样本', exact: true }).click();
+  await page.getByRole('link', { name: '高风险样本', exact: true }).click();
   await expect(page.locator('.detail-kpis article').last()).toContainText('高风险');
   await expect(page.getByText('风险已关闭', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '返回', exact: true }).click();
   await expect(page).toHaveURL(source);
-  await expect(page.getByPlaceholder('搜索需求或负责人')).toHaveValue('待验收');
+  await expect(page.getByPlaceholder('搜索需求或负责人')).toHaveValue('高风险');
   await page.reload();
   await expect(page.locator('tbody tr')).toHaveCount(1);
-  await page.goto('/requirements?q=待规划');
+  await page.goto('/requirements?q=未排期');
   await expect(page.locator('tbody tr')).toContainText('待排期');
-  await page.getByRole('link', { name: '待规划样本', exact: true }).click();
+  await page.getByRole('link', { name: '未排期样本', exact: true }).click();
   await expect(page.locator('.detail-kpis article').nth(2)).toContainText('待排期');
   await expect(page.locator('.detail-kpis article').nth(2)).not.toContainText('0 工作日');
 });
@@ -60,16 +60,16 @@ test('长列表往返恢复滚动；侧栏重新进入恢复原筛选；显式�
   await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(scroll - 5);
   await page.goto('/requirements');
   await expect(page.getByPlaceholder('搜索需求或负责人')).toHaveValue('普通');
-  await page.goto('/requirements?q=待规划');
+  await page.goto('/requirements?q=未排期');
   await expect(page.locator('tbody tr')).toHaveCount(1);
-  await expect(page.locator('tbody tr')).toContainText('待规划样本');
+  await expect(page.locator('tbody tr')).toContainText('未排期样本');
 });
 
 test('异常行动的自动优先级和分页在往返后保持', async ({ page }) => {
   await setup(page);
   await page.goto('/actions?severity=high&page=2');
   await expect(page.getByLabel('处理优先级')).toHaveValue('high');
-  await page.getByRole('button', { name: /处理验收阻塞/ }).click();
+  await page.getByRole('button', { name: /处理进度落后/ }).click();
   await expect(page.locator('.requirement-page')).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/severity=high&page=2/);
@@ -88,13 +88,13 @@ test('项目之间分别记忆筛选，显式链接不混入历史条件', async
   await page.locator('.project-switcher-button').click();
   await page.getByRole('option', { name: '第二项目' }).click();
   await expect(page.getByPlaceholder('搜索需求或负责人')).toHaveValue('');
-  await page.getByPlaceholder('搜索需求或负责人').fill('待验收');
+  await page.getByPlaceholder('搜索需求或负责人').fill('高风险');
   await page.locator('.project-switcher-button').click();
   await page.getByRole('option', { name: '第一项目' }).click();
   await expect(page.getByPlaceholder('搜索需求或负责人')).toHaveValue('普通');
-  await page.goto('/requirements?status=pending_acceptance');
+  await page.goto('/requirements?status=in_progress');
   await expect(page.getByPlaceholder('搜索需求或负责人')).toHaveValue('');
-  await expect(page.locator('tbody tr')).toHaveCount(1);
+  await expect(page.locator('tbody tr')).toHaveCount(26);
 });
 
 test('问题全部状态与分页在刷新后保持', async ({ page }) => {
@@ -128,6 +128,8 @@ test('统计页区分零数量、无完成样本和真实零按期率，并恢�
   await expect(page.locator('.analytics-kpi').first()).toContainText('暂无完成样本');
   await expect(page.locator('.analytics-kpi strong').nth(1)).toHaveText('0');
   await page.getByRole('button', { name: '近30天', exact: true }).click();
+  await expect(page).toHaveURL(/range=30/);
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('pm-page-view:admin:p1:/analytics'))).toContain('range=30');
   await page.goto('/requirements');
   await page.goto('/analytics');
   await expect(page).toHaveURL(/range=30/);

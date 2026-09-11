@@ -54,7 +54,6 @@ test("project selection persists and respects page scope", async ({ page }) => {
     data: {
       projectId: first.id,
       title: requirementTitle,
-      priority: "P2",
       plannedStart: "2026-09-03",
       templateId: first.defaultTemplateId,
     },

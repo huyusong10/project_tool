@@ -31,7 +31,7 @@ import {
   toGanttDate,
 } from "./GanttTimeline";
 
-type RequirementSort = "deadline" | "priority" | "risk" | "progress" | "updated";
+type RequirementSort = "deadline" | "risk" | "progress" | "updated";
 
 
 function compareDeadline(left: Requirement, right: Requirement) {
@@ -56,8 +56,7 @@ function compareRequirements(left: Requirement, right: Requirement, sort: Requir
   const rightClosed = right.status === "completed" || right.status === "cancelled";
   if (leftClosed !== rightClosed) return leftClosed ? 1 : -1;
   let result = 0;
-  if (sort === "priority") return compareProcessingPriority(left,right);
-  else if (sort === "risk") return compareRiskRequirements(left,right);
+  if (sort === "risk") return compareRiskRequirements(left,right);
   else if (sort === "progress") result = left.progress - right.progress;
   else if (sort === "updated") result = right.updatedAt.localeCompare(left.updatedAt);
   else result = compareDeadline(left, right);
@@ -182,7 +181,10 @@ export function ProjectGantt({
   const [personId, setPersonId] = useViewPreference<string>(resizeStorageKey+':personId',"");
   const [group,setGroup]=useViewPreference<string>(resizeStorageKey+':group','');
   const [schedule, setSchedule] = useViewPreference<string>(resizeStorageKey+':schedule',"");
-  const [sort, setSort] = useViewPreference<RequirementSort>(resizeStorageKey+':sort',"risk");
+  const [savedSort, setSort] = useViewPreference<string>(resizeStorageKey+':sort',"risk");
+  const sort: RequirementSort = ["deadline", "risk", "progress", "updated"].includes(savedSort)
+    ? savedSort as RequirementSort
+    : "risk";
   const asOfDate = asOfDateProp || requirements[0]?.asOfDate || todayIso();
   const milestoneData = useGanttMilestoneData(projectId || requirements[0]?.projectId);
   const rowMilestones = useMemo(() => new Map(requirements.map(r => [r.id, requirementMilestones(
@@ -238,7 +240,7 @@ export function ProjectGantt({
 
   const timelineValues = useMemo(() => {
     const values: Array<string | null | undefined> = [projectStart, projectEnd];
-    values.push(...allMilestones.flatMap(m => [m.targetDate, m.forecastDate, m.actualDate]));
+    values.push(...allMilestones.flatMap(m => [m.targetDate, m.actualDate]));
     requirements.forEach((requirement) => {
       const actual = requirementActualRange(requirement, asOfDate);
       values.push(actual.start, actual.end, requirement.plannedStart, requirement.plannedEnd);

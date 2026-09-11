@@ -12,7 +12,7 @@ async function fixture(page: Page, browser: Browser, baseURL: string) {
   const project = await post(page.request, '/api/projects', { name: '我的工作旅程' + Date.now() });
   const owner = await post(page.request, '/api/people', { projectId: project.id, name: '交付负责人' + Date.now() });
   const member = await post(page.request, '/api/people', { projectId: project.id, name: '协作执行人' + Date.now() });
-  const r = await post(page.request, '/api/requirements', { projectId: project.id, title: '成员交付旅程', ownerId: owner.id, executionMode: 'work_items' });
+  const r = await post(page.request, '/api/requirements', { projectId: project.id, title: '成员交付旅程', ownerId: owner.id });
   await post(page.request, `/api/requirements/${r.id}/work-items`, { expectedVersion: r.version, title: '核对接口并交付', ownerId: owner.id, collaboratorIds: [member.id] });
   const detail = async () => (await (await page.request.get('/api/requirements/' + r.id)).json()) as Requirement;
   const work = (await detail()).workItems[0];
@@ -26,7 +26,7 @@ async function fixture(page: Page, browser: Browser, baseURL: string) {
   } catch (error) { await context.close(); throw error; }
 }
 
-test('普通协作成员经我的工作开始、阻塞解阻、更新完成度和完成，再由经理验收', async ({ page, browser, baseURL }) => {
+test('普通协作成员经我的工作开始、更新完成度并完成，需求随工作完成', async ({ page, browser, baseURL }) => {
   const { actor, context, detail, work, myWork } = await fixture(page, browser, baseURL!);
   try {
     await actor.goto('/my-work');
@@ -34,18 +34,6 @@ test('普通协作成员经我的工作开始、阻塞解阻、更新完成度�
     await expect(start).toBeEnabled();
     await start.click();
     await expect(actor.getByRole('button', { name: `为${work.title}更新完成度`, exact: true })).toBeVisible();
-    await actor.getByRole('button', { name: '更多工作项操作', exact: true }).click();
-    await actor.getByRole('button', { name: '标记阻塞', exact: true }).click();
-    await actor.getByLabel('阻塞原因', { exact: true }).fill('等待对端核对协议');
-    await actor.getByRole('button', { name: '确认阻塞', exact: true }).click();
-    await actor.getByRole('button', { name: `为${work.title}补充说明`, exact: true }).click();
-    const note = actor.getByRole('dialog', { name: '补充工作项说明', exact: true });
-    await expect(note.getByRole('spinbutton')).toHaveCount(0);
-    await note.getByLabel('说明', { exact: true }).fill('已约好核对时间');
-    await note.getByRole('button', { name: '保存说明', exact: true }).click();
-    await expect(note).toHaveCount(0);
-    expect((await detail()).workItems[0]).toMatchObject({ progress: 0, status: 'blocked', actualEnd: null });
-    await actor.getByRole('button', { name: '解除阻塞', exact: true }).click();
     await actor.getByRole('button', { name: `为${work.title}更新完成度`, exact: true }).click();
     const progress = actor.getByRole('dialog', { name: '更新工作项进度', exact: true });
     await progress.getByRole('spinbutton').fill('60');
@@ -56,20 +44,15 @@ test('普通协作成员经我的工作开始、阻塞解阻、更新完成度�
     await actor.getByRole('button', { name: '完成', exact: true }).click();
     await actor.getByLabel('完成说明', { exact: true }).fill('对端核对完成，交付验证通过');
     await actor.getByRole('button', { name: '确认完成', exact: true }).click();
-    await expect.poll(async () => (await detail()).status).toBe('pending_acceptance');
-    const pending = await detail();
-    expect(pending.acceptedAt).toBeNull();
+    await expect.poll(async () => (await detail()).status).toBe('completed');
+    const completed = await detail();
+    expect(completed).toMatchObject({ progress: 100, acceptedAt: null });
     expect((await myWork()).summary.completed).toBe(1);
-    await actor.goto('/requirements/' + pending.id);
+    await actor.goto('/requirements/' + completed.id);
     await expect(actor.getByRole('button', { name: '确认验收', exact: true })).toHaveCount(0);
-    await expect(actor.locator('.requirement-overview')).toContainText('待验收');
-    await page.goto('/requirements/' + pending.id);
-    await page.getByRole('button', { name: '确认验收', exact: true }).click();
-    const accept = page.getByRole('dialog', { name: '确认验收', exact: true });
-    await accept.getByLabel('验收说明', { exact: true }).fill('已核对接口交付结果');
-    await accept.getByRole('button', { name: '确认验收', exact: true }).click();
-    await expect(accept).toHaveCount(0);
-    expect((await detail()).acceptedAt).toBeTruthy();
+    await expect(actor.locator('.requirement-overview')).toContainText('已完成');
+    await page.goto('/requirements/' + completed.id);
+    await expect(page.getByRole('button', { name: '确认验收', exact: true })).toHaveCount(0);
     await actor.goto('/my-work?filter=completed');
     await expect(actor.locator('.requirement-gantt')).toContainText(work.title);
     expect((await myWork()).items[0].requirementStatus).toBe('completed');

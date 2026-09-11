@@ -42,7 +42,7 @@ async function mockAccounts(page: Page) {
 }
 
 for (const filter of ['all', 'user'] as const) {
-  test(`平台权限提交失败保留选择且不提前移出${filter}筛选，重试期间锁定操作`, async ({ page }) => {
+  test(`平台权限冲突后保留编辑器并强制重读，${filter}筛选下重试期间锁定操作`, async ({ page }) => {
     await mockAccounts(page);
     let saved = { ...accounts[1] };
     const requests: Array<{ role: string }> = [];
@@ -76,6 +76,10 @@ for (const filter of ['all', 'user'] as const) {
       releaseFailure();
       await expect(editor.getByText('权限暂时无法保存，请重试', { exact: true })).toBeVisible();
       await expect(role).toHaveValue('admin');
+      await expect(editor.getByRole('button', { name: '保存权限' })).toBeDisabled();
+      await editor.getByRole('button', { name: '重新读取账号' }).click();
+      await expect(role).toHaveValue('user');
+      await role.selectOption('admin');
       await editor.getByRole('button', { name: '保存权限' }).click();
       await expect.poll(() => requests.length).toBe(2);
       await expect(row).toBeVisible();
@@ -191,6 +195,61 @@ test('添加成员已落库但响应异常时批量核对并避免重复提交',
   await expect(page.getByText('已核对最新状态：1 位成员已加入', { exact: true })).toBeVisible();
   await expect(page.locator('.project-member-row')).toHaveCount(3);
   expect(writes).toBe(1);
+});
+
+test('添加成员响应未知且成员回读失败时锁定原批次', async ({ page }) => {
+  await mockAccounts(page);
+  let reads = 0;
+  let writes = 0;
+  let added = false;
+  let failReads = true;
+  await page.route('**/api/people/candidates?*', (route) => route.fulfill({ json: [{
+    ...people[2], canAdd: !added, unavailableReason: added ? 'already_member' : null, existingProjectRole: added ? 'member' : null,
+  }] }));
+  await page.route('**/api/projects/p1/members', (route) => {
+    reads += 1;
+    if (reads > 1 && failReads) return route.fulfill({ status: 503, json: { error: '成员核对读取失败' } });
+    return route.fulfill({ json: [
+      ...people.slice(0, 2).map((person) => ({ ...person, projectRole: person.id === 'u2' ? 'manager' : 'member', membershipUpdatedAt })),
+      ...(added ? [{ ...people[2], projectRole: 'member', membershipUpdatedAt: '2026-09-01T00:00:00.001Z' }] : []),
+    ] });
+  });
+  await page.route('**/api/projects/p1/members/u3', (route) => {
+    writes += 1;
+    added = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/project-settings');
+  await page.getByRole('button', { name: '添加成员', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '添加项目成员', exact: true });
+  await dialog.locator('.member-candidate-option').filter({ hasText: '新成员' }).click();
+  await dialog.getByRole('button', { name: '添加 1 人到项目', exact: true }).click();
+
+  await expect(dialog.getByRole('alert')).toContainText('成员添加结果待核对');
+  await expect(dialog.getByRole('button', { name: '关闭并核对', exact: true })).toBeEnabled();
+  await expect(dialog.getByLabel('加入后的项目角色')).toBeDisabled();
+  await dialog.locator('form').evaluate((form) => {
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(100);
+  expect(writes).toBe(1);
+
+  await dialog.getByRole('button', { name: '关闭并核对', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('alert')).toContainText('成员操作结果待核对');
+  await expect(page.getByRole('button', { name: '添加成员', exact: true })).toBeDisabled();
+
+  await page.getByRole('link', { name: '人员与权限', exact: true }).click();
+  await page.getByRole('link', { name: '项目设置', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('成员操作结果待核对');
+  expect(writes).toBe(1);
+
+  failReads = false;
+  await page.getByRole('button', { name: '重新读取成员', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('.project-member-row')).toHaveCount(3);
+  await expect(page.getByRole('button', { name: '添加成员', exact: true })).toBeEnabled();
 });
 
 test('项目角色变更单航提交，失败回退并可重试', async ({ page }) => {
@@ -310,6 +369,48 @@ test('项目成员权限写入已落库但响应异常时核对角色和移除�
   expect(removeWrites).toBe(1);
 });
 
+test('项目角色响应未知且成员回读失败时锁定旧权限', async ({ page }) => {
+  await mockAccounts(page);
+  let members: Person[] = people.slice(0, 2).map((person, index) => ({ ...person, projectRole: index ? 'manager' : 'member', membershipUpdatedAt }));
+  let reads = 0;
+  let failReads = true;
+  const requests: Array<{ role: string; expectedMembershipUpdatedAt: string | null }> = [];
+  await page.route('**/api/projects/p1/members', (route) => {
+    reads += 1;
+    return reads === 1 || !failReads ? route.fulfill({ json: members }) : route.fulfill({ status: 503, json: { error: '成员核对读取失败' } });
+  });
+  await page.route('**/api/projects/p1/members/u1', (route) => {
+    const body = route.request().postDataJSON() as { role: 'manager' | 'member' | 'viewer'; expectedMembershipUpdatedAt: string | null };
+    requests.push(body);
+    members = members.map((person) => person.id === 'u1' ? {
+      ...person,
+      projectRole: body.role,
+      membershipUpdatedAt: requests.length === 1 ? '2026-09-01T00:00:00.001Z' : '2026-09-01T00:00:00.002Z',
+    } : person);
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/project-settings');
+  const role = page.getByLabel('侯文驰的项目角色', { exact: true });
+  await role.selectOption('manager');
+  await expect(page.getByRole('alert')).toContainText('成员操作结果待核对');
+  await expect(role).toBeDisabled();
+  await role.evaluate((select) => { (select as HTMLSelectElement).value = 'viewer'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+  await page.waitForTimeout(100);
+  expect(requests).toHaveLength(1);
+  expect(members.find((person) => person.id === 'u1')?.projectRole).toBe('manager');
+  failReads = false;
+  await page.getByRole('button', { name: '重新读取成员', exact: true }).click();
+  await expect(role).toBeEnabled();
+  await expect(role).toHaveValue('manager');
+  await role.selectOption('viewer');
+  await expect(page.getByText('已核对最新状态：项目角色已更新', { exact: true })).toBeVisible();
+  expect(requests).toEqual([
+    { role: 'manager', expectedMembershipUpdatedAt: membershipUpdatedAt },
+    { role: 'viewer', expectedMembershipUpdatedAt: '2026-09-01T00:00:00.001Z' },
+  ]);
+});
+
 test('开通账号连点只提交一次并保留成功凭据', async ({ page }) => {
   await mockAccounts(page);
   let releaseOpen!: () => void;
@@ -376,6 +477,69 @@ test('开通账号已落库但响应异常时核对最新账号并显示凭据',
   await expect(result).toContainText('888888');
   await expect(row.getByRole('button', { name: /登录名：新成员/ })).toBeVisible();
   expect(requests).toBe(1);
+});
+
+test('开通账号响应未知且账号回读失败时跨导航锁定旧入口', async ({ page }) => {
+  await mockAccounts(page);
+  let currentAccounts = structuredClone(accounts);
+  let failReads = false;
+  let requests = 0;
+  await page.route('**/api/accounts', (route) => failReads
+    ? route.fulfill({ status: 503, json: { error: '账号列表读取失败' } })
+    : route.fulfill({ json: currentAccounts }));
+  await page.route('**/api/people/u3/account', (route) => {
+    requests += 1;
+    currentAccounts = [...currentAccounts, {
+      ...baseAccount,
+      id: 'opened-needs-recheck',
+      username: '新成员',
+      personId: 'u3',
+      personName: '新成员',
+      jobTitle: '测试工程师',
+      role: 'user' as const,
+      mustChangePassword: true,
+      managedProjects: [],
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    }];
+    failReads = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/resources');
+  const row = page.locator('.people-access-row').filter({ hasText: '新成员' });
+  const trigger = row.getByRole('button', { name: '打开新成员操作', exact: true });
+  await trigger.click();
+  await page.getByRole('menuitem', { name: '开通账号', exact: true }).click();
+  const result = page.getByRole('dialog', { name: '开通账号结果待核对', exact: true });
+  await expect(result).toBeVisible();
+  await result.getByRole('button', { name: '知道了', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('开通账号结果待核对');
+  await expect(trigger).toBeDisabled();
+  await trigger.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('menuitem', { name: '开通账号', exact: true })).toHaveCount(0);
+  await page.waitForTimeout(100);
+  expect(requests).toBe(1);
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/resources$/);
+  await expect(page.getByRole('alert')).toContainText('开通账号结果待核对');
+  await expect(trigger).toBeDisabled();
+  await trigger.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('menuitem', { name: '开通账号', exact: true })).toHaveCount(0);
+  expect(requests).toBe(1);
+
+  failReads = false;
+  await page.getByRole('button', { name: '重新读取账号', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '账号已开通', exact: true })).toContainText('已核对最新状态');
+  await expect(row.getByRole('button', { name: /登录名：新成员/ })).toBeVisible();
 });
 
 test('开通账号冲突后刷新为服务端最新账号，不能继续显示旧入口', async ({ page }) => {
@@ -466,6 +630,124 @@ test('登录状态已落库但响应异常时核对账号版本并消除失败�
   expect(requests).toBe(1);
 });
 
+test('禁止登录响应未知且账号回读失败时关闭确认并跨导航锁定旧状态', async ({ page }) => {
+  await mockAccounts(page);
+  let currentAccounts = accounts.map((account) => account.id === 'member' ? {
+    ...account,
+    activeAssignments: { requirements: 1, workItems: 0, issues: 0 },
+  } : account);
+  let failReads = false;
+  const requests: Array<Record<string, unknown>> = [];
+  await page.route('**/api/accounts', (route) => failReads
+    ? route.fulfill({ status: 503, json: { error: '账号列表读取失败' } })
+    : route.fulfill({ json: currentAccounts }));
+  await page.route('**/api/accounts/member', (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    requests.push(route.request().postDataJSON());
+    currentAccounts = currentAccounts.map((account) => account.id === 'member' ? {
+      ...account,
+      status: 'disabled',
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    } : account);
+    failReads = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/resources');
+  const row = page.locator('.people-access-row').filter({ hasText: '侯文驰' });
+  await row.getByRole('button', { name: '打开侯文驰操作', exact: true }).click();
+  await page.getByRole('menuitem', { name: '禁止登录', exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: '禁止账号登录', exact: true });
+  await confirmation.getByRole('button', { name: '禁止登录', exact: true }).click();
+  await expect(confirmation.getByRole('alert')).toContainText('请关闭窗口后从最新列表重新选择操作');
+  await confirmation.getByRole('button', { name: '取消', exact: true }).click();
+
+  await expect(page.getByRole('alert')).toContainText('登录状态结果待核对');
+  const actionButton = row.getByRole('button', { name: '打开侯文驰操作', exact: true });
+  await expect(actionButton).toBeDisabled();
+  await actionButton.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('menuitem', { name: '禁止登录', exact: true })).toHaveCount(0);
+  expect(requests).toEqual([{ status: 'disabled', expectedUpdatedAt: accounts[1].updatedAt }]);
+
+  const otherActionButton = page.locator('.people-access-row').filter({ hasText: '安少帅' }).getByRole('button', { name: '打开安少帅操作', exact: true });
+  await expect(otherActionButton).toBeDisabled();
+  await otherActionButton.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('menuitem', { name: '禁止登录', exact: true })).toHaveCount(0);
+  expect(requests).toHaveLength(1);
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/resources$/);
+  await expect(page.getByRole('alert')).toContainText('登录状态结果待核对');
+  await expect(actionButton).toBeDisabled();
+  await actionButton.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('menuitem', { name: '禁止登录', exact: true })).toHaveCount(0);
+  expect(requests).toHaveLength(1);
+
+  failReads = false;
+  await page.getByRole('button', { name: '重新读取登录状态', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(row.getByText('禁止登录', { exact: true })).toBeVisible();
+  expect(requests).toHaveLength(1);
+});
+
+test('允许登录响应未知且账号回读失败时关闭结果仍锁定旧状态', async ({ page }) => {
+  await mockAccounts(page);
+  let currentAccounts = accounts.map((account) => account.id === 'member'
+    ? { ...account, status: 'disabled' as const }
+    : account);
+  let failReads = false;
+  const requests: Array<Record<string, unknown>> = [];
+  await page.route('**/api/accounts', (route) => failReads
+    ? route.fulfill({ status: 503, json: { error: '账号列表读取失败' } })
+    : route.fulfill({ json: currentAccounts }));
+  await page.route('**/api/accounts/member', (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    requests.push(route.request().postDataJSON());
+    currentAccounts = currentAccounts.map((account) => account.id === 'member' ? {
+      ...account,
+      status: 'active',
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    } : account);
+    failReads = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/resources');
+  const row = page.locator('.people-access-row').filter({ hasText: '侯文驰' });
+  await row.getByRole('button', { name: '打开侯文驰操作', exact: true }).click();
+  await page.getByRole('menuitem', { name: '允许登录', exact: true }).click();
+  const result = page.getByRole('dialog', { name: '更新登录状态失败', exact: true });
+  await expect(result).toContainText('操作结果暂时无法确认');
+  await result.getByRole('button', { name: '知道了', exact: true }).click();
+
+  await expect(page.getByRole('alert')).toContainText('登录状态结果待核对');
+  const actionButton = row.getByRole('button', { name: '打开侯文驰操作', exact: true });
+  await expect(actionButton).toBeDisabled();
+  await actionButton.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('menuitem', { name: '允许登录', exact: true })).toHaveCount(0);
+  expect(requests).toEqual([{ status: 'active', expectedUpdatedAt: accounts[1].updatedAt }]);
+
+  failReads = false;
+  await page.getByRole('button', { name: '重新读取登录状态', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(row.getByText('允许登录', { exact: true })).toBeVisible();
+  expect(requests).toHaveLength(1);
+});
+
 test('登录名和平台权限已落库但响应异常时核对目标字段', async ({ page }) => {
   await mockAccounts(page);
   let saved: Account = { ...accounts[1] };
@@ -501,6 +783,119 @@ test('登录名和平台权限已落库但响应异常时核对目标字段', as
     { username: '新登录名', expectedUpdatedAt: accounts[1].updatedAt },
     { role: 'admin', expectedUpdatedAt: '2026-09-05T00:00:00.000Z' },
   ]);
+});
+
+test('登录名响应未知且账号回读失败时关闭编辑器并跨导航锁定旧资料', async ({ page }) => {
+  await mockAccounts(page);
+  let currentAccounts = structuredClone(accounts);
+  let failReads = false;
+  const requests: Array<Record<string, unknown>> = [];
+  await page.route('**/api/accounts', (route) => failReads
+    ? route.fulfill({ status: 503, json: { error: '账号列表读取失败' } })
+    : route.fulfill({ json: currentAccounts }));
+  await page.route('**/api/accounts/member', (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    requests.push(body);
+    currentAccounts = currentAccounts.map((account) => account.id === 'member' ? {
+      ...account,
+      username: String(body.username),
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    } : account);
+    failReads = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/resources');
+  const row = page.locator('.people-access-row').filter({ hasText: '侯文驰' });
+  const trigger = row.getByRole('button', { name: /登录名：侯文驰/ });
+  await trigger.click();
+  const input = page.getByRole('textbox', { name: '登录名', exact: true });
+  await input.fill('新的登录名');
+  await input.press('Enter');
+  await expect(input).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await expect(page.getByRole('alert')).toContainText('账号资料结果待核对');
+  await expect(trigger).toBeDisabled();
+  await trigger.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('textbox', { name: '登录名', exact: true })).toHaveCount(0);
+  expect(requests).toEqual([{ username: '新的登录名', expectedUpdatedAt: accounts[1].updatedAt }]);
+
+  const otherTrigger = page.locator('.people-access-row').filter({ hasText: '安少帅' }).getByRole('button', { name: /登录名：安少帅/ });
+  await expect(otherTrigger).toBeDisabled();
+  await otherTrigger.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('textbox', { name: '登录名', exact: true })).toHaveCount(0);
+  expect(requests).toHaveLength(1);
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/resources$/);
+  await expect(page.getByRole('alert')).toContainText('账号资料结果待核对');
+  await expect(trigger).toBeDisabled();
+  await trigger.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('textbox', { name: '登录名', exact: true })).toHaveCount(0);
+  expect(requests).toHaveLength(1);
+
+  failReads = false;
+  await page.getByRole('button', { name: '重新读取账号资料', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(row.getByText('新的登录名', { exact: true })).toBeVisible();
+  expect(requests).toHaveLength(1);
+});
+
+test('平台权限响应未知且账号回读失败时关闭编辑器仍锁定旧资料', async ({ page }) => {
+  await mockAccounts(page);
+  let currentAccounts = structuredClone(accounts);
+  let failReads = false;
+  const requests: Array<Record<string, unknown>> = [];
+  await page.route('**/api/accounts', (route) => failReads
+    ? route.fulfill({ status: 503, json: { error: '账号列表读取失败' } })
+    : route.fulfill({ json: currentAccounts }));
+  await page.route('**/api/accounts/member', (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    requests.push(body);
+    currentAccounts = currentAccounts.map((account) => account.id === 'member' ? {
+      ...account,
+      globalRole: 'admin',
+      role: 'admin',
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    } : account);
+    failReads = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/resources');
+  const row = page.locator('.people-access-row').filter({ hasText: '侯文驰' });
+  const trigger = row.getByRole('button', { name: /平台权限/ });
+  await trigger.click();
+  const editor = page.locator('.account-permission-popover');
+  await editor.getByLabel('平台角色').selectOption('admin');
+  await editor.getByRole('button', { name: '保存权限', exact: true }).click();
+  await expect(editor).toContainText('操作结果暂时无法确认');
+  await page.keyboard.press('Escape');
+  await expect(editor).toHaveCount(0);
+
+  await expect(page.getByRole('alert')).toContainText('账号资料结果待核对');
+  await expect(trigger).toBeDisabled();
+  expect(requests).toEqual([{ role: 'admin', expectedUpdatedAt: accounts[1].updatedAt }]);
+
+  failReads = false;
+  await page.getByRole('button', { name: '重新读取账号资料', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(row.getByText('管理员', { exact: true })).toBeVisible();
+  expect(requests).toHaveLength(1);
 });
 
 test('重置和删除账号确认携带打开时的账号版本', async ({ page }) => {
@@ -561,6 +956,63 @@ test('重置密码已落库但响应异常时核对账号版本并显示凭据',
   expect(requests).toBe(1);
 });
 
+test('重置密码响应未知且账号回读失败时关闭确认并跨导航锁定旧版本', async ({ page }) => {
+  await mockAccounts(page);
+  let currentAccounts = structuredClone(accounts);
+  let failReads = false;
+  let requests = 0;
+  await page.route('**/api/accounts', (route) => failReads
+    ? route.fulfill({ status: 503, json: { error: '账号列表读取失败' } })
+    : route.fulfill({ json: currentAccounts }));
+  await page.route('**/api/accounts/member/reset-password', (route) => {
+    requests += 1;
+    currentAccounts = currentAccounts.map((account) => account.id === 'member' ? {
+      ...account,
+      mustChangePassword: true,
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    } : account);
+    failReads = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/resources');
+  const row = page.locator('.people-access-row').filter({ hasText: '侯文驰' });
+  const trigger = row.getByRole('button', { name: '打开侯文驰操作', exact: true });
+  await trigger.click();
+  await page.getByRole('menuitem', { name: '重置密码', exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: '重置账号密码', exact: true });
+  await confirmation.getByRole('button', { name: '确认重置', exact: true }).click();
+  await expect(confirmation.getByRole('button', { name: '确认重置', exact: true })).toBeDisabled();
+  await confirmation.getByRole('button', { name: '取消', exact: true }).click();
+
+  await expect(page.getByRole('alert')).toContainText('密码重置结果待核对');
+  await expect(trigger).toBeDisabled();
+  await trigger.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('menuitem', { name: '重置密码', exact: true })).toHaveCount(0);
+  expect(requests).toBe(1);
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/resources$/);
+  await expect(page.getByRole('alert')).toContainText('密码重置结果待核对');
+  await expect(trigger).toBeDisabled();
+  await trigger.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('menuitem', { name: '重置密码', exact: true })).toHaveCount(0);
+  expect(requests).toBe(1);
+
+  failReads = false;
+  await page.getByRole('button', { name: '重新读取账号', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '密码已重置', exact: true })).toContainText('已核对最新状态');
+  await expect(row.getByText('待修改初始密码', { exact: true })).toBeVisible();
+});
+
 test('删除账号已落库但响应异常时核对账号消失并关闭确认', async ({ page }) => {
   await mockAccounts(page);
   let currentAccounts = structuredClone(accounts);
@@ -581,6 +1033,61 @@ test('删除账号已落库但响应异常时核对账号消失并关闭确认',
   await confirmation.getByRole('button', { name: '删除账号', exact: true }).click();
 
   await expect(confirmation).toHaveCount(0);
+  await expect(row.getByText('未开通账号', { exact: true })).toBeVisible();
+  expect(requests).toBe(1);
+});
+
+test('删除账号响应未知且账号回读失败时关闭确认并跨导航锁定旧版本', async ({ page }) => {
+  await mockAccounts(page);
+  let currentAccounts = structuredClone(accounts);
+  let failReads = false;
+  let requests = 0;
+  await page.route('**/api/accounts', (route) => failReads
+    ? route.fulfill({ status: 503, json: { error: '账号列表读取失败' } })
+    : route.fulfill({ json: currentAccounts }));
+  await page.route('**/api/accounts/member', (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback();
+    requests += 1;
+    currentAccounts = currentAccounts.filter((account) => account.id !== 'member');
+    failReads = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'deleted' });
+  });
+
+  await page.goto('/resources');
+  const row = page.locator('.people-access-row').filter({ hasText: '侯文驰' });
+  await row.getByRole('button', { name: '打开侯文驰操作', exact: true }).click();
+  await page.getByRole('menuitem', { name: '删除账号', exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: '删除登录账号', exact: true });
+  await confirmation.getByRole('button', { name: '删除账号', exact: true }).click();
+  await expect(confirmation.getByRole('alert')).toContainText('请关闭窗口后从最新列表重新选择操作');
+  await confirmation.getByRole('button', { name: '取消', exact: true }).click();
+
+  await expect(page.getByRole('alert')).toContainText('删除账号结果待核对');
+  const actionButton = row.getByRole('button', { name: '打开侯文驰操作', exact: true });
+  await expect(actionButton).toBeDisabled();
+  await actionButton.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('menuitem', { name: '删除账号', exact: true })).toHaveCount(0);
+  expect(requests).toBe(1);
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/resources$/);
+  await expect(page.getByRole('alert')).toContainText('删除账号结果待核对');
+  await expect(actionButton).toBeDisabled();
+  await actionButton.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('menuitem', { name: '删除账号', exact: true })).toHaveCount(0);
+  expect(requests).toBe(1);
+
+  failReads = false;
+  await page.getByRole('button', { name: '重新读取账号', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(row.getByText('未开通账号', { exact: true })).toBeVisible();
   expect(requests).toBe(1);
 });
@@ -744,6 +1251,69 @@ test('归档人员已落库但响应异常时同时核对活动与归档列表',
   expect(requests).toBe(1);
 });
 
+test('归档人员响应未知且双列表回读失败时关闭确认并跨导航锁定旧人员', async ({ page }) => {
+  await mockAccounts(page);
+  let currentPeople = structuredClone(people);
+  let currentArchives: Archives = { projects: [], requirements: [], people: [], templates: [] };
+  let failReads = false;
+  let requests = 0;
+  await page.route('**/api/people', (route) => failReads
+    ? route.fulfill({ status: 503, json: { error: '活动人员读取失败' } })
+    : route.fulfill({ json: currentPeople }));
+  await page.route('**/api/archives', (route) => failReads
+    ? route.fulfill({ status: 503, json: { error: '归档列表读取失败' } })
+    : route.fulfill({ json: currentArchives }));
+  await page.route('**/api/people/u1', (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback();
+    requests += 1;
+    currentPeople = currentPeople.filter((person) => person.id !== 'u1');
+    currentArchives = {
+      ...currentArchives,
+      people: [{ id: 'u1', title: '侯文驰', jobTitle: '后端工程师', deletedAt: '2026-09-05T00:00:00.000Z' }],
+    };
+    failReads = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'archived' });
+  });
+
+  await page.goto('/resources');
+  const row = page.locator('.people-access-row').filter({ hasText: '侯文驰' });
+  await row.getByRole('button', { name: '打开侯文驰操作', exact: true }).click();
+  await page.getByRole('menuitem', { name: '归档人员', exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: '归档人员', exact: true });
+  await confirmation.getByRole('button', { name: '确认归档', exact: true }).click();
+  await expect(confirmation.getByRole('alert')).toContainText('请关闭窗口后从最新列表重新选择操作');
+  await confirmation.getByRole('button', { name: '取消', exact: true }).click();
+
+  await expect(page.getByRole('alert')).toContainText('人员归档结果待核对');
+  const actionButton = row.getByRole('button', { name: '打开侯文驰操作', exact: true });
+  await expect(actionButton).toBeDisabled();
+  await actionButton.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('menuitem', { name: '归档人员', exact: true })).toHaveCount(0);
+  expect(requests).toBe(1);
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/resources$/);
+  await expect(page.getByRole('alert')).toContainText('人员归档结果待核对');
+  await expect(actionButton).toBeDisabled();
+  await actionButton.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('menuitem', { name: '归档人员', exact: true })).toHaveCount(0);
+  expect(requests).toBe(1);
+
+  failReads = false;
+  await page.getByRole('button', { name: '重新读取归档状态', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(row).toHaveCount(0);
+  expect(requests).toBe(1);
+});
+
 test('人员资料保存期间锁定同一行的其他字段和账号操作', async ({ page }) => {
   await mockAccounts(page);
   let saved = { ...people[0] };
@@ -812,6 +1382,75 @@ test('人员姓名和岗位已落库但响应异常时核对目标字段', async
     { name: '侯文驰（新）', expectedUpdatedAt: people[0].updatedAt },
     { jobTitle: '架构师', expectedUpdatedAt: '2026-09-05T00:00:00.000Z' },
   ]);
+});
+
+test('人员姓名响应未知且人员回读失败时关闭编辑器并跨导航锁定旧资料', async ({ page }) => {
+  await mockAccounts(page);
+  let currentPeople = structuredClone(people);
+  let failReads = false;
+  const requests: Array<Record<string, unknown>> = [];
+  await page.route('**/api/people', (route) => failReads
+    ? route.fulfill({ status: 503, json: { error: '人员列表读取失败' } })
+    : route.fulfill({ json: currentPeople }));
+  await page.route('**/api/people/u1', (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    requests.push(body);
+    currentPeople = currentPeople.map((person) => person.id === 'u1' ? {
+      ...person,
+      name: String(body.name),
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    } : person);
+    failReads = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/resources');
+  const row = page.locator('.people-access-row').filter({ hasText: '侯文驰' });
+  const trigger = row.getByRole('button', { name: /人员姓名：侯文驰/ });
+  await trigger.click();
+  const input = page.getByRole('textbox', { name: '人员姓名', exact: true });
+  await input.fill('新的人员姓名');
+  await input.press('Enter');
+  await expect(input).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await expect(page.getByRole('alert')).toContainText('人员资料结果待核对');
+  await expect(trigger).toBeDisabled();
+  await trigger.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('textbox', { name: '人员姓名', exact: true })).toHaveCount(0);
+  expect(requests).toEqual([{ name: '新的人员姓名', expectedUpdatedAt: people[0].updatedAt }]);
+
+  const otherTrigger = page.locator('.people-access-row').filter({ hasText: '安少帅' }).getByRole('button', { name: /人员姓名：安少帅/ });
+  await expect(otherTrigger).toBeDisabled();
+  await otherTrigger.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('textbox', { name: '人员姓名', exact: true })).toHaveCount(0);
+  expect(requests).toHaveLength(1);
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/resources$/);
+  await expect(page.getByRole('alert')).toContainText('人员资料结果待核对');
+  await expect(trigger).toBeDisabled();
+  await trigger.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('textbox', { name: '人员姓名', exact: true })).toHaveCount(0);
+  expect(requests).toHaveLength(1);
+
+  failReads = false;
+  await page.getByRole('button', { name: '重新读取人员资料', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(row.getByText('新的人员姓名', { exact: true })).toBeVisible();
+  expect(requests).toHaveLength(1);
 });
 
 test('人员姓名草稿遇到后台更新时保留旧版本，重读后才可保存', async ({ page }) => {

@@ -204,6 +204,68 @@ test('新增人员已落库但响应异常时核对本次新增人员', async ({
   expect(requests).toBe(1);
 });
 
+test('新增人员响应未知且人员回读失败时关闭弹窗并跨导航锁定原草稿', async ({ page }) => {
+  await mockShell(page);
+  let created: Record<string, unknown> | undefined;
+  let failReads = false;
+  let requests = 0;
+  await page.route('**/api/people', (route) => {
+    if (route.request().method() !== 'POST') {
+      return failReads
+        ? route.fulfill({ status: 503, json: { error: '人员列表读取失败' } })
+        : route.fulfill({ json: created ? [created] : [] });
+    }
+    requests += 1;
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    created = {
+      id: 'u-unknown', name: String(body.name).trim(), jobTitle: String(body.jobTitle).trim() || null,
+      active: 1, projectRole: 'member', username: 'unknown-user', accountStatus: 'active', accountDeletedAt: null,
+      createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z',
+    };
+    failReads = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
+  });
+
+  await page.goto('/resources');
+  await page.getByRole('button', { name: '新增人员', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '新增人员', exact: true });
+  await dialog.getByLabel('姓名', { exact: true }).fill('待核对同事');
+  await dialog.getByLabel('岗位', { exact: true }).fill('测试工程师');
+  await dialog.getByRole('button', { name: '新增人员', exact: true }).click();
+
+  await expect(dialog.getByRole('alert')).toContainText('新增人员结果待核对');
+  await expect(dialog.getByLabel('姓名', { exact: true })).toBeDisabled();
+  await dialog.locator('form').evaluate((form) => {
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(100);
+  expect(requests).toBe(1);
+
+  await dialog.getByRole('button', { name: '关闭并核对', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('alert')).toContainText('新增人员结果待核对');
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/resources$/);
+  await expect(page.getByRole('alert')).toContainText('新增人员结果待核对');
+
+  await page.getByRole('button', { name: '核对新增人员', exact: true }).click();
+  await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue('待核对同事');
+  await expect(dialog.getByLabel('岗位', { exact: true })).toHaveValue('测试工程师');
+  await expect(dialog.getByLabel('姓名', { exact: true })).toBeDisabled();
+  await dialog.locator('form').evaluate((form) => {
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(100);
+  expect(requests).toBe(1);
+
+  failReads = false;
+  await dialog.getByRole('button', { name: '重新读取人员', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText('已核对最新状态：人员和账号已创建', { exact: true })).toBeVisible();
+});
+
 test('恢复数据库同周期重复提交与 Escape 只执行一次且不关闭窗口', async ({ page }) => {
   await mockShell(page);
   let requests = 0;
@@ -403,6 +465,174 @@ test('删除结果未知后重读列表不会把旧确认改绑到同名新备�
   await expect(dialog.getByRole('alert').filter({ hasText: '备份文件已被后台删除或替换' })).toBeVisible();
   await expect(dialog.getByRole('button', { name: '永久删除', exact: true })).toBeDisabled();
   expect(deleteRequests).toBe(1);
+});
+
+test('立即备份结果未知且列表回读失败后跨导航保持维护锁', async ({ page }) => {
+  await mockShell(page);
+  let readFails = false;
+  let backupRequests = 0;
+  const backups = [{
+    name: 'backup-20260905.db', size: 1024, createdAt: '2026-09-05T00:00:00.000Z', fingerprint: 'a'.repeat(64),
+  }];
+  await page.route('**/api/backups', (route) => {
+    if (route.request().method() === 'GET') return readFails
+      ? route.fulfill({ status: 503, json: { error: '备份目录暂不可用' } })
+      : route.fulfill({ json: backups });
+    backupRequests++;
+    readFails = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: '<html>invalid backup response</html>' });
+  });
+
+  await page.goto('/system');
+  let backup = page.getByRole('button', { name: '立即备份', exact: true });
+  await backup.click();
+  await expect(page.getByRole('button', { name: '重新读取备份列表', exact: true })).toBeVisible();
+  await expect(backup).toBeDisabled();
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/system$/);
+  backup = page.getByRole('button', { name: '立即备份', exact: true });
+  await expect(page.getByRole('button', { name: '重新读取备份列表', exact: true })).toBeVisible();
+  await expect(backup).toBeDisabled();
+  await backup.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await page.waitForTimeout(100);
+  expect(backupRequests).toBe(1);
+
+  readFails = false;
+  await page.getByRole('button', { name: '重新读取备份列表', exact: true }).click();
+  await expect(page.getByRole('button', { name: '重新读取备份列表', exact: true })).toHaveCount(0);
+  await expect(backup).toBeEnabled();
+});
+
+test('数据库恢复待核对时跨导航保持维护锁', async ({ page }) => {
+  await mockShell(page);
+  let restoreRequests = 0;
+  await page.route('**/api/backups/restore', (route) => {
+    restoreRequests++;
+    return route.fulfill({ status: 409, json: { error: '备份版本已变化' } });
+  });
+
+  await page.goto('/system');
+  await page.locator('.system-backup-table tbody tr').first().getByRole('button', { name: '恢复', exact: true }).click();
+  let dialog = page.getByRole('dialog', { name: '恢复数据库备份', exact: true });
+  await dialog.getByRole('button', { name: '确认恢复', exact: true }).click();
+  await expect(dialog.locator('.warning-banner').filter({ hasText: '恢复结果需要核对，当前备份不会再次提交。' })).toBeVisible();
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/system$/);
+  const restoreNotice = page.locator('.system-page > .warning-banner').filter({ hasText: '数据库恢复结果需要核对，其他维护操作暂不可用。' });
+  await expect(restoreNotice).toBeVisible();
+  const restore = page.locator('.system-backup-table tbody tr').first().getByRole('button', { name: '恢复', exact: true });
+  await expect(restore).toBeDisabled();
+  await restore.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  dialog = page.getByRole('dialog', { name: '恢复数据库备份', exact: true });
+  await expect(dialog).toHaveCount(0);
+  expect(restoreRequests).toBe(1);
+
+  await page.getByRole('button', { name: '重新读取系统状态', exact: true }).click();
+  await expect(restoreNotice).toHaveCount(0);
+  await expect(restore).toBeEnabled();
+});
+
+test('删除备份结果未知且列表回读失败后跨导航保持维护锁', async ({ page }) => {
+  await mockShell(page);
+  let readFails = false;
+  let deleteRequests = 0;
+  const backups = [{
+    name: 'backup-20260905.db', size: 1024, createdAt: '2026-09-05T00:00:00.000Z', fingerprint: 'a'.repeat(64),
+  }];
+  await page.route('**/api/backups/backup-20260905.db', (route) => {
+    deleteRequests++;
+    readFails = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: '<html>invalid delete response</html>' });
+  });
+  await page.route('**/api/backups', (route) => route.request().method() === 'GET'
+    ? readFails
+      ? route.fulfill({ status: 503, json: { error: '备份目录暂不可用' } })
+      : route.fulfill({ json: backups })
+    : route.fallback());
+
+  await page.goto('/system');
+  await page.locator('.system-backup-table tbody tr').first().getByRole('button', { name: '删除', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '删除数据库备份', exact: true });
+  await dialog.getByRole('button', { name: '永久删除', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: '永久删除', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/system$/);
+  await expect(page.getByRole('button', { name: '重新读取备份列表', exact: true })).toBeVisible();
+  const remove = page.locator('.system-backup-table tbody tr').first().getByRole('button', { name: '删除', exact: true });
+  await expect(remove).toBeDisabled();
+  await remove.evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByRole('dialog', { name: '删除数据库备份', exact: true })).toHaveCount(0);
+  expect(deleteRequests).toBe(1);
+
+  readFails = false;
+  await page.getByRole('button', { name: '重新读取备份列表', exact: true }).click();
+  await expect(page.getByRole('button', { name: '重新读取备份列表', exact: true })).toHaveCount(0);
+  await expect(remove).toBeEnabled();
+});
+
+test('品牌保存结果未知且回读失败后跨导航保持原提交锁', async ({ page }) => {
+  await mockShell(page);
+  let readFails = false;
+  let saveRequests = 0;
+  let branding = { systemName: '项目管理', shortName: 'PM', logoUrl: null, updatedAt: null as string | null };
+  await page.route('**/api/branding', (route) => readFails
+    ? route.fulfill({ status: 503, json: { error: '品牌设置暂不可用' } })
+    : route.fulfill({ json: branding }));
+  await page.route('**/api/system/branding', (route) => {
+    saveRequests++;
+    const body = route.request().postDataJSON() as { systemName: string; shortName: string };
+    branding = { systemName: body.systemName, shortName: body.shortName, logoUrl: null, updatedAt: '2026-09-05T00:00:00.001Z' };
+    readFails = true;
+    return route.fulfill({ status: 200, contentType: 'text/html', body: '<html>invalid branding response</html>' });
+  });
+
+  await page.goto('/system');
+  await page.getByLabel('系统名称', { exact: true }).fill('结果未知的品牌');
+  await page.getByLabel('系统简称', { exact: true }).fill('未知');
+  await page.getByRole('button', { name: '保存品牌设置', exact: true }).click();
+  let notice = page.locator('.system-branding-panel .warning-banner').filter({ hasText: '保存结果需要核对，当前草稿不会再次提交。' });
+  await expect(notice).toBeVisible();
+
+  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/system$/);
+  notice = page.locator('.system-branding-panel .warning-banner').filter({ hasText: '保存结果需要核对，当前草稿不会再次提交。' });
+  await expect(notice).toBeVisible();
+  const save = page.getByRole('button', { name: '保存品牌设置', exact: true });
+  await expect(save).toBeDisabled();
+  await page.locator('.system-branding-form').evaluate((form) => {
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(100);
+  expect(saveRequests).toBe(1);
+
+  readFails = false;
+  await notice.getByRole('button', { name: '重新读取品牌设置', exact: true }).click();
+  await expect(notice).toHaveCount(0);
+  await expect(page.getByLabel('系统名称', { exact: true })).toHaveValue('结果未知的品牌');
+  await expect(page.getByLabel('系统简称', { exact: true })).toHaveValue('未知');
+  await expect(save).toBeEnabled();
 });
 
 test('品牌保存与备份删除响应未知时自动核对已生效状态', async ({ page }) => {

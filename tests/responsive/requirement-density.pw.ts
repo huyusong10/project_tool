@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mockGanttData, requirement } from './gantt-fixture';
 
-const full = { ...requirement, ownerId: 'u1', ownerName: '异常样例负责人', processingPriority: 'P0', priorityReasons: ['关键交付受阻'], deliveryScope: 'committed', executionMode: 'work_items', acceptanceOwnerName: '验收负责人', background: '需求背景'.repeat(150), acceptanceCriteria: '完整验收标准'.repeat(100), readinessIssues: ['预计交付日期待确认'], riskReason: '缺少解除条件，交付日期待确认'.repeat(20) };
+const full = { ...requirement, ownerId: 'u1', ownerName: '异常样例负责人', processingPriority: 'P0', priorityReasons: ['进度落后'], executionMode: 'work_items', background: '需求背景'.repeat(150), acceptanceCriteria: '完整完成标准'.repeat(100), readinessIssues: ['预计交付日期待确认'], riskReason: '排期不完整，交付日期待确认'.repeat(20) };
 async function detail(page: Page, value = full) { await mockGanttData(page); await page.route('**/api/requirements/r1', route => route.fulfill({json:value})); await page.goto('/requirements/r1'); await expect(page.getByRole('region', {name:'需求概览'})).toBeVisible(); }
 async function noOverflow(page:Page) { expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(await page.evaluate(()=>innerWidth)); }
 
@@ -20,7 +20,7 @@ test('需求概览两行且长资料不挤占甘特，浮层展开与关闭不�
  await page.screenshot({path:info.outputPath('summary-390.png')});
 });
 
-test('直接执行甘特显示真实需求行，未排期偏差不显示假零，验收状态仍区分', async ({page},info) => {
+test('直接执行甘特显示真实需求行，未排期偏差不显示假零，完成后直接结束', async ({page},info) => {
  const direct={...full,executionMode:'direct',status:'in_progress',workItems:[],plannedStart:null,plannedEnd:null,scheduleComplete:false,actualStart:'2026-09-01',actualEnd:null,progress:30,asOfDate:'2026-09-09'};
  await detail(page,direct as unknown as typeof full);
  await expect(page.getByRole('table',{name:'需求直接执行甘特图'})).toBeVisible();
@@ -30,19 +30,19 @@ test('直接执行甘特显示真实需求行，未排期偏差不显示假零�
  await expect(page.locator('.requirement-gantt-actions')).toHaveCount(0);
  await page.setViewportSize({width:1280,height:800}); await noOverflow(page);expect((await page.locator('.requirement-overview').boundingBox())!.height).toBeLessThanOrEqual(110);
  await page.screenshot({path:info.outputPath('direct-1280.png')});
- await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...direct,status:'pending_acceptance',progress:100,actualEnd:'2026-09-09'}}));await page.reload();
- await expect(page.locator('.requirement-overview')).toContainText('待验收');await expect(page.locator('.requirement-overview')).toContainText('100%');
+ await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...direct,status:'completed',progress:100,actualEnd:'2026-09-09'}}));await page.reload();
+ await expect(page.locator('.requirement-overview')).toContainText('已完成');await expect(page.locator('.requirement-overview')).toContainText('100%');await expect(page.getByRole('button',{name:'确认验收',exact:true})).toHaveCount(0);
  await page.setViewportSize({width:390,height:844});await noOverflow(page);
 });
 
-test('行动标签完整单行且四档颜色一致，汇总与筛选使用相同优先级口径',async({page},info)=>{
+test('行动标签完整单行且三档颜色一致，汇总与筛选使用相同严重度口径',async({page},info)=>{
  await mockGanttData(page);
  const rows=['P0','P1','P2','P3'].map((p,i)=>({id:p,sourceType:'requirement',sourceId:'r1',requirementId:'r1',projectId:'p1',contextTitle:'依赖项目',title:'交付事项 '+p,severity:i<2?'high':i===2?'medium':'low',processingPriority:p,priorityReasons:['实际执行和交付影响'],ownerId:'u1',ownerName:'异常样例负责人',dueDate:'2026-09-10',overdueWorkdays:0,reasonCodes:['high_risk'],reasons:[{code:'high_risk',label:'风险变化'}],targetPath:'/requirements/r1',affectedRequirements:[{id:'r1',title:'很长的受影响需求'.repeat(30)}]}));
  await page.route('**/api/action-items?*',route=>{const severity=new URL(route.request().url()).searchParams.get('severity');const items=rows.filter(r=>!severity||r.severity===severity);return route.fulfill({json:{asOfDate:'2026-09-09',items,total:items.length,page:1,pages:1,pageSize:20,ownerOptions:[],hasUnassigned:false,summary:{total:4,high:2,medium:1,low:1,byReason:{}}}});});
  await page.goto('/actions'); await expect(page.locator('.action-item')).toHaveCount(4);
- const badges=page.locator('.action-priority .priority-badge');
- for(const width of [1440,390]) {await page.setViewportSize({width,height:900});await noOverflow(page);for(const badge of await badges.all()){const size=await badge.boundingBox();expect(size!.width).toBe(80);expect(size!.height).toBeLessThanOrEqual(30);expect(await badge.evaluate(el=>getComputedStyle(el).whiteSpace)).toBe('nowrap');} await page.screenshot({path:info.outputPath('actions-'+width+'.png')});}
- await expect(page.locator('.action-summary')).toContainText('紧急 / 高');await expect(page.locator('.action-summary')).toContainText('P3');
+ const badges=page.locator('.action-priority .action-severity');
+ for(const width of [1440,390]) {await page.setViewportSize({width,height:900});await noOverflow(page);for(const badge of await badges.all()){const size=await badge.boundingBox();expect(size!.height).toBeLessThanOrEqual(30);expect(await badge.evaluate(el=>getComputedStyle(el).whiteSpace)).toBe('nowrap');} await page.screenshot({path:info.outputPath('actions-'+width+'.png')});}
+ await expect(badges).toHaveText(['高','高','中','低']);await expect(page.locator('.action-summary')).toContainText('优先处理');await expect(page.locator('.action-summary')).toContainText('资料待补齐');
  const overflow=await page.locator('.action-item').evaluateAll(es=>es.flatMap(e=>{const r=e.getBoundingClientRect();return [...e.children].filter(c=>c.getBoundingClientRect().bottom>r.bottom+1).map(c=>c.className);}));expect(overflow).toEqual([]);
  expect((await page.locator('.action-item-main').first().boundingBox())!.width).toBeGreaterThan(100);
  for(const card of await page.locator('.action-summary article').all())expect((await card.boundingBox())!.height).toBeLessThanOrEqual(76);
