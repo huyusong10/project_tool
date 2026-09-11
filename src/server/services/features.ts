@@ -125,7 +125,8 @@ export function prepareFeatureRelationChanges(projectId:string,changes:FeatureRe
 }
 export function persistFeatureRelationChanges(projectId:string,changes:FeatureRelationChange[],before:FeatureRelation[],actor:Actor) {
   const ids:Record<string,string>={},now=new Date().toISOString();
-  for(const change of changes){
+  // Release removed endpoint pairs before inserting replacements in the final batch.
+  for(const change of [...changes.filter(c=>c.op==='delete'),...changes.filter(c=>c.op!=='delete')]){
     const old=before.find(r=>r.id===change.id),id=change.op==='create'?randomUUID():change.id;
     if(change.op==='create'){
       ids[change.id]=id;sqlite.prepare('INSERT INTO feature_relations(id,project_id,source_feature_id,target_feature_id,note,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(id,projectId,change.sourceFeatureId,change.targetFeatureId,change.note,now,now);

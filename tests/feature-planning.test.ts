@@ -69,6 +69,11 @@ it('网页与 MCP 特性图一致；规划和资料修改不改变执行分析�
   expect(await call('get_feature_requirements',{groupId:a.id,state:'archived'})).toEqual((await request('GET',base+'/requirement-groups/'+a.id+'/requirements?state=archived')).json());
   const edge=relation.json<FeatureRelation>();const updated=await call('save_feature_relation',{id:edge.id,expectedVersion:edge.version,sourceFeatureId:a.id,targetFeatureId:b.id,note:'MCP 更新说明'});
   expect((await request('GET',base+'/feature-relations')).json()[0]).toEqual(updated);
+  const changes={add:[],remove:[],estimates:[],featureRelations:[{op:'update',id:updated.id,expectedVersion:updated.version,note:'统一批次说明'}],layouts:[{scope:'features',direction:'right',expectedVersion:0,positions:{['feature:'+a.id]:{x:80,y:120}}}]};
+  const input={expectedRevision:(await request('GET',base+'/path-analysis')).json().revision,target:'project',changes};
+  const preview=await call('preview_dependency_changes',input),httpPreview=await request('POST',base+'/dependency-changes/preview',input);expect(preview).toEqual(httpPreview.json());
+  const batch={...input,previewToken:preview.previewToken,batchId:randomUUID()},receipt=await call('apply_dependency_changes',batch);expect(await call('apply_dependency_changes',batch)).toEqual(receipt);expect((await request('POST',base+'/dependency-changes/apply',batch)).statusCode).toBe(404);
+  expect(await call('get_dependency_change_receipt',{batchId:batch.batchId})).toMatchObject({status:'applied',...receipt});
   const archived=await call('archive_requirement_group',{groupId:b.id,expectedVersion:b.version});expect((await groups(base)).find(g=>g.id===b.id)).toEqual(archived);
   const restored=await call('restore_requirement_group',{groupId:b.id,expectedVersion:archived.version});expect((await groups(base)).find(g=>g.id===b.id)).toEqual(restored);
   const exported=await request('GET',base+'/path-graph?view=features&format=svg');expect(exported.statusCode,exported.body).toBe(200);expect(exported.json().svg).toContain('stroke-dasharray="6 4"');
@@ -98,6 +103,8 @@ it('成员只读；跨项目特性、关系和历史不能越权读取或写入'
   const {base,id,a,b}=await fixture(),name='特性只读 '+randomUUID();await request('POST','/api/people',{projectId:id,name});let login=await request('POST','/api/login',{username:name,password:'888888'},'');let auth=String(login.headers['set-cookie']).split(';')[0];login=await request('POST','/api/account/change-password',{currentPassword:'888888',newPassword:'feature-reader-pass'},auth);auth=String(login.headers['set-cookie']).split(';')[0];
   for(const url of ['/path-graph?view=features','/feature-relations','/requirement-groups/'+a.id+'/requirements?state=archived'])expect((await request('GET',base+url,undefined,auth)).statusCode).toBe(200);
   expect((await request('POST',base+'/feature-relations',{sourceFeatureId:a.id,targetFeatureId:b.id},auth)).statusCode).toBe(403);expect((await request('POST',base+'/requirement-groups/'+a.id+'/archive',{expectedVersion:a.version},auth)).statusCode).toBe(403);
+  const revision=(await request('GET',base+'/path-analysis')).json().revision;
+  expect((await request('POST',base+'/dependency-changes/preview',{expectedRevision:revision,changes:{featureRelations:[{op:'create',id:'reader-attempt',sourceFeatureId:a.id,targetFeatureId:b.id,note:''}]}},auth)).statusCode).toBe(403);
   const other=await fixture();for(const url of ['/path-graph?view=features','/feature-relations','/requirement-groups/'+other.a.id+'/requirements?state=archived'])expect((await request('GET',other.base+url,undefined,auth)).statusCode).toBe(403);
 });
 it('特性共享布局沿用批次与版本检查，不接受外项目节点且不影响需求布局',async()=>{

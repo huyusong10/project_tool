@@ -1,4 +1,5 @@
 import {randomUUID} from './random-uuid';
+import {remapEditorViews} from './path-view';
 import {executionDraftConflicts,type ExecutionCommand} from '../shared/execution-draft';
 import {EditorSession,newHistory,readHistory,type HistoryCommand,type EditorHistory,type FieldAvailability} from './editor-session';
 import {projectFieldActive} from './editor-fields';
@@ -140,7 +141,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     setPending(value); try { if (value) sessionStorage.setItem(pendingKey, JSON.stringify(value)); else sessionStorage.removeItem(pendingKey); } catch { /* In-memory receipt recovery still works. */ }
   };
   const storePending = (value: PendingBatch | null) => {void writeSharedDraftRecord(pendingKey,value||undefined).catch(()=>{});updatePending(value);};
-  const success = (receipt:DependencyChangeReceipt) => { storePending(null); history.reset(); setPreview(null); latest.current = null; setError(null); onSaved(receipt); };
+  const success = (receipt:DependencyChangeReceipt) => { if(history.session.blocked)return;remapEditorViews(accountId+':'+data.projectId,receipt.addedIds);storePending(null); history.reset(); setPreview(null); latest.current = null; setError(null); onSaved(receipt); };
   const checkReceipt = async (batch: PendingBatch) => {
     const receipt = await api<({ status: 'applied' } & DependencyChangeReceipt) | { status: 'not_found' }>(
       '/api/projects/' + data.projectId + '/dependency-changes/' + batch.batchId, { readOnly: true });
@@ -185,12 +186,12 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
   };
   return {
     templateInstances,legacy,
-    ...history,loading:history.loading||!pendingReady||legacy.loading,readOnly:history.readOnly||legacy.blocked,changes,count,conflict,conflicts:conflict?rebased.conflicts:[],unresolved:rebased.pending.length,resolveConflict:(key:string,value:'draft'|'server')=>setResolutionState(old=>({version:resolutionVersion,values:{...(old.version===resolutionVersion?old.values:{}),[key]:value}})),preview, previewing, pending, error, save,retryPreview:()=>setPreviewAttempt(n=>n+1),
+    ...history,loading:history.loading||!pendingReady||legacy.loading,readOnly:history.readOnly||legacy.blocked&&legacy.kind!=='error',changes,count,conflict,conflicts:conflict?rebased.conflicts:[],unresolved:rebased.pending.length,resolveConflict:(key:string,value:'draft'|'server')=>setResolutionState(old=>({version:resolutionVersion,values:{...(old.version===resolutionVersion?old.values:{}),[key]:value}})),preview, previewing, pending, error, save,retryPreview:()=>setPreviewAttempt(n=>n+1),
     takeOver:()=>history.takeOver(async()=>{setPending(await readDraftRecord<PendingBatch>(pendingKey)||null);}),
     get fields(){return history.fields;},get fieldEpoch(){return history.fieldEpoch;},get pendingField(){return history.pendingField;},
     issue: error instanceof ApiError ? error.details as { nodeIds?: string[]; edgeIds?: string[] } | undefined : undefined,
     cancel: () => { if (!pending) { history.reset(empty, String(data.revision)); setError(null); } },
-    change: (next: DependencyChanges) => { if (!legacy.blocked&&!legacy.loading&&!pending && !history.session.saving && JSON.stringify(next)!==JSON.stringify(changes)) { latest.current = null; setPreview(null); setError(null); if (!count && Number(history.version) !== data.revision) history.rebase(String(data.revision), next); else history.change(next); } },
+    change: (next: DependencyChanges) => { if ((!legacy.blocked||legacy.kind==='error')&&!legacy.loading&&!pending && !history.session.saving && JSON.stringify(next)!==JSON.stringify(changes)) { latest.current = null; setPreview(null); setError(null); if (!count && Number(history.version) !== data.revision) history.rebase(String(data.revision), next); else history.change(next); } },
     rebase: () => {
       if(rebased.pending.length)return;history.rebase(String(data.revision),rebased.current,rebased.values);setResolutionState({version:resolutionVersion,values:{}});
       setError(null);

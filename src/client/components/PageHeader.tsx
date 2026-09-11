@@ -18,6 +18,7 @@ export function PageHeader({
   moreDisabled = false,
   context,
   status,
+  persistentStatus = false,
   onBack,
   backLabel = "返回",
 }: {
@@ -29,14 +30,15 @@ export function PageHeader({
   moreDisabled?: boolean;
   context?: ReactNode;
   status?: ReactNode;
+  persistentStatus?: boolean;
   onBack?: () => void;
   backLabel?: string;
 }) {
   const { titleEl, actionsEl, contextEl, statusEl, width } = useTopbarSlots();
   const compact = width < 960;
   const dense = width < 360;
-  const menu = <>{dense && status && <div className="topbar-menu-status" role="status">{status}</div>}{compact && secondaryActions}{moreActions}</>;
-  const hasMenu = Boolean(moreActions || compact && secondaryActions || dense && status);
+  const menu = <>{dense && !persistentStatus && status && <div className="topbar-menu-status" role="status">{status}</div>}{compact && secondaryActions}{moreActions}</>;
+  const hasMenu = Boolean(moreActions || compact && secondaryActions || dense && !persistentStatus && status);
   const fullTitle = useGanttTooltip();
   const titleEvents = fullTitle.bind(<div className="page-title-full">{title}</div>);
 
@@ -61,7 +63,7 @@ export function PageHeader({
         titleEl,
       )}
       {context && contextEl ? createPortal(<div className="topbar-page-context" data-workspace-zone="tools">{context}</div>, contextEl) : null}
-      {status && !dense && statusEl ? createPortal(<div className="topbar-page-status" role="status" data-workspace-zone="tools">{status}</div>, statusEl) : null}
+      {status && (!dense || persistentStatus) && statusEl ? createPortal(<div className="topbar-page-status" role="status" data-workspace-zone="tools">{status}</div>, statusEl) : null}
       {(actions || secondaryActions || moreActions) && actionsEl ? createPortal(<div className="integrated-page-actions" data-workspace-zone="tools">
         {!compact && secondaryActions}{actions}{hasMenu && <TopbarMenu label={moreLabel} disabled={moreDisabled}>{menu}</TopbarMenu>}
       </div>, actionsEl) : null}

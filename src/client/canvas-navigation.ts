@@ -27,7 +27,7 @@ export function restoredCanvasUrl(account:string,project:string,url:string){
 export function useCanvasNavigation(account:string,project:string,prepare?:()=>boolean|Promise<boolean>){
   const [params]=useSearchParams(),location=useLocation(),navigate=useNavigate();
   useEffect(()=>{if(location.pathname!=='/paths')return;try{sessionStorage.setItem(storageKey(account,project,canvasScope(params)),params.toString());}catch{/* Viewport remains in memory. */}},[account,project,params,location.pathname]);
-  const go=async(url:string,restore=true)=>{if(prepare&&!(await prepare()))return;navigate(restore?restoredCanvasUrl(account,project,url):url);};
+  const go=async(url:string,restore=true,revealInvalid=false)=>{if(prepare&&!(await prepare())&&!revealInvalid)return;navigate(restore?restoredCanvasUrl(account,project,url):url);};
   return {params,go,root:canvasRoot(params),view:canvasView(params),back:()=>{if(prepare)void Promise.resolve(prepare()).then(ok=>{if(ok)navigate(-1);});else navigate(-1);}};
 }
 export function canvasReturnUrl(raw:string|null){return raw&&raw.startsWith('/paths')&&new URL(raw,'http://canvas.local').pathname==='/paths'?raw:'/paths?view=features';}

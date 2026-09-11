@@ -88,3 +88,11 @@ REST 路径前缀为 `/api/projects/:projectId`；MCP 参数加入 `projectId`�
 `get_path_graph` 增加 `view=features` 和 `view=feature&featureId=...`，后者支持 `ungrouped`。旧 `view=project/requirement` 保持原义。规划关系为虚线，实际依赖为实线；同向关系合并展示，返回 `planningRelationIds` 与 `dependencyIds` 供分别查询。人工规划禁止循环（含归档边），实际依赖汇总后的双向关系不等于执行循环。
 
 布局范围新增 `features` 和 `feature:ID`（含 `feature:ungrouped`），通过现有依赖批次的 `changes.layouts` 保存。规划边独立存储，不参与执行预测或排期。日志用稳定特性 ID 记录修改前后内容；不增加独立历史版本页面。
+
+## 连贯画布操作
+
+`/paths` 的“特性总览”和“全部需求”是并列入口。单击查看摘要，双击特性进入需求图，双击需求进入工作项图。面包屑只显示当前层级，返回恢复位置、缩放和选择；旧需求路径链接转入同一画布。
+
+规划关系、执行依赖、对象修改和各层布局共用草稿，一次保存。特性目标与人工评估仍在 `/features` 分开保存，详情使用“目标与范围 / 进展评估 / 关联需求”页签；归档、恢复和删除放在更多操作中。
+
+批次预览与提交接口增加可选 `changes.featureRelations`，分别用 `op=create/update/delete` 表示创建、更新说明和删除。已有关系传 `expectedVersion`，新关系传临时 `id`。保存失败不会部分提交；未知结果先核对批次回执。单条规划关系接口和旧请求保持兼容。

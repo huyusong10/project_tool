@@ -41,6 +41,8 @@ description: 通过 MCP 将原始需求直接录入 project-manage，按需拆�
 
 用户明确给出特性先后关系时，用 list_feature_relations → save_feature_relation 维护 sourceFeatureId、targetFeatureId、note；修改传 id 和 expectedVersion。人工规划与需求实际依赖分开，规划连线不参与排期，也不自动转成需求依赖。同一章节顺序不构成规划关系。
 
+需要同时调整规划关系、执行依赖和布局时，使用现有 preview_dependency_changes → apply_dependency_changes 原子批次。changes.featureRelations 可选：create 传临时 id、sourceFeatureId、targetFeatureId、note；update 传 id、expectedVersion、note；delete 传 id、expectedVersion。所有临时 ID 保持唯一，回执 addedIds 返回正式 ID。规划循环按最终关系检查，不参与排期。结果未知先查询 get_dependency_change_receipt，不自动再次提交。
+
 归档用 archive_requirement_group，先完成、取消或移出未完成需求；restore_requirement_group 恢复。归档保留需求与规划关系，get_feature_requirements 的 state=archived 可读分页历史。delete_requirement_group 仅删除没有任何需求或规划关系的空特性。未归档的已完成、已取消需求可通过 update_requirement_organization 调整归属，保留执行事实。
 
 ## 执行与保存

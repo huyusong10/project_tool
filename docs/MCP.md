@@ -127,3 +127,19 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 `get_path_graph` 支持 `view=features` 顶层图、`view=feature` 加 `featureId` 的特性内需求图（`ungrouped` 为未归属集合）。`view=project` 仍表示原来的全部需求。用 `list_feature_relations`、`save_feature_relation`、`delete_feature_relation` 维护人工规划；`planning/actual` 分别控制两类连线。规划关系不参与执行分析。
 
 特性图与特性内需求图的共享布局分别使用 `features`、`feature:ID`，沿用布局版本和依赖批次保存。删除特性只允许没有需求及规划连线的空特性；非空特性先处理未完成需求再归档。[接口规则](requirement-intake.md#特性规划与关系图)。
+
+## 连贯画布批次
+
+网页的特性总览、特性内需求、全部需求和需求内工作项共用一个项目草稿。MCP 读取正式资料；网页草稿在保存前不会出现在读取结果中。
+
+`preview_dependency_changes` / `apply_dependency_changes` 的 `changes.featureRelations` 是可选数组：
+
+| op | 字段 |
+|---|---|
+| create | 临时 `id`、`sourceFeatureId`、`targetFeatureId`、可选 `note` |
+| update | `id`、`expectedVersion`、`note` |
+| delete | `id`、`expectedVersion` |
+
+规划关系、执行修改和 `layouts` 在同一事务保存。不同对象使用不同临时 ID；回执 `addedIds` 同时返回规划关系和执行对象的正式 ID。规划循环按批次最终关系检查，包含归档特性保留的关系。
+
+预览的 `analysis.featureContext` 包含特性概览、规划关系和需求归属，供统一图投影使用；规划关系不进入关键路径或排期计算。`get_path_graph.analysis` 同样提供该上下文。原单条规划关系工具保持可用。结果未知时查询原批次回执；重试必须复用原批次及输入。

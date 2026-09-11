@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {flushSync} from 'react-dom';
 import {useQueryClient} from '@tanstack/react-query';
-import {FilePenLine,Link2,SlidersHorizontal,Check} from 'lucide-react';
+import {Link2,SlidersHorizontal,Check} from 'lucide-react';
 import {useSession} from '../app-context';
 import {canManageProject} from '../permissions';
 import {useResourceQuery} from '../use-resource-query';
@@ -11,7 +11,7 @@ import {useEditorInteraction} from '../use-editor-interaction';
 import {useWorkspaceParams} from '../use-workspace-view';
 import {editorAdapter} from '../editor-adapter';
 import {draftNetwork} from '../dependency-draft';
-import {useCanvasNavigation} from '../canvas-navigation';
+import {requirementCanvasUrl,useCanvasNavigation} from '../canvas-navigation';
 import {randomUUID} from '../random-uuid';
 import {ApiError} from '../api';
 import {featurePathGraph} from '../../shared/feature-projection';
@@ -40,7 +40,7 @@ function FeatureWorkspace({formal}:{formal:PathAnalysis}){
   const {session}=useSession(),account=session.accountId||'guest',projectId=formal.projectId,manage=canManageProject(session,projectId),client=useQueryClient();
   const [params,setParams]=useWorkspaceParams(),[choosing,setChoosing]=useState(false),[discarding,setDiscarding]=useState(false),[issue,setIssue]=useState(''),[locate,setLocate]=useState<{id:string;sequence:number}>();
   const draft=useDependencyDraft(account,formal,'project',()=>invalidateRequirementViews(client));
-  const navigation=useCanvasNavigation(account,projectId,async()=>{flushSync(()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur();});if(Object.values(draft.fields).some(f=>f.error))return false;await draft.flush();return true;});
+  const navigation=useCanvasNavigation(account,projectId,async()=>{flushSync(()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur();});await draft.flush();return true;});
   const go=(url:string)=>void navigation.go(url),setParam=(name:string,value:string)=>setParams(old=>{const next=new URLSearchParams(old);if(value)next.set(name,value);else next.delete(name);return next;},{replace:true});
   const data=useMemo(()=>draft.preview?.analysis||draftNetwork(formal,draft.changes,draft.templateInstances),[formal,draft.changes,draft.preview,draft.templateInstances]);
   const context=data.featureContext!,planning=params.get('planning')!=='0',actual=params.get('actual')!=='0',editing=manage&&draft.active&&!draft.loading&&!draft.readOnly&&!draft.busy&&!draft.pending;
@@ -83,16 +83,16 @@ function FeatureWorkspace({formal}:{formal:PathAnalysis}){
     </>}</div>
     {card?.featureId&&<footer className="canvas-inspector-actions"><button className="primary-button" onClick={()=>enter(card.featureId!)}>进入需求图</button>{group?<button className="ghost-button" onClick={maintain}>{manage&&!group.archivedAt?'维护特性':'查看特性'}</button>:<button className="ghost-button" onClick={()=>go('/requirements?group=ungrouped')}>整理需求</button>}</footer>}
   </div>:undefined;
-  const toolbar=<EditorToolbar title="路径分析" editing={draft.active} canEdit={manage&&!draft.readOnly} begin={draft.begin} undo={()=>commands.dispatch({type:'undo'})} redo={()=>commands.dispatch({type:'redo'})} canUndo={editing&&draft.canUndo} canRedo={editing&&draft.canRedo} save={()=>void draft.save()} canSave={!draft.readOnly&&!!(draft.pending||!draft.conflict&&(draft.count||Object.keys(draft.fields).length))} busy={draft.busy||draft.loading} discard={()=>draft.count?setDiscarding(true):draft.cancel()}
-    status={<span data-draft-stored={draft.stored}>{draft.loading?'恢复草稿…':draft.legacy.blocked?'旧草稿待核对':draft.pending?'提交结果待核对':draft.readOnly?'其他页面编辑中':draft.conflict?'版本冲突':draft.count?draft.count+' 项未保存':draft.active?'编辑中':'正式资料'}</span>}
-    extra={<>{(draft.active||draft.readOnly||draft.pending||draft.legacy.blocked)&&<button className="ghost-button" aria-label="草稿状态" onClick={()=>setParam('pathPanel',changesOpen?'':'changes')}><FilePenLine size={17}/>修改与冲突</button>}{editing&&<button className="ghost-button" onClick={()=>setChoosing(true)}><Link2 size={17}/>建立规划关系</button>}</>}/>;
+  const toolbar=<EditorToolbar persistentStatus title="路径分析" editing={draft.active} canEdit={manage&&!draft.readOnly} begin={draft.begin} undo={()=>commands.dispatch({type:'undo'})} redo={()=>commands.dispatch({type:'redo'})} canUndo={editing&&draft.canUndo} canRedo={editing&&draft.canRedo} save={()=>void draft.save()} canSave={!draft.readOnly&&!!(draft.pending||!draft.conflict&&(draft.count||Object.keys(draft.fields).length))} busy={draft.busy||draft.loading} discard={()=>draft.count?setDiscarding(true):draft.cancel()}
+    status={<button className="ghost-button canvas-draft-status" aria-label="草稿状态" onClick={()=>setParam('pathPanel',changesOpen?'':'changes')} data-draft-stored={draft.stored}>{draft.loading?'恢复草稿…':draft.legacy.blocked?'旧草稿待核对':draft.pending?'提交结果待核对':draft.readOnly?'其他页面编辑中':draft.conflict?'版本冲突':draft.count?draft.count+' 项未保存':draft.active?'编辑中':'正式资料'}</button>}
+    extra={<>{editing&&<button className="ghost-button" onClick={()=>setChoosing(true)}><Link2 size={17}/>建立规划关系</button>}</>}/>;
   const display=<TopbarMenu label="显示关系" text="显示" icon={<SlidersHorizontal size={16}/>}><button role="menuitemcheckbox" aria-checked={planning} data-menu-stay onClick={()=>setParam('planning',planning?'0':'1')}><Check size={15} style={{visibility:planning?'visible':'hidden'}}/>规划关系</button><button role="menuitemcheckbox" aria-checked={actual} data-menu-stay onClick={()=>setParam('actual',actual?'0':'1')}><Check size={15} style={{visibility:actual?'visible':'hidden'}}/>实际依赖</button></TopbarMenu>;
   const search=params.get('pathSearch')||'',matching=graph.cards.filter(c=>(c.title+' '+(c.expectation||'')).toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   return <div className="feature-path"><GraphWorkspace document={draft} commands={commands} interaction={interaction} cards={graph.cards} links={graph.links} viewKey={viewKey} historyIndex={window.history.state?.idx} positions={layout?.positions} editing={editing} validateConnection={validate} locate={locate}
     navigation={<CanvasNavigation params={params} data={data} onGo={go} onBack={navigation.back} extra={display}/>} toolbar={toolbar} detail={detail} onDismissDetail={()=>setParam('pathInspector','closed')}
     onOpenNode={card=>{if(card.featureId)enter(card.featureId);else select(card.id);}}
-    onRevealField={key=>{const r=context.relations.find(r=>key===r.id+':note');if(r){setParam('pathEdge','feature:'+r.sourceFeatureId+'>feature:'+r.targetFeatureId);setParam('pathInspector','open');}else setParam('pathPanel','changes');}}
-    auxiliary={changesOpen?<><div className="graph-panel-heading"><h3>修改与冲突</h3><button className="ghost-button" onClick={()=>setParam('pathPanel','')}>关闭</button></div><CanvasDraftDetails draft={draft} data={data} onGo={go}/></>:undefined} auxiliaryKey="changes" onDismissAuxiliary={()=>setParam('pathPanel','')}
+    onRevealField={key=>{const r=context.relations.find(r=>key===r.id+':note');if(r){setParam('pathEdge','feature:'+r.sourceFeatureId+'>feature:'+r.targetFeatureId);setParam('pathInspector','open');}else {const id=key.startsWith('title:')?key.slice(6):key.slice(0,key.lastIndexOf(':')),node=data.nodes.find(n=>n.id===id);void navigation.go(node?.requirementId?requirementCanvasUrl(node.requirementId,params,data,id):'/paths?'+new URLSearchParams({view:'project',pathNode:id,pathInspector:'open',pathScope:'all'}),true,true);}}}
+    auxiliary={changesOpen?<><div className="graph-panel-heading"><h3>修改与冲突</h3><button className="ghost-button" onClick={()=>setParam('pathPanel','')}>关闭</button></div><CanvasDraftDetails draft={draft} data={data} onGo={url=>void navigation.go(url,true,true)}/></>:undefined} auxiliaryKey="changes" onDismissAuxiliary={()=>setParam('pathPanel','')}
     finder={<><SearchInput value={search} onChange={value=>setParam('pathSearch',value)} placeholder="查找特性"/>{matching.map(c=><button className="ghost-button canvas-finder-row" key={c.id} onClick={()=>{select(c.id);setLocate({id:c.id,sequence:Date.now()});}}>{c.title}</button>)}</>}
     footer={<><span>虚线：规划关系 · 实线：实际依赖</span>{issue&&<span role="alert" className="danger-text">{issue}</span>}{!graph.cards.length&&<span>{manage?<button className="ghost-button" onClick={()=>go('/features?'+new URLSearchParams({create:'1',returnTo:'/paths?view=features'}))}>创建第一个特性</button>:'暂无特性'}</span>}{(draft.error||draft.conflict||draft.legacy.blocked)&&<button className="ghost-button danger-text" onClick={()=>setParam('pathPanel','changes')}>查看修改与错误</button>}</>}/>
     {choosing&&editing&&<PlanningConnectionDialog groups={context.overview.groups.filter(g=>!g.archivedAt)} onClose={()=>setChoosing(false)} onCreate={(source,target,note)=>{if(connect('feature:'+source,'feature:'+target,note)){setChoosing(false);return true;}return false;}}/>}

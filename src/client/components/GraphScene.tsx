@@ -165,6 +165,12 @@ export function GraphScene(props: DependencyGraphProps) {
     const {left,right,top,bottom}=available(avoidPanels),zoom=Math.max(.02,Math.min(1,(right-left)/width*.92,(bottom-top)/height*.92));
     await flow.setViewport({x:(left+right)/2-(x+width/2)*zoom,y:(top+bottom)/2-(y+height/2)*zoom,zoom},{duration:animate&&!reduced()?260:0});
   },[flow,available,viewportBoxes]);
+  useEffect(()=>{
+    const element=container.current;if(!element)return;
+    let previous=element.getBoundingClientRect(),frame=0;
+    const observer=new ResizeObserver(()=>{const next=element.getBoundingClientRect();if(next.width===previous.width&&next.height===previous.height)return;previous=next;cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{if(!first.current&&!viewportShowsNode(viewportRef.current,viewportBoxes(),available(false)))void fitAvailable(true);});});
+    observer.observe(element);return()=>{observer.disconnect();cancelAnimationFrame(frame);};
+  },[available,fitAvailable,viewportBoxes]);
   const geometry=nodes.filter(n=>!n.data.retiring).map(n=>[n.id,n.measured?.width,n.measured?.height]);
   const structure=JSON.stringify([geometry,measuredLinks.map(e=>[e.id,e.source,e.target,e.label,e.labelWidth]),vertical,arrange,retry,props.positions]);
   useEffect(()=>{
@@ -329,7 +335,7 @@ export function GraphScene(props: DependencyGraphProps) {
   const pendingCurve=(e:GraphLink)=>{const a=screenBox(e.source),b=screenBox(e.target);if(!a||!b)return null;const route=scene?.layout.edges[e.id],oldA=scene?.layout.nodes[e.source],oldB=scene?.layout.nodes[e.target];return previewCurve(a,b,route&&oldA?facingSide({...currentBoxes.get(e.source)!,...oldA},route.points[0]):undefined,false,route&&oldB?facingSide({...currentBoxes.get(e.target)!,...oldB},route.points.at(-1)!):undefined);};
   const hintSource=gesture?.reconnectEnd==='source'?gesture.target:gesture?.source,hintTarget=gesture?.reconnectEnd==='source'?gesture.source:gesture?.target;
   const hint=gesture?.issue?.message||(gesture?.target?cards.find(c=>c.id===hintSource)?.title+' 完成后 '+cards.find(c=>c.id===hintTarget)?.title+' 开始':gesture?gesture.reconnectEnd==='source'?'选择新的前置卡片，完成后进入当前后续':'拖到后续卡片，或点击卡片完成连接':'');
-  const openNode=(id:string)=>{const card=cards.find(c=>c.id===id);if(card&&props.onOpenNode&&!gesture&&runtime.commitFields())props.onOpenNode(card);};
+  const openNode=(id:string)=>{const card=cards.find(c=>c.id===id);if(card&&props.onOpenNode&&!gesture){runtime.commitFields(false);props.onOpenNode(card);}};
   return <div className="dependency-canvas" ref={container} role="region" tabIndex={0} aria-label="动态交付依赖图"
     data-layout-ready={!busy} data-layout-phase={phase} data-rendered-layout={rendered} data-connection-active={!!gesture}
     onPointerDownCapture={event=>{

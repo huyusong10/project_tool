@@ -135,7 +135,7 @@ function SavedRequirementPage() {
   const scrollKey='pm-detail-scroll:'+(session.accountId||'guest')+':'+(requirement?.projectId||'')+':'+id,workTarget=searchParams.get('workItemId');
   const openPathView = () => {
     try{sessionStorage.setItem(scrollKey,JSON.stringify({window:window.scrollY,main:document.querySelector('main')?.scrollTop||0}));}catch{/* Navigation remains available. */}
-    const params=new URLSearchParams(searchParams);params.set('view','path');setSearchParams(params,{replace:true,state:pathLocation.state});
+    const params=new URLSearchParams({view:'requirement',requirementId:id,root:'features',featureId:requirement?.groupId||'ungrouped'});if(workTarget){params.set('pathNode',workTarget);params.set('pathInspector','open');}navigate('/paths?'+params);
   };
   useEffect(()=>{
     if(pathView||workTarget||isLoading)return;

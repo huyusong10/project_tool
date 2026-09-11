@@ -8,8 +8,8 @@ function ToolMenu({label,icon,children,className}:{label:string;icon:ReactNode;c
 
   return <details ref={ref} className={className} onToggle={e=>setOpen(e.currentTarget.open)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();if(ref.current){ref.current.open=false;ref.current.querySelector<HTMLElement>('summary')?.focus();}}}}><summary aria-label={label} title={label}>{icon}</summary>{children}</details>;
 }
-export function EditorToolbar({title,back,backLabel,navigation,context,status,editing,canEdit=true,undo,redo,canUndo,canRedo,save,canSave=true,discard,begin,busy,extra}:{title:string;back?:()=>void;backLabel?:string;navigation?:ReactNode;context?:ReactNode;status?:ReactNode;editing:boolean;canEdit?:boolean;undo?:()=>void;redo?:()=>void;canUndo?:boolean;canRedo?:boolean;save?:()=>void;canSave?:boolean;discard?:()=>void;begin?:()=>void;busy?:boolean;extra?:ReactNode}){
-  return <PageHeader title={title} onBack={back} backLabel={backLabel} context={context} status={status}
+export function EditorToolbar({title,back,backLabel,navigation,context,status,persistentStatus=false,editing,canEdit=true,undo,redo,canUndo,canRedo,save,canSave=true,discard,begin,busy,extra}:{title:string;back?:()=>void;backLabel?:string;navigation?:ReactNode;context?:ReactNode;status?:ReactNode;persistentStatus?:boolean;editing:boolean;canEdit?:boolean;undo?:()=>void;redo?:()=>void;canUndo?:boolean;canRedo?:boolean;save?:()=>void;canSave?:boolean;discard?:()=>void;begin?:()=>void;busy?:boolean;extra?:ReactNode}){
+  return <PageHeader title={title} onBack={back} backLabel={backLabel} context={context} status={status} persistentStatus={persistentStatus}
     moreActions={<>{extra}{navigation}{editing&&<button className="ghost-button" aria-label="放弃修改" disabled={busy} onClick={discard}><X size={17}/>放弃修改</button>}</>}
     actions={editing?<>
       <button className="ghost-button topbar-icon" title="撤销 · Ctrl/Cmd+Z" aria-label="撤销" disabled={!canUndo||busy} onClick={undo}><Undo2 size={17}/></button>

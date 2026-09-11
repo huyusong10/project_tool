@@ -41,6 +41,8 @@ it('按最终规划网络校验：删除旧边后建立反向边，循环与布�
  const relations=(await request('GET',base+'/feature-relations')).json<Array<{id:string;sourceFeatureId:string;version:number}>>(),ab=relations.find(r=>r.sourceFeatureId===a.id)!;
  const {response}=await preview({...empty(),featureRelations:[{op:'create',id:'ca',sourceFeatureId:c.id,targetFeatureId:a.id,note:''}]});expect(response.statusCode).toBe(409);
  const valid=await apply({...empty(),featureRelations:[{op:'delete',id:ab.id,expectedVersion:ab.version},{op:'create',id:'ba',sourceFeatureId:b.id,targetFeatureId:a.id,note:''}]});expect(valid.statusCode,valid.body).toBe(200);
+ const latest=(await request('GET',base+'/feature-relations')).json<Array<{id:string;sourceFeatureId:string;targetFeatureId:string;version:number}>>(),same=latest[0];
+ const replacement=await apply({...empty(),featureRelations:[{op:'create',id:'replace-same-pair',sourceFeatureId:same.sourceFeatureId,targetFeatureId:same.targetFeatureId,note:'替换说明'},{op:'delete',id:same.id,expectedVersion:same.version}]});expect(replacement.statusCode,replacement.body).toBe(200);
  const remaining=(await request('GET',base+'/feature-relations')).json();
  const failed=await preview({...empty(),featureRelations:[{op:'create',id:'ac',sourceFeatureId:a.id,targetFeatureId:c.id,note:''}],layouts:[{scope:'features',direction:'right',expectedVersion:8,positions:{}}]});expect(failed.response.statusCode).toBe(409);
  expect((await request('GET',base+'/feature-relations')).json()).toEqual(remaining);
