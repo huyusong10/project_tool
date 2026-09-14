@@ -18,7 +18,7 @@ export function executionDraftConflicts(changes:DependencyChanges,graph:PathAnal
   for(const c of changes.entities||[]){
     const touches=ids.has(c.id)||c.entity!=='requirement'&&!command.workItemId&&own.has(c.requirementId||'');
     if(!touches)continue;
-    if(c.op!=='update'||Object.keys(c.data).some(k=>!descriptive.has(k)||command.action==='phase'))conflicts.push(c.data.title||graph?.requirements.find(r=>r.id===c.id)?.title||graph?.nodes.find(n=>n.id===c.id)?.title||'当前对象');
+    if(c.op!=='update'||Object.keys(c.data).some(k=>!descriptive.has(k)||['phase','edit'].includes(command.action||'')))conflicts.push(c.data.title||graph?.requirements.find(r=>r.id===c.id)?.title||graph?.nodes.find(n=>n.id===c.id)?.title||'当前对象');
   }
   for(const e of changes.estimates)if(ids.has(e.workItemId))conflicts.push(graph?.nodes.find(n=>n.id===e.workItemId)?.title||'工作项估算');
   if(conditionActions.has(command.action||'structure')){

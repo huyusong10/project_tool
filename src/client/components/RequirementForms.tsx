@@ -1,3 +1,6 @@
+import {assertCleanRequirementDraft} from '../use-graph-draft';
+import {useSession} from '../app-context';
+import {useDeliveryForm} from '../use-delivery-form';
 import { migrateFeatureFields } from "../feature-storage-migration";
 import {OrganizationFields} from './RequirementIntake';
 import {isAssignablePerson} from '../assignable-people';
@@ -82,15 +85,18 @@ export function RequirementInfoForm({
   onRecheckChange: (value: RequirementInfoRecheck | null) => void;
   onClose: () => void;
 }) {
+  const {session}=useSession();
   const [unknown,setUnknown]=useState(Boolean(recheck));
   const client = useQueryClient();
   const submitting = useRef(false);
   const readingRef = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const [baseRequirement, setBaseRequirement] = useState(requirement);
-  const [draft, setDraft] = useState(() => recheck?.draft || requirementInfoDraft(requirement));
-  const dirtyFields = useRef(new Set<keyof RequirementInfoDraft>(recheck?.dirtyFields || []));
+  const [local,setLocal,clearLocal]=useDeliveryForm(requirement.projectId,requirement.id+':info',()=>({baseline:requirement,draft:recheck?.draft||requirementInfoDraft(requirement),dirty:recheck?.dirtyFields||[]}),!!recheck);
+  const [baseRequirement, setBaseRequirement] = useState(local.baseline);
+  const [draft, setDraft] = useState(local.draft);
+  const dirtyFields = useRef(new Set<keyof RequirementInfoDraft>(local.dirty));
+  useEffect(()=>setLocal({baseline:baseRequirement,draft,dirty:[...dirtyFields.current]}),[baseRequirement,draft,setLocal]);
   const [reading, setReading] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(recheck?.stage === "read");
   const [refreshed, setRefreshed] = useState(false);
@@ -116,8 +122,8 @@ export function RequirementInfoForm({
     : eligiblePeople;
   const draftOwnerUnavailable = Boolean(draft.ownerId && draft.ownerId !== baseRequirement.ownerId && !ownerOptions.some((person) => person.id === draft.ownerId));
   const change = (field: keyof RequirementInfoDraft, value: string) => {
-    dirtyFields.current.add(field);
-    const next = { ...draft, [field]: value };
+    dirtyFields.current.add(field);if(field==='featureId')dirtyFields.current.add('phaseId');
+    const next = { ...draft, [field]: value,...field==='featureId'?{phaseId:''}:{} };
     setDraft(next);
     if (unknownVersion.current !== null) onRecheckChange({
       baselineVersion: unknownVersion.current,
@@ -167,7 +173,7 @@ export function RequirementInfoForm({
     }
   };
   const mutation = useMutation({
-    mutationFn: (value: object) => api(`/api/requirements/${requirement.id}`, { method: "PATCH", body: jsonBody(value) }),
+    mutationFn: async (value: object) => {await assertCleanRequirementDraft(session.accountId||session.username||'guest',requirement.id,{action:draft.phaseId!==(baseRequirement.phaseId||'')||draft.featureId!==(baseRequirement.featureId||'')?'phase':'edit'});return api(`/api/requirements/${requirement.id}`, { method: "PATCH", body: jsonBody(value) });},
     onMutate: (value) => {
       const baselineVersion = Number((value as { expectedVersion?: number }).expectedVersion || baseRequirement.version);
       unknownVersion.current = baselineVersion;
@@ -175,7 +181,7 @@ export function RequirementInfoForm({
     },
     onSuccess: () => {
       unknownVersion.current = null;
-      onRecheckChange(null);
+      clearLocal();onRecheckChange(null);
       invalidateRequirementViews(client, requirement.id);
       onClose();
     },
@@ -319,7 +325,7 @@ export function RequirementCorrectionForm({
     });
   };
   const change = (field: keyof RequirementInfoDraft, value: string) => {
-    const next = { ...draft, [field]: value };
+    const next = { ...draft, [field]: value,...field==='featureId'?{phaseId:''}:{} };
     setDraft(next);
     persistDraftIfLocked(next);
   };

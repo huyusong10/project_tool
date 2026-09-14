@@ -1,3 +1,5 @@
+import {deriveExecutionStage} from '../shared/execution-stage';
+import {projectPhaseOverview} from '../shared/phase-projection';
 import { acceptanceId, startId, topologicalOrder, DependencyCycleError,dependencySource,dependencyTarget, type PathAnalysis,type PathNode,type PathRequirement } from '../shared/paths';
 import type { DependencyChanges } from '../shared/path-contracts';
 import {applyFeatureRelationDraft} from '../shared/features';
@@ -47,7 +49,8 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges, ins
       edges.push({ id: n.id + '>' + w.id, source: n.id, target: w.id, dependencyId: null, critical: false });
   }
   dependencies.forEach(d => edges.push({ id: d.id, source:dependencySource(d), target:dependencyTarget(d), dependencyId: d.id, critical: false }));
-  const featureContext=data.featureContext?{...data.featureContext,relations:applyFeatureRelationDraft(data.featureContext.relations,changes.featureRelations||[],data.projectId),requirements:[...data.featureContext.requirements.filter(r=>r.deletedAt),...requirements]}:undefined;
+  requirements=requirements.map(r=>({...r,executionStage:deriveExecutionStage(r,nodes.filter(n=>n.requirementId===r.id&&n.kind==='work').map(n=>({...n,progress:n.progress||0,durationDays:n.estimate.durationDays})),milestones.filter(m=>m.requirementId===r.id))}));
+  const featureContext=data.featureContext?{...data.featureContext,overview:projectPhaseOverview(data.featureContext.overview,requirements),relations:applyFeatureRelationDraft(data.featureContext.relations,changes.featureRelations||[],data.projectId),requirements:[...data.featureContext.requirements.filter(r=>r.deletedAt),...requirements]}:undefined;
   return { ...data,featureContext, nodes, dependencies, edges,requirements,risks,milestones,layouts:[...(data.layouts||[]).filter(l=>!changes.layouts?.some(c=>c.scope===l.scope&&c.direction===l.direction)),...(changes.layouts||[]).map(l=>({...l,version:l.expectedVersion}))] };
 }
 export function dependencyIssue(data: PathAnalysis, changes: DependencyChanges,instances:DraftTemplateInstance[]=[]) {

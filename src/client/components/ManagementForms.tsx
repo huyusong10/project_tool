@@ -240,7 +240,7 @@ export function RequirementForm({
       <FormField label="需求标题" full>
         <input name="title" value={title} onChange={event=>setTitle(event.target.value)} required autoFocus />
       </FormField>
-      <OrganizationFields projectId={projectId} featureId={featureId} phaseId={phaseId} onChange={(key,value)=>key==='featureId'?setFeatureId(value):setPhaseId(value)}/>{phaseId&&<FormField label="安排原因（Phase 已推进时必填）" full><textarea maxLength={2000} value={placementReason} onChange={e=>setPlacementReason(e.target.value)}/></FormField>}
+      <OrganizationFields projectId={projectId} featureId={featureId} phaseId={phaseId} onChange={(key,value)=>{if(key==='featureId'){setFeatureId(value);setPhaseId('');}else setPhaseId(value);}}/>{phaseId&&<FormField label="安排原因（Phase 已推进时必填）" full><textarea maxLength={2000} value={placementReason} onChange={e=>setPlacementReason(e.target.value)}/></FormField>}
       <FormField label="需求负责人（可稍后指定）">
         <select name="ownerId" value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
           <option value="">待指定</option>

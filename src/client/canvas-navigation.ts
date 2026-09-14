@@ -15,7 +15,7 @@ export function requirementCanvasUrl(id:string,params:URLSearchParams,data?:Path
   if(next.get('root')==='features')next.set('featureId',data?.requirements.find(r=>r.id===id)?.featureId||data?.featureContext?.requirements.find(r=>r.id===id)?.featureId||'unassigned');
   if(workItemId){next.set('pathNode',workItemId);next.set('pathInspector','open');}
   next.set('mode',params.get('mode')||'graph');
-  if(params.has('phaseId'))next.set('phaseId',params.get('phaseId')!);
+  const phaseId=data?.requirements.find(r=>r.id===id)?.phaseId||data?.featureContext?.requirements.find(r=>r.id===id)?.phaseId;if(phaseId&&params.has('phaseId')&&phaseId===params.get('phaseId'))next.set('phaseId',phaseId);
   return '/?'+next;
 }
 const storageKey=(account:string,project:string,scope:string)=>'pm-canvas-navigation:'+account+':'+project+':'+scope;
@@ -23,7 +23,7 @@ export function restoredCanvasUrl(account:string,project:string,url:string){
   const parsed=new URL(url,'http://canvas.local');if(!['/','/paths','/features'].includes(parsed.pathname))return url;
   const explicit=parsed.searchParams;
   try{const saved=new URLSearchParams(sessionStorage.getItem(storageKey(account,project,canvasScope(explicit)))||'');
-    for(const [key,value] of saved)if(!explicit.has(key)&&(key.startsWith('path')||['node','edge','planning','actual','phaseId','q','stage','attention'].includes(key)))explicit.set(key,value);
+    for(const [key,value] of saved)if(!explicit.has(key)&&(key.startsWith('path')||['node','edge','planning','actual','phaseId','q','stage','attention','tableSort'].includes(key)))explicit.set(key,value);
   }catch{/* Explicit links work without local storage. */}
   return '/?'+explicit;
 }

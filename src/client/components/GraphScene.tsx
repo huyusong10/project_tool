@@ -1,3 +1,4 @@
+import {PhaseStatusBadge} from './PhasePlanning';
 import {nodeTypes,edgeTypes,type CardNode,type CardData,type RouteEdge} from './GraphElements';
 import type {DependencyGraphProps,GraphConnectionIssue} from './DependencyGraph';
 import {useWorkspaceRuntime} from '../workspace-runtime';
@@ -115,7 +116,7 @@ export function GraphScene(props: DependencyGraphProps) {
       const oldById=new Map(previous.map(n=>[n.id,n])),ids=new Set(cards.map(c=>c.id));
       const updated:CardNode[]=cards.map(card=>{
         const old=oldById.get(card.id),visible=!props.visibleIds||props.visibleIds.includes(card.id);
-        const data:CardData={...card,vertical,editing,rename:allowRename?rename:undefined,connectable:allowConnect,retiring:false,context:props.contextIds?.includes(card.id),
+        const data:CardData={...card,onSelectPhase:props.onSelectPhase,vertical,editing,rename:allowRename?rename:undefined,connectable:allowConnect,retiring:false,context:props.contextIds?.includes(card.id),
           highlighted:!!props.highlighted?.includes(card.id),invalid:!!props.invalidNodes?.includes(card.id),
           connection:card.id===activeSource?'source':card.id===activeTarget?invalidTarget?'invalid':'target':undefined};
         const stableData=old&&Object.keys(data).every(key=>data[key as keyof CardData]===old.data[key as keyof CardData])?old.data:data;
@@ -130,7 +131,7 @@ export function GraphScene(props: DependencyGraphProps) {
       const next=[...updated,...previous.filter(n=>!ids.has(n.id)).map(n=>n.data.retiring?n:{...n,data:{...n.data,retiring:true,editing:false}})];
       return next.length===previous.length&&next.every((n,i)=>n===previous[i])?previous:next;
     });
-  },[cards,links,scene,selected,selectedIds,vertical,editing,rename,allowRename,allowConnect,props.visibleIds,props.contextIds,props.highlighted,props.invalidNodes,props.positions,activeSource,activeTarget,invalidTarget,setNodes]);
+  },[cards,links,scene,selected,selectedIds,vertical,editing,rename,allowRename,allowConnect,props.visibleIds,props.contextIds,props.highlighted,props.invalidNodes,props.positions,props.onSelectPhase,activeSource,activeTarget,invalidTarget,setNodes]);
   const measuredLinks=useMemo(()=>{
     const context=document.createElement('canvas').getContext('2d');if(context)context.font='12px '+getComputedStyle(document.body).fontFamily;
     return links.map(e=>({...e,labelWidth:e.label?Math.ceil(context?.measureText(e.label).width||44)+8:undefined}));
@@ -153,10 +154,10 @@ export function GraphScene(props: DependencyGraphProps) {
     return {left,right,top,bottom};
   },[]);
   const viewportBoxes=useCallback((ids:string[]|undefined=visibleRef.current)=>{
-    return Object.entries(layoutRef.current?.nodes||{}).filter(([id])=>!ids||ids.includes(id)).map(([id,p])=>{
+    return [...(props.regions||[]).filter(r=>!props.focusRegionId||r.id===props.focusRegionId||r.nodeIds.some(id=>ids?.includes(id))),...Object.entries(layoutRef.current?.nodes||{}).filter(([id])=>!ids||ids.includes(id)).map(([id,p])=>{
       const n=flow.getNode(id);return {...p,width:n?.measured?.width||244,height:n?.measured?.height||154};
-    });
-  },[flow]);
+    })];
+  },[flow,props.regions,props.focusRegionId]);
   const fitAvailable=useCallback(async(avoidPanels=true,ids:string[]|undefined=visibleRef.current,animate=false)=>{
     if(!container.current)return;
     const boxes=viewportBoxes(ids);
@@ -165,6 +166,7 @@ export function GraphScene(props: DependencyGraphProps) {
     const {left,right,top,bottom}=available(avoidPanels),zoom=Math.max(.02,Math.min(1,(right-left)/width*.92,(bottom-top)/height*.92));
     await flow.setViewport({x:(left+right)/2-(x+width/2)*zoom,y:(top+bottom)/2-(y+height/2)*zoom,zoom},{duration:animate&&!reduced()?260:0});
   },[flow,available,viewportBoxes]);
+  const previousRegion=useRef(props.focusRegionId);useEffect(()=>{if(previousRegion.current!==props.focusRegionId&&!busy){previousRegion.current=props.focusRegionId;void fitAvailable(true,undefined,true);}},[props.focusRegionId,busy,fitAvailable]);
   useEffect(()=>{
     const element=container.current;if(!element)return;
     let previous=element.getBoundingClientRect(),frame=0;
@@ -190,7 +192,7 @@ export function GraphScene(props: DependencyGraphProps) {
       try{
         const savedPositions={...(layoutRef.current?.nodes||{}),...(!initial?layoutOrigin:{}),...(props.positions||{})};
         let layout:RoutedLayout;
-        if(!reset&&Object.keys(savedPositions).length){const positioned=activeNodes.filter(n=>savedPositions[n.id]).map(n=>({id:n.id,...savedPositions[n.id],width:n.measured!.width!,height:n.measured!.height!}));for(const n of activeNodes)if(!savedPositions[n.id]){const p=vacantPosition(positioned,n.id,{x:Math.max(0,...positioned.map(n=>n.x+n.width))+64,y:32},n.measured!.width!,n.measured!.height!);savedPositions[n.id]=p;positioned.push({id:n.id,...p,width:n.measured!.width!,height:n.measured!.height!});}layout=await fixedRoute(savedPositions,activeNodes);}
+        if((!reset||props.regions)&&Object.keys(savedPositions).length){const positioned=activeNodes.filter(n=>savedPositions[n.id]).map(n=>({id:n.id,...savedPositions[n.id],width:n.measured!.width!,height:n.measured!.height!}));for(const n of activeNodes)if(!savedPositions[n.id]){const p=vacantPosition(positioned,n.id,{x:Math.max(0,...positioned.map(n=>n.x+n.width))+64,y:32},n.measured!.width!,n.measured!.height!);savedPositions[n.id]=p;positioned.push({id:n.id,...p,width:n.measured!.width!,height:n.measured!.height!});}layout=await fixedRoute(savedPositions,activeNodes);}
         else {
           const arranged=await stableGraphLayout(engine.current!,activeNodes.map(n=>({id:n.id,width:n.measured!.width!,height:n.measured!.height!})),measuredLinks,vertical,null,anchorId,true);
           layout=await fixedRoute(arranged.nodes,activeNodes);
@@ -385,13 +387,13 @@ export function GraphScene(props: DependencyGraphProps) {
       onNodeDragStart={(event,node)=>{selectFromCanvas(node.id);const ids=selectedIds.includes(node.id)?selectedIds:[node.id];setSelectedIds(ids);manualPending.current=true;const ticket=interaction.begin('move',()=>{cancelDrag();});drag.current={ticket,ids,original:displayedPositions(),copy:'altKey' in event&&event.altKey};setEdgeFade({ids:new Set(links.filter(e=>ids.includes(e.source)||ids.includes(e.target)).map(e=>e.id)),opacity:0});}}
       onNodeDrag={(_,node,dragged)=>{if(!drag.current)return;if(drag.current.cancelled){restoreDrag();return;}for(const n of dragged.length?dragged:[node])displayPositions.current.set(n.id,n.position);setDragTick(t=>t+1);}}
       onNodeDragStop={(event,node,dragged)=>{const d=drag.current;if(!d)return;const el='clientX' in event?document.elementFromPoint(event.clientX,event.clientY):null;const invalid=d.cancelled||!interaction.isCurrent(d.ticket)||!el||!container.current?.contains(el)||runtime.covers(el);if(invalid){restoreDrag();interaction.cancel();drag.current=null;return;}
-        const targets=Object.fromEntries((dragged.length?dragged:[node]).filter(n=>d.ids.includes(n.id)).map(n=>[n.id,n.position]));
+        const targets=Object.fromEntries((dragged.length?dragged:[node]).filter(n=>d.ids.includes(n.id)).map(n=>[n.id,props.constrainPosition?.(n.id,n.position)||n.position]));
         if(d.copy){restoreDrag();drag.current=null;interaction.complete(d.ticket,()=>props.commands.dispatch({type:'duplicate',ids:d.ids,positions:vacantGroup(positioned(),targets,true)}));}
-        else {const final={...d.original,...vacantGroup(positioned(),targets)};drag.current=null;interaction.complete(d.ticket,()=>commitMove(final));}
+        else {const final={...d.original,...vacantGroup(positioned(),targets)};if(props.constrainPosition)for(const id of d.ids)final[id]=props.constrainPosition(id,final[id]);drag.current=null;interaction.complete(d.ticket,()=>commitMove(final));}
       }}
       onNodeClick={(event,node)=>{if(!connection.choose(node.id)){if(!event.ctrlKey&&!event.metaKey)setSelectedIds([node.id]);const ids=interaction.selection.kind==='nodes'?interaction.selection.ids:[];selectFromCanvas(ids.includes(node.id)?node.id:ids.at(-1)||'');}}} onEdgeClick={(_,edge)=>{interaction.select({kind:'edge',id:edge.id});}}
       onMoveEnd={(_,v)=>{if(!busy&&!first.current)saveViewport(keyRef.current,v);}} minZoom={.02} maxZoom={1.5} fitView={false}>
-      <Background gap={24} size={1}/>
+      <Background gap={24} size={1}/>{props.regions&&<div className="delivery-regions" style={{transform:`translate(${viewport.x}px,${viewport.y}px) scale(${viewport.zoom})`}}>{props.regions.map(r=><div key={r.id} className="delivery-region" style={{left:r.x,top:r.y,width:r.width,height:r.height}} data-phase-region={r.id}><div className="delivery-region-header"><button className="ghost-button nodrag nopan" onClick={()=>props.onSelectPhase?.(r.phase?.featureId||'unassigned',r.id)}><span className="delivery-region-name" title={r.name}>{r.name}</span>{r.phase&&<PhaseStatusBadge phase={r.phase}/>}</button><p title={r.phase?.scope}>{r.phase?.scope||(!r.nodeIds.length?'交付范围待明确':'')}</p>{r.phase&&<small>目标 {r.phase.targetDate||'待定'}</small>}</div></div>)}</div>}
     </ReactFlow>
     {(liveCurve||pendingLinks.length>0)&&<svg className={'graph-connection-preview'+(gesture?.issue?' is-invalid':'')} aria-hidden="true">
       <defs><marker id={previewMarker} viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="context-stroke"/></marker></defs>

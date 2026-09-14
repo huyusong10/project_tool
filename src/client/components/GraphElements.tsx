@@ -1,3 +1,4 @@
+import {PhaseChip} from './DeliveryTables';
 import { ExecutionStageBadge } from "./ExecutionStageBadge";
 import {memo,useEffect,useRef,useMemo,useId} from 'react';
 import {Handle,Position,BaseEdge,useUpdateNodeInternals,useStore,type Node,type NodeProps,type Edge,type EdgeProps} from '@xyflow/react';
@@ -6,7 +7,7 @@ import type {GraphCard} from '../path-projection';
 import {roundedRoutePath,type RoutedLayout} from '../path-layout';
 import {requirementStatusLabels,riskLabels} from '../../shared/domain';
 import {EditorField} from './EditorField';
-export type CardData = GraphCard & { rename?:(id:string,title:string)=>void; connectable?:boolean; vertical: boolean; editing: boolean; highlighted: boolean; invalid: boolean; retiring?:boolean; context?:boolean; connection?:string };
+export type CardData = GraphCard & { onSelectPhase?:(featureId:string,phaseId:string)=>void;rename?:(id:string,title:string)=>void; connectable?:boolean; vertical: boolean; editing: boolean; highlighted: boolean; invalid: boolean; retiring?:boolean; context?:boolean; connection?:string };
 export type CardNode = Node<CardData, 'delivery'>;
 export type RouteEdge = Edge<{ route?: RoutedLayout['edges'][string]; critical: boolean; planningOnly?:boolean; labelText: string; description?:string; opacity:number; invalid?:boolean; filtered?:boolean }, 'delivery'>;
 const Card = memo(function Card({ id, data, selected }: NodeProps<CardNode>) {
@@ -23,6 +24,7 @@ const Card = memo(function Card({ id, data, selected }: NodeProps<CardNode>) {
     <EditorField inline required fieldKey={'title:'+id} value={data.title} disabled={['feature','requirement'].includes(data.kind)||!data.editing||!data.rename||['start','acceptance','project'].includes(data.kind)} onCommit={title=>data.rename?.(id,title)}/>{data.kind!=='feature'&&<small title={data.subtitle}>{data.subtitle}</small>}
     <div className="dependency-card-bottom">{data.kind==='feature'?<span title={data.expectation}>{data.expectation||''}</span>:<><span>{data.forecast || '交付待确认'}</span>{data.kind!=='template'&&<span>{data.floatDays === null ? '余量待确认' : '余量 ' + data.floatDays + ' 天'}</span>}</>}</div>
     <small>{data.kind==='feature'?data.facts:data.context?'关联上下文':data.unknown ? '交付条件待确认' : data.hiddenCount ? '另有 ' + data.hiddenCount + ' 条关系' : '\u00a0'}</small>
+    {!!data.phases?.length&&<div className="delivery-phase-chips">{data.phases.map(p=><PhaseChip key={p.id} phase={p} onClick={()=>data.onSelectPhase?.(p.featureId,p.id)}/>)}</div>}
     <Handle id="route-out" type="source" position={side(false)} className="route-handle" isConnectable={false}/>
     {data.editing && data.connectable!==false && !data.retiring && data.kind !== 'start' && !(data.kind==='feature'&&(data.archived||data.featureId==='unassigned')) && (['left','right','top','bottom'] as const).map(side=><button key={side} type="button" data-side={side} className="business-handle nopan nodrag" aria-label={'从'+data.title+'的'+{left:'左',right:'右',top:'上',bottom:'下'}[side]+'侧连接后续'+(data.kind==='feature'?'特性':'工作')}/>)}
   </div>;
