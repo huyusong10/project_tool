@@ -7,5 +7,5 @@ export function toolbarForRoute(pathname: string, search = ''): ToolbarLayout {
   if (/^\/requirements\/[^/]+$/.test(pathname)) return params.get('view') === 'path' || params.has('draftProject') ? 'path' : 'detail';
   if (pathname === '/templates' && params.get('edit')) return 'editor';
   if (pathname === '/analytics') return 'analytics';
-  return ['/features','/requirements','/issues','/templates','/projects','/resources','/project-settings'].includes(pathname) ? 'single' : 'none';
+  return ['/features','/requirements','/issues','/templates','/projects','/resources','/project-settings','/people'].includes(pathname) ? 'single' : 'none';
 }

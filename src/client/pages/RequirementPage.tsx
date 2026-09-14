@@ -338,6 +338,7 @@ function SavedRequirementPage({requirementId,embedded=false,selectedWorkItemId,o
   const embeddedWorkDetails=<section className="delivery-work-details">{requirement.workItems.filter(item=>!selectedWorkItemId||item.id===selectedWorkItemId).map(item=><article key={item.id}><h4>{item.title}</h4><WorkProgressBadge work={item}/><p>{item.ownerName||'未分派'} · {item.plannedStart||'待定'} ～ {item.plannedEnd||'待定'}</p><div className="button-row">{renderWorkActions(item)}{canUpdateItemProgress(item)&&<button className="primary-button" onClick={()=>openProgress(item.id)}>更新进度</button>}</div></article>)}<div className="button-row">{canManageWorkItems&&<button className="ghost-button" disabled={workEditorNeedsRecheck||!!planRecheck} onClick={()=>setWorkEditorOpen(true)}>工作项设置</button>}<button className="ghost-button" onClick={openPathView}>维护依赖与分解</button></div></section>;
   const requirementHeader=<Header
         title={requirement.title}
+        views={<div className="view-tabs"><button className="ghost-button" aria-pressed={!pathView} onClick={()=>{const params=new URLSearchParams(searchParams);params.delete('view');setSearchParams(params,{replace:true,state:pathLocation.state});}}>进度甘特</button><button className="ghost-button" aria-pressed={pathView} onClick={openPathView}>路径分析</button></div>}
         onBack={goBack} backLabel={hasPageHistory()?"返回":"需求列表"}
         moreLabel="需求操作"
         moreDisabled={Boolean(commandRecheck || correctionRecheck)}
@@ -383,7 +384,6 @@ function SavedRequirementPage({requirementId,embedded=false,selectedWorkItemId,o
         <header>
           <div>
             <h2>需求进展</h2>
-            <div className="path-view-switch"><button className="ghost-button" aria-pressed={!pathView} onClick={()=>{const params=new URLSearchParams(searchParams);params.delete('view');setSearchParams(params,{replace:true,state:pathLocation.state});}}>进度甘特</button><button className="ghost-button" aria-pressed={pathView} onClick={openPathView}>路径分析</button></div>
           </div>
           {canManageWorkItems && (
             <div className="panel-actions">
@@ -517,6 +517,6 @@ function DraftRequirementPage({projectId}:{projectId:string}){
  const [item,setItem]=useState<PathRequirementContext|null|undefined>(undefined);
  useEffect(()=>{let cancelled=false;void readDraftRecord<{values:DependencyChanges[];index:number}>('pm-graph-draft:'+(session.accountId||'guest')+':'+projectId).then(h=>{const c=h?.values[h.index].entities?.find(c=>c.id===id&&c.entity==='requirement'&&c.op==='create');if(!cancelled)setItem(c?{id,projectId,title:c.data.title||'新需求',ownerId:c.data.ownerId||null,workItems:[],status:'not_started'}:null);}).catch(()=>{if(!cancelled)setItem(null);});return()=>{cancelled=true;};},[id,projectId,session.accountId]);
  if(item===undefined)return <LoadingState label="正在恢复需求草稿…"/>;
- if(!item)return <EmptyState title="本机需求草稿不存在" detail="请返回全局画布检查草稿。" action={<button onClick={()=>navigate('/paths')}>返回项目全局</button>}/>;
+ if(!item)return <><PageHeader title="本机需求草稿不存在" onBack={()=>navigate('/?view=features')} backLabel="返回项目交付"/><EmptyState title="本机需求草稿不存在" detail="请返回项目交付检查草稿。"/></>;
  return <Navigate to={'/paths?'+new URLSearchParams({view:'requirement',requirementId:id,draftProject:projectId,root:'project'})} replace/>;
 }

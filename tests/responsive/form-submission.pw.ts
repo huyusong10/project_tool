@@ -410,7 +410,7 @@ test('编辑流程后台刷新后不携带新版本覆盖旧草稿', async ({ pa
   };
   await reconnect(page);
   await expect(name).toHaveValue('尚未保存的流程草稿');
-  await expect(page.locator('.topbar-page-status')).toContainText('草稿');
+  await expect(page.locator('.page-toolbar-status')).toContainText('草稿');
   await expect(page.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
   expect(requests).toHaveLength(0);
 

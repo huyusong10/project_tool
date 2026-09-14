@@ -14,6 +14,7 @@ import {
 } from "./app-context";
 import { appRoutes, preloadPage } from "./routes";
 import { invalidate, invalidateBusinessDateViews, keys } from "./query-keys";
+import {usePageReturnSource} from './page-return';
 import {usePageResolution} from "./use-page-resolution";
 import {PageResourcesContext, ResolvedPageContext, rememberProject} from "./page-context";
 import {createPageChrome, PageChromeContext} from "./page-chrome";
@@ -23,6 +24,7 @@ import { useToast } from "./components/Toast";
 import { InlineEditProvider } from "./components/InlineEdit";
 import { defaultBranding, useDocumentBranding } from "./components/BrandLogo";
 import { Sidebar } from "./components/Sidebar";
+import { PageToolbar } from "./components/PageToolbar";
 import { Topbar } from "./components/Topbar";
 import { LoginDialog, PasswordDialog } from "./components/AuthForms";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -106,6 +108,7 @@ export function App() {
   // 已确认的项目是当前工作范围。读取下一对象期间保留它，不把一次导航当作重新启动。
   // 只保留身份和 ID，每次仍从最新可访问项目中解析，权限失效时不能沿用旧对象。
   const accessKey = sessionAccessKey(session);
+  usePageReturnSource(accessKey,page.project?.id||'');
   const [activeScope, setActiveScope] = useState<{accessKey: string; projectId: string} | null>(null);
   const resolvedProjectId = page.project?.id;
   useEffect(() => {
@@ -177,6 +180,7 @@ export function App() {
               <Sidebar branding={brandingQuery.data || (brandingQuery.isError ? defaultBranding : undefined)} ready={sessionReady && (page.scope !== 'project' || page.phase !== 'loading' || Boolean(activeProject))} collapsed={visibleSidebarCollapsed} onToggle={() => narrowScreen ? setNarrowSidebarExpanded(value => !value) : setSidebarCollapsed(value => !value)} onNavigate={() => { chrome.prepareNavigation(); setNarrowSidebarExpanded(false); }} />
               <main>
                 <Topbar pageIcon={pageIcon} sessionReady={sessionReady} />
+                {(!sessionReady || session.authenticated && !session.mustChangePassword) && <PageToolbar />}
                 {rootRefreshFailed && page.phase === 'ready' && <div className="app-refresh-notice"><RefreshNotice
                   pending={sessionQuery.isFetching || projectsQuery.isFetching}
                   onRetry={() => { void sessionQuery.refetch(); if (projectsEnabled) void projectsQuery.refetch(); }}

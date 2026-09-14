@@ -117,7 +117,7 @@ test('统一顶栏：三处画布、字段立即保存、菜单焦点和项目�
  await card.click();await page.getByLabel('元素名称',{exact:true}).fill('顶栏保存当前字段');
  let writes=0;page.on('request',r=>{if(r.method()==='PATCH'&&r.url().includes('/api/templates/'))writes++;});
  await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect.poll(()=>writes).toBe(1);
- await expect(page.locator('.topbar-page-status')).toContainText('编辑中');
+ await expect(page.locator('.page-toolbar-status')).toContainText('编辑中');
  await page.getByRole('button',{name:'更多操作',exact:true}).click();await page.keyboard.press('Escape');
  await expect(page.getByRole('button',{name:'更多操作',exact:true})).toBeFocused();
  await page.getByRole('button',{name:'返回流程列表',exact:true}).click();await expect(page.locator('.integrated-page-title h1')).toHaveText('流程设计');

@@ -2,7 +2,7 @@ import {useContext, useLayoutEffect, useRef} from 'react';
 import {usePageChromeStore, type PageChrome} from '../page-chrome';
 import {WorkspaceRuntimeContext} from '../workspace-runtime';
 
-/** 页面一次发布声明；顶栏拥有全部显示结构。 */
+/** 页面只发布一份声明；应用外壳统一绘制标题和工具栏。 */
 export function PageHeader(props: Omit<PageChrome, 'runtime'>) {
   const store = usePageChromeStore();
   const runtime = useContext(WorkspaceRuntimeContext);

@@ -399,7 +399,7 @@ export function AnalyticsPage() {
   if (!projects.length) return <><PageHeader title="统计分析" /><div className="page-content"><EmptyState title="暂无可分析项目" detail="创建项目后，这里会生成默认分析看板。" /></div></>;
   if (layoutQuery.isLoading && !layoutQuery.data) return <><PageHeader title="统计分析" /><div className="page-content"><LoadingState label="正在加载分析看板…" className="tall" /></div></>;
   return <>
-    <PageHeader title="统计分析" actions={!draft && layoutQuery.data?.canCustomize ? <button className="primary-button" disabled={!catalogQuery.data || Boolean(layoutRecheck)} onClick={beginEditing}><Settings2 size={15} />编辑看板</button> : draft ? <>
+    <PageHeader title="统计分析" secondaryActions={draft&&<><button className="ghost-button" disabled={editingBlocked || draft.panels.length >= 24} onClick={addPanel}><Plus size={15} />新增图表</button><button className="ghost-button" onClick={() => { if (!saveLock.canClose()) return; clearLayoutOperation(); setResetConfirm(true); }} disabled={editingBlocked}><RotateCcw size={15} />恢复默认</button></>} actions={!draft && layoutQuery.data?.canCustomize ? <button className="primary-button" disabled={!catalogQuery.data || Boolean(layoutRecheck)} onClick={beginEditing}><Settings2 size={15} />编辑看板</button> : draft ? <>
       <button className="ghost-button" disabled={editingBlocked} onClick={() => { if (saveLock.canClose() && !layoutRecheck) { clearLayoutOperation(); setDraft(null); } }}><X size={15} />取消编辑</button>
       <button className="primary-button" onClick={() => saveLock.run(() => { clearLayoutOperation(); saveLayout.mutate({ layout: cloneLayout(draft), expectedUpdatedAt: editingUpdatedAt }); })} disabled={editingBlocked}><Save size={15} />保存布局</button>
     </> : null} />
@@ -408,7 +408,6 @@ export function AnalyticsPage() {
         <ViewTabs ariaLabel="分析时间范围" value={preset} onChange={setPreset} options={([['30', '近30天'], ['90', '近90天'], ['180', '近180天'], ['project', '项目周期'], ['custom', '自定义']] as Array<[RangePreset, string]>).map(([value, label]) => ({ value, label }))} />
         {preset === "custom" && <div className="analytics-custom-range"><input aria-label="分析开始日期" type="date" value={customFrom} max={customTo} onChange={(event) => { setCustomFrom(event.target.value); }} /><span>至</span><input aria-label="分析结束日期" type="date" value={customTo} min={customFrom} onChange={(event) => { setCustomTo(event.target.value); }} /></div>}
         <span className="analytics-range-label">{range.from} 至 {range.to}</span>
-        {draft && <div className="analytics-edit-actions"><button className="ghost-button" disabled={editingBlocked || draft.panels.length >= 24} onClick={addPanel}><Plus size={15} />新增图表</button><button className="ghost-button" onClick={() => { if (!saveLock.canClose()) return; clearLayoutOperation(); setResetConfirm(true); }} disabled={editingBlocked}><RotateCcw size={15} />恢复默认</button></div>}
       </section>
       {!session.authenticated && <p className="analytics-guest-note">当前展示系统默认看板；登录后可配置并保存个人布局。</p>}
       {layoutQuery.error && <div className="warning-banner">个人看板布局{layoutQuery.data ? "刷新失败，当前使用上次成功布局。" : "加载失败，当前显示系统默认布局且暂不可编辑。"}<button className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void layoutQuery.refetch()}>重新加载</button></div>}

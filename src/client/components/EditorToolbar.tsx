@@ -1,4 +1,5 @@
 import {useState,useRef,type ReactNode} from 'react';
+import type {PageChrome} from '../page-chrome';
 import { PageHeader } from './PageHeader';
 import {useWorkspaceLayer} from '../workspace-runtime';
 import {Undo2,Redo2,Save,Pencil,X,Plus,Square,Diamond,Workflow,Search,Info} from 'lucide-react';
@@ -8,9 +9,9 @@ function ToolMenu({label,icon,children,className}:{label:string;icon:ReactNode;c
 
   return <details ref={ref} className={className} onToggle={e=>setOpen(e.currentTarget.open)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();if(ref.current){ref.current.open=false;ref.current.querySelector<HTMLElement>('summary')?.focus();}}}}><summary aria-label={label} title={label}>{icon}</summary>{children}</details>;
 }
-export function EditorToolbar({title,back,backLabel,navigation,context,status,persistentStatus=false,editing,canEdit=true,undo,redo,canUndo,canRedo,save,canSave=true,discard,begin,busy,extra}:{title:string;back?:()=>void;backLabel?:string;navigation?:ReactNode;context?:ReactNode;status?:ReactNode;persistentStatus?:boolean;editing:boolean;canEdit?:boolean;undo?:()=>void;redo?:()=>void;canUndo?:boolean;canRedo?:boolean;save?:()=>void;canSave?:boolean;discard?:()=>void;begin?:()=>void;busy?:boolean;extra?:ReactNode}){
-  return <PageHeader title={title} onBack={back} backLabel={backLabel} context={context} status={status} persistentStatus={persistentStatus}
-    moreActions={<>{extra}{navigation}{editing&&<button className="ghost-button" aria-label="放弃修改" disabled={busy} onClick={discard}><X size={17}/>放弃修改</button>}</>}
+export function EditorToolbar({title,back,backLabel,pageNavigation,secondaryActions,context,status,editing,canEdit=true,undo,redo,canUndo,canRedo,save,canSave=true,discard,begin,busy,extra}:{title:string;pageNavigation?:Pick<PageChrome,'breadcrumbs'|'navigationLabel'|'views'|'onBack'|'backLabel'>;secondaryActions?:ReactNode;back?:()=>void;backLabel?:string;context?:ReactNode;status?:ReactNode;editing:boolean;canEdit?:boolean;undo?:()=>void;redo?:()=>void;canUndo?:boolean;canRedo?:boolean;save?:()=>void;canSave?:boolean;discard?:()=>void;begin?:()=>void;busy?:boolean;extra?:ReactNode}){
+  return <PageHeader {...pageNavigation} title={title} onBack={back||pageNavigation?.onBack} backLabel={backLabel||pageNavigation?.backLabel} secondaryActions={secondaryActions} context={context} status={status}
+    moreActions={(extra||editing)?<>{extra}{editing&&<button className="ghost-button" aria-label="放弃修改" disabled={busy} onClick={discard}><X size={17}/>放弃修改</button>}</>:undefined}
     actions={editing?<>
       <button className="ghost-button topbar-icon" title="撤销 · Ctrl/Cmd+Z" aria-label="撤销" disabled={!canUndo||busy} onClick={undo}><Undo2 size={17}/></button>
       <button className="ghost-button topbar-icon" title="重做 · Ctrl/Cmd+Shift+Z" aria-label="重做" disabled={!canRedo||busy} onClick={redo}><Redo2 size={17}/></button>

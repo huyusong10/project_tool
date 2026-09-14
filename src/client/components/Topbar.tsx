@@ -2,10 +2,10 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppNavigate } from '../use-app-navigation';
 import {useResolvedPage} from '../page-context';
-import {usePageChrome, usePageChromeStore} from '../page-chrome';
+import {usePageChrome} from '../page-chrome';
 import {WorkspaceRuntimeContext} from '../workspace-runtime';
 import {useGanttTooltip} from './GanttTooltip';
-import { ArrowLeft, Check, ChevronDown, LogIn, LogOut, Settings, UserRound } from "lucide-react";
+import { Check, ChevronDown, LogIn, LogOut, Settings, UserRound } from "lucide-react";
 import { api, isWriteOutcomeUnknown } from "../api";
 import { useProjects, useSession, useUiActions } from "../app-context";
 import { invalidate, keys } from "../query-keys";
@@ -65,11 +65,9 @@ function ScopeIndicator({ scope }: { scope: Exclude<PageScope, "project"> }) {
 export function Topbar({ pageIcon: PageIcon, sessionReady }: { pageIcon?: NavIcon; sessionReady: boolean }) {
   const page = useResolvedPage();
   const chrome = usePageChrome();
-  const store = usePageChromeStore();
   const scope = page.scope;
   const ready = page.phase === 'ready' && (page.object?.kind !== 'draft' || Boolean(chrome) && !chrome?.titlePending);
-  const actionsReady = ready && Boolean(chrome) && !chrome?.titlePending;
-  const title = page.phase === 'error' ? '页面不可用' : page.object?.kind === 'draft' || page.object?.kind === 'template' ? chrome?.title || page.title : page.title;
+  const title = page.object?.kind === 'template' ? '流程设计' : ['requirement','draft'].includes(page.object?.kind||'') ? '需求管理' : page.title;
   const { session } = useSession();
   const { openLogin } = useUiActions();
   const [width, setWidth] = useState<number | null>(null);
@@ -107,25 +105,17 @@ export function Topbar({ pageIcon: PageIcon, sessionReady }: { pageIcon?: NavIco
     },
   });
   const logoutLock = useSynchronousPendingLock(logout.isPending);
-  const compact = width !== null && width < 960, narrow = width !== null && width < 640, dense = width !== null && width < 360;
+  const compact = width !== null && width < 960, narrow = width !== null && width < 640;
   const fullTitle = useGanttTooltip();
   const titleEvents = fullTitle.bind(<div className="page-title-full">{title}</div>);
-  const menu = <>{dense && !chrome?.persistentStatus && chrome?.status && <div className="topbar-menu-status" role="status">{chrome.status}</div>}{compact && chrome?.secondaryActions}{chrome?.moreActions}</>;
-  const hasMenu = Boolean(chrome?.moreActions || compact && chrome?.secondaryActions || dense && !chrome?.persistentStatus && chrome?.status);
-  const back = chrome?.onBack || (page.back || page.phase === 'error' ? () => {
-    if (page.back?.kind === 'history' && window.history.state?.idx > 0) navigate(-1);
-    else navigate(page.back?.fallback || '/', {replace: true});
-  } : undefined);
   return (
     <WorkspaceRuntimeContext.Provider value={chrome?.runtime || null}>
-    <header ref={root} className="topbar" data-compact={compact} data-narrow={narrow} data-actions-row={page.actionRow} data-toolbar={page.toolbar} data-page-phase={page.phase} data-navigation-key={page.navigationKey} data-workspace-zone="tools" data-preserve-edit
-      onClickCapture={event => {if (chrome?.runtime?.requestSave && (event.target as Element).closest('[aria-label="保存修改"]')) {event.preventDefault();event.stopPropagation();chrome.runtime.requestSave();}}}
-      onKeyDownCapture={event => {if (chrome?.runtime?.requestSave && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {event.preventDefault();event.stopPropagation();chrome.runtime.requestSave();}}}>
+    <header ref={root} className="topbar" data-compact={compact} data-narrow={narrow} data-page-phase={page.phase} data-navigation-key={page.navigationKey} data-workspace-zone="tools" data-preserve-edit>
       <div className="topbar-context">
         {scope === "project" ? <ProjectSwitcher ready={ready} /> : <ScopeIndicator scope={scope} />}
         <div className="topbar-page-location">
           <div className="topbar-navigation">
-            <div id="topbar-back-slot">{back ? <button type="button" className="ghost-button topbar-back-button" title={chrome?.backLabel || page.back?.label || '返回'} aria-label={chrome?.backLabel || page.back?.label || '返回'} onClick={() => {store.prepareNavigation(); back();}}><ArrowLeft size={14}/><span>返回</span></button> : PageIcon ? <span className="topbar-page-icon" aria-hidden="true"><PageIcon size={18}/></span> : null}</div>
+            {PageIcon && <span className="topbar-page-icon" aria-hidden="true"><PageIcon size={18}/></span>}
           </div>
           <div id="topbar-title-slot"><div className="integrated-page-title"><h1 title={ready ? title : undefined} tabIndex={ready ? 0 : undefined} aria-busy={!ready && page.phase !== 'error'} aria-label={!ready && page.phase !== 'error' ? '正在加载页面标题' : undefined} {...titleEvents}
             onPointerEnter={event => {if (ready && event.currentTarget.scrollWidth > event.currentTarget.clientWidth) titleEvents.onPointerEnter(event);}}
@@ -133,11 +123,6 @@ export function Topbar({ pageIcon: PageIcon, sessionReady }: { pageIcon?: NavIco
             onFocus={event => {if (ready && event.currentTarget.scrollWidth > event.currentTarget.clientWidth) titleEvents.onFocus(event);}}
           >{ready || page.phase === 'error' ? title : <span className="topbar-title-placeholder" aria-hidden="true"/>}</h1></div></div>
         </div>
-      </div>
-      <div className="topbar-page-tools">
-        {actionsReady && chrome?.context && <div id="topbar-context-slot"><div className="topbar-page-context">{chrome.context}</div></div>}
-        {actionsReady && chrome?.status && (!dense || chrome.persistentStatus) && <div id="topbar-status-slot"><div className="topbar-page-status" role="status">{chrome.status}</div></div>}
-        <div id="topbar-action-slot">{actionsReady ? <div className="integrated-page-actions">{!compact && chrome?.secondaryActions}{chrome?.actions}{hasMenu && <TopbarMenu label={chrome?.moreLabel || '更多操作'} disabled={chrome?.moreDisabled}>{menu}</TopbarMenu>}{page.actionRow && !chrome?.actions && !chrome?.secondaryActions && !chrome?.moreActions && <span className="topbar-readonly">只读</span>}</div> : page.actionRow && <span className="topbar-actions-placeholder shell-placeholder" aria-hidden="true"/>}</div>
       </div>
       <div className="topbar-personal">
         {!narrow && <ThemePicker />}

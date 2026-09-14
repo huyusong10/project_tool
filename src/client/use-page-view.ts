@@ -1,3 +1,5 @@
+import {validPageReturn} from './page-return';
+import {sessionAccessKey} from './session-cache';
 import {useAppNavigate,useAppSearchParams} from './use-app-navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, type SetURLSearchParams } from 'react-router-dom';
@@ -86,10 +88,11 @@ export function clearPageViews() {
 
 export function usePageBack(fallback: string) {
   const navigate = useAppNavigate();
-  const {back} = useResolvedPage();
-  return () => {
-    if ((!back || back.kind === 'history') && hasPageHistory()) navigate(-1);
-    else navigate(back?.fallback || fallback, { replace: true });
+  const {back} = useResolvedPage(),{session}=useSession(),{projects}=useProjects();
+  return (target?:string) => {
+    const source=window.history.state?.usr?.pageReturn,index=window.history.state?.idx||0;
+    if(back?.kind!=='templates'&&validPageReturn(source,sessionAccessKey(session),index,projects.map(p=>p.id)))navigate(source.index-index);
+    else navigate(target||back?.fallback||fallback,{replace:true});
   };
 }
 

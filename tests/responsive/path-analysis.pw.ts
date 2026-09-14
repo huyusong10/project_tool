@@ -224,10 +224,10 @@ test('不相交并发修改自动合并并保留草稿；执行入口仍检查�
  await selectList(page,b.title);await page.getByRole('button',{name:'编辑画布',exact:true}).click();await openMore(page);
  await page.getByRole('checkbox',{name:a.title,exact:true}).check();await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();
  await page.request.patch('/api/work-items/'+b.workItems[0].id+'/path-estimate',{data:{expectedRevision:(await analysis()).revision,durationDays:6}});
- await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect(page.locator('.topbar-page-status')).toContainText('1 项未保存');await expect(page.getByRole('button',{name:'版本冲突 · 查看修改',exact:true})).toHaveCount(0);expect((await analysis()).dependencies.some(d=>d.sourceRequirementId===a.id&&d.targetRequirementId===b.id&&!d.sourceWorkItemId&&!d.targetWorkItemId)).toBe(false);
+ await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect(page.locator('.page-toolbar-status')).toContainText('1 项未保存');await expect(page.getByRole('button',{name:'版本冲突 · 查看修改',exact:true})).toHaveCount(0);expect((await analysis()).dependencies.some(d=>d.sourceRequirementId===a.id&&d.targetRequirementId===b.id&&!d.sourceWorkItemId&&!d.targetWorkItemId)).toBe(false);
  await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await expect(page.getByLabel('分析目标',{exact:true})).toBeVisible();await ready(page);
- await expect(page.locator('.topbar-page-status').filter({hasText:'1 项未保存'})).toBeVisible();
+ await expect(page.locator('.page-toolbar-status').filter({hasText:'1 项未保存'})).toBeVisible();
  await selectList(page,'方案交付');await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:'方案交付'}).filter({hasText:b.title}).click();await page.getByRole('button',{name:'定位并处理工作项',exact:true}).click();
  await expect(page.getByRole('dialog',{name:'处理未保存修改'})).toHaveCount(0);await expect(page.getByRole('table',{name:'需求工作项进展甘特图'})).toBeVisible();let executions=0;page.on('request',r=>{if(r.url().endsWith('/start')&&r.method()==='POST')executions++;});await page.getByRole('row').filter({hasText:'方案交付'}).getByRole('button',{name:'开始',exact:true}).click();await expect(page.locator('.work-action-error')).toContainText('未保存');expect(executions).toBe(0);await page.getByRole('button',{name:'路径分析',exact:true}).click();await ready(page);
  await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect(page.getByRole('button',{name:'编辑画布',exact:true})).toBeVisible();
@@ -251,7 +251,7 @@ test('真实拖线建立合法跨需求往返；搜索不裁图，退出聚焦�
  await page.locator('.graph-auxiliary .graph-list-row>button:first-child').first().click();
  const original=await viewport(page);await page.getByRole('button',{name:'聚焦分支',exact:true}).click();await ready(page);
  await page.locator('.graph-detail').getByRole('button',{name:'定位',exact:true}).click();
- await page.locator('.topbar-page-status').getByRole('button',{name:'退出聚焦',exact:true}).click();await ready(page);await expect.poll(()=>viewport(page)).toBe(original);
+ await page.locator('.page-toolbar-status').getByRole('button',{name:'退出聚焦',exact:true}).click();await ready(page);await expect.poll(()=>viewport(page)).toBe(original);
 });
 
 test('权限拒绝时清除当前项目草稿，正式数据保持原状',async({page})=>{
@@ -271,7 +271,7 @@ test('新增项目保留当前草稿，退出登录清理会话草稿',async({pa
  await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();
  await page.request.post('/api/projects',{data:{name:'新增项目不影响草稿'+Date.now()}});
  await page.evaluate(()=>{window.dispatchEvent(new Event('offline'));window.dispatchEvent(new Event('online'));});
- await expect(page.locator('.topbar-page-status').filter({hasText:'1 项未保存'})).toBeVisible();
+ await expect(page.locator('.page-toolbar-status').filter({hasText:'1 项未保存'})).toBeVisible();
  expect(await activeStoredDrafts(page)).toBeGreaterThan(0);
  await page.getByRole('link',{name:'项目进展',exact:true}).click();await page.getByRole('button',{name:/^账号菜单/}).click();await page.getByRole('menuitem',{name:'退出登录',exact:true}).click();
  await expect.poll(()=>activeStoredDrafts(page)).toBe(0);
@@ -283,23 +283,23 @@ test('独立分支聚焦保留完整坐标和线路，刷新及范围外定位�
  const snapshot=()=>page.evaluate(()=>({nodes:[...document.querySelectorAll<HTMLElement>('.react-flow__node')].map(n=>({id:n.dataset.id,position:n.style.transform})).sort((a,b)=>a.id!.localeCompare(b.id!)),edges:[...document.querySelectorAll('.react-flow__edge-path')].map(n=>n.getAttribute('d')).sort()}));
  const before=await snapshot();await selectList(page,'独立分支');const original=await viewport(page);
  await page.getByRole('button',{name:'聚焦分支',exact:true}).click();await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);await expect(page.locator('.graph-node-dim')).toHaveCount(2);
- await expect(page.locator('.topbar-page-status').getByRole('button',{name:'退出聚焦',exact:true})).toBeVisible();
+ await expect(page.locator('.page-toolbar-status').getByRole('button',{name:'退出聚焦',exact:true})).toBeVisible();
  expect((await snapshot()).nodes).toEqual(before.nodes);
  await page.getByRole('button',{name:'适配视图',exact:true}).click();await page.waitForTimeout(300);await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);await expect(page.locator('.graph-node-dim')).toHaveCount(2);
- await page.locator('.topbar-page-status').getByRole('button',{name:'退出聚焦',exact:true}).click();await expect.poll(()=>snapshot()).toEqual(before);await expect.poll(()=>viewport(page)).toBe(original);
+ await page.locator('.page-toolbar-status').getByRole('button',{name:'退出聚焦',exact:true}).click();await expect.poll(()=>snapshot()).toEqual(before);await expect.poll(()=>viewport(page)).toBe(original);
  await page.getByRole('button',{name:'聚焦分支',exact:true}).click();await page.reload();await ready(page);
  await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);await expect(page.locator('.graph-node-dim')).toHaveCount(2);
- await page.locator('.topbar-page-status').getByRole('button',{name:'退出聚焦',exact:true}).click();await expect.poll(()=>snapshot()).toEqual(before);await expect.poll(()=>viewport(page)).toBe(original);
+ await page.locator('.page-toolbar-status').getByRole('button',{name:'退出聚焦',exact:true}).click();await expect.poll(()=>snapshot()).toEqual(before);await expect.poll(()=>viewport(page)).toBe(original);
  await page.getByRole('button',{name:'聚焦分支',exact:true}).click();if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByLabel('筛选图中节点').fill(b.title);await expect(page.locator('.graph-list-row')).toContainText('分支外');
- await page.locator('.graph-list-row').getByRole('button',{name:'定位',exact:true}).click();await expect(page.locator('.topbar-page-status').getByRole('button',{name:'退出聚焦',exact:true})).toHaveCount(0);
+ await page.locator('.graph-list-row').getByRole('button',{name:'定位',exact:true}).click();await expect(page.locator('.page-toolbar-status').getByRole('button',{name:'退出聚焦',exact:true})).toHaveCount(0);
  await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);expect((await snapshot()).nodes).toEqual(before.nodes);
  // A focused draft changes the complete network, and returning never restores stale business data.
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByLabel('筛选图中节点').fill('独立分支');await page.locator('.graph-list-row>button:first-child').click();
  await page.getByRole('button',{name:'聚焦分支',exact:true}).click();await page.getByRole('button',{name:'编辑画布',exact:true}).click();await openMore(page);
  await page.getByRole('checkbox',{name:b.title,exact:true}).check();await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();await ready(page);
- await page.locator('.topbar-page-status').getByRole('button',{name:'退出聚焦',exact:true}).click();await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);
- await expect(page.locator('.topbar-page-status').filter({hasText:'1 项未保存'})).toBeVisible();expect(await page.locator('.react-flow__edge').count()).toBeGreaterThan(before.edges.length);
+ await page.locator('.page-toolbar-status').getByRole('button',{name:'退出聚焦',exact:true}).click();await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);
+ await expect(page.locator('.page-toolbar-status').filter({hasText:'1 项未保存'})).toBeVisible();expect(await page.locator('.react-flow__edge').count()).toBeGreaterThan(before.edges.length);
 });
 
 test('浮层矩形无相交，底部对齐，390px 两行工具栏与减少动态效果',async({page})=>{
@@ -474,7 +474,7 @@ test('工作区图上改接一次提交并可撤销，历史模板转换先预�
  await page.locator('.react-flow__edge').first().dispatchEvent('click');await expect(page.getByRole('button',{name:'拖动改接前置'})).toBeVisible();
  await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();await page.waitForTimeout(210);
  const source=page.getByRole('button',{name:'拖动改接前置'}),target=page.locator('.react-flow__node').filter({has:page.locator('strong',{hasText:/^新前置$/})});
- await source.dragTo(target.locator('.dependency-card'));await ready(page);await expect(page.locator('.topbar-page-status')).toContainText('草稿已保留');await expect(page.locator('.react-flow__edge')).toHaveCount(1);
+ await source.dragTo(target.locator('.dependency-card'));await ready(page);await expect(page.locator('.page-toolbar-status')).toContainText('草稿已保留');await expect(page.locator('.react-flow__edge')).toHaveCount(1);
  await page.getByRole('button',{name:'撤销',exact:true}).click();await ready(page);await page.getByRole('button',{name:'重做',exact:true}).click();await ready(page);
  const submitted=page.waitForResponse(r=>r.url().endsWith('/api/templates/'+template.id)&&r.request().method()==='PATCH');await page.getByRole('button',{name:'保存修改',exact:true}).click();expect((await submitted).ok()).toBe(true);await expect(page.getByRole('button',{name:'撤销',exact:true})).toBeDisabled();
  const saved=(await(await page.request.get('/api/templates?projectId='+project.id)).json() as WorkItemTemplate[]).find(t=>t.id===template.id)!;expect(saved.items[1].predecessorIds).toEqual([saved.items[2].id]);

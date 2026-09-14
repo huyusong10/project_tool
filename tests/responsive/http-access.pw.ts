@@ -22,6 +22,7 @@ test('局域网 HTTP 可登录、恢复会话、保存流程、导入需求和�
   await page.goto(origin.href);
   expect(await page.evaluate(() => ({ secure: isSecureContext, uuid: typeof crypto.randomUUID }))).toEqual({ secure: false, uuid: 'undefined' });
   await expect(page.getByRole('heading', { name: '登录项目工作台', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', {name:'页面工具栏',exact:true})).toHaveCount(0);
   await page.getByRole('button', { name: '用户登录', exact: true }).first().click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('用户名', { exact: true }).fill('admin');
@@ -43,7 +44,7 @@ test('局域网 HTTP 可登录、恢复会话、保存流程、导入需求和�
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
   await page.getByLabel('复制元素', { exact: true }).click();
   await expect(page.locator('.react-flow__node')).toHaveCount(3);
-  await expect(page.locator('.topbar')).toContainText('草稿已保留');
+  await expect(page.locator('.page-toolbar')).toContainText('草稿已保留');
   await page.reload();
   await ready();
   await expect(page.locator('.react-flow__node')).toHaveCount(3);

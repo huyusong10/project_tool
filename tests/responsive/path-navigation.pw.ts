@@ -35,7 +35,7 @@ test('根视图切换新增访问，返回恢复每次画布的位置与选择',
  await back(page);await ready(page);await expect(page).toHaveURL(/requirementId=r2/);await page.goBack();await ready(page);await expect.poll(()=>viewport(page)).toBe(second);await expect(page).toHaveURL(/pathNode=r2/);await back(page);await ready(page);await expect(page).toHaveURL(/requirementId=r1/);await back(page);await ready(page);await expect.poll(()=>viewport(page)).toBe(first);await expect(page).toHaveURL(/pathNode=r1/);
 });
 test('旧链接默认全部需求，窄屏提供明确根入口且导航不重叠',async({page},info)=>{
- await setup(page);await page.setViewportSize({width:390,height:844});await page.goto('/requirements/r1?view=path');await ready(page);await expect(page).toHaveURL(/view=requirement/);await expect(page).toHaveURL(/root=project/);await expect(page.getByRole('button',{name:'返回上一画布',exact:true})).toBeDisabled();await expect(root(page)).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath('navigation-narrow.png'),animations:'disabled'});await root(page).click();await ready(page);await expect(page.locator('.canvas-breadcrumb')).toBeEmpty();
+ await setup(page);await page.setViewportSize({width:390,height:844});await page.goto('/requirements/r1?view=path');await ready(page);await expect(page).toHaveURL(/view=requirement/);await expect(page).toHaveURL(/root=project/);await expect(page.getByRole('button',{name:'返回上一画布',exact:true})).toBeDisabled();await expect(root(page)).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath('navigation-narrow.png'),animations:'disabled'});await root(page).click();await ready(page);await expect(page.locator('.page-breadcrumb')).toBeEmpty();
 });
 test('返回较早画布时不套用后来访问的搜索与抽屉状态',async({page})=>{
  await setup(page);await page.goto('/paths?view=features');await ready(page);await page.getByRole('link',{name:'执行进展',exact:true}).click();await page.getByRole('link',{name:'项目交付',exact:true}).click();await page.getByRole('group',{name:'交付视图'}).getByRole('button',{name:'关系图',exact:true}).click();await ready(page);await page.getByLabel('查找与筛选',{exact:true}).click();await page.locator('.graph-finder input').fill('未关联特性');await expect(page).toHaveURL(/pathSearch=/);await page.goBack();await page.goBack();await expect(page).toHaveURL(/\/execution$/);await page.goBack();await ready(page);await expect(page).not.toHaveURL(/pathSearch=/);await expect(page.locator('.graph-finder')).not.toBeVisible();
@@ -89,5 +89,5 @@ test('根图加载失败不制造父级，旧跨项目来源不改变需求根�
   await page.evaluate(()=>history.replaceState({...history.state,idx:2,usr:{pathSource:{projectId:'other',label:'其他项目需求路径',index:1}}},''));
   await page.reload();await ready(page);await expect(page).toHaveURL(/root=project/);
   await expect(page.getByRole('navigation',{name:'交付层级'})).toContainText('全部需求');
-  await root(page).click();await ready(page);await expect(page.locator('.canvas-breadcrumb')).toBeEmpty();
+  await root(page).click();await ready(page);await expect(page.locator('.page-breadcrumb')).toBeEmpty();
 });
