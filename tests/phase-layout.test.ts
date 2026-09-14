@@ -5,7 +5,20 @@ import type {PathAnalysis} from '../src/shared/paths';
 import type {FeatureOverview} from '../src/shared/feature-overview';
 import {projectPhaseOverview} from '../src/shared/phase-projection';
 import {executionDraftConflicts} from '../src/shared/execution-draft';
+import {routeFixedGraph} from '../src/client/fixed-routing';
 const empty={add:[],remove:[],estimates:[]};
+it('连线避开 Phase 标题区域，布局不增加业务节点或执行依赖',()=>{
+  const nodes=[{id:'a',x:0,y:160,width:244,height:168},{id:'b',x:620,y:160,width:244,height:168}],edges=[{id:'a>b',source:'a',target:'b'}];
+  const reserved={left:300,right:560,top:130,bottom:310},result=routeFixedGraph(nodes,edges,[reserved]);
+  expect(Object.keys(result.nodes)).toEqual(['a','b']);expect(Object.keys(result.edges)).toEqual(['a>b']);
+  const points=result.edges['a>b'].points;
+  for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];const crosses=a.y===b.y?a.y>reserved.top&&a.y<reserved.bottom&&Math.max(a.x,b.x)>reserved.left&&Math.min(a.x,b.x)<reserved.right:a.x>reserved.left&&a.x<reserved.right&&Math.max(a.y,b.y)>reserved.top&&Math.min(a.y,b.y)<reserved.bottom;expect(crosses).toBe(false);}
+});
+it('空区域紧凑，按实际节点宽度限制左右边界',()=>{
+  const {data,feature,ids}=fixture(),layout=featurePhaseLayout(data,feature,'f',ids),empty=layout.regions.find(r=>r.id==='p3')!,active=layout.regions.find(r=>r.id==='p2')!;
+  expect(empty.width).toBeLessThan(active.width);expect(empty.height).toBeLessThan(active.height);
+  const p=constrainPhasePosition(layout.regions,'b',{x:10000,y:-100},280);expect(p.x+280).toBeLessThanOrEqual(active.x+active.width-24);expect(p.y).toBeGreaterThan(active.y+130);
+});
 function fixture(){
   const feature={id:'f',phases:[{id:'p1',featureId:'f',sortOrder:0,name:'第一期',requirements:[],deliveries:[],deliveredAt:null},{id:'p2',featureId:'f',sortOrder:1,name:'第二期',requirements:[],deliveries:[],deliveredAt:null},{id:'p3',featureId:'f',sortOrder:2,name:'远期',requirements:[],deliveries:[],deliveredAt:null}]} as unknown as FeatureOverview;
   const data={requirements:[{id:'a',featureId:'f',phaseId:'p1',status:'completed'},{id:'b',featureId:'f',phaseId:'p2',status:'in_progress'},{id:'c',featureId:'f',phaseId:'p2',status:'not_started'},{id:'u',featureId:'f',phaseId:null,status:'not_started'},{id:'outside',featureId:'g',phaseId:null,status:'not_started'}],layouts:[{scope:'feature:f',direction:'right',version:1,positions:{c:{x:10,y:10},b:{x:20,y:10}}}],nodes:[],edges:[],dependencies:[]} as unknown as PathAnalysis;

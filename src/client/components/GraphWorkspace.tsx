@@ -1,6 +1,7 @@
 import { useEffect,useLayoutEffect,useRef,useState,useContext,type ComponentProps,type CSSProperties,type ReactNode } from 'react';
 import { DependencyGraph } from './DependencyGraph';
 import '../paths.css';
+import '../delivery-workspace.css';
 import {WorkspaceRuntime,WorkspaceRuntimeContext,useWorkspaceLayer,useWorkspaceEvents,type WorkspaceDocument} from '../workspace-runtime';
 import {flushSync} from 'react-dom';
 import {useSearchParams} from 'react-router-dom';
@@ -78,7 +79,7 @@ function Workspace({ table, document:editorDocument, auxiliaryKey, toolbar, deta
       {toolbar}
       <div className="graph-tool-rail graph-overlay nopan nodrag nowheel" data-graph-panel="left" data-workspace-zone="tools">{!isTable&&palette}{!isTable&&finder&&<FindTool onClick={()=>setFinding(v=>!v)}/>}</div>
       {!isTable&&finder&&finding&&<div ref={finderRef} className="graph-finder graph-overlay nopan nodrag nowheel" data-graph-panel="left">{finder}</div>}
-      <FloatingPanel onDismiss={onDismissDetail} size={wide?'expanded':'compact'} content={detail?<><button className="ghost-button inspector-size-toggle" onClick={()=>setWide(v=>!v)}>{wide?'收起宽面板':'展开宽面板'}</button>{detail}</>:undefined} side="right" replacement={!!auxiliary} contentKey={JSON.stringify(graph.interaction.selection)}/>
+      <FloatingPanel onDismiss={onDismissDetail} size={wide?'expanded':'compact'} content={detail?<div className="delivery-inspector-shell"><button title={wide?'收起详情':'展开详情'} className="ghost-button inspector-size-toggle" onClick={()=>setWide(v=>!v)}>{wide?'收起':'展开'}</button><div className="delivery-inspector-content">{detail}</div></div>:undefined} side="right" replacement={!!auxiliary} contentKey={JSON.stringify(graph.interaction.selection)}/>
       <FloatingPanel contentKey={auxiliaryKey} onDismiss={onDismissAuxiliary} analysis={analysis} size={auxiliarySize} content={auxiliary} side="left" replacement={!!detail}/>
       <div className="graph-footer graph-overlay nopan nodrag nowheel" data-graph-panel="bottom" data-workspace-zone="tools">{footer}</div>
 

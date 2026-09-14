@@ -1,3 +1,4 @@
+import {Select} from './Select';
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import {useSession} from '../app-context';
 import {useDeliveryForm} from '../use-delivery-form';
@@ -216,12 +217,12 @@ export function RequirementInfoForm({
     <FormField label="需求标题" full><input name="title" value={draft.title} onChange={(event) => change("title", event.target.value)} required autoFocus /></FormField>
     <OrganizationFields projectId={requirement.projectId} featureId={draft.featureId} phaseId={draft.phaseId} onChange={change}/>{(draft.phaseId!==(baseRequirement.phaseId||'')||draft.featureId!==(baseRequirement.featureId||''))&&<FormField label="归属调整原因" full><textarea maxLength={2000} value={draft.reason||""} onChange={e=>setDraft({...draft,reason:e.target.value})}/></FormField>}
     <p className="field-help">处理优先级按风险和依赖自动计算。</p>
-    <FormField label="需求负责人"><select value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
+    <FormField label="需求负责人"><Select value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
       <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
       {baseRequirement.ownerId && !ownerOptions.some((person) => person.id === baseRequirement.ownerId) && <option value={baseRequirement.ownerId}>{baseRequirement.ownerName || "历史负责人"} · 历史负责人</option>}
       {draft.ownerId && draft.ownerId !== baseRequirement.ownerId && !ownerOptions.some((person) => person.id === draft.ownerId) && <option value={draft.ownerId}>{draftOwner?.name || knownPeople.current.get(draft.ownerId) || "已选择负责人"} · 已不可用，请重新选择</option>}
       {ownerOptions.map((person) => <option value={person.id} key={person.id} disabled={!isAssignablePerson(person)}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}{person === currentOwner && !eligiblePeople.includes(person) ? " · 历史负责人" : ""}</option>)}
-    </select></FormField>
+    </Select></FormField>
     {hasExecution && <p className="field-help field-full">需求已开始执行，负责人可以更换但不能清空。</p>}
     <FormField label="需求背景（可选）" full><textarea name="background" rows={3} value={draft.background} onChange={(event) => change("background", event.target.value)} /></FormField>
     <FormField label="完成标准（可选）" full><textarea name="acceptanceCriteria" rows={3} value={draft.acceptanceCriteria} onChange={(event) => change("acceptanceCriteria", event.target.value)} /></FormField>
@@ -432,15 +433,15 @@ export function RequirementCorrectionForm({
       <FormField label="需求标题" full><input aria-label="纠错后的需求标题" value={draft.title} onChange={(event) => change("title", event.target.value)} required autoFocus /></FormField>
 
       <OrganizationFields projectId={requirement.projectId} featureId={draft.featureId} phaseId={draft.phaseId} onChange={change}/>
-      <FormField label="需求负责人"><select aria-label="纠错后的需求负责人" value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
+      <FormField label="需求负责人"><Select aria-label="纠错后的需求负责人" value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
         <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
         {baseline.ownerId && !ownerOptions.some((person) => person.id === baseline.ownerId) && <option value={baseline.ownerId}>{baseline.ownerName || "历史负责人"} · 历史负责人</option>}
         {ownerOptions.map((person) => <option value={person.id} key={person.id} disabled={!isAssignablePerson(person)}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}{person === currentOwner && !eligiblePeople.includes(person) ? " · 历史负责人" : ""}</option>)}
-      </select></FormField>
+      </Select></FormField>
       <FormField label="需求背景（可选）" full><textarea aria-label="纠错后的需求背景" rows={3} value={draft.background} onChange={(event) => change("background", event.target.value)} /></FormField>
       <FormField label="完成标准（可选）" full><textarea aria-label="纠错后的完成标准" rows={3} value={draft.acceptanceCriteria} onChange={(event) => change("acceptanceCriteria", event.target.value)} /></FormField>
       <FormField label="参考链接（可选）" full><input aria-label="纠错后的参考链接" type="url" value={draft.referenceUrl} onChange={(event) => change("referenceUrl", event.target.value)} placeholder="https://…" /></FormField>
-      {!!candidates.length && <FormField label="关联历史记录（可选）" full><select aria-label="需求纠错关联历史记录" value={supersedesId} onChange={(event) => {const value=event.target.value;setSupersedesId(value);persistDraftIfLocked(draft,reason,value);}}><option value="">不指定</option>{candidates.map((update) => <option value={update.id} key={update.id}>{new Date(update.createdAt).toLocaleDateString("zh-CN")} · {update.content.slice(0, 36)}</option>)}</select></FormField>}
+      {!!candidates.length && <FormField label="关联历史记录（可选）" full><Select aria-label="需求纠错关联历史记录" value={supersedesId} onChange={(event) => {const value=event.target.value;setSupersedesId(value);persistDraftIfLocked(draft,reason,value);}}><option value="">不指定</option>{candidates.map((update) => <option value={update.id} key={update.id}>{new Date(update.createdAt).toLocaleDateString("zh-CN")} · {update.content.slice(0, 36)}</option>)}</Select></FormField>}
       <FormField label="纠错说明（可选）" full><textarea aria-label="需求纠错原因" rows={2} value={reason} onChange={(event) => {const value=event.target.value;setReason(value);persistDraftIfLocked(draft,value);}} placeholder="说明原信息哪里有误，以及核对依据" /></FormField>
       {unknown&&!reviewRequired&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
       {reviewRequired && <div className="warning-banner field-full">提交结果待核对；当前版本已变化。本窗口不再提交。请核对当前资料与纠错记录，已填内容保留。<button type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</button></div>}
@@ -738,7 +739,7 @@ export function RequirementScheduleForm({
         />
       </FormField>
       {baseRequirement.executionMode!=='direct'&&<FormField label="绑定流程" full>
-        <select value={templateId} disabled={!templatesQuery.data} onChange={(event) => {
+        <Select value={templateId} disabled={!templatesQuery.data} onChange={(event) => {
           const value = event.target.value;
           if (value === (baseRequirement.templateId || "")) dirtyFields.current.delete("template"); else dirtyFields.current.add("template");
           setTemplateId(value);
@@ -748,7 +749,7 @@ export function RequirementScheduleForm({
           {baseRequirement.templateId && !templates.some((template) => template.id === baseRequirement.templateId) && <option value={baseRequirement.templateId}>{baseRequirement.templateName || "原流程"}（{templatesQuery.isLoading ? "正在加载" : templatesQuery.error ? "暂不可用" : "已归档"}）</option>}
           {templateChanged && !templates.some((template) => template.id === templateId) && <option value={templateId}>{knownTemplates.current.get(templateId) || "已选择流程"}（已不可用，请重新选择）</option>}
           {templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
-        </select>
+        </Select>
       </FormField>
       }{templatesQuery.error && <div className="warning-banner field-full">流程列表加载失败，当前只能调整日期，不能切换流程。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</button></div>}
       {templateChanged && <p className="template-reset-warning field-full"><AlertTriangle size={16} />切换后会替换未执行工作项并按新流程重新排期；需求级说明保留。</p>}
@@ -930,7 +931,7 @@ export function PlanForm({ requirement, templates, recheck, onRecheckChange, onC
     <Modal title="按模板补全计划" width={840} closable={!pending} onClose={() => { if (!submitting.current) onClose(); }}>
     <fieldset className="plan-preview-form form-fieldset" disabled={pending}>
       <div className="form-grid">
-        <FormField label="流程设计"><select value={templateId} onChange={(event) => { if (submitting.current) return; const value=event.target.value;setTemplateId(value);persistDraftIfLocked(draft({templateId:value}));resetPreview(); }}>{selectedTemplateUnavailable && <option value={templateId}>{knownTemplates.current.get(templateId) || "已选择流程"}（已不可用，请重新选择）</option>}{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</select></FormField>
+        <FormField label="流程设计"><Select value={templateId} onChange={(event) => { if (submitting.current) return; const value=event.target.value;setTemplateId(value);persistDraftIfLocked(draft({templateId:value}));resetPreview(); }}>{selectedTemplateUnavailable && <option value={templateId}>{knownTemplates.current.get(templateId) || "已选择流程"}（已不可用，请重新选择）</option>}{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</Select></FormField>
         <FormField label="计划开始"><input type="date" value={baseStart} onChange={(event) => { if (submitting.current) return; const value=event.target.value;setBaseStart(value);persistDraftIfLocked(draft({baseStart:value}));resetPreview(); }} /></FormField>
       </div>
       {hasExecution && <FormField label="补充说明（可选）" full><textarea rows={2} value={reason} onChange={(event) => {const value=event.target.value;setReason(value);persistDraftIfLocked(draft({reason:value}));}} placeholder="可补充排期调整的背景" /></FormField>}

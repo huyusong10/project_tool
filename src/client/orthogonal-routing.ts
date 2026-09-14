@@ -65,8 +65,8 @@ function gridRoute(a:Point,b:Point,boxes:Box[]):Point[]{
 }
 const cache=new Map<string,{signature:string;points:Point[]}>();
 /** Initial layout and manual editing share ports, clearance and lane selection. */
-export function routeOrthogonalGraph(nodes:Node[],edges:LayoutEdge[]):RoutedLayout{
-  const byId=new Map(nodes.map(n=>[n.id,n])),boxes=nodes.map(bounds),groups=new Map<string,Endpoint[]>(),endpoints=new Map<string,[Endpoint,Endpoint]>();
+export function routeOrthogonalGraph(nodes:Node[],edges:LayoutEdge[],reserved:Box[]=[]):RoutedLayout{
+  const byId=new Map(nodes.map(n=>[n.id,n])),boxes=[...nodes.map(bounds),...reserved],groups=new Map<string,Endpoint[]>(),endpoints=new Map<string,[Endpoint,Endpoint]>();
   const outside=(e:Endpoint,distance=stub):Point=>({...e.point,x:e.point.x+(e.side==='right'?distance:e.side==='left'?-distance:0),y:e.point.y+(e.side==='bottom'?distance:e.side==='top'?-distance:0)});
   for(const edge of edges){
     const source=byId.get(edge.source),target=byId.get(edge.target);if(!source||!target)throw new Error('依赖端点未显示，请刷新分析。');
@@ -89,8 +89,8 @@ export function routeOrthogonalGraph(nodes:Node[],edges:LayoutEdge[]):RoutedLayo
   const ordered=[...edges].sort((a,b)=>Number(cache.has(b.id))-Number(cache.has(a.id))||byId.get(a.source)!.x-byId.get(b.source)!.x||byId.get(a.source)!.y-byId.get(b.source)!.y||a.id.localeCompare(b.id));
   for(const edge of ordered){
     const [source,target]=endpoints.get(edge.id)!,a=source.point,b=target.point;
-    const lead=(e:Endpoint)=>{const obstacles=nodes.filter(n=>n.id!==e.node.id).map(bounds);for(const distance of [stub,20,12]){const p=outside(e,distance);if(clear(e.point,p,obstacles))return p;}throw new Error('连接点被其他节点遮挡，请拉开节点间距。');};
-    const direct=(source.side==='right'&&target.side==='left'&&a.y===b.y&&b.x>a.x||source.side==='bottom'&&target.side==='top'&&a.x===b.x&&b.y>a.y||source.side==='top'&&target.side==='bottom'&&a.x===b.x&&b.y<a.y)&&clear(a,b,nodes.filter(n=>n.id!==source.node.id&&n.id!==target.node.id).map(bounds));
+    const lead=(e:Endpoint)=>{const obstacles=nodes.filter(n=>n.id!==e.node.id).map(bounds).concat(reserved);for(const distance of [stub,20,12]){const p=outside(e,distance);if(clear(e.point,p,obstacles))return p;}throw new Error('连接点被其他节点遮挡，请拉开节点间距。');};
+    const direct=(source.side==='right'&&target.side==='left'&&a.y===b.y&&b.x>a.x||source.side==='bottom'&&target.side==='top'&&a.x===b.x&&b.y>a.y||source.side==='top'&&target.side==='bottom'&&a.x===b.x&&b.y<a.y)&&clear(a,b,nodes.filter(n=>n.id!==source.node.id&&n.id!==target.node.id).map(bounds).concat(reserved));
     const ap=direct?a:lead(source),bp=direct?b:lead(target),signature=JSON.stringify([a,b,ap,bp,source.node.width,source.node.height,target.node.width,target.node.height]),old=cache.get(edge.id);
     const valid=(ps:Point[])=>segments(ps).every(s=>clear(s.a,s.b,boxes));
     let points:Point[];

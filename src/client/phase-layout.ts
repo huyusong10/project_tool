@@ -6,7 +6,8 @@ import type {DependencyChanges} from '../shared/path-contracts';
 
 export type PhaseRegion={id:string;name:string;phase?:FeaturePhase;scope:string|null;nodeIds:string[];x:number;y:number;width:number;height:number};
 export const phaseLayoutScope=(featureId:string,phaseId:string)=>`feature-phase:${featureId}:${phaseId}`;
-const WIDTH=640,HEADER=160,ROW=260,COL=300;
+export const PHASE_HEADER=148,PHASE_PADDING=24;
+const WIDTH=640,HEADER=PHASE_HEADER,ROW=248,COL=300;
 /** Regions are display geometry. They never add dependency edges or change membership. */
 export function featurePhaseLayout(data:PathAnalysis,feature:FeatureOverview|undefined,featureId:string,cardIds:string[]){
   const previous=data.layouts?.find(l=>l.scope==='feature:'+featureId&&l.direction==='right')?.positions||{};
@@ -15,19 +16,19 @@ export function featurePhaseLayout(data:PathAnalysis,feature:FeatureOverview|und
   const members=new Map(data.featureContext?.requirements.concat(data.requirements).map(r=>[r.id,r])||data.requirements.map(r=>[r.id,r]));
   const external=cardIds.filter(id=>(members.get(id)?.featureId||'unassigned')!==featureId||!members.has(id));
   const regions:PhaseRegion[]=[],positions:Record<string,Point>={};
-  for(const [index,definition] of definitions.entries()){
+  for(const definition of definitions){
     const scope=phaseLayoutScope(featureId,definition.id),saved=data.layouts?.find(l=>l.scope===scope&&l.direction==='right')?.positions||{};
     const ids=cardIds.filter(id=>!external.includes(id)&&(members.get(id)?.phaseId||'unassigned')===definition.id).sort((a,b)=>(previous[a]?.x||0)-(previous[b]?.x||0)||(previous[a]?.y||0)-(previous[b]?.y||0)||a.localeCompare(b));
     const relative:Record<string,Point>={};for(const id of ids)if(saved[id])relative[id]={x:Math.max(0,Math.min(WIDTH-284,saved[id].x)),y:Math.max(0,saved[id].y)};
     for(const id of ids)if(!relative[id]){let slot=0,p:Point;do{p={x:(slot%2)*COL,y:Math.floor(slot/2)*ROW};slot++;}while(Object.values(relative).some(q=>Math.abs(q.x-p.x)<280&&Math.abs(q.y-p.y)<ROW));relative[id]=p;}
-    const region:PhaseRegion={...definition,scope,nodeIds:ids,x:24+index*(WIDTH+56),y:24,width:WIDTH,height:Math.max(420,HEADER+ROW+Math.max(0,...Object.values(relative).map(p=>p.y)))};
+    const region:PhaseRegion={...definition,scope,nodeIds:ids,x:regions.length?regions.at(-1)!.x+regions.at(-1)!.width+56:24,y:24,width:ids.length?Math.max(320,48+244+Math.max(0,...Object.values(relative).map(p=>p.x))):320,height:ids.length?HEADER+Math.max(0,...Object.values(relative).map(p=>p.y))+224:HEADER+56};
     for(const [id,p] of Object.entries(relative))positions[id]={x:region.x+24+p.x,y:region.y+HEADER+p.y};regions.push(region);
   }
-  if(external.length){const region:PhaseRegion={id:'external',name:'范围外依赖',scope:null,nodeIds:external,x:24+definitions.length*(WIDTH+56),y:24,width:WIDTH,height:Math.max(420,HEADER+Math.ceil(external.length/2)*ROW)};external.forEach((id,i)=>{positions[id]={x:region.x+24+(i%2)*COL,y:region.y+HEADER+Math.floor(i/2)*ROW};});regions.push(region);}
+  if(external.length){const region:PhaseRegion={id:'external',name:'其他特性的依赖',scope:null,nodeIds:external,x:regions.length?regions.at(-1)!.x+regions.at(-1)!.width+56:24,y:24,width:WIDTH,height:Math.max(420,HEADER+Math.ceil(external.length/2)*ROW)};external.forEach((id,i)=>{positions[id]={x:region.x+24+(i%2)*COL,y:region.y+HEADER+Math.floor(i/2)*ROW};});regions.push(region);}
   return {regions,positions};
 }
-export function constrainPhasePosition(regions:PhaseRegion[],id:string,p:Point):Point{
-  const region=regions.find(r=>r.nodeIds.includes(id));return region?{x:Math.max(region.x+24,Math.min(region.x+region.width-260,p.x)),y:Math.max(region.y+HEADER,p.y)}:p;
+export function constrainPhasePosition(regions:PhaseRegion[],id:string,p:Point,width=244):Point{
+  const region=regions.find(r=>r.nodeIds.includes(id));return region?{x:Math.max(region.x+24,Math.min(region.x+region.width-width-PHASE_PADDING,p.x)),y:Math.max(region.y+HEADER,p.y)}:p;
 }
 export function phaseLayoutChanges(changes:DependencyChanges,formal:DiagramLayout[],regions:PhaseRegion[],positions:Record<string,Point>):DependencyChanges{
   const layouts=[...(changes.layouts||[])];

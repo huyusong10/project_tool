@@ -1,3 +1,4 @@
+import {chooseOption} from './select-helper';
 import {expect,test,type Page} from '@playwright/test';
 import {headerAction} from './topbar-helpers';
 async function setup(page:Page){
@@ -14,7 +15,7 @@ async function setup(page:Page){
 }
 async function ready(page:Page){await expect(page.locator('.dependency-canvas')).toHaveAttribute('data-layout-ready','true');}
 const node=(page:Page,id:string)=>page.locator('.react-flow__node[data-id="'+id+'"]');
-async function planning(page:Page,a:string,b:string){await headerAction(page,'建立规划关系');const dialog=page.getByRole('dialog');await dialog.getByLabel('前置特性').selectOption(a);await dialog.getByLabel('后续特性').selectOption(b);await dialog.getByLabel('关系说明').fill('先验证基础授权');await dialog.getByRole('button',{name:'加入草稿'}).click();}
+async function planning(page:Page,a:string,b:string){await headerAction(page,'建立规划关系');const dialog=page.getByRole('dialog');await chooseOption(dialog.getByLabel('前置特性'),a);await chooseOption(dialog.getByLabel('后续特性'),b);await dialog.getByLabel('关系说明').fill('先验证基础授权');await dialog.getByRole('button',{name:'加入草稿'}).click();}
 test('规划关系、执行依赖和工作项布局连续下钻后一次保存',async({page})=>{
   const {project,a,b,req,second}=await setup(page),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('/paths?view=features');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();await planning(page,a.id,b.id);
@@ -32,15 +33,16 @@ test('规划关系、执行依赖和工作项布局连续下钻后一次保存',
   const relations=await(await page.request.get('/api/projects/'+project.id+'/feature-relations')).json();expect(relations).toHaveLength(1);
   const analysis=await(await page.request.get('/api/projects/'+project.id+'/path-analysis')).json();expect(analysis.dependencies).toHaveLength(1);expect(analysis.nodes.find((n:{id:string})=>n.id===req.workItems[0].id).title).toBe('权限验证与回归');expect(analysis.layouts.some((l:{scope:string})=>l.scope==='requirement:'+req.id)).toBe(true);expect(writes).toBe(1);expect(errors).toEqual([]);
 });
-test('根视图并列、旧链接兼容，返回恢复选择与缩放',async({page})=>{
+test('特性为唯一根入口、旧链接兼容，返回恢复选择与缩放',async({page})=>{
   const {a,req}=await setup(page);await page.goto('/paths?view=features');await ready(page);
   await node(page,'feature:'+a.id).locator('.dependency-card').click();await page.getByLabel('缩小画布',{exact:true}).click();
+  let previous='',stable=0;await expect.poll(async()=>{const current=await page.locator('.react-flow__viewport').getAttribute('style')||'';stable=current===previous?stable+1:0;previous=current;return stable;},{intervals:[150]}).toBeGreaterThanOrEqual(4);
   const transform=await page.locator('.react-flow__viewport').getAttribute('style');
   await page.getByRole('button',{name:'进入需求',exact:true}).click();await ready(page);await node(page,req.id).locator('strong').dblclick();await ready(page);
   await page.getByRole('navigation',{name:'交付层级'}).getByRole('button',{name:'项目特性',exact:true}).click();await ready(page);
   await expect(node(page,'feature:'+a.id)).toHaveClass(/selected/);await expect(page.locator('.react-flow__viewport')).toHaveAttribute('style',transform!);
-  await page.getByRole('group',{name:'交付范围'}).getByRole('button',{name:'全部需求'}).click();await ready(page);await expect(page.locator('.canvas-breadcrumb')).toBeEmpty();
-  await page.goto('/requirements/'+req.id+'?view=path');await expect(page).toHaveURL(/\/\?.*view=requirement/);await ready(page);await expect(page.getByRole('navigation',{name:'交付层级'})).toContainText('全部需求');await expect(page.getByRole('navigation',{name:'交付层级'})).not.toContainText('基础授权');
+  await expect(page.getByRole('group',{name:'交付范围',exact:true})).toHaveCount(0);await page.goto('/paths?view=project');await ready(page);await expect(page.locator('.canvas-breadcrumb')).toContainText('项目特性');
+  await page.goto('/requirements/'+req.id+'?view=path');await expect(page).toHaveURL(/\/\?.*view=requirement/);await ready(page);await expect(page.getByRole('navigation',{name:'交付层级'})).toContainText('项目特性');await expect(page.getByRole('navigation',{name:'交付层级'})).toContainText('基础授权');
 });
 test('工作区内维护特性、评估与窄屏详情',async({page},info)=>{
  const {a}=await setup(page);await page.goto('/paths');await ready(page);await node(page,'feature:'+a.id).locator('.dependency-card').click();const panel=page.locator('.graph-detail');
@@ -67,7 +69,7 @@ test('其他层无效字段可定位修正，单次保存保留输入',async({pa
 test('特性内新建需求在顶层保存后，返回与布局替换临时编号',async({page})=>{
  const {project,a}=await setup(page);await page.goto('/paths?view=feature&featureId='+a.id);await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();await page.getByLabel('添加元素',{exact:true}).click();await page.locator('.graph-elements').getByRole('button',{name:'需求',exact:true}).click();
  const box=(await page.locator('.dependency-canvas').boundingBox())!;await page.mouse.click(box.x+box.width*.5,box.y+box.height*.7);const dialog=page.getByRole('dialog');await dialog.getByLabel('需求标题').fill('特性内的新需求');await dialog.getByRole('button',{name:'加入草稿',exact:true}).click();await page.getByRole('button',{name:'进入工作项',exact:true}).click();await ready(page);
- const draftId=new URL(page.url()).searchParams.get('requirementId')!;await node(page,'acceptance:'+draftId).locator('.dependency-card').click();await page.locator('.dependency-canvas').focus();await page.keyboard.press('Shift+ArrowRight');await page.getByRole('group',{name:'交付范围'}).getByRole('button',{name:'项目特性'}).click();await ready(page);
+ const draftId=new URL(page.url()).searchParams.get('requirementId')!;await node(page,'acceptance:'+draftId).locator('.dependency-card').click();await page.locator('.dependency-canvas').focus();await page.keyboard.press('Shift+ArrowRight');await page.getByRole('navigation',{name:'交付层级'}).getByRole('button',{name:'项目特性'}).click();await ready(page);
  const applied=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/apply'));await page.getByLabel('保存修改',{exact:true}).click();const response=await applied;expect(response.ok(),await response.text()).toBe(true);const receipt=await response.json(),savedId=receipt.addedIds[draftId];await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();
  const requirement=await(await page.request.get('/api/requirements/'+savedId)).json();expect(requirement.featureId).toBe(a.id);const graph=await(await page.request.get('/api/projects/'+project.id+'/path-analysis')).json();expect(graph.layouts.some((l:{scope:string})=>l.scope==='requirement:'+savedId)).toBe(true);
  await page.goBack();await expect(page).toHaveURL(new RegExp('requirementId='+savedId));await expect(page).not.toHaveURL(/draftProject=/);await ready(page);await expect(page.getByRole('navigation',{name:'交付层级'})).toContainText('特性内的新需求');await page.reload();await ready(page);
@@ -76,7 +78,7 @@ test('特性内新建需求在顶层保存后，返回与布局替换临时编�
 test('外部需求使用自己的特性层级，实际依赖定位到全部需求',async({page})=>{
  const {project,a,b,req}=await setup(page);const external=await(await page.request.post('/api/requirements',{data:{projectId:project.id,title:'外部协作需求',featureId:b.id}})).json();const analysis=await(await page.request.get('/api/projects/'+project.id+'/path-analysis')).json();const created=await page.request.post('/api/projects/'+project.id+'/dependencies',{data:{sourceRequirementId:req.id,targetRequirementId:external.id,expectedRevision:analysis.revision}});expect(created.ok(),await created.text()).toBe(true);
  await page.goto('/paths?view=feature&featureId='+a.id);await ready(page);await node(page,external.id).locator('strong').dblclick();await ready(page);await expect(page).toHaveURL(new RegExp('featureId='+b.id));await expect(page.getByRole('navigation',{name:'交付层级'})).toContainText('团队协作');await expect(page.getByRole('navigation',{name:'交付层级'})).not.toContainText('基础授权');await page.goBack();await ready(page);await expect(page).toHaveURL(new RegExp('featureId='+a.id));await expect(node(page,external.id)).toHaveClass(/selected/);
- await page.goto('/paths?'+new URLSearchParams({view:'features',pathEdge:'feature:'+a.id+'>feature:'+b.id,pathInspector:'open'}));await ready(page);await page.getByRole('button',{name:'角色权限 → 外部协作需求',exact:true}).click();await ready(page);await expect(page).toHaveURL(/view=project/);await expect(page).toHaveURL(/pathRelation=/);await expect(page.locator('.canvas-breadcrumb')).toBeEmpty();await page.goBack();await ready(page);await expect(page.locator('.canvas-inspector')).toContainText('实际依赖');
+ await page.goto('/paths?'+new URLSearchParams({view:'features',pathEdge:'feature:'+a.id+'>feature:'+b.id,pathInspector:'open'}));await ready(page);await page.getByRole('button',{name:'角色权限 → 外部协作需求',exact:true}).click();await ready(page);await expect(page).toHaveURL(/view=project/);await expect(page).toHaveURL(/pathRelation=/);await expect(page.locator('.canvas-breadcrumb')).toContainText('项目特性');await page.goBack();await ready(page);await expect(page.locator('.canvas-inspector')).toContainText('实际依赖');
 });
 
 test('归档响应丢失后刷新仍能核对已移出当前列表的特性',async({page})=>{

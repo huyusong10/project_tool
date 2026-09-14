@@ -1,3 +1,4 @@
+import {chooseOption} from './select-helper';
 import { headerAction } from './topbar-helpers';
 import { test, expect } from '@playwright/test';
 import { intakeExample } from '../../src/shared/intake';
@@ -57,7 +58,7 @@ test('局域网 HTTP 可登录、恢复会话、保存流程、导入需求和�
   await page.getByRole('button', { name: '整理需求', exact: true }).click();
   await page.getByRole('button', { name: '拆分需求', exact: true }).click();
   await expect(page.getByLabel('导入需求标题')).toHaveCount(2);
-  await page.getByLabel('合并需求到').last().selectOption({ label: '查询与详情' });
+  await chooseOption(page.getByLabel('合并需求到').last(),{ label: '查询与详情' });
   await expect(page.getByLabel('导入需求标题')).toHaveCount(1);
   await page.getByRole('button', { name: '预览导入', exact: true }).click();
   await page.getByRole('button', { name: '保存需求', exact: true }).click();

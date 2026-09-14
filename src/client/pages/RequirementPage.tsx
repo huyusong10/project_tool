@@ -1,3 +1,4 @@
+import {WorkProgressBadge} from '../components/ExecutionStageBadge';
 import {useAppNavigate,useAppSearchParams} from '../use-app-navigation';
 import {PageResourcesContext,usePageResources} from '../page-context';
 import { Pagination } from '../components/Pagination';
@@ -334,10 +335,8 @@ function SavedRequirementPage({requirementId,embedded=false,selectedWorkItemId,o
     if(params.get('workItemId'))params.set('pathNode',params.get('workItemId')!);
     return <Navigate to={'/paths?'+params} replace state={pathLocation.state}/>;
   }
-  return (
-    <>
-
-      <Header
+  const embeddedWorkDetails=<section className="delivery-work-details">{requirement.workItems.filter(item=>!selectedWorkItemId||item.id===selectedWorkItemId).map(item=><article key={item.id}><h4>{item.title}</h4><WorkProgressBadge work={item}/><p>{item.ownerName||'未分派'} · {item.plannedStart||'待定'} ～ {item.plannedEnd||'待定'}</p><div className="button-row">{renderWorkActions(item)}{canUpdateItemProgress(item)&&<button className="primary-button" onClick={()=>openProgress(item.id)}>更新进度</button>}</div></article>)}<div className="button-row">{canManageWorkItems&&<button className="ghost-button" disabled={workEditorNeedsRecheck||!!planRecheck} onClick={()=>setWorkEditorOpen(true)}>工作项设置</button>}<button className="ghost-button" onClick={openPathView}>维护依赖与分解</button></div></section>;
+  const requirementHeader=<Header
         title={requirement.title}
         onBack={goBack} backLabel={hasPageHistory()?"返回":"需求列表"}
         moreLabel="需求操作"
@@ -360,7 +359,11 @@ function SavedRequirementPage({requirementId,embedded=false,selectedWorkItemId,o
                 {['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" onClick={() => { setModal('correction'); }}><PencilLine size={15} />受控纠错</button>}
                 {['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" className="danger" onClick={() => { setCommand('archive'); }}><Archive size={15} />归档需求</button>}
         </> : null}
-      />
+      />;
+  return (
+    <>
+
+      {!embedded&&requirementHeader}
       <div className={embedded?"requirement-page embedded-requirement":"page-content requirement-page"}>
         {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
         {infoRecheck && <div className="warning-banner" role="alert">需求信息修改结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" disabled={!peopleReady} onClick={() => setModal("info")}>核对信息修改</button></div>}
@@ -370,8 +373,8 @@ function SavedRequirementPage({requirementId,embedded=false,selectedWorkItemId,o
         {commandRecheck && <div className="warning-banner" role="alert">{commandRecheck.action === 'cancel' ? '取消需求' : commandRecheck.action === 'archive' ? '归档需求' : '按期完成'}结果待核对，原需求版本已锁定。<button type="button" className="ghost-button" onClick={() => setCommand(commandRecheck.action)}>核对需求操作</button></div>}
         {workEditorNeedsRecheck && <div className="warning-banner" role="alert">工作项设置结果待核对，设置操作暂不可用。<button type="button" className="ghost-button" disabled={workEditorRechecking} onClick={() => void recheckWorkEditor()}>{workEditorRechecking ? "读取中…" : "重新读取需求"}</button></div>}
         {supportingError && <div className="warning-banner">{supportingDataReady ? "人员与流程数据刷新失败，当前使用上次成功结果。" : "人员或流程数据加载失败，相关编辑操作暂不可用。"}<button className="ghost-button" disabled={peopleQuery.isFetching || templatesQuery.isFetching} onClick={() => void Promise.all([peopleQuery.refetch(), templatesQuery.refetch()])}>重新加载</button></div>}
-        <RequirementOverview key={requirement.id} requirement={requirement}/>
-      {embedded?<section className="delivery-work-details"><div className="button-row">{canManageWorkItems&&<button className="ghost-button" disabled={workEditorNeedsRecheck||!!planRecheck} onClick={()=>setWorkEditorOpen(true)}>工作项设置</button>}<button className="ghost-button" onClick={openPathView}>维护依赖与分解</button></div>{requirement.workItems.filter(item=>!selectedWorkItemId||item.id===selectedWorkItemId).map(item=><article key={item.id}><h4>{item.title}</h4><p>{item.ownerName||'未分派'} · {item.plannedStart||'待定'} ～ {item.plannedEnd||'待定'} · {item.progress}%</p><div className="button-row">{renderWorkActions(item)}{canUpdateItemProgress(item)&&<button className="ghost-button" onClick={()=>openProgress(item.id)}>更新进度</button>}</div></article>)}</section>:<>      <ResizablePanel
+        <>{embedded&&selectedWorkItemId?<>{embeddedWorkDetails}<details className="delivery-parent-requirement"><summary>所属需求 · {requirement.title}</summary><RequirementOverview key={requirement.id} requirement={requirement}/>{requirementHeader}</details></>:<><RequirementOverview key={requirement.id} requirement={requirement}/>{embedded&&requirementHeader}</>}</>
+      {embedded?(selectedWorkItemId?null:embeddedWorkDetails):<>      <ResizablePanel
         className={`panel detail-panel requirement-progress-panel stable-workspace-panel${pathView ? " requirement-path-panel" : ""}`}
         storageKey={`${session.accountId || session.username || "guest"}:requirement-gantt`}
         defaultHeight={600}

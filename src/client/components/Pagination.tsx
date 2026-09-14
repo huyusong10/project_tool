@@ -1,3 +1,4 @@
+import {Select} from './Select';
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { pageNumbers, pageRange, pageSizeOptions as defaultOptions } from '../pagination';
@@ -20,7 +21,7 @@ export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChan
     <nav className="pagination-content" aria-label={label}>
       <div className="pagination-summary">
         <span aria-live="polite">{total ? <><span className="pagination-range">第 {range.start + 1}–{range.end} 条，</span>共 {total} 条</> : '共 0 条'}</span>
-        <select aria-label="每页数量" value={pageSize} disabled={blocked} onChange={event => onPageSizeChange(Number(event.target.value))}>{pageSizeOptions.map(size => <option key={size} value={size}>{size} 条/页</option>)}</select>
+        <Select aria-label="每页数量" value={pageSize} disabled={blocked} onChange={event => onPageSizeChange(Number(event.target.value))}>{pageSizeOptions.map(size => <option key={size} value={size}>{size} 条/页</option>)}</Select>
       </div>
       {range.pages > 1 && <div className="pagination-controls">
         <button type="button" aria-label="上一页" title="上一页" disabled={blocked || range.page === 1} onClick={() => onPageChange(range.page - 1)}><ChevronLeft size={15}/><span className="pagination-button-label">上一页</span></button>
