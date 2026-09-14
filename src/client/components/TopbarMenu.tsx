@@ -16,12 +16,14 @@ export function TopbarMenu({ label = '更多操作', icon = <Ellipsis size={17}/
   const close = (restore = false) => { setOpen(false); if (restore) trigger.current?.focus({ preventScroll: true }); };
   useEffect(() => {
     if (!open) return;
-    menu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
-    return runtime?.register({ element: () => menu.current, kind: 'menu', trigger: trigger.current, close: () => setOpen(false) });
+    // AnchoredPopover becomes visible after its position is measured.
+    const frame=requestAnimationFrame(()=>menu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus());
+    const unregister=runtime?.register({ element: () => menu.current, kind: 'menu', trigger: trigger.current, close: () => setOpen(false) });
+    return()=>{cancelAnimationFrame(frame);unregister?.();};
   }, [open, runtime]);
   return <div className="topbar-menu-trigger" data-workspace-zone="tools" data-preserve-edit>
     <button ref={trigger} type="button" className={text ? 'ghost-button topbar-menu-button' : 'ghost-button topbar-icon'} aria-label={label} title={label} disabled={disabled} aria-haspopup="menu" aria-expanded={open}
-      onClick={() => setOpen(value => !value)} onKeyDown={event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); } }}>{icon}{text}</button>
+      onClick={() => setOpen(value => !value)} onKeyDown={event => { if(event.key==='Escape'&&open&&!event.nativeEvent.isComposing){event.preventDefault();event.stopPropagation();close(true);}else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); } }}>{icon}{text}</button>
     <AnchoredPopover anchorRef={trigger} open={open} onOutside={() => close()} onEscape={() => close(true)} preserveEditing role="presentation" width={240} className="topbar-menu-popover">
       <div ref={menu} role="menu" aria-label={label} data-workspace-zone="tools" data-preserve-edit className="topbar-menu-content"
         onBlur={event => { if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget) && !trigger.current?.contains(event.relatedTarget)) close(); }}

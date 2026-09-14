@@ -2,6 +2,13 @@ import {test,expect,type Page} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
 import {headerAction} from './topbar-helpers';
 const bar=(page:Page)=>page.getByRole('region',{name:'页面工具栏',exact:true});
+async function toolbarAnchors(page:Page){
+  return page.locator('.page-toolbar').evaluate(root=>Object.fromEntries([
+    '.page-toolbar-back-slot','.page-breadcrumb>span:first-child',
+    '.page-toolbar-views button:first-child','.page-toolbar-views button:last-child',
+    '.page-toolbar-status','.page-editor-history','.page-editor-primary','.page-toolbar-more-slot',
+  ].map(selector=>{const r=root.querySelector(selector)!.getBoundingClientRect();return [selector,[r.x,r.y,r.width,r.height].map(n=>Math.round(n*10)/10)];})));
+}
 async function geometry(page:Page){
   await expect(bar(page)).toHaveCount(1);
   const measure=()=>page.evaluate(()=>{
@@ -54,6 +61,31 @@ test('页面主操作使用公共栏，空操作页面不留空栏',async({page}
   await bar(page).getByRole('button',{name:'编辑看板',exact:true}).click();await expect(bar(page).getByRole('button',{name:'保存布局',exact:true})).toBeVisible();await geometry(page);
   await page.setViewportSize({width:390,height:844});await geometry(page);await expect(bar(page).getByRole('button',{name:'保存布局',exact:true})).toBeVisible();await page.screenshot({path:testInfo.outputPath('toolbar-analytics-narrow.png')});
   await page.goto('/my-work');await expect(page.locator('h1')).toHaveText('我的工作');await expect(bar(page)).toHaveCount(0);
+});
+
+test('特性下钻、视图与编辑状态变化时，返回位和常用按钮坐标不变',async({page},testInfo)=>{
+  const f=await phaseFixture(page);
+  for(const viewport of [testInfo.project.use.viewport!,{width:390,height:844}]){
+    const closeNarrowDetail=async()=>{const close=page.locator('.graph-detail[aria-hidden=false] .delivery-inspector-heading').getByRole('button',{name:'关闭',exact:true});if(viewport.width<640&&await close.isVisible()){await close.click();await expect(close).toBeHidden();}};
+    await page.setViewportSize(viewport);await page.goto('/?view=features&mode=table');await expect(page.locator('.delivery-table')).toContainText('资产管理');await geometry(page);
+    await expect(bar(page).locator('.page-back-button')).toHaveCount(0);await expect(bar(page).getByLabel('更多操作',{exact:true})).toBeVisible();
+    const baseline=await toolbarAnchors(page);
+    await bar(page).getByLabel('更多操作',{exact:true}).click();await expect(page.getByRole('button',{name:'刷新特性',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'新建特性',exact:true})).toBeVisible();await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu',{name:'更多操作',exact:true})).toHaveCount(0);await page.screenshot({path:testInfo.outputPath('stable-root-'+viewport.width+'.png'),animations:'disabled'});
+    const featureButton=page.locator('.delivery-table').getByRole('button',{name:'资产管理',exact:true});
+    if(viewport.width<640){await featureButton.click();await page.locator('.delivery-inspector-content').getByRole('button',{name:'进入需求',exact:true}).click();}else await featureButton.dblclick();
+    await expect(page).toHaveURL(/view=feature(?:&|$)/);await expect(page.locator('.delivery-table')).toContainText(f.testing.title);await closeNarrowDetail();await geometry(page);await expect.poll(()=>toolbarAnchors(page)).toEqual(baseline);
+    await bar(page).getByLabel('更多操作',{exact:true}).click();await expect(page.getByRole('button',{name:'Phase 资料',exact:true})).toBeVisible();await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu',{name:'更多操作',exact:true})).toHaveCount(0);await page.screenshot({path:testInfo.outputPath('stable-feature-'+viewport.width+'.png'),animations:'disabled'});
+    const requirementButton=page.locator('.delivery-table').getByRole('button',{name:f.testing.title,exact:true});
+    if(viewport.width<640){await requirementButton.click();await page.locator('.delivery-inspector-content').getByRole('button',{name:'进入工作项',exact:true}).click();}else await requirementButton.dblclick();
+    await expect(page).toHaveURL(/view=requirement/);await expect(page.locator('.delivery-table')).toContainText('测试');await closeNarrowDetail();await geometry(page);await expect.poll(()=>toolbarAnchors(page)).toEqual(baseline);
+    await bar(page).getByRole('button',{name:'关系图',exact:true}).click();await expect(page.locator('[data-layout-ready=true]')).toBeVisible();await geometry(page);await expect.poll(()=>toolbarAnchors(page)).toEqual(baseline);
+    const edit=bar(page).getByLabel('编辑画布',{exact:true});if(await edit.isVisible())await edit.click();await expect(bar(page).getByLabel('保存修改',{exact:true})).toBeVisible();await geometry(page);await expect.poll(()=>toolbarAnchors(page)).toEqual(baseline);
+    await page.screenshot({path:testInfo.outputPath('stable-edit-'+viewport.width+'.png'),animations:'disabled'});
+    await bar(page).getByLabel('返回上一画布',{exact:true}).click();await expect(page).toHaveURL(/view=feature(?:&|$)/);await closeNarrowDetail();await expect.poll(()=>toolbarAnchors(page)).toEqual(baseline);
+    await bar(page).getByLabel('返回上一画布',{exact:true}).click();await expect(page).toHaveURL(/view=features/);await closeNarrowDetail();await expect.poll(()=>toolbarAnchors(page)).toEqual(baseline);
+  }
 });
 
 test('窄屏图形编辑和加载期间工具栏不挤压或遮挡画布',async({page},testInfo)=>{
