@@ -1,4 +1,5 @@
 import {chooseOption} from './select-helper';
+import {randomUUID} from 'node:crypto';
 import {expect,test,type Page} from '@playwright/test';
 import {headerAction} from './topbar-helpers';
 async function setup(page:Page){
@@ -18,6 +19,11 @@ const node=(page:Page,id:string)=>page.locator('.react-flow__node[data-id="'+id+
 async function planning(page:Page,a:string,b:string){await headerAction(page,'建立规划关系');const dialog=page.getByRole('dialog');await chooseOption(dialog.getByLabel('前置特性'),a);await chooseOption(dialog.getByLabel('后续特性'),b);await dialog.getByLabel('关系说明').fill('先验证基础授权');await dialog.getByRole('button',{name:'加入草稿'}).click();}
 test('规划关系、执行依赖和工作项布局连续下钻后一次保存',async({page})=>{
   const {project,a,b,req,second}=await setup(page),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  // Place the target on the right: its second click lands over the opening inspector.
+  const base='/api/projects/'+project.id,initial=await(await page.request.get(base+'/path-analysis')).json();
+  const placement={expectedRevision:initial.revision,target:'project',changes:{add:[],remove:[],estimates:[],layouts:[{scope:'feature-phase:'+a.id+':unassigned',direction:'right',expectedVersion:0,positions:{[req.id]:{x:300,y:0},[second.id]:{x:0,y:0}}}]}};
+  const checked=await page.request.post(base+'/dependency-changes/preview',{data:placement});expect(checked.ok(),await checked.text()).toBe(true);
+  const placed=await page.request.post(base+'/dependency-changes/apply',{data:{...placement,previewToken:(await checked.json()).previewToken,batchId:randomUUID()}});expect(placed.ok(),await placed.text()).toBe(true);
   await page.goto('/paths?view=features');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();await planning(page,a.id,b.id);
   expect((await(await page.request.get('/api/projects/'+project.id+'/feature-relations')).json())).toHaveLength(0);
   await node(page,'feature:'+a.id).locator('strong').dblclick();await expect(page).toHaveURL(/view=feature&/);await ready(page);

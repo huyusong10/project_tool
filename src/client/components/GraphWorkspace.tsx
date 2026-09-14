@@ -59,6 +59,12 @@ function Workspace({ table, document:editorDocument, auxiliaryKey, toolbar, deta
     return()=>observer.disconnect();
   },[finding,isTable]);
   return <section ref={root} className={'graph-workspace graph-editor-workspace'+(finding?' has-finder':'')+(analysis?' has-analysis':'')+(detail?' has-inspector':'')+(isTable?' delivery-table-mode':'')+(wide?' wide-inspector':'')} aria-label="交付依赖工作区" onCompositionStart={()=>{runtime.composing=true;}} onCompositionEnd={()=>{runtime.composing=false;if(runtime.saveRequested){runtime.saveRequested=false;queueMicrotask(requestSave);}}}
+    onPointerDownCapture={e=>{
+      const previous=recentNodeClick.current,target=e.target as HTMLElement;
+      // Catch the second press before a newly opened inspector field takes focus.
+      if(e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||!previous||!target.closest('.graph-detail')||e.timeStamp-previous.time>=500||Math.hypot(e.clientX-previous.x,e.clientY-previous.y)>=6)return;
+      const card=graph.cards.find(c=>c.id===previous.id);if(card&&graph.onOpenNode){e.preventDefault();e.stopPropagation();recentNodeClick.current=null;runtime.commitFields(false);graph.onOpenNode(card);}
+    }}
     onClickCapture={e=>{
       const target=e.target as HTMLElement;
       if(target.closest('[aria-label="保存修改"]')){e.preventDefault();e.stopPropagation();requestSave();return;}
