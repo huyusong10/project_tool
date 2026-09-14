@@ -21,7 +21,7 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 | 判断是否需要刷新项目 | `get_project_change_version` | `version`，包括业务日期及共享布局变化 |
 | 查询完整执行网络 | `get_path_analysis` | `nodes`、`edges`、依赖、关键性、余量、风险、预测 |
 | 查询拓扑视图或导出图 | `get_path_graph` | `cards`、`links`、范围数量、已保存布局，可附自动布局／SVG |
-| 整理分组与导入原始需求 | `get_requirement_intake`、`preview_requirement_import`、`apply_requirement_import` 等 | [工具列表与导入契约](requirement-intake.md#rest-与-mcp) |
+| 整理特性与导入原始需求 | `get_requirement_intake`、`preview_requirement_import`、`apply_requirement_import` 等 | [工具列表与导入契约](requirement-intake.md#rest-与-mcp) |
 
 `get_my_work` 按 Token 绑定账号查询；它的近期进展是该账号发布的最近 8 条。项目历史应使用 `list_progress_updates`。
 
@@ -31,7 +31,7 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 
 | 工具 | 筛选参数 |
 |---|---|
-| `query_requirements` | `q`、`groupId`、`ownerId`、`participantId`、`status`、`view=delayed/high_risk`、`from/to`、`includeDeleted`；`includeWorkItems=true` 附带工作项 |
+| `query_requirements` | `q`、`featureId`、`ownerId`、`participantId`、`status`、`view=delayed/high_risk`、`from/to`、`includeDeleted`；`includeWorkItems=true` 附带工作项 |
 | `list_work_items` | `requirementId`、`q`、`ownerId`、`participantId`、`status`、`active`、`overdue`、`unassigned`、`from/to` |
 | `list_progress_updates` | `requirementId`、`workItemId`、`authorAccountId`、`eventType`、正文关键词 `q`、`from/to`、`snapshot` |
 
@@ -109,22 +109,22 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 
 完成偏差使用实际工作结束日期。`acceptedAt` 只保留历史；`actualEnd` 表示实际完成，`observationEnd` 表示甘特统计截止日，两者不能互换。迁移后的原文与出处在需求 `sourceNotes` 中。
 
-工具目录已移除来源条款、来源关联、阻塞/解阻、确认验收、预测核对、前置确认、交付承诺以及覆盖/删除历史的工具。新请求不接受 `deliveryScope/executionMode/acceptanceOwnerId/priority/unblockEstimate` 及阻塞协调字段。原始需求导入使用 `formatVersion:2`。
+工具目录已移除来源条款、来源关联、阻塞/解阻、确认验收、预测核对、前置确认、交付承诺以及覆盖/删除历史的工具。新请求不接受 `deliveryScope/executionMode/acceptanceOwnerId/priority/unblockEstimate` 及阻塞协调字段。原始需求导入使用 `formatVersion: 2`。
 
 拓扑中的 `acceptance:需求ID` 保留为历史布局兼容 ID，现在表示工作完成，不要求执行验收操作。独立里程碑只有显式依赖才影响其他工作。
 
 ## 特性规划与总体进展
 
-`get_group_overview({projectId})` 读取大致预期、进展简述、人工判断、评估人和时间，以及当前分组的需求计数和最近三条进展。取消、归档需求不计入汇总。默认判断为待评估，不按完成数量自动推断是否符合预期。
+`get_feature_overview({projectId})` 读取大致预期、进展简述、人工判断、评估人和时间，以及当前特性的需求计数和最近三条进展。取消、归档需求不计入汇总。默认判断为待评估，不按完成数量自动推断是否符合预期。
 
-`save_requirement_group` 可传 `overview: {expectation, progressSummary, assessment, note}`，四项均须提供，文字可为空；`assessment` 使用 `pending/on_track/off_track/needs_adjustment`。保存时使用最新分组的 `id/name/sortOrder/expectedVersion`。省略 `overview` 不影响已有评估。项目经理或管理员可保存。
+`save_feature` 可传 `overview: {expectation, progressSummary, assessment, note}`，四项均须提供，文字可为空；`assessment` 使用 `pending/on_track/off_track/needs_adjustment`。保存时使用最新特性的 `id/name/sortOrder/expectedVersion`。省略 `overview` 不影响已有评估。项目经理或管理员可保存。
 
-仅根据用户明确提供的判断写入评估。事实变化通过项目刷新版本更新网页，人工评估保持原值。结果未知时先调用 `get_group_overview` 核对，不直接重复保存。字段和网页行为见 [需求录入说明](requirement-intake.md#总体进展)。
+仅根据用户明确提供的判断写入评估。事实变化通过项目刷新版本更新网页，人工评估保持原值。结果未知时先调用 `get_feature_overview` 核对，不直接重复保存。字段和网页行为见 [需求录入说明](requirement-intake.md#总体进展)。
 
 
-现有分组即长期特性。`save_requirement_group` 可传 `description`，与 `overview` 分开维护；列表和总体进展读取支持 `state=active/archived/all`。归档与恢复使用 `archive_requirement_group`、`restore_requirement_group`；`get_feature_requirements` 分页读取当前或归档需求摘要。
+`save_feature` 可传 `description`，与 `overview` 分开维护；列表和总体进展读取支持 `state=active/archived/all`。归档与恢复使用 `archive_feature`、`restore_feature`；`get_feature_requirements` 分页读取当前或归档需求摘要。
 
-`get_path_graph` 支持 `view=features` 顶层图、`view=feature` 加 `featureId` 的特性内需求图（`ungrouped` 为未归属集合）。`view=project` 仍表示原来的全部需求。用 `list_feature_relations`、`save_feature_relation`、`delete_feature_relation` 维护人工规划；`planning/actual` 分别控制两类连线。规划关系不参与执行分析。
+`get_path_graph` 支持 `view=features` 顶层图、`view=feature` 加 `featureId` 的特性内需求图（`unassigned` 为未关联特性集合）。`view=project` 仍表示原来的全部需求。用 `list_feature_relations`、`save_feature_relation`、`delete_feature_relation` 维护人工规划；`planning/actual` 分别控制两类连线。规划关系不参与执行分析。
 
 特性图与特性内需求图的共享布局分别使用 `features`、`feature:ID`，沿用布局版本和依赖批次保存。删除特性只允许没有需求及规划连线的空特性；非空特性先处理未完成需求再归档。[接口规则](requirement-intake.md#特性规划与关系图)。
 
@@ -143,3 +143,7 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 规划关系、执行修改和 `layouts` 在同一事务保存。不同对象使用不同临时 ID；回执 `addedIds` 同时返回规划关系和执行对象的正式 ID。规划循环按批次最终关系检查，包含归档特性保留的关系。
 
 预览的 `analysis.featureContext` 包含特性概览、规划关系和需求归属，供统一图投影使用；规划关系不进入关键路径或排期计算。`get_path_graph.analysis` 同样提供该上下文。原单条规划关系工具保持可用。结果未知时查询原批次回执；重试必须复用原批次及输入。
+
+## Phase 与需求阶段
+
+使用 `list_feature_phases/save_feature_phase/deliver_feature_phase/reopen_feature_phase/delete_feature_phase` 管理分期。`record_test_submission` 记录实际提测。接口参数和阶段摘要见 [特性分期说明](feature-phases.md#rest-与-mcp)。

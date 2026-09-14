@@ -1,7 +1,7 @@
 import {it,expect} from 'vitest';
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
 import Database from 'better-sqlite3';import {drizzle} from 'drizzle-orm/better-sqlite3';import {migrate} from 'drizzle-orm/better-sqlite3/migrator';
-it('来源升级保留全部旧字段与承诺，默认未分组且不生成来源，再次迁移无变化',()=>{
+it('来源升级保留全部旧字段与承诺，默认未关联特性且不生成来源，再次迁移无变化',()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'pm-intake-migration-')),folder=path.join(dir,'migrations');fs.mkdirSync(path.join(folder,'meta'),{recursive:true});
   const journal=JSON.parse(fs.readFileSync('drizzle/meta/_journal.json','utf8'));journal.entries=journal.entries.filter((e:{idx:number})=>e.idx<25);
   for(const e of journal.entries)fs.copyFileSync('drizzle/'+e.tag+'.sql',path.join(folder,e.tag+'.sql'));
@@ -13,7 +13,7 @@ it('来源升级保留全部旧字段与承诺，默认未分组且不生成来�
     db.prepare("INSERT INTO delivery_commitments(id,project_id,confirmed_at,snapshot)VALUES('c','p',?,'{}')").run(now);
     const before=db.prepare('SELECT * FROM requirements').get() as Record<string,unknown>,commitments=db.prepare('SELECT * FROM delivery_commitments').all();
     migrate(drizzle(db),{migrationsFolder:'drizzle'});const after=db.prepare('SELECT * FROM requirements').get() as Record<string,unknown>;
-    for(const key of Object.keys(before).filter(k=>k!=='execution_mode'))expect(after[key],key).toEqual(before[key]);expect(after.execution_mode).toBe('direct');expect(after.group_id).toBeNull();expect(after.tags).toBe('[]');
+    for(const key of Object.keys(before).filter(k=>k!=='execution_mode'))expect(after[key],key).toEqual(before[key]);expect(after.execution_mode).toBe('direct');expect(after.feature_id).toBeNull();expect(after.tags).toBe('[]');
     expect(db.prepare('SELECT * FROM delivery_commitments').all()).toEqual(commitments);expect(db.prepare('SELECT count(*) n FROM source_documents').get()).toEqual({n:0});
     migrate(drizzle(db),{migrationsFolder:'drizzle'});expect(db.prepare('SELECT * FROM requirements').get()).toEqual(after);expect(db.pragma('foreign_key_check')).toEqual([]);expect(db.pragma('integrity_check')).toEqual([{integrity_check:'ok'}]);
   }finally{db.close();fs.rmSync(dir,{recursive:true,force:true});}

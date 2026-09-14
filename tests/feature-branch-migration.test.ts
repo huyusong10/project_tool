@@ -22,7 +22,7 @@ it.each(['dev','feature','empty'])('合并后的迁移兼容 %s 数据库，保�
     const before=branch==='empty'?null:db.prepare('SELECT * FROM requirement_groups').get() as Record<string,unknown>;
     for(let i=0;i<2;i++){
       reconcileFeatureBranch(db,'drizzle');migrate(drizzle(db),{migrationsFolder:'drizzle'});
-      if(before){const group=db.prepare('SELECT * FROM requirement_groups').get();expect(group).toMatchObject(before);}
+      if(before){const group=db.prepare('SELECT * FROM features').get();expect(group).toMatchObject(before);}
       expect(db.prepare('SELECT id FROM feature_relations').all()).toEqual([]);
       expect((db.pragma('table_info(work_items)') as {name:string}[]).some(c=>c.name==='progress_weight')).toBe(true);
       expect(db.pragma('foreign_key_check')).toEqual([]);

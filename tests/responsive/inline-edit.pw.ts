@@ -916,7 +916,7 @@ test("编辑需求未修改时同步最新字段，修改后按字段重读且�
   if (testInfo.project.name === 'office-1280') await page.screenshot({ path: 'data/round21-ui/info-rebased-1280.png', animations: 'disabled' });
   await dialog.getByRole('button', { name: '保存信息', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  expect(writes).toEqual([{ groupId: null, title: '我填写的标题', background: '他人的新背景', acceptanceCriteria: '原标准', referenceUrl: '', expectedVersion: 3 }]);
+  expect(writes).toEqual([{ featureId: null, title: '我填写的标题', background: '他人的新背景', acceptanceCriteria: '原标准', referenceUrl: '', expectedVersion: 3 }]);
 });
 
 test('需求信息已落库但响应异常时跨导航保留草稿并核对后关闭', async ({ page }) => {

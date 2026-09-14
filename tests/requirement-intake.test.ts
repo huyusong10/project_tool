@@ -28,15 +28,16 @@ it('批次重试和回执查询不重复写入，批次不能换内容',async()=
   expect((await request('GET',`/api/projects/${p.id}/requirement-import/receipts/${batchId}`)).json()).toEqual(first.json());
   const changed=structuredClone(v);changed.package.requirements[0].title='另一份内容';expect((await apply(p.id,changed,batchId)).statusCode).toBe(409);
 });
-it('特性非空时拒绝删除，显式移出后可删除且不影响需求执行',async()=>{
+it('有 Phase 的特性拒绝删除，移出需求并删除空 Phase 后可删除且不影响执行',async()=>{
   const p=await imported(),c=await catalog(p.id),before=(await request('GET','/api/requirements/'+p.requirementId)).json();
-  const updated=await request('PATCH','/api/requirements/'+p.requirementId,{expectedVersion:before.version,groupId:c.groups[0].id});expect(updated.statusCode,updated.body).toBe(200);expect(updated.json().groupId).toBe(c.groups[0].id);expect(updated.json()).not.toHaveProperty('tags');
-  const removed=await request('DELETE',`/api/projects/${p.id}/requirement-groups/${c.groups[0].id}`,{expectedVersion:c.groups[0].version});expect(removed.statusCode,removed.body).toBe(409);
-  expect((await post(`/api/projects/${p.id}/requirement-organization`,{requirements:[{id:p.requirementId,expectedVersion:updated.json().version}],groupId:null})).statusCode).toBe(200);
-  expect((await request('DELETE',`/api/projects/${p.id}/requirement-groups/${c.groups[0].id}`,{expectedVersion:c.groups[0].version})).statusCode).toBe(200);
-  const after=(await request('GET','/api/requirements/'+p.requirementId)).json();expect(after.workItems.map(({dependencyRevision:_revision,...w}:Record<string,unknown>)=>withoutForecastRevision(w))).toEqual(before.workItems.map(({dependencyRevision:_revision,...w}:Record<string,unknown>)=>withoutForecastRevision(w)));expect(after.progress).toBe(before.progress);expect(after.groupId).toBeNull();
+  const updated=await request('PATCH','/api/requirements/'+p.requirementId,{expectedVersion:before.version,featureId:c.features[0].id});expect(updated.statusCode,updated.body).toBe(200);expect(updated.json().featureId).toBe(c.features[0].id);expect(updated.json()).not.toHaveProperty('tags');
+  const removed=await request('DELETE',`/api/projects/${p.id}/features/${c.features[0].id}`,{expectedVersion:c.features[0].version});expect(removed.statusCode,removed.body).toBe(400);expect(removed.json().error).toContain('Phase');
+  expect((await post(`/api/projects/${p.id}/requirement-placement`,{requirements:[{id:p.requirementId,expectedVersion:updated.json().version}],featureId:null})).statusCode).toBe(200);
+  for(const phase of (await request('GET',`/api/projects/${p.id}/feature-phases`)).json())expect((await request('DELETE',`/api/projects/${p.id}/feature-phases/${phase.id}`,{expectedVersion:phase.version})).statusCode).toBe(200);
+  expect((await request('DELETE',`/api/projects/${p.id}/features/${c.features[0].id}`,{expectedVersion:c.features[0].version})).statusCode).toBe(200);
+  const after=(await request('GET','/api/requirements/'+p.requirementId)).json();expect(after.workItems.map(({dependencyRevision:_revision,...w}:Record<string,unknown>)=>withoutForecastRevision(w))).toEqual(before.workItems.map(({dependencyRevision:_revision,...w}:Record<string,unknown>)=>withoutForecastRevision(w)));expect(after.progress).toBe(before.progress);expect(after.featureId).toBeNull();
 });
-it('旧标签不再返回，接口拒绝标签写入与筛选，分组仍正常工作',async()=>{
+it('旧标签不再返回，接口拒绝标签写入与筛选，特性仍正常工作',async()=>{
   const p=await imported(),{sqlite}=await import('../src/server/database');
   sqlite.prepare('UPDATE requirements SET tags=? WHERE id=?').run('["旧标签"]',p.requirementId);
   const before=(await request('GET','/api/requirements/'+p.requirementId)).json();
@@ -45,12 +46,12 @@ it('旧标签不再返回，接口拒绝标签写入与筛选，分组仍正常�
   expect(graph.requirements.find((r:{id:string})=>r.id===p.requirementId)).not.toHaveProperty('tags');
   expect((await request('PATCH','/api/requirements/'+p.requirementId,{expectedVersion:before.version,tags:['新标签']})).statusCode).toBe(400);
   expect((await request('GET',`/api/requirements/query?projectId=${p.id}&tag=legacy`)).statusCode).toBe(400);
-  expect((await post(`/api/projects/${p.id}/requirement-organization`,{requirements:[{id:p.requirementId,expectedVersion:before.version}],tags:['新标签']})).statusCode).toBe(400);
+  expect((await post(`/api/projects/${p.id}/requirement-placement`,{requirements:[{id:p.requirementId,expectedVersion:before.version}],tags:['新标签']})).statusCode).toBe(400);
   const pkg=structuredClone(intakeExample);const tagged={...pkg,requirements:pkg.requirements.map(r=>({...r,tags:['新标签']}))};
   expect((await post(`/api/projects/${p.id}/requirement-import/preview`,{package:tagged})).statusCode).toBe(400);
-  const move=await post(`/api/projects/${p.id}/requirement-organization`,{requirements:[{id:p.requirementId,expectedVersion:before.version}],groupId:null});expect(move.statusCode,move.body).toBe(200);
+  const move=await post(`/api/projects/${p.id}/requirement-placement`,{requirements:[{id:p.requirementId,expectedVersion:before.version}],featureId:null});expect(move.statusCode,move.body).toBe(200);
   const after=(await request('GET','/api/requirements/'+p.requirementId)).json();
-  expect(after.groupId).toBeNull();expect(after.status).toBe(before.status);expect(after.progress).toBe(before.progress);
+  expect(after.featureId).toBeNull();expect(after.status).toBe(before.status);expect(after.progress).toBe(before.progress);
   expect(after.workItems.map((w:{id:string})=>w.id)).toEqual(before.workItems.map((w:{id:string})=>w.id));
 });
 it('最终事务失败时导入的需求、条款、依赖和回执全部回滚',async()=>{
@@ -70,12 +71,12 @@ it('MCP 与 REST 使用同一导入契约、预览结果及回执',async()=>{
   expect(v.previewToken).toBe((await preview(p.id)).previewToken);
   const batchId=randomUUID(),saved=await call('apply_requirement_import',{projectId:p.id,package:v.package,expectedRevision:v.expectedRevision,previewToken:v.previewToken,batchId});
   expect(saved.status).toBe('applied');expect((await request('GET',`/api/projects/${p.id}/requirement-import/receipts/${batchId}`)).json()).toEqual(saved);
-  const groups=await call('list_requirement_groups',{projectId:p.id});expect(groups[0].name).toBe('示例模块');
-  const query={projectId:p.id,groupId:groups[0].id,includeWorkItems:true};
+  const features=await call('list_features',{projectId:p.id});expect(features[0].name).toBe('示例模块');
+  const query={projectId:p.id,featureId:features[0].id,includeWorkItems:true};
   const page=await call('query_requirements',query);expect(page.total).toBe(1);
-  expect(page.items[0]).toMatchObject({id:saved.requirementIds['query'],groupId:groups[0].id});
-  expect((await request('GET',`/api/requirements/query?projectId=${p.id}&groupId=${groups[0].id}&includeWorkItems=true`)).json()).toEqual(page);
-  expect((await call('query_requirements',{...query,groupId:'ungrouped'})).items).toEqual([]);
+  expect(page.items[0]).toMatchObject({id:saved.requirementIds['query'],featureId:features[0].id});
+  expect((await request('GET',`/api/requirements/query?projectId=${p.id}&featureId=${features[0].id}&includeWorkItems=true`)).json()).toEqual(page);
+  expect((await call('query_requirements',{...query,featureId:'unassigned'})).items).toEqual([]);
   expect((await call('get_work_item',{id:page.items[0].workItems[0].id})).requirementId).toBe(page.items[0].id);
   expect((await call('get_path_graph',{projectId:p.id,view:'requirement',requirementId:page.items[0].id})).cards.map((card:{id:string})=>card.id)).toEqual(expect.arrayContaining(page.items[0].workItems.map((work:{id:string})=>work.id)));
 });
@@ -97,11 +98,11 @@ it('重复需求提醒，显式更新只修改核对过的字段并保留工作�
  expect((await preview(p.id,pkg)).errors.some(x=>x.includes('版本变化'))).toBe(true);
 });
 it('并发修改、无效依赖和跨项目分组不能部分写入',async()=>{
- const p=await project(),v=await preview(p.id);await post(`/api/projects/${p.id}/requirement-groups`,{name:'并发修改'});expect((await apply(p.id,v)).statusCode).toBe(409);
+ const p=await project(),v=await preview(p.id);await post(`/api/projects/${p.id}/features`,{name:'并发修改'});expect((await apply(p.id,v)).statusCode).toBe(409);
  const cyclic=structuredClone(intakeExample);cyclic.dependencies.push({source:{requirement:'query',workItem:'ui'},target:{requirement:'query',workItem:'api'}});const invalid=await preview(p.id,cyclic);expect(invalid.errors.length).toBeGreaterThan(0);expect((await apply(p.id,invalid)).statusCode).toBe(400);
  expect((await request('GET','/api/requirements?projectId='+p.id)).json()).toEqual([]);
  const other=await imported(),created=await post('/api/requirements',{projectId:p.id,title:'不带工作项的需求'});expect(created.statusCode,created.body).toBe(200);
- expect((await request('PATCH','/api/requirements/'+created.json().id,{expectedVersion:created.json().version,groupId:(await catalog(other.id)).groups[0].id})).statusCode).toBe(400);
+ expect((await request('PATCH','/api/requirements/'+created.json().id,{expectedVersion:created.json().version,featureId:(await catalog(other.id)).features[0].id})).statusCode).toBe(400);
 });
 it('直接执行后添加第一个工作项自动汇总，保留已记录的进度基线',async()=>{
  const p=await project(),owner=(await post('/api/people',{projectId:p.id,name:'负责人'+sequence})).json().id;

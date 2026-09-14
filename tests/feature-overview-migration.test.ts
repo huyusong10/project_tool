@@ -18,11 +18,11 @@ it.each([27,28])('迁移 %i 保留原 ID、需求和已有评估，重复迁移�
     db.prepare("INSERT INTO requirements(id,project_id,group_id,title,created_at,updated_at) VALUES('r','p','g','需求',?,?)").run(now,now);
     if(cutoff===28)db.prepare("UPDATE requirement_groups SET expectation='已有预期',progress_summary='已有进展',assessment='off_track',assessment_note='已有原因',assessed_at=?").run(now);
     const group=db.prepare('SELECT * FROM requirement_groups').get() as Record<string,unknown>,requirement=db.prepare('SELECT * FROM requirements').get();
-    migrate(drizzle(db),{migrationsFolder:'drizzle'});const migrated=db.prepare('SELECT * FROM requirement_groups').get() as Record<string,unknown>;
+    migrate(drizzle(db),{migrationsFolder:'drizzle'});const migrated=db.prepare('SELECT * FROM features').get() as Record<string,unknown>;
     for(const [key,value] of Object.entries(group))expect(migrated[key]).toEqual(value);
-    expect(migrated).toMatchObject({description:'',archived_at:null,...(cutoff===27?{expectation:'',progress_summary:'',assessment:'pending',assessment_note:'',assessed_at:null,assessed_by:null}:{expectation:'已有预期',progress_summary:'已有进展',assessment:'off_track',assessment_note:'已有原因',assessed_at:now})});expect(db.prepare('SELECT * FROM requirements').get()).toEqual(requirement);
-    db.prepare("UPDATE requirement_groups SET expectation='季度试用',assessment='off_track'").run();
-    migrate(drizzle(db),{migrationsFolder:'drizzle'});expect(db.prepare('SELECT expectation,assessment FROM requirement_groups').get()).toEqual({expectation:'季度试用',assessment:'off_track'});
+    expect(migrated).toMatchObject({description:'',archived_at:null,...(cutoff===27?{expectation:'',progress_summary:'',assessment:'pending',assessment_note:'',assessed_at:null,assessed_by:null}:{expectation:'已有预期',progress_summary:'已有进展',assessment:'off_track',assessment_note:'已有原因',assessed_at:now})});expect(db.prepare('SELECT * FROM requirements').get()).toMatchObject(Object.fromEntries(Object.entries(requirement as Record<string,unknown>).map(([key,value])=>[key==='group_id'?'feature_id':key,value])));
+    db.prepare("UPDATE features SET expectation='季度试用',assessment='off_track'").run();
+    migrate(drizzle(db),{migrationsFolder:'drizzle'});expect(db.prepare('SELECT expectation,assessment FROM features').get()).toEqual({expectation:'季度试用',assessment:'off_track'});
     expect(db.pragma('foreign_key_check')).toEqual([]);expect(db.pragma('integrity_check')).toEqual([{integrity_check:'ok'}]);
   } finally {db.close();expect(path.resolve(directory).startsWith(path.resolve(os.tmpdir())+path.sep)).toBe(true);fs.rmSync(directory,{recursive:true,force:true});}
 });
