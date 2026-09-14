@@ -42,4 +42,4 @@
 
 .workspace-history-menu{display:none!important}
 .page-toolbar[data-project-workspace=true][data-narrow=true] .page-editor-history{display:none}
-@media(max-width:640px){.workspace-history-menu{display:flex!important}}
+:root:has(.page-toolbar[data-narrow=true]) .workspace-history-menu{display:flex!important}

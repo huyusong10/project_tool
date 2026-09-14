@@ -67,7 +67,7 @@ export function Topbar({ pageIcon: PageIcon, sessionReady }: { pageIcon?: NavIco
   const chrome = usePageChrome();
   const scope = page.scope;
   const ready = page.phase === 'ready' && (page.object?.kind !== 'draft' || Boolean(chrome) && !chrome?.titlePending);
-  const title = page.object?.kind === 'template' ? '流程设计' : ['requirement','draft'].includes(page.object?.kind||'') ? '需求管理' : page.title;
+  const title = page.object?.kind === 'template' ? '流程设计' : ['requirement','draft'].includes(page.object?.kind||'') ? '项目工作区' : page.title;
   const { session } = useSession();
   const { openLogin } = useUiActions();
   const [width, setWidth] = useState<number | null>(null);

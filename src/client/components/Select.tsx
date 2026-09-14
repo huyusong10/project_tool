@@ -50,7 +50,9 @@ export function Select({children,className='',...props}:SelectHTMLAttributes<HTM
   return <span className={'select-field '+className} data-preserve-edit>
     <select {...props} id={undefined} aria-label="内部表单值" aria-labelledby={undefined} ref={native} hidden tabIndex={-1} aria-hidden="true" onInvalid={event=>{event.preventDefault();setInvalid(true);trigger.current?.focus();props.onInvalid?.(event);}}>{children}</select>
     <button ref={trigger} id={props.id} type="button" className="select-trigger" role="combobox" aria-label={label} aria-expanded={open} aria-haspopup="listbox" aria-controls={open?listId:undefined} aria-required={props.required} aria-invalid={invalid||undefined} disabled={props.disabled}
-      onClick={()=>{if(open)close();else{setActive(Math.max(0,options.findIndex(o=>o.value===value)));setOpen(true);}}}
+      // Commit after the click: clearing another field's validation can move this trigger between mouse-down and mouse-up.
+      onMouseDown={event=>event.preventDefault()}
+      onClick={()=>{if(open)close();else{if(runtime?.interaction?.operation?.kind==='field')runtime.commitFields(false);setActive(Math.max(0,options.findIndex(o=>o.value===value)));setOpen(true);}}}
       onKeyDown={event=>{if(open){keyDown(event);return;}if(['ArrowDown','ArrowUp','Enter',' '].includes(event.key)){event.preventDefault();setActive(Math.max(0,options.findIndex(o=>o.value===value)));setOpen(true);}}}>
       <span>{selected?.label||value||'请选择'}</span><ChevronDown size={15}/>
     </button>

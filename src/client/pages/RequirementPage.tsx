@@ -479,6 +479,6 @@ function DraftRequirementPage({projectId}:{projectId:string}){
  const [item,setItem]=useState<PathRequirementContext|null|undefined>(undefined);
  useEffect(()=>{let cancelled=false;void readDraftRecord<{values:DependencyChanges[];index:number}>('pm-graph-draft:'+(session.accountId||'guest')+':'+projectId).then(h=>{const c=h?.values[h.index].entities?.find(c=>c.id===id&&c.entity==='requirement'&&c.op==='create');if(!cancelled)setItem(c?{id,projectId,title:c.data.title||'新需求',ownerId:c.data.ownerId||null,workItems:[],status:'not_started'}:null);}).catch(()=>{if(!cancelled)setItem(null);});return()=>{cancelled=true;};},[id,projectId,session.accountId]);
  if(item===undefined)return <LoadingState label="正在恢复需求草稿…"/>;
- if(!item)return <><PageHeader title="本机需求草稿不存在" onBack={()=>navigate('/?view=features')} backLabel="返回项目交付"/><EmptyState title="本机需求草稿不存在" detail="请返回项目交付检查草稿。"/></>;
+ if(!item)return <><PageHeader title="本机需求草稿不存在" onBack={()=>navigate('/?view=features')} backLabel="返回项目范围"/><EmptyState title="本机需求草稿不存在" detail="请返回项目范围检查草稿。"/></>;
  return <Navigate to={'/paths?'+new URLSearchParams({view:'requirement',requirementId:id,draftProject:projectId,root:'project'})} replace/>;
 }

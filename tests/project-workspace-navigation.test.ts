@@ -12,9 +12,12 @@ it('任务切换携带对象，图形筛选不在进展中生效；保留自己�
 });
 it('旧进展的默认进行中过滤不迁移，明确选择和旧链接条件可见',()=>{
   expect(progressEntryParams('a','p',new URLSearchParams()).size).toBe(0);
+  sessionStorage.setItem('pm-path-view:a:p:dashboard-gantt:status','"completed"');
+  expect(progressEntryParams('a','p',new URLSearchParams()).get('progressStatus')).toBe('completed');
   sessionStorage.setItem('pm-path-view:a:p:dashboard-gantt:status-v2','"completed"');
   expect(progressEntryParams('a','p',new URLSearchParams()).get('progressStatus')).toBe('completed');
   expect(progressEntryParams('a','p',new URLSearchParams('status=in_progress&risk=high')).toString()).toBe('progressStatus=in_progress&progressRisk=high');
+  sessionStorage.setItem('pm-path-view:a:p:dashboard-gantt:status-v2','""');expect(progressEntryParams('a','p',new URLSearchParams()).has('progressStatus')).toBe(false);
 });
 it('分析页返回原 Phase 范围；账号隔离，不修改未知提交原文',()=>{
   sessionStorage.setItem('pm-graph-draft:a:p:submission','{"original":"unchanged"}');rememberProjectTask('a','p','/execution','?featureId=f&phaseId=p1');

@@ -21,6 +21,9 @@ export function progressEntryParams(account:string,project:string,current:URLSea
     const prefix='pm-path-view:'+account+':'+project+':dashboard-gantt:';
     const fields:Record<string,string>={search:'q','status-v2':'progressStatus',risk:'progressRisk',personId:'progressPerson',feature:'featureId',schedule:'progressSchedule','dashboard-scope':'progressScope'};
     for(const [old,name] of Object.entries(fields)){const value=JSON.parse(sessionStorage.getItem(prefix+old)||'null');if(typeof value==='string'&&value)next.set(name,value);}
+    for(const [old,name] of Object.entries({status:'progressStatus',group:'featureId'}))if(!next.has(name)&&sessionStorage.getItem(prefix+(old==='status'?'status-v2':'feature'))===null){
+      const value=JSON.parse(sessionStorage.getItem(prefix+old)||'null');if(typeof value==='string'&&value)next.set(name,value);
+    }
   }catch{/* Invalid view preferences never alter submitted requests. */}
   return next;
 }
@@ -32,12 +35,13 @@ export function projectTaskUrl(account:string,project:string,task:ProjectTask,cu
   let saved='';try{saved=sessionStorage.getItem(key(account,project,task))||'';}catch{/* Use the explicit context. */}
   const target=new URL(saved|| (task==='scope'?'/?view=features&mode=graph':'/execution'),'http://workspace.local');
   if(current){
-    for(const field of ['view','featureId','phaseId','requirementId','pathNode','pathEdge','q']){
+    for(const field of ['view','featureId','phaseId','requirementId','pathNode','pathEdge','pathInspector','q']){
       target.searchParams.delete(field);if(current.has(field))target.searchParams.set(field,current.get(field)!);
     }
     const node=current.get('pathNode');if(node?.startsWith('feature:'))target.searchParams.set('featureId',node.slice(8));
     if(task==='scope'){
       target.pathname='/';
+      if(node?.startsWith('feature:')&&!current.has('requirementId'))target.searchParams.set('view','features');
       if(current.get('requirementId'))target.searchParams.set('view','requirement');
       if(node?.startsWith('phase:')){target.searchParams.set('phaseId',node.slice(6));target.searchParams.delete('pathNode');}
       if(current.get('requirementId')||node)target.searchParams.delete('intake');

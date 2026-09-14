@@ -25,13 +25,13 @@ test('公共工具栏覆盖列表、详情、工作区，视图切换后返回�
   const f=await phaseFixture(page);await page.goto('/?view=features&mode=table');await expect(page.locator('.delivery-table')).toContainText('资产管理');await geometry(page);
   await expect(bar(page).getByLabel('返回上一画布',{exact:true})).toHaveCount(0);
   await page.locator('.delivery-table').getByRole('button',{name:'资产管理',exact:true}).dblclick();await expect(page).toHaveURL(/view=feature/);
-  await bar(page).getByRole('button',{name:'关系图',exact:true}).click();await expect(page.locator('[data-layout-ready=true]')).toBeVisible();await geometry(page);
-  await bar(page).getByRole('button',{name:'表格',exact:true}).click();await page.locator('.delivery-table').getByRole('button',{name:f.testing.title,exact:true}).dblclick();await expect(page).toHaveURL(/view=requirement/);await geometry(page);
-  await bar(page).getByRole('button',{name:'关系图',exact:true}).click();await bar(page).getByLabel('返回上一画布',{exact:true}).click();await expect(page).toHaveURL(/view=feature/);await expect(page).toHaveURL(/mode=table/);
+  await page.getByRole('group',{name:'范围表达'}).getByRole('button',{name:'关系图',exact:true}).click();await expect(page.locator('[data-layout-ready=true]')).toBeVisible();await geometry(page);
+  await page.getByRole('group',{name:'范围表达'}).getByRole('button',{name:'清单',exact:true}).click();await page.locator('.delivery-table').getByRole('button',{name:f.testing.title,exact:true}).dblclick();await expect(page).toHaveURL(/view=requirement/);await geometry(page);
+  await page.getByRole('group',{name:'范围表达'}).getByRole('button',{name:'关系图',exact:true}).click();await bar(page).getByLabel('返回上一画布',{exact:true}).click();await expect(page).toHaveURL(/view=feature/);await expect(page).toHaveURL(/mode=table/);
   await bar(page).getByLabel('返回上一画布',{exact:true}).click();await expect(page).toHaveURL(/view=features/);
-  await page.getByRole('link',{name:'需求管理',exact:true}).click();await expect(bar(page).getByRole('tab',{name:'导入预览',exact:true})).toBeVisible();await geometry(page);
+  await page.goto('/requirements');await expect(page.getByRole('tab',{name:'导入预览',exact:true})).toBeVisible();await geometry(page);
   await page.getByPlaceholder('搜索需求或负责人').fill('资产导入');await expect(page).toHaveURL(/q=/);const requirementsUrl=page.url();
-  await page.locator('main').getByRole('link',{name:f.testing.title,exact:true}).click();await expect(page.locator('.requirement-overview')).toBeVisible();await expect(page.locator('h1')).toHaveText('需求管理');await expect(bar(page)).toContainText(f.testing.title);await geometry(page);
+  await page.locator('main').getByRole('link',{name:f.testing.title,exact:true}).click();await expect(page.locator('.object-facts')).toBeVisible();await expect(page.locator('h1')).toHaveText('项目工作区');await expect(bar(page)).toContainText(f.testing.title);await geometry(page);
   await page.setViewportSize({width:390,height:844});await geometry(page);await page.screenshot({path:testInfo.outputPath('toolbar-detail-narrow.png')});
   await bar(page).getByRole('button',{name:'返回',exact:true}).click();await expect(page).toHaveURL(requirementsUrl);
   await page.getByRole('link',{name:'人员矩阵',exact:true}).click();await expect(bar(page).getByRole('button',{name:'人力分析',exact:true})).toBeVisible();await geometry(page);
@@ -43,8 +43,8 @@ test('工具栏长名称、加载失败与直接链接保留父级返回',async(
   await page.route('**/api/requirements/'+f.testing.id,route=>route.fulfill({json:{...data,title:name}}));
   await page.goto('/requirements/'+f.testing.id);await expect(bar(page)).toContainText(name);await geometry(page);
   for(const viewport of [testInfo.project.use.viewport!,{width:390,height:844}]){await page.setViewportSize(viewport);await geometry(page);await page.screenshot({path:testInfo.outputPath('toolbar-long-'+viewport.width+'.png')});}
-  await bar(page).getByRole('button',{name:'需求列表',exact:true}).click();await expect(page).toHaveURL(/\/requirements$/);
-  await page.route('**/api/requirements/missing',route=>route.fulfill({status:404,json:{error:'需求不存在'}}));await page.goto('/requirements/missing');await expect(page.getByText('需求不存在',{exact:true})).toBeVisible();await geometry(page);await expect(bar(page).getByRole('button',{name:'返回需求管理',exact:true})).toBeVisible();
+  await bar(page).getByRole('button',{name:'范围清单',exact:true}).click();await expect(page).toHaveURL(/intake=1/);
+  await page.route('**/api/requirements/missing',route=>route.fulfill({status:404,json:{error:'需求不存在'}}));await page.goto('/requirements/missing');await expect(page.getByText('需求不存在',{exact:true})).toBeVisible();await geometry(page);await expect(bar(page).getByRole('button',{name:'返回范围清单',exact:true})).toBeVisible();
 });
 test('流程编辑在窄屏仍直接提供保存和返回',async({page},testInfo)=>{
   await phaseFixture(page);await page.goto('/templates');await expect(bar(page).getByRole('button',{name:'新建流程',exact:true})).toBeVisible();await headerAction(page,'新建流程');
@@ -80,7 +80,7 @@ test('特性下钻、视图与编辑状态变化时，返回位和常用按钮�
     const requirementButton=page.locator('.delivery-table').getByRole('button',{name:f.testing.title,exact:true});
     if(viewport.width<640){await requirementButton.click();await page.locator('.delivery-inspector-content').getByRole('button',{name:'进入工作项',exact:true}).click();}else await requirementButton.dblclick();
     await expect(page).toHaveURL(/view=requirement/);await expect(page.locator('.delivery-table')).toContainText('测试');await closeNarrowDetail();await geometry(page);await expect.poll(()=>toolbarAnchors(page)).toEqual(baseline);
-    await bar(page).getByRole('button',{name:'关系图',exact:true}).click();await expect(page.locator('[data-layout-ready=true]')).toBeVisible();await geometry(page);await expect.poll(()=>toolbarAnchors(page)).toEqual(baseline);
+    await page.getByRole('group',{name:'范围表达'}).getByRole('button',{name:'关系图',exact:true}).click();await expect(page.locator('[data-layout-ready=true]')).toBeVisible();await geometry(page);await expect.poll(()=>toolbarAnchors(page)).toEqual(baseline);
     const edit=bar(page).getByLabel('编辑画布',{exact:true});if(await edit.isVisible())await edit.click();await expect(bar(page).getByLabel('保存修改',{exact:true})).toBeVisible();await geometry(page);await expect.poll(()=>toolbarAnchors(page)).toEqual(baseline);
     await page.screenshot({path:testInfo.outputPath('stable-edit-'+viewport.width+'.png'),animations:'disabled'});
     await bar(page).getByLabel('返回上一画布',{exact:true}).click();await expect(page).toHaveURL(/view=feature(?:&|$)/);await closeNarrowDetail();await expect.poll(()=>toolbarAnchors(page)).toEqual(baseline);
@@ -100,7 +100,7 @@ test('窄屏图形编辑和加载期间工具栏不挤压或遮挡画布',async(
   let release!:()=>void;const hold=new Promise<void>(resolve=>{release=resolve;});
   await page.route('**/api/requirements/'+f.testing.id,async route=>{await hold;await route.continue();});
   await page.goto('/requirements/'+f.testing.id);await expect(page.locator('.toolbar-location-placeholder')).toBeVisible();await geometry(page);
-  const before=await bar(page).boundingBox();release();await expect(page.locator('.requirement-overview')).toBeVisible();await geometry(page);expect(await bar(page).boundingBox()).toEqual(before);
+  const before=await bar(page).boundingBox();release();await expect(page.locator('.object-facts')).toBeVisible();await geometry(page);expect(await bar(page).boundingBox()).toEqual(before);
 });
 
 test.describe('触屏工具栏',()=>{
@@ -109,7 +109,7 @@ test.describe('触屏工具栏',()=>{
     const f=await phaseFixture(page);await page.goto('/?'+new URLSearchParams({view:'requirement',mode:'graph',featureId:f.feature.id,requirementId:f.testing.id}));
     await expect(page.locator('[data-layout-ready=true]')).toBeVisible();await bar(page).getByLabel('编辑画布',{exact:true}).click();await expect(bar(page).getByLabel('保存修改',{exact:true})).toBeVisible();await geometry(page);
     expect((await bar(page).boundingBox())!.height).toBe(112);
-    for(const name of ['保存修改','撤销','重做','更多操作','返回上一画布']){const box=(await bar(page).getByLabel(name,{exact:true}).boundingBox())!;expect(box.width).toBeGreaterThanOrEqual(44);expect(box.height).toBeGreaterThanOrEqual(44);}
-    await page.screenshot({path:testInfo.outputPath('toolbar-touch.png')});
+    for(const name of ['保存修改','更多操作','返回上一画布']){const box=(await bar(page).getByLabel(name,{exact:true}).boundingBox())!;expect(box.width).toBeGreaterThanOrEqual(44);expect(box.height).toBeGreaterThanOrEqual(44);}
+    await bar(page).getByLabel('更多操作',{exact:true}).tap();await expect(page.getByRole('menu').getByRole('button',{name:'撤销修改',exact:true})).toBeVisible();await expect(page.getByRole('menu').getByRole('button',{name:'重做修改',exact:true})).toBeVisible();await page.keyboard.press('Escape');await page.screenshot({path:testInfo.outputPath('toolbar-touch.png')});
   });
 });

@@ -148,6 +148,8 @@ it('REST、MCP和延期筛选按工作完成日期计算，等待或确认验收
     expect(dashboard.overview?.counts.delayed).toBe(0);
     const mcpDashboard = await call<import('../src/client/types').Dashboard>('dashboard_summary', { projectId: f.projectId });
     expect(mcpDashboard.overview).toEqual(dashboard.overview);
+    expect(mcpDashboard.featureOverview).toEqual(dashboard.featureOverview);
+    expect(mcpDashboard.featureOverview?.asOfDate).toBe(dashboard.asOfDate);
     expect(dashboard.requirements.find(r => r.id === f.ids.a)).toMatchObject({ finishVariance: 0, delayed: false });
   }
 });
