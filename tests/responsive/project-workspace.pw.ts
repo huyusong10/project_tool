@@ -45,6 +45,7 @@ test('范围图与分层甘特共用定位和详情，工具栏及主画布位�
   await expect(gantt.locator('[data-row-id="'+f.testing.id+'"]')).toHaveCount(0);
   const phase=gantt.locator('[data-row-id="phase:'+f.phases[1].id+'"]');await phase.getByRole('button',{name:'展开 Phase 2',exact:true}).click();
   const requirement=gantt.locator('[data-row-id="'+f.testing.id+'"]');await expect(requirement).toContainText('测试中 · 70%');
+  expect(await requirement.locator('.unified-gantt-actual,.unified-gantt-label').evaluateAll(nodes=>nodes.length>0&&nodes.every(node=>{const box=node.getBoundingClientRect(),row=node.closest('.workspace-row-track')!.getBoundingClientRect();return box.height>=10&&box.top>=row.top&&box.bottom<=row.bottom;}))).toBe(true);
   const bounds=await gantt.boundingBox();await requirement.locator('.workspace-row-title').click();
   await expect(page.getByRole('complementary',{name:'对象详情'})).toContainText('安排与执行');
   expect(await gantt.boundingBox()).toEqual(bounds);
