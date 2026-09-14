@@ -1,5 +1,7 @@
 # 项目交付工作区验证记录
 
+后续界面与归属优化见[项目交付界面优化验证记录](delivery-workspace-refinement.md)。
+
 日期：2026-09-14。基线：`ed89482`。worktree：`D:\tools\project-manage-phases`，分支：`codex/feature-phases`。
 
 ## 实现
