@@ -74,9 +74,10 @@ const LogsPage = lazyPage(() => import("./pages/LogsPage").then((module) => ({ d
  */
 export const appRoutes: AppRoute[] = [
   {
-    path: "/", scope: "project", access: "all", component: DashboardPage,
-    nav: [{ group: "工作台", label: "项目进展", icon: GanttChartSquare, end: true }],
+    path: "/", scope: "project", access: "all", component: FeaturesPage,
+    nav: [{ group: "工作台", label: "特性总览", icon: BriefcaseBusiness, end: true }],
   },
+  { path: "/execution", scope:"project", access:"all", component:DashboardPage, nav:[{group:"工作台",label:"执行进展",icon:GanttChartSquare}] },
   { path: "/paths", scope: "project", access: "all", component: PathsPage, nav: [{ group: "工作台", label: "路径分析", icon: Network }] },
   {
     path: "/analytics", scope: "project", access: "all", component: AnalyticsPage,
@@ -92,7 +93,7 @@ export const appRoutes: AppRoute[] = [
   },
   {
     path: "/features", scope: "project", access: "all", component: FeaturesPage,
-    nav: [{group:"项目空间",label:"特性规划",icon:BriefcaseBusiness}],
+
   },
   {
     path: "/requirements", scope: "project", access: "all", component: RequirementsPage,

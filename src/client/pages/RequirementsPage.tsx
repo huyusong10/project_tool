@@ -1,3 +1,4 @@
+import {ExecutionStageBadge,executionStageOf} from '../components/ExecutionStageBadge';
 import {useAppNavigate} from '../use-app-navigation';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
@@ -17,7 +18,6 @@ import type { Requirement } from "../types";
 import { isTerminalRequirementStatus } from "../../shared/domain";
 import { matchesSearch, searchScore } from "../../shared/search";
 import { EmptyState } from "../components/Feedback";
-import { StatusBadge } from "../components/Badge";
 import { PageHeader } from "../components/PageHeader";
 import { RequirementForm,persistRequirementCreateRecheck,readRequirementCreateRecheck,type RequirementCreateRecheck } from "../components/ManagementForms";
 import { canManageProject } from "../permissions";
@@ -77,8 +77,8 @@ export function RequirementsPage() {
   const setOrganizationRecheck=(value:OrganizationBatchRecheck|null)=>{persistOrganizationBatchRecheck(recheckAccountKey,selectedProjectId,value);setOrganizationRecheckState(value);};
   const setCreateRecheck=(value:RequirementCreateRecheck|null)=>{persistRequirementCreateRecheck(recheckAccountKey,selectedProjectId,value);setCreateRecheckState(value);};
   useEffect(()=>{const organizationPending=readOrganizationBatchRecheck(recheckAccountKey,selectedProjectId);setOrganizationRecheckState(organizationPending);setCreateRecheckState(readRequirementCreateRecheck(recheckAccountKey,selectedProjectId));setSelectedIds(organizationPending?.requirementIds||[]);setCreating(false);setOrganizing(false);},[recheckAccountKey,selectedProjectId]);
-  const [params, setParams] = usePageSearchParams(['q', 'status', 'sort', 'direction','deliveryScope','group','grouped','intakeView']);
-  const group=params.get('group')||'',grouped=params.get('grouped')==='1',intakeView=params.get('intakeView')||'requirements';
+  const [params, setParams] = usePageSearchParams(['q', 'status', 'sort', 'direction','deliveryScope','feature','grouped','intakeView','phase','stage']);
+  const feature=params.get('feature')||'',grouped=params.get('grouped')==='1',intakeView=params.get('intakeView')||'requirements';
   const setView=(key:string,value:string)=>setParams(current=>{const next=new URLSearchParams(current);if(value)next.set(key,value);else next.delete(key);return next;});
   const search = params.get('q') || '';
   const status = params.has('status') ? params.get('status')! : 'current';
@@ -102,14 +102,14 @@ export function RequirementsPage() {
   const items = useMemo(() => {
     return data
       .filter((item) =>
-        matchesOrganization(item,group)&&matchesSearch([
+        matchesOrganization(item,feature)&&(!params.get('phase')||(params.get('phase')==='unassigned'?!item.phaseId:item.phaseId===params.get('phase')))&&(!params.get('stage')||executionStageOf(item).key===params.get('stage'))&&matchesSearch([
           { text: item.title, weight: 100 },
           { text: item.ownerName, weight: 40 },
         ], search) &&
         (status === "current" ? !isTerminalRequirementStatus(item.status) : !status || item.status === status),
       )
       .sort((left, right) => {
-        if(grouped&&left.groupId!==right.groupId){const groups=intake.data?.groups||[];return (groups.findIndex(g=>g.id===left.groupId)+1||9999)-(groups.findIndex(g=>g.id===right.groupId)+1||9999);}
+        if(grouped&&left.featureId!==right.featureId){const features=intake.data?.features||[];return (features.findIndex(g=>g.id===left.featureId)+1||9999)-(features.findIndex(g=>g.id===right.featureId)+1||9999);}
         if (search.trim()) {
           const relevance = searchScore([
             { text: right.title, weight: 100 },
@@ -132,10 +132,10 @@ export function RequirementsPage() {
         if (priorityResult !== 0) return priorityResult;
         return left.title.localeCompare(right.title, "zh-CN");
       });
-  }, [data, search, sortDirection, sortKey, status,group,grouped,intake.data?.groups]);
-  const filterKey = JSON.stringify([search, status, group, grouped, sortKey, sortDirection]);
+  }, [data, search, sortDirection, sortKey, status,feature,grouped,intake.data?.features,params]);
+  const filterKey = JSON.stringify([search, status, feature, grouped, sortKey, sortDirection,params.get('phase'),params.get('stage')]);
   const pagination = useListPagination({ items, filterKey, ready: Boolean(loadedRequirements), loading: isFetching });
-  const selectionFilter = JSON.stringify([search, status, group]);
+  const selectionFilter = JSON.stringify([search, status, feature]);
   const previousSelectionFilter = useRef(selectionFilter);
   useEffect(() => { if (previousSelectionFilter.current !== selectionFilter && !organizationRecheck) setSelectedIds([]); previousSelectionFilter.current = selectionFilter; }, [selectionFilter, organizationRecheck]);
   const changeSort = (nextKey: RequirementSortKey) => {
@@ -168,8 +168,8 @@ export function RequirementsPage() {
       <div className="intake-tabs" role="tablist" aria-label="需求视图">{[["requirements","需求"],...(canManage?[["import","导入预览"]]:[])].map(([id,label])=><button key={id} role="tab" aria-selected={intakeView===id} className="ghost-button" onClick={()=>setView("intakeView",id)}>{label}</button>)}</div>
       {intakeView==="import"&&canManage?<RequirementImport key={session.accountId+":"+selectedProjectId} projectId={selectedProjectId}/>:<>
         <div className="filter-bar">
-        <OrganizationFilters items={data} group={group} onGroup={v=>setView("group",v)}/>
-        <label className="requirement-group-toggle"><input type="checkbox" checked={grouped} onChange={e=>setView("grouped",e.target.checked?"1":"")}/><span>按特性查看</span></label>
+        <OrganizationFilters items={data} feature={feature} onFeature={v=>setView("feature",v)}/>
+        <label className="requirement-feature-toggle"><input type="checkbox" checked={grouped} onChange={e=>setView("grouped",e.target.checked?"1":"")}/><span>按特性查看</span></label>
         {canManage&&<button className="ghost-button" onClick={()=>navigate("/features")}>特性规划</button>}
         {canManage&&selectedIds.length>0&&<><span>已选择 {selectedIds.length} 项</span><button className="ghost-button" disabled={Boolean(organizationRecheck)} onClick={()=>{if(!organizationRecheck)setOrganizing(true);}}>整理所选需求</button></>}
         <SearchInput value={search} onChange={setSearch} placeholder="搜索需求或负责人" />
@@ -190,6 +190,7 @@ export function RequirementsPage() {
           · {items.length}/{data.length}项
         </span>
       </div>
+      {(params.get('phase')||params.get('stage'))&&<div className="warning-banner">正在查看指定 Phase 或执行阶段的需求。<button className="ghost-button" onClick={()=>setParams(old=>{const next=new URLSearchParams(old);next.delete('phase');next.delete('stage');return next;})}>清除 Phase 与阶段筛选</button></div>}
       {organizationRecheck&&<div role="alert" className="warning-banner">整理结果待核对，批量整理暂不可用。<button type="button" className="ghost-button" onClick={()=>setOrganizing(true)}>核对整理结果</button></div>}
       {createRecheck&&<div role="alert" className="warning-banner">需求创建结果待核对，新建入口暂不可用。<button type="button" className="ghost-button" onClick={()=>setCreating(true)}>核对需求创建</button></div>}
       {error && loadedRequirements && <div className="warning-banner">需求列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
@@ -200,7 +201,7 @@ export function RequirementsPage() {
             <tr>
               <th aria-sort={sortKey === "title" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("需求", "title")}</th>
               <th aria-sort={sortKey === "status" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("状态", "status")}</th>
-              <th aria-sort={sortKey === "progress" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("进度", "progress")}</th>
+              <th aria-sort={sortKey === "progress" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>Phase</th>
               <th aria-sort={sortKey === "risk" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("风险", "risk")}</th>
               <th aria-sort={sortKey === "plannedEnd" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("计划完成", "plannedEnd")}</th>
               <th aria-sort={sortKey === "variance" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("计划偏差", "variance")}</th>
@@ -209,21 +210,16 @@ export function RequirementsPage() {
           <tbody>
             {pagination.items.map((item,index) => {
               const variance = requirementVarianceDisplay(item);
-              return <Fragment key={item.id}>{grouped&&(index===0||pagination.items[index-1].groupId!==item.groupId)&&<tr className="intake-group-heading"><td colSpan={6}>{item.groupName||"未归属"} · {items.filter(r=>r.groupId===item.groupId).length} 项</td></tr>}<tr
+              return <Fragment key={item.id}>{grouped&&(index===0||pagination.items[index-1].featureId!==item.featureId)&&<tr className="intake-feature-heading"><td colSpan={6}>{item.featureName||"未关联特性"} · {items.filter(r=>r.featureId===item.featureId).length} 项</td></tr>}<tr
                 key={item.id}
                 onClick={() => navigate(`/requirements/${item.id}`)}
               >
-                <td><DataCell density="compact" primary={<strong>{canManage&&<input type="checkbox" style={{marginRight:8,verticalAlign:'middle'}} aria-label={'选择需求 '+item.title} checked={selectedIds.includes(item.id)} disabled={Boolean(organizationRecheck)} onClick={e=>e.stopPropagation()} onChange={e=>{if(!organizationRecheck)setSelectedIds(ids=>e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id));}}/>}<Link to={`/requirements/${item.id}`} style={{ color: 'inherit', textDecoration: 'none' }} onClick={event => event.stopPropagation()}>{item.title}</Link></strong>} secondary={`${item.groupName?item.groupName+" · ":""}${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
+                <td><DataCell density="compact" primary={<strong>{canManage&&<input type="checkbox" style={{marginRight:8,verticalAlign:'middle'}} aria-label={'选择需求 '+item.title} checked={selectedIds.includes(item.id)} disabled={Boolean(organizationRecheck)} onClick={e=>e.stopPropagation()} onChange={e=>{if(!organizationRecheck)setSelectedIds(ids=>e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id));}}/>}<Link to={`/requirements/${item.id}`} style={{ color: 'inherit', textDecoration: 'none' }} onClick={event => event.stopPropagation()}>{item.title}</Link></strong>} secondary={`${item.featureName?item.featureName+" · ":""}${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
                 <td>
-                  <DataCell density="compact" primary={<StatusBadge kind="requirement" value={item.status} />} />
+                  <DataCell density="compact" primary={<ExecutionStageBadge requirement={item} />} />
                 </td>
                 <td>
-                  <DataCell density="compact" primary={<div className="table-progress">
-                    <span>
-                      <i style={{ width: `${item.progress}%` }} />
-                    </span>
-                    <b>{item.progress}%</b>
-                  </div>} />
+                  <DataCell density="compact" primary={item.phaseName||"未安排 Phase"} />
                 </td>
                 <td>
                   <DataCell density="compact" primary={<span className={`risk-badge ${requirementRiskDisplay(item).className}`}>{requirementRiskDisplay(item).label}</span>} />

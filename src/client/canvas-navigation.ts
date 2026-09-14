@@ -8,11 +8,11 @@ export function canvasView(params:URLSearchParams):CanvasView {
   if(['features','feature','project','requirement'].includes(view||''))return view as CanvasView;
   return [...params.keys()].some(k=>k.startsWith('path'))?'project':'features';
 }
-export function canvasScope(params:URLSearchParams){const view=canvasView(params);return view==='requirement'?'requirement:'+params.get('requirementId'):view==='feature'?'feature:'+(params.get('featureId')||'ungrouped'):view==='project'?'global':'features';}
+export function canvasScope(params:URLSearchParams){const view=canvasView(params);return view==='requirement'?'requirement:'+params.get('requirementId'):view==='feature'?'feature:'+(params.get('featureId')||'unassigned'):view==='project'?'global':'features';}
 export function canvasRoot(params:URLSearchParams){const view=canvasView(params);return view==='features'||view==='feature'||view==='requirement'&&params.get('root')==='features'?'features':'project';}
 export function requirementCanvasUrl(id:string,params:URLSearchParams,data?:PathAnalysis,workItemId?:string|null){
   const next=new URLSearchParams({view:'requirement',requirementId:id,root:canvasRoot(params)});
-  if(next.get('root')==='features')next.set('featureId',data?.requirements.find(r=>r.id===id)?.groupId||data?.featureContext?.requirements.find(r=>r.id===id)?.groupId||'ungrouped');
+  if(next.get('root')==='features')next.set('featureId',data?.requirements.find(r=>r.id===id)?.featureId||data?.featureContext?.requirements.find(r=>r.id===id)?.featureId||'unassigned');
   if(workItemId){next.set('pathNode',workItemId);next.set('pathInspector','open');}
   return '/paths?'+next;
 }

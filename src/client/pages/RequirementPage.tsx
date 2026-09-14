@@ -136,7 +136,7 @@ function SavedRequirementPage() {
   const scrollKey='pm-detail-scroll:'+(session.accountId||'guest')+':'+(requirement?.projectId||'')+':'+id,workTarget=searchParams.get('workItemId');
   const openPathView = () => {
     try{sessionStorage.setItem(scrollKey,JSON.stringify({window:window.scrollY,main:document.querySelector('main')?.scrollTop||0}));}catch{/* Navigation remains available. */}
-    const params=new URLSearchParams({view:'requirement',requirementId:id,root:'features',featureId:requirement?.groupId||'ungrouped'});if(workTarget){params.set('pathNode',workTarget);params.set('pathInspector','open');}navigate('/paths?'+params);
+    const params=new URLSearchParams({view:'requirement',requirementId:id,root:'features',featureId:requirement?.featureId||'unassigned'});if(workTarget){params.set('pathNode',workTarget);params.set('pathInspector','open');}navigate('/paths?'+params);
   };
   useEffect(()=>{
     if(pathView||workTarget||isLoading)return;
@@ -297,7 +297,7 @@ function SavedRequirementPage() {
     const params=new URLSearchParams(searchParams);params.set('view','requirement');params.set('requirementId',requirement.id);
     const from=typeof pathLocation.state?.featureReturn==='string'?new URLSearchParams(pathLocation.state.featureReturn.split('?')[1]):null;
     params.set('root',from?.get('view')==='feature'?'features':'project');
-    if(params.get('root')==='features')params.set('featureId',requirement.groupId||'ungrouped');
+    if(params.get('root')==='features')params.set('featureId',requirement.featureId||'unassigned');
     if(params.get('workItemId'))params.set('pathNode',params.get('workItemId')!);
     return <Navigate to={'/paths?'+params} replace state={pathLocation.state}/>;
   }

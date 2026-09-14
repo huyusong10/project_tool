@@ -1,3 +1,4 @@
+import { ExecutionStageBadge, executionStageOf } from "./ExecutionStageBadge";
 import {useAppNavigate} from '../use-app-navigation';
 import {OrganizationFilters,matchesOrganization} from './RequirementIntake';
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -180,7 +181,7 @@ export function ProjectGantt({
   const navigate = useAppNavigate();
   const ganttTooltip = useGanttTooltip();
   const [viewMode, setViewMode] = useGanttView();
-  const { search, setSearch, status, setStatus, risk, setRisk, personId, setPersonId, group, setGroup,
+  const { search, setSearch, status, setStatus, risk, setRisk, personId, setPersonId, feature, setFeature,
     schedule, setSchedule, sort, setSort, scope, setScope, hasFilters, resetFilters } = filters;
   const asOfDate = asOfDateProp || requirements[0]?.asOfDate || todayIso();
   const milestoneData = useGanttMilestoneData(projectId || requirements[0]?.projectId);
@@ -225,7 +226,7 @@ export function ProjectGantt({
         || (schedule === "delayed" && requirement.delayed)
         || (schedule === "on_track" && scheduleComplete && !requirement.delayed)
         || (schedule === "unplanned" && !scheduleComplete);
-      return (!scope || matchesDashboardScope(requirement, scope, window)) && matchesOrganization(requirement,group)&&matchesKeyword
+      return (!scope || matchesDashboardScope(requirement, scope, window)) && matchesOrganization(requirement,feature)&&matchesKeyword
         && matchesRequirementFilters(requirement,{...emptyRequirementFilters(),statuses:status==='unfinished'?unfinishedStatuses:status?[status]:[]})
         && (!risk || (requirement.riskEvaluated?requirement.riskLevel:"pending")===risk)
         && (!personId || requirement.ownerId===personId || requirement.workItems.some((item) => item.assigneeIds?.includes(personId) || item.ownerId === personId))
@@ -233,7 +234,7 @@ export function ProjectGantt({
     }).sort((left, right) => {
       return compareRequirements(left, right, sort);
     });
-  }, [personId, requirements, risk, schedule, search, sort, status,group,scope,asOfDate]);
+  }, [personId, requirements, risk, schedule, search, sort, status,feature,scope,asOfDate]);
 
   const timelineValues = useMemo(() => {
     const values: Array<string | null | undefined> = [projectStart, projectEnd];
@@ -287,7 +288,7 @@ export function ProjectGantt({
       </header>
       <div className="gantt-filter-bar" aria-label="项目进展筛选" ref={filtersRef}>
         {scope && <button className="gantt-dashboard-scope" onClick={() => setScope('')} title="清除看板范围，保留其他筛选">{dashboardScopeLabels[scope]}<X size={13} /></button>}
-        <OrganizationFilters items={requirements} group={group} onGroup={setGroup}/><SearchInput className="gantt-filter-search" value={search} onChange={setSearch} placeholder="搜索需求、工作项或拼音" />
+        <OrganizationFilters items={requirements} feature={feature} onFeature={setFeature}/><SearchInput className="gantt-filter-search" value={search} onChange={setSearch} placeholder="搜索需求、工作项或拼音" />
         <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="按状态筛选">
           <option value="unfinished">未结束 · {requirements.filter(r=>!isClosedRequirement(r)).length}</option><option value="">全部状态 · {requirements.length}</option>
           {Object.entries(requirementStatusLabels).map(([value, label]) => <option value={value} key={value}>{label} · {requirements.filter(r=>r.status===value).length}</option>)}
@@ -347,7 +348,8 @@ export function ProjectGantt({
                       <button className="gantt-requirement-link" onClick={() => navigate(`/requirements/${requirement.id}`)} title={requirement.title}>
                         {requirement.title}
                       </button>
-                      {!scheduleComplete && <small className="muted">{requirement.progress > 0 ? `实际进度 ${requirement.progress}% · ` : ''}{requirementScheduleLabel(requirement)}</small>}
+                      {!scheduleComplete && <small className="muted">{requirementScheduleLabel(requirement)}</small>}
+                      <ExecutionStageBadge requirement={requirement}/>
                       <div>
                         {!isClosedRequirement(requirement) && (requirement.riskEvaluated
                           ? healthLabel && <span className={`gantt-risk-chip ${healthClass}`}>{healthLabel}</span>
@@ -371,14 +373,14 @@ export function ProjectGantt({
                     {viewMode === "split" ? <GanttDateTracks
                       plannedStart={requirement.plannedStart} plannedEnd={requirement.plannedEnd}
                       actualStart={actual.start} actualEnd={actual.end} status={requirement.status} scheduleComplete={scheduleComplete}
-                      progress={requirement.progress} dates={dates} cellWidth={cellWidth}
+                      stageLabel={executionStageOf(requirement).label + (executionStageOf(requirement).stages.length===1 ? " · " + executionStageOf(requirement).stages[0].progress+"%" : "")} stageTone={executionStageOf(requirement).tone} progress={requirement.progress} dates={dates} cellWidth={cellWidth}
                       forecast={forecasts.get(requirement.id)}
                       interactionProps={tooltipProps}
                     /> : <GanttPlanActualBars
                       plannedStart={scheduleComplete ? requirement.plannedStart : null}
                       plannedEnd={scheduleComplete ? requirement.plannedEnd : null}
                       actualStart={actual.start} actualEnd={actual.end} status={requirement.status}
-                      progress={requirement.progress} dates={dates} cellWidth={cellWidth}
+                      stageLabel={executionStageOf(requirement).label + (executionStageOf(requirement).stages.length===1 ? " · " + executionStageOf(requirement).stages[0].progress+"%" : "")} stageTone={executionStageOf(requirement).tone} progress={requirement.progress} dates={dates} cellWidth={cellWidth}
                       forecast={forecasts.get(requirement.id)}
                       progressAriaLabel={`实际进度 ${requirement.progress}%，实际执行跨度 ${actual.start || '日期未记录'} 至 ${actual.end || '日期未记录'}${!isClosedRequirement(requirement) ? '（截至统计日）' : ''}`}
                       interactionProps={tooltipProps}

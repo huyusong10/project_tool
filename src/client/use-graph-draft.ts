@@ -108,7 +108,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
   const generation = useRef(0), latest = useRef<DependencyChangePreview | null>(null);
   const denied=useRef(()=>{});denied.current=()=>{history.reset();onSaved();};
   const changes = history.value, count = changes.add.length + changes.remove.length + changes.estimates.length+(changes.entities?.length||0)+(changes.layouts?.length||0)+(changes.featureRelations?.length||0)+Number(!!changes.commitment);
-  const featureVersion=(value:PathAnalysis|undefined)=>JSON.stringify([value?.featureContext?.relations,value?.featureContext?.overview.groups.map(g=>[g.id,g.archivedAt])]);
+  const featureVersion=(value:PathAnalysis|undefined)=>JSON.stringify([value?.featureContext?.relations,value?.featureContext?.overview.features.map(g=>[g.id,g.archivedAt])]);
   const resolutionVersion=JSON.stringify([data.revision,data.layouts?.map(l=>[l.scope,l.direction,l.version]),featureVersion(data)]);
   const [resolutionState,setResolutionState]=useState<{version:string;values:Record<string,'draft'|'server'>}>({version:resolutionVersion,values:{}});
   const resolutions=resolutionState.version===resolutionVersion?resolutionState.values:{};

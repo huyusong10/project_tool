@@ -1,3 +1,4 @@
+import { migrateFeatureFields } from "../feature-storage-migration";
 import {OrganizationFields} from './RequirementIntake';
 import {isAssignablePerson} from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
@@ -13,11 +14,13 @@ import { useToast } from "./Toast";
 import { canonicalizeContent, canonicalizeLabel } from "../../shared/search";
 
 export type RequirementInfoDraft = {
-  groupId:string;
+  featureId:string;
+  phaseId:string;
+  reason?:string;
   title: string; ownerId: string; background: string; acceptanceCriteria: string; referenceUrl: string;
 };
 
-const requirementInfoFields: Array<keyof RequirementInfoDraft> = ["groupId", "title", "ownerId", "background", "acceptanceCriteria", "referenceUrl"];
+const requirementInfoFields: Array<keyof RequirementInfoDraft> = ["featureId", "phaseId", "title", "ownerId", "background", "acceptanceCriteria", "referenceUrl"];
 export type RequirementInfoRecheck = {
   baselineVersion: number;
   draft: RequirementInfoDraft;
@@ -33,7 +36,8 @@ export function readRequirementInfoRecheck(accountKey: string, requirementId: st
   try {
     const raw = sessionStorage.getItem(requirementInfoRecheckKey(accountKey, requirementId));
     if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<RequirementInfoRecheck>;
+    const value = migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementInfoRecheck>;
+    if(value.draft)value.draft.phaseId??="";
     const draft = value.draft as Partial<RequirementInfoDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
       || !draft || requirementInfoFields.some((field) => typeof draft[field] !== "string")
@@ -58,7 +62,7 @@ export function persistRequirementInfoRecheck(accountKey: string, requirementId:
 
 function requirementInfoDraft(requirement: Requirement): RequirementInfoDraft {
   return {
-    groupId:requirement.groupId||'',
+    featureId:requirement.featureId||'',phaseId:requirement.phaseId||'',
     title: requirement.title, ownerId: requirement.ownerId || "",
     background: requirement.background || "", acceptanceCriteria: requirement.acceptanceCriteria || "",
     referenceUrl: requirement.referenceUrl || "",
@@ -132,7 +136,7 @@ export function RequirementInfoForm({
       const mergedDraft = Object.fromEntries(Object.entries(latestDraft).map(([field, value]) => [
         field, dirtyFields.current.has(field as keyof RequirementInfoDraft) ? draft[field as keyof RequirementInfoDraft] : value,
       ])) as RequirementInfoDraft;
-      setDraft(mergedDraft);
+      setDraft({...mergedDraft,reason:draft.reason});
       if (unknownVersion.current !== null) {
         const requiresReview = latest.version !== unknownVersion.current;
         setReviewRequired(requiresReview);
@@ -197,14 +201,14 @@ export function RequirementInfoForm({
     if (submitting.current || blocked) return;
     submitting.current = true;
     mutation.mutate({
-      ...draft,groupId:draft.groupId||null,
+      ...draft,featureId:draft.featureId||null,phaseId:draft.phaseId||null,
       ...(draft.ownerId !== (baseRequirement.ownerId || "") ? { ownerId: draft.ownerId || null } : { ownerId: undefined }),
       expectedVersion: baseRequirement.version,
     });
   }}>
     <fieldset className="form-grid form-fieldset" disabled={pending}>
     <FormField label="需求标题" full><input name="title" value={draft.title} onChange={(event) => change("title", event.target.value)} required autoFocus /></FormField>
-    <OrganizationFields projectId={requirement.projectId} groupId={draft.groupId} onChange={change}/>
+    <OrganizationFields projectId={requirement.projectId} featureId={draft.featureId} phaseId={draft.phaseId} onChange={change}/>{(draft.phaseId!==(baseRequirement.phaseId||'')||draft.featureId!==(baseRequirement.featureId||''))&&<FormField label="归属调整原因" full><textarea maxLength={2000} value={draft.reason||""} onChange={e=>setDraft({...draft,reason:e.target.value})}/></FormField>}
     <p className="field-help">处理优先级按风险和依赖自动计算。</p>
     <FormField label="需求负责人"><select value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
       <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
@@ -245,7 +249,8 @@ export function readRequirementCorrectionRecheck(accountKey: string, requirement
   try {
     const raw = sessionStorage.getItem(requirementCorrectionRecheckKey(accountKey, requirementId));
     if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<RequirementCorrectionRecheck>;
+    const value = migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementCorrectionRecheck>;
+    if(value.draft)value.draft.phaseId??="";
     const draft = value.draft as Partial<RequirementInfoDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
       || !draft || requirementInfoFields.some((field) => typeof draft[field] !== "string")
@@ -318,7 +323,7 @@ export function RequirementCorrectionForm({
     setDraft(next);
     persistDraftIfLocked(next);
   };
-  const normalizedDraft = () => ({groupId:draft.groupId||null,
+  const normalizedDraft = () => ({featureId:draft.featureId||null,phaseId:draft.phaseId||null,
     title: canonicalizeLabel(draft.title),
     ownerId: draft.ownerId || null,
     background: canonicalizeContent(draft.background) || null,
@@ -327,7 +332,7 @@ export function RequirementCorrectionForm({
   });
   const informationChanged = (() => {
     const value = normalizedDraft();
-    return value.groupId!==(baseline.groupId||null)||value.title !== baseline.title || value.ownerId !== (baseline.ownerId || null)
+    return value.phaseId!==(baseline.phaseId||null)||value.featureId!==(baseline.featureId||null)||value.title !== baseline.title || value.ownerId !== (baseline.ownerId || null)
       || value.background !== (baseline.background || null) || value.acceptanceCriteria !== (baseline.acceptanceCriteria || null)
       || value.referenceUrl !== (baseline.referenceUrl || null);
   })();
@@ -408,7 +413,7 @@ export function RequirementCorrectionForm({
     submitting.current = true;
     mutation.mutate({
       body: {
-        ...draft,groupId:draft.groupId||null,
+        ...draft,featureId:draft.featureId||null,phaseId:draft.phaseId||null,
         ...(draft.ownerId !== (baseline.ownerId || "") ? { ownerId: draft.ownerId || null } : { ownerId: undefined }),
         expectedVersion: baseline.version,
         reason: reason.trim(),
@@ -420,7 +425,7 @@ export function RequirementCorrectionForm({
       <p className="field-help field-full">仅修正需求基本信息，不改变状态、进度、完成记录、排期或流程；系统会追加纠错记录。</p>
       <FormField label="需求标题" full><input aria-label="纠错后的需求标题" value={draft.title} onChange={(event) => change("title", event.target.value)} required autoFocus /></FormField>
 
-      <OrganizationFields projectId={requirement.projectId} groupId={draft.groupId} onChange={change}/>
+      <OrganizationFields projectId={requirement.projectId} featureId={draft.featureId} phaseId={draft.phaseId} onChange={change}/>
       <FormField label="需求负责人"><select aria-label="纠错后的需求负责人" value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
         <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
         {baseline.ownerId && !ownerOptions.some((person) => person.id === baseline.ownerId) && <option value={baseline.ownerId}>{baseline.ownerName || "历史负责人"} · 历史负责人</option>}
@@ -481,7 +486,7 @@ export function readRequirementScheduleRecheck(accountKey: string, requirementId
   try {
     const raw = sessionStorage.getItem(requirementScheduleRecheckKey(accountKey, requirementId));
     if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<RequirementScheduleRecheck>;
+    const value = migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementScheduleRecheck>;
     const draft = value.draft as Partial<RequirementScheduleDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
       || !draft || typeof draft.templateId !== "string" || !["start", "deadline"].includes(String(draft.scheduleMode))
@@ -784,7 +789,7 @@ export function readRequirementPlanRecheck(accountKey: string, requirementId: st
   try {
     const raw = sessionStorage.getItem(requirementPlanRecheckKey(accountKey, requirementId));
     if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<RequirementPlanRecheck>;
+    const value = migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementPlanRecheck>;
     const draft = value.draft as Partial<RequirementPlanDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
       || !draft || typeof draft.templateId !== "string" || typeof draft.baseStart !== "string" || typeof draft.reason !== "string"

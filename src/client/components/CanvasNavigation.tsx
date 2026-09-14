@@ -5,11 +5,11 @@ import {canvasRoot,canvasView} from '../canvas-navigation';
 import {ViewTabs} from './ViewTabs';
 import {useWorkspaceRuntime} from '../workspace-runtime';
 export function CanvasNavigation({params,data,onGo,onBack,extra}:{params:URLSearchParams;data:PathAnalysis;onGo:(url:string)=>void;onBack:()=>void;extra?:ReactNode}){
-  const runtime=useWorkspaceRuntime(),view=canvasView(params),root=canvasRoot(params),featureId=params.get('featureId')||'ungrouped';
-  const feature=data.featureContext?.overview.groups.find(g=>g.id===featureId),requirement=data.requirements.find(r=>r.id===params.get('requirementId'));
+  const runtime=useWorkspaceRuntime(),view=canvasView(params),root=canvasRoot(params),featureId=params.get('featureId')||'unassigned';
+  const feature=data.featureContext?.overview.features.find(g=>g.id===featureId),requirement=data.requirements.find(r=>r.id===params.get('requirementId'));
   const go=(url:string)=>{runtime.commitFields(false);onGo(url);};
   const trail:Array<{label:string;url?:string}>=[{label:root==='features'?'特性总览':'全部需求',url:'/paths?view='+root}];
-  if(view==='feature'||view==='requirement'&&root==='features')trail.push({label:feature?.name||(featureId==='ungrouped'?'未归属需求':'特性已失效'),url:'/paths?view=feature&featureId='+encodeURIComponent(featureId)});
+  if(view==='feature'||view==='requirement'&&root==='features')trail.push({label:feature?.name||(featureId==='unassigned'?'未关联特性需求':'特性已失效'),url:'/paths?view=feature&featureId='+encodeURIComponent(featureId)});
   if(view==='requirement')trail.push({label:requirement?.title||'需求工作项'});
   return <div className="canvas-navigation" data-workspace-zone="tools">
     <button className="ghost-button topbar-icon" title="返回上一画布" aria-label="返回上一画布" disabled={!window.history.state?.idx} onClick={()=>{runtime.commitFields(false);onBack();}}><ArrowLeft size={16}/></button>

@@ -18,7 +18,7 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges, ins
       }else if(c.op==='update')requirements=requirements.map(r=>r.id===c.id?{...r,...c.data}:r);
       else {requirements=requirements.filter(r=>r.id!==c.id);nodes=nodes.filter(n=>n.requirementId!==c.id);}
     }else {
-      if(c.op==='create'){const n=addNode(c.id,c.requirementId||null,c.entity==='milestone'?'milestone':'work',c.data.title||'未命名');Object.assign(n,c.data);n.estimate.durationDays=c.entity==='work'?(c.data.durationDays===undefined?1:c.data.durationDays):null;nodes.push(n);if(c.entity==='milestone')milestones.push({id:c.id,projectId:data.projectId,requirementId:c.requirementId||null,title:n.title,targetDate:c.data.targetDate||null,confirmationMode:c.data.confirmationMode||'auto',achievedAt:null,version:1});}
+      if(c.op==='create'){const n=addNode(c.id,c.requirementId||null,c.entity==='milestone'?'milestone':'work',c.data.title||'未命名');Object.assign(n,c.data);n.estimate.durationDays=c.entity==='work'?(c.data.durationDays===undefined?1:c.data.durationDays):null;nodes.push(n);if(c.entity==='milestone')milestones.push({id:c.id,projectId:data.projectId,requirementId:c.requirementId||null,milestoneKind:c.data.milestoneKind||'ordinary',title:n.title,targetDate:c.data.targetDate||null,confirmationMode:c.data.confirmationMode||'auto',achievedAt:null,version:1});}
       else if(c.op==='update'){nodes=nodes.map(n=>n.id===c.id?{...n,...c.data,estimate:{...n.estimate,...c.data.durationDays!==undefined?{durationDays:c.data.durationDays}:{}}}:n);milestones=milestones.map(m=>m.id===c.id?{...m,...c.data}:m);}
       else {nodes=nodes.filter(n=>n.id!==c.id);milestones=milestones.filter(m=>m.id!==c.id);}
     }
