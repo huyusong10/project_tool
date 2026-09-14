@@ -23,3 +23,12 @@ it('分析页返回原 Phase 范围；账号隔离，不修改未知提交原文
   sessionStorage.setItem('pm-graph-draft:a:p:submission','{"original":"unchanged"}');rememberProjectTask('a','p','/execution','?featureId=f&phaseId=p1');
   expect(projectTaskUrl('a','p','progress')).toBe('/execution?featureId=f&phaseId=p1');expect(projectTaskUrl('b','p','progress')).toBe('/execution');expect(sessionStorage.getItem('pm-graph-draft:a:p:submission')).toBe('{"original":"unchanged"}');
 });
+
+it('删除旧关注条件，其他范围与待核对提交保持原样',()=>{
+  const original='{"action":"progress","percent":75}';sessionStorage.setItem('pm-graph-draft:a:p:submission',original);
+  expect(progressEntryParams('a','p',new URLSearchParams('featureId=f&attention=1&progressAttention=1')).toString()).toBe('featureId=f');
+  rememberProjectTask('a','p','/execution','?progressAttention=1&progressStage=testing');
+  expect(progressEntryParams('a','p',new URLSearchParams()).toString()).toBe('progressStage=testing');
+  expect(projectTaskUrl('a','p','progress')).toBe('/execution?progressStage=testing');
+  expect(sessionStorage.getItem('pm-graph-draft:a:p:submission')).toBe(original);
+});

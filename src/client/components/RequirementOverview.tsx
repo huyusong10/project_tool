@@ -8,7 +8,7 @@ import { ExecutionStageBadge } from './ExecutionStageBadge';
 import { TestSubmissionButton } from './TestSubmissionButton';
 import { AnchoredPopover } from './InlineEdit';
 
-export function RequirementOverview({ requirement: r }: { requirement: Requirement }) {
+export function RequirementOverview({ requirement: r, compact=false }: { requirement: Requirement; compact?:boolean }) {
   const [details, setDetails] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const closeDetails = () => { setDetails(false); anchor.current?.focus(); };
@@ -17,23 +17,30 @@ export function RequirementOverview({ requirement: r }: { requirement: Requireme
   const direct = r.executionMode === 'direct';
   const plannedLabel = r.scheduleComplete === false || r.plannedProgress === null ? requirementScheduleLabel(r) : `计划 ${r.plannedProgress}%`;
   const progressHint = `${plannedLabel} · ${direct ? '直接记录完成度' : '自动按工期加权'}`;
-  return <section className="requirement-overview" aria-label="需求概览">
+  return <section className={"requirement-overview"+(compact?" is-compact":"")} aria-label="需求概览">
     <div className="requirement-overview-top">
       <div className="requirement-overview-meta">
         <ExecutionStageBadge requirement={r} />
-        <span className="requirement-overview-owner" title={`需求负责人：${r.ownerName || '待指定'}`}>负责人 <strong>{r.ownerName || '待指定'}</strong></span>
+        {!compact&&<span className="requirement-overview-owner" title={`需求负责人：${r.ownerName || '待指定'}`}>负责人 <strong>{r.ownerName || '待指定'}</strong></span>}
       </div>
       <div className="requirement-overview-actions">
         <DeliveryControls requirement={r} /><TestSubmissionButton requirement={r} />
         <button ref={anchor} className={`ghost-button${r.readinessIssues?.length ? ' has-notice' : ''}`} aria-label="需求资料与计算说明" aria-expanded={details} onClick={() => setDetails(v => !v)}><Info size={15} /><span>资料{r.readinessIssues?.length ? ` ${r.readinessIssues.length}` : ''}</span></button>
       </div>
     </div>
-    <div className="detail-kpis">
+    {compact?<dl className="object-facts">
+      <div><dt>负责人</dt><dd>{r.ownerName||'待指定'}</dd></div>
+      <div><dt>交付安排</dt><dd>{r.featureName||'未关联特性'} / {r.phaseName||'未安排 Phase'}</dd></div>
+      <div><dt>计划日期</dt><dd>{r.plannedStart||'待定'} ～ {r.plannedEnd||'待定'}</dd></div>
+      <div><dt>{deliveryDate.label}</dt><dd title={deliveryDate.help}>{deliveryDate.value}</dd></div>
+      <div><dt>偏差</dt><dd title={variance.title}>{variance.label}</dd></div>
+      <div><dt>风险</dt><dd title={r.riskReason}>{risk.label}</dd></div>
+    </dl>:<div className="detail-kpis">
       <article><span>交付安排</span><strong style={{fontSize:16}}>{r.phaseName || "未安排 Phase"}</strong><small>{r.featureName || "未关联特性"}</small></article>
       <article title={deliveryDate.help+"；当前计划："+(r.plannedStart||"待排期")+" → "+(r.plannedEnd||"待排期")}><span>{deliveryDate.label}</span><strong>{deliveryDate.value}</strong></article>
       <article title={variance.title}><span>偏差</span><strong className={variance.className}>{variance.label}</strong></article>
       <article title={r.riskReason}><span>风险</span><span className={`risk-badge ${risk.className}`}>{risk.label}</span></article>
-    </div>
+    </div>}
     <AnchoredPopover anchorRef={anchor} open={details} onOutside={() => setDetails(false)} onEscape={closeDetails} width={420} className="requirement-overview-details">
       <header><strong>需求资料与计算说明</strong><button className="ghost-button" onClick={closeDetails}>关闭</button></header>
       <dl>

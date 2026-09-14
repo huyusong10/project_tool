@@ -1,16 +1,15 @@
+import {WorkItemExecution} from '../components/WorkItemExecution';
+import {workStageLabels} from '../../shared/execution-stage';
 import '../workspace-gantt.css';
-import {WorkProgressBadge} from '../components/ExecutionStageBadge';
 import {useAppNavigate,useAppSearchParams} from '../use-app-navigation';
 import {PageResourcesContext,usePageResources} from '../page-context';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
-import type {StartAssignment} from '../components/StartAssignmentDialog';
-import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { RequirementOverview } from '../components/RequirementOverview';
 
 import { hasPageHistory, usePageBack } from "../use-page-view";
 import { useEffect, useMemo, useRef, useState,type ComponentProps } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Navigate, useParams, useLocation } from "react-router-dom";
 import {remapSavedEditorUrl} from '../path-view';
 import {
@@ -21,15 +20,14 @@ import {
   Edit3,
   PencilLine,
 } from "lucide-react";
-import { api, ApiError, jsonBody } from "../api";
+import { api, ApiError } from "../api";
 import { clearProjectGraphDrafts } from "../use-graph-draft";
 import { useProjects, useSession } from "../app-context";
-import { invalidateRequirementViews, keys } from "../query-keys";
-import { cacheResourceUpdate,useResourceQuery } from "../use-resource-query";
-import { useWorkItemSave } from "../use-work-item-save";
+import { keys } from "../query-keys";
+import { useResourceQuery } from "../use-resource-query";
 import { formatDateTime } from "../format";
-import type { Person, ProgressUpdate, Requirement, WorkItem, WorkItemTemplate } from "../types";
-import { requirementStatusLabels, requirementPlannedProgress } from "../../shared/domain";
+import type { Person, ProgressUpdate, Requirement, WorkItemTemplate } from "../types";
+import { requirementPlannedProgress } from "../../shared/domain";
 
 import { Chart } from "../components/Chart";
 import { EmptyState, LoadingState, RefreshNotice } from "../components/Feedback";
@@ -52,9 +50,7 @@ import {
   type RequirementPlanRecheck,
   type RequirementScheduleRecheck,
 } from "../components/RequirementForms";
-import { ProgressForm, type ProgressScope } from "../components/ProgressForm";
 
-import { WorkItemActions } from "../components/WorkItemActions";
 import { WorkItemSettingsDialog } from "../components/WorkItemSettingsDialog";
 import { canManageProject } from "../permissions";
 import { dailyProgressTrend, progressHistoryMetadata } from "../progress-trend";
@@ -69,9 +65,7 @@ import {readDraftRecord} from '../graph-draft-storage';
 import type {DependencyChanges} from '../../shared/path-contracts';
 import {type PathRequirementContext } from "../components/PathAnalysisPanel";
 import {
-  persistWorkItemActionRecheck,
   persistWorkItemSettingsRecheck,
-  readWorkItemActionRechecks,
   readWorkItemSettingsRechecks,
 } from "../work-item-write-rechecks";
 
@@ -93,17 +87,14 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
   const [searchParams] = useAppSearchParams();
   const pathLocation=useLocation();
   const pathView = searchParams.get('view') === 'path';
-  const client = useQueryClient();
   const { session } = useSession();
   const actionRecheckAccountKey = session.accountId || session.username || "guest";
   const [modal, setModal] = useState<
-    "info" | "correction" | "schedule" | "progress" | "template" | null
+    "info" | "correction" | "schedule" | "template" | null
   >(null);
-  const [progressItemId, setProgressItemId] = useState<string | null>(null);
   const [workEditorOpen, setWorkEditorOpen] = useState(false);
   const [workEditorNeedsRecheck, setWorkEditorNeedsRecheck] = useState(() => readWorkItemSettingsRechecks(actionRecheckAccountKey).has(id));
   const [workEditorRechecking, setWorkEditorRechecking] = useState(false);
-  const [workItemActionRechecks, setWorkItemActionRechecks] = useState<Set<string>>(() => readWorkItemActionRechecks(actionRecheckAccountKey));
   const [infoRecheck, setInfoRecheckState] = useState<RequirementInfoRecheck | null>(() => readRequirementInfoRecheck(actionRecheckAccountKey, id));
   const setInfoRecheck = (value: RequirementInfoRecheck | null) => {
     persistRequirementInfoRecheck(actionRecheckAccountKey, id, value);
@@ -156,23 +147,18 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
     if (!unavailable || !error) return;
     if(error instanceof ApiError&&[401,403].includes(error.status)&&lastPathProject.current)clearProjectGraphDrafts(session.accountId||'guest',lastPathProject.current);
     setModal(null);
-    setProgressItemId(null);
     setWorkEditorOpen(false);
     setCommand(null);
   }, [error, unavailable,session.accountId]);
   useEffect(() => {
     setWorkEditorNeedsRecheck(readWorkItemSettingsRechecks(actionRecheckAccountKey).has(id));
     setWorkEditorRechecking(false);
-    setWorkItemActionRechecks(readWorkItemActionRechecks(actionRecheckAccountKey));
     setInfoRecheckState(readRequirementInfoRecheck(actionRecheckAccountKey, id));
     setScheduleRecheckState(readRequirementScheduleRecheck(actionRecheckAccountKey, id));
     setPlanRecheckState(readRequirementPlanRecheck(actionRecheckAccountKey, id));
     setCorrectionRecheckState(readRequirementCorrectionRecheck(actionRecheckAccountKey, id));
     setCommandRecheckState(readRequirementCommandRecheck(actionRecheckAccountKey, id));
   }, [actionRecheckAccountKey, id]);
-  const setWorkItemActionRecheck = (workItemId: string, required: boolean) => {
-    setWorkItemActionRechecks(persistWorkItemActionRecheck(actionRecheckAccountKey, workItemId, required));
-  };
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, requirement?.projectId || ""],
     queryFn: ({ signal }) => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(requirement!.projectId)}`, { signal }),
@@ -200,17 +186,6 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
       setWorkEditorRechecking(false);
     }
   };
-  const itemAction = useMutation({
-    mutationFn: async ({ item, action, content, expectedDependencyRevision, assignment, expectedVersion = item.version }: { item: WorkItem; expectedDependencyRevision?:number; assignment?:StartAssignment; action: string; content?: string; expectedVersion?: number }) => {
-      await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId,{workItemId:item.id,action});return api(`/api/work-items/${item.id}/${action}`, {
-        method: "POST",
-        body: jsonBody({ ...assignment, expectedVersion, expectedDependencyRevision, ...(action === "complete" ? { content } : content ? { reason: content } : {}) }),
-      });},
-    onSuccess: () => {
-      invalidateRequirementViews(client, id);
-    },
-  });
-  const saveWorkItem = useWorkItemSave(id, people);
   const progressOption = useMemo(
     () => {
       const dailyTrend = dailyProgressTrend(requirement?.progressUpdates || []);
@@ -273,57 +248,6 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
   const requirementInfoLocked = ["completed", "cancelled"].includes(requirement.status);
   const requirementLocked = ["pending_acceptance", "completed", "cancelled"].includes(requirement.status);
   const canManageWorkItems = supportingDataReady && (canManage || isRequirementOwner) && !requirementLocked;
-  const canUpdateItemProgress = (item: WorkItem) => item.status === "in_progress"
-    && canContribute
-    && (canManage || isRequirementOwner || Boolean(session.personId && item.assigneeIds.includes(session.personId)));
-  const canOperateItem = (item: WorkItem) => canManage
-    || requirement.status !== "cancelled"
-      && (isRequirementOwner || (canContribute && Boolean(session.personId && item.assigneeIds.includes(session.personId))));
-  const executionHistoryIds = new Set((requirement.progressUpdates || [])
-    .filter((entry) => entry.workItemId && !["note", "correction"].includes(entry.eventType))
-    .map((entry) => entry.workItemId));
-  const openProgress = (itemId: string) => {
-    setProgressItemId(itemId);
-    setModal("progress");
-  };
-  const progressScope = (current: Requirement): ProgressScope => {
-    const managesRequirement = canManage || canContribute && Boolean(session.personId && current.ownerId === session.personId);
-    return {
-      items: managesRequirement ? current.workItems : canContribute ? current.workItems.filter((item) => Boolean(session.personId && item.assigneeIds.includes(session.personId))) : [],
-      updates: current.progressUpdates || [],
-      requirementStatus: current.status,
-    };
-  };
-  const closeProgress = () => {
-    setProgressItemId(null);
-    setModal(null);
-  };
-  const renderWorkActions=(item:WorkItem)=>canOperateItem(item)
-            ? <WorkItemActions
-                item={item}
-                onAction={(action, content, expectedVersion, expectedDependencyRevision, assignment) => itemAction.mutateAsync({ item, action, content, expectedVersion, expectedDependencyRevision, assignment })}
-                onSaveDates={canManage ? (dates, expectedVersion) => saveWorkItem(item, dates, expectedVersion) : undefined}
-                onCompleteAsPlanned={canManage && !requirementLocked ? (expectedVersion) => itemAction.mutateAsync({ item, action: "complete-as-planned", expectedVersion }) : undefined}
-                onCancel={(reason, expectedVersion) => itemAction.mutateAsync({ item, action: "cancel", content: reason, expectedVersion })}
-                onReload={async () => {
-                  const latest = await refetch({ throwOnError: true });
-                  const current = latest.data?.workItems.find((entry) => entry.id === item.id);
-                  if (!current) throw new Error("工作项已不存在，请关闭操作面板。");
-                  return {
-                    item: current,
-                    updates: (latest.data?.progressUpdates || []).filter((update) => update.workItemId === item.id),
-                  };
-                }}
-                hasExecutionHistory={executionHistoryIds.has(item.id)}
-                correctionCandidates={(requirement.progressUpdates || []).filter((update) => update.workItemId === item.id)}
-                canManage={canManage || isRequirementOwner}
-                stateChangesDisabled={requirement.status === "cancelled"}
-                writeNeedsRecheck={workItemActionRechecks.has(item.id)}
-                onWriteNeedsRecheckChange={(required) => setWorkItemActionRecheck(item.id, required)}
-              />
-            : <span className={`work-action-state is-readonly status-${item.status}`}>
-                {requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}
-              </span>;
   const direct = requirement.executionMode === 'direct';
   const progressById = new Map((requirement.progressUpdates || []).map((update) => [update.id, update]));
   if (pathView) {
@@ -334,7 +258,11 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
     if(params.get('workItemId'))params.set('pathNode',params.get('workItemId')!);
     return <Navigate to={'/paths?'+params} replace state={pathLocation.state}/>;
   }
-  const embeddedWorkDetails=<section className="delivery-work-details">{requirement.workItems.filter(item=>!selectedWorkItemId||item.id===selectedWorkItemId).map(item=><article key={item.id}><h4>{item.title}</h4><WorkProgressBadge work={item}/><p>{item.ownerName||'未分派'} · {item.plannedStart||'待定'} ～ {item.plannedEnd||'待定'}</p><div className="button-row">{renderWorkActions(item)}{canUpdateItemProgress(item)&&<button className="primary-button" onClick={()=>openProgress(item.id)}>更新进度</button>}</div></article>)}<div className="button-row">{canManageWorkItems&&<button className="ghost-button" disabled={workEditorNeedsRecheck||!!planRecheck} onClick={()=>setWorkEditorOpen(true)}>工作项设置</button>}<button className="ghost-button" onClick={openPathView}>维护依赖与分解</button></div></section>;
+  const embeddedWorkDetails=<section className="delivery-work-details">{requirement.workItems.filter(item=>!selectedWorkItemId||item.id===selectedWorkItemId).map(item=><article key={item.id}>
+    {!selectedWorkItemId&&<h4>{item.title}</h4>}
+    <dl className="object-facts"><div><dt>工作阶段</dt><dd>{item.workStage?workStageLabels[item.workStage]:'未分类'}</dd></div><div><dt>负责人</dt><dd>{item.ownerName||'待分派'}</dd></div><div><dt>计划日期</dt><dd>{item.plannedStart||'待定'} ～ {item.plannedEnd||'待定'}</dd></div><div><dt>实际日期</dt><dd>{item.actualStart||'尚未开始'}{item.actualStart?' ～ '+(item.status==='cancelled'?item.cancelledAt||'已取消（日期待核对）':item.actualEnd||(item.status==='completed'?'完成日期待核对':'进行中')):''}</dd></div></dl>
+    <WorkItemExecution requirement={requirement} item={item} people={people} progressLabel="更新进度">{({actions,progress})=><div className="object-execution-controls">{progress}{actions}</div>}</WorkItemExecution>
+  </article>)}<div className="button-row">{canManageWorkItems&&<button className="ghost-button" disabled={workEditorNeedsRecheck||!!planRecheck} onClick={()=>setWorkEditorOpen(true)}>工作项设置</button>}<button className="ghost-button" onClick={openPathView}>维护依赖与分解</button></div></section>;
   const requirementHeader=<Header
         title={requirement.title}
 
@@ -373,10 +301,11 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
         {commandRecheck && <div className="warning-banner" role="alert">{commandRecheck.action === 'cancel' ? '取消需求' : commandRecheck.action === 'archive' ? '归档需求' : '按期完成'}结果待核对，原需求版本已锁定。<button type="button" className="ghost-button" onClick={() => setCommand(commandRecheck.action)}>核对需求操作</button></div>}
         {workEditorNeedsRecheck && <div className="warning-banner" role="alert">工作项设置结果待核对，设置操作暂不可用。<button type="button" className="ghost-button" disabled={workEditorRechecking} onClick={() => void recheckWorkEditor()}>{workEditorRechecking ? "读取中…" : "重新读取需求"}</button></div>}
         {supportingError && <div className="warning-banner">{supportingDataReady ? "人员与流程数据刷新失败，当前使用上次成功结果。" : "人员或流程数据加载失败，相关编辑操作暂不可用。"}<button className="ghost-button" disabled={peopleQuery.isFetching || templatesQuery.isFetching} onClick={() => void Promise.all([peopleQuery.refetch(), templatesQuery.refetch()])}>重新加载</button></div>}
-        <details className="object-section" open={pathLocation.pathname!=='/execution'}><summary>资料与范围</summary><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未安排 Phase'}</dd></div><div><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div><div><dt>来源</dt><dd>{requirement.sourceNotes||'尚未填写'}</dd></div>{requirement.referenceUrl&&<div><dt>文档</dt><dd><a href={requirement.referenceUrl} target="_blank" rel="noreferrer">打开资料</a></dd></div>}</dl></details>
-        {embedded&&requirementHeader}
-        <details className="object-section" open={pathLocation.pathname==='/execution'||!!selectedWorkItemId}><summary>安排与执行</summary><RequirementOverview key={requirement.id} requirement={requirement}/></details>
-        <details className="object-section" open><summary>{selectedWorkItemId?'工作项':'工作分解'} · {requirement.workItems.length}</summary>{embeddedWorkDetails}{!requirement.workItems.length&&<p>{direct?'直接执行需求，可在安排与执行中记录进展。':'尚未拆分工作项。'}</p>}</details>
+        {selectedWorkItemId&&embeddedWorkDetails}
+        <details className="object-section" open={!selectedWorkItemId&&pathLocation.pathname!=='/execution'}><summary>资料与范围</summary><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未安排 Phase'}</dd></div><div><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div><div><dt>来源</dt><dd>{requirement.sourceNotes||'尚未填写'}</dd></div>{requirement.referenceUrl&&<div><dt>文档</dt><dd><a href={requirement.referenceUrl} target="_blank" rel="noreferrer">打开资料</a></dd></div>}</dl></details>
+        {embedded&&(selectedWorkItemId?<details className="object-section"><summary>所属需求 · {requirement.title}</summary>{requirementHeader}<RequirementOverview requirement={requirement} compact={embedded}/></details>:requirementHeader)}
+        {!selectedWorkItemId&&<details className="object-section" open={pathLocation.pathname==='/execution'}><summary>安排与执行</summary><RequirementOverview key={requirement.id} requirement={requirement} compact={embedded}/></details>}
+        {selectedWorkItemId?null:<details className="object-section" open><summary>工作分解 · {requirement.workItems.length}</summary>{embeddedWorkDetails}{!requirement.workItems.length&&<p>{direct?'直接执行需求，可在安排与执行中记录进展。':'尚未拆分工作项。'}</p>}</details>}
       {workEditorOpen && canManageWorkItems && (
         <WorkItemSettingsDialog
           requirement={requirement}
@@ -437,22 +366,6 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
       )}
       {modal === "schedule" && (
         <RequirementScheduleForm key={requirement.id} requirement={requirement} recheck={scheduleRecheck} onRecheckChange={setScheduleRecheck} onClose={() => setModal(null)} />
-      )}
-      {modal === "progress" && progressItemId && (
-        <ProgressForm
-          key={`${requirement.id}:${progressItemId}`}
-          title="更新工作项进度"
-          requirementId={requirement.id}
-          scope={progressScope(requirement)}
-          loadScope={async () => {
-            const latest = await api<Requirement>(`/api/requirements/${requirement.id}`);
-            cacheResourceUpdate(client, keys.requirement(requirement.id), latest);
-            return progressScope(latest);
-          }}
-          contextLabel={`${requirement.projectName} · ${requirement.title}`}
-          fixedItemId={progressItemId}
-          onClose={closeProgress}
-        />
       )}
       {modal === "template" && (
         <PlanForm key={requirement.id} requirement={requirement} templates={templates} recheck={planRecheck} onRecheckChange={setPlanRecheck} onClose={() => setModal(null)} />

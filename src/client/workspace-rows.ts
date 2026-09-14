@@ -8,7 +8,8 @@ import {dashboardWindow,matchesDashboardScope,type DashboardScope} from '../shar
 
 export type WorkspaceRow = {
   id:string; kind:'feature'|'phase'|'requirement'|'work'; title:string; featureId:string;
-  phaseId?:string; requirementId?:string; children:WorkspaceRow[]; archived?:boolean; temporary?:boolean; attentionCount?:number;
+  phaseId?:string; requirementId?:string; children:WorkspaceRow[]; archived?:boolean; temporary?:boolean;
+  formalRequirement?:Requirement; formalWork?:WorkItem;
   feature?:FeatureOverview; phase?:FeaturePhase; requirement?:Requirement; work?:WorkItem;
 };
 
@@ -17,12 +18,15 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis):Worksp
   const formal=new Map(report.requirements.map(r=>[r.id,r]));
   const requirements:Requirement[]=projection?projection.requirements.filter(r=>!r.deletedAt).map(r=>{
     const saved=formal.get(r.id);
-    const works=projection.nodes.filter(n=>n.requirementId===r.id&&n.kind==='work').map(n=>{
+    const savedOrder=new Map(saved?.workItems.map((w,index)=>[w.id,w.sortOrder??index]));
+    const savedRank=new Map(saved?.workItems.map((w,index)=>[w.id,index]));
+    const nextOrder=Math.max(-1,...savedOrder.values())+1;
+    const works=projection.nodes.filter(n=>n.requirementId===r.id&&n.kind==='work').map((n,index)=>{
       const old=saved?.workItems.find(w=>w.id===n.id);
       return {...old,id:n.id,requirementId:r.id,title:n.title,workStage:n.workStage,ownerId:n.ownerId,ownerName:n.ownerName,
         plannedStart:n.plannedStart,plannedEnd:n.plannedEnd,status:old?.status||'not_started',progress:old?.progress||0,
-        actualStart:old?.actualStart||null,actualEnd:old?.actualEnd||null} as WorkItem;
-    });
+        actualStart:old?.actualStart||null,actualEnd:old?.actualEnd||null,sortOrder:savedOrder.get(n.id)??nextOrder+index} as WorkItem;
+    }).sort((a,b)=>a.sortOrder-b.sortOrder||(savedRank.get(a.id)??Number.MAX_SAFE_INTEGER)-(savedRank.get(b.id)??Number.MAX_SAFE_INTEGER));
     return {...saved,id:r.id,projectId:r.projectId,title:r.title,featureId:r.featureId,phaseId:r.phaseId,
       background:r.background,acceptanceCriteria:r.acceptanceCriteria,ownerId:r.ownerId,ownerName:r.ownerName,
       plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,workItems:works,status:saved?.status||'not_started',progress:saved?.progress||0,
@@ -30,24 +34,25 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis):Worksp
   }):report.requirements;
   const features=report.featureOverview?.features||[];
   const requirementRow=(r:Requirement,featureId:string,phaseId?:string):WorkspaceRow=>({
-    id:r.id,kind:'requirement',title:r.title,featureId,phaseId,requirementId:r.id,requirement:r,
+    id:r.id,kind:'requirement',title:r.title,featureId,phaseId,requirementId:r.id,requirement:r,formalRequirement:formal.get(r.id),
     archived:!!r.deletedAt,temporary:!formal.has(r.id)&&!r.deletedAt,
-    children:r.deletedAt?[]:r.workItems.map(w=>({id:w.id,kind:'work',title:w.title,featureId,phaseId,requirementId:r.id,requirement:r,work:w,
+    children:r.deletedAt?[]:[...r.workItems].sort((a,b)=>(a.sortOrder??0)-(b.sortOrder??0)).map(w=>({id:w.id,kind:'work',title:w.title,featureId,phaseId,requirementId:r.id,requirement:r,work:w,formalRequirement:formal.get(r.id),formalWork:formal.get(r.id)?.workItems.find(old=>old.id===w.id),
       temporary:!formal.get(r.id)?.workItems.some(old=>old.id===w.id),children:[]})),
   });
-  return features.map(f=>{
-    const own=requirements.filter(r=>r.featureId===f.id);
-    const phases:WorkspaceRow[]=(f.phases||[]).map(p=>({id:'phase:'+p.id,kind:'phase',title:p.name,featureId:f.id,phaseId:p.id,phase:p,feature:f,attentionCount:p.requirements.filter(r=>formal.get(r.id)?.highRisk||formal.get(r.id)?.delayed).length+Number(!!p.note||p.overdue),children:[
+  const byTitle=(a:{id:string;title:string},b:{id:string;title:string})=>a.title.localeCompare(b.title,'zh-CN',{numeric:true})||a.id.localeCompare(b.id);
+  return [...features].sort((a,b)=>(a.sortOrder??0)-(b.sortOrder??0)).map(f=>{
+    const own=requirements.filter(r=>r.featureId===f.id).sort(byTitle);
+    const phases:WorkspaceRow[]=[...(f.phases||[])].sort((a,b)=>a.sortOrder-b.sortOrder).map(p=>({id:'phase:'+p.id,kind:'phase',title:p.name,featureId:f.id,phaseId:p.id,phase:p,feature:f,children:[
       ...own.filter(r=>r.phaseId===p.id).map(r=>requirementRow(r,f.id,p.id)),
       ...p.requirements.filter(r=>r.deletedAt).map(r=>requirementRow({...r,projectId:f.projectId,projectName:f.name,templateId:null,templateName:null,ownerId:null,ownerName:null,plannedStart:null,plannedEnd:null,progress:100,plannedProgress:null,progressGap:0,acceptedAt:null,acceptedByAccountId:null,riskLevel:"low",riskEvaluated:false,riskReason:"",priority:"P2",createdAt:"",updatedAt:"",delayed:false,highRisk:false,finishVariance:0,durationVariance:0,effectiveEnd:null,workItems:[]},f.id,p.id)),
-    ]}));
+    ].sort(byTitle)}));
     const unassigned=own.filter(r=>!r.phaseId);
     if(unassigned.length)phases.push({id:'phase:'+f.id+':unassigned',kind:'phase',title:'未安排 Phase',featureId:f.id,phaseId:'unassigned',feature:f,children:unassigned.map(r=>requirementRow(r,f.id,'unassigned'))});
     return {id:'feature:'+f.id,kind:'feature',title:f.name,featureId:f.id,feature:f,archived:!!f.archivedAt,children:phases};
   });
 }
 
-export type RowFilters={query:string; featureId:string; phaseId:string; state:string; stage:string; attention:boolean;status?:string;risk?:string;person?:string;schedule?:string;scope?:string;asOfDate?:string};
+export type RowFilters={query:string; featureId:string; phaseId:string; state:string; stage:string;status?:string;risk?:string;person?:string;schedule?:string;scope?:string;asOfDate?:string};
 export function filterWorkspaceRows(rows:WorkspaceRow[],filter:RowFilters):WorkspaceRow[] {
   const matches=(row:WorkspaceRow)=>matchesSearch([{text:row.title,weight:100},{text:row.phase?.scope||row.feature?.description||''}],filter.query);
   const visit=(row:WorkspaceRow,inherited=false):WorkspaceRow|null=>{
@@ -62,13 +67,12 @@ export function filterWorkspaceRows(rows:WorkspaceRow[],filter:RowFilters):Works
       &&(!filter.person||r?.ownerId===filter.person||r?.workItems.some(w=>w.ownerId===filter.person||w.assigneeIds?.includes(filter.person!)))
       &&(!filter.schedule||!!r&&(filter.schedule==='delayed'?r.delayed:filter.schedule==='unplanned'?!r.scheduleComplete:r.scheduleComplete&&!r.delayed))
       &&(!filter.scope||!!r&&matchesDashboardScope(r,filter.scope as DashboardScope,dashboardWindow(filter.asOfDate||todayIso())));
-    const attentionMatch=!filter.attention||!!row.phase?.overdue||!!row.phase?.note||!!row.requirement?.delayed||!!row.requirement?.highRisk;
-    if(children.length||textMatch&&stageMatch&&attentionMatch)return {...row,children};
+    if(children.length||textMatch&&stageMatch)return {...row,children};
     return null;
   };
   return rows.map(row=>visit(row)).filter((row):row is WorkspaceRow=>!!row);
 }
 
 export function flattenWorkspaceRows(rows:WorkspaceRow[],expanded:Record<string,boolean>,revealAll=false,depth=0):Array<{row:WorkspaceRow;depth:number}> {
-  return rows.flatMap(row=>[{row,depth},...(revealAll||(expanded[row.id]??row.kind==='feature')?flattenWorkspaceRows(row.children,expanded,revealAll,depth+1):[])]);
+  return rows.flatMap(row=>[{row,depth},...(revealAll||(expanded[row.id]??['feature','phase'].includes(row.kind))?flattenWorkspaceRows(row.children,expanded,revealAll,depth+1):[])]);
 }

@@ -11,8 +11,8 @@ test('长标题与 60 个工作项按展开范围渲染，跨特性依赖保留'
   const r=await post('/api/requirements',{projectId:f.projectId,title:'长标题需求：'+name,featureId:feature.id,phaseId:phase.id,templateId:template.id,plannedStart:'2026-09-14'});
   const graph=await(await page.request.get(f.base+'/path-analysis')).json();await post(f.base+'/dependencies',{expectedRevision:graph.revision,sourceRequirementId:f.testing.id,targetRequirementId:r.id});
   let details=0;page.on('request',request=>{if(/\/api\/requirements\/[^/?]+$/.test(request.url()))details++;});
-  await page.goto('/execution');const grid=page.getByRole('treegrid');await expect(grid).toContainText('迭代探索');expect(await grid.locator('[data-row-id]').count()).toBeLessThan(12);expect(details).toBe(0);
-  await grid.getByRole('button',{name:'展开 迭代探索',exact:true}).click();await grid.getByRole('button',{name:'展开 '+r.title,exact:true}).click();await expect(grid.locator('.kind-work')).toHaveCount(60);expect(details).toBe(0);
+  await page.goto('/execution');const grid=page.getByRole('treegrid');await expect(grid).toContainText('迭代探索');expect(await grid.locator('[data-row-id]').count()).toBeLessThan(15);expect(details).toBe(0);
+  await grid.getByRole('button',{name:'展开 '+r.title,exact:true}).click();await expect(grid.locator('.kind-work')).toHaveCount(60);expect(details).toBe(0);
   await page.getByPlaceholder('搜索当前范围').fill('工作项 59');await expect(grid.locator('.kind-work')).toHaveCount(1);await expect(grid).toContainText('迭代探索');
   await page.screenshot({path:info.outputPath('large-gantt.png'),animations:'disabled'});
   await page.goto('/?'+new URLSearchParams({view:'feature',featureId:feature.id,phaseId:phase.id,mode:'graph',pathInspector:'closed'}));await expect(page.locator('[data-layout-ready=true]')).toBeVisible();
@@ -42,10 +42,9 @@ test('范围图与分层甘特共用定位和详情，工具栏及主画布位�
   await page.screenshot({path:info.outputPath('scope.png'),animations:'disabled'});
   const tasks=page.getByRole('group',{name:'项目任务'});await tasks.getByRole('button',{name:'计划与进展',exact:true}).click();
   const gantt=page.getByRole('treegrid',{name:'项目计划与进展'});await expect(gantt).toContainText('Phase 3');
-  await expect(gantt.locator('[data-row-id="'+f.testing.id+'"]')).toHaveCount(0);
-  const phase=gantt.locator('[data-row-id="phase:'+f.phases[1].id+'"]');await phase.getByRole('button',{name:'展开 Phase 2',exact:true}).click();
+  await expect(gantt.locator('[data-row-id="'+f.testing.id+'"]')).toBeVisible();
   const requirement=gantt.locator('[data-row-id="'+f.testing.id+'"]');await expect(requirement).toContainText('测试中 · 70%');
-  expect(await requirement.locator('.unified-gantt-actual,.unified-gantt-label').evaluateAll(nodes=>nodes.length>0&&nodes.every(node=>{const box=node.getBoundingClientRect(),row=node.closest('.workspace-row-track')!.getBoundingClientRect();return box.height>=10&&box.top>=row.top&&box.bottom<=row.bottom;}))).toBe(true);
+  expect(await requirement.locator('.gantt-date-plan,.gantt-date-actual').evaluateAll(nodes=>nodes.length>0&&nodes.every(node=>{const box=node.getBoundingClientRect(),row=node.closest('.workspace-row-track')!.getBoundingClientRect();return box.height>=6&&box.top>=row.top&&box.bottom<=row.bottom;}))).toBe(true);
   const bounds=await gantt.boundingBox();await requirement.locator('.workspace-row-title').click();
   await expect(page.getByRole('complementary',{name:'对象详情'})).toContainText('安排与执行');
   expect(await gantt.boundingBox()).toEqual(bounds);

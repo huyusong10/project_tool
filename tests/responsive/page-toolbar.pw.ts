@@ -31,7 +31,7 @@ test('公共工具栏覆盖列表、详情、工作区，视图切换后返回�
   await bar(page).getByLabel('返回上一画布',{exact:true}).click();await expect(page).toHaveURL(/view=features/);
   await page.goto('/requirements');await expect(page.getByRole('tab',{name:'导入预览',exact:true})).toBeVisible();await geometry(page);
   await page.getByPlaceholder('搜索需求或负责人').fill('资产导入');await expect(page).toHaveURL(/q=/);const requirementsUrl=page.url();
-  await page.locator('main').getByRole('link',{name:f.testing.title,exact:true}).click();await expect(page.locator('.object-facts')).toBeVisible();await expect(page.locator('h1')).toHaveText('项目工作区');await expect(bar(page)).toContainText(f.testing.title);await geometry(page);
+  await page.locator('main').getByRole('link',{name:f.testing.title,exact:true}).click();await expect(page.locator('.object-section').filter({has:page.getByText('资料与范围',{exact:true})}).locator('.object-facts')).toBeVisible();await expect(page.locator('h1')).toHaveText('项目工作区');await expect(bar(page)).toContainText(f.testing.title);await geometry(page);
   await page.setViewportSize({width:390,height:844});await geometry(page);await page.screenshot({path:testInfo.outputPath('toolbar-detail-narrow.png')});
   await bar(page).getByRole('button',{name:'返回',exact:true}).click();await expect(page).toHaveURL(requirementsUrl);
   await page.getByRole('link',{name:'人员矩阵',exact:true}).click();await expect(bar(page).getByRole('button',{name:'人力分析',exact:true})).toBeVisible();await geometry(page);
@@ -100,7 +100,7 @@ test('窄屏图形编辑和加载期间工具栏不挤压或遮挡画布',async(
   let release!:()=>void;const hold=new Promise<void>(resolve=>{release=resolve;});
   await page.route('**/api/requirements/'+f.testing.id,async route=>{await hold;await route.continue();});
   await page.goto('/requirements/'+f.testing.id);await expect(page.locator('.toolbar-location-placeholder')).toBeVisible();await geometry(page);
-  const before=await bar(page).boundingBox();release();await expect(page.locator('.object-facts')).toBeVisible();await geometry(page);expect(await bar(page).boundingBox()).toEqual(before);
+  const before=await bar(page).boundingBox();release();await expect(page.locator('.object-section').filter({has:page.getByText('资料与范围',{exact:true})}).locator('.object-facts')).toBeVisible();await geometry(page);expect(await bar(page).boundingBox()).toEqual(before);
 });
 
 test.describe('触屏工具栏',()=>{

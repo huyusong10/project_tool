@@ -24,8 +24,9 @@ export function restoredCanvasUrl(account:string,project:string,url:string){
   const parsed=new URL(url,'http://canvas.local');if(!['/','/paths','/features'].includes(parsed.pathname))return url;
   const explicit=parsed.searchParams;
   try{const saved=new URLSearchParams(sessionStorage.getItem(storageKey(account,project,canvasScope(explicit)))||'');
-    for(const [key,value] of saved)if(!explicit.has(key)&&(key.startsWith('path')||['node','edge','planning','actual','phaseId','q','stage','workStage','attention','tableSort'].includes(key)))explicit.set(key,value);
+    for(const [key,value] of saved)if(!explicit.has(key)&&(key.startsWith('path')||['node','edge','planning','actual','phaseId','q','stage','workStage','tableSort'].includes(key)))explicit.set(key,value);
   }catch{/* Explicit links work without local storage. */}
+  explicit.delete('attention');explicit.delete('progressAttention');
   return '/?'+explicit;
 }
 export function useCanvasNavigation(account:string,project:string,prepare?:()=>boolean|Promise<boolean>){

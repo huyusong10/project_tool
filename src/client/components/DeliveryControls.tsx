@@ -1,6 +1,6 @@
 import {useAppNavigate} from '../use-app-navigation';
 import {StartAssignmentDialog,type StartAssignment} from './StartAssignmentDialog';
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {api,isWriteOutcomeUnknown,jsonBody,requiresWriteRecheck} from '../api';
 import {useSession} from '../app-context';
@@ -39,7 +39,7 @@ function executionWarning(action:string,r:Requirement){
   if(action!=='rework'&&r.executionMode!=='direct')return '需求已改为工作项分解，请操作对应工作项。';
   return '';
 }
-export function DeliveryControls({requirement:r}:{requirement:Requirement;compact?:boolean}){
+export function DeliveryControls({requirement:r,children}:{requirement:Requirement;compact?:boolean;children?:(controls:{progress:ReactNode;actions:ReactNode})=>ReactNode}){
   const {session}=useSession(),client=useQueryClient(),navigate=useAppNavigate(),toast=useToast();
   const manager=canManageProject(session,r.projectId),owner=manager||session.personId===r.ownerId;
   const recheckAccountKey=session.accountId||session.username||'guest';
@@ -97,10 +97,10 @@ export function DeliveryControls({requirement:r}:{requirement:Requirement;compac
   const direct=r.executionMode==='direct',ended=['completed','cancelled'].includes(r.status);
   const labels:Record<string,string>={start:'开始需求',progress:'更新进度',complete:'完成需求',rework:'返工'};
   const warning=modal?executionWarning(modal.action,modal.base):'';
+  const progress=direct&&owner&&r.status==='in_progress'&&!deliveryRecheck?<button className={children?'work-progress-link':'ghost-button'} aria-label={children?'更新 '+r.title+' 进度':undefined} disabled={mutation.isPending} onClick={()=>open('progress')}>{children?r.progress+'%':'更新进度'}</button>:children?<span>{r.status==='not_started'?'未开始':r.status==='completed'?'已完成':r.status==='cancelled'?'已取消':r.progress+'%'}</span>:null;
+  const actions=deliveryRecheck&&!mutation.isPending?<button className="ghost-button" onClick={resumeRecheck}>核对操作结果</button>:<>{direct&&owner&&!ended&&<>{r.status==='not_started'&&<button className="primary-button" disabled={mutation.isPending} onClick={()=>!r.ownerId||r.ownerValid===false?setAssigning(true):quick('start')}>开始需求</button>}{r.status==='in_progress'&&<button className="primary-button" disabled={mutation.isPending} onClick={()=>quick('complete')}>完成需求</button>}</>}{owner&&r.status==='completed'&&<button className="ghost-button" disabled={mutation.isPending} onClick={()=>open('rework')}>返工</button>}</>;
   return <>
-    <div className="button-row delivery-controls">
-      {deliveryRecheck&&!mutation.isPending?<button className="ghost-button" onClick={resumeRecheck}>核对操作结果</button>:<>{direct&&owner&&!ended&&<>{r.status==='not_started'&&<button className="primary-button" disabled={mutation.isPending} onClick={()=>!r.ownerId||r.ownerValid===false?setAssigning(true):quick('start')}>开始需求</button>}{r.status==='in_progress'&&<><button className="ghost-button" disabled={mutation.isPending} onClick={()=>open('progress')}>更新进度</button><button className="primary-button" disabled={mutation.isPending} onClick={()=>quick('complete')}>完成需求</button></>}</>}{owner&&r.status==='completed'&&<button className="ghost-button" disabled={mutation.isPending} onClick={()=>open('rework')}>返工</button>}</>}
-    </div>
+    {children?children({progress,actions}):<div className="button-row delivery-controls">{progress}{actions}</div>}
     {assigning&&<StartAssignmentDialog requirement={r} pending={mutation.isPending} blocked={needsCheck||reviewRequired} recovery={(needsCheck||reviewRequired)&&<button type="button" className="ghost-button" onClick={()=>{setAssigning(false);if(deliveryRecheck)resumeRecheck();else setModal({action:"start",base:r});}}>读取并核对操作结果</button>} error={mutation.error?.message} onClose={()=>setAssigning(false)} onStart={assignment=>submit({action:'start',base:r,assignment,content:'',percent:r.progress,selected:[]})}/>}
     {modal&&<Modal title={labels[modal.action]} onClose={close} closable={!mutation.isPending}><form onSubmit={e=>{e.preventDefault();if(!submitting.current&&!mutation.isPending&&!needsCheck&&!reading&&!reviewRequired&&!warning){submit({action:modal.action,base:modal.base,content,percent,selected});}}}><fieldset className="form-fieldset" disabled={mutation.isPending}>
       <p>{modal.base.title}</p>

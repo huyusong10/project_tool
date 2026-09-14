@@ -15,7 +15,7 @@ function point(value: string | null | undefined, dates: Date[], cellWidth: numbe
 export const GanttDateTracks = memo(function GanttDateTracks({
   plannedStart, plannedEnd, actualStart, actualEnd, status, progress, dates, cellWidth,
   onProgressClick, progressAriaLabel, interactionProps, scheduleComplete = true,
-  forecast, stageLabel,
+  forecast, stageLabel, showProgress=true,
 }: {
   plannedStart?: string | null; plannedEnd?: string | null;
   actualStart?: string | null; actualEnd?: string | null;
@@ -23,7 +23,7 @@ export const GanttDateTracks = memo(function GanttDateTracks({
   onProgressClick?: () => void; progressAriaLabel?: string;
   interactionProps?: HTMLAttributes<HTMLElement>;
   scheduleComplete?: boolean;
-  forecast?: GanttForecast | null; stageLabel?: string;
+  forecast?: GanttForecast | null; stageLabel?: string; showProgress?:boolean;
 }) {
   const plan = ganttInterval(plannedStart, plannedEnd, dates, cellWidth) || point(plannedStart || plannedEnd, dates, cellWidth);
   const actual = ganttInterval(actualStart, actualEnd, dates, cellWidth) || point(actualStart || actualEnd, dates, cellWidth);
@@ -45,9 +45,9 @@ export const GanttDateTracks = memo(function GanttDateTracks({
     {plan && scheduleComplete && <span className="gantt-date-deadline" style={{ left: plan.right }} />}
     {(!plan || !scheduleComplete || !plannedStart || !plannedEnd) && <span className="gantt-date-unplanned">{plan ? "排期不完整" : "待排期"}</span>}
     {interactionProps && (plan || actual) && <span className="gantt-date-hitbox" style={{ left: Math.max(0, left - 4), width: Math.max(28, right - left + 8) }} tabIndex={0} aria-label={title} {...interactionProps} />}
-    {onProgressClick
+    {showProgress&&(onProgressClick
       ? <button type="button" className={`gantt-date-progress gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft }} title={title} aria-label={progressAriaLabel || title} onClick={(event) => { event.stopPropagation(); onProgressClick(); }}>{label}</button>
-      : <span className={`gantt-date-progress gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft }} tabIndex={0} title={title} aria-label={title}>{label}</span>}
+      : <span className={`gantt-date-progress gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft }} tabIndex={0} title={title} aria-label={title}>{label}</span>)}
     <GanttForecastTail forecast={forecast} plannedEnd={scheduleComplete && plan ? plannedEnd : null} dates={dates} cellWidth={cellWidth} interactionProps={interactionProps} />
   </>;
 });

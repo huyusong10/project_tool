@@ -11,13 +11,13 @@ export function initialScopeMode(account:string,project:string){
 }
 /** Only stored user choices migrate; the former implicit in-progress default does not. */
 export function progressEntryParams(account:string,project:string,current:URLSearchParams){
-  const next=new URLSearchParams(current);
+  const next=new URLSearchParams(current);next.delete('attention');next.delete('progressAttention');
   const aliases:Record<string,string>={feature:'featureId',phase:'phaseId',status:'progressStatus',risk:'progressRisk',personId:'progressPerson',schedule:'progressSchedule',scope:'progressScope'};
   for(const [old,name] of Object.entries(aliases))if(next.has(old)&&!next.has(name)){next.set(name,next.get(old)!);next.delete(old);}
   if([...current.keys()].some(k=>k!=='projectId'))return next;
   try{
     const saved=sessionStorage.getItem(key(account,project,'progress'));
-    if(saved){const params=new URL(saved,'http://workspace.local').searchParams;for(const [name,value] of params)if(!next.has(name))next.set(name,value);return next;}
+    if(saved){const params=new URL(saved,'http://workspace.local').searchParams;for(const [name,value] of params)if(!['attention','progressAttention'].includes(name)&&!next.has(name))next.set(name,value);return next;}
     const prefix='pm-path-view:'+account+':'+project+':dashboard-gantt:';
     const fields:Record<string,string>={search:'q','status-v2':'progressStatus',risk:'progressRisk',personId:'progressPerson',feature:'featureId',schedule:'progressSchedule','dashboard-scope':'progressScope'};
     for(const [old,name] of Object.entries(fields)){const value=JSON.parse(sessionStorage.getItem(prefix+old)||'null');if(typeof value==='string'&&value)next.set(name,value);}
@@ -49,5 +49,6 @@ export function projectTaskUrl(account:string,project:string,task:ProjectTask,cu
       if(!target.searchParams.has('mode'))target.searchParams.set('mode','graph');
     }else{target.pathname='/execution';target.searchParams.delete('mode');}
   }
+  target.searchParams.delete('attention');target.searchParams.delete('progressAttention');
   return target.pathname+target.search;
 }

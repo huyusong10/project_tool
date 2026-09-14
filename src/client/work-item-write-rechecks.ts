@@ -1,3 +1,4 @@
+export const workItemRecheckEvent='pm-work-item-recheck';
 const actionKeyPrefix = 'project-manage:work-item-action-rechecks:';
 const settingsKeyPrefix = 'project-manage:work-item-settings-rechecks:';
 
@@ -23,6 +24,7 @@ function persistId(keyPrefix: string, accountKey: string, id: string, required: 
   } catch {
     // 页面内状态仍会保留锁；存储不可用时只失去跨导航恢复能力。
   }
+  window.dispatchEvent(new CustomEvent(workItemRecheckEvent,{detail:{accountKey,id,required}}));
   return next;
 }
 
