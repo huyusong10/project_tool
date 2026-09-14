@@ -130,6 +130,18 @@ export function prepareEditorLayouts(snapshot:PathInput,layouts:NonNullable<Depe
   if(new Set(layouts.map(l=>l.scope+':'+l.direction)).size!==layouts.length)fail('布局重复提交');
   for(const layout of layouts){
     if(layout.scope==='global')assertProjectManager(current,snapshot.projectId);
+    else if(layout.scope.startsWith('feature-phase:')){
+      assertProjectManager(current,snapshot.projectId);
+      const parts=layout.scope.split(':'),[,featureId,phaseId]=parts;
+      if(parts.length!==3||!featureId||!phaseId)fail('Phase 布局范围不合法');
+      if(featureId!=='unassigned'&&!sqlite.prepare('SELECT 1 FROM features WHERE id=? AND project_id=?').get(featureId,snapshot.projectId))notFound('布局特性不存在');
+      if(phaseId!=='unassigned'&&!sqlite.prepare('SELECT 1 FROM feature_phases WHERE id=? AND feature_id=? AND project_id=?').get(phaseId,featureId,snapshot.projectId))notFound('布局 Phase 不属于该特性');
+      for(const [id,point] of Object.entries(layout.positions)){
+        const requirement=snapshot.requirements.find(r=>r.id===id);
+        if(!requirement||(requirement.featureId||'unassigned')!==featureId||(requirement.phaseId||'unassigned')!==phaseId)fail('布局节点不属于该 Phase');
+        if(point.x<0||point.y<0)fail('Phase 区域内坐标不能为负数');
+      }
+    }
     else if(layout.scope==='features'||layout.scope.startsWith('feature:')){
       assertProjectManager(current,snapshot.projectId);
       const id=layout.scope.slice(8);

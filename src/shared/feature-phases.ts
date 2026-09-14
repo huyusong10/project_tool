@@ -24,3 +24,5 @@ export function phaseDistribution(requirements: PhaseRequirement[]) {
   }
   return [...byStage.values()];
 }
+
+export type PhaseSummary=Pick<FeaturePhase,'id'|'featureId'|'name'|'status'|'scope'|'overdue'|'targetDate'|'sortOrder'>;

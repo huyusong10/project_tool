@@ -72,6 +72,13 @@ export async function readPathGraph(raw: unknown, actor: AuthorizationActor) {
     const q = input.q.toLocaleLowerCase();
     visible = new Set(graph.cards.filter(c => visible.has(c.id) && (c.title + ' ' + c.subtitle).toLocaleLowerCase().includes(q)).map(c => c.id));
   }
+  if(input.phaseId){
+    const feature=overview?.features.find(f=>f.id===input.featureId);
+    if(input.phaseId!=='unassigned'&&!feature?.phases?.some(p=>p.id===input.phaseId))notFound('Phase 不属于当前特性');
+    const matching=new Set(graph.cards.filter(c=>visible.has(c.id)&&!c.external&&(c.phaseId||'unassigned')===input.phaseId).map(c=>c.id));visible=new Set(matching);
+    for(const edge of graph.links)if(matching.has(edge.source)||matching.has(edge.target)){visible.add(edge.source);visible.add(edge.target);}
+  }
+  const phaseRegions=input.view==='feature'?[...(overview?.features.find(f=>f.id===input.featureId)?.phases||[]).map(({id,name,scope,status,targetDate,sortOrder})=>({id,name,scope,status,targetDate,sortOrder,layoutScope:'feature-phase:'+input.featureId+':'+id,nodeIds:graph.cards.filter(c=>!c.external&&c.phaseId===id).map(c=>c.id)})),{id:'unassigned',name:'未安排 Phase',scope:'',layoutScope:'feature-phase:'+input.featureId+':unassigned',nodeIds:graph.cards.filter(c=>!c.external&&!c.phaseId).map(c=>c.id)}]:undefined;
   const cards = graph.cards.filter(c => visible.has(c.id)).map(c => ({ ...c, hiddenCount: c.hiddenCount + graph.links.filter(e =>
     e.source === c.id && !visible.has(e.target) || e.target === c.id && !visible.has(e.source)).length }));
   const links = graph.links.filter(e => visible.has(e.source) && visible.has(e.target));
@@ -93,7 +100,7 @@ export async function readPathGraph(raw: unknown, actor: AuthorizationActor) {
   return { projectId: analysis.projectId, revision: analysis.revision, asOfDate: analysis.asOfDate,
     target: analysis.target, view: input.view, requirementId: input.requirementId || null,
     analysis,...(featureView?{featureId:input.featureId||null,overview,relations}:{}),
-    cards, links, totalNodes: graph.cards.length, omittedNodes: graph.cards.length - cards.length, savedLayout,
+    cards, links,...(phaseRegions?{phaseRegions,phaseId:input.phaseId||null}:{}), totalNodes: graph.cards.length, omittedNodes: graph.cards.length - cards.length, savedLayout,
     ...(layout ? { layout: { ...layout, nodeWidth: cardWidth, nodeHeight: cardHeight } } : {}),
     ...(input.format === 'svg' ? { mimeType: 'image/svg+xml', svg: graphSvg(cards, links, layout!, analysis.projectName) } : {}),
   };

@@ -106,3 +106,30 @@ it('模板复制和实例保留分类；仅修改分类也会保存，提测节�
   const instanceId=response.json().id;
   const changed=await req('PATCH','/api/templates/'+template.id,{expectedUpdatedAt:template.updatedAt,items:template.items.map((item:{id:string;title:string;kind:string;sortOrder:number;durationDays:number;startOffsetDays:number;predecessorIds:string[];confirmationMode:string;milestoneKind:string})=>({id:item.id,clientKey:item.id,title:item.title,kind:item.kind,sortOrder:item.sortOrder,durationDays:item.durationDays,startOffsetDays:item.startOffsetDays,predecessorKeys:item.predecessorIds,confirmationMode:item.confirmationMode,milestoneKind:item.milestoneKind,workStage:item.kind==='work'?'integration':null}))});expect(changed.statusCode,changed.body).toBe(200);expect(changed.json().items[0].workStage).toBe('integration');expect(changed.json().updatedAt).not.toBe(template.updatedAt);expect((await req('GET','/api/requirements/'+instanceId)).json().workItems[0].workStage).toBe('testing');
 });
+
+it('Phase 区域布局复用批次回执，校验归属、版本并保留原布局',async()=>{
+  const f=await fixture(),a=await f.create('Phase 1'),b=await f.create('Phase 2'),r=await f.requirement(a.id);
+  const scope='feature-phase:'+f.f.id+':'+a.id,empty={add:[],remove:[],estimates:[]};
+  const preview=async(layouts:unknown[])=>{const analysis=(await req('GET',f.base+'/path-analysis')).json();const input={expectedRevision:analysis.revision,target:'project',changes:{...empty,layouts}};const response=await req('POST',f.base+'/dependency-changes/preview',input);return {input,response};};
+  const {input,response}=await preview([{scope:'feature:'+f.f.id,direction:'right',expectedVersion:0,positions:{[r.id]:{x:900,y:700}}},{scope,direction:'right',expectedVersion:0,positions:{[r.id]:{x:20,y:40}}}]);expect(response.statusCode,response.body).toBe(200);
+  const payload={...input,previewToken:response.json().previewToken,batchId:randomUUID()};const saved=await req('POST',f.base+'/dependency-changes/apply',payload);expect(saved.statusCode,saved.body).toBe(200);expect((await req('POST',f.base+'/dependency-changes/apply',payload)).json()).toEqual(saved.json());
+  const layouts=(await req('GET',f.base+'/diagram-layouts')).json();expect(layouts.find((l:{scope:string})=>l.scope===scope).positions[r.id]).toEqual({x:20,y:40});expect(layouts.find((l:{scope:string})=>l.scope==='feature:'+f.f.id).positions[r.id]).toEqual({x:900,y:700});
+  expect((await preview([{scope,direction:'right',expectedVersion:0,positions:{[r.id]:{x:30,y:40}}}])).response.statusCode).toBe(409);
+  expect((await preview([{scope:'feature-phase:'+f.f.id+':'+b.id,direction:'right',expectedVersion:0,positions:{[r.id]:{x:0,y:0}}}])).response.statusCode).toBe(400);
+  expect((await preview([{scope,direction:'right',expectedVersion:1,positions:{[r.id]:{x:-1,y:0}}}])).response.statusCode).toBe(400);
+  expect((await f.phase(a.id)).requirements.map(r=>r.id)).toEqual([r.id]);
+});
+it('图形业务草稿的 Phase 分布使用最终归属，交付快照保持正式数据',async()=>{
+  const f=await fixture(),a=await f.create('Phase 1'),b=await f.create('Phase 2'),r=await f.requirement(a.id);const analysis=(await req('GET',f.base+'/path-analysis')).json();
+  const result=await req('POST',f.base+'/dependency-changes/preview',{expectedRevision:analysis.revision,target:'project',changes:{add:[],remove:[],estimates:[],entities:[{id:r.id,entity:'requirement',op:'update',expectedVersion:r.version,data:{phaseId:b.id,reason:'调整首版范围'}}]}});
+  expect(result.statusCode,result.body).toBe(200);const phases=result.json().analysis.featureContext.overview.features.find((x:{id:string})=>x.id===f.f.id).phases;expect(phases.find((p:{id:string})=>p.id===a.id).requirements).toHaveLength(0);expect(phases.find((p:{id:string})=>p.id===b.id).requirements).toHaveLength(1);expect((await f.phase(a.id)).requirements).toHaveLength(1);
+});
+
+it('Phase 图查询保留直接外围依赖及完整分析，REST/MCP 使用同一阶段和区域',async()=>{
+ const f=await fixture(),a=await f.create('Phase 1'),b=await f.create('Phase 2'),c=await f.create('尚未明确'),r=await f.requirement(a.id,'in_progress'),next=await f.requirement(b.id);
+ const submitted=await req('POST',f.base+'/requirements/'+r.id+'/test-submission',{expectedVersion:r.version,actualDate:'2026-09-12'});expect(submitted.statusCode,submitted.body).toBe(200);
+ const analysis=(await req('GET',f.base+'/path-analysis')).json();const dep=await req('POST',f.base+'/dependencies',{expectedRevision:analysis.revision,sourceRequirementId:r.id,targetRequirementId:next.id});expect(dep.statusCode,dep.body).toBe(200);
+ const full=(await req('GET',f.base+'/path-graph?view=feature&featureId='+f.f.id)).json(),filtered=(await req('GET',f.base+'/path-graph?view=feature&featureId='+f.f.id+'&phaseId='+a.id)).json();expect(filtered.cards.map((c:{id:string})=>c.id).sort()).toEqual([r.id,next.id].sort());expect(filtered.analysis).toEqual(full.analysis);expect(filtered.phaseRegions.find((p:{id:string})=>p.id===c.id).nodeIds).toEqual([]);expect(filtered.cards.find((c:{id:string})=>c.id===r.id).executionStage).toEqual(submitted.json().executionStage);
+ const token=(await req('POST','/api/tokens',{name:'Phase graph',expiresInDays:1})).json().token;const response=await mcpRequest(address,token,'get_path_graph',{projectId:f.projectId,view:'feature',featureId:f.f.id,phaseId:a.id});const body=JSON.parse(response.body.startsWith('event:')?response.body.split('\n').find(line=>line.startsWith('data: '))!.slice(6):response.body);expect(body.result?.isError,JSON.stringify(body)).not.toBe(true);const mcp=JSON.parse(body.result.content[0].text);expect(mcp.cards).toEqual(filtered.cards);expect(mcp.phaseRegions).toEqual(filtered.phaseRegions);
+ expect((await req('GET',f.base+'/path-graph?view=project&phaseId='+a.id)).statusCode).toBe(400);
+});

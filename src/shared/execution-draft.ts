@@ -1,11 +1,12 @@
 import type {DependencyChanges} from './path-contracts';
 import type {PathAnalysis} from './paths';
-export type ExecutionCommand = {requirementId:string;workItemId?:string;action?:string};
+export type ExecutionCommand = {requirementId:string;workItemId?:string;action?:string;phaseId?:string};
 const descriptive=new Set(['featureId','title','background','referenceUrl','reason','priority']);
 /** Execution only waits for edits to facts or conditions it actually consumes. */
 export function executionDraftConflicts(changes:DependencyChanges,graph:PathAnalysis|undefined,command:ExecutionCommand):string[] {
   const own=new Set([command.requirementId,...(command.workItemId?[command.workItemId]:graph?.nodes.filter(n=>n.requirementId===command.requirementId).map(n=>n.id)||[])]);
-  const ids=new Set(own),conditionActions=new Set(['start','accept','submit-acceptance','complete','rework','reopen','cancel','archive','structure']);
+  if(command.phaseId){for(const r of graph?.requirements||[])if(r.phaseId===command.phaseId)own.add(r.id);for(const c of changes.entities||[])if(c.entity==='requirement'&&c.data.phaseId===command.phaseId)own.add(c.id);for(const n of graph?.nodes||[])if(n.requirementId&&own.has(n.requirementId))own.add(n.id);}
+  const ids=new Set(own),conditionActions=new Set(['start','accept','submit-acceptance','complete','rework','reopen','cancel','archive','structure','phase']);
   if(conditionActions.has(command.action||'structure')&&graph){
     const start=command.workItemId||'acceptance:'+command.requirementId;
     ids.add(start);ids.add('start:'+command.requirementId);
@@ -15,9 +16,9 @@ export function executionDraftConflicts(changes:DependencyChanges,graph:PathAnal
   }
   const conflicts:string[]=[];
   for(const c of changes.entities||[]){
-    const touches=ids.has(c.id)||c.entity!=='requirement'&&!command.workItemId&&c.requirementId===command.requirementId;
+    const touches=ids.has(c.id)||c.entity!=='requirement'&&!command.workItemId&&own.has(c.requirementId||'');
     if(!touches)continue;
-    if(c.op!=='update'||Object.keys(c.data).some(k=>!descriptive.has(k)))conflicts.push(c.data.title||graph?.requirements.find(r=>r.id===c.id)?.title||graph?.nodes.find(n=>n.id===c.id)?.title||'当前对象');
+    if(c.op!=='update'||Object.keys(c.data).some(k=>!descriptive.has(k)||command.action==='phase'))conflicts.push(c.data.title||graph?.requirements.find(r=>r.id===c.id)?.title||graph?.nodes.find(n=>n.id===c.id)?.title||'当前对象');
   }
   for(const e of changes.estimates)if(ids.has(e.workItemId))conflicts.push(graph?.nodes.find(n=>n.id===e.workItemId)?.title||'工作项估算');
   if(conditionActions.has(command.action||'structure')){

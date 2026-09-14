@@ -4,6 +4,7 @@ import type { FeatureOverviewReport } from './feature-overview';
 import type { FeatureRelation } from './features';
 
 export function featurePathGraph(analysis:PathAnalysis,report:FeatureOverviewReport,relations:FeatureRelation[],requirements:PathRequirement[],featureId?:string,planning=true,actual=true) {
+  requirements=requirements.map(r=>({...r,executionStage:analysis.requirements.find(a=>a.id===r.id)?.executionStage||r.executionStage}));
   const allRequirements=new Map(requirements.map(r=>[r.id,r]));
   // Include historical endpoint requirements in the existing requirement projection.
   const base=projectPathGraph({...analysis,requirements:requirements.filter(r=>analysis.nodes.some(n=>n.id==='acceptance:'+r.id))});
@@ -15,7 +16,7 @@ export function featurePathGraph(analysis:PathAnalysis,report:FeatureOverviewRep
   }
   const key=(requirementId:string,milestoneId?:string|null)=>requirementId?'feature:'+(allRequirements.get(requirementId)?.featureId||'unassigned'):milestoneId!;
   const features=new Map(report.features.map(g=>[g.id,g]));
-  const active=new Set(report.features.filter(g=>!g.archivedAt).map(g=>'feature:'+g.id));
+  const active=new Set(report.features.map(g=>'feature:'+g.id));
   if(report.unassignedCount)active.add('feature:unassigned');
   for(const c of base.cards)if(c.kind==='milestone')active.add(c.id);
   const grouped=new Map<string,GraphLink>();
@@ -48,10 +49,10 @@ export function featurePathGraph(analysis:PathAnalysis,report:FeatureOverviewRep
     if(!id.startsWith('feature:')){const card=base.cards.find(c=>c.id===id);if(card)cards.push(card);continue;}
     const featureId=id.slice(8),feature=features.get(featureId);
     if(!feature&&featureId!=='unassigned')continue;
-    cards.push({id,featureId,kind:'feature',requirementId:'',workItemId:null,title:feature?.name||'未关联特性需求',subtitle:feature?.description|| (feature?'尚未填写长期目标':'整理需求的特性归属'),
+    cards.push({id,featureId,phases:feature?.phases?.map(({id,featureId,name,status,scope,overdue,targetDate,sortOrder})=>({id,featureId,name,status,scope,overdue,targetDate,sortOrder})),kind:'feature',requirementId:'',workItemId:null,title:feature?.name||'未关联特性需求',subtitle:feature?.description|| (feature?'尚未填写长期目标':'整理需求的特性归属'),
       status:'',risk:'pending',forecast:null,floatDays:null,critical:false,unknown:false,external:!!feature?.archivedAt,hiddenCount:0,archived:!!feature?.archivedAt,
       assessment:feature?.overview.assessment,expectation:feature?feature.overview.expectation:'查看并整理需求',
-      facts:feature?feature.archivedAt?'已归档 · 保留交付依赖':feature.phases?.length?`已交付 ${feature.phases.filter(p=>p.status==='delivered').length} · 推进中 ${feature.phases.filter(p=>['in_progress','ready'].includes(p.status)).length} · 规划中 ${feature.phases.filter(p=>p.status==='planning').length}`:'尚未规划 Phase':`${report.unassignedCount} 个需求`});
+      facts:feature?feature.archivedAt?'已归档 · 保留交付依赖':feature.phases?.length?`已交付 ${feature.phases.filter(p=>p.status==='delivered').length} · 推进中 ${feature.phases.filter(p=>p.status==='in_progress').length} · 待交付 ${feature.phases.filter(p=>p.status==='ready').length} · 规划中 ${feature.phases.filter(p=>p.status==='planning').length}`:'尚未规划 Phase':`${report.unassignedCount} 个需求`});
   }
   const ids=new Set(cards.map(c=>c.id));
   return {cards,links:[...grouped.values()].filter(e=>ids.has(e.source)&&ids.has(e.target))};
