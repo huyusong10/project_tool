@@ -124,7 +124,7 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 
 `save_feature` 可传 `description`，与 `overview` 分开维护；列表和总体进展读取支持 `state=active/archived/all`。归档与恢复使用 `archive_feature`、`restore_feature`；`get_feature_requirements` 分页读取当前或归档需求摘要。
 
-`get_path_graph` 支持 `view=features` 顶层图、`view=feature` 加 `featureId` 的特性内需求图（`unassigned` 为未关联特性集合）。`view=project` 仍表示原来的全部需求。用 `list_feature_relations`、`save_feature_relation`、`delete_feature_relation` 维护人工规划；`planning/actual` 分别控制两类连线。规划关系不参与执行分析。
+`get_path_graph` 支持 `view=features` 顶层图、`view=feature` 加 `featureId` 的特性内需求图（`unassigned` 仅保留历史查询入口；无特性需求已归入普通的“其他特性”）。`view=project` 保留旧查询语义，网页不再提供并列的“全部需求”入口。用 `list_feature_relations`、`save_feature_relation`、`delete_feature_relation` 维护人工规划；`planning/actual` 分别控制两类连线。规划关系不参与执行分析。
 
 特性图与特性内需求图的共享布局分别使用 `features`、`feature:ID`，沿用布局版本和依赖批次保存。删除特性只允许没有需求及规划连线的空特性；非空特性先处理未完成需求再归档。[接口规则](requirement-intake.md#特性规划与关系图)。
 

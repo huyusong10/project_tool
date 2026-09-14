@@ -78,7 +78,7 @@ describe('正式库增量迁移', () => {
     const stateReport = JSON.parse((migrated.prepare("SELECT value FROM system_meta WHERE key='state-migration-0013-report'").get() as { value: string }).value);
     expect(stateReport.workItems).toBeGreaterThan(0);
     expect(migrated.prepare('SELECT status,accepted_at AS acceptedAt,version FROM requirements WHERE id=?').get('r1'))
-      .toMatchObject({ status: 'completed', acceptedAt: expect.any(String), version: 1 });
+      .toMatchObject({ status: 'completed', acceptedAt: expect.any(String), version: 2 });
     expect(migrated.prepare('SELECT event_type AS eventType FROM progress_updates WHERE id=?').get('pu1')).toEqual({ eventType: 'note' });
     const migratedTemplates = migrated.prepare('SELECT id,project_id AS projectId FROM work_item_templates WHERE name=? ORDER BY project_id').all('DCIM AI工作流') as Array<{ id: string; projectId: string }>;
     expect(migratedTemplates.map((item) => item.projectId)).toEqual(['p1', 'p2']);

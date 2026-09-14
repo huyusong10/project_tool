@@ -232,6 +232,13 @@
       "when": 1789362100000,
       "tag": "0032_feature_schema_names",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1789362200000,
+      "tag": "0033_requirement_feature_ownership",
+      "breakpoints": true
     }
   ]
 }

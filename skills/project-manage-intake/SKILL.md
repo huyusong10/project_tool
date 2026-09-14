@@ -37,7 +37,7 @@ description: 通过 MCP 将原始需求直接录入 project-manage，按需拆�
 
 提交结果未知或发生版本冲突时，先读取 get_feature_overview 核对，避免重复保存。原始需求录入的授权不包含代替人类判断是否符合预期。
 
-特性长期目标使用 save_feature 的 description，排序使用 sortOrder。空特性可以先记录目标，不自动创建占位需求。查看关系用 get_path_graph：view=features 为顶层，view=feature 加 featureId 为特性内需求图，unassigned 为未关联特性集合；旧 view=project/requirement 保持原义。
+特性长期目标使用 save_feature 的 description，排序使用 sortOrder。空特性可以先记录目标，不自动创建占位需求。查看关系用 get_path_graph：view=features 为顶层，view=feature 加 featureId 为特性内需求图，新建未指定特性或归属传 null 时归入普通的“其他特性”。unassigned 仅保留历史查询入口；旧 view=project/requirement 保持原义。
 
 用户明确给出特性先后关系时，用 list_feature_relations → save_feature_relation 维护 sourceFeatureId、targetFeatureId、note；修改传 id 和 expectedVersion。人工规划与需求实际依赖分开，规划连线不参与排期，也不自动转成需求依赖。同一章节顺序不构成规划关系。
 

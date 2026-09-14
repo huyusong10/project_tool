@@ -21,7 +21,7 @@
 | `requirements[]` | `key/title` 必填；`action` 为 `create/update/skip` |
 | `background/referenceUrl` | 原始需求正文与 HTTP(S) 来源链接 |
 | `acceptanceCriteria` | 完成标准 |
-| `feature/ownerId` | 可选特性和负责人，不自动选择人员 |
+| `feature/ownerId` | 未指定特性时归入“其他特性”；负责人可选，不自动选择人员 |
 | `plannedStart/plannedEnd/durationDays` | 可选计划日期、工作日工期 |
 | `existingId/expectedVersion` | 更新已有需求时必填；未提交的资料保留原值 |
 | `confirmAdditional` | 重名确需另建时设为 `true` |
@@ -47,7 +47,7 @@ REST 路径前缀为 `/api/projects/:projectId`；MCP 参数加入 `projectId`�
 
 预览传 `{package}`。保存传回规范化 `package/expectedRevision/previewToken`，增加 UUID `batchId`。单项失败整批回滚；结果未知时先查回执，重试复用原批次和内容。并发修改后重新预览。
 
-项目经理管理特性和导入。批量特性传 `requirements:[{id,expectedVersion}]` 与 `featureId`；`null` 表示未关联特性。工具、skill 和案例随仓库同步维护。
+项目经理管理特性和导入。批量特性传 `requirements:[{id,expectedVersion}]` 与 `featureId`；`null` 表示归入普通的“其他特性”；新建省略特性也采用此归属。工具、skill 和案例随仓库同步维护。
 
 ## 总体进展
 
@@ -78,7 +78,7 @@ REST 路径前缀为 `/api/projects/:projectId`；MCP 参数加入 `projectId`�
 |---|---|---|
 | `POST /features/:featureId/archive` | `archive_feature` | 所属需求均完成、取消或移出后归档 |
 | `POST /features/:featureId/restore` | `restore_feature` | 恢复特性，保留关联与人工资料 |
-| `GET /features/:featureId/requirements` | `get_feature_requirements` | `state=current/archived`，`page/pageSize` 分页历史摘要；`featureId=unassigned` 为未关联特性集合 |
+| `GET /features/:featureId/requirements` | `get_feature_requirements` | `state=current/archived`，`page/pageSize` 分页历史摘要；`featureId=unassigned` 仅保留历史查询入口，新需求不会进入该集合 |
 | `GET /feature-relations` | `list_feature_relations` | 读取人工规划关系，包含归档特性保留的边 |
 | `POST /feature-relations` | `save_feature_relation` | `sourceFeatureId/targetFeatureId/note`；修改还需 `id/expectedVersion` |
 | `DELETE /feature-relations/:relationId` | `delete_feature_relation` | 仅删除人工关系，传 `expectedVersion` |

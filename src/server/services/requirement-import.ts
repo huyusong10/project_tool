@@ -1,3 +1,4 @@
+import {saveFeature} from './features';
 import { readFeaturePhases } from './feature-phases';
 import { createHash, randomUUID } from 'node:crypto';
 import { sqlite } from '../database';
@@ -33,7 +34,7 @@ function prepare(projectId:string,pkg:IntakePackage,actor:Actor) {
     const previous=phases.find(p=>p.id===old?.phaseId);
     if(destination?.deliveredAt||previous?.deliveredAt)errors.push(r.title+'：请先重新打开已交付 Phase');
     if((destination?.id!==old?.phaseId||!!r.phase&&!destination)&&(destination?.startedAt||previous?.startedAt)&&!r.reason)errors.push(r.title+'：推进后的需求移入移出需要填写原因');
-    const data={reason:r.reason,title:r.title,background:r.background,acceptanceCriteria:r.acceptanceCriteria,referenceUrl:r.referenceUrl,ownerId:r.ownerId,plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,durationDays:r.durationDays};
+    const data={...r.action==='create'&&feature?{featureId:feature.id}:{},reason:r.reason,title:r.title,background:r.background,acceptanceCriteria:r.acceptanceCriteria,referenceUrl:r.referenceUrl,ownerId:r.ownerId,plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,durationDays:r.durationDays};
     if(r.action==='update'){
       const old=r.existingId?existing.get(r.existingId):undefined;
       if(!old||old.deletedAt){errors.push(r.title+'：请选择当前项目未归档的已有需求');continue;}
@@ -103,7 +104,15 @@ export function applyRequirementImport(projectId:string,raw:unknown,actor:Actor)
     const prepared=prepare(projectId,input.package,actor);
     if(prepared.preview.errors.length)fail(prepared.preview.errors.join('；'));
     if(prepared.preview.previewToken!==input.previewToken)fail('预览已变化，请重新核对','STALE_WRITE',409);
-    const created=prepared.core?applyDependencyChanges(projectId,{...prepared.changes,batchId:input.batchId,previewToken:prepared.core.previewToken},actor).addedIds:{};
+    // Resolve names inside this transaction before core creation so a named
+    // import never depends on the state of the default Other feature.
+    for(const r of input.package.requirements)if(r.action!=='skip'&&r.feature&&!sqlite.prepare('SELECT 1 FROM features WHERE project_id=? AND name=?').get(projectId,r.feature)){
+      const order=sqlite.prepare('SELECT COUNT(*) AS n FROM features WHERE project_id=? AND archived_at IS NULL').get(projectId) as {n:number};
+      saveFeature(projectId,{name:r.feature,sortOrder:order.n},actor);
+    }
+    const resolved=prepare(projectId,input.package,actor);
+    if(resolved.preview.errors.length)fail(resolved.preview.errors.join('；'));
+    const created=resolved.core?applyDependencyChanges(projectId,{...resolved.changes,batchId:input.batchId,previewToken:resolved.core.previewToken},actor).addedIds:{};
     const requirementIds:Record<string,string>={};
     for(const r of input.package.requirements){
       if(r.action==='skip')continue;
