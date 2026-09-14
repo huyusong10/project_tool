@@ -333,6 +333,8 @@ export function ProjectGantt({
             </div>
             {visibleRequirements.map((requirement) => {
               const actual = requirementActualRange(requirement, asOfDate);
+              const stage = executionStageOf(requirement);
+              const stageLabel = stage.label + (stage.stages.length === 1 ? ` · ${stage.stages[0].progress}%` : '');
               const scheduleComplete = hasCompleteSchedule(requirement);
               const tooltipProps = ganttTooltip.bind(<RequirementPopover requirement={requirement} asOfDate={asOfDate} forecast={forecasts.get(requirement.id)} />);
               const variance = progressVariance(requirement);
@@ -373,14 +375,14 @@ export function ProjectGantt({
                     {viewMode === "split" ? <GanttDateTracks
                       plannedStart={requirement.plannedStart} plannedEnd={requirement.plannedEnd}
                       actualStart={actual.start} actualEnd={actual.end} status={requirement.status} scheduleComplete={scheduleComplete}
-                      stageLabel={executionStageOf(requirement).label + (executionStageOf(requirement).stages.length===1 ? " · " + executionStageOf(requirement).stages[0].progress+"%" : "")} stageTone={executionStageOf(requirement).tone} progress={requirement.progress} dates={dates} cellWidth={cellWidth}
+                      stageLabel={stageLabel} progress={requirement.progress} dates={dates} cellWidth={cellWidth}
                       forecast={forecasts.get(requirement.id)}
                       interactionProps={tooltipProps}
                     /> : <GanttPlanActualBars
                       plannedStart={scheduleComplete ? requirement.plannedStart : null}
                       plannedEnd={scheduleComplete ? requirement.plannedEnd : null}
                       actualStart={actual.start} actualEnd={actual.end} status={requirement.status}
-                      stageLabel={executionStageOf(requirement).label + (executionStageOf(requirement).stages.length===1 ? " · " + executionStageOf(requirement).stages[0].progress+"%" : "")} stageTone={executionStageOf(requirement).tone} progress={requirement.progress} dates={dates} cellWidth={cellWidth}
+                      stageLabel={stageLabel} progress={requirement.progress} dates={dates} cellWidth={cellWidth}
                       forecast={forecasts.get(requirement.id)}
                       progressAriaLabel={`实际进度 ${requirement.progress}%，实际执行跨度 ${actual.start || '日期未记录'} 至 ${actual.end || '日期未记录'}${!isClosedRequirement(requirement) ? '（截至统计日）' : ''}`}
                       interactionProps={tooltipProps}

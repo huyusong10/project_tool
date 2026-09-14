@@ -1,4 +1,4 @@
-import { ExecutionStageBadge, executionStageOf } from "./ExecutionStageBadge";
+import { ExecutionStageBadge } from "./ExecutionStageBadge";
 import { useMemo } from 'react';
 import type { PathEdge, PathMilestone, PathNode, PathRequirement } from '../../shared/paths';
 import { useGanttNavigation } from '../use-gantt-navigation';
@@ -44,7 +44,7 @@ export function PathGantt({ nodes, onSelect, storageKey, asOfDate, edges = [], m
             <div className="path-draft-gantt-track" style={track}>
               <GanttMilestoneCuts items={milestoneItems} dates={dates} cellWidth={cellWidth} asOfDate={asOfDate} selection={selection} showForecast />
               {plan && <i className="plan" style={{ left: plan.left, width: plan.width }} />}
-              {forecast ? <i className={project&&requirements.find(r=>r.id===n.requirementId)?"gantt-stage stage-"+executionStageOf(requirements.find(r=>r.id===n.requirementId)!).tone:undefined} style={{ left: forecast.left, width: forecast.width }} title={`${n.forecastStart} ～ ${n.forecastEnd}`} /> : <em>待确认</em>}
+              {forecast ? <i style={{ left: forecast.left, width: forecast.width }} title={`${n.forecastStart} ～ ${n.forecastEnd}`} /> : <em>待确认</em>}
             </div>
           </div>;
         })}

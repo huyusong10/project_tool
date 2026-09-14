@@ -64,7 +64,7 @@ export function GanttPlanActualBars({
   onProgressClick,
   progressAriaLabel,
   interactionProps,
-  showUnscheduled = false, stageLabel, stageTone,
+  showUnscheduled = false, stageLabel,
   forecast,
 }: {
   plannedStart?: string | null;
@@ -78,7 +78,7 @@ export function GanttPlanActualBars({
   onProgressClick?: () => void;
   progressAriaLabel?: string;
   interactionProps?: HTMLAttributes<HTMLElement>;
-  showUnscheduled?: boolean; stageLabel?: string; stageTone?: string;
+  showUnscheduled?: boolean; stageLabel?: string;
   forecast?: GanttForecast | null;
 }) {
   const plan = ganttInterval(plannedStart, plannedEnd, dates, cellWidth);
@@ -94,7 +94,7 @@ export function GanttPlanActualBars({
   return <>
     {!plan && !actual && showUnscheduled && <span className="gantt-unscheduled">待排期</span>}
     {plan && <span className="unified-gantt-plan" style={{ left: plan.left, width: plan.width }} />}
-    {actual && <span className={`unified-gantt-actual ${stageTone ? "gantt-stage stage-" + stageTone : ""} gantt-status-${statusClass}`} style={{ left: actual.left, width: actual.width }} data-start={actualStart} data-end={actualEnd} />}
+    {actual && <span className={`unified-gantt-actual gantt-status-${statusClass}`} style={{ left: actual.left, width: actual.width }} data-start={actualStart} data-end={actualEnd} />}
     {earlyWidth > 0 && <span className="unified-gantt-early" style={{ left: earlyLeft, width: earlyWidth }} />}
     {delayWidth > 0 && <span className={`unified-gantt-delay gantt-status-${statusClass}`} style={{ left: delayLeft, width: delayWidth }} />}
     {plan && <span className="unified-gantt-plan-end" style={{ left: plan.right }} />}
@@ -105,7 +105,7 @@ export function GanttPlanActualBars({
       aria-label="查看排期详情"
       {...interactionProps}
     />}
-    {markerLeft !== undefined && (stageLabel ? <span className={"gantt-date-progress stage-badge stage-" + stageTone} style={{left:markerLeft}}>{stageLabel}</span> : <GanttProgressMarker
+    {markerLeft !== undefined && (stageLabel ? <span className={`unified-gantt-label gantt-status-${statusClass}`} style={{left:markerLeft}}>{stageLabel}</span> : <GanttProgressMarker
       left={markerLeft}
       status={status}
       progress={progress}

@@ -3,4 +3,5 @@
 .execution-stage-summary{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;max-width:100%}.execution-stage-summary small{font-size:12px;color:var(--text-secondary,#64748b)}
 [data-theme=dark] .stage-analysis{--stage-color:#93b4ff}[data-theme=dark] .stage-development{--stage-color:#67d3e4}[data-theme=dark] .stage-integration{--stage-color:#c4a2fa}[data-theme=dark] .stage-submitted{--stage-color:#f5be73}[data-theme=dark] .stage-testing{--stage-color:#f99ac2}[data-theme=dark] .stage-completed{--stage-color:#7fd69b}
 
-.gantt-stage.stage-analysis{background:#2563eb!important}.gantt-stage.stage-development{background:#0891b2!important}.gantt-stage.stage-integration{background:#7c3aed!important}.gantt-stage.stage-testing{background:#a21caf!important}.gantt-stage.stage-submitted{background:#d97706!important}.gantt-stage.stage-completed{background:#15803d!important}.gantt-stage.stage-not_started,.gantt-stage.stage-cancelled{background:#64748b!important}
+/* 甘特用文字区分阶段，配色沿用执行状态和独立的延期提示。 */
+.project-gantt-panel .stage-badge,.path-draft-gantt .stage-badge{background:var(--bg-surface-subtle);color:var(--text-secondary)}
