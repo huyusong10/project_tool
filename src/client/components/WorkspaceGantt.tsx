@@ -48,7 +48,8 @@ export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelec
         {visible.map(({row,depth})=>{
           const r=row.requirement,w=row.work,item=w||r,stage=r?executionStageOf(r):null;
           const actual=w?workItemActualRange(w,asOfDate):r&&!row.archived?requirementActualRange(r,asOfDate):null;
-          const stageLabel=stage?stage.label+(stage.stages.length?' · '+stage.stages.map(s=>(stage.stages.length>1?s.label+' ':'')+s.progress+'%').join(' · '):''):'';
+          const stageLabel=stage?stage.label+(stage.stages.length===1?' · '+stage.stages[0].progress+'%':''):'';
+          const stageTitle=stage&&stage.stages.length>1?stageLabel+'；'+stage.stages.map(s=>s.label+' '+s.progress+'%').join(' · '):stageLabel;
           const summary=row.kind==='feature'?row.feature?.description:row.kind==='phase'?row.phase?.scope||'范围待明确':w?(w.workStage?workStageLabels[w.workStage]:'未分类'):stageLabel;
           const defaultProgress=row.phase?phaseStatusLabels[row.phase.status]:w?(({not_started:'未开始',completed:'已完成',cancelled:'已取消'} as Record<string,string>)[w.status]??w.progress+'%'):stageLabel;
           const render=({progress,actions}:ExecutionControls)=><div className={'workspace-gantt-row kind-'+row.kind+(row.archived?' is-archived':'')+(r?.executionMode==='direct'?' is-direct':'')} role="row" data-row-id={row.id} aria-level={depth+1} aria-selected={selected===row.id}>
@@ -61,9 +62,9 @@ export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelec
               {row.phase?<>{datePoint(row,row.phase.targetDate,'目标')}{datePoint(row,row.phase.deliveredAt,'交付',true)}{!row.phase.targetDate&&!row.phase.deliveredAt&&<span className="workspace-date-empty">交付日期待定</span>}</>:item&&!row.archived?<GanttDateTracks plannedStart={item.plannedStart} plannedEnd={item.plannedEnd} actualStart={actual?.start} actualEnd={actual?.end} status={item.status} progress={item.progress||0} dates={nav.dates} cellWidth={nav.cellWidth} scheduleComplete={w?!!w.plannedStart&&!!w.plannedEnd:r?.scheduleComplete!==false} showProgress={false} forecast={ganttForecast(item.deliveryForecast,item.status,asOfDate)}/>:row.archived?<span className="workspace-date-empty">保留交付贡献</span>:null}
               {today.visible&&<i className="gantt-today-line" style={{left:(today.offset+1)*nav.cellWidth}}/>}
             </div>
-            <div className="workspace-row-progress" role="cell" title={stageLabel||String(defaultProgress||'')} data-workspace-zone="tools">{progress}</div><div className="workspace-row-actions" role="cell" data-workspace-zone="tools">{actions}</div>
+            <div className="workspace-row-progress" role="cell" title={stageTitle||String(defaultProgress||'')} data-workspace-zone="tools">{progress}</div><div className="workspace-row-actions" role="cell" data-workspace-zone="tools">{actions}</div>
           </div>;
-          return row.formalWork&&row.formalRequirement&&!row.temporary?<WorkItemExecution key={row.id} item={row.formalWork} requirement={row.formalRequirement} people={people}>{render}</WorkItemExecution>:row.formalRequirement?.executionMode==='direct'&&!row.temporary&&!row.archived?<DeliveryControls key={row.id} requirement={row.formalRequirement}>{render}</DeliveryControls>:<div className="workspace-row-wrapper" key={row.id}>{render({progress:defaultProgress||null,actions:null})}</div>;
+          return row.formalWork&&row.formalRequirement&&!row.temporary?<WorkItemExecution key={row.id} item={row.formalWork} requirement={row.formalRequirement} people={people}>{render}</WorkItemExecution>:row.formalRequirement?.executionMode==='direct'&&!row.temporary&&!row.archived?<DeliveryControls key={row.id} requirement={row.formalRequirement}>{render}</DeliveryControls>:<div className="workspace-row-wrapper" key={row.id}>{render({progress:defaultProgress?<span>{defaultProgress}</span>:null,actions:null})}</div>;
         })}
         {!visible.length&&<p className="feature-empty">没有符合条件的范围</p>}
       </div>
