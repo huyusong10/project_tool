@@ -1,14 +1,11 @@
 import { lazy, type ComponentType, type LazyExoticComponent, type SVGProps } from "react";
 import {
   Archive,
-  BarChart3,
   BriefcaseBusiness,
   CircleAlert,
   ClipboardList,
   FileClock,
   FolderCog,
-  GanttChartSquare,
-  ListChecks,
   Network,
   ScanSearch,
   ServerCog,
@@ -54,7 +51,6 @@ const AnalyticsPage = lazyPage(() => import("./pages/AnalyticsPage").then((modul
 const PathsPage = lazyPage(() => import("./pages/PathsPage").then((module) => ({ default: module.PathsPage })));
 const MyWorkPage = lazyPage(() => import("./pages/MyWorkPage").then((module) => ({ default: module.MyWorkPage })));
 const ActionCenterPage = lazyPage(() => import("./pages/ActionCenterPage").then((module) => ({ default: module.ActionCenterPage })));
-const RequirementsPage = lazyPage(() => import("./pages/RequirementsPage").then((module) => ({ default: module.RequirementsPage })));
 const RequirementPage = lazyPage(() => import("./pages/RequirementPage").then((module) => ({ default: module.RequirementPage })));
 const IssuesPage = lazyPage(() => import("./pages/IssuesPage").then((module) => ({ default: module.IssuesPage })));
 const PeoplePage = lazyPage(() => import("./pages/PeoplePage").then((module) => ({ default: module.PeoplePage })));
@@ -74,13 +70,13 @@ const LogsPage = lazyPage(() => import("./pages/LogsPage").then((module) => ({ d
 export const appRoutes: AppRoute[] = [
   {
     path: "/", scope: "project", access: "all", component: PathsPage,
-    nav: [{ group: "工作台", label: "项目交付", icon: BriefcaseBusiness, end: true }],
+    nav: [{ group: "项目", label: "项目工作区", icon: BriefcaseBusiness, end: true }],
   },
-  { path: "/execution", scope:"project", access:"all", component:DashboardPage, nav:[{group:"工作台",label:"执行进展",icon:GanttChartSquare}] },
+  { path: "/execution", scope:"project", access:"all", component:DashboardPage, chrome:{title:"项目工作区"} },
   { path: "/paths", scope: "project", access: "all", component: PathsPage },
   {
     path: "/analytics", scope: "project", access: "all", component: AnalyticsPage,
-    nav: [{ group: "工作台", label: "统计分析", icon: BarChart3 }],
+    chrome: {title: "项目工作区"},
   },
   {
     path: "/my-work", scope: "personal", access: "all", component: MyWorkPage,
@@ -95,29 +91,29 @@ export const appRoutes: AppRoute[] = [
 
   },
   {
-    path: "/requirements", scope: "project", access: "all", component: RequirementsPage,
-    nav: [{ group: "项目空间", label: "需求管理", icon: ListChecks }],
+    path: "/requirements", scope: "project", access: "all", component: PathsPage,
+    chrome: {title: "项目工作区"},
   },
   { path: "/requirements/:id", scope: "project", access: "all", component: RequirementPage, chrome: {title: '需求详情'} },
   {
     path: "/actions", scope: "project", access: "all", component: ActionCenterPage, chrome: {title: '异常行动中心'},
-    nav: [{ group: "项目空间", label: "异常行动", icon: CircleAlert }],
+
   },
   {
     path: "/issues", scope: "project", access: "all", component: IssuesPage,
-    nav: [{ group: "项目空间", label: "问题跟踪", icon: CircleAlert }],
+    nav: [{ group: "项目", label: "问题跟踪", icon: CircleAlert }],
   },
   {
     path: "/people", scope: "project", access: "all", component: PeoplePage,
-    nav: [{ group: "项目空间", label: "人员矩阵", icon: Network }],
+    nav: [{ group: "项目配置", label: "人员矩阵", icon: Network }],
   },
   {
     path: "/templates", scope: "project", access: "all", component: TemplatesPage,
-    nav: [{ group: "项目空间", label: "流程设计", icon: Workflow }],
+    nav: [{ group: "项目配置", label: "流程设计", icon: Workflow }],
   },
   {
     path: "/project-settings", scope: "project", access: "manager", component: ProjectSettingsPage,
-    nav: [{ group: "项目空间", label: "项目设置", icon: FolderCog, visible: ({ managesCurrentProject }) => managesCurrentProject }],
+    nav: [{ group: "项目配置", label: "项目设置", icon: FolderCog, visible: ({ managesCurrentProject }) => managesCurrentProject }],
   },
   {
     path: "/projects", scope: "platform", access: "admin", component: ProjectsPage,
@@ -138,7 +134,7 @@ export const appRoutes: AppRoute[] = [
   {
     path: "/logs", scope: "project", adminScope: "platform", access: "manager", component: LogsPage,
     nav: [
-      { group: "项目空间", label: "项目日志", icon: FileClock, visible: ({ admin, managesCurrentProject }) => !admin && managesCurrentProject },
+      { group: "项目配置", label: "项目日志", icon: FileClock, visible: ({ admin, managesCurrentProject }) => !admin && managesCurrentProject },
       { group: "平台运维", label: "操作审计", icon: ScanSearch, visible: ({ admin }) => admin },
     ],
   },

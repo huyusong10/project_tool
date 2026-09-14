@@ -1,6 +1,7 @@
+import {isProjectWorkspace} from '../project-workspace-navigation';
 import { useEffect, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { SystemBranding } from "../types";
 import { useProjects, useSession } from "../app-context";
@@ -49,6 +50,7 @@ export function Sidebar({ collapsed, onToggle, onNavigate, branding, ready }: { 
   const showTooltip = (anchor: HTMLElement, label: string, group: string) => {
     if (collapsed) setTooltip({ anchor, label, group });
   };
+  const location=useLocation();
   return (
     <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}`} aria-label="主导航">
       <div className="brand-mark">
@@ -74,6 +76,7 @@ export function Sidebar({ collapsed, onToggle, onNavigate, branding, ready }: { 
                 return <NavLink
                   to={item.to}
                   end={item.end}
+                  className={({isActive})=>isActive||item.to==='/'&&isProjectWorkspace(location.pathname)?'active':undefined}
                   key={`${group.label}-${item.label}`}
                   aria-label={item.label}
                   onClick={onNavigate}

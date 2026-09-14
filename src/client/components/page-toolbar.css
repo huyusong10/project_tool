@@ -37,3 +37,9 @@
   .page-toolbar .view-tabs{height:44px;padding:0;border:0}.page-toolbar .view-tabs button{height:44px;min-height:44px}
   .page-toolbar[data-narrow=true]{--toolbar-action-gap:2px}.page-toolbar[data-narrow=true] .page-toolbar-actions{gap:var(--toolbar-action-gap)}
 }
+
+.page-toolbar[data-project-workspace=true] .page-toolbar-views{flex:0 0 202px;width:202px}.page-toolbar[data-project-workspace=true] .page-toolbar-views button{flex:1}.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-views{flex-basis:172px;width:172px}
+
+.workspace-history-menu{display:none!important}
+.page-toolbar[data-project-workspace=true][data-narrow=true] .page-editor-history{display:none}
+@media(max-width:640px){.workspace-history-menu{display:flex!important}}

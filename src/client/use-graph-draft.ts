@@ -17,11 +17,11 @@ export function clearGraphDrafts(accountId?: string) {
   for(const [key,session] of sessions)if(key.startsWith(prefix+(accountId?accountId+':':''))){session.blocked=true;session.notify();sessions.delete(key);}
   void clearDraftRecords(prefix+(accountId?accountId+':':'')).catch(()=>{});
   if (typeof sessionStorage === 'undefined') return;
-  for(const storage of [sessionStorage,localStorage])for (const key of Object.keys(storage)) if ([prefix,'pm-path-origin:','pm-editor-ids:','pm-path-view:','pm-canvas-navigation:','pm-graph-view:','pm-delivery-inputs:','pm-delivery-inputs:','pm-detail-scroll:','pm-editor-new-template:','pm-editor-lease:pm-graph-draft:'].some(p=>key.startsWith(p+(accountId?accountId+':':'')))) storage.removeItem(key);
+  for(const storage of [sessionStorage,localStorage])for (const key of Object.keys(storage)) if ([prefix,'pm-project-task:','pm-workspace-rows:','pm-path-origin:','pm-editor-ids:','pm-path-view:','pm-canvas-navigation:','pm-graph-view:','pm-delivery-inputs:','pm-delivery-inputs:','pm-detail-scroll:','pm-editor-new-template:','pm-editor-lease:pm-graph-draft:'].some(p=>key.startsWith(p+(accountId?accountId+':':'')))) storage.removeItem(key);
 }
 export function clearProjectGraphDrafts(accountId:string,projectId:string){
   const base=prefix+accountId+':'+projectId;for(const [key,session] of sessions)if(key===base||key.startsWith(base+':')){session.blocked=true;session.notify();sessions.delete(key);}void clearDraftRecords(base).catch(()=>{});
-  for(const storage of [sessionStorage,localStorage])for(const key of Object.keys(storage))if(key===base||key.startsWith(base+':')||['pm-path-origin:','pm-editor-ids:','pm-path-view:','pm-canvas-navigation:','pm-graph-view:','pm-detail-scroll:','pm-editor-new-template:','pm-editor-lease:pm-graph-draft:'].some(p=>(key===p+accountId+':'+projectId||key.startsWith(p+accountId+':'+projectId+':'))))storage.removeItem(key);
+  for(const storage of [sessionStorage,localStorage])for(const key of Object.keys(storage))if(key===base||key.startsWith(base+':')||['pm-project-task:','pm-workspace-rows:','pm-path-origin:','pm-editor-ids:','pm-path-view:','pm-canvas-navigation:','pm-graph-view:','pm-detail-scroll:','pm-editor-new-template:','pm-editor-lease:pm-graph-draft:'].some(p=>(key===p+accountId+':'+projectId||key.startsWith(p+accountId+':'+projectId+':'))))storage.removeItem(key);
 }
 const sessions=new Map<string,EditorSession<unknown>>();
 export async function assertCleanProjectDraft(accountId:string,projectId:string,command?:ExecutionCommand){
