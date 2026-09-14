@@ -1,0 +1,30 @@
+import fs from 'node:fs';
+import path from 'node:path';
+const root=process.cwd(),preview=path.join(root,'.preview');
+if(path.basename(root)!=='project-manage-workspace')throw Error('只能在隔离 worktree 准备示例');
+const settings=JSON.parse(fs.readFileSync(path.join(preview,'preview-env.json'),'utf8'));
+if(settings.PORT!=='3270'||settings.SESSION_COOKIE_NAME!=='pm_workspace_3270')throw Error('预览配置不匹配');
+const demo=JSON.parse(fs.readFileSync(path.join(preview,'demo-scenarios.json'),'utf8'));
+let cookie='';
+async function request(url,data,method){const result=await fetch('http://127.0.0.1:3270'+url,{method:method||(data?'POST':'GET'),headers:{cookie,'content-type':'application/json'},body:data?JSON.stringify(data):undefined});if(url==='/api/login')cookie=result.headers.get('set-cookie').split(';')[0];if(!result.ok)throw Error(url+' '+await result.text());return result.json();}
+await request('/api/login',{username:'admin',password:settings.ADMIN_PASSWORD});
+const base='/api/projects/'+demo.projectId,project=await request('/api/projects');
+if(!project.some(p=>p.id===demo.projectId&&p.name.startsWith('【工作区预览】')))throw Error('只能写入明确标注的演示项目');
+const overview=await request(base+'/feature-overview?state=all');
+if(demo.largeRequirementId){console.log('扩展示例已存在');process.exit(0);}
+const feature=overview.features.find(f=>f.name==='平台集成验证')||(await request(base+'/features',{name:'平台集成验证',description:'多站点对接、交付记录和大量工作项展示。仅为页面示例。'})).features.find(f=>f.name==='平台集成验证');
+const owner=(await request('/api/people?projectId='+demo.projectId)).find(p=>p.name==='预览工程师')||await request('/api/people',{projectId:demo.projectId,name:'预览工程师'});
+const existingPhases=await request(base+'/feature-phases');
+const phases=[];for(const name of ['接口基线','多站点扩展'])phases.push(existingPhases.find(p=>p.featureId===feature.id&&p.name===name)||await request(base+'/features/'+feature.id+'/phases',{name,scope:name==='接口基线'?'协议与联通性验证':'跨站点资产数据同步',targetDate:'2026-10-16'}));
+let archived=(await request('/api/requirements?projectId='+demo.projectId)).find(r=>r.title==='DCIM-DEMO-006 已交付并归档的协议验证')||await request('/api/requirements',{projectId:demo.projectId,featureId:feature.id,phaseId:phases[0].id,ownerId:owner.id,title:'DCIM-DEMO-006 已交付并归档的协议验证'});
+if(archived.status==='not_started')archived=await request('/api/requirements/'+archived.id+'/start',{expectedVersion:archived.version});
+if(archived.status!=='completed')archived=await request('/api/requirements/'+archived.id+'/complete',{expectedVersion:archived.version,content:'演示已交付范围'});
+const currentPhases=await request(base+'/feature-phases');
+if(!currentPhases.find(p=>p.id===phases[0].id).deliveredAt)await request(base+'/feature-phases/'+phases[0].id+'/deliver',{expectedVersion:currentPhases.find(p=>p.id===phases[0].id).version});
+await request('/api/requirements/'+archived.id,{expectedVersion:archived.version},'DELETE');
+const template=await request('/api/templates',{projectId:demo.projectId,name:'【示例】60 项集成验证',dependencyMode:'legacy',items:Array.from({length:60},(_,i)=>({title:'站点 '+(i+1)+' 数据同步与边界验证',workStage:i%3===0?'development':i%3===1?'integration':'testing',durationDays:1,startOffsetDays:Math.floor(i/3),sortOrder:i}))});
+const large=await request('/api/requirements',{projectId:demo.projectId,featureId:feature.id,phaseId:phases[1].id,ownerId:owner.id,templateId:template.id,plannedStart:'2026-09-14',title:'DCIM-DEMO-007 跨站点资产生命周期、协议适配与历史数据迁移的一致性验证',acceptanceCriteria:'60 个验证工作项分别完成对应站点的对接检查。'});
+const graph=await request(base+'/path-analysis');
+await request(base+'/dependencies',{expectedRevision:graph.revision,sourceRequirementId:demo.testingRequirementId,targetRequirementId:large.id});
+fs.writeFileSync(path.join(preview,'demo-scenarios.json'),JSON.stringify({...demo,integrationFeatureId:feature.id,largeRequirementId:large.id,archivedRequirementId:archived.id,integrationPhaseIds:phases.map(p=>p.id)},null,2));
+console.log('已增加归档交付、跨特性依赖和 60 个工作项的演示场景');

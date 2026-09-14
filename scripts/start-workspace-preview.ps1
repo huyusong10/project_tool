@@ -10,6 +10,7 @@ foreach ($workspaceField in @('DB_PATH', 'BACKUP_DIR')) {
   $workspacePath = [IO.Path]::GetFullPath($workspaceConfig.$workspaceField)
   if (!$workspacePath.StartsWith($workspacePreview + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw '数据库和备份必须位于 .preview 内' }
 }
+if ([IO.Path]::GetFullPath($workspaceConfig.WEB_DIST_DIR) -ne [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'dist'))) { throw '构建目录必须位于当前 worktree 的 dist' }
 if (Get-NetTCPConnection -LocalPort 3270 -State Listen -ErrorAction SilentlyContinue) { throw '3270 已有服务，预览未启动' }
 if (!$SkipBuild) {
   $workspacePreviousCodexHome = $env:CODEX_HOME
