@@ -1,4 +1,4 @@
-import {ExecutionStageBadge,executionStageOf} from '../components/ExecutionStageBadge';
+import {executionStageOf} from '../components/ExecutionStageBadge';
 import {useAppNavigate} from '../use-app-navigation';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
@@ -24,7 +24,7 @@ import { canManageProject } from "../permissions";
 import { requirementStatusOptions } from "../ui-options";
 import { DataCell } from "../components/LayoutPrimitives";
 import { SearchInput } from "../components/SearchInput";
-import { requirementRiskDisplay, requirementVarianceDisplay, requirementVarianceValue } from "../requirement-presentation";
+import { requirementVarianceValue } from "../requirement-presentation";
 import { compareRiskRequirements } from "../../shared/requirement-view";
 
 type RequirementSortKey = "title" | "priority" | "status" | "progress" | "risk" | "plannedEnd" | "variance";
@@ -82,7 +82,7 @@ export function RequirementsPage() {
   const setView=(key:string,value:string)=>setParams(current=>{const next=new URLSearchParams(current);if(value)next.set(key,value);else next.delete(key);return next;});
   const search = params.get('q') || '';
   const status = params.has('status') ? params.get('status')! : 'current';
-  const sortKey = (['title','priority','status','progress','risk','plannedEnd','variance'].includes(params.get('sort') || '') ? params.get('sort') : 'plannedEnd') as RequirementSortKey;
+  const sortKey = (['title','priority','status','progress','risk','plannedEnd','variance'].includes(params.get('sort') || '') ? params.get('sort') : 'title') as RequirementSortKey;
   const sortDirection: SortDirection = params.get('direction') === 'desc' ? 'desc' : 'asc';
   const setSearch = (value: string) => setParams(current => { const next = new URLSearchParams(current); next.set('q', value); return next; });
   const setStatus = (value: string) => setParams(current => { const next = new URLSearchParams(current); next.set('status', value); return next; });
@@ -156,7 +156,9 @@ export function RequirementsPage() {
     <>
       {organizing&&<OrganizationBatchDialog projectId={selectedProjectId} requirements={data.filter(r=>(organizationRecheck?.requirementIds||selectedIds).includes(r.id))} recheck={organizationRecheck} onRecheckChange={setOrganizationRecheck} onClose={()=>setOrganizing(false)}/>}
       <PageHeader
-        title="需求管理"
+        title="项目工作区"
+        breadcrumbs={[{label:"项目范围",onClick:()=>navigate("/?view=features&mode=table")},{label:"需求维护"}]}
+        onBack={()=>navigate("/?view=features&mode=table")}
         views={<div className="view-tabs" role="tablist" aria-label="需求视图">{[["requirements","需求"],...(canManage?[["import","导入预览"]]:[])].map(([id,label])=><button key={id} role="tab" aria-selected={intakeView===id} className="ghost-button" onClick={()=>setView("intakeView",id)}>{label}</button>)}</div>}
         secondaryActions={canManage&&<button className="ghost-button" onClick={()=>navigate("/features")}>特性规划</button>}
         actions={canManage ? (
@@ -200,34 +202,22 @@ export function RequirementsPage() {
           <thead>
             <tr>
               <th aria-sort={sortKey === "title" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("需求", "title")}</th>
-              <th aria-sort={sortKey === "status" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("状态", "status")}</th>
-              <th aria-sort={sortKey === "progress" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>Phase</th>
-              <th aria-sort={sortKey === "risk" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("风险", "risk")}</th>
-              <th aria-sort={sortKey === "plannedEnd" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("计划完成", "plannedEnd")}</th>
-              <th aria-sort={sortKey === "variance" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortableHeader("计划偏差", "variance")}</th>
+              <th>完成标准</th><th>Phase</th><th>工作分解</th><th>说明</th><th>来源</th>
             </tr>
           </thead>
           <tbody>
             {pagination.items.map((item,index) => {
-              const variance = requirementVarianceDisplay(item);
+
               return <Fragment key={item.id}>{grouped&&(index===0||pagination.items[index-1].featureId!==item.featureId)&&<tr className="intake-feature-heading"><td colSpan={6}>{item.featureName||"未关联特性"} · {items.filter(r=>r.featureId===item.featureId).length} 项</td></tr>}<tr
                 key={item.id}
                 onClick={() => navigate(`/requirements/${item.id}`)}
               >
                 <td><DataCell density="compact" primary={<strong>{canManage&&<input type="checkbox" style={{marginRight:8,verticalAlign:'middle'}} aria-label={'选择需求 '+item.title} checked={selectedIds.includes(item.id)} disabled={Boolean(organizationRecheck)} onClick={e=>e.stopPropagation()} onChange={e=>{if(!organizationRecheck)setSelectedIds(ids=>e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id));}}/>}<Link to={`/requirements/${item.id}`} style={{ color: 'inherit', textDecoration: 'none' }} onClick={event => event.stopPropagation()}>{item.title}</Link></strong>} secondary={`${item.featureName?item.featureName+" · ":""}${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
-                <td>
-                  <DataCell density="compact" primary={<ExecutionStageBadge requirement={item} />} />
-                </td>
-                <td>
-                  <DataCell density="compact" primary={item.phaseName||"未安排 Phase"} />
-                </td>
-                <td>
-                  <DataCell density="compact" primary={<span className={`risk-badge ${requirementRiskDisplay(item).className}`}>{requirementRiskDisplay(item).label}</span>} />
-                </td>
-                <td><DataCell density="compact" primary={item.plannedEnd || "待排期"} /></td>
-                <td className={variance.className} title={variance.title}>
-                  <DataCell density="compact" primary={variance.label} />
-                </td>
+                <td><DataCell density="compact" primary={item.acceptanceCriteria||'完成标准待补充'}/></td>
+                <td><DataCell density="compact" primary={item.phaseName||'未安排 Phase'}/></td>
+                <td><DataCell density="compact" primary={item.workItems.length+' 个工作项'} secondary={item.executionMode==='direct'?'直接执行':!item.workItems.length?'尚未分解':''}/></td>
+                <td><DataCell density="compact" primary={item.background||'说明待补充'}/></td>
+                <td><DataCell density="compact" primary={item.sourceNotes||'—'}/></td>
               </tr></Fragment>
             })}
           </tbody>

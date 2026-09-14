@@ -1,3 +1,4 @@
+import '../workspace-gantt.css';
 import {WorkProgressBadge} from '../components/ExecutionStageBadge';
 import {useAppNavigate,useAppSearchParams} from '../use-app-navigation';
 import {PageResourcesContext,usePageResources} from '../page-context';
@@ -6,7 +7,7 @@ import { useListPagination } from '../use-list-pagination';
 import type {StartAssignment} from '../components/StartAssignmentDialog';
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { RequirementOverview } from '../components/RequirementOverview';
-import { directRequirementTimelineItem } from '../requirement-timeline';
+
 import { hasPageHistory, usePageBack } from "../use-page-view";
 import { useEffect, useMemo, useRef, useState,type ComponentProps } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,7 +30,7 @@ import { useWorkItemSave } from "../use-work-item-save";
 import { formatDateTime } from "../format";
 import type { Person, ProgressUpdate, Requirement, WorkItem, WorkItemTemplate } from "../types";
 import { requirementStatusLabels, requirementPlannedProgress } from "../../shared/domain";
-import { GapTimeline } from "../components/GapTimeline";
+
 import { Chart } from "../components/Chart";
 import { EmptyState, LoadingState, RefreshNotice } from "../components/Feedback";
 import { PageHeader } from "../components/PageHeader";
@@ -52,7 +53,7 @@ import {
   type RequirementScheduleRecheck,
 } from "../components/RequirementForms";
 import { ProgressForm, type ProgressScope } from "../components/ProgressForm";
-import { ResizablePanel } from "../components/ResizablePanel";
+
 import { WorkItemActions } from "../components/WorkItemActions";
 import { WorkItemSettingsDialog } from "../components/WorkItemSettingsDialog";
 import { canManageProject } from "../permissions";
@@ -66,7 +67,7 @@ import {
 } from "../components/RequirementCommandDialog";
 import {readDraftRecord} from '../graph-draft-storage';
 import type {DependencyChanges} from '../../shared/path-contracts';
-import { PathAnalysisPanel,type PathRequirementContext } from "../components/PathAnalysisPanel";
+import {type PathRequirementContext } from "../components/PathAnalysisPanel";
 import {
   persistWorkItemActionRecheck,
   persistWorkItemSettingsRecheck,
@@ -80,16 +81,16 @@ const progressEventLabels: Record<string, string> = { note: "说明", progress: 
 const progressReferenceLabel = (update?: ProgressUpdate) => update ? `${formatDateTime(update.createdAt)} · ${progressEventLabels[update.eventType] || update.eventType}` : "原记录不可用";
 
 function EmbeddedRequirementHeader({secondaryActions,moreActions}:ComponentProps<typeof PageHeader>){return <header className="delivery-requirement-header"><div className="button-row">{secondaryActions}</div>{moreActions&&<details><summary>需求操作</summary><div className="button-row">{moreActions}</div></details>}</header>;}
-export function EmbeddedRequirementDetails({id,workItemId,onOpenDependencies}:{id:string;workItemId?:string;onOpenDependencies:()=>void}){
+export function RequirementObjectDetails({id,workItemId,onOpenDependencies}:{id:string;workItemId?:string;onOpenDependencies:()=>void}){
   const resources=usePageResources(),{session}=useSession(),query=useResourceQuery<Requirement>([...keys.requirement(id),session.accountId],'/api/requirements/'+id,!!id);
-  return <PageResourcesContext.Provider value={{...resources,requirement:query}}><SavedRequirementPage key={id} requirementId={id} embedded selectedWorkItemId={workItemId} onOpenDependencies={onOpenDependencies}/></PageResourcesContext.Provider>;
+  return <PageResourcesContext.Provider value={{...resources,requirement:query}}><RequirementObjectContent key={id} requirementId={id} embedded selectedWorkItemId={workItemId} onOpenDependencies={onOpenDependencies}/></PageResourcesContext.Provider>;
 }
-function SavedRequirementPage({requirementId,embedded=false,selectedWorkItemId,onOpenDependencies}:{requirementId?:string;embedded?:boolean;selectedWorkItemId?:string;onOpenDependencies?:()=>void}={}) {
+function RequirementObjectContent({requirementId,embedded=false,selectedWorkItemId,onOpenDependencies}:{requirementId?:string;embedded?:boolean;selectedWorkItemId?:string;onOpenDependencies?:()=>void}={}) {
   const Header=embedded?EmbeddedRequirementHeader:PageHeader;
   const goBack = usePageBack('/requirements');
   const { id:routeId = "" } = useParams(),id=requirementId||routeId;
   const navigate = useAppNavigate();
-  const [searchParams, setSearchParams] = useAppSearchParams();
+  const [searchParams] = useAppSearchParams();
   const pathLocation=useLocation();
   const pathView = searchParams.get('view') === 'path';
   const client = useQueryClient();
@@ -324,8 +325,6 @@ function SavedRequirementPage({requirementId,embedded=false,selectedWorkItemId,o
                 {requirementStatusLabels[item.status as keyof typeof requirementStatusLabels] || item.status}
               </span>;
   const direct = requirement.executionMode === 'direct';
-  const timelineItems = direct ? [directRequirementTimelineItem(requirement)] : requirement.workItems;
-  const timelineUpdates = direct ? (requirement.progressUpdates || []).map(update => ({...update, workItemId: requirement.id})) : requirement.progressUpdates || [];
   const progressById = new Map((requirement.progressUpdates || []).map((update) => [update.id, update]));
   if (pathView) {
     const params=new URLSearchParams(searchParams);params.set('view','requirement');params.set('requirementId',requirement.id);
@@ -338,7 +337,7 @@ function SavedRequirementPage({requirementId,embedded=false,selectedWorkItemId,o
   const embeddedWorkDetails=<section className="delivery-work-details">{requirement.workItems.filter(item=>!selectedWorkItemId||item.id===selectedWorkItemId).map(item=><article key={item.id}><h4>{item.title}</h4><WorkProgressBadge work={item}/><p>{item.ownerName||'未分派'} · {item.plannedStart||'待定'} ～ {item.plannedEnd||'待定'}</p><div className="button-row">{renderWorkActions(item)}{canUpdateItemProgress(item)&&<button className="primary-button" onClick={()=>openProgress(item.id)}>更新进度</button>}</div></article>)}<div className="button-row">{canManageWorkItems&&<button className="ghost-button" disabled={workEditorNeedsRecheck||!!planRecheck} onClick={()=>setWorkEditorOpen(true)}>工作项设置</button>}<button className="ghost-button" onClick={openPathView}>维护依赖与分解</button></div></section>;
   const requirementHeader=<Header
         title={requirement.title}
-        views={<div className="view-tabs"><button className="ghost-button" aria-pressed={!pathView} onClick={()=>{const params=new URLSearchParams(searchParams);params.delete('view');setSearchParams(params,{replace:true,state:pathLocation.state});}}>进度甘特</button><button className="ghost-button" aria-pressed={pathView} onClick={openPathView}>路径分析</button></div>}
+
         onBack={goBack} backLabel={hasPageHistory()?"返回":"需求列表"}
         moreLabel="需求操作"
         moreDisabled={Boolean(commandRecheck || correctionRecheck)}
@@ -374,47 +373,10 @@ function SavedRequirementPage({requirementId,embedded=false,selectedWorkItemId,o
         {commandRecheck && <div className="warning-banner" role="alert">{commandRecheck.action === 'cancel' ? '取消需求' : commandRecheck.action === 'archive' ? '归档需求' : '按期完成'}结果待核对，原需求版本已锁定。<button type="button" className="ghost-button" onClick={() => setCommand(commandRecheck.action)}>核对需求操作</button></div>}
         {workEditorNeedsRecheck && <div className="warning-banner" role="alert">工作项设置结果待核对，设置操作暂不可用。<button type="button" className="ghost-button" disabled={workEditorRechecking} onClick={() => void recheckWorkEditor()}>{workEditorRechecking ? "读取中…" : "重新读取需求"}</button></div>}
         {supportingError && <div className="warning-banner">{supportingDataReady ? "人员与流程数据刷新失败，当前使用上次成功结果。" : "人员或流程数据加载失败，相关编辑操作暂不可用。"}<button className="ghost-button" disabled={peopleQuery.isFetching || templatesQuery.isFetching} onClick={() => void Promise.all([peopleQuery.refetch(), templatesQuery.refetch()])}>重新加载</button></div>}
-        <>{embedded&&selectedWorkItemId?<>{embeddedWorkDetails}<details className="delivery-parent-requirement"><summary>所属需求 · {requirement.title}</summary><RequirementOverview key={requirement.id} requirement={requirement}/>{requirementHeader}</details></>:<><RequirementOverview key={requirement.id} requirement={requirement}/>{embedded&&requirementHeader}</>}</>
-      {embedded?(selectedWorkItemId?null:embeddedWorkDetails):<>      <ResizablePanel
-        className={`panel detail-panel requirement-progress-panel stable-workspace-panel${pathView ? " requirement-path-panel" : ""}`}
-        storageKey={`${session.accountId || session.username || "guest"}:requirement-gantt`}
-        defaultHeight={600}
-        minHeight={420}
-      >
-        <header>
-          <div>
-            <h2>需求进展</h2>
-          </div>
-          {canManageWorkItems && (
-            <div className="panel-actions">
-              <button
-                className="ghost-button"
-                aria-haspopup="dialog"
-                disabled={workEditorNeedsRecheck || Boolean(planRecheck)}
-                onClick={() => { if (!workEditorNeedsRecheck && !planRecheck) setWorkEditorOpen(true); }}
-              >
-                <Edit3 size={15} />
-                工作项设置
-              </button>
-            </div>
-          )}
-        </header>
-        {pathView ? <PathAnalysisPanel key={requirement.id} projectId={requirement.projectId} requirement={requirement}/> : <GapTimeline key={requirement.id} storageKey={`${requirement.projectId}:${requirement.id}:gantt`} milestones={requirement.milestones} projectId={requirement.projectId}
-          items={timelineItems}
-          itemLabel={direct ? "需求执行" : "工作项"}
-          executionStatus={direct ? requirement.status : undefined}
-          showStatusFilters={!direct}
-          showUnscheduled
-          ariaLabel={direct ? "需求直接执行甘特图" : "需求工作项进展甘特图"}
-          targetItemId={searchParams.get("workItemId") || undefined}
-          asOfDate={requirement.asOfDate}
-          updates={timelineUpdates}
-          canUpdateProgress={direct ? undefined : canUpdateItemProgress}
-          canEditForecast={direct ? undefined : canOperateItem}
-          onUpdateProgress={(item) => openProgress(item.id)}
-          renderActions={direct ? undefined : renderWorkActions}
-        />}
-      </ResizablePanel></>}
+        <details className="object-section" open={pathLocation.pathname!=='/execution'}><summary>资料与范围</summary><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未安排 Phase'}</dd></div><div><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div><div><dt>来源</dt><dd>{requirement.sourceNotes||'尚未填写'}</dd></div>{requirement.referenceUrl&&<div><dt>文档</dt><dd><a href={requirement.referenceUrl} target="_blank" rel="noreferrer">打开资料</a></dd></div>}</dl></details>
+        {embedded&&requirementHeader}
+        <details className="object-section" open={pathLocation.pathname==='/execution'||!!selectedWorkItemId}><summary>安排与执行</summary><RequirementOverview key={requirement.id} requirement={requirement}/></details>
+        <details className="object-section" open><summary>{selectedWorkItemId?'工作项':'工作分解'} · {requirement.workItems.length}</summary>{embeddedWorkDetails}{!requirement.workItems.length&&<p>{direct?'直接执行需求，可在安排与执行中记录进展。':'尚未拆分工作项。'}</p>}</details>
       {workEditorOpen && canManageWorkItems && (
         <WorkItemSettingsDialog
           requirement={requirement}
@@ -437,7 +399,7 @@ function SavedRequirementPage({requirementId,embedded=false,selectedWorkItemId,o
           }}
         />
       )}
-      <details className="delivery-history" open={embedded?undefined:true}><summary>进展与执行历史</summary><section className="detail-grid progress-detail-grid">
+      <details className="delivery-history" ><summary>进展与执行历史</summary><section className="detail-grid progress-detail-grid">
         <article className="panel progress-detail-card paged-panel">
           <header><div><h2>进展记录</h2></div></header>
           <div className="progress-feed paged-body" ref={historyPagination.scrollRef}>
@@ -510,7 +472,7 @@ export function RequirementPage(){
  const url=location.pathname+location.search,projectId=params.get('draftProject')||selectedProjectId;
  const savedUrl=remapSavedEditorUrl(url,(session.accountId||'guest')+':'+projectId);
  if(params.has('draftProject')&&savedUrl!==url)return <Navigate to={savedUrl} replace state={location.state}/>;
- return params.get('draftProject')?<DraftRequirementPage projectId={params.get('draftProject')!}/>:<SavedRequirementPage/>;
+ return params.get('draftProject')?<DraftRequirementPage projectId={params.get('draftProject')!}/>:<RequirementObjectContent/>;
 }
 function DraftRequirementPage({projectId}:{projectId:string}){
  const {id=''}=useParams(),{session}=useSession(),navigate=useAppNavigate();
