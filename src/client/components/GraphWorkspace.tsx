@@ -3,6 +3,7 @@ import { DependencyGraph } from './DependencyGraph';
 import '../paths.css';
 import {WorkspaceRuntime,WorkspaceRuntimeContext,useWorkspaceLayer,useWorkspaceEvents,type WorkspaceDocument} from '../workspace-runtime';
 import {flushSync} from 'react-dom';
+import {useSearchParams} from 'react-router-dom';
 import {FindTool} from './EditorToolbar';
 type PanelSize='compact'|'timeline'|'expanded';
 function FloatingPanel({content,side,replacement,contentKey,analysis=false,size='compact',onDismiss}:{onDismiss?:()=>void;analysis?:boolean;size?:PanelSize;content:ReactNode;side:'left'|'right';replacement:boolean;contentKey?:string}){
@@ -25,9 +26,10 @@ function FloatingPanel({content,side,replacement,contentKey,analysis=false,size=
   if(!shown||!content&&replacement&&matchMedia('(max-width:800px)').matches)return null;
   return <aside ref={ref} onFocusCapture={()=>{hadFocus.current=true;}} onBlurCapture={e=>{if(e.relatedTarget instanceof Node&&!e.currentTarget.contains(e.relatedTarget))hadFocus.current=false;}} className={(side==='right'?'graph-detail':'graph-auxiliary')+' graph-overlay nopan nodrag nowheel'+(!content?' is-leaving':'')} data-graph-panel={shown.analysis?'bottom':side} data-size={shown.size} style={!content?geometry.current:undefined} aria-hidden={!content} inert={!content}><div key={shown.contentKey} className="graph-panel-content">{shown.content}</div></aside>;
 }
-function Workspace({ document:editorDocument, auxiliaryKey, toolbar, detail, auxiliary, footer, finder,palette,analysis=false,auxiliarySize='compact',onDismissDetail,onDismissAuxiliary, ...graph }: ComponentProps<typeof DependencyGraph> & {
-  document:WorkspaceDocument;auxiliaryKey?:string;onDismissDetail?:()=>void;onDismissAuxiliary?:()=>void;toolbar: ReactNode; detail?: ReactNode; auxiliary?: ReactNode; footer?: ReactNode;finder?:ReactNode;palette?:ReactNode;analysis?:boolean;auxiliarySize?:PanelSize;
+function Workspace({ table, document:editorDocument, auxiliaryKey, toolbar, detail, auxiliary, footer, finder,palette,analysis=false,auxiliarySize='compact',onDismissDetail,onDismissAuxiliary, ...graph }: ComponentProps<typeof DependencyGraph> & {
+  table?:ReactNode;document:WorkspaceDocument;auxiliaryKey?:string;onDismissDetail?:()=>void;onDismissAuxiliary?:()=>void;toolbar: ReactNode; detail?: ReactNode; auxiliary?: ReactNode; footer?: ReactNode;finder?:ReactNode;palette?:ReactNode;analysis?:boolean;auxiliarySize?:PanelSize;
 }) {
+  const [params]=useSearchParams(),isTable=params.get('mode')==='table'&&table!==undefined,[wide,setWide]=useState(false);
   const root=useRef<HTMLElement>(null),finderRef=useRef<HTMLDivElement>(null);
   const recentNodeClick=useRef<{id:string;x:number;y:number;time:number}|null>(null);
   const runtime=useContext(WorkspaceRuntimeContext)!;runtime.document=editorDocument;runtime.interaction=graph.interaction;runtime.revealField=graph.onRevealField;runtime.save=()=>{graph.commands.dispatch({type:'save'});};useWorkspaceEvents(runtime,root);
@@ -41,6 +43,7 @@ function Workspace({ document:editorDocument, auxiliaryKey, toolbar, detail, aux
   useEffect(()=>{
     const element=root.current;if(!element)return;
     const footer=element.querySelector('.graph-footer')!,controls=element.querySelector('.graph-view-controls')!;
+    if(!footer||!controls)return;
     const update=()=>{
       const box=element.getBoundingClientRect(),a=footer.getBoundingClientRect(),b=controls.getBoundingClientRect();
       const finder=element.querySelector('.graph-finder');element.style.setProperty('--graph-find-bottom',((finder?finder.getBoundingClientRect().bottom:box.top)-box.top+12)+'px');
@@ -53,8 +56,8 @@ function Workspace({ document:editorDocument, auxiliaryKey, toolbar, detail, aux
     };
     const observer=new ResizeObserver(update);[element,footer,controls,element.querySelector('.graph-finder')].filter((e):e is HTMLElement=>!!e).forEach(e=>observer.observe(e));update();
     return()=>observer.disconnect();
-  },[finding]);
-  return <section ref={root} className={'graph-workspace graph-editor-workspace'+(finding?' has-finder':'')+(analysis?' has-analysis':'')+(detail?' has-inspector':'')} aria-label="交付依赖工作区" onCompositionStart={()=>{runtime.composing=true;}} onCompositionEnd={()=>{runtime.composing=false;if(runtime.saveRequested){runtime.saveRequested=false;queueMicrotask(requestSave);}}}
+  },[finding,isTable]);
+  return <section ref={root} className={'graph-workspace graph-editor-workspace'+(finding?' has-finder':'')+(analysis?' has-analysis':'')+(detail?' has-inspector':'')+(isTable?' delivery-table-mode':'')+(wide?' wide-inspector':'')} aria-label="交付依赖工作区" onCompositionStart={()=>{runtime.composing=true;}} onCompositionEnd={()=>{runtime.composing=false;if(runtime.saveRequested){runtime.saveRequested=false;queueMicrotask(requestSave);}}}
     onClickCapture={e=>{
       const target=e.target as HTMLElement;
       if(target.closest('[aria-label="保存修改"]')){e.preventDefault();e.stopPropagation();requestSave();return;}
@@ -71,11 +74,11 @@ function Workspace({ document:editorDocument, auxiliaryKey, toolbar, detail, aux
     onKeyDownCapture={e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();e.stopPropagation();requestSave();}}}
     onKeyDown={e=>{const input=(e.target as HTMLElement).closest('input,textarea,select,[contenteditable=true]');if(!e.defaultPrevented&&!input&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.stopPropagation();if(!runtime.interaction?.cancel())graph.commands.dispatch({type:e.shiftKey?'redo':'undo'});return;}if(e.key!=='Escape'||e.defaultPrevented||e.nativeEvent.isComposing)return;if(runtime.interaction?.operation){e.preventDefault();e.stopPropagation();runtime.cancel();return;}if(runtime.dismiss(e.target as Element)){e.preventDefault();e.stopPropagation();}}}>
 
-    <DependencyGraph {...graph} originPositions={editorDocument.layoutBaselines[graph.viewKey]} onOrigin={positions=>editorDocument.captureLayout(graph.viewKey,positions)} onDismissOverlays={()=>runtime.dismiss()} onSearch={()=>{setFinding(true);graph.onSearch?.();requestAnimationFrame(()=>root.current?.querySelector<HTMLInputElement>('.graph-finder input')?.focus());}}/>
+    {isTable?<div className="delivery-table-surface">{table}</div>:<DependencyGraph {...graph} originPositions={editorDocument.layoutBaselines[graph.viewKey]} onOrigin={positions=>editorDocument.captureLayout(graph.viewKey,positions)} onDismissOverlays={()=>runtime.dismiss()} onSearch={()=>{setFinding(true);graph.onSearch?.();requestAnimationFrame(()=>root.current?.querySelector<HTMLInputElement>('.graph-finder input')?.focus());}}/>}
       {toolbar}
-      <div className="graph-tool-rail graph-overlay nopan nodrag nowheel" data-graph-panel="left" data-workspace-zone="tools">{palette}{finder&&<FindTool onClick={()=>setFinding(v=>!v)}/>}</div>
-      {finder&&finding&&<div ref={finderRef} className="graph-finder graph-overlay nopan nodrag nowheel" data-graph-panel="left">{finder}</div>}
-      <FloatingPanel onDismiss={onDismissDetail} content={detail} side="right" replacement={!!auxiliary} contentKey={JSON.stringify(graph.interaction.selection)}/>
+      <div className="graph-tool-rail graph-overlay nopan nodrag nowheel" data-graph-panel="left" data-workspace-zone="tools">{!isTable&&palette}{!isTable&&finder&&<FindTool onClick={()=>setFinding(v=>!v)}/>}</div>
+      {!isTable&&finder&&finding&&<div ref={finderRef} className="graph-finder graph-overlay nopan nodrag nowheel" data-graph-panel="left">{finder}</div>}
+      <FloatingPanel onDismiss={onDismissDetail} size={wide?'expanded':'compact'} content={detail?<><button className="ghost-button inspector-size-toggle" onClick={()=>setWide(v=>!v)}>{wide?'收起宽面板':'展开宽面板'}</button>{detail}</>:undefined} side="right" replacement={!!auxiliary} contentKey={JSON.stringify(graph.interaction.selection)}/>
       <FloatingPanel contentKey={auxiliaryKey} onDismiss={onDismissAuxiliary} analysis={analysis} size={auxiliarySize} content={auxiliary} side="left" replacement={!!detail}/>
       <div className="graph-footer graph-overlay nopan nodrag nowheel" data-graph-panel="bottom" data-workspace-zone="tools">{footer}</div>
 
