@@ -147,3 +147,16 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 ## Phase 与需求阶段
 
 使用 `list_feature_phases/save_feature_phase/deliver_feature_phase/reopen_feature_phase/delete_feature_phase` 管理分期。`record_test_submission` 记录实际提测。接口参数和阶段摘要见 [特性分期说明](feature-phases.md#rest-与-mcp)。
+
+## 项目交付工作区
+
+网页在同一工作区切换表格和关系图，保持范围、选中项及项目草稿。
+
+- `get_path_graph` 的特性节点带简要 `phases` 标签；`view=feature` 返回 `phaseRegions`，可传 `phaseId`（含 `unassigned`）。筛选保留直接外围依赖，`analysis` 始终为完整分析。
+- 区域不是业务节点，不产生依赖或排期约束。
+- `get_diagram_layouts` 和原批量布局接口支持 `feature-phase:<featureId>:<phaseId|unassigned>`，坐标为区域内相对位置。写入前检查特性、Phase、需求归属和布局版本；保留隐藏节点及旧布局。
+- 交付历史按对象详情查询，不放入图卡片。
+
+示例：
+
+`get_path_graph({projectId, view: "feature", featureId, phaseId})`

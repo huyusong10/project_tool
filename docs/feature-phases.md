@@ -7,7 +7,7 @@
 | 需求 | 当前阶段及阶段内工作进度 | 不要求具备完整流程或里程碑 |
 | 工作项 | 自身执行状态和百分比 | 执行人员更新 |
 
-首页和 `/features` 共用特性总览；`/execution` 保留需求甘特和执行指标。特性不显示总百分比，人工评估仍可维护。文档链接使用 `referenceLinks:[{title,url}]`，支持 HTTP／HTTPS。
+首页提供项目交付表格和关系图；`/features` 转到表格，`/paths` 转到关系图，见[项目交付工作区](delivery-workspace.md)。`/execution` 保留需求甘特和执行指标。特性不显示总百分比，人工评估仍可维护。文档链接使用 `referenceLinks:[{title,url}]`，支持 HTTP／HTTPS。
 
 ## Phase
 

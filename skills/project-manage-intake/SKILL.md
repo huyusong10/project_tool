@@ -66,3 +66,5 @@ MCP 不再使用条款关联、落实范围、交付范围、执行模式切换�
 用户明确确认实际交付时使用 deliver_feature_phase，先核对有效需求均完成；空 Phase 或全部取消不能交付。已交付范围修改前先用 reopen_feature_phase 填写原因，保留原交付记录；再按已有流程返工需求。未完成内容先移出当前 Phase。
 
 记录实际提测使用 record_test_submission，填写 actualDate、expectedVersion 及可选 content。提测就绪不是已提测，不自动补提测事实。测试已经开始可直接显示测试阶段。结果未知先核对原请求与最新记录，不重复提交。
+
+项目交付工作区共用表格与关系图。get_path_graph 在 view=feature 时可用 phaseId（或 unassigned）筛选，phaseRegions 表达交付区域；区域顺序不代表执行依赖。布局范围 feature-phase:<featureId>:<phaseId|unassigned> 保存区域内相对坐标，修改前读取完整布局并携带版本。
