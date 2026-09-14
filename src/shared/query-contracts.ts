@@ -50,7 +50,7 @@ export const pathGraphQuerySchema = z.object({
   format: z.enum(['json', 'svg']).default('json'),
 }).strict().refine(v => (v.view === 'requirement') === Boolean(v.requirementId), {
   message: '需求视图必须提供 requirementId；项目视图请省略 requirementId', path: ['requirementId'],
-}).refine(v=>(v.view==='feature')===Boolean(v.featureId),{message:'特性需求视图必须提供 featureId；未归属集合使用 ungrouped',path:['featureId']});
+}).refine(v=>(v.view==='feature')===Boolean(v.featureId),{message:'特性需求视图必须提供 featureId；未关联特性集合使用 unassigned',path:['featureId']});
 
 export type RequirementQuery = z.infer<typeof requirementQuerySchema>;
 export type WorkItemQuery = z.infer<typeof workItemQuerySchema>;

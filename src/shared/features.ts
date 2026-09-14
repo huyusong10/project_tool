@@ -11,7 +11,7 @@ export const featureRelationChange = z.discriminatedUnion('op', [
 ]);
 export type FeatureRelationChange = z.infer<typeof featureRelationChange>;
 export type FeatureCanvasContext = {
-  overview: import('./group-overview').GroupOverviewReport;
+  overview: import('./feature-overview').FeatureOverviewReport;
   relations: FeatureRelation[];
   requirements: import('./paths').PathRequirement[];
 };
@@ -24,5 +24,5 @@ export function applyFeatureRelationDraft(relations:FeatureRelation[],changes:Fe
   }
   return [...byId.values()];
 }
-export type FeatureRequirement = { id: string; title: string; status: string; version: number; groupId: string | null; deletedAt: string | null; actualEnd: string | null };
+export type FeatureRequirement = { executionStage?:import('./execution-stage').ExecutionStage; id: string; title: string; status: string; version: number; featureId: string | null; deletedAt: string | null; actualEnd: string | null };
 export type FeatureRequirements = { items: FeatureRequirement[]; total: number; page: number; pageSize: number; pages: number };

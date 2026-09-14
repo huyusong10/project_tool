@@ -5,6 +5,7 @@ import type Database from 'better-sqlite3';
 
 /** The dev branch shipped a later timestamp before the feature branch was merged. */
 export function reconcileFeatureBranch(sqlite:Database.Database,folder:string){
+  if(sqlite.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='features'").get())return;
   if(!sqlite.prepare("SELECT 1 FROM sqlite_schema WHERE name='__drizzle_migrations'").get())return;
   const latest=Number((sqlite.prepare('SELECT MAX(created_at) AS time FROM __drizzle_migrations').get() as {time:number}).time);
   if(latest<1789140000000)return;

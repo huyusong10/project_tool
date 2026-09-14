@@ -1,7 +1,7 @@
 import type {DependencyChanges} from './path-contracts';
 import type {PathAnalysis} from './paths';
 export type ExecutionCommand = {requirementId:string;workItemId?:string;action?:string};
-const descriptive=new Set(['groupId','title','background','referenceUrl','reason','priority']);
+const descriptive=new Set(['featureId','title','background','referenceUrl','reason','priority']);
 /** Execution only waits for edits to facts or conditions it actually consumes. */
 export function executionDraftConflicts(changes:DependencyChanges,graph:PathAnalysis|undefined,command:ExecutionCommand):string[] {
   const own=new Set([command.requirementId,...(command.workItemId?[command.workItemId]:graph?.nodes.filter(n=>n.requirementId===command.requirementId).map(n=>n.id)||[])]);

@@ -1,6 +1,6 @@
 import { topologicalOrder } from './paths';
 import {arrangeLate,type Arrangement} from './late-schedule';
-export type TemplateDependencyItem = { id?: string; clientKey?: string; predecessorKeys?: string[]; title: string; startOffsetDays: number; durationDays: number;kind?:'work'|'milestone';arrangement?:Arrangement;arrangementAnchor?:string|null;confirmationMode?:'auto'|'manual' };
+export type TemplateDependencyItem = { workStage?:import('./execution-stage').WorkStage|null;milestoneKind?:import('./execution-stage').MilestoneKind; id?: string; clientKey?: string; predecessorKeys?: string[]; title: string; startOffsetDays: number; durationDays: number;kind?:'work'|'milestone';arrangement?:Arrangement;arrangementAnchor?:string|null;confirmationMode?:'auto'|'manual' };
 /** Offsets are derived output for compatibility with existing date generation and template Gantt. */
 export function resolveTemplateOffsets<T extends TemplateDependencyItem>(items: T[]): T[] {
   const keyed = items.map((item, index) => ({ item, key: item.clientKey || item.id || String(index) }));

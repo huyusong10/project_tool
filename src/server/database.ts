@@ -160,6 +160,7 @@ linkSampleProgressAuthors(sqlite);
 initializeLegacyWorkEstimates(sqlite);
 
 const databaseConsistency = inspectDatabaseConsistency(sqlite);
+if (databaseConsistency.phases) throw new Error('Phase 归属或交付记录不一致，服务已拒绝启动');
 if (databaseConsistency.foreignKeys) throw new Error(`数据库迁移后存在${databaseConsistency.foreignKeys}条外键异常`);
 if (databaseConsistency.projectScope.projectDefaults || databaseConsistency.projectScope.requirementTemplates || databaseConsistency.projectScope.workItemTemplates) {
   throw new Error('数据库迁移后存在跨项目流程引用，服务已拒绝启动');

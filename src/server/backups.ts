@@ -323,6 +323,7 @@ function migrateAndValidateRestoreCopy(replacement: string) {
     const integrity = restoreDb.pragma('integrity_check') as Array<{ integrity_check: string }>;
     if (integrity[0]?.integrity_check !== 'ok') fail('备份数据库校验失败', 'DEPENDENCY_CONFLICT', 409);
     const consistency = inspectDatabaseConsistency(restoreDb);
+    if (consistency.phases) fail('备份中的 Phase 归属或交付记录不一致', 'DEPENDENCY_CONFLICT', 409);
     if (consistency.foreignKeys) fail('备份数据库存在关联数据异常', 'DEPENDENCY_CONFLICT', 409);
     if (consistency.projectScope.projectDefaults || consistency.projectScope.requirementTemplates || consistency.projectScope.workItemTemplates) {
       fail('备份数据库存在跨项目流程引用，不能恢复', 'DEPENDENCY_CONFLICT', 409);

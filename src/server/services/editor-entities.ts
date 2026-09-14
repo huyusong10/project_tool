@@ -52,7 +52,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     if(coordinationKeys.some(k=>c.data[k]!==undefined)){const original=c.entity==='requirement'?req:snapshot.workItems.find(w=>w.id===c.id);if(c.op!=='update'||!original||original.status!=='blocked')fail('只有阻塞对象可以修改协调信息');const normalized=validateCoordination(snapshot.projectId,{...original,...c.data});for(const key of coordinationKeys)if(c.data[key]!==undefined||c.data.blockedIssueId)c.data[key]=normalized[key];}
     if(c.entity==='requirement'){
       if(c.op==='create'){
-        const {reason:_creationReason,...creation}=c.data;
+        const creation=c.data;
         const value=normalizeRequirementText(createRequirementInputSchema.parse({...creation,executionMode:c.data.templateId?'work_items':'direct',projectId:snapshot.projectId,templateId:c.data.templateId||undefined}));
         let template=value.templateId?listTemplates(snapshot.projectId).find(t=>t.id===value.templateId):undefined;
         if(value.templateId&&!template)fail('请选择当前项目的有效流程设计');
@@ -73,12 +73,12 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
           const expansion:TemplateExpansion={requirementId:c.id,key:templateInstanceKey(c),version:template.updatedAt,entities:[],dependencies:[],items:template.items.map((i:{id:string;kind?:string})=>({clientId:mapping.get(i.id)!,templateItemId:i.id,kind:i.kind||'work'}))};
           expanded.set(c.id,expansion);
           for(const item of template.items){const id=mapping.get(item.id)!;
-            if(item.kind==='milestone')snapshot.milestones.push({id,projectId:snapshot.projectId,requirementId:c.id,title:item.title,targetDate:null,confirmationMode:item.confirmationMode||'auto',achievedAt:null,version:1});
-            else {const dates=base?plannedDatesFromOffset(base,item.startOffsetDays,item.durationDays):{plannedStart:null,plannedEnd:null};snapshot.workItems.push({...workDefaults,...dates,id,requirementId:c.id,title:item.title,durationDays:item.durationDays,arrangement:item.arrangement||'early',arrangementAnchor:mapping.get(item.arrangementAnchor)||null});}
+            if(item.kind==='milestone')snapshot.milestones.push({id,projectId:snapshot.projectId,requirementId:c.id,title:item.title,targetDate:null,milestoneKind:item.milestoneKind||'ordinary',confirmationMode:item.milestoneKind==='test_submitted'?'manual':item.confirmationMode||'auto',achievedAt:null,version:1});
+            else {const dates=base?plannedDatesFromOffset(base,item.startOffsetDays,item.durationDays):{plannedStart:null,plannedEnd:null};snapshot.workItems.push({...workDefaults,...dates,id,requirementId:c.id,title:item.title,workStage:item.workStage,durationDays:item.durationDays,arrangement:item.arrangement||'early',arrangementAnchor:mapping.get(item.arrangementAnchor)||null});}
             if(template.dependencyMode==='dependencies'||item.kind==='milestone')for(const pred of item.predecessorIds||[]){const previous=template.items.find((i:{id:string})=>i.id===pred);snapshot.dependencies.push({id:id+':from:'+pred,projectId:snapshot.projectId,sourceRequirementId:c.id,targetRequirementId:c.id,sourceWorkItemId:previous.kind==='milestone'?null:mapping.get(pred)!,sourceMilestoneId:previous.kind==='milestone'?mapping.get(pred):null,targetWorkItemId:item.kind==='milestone'?null:id,targetMilestoneId:item.kind==='milestone'?id:null,origin:'template'});}
           }
           expansion.dependencies=snapshot.dependencies.filter(d=>d.sourceRequirementId===c.id&&d.targetRequirementId===c.id).map(d=>({...d}));
-          expansion.entities=[...snapshot.workItems.filter(w=>w.requirementId===c.id).map(w=>({entity:'work' as const,op:'create' as const,id:w.id,requirementId:c.id,data:{title:w.title,ownerId:w.ownerId||null,plannedStart:w.plannedStart,plannedEnd:w.plannedEnd,durationDays:w.durationDays,arrangement:w.arrangement,arrangementAnchor:w.arrangementAnchor}})),...snapshot.milestones.filter(m=>m.requirementId===c.id).map(m=>({entity:'milestone' as const,op:'create' as const,id:m.id,requirementId:c.id,data:{title:m.title,targetDate:m.targetDate,confirmationMode:m.confirmationMode}}))];
+          expansion.entities=[...snapshot.workItems.filter(w=>w.requirementId===c.id).map(w=>({entity:'work' as const,op:'create' as const,id:w.id,requirementId:c.id,data:{title:w.title,workStage:w.workStage,ownerId:w.ownerId||null,plannedStart:w.plannedStart,plannedEnd:w.plannedEnd,durationDays:w.durationDays,arrangement:w.arrangement,arrangementAnchor:w.arrangementAnchor}})),...snapshot.milestones.filter(m=>m.requirementId===c.id).map(m=>({entity:'milestone' as const,op:'create' as const,id:m.id,requirementId:c.id,data:{title:m.title,milestoneKind:m.milestoneKind,targetDate:m.targetDate,confirmationMode:m.confirmationMode}}))];
           if(template.dependencyMode==='dependencies')r.dependenciesReviewedAt=new Date().toISOString();
           const dates=snapshot.workItems.filter(w=>w.requirementId===c.id).flatMap(w=>w.plannedEnd?[w.plannedEnd]:[]).sort();r.plannedEnd=dates.at(-1)||null;r.status=snapshot.workItems.some(w=>w.requirementId===c.id)?'not_started':'not_started';
         }
@@ -108,10 +108,10 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
           Object.assign(w,c.data,{assigneeIds:collaborators});}
       }
     }else{
-      if(Object.keys(c.data).some(key=>!['title','targetDate','confirmationMode'].includes(key)))fail('里程碑包含不支持的属性');
+      if(Object.keys(c.data).some(key=>!['title','targetDate','confirmationMode','milestoneKind'].includes(key)))fail('里程碑包含不支持的属性');
       const m=snapshot.milestones.find(m=>m.id===c.id);
-      if(c.op==='create')snapshot.milestones.push({id:c.id,projectId:snapshot.projectId,requirementId:requirementId||null,title:requireLabel(c.data.title,'里程碑标题'),targetDate:c.data.targetDate||null,confirmationMode:c.data.confirmationMode||'auto',achievedAt:null,version:1});
-      else {if(!m)notFound('里程碑不存在');if(m.achievedAt)fail('已达成里程碑请先重新打开');if(c.op==='delete'){if(sqlite.prepare("SELECT 1 FROM audit_logs WHERE entity_type='milestone' AND entity_id=? AND action IN ('achieve','reopen') LIMIT 1").get(c.id))fail('里程碑已有达成记录，不能删除历史对象');snapshot.milestones=snapshot.milestones.filter(m=>m.id!==c.id);}else Object.assign(m,c.data);}
+      if(c.op==='create')snapshot.milestones.push({id:c.id,projectId:snapshot.projectId,requirementId:requirementId||null,title:requireLabel(c.data.title,'里程碑标题'),targetDate:c.data.targetDate||null,confirmationMode:c.data.milestoneKind==='test_submitted'?'manual':c.data.confirmationMode||'auto',milestoneKind:c.data.milestoneKind||'ordinary',achievedAt:null,version:1});
+      else {if(!m)notFound('里程碑不存在');if(m.achievedAt)fail('已达成里程碑请先重新打开');if(c.op==='delete'){if(sqlite.prepare("SELECT 1 FROM audit_logs WHERE entity_type='milestone' AND entity_id=? AND action IN ('achieve','reopen') LIMIT 1").get(c.id))fail('里程碑已有达成记录，不能删除历史对象');snapshot.milestones=snapshot.milestones.filter(m=>m.id!==c.id);}else {Object.assign(m,c.data);if(m.milestoneKind==='test_submitted')m.confirmationMode='manual';}}
     }
   }
   for(const c of changes)if(c.entity==='requirement'&&c.op==='create'&&!expanded.has(c.id)){const r=snapshot.requirements.find(r=>r.id===c.id)!;r.dependenciesReviewedAt=new Date().toISOString();r.scheduleAnchor=r.plannedStart||snapshot.asOfDate;}
@@ -133,7 +133,7 @@ export function prepareEditorLayouts(snapshot:PathInput,layouts:NonNullable<Depe
     else if(layout.scope==='features'||layout.scope.startsWith('feature:')){
       assertProjectManager(current,snapshot.projectId);
       const id=layout.scope.slice(8);
-      if(layout.scope!=='features'&&id!=='ungrouped'&&!sqlite.prepare('SELECT 1 FROM requirement_groups WHERE id=? AND project_id=?').get(id,snapshot.projectId))notFound('布局特性不存在');
+      if(layout.scope!=='features'&&id!=='unassigned'&&!sqlite.prepare('SELECT 1 FROM features WHERE id=? AND project_id=?').get(id,snapshot.projectId))notFound('布局特性不存在');
     }
     else if(layout.scope.startsWith('requirement:')){const id=layout.scope.slice(12);if(!snapshot.requirements.some(r=>r.id===id&&!r.deletedAt))notFound('布局需求不存在');if(sqlite.prepare('SELECT 1 FROM requirements WHERE id=?').get(id))assertRequirementOwnerOrManager(current,id);else assertProjectManager(current,snapshot.projectId);}
     else fail('布局范围不合法');
@@ -149,7 +149,6 @@ export function persistEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     const {reviewForecast:_review,...data}=c.data,reqId=ids[c.requirementId||'']||c.requirementId,entityId=ids[c.id]||c.id;
     if(c.entity==='requirement'){
       if(c.op==='create'){
-        delete data.reason;
         const r=createRequirement({...data,templateId:data.templateId||undefined,projectId:snapshot.projectId},actor,true);ids[c.id]=r.id;if(!expanded.has(c.id))sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=?,schedule_anchor=? WHERE id=?').run(now,snapshot.requirements.find(value=>value.id===c.id)?.scheduleAnchor||snapshot.asOfDate,r.id);
         for(const e of expanded.get(c.id)?.items||[]){const record=e.kind==='milestone'?sqlite.prepare('SELECT id FROM milestones WHERE requirement_id=? AND template_item_id=?').get(r.id,e.templateItemId) as {id:string}|undefined:r.workItems?.find(w=>w.templateItemId===e.templateItemId);if(!record)fail('流程实例化结果不完整');ids[e.clientId]=record.id;}
         for(const e of expanded.get(c.id)?.dependencies||[]){
@@ -166,8 +165,8 @@ export function persistEditorEntities(snapshot:PathInput,changes:EditorEntityCha
       else deleteWorkItem(entityId,{expectedVersion:c.expectedVersion??1},actor,true);
     }else{
       const m=snapshot.milestones?.find(m=>m.id===c.id);
-      if(c.op==='create'){ids[c.id]=c.id;sqlite.prepare('INSERT INTO milestones(id,project_id,requirement_id,title,target_date,confirmation_mode,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(c.id,snapshot.projectId,reqId||null,m!.title,m!.targetDate,m!.confirmationMode,now,now);}
-      else if(c.op==='update')sqlite.prepare('UPDATE milestones SET title=?,target_date=?,confirmation_mode=?,version=version+1,updated_at=? WHERE id=?').run(m!.title,m!.targetDate,m!.confirmationMode,now,entityId);
+      if(c.op==='create'){ids[c.id]=c.id;sqlite.prepare('INSERT INTO milestones(id,project_id,requirement_id,title,target_date,confirmation_mode,milestone_kind,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)').run(c.id,snapshot.projectId,reqId||null,m!.title,m!.targetDate,m!.confirmationMode,m!.milestoneKind||'ordinary',now,now);}
+      else if(c.op==='update')sqlite.prepare('UPDATE milestones SET title=?,target_date=?,confirmation_mode=?,milestone_kind=?,version=version+1,updated_at=? WHERE id=?').run(m!.title,m!.targetDate,m!.confirmationMode,m!.milestoneKind||'ordinary',now,entityId);
       else sqlite.prepare('DELETE FROM milestones WHERE id=?').run(entityId);
     }
   }
