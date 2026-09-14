@@ -69,13 +69,16 @@ export function FeatureEditor({projectId,edit:requestedEdit,onClose,embedded=fal
   </form>;
   return embedded?<><h3 className="feature-edit-heading">{title}</h3>{form}</>:<Modal title={title} onClose={()=>{clearLocal();onClose();}} closable={!busy}>{form}</Modal>;
 }
-export function FeatureDetails({projectId,feature,edit,onEdit,onBusy,returnTo,onPhaseEdit}:{onPhaseEdit:(edit:PhaseEdit)=>void;returnTo?:string;projectId:string;feature:FeatureOverview;edit?:FeatureEdit|null;onEdit:(edit:FeatureEdit|null)=>void;onBusy?:(busy:boolean)=>void}) {
+export function FeatureDetails({projectId,feature,edit,onEdit,onBusy,returnTo,onPhaseEdit,onEnter}:{onEnter?:()=>void;onPhaseEdit:(edit:PhaseEdit)=>void;returnTo?:string;projectId:string;feature:FeatureOverview;edit?:FeatureEdit|null;onEdit:(edit:FeatureEdit|null)=>void;onBusy?:(busy:boolean)=>void}) {
   const {session}=useSession(),manage=canManageProject(session,projectId),[params]=useSearchParams();
   const [tab,setTab]=useState<'phases'|'basic'|'assessment'|'requirements'>(edit?.mode==='assessment'?'assessment':'phases');
   const activeTab=edit?.mode==='assessment'?'assessment':tab;
   return <div className="feature-detail-panel">
-    <div className="feature-detail-navigation"><ViewTabs ariaLabel="特性详情" value={activeTab} disabled={!!edit} onChange={setTab} options={[{value:'phases',label:'Phase 交付'},{value:'basic',label:'目标与范围'},{value:'assessment',label:'进展评估'},{value:'requirements',label:'关联需求'}]}/>
+    <div className="feature-detail-toolbar">
+      {onEnter&&<button className="primary-button" disabled={!!edit} onClick={onEnter}>进入需求</button>}
       {manage&&<TopbarMenu label="特性更多操作" disabled={!!edit}><button className="ghost-button" onClick={()=>onEdit({mode:feature.archivedAt?'restore':'archive',feature})}>{feature.archivedAt?'恢复特性':'归档特性'}</button><button className="ghost-button danger-text" onClick={()=>onEdit({mode:'delete',feature})}>删除空特性</button></TopbarMenu>}
+    </div>
+    <div className="feature-detail-navigation"><ViewTabs ariaLabel="特性详情" value={activeTab} disabled={!!edit} onChange={setTab} options={[{value:'phases',label:'Phase 交付'},{value:'basic',label:'目标与范围'},{value:'assessment',label:'进展评估'},{value:'requirements',label:'关联需求'}]}/>
     </div>
     {edit?<FeatureEditor key={feature.id+edit.mode} projectId={projectId} edit={edit} embedded onBusy={onBusy} onClose={()=>onEdit(null)}/>:<>
       <div className="feature-detail-body">
@@ -90,8 +93,8 @@ export function FeatureDetails({projectId,feature,edit,onEdit,onBusy,returnTo,on
         {activeTab==='requirements'&&<FeatureRequirementList key={feature.id} projectId={projectId} featureId={feature.id}/>}
       </div>
       <footer className="feature-detail-footer">
-        {activeTab==='phases'&&<>{manage&&!feature.archivedAt&&<><button className="primary-button" onClick={()=>onPhaseEdit({feature,mode:'edit'})}>新增 Phase</button><button className="ghost-button" onClick={()=>onPhaseEdit({feature,mode:'placement'})}>安排需求</button></>}<Link className="ghost-button" to={'/?'+new URLSearchParams({view:'feature',featureId:feature.id,mode:params.get('mode')||'table'})}>查看需求</Link></>}
-        {activeTab==='basic'&&<>{manage&&!feature.archivedAt&&<button className="primary-button" onClick={()=>onEdit({mode:'basic',feature})}>编辑资料</button>}{!returnTo&&<Link className="ghost-button" to={'/paths?'+new URLSearchParams({view:'features',pathNode:'feature:'+feature.id,pathInspector:'open'})}>查看关系图</Link>}</>}
+        {activeTab==='phases'&&<>{manage&&!feature.archivedAt&&<><button className="primary-button" onClick={()=>onPhaseEdit({feature,mode:'edit'})}>新增 Phase</button><button className="ghost-button" onClick={()=>onPhaseEdit({feature,mode:'placement'})}>安排需求</button></>}{!onEnter&&<Link className="ghost-button" to={'/?'+new URLSearchParams({view:'feature',featureId:feature.id,mode:params.get('mode')||'table'})}>查看需求</Link>}</>}
+        {activeTab==='basic'&&<>{manage&&!feature.archivedAt&&<button className="primary-button" onClick={()=>onEdit({mode:'basic',feature})}>编辑资料</button>}{!returnTo&&!onEnter&&<Link className="ghost-button" to={'/paths?'+new URLSearchParams({view:'features',pathNode:'feature:'+feature.id,pathInspector:'open'})}>查看关系图</Link>}</>}
         {activeTab==='assessment'&&manage&&!feature.archivedAt&&<button className="primary-button" onClick={()=>onEdit({mode:'assessment',feature})}>更新评估</button>}
         {activeTab==='requirements'&&<Link className="primary-button" to={'/?'+new URLSearchParams({view:'feature',featureId:feature.id,mode:params.get('mode')||'table'})}>{manage&&!feature.archivedAt?'整理需求':'查看需求'}</Link>}
         {returnTo&&<Link className="ghost-button" to={returnTo}>返回路径分析</Link>}

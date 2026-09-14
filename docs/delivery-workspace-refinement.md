@@ -57,3 +57,11 @@
 5. 在测试项目创建未指定特性的需求，确认归入“其他特性”；随后可通过归属表单调整。
 
 固定构建目录、提交、进程和地址见 `.preview/preview-runtime.json`。预览使用独立数据库、备份、会话和技能目录。主仓库、正式数据库与 3210 服务未升级。
+
+## 特性详情后续修正
+
+基线：`d01f8a7`。未拆分需求的特性不显示展开箭头，全部展开跳过这些特性；空 Phase 资料仍可通过标签查看。详情浮在主区域上，打开、加宽、切换页签和关闭均不改变表格列宽、图节点坐标与缩放。详情操作与页签分行，Phase 状态、日期和关注说明按纵向排列。底部双击提示和占位已删除，关系图图例移至“显示”菜单。
+
+验证：20 项流程回归、六种办公视口共 12 项界面回归通过，包含 390×844 详情；完整 `npm run verify` 退出码 0，792 项单元与服务测试、HTTP 回归、lint、类型检查和构建通过。本次未修改数据模型及项目数据。
+
+记录：`.preview/detail-followup-regression.log`、`.preview/detail-followup-matrix.log`、`.preview/detail-followup-verify.log`；截图位于 `.preview/qa/detail-followup-matrix/`。

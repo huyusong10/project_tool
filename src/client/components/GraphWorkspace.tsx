@@ -43,21 +43,20 @@ function Workspace({ table, document:editorDocument, auxiliaryKey, toolbar, deta
   useEffect(()=>{try{localStorage.setItem(finderKey,String(finding));if(finderHistoryKey)sessionStorage.setItem(finderHistoryKey,String(finding));}catch{/* View is still usable. */}},[finderKey,finderHistoryKey,finding]);
   useEffect(()=>{
     const element=root.current;if(!element)return;
-    const footer=element.querySelector('.graph-footer')!,controls=element.querySelector('.graph-view-controls')!;
-    if(!footer||!controls)return;
+    const footer=element.querySelector('.graph-footer'),controls=element.querySelector('.graph-view-controls');
     const update=()=>{
-      const box=element.getBoundingClientRect(),a=footer.getBoundingClientRect(),b=controls.getBoundingClientRect();
+      const box=element.getBoundingClientRect(),a=footer?.getBoundingClientRect(),b=controls?.getBoundingClientRect();
       const finder=element.querySelector('.graph-finder');element.style.setProperty('--graph-find-bottom',((finder?finder.getBoundingClientRect().bottom:box.top)-box.top+12)+'px');
-      const stacked=box.width<801||a.width+b.width+44>box.width;
+      const stacked=!!a&&!!b&&(box.width<801||a.width+b.width+44>box.width);
       element.dataset.stacked=String(stacked);
-      element.style.setProperty('--graph-footer-height',a.height+'px');
+      element.style.setProperty('--graph-footer-height',(a?.height||0)+'px');
       // Reserve 12px clearance even at the 8px entry-animation offset.
-      const bottom=box.bottom-Math.min(footer.getBoundingClientRect().top,controls.getBoundingClientRect().top)+20;
+      const bottom=box.bottom-Math.min(a?.top??box.bottom,b?.top??box.bottom)+20;
       element.style.setProperty('--graph-bottom-clearance',bottom+'px');
     };
     const observer=new ResizeObserver(update);[element,footer,controls,element.querySelector('.graph-finder')].filter((e):e is HTMLElement=>!!e).forEach(e=>observer.observe(e));update();
     return()=>observer.disconnect();
-  },[finding,isTable]);
+  },[finding,isTable,footer]);
   return <section ref={root} className={'graph-workspace graph-editor-workspace'+(finding?' has-finder':'')+(analysis?' has-analysis':'')+(detail?' has-inspector':'')+(isTable?' delivery-table-mode':'')+(wide?' wide-inspector':'')} aria-label="交付依赖工作区" onCompositionStart={()=>{runtime.composing=true;}} onCompositionEnd={()=>{runtime.composing=false;if(runtime.saveRequested){runtime.saveRequested=false;queueMicrotask(requestSave);}}}
     onPointerDownCapture={e=>{
       const previous=recentNodeClick.current,target=e.target as HTMLElement;
@@ -87,7 +86,7 @@ function Workspace({ table, document:editorDocument, auxiliaryKey, toolbar, deta
       {!isTable&&finder&&finding&&<div ref={finderRef} className="graph-finder graph-overlay nopan nodrag nowheel" data-graph-panel="left">{finder}</div>}
       <FloatingPanel onDismiss={onDismissDetail} size={wide?'expanded':'compact'} content={detail?<div className="delivery-inspector-shell"><button title={wide?'收起详情':'展开详情'} className="ghost-button inspector-size-toggle" onClick={()=>setWide(v=>!v)}>{wide?'收起':'展开'}</button><div className="delivery-inspector-content">{detail}</div></div>:undefined} side="right" replacement={!!auxiliary} contentKey={JSON.stringify(graph.interaction.selection)}/>
       <FloatingPanel contentKey={auxiliaryKey} onDismiss={onDismissAuxiliary} analysis={analysis} size={auxiliarySize} content={auxiliary} side="left" replacement={!!detail}/>
-      <div className="graph-footer graph-overlay nopan nodrag nowheel" data-graph-panel="bottom" data-workspace-zone="tools">{footer}</div>
+      {footer&&<div className="graph-footer graph-overlay nopan nodrag nowheel" data-graph-panel="bottom" data-workspace-zone="tools">{footer}</div>}
 
   </section>;
 }

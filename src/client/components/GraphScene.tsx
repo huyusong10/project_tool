@@ -290,18 +290,6 @@ export function GraphScene(props: DependencyGraphProps) {
     const {left,right,top,bottom}=available(),v=flow.getViewport();
     void flow.setViewport({zoom:v.zoom,x:(left+right)/2-(node.position.x+(node.measured?.width||244)/2)*v.zoom,y:(top+bottom)/2-(node.position.y+(node.measured?.height||154)/2)*v.zoom},{duration:reduced()?0:260});
   },[flow,available]);
-  const previousRevealSelection=useRef(selected);
-  useEffect(()=>{
-    if(busy||!selected||!container.current)return;
-    const changed=previousRevealSelection.current!==selected;previousRevealSelection.current=selected;
-    const element=container.current;let previous=element.getBoundingClientRect();
-    let timer:ReturnType<typeof setTimeout>;
-    const reveal=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(interaction.operation)return;const node=flow.getNode(selected);if(!node)return;const v=flow.getViewport(),b=available(),x=v.x+node.position.x*v.zoom,y=v.y+node.position.y*v.zoom,w=(node.measured?.width||244)*v.zoom,h=(node.measured?.height||168)*v.zoom;
-      if(x<b.left||x+w>b.right||y<b.top||y+h>b.bottom)locate(selected);
-    // Keep a node still while the second click of a drill-down is arriving.
-    },350);};
-    if(changed)reveal();const observer=new ResizeObserver(()=>{const next=element.getBoundingClientRect();if(next.width!==previous.width||next.height!==previous.height){previous=next;reveal();}});observer.observe(element);return()=>{observer.disconnect();clearTimeout(timer);};
-  },[busy,selected,flow,available,locate,interaction]);
   useEffect(()=>{if(props.locate&&!busy&&layoutRef.current?.nodes[props.locate.id]&&located.current!==props.locate.sequence){located.current=props.locate.sequence;locate(props.locate.id);}},[props.locate,busy,locate]);
   const linkById=useMemo(()=>new Map(links.map(e=>[e.id,e])),[links]);
   const currentBoxes=new Map(nodes.filter(n=>!n.data.retiring).map(n=>[n.id,{...(displayPositions.current.get(n.id)||n.position),width:n.measured?.width||244,height:n.measured?.height||154}]));
