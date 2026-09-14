@@ -76,6 +76,8 @@ test('流程元素与名称即时保存，返回再进入保留里程碑、依�
   await page.getByRole('button', { name: '编辑流程 已核对交付流程', exact: true }).click();
   await expect(editor.locator('[data-layout-ready="true"]')).toBeVisible();
   await expect(editor.locator('.react-flow__node')).toHaveCount(3);
+  // The previous properties panel is restored and covers the first node.
+  await editor.locator('.graph-auxiliary:not(.is-leaving)').getByRole('button', { name: '关闭', exact: true }).click();
   await editor.locator(`.react-flow__node[data-id="${saved.items[0].id}"]`).click();
   await expect(editor.getByRole('spinbutton', { name: '预计工期', exact: true })).toHaveValue('4');
 });

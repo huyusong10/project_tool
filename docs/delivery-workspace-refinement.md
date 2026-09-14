@@ -65,3 +65,7 @@
 验证：20 项流程回归、六种办公视口共 12 项界面回归通过，包含 390×844 详情；完整 `npm run verify` 退出码 0，792 项单元与服务测试、HTTP 回归、lint、类型检查和构建通过。本次未修改数据模型及项目数据。
 
 记录：`.preview/detail-followup-regression.log`、`.preview/detail-followup-matrix.log`、`.preview/detail-followup-verify.log`；截图位于 `.preview/qa/detail-followup-matrix/`。
+
+标题栏对齐修正（基线 `c276d99`）：特性、需求和流程编辑共用详情标题栏。“展开”和“关闭”使用同一行、32px 高度及 8px 间距，取消按钮的绝对定位；长标题换行后仍对齐。
+
+六种办公视口、390×844 窄屏、长标题及流程保存回归通过，lint、类型检查和构建通过。记录：`.preview/detail-heading-matrix.log`、`.preview/detail-heading-template-final.log`、`.preview/detail-heading-build.log`；截图位于 `.preview/qa/detail-heading-matrix/`。

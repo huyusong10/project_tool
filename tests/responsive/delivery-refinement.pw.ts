@@ -2,6 +2,13 @@ import {test,expect,type Page} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
 import {chooseOption} from './select-helper';
 const ready=(page:Page)=>expect(page.locator('[data-layout-ready=true]')).toBeVisible({timeout:20000});
+async function alignedDetailHeader(page:Page){
+  const header=page.locator('.graph-detail:not(.is-leaving) .delivery-inspector-heading');
+  const title=await header.locator('h3').boundingBox(),actions=await header.locator('button:visible').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().toJSON()));
+  expect(actions.length).toBeGreaterThan(0);expect(title!.x+title!.width).toBeLessThanOrEqual(actions[0].x-7);
+  for(const button of actions){expect(button.y).toBe(actions[0].y);expect(button.height).toBe(actions[0].height);}
+  const panel=await header.boundingBox();expect(actions.at(-1)!.right).toBeLessThanOrEqual(panel!.x+panel!.width-15);
+}
 async function containedCards(page:Page){
   const errors=await page.locator('.react-flow__node:not(.graph-node-hidden) .dependency-card').evaluateAll(cards=>cards.flatMap(card=>{
     const b=card.getBoundingClientRect();return Array.from(card.children).filter(c=>!c.classList.contains('react-flow__handle')&&!c.classList.contains('business-handle')).flatMap(c=>{const r=c.getBoundingClientRect();return r.width&&r.height&&(r.left<b.left-1||r.right>b.right+1||r.top<b.top-1||r.bottom>b.bottom+1)?[card.textContent?.slice(0,50)+': '+c.className]:[];});
@@ -45,6 +52,7 @@ test('空特性没有空展开行，打开与加宽详情保持主区域位置',
       if(action==='close')await panel.getByRole('button',{name:'关闭',exact:true}).click();
       // Observe the full former resize/reveal delay, rather than only its first frame.
       for(let tick=0;tick<5;tick++){await page.waitForTimeout(150);expect(await geometry(),mode+' '+action).toEqual(before);}
+      if(action!=='close')await alignedDetailHeader(page);
       if(action==='open'){
         const overflow=await panel.evaluate(el=>Array.from(el.querySelectorAll('.feature-detail-navigation button,.phase-row>*')).filter(n=>{const r=n.getBoundingClientRect(),p=n.parentElement!.getBoundingClientRect();return r.left<p.left-1||r.right>p.right+1;}).map(n=>n.className));expect(overflow).toEqual([]);
         const tabs=await panel.getByRole('group',{name:'特性详情'}).getByRole('button').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().top));expect(Math.max(...tabs)-Math.min(...tabs)).toBeLessThan(1);
@@ -55,7 +63,14 @@ test('空特性没有空展开行，打开与加宽详情保持主区域位置',
   await page.setViewportSize({width:390,height:844});await page.goto('/?'+new URLSearchParams({view:'features',mode:'table',pathNode:'feature:'+f.feature.id,pathInspector:'open'}));
   const mobile=page.locator('.graph-detail:not(.is-leaving)');await expect(mobile).toBeVisible();
   expect(await mobile.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+  await alignedDetailHeader(page);
   await page.screenshot({path:testInfo.outputPath('stable-mobile-feature.png'),animations:'disabled'});
+  const longName='跨站点资产归属与生命周期协同管理'.repeat(5),created=await page.request.post(f.base+'/features',{data:{name:longName}});expect(created.ok()).toBe(true);
+  const longId=(await created.json()).features.find((item:{name:string})=>item.name===longName).id;
+  await page.setViewportSize(testInfo.project.use.viewport!);
+  await page.goto('/?'+new URLSearchParams({view:'features',mode:'table',pathNode:'feature:'+longId,pathInspector:'open'}));
+  await expect(page.locator('.delivery-inspector-heading h3')).toHaveText(longName);await alignedDetailHeader(page);
+  await page.screenshot({path:testInfo.outputPath('long-title-header.png'),animations:'disabled'});
 });
 test('交付界面控件、卡片边界、Phase 筛选、工作进度和窄屏详情',async({page},testInfo)=>{
   test.setTimeout(90000);const f=await phaseFixture(page),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
