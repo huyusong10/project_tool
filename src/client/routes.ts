@@ -50,7 +50,6 @@ function lazyPage(load: () => Promise<{default: ComponentType}>) {
 export function preloadPage(pathname: string) {
   void matchRoute(pathname)?.component.preload?.().catch(() => { /* 正式渲染时显示原加载错误。 */ });
 }
-const FeaturesPage = lazyPage(() => import("./pages/FeaturesPage").then(module => ({default:module.FeaturesPage})));
 const AnalyticsPage = lazyPage(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
 const PathsPage = lazyPage(() => import("./pages/PathsPage").then((module) => ({ default: module.PathsPage })));
 const MyWorkPage = lazyPage(() => import("./pages/MyWorkPage").then((module) => ({ default: module.MyWorkPage })));
@@ -74,10 +73,11 @@ const LogsPage = lazyPage(() => import("./pages/LogsPage").then((module) => ({ d
  */
 export const appRoutes: AppRoute[] = [
   {
-    path: "/", scope: "project", access: "all", component: DashboardPage,
-    nav: [{ group: "工作台", label: "项目进展", icon: GanttChartSquare, end: true }],
+    path: "/", scope: "project", access: "all", component: PathsPage,
+    nav: [{ group: "工作台", label: "项目交付", icon: BriefcaseBusiness, end: true }],
   },
-  { path: "/paths", scope: "project", access: "all", component: PathsPage, nav: [{ group: "工作台", label: "路径分析", icon: Network }] },
+  { path: "/execution", scope:"project", access:"all", component:DashboardPage, nav:[{group:"工作台",label:"执行进展",icon:GanttChartSquare}] },
+  { path: "/paths", scope: "project", access: "all", component: PathsPage },
   {
     path: "/analytics", scope: "project", access: "all", component: AnalyticsPage,
     nav: [{ group: "工作台", label: "统计分析", icon: BarChart3 }],
@@ -91,8 +91,8 @@ export const appRoutes: AppRoute[] = [
     nav: [{ group: "个人", label: "个人设置", icon: SlidersHorizontal }],
   },
   {
-    path: "/features", scope: "project", access: "all", component: FeaturesPage,
-    nav: [{group:"项目空间",label:"特性规划",icon:BriefcaseBusiness}],
+    path: "/features", scope: "project", access: "all", component: PathsPage,
+
   },
   {
     path: "/requirements", scope: "project", access: "all", component: RequirementsPage,

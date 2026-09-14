@@ -4,6 +4,7 @@ type DatabaseReader = Pick<InstanceType<typeof Database>, 'pragma' | 'prepare'>;
 
 export type DatabaseConsistency = {
   foreignKeys: number;
+  phases: number;
   projectScope: {
     projectDefaults: number;
     requirementTemplates: number;
@@ -42,5 +43,10 @@ export function inspectDatabaseConsistency(database: DatabaseReader): DatabaseCo
       (status='resolved' AND (progress<>100 OR resolved_at IS NULL)) OR
       (status<>'resolved' AND (progress>=100 OR resolved_at IS NOT NULL)) OR
       (status='deferred' AND due_date IS NOT NULL)) AS issues`).get() as DatabaseConsistency['state'];
-  return { foreignKeys, projectScope, state };
+  const phases = (database.prepare(`SELECT
+    (SELECT COUNT(*) FROM feature_phases p JOIN features f ON f.id=p.feature_id WHERE p.project_id<>f.project_id) +
+    (SELECT COUNT(*) FROM requirements r JOIN feature_phases p ON p.id=r.phase_id WHERE r.feature_id IS NOT p.feature_id OR r.project_id<>p.project_id) +
+    (SELECT COUNT(*) FROM feature_phases p WHERE p.delivered_at IS NOT NULL AND (NOT EXISTS(SELECT 1 FROM requirements r WHERE r.phase_id=p.id AND r.status='completed') OR EXISTS(SELECT 1 FROM requirements r WHERE r.phase_id=p.id AND r.status NOT IN ('completed','cancelled')) OR NOT EXISTS(SELECT 1 FROM phase_deliveries d WHERE d.phase_id=p.id AND d.reopened_at IS NULL AND d.delivered_at=p.delivered_at))) +
+    (SELECT COUNT(*) FROM phase_deliveries WHERE json_valid(snapshot)=0) AS count`).get() as {count:number}).count;
+  return { foreignKeys, phases, projectScope, state };
 }

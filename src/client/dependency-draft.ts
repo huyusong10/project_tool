@@ -1,3 +1,5 @@
+import {deriveExecutionStage} from '../shared/execution-stage';
+import {projectPhaseOverview} from '../shared/phase-projection';
 import { acceptanceId, startId, topologicalOrder, DependencyCycleError,dependencySource,dependencyTarget, type PathAnalysis,type PathNode,type PathRequirement } from '../shared/paths';
 import type { DependencyChanges } from '../shared/path-contracts';
 import {applyFeatureRelationDraft} from '../shared/features';
@@ -18,7 +20,7 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges, ins
       }else if(c.op==='update')requirements=requirements.map(r=>r.id===c.id?{...r,...c.data}:r);
       else {requirements=requirements.filter(r=>r.id!==c.id);nodes=nodes.filter(n=>n.requirementId!==c.id);}
     }else {
-      if(c.op==='create'){const n=addNode(c.id,c.requirementId||null,c.entity==='milestone'?'milestone':'work',c.data.title||'未命名');Object.assign(n,c.data);n.estimate.durationDays=c.entity==='work'?(c.data.durationDays===undefined?1:c.data.durationDays):null;nodes.push(n);if(c.entity==='milestone')milestones.push({id:c.id,projectId:data.projectId,requirementId:c.requirementId||null,title:n.title,targetDate:c.data.targetDate||null,confirmationMode:c.data.confirmationMode||'auto',achievedAt:null,version:1});}
+      if(c.op==='create'){const n=addNode(c.id,c.requirementId||null,c.entity==='milestone'?'milestone':'work',c.data.title||'未命名');Object.assign(n,c.data);n.estimate.durationDays=c.entity==='work'?(c.data.durationDays===undefined?1:c.data.durationDays):null;nodes.push(n);if(c.entity==='milestone')milestones.push({id:c.id,projectId:data.projectId,requirementId:c.requirementId||null,milestoneKind:c.data.milestoneKind||'ordinary',title:n.title,targetDate:c.data.targetDate||null,confirmationMode:c.data.confirmationMode||'auto',achievedAt:null,version:1});}
       else if(c.op==='update'){nodes=nodes.map(n=>n.id===c.id?{...n,...c.data,estimate:{...n.estimate,...c.data.durationDays!==undefined?{durationDays:c.data.durationDays}:{}}}:n);milestones=milestones.map(m=>m.id===c.id?{...m,...c.data}:m);}
       else {nodes=nodes.filter(n=>n.id!==c.id);milestones=milestones.filter(m=>m.id!==c.id);}
     }
@@ -47,7 +49,8 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges, ins
       edges.push({ id: n.id + '>' + w.id, source: n.id, target: w.id, dependencyId: null, critical: false });
   }
   dependencies.forEach(d => edges.push({ id: d.id, source:dependencySource(d), target:dependencyTarget(d), dependencyId: d.id, critical: false }));
-  const featureContext=data.featureContext?{...data.featureContext,relations:applyFeatureRelationDraft(data.featureContext.relations,changes.featureRelations||[],data.projectId),requirements:[...data.featureContext.requirements.filter(r=>r.deletedAt),...requirements]}:undefined;
+  requirements=requirements.map(r=>({...r,executionStage:deriveExecutionStage(r,nodes.filter(n=>n.requirementId===r.id&&n.kind==='work').map(n=>({...n,progress:n.progress||0,durationDays:n.estimate.durationDays})),milestones.filter(m=>m.requirementId===r.id))}));
+  const featureContext=data.featureContext?{...data.featureContext,overview:projectPhaseOverview(data.featureContext.overview,requirements),relations:applyFeatureRelationDraft(data.featureContext.relations,changes.featureRelations||[],data.projectId),requirements:[...data.featureContext.requirements.filter(r=>r.deletedAt),...requirements]}:undefined;
   return { ...data,featureContext, nodes, dependencies, edges,requirements,risks,milestones,layouts:[...(data.layouts||[]).filter(l=>!changes.layouts?.some(c=>c.scope===l.scope&&c.direction===l.direction)),...(changes.layouts||[]).map(l=>({...l,version:l.expectedVersion}))] };
 }
 export function dependencyIssue(data: PathAnalysis, changes: DependencyChanges,instances:DraftTemplateInstance[]=[]) {

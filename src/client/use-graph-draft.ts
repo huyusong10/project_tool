@@ -17,7 +17,7 @@ export function clearGraphDrafts(accountId?: string) {
   for(const [key,session] of sessions)if(key.startsWith(prefix+(accountId?accountId+':':''))){session.blocked=true;session.notify();sessions.delete(key);}
   void clearDraftRecords(prefix+(accountId?accountId+':':'')).catch(()=>{});
   if (typeof sessionStorage === 'undefined') return;
-  for(const storage of [sessionStorage,localStorage])for (const key of Object.keys(storage)) if ([prefix,'pm-path-origin:','pm-editor-ids:','pm-path-view:','pm-canvas-navigation:','pm-graph-view:','pm-detail-scroll:','pm-editor-new-template:','pm-editor-lease:pm-graph-draft:'].some(p=>key.startsWith(p+(accountId?accountId+':':'')))) storage.removeItem(key);
+  for(const storage of [sessionStorage,localStorage])for (const key of Object.keys(storage)) if ([prefix,'pm-path-origin:','pm-editor-ids:','pm-path-view:','pm-canvas-navigation:','pm-graph-view:','pm-delivery-inputs:','pm-delivery-inputs:','pm-detail-scroll:','pm-editor-new-template:','pm-editor-lease:pm-graph-draft:'].some(p=>key.startsWith(p+(accountId?accountId+':':'')))) storage.removeItem(key);
 }
 export function clearProjectGraphDrafts(accountId:string,projectId:string){
   const base=prefix+accountId+':'+projectId;for(const [key,session] of sessions)if(key===base||key.startsWith(base+':')){session.blocked=true;session.notify();sessions.delete(key);}void clearDraftRecords(base).catch(()=>{});
@@ -31,7 +31,9 @@ export async function assertCleanProjectDraft(accountId:string,projectId:string,
   const changes=state?.values[state.index] as DependencyChanges|undefined;
   if(!changes)return;
   const conflicts=command?executionDraftConflicts(changes,state?.server,command):changes.add.length||changes.remove.length||changes.estimates.length||changes.entities?.length?['项目业务修改']:[];
-  const fields=Object.keys(state?.fields||{}).filter(key=>state&&projectFieldActive(state,key)&&(!command||key.includes(command.workItemId||command.requirementId)));
+  const fieldIds=command?.phaseId?new Set([...(state?.server?.requirements||[]).filter(r=>r.phaseId===command.phaseId).map(r=>r.id),...(changes.entities||[]).filter(c=>c.entity==='requirement'&&c.data.phaseId===command.phaseId).map(c=>c.id)]):new Set([command?.workItemId||command?.requirementId||'']);
+  if(command?.phaseId)for(const n of state?.server?.nodes||[])if(n.requirementId&&fieldIds.has(n.requirementId))fieldIds.add(n.id);
+  const fields=Object.keys(state?.fields||{}).filter(key=>state&&projectFieldActive(state,key)&&(!command||[...fieldIds].some(id=>key.includes(id))));
   if(conflicts.length||fields.length)throw new Error('本次操作涉及未保存业务草稿：'+[...conflicts,...fields.map(()=>'未完成字段')].join('、')+'。请保存或处理这些修改后再执行');
 }
 export async function assertCleanRequirementDraft(accountId:string,requirementId:string,command?:Omit<ExecutionCommand,'requirementId'>){
@@ -108,7 +110,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
   const generation = useRef(0), latest = useRef<DependencyChangePreview | null>(null);
   const denied=useRef(()=>{});denied.current=()=>{history.reset();onSaved();};
   const changes = history.value, count = changes.add.length + changes.remove.length + changes.estimates.length+(changes.entities?.length||0)+(changes.layouts?.length||0)+(changes.featureRelations?.length||0)+Number(!!changes.commitment);
-  const featureVersion=(value:PathAnalysis|undefined)=>JSON.stringify([value?.featureContext?.relations,value?.featureContext?.overview.groups.map(g=>[g.id,g.archivedAt])]);
+  const featureVersion=(value:PathAnalysis|undefined)=>JSON.stringify([value?.featureContext?.relations,value?.featureContext?.overview.features.map(g=>[g.id,g.archivedAt])]);
   const resolutionVersion=JSON.stringify([data.revision,data.layouts?.map(l=>[l.scope,l.direction,l.version]),featureVersion(data)]);
   const [resolutionState,setResolutionState]=useState<{version:string;values:Record<string,'draft'|'server'>}>({version:resolutionVersion,values:{}});
   const resolutions=resolutionState.version===resolutionVersion?resolutionState.values:{};

@@ -10,11 +10,11 @@ export type RequirementViewItem = Partial<ProcessingResult> & import('./intake')
   riskLevel:string; riskEvaluated:boolean; delayed?:boolean; scheduleComplete?:boolean; unknown?:boolean;
   plannedEnd?:string|null; pathRisk?:{processingPriority?:string|null;blockedCritical?:boolean;critical?:boolean;minFloat?:number|null};
 };
-export type RequirementFilters = {groups?:string[];deliveryScopes?:string[];statuses:string[];risks:string[];owners:string[];participants:string[];priorities:string[];schedule:string[];critical:boolean;attention:boolean};
-export const emptyRequirementFilters = ():RequirementFilters=>({groups:[],deliveryScopes:[],statuses:[],risks:[],owners:[],participants:[],priorities:[],schedule:[],critical:false,attention:false});
+export type RequirementFilters = {features?:string[];deliveryScopes?:string[];statuses:string[];risks:string[];owners:string[];participants:string[];priorities:string[];schedule:string[];critical:boolean;attention:boolean};
+export const emptyRequirementFilters = ():RequirementFilters=>({features:[],deliveryScopes:[],statuses:[],risks:[],owners:[],participants:[],priorities:[],schedule:[],critical:false,attention:false});
 export function matchesRequirementFilters(item:RequirementViewItem,f:RequirementFilters){
   const risk=item.riskEvaluated?item.riskLevel:'pending';
-  return (!f.groups?.length||f.groups.includes(item.groupId||'ungrouped'))&&(!f.statuses.length||f.statuses.includes(item.status))&&(!f.risks.length||f.risks.includes(risk))
+  return (!f.features?.length||f.features.includes(item.featureId||'unassigned'))&&(!f.statuses.length||f.statuses.includes(item.status))&&(!f.risks.length||f.risks.includes(risk))
     &&(!f.owners.length||f.owners.includes(item.ownerId||''))&&(!f.participants.length||f.participants.some(id=>item.assigneeIds?.includes(id)))
     &&(!f.schedule.length||f.schedule.some(s=>s==='delayed'?item.delayed:s==='unplanned'?!item.scheduleComplete:item.scheduleComplete&&!item.delayed))
     &&(!f.critical||!!item.pathRisk?.critical)&&(!f.attention||!!item.pathRisk?.critical||risk==='high'||risk==='pending'||!!item.unknown);

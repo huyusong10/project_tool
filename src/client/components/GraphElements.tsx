@@ -1,11 +1,12 @@
+import {PhaseChip} from './DeliveryTables';
+import { ExecutionStageBadge, WorkProgressBadge } from "./ExecutionStageBadge";
 import {memo,useEffect,useRef,useMemo,useId} from 'react';
 import {Handle,Position,BaseEdge,useUpdateNodeInternals,useStore,type Node,type NodeProps,type Edge,type EdgeProps} from '@xyflow/react';
-import {groupAssessmentLabels} from '../../shared/intake';
 import type {GraphCard} from '../path-projection';
 import {roundedRoutePath,type RoutedLayout} from '../path-layout';
 import {requirementStatusLabels,riskLabels} from '../../shared/domain';
 import {EditorField} from './EditorField';
-export type CardData = GraphCard & { rename?:(id:string,title:string)=>void; connectable?:boolean; vertical: boolean; editing: boolean; highlighted: boolean; invalid: boolean; retiring?:boolean; context?:boolean; connection?:string };
+export type CardData = GraphCard & { selectedPhaseId?:string;onSelectPhase?:(featureId:string,phaseId:string)=>void;rename?:(id:string,title:string)=>void; connectable?:boolean; vertical: boolean; editing: boolean; highlighted: boolean; invalid: boolean; retiring?:boolean; context?:boolean; connection?:string };
 export type CardNode = Node<CardData, 'delivery'>;
 export type RouteEdge = Edge<{ route?: RoutedLayout['edges'][string]; critical: boolean; planningOnly?:boolean; labelText: string; description?:string; opacity:number; invalid?:boolean; filtered?:boolean }, 'delivery'>;
 const Card = memo(function Card({ id, data, selected }: NodeProps<CardNode>) {
@@ -17,13 +18,14 @@ const Card = memo(function Card({ id, data, selected }: NodeProps<CardNode>) {
     (data.critical ? ' critical' : '') + (data.highlighted ? ' search-match' : '') + (data.invalid ? ' invalid' : '') +
     (['start', 'acceptance'].includes(data.kind) ? ' gate-card' : '')+(['milestone','acceptance'].includes(data.kind)?' milestone-card':'')+(data.connection?' connection-'+data.connection:'')}>
     <Handle id="route-in" type="target" position={side(true)} className="route-handle" isConnectable={false}/>
-    <div className="dependency-card-top"><span>{data.kind==='feature'?(data.archived?'归档特性':data.featureId==='ungrouped'?'需求集合':'长期特性'):data.kind==='template'?'流程工作':data.kind==='milestone'?'里程碑':data.external ? '关联需求' : data.critical ? '关键路径' : requirementStatusLabels[data.status as keyof typeof requirementStatusLabels] || '交付条件'}</span>
-      {data.kind==='feature'&&data.assessment?<span className={'feature-assessment assessment-'+data.assessment}>{groupAssessmentLabels[data.assessment]}</span>:data.kind!=='template'&&data.kind!=='feature'&&<span className={'risk-badge risk-' + data.risk}>{['completed', 'cancelled'].includes(data.status) ? '已结束' : riskLabels[data.risk as keyof typeof riskLabels] || '待评估'}</span>}</div>
+    <div className="dependency-card-top">{data.kind==='work'?<WorkProgressBadge work={data}/>:data.kind==='requirement'&&data.executionStage?<ExecutionStageBadge requirement={{status:data.status,executionStage:data.executionStage}}/>:<span>{data.kind==='feature'?(data.archived?'归档特性':data.featureId==='unassigned'?'未关联特性':'特性'):data.kind==='template'?'流程工作':data.kind==='milestone'?'里程碑':data.external ? '关联工作' : requirementStatusLabels[data.status as keyof typeof requirementStatusLabels] || '交付条件'}</span>}
+      {data.kind!=='template'&&data.kind!=='feature'&&<span className={'risk-badge risk-' + data.risk}>{['completed', 'cancelled'].includes(data.status) ? '已结束' : riskLabels[data.risk as keyof typeof riskLabels] || '待评估'}</span>}</div>
     <EditorField inline required fieldKey={'title:'+id} value={data.title} disabled={['feature','requirement'].includes(data.kind)||!data.editing||!data.rename||['start','acceptance','project'].includes(data.kind)} onCommit={title=>data.rename?.(id,title)}/>{data.kind!=='feature'&&<small title={data.subtitle}>{data.subtitle}</small>}
-    <div className="dependency-card-bottom">{data.kind==='feature'?<span title={data.expectation}>{data.expectation||''}</span>:<><span>{data.forecast || '交付待确认'}</span>{data.kind!=='template'&&<span>{data.floatDays === null ? '余量待确认' : '余量 ' + data.floatDays + ' 天'}</span>}</>}</div>
-    <small>{data.kind==='feature'?data.facts:data.context?'关联上下文':data.unknown ? '交付条件待确认' : data.hiddenCount ? '另有 ' + data.hiddenCount + ' 条关系' : '\u00a0'}</small>
+    <div className="dependency-card-bottom">{data.kind==='feature'?<span title={data.expectation}>{data.expectation||data.phases?.filter(p=>p.status!=='delivered'&&p.targetDate).sort((a,b)=>a.targetDate!.localeCompare(b.targetDate!)).slice(0,1).map(p=>p.name+' · '+p.targetDate).join('')||'目标待安排'}</span>:<><span>{data.plannedEnd?'计划 '+data.plannedEnd:data.forecast?'预计 '+data.forecast:'日期待定'}</span>{data.kind!=='template'&&<span>{data.floatDays === null ? '余量待确认' : '余量 ' + data.floatDays + ' 天'}</span>}</>}</div>
+    {(data.kind==='feature'&&!data.phases?.length||data.context||data.unknown||data.hiddenCount>0)&&<small>{data.kind==='feature'?'尚未规划 Phase':data.context?'来自 '+(data.featureName||'关联特性'):data.unknown?'交付条件待确认':'另有 '+data.hiddenCount+' 条关系'}</small>}
+    {!!data.phases?.length&&<div className="delivery-phase-chips">{data.phases.map(p=><PhaseChip key={p.id} phase={p} selected={p.id===data.selectedPhaseId} onClick={()=>data.onSelectPhase?.(p.featureId,p.id)}/>)}</div>}
     <Handle id="route-out" type="source" position={side(false)} className="route-handle" isConnectable={false}/>
-    {data.editing && data.connectable!==false && !data.retiring && data.kind !== 'start' && !(data.kind==='feature'&&(data.archived||data.featureId==='ungrouped')) && (['left','right','top','bottom'] as const).map(side=><button key={side} type="button" data-side={side} className="business-handle nopan nodrag" aria-label={'从'+data.title+'的'+{left:'左',right:'右',top:'上',bottom:'下'}[side]+'侧连接后续'+(data.kind==='feature'?'特性':'工作')}/>)}
+    {data.editing && data.connectable!==false && !data.retiring && data.kind !== 'start' && !(data.kind==='feature'&&(data.archived||data.featureId==='unassigned')) && (['left','right','top','bottom'] as const).map(side=><button key={side} type="button" data-side={side} className="business-handle nopan nodrag" aria-label={'从'+data.title+'的'+{left:'左',right:'右',top:'上',bottom:'下'}[side]+'侧连接后续'+(data.kind==='feature'?'特性':'工作')}/>)}
   </div>;
 });
 const RoutedEdge=memo(function RoutedEdge({ id, data, selected }: EdgeProps<RouteEdge>) {

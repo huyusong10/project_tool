@@ -1,3 +1,4 @@
+import {Select} from './Select';
 import {useState} from 'react';
 import {ArrowUpRight} from 'lucide-react';
 import {dependencySource,dependencyTarget,type Dependency,type PathAnalysis} from '../../shared/paths';
@@ -11,10 +12,10 @@ function EndpointPicker({data,relation,side,onChange,disabled}:{data:PathAnalysi
   const matches=options.filter(o=>o.id===value||o.kind==='start'||o.kind==='acceptance'||matchesSearch([o.title],search));
   return <div className="delivery-endpoint-picker">
     {options.length>5&&<input aria-label={'搜索'+label} placeholder="搜索工作项、里程碑／拼音" value={search} disabled={disabled} onChange={e=>setSearch(e.target.value)}/>}
-    <label className="field"><span>{label}</span><select aria-label={label} value={value} disabled={disabled} onChange={e=>onChange(e.target.value)}>
+    <label className="field"><span>{label}</span><Select aria-label={label} value={value} disabled={disabled} onChange={e=>onChange(e.target.value)}>
       {!options.some(o=>o.id===value)&&<option value={value}>已失效交付点</option>}
       {matches.map(o=><option key={o.id} value={o.id} disabled={o.disabled&&o.id!==value}>{o.title}{o.kind==='milestone'?'（里程碑）':''}{o.disabled?'（已结束）':''}</option>)}
-    </select></label>
+    </Select></label>
   </div>;
 }
 

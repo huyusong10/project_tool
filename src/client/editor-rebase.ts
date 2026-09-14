@@ -32,7 +32,7 @@ export function rebaseEditor(base:PathAnalysis|undefined,server:PathAnalysis,inp
  if(changes.featureRelations)changes.featureRelations=changes.featureRelations.filter(c=>{
   const old=base?.featureContext?.relations.find(r=>r.id===c.id),now=server.featureContext?.relations.find(r=>r.id===c.id);
   const endpoints=c.op==='create'?[c.sourceFeatureId,c.targetFeatureId]:now?[now.sourceFeatureId,now.targetFeatureId]:[];
-  const invalid=c.op!=='delete'&&endpoints.some(id=>!server.featureContext?.overview.groups.some(g=>g.id===id&&!g.archivedAt));
+  const invalid=c.op!=='delete'&&endpoints.some(id=>!server.featureContext?.overview.features.some(g=>g.id===id&&!g.archivedAt));
   if(invalid)return resolve('feature-relation:'+c.id,'规划关系','端点已归档或删除',old,now,c,false)!=='server';
   if(c.op==='create'){
    const duplicate=server.featureContext?.relations.find(r=>r.sourceFeatureId===c.sourceFeatureId&&r.targetFeatureId===c.targetFeatureId);

@@ -1,3 +1,4 @@
+import {ensureOtherFeature} from './other-feature';
 import type Database from 'better-sqlite3';
 import { addBusinessDays, todayIso } from '../shared/domain';
 import { AppError } from './errors';
@@ -291,6 +292,7 @@ export function ensureBuiltInSampleProject(sqlite: SqliteDatabase, enabled: bool
     }
     sqlite.prepare('UPDATE projects SET default_template_id=? WHERE id=?').run(standardTemplate.id, SAMPLE_PROJECT_ID);
 
+    const otherFeatureId=ensureOtherFeature(sqlite,SAMPLE_PROJECT_ID);
     const requirementIds = new Map<string, string>();
     const workItemIds = new Map<string, string>();
     const insertRequirement = sqlite.prepare(`INSERT INTO requirements
@@ -321,6 +323,7 @@ export function ensureBuiltInSampleProject(sqlite: SqliteDatabase, enabled: bool
         storedStatus, plannedStart, addBusinessDays(plannedStart, plannedEndOffset), storedProgress, acceptedAt,
         at(requirement.start - 2), deletedAt || now, deletedAt,
       );
+      sqlite.prepare('UPDATE requirements SET feature_id=? WHERE id=?').run(otherFeatureId,requirementId);
       requirement.items.forEach((item, index) => {
         const workItemId = `sample-v1-work-${requirement.key}-${item.key}`;
         workItemIds.set(`${requirement.key}:${item.key}`, workItemId);

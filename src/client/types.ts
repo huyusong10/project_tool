@@ -27,6 +27,7 @@ export type Person = {
   createdAt: string; updatedAt: string; deletedAt?: string | null;
 };
 export type TemplateItem = {
+  workStage?:import('../shared/execution-stage').WorkStage|null;milestoneKind?:import('../shared/execution-stage').MilestoneKind;
   kind?:'work'|'milestone';arrangement?:'early'|'late';arrangementAnchor?:string|null;confirmationMode?:'auto'|'manual';
   predecessorIds?: string[];
   id: string; templateId: string; title: string; sortOrder: number;
@@ -38,7 +39,7 @@ export type WorkItemTemplate = {
   id: string; projectId: string; name: string; description: string; createdAt: string; updatedAt: string; deletedAt?: string | null; items: TemplateItem[];
 };
 export type WorkItem = import('../shared/forecast-basis').ExecutionMetadata & {
-  progressWeight?:number|null;
+  workStage?:import('../shared/execution-stage').WorkStage|null; progressWeight?:number|null;
   durationDays?:number|null;
   dependencyRevision?:number; unmetPredecessors?:Array<{id:string;title:string}>;
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
@@ -78,7 +79,7 @@ export type IssuePage = {
 };
 export type Requirement = import('../shared/delivery').DeliveryFields & import('../shared/intake').Organization & Partial<import('../shared/delivery').ProcessingResult> & {
   readinessIssues?:string[];
-  milestones?:import('../shared/paths').PathMilestone[];
+  stageResetAt?:string|null;executionStage?:import('../shared/execution-stage').ExecutionStage;milestones?:import('../shared/paths').PathMilestone[];
   pathRisk?: import('../shared/paths').PathRisk;
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   sourceNotes?: string | null; background?: string | null; acceptanceCriteria?: string | null; referenceUrl?: string | null;

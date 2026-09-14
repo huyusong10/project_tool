@@ -97,6 +97,7 @@ export const workItemTemplates = sqliteTable('work_item_templates', {
 ]);
 
 export const templateItems = sqliteTable('template_items', {
+  workStage: text('work_stage'), milestoneKind: text('milestone_kind').notNull().default('ordinary'),
   id: text('id').primaryKey(),
   templateId: text('template_id').notNull().references(() => workItemTemplates.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
@@ -118,7 +119,8 @@ export const templateItems = sqliteTable('template_items', {
 
 export const requirements = sqliteTable('requirements', {
   sourceNotes: text('source_notes'),
-  groupId: text('group_id').references(() => requirementGroups.id, { onDelete: 'set null' }),
+  featureId: text('feature_id').references(() => features.id, { onDelete: 'set null' }),
+  phaseId: text('phase_id').references(() => featurePhases.id), stageResetAt: text('stage_reset_at'),
   forecastDuration: integer('forecast_duration'),
   forecastReadyAt: text('forecast_ready_at'),
   deliveryScope: text('delivery_scope').notNull().default('committed'),
@@ -167,13 +169,14 @@ export const requirements = sqliteTable('requirements', {
     (${table.status} = 'completed' AND ${table.progress} = 100) OR
     (${table.status} <> 'completed' AND ${table.progress} < 100)
   )`),
-  index('requirements_group').on(table.groupId),
+  index('requirements_group').on(table.featureId),
   index('idx_requirements_project_status').on(table.projectId, table.status, table.deletedAt),
   index('idx_requirements_template').on(table.templateId),
   index('idx_requirements_owner').on(table.ownerId),
 ]);
 
 export const workItems = sqliteTable('work_items', {
+  workStage: text('work_stage'),
   progressWeight: integer('progress_weight'),
   id: text('id').primaryKey(),
   requirementId: text('requirement_id').notNull().references(() => requirements.id, { onDelete: 'cascade' }),
@@ -238,6 +241,7 @@ export const dependencyEdges = sqliteTable('dependency_edges', {
 ]);
 
 export const milestones=sqliteTable('milestones',{
+  milestoneKind:text('milestone_kind').notNull().default('ordinary'), achievedRecordedAt:text('achieved_recorded_at'),
   id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id),
   requirementId:text('requirement_id').references(()=>requirements.id),templateItemId:text('template_item_id').references(()=>templateItems.id),
   title:text('title').notNull(),targetDate:text('target_date'),confirmationMode:text('confirmation_mode').notNull().default('auto'),
@@ -361,7 +365,8 @@ export const dependencyChangeReceipts = sqliteTable('dependency_change_receipts'
 
 export const deliveryCommitments = sqliteTable('delivery_commitments', {id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id),confirmedAt:text('confirmed_at').notNull(),snapshot:text('snapshot').notNull()},t=>[index('delivery_commitments_project_date').on(t.projectId,t.confirmedAt)]);
 
-export const requirementGroups = sqliteTable('requirement_groups', {
+export const features = sqliteTable('features', {
+  referenceLinks: text('reference_links').notNull().default('[]'),
   id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id,{onDelete:'cascade'}),name:text('name').notNull(),sortOrder:integer('sort_order').notNull().default(0),version:integer('version').notNull().default(1),...timestamps,
   expectation: text('expectation').notNull().default(''),
   description: text('description').notNull().default(''), archivedAt: text('archived_at'),
@@ -370,11 +375,11 @@ export const requirementGroups = sqliteTable('requirement_groups', {
   assessmentNote: text('assessment_note').notNull().default(''),
   assessedAt: text('assessed_at'),
   assessedBy: text('assessed_by').references(() => accounts.id, { onDelete: 'set null' }),
-},t=>[uniqueIndex('requirement_groups_name').on(t.projectId,t.name)]);
+},t=>[uniqueIndex('features_name').on(t.projectId,t.name)]);
 export const featureRelations = sqliteTable('feature_relations', {
   id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id,{onDelete:'cascade'}),
-  sourceFeatureId:text('source_feature_id').notNull().references(()=>requirementGroups.id,{onDelete:'cascade'}),
-  targetFeatureId:text('target_feature_id').notNull().references(()=>requirementGroups.id,{onDelete:'cascade'}),
+  sourceFeatureId:text('source_feature_id').notNull().references(()=>features.id,{onDelete:'cascade'}),
+  targetFeatureId:text('target_feature_id').notNull().references(()=>features.id,{onDelete:'cascade'}),
   note:text('note').notNull().default(''),version:integer('version').notNull().default(1),...timestamps,
 },t=>[uniqueIndex('feature_relations_pair').on(t.projectId,t.sourceFeatureId,t.targetFeatureId)]);
 export const sourceDocuments=sqliteTable('source_documents',{
@@ -392,3 +397,6 @@ export const sourceLinks=sqliteTable('source_links',{
 export const requirementImportReceipts=sqliteTable('requirement_import_receipts',{
   batchId:text('batch_id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id,{onDelete:'cascade'}),actorId:text('actor_id').notNull(),contentHash:text('content_hash').notNull(),result:text('result').notNull(),createdAt:text('created_at').notNull(),
 });
+
+export const featurePhases = sqliteTable('feature_phases',{id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id),featureId:text('feature_id').notNull().references(()=>features.id),name:text('name').notNull(),scope:text('scope').notNull().default(''),targetDate:text('target_date'),note:text('note').notNull().default(''),sortOrder:integer('sort_order').notNull().default(0),startedAt:text('started_at'),deliveredAt:text('delivered_at'),version:integer('version').notNull().default(1),...timestamps},t=>[uniqueIndex('phase_feature_name').on(t.featureId,t.name)]);
+export const phaseDeliveries=sqliteTable('phase_deliveries',{id:text('id').primaryKey(),phaseId:text('phase_id').notNull().references(()=>featurePhases.id),deliveredAt:text('delivered_at').notNull(),deliveredBy:text('delivered_by').references(()=>accounts.id),snapshot:text('snapshot').notNull(),createdAt:text('created_at').notNull(),reopenedAt:text('reopened_at'),reopenReason:text('reopen_reason')});

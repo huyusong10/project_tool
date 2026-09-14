@@ -1,16 +1,19 @@
+import type { ExecutionStage } from "./execution-stage";
 import { acceptanceId, type PathAnalysis } from './paths';
 import type { LayoutEdge } from './path-layout';
 import {compactRelationCaption,relationCaption,relationDescription} from './path-labels';
-export type GraphCard = { id:string; requirementId:string; workItemId:string|null; kind:string; title:string; subtitle:string; status:string; risk:string;
+export type GraphCard = {
+  progress?:number;plannedEnd?:string|null;workStage?:import('./execution-stage').WorkStage|null;featureName?:string|null;
+  phaseId?:string|null;phases?:import('./feature-phases').PhaseSummary[]; executionStage?:ExecutionStage; id:string; requirementId:string; workItemId:string|null; kind:string; title:string; subtitle:string; status:string; risk:string;
   forecast:string|null; floatDays:number|null; critical:boolean; unknown:boolean; external:boolean; hiddenCount:number;
-  featureId?:string; assessment?:import('./intake').GroupOverviewInput['assessment']; facts?:string; expectation?:string; archived?:boolean };
+  featureId?:string; assessment?:import('./intake').FeatureOverviewInput['assessment']; facts?:string; expectation?:string; archived?:boolean };
 export type GraphLink = LayoutEdge & {critical:boolean; dependencyIds:string[];description?:string;planningRelationIds?:string[];planningOnly?:boolean};
 export function projectPathGraph(a:PathAnalysis, focus?:string, attention=false):{cards:GraphCard[];links:GraphLink[]} {
   const nodeMap=new Map(a.nodes.map(n=>[n.id,n]));
   if(!focus) {
     const cards:GraphCard[]=a.requirements.map(r=>{
       const risk=a.risks[r.id], n=nodeMap.get(acceptanceId(r.id))!;
-      return {id:r.id,requirementId:r.id,workItemId:null,kind:'requirement',title:r.title,subtitle:`${r.executionMode==='direct'?'直接执行':risk.criticalCount+' 项关键工作'} · ${r.ownerName||'未分派'}`,status:r.status,risk:risk.riskEvaluated?risk.riskLevel:'pending',forecast:n.forecastEnd,floatDays:risk.minFloat,critical:risk.critical,unknown:!risk.complete||['completed','cancelled'].includes(r.status)&&a.blockers.some(b=>b.requirementId===r.id),external:false,hiddenCount:0};
+      return {id:r.id,requirementId:r.id,featureId:r.featureId||undefined,featureName:r.featureName,plannedEnd:r.plannedEnd,phaseId:r.phaseId||null,workItemId:null,kind:'requirement',executionStage:r.executionStage,title:r.title,subtitle:r.ownerName||'未分派',status:r.status,risk:risk.riskEvaluated?risk.riskLevel:'pending',forecast:n.forecastEnd,floatDays:risk.minFloat,critical:risk.critical,unknown:!risk.complete||['completed','cancelled'].includes(r.status)&&a.blockers.some(b=>b.requirementId===r.id),external:false,hiddenCount:0};
     });
     for(const n of a.nodes.filter(n=>n.kind==='milestone'&&!n.requirementId))cards.push({id:n.id,requirementId:'',workItemId:null,kind:'milestone',title:n.title,subtitle:'项目里程碑',status:n.status,risk:n.riskLevel,forecast:n.forecastEnd,floatDays:n.floatDays,critical:n.critical,unknown:!!n.unknownReasons.length,external:false,hiddenCount:0});
     const ids=new Set(cards.map(n=>n.id)), grouped=new Map<string,GraphLink>();
@@ -34,7 +37,7 @@ export function projectPathGraph(a:PathAnalysis, focus?:string, attention=false)
   links.forEach(e=>{keep.add(e.source);keep.add(e.target);});
   return {cards:[...keep].map(id=>{
     const n=nodeMap.get(id)!, req=a.requirements.find(r=>r.id===n.requirementId), external=!internal.has(id);
-    return {id,requirementId:n.requirementId||'',workItemId:n.workItemId,kind:n.kind,title:n.kind==='start'?'需求开始条件':n.kind==='acceptance'?'需求验收':n.title,subtitle:external?`外部 · ${req?.title||'历史交付'}`:n.kind==='work'?n.ownerName||'未分派':req?.title||'历史交付',status:n.status,risk:a.risks[n.requirementId!]?.riskEvaluated?n.riskLevel:'pending',
+    return {id,requirementId:n.requirementId||'',workItemId:n.workItemId,kind:n.kind,progress:n.progress,plannedEnd:n.plannedEnd,workStage:n.workStage,featureId:req?.featureId||undefined,featureName:req?.featureName,title:n.kind==='start'?'需求开始条件':n.kind==='acceptance'?'需求验收':n.title,subtitle:external?`外部 · ${req?.title||'历史交付'}`:n.kind==='work'?n.ownerName||'未分派':req?.title||'历史交付',status:n.status,risk:a.risks[n.requirementId!]?.riskEvaluated?n.riskLevel:'pending',
       forecast:n.forecastEnd,floatDays:n.floatDays,critical:n.critical,unknown:n.unknownReasons.length>0,external,hiddenCount:external?a.edges.filter(e=>(e.source===id||e.target===id)&&!links.includes(e)).length:0};
   }), links:links.map(e=>{const d=a.dependencies.find(d=>d.id===e.dependencyId);return {...e,label:e.dependencyId ? '交付前置' : undefined,description:d?relationDescription(a,d):undefined,dependencyIds:e.dependencyId?[e.dependencyId]:[]};})};
 }

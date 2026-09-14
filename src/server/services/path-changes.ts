@@ -16,7 +16,7 @@ import { recordAudit } from './audit';
 import {prepareEditorEntities,prepareEditorLayouts,persistEditorEntities} from './editor-entities';
 import {dependencySource,dependencyTarget,remapPathNodeId} from '../../shared/paths';
 import {settleMilestones} from './milestones';
-import {prepareFeatureRelationChanges,persistFeatureRelationChanges,readRequirementGroups} from './features';
+import {prepareFeatureRelationChanges,persistFeatureRelationChanges,readFeatures} from './features';
 import {withFeatureContext} from './feature-context';
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -68,8 +68,8 @@ function prepare(projectId: string, input: DependencyChangesInput, actor: Actor)
   recordForecastReviews(snapshot,analysis,input.changes,actor);decorateForecastBasis(snapshot,analysis);
   const validIds=new Set([...analysis.nodes.map(n=>n.id),...snapshot.requirements.map(r=>r.id)]);
   const featureIds=layouts.some(l=>l.scope==='features')?new Set([
-    'feature:ungrouped',
-    ...(sqlite.prepare('SELECT id FROM requirement_groups WHERE project_id=?').all(projectId) as {id:string}[]).map(g=>'feature:'+g.id),
+    'feature:unassigned',
+    ...(sqlite.prepare('SELECT id FROM features WHERE project_id=?').all(projectId) as {id:string}[]).map(g=>'feature:'+g.id),
     ...(snapshot.milestones||[]).filter(m=>!m.requirementId).map(m=>m.id),
   ]):new Set<string>();
   for(const layout of layouts)for(const id of Object.keys(layout.positions))if(!(layout.scope==='features'?featureIds:validIds).has(id))fail('布局包含失效节点');
@@ -77,7 +77,7 @@ function prepare(projectId: string, input: DependencyChangesInput, actor: Actor)
   return { snapshot, analysis,commitment, expanded,directEstimateIds,features,expectedRevision: input.expectedRevision, asOfDate: snapshot.asOfDate,
     differences:{commitment,target:deliveryTargetChange(before,analysis),impact:deliveryImpact(before,analysis),added:add,removed,entities,featureRelations,estimates:estimates.map(p=>({workItemId:p.workItemId,before:beforeEstimates.get(p.workItemId)!,after:analysis.nodes.find(n=>n.id===p.workItemId)!.estimate}))},
     previewToken: hash({ contract:'template-drafts-v2', projectId, ...input, templates:[...expanded.values()].map(e=>[e.key,e.version]), asOfDate: snapshot.asOfDate,
-      ...(featureRelations.length?{features:{relations:features.before,groups:readRequirementGroups(projectId,'all').map(g=>[g.id,g.version,g.archivedAt])}}:{}) }),
+      ...(featureRelations.length?{features:{relations:features.before,groups:readFeatures(projectId,'all').map(g=>[g.id,g.version,g.archivedAt])}}:{}) }),
     count: add.length + remove.length + estimates.length+entities.length+layouts.length+featureRelations.length+Number(!!input.changes.commitment) };
 }
 

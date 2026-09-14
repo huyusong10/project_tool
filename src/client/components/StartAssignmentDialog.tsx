@@ -1,3 +1,4 @@
+import {Select} from './Select';
 import {useState,type ReactNode} from 'react';
 import {useQuery} from '@tanstack/react-query';
 import {api} from '../api';
@@ -15,8 +16,8 @@ export function StartAssignmentDialog({requirement,workItem,pending,blocked=fals
   const valid=(id:string)=>options.some(p=>p.id===id);
   return <Modal title="选择负责人并开始" onClose={onClose} closable={!pending}><form onSubmit={e=>{e.preventDefault();if(pending||blocked||needRequirement&&!valid(requirementOwner)||needWork&&!valid(workOwner))return;onStart(workItem?{...(needRequirement?{requirementOwnerId:requirementOwner}:{}),...(needWork?{ownerId:workOwner}:{}),expectedRequirementVersion:requirement.version}:{ownerId:requirementOwner});}}>
     <p>{workItem?.title||requirement.title}</p>
-    {needRequirement&&<label className="field"><span>需求负责人</span><select aria-label="需求负责人" required disabled={pending} value={requirementOwner} onChange={e=>setRequirementOwner(e.target.value)}><option value="">请选择负责人</option>{options.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
-    {needWork&&<label className="field"><span>工作项负责人</span><select aria-label="工作项负责人" required disabled={pending} value={workOwner} onChange={e=>setWorkOwner(e.target.value)}><option value="">请选择负责人</option>{options.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+    {needRequirement&&<label className="field"><span>需求负责人</span><Select aria-label="需求负责人" required disabled={pending} value={requirementOwner} onChange={e=>setRequirementOwner(e.target.value)}><option value="">请选择负责人</option>{options.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>}
+    {needWork&&<label className="field"><span>工作项负责人</span><Select aria-label="工作项负责人" required disabled={pending} value={workOwner} onChange={e=>setWorkOwner(e.target.value)}><option value="">请选择负责人</option>{options.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>}
     {(error||people.error)&&<p className="form-error">{error||people.error?.message}</p>}
     {recovery}
     {!people.isLoading&&!people.error&&!options.length&&<p>当前没有可分配的有效项目成员。</p>}

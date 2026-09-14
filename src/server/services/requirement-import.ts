@@ -1,3 +1,5 @@
+import {saveFeature} from './features';
+import { readFeaturePhases } from './feature-phases';
 import { createHash, randomUUID } from 'node:crypto';
 import { sqlite } from '../database';
 import type { Actor } from '../auth';
@@ -13,18 +15,26 @@ import type { DependencyChangesInput } from '../../shared/path-contracts';
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const ref=(...parts:string[])=>JSON.stringify(parts);
 const entityId=(requirement:string,work?:string)=>'intake:'+ref(requirement,...work?[work]:[]);
-type ExistingRequirement={id:string;title:string;status:string;version:number;deletedAt:string|null};
+type ExistingRequirement={id:string;title:string;status:string;version:number;featureId:string|null;phaseId:string|null;deletedAt:string|null};
 
 function prepare(projectId:string,pkg:IntakePackage,actor:Actor) {
   assertProjectManager(requireAuthorizationActor(actor),projectId);requireActiveProject(projectId);
   const revision=intakeRevision(projectId),warnings:string[]=[],errors:string[]=[],existingMatches:ImportPreview['existingMatches']=[];
-  const rows=sqlite.prepare('SELECT id,title,status,version,deleted_at AS deletedAt FROM requirements WHERE project_id=?').all(projectId) as ExistingRequirement[];
+  const rows=sqlite.prepare('SELECT feature_id AS featureId,phase_id AS phaseId,id,title,status,version,deleted_at AS deletedAt FROM requirements WHERE project_id=?').all(projectId) as ExistingRequirement[];
   const existing=new Map(rows.map(r=>[r.id,r])),requirements=new Map(pkg.requirements.map(r=>[r.key,r]));
   if(requirements.size!==pkg.requirements.length)errors.push('需求标识重复');
   const changes:DependencyChangesInput={expectedRevision:Number(revision),target:'project',changes:{add:[],remove:[],estimates:[],entities:[]}};
+  const phases=readFeaturePhases(projectId),features=sqlite.prepare('SELECT id,name,archived_at AS archivedAt FROM features WHERE project_id=?').all(projectId) as Array<{id:string;name:string;archivedAt:string|null}>;
   for(const r of pkg.requirements){
     if(r.action==='skip')continue;
-    const data={title:r.title,background:r.background,acceptanceCriteria:r.acceptanceCriteria,referenceUrl:r.referenceUrl,ownerId:r.ownerId,plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,durationDays:r.durationDays};
+    const old=r.existingId?existing.get(r.existingId):undefined,feature=r.feature===undefined?features.find(f=>f.id===old?.featureId):features.find(f=>f.name===r.feature);
+    if(feature?.archivedAt)errors.push(r.title+'：特性已归档');
+    if(r.phase&&!r.feature&&!(r.feature===undefined&&feature))errors.push(r.title+'：指定 Phase 时必须关联特性');
+    const destination=r.phase?phases.find(p=>p.featureId===feature?.id&&p.name===r.phase):r.phase===null||r.feature!==undefined&&feature?.id!==old?.featureId?undefined:phases.find(p=>p.id===old?.phaseId);
+    const previous=phases.find(p=>p.id===old?.phaseId);
+    if(destination?.deliveredAt||previous?.deliveredAt)errors.push(r.title+'：请先重新打开已交付 Phase');
+    if((destination?.id!==old?.phaseId||!!r.phase&&!destination)&&(destination?.startedAt||previous?.startedAt)&&!r.reason)errors.push(r.title+'：推进后的需求移入移出需要填写原因');
+    const data={...r.action==='create'&&feature?{featureId:feature.id}:{},reason:r.reason,title:r.title,background:r.background,acceptanceCriteria:r.acceptanceCriteria,referenceUrl:r.referenceUrl,ownerId:r.ownerId,plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,durationDays:r.durationDays};
     if(r.action==='update'){
       const old=r.existingId?existing.get(r.existingId):undefined;
       if(!old||old.deletedAt){errors.push(r.title+'：请选择当前项目未归档的已有需求');continue;}
@@ -39,7 +49,7 @@ function prepare(projectId:string,pkg:IntakePackage,actor:Actor) {
       if(matches.length&&!r.confirmAdditional)errors.push(r.title+'：已有同名需求，请选择更新或确认另建');
       if(new Set(r.workItems.map(w=>w.key)).size!==r.workItems.length)errors.push(r.title+'：工作项标识重复');
       changes.changes.entities!.push({entity:'requirement',op:'create',id:entityId(r.key),data});
-      for(const w of r.workItems)changes.changes.entities!.push({entity:'work',op:'create',id:entityId(r.key,w.key),requirementId:entityId(r.key),data:{title:w.title,ownerId:w.ownerId,plannedStart:w.plannedStart,plannedEnd:w.plannedEnd,durationDays:w.durationDays??null}});
+      for(const w of r.workItems)changes.changes.entities!.push({entity:'work',op:'create',id:entityId(r.key,w.key),requirementId:entityId(r.key),data:{title:w.title,workStage:w.workStage,ownerId:w.ownerId,plannedStart:w.plannedStart,plannedEnd:w.plannedEnd,durationDays:w.durationDays??null}});
     }
     if(!r.ownerId&&r.action==='create')warnings.push(r.title+'：未分配负责人');
     if(!r.plannedStart||!r.plannedEnd)warnings.push(r.title+'：计划日期尚未补齐');
@@ -94,19 +104,32 @@ export function applyRequirementImport(projectId:string,raw:unknown,actor:Actor)
     const prepared=prepare(projectId,input.package,actor);
     if(prepared.preview.errors.length)fail(prepared.preview.errors.join('；'));
     if(prepared.preview.previewToken!==input.previewToken)fail('预览已变化，请重新核对','STALE_WRITE',409);
-    const created=prepared.core?applyDependencyChanges(projectId,{...prepared.changes,batchId:input.batchId,previewToken:prepared.core.previewToken},actor).addedIds:{};
+    // Resolve names inside this transaction before core creation so a named
+    // import never depends on the state of the default Other feature.
+    for(const r of input.package.requirements)if(r.action!=='skip'&&r.feature&&!sqlite.prepare('SELECT 1 FROM features WHERE project_id=? AND name=?').get(projectId,r.feature)){
+      const order=sqlite.prepare('SELECT COUNT(*) AS n FROM features WHERE project_id=? AND archived_at IS NULL').get(projectId) as {n:number};
+      saveFeature(projectId,{name:r.feature,sortOrder:order.n},actor);
+    }
+    const resolved=prepare(projectId,input.package,actor);
+    if(resolved.preview.errors.length)fail(resolved.preview.errors.join('；'));
+    const created=resolved.core?applyDependencyChanges(projectId,{...resolved.changes,batchId:input.batchId,previewToken:resolved.core.previewToken},actor).addedIds:{};
     const requirementIds:Record<string,string>={};
     for(const r of input.package.requirements){
       if(r.action==='skip')continue;
       const id=r.action==='update'?r.existingId!:created[entityId(r.key)];requirementIds[r.key]=id;
-      if(r.action==='create'||r.group!==undefined){
-        let groupId:string|null=null;
-        if(r.group){
-          const oldGroup=sqlite.prepare('SELECT id FROM requirement_groups WHERE project_id=? AND name=?').get(projectId,r.group) as {id:string}|undefined;
-          groupId=oldGroup?.id||randomUUID();
-          if(!oldGroup){const now=new Date().toISOString();sqlite.prepare('INSERT INTO requirement_groups(id,project_id,name,sort_order,created_at,updated_at) VALUES(?,?,?,(SELECT count(*) FROM requirement_groups WHERE project_id=?),?,?)').run(groupId,projectId,r.group,projectId,now,now);}
+      if(r.action==='create'||r.feature!==undefined||r.phase!==undefined){
+        let featureId:string|null=r.action==='update'&&r.feature===undefined?(sqlite.prepare('SELECT feature_id AS id FROM requirements WHERE id=?').get(id) as {id:string|null}).id:null;
+        if(r.feature){
+          const oldFeature=sqlite.prepare('SELECT id FROM features WHERE project_id=? AND name=?').get(projectId,r.feature) as {id:string}|undefined;
+          featureId=oldFeature?.id||randomUUID();
+          if(!oldFeature){const now=new Date().toISOString();sqlite.prepare('INSERT INTO features(id,project_id,name,sort_order,created_at,updated_at) VALUES(?,?,?,(SELECT count(*) FROM features WHERE project_id=?),?,?)').run(featureId,projectId,r.feature,projectId,now,now);}
         }
-        persistOrganization(id,projectId,{groupId});
+        let phaseId:string|null|undefined;
+        if(r.phase){if(!featureId)fail('指定 Phase 时必须同时指定特性');const p=sqlite.prepare('SELECT id FROM feature_phases WHERE feature_id=? AND name=?').get(featureId,r.phase) as {id:string}|undefined;phaseId=p?.id||randomUUID();if(!p){const now=new Date().toISOString();sqlite.prepare('INSERT INTO feature_phases(id,project_id,feature_id,name,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(phaseId,projectId,featureId,r.phase,now,now);}}
+        else if(r.phase===null)phaseId=null;
+        const before=sqlite.prepare('SELECT feature_id AS featureId,phase_id AS phaseId FROM requirements WHERE id=?').get(id);
+        persistOrganization(id,projectId,{featureId,phaseId,reason:r.reason});
+        const after=sqlite.prepare('SELECT feature_id AS featureId,phase_id AS phaseId FROM requirements WHERE id=?').get(id);if(JSON.stringify(before)!==JSON.stringify(after))recordAudit(actor,'update','requirement',id,'导入调整归属：'+JSON.stringify({before,after,reason:r.reason}),projectId);
       }
     }
     const result:ImportReceipt={status:'applied',batchId:input.batchId,createdAt:new Date().toISOString(),requirementIds};

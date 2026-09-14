@@ -21,7 +21,8 @@ it('交付升级保留旧事实，只有零工作项需求采用直接执行，�
   const start=()=>spawnSync(process.execPath,['--import','tsx','--eval',"const {sqlite}=await import('./src/server/database.ts'); sqlite.close();"],{cwd:process.cwd(),env,encoding:'utf8'});
   const first=start();expect(first.status,first.stderr).toBe(0);db=new Database(dbPath);
   const after=db.prepare('SELECT * FROM requirements ORDER BY id').all() as Record<string,unknown>[];
-  for(let i=0;i<original.length;i++)for(const key of Object.keys(original[i]))expect(after[i][key],key).toEqual(original[i][key]);
+  for(let i=0;i<original.length;i++)for(const key of Object.keys(original[i]).filter(k=>k!=='updated_at'&&k!=='version'))expect(after[i][key],key).toEqual(original[i][key]);
+  for(let i=0;i<original.length;i++){expect(after[i].version).toBe(Number(original[i].version)+1);expect(after[i].feature_id).toBeTruthy();}
   expect(after.map(r=>[r.id,r.delivery_scope,r.execution_mode,r.actual_start])).toEqual([['cancelled-work','committed','work_items',null],['plain','committed','direct',null],['split','committed','work_items',null]]);
   const afterWorks=db.prepare('SELECT * FROM work_items ORDER BY id').all() as Record<string,unknown>[];
   for(let i=0;i<works.length;i++)for(const key of Object.keys(works[i]))expect(afterWorks[i][key],key).toEqual(key==='version'?Number(works[i][key])+1:works[i][key]);

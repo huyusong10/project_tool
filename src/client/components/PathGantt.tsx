@@ -1,3 +1,4 @@
+import { ExecutionStageBadge, executionStageOf } from "./ExecutionStageBadge";
 import { useMemo } from 'react';
 import type { PathEdge, PathMilestone, PathNode, PathRequirement } from '../../shared/paths';
 import { useGanttNavigation } from '../use-gantt-navigation';
@@ -39,11 +40,11 @@ export function PathGantt({ nodes, onSelect, storageKey, asOfDate, edges = [], m
           const plan = ganttInterval(n.plannedStart, n.plannedEnd, dates, cellWidth), forecast = ganttInterval(n.forecastStart, n.forecastEnd, dates, cellWidth);
           const related = selection.related(n.id) || project && selection.selected.some(m => m.relatedIds.some(id => allNodes.find(p => p.id === id)?.requirementId === n.requirementId));
           return <div className={`path-draft-gantt-row${related ? ' is-milestone-related' : ''}`} key={n.id}>
-            <button className="path-gantt-name" onClick={() => onSelect(n)} title={n.title}>{n.title}<small>{n.forecastEnd || '交付待确认'}{n.arrangement === 'late' ? ' · 靠近交付' : ''}</small></button>
+            <button className="path-gantt-name" onClick={() => onSelect(n)} title={n.title}>{n.title}{project&&requirements.find(r=>r.id===n.requirementId)&&<ExecutionStageBadge requirement={requirements.find(r=>r.id===n.requirementId)!}/>}<small>{n.forecastEnd || '交付待确认'}{n.arrangement === 'late' ? ' · 靠近交付' : ''}</small></button>
             <div className="path-draft-gantt-track" style={track}>
               <GanttMilestoneCuts items={milestoneItems} dates={dates} cellWidth={cellWidth} asOfDate={asOfDate} selection={selection} showForecast />
               {plan && <i className="plan" style={{ left: plan.left, width: plan.width }} />}
-              {forecast ? <i style={{ left: forecast.left, width: forecast.width }} title={`${n.forecastStart} ～ ${n.forecastEnd}`} /> : <em>待确认</em>}
+              {forecast ? <i className={project&&requirements.find(r=>r.id===n.requirementId)?"gantt-stage stage-"+executionStageOf(requirements.find(r=>r.id===n.requirementId)!).tone:undefined} style={{ left: forecast.left, width: forecast.width }} title={`${n.forecastStart} ～ ${n.forecastEnd}`} /> : <em>待确认</em>}
             </div>
           </div>;
         })}

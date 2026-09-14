@@ -1,3 +1,4 @@
+import { deriveExecutionStage } from "./execution-stage";
 import {decorateForecastBasis} from './forecast-basis';
 import {type DeliveryFields,type ProcessingResult,processingPriority} from './delivery';
 import { addBusinessDays, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics, type RiskLevel } from './domain';
@@ -8,10 +9,10 @@ export type Dependency = {
   targetRequirementId: string; targetWorkItemId: string | null; origin: string;
   sourceMilestoneId?:string|null; targetMilestoneId?:string|null;
 };
-export type PathMilestone={forecastEnd?:string|null;id:string;projectId:string;requirementId:string|null;title:string;targetDate:string|null;confirmationMode:'auto'|'manual';achievedAt:string|null;version:number;cancelled?:boolean};
+export type PathMilestone={milestoneKind?:import('./execution-stage').MilestoneKind;achievedRecordedAt?:string|null;forecastEnd?:string|null;id:string;projectId:string;requirementId:string|null;title:string;targetDate:string|null;confirmationMode:'auto'|'manual';achievedAt:string|null;version:number;cancelled?:boolean};
 export type DiagramLayout={scope:string;direction:'right'|'down';version:number;positions:Record<string,{x:number;y:number}>};
 export type PathWork = import('./forecast-basis').ExecutionMetadata & {
-  progressWeight?:number|null;
+  workStage?:import('./execution-stage').WorkStage|null; progressWeight?:number|null;
   version?:number;
   arrangement?:Arrangement; arrangementAnchor?:string|null; acknowledgedDependencies?:string[];
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[];
@@ -22,7 +23,7 @@ export type PathWork = import('./forecast-basis').ExecutionMetadata & {
   blockedAt: string | null; blockedReason: string | null; milestoneLabel: string | null; ownerName: string | null;
 };
 export type PathRequirement = import('./intake').Organization & DeliveryFields & Partial<ProcessingResult> & {
-  createdAt?:string;updatedAt?:string;
+  executionStage?:import('./execution-stage').ExecutionStage; stageResetAt?:string|null; createdAt?:string;updatedAt?:string;
   acknowledgedDependencies?:string[]; version?:number; background?:string|null;acceptanceCriteria?:string|null;referenceUrl?:string|null;templateId?:string|null;
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[]; delayed?:boolean; scheduleComplete?:boolean;
   id: string; projectId: string; title: string; status: string; priority: string; ownerName: string | null;
@@ -35,6 +36,8 @@ export type PathInput = {
   milestones?:PathMilestone[]; layouts?:DiagramLayout[];
 };
 export type PathNode = {
+  progress?:number;progressWeight?:number|null;
+  workStage?:import('./execution-stage').WorkStage|null;
   blockerCoordination?:import('./blocker-coordination').BlockerCoordination;
   forecastBasis?:import('./forecast-basis').ForecastBasis;
   version?:number;
@@ -175,7 +178,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     for (const w of works.get(r.id)!) {
       if (w.status === 'cancelled' && !referenced.has(w.id)) continue;
       const n = add(w.id, r.id, r.executionMode==='direct'?'execution':'work', w.title);
-      Object.assign(n, { version:w.version,status: w.status, ownerName: w.ownerName, milestoneLabel: w.milestoneLabel, ownerId:w.ownerId,assigneeIds:w.assigneeIds,assigneeNames:w.assigneeNames, plannedStart: w.plannedStart, plannedEnd: w.plannedEnd,
+      Object.assign(n, { progress:w.progress,progressWeight:w.progressWeight,workStage:w.workStage,version:w.version,status: w.status, ownerName: w.ownerName, milestoneLabel: w.milestoneLabel, ownerId:w.ownerId,assigneeIds:w.assigneeIds,assigneeNames:w.assigneeNames, plannedStart: w.plannedStart, plannedEnd: w.plannedEnd,
         delayed:w.status!=='cancelled'&&calculateWorkItemGap(w,input.asOfDate).finishVariance>0,scheduleComplete:!!w.plannedStart&&!!w.plannedEnd });
       n.estimate={durationDays:w.durationDays,earliestStart:w.earliestStart,unblockEstimate:w.unblockEstimate,forecastEnd:w.forecastEnd};
       n.arrangement=w.arrangement||'early';n.arrangementAnchor=w.arrangementAnchor;
@@ -357,7 +360,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     deadlineSlack: current.complete && (eligible.length || input.milestones?.some(m=>!m.requirementId&&!m.cancelled) || requestedTarget !== projectTarget) && targetDate ? toFinish(targetDate) - target.earliestFinish : null, complete: current.complete,
     coverage: { reviewed: input.requirements.filter(r => !r.deletedAt && r.dependenciesReviewedAt).length, total: input.requirements.filter(r => !r.deletedAt).length, unplanned },
     nodes: nodes.map(({ release: _r, fixed: _f, planDuration: _pd, planRelease: _pr, planFinish: _pf, planStart: _ps, actualStart: _as, ...n }) => n),
-    edges, requirements: input.requirements.filter(r => !r.deletedAt).map(r=>({...r,...viewMetrics.get(r.id),...risks[r.id],processingPriority:risks[r.id].processingPriority,priorityReasons:risks[r.id].priorityReasons,affectedRequirementIds:risks[r.id].affectedRequirementIds,priorityAsOfDate:input.asOfDate})), dependencies: input.dependencies, risks, blockers,milestones:input.milestones||[],layouts:input.layouts||[] });
+    edges, requirements: input.requirements.filter(r => !r.deletedAt).map(r=>({...r,...viewMetrics.get(r.id),executionStage:deriveExecutionStage({...r,status:viewMetrics.get(r.id)!.status},r.executionMode==='direct'?[]:works.get(r.id),(input.milestones||[]).filter(m=>m.requirementId===r.id)),...risks[r.id],processingPriority:risks[r.id].processingPriority,priorityReasons:risks[r.id].priorityReasons,affectedRequirementIds:risks[r.id].affectedRequirementIds,priorityAsOfDate:input.asOfDate})), dependencies: input.dependencies, risks, blockers,milestones:input.milestones||[],layouts:input.layouts||[] });
 
   return result;
 }

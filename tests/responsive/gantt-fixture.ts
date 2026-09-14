@@ -50,7 +50,7 @@ export async function mockGanttData(page: Page, progressRequests: Array<Record<s
     const json = (value: unknown) => route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
     if (pathname === "/api/session") return json({ authenticated: true, accountId: "admin", username: "admin", role: "admin", globalRole: "admin", personId: null, mustChangePassword: false, managedProjectIds: [] });
     if (pathname === "/api/projects") return json([{ id: "p1", name: "测试项目", status: "active", plannedStart: "2026-09-01", plannedEnd: "2026-09-30", defaultTemplateId: "t1", createdAt: "2026-09-01", updatedAt: "2026-09-01" }]);
-    if (pathname.endsWith("/group-overview")) return json({asOfDate:"2026-09-11",recentFrom:"2026-09-05",groups:[],ungroupedCount:0});
+    if (pathname.endsWith("/feature-overview")) return json({asOfDate:"2026-09-11",recentFrom:"2026-09-05",groups:[],unassignedCount:0});
     if (pathname === "/api/dashboard") return json({
       summary: { total: 2, active: 2, completed: 0, delayed: 0, highRisk: 0, completionRate: 0 },
       requirements: [requirement, { ...requirement, id: "r2", title: "领先计划流程", progress: 70, plannedProgress: 50, progressGap: 0, riskLevel: "low", riskReason: "进展正常", workItems: [

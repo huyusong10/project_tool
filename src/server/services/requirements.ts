@@ -1,3 +1,4 @@
+import { deriveExecutionStage, type ExecutionStage, type WorkStage } from '../../shared/execution-stage';
 import {nodeForecastBasis, deliveryForecast, requirementDeliveryForecast} from '../../shared/forecast-basis';
 import {type DeliveryFields,type ProcessingResult,deliveryReadiness,processingPriority} from '../../shared/delivery';
 import { sqlite } from '../database';
@@ -10,7 +11,7 @@ import { getPathAnalysis, startConditions } from './paths';
 import type { PathRisk } from '../../shared/paths';
 
 export type WorkItemRecord = import('../../shared/forecast-basis').ExecutionMetadata & {
-  progressWeight?:number|null;
+  workStage?:WorkStage|null; progressWeight?:number|null;
   durationDays?:number|null;
   dependencyRevision?:number; unmetPredecessors?:Array<{id:string;title:string}>;
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
@@ -22,7 +23,7 @@ export type WorkItemRecord = import('../../shared/forecast-basis').ExecutionMeta
 };
 
 export type RequirementRecord = DeliveryFields & import('../../shared/intake').Organization & Partial<ProcessingResult> & {
-  milestones?: import('../../shared/paths').PathMilestone[];
+  stageResetAt?:string|null; executionStage?:ExecutionStage; milestones?: import('../../shared/paths').PathMilestone[];
   readinessIssues?:string[];
   pathRisk?: PathRisk; pathEnabled?:number;
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
@@ -43,7 +44,7 @@ export const requirementSelect = `SELECT EXISTS(SELECT 1 FROM project_people op 
     (SELECT name FROM people WHERE id=r.acceptance_owner_id) AS acceptanceOwnerName,
     EXISTS(SELECT 1 FROM project_people ap JOIN accounts aa ON aa.person_id=ap.person_id JOIN people person ON person.id=ap.person_id WHERE ap.project_id=r.project_id AND ap.person_id=r.acceptance_owner_id AND ap.project_role IN ('member','manager') AND aa.status='active' AND aa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS acceptanceOwnerValid,r.id, r.project_id AS projectId, pr.name AS projectName,
   r.template_id AS templateId, t.name AS templateName, r.title,
-  r.background, r.source_notes AS sourceNotes, r.acceptance_criteria AS acceptanceCriteria, r.reference_url AS referenceUrl, r.group_id AS groupId,(SELECT name FROM requirement_groups WHERE id=r.group_id) AS groupName,
+  r.background, r.source_notes AS sourceNotes, r.acceptance_criteria AS acceptanceCriteria, r.reference_url AS referenceUrl, r.phase_id AS phaseId,(SELECT name FROM feature_phases fp WHERE fp.id=r.phase_id) AS phaseName,r.stage_reset_at AS stageResetAt,r.feature_id AS featureId,(SELECT name FROM features WHERE id=r.feature_id) AS featureName,
   r.owner_id AS ownerId, p.name AS ownerName, r.status, r.planned_start AS plannedStart,
   r.planned_end AS plannedEnd, r.progress, r.risk_level AS riskLevel, r.priority,
   r.accepted_at AS acceptedAt, r.accepted_by_account_id AS acceptedByAccountId, r.version,
@@ -58,7 +59,7 @@ export function requirementCompletionDate(requirement: RequirementRecord) {
   return requirement.executionCompletedAt || requirement.actualEnd || requirement.effectiveEnd || null;
 }
 
-export const workItemSelect = `SELECT w.progress_weight AS progressWeight,w.duration_days AS durationDays,w.id, w.requirement_id AS requirementId, w.template_item_id AS templateItemId,
+export const workItemSelect = `SELECT w.work_stage AS workStage,w.progress_weight AS progressWeight,w.duration_days AS durationDays,w.id, w.requirement_id AS requirementId, w.template_item_id AS templateItemId,
   w.title, w.owner_id AS ownerId, p.name AS ownerName, w.status,
   w.planned_start AS plannedStart, w.planned_end AS plannedEnd,
   w.forecast_review AS forecastReview,w.blocked_coordinator_id AS blockedCoordinatorId,w.blocked_next_review_at AS blockedNextReviewAt,w.blocked_issue_id AS blockedIssueId,w.actual_start AS actualStart, w.actual_end AS actualEnd, w.forecast_end AS forecastEnd,
@@ -167,7 +168,7 @@ export const requirementAnalysisSnapshots=new WeakMap<RequirementRecord[],Map<st
 export function listRequirements(...args: Parameters<typeof readRequirements>) {
   return sqlite.transaction(() => readRequirements(...args))();
 }
-function readRequirements(filters: { groupId?:string;deliveryScope?:'committed'|'candidate';projectId?: string; ownerId?: string; includeDeleted?: boolean; view?: string; status?: string } = {}, asOfDate = todayIso()) {
+function readRequirements(filters: { phaseId?:string; featureId?:string;deliveryScope?:'committed'|'candidate';projectId?: string; ownerId?: string; includeDeleted?: boolean; view?: string; status?: string } = {}, asOfDate = todayIso()) {
   const where = [filters.includeDeleted ? '1=1' : 'r.deleted_at IS NULL'];
   const params: unknown[] = [];
   if (filters.projectId) { where.push('r.project_id=?'); params.push(filters.projectId); }
@@ -194,12 +195,14 @@ function readRequirements(filters: { groupId?:string;deliveryScope?:'committed'|
     const pathRisk = analyses.get(r.projectId)?.risks[r.id];
     return pathRisk ? { ...r, ...pathRisk, pathRisk } : {...r,...processingPriority(r,asOfDate)};
   });
-  if(filters.groupId!==undefined)result=result.filter(r=>(r.groupId||'')===filters.groupId);
+  if(filters.featureId!==undefined)result=result.filter(r=>(r.featureId||'')===filters.featureId);
   if(filters.deliveryScope)result=result.filter(r=>r.deliveryScope===filters.deliveryScope);
   if (filters.status) result = result.filter((item) => item.status === filters.status);
   if (filters.view === 'delayed') result = result.filter((item) => item.delayed);
   if (filters.view === 'high_risk') result = result.filter((item) => item.highRisk);
   requirementAnalysisSnapshots.set(result,analyses);
+  if(filters.phaseId)result=result.filter(r=>filters.phaseId==='unassigned'?!r.phaseId:r.phaseId===filters.phaseId);
+  for(const r of result)r.executionStage=deriveExecutionStage(r,r.workItems,r.milestones);
   return result;
 }
 
@@ -230,7 +233,7 @@ function readRequirement(id: string, includeDeleted = false, withPathAnalysis = 
     FROM issues WHERE requirement_id=? AND status<>'resolved'`, asOfDate, id) || { active: 0, overdue: 0 };
   const issueSummary = { active: Number(issueCounts.active || 0), overdue: Number(issueCounts.overdue || 0) };
   const pathAnalysis = withPathAnalysis ? getPathAnalysis(requirement.projectId, undefined, asOfDate) : undefined,pathRisk=pathAnalysis?.risks[id];
-  const milestones=rows<import('../../shared/paths').PathMilestone>('SELECT id,project_id AS projectId,requirement_id AS requirementId,title,target_date AS targetDate,confirmation_mode AS confirmationMode,achieved_at AS achievedAt,version,cancelled FROM milestones WHERE requirement_id=?',id);
+  const milestones=rows<import('../../shared/paths').PathMilestone>('SELECT id,project_id AS projectId,requirement_id AS requirementId,title,target_date AS targetDate,confirmation_mode AS confirmationMode,achieved_at AS achievedAt,milestone_kind AS milestoneKind,achieved_recorded_at AS achievedRecordedAt,version,cancelled FROM milestones WHERE requirement_id=?',id);
   for(const m of milestones)m.forecastEnd=pathAnalysis?.nodes.find(n=>n.id===m.id)?.forecastEnd||null;
   if(pathAnalysis){
     result.deliveryForecast = requirementDeliveryForecast(id, pathAnalysis);
@@ -239,5 +242,5 @@ function readRequirement(id: string, includeDeleted = false, withPathAnalysis = 
     const facts=pathAnalysis.requirements.find(n=>n.id===id);Object.assign(result,{executionForecastEnd:facts?.executionForecastEnd,acceptanceForecastEnd:facts?.acceptanceForecastEnd,acceptanceAssumed:facts?.acceptanceAssumed});
     for(const w of result.workItems||[])Object.assign(w,{forecastBasis:pathAnalysis.nodes.find(n=>n.id===w.id)?.forecastBasis,blockerCoordination:pathAnalysis.nodes.find(n=>n.id===w.id)?.blockerCoordination});
   }
-  return { ...result,milestones, ...(pathRisk ? { ...pathRisk, pathRisk } : {}), progressUpdates, issueSummary };
+  return { ...result,milestones,executionStage:deriveExecutionStage(result,result.workItems,milestones), ...(pathRisk ? { ...pathRisk, pathRisk } : {}), progressUpdates, issueSummary };
 }

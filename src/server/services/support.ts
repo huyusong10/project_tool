@@ -83,7 +83,7 @@ export function nullableText(value: unknown) {
 
 /** Factual fallback for optional explanations; never invent a user's reason. */
 export function describeChanges(current: object, input: JsonObject) {
-  const labels: Record<string,string> = { title:'名称', ownerId:'负责人ID', assigneeIds:'执行人员ID', plannedStart:'计划开始', plannedEnd:'计划完成', actualStart:'实际开始', actualEnd:'实际完成', resolvedAt:'解决日期', progress:'完成度', background:'说明', impact:'影响', acceptanceCriteria:'完成标准', referenceUrl:'来源链接', groupId:'分组ID', supersedesId:'关联历史记录' };
+  const labels: Record<string,string> = { title:'名称', ownerId:'负责人ID', assigneeIds:'执行人员ID', plannedStart:'计划开始', plannedEnd:'计划完成', actualStart:'实际开始', actualEnd:'实际完成', resolvedAt:'解决日期', progress:'完成度', background:'说明', impact:'影响', acceptanceCriteria:'完成标准', referenceUrl:'来源链接', featureId:'特性ID',phaseId:'Phase ID',workStage:'工作阶段',milestoneKind:'节点含义', supersedesId:'关联历史记录' };
   const before=current as JsonObject;
   const display=(v:unknown)=>v===undefined||v===null||v===''?'未设置':Array.isArray(v)?v.join('、'):String(v);
   const changes=Object.entries(input).filter(([key,value])=>key in labels&&JSON.stringify(value)!==JSON.stringify(before[key])).map(([key,value])=>`${labels[key]}：${display(before[key])} → ${display(value)}`);

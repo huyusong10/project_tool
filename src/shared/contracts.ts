@@ -1,3 +1,4 @@
+import { workStageInput, milestoneKindInput } from './execution-stage';
 import {organizationFields} from './intake';
 import { z } from 'zod';
 import {
@@ -107,7 +108,7 @@ export const requirementInputSchema = z.object({...organizationFields,blockedCoo
   reason: z.string().trim().optional(),
 }).passthrough();
 
-export const createRequirementInputSchema = requirementInputSchema.pick({groupId:true,
+export const createRequirementInputSchema = requirementInputSchema.pick({featureId:true,phaseId:true,reason:true,
   deliveryScope:true,executionMode:true,acceptanceOwnerId:true,durationDays:true,forecastEnd:true,unblockEstimate:true,
   projectId: true,
   title: true,
@@ -127,7 +128,7 @@ export const createRequirementInputSchema = requirementInputSchema.pick({groupId
   message: '计划完成日期不能早于开始日期',
 });
 
-export const updateRequirementInputSchema = requirementInputSchema.pick({groupId:true,blockedCoordinatorId:true,blockedNextReviewAt:true,blockedIssueId:true,
+export const updateRequirementInputSchema = requirementInputSchema.pick({featureId:true,phaseId:true,blockedCoordinatorId:true,blockedNextReviewAt:true,blockedIssueId:true,
   deliveryScope:true,executionMode:true,acceptanceOwnerId:true,durationDays:true,forecastEnd:true,unblockEstimate:true,reason:true,
   plannedStart:true,plannedEnd:true,
   title: true, priority: true, ownerId: true, background: true,
@@ -169,7 +170,7 @@ export const applyTemplateInputSchema = z.object({
   reason: z.string().trim().optional(),
 }).strict();
 
-export const workItemInputSchema = z.object({blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema,
+export const workItemInputSchema = z.object({workStage:workStageInput,blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema,
   title: z.string().trim().min(1).optional(),
   ownerId: z.string().nullable().optional(),
   collaboratorIds: z.array(idSchema).optional(),
@@ -301,6 +302,7 @@ export const issueUpdateHistoryInputSchema = z.object({
 }).strict();
 
 export const templateItemSchema = z.object({
+  workStage:workStageInput, milestoneKind:milestoneKindInput,
   id: z.string().optional(),
   clientKey: z.string().min(1).optional(),
   predecessorKeys: z.array(z.string().min(1)).max(maxTemplateItems).optional(),
@@ -434,7 +436,7 @@ export const personCandidatesInputSchema = z.object({
   q: z.string().trim().max(200).optional(),
 }).strict();
 
-export const requirementListInputSchema = z.object({groupId:z.string().optional(),
+export const requirementListInputSchema = z.object({phaseId:z.string().optional(),featureId:z.string().optional(),
   deliveryScope:z.enum(['committed','candidate']).optional(),
   projectId: idSchema,
   status: z.enum(requirementStatuses).optional(),

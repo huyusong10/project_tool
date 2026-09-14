@@ -1,3 +1,8 @@
+import {Select} from './Select';
+import {assertCleanRequirementDraft} from '../use-graph-draft';
+import {useSession} from '../app-context';
+import {useDeliveryForm} from '../use-delivery-form';
+import { migrateFeatureFields } from "../feature-storage-migration";
 import {OrganizationFields} from './RequirementIntake';
 import {isAssignablePerson} from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
@@ -13,11 +18,13 @@ import { useToast } from "./Toast";
 import { canonicalizeContent, canonicalizeLabel } from "../../shared/search";
 
 export type RequirementInfoDraft = {
-  groupId:string;
+  featureId:string;
+  phaseId:string;
+  reason?:string;
   title: string; ownerId: string; background: string; acceptanceCriteria: string; referenceUrl: string;
 };
 
-const requirementInfoFields: Array<keyof RequirementInfoDraft> = ["groupId", "title", "ownerId", "background", "acceptanceCriteria", "referenceUrl"];
+const requirementInfoFields: Array<keyof RequirementInfoDraft> = ["featureId", "phaseId", "title", "ownerId", "background", "acceptanceCriteria", "referenceUrl"];
 export type RequirementInfoRecheck = {
   baselineVersion: number;
   draft: RequirementInfoDraft;
@@ -33,7 +40,8 @@ export function readRequirementInfoRecheck(accountKey: string, requirementId: st
   try {
     const raw = sessionStorage.getItem(requirementInfoRecheckKey(accountKey, requirementId));
     if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<RequirementInfoRecheck>;
+    const value = migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementInfoRecheck>;
+    if(value.draft)value.draft.phaseId??="";
     const draft = value.draft as Partial<RequirementInfoDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
       || !draft || requirementInfoFields.some((field) => typeof draft[field] !== "string")
@@ -58,7 +66,7 @@ export function persistRequirementInfoRecheck(accountKey: string, requirementId:
 
 function requirementInfoDraft(requirement: Requirement): RequirementInfoDraft {
   return {
-    groupId:requirement.groupId||'',
+    featureId:requirement.featureId||'',phaseId:requirement.phaseId||'',
     title: requirement.title, ownerId: requirement.ownerId || "",
     background: requirement.background || "", acceptanceCriteria: requirement.acceptanceCriteria || "",
     referenceUrl: requirement.referenceUrl || "",
@@ -78,15 +86,18 @@ export function RequirementInfoForm({
   onRecheckChange: (value: RequirementInfoRecheck | null) => void;
   onClose: () => void;
 }) {
+  const {session}=useSession();
   const [unknown,setUnknown]=useState(Boolean(recheck));
   const client = useQueryClient();
   const submitting = useRef(false);
   const readingRef = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const [baseRequirement, setBaseRequirement] = useState(requirement);
-  const [draft, setDraft] = useState(() => recheck?.draft || requirementInfoDraft(requirement));
-  const dirtyFields = useRef(new Set<keyof RequirementInfoDraft>(recheck?.dirtyFields || []));
+  const [local,setLocal,clearLocal]=useDeliveryForm(requirement.projectId,requirement.id+':info',()=>({baseline:requirement,draft:recheck?.draft||requirementInfoDraft(requirement),dirty:recheck?.dirtyFields||[]}),!!recheck);
+  const [baseRequirement, setBaseRequirement] = useState(local.baseline);
+  const [draft, setDraft] = useState(local.draft);
+  const dirtyFields = useRef(new Set<keyof RequirementInfoDraft>(local.dirty));
+  useEffect(()=>setLocal({baseline:baseRequirement,draft,dirty:[...dirtyFields.current]}),[baseRequirement,draft,setLocal]);
   const [reading, setReading] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(recheck?.stage === "read");
   const [refreshed, setRefreshed] = useState(false);
@@ -112,8 +123,8 @@ export function RequirementInfoForm({
     : eligiblePeople;
   const draftOwnerUnavailable = Boolean(draft.ownerId && draft.ownerId !== baseRequirement.ownerId && !ownerOptions.some((person) => person.id === draft.ownerId));
   const change = (field: keyof RequirementInfoDraft, value: string) => {
-    dirtyFields.current.add(field);
-    const next = { ...draft, [field]: value };
+    dirtyFields.current.add(field);if(field==='featureId')dirtyFields.current.add('phaseId');
+    const next = { ...draft, [field]: value,...field==='featureId'?{phaseId:''}:{} };
     setDraft(next);
     if (unknownVersion.current !== null) onRecheckChange({
       baselineVersion: unknownVersion.current,
@@ -132,7 +143,7 @@ export function RequirementInfoForm({
       const mergedDraft = Object.fromEntries(Object.entries(latestDraft).map(([field, value]) => [
         field, dirtyFields.current.has(field as keyof RequirementInfoDraft) ? draft[field as keyof RequirementInfoDraft] : value,
       ])) as RequirementInfoDraft;
-      setDraft(mergedDraft);
+      setDraft({...mergedDraft,reason:draft.reason});
       if (unknownVersion.current !== null) {
         const requiresReview = latest.version !== unknownVersion.current;
         setReviewRequired(requiresReview);
@@ -163,7 +174,7 @@ export function RequirementInfoForm({
     }
   };
   const mutation = useMutation({
-    mutationFn: (value: object) => api(`/api/requirements/${requirement.id}`, { method: "PATCH", body: jsonBody(value) }),
+    mutationFn: async (value: object) => {await assertCleanRequirementDraft(session.accountId||session.username||'guest',requirement.id,{action:draft.phaseId!==(baseRequirement.phaseId||'')||draft.featureId!==(baseRequirement.featureId||'')?'phase':'edit'});return api(`/api/requirements/${requirement.id}`, { method: "PATCH", body: jsonBody(value) });},
     onMutate: (value) => {
       const baselineVersion = Number((value as { expectedVersion?: number }).expectedVersion || baseRequirement.version);
       unknownVersion.current = baselineVersion;
@@ -171,7 +182,7 @@ export function RequirementInfoForm({
     },
     onSuccess: () => {
       unknownVersion.current = null;
-      onRecheckChange(null);
+      clearLocal();onRecheckChange(null);
       invalidateRequirementViews(client, requirement.id);
       onClose();
     },
@@ -197,21 +208,21 @@ export function RequirementInfoForm({
     if (submitting.current || blocked) return;
     submitting.current = true;
     mutation.mutate({
-      ...draft,groupId:draft.groupId||null,
+      ...draft,featureId:draft.featureId||null,phaseId:draft.phaseId||null,
       ...(draft.ownerId !== (baseRequirement.ownerId || "") ? { ownerId: draft.ownerId || null } : { ownerId: undefined }),
       expectedVersion: baseRequirement.version,
     });
   }}>
     <fieldset className="form-grid form-fieldset" disabled={pending}>
     <FormField label="需求标题" full><input name="title" value={draft.title} onChange={(event) => change("title", event.target.value)} required autoFocus /></FormField>
-    <OrganizationFields projectId={requirement.projectId} groupId={draft.groupId} onChange={change}/>
+    <OrganizationFields projectId={requirement.projectId} featureId={draft.featureId} phaseId={draft.phaseId} onChange={change}/>{(draft.phaseId!==(baseRequirement.phaseId||'')||draft.featureId!==(baseRequirement.featureId||''))&&<FormField label="归属调整原因" full><textarea maxLength={2000} value={draft.reason||""} onChange={e=>setDraft({...draft,reason:e.target.value})}/></FormField>}
     <p className="field-help">处理优先级按风险和依赖自动计算。</p>
-    <FormField label="需求负责人"><select value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
+    <FormField label="需求负责人"><Select value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
       <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
       {baseRequirement.ownerId && !ownerOptions.some((person) => person.id === baseRequirement.ownerId) && <option value={baseRequirement.ownerId}>{baseRequirement.ownerName || "历史负责人"} · 历史负责人</option>}
       {draft.ownerId && draft.ownerId !== baseRequirement.ownerId && !ownerOptions.some((person) => person.id === draft.ownerId) && <option value={draft.ownerId}>{draftOwner?.name || knownPeople.current.get(draft.ownerId) || "已选择负责人"} · 已不可用，请重新选择</option>}
       {ownerOptions.map((person) => <option value={person.id} key={person.id} disabled={!isAssignablePerson(person)}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}{person === currentOwner && !eligiblePeople.includes(person) ? " · 历史负责人" : ""}</option>)}
-    </select></FormField>
+    </Select></FormField>
     {hasExecution && <p className="field-help field-full">需求已开始执行，负责人可以更换但不能清空。</p>}
     <FormField label="需求背景（可选）" full><textarea name="background" rows={3} value={draft.background} onChange={(event) => change("background", event.target.value)} /></FormField>
     <FormField label="完成标准（可选）" full><textarea name="acceptanceCriteria" rows={3} value={draft.acceptanceCriteria} onChange={(event) => change("acceptanceCriteria", event.target.value)} /></FormField>
@@ -245,7 +256,8 @@ export function readRequirementCorrectionRecheck(accountKey: string, requirement
   try {
     const raw = sessionStorage.getItem(requirementCorrectionRecheckKey(accountKey, requirementId));
     if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<RequirementCorrectionRecheck>;
+    const value = migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementCorrectionRecheck>;
+    if(value.draft)value.draft.phaseId??="";
     const draft = value.draft as Partial<RequirementInfoDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
       || !draft || requirementInfoFields.some((field) => typeof draft[field] !== "string")
@@ -314,11 +326,11 @@ export function RequirementCorrectionForm({
     });
   };
   const change = (field: keyof RequirementInfoDraft, value: string) => {
-    const next = { ...draft, [field]: value };
+    const next = { ...draft, [field]: value,...field==='featureId'?{phaseId:''}:{} };
     setDraft(next);
     persistDraftIfLocked(next);
   };
-  const normalizedDraft = () => ({groupId:draft.groupId||null,
+  const normalizedDraft = () => ({featureId:draft.featureId||null,phaseId:draft.phaseId||null,
     title: canonicalizeLabel(draft.title),
     ownerId: draft.ownerId || null,
     background: canonicalizeContent(draft.background) || null,
@@ -327,7 +339,7 @@ export function RequirementCorrectionForm({
   });
   const informationChanged = (() => {
     const value = normalizedDraft();
-    return value.groupId!==(baseline.groupId||null)||value.title !== baseline.title || value.ownerId !== (baseline.ownerId || null)
+    return value.phaseId!==(baseline.phaseId||null)||value.featureId!==(baseline.featureId||null)||value.title !== baseline.title || value.ownerId !== (baseline.ownerId || null)
       || value.background !== (baseline.background || null) || value.acceptanceCriteria !== (baseline.acceptanceCriteria || null)
       || value.referenceUrl !== (baseline.referenceUrl || null);
   })();
@@ -408,7 +420,7 @@ export function RequirementCorrectionForm({
     submitting.current = true;
     mutation.mutate({
       body: {
-        ...draft,groupId:draft.groupId||null,
+        ...draft,featureId:draft.featureId||null,phaseId:draft.phaseId||null,
         ...(draft.ownerId !== (baseline.ownerId || "") ? { ownerId: draft.ownerId || null } : { ownerId: undefined }),
         expectedVersion: baseline.version,
         reason: reason.trim(),
@@ -420,16 +432,16 @@ export function RequirementCorrectionForm({
       <p className="field-help field-full">仅修正需求基本信息，不改变状态、进度、完成记录、排期或流程；系统会追加纠错记录。</p>
       <FormField label="需求标题" full><input aria-label="纠错后的需求标题" value={draft.title} onChange={(event) => change("title", event.target.value)} required autoFocus /></FormField>
 
-      <OrganizationFields projectId={requirement.projectId} groupId={draft.groupId} onChange={change}/>
-      <FormField label="需求负责人"><select aria-label="纠错后的需求负责人" value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
+      <OrganizationFields projectId={requirement.projectId} featureId={draft.featureId} phaseId={draft.phaseId} onChange={change}/>
+      <FormField label="需求负责人"><Select aria-label="纠错后的需求负责人" value={draft.ownerId} required={hasExecution} onChange={(event) => change("ownerId", event.target.value)}>
         <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
         {baseline.ownerId && !ownerOptions.some((person) => person.id === baseline.ownerId) && <option value={baseline.ownerId}>{baseline.ownerName || "历史负责人"} · 历史负责人</option>}
         {ownerOptions.map((person) => <option value={person.id} key={person.id} disabled={!isAssignablePerson(person)}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}{person === currentOwner && !eligiblePeople.includes(person) ? " · 历史负责人" : ""}</option>)}
-      </select></FormField>
+      </Select></FormField>
       <FormField label="需求背景（可选）" full><textarea aria-label="纠错后的需求背景" rows={3} value={draft.background} onChange={(event) => change("background", event.target.value)} /></FormField>
       <FormField label="完成标准（可选）" full><textarea aria-label="纠错后的完成标准" rows={3} value={draft.acceptanceCriteria} onChange={(event) => change("acceptanceCriteria", event.target.value)} /></FormField>
       <FormField label="参考链接（可选）" full><input aria-label="纠错后的参考链接" type="url" value={draft.referenceUrl} onChange={(event) => change("referenceUrl", event.target.value)} placeholder="https://…" /></FormField>
-      {!!candidates.length && <FormField label="关联历史记录（可选）" full><select aria-label="需求纠错关联历史记录" value={supersedesId} onChange={(event) => {const value=event.target.value;setSupersedesId(value);persistDraftIfLocked(draft,reason,value);}}><option value="">不指定</option>{candidates.map((update) => <option value={update.id} key={update.id}>{new Date(update.createdAt).toLocaleDateString("zh-CN")} · {update.content.slice(0, 36)}</option>)}</select></FormField>}
+      {!!candidates.length && <FormField label="关联历史记录（可选）" full><Select aria-label="需求纠错关联历史记录" value={supersedesId} onChange={(event) => {const value=event.target.value;setSupersedesId(value);persistDraftIfLocked(draft,reason,value);}}><option value="">不指定</option>{candidates.map((update) => <option value={update.id} key={update.id}>{new Date(update.createdAt).toLocaleDateString("zh-CN")} · {update.content.slice(0, 36)}</option>)}</Select></FormField>}
       <FormField label="纠错说明（可选）" full><textarea aria-label="需求纠错原因" rows={2} value={reason} onChange={(event) => {const value=event.target.value;setReason(value);persistDraftIfLocked(draft,value);}} placeholder="说明原信息哪里有误，以及核对依据" /></FormField>
       {unknown&&!reviewRequired&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
       {reviewRequired && <div className="warning-banner field-full">提交结果待核对；当前版本已变化。本窗口不再提交。请核对当前资料与纠错记录，已填内容保留。<button type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</button></div>}
@@ -481,7 +493,7 @@ export function readRequirementScheduleRecheck(accountKey: string, requirementId
   try {
     const raw = sessionStorage.getItem(requirementScheduleRecheckKey(accountKey, requirementId));
     if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<RequirementScheduleRecheck>;
+    const value = migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementScheduleRecheck>;
     const draft = value.draft as Partial<RequirementScheduleDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
       || !draft || typeof draft.templateId !== "string" || !["start", "deadline"].includes(String(draft.scheduleMode))
@@ -727,7 +739,7 @@ export function RequirementScheduleForm({
         />
       </FormField>
       {baseRequirement.executionMode!=='direct'&&<FormField label="绑定流程" full>
-        <select value={templateId} disabled={!templatesQuery.data} onChange={(event) => {
+        <Select value={templateId} disabled={!templatesQuery.data} onChange={(event) => {
           const value = event.target.value;
           if (value === (baseRequirement.templateId || "")) dirtyFields.current.delete("template"); else dirtyFields.current.add("template");
           setTemplateId(value);
@@ -737,7 +749,7 @@ export function RequirementScheduleForm({
           {baseRequirement.templateId && !templates.some((template) => template.id === baseRequirement.templateId) && <option value={baseRequirement.templateId}>{baseRequirement.templateName || "原流程"}（{templatesQuery.isLoading ? "正在加载" : templatesQuery.error ? "暂不可用" : "已归档"}）</option>}
           {templateChanged && !templates.some((template) => template.id === templateId) && <option value={templateId}>{knownTemplates.current.get(templateId) || "已选择流程"}（已不可用，请重新选择）</option>}
           {templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
-        </select>
+        </Select>
       </FormField>
       }{templatesQuery.error && <div className="warning-banner field-full">流程列表加载失败，当前只能调整日期，不能切换流程。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</button></div>}
       {templateChanged && <p className="template-reset-warning field-full"><AlertTriangle size={16} />切换后会替换未执行工作项并按新流程重新排期；需求级说明保留。</p>}
@@ -784,7 +796,7 @@ export function readRequirementPlanRecheck(accountKey: string, requirementId: st
   try {
     const raw = sessionStorage.getItem(requirementPlanRecheckKey(accountKey, requirementId));
     if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<RequirementPlanRecheck>;
+    const value = migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementPlanRecheck>;
     const draft = value.draft as Partial<RequirementPlanDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
       || !draft || typeof draft.templateId !== "string" || typeof draft.baseStart !== "string" || typeof draft.reason !== "string"
@@ -919,7 +931,7 @@ export function PlanForm({ requirement, templates, recheck, onRecheckChange, onC
     <Modal title="按模板补全计划" width={840} closable={!pending} onClose={() => { if (!submitting.current) onClose(); }}>
     <fieldset className="plan-preview-form form-fieldset" disabled={pending}>
       <div className="form-grid">
-        <FormField label="流程设计"><select value={templateId} onChange={(event) => { if (submitting.current) return; const value=event.target.value;setTemplateId(value);persistDraftIfLocked(draft({templateId:value}));resetPreview(); }}>{selectedTemplateUnavailable && <option value={templateId}>{knownTemplates.current.get(templateId) || "已选择流程"}（已不可用，请重新选择）</option>}{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</select></FormField>
+        <FormField label="流程设计"><Select value={templateId} onChange={(event) => { if (submitting.current) return; const value=event.target.value;setTemplateId(value);persistDraftIfLocked(draft({templateId:value}));resetPreview(); }}>{selectedTemplateUnavailable && <option value={templateId}>{knownTemplates.current.get(templateId) || "已选择流程"}（已不可用，请重新选择）</option>}{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</Select></FormField>
         <FormField label="计划开始"><input type="date" value={baseStart} onChange={(event) => { if (submitting.current) return; const value=event.target.value;setBaseStart(value);persistDraftIfLocked(draft({baseStart:value}));resetPreview(); }} /></FormField>
       </div>
       {hasExecution && <FormField label="补充说明（可选）" full><textarea rows={2} value={reason} onChange={(event) => {const value=event.target.value;setReason(value);persistDraftIfLocked(draft({reason:value}));}} placeholder="可补充排期调整的背景" /></FormField>}

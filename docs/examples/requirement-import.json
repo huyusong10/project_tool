@@ -1,5 +1,5 @@
 {
-  "formatVersion": 2,
+  "formatVersion": 3,
   "requirements": [
     {
       "key": "query-delivery",
@@ -9,17 +9,20 @@
       "background": "EX-001：支持筛选和查看详情，只能查询授权范围内的数据。",
       "referenceUrl": "https://example.com/requirements",
       "acceptanceCriteria": "组合筛选和详情可用；越权查询被拒绝。",
-      "group": "示例模块",
       "workItems": [
         {
           "key": "api",
-          "title": "查询接口"
+          "title": "查询接口",
+          "workStage": "development"
         },
         {
           "key": "ui",
-          "title": "查询页面与联调"
+          "title": "查询页面与联调",
+          "workStage": "integration"
         }
-      ]
+      ],
+      "feature": "示例模块",
+      "phase": "Phase 1"
     }
   ],
   "dependencies": [

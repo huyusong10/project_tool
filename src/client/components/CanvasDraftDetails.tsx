@@ -1,3 +1,4 @@
+import {Select} from './Select';
 import {useState} from 'react';
 import type {PathAnalysis} from '../../shared/paths';
 import type {useDependencyDraft} from '../use-graph-draft';
@@ -7,7 +8,7 @@ type Draft=ReturnType<typeof useDependencyDraft>;
 export function CanvasDraftDetails({draft,data,onGo}:{draft:Draft;data:PathAnalysis;onGo:(url:string)=>void}){
   const go=(url:string)=>{const parsed=new URL(url,location.origin),id=parsed.searchParams.get('requirementId');if(id&&draft.changes.entities?.some(c=>c.id===id&&c.op==='create'))parsed.searchParams.set('draftProject',data.projectId);onGo(parsed.pathname+parsed.search);};
   const [choices,setChoices]=useState<Record<string,'current'|'legacy'>>({}),legacy=draft.legacy;
-  const name=(id:string)=>data.requirements.find(r=>r.id===id)?.title||data.nodes.find(n=>n.id===id)?.title||data.featureContext?.overview.groups.find(g=>g.id===id)?.name||id;
+  const name=(id:string)=>data.requirements.find(r=>r.id===id)?.title||data.nodes.find(n=>n.id===id)?.title||data.featureContext?.overview.features.find(g=>g.id===id)?.name||id;
   const locate=(id:string)=>{const node=data.nodes.find(n=>n.id===id);go(node?.requirementId?requirementCanvasUrl(node.requirementId,new URLSearchParams({view:'project'}),data,id):'/paths?'+new URLSearchParams({view:'project',pathNode:id,pathInspector:'open',pathScope:'all'}));};
   const scopeUrl=(scope:string)=>scope==='features'?'/paths?view=features':scope.startsWith('feature:')?'/paths?view=feature&featureId='+encodeURIComponent(scope.slice(8)):scope.startsWith('requirement:')?requirementCanvasUrl(scope.slice(12),new URLSearchParams({view:'project'}),data):'/paths?view=project';
   return <div className="canvas-draft-details"><p>所有层的修改一起保存，共 {draft.count} 项。</p>
@@ -15,7 +16,7 @@ export function CanvasDraftDetails({draft,data,onGo}:{draft:Draft;data:PathAnaly
     {Object.entries(draft.fields).filter(([,field])=>field.error).map(([key,field])=><div className="canvas-change-row" key={key}><span className="danger-text">{field.error}</span><button className="ghost-button" onClick={()=>{draft.requestField(key);locate(key.startsWith('title:')?key.slice(6):key.slice(0,key.lastIndexOf(':')));}}>修正字段</button></div>)}
     {draft.session.readOnly&&<button className="ghost-button" onClick={()=>void draft.takeOver()}>接管此草稿</button>}
     {legacy.blocked&&<section className="warning-banner" role="alert"><p>{legacy.message||'旧特性布局与当前草稿存在不同修改，请选择要保留的布局。'}</p>
-      {legacy.conflicts?.map(key=><label className="field" key={key}><span>{key}</span><select aria-label={'合并布局 '+key} value={choices[key]||''} onChange={e=>setChoices({...choices,[key]:e.target.value as 'current'|'legacy'})}><option value="">选择保留的布局</option><option value="current">当前画布草稿</option><option value="legacy">旧特性布局草稿</option></select></label>)}
+      {legacy.conflicts?.map(key=><label className="field" key={key}><span>{key}</span><Select aria-label={'合并布局 '+key} value={choices[key]||''} onChange={e=>setChoices({...choices,[key]:e.target.value as 'current'|'legacy'})}><option value="">选择保留的布局</option><option value="current">当前画布草稿</option><option value="legacy">旧特性布局草稿</option></Select></label>)}
       {legacy.kind==='conflict'?<button className="ghost-button" disabled={legacy.conflicts?.some(key=>!choices[key])} onClick={()=>legacy.resolve(choices)}>合入统一草稿</button>:legacy.kind==='locked'?<button className="ghost-button" onClick={legacy.takeOver}>接管旧特性草稿</button>:<><button className="ghost-button" onClick={legacy.retry}>重新核对旧草稿</button>{legacy.kind==='pending'&&<button className="ghost-button" onClick={legacy.retrySubmission}>核对后重试原批次</button>}</>}
     </section>}
     {draft.error&&<div role="alert" className="form-error">{draft.error.message}<button className="ghost-button" onClick={draft.retryPreview}>重新检查</button></div>}

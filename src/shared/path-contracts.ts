@@ -1,3 +1,4 @@
+import { workStageInput, milestoneKindInput } from './execution-stage';
 import {organizationFields} from './intake';
 import {featureRelationChange} from './features';
 import { z } from 'zod';
@@ -12,7 +13,7 @@ export const reviewDependenciesInput = pathVersion.extend({ forecastAcceptance: 
 export const dependencyPlanInput = z.object({ baseStart: date, expectedRevision: z.number().int().nonnegative() }).strict();
 export const applyDependencyPlanInput = dependencyPlanInput.extend({ previewToken: z.string().min(1) }).strict();
 
-export const editorEntityChange=z.object({entity:z.enum(['requirement','work','milestone']),op:z.enum(['create','update','delete']),id:idSchema,requirementId:idSchema.nullable().optional(),expectedVersion:z.number().int().positive().optional(),data:z.object({...organizationFields,
+export const editorEntityChange=z.object({entity:z.enum(['requirement','work','milestone']),op:z.enum(['create','update','delete']),id:idSchema,requirementId:idSchema.nullable().optional(),expectedVersion:z.number().int().positive().optional(),data:z.object({...organizationFields,workStage:workStageInput,milestoneKind:milestoneKindInput,
   blockedCoordinatorId:idSchema.nullable().optional(),blockedNextReviewAt:date.nullable().optional(),blockedIssueId:idSchema.nullable().optional(),
   reviewForecast:forecastReviewInput.optional(),
   deliveryScope:z.enum(['committed','candidate']).optional(),executionMode:z.enum(['direct','work_items']).optional(),acceptanceOwnerId:idSchema.nullable().optional(),forecastEnd:date.nullable().optional(),unblockEstimate:date.nullable().optional(),

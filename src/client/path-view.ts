@@ -4,7 +4,7 @@ import type {GraphCard} from './path-projection';
 import {matchesSearch} from '../shared/search';
 export function cardFilterItem(c:GraphCard,data:PathAnalysis){
   const r=data.requirements.find(r=>r.id===c.requirementId),n=data.nodes.find(n=>n.id===c.id),risk=data.risks[c.requirementId];
-  return {id:c.id,title:c.title,status:c.status,groupId:r?.groupId,deliveryScope:r?.deliveryScope,...risk,ownerId:c.kind==='requirement'?r?.ownerId:n?.ownerId,
+  return {id:c.id,title:c.title,status:c.status,featureId:r?.featureId,deliveryScope:r?.deliveryScope,...risk,ownerId:c.kind==='requirement'?r?.ownerId:n?.ownerId,
     assigneeIds:c.kind==='requirement'?r?.assigneeIds:n?.assigneeIds,riskLevel:c.risk,riskEvaluated:c.risk!=='pending',unknown:c.unknown,
     delayed:c.kind==='work'?n?.delayed:r?.delayed,
     scheduleComplete:c.kind==='work'?n?.scheduleComplete:r?.scheduleComplete,plannedEnd:n?.plannedEnd||r?.plannedEnd,
@@ -14,7 +14,7 @@ export function cardSearch(c:GraphCard,data:PathAnalysis,search:string){
   const works=c.kind==='requirement'?data.nodes.filter(n=>n.kind==='work'&&n.requirementId===c.id):[];
   return matchesSearch([{text:c.title,weight:100},{text:c.subtitle,weight:20},...works.map(n=>({text:n.title,weight:20}))],search);
 }
-export const filterKeys={groups:'pathGroups',deliveryScopes:'pathDeliveryScope',statuses:'pathStatuses',risks:'pathRisks',owners:'pathOwners',participants:'pathPeople',priorities:'pathPriorities',schedule:'pathSchedule'} as const;
+export const filterKeys={features:'pathFeatures',deliveryScopes:'pathDeliveryScope',statuses:'pathStatuses',risks:'pathRisks',owners:'pathOwners',participants:'pathPeople',priorities:'pathPriorities',schedule:'pathSchedule'} as const;
 export function readPathFilters(params:URLSearchParams,internal=false):RequirementFilters {
   const f=emptyRequirementFilters();
   for(const [key,param] of Object.entries(filterKeys))f[key as keyof typeof filterKeys]=(params.get(param)||'').split(',').filter(Boolean);

@@ -2,6 +2,7 @@ import {useAppNavigate,useAppSearchParams} from './use-app-navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, type SetURLSearchParams } from 'react-router-dom';
 import { useProjects, useSession } from './app-context';
+import {migrateFeatureSearch} from './feature-storage-migration';
 import {restorePageSearch} from './page-foundation';
 import {useResolvedPage} from './page-context';
 
@@ -25,7 +26,7 @@ export function usePageKey(personal: boolean) {
 export function usePageSearchParams(allowedKeys: readonly string[], personal = false) {
   const key = usePageKey(personal);
   const location = useLocation();
-  const [initial] = useState(() => restorePageSearch(location.search, read(key)));
+  const [initial] = useState(() => restorePageSearch(migrateFeatureSearch(location.search), migrateFeatureSearch(read(key))));
   const initialLocationKey = useRef(location.key);
   const [urlParams, setParams] = useAppSearchParams();
   const imported = useRef(false);
@@ -42,7 +43,7 @@ export function usePageSearchParams(allowedKeys: readonly string[], personal = f
   const serialized = params.toString();
   const allowed = allowedKeys.join(',');
   useEffect(() => {
-    const value = new URLSearchParams(serialized), saved = new URLSearchParams(read(key));
+    const value = new URLSearchParams(serialized), saved = new URLSearchParams(migrateFeatureSearch(read(key)));
     // 同页多个列表各自保存拥有的参数，不覆盖其他列表或页面筛选。
     for (const name of allowed.split(',')) {
       saved.delete(name);

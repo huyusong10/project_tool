@@ -4,7 +4,8 @@ import type { Requirement } from '../types';
 import { formatDateTime } from '../format';
 import { requirementRiskDisplay, requirementVarianceDisplay, requirementDeliveryDate, requirementScheduleLabel } from '../requirement-presentation';
 import { DeliveryControls } from './DeliveryControls';
-import { StatusBadge } from './Badge';
+import { ExecutionStageBadge } from './ExecutionStageBadge';
+import { TestSubmissionButton } from './TestSubmissionButton';
 import { AnchoredPopover } from './InlineEdit';
 
 export function RequirementOverview({ requirement: r }: { requirement: Requirement }) {
@@ -19,16 +20,16 @@ export function RequirementOverview({ requirement: r }: { requirement: Requireme
   return <section className="requirement-overview" aria-label="需求概览">
     <div className="requirement-overview-top">
       <div className="requirement-overview-meta">
-        <StatusBadge kind="requirement" value={r.status} />
+        <ExecutionStageBadge requirement={r} />
         <span className="requirement-overview-owner" title={`需求负责人：${r.ownerName || '待指定'}`}>负责人 <strong>{r.ownerName || '待指定'}</strong></span>
       </div>
       <div className="requirement-overview-actions">
-        <DeliveryControls requirement={r} />
+        <DeliveryControls requirement={r} /><TestSubmissionButton requirement={r} />
         <button ref={anchor} className={`ghost-button${r.readinessIssues?.length ? ' has-notice' : ''}`} aria-label="需求资料与计算说明" aria-expanded={details} onClick={() => setDetails(v => !v)}><Info size={15} /><span>资料{r.readinessIssues?.length ? ` ${r.readinessIssues.length}` : ''}</span></button>
       </div>
     </div>
     <div className="detail-kpis">
-      <article title={progressHint}><span>进度</span><strong>{r.progress}%</strong><div className="progress-row" aria-hidden="true"><i style={{ width: `${r.progress}%` }} /></div><small>{plannedLabel}</small></article>
+      <article><span>交付安排</span><strong style={{fontSize:16}}>{r.phaseName || "未安排 Phase"}</strong><small>{r.featureName || "未关联特性"}</small></article>
       <article title={deliveryDate.help+"；当前计划："+(r.plannedStart||"待排期")+" → "+(r.plannedEnd||"待排期")}><span>{deliveryDate.label}</span><strong>{deliveryDate.value}</strong></article>
       <article title={variance.title}><span>偏差</span><strong className={variance.className}>{variance.label}</strong></article>
       <article title={r.riskReason}><span>风险</span><span className={`risk-badge ${risk.className}`}>{risk.label}</span></article>

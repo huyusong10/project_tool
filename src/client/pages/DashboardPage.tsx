@@ -123,7 +123,7 @@ export function DashboardPage() {
   if (!projects.length && !isLoading)
     return (
       <>
-        <PageHeader title="项目进展" />
+        <PageHeader title="执行进展" />
         <div className="page-content">
           <EmptyState
             title="先创建第一个项目"
@@ -151,16 +151,16 @@ export function DashboardPage() {
       </>
     );
   if (selectedProjectId && isLoading && !data) return <>
-    <PageHeader title="项目进展" />
+    <PageHeader title="执行进展" />
     <div className="page-content"><LoadingState className="loading-block" label="加载项目进展…" /></div>
   </>;
   if (error && !data) return <>
-    <PageHeader title="项目进展" />
+    <PageHeader title="执行进展" />
     <div className="page-content"><EmptyState title="项目进展加载失败" detail={error.message} action={<button className="ghost-button" onClick={() => void refetch()}>重新加载</button>} /></div>
   </>;
   return (
     <>
-      <PageHeader title="项目进展" />
+      <PageHeader title="执行进展" />
       <div className="page-content dashboard-page">
         {error && data && <div className="warning-banner">数据刷新失败，当前展示的是上次成功结果。<button className="ghost-button" onClick={() => void refetch()}>重新加载</button></div>}
         <DashboardMetrics overview={overview} filters={filters} />

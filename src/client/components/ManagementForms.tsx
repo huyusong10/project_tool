@@ -1,3 +1,4 @@
+import { migrateFeatureFields } from "../feature-storage-migration";
 import {OrganizationFields} from './RequirementIntake';
 import {isAssignablePerson} from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
@@ -25,12 +26,12 @@ export type ProjectFormInput = {
 export type ProjectCreateRecheck={draft:ProjectFormInput;baselineIds:string[]};
 function projectCreateRecheckKey(accountKey:string){return `project-manage:project-create-recheck:${accountKey}`;}
 export function readProjectCreateRecheck(accountKey:string):ProjectCreateRecheck|null{
-  try{const raw=sessionStorage.getItem(projectCreateRecheckKey(accountKey));if(!raw)return null;const value=JSON.parse(raw) as Partial<ProjectCreateRecheck>,draft=value.draft as Partial<ProjectFormInput>|undefined;return typeof draft?.name==='string'&&typeof draft.status==='string'&&typeof draft.plannedStart==='string'&&typeof draft.plannedEnd==='string'&&typeof draft.defaultTemplateId==='string'&&Array.isArray(value.baselineIds)&&value.baselineIds.every(id=>typeof id==='string')?value as ProjectCreateRecheck:null;}catch{return null;}
+  try{const raw=sessionStorage.getItem(projectCreateRecheckKey(accountKey));if(!raw)return null;const value=migrateFeatureFields(JSON.parse(raw)) as Partial<ProjectCreateRecheck>,draft=value.draft as Partial<ProjectFormInput>|undefined;return typeof draft?.name==='string'&&typeof draft.status==='string'&&typeof draft.plannedStart==='string'&&typeof draft.plannedEnd==='string'&&typeof draft.defaultTemplateId==='string'&&Array.isArray(value.baselineIds)&&value.baselineIds.every(id=>typeof id==='string')?value as ProjectCreateRecheck:null;}catch{return null;}
 }
 export function persistProjectCreateRecheck(accountKey:string,value:ProjectCreateRecheck|null){try{const key=projectCreateRecheckKey(accountKey);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前页面仍保留核对锁。 */}}
 
 export type RequirementFormInput = {
-  groupId?:string|null;
+  featureId?:string|null;phaseId?:string|null;reason?:string;
   projectId: string;
   templateId?: string;
   title: string;
@@ -44,7 +45,7 @@ export type RequirementFormInput = {
 export type RequirementCreateRecheck={draft:RequirementFormInput;baselineIds:string[]};
 function requirementCreateRecheckKey(accountKey:string,projectId:string){return `project-manage:requirement-create-recheck:${accountKey}:${projectId}`;}
 export function readRequirementCreateRecheck(accountKey:string,projectId:string):RequirementCreateRecheck|null{
-  try{const raw=sessionStorage.getItem(requirementCreateRecheckKey(accountKey,projectId));if(!raw)return null;const value=JSON.parse(raw) as Partial<RequirementCreateRecheck>,draft=value.draft as Partial<RequirementFormInput>|undefined;return draft?.projectId===projectId&&typeof draft.title==='string'&&typeof draft.ownerId==='string'&&typeof draft.background==='string'&&typeof draft.acceptanceCriteria==='string'&&typeof draft.referenceUrl==='string'&&Array.isArray(value.baselineIds)&&value.baselineIds.every(id=>typeof id==='string')?value as RequirementCreateRecheck:null;}catch{return null;}
+  try{const raw=sessionStorage.getItem(requirementCreateRecheckKey(accountKey,projectId));if(!raw)return null;const value=migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementCreateRecheck>,draft=value.draft as Partial<RequirementFormInput>|undefined;return draft?.projectId===projectId&&typeof draft.title==='string'&&typeof draft.ownerId==='string'&&typeof draft.background==='string'&&typeof draft.acceptanceCriteria==='string'&&typeof draft.referenceUrl==='string'&&Array.isArray(value.baselineIds)&&value.baselineIds.every(id=>typeof id==='string')?value as RequirementCreateRecheck:null;}catch{return null;}
 }
 export function persistRequirementCreateRecheck(accountKey:string,projectId:string,value:RequirementCreateRecheck|null){try{const key=requirementCreateRecheckKey(accountKey,projectId);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前页面仍保留核对锁。 */}}
 
@@ -198,7 +199,7 @@ export function RequirementForm({
   const [checking,setChecking]=useState(false),[checkError,setCheckError]=useState('');
   const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">(initial?.plannedEnd&&!initial.plannedStart?"deadline":"start");
   const [scheduleDate, setScheduleDate] = useState(initial?.plannedEnd||initial?.plannedStart||"");
-  const [title,setTitle]=useState(initial?.title||''),[groupId,setGroupId]=useState(initial?.groupId||''),[ownerId, setOwnerId] = useState(initial?.ownerId||""),[templateId, setTemplateId] = useState(initial?.templateId||"");
+  const [title,setTitle]=useState(initial?.title||''),[featureId,setFeatureId]=useState(initial?.featureId||''),[phaseId,setPhaseId]=useState(initial?.phaseId||''),[placementReason,setPlacementReason]=useState(initial?.reason||''),[ownerId, setOwnerId] = useState(initial?.ownerId||""),[templateId, setTemplateId] = useState(initial?.templateId||"");
   const [background,setBackground]=useState(initial?.background||''),[acceptanceCriteria,setAcceptanceCriteria]=useState(initial?.acceptanceCriteria||''),[referenceUrl,setReferenceUrl]=useState(initial?.referenceUrl||'');
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, projectId],
@@ -223,7 +224,7 @@ export function RequirementForm({
     onError: error=>{if(!isWriteOutcomeUnknown(error))onRecheckChange(null);},
     onSettled: () => { submitting.current = false; },
   });
-  const matchesDraft=(item:Requirement,draft:RequirementFormInput)=>item.projectId===projectId&&item.title===canonicalizeLabel(draft.title)&&item.ownerId===(draft.ownerId||null)&&item.background===(draft.background.trim()||null)&&item.acceptanceCriteria===(draft.acceptanceCriteria.trim()||null)&&item.referenceUrl===(draft.referenceUrl.trim()||null)&&(item.groupId||null)===(draft.groupId||null)&&(!draft.templateId||item.templateId===draft.templateId)&&(!draft.plannedStart||item.plannedStart===draft.plannedStart)&&(!draft.plannedEnd||item.plannedEnd===draft.plannedEnd);
+  const matchesDraft=(item:Requirement,draft:RequirementFormInput)=>item.projectId===projectId&&item.title===canonicalizeLabel(draft.title)&&item.ownerId===(draft.ownerId||null)&&item.background===(draft.background.trim()||null)&&item.acceptanceCriteria===(draft.acceptanceCriteria.trim()||null)&&item.referenceUrl===(draft.referenceUrl.trim()||null)&&(item.featureId||null)===(draft.featureId||null)&&(item.phaseId||null)===(draft.phaseId||null)&&(!draft.templateId||item.templateId===draft.templateId)&&(!draft.plannedStart||item.plannedStart===draft.plannedStart)&&(!draft.plannedEnd||item.plannedEnd===draft.plannedEnd);
   const checkLatest=async()=>{if(!recheck||checking)return;setChecking(true);setCheckError('');try{const latest=await api<Requirement[]>(`/api/requirements?projectId=${encodeURIComponent(projectId)}`,{readOnly:true});client.setQueryData([...keys.requirements,projectId],latest);const baseline=new Set(recheck.baselineIds),created=latest.filter(item=>!baseline.has(item.id)&&matchesDraft(item,recheck.draft));if(created.length===1){onRecheckChange(null);invalidateRequirementViews(client,created[0].id);toast.success('已核对最新状态：需求已创建');onClose();return;}if(created.length===0){onRecheckChange(null);mutation.reset();setCheckError('未发现本次新增需求，已恢复原输入，可以重新提交。');return;}setCheckError('发现多个可能的新需求，暂不解除锁定，请核对需求列表和操作记录。');}catch(error){setCheckError(error instanceof Error?error.message:'需求列表读取失败');}finally{setChecking(false);}};
   return (
     <Modal title="新建需求" closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
@@ -232,14 +233,14 @@ export function RequirementForm({
         event.preventDefault();
         if (submitting.current||unknown) return;
         submitting.current = true;
-        mutation.mutate({title,ownerId,background,acceptanceCriteria,referenceUrl,groupId:groupId||null,templateId:templateId||undefined,projectId,...(scheduleDate?(scheduleMode==='start'?{plannedStart:scheduleDate}:{plannedEnd:scheduleDate}):{})});
+        mutation.mutate({title,ownerId,background,acceptanceCriteria,referenceUrl,featureId:featureId||null,phaseId:phaseId||null,reason:placementReason||undefined,templateId:templateId||undefined,projectId,...(scheduleDate?(scheduleMode==='start'?{plannedStart:scheduleDate}:{plannedEnd:scheduleDate}):{})});
       }}
     >
       <fieldset className="form-grid form-fieldset" disabled={mutation.isPending}>
       <FormField label="需求标题" full>
         <input name="title" value={title} onChange={event=>setTitle(event.target.value)} required autoFocus />
       </FormField>
-      <OrganizationFields projectId={projectId} groupId={groupId} onChange={(_,value)=>setGroupId(value)}/>
+      <OrganizationFields projectId={projectId} featureId={featureId} phaseId={phaseId} onChange={(key,value)=>{if(key==='featureId'){setFeatureId(value);setPhaseId('');}else setPhaseId(value);}}/>{phaseId&&<FormField label="安排原因（Phase 已推进时必填）" full><textarea maxLength={2000} value={placementReason} onChange={e=>setPlacementReason(e.target.value)}/></FormField>}
       <FormField label="需求负责人（可稍后指定）">
         <select name="ownerId" value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
           <option value="">待指定</option>

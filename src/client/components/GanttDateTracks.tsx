@@ -15,7 +15,7 @@ function point(value: string | null | undefined, dates: Date[], cellWidth: numbe
 export const GanttDateTracks = memo(function GanttDateTracks({
   plannedStart, plannedEnd, actualStart, actualEnd, status, progress, dates, cellWidth,
   onProgressClick, progressAriaLabel, interactionProps, scheduleComplete = true,
-  forecast,
+  forecast, stageLabel, stageTone,
 }: {
   plannedStart?: string | null; plannedEnd?: string | null;
   actualStart?: string | null; actualEnd?: string | null;
@@ -23,13 +23,13 @@ export const GanttDateTracks = memo(function GanttDateTracks({
   onProgressClick?: () => void; progressAriaLabel?: string;
   interactionProps?: HTMLAttributes<HTMLElement>;
   scheduleComplete?: boolean;
-  forecast?: GanttForecast | null;
+  forecast?: GanttForecast | null; stageLabel?: string; stageTone?: string;
 }) {
   const plan = ganttInterval(plannedStart, plannedEnd, dates, cellWidth) || point(plannedStart || plannedEnd, dates, cellWidth);
   const actual = ganttInterval(actualStart, actualEnd, dates, cellWidth) || point(actualStart || actualEnd, dates, cellWidth);
   const value = ganttProgressDisplay(status, progress);
   const terminal = ["completed", "pending_acceptance", "cancelled"].includes(status);
-  const label = status === "cancelled" ? "已取消" : !actualStart && ["not_started", "planning"].includes(status) ? "未开始" : `完成 ${value}%`;
+  const label = stageLabel || (status === "cancelled" ? "已取消" : !actualStart && ["not_started", "planning"].includes(status) ? "未开始" : `完成 ${value}%`);
   const lateLeft = scheduleComplete && actual && plan && plannedEnd && actualEnd && actualEnd > plannedEnd ? Math.max(actual.left, plan.right) : null;
   const total = dates.length * cellWidth;
   const endpoint = actual?.right ?? plan?.left ?? 0;
@@ -40,7 +40,7 @@ export const GanttDateTracks = memo(function GanttDateTracks({
   const right = Math.max(plan?.right ?? 0, actual?.right ?? 0);
   return <>
     {plan && <span className={`gantt-date-plan${plan.width === 0 ? " is-date-point" : ""}${!scheduleComplete ? " is-partial-plan" : ""}`} style={{ left: plan.left, width: plan.width }} data-start={plannedStart} data-end={plannedEnd} />}
-    {actual && <span className={`gantt-date-actual gantt-status-${status.replaceAll("_", "-")}${actual.width === 0 ? " is-date-point" : ""}${!terminal ? " is-ongoing" : ""}`} style={{ left: actual.left, width: actual.width }} data-start={actualStart} data-end={actualEnd} />}
+    {actual && <span className={`gantt-date-actual ${stageTone ? "gantt-stage stage-" + stageTone : ""} gantt-status-${status.replaceAll("_", "-")}${actual.width === 0 ? " is-date-point" : ""}${!terminal ? " is-ongoing" : ""}`} style={{ left: actual.left, width: actual.width }} data-start={actualStart} data-end={actualEnd} />}
     {actual && lateLeft !== null && <span className="gantt-date-delay" style={{ left: lateLeft, width: Math.max(3, actual.right - lateLeft) }} />}
     {plan && scheduleComplete && <span className="gantt-date-deadline" style={{ left: plan.right }} />}
     {(!plan || !scheduleComplete || !plannedStart || !plannedEnd) && <span className="gantt-date-unplanned">{plan ? "排期不完整" : "待排期"}</span>}

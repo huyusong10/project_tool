@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {randomUUID,scryptSync} from 'node:crypto';
 import type {FastifyInstance} from 'fastify';
-import type {RequirementGroup,IntakeCatalog} from '../src/shared/intake';
+import type {Feature,IntakeCatalog} from '../src/shared/intake';
 import type {PathAnalysis} from '../src/shared/paths';
 import type {DependencyChanges} from '../src/shared/path-contracts';
 
@@ -16,7 +16,7 @@ beforeAll(async()=>{app=await(await import('../src/server/app')).buildApp();awai
 afterAll(async()=>{await app.close();(await import('../src/server/database')).sqlite.close();expect(path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep)).toBe(true);fs.rmSync(dir,{recursive:true,force:true});});
 async function fixture(){
  const p=(await request('POST','/api/projects',{name:'连贯画布 '+randomUUID()})).json<{id:string}>(),base='/api/projects/'+p.id;
- const create=async(name:string)=>(await request('POST',base+'/requirement-groups',{name,sortOrder:999})).json<IntakeCatalog>().groups.find(g=>g.name===name)!;
+ const create=async(name:string)=>(await request('POST',base+'/features',{name,sortOrder:999})).json<IntakeCatalog>().features.find(g=>g.name===name)!;
  const a=await create('基础'),b=await create('协作'),c=await create('扩展');
  const analysis=async()=>(await request('GET',base+'/path-analysis')).json<PathAnalysis>();
  const preview=async(changes:DependencyChanges)=>{const input={expectedRevision:(await analysis()).revision,target:'project',changes};const response=await request('POST',base+'/dependency-changes/preview',input);return {input,response};};
@@ -33,7 +33,7 @@ it('规划关系和多个布局原子保存，回执映射稳定且不改变执�
  expect((await request('GET',base+'/dependency-changes/'+payload.batchId)).json()).toMatchObject({status:'applied',addedIds:saved.json().addedIds});
  expect((await request('GET',base+'/feature-relations')).json()[0].id).toBe(saved.json().addedIds['draft-planning']);
  const after=await analysis();expect({...after,layouts:[],revision:0}).toEqual({...before,layouts:[],revision:0});
- const groups=(await request('GET',base+'/requirement-groups')).json<RequirementGroup[]>();expect(groups.find(g=>g.id===a.id)?.assessedAt).toBe(a.assessedAt);
+ const features=(await request('GET',base+'/features')).json<Feature[]>();expect(features.find(g=>g.id===a.id)?.assessedAt).toBe(a.assessedAt);
 });
 it('按最终规划网络校验：删除旧边后建立反向边，循环与布局冲突都不会部分提交',async()=>{
  const {base,a,b,c,apply,preview}=await fixture();
@@ -54,6 +54,6 @@ it('预览后规划关系变化或端点归档使令牌失效；混合执行修�
  await request('POST',base+'/feature-relations',{sourceFeatureId:b.id,targetFeatureId:c.id,note:'另一位用户的修改'});
  const saved=await request('POST',base+'/dependency-changes/apply',{...first.input,previewToken:first.response.json().previewToken,batchId:randomUUID()});expect(saved.statusCode,saved.body).toBe(409);expect((await analysis()).requirements).toHaveLength(0);
  const second=await preview(changes);expect(second.response.statusCode,second.response.body).toBe(200);
- await request('POST',base+'/requirement-groups/'+a.id+'/archive',{expectedVersion:a.version});
+ await request('POST',base+'/features/'+a.id+'/archive',{expectedVersion:a.version});
  const archived=await request('POST',base+'/dependency-changes/apply',{...second.input,previewToken:second.response.json().previewToken,batchId:randomUUID()});expect(archived.statusCode).toBe(409);expect((await analysis()).requirements).toHaveLength(0);
 });

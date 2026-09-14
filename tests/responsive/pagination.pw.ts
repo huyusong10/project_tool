@@ -4,7 +4,7 @@ import { mockGanttData, requirement, workItem } from './gantt-fixture';
 async function fixture(page: Page, total = 145) {
   await mockGanttData(page);
   const state = { total, failPage: 0, failStatus: 503, snapshot: 145, queries: [] as string[] };
-  const requirements = Array.from({length: total}, (_, i) => ({...requirement, id: 'r'+i, title: '需求 '+String(i).padStart(3,'0'), planningReasons: [], actionCount: 0, ownerId: 'u1', version: 1, executionMode: 'work_items', groupId: 'g1', groupName: '研发', workItems: [{...workItem, id: 'w'+i, requirementId: 'r'+i}]}));
+  const requirements = Array.from({length: total}, (_, i) => ({...requirement, id: 'r'+i, title: '需求 '+String(i).padStart(3,'0'), planningReasons: [], actionCount: 0, ownerId: 'u1', version: 1, executionMode: 'work_items', featureId: 'g1', featureName: '研发', workItems: [{...workItem, id: 'w'+i, requirementId: 'r'+i}]}));
   const people = Array.from({length: 41}, (_,i) => ({id: 'u'+i, name: '成员'+i, active: 1, jobTitle: i<25?'开发':'测试', projectRole:'member', username:'member'+i}));
   const projects = Array.from({length: 21},(_,i)=>({id:'p'+(i+1),name:'项目'+i,status:'active',canManage:true,projectRole:'manager',createdAt:'2026-09-01',updatedAt:'2026-09-01'}));
   await page.route('**/api/**', async route => {

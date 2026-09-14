@@ -1,8 +1,9 @@
+import { migrateFeatureFields } from "./feature-storage-migration";
 import type {Point} from './path-layout';
 import type {PathAnalysis} from '../shared/paths';
 
 export type FieldBuffer={value:string;original:string;error?:string};
-export type EditorHistory<T>={formatVersion:2;version:string;values:T[];index:number;active:boolean;baseline?:T;server?:PathAnalysis;layouts:Record<string,Record<string,Point>>;fields:Record<string,FieldBuffer>};
+export type EditorHistory<T>={formatVersion: 2;version:string;values:T[];index:number;active:boolean;baseline?:T;server?:PathAnalysis;layouts:Record<string,Record<string,Point>>;fields:Record<string,FieldBuffer>};
 export type FieldAvailability<T>=(state:EditorHistory<T>,key:string)=>boolean;
 export type HistoryCommand<T>=
   |{type:'change';value:T;group?:string}
@@ -11,13 +12,13 @@ export type HistoryCommand<T>=
   |{type:'rebase';value:T;values?:T[];baseline:T;version:string;server?:PathAnalysis}
   |{type:'layout-baseline';scope:string;positions:Record<string,Point>}
   |{type:'field';key:string;buffer?:FieldBuffer};
-export function newHistory<T>(value:T,version:string,server?:PathAnalysis):EditorHistory<T>{return {formatVersion:2,version,values:[value],index:0,active:false,server,layouts:{},fields:{}};}
+export function newHistory<T>(value:T,version:string,server?:PathAnalysis):EditorHistory<T>{return {formatVersion: 2,version,values:[value],index:0,active:false,server,layouts:{},fields:{}};}
 export function readHistory<T>(raw:unknown):EditorHistory<T>|undefined{
   if(raw==null)return;
   if(typeof raw!=='object')throw new Error('本机草稿格式无法识别，原记录已保留');
-  const value=raw as EditorHistory<T>;
+  const value=migrateFeatureFields(raw) as EditorHistory<T>;
   if(value.formatVersion!==undefined&&value.formatVersion!==2||!Array.isArray(value.values)||!Number.isInteger(value.index)||value.index<0||value.index>=value.values.length||typeof value.version!=='string')throw new Error('本机草稿格式无法识别，原记录已保留');
-  return {...value,formatVersion:2,layouts:value.layouts||{},fields:value.fields||{}};
+  return {...value,formatVersion: 2,layouts:value.layouts||{},fields:value.fields||{}};
 }
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 export function historyTransition<T>(state:EditorHistory<T>,command:HistoryCommand<T>,group?:string|null):EditorHistory<T>{
