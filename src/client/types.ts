@@ -94,6 +94,7 @@ export type Requirement = import('../shared/delivery').DeliveryFields & import('
   scheduleVarianceDays?: number | null; scheduleReferenceDate?: string | null;
 };
 export type Dashboard = {
+  featureOverview?:import('../shared/feature-overview').FeatureOverviewReport;
   asOfDate: string;
   overview?: import('../shared/dashboard').DashboardOverview;
   summary: { total: number; active: number; completed: number; delayed: number; highRisk: number; completionRate: number };

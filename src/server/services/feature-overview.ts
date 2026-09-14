@@ -9,6 +9,10 @@ import { listRequirements } from './requirements';
 
 export function getFeatureOverview(projectId: string, actor: Actor, asOfDate = todayIso(), state: 'active'|'archived'|'all' = 'active') {
   assertProjectReadable(requireAuthorizationActor(actor), projectId);
+  return readFeatureOverview(projectId,asOfDate,state);
+}
+
+export function readFeatureOverview(projectId:string,asOfDate=todayIso(),state:'active'|'archived'|'all'='active') {
   return sqlite.transaction(() => {
     const report = summarizeFeatureOverview(readFeatures(projectId,state), listRequirements({ projectId }, asOfDate), asOfDate);
     const updates = sqlite.prepare(`SELECT id,featureId,requirementId,requirementTitle,content,createdAt FROM (

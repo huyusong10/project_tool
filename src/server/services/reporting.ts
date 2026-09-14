@@ -12,6 +12,8 @@ import { fail } from '../errors';
 import { isValidIsoDate } from '../../shared/workday';
 import { getWorkItemCancellationDates } from './work-item-history';
 import { dashboardOverview } from '../../shared/dashboard';
+import {sqlite} from '../database';
+import {readFeatureOverview} from './feature-overview';
 
 type PersonRow = { id: string; name: string; jobTitle: string | null };
 type ConcurrencyItem = {
@@ -104,6 +106,9 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
 }
 
 export function getDashboard(projectId?: string, asOfDate = todayIso()) {
+  return sqlite.transaction(()=>readDashboard(projectId,asOfDate))();
+}
+function readDashboard(projectId?:string,asOfDate=todayIso()) {
   const requirements = listRequirements({ projectId }, asOfDate);
   const recentProgress = rows<{ id: string; requirementId: string; workItemId: string | null; workItemTitle: string | null; percent: number; workItemPercent: number | null; content: string; eventType: string; createdAt: string; updatedAt: string }>(`
     SELECT id, requirementId, workItemId, workItemTitle, percent, workItemPercent, content, eventType, createdAt, updatedAt FROM (
@@ -162,6 +167,7 @@ export function getDashboard(projectId?: string, asOfDate = todayIso()) {
     asOfDate,
     summary: { total: requirements.length, active, completed, delayed, highRisk, completionRate },
     overview: dashboardOverview(requirements, asOfDate),
+    ...(projectId?{featureOverview:readFeatureOverview(projectId,asOfDate,'all')}:{}),
     requirements: dashboardRequirements,
     issues: { summary: issuePage.summary, attention },
     charts: { statuses, risks, weeks, varianceTop },

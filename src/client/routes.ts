@@ -131,10 +131,10 @@ export const appRoutes: AppRoute[] = [
     path: "/system", scope: "platform", access: "admin", component: SystemPage,
     nav: [{ group: "平台运维", label: "系统管理", icon: ServerCog, visible: ({ admin }) => admin }],
   },
+  {path:"/project-logs",scope:"project",access:"manager",component:LogsPage,nav:[{group:"项目配置",label:"项目日志",icon:FileClock,visible:({managesCurrentProject})=>managesCurrentProject}]},
   {
     path: "/logs", scope: "project", adminScope: "platform", access: "manager", component: LogsPage,
     nav: [
-      { group: "项目配置", label: "项目日志", icon: FileClock, visible: ({ admin, managesCurrentProject }) => !admin && managesCurrentProject },
       { group: "平台运维", label: "操作审计", icon: ScanSearch, visible: ({ admin }) => admin },
     ],
   },

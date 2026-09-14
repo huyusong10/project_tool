@@ -27,7 +27,7 @@ export function matchesDeliveryCard(c:GraphCard,data:PathAnalysis,p:URLSearchPar
 }
 export function DeliveryFilters({params,setParam,feature,features=false,workItems=false,children}:{params:URLSearchParams;setParam:(key:string,value:string)=>void;feature?:FeatureOverview;features?:boolean;workItems?:boolean;children?:React.ReactNode}){
   const dateAnchor=useRef<HTMLButtonElement>(null),[datesOpen,setDatesOpen]=useState(false);
-  return <div className="delivery-filters" aria-label="范围筛选">
+  return <div className="delivery-filters" aria-label="范围筛选" data-workspace-zone="tools" data-preserve-edit>
     <ViewTabs ariaLabel="范围表达" value={params.get('mode')||'graph'} options={[{value:'graph',label:'关系图'},{value:'table',label:'清单'}]} onChange={mode=>setParam('mode',mode)}/>
     <SearchInput value={params.get('q')||''} onChange={v=>setParam('q',v)} placeholder={features?'搜索特性与目标':workItems?'搜索工作项与里程碑':'搜索需求'}/>
     {features?<>

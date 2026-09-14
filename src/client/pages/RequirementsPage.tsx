@@ -1,3 +1,4 @@
+import {Select} from '../components/Select';
 import {executionStageOf} from '../components/ExecutionStageBadge';
 import {useAppNavigate} from '../use-app-navigation';
 import { Pagination } from '../components/Pagination';
@@ -159,23 +160,24 @@ export function RequirementsPage() {
         title="项目工作区"
         breadcrumbs={[{label:"项目范围",onClick:()=>navigate("/?view=features&mode=table")},{label:"需求维护"}]}
         onBack={()=>navigate("/?view=features&mode=table")}
-        views={<div className="view-tabs" role="tablist" aria-label="需求视图">{[["requirements","需求"],...(canManage?[["import","导入预览"]]:[])].map(([id,label])=><button key={id} role="tab" aria-selected={intakeView===id} className="ghost-button" onClick={()=>setView("intakeView",id)}>{label}</button>)}</div>}
+
         secondaryActions={canManage&&<button className="ghost-button" onClick={()=>navigate("/features")}>特性规划</button>}
         actions={canManage ? (
-          <button className="primary-button" disabled={!selectedProjectId||Boolean(createRecheck)} onClick={() => {if(selectedProjectId&&!createRecheck)setCreating(true);}} title={selectedProjectId ? createRecheck?'请先核对上次创建结果':"新建需求" : "请先创建项目"}>
+          <div className="page-editor-actions"><div className="page-editor-history"/><div className="page-editor-primary"><button className="primary-button" aria-label="新建需求" disabled={!selectedProjectId||Boolean(createRecheck)} onClick={() => {if(selectedProjectId&&!createRecheck)setCreating(true);}} title={selectedProjectId ? createRecheck?'请先核对上次创建结果':"新建需求" : "请先创建项目"}>
             <Plus size={16} />
-            新建需求
-          </button>
+            新建
+          </button></div></div>
         ) : null}
       />
       <div className="page-content">
+      <div className="workspace-intake-tools" data-workspace-zone="tools"><div className="view-tabs" role="tablist" aria-label="需求视图">{[["requirements","需求"],...(canManage?[["import","导入预览"]]:[])].map(([id,label])=><button key={id} role="tab" aria-selected={intakeView===id} className="ghost-button" onClick={()=>setView("intakeView",id)}>{label}</button>)}</div></div>
       {intakeView==="import"&&canManage?<RequirementImport key={session.accountId+":"+selectedProjectId} projectId={selectedProjectId}/>:<>
         <div className="filter-bar">
         <OrganizationFilters items={data} feature={feature} onFeature={v=>setView("feature",v)}/>
         <label className="requirement-feature-toggle"><input type="checkbox" checked={grouped} onChange={e=>setView("grouped",e.target.checked?"1":"")}/><span>按特性查看</span></label>
         {canManage&&selectedIds.length>0&&<><span>已选择 {selectedIds.length} 项</span><button className="ghost-button" disabled={Boolean(organizationRecheck)} onClick={()=>{if(!organizationRecheck)setOrganizing(true);}}>整理所选需求</button></>}
         <SearchInput value={search} onChange={setSearch} placeholder="搜索需求或负责人" />
-        <select
+        <Select
           value={status}
           onChange={(event) => setStatus(event.target.value)}
         >
@@ -186,7 +188,7 @@ export function RequirementsPage() {
               {option.label}
             </option>
           ))}
-        </select>
+        </Select>
         <span>
           {projects.find((p) => p.id === selectedProjectId)?.name || "全部项目"}{" "}
           · {items.length}/{data.length}项

@@ -133,3 +133,13 @@ it('Phase 图查询保留直接外围依赖及完整分析，REST/MCP 使用同�
  const token=(await req('POST','/api/tokens',{name:'Phase graph',expiresInDays:1})).json().token;const response=await mcpRequest(address,token,'get_path_graph',{projectId:f.projectId,view:'feature',featureId:f.f.id,phaseId:a.id});const body=JSON.parse(response.body.startsWith('event:')?response.body.split('\n').find(line=>line.startsWith('data: '))!.slice(6):response.body);expect(body.result?.isError,JSON.stringify(body)).not.toBe(true);const mcp=JSON.parse(body.result.content[0].text);expect(mcp.cards).toEqual(filtered.cards);expect(mcp.phaseRegions).toEqual(filtered.phaseRegions);
  expect((await req('GET',f.base+'/path-graph?view=project&phaseId='+a.id)).statusCode).toBe(400);
 });
+
+it('dashboard 与特性总览共用统计日，归档完成需求仍保留在 Phase 中', async()=>{
+  const f=await fixture(),p=await f.create('Phase 1');await f.requirement(p.id,'completed',true);
+  const dashboard=(await req('GET','/api/dashboard?projectId='+f.projectId)).json();
+  expect(dashboard.featureOverview.asOfDate).toBe(dashboard.asOfDate);
+  const feature=dashboard.featureOverview.features.find((item:{id:string})=>item.id===f.f.id);
+  expect(feature.phases[0].status).toBe('ready');expect(feature.phases[0].requirements[0].deletedAt).toBeTruthy();
+  const overview=(await req('GET',f.base+'/feature-overview?state=all')).json();
+  expect(dashboard.featureOverview).toEqual(overview);
+});
