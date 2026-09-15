@@ -38,14 +38,14 @@ const priorityEntries = priorityOptions.map(({ value, label }) => [value, label]
 const emptyPeople: Person[] = [];
 const emptyRequirements: Requirement[] = [];
 const issueColumns: AdaptiveDataColumn[] = [
-  { key: "issue", label: "问题", track: "minmax(280px,2fr)", importance: "primary", compact: "primary" },
-  { key: "scope", label: "范围", track: "minmax(140px,.9fr)", importance: "secondary", compact: "full" },
-  { key: "status", label: "状态", track: "minmax(128px,.65fr)", compact: "detail" },
-  { key: "progress", label: "进度", track: "minmax(126px,.65fr)", compact: "detail" },
-  { key: "priority", label: "优先级", track: "minmax(132px,.65fr)", compact: "detail" },
-  { key: "owner", label: "负责人", track: "minmax(140px,.75fr)", compact: "detail" },
-  { key: "dueDate", label: "目标日期", track: "minmax(150px,.8fr)", compact: "detail" },
-  { key: "latest", label: "最近进展", track: "minmax(240px,1.4fr)", importance: "secondary", compact: "full" },
+  { key: "issue", label: "问题", track: "minmax(230px,2fr)", importance: "primary", compact: "primary" },
+  { key: "scope", label: "范围", track: "minmax(120px,.9fr)", importance: "secondary", compact: "full" },
+  { key: "status", label: "状态", track: "minmax(100px,.65fr)", compact: "detail" },
+  { key: "progress", label: "进度", track: "minmax(92px,.65fr)", compact: "detail" },
+  { key: "priority", label: "优先级", track: "minmax(100px,.65fr)", compact: "detail" },
+  { key: "owner", label: "负责人", track: "minmax(106px,.75fr)", compact: "detail" },
+  { key: "dueDate", label: "目标日期", track: "minmax(118px,.8fr)", compact: "detail" },
+  { key: "latest", label: "最近进展", track: "minmax(200px,1.4fr)", importance: "essential", compact: "full" },
 ];
 
 function defaultIssueStatus(params: URLSearchParams) {

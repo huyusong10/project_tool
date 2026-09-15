@@ -41,7 +41,7 @@ export function PageToolbar(){
       </div>}
       {(workspace||ready&&chrome.views||delivery)&&<div className="page-toolbar-views">{workspace?<ProjectTaskTabs/>:ready&&chrome.views||<span className="shell-placeholder toolbar-views-placeholder" aria-hidden="true"/>}</div>}
       {ready&&chrome.context&&!editor&&<div className="page-toolbar-context">{chrome.context}</div>}
-      {(ready&&chrome.status||editor)&&<div className="page-toolbar-status" role="status">{ready?chrome.status:<span className="shell-placeholder toolbar-status-placeholder" aria-hidden="true"/>}</div>}
+      {(ready&&chrome.status||editor||workspace)&&<div className="page-toolbar-status" role="status">{ready?chrome.status:<span className="shell-placeholder toolbar-status-placeholder" aria-hidden="true"/>}</div>}
       <div className="page-toolbar-actions">{ready?<>
         {!secondaryInMenu&&chrome.secondaryActions}{chrome.actions||pendingEditorActions}
         {!chrome.actions&&!chrome.secondaryActions&&!chrome.moreActions&&!chrome.views&&!crumbs.length&&<span className="toolbar-readonly">只读</span>}

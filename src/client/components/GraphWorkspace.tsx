@@ -2,6 +2,7 @@ import { useEffect,useLayoutEffect,useRef,useState,useContext,type ComponentProp
 import { DependencyGraph } from './DependencyGraph';
 import '../paths.css';
 import '../delivery-workspace.css';
+import './object-inspector.css';
 import {WorkspaceRuntime,WorkspaceRuntimeContext,useWorkspaceLayer,useWorkspaceEvents,type WorkspaceDocument} from '../workspace-runtime';
 import {flushSync} from 'react-dom';
 import {useSearchParams} from 'react-router-dom';

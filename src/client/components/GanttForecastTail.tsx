@@ -22,5 +22,5 @@ export function GanttForecastTail({ forecast, plannedEnd, dates, cellWidth, inte
   // A panned viewport must not pin an offscreen forecast to an unrelated date.
   if (!end || !future || reference < dates[0] || start > dates[dates.length - 1]) return null;
   return <span className="gantt-forecast-tail" data-start={forecast.start} data-end={forecastEnd}
-    style={{ left: Math.max(0, left), width: Math.min(total, right) - Math.max(0, left), borderRightStyle: endVisible ? undefined : 'none' }} aria-label={title} tabIndex={0} {...interactionProps} />;
+    style={{ left: Math.max(0, left), width: Math.min(total, right) - Math.max(0, left), borderRightStyle: endVisible ? undefined : 'none' }} title={title} aria-label={title} tabIndex={0} {...interactionProps} />;
 }

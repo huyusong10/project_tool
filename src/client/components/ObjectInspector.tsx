@@ -1,3 +1,4 @@
+import './object-inspector.css';
 import {useRef,useState,type ReactNode} from 'react';
 import {useWorkspaceLayer} from '../workspace-runtime';
 

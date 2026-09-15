@@ -66,12 +66,15 @@ test('问题列表在低分辨率下不遮挡优先级和编辑控件', async ({
     { width: 900, height: 760 },
     { width: 760, height: 760 },
     { width: 620, height: 760 },
+    { width: 390, height: 844 },
   ]) {
     await page.setViewportSize(viewport);
     await page.goto('/issues');
     await expect(page.locator('.issue-data-row')).toHaveCount(2);
     await expect(page.locator('.issue-data-priority .priority-badge').first()).toHaveText('P0 · 紧急');
 
+    const latest=page.locator('.issue-data-latest').first();await expect(latest).toBeVisible();
+    const latestBox=(await latest.boundingBox())!;expect(latestBox.x+latestBox.width).toBeLessThanOrEqual(viewport.width);
     const layout = await page.locator('.issue-data-list').evaluate((list) => ({
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       escapedPriorities: [...list.querySelectorAll<HTMLElement>('.issue-data-priority .priority-badge')].filter((badge) => {
@@ -109,7 +112,8 @@ test('问题筛选、详情错误态和嵌套Esc保持正确', async ({ page }, 
   await expect(page).toHaveURL(/priority=P1.*issueId=issue-1|issueId=issue-1.*priority=P1/);
   const dialog = page.getByRole('dialog', { name: '问题详情' });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: /关联需求：/ }).click();
+  await dialog.getByRole('tab',{name:'基本信息',exact:true}).click();
+  await dialog.getByRole('button',{name:/^关联需求：/}).click();
   const search = page.getByPlaceholder('搜索需求编号或名称');
   await expect(search).toBeVisible();
   await search.press('Escape');

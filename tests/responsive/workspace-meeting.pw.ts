@@ -12,7 +12,7 @@ test('会议行内更新与快速完成，双槽独立，业务顺序和按钮�
   await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');
   const row=grid.locator('[data-row-id="'+work.id+'"]'),order=await grid.locator('.kind-work').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-row-id')));
   expect(order).toEqual(f.testing.workItems.map(w=>w.id));
-  for(const [kind,max] of [['feature',30],['phase',36],['requirement',44],['work',48]] as const){const heights=await grid.locator('.kind-'+kind).evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().height));expect(heights.every(h=>h<=max+1)).toBe(true);}
+  for(const [kind,max] of [['feature',30],['phase',36],['requirement',56],['work',56]] as const){const heights=await grid.locator('.kind-'+kind).evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().height));expect(heights.every(h=>h<=max+1)).toBe(true);}
   const tracks=await row.locator('.gantt-date-plan,.gantt-date-actual').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect(),parent=n.parentElement!.getBoundingClientRect();return {top:r.top,bottom:r.bottom,parentTop:parent.top,parentBottom:parent.bottom};}));
   expect(tracks).toHaveLength(2);expect(tracks[0].bottom).toBeLessThan(tracks[1].top);expect(tracks.every(r=>r.top>=r.parentTop&&r.bottom<=r.parentBottom)).toBe(true);
   const progress=row.getByRole('button',{name:'更新 '+work.title+' 进度',exact:true}),position=await progress.boundingBox();

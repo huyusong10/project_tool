@@ -1,5 +1,7 @@
+import {WorkItemFacts} from '../components/WorkItemFacts';
+import {TopbarMenu} from '../components/TopbarMenu';
+import '../components/object-inspector.css';
 import {WorkItemExecution} from '../components/WorkItemExecution';
-import {workStageLabels} from '../../shared/execution-stage';
 import '../workspace-gantt.css';
 import {useAppNavigate,useAppSearchParams} from '../use-app-navigation';
 import {PageResourcesContext,usePageResources} from '../page-context';
@@ -74,7 +76,7 @@ const emptyTemplates: WorkItemTemplate[] = [];
 const progressEventLabels: Record<string, string> = { note: "说明", progress: "进展", start: "开始", block: "阻塞", unblock: "解阻", complete: "完成", reopen: "返工", correction: "纠错", accept: "验收", cancel: "取消" };
 const progressReferenceLabel = (update?: ProgressUpdate) => update ? `${formatDateTime(update.createdAt)} · ${progressEventLabels[update.eventType] || update.eventType}` : "原记录不可用";
 
-function EmbeddedRequirementHeader({secondaryActions,moreActions}:ComponentProps<typeof PageHeader>){return <header className="delivery-requirement-header"><div className="button-row">{secondaryActions}</div>{moreActions&&<details><summary>需求操作</summary><div className="button-row">{moreActions}</div></details>}</header>;}
+function EmbeddedRequirementHeader({secondaryActions,moreActions,moreDisabled}:ComponentProps<typeof PageHeader>){return <header className="delivery-requirement-header"><div className="button-row">{secondaryActions}</div>{moreActions&&<TopbarMenu label="需求操作" disabled={moreDisabled}>{moreActions}</TopbarMenu>}</header>;}
 export function RequirementObjectDetails({id,workItemId,onOpenDependencies}:{id:string;workItemId?:string;onOpenDependencies:()=>void}){
   const resources=usePageResources(),{session}=useSession(),query=useResourceQuery<Requirement>([...keys.requirement(id),session.accountId],'/api/requirements/'+id,!!id);
   return <PageResourcesContext.Provider value={{...resources,requirement:query}}><RequirementObjectContent key={id} requirementId={id} embedded selectedWorkItemId={workItemId} onOpenDependencies={onOpenDependencies}/></PageResourcesContext.Provider>;
@@ -129,7 +131,7 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
     isFetching,
     unavailable,
   } = usePageResources().requirement;
-  const historyPagination = useListPagination({ items: requirement?.progressUpdates || [], id: "history", defaultPageSize: 10, ready: Boolean(requirement), loading: isFetching });
+  const historyPagination = useListPagination({ items: (requirement?.progressUpdates || []).filter(item=>!selectedWorkItemId||item.workItemId===selectedWorkItemId), id: "history:"+(selectedWorkItemId||"requirement"), defaultPageSize: 10, ready: Boolean(requirement), loading: isFetching });
   const lastPathProject=useRef<string|undefined>(undefined);
   useEffect(()=>{if(requirement?.projectId)lastPathProject.current=requirement.projectId;},[requirement?.projectId]);
   const scrollKey='pm-detail-scroll:'+(session.accountId||'guest')+':'+(requirement?.projectId||'')+':'+id,workTarget=searchParams.get('workItemId');
@@ -260,7 +262,7 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
   }
   const embeddedWorkDetails=<section className="delivery-work-details">{requirement.workItems.filter(item=>!selectedWorkItemId||item.id===selectedWorkItemId).map(item=><article key={item.id}>
     {!selectedWorkItemId&&<h4>{item.title}</h4>}
-    <dl className="object-facts"><div><dt>工作阶段</dt><dd>{item.workStage?workStageLabels[item.workStage]:'未分类'}</dd></div><div><dt>负责人</dt><dd>{item.ownerName||'待分派'}</dd></div><div><dt>计划日期</dt><dd>{item.plannedStart||'待定'} ～ {item.plannedEnd||'待定'}</dd></div><div><dt>实际日期</dt><dd>{item.actualStart||'尚未开始'}{item.actualStart?' ～ '+(item.status==='cancelled'?item.cancelledAt||'已取消（日期待核对）':item.actualEnd||(item.status==='completed'?'完成日期待核对':'进行中')):''}</dd></div></dl>
+    <WorkItemFacts item={item}/>
     <WorkItemExecution requirement={requirement} item={item} people={people} progressLabel="更新进度">{({actions,progress})=><div className="object-execution-controls">{progress}{actions}</div>}</WorkItemExecution>
   </article>)}<div className="button-row">{canManageWorkItems&&<button className="ghost-button" disabled={workEditorNeedsRecheck||!!planRecheck} onClick={()=>setWorkEditorOpen(true)}>工作项设置</button>}<button className="ghost-button" onClick={openPathView}>维护依赖与分解</button></div></section>;
   const requirementHeader=<Header
@@ -302,7 +304,7 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
         {workEditorNeedsRecheck && <div className="warning-banner" role="alert">工作项设置结果待核对，设置操作暂不可用。<button type="button" className="ghost-button" disabled={workEditorRechecking} onClick={() => void recheckWorkEditor()}>{workEditorRechecking ? "读取中…" : "重新读取需求"}</button></div>}
         {supportingError && <div className="warning-banner">{supportingDataReady ? "人员与流程数据刷新失败，当前使用上次成功结果。" : "人员或流程数据加载失败，相关编辑操作暂不可用。"}<button className="ghost-button" disabled={peopleQuery.isFetching || templatesQuery.isFetching} onClick={() => void Promise.all([peopleQuery.refetch(), templatesQuery.refetch()])}>重新加载</button></div>}
         {selectedWorkItemId&&embeddedWorkDetails}
-        <details className="object-section" open={!selectedWorkItemId&&pathLocation.pathname!=='/execution'}><summary>资料与范围</summary><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未安排 Phase'}</dd></div><div><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div><div><dt>来源</dt><dd>{requirement.sourceNotes||'尚未填写'}</dd></div>{requirement.referenceUrl&&<div><dt>文档</dt><dd><a href={requirement.referenceUrl} target="_blank" rel="noreferrer">打开资料</a></dd></div>}</dl></details>
+        <details className="object-section" open={!selectedWorkItemId&&pathLocation.pathname!=='/execution'}><summary>资料与范围</summary><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未安排 Phase'}</dd></div><div className="object-fact-wide"><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div className="object-fact-wide"><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div><div><dt>来源</dt><dd>{requirement.sourceNotes||'尚未填写'}</dd></div>{requirement.referenceUrl&&<div><dt>文档</dt><dd><a href={requirement.referenceUrl} target="_blank" rel="noreferrer">打开资料</a></dd></div>}</dl></details>
         {embedded&&(selectedWorkItemId?<details className="object-section"><summary>所属需求 · {requirement.title}</summary>{requirementHeader}<RequirementOverview requirement={requirement} compact={embedded}/></details>:requirementHeader)}
         {!selectedWorkItemId&&<details className="object-section" open={pathLocation.pathname==='/execution'}><summary>安排与执行</summary><RequirementOverview key={requirement.id} requirement={requirement} compact={embedded}/></details>}
         {selectedWorkItemId?null:<details className="object-section" open><summary>工作分解 · {requirement.workItems.length}</summary>{embeddedWorkDetails}{!requirement.workItems.length&&<p>{direct?'直接执行需求，可在安排与执行中记录进展。':'尚未拆分工作项。'}</p>}</details>}
@@ -328,7 +330,7 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
           }}
         />
       )}
-      <details className="delivery-history" ><summary>进展与执行历史</summary><section className="detail-grid progress-detail-grid">
+      <details className="delivery-history object-section" ><summary>{selectedWorkItemId?"工作项执行历史":"进展与执行历史"}</summary><section className="detail-grid progress-detail-grid">
         <article className="panel progress-detail-card paged-panel">
           <header><div><h2>进展记录</h2></div></header>
           <div className="progress-feed paged-body" ref={historyPagination.scrollRef}>
@@ -348,12 +350,12 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
                 </div>
               </article>;
             })}
-            {!requirement.progressUpdates?.length && <EmptyState title="暂无进展" detail={direct ? "开始需求或更新完成度后，这里会显示执行记录。" : "开始工作项、更新完成度或完成工作项后，这里会显示执行记录。"} />}
+            {!historyPagination.items.length && <EmptyState title="暂无进展" detail={direct ? "开始需求或更新完成度后，这里会显示执行记录。" : "开始工作项、更新完成度或完成工作项后，这里会显示执行记录。"} />}
           </div>
           <Pagination {...historyPagination.props} label="需求进展分页" />
         </article>
         <article className="panel progress-detail-card">
-          <header><div><h2>进度趋势</h2></div></header>
+          <header><div><h2>{selectedWorkItemId?"需求进度趋势":"进度趋势"}</h2></div></header>
           {requirement.progressUpdates?.length ? <Chart option={progressOption} height={270} ariaLabel="需求计划与实际进度趋势" /> : <EmptyState title="暂无趋势" detail="产生执行记录后自动生成趋势图。" />}
         </article>
       </section>
