@@ -1,3 +1,4 @@
+import {workspaceParams} from '../workspace-location';
 import {WorkItemFacts} from '../components/WorkItemFacts';
 import {TopbarMenu} from '../components/TopbarMenu';
 import '../components/object-inspector.css';
@@ -384,9 +385,11 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
 
 export function RequirementPage(){
  const [params]=useAppSearchParams(),location=useLocation(),{session}=useSession(),{selectedProjectId}=useProjects();
+ const resource=usePageResources().requirement;
  const url=location.pathname+location.search,projectId=params.get('draftProject')||selectedProjectId;
  const savedUrl=remapSavedEditorUrl(url,(session.accountId||'guest')+':'+projectId);
  if(params.has('draftProject')&&savedUrl!==url)return <Navigate to={savedUrl} replace state={location.state}/>;
+ if(!params.has('draftProject')&&resource.data){const r=resource.data;return <Navigate replace state={location.state} to={'/?'+workspaceParams({projectId:r.projectId,view:params.get('view')==='path'?'graph':'list',scope:{kind:'requirement',id:r.id},inspector:params.get('workItemId')||r.id},undefined,params)}/>;}
  return params.get('draftProject')?<DraftRequirementPage projectId={params.get('draftProject')!}/>:<RequirementObjectContent/>;
 }
 function DraftRequirementPage({projectId}:{projectId:string}){

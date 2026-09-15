@@ -1,3 +1,4 @@
+import {useProjectWorkspace} from '../project-workspace-context';
 import { useEffect,useLayoutEffect,useRef,useState,useContext,type ComponentProps,type CSSProperties,type ReactNode } from 'react';
 import { DependencyGraph } from './DependencyGraph';
 import '../paths.css';
@@ -31,6 +32,10 @@ function FloatingPanel({content,side,replacement,contentKey,analysis=false,size=
 function Workspace({ table, document:editorDocument, auxiliaryKey, toolbar, detail, detailTitle, auxiliary, footer, finder,palette,analysis=false,auxiliarySize='compact',onDismissDetail,onDismissAuxiliary, ...graph }: ComponentProps<typeof DependencyGraph> & {
   table?:ReactNode;document:WorkspaceDocument;auxiliaryKey?:string;onDismissDetail?:()=>void;onDismissAuxiliary?:()=>void;toolbar: ReactNode; detail?: ReactNode; detailTitle?:ReactNode; auxiliary?: ReactNode; footer?: ReactNode;finder?:ReactNode;palette?:ReactNode;analysis?:boolean;auxiliarySize?:PanelSize;
 }) {
+  const workspace=useProjectWorkspace();
+  const sharedSelection=workspace?.location.inspector;
+  const sharedObject=sharedSelection&&(sharedSelection.startsWith('feature:')||sharedSelection.startsWith('phase:')||workspace.data.requirements.some(r=>r.id===sharedSelection)||workspace.data.nodes.some(n=>n.id===sharedSelection&&n.requirementId));
+  if(workspace&&sharedObject&&!graph.interaction?.selection?.kind?.includes('edge')&&!(editorDocument as WorkspaceDocument & {active?:boolean}).active)detail=undefined;
   const [params]=useSearchParams(),isTable=params.get('mode')==='table'&&table!==undefined,[wide,setWide]=useState(false);
   const root=useRef<HTMLElement>(null),finderRef=useRef<HTMLDivElement>(null);
   const recentNodeClick=useRef<{id:string;x:number;y:number;time:number}|null>(null);

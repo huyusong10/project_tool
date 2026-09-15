@@ -3,7 +3,7 @@ import {useSession} from '../app-context';
 import {canManageProject} from '../permissions';
 import type {FeatureOverview} from '../../shared/feature-overview';
 import {FeatureDetails,FeatureEditor,readFeaturePending,type FeatureEdit} from './FeaturePlanning';
-import {PhaseDialog,PhaseStatusBadge,readPendingPhase,type PhaseEdit} from './PhasePlanning';
+import {PhaseDialog,PhaseRows,PhaseStatusBadge,readPendingPhase,type PhaseEdit} from './PhasePlanning';
 import {ExecutionStageBadge} from './ExecutionStageBadge';
 
 export function DeliveryFeatureDetails({feature,phaseId,onEnter,onPhase}:{feature:FeatureOverview;phaseId?:string|null;onEnter:(stage?:string)=>void;onPhase:()=>void}){
@@ -43,7 +43,7 @@ export function DeliveryFeatureDetails({feature,phaseId,onEnter,onPhase}:{featur
         </article>)}
         {!phase.deliveries.length&&<p>尚无交付记录。</p>}
       </details>
-    </>:<FeatureDetails onEnter={()=>onEnter()} feature={feature} projectId={feature.projectId} edit={edit?.feature?.id===feature.id?edit:null} onEdit={setEdit} onPhaseEdit={beginPhase}/>}
+    </>:feature.kind==='other'?<><p>临时和补充需求的系统归类，固定显示在最后。</p>{!!feature.phases?.length&&<PhaseRows feature={feature} manage={manage} onEdit={beginPhase}/>}</>:<FeatureDetails onEnter={()=>onEnter()} feature={feature} projectId={feature.projectId} edit={edit?.feature?.id===feature.id?edit:null} onEdit={setEdit} onPhaseEdit={beginPhase}/>}
     {edit&&!edit.feature&&<FeatureEditor projectId={feature.projectId} edit={edit} onClose={()=>setEdit(null)}/>}
     {phaseEdit&&<PhaseDialog key={(phaseEdit.phase?.id||phaseEdit.feature.id)+phaseEdit.mode} edit={phaseEdit} onClose={()=>setPhaseEdit(null)}/>}
   </div>;

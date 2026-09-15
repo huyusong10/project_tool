@@ -1,5 +1,6 @@
 import { readFeatures, saveFeature, deleteFeature } from './features';
 import {ensureOtherFeature} from '../other-feature';
+import {outlineSnapshot} from './outline-state';
 export { readFeatures } from './features';
 import { phaseRequirementFacts } from './feature-phases';
 import { randomUUID } from 'node:crypto';
@@ -33,7 +34,7 @@ export function persistOrganization(id:string, projectId:string, value:Organizat
   if(phaseId){const p=sqlite.prepare('SELECT feature_id AS featureId,delivered_at AS deliveredAt FROM feature_phases WHERE id=? AND project_id=?').get(phaseId,projectId) as {featureId:string;deliveredAt:string|null}|undefined;if(!p||p.featureId!==featureId)fail('Phase 必须属于所选特性');if(p.deliveredAt)fail('已交付 Phase 不能接收需求');}
   const affected=[...new Set([previous.phaseId,phaseId].filter(Boolean))] as string[];
   if(affected.length){const facts=phaseRequirementFacts(projectId);for(const pid of affected){if(sqlite.prepare('SELECT 1 FROM feature_phases WHERE id=? AND delivered_at IS NOT NULL').get(pid))fail('请先重新打开已交付 Phase');if((sqlite.prepare('SELECT 1 FROM feature_phases WHERE id=? AND started_at IS NOT NULL').get(pid)||facts.some(r=>r.phaseId===pid&&['in_progress','completed'].includes(r.status)))&&!String(value.reason||'').trim())fail('推进后的需求移入移出需要填写原因');}}
-  sqlite.prepare('UPDATE requirements SET feature_id=?,phase_id=? WHERE id=?').run(featureId,phaseId,id);
+  sqlite.prepare('UPDATE requirements SET feature_id=?,phase_id=?,sort_order=(SELECT coalesce(max(sort_order),-1)+1 FROM requirements WHERE feature_id=? AND phase_id IS ? AND id<>?) WHERE id=?').run(featureId,phaseId,featureId,phaseId,id,id);
   for(const pid of affected)sqlite.prepare('UPDATE feature_phases SET version=version+1,updated_at=? WHERE id=?').run(new Date().toISOString(),pid);
 }
 export function readIntakeCatalog(projectId:string, actor:Actor):IntakeCatalog {
@@ -63,6 +64,9 @@ export function updateOrganization(projectId:string,raw:unknown,actor:Actor) {
   return sqlite.transaction(()=>{
     assertProjectManager(requireAuthorizationActor(actor),projectId);requireActiveProject(projectId);validateOrganization(projectId,input);
     if(new Set(input.requirements.map(r=>r.id)).size!==input.requirements.length)fail('所选需求重复');
+    const parentIds=new Set<string>();
+    for(const r of input.requirements){const row=sqlite.prepare('SELECT feature_id AS featureId,phase_id AS phaseId FROM requirements WHERE id=? AND project_id=?').get(r.id,projectId) as Organization|undefined;if(row){parentIds.add(row.phaseId||row.featureId!);parentIds.add((input.phaseId===undefined?(input.featureId&&input.featureId!==row.featureId?null:row.phaseId):input.phaseId)||(input.featureId===undefined?row.featureId:input.featureId)||ensureOtherFeature(sqlite,projectId));}}
+    const before=[...parentIds].map(parentId=>outlineSnapshot(projectId,'requirement',parentId));
     for(const r of input.requirements){
       const current=sqlite.prepare('SELECT status,feature_id AS featureId,phase_id AS phaseId FROM requirements WHERE id=? AND project_id=? AND version=? AND deleted_at IS NULL').get(r.id,projectId,r.expectedVersion) as {status:string;featureId:string|null}|undefined;
       if(!current)fail('需求已变化，请刷新核对','STALE_WRITE',409);
@@ -71,7 +75,7 @@ export function updateOrganization(projectId:string,raw:unknown,actor:Actor) {
       const after=sqlite.prepare('SELECT feature_id AS featureId,phase_id AS phaseId FROM requirements WHERE id=?').get(r.id);
       recordAudit(actor,'update','requirement',r.id,'调整特性归属；修改前：'+JSON.stringify(current)+'；修改后：'+JSON.stringify(after)+'；原因：'+(input.reason||''));
     }
-    return readIntakeCatalog(projectId,actor);
+    return {...readIntakeCatalog(projectId,actor),undo:{before,expected:[...parentIds].map(parentId=>outlineSnapshot(projectId,'requirement',parentId))}};
   }).immediate();
 }
 export function persistDocuments(projectId:string,documents:SourceDocumentInput[]) {

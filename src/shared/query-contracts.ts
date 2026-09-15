@@ -22,7 +22,7 @@ export const requirementQuerySchema = requirementListInputSchema.omit({deliveryS
   q, ownerId: idSchema.optional(), participantId: idSchema.optional(),
   ...executionFilters,
   stage:z.enum([...workStages,...milestoneKinds,...workItemStatuses,'parallel']).optional(),
-  sort:z.enum(['name','updated']).default('name'),
+  sort:z.enum(['name','updated','manual']).default('name'),
   ...dateFields, ...pageFields, includeWorkItems: flag.default(false),
 }).refine(orderedDates, dateError).superRefine(statusCombination);
 

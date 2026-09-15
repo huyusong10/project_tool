@@ -29,7 +29,7 @@ export function queryRequirements(raw: unknown, actor: AuthorizationActor) {
       if (input.to && (!r.plannedStart && !r.plannedEnd || (r.plannedStart || r.plannedEnd)! > input.to)) return false;
       return true;
     });
-    values.sort(input.sort==='updated'?(a,b)=>b.updatedAt.localeCompare(a.updatedAt)||a.id.localeCompare(b.id):compareProgressTitles);
+    values.sort(input.sort==='updated'?(a,b)=>b.updatedAt.localeCompare(a.updatedAt)||a.id.localeCompare(b.id):input.sort==='manual'?(a,b)=>(a.sortOrder??0)-(b.sortOrder??0)||compareProgressTitles(a,b):compareProgressTitles);
     const items = values.slice((input.page - 1) * input.pageSize, input.page * input.pageSize).map(r => {
       if (input.includeWorkItems) return r;
       const { workItems, ...summary } = r;
@@ -41,7 +41,7 @@ export function queryRequirements(raw: unknown, actor: AuthorizationActor) {
 
 type WorkReference = { id: string; title:string; status:string; workStage:WorkStage|null; sortOrder:number; createdAt:string; updatedAt:string; plannedEnd:string|null; requirementId: string; requirementTitle: string; requirementStatus: string; projectId: string; projectName: string; featureId:string|null;featureName:string|null;phaseId:string|null;phaseName:string|null };
 const workFrom = 'FROM work_items w JOIN requirements r ON r.id=w.requirement_id JOIN projects p ON p.id=r.project_id LEFT JOIN features f ON f.id=r.feature_id LEFT JOIN feature_phases ph ON ph.id=r.phase_id';
-const workReference = 'SELECT w.id,w.title,w.status,w.work_stage AS workStage,w.sort_order AS sortOrder,w.created_at AS createdAt,w.updated_at AS updatedAt,w.planned_end AS plannedEnd,w.requirement_id AS requirementId,r.title AS requirementTitle,r.status AS requirementStatus,r.project_id AS projectId,p.name AS projectName,r.feature_id AS featureId,f.name AS featureName,r.phase_id AS phaseId,ph.name AS phaseName';
+const workReference = `SELECT w.id,w.title,w.status,w.work_stage AS workStage,w.sort_order AS sortOrder,w.created_at AS createdAt,w.updated_at AS updatedAt,w.planned_end AS plannedEnd,w.requirement_id AS requirementId,r.title AS requirementTitle,r.status AS requirementStatus,r.project_id AS projectId,p.name AS projectName,r.feature_id AS featureId,CASE WHEN f.kind='other' THEN '其他需求' ELSE f.name END AS featureName,r.phase_id AS phaseId,ph.name AS phaseName`;
 
 function workDetails(references: WorkReference[]) {
   const statuses = new Map(references.map(r => [r.requirementId, r.requirementStatus]));

@@ -31,7 +31,7 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 
 | 工具 | 筛选参数 |
 |---|---|
-| `query_requirements` | `q`、`featureId`、`phaseId`、`ownerId`、`participantId`、`status/statuses`、`excludeStatuses`、`stage`、`view=delayed/high_risk`、`from/to`、`includeDeleted`、`sort=name/updated`；`includeWorkItems=true` 附带工作项 |
+| `query_requirements` | `q`、`featureId`、`phaseId`、`ownerId`、`participantId`、`status/statuses`、`excludeStatuses`、`stage`、`view=delayed/high_risk`、`from/to`、`includeDeleted`、`sort=name/manual/updated`；`includeWorkItems=true` 附带工作项 |
 | `list_work_items` | `requirementId`、`featureId`、`phaseId`、`workStage`、`q`、`ownerId`、`participantId`、`status/statuses`、`excludeStatuses`、`active`、`overdue`、`unassigned`、`from/to`、`sort=workflow/name/updated/planned_end` |
 | `list_progress_updates` | `requirementId`、`workItemId`、`authorAccountId`、`eventType`、正文关键词 `q`、`from/to`、`snapshot` |
 
@@ -131,6 +131,12 @@ SVG 是可保存的文本，不是浏览器截图；长说明展示摘要，完�
 
 拓扑中的 `acceptance:需求ID` 保留为历史布局兼容 ID，现在表示工作完成，不要求执行验收操作。独立里程碑只有显式依赖才影响其他工作。
 
+## 清单排序与批量操作
+
+`order_outline` 接收对象类型、父级及完整同级对象和版本；`archive_features` 批量归档特性，任一对象不符合条件则整批回滚。`update_requirement_placement` 移动需求并追加到目标末尾；移动和排序返回 `undo`，交给 `restore_outline` 核对版本后撤销。需求查询使用 `sort=manual` 读取人工顺序。参数见 [统一工作区接口](unified-workspace.md#接口与数据)。
+
+系统归类固定置底，禁止改名、归档、删除、新建 Phase 或规划关系；历史 Phase 和关系仍保留。
+
 ## 特性、Phase 与人工评估
 
 `get_feature_overview({projectId})` 读取各 Phase 的交付状态、阶段分布、日期及历史，同时保留预期、人工评估和最近进展。特性不计算总百分比；取消需求不算交付成果，已完成需求归档后仍计入 Phase。人工评估不按需求完成数量自动填写。
@@ -142,7 +148,7 @@ SVG 是可保存的文本，不是浏览器截图；长说明展示摘要，完�
 
 `save_feature` 可传 `description`，与 `overview` 分开维护；列表和总体进展读取支持 `state=active/archived/all`。归档与恢复使用 `archive_feature`、`restore_feature`；`get_feature_requirements` 分页读取当前或归档需求摘要。
 
-`get_path_graph` 支持 `view=features` 顶层图、`view=feature` 加 `featureId` 的特性内需求图（`unassigned` 仅保留历史查询入口；无特性需求已归入普通的“其他特性”）。`view=project` 保留旧查询语义，网页不再提供并列的“全部需求”入口。用 `list_feature_relations`、`save_feature_relation`、`delete_feature_relation` 维护人工规划；`planning/actual` 分别控制两类连线。规划关系不参与执行分析。
+`get_path_graph` 支持 `view=features` 顶层图、`view=feature` 加 `featureId` 的特性内需求图（`unassigned` 仅保留历史查询入口；未指定特性的需求归入系统归类“其他需求”，身份由 `kind=other` 标识）。`view=project` 保留旧查询语义，网页不再提供并列的“全部需求”入口。用 `list_feature_relations`、`save_feature_relation`、`delete_feature_relation` 维护人工规划；`planning/actual` 分别控制两类连线。规划关系不参与执行分析。
 
 特性图与特性内需求图的共享布局分别使用 `features`、`feature:ID`，沿用布局版本和依赖批次保存。删除特性只允许没有需求及规划连线的空特性；非空特性先处理未完成需求再归档。[接口规则](requirement-intake.md#特性规划与关系图)。
 

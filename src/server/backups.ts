@@ -1,3 +1,4 @@
+import {initializeWorkspaceOrder} from './workspace-migration';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -317,6 +318,7 @@ function migrateAndValidateRestoreCopy(replacement: string) {
     restoreDb.pragma('foreign_keys = OFF');
     try {
       migrate(drizzle(restoreDb), { migrationsFolder: path.join(config.rootDir, 'drizzle') });
+      initializeWorkspaceOrder(restoreDb);
     } finally {
       restoreDb.pragma('foreign_keys = ON');
     }

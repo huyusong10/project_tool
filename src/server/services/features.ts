@@ -11,13 +11,13 @@ import { featureRelationInput, type FeatureRelation, type FeatureRequirement, ty
 import {applyFeatureRelationDraft,type FeatureRelationChange} from '../../shared/features';
 
 export function readFeatures(projectId: string, state: 'active'|'archived'|'all' = 'active'): Feature[] {
-  const rows = sqlite.prepare(`SELECT g.id,g.project_id AS projectId,g.name,g.sort_order AS sortOrder,g.version,g.description,g.archived_at AS archivedAt,
+  const rows = sqlite.prepare(`SELECT g.id,g.kind,g.project_id AS projectId,g.name,g.sort_order AS sortOrder,g.version,g.description,g.archived_at AS archivedAt,
     g.expectation,g.progress_summary AS progressSummary,g.assessment,g.assessment_note AS note,
     g.reference_links AS referenceLinks,g.assessed_at AS assessedAt,g.assessed_by AS assessedBy,a.username AS assessedByName
     FROM features g LEFT JOIN accounts a ON a.id=g.assessed_by
     WHERE g.project_id=? ${state==='all'?'':state==='active'?'AND g.archived_at IS NULL':'AND g.archived_at IS NOT NULL'}
-    ORDER BY g.sort_order,g.name,g.id`).all(projectId) as Array<Omit<Feature,'overview'> & Feature['overview']>;
-  return rows.map(({expectation,progressSummary,assessment,note,referenceLinks,...feature})=>({...feature,referenceLinks:JSON.parse(String(referenceLinks)),overview:{expectation,progressSummary,assessment,note}}));
+    ORDER BY (g.kind='other'),g.sort_order,g.name,g.id`).all(projectId) as Array<Omit<Feature,'overview'> & Feature['overview']>;
+  return rows.map(({expectation,progressSummary,assessment,note,referenceLinks,...feature})=>({...feature,name:feature.kind==='other'?'其他需求':feature.name,referenceLinks:JSON.parse(String(referenceLinks)),overview:{expectation,progressSummary,assessment,note}}));
 }
 export function listFeatures(projectId: string, state: 'active'|'archived'|'all', actor: Actor) {
   assertProjectReadable(requireAuthorizationActor(actor),projectId);return readFeatures(projectId,state);
@@ -37,11 +37,13 @@ export function saveFeature(projectId:string,raw:unknown,actor:Actor) {
   return sqlite.transaction(()=>{
     manager(projectId,actor);
     const before=input.id?currentFeature(projectId,input.id,input.expectedVersion??0):null;
+    if(before?.kind==='other')fail('其他需求是系统归类，不能修改特性资料');
     if(before?.archivedAt)fail('特性已归档，请先恢复');
+    if(['其他特性','其他需求'].includes(input.name))fail('该名称用于系统归类，请使用其他特性名称');
     const id=before?.id||randomUUID(),now=new Date().toISOString();
     if(before)sqlite.prepare('UPDATE features SET name=?,description=?,version=version+1,updated_at=? WHERE id=?').run(input.name,input.description??before.description,now,id);
     else sqlite.prepare('INSERT INTO features(id,project_id,name,description,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(id,projectId,input.name,input.description??'',now,now);
-    const ordered=readFeatures(projectId).filter(g=>g.id!==id).map(g=>g.id);
+    const ordered=readFeatures(projectId).filter(g=>g.id!==id&&g.kind!=='other').map(g=>g.id);
     ordered.splice(Math.min(input.sortOrder,ordered.length),0,id);
     for(const [order,featureId] of ordered.entries())sqlite.prepare('UPDATE features SET sort_order=?,version=version+1,updated_at=? WHERE id=? AND sort_order<>?').run(order,now,featureId,order);
     if(input.referenceLinks!==undefined)sqlite.prepare('UPDATE features SET reference_links=? WHERE id=?').run(JSON.stringify(input.referenceLinks),id);
@@ -54,7 +56,7 @@ export function saveFeature(projectId:string,raw:unknown,actor:Actor) {
 }
 export function archiveFeature(projectId:string,id:string,expectedVersion:number,archived:boolean,actor:Actor) {
   return sqlite.transaction(()=>{
-    manager(projectId,actor);const before=currentFeature(projectId,id,expectedVersion);
+    manager(projectId,actor);const before=currentFeature(projectId,id,expectedVersion);if(before.kind==='other')fail('其他需求是系统归类，不能归档或删除');
     if(Boolean(before.archivedAt)===archived)fail('特性状态已变化，请读取最新资料','STALE_WRITE');
     if(archived&&sqlite.prepare("SELECT 1 FROM requirements WHERE feature_id=? AND status NOT IN ('completed','cancelled') LIMIT 1").get(id))fail('请先完成、取消或移出未完成需求','DEPENDENCY_CONFLICT');
     const now=new Date().toISOString();
@@ -64,7 +66,7 @@ export function archiveFeature(projectId:string,id:string,expectedVersion:number
 }
 export function deleteFeature(projectId:string,id:string,expectedVersion:number,actor:Actor) {
   return sqlite.transaction(()=>{
-    manager(projectId,actor);const before=currentFeature(projectId,id,expectedVersion);
+    manager(projectId,actor);const before=currentFeature(projectId,id,expectedVersion);if(before.kind==='other')fail('其他需求是系统归类，不能归档或删除');
     if(sqlite.prepare('SELECT 1 FROM feature_phases WHERE feature_id=? LIMIT 1').get(id))fail('特性仍有 Phase，请先处理 Phase');
     if(sqlite.prepare('SELECT 1 FROM requirements WHERE feature_id=? LIMIT 1').get(id))fail('特性仍有关联需求，请使用归档或先调整归属','DEPENDENCY_CONFLICT');
     if(sqlite.prepare('SELECT 1 FROM feature_relations WHERE source_feature_id=? OR target_feature_id=? LIMIT 1').get(id,id))fail('请先移除特性的规划关系','DEPENDENCY_CONFLICT');
@@ -118,6 +120,7 @@ export function prepareFeatureRelationChanges(projectId:string,changes:FeatureRe
     const old=before.find(r=>r.id===change.id);
     if(change.op==='create'){
       if(old)fail('新增规划关系标识重复','DEPENDENCY_CONFLICT');
+      if([change.sourceFeatureId,change.targetFeatureId].some(id=>currentFeature(projectId,id).kind==='other'))fail('其他需求不能建立特性规划关系，请关联具体需求');
       for(const id of [change.sourceFeatureId,change.targetFeatureId])if(currentFeature(projectId,id).archivedAt)fail('归档特性不能修改规划关系');
     }else{
       if(!old||old.version!==change.expectedVersion)fail('规划关系已变化，请读取最新资料','STALE_WRITE',409,{featureRelationIds:[change.id]});
@@ -148,6 +151,7 @@ export function saveFeatureRelation(projectId:string,raw:unknown,actor:Actor) {
     const relations=readFeatureRelations(projectId),before=input.id?relations.find(r=>r.id===input.id):undefined;
     if(input.id&&(!before||before.version!==input.expectedVersion))fail('规划关系已变化，请读取最新资料','STALE_WRITE');
     for(const id of [input.sourceFeatureId,input.targetFeatureId])if(currentFeature(projectId,id).archivedAt)fail('归档特性不能修改规划关系');
+    if((!before||before.sourceFeatureId!==input.sourceFeatureId||before.targetFeatureId!==input.targetFeatureId)&&[input.sourceFeatureId,input.targetFeatureId].some(id=>currentFeature(projectId,id).kind==='other'))fail('其他需求不能建立特性规划关系，请关联具体需求');
     const rest=relations.filter(r=>r.id!==input.id);
     validateFeatureRelations([...rest,{...input,id:input.id||'new',projectId,version:before?.version||0}]);
     const id=input.id||randomUUID(),now=new Date().toISOString();

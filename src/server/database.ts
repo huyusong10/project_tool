@@ -13,6 +13,7 @@ import * as schema from './schema';
 import { inspectDatabaseConsistency } from './database-validation';
 import { recoverInterruptedDatabaseSwap } from './database-swap';
 import { initializeLegacyWorkEstimates } from './work-estimate-migration';
+import {initializeWorkspaceOrder} from './workspace-migration';
 import { reconcileFeatureBranch } from './feature-branch-migration';
 
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
@@ -158,6 +159,7 @@ ensureBuiltInSampleProject(sqlite, config.seedDemo);
 bootstrapAccounts();
 linkSampleProgressAuthors(sqlite);
 initializeLegacyWorkEstimates(sqlite);
+initializeWorkspaceOrder(sqlite);
 
 const databaseConsistency = inspectDatabaseConsistency(sqlite);
 if (databaseConsistency.phases) throw new Error('Phase 归属或交付记录不一致，服务已拒绝启动');

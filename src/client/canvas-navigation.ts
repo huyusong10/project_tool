@@ -1,3 +1,5 @@
+import {useProjectWorkspace} from './project-workspace-context';
+import {readWorkspaceLocation,workspaceParams,workspaceEntryPaths} from './workspace-location';
 import {usePageBack} from './use-page-view';
 import {useEffect} from 'react';
 import {useLocation,useSearchParams} from 'react-router-dom';
@@ -30,9 +32,10 @@ export function restoredCanvasUrl(account:string,project:string,url:string){
   return '/?'+explicit;
 }
 export function useCanvasNavigation(account:string,project:string,prepare?:()=>boolean|Promise<boolean>){
+  const workspace=useProjectWorkspace();
   const [params]=useSearchParams(),location=useLocation(),navigate=useAppNavigate(),pageBack=usePageBack('/?view=features');
   useEffect(()=>{if(!['/','/paths'].includes(location.pathname))return;try{sessionStorage.setItem(storageKey(account,project,canvasScope(params)),params.toString());}catch{/* Viewport remains in memory. */}},[account,project,params,location.pathname]);
-  const go=async(url:string,restore=true,revealInvalid=false)=>{if(prepare&&!(await prepare())&&!revealInvalid)return;const parsed=new URL(url,'http://canvas.local');if(['/','/paths'].includes(parsed.pathname)){parsed.pathname='/';if(!parsed.searchParams.has('mode'))parsed.searchParams.set('mode',params.get('mode')||'graph');url=parsed.pathname+parsed.search;}navigate(restore?restoredCanvasUrl(account,project,url):url);};
+  const go=async(url:string,restore=true,revealInvalid=false)=>{if(prepare&&!(await prepare())&&!revealInvalid)return;const parsed=new URL(url,'http://canvas.local');if(workspace&&workspaceEntryPaths.includes(parsed.pathname)){const target=readWorkspaceLocation(parsed.searchParams,project,parsed.pathname);if(!parsed.searchParams.has('view')&&!parsed.searchParams.has('feature')&&!parsed.searchParams.has('featureId'))target.scope=workspace.location.scope;target.view=parsed.pathname==='/requirements'?'list':workspace.location.view;navigate('/?'+workspaceParams(target,workspace.data,parsed.searchParams));return;}if(['/','/paths'].includes(parsed.pathname)){parsed.pathname='/';if(!parsed.searchParams.has('mode'))parsed.searchParams.set('mode',params.get('mode')||'graph');url=parsed.pathname+parsed.search;}navigate(restore?restoredCanvasUrl(account,project,url):url);};
   return {params,go,root:canvasRoot(params),view:canvasView(params),back:(fallback:string)=>{if(prepare)void Promise.resolve(prepare()).then(ok=>{if(ok)pageBack(fallback);});else pageBack(fallback);}};
 }
 export function canvasReturnUrl(raw:string|null){return raw&&raw.startsWith('/')&&!raw.startsWith('//')&&['/','/paths'].includes(new URL(raw,'http://canvas.local').pathname)?raw:'/?view=features';}

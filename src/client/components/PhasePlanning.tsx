@@ -62,7 +62,7 @@ export function PhaseDialog({ edit, onClose }: { edit: PhaseEdit; onClose: () =>
     if (lock.current || needsRead) return; lock.current = true; setBusy(true); setError('');
     try {
       const payload = edit.mode === 'edit' ? phaseInput.parse({ sortOrder:value.sortOrder,name: value.name, scope: value.scope, targetDate: value.targetDate, note: value.note, reason: value.reason, ...(baseline ? { id: baseline.id, expectedVersion: baseline.version } : {}) }) : { expectedVersion: baseline!.version, reason: value.reason, ...(edit.mode === 'deliver' ? { deliveredAt: value.deliveredAt } : {}) };
-      if(baseline)await assertCleanProjectDraft(account,projectId,{requirementId:'',phaseId:baseline.id,action:'phase'});
+      await assertCleanProjectDraft(account,projectId,baseline?{requirementId:'',phaseId:baseline.id,action:'phase'}:undefined);
       persist({ edit: { ...edit, phase: baseline }, value, payload });
       const url = '/api/projects/' + projectId + (edit.mode === 'edit' ? '/features/' + edit.feature.id + '/phases' : '/feature-phases/' + baseline!.id + (edit.mode === 'delete' ? '' : '/' + edit.mode));
       const saved = await api<FeaturePhase | { id: string; deleted: boolean }>(url, { method: edit.mode === 'delete' ? 'DELETE' : 'POST', body: jsonBody(payload) });

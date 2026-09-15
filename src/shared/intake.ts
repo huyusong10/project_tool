@@ -44,7 +44,7 @@ export const importApplyInput = importPreviewInput.extend({ batchId: z.string().
 export type IntakePackage = z.infer<typeof intakePackageSchema>;
 export type SourceDocumentInput = z.infer<typeof sourceDocumentInput>;
 export type Feature = {
-  id: string; projectId: string; name: string; sortOrder: number; version: number;
+  id: string; projectId: string; name: string; kind?: 'feature'|'other'; sortOrder: number; version: number;
   referenceLinks?: Array<{title:string;url:string}>; description: string; archivedAt: string | null;
   overview: FeatureOverviewInput; assessedAt: string | null; assessedBy: string | null; assessedByName: string | null;
 };

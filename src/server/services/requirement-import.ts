@@ -1,3 +1,4 @@
+import {ensureOtherFeature} from '../other-feature';
 import {saveFeature} from './features';
 import { readFeaturePhases } from './feature-phases';
 import { createHash, randomUUID } from 'node:crypto';
@@ -24,13 +25,14 @@ function prepare(projectId:string,pkg:IntakePackage,actor:Actor) {
   const existing=new Map(rows.map(r=>[r.id,r])),requirements=new Map(pkg.requirements.map(r=>[r.key,r]));
   if(requirements.size!==pkg.requirements.length)errors.push('需求标识重复');
   const changes:DependencyChangesInput={expectedRevision:Number(revision),target:'project',changes:{add:[],remove:[],estimates:[],entities:[]}};
-  const phases=readFeaturePhases(projectId),features=sqlite.prepare('SELECT id,name,archived_at AS archivedAt FROM features WHERE project_id=?').all(projectId) as Array<{id:string;name:string;archivedAt:string|null}>;
+  const phases=readFeaturePhases(projectId),features=sqlite.prepare('SELECT id,name,kind,archived_at AS archivedAt FROM features WHERE project_id=?').all(projectId) as Array<{id:string;name:string;kind:string;archivedAt:string|null}>;
   for(const r of pkg.requirements){
     if(r.action==='skip')continue;
-    const old=r.existingId?existing.get(r.existingId):undefined,feature=r.feature===undefined?features.find(f=>f.id===old?.featureId):features.find(f=>f.name===r.feature);
+    const old=r.existingId?existing.get(r.existingId):undefined,feature=r.feature===undefined?features.find(f=>f.id===old?.featureId):features.find(f=>['其他特性','其他需求'].includes(r.feature||'')?f.kind==='other':f.name===r.feature);
     if(feature?.archivedAt)errors.push(r.title+'：特性已归档');
     if(r.phase&&!r.feature&&!(r.feature===undefined&&feature))errors.push(r.title+'：指定 Phase 时必须关联特性');
     const destination=r.phase?phases.find(p=>p.featureId===feature?.id&&p.name===r.phase):r.phase===null||r.feature!==undefined&&feature?.id!==old?.featureId?undefined:phases.find(p=>p.id===old?.phaseId);
+    if(r.phase&&!destination&&(feature?.kind==='other'||['其他特性','其他需求'].includes(r.feature||'')))errors.push(r.title+'：其他需求不能新建 Phase');
     const previous=phases.find(p=>p.id===old?.phaseId);
     if(destination?.deliveredAt||previous?.deliveredAt)errors.push(r.title+'：请先重新打开已交付 Phase');
     if((destination?.id!==old?.phaseId||!!r.phase&&!destination)&&(destination?.startedAt||previous?.startedAt)&&!r.reason)errors.push(r.title+'：推进后的需求移入移出需要填写原因');
@@ -119,13 +121,14 @@ export function applyRequirementImport(projectId:string,raw:unknown,actor:Actor)
       const id=r.action==='update'?r.existingId!:created[entityId(r.key)];requirementIds[r.key]=id;
       if(r.action==='create'||r.feature!==undefined||r.phase!==undefined){
         let featureId:string|null=r.action==='update'&&r.feature===undefined?(sqlite.prepare('SELECT feature_id AS id FROM requirements WHERE id=?').get(id) as {id:string|null}).id:null;
-        if(r.feature){
+        if(r.feature&&['其他特性','其他需求'].includes(r.feature))featureId=ensureOtherFeature(sqlite,projectId);
+        else if(r.feature){
           const oldFeature=sqlite.prepare('SELECT id FROM features WHERE project_id=? AND name=?').get(projectId,r.feature) as {id:string}|undefined;
           featureId=oldFeature?.id||randomUUID();
           if(!oldFeature){const now=new Date().toISOString();sqlite.prepare('INSERT INTO features(id,project_id,name,sort_order,created_at,updated_at) VALUES(?,?,?,(SELECT count(*) FROM features WHERE project_id=?),?,?)').run(featureId,projectId,r.feature,projectId,now,now);}
         }
         let phaseId:string|null|undefined;
-        if(r.phase){if(!featureId)fail('指定 Phase 时必须同时指定特性');const p=sqlite.prepare('SELECT id FROM feature_phases WHERE feature_id=? AND name=?').get(featureId,r.phase) as {id:string}|undefined;phaseId=p?.id||randomUUID();if(!p){const now=new Date().toISOString();sqlite.prepare('INSERT INTO feature_phases(id,project_id,feature_id,name,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(phaseId,projectId,featureId,r.phase,now,now);}}
+        if(r.phase){if(!featureId)fail('指定 Phase 时必须同时指定特性');const p=sqlite.prepare('SELECT id FROM feature_phases WHERE feature_id=? AND name=?').get(featureId,r.phase) as {id:string}|undefined;phaseId=p?.id||randomUUID();if(!p){if(sqlite.prepare("SELECT 1 FROM features WHERE id=? AND kind='other'").get(featureId))fail('其他需求不能新建 Phase');const now=new Date().toISOString();sqlite.prepare('INSERT INTO feature_phases(id,project_id,feature_id,name,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(phaseId,projectId,featureId,r.phase,now,now);}}
         else if(r.phase===null)phaseId=null;
         const before=sqlite.prepare('SELECT feature_id AS featureId,phase_id AS phaseId FROM requirements WHERE id=?').get(id);
         persistOrganization(id,projectId,{featureId,phaseId,reason:r.reason});

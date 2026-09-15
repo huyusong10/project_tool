@@ -1,3 +1,4 @@
+import {assertCleanProjectDraft} from '../use-graph-draft';
 import {Select} from './Select';
 import {useDeliveryForm} from '../use-delivery-form';
 import { useEffect, useRef, useState } from 'react';
@@ -45,6 +46,7 @@ export function FeatureEditor({projectId,edit:requestedEdit,onClose,embedded=fal
     if(lock.current||blocked)return;lock.current=true;setBusy(true);setError('');
     const inputValue=normalized(value),pending={...edit,feature:baseline,value:inputValue};persist(pending);
     try{
+      await assertCleanProjectDraft(account,projectId);
       const suffix=edit.mode==='archive'||edit.mode==='restore'?'/'+baseline!.id+'/'+edit.mode:edit.mode==='delete'?'/'+baseline!.id:'';
       const payload=suffix?{expectedVersion:baseline!.version}:{...(baseline?{id:baseline.id,expectedVersion:baseline.version}:{}),name:edit.mode==='assessment'?baseline!.name:inputValue.name,sortOrder:baseline?.sortOrder??2147483647,...(edit.mode==='assessment'?{overview:inputValue.overview}:{description:inputValue.description,referenceLinks:inputValue.referenceLinks||[]})};
       const response=await api<IntakeCatalog|Feature>('/api/projects/'+projectId+'/features'+suffix,{method:edit.mode==='delete'?'DELETE':'POST',body:jsonBody(payload)});

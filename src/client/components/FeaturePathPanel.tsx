@@ -43,6 +43,8 @@ export function FeaturePathPanel({projectId}:{projectId:string}) {
 function FeatureWorkspace({formal}:{formal:PathAnalysis}){
   const {session}=useSession(),account=session.accountId||'guest',projectId=formal.projectId,manage=canManageProject(session,projectId),client=useQueryClient();
   const [params,setParams]=useWorkspaceParams(),[choosing,setChoosing]=useState(false),[discarding,setDiscarding]=useState(false),[featureEdit,setFeatureEdit]=useState<FeatureEdit|null>(()=>{const p=readFeaturePending(account,projectId);return p&&!p.feature?p:null;}),[issue,setIssue]=useState(''),[locate,setLocate]=useState<{id:string;sequence:number}>();
+  const workspaceLocate=params.get('workspaceLocate');
+  useEffect(()=>{if(workspaceLocate)setLocate({id:workspaceLocate,sequence:Date.now()});},[workspaceLocate]);
   const orderKey='pm-feature-order-write:'+account+':'+projectId;
   const [orderPending,setOrderPending]=useState(()=>sessionStorage.getItem(orderKey)||'');
   const [readError,setReadError]=useState(''),[denied,setDenied]=useState(false);
@@ -61,6 +63,7 @@ function FeatureWorkspace({formal}:{formal:PathAnalysis}){
   const validate=(source:string,target:string)=>{
     const a=graph.cards.find(c=>c.id===source),b=graph.cards.find(c=>c.id===target);
     if(!a?.featureId||!b?.featureId||a.archived||b.archived||a.featureId==='unassigned'||b.featureId==='unassigned')return {message:'规划关系只能连接当前特性'};
+    if(context.overview.features.some(f=>f.kind==='other'&&(f.id===a.featureId||f.id===b.featureId)))return {message:'系统归类不能建立特性规划关系'};
     if(context.relations.some(r=>r.sourceFeatureId===a.featureId&&r.targetFeatureId===b.featureId))return {message:'这条规划关系已经存在',kind:'duplicate' as const};
     const seen=new Set<string>(),queue=[b.featureId];for(let i=0;i<queue.length;i++){const id=queue[i];if(id===a.featureId)return {message:'规划关系形成循环（包含保留的归档关系）',kind:'cycle' as const};if(seen.has(id))continue;seen.add(id);queue.push(...context.relations.filter(r=>r.sourceFeatureId===id).map(r=>r.targetFeatureId));}return null;
   };
@@ -99,7 +102,7 @@ function FeatureWorkspace({formal}:{formal:PathAnalysis}){
     finder={<><SearchInput value={search} onChange={value=>{setParam('pathSearch',value);setParam('q',value);}} placeholder="查找特性"/>{matching.map(c=><button className="ghost-button canvas-finder-row" key={c.id} onClick={()=>{select(c.id);setLocate({id:c.id,sequence:Date.now()});}}>{c.title}</button>)}</>}
     footer={(issue||!graph.cards.length||draft.error||draft.conflict||draft.legacy.blocked)?<>{issue&&<span role="alert" className="danger-text">{issue}</span>}{!graph.cards.length&&<span>{manage?<button className="ghost-button" onClick={()=>go('/features?'+new URLSearchParams({create:'1',returnTo:'/paths?view=features'}))}>创建第一个特性</button>:'暂无特性'}</span>}{(draft.error||draft.conflict||draft.legacy.blocked)&&<button className="ghost-button danger-text" onClick={()=>setParam('pathPanel','changes')}>查看修改与错误</button>}</>:undefined}/>
     {featureEdit&&<FeatureEditor projectId={projectId} edit={featureEdit} onClose={()=>{setFeatureEdit(null);setParam('create','');}} onSaved={id=>select('feature:'+id)}/>}
-    {choosing&&editing&&<PlanningConnectionDialog features={context.overview.features.filter(g=>!g.archivedAt)} onClose={()=>setChoosing(false)} onCreate={(source,target,note)=>{if(connect('feature:'+source,'feature:'+target,note)){setChoosing(false);return true;}return false;}}/>}
+    {choosing&&editing&&<PlanningConnectionDialog features={context.overview.features.filter(g=>!g.archivedAt&&g.kind!=='other')} onClose={()=>setChoosing(false)} onCreate={(source,target,note)=>{if(connect('feature:'+source,'feature:'+target,note)){setChoosing(false);return true;}return false;}}/>}
     {discarding&&<Modal title="放弃画布修改" onClose={()=>setDiscarding(false)}><p>将放弃所有层尚未保存的修改。</p><div className="form-actions"><button className="ghost-button" onClick={()=>setDiscarding(false)}>继续编辑</button><button className="primary-button" onClick={()=>{draft.cancel();setDiscarding(false);}}>放弃修改</button></div></Modal>}
   </div>;
 }

@@ -51,6 +51,7 @@ export function saveFeaturePhase(projectId: string, featureId: string, raw: unkn
   const input = phaseInput.parse(raw);
   return sqlite.transaction(() => {
     manager(projectId, actor); feature(projectId, featureId);
+    if(!input.id&&sqlite.prepare("SELECT 1 FROM features WHERE id=? AND kind='other'").get(featureId))fail('其他需求不创建 Phase，请先归入特性');
     const before = input.id ? current(projectId, input.id, input.expectedVersion || 0) : null;
     if (before && before.featureId !== featureId) fail('Phase 不属于该特性');
     if (before?.deliveredAt) fail('请先重新打开已交付 Phase');

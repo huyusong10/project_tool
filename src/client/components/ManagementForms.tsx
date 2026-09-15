@@ -1,3 +1,5 @@
+import {assertCleanProjectDraft} from '../use-graph-draft';
+import {useSession} from '../app-context';
 import { migrateFeatureFields } from "../feature-storage-migration";
 import {OrganizationFields} from './RequirementIntake';
 import {isAssignablePerson} from '../assignable-people';
@@ -179,27 +181,28 @@ export function ProjectForm({
 }
 
 export function RequirementForm({
-  projectId,
+  projectId, defaultFeatureId, defaultPhaseId,
   initialRequirementIds,
   recheck,
   onRecheckChange,
   onClose,
 }: {
   projectId: string;
+  defaultFeatureId?:string;defaultPhaseId?:string;
   initialRequirementIds:string[];
   recheck:RequirementCreateRecheck|null;
   onRecheckChange:(value:RequirementCreateRecheck|null)=>void;
   onClose: () => void;
 }) {
   const client = useQueryClient();
-  const toast=useToast();
+  const toast=useToast(),{session}=useSession();
   const submitting = useRef(false);
   const initial=recheck?.draft;
   const unknown=Boolean(recheck);
   const [checking,setChecking]=useState(false),[checkError,setCheckError]=useState('');
   const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">(initial?.plannedEnd&&!initial.plannedStart?"deadline":"start");
   const [scheduleDate, setScheduleDate] = useState(initial?.plannedEnd||initial?.plannedStart||"");
-  const [title,setTitle]=useState(initial?.title||''),[featureId,setFeatureId]=useState(initial?.featureId||''),[phaseId,setPhaseId]=useState(initial?.phaseId||''),[placementReason,setPlacementReason]=useState(initial?.reason||''),[ownerId, setOwnerId] = useState(initial?.ownerId||""),[templateId, setTemplateId] = useState(initial?.templateId||"");
+  const [title,setTitle]=useState(initial?.title||''),[featureId,setFeatureId]=useState(initial?.featureId||defaultFeatureId||''),[phaseId,setPhaseId]=useState(initial?.phaseId||defaultPhaseId||''),[placementReason,setPlacementReason]=useState(initial?.reason||''),[ownerId, setOwnerId] = useState(initial?.ownerId||""),[templateId, setTemplateId] = useState(initial?.templateId||"");
   const [background,setBackground]=useState(initial?.background||''),[acceptanceCriteria,setAcceptanceCriteria]=useState(initial?.acceptanceCriteria||''),[referenceUrl,setReferenceUrl]=useState(initial?.referenceUrl||'');
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, projectId],
@@ -214,7 +217,7 @@ export function RequirementForm({
   const templates = templatesQuery.data || [];
   const people = peopleQuery.data || [];
   const mutation = useMutation({
-    mutationFn: (data: RequirementFormInput) => api<Requirement>("/api/requirements", { method: "POST", body: jsonBody(data) }),
+    mutationFn: async (data: RequirementFormInput) => {await assertCleanProjectDraft(session.accountId||'guest',projectId,data.phaseId?{requirementId:'',phaseId:data.phaseId,action:'phase'}:undefined);return api<Requirement>("/api/requirements", { method: "POST", body: jsonBody(data) });},
     onMutate:data=>onRecheckChange({draft:data,baselineIds:recheck?.baselineIds||initialRequirementIds}),
     onSuccess: () => {
       onRecheckChange(null);
@@ -224,7 +227,7 @@ export function RequirementForm({
     onError: error=>{if(!isWriteOutcomeUnknown(error))onRecheckChange(null);},
     onSettled: () => { submitting.current = false; },
   });
-  const matchesDraft=(item:Requirement,draft:RequirementFormInput)=>item.projectId===projectId&&item.title===canonicalizeLabel(draft.title)&&item.ownerId===(draft.ownerId||null)&&item.background===(draft.background.trim()||null)&&item.acceptanceCriteria===(draft.acceptanceCriteria.trim()||null)&&item.referenceUrl===(draft.referenceUrl.trim()||null)&&(item.featureId||null)===(draft.featureId||null)&&(item.phaseId||null)===(draft.phaseId||null)&&(!draft.templateId||item.templateId===draft.templateId)&&(!draft.plannedStart||item.plannedStart===draft.plannedStart)&&(!draft.plannedEnd||item.plannedEnd===draft.plannedEnd);
+  const matchesDraft=(item:Requirement,draft:RequirementFormInput)=>item.projectId===projectId&&item.title===canonicalizeLabel(draft.title)&&item.ownerId===(draft.ownerId||null)&&item.background===(draft.background.trim()||null)&&item.acceptanceCriteria===(draft.acceptanceCriteria.trim()||null)&&item.referenceUrl===(draft.referenceUrl.trim()||null)&&(!draft.featureId||item.featureId===draft.featureId)&&(item.phaseId||null)===(draft.phaseId||null)&&(!draft.templateId||item.templateId===draft.templateId)&&(!draft.plannedStart||item.plannedStart===draft.plannedStart)&&(!draft.plannedEnd||item.plannedEnd===draft.plannedEnd);
   const checkLatest=async()=>{if(!recheck||checking)return;setChecking(true);setCheckError('');try{const latest=await api<Requirement[]>(`/api/requirements?projectId=${encodeURIComponent(projectId)}`,{readOnly:true});client.setQueryData([...keys.requirements,projectId],latest);const baseline=new Set(recheck.baselineIds),created=latest.filter(item=>!baseline.has(item.id)&&matchesDraft(item,recheck.draft));if(created.length===1){onRecheckChange(null);invalidateRequirementViews(client,created[0].id);toast.success('已核对最新状态：需求已创建');onClose();return;}if(created.length===0){onRecheckChange(null);mutation.reset();setCheckError('未发现本次新增需求，已恢复原输入，可以重新提交。');return;}setCheckError('发现多个可能的新需求，暂不解除锁定，请核对需求列表和操作记录。');}catch(error){setCheckError(error instanceof Error?error.message:'需求列表读取失败');}finally{setChecking(false);}};
   return (
     <Modal title="新建需求" closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>

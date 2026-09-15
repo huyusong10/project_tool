@@ -78,7 +78,7 @@ export type IssuePage = {
   };
 };
 export type Requirement = import('../shared/delivery').DeliveryFields & import('../shared/intake').Organization & Partial<import('../shared/delivery').ProcessingResult> & {
-  readinessIssues?:string[];
+  sortOrder?:number;readinessIssues?:string[];
   stageResetAt?:string|null;executionStage?:import('../shared/execution-stage').ExecutionStage;milestones?:import('../shared/paths').PathMilestone[];
   pathRisk?: import('../shared/paths').PathRisk;
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;

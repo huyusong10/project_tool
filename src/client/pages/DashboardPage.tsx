@@ -1,1 +1,1 @@
-export {ProgressWorkspacePage as DashboardPage} from './ProgressWorkspacePage';
+export {ProjectWorkspacePage as DashboardPage} from './ProjectWorkspacePage';

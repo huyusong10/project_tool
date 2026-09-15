@@ -21,7 +21,7 @@
 | `requirements[]` | `key/title` 必填；`action` 为 `create/update/skip` |
 | `background/referenceUrl` | 原始需求正文与 HTTP(S) 来源链接 |
 | `acceptanceCriteria` | 完成标准 |
-| `feature/ownerId` | 未指定特性时归入“其他特性”；负责人可选，不自动选择人员 |
+| `feature/ownerId` | 未指定特性时归入“其他需求”；负责人可选，不自动选择人员 |
 | `plannedStart/plannedEnd/durationDays` | 可选计划日期、工作日工期 |
 | `existingId/expectedVersion` | 更新已有需求时必填；未提交的资料保留原值 |
 | `confirmAdditional` | 重名确需另建时设为 `true` |
@@ -47,7 +47,7 @@ REST 路径前缀为 `/api/projects/:projectId`；MCP 参数加入 `projectId`�
 
 预览传 `{package}`。保存传回规范化 `package/expectedRevision/previewToken`，增加 UUID `batchId`。单项失败整批回滚；结果未知时先查回执，重试复用原批次和内容。并发修改后重新预览。
 
-项目经理管理特性和导入。批量特性传 `requirements:[{id,expectedVersion}]` 与 `featureId`；`null` 表示归入普通的“其他特性”；新建省略特性也采用此归属。工具、skill 和案例随仓库同步维护。
+项目经理管理特性和导入。批量特性传 `requirements:[{id,expectedVersion}]` 与 `featureId`；`null` 表示归入系统归类“其他需求”；新建省略特性也采用此归属。工具、skill 和案例随仓库同步维护。
 
 ## 总体进展
 
@@ -100,3 +100,6 @@ REST 路径前缀为 `/api/projects/:projectId`；MCP 参数加入 `projectId`�
 ## 特性分期与执行阶段
 
 Phase、交付快照、阶段计算、提测和迁移规则见 [特性分期说明](feature-phases.md)。批量安排同时支持 `featureId/phaseId/reason`；导入版本 3 使用 `feature/phase` 和工作项可选 `workStage`。
+
+
+清单顺序与批量操作：`order_outline` 传对象类型、父级和完整同级 `items:[{id,expectedVersion}]`；`archive_features` 原子归档所选特性。排序和 `update_requirement_placement` 返回 `undo`，可交给 `restore_outline` 核对版本后撤销；涉及已推进 Phase 时填写原因。`query_requirements(sort=manual)` 读取人工顺序，默认仍按名称。系统归类以 `kind=other` 标识，每项目最多一个，置底且不能改名、归档、删除或新建 Phase／特性规划关系；历史引用保留。

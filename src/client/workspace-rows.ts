@@ -29,7 +29,7 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis,sort='n
         plannedStart:n.plannedStart,plannedEnd:n.plannedEnd,status:old?.status||'not_started',progress:old?.progress||0,
         actualStart:old?.actualStart||null,actualEnd:old?.actualEnd||null,sortOrder:savedOrder.get(n.id)??nextOrder+index} as WorkItem;
     }).sort((a,b)=>a.sortOrder-b.sortOrder||(savedRank.get(a.id)??Number.MAX_SAFE_INTEGER)-(savedRank.get(b.id)??Number.MAX_SAFE_INTEGER));
-    return {...saved,id:r.id,projectId:r.projectId,title:r.title,featureId:r.featureId,phaseId:r.phaseId,
+    return {...saved,id:r.id,projectId:r.projectId,title:r.title,sortOrder:r.sortOrder,featureId:r.featureId,phaseId:r.phaseId,
       background:r.background,acceptanceCriteria:r.acceptanceCriteria,ownerId:r.ownerId,ownerName:r.ownerName,
       plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,workItems:works,status:saved?.status||'not_started',progress:saved?.progress||0,
       executionStage:saved?.executionStage,actualStart:saved?.actualStart||null,actualEnd:saved?.actualEnd||null} as Requirement;
@@ -41,10 +41,12 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis,sort='n
     children:r.deletedAt?[]:[...r.workItems].sort((a,b)=>(a.sortOrder??0)-(b.sortOrder??0)).map(w=>({id:w.id,kind:'work',title:w.title,featureId,phaseId,requirementId:r.id,requirement:r,work:w,formalRequirement:formal.get(r.id),formalWork:formal.get(r.id)?.workItems.find(old=>old.id===w.id),
       temporary:!formal.get(r.id)?.workItems.some(old=>old.id===w.id),children:[]})),
   });
-  const byTitle=compareProgressTitles;
+  const byTitle=(a:Parameters<typeof compareProgressTitles>[0]&{sortOrder?:number;requirement?:Requirement},b:Parameters<typeof compareProgressTitles>[0]&{sortOrder?:number;requirement?:Requirement})=>sort==='manual'?((a.sortOrder??a.requirement?.sortOrder??0)-(b.sortOrder??b.requirement?.sortOrder??0))||compareProgressTitles(a,b):compareProgressTitles(a,b);
   const firstName=(id:string)=>requirements.filter(r=>r.featureId===id).sort(byTitle)[0]?.title;
   const featureOrder=new Map(features.map(f=>[f.id,firstName(f.id)]));
   return [...features].sort((a,b)=>{
+    if((a.kind==='other')!==(b.kind==='other'))return a.kind==='other'?1:-1;
+    if(sort==='manual')return a.sortOrder-b.sortOrder||compareProgressNames(a.name,b.name);
     if(sort==='feature')return compareProgressNames(a.name,b.name)||a.id.localeCompare(b.id);
     const first=featureOrder.get(a.id),second=featureOrder.get(b.id);
     return first&&second?compareProgressNames(first,second)||compareProgressNames(a.name,b.name):first?-1:second?1:compareProgressNames(a.name,b.name);
@@ -56,7 +58,7 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis,sort='n
     ].sort(byTitle)}));
     const unassigned=own.filter(r=>!r.phaseId);
     phases.push(...unassigned.map(r=>requirementRow(r,f.id,'unassigned')));
-    return {id:'feature:'+f.id,kind:'feature',title:f.name,featureId:f.id,feature:f,archived:!!f.archivedAt,children:phases};
+    return {id:'feature:'+f.id,kind:'feature',title:f.kind==='other'?'其他需求':f.name,featureId:f.id,feature:f,archived:!!f.archivedAt,children:phases};
   });
 }
 

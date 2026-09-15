@@ -37,7 +37,7 @@ description: 通过 MCP 将原始需求直接录入 project-manage，按需拆�
 
 提交结果未知或发生版本冲突时，先读取 get_feature_overview 核对，避免重复保存。原始需求录入的授权不包含代替人类判断是否符合预期。
 
-特性长期目标使用 save_feature 的 description，排序使用 sortOrder。空特性可以先记录目标，不自动创建占位需求。查看关系用 get_path_graph：view=features 为顶层，view=feature 加 featureId 为特性内需求图，新建未指定特性或归属传 null 时归入普通的“其他特性”。unassigned 仅保留历史查询入口；旧 view=project/requirement 保持原义。
+特性长期目标使用 save_feature 的 description，排序使用 sortOrder。空特性可以先记录目标，不自动创建占位需求。查看关系用 get_path_graph：view=features 为顶层，view=feature 加 featureId 为特性内需求图，新建未指定特性或归属传 null 时归入系统归类“其他需求”。unassigned 仅保留历史查询入口；旧 view=project/requirement 保持原义。
 
 用户明确给出特性先后关系时，用 list_feature_relations → save_feature_relation 维护 sourceFeatureId、targetFeatureId、note；修改传 id 和 expectedVersion。人工规划与需求实际依赖分开，规划连线不参与排期，也不自动转成需求依赖。同一章节顺序不构成规划关系。
 
@@ -74,3 +74,6 @@ MCP 不再使用条款关联、落实范围、交付范围、执行模式切换�
 list_work_items 支持 featureId、phaseId、workStage；phaseId=unassigned 查询未安排 Phase，workStage=unclassified 查询未分类。需求默认按名称编号自然排序，工作项默认按需求编号及流程顺序；原排序分别指定 sort=updated 或 planned_end。筛选排序在分页前生效，汇总完整结果需读取所有页，不能只统计第一页。
 
 导出项目图显式传 view=features，旧默认 project 仍表示需求汇总。SVG 显示 Phase 标签和区域；自动布局先排列拓扑，再确定外框，layout.nodeSizes/regions 返回尺寸。导出不保存坐标，也不读取网页未保存的草稿。
+
+
+清单顺序与批量操作：`order_outline` 传对象类型、父级和完整同级 `items:[{id,expectedVersion}]`；`archive_features` 原子归档所选特性。排序和 `update_requirement_placement` 返回 `undo`，可交给 `restore_outline` 核对版本后撤销；涉及已推进 Phase 时填写原因。`query_requirements(sort=manual)` 读取人工顺序，默认仍按名称。系统归类以 `kind=other` 标识，每项目最多一个，置底且不能改名、归档、删除或新建 Phase／特性规划关系；历史引用保留。

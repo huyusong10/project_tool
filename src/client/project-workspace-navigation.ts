@@ -1,3 +1,4 @@
+import {readWorkspaceLocation,workspaceParams,workspacePreferenceKey,type WorkspaceLocation} from './workspace-location';
 export type ProjectTask='scope'|'progress';
 export const workspacePaths=['/','/features','/paths','/requirements','/execution','/analytics','/actions'];
 export const isProjectWorkspace=(pathname:string)=>workspacePaths.includes(pathname);
@@ -33,6 +34,7 @@ export function rememberProjectTask(account:string,project:string,pathname:strin
   try{sessionStorage.setItem(key(account,project,projectTask(pathname)),pathname+search);}catch{/* Current navigation remains usable. */}
 }
 export function projectTaskUrl(account:string,project:string,task:ProjectTask,current?:URLSearchParams){
+  try{const location=current?.has('workspaceView')?readWorkspaceLocation(current,project):JSON.parse(localStorage.getItem(workspacePreferenceKey(account,project))||'null') as WorkspaceLocation|null;if(location?.projectId===project)return '/?'+workspaceParams({...location,view:task==='scope'?'graph':'progress'},undefined,current);}catch{/* Legacy entry below. */}
   let saved='';try{saved=sessionStorage.getItem(key(account,project,task))||'';}catch{/* Use the explicit context. */}
   const target=new URL(saved|| (task==='scope'?'/?view=features&mode=graph':'/execution'),'http://workspace.local');
   if(current){

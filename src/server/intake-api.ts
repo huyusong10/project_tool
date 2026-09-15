@@ -1,3 +1,5 @@
+import {orderOutline,archiveFeatures,restoreOutline} from './services/outline';
+import {outlineOrderInput,featureArchiveBatchInput,outlineRestoreInput} from '../shared/outline';
 import { listFeaturePhases, saveFeaturePhase, commandFeaturePhase } from './services/feature-phases';
 import { phaseInput, phaseCommand } from '../shared/feature-phases';
 import { recordTestSubmission } from './services/test-submission';
@@ -20,6 +22,9 @@ function operation<T extends z.ZodObject>(name:string,description:string,method:
   return {name,description,method,path:base+path,inputSchema,execute:(value,actor)=>run(inputSchema.parse(value),actor)};
 }
 export const intakeOperations:Operation[]=[
+  operation('restore_outline','撤销排序或需求移动；核对涉及的完整同级集合和版本，冲突整批回滚','POST','/outline-restore',outlineRestoreInput.extend(project),(v,a)=>{const {projectId,...input}=v;return restoreOutline(projectId,input,a);}),
+  operation('order_outline','按人工顺序排列完整同级集合；携带全部对象版本，冲突整批回滚','POST','/outline-order',outlineOrderInput.extend(project),(v,a)=>{const {projectId,...input}=v;return orderOutline(projectId,input,a);}),
+  operation('archive_features','批量归档特性；任一特性存在未完成需求或版本冲突则整批回滚','POST','/features/archive-batch',featureArchiveBatchInput.extend(project),(v,a)=>{const {projectId,...input}=v;return archiveFeatures(projectId,input,a);}),
   operation('list_feature_phases','读取特性 Phase、阶段分布与交付历史','GET','/feature-phases',z.object({...project,featureId:z.string().optional()}).strict(),(v,a)=>listFeaturePhases(v.projectId,v.featureId,a)),
   operation('save_feature_phase','创建或修改 Phase；推进后的范围日期调整需要原因','POST','/features/:featureId/phases',phaseInput.extend({...project,featureId:z.string()}),(v,a)=>{const {projectId,featureId,...input}=v;return saveFeaturePhase(projectId,featureId,input,a);}),
   ...(['deliver','reopen','delete'] as const).map(action=>operation(action+'_feature_phase',({deliver:'确认 Phase 交付；全部有效需求完成后操作',reopen:'重新打开 Phase；填写原因并保留交付记录',delete:'删除没有需求及交付历史的空 Phase'})[action],action==='delete'?'DELETE':'POST',action==='delete'?'/feature-phases/:phaseId':'/feature-phases/:phaseId/'+action,phaseCommand.extend({...project,phaseId:z.string()}),(v,a)=>{const{projectId,phaseId,...input}=v;return commandFeaturePhase(projectId,phaseId,action,input,a);})),

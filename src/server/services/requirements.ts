@@ -26,7 +26,7 @@ export type RequirementRecord = DeliveryFields & import('../../shared/intake').O
   stageResetAt?:string|null; executionStage?:ExecutionStage; milestones?: import('../../shared/paths').PathMilestone[];
   readinessIssues?:string[];
   pathRisk?: PathRisk; pathEnabled?:number;
-  id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
+  sortOrder?:number; id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   background: string | null; acceptanceCriteria: string | null; referenceUrl: string | null; sourceNotes?: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number | null; progressGap?: number;
   scheduleComplete?: boolean;
@@ -44,7 +44,7 @@ export const requirementSelect = `SELECT EXISTS(SELECT 1 FROM project_people op 
     (SELECT name FROM people WHERE id=r.acceptance_owner_id) AS acceptanceOwnerName,
     EXISTS(SELECT 1 FROM project_people ap JOIN accounts aa ON aa.person_id=ap.person_id JOIN people person ON person.id=ap.person_id WHERE ap.project_id=r.project_id AND ap.person_id=r.acceptance_owner_id AND ap.project_role IN ('member','manager') AND aa.status='active' AND aa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS acceptanceOwnerValid,r.id, r.project_id AS projectId, pr.name AS projectName,
   r.template_id AS templateId, t.name AS templateName, r.title,
-  r.background, r.source_notes AS sourceNotes, r.acceptance_criteria AS acceptanceCriteria, r.reference_url AS referenceUrl, r.phase_id AS phaseId,(SELECT name FROM feature_phases fp WHERE fp.id=r.phase_id) AS phaseName,r.stage_reset_at AS stageResetAt,r.feature_id AS featureId,(SELECT name FROM features WHERE id=r.feature_id) AS featureName,
+  r.background, r.source_notes AS sourceNotes, r.acceptance_criteria AS acceptanceCriteria, r.reference_url AS referenceUrl, r.sort_order AS sortOrder,r.phase_id AS phaseId,(SELECT name FROM feature_phases fp WHERE fp.id=r.phase_id) AS phaseName,r.stage_reset_at AS stageResetAt,r.feature_id AS featureId,(SELECT CASE WHEN kind='other' THEN '其他需求' ELSE name END FROM features WHERE id=r.feature_id) AS featureName,
   r.owner_id AS ownerId, p.name AS ownerName, r.status, r.planned_start AS plannedStart,
   r.planned_end AS plannedEnd, r.progress, r.risk_level AS riskLevel, r.priority,
   r.accepted_at AS acceptedAt, r.accepted_by_account_id AS acceptedByAccountId, r.version,

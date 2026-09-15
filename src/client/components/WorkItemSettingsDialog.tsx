@@ -1,3 +1,5 @@
+import {assertCleanRequirementDraft} from '../use-graph-draft';
+import {useSession} from '../app-context';
 import { workStageLabels, workStages, type WorkStage } from "../../shared/execution-stage";
 import {isAssignablePerson} from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
@@ -31,6 +33,7 @@ type NewWorkItemDraft = {
 };
 
 export function WorkItemSettingsDialog({
+  initialCreate=false,
   requirement,
   people,
   canManageRequirement,
@@ -40,6 +43,7 @@ export function WorkItemSettingsDialog({
   onReload,
   onWriteNeedsRecheck,
 }: {
+  initialCreate?:boolean;
   requirement: Requirement;
   people: Person[];
   canManageRequirement: boolean;
@@ -49,9 +53,9 @@ export function WorkItemSettingsDialog({
   onReload: () => Promise<Requirement>;
   onWriteNeedsRecheck: () => void;
 }) {
-  const client = useQueryClient();
+  const client = useQueryClient(),{session}=useSession();
   const [createUnknown,setCreateUnknown]=useState(false),[reorderUnknown,setReorderUnknown]=useState(false),[inlineUnknown,setInlineUnknown]=useState(false),[deleteUnknown,setDeleteUnknown]=useState(false);
-  const [newItem, setNewItem] = useState<NewWorkItemDraft | null>(null);
+  const [newItem, setNewItem] = useState<NewWorkItemDraft | null>(()=>initialCreate?{title:"",milestoneLabel:"",ownerId:"",collaboratorIds:[],plannedStart:"",plannedEnd:"",baselineVersion:requirement.version,baselineStatus:requirement.status,sourceIds:requirement.workItems.map(i=>i.id)}:null);
   const [createNeedsRefresh, setCreateNeedsRefresh] = useState(false);
   const [createReadError, setCreateReadError] = useState("");
   const [createReading, setCreateReading] = useState(false);
@@ -141,7 +145,7 @@ export function WorkItemSettingsDialog({
     onSettled: () => { reorderSubmitting.current = false; },
   });
   const createItem = useMutation({
-    mutationFn: (draft: NewWorkItemDraft) => api<WorkItem>(`/api/requirements/${requirement.id}/work-items`, {
+    mutationFn: async (draft: NewWorkItemDraft) => {await assertCleanRequirementDraft(session.accountId||'guest',requirement.id,{action:'edit'});return api<WorkItem>(`/api/requirements/${requirement.id}/work-items`, {
       method: "POST",
       body: jsonBody({
         title: draft.title,
@@ -154,7 +158,7 @@ export function WorkItemSettingsDialog({
         expectedVersion: draft.baselineVersion,
         ...(draft.reason ? { reason: draft.reason } : {}),
       }),
-    }),
+    });},
     onSuccess: (_created, draft) => {
       scrollAfterCreateCount.current = draft.sourceIds.length;
       setNewItem(null);

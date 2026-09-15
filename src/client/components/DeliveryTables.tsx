@@ -1,3 +1,4 @@
+import {useProjectWorkspace} from '../project-workspace-context';
 import {SelectionActions} from './SelectionActions';
 import {Select} from './Select';
 import {useDeliveryForm} from '../use-delivery-form';
@@ -26,6 +27,7 @@ export function matchesDeliveryCard(c:GraphCard,data:PathAnalysis,p:URLSearchPar
   return matchesSearch([{text:c.title,weight:100},{text:r?.title||''}],p.get('q')||'')&&(!phase||p.get('view')==='requirement'||(r?.phaseId||'unassigned')===phase)&&(!workStage||c.workStage===workStage||workStage==='unclassified'&&!c.workStage)&&(!stage||p.get('view')==='requirement'||c.executionStage?.key===stage||r?.executionStage?.key===stage);
 }
 export function DeliveryFilters({params,setParam,feature,features=false,workItems=false,children}:{params:URLSearchParams;setParam:(key:string,value:string)=>void;feature?:FeatureOverview;features?:boolean;workItems?:boolean;children?:React.ReactNode}){
+  const workspace=useProjectWorkspace();
   const dateAnchor=useRef<HTMLButtonElement>(null),[datesOpen,setDatesOpen]=useState(false);
   return <div className="delivery-filters" aria-label="范围筛选" data-workspace-zone="tools" data-preserve-edit>
     <SearchInput value={params.get('q')||''} onChange={v=>setParam('q',v)} placeholder={features?'搜索特性与目标':workItems?'搜索工作项与里程碑':'搜索需求'}/>
@@ -39,8 +41,8 @@ export function DeliveryFilters({params,setParam,feature,features=false,workItem
         <button type="button" className="ghost-button" onClick={()=>{setParam('from','');setParam('through','');setDatesOpen(false);}}>清除日期</button>
       </AnchoredPopover>
     </>:workItems?<Select aria-label="工作阶段筛选" value={params.get('workStage')||''} onChange={e=>setParam('workStage',e.target.value)}><option value="">全部工作阶段</option>{Object.entries(workStageLabels).map(([id,label])=><option key={id} value={id}>{label}</option>)}<option value="unclassified">未分类</option></Select>:<Select aria-label="需求阶段筛选" value={params.get('stage')||''} onChange={e=>setParam('stage',e.target.value)}><option value="">全部阶段</option>{Object.entries({not_started:'未开始',analysis:'分析／设计',development:'开发',integration:'联调',test_submitted:'已提测',test_ready:'提测就绪',testing:'测试',parallel:'并行推进',completed:'已完成',cancelled:'已取消'}).map(([id,label])=><option key={id} value={id}>{label}</option>)}</Select>}
-    {feature&&<Select aria-label="Phase 筛选" value={params.get('phaseId')||''} onChange={e=>setParam('phaseId',e.target.value)}><option value="">全部 Phase</option>{feature.phases?.map(phase=><option key={phase.id} value={phase.id}>{phase.name}</option>)}<option value="unassigned">未安排 Phase</option></Select>}
-    <div className="delivery-filter-actions"><button className="ghost-button" onClick={()=>setParam('mode',params.get('mode')==='table'?'graph':'table')}>{params.get('mode')==='table'?'返回关系图':features?'特性清单':workItems?'工作项清单':'需求清单'}</button>{children}</div>
+    {feature&&!workspace&&<Select aria-label="Phase 筛选" value={params.get('phaseId')||''} onChange={e=>setParam('phaseId',e.target.value)}><option value="">全部 Phase</option>{feature.phases?.map(phase=><option key={phase.id} value={phase.id}>{phase.name}</option>)}<option value="unassigned">未安排 Phase</option></Select>}
+    <div className="delivery-filter-actions">{!workspace&&<button className="ghost-button" onClick={()=>setParam('mode',params.get('mode')==='table'?'graph':'table')}>{params.get('mode')==='table'?'返回关系图':features?'特性清单':workItems?'工作项清单':'需求清单'}</button>}{children}</div>
   </div>;
 }
 export function PhaseChip({phase,selected,onClick}:{phase:PhaseSummary;selected?:boolean;onClick:()=>void}){return <button className="delivery-phase-chip nodrag nopan" aria-pressed={!!selected} onClick={e=>{e.stopPropagation();onClick();}} title={phase.scope||'交付范围待明确'}><span className="delivery-phase-name">{phase.name}</span><PhaseStatusBadge phase={phase}/>{phase.overdue&&<span className="danger-text">逾期</span>}</button>;}

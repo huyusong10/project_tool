@@ -239,6 +239,13 @@
       "when": 1789362200000,
       "tag": "0033_requirement_feature_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1789430400000,
+      "tag": "0034_workspace_outline",
+      "breakpoints": true
     }
   ]
 }

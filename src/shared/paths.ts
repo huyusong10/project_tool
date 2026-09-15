@@ -23,7 +23,7 @@ export type PathWork = import('./forecast-basis').ExecutionMetadata & {
   blockedAt: string | null; blockedReason: string | null; milestoneLabel: string | null; ownerName: string | null;
 };
 export type PathRequirement = import('./intake').Organization & DeliveryFields & Partial<ProcessingResult> & {
-  executionStage?:import('./execution-stage').ExecutionStage; stageResetAt?:string|null; createdAt?:string;updatedAt?:string;
+  sortOrder?:number; executionStage?:import('./execution-stage').ExecutionStage; stageResetAt?:string|null; createdAt?:string;updatedAt?:string;
   acknowledgedDependencies?:string[]; version?:number; background?:string|null;acceptanceCriteria?:string|null;referenceUrl?:string|null;templateId?:string|null;
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[]; delayed?:boolean; scheduleComplete?:boolean;
   id: string; projectId: string; title: string; status: string; priority: string; ownerName: string | null;

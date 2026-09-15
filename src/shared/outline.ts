@@ -1,0 +1,13 @@
+import {z} from 'zod';
+export const outlineKind=z.enum(['feature','phase','requirement','work']);
+export type OutlineKind=z.infer<typeof outlineKind>;
+export const versionedOutlineItem=z.object({id:z.string().min(1),expectedVersion:z.number().int().positive()}).strict();
+export const outlineOrderInput=z.object({kind:outlineKind,parentId:z.string().min(1),items:z.array(versionedOutlineItem).min(1).max(10000)}).strict();
+export const featureArchiveBatchInput=z.object({items:z.array(versionedOutlineItem).min(1).max(1000)}).strict();
+export type OutlineOrderInput=z.infer<typeof outlineOrderInput>;
+export const outlineSnapshotSchema=z.object({kind:outlineKind,parentId:z.string().min(1),items:z.array(z.object({id:z.string().min(1),version:z.number().int().positive(),sortOrder:z.number().int().nonnegative()}).strict()).max(10000)}).strict();
+export const outlineRestoreInput=z.object({before:z.array(outlineSnapshotSchema).min(1).max(1001),expected:z.array(outlineSnapshotSchema).min(1).max(1001),reason:z.string().trim().max(2000).optional()}).strict();
+export type OutlineSnapshot=z.infer<typeof outlineSnapshotSchema>;
+export type OutlineUndo=z.infer<typeof outlineRestoreInput>;
+export type OutlineOrderResult=OutlineSnapshot&{undo:OutlineUndo};
+export const featureDisplayName=(feature:{name:string;kind?:string})=>feature.kind==='other'?'其他需求':feature.name;

@@ -119,6 +119,7 @@ export const templateItems = sqliteTable('template_items', {
 
 export const requirements = sqliteTable('requirements', {
   sourceNotes: text('source_notes'),
+  sortOrder: integer('sort_order').notNull().default(-1),
   featureId: text('feature_id').references(() => features.id, { onDelete: 'set null' }),
   phaseId: text('phase_id').references(() => featurePhases.id), stageResetAt: text('stage_reset_at'),
   forecastDuration: integer('forecast_duration'),
@@ -170,6 +171,7 @@ export const requirements = sqliteTable('requirements', {
     (${table.status} <> 'completed' AND ${table.progress} < 100)
   )`),
   index('requirements_group').on(table.featureId),
+  index('requirements_outline_order').on(table.projectId,table.featureId,table.phaseId,table.sortOrder),
   index('idx_requirements_project_status').on(table.projectId, table.status, table.deletedAt),
   index('idx_requirements_template').on(table.templateId),
   index('idx_requirements_owner').on(table.ownerId),
@@ -366,6 +368,7 @@ export const dependencyChangeReceipts = sqliteTable('dependency_change_receipts'
 export const deliveryCommitments = sqliteTable('delivery_commitments', {id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id),confirmedAt:text('confirmed_at').notNull(),snapshot:text('snapshot').notNull()},t=>[index('delivery_commitments_project_date').on(t.projectId,t.confirmedAt)]);
 
 export const features = sqliteTable('features', {
+  kind: text('kind').notNull().default('feature'),
   referenceLinks: text('reference_links').notNull().default('[]'),
   id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id,{onDelete:'cascade'}),name:text('name').notNull(),sortOrder:integer('sort_order').notNull().default(0),version:integer('version').notNull().default(1),...timestamps,
   expectation: text('expectation').notNull().default(''),
@@ -375,7 +378,7 @@ export const features = sqliteTable('features', {
   assessmentNote: text('assessment_note').notNull().default(''),
   assessedAt: text('assessed_at'),
   assessedBy: text('assessed_by').references(() => accounts.id, { onDelete: 'set null' }),
-},t=>[uniqueIndex('features_name').on(t.projectId,t.name)]);
+},t=>[uniqueIndex('features_name').on(t.projectId,t.name),uniqueIndex('features_system_other').on(t.projectId).where(sql`${t.kind} = 'other'`),check('features_kind_valid',sql`${t.kind} IN ('feature','other')`)]);
 export const featureRelations = sqliteTable('feature_relations', {
   id:text('id').primaryKey(),projectId:text('project_id').notNull().references(()=>projects.id,{onDelete:'cascade'}),
   sourceFeatureId:text('source_feature_id').notNull().references(()=>features.id,{onDelete:'cascade'}),
