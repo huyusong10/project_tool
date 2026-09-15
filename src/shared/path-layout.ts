@@ -22,7 +22,8 @@ export function portsFor(id: string, edges: LayoutEdge[]) {
 export async function layoutDependencyGraph(engine: {layout(graph: ElkNode): Promise<ElkNode>}, nodes: LayoutNode[], edges: LayoutEdge[], vertical = false): Promise<RoutedLayout> {
   const graph: ElkNode = { id: 'delivery', layoutOptions: {
     'elk.algorithm':'layered','elk.direction':vertical?'DOWN':'RIGHT','elk.edgeRouting':'ORTHOGONAL',
-    'elk.spacing.nodeNode':'38','elk.layered.spacing.nodeNodeBetweenLayers':'96', 'elk.spacing.edgeNode':'22',
+    // Separate components may gain cross-Phase edges later; leave room for their routing ports.
+    'elk.spacing.nodeNode':'38','elk.spacing.componentComponent':'64','elk.layered.spacing.nodeNodeBetweenLayers':'96', 'elk.spacing.edgeNode':'22',
     'elk.layered.spacing.edgeNodeBetweenLayers':'22','elk.spacing.edgeEdge':'14', 'elk.layered.mergeEdges':'false',
     'elk.layered.considerModelOrder.strategy':'NODES_AND_EDGES','elk.randomSeed':'1', 'elk.padding':'[top=24,left=24,bottom=24,right=24]',
   }, children: nodes.map(n=> {

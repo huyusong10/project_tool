@@ -60,6 +60,9 @@ export function useGanttNavigation({ values, asOfDate, storageKey, legacyKey, on
     const current = state.current, element = scrollRef.current;
     if (!element) return;
     const width = Math.max(1, current.size.width - current.size.fixed);
+    // Timeline annotations follow the visible date area without changing row geometry.
+    element.style.setProperty('--gantt-viewport-left', `${element.scrollLeft}px`);
+    element.style.setProperty('--gantt-viewport-width', `${width}px`);
     const first = ganttAnchorAt(current.dates, element.scrollLeft, current.scale.cellWidth).date;
     const last = ganttAnchorAt(current.dates, element.scrollLeft + width - 1, current.scale.cellWidth).date;
     const text = `${first.replaceAll('-', '/')} — ${last.replaceAll('-', '/')}`;

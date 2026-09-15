@@ -7,7 +7,7 @@
 .workspace-gantt-scroll::-webkit-scrollbar{width:12px;height:12px}
 .workspace-gantt-scroll::-webkit-scrollbar-track{background:var(--bg-surface-subtle)}
 .workspace-gantt-scroll::-webkit-scrollbar-thumb{background:var(--text-muted);border:3px solid var(--bg-surface-subtle);border-radius:8px}
-.workspace-gantt-grid{--row-label:320px;--row-actions:186px;--gantt-day-line:color-mix(in srgb,var(--border) 38%,transparent);--gantt-week-line:color-mix(in srgb,var(--border-strong) 60%,transparent);width:calc(var(--row-label) + var(--timeline-width) + var(--row-actions));min-width:100%}
+.workspace-gantt-grid{--row-label:320px;--row-actions:116px;--gantt-day-line:color-mix(in srgb,var(--border) 38%,transparent);--gantt-week-line:color-mix(in srgb,var(--border-strong) 60%,transparent);width:calc(var(--row-label) + var(--timeline-width) + var(--row-actions));min-width:100%}
 .workspace-gantt-heading,.workspace-gantt-row{display:grid;grid-template-columns:var(--row-label) var(--timeline-width) var(--row-actions)}
 .workspace-gantt-heading{position:sticky;top:0;z-index:6;background:var(--bg-surface);height:58px;border-bottom:1px solid var(--border)}
 .workspace-gantt-row{min-height:50px;border-bottom:1px solid color-mix(in srgb,var(--border) 60%,transparent);--row-bg:var(--bg-surface)}
@@ -18,19 +18,16 @@
 .workspace-row-wrapper{display:contents}
 .workspace-row-label,.workspace-row-actions{position:sticky;z-index:3;display:flex;align-items:center;min-width:0;background:var(--row-bg,var(--bg-surface));font-size:12px}
 .workspace-row-label{left:0;gap:3px;padding-right:10px;overflow:hidden;border-right:1px solid var(--border-strong);box-shadow:3px 0 5px -4px var(--text-muted)}
-.workspace-row-meta{display:flex;align-items:center;gap:8px;min-height:22px;min-width:0;color:var(--text-secondary);font-size:12px}
+.workspace-row-meta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px;min-height:22px;min-width:0;color:var(--text-secondary);font-size:12px}
 .workspace-row-progress{display:flex;align-items:center;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .workspace-row-progress>.workspace-stage-summary{overflow:hidden;text-overflow:ellipsis}
 .workspace-row-meta>small{font-size:11px;color:var(--text-muted);white-space:nowrap}
 .workspace-row-owner{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted);font-size:12px}
 .workspace-row-actions{right:0;flex-direction:column;justify-content:center;padding:0 6px;gap:1px;border-left:1px solid var(--border-strong);box-shadow:-3px 0 5px -4px var(--text-muted)}
 .workspace-row-actions.has-execution{flex-direction:row;justify-content:space-between;gap:6px}
-.workspace-row-actions.has-execution .workspace-row-progress{flex:0 0 52px}
 .workspace-row-tools{display:flex;align-items:center;justify-content:center;gap:6px;flex-shrink:0;max-width:100%;min-width:0}
 .workspace-row-actions.has-execution .workspace-row-tools{width:104px}
-.workspace-row-actions .workspace-row-progress{max-width:100%;gap:4px}
-.workspace-row-actions .workspace-stage-summary{font-size:11px;line-height:18px}
-.workspace-row-actions .workspace-row-progress:empty,.workspace-row-tools:empty{display:none}
+.workspace-row-tools:empty{display:none}
 .workspace-gantt-heading :is(.workspace-row-label,.workspace-row-actions){font-size:12px;font-weight:600;color:var(--text-muted);padding:0 10px;z-index:10;background:var(--bg-surface-subtle)}
 .workspace-gantt-row[aria-selected=true]{--row-bg:var(--accent-soft)}
 .workspace-gantt-row:hover{--row-bg:var(--bg-hover)}
@@ -196,17 +193,53 @@
 .unified-workspace .workspace-row-actions .work-next-action,.unified-workspace .workspace-row-actions .work-action-state{box-sizing:border-box;width:66px;min-width:66px;max-width:66px;height:30px;min-height:30px;display:flex;align-items:center;justify-content:center;padding:0 4px;gap:4px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:none;border-radius:6px}
 .unified-workspace .workspace-row-actions .action-menu-trigger{box-sizing:border-box;width:30px;min-width:30px;height:30px;min-height:30px;padding:0;border:0;border-radius:6px;color:var(--text-muted);background:transparent}
 .unified-workspace .workspace-row-actions .primary-button,.unified-workspace .workspace-row-actions .ghost-button{box-sizing:border-box;width:96px;min-width:96px;max-width:96px;height:30px;min-height:30px;padding:0 6px;justify-content:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}
-.unified-workspace .workspace-row-actions .work-progress-link{font-size:12px;background:transparent;border:0;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;padding:0 3px;min-width:44px}
-.unified-workspace .workspace-row-actions .work-progress-link:hover{background:var(--accent-soft)}
+.unified-workspace .workspace-row-progress .work-progress-link{font-size:12px;background:transparent;border:0;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;padding:0 3px;min-width:44px}
+.unified-workspace .workspace-row-progress .work-progress-link:hover{background:var(--accent-soft)}
 .unified-workspace .workspace-progress-tools,.unified-workspace .workspace-time-tools{flex-wrap:nowrap;height:48px;min-height:48px;padding-top:0;padding-bottom:0;overflow-x:auto;scrollbar-width:none;box-sizing:border-box;flex:none}
 .unified-workspace .workspace-progress-tools>*{flex-shrink:0}.unified-workspace .workspace-progress-tools .search-box{flex-basis:190px;width:190px}
 .unified-workspace .workspace-time-tools .workspace-plan-legend{white-space:nowrap}
 .unified-workspace .workspace-time-tools>*{flex-shrink:0}.unified-workspace .workspace-time-tools .gantt-navigation{flex-wrap:nowrap;max-width:none}.unified-workspace .workspace-time-tools .gantt-visible-range{flex:none}
-@media(max-width:700px){.unified-workspace .workspace-progress-tools{display:flex;gap:8px;padding-inline:10px}.unified-workspace .workspace-progress-tools>.select-field{width:120px;flex-basis:120px}.unified-workspace .progress-status-filter{width:138px}.unified-workspace .progress-more-filter{width:108px}.unified-workspace .progress-reset{width:52px}.unified-workspace .workspace-time-tools{padding-inline:10px}.unified-workspace .workspace-plan-legend{display:none}.unified-workspace .workspace-gantt-grid{--row-label:240px;--row-actions:166px}.unified-workspace .workspace-row-actions{padding-inline:4px}.unified-workspace .workspace-row-actions.has-execution .workspace-row-progress{flex-basis:44px}.unified-workspace .workspace-gantt .workspace-row-actions .work-item-actions{flex-wrap:nowrap;justify-content:flex-end}.unified-workspace .workspace-gantt .workspace-row-actions .work-next-action{width:66px;min-width:66px}.unified-workspace .workspace-gantt .workspace-row-actions .work-item-actions .action-menu-trigger{width:30px}}
+@media(max-width:700px){.unified-workspace .workspace-progress-tools{display:flex;gap:8px;padding-inline:10px}.unified-workspace .workspace-progress-tools>.select-field{width:120px;flex-basis:120px}.unified-workspace .progress-status-filter{width:138px}.unified-workspace .progress-more-filter{width:108px}.unified-workspace .progress-reset{width:52px}.unified-workspace .workspace-time-tools{padding-inline:10px}.unified-workspace .workspace-plan-legend{display:none}.unified-workspace .workspace-gantt-grid{--row-label:240px;--row-actions:116px}.unified-workspace .workspace-row-actions{padding-inline:4px}.unified-workspace .workspace-row-actions.has-execution .workspace-row-progress{flex-basis:44px}.unified-workspace .workspace-gantt .workspace-row-actions .work-item-actions{flex-wrap:nowrap;justify-content:flex-end}.unified-workspace .workspace-gantt .workspace-row-actions .work-next-action{width:66px;min-width:66px}.unified-workspace .workspace-gantt .workspace-row-actions .work-item-actions .action-menu-trigger{width:30px}}
 @media(max-width:600px){
  .unified-workspace .workspace-gantt-grid{--row-label:170px;--row-actions:106px}
  .unified-workspace .workspace-row-actions.has-execution{flex-direction:column;gap:2px}.unified-workspace .workspace-row-actions.has-execution .workspace-row-progress{flex:0 0 auto}
  .unified-workspace .workspace-row-label{gap:3px;padding-right:4px}.unified-workspace .workspace-name-heading{gap:1px}
  .unified-workspace .workspace-row-title strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;line-height:1.4;overflow:hidden;word-break:break-word}
  .unified-workspace .workspace-name-heading .workspace-enter{width:20px;min-width:20px}
+}
+
+.workspace-stage-summary.is-parallel>span+span::before{content:" · "}
+
+/* Status stays beside its date track, including short bars and unscheduled rows. */
+.workspace-progress-window{position:absolute;left:calc(var(--gantt-viewport-left,0px) + 8px);width:max(0px,calc(var(--gantt-viewport-width,100%) - 16px));top:calc(var(--date-actual-top) - 3px);height:22px;display:flex;align-items:center;pointer-events:none;z-index:12}
+.workspace-progress-spacer{flex:0 1 auto;width:max(0px,calc(var(--progress-anchor) - var(--gantt-viewport-left,0px)));min-width:0}
+.workspace-progress-window .workspace-row-progress{flex:0 0 auto;max-width:100%;gap:7px;min-height:22px;padding:0 4px;border-radius:3px;background:var(--row-bg);color:var(--text-secondary);font-size:12px;pointer-events:auto;overflow:hidden;box-sizing:border-box}
+.workspace-row-progress>small{font-size:11px;white-space:nowrap}.workspace-row-progress>small:not(.danger-text){color:var(--text-muted)}
+.workspace-progress-window .work-progress-link{min-height:22px;line-height:20px;flex-shrink:0}
+.workspace-progress-window .workspace-stage-summary{min-width:0}
+.workspace-row-track .gantt-date-unplanned{display:none}
+.unified-workspace .workspace-row-actions,.unified-workspace .workspace-row-actions.has-execution{justify-content:flex-end;flex-direction:row}
+.unified-workspace .workspace-row-actions .work-action-state{display:none}
+.workspace-object-mark[data-work-status=not_started],.workspace-object-mark[data-work-status=cancelled]{color:var(--text-muted);background:transparent}
+.workspace-object-mark[data-work-status=in_progress]{color:var(--gantt-running);background:color-mix(in srgb,var(--gantt-running) 10%,transparent)}
+.workspace-object-mark[data-work-status=completed]{color:var(--gantt-completed);background:color-mix(in srgb,var(--gantt-completed) 10%,transparent)}
+
+@media(max-width:600px){
+ .unified-workspace .workspace-gantt-grid{--row-label:140px;--row-actions:72px}
+ .unified-workspace .workspace-gantt .workspace-row-actions .workspace-row-tools{width:66px;min-width:66px;height:64px}
+ .unified-workspace .workspace-gantt .workspace-row-actions .work-item-actions{width:66px;flex-direction:column;align-items:flex-end;gap:2px}
+ .unified-workspace .workspace-gantt .workspace-row-actions .primary-button,.unified-workspace .workspace-gantt .workspace-row-actions .ghost-button{width:66px;min-width:66px;max-width:66px;padding-inline:2px;font-size:11px}
+ .workspace-progress-window .workspace-row-progress{gap:4px;padding-inline:2px}
+ .workspace-progress-window .workspace-row-progress>small{display:none}
+}
+
+@media(max-width:600px){
+ .unified-workspace .workspace-row-actions{padding-inline:3px}
+ .unified-workspace .workspace-row-actions .work-item-action-row{flex-direction:column;align-items:flex-end;gap:2px;width:66px}
+ .workspace-progress-window:has(.is-parallel){top:calc(50% - 10px);height:40px}
+ .workspace-progress-window .workspace-stage-summary.is-parallel{display:flex;flex-direction:column;font-size:11px;line-height:18px;max-height:36px}
+ .workspace-stage-summary.is-parallel>span{overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+ .workspace-stage-summary.is-parallel .workspace-parallel-caption{display:none}
+ .workspace-stage-summary.is-parallel>span+span::before{content:none}
+ .workspace-stage-summary.is-parallel strong{font-size:11px}
 }

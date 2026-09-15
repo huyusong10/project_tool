@@ -8,6 +8,15 @@ import {projectPhaseOverview} from '../src/shared/phase-projection';
 import {executionDraftConflicts} from '../src/shared/execution-draft';
 import {routeFixedGraph} from '../src/client/fixed-routing';
 const empty={add:[],remove:[],estimates:[]};
+it('Phase 内互不依赖的需求也为跨 Phase 连线留出出口',async()=>{
+  const nodes=['a','b','c','d','next'].map(id=>({id,width:244,height:168})),edges=[{id:'cross-phase',source:'a',target:'next'}];
+  const definitions=[{id:'first',name:'第一批',nodeIds:['a','b','c','d']},{id:'second',name:'第二批',nodeIds:['next']}].map(r=>({...r,scope:null,x:0,y:0,width:320,height:204}));
+  const before=structuredClone(nodes),grouped=await arrangePhaseRegions(new ELK(),nodes,edges,definitions,{}),positioned=nodes.map(n=>({...n,...grouped.positions[n.id]}));
+  const obstacles=grouped.regions.map(r=>({left:r.x+8,right:r.x+r.width-8,top:r.y,bottom:r.y+136}));
+  const result=routeFixedGraph(positioned,edges,obstacles);
+  expect(result.edges['cross-phase'].points.length).toBeGreaterThan(1);expect(nodes).toEqual(before);
+  for(const [i,b] of result.edges['cross-phase'].points.entries())if(i){const a=result.edges['cross-phase'].points[i-1];for(const n of positioned){const crosses=a.y===b.y?a.y>n.y&&a.y<n.y+n.height&&Math.max(a.x,b.x)>n.x&&Math.min(a.x,b.x)<n.x+n.width:a.x>n.x&&a.x<n.x+n.width&&Math.max(a.y,b.y)>n.y&&Math.min(a.y,b.y)<n.y+n.height;expect(crosses).toBe(false);}}
+});
 it('连线避开 Phase 标题区域，布局不增加业务节点或执行依赖',()=>{
   const nodes=[{id:'a',x:0,y:160,width:244,height:168},{id:'b',x:620,y:160,width:244,height:168}],edges=[{id:'a>b',source:'a',target:'b'}];
   const reserved={left:300,right:560,top:130,bottom:310},result=routeFixedGraph(nodes,edges,[reserved]);

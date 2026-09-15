@@ -2,7 +2,7 @@ import {expect,test} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
 import {chooseOption} from './select-helper';
 
-test('名称负责人固定在左，进展固定在右，条内数字与摘要不移动表格',async({page},info)=>{
+test('名称负责人固定在左，进展在时间轴内，摘要不移动表格',async({page},info)=>{
   const f=await phaseFixture(page),work=f.testing.workItems[1];
   const response=await page.request.post('/api/requirements/'+f.testing.id+'/progress',{data:{expectedVersion:work.version,workItemId:work.id,workItemPercent:70,content:'验证会议中直接阅读最近进展'}});
   expect(response.ok(),await response.text()).toBe(true);
@@ -21,9 +21,10 @@ test('名称负责人固定在左，进展固定在右，条内数字与摘要�
   expect(await grid.boundingBox()).toEqual(before);expect(requests).toHaveLength(0);
   await page.screenshot({path:info.outputPath('progress-summary.png'),animations:'disabled'});
   await page.keyboard.press('Escape');await expect(tooltip).toBeHidden();
-  const position=await row.locator('.workspace-row-progress').boundingBox();
+  const progressVisible=()=>row.locator('.workspace-row-progress').evaluate(el=>{const b=el.getBoundingClientRect(),r=el.closest('[data-row-id]')!;return b.left>=r.querySelector('.workspace-row-label')!.getBoundingClientRect().right&&b.right<=r.querySelector('.workspace-row-actions')!.getBoundingClientRect().left;});
+  await expect.poll(progressVisible).toBe(true);
   await grid.evaluate(el=>{el.scrollLeft=Math.max(0,el.scrollWidth-el.clientWidth);});
-  expect(await row.locator('.workspace-row-progress').boundingBox()).toEqual(position);
+  await expect.poll(progressVisible).toBe(true);
   expect(await monthVisible()).toBe(true);
   const cover=await row.locator('.workspace-row-progress').evaluate(el=>{const b=el.getBoundingClientRect();return el.contains(document.elementFromPoint(b.right-4,b.top+b.height/2));});expect(cover).toBe(true);
   await grid.evaluate(el=>{el.scrollLeft=0;});

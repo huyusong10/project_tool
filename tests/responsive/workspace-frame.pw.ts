@@ -28,7 +28,7 @@ test('视角、层级、画布编辑与概览浮窗保持公共框架坐标',asy
   await headerAction(page,'放弃修改');await expect.poll(()=>frame(page)).toEqual(initial);
   await page.getByRole('button',{name:'展开概览',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();expect(await frame(page)).toEqual(initial);
   await page.screenshot({path:info.outputPath('overview-dialog.png'),animations:'disabled'});await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:'展开概览',exact:true})).toBeFocused();expect(await frame(page)).toEqual(initial);
-  await page.setViewportSize({width:390,height:844});const narrow=await frame(page);
+  await page.setViewportSize({width:390,height:844});await expect(page.getByRole('complementary',{name:'主导航'})).toHaveCSS('width','72px');await expect(page.locator('.page-toolbar')).toHaveCSS('height','88px');const narrow=await frame(page);
   for(const name of ['进展表','特性清单','关系图']){await view(page,name).click();await expect.poll(()=>frame(page)).toEqual(narrow);}
   await page.getByRole('button',{name:'编辑画布',exact:true}).click();await expect.poll(()=>frame(page)).toEqual(narrow);await page.screenshot({path:info.outputPath('narrow-toolbar.png'),animations:'disabled'});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);

@@ -345,7 +345,7 @@ export function GraphScene(props: DependencyGraphProps) {
   const hint=gesture?.issue?.message||(gesture?.target?cards.find(c=>c.id===hintSource)?.title+' 完成后 '+cards.find(c=>c.id===hintTarget)?.title+' 开始':gesture?gesture.reconnectEnd==='source'?'选择新的前置卡片，完成后进入当前后续':'拖到后续卡片，或点击卡片完成连接':'');
   const openNode=(id:string)=>{const card=cards.find(c=>c.id===id);if(card&&props.onOpenNode&&!gesture){runtime.commitFields(false);props.onOpenNode(card);}};
   return <div className="dependency-canvas" ref={container} role="region" tabIndex={0} aria-label="动态交付依赖图"
-    data-layout-ready={!busy} data-layout-phase={phase} data-rendered-layout={rendered} data-connection-active={!!gesture}
+    data-layout-ready={phase==='ready'} data-layout-phase={phase} data-rendered-layout={rendered} data-connection-active={!!gesture}
     onPointerDownCapture={event=>{
       const endpoint=(event.target as HTMLElement).closest<HTMLElement>('[data-reconnect-end]');
       if(endpoint&&props.reconnect&&event.button===0){event.preventDefault();event.stopPropagation();const end=endpoint.dataset.reconnectEnd as 'source'|'target';connection.begin(end==='source'?props.reconnect.target:props.reconnect.source,'right',{x:event.clientX,y:event.clientY},event.pointerId,end);return;}

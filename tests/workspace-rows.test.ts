@@ -81,3 +81,11 @@ it('旧筛选链接保留，任意多选与全不选能够往返',()=>{
   expect(progressStatesLabel('not_started,in_progress')).toBe('尚未结束');
   expect(selectedProgressStates(progressStatesValue(['completed','not_started']))).toEqual(['not_started','completed']);
 });
+
+it('取消工作保留执行记录，图形草稿移除的其他工作不重新出现',()=>{
+  const report=fixture(),r=report.requirements[0];r.workItems.push({...r.workItems[0],id:'cancelled',title:'取消的工作',status:'cancelled',sortOrder:1});
+  const projection={requirements:[r],nodes:[]} as unknown as import('../src/shared/paths').PathAnalysis;
+  const rows=workspaceRows(report,projection),works=flattenWorkspaceRows(rows,{},true).filter(({row})=>row.kind==='work').map(({row})=>row);
+  expect(works.map(w=>w.id)).toEqual(['cancelled']);expect(works[0].formalWork).toBe(r.workItems[1]);expect(works[0].work?.status).toBe('cancelled');
+  expect(flattenWorkspaceRows(filterWorkspaceRows(rows,{...filters,status:'in_progress'}),{},true).some(({row})=>row.id==='cancelled')).toBe(false);
+});

@@ -28,7 +28,10 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis,sort='n
       return {...old,id:n.id,requirementId:r.id,title:n.title,workStage:n.workStage,ownerId:n.ownerId,ownerName:n.ownerName,
         plannedStart:n.plannedStart,plannedEnd:n.plannedEnd,status:old?.status||'not_started',progress:old?.progress||0,
         actualStart:old?.actualStart||null,actualEnd:old?.actualEnd||null,sortOrder:savedOrder.get(n.id)??nextOrder+index} as WorkItem;
-    }).sort((a,b)=>a.sortOrder-b.sortOrder||(savedRank.get(a.id)??Number.MAX_SAFE_INTEGER)-(savedRank.get(b.id)??Number.MAX_SAFE_INTEGER));
+    });
+    // The dependency graph omits cancelled work; the progress table still shows its execution history.
+    works.push(...(saved?.workItems||[]).filter(w=>w.status==='cancelled'&&!works.some(n=>n.id===w.id)));
+    works.sort((a,b)=>a.sortOrder-b.sortOrder||(savedRank.get(a.id)??Number.MAX_SAFE_INTEGER)-(savedRank.get(b.id)??Number.MAX_SAFE_INTEGER));
     return {...saved,id:r.id,projectId:r.projectId,title:r.title,sortOrder:r.sortOrder,featureId:r.featureId,phaseId:r.phaseId,
       background:r.background,acceptanceCriteria:r.acceptanceCriteria,ownerId:r.ownerId,ownerName:r.ownerName,
       plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,workItems:works,status:saved?.status||'not_started',progress:saved?.progress||0,
