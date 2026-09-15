@@ -14,6 +14,7 @@ import {readWorkspaceLocation,workspaceAncestors,workspaceParams,workspacePrefer
 import {WorkspaceRuntime,WorkspaceRuntimeContext} from '../workspace-runtime';
 import {draftNetwork} from '../dependency-draft';
 import {useDependencyDraft,clearProjectGraphDrafts} from '../use-graph-draft';
+import {ToolbarStatus} from '../components/ToolbarStatus';
 import {PageHeader} from '../components/PageHeader';
 import {ViewTabs} from '../components/ViewTabs';
 import {WorkspaceOverview} from '../components/WorkspaceOverview';
@@ -75,10 +76,10 @@ function ProjectWorkspace({report,data}:{report:Dashboard;data:PathAnalysis}){
   const status=draft.pending?'提交结果待核对':draft.conflict?'版本冲突':draft.count?draft.count+' 项未保存':Object.keys(draft.fields).length?'输入未保存':'已保存';
   const valid=last.scope.kind===location.scope.kind&&last.scope.id===location.scope.id;
   const draftControls=<><button onClick={()=>setChanges(true)}>草稿预览与冲突</button><button disabled={draft.busy||draft.readOnly||(!draft.count&&!draft.pending)} onClick={()=>void draft.save()}>{draft.pending?'核对原提交':'保存项目草稿'}</button><button disabled={!draft.count||draft.busy||draft.readOnly} onClick={()=>setDiscard(true)}>放弃项目草稿</button></>;
-  const header=<PageHeader title="项目工作区" status={<button className="ghost-button" onClick={()=>setChanges(true)}>{status}</button>} actions={<button className="ghost-button" onClick={()=>setChanges(true)}>草稿预览</button>} moreActions={<button onClick={()=>go('/analytics')}>统计分析 · 全项目</button>}/>;
+  const header=<PageHeader title="项目工作区" status={<ToolbarStatus onClick={()=>setChanges(true)}>{status}</ToolbarStatus>} actions={<div className="page-editor-actions"><div className="page-editor-history"/><div className="page-editor-primary"/></div>} moreActions={<button onClick={()=>go('/analytics')}>统计分析 · 全项目</button>}/>;
   return <ProjectWorkspaceContext.Provider value={{location,data,enter,inspect,switchView,navigation,draftControls}}><WorkspaceRuntimeContext.Provider value={runtime}>
     <div className="unified-workspace" data-scope={location.scope.kind} data-view={location.view}>
-      <WorkspaceOverview storageKey={memoryKey+':overview'}/>
+      <WorkspaceOverview/>
       <div className="unified-workspace-body">
         {!valid?<>{header}<div className="page-content"><p role="alert">此范围不存在或已无法访问，网址和资料输入已保留。</p><button className="primary-button" onClick={()=>enter({kind:'project',id:projectId})}>进入项目</button></div></>:params.get('intake')==='1'?<>{header}<div className="workspace-import"><button className="ghost-button" onClick={()=>{const next=new URLSearchParams(params);next.delete('intake');next.delete('intakeView');setParams(next);}}>返回特性清单</button><RequirementImport projectId={projectId}/></div></>:location.view==='list'?header:location.view==='progress'?<ProgressWorkspace report={report} formal={data}/>:location.scope.kind==='project'?<FeaturePathPanel projectId={projectId}/>:<PathAnalysisPanel projectId={projectId}/>}
         <div className="workspace-list-container" hidden={!valid||location.view!=='list'||params.get('intake')==='1'}><WorkspaceOutline report={report}/></div>

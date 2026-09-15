@@ -56,3 +56,27 @@
 .toolbar-status-popover .ghost-button{font-size:12px;min-height:32px}
 .page-toolbar[data-fixed-editor=true] .page-toolbar-status>.toolbar-status-trigger,.page-toolbar[data-narrow=true] .page-toolbar-status>.toolbar-status-trigger{display:flex}
 .page-toolbar[data-narrow=true] .page-toolbar-actions{padding-left:8px}
+
+/* Workspace columns are fixed by viewport, never by the current view's commands. */
+.page-toolbar[data-project-workspace=true]{display:grid;grid-template-columns:minmax(0,1fr) 248px 112px 220px;grid-template-areas:"location views status actions";gap:12px;height:56px;min-height:56px;padding:8px 16px;--toolbar-action-gap:8px;--toolbar-control:36px;--toolbar-primary:72px;--toolbar-back:32px}
+.page-toolbar[data-project-workspace=true] .page-toolbar-location{grid-area:location;width:100%;min-width:0}
+.page-toolbar[data-project-workspace=true] .page-toolbar-views{grid-area:views;width:100%;min-width:0;flex:none}
+.page-toolbar[data-project-workspace=true] .page-toolbar-views .view-tabs{width:100%;display:flex;box-sizing:border-box}
+.page-toolbar[data-project-workspace=true] .page-toolbar-views button{flex:1;min-width:0;padding:0 8px}
+.page-toolbar[data-project-workspace=true] .page-toolbar-status{grid-area:status;width:112px;max-width:112px;min-width:0;height:36px;justify-self:end}
+.page-toolbar[data-project-workspace=true] .page-toolbar-actions{grid-area:actions;display:grid;grid-template-columns:minmax(0,1fr) 36px;gap:8px;width:220px;height:36px;box-sizing:border-box;margin:0;padding-left:12px;justify-self:end}
+.page-toolbar[data-project-workspace=true] .page-toolbar-actions>.page-editor-actions{justify-content:flex-end;width:100%;min-width:0}
+.page-toolbar[data-project-workspace=true] .page-toolbar-actions>.page-editor-actions .page-editor-history{width:76px;gap:4px}
+.page-toolbar[data-project-workspace=true] .page-toolbar-actions>.page-editor-actions .page-editor-primary{width:72px}
+.page-toolbar[data-project-workspace=true] .page-toolbar-context{display:none}
+.page-toolbar[data-project-workspace=true] .page-breadcrumb>span{flex:0 1 auto;min-width:0}.page-toolbar[data-project-workspace=true] .page-breadcrumb>span:last-child{flex:1 1 auto}.page-toolbar[data-project-workspace=true] .page-breadcrumb button,.page-toolbar[data-project-workspace=true] .page-breadcrumb [aria-current]{max-width:100%}
+.page-toolbar[data-project-workspace=true][data-compact=true]{grid-template-columns:minmax(0,1fr) 220px;grid-template-areas:"location status" "views actions";grid-template-rows:28px 36px;height:88px;min-height:88px;gap:8px 12px;padding:8px 12px}
+.page-toolbar[data-project-workspace=true][data-compact=true] .page-toolbar-views{width:248px}
+.page-toolbar[data-project-workspace=true][data-narrow=true]{grid-template-columns:minmax(0,1fr) 72px;grid-template-rows:28px 36px;gap:8px;padding:8px 10px;--toolbar-primary:32px;--toolbar-control:32px;--toolbar-back:28px}
+.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-views{width:100%;min-width:0;flex:none}
+.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-views button{font-size:12px;padding:0 4px;height:30px;min-height:30px;overflow:hidden;text-overflow:ellipsis}
+.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-status{width:72px;max-width:72px;height:28px}.page-toolbar[data-project-workspace=true][data-narrow=true] .toolbar-status-trigger>svg{display:none}
+.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-actions{grid-template-columns:32px 32px;gap:8px;width:72px;height:32px;border:0;padding:0}
+.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-actions .page-editor-primary{width:32px}.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-actions .page-editor-history{display:none}
+.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-actions .page-editor-primary>button{min-height:32px;height:32px;padding:0}.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-actions .page-editor-primary>button>span{display:none}
+.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-more-slot,.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-more-slot .topbar-icon{height:32px;min-height:32px;width:32px}
