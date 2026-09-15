@@ -106,6 +106,6 @@
  .outline-selection{gap:4px;padding:6px}.outline-selection>span{max-width:90px;font-size:11px}.outline-selection .workspace-icon-button{width:28px;min-width:28px}.outline-selection>.ghost-button{width:68px}
  .outline-row-actions>.topbar-menu-trigger,.outline-drag,.workspace-enter{opacity:1}
  .workspace-overview-content{grid-template-columns:1fr;overflow:visible;gap:24px}.workspace-overview-dialog{overflow:auto;gap:20px}.overview-dialog-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.overview-dialog-summary>span{padding:12px}.overview-dialog-summary strong{font-size:20px}
- .unified-workspace-body>.workspace-object-inspector{inset:8px;width:calc(100% - 16px)}
+ .unified-workspace-body>.workspace-object-inspector{position:fixed;inset:0;width:100vw;height:100dvh}
 }
 @media(pointer:coarse){.outline-row-actions>.topbar-menu-trigger,.outline-drag,.workspace-enter{opacity:1}}

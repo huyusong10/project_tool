@@ -1,6 +1,5 @@
-import {useProjects,useSession} from '../app-context';
 import {ProjectTaskTabs} from './ProjectTaskTabs';
-import {isProjectWorkspace,projectTask,projectTaskUrl} from '../project-workspace-navigation';
+import {isProjectWorkspace,projectTask} from '../project-workspace-navigation';
 import {useLayoutEffect,useRef,useState} from 'react';
 import {useLocation} from 'react-router-dom';
 import {ArrowLeft,ChevronRight} from 'lucide-react';
@@ -15,8 +14,6 @@ import './page-toolbar.css';
 /** One page-level toolbar, including the loading and unavailable states. */
 export function PageToolbar(){
   const page=useResolvedPage(),chrome=usePageChrome(),store=usePageChromeStore(),navigate=useAppNavigate(),location=useLocation();
-  const {session}=useSession(),{selectedProjectId}=useProjects(),auxiliary=['/analytics','/actions'].includes(location.pathname);
-  const returnToProgress=()=>navigate(projectTaskUrl(session.accountId||'guest',selectedProjectId,'progress'));
   const workspace=isProjectWorkspace(location.pathname);
   const params=new URLSearchParams(location.search),delivery=workspace&&projectTask(location.pathname)==='scope'&&!page.back,deepDelivery=delivery&&['feature','requirement','project'].includes(params.get('view')||'');
   const deliveryParent=params.get('view')==='requirement'&&params.get('featureId')?'/?view=feature&featureId='+encodeURIComponent(params.get('featureId')!):'/?view=features';
@@ -28,8 +25,8 @@ export function PageToolbar(){
   const editor=page.toolbar==='path'||page.toolbar==='editor',secondaryInMenu=editor||compact;
   const hasMenu=!!(chrome?.moreActions||secondaryInMenu&&chrome?.secondaryActions||editor&&chrome?.context);
   const pendingEditorActions=editor&&<div className="page-editor-actions" aria-hidden="true"><div className="page-editor-history"/><div className="page-editor-primary"><span className="shell-placeholder toolbar-actions-placeholder"/></div></div>;
-  const back=auxiliary?returnToProgress:ready&&chrome.onBack||((page.back||deepDelivery||page.phase==='error')?fallbackBack:undefined);
-  const crumbs=auxiliary?[{label:'进展表',onClick:returnToProgress},{label:location.pathname==='/analytics'?'统计分析 · 全项目':'待处理事项 · 全项目'}]:ready&&chrome.breadcrumbs!==undefined?chrome.breadcrumbs:page.back?[{label:page.object?.kind==='template'?'流程设计':'需求清单',onClick:()=>navigate(page.back!.fallback)},{label:ready?chrome.title:page.phase==='error'?'无法打开':'',onClick:undefined}]:delivery?[{label:'项目特性',onClick:deepDelivery?()=>navigate('/?view=features'):undefined},...(deepDelivery?[{label:''}]:[])]:[];
+  const back=ready&&chrome.onBack||((page.back||deepDelivery||page.phase==='error')?fallbackBack:undefined);
+  const crumbs=ready&&chrome.breadcrumbs!==undefined?chrome.breadcrumbs:page.back?[{label:page.object?.kind==='template'?'流程设计':'需求清单',onClick:()=>navigate(page.back!.fallback)},{label:ready?chrome.title:page.phase==='error'?'无法打开':'',onClick:undefined}]:delivery?[{label:'项目特性',onClick:deepDelivery?()=>navigate('/?view=features'):undefined},...(deepDelivery?[{label:''}]:[])]:[];
   if(!visible)return null;
   return <WorkspaceRuntimeContext.Provider value={chrome?.runtime||null}>
     <div ref={root} className="page-toolbar" role="region" aria-label="页面工具栏" data-toolbar={page.toolbar} data-fixed-editor={editor} data-project-workspace={workspace} data-compact={compact} data-narrow={narrow} data-page-phase={page.phase} data-workspace-zone="tools" data-preserve-edit

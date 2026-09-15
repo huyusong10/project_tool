@@ -1,6 +1,6 @@
 import {Select} from './Select';
 import {StartAssignmentDialog,type StartAssignment} from './StartAssignmentDialog';
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Check, CircleStop, MoreHorizontal, Play, RotateCcw, X } from "lucide-react";
 import { api, isWriteOutcomeUnknown, requiresWriteRecheck } from "../api";
@@ -10,11 +10,19 @@ import type { ProgressUpdate, WorkItem, Requirement } from "../types";
 
 import { AnchoredPopover } from "./InlineEdit";
 import { useToast } from "./Toast";
+import {useDetailActionHost} from './DetailWorkspace';
+import {Modal} from './Modal';
 
 type TextPanel = "complete";
 type Panel = TextPanel | "dates" | "menu" | "backfill";
 export type WorkItemReloadSnapshot = { item: WorkItem; updates: ProgressUpdate[] };
 type ExpectedOutcome = {successMessage?: string};
+
+function WorkActionSurface({anchorRef, panel, pending, onClose, children}: {anchorRef: RefObject<HTMLDivElement | null>; panel: Panel | null; pending: boolean; onClose: () => void; children: ReactNode}) {
+  const host = useDetailActionHost();
+  if (host && panel && panel !== 'menu') return <Modal title={{complete: '完成工作项', dates: '修正实际日期', backfill: '按期完成（历史补录）'}[panel]} closable={!pending} onClose={onClose}>{children}</Modal>;
+  return <AnchoredPopover anchorRef={anchorRef} open={panel !== null} onOutside={onClose} width={panel === 'menu' ? 210 : 390} className={panel === 'menu' ? 'action-menu' : ''}>{children}</AnchoredPopover>;
+}
 
 export function WorkItemActions({
   item,
@@ -194,7 +202,7 @@ export function WorkItemActions({
     {actionReviewBlocked && panel === null && <small className="work-action-error" role="alert">{unknownNeedsRead || writeNeedsRecheck ? "工作项操作结果待核对" : "提交结果仍待核对，工作项版本已变化"}{readError ? `：${readError}` : ""}</small>}
     {error && panel === null && !actionReviewBlocked && <small className="work-action-error" title={error}>{error}</small>}
     {startRequirement&&<StartAssignmentDialog requirement={startRequirement} workItem={item} pending={pending} blocked={actionReviewBlocked||needsRefresh} recovery={(actionReviewBlocked||needsRefresh)&&<p className="warning-banner">请先关闭此窗口，读取最新状态并核对执行记录，再继续操作。</p>} error={error} onClose={()=>setStartRequirement(null)} onStart={assignment=>void run(()=>onAction('start',undefined,item.version,undefined,assignment),{successMessage:'工作项已开始'}).then(saved=>{if(saved)setStartRequirement(null);})}/>}
-    <AnchoredPopover anchorRef={anchorRef} open={panel !== null} onOutside={() => { if (!pending) changePanel(null); }} width={panel === "menu" ? 210 : 390} className={panel === "menu" ? "action-menu" : ""}>
+    <WorkActionSurface anchorRef={anchorRef} panel={panel} pending={pending} onClose={() => { if (!pending) changePanel(null); }}>
       {panel === "menu" && <>
         {!stateChangesDisabled && item.status === "in_progress" && <button type="button" onClick={() => openPanel("complete")}><Check size={14} />完成并补充说明</button>}
         {canCorrect && <button type="button" onClick={() => openPanel("dates")}><CalendarDays size={14} />修正实际日期</button>}
@@ -257,6 +265,6 @@ export function WorkItemActions({
         {readNotice}
         <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => changePanel(null)}>取消</button><button type="button" className="primary-button" disabled={pending || blocked || Boolean(backfillUnavailable)} onClick={() => { if (onCompleteAsPlanned) void run(() => onCompleteAsPlanned(baselineVersion), {successMessage:"工作项已按计划补录完成"}); }}>{pending ? "提交中" : "确认补录完成"}</button></footer>
       </div>}
-    </AnchoredPopover>
+    </WorkActionSurface>
   </div>;
 }

@@ -1,8 +1,8 @@
 import {readWorkspaceLocation,workspaceParams,workspacePreferenceKey,type WorkspaceLocation} from './workspace-location';
 export type ProjectTask='scope'|'progress';
-export const workspacePaths=['/','/features','/paths','/requirements','/execution','/analytics','/actions'];
+export const workspacePaths=['/','/features','/paths','/requirements','/execution'];
 export const isProjectWorkspace=(pathname:string)=>workspacePaths.includes(pathname);
-export const projectTask=(pathname:string):ProjectTask=>['/execution','/analytics','/actions'].includes(pathname)?'progress':'scope';
+export const projectTask=(pathname:string):ProjectTask=>['/execution'].includes(pathname)?'progress':'scope';
 const key=(account:string,project:string,task:ProjectTask)=>`pm-project-task:${account}:${project}:${task}`;
 export function initialScopeMode(account:string,project:string){
   try{

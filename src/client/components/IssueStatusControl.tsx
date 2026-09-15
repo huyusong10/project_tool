@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { ChevronDown, PencilLine } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { api, jsonBody } from "../api";
 import { useBusinessDate, useSession } from "../app-context";
 import type { Issue } from "../types";
@@ -89,7 +89,7 @@ const correctionEventLabels: Record<string, string> = {
   resolve: "解决", reopen: "重开", correction: "纠错", migration: "迁移",
 };
 
-function IssueCorrectionEditor({ issue, disabled, onPendingChange, onSaved, onCancel }: {
+export function IssueFactForm({ issue, disabled, onPendingChange, onSaved, onCancel }: {
   issue: Issue;
   disabled: boolean;
   onPendingChange: (pending: boolean) => void;
@@ -107,6 +107,10 @@ function IssueCorrectionEditor({ issue, disabled, onPendingChange, onSaved, onCa
   const [resolvedAt, setResolvedAt] = useState(issue.resolvedAt || "");
   const [supersedesId, setSupersedesId] = useState("");
   const [reason, setReason] = useState("");
+  useEffect(() => {
+    if (editor.dirty) return;
+    setTitle(current.title); setImpact(current.impact || ''); setProgress(String(current.progress)); setResolvedAt(current.resolvedAt || '');
+  }, [current, editor.dirty]);
   const reconciled = useRef(false);
   const numericProgress = Number(progress);
   const resolved = current.status === "resolved";
@@ -159,7 +163,7 @@ function IssueCorrectionEditor({ issue, disabled, onPendingChange, onSaved, onCa
           && latest.progress === expectedProgress
           && latest.resolvedAt === expectedResolvedAt
           && Boolean(latest.updates?.some((update) => update.eventType === "correction"
-            && update.content === expectedReason && (update.supersedesId || null) === expectedSupersedesId
+            && (!expectedReason || update.content === expectedReason) && (update.supersedesId || null) === expectedSupersedesId
             && update.createdByAccountId === session.accountId && update.createdAt === latest.updatedAt)),
         onReconciled: () => { reconciled.current = true; },
       },
@@ -170,36 +174,16 @@ function IssueCorrectionEditor({ issue, disabled, onPendingChange, onSaved, onCa
     <button type="button" className="ghost-button" disabled={busy} onClick={() => void editor.reload()}>重新读取问题</button>
   </div>;
   return <form className="inline-action-form issue-correction-form" onSubmit={(event) => { event.preventDefault(); submit(); }}>
-    <header><strong>纠错</strong><small>{issueStatusLabels[current.status as keyof typeof issueStatusLabels]}</small></header>
-    <p>修正问题事实，不改变当前状态；系统会追加纠错记录，不覆盖原历史。</p>
-    <label><span>问题标题</span><input aria-label="纠错后的问题标题" disabled={busy} value={title} onChange={(event) => { editor.setDirty(true); setTitle(event.target.value); }} /></label>
-    <label><span>问题影响</span><textarea aria-label="纠错后的问题影响" disabled={busy} rows={2} value={impact} onChange={(event) => { editor.setDirty(true); setImpact(event.target.value); }} /></label>
+    <p>已解决问题可修正标题、影响和解决日期。修改会追加更正记录，原历史保留。</p>
+    <label><span>问题标题</span><input aria-label="问题标题" disabled={busy} value={title} onChange={(event) => { editor.setDirty(true); setTitle(event.target.value); }} /></label>
+    <label><span>问题影响</span><textarea aria-label="问题影响" disabled={busy} rows={2} value={impact} onChange={(event) => { editor.setDirty(true); setImpact(event.target.value); }} /></label>
     {resolved
-      ? <label><span>解决日期</span><input aria-label="纠错后的解决日期" type="date" disabled={busy} min={current.discoveredAt} max={today} value={resolvedAt} onChange={(event) => { editor.setDirty(true); setResolvedAt(event.target.value); }} /></label>
+      ? <label><span>解决日期</span><input aria-label="解决日期" type="date" disabled={busy} min={current.discoveredAt} max={today} value={resolvedAt} onChange={(event) => { editor.setDirty(true); setResolvedAt(event.target.value); }} /></label>
       : <label><span>当前完成度</span><input aria-label="纠错后的问题完成度" type="number" min={0} max={99} step={1} disabled={busy} value={progress} onChange={(event) => { editor.setDirty(true); setProgress(event.target.value); }} /></label>}
     {!!updates.length && <label><span>关联历史记录（可选）</span><select aria-label="关联历史记录" disabled={busy} value={supersedesId} onChange={(event) => { editor.setDirty(true); setSupersedesId(event.target.value); }}><option value="">不指定</option>{updates.map((update) => <option value={update.id} key={update.id}>{new Date(update.createdAt).toLocaleDateString("zh-CN")} · {correctionEventLabels[update.eventType] || update.eventType} · {update.content.slice(0, 28)}</option>)}</select></label>}
-    <label><span>纠错说明（可选）</span><textarea aria-label="问题纠错原因" disabled={busy} rows={2} value={reason} onChange={(event) => { editor.setDirty(true); setReason(event.target.value); }} placeholder="说明原记录哪里有误，以及核对依据" /></label>
+    <label><span>修改说明（可选）</span><textarea aria-label="修改说明" disabled={busy} rows={2} value={reason} onChange={(event) => { editor.setDirty(true); setReason(event.target.value); }} placeholder="说明修改原因" /></label>
     {validation && editor.dirty && <p className="form-error" role="alert">{validation}</p>}
     <div className="issue-status-notice"><DraftNotice editor={editor} /></div>
-    <footer><button type="button" className="ghost-button" disabled={busy} onClick={onCancel}>取消</button><button className="primary-button" disabled={blocked}>{editor.pending ? "保存中…" : "保存纠错"}</button></footer>
+    <footer><button type="button" className="ghost-button" disabled={busy} onClick={onCancel}>取消</button><button className="primary-button" disabled={blocked}>{editor.pending ? "保存中…" : "保存修改"}</button></footer>
   </form>;
-}
-
-export function IssueCorrectionControl({ issue, canManage, disabled = false, onPendingChange }: {
-  issue: Issue;
-  canManage: boolean;
-  disabled?: boolean;
-  onPendingChange?: (pending: boolean) => void;
-}) {
-  const anchorRef = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  if (!canManage) return null;
-  const close = () => { if (!pending) setOpen(false); };
-  return <div className="issue-correction-control" onClick={(event) => event.stopPropagation()}>
-    <button ref={anchorRef} type="button" className="issue-correction-trigger" disabled={disabled || pending} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((value) => !value)}><PencilLine size={13} />纠错</button>
-    <AnchoredPopover anchorRef={anchorRef} open={open} onOutside={close} width={460} className="issue-correction-popover">
-      {open && <IssueCorrectionEditor issue={issue} disabled={disabled} onPendingChange={(value) => { setPending(value); onPendingChange?.(value); }} onSaved={() => setOpen(false)} onCancel={close} />}
-    </AnchoredPopover>
-  </div>;
 }

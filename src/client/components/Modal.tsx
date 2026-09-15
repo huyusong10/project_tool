@@ -1,16 +1,26 @@
 import { AlertTriangle, CheckCircle2, Copy, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import {useDetailActionHost} from './DetailWorkspace';
 
 let openModalCount = 0;
 let previousBodyOverflow = '';
 
 export function Modal({ title, children, onClose, width = 560, closable = true, layout = 'adaptive', placement = 'center' }: { title: string; children: ReactNode; onClose: () => void; width?: number; closable?: boolean; layout?: 'adaptive' | 'workspace'; placement?: 'center' | 'right' }) {
+  const host = useDetailActionHost();
+  const inline = Boolean(host);
   const cardRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   const closableRef = useRef(closable);
   const titleId = useId();
-  useEffect(() => { closeRef.current = onClose; }, [onClose]);
+  const requestClose = () => {
+    const child = Array.from(cardRef.current?.querySelectorAll<HTMLElement>('[data-detail-action]') || []).at(-1);
+    if (child) {child.querySelector<HTMLButtonElement>('[data-detail-back]')?.click(); return;}
+    if (closable) onClose();
+  };
+  const register = host?.register;
+  useEffect(() => register?.(titleId), [register, titleId]);
+  useEffect(() => { closeRef.current = requestClose; });
   useEffect(() => { closableRef.current = closable; }, [closable]);
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -22,23 +32,23 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
     const frame = requestAnimationFrame(() => {
       const card = cardRef.current;
       if (!card || card.contains(document.activeElement)) return;
-      const initial = card.querySelector<HTMLElement>('[autofocus]:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), button:not(:disabled):not(.icon-button)');
+      const initial = Array.from(card.querySelectorAll<HTMLElement>('[autofocus]:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), button:not(:disabled):not(.icon-button)')).find(element => element.getClientRects().length > 0 && !element.closest('[inert]'));
       (initial || card).focus();
     });
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
       const card = cardRef.current;
       if (!card) return;
-      const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'));
+      const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(dialog => dialog.getClientRects().length > 0);
       if (dialogs.at(-1) !== card) return;
-      if (event.key === 'Escape' && closableRef.current) {
+      if (event.key === 'Escape') {
         event.preventDefault();
-        closeRef.current();
+        if (closableRef.current) closeRef.current();
         return;
       }
-      if (event.key !== 'Tab') return;
+      if (event.key !== 'Tab' || inline) return;
       const focusable = Array.from(card.querySelectorAll<HTMLElement>('button, input, textarea, select, [href], [tabindex]:not([tabindex="-1"])'))
-        .filter((element) => !element.matches(':disabled') && element.getClientRects().length > 0);
+        .filter((element) => !element.matches(':disabled') && !element.closest('[inert]') && element.getClientRects().length > 0);
       if (!focusable.length) {
         event.preventDefault();
         card.focus();
@@ -60,16 +70,18 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
       if (openModalCount === 0) document.body.style.overflow = previousBodyOverflow;
       previousFocus?.focus();
     };
-  }, []);
+  }, [inline]);
   const content = (
-    <div className={`modal-backdrop${placement === 'right' ? ' modal-backdrop-right' : ''}`} role="presentation" onMouseDown={(event) => closable && event.target === event.currentTarget && onClose()}>
-      <section ref={cardRef} className={`modal-card modal-card-${layout}`} style={{ width, maxWidth: width ? `min(94vw, ${width}px)` : undefined }} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
-        <header><h2 id={titleId}>{title}</h2>{closable && <button className="icon-button" aria-label="关闭" onClick={onClose}><X size={18} /></button>}</header>
+    <div className={`modal-backdrop${placement === 'right' ? ' modal-backdrop-right' : ''}`} role="presentation" onMouseDown={(event) => closable && event.target === event.currentTarget && requestClose()}>
+      <section ref={cardRef} data-detail-action={host ? true : undefined} className={`modal-card modal-card-${layout}`} style={{ width, maxWidth: width ? `min(94vw, ${width}px)` : undefined }} role="dialog" aria-modal={!host} aria-labelledby={titleId} tabIndex={-1} onKeyDown={event => {
+        if (host && event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing) {event.preventDefault(); event.stopPropagation(); requestClose();}
+      }}>
+        <header><h2 id={titleId}>{title}</h2>{host ? <button type="button" data-detail-back className="ghost-button" disabled={!closable} onClick={requestClose}>返回</button> : closable && <button className="icon-button" aria-label="关闭" onClick={requestClose}><X size={18} /></button>}</header>
         <div className={`modal-body modal-body-${layout}`}>{children}</div>
       </section>
     </div>
   );
-  return typeof document === 'undefined' ? content : createPortal(content, document.body);
+  return typeof document === 'undefined' ? content : host ? host.element && createPortal(content, host.element) : createPortal(content, document.body);
 }
 
 export function useSynchronousPendingLock(pending: boolean) {

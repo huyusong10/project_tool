@@ -233,30 +233,15 @@ async function openStatus(page: Page, location: 'list' | 'detail', action = '确
   return { container, field, trigger, submit: container.getByRole('button', { name: new RegExp(action) }) };
 }
 
-test('问题详情纠错可修正事实并保留原因', async ({ page }) => {
+test('问题进展可更正完成度并保留原因', async ({ page }) => {
   const state = await fixture(page);
   await page.goto('/issues?issueId=i1');
-  await page.getByRole('button', { name: '纠错', exact: true }).click();
-  const form = page.locator('.issue-correction-form');
-  await expect(form).toBeVisible();
-  await form.getByLabel('纠错后的问题标题', { exact: true }).fill('核对后的问题标题');
-  await form.getByLabel('纠错后的问题影响', { exact: true }).fill('核对后的影响范围');
-  await form.getByLabel('纠错后的问题完成度', { exact: true }).fill('25');
-  await expect(form.getByRole('button',{name:'保存纠错',exact:true})).toBeEnabled();
-  await form.getByLabel('问题纠错原因', { exact: true }).fill('根据原始记录修正');
-  await form.getByRole('button', { name: '保存纠错', exact: true }).click();
-
-  await expect(form).toHaveCount(0);
-  await expect(page.getByText('问题纠错已记录', { exact: true })).toBeVisible();
-  expect(state.writes).toEqual([{ path: '/api/issues/i1/correct', body: {
-    expectedVersion: 1,
-    title: '核对后的问题标题',
-    impact: '核对后的影响范围',
-    progress: 25,
-    resolvedAt: null,
-    supersedesId: null,
-    reason: '根据原始记录修正',
-  } }]);
+  const form = page.locator('.issue-update-form');
+  await form.getByRole('spinbutton').fill('25');
+  await form.locator('textarea').fill('根据原始记录修正');
+  await form.getByRole('button', {name: '保存更正', exact: true}).click();
+  await expect(form.getByRole('spinbutton')).toHaveValue('25');
+  expect(state.writes).toEqual([{path: '/api/issues/i1/correct', body: {expectedVersion: 1, progress: 25, reason: '根据原始记录修正'}}]);
 });
 
 test('已解决问题通过纠错修正解决日期而不重开', async ({ page }) => {
@@ -264,16 +249,14 @@ test('已解决问题通过纠错修正解决日期而不重开', async ({ page 
   state.issue = { ...state.issue, status: 'resolved', progress: 100, resolvedAt: '2026-09-04' };
   await page.goto('/issues?issueId=i1');
   await page.getByRole('tab', { name: '基本信息', exact: true }).click();
-  await expect(page.getByText('解决日期：2026-09-04', { exact: true })).toBeVisible();
-  await expect(page.getByText(/修正标题、影响或解决日期请使用“纠错”/)).toBeVisible();
-  await page.getByRole('button', { name: '纠错', exact: true }).click();
+  await page.getByRole('tab', {name: '基本信息', exact: true}).click();
   const form = page.locator('.issue-correction-form');
   await expect(form.getByLabel('纠错后的问题完成度', { exact: true })).toHaveCount(0);
-  await form.getByLabel('纠错后的解决日期', { exact: true }).fill('2026-09-03');
-  await form.getByLabel('问题纠错原因', { exact: true }).fill('核对实际闭环日期');
-  await form.getByRole('button', { name: '保存纠错', exact: true }).click();
+  await form.getByLabel('解决日期', { exact: true }).fill('2026-09-03');
+  await form.getByLabel('修改说明', { exact: true }).fill('核对实际闭环日期');
+  await form.getByRole('button', { name: '保存修改', exact: true }).click();
 
-  await expect(form).toHaveCount(0);
+  await expect(form.getByRole('button', {name: '保存修改', exact: true})).toBeDisabled();
   expect(state.writes[0]).toEqual({ path: '/api/issues/i1/correct', body: {
     expectedVersion: 1,
     title: '问题草稿测试',
@@ -288,6 +271,7 @@ test('已解决问题通过纠错修正解决日期而不重开', async ({ page 
 
 test('问题纠错成功但响应损坏时读回事件且不重复提交', async ({ page }) => {
   const state = await fixture(page);
+  state.issue = {...state.issue, status: 'resolved', progress: 100, resolvedAt: '2026-09-04'};
   let correctionWrites = 0;
   await page.route('**/api/issues/i1/correct', async (route) => {
     correctionWrites += 1;
@@ -310,20 +294,21 @@ test('问题纠错成功但响应损坏时读回事件且不重复提交', async
     await route.fulfill({ status: 200, contentType: 'text/html', body: '<html>Unexpected proxy response</html>' });
   });
   await page.goto('/issues?issueId=i1');
-  await page.getByRole('button', { name: '纠错', exact: true }).click();
+  await page.getByRole('tab', {name: '基本信息', exact: true}).click();
   const form = page.locator('.issue-correction-form');
-  await form.getByLabel('问题纠错原因', { exact: true }).fill('补充原记录纠错说明');
-  await expect(form.getByRole('button', { name: '保存纠错', exact: true })).toBeDisabled();
-  await form.getByLabel('纠错后的问题标题', { exact: true }).fill('核对后的问题标题');
-  await form.getByRole('button', { name: '保存纠错', exact: true }).click();
+  await form.getByLabel('修改说明', { exact: true }).fill('补充原记录纠错说明');
+  await expect(form.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
+  await form.getByLabel('问题标题', { exact: true }).fill('核对后的问题标题');
+  await form.getByRole('button', { name: '保存修改', exact: true }).click();
 
-  await expect(form).toHaveCount(0);
+  await expect(form.getByRole('button', {name: '保存修改', exact: true})).toBeDisabled();
   await expect(page.getByText('已核对最新状态：问题纠错已记录', { exact: true })).toBeVisible();
   expect(correctionWrites).toBe(1);
 });
 
 test('问题纠错异常响应不把旧同值纠错误认成本次写入', async ({ page }) => {
   const state = await fixture(page);
+  state.issue = {...state.issue, status: 'resolved', progress: 100, resolvedAt: '2026-09-04'};
   await page.route('**/api/issues/i1/correct', async (route) => {
     const body = route.request().postDataJSON() as Record<string, unknown>;
     (state as { issue: Issue }).issue = {
@@ -341,11 +326,11 @@ test('问题纠错异常响应不把旧同值纠错误认成本次写入', async
     await route.fulfill({ status: 200, contentType: 'text/html', body: '<html>Unexpected proxy response</html>' });
   });
   await page.goto('/issues?issueId=i1');
-  await page.getByRole('button', { name: '纠错', exact: true }).click();
+  await page.getByRole('tab', {name: '基本信息', exact: true}).click();
   const form = page.locator('.issue-correction-form');
-  await form.getByLabel('纠错后的问题完成度', { exact: true }).fill('35');
-  await form.getByLabel('问题纠错原因', { exact: true }).fill('重复的纠错说明');
-  await form.getByRole('button', { name: '保存纠错', exact: true }).click();
+  await form.getByLabel('问题标题', {exact: true}).fill('核对后的标题');
+  await form.getByLabel('修改说明', { exact: true }).fill('重复的纠错说明');
+  await form.getByRole('button', { name: '保存修改', exact: true }).click();
 
   await expect(form).toBeVisible();
   await expect(page.getByText('已核对最新状态：问题纠错已记录', { exact: true })).toHaveCount(0);
@@ -364,6 +349,7 @@ test('问题纠错历史显示被更正记录', async ({ page }) => {
     },
   ] };
   await page.goto('/issues?issueId=i1');
+  await page.getByRole('tab', {name: /^记录 /}).click();
   const correction = page.locator('.issue-update-setting-row').filter({ hasText: '修正原进展' });
   await expect(correction).toContainText('更正：');
   await expect(correction).toContainText('进度');
@@ -578,20 +564,19 @@ test(`问题状态 ${location}详情失权后迟到的冲突重读不能恢复�
     if (location === 'list') await page.locator('.issue-title-button').click();
     else await refresh(page);
     await expect(page.getByText(/^(问题访问已撤销|问题不存在或当前账号无权访问。)$/)).toBeVisible();
-    await expect(page.locator('.issue-settings-shell')).toHaveCount(0);
+    await expect(page.locator('.detail-workspace[aria-label="问题详情"]')).toHaveCount(0);
     const lateResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/issues/i1' && response.status() === 200);
     release();
     await lateResponse;
-    await expect(page.locator('.issue-settings-shell')).toHaveCount(0);
+    await expect(page.locator('.detail-workspace[aria-label="问题详情"]')).toHaveCount(0);
     if (location === 'list') {
-      await expect(page.locator('.issue-status-popover')).toContainText('问题访问状态已变更');
-      await expect(page.locator('.issue-status-popover textarea')).toHaveCount(0);
-      await page.keyboard.press('Escape');
+      await expect(page.locator('.issue-status-popover')).toHaveCount(0);
+      await expect(page.getByText('问题详情加载失败', {exact: true})).toBeVisible();
     }
     await page.route('**/api/issues/i1', (route) => route.fulfill({ status: 503, json: { error: '临时读取失败' } }));
     await page.getByRole('button', { name: '重新加载', exact: true }).click();
     await expect(page.getByText('临时读取失败', { exact: true })).toBeVisible();
-    await expect(page.locator('.issue-settings-shell')).toHaveCount(0);
+    await expect(page.locator('.detail-workspace[aria-label="问题详情"]')).toHaveCount(0);
     expect(state.writes).toHaveLength(1);
   } finally { release(); }
 });
@@ -601,7 +586,7 @@ for (const role of ['admin', 'manager', 'owner', 'member', 'viewer'] as const) {
   test(`问题状态 ${role}保留经理专属权限`, async ({ page }) => {
     await fixture(page, role);
     await page.goto('/issues?issueId=i1');
-    await expect(page.locator('.issue-settings-shell')).toBeVisible();
+    await expect(page.locator('.detail-workspace[aria-label="问题详情"]')).toBeVisible();
     await expect(page.locator('.issue-status-trigger')).toHaveCount(role === 'admin' || role === 'manager' ? 2 : 0);
   });
 }
@@ -643,14 +628,14 @@ for (const form of ['basic', 'updates'] as const) {
     state.readFailure = 403;
     await submit.click();
     await expect(page.getByText('问题详情加载失败', { exact: true })).toBeVisible();
-    await expect(page.locator('.issue-settings-shell')).toHaveCount(0);
+    await expect(page.locator('.detail-workspace[aria-label="问题详情"]')).toHaveCount(0);
     state.readFailure = 503;
     await page.getByRole('button', { name: '重新加载', exact: true }).click();
     await expect(page.getByText('读取失败 503', { exact: true })).toBeVisible();
-    await expect(page.locator('.issue-settings-shell')).toHaveCount(0);
+    await expect(page.locator('.detail-workspace[aria-label="问题详情"]')).toHaveCount(0);
     state.readFailure = 0;
     await page.getByRole('button', { name: '重新加载', exact: true }).click();
-    await expect(page.locator('.issue-settings-shell')).toBeVisible();
+    await expect(page.locator('.detail-workspace[aria-label="问题详情"]')).toBeVisible();
     expect(state.writes).toHaveLength(1);
   });
 
@@ -789,15 +774,15 @@ test('只改下次核对日期且服务端未保存时不能误报问题信息�
   expect(writes).toBe(1);
 });
 
-test('问题草稿 他人提高完成度后保留输入，重新读取后仍禁止降低', async ({ page }) => {
-  const state = await fixture(page);
+test('问题草稿 他人提高完成度后保留输入，负责人重新读取后仍禁止降低', async ({ page }) => {
+  const state = await fixture(page, 'owner');
   const { container, field, submit } = await openForm(page, 'updates');
   state.issue = { ...state.issue, version: 2, progress: 70 };
   await refresh(page);
   await expect(submit).toBeDisabled();
   await expect(container.getByRole('spinbutton')).toHaveValue('60');
   await container.getByRole('button', { name: '重新读取问题', exact: true }).click();
-  await expect(container).toContainText('普通进展不能降低完成度');
+  await expect(container).toContainText('降低完成度需要项目经理更正');
   await expect(submit).toBeDisabled();
   await expect(field).toHaveValue('本次草稿');
   await container.getByRole('spinbutton').fill('80');
@@ -889,11 +874,11 @@ for (const role of ['owner', 'member', 'viewer'] as const) {
     await page.goto('/issues?issueId=i1');
     const form = page.locator('.issue-update-form');
     if (role === 'viewer') {
-      await expect(page.locator('.issue-settings-shell')).toBeVisible();
+      await expect(page.locator('.detail-workspace[aria-label="问题详情"]')).toBeVisible();
       await expect(form).toHaveCount(0);
       return;
     }
-    await form.getByPlaceholder('记录新进展、决策或待办结果').fill('本人记录');
+    await form.locator('textarea').fill('本人记录');
     if (role === 'owner') await form.getByRole('spinbutton').fill('60');
     else await expect(form.getByRole('spinbutton')).toHaveCount(0);
     await form.getByRole('button', { name: '追加进展', exact: true }).click();
@@ -993,4 +978,51 @@ test('问题草稿 已有问题未指定提出人时不能自动补成当前用�
   await form.getByRole('button', { name: '保存修改', exact: true }).click();
   await expect.poll(() => state.writes.length).toBe(1);
   expect(state.writes[0].body.reporter).toBe('');
+});
+
+
+test('选择100%解决的异常响应核对本次命令，不重复提交', async ({page}) => {
+  const state = await fixture(page);
+  state.malformedWrite = true;
+  state.stampStatusEvent = true;
+  await page.goto('/issues?issueId=i1');
+  const form = page.locator('.issue-update-form');
+  await form.getByRole('button', {name: '100%', exact: true}).click();
+  await form.locator('textarea').fill('完成处理并核对');
+  await form.getByRole('button', {name: '保存并解决', exact: true}).click();
+  await expect(page.getByText('已核对最新状态：问题进展已记录', {exact: true})).toBeVisible();
+  expect(state.writes).toEqual([{path: '/api/issues/i1/resolve', body: {content: '完成处理并核对', expectedVersion: 1}}]);
+  await expect(page.locator('.issue-settings-current-progress strong')).toHaveText('100%');
+});
+
+test('100%保存期间锁定页签和关闭，失败保留说明', async ({page}) => {
+  const state = await fixture(page);
+  await page.goto('/issues?issueId=i1');
+  const dialog = page.getByRole('dialog', {name: '问题详情', exact: true}), form = dialog.locator('.issue-update-form');
+  await form.getByRole('button', {name: '100%', exact: true}).click();
+  await form.locator('textarea').fill('待确认的解决说明');
+  let release!: () => void;
+  state.hold = new Promise<void>(resolve => {release = resolve;});
+  state.writeFailure = 500;
+  try {
+    await form.getByRole('button', {name: '保存并解决', exact: true}).click();
+    await expect.poll(() => state.writes.length).toBe(1);
+    await expect(dialog.getByRole('tab', {name: '基本信息', exact: true})).toBeDisabled();
+    await expect(dialog.getByRole('button', {name: '关闭', exact: true})).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeVisible();
+    release();
+    await expect(form.getByRole('spinbutton')).toHaveValue('100');
+    await expect(form.locator('textarea')).toHaveValue('待确认的解决说明');
+    await expect(form).toContainText('保存失败 500');
+  } finally {release();}
+});
+
+test('负责人更新进度仍保留99%上限', async ({page}) => {
+  await fixture(page, 'owner');
+  await page.goto('/issues?issueId=i1');
+  const form = page.locator('.issue-update-form');
+  await expect(form.getByRole('spinbutton')).toHaveAttribute('max', '99');
+  await expect(form.getByRole('button', {name: '100%', exact: true})).toHaveCount(0);
+  for (const value of [20, 50, 80]) await expect(form.getByRole('button', {name: value + '%', exact: true})).toBeVisible();
 });

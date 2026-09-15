@@ -16,6 +16,7 @@ import { invalidateIssueViews, keys } from "../query-keys";
 import { useOptimisticMutation } from "../use-optimistic-mutation";
 import type { Issue, IssuePage, IssueUpdate, Person, Requirement } from "../types";
 import { AdaptiveDataCell, AdaptiveDataList, AdaptiveDataRow, type AdaptiveDataColumn } from "../components/AdaptiveDataList";
+import {DetailWorkspace} from "../components/DetailWorkspace";
 import { Modal } from "../components/Modal";
 import { StatusBadge } from "../components/Badge";
 import { EmptyState, RefreshNotice } from "../components/Feedback";
@@ -27,7 +28,7 @@ import { usePagedResourceQuery } from '../use-paged-resource-query';
 import { DataCell } from "../components/LayoutPrimitives";
 import { PageHeader } from "../components/PageHeader";
 import { IssueForm, IssueUpdateForm } from "../components/IssueForms";
-import { IssueCorrectionControl, IssueStatusControl } from "../components/IssueStatusControl";
+import { IssueStatusControl } from "../components/IssueStatusControl";
 import { InlineDateCell, InlineSelectCell } from "../components/InlineEdit";
 import { canManageProject } from "../permissions";
 import { issueStatusOptions, priorityOptions } from "../ui-options";
@@ -40,11 +41,11 @@ const emptyRequirements: Requirement[] = [];
 const issueColumns: AdaptiveDataColumn[] = [
   { key: "issue", label: "问题", track: "minmax(230px,2fr)", importance: "primary", compact: "primary" },
   { key: "scope", label: "范围", track: "minmax(120px,.9fr)", importance: "secondary", compact: "full" },
-  { key: "status", label: "状态", track: "minmax(100px,.65fr)", compact: "detail" },
+  { key: "status", label: "状态", track: "minmax(140px,.65fr)", compact: "detail" },
   { key: "progress", label: "进度", track: "minmax(92px,.65fr)", compact: "detail" },
-  { key: "priority", label: "优先级", track: "minmax(100px,.65fr)", compact: "detail" },
+  { key: "priority", label: "优先级", track: "minmax(140px,.65fr)", compact: "detail" },
   { key: "owner", label: "负责人", track: "minmax(106px,.75fr)", compact: "detail" },
-  { key: "dueDate", label: "目标日期", track: "minmax(118px,.8fr)", compact: "detail" },
+  { key: "dueDate", label: "目标日期", track: "minmax(160px,.8fr)", compact: "detail" },
   { key: "latest", label: "最近进展", track: "minmax(200px,1.4fr)", importance: "essential", compact: "full" },
 ];
 
@@ -149,7 +150,7 @@ function IssueDetail({
   pending: boolean;
   onPendingChange: (pending: boolean) => void;
 }) {
-  const [tab, setTab] = useState<"basic" | "updates">(initialTab);
+  const [tab, setTab] = useState<string>(initialTab);
   const { data: issue, error, refetch, isFetching, unavailable } = usePageResources().issue;
   const historyPagination = useListPagination({ items: issue?.updates || [], id: "issueHistory", filterKey: issueId, defaultPageSize: 10, ready: Boolean(issue), loading: isFetching, disabled: pending });
   if (!issue || unavailable) return null;
@@ -159,40 +160,43 @@ function IssueDetail({
     && (!value.requirementId || requirements.some((requirement) => requirement.id === value.requirementId))
     && (canEdit || Boolean(personId && value.ownerId === personId));
   const updateById = new Map((issue.updates || []).map((update) => [update.id, update]));
-  return <div className="issue-settings-shell">
+  const summary = <>
     <div>
     {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
     <header className="issue-settings-summary">
       <div>
-        <div className="issue-detail-badges"><IssueStatusControl issue={issue} canManage={canEditIssue} disabled={pending} onPendingChange={onPendingChange} compact /><IssueCorrectionControl issue={issue} canManage={canEditIssue} disabled={pending} onPendingChange={onPendingChange} /><StatusBadge kind="priority" value={issue.priority} />{issue.overdue && <span className="issue-overdue-badge">已逾期</span>}</div>
+        <div className="issue-detail-badges"><IssueStatusControl issue={issue} canManage={canEditIssue} disabled={pending} onPendingChange={onPendingChange} compact /><StatusBadge kind="priority" value={issue.priority} />{issue.overdue && <span className="issue-overdue-badge">已逾期</span>}</div>
         <h3>{issue.title}</h3>
         <p>{issueScope(issue)} · {issue.ownerName || "未分配负责人"}</p>
       </div>
       <div className="issue-settings-current-progress"><span>当前进度</span><div><i><b style={{ width: `${issue.progress}%` }} /></i><strong>{issue.progress}%</strong></div><small>由状态命令与追加进展共同维护</small></div>
     </header>
     </div>
-    <nav className="issue-settings-tabs" role="tablist" aria-label="问题设置内容">
-      <button id="issue-tab-basic" type="button" role="tab" disabled={pending} aria-controls="issue-panel-basic" aria-selected={tab === "basic"} className={tab === "basic" ? "active" : ""} onClick={() => setTab("basic")}>基本信息</button>
-      <button id="issue-tab-updates" type="button" role="tab" disabled={pending} aria-controls="issue-panel-updates" aria-selected={tab === "updates"} className={tab === "updates" ? "active" : ""} onClick={() => setTab("updates")}>进展记录 <span>{issue.updates?.length || 0}</span></button>
-    </nav>
-    <section id="issue-panel-basic" className="issue-settings-panel issue-settings-basic" role="tabpanel" aria-labelledby="issue-tab-basic" hidden={tab !== "basic"}>
+  </>;
+  const basic = <>
       {!canEditIssue ? <div className="issue-readonly-detail">
         <dl><div><dt>问题影响</dt><dd>{issue.impact || "暂无影响说明"}</dd></div><div><dt>关联范围</dt><dd>{issueScope(issue)}</dd></div><div><dt>负责人</dt><dd>{issue.ownerName || "未分配"}</dd></div><div><dt>提出人</dt><dd>{issue.reporter || "未指定"}</dd></div><div><dt>发现日期</dt><dd>{issue.discoveredAt}</dd></div><div><dt>下次核对</dt><dd>{issue.nextReviewAt||"未设置"}</dd></div><div><dt>目标日期</dt><dd>{issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"}</dd></div>{issue.status === "resolved" && <div><dt>解决日期</dt><dd>{issue.resolvedAt || "未记录"}</dd></div>}</dl>
       </div> : <IssueForm issue={issue} projectId={projectId} people={people} requirements={requirements} canManage defaultReporter={defaultReporter} autoFocusTitle={tab === "basic"} onClose={onClose} busy={pending} onPendingChange={onPendingChange} />}
-    </section>
-    <section id="issue-panel-updates" className="issue-settings-panel issue-settings-updates" ref={historyPagination.scrollRef} role="tabpanel" aria-labelledby="issue-tab-updates" hidden={tab !== "updates"}>
+  </>;
+  const updates = <>
       <div className="issue-settings-progress-entry">
-        <header><div><h3>追加进展</h3><p>普通进展最高99%；100%仅由“解决问题”操作产生</p></div></header>
-        {canContribute ? <IssueUpdateForm issue={issue} canSetProgress={canSetProgress} busy={pending} onPendingChange={onPendingChange} /> : <p className="issue-settings-resolved-note">当前角色可查看进展，但不能追加记录。</p>}
+        <header><div><h3>追加进展</h3><p>{canEditIssue ? "填写本次进度和说明；选择100%可直接保存并解决" : "记录本次进展和处理说明"}</p></div></header>
+        {canContribute ? <IssueUpdateForm issue={issue} canResolve={canEditIssue} canSetProgress={canSetProgress} busy={pending} onPendingChange={onPendingChange} /> : <p className="issue-settings-resolved-note">当前角色可查看进展，但不能追加记录。</p>}
       </div>
+  </>;
+  const history = <>
       <div className="issue-update-settings">
         <header><div><h3>历史进展</h3><p>{issue.updates?.length || 0} 条只读记录；纠错会新增记录，不覆盖历史</p></div></header>
-        <div className="issue-update-settings-list">{historyPagination.items.map((update) => <IssueUpdateSettingRow update={update} superseded={update.supersedesId ? updateById.get(update.supersedesId) : undefined} key={update.id} />)}</div>
+        <div className="issue-update-settings-list" ref={historyPagination.scrollRef}>{historyPagination.items.map((update) => <IssueUpdateSettingRow update={update} superseded={update.supersedesId ? updateById.get(update.supersedesId) : undefined} key={update.id} />)}</div>
         <Pagination {...historyPagination.props} label="问题进展分页" />
-        {!issue.updates?.length && <EmptyState title="暂无进展记录" detail="在上方填写进度与说明，创建第一条记录。" />}
+        {!issue.updates?.length && <EmptyState title="暂无进展记录" detail="在“进展”页填写进度与说明，创建第一条记录。" />}
       </div>
-    </section>
-  </div>;
+  </>;
+  return <DetailWorkspace label="问题详情" summary={summary} activeTab={tab} onTabChange={setTab} disabled={pending} tabs={[
+    {id: 'updates', label: '进展', content: updates},
+    {id: 'basic', label: '基本信息', content: basic},
+    {id: 'history', label: `记录 ${issue.updates?.length || 0}`, content: history},
+  ]}/>;
 }
 
 export function IssuesPage() {

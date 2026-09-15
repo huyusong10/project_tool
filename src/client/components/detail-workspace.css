@@ -1,0 +1,60 @@
+.detail-workspace { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; min-width: 0; }
+.detail-workspace-content { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
+.detail-workspace-summary { flex: none; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.detail-workspace-tabs { display: flex; flex: none; min-height: 44px; gap: 4px; padding: 0 12px; overflow-x: auto; border-bottom: 1px solid var(--border); scrollbar-width: thin; }
+.detail-workspace-tabs button { flex: 1 0 auto; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 12px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; white-space: nowrap; }
+.detail-workspace-tabs button[aria-selected=true] { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
+.detail-workspace-panel { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 16px; }
+.detail-workspace-panel[hidden], .detail-action-host[hidden] { display: none; }
+.detail-action-host { position: absolute; inset: 0; z-index: 5; overflow: hidden; background: var(--bg-surface); }
+.detail-action-host > .modal-backdrop { position: absolute; inset: 0; padding: 0; background: var(--bg-surface); backdrop-filter: none; }
+.detail-action-host .modal-card { width: 100% !important; max-width: 100% !important; height: 100%; max-height: 100%; border: 0; border-radius: 0; box-shadow: none; }
+.detail-action-host .modal-card > header { min-height: 52px; gap: 12px; padding: 12px 16px; }
+.detail-action-host .modal-card > header h2 { font-size: 15px; }
+.detail-action-host .modal-body { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 16px; }
+.detail-action-host .modal-body:has(> .detail-workspace) { display: flex; overflow: hidden; padding: 0; }
+.detail-workspace :is(.button-row, .form-actions, .issue-update-actions, .inline-action-form > footer, .panel-actions) { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.detail-workspace :is(.form-actions, .issue-update-actions, .inline-action-form > footer) { position: sticky; bottom: -16px; z-index: 2; padding: 12px 0; margin-top: 12px; background: var(--bg-surface); border-top: 1px solid var(--border); }
+.detail-workspace :is(.form-actions, .issue-update-actions, .inline-action-form > footer) > button { min-width: 96px; min-height: 36px; justify-content: center; }
+.detail-section-actions { position: sticky; top: -16px; z-index: 2; display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 0; margin-top: -16px; margin-bottom: 12px; background: var(--bg-surface); border-bottom: 1px solid var(--border); }
+.detail-work-list { display: grid; gap: 0; }
+.detail-work-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.detail-work-row-title { text-align: left; background: none; border: 0; padding: 0; color: inherit; font: inherit; min-width: 0; overflow-wrap: anywhere; }
+.detail-work-row-title strong, .detail-work-row-title small { display: block; }
+.detail-work-row-title small { margin-top: 5px; color: var(--muted); font-size: 12px; }
+.detail-work-row > .object-execution-controls { display: contents; }
+.detail-work-row .work-actions { grid-column: 2 / -1; justify-content: flex-end; gap: 10px; max-width: none; }
+.detail-workspace .issue-settings-summary { padding: 0; }
+.detail-workspace .issue-settings-summary h3 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.detail-workspace .issue-settings-current-progress small { display: none; }
+.modal-body-workspace:has(> .detail-workspace), .object-inspector-body:has(> .detail-workspace), .object-inspector-body:has(> .requirement-page > .detail-workspace) { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.object-inspector-body > .requirement-page:has(> .detail-workspace) { display: flex; flex: 1; min-height: 0; padding: 0; gap: 0; }
+.object-inspector-body > .ghost-button { flex: none; align-self: flex-end; margin: 8px 16px; }
+@media (max-width: 600px) {
+  .detail-workspace-tabs { padding: 0 6px; gap: 0; }
+  .detail-workspace-tabs button { padding: 10px 9px; }
+  .detail-workspace-panel, .detail-action-host .modal-body { padding: 12px; }
+  .detail-workspace .issue-settings-summary { display: flex; flex-direction: column; gap: 8px; }
+  .detail-workspace .issue-settings-current-progress { width: 100%; }
+  .detail-workspace :is(.form-actions, .issue-update-actions, .inline-action-form > footer) { bottom: -12px; }
+}
+
+.detail-action-host > .modal-backdrop:not(:last-child) {visibility:hidden}
+.detail-workspace .delivery-requirement-header {display:flex;flex-wrap:wrap;gap:10px;padding:0}
+.detail-workspace .work-item-actions {gap:10px;flex-wrap:wrap;max-width:none}
+.detail-workspace .detail-grid {grid-template-columns:minmax(0,1fr)}
+.detail-workspace .progress-detail-card {min-width:0}
+.detail-workspace .work-editor-modal-toolbar {position:sticky;top:-16px;background:var(--bg-surface);z-index:3;padding:12px 0;flex-wrap:wrap;gap:10px}
+
+.detail-workspace .work-history-entry {padding:12px 0;border-bottom:1px solid var(--border)}
+.detail-workspace .work-history-entry header {display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;color:var(--muted);font-size:12px}
+.detail-workspace .work-history-entry p {white-space:pre-wrap;overflow-wrap:anywhere}
+
+.detail-action-host .inline-action-form > header {display:none}
+.detail-workspace .work-item-action-row {gap:10px;justify-content:flex-end}
+.detail-workspace .work-actions .work-item-actions {width:auto}
+
+.work-create-form .inline-edit-cell {width:100%}
+.work-create-form .inline-edit-trigger {width:100%;max-width:none;min-height:38px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface);justify-content:space-between}
+.work-create-form .inline-edit-chevron {opacity:1}
+.issue-progress-result {height:40px;line-height:20px;margin:0;overflow:auto}

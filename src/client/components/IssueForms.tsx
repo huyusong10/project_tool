@@ -1,3 +1,4 @@
+import {IssueFactForm} from "./IssueStatusControl";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, CheckCircle2, ChevronDown, Search } from "lucide-react";
@@ -228,7 +229,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
   if (draft.reporter && !reporterOptions.some((value) => value.value === draft.reporter)) reporterOptions.push({ value: draft.reporter, label: draft.reporter, description: current?.reporter === draft.reporter ? "历史记录" : "当前登录账号" });
   const ownerOptions: SearchSelectOption[] = [{ value: "", label: "未分配" }, ...people.filter((person) => person.active && person.projectRole !== "viewer").map((person) => ({ value: person.id, label: person.name }))];
   if (draft.ownerId && !ownerOptions.some((value) => value.value === draft.ownerId)) ownerOptions.push({ value: draft.ownerId, label: current?.ownerId === draft.ownerId ? current.ownerName || "历史负责人" : draft.ownerId, description: "历史负责人" });
-  if (resolved && !editor.dirty) return <div className="terminal-lock-note"><CheckCircle2 size={18} /><div><strong>问题已解决，当前数据已锁定</strong><p>解决日期：{current?.resolvedAt || "未记录"}</p><p>继续处理请使用上方状态菜单“重新打开”；修正标题、影响或解决日期请使用“纠错”。</p></div></div>;
+  if (resolved && !editor.dirty && issue) return <IssueFactForm issue={issue} disabled={busy} onPendingChange={onPendingChange || (() => {})} onSaved={() => {}} onCancel={onClose}/>;
   const blocked = resolved || editor.changed || editor.needsRefresh;
   return <form className="issue-form" onSubmit={(event) => {
     event.preventDefault();
@@ -303,13 +304,12 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
   </form>;
 }
 
-export function IssueUpdateForm({ issue, canSetProgress, onPendingChange, busy = false }: {
-  issue: Issue; canSetProgress: (value: Issue) => boolean; onPendingChange?: BusyChange; busy?: boolean;
+export function IssueUpdateForm({ issue, canSetProgress, canResolve = false, onPendingChange, busy = false }: {
+  issue: Issue; canSetProgress: (value: Issue) => boolean; canResolve?: boolean; onPendingChange?: BusyChange; busy?: boolean;
 }) {
   const toast = useToast();
   const { session } = useSession();
   const editor = useIssueDraft(issue, onPendingChange);
-  const initialUpdateIds = useRef(new Set((issue.updates || []).map((update) => update.id)));
   const [progress, setProgress] = useState(issue.progress);
   const [content, setContent] = useState("");
   const baseline = editor.baseline || issue;
@@ -317,22 +317,30 @@ export function IssueUpdateForm({ issue, canSetProgress, onPendingChange, busy =
   const writesProgress = canSetProgress(baseline);
   const resolved = issue.status === "resolved" || baseline.status === "resolved";
   const decreasing = writesProgress && progress < Math.max(issue.progress, baseline.progress);
+  const resolving = writesProgress && progress === 100;
   const permissionChanged = writesProgress !== canSetProgress(issue);
   const warning = resolved ? "问题已解决，不能追加进展；已保留本次输入。"
-    : decreasing ? "普通进展不能降低完成度，请核对最新记录；降低完成度需要项目经理纠错。" : null;
+    : decreasing && !canResolve ? "降低完成度需要项目经理更正。已保留本次输入。"
+    : resolving && !canResolve ? "解决问题需要项目经理权限。已保留本次输入。" : null;
   if (resolved && !editor.dirty) return <p className="issue-settings-resolved-note"><CheckCircle2 size={17} />问题已闭环并锁定。如需继续处理，请先执行“重开”。</p>;
   const blocked = Boolean(warning || editor.changed || editor.needsRefresh || permissionChanged);
   return <form className="issue-update-form" onSubmit={(event) => {
     event.preventDefault();
     if (blocked || busy) return;
-    const input = writesProgress ? { content, progress, expectedVersion: baseline.version } : { content };
+    const action = resolving ? 'resolve' : decreasing ? 'correct' : 'updates';
+    const input = resolving ? {content, expectedVersion: baseline.version}
+      : decreasing ? {progress, reason: content, expectedVersion: baseline.version}
+      : writesProgress ? { content, progress, expectedVersion: baseline.version } : { content };
+    const initialUpdateIds = new Set((baseline.updates || []).map(update => update.id));
     void editor.save(
-      () => api<Issue>(`/api/issues/${issue.id}/updates`, { method: "POST", body: jsonBody(input) }),
+      () => api<Issue>(`/api/issues/${issue.id}/${action}`, { method: "POST", body: jsonBody(input) }),
       (saved) => { setContent(""); setProgress(saved.progress); },
       {
-        matches: (latest) => Boolean(latest.updates?.some((update) => !initialUpdateIds.current.has(update.id)
-          && update.content === (canonicalizeContent(content) || (writesProgress ? `完成度：${baseline.progress}% → ${progress}%` : ""))
-          && update.eventType === (writesProgress ? "progress" : "note")
+        matches: (latest) => (!writesProgress || latest.version === baseline.version + 1 && latest.progress === progress)
+          && (!resolving || latest.status === 'resolved')
+          && Boolean(latest.updates?.some((update) => !initialUpdateIds.has(update.id)
+          && (decreasing && !canonicalizeContent(content) || update.content === (canonicalizeContent(content) || (resolving ? '问题已解决' : writesProgress ? `完成度：${baseline.progress}% → ${progress}%` : "")))
+          && update.eventType === (resolving ? 'resolve' : decreasing ? 'correction' : writesProgress ? "progress" : "note")
           && update.createdByAccountId === session.accountId
           && (writesProgress ? update.progress === progress : update.progress === null))),
         onReconciled: () => toast.success("已核对最新状态：问题进展已记录"),
@@ -340,11 +348,11 @@ export function IssueUpdateForm({ issue, canSetProgress, onPendingChange, busy =
     );
   }}>
     <fieldset className="form-fieldset issue-update-fields" disabled={editor.pending || busy}>
-      {writesProgress && <ProgressInput value={progress} onChange={(value) => { editor.setDirty(true); setProgress(value); }} max={99} label="本次进度（更新后）" />}
-      {!writesProgress && <p className="field-help">本次仅记录说明，不修改完成度。</p>}
-      <textarea name="content" rows={3} required={!writesProgress} value={content} onChange={(event) => { editor.setDirty(true); setContent(event.target.value); }} placeholder={writesProgress ? "说明（可选）" : "记录新进展、决策或待办结果"} />
+      {writesProgress && <ProgressInput value={progress} onChange={(value) => { editor.setDirty(true); setProgress(value); }} max={canResolve ? 100 : 99} presets={[20, 50, 80, 100]} label="本次进度（更新后）" />}
+      <p className="field-help issue-progress-result" role="status">{!writesProgress ? '本次仅记录说明，不修改完成度。' : resolving ? '保存后将问题标记为已解决，记录解决日期和本次说明。' : decreasing && canResolve && !resolved ? '本次将更正完成度，并新增更正记录，原历史保留。' : !canResolve ? '可更新至 99%；由项目经理确认解决。' : '保存后将记录当前进度和本次说明。'}</p>
+      <textarea name="content" aria-label="本次进展说明" rows={3} required={!writesProgress} value={content} onChange={(event) => { editor.setDirty(true); setContent(event.target.value); }} placeholder={writesProgress ? "说明（可选）" : "记录新进展、决策或待办结果"} />
       <DraftNotice editor={editor} warning={warning} />
-      <div className="issue-update-actions"><button className="primary-button" disabled={blocked}>{editor.pending ? "提交中…" : "追加进展"}</button></div>
+      <div className="issue-update-actions"><button className="primary-button" disabled={blocked}>{editor.pending ? "提交中…" : resolving ? "保存并解决" : decreasing && canResolve && !resolved ? "保存更正" : "追加进展"}</button></div>
     </fieldset>
   </form>;
 }

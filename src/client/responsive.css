@@ -555,11 +555,6 @@ textarea {
     width: 100%;
   }
 
-  .issue-settings-basic,
-  .issue-settings-updates {
-    padding: 12px;
-  }
-
   .issue-search-select-menu {
     width: 100%;
     max-width: 100%;
@@ -754,3 +749,8 @@ textarea {
 .selection-actions>.ghost-button{min-height:36px;height:36px;padding:0 10px;font-size:12px}
 .delivery-batch:has(.selection-actions),.workspace-intake-tools{min-height:36px;flex-wrap:nowrap}
 @media(max-width:1100px){.selection-actions{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:25;max-width:calc(100vw - 24px);padding:8px 12px;border:1px solid var(--accent-border);border-radius:10px;background:var(--bg-surface);box-shadow:var(--shadow-2)}}
+
+/* Short facts must fit inside their column even when the table scrolls. */
+.issue-data-list :is(.issue-data-priority,.issue-data-status,.issue-data-due) .data-cell-primary{overflow:visible;white-space:nowrap}
+.issue-data-list .issue-data-priority .inline-edit-value-badge{overflow:visible;flex-shrink:0;min-width:max-content}
+.issue-data-list :is(.issue-data-priority,.issue-data-status) :is(.priority-badge,.issue-status){max-width:none;flex-shrink:0;white-space:nowrap}

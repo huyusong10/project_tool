@@ -243,3 +243,10 @@
  .workspace-stage-summary.is-parallel>span+span::before{content:none}
  .workspace-stage-summary.is-parallel strong{font-size:11px}
 }
+
+/* Filter values share typography and left alignment; action labels remain centered. */
+.workspace-progress-tools :is(input,button,.select-trigger){font-family:var(--font-sans);font-size:13px;font-weight:400;line-height:20px}
+.workspace-progress-tools :is(.select-trigger,.progress-status-filter){height:36px;padding:7px 11px;text-align:left}
+.workspace-progress-tools :is(.progress-more-filter,.progress-reset){height:36px;justify-content:center}
+
+.workspace-progress-tools input {text-align:left}

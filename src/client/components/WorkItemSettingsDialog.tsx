@@ -1,3 +1,5 @@
+import {FormField, FormSubmitActions} from "./Form";
+import {Select} from "./Select";
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import {useSession} from '../app-context';
 import { workStageLabels, workStages, type WorkStage } from "../../shared/execution-stage";
@@ -66,7 +68,6 @@ export function WorkItemSettingsDialog({
   const [removeTarget, setRemoveTarget] = useState<WorkItem | null>(null);
   const createSubmitting = useRef(false);
   const editorScrollRef = useRef<HTMLDivElement>(null);
-  const newItemRowRef = useRef<HTMLTableRowElement>(null);
   const scrollAfterCreateCount = useRef<number | null>(null);
   const reorderSubmitting = useRef(false);
   const createReadingRef = useRef(false);
@@ -80,7 +81,6 @@ export function WorkItemSettingsDialog({
   const newItemHasUnavailablePeople = Boolean(newItem && [newItem.ownerId, ...newItem.collaboratorIds].some((personId) => personId && !eligiblePersonIds.has(personId)));
   const settingsUnknown = createUnknown || reorderUnknown || inlineUnknown || deleteUnknown;
   const createBlocked = settingsUnknown || createChanged || createNeedsRefresh || createReading || requirementLocked || newItemHasUnavailablePeople;
-  const newItemVisible = Boolean(newItem);
   const saveWorkItem = async (item: WorkItem, input: Record<string, unknown>, expectedVersion?: number) => {
     try {
       await saveWorkItemRequest(item, input, expectedVersion);
@@ -93,16 +93,6 @@ export function WorkItemSettingsDialog({
     }
   };
 
-  useEffect(() => {
-    if (!newItemVisible) return;
-    const frame = window.requestAnimationFrame(() => {
-      const scrollArea = editorScrollRef.current;
-      if (!scrollArea) return;
-      scrollArea.scrollTo({ top: scrollArea.scrollHeight, behavior: "smooth" });
-      newItemRowRef.current?.querySelector<HTMLElement>(".inline-edit-trigger")?.focus();
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [newItemVisible]);
 
   useEffect(() => {
     const previousCount = scrollAfterCreateCount.current;
@@ -166,6 +156,7 @@ export function WorkItemSettingsDialog({
       setCreateReadError("");
       setCreateRefreshed(false);
       invalidateRequirementViews(client, requirement.id);
+      if (initialCreate) onClose();
     },
     onError: async failure => {
       if(isWriteOutcomeUnknown(failure)){setCreateUnknown(true);onWriteNeedsRecheck();}
@@ -250,9 +241,14 @@ export function WorkItemSettingsDialog({
     if (createSubmitting.current || reorderSubmitting.current || createReadingRef.current || reorderReadingRef.current) return;
     onClose();
   };
+  const closeCreation = () => {
+    if (createSubmitting.current || createReadingRef.current) return;
+    setNewItem(null);
+    if (initialCreate) onClose();
+  };
 
   return <>
-    <Modal title="工作项设置" width={1120} closable={!createItem.isPending && !createReading && !reorderItems.isPending && !reorderReading} onClose={closeSettings}>
+    {!initialCreate && <Modal title="工作项设置" width={1120} closable={!createItem.isPending && !createReading && !reorderItems.isPending && !reorderReading} onClose={closeSettings}>
       <div className="work-editor-modal">
         <div className="work-editor-modal-toolbar">
           <span>配置名称、人员、计划日期和顺序；日常推进请直接在甘特图操作</span>
@@ -303,29 +299,32 @@ export function WorkItemSettingsDialog({
               </tr>;
             }}
           />
-          {newItem && <tr ref={newItemRowRef} className="work-inline-new-row">
-            <td><div className="work-item-name-editor"><InlineTextCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.title} label="新工作项名称" required placeholder="填写名称" onSave={async (title) => setNewItem((current) => current && ({ ...current, title }))} /><InlineSelectCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.workStage || ""} label="新工作项阶段" options={[{value:"",label:"未分类"},...workStages.map(value=>({value,label:workStageLabels[value]}))]} onSave={async workStage=>setNewItem(current=>current&&({...current,workStage:workStage as WorkStage || null}))}/></div></td>
-            <td><InlineSelectCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.ownerId} label="新工作项主负责人" options={[{ value: "", label: "未分配" }, ...eligiblePeople.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))]} onSave={async (ownerId) => setNewItem((current) => current && ({ ...current, ownerId, collaboratorIds: current.collaboratorIds.filter((personId) => personId !== ownerId) }))} placeholder="未分配" /></td>
-            <td><InlineMultiSelectCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.collaboratorIds} label="新工作项协作人员" options={eligiblePeople.map((person) => ({ value: person.id, label: person.name, description: person.jobTitle || "岗位未设置" }))} excludedValues={newItem.ownerId ? [newItem.ownerId] : []} onSave={async (collaboratorIds) => setNewItem((current) => current && ({ ...current, collaboratorIds }))} placeholder="选择人员" /></td>
-            <td><InlineDateCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.plannedStart} label="新工作项计划开始" onSave={async (plannedStart) => setNewItem((current) => current && ({ ...current, plannedStart: plannedStart || "" }))} /></td>
-            <td><InlineDateCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.plannedEnd} label="新工作项计划完成" onSave={async (plannedEnd) => setNewItem((current) => current && ({ ...current, plannedEnd: plannedEnd || "" }))} /></td>
-            <td><span className="status-pill status-not_started">待创建</span>{createItem.error && <small className="inline-row-error">{createItem.error.message}</small>}</td>
-            <td><div className="inline-row-actions"><button className="ghost-button" disabled={createItem.isPending || createReading} onClick={() => setNewItem(null)}>取消</button><button className="primary-button" disabled={!newItem.title.trim() || createItem.isPending || createBlocked} onClick={() => {
-              submitNewItem();
-            }}>保存</button></div></td>
-          </tr>}
-          {newItem && (createChanged || createNeedsRefresh || createReadError || createRefreshed || newItemHasUnavailablePeople) && <tr className="work-inline-feedback"><td colSpan={7}>
-            <FormError full={false}>{createChanged ? "需求已更新，请重新读取并核对后再保存；新增草稿已保留。" : createReadError || undefined}</FormError>
-            <FormError full={false}>{newItemHasUnavailablePeople ? "新增工作项选择的人员已不可用，请重新选择负责人或协作人员。" : undefined}</FormError>
-            {createRefreshed && <span>已读取最新需求（版本 {newItem.baselineVersion}），新增草稿保持不变。</span>}
-            {(createChanged || createNeedsRefresh) && <button type="button" className="ghost-button" disabled={createReading || createItem.isPending} onClick={() => void reloadNewItem()}>{createReading ? "读取中…" : "重新读取需求"}</button>}
-          </td></tr>}
           </tbody>
         </table>
         {!requirement.workItems.length && !newItem && <EmptyState title="还没有工作项" detail="可新增工作项，或从通用研发模板补充。" />}
         </div>
       </div>
-    </Modal>
+    </Modal>}
+
+    {newItem && <Modal title="添加工作项" closable={!createItem.isPending && !createReading} onClose={closeCreation}>
+      <form className="work-create-form" onSubmit={event => {event.preventDefault(); if (newItem.title.trim()) submitNewItem();}}>
+        <fieldset className="form-grid form-fieldset" disabled={settingsUnknown || createItem.isPending || createReading}>
+          <FormField label="新工作项名称" full><input autoFocus required value={newItem.title} onChange={event => setNewItem({...newItem, title: event.target.value})}/></FormField>
+          <FormField label="工作阶段"><Select value={newItem.workStage || ''} onChange={event => setNewItem({...newItem, workStage: event.target.value as WorkStage || null})}><option value="">未分类</option>{workStages.map(stage => <option key={stage} value={stage}>{workStageLabels[stage]}</option>)}</Select></FormField>
+          <FormField label="主负责人"><InlineSelectCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.ownerId} label="新工作项主负责人" options={[{value:'', label:'未分配'}, ...eligiblePeople.map(person => ({value:person.id, label:person.name}))]} onSave={async ownerId => setNewItem(current => current && ({...current, ownerId, collaboratorIds: current.collaboratorIds.filter(personId => personId !== ownerId)}))} placeholder="未分配"/></FormField>
+          <FormField label="协作人员" full><InlineMultiSelectCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.collaboratorIds} label="新工作项协作人员" options={eligiblePeople.map(person => ({value:person.id, label:person.name}))} excludedValues={newItem.ownerId ? [newItem.ownerId] : []} onSave={async collaboratorIds => setNewItem(current => current && ({...current, collaboratorIds}))} placeholder="选择人员"/></FormField>
+          <FormField label="计划开始"><input type="date" value={newItem.plannedStart} onChange={event => setNewItem({...newItem, plannedStart:event.target.value})}/></FormField>
+          <FormField label="计划完成"><input type="date" value={newItem.plannedEnd} onChange={event => setNewItem({...newItem, plannedEnd:event.target.value})}/></FormField>
+          <FormField label="变更说明（可选）" full><textarea rows={2} value={newItem.reason || ''} onChange={event => setNewItem({...newItem, reason:event.target.value})}/></FormField>
+          <FormError>{createItem.error?.message}</FormError>
+          <FormError>{createChanged ? '需求已更新，请重新读取并核对后再保存；新增草稿已保留。' : createReadError || undefined}</FormError>
+          <FormError>{newItemHasUnavailablePeople ? '新增工作项选择的人员已不可用，请重新选择负责人或协作人员。' : undefined}</FormError>
+          {createRefreshed && <p className="field-help field-full">已读取最新需求（版本 {newItem.baselineVersion}），新增草稿保持不变。</p>}
+          {(createChanged || createNeedsRefresh) && <div className="field-full"><button type="button" className="ghost-button" disabled={createReading || createItem.isPending} onClick={() => void reloadNewItem()}>{createReading ? '读取中…' : '重新读取需求'}</button></div>}
+          <FormSubmitActions submitLabel="保存工作项" pending={createItem.isPending || createReading} disabled={!newItem.title.trim() || createBlocked} onCancel={closeCreation}/>
+        </fieldset>
+      </form>
+    </Modal>}
     {removeTarget && <WorkItemDeleteDialog target={removeTarget} requirement={requirement} canManage onReload={onReload} onWriteNeedsRecheck={() => { setDeleteUnknown(true); onWriteNeedsRecheck(); }} onClose={() => setRemoveTarget(null)} />}
   </>;
 }

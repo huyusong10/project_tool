@@ -1,3 +1,8 @@
+import {WorkItemHistory} from "../components/WorkItemHistory";
+import {DetailWorkspace} from "../components/DetailWorkspace";
+import {Modal} from "../components/Modal";
+import {WorkspaceObjectMark} from "../components/WorkspaceObjectMark";
+import {useProjectWorkspace} from "../project-workspace-context";
 import {workspaceParams} from '../workspace-location';
 import {WorkItemFacts} from '../components/WorkItemFacts';
 import {TopbarMenu} from '../components/TopbarMenu';
@@ -95,6 +100,11 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
   const [modal, setModal] = useState<
     "info" | "correction" | "schedule" | "template" | null
   >(null);
+  const workspace = useProjectWorkspace();
+  const [localWorkId, setLocalWorkId] = useState<string>();
+  const [workEditorCreate, setWorkEditorCreate] = useState(false);
+  const openWork = (workId: string) => workspace ? workspace.inspect(workId) : setLocalWorkId(workId);
+  const closeWork = () => {setLocalWorkId(undefined); if (selectedWorkItemId && workspace) workspace.inspect(id);};
   const [workEditorOpen, setWorkEditorOpen] = useState(false);
   const [workEditorNeedsRecheck, setWorkEditorNeedsRecheck] = useState(() => readWorkItemSettingsRechecks(actionRecheckAccountKey).has(id));
   const [workEditorRechecking, setWorkEditorRechecking] = useState(false);
@@ -132,7 +142,7 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
     isFetching,
     unavailable,
   } = usePageResources().requirement;
-  const historyPagination = useListPagination({ items: (requirement?.progressUpdates || []).filter(item=>!selectedWorkItemId||item.workItemId===selectedWorkItemId), id: "history:"+(selectedWorkItemId||"requirement"), defaultPageSize: 10, ready: Boolean(requirement), loading: isFetching });
+  const historyPagination = useListPagination({ items: requirement?.progressUpdates || [], id: "history:requirement", defaultPageSize: 10, ready: Boolean(requirement), loading: isFetching });
   const lastPathProject=useRef<string|undefined>(undefined);
   useEffect(()=>{if(requirement?.projectId)lastPathProject.current=requirement.projectId;},[requirement?.projectId]);
   const scrollKey='pm-detail-scroll:'+(session.accountId||'guest')+':'+(requirement?.projectId||'')+':'+id,workTarget=searchParams.get('workItemId');
@@ -261,11 +271,14 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
     if(params.get('workItemId'))params.set('pathNode',params.get('workItemId')!);
     return <Navigate to={'/paths?'+params} replace state={pathLocation.state}/>;
   }
-  const embeddedWorkDetails=<section className="delivery-work-details">{requirement.workItems.filter(item=>!selectedWorkItemId||item.id===selectedWorkItemId).map(item=><article key={item.id}>
-    {!selectedWorkItemId&&<h4>{item.title}</h4>}
-    <WorkItemFacts item={item}/>
-    <WorkItemExecution requirement={requirement} item={item} people={people} progressLabel="更新进度">{({actions,progress})=><div className="object-execution-controls">{progress}{actions}</div>}</WorkItemExecution>
-  </article>)}<div className="button-row">{canManageWorkItems&&<button className="ghost-button" disabled={workEditorNeedsRecheck||!!planRecheck} onClick={()=>setWorkEditorOpen(true)}>工作项设置</button>}<button className="ghost-button" onClick={openPathView}>维护依赖与分解</button></div></section>;
+  const selectedWork = requirement.workItems.find(item => item.id === (selectedWorkItemId || localWorkId));
+  const workList = <div className="detail-work-list">{requirement.workItems.map(item => <WorkItemExecution key={item.id} requirement={requirement} item={item} people={people}>
+    {({actions, progress}) => <article className="detail-work-row" data-work-id={item.id}>
+      <WorkspaceObjectMark kind="work" status={item.status}/>
+      <button className="detail-work-row-title" onClick={() => openWork(item.id)}><strong>{item.title}</strong><small>{item.ownerName || '未分派'} · {item.plannedStart || '待排期'} ～ {item.plannedEnd || '待定'}</small></button>
+      <div>{progress}</div><div className="work-actions">{actions}</div>
+    </article>}
+  </WorkItemExecution>)}</div>;
   const requirementHeader=<Header
         title={requirement.title}
 
@@ -291,12 +304,7 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
                 {['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" className="danger" onClick={() => { setCommand('archive'); }}><Archive size={15} />归档需求</button>}
         </> : null}
       />;
-  return (
-    <>
-
-      {!embedded&&requirementHeader}
-      <div className={embedded?"requirement-page embedded-requirement":"page-content requirement-page"}>
-        {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
+  const notices = <>        {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
         {infoRecheck && <div className="warning-banner" role="alert">需求信息修改结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" disabled={!peopleReady} onClick={() => setModal("info")}>核对信息修改</button></div>}
         {scheduleRecheck && <div className="warning-banner" role="alert">需求计划调整结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" onClick={() => setModal("schedule")}>核对计划调整</button></div>}
         {planRecheck && <div className="warning-banner" role="alert">补全计划结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" disabled={templatesQuery.data === undefined} onClick={() => setModal("template")}>核对补全计划</button></div>}
@@ -304,34 +312,8 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
         {commandRecheck && <div className="warning-banner" role="alert">{commandRecheck.action === 'cancel' ? '取消需求' : commandRecheck.action === 'archive' ? '归档需求' : '按期完成'}结果待核对，原需求版本已锁定。<button type="button" className="ghost-button" onClick={() => setCommand(commandRecheck.action)}>核对需求操作</button></div>}
         {workEditorNeedsRecheck && <div className="warning-banner" role="alert">工作项设置结果待核对，设置操作暂不可用。<button type="button" className="ghost-button" disabled={workEditorRechecking} onClick={() => void recheckWorkEditor()}>{workEditorRechecking ? "读取中…" : "重新读取需求"}</button></div>}
         {supportingError && <div className="warning-banner">{supportingDataReady ? "人员与流程数据刷新失败，当前使用上次成功结果。" : "人员或流程数据加载失败，相关编辑操作暂不可用。"}<button className="ghost-button" disabled={peopleQuery.isFetching || templatesQuery.isFetching} onClick={() => void Promise.all([peopleQuery.refetch(), templatesQuery.refetch()])}>重新加载</button></div>}
-        {selectedWorkItemId&&embeddedWorkDetails}
-        <details className="object-section" open={!selectedWorkItemId&&pathLocation.pathname!=='/execution'}><summary>资料与范围</summary><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未安排 Phase'}</dd></div><div className="object-fact-wide"><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div className="object-fact-wide"><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div><div><dt>来源</dt><dd>{requirement.sourceNotes||'尚未填写'}</dd></div>{requirement.referenceUrl&&<div><dt>文档</dt><dd><a href={requirement.referenceUrl} target="_blank" rel="noreferrer">打开资料</a></dd></div>}</dl></details>
-        {embedded&&(selectedWorkItemId?<details className="object-section"><summary>所属需求 · {requirement.title}</summary>{requirementHeader}<RequirementOverview requirement={requirement} compact={embedded}/></details>:requirementHeader)}
-        {!selectedWorkItemId&&<details className="object-section" open={pathLocation.pathname==='/execution'}><summary>安排与执行</summary><RequirementOverview key={requirement.id} requirement={requirement} compact={embedded}/></details>}
-        {selectedWorkItemId?null:<details className="object-section" open><summary>工作分解 · {requirement.workItems.length}</summary>{embeddedWorkDetails}{!requirement.workItems.length&&<p>{direct?'直接执行需求，可在安排与执行中记录进展。':'尚未拆分工作项。'}</p>}</details>}
-      {workEditorOpen && canManageWorkItems && (
-        <WorkItemSettingsDialog
-          requirement={requirement}
-          people={people}
-          canManageRequirement={canManage}
-          onClose={() => setWorkEditorOpen(false)}
-          onOpenDependencies={()=>{setWorkEditorOpen(false);openPathView();}}
-          onOpenPlan={() => {
-            setWorkEditorOpen(false);
-            setModal("template");
-          }}
-          onWriteNeedsRecheck={() => {
-            persistWorkItemSettingsRecheck(actionRecheckAccountKey, id, true);
-            setWorkEditorNeedsRecheck(true);
-          }}
-          onReload={async () => {
-            const result = await refetch({ throwOnError: true });
-            if (!result.data) throw new Error("需求无法打开");
-            return result.data;
-          }}
-        />
-      )}
-      <details className="delivery-history object-section" ><summary>{selectedWorkItemId?"工作项执行历史":"进展与执行历史"}</summary><section className="detail-grid progress-detail-grid">
+</>;
+  const history = <><section className="detail-grid progress-detail-grid">
         <article className="panel progress-detail-card paged-panel">
           <header><div><h2>进展记录</h2></div></header>
           <div className="progress-feed paged-body" ref={historyPagination.scrollRef}>
@@ -359,8 +341,50 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
           <header><div><h2>{selectedWorkItemId?"需求进度趋势":"进度趋势"}</h2></div></header>
           {requirement.progressUpdates?.length ? <Chart option={progressOption} height={270} ariaLabel="需求计划与实际进度趋势" /> : <EmptyState title="暂无趋势" detail="产生执行记录后自动生成趋势图。" />}
         </article>
-      </section>
-      </details>
+      </section></>;
+  const dependencies = workspace?.data.dependencies.filter(edge => edge.sourceRequirementId === id || edge.targetRequirementId === id) || [];
+  return <div className={embedded ? "requirement-page embedded-requirement" : "page-content requirement-page"}>
+    <DetailWorkspace label="需求详情" initialTab="execution" tabs={[
+      {id: 'execution', label: '执行', content: <>{notices}<div className="detail-section-actions">{requirementHeader}</div><RequirementOverview requirement={requirement} compact={embedded}/>{!direct && workList}</>},
+      {id: 'work', label: `工作项 ${requirement.workItems.length}`, content: <>
+        <div className="detail-section-actions">{canManageWorkItems && <>
+          <button className="primary-button" disabled={workEditorNeedsRecheck || !!planRecheck} onClick={() => {setWorkEditorCreate(true); setWorkEditorOpen(true);}}>添加工作项</button>
+          <button className="ghost-button" disabled={workEditorNeedsRecheck || !!planRecheck} onClick={() => {setWorkEditorCreate(false); setWorkEditorOpen(true);}}>工作项设置</button>
+          {canManage && <button className="ghost-button" disabled={!!planRecheck} onClick={() => setModal('template')}>补全计划</button>}
+        </>}</div>
+        {workList}{!requirement.workItems.length && <p>{direct ? '直接执行需求，在执行页记录进展。' : '尚未拆分工作项。'}</p>}
+      </>},
+      {id: 'basic', label: '基本信息', content: <><div className="detail-section-actions">{requirementHeader}</div><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未安排 Phase'}</dd></div><div className="object-fact-wide"><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div className="object-fact-wide"><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div><div><dt>来源</dt><dd>{requirement.sourceNotes||'尚未填写'}</dd></div>{requirement.referenceUrl&&<div><dt>文档</dt><dd><a href={requirement.referenceUrl} target="_blank" rel="noreferrer">打开资料</a></dd></div>}</dl>{!!requirement.readinessIssues?.length && <p className="object-info-note">{requirement.readinessIssues.join('；')}</p>}</>},
+      {id: 'dependencies', label: '依赖', content: <><div className="detail-section-actions"><button className="ghost-button" onClick={openPathView}>在关系图中维护依赖</button></div>
+        {dependencies.map(edge => {const incoming = edge.targetRequirementId === id, otherId = incoming ? edge.sourceRequirementId : edge.targetRequirementId, other = workspace?.data.requirements.find(item => item.id === otherId); return <article className="detail-dependency" key={edge.id}><span>{incoming ? '前置' : '后续'} · </span><button className="text-button" onClick={() => workspace?.inspect(otherId)}>{other?.title || otherId}</button></article>;})}
+        {!dependencies.length && <p className="muted-text">{workspace ? '当前没有需求间依赖。' : '在关系图中查看需求及工作项依赖。'}</p>}
+        {requirement.workItems.filter(item => item.unmetPredecessors?.length).map(item => <p key={item.id}>{item.title}：等待 {item.unmetPredecessors!.map(predecessor => predecessor.title).join('、')}</p>)}
+      </>},
+      {id: 'history', label: '记录', content: history},
+    ]}>
+      {workEditorOpen && canManageWorkItems && (
+        <WorkItemSettingsDialog
+          initialCreate={workEditorCreate}
+          requirement={requirement}
+          people={people}
+          canManageRequirement={canManage}
+          onClose={() => setWorkEditorOpen(false)}
+          onOpenDependencies={()=>{setWorkEditorOpen(false);openPathView();}}
+          onOpenPlan={() => {
+            setWorkEditorOpen(false);
+            setModal("template");
+          }}
+          onWriteNeedsRecheck={() => {
+            persistWorkItemSettingsRecheck(actionRecheckAccountKey, id, true);
+            setWorkEditorNeedsRecheck(true);
+          }}
+          onReload={async () => {
+            const result = await refetch({ throwOnError: true });
+            if (!result.data) throw new Error("需求无法打开");
+            return result.data;
+          }}
+        />
+      )}
       {modal === "info" && (
         <RequirementInfoForm requirement={requirement} people={people} recheck={infoRecheck} onRecheckChange={setInfoRecheck} onClose={() => setModal(null)} />
       )}
@@ -378,9 +402,15 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
         if (!latest.data) throw new Error('需求已无法读取，请关闭操作窗口。');
         return latest.data;
       }} />}
-      </div>
-    </>
-  );
+
+      {selectedWork && <Modal title={selectedWork.title} layout="workspace" onClose={closeWork}>
+        <DetailWorkspace label="工作项详情" tabs={[
+          {id: 'execution', label: '执行', content: <><WorkItemExecution requirement={requirement} item={selectedWork} people={people} progressLabel="更新进度">{({actions, progress}) => <div className="detail-section-actions">{progress}{actions}</div>}</WorkItemExecution><WorkItemFacts item={selectedWork}/></>},
+          {id: 'history', label: '记录', content: <WorkItemHistory requirement={requirement} workItemId={selectedWork.id}/>},
+        ]}/>
+      </Modal>}
+    </DetailWorkspace>
+  </div>;
 }
 
 export function RequirementPage(){

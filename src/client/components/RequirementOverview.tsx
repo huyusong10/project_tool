@@ -25,7 +25,7 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
       </div>
       <div className="requirement-overview-actions">
         <DeliveryControls requirement={r} /><TestSubmissionButton requirement={r} />
-        <button ref={anchor} className={`ghost-button${r.readinessIssues?.length ? ' has-notice' : ''}`} aria-label="需求资料与计算说明" aria-expanded={details} onClick={() => setDetails(v => !v)}><Info size={15} /><span>资料{r.readinessIssues?.length ? ` ${r.readinessIssues.length}` : ''}</span></button>
+        <button ref={anchor} className="icon-button" title="进度计算说明" aria-label="需求资料与计算说明" aria-expanded={details} onClick={() => setDetails(v => !v)}><Info size={15} /></button>
       </div>
     </div>
     {compact?<dl className="object-facts">

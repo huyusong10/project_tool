@@ -1,7 +1,7 @@
-.workspace-object-inspector{position:absolute;right:16px;top:16px;bottom:16px;width:min(440px,calc(100% - 32px));background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px #23334b1f;z-index:15;display:flex;flex-direction:column;overflow:hidden}
+.workspace-object-inspector{position:absolute;right:16px;top:16px;bottom:16px;width:min(560px,calc(100% - 32px));background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px #23334b1f;z-index:15;display:flex;flex-direction:column;overflow:hidden}
 .workspace-object-inspector.is-wide{width:min(1080px,calc(100% - 32px))}
 .workspace-object-inspector>header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
-.workspace-object-inspector>header h3{flex:1;min-width:0;font-size:15px;margin:0;line-height:1.5;overflow-wrap:anywhere}
+.workspace-object-inspector>header h3{flex:1;min-width:0;font-size:15px;margin:0;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .workspace-object-inspector>.object-inspector-body{overflow:auto;padding:16px;min-height:0}
 .object-section{border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--bg-surface);margin-top:12px}
 .object-section>summary{font-size:13px;font-weight:600;cursor:pointer}
@@ -53,5 +53,5 @@
 }
 @media(max-width:800px){
  .workspace-object-inspector,.workspace-object-inspector.is-wide{position:fixed;inset:0;width:100vw;height:100dvh;border-radius:0;z-index:90}
- .workspace-object-inspector>header>button:first-of-type{display:none}
+ .workspace-object-inspector>header>.inspector-size-toggle{display:none}
 }

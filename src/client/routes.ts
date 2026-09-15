@@ -1,6 +1,8 @@
 import { lazy, type ComponentType, type LazyExoticComponent, type SVGProps } from "react";
 import {
   Archive,
+  ChartNoAxesCombined,
+  ListTodo,
   BriefcaseBusiness,
   CircleAlert,
   ClipboardList,
@@ -75,10 +77,6 @@ export const appRoutes: AppRoute[] = [
   { path: "/execution", scope:"project", access:"all", component:DashboardPage, chrome:{title:"项目工作区"} },
   { path: "/paths", scope: "project", access: "all", component: PathsPage },
   {
-    path: "/analytics", scope: "project", access: "all", component: AnalyticsPage,
-    chrome: {title: "项目工作区"},
-  },
-  {
     path: "/my-work", scope: "personal", access: "all", component: MyWorkPage,
     nav: [{ group: "个人", label: "我的工作", icon: ClipboardList }],
   },
@@ -96,12 +94,17 @@ export const appRoutes: AppRoute[] = [
   },
   { path: "/requirements/:id", scope: "project", access: "all", component: RequirementPage, chrome: {title: '需求详情'} },
   {
-    path: "/actions", scope: "project", access: "all", component: ActionCenterPage, chrome: {title: '异常行动中心'},
+    path: "/issues", scope: "project", access: "all", component: IssuesPage,
+    nav: [{ group: "项目", label: "问题跟踪", icon: CircleAlert }],
+  },
+  {
+    path: "/actions", scope: "project", access: "all", component: ActionCenterPage,
+    nav: [{group: "项目", label: "待处理事项", icon: ListTodo}],
 
   },
   {
-    path: "/issues", scope: "project", access: "all", component: IssuesPage,
-    nav: [{ group: "项目", label: "问题跟踪", icon: CircleAlert }],
+    path: "/analytics", scope: "project", access: "all", component: AnalyticsPage,
+    nav: [{group: "项目", label: "统计分析", icon: ChartNoAxesCombined}],
   },
   {
     path: "/people", scope: "project", access: "all", component: PeoplePage,

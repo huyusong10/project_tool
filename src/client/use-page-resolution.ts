@@ -45,9 +45,13 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
   let phase: ResolvedPageContext['phase'] = 'ready';
   let error: Error | undefined, errorTitle: string | undefined;
   let retry: () => unknown = () => sessionQuery.refetch();
-  const waitFor = (query: {unavailable: boolean; error: Error | null; refetch: () => unknown}, title: string) => {
+  const waitFor = (query: {unavailable: boolean; data?: unknown; error: Error | null; refetch: () => unknown}, title: string) => {
     if (!query.unavailable) return;
-    phase = query.error ? 'error' : 'loading'; error = query.error || undefined; errorTitle = title; retry = query.refetch;
+    // A write's recheck can revoke cached access before the background query finishes.
+    const denied = query.data === null;
+    phase = query.error || denied ? 'error' : 'loading';
+    error = query.error || (denied ? new Error(title.startsWith('问题') ? '问题不存在或当前账号无权访问。' : '资源不存在或当前账号无权访问。') : undefined);
+    errorTitle = title; retry = query.refetch;
   };
   waitFor(sessionQuery, '登录状态加载失败');
   if (phase === 'ready' && authenticated && scope === 'project') waitFor(projectsQuery, '项目列表加载失败');
