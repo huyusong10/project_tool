@@ -1,6 +1,9 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import type { Issue, IssuePage, Person, Project } from '../../src/client/types';
 
+// Chromium's headless default hides native scrollbars; this page must verify the real control.
+test.use({launchOptions:{ignoreDefaultArgs:['--hide-scrollbars']}});
+
 const project: Project = {
   id: 'p1', name: 'DCIM', status: 'active', plannedStart: null, plannedEnd: null,
   defaultTemplateId: null, isSample: false, createdAt: '2026-09-01', updatedAt: '2026-09-01',
@@ -54,7 +57,7 @@ test('问题列表失败时显示错误并可重新加载', async ({ page }, tes
   await expect(page.locator('.issue-data-row')).toHaveCount(2);
 });
 
-test('问题列表在低分辨率下不遮挡优先级和编辑控件', async ({ page }, testInfo) => {
+test('问题列表在各宽度保留全部列，横向滚动同步表头并可编辑', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-1080p', '在一个浏览器内覆盖多种内容宽度');
   await mockIssues(page);
 
@@ -73,8 +76,18 @@ test('问题列表在低分辨率下不遮挡优先级和编辑控件', async ({
     await expect(page.locator('.issue-data-row')).toHaveCount(2);
     await expect(page.locator('.issue-data-priority .priority-badge').first()).toHaveText('P0 · 紧急');
 
+    const scroller=page.locator('.adaptive-table-scroll');
+    const columns=await page.locator('.issue-data-row').first().locator('[role=cell]').evaluateAll(cells=>cells.map(c=>({top:c.getBoundingClientRect().top,display:getComputedStyle(c).display})));
+    expect(columns).toHaveLength(8);expect(new Set(columns.map(c=>c.top)).size).toBe(1);expect(columns.every(c=>c.display!=='none')).toBe(true);
+    await scroller.evaluate(el=>{el.scrollLeft=el.scrollWidth;});
+    await scroller.scrollIntoViewIfNeeded();
+    const scrollbar=await scroller.evaluate(el=>({overflows:el.scrollWidth>el.clientWidth,height:el.getBoundingClientRect().height-el.clientHeight}));
+    if(scrollbar.overflows)expect(scrollbar.height).toBeGreaterThanOrEqual(10);
     const latest=page.locator('.issue-data-latest').first();await expect(latest).toBeVisible();
     const latestBox=(await latest.boundingBox())!;expect(latestBox.x+latestBox.width).toBeLessThanOrEqual(viewport.width);
+    const heading=(await page.locator('.issue-data-list .adaptive-data-list-header [data-column=latest]').boundingBox())!;
+    expect(Math.abs(heading.x-latestBox.x)).toBeLessThan(1);
+    await page.screenshot({path:testInfo.outputPath('issues-scroll-'+viewport.width+'.png'),animations:'disabled'});
     const layout = await page.locator('.issue-data-list').evaluate((list) => ({
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       escapedPriorities: [...list.querySelectorAll<HTMLElement>('.issue-data-priority .priority-badge')].filter((badge) => {
@@ -92,6 +105,10 @@ test('问题列表在低分辨率下不遮挡优先级和编辑控件', async ({
     expect(layout.escapedPriorities).toBe(0);
     expect(layout.escapedEditors).toBe(0);
   }
+
+  await page.locator('.issue-latest-update-button').first().click();
+  await expect(page.getByRole('dialog',{name:'问题详情'})).toBeVisible();
+  await page.keyboard.press('Escape');
 
   await page.locator('.issue-data-priority').first().getByRole('button', { name: /问题优先级/ }).click();
   const popover = page.locator('.inline-select-popover');

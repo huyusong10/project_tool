@@ -16,7 +16,7 @@ type AdaptiveStyle = CSSProperties & {
 
 const AdaptiveColumnsContext = createContext<Record<string, AdaptiveDataColumn>>({});
 
-export function AdaptiveDataList({ label, columns, className = '', empty, footer, children, bodyRef }: {
+export function AdaptiveDataList({ label, columns, className = '', empty, footer, children, bodyRef, layout = 'adaptive' }: {
   label: string;
   columns: AdaptiveDataColumn[];
   className?: string;
@@ -24,14 +24,14 @@ export function AdaptiveDataList({ label, columns, className = '', empty, footer
   footer?: ReactNode;
   children: ReactNode;
   bodyRef?: Ref<HTMLDivElement>;
+  layout?: 'adaptive' | 'scroll';
 }) {
   const columnMap = Object.fromEntries(columns.map((column) => [column.key, column]));
   const style = {
     '--adaptive-columns': columns.map((column) => column.track).join(' '),
     '--adaptive-medium-columns': columns.filter((column) => column.importance !== 'secondary').map((column) => column.track).join(' '),
   } as AdaptiveStyle;
-  return <AdaptiveColumnsContext.Provider value={columnMap}>
-    <section className={`adaptive-data-list ${className}`.trim()} style={style} role="table" aria-label={label}>
+  const content = <>
       <div className="adaptive-data-list-header" role="row">
         {columns.map((column) => <span
           key={column.key}
@@ -41,7 +41,11 @@ export function AdaptiveDataList({ label, columns, className = '', empty, footer
           data-align={column.align || 'start'}
         >{column.label}</span>)}
       </div>
-      <div className={`adaptive-data-list-body${bodyRef ? ' paged-body' : ''}`} ref={bodyRef} role="rowgroup">{children}</div>
+      <div className={`adaptive-data-list-body${bodyRef && layout === 'adaptive' ? ' paged-body' : ''}`} ref={layout === 'adaptive' ? bodyRef : undefined} role="rowgroup">{children}</div>
+  </>;
+  return <AdaptiveColumnsContext.Provider value={columnMap}>
+    <section className={`adaptive-data-list ${layout === 'scroll' ? 'is-scroll-table' : ''} ${className}`.trim()} style={style} role="table" aria-label={label}>
+      {layout === 'scroll' ? <div className="adaptive-table-scroll paged-body" ref={bodyRef} tabIndex={0} aria-label={label+'，可横向滚动'}>{content}</div> : content}
       {empty && <div className="adaptive-data-list-empty">{empty}</div>}
       {footer && <div className="adaptive-data-list-footer">{footer}</div>}
     </section>

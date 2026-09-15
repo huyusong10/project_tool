@@ -395,6 +395,7 @@ export function IssuesPage() {
       {error && data && <div className="warning-banner">问题列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
       <AdaptiveDataList
         label="问题跟踪列表"
+        layout="scroll"
         className="issue-data-list paged-panel"
         bodyRef={pagination.scrollRef}
         columns={issueColumns}

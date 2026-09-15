@@ -27,6 +27,7 @@ export const GanttScale = memo(function GanttScale({
   todayOffset,
   todayVisible,
   className = "",
+  groupedDays = false,
 }: {
   dates: Date[];
   zoom: GanttZoom;
@@ -34,8 +35,14 @@ export const GanttScale = memo(function GanttScale({
   todayOffset: number;
   todayVisible: boolean;
   className?: string;
+  groupedDays?: boolean;
 }) {
   const style = ganttTrackStyle(dates, cellWidth,zoom);
+  if (groupedDays && zoom === 'day') return <div className="gantt-scale unified-gantt-scale gantt-scale-grouped" style={style} role="columnheader">
+    {dates.map((date,index)=> (index===0 || date.getMonth()!==dates[index-1].getMonth()) && <span className="gantt-scale-month" key={'month-'+date.toISOString()} style={{left:index*cellWidth,width:markerWidth(dates,'month',index,cellWidth)}}><b>{format(date,'yyyy年 M月')}</b></span>)}
+    {dates.map((date,index)=><span className={'gantt-scale-day'+(index===todayOffset&&todayVisible?' is-today':'')} key={date.toISOString()} style={{left:index*cellWidth,width:cellWidth}} data-date={format(date,'yyyy-MM-dd')}><b>{format(date,'dd')}</b><small>{weekdayLabels[date.getDay()]}</small></span>)}
+    {todayVisible && <i className="gantt-today-line" style={{left:(todayOffset+1)*cellWidth}}/>}
+  </div>;
   return <div className={`gantt-scale unified-gantt-scale ${className}`.trim()} style={style} role="columnheader">
     {dates.map((date, index) => markerVisible(dates, zoom, index) && <span
       className="gantt-scale-label"

@@ -50,8 +50,13 @@ test('里程碑恢复，完成文字不遮挡预计虚线，日周月视图均�
   for(const zoom of ['日','周','月']){
     await page.getByRole('button',{name:zoom,exact:true}).click();
     await expect(row.locator('.gantt-forecast-tail')).toHaveCount(1);
-    const boxes=await row.locator('.gantt-date-progress,.gantt-forecast-tail').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right};}));
-    expect(boxes[0].top).toBeGreaterThanOrEqual(boxes[1].bottom);
+    const tail=(await row.locator('.gantt-forecast-tail').boundingBox())!;
+    expect(tail.height).toBe((await row.locator('.gantt-date-actual').boundingBox())!.height);
+    for(const label of await row.locator('.gantt-date-progress').all()){
+      const box=(await label.boundingBox())!;
+      expect(box.x+box.width<=tail.x||box.x>=tail.x+tail.width||box.y>=tail.y+tail.height||box.y+box.height<=tail.y).toBe(true);
+    }
+    await expect(row.locator('.workspace-row-progress')).toContainText('70%');
     await expect(requirement.locator('.gantt-milestone-pin')).toHaveCount(2);
     await expect(requirement.locator('[data-milestone-actual]')).toHaveCount(1);
     await page.screenshot({path:info.outputPath('gantt-'+zoom+'.png'),animations:'disabled'});

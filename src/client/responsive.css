@@ -736,12 +736,17 @@ textarea {
 }
 
 /* Latest issue updates remain available at every width, including the middle layout. */
-@container adaptive-data-list (min-width:981px) and (max-width:1320px){
- .issue-data-list .adaptive-data-list-header,.issue-data-list .adaptive-data-row{grid-template-columns:minmax(230px,2fr) minmax(100px,.7fr) minmax(92px,.65fr) minmax(100px,.7fr) minmax(106px,.75fr) minmax(118px,.8fr)}
- .issue-data-list .adaptive-data-list-header>[data-column=latest]{display:none}
- .issue-data-list .issue-data-latest{grid-column:1/-1;display:grid;grid-template-columns:82px minmax(0,1fr);gap:10px;align-items:start;padding-top:8px;margin-top:8px;border-top:1px solid var(--divider)}
- .issue-data-list .issue-data-latest::before{display:block;color:var(--text-muted);font-size:12px}
-}
+.is-scroll-table .adaptive-table-scroll{overflow:auto;scrollbar-width:auto;scrollbar-color:auto}
+.is-scroll-table .adaptive-table-scroll::-webkit-scrollbar{height:12px;width:12px}
+.is-scroll-table .adaptive-table-scroll::-webkit-scrollbar-track{background:var(--bg-surface-subtle)}
+.is-scroll-table .adaptive-table-scroll::-webkit-scrollbar-thumb{background:var(--text-muted);border:3px solid var(--bg-surface-subtle);border-radius:8px}
+.is-scroll-table .adaptive-data-list-header,.is-scroll-table .adaptive-data-row{display:grid;grid-template-columns:var(--adaptive-columns);min-width:1240px;gap:0;padding:0}
+.is-scroll-table .adaptive-data-list-header{position:sticky;top:0;z-index:2}
+.is-scroll-table .adaptive-data-list-body{overflow:visible}
+.is-scroll-table .adaptive-data-list-header>[data-column]{display:block}
+.is-scroll-table .adaptive-data-row>.adaptive-data-cell{display:flex;grid-column:auto;align-self:stretch;gap:0;padding:11px 14px}
+.is-scroll-table .adaptive-data-row{min-height:74px}
+.is-scroll-table .adaptive-data-cell::before{display:none}
 .issue-data-latest .issue-latest-update-button{width:100%;min-width:0;text-align:left}
 .issue-data-latest .issue-latest-update{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.6}
 .selection-actions{margin-left:auto;display:flex;align-items:center;gap:10px;flex:none;font-size:12px;white-space:nowrap}

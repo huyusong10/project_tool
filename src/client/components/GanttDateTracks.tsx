@@ -23,18 +23,21 @@ export const GanttDateTracks = memo(function GanttDateTracks({
   onProgressClick?: () => void; progressAriaLabel?: string;
   interactionProps?: HTMLAttributes<HTMLElement>;
   scheduleComplete?: boolean;
-  forecast?: GanttForecast | null; stageLabel?: string; showProgress?:boolean; progressPlacement?:'end'|'below';
+  forecast?: GanttForecast | null; stageLabel?: string; showProgress?:boolean; progressPlacement?:'end'|'below'|'inside';
 }) {
   const plan = ganttInterval(plannedStart, plannedEnd, dates, cellWidth) || point(plannedStart || plannedEnd, dates, cellWidth);
   const actual = ganttInterval(actualStart, actualEnd, dates, cellWidth) || point(actualStart || actualEnd, dates, cellWidth);
   const value = ganttProgressDisplay(status, progress);
   const terminal = ["completed", "pending_acceptance", "cancelled"].includes(status);
-  const label = stageLabel || (status === "cancelled" ? "已取消" : !actualStart && ["not_started", "planning"].includes(status) ? "未开始" : `完成 ${value}%`);
+  const label = stageLabel || (status === "cancelled" ? "已取消" : !actualStart && ["not_started", "planning"].includes(status) ? "未开始" : progressPlacement === 'inside' ? `${value}%` : `完成 ${value}%`);
   const lateLeft = scheduleComplete && actual && plan && plannedEnd && actualEnd && actualEnd > plannedEnd ? Math.max(actual.left, plan.right) : null;
   const total = dates.length * cellWidth;
   const endpoint = actual?.right ?? plan?.left ?? 0;
-  const labelWidth = Math.min(160,Math.max(72,Array.from(label).reduce((size,char)=>size+(/[\u4e00-\u9fff]/.test(char)?12:7),12)));
-  const labelLeft = Math.max(4, Math.min(total - labelWidth - 4, progressPlacement==='below'?(actual?.left??endpoint)+4:endpoint+8));
+  const labelWidth = Math.min(160,Math.max(progressPlacement === 'inside' ? 36 : 72,Array.from(label).reduce((size,char)=>size+(/[\u4e00-\u9fff]/.test(char)?12:7),12)));
+  const visibleActualLeft = Math.max(0, actual?.left ?? 0), visibleActualRight = Math.min(total, actual?.right ?? 0);
+  const inside = progressPlacement === 'inside';
+  const labelFits = !inside || visibleActualRight - visibleActualLeft >= labelWidth + 12;
+  const labelLeft = inside ? visibleActualRight - labelWidth - 6 : Math.max(4, Math.min(total - labelWidth - 4, progressPlacement==='below'?(actual?.left??endpoint)+4:endpoint+8));
   const title = `${label}；计划 ${plannedStart || "缺少开始日期"} 至 ${plannedEnd || "缺少结束日期"}；实际 ${actualStart || (["not_started", "planning"].includes(status) ? "未开始" : "缺少开始日期")} 至 ${actualEnd || "结束日期缺失"}${!terminal && actualEnd ? "（截至统计日）" : ""}`;
   const left = Math.min(plan?.left ?? total, actual?.left ?? total);
   const right = Math.max(plan?.right ?? 0, actual?.right ?? 0);
@@ -45,9 +48,9 @@ export const GanttDateTracks = memo(function GanttDateTracks({
     {plan && scheduleComplete && <span className="gantt-date-deadline" style={{ left: plan.right }} />}
     {(!plan || !scheduleComplete || !plannedStart || !plannedEnd) && <span className="gantt-date-unplanned">{plan ? "排期不完整" : "待排期"}</span>}
     {interactionProps && (plan || actual) && <span className="gantt-date-hitbox" style={{ left: Math.max(0, left - 4), width: Math.max(28, right - left + 8) }} tabIndex={0} aria-label={title} {...interactionProps} />}
-    {showProgress&&(!actualStart||actual)&&(onProgressClick
-      ? <button type="button" className={`gantt-date-progress ${progressPlacement==='below'?'is-below':''} gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft,maxWidth:labelWidth }} title={title} aria-label={progressAriaLabel || title} onClick={(event) => { event.stopPropagation(); onProgressClick(); }}>{label}</button>
-      : <span className={`gantt-date-progress ${progressPlacement==='below'?'is-below':''} gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft,maxWidth:labelWidth }} tabIndex={0} title={title} aria-label={title}>{label}</span>)}
-    <GanttForecastTail forecast={forecast} plannedEnd={scheduleComplete && plan ? plannedEnd : null} dates={dates} cellWidth={cellWidth} interactionProps={interactionProps} />
+    {showProgress&&labelFits&&(!actualStart||actual)&&(onProgressClick
+      ? <button type="button" className={`gantt-date-progress ${inside?'is-inside':progressPlacement==='below'?'is-below':''} gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft,maxWidth:labelWidth }} title={title} aria-label={progressAriaLabel || title} onClick={(event) => { event.stopPropagation(); onProgressClick(); }}>{label}</button>
+      : <span className={`gantt-date-progress ${inside?'is-inside':progressPlacement==='below'?'is-below':''} gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft,maxWidth:labelWidth }} tabIndex={inside ? undefined : 0} title={title} aria-label={title}>{label}</span>)}
+    <GanttForecastTail forecast={forecast} plannedEnd={scheduleComplete && plan ? plannedEnd : null} dates={dates} cellWidth={cellWidth} interactionProps={interactionProps} showLabel={inside} />
   </>;
 });
