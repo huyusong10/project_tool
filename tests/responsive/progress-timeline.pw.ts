@@ -20,7 +20,7 @@ test('并行阶段与短时间条进度显示在时间轴，右栏仅有操作�
  await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',scopeType:'phase',scopeId:f.phases[2].id}));await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');
  const row=page.locator('[data-row-id="'+r.id+'"]'),work=page.locator('[data-row-id="'+r.workItems[0].id+'"]'),grid=page.getByRole('treegrid');
  await expect(row.locator('.workspace-row-track .workspace-row-progress')).toContainText('分析设计 15%');await expect(row.locator('.workspace-row-track .workspace-row-progress')).toContainText('开发 25%');
- await expect(row.locator('.workspace-row-actions')).toHaveText('');await expect(page.locator('.workspace-row-actions .workspace-row-progress')).toHaveCount(0);
+ await expect(row.locator('.workspace-row-actions')).toHaveText('更新进展');await expect(page.locator('.workspace-row-actions .workspace-row-progress')).toHaveCount(0);
  await page.getByRole('button',{name:'月',exact:true}).click();
  await expect.poll(()=>progressIsReadable(row)).toBe(true);await expect.poll(()=>progressIsReadable(work)).toBe(true);
  expect(await row.locator('.workspace-row-progress .workspace-stage-summary').evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);

@@ -17,6 +17,7 @@ import {ganttForecast} from '../gantt-forecast';
 import {executionStageOf} from './ExecutionStageBadge';
 import {WorkItemExecution,type ExecutionControls} from './WorkItemExecution';
 import {DeliveryControls} from './DeliveryControls';
+import {RequirementWorkExecution} from './RequirementWorkExecution';
 import {Select} from './Select';
 import {useGanttTooltip} from './GanttTooltip';
 import {WorkspaceGanttSummary} from './WorkspaceGanttSummary';
@@ -76,7 +77,6 @@ export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelec
           const defaultContent=stage&&!w?<span className={"workspace-stage-summary"+(stage.stages.length>1?" is-parallel":"")}>{stage.stages.length>1?<><span className="workspace-parallel-caption">并行</span>{stage.stages.map(s=><span key={s.stage}>{s.label} <strong>{s.progress}%</strong></span>)}</>:<>{stage.label}{stage.stages.length===1&&<> · <strong>{stage.stages[0].progress}%</strong></>}</>}</span>:<span className="workspace-stage-summary">{defaultProgress}</span>;
           const rowOpen=expands(row,currentExpanded);
           const toggleRow=()=>changeExpanded({...currentExpanded,[row.id]:!rowOpen});
-          const rowActions=null;
           const render=({progress,actions}:ExecutionControls)=><div className={'workspace-gantt-row kind-'+row.kind+(rowMilestones.some(m=>m.targetDate||m.actualDate)?' has-milestones':'')+(row.filterContext?' is-filter-context':'')+(row.archived?' is-archived':'')+(r?.executionMode==='direct'?' is-direct':'')} role="row" data-object-kind={row.feature?.kind==='other'?'group':row.kind} onClick={e=>{if(!(e.target as Element).closest('button,input,a,select'))onSelect(row);}} data-row-id={row.id} data-status={row.phase?.status||item?.status} aria-level={depth+1} aria-selected={selected===row.id}>
             <div className="workspace-row-label" role="rowheader" style={{paddingLeft:8+Math.min(depth,2)*10}}>
               <span className="workspace-disclosure">{!!row.children.length&&<button aria-label={'展开 '+row.title} aria-expanded={rowOpen} onClick={toggleRow}>{rowOpen?<ChevronDown size={14}/>:<ChevronRight size={14}/>}</button>}</span>
@@ -88,9 +88,13 @@ export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelec
               {!!rowMilestones.length&&<GanttMilestoneRail items={rowMilestones} dates={nav.dates} cellWidth={nav.cellWidth} asOfDate={asOfDate} selection={milestoneSelection} inline/>}
               {today.visible&&<i className="gantt-today-line" style={{left:(today.offset+1)*nav.cellWidth}}/>}
             </div>
-            <div className={'workspace-row-actions'+(row.kind==='work'||r?.executionMode==='direct'?' has-execution':'')} role="cell" data-workspace-zone="tools"><div className="workspace-row-tools">{actions??rowActions}</div></div>
+            <div className={'workspace-row-actions'+(row.kind==='work'||row.kind==='requirement'?' has-execution':'')} role="cell" data-workspace-zone="tools"><div className="workspace-row-tools">{actions}</div></div>
           </div>;
-          return row.formalWork&&row.formalRequirement&&!row.temporary?<WorkItemExecution key={row.id} item={row.formalWork} requirement={row.formalRequirement} people={people}>{render}</WorkItemExecution>:row.formalRequirement?.executionMode==='direct'&&!row.temporary&&!row.archived?<DeliveryControls key={row.id} requirement={row.formalRequirement}>{render}</DeliveryControls>:<div className="workspace-row-wrapper" key={row.id}>{render({progress:defaultProgress?defaultContent:null,actions:null})}</div>;
+          if(row.formalWork&&row.formalRequirement&&!row.temporary)return <WorkItemExecution key={row.id} item={row.formalWork} requirement={row.formalRequirement} people={people}>{render}</WorkItemExecution>;
+          if(row.formalRequirement&&!row.temporary&&!row.archived)return row.formalRequirement.executionMode==='direct'
+            ?<DeliveryControls key={row.id} requirement={row.formalRequirement}>{render}</DeliveryControls>
+            :<RequirementWorkExecution key={row.id} requirement={row.formalRequirement} people={people} progress={defaultContent}>{render}</RequirementWorkExecution>;
+          return <div className="workspace-row-wrapper" key={row.id}>{render({progress:defaultProgress?defaultContent:null,actions:null})}</div>;
         })}
         {!visible.length&&<p className="feature-empty">没有符合条件的内容</p>}
       </div>
