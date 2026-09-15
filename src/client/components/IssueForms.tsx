@@ -228,7 +228,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
   if (draft.reporter && !reporterOptions.some((value) => value.value === draft.reporter)) reporterOptions.push({ value: draft.reporter, label: draft.reporter, description: current?.reporter === draft.reporter ? "历史记录" : "当前登录账号" });
   const ownerOptions: SearchSelectOption[] = [{ value: "", label: "未分配" }, ...people.filter((person) => person.active && person.projectRole !== "viewer").map((person) => ({ value: person.id, label: person.name }))];
   if (draft.ownerId && !ownerOptions.some((value) => value.value === draft.ownerId)) ownerOptions.push({ value: draft.ownerId, label: current?.ownerId === draft.ownerId ? current.ownerName || "历史负责人" : draft.ownerId, description: "历史负责人" });
-  if (resolved && !editor.dirty) return <div className="terminal-lock-note"><CheckCircle2 size={18} /><div><strong>问题已解决，当前数据已锁定</strong><p>解决日期：{current?.resolvedAt || "未记录"}</p><p>继续处理请使用上方状态菜单“重新打开”；修正标题、影响或解决日期请使用“受控纠错”。</p></div></div>;
+  if (resolved && !editor.dirty) return <div className="terminal-lock-note"><CheckCircle2 size={18} /><div><strong>问题已解决，当前数据已锁定</strong><p>解决日期：{current?.resolvedAt || "未记录"}</p><p>继续处理请使用上方状态菜单“重新打开”；修正标题、影响或解决日期请使用“纠错”。</p></div></div>;
   const blocked = resolved || editor.changed || editor.needsRefresh;
   return <form className="issue-form" onSubmit={(event) => {
     event.preventDefault();

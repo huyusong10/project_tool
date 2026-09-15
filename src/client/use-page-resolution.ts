@@ -71,7 +71,7 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
   let back: ResolvedPageContext['back'];
   if (requirementId) {
     title = draft ? '需求草稿' : requirement.data?.title || '需求详情';
-    back = params.get('view') === 'path' ? pathBackTarget(project?.id || '', location.state?.pathSource, window.history.state?.idx) : {label:phase === 'error' ? '返回范围清单' : '返回', fallback:'/requirements', kind:'history'};
+    back = params.get('view') === 'path' ? pathBackTarget(project?.id || '', location.state?.pathSource, window.history.state?.idx) : {label:phase === 'error' ? '返回需求清单' : '返回', fallback:'/requirements', kind:'history'};
   } else if (templateId) {
     title = template?.name || '新建流程'; back = {label:'返回流程列表', fallback:'/templates', kind:'templates'};
   } else if (location.pathname === '/paths' && project) title = '路径分析';

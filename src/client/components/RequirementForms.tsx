@@ -414,7 +414,7 @@ export function RequirementCorrectionForm({
     setReviewRequired(false);
     onClose();
   };
-  return <Modal title="需求受控纠错" closable={!pending} onClose={close}><form onSubmit={(event) => {
+  return <Modal title="需求纠错" closable={!pending} onClose={close}><form onSubmit={(event) => {
     event.preventDefault();
     if (submitting.current || blocked) return;
     submitting.current = true;

@@ -1,4 +1,4 @@
-import {PHASE_HEADER,PHASE_PADDING} from '../phase-layout';
+import {PHASE_HEADER,PHASE_PADDING,arrangePhaseRegions,type PhaseRegion} from '../phase-layout';
 import {PhaseStatusBadge} from './PhasePlanning';
 import {nodeTypes,edgeTypes,type CardNode,type CardData,type RouteEdge} from './GraphElements';
 import type {DependencyGraphProps,GraphConnectionIssue} from './DependencyGraph';
@@ -67,7 +67,8 @@ export function GraphScene(props: DependencyGraphProps) {
 
   const router=useRef<Worker|null>(null),requests=useRef(new Map<number,{resolve:(l:RoutedLayout)=>void;reject:(e:Error)=>void}>()),routeSequence=useRef(0);
   useEffect(()=>{const worker=new Worker(new URL('../fixed-routing.worker.ts',import.meta.url),{type:'module'});router.current=worker;worker.onmessage=e=>{const request=requests.current.get(e.data.id);if(request){requests.current.delete(e.data.id);if(e.data.error)request.reject(new Error(e.data.error));else request.resolve(e.data.layout);}};const pending=requests.current;worker.onerror=()=>{for(const request of pending.values())request.reject(new Error('连线路由暂不可用，请重试'));pending.clear();};return()=>{worker.terminate();for(const r of pending.values())r.reject(new Error('画布已关闭'));pending.clear();};},[retry]);
-  const fixedRoute=(positions:Record<string,Point>,activeNodes:CardNode[])=>new Promise<RoutedLayout>((resolve,reject)=>{const id=++routeSequence.current;requests.current.set(id,{resolve,reject});router.current!.postMessage({id,nodes:activeNodes.map(n=>({id:n.id,width:n.measured!.width!,height:n.measured!.height!,...positions[n.id]})),edges:measuredLinks,obstacles:(props.regions||[]).map(r=>({left:r.x+8,right:r.x+r.width-8,top:r.y,bottom:r.y+PHASE_HEADER-12}))});});
+  const fixedRoute=(positions:Record<string,Point>,activeNodes:CardNode[],regions=phaseRegions.current)=>new Promise<RoutedLayout>((resolve,reject)=>{const id=++routeSequence.current;requests.current.set(id,{resolve,reject});router.current!.postMessage({id,nodes:activeNodes.map(n=>({id:n.id,width:n.measured!.width!,height:n.measured!.height!,...positions[n.id]})),edges:measuredLinks,obstacles:regions.map(r=>({left:r.x+8,right:r.x+r.width-8,top:r.y,bottom:r.y+PHASE_HEADER-12}))});});
+  const phaseRegions=useRef<PhaseRegion[]>(props.regions||[]),lastPhasePositions=useRef('');
   const [scene,setScene]=useState<{layout:RoutedLayout;links:GraphLink[]}|null>(null);
   const [edgeFade,setEdgeFade]=useState<{ids:Set<string>;opacity:number}>({ids:new Set(),opacity:1});
   const [feedback,setFeedback]=useState<{source:string;target:string;side:ConnectionSide}|null>(null);
@@ -155,10 +156,10 @@ export function GraphScene(props: DependencyGraphProps) {
     return {left,right,top,bottom};
   },[]);
   const viewportBoxes=useCallback((ids:string[]|undefined=visibleRef.current)=>{
-    return [...(props.regions||[]).filter(r=>!props.focusRegionId||r.id===props.focusRegionId||r.nodeIds.some(id=>ids?.includes(id))),...Object.entries(layoutRef.current?.nodes||{}).filter(([id])=>!ids||ids.includes(id)).map(([id,p])=>{
+    return [...phaseRegions.current.filter(r=>!props.focusRegionId||r.id===props.focusRegionId||r.nodeIds.some(id=>ids?.includes(id))),...Object.entries(layoutRef.current?.nodes||{}).filter(([id])=>!ids||ids.includes(id)).map(([id,p])=>{
       const n=flow.getNode(id);return {...p,width:n?.measured?.width||244,height:n?.measured?.height||154};
     })];
-  },[flow,props.regions,props.focusRegionId]);
+  },[flow,props.focusRegionId]);
   const fitAvailable=useCallback(async(avoidPanels=true,ids:string[]|undefined=visibleRef.current,animate=false,readable=false)=>{
     if(!container.current)return;
     const boxes=viewportBoxes(ids);
@@ -175,11 +176,11 @@ export function GraphScene(props: DependencyGraphProps) {
     observer.observe(element);return()=>{observer.disconnect();cancelAnimationFrame(frame);};
   },[available,fitAvailable,viewportBoxes]);
   const geometry=nodes.filter(n=>!n.data.retiring).map(n=>[n.id,n.measured?.width,n.measured?.height]);
-  const structure=JSON.stringify([geometry,measuredLinks.map(e=>[e.id,e.source,e.target,e.label,e.labelWidth]),vertical,arrange,retry,props.positions]);
+  const structure=JSON.stringify([geometry,measuredLinks.map(e=>[e.id,e.source,e.target,e.label,e.labelWidth]),vertical,arrange,retry,props.positions,props.regions]);
   useEffect(()=>{
     const activeNodes=nodes.filter(n=>!n.data.retiring);
     if(!initialized||!engine.current||activeNodes.some(n=>!n.measured?.width||!n.measured?.height)){
-      if(!cards.length){setNodes([]);setScene(null);layoutRef.current=null;setPhase('ready');}return;
+      if(!cards.length){phaseRegions.current=props.regions||[];setNodes([]);setScene(null);layoutRef.current=null;setPhase('ready');}return;
     }
     const canvasElement=container.current;
     let cancelled=false,frame=0,timer:ReturnType<typeof setTimeout>;
@@ -192,8 +193,12 @@ export function GraphScene(props: DependencyGraphProps) {
       const start=performance.now();performance.measure('pm-path-layout-wait',{start:requested,end:start});setPhase('layout');
       try{
         const savedPositions={...(layoutRef.current?.nodes||{}),...(!initial?layoutOrigin:{}),...(props.positions||{})};
-        let layout:RoutedLayout;
-        if((!reset||props.regions)&&Object.keys(savedPositions).length){const positioned=activeNodes.filter(n=>savedPositions[n.id]).map(n=>({id:n.id,...savedPositions[n.id],width:n.measured!.width!,height:n.measured!.height!}));for(const n of activeNodes)if(!savedPositions[n.id]){const p=vacantPosition(positioned,n.id,{x:Math.max(0,...positioned.map(n=>n.x+n.width))+64,y:32},n.measured!.width!,n.measured!.height!);savedPositions[n.id]=p;positioned.push({id:n.id,...p,width:n.measured!.width!,height:n.measured!.height!});}layout=await fixedRoute(savedPositions,activeNodes);}
+        let layout:RoutedLayout,regions=props.regions;
+        if(regions){
+          const grouped=await arrangePhaseRegions(engine.current!,activeNodes.map(n=>({id:n.id,width:n.measured!.width!,height:n.measured!.height!})),measuredLinks,regions,props.positions||{},initial||lastPhasePositions.current!==JSON.stringify(props.positions)?undefined:{regions:phaseRegions.current,positions:layoutRef.current?.nodes||{}},reset);
+          regions=grouped.regions;layout=await fixedRoute(grouped.positions,activeNodes,regions);
+        }
+        else if(!reset&&Object.keys(savedPositions).length){const positioned=activeNodes.filter(n=>savedPositions[n.id]).map(n=>({id:n.id,...savedPositions[n.id],width:n.measured!.width!,height:n.measured!.height!}));for(const n of activeNodes)if(!savedPositions[n.id]){const p=vacantPosition(positioned,n.id,{x:Math.max(0,...positioned.map(n=>n.x+n.width))+64,y:32},n.measured!.width!,n.measured!.height!);savedPositions[n.id]=p;positioned.push({id:n.id,...p,width:n.measured!.width!,height:n.measured!.height!});}layout=await fixedRoute(savedPositions,activeNodes);}
         else {
           const arranged=await stableGraphLayout(engine.current!,activeNodes.map(n=>({id:n.id,width:n.measured!.width!,height:n.measured!.height!})),measuredLinks,vertical,null,anchorId,true);
           layout=await fixedRoute(arranged.nodes,activeNodes);
@@ -216,10 +221,10 @@ export function GraphScene(props: DependencyGraphProps) {
           displayOpacities.current=new Map(Object.keys(layout.nodes).map(key=>[key,1]));
           container.current?.querySelectorAll<HTMLElement>('.react-flow__node').forEach(element=>{const p=layout.nodes[element.dataset.id!];if(p){element.style.transform='translate('+p.x+'px, '+p.y+'px)';element.style.opacity='1';element.style.pointerEvents='';element.style.willChange='';}});
           setNodes(current=>current.filter(n=>!!layout.nodes[n.id]).map(n=>({...n,position:layout.nodes[n.id],style:{...n.style,opacity:1,pointerEvents:undefined}})));
-          setScene({layout,links});layoutRef.current=layout;manualPending.current=false;setEdgeFade({ids:new Set(),opacity:1});setFeedback(null);
+          if(regions){phaseRegions.current=regions;lastPhasePositions.current=JSON.stringify(props.positions);}setScene({layout,links});layoutRef.current=layout;manualPending.current=false;setEdgeFade({ids:new Set(),opacity:1});setFeedback(null);
           let captured=false;for(const [key,point] of Object.entries(layout.nodes))if(!layoutOrigin[key]||initial&&!Object.keys(props.positions||{}).length){layoutOrigin[key]={x:point.x,y:point.y};captured=true;}
           if(captured)latestProps.current.onOrigin?.({...layoutOrigin});
-          latestProps.current.onLayoutReady?.(layout.nodes);lastArrange.current=arrange;lastDirection.current=vertical;first.current=false;if(reset&&editing)latestProps.current.commands.dispatch({type:'move',positions:layout.nodes});
+          latestProps.current.onLayoutReady?.(layout.nodes,regions);lastArrange.current=arrange;lastDirection.current=vertical;first.current=false;if(reset&&editing)latestProps.current.commands.dispatch({type:'move',positions:layout.nodes});
           if(initial){
 
             const saved=(initial||directionChanged)&&(readViewport(keyRef.current)||readViewport(baseKey+(props.focusId?':focus:'+props.focusId:':full'))||readViewport(baseKey));
@@ -394,7 +399,7 @@ export function GraphScene(props: DependencyGraphProps) {
       }}
       onNodeClick={(event,node)=>{if(!connection.choose(node.id)){if(!event.ctrlKey&&!event.metaKey)setSelectedIds([node.id]);const ids=interaction.selection.kind==='nodes'?interaction.selection.ids:[];selectFromCanvas(ids.includes(node.id)?node.id:ids.at(-1)||'');}}} onEdgeClick={(_,edge)=>{interaction.select({kind:'edge',id:edge.id});}}
       onMoveEnd={(_,v)=>{if(!busy&&!first.current)saveViewport(keyRef.current,v);}} minZoom={.02} maxZoom={1.5} fitView={false}>
-      <Background gap={24} size={1}/>{props.regions&&<div className="delivery-regions" style={{transform:`translate(${viewport.x}px,${viewport.y}px) scale(${viewport.zoom})`}}>{props.regions.filter(r=>!props.focusRegionId||r.id===props.focusRegionId||r.nodeIds.some(id=>props.visibleIds?.includes(id))).map(r=><div key={r.id} className="delivery-region" style={{left:r.x,top:r.y,width:r.width,height:Math.max(r.height,...nodes.filter(n=>r.nodeIds.includes(n.id)).map(n=>n.position.y-r.y+(n.measured?.height||168)+PHASE_PADDING))}} data-phase-region={r.id}><div className="delivery-region-header"><button className="ghost-button nodrag nopan" onClick={()=>props.onSelectPhase?.(r.phase?.featureId||'unassigned',r.id)}><span className="delivery-region-name" title={r.name}>{r.name}</span>{r.phase&&<PhaseStatusBadge phase={r.phase}/>}</button><p title={r.phase?.scope}>{r.phase?.scope||(!r.nodeIds.length?'交付范围待明确':'')}</p>{r.phase&&<small>目标 {r.phase.targetDate||'待定'}</small>}</div></div>)}</div>}
+      <Background gap={24} size={1}/>{props.regions&&<div className="delivery-regions" style={{transform:`translate(${viewport.x}px,${viewport.y}px) scale(${viewport.zoom})`}}>{phaseRegions.current.filter(r=>!props.focusRegionId||r.id===props.focusRegionId||r.nodeIds.some(id=>props.visibleIds?.includes(id))).map(r=><div key={r.id} className="delivery-region" style={{left:r.x,top:r.y,width:Math.max(r.width,...nodes.filter(n=>r.nodeIds.includes(n.id)).map(n=>n.position.x-r.x+(n.measured?.width||244)+PHASE_PADDING)),height:Math.max(r.height,...nodes.filter(n=>r.nodeIds.includes(n.id)).map(n=>n.position.y-r.y+(n.measured?.height||168)+PHASE_PADDING))}} data-phase-region={r.id}><div className="delivery-region-header"><button className="ghost-button nodrag nopan" onClick={()=>props.onSelectPhase?.(r.phase?.featureId||'unassigned',r.id)}><span className="delivery-region-name" title={r.name}>{r.name}</span>{r.phase&&<PhaseStatusBadge phase={r.phase}/>}</button><p title={r.phase?.scope}>{r.phase?.scope||(!r.nodeIds.length?'交付范围待明确':'')}</p>{r.phase&&<small>目标 {r.phase.targetDate||'待定'}</small>}</div></div>)}</div>}
     </ReactFlow>
     {(liveCurve||pendingLinks.length>0)&&<svg className={'graph-connection-preview'+(gesture?.issue?' is-invalid':'')} aria-hidden="true">
       <defs><marker id={previewMarker} viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="context-stroke"/></marker></defs>

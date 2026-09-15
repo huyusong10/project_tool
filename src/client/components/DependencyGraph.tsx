@@ -18,7 +18,7 @@ export type DependencyGraphProps = {
   reconnect?:{id:string;source:string;target:string}; validateReconnect?:(source:string,target:string)=>GraphConnectionIssue|null;
   focusId?:string;
   onOpenNode?:(card:GraphCard)=>void;
-  onLayoutReady?:(positions:Record<string,Point>)=>void;positions?:Record<string,Point>;
+  onLayoutReady?:(positions:Record<string,Point>,regions?:import('../phase-layout').PhaseRegion[])=>void;positions?:Record<string,Point>;
   placing?:string;onSearch?:()=>void;onRevealField?:(key:string)=>void;
 };
 export function DependencyGraph(props:DependencyGraphProps){

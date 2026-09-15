@@ -176,7 +176,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('reopen_work_item', { description: '需求负责人或项目经理重开已完成或已取消工作项，并使已完成需求恢复执行', inputSchema: reopenWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertWorkItemRequirementOwnerOrManager(actor, id); return json(reopenWorkItem(id, input, actor));
   });
-  registerTool('correct_work_item', { description: '项目经理受控修正工作项标题、完成度或实际日期；保持状态并追加不可变纠错记录', inputSchema: workItemCorrectionSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('correct_work_item', { description: '项目经理修正工作项标题、完成度或实际日期；保持状态并追加不可变纠错记录', inputSchema: workItemCorrectionSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在'); return json(correctWorkItem(id, input, actor));
   });
   registerTool('delete_work_item', { description: '删除未开始且无历史的工作项', inputSchema: expectedVersionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
@@ -220,7 +220,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('reopen_issue', { description: '重开已解决问题', inputSchema: reopenIssueInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在'); return json(reopenIssue(id, input, actor));
   });
-  registerTool('correct_issue', { description: '项目经理受控修正问题标题、影响、完成度或解决日期；保持状态并追加不可变纠错记录', inputSchema: issueCorrectionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('correct_issue', { description: '项目经理修正问题标题、影响、完成度或解决日期；保持状态并追加不可变纠错记录', inputSchema: issueCorrectionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在'); return json(correctIssue(id, input, actor));
   });
 

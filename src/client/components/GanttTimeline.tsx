@@ -35,14 +35,14 @@ export const GanttScale = memo(function GanttScale({
   todayVisible: boolean;
   className?: string;
 }) {
-  const style = ganttTrackStyle(dates, cellWidth);
+  const style = ganttTrackStyle(dates, cellWidth,zoom);
   return <div className={`gantt-scale unified-gantt-scale ${className}`.trim()} style={style} role="columnheader">
     {dates.map((date, index) => markerVisible(dates, zoom, index) && <span
       className="gantt-scale-label"
       style={{ left: index * cellWidth, width: markerWidth(dates, zoom, index, cellWidth) }}
       key={date.toISOString()}
     >{zoom === "month" ? format(date, "yyyy/MM") : format(date, "MM/dd")}</span>)}
-    {dates.map((date, index) => <i
+    {dates.map((date, index) => (zoom==='month'||cellWidth<12?markerVisible(dates,zoom,index):true)&&<i
       className={`gantt-scale-tick${date.getDay() === 1 || index === 0 ? " is-major" : ""}`}
       data-date={format(date, "yyyy-MM-dd")}
       style={{ left: index * cellWidth, width: cellWidth }}

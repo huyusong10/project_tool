@@ -1,7 +1,7 @@
 import {chooseOption} from './select-helper';
 import {expect,test,type Page} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
-const mode=(p:Page,name:string)=>p.getByRole('group',{name:'范围表达'}).getByRole('button',{name,exact:true});
+const mode=(p:Page,name:string)=>p.locator('.delivery-filter-actions').getByRole('button',{name:name==='关系图'?'返回关系图':/^(特性|需求|工作项)清单$/});
 const detail=(p:Page)=>p.locator('.graph-detail').filter({visible:true});
 const dialog=(p:Page)=>p.getByRole('dialog').last();
 const ready=(p:Page)=>expect(p.locator('[data-layout-ready="true"]')).toBeVisible({timeout:20000});

@@ -14,7 +14,7 @@ export function ProjectTaskTabs(){
   const {session}=useSession(),{selectedProjectId}=useProjects();
   const account=session.accountId||'guest',project=selectedProjectId||'';
   useEffect(()=>rememberProjectTask(account,project,location.pathname,location.search),[account,project,location.pathname,location.search]);
-  return <ViewTabs ariaLabel="项目任务" value={projectTask(location.pathname)} options={[{value:'scope',label:'范围与关系'},{value:'progress',label:'计划与进展'}]} onChange={async value=>{
+  return <ViewTabs ariaLabel="项目任务" value={projectTask(location.pathname)} options={[{value:'scope',label:'关系图'},{value:'progress',label:'进展表'}]} onChange={async value=>{
     store.prepareNavigation();await store.getSnapshot()?.runtime?.document?.flush();
     const auxiliary=['/analytics','/actions'].includes(location.pathname);
     const context=new URLSearchParams(location.search),node=context.get('pathNode');

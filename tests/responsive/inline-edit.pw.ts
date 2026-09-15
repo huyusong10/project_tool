@@ -735,7 +735,7 @@ for (const nextStatus of ["completed", "in_progress"] as const) {
     });
     const openDates = async () => {
       await page.getByRole("button", { name: "更多工作项操作" }).first().click();
-      await page.getByRole("button", { name: "受控修正实际日期", exact: true }).click();
+      await page.getByRole("button", { name: "修正实际日期", exact: true }).click();
     };
     try {
       await page.goto("/requirements/r1");
@@ -789,7 +789,7 @@ test("实际日期纠错拦截未来和倒置日期，合法提交期间锁定�
   try {
     await page.goto("/requirements/r1");
     await page.getByRole("button", { name: "更多工作项操作" }).first().click();
-    await page.getByRole("button", { name: "受控修正实际日期", exact: true }).click();
+    await page.getByRole("button", { name: "修正实际日期", exact: true }).click();
     const start = page.getByLabel("实际开始", { exact: true });
     const end = page.getByLabel("实际完成", { exact: true });
     const reason = page.getByLabel("纠错原因");
@@ -1245,7 +1245,7 @@ test("工作项菜单可切换到实际日期修正和历史补录，需求可�
   });
   await page.goto("/requirements/r1");
   await page.getByRole("button", { name: "更多工作项操作" }).first().click();
-  await page.getByRole("button", { name: "受控修正实际日期", exact: true }).click();
+  await page.getByRole("button", { name: "修正实际日期", exact: true }).click();
   await expect(page.locator(".inline-edit-popover")).toHaveCount(1);
   await expect(page.getByLabel("实际开始", { exact: true })).toBeVisible();
   await expect(page.getByLabel("实际完成", { exact: true })).toHaveCount(0);
@@ -1451,7 +1451,7 @@ test("工作项纠错历史显示被更正记录", async ({ page }) => {
   await expect(correction).not.toContainText("原记录不可用");
 });
 
-test("已取消需求保留工作项受控修正，但不开放重开和推进", async ({ page }) => {
+test("已取消需求保留工作项修正，但不开放重开和推进", async ({ page }) => {
   const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
   const cancelledItem = {
     ...workItem,
@@ -1471,9 +1471,9 @@ test("已取消需求保留工作项受控修正，但不开放重开和推进",
 
   await page.goto("/requirements/r1");
   await page.getByRole("button", { name: "更多工作项操作", exact: true }).click();
-  await expect(page.getByRole("button", { name: "受控修正实际日期", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "修正实际日期", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "重开/返工", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "受控修正实际日期", exact: true }).click();
+  await page.getByRole("button", { name: "修正实际日期", exact: true }).click();
   await page.getByLabel("实际开始", { exact: true }).fill("2026-08-31");
   await page.getByLabel("纠错原因", { exact: true }).fill("修正取消前的历史日期");
   await page.getByRole("button", { name: "保存纠错", exact: true }).click();
@@ -1519,7 +1519,7 @@ test("修正实际日期使用打开弹层时的工作项版本，后台刷新�
 
   await page.goto("/requirements/r1");
   await page.getByRole("button", { name: "更多工作项操作" }).first().click();
-  await page.getByRole("button", { name: "受控修正实际日期", exact: true }).click();
+  await page.getByRole("button", { name: "修正实际日期", exact: true }).click();
   const actualStart = page.getByLabel("实际开始", { exact: true });
   const reason = page.getByRole("textbox", { name: "纠错原因", exact: true });
   await actualStart.fill("2026-08-31");
@@ -1653,7 +1653,7 @@ test('工作项历史补录响应异常时不把其他账号的相同补录误�
 });
 
 for (const [eventAccountId, reconciled] of [['admin', true], ['other-account', false]] as const) {
-  test(`工作项受控修正响应异常时${reconciled ? '核对本人纠错事件' : '不误认其他账号的相同纠错'}`, async ({ page }) => {
+  test(`工作项修正响应异常时${reconciled ? '核对本人纠错事件' : '不误认其他账号的相同纠错'}`, async ({ page }) => {
     const startedItem = { ...workItem, status: 'in_progress' as const, actualStart: '2026-09-01', progress: 40 };
     let current: Requirement = {
       ...structuredClone(requirement), status: 'in_progress', progress: 40,
@@ -1678,7 +1678,7 @@ for (const [eventAccountId, reconciled] of [['admin', true], ['other-account', f
 
     await page.goto('/requirements/r1');
     await page.getByRole('button', { name: '更多工作项操作', exact: true }).first().click();
-    await page.getByRole('button', { name: '受控修正实际日期', exact: true }).click();
+    await page.getByRole('button', { name: '修正实际日期', exact: true }).click();
     const popover = page.locator('.inline-edit-popover');
     await popover.getByLabel('实际开始', { exact: true }).fill('2026-08-31');
     await popover.getByLabel('纠错原因', { exact: true }).fill('核对实际开始日期');
@@ -2114,7 +2114,7 @@ test("需求列表为已评估的中风险显示统一徽章", async ({ page }) 
   await expect(page.locator(".requirements-table .risk-badge.risk-medium")).toHaveText("中风险");
 });
 
-test("终态工作项在设置页保持只读，历史日期仅由受控修正入口处理", async ({ page }) => {
+test("终态工作项在设置页保持只读，历史日期仅由修正入口处理", async ({ page }) => {
   await mockApplication(page, [], { workItem: { status: "completed", progress: 100, actualStart: "2026-09-01", actualEnd: "2026-09-03" } });
   await page.goto("/requirements/r1");
   await page.getByRole("button", { name: "工作项设置", exact: true }).click();

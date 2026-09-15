@@ -158,7 +158,7 @@ export function RequirementsPage() {
       {organizing&&<OrganizationBatchDialog projectId={selectedProjectId} requirements={data.filter(r=>(organizationRecheck?.requirementIds||selectedIds).includes(r.id))} recheck={organizationRecheck} onRecheckChange={setOrganizationRecheck} onClose={()=>setOrganizing(false)}/>}
       <PageHeader
         title="项目工作区"
-        breadcrumbs={[{label:"项目范围",onClick:()=>navigate("/?view=features&mode=table")},{label:"需求维护"}]}
+        breadcrumbs={[{label:"项目特性",onClick:()=>navigate("/?view=features&mode=table")},{label:"需求维护"}]}
         onBack={()=>navigate("/?view=features&mode=table")}
 
         secondaryActions={canManage&&<button className="ghost-button" onClick={()=>navigate("/features")}>特性规划</button>}

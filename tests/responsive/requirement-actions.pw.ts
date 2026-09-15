@@ -315,7 +315,7 @@ test('历史补录异常响应不把旧补录事件误认成本次按期完成',
   expect(state.writes).toHaveLength(1);
 });
 
-test('已完成需求可从操作菜单受控纠错且不提交交付字段', async ({ page }) => {
+test('已完成需求可从操作菜单纠错且不提交交付字段', async ({ page }) => {
   const state = await fixture(page, 'archive');
   state.requirement = {
     ...state.requirement,
@@ -334,8 +334,8 @@ test('已完成需求可从操作菜单受控纠错且不提交交付字段', as
   });
   await page.goto('/requirements/r1');
   await page.getByRole('button', { name: '需求操作', exact: true }).click();
-  await page.getByRole('button', { name: '受控纠错', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '需求受控纠错', exact: true });
+  await page.getByRole('button', { name: '纠错', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '需求纠错', exact: true });
   await dialog.getByRole('textbox', { name: '纠错后的需求标题', exact: true }).fill('修正后的历史需求');
   await dialog.getByRole('combobox', { name: '需求纠错关联历史记录', exact: true }).selectOption('complete-1');
   await dialog.getByRole('textbox', { name: '需求纠错原因', exact: true }).fill('历史标题录入错误');
@@ -348,7 +348,7 @@ test('已完成需求可从操作菜单受控纠错且不提交交付字段', as
   for (const field of ['status', 'progress', 'acceptedAt', 'plannedStart', 'plannedEnd', 'templateId', 'priority']) expect(state.writes[0]).not.toHaveProperty(field);
 });
 
-test('需求受控纠错已落库但响应异常时跨导航保留草稿和核对锁', async ({ page }) => {
+test('需求纠错已落库但响应异常时跨导航保留草稿和核对锁', async ({ page }) => {
   const state = await fixture(page, 'archive');
   state.requirement = {
     ...state.requirement,
@@ -368,8 +368,8 @@ test('需求受控纠错已落库但响应异常时跨导航保留草稿和核�
 
   await page.goto('/requirements/r1');
   await page.getByRole('button', { name: '需求操作', exact: true }).click();
-  await page.getByRole('button', { name: '受控纠错', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '需求受控纠错', exact: true });
+  await page.getByRole('button', { name: '纠错', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '需求纠错', exact: true });
   await dialog.getByRole('textbox', { name: '纠错后的需求标题', exact: true }).fill(' 响应异常后的历史需求 ');
   await dialog.getByRole('combobox', { name: '需求纠错关联历史记录', exact: true }).selectOption('complete-1');
   await dialog.getByRole('textbox', { name: '需求纠错原因', exact: true }).fill('保留这份纠错依据');
@@ -378,15 +378,15 @@ test('需求受控纠错已落库但响应异常时跨导航保留草稿和核�
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
 
   const actionButton = page.getByRole('button', { name: '需求操作', exact: true });
-  await expect(page.getByRole('alert').filter({ hasText: '需求受控纠错结果待核对' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: '需求纠错结果待核对' })).toBeVisible();
   await expect(actionButton).toBeDisabled();
   await actionButton.evaluate((button) => (button as HTMLButtonElement).click());
   await expect(page.locator('.inline-edit-popover')).toHaveCount(0);
 
   await page.getByRole('link', { name: '项目中心', exact: true }).click();
   await page.goBack();
-  await expect(page.getByRole('alert').filter({ hasText: '需求受控纠错结果待核对' })).toBeVisible();
-  await page.getByRole('button', { name: '核对受控纠错', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: '需求纠错结果待核对' })).toBeVisible();
+  await page.getByRole('button', { name: '核对纠错', exact: true }).click();
   await expect(dialog.getByRole('textbox', { name: '纠错后的需求标题', exact: true })).toHaveValue(' 响应异常后的历史需求 ');
   await expect(dialog.getByRole('combobox', { name: '需求纠错关联历史记录', exact: true })).toHaveValue('complete-1');
   await expect(dialog.getByRole('textbox', { name: '需求纠错原因', exact: true })).toHaveValue('保留这份纠错依据');

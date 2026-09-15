@@ -12,12 +12,13 @@ export function initialScopeMode(account:string,project:string){
 /** Only stored user choices migrate; the former implicit in-progress default does not. */
 export function progressEntryParams(account:string,project:string,current:URLSearchParams){
   const next=new URLSearchParams(current);next.delete('attention');next.delete('progressAttention');
+  const flattenSelection=(params:URLSearchParams)=>{const old=params.get('pathNode')?.match(/^phase:(.+):unassigned$/);if(old){params.set('featureId',old[1]);params.set('phaseId','unassigned');params.delete('pathNode');}return params;};
   const aliases:Record<string,string>={feature:'featureId',phase:'phaseId',status:'progressStatus',risk:'progressRisk',personId:'progressPerson',schedule:'progressSchedule',scope:'progressScope'};
   for(const [old,name] of Object.entries(aliases))if(next.has(old)&&!next.has(name)){next.set(name,next.get(old)!);next.delete(old);}
-  if([...current.keys()].some(k=>k!=='projectId'))return next;
+  if([...current.keys()].some(k=>k!=='projectId'))return flattenSelection(next);
   try{
     const saved=sessionStorage.getItem(key(account,project,'progress'));
-    if(saved){const params=new URL(saved,'http://workspace.local').searchParams;for(const [name,value] of params)if(!['attention','progressAttention'].includes(name)&&!next.has(name))next.set(name,value);return next;}
+    if(saved){const params=new URL(saved,'http://workspace.local').searchParams;for(const [name,value] of params)if(!['attention','progressAttention'].includes(name)&&!next.has(name))next.set(name,value);return flattenSelection(next);}
     const prefix='pm-path-view:'+account+':'+project+':dashboard-gantt:';
     const fields:Record<string,string>={search:'q','status-v2':'progressStatus',risk:'progressRisk',personId:'progressPerson',feature:'featureId',schedule:'progressSchedule','dashboard-scope':'progressScope'};
     for(const [old,name] of Object.entries(fields)){const value=JSON.parse(sessionStorage.getItem(prefix+old)||'null');if(typeof value==='string'&&value)next.set(name,value);}
@@ -46,9 +47,9 @@ export function projectTaskUrl(account:string,project:string,task:ProjectTask,cu
       if(node?.startsWith('phase:')){target.searchParams.set('phaseId',node.slice(6));target.searchParams.delete('pathNode');}
       if(current.get('requirementId')||node)target.searchParams.delete('intake');
       if(!target.searchParams.has('view'))target.searchParams.set('view',current.has('requirementId')?'requirement':current.has('featureId')?'feature':'features');
-      if(!target.searchParams.has('mode'))target.searchParams.set('mode','graph');
     }else{target.pathname='/execution';target.searchParams.delete('mode');}
   }
+  if(task==='scope'){target.pathname='/';target.searchParams.set('mode','graph');target.searchParams.delete('intake');}
   target.searchParams.delete('attention');target.searchParams.delete('progressAttention');
   return target.pathname+target.search;
 }

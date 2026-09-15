@@ -45,7 +45,7 @@ test('存在同对象执行敏感草稿时实际日期更正不请求接口，�
  await page.route('**/api/work-items/w1/correct',route=>{const body=route.request().postDataJSON();writes.push(body);current={...current,...body,version:current.version+1};return route.fulfill({json:current});});
  await page.goto('/requirements/r1');await expect(page.locator('.requirement-overview')).toBeVisible();
  await page.evaluate(()=>sessionStorage.setItem('pm-graph-draft:admin:p1',JSON.stringify({formatVersion: 2,version:'1',index:0,active:true,layouts:{},fields:{},values:[{add:[],remove:[],estimates:[],entities:[{entity:'requirement',id:'r1',op:'update',expectedVersion:1,data:{durationDays:3}}]}]})));
- await page.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await page.getByRole('button',{name:'受控修正实际日期',exact:true}).click();
+ await page.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await page.getByRole('button',{name:'修正实际日期',exact:true}).click();
  await page.getByLabel('实际开始',{exact:true}).fill('2026-08-31');await page.getByLabel('纠错原因',{exact:true}).fill('核对执行日期');await page.getByRole('button',{name:'保存纠错',exact:true}).click();
  await expect(page.getByText(/本次操作涉及未保存业务草稿/)).toBeVisible();expect(writes).toHaveLength(0);await expect(page.getByLabel('实际开始',{exact:true})).toHaveValue('2026-08-31');
  await page.evaluate(()=>sessionStorage.removeItem('pm-graph-draft:admin:p1'));await page.getByRole('button',{name:'保存纠错',exact:true}).click();

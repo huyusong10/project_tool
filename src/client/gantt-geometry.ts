@@ -53,13 +53,13 @@ export function buildBusinessDayTimeline(values: Array<string | null | undefined
   };
 }
 
-export function ganttTrackStyle(dates: Date[], cellWidth: number): CSSProperties {
-  const mondayOffsets = ganttWeekOffsets(dates, cellWidth);
+export function ganttTrackStyle(dates: Date[], cellWidth: number, zoom:GanttZoom='day'): CSSProperties {
+  const mondayOffsets = zoom==='month'?dates.flatMap((date,i)=>i===0||date.getMonth()!==dates[i-1].getMonth()?[i*cellWidth]:[]):ganttWeekOffsets(dates, cellWidth);
   const weekBackgrounds = mondayOffsets.map(() => "linear-gradient(var(--gantt-week-line), var(--gantt-week-line))");
   return {
     width: dates.length * cellWidth,
     "--gantt-cell": `${cellWidth}px`,
-    backgroundImage: [...weekBackgrounds, `repeating-linear-gradient(to right,var(--gantt-day-line) 0,var(--gantt-day-line) 1px,transparent 1px,transparent ${cellWidth}px)`].join(","),
+    backgroundImage: [...weekBackgrounds, zoom==='month'||cellWidth<12?'linear-gradient(transparent,transparent)':`repeating-linear-gradient(to right,var(--gantt-day-line) 0,var(--gantt-day-line) 1px,transparent 1px,transparent ${cellWidth}px)`].join(","),
     backgroundPosition: [...mondayOffsets.map((offset) => `${offset}px 0`), "0 0"].join(","),
     backgroundSize: [...mondayOffsets.map(() => "1px 100%"), "auto"].join(","),
     backgroundRepeat: [...mondayOffsets.map(() => "no-repeat"), "repeat"].join(","),

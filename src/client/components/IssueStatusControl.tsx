@@ -170,7 +170,7 @@ function IssueCorrectionEditor({ issue, disabled, onPendingChange, onSaved, onCa
     <button type="button" className="ghost-button" disabled={busy} onClick={() => void editor.reload()}>重新读取问题</button>
   </div>;
   return <form className="inline-action-form issue-correction-form" onSubmit={(event) => { event.preventDefault(); submit(); }}>
-    <header><strong>受控纠错</strong><small>{issueStatusLabels[current.status as keyof typeof issueStatusLabels]}</small></header>
+    <header><strong>纠错</strong><small>{issueStatusLabels[current.status as keyof typeof issueStatusLabels]}</small></header>
     <p>修正问题事实，不改变当前状态；系统会追加纠错记录，不覆盖原历史。</p>
     <label><span>问题标题</span><input aria-label="纠错后的问题标题" disabled={busy} value={title} onChange={(event) => { editor.setDirty(true); setTitle(event.target.value); }} /></label>
     <label><span>问题影响</span><textarea aria-label="纠错后的问题影响" disabled={busy} rows={2} value={impact} onChange={(event) => { editor.setDirty(true); setImpact(event.target.value); }} /></label>
@@ -197,7 +197,7 @@ export function IssueCorrectionControl({ issue, canManage, disabled = false, onP
   if (!canManage) return null;
   const close = () => { if (!pending) setOpen(false); };
   return <div className="issue-correction-control" onClick={(event) => event.stopPropagation()}>
-    <button ref={anchorRef} type="button" className="issue-correction-trigger" disabled={disabled || pending} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((value) => !value)}><PencilLine size={13} />受控纠错</button>
+    <button ref={anchorRef} type="button" className="issue-correction-trigger" disabled={disabled || pending} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((value) => !value)}><PencilLine size={13} />纠错</button>
     <AnchoredPopover anchorRef={anchorRef} open={open} onOutside={close} width={460} className="issue-correction-popover">
       {open && <IssueCorrectionEditor issue={issue} disabled={disabled} onPendingChange={(value) => { setPending(value); onPendingChange?.(value); }} onSaved={() => setOpen(false)} onCancel={close} />}
     </AnchoredPopover>

@@ -154,7 +154,7 @@ export function WorkItemActions({
   const backfillUnavailable = !item.plannedStart || !item.plannedEnd ? "请先补齐计划开始和完成日期。"
     : item.plannedStart > item.plannedEnd ? "计划完成日期不能早于开始日期。"
     : item.plannedEnd > today ? "计划尚未结束，暂不能补录完成。"
-    : hasExecutionHistory ? "工作项已有执行记录，请使用正常完成或受控修正。" : "";
+    : hasExecutionHistory ? "工作项已有执行记录，请使用正常完成或修正。" : "";
   const textPanel = panel && panel !== "dates" && panel !== "menu" && panel !== "backfill" ? panel : null;
   const operationUnavailable = panel === "dates" ? item.status === "not_started"
     : panel === "backfill" ? item.status !== "not_started"
@@ -197,7 +197,7 @@ export function WorkItemActions({
     <AnchoredPopover anchorRef={anchorRef} open={panel !== null} onOutside={() => { if (!pending) changePanel(null); }} width={panel === "menu" ? 210 : 390} className={panel === "menu" ? "action-menu" : ""}>
       {panel === "menu" && <>
         {!stateChangesDisabled && item.status === "in_progress" && <button type="button" onClick={() => openPanel("complete")}><Check size={14} />完成并补充说明</button>}
-        {canCorrect && <button type="button" onClick={() => openPanel("dates")}><CalendarDays size={14} />受控修正实际日期</button>}
+        {canCorrect && <button type="button" onClick={() => openPanel("dates")}><CalendarDays size={14} />修正实际日期</button>}
         {canBackfill && <button type="button" onClick={() => openPanel("backfill")}><Check size={14} />按期完成（历史补录）</button>}
         {!stateChangesDisabled && canManage && ["completed", "cancelled"].includes(item.status) && <button onClick={() => void run(() => onAction("reopen", undefined, item.version), {successMessage:"工作项已重新打开"})}><RotateCcw size={14} />重开/返工</button>}
         {!stateChangesDisabled && canManage && onCancel && !["completed", "cancelled"].includes(item.status) && <button className="danger" onClick={() => { if (onCancel) void run(() => onCancel("", item.version), {successMessage:"工作项已取消"}); }}><CircleStop size={14} />取消工作项</button>}
@@ -233,7 +233,7 @@ export function WorkItemActions({
           {successMessage:"实际日期已修正"},
         );
       }}>
-        <header><strong>受控修正实际日期</strong><button type="button" disabled={pending} onClick={() => changePanel(null)} aria-label="关闭"><X size={16} /></button></header>
+        <header><strong>修正实际日期</strong><button type="button" disabled={pending} onClick={() => changePanel(null)} aria-label="关闭"><X size={16} /></button></header>
         <p>仅修正历史实际日期，不改变工作项状态和进度；系统会保留原记录和纠错原因。</p>
         <div className="inline-action-date-grid">
           <label><span>实际开始{item.status !== "cancelled" && "（必填）"}</span><input aria-label="实际开始" type="date" disabled={pending} max={item.status === "cancelled" && item.cancelledAt ? item.cancelledAt : today} value={actualStart} onChange={(event) => { setActualStart(event.target.value); setValidationError(""); }} /></label>

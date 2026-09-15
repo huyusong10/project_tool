@@ -2,6 +2,16 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {projectTaskUrl,rememberProjectTask,progressEntryParams,initialScopeMode} from '../src/client/project-workspace-navigation';
 beforeEach(()=>{const values=new Map<string,string>();vi.stubGlobal('sessionStorage',{getItem:(key:string)=>values.get(key)||null,setItem:(key:string,value:string)=>values.set(key,value)});});
 afterEach(()=>vi.unstubAllGlobals());
+it('主入口关系图总是打开图，旧清单偏好和草稿原文保留',()=>{
+  rememberProjectTask('a','p','/','?view=feature&featureId=f&mode=table&pathNode=r');
+  const target=new URL(projectTaskUrl('a','p','scope'),'http://test');
+  expect(target.searchParams.get('mode')).toBe('graph');expect(target.searchParams.get('pathNode')).toBe('r');
+  expect(sessionStorage.getItem('pm-project-task:a:p:scope')).toContain('mode=table');
+});
+it('旧未分期中间行链接转换成直接需求筛选',()=>{
+  const current=new URLSearchParams('pathNode=phase:f:unassigned&progressStage=testing');
+  const next=progressEntryParams('a','p',current);expect(next.get('featureId')).toBe('f');expect(next.get('phaseId')).toBe('unassigned');expect(next.get('progressStage')).toBe('testing');expect(next.has('pathNode')).toBe(false);expect(current.get('pathNode')).toBe('phase:f:unassigned');
+});
 it('首次默认关系图；只迁移明确保存的表格偏好',()=>{
   expect(initialScopeMode('a','p')).toBe('graph');sessionStorage.setItem('pm-canvas-navigation:a:p:features','mode=table');expect(initialScopeMode('a','p')).toBe('table');expect(initialScopeMode('b','p')).toBe('graph');
 });

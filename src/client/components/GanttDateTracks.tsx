@@ -33,7 +33,7 @@ export const GanttDateTracks = memo(function GanttDateTracks({
   const lateLeft = scheduleComplete && actual && plan && plannedEnd && actualEnd && actualEnd > plannedEnd ? Math.max(actual.left, plan.right) : null;
   const total = dates.length * cellWidth;
   const endpoint = actual?.right ?? plan?.left ?? 0;
-  const labelWidth = 112;
+  const labelWidth = Math.min(160,Math.max(72,Array.from(label).reduce((size,char)=>size+(/[\u4e00-\u9fff]/.test(char)?12:7),12)));
   const labelLeft = Math.max(4, Math.min(total - labelWidth - 4, endpoint + 8));
   const title = `${label}；计划 ${plannedStart || "缺少开始日期"} 至 ${plannedEnd || "缺少结束日期"}；实际 ${actualStart || (["not_started", "planning"].includes(status) ? "未开始" : "缺少开始日期")} 至 ${actualEnd || "结束日期缺失"}${!terminal && actualEnd ? "（截至统计日）" : ""}`;
   const left = Math.min(plan?.left ?? total, actual?.left ?? total);
@@ -45,9 +45,9 @@ export const GanttDateTracks = memo(function GanttDateTracks({
     {plan && scheduleComplete && <span className="gantt-date-deadline" style={{ left: plan.right }} />}
     {(!plan || !scheduleComplete || !plannedStart || !plannedEnd) && <span className="gantt-date-unplanned">{plan ? "排期不完整" : "待排期"}</span>}
     {interactionProps && (plan || actual) && <span className="gantt-date-hitbox" style={{ left: Math.max(0, left - 4), width: Math.max(28, right - left + 8) }} tabIndex={0} aria-label={title} {...interactionProps} />}
-    {showProgress&&(onProgressClick
-      ? <button type="button" className={`gantt-date-progress gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft }} title={title} aria-label={progressAriaLabel || title} onClick={(event) => { event.stopPropagation(); onProgressClick(); }}>{label}</button>
-      : <span className={`gantt-date-progress gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft }} tabIndex={0} title={title} aria-label={title}>{label}</span>)}
+    {showProgress&&(!actualStart||actual)&&(onProgressClick
+      ? <button type="button" className={`gantt-date-progress gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft,maxWidth:labelWidth }} title={title} aria-label={progressAriaLabel || title} onClick={(event) => { event.stopPropagation(); onProgressClick(); }}>{label}</button>
+      : <span className={`gantt-date-progress gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft,maxWidth:labelWidth }} tabIndex={0} title={title} aria-label={title}>{label}</span>)}
     <GanttForecastTail forecast={forecast} plannedEnd={scheduleComplete && plan ? plannedEnd : null} dates={dates} cellWidth={cellWidth} interactionProps={interactionProps} />
   </>;
 });

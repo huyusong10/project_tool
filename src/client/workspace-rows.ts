@@ -47,7 +47,7 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis):Worksp
       ...p.requirements.filter(r=>r.deletedAt).map(r=>requirementRow({...r,projectId:f.projectId,projectName:f.name,templateId:null,templateName:null,ownerId:null,ownerName:null,plannedStart:null,plannedEnd:null,progress:100,plannedProgress:null,progressGap:0,acceptedAt:null,acceptedByAccountId:null,riskLevel:"low",riskEvaluated:false,riskReason:"",priority:"P2",createdAt:"",updatedAt:"",delayed:false,highRisk:false,finishVariance:0,durationVariance:0,effectiveEnd:null,workItems:[]},f.id,p.id)),
     ].sort(byTitle)}));
     const unassigned=own.filter(r=>!r.phaseId);
-    if(unassigned.length)phases.push({id:'phase:'+f.id+':unassigned',kind:'phase',title:'未安排 Phase',featureId:f.id,phaseId:'unassigned',feature:f,children:unassigned.map(r=>requirementRow(r,f.id,'unassigned'))});
+    phases.push(...unassigned.map(r=>requirementRow(r,f.id,'unassigned')));
     return {id:'feature:'+f.id,kind:'feature',title:f.name,featureId:f.id,feature:f,archived:!!f.archivedAt,children:phases};
   });
 }
@@ -57,7 +57,7 @@ export function filterWorkspaceRows(rows:WorkspaceRow[],filter:RowFilters):Works
   const matches=(row:WorkspaceRow)=>matchesSearch([{text:row.title,weight:100},{text:row.phase?.scope||row.feature?.description||''}],filter.query);
   const visit=(row:WorkspaceRow,inherited=false):WorkspaceRow|null=>{
     if(row.kind==='feature'&&(filter.featureId&&row.featureId!==filter.featureId||(filter.state==='archived'?!row.archived:row.archived)))return null;
-    if(row.kind==='phase'&&filter.phaseId&&row.phaseId!==filter.phaseId)return null;
+    if(row.kind!=='feature'&&filter.phaseId&&row.phaseId!==filter.phaseId)return null;
     const textMatch=inherited||!filter.query||matches(row);
     const children=row.children.map(child=>visit(child,textMatch)).filter((child):child is WorkspaceRow=>!!child);
     const r=row.requirement;

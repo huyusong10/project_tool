@@ -67,4 +67,4 @@ MCP 不再使用条款关联、落实范围、交付范围、执行模式切换�
 
 记录实际提测使用 record_test_submission，填写 actualDate、expectedVersion 及可选 content。提测就绪不是已提测，不自动补提测事实。测试已经开始可直接显示测试阶段。结果未知先核对原请求与最新记录，不重复提交。
 
-项目工作区分为范围与关系、计划与进展。范围清单承接录入、导入和批量维护；分层甘特查看 Phase 交付和工作执行。dashboard_summary 的指定项目响应增补 featureOverview，与需求数据使用同一统计日期。get_path_graph 在 view=feature 时可用 phaseId（或 unassigned）筛选，phaseRegions 表达交付区域；区域顺序不代表执行依赖。布局范围 feature-phase:<featureId>:<phaseId|unassigned> 保存区域内相对坐标，修改前读取完整布局并携带版本。
+项目工作区分为关系图、进展表。清单工具提供录入、导入和批量维护；进展表查看 Phase 交付和工作执行，未安排 Phase 的需求直接列在特性下。dashboard_summary 的指定项目响应增补 featureOverview，与需求数据使用同一统计日期。get_path_graph 在 view=feature 时可用 phaseId（或 unassigned）筛选，phaseRegions 表达交付区域；区域顺序不代表执行依赖。布局范围 feature-phase:<featureId>:<phaseId|unassigned> 保存区域内相对坐标，修改前读取完整布局并携带版本。

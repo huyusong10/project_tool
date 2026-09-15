@@ -6,6 +6,14 @@ import {deriveExecutionStage} from '../src/shared/execution-stage';
 const stage=deriveExecutionStage({status:'in_progress'},[{title:'测试',status:'in_progress',workStage:'testing',progress:70,progressWeight:1}]);
 function fixture(){return {asOfDate:'2026-09-14',requirements:[{id:'r',title:'资产导入',featureId:'f',phaseId:'p',status:'in_progress',executionStage:stage,workItems:[{id:'w',title:'测试',status:'in_progress',progress:70}]}],featureOverview:{features:[{id:'f',name:'资产管理',phases:[{id:'p',name:'Phase 1',status:'in_progress',requirements:[{id:'r',title:'资产导入',status:'in_progress',executionStage:stage},{id:'archived',title:'归档交付',status:'completed',deletedAt:'2026-09-13',executionStage:deriveExecutionStage({status:'completed'})}]},{id:'empty',name:'探索',status:'planning',requirements:[]}]},{id:'empty-feature',name:'告警管理',phases:[]}]}} as unknown as Dashboard;}
 const filters={query:'',featureId:'',phaseId:'',state:'active',stage:''};
+it('未安排 Phase 的需求直接列在特性下，不增加分组或标记；Phase 筛选继续生效',()=>{
+  const report=fixture(),r=report.requirements[0];report.requirements.push({...r,id:'flat',phaseId:null,title:'直接列出'});
+  const rows=workspaceRows(report),flat=rows[0].children.find(row=>row.id==='flat')!;
+  expect(flat.kind).toBe('requirement');expect(flat.title).toBe('直接列出');expect(flat.phase).toBeUndefined();
+  expect(flattenWorkspaceRows(rows,{}).map(r=>r.row.title)).not.toContain('未安排 Phase');
+  expect(filterWorkspaceRows(rows,{...filters,phaseId:'p'})[0].children.map(r=>r.id)).not.toContain('flat');
+  expect(filterWorkspaceRows(rows,{...filters,phaseId:'unassigned',featureId:'f'})[0].children.map(r=>r.id)).toEqual(['flat']);
+});
 it('初始展开到需求，工作项折叠，空范围与归档贡献保留',()=>{
   const tree=workspaceRows(fixture());expect(flattenWorkspaceRows(tree,{}).map(r=>r.row.title)).toEqual(['资产管理','Phase 1','归档交付','资产导入','探索','告警管理']);
   expect(flattenWorkspaceRows(tree,{p:true,'phase:p':true,r:true}).map(r=>r.row.title)).toContain('测试');

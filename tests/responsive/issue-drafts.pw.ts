@@ -233,10 +233,10 @@ async function openStatus(page: Page, location: 'list' | 'detail', action = '确
   return { container, field, trigger, submit: container.getByRole('button', { name: new RegExp(action) }) };
 }
 
-test('问题详情受控纠错可修正事实并保留原因', async ({ page }) => {
+test('问题详情纠错可修正事实并保留原因', async ({ page }) => {
   const state = await fixture(page);
   await page.goto('/issues?issueId=i1');
-  await page.getByRole('button', { name: '受控纠错', exact: true }).click();
+  await page.getByRole('button', { name: '纠错', exact: true }).click();
   const form = page.locator('.issue-correction-form');
   await expect(form).toBeVisible();
   await form.getByLabel('纠错后的问题标题', { exact: true }).fill('核对后的问题标题');
@@ -259,14 +259,14 @@ test('问题详情受控纠错可修正事实并保留原因', async ({ page }) 
   } }]);
 });
 
-test('已解决问题通过受控纠错修正解决日期而不重开', async ({ page }) => {
+test('已解决问题通过纠错修正解决日期而不重开', async ({ page }) => {
   const state = await fixture(page);
   state.issue = { ...state.issue, status: 'resolved', progress: 100, resolvedAt: '2026-09-04' };
   await page.goto('/issues?issueId=i1');
   await page.getByRole('tab', { name: '基本信息', exact: true }).click();
   await expect(page.getByText('解决日期：2026-09-04', { exact: true })).toBeVisible();
-  await expect(page.getByText(/修正标题、影响或解决日期请使用“受控纠错”/)).toBeVisible();
-  await page.getByRole('button', { name: '受控纠错', exact: true }).click();
+  await expect(page.getByText(/修正标题、影响或解决日期请使用“纠错”/)).toBeVisible();
+  await page.getByRole('button', { name: '纠错', exact: true }).click();
   const form = page.locator('.issue-correction-form');
   await expect(form.getByLabel('纠错后的问题完成度', { exact: true })).toHaveCount(0);
   await form.getByLabel('纠错后的解决日期', { exact: true }).fill('2026-09-03');
@@ -286,7 +286,7 @@ test('已解决问题通过受控纠错修正解决日期而不重开', async ({
   expect(state.issue.status).toBe('resolved');
 });
 
-test('问题受控纠错成功但响应损坏时读回事件且不重复提交', async ({ page }) => {
+test('问题纠错成功但响应损坏时读回事件且不重复提交', async ({ page }) => {
   const state = await fixture(page);
   let correctionWrites = 0;
   await page.route('**/api/issues/i1/correct', async (route) => {
@@ -310,7 +310,7 @@ test('问题受控纠错成功但响应损坏时读回事件且不重复提交',
     await route.fulfill({ status: 200, contentType: 'text/html', body: '<html>Unexpected proxy response</html>' });
   });
   await page.goto('/issues?issueId=i1');
-  await page.getByRole('button', { name: '受控纠错', exact: true }).click();
+  await page.getByRole('button', { name: '纠错', exact: true }).click();
   const form = page.locator('.issue-correction-form');
   await form.getByLabel('问题纠错原因', { exact: true }).fill('补充原记录纠错说明');
   await expect(form.getByRole('button', { name: '保存纠错', exact: true })).toBeDisabled();
@@ -322,7 +322,7 @@ test('问题受控纠错成功但响应损坏时读回事件且不重复提交',
   expect(correctionWrites).toBe(1);
 });
 
-test('问题受控纠错异常响应不把旧同值纠错误认成本次写入', async ({ page }) => {
+test('问题纠错异常响应不把旧同值纠错误认成本次写入', async ({ page }) => {
   const state = await fixture(page);
   await page.route('**/api/issues/i1/correct', async (route) => {
     const body = route.request().postDataJSON() as Record<string, unknown>;
@@ -341,7 +341,7 @@ test('问题受控纠错异常响应不把旧同值纠错误认成本次写入',
     await route.fulfill({ status: 200, contentType: 'text/html', body: '<html>Unexpected proxy response</html>' });
   });
   await page.goto('/issues?issueId=i1');
-  await page.getByRole('button', { name: '受控纠错', exact: true }).click();
+  await page.getByRole('button', { name: '纠错', exact: true }).click();
   const form = page.locator('.issue-correction-form');
   await form.getByLabel('纠错后的问题完成度', { exact: true }).fill('35');
   await form.getByLabel('问题纠错原因', { exact: true }).fill('重复的纠错说明');

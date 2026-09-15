@@ -284,7 +284,7 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
         moreActions={canManage ? <>
                 {requirement.executionMode!=='direct'&&!['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" onClick={() => { setCommand('complete-as-planned'); }}><Check size={15} />按期完成（历史补录）</button>}
                 {!['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" className="danger" onClick={() => { setCommand('cancel'); }}><CircleStop size={15} />取消需求</button>}
-                {['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" onClick={() => { setModal('correction'); }}><PencilLine size={15} />受控纠错</button>}
+                {['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" onClick={() => { setModal('correction'); }}><PencilLine size={15} />纠错</button>}
                 {['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" className="danger" onClick={() => { setCommand('archive'); }}><Archive size={15} />归档需求</button>}
         </> : null}
       />;
@@ -297,7 +297,7 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
         {infoRecheck && <div className="warning-banner" role="alert">需求信息修改结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" disabled={!peopleReady} onClick={() => setModal("info")}>核对信息修改</button></div>}
         {scheduleRecheck && <div className="warning-banner" role="alert">需求计划调整结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" onClick={() => setModal("schedule")}>核对计划调整</button></div>}
         {planRecheck && <div className="warning-banner" role="alert">补全计划结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" disabled={templatesQuery.data === undefined} onClick={() => setModal("template")}>核对补全计划</button></div>}
-        {correctionRecheck && <div className="warning-banner" role="alert">需求受控纠错结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" disabled={!peopleReady} onClick={() => setModal("correction")}>核对受控纠错</button></div>}
+        {correctionRecheck && <div className="warning-banner" role="alert">需求纠错结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" disabled={!peopleReady} onClick={() => setModal("correction")}>核对纠错</button></div>}
         {commandRecheck && <div className="warning-banner" role="alert">{commandRecheck.action === 'cancel' ? '取消需求' : commandRecheck.action === 'archive' ? '归档需求' : '按期完成'}结果待核对，原需求版本已锁定。<button type="button" className="ghost-button" onClick={() => setCommand(commandRecheck.action)}>核对需求操作</button></div>}
         {workEditorNeedsRecheck && <div className="warning-banner" role="alert">工作项设置结果待核对，设置操作暂不可用。<button type="button" className="ghost-button" disabled={workEditorRechecking} onClick={() => void recheckWorkEditor()}>{workEditorRechecking ? "读取中…" : "重新读取需求"}</button></div>}
         {supportingError && <div className="warning-banner">{supportingDataReady ? "人员与流程数据刷新失败，当前使用上次成功结果。" : "人员或流程数据加载失败，相关编辑操作暂不可用。"}<button className="ghost-button" disabled={peopleQuery.isFetching || templatesQuery.isFetching} onClick={() => void Promise.all([peopleQuery.refetch(), templatesQuery.refetch()])}>重新加载</button></div>}
@@ -392,6 +392,6 @@ function DraftRequirementPage({projectId}:{projectId:string}){
  const [item,setItem]=useState<PathRequirementContext|null|undefined>(undefined);
  useEffect(()=>{let cancelled=false;void readDraftRecord<{values:DependencyChanges[];index:number}>('pm-graph-draft:'+(session.accountId||'guest')+':'+projectId).then(h=>{const c=h?.values[h.index].entities?.find(c=>c.id===id&&c.entity==='requirement'&&c.op==='create');if(!cancelled)setItem(c?{id,projectId,title:c.data.title||'新需求',ownerId:c.data.ownerId||null,workItems:[],status:'not_started'}:null);}).catch(()=>{if(!cancelled)setItem(null);});return()=>{cancelled=true;};},[id,projectId,session.accountId]);
  if(item===undefined)return <LoadingState label="正在恢复需求草稿…"/>;
- if(!item)return <><PageHeader title="本机需求草稿不存在" onBack={()=>navigate('/?view=features')} backLabel="返回项目范围"/><EmptyState title="本机需求草稿不存在" detail="请返回项目范围检查草稿。"/></>;
+ if(!item)return <><PageHeader title="本机需求草稿不存在" onBack={()=>navigate('/?view=features')} backLabel="返回项目特性"/><EmptyState title="本机需求草稿不存在" detail="请返回项目特性检查草稿。"/></>;
  return <Navigate to={'/paths?'+new URLSearchParams({view:'requirement',requirementId:id,draftProject:projectId,root:'project'})} replace/>;
 }

@@ -1,6 +1,7 @@
+import ELK from 'elkjs/lib/elk.bundled.js';
 import {requirementCanvasUrl} from '../src/client/canvas-navigation';
 import {expect,it} from 'vitest';
-import {featurePhaseLayout,phaseLayoutChanges,constrainPhasePosition} from '../src/client/phase-layout';
+import {featurePhaseLayout,arrangePhaseRegions,phaseLayoutChanges,constrainPhasePosition} from '../src/client/phase-layout';
 import type {PathAnalysis} from '../src/shared/paths';
 import type {FeatureOverview} from '../src/shared/feature-overview';
 import {projectPhaseOverview} from '../src/shared/phase-projection';
@@ -14,29 +15,42 @@ it('连线避开 Phase 标题区域，布局不增加业务节点或执行依赖
   const points=result.edges['a>b'].points;
   for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];const crosses=a.y===b.y?a.y>reserved.top&&a.y<reserved.bottom&&Math.max(a.x,b.x)>reserved.left&&Math.min(a.x,b.x)<reserved.right:a.x>reserved.left&&a.x<reserved.right&&Math.max(a.y,b.y)>reserved.top&&Math.min(a.y,b.y)<reserved.bottom;expect(crosses).toBe(false);}
 });
-it('空区域紧凑，按实际节点宽度限制左右边界',()=>{
-  const {data,feature,ids}=fixture(),layout=featurePhaseLayout(data,feature,'f',ids),empty=layout.regions.find(r=>r.id==='p3')!,active=layout.regions.find(r=>r.id==='p2')!;
-  expect(empty.width).toBeLessThan(active.width);expect(empty.height).toBeLessThan(active.height);
-  const p=constrainPhasePosition(layout.regions,'b',{x:10000,y:-100},280);expect(p.x+280).toBeLessThanOrEqual(active.x+active.width-24);expect(p.y).toBeGreaterThan(active.y+130);
+it('外框按内容伸展，拖动只限制标题和左边留白，不截断横向坐标',async()=>{
+  const {data,feature,ids}=fixture(),layout=await measured(data,feature,ids),empty=layout.regions.find(r=>r.id==='p3')!,active=layout.regions.find(r=>r.id==='p2')!;
+  expect(empty.height).toBeLessThan(active.height);
+  const p=constrainPhasePosition(layout.regions,'b',{x:10000,y:-100});expect(p.x).toBe(10000);expect(p.y).toBe(active.y+148);
+});
+async function measured(data:PathAnalysis,feature:FeatureOverview,ids:string[],edges:Array<{id:string;source:string;target:string}>=[]){
+  const base=featurePhaseLayout(data,feature,'f',ids);
+  return arrangePhaseRegions(new ELK(),ids.map(id=>({id,width:244,height:212})),edges,base.regions,base.positions);
+}
+it('长依赖链、并行分支按拓扑展开，Phase 外框包含所有卡片',async()=>{
+  const {data,feature}=fixture();data.requirements=Array.from({length:12},(_,i)=>({id:'n'+i,featureId:'f',phaseId:'p2'})) as PathAnalysis['requirements'];
+  const ids=data.requirements.map(r=>r.id),edges=ids.slice(1,8).map((id,i)=>({id:'e'+i,source:ids[i],target:id})).concat(ids.slice(8).map(id=>({id:'fork'+id,source:'n3',target:id})));
+  const result=await measured(data,feature,ids,edges),region=result.regions.find(r=>r.id==='p2')!;
+  expect(region.width).toBeGreaterThan(2000);
+  for(const e of edges)expect(result.positions[e.target].x).toBeGreaterThan(result.positions[e.source].x+244);
+  for(const id of ids){const p=result.positions[id];expect(p.x).toBeGreaterThanOrEqual(region.x+24);expect(p.x+244).toBeLessThanOrEqual(region.x+region.width-24);expect(p.y+212).toBeLessThanOrEqual(region.y+region.height-24);}
+  for(const [i,a] of ids.entries())for(const b of ids.slice(i+1)){const p=result.positions[a],q=result.positions[b];expect(p.x+244<=q.x||q.x+244<=p.x||p.y+212<=q.y||q.y+212<=p.y).toBe(true);}
 });
 function fixture(){
   const feature={id:'f',phases:[{id:'p1',featureId:'f',sortOrder:0,name:'第一期',requirements:[],deliveries:[],deliveredAt:null},{id:'p2',featureId:'f',sortOrder:1,name:'第二期',requirements:[],deliveries:[],deliveredAt:null},{id:'p3',featureId:'f',sortOrder:2,name:'远期',requirements:[],deliveries:[],deliveredAt:null}]} as unknown as FeatureOverview;
   const data={requirements:[{id:'a',featureId:'f',phaseId:'p1',status:'completed'},{id:'b',featureId:'f',phaseId:'p2',status:'in_progress'},{id:'c',featureId:'f',phaseId:'p2',status:'not_started'},{id:'u',featureId:'f',phaseId:null,status:'not_started'},{id:'outside',featureId:'g',phaseId:null,status:'not_started'}],layouts:[{scope:'feature:f',direction:'right',version:1,positions:{c:{x:10,y:10},b:{x:20,y:10}}}],nodes:[],edges:[],dependencies:[]} as unknown as PathAnalysis;
   return {feature,data,ids:data.requirements.map(r=>r.id)};
 }
-it('Phase 按序显示，空 Phase 和未安排区域保留，旧布局仅用于初始顺序',()=>{
-  const {feature,data,ids}=fixture(),before=structuredClone(data),layout=featurePhaseLayout(data,feature,'f',ids);
-  expect(layout.regions.map(r=>r.id)).toEqual(['p1','p2','p3','unassigned','external']);expect(layout.regions[2].nodeIds).toEqual([]);expect(layout.positions.c.x).toBeLessThan(layout.positions.b.x);expect(data).toEqual(before);
+it('Phase 按序显示，空 Phase 和未安排区域保留，旧布局仅用于初始顺序',async()=>{
+  const {feature,data,ids}=fixture(),before=structuredClone(data),layout=await measured(data,feature,ids);
+  expect(layout.regions.map(r=>r.id)).toEqual(['p1','p2','p3','unassigned','external']);expect(layout.regions[2].nodeIds).toEqual([]);expect(layout.regions[1].nodeIds).toEqual(['c','b']);expect(data).toEqual(before);
 });
-it('区域内位置持久化，拖动越界不会更换 Phase 或改变其他位置',()=>{
-  const {feature,data,ids}=fixture(),layout=featurePhaseLayout(data,feature,'f',ids),p=constrainPhasePosition(layout.regions,'b',{x:99999,y:-50});
+it('区域内位置持久化，拖动越界不会更换 Phase 或改变其他相对位置',async()=>{
+  const {feature,data,ids}=fixture(),layout=await measured(data,feature,ids),p=constrainPhasePosition(layout.regions,'b',{x:99999,y:-50});
   const changes=phaseLayoutChanges(empty,data.layouts||[],layout.regions,{...layout.positions,b:p});expect(changes.entities).toBeUndefined();expect(changes.add).toEqual([]);expect(changes.layouts?.every(l=>l.scope.startsWith('feature-phase:'))).toBe(true);
-  const restored=featurePhaseLayout({...data,layouts:changes.layouts!.map(l=>({...l,version:1}))},feature,'f',ids);expect(restored.positions.b).toEqual(p);expect(restored.positions.c).toEqual(layout.positions.c);expect(data.requirements.find(r=>r.id==='b')?.phaseId).toBe('p2');
+  const restored=await measured({...data,layouts:changes.layouts!.map(l=>({...l,version:1}))},feature,ids);expect(restored.positions.b).toEqual(p);expect(restored.positions.c).toEqual(layout.positions.c);expect(data.requirements.find(r=>r.id==='b')?.phaseId).toBe('p2');
 });
-it('需求移入目标区域空位，已保存节点相对位置保持，筛选不删除隐藏坐标',()=>{
-  const {feature,data,ids}=fixture(),first=featurePhaseLayout(data,feature,'f',ids),saved=phaseLayoutChanges(empty,[],first.regions,first.positions);
+it('需求移入目标区域空位，已保存节点相对位置保持，筛选不删除隐藏坐标',async()=>{
+  const {feature,data,ids}=fixture(),first=await measured(data,feature,ids),saved=phaseLayoutChanges(empty,[],first.regions,first.positions);
   data.layouts=saved.layouts!.map(l=>({...l,version:2}));data.requirements.find(r=>r.id==='u')!.phaseId='p2';
-  const moved=featurePhaseLayout(data,feature,'f',ids);expect(moved.positions.b).toEqual(first.positions.b);expect(moved.positions.c).toEqual(first.positions.c);expect(moved.positions.u).not.toEqual(moved.positions.b);
+  const moved=await measured(data,feature,ids);expect(moved.positions.b).toEqual(first.positions.b);expect(moved.positions.c).toEqual(first.positions.c);expect(moved.positions.u).not.toEqual(moved.positions.b);
   const partial=phaseLayoutChanges(empty,data.layouts,moved.regions,{b:moved.positions.b});expect(partial.layouts?.find(l=>l.scope==='feature-phase:f:p2')?.positions.c).toEqual(data.layouts.find(l=>l.scope==='feature-phase:f:p2')?.positions.c);
 });
 it('草稿归属投影刷新 Phase 分布，交付历史不被重新计算',()=>{
