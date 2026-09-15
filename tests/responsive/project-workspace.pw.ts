@@ -13,7 +13,7 @@ test('长标题与 60 个工作项按展开范围渲染，跨特性依赖保留'
   let details=0;page.on('request',request=>{if(/\/api\/requirements\/[^/?]+$/.test(request.url()))details++;});
   await page.goto('/execution');const grid=page.getByRole('treegrid');await expect(grid).toContainText('迭代探索');expect(await grid.locator('[data-row-id]').count()).toBeLessThan(15);expect(details).toBe(0);
   await grid.getByRole('button',{name:'展开 '+r.title,exact:true}).click();await expect(grid.locator('.kind-work')).toHaveCount(60);expect(details).toBe(0);
-  await page.getByPlaceholder('搜索当前范围').fill('工作项 59');await expect(grid.locator('.kind-work')).toHaveCount(1);await expect(grid).toContainText('迭代探索');
+  await page.getByPlaceholder('搜索名称或编号').fill('工作项 59');await expect(grid.locator('.kind-work')).toHaveCount(1);await expect(grid).toContainText('迭代探索');
   await page.screenshot({path:info.outputPath('large-gantt.png'),animations:'disabled'});
   await page.goto('/?'+new URLSearchParams({view:'feature',featureId:feature.id,phaseId:phase.id,mode:'graph',pathInspector:'closed'}));await expect(page.locator('[data-layout-ready=true]')).toBeVisible();
   await expect(page.locator('.react-flow__node[data-id="'+f.testing.id+'"]')).not.toHaveClass(/graph-node-hidden/);
@@ -75,7 +75,7 @@ test('空范围、结构维护、全项目分析返回和窄屏详情',async({pa
   await expect(page.getByRole('navigation',{name:'页面层级'})).toContainText('全项目');await page.getByRole('button',{name:'返回',exact:true}).click();
   await expect(page).toHaveURL(new RegExp('phaseId='+f.phases[1].id));
   await page.setViewportSize({width:390,height:844});
-  await chooseOption(page.getByLabel('进展 Phase',{exact:true}),'');
+  await page.getByRole('button',{name:/^更多筛选/}).click();await chooseOption(page.getByLabel('进展 Phase',{exact:true}),'');await page.getByRole('dialog').filter({has:page.getByLabel('更多进展筛选')}).getByRole('button',{name:'关闭',exact:true}).click();
   await page.getByRole('treegrid').locator('[data-row-id="phase:'+f.phases[1].id+'"] .workspace-row-title').click();
   const detail=page.getByRole('complementary',{name:'对象详情'});await expect(detail).toBeVisible();
   const rect=await detail.boundingBox();expect(rect?.width).toBe(390);expect(rect?.x).toBe(0);

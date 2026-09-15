@@ -2,7 +2,7 @@ import {expect,test} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
 import {chooseOption} from './select-helper';
 
-test('进展摘要靠近名称，条内数字不改变日期，摘要浮层不移动表格',async({page},info)=>{
+test('名称负责人固定在左，进展固定在右，条内数字与摘要不移动表格',async({page},info)=>{
   const f=await phaseFixture(page),work=f.testing.workItems[1];
   const response=await page.request.post('/api/requirements/'+f.testing.id+'/progress',{data:{expectedVersion:work.version,workItemId:work.id,workItemPercent:70,content:'验证会议中直接阅读最近进展'}});
   expect(response.ok(),await response.text()).toBe(true);

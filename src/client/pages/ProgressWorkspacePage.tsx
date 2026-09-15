@@ -1,9 +1,7 @@
 import {ToolbarStatus} from '../components/ToolbarStatus';
-import {requirementStatusLabels,riskLabels} from '../../shared/domain';
-import {dashboardScopeLabels} from '../../shared/dashboard';
 import {ApiError} from '../api';
 import {ObjectInspector} from '../components/ObjectInspector';
-import {progressEntryParams} from '../project-workspace-navigation';
+import {progressEntryParams,rememberProjectTask} from '../project-workspace-navigation';
 import {useMemo,useState,useRef,useEffect} from 'react';
 import {useQueryClient} from '@tanstack/react-query';
 import {Navigate,useSearchParams} from 'react-router-dom';
@@ -20,8 +18,8 @@ import {WorkspaceGantt} from '../components/WorkspaceGantt';
 import {PageHeader} from '../components/PageHeader';
 import {DeliveryFeatureDetails} from '../components/DeliveryFeatureDetails';
 import {RequirementObjectDetails} from './RequirementPage';
-import {SearchInput} from '../components/SearchInput';
-import {Select} from '../components/Select';
+import {ProgressFilters} from '../components/ProgressFilters';
+import {progressFilterFields} from '../progress-filters';
 import {useAppNavigate} from '../use-app-navigation';
 import {Modal} from '../components/Modal';
 import {CanvasDraftDetails} from '../components/CanvasDraftDetails';
@@ -43,8 +41,14 @@ function ProgressWorkspace({report,formal}:{report:Dashboard;formal:PathAnalysis
   const root=useRef<HTMLDivElement>(null);useWorkspaceEvents(runtime,root);
   const draft=useDependencyDraft(account,formal,'project',()=>invalidateRequirementViews(client));runtime.document=draft;
   const projection=useMemo(()=>draft.preview?.analysis||draftNetwork(formal,draft.changes,draft.templateInstances),[formal,draft.changes,draft.preview,draft.templateInstances]);
-  const tree=useMemo(()=>workspaceRows(report,projection),[report,projection]),all=useMemo(()=>flattenWorkspaceRows(tree,{},true).map(r=>r.row),[tree]);
-  const patch=(values:Record<string,string>)=>setParams(old=>{const next=new URLSearchParams(old);for(const [name,value] of Object.entries(values)){if(value)next.set(name,value);else next.delete(name);}return next;},{replace:true});
+  const tree=useMemo(()=>workspaceRows(report,projection,params.get('progressSort')||'name'),[report,projection,params]),all=useMemo(()=>flattenWorkspaceRows(tree,{},true).map(r=>r.row),[tree]);
+  const patch=(values:Record<string,string>)=>{
+    const next=new URLSearchParams(params);
+    for(const [name,value] of Object.entries(values)){if(value)next.set(name,value);else next.delete(name);}
+    // Changing feature scope remounts the page; remember an explicit reset before entry restoration.
+    rememberProjectTask(account,projectId,'/execution',next.size?'?'+next:'');
+    setParams(next,{replace:true});
+  };
   const set=(name:string,value:string)=>patch({[name]:value});
   const filters={query:params.get('q')||'',featureId:params.get('featureId')||'',phaseId:params.get('phaseId')||'',state:params.get('progressState')||'active',stage:params.get('progressStage')||'',status:params.get('progressStatus')||'',risk:params.get('progressRisk')||'',person:params.get('progressPerson')||'',schedule:params.get('progressSchedule')||'',scope:params.get('progressScope')||'',asOfDate:report.asOfDate};
   const filteredRows=filterWorkspaceRows(tree,filters),feature=report.featureOverview?.features.find(f=>f.id===filters.featureId);
@@ -54,7 +58,6 @@ function ProgressWorkspace({report,formal}:{report:Dashboard;formal:PathAnalysis
   const close=()=>set('pathInspector','closed');
   const select=(row:WorkspaceRow)=>setParams(old=>{const next=new URLSearchParams(old);next.set('pathNode',row.id);next.delete('pathEdge');next.set('pathInspector','open');if(row.requirementId)next.set('requirementId',row.requirementId);else next.delete('requirementId');return next;},{replace:true});
   const scopeUrl=()=>{const next=new URLSearchParams(params);next.set('mode','graph');next.set('view',chosen?.requirementId?'requirement':chosen?.featureId?'feature':'features');if(chosen?.featureId)next.set('featureId',chosen.featureId);if(chosen?.phaseId)next.set('phaseId',chosen.phaseId);return '/?'+next;};
-  const restoredLabel=(key:string,value:string)=>key==='Status'?({...requirementStatusLabels,unfinished:'未结束'} as Record<string,string>)[value]||value:key==='Risk'?({...riskLabels,pending:'待评估'} as Record<string,string>)[value]||value:key==='Scope'?(dashboardScopeLabels as Record<string,string>)[value]||value:key==='Schedule'?({delayed:'延期',unplanned:'未排期',planned:'已排期'} as Record<string,string>)[value]||value:report.requirements.find(r=>r.ownerId===value)?.ownerName||report.requirements.flatMap(r=>r.workItems).find(w=>w.ownerId===value)?.ownerName||'历史人员';
   const status=draft.loading?'恢复草稿…':draft.pending?'提交结果待核对':draft.conflict?'版本冲突':draft.count?draft.count+' 项未保存':draft.readOnly?'其他页面编辑中':Object.keys(draft.fields).length?'输入未保存':'已保存';
   const toolbar=<PageHeader title="项目工作区" breadcrumbs={[{label:'进展表',onClick:filters.featureId?()=>patch({featureId:'',phaseId:''}):undefined},...(feature?[{label:feature.name}]:[])]}
     onBack={feature?()=>patch({featureId:'',phaseId:''}):undefined}
@@ -62,16 +65,8 @@ function ProgressWorkspace({report,formal}:{report:Dashboard;formal:PathAnalysis
     status={status?<ToolbarStatus onClick={()=>set('pathPanel','changes')}>{status}</ToolbarStatus>:null}
     moreActions={<><button onClick={()=>go('/analytics')}>统计分析 · 全项目</button><button onClick={()=>go('/actions')}>待处理事项 · 全项目</button><button onClick={()=>go(scopeUrl())}>维护范围与依赖</button></>}/>;
   return <WorkspaceRuntimeContext.Provider value={runtime}>{toolbar}<div ref={root} className="project-progress-workspace" onKeyDown={e=>{if(e.key==='Escape'&&!e.defaultPrevented)runtime.dismiss(e.target as Element);}}>
-    <div className="workspace-progress-tools" data-workspace-zone="tools" aria-label="进展筛选">
-      <SearchInput value={filters.query} onChange={v=>set('q',v)} placeholder="搜索当前范围"/>
-      <Select aria-label="进展特性" value={filters.featureId} onChange={e=>patch({featureId:e.target.value,phaseId:''})}><option value="">全部特性</option>{report.featureOverview?.features.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</Select>
-      <Select disabled={!feature} aria-label="进展 Phase" value={filters.phaseId} onChange={e=>set('phaseId',e.target.value)}><option value="">全部 Phase</option>{feature?.phases?.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}<option value="unassigned">未安排 Phase</option></Select>
-      <Select aria-label="进展特性状态" value={filters.state} onChange={e=>set('progressState',e.target.value)}><option value="active">当前特性</option><option value="archived">已归档特性</option></Select>
-      <Select aria-label="进展阶段" value={filters.stage} onChange={e=>set('progressStage',e.target.value)}><option value="">全部阶段</option>{Object.entries({not_started:'未开始',analysis:'分析／设计',development:'开发',integration:'联调',test_submitted:'已提测',testing:'测试',parallel:'并行推进',completed:'已完成',cancelled:'已取消'}).map(([id,label])=><option key={id} value={id}>{label}</option>)}</Select>
-      {filters.phaseId&&!feature&&<span>Phase：{all.find(r=>r.phase?.id===filters.phaseId)?.title||filters.phaseId}<button className="ghost-button" onClick={()=>set('phaseId','')}>清除</button></span>}
-    </div>
-    {(['Status','Risk','Person','Schedule','Scope'] as const).some(key=>params.get('progress'+key))&&<div className="workspace-legacy-filters" aria-label="已恢复的进展条件">{Object.entries({Status:'执行状态',Risk:'风险',Person:'人员',Schedule:'计划',Scope:'统计范围'}).filter(([key])=>params.get('progress'+key)).map(([key,label])=><span key={key}>{label}：{restoredLabel(key,params.get('progress'+key)!)}<button className="ghost-button" onClick={()=>set('progress'+key,'')}>清除</button></span>)}</div>}
-    <WorkspaceGantt milestones={projection.milestones?.map(m=>({...m,achievedAt:formal.milestones?.find(f=>f.id===m.id)?.achievedAt||null}))} edges={projection.edges} rows={rows} people={people.data||[]} storageKey={account+':'+projectId} asOfDate={report.asOfDate} selected={chosen?.id||selected} onSelect={select} filtered={!!(filters.query||filters.stage||filters.status||filters.risk||filters.person||filters.schedule||filters.scope)}/>
+    <ProgressFilters filters={filters} sort={params.get('progressSort')||'name'} features={tree.map(row=>row.feature!)} people={people.data||[]} result={flattenWorkspaceRows(filteredRows,{},true).filter(({row})=>row.kind==='requirement').length+' 项需求 · '+flattenWorkspaceRows(filteredRows,{},true).filter(({row})=>row.kind==='work').length+' 项工作'} onChange={patch} onReset={()=>patch(Object.fromEntries(progressFilterFields.map(field=>[field,''])))}/>
+    <WorkspaceGantt milestones={projection.milestones?.map(m=>({...m,achievedAt:formal.milestones?.find(f=>f.id===m.id)?.achievedAt||null}))} edges={projection.edges} rows={rows} people={people.data||[]} storageKey={account+':'+projectId} asOfDate={report.asOfDate} selected={chosen?.id||selected} onSelect={select} filterKey={JSON.stringify(filters)} filtered={!!(filters.query||filters.stage||filters.status||filters.risk||filters.person||filters.schedule||filters.scope)}/>
     {chosen&&params.get('pathInspector')!=='closed'&&<ObjectInspector title={chosen.title} identity={chosen.id} onClose={close}>{chosen.temporary?<p>未保存对象。保存结构修改后可以记录执行事实。</p>:chosen.archived&&chosen.requirement?<><p>已归档 · {chosen.requirement.executionStage?.label||chosen.requirement.status}</p><p>{chosen.requirement.acceptanceCriteria||'完成标准未填写'}</p><p>交付记录中保留此需求。</p></>:chosen.requirementId?<RequirementObjectDetails id={chosen.requirementId} workItemId={chosen.kind==='work'?chosen.id:undefined} onOpenDependencies={()=>go(scopeUrl())}/>:chosen.feature?<DeliveryFeatureDetails feature={chosen.feature} phaseId={chosen.phase?.id} onEnter={stage=>patch({featureId:chosen.featureId,phaseId:chosen.phaseId||'',progressStage:stage||'',pathInspector:'closed'})} onPhase={()=>select(all.find(r=>r.id==='feature:'+chosen.featureId)!)}/>:null}</ObjectInspector>}
     {params.get('pathPanel')==='changes'&&<Modal title="未保存修改" onClose={()=>set('pathPanel','')}><CanvasDraftDetails draft={draft} data={projection} onGo={go}/><button className="ghost-button" onClick={()=>go(scopeUrl())}>在关系图中处理修改</button></Modal>}
   </div></WorkspaceRuntimeContext.Provider>;

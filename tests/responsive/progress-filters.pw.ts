@@ -1,0 +1,34 @@
+import {expect,test} from '@playwright/test';
+import {phaseFixture} from './phase-fixture';
+import {chooseOption} from './select-helper';
+
+test('状态多选、人员和 Phase 组合筛选，弹层不挤动表格，刷新保留条件',async({page},info)=>{
+  const f=await phaseFixture(page);
+  const response=await page.request.post('/api/requirements',{data:{projectId:f.projectId,featureId:f.feature.id,title:'DCIM-034 待安排'}});expect(response.ok()).toBe(true);const pending=await response.json();
+  await page.goto('/execution');const grid=page.getByRole('treegrid');await expect(grid).toContainText(pending.title);
+  const position=await grid.boundingBox(),status=page.getByRole('button',{name:'筛选执行状态',exact:true});
+  await status.click();expect(await grid.boundingBox()).toEqual(position);
+  await page.getByRole('button',{name:'尚未结束 排除已完成、已取消',exact:true}).click();
+  await expect(grid.locator('.kind-work')).toHaveCount(1);await expect(grid.locator('.kind-requirement[data-status=completed]')).toHaveCount(0);await expect(grid).toContainText(pending.title);
+  const testing=grid.locator('[data-row-id="'+f.testing.id+'"]');
+  await testing.getByRole('button',{name:'展开 '+f.testing.title,exact:true}).click();await expect(grid.locator('.kind-work')).toHaveCount(0);
+  await testing.getByRole('button',{name:'展开 '+f.testing.title,exact:true}).click();await expect(grid.locator('.kind-work')).toHaveCount(1);
+  await status.click();await page.getByRole('button',{name:'排除未开始 进行中、已完成、已取消',exact:true}).click();
+  await expect(grid.locator('[data-row-id="'+pending.id+'"]')).toHaveCount(0);await expect(grid.locator('.kind-work')).toHaveCount(2);
+  await status.click();await page.getByRole('checkbox',{name:'已完成',exact:true}).uncheck();await page.getByRole('checkbox',{name:'已取消',exact:true}).uncheck();
+  await page.getByLabel('执行状态筛选').getByRole('button',{name:'关闭',exact:true}).click();await expect(status).toHaveText('只看进行中');await expect(grid.locator('.kind-work')).toHaveCount(1);
+  await page.reload();await expect(status).toHaveText('只看进行中');await expect(grid.locator('.kind-work')).toHaveCount(1);
+  await chooseOption(page.getByLabel('进展人员',{exact:true}),'unassigned');await expect(grid).toContainText('没有符合条件的内容');
+  await chooseOption(page.getByLabel('进展人员',{exact:true}),f.testing.ownerId!);await expect(grid.locator('.kind-work')).toHaveCount(1);
+  await chooseOption(page.getByLabel('进展特性',{exact:true}),f.feature.id);
+  const before=await grid.boundingBox();await page.getByRole('button',{name:/^更多筛选/}).click();expect(await grid.boundingBox()).toEqual(before);
+  await chooseOption(page.getByLabel('进展 Phase',{exact:true}),f.phases[1].id);await expect(page.getByLabel('更多进展筛选')).toBeVisible();
+  await page.getByLabel('更多进展筛选').getByRole('button',{name:'关闭',exact:true}).click();
+  await expect(grid).toContainText('Phase 2');await expect(grid).not.toContainText('Phase 1');
+  const work=grid.locator('.kind-work');await expect(work.locator('.workspace-row-label')).toContainText(f.testing.ownerName!);await expect(work.locator('.workspace-row-label .work-progress-link')).toHaveCount(0);
+  await expect(work.locator('.workspace-row-actions')).toContainText('70%');await expect(work.getByRole('button',{name:'完成',exact:true})).toBeVisible();
+  await page.screenshot({path:info.outputPath('filtered-progress.png'),animations:'disabled'});
+  await page.getByRole('button',{name:'重置',exact:true}).click();await expect(status).toHaveText('全部状态');await expect(grid).toContainText(pending.title);
+  await page.setViewportSize({width:390,height:844});const narrow=await grid.boundingBox();await status.click();expect(await grid.boundingBox()).toEqual(narrow);
+  await page.screenshot({path:info.outputPath('narrow-status-filter.png'),animations:'disabled'});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});

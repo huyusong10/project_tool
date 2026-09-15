@@ -2,6 +2,7 @@ import {expect,it} from 'vitest';
 import {workspaceRows,filterWorkspaceRows,flattenWorkspaceRows} from '../src/client/workspace-rows';
 import type {Dashboard} from '../src/client/types';
 import {deriveExecutionStage} from '../src/shared/execution-stage';
+import {selectedProgressStates,progressStatesValue,progressStatesLabel} from '../src/client/progress-filters';
 
 const stage=deriveExecutionStage({status:'in_progress'},[{title:'测试',status:'in_progress',workStage:'testing',progress:70,progressWeight:1}]);
 function fixture(){return {asOfDate:'2026-09-14',requirements:[{id:'r',title:'资产导入',featureId:'f',phaseId:'p',status:'in_progress',executionStage:stage,workItems:[{id:'w',title:'测试',status:'in_progress',progress:70}]}],featureOverview:{features:[{id:'f',name:'资产管理',phases:[{id:'p',name:'Phase 1',status:'in_progress',requirements:[{id:'r',title:'资产导入',status:'in_progress',executionStage:stage},{id:'archived',title:'归档交付',status:'completed',deletedAt:'2026-09-13',executionStage:deriveExecutionStage({status:'completed'})}]},{id:'empty',name:'探索',status:'planning',requirements:[]}]},{id:'empty-feature',name:'告警管理',phases:[]}]}} as unknown as Dashboard;}
@@ -49,4 +50,34 @@ it('正式工作顺序覆盖路径的 ID 顺序；临时工作追加，执行操
 it('需求自然编号排序不受最新修改时间影响',()=>{
   const report=fixture(),r=report.requirements[0];report.requirements=[12,2,1].map(n=>({...r,id:'r'+n,title:'DCIM-'+n,updatedAt:'2026-09-'+n}));
   expect(workspaceRows(report)[0].children[0].children.filter(row=>!row.archived).map(row=>row.title)).toEqual(['DCIM-1','DCIM-2','DCIM-12']);
+});
+it('默认特性跟随首条需求的自然编号顺序，批次和工作流程不随标题重排',()=>{
+  const report=fixture(),r=report.requirements[0],f=report.featureOverview!.features[0];
+  report.featureOverview!.features=[{...f,id:'b',name:'日志',sortOrder:0},{...f,id:'a',name:'权限',sortOrder:9}];
+  report.requirements=[39,34,120,119,36,38].map(n=>({...r,id:'r'+n,title:'DCIM-'+n,featureId:n<100?'a':'b',phaseId:null}));
+  const tree=workspaceRows(report);
+  expect(tree.map(row=>row.title)).toEqual(['权限','日志']);
+  expect(tree[0].children.filter(row=>row.kind==='requirement').map(row=>row.title)).toEqual(['DCIM-34','DCIM-36','DCIM-38','DCIM-39']);
+  expect(filterWorkspaceRows(tree,{...filters,query:'120'}).map(row=>row.title)).toEqual(['日志']);
+  expect(workspaceRows(report,undefined,'feature').map(row=>row.title)).toEqual(['权限','日志']);
+});
+it('执行状态和人员按工作项自身筛选，祖先仅作定位，原始 Phase 不变',()=>{
+  const report=fixture(),r=report.requirements[0],w=r.workItems[0];
+  r.ownerId='pm';r.workItems=[{...w,id:'done',status:'completed',ownerId:'a'},{...w,id:'running',status:'in_progress',ownerId:'b'},{...w,id:'new',status:'not_started',ownerId:'a'},{...w,id:'cancelled',status:'cancelled',ownerId:null}];
+  const tree=workspaceRows(report),ids=(status:string,person='')=>flattenWorkspaceRows(filterWorkspaceRows(tree,{...filters,status,person}),{},true).filter(({row})=>row.kind==='work').map(({row})=>row.id);
+  expect(ids('not_started,in_progress')).toEqual(['running','new']);
+  expect(ids('in_progress,completed,cancelled')).toEqual(['done','running','cancelled']);
+  expect(ids('in_progress')).toEqual(['running']);expect(ids('none')).toEqual([]);
+  expect(ids('','a')).toEqual(['done','new']);expect(ids('','unassigned')).toEqual(['cancelled']);
+  const matching=filterWorkspaceRows(tree,{...filters,status:'completed'}),parent=matching[0].children[0].children.find(row=>row.id===r.id)!;
+  expect(parent.filterContext).toBe(true);expect(matching[0].children[0].phase).toBe(tree[0].children[0].phase);
+  expect(flattenWorkspaceRows(matching,{r:false}).some(({row})=>row.id==='done')).toBe(false);
+});
+it('旧筛选链接保留，任意多选与全不选能够往返',()=>{
+  expect(selectedProgressStates('unfinished')).toEqual(['not_started','in_progress']);
+  expect(selectedProgressStates('completed')).toEqual(['completed']);
+  expect(progressStatesValue(selectedProgressStates(''))).toBe('');
+  expect(progressStatesValue([])).toBe('none');
+  expect(progressStatesLabel('not_started,in_progress')).toBe('尚未结束');
+  expect(selectedProgressStates(progressStatesValue(['completed','not_started']))).toEqual(['not_started','completed']);
 });

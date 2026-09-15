@@ -5,16 +5,18 @@ import type {PathAnalysis} from '../shared/paths';
 import {todayIso} from '../shared/domain';
 import {matchesSearch} from '../shared/search';
 import {dashboardWindow,matchesDashboardScope,type DashboardScope} from '../shared/dashboard';
+import {selectedProgressStates} from './progress-filters';
+import {deriveExecutionStage} from '../shared/execution-stage';
 
 export type WorkspaceRow = {
   id:string; kind:'feature'|'phase'|'requirement'|'work'; title:string; featureId:string;
-  phaseId?:string; requirementId?:string; children:WorkspaceRow[]; archived?:boolean; temporary?:boolean;
+  phaseId?:string; requirementId?:string; children:WorkspaceRow[]; archived?:boolean; temporary?:boolean; filterContext?:boolean;
   formalRequirement?:Requirement; formalWork?:WorkItem;
   feature?:FeatureOverview; phase?:FeaturePhase; requirement?:Requirement; work?:WorkItem;
 };
 
 /** Formal delivery facts remain intact when structural drafts change the visible scope. */
-export function workspaceRows(report:Dashboard, projection?:PathAnalysis):WorkspaceRow[] {
+export function workspaceRows(report:Dashboard, projection?:PathAnalysis,sort='name'):WorkspaceRow[] {
   const formal=new Map(report.requirements.map(r=>[r.id,r]));
   const requirements:Requirement[]=projection?projection.requirements.filter(r=>!r.deletedAt).map(r=>{
     const saved=formal.get(r.id);
@@ -40,7 +42,13 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis):Worksp
       temporary:!formal.get(r.id)?.workItems.some(old=>old.id===w.id),children:[]})),
   });
   const byTitle=(a:{id:string;title:string},b:{id:string;title:string})=>a.title.localeCompare(b.title,'zh-CN',{numeric:true})||a.id.localeCompare(b.id);
-  return [...features].sort((a,b)=>(a.sortOrder??0)-(b.sortOrder??0)).map(f=>{
+  const firstName=(id:string)=>requirements.filter(r=>r.featureId===id).sort(byTitle)[0]?.title;
+  const featureOrder=new Map(features.map(f=>[f.id,firstName(f.id)]));
+  return [...features].sort((a,b)=>{
+    if(sort==='feature')return a.name.localeCompare(b.name,'zh-CN',{numeric:true})||a.id.localeCompare(b.id);
+    const first=featureOrder.get(a.id),second=featureOrder.get(b.id);
+    return first&&second?first.localeCompare(second,'zh-CN',{numeric:true})||a.name.localeCompare(b.name,'zh-CN',{numeric:true}):first?-1:second?1:a.name.localeCompare(b.name,'zh-CN',{numeric:true});
+  }).map(f=>{
     const own=requirements.filter(r=>r.featureId===f.id).sort(byTitle);
     const phases:WorkspaceRow[]=[...(f.phases||[])].sort((a,b)=>a.sortOrder-b.sortOrder).map(p=>({id:'phase:'+p.id,kind:'phase',title:p.name,featureId:f.id,phaseId:p.id,phase:p,feature:f,children:[
       ...own.filter(r=>r.phaseId===p.id).map(r=>requirementRow(r,f.id,p.id)),
@@ -54,20 +62,25 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis):Worksp
 
 export type RowFilters={query:string; featureId:string; phaseId:string; state:string; stage:string;status?:string;risk?:string;person?:string;schedule?:string;scope?:string;asOfDate?:string};
 export function filterWorkspaceRows(rows:WorkspaceRow[],filter:RowFilters):WorkspaceRow[] {
+  const states=selectedProgressStates(filter.status||'');
+  const itemFilters=!!(filter.stage||filter.status||filter.risk||filter.person||filter.schedule||filter.scope);
   const matches=(row:WorkspaceRow)=>matchesSearch([{text:row.title,weight:100},{text:row.phase?.scope||row.feature?.description||''}],filter.query);
   const visit=(row:WorkspaceRow,inherited=false):WorkspaceRow|null=>{
     if(row.kind==='feature'&&(filter.featureId&&row.featureId!==filter.featureId||(filter.state==='archived'?!row.archived:row.archived)))return null;
     if(row.kind!=='feature'&&filter.phaseId&&row.phaseId!==filter.phaseId)return null;
     const textMatch=inherited||!filter.query||matches(row);
     const children=row.children.map(child=>visit(child,textMatch)).filter((child):child is WorkspaceRow=>!!child);
-    const r=row.requirement;
-    const stageMatch=(!filter.stage||r?.executionStage?.key===filter.stage||r?.status===filter.stage)
-      &&(!filter.status||filter.status==='unfinished'? !filter.status||!!r&&!['completed','cancelled'].includes(r.status):r?.status===filter.status)
+    const r=row.requirement,w=row.work,item=w||r;
+    const stage=r?(r.executionStage||deriveExecutionStage(r,r.workItems,r.milestones)):null;
+    const planned=!!item?.plannedStart&&!!item.plannedEnd&&(!!w||r?.scheduleComplete!==false);
+    const stageMatch=(!filter.stage||(w?w.workStage===filter.stage||w.status===filter.stage||filter.stage==='parallel'&&stage?.key==='parallel':stage?.key===filter.stage||stage?.stages.some(s=>s.stage===filter.stage)||r?.status===filter.stage))
+      &&(!filter.status||!!item&&states.some(state=>state===item.status))
       &&(!filter.risk||(r?.riskEvaluated?r.riskLevel:'pending')===filter.risk)
-      &&(!filter.person||r?.ownerId===filter.person||r?.workItems.some(w=>w.ownerId===filter.person||w.assigneeIds?.includes(filter.person!)))
-      &&(!filter.schedule||!!r&&(filter.schedule==='delayed'?r.delayed:filter.schedule==='unplanned'?!r.scheduleComplete:r.scheduleComplete&&!r.delayed))
+      &&(!filter.person||!!item&&(filter.person==='unassigned'?!item.ownerId:item.ownerId===filter.person||w?.assigneeIds?.includes(filter.person)))
+      &&(!filter.schedule||!!item&&(filter.schedule==='delayed'?(w?!!w.plannedEnd&&!['completed','cancelled'].includes(w.status)&&w.plannedEnd<(filter.asOfDate||todayIso()):r?.delayed):filter.schedule==='unplanned'?!planned:planned))
       &&(!filter.scope||!!r&&matchesDashboardScope(r,filter.scope as DashboardScope,dashboardWindow(filter.asOfDate||todayIso())));
-    if(children.length||textMatch&&stageMatch)return {...row,children};
+    const ownMatch=textMatch&&stageMatch&&(!itemFilters||!!item);
+    if(children.length||ownMatch)return {...row,children,filterContext:!!item&&!ownMatch};
     return null;
   };
   return rows.map(row=>visit(row)).filter((row):row is WorkspaceRow=>!!row);

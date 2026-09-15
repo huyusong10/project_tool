@@ -22,7 +22,8 @@ test('无 Phase 的并行需求保持紧凑，折叠时有工作项入口，只�
   await page.goto('/execution');const grid=page.getByRole('treegrid'),row=grid.locator('[data-row-id="'+requirement.id+'"]');
   await expect(row).toBeVisible();await row.scrollIntoViewIfNeeded();
   const left=await row.locator('.workspace-row-label').boundingBox();expect(left!.width).toBeLessThanOrEqual(350);
-  await expect(row.locator('.workspace-row-owner')).toHaveCount(0);
+  await expect(row.locator('.workspace-row-label .workspace-row-owner')).toHaveText(f.testing.ownerName!);
+  await expect(row.locator('.workspace-row-label .workspace-row-progress')).toHaveCount(0);
   await expect(row.locator('.workspace-row-progress')).toHaveText('并行 · 分析设计 90% · 开发 17%');
   expect((await row.boundingBox())!.height).toBeLessThanOrEqual(66);
   const undated=row.getByRole('button',{name:'待定日期 3 项'});await expect(undated).toHaveText('◇ 3');
@@ -43,8 +44,11 @@ test('无 Phase 的并行需求保持紧凑，折叠时有工作项入口，只�
   expect(await row.locator('.workspace-row-label').boundingBox()).toEqual(bounds);expect(await row.locator('.workspace-row-actions').boundingBox()).toEqual(actions);
   expect(await row.locator('.workspace-row-label').evaluate(el=>{const b=el.getBoundingClientRect();return el.contains(document.elementFromPoint(b.right-2,b.top+10));})).toBe(true);
   await page.getByRole('button',{name:'今天',exact:true}).click();await page.screenshot({path:info.outputPath('compact-parallel.png'),animations:'disabled'});
-  await page.setViewportSize({width:390,height:844});await work.scrollIntoViewIfNeeded();
+  await page.setViewportSize({width:390,height:844});await work.scrollIntoViewIfNeeded();await work.locator('.workspace-row-actions').scrollIntoViewIfNeeded();
   const progress=await work.getByRole('button',{name:'更新 开发实现 进度',exact:true}).boundingBox(),complete=await work.getByRole('button',{name:'完成',exact:true}).boundingBox();
-  expect(progress!.x+progress!.width).toBeLessThanOrEqual(complete!.x);expect(complete!.x+complete!.width).toBeLessThanOrEqual(390);
+  expect(progress!.x+progress!.width<=complete!.x||progress!.y+progress!.height<=complete!.y).toBe(true);expect(complete!.x+complete!.width).toBeLessThanOrEqual(390);
+  const narrowLabel=await work.locator('.workspace-row-label').boundingBox(),narrowActions=await work.locator('.workspace-row-actions').boundingBox();expect(narrowActions!.x-narrowLabel!.x-narrowLabel!.width).toBeGreaterThan(40);
+  await expect(work.locator('.workspace-row-label .workspace-row-progress')).toHaveCount(0);
+  expect(await grid.locator('.workspace-row-actions button').evaluateAll(buttons=>buttons.every(button=>{const b=button.getBoundingClientRect(),cell=button.closest('.workspace-row-actions')!.getBoundingClientRect();return !b.width||b.left>=cell.left-1&&b.right<=cell.right+1;}))).toBe(true);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath('compact-narrow.png'),animations:'disabled'});
 });

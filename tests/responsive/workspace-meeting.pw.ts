@@ -41,9 +41,9 @@ test('直接执行需求行内更新与完成，特性范围不重复祖先行',
 test('窄屏只有一套行内控件；详情字段对齐且不重排甘特',async({page},info)=>{
   const f=await phaseFixture(page),work=f.testing.workItems[1];await page.setViewportSize({width:390,height:844});await page.goto('/execution');
   await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');const grid=page.getByRole('treegrid'),row=grid.locator('[data-row-id="'+work.id+'"]');
-  await row.scrollIntoViewIfNeeded();const progress=row.getByRole('button',{name:'更新 '+work.title+' 进度',exact:true}),complete=row.getByRole('button',{name:'完成',exact:true});
+  await row.scrollIntoViewIfNeeded();await row.locator('.workspace-row-actions').scrollIntoViewIfNeeded();const progress=row.getByRole('button',{name:'更新 '+work.title+' 进度',exact:true}),complete=row.getByRole('button',{name:'完成',exact:true});
   await expect(progress).toHaveCount(1);await expect(complete).toHaveCount(1);
-  const p=await progress.boundingBox(),c=await complete.boundingBox();expect(p!.x+p!.width).toBeLessThanOrEqual(c!.x);expect(c!.x+c!.width).toBeLessThanOrEqual(390);expect(p!.height).toBeGreaterThanOrEqual(30);
+  const p=await progress.boundingBox(),c=await complete.boundingBox();expect(p!.x+p!.width<=c!.x||p!.y+p!.height<=c!.y).toBe(true);expect(c!.x+c!.width).toBeLessThanOrEqual(390);expect(p!.height).toBeGreaterThanOrEqual(30);
   await progress.click();await expect(page.getByRole('dialog',{name:'更新工作项进度',exact:true})).toBeVisible();await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
   await page.screenshot({path:info.outputPath('narrow-meeting.png'),animations:'disabled'});
   const bounds=await grid.boundingBox();await row.locator('.workspace-row-title').click();const detail=page.getByRole('complementary',{name:'对象详情'});await expect(detail.getByRole('button',{name:'更新进度',exact:true})).toBeVisible();

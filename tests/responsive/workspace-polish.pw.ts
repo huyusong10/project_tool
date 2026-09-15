@@ -44,8 +44,8 @@ test('未分期需求直接平铺，主入口只有关系图和进展表；清�
   const f=await phaseFixture(page),response=await page.request.post('/api/requirements',{data:{projectId:f.projectId,featureId:f.feature.id,title:'未分期直接列出'}});expect(response.ok()).toBe(true);const requirement=await response.json();
   await page.goto('/execution');const grid=page.getByRole('treegrid'),row=grid.locator('[data-row-id="'+requirement.id+'"]');
   await expect(row).toBeVisible();await expect(row).toHaveAttribute('aria-level','2');await expect(row).not.toContainText('未安排 Phase');await expect(grid.locator('[data-row-id$=":unassigned"]')).toHaveCount(0);
-  await chooseOption(page.getByLabel('进展特性',{exact:true}),f.feature.id);await chooseOption(page.getByLabel('进展 Phase',{exact:true}),f.phases[1].id);await expect(row).toHaveCount(0);
-  await chooseOption(page.getByLabel('进展 Phase',{exact:true}),'unassigned');await expect(row).toBeVisible();
+  await chooseOption(page.getByLabel('进展特性',{exact:true}),f.feature.id);await page.getByRole('button',{name:/^更多筛选/}).click();await chooseOption(page.getByLabel('进展 Phase',{exact:true}),f.phases[1].id);await page.getByRole('dialog').filter({has:page.getByLabel('更多进展筛选')}).getByRole('button',{name:'关闭',exact:true}).click();await expect(row).toHaveCount(0);
+  await page.getByRole('button',{name:/^更多筛选/}).click();await chooseOption(page.getByLabel('进展 Phase',{exact:true}),'unassigned');await page.getByRole('dialog').filter({has:page.getByLabel('更多进展筛选')}).getByRole('button',{name:'关闭',exact:true}).click();await expect(row).toBeVisible();
   await page.goto('/features');await expect(page.locator('.delivery-table')).toBeVisible();await expect(page.getByRole('group',{name:'范围表达'})).toHaveCount(0);
   const tasks=page.getByRole('group',{name:'项目任务'});await expect(tasks.getByRole('button')).toHaveText(['关系图','进展表']);
   await tasks.getByRole('button',{name:'关系图',exact:true}).click();await expect(page).toHaveURL(/mode=graph/);await expect(page.locator('[data-layout-ready=true]')).toBeVisible();
