@@ -76,7 +76,7 @@ export function GanttMilestoneCuts({ items, dates, cellWidth, asOfDate, selectio
     return left === null ? null : <span key={m.id} className={`gantt-milestone-cut milestone-${milestoneState(m, asOfDate)}${selection.selected.some(s => s.id === m.id) ? ' is-selected' : ''}`} data-milestone-cut={m.id} aria-hidden="true" style={{ left }} />;
   })}</>;
 }
-export function GanttMilestoneUndated({ items, selection, showForecast = false }: Pick<Props, 'items' | 'selection' | 'showForecast'>) {
+export function GanttMilestoneUndated({ items, selection, showForecast = false, compact = false }: Pick<Props, 'items' | 'selection' | 'showForecast'> & { compact?: boolean }) {
   const unknown = items.filter(m => !milestoneDate(m, showForecast) && m.offset === undefined);
-  return unknown.length ? <button type="button" className="gantt-milestone-undated" {...selection.bind(unknown)}>待定日期 {unknown.length} 项</button> : null;
+  return unknown.length ? <button type="button" className={'gantt-milestone-undated'+(compact?' is-compact':'')} aria-label={'待定日期 '+unknown.length+' 项'} title={compact?'未定日期的里程碑：'+unknown.map(m=>m.title).join('、'):undefined} {...selection.bind(unknown)}>{compact?<>◇ {unknown.length}</>:<>待定日期 {unknown.length} 项</>}</button> : null;
 }

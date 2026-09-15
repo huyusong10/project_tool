@@ -9,11 +9,11 @@ test('进展摘要靠近名称，条内数字不改变日期，摘要浮层不�
   const requests:string[]=[];page.on('request',r=>{if(/\/api\/requirements\//.test(r.url()))requests.push(r.url());});
   await page.goto('/execution');await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');
   const grid=page.getByRole('treegrid'),row=grid.locator('[data-row-id="'+work.id+'"]');
-  const before=(await grid.boundingBox())!,stage=(await row.locator('.workspace-row-progress').boundingBox())!,track=(await row.locator('.workspace-row-track').boundingBox())!;
+  const before=(await grid.boundingBox())!,stage=(await row.locator('.workspace-row-label').boundingBox())!,track=(await row.locator('.workspace-row-track').boundingBox())!;
   expect(Math.abs(stage.x+stage.width-track.x-await grid.evaluate(el=>el.scrollLeft))).toBeLessThan(1);
   const day=page.getByRole('button',{name:'日',exact:true});await day.click();
   await expect(grid.locator('.gantt-scale-month').first()).toContainText('年');
-  const monthVisible=()=>grid.locator('.gantt-scale-month b').evaluateAll(nodes=>nodes.some(el=>{const b=el.getBoundingClientRect(),header=el.closest('.workspace-gantt-heading')!;const left=header.querySelector('.workspace-row-progress')!.getBoundingClientRect().right,right=header.querySelector('.workspace-row-actions')!.getBoundingClientRect().left;return b.left>=left-1&&b.right<=right+1;}));
+  const monthVisible=()=>grid.locator('.gantt-scale-month b').evaluateAll(nodes=>nodes.some(el=>{const b=el.getBoundingClientRect(),header=el.closest('.workspace-gantt-heading')!;const left=header.querySelector('.workspace-row-label')!.getBoundingClientRect().right,right=header.querySelector('.workspace-row-actions')!.getBoundingClientRect().left;return b.left>=left-1&&b.right<=right+1;}));
   expect(await monthVisible()).toBe(true);
   const hit=row.locator('.gantt-date-hitbox');await hit.focus();
   const tooltip=page.getByRole('tooltip');await expect(tooltip).toContainText('验证会议中直接阅读最近进展');

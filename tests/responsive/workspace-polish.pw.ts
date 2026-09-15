@@ -5,8 +5,9 @@ import {chooseOption} from './select-helper';
 test('双轨保留百分比；水平滚动时文字列和操作列覆盖时间轴',async({page},info)=>{
   const f=await phaseFixture(page);await page.goto('/execution');await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');
   const grid=page.getByRole('treegrid'),work=grid.locator('[data-row-id="'+f.testing.workItems[1].id+'"]');
-  await expect(work.locator('.gantt-date-progress')).toHaveText('完成 70%');
-  await expect(grid.locator('[data-row-id="'+f.testing.id+'"] .gantt-date-progress')).toHaveText('测试中 · 70%');
+  await expect(work.locator('.workspace-row-progress')).toHaveText('70%');
+  await expect(grid.locator('[data-row-id="'+f.testing.id+'"] .workspace-row-progress')).toHaveText('测试中 · 70%');
+  for(const label of await work.locator('.gantt-date-progress').all())await expect(label).toHaveText('70%');
   await expect(work.getByRole('button',{name:'更新 测试 进度',exact:true})).toBeVisible();
   for(const left of [0,80,200,380,100000]){
     await grid.evaluate((el,left)=>{el.scrollLeft=left;},left);

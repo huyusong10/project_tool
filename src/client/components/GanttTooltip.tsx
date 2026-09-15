@@ -2,14 +2,22 @@ import { useEffect, useRef, useState, useSyncExternalStore, type FocusEvent, typ
 import { createPortal } from "react-dom";
 
 type TooltipState = { x: number; y: number; content: ReactNode };
+let closeActiveTooltip: (() => void) | undefined;
 
 function createTooltipStore() {
   let state: TooltipState | null = null;
   const listeners = new Set<() => void>();
+  const close = () => { state = null; listeners.forEach((notify) => notify()); };
   return {
     getSnapshot: () => state,
     subscribe: (notify: () => void) => { listeners.add(notify); return () => listeners.delete(notify); },
-    set: (next: TooltipState | null) => { state = next; listeners.forEach((notify) => notify()); },
+    set: (next: TooltipState | null) => {
+      if (next) {
+        if (closeActiveTooltip !== close) closeActiveTooltip?.();
+        closeActiveTooltip = close;
+      } else if (closeActiveTooltip === close) closeActiveTooltip = undefined;
+      state = next; listeners.forEach((notify) => notify());
+    },
   };
 }
 type TooltipStore = ReturnType<typeof createTooltipStore>;
@@ -23,7 +31,7 @@ export function useGanttTooltip() {
     clearTimeout(closeTimer.current); closeTimer.current = null;
   };
   const closeSoon = () => { cancelClose(); closeTimer.current = setTimeout(() => store.set(null), 120); };
-  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); store.set(null); }, [store]);
   const bind = (content: ReactNode) => ({
     onPointerEnter: (event: PointerEvent<HTMLElement>) => {
       if (event.buttons) return;
