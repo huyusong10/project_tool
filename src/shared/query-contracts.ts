@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { idSchema, isoDateSchema, requirementListInputSchema } from './contracts';
 import { workItemStatuses } from './domain';
+import {workStages, milestoneKinds} from './execution-stage';
 
 const pageFields = {
   page: z.coerce.number().int().min(1).default(1),
@@ -11,19 +12,32 @@ const orderedDates = (v: { from?: string; to?: string }) => !v.from || !v.to || 
 const dateError = { message: '开始日期不能晚于结束日期', path: ['to'] };
 const q = z.string().trim().max(200).optional();
 const flag = z.union([z.boolean(), z.enum(['true', 'false'])]).transform(v => v === true || v === 'true');
+const statusList = z.union([z.array(z.enum(workItemStatuses)).max(4),z.string().trim().max(100).transform(v=>v?v.split(',').map(s=>s.trim()):[]).pipe(z.array(z.enum(workItemStatuses)).max(4))]);
+const executionFilters = {statuses:statusList.optional(), excludeStatuses:statusList.optional()};
+const statusCombination=(v:{status?:string;statuses?:string[]},ctx:z.RefinementCtx)=>{
+  if(v.status&&v.statuses)ctx.addIssue({code:'custom',path:['statuses'],message:'status 与 statuses 只能选择一种；排除条件使用 excludeStatuses'});
+};
 
 export const requirementQuerySchema = requirementListInputSchema.omit({deliveryScope:true}).extend({
   q, ownerId: idSchema.optional(), participantId: idSchema.optional(),
+  ...executionFilters,
+  stage:z.enum([...workStages,...milestoneKinds,...workItemStatuses,'parallel']).optional(),
+  sort:z.enum(['name','updated']).default('name'),
   ...dateFields, ...pageFields, includeWorkItems: flag.default(false),
-}).refine(orderedDates, dateError);
+}).refine(orderedDates, dateError).superRefine(statusCombination);
 
 export const workItemQuerySchema = z.object({
   projectId: idSchema, requirementId: idSchema.optional(), q,
+  featureId:idSchema.optional(),phaseId:idSchema.optional(),
+  workStage:z.enum([...workStages,'unclassified']).optional(),
+  ...executionFilters,
+  sort:z.enum(['workflow','name','updated','planned_end']).default('workflow'),
   ownerId: idSchema.optional(), participantId: idSchema.optional(),
   status: z.enum(workItemStatuses).optional(), active: flag.optional(),
   overdue: flag.optional(), unassigned: flag.optional(),
   ...dateFields, ...pageFields,
 }).strict().refine(orderedDates, dateError).superRefine((v, ctx) => {
+  statusCombination(v,ctx);
   if (v.ownerId && v.unassigned) ctx.addIssue({ code: 'custom', path: ['ownerId'], message: '指定负责人不能与仅未分派同时筛选' });
   if (v.status && ['completed', 'cancelled'].includes(v.status) && (v.active || v.overdue))
     ctx.addIssue({ code: 'custom', path: ['status'], message: '已结束状态不能与仅未完成或仅逾期同时筛选' });

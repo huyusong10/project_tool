@@ -31,11 +31,25 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 
 | 工具 | 筛选参数 |
 |---|---|
-| `query_requirements` | `q`、`featureId`、`ownerId`、`participantId`、`status`、`view=delayed/high_risk`、`from/to`、`includeDeleted`；`includeWorkItems=true` 附带工作项 |
-| `list_work_items` | `requirementId`、`q`、`ownerId`、`participantId`、`status`、`active`、`overdue`、`unassigned`、`from/to` |
+| `query_requirements` | `q`、`featureId`、`phaseId`、`ownerId`、`participantId`、`status/statuses`、`excludeStatuses`、`stage`、`view=delayed/high_risk`、`from/to`、`includeDeleted`、`sort=name/updated`；`includeWorkItems=true` 附带工作项 |
+| `list_work_items` | `requirementId`、`featureId`、`phaseId`、`workStage`、`q`、`ownerId`、`participantId`、`status/statuses`、`excludeStatuses`、`active`、`overdue`、`unassigned`、`from/to`、`sort=workflow/name/updated/planned_end` |
 | `list_progress_updates` | `requirementId`、`workItemId`、`authorAccountId`、`eventType`、正文关键词 `q`、`from/to`、`snapshot` |
 
 `ownerId` 只匹配负责人。工作项的 `participantId` 匹配负责人或协作者；需求的 `participantId` 匹配需求负责人或其工作项参与人。需求关键词匹配标题、需求说明、完成标准及负责人姓名；工作项关键词匹配工作项或所属需求标题。
+
+`statuses` 与 `excludeStatuses` 接受数组或逗号分隔字符串；REST 使用逗号分隔。`status` 与 `statuses` 不能同时传。省略 `statuses` 表示全部，空数组／空字符串表示不选任何状态。排除条件与其他条件取交集；`active=true` 继续排除完成和取消。
+
+| 想看什么 | 参数 |
+|---|---|
+| 排除未开始 | `excludeStatuses: ["not_started"]` |
+| 排除已完成、已取消 | `excludeStatuses: ["completed", "cancelled"]` |
+| 只看进行中 | `statuses: ["in_progress"]` |
+| 某期正在测试的需求 | `featureId`、`phaseId`、`stage: "testing"` |
+| 未安排 Phase 的测试工作 | `phaseId: "unassigned"`、`workStage: "testing"` |
+
+需求 `stage` 匹配当前阶段摘要及并行中的阶段；`parallel` 只选并行推进。工作项 `workStage` 匹配分类，`unclassified` 表示未分类，不推断执行状态。阶段与状态可组合。
+
+先筛选排序，再分页。需求默认 `sort=name`，按编号自然排列，如 DCIM-9、DCIM-34、DCIM-100。工作项默认 `sort=workflow`，按所属需求编号和流程顺序排列；返回 `featureId/featureName/phaseId/phaseName`。原最近修改排序使用 `updated`，原工作项日期排序使用 `planned_end`。工作项只为当前页加载完整详情。
 
 需求和工作项的 `from/to` 匹配与指定日期范围相交的计划。只有一个计划日期时按该日期匹配；没有计划日期时不匹配日期筛选。进展的 `from/to` 按北京时间自然日匹配发布时间，包含首尾日。
 
@@ -51,7 +65,9 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 
 | 参数 | 含义 |
 |---|---|
-| `view=project` | 默认；需求汇总图，节点 ID 是需求 ID 或项目里程碑 ID |
+| `view=features` | 项目特性图；对应网页关系图首页，节点有 Phase 标签 |
+| `view=feature`、`featureId` | 特性内需求与 Phase 区域；`phaseId` 筛选保留直接跨范围依赖 |
+| `view=project` | 为兼容旧调用保留的默认值；需求汇总图 |
 | `view=requirement`、`requirementId` | 需求内部和直接外部交付节点，复用网页视图转换 |
 | `target` | 关键性分析目标；默认为项目，需求视图默认为 `acceptance:需求ID` |
 | `rootNodeId`、`traversal`、`depth` | 使用当前视图返回的节点 ID；向 `upstream/downstream/both` 查询，默认深度 1；深度 0 仅保留根节点 |
@@ -66,7 +82,9 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 
 返回 `totalNodes`、`omittedNodes` 和卡片 `hiddenCount`，用于说明当前视图省略的范围。`savedLayout` 只包含可见节点的已保存位置、方向和版本，`omittedPositions` 表示省略的已存坐标数量。修改布局前用 `get_diagram_layouts` 读取完整坐标并合并修改，避免局部图覆盖隐藏节点位置。浏览器中尚未保存的草稿不进入 MCP 结果。
 
-自动布局复用网页布局算法，以 280×116 的固定卡片尺寸生成独立图，最多支持 200 节点、1000 条关系。SVG 是可保存的文本，不是浏览器截图；自动布局不会覆盖团队已保存的坐标。
+自动布局复用网页的 Phase 区域与连线路由：先排列内部拓扑，再按内容确定外框；空 Phase 和跨范围依赖保留。卡片宽 280，高度随标题、阶段及 Phase 标签增加；`layout.nodeSizes` 返回各卡片尺寸，`layout.regions` 返回区域边界。旧 `nodeWidth/nodeHeight` 仅表示基础尺寸，读取新图使用 `nodeSizes`。Phase 横向排列，`direction` 控制区域内拓扑方向。最多支持 200 节点、1000 条关系。
+
+SVG 是可保存的文本，不是浏览器截图；长说明展示摘要，完整内容放入标题提示。导出不会保存坐标、修改 Phase 归属或重新计算筛选后的交付状态。
 
 例如，导出工作项上游两层的纵向图：
 
@@ -83,7 +101,7 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 
 实体类型为 `requirement/work/milestone`，操作为 `create/update/delete`。创建使用客户端临时唯一 ID，同批次的关系和位置可以引用它。更新或删除已有实体需带 `expectedVersion`。
 
-布局 `scope` 为 `global` 或 `requirement:需求ID`，方向为 `right/down`。`positions` 是该范围、方向的完整位置集合；保存时替换原集合。`expectedVersion` 使用已存版本；不存在时为 0。仅改布局不会增加分析 `revision`，刷新检查应比较 `get_project_change_version.version`。
+布局 `scope` 为 `features`、`feature:ID`、`feature-phase:<featureId>:<phaseId|unassigned>`、`global` 或 `requirement:ID`，方向为 `right/down`。Phase 保存区域内相对坐标。`positions` 是该范围、方向的完整位置集合；保存时替换原集合。`expectedVersion` 使用已存版本；不存在时为 0。仅改布局不会增加分析 `revision`，刷新检查应比较 `get_project_change_version.version`。
 
 依赖端点用需求 ID 加可选的工作项／里程碑 ID。引用项目独立里程碑时，对应需求 ID 传空字符串；同一端点不能同时提供工作项和里程碑。`add` 的每条关系需要临时 `clientId`。
 
@@ -109,13 +127,13 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 
 完成偏差使用实际工作结束日期。`acceptedAt` 只保留历史；`actualEnd` 表示实际完成，`observationEnd` 表示甘特统计截止日，两者不能互换。迁移后的原文与出处在需求 `sourceNotes` 中。
 
-工具目录已移除来源条款、来源关联、阻塞/解阻、确认验收、预测核对、前置确认、交付承诺以及覆盖/删除历史的工具。新请求不接受 `deliveryScope/executionMode/acceptanceOwnerId/priority/unblockEstimate` 及阻塞协调字段。原始需求导入使用 `formatVersion: 2`。
+工具目录已移除来源条款、来源关联、阻塞/解阻、确认验收、预测核对、前置确认、交付承诺以及覆盖/删除历史的工具。新请求不接受 `deliveryScope/executionMode/acceptanceOwnerId/priority/unblockEstimate` 及阻塞协调字段。原始需求导入只接受 `formatVersion: 3`，使用 `feature`、`phase` 和 `workItems[].workStage`。
 
 拓扑中的 `acceptance:需求ID` 保留为历史布局兼容 ID，现在表示工作完成，不要求执行验收操作。独立里程碑只有显式依赖才影响其他工作。
 
-## 特性规划与总体进展
+## 特性、Phase 与人工评估
 
-`get_feature_overview({projectId})` 读取大致预期、进展简述、人工判断、评估人和时间，以及当前特性的需求计数和最近三条进展。取消、归档需求不计入汇总。默认判断为待评估，不按完成数量自动推断是否符合预期。
+`get_feature_overview({projectId})` 读取各 Phase 的交付状态、阶段分布、日期及历史，同时保留预期、人工评估和最近进展。特性不计算总百分比；取消需求不算交付成果，已完成需求归档后仍计入 Phase。人工评估不按需求完成数量自动填写。
 
 `save_feature` 可传 `overview: {expectation, progressSummary, assessment, note}`，四项均须提供，文字可为空；`assessment` 使用 `pending/on_track/off_track/needs_adjustment`。保存时使用最新特性的 `id/name/sortOrder/expectedVersion`。省略 `overview` 不影响已有评估。项目经理或管理员可保存。
 
@@ -130,7 +148,7 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 
 ## 连贯画布批次
 
-网页的特性总览、特性内需求、全部需求和需求内工作项共用一个项目草稿。MCP 读取正式资料；网页草稿在保存前不会出现在读取结果中。
+网页的关系图、清单和进展表共用一个项目草稿。MCP 读取正式资料；网页草稿在保存前不会出现在读取结果中。
 
 `preview_dependency_changes` / `apply_dependency_changes` 的 `changes.featureRelations` 是可选数组：
 
@@ -148,9 +166,9 @@ Agent 录入流程维护在 [project-manage-intake skill](../skills/project-mana
 
 使用 `list_feature_phases/save_feature_phase/deliver_feature_phase/reopen_feature_phase/delete_feature_phase` 管理分期。`record_test_submission` 记录实际提测。接口参数和阶段摘要见 [特性分期说明](feature-phases.md#rest-与-mcp)。
 
-## 项目交付工作区
+## 项目工作区
 
-网页在同一工作区切换表格和关系图，保持范围、选中项及项目草稿。
+网页在同一工作区切换关系图和进展表；清单承接录入与批量维护。`dashboard_summary.featureOverview` 和需求数据使用同一 `asOfDate`，保留完整 Phase 交付状态；查询筛选不会重算这些事实。
 
 - `get_path_graph` 的特性节点带简要 `phases` 标签；`view=feature` 返回 `phaseRegions`，可传 `phaseId`（含 `unassigned`）。筛选保留直接外围依赖，`analysis` 始终为完整分析。
 - 区域不是业务节点，不产生依赖或排期约束。

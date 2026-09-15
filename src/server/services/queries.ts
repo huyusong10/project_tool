@@ -7,6 +7,8 @@ import { isOverdueByWorkday, todayIso } from '../../shared/domain';
 import { listRequirements, loadWorkItemsByRequirementIds } from './requirements';
 import { getPathAnalysis } from './paths';
 import { deliveryForecast } from '../../shared/forecast-basis';
+import {compareProgressNames,compareProgressTitles,matchesProgressStatus,matchesProgressStage} from '../../shared/progress-query';
+import type {WorkStage} from '../../shared/execution-stage';
 
 function pageInfo(total: number, page: number, pageSize: number) {
   return { total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) };
@@ -20,13 +22,14 @@ export function queryRequirements(raw: unknown, actor: AuthorizationActor) {
   return sqlite.transaction(() => {
     const q = input.q?.toLocaleLowerCase();
     const values = listRequirements(input).filter(r => {
+      if(!matchesProgressStatus(r.status,input.statuses,input.excludeStatuses)||!matchesProgressStage(r.status,r.executionStage,input.stage||''))return false;
       if (q && ![r.title, r.background, r.acceptanceCriteria, r.ownerName].some(v => v?.toLocaleLowerCase().includes(q))) return false;
       if (input.participantId && r.ownerId !== input.participantId && !r.workItems?.some(w => w.assigneeIds.includes(input.participantId!))) return false;
       if (input.from && (!r.plannedEnd && !r.plannedStart || (r.plannedEnd || r.plannedStart)! < input.from)) return false;
       if (input.to && (!r.plannedStart && !r.plannedEnd || (r.plannedStart || r.plannedEnd)! > input.to)) return false;
       return true;
     });
-    values.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
+    values.sort(input.sort==='updated'?(a,b)=>b.updatedAt.localeCompare(a.updatedAt)||a.id.localeCompare(b.id):compareProgressTitles);
     const items = values.slice((input.page - 1) * input.pageSize, input.page * input.pageSize).map(r => {
       if (input.includeWorkItems) return r;
       const { workItems, ...summary } = r;
@@ -36,9 +39,9 @@ export function queryRequirements(raw: unknown, actor: AuthorizationActor) {
   })();
 }
 
-type WorkReference = { id: string; requirementId: string; requirementTitle: string; requirementStatus: string; projectId: string; projectName: string };
-const workFrom = 'FROM work_items w JOIN requirements r ON r.id=w.requirement_id JOIN projects p ON p.id=r.project_id';
-const workReference = 'SELECT w.id,w.requirement_id AS requirementId,r.title AS requirementTitle,r.status AS requirementStatus,r.project_id AS projectId,p.name AS projectName';
+type WorkReference = { id: string; title:string; status:string; workStage:WorkStage|null; sortOrder:number; createdAt:string; updatedAt:string; plannedEnd:string|null; requirementId: string; requirementTitle: string; requirementStatus: string; projectId: string; projectName: string; featureId:string|null;featureName:string|null;phaseId:string|null;phaseName:string|null };
+const workFrom = 'FROM work_items w JOIN requirements r ON r.id=w.requirement_id JOIN projects p ON p.id=r.project_id LEFT JOIN features f ON f.id=r.feature_id LEFT JOIN feature_phases ph ON ph.id=r.phase_id';
+const workReference = 'SELECT w.id,w.title,w.status,w.work_stage AS workStage,w.sort_order AS sortOrder,w.created_at AS createdAt,w.updated_at AS updatedAt,w.planned_end AS plannedEnd,w.requirement_id AS requirementId,r.title AS requirementTitle,r.status AS requirementStatus,r.project_id AS projectId,p.name AS projectName,r.feature_id AS featureId,f.name AS featureName,r.phase_id AS phaseId,ph.name AS phaseName';
 
 function workDetails(references: WorkReference[]) {
   const statuses = new Map(references.map(r => [r.requirementId, r.requirementStatus]));
@@ -70,6 +73,9 @@ export function queryWorkItems(raw: unknown, actor: AuthorizationActor) {
     const params: unknown[] = [input.projectId];
     const add = (clause: string, ...values: unknown[]) => { where.push(clause); params.push(...values); };
     if (input.requirementId) add('r.id=?', input.requirementId);
+    if (input.featureId) input.featureId==='unassigned'?add('r.feature_id IS NULL'):add('r.feature_id=?',input.featureId);
+    if (input.phaseId) input.phaseId==='unassigned'?add('r.phase_id IS NULL'):add('r.phase_id=?',input.phaseId);
+    if (input.workStage) input.workStage==='unclassified'?add('w.work_stage IS NULL'):add('w.work_stage=?',input.workStage);
     if (input.ownerId) add('w.owner_id=?', input.ownerId);
     if (input.participantId) add('(w.owner_id=? OR EXISTS(SELECT 1 FROM work_item_collaborators c WHERE c.work_item_id=w.id AND c.person_id=?))', input.participantId, input.participantId);
     if (input.status) add('w.status=?', input.status);
@@ -80,10 +86,17 @@ export function queryWorkItems(raw: unknown, actor: AuthorizationActor) {
     if (input.from) add('COALESCE(w.planned_end,w.planned_start)>=?', input.from);
     if (input.to) add('COALESCE(w.planned_start,w.planned_end)<=?', input.to);
     const clause = `${workFrom} WHERE ${where.join(' AND ')}`;
-    const { total } = sqlite.prepare(`SELECT COUNT(*) AS total ${clause}`).get(...params) as { total: number };
-    const references = sqlite.prepare(`${workReference} ${clause} ORDER BY COALESCE(w.planned_end,'9999-12-31'),w.updated_at DESC,w.id LIMIT ? OFFSET ?`)
-      .all(...params, input.pageSize, (input.page - 1) * input.pageSize) as WorkReference[];
-    return { items: workDetails(references), ...pageInfo(total, input.page, input.pageSize), asOfDate: todayIso() };
+    // Sort lightweight references before pagination; only load full details for the requested page.
+    const references = (sqlite.prepare(`${workReference} ${clause}`).all(...params) as WorkReference[])
+      .filter(w=>matchesProgressStatus(w.status,input.statuses,input.excludeStatuses));
+    references.sort((a,b)=>{
+      if(input.sort==='updated')return b.updatedAt.localeCompare(a.updatedAt)||a.id.localeCompare(b.id);
+      if(input.sort==='planned_end')return (a.plannedEnd||'9999-12-31').localeCompare(b.plannedEnd||'9999-12-31')||b.updatedAt.localeCompare(a.updatedAt)||a.id.localeCompare(b.id);
+      if(input.sort==='name')return compareProgressTitles(a,b);
+      return compareProgressNames(a.requirementTitle,b.requirementTitle)||a.requirementId.localeCompare(b.requirementId)||a.sortOrder-b.sortOrder||a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id);
+    });
+    const page=references.slice((input.page-1)*input.pageSize,input.page*input.pageSize);
+    return { items: workDetails(page), ...pageInfo(references.length, input.page, input.pageSize), asOfDate: todayIso() };
   })();
 }
 

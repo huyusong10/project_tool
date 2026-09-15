@@ -29,9 +29,9 @@ description: 通过 MCP 将原始需求直接录入 project-manage，按需拆�
 
 没有工期或日期依据时保留未知，可给出标明假设的建议。缺少计划会影响项目整体预测；不把部分已排期工作当成整个项目的完成日期。
 
-## 特性规划与总体进展
+## 特性分期与人工评估
 
-用户要求查看大特性是否大体符合预期时，用 get_feature_overview 读取特性总体进展。系统计数和最近进展提供依据，人工判断独立保存；不根据需求完成比例自动填写判断。
+用 get_feature_overview 查看各 Phase 的范围、交付状态、日期和历史；已完成归档需求仍计入 Phase。用户询问是否符合预期时，同时读取人工评估与最近进展，不根据需求完成比例自动填写判断。
 
 用户明确要求更新总体预期或判断时，先读取特性最新 id/name/sortOrder/version，再用 save_feature 携带 expectedVersion 和完整 overview：expectation、progressSummary、assessment、note。文字可为空；assessment 为 pending（待评估）、on_track（基本符合）、off_track（有偏差）、needs_adjustment（需要调整）。保留用户未要求修改的内容，不编造评估。仅整理名称或顺序时省略 overview，保留原评估时间。
 
@@ -68,3 +68,9 @@ MCP 不再使用条款关联、落实范围、交付范围、执行模式切换�
 记录实际提测使用 record_test_submission，填写 actualDate、expectedVersion 及可选 content。提测就绪不是已提测，不自动补提测事实。测试已经开始可直接显示测试阶段。结果未知先核对原请求与最新记录，不重复提交。
 
 项目工作区分为关系图、进展表。清单工具提供录入、导入和批量维护；进展表查看 Phase 交付和工作执行，未安排 Phase 的需求直接列在特性下。dashboard_summary 的指定项目响应增补 featureOverview，与需求数据使用同一统计日期。get_path_graph 在 view=feature 时可用 phaseId（或 unassigned）筛选，phaseRegions 表达交付区域；区域顺序不代表执行依赖。布局范围 feature-phase:<featureId>:<phaseId|unassigned> 保存区域内相对坐标，修改前读取完整布局并携带版本。
+
+查询需求用 query_requirements：statuses 指定多种状态，excludeStatuses 排除状态，两者取交集；与旧单状态 status 不同时传 statuses。排除未开始用 excludeStatuses=["not_started"]，尚未结束用 excludeStatuses=["completed","cancelled"]。省略 statuses 表示全部，空数组表示不选任何状态。stage 查询当前阶段，含并行中的阶段。返回 executionStage 的阶段内进度，不把需求总百分比当作测试进度。
+
+list_work_items 支持 featureId、phaseId、workStage；phaseId=unassigned 查询未安排 Phase，workStage=unclassified 查询未分类。需求默认按名称编号自然排序，工作项默认按需求编号及流程顺序；原排序分别指定 sort=updated 或 planned_end。筛选排序在分页前生效，汇总完整结果需读取所有页，不能只统计第一页。
+
+导出项目图显式传 view=features，旧默认 project 仍表示需求汇总。SVG 显示 Phase 标签和区域；自动布局先排列拓扑，再确定外框，layout.nodeSizes/regions 返回尺寸。导出不保存坐标，也不读取网页未保存的草稿。

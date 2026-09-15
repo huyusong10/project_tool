@@ -5,7 +5,7 @@ import type {PathAnalysis} from '../shared/paths';
 import {todayIso} from '../shared/domain';
 import {matchesSearch} from '../shared/search';
 import {dashboardWindow,matchesDashboardScope,type DashboardScope} from '../shared/dashboard';
-import {selectedProgressStates} from './progress-filters';
+import {selectedProgressStates,matchesProgressStatus,matchesProgressStage,compareProgressNames,compareProgressTitles} from '../shared/progress-query';
 import {deriveExecutionStage} from '../shared/execution-stage';
 
 export type WorkspaceRow = {
@@ -41,13 +41,13 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis,sort='n
     children:r.deletedAt?[]:[...r.workItems].sort((a,b)=>(a.sortOrder??0)-(b.sortOrder??0)).map(w=>({id:w.id,kind:'work',title:w.title,featureId,phaseId,requirementId:r.id,requirement:r,work:w,formalRequirement:formal.get(r.id),formalWork:formal.get(r.id)?.workItems.find(old=>old.id===w.id),
       temporary:!formal.get(r.id)?.workItems.some(old=>old.id===w.id),children:[]})),
   });
-  const byTitle=(a:{id:string;title:string},b:{id:string;title:string})=>a.title.localeCompare(b.title,'zh-CN',{numeric:true})||a.id.localeCompare(b.id);
+  const byTitle=compareProgressTitles;
   const firstName=(id:string)=>requirements.filter(r=>r.featureId===id).sort(byTitle)[0]?.title;
   const featureOrder=new Map(features.map(f=>[f.id,firstName(f.id)]));
   return [...features].sort((a,b)=>{
-    if(sort==='feature')return a.name.localeCompare(b.name,'zh-CN',{numeric:true})||a.id.localeCompare(b.id);
+    if(sort==='feature')return compareProgressNames(a.name,b.name)||a.id.localeCompare(b.id);
     const first=featureOrder.get(a.id),second=featureOrder.get(b.id);
-    return first&&second?first.localeCompare(second,'zh-CN',{numeric:true})||a.name.localeCompare(b.name,'zh-CN',{numeric:true}):first?-1:second?1:a.name.localeCompare(b.name,'zh-CN',{numeric:true});
+    return first&&second?compareProgressNames(first,second)||compareProgressNames(a.name,b.name):first?-1:second?1:compareProgressNames(a.name,b.name);
   }).map(f=>{
     const own=requirements.filter(r=>r.featureId===f.id).sort(byTitle);
     const phases:WorkspaceRow[]=[...(f.phases||[])].sort((a,b)=>a.sortOrder-b.sortOrder).map(p=>({id:'phase:'+p.id,kind:'phase',title:p.name,featureId:f.id,phaseId:p.id,phase:p,feature:f,children:[
@@ -73,8 +73,8 @@ export function filterWorkspaceRows(rows:WorkspaceRow[],filter:RowFilters):Works
     const r=row.requirement,w=row.work,item=w||r;
     const stage=r?(r.executionStage||deriveExecutionStage(r,r.workItems,r.milestones)):null;
     const planned=!!item?.plannedStart&&!!item.plannedEnd&&(!!w||r?.scheduleComplete!==false);
-    const stageMatch=(!filter.stage||(w?w.workStage===filter.stage||w.status===filter.stage||filter.stage==='parallel'&&stage?.key==='parallel':stage?.key===filter.stage||stage?.stages.some(s=>s.stage===filter.stage)||r?.status===filter.stage))
-      &&(!filter.status||!!item&&states.some(state=>state===item.status))
+    const stageMatch=matchesProgressStage(item?.status||'',stage,filter.stage,w?(w.workStage??null):undefined)
+      &&(!filter.status||!!item&&matchesProgressStatus(item.status,states))
       &&(!filter.risk||(r?.riskEvaluated?r.riskLevel:'pending')===filter.risk)
       &&(!filter.person||!!item&&(filter.person==='unassigned'?!item.ownerId:item.ownerId===filter.person||w?.assigneeIds?.includes(filter.person)))
       &&(!filter.schedule||!!item&&(filter.schedule==='delayed'?(w?!!w.plannedEnd&&!['completed','cancelled'].includes(w.status)&&w.plannedEnd<(filter.asOfDate||todayIso()):r?.delayed):filter.schedule==='unplanned'?!planned:planned))

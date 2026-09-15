@@ -4,6 +4,7 @@ import path from 'node:path';
 import { scryptSync } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import {mcpRequest} from './mcp-request';
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'project-manage-account-lifecycle-'));
 const adminPassword = 'temporary-admin-password-123';
@@ -27,11 +28,8 @@ const cookieOf = (response: { headers: Record<string, unknown> }) => String(resp
 const projects = (cookie: string) => app.inject({ url: '/api/projects', headers: { cookie } });
 const changeStatus = (accountId: string, status: string) => app.inject({ method: 'PATCH', url: `/api/accounts/${accountId}`, headers: { cookie: adminCookie }, payload: { status } });
 const mcp = async (token: string, name = 'list_projects', args: Record<string, unknown> = {}) => {
-  // MCP传输层使用真实临时socket；Fastify注入的模拟socket不实现SDK的排空/关闭接口。
-  const response = await fetch(`${testOrigin}/mcp`, { method: 'POST', headers: {
-    authorization: `Bearer ${token}`, accept: 'application/json, text/event-stream', 'content-type': 'application/json', connection: 'close',
-  }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
-  return { statusCode: response.status, body: await response.text() };
+  // Use the shared real-socket helper; OS-assigned test ports can be blocked by fetch.
+  return mcpRequest(testOrigin,token,name,args);
 };
 
 async function createIdentity() {

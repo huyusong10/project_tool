@@ -11,6 +11,8 @@ import { projectPathGraph } from '../src/shared/path-projection';
 import { addBusinessDays, todayIso } from '../src/shared/domain';
 import type { PathAnalysis } from '../src/shared/paths';
 import { mcpRequest, mcpRpcRequest } from './mcp-request';
+import type {FeaturePhase} from '../src/shared/feature-phases';
+import {matchesProgressStage} from '../src/shared/progress-query';
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-mcp-queries-'));
 const password = 'mcp-query-test-password';
@@ -93,6 +95,11 @@ it('MCP发布可发现的查询工具、严格输入与只读标记，批次描�
   expect(tools.find(t => t.name === 'apply_dependency_changes')?.annotations.readOnlyHint).toBe(false);
   expect(tools.find(t => t.name === 'preview_dependency_changes')?.description).toContain('layouts');
   expect(tools.find(t => t.name === 'get_path_graph')?.inputSchema.properties).toHaveProperty('rootNodeId');
+  for(const field of ['statuses','excludeStatuses','stage','sort'])expect(tools.find(t=>t.name==='query_requirements')?.inputSchema.properties).toHaveProperty(field);
+  for(const field of ['statuses','excludeStatuses','featureId','phaseId','workStage','sort'])expect(tools.find(t=>t.name==='list_work_items')?.inputSchema.properties).toHaveProperty(field);
+  expect(tools.find(t=>t.name==='get_diagram_layouts')?.description).toContain('feature-phase:');
+  expect(tools.find(t=>t.name==='preview_requirement_import')?.description).toContain('formatVersion:3');
+  expect(tools.some(t=>t.description.includes('受控'))).toBe(false);
 });
 
 it('独立工作项读取与需求详情一致，筛选负责人/协作者/日期、分页与REST一致', async () => {
@@ -240,7 +247,7 @@ it('所有新查询隔离项目权限，外部对象ID不泄露详情，成员�
   const changed = await app.inject({ method: 'POST', url: '/api/account/change-password', headers: { cookie: memberCookie }, payload: { currentPassword: '888888', newPassword: password } });
   memberCookie = String(changed.headers['set-cookie']).split(';')[0];
   const memberToken = (await post('/api/tokens', { name: '成员读取' }, memberCookie)).token;
-  for (const tool of ['query_requirements', 'list_work_items', 'list_progress_updates', 'get_path_graph', 'get_project_change_version']) {
+  for (const tool of ['query_requirements', 'list_work_items', 'list_progress_updates', 'get_path_graph', 'get_project_change_version','list_feature_phases']) {
     expect((await callRaw(tool, { projectId: foreign.projectId }, memberToken)).structuredContent.statusCode).toBe(403);
     await call(tool, { projectId: own.projectId }, memberToken);
   }
@@ -248,6 +255,13 @@ it('所有新查询隔离项目权限，外部对象ID不泄露详情，成员�
   expect((await callRaw('get_path_graph', { projectId: own.projectId, view: 'requirement', requirementId: foreign.ids.a }, memberToken)).structuredContent.statusCode).toBe(404);
   expect((await call<Page<WorkItem>>('list_work_items', { projectId: own.projectId, requirementId: foreign.ids.a }, memberToken)).total).toBe(0);
   expect((await callRaw('query_requirements', { projectId: own.projectId, includeDeleted: true }, memberToken)).structuredContent.statusCode).toBe(403);
+  const feat=await feature(own.projectId),phase=await call<FeaturePhase>('save_feature_phase',{projectId:own.projectId,featureId:feat.id,name:'Phase 1'});
+  for(const [name,args] of [
+    ['save_feature_phase',{projectId:own.projectId,featureId:feat.id,name:'禁止修改'}],
+    ['deliver_feature_phase',{projectId:own.projectId,phaseId:phase.id,expectedVersion:phase.version}],
+    ['reopen_feature_phase',{projectId:own.projectId,phaseId:phase.id,expectedVersion:phase.version,reason:'无权修改'}],
+    ['update_requirement_placement',{projectId:own.projectId,featureId:feat.id,phaseId:phase.id,requirements:[{id:own.ids.a,expectedVersion:(await call<Requirement>('get_requirement',{id:own.ids.a})).version}]}],
+  ] as const)expect((await callRaw(name,args,memberToken)).structuredContent.statusCode).toBe(403);
   expect((await app.inject({ url: '/api/work-items/' + foreign.ids.w1, headers: { cookie: memberCookie } })).statusCode).toBe(404);
 });
 
@@ -288,6 +302,9 @@ it('REST/MCP一致拒绝非法日期、冲突条件、未声明字段和错误�
     ['query_requirements', '/api/requirements/query', { from: '2026-09-30', to: '2026-09-01' }],
     ['list_work_items', '/api/work-items', { ownerId: f.owner.id, unassigned: true }],
     ['list_work_items', '/api/work-items', { status: 'completed', active: true }],
+    ['query_requirements', '/api/requirements/query', { statuses:'not_started,unknown' }],
+    ['query_requirements', '/api/requirements/query', { status:'in_progress',statuses:'completed' }],
+    ['list_work_items', '/api/work-items', { workStage:'unknown' }],
     ['list_progress_updates', '/api/progress-updates', { from: '2026-02-30' }],
     ['list_progress_updates', '/api/progress-updates', { extra: true }],
     ['get_path_graph', '/api/projects/' + f.projectId + '/path-graph', { view: 'requirement' }],
@@ -296,4 +313,106 @@ it('REST/MCP一致拒绝非法日期、冲突条件、未声明字段和错误�
     expect((await callRaw(tool, input)).structuredContent.statusCode).toBe(400);
     expect((await app.inject({ url: url + '?' + new URLSearchParams(Object.entries(input).map(([k, v]) => [k, String(v)])), headers: { cookie } })).statusCode).toBe(400);
   }
+});
+
+async function feature(projectId:string,name='MCP 特性') {
+  return (await call<{features:Array<{id:string;name:string}>}>('save_feature',{projectId,name})).features.find(f=>f.name===name)!;
+}
+
+it('MCP 多状态、排除、阶段、Phase 与自然排序在分页前生效，REST 与网页匹配规则一致',async()=>{
+  const f=await fixture(),{sqlite}=await import('../src/server/database');
+  sqlite.prepare("UPDATE requirements SET title=?,status='in_progress' WHERE id=?").run('DCIM-39',f.ids.a);
+  sqlite.prepare("UPDATE requirements SET title=?,status='in_progress' WHERE id=?").run('DCIM-34',f.ids.b);
+  sqlite.prepare("UPDATE work_items SET status='in_progress',actual_start=?,work_stage=?,progress=?,sort_order=? WHERE id=?").run(todayIso(),'analysis',30,1,f.ids.w1);
+  sqlite.prepare("UPDATE work_items SET status='in_progress',actual_start=?,work_stage=?,progress=?,sort_order=? WHERE id=?").run(todayIso(),'development',40,0,f.ids.w2);
+  sqlite.prepare("UPDATE work_items SET status='in_progress',actual_start=?,work_stage='testing',progress=70 WHERE id=?").run(todayIso(),f.ids.w3);
+  await call('create_requirement',{projectId:f.projectId,title:'DCIM-2'});
+  let done=await call<Requirement>('create_requirement',{projectId:f.projectId,title:'DCIM-9',ownerId:f.owner.id});
+  done=await call('start_requirement',{id:done.id,expectedVersion:done.version});
+  await call('complete_requirement',{id:done.id,expectedVersion:done.version});
+  const cancelled=await call<Requirement>('create_requirement',{projectId:f.projectId,title:'DCIM-100'});
+  await call('cancel_requirement',{id:cancelled.id,expectedVersion:cancelled.version,reason:'取消本次范围'});
+  const feat=await feature(f.projectId),phase=await call<FeaturePhase>('save_feature_phase',{projectId:f.projectId,featureId:feat.id,name:'Phase 1'});
+  const a=await call<Requirement>('get_requirement',{id:f.ids.a}),b=await call<Requirement>('get_requirement',{id:f.ids.b});
+  await call('update_requirement_placement',{projectId:f.projectId,featureId:feat.id,phaseId:phase.id,requirements:[{id:a.id,expectedVersion:a.version}],reason:'安排首期'});
+  await call('update_requirement_placement',{projectId:f.projectId,featureId:feat.id,requirements:[{id:b.id,expectedVersion:b.version}],reason:'安排特性'});
+  const input={projectId:f.projectId,excludeStatuses:['not_started'],pageSize:2};
+  const first=await call<Page<Requirement>>('query_requirements',input),second=await call<Page<Requirement>>('query_requirements',{...input,page:2});
+  expect(first.total).toBe(4);expect([...first.items,...second.items].map(r=>r.title)).toEqual(['DCIM-9','DCIM-34','DCIM-39','DCIM-100']);
+  expect(await get('/api/requirements/query?'+new URLSearchParams({projectId:f.projectId,excludeStatuses:'not_started',pageSize:'2'}))).toEqual(first);
+  expect((await call<Page<Requirement>>('query_requirements',{projectId:f.projectId,statuses:['not_started','in_progress']})).items.map(r=>r.title)).toEqual(['DCIM-2','DCIM-34','DCIM-39']);
+  expect((await call<Page<Requirement>>('query_requirements',{projectId:f.projectId,statuses:[]})).total).toBe(0);
+  const full=await call<Page<Requirement>>('query_requirements',{projectId:f.projectId});
+  for(const stage of ['testing','parallel','development']){
+    const filtered=await call<Page<Requirement>>('query_requirements',{projectId:f.projectId,stage});
+    expect(filtered.items.map(r=>r.id)).toEqual(full.items.filter(r=>matchesProgressStage(r.status,r.executionStage,stage)).map(r=>r.id));
+  }
+  const works=await call<Page<WorkItem>>('list_work_items',{projectId:f.projectId});
+  expect(works.items.map(w=>w.id)).toEqual([f.ids.w3,f.ids.w2,f.ids.w1]);
+  const criteria={projectId:f.projectId,featureId:feat.id,phaseId:phase.id,workStage:'development',statuses:'in_progress',excludeStatuses:'completed,cancelled'};
+  const filtered=await call<Page<WorkItem>>('list_work_items',criteria);
+  expect(filtered.items.map(w=>w.id)).toEqual([f.ids.w2]);
+  expect(await get('/api/work-items?'+new URLSearchParams(criteria))).toEqual(filtered);
+  expect((await call<Page<WorkItem>>('list_work_items',{projectId:f.projectId,featureId:feat.id,phaseId:'unassigned'})).items.map(w=>w.id)).toEqual([f.ids.w3]);
+});
+
+it('MCP 完成 Phase 创建、安排、提测、移出、交付、重开、返工和再次交付，保留原快照',async()=>{
+  const projectId=(await call<{id:string}>('create_project',{name:'MCP Phase 全流程 '+randomUUID()})).id;
+  const owner=await call<{id:string}>('create_person',{projectId,name:'MCP交付负责人'+randomUUID()});
+  const feat=await feature(projectId),p=await call<FeaturePhase>('save_feature_phase',{projectId,featureId:feat.id,name:'Phase 1',scope:'首版交付'}),next=await call<FeaturePhase>('save_feature_phase',{projectId,featureId:feat.id,name:'Phase 2'});
+  const phase=async(id=p.id)=>(await call<FeaturePhase[]>('list_feature_phases',{projectId})).find(p=>p.id===id)!;
+  const read=(id:string)=>call<Requirement>('get_requirement',{id});
+  const command=async(name:string,id=p.id,extra={})=>call<FeaturePhase>(name,{projectId,phaseId:id,expectedVersion:(await phase(id)).version,...extra});
+  expect((await callRaw('deliver_feature_phase',{projectId,phaseId:p.id,expectedVersion:p.version})).structuredContent.statusCode).toBe(400);
+  let a=await call<Requirement>('create_requirement',{projectId,title:'DCIM-1',featureId:feat.id,ownerId:owner.id}),b=await call<Requirement>('create_requirement',{projectId,title:'DCIM-2',featureId:feat.id,ownerId:owner.id});
+  await call('update_requirement_placement',{projectId,featureId:feat.id,phaseId:p.id,requirements:[a,b].map(r=>({id:r.id,expectedVersion:r.version}))});
+  a=await read(a.id);b=await read(b.id);
+  a=await call('start_requirement',{id:a.id,expectedVersion:a.version});b=await call('start_requirement',{id:b.id,expectedVersion:b.version});
+  expect((await phase()).status).toBe('in_progress');
+  expect((await callRaw('deliver_feature_phase',{projectId,phaseId:p.id,expectedVersion:(await phase()).version})).structuredContent.statusCode).toBe(400);
+  a=await call('record_test_submission',{projectId,requirementId:a.id,expectedVersion:a.version,actualDate:todayIso(),content:'提测验证'});
+  expect(a.executionStage?.key).toBe('test_submitted');
+  a=await call('complete_requirement',{id:a.id,expectedVersion:a.version});
+  const move={projectId,featureId:feat.id,phaseId:next.id,requirements:[{id:b.id,expectedVersion:b.version}]};
+  expect((await callRaw('update_requirement_placement',move)).structuredContent.statusCode).toBe(400);
+  expect((await callRaw('update_requirement_placement',{...move,reason:'推迟范围',requirements:[{id:a.id,expectedVersion:a.version},{id:b.id,expectedVersion:b.version+50}]})).structuredContent.statusCode).toBe(409);
+  expect((await read(a.id)).phaseId).toBe(p.id);expect((await read(b.id)).phaseId).toBe(p.id);
+  await call('update_requirement_placement',{...move,reason:'第二期补充'});
+  const delivered=await command('deliver_feature_phase',p.id,{deliveredAt:todayIso()}),snapshot=delivered.deliveries[0].snapshot;
+  expect(delivered.status).toBe('delivered');expect(snapshot.requirements.map(r=>r.id)).toEqual([a.id]);
+  expect((await callRaw('update_requirement_placement',{projectId,phaseId:next.id,requirements:[{id:a.id,expectedVersion:(await read(a.id)).version}],reason:'不应改动已交付范围'})).structuredContent.statusCode).toBe(400);
+  expect((await callRaw('reopen_feature_phase',{projectId,phaseId:p.id,expectedVersion:delivered.version})).structuredContent.statusCode).toBe(400);
+  await command('reopen_feature_phase',p.id,{reason:'补充边界验证'});
+  a=await read(a.id);a=await call('return_requirement',{id:a.id,expectedVersion:a.version,progress:20,reason:'补充边界验证'});
+  expect(a.executionStage?.key).toBe('in_progress');
+  a=await call('complete_requirement',{id:a.id,expectedVersion:a.version});
+  const again=await command('deliver_feature_phase');expect(again.deliveries).toHaveLength(2);
+  const historical=again.deliveries.find(d=>d.id===delivered.deliveries[0].id)!;
+  expect(historical.snapshot).toEqual(snapshot);expect(historical.reopenReason).toBe('补充边界验证');
+  await call('archive_requirement',{id:a.id,expectedVersion:(await read(a.id)).version});
+  expect((await phase()).requirements.find(r=>r.id===a.id)?.deletedAt).toBeTruthy();expect((await phase()).status).toBe('delivered');
+  expect(await get('/api/projects/'+projectId+'/feature-phases')).toEqual(await call('list_feature_phases',{projectId}));
+});
+
+it('MCP Phase SVG 自动按内部拓扑撑开外框，保留空 Phase、跨期依赖和正式布局',async()=>{
+  const f=await fixture(),feat=await feature(f.projectId),ids:string[]=[];
+  for(const name of ['Phase 1 <基础&范围>','Phase 2 联调','Phase 3 待确定'])ids.push((await call<FeaturePhase>('save_feature_phase',{projectId:f.projectId,featureId:feat.id,name,scope:'长范围说明 '.repeat(20)})).id);
+  for(const [i,id] of [f.ids.a,f.ids.b].entries()){
+    const r=await call<Requirement>('get_requirement',{id});
+    await call('update_requirement_placement',{projectId:f.projectId,featureId:feat.id,phaseId:ids[i],requirements:[{id,expectedVersion:r.version}]});
+  }
+  const before=await call('get_path_analysis',{projectId:f.projectId});
+  for(const direction of ['right','down']){
+    const graph=await call<Graph>('get_path_graph',{projectId:f.projectId,view:'feature',featureId:feat.id,format:'svg',direction});
+    expect(graph.svg).toContain('Phase 1 &lt;基础&amp;范围&gt;');expect(graph.svg).toContain('Phase 3 待确定');
+    expect(graph.links.length).toBeGreaterThan(0);expect(graph.layout!.regions.find(r=>r.id===ids[2])!.nodeIds).toEqual([]);
+    for(const region of graph.layout!.regions)for(const id of region.nodeIds){
+      const p=graph.layout!.nodes[id],size=graph.layout!.nodeSizes[id];
+      expect(p.x).toBeGreaterThanOrEqual(region.x+24);expect(p.y).toBeGreaterThanOrEqual(region.y+148);
+      expect(p.x+size.width).toBeLessThanOrEqual(region.x+region.width-24);expect(p.y+size.height).toBeLessThanOrEqual(region.y+region.height-24);
+    }
+    const filtered=await call<Graph>('get_path_graph',{projectId:f.projectId,view:'feature',featureId:feat.id,phaseId:ids[0],format:'svg',direction});
+    expect(filtered.cards.some(c=>c.id===f.ids.b)).toBe(true);expect(filtered.analysis).toEqual(graph.analysis);
+  }
+  expect(await call('get_path_analysis',{projectId:f.projectId})).toEqual(before);
 });
