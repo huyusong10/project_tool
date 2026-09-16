@@ -17,7 +17,7 @@ export function RequirementWorkExecution({requirement,people,progress,children}:
   const canUpdate=canOperate&&!['completed','cancelled'].includes(requirement.status);
   const actions=requirement.status==='completed'&&canOperate
     ?<DeliveryControls requirement={requirement}>{({actions})=>actions}</DeliveryControls>
-    :canUpdate?<Button variant="soft" tone="primary" size="compact" width="wide" className="primary-button execution-action" data-action="progress" onClick={open}><PencilLine size={14}/>更新进展</Button>:null;
+    :canUpdate?<Button variant="soft" tone="primary" size="compact" width="action" className="primary-button execution-action" aria-label="更新进展" title="更新进展" data-action="progress" onClick={open}><PencilLine size={14}/>更新</Button>:null;
   return <>
     {children({actions,progress:canUpdate?<button className="workspace-requirement-progress" aria-label={'更新 '+requirement.title+' 进展'} onClick={open}>{progress}</button>:progress})}
 

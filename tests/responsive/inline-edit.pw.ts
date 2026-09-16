@@ -1762,7 +1762,7 @@ for (const recordMatchingEvent of [true, false]) {
     });
 
     await page.goto('/requirements/r1');
-    await page.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await page.getByRole('button',{name:'完成并补充说明',exact:true}).click();
+    await page.getByRole('button',{name:'完成',exact:true}).first().click();
     const popover = page.locator('.inline-edit-popover');
     await popover.getByRole('textbox', { name: '完成说明（可选）', exact: true }).fill('完成历史交付');
     await popover.getByRole('button', { name: '确认完成', exact: true }).click();
@@ -1802,7 +1802,7 @@ test('工作项完成响应异常时不把其他账号的相同命令误认成�
   });
 
   await page.goto('/requirements/r1');
-  await page.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await page.getByRole('button',{name:'完成并补充说明',exact:true}).click();
+  await page.getByRole('button',{name:'完成',exact:true}).first().click();
   const popover = page.locator('.inline-edit-popover');
   await popover.getByRole('textbox', { name: '完成说明（可选）', exact: true }).fill('完成历史交付');
   await popover.getByRole('button', { name: '确认完成', exact: true }).click();

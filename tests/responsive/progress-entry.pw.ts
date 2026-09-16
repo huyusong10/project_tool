@@ -334,7 +334,7 @@ test('完成工作项允许留空说明并保留可选提示', async ({ page }) 
     return route.fulfill({ json: state.requirement.workItems[0] });
   });
   await page.goto('/requirements/r1');
-  await page.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await page.getByRole('button',{name:'完成并补充说明',exact:true}).click();
+  await page.getByRole('button',{name:'完成',exact:true}).first().click();
   const popover = page.locator('.inline-edit-popover');
   await expect(popover.getByText('可留空，系统会记录“完成工作项”', { exact: true })).toBeVisible();
   await expect(popover.getByRole('textbox', { name: '完成说明（可选）', exact: true })).toHaveValue('');
@@ -357,7 +357,7 @@ for (const source of ['detail', 'my-work'] as const) {
       return route.fulfill({ json: state.requirement.workItems[0] });
     });
     await page.goto(source === 'detail' ? '/requirements/r1' : '/my-work');
-    await page.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await page.getByRole('button',{name:'完成并补充说明',exact:true}).click();
+    await page.getByRole('button',{name:'完成',exact:true}).first().click();
     const popover = page.locator('.inline-edit-popover');
     const content = popover.getByRole('textbox', { name: '完成说明（可选）', exact: true });
     await content.fill('本次交付结果需要保留');
@@ -395,7 +395,7 @@ for (const source of ['detail', 'my-work'] as const) {
     });
     try {
       await page.goto(source === 'detail' ? '/requirements/r1' : '/my-work');
-      await page.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await page.getByRole('button',{name:'完成并补充说明',exact:true}).click();
+      await page.getByRole('button',{name:'完成',exact:true}).first().click();
       const popover = page.locator('.inline-edit-popover');
       const content = popover.getByRole('textbox', { name: '完成说明（可选）', exact: true });
       await content.fill('状态变化也不能丢失这段说明');

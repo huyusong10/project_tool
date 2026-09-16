@@ -40,7 +40,7 @@ test('空操作栏不占位，问题表单与甘特按钮保持完整尺寸',asy
   const nav=(await modal.getByRole('tablist').boundingBox())!,entry=(await modal.locator('.issue-settings-progress-entry').boundingBox())!;expect(entry.y-nav.y-nav.height).toBeLessThan(20);
   await page.screenshot({path:info.outputPath('issue-compact.png')});
   await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',scopeType:'requirement',scopeId:f.testing.id}));await page.getByLabel('展开层级').click();await page.getByRole('option',{name:'展开到工作项',exact:true}).click();
-  for(const width of [1280,390]){await page.setViewportSize({width,height:800});const buttons=page.locator('.workspace-row-tools .execution-action');await expect(buttons.first()).toBeVisible();const sizes=await buttons.evaluateAll(nodes=>nodes.map(node=>({width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height})));expect(sizes.length).toBeGreaterThan(1);for(const size of sizes)expect(size).toEqual({width:96,height:30});
+  for(const width of [1280,390]){await page.setViewportSize({width,height:800});const buttons=page.locator('.workspace-row-tools .execution-action');await expect(buttons.first()).toBeVisible();const sizes=await buttons.evaluateAll(nodes=>nodes.map(node=>({width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height})));expect(sizes.length).toBeGreaterThan(1);for(const size of sizes)expect(size).toEqual({width:66,height:30});
     expect(await page.locator('.workspace-row-tools').evaluateAll(nodes=>nodes.every(node=>node.scrollWidth<=node.clientWidth+1))).toBe(true);
   }
   await page.screenshot({path:info.outputPath('gantt-action-widths.png')});

@@ -22,11 +22,14 @@ import {RequirementWorkExecution} from './RequirementWorkExecution';
 import {Select} from './Select';
 import {useGanttTooltip} from './GanttTooltip';
 import {WorkspaceGanttSummary} from './WorkspaceGanttSummary';
+import {requirementScheduleSummary} from '../requirement-presentation';
+import {useProjectWorkspace} from '../project-workspace-context';
 import '../workspace-gantt.css';
 
 type Props={milestones?:PathMilestone[];edges?:PathEdge[];rows:WorkspaceRow[];people:Person[];storageKey:string;asOfDate:string;selected:string;onSelect:(row:WorkspaceRow)=>void;onEnter?:(row:WorkspaceRow)=>void;filterKey?:string;filtered?:boolean};
 const expands=(row:WorkspaceRow,expanded:Record<string,boolean>)=>expanded[row.id]??(!row.virtual&&['feature','phase'].includes(row.kind));
 export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelect,onEnter,filtered=false,filterKey="",milestones,edges}:Props){
+  const workspace=useProjectWorkspace();
   const summaryTooltip=useGanttTooltip();
   const key='pm-workspace-rows:'+storageKey;
   const [expanded,setExpanded]=useState<Record<string,boolean>>(()=>{try{return JSON.parse(sessionStorage.getItem(key)||'{}');}catch{return {};}});
@@ -72,7 +75,9 @@ export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelec
           const actualTrack=ganttInterval(actual?.start,actual?.end,nav.dates,nav.cellWidth);
           const planTrack=ganttInterval(item?.plannedStart,item?.plannedEnd,nav.dates,nav.cellWidth);
           const progressAnchor=actualTrack?.right??planTrack?.left??0;
-          const scheduleNote=item&&!row.archived?(!item.plannedStart&&!item.plannedEnd?(['completed','cancelled'].includes(item.status)?'未记录计划':'待排期'):!item.plannedStart||!item.plannedEnd||!w&&r?.scheduleComplete===false?'排期不完整':''):row.archived?'保留交付贡献':row.phase&&!row.phase.targetDate&&!row.phase.deliveredAt?'交付日期待定':'';
+          const schedule=!w&&row.formalRequirement?requirementScheduleSummary(row.formalRequirement):null;
+          const missingSchedule=!!item&&!row.archived&&item.status!=='cancelled'&&(!item.plannedStart||!item.plannedEnd||!w&&r?.scheduleComplete===false);
+          const scheduleNote=missingSchedule?(schedule?.gaps.length?schedule.label:item?.status==='completed'?'未记录计划':!item?.plannedStart&&!item?.plannedEnd?'待排期':'排期待补齐'):row.archived?'保留交付贡献':row.phase&&!row.phase.targetDate&&!row.phase.deliveredAt?'交付日期待定':'';
           const summary=row.kind==='feature'?row.feature?.description:row.kind==='phase'?(row.virtual?'尚未分派到交付阶段':row.phase?.scope||'范围待明确'):w?(w.workStage?workStageLabels[w.workStage]:'未分类'):stageLabel;
           const defaultProgress=row.phase?'':w?(({not_started:'未开始',completed:'已完成',cancelled:'已取消'} as Record<string,string>)[w.status]??w.progress+'%'):stageLabel;
           const defaultContent=stage&&!w?<span className={"workspace-stage-summary"+(stage.stages.length>1?" is-parallel":"")}>{stage.stages.length>1?<><span className="workspace-parallel-caption">并行</span>{stage.stages.map(s=><span key={s.stage}>{s.label} <strong>{s.progress}%</strong></span>)}</>:<>{stage.label}{stage.stages.length===1&&<> · <strong>{stage.stages[0].progress}%</strong></>}</>}</span>:<span className="workspace-stage-summary">{defaultProgress}</span>;
@@ -85,7 +90,7 @@ export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelec
             </div>
             <div className={'workspace-row-track gantt-track gantt-split-track gantt-status-'+(item?.status||'not_started').replaceAll('_','-')} style={track} role="cell">
               {row.phase?<>{datePoint(row,row.phase.targetDate,'目标')}{datePoint(row,row.phase.deliveredAt,'交付',true)}</>:item&&!row.archived?<GanttDateTracks plannedStart={item.plannedStart} plannedEnd={item.plannedEnd} actualStart={actual?.start} actualEnd={actual?.end} status={item.status} progress={item.progress||0} dates={nav.dates} cellWidth={nav.cellWidth} scheduleComplete={w?!!w.plannedStart&&!!w.plannedEnd:r?.scheduleComplete!==false} progressPlacement="inside" showProgress={false} stageLabel={w?undefined:stageTitle} forecast={ganttForecast(item.deliveryForecast,item.status,asOfDate)} interactionProps={summaryTooltip.bind(<WorkspaceGanttSummary row={row} asOfDate={asOfDate}/>)}/>:null}
-              {(progress||scheduleNote)&&<div className="workspace-progress-window" style={{'--progress-anchor':progressAnchor+'px'} as CSSProperties}><span className="workspace-progress-spacer"/><div className="workspace-row-progress" title={[w?defaultProgress:stageTitle||defaultProgress,scheduleNote,r?.delayed&&!w?'延期':''].filter(Boolean).join(' · ')}>{progress}{scheduleNote&&<small>{scheduleNote}</small>}{r?.delayed&&!w&&<small className="danger-text">延期</small>}</div></div>}
+              {(progress||scheduleNote)&&<div className="workspace-progress-window" style={{'--progress-anchor':progressAnchor+'px'} as CSSProperties}><span className="workspace-progress-spacer"/><div className="workspace-row-progress" title={[w?defaultProgress:stageTitle||defaultProgress,scheduleNote,r?.delayed&&!w?'延期':''].filter(Boolean).join(' · ')}>{progress}{scheduleNote&&(missingSchedule?<button type="button" className="schedule-gap-link" title={schedule?.title||'点击安排计划日期'} onClick={()=>{summaryTooltip.close();if(workspace)workspace.inspect(row.id,w||r?.executionMode==='direct'?'basic':'work');else onSelect(row);}}>{scheduleNote}</button>:<small>{scheduleNote}</small>)}{r?.delayed&&!w&&<small className="danger-text">延期</small>}</div></div>}
               {!!rowMilestones.length&&<GanttMilestoneRail items={rowMilestones} dates={nav.dates} cellWidth={nav.cellWidth} asOfDate={asOfDate} selection={milestoneSelection} inline/>}
               {today.visible&&<i className="gantt-today-line" style={{left:(today.offset+1)*nav.cellWidth}}/>}
             </div>

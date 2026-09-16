@@ -1,5 +1,6 @@
 import {useIsMutating} from '@tanstack/react-query';
 import {createPortal} from 'react-dom';
+import {CompactButtons} from './Button';
 import {useObjectDetail,readDetailMemory,writeDetailMemory} from './ObjectDetailContext';
 import {createContext, useContext, useId, useMemo, useState, type ReactNode} from 'react';
 import './detail-workspace.css';
@@ -9,7 +10,7 @@ export const DetailActionContext = createContext<DetailActionHost | null>(null);
 export const useDetailActionHost = () => useContext(DetailActionContext);
 
 const ToolbarContext=createContext<{element:HTMLDivElement|null;active:boolean}|null>(null);
-export function DetailToolbar({children}:{children:ReactNode}){const host=useContext(ToolbarContext);return host?host.active&&host.element?createPortal(children,host.element):null:children;}
+export function DetailToolbar({children}:{children:ReactNode}){const host=useContext(ToolbarContext);const content=<CompactButtons>{children}</CompactButtons>;return host?host.active&&host.element?createPortal(content,host.element):null:content;}
 
 /** Keep each section mounted so navigation preserves input and its scroll position. */
 export function DetailWorkspace({label, summary, tabs, initialTab, activeTab, onTabChange, disabled = false, children}: {
@@ -40,7 +41,7 @@ export function DetailWorkspace({label, summary, tabs, initialTab, activeTab, on
             event.preventDefault(); choose(tabs[next].id); document.getElementById(`${prefix}-tab-${tabs[next].id}`)?.focus();
           }}>{tab.label}</button>)}
         </nav>
-        <div className="detail-workspace-toolbar"><span>{tabs.find(tab=>tab.id===selected)?.description}</span><div className="panel-actions" ref={setToolbar}>{tabs.find(tab=>tab.id===selected)?.actions}</div></div>
+        <div className="detail-workspace-toolbar"><span>{tabs.find(tab=>tab.id===selected)?.description}</span><div className="panel-actions" ref={setToolbar}><CompactButtons>{tabs.find(tab=>tab.id===selected)?.actions}</CompactButtons></div></div>
         {tabs.map(tab => <section className="detail-workspace-panel" role="tabpanel" id={`${prefix}-panel-${tab.id}`} aria-labelledby={`${prefix}-tab-${tab.id}`} hidden={selected !== tab.id} key={tab.id} ref={element=>{if(element&&detail)element.scrollTop=readDetailMemory(detail.key+':scroll:'+tab.id,0);}} onScroll={event=>{if(detail)writeDetailMemory(detail.key+':scroll:'+tab.id,event.currentTarget.scrollTop);}}><ToolbarContext.Provider value={{element:toolbar,active:selected===tab.id}}>{tab.content}</ToolbarContext.Provider></section>)}
       </div>
       <div ref={setElement} className="detail-action-host" hidden={!actions.length} />

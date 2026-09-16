@@ -11,6 +11,24 @@ export function requirementScheduleLabel(requirement: Pick<Requirement, 'planned
   return requirement.plannedStart || requirement.plannedEnd ? '排期不完整' : '未排期';
 }
 
+export function requirementScheduleGaps(requirement: Requirement) {
+  if (requirement.status === 'cancelled') return [];
+  const items = requirement.executionMode === 'direct' ? [requirement] : requirement.workItems || [];
+  return items.filter(item => item.status !== 'cancelled').flatMap(item => {
+    const missing = [!item.plannedStart && '计划开始', !item.plannedEnd && '计划完成'].filter(Boolean) as string[];
+    return missing.length ? [{id:item.id, title:item.title, missing}] : [];
+  });
+}
+
+export function requirementScheduleSummary(requirement: Requirement) {
+  const gaps = requirementScheduleGaps(requirement);
+  return {
+    gaps,
+    label: gaps.length && requirement.executionMode !== 'direct' ? `${gaps.length} 项${requirement.status==='completed'?'缺计划':'待排期'}` : gaps.length&&requirement.status==='completed'?'未记录计划':requirementScheduleLabel(requirement),
+    title: gaps.length ? gaps.map(item => `${item.title}：缺少${item.missing.join('、')}`).join('；') : '排期尚不完整，暂时无法计算计划偏差',
+  };
+}
+
 export function requirementVarianceValue(requirement: Requirement): number | null {
   if (requirement.status === "planning" || requirement.status === "cancelled" || requirement.scheduleComplete === false || !requirement.plannedStart || !requirement.plannedEnd) return null;
   if (requirement.status === "completed") return requirement.effectiveEnd === null ? null : requirement.finishVariance;
@@ -22,7 +40,8 @@ export function requirementVarianceValue(requirement: Requirement): number | nul
 export function requirementVarianceDisplay(requirement: Requirement) {
   const progressDetail = `实际进度 ${requirement.progress}%，${requirement.plannedProgress === null ? '计划进度待确定' : `计划进度 ${requirement.plannedProgress}%`}`;
   if (requirement.status !== "cancelled" && (requirement.status === "planning" || requirement.scheduleComplete === false || !requirement.plannedStart || !requirement.plannedEnd)) {
-    return { label: requirementScheduleLabel(requirement), className: "muted", title: `${requirement.executionMode === 'direct' ? '需求' : '工作项'}排期尚不完整，暂时无法计算计划偏差` };
+    const schedule = requirementScheduleSummary(requirement);
+    return { label: schedule.label, className: "muted", title: schedule.title };
   }
   if (requirement.status === "cancelled") {
     return { label: "已取消", className: "muted", title: "已取消需求不再计算计划偏差" };

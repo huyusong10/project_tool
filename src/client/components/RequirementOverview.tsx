@@ -3,20 +3,23 @@ import { useRef, useState } from 'react';
 import { Info, ExternalLink } from 'lucide-react';
 import type { Requirement } from '../types';
 import { formatDateTime } from '../format';
-import { requirementRiskDisplay, requirementVarianceDisplay, requirementDeliveryDate, requirementScheduleLabel } from '../requirement-presentation';
+import { requirementRiskDisplay, requirementVarianceDisplay, requirementDeliveryDate, requirementScheduleSummary } from '../requirement-presentation';
+import { useProjectWorkspace } from '../project-workspace-context';
 import { DeliveryControls } from './DeliveryControls';
 import { ExecutionStageBadge } from './ExecutionStageBadge';
 import { TestSubmissionButton } from './TestSubmissionButton';
 import { AnchoredPopover } from './InlineEdit';
 
 export function RequirementOverview({ requirement: r, compact=false }: { requirement: Requirement; compact?:boolean }) {
+  const workspace = useProjectWorkspace();
   const [details, setDetails] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const closeDetails = () => { setDetails(false); anchor.current?.focus(); };
   const risk = requirementRiskDisplay(r), variance = requirementVarianceDisplay(r);
   const deliveryDate=requirementDeliveryDate(r);
   const direct = r.executionMode === 'direct';
-  const plannedLabel = r.scheduleComplete === false || r.plannedProgress === null ? requirementScheduleLabel(r) : `计划 ${r.plannedProgress}%`;
+  const schedule = requirementScheduleSummary(r);
+  const plannedLabel = r.scheduleComplete === false || r.plannedProgress === null ? schedule.label : `计划 ${r.plannedProgress}%`;
   const progressHint = `${plannedLabel} · ${direct ? '直接记录完成度' : '自动按工期加权'}`;
   return <section className={"requirement-overview"+(compact?" is-compact":"")} aria-label="需求概览">
     <div className="requirement-overview-top">
@@ -26,13 +29,13 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
       </div>
       <div className="requirement-overview-actions">
         <DeliveryControls requirement={r} /><TestSubmissionButton requirement={r} />
-        <Button variant="ghost" iconOnly ref={anchor} className="icon-button" title="进度计算说明" aria-label="需求资料与计算说明" aria-expanded={details} onClick={() => setDetails(v => !v)}><Info size={15} /></Button>
+        {!compact&&<Button variant="ghost" iconOnly ref={anchor} className="icon-button" title="进度计算说明" aria-label="需求资料与计算说明" aria-expanded={details} onClick={() => setDetails(v => !v)}><Info size={15} /></Button>}
       </div>
     </div>
     {compact?<dl className="object-facts">
       <div><dt>负责人</dt><dd>{r.ownerName||'待指定'}</dd></div>
       <div><dt>交付安排</dt><dd>{r.featureName||'未关联特性'} / {r.phaseName||'未分派阶段'}</dd></div>
-      <div><dt>计划日期</dt><dd>{r.plannedStart||'待定'} ～ {r.plannedEnd||'待定'}</dd></div>
+      <div><dt>{r.splitAt?'计划基线':'计划日期'}</dt><dd title={r.splitAt?'保留拆分前的需求计划；各工作项的日期在“工作项”中安排':undefined}>{r.plannedStart||'待定'} ～ {r.plannedEnd||'待定'}</dd></div>
       <div><dt>{deliveryDate.label}</dt><dd title={deliveryDate.help}>{deliveryDate.value}</dd></div>
       <div><dt>偏差</dt><dd title={variance.title}>{variance.label}</dd></div>
       <div><dt>风险</dt><dd title={r.riskReason}>{risk.label}</dd></div>
@@ -42,6 +45,11 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
       <article title={variance.title}><span>偏差</span><strong className={variance.className}>{variance.label}</strong></article>
       <article title={r.riskReason}><span>风险</span><span className={`risk-badge ${risk.className}`}>{risk.label}</span></article>
     </div>}
+    {!!schedule.gaps.length&&<section className="schedule-gaps" aria-label="待补全的排期">
+      <header><strong>{schedule.label}</strong>{workspace&&<Button size="compact" variant="secondary" aria-label={r.status==='completed'?'查看缺失的计划日期':'安排缺失的计划日期'} onClick={()=>workspace.inspect(r.id,direct?'basic':'work')}>{r.status==='completed'?'查看':'排期'}</Button>}</header>
+      <p>{r.status==='completed'?'历史计划日期缺失，无法计算完整的计划偏差。':'补齐以下日期后，才能估算整体完成时间与计划偏差。'}</p>
+      <ul>{schedule.gaps.map(item=><li key={item.id}>{item.title}：缺少{item.missing.join('、')}</li>)}</ul>
+    </section>}
     <AnchoredPopover anchorRef={anchor} open={details} onOutside={() => setDetails(false)} onEscape={closeDetails} width={420} className="requirement-overview-details">
       <header><strong>需求资料与计算说明</strong><Button variant="secondary" className="ghost-button" onClick={closeDetails}>关闭</Button></header>
       <dl>

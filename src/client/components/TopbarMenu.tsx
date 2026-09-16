@@ -1,9 +1,15 @@
 import { Button, MenuButtons, type ButtonVariant } from './Button';
-import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Children, Fragment, isValidElement, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Ellipsis } from 'lucide-react';
 import { AnchoredPopover } from './InlineEdit';
 import { WorkspaceRuntimeContext } from '../workspace-runtime';
 import { useLocation } from 'react-router-dom';
+
+function hasMenuContent(children:ReactNode):boolean {
+  return Children.toArray(children).some(child=>isValidElement<{children?:ReactNode}>(child)
+    ? child.type===Fragment?hasMenuContent(child.props.children):true
+    : typeof child==='string'&&child.trim().length>0);
+}
 
 /** Navigation menus share anchoring without taking ownership of a business field. */
 export function TopbarMenu({ label = '更多操作', icon = <Ellipsis size={17}/>, children, text, variant = "secondary", disabled = false }: {
@@ -13,7 +19,9 @@ export function TopbarMenu({ label = '更多操作', icon = <Ellipsis size={17}/
   const trigger = useRef<HTMLButtonElement>(null), menu = useRef<HTMLDivElement>(null);
   const runtime = useContext(WorkspaceRuntimeContext);
   const location = useLocation();
+  const available=hasMenuContent(children);
   useEffect(() => setOpen(false), [location.key]);
+  useEffect(()=>{if(!available)setOpen(false);},[available]);
   const close = (restore = false) => { setOpen(false); if (restore) trigger.current?.focus({ preventScroll: true }); };
   useEffect(() => {
     if (!open) return;
@@ -22,6 +30,7 @@ export function TopbarMenu({ label = '更多操作', icon = <Ellipsis size={17}/
     const unregister=runtime?.register({ element: () => menu.current, kind: 'menu', trigger: trigger.current, close: () => setOpen(false) });
     return()=>{cancelAnimationFrame(frame);unregister?.();};
   }, [open, runtime]);
+  if(!available)return null;
   return <div className="topbar-menu-trigger" data-workspace-zone="tools" data-preserve-edit>
     <Button variant={variant} iconOnly={!text} ref={trigger} type="button" className={text ? 'ghost-button topbar-menu-button' : 'ghost-button topbar-icon'} aria-label={label} title={label} disabled={disabled} aria-haspopup="menu" aria-expanded={open}
       onClick={() => setOpen(value => !value)} onKeyDown={event => { if(event.key==='Escape'&&open&&!event.nativeEvent.isComposing){event.preventDefault();event.stopPropagation();close(true);}else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); } }}>{icon}{text}</Button>

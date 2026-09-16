@@ -75,13 +75,14 @@
 .modal-body-workspace > .requirement-page {flex:1;min-height:0;padding:0;gap:0;display:flex;flex-direction:column}
 .modal-card-workspace > header {flex:none;gap:12px}
 .modal-card-workspace > header h2 {flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.detail-workspace-toolbar {display:flex;align-items:center;justify-content:space-between;flex:none;min-height:44px;padding:6px 16px;gap:12px;border-bottom:1px solid var(--border);background:var(--bg-surface-subtle)}
+.detail-workspace-toolbar {box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;flex:none;min-height:44px;padding:6px 16px;gap:12px;border-bottom:1px solid var(--border);background:var(--bg-surface-subtle)}
+.detail-toolbar-actions {display:flex;align-items:center;gap:8px;padding:0;margin:0;border:0;min-height:0}
+.detail-toolbar-actions .button-row {margin:0;gap:8px}
 .detail-workspace-toolbar:has(> span:empty):has(> .panel-actions:empty) {display:none}
 .detail-workspace-toolbar > span {color:var(--text-muted);font-size:12px;min-width:0}
 .detail-workspace-toolbar .panel-actions {justify-content:flex-end;margin-left:auto;gap:8px}
 .detail-workspace-panel .work-editor-modal {height:auto;max-height:none;overflow:visible}
 .detail-workspace-panel .work-editor-scroll {overflow:visible;max-height:none}
-.detail-workspace-panel:has(.work-arrangement-list) {padding-top:0}
 .work-editor-modal-toolbar {display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px}
 .work-arrangement-list {display:grid;min-width:0}
 .work-arrangement-row {display:grid;grid-template-columns:minmax(230px,1fr) auto;gap:4px 8px;padding:8px 12px;min-width:0;border-bottom:1px solid var(--border)}
@@ -116,6 +117,7 @@
   .work-arrangement-execution .work-inline-status {flex:1 0 100%}
   .detail-workspace-toolbar {padding:6px 12px;min-height:44px}
   .detail-workspace-toolbar > span {display:none}
+  .detail-workspace-toolbar:has(> .panel-actions:empty) > span {display:block}
   .detail-workspace-toolbar .panel-actions {flex-wrap:nowrap;overflow:auto}
   .detail-phase-row {flex-wrap:wrap}
   .detail-phase-row > span:last-child {margin-left:0;width:100%}
@@ -149,6 +151,14 @@
 .detail-workspace .object-facts > div {display:grid;grid-template-columns:88px minmax(0,1fr);align-content:start;gap:8px;padding:12px 0;border-bottom:1px solid var(--divider)}
 .detail-workspace .object-facts > .object-fact-wide {grid-column:1/-1}
 .detail-workspace .object-facts dd {margin:0;overflow-wrap:anywhere}
+.detail-workspace-panel > .requirement-overview.is-compact {padding:0;margin:0}
+.detail-workspace-panel > .requirement-overview.is-compact .requirement-overview-top {display:flex;align-items:center;flex-direction:row;flex-wrap:wrap;gap:8px;padding:0;margin:0 0 12px}
+.detail-workspace-panel > .requirement-overview.is-compact .requirement-overview-actions {width:auto;margin:0;margin-left:auto}
+.schedule-gaps {margin-top:12px;padding:10px 12px;border:1px solid var(--warning-border);border-radius:6px;background:var(--warning-bg);font-size:12px;color:var(--text-secondary)}
+.schedule-gaps > header {display:flex;align-items:center;justify-content:space-between;gap:8px}
+.schedule-gaps p {margin:4px 0}
+.schedule-gaps ul {margin:6px 0;padding-left:18px}
+.schedule-gaps li {padding:2px 0}
 .detail-dependencies {display:grid;gap:12px}
 .detail-dependency-group {border:1px solid var(--border);border-radius:6px;overflow:hidden}
 .detail-dependency-group > header {display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 12px;background:var(--bg-surface-subtle);font-size:13px}
@@ -170,6 +180,7 @@
  .work-arrangement-order {margin-left:auto}
  .work-arrangement-row:has(.work-arrangement-heading) .work-arrangement-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
  .work-arrangement-row:has(.work-arrangement-heading) .work-arrangement-field:first-child{grid-column:auto}
+ .work-arrangement-row:not(:has(.work-arrangement-heading)) .work-arrangement-field:first-child{grid-column:auto}
  .work-arrangement-field {flex-direction:column;align-items:stretch;gap:0}
  .work-arrangement-field > span {flex:none;font-size:11px}
  .detail-workspace-toolbar .work-editor-modal-toolbar > span {display:none}

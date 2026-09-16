@@ -177,7 +177,7 @@ export function WorkItemActions({
   };
   const canCorrect = canManage && onSaveDates && item.status !== "not_started";
   const canBackfill = !stateChangesDisabled && canManage && onCompleteAsPlanned && item.status === "not_started";
-  const canOpenMenu = Boolean(extraMenu) || (!stateChangesDisabled && item.status === "in_progress") || canCorrect || canBackfill || Boolean(!stateChangesDisabled && canManage && (["completed", "cancelled"].includes(item.status) || onCancel));
+  const canOpenMenu = Boolean(extraMenu) || canCorrect || canBackfill || Boolean(!stateChangesDisabled && canManage && (["completed", "cancelled"].includes(item.status) || onCancel));
   const backfillUnavailable = !item.plannedStart || !item.plannedEnd ? "请先补齐计划开始和完成日期。"
     : item.plannedStart > item.plannedEnd ? "计划完成日期不能早于开始日期。"
     : item.plannedEnd > today ? "计划尚未结束，暂不能补录完成。"
@@ -188,15 +188,18 @@ export function WorkItemActions({
     : textPanel === "complete" ? item.status !== "in_progress"
     : false;
   const blocked = needsRefresh || operationUnavailable || reviewRequired;
+  const finishReview=()=>{receiptRef.current=null;setReceipt(null);clearReceipt();unknownVersion.current=null;setReviewRequired(false);setUnknownNeedsRead(false);onWriteNeedsRecheckChange?.(false);changePanel(null);};
+  const finishReviewButton=receipt&&reviewRequired&&<Button variant="secondary" size="compact" aria-label="已核对，结束本次操作" title="已核对，结束本次操作" disabled={pending||needsRefresh} onClick={finishReview}>结束</Button>;
   const readNotice = <>
     {reviewRequired&&<p className="form-error">提交结果仍待核对，版本已变化。本窗口不再提交，请核对执行记录；已填内容保留。</p>}
     {refreshed && <p>已读取最新工作项（版本 {baselineVersion}），本次输入已保留，请核对后重试。</p>}
     {operationUnavailable && <p className="form-error" role="alert">工作项状态已变化，请关闭后重新选择操作。</p>}
     {readError && <p className="form-error" role="alert">{readError}</p>}
-    {needsRefresh && <Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void refresh()}>重新读取工作项</Button>}
+    {needsRefresh && <Button variant="secondary" type="button" className="ghost-button" disabled={pending} aria-label="重新读取工作项" title="重新读取工作项" onClick={() => void refresh()}>重读</Button>}
+    {finishReviewButton}
   </>;
   const textConfig: Record<TextPanel, { title: string; label: string; placeholder: string; confirm: string }> = {
-    complete: { title: "完成工作项", label: "完成说明（可选）", placeholder: "可选：补充交付结果或验证结论", confirm: "确认完成" },
+    complete: { title: "完成工作项", label: "完成说明（可选）", placeholder: "可选：补充交付结果或验证结论", confirm: "确定" },
   };
   const submitText = () => {
     if (!textPanel) return;
@@ -211,36 +214,36 @@ export function WorkItemActions({
 
   const secondaryActions = <>
         {extraMenu&&<div className="work-order-menu" onClick={()=>changePanel(null)}>{extraMenu}</div>}
-        {!stateChangesDisabled && item.status === "in_progress" && <Button variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} type="button" onClick={() => openPanel("complete")}><Check size={14} />完成并补充说明</Button>}
-        {canCorrect && <Button variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} type="button" onClick={() => openPanel("dates")}><CalendarDays size={14} />修正实际日期</Button>}
-        {canBackfill && <Button variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} type="button" onClick={() => openPanel("backfill")}><Check size={14} />按期完成（历史补录）</Button>}
-        {!stateChangesDisabled && canManage && ["completed", "cancelled"].includes(item.status) && <Button variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} onClick={() => void run(() => onAction("reopen", undefined, item.version), {successMessage:"工作项已重新打开",request:{action:"reopen",expectedVersion:item.version,body:{}}})}><RotateCcw size={14} />重开/返工</Button>}
-        {!stateChangesDisabled && canManage && onCancel && !["completed", "cancelled"].includes(item.status) && <Button variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} tone="danger" className="danger" onClick={() => { if (onCancel) void run(() => onCancel("", item.version), {successMessage:"工作项已取消",request:{action:"cancel",expectedVersion:item.version,body:{reason:""}}}); }}><CircleStop size={14} />取消工作项</Button>}
+        {canCorrect && <Button aria-label="修正实际日期" title="修正实际日期" variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} type="button" onClick={() => openPanel("dates")}><CalendarDays size={14} />修正</Button>}
+        {canBackfill && <Button aria-label="按期完成（历史补录）" title="按期完成（历史补录）" variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} type="button" onClick={() => openPanel("backfill")}><Check size={14} />补录</Button>}
+        {!stateChangesDisabled && canManage && ["completed", "cancelled"].includes(item.status) && <Button aria-label="重开/返工" title="重开/返工" variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} onClick={() => void run(() => onAction("reopen", undefined, item.version), {successMessage:"工作项已重新打开",request:{action:"reopen",expectedVersion:item.version,body:{}}})}><RotateCcw size={14} />重开</Button>}
+        {!stateChangesDisabled && canManage && onCancel && !["completed", "cancelled"].includes(item.status) && <Button aria-label="取消工作项" title="取消工作项" variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} tone="danger" className="danger" onClick={() => { if (onCancel) void run(() => onCancel("", item.version), {successMessage:"工作项已取消",request:{action:"cancel",expectedVersion:item.version,body:{reason:""}}}); }}><CircleStop size={14} />取消</Button>}
   </>;
 
   return <div className={"work-item-actions"+(presentation==='detail'?' work-item-actions-detail':'')} ref={anchorRef} onClick={(event) => event.stopPropagation()}>
     <div className="work-item-action-row">
-      {actionReviewBlocked || needsRefresh ? <>{terminalState}<Button variant="secondary" size="compact" width="wide" type="button" className="work-next-action" disabled={pending} onClick={() => void refresh()}>重新读取工作项</Button></> : <>
-        {!stateChangesDisabled && item.status === "not_started" && <Button variant="secondary" size="compact" width="wide" className="work-next-action execution-action" data-action="start" disabled={pending || preparingStart || Boolean(startDisabledReason)} title={startDisabledReason} onClick={() => void start()}><Play size={14} />{startDisabledReason ? "暂不可开始" : pending ? "提交中" : "开始"}</Button>}
-        {!stateChangesDisabled && item.status === "in_progress" && <Button variant="soft" tone="success" size="compact" width="wide" className="work-next-action execution-action" data-action="complete" disabled={pending} onClick={() => void run(() => onAction("complete", undefined, item.version), {successMessage:"工作项已完成",request:{action:"complete",expectedVersion:item.version,body:{}}})}><Check size={14} />完成</Button>}
+      {actionReviewBlocked || needsRefresh ? <>{terminalState}<Button variant="secondary" size="compact" width="action" type="button" className="work-next-action" disabled={pending} aria-label="重新读取工作项" title="重新读取工作项" onClick={() => void refresh()}>重读</Button></> : <>
+        {!stateChangesDisabled && item.status === "not_started" && <Button variant="secondary" size="compact" width="action" className="work-next-action execution-action" data-action="start" busy={pending || preparingStart} disabled={pending || preparingStart || Boolean(startDisabledReason)} title={startDisabledReason} onClick={() => void start()}><Play size={14} />开始</Button>}
+        {!stateChangesDisabled && item.status === "in_progress" && <Button variant="soft" tone="success" size="compact" width="action" className="work-next-action execution-action" data-action="complete" disabled={pending} onClick={() => openPanel("complete")}><Check size={14} />完成</Button>}
         {presentation!=="detail"&&terminalState}
         {canOpenMenu && presentation!=="detail" && <Button size="compact" variant="ghost" iconOnly type="button" ref={menuRef} className="action-menu-trigger" aria-label="更多工作项操作" title="更多操作" aria-haspopup="dialog" aria-expanded={panel !== null} disabled={pending} onClick={() => panel === "menu" ? changePanel(null) : openPanel("menu")}><MoreHorizontal size={16} /></Button>}
       </>}
     </div>
     {presentation==="detail"&&canOpenMenu&&<div className="work-item-secondary-actions">{secondaryActions}</div>}
     {actionReviewBlocked && panel === null && <small className="work-action-error" role="alert">{unknownNeedsRead || writeNeedsRecheck ? "工作项操作结果待核对" : "提交结果仍待核对，工作项版本已变化"}{readError ? `：${readError}` : ""}</small>}
-    {receipt&&reviewRequired&&<Button variant="secondary" size="compact" disabled={pending||needsRefresh} onClick={()=>{receiptRef.current=null;setReceipt(null);clearReceipt();unknownVersion.current=null;setReviewRequired(false);setUnknownNeedsRead(false);onWriteNeedsRecheckChange?.(false);changePanel(null);}}>已核对，结束本次操作</Button>}
+    {!panel&&finishReviewButton}
     {error && panel === null && !actionReviewBlocked && <small className="work-action-error" title={error}>{error}</small>}
     {startRequirement&&<StartAssignmentDialog requirement={startRequirement} workItem={item} pending={pending} blocked={actionReviewBlocked||needsRefresh} recovery={(actionReviewBlocked||needsRefresh)&&<p className="warning-banner">请先关闭此窗口，读取最新状态并核对执行记录，再继续操作。</p>} error={error} onClose={()=>setStartRequirement(null)} onStart={assignment=>run(()=>onAction('start',undefined,item.version,undefined,assignment),{successMessage:'工作项已开始',request:{action:'start',expectedVersion:item.version,body:{...assignment}}}).then(saved=>{if(saved)setStartRequirement(null);return !!saved;})}/>}
     <WorkActionSurface anchorRef={panel==='menu'?menuRef:anchorRef} panel={panel} pending={pending} onClose={() => { if (!pending) changePanel(null); }}>
       {panel === "menu" && secondaryActions}
       {textPanel && <form className="inline-action-form" onSubmit={(event) => { event.preventDefault(); submitText(); }}>
         <header><strong>{textConfig[textPanel].title}</strong><Button variant="ghost" iconOnly type="button" disabled={pending} onClick={() => changePanel(null)} aria-label="关闭"><X size={16} /></Button></header>
+        <p className="work-complete-summary">确认完成 <strong>{item.title}</strong>？</p>
         <label><span>{textConfig[textPanel].label}</span><textarea autoFocus readOnly={pending} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={textConfig[textPanel].placeholder} /></label>
         {textPanel === "complete" && <small className="form-hint">可留空，系统会记录“完成工作项”</small>}
         {error && <p className="form-error">{error}</p>}
         {readNotice}
-        <footer><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => {clearInput();setInput(value=>({...value,action:null,reason:''}));changePanel(null);}}>取消</Button><Button busy={(pending)} aria-label={pending ? "提交中" : textConfig[textPanel].confirm} variant="soft" tone="success" type="submit" className="primary-button" disabled={pending || blocked}>{textConfig[textPanel].confirm}</Button></footer>
+        <footer><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => {clearInput();setInput(value=>({...value,action:null,reason:''}));changePanel(null);}}>取消</Button><Button busy={(pending)} aria-label={pending ? "提交中" : "确认完成"} variant="soft" tone="success" type="submit" className="primary-button" disabled={pending || blocked}>{textConfig[textPanel].confirm}</Button></footer>
       </form>}
       {panel === "dates" && <form className="inline-action-form" noValidate onSubmit={(event) => {
         event.preventDefault();

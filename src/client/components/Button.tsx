@@ -15,13 +15,18 @@ export type ButtonProps = Omit<ComponentProps<'button'>, 'style' | 'color'> & {
 };
 
 const MenuButtonsContext = createContext(false);
+const ButtonSizeContext = createContext<ButtonSize>('medium');
+export function CompactButtons({children}:{children:ReactNode}) {
+  return <ButtonSizeContext.Provider value="compact">{children}</ButtonSizeContext.Provider>;
+}
 export function MenuButtons({children, enabled = true}: {children: ReactNode; enabled?: boolean}) {
   return <MenuButtonsContext.Provider value={enabled}>{children}</MenuButtonsContext.Provider>;
 }
 
 /** Action controls use presets; className is for placement and existing DOM hooks. */
-export function Button({ variant = 'secondary', tone = variant === 'primary' || variant === 'soft' || variant === 'link' ? 'primary' : 'neutral', size = 'medium', iconOnly = false, width = 'auto', busy = false, disabled, type = 'button', className = '', children, ...props }: ButtonProps) {
+export function Button({ variant = 'secondary', tone = variant === 'primary' || variant === 'soft' || variant === 'link' ? 'primary' : 'neutral', size: requestedSize, iconOnly = false, width = 'auto', busy = false, disabled, type = 'button', className = '', children, ...props }: ButtonProps) {
   const menu = useContext(MenuButtonsContext);
+  const defaultSize=useContext(ButtonSizeContext),size=requestedSize||defaultSize;
   return <button {...props} type={type} className={`ui-button ${className}`.trim()} data-variant={menu ? 'menu' : variant} data-tone={menu && tone === 'primary' ? 'neutral' : tone} data-size={size} data-icon-only={!menu && iconOnly || undefined} data-width={menu ? 'block' : width} data-busy={busy || undefined} aria-busy={busy || props['aria-busy']} disabled={disabled || busy}>{children}</button>;
 }
 

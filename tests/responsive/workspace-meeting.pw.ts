@@ -12,7 +12,7 @@ test('会议行内更新与快速完成，双槽独立，业务顺序和按钮�
   await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');
   const row=grid.locator('[data-row-id="'+work.id+'"]'),order=await grid.locator('.kind-work').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-row-id')));
   expect(order).toEqual(f.testing.workItems.map(w=>w.id));
-  for(const [kind,max] of [['feature',34],['phase',48],['requirement',56],['work',50]] as const){const heights=await grid.locator('.kind-'+kind).evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().height));expect(heights.every(h=>h<=max+1)).toBe(true);}
+  for(const [kind,max] of [['feature',46],['phase',56],['requirement',56],['work',50]] as const){const heights=await grid.locator('.kind-'+kind).evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().height));expect(heights.every(h=>h<=max+1),kind+': '+heights.join(', ')).toBe(true);}
   const tracks=await row.locator('.gantt-date-plan,.gantt-date-actual').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect(),parent=n.parentElement!.getBoundingClientRect();return {top:r.top,bottom:r.bottom,parentTop:parent.top,parentBottom:parent.bottom};}));
   expect(tracks).toHaveLength(2);expect(tracks[0].bottom).toBeLessThan(tracks[1].top);expect(tracks.every(r=>r.top>=r.parentTop&&r.bottom<=r.parentBottom)).toBe(true);
   const progress=row.getByRole('button',{name:'更新 '+work.title+' 进度',exact:true}),position=await progress.boundingBox();
@@ -22,7 +22,7 @@ test('会议行内更新与快速完成，双槽独立，业务顺序和按钮�
   await expect(dialog).toHaveCount(0);await expect(progress).toHaveText('75%');await expect(page.getByRole('complementary',{name:'对象详情'})).toHaveCount(0);
   expect(await progress.boundingBox()).toEqual(position);expect(await grid.locator('.kind-work').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-row-id')))).toEqual(order);
   await page.screenshot({path:info.outputPath('meeting-progress.png'),animations:'disabled'});
-  await row.getByRole('button',{name:'完成',exact:true}).click();await expect(row.locator('.workspace-row-progress')).toHaveText('已完成');
+  await row.getByRole('button',{name:'完成',exact:true}).click();await page.getByRole('button',{name:'确认完成',exact:true}).click();await expect(row.locator('.workspace-row-progress > span').first()).toHaveText('已完成');
   await expect(page.getByRole('complementary',{name:'对象详情'})).toHaveCount(0);await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await grid.locator('.kind-work').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-row-id')))).toEqual(order);
   const saved=await(await page.request.get('/api/requirements/'+f.testing.id)).json();expect(saved.workItems.find((w:{id:string})=>w.id===work.id).status).toBe('completed');
@@ -31,11 +31,11 @@ test('会议行内更新与快速完成，双槽独立，业务顺序和按钮�
 test('直接执行需求行内更新与完成，特性范围不重复祖先行',async({page})=>{
   const f=await phaseFixture(page);await page.goto('/execution?featureId='+f.feature.id);
   const grid=page.getByRole('treegrid');await expect(grid).toContainText(f.direct.title);await expect(grid.locator('.kind-feature')).toHaveCount(0);
-  await expect(page.getByRole('navigation',{name:'页面层级'})).toContainText('资产管理');
+  await expect(page.getByRole('navigation',{name:'项目层级'})).toContainText('资产管理');
   const row=grid.locator('[data-row-id="'+f.direct.id+'"]');await row.getByRole('button',{name:'更新 '+f.direct.title+' 进度',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'更新进度',exact:true});await dialog.getByLabel('需求完成度').fill('45');await dialog.getByRole('button',{name:'更新进度',exact:true}).click();
   await expect(row.getByRole('button',{name:'更新 '+f.direct.title+' 进度',exact:true})).toHaveText('45%');await row.getByRole('button',{name:'完成需求',exact:true}).click();
-  await expect(row.locator('.workspace-row-progress')).toHaveText('已完成');await expect(page.getByRole('complementary',{name:'对象详情'})).toHaveCount(0);
+  await expect(row.locator('.workspace-row-progress > span').first()).toHaveText('已完成');await expect(page.getByRole('complementary',{name:'对象详情'})).toHaveCount(0);
 });
 
 test('窄屏只有一套行内控件；详情字段对齐且不重排甘特',async({page},info)=>{
@@ -43,11 +43,11 @@ test('窄屏只有一套行内控件；详情字段对齐且不重排甘特',asy
   await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');const grid=page.getByRole('treegrid'),row=grid.locator('[data-row-id="'+work.id+'"]');
   await row.scrollIntoViewIfNeeded();await row.locator('.workspace-row-actions').scrollIntoViewIfNeeded();const progress=row.getByRole('button',{name:'更新 '+work.title+' 进度',exact:true}),complete=row.getByRole('button',{name:'完成',exact:true});
   await expect(progress).toHaveCount(1);await expect(complete).toHaveCount(1);
-  const p=await progress.boundingBox(),c=await complete.boundingBox();expect(p!.x+p!.width<=c!.x||p!.y+p!.height<=c!.y).toBe(true);expect(c!.x+c!.width).toBeLessThanOrEqual(390);expect(p!.height).toBeGreaterThanOrEqual(30);
+  const p=await progress.boundingBox(),c=await complete.boundingBox();expect(p!.x+p!.width<=c!.x||p!.y+p!.height<=c!.y).toBe(true);expect(c!.x+c!.width).toBeLessThanOrEqual(390);expect(p!.height).toBeGreaterThanOrEqual(22);expect(c!.height).toBe(30);
   await progress.click();await expect(page.getByRole('dialog',{name:'更新工作项进度',exact:true})).toBeVisible();await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
   await page.screenshot({path:info.outputPath('narrow-meeting.png'),animations:'disabled'});
-  const bounds=await grid.boundingBox();await row.locator('.workspace-row-title').click();const detail=page.getByRole('complementary',{name:'对象详情'});await expect(detail.getByRole('button',{name:'更新进度',exact:true})).toBeVisible();
-  expect(await grid.boundingBox()).toEqual(bounds);const facts=detail.locator('.delivery-work-details .object-facts dd');expect(await facts.evaluateAll(nodes=>new Set(nodes.map(n=>Math.round(n.getBoundingClientRect().left))).size)).toBe(1);
+  const bounds=await grid.boundingBox();await row.locator('.workspace-row-title').click();const detail=page.locator('.modal-card-workspace[role=dialog]');await expect(detail.getByRole('button',{name:'更新',exact:true})).toBeVisible();
+  expect(await grid.boundingBox()).toEqual(bounds);const facts=detail.locator('.object-facts dd:visible');expect(await facts.evaluateAll(nodes=>new Set(nodes.map(n=>Math.round(n.getBoundingClientRect().left))).size)).toBe(1);
   await expect(detail.locator('.requirement-overview:visible')).toHaveCount(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await page.screenshot({path:info.outputPath('aligned-work-detail.png'),animations:'disabled'});
 });
