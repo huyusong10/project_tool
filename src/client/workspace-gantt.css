@@ -65,7 +65,7 @@
 .workspace-delivery-point.is-delivered{top:25px;color:var(--gantt-completed)}.workspace-delivery-point.is-delivered i{background:var(--gantt-completed);border-color:var(--gantt-completed)}
 .work-progress-link{display:inline-flex;align-items:center;justify-content:center;min-width:50px;min-height:30px;padding:2px 8px;background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:5px;color:var(--accent-ink);font-size:14px;line-height:20px;font-weight:650;font-variant-numeric:tabular-nums;cursor:pointer}
 .work-progress-link:hover{background:var(--accent-soft)}
-.workspace-row-actions .work-next-action{min-width:60px;background:var(--gantt-running);border-color:var(--gantt-running);color:var(--gantt-on-bar)}
+.workspace-row-actions .work-next-action{min-width:60px;background:var(--action-bg,var(--gantt-running));border-color:var(--action-border,var(--gantt-running));color:var(--action-ink,var(--gantt-on-bar))}
 .workspace-row-tools>.ghost-button{min-height:28px;font-size:11px;padding:3px 6px;white-space:nowrap}
 .workspace-open-work{width:90px;max-width:100%;min-width:0;display:flex;justify-content:center;align-items:center;gap:6px}
 .workspace-open-work span{font-size:10px;font-variant-numeric:tabular-nums;color:var(--text-muted)}
@@ -103,7 +103,7 @@
 .requirement-overview.is-compact{border:0;padding:0;background:none;border-radius:0}
 .requirement-overview.is-compact .requirement-overview-top{align-items:flex-start;flex-direction:column;gap:10px;margin-bottom:12px;padding:0 0 10px}
 .requirement-overview.is-compact .requirement-overview-actions{flex-wrap:wrap;gap:8px;justify-content:flex-start;width:100%}
-.workspace-gantt .workspace-row-actions .primary-button:not(.danger-button){font-size:12px;min-height:30px;padding:4px 8px;box-shadow:none;background:var(--gantt-running);color:var(--gantt-on-bar);border-color:var(--gantt-running);white-space:nowrap}
+.workspace-gantt .workspace-row-actions .primary-button:not(.danger-button){font-size:12px;min-height:30px;padding:4px 8px;box-shadow:none;background:var(--action-bg,var(--gantt-running));color:var(--action-ink,var(--gantt-on-bar));border-color:var(--action-border,var(--gantt-running));white-space:nowrap}
 .workspace-row-actions .work-next-action:only-child{min-width:0;max-width:100%;font-size:12px;white-space:normal;line-height:1.2}
 
 .workspace-gantt-row.has-milestones .workspace-row-track{--date-plan-top:28px;--date-actual-top:41px}
@@ -118,7 +118,7 @@
 .workspace-plan-legend .forecast i{height:7px;background:none;opacity:1;border:1.5px dashed var(--gantt-delay);box-sizing:border-box}
 .workspace-gantt-row .gantt-milestone-label{font-weight:500;border-color:color-mix(in srgb,var(--milestone-color) 28%,var(--border));background:var(--bg-surface-subtle)}
 .workspace-row-actions .action-menu-trigger{border:1px solid var(--border);border-radius:5px;background:var(--bg-surface);color:var(--text-secondary)}
-.workspace-row-actions .work-next-action:hover:not(:disabled),.workspace-row-actions .work-next-action:focus-visible{background:var(--gantt-running);border-color:var(--gantt-running);color:var(--gantt-on-bar);filter:brightness(.9)}
+.workspace-row-actions .work-next-action:hover:not(:disabled),.workspace-row-actions .work-next-action:focus-visible{background:var(--action-bg,var(--gantt-running));border-color:var(--action-border,var(--gantt-running));color:var(--action-ink,var(--gantt-on-bar));filter:brightness(.9)}
 .workspace-row-actions .primary-button:hover:not(:disabled){filter:brightness(.92)}
 .workspace-row-actions button:focus-visible,.work-progress-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .workspace-row-progress:has(.work-progress-link){overflow:visible}

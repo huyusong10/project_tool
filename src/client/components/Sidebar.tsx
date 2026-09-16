@@ -1,7 +1,8 @@
+import {workspaceParams} from '../workspace-location';
 import {isProjectWorkspace} from '../project-workspace-navigation';
 import { useEffect, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { SystemBranding } from "../types";
 import { useProjects, useSession } from "../app-context";
@@ -51,10 +52,13 @@ export function Sidebar({ collapsed, onToggle, onNavigate, branding, ready }: { 
     if (collapsed) setTooltip({ anchor, label, group });
   };
   const location=useLocation();
+  const home=selectedProjectId?'/?'+workspaceParams({projectId:selectedProjectId,view:'list',scope:{kind:'project',id:selectedProjectId}}):'/';
   return (
     <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}`} aria-label="主导航">
       <div className="brand-mark">
-        {branding ? <BrandLogo branding={branding} /> : <span className="brand-logo shell-placeholder" aria-hidden="true"/>}
+        <Link to={home} className="brand-home" aria-label="返回主页" title="返回项目主页" onClick={onNavigate}>
+          {branding ? <BrandLogo branding={branding} /> : <span className="brand-logo shell-placeholder" aria-hidden="true"/>}
+        </Link>
         <strong className="brand-name">{branding?.systemName || <span className="brand-name-placeholder shell-placeholder" aria-hidden="true"/>}</strong>
         <button
           type="button"

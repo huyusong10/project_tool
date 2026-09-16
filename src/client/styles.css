@@ -22,6 +22,19 @@
   scrollbar-gutter: stable;
 }
 
+.brand-home{display:block;flex:0 0 40px;width:40px;height:40px;border-radius:var(--radius-lg);text-decoration:none}
+.brand-home:hover .brand-logo{filter:brightness(1.08)}
+.brand-home:focus-visible{outline:2px solid var(--sidebar-text-strong);outline-offset:4px}
+
+/* Execution actions keep their colour meaning in Gantt rows and object details. */
+button.execution-action[data-action]{--action-bg:var(--gantt-running);--action-ink:var(--gantt-on-bar);--action-border:var(--gantt-running);background:var(--action-bg);color:var(--action-ink);border:1px solid var(--action-border);font-weight:600;box-shadow:none;transform:none}
+button.execution-action[data-action=complete]{--action-bg:var(--gantt-completed);--action-border:var(--gantt-completed)}
+button.execution-action[data-action=progress]{--action-bg:var(--accent-soft);--action-ink:var(--accent-ink);--action-border:var(--accent-border)}
+button.execution-action[data-action=rework]{--action-bg:var(--warning-bg);--action-ink:var(--warning-text);--action-border:var(--warning-border)}
+button.execution-action[data-action]:hover:not(:disabled),button.execution-action[data-action]:focus-visible{background:var(--action-bg);color:var(--action-ink);border-color:var(--action-border);filter:brightness(.94);box-shadow:none;transform:none}
+button.execution-action[data-action]:focus-visible{outline:2px solid var(--action-border);outline-offset:2px}
+button.execution-action[data-action]:disabled{opacity:.55;filter:none;transform:none}
+
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 1080px; min-height: 100vh; font-family: var(--font-sans); background: var(--bg-page); font-size: 14px; line-height: 1.55; }
 button, input, select, textarea, optgroup { font: inherit; }

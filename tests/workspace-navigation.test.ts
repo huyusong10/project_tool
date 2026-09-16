@@ -4,7 +4,7 @@ import {workspaceSummary} from '../src/client/workspace-summary';
 import {reorderSelection} from '../src/client/outline-model';
 import type {PathAnalysis} from '../src/shared/paths';
 
-const data={projectId:'p',projectName:'项目',requirements:[
+const data={asOfDate:'2026-09-16',projectId:'p',projectName:'项目',requirements:[
   {id:'a',title:'需求 A',featureId:'f',phaseId:'one',status:'in_progress'},
   {id:'b',title:'需求 B',featureId:'f',phaseId:null,status:'not_started'},
   {id:'c',title:'取消需求',featureId:'f',phaseId:'one',status:'cancelled'},
@@ -47,4 +47,21 @@ describe('范围概览',()=>{
 it('多选拖拽保留来源顺序，不使用勾选顺序',()=>{
   expect(reorderSelection(['a','b','c','d','e'],['d','b'],'a')).toEqual(['b','d','a','c','e']);
   expect(reorderSelection(['a','b','c','d','e'],['b','a'],'e',true)).toEqual(['c','d','e','a','b']);
+});
+
+it('近期完成按业务日期计算，排除取消、返工和窗口外记录，归档贡献仍去重',()=>{
+  const copy=structuredClone(data);
+  copy.requirements.push(
+    {id:'boundary',status:'completed',featureId:'f',phaseId:'one',executionCompletedAt:'2026-09-10'} as never,
+    {id:'old',status:'completed',featureId:'f',phaseId:'one',executionCompletedAt:'2026-09-09'} as never,
+    {id:'future',status:'completed',featureId:'f',phaseId:'one',executionCompletedAt:'2026-09-17'} as never,
+    {id:'reworked',status:'in_progress',featureId:'f',phaseId:'one',executionCompletedAt:'2026-09-16'} as never,
+    {id:'cancelled-recent',status:'cancelled',featureId:'f',phaseId:'one',executionCompletedAt:'2026-09-16'} as never,
+  );
+  for(const phase of copy.featureContext!.overview.features[0].phases!)Object.assign(phase.requirements[0],{executionCompletedAt:'2026-09-16'});
+  const summary=workspaceSummary(location('project','p'),copy);
+  expect(summary.recentFrom).toBe('2026-09-10');
+  expect(summary.recentCompleted.map(r=>r.id)).toEqual(['boundary','done']);
+  expect(summary.inProgress.map(r=>r.id)).toEqual(['a','reworked']);
+  expect(workspaceSummary(location('unphased','f'),copy).recentCompleted).toEqual([]);
 });

@@ -193,8 +193,8 @@ export function WorkItemActions({
   return <div className="work-item-actions" ref={anchorRef} onClick={(event) => event.stopPropagation()}>
     <div className="work-item-action-row">
       {actionReviewBlocked || needsRefresh ? <>{terminalState}<button type="button" className="work-next-action" disabled={pending} onClick={() => void refresh()}>重新读取工作项</button></> : <>
-        {!stateChangesDisabled && item.status === "not_started" && <button className="work-next-action" disabled={pending || preparingStart || Boolean(startDisabledReason)} title={startDisabledReason} onClick={() => void start()}><Play size={14} />{startDisabledReason ? "暂不可开始" : pending ? "提交中" : "开始"}</button>}
-        {!stateChangesDisabled && item.status === "in_progress" && <button className="work-next-action" disabled={pending} onClick={() => void run(() => onAction("complete", undefined, item.version), {successMessage:"工作项已完成"})}><Check size={14} />完成</button>}
+        {!stateChangesDisabled && item.status === "not_started" && <button className="work-next-action execution-action" data-action="start" disabled={pending || preparingStart || Boolean(startDisabledReason)} title={startDisabledReason} onClick={() => void start()}><Play size={14} />{startDisabledReason ? "暂不可开始" : pending ? "提交中" : "开始"}</button>}
+        {!stateChangesDisabled && item.status === "in_progress" && <button className="work-next-action execution-action" data-action="complete" disabled={pending} onClick={() => void run(() => onAction("complete", undefined, item.version), {successMessage:"工作项已完成"})}><Check size={14} />完成</button>}
         {terminalState}
         {canOpenMenu && <button type="button" className="action-menu-trigger" aria-label="更多工作项操作" title="更多操作" aria-haspopup="dialog" aria-expanded={panel !== null} disabled={pending} onClick={() => panel === "menu" ? changePanel(null) : openPanel("menu")}><MoreHorizontal size={16} /></button>}
       </>}

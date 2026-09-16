@@ -1,3 +1,4 @@
+import {PencilLine} from 'lucide-react';
 import {DetailWorkspace} from "./DetailWorkspace";
 import {useState,type ReactNode} from 'react';
 import {useSession} from '../app-context';
@@ -18,7 +19,7 @@ export function RequirementWorkExecution({requirement,people,progress,children}:
   const canUpdate=canOperate&&!['completed','cancelled'].includes(requirement.status);
   const actions=requirement.status==='completed'&&canOperate
     ?<DeliveryControls requirement={requirement}>{({actions})=>actions}</DeliveryControls>
-    :canUpdate?<button className="primary-button" onClick={()=>setOpen(true)}>更新进展</button>:null;
+    :canUpdate?<button className="primary-button execution-action" data-action="progress" onClick={()=>setOpen(true)}><PencilLine size={14}/>更新进展</button>:null;
   return <>
     {children({actions,progress:canUpdate?<button className="workspace-requirement-progress" aria-label={'更新 '+requirement.title+' 进展'} onClick={()=>setOpen(true)}>{progress}</button>:progress})}
     {open&&<Modal title={'更新进展 · '+requirement.title} width={720} layout="workspace" onClose={()=>setOpen(false)}><DetailWorkspace label="需求执行" tabs={[{id:"execution",label:"工作项进展",content:<RequirementExecutionItems id={requirement.id} people={people}/>}]}/></Modal>}

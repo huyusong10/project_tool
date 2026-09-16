@@ -1,5 +1,6 @@
 import type {PathAnalysis,PathBlocker,PathRequirement} from '../shared/paths';
 import {scopeRequirementIds,workspaceAncestors,type WorkspaceLocation} from './workspace-location';
+import {dashboardWindow,matchesDashboardScope} from '../shared/dashboard';
 
 export function workspaceSummary(location:WorkspaceLocation,data:PathAnalysis){
   const ids=scopeRequirementIds(location.scope,data),features=data.featureContext?.overview.features||[];
@@ -16,5 +17,8 @@ export function workspaceSummary(location:WorkspaceLocation,data:PathAnalysis){
   }
   const requirements=[...contributions.values()],active=new Set(requirements.filter(r=>!['completed','cancelled'].includes(r.status)).map(r=>r.id)),blockers=[...merged.values()];
   const blockedIds=new Set(blockers.flatMap(b=>[b.requirementId,...b.affectedRequirementIds].filter(id=>active.has(id))));
-  return {ids,requirements,phases,hasPhases,blockers,blockedIds,unphased:requirements.filter(r=>!r.phaseId&&!r.deletedAt)};
+  const window=dashboardWindow(data.asOfDate);
+  const recentCompleted=requirements.filter(r=>matchesDashboardScope(r,'recent_completed',window));
+  const inProgress=requirements.filter(r=>!r.deletedAt&&r.status==='in_progress');
+  return {ids,requirements,phases,hasPhases,blockers,blockedIds,recentCompleted,inProgress,recentFrom:window.recentFrom,unphased:requirements.filter(r=>!r.phaseId&&!r.deletedAt)};
 }
