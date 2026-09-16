@@ -32,7 +32,7 @@ const json = (value: unknown) => ({
 });
 
 function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown) => void) {
-  const server = new McpServer({ name: 'project-manage', version: '1.4.1' });
+  const server = new McpServer({ name: 'project-manage', version: '1.5.0' });
   const inputSchemas = new Map<string, StandardSchemaWithJSON>();
   const registerTool = <InputArgs extends StandardSchemaWithJSON>(
     name: string,

@@ -2,6 +2,8 @@
 
 端点为 `/mcp`，使用无状态 HTTP POST 和个人 Token。Token 继承账号的项目权限。成功数据在 `structuredContent.result`；业务错误返回 `isError: true`、`structuredContent.error` 和 `statusCode`。
 
+MCP 服务版本 `1.5.0` 发布各对象的多链接参数。构建更新服务文件和 Codex 本地 skill；运行中的服务须重新启动，Codex 须重新连接后读取新版本和工具参数。连接地址、Token 不变。
+
 Agent 录入流程维护在 [project-manage-intake skill](../skills/project-manage-intake/SKILL.md)。修改本文涉及的工具、参数或业务口径时，同步更新 skill；生产构建会安装仓库中的版本。
 
 ## 选择工具

@@ -80,4 +80,4 @@ list_work_items 支持 featureId、phaseId、workStage；phaseId=unassigned 查�
 
 清单顺序与批量操作：`order_outline` 传对象类型、父级和完整同级 `items:[{id,expectedVersion}]`；`archive_features` 原子归档所选特性。排序和 `update_requirement_placement` 返回 `undo`，可交给 `restore_outline` 核对版本后撤销；涉及已推进 Phase 时填写原因。`query_requirements(sort=manual)` 读取人工顺序，默认仍按名称。系统归类以 `kind=other` 标识，每项目最多一个，置底且不能改名、归档、删除或新建 Phase／特性规划关系；历史引用保留。
 
-特性、Phase、需求和工作项均可关联多个文档或任务。优先使用 `referenceLinks`；省略保留原值，空数组清空，顺序按数组保存。MPS、MDS、Confluence、Jira 和自定义资料可混合添加；类型只用于展示。同一对象最多 20 条 HTTP(S) 链接，不重复添加相同地址。旧需求 `referenceUrl` 仍兼容，单独修改只影响列表首项，不清空其他链接。
+MCP 服务 `1.5.0` 的特性、Phase、需求和工作项均可关联多个文档或任务。优先使用 `referenceLinks`；省略保留原值，空数组清空，顺序按数组保存。MPS、MDS、Confluence、Jira 和自定义资料可混合添加；类型只用于展示。同一对象最多 20 条 HTTP(S) 链接，不重复添加相同地址。旧需求 `referenceUrl` 仍兼容，单独修改只影响列表首项，不清空其他链接。工具参数缺少 `referenceLinks` 时先确认服务已更新并重新连接 MCP，不用旧单链接字段替代整个列表。

@@ -7,7 +7,7 @@ import type {FastifyInstance} from 'fastify';
 import type {Feature,ImportPreview,ImportReceipt} from '../src/shared/intake';
 import type {FeaturePhase} from '../src/shared/feature-phases';
 import type {Requirement} from '../src/client/types';
-import {mcpRequest} from './mcp-request';
+import {mcpRequest,mcpRpcRequest} from './mcp-request';
 
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'pm-mcp-partial-')),password='partial-update-test';
 Object.assign(process.env,{DB_PATH:path.join(directory,'test.db'),BACKUP_DIR:path.join(directory,'backups'),WEB_DIST_DIR:path.join(directory,'web'),SEED_DEMO:'0',NODE_ENV:'test',
@@ -41,6 +41,17 @@ async function saveFeature(projectId:string,name:string,extra:Record<string,unkn
 async function detail(id:string){return call<Requirement>('get_requirement',{id});}
 
 const relatedLinks=[{title:'MPS 总体目标',url:'https://docs.example.com/mps',kind:'document'},{title:'自定义接口设计',url:'https://docs.example.com/mds',kind:'document'},{title:'实现任务',url:'https://jira.example.com/browse/DEV-33',kind:'task'}];
+it('MCP 握手发布新版版本，客户端可发现各对象的多链接输入',async()=>{
+  const hello=await mcpRpcRequest(origin,token,'initialize',{protocolVersion:'2026-07-28',capabilities:{},clientInfo:{name:'links-contract-test',version:'1.0.0'}});
+  expect(hello.statusCode,hello.body).toBe(200);
+  expect(JSON.parse(hello.body).result.serverInfo).toMatchObject({name:'project-manage',version:'1.5.0'});
+  const response=await mcpRpcRequest(origin,token,'tools/list',{});
+  expect(response.statusCode,response.body).toBe(200);
+  const catalog=JSON.parse(response.body).result.tools as Array<{name:string;inputSchema:{properties:Record<string,unknown>}}>;
+  for(const name of ['save_feature','save_feature_phase','create_requirement','update_requirement','correct_requirement','create_work_item','update_work_item','correct_work_item']){
+    expect(catalog.find(tool=>tool.name===name)?.inputSchema.properties.referenceLinks,name).toMatchObject({type:'array',maxItems:20,items:{properties:{title:{type:'string'},url:{type:'string'},kind:{enum:['document','task','other']}}}});
+  }
+});
 it('REST / MCP 多链接保留顺序，兼容单链接修改、删除，过期或非法保存整批回滚',async()=>{
   const projectId=await project();
   let r=await call<Requirement>('create_requirement',{projectId,title:'多种材料',referenceLinks:relatedLinks});
