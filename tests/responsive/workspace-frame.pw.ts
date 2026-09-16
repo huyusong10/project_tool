@@ -36,7 +36,7 @@ test('视角、层级、画布编辑与概览浮窗保持公共框架坐标',asy
 
 test('树表类型、左侧选择、浮动批量工具与详情操作保持列宽',async({page},info)=>{
   const f=await phaseFixture(page);await page.request.post('/api/requirements',{data:{projectId:f.projectId,title:'临时补充'}});await page.goto('/');
-  await page.getByRole('button',{name:'更多操作',exact:true}).click();await page.getByRole('button',{name:'展开全部',exact:true}).click();
+  await page.getByRole('button',{name:'展开全部',exact:true}).click();
   const typeColors=await page.locator('.outline-table .workspace-object-mark').evaluateAll(elements=>Object.fromEntries(elements.map(el=>[el.getAttribute('data-kind'),getComputedStyle(el).color])));
   expect(Object.keys(typeColors).sort()).toEqual(['feature','group','phase','requirement','work']);expect(new Set(Object.values(typeColors)).size).toBe(5);
   const initial=await frame(page),columns=await tableFrame(page);
@@ -68,7 +68,7 @@ test('进展名称直接查看详情，执行动作占用固定宽度',async({pa
 
 test('深色主题中的状态文字保持可读对比度',async({page},info)=>{
   test.skip(info.project.name!=='desktop-1080p','两个深色主题共用相同颜色规则');
-  await phaseFixture(page);await page.goto('/');await page.getByRole('button',{name:'更多操作',exact:true}).click();await page.getByRole('button',{name:'展开全部',exact:true}).click();
+  await phaseFixture(page);await page.goto('/');await page.getByRole('button',{name:'展开全部',exact:true}).click();
   for(const theme of ['midnight','dcim']){
     await page.evaluate(value=>{localStorage.setItem('project-manage:theme',value);window.dispatchEvent(new StorageEvent('storage',{key:'project-manage:theme',newValue:value}));},theme);await expect(page.locator('html')).toHaveAttribute('data-theme',theme);
     const contrast=await page.locator('.outline-table .stage-badge').evaluateAll(elements=>{

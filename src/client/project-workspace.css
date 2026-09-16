@@ -49,9 +49,9 @@
 .workspace-overview-content details{margin:12px 0;font-size:12px;color:var(--text-muted)}.workspace-overview-content summary{cursor:pointer;padding:5px 0}.workspace-overview-content details .overview-link{margin:5px 0}
 .overview-data-note{margin:0;flex:none;font-size:11px;color:var(--text-muted)}
 .workspace-outline{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--bg-surface)}
-.outline-actions{display:flex;align-items:center;gap:10px;padding:0 20px;height:58px;min-height:58px;border-bottom:1px solid var(--border);flex:none}
+.outline-actions{overflow-x:auto;scrollbar-width:none;display:flex;align-items:center;gap:10px;padding:0 20px;height:58px;min-height:58px;border-bottom:1px solid var(--border);flex:none}
 .outline-actions input,.outline-actions select{box-sizing:border-box;height:34px;min-height:34px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--bg-surface);color:var(--text-primary);font:inherit;font-size:12px}
-.outline-actions input{width:220px;min-width:0;flex:0 1 340px}.outline-actions select{width:130px;flex:none}
+.outline-actions input{width:220px;min-width:140px;flex:0 1 340px}.outline-actions select{width:130px;flex:none}
 .outline-caption{display:flex;justify-content:space-between;align-items:center;gap:16px;height:32px;min-height:32px;padding:0 20px;flex:none;color:var(--text-muted);font-size:11px;background:var(--bg-surface-subtle);border-bottom:1px solid var(--border)}
 .outline-caption>span:first-child{white-space:nowrap;flex:none}.outline-help{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .outline-scroll{overflow:auto;min-height:0;flex:1;scrollbar-gutter:stable;scroll-padding-bottom:84px;padding-bottom:80px;box-sizing:border-box}

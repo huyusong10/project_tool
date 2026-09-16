@@ -1,3 +1,4 @@
+import {TreeExpansionActions} from './TreeExpansionActions';
 import { Button } from './Button';
 import {WorkspaceObjectMark} from './WorkspaceObjectMark';
 import type {PathEdge,PathMilestone} from '../../shared/paths';
@@ -55,14 +56,17 @@ export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelec
   const lastSelection=useRef('');
   useEffect(()=>{const root=nav.scrollRef.current;if(!root)return;if(selected&&lastSelection.current!==selected){const element=[...root.querySelectorAll<HTMLElement>('[data-row-id]')].find(e=>e.dataset.rowId===selected);if(element){root.scrollTop=Math.max(0,element.offsetTop-root.clientHeight/3);lastSelection.current=selected;}}},[selected,visible.length,nav.scrollRef]);
   const hasPhases=all.some(({row})=>row.kind==='phase');
-  const depthValue=(hasPhases?['phases','requirements','work']:['requirements','work']).find(level=>all.filter(({row})=>row.children.length).every(({row})=>expands(row,currentExpanded)===(row.kind==='feature'||level!=='phases'&&row.kind==='phase'||level==='work')))||'custom';
+  const branches=all.filter(({row})=>row.children.length);
+  const expandAll=(open:boolean)=>changeExpanded({...currentExpanded,...Object.fromEntries(branches.map(({row})=>[row.id,open]))});
+  const expandsTo=(row:WorkspaceRow,level:string)=>level!=='collapsed'&&(row.kind==='feature'||level!=='phases'&&row.kind==='phase'||level==='work');
+  const depthValue=(hasPhases?['collapsed','phases','requirements','work']:['collapsed','requirements','work']).find(level=>branches.every(({row})=>expands(row,currentExpanded)===expandsTo(row,level)))||'custom';
   const datePoint=(row:WorkspaceRow,date:string|null,label:string,actual=false)=>{
     const parsed=toGanttDate(date);if(!parsed)return null;
     const left=(businessDateIndex(parsed,nav.dates,'start')+.5)*nav.cellWidth;
     return <button className={'workspace-delivery-point'+(actual?' is-delivered':'')} style={{left}} title={label+' '+date} aria-label={label+' '+date} onClick={()=>onSelect(row)}><i/>{label} {date?.slice(5)}</button>;
   };
   return <section className="workspace-gantt" aria-label="特性与 Phase 计划甘特">
-    <div className="workspace-time-tools" data-workspace-zone="tools"><GanttNavigation navigation={nav}/><Select aria-label="展开层级" value={depthValue} onChange={e=>changeExpanded(Object.fromEntries(all.map(({row})=>[row.id,row.kind==='feature'||e.target.value!=='phases'&&row.kind==='phase'||e.target.value==='work'])))}>{hasPhases&&<option value="phases">展开到 Phase</option>}<option value="requirements">展开到需求</option><option value="work">展开到工作项</option><option value="custom" disabled>{filtered?'显示匹配项':'手动展开'}</option></Select><span className="workspace-plan-legend"><span><i/>计划</span><span className="actual"><i/>实际</span><span className="forecast"><i/>预计延期</span><span>◇ 交付 / 里程碑</span></span></div>
+    <div className="workspace-time-tools" data-workspace-zone="tools"><TreeExpansionActions canExpand={branches.some(({row})=>!expands(row,currentExpanded))} canCollapse={branches.some(({row})=>expands(row,currentExpanded))} onChange={expandAll}/><GanttNavigation navigation={nav}/><Select aria-label="展开层级" value={depthValue} onChange={e=>changeExpanded({...currentExpanded,...Object.fromEntries(all.map(({row})=>[row.id,expandsTo(row,e.target.value)]))})}><option value="collapsed">收起全部</option>{hasPhases&&<option value="phases">展开到 Phase</option>}<option value="requirements">展开到需求</option><option value="work">展开到工作项</option><option value="custom" disabled>{filtered?'显示匹配项':'手动展开'}</option></Select><span className="workspace-plan-legend"><span><i/>计划</span><span className="actual"><i/>实际</span><span className="forecast"><i/>预计延期</span><span>◇ 交付 / 里程碑</span></span></div>
     <div className="workspace-gantt-scroll" ref={nav.attach} role="treegrid" tabIndex={0} aria-label="项目进展表">
       <div className="workspace-gantt-grid" style={{'--timeline-width':nav.timelineWidth+'px'} as CSSProperties}>
         <div className={"workspace-gantt-heading"+(projectMilestones.some(m=>m.targetDate||m.actualDate)?" has-project-milestones":"")}><div className="workspace-row-label" data-gantt-fixed><span>名称 / 负责人</span><GanttMilestoneUndated compact items={projectMilestones} selection={projectMilestoneSelection}/></div><div className="workspace-date-heading"><GanttScale groupedDays dates={nav.dates} cellWidth={nav.cellWidth} zoom={nav.zoom} todayOffset={today.offset} todayVisible={today.visible}/>{projectMilestones.some(m=>m.targetDate||m.actualDate)&&<GanttMilestoneRail items={projectMilestones} dates={nav.dates} cellWidth={nav.cellWidth} asOfDate={asOfDate} selection={projectMilestoneSelection}/>}</div><div className="workspace-row-actions" data-gantt-fixed>操作</div></div>
