@@ -1,3 +1,4 @@
+import {ObjectDetailContext,useObjectDetail,readDetailMemory} from '../components/ObjectDetailContext';
 import { Button } from '../components/Button';
 import {usePageResources} from '../page-context';
 import { useDeferredValue, useEffect, useRef, useState } from "react";
@@ -151,7 +152,9 @@ function IssueDetail({
   pending: boolean;
   onPendingChange: (pending: boolean) => void;
 }) {
-  const [tab, setTab] = useState<string>(initialTab);
+  const detail=useObjectDetail();
+  const [localTab, setLocalTab] = useState<string>(()=>detail?readDetailMemory(detail.key+':tab',initialTab):initialTab);
+  const tab=detail?.tab||localTab, setTab=(value:string)=>{setLocalTab(value);detail?.onTabChange?.(value);};
   const { data: issue, error, refetch, isFetching, unavailable } = usePageResources().issue;
   const historyPagination = useListPagination({ items: issue?.updates || [], id: "issueHistory", filterKey: issueId, defaultPageSize: 10, ready: Boolean(issue), loading: isFetching, disabled: pending });
   if (!issue || unavailable) return null;
@@ -212,7 +215,7 @@ export function IssuesPage() {
   const scope = searchParams.get("scope") === "public" ? "public" : searchParams.get("requirementId") || "";
   const overdue = searchParams.get("overdue") === "true", unassigned = searchParams.get("unassigned") === "true";
   const { page, pageSize } = readPagination(searchParams);
-  const selectedIssueId = searchParams.get("issueId") || undefined;
+  const selectedIssueId = searchParams.get("detailId")?.replace(/^issue:/, "") || searchParams.get("issueId") || undefined;
   const [detailTab, setDetailTab] = useState<"basic" | "updates">("updates");
   const [formIssue, setFormIssue] = useState<Issue | null | undefined>(undefined);
   const [detailPending, setDetailPending] = useState(false);
@@ -366,10 +369,10 @@ export function IssuesPage() {
   const summary = data?.summary || { total: 0, inProgress: 0, deferred: 0, resolved: 0, active: 0, highPriority: 0, overdue: 0, unassigned: 0, closureRate: 0 };
   const openIssue = (id: string, tab: "basic" | "updates") => {
     setDetailTab(tab);
-    const next = new URLSearchParams(linkedQuery); next.set("issueId", id); next.set("issueHistory.page", "1"); setSearchParams(next, { replace: true });
+    const next = new URLSearchParams(linkedQuery); next.delete("issueId"); next.set("detailId",id); next.set("detailTab",tab); next.set("issueHistory.page", "1"); setSearchParams(next, {replace:false});
   };
   const closeIssue = () => {
-    const next = new URLSearchParams(linkedQuery); next.delete("issueId"); setSearchParams(next, { replace: true });
+    const next = new URLSearchParams(linkedQuery); next.delete("issueId"); next.delete("detailId"); next.delete("detailTab"); setSearchParams(next, {replace:false});
   };
   const closeIssueFromUi = () => {
     if (!detailPendingRef.current) closeIssue();
@@ -421,7 +424,7 @@ export function IssuesPage() {
         </AdaptiveDataRow>)}
       </AdaptiveDataList>
     </div>
-    {selectedIssueId && <Modal title="问题详情" width={960} layout="workspace" closable={!detailPending} onClose={closeIssueFromUi}><IssueDetail key={selectedIssueId} issueId={selectedIssueId} projectId={selectedProjectId} people={people} requirements={requirements} defaultReporter={defaultReporter} initialTab={detailTab} canEdit={canEdit && referenceDataReady} canContribute={canContribute} personId={session.personId} onClose={closeIssue} pending={detailPending} onPendingChange={changeDetailPending} /></Modal>}
+    {selectedIssueId && <ObjectDetailContext.Provider value={{key:(session.accountId||"guest")+":"+selectedProjectId+":"+selectedIssueId,tab:searchParams.get("detailTab")||undefined,onTabChange:tab=>setSearchParams(current=>{const next=new URLSearchParams(current);next.set("detailTab",tab);return next;},{replace:true})}}><Modal title="问题详情" width={960} layout="workspace" closable={!detailPending} onClose={closeIssueFromUi}><IssueDetail key={selectedIssueId} issueId={selectedIssueId} projectId={selectedProjectId} people={people} requirements={requirements} defaultReporter={defaultReporter} initialTab={detailTab} canEdit={canEdit && referenceDataReady} canContribute={canContribute} personId={session.personId} onClose={closeIssue} pending={detailPending} onPendingChange={changeDetailPending} /></Modal></ObjectDetailContext.Provider>}
     {formIssue !== undefined && <Modal title={formIssue ? "编辑问题" : "新建问题"} width={760} closable={!formPending} onClose={closeIssueFormFromUi}><IssueForm issue={formIssue || undefined} projectId={selectedProjectId} people={people} requirements={requirements} canManage={canEdit} defaultReporter={defaultReporter} onClose={closeIssueForm} onPendingChange={changeFormPending} /></Modal>}
   </>;
 }

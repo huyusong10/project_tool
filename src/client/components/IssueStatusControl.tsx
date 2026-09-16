@@ -1,3 +1,4 @@
+import {useDeliveryForm} from '../use-delivery-form';
 import { Button } from './Button';
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
@@ -24,9 +25,9 @@ function IssueStatusEditor({ issue, disabled, onPendingChange, onSaved }: {
 }) {
   const toast = useToast();
   const { session } = useSession();
-  const editor = useIssueDraft(issue, onPendingChange);
-  const [selected, setSelected] = useState<(typeof issueStateChoices)[string][number] | null>(null);
-  const [note, setNote] = useState("");
+  const editor = useIssueDraft(issue, onPendingChange,'status');
+  const [selected, setSelected,clearSelected] = useDeliveryForm<(typeof issueStateChoices)[string][number] | null>(issue.projectId,issue.id+':issue-status-choice',()=>null);
+  const [note, setNote,clearNote] = useDeliveryForm(issue.projectId,issue.id+':issue-status-note',()=>"");
   const current = editor.baseline || issue;
   const choices = issueStateChoices[current.status] || [];
   const invalidAction = selected && !choices.some((choice) => choice.action === selected.action);
@@ -41,7 +42,7 @@ function IssueStatusEditor({ issue, disabled, onPendingChange, onSaved }: {
     const baselineUpdateIds = new Set((current.updates || []).map((update) => update.id));
     void editor.save(
       () => api<Issue>(`/api/issues/${current.id}/${expected.action}`, { method: "POST", body: jsonBody(payload) }),
-      onSaved,
+      ()=>{clearSelected();clearNote();onSaved();},
       {
         matches: (latest) => latest.status === expected.target
           && latest.version === current.version + 1
@@ -100,18 +101,12 @@ export function IssueFactForm({ issue, disabled, onPendingChange, onSaved, onCan
   const toast = useToast();
   const { businessDate: today } = useBusinessDate();
   const { session } = useSession();
-  const editor = useIssueDraft(issue, onPendingChange);
+  const editor = useIssueDraft(issue, onPendingChange,'facts');
   const current = editor.baseline || issue;
-  const [title, setTitle] = useState(issue.title);
-  const [impact, setImpact] = useState(issue.impact || "");
-  const [progress, setProgress] = useState(String(issue.progress));
-  const [resolvedAt, setResolvedAt] = useState(issue.resolvedAt || "");
-  const [supersedesId, setSupersedesId] = useState("");
-  const [reason, setReason] = useState("");
-  useEffect(() => {
-    if (editor.dirty) return;
-    setTitle(current.title); setImpact(current.impact || ''); setProgress(String(current.progress)); setResolvedAt(current.resolvedAt || '');
-  }, [current, editor.dirty]);
+  const [input,setInput,clearInput]=useDeliveryForm(issue.projectId,issue.id+':issue-facts',()=>({title:issue.title,impact:issue.impact||'',progress:String(issue.progress),resolvedAt:issue.resolvedAt||'',supersedesId:'',reason:''}));
+  const {title,impact,progress,resolvedAt,supersedesId,reason}=input;
+  const setTitle=(title:string)=>setInput(value=>({...value,title})),setImpact=(impact:string)=>setInput(value=>({...value,impact})),setProgress=(progress:string)=>setInput(value=>({...value,progress})),setResolvedAt=(resolvedAt:string)=>setInput(value=>({...value,resolvedAt})),setSupersedesId=(supersedesId:string)=>setInput(value=>({...value,supersedesId})),setReason=(reason:string)=>setInput(value=>({...value,reason}));
+  useEffect(()=>{if(!editor.dirty)setInput(value=>({...value,title:current.title,impact:current.impact||'',progress:String(current.progress),resolvedAt:current.resolvedAt||''}));},[current,editor.dirty,setInput]);
   const reconciled = useRef(false);
   const numericProgress = Number(progress);
   const resolved = current.status === "resolved";
@@ -154,7 +149,7 @@ export function IssueFactForm({ issue, disabled, onPendingChange, onSaved, onCan
       }),
       () => {
         toast.success(reconciled.current ? "已核对最新状态：问题纠错已记录" : "问题纠错已记录");
-        onSaved();
+        clearInput();onSaved();
       },
       {
         matches: (latest) => latest.version === current.version + 1
@@ -185,6 +180,6 @@ export function IssueFactForm({ issue, disabled, onPendingChange, onSaved, onCan
     <label><span>修改说明（可选）</span><textarea aria-label="修改说明" disabled={busy} rows={2} value={reason} onChange={(event) => { editor.setDirty(true); setReason(event.target.value); }} placeholder="说明修改原因" /></label>
     {validation && editor.dirty && <p className="form-error" role="alert">{validation}</p>}
     <div className="issue-status-notice"><DraftNotice editor={editor} /></div>
-    <footer><Button variant="secondary" type="button" className="ghost-button" disabled={busy} onClick={onCancel}>取消</Button><Button busy={(editor.pending)} aria-label={editor.pending ? "保存中…" : "保存修改"} variant="primary" type="submit" className="primary-button" disabled={blocked}>{"保存修改"}</Button></footer>
+    <footer><Button variant="secondary" type="button" className="ghost-button" disabled={busy} onClick={()=>{clearInput();if(!editor.needsRefresh)editor.discard();onCancel();}}>取消</Button><Button busy={(editor.pending)} aria-label={editor.pending ? "保存中…" : "保存修改"} variant="primary" type="submit" className="primary-button" disabled={blocked}>{"保存修改"}</Button></footer>
   </form>;
 }

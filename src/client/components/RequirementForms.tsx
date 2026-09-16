@@ -236,7 +236,7 @@ export function RequirementInfoForm({
     {refreshed && <p className="field-help field-full">已读取最新需求；未修改字段已同步，已输入内容保持不变。当前：{baseRequirement.title} · {baseRequirement.processingPriority||'待评估'} · 负责人 {baseRequirement.ownerName || "未指定"}</p>}
     {readError && <FormError>{readError.message}</FormError>}
     {(changed || needsRefresh) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void read()}>重新读取需求</Button></div>}
-    <FormSubmitActions submitLabel="保存信息" onCancel={onClose} pending={pending} disabled={blocked} />
+    <FormSubmitActions submitLabel="保存信息" onCancel={()=>{clearLocal();onClose();}} pending={pending} disabled={blocked} />
     </fieldset>
   </form></Modal>;
 }
@@ -299,10 +299,10 @@ export function RequirementCorrectionForm({
   const submitting = useRef(false);
   const readingRef = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const [baseline, setBaseline] = useState(requirement);
-  const [draft, setDraft] = useState(() => recheck?.draft || requirementInfoDraft(requirement));
-  const [reason, setReason] = useState(recheck?.reason || "");
-  const [supersedesId, setSupersedesId] = useState(recheck?.supersedesId || "");
+  const [baseline, setBaseline, clearBaseline] = useDeliveryForm(requirement.projectId,requirement.id+':correction:baseline',()=>(requirement),!!recheck);
+  const [draft, setDraft, clearDraft] = useDeliveryForm(requirement.projectId,requirement.id+':correction:draft',()=>(recheck?.draft || requirementInfoDraft(requirement)),!!recheck);
+  const [reason, setReason, clearReason] = useDeliveryForm(requirement.projectId,requirement.id+':correction:reason',()=>(recheck?.reason || ""),!!recheck);
+  const [supersedesId, setSupersedesId, clearSupersedesId] = useDeliveryForm(requirement.projectId,requirement.id+':correction:supersedesId',()=>(recheck?.supersedesId || ""),!!recheck);
   const [reading, setReading] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(recheck?.stage === "read");
   const [refreshed, setRefreshed] = useState(false);
@@ -391,7 +391,7 @@ export function RequirementCorrectionForm({
       onRecheckChange(null);
       invalidateRequirementViews(client, requirement.id);
       toast.success("需求纠错已记录");
-      onClose();
+      clearBaseline();clearDraft();clearReason();clearSupersedesId();onClose();
     },
     onError:async error=>{
       if(isWriteOutcomeUnknown(error))setUnknown(true);
@@ -452,7 +452,7 @@ export function RequirementCorrectionForm({
       {readError && <FormError>{readError.message}</FormError>}
       {refreshed && <p className="field-help field-full">已读取最新需求（版本 {baseline.version}），本次输入保持不变，请核对后重试。</p>}
       {(changed || needsRefresh) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void read()}>重新读取需求</Button></div>}
-      <FormSubmitActions submitLabel="保存纠错" onCancel={close} pending={pending} disabled={blocked} />
+      <FormSubmitActions submitLabel="保存纠错" onCancel={()=>{clearBaseline();clearDraft();clearReason();clearSupersedesId();close();}} pending={pending} disabled={blocked} />
     </fieldset>
   </form></Modal>;
 }
@@ -535,12 +535,14 @@ export function RequirementScheduleForm({
   const readingRef = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const [baseRequirement, setBaseRequirement] = useState(requirement);
+  const [baseRequirement, setBaseRequirement, clearBaseRequirement] = useDeliveryForm(requirement.projectId,requirement.id+':schedule:baseRequirement',()=>(requirement),!!recheck);
   const [needsRefresh, setNeedsRefresh] = useState(recheck?.stage === "read");
   const [reading, setReading] = useState(false);
   const [readError, setReadError] = useState<Error | null>(null);
   const [refreshed, setRefreshed] = useState(false);
-  const dirtyFields = useRef(new Set<RequirementScheduleDirtyField>(recheck?.dirtyFields || []));
+  const [storedDirty,setStoredDirty,clearDirty]=useDeliveryForm<RequirementScheduleDirtyField[]>(requirement.projectId,requirement.id+':schedule:dirty',()=>recheck?.dirtyFields||[],!!recheck);
+  const dirtyFields = useRef(new Set<RequirementScheduleDirtyField>(storedDirty));
+  useEffect(()=>{const next=[...dirtyFields.current];if(next.join()!==storedDirty.join())setStoredDirty(next);});
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, requirement.projectId],
     queryFn: ({ signal }) => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(requirement.projectId)}`, { signal }),
@@ -548,11 +550,11 @@ export function RequirementScheduleForm({
   const templates = templatesQuery.data || [];
   const knownTemplates = useRef(new Map<string, string>(requirement.templateId && requirement.templateName ? [[requirement.templateId, requirement.templateName]] : []));
   for (const template of templates) knownTemplates.current.set(template.id, template.name);
-  const [templateId, setTemplateId] = useState(recheck?.draft.templateId ?? requirement.templateId ?? "");
-  const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">(recheck?.draft.scheduleMode || "start");
+  const [templateId, setTemplateId, clearTemplateId] = useDeliveryForm(requirement.projectId,requirement.id+':schedule:templateId',()=>(recheck?.draft.templateId ?? requirement.templateId ?? ""),!!recheck);
+  const [scheduleMode, setScheduleMode, clearScheduleMode] = useDeliveryForm<"start" | "deadline">(requirement.projectId,requirement.id+':schedule:scheduleMode',()=>(recheck?.draft.scheduleMode || "start"),!!recheck);
   const [pendingSubmit, setPendingSubmit] = useState<ScheduleChange | null>(null);
-  const [scheduleDate, setScheduleDate] = useState(recheck?.draft.scheduleDate ?? requirement.plannedStart ?? "");
-  const [reason, setReason] = useState(recheck?.draft.reason || "");
+  const [scheduleDate, setScheduleDate, clearScheduleDate] = useDeliveryForm(requirement.projectId,requirement.id+':schedule:scheduleDate',()=>(recheck?.draft.scheduleDate ?? requirement.plannedStart ?? ""),!!recheck);
+  const [reason, setReason, clearReason] = useDeliveryForm(requirement.projectId,requirement.id+':schedule:reason',()=>(recheck?.draft.reason || ""),!!recheck);
   const unknownVersion = useRef<number | null>(recheck?.baselineVersion ?? null);
   const [reviewRequired, setReviewRequired] = useState(recheck?.stage === "review");
   const currentDraft = (overrides: Partial<RequirementScheduleDraft> = {}): RequirementScheduleDraft => ({
@@ -578,7 +580,7 @@ export function RequirementScheduleForm({
     setReason("");
     setNeedsRefresh(false);
     setReadError(null);
-  }, [baseRequirement.version, changed, requirement]);
+  }, [baseRequirement.version, changed, requirement,setBaseRequirement,setTemplateId,setScheduleMode,setScheduleDate,setReason]);
   const templateChanged = Boolean(templateId && templateId !== baseRequirement.templateId);
   const selectedTemplateUnavailable = Boolean(templateChanged && templatesQuery.data && !templates.some((template) => template.id === templateId));
   const current = requirement.version > baseRequirement.version ? requirement : baseRequirement;
@@ -656,7 +658,7 @@ export function RequirementScheduleForm({
       onRecheckChange(null);
       setPendingSubmit(null);
       invalidateRequirementViews(client, requirement.id);
-      onClose();
+      clearDirty();clearBaseRequirement();clearTemplateId();clearScheduleMode();clearScheduleDate();clearReason();onClose();
     },
     onError:async error=>{
       if(isWriteOutcomeUnknown(error))setUnknown(true);
@@ -771,7 +773,7 @@ export function RequirementScheduleForm({
       {locked && <FormError>需求已完成或取消，不能继续调整计划。</FormError>}
       {refreshed && <p className="field-help field-full">已读取最新计划；未修改字段已同步，已输入内容保持不变。</p>}
       {(changed || needsRefresh) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void reload()}>重新加载当前计划</Button></div>}
-      <FormSubmitActions submitLabel="保存排期" onCancel={onClose} pending={pending} disabled={unknown || changed || needsRefresh || reviewRequired || locked || selectedTemplateUnavailable} />
+      <FormSubmitActions submitLabel="保存排期" onCancel={()=>{clearDirty();clearBaseRequirement();clearTemplateId();clearScheduleMode();clearScheduleDate();clearReason();onClose();}} pending={pending} disabled={unknown || changed || needsRefresh || reviewRequired || locked || selectedTemplateUnavailable} />
       </fieldset>
     </form>
     </Modal>
@@ -829,9 +831,9 @@ export function PlanForm({ requirement, templates, recheck, onRecheckChange, onC
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const knownTemplates = useRef(new Map(templates.map((template) => [template.id, template.name])));
   for (const template of templates) knownTemplates.current.set(template.id, template.name);
-  const [templateId, setTemplateId] = useState(recheck?.draft.templateId ?? requirement.templateId ?? templates[0]?.id ?? "");
-  const [baseStart, setBaseStart] = useState(recheck?.draft.baseStart ?? requirement.plannedStart ?? "");
-  const [reason, setReason] = useState(recheck?.draft.reason || "");
+  const [templateId, setTemplateId, clearTemplateId] = useDeliveryForm(requirement.projectId,requirement.id+':plan:templateId',()=>(recheck?.draft.templateId ?? requirement.templateId ?? templates[0]?.id ?? ""),!!recheck);
+  const [baseStart, setBaseStart, clearBaseStart] = useDeliveryForm(requirement.projectId,requirement.id+':plan:baseStart',()=>(recheck?.draft.baseStart ?? requirement.plannedStart ?? ""),!!recheck);
+  const [reason, setReason, clearReason] = useDeliveryForm(requirement.projectId,requirement.id+':plan:reason',()=>(recheck?.draft.reason || ""),!!recheck);
   const [reading, setReading] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(recheck?.stage === "read");
   const [readError, setReadError] = useState<Error | null>(null);
@@ -842,7 +844,7 @@ export function PlanForm({ requirement, templates, recheck, onRecheckChange, onC
   const [previewTemplateUpdatedAt, setPreviewTemplateUpdatedAt] = useState<string | null>(null);
   useEffect(() => {
     if (!templateId && templates[0]) setTemplateId(templates[0].id);
-  }, [templateId, templates]);
+  }, [templateId, templates,setTemplateId]);
   const previewMutation = useMutation({
     mutationFn: ({ templateUpdatedAt: _templateUpdatedAt, ...input }: { templateId: string; baseStart: string; templateUpdatedAt: string | null }) => api<PlanPreview>(`/api/requirements/${requirement.id}/plan-preview`, {
       method: "POST", readOnly: true, body: jsonBody(input),
@@ -897,7 +899,7 @@ export function PlanForm({ requirement, templates, recheck, onRecheckChange, onC
       unknownVersion.current = null;
       onRecheckChange(null);
       invalidateRequirementViews(client, input.preview.requirementId);
-      onClose();
+      clearTemplateId();clearBaseStart();clearReason();onClose();
     },
     onError:async error=>{
       if(isWriteOutcomeUnknown(error))setUnknown(true);
@@ -931,6 +933,7 @@ export function PlanForm({ requirement, templates, recheck, onRecheckChange, onC
   return (
     <Modal title="按模板补全计划" width={840} closable={!pending} onClose={() => { if (!submitting.current) onClose(); }}>
     <fieldset className="plan-preview-form form-fieldset" disabled={pending}>
+      <div className="form-actions"><Button variant="secondary" onClick={()=>{clearTemplateId();clearBaseStart();clearReason();onClose();}}>取消编辑</Button></div>
       <div className="form-grid">
         <FormField label="流程设计"><Select value={templateId} onChange={(event) => { if (submitting.current) return; const value=event.target.value;setTemplateId(value);persistDraftIfLocked(draft({templateId:value}));resetPreview(); }}>{selectedTemplateUnavailable && <option value={templateId}>{knownTemplates.current.get(templateId) || "已选择流程"}（已不可用，请重新选择）</option>}{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</Select></FormField>
         <FormField label="计划开始"><input type="date" value={baseStart} onChange={(event) => { if (submitting.current) return; const value=event.target.value;setBaseStart(value);persistDraftIfLocked(draft({baseStart:value}));resetPreview(); }} /></FormField>

@@ -1,3 +1,5 @@
+import {useDeliveryForm} from '../use-delivery-form';
+import {useProjects} from '../app-context';
 import { Button } from './Button';
 import {IssueFactForm} from "./IssueStatusControl";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -20,22 +22,26 @@ import { AnchoredPopover } from "./InlineEdit";
 type BusyChange = (pending: boolean) => void;
 
 /** 草稿使用自己的版本；刷新只更新基线，不覆盖已输入字段。 */
-export function useIssueDraft(issue: Issue | undefined, onPendingChange?: BusyChange) {
+export function useIssueDraft(issue: Issue | undefined, onPendingChange?: BusyChange, action='edit', projectId?:string) {
   const client = useQueryClient();
-  const [baseline, setBaseline] = useState(issue);
-  const [dirty, setDirty] = useState(false);
+  const {selectedProjectId}=useProjects();
+  const [memory,setMemory,clearMemory]=useDeliveryForm(issue?.projectId||projectId||selectedProjectId,(issue?.id||'new')+':issue-meta:'+action,()=>({baseline:issue,dirty:false,needsRefresh:false}));
+  const baseline=memory.baseline,dirty=memory.dirty;
+  const setBaseline=useCallback((baseline:Issue)=>setMemory(value=>({...value,baseline})),[setMemory]);
+  const setDirty=useCallback((dirty:boolean)=>setMemory(value=>({...value,dirty})),[setMemory]);
   const [pending, setPending] = useState(false);
   const busyRef = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [error, setError] = useState<Error | null>(null);
   const [readError, setReadError] = useState<Error | null>(null);
-  const [needsRefresh, setNeedsRefresh] = useState(false);
+  const needsRefresh=memory.needsRefresh;
+  const setNeedsRefresh=useCallback((needsRefresh:boolean)=>setMemory(value=>({...value,needsRefresh})),[setMemory]);
   const [refreshed, setRefreshed] = useState(false);
   const [unavailable, setUnavailable] = useState(() => Boolean(issue && client.getQueryData(keys.issue(issue.id)) === null));
   useEffect(() => {
-    if (!dirty && !pending && issue && (!baseline || issue.version >= baseline.version)) setBaseline(issue);
-  }, [issue, baseline, dirty, pending]);
+    if (!dirty && !pending && issue && (!baseline || issue.version > baseline.version)) setBaseline(issue);
+  }, [issue, baseline, dirty, pending,setBaseline]);
   const changed = Boolean(issue && baseline && (issue.version > baseline.version || (issue.version === baseline.version && issue.status !== baseline.status)));
   const begin = () => {
     if (busyRef.current) return false;
@@ -87,7 +93,7 @@ export function useIssueDraft(issue: Issue | undefined, onPendingChange?: BusyCh
       cacheResourceUpdate(client, keys.issue(saved.id), saved);
       setBaseline(saved); setDirty(false); setRefreshed(false);
       invalidateIssueViews(client, saved.id);
-      onSaved(saved);
+      clearMemory();onSaved(saved);
     } catch (caught) {
       const failure = caught instanceof Error ? caught : new Error("保存失败");
       setError(failure);
@@ -101,13 +107,13 @@ export function useIssueDraft(issue: Issue | undefined, onPendingChange?: BusyCh
             setBaseline(latest); setNeedsRefresh(false);
             setError(null); setDirty(false); setRefreshed(false);
             reconcile.onReconciled();
-            onSaved(latest);
+            clearMemory();onSaved(latest);
           }
         } catch { /* 保留原输入，等待用户重新读取。 */ }
       }
     } finally { finish(); }
   };
-  return { baseline, dirty, setDirty, pending, changed, needsRefresh, refreshed, unavailable, canReload: Boolean(issue), error, readError, reload, save };
+  return { discard:clearMemory, baseline, dirty, setDirty, pending, changed, needsRefresh, refreshed, unavailable, canReload: Boolean(issue), error, readError, reload, save };
 }
 
 export function DraftNotice({ editor, warning }: { editor: ReturnType<typeof useIssueDraft>; warning?: string | null }) {
@@ -208,16 +214,16 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
 }) {
   const toast = useToast();
   const { businessDate: today } = useBusinessDate();
-  const editor = useIssueDraft(issue, onPendingChange);
-  const [draft, setDraft] = useState(() => issueFields(issue, defaultReporter, today));
+  const editor = useIssueDraft(issue, onPendingChange,'basic',projectId);
+  const [draft,setDraft,clearDraft]=useDeliveryForm(projectId,(issue?.id||'new')+':issue-basic',()=>issueFields(issue,defaultReporter,today));
   const [discoveredDateEdited, setDiscoveredDateEdited] = useState(false);
   useEffect(() => {
     if (!editor.dirty && editor.baseline) setDraft(issueFields(editor.baseline, defaultReporter, today));
-  }, [editor.baseline, editor.dirty, defaultReporter, today]);
+  }, [editor.baseline, editor.dirty, defaultReporter, today,setDraft]);
   useEffect(() => {
     if (issue || discoveredDateEdited) return;
     setDraft((current) => current.discoveredAt === today ? current : { ...current, discoveredAt: today });
-  }, [discoveredDateEdited, issue, today]);
+  }, [discoveredDateEdited, issue, today,setDraft]);
   const change = (field: keyof typeof draft, value: string) => {
     if (field === "discoveredAt") setDiscoveredDateEdited(true);
     editor.setDirty(true); setDraft((current) => ({ ...current, [field]: value }));
@@ -242,7 +248,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
     };
     void editor.save(
       () => api<Issue>(current ? `/api/issues/${current.id}` : "/api/issues", { method: current ? "PATCH" : "POST", body: jsonBody(payload) }),
-      onClose,
+      ()=>{clearDraft();onClose();},
       current ? {
         matches: (latest) => latest.title === canonicalizeLabel(draft.title)
           && latest.impact === (canonicalizeContent(draft.impact) || null)
@@ -300,7 +306,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
       <FieldShell label="下次核对日期" help="用于跟进提醒，与解决目标日期分开"><input name="nextReviewAt" type="date" value={draft.nextReviewAt} onChange={event=>change("nextReviewAt",event.target.value)}/></FieldShell>
       <FieldShell label="目标日期" help={deferred ? "挂起问题不设置目标日期" : undefined}><input name="dueDate" type="date" value={deferred ? "" : draft.dueDate} disabled={deferred} onChange={(event) => change("dueDate", event.target.value)} /></FieldShell>
       <DraftNotice editor={editor} warning={resolved ? "问题已解决，不能保存修改；已保留本次输入。" : null} />
-      <div className="form-actions field-full"><Button variant="secondary" type="button" className="ghost-button" onClick={onClose}>取消</Button><Button busy={(editor.pending)} aria-label={editor.pending ? "保存中…" : issue ? "保存修改" : "创建问题"} variant="primary" type="submit" className="primary-button" disabled={blocked}>{issue ? "保存修改" : "创建问题"}</Button></div>
+      <div className="form-actions field-full"><Button variant="secondary" type="button" className="ghost-button" onClick={()=>{clearDraft();if(!editor.needsRefresh)editor.discard();onClose();}}>取消</Button><Button busy={(editor.pending)} aria-label={editor.pending ? "保存中…" : issue ? "保存修改" : "创建问题"} variant="primary" type="submit" className="primary-button" disabled={blocked}>{issue ? "保存修改" : "创建问题"}</Button></div>
     </fieldset>
   </form>;
 }
@@ -310,11 +316,13 @@ export function IssueUpdateForm({ issue, canSetProgress, canResolve = false, onP
 }) {
   const toast = useToast();
   const { session } = useSession();
-  const editor = useIssueDraft(issue, onPendingChange);
-  const [progress, setProgress] = useState(issue.progress);
-  const [content, setContent] = useState("");
+  const editor = useIssueDraft(issue, onPendingChange,'progress');
+  const [input,setInput,clearInput]=useDeliveryForm(issue.projectId,issue.id+':issue-progress',()=>({progress:issue.progress,content:''}));
+  const {progress,content}=input;
+  const setProgress=useCallback((progress:number)=>setInput(value=>({...value,progress})),[setInput]);
+  const setContent=(content:string)=>setInput(value=>({...value,content}));
   const baseline = editor.baseline || issue;
-  useEffect(() => { if (!editor.dirty) setProgress(baseline.progress); }, [baseline.progress, editor.dirty]);
+  useEffect(() => { if (!editor.dirty) setProgress(baseline.progress); }, [baseline.progress, editor.dirty,setProgress]);
   const writesProgress = canSetProgress(baseline);
   const resolved = issue.status === "resolved" || baseline.status === "resolved";
   const decreasing = writesProgress && progress < Math.max(issue.progress, baseline.progress);
@@ -335,7 +343,7 @@ export function IssueUpdateForm({ issue, canSetProgress, canResolve = false, onP
     const initialUpdateIds = new Set((baseline.updates || []).map(update => update.id));
     void editor.save(
       () => api<Issue>(`/api/issues/${issue.id}/${action}`, { method: "POST", body: jsonBody(input) }),
-      (saved) => { setContent(""); setProgress(saved.progress); },
+      (saved) => { setContent(""); setProgress(saved.progress); clearInput(); },
       {
         matches: (latest) => (!writesProgress || latest.version === baseline.version + 1 && latest.progress === progress)
           && (!resolving || latest.status === 'resolved')

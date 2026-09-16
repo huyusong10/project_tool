@@ -1,14 +1,11 @@
+import {useDeliveryForm} from '../use-delivery-form';
+import {WorkItemObjectDetails} from '../components/WorkItemObjectDetails';
 import { Button } from '../components/Button';
-import {WorkItemHistory} from "../components/WorkItemHistory";
 import {DetailWorkspace} from "../components/DetailWorkspace";
-import {Modal} from "../components/Modal";
-import {WorkspaceObjectMark} from "../components/WorkspaceObjectMark";
 import {useProjectWorkspace} from "../project-workspace-context";
 import {workspaceParams} from '../workspace-location';
-import {WorkItemFacts} from '../components/WorkItemFacts';
 import {TopbarMenu} from '../components/TopbarMenu';
 import '../components/object-inspector.css';
-import {WorkItemExecution} from '../components/WorkItemExecution';
 import '../workspace-gantt.css';
 import {useAppNavigate,useAppSearchParams} from '../use-app-navigation';
 import {PageResourcesContext,usePageResources} from '../page-context';
@@ -85,10 +82,14 @@ const progressReferenceLabel = (update?: ProgressUpdate) => update ? `${formatDa
 
 function EmbeddedRequirementHeader({secondaryActions,moreActions,moreDisabled}:ComponentProps<typeof PageHeader>){return <header className="delivery-requirement-header"><div className="button-row">{secondaryActions}</div>{moreActions&&<TopbarMenu label="需求操作" disabled={moreDisabled}>{moreActions}</TopbarMenu>}</header>;}
 export function RequirementObjectDetails({id,workItemId,onOpenDependencies}:{id:string;workItemId?:string;onOpenDependencies:()=>void}){
-  const resources=usePageResources(),{session}=useSession(),query=useResourceQuery<Requirement>([...keys.requirement(id),session.accountId],'/api/requirements/'+id,!!id);
+  const [fresh,setFresh]=useState(false);
+  const resources=usePageResources(),{session}=useSession(),query=useResourceQuery<Requirement>([...keys.requirement(id),session.accountId],'/api/requirements/'+id,!!id,()=>setFresh(true),true);
+  if(!fresh||!query.data||query.unavailable)return <div role="status">{query.error?.message||'正在读取需求…'}{query.error&&<Button variant="secondary" disabled={query.isFetching} onClick={()=>void query.refetch()}>重新读取</Button>}</div>;
+  if(workItemId)return <WorkItemObjectDetails requirementId={id} workItemId={workItemId} onOpenDependencies={onOpenDependencies}/>;
   return <PageResourcesContext.Provider value={{...resources,requirement:query}}><RequirementObjectContent key={id} requirementId={id} embedded selectedWorkItemId={workItemId} onOpenDependencies={onOpenDependencies}/></PageResourcesContext.Provider>;
 }
 function RequirementObjectContent({requirementId,embedded=false,selectedWorkItemId,onOpenDependencies}:{requirementId?:string;embedded?:boolean;selectedWorkItemId?:string;onOpenDependencies?:()=>void}={}) {
+  const projectId=usePageResources().requirement.data?.projectId||'';
   const Header=embedded?EmbeddedRequirementHeader:PageHeader;
   const goBack = usePageBack('/requirements');
   const { id:routeId = "" } = useParams(),id=requirementId||routeId;
@@ -98,15 +99,11 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
   const pathView = searchParams.get('view') === 'path';
   const { session } = useSession();
   const actionRecheckAccountKey = session.accountId || session.username || "guest";
-  const [modal, setModal] = useState<
+  const [modal, setModal] = useDeliveryForm<
     "info" | "correction" | "schedule" | "template" | null
-  >(null);
+  >(projectId,id+':action',()=>null);
   const workspace = useProjectWorkspace();
-  const [localWorkId, setLocalWorkId] = useState<string>();
-  const [workEditorCreate, setWorkEditorCreate] = useState(false);
-  const openWork = (workId: string) => workspace ? workspace.inspect(workId) : setLocalWorkId(workId);
-  const closeWork = () => {setLocalWorkId(undefined); if (selectedWorkItemId && workspace) workspace.inspect(id);};
-  const [workEditorOpen, setWorkEditorOpen] = useState(false);
+  const openWork = (workId: string) => workspace?.inspect(workId);
   const [workEditorNeedsRecheck, setWorkEditorNeedsRecheck] = useState(() => readWorkItemSettingsRechecks(actionRecheckAccountKey).has(id));
   const [workEditorRechecking, setWorkEditorRechecking] = useState(false);
   const [infoRecheck, setInfoRecheckState] = useState<RequirementInfoRecheck | null>(() => readRequirementInfoRecheck(actionRecheckAccountKey, id));
@@ -161,9 +158,8 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
     if (!unavailable || !error) return;
     if(error instanceof ApiError&&[401,403].includes(error.status)&&lastPathProject.current)clearProjectGraphDrafts(session.accountId||'guest',lastPathProject.current);
     setModal(null);
-    setWorkEditorOpen(false);
     setCommand(null);
-  }, [error, unavailable,session.accountId]);
+  }, [error, unavailable,session.accountId,setModal]);
   useEffect(() => {
     setWorkEditorNeedsRecheck(readWorkItemSettingsRechecks(actionRecheckAccountKey).has(id));
     setWorkEditorRechecking(false);
@@ -272,14 +268,7 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
     if(params.get('workItemId'))params.set('pathNode',params.get('workItemId')!);
     return <Navigate to={'/paths?'+params} replace state={pathLocation.state}/>;
   }
-  const selectedWork = requirement.workItems.find(item => item.id === (selectedWorkItemId || localWorkId));
-  const workList = <div className="detail-work-list">{requirement.workItems.map(item => <WorkItemExecution key={item.id} requirement={requirement} item={item} people={people}>
-    {({actions, progress}) => <article className="detail-work-row" data-work-id={item.id}>
-      <WorkspaceObjectMark kind="work" status={item.status}/>
-      <button className="detail-work-row-title" onClick={() => openWork(item.id)}><strong>{item.title}</strong><small>{item.ownerName || '未分派'} · {item.plannedStart || '待排期'} ～ {item.plannedEnd || '待定'}</small></button>
-      <div>{progress}</div><div className="work-actions">{actions}</div>
-    </article>}
-  </WorkItemExecution>)}</div>;
+  const workList = <WorkItemSettingsDialog embedded requirement={requirement} people={people} canEdit={canManageWorkItems&&!workEditorNeedsRecheck&&!planRecheck} canManageRequirement={canManage} onInspect={openWork} onClose={()=>{}} onOpenDependencies={openPathView} onOpenPlan={()=>setModal('template')} onWriteNeedsRecheck={()=>{persistWorkItemSettingsRecheck(actionRecheckAccountKey,id,true);setWorkEditorNeedsRecheck(true);}} onReload={async()=>{const result=await refetch({throwOnError:true});if(!result.data)throw Error('需求无法打开');return result.data;}}/>;
   const requirementHeader=<Header
         title={requirement.title}
 
@@ -345,47 +334,17 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
       </section></>;
   const dependencies = workspace?.data.dependencies.filter(edge => edge.sourceRequirementId === id || edge.targetRequirementId === id) || [];
   return <div className={embedded ? "requirement-page embedded-requirement" : "page-content requirement-page"}>
-    <DetailWorkspace label="需求详情" initialTab="execution" tabs={[
-      {id: 'execution', label: '执行', content: <>{notices}<div className="detail-section-actions">{requirementHeader}</div><RequirementOverview requirement={requirement} compact={embedded}/>{!direct && workList}</>},
-      {id: 'work', label: `工作项 ${requirement.workItems.length}`, content: <>
-        <div className="detail-section-actions">{canManageWorkItems && <>
-          <Button variant="primary" className="primary-button" disabled={workEditorNeedsRecheck || !!planRecheck} onClick={() => {setWorkEditorCreate(true); setWorkEditorOpen(true);}}>添加工作项</Button>
-          <Button variant="secondary" className="ghost-button" disabled={workEditorNeedsRecheck || !!planRecheck} onClick={() => {setWorkEditorCreate(false); setWorkEditorOpen(true);}}>工作项设置</Button>
-          {canManage && <Button variant="secondary" className="ghost-button" disabled={!!planRecheck} onClick={() => setModal('template')}>补全计划</Button>}
-        </>}</div>
-        {workList}{!requirement.workItems.length && <p>{direct ? '直接执行需求，在执行页记录进展。' : '尚未拆分工作项。'}</p>}
-      </>},
-      {id: 'basic', label: '基本信息', content: <><div className="detail-section-actions">{requirementHeader}</div><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未分派阶段'}</dd></div><div className="object-fact-wide"><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div className="object-fact-wide"><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div><div><dt>来源</dt><dd>{requirement.sourceNotes||'尚未填写'}</dd></div>{requirement.referenceUrl&&<div><dt>文档</dt><dd><a href={requirement.referenceUrl} target="_blank" rel="noreferrer">打开资料</a></dd></div>}</dl>{!!requirement.readinessIssues?.length && <p className="object-info-note">{requirement.readinessIssues.join('；')}</p>}</>},
-      {id: 'dependencies', label: '依赖', content: <><div className="detail-section-actions"><Button variant="secondary" className="ghost-button" onClick={openPathView}>在关系图中维护依赖</Button></div>
+    <DetailWorkspace label="需求详情" initialTab="overview" tabs={[
+      {id: 'overview', label: '概况', actions: requirementHeader, content: <>{notices}<RequirementOverview requirement={requirement} compact={embedded}/></>},
+      {id: 'work', label: `工作项 ${requirement.workItems.length}`, content: workList},
+      {id: 'basic', label: '资料', actions:requirementHeader, content: <><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未分派阶段'}</dd></div><div className="object-fact-wide"><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div className="object-fact-wide"><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div><div><dt>来源</dt><dd>{requirement.sourceNotes||'尚未填写'}</dd></div>{requirement.referenceUrl&&<div><dt>文档</dt><dd><a href={requirement.referenceUrl} target="_blank" rel="noreferrer">打开资料</a></dd></div>}</dl>{!!requirement.readinessIssues?.length && <p className="object-info-note">{requirement.readinessIssues.join('；')}</p>}</>},
+      {id: 'dependencies', label: '依赖', actions: <Button variant="secondary" onClick={openPathView}>在关系图中维护依赖</Button>, content: <>
         {dependencies.map(edge => {const incoming = edge.targetRequirementId === id, otherId = incoming ? edge.sourceRequirementId : edge.targetRequirementId, other = workspace?.data.requirements.find(item => item.id === otherId); return <article className="detail-dependency" key={edge.id}><span>{incoming ? '前置' : '后续'} · </span><Button variant="link" className="text-button" onClick={() => workspace?.inspect(otherId)}>{other?.title || otherId}</Button></article>;})}
         {!dependencies.length && <p className="muted-text">{workspace ? '当前没有需求间依赖。' : '在关系图中查看需求及工作项依赖。'}</p>}
         {requirement.workItems.filter(item => item.unmetPredecessors?.length).map(item => <p key={item.id}>{item.title}：等待 {item.unmetPredecessors!.map(predecessor => predecessor.title).join('、')}</p>)}
       </>},
       {id: 'history', label: '记录', content: history},
     ]}>
-      {workEditorOpen && canManageWorkItems && (
-        <WorkItemSettingsDialog
-          initialCreate={workEditorCreate}
-          requirement={requirement}
-          people={people}
-          canManageRequirement={canManage}
-          onClose={() => setWorkEditorOpen(false)}
-          onOpenDependencies={()=>{setWorkEditorOpen(false);openPathView();}}
-          onOpenPlan={() => {
-            setWorkEditorOpen(false);
-            setModal("template");
-          }}
-          onWriteNeedsRecheck={() => {
-            persistWorkItemSettingsRecheck(actionRecheckAccountKey, id, true);
-            setWorkEditorNeedsRecheck(true);
-          }}
-          onReload={async () => {
-            const result = await refetch({ throwOnError: true });
-            if (!result.data) throw new Error("需求无法打开");
-            return result.data;
-          }}
-        />
-      )}
       {modal === "info" && (
         <RequirementInfoForm requirement={requirement} people={people} recheck={infoRecheck} onRecheckChange={setInfoRecheck} onClose={() => setModal(null)} />
       )}
@@ -404,12 +363,6 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
         return latest.data;
       }} />}
 
-      {selectedWork && <Modal title={selectedWork.title} layout="workspace" onClose={closeWork}>
-        <DetailWorkspace label="工作项详情" tabs={[
-          {id: 'execution', label: '执行', content: <><WorkItemExecution requirement={requirement} item={selectedWork} people={people} progressLabel="更新进度">{({actions, progress}) => <div className="detail-section-actions">{progress}{actions}</div>}</WorkItemExecution><WorkItemFacts item={selectedWork}/></>},
-          {id: 'history', label: '记录', content: <WorkItemHistory requirement={requirement} workItemId={selectedWork.id}/>},
-        ]}/>
-      </Modal>}
     </DetailWorkspace>
   </div>;
 }
@@ -420,7 +373,7 @@ export function RequirementPage(){
  const url=location.pathname+location.search,projectId=params.get('draftProject')||selectedProjectId;
  const savedUrl=remapSavedEditorUrl(url,(session.accountId||'guest')+':'+projectId);
  if(params.has('draftProject')&&savedUrl!==url)return <Navigate to={savedUrl} replace state={location.state}/>;
- if(!params.has('draftProject')&&resource.data){const r=resource.data;return <Navigate replace state={location.state} to={'/?'+workspaceParams({projectId:r.projectId,view:params.get('view')==='path'?'graph':'list',scope:{kind:'requirement',id:r.id},inspector:params.get('workItemId')||r.id},undefined,params)}/>;}
+ if(!params.has('draftProject')&&resource.data){const r=resource.data;return <Navigate replace state={location.state} to={'/?'+workspaceParams({projectId:r.projectId,view:params.get('view')==='path'?'graph':'list',scope:{kind:'requirement',id:r.id},inspector:params.get('detailId')||params.get('workItemId')||r.id,detailTab:params.get('detailTab')||undefined},undefined,params)}/>;}
  return params.get('draftProject')?<DraftRequirementPage projectId={params.get('draftProject')!}/>:<RequirementObjectContent/>;
 }
 function DraftRequirementPage({projectId}:{projectId:string}){

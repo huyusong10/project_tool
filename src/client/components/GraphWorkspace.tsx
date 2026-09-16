@@ -1,4 +1,6 @@
-import { Button } from './Button';
+import {GraphInspectContext} from './ObjectDetailContext';
+import {Modal} from './Modal';
+import {DetailWorkspace} from './DetailWorkspace';
 import {hasActiveSortDrag} from './DragPreview';
 import {useProjectWorkspace} from '../project-workspace-context';
 import { useEffect,useLayoutEffect,useRef,useState,useContext,type ComponentProps,type CSSProperties,type ReactNode } from 'react';
@@ -31,16 +33,15 @@ function FloatingPanel({content,side,replacement,contentKey,analysis=false,size=
   if(!shown||!content&&replacement&&matchMedia('(max-width:800px)').matches)return null;
   return <aside ref={ref} onFocusCapture={()=>{hadFocus.current=true;}} onBlurCapture={e=>{if(e.relatedTarget instanceof Node&&!e.currentTarget.contains(e.relatedTarget))hadFocus.current=false;}} className={(side==='right'?'graph-detail':'graph-auxiliary')+' graph-overlay nopan nodrag nowheel'+(!content?' is-leaving':'')} data-graph-panel={shown.analysis?'bottom':side} data-size={shown.size} style={!content?geometry.current:undefined} aria-hidden={!content} inert={!content}><div key={shown.contentKey} className="graph-panel-content">{shown.content}</div></aside>;
 }
-function Workspace({ table, document:editorDocument, auxiliaryKey, toolbar, detail, detailTitle, auxiliary, footer, finder,palette,analysis=false,auxiliarySize='compact',onDismissDetail,onDismissAuxiliary, ...graph }: ComponentProps<typeof DependencyGraph> & {
-  table?:ReactNode;document:WorkspaceDocument;auxiliaryKey?:string;onDismissDetail?:()=>void;onDismissAuxiliary?:()=>void;toolbar: ReactNode; detail?: ReactNode; detailTitle?:ReactNode; auxiliary?: ReactNode; footer?: ReactNode;finder?:ReactNode;palette?:ReactNode;analysis?:boolean;auxiliarySize?:PanelSize;
+function Workspace({ table, onInspectNode, document:editorDocument, auxiliaryKey, toolbar, detail, detailTitle, auxiliary, footer, finder,palette,analysis=false,auxiliarySize='compact',onDismissDetail,onDismissAuxiliary, ...graph }: ComponentProps<typeof DependencyGraph> & {
+  onInspectNode?:(id:string)=>void;table?:ReactNode;document:WorkspaceDocument;auxiliaryKey?:string;onDismissDetail?:()=>void;onDismissAuxiliary?:()=>void;toolbar: ReactNode; detail?: ReactNode; detailTitle?:ReactNode; auxiliary?: ReactNode; footer?: ReactNode;finder?:ReactNode;palette?:ReactNode;analysis?:boolean;auxiliarySize?:PanelSize;
 }) {
   const workspace=useProjectWorkspace();
   const sharedSelection=workspace?.location.inspector;
   const sharedObject=sharedSelection&&(sharedSelection.startsWith('feature:')||sharedSelection.startsWith('phase:')||workspace.data.requirements.some(r=>r.id===sharedSelection)||workspace.data.nodes.some(n=>n.id===sharedSelection&&n.requirementId));
   if(workspace&&sharedObject&&!graph.interaction?.selection?.kind?.includes('edge')&&!(editorDocument as WorkspaceDocument & {active?:boolean}).active)detail=undefined;
-  const [params]=useSearchParams(),isTable=params.get('mode')==='table'&&table!==undefined,[wide,setWide]=useState(false);
+  const [params]=useSearchParams(),isTable=params.get('mode')==='table'&&table!==undefined;
   const root=useRef<HTMLElement>(null),finderRef=useRef<HTMLDivElement>(null);
-  const recentNodeClick=useRef<{id:string;x:number;y:number;time:number}|null>(null);
   const runtime=useContext(WorkspaceRuntimeContext)!;runtime.document=editorDocument;runtime.interaction=graph.interaction;runtime.revealField=graph.onRevealField;runtime.save=()=>{graph.commands.dispatch({type:'save'});};useWorkspaceEvents(runtime,root);
   const requestSave=()=>{if(runtime.composing){runtime.saveRequested=true;return;}if(runtime.interaction?.operation&&runtime.interaction.operation.kind!=='field'){runtime.cancel();return;}let valid=false;flushSync(()=>{valid=runtime.commitFields();});if(valid)runtime.save?.();};
   runtime.requestSave=requestSave;
@@ -65,34 +66,16 @@ function Workspace({ table, document:editorDocument, auxiliaryKey, toolbar, deta
     const observer=new ResizeObserver(update);[element,footer,controls,element.querySelector('.graph-finder')].filter((e):e is HTMLElement=>!!e).forEach(e=>observer.observe(e));update();
     return()=>observer.disconnect();
   },[finding,isTable,footer]);
-  return <section ref={root} className={'graph-workspace graph-editor-workspace'+(finding?' has-finder':'')+(analysis?' has-analysis':'')+(detail?' has-inspector':'')+(isTable?' delivery-table-mode':'')+(wide?' wide-inspector':'')} aria-label="交付依赖工作区" onCompositionStart={()=>{runtime.composing=true;}} onCompositionEnd={()=>{runtime.composing=false;if(runtime.saveRequested){runtime.saveRequested=false;queueMicrotask(requestSave);}}}
-    onPointerDownCapture={e=>{
-      const previous=recentNodeClick.current,target=e.target as HTMLElement;
-      // Catch the second press before a newly opened inspector field takes focus.
-      if(e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||!previous||!target.closest('.graph-detail')||e.timeStamp-previous.time>=500||Math.hypot(e.clientX-previous.x,e.clientY-previous.y)>=6)return;
-      const card=graph.cards.find(c=>c.id===previous.id);if(card&&graph.onOpenNode){e.preventDefault();e.stopPropagation();recentNodeClick.current=null;runtime.commitFields(false);graph.onOpenNode(card);}
-    }}
-    onClickCapture={e=>{
-      const target=e.target as HTMLElement;
-      if(target.closest('[aria-label="保存修改"]')){e.preventDefault();e.stopPropagation();requestSave();return;}
-      const node=target.closest<HTMLElement>('.react-flow__node'),previous=recentNodeClick.current;
-      // An inspector opened by the first click must not steal the node's second click.
-      if(e.detail&&!e.ctrlKey&&!e.metaKey&&!e.shiftKey&&!runtime.interaction?.operation){
-        if(!node&&target.closest('.graph-detail')&&previous&&e.timeStamp-previous.time<500&&Math.hypot(e.clientX-previous.x,e.clientY-previous.y)<6){
-          const card=graph.cards.find(c=>c.id===previous.id);if(card&&graph.onOpenNode){e.preventDefault();e.stopPropagation();recentNodeClick.current=null;runtime.commitFields(false);graph.onOpenNode(card);return;}
-        }
-        const card=node&&graph.cards.find(c=>c.id===node.dataset.id);
-        recentNodeClick.current=card&&['feature','requirement'].includes(card.kind)?{id:card.id,x:e.clientX,y:e.clientY,time:e.timeStamp}:null;
-      }else recentNodeClick.current=null;
-    }}
+  return <section ref={root} className={'graph-workspace graph-editor-workspace'+(finding?' has-finder':'')+(analysis?' has-analysis':'')+(detail?' has-inspector':'')+(isTable?' delivery-table-mode':'')} aria-label="交付依赖工作区" onCompositionStart={()=>{runtime.composing=true;}} onCompositionEnd={()=>{runtime.composing=false;if(runtime.saveRequested){runtime.saveRequested=false;queueMicrotask(requestSave);}}}
+    onClickCapture={e=>{if((e.target as HTMLElement).closest('[aria-label="保存修改"]')){e.preventDefault();e.stopPropagation();requestSave();}}}
     onKeyDownCapture={e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();e.stopPropagation();requestSave();}}}
     onKeyDown={e=>{const input=(e.target as HTMLElement).closest('input,textarea,select,[contenteditable=true]');if(!e.defaultPrevented&&!input&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.stopPropagation();if(!runtime.interaction?.cancel())graph.commands.dispatch({type:e.shiftKey?'redo':'undo'});return;}if(e.key!=='Escape'||e.defaultPrevented||e.nativeEvent.isComposing||hasActiveSortDrag())return;if(runtime.interaction?.operation){e.preventDefault();e.stopPropagation();runtime.cancel();return;}if(runtime.dismiss(e.target as Element)){e.preventDefault();e.stopPropagation();}}}>
 
-    {isTable?<div className="delivery-table-surface">{table}</div>:<DependencyGraph {...graph} originPositions={editorDocument.layoutBaselines[graph.viewKey]} onOrigin={positions=>editorDocument.captureLayout(graph.viewKey,positions)} onDismissOverlays={()=>runtime.dismiss()} onSearch={()=>{setFinding(true);graph.onSearch?.();requestAnimationFrame(()=>root.current?.querySelector<HTMLInputElement>('.graph-finder input')?.focus());}}/>}
+    <GraphInspectContext.Provider value={onInspectNode||workspace?.inspect||null}>{isTable?<div className="delivery-table-surface">{table}</div>:<DependencyGraph {...graph} originPositions={editorDocument.layoutBaselines[graph.viewKey]} onOrigin={positions=>editorDocument.captureLayout(graph.viewKey,positions)} onDismissOverlays={()=>runtime.dismiss()} onSearch={()=>{setFinding(true);graph.onSearch?.();requestAnimationFrame(()=>root.current?.querySelector<HTMLInputElement>('.graph-finder input')?.focus());}}/>}</GraphInspectContext.Provider>
       {toolbar}
       <div className="graph-tool-rail graph-overlay nopan nodrag nowheel" data-graph-panel="left" data-workspace-zone="tools">{!isTable&&palette}{!isTable&&finder&&<FindTool onClick={()=>setFinding(v=>!v)}/>}</div>
       {!isTable&&finder&&finding&&<div ref={finderRef} className="graph-finder graph-overlay nopan nodrag nowheel" data-graph-panel="left">{finder}</div>}
-      <FloatingPanel onDismiss={onDismissDetail} size={wide?'expanded':'compact'} content={detail?<div className="delivery-inspector-shell"><div className="graph-panel-heading delivery-inspector-heading"><h3>{detailTitle||'详情'}</h3><div className="delivery-inspector-actions"><Button variant="secondary" title={wide?'收起详情':'展开详情'} className="ghost-button inspector-size-toggle" onClick={()=>setWide(v=>!v)}>{wide?'收起':'展开'}</Button><Button variant="secondary" className="ghost-button" onClick={onDismissDetail}>关闭</Button></div></div><div className="delivery-inspector-content">{detail}</div></div>:undefined} side="right" replacement={!!auxiliary} contentKey={JSON.stringify(graph.interaction.selection)}/>
+      {detail&&<Modal title={typeof detailTitle==='string'?detailTitle:'关系详情'} width={960} layout="workspace" onClose={()=>onDismissDetail?.()}><DetailWorkspace label="关系图详情" tabs={[{id:'properties',label:graph.editing?'草稿属性':'关系详情',content:detail,description:graph.editing?'修改应用到图形草稿，由公共工具栏统一保存':undefined}]}/></Modal>}
       <FloatingPanel contentKey={auxiliaryKey} onDismiss={onDismissAuxiliary} analysis={analysis} size={auxiliarySize} content={auxiliary} side="left" replacement={!!detail}/>
       {footer&&<div className="graph-footer graph-overlay nopan nodrag nowheel" data-graph-panel="bottom" data-workspace-zone="tools">{footer}</div>}
 

@@ -1,7 +1,7 @@
 import type {PathAnalysis} from '../shared/paths';
 export type WorkspaceView='list'|'graph'|'progress';
 export type WorkspaceScope={kind:'project'|'feature'|'phase'|'requirement'|'unphased';id:string};
-export type WorkspaceLocation={projectId:string;view:WorkspaceView;scope:WorkspaceScope;inspector?:string};
+export type WorkspaceLocation={projectId:string;view:WorkspaceView;scope:WorkspaceScope;inspector?:string;detailTab?:string};
 export const workspaceEntryPaths=['/','/features','/paths','/requirements','/execution'];
 const scopeKinds=['project','feature','phase','requirement','unphased'];
 export function readWorkspaceLocation(params:URLSearchParams,projectId:string,pathname='/'):WorkspaceLocation{
@@ -15,10 +15,10 @@ export function readWorkspaceLocation(params:URLSearchParams,projectId:string,pa
     const feature=params.get('featureId')||params.get('feature'),phase=params.get('phaseId')||params.get('phase');
     if(feature)scope=phase?{kind:phase==='unassigned'?'unphased':'phase',id:phase==='unassigned'?feature:phase}:{kind:'feature',id:feature};
   }
-  let inspector=params.get('pathInspector')==='closed'?undefined:params.get('pathNode')||undefined;
+  let inspector=params.get('detailId')||(!params.has('workspaceView')&&params.get('pathInspector')!=='closed'||params.get('pathInspector')==='open'?params.get('pathNode')||undefined:undefined);
   if(!kind&&params.get('view')==='features'&&params.get('phaseId')&&inspector?.startsWith('feature:'))inspector='phase:'+params.get('phaseId');
   if(!kind&&pathname==='/features'&&params.has('feature')&&!params.has('view')){scope={kind:'project',id:projectId};inspector='feature:'+params.get('feature');}
-  return {projectId,view,scope,inspector};
+  return {projectId,view,scope,inspector,detailTab:params.get('detailTab')||undefined};
 }
 export function workspaceAncestors(location:WorkspaceLocation,data:PathAnalysis):Array<{scope:WorkspaceScope;label:string}>{
   const features=data.featureContext?.overview.features||[],requirements=data.requirements;
@@ -37,7 +37,7 @@ export function workspaceAncestors(location:WorkspaceLocation,data:PathAnalysis)
 export function workspaceParams(location:WorkspaceLocation,data?:PathAnalysis,current=new URLSearchParams()){
   const next=new URLSearchParams(current);
   if(next.get('intakeView')==='import')next.set('intake','1');
-  for(const name of ['view','mode','feature','phase','featureId','phaseId','requirementId','root','scopeType','scopeId','workspaceView','pathNode','pathInspector'])next.delete(name);
+  for(const name of ['view','mode','feature','phase','featureId','phaseId','requirementId','root','scopeType','scopeId','workspaceView','detailId','detailTab'])next.delete(name);
   const {scope}=location;
   next.set('projectId',location.projectId);next.set('workspaceView',location.view);next.set('scopeType',scope.kind);next.set('scopeId',scope.id);
   next.set('mode','graph');
@@ -46,7 +46,8 @@ export function workspaceParams(location:WorkspaceLocation,data?:PathAnalysis,cu
   if(feature)next.set('featureId',feature);else if(scope.kind==='feature'||scope.kind==='unphased')next.set('featureId',scope.id);
   if(scope.kind==='requirement'){next.set('requirementId',scope.id);next.set('root','features');}
   if(phase)next.set('phaseId',phase);else if(scope.kind==='phase')next.set('phaseId',scope.id);else if(scope.kind==='unphased')next.set('phaseId','unassigned');
-  if(location.inspector){next.set('pathNode',location.inspector);next.set('pathInspector','open');}else next.set('pathInspector','closed');
+  if(location.inspector){next.set('detailId',location.inspector);if(location.detailTab)next.set('detailTab',location.detailTab);}
+  if(current.get('pathInspector')==='open'&&current.get('pathNode')===location.inspector)next.set('pathInspector','closed');
   return next;
 }
 export function scopeRequirementIds(scope:WorkspaceScope,data:PathAnalysis){

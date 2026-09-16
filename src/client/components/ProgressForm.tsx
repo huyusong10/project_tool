@@ -1,3 +1,5 @@
+import {useDeliveryForm} from '../use-delivery-form';
+import {useProjects} from '../app-context';
 import { Button } from './Button';
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { useRef, useState } from 'react';
@@ -17,6 +19,7 @@ export type ProgressScope = {
   requirementStatus?: string;
 };
 
+type ProgressRequest = {content:string;workItemId:string;expectedVersion:number;workItemPercent?:number};
 const terminal = (status: string) => ['completed', 'cancelled'].includes(status);
 
 export function ProgressForm({
@@ -32,15 +35,20 @@ export function ProgressForm({
   onClose: () => void;
 }) {
   const client = useQueryClient();
-  const { session } = useSession();
+  const { session } = useSession(),{selectedProjectId}=useProjects();
+  const [receipt,setReceipt,clearReceipt]=useDeliveryForm<ProgressRequest|null>(selectedProjectId,fixedItemId+':progress-receipt',()=>null);
+  const receiptRef=useRef(receipt);
+  const [local,setLocal,clearLocal]=useDeliveryForm(selectedProjectId,fixedItemId+':progress',()=>({item:scope.items.find(item=>item.id===fixedItemId),percent:scope.items.find(item=>item.id===fixedItemId)?.progress||0,content:'',unknown:null as {version:number;versioned:boolean}|null}));
   const submitting = useRef(false);
-  const unknownWrite = useRef<{ version: number; versioned: boolean } | null>(null);
-  const [reviewRequired, setReviewRequired] = useState(false);
+  const unknownWrite = useRef<{ version: number; versioned: boolean } | null>(receipt?{version:receipt.expectedVersion,versioned:receipt.workItemPercent!==undefined}:local.unknown);
+  const [reviewRequired, setReviewRequired] = useState(!!receipt||!!local.unknown);
   const workItemId = fixedItemId;
-  const [draftItem, setDraftItem] = useState(() => scope.items.find((item) => item.id === workItemId));
+  const draftItem=local.item;
+  const setDraftItem=(item:WorkItem)=>setLocal(value=>({...value,item}));
   const editsPercent = useRef(draftItem?.status === 'in_progress').current;
-  const [percent, setPercent] = useState(draftItem?.progress || 0);
-  const [needsRefresh, setNeedsRefresh] = useState(false);
+  const percent=local.percent;
+  const setPercent=(percent:number)=>setLocal(value=>({...value,percent}));
+  const [needsRefresh, setNeedsRefresh] = useState(!!receipt);
   const currentItem = scope.items.find((item) => item.id === workItemId);
   const unavailable = Boolean(workItemId && (!currentItem || terminal(currentItem.status)));
   const changed = Boolean(currentItem && (!draftItem || currentItem.version !== draftItem.version || currentItem.status !== draftItem.status));
@@ -64,21 +72,23 @@ export function ProgressForm({
       if (item) setDraftItem(item);
       const unknown = unknownWrite.current;
       // 说明不会提高工作项版本，列表中未出现说明也不能证明写入失败。
-      setReviewRequired(Boolean(unknown && (!unknown.versioned || item?.version !== unknown.version)));
+      setReviewRequired(Boolean(receiptRef.current||unknown && (!unknown.versioned || item?.version !== unknown.version)));
       setNeedsRefresh(false);
     },
   });
   const mutation = useMutation({
-    mutationFn: async (input: { content: string; workItemId: string; expectedVersion: number; workItemPercent?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',requirementId,{workItemId:input.workItemId,action:input.workItemPercent===undefined?'note':'progress'});return api(`/api/requirements/${requirementId}/progress`, { method: 'POST', body: jsonBody(input) });},
+    mutationFn: async (input: ProgressRequest) => {await assertCleanRequirementDraft(session.accountId||'guest',requirementId,{workItemId:input.workItemId,action:input.workItemPercent===undefined?'note':'progress'});receiptRef.current=input;setReceipt(input);return api(`/api/requirements/${requirementId}/progress`, { method: 'POST', body: jsonBody(input) });},
     onSuccess: () => {
       invalidateRequirementViews(client, requirementId);
-      onClose();
+      receiptRef.current=null;setReceipt(null);clearReceipt();clearLocal();onClose();
     },
     onError: async (error, input) => {
+      if(!isWriteOutcomeUnknown(error)){receiptRef.current=null;setReceipt(null);clearReceipt();}
       if (requiresWriteRecheck(error)) {
         if (isWriteOutcomeUnknown(error)) unknownWrite.current = {
           version: input.expectedVersion, versioned: input.workItemPercent !== undefined,
         };
+        if(unknownWrite.current)setLocal(value=>({...value,unknown:unknownWrite.current}));
         setNeedsRefresh(true);
         try {
           await refresh.mutateAsync();
@@ -105,16 +115,18 @@ export function ProgressForm({
         {workItemId && <p className="field-help field-full">当前完成度 {currentItem?.progress ?? draftItem?.progress ?? 0}% · {requirementStatusLabels[(currentItem?.status || draftItem?.status) as keyof typeof requirementStatusLabels] || '不可操作'}</p>}
         {writesPercent && <ProgressInput name="workItemPercent" value={percent} onChange={setPercent} max={99} />}
         {currentItem?.status === 'not_started' && <p className="field-help field-full">工作项尚未开始，只能补充说明；开始后才能填写完成度。</p>}
-        <FormField label={writesPercent ? "说明（可选）" : "说明"} full><textarea name="content" rows={3} required={!writesPercent} autoFocus placeholder={writesPercent ? '描述本次实际完成的内容' : '说明当前情况和待处理事项'} /></FormField>
+        <FormField label={writesPercent ? "说明（可选）" : "说明"} full><textarea name="content" value={local.content} onChange={event=>setLocal(value=>({...value,content:event.target.value}))} rows={3} required={!writesPercent} autoFocus placeholder={writesPercent ? '描述本次实际完成的内容' : '说明当前情况和待处理事项'} /></FormField>
         <p className="field-help field-full">{editsPercent ? '只有进行中的工作项可以填写0～99%的累计完成度；100%请使用“完成工作项”。' : '本次只保存说明，不改变完成度、状态和日期。'}</p>
         <FormError>{validationError || mutation.error?.message}</FormError>
         <FormError>{refresh.error?.message}</FormError>
-        {(needsRefresh || changed || unavailable) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" onClick={() => {
+        {receipt&&reviewRequired&&<details className="field-full"><summary>待核对的原提交</summary><p>{receipt.workItemPercent===undefined?"仅记录说明":`完成度 ${receipt.workItemPercent}%`}</p><p>{receipt.content||"未填写说明"}</p></details>}
+        {(needsRefresh || changed || unavailable || receipt) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" onClick={() => {
           if (submitting.current) return;
           submitting.current = true;
           refresh.mutate(undefined, { onSettled: () => { submitting.current = false; } });
         }}>重新读取工作项</Button></div>}
-        <FormSubmitActions submitLabel={submitLabel} onCancel={onClose} pending={pending} disabled={Boolean(validationError)} />
+        {receipt&&reviewRequired&&!needsRefresh&&<Button variant="secondary" type="button" onClick={()=>{receiptRef.current=null;setReceipt(null);clearReceipt();clearLocal();onClose();}}>已核对，结束本次操作</Button>}
+        <FormSubmitActions submitLabel={submitLabel} onCancel={()=>{clearLocal();onClose();}} pending={pending} disabled={Boolean(validationError)} />
       </fieldset>
     </form>
   </Modal>;

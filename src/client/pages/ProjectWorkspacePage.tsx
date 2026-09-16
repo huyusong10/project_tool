@@ -1,3 +1,5 @@
+import {StatusBadge} from '../components/Badge';
+import {PhaseStatusBadge} from '../components/PhasePlanning';
 import { Button } from '../components/Button';
 import {ArrowLeft} from 'lucide-react';
 import {useEffect,useState} from 'react';
@@ -23,6 +25,7 @@ import {WorkspaceOverview} from '../components/WorkspaceOverview';
 import {WorkspaceOutline} from '../components/WorkspaceOutline';
 import {ObjectInspector} from '../components/ObjectInspector';
 import {DeliveryFeatureDetails} from '../components/DeliveryFeatureDetails';
+import {WorkItemObjectDetails} from '../components/WorkItemObjectDetails';
 import {RequirementObjectDetails} from './RequirementPage';
 import {ProgressWorkspace} from './ProgressWorkspacePage';
 import {FeaturePathPanel} from '../components/FeaturePathPanel';
@@ -53,16 +56,25 @@ function ProjectWorkspace({report,data}:{report:Dashboard;data:PathAnalysis}){
   const {session}=useSession(),account=session.accountId||'guest',projectId=data.projectId,client=useQueryClient();
   const [params,setParams]=useSearchParams(),go=useAppNavigate(),location=readWorkspaceLocation(params,projectId),[runtime]=useState(()=>new WorkspaceRuntime());
   const draft=useDependencyDraft(account,data,'project',()=>invalidateRequirementViews(client));runtime.document=draft;
+  const [detailTrail,setDetailTrail]=useState<Array<{id:string;tab?:string;title:string}>>([]);
   const [changes,setChanges]=useState(false),[discard,setDiscard]=useState(false);
   const navigationData=draftNetwork(data,draft.changes,draft.templateInstances);
   const memoryKey=workspacePreferenceKey(account,projectId),trail=workspaceAncestors(location,navigationData),last=trail.at(-1)!;
   const viewKey=memoryKey+':'+location.view;
   useEffect(()=>{const canonical=workspaceParams(location,navigationData,params);if([...canonical].some(([k,v])=>params.get(k)!==v)||[...params.keys()].some(k=>!canonical.has(k)))setParams(canonical,{replace:true});},[location,navigationData,params,setParams]);
-  useEffect(()=>{try{localStorage.setItem(memoryKey,JSON.stringify({...location,inspector:undefined}));const stored=new URLSearchParams();for(const key of viewFields)if(params.has(key))stored.set(key,params.get(key)!);sessionStorage.setItem(viewKey,stored.toString());}catch{/* The URL remains shareable if storage is unavailable. */}},[memoryKey,viewKey,params,location]);
-  const enter=(scope:WorkspaceScope)=>{const next=workspaceParams({...location,scope},navigationData,params);next.delete('intake');for(const key of ['pathRelation','pathEdge','workspaceLocate','intakeView'])next.delete(key);go('/?'+next);};
-  const inspect=(id?:string)=>setParams(workspaceParams({...location,inspector:id},navigationData,params),{replace:true});
+  useEffect(()=>{try{localStorage.setItem(memoryKey,JSON.stringify({...location,inspector:undefined,detailTab:undefined}));const stored=new URLSearchParams();for(const key of viewFields)if(params.has(key))stored.set(key,params.get(key)!);sessionStorage.setItem(viewKey,stored.toString());}catch{/* The URL remains shareable if storage is unavailable. */}},[memoryKey,viewKey,params,location]);
+  const enter=(scope:WorkspaceScope)=>{setDetailTrail([]);const next=workspaceParams({...location,scope,inspector:undefined,detailTab:undefined},navigationData,params);next.delete('intake');for(const key of ['pathRelation','pathEdge','workspaceLocate','intakeView'])next.delete(key);go('/?'+next);};
+  const inspect=(id?:string,tab?:string)=>{
+    if(client.isMutating())return;
+    if(id&&location.inspector&&id!==location.inspector)setDetailTrail(trail=>[...trail,{id:location.inspector!,tab:location.detailTab,title:title||'上个对象'}]);
+    else if(!id)setDetailTrail([]);
+    const next=workspaceParams({...location,inspector:id,detailTab:tab},navigationData,params);next.set('pathInspector','closed');
+    setParams(next);
+  };
+  const detailBack=()=>{const previous=detailTrail.at(-1);if(!previous)return;setDetailTrail(trail=>trail.slice(0,-1));setParams(workspaceParams({...location,inspector:previous.id,detailTab:previous.tab},navigationData,params),{replace:true});};
   const switchView=(view:WorkspaceView,locateId?:string)=>{
-    const next=workspaceParams({...location,view,inspector:locateId||location.inspector},navigationData,params);
+    if(locateId)setDetailTrail([]);
+    const next=workspaceParams({...location,view,...(locateId?{inspector:undefined,detailTab:undefined}:{})},navigationData,params);
     for(const field of viewFields)next.delete(field);next.delete('intake');next.delete('intakeView');next.delete('workspaceLocate');
     try{const saved=new URLSearchParams(sessionStorage.getItem(memoryKey+':'+view)||'');for(const [k,v] of saved)if(viewFields.includes(k))next.set(k,v);}catch{/* No saved filters. */}
     if(locateId){next.set('pathScope','all');next.set('pathSearch','');next.delete('q');const r=data.requirements.find(r=>r.id===locateId)||data.requirements.find(r=>r.id===data.nodes.find(n=>n.id===locateId)?.requirementId);next.set('workspaceLocate',location.scope.kind==='project'&&r?.featureId?'feature:'+r.featureId:location.scope.kind!=='requirement'&&r?r.id:locateId);}
@@ -86,8 +98,8 @@ function ProjectWorkspace({report,data}:{report:Dashboard;data:PathAnalysis}){
       <div className="unified-workspace-body">
         {!valid?<>{header}<div className="page-content"><p role="alert">此范围不存在或已无法访问，网址和资料输入已保留。</p><Button variant="primary" className="primary-button" onClick={()=>enter({kind:'project',id:projectId})}>进入项目</Button></div></>:params.get('intake')==='1'?<><PageHeader {...headerProps} actions={<div className="page-editor-actions"><div className="page-editor-history"/><div className="page-editor-primary"><Button variant="secondary" className="ghost-button" aria-label="返回特性清单" title="返回特性清单" onClick={()=>{const next=new URLSearchParams(params);next.delete('intake');next.delete('intakeView');setParams(next);}}><ArrowLeft size={16}/><span>返回</span></Button></div></div>}/><div className="workspace-import"><RequirementImport projectId={projectId}/></div></>:location.view==='list'?null:location.view==='progress'?<ProgressWorkspace report={report} formal={data}/>:location.scope.kind==='project'?<FeaturePathPanel projectId={projectId}/>:<PathAnalysisPanel projectId={projectId}/>}
         <div className="workspace-list-container" hidden={!valid||location.view!=='list'||params.get('intake')==='1'}><WorkspaceOutline report={report} header={valid&&location.view==='list'&&params.get('intake')!=='1'?headerProps:undefined}/></div>
-        {selected&&title&&(selectedFeature||selectedRequirement)&&<ObjectInspector hidden={location.view==='graph'&&draft.active} title={title} identity={selected} onClose={()=>inspect()} onEnter={()=>{const scope=scopeFromObject(selectedRequirement?.id||selected,data);if(scope)enter(scope);}}>
-          {selectedFeature?<DeliveryFeatureDetails key={selectedFeature.id} feature={selectedFeature} phaseId={selectedPhase?.id} onEnter={()=>enter({kind:selectedPhase?'phase':'feature',id:selectedPhase?.id||selectedFeature.id})} onPhase={()=>inspect('feature:'+selectedFeature.id)}/>:selectedRequirement?<RequirementObjectDetails key={selectedRequirement.id} id={selectedRequirement.id} workItemId={selected!==selectedRequirement.id?selected:undefined} onOpenDependencies={()=>switchView('graph',selected)}/>:null}
+        {selected&&<ObjectInspector status={selectedPhase?<PhaseStatusBadge phase={selectedPhase}/>:selectedRequirement?<StatusBadge kind={selected===selectedRequirement.id?'requirement':'workItem'} value={selected===selectedRequirement.id?selectedRequirement.status:data.nodes.find(n=>n.id===selected)?.status||'not_started'}/>:selectedFeature?.archivedAt?<span className="object-detail-kind">已归档</span>:undefined} kind={selectedPhase?'Phase':selectedFeature?selectedFeature.kind==='other'?'归类':'特性':selectedRequirement?selected===selectedRequirement.id?'需求':'工作项':undefined} projectId={projectId} tab={location.detailTab} onTabChange={tab=>setParams(workspaceParams({...location,detailTab:tab},navigationData,params),{replace:true})} onBack={detailTrail.length?detailBack:undefined} backLabel={detailTrail.at(-1)?.title} title={title||'对象详情'} identity={selected} onClose={()=>inspect()} onEnter={()=>{const scope=scopeFromObject(selectedRequirement?.id||selected,data);if(scope)enter(scope);}}>
+          {selectedFeature?<DeliveryFeatureDetails key={selected} feature={selectedFeature} phaseId={selectedPhase?.id} onEnter={()=>enter({kind:selectedPhase?'phase':'feature',id:selectedPhase?.id||selectedFeature.id})} onPhase={()=>inspect('feature:'+selectedFeature.id)}/>:selectedRequirement&&selected!==selectedRequirement.id?<WorkItemObjectDetails key={selected} requirementId={selectedRequirement.id} workItemId={selected} onOpenDependencies={()=>switchView('graph',selected)}/>:selectedRequirement?<RequirementObjectDetails key={selectedRequirement.id} id={selectedRequirement.id} onOpenDependencies={()=>switchView('graph',selected)}/>:<p role="alert">对象不存在或已无法访问，未提交输入已保留。</p>}
         </ObjectInspector>}
       </div>
       {changes&&<Modal title="修改与冲突" onClose={()=>setChanges(false)}><CanvasDraftDetails draft={draft} data={data} onGo={go}/><div className="form-actions"><Button variant="secondary" className="ghost-button" disabled={!draft.count||draft.busy||draft.readOnly} onClick={()=>setDiscard(true)}>放弃草稿</Button><Button variant="primary" className="primary-button" disabled={draft.busy||draft.readOnly||(!draft.count&&!draft.pending)} onClick={()=>void draft.save()}>{draft.pending?'核对原批次':'保存草稿'}</Button></div></Modal>}

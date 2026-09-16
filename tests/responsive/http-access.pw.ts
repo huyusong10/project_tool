@@ -48,6 +48,7 @@ test('局域网 HTTP 可登录、恢复会话、保存流程、导入需求和�
   await page.reload();
   await ready();
   await expect(page.locator('.react-flow__node')).toHaveCount(3);
+  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
   const saved = page.waitForResponse(response => new URL(response.url()).pathname === '/api/templates' && response.request().method() === 'POST');
   await page.getByRole('button', { name: '保存修改', exact: true }).click();
   expect((await saved).ok()).toBe(true);

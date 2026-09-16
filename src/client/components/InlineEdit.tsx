@@ -1,3 +1,4 @@
+import {useMutation} from '@tanstack/react-query';
 import { Button, MenuButtons } from './Button';
 import {
   createContext,
@@ -78,6 +79,7 @@ function EditorError({ error }: { error: string }) {
 }
 
 function useSaveState() {
+  const {mutateAsync}=useMutation({mutationFn:(operation:()=>Promise<unknown>)=>operation()});
   const [state, setState] = useState<SaveState>("idle");
   const [error, setError] = useState("");
   const [reloadRequired, setReloadRequired] = useState(false);
@@ -95,7 +97,7 @@ function useSaveState() {
     setReloadRequired(false);
     setState("saving");
     try {
-      await operation();
+      await mutateAsync(operation);
       setState("saved");
       timer.current = window.setTimeout(() => setState("idle"), 1100);
       return true;
@@ -105,7 +107,7 @@ function useSaveState() {
       setState("error");
       return false;
     } finally { saving.current = false; }
-  }, []);
+  }, [mutateAsync]);
 
   const clearError = useCallback(() => {
     if (saving.current) return;
@@ -271,6 +273,7 @@ export function AnchoredPopover({
   className = "",
   width = 320,
   matchAnchor = false,
+  align = 'start',
   role = "dialog",
   preserveEditing = false,
 }: {
@@ -283,6 +286,7 @@ export function AnchoredPopover({
   className?: string;
   width?: number;
   matchAnchor?: boolean;
+  align?: 'start'|'end';
   role?: AriaRole;
   preserveEditing?: boolean;
 }) {
@@ -291,23 +295,25 @@ export function AnchoredPopover({
   const deactivate = preserveEditing ? undefined : context?.deactivate;
   const editorId = useId();
   const popoverRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ top: 0, left: 0, width, ready: false });
+  const [position, setPosition] = useState({ top: 0, left: 0, width, maxHeight: 640, ready: false });
   const [ownershipReady, setOwnershipReady] = useState(false);
 
   const reposition = useCallback(() => {
     const anchor = anchorRef.current;
     if (!anchor) return;
     const rect = anchor.getBoundingClientRect();
-    const availableWidth = Math.max(160, window.innerWidth - 24);
+    const boundary=anchor.closest('[role=dialog]')?.getBoundingClientRect();
+    const minLeft=boundary?Math.max(12,boundary.left+12):12,maxRight=boundary?Math.min(window.innerWidth-12,boundary.right-12):window.innerWidth-12;
+    const availableWidth = Math.max(160, maxRight-minLeft);
     const layerWidth = Math.min(Math.max(width, matchAnchor ? rect.width : 0), availableWidth);
     const measuredHeight = popoverRef.current?.offsetHeight || 240;
-    const left = Math.min(Math.max(12, rect.left), window.innerWidth - layerWidth - 12);
+    const left = Math.min(Math.max(minLeft, align==='end'?rect.right-layerWidth:rect.left), maxRight-layerWidth);
+    const minTop=boundary?Math.max(12,boundary.top+12):12,maxBottom=boundary?Math.min(window.innerHeight-12,boundary.bottom-12):window.innerHeight-12;
+    const maxHeight=Math.max(80,maxBottom-minTop),height=Math.min(measuredHeight,maxHeight);
     const below = rect.bottom + 7;
-    const top = below + measuredHeight <= window.innerHeight - 12
-      ? below
-      : Math.max(12, rect.top - measuredHeight - 7);
-    setPosition({ top, left, width: layerWidth, ready: true });
-  }, [anchorRef, matchAnchor, width]);
+    const top = below + height <= maxBottom ? Math.max(minTop,below) : Math.max(minTop,Math.min(rect.top-height-7,maxBottom-height));
+    setPosition({ top, left, width: layerWidth, maxHeight, ready: true });
+  }, [anchorRef, matchAnchor, width, align]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -376,13 +382,13 @@ export function AnchoredPopover({
     <div
       ref={popoverRef}
       className={`inline-edit-popover ${className}`.trim()}
-      style={{ top: position.top, left: position.left, width: position.width, visibility: position.ready ? "visible" : "hidden" }}
+      style={{ top: position.top, left: position.left, width: position.width, maxHeight:position.maxHeight, overflowY:"auto", visibility: position.ready ? "visible" : "hidden" }}
       role={role}
       onClick={(event) => event.stopPropagation()}
     >
       {children}
     </div></MenuButtons>,
-    document.body,
+    anchorRef.current?.closest('[role=dialog]') || document.body,
   );
 }
 

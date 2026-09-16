@@ -499,7 +499,7 @@ for (const location of ['list', 'detail'] as const) {
       await page.mouse.click(5, 5);
       await expect(container).toBeVisible();
       if (location === 'detail') {
-        await expect(page.locator('.modal-card > header button[aria-label="关闭"]')).toHaveCount(0);
+        await expect(page.locator('.modal-card > header button[aria-label="关闭"]')).toBeDisabled();
         await expect(page.getByRole('tab', { name: '基本信息', exact: true })).toBeDisabled();
         await expect(page.locator('.issue-update-form textarea')).toBeDisabled();
       }
@@ -704,7 +704,7 @@ for (const form of ['basic', 'updates'] as const) {
       await expect.poll(() => state.writes.length).toBe(1);
       await expect(field).toBeDisabled();
       if (form === 'updates') await expect(container.getByRole('spinbutton')).toBeDisabled();
-      await expect(page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true })).toBeDisabled();
       await page.keyboard.press('Escape');
       await expect(container).toBeVisible();
       await container.evaluate((element) => element.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
@@ -919,7 +919,7 @@ test('问题草稿 新建问题提交中锁定窗口且失败保留字段', asyn
     await dialog.getByRole('button', { name: '创建问题', exact: true }).click();
     await expect.poll(() => state.writes.length).toBe(1);
     await expect(field).toBeDisabled();
-    await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toBeDisabled();
     await page.keyboard.press('Escape');
     await expect(dialog).toBeVisible();
     release();
@@ -1008,7 +1008,7 @@ test('100%保存期间锁定页签和关闭，失败保留说明', async ({page}
     await form.getByRole('button', {name: '保存并解决', exact: true}).click();
     await expect.poll(() => state.writes.length).toBe(1);
     await expect(dialog.getByRole('tab', {name: '基本信息', exact: true})).toBeDisabled();
-    await expect(dialog.getByRole('button', {name: '关闭', exact: true})).toHaveCount(0);
+    await expect(dialog.getByRole('button', {name: '关闭', exact: true})).toBeDisabled();
     await page.keyboard.press('Escape');
     await expect(dialog).toBeVisible();
     release();

@@ -65,3 +65,16 @@ it('近期完成按业务日期计算，排除取消、返工和窗口外记录�
   expect(summary.inProgress.map(r=>r.id)).toEqual(['a','reworked']);
   expect(workspaceSummary(location('unphased','f'),copy).recentCompleted).toEqual([]);
 });
+
+
+describe('详情与关系图选中分离',()=>{
+  it('只选中节点不会打开详情，详情切换不改选中节点或范围',()=>{
+    const params=new URLSearchParams('workspaceView=graph&scopeType=feature&scopeId=f&pathNode=a&pathEdge=e');
+    const selected=readWorkspaceLocation(params,'p');expect(selected.inspector).toBeUndefined();
+    const open=workspaceParams({...selected,inspector:'b',detailTab:'work'},data,params);
+    expect(open.get('pathNode')).toBe('a');expect(open.get('pathEdge')).toBe('e');
+    expect(readWorkspaceLocation(open,'p')).toMatchObject({scope:{kind:'feature',id:'f'},inspector:'b',detailTab:'work'});
+    const closed=workspaceParams({...selected,inspector:undefined,detailTab:undefined},data,open);
+    expect(closed.get('pathNode')).toBe('a');expect(closed.has('detailId')).toBe(false);expect(closed.has('detailTab')).toBe(false);
+  });
+});

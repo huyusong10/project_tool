@@ -25,7 +25,7 @@ export function TopbarMenu({ label = '更多操作', icon = <Ellipsis size={17}/
   return <div className="topbar-menu-trigger" data-workspace-zone="tools" data-preserve-edit>
     <Button variant={variant} iconOnly={!text} ref={trigger} type="button" className={text ? 'ghost-button topbar-menu-button' : 'ghost-button topbar-icon'} aria-label={label} title={label} disabled={disabled} aria-haspopup="menu" aria-expanded={open}
       onClick={() => setOpen(value => !value)} onKeyDown={event => { if(event.key==='Escape'&&open&&!event.nativeEvent.isComposing){event.preventDefault();event.stopPropagation();close(true);}else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); } }}>{icon}{text}</Button>
-    <AnchoredPopover anchorRef={trigger} open={open} onOutside={() => close()} onEscape={() => close(true)} preserveEditing role="presentation" width={240} className="topbar-menu-popover">
+    <AnchoredPopover align="end" anchorRef={trigger} open={open} onOutside={() => close()} onEscape={() => close(true)} preserveEditing role="presentation" width={240} className="topbar-menu-popover">
       <div ref={menu} role="menu" aria-label={label} data-workspace-zone="tools" data-preserve-edit className="topbar-menu-content"
         onBlur={event => { if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget) && !trigger.current?.contains(event.relatedTarget)) close(); }}
         onClick={event => { if ((event.target as Element).closest('button') && !(event.target as Element).closest('[data-menu-stay]')) { if (runtime) runtime.lastTrigger = trigger.current; close(); } }}

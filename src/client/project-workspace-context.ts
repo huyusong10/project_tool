@@ -5,7 +5,7 @@ import type {WorkspaceLocation,WorkspaceScope,WorkspaceView} from './workspace-l
 export type ProjectWorkspaceContextValue={
   draftControls?:ReactNode;
   location:WorkspaceLocation;data:PathAnalysis;
-  enter:(scope:WorkspaceScope)=>void;inspect:(id?:string)=>void;
+  enter:(scope:WorkspaceScope)=>void;inspect:(id?:string,tab?:string)=>void;
   switchView:(view:WorkspaceView,locateId?:string)=>void;
   navigation:Pick<PageChrome,'breadcrumbs'|'navigationLabel'|'onBack'|'backLabel'|'views'>;
 };

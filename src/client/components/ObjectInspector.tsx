@@ -1,16 +1,21 @@
-import { Button } from './Button';
-import {X,Maximize2,Minimize2,ArrowUpRight} from 'lucide-react';
-import {hasActiveSortDrag} from './DragPreview';
+import {useIsMutating} from '@tanstack/react-query';
+import {Button} from './Button';
+import {ArrowLeft, ArrowUpRight} from 'lucide-react';
+import type {ReactNode} from 'react';
+import {Modal} from './Modal';
+import {ObjectDetailContext} from './ObjectDetailContext';
+import {useSession} from '../app-context';
 import './object-inspector.css';
-import {useRef,useState,type ReactNode} from 'react';
-import {useWorkspaceLayer} from '../workspace-runtime';
 
-export function ObjectInspector({title,identity,onClose,onEnter,children,hidden=false}:{hidden?:boolean;title:string;identity:string;onClose:()=>void;onEnter?:()=>void;children:ReactNode}){
-  const ref=useRef<HTMLElement>(null),[wide,setWide]=useState(false);
-  const close=()=>{const action=Array.from(ref.current?.querySelectorAll<HTMLElement>('[data-detail-action]')||[]).at(-1);if(action){action.querySelector<HTMLButtonElement>('[data-detail-back]')?.click();return;}onClose();};
-  useWorkspaceLayer(ref,true,'detail',close,identity);
-  return <aside hidden={hidden} ref={ref} className={'workspace-object-inspector'+(wide?' is-wide':'')} aria-label="对象详情" onKeyDown={e=>{if(e.key==='Escape'&&!e.defaultPrevented&&!hasActiveSortDrag()){e.preventDefault();close();}}}>
-    <header><h3 title={title}>{title}</h3>{onEnter&&<Button variant="ghost" iconOnly className="icon-button" aria-label="进入来源" title="进入来源" onClick={onEnter}><ArrowUpRight size={16}/></Button>}<Button variant="ghost" iconOnly className="icon-button inspector-size-toggle" title={wide?'收起详情':'展开详情'} aria-label={wide?'收起详情':'展开详情'} onClick={()=>setWide(v=>!v)}>{wide?<Minimize2 size={16}/>:<Maximize2 size={16}/>}</Button><Button variant="ghost" iconOnly className="icon-button" aria-label="关闭" title="关闭" onClick={close}><X size={17}/></Button></header>
-    <div className="object-inspector-body">{children}</div>
-  </aside>;
+/** Compatibility entry; every object uses the same centered detail shell. */
+export function ObjectInspector({title,identity,kind,status,projectId='',tab,onTabChange,onClose,onEnter,onBack,backLabel,children,hidden=false}:{hidden?:boolean;title:string;identity:string;kind?:string;status?:ReactNode;projectId?:string;tab?:string;onTabChange?:(tab:string)=>void;onClose:()=>void;onEnter?:()=>void;onBack?:()=>void;backLabel?:string;children:ReactNode}){
+  const {session}=useSession(), busy=useIsMutating()>0;
+  if(hidden)return null;
+  return <ObjectDetailContext.Provider value={{key:`pm-object-detail:${session.accountId||'guest'}:${projectId}:${identity}`,tab,onTabChange}}>
+    <Modal title={title} width={960} layout="workspace" closable={!busy} onClose={onClose}
+      backAction={onBack&&<Button variant="ghost" iconOnly disabled={busy} aria-label={'返回'+(backLabel||'上个对象')} title={'返回'+(backLabel||'上个对象')} onClick={onBack}><ArrowLeft size={18}/></Button>}
+      headerActions={<>{kind&&<span className="object-detail-kind">{kind}</span>}{status}{onEnter&&<Button variant="ghost" iconOnly disabled={busy} aria-label="进入来源" title="进入来源" onClick={onEnter}><ArrowUpRight size={17}/></Button>}</>}>
+      {children}
+    </Modal>
+  </ObjectDetailContext.Provider>;
 }

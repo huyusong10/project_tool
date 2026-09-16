@@ -23,7 +23,7 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
   const remembered = rememberedProject(account);
   const requirementId = /^\/requirements\/([^/]+)$/.exec(location.pathname)?.[1] || '';
   const draft = Boolean(requirementId && params.has('draftProject'));
-  const issueId = location.pathname === '/issues' ? params.get('issueId') || '' : '';
+  const issueId = location.pathname === '/issues' ? params.get('detailId')?.replace(/^issue:/, '') || params.get('issueId') || '' : '';
   const requirement = useResourceQuery<Requirement>(keys.requirement(requirementId), `/api/requirements/${encodeURIComponent(requirementId)}`, authenticated && Boolean(requirementId) && !draft);
   const issue = useResourceQuery<Issue>(keys.issue(issueId), `/api/issues/${encodeURIComponent(issueId)}`, authenticated && Boolean(issueId));
   const objectQuery = requirementId && !draft ? requirement : issueId ? issue : undefined;

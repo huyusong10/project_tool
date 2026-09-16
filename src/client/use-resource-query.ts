@@ -30,11 +30,12 @@ export async function readResourceFresh<T>(client: QueryClient, queryKey: QueryK
 }
 
 /** 临时读取失败保留草稿依赖的数据；拒绝访问后清空缓存，不能在下一次 503 时重新显示。 */
-export function useResourceQuery<T>(queryKey: QueryKey, path: string, enabled = true, onRead?: (data: T) => void) {
+export function useResourceQuery<T>(queryKey: QueryKey, path: string, enabled = true, onRead?: (data: T) => void, freshOnMount = false) {
   const client = useQueryClient();
   const query = useQuery<T | null>({
     queryKey,
     enabled,
+    ...(freshOnMount ? {refetchOnMount: 'always' as const} : {}),
     queryFn: async ({ signal }) => {
       try {
         const data = await readResourceSnapshot<T>(client, queryKey, path, () => !signal.aborted, signal);

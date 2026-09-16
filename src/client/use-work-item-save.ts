@@ -16,7 +16,7 @@ export function useWorkItemSave(requirementId: string, people: Person[]) {
   const client = useQueryClient();
   const { session } = useSession();
   const run = useOptimisticMutation<{ item: WorkItem; input: Record<string, unknown>; expectedVersion?: number }, WorkItem>({
-    snapshotKeys: () => [keys.requirement(requirementId), [...keys.requirements]],
+    snapshotKeys: () => [...client.getQueryCache().findAll({queryKey:keys.requirement(requirementId)}).map(query=>query.queryKey), [...keys.requirements]],
     apply: (queryClient, { item, input }) => {
       // Keep the complete timeline until the requirement query returns the new forecast snapshot.
       if (changesTimeline(input)) return;
@@ -36,7 +36,7 @@ export function useWorkItemSave(requirementId: string, people: Person[]) {
         }
         return optimistic;
       };
-      queryClient.setQueryData<Requirement>(keys.requirement(requirementId), (current) => current ? {
+      queryClient.setQueriesData<Requirement>({queryKey:keys.requirement(requirementId)}, (current) => current ? {
         ...current,
         workItems: current.workItems.map((entry) => entry.id === item.id ? applyInput(entry) : entry),
       } : current);
@@ -50,7 +50,7 @@ export function useWorkItemSave(requirementId: string, people: Person[]) {
     },
     commit: (queryClient, saved, { input }) => {
       if (changesTimeline(input)) return;
-      queryClient.setQueryData<Requirement>(keys.requirement(requirementId), (current) => current ? {
+      queryClient.setQueriesData<Requirement>({queryKey:keys.requirement(requirementId)}, (current) => current ? {
         ...current,
         workItems: current.workItems.map((entry) => entry.id === saved.id && entry.version <= saved.version ? { ...entry, ...saved } : entry),
       } : current);

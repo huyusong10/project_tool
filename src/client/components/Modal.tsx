@@ -8,7 +8,7 @@ import {hasActiveSortDrag} from './DragPreview';
 let openModalCount = 0;
 let previousBodyOverflow = '';
 
-export function Modal({ title, children, onClose, width = 560, closable = true, layout = 'adaptive', placement = 'center' }: { title: string; children: ReactNode; onClose: () => void; width?: number; closable?: boolean; layout?: 'adaptive' | 'workspace'; placement?: 'center' | 'right' }) {
+export function Modal({ title, children, onClose, width = 560, closable = true, layout = 'adaptive', placement = 'center', headerActions, backAction }: { title: string; children: ReactNode; onClose: () => void; width?: number; closable?: boolean; layout?: 'adaptive' | 'workspace'; placement?: 'center' | 'right'; headerActions?: ReactNode; backAction?: ReactNode }) {
   const host = useDetailActionHost();
   const inline = Boolean(host);
   const cardRef = useRef<HTMLElement>(null);
@@ -17,7 +17,7 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
   const titleId = useId();
   const requestClose = () => {
     const child = Array.from(cardRef.current?.querySelectorAll<HTMLElement>('[data-detail-action]') || []).at(-1);
-    if (child) {child.querySelector<HTMLButtonElement>('[data-detail-back]')?.click(); return;}
+    if (child?.querySelector('[data-detail-back]:disabled')) return;
     if (closable) onClose();
   };
   const register = host?.register;
@@ -42,10 +42,13 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
       const card = cardRef.current;
       if (!card) return;
       const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(dialog => dialog.getClientRects().length > 0);
-      if (dialogs.at(-1) !== card) return;
+      if (dialogs.at(-1) !== card && !card.contains(dialogs.at(-1) || null)) return;
       if (event.key === 'Escape') {
         if (hasActiveSortDrag()) return;
         event.preventDefault();
+        const child=Array.from(card.querySelectorAll<HTMLElement>('[data-detail-action]')).filter(element=>element.getClientRects().length>0&&getComputedStyle(element).visibility!=='hidden').at(-1);
+        const back=child?.querySelector<HTMLButtonElement>('[data-detail-back]');
+        if(back){if(!back.disabled)back.click();return;}
         if (closableRef.current) closeRef.current();
         return;
       }
@@ -77,10 +80,10 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
   const content = (
     <MenuButtons enabled={false}>
     <div className={`modal-backdrop${placement === 'right' ? ' modal-backdrop-right' : ''}`} role="presentation" onMouseDown={(event) => closable && event.target === event.currentTarget && requestClose()}>
-      <section ref={cardRef} data-detail-action={host ? true : undefined} className={`modal-card modal-card-${layout}`} style={{ width, maxWidth: width ? `min(94vw, ${width}px)` : undefined }} role="dialog" aria-modal={!host} aria-labelledby={titleId} tabIndex={-1} onKeyDown={event => {
+      <section ref={cardRef} data-detail-action={host ? true : undefined} className={`modal-card modal-card-${layout}`} style={{ width, maxWidth: width ? `min(94vw, ${width}px)` : undefined }} role={host ? 'region' : 'dialog'} aria-modal={host ? undefined : true} aria-labelledby={titleId} tabIndex={-1} onKeyDown={event => {
         if (host && event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing && !hasActiveSortDrag()) {event.preventDefault(); event.stopPropagation(); requestClose();}
       }}>
-        <header><h2 id={titleId}>{title}</h2>{host ? <Button variant="secondary" type="button" data-detail-back className="ghost-button" disabled={!closable} onClick={requestClose}>返回</Button> : <Button variant="ghost" iconOnly disabled={!closable} className="icon-button" aria-label="关闭" onClick={requestClose}><X size={18} /></Button>}</header>
+        <header onClickCapture={event=>{if(cardRef.current?.querySelector('[data-detail-back]:disabled')){event.preventDefault();event.stopPropagation();}}}>{backAction}<h2 id={titleId}>{title}</h2>{headerActions}{host ? <Button variant="secondary" type="button" data-detail-back className="ghost-button" disabled={!closable} onClick={requestClose}>返回</Button> : <Button variant="ghost" iconOnly disabled={!closable} className="icon-button" aria-label="关闭" onClick={requestClose}><X size={18} /></Button>}</header>
         <div className={`modal-body modal-body-${layout}`}>{children}</div>
       </section>
     </div></MenuButtons>
