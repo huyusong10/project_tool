@@ -9,6 +9,7 @@ import { DeliveryControls } from './DeliveryControls';
 import { ExecutionStageBadge } from './ExecutionStageBadge';
 import { TestSubmissionButton } from './TestSubmissionButton';
 import { AnchoredPopover } from './InlineEdit';
+import { OverviewIntroduction } from './OverviewIntroduction';
 
 export function RequirementOverview({ requirement: r, compact=false }: { requirement: Requirement; compact?:boolean }) {
   const workspace = useProjectWorkspace();
@@ -22,6 +23,8 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
   const plannedLabel = r.scheduleComplete === false || r.plannedProgress === null ? schedule.label : `计划 ${r.plannedProgress}%`;
   const progressHint = `${plannedLabel} · ${direct ? '直接记录完成度' : '自动按工期加权'}`;
   return <section className={"requirement-overview"+(compact?" is-compact":"")} aria-label="需求概览">
+    <OverviewIntroduction title="需求说明" text={r.background} empty="尚未填写需求说明，可在资料中补充。" secondary={{title:'完成标准',text:r.acceptanceCriteria}}/>
+    <h3 className="overview-section-heading">执行进展</h3>
     <div className="requirement-overview-top">
       <div className="requirement-overview-meta">
         <ExecutionStageBadge requirement={r} />

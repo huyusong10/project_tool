@@ -166,6 +166,25 @@
 .detail-workspace .object-facts > div {display:grid;grid-template-columns:88px minmax(0,1fr);align-content:start;gap:8px;padding:12px 0;border-bottom:1px solid var(--divider)}
 .detail-workspace .object-facts > .object-fact-wide {grid-column:1/-1}
 .detail-workspace .object-facts dd {margin:0;overflow-wrap:anywhere}
+.overview-introduction {margin:0 0 20px;padding:14px 16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface-subtle);min-width:0}
+.overview-introduction > header {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.overview-introduction h3,.overview-section-heading {margin:0;font-size:14px;line-height:1.6;color:var(--text-primary)}
+.overview-introduction p {margin:0;line-height:1.75;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}
+.overview-introduction .is-empty {color:var(--text-muted)}
+.overview-introduction-secondary {margin-top:12px;padding-top:10px;border-top:1px solid var(--divider)}
+.overview-introduction-secondary h4 {margin:0 0 4px;font-size:12px;font-weight:500;color:var(--text-muted)}
+.overview-introduction-secondary p {font-size:13px;-webkit-line-clamp:3}
+.overview-section-heading {margin-bottom:12px}
+.requirement-sources {margin-top:20px;min-width:0}
+.requirement-sources h3 {margin:0 0 10px;font-size:14px}
+.requirement-source-list {list-style:none;padding:0;margin:0;display:grid;gap:12px}
+.requirement-source-list li {min-width:0;padding:12px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface-subtle)}
+.requirement-source-list a {overflow-wrap:anywhere}
+.requirement-source-list small {display:block;margin-top:4px;color:var(--text-muted)}
+.requirement-source-list p,.requirement-source-text {margin:8px 0 0;font-size:13px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere}
+.requirement-source-original {margin-top:12px}
+.requirement-source-original summary {cursor:pointer;color:var(--text-muted);font-size:12px;padding:8px 0}
+.requirement-source-original pre {white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:12px;line-height:1.7;margin:8px 0;padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface-subtle)}
 .detail-workspace-panel > .requirement-overview.is-compact {padding:0;margin:0}
 .detail-workspace-panel > .requirement-overview.is-compact .requirement-overview-top {display:flex;align-items:center;flex-direction:row;flex-wrap:wrap;gap:8px;padding:0;margin:0 0 12px}
 .detail-workspace-panel > .requirement-overview.is-compact .requirement-overview-actions {width:auto;margin:0;margin-left:auto}

@@ -10,6 +10,8 @@ export const DetailActionContext = createContext<DetailActionHost | null>(null);
 export const useDetailActionHost = () => useContext(DetailActionContext);
 
 const ToolbarContext=createContext<{element:HTMLDivElement|null;active:boolean}|null>(null);
+const SectionContext=createContext<((id:string)=>void)|null>(null);
+export const useDetailSection = () => useContext(SectionContext);
 export function DetailToolbar({children}:{children:ReactNode}){const host=useContext(ToolbarContext);const content=<CompactButtons>{children}</CompactButtons>;return host?host.active&&host.element?createPortal(content,host.element):null:content;}
 
 /** Keep each section mounted so navigation preserves input and its scroll position. */
@@ -30,7 +32,7 @@ export function DetailWorkspace({label, summary, tabs, initialTab, activeTab, on
     return () => setActions(current => current.filter(value => value !== id));
   }}), [element]);
   const choose = (id: string) => {setLocalTab(id); if(detail){writeDetailMemory(detail.key+':tab',id);detail.onTabChange?.(id);} onTabChange?.(id);};
-  return <DetailActionContext.Provider value={host}>
+  return <DetailActionContext.Provider value={host}><SectionContext.Provider value={id=>{if(disabled||busy)return;choose(id);document.getElementById(`${prefix}-tab-${id}`)?.focus();}}>
     <div className="detail-workspace" aria-label={label}>
       <div className="detail-workspace-content" inert={actions.length > 0 || undefined} aria-hidden={actions.length > 0 || undefined}>
         {summary && <div className="detail-workspace-summary">{summary}</div>}
@@ -47,5 +49,5 @@ export function DetailWorkspace({label, summary, tabs, initialTab, activeTab, on
       <div ref={setElement} className="detail-action-host" hidden={!actions.length} />
       {children}
     </div>
-  </DetailActionContext.Provider>;
+  </SectionContext.Provider></DetailActionContext.Provider>;
 }
