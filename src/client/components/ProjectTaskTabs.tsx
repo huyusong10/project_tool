@@ -8,5 +8,5 @@ export function ProjectTaskTabs(){
   const url=useLocation(),navigate=useAppNavigate(),{session}=useSession(),{selectedProjectId}=useProjects();
   let location=readWorkspaceLocation(new URLSearchParams(url.search),selectedProjectId,url.pathname);
   if(['/analytics','/actions'].includes(url.pathname))try{const saved=JSON.parse(localStorage.getItem(workspacePreferenceKey(session.accountId||'guest',selectedProjectId))||'null') as WorkspaceLocation|null;if(saved?.projectId===selectedProjectId)location=saved;}catch{/* No saved workspace. */}
-  return <ViewTabs ariaLabel="项目视角" value={location.view} options={[{value:'list',label:'特性清单'},{value:'graph',label:'关系图'},{value:'progress',label:'进展表'}]} onChange={view=>navigate('/?'+workspaceParams({...location,view:view as WorkspaceView}))}/>;
+  return <ViewTabs ariaLabel="项目视角" value={location.view} options={[{value:'list',label:'清单'},{value:'graph',label:'关系图'},{value:'progress',label:'进展表'}]} onChange={view=>navigate('/?'+workspaceParams({...location,view:view as WorkspaceView}))}/>;
 }

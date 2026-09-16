@@ -8,7 +8,7 @@ export function PageHeader(props: Omit<PageChrome, 'runtime'>) {
   const store = usePageChromeStore(),workspace=useProjectWorkspace();
   const runtime = useContext(WorkspaceRuntimeContext);
   const owner = useRef(Symbol('page-chrome'));
-  useLayoutEffect(() => { store.publish(store.navigationKey, owner.current, {...props,...workspace?.navigation, moreActions:workspace?.draftControls?<>{props.moreActions}{workspace.draftControls}</>:props.moreActions,runtime}); });
+  useLayoutEffect(() => { store.publish(store.navigationKey, owner.current, {...props,...workspace?.navigation, actions:workspace?<>{props.actions}{workspace.actions&&<div className="workspace-create-action">{workspace.actions}</div>}</>:props.actions,moreActions:workspace?<>{workspace.moreActions}{props.moreActions}{workspace.draftControls}</>:props.moreActions,runtime}); });
   useLayoutEffect(() => { const token = owner.current; return () => store.release(store.navigationKey, token); }, [store]);
   return null;
 }

@@ -110,3 +110,13 @@
 @media(pointer:coarse){.outline-row-actions>.topbar-menu-trigger,.outline-drag,.workspace-enter{opacity:1}}
 
 }
+
+@layer application {
+.workspace-empty{padding:24px;color:var(--text-muted);display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+.workspace-gantt-grid>.workspace-empty{position:sticky;left:0;width:fit-content;max-width:100%;box-sizing:border-box}
+.workspace-graph-empty{position:absolute;top:76px;left:72px;z-index:5;max-width:calc(100% - 96px);background:var(--bg-surface);border:1px solid var(--border);border-radius:8px}
+.workspace-empty p{margin:0}.workspace-empty .button-row{flex-wrap:wrap}
+.workspace-filter-notice{display:flex;align-items:center;gap:12px;padding:6px 16px;font-size:12px;color:var(--text-muted);flex-wrap:wrap}
+.workspace-overview-scope{font-size:12px;color:var(--text-muted);white-space:nowrap}
+
+}

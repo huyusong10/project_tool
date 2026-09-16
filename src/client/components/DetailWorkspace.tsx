@@ -15,8 +15,8 @@ export const useDetailSection = () => useContext(SectionContext);
 export function DetailToolbar({children}:{children:ReactNode}){const host=useContext(ToolbarContext);const content=<CompactButtons>{children}</CompactButtons>;return host?host.active&&host.element?createPortal(content,host.element):null:content;}
 
 /** Keep each section mounted so navigation preserves input and its scroll position. */
-export function DetailWorkspace({label, summary, tabs, initialTab, activeTab, onTabChange, disabled = false, children}: {
-  label: string; summary?: ReactNode; tabs: Array<{id: string; label: string; content: ReactNode; actions?: ReactNode; description?: string}>;
+export function DetailWorkspace({label, summary, tabs, initialTab, activeTab, onTabChange, disabled = false, actions:sharedActions, children}: {
+  label: string; summary?: ReactNode; actions?:ReactNode; tabs: Array<{id: string; label: string; content: ReactNode; actions?: ReactNode; description?: string}>;
   initialTab?: string; activeTab?: string; onTabChange?: (id: string) => void; disabled?: boolean; children?: ReactNode;
 }) {
   const prefix = useId(), busy=useIsMutating()>0;
@@ -43,7 +43,7 @@ export function DetailWorkspace({label, summary, tabs, initialTab, activeTab, on
             event.preventDefault(); choose(tabs[next].id); document.getElementById(`${prefix}-tab-${tabs[next].id}`)?.focus();
           }}>{tab.label}</button>)}
         </nav>
-        <div className="detail-workspace-toolbar"><span>{tabs.find(tab=>tab.id===selected)?.description}</span><div className="panel-actions" ref={setToolbar}><CompactButtons>{tabs.find(tab=>tab.id===selected)?.actions}</CompactButtons></div></div>
+        <div className="detail-workspace-toolbar"><span>{tabs.find(tab=>tab.id===selected)?.description}</span><div className="panel-actions" ref={setToolbar}><CompactButtons>{sharedActions}{tabs.find(tab=>tab.id===selected)?.actions}</CompactButtons></div></div>
         {tabs.map(tab => <section className="detail-workspace-panel" role="tabpanel" id={`${prefix}-panel-${tab.id}`} aria-labelledby={`${prefix}-tab-${tab.id}`} hidden={selected !== tab.id} key={tab.id} ref={element=>{if(element&&detail)element.scrollTop=readDetailMemory(detail.key+':scroll:'+tab.id,0);}} onScroll={event=>{if(detail)writeDetailMemory(detail.key+':scroll:'+tab.id,event.currentTarget.scrollTop);}}><ToolbarContext.Provider value={{element:toolbar,active:selected===tab.id}}>{tab.content}</ToolbarContext.Provider></section>)}
       </div>
       <div ref={setElement} className="detail-action-host" hidden={!actions.length} />

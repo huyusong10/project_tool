@@ -7,6 +7,7 @@ import {matchesSearch} from '../shared/search';
 import {dashboardWindow,matchesDashboardScope,type DashboardScope} from '../shared/dashboard';
 import {selectedProgressStates,matchesProgressStatus,matchesProgressStage,compareProgressNames,compareProgressTitles} from '../shared/progress-query';
 import {deriveExecutionStage} from '../shared/execution-stage';
+import type {WorkspaceScope} from './workspace-location';
 
 export type WorkspaceRow = {
   id:string; kind:'feature'|'phase'|'requirement'|'work'; title:string; featureId:string;
@@ -66,6 +67,15 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis,sort='n
 }
 
 export type RowFilters={query:string; featureId:string; phaseId:string; state:string; stage:string;status?:string;risk?:string;person?:string;schedule?:string;scope?:string;asOfDate?:string};
+/** Select the current level without pruning empty features or delivery batches. */
+export function scopeWorkspaceRows(rows:WorkspaceRow[],scope:WorkspaceScope):WorkspaceRow[] {
+  if(scope.kind==='project')return rows;
+  const all=flattenWorkspaceRows(rows,{},true).map(item=>item.row);
+  if(scope.kind==='requirement')return all.filter(row=>row.kind==='requirement'&&row.id===scope.id);
+  const id=scope.kind==='feature'?'feature:'+scope.id:scope.kind==='phase'?'phase:'+scope.id:'unphased:'+scope.id;
+  return all.find(row=>row.id===id)?.children||[];
+}
+
 export function filterWorkspaceRows(rows:WorkspaceRow[],filter:RowFilters):WorkspaceRow[] {
   const states=selectedProgressStates(filter.status||'');
   const itemFilters=!!(filter.stage||filter.status||filter.risk||filter.person||filter.schedule||filter.scope);

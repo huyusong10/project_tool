@@ -1,6 +1,6 @@
 import {outlineRows,scopeOutline} from '../src/client/outline-model';
 import {expect,it} from 'vitest';
-import {workspaceRows,filterWorkspaceRows,flattenWorkspaceRows} from '../src/client/workspace-rows';
+import {workspaceRows,scopeWorkspaceRows,filterWorkspaceRows,flattenWorkspaceRows} from '../src/client/workspace-rows';
 import type {Dashboard} from '../src/client/types';
 import {deriveExecutionStage} from '../src/shared/execution-stage';
 import {selectedProgressStates,progressStatesValue,progressStatesLabel} from '../src/client/progress-filters';
@@ -8,6 +8,15 @@ import {selectedProgressStates,progressStatesValue,progressStatesLabel} from '..
 const stage=deriveExecutionStage({status:'in_progress'},[{title:'测试',status:'in_progress',workStage:'testing',progress:70,progressWeight:1}]);
 function fixture(){return {asOfDate:'2026-09-14',requirements:[{id:'r',title:'资产导入',featureId:'f',phaseId:'p',status:'in_progress',executionStage:stage,workItems:[{id:'w',title:'测试',status:'in_progress',progress:70}]}],featureOverview:{features:[{id:'f',name:'资产管理',phases:[{id:'p',name:'Phase 1',status:'in_progress',requirements:[{id:'r',title:'资产导入',status:'in_progress',executionStage:stage},{id:'archived',title:'归档交付',status:'completed',deletedAt:'2026-09-13',executionStage:deriveExecutionStage({status:'completed'})}]},{id:'empty',name:'探索',status:'planning',requirements:[]}]},{id:'empty-feature',name:'告警管理',phases:[]}]}} as unknown as Dashboard;}
 const filters={query:'',featureId:'',phaseId:'',state:'active',stage:''};
+it('切换项目和特性范围保留空特性、空 Phase；执行筛选仍排除空对象',()=>{
+  const tree=workspaceRows(fixture()),all=filterWorkspaceRows(tree,filters);
+  expect(scopeWorkspaceRows(all,{kind:'project',id:'project'}).map(r=>r.id)).toContain('feature:empty-feature');
+  expect(scopeWorkspaceRows(all,{kind:'feature',id:'f'}).map(r=>r.id)).toContain('phase:empty');
+  expect(scopeWorkspaceRows(all,{kind:'phase',id:'empty'})).toEqual([]);
+  const active=filterWorkspaceRows(tree,{...filters,status:'in_progress'});
+  expect(scopeWorkspaceRows(active,{kind:'project',id:'project'}).map(r=>r.id)).not.toContain('feature:empty-feature');
+  expect(scopeWorkspaceRows(active,{kind:'feature',id:'f'}).map(r=>r.id)).not.toContain('phase:empty');
+});
 it('未分派阶段固定在特性末尾，默认折叠；筛选保留分组和正式归属',()=>{
   const report=fixture(),r=report.requirements[0];report.requirements.push({...r,id:'flat',phaseId:null,title:'待分派'});
   const rows=workspaceRows(report),group=rows[0].children.at(-1)!;

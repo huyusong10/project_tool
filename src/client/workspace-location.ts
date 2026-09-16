@@ -48,6 +48,13 @@ export function workspaceParams(location:WorkspaceLocation,data?:PathAnalysis,cu
   if(phase)next.set('phaseId',phase);else if(scope.kind==='phase')next.set('phaseId',scope.id);else if(scope.kind==='unphased')next.set('phaseId','unassigned');
   if(location.inspector){next.set('detailId',location.inspector);if(location.detailTab)next.set('detailTab',location.detailTab);}
   if(current.get('pathInspector')==='open'&&current.get('pathNode')===location.inspector)next.set('pathInspector','closed');
+  // Navigation owns these constraints. Stale view filters must not exclude the current scope.
+  if(scope.kind!=='project')next.delete('progressFeatureId');
+  if(['phase','unphased','requirement'].includes(scope.kind))next.delete('progressPhaseId');
+  else if(scope.kind==='feature'&&data){
+    const phaseFilter=next.get('progressPhaseId');
+    if(phaseFilter&&phaseFilter!=='unassigned'&&!data.featureContext?.overview.features.find(f=>f.id===scope.id)?.phases?.some(p=>p.id===phaseFilter))next.delete('progressPhaseId');
+  }
   return next;
 }
 export function scopeRequirementIds(scope:WorkspaceScope,data:PathAnalysis){

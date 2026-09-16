@@ -14,7 +14,7 @@ export function ObjectInspector({title,identity,kind,status,projectId='',tab,onT
   return <ObjectDetailContext.Provider value={{key:`pm-object-detail:${session.accountId||'guest'}:${projectId}:${identity}`,tab,onTabChange}}>
     <Modal title={title} width={960} layout="workspace" closable={!busy} onClose={onClose}
       backAction={onBack&&<Button variant="ghost" iconOnly disabled={busy} aria-label={'返回'+(backLabel||'上个对象')} title={'返回'+(backLabel||'上个对象')} onClick={onBack}><ArrowLeft size={18}/></Button>}
-      headerActions={<>{kind&&<span className="object-detail-kind">{kind}</span>}{status}{onEnter&&<Button variant="ghost" iconOnly disabled={busy} aria-label="进入来源" title="进入来源" onClick={onEnter}><ArrowUpRight size={17}/></Button>}</>}>
+      headerActions={<>{kind&&<span className="object-detail-kind">{kind}</span>}{status}{onEnter&&<Button variant="ghost" iconOnly disabled={busy} aria-label={'进入'+(kind==='工作项'?'需求':kind==='归类'?'特性':kind||'工作区')} title={'进入'+(kind==='工作项'?'需求':kind==='归类'?'特性':kind||'工作区')} onClick={onEnter}><ArrowUpRight size={17}/></Button>}</>}>
       {children}
     </Modal>
   </ObjectDetailContext.Provider>;
