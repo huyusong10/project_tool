@@ -11,7 +11,7 @@ test('居中详情共享导航、栏目和草稿，工作项只有一份可排�
   const f=await phaseFixture(page);
   const link=(id:string,tab?:string)=>'/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',scopeType:'project',scopeId:f.projectId,detailId:id,...tab?{detailTab:tab}:{}});
   await page.goto(link('feature:'+f.feature.id));
-  const detail=page.getByRole('dialog');
+  const detail=page.locator('.modal-card-workspace[role=dialog]');
   await expect(detail.getByRole('tab',{name:'概况',exact:true})).toBeVisible();
   const frame=await detail.boundingBox(),grid=await page.getByRole('treegrid').boundingBox();
   await detail.getByRole('tab',{name:'交付范围',exact:true}).click();
@@ -32,12 +32,14 @@ test('居中详情共享导航、栏目和草稿，工作项只有一份可排�
   await expect(detail.getByRole('tab',{name:/^工作项 /})).toHaveAttribute('aria-selected','true');
   await detail.getByRole('tab',{name:'资料',exact:true}).click();
   await detail.getByRole('button',{name:'编辑信息',exact:true}).click();
-  const edit=detail.getByRole('region',{name:'编辑需求信息',exact:true});
+  const edit=detail.getByRole('dialog',{name:'编辑需求信息',exact:true});
   await edit.getByLabel('需求标题',{exact:true}).fill('关闭后保留的草稿');
+  await edit.getByRole('button',{name:'关闭',exact:true}).click();
   await detail.locator(':scope > header').getByRole('button',{name:'关闭',exact:true}).click();
   await expect(detail).toHaveCount(0);
   expect(await page.getByRole('treegrid').boundingBox()).toEqual(grid);
   await page.goto(link(f.testing.id));
+  await detail.getByRole('button',{name:'编辑信息',exact:true}).click();
   await expect(edit.getByLabel('需求标题',{exact:true})).toHaveValue('关闭后保留的草稿');
   await page.reload();await expect(edit.getByLabel('需求标题',{exact:true})).toHaveValue('关闭后保留的草稿');
   await edit.getByRole('button',{name:'取消',exact:true}).click();
@@ -46,7 +48,7 @@ test('居中详情共享导航、栏目和草稿，工作项只有一份可排�
   await expect(detail.getByRole('button',{name:'添加工作项',exact:true})).toBeInViewport();
   expect(await detail.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
   await detail.getByRole('button',{name:'添加工作项',exact:true}).click();
-  const create=detail.getByRole('region',{name:'添加工作项',exact:true});
+  const create=detail.getByRole('form',{name:'新增工作项',exact:true});
   await create.getByLabel('新工作项名称',{exact:true}).fill('窄屏添加工作项');
   await create.getByLabel('变更说明（可选）',{exact:true}).fill('补充本次范围');
   await expect(create.getByRole('button',{name:'保存工作项',exact:true})).toBeInViewport();
@@ -124,7 +126,7 @@ test('新增工作项冲突保留表单，未知响应禁止重复创建', async
   const detail = page.getByRole('dialog'), tabs = detail.getByRole('tablist', {name: '需求详情内容'});
   await tabs.getByRole('tab', {name: /^工作项 /}).click();
   await detail.getByRole('button', {name: '添加工作项', exact: true}).click();
-  const form = detail.getByRole('region', {name: '添加工作项', exact: true});
+  const form = detail.getByRole('form', {name: '新增工作项', exact: true});
   await form.getByLabel('新工作项名称', {exact: true}).fill('冲突后仍保留的工作项');
   await form.getByLabel('变更说明（可选）', {exact: true}).fill('补充本次范围');
   const current = await (await page.request.get('/api/requirements/' + f.testing.id)).json();
@@ -149,7 +151,6 @@ test('新增工作项冲突保留表单，未知响应禁止重复创建', async
   await expect(form.getByLabel('新工作项名称', {exact: true})).toHaveValue('响应损坏但已经创建');
   expect(writes).toBe(3);
   await expect.poll(async () => (await (await page.request.get('/api/requirements/' + f.testing.id)).json()).workItems.filter((item: {title: string}) => item.title === '响应损坏但已经创建').length).toBe(1);
-  await form.getByRole('button', {name: '返回', exact: true}).click();
   await expect(detail.getByRole('button', {name: '添加工作项', exact: true})).toBeDisabled();
   await tabs.getByRole('tab', {name: '概况', exact: true}).click();
   await detail.getByRole('button', {name: '重新读取需求', exact: true}).click();

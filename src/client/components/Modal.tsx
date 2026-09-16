@@ -1,4 +1,4 @@
-import { Button, MenuButtons } from './Button';
+import { Button, CompactButtons, MenuButtons } from './Button';
 import { AlertTriangle, CheckCircle2, Copy, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -10,7 +10,7 @@ let previousBodyOverflow = '';
 
 export function Modal({ title, children, onClose, width = 560, closable = true, layout = 'adaptive', placement = 'center', headerActions, backAction }: { title: string; children: ReactNode; onClose: () => void; width?: number; closable?: boolean; layout?: 'adaptive' | 'workspace'; placement?: 'center' | 'right'; headerActions?: ReactNode; backAction?: ReactNode }) {
   const host = useDetailActionHost();
-  const inline = Boolean(host);
+  const inline = Boolean(host) && layout === 'workspace';
   const cardRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   const closableRef = useRef(closable);
@@ -42,7 +42,7 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
       const card = cardRef.current;
       if (!card) return;
       const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(dialog => dialog.getClientRects().length > 0);
-      if (dialogs.at(-1) !== card && !card.contains(dialogs.at(-1) || null)) return;
+      if (dialogs.at(-1) !== card) return;
       if (event.key === 'Escape') {
         if (hasActiveSortDrag()) return;
         event.preventDefault();
@@ -74,19 +74,19 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
       document.removeEventListener('keydown', handleKeyDown);
       openModalCount = Math.max(0, openModalCount - 1);
       if (openModalCount === 0) document.body.style.overflow = previousBodyOverflow;
-      previousFocus?.focus();
+      requestAnimationFrame(() => previousFocus?.isConnected && previousFocus.focus());
     };
   }, [inline]);
   const content = (
-    <MenuButtons enabled={false}>
-    <div className={`modal-backdrop${placement === 'right' ? ' modal-backdrop-right' : ''}`} role="presentation" onMouseDown={(event) => closable && event.target === event.currentTarget && requestClose()}>
-      <section ref={cardRef} data-detail-action={host ? true : undefined} className={`modal-card modal-card-${layout}`} style={{ width, maxWidth: width ? `min(94vw, ${width}px)` : undefined }} role={host ? 'region' : 'dialog'} aria-modal={host ? undefined : true} aria-labelledby={titleId} tabIndex={-1} onKeyDown={event => {
+    <CompactButtons enabled={false}><MenuButtons enabled={false}>
+    <div className={`modal-backdrop${inline ? ' modal-backdrop-inline' : ''}${placement === 'right' ? ' modal-backdrop-right' : ''}`} role="presentation" onMouseDown={(event) => closable && event.target === event.currentTarget && requestClose()}>
+      <section ref={cardRef} data-detail-action={host ? true : undefined} className={`modal-card modal-card-${layout}`} style={{ width, maxWidth: width ? `min(94vw, ${width}px)` : undefined }} role={inline ? 'region' : 'dialog'} aria-modal={inline ? undefined : true} aria-labelledby={titleId} tabIndex={-1} onKeyDown={event => {
         if (host && event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing && !hasActiveSortDrag()) {event.preventDefault(); event.stopPropagation(); requestClose();}
       }}>
-        <header onClickCapture={event=>{if(cardRef.current?.querySelector('[data-detail-back]:disabled')){event.preventDefault();event.stopPropagation();}}}>{backAction}<h2 id={titleId}>{title}</h2>{headerActions}{host ? <Button variant="secondary" type="button" data-detail-back className="ghost-button" disabled={!closable} onClick={requestClose}>返回</Button> : <Button variant="ghost" iconOnly disabled={!closable} className="icon-button" aria-label="关闭" onClick={requestClose}><X size={18} /></Button>}</header>
+        <header onClickCapture={event=>{if(cardRef.current?.querySelector('[data-detail-back]:disabled')){event.preventDefault();event.stopPropagation();}}}>{backAction}<h2 id={titleId}>{title}</h2>{headerActions}{inline ? <Button variant="secondary" type="button" data-detail-back className="ghost-button" disabled={!closable} onClick={requestClose}>返回</Button> : <Button variant="ghost" iconOnly data-detail-back={host ? true : undefined} disabled={!closable} className="icon-button" aria-label="关闭" onClick={requestClose}><X size={18} /></Button>}</header>
         <div className={`modal-body modal-body-${layout}`}>{children}</div>
       </section>
-    </div></MenuButtons>
+    </div></MenuButtons></CompactButtons>
   );
   return typeof document === 'undefined' ? content : host ? host.element && createPortal(content, host.element) : createPortal(content, document.body);
 }

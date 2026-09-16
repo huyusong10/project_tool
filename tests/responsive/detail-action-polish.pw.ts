@@ -35,9 +35,10 @@ test('完成统一为可留空的确认表单，说明可恢复且一次确认�
   await page.route('**/api/work-items/'+work.id+'/complete',route=>{writes++;return route.continue();});
   await expect(modal.getByRole('button',{name:'完成并补充说明',exact:true})).toHaveCount(0);
   await modal.getByRole('button',{name:'完成',exact:true}).click();
-  const form=modal.getByRole('region',{name:'完成工作项',exact:true});
+  const form=modal.getByRole('dialog',{name:'完成工作项',exact:true});
+  await expect(form.getByRole('button',{name:'确认完成',exact:true})).toHaveAttribute('data-size','medium');
   await form.getByRole('textbox',{name:'完成说明（可选）',exact:true}).fill('待确认的完成说明');
-  await form.getByRole('button',{name:'返回',exact:true}).click();
+  await form.getByRole('button',{name:'关闭',exact:true}).click();
   await modal.getByRole('button',{name:'完成',exact:true}).click();await expect(form.getByRole('textbox',{name:'完成说明（可选）',exact:true})).toHaveValue('待确认的完成说明');
   await form.getByRole('textbox',{name:'完成说明（可选）',exact:true}).fill('');
   expect(writes).toBe(0);await page.screenshot({path:info.outputPath('complete-optional.png'),animations:'disabled'});

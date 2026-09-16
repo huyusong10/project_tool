@@ -34,7 +34,8 @@ export function WorkItemExecution({requirement:r,item,people,children,progressLa
   },onSuccess:()=>invalidateRequirementViews(client,r.id)});
   const updates=(history?.progressUpdates||r.progressUpdates||[]).filter(u=>u.workItemId===item.id);
   const label=(access.progress&&progressLabel?progressLabel+' · '+item.progress+'%':null)||(({not_started:'未开始',completed:'已完成',cancelled:'已取消'} as Record<string,string>)[item.status]??item.progress+'%');
-  const progress=access.progress?<button className="work-progress-link" disabled={needsCheck} title={needsCheck?'请先核对刚才的操作结果':undefined} aria-label={progressLabel||'更新 '+item.title+' 进度'} onClick={e=>{e.stopPropagation();setHistory(null);setProgressOpen(true);}}>{label}</button>:presentation==="detail"?null:<span>{label}</span>;
+  const progressControl=access.progress?<button className="work-progress-link" disabled={needsCheck} title={needsCheck?'请先核对刚才的操作结果':'更新工作项进度'} aria-label={progressLabel||'更新 '+item.title+' 进度'} onClick={e=>{e.stopPropagation();setHistory(null);setProgressOpen(true);}}>{presentation==='detail'?item.progress+'%':label}</button>:presentation==="detail"?null:<span>{label}</span>;
+  const progress=presentation==='detail'?<span className="work-execution-progress-slot">{progressControl}</span>:progressControl;
   const actions=access.operate?<WorkItemActions item={item} extraMenu={extraMenu} presentation={presentation}
     onAction={(next,content,expectedVersion,expectedDependencyRevision,assignment)=>action.mutateAsync({action:next,content,expectedVersion,expectedDependencyRevision,assignment})}
     onCancel={(reason,expectedVersion)=>action.mutateAsync({action:'cancel',content:reason,expectedVersion})}

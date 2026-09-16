@@ -34,7 +34,9 @@ test('工作项排序、直接操作及七主题在桌面与窄屏稳定',async(
   await handle.focus();await page.keyboard.press('Space');await expect(page.locator('.drag-preview')).toContainText('测试');await page.keyboard.press('ArrowUp');await expect(modal.locator('.work-arrangement-row').first()).toHaveClass(/is-over/);await page.keyboard.press('Space');
   await expect.poll(async()=>((await(await page.request.get('/api/requirements/'+f.testing.id)).json()).workItems as {title:string}[]).map(w=>w.title)).toEqual(['测试','开发']);
   await expect(modal.getByRole('button',{name:'更多工作项操作',exact:true})).toHaveCount(0);
-  await modal.getByRole('button',{name:'下移测试',exact:true}).click();
+  await expect(modal.getByRole('button',{name:/^[上下]移/})).toHaveCount(0);
+  await expect(modal.locator('.work-arrangement-row').first()).toHaveAttribute('data-work-id',f.testing.workItems[1].id);await expect(handle).toBeEnabled();
+  await handle.focus();await page.keyboard.press('Space');await expect(page.locator('.drag-preview')).toBeVisible();await page.keyboard.press('ArrowDown');await expect(modal.locator('.work-arrangement-row').last()).toHaveClass(/is-over/);await page.keyboard.press('Space');
   await expect.poll(async()=>((await(await page.request.get('/api/requirements/'+f.testing.id)).json()).workItems as {title:string}[]).map(w=>w.title)).toEqual(['开发','测试']);
   await expect(modal.locator('.work-arrangement-row').first()).toHaveAttribute('data-work-id',f.testing.workItems[0].id);await expect(handle).toBeEnabled();
   const from=(await handle.boundingBox())!,to=(await modal.getByRole('button',{name:'拖动开发调整顺序',exact:true}).boundingBox())!;

@@ -8,7 +8,7 @@ const detail=async(page:Page,id:string)=>(await(await page.request.get('/api/req
 test('Phase 新建未知结果保留原提交，交付保护和历史仍可用',async({page})=>{
   const f=await phaseFixture(page),url='/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'list',scopeType:'project',detailId:'feature:'+f.feature.id,detailTab:'children'});
   await page.goto(url);await modal(page).getByRole('button',{name:'新建 Phase',exact:true}).click();
-  const form=modal(page).getByRole('region',{name:'新增 Phase',exact:true});
+  const form=modal(page).getByRole('dialog',{name:'新增 Phase',exact:true});
   await form.getByLabel('Phase 名称').fill('Phase 新阶段');await form.getByLabel('交付范围').fill('保留完整交付范围');
   const endpoint='**'+f.base+'/features/'+f.feature.id+'/phases';let writes=0;
   await page.route(endpoint,async route=>{if(route.request().method()!=='POST')return route.continue();writes++;await route.fetch();await route.abort('failed');});
@@ -19,16 +19,16 @@ test('Phase 新建未知结果保留原提交，交付保护和历史仍可用',
   await modal(page).getByRole('tab',{name:'需求清单',exact:true}).click();await expect(modal(page).getByRole('button',{name:'新建需求',exact:true})).toHaveCount(0);
   await modal(page).getByRole('tab',{name:'记录',exact:true}).click();await expect(modal(page).locator('.object-history-entry')).toContainText('DCIM-001 基础台账');
   await modal(page).getByRole('tab',{name:'概况',exact:true}).click();await modal(page).getByRole('button',{name:'Phase 更多操作',exact:true}).click();await modal(page).getByRole('button',{name:'重新打开',exact:true}).click();
-  const reopen=modal(page).getByRole('region',{name:'重新打开 Phase',exact:true});await reopen.getByLabel('变更原因').fill('补充客户反馈');await reopen.getByRole('button',{name:'重新打开 Phase',exact:true}).click();await expect(reopen).toHaveCount(0);await expect(modal(page).getByRole('button',{name:'确认交付',exact:true})).toBeVisible();
+  const reopen=modal(page).getByRole('dialog',{name:'重新打开 Phase',exact:true});await reopen.getByLabel('变更原因').fill('补充客户反馈');await reopen.getByRole('button',{name:'重新打开 Phase',exact:true}).click();await expect(reopen).toHaveCount(0);await expect(modal(page).getByRole('button',{name:'确认交付',exact:true})).toBeVisible();
 });
 
 test('旧需求链接接入弹窗，直接进展和拆分基线保留，工作项可开始完成并重开',async({page})=>{
   const f=await phaseFixture(page);await page.goto('/requirements/'+f.direct.id);
-  const root=modal(page);await root.getByRole('button',{name:'更新进度',exact:true}).click();const form=root.getByRole('region',{name:'更新进度',exact:true});await form.getByLabel('需求完成度').fill('30');await form.getByLabel('执行说明').fill('前期完成');await form.getByRole('button',{name:'更新进度',exact:true}).click();await expect(form).toHaveCount(0);expect((await detail(page,f.direct.id)).progress).toBe(30);
-  await root.getByRole('tab',{name:/^工作项 /}).click();await root.getByRole('button',{name:'添加工作项',exact:true}).click();const create=root.getByRole('region',{name:'添加工作项',exact:true});await create.getByLabel('新工作项名称',{exact:true}).fill('剩余开发');await create.getByRole('button',{name:'保存工作项',exact:true}).click();await expect(create).toHaveCount(0);
+  const root=modal(page);await root.getByRole('button',{name:'更新进度',exact:true}).click();const form=root.getByRole('dialog',{name:'更新进度',exact:true});await form.getByLabel('需求完成度').fill('30');await form.getByLabel('执行说明').fill('前期完成');await form.getByRole('button',{name:'更新进度',exact:true}).click();await expect(form).toHaveCount(0);expect((await detail(page,f.direct.id)).progress).toBe(30);
+  await root.getByRole('tab',{name:/^工作项 /}).click();await root.getByRole('button',{name:'添加工作项',exact:true}).click();const create=root.getByRole('form',{name:'新增工作项',exact:true});await create.getByLabel('新工作项名称',{exact:true}).fill('剩余开发');await create.getByRole('button',{name:'保存工作项',exact:true}).click();await expect(create).toHaveCount(0);
   let current=await detail(page,f.direct.id);expect(current.splitBaseProgress).toBe(30);expect(current.progress).toBe(30);
   const item=current.workItems[0],row=root.locator('[data-work-id="'+item.id+'"]');await row.getByRole('button',{name:'开始',exact:true}).click();
-  const assignment=root.getByRole('region',{name:'选择负责人并开始',exact:true});await chooseOption(assignment.getByLabel('工作项负责人',{exact:true}),f.testing.ownerId!);await assignment.getByRole('button',{name:'返回',exact:true}).click();await row.getByRole('button',{name:'开始',exact:true}).click();await expect(assignment.getByLabel('工作项负责人',{exact:true})).toContainText(f.testing.ownerName!);await assignment.getByRole('button',{name:'开始',exact:true}).click();await expect(assignment).toHaveCount(0);
+  const assignment=root.getByRole('dialog',{name:'选择负责人并开始',exact:true});await chooseOption(assignment.getByLabel('工作项负责人',{exact:true}),f.testing.ownerId!);await assignment.getByRole('button',{name:'关闭',exact:true}).click();await row.getByRole('button',{name:'开始',exact:true}).click();await expect(assignment.getByLabel('工作项负责人',{exact:true})).toContainText(f.testing.ownerName!);await assignment.getByRole('button',{name:'开始',exact:true}).click();await expect(assignment).toHaveCount(0);
   await expect(row.getByRole('button',{name:'完成',exact:true})).toBeVisible();await row.getByRole('button',{name:'完成',exact:true}).click();await root.getByRole('button',{name:'确认完成',exact:true}).click();await expect(row.locator('.work-arrangement-state').getByText('已完成',{exact:true})).toBeVisible();
   current=await detail(page,f.direct.id);expect(current.status).toBe('completed');expect(current.progress).toBe(100);
   await root.getByRole('button',{name:'重开/返工',exact:true}).click();await expect(row.getByRole('button',{name:'完成',exact:true})).toBeVisible();expect((await detail(page,f.direct.id)).status).toBe('in_progress');

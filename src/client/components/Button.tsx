@@ -16,8 +16,8 @@ export type ButtonProps = Omit<ComponentProps<'button'>, 'style' | 'color'> & {
 
 const MenuButtonsContext = createContext(false);
 const ButtonSizeContext = createContext<ButtonSize>('medium');
-export function CompactButtons({children}:{children:ReactNode}) {
-  return <ButtonSizeContext.Provider value="compact">{children}</ButtonSizeContext.Provider>;
+export function CompactButtons({children,enabled=true}:{children:ReactNode;enabled?:boolean}) {
+  return <ButtonSizeContext.Provider value={enabled?'compact':'medium'}>{children}</ButtonSizeContext.Provider>;
 }
 export function MenuButtons({children, enabled = true}: {children: ReactNode; enabled?: boolean}) {
   return <MenuButtonsContext.Provider value={enabled}>{children}</MenuButtonsContext.Provider>;

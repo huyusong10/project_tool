@@ -3,7 +3,7 @@ import {useDeliveryForm} from '../use-delivery-form';
 import {WorkItemExecution} from './WorkItemExecution';
 import {WorkspaceObjectMark} from './WorkspaceObjectMark';
 import { Button } from './Button';
-import {FormField, FormSubmitActions} from "./Form";
+import {FormField} from "./Form";
 import {Select} from "./Select";
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import {useSession} from '../app-context';
@@ -11,7 +11,7 @@ import { workStageLabels, workStages, type WorkStage } from "../../shared/execut
 import {isAssignablePerson} from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, ArrowDown, GripVertical, Plus, Trash2 } from "lucide-react";
+import { GripVertical, Plus, Trash2 } from "lucide-react";
 import { api, ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { invalidateRequirementViews } from "../query-keys";
 import type { Person, Requirement, WorkItem } from "../types";
@@ -75,6 +75,10 @@ export function WorkItemSettingsDialog({
   const [removeTarget, setRemoveTarget] = useState<WorkItem | null>(null);
   const createSubmitting = useRef(false);
   const editorScrollRef = useRef<HTMLDivElement>(null);
+  const createRowRef = useRef<HTMLFormElement>(null);
+  const createNameRef = useRef<HTMLInputElement>(null);
+  const [createFocus, setCreateFocus] = useState(0);
+  const initialCreationRequested = useRef(false);
   const scrollAfterCreateCount = useRef<number | null>(null);
   const reorderSubmitting = useRef(false);
   const createReadingRef = useRef(false);
@@ -107,7 +111,7 @@ export function WorkItemSettingsDialog({
     scrollAfterCreateCount.current = null;
     const frame = window.requestAnimationFrame(() => {
       const scrollArea = editorScrollRef.current;
-      scrollArea?.scrollTo({ top: scrollArea.scrollHeight, behavior: "smooth" });
+      scrollArea?.querySelector<HTMLElement>("[data-work-id]:last-child")?.scrollIntoView({block: "nearest"});
     });
     return () => window.cancelAnimationFrame(frame);
   }, [requirement.workItems.length]);
@@ -167,7 +171,6 @@ export function WorkItemSettingsDialog({
       setCreateReadError("");
       setCreateRefreshed(false);
       invalidateRequirementViews(client, requirement.id);
-      if (initialCreate) onClose();
     },
     onError: async failure => {
       if(!isWriteOutcomeUnknown(failure)){setReceipt(null);clearReceipt();}
@@ -202,6 +205,7 @@ export function WorkItemSettingsDialog({
   };
   const startNewItem = () => {
     setCreationOpen(true);
+    setCreateFocus(value => value + 1);
     if(newItem)return;
     setCreateNeedsRefresh(false);
     setCreateReadError("");
@@ -213,7 +217,7 @@ export function WorkItemSettingsDialog({
     });
   };
   const submitNewItem = (reason?: string) => {
-    if (!newItem || createSubmitting.current || createBlocked) return;
+    if (!newItem || !canEdit || createSubmitting.current || createBlocked) return;
     createSubmitting.current = true;
     createItem.mutate({ ...newItem, ...(reason ? { reason } : {}) });
   };
@@ -267,33 +271,61 @@ export function WorkItemSettingsDialog({
     : !canEdit ? '当前无编辑权限或有待核对的修改，暂不能调整安排或排序。'
     : settingsUnknown || reorderNeedsRefresh ? '请先核对刚才的操作结果，再调整顺序。'
     : reorderItems.isPending || reorderReading ? '正在保存或读取顺序，请稍候。' : '';
-  const moveItem = (index:number, direction:number) => {
-    if(orderDisabledReason)return;
-    const next=[...requirement.workItems],target=index+direction;
-    if(target<0||target>=next.length)return;
-    [next[index],next[target]]=[next[target],next[index]];reorderWorkItems(next);
-  };
   const closeSettings = () => {
     if (createSubmitting.current || reorderSubmitting.current || createReadingRef.current || reorderReadingRef.current) return;
     onClose();
   };
-  const closeCreation = () => {
+  const cancelCreation = () => {
     if (createSubmitting.current || createReadingRef.current) return;
+    setNewItem(null); clearNewItem();
     setCreationOpen(false);
-    if (initialCreate) onClose();
   };
 
+  useEffect(() => {
+    if (!initialCreate || initialCreationRequested.current) return;
+    initialCreationRequested.current = true;
+    setCreationOpen(true);
+    setNewItem(current => current || {title:'',milestoneLabel:'',ownerId:'',collaboratorIds:[],plannedStart:'',plannedEnd:'',baselineVersion:requirement.version,baselineStatus:requirement.status,sourceIds:requirement.workItems.map(item=>item.id)});
+  }, [initialCreate, requirement, setCreationOpen, setNewItem]);
+  const hasCreateRow = !!newItem && creationOpen && !itemId;
+  useEffect(() => {
+    if (!hasCreateRow) return;
+    const frame = requestAnimationFrame(() => {
+      createRowRef.current?.scrollIntoView({block: 'nearest'});
+      createNameRef.current?.focus({preventScroll: true});
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [hasCreateRow, createFocus]);
+
+  const createRow = newItem && creationOpen && !itemId && (
+      <form ref={createRowRef} aria-label="新增工作项" className="work-create-form work-create-row" onSubmit={event => {event.preventDefault(); if (newItem.title.trim()) submitNewItem();}}>
+        <fieldset className="form-grid form-fieldset" disabled={!canEdit || requirementLocked || settingsUnknown || createItem.isPending || createReading}>
+          <div className="work-create-heading field-full"><WorkspaceObjectMark kind="work" status="not_started"/><label className="field work-create-name"><input ref={createNameRef} aria-label="新工作项名称" placeholder="输入工作项名称" required value={newItem.title} onChange={event => setNewItem({...newItem, title: event.target.value})}/></label><span className="work-create-state">未保存</span><div className="work-create-actions"><Button variant="secondary" size="compact" type="button" onClick={cancelCreation}>取消</Button><Button variant="primary" size="compact" type="submit" aria-label="保存工作项" busy={createItem.isPending || createReading} disabled={!newItem.title.trim() || createBlocked}>保存</Button></div></div>
+          <FormField label="工作阶段"><Select value={newItem.workStage || ''} onChange={event => setNewItem({...newItem, workStage: event.target.value as WorkStage || null})}><option value="">未分类</option>{workStages.map(stage => <option key={stage} value={stage}>{workStageLabels[stage]}</option>)}</Select></FormField>
+          <FormField label="主负责人"><InlineSelectCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.ownerId} label="新工作项主负责人" options={[{value:'', label:'未分配'}, ...eligiblePeople.map(person => ({value:person.id, label:person.name}))]} onSave={async ownerId => setNewItem(current => current && ({...current, ownerId, collaboratorIds: current.collaboratorIds.filter(personId => personId !== ownerId)}))} placeholder="未分配"/></FormField>
+          <FormField label="协作人员"><InlineMultiSelectCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.collaboratorIds} label="新工作项协作人员" options={eligiblePeople.map(person => ({value:person.id, label:person.name}))} excludedValues={newItem.ownerId ? [newItem.ownerId] : []} onSave={async collaboratorIds => setNewItem(current => current && ({...current, collaboratorIds}))} placeholder="选择人员"/></FormField>
+          <FormField label="计划开始"><input type="date" value={newItem.plannedStart} onChange={event => setNewItem({...newItem, plannedStart:event.target.value})}/></FormField>
+          <FormField label="计划完成"><input type="date" value={newItem.plannedEnd} onChange={event => setNewItem({...newItem, plannedEnd:event.target.value})}/></FormField>
+          <FormField label="变更说明（可选）"><input value={newItem.reason || ''} onChange={event => setNewItem({...newItem, reason:event.target.value})}/></FormField>
+          <FormError>{createItem.error?.message}</FormError>
+          <FormError>{createChanged ? '需求已更新，请重新读取并核对后再保存；新增草稿已保留。' : createReadError || undefined}</FormError>
+          <FormError>{newItemHasUnavailablePeople ? '新增工作项选择的人员已不可用，请重新选择负责人或协作人员。' : undefined}</FormError>
+          {createRefreshed && <p className="field-help field-full">已读取最新需求（版本 {newItem.baselineVersion}），新增草稿保持不变。</p>}
+          {(createChanged || createNeedsRefresh) && <div className="field-full"><Button busy={(createReading)} aria-label={createReading ? '读取中…' : '重新读取需求'} variant="secondary" type="button" className="ghost-button" disabled={createReading || createItem.isPending} onClick={() => void reloadNewItem()}>{'重新读取需求'}</Button></div>}
+
+        </fieldset>
+      </form>
+  );
   const content = <>
       <div className="work-editor-modal">
         {!itemId&&<DetailToolbar><div className="work-editor-modal-toolbar">
-          <span>{requirement.workItems.length} 个工作项 · {orderDisabledReason?'当前安排已锁定':'拖动手柄或使用上下移调整顺序'}</span>
+          <span className={orderDisabledReason?'work-order-notice':undefined} role="status" title={orderDisabledReason||'拖动手柄排序；也可聚焦手柄，空格选中、方向键移动、空格放下，Esc 取消'}>{requirement.workItems.length} 个工作项 · {orderDisabledReason?requirementLocked?`需求${{pending_acceptance:'待验收',completed:'已完成',cancelled:'已取消'}[requirement.status as 'pending_acceptance'|'completed'|'cancelled']}，重开后可调整安排`:'当前安排已锁定':'拖动手柄排序 · 支持键盘操作'}</span>
           <div className="panel-actions">
             {canEdit&&onOpenDependencies&&<Button aria-label="前置关系与工期" title="前置关系与工期" variant="secondary" className="ghost-button" disabled={settingsUnknown} onClick={onOpenDependencies}>依赖</Button>}
             {canEdit&&canManageRequirement && (!requirement.workItems.length || requirement.workItems.some((item) => !['completed', 'cancelled'].includes(item.status) && (!item.plannedStart || !item.plannedEnd))) && <Button aria-label="补全计划" title="补全计划" variant="secondary" className="ghost-button" disabled={settingsUnknown} onClick={onOpenPlan}>排期</Button>}
-            <Button variant="primary" aria-label="添加工作项" className="primary-button" disabled={!canEdit || settingsUnknown || createItem.isPending || createReading} title={orderDisabledReason||undefined} onClick={startNewItem}><Plus size={15} />新增</Button>
+            <Button variant="primary" aria-label="添加工作项" className="primary-button" disabled={!canEdit || requirementLocked || settingsUnknown || createItem.isPending || createReading} title={orderDisabledReason||undefined} onClick={startNewItem}><Plus size={15} />新增</Button>
           </div>
         </div></DetailToolbar>}
-        {!itemId&&orderDisabledReason&&<p className="work-order-notice" role="status">{orderDisabledReason}</p>}
         <FormError full={false}>{reorderItems.error?.message}</FormError>
         {settingsUnknown&&<p role="alert" className="warning-banner">刚才的提交结果待核对。请检查操作记录，本窗口不会重复提交。<Button variant="secondary" disabled={createItem.isPending||reorderItems.isPending||reorderReading} onClick={()=>void recheckOperation()}>核对本次操作</Button></p>}
         {reorderReadError&&!reorderNeedsRefresh&&<p role="alert">{reorderReadError}</p>}
@@ -322,7 +354,7 @@ export function WorkItemSettingsDialog({
               const revisionProps = { revision: item.version, revisionSubject: "工作项", onReloadRevision: () => reloadWorkItemRevision(item.id) };
               const canDelete = canDeleteWorkItem(item, workItemHistoryIds.has(item.id));
               return <article ref={sortable.setNodeRef} data-work-id={item.id} className={`work-arrangement-row sortable-item${sortable.isDragging ? " is-dragging" : ""}${sortable.isOver ? " is-over" : ""}`}>
-                {!itemId&&<div className="work-arrangement-heading"><button type="button" className="sortable-drag-handle" aria-label={`拖动${item.title}调整顺序`} title={orderDisabledReason||"拖动排序；空格选中、方向键移动、空格放下，Esc 取消"} disabled={!!orderDisabledReason || !!itemId} {...sortable.handleAttributes} {...sortable.handleListeners}><GripVertical size={16} /></button><WorkspaceObjectMark kind="work" status={item.status}/><button className="detail-work-row-title" onClick={()=>onInspect?.(item.id)}><strong>{item.title}</strong></button><span className="work-arrangement-state"><StatusBadge kind="workItem" value={item.status} />{gap.finishVariance!==0&&<small className={gap.finishVariance>0?'danger-text':'safe-text'}>{gap.finishVariance>0?'延期 ':'提前 '}{Math.abs(gap.finishVariance)}工作日</small>}</span><span className="work-arrangement-order"><Button variant="ghost" size="compact" iconOnly title={orderDisabledReason||'上移'} aria-label={'上移'+item.title} disabled={!!orderDisabledReason||_index===0} onClick={()=>moveItem(_index,-1)}><ArrowUp size={14}/></Button><Button variant="ghost" size="compact" iconOnly title={orderDisabledReason||'下移'} aria-label={'下移'+item.title} disabled={!!orderDisabledReason||_index===requirement.workItems.length-1} onClick={()=>moveItem(_index,1)}><ArrowDown size={14}/></Button></span></div>}
+                {!itemId&&<div className="work-arrangement-heading"><button type="button" className="sortable-drag-handle" aria-label={`拖动${item.title}调整顺序`} title={orderDisabledReason||"拖动排序；空格选中、方向键移动、空格放下，Esc 取消"} disabled={!!orderDisabledReason || !!itemId} {...sortable.handleAttributes} {...sortable.handleListeners}><GripVertical size={16} /></button><WorkspaceObjectMark kind="work" status={item.status}/><button className="detail-work-row-title" onClick={()=>onInspect?.(item.id)}><strong>{item.title}</strong></button><span className="work-arrangement-state"><StatusBadge kind="workItem" value={item.status} />{gap.finishVariance!==0&&<small className={gap.finishVariance>0?'danger-text':'safe-text'}>{gap.finishVariance>0?'延期 ':'提前 '}{Math.abs(gap.finishVariance)}工作日</small>}</span></div>}
                 <div className="work-arrangement-fields">
 {itemId&&<><label className="work-arrangement-field"><span>名称</span><InlineTextCell {...revisionProps} disabled={itemLocked || settingsUnknown} value={item.title} label="工作项名称" required onSave={(title, expectedVersion, reason) => saveWorkItem(item, { title, ...(reason ? { reason } : {}) }, expectedVersion)} /></label><label className="work-arrangement-field"><span>阶段</span><InlineSelectCell {...revisionProps} disabled={itemLocked || settingsUnknown} value={item.workStage || ""} label="工作阶段" options={[{value:"",label:"未分类"},...workStages.map(value=>({value,label:workStageLabels[value]}))]} onSave={(workStage,reason,expectedVersion)=>saveWorkItem(item,{workStage:workStage as WorkStage || null,...reason?{reason}:{}},expectedVersion)}/></label></>}
 <label className="work-arrangement-field"><span>负责人</span><div><InlineSelectCell {...revisionProps} disabled={itemLocked || settingsUnknown} value={item.ownerId} label="主负责人" options={[{ value: "", label: "未分配" }, ...assignmentOptions]} onSave={(ownerId, reason, expectedVersion) => saveWorkItem(item, { ownerId: ownerId || null, assigneeIds: [ownerId, ...item.collaborators.map((person) => person.id).filter((personId) => personId !== ownerId)].filter(Boolean), ...(reason ? { reason } : {}) }, expectedVersion)} placeholder="未分配" /></div></label>
@@ -334,32 +366,15 @@ export function WorkItemSettingsDialog({
               </article>;
             }}
           />
+          {createRow}
         </div>
         {!requirement.workItems.length && !newItem && <EmptyState title="还没有工作项" detail="可新增工作项，或从通用研发模板补充。" />}
         </div>
       </div>
     </>;
   return <>
-    {!initialCreate&&(embedded?content:<Modal title="工作项" width={960} layout="workspace" closable={!createItem.isPending&&!reorderItems.isPending} onClose={closeSettings}>{content}</Modal>)}
-    {newItem && creationOpen && <Modal title="添加工作项" closable={!createItem.isPending && !createReading} onClose={closeCreation}>
-      <form className="work-create-form" onSubmit={event => {event.preventDefault(); if (newItem.title.trim()) submitNewItem();}}>
-        <fieldset className="form-grid form-fieldset" disabled={settingsUnknown || createItem.isPending || createReading}>
-          <FormField label="新工作项名称" full><input autoFocus required value={newItem.title} onChange={event => setNewItem({...newItem, title: event.target.value})}/></FormField>
-          <FormField label="工作阶段"><Select value={newItem.workStage || ''} onChange={event => setNewItem({...newItem, workStage: event.target.value as WorkStage || null})}><option value="">未分类</option>{workStages.map(stage => <option key={stage} value={stage}>{workStageLabels[stage]}</option>)}</Select></FormField>
-          <FormField label="主负责人"><InlineSelectCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.ownerId} label="新工作项主负责人" options={[{value:'', label:'未分配'}, ...eligiblePeople.map(person => ({value:person.id, label:person.name}))]} onSave={async ownerId => setNewItem(current => current && ({...current, ownerId, collaboratorIds: current.collaboratorIds.filter(personId => personId !== ownerId)}))} placeholder="未分配"/></FormField>
-          <FormField label="协作人员" full><InlineMultiSelectCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.collaboratorIds} label="新工作项协作人员" options={eligiblePeople.map(person => ({value:person.id, label:person.name}))} excludedValues={newItem.ownerId ? [newItem.ownerId] : []} onSave={async collaboratorIds => setNewItem(current => current && ({...current, collaboratorIds}))} placeholder="选择人员"/></FormField>
-          <FormField label="计划开始"><input type="date" value={newItem.plannedStart} onChange={event => setNewItem({...newItem, plannedStart:event.target.value})}/></FormField>
-          <FormField label="计划完成"><input type="date" value={newItem.plannedEnd} onChange={event => setNewItem({...newItem, plannedEnd:event.target.value})}/></FormField>
-          <FormField label="变更说明（可选）" full><textarea rows={2} value={newItem.reason || ''} onChange={event => setNewItem({...newItem, reason:event.target.value})}/></FormField>
-          <FormError>{createItem.error?.message}</FormError>
-          <FormError>{createChanged ? '需求已更新，请重新读取并核对后再保存；新增草稿已保留。' : createReadError || undefined}</FormError>
-          <FormError>{newItemHasUnavailablePeople ? '新增工作项选择的人员已不可用，请重新选择负责人或协作人员。' : undefined}</FormError>
-          {createRefreshed && <p className="field-help field-full">已读取最新需求（版本 {newItem.baselineVersion}），新增草稿保持不变。</p>}
-          {(createChanged || createNeedsRefresh) && <div className="field-full"><Button busy={(createReading)} aria-label={createReading ? '读取中…' : '重新读取需求'} variant="secondary" type="button" className="ghost-button" disabled={createReading || createItem.isPending} onClick={() => void reloadNewItem()}>{'重新读取需求'}</Button></div>}
-          <FormSubmitActions submitLabel="保存工作项" pending={createItem.isPending || createReading} disabled={!newItem.title.trim() || createBlocked} onCancel={()=>{setNewItem(null);clearNewItem();closeCreation();}}/>
-        </fieldset>
-      </form>
-    </Modal>}
+    {embedded?content:<Modal title="工作项" width={960} layout="workspace" closable={!createItem.isPending&&!reorderItems.isPending} onClose={closeSettings}>{content}</Modal>}
+
     {removeTarget && <WorkItemDeleteDialog target={removeTarget} requirement={requirement} canManage onReload={onReload} onWriteNeedsRecheck={() => { setDeleteUnknown(true); onWriteNeedsRecheck(); }} onClose={() => setRemoveTarget(null)} />}
   </>;
 }
