@@ -16,7 +16,7 @@ export const featureOverviewInput = z.object({
 }).strict();
 export type FeatureOverviewInput = z.infer<typeof featureOverviewInput>;
 export const emptyFeatureOverview: FeatureOverviewInput = { expectation: '', progressSummary: '', assessment: 'pending', note: '' };
-export const featureInput = z.object({ id: key.optional(), name: label, sortOrder: z.number().int().nonnegative().default(0), expectedVersion: version.optional(), description: text.optional(), overview: featureOverviewInput.optional(), referenceLinks: z.array(z.object({title:label,url:z.string().url().refine(v=>/^https?:\/\//i.test(v))}).strict()).max(20).optional() }).strict();
+export const featureInput = z.object({ id: key.optional(), name: label, sortOrder: z.number().int().nonnegative().optional(), expectedVersion: version.optional(), description: text.optional(), overview: featureOverviewInput.optional(), referenceLinks: z.array(z.object({title:label,url:z.string().url().refine(v=>/^https?:\/\//i.test(v))}).strict()).max(20).optional() }).strict();
 export const featureDeleteInput = z.object({ expectedVersion: version }).strict();
 export const organizationInput = z.object({ requirements: z.array(z.object({ id: key, expectedVersion: version }).strict()).min(1).max(1000), ...organizationFields }).extend({reason:z.string().trim().max(2000).optional()}).strict().refine(v => v.featureId !== undefined || v.phaseId !== undefined, '请选择特性或 Phase');
 export const sourceClauseInput = z.object({ key, section: text.default(''), externalId: text.default(''), title: label, content: text.default(''), priority: text.default(''), deferredReason: text.optional() }).strict();

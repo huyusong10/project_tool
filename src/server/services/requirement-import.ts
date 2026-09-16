@@ -36,7 +36,9 @@ function prepare(projectId:string,pkg:IntakePackage,actor:Actor) {
     const previous=phases.find(p=>p.id===old?.phaseId);
     if(destination?.deliveredAt||previous?.deliveredAt)errors.push(r.title+'：请先重新打开已交付 Phase');
     if((destination?.id!==old?.phaseId||!!r.phase&&!destination)&&(destination?.startedAt||previous?.startedAt)&&!r.reason)errors.push(r.title+'：推进后的需求移入移出需要填写原因');
-    const data={...r.action==='create'&&feature?{featureId:feature.id}:{},reason:r.reason,title:r.title,background:r.background,acceptanceCriteria:r.acceptanceCriteria,referenceUrl:r.referenceUrl,ownerId:r.ownerId,plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,durationDays:r.durationDays};
+    // Undefined keys disappear on the wire but otherwise reach SQL as NULL.
+    // Keep the preview, update dispatch and commit limited to supplied fields.
+    const data=Object.fromEntries(Object.entries({...r.action==='create'&&feature?{featureId:feature.id}:{},reason:r.reason,title:r.title,background:r.background,acceptanceCriteria:r.acceptanceCriteria,referenceUrl:r.referenceUrl,ownerId:r.ownerId,plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,durationDays:r.durationDays}).filter(([,value])=>value!==undefined));
     if(r.action==='update'){
       const old=r.existingId?existing.get(r.existingId):undefined;
       if(!old||old.deletedAt){errors.push(r.title+'：请选择当前项目未归档的已有需求');continue;}

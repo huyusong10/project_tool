@@ -43,9 +43,12 @@ export function saveFeature(projectId:string,raw:unknown,actor:Actor) {
     const id=before?.id||randomUUID(),now=new Date().toISOString();
     if(before)sqlite.prepare('UPDATE features SET name=?,description=?,version=version+1,updated_at=? WHERE id=?').run(input.name,input.description??before.description,now,id);
     else sqlite.prepare('INSERT INTO features(id,project_id,name,description,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(id,projectId,input.name,input.description??'',now,now);
-    const ordered=readFeatures(projectId).filter(g=>g.id!==id&&g.kind!=='other').map(g=>g.id);
-    ordered.splice(Math.min(input.sortOrder,ordered.length),0,id);
-    for(const [order,featureId] of ordered.entries())sqlite.prepare('UPDATE features SET sort_order=?,version=version+1,updated_at=? WHERE id=? AND sort_order<>?').run(order,now,featureId,order);
+    // Metadata edits must not reorder siblings or invalidate their versions.
+    if(!before||input.sortOrder!==undefined){
+      const ordered=readFeatures(projectId).filter(g=>g.id!==id&&g.kind!=='other').map(g=>g.id);
+      ordered.splice(Math.min(input.sortOrder??ordered.length,ordered.length),0,id);
+      for(const [order,featureId] of ordered.entries())sqlite.prepare('UPDATE features SET sort_order=?,version=version+1,updated_at=? WHERE id=? AND sort_order<>?').run(order,now,featureId,order);
+    }
     if(input.referenceLinks!==undefined)sqlite.prepare('UPDATE features SET reference_links=? WHERE id=?').run(JSON.stringify(input.referenceLinks),id);
     if(input.overview) {
       const {expectation,progressSummary,assessment,note}=input.overview;

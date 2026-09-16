@@ -30,6 +30,8 @@
 
 更新已有需求不同时新增工作项；需要拆分时使用工作项或图形批次工具。旧 `documents/clauses/links/deliveryScope` 输入明确拒绝。
 
+更新时，省略字段保留原值；按字段类型显式传 `null` 或空字符串才清空。只改标题或说明不会清空负责人、验收条件、来源链接和计划；预览与提交使用相同字段。
+
 ## REST 与 MCP
 
 REST 路径前缀为 `/api/projects/:projectId`；MCP 参数加入 `projectId`。
@@ -71,6 +73,8 @@ REST 路径前缀为 `/api/projects/:projectId`；MCP 参数加入 `projectId`�
 既有特性 ID 和关联保留，接口统一使用 feature 命名。`/features` 维护长期目标、评估、排序与归档；`/paths` 默认显示特性关系图，依次下钻到需求与工作项。首页展示特性与 Phase，执行指标和甘特移至 `/execution`。
 
 `save_feature` 新增可选 `description`（长期目标与范围，最多 10000 字），省略时保留；基础资料保存省略 `overview`，评估单独保存。读取记录增加 `description/archivedAt`。`list_features`、`get_feature_overview` 的 `state` 为 `active`（默认）、`archived` 或 `all`。
+
+更新省略 `sortOrder` 时保留原位置，新建省略时追加。只改资料不修改其他特性的顺序或版本。`description:""` 清空说明，`referenceLinks:[]` 清空链接。
 
 以下 REST 路径均带 `/api/projects/:projectId` 前缀：
 

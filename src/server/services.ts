@@ -1180,7 +1180,7 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor, d
     fail('需求状态、进度、验收、排期和流程不能通过普通编辑修改，请使用对应操作命令');
   }
   if (Object.keys(input).some((key) => ![
-    'expectedVersion', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl',
+    'expectedVersion', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl', 'reason',
   ].includes(key))) fail('需求编辑不能提交未声明字段');
   return changeRequirement(id, input, actor, deferAnalysis);
 }

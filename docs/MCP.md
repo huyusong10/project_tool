@@ -141,7 +141,7 @@ SVG 是可保存的文本，不是浏览器截图；长说明展示摘要，完�
 
 `get_feature_overview({projectId})` 读取各 Phase 的交付状态、阶段分布、日期及历史，同时保留预期、人工评估和最近进展。特性不计算总百分比；取消需求不算交付成果，已完成需求归档后仍计入 Phase。人工评估不按需求完成数量自动填写。
 
-`save_feature` 可传 `overview: {expectation, progressSummary, assessment, note}`，四项均须提供，文字可为空；`assessment` 使用 `pending/on_track/off_track/needs_adjustment`。保存时使用最新特性的 `id/name/sortOrder/expectedVersion`。省略 `overview` 不影响已有评估。项目经理或管理员可保存。
+`save_feature` 可传 `overview: {expectation, progressSummary, assessment, note}`，四项均须提供，文字可为空；`assessment` 使用 `pending/on_track/off_track/needs_adjustment`。更新时使用最新特性的 `id/name/expectedVersion`；仅调整排序时传 `sortOrder`，省略则保留位置，新建未传则追加。省略 `overview` 不影响已有评估。项目经理或管理员可保存。
 
 仅根据用户明确提供的判断写入评估。事实变化通过项目刷新版本更新网页，人工评估保持原值。结果未知时先调用 `get_feature_overview` 核对，不直接重复保存。字段和网页行为见 [需求录入说明](requirement-intake.md#总体进展)。
 

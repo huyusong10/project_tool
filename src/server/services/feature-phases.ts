@@ -55,12 +55,14 @@ export function saveFeaturePhase(projectId: string, featureId: string, raw: unkn
     const before = input.id ? current(projectId, input.id, input.expectedVersion || 0) : null;
     if (before && before.featureId !== featureId) fail('Phase 不属于该特性');
     if (before?.deliveredAt) fail('请先重新打开已交付 Phase');
-    if (before && (before.startedAt || before.status !== 'planning') && (before.scope !== input.scope || before.targetDate !== input.targetDate) && !input.reason) fail('推进后的范围或目标日期调整需要填写原因');
+    const scope = input.scope ?? before?.scope ?? '', note = input.note ?? before?.note ?? '';
+    const targetDate = input.targetDate === undefined ? before?.targetDate ?? null : input.targetDate;
+    if (before && (before.startedAt || before.status !== 'planning') && (before.scope !== scope || before.targetDate !== targetDate) && !input.reason) fail('推进后的范围或目标日期调整需要填写原因');
     const duplicate = sqlite.prepare('SELECT id FROM feature_phases WHERE feature_id=? AND name=? AND id<>?').get(featureId, input.name, input.id || '');
     if (duplicate) fail('该特性内已存在同名 Phase');
     const id = input.id || randomUUID(), now = new Date().toISOString();
-    if (before) sqlite.prepare('UPDATE feature_phases SET name=?,scope=?,target_date=?,note=?,sort_order=?,version=version+1,updated_at=? WHERE id=?').run(input.name, input.scope, input.targetDate, input.note, input.sortOrder ?? before.sortOrder, now, id);
-    else sqlite.prepare('INSERT INTO feature_phases(id,project_id,feature_id,name,scope,target_date,note,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id, projectId, featureId, input.name, input.scope, input.targetDate, input.note, input.sortOrder ?? readFeaturePhases(projectId).filter(p => p.featureId === featureId).length, now, now);
+    if (before) sqlite.prepare('UPDATE feature_phases SET name=?,scope=?,target_date=?,note=?,sort_order=?,version=version+1,updated_at=? WHERE id=?').run(input.name, scope, targetDate, note, input.sortOrder ?? before.sortOrder, now, id);
+    else sqlite.prepare('INSERT INTO feature_phases(id,project_id,feature_id,name,scope,target_date,note,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id, projectId, featureId, input.name, scope, targetDate, note, input.sortOrder ?? readFeaturePhases(projectId).filter(p => p.featureId === featureId).length, now, now);
     const after = readFeaturePhases(projectId).find(p => p.id === id)!;
     recordAudit(actor, before ? 'update' : 'create', 'feature_phase', id, JSON.stringify({ before, after, reason: input.reason }), projectId); return after;
   }).immediate();

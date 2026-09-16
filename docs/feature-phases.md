@@ -13,6 +13,8 @@
 
 Phase 保存 `name/scope/sortOrder/targetDate/note`。名称默认建议 Phase 1、Phase 2，可以修改；范围与日期可留空。各 Phase 可以并行。
 
+更新时省略 `scope/sortOrder/targetDate/note` 保留原值；空字符串清空文字，`targetDate:null` 清空日期。只改名称或备注不会触发范围、日期变更校验。
+
 | 状态 | 判定 |
 |---|---|
 | `planning` 规划中 | 尚无有效需求开始执行 |
