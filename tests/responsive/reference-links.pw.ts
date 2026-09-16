@@ -10,7 +10,7 @@ test('特性、Phase、需求和工作项共用开放链接，草稿恢复与保
   const f=await phaseFixture(page),root=page.locator('.modal-card-workspace[role=dialog]');
   const open=async(id:string,tab='basic')=>{await page.goto('/?'+new URLSearchParams({projectId:f.projectId,detailId:id,detailTab:tab}));await expect(root).toBeVisible();};
   await open('feature:'+f.feature.id);
-  await root.getByRole('button',{name:'编辑资料',exact:true}).click();
+  await root.getByRole('button',{name:'编辑特性',exact:true}).click();
   let editor=root.getByRole('region',{name:'编辑关联链接',exact:true});
   await expect(editor.getByRole('textbox',{name:'链接 1 名称',exact:true})).toHaveValue('MDS');
   await addLink(editor,2,'MPS 范围说明','https://docs.example.com/custom-mps');
@@ -38,7 +38,7 @@ test('特性、Phase、需求和工作项共用开放链接，草稿恢复与保
 
 test('链接行键盘排序、删除及窄屏全主题无裁切',async({page},info)=>{
   const f=await phaseFixture(page);await page.goto('/?'+new URLSearchParams({projectId:f.projectId,detailId:'feature:'+f.feature.id,detailTab:'basic'}));
-  const root=page.locator('.modal-card-workspace[role=dialog]');await root.getByRole('button',{name:'编辑资料',exact:true}).click();
+  const root=page.locator('.modal-card-workspace[role=dialog]');await root.getByRole('button',{name:'编辑特性',exact:true}).click();
   const editor=root.getByRole('region',{name:'编辑关联链接',exact:true});await addLink(editor,2,'外部关联材料','https://example.com/extra');
   await editor.getByRole('button',{name:'拖动链接 2 调整顺序',exact:true}).focus();await page.keyboard.press('Space');await expect(page.locator('.drag-preview')).toBeVisible();await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));await page.keyboard.press('ArrowUp');await expect(editor.locator('.reference-link-row').first()).toHaveClass(/is-over/);await page.keyboard.press('Space');
   await expect(editor.getByRole('textbox',{name:'链接 1 名称',exact:true})).toHaveValue('外部关联材料');

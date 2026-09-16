@@ -40,7 +40,7 @@ export function ActionCenterPage() {
   const selectedOwnerMissing = Boolean(ownerId && ownerId !== 'unassigned'
     && !ownerOptions.some((person) => person.id === ownerId));
   return <>
-    <PageHeader title="待办事项" />
+    <PageHeader title="项目待处理" />
     <div className="page-content action-center-page">
       {error && !data ? <section className="panel action-center-list"><EmptyState title="行动项加载失败" detail={error.message} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} /></section> : <>
       {error && data && <div className="warning-banner">行动项刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}

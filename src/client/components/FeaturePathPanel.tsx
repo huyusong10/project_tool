@@ -1,4 +1,5 @@
 import { Button } from './Button';
+import {useProjectWorkspace} from '../project-workspace-context';
 import {ToolbarStatus} from './ToolbarStatus';
 import {Select} from './Select';
 import {useEffect,useMemo,useState,useRef} from 'react';
@@ -42,8 +43,9 @@ export function FeaturePathPanel({projectId}:{projectId:string}) {
   return <FeatureWorkspace key={(session.accountId||'guest')+projectId} formal={query.data.analysis}/>;
 }
 function FeatureWorkspace({formal}:{formal:PathAnalysis}){
+  const workspace=useProjectWorkspace();
   const {session}=useSession(),account=session.accountId||'guest',projectId=formal.projectId,manage=canManageProject(session,projectId),client=useQueryClient();
-  const [params,setParams]=useWorkspaceParams(),[choosing,setChoosing]=useState(false),[discarding,setDiscarding]=useState(false),[featureEdit,setFeatureEdit]=useState<FeatureEdit|null>(()=>{const p=readFeaturePending(account,projectId);return p&&!p.feature?p:null;}),[issue,setIssue]=useState(''),[locate,setLocate]=useState<{id:string;sequence:number}>();
+  const [params,setParams]=useWorkspaceParams(),[choosing,setChoosing]=useState(false),[discarding,setDiscarding]=useState(false),[featureEdit,setFeatureEdit]=useState<FeatureEdit|null>(()=>{const p=readFeaturePending(account,projectId);return !workspace&&p&&!p.feature?p:null;}),[issue,setIssue]=useState(''),[locate,setLocate]=useState<{id:string;sequence:number}>();
   const workspaceLocate=params.get('workspaceLocate');
   useEffect(()=>{if(workspaceLocate)setLocate({id:workspaceLocate,sequence:Date.now()});},[workspaceLocate]);
   const orderKey='pm-feature-order-write:'+account+':'+projectId;
@@ -90,7 +92,7 @@ function FeatureWorkspace({formal}:{formal:PathAnalysis}){
     </>}</div>
   </div>:undefined;
   const display=<><Button variant="menu" role="menuitemcheckbox" aria-checked={planning} data-menu-stay onClick={()=>setParam('planning',planning?'0':'1')}><Check size={15} style={{visibility:planning?'visible':'hidden'}}/>规划关系（虚线）</Button><Button variant="menu" role="menuitemcheckbox" aria-checked={actual} data-menu-stay onClick={()=>setParam('actual',actual?'0':'1')}><Check size={15} style={{visibility:actual?'visible':'hidden'}}/>实际依赖（实线）</Button></>;
-  const toolbar=<EditorToolbar pageNavigation={canvasNavigation({params,data,onGo:go,onBack:navigation.back})} secondaryActions={<><Button variant="secondary" className="ghost-button" onClick={()=>go('/requirements')}>录入与导入</Button><Button variant="secondary" className="ghost-button" aria-label="刷新特性" onClick={()=>void refresh()}>刷新</Button>{manage&&<Button variant="secondary" className="ghost-button" onClick={()=>setFeatureEdit({mode:'basic'})}>新建特性</Button>}</>} title="项目空间" editing={draft.active} canEdit={manage&&!draft.readOnly} begin={draft.begin} undo={()=>commands.dispatch({type:'undo'})} redo={()=>commands.dispatch({type:'redo'})} canUndo={editing&&draft.canUndo} canRedo={editing&&draft.canRedo} save={()=>void draft.save()} canSave={!draft.readOnly&&!!(draft.pending||!draft.conflict&&(draft.count||Object.keys(draft.fields).length))} busy={draft.busy||draft.loading} discard={()=>draft.count?setDiscarding(true):draft.cancel()}
+  const toolbar=<EditorToolbar pageNavigation={canvasNavigation({params,data,onGo:go,onBack:navigation.back})} secondaryActions={<><Button variant="secondary" className="ghost-button" onClick={()=>go('/requirements')}>打开清单</Button><Button variant="secondary" className="ghost-button" aria-label="刷新特性" onClick={()=>void refresh()}>刷新</Button>{manage&&!workspace&&<Button variant="secondary" className="ghost-button" onClick={()=>setFeatureEdit({mode:'basic'})}>新建特性</Button>}</>} title="项目空间" editing={draft.active} canEdit={manage&&!draft.readOnly} begin={draft.begin} undo={()=>commands.dispatch({type:'undo'})} redo={()=>commands.dispatch({type:'redo'})} canUndo={editing&&draft.canUndo} canRedo={editing&&draft.canRedo} save={()=>void draft.save()} canSave={!draft.readOnly&&!!(draft.pending||!draft.conflict&&(draft.count||Object.keys(draft.fields).length))} busy={draft.busy||draft.loading} discard={()=>draft.count?setDiscarding(true):draft.cancel()}
     status={<ToolbarStatus aria-label="草稿状态" onClick={()=>setParam('pathPanel',changesOpen?'':'changes')} data-draft-stored={draft.stored}>{draft.loading?'恢复草稿…':draft.legacy.blocked?'旧草稿待核对':draft.pending?'提交结果待核对':draft.readOnly?'其他页面编辑中':draft.conflict?'版本冲突':draft.count?draft.count+' 项未保存':draft.active?'编辑中':'已保存'}</ToolbarStatus>}
     extra={(params.get('mode')==='graph'||editing)?<>{params.get('mode')==='graph'&&display}{editing&&<Button variant="secondary" className="ghost-button" onClick={()=>setChoosing(true)}><Link2 size={17}/>建立规划关系</Button>}</>:undefined}/>;
   const search=params.get('pathSearch')||'',matching=graph.cards.filter(c=>(c.title+' '+(c.expectation||'')).toLocaleLowerCase().includes(search.toLocaleLowerCase()));

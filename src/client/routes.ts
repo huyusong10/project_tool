@@ -99,7 +99,7 @@ export const appRoutes: AppRoute[] = [
   },
   {
     path: "/actions", scope: "project", access: "all", component: ActionCenterPage,
-    nav: [{group: "项目协作", label: "待办事项", icon: ListTodo}],
+    nav: [{group: "项目协作", label: "项目待处理", icon: ListTodo}],
 
   },
   {

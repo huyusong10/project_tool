@@ -36,4 +36,14 @@
 .page-editor-primary>.topbar-menu-trigger,.page-editor-primary .topbar-menu-button{width:100%;height:100%;min-height:0;justify-content:center}.page-editor-primary .topbar-menu-button{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .page-toolbar[data-narrow=true] .page-editor-primary .topbar-menu-button{padding:0}.page-toolbar[data-narrow=true] .page-editor-primary .topbar-menu-button>span{display:none}
 
+.page-toolbar[data-project-workspace=true] .page-editor-history:empty{display:none}
+.page-toolbar[data-project-workspace=true] .page-editor-actions[aria-hidden=true]{display:none}
+.page-toolbar[data-project-workspace=true]:has(.workspace-create-action) .page-editor-history{display:none}
+.page-toolbar[data-project-workspace=true]:has(.workspace-create-action) .workspace-history-menu{display:flex!important}
+.workspace-create-action{flex:none;width:72px;height:var(--toolbar-control)}
+.workspace-create-action .topbar-menu-button{width:100%;justify-content:center;height:var(--toolbar-control)}
+.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-actions{width:auto;flex:0 0 auto}
+.page-toolbar[data-narrow=true] .workspace-create-action{width:32px}
+.page-toolbar[data-narrow=true] .workspace-create-action .topbar-menu-button{padding:0}
+.page-toolbar[data-narrow=true] .workspace-create-action .topbar-menu-button>span{display:none}
 }

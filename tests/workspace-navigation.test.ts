@@ -15,6 +15,17 @@ const data={asOfDate:'2026-09-16',projectId:'p',projectName:'项目',requirement
 ]}}} as unknown as PathAnalysis;
 const location=(kind:WorkspaceLocation['scope']['kind'],id:string):WorkspaceLocation=>({projectId:'p',view:'list',scope:{kind,id}});
 describe('公共范围与旧网址',()=>{
+  it('当前层级覆盖互斥特性和 Phase 筛选，但保留人员、状态等条件',()=>{
+    const filters=new URLSearchParams('progressFeatureId=other&progressPhaseId=foreign&progressStatus=in_progress&progressPerson=person');
+    const feature=workspaceParams(location('feature','f'),data,filters);
+    expect(feature.has('progressFeatureId')).toBe(false);expect(feature.has('progressPhaseId')).toBe(false);
+    expect(feature.get('progressStatus')).toBe('in_progress');expect(feature.get('progressPerson')).toBe('person');
+    filters.set('progressPhaseId','one');
+    expect(workspaceParams(location('feature','f'),data,filters).get('progressPhaseId')).toBe('one');
+    expect(workspaceParams(location('phase','two'),data,filters).has('progressPhaseId')).toBe(false);
+    expect(workspaceParams(location('requirement','a'),data,filters).has('progressPhaseId')).toBe(false);
+    expect(workspaceParams(location('project','p'),data,filters).get('progressFeatureId')).toBe('other');
+  });
   it('默认清单，旧进展链接的选中需求不会被当作范围',()=>{
     expect(readWorkspaceLocation(new URLSearchParams(),'p').view).toBe('list');
     const old=readWorkspaceLocation(new URLSearchParams('featureId=f&phaseId=one&requirementId=b&pathNode=b'),'p','/execution');

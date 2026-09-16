@@ -83,14 +83,15 @@ const progressEventLabels: Record<string, string> = { note: "说明", progress: 
 const progressReferenceLabel = (update?: ProgressUpdate) => update ? `${formatDateTime(update.createdAt)} · ${progressEventLabels[update.eventType] || update.eventType}` : "原记录不可用";
 
 function EmbeddedRequirementHeader({secondaryActions,moreActions,moreDisabled}:ComponentProps<typeof PageHeader>){return <div className="detail-toolbar-actions"><div className="button-row">{secondaryActions}</div>{moreActions&&<TopbarMenu label="需求操作" disabled={moreDisabled}>{moreActions}</TopbarMenu>}</div>;}
-export function RequirementObjectDetails({id,workItemId,onOpenDependencies}:{id:string;workItemId?:string;onOpenDependencies:()=>void}){
+type RequirementActionRequest={requestedAction?:'info'|'schedule';onActionHandled?:()=>void};
+export function RequirementObjectDetails({id,workItemId,onOpenDependencies,requestedAction,onActionHandled}:{id:string;workItemId?:string;onOpenDependencies:()=>void}&RequirementActionRequest){
   const [fresh,setFresh]=useState(false);
   const resources=usePageResources(),{session}=useSession(),query=useResourceQuery<Requirement>([...keys.requirement(id),session.accountId],'/api/requirements/'+id,!!id,()=>setFresh(true),true);
   if(!fresh||!query.data||query.unavailable)return <div role="status">{query.error?.message||'正在读取需求…'}{query.error&&<Button variant="secondary" disabled={query.isFetching} onClick={()=>void query.refetch()}>重新读取</Button>}</div>;
   if(workItemId)return <WorkItemObjectDetails requirementId={id} workItemId={workItemId} onOpenDependencies={onOpenDependencies}/>;
-  return <PageResourcesContext.Provider value={{...resources,requirement:query}}><RequirementObjectContent key={id} requirementId={id} embedded selectedWorkItemId={workItemId} onOpenDependencies={onOpenDependencies}/></PageResourcesContext.Provider>;
+  return <PageResourcesContext.Provider value={{...resources,requirement:query}}><RequirementObjectContent key={id} requirementId={id} embedded requestedAction={requestedAction} onActionHandled={onActionHandled} selectedWorkItemId={workItemId} onOpenDependencies={onOpenDependencies}/></PageResourcesContext.Provider>;
 }
-function RequirementObjectContent({requirementId,embedded=false,selectedWorkItemId,onOpenDependencies}:{requirementId?:string;embedded?:boolean;selectedWorkItemId?:string;onOpenDependencies?:()=>void}={}) {
+function RequirementObjectContent({requirementId,embedded=false,selectedWorkItemId,onOpenDependencies,requestedAction,onActionHandled}:{requirementId?:string;embedded?:boolean;selectedWorkItemId?:string;onOpenDependencies?:()=>void}&RequirementActionRequest={}) {
   const projectId=usePageResources().requirement.data?.projectId||'';
   const Header=embedded?EmbeddedRequirementHeader:PageHeader;
   const goBack = usePageBack('/requirements');
@@ -248,6 +249,11 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
     () => progressHistoryMetadata(requirement?.progressUpdates || []),
     [requirement?.progressUpdates],
   );
+  useEffect(()=>{
+    if(!requestedAction||!requirement||unavailable||peopleQuery.data===undefined)return;
+    if(canManageProject(session,requirement.projectId)&&!['completed','cancelled'].includes(requirement.status)&&(requestedAction!=='schedule'||requirement.status!=='pending_acceptance'))setModal(requestedAction);
+    onActionHandled?.();
+  },[requestedAction,requirement,unavailable,peopleQuery.data,session,setModal,onActionHandled]);
   if (!requirement || unavailable) return null;
 
   const canManage = canManageProject(session, requirement.projectId);
@@ -281,11 +287,11 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
           <>
             {canManage && !requirementInfoLocked && <Button variant="secondary" aria-label="编辑信息" title="编辑需求信息" className="ghost-button" disabled={!peopleReady || Boolean(infoRecheck)} onClick={() => { if (!infoRecheck) setModal("info"); }}>
               <Edit3 size={15} />
-              编辑
+              编辑需求
             </Button>}
             {canManage && !requirementLocked && <Button variant="secondary" aria-label="调整计划" title="调整计划" className="ghost-button" disabled={Boolean(scheduleRecheck)} onClick={() => { if (!scheduleRecheck) setModal("schedule"); }}>
               <CalendarDays size={15} />
-              排期
+              安排计划
             </Button>}
           </>
         ) : null}
@@ -335,11 +341,11 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
         </article>
       </section></>;
   return <div className={embedded ? "requirement-page embedded-requirement" : "page-content requirement-page"}>
-    <DetailWorkspace label="需求详情" initialTab="overview" tabs={[
-      {id: 'overview', label: '概况', description:'需求说明与执行进展', actions: requirementHeader, content: <>{notices}<RequirementOverview requirement={requirement} compact={embedded}/></>},
+    <DetailWorkspace label="需求详情" initialTab="overview" actions={requirementHeader} tabs={[
+      {id: 'overview', label: '概况', description:'需求说明与执行进展', content: <>{notices}<RequirementOverview requirement={requirement} compact={embedded}/></>},
       {id: 'work', label: `工作项 ${requirement.workItems.length}`, content: workList},
-      {id: 'basic', label: '资料', description:'背景与验收信息', actions:requirementHeader, content: <><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未分派阶段'}</dd></div><div className="object-fact-wide"><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div className="object-fact-wide"><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div></dl><RequirementSources links={requirement.referenceLinks} notes={requirement.sourceNotes} referenceUrl={requirement.referenceUrl}/>{!!requirement.readinessIssues?.length && <p className="object-info-note">{requirement.readinessIssues.join('；')}</p>}</>},
-      {id: 'dependencies', label: '依赖', actions: <Button variant="secondary" aria-label="在关系图中维护依赖" title="在关系图中维护依赖" onClick={openPathView}>关系</Button>, content: <ObjectDependencies requirementId={id} onOpenGraph={openPathView}/>},
+      {id: 'basic', label: '资料', description:'背景与验收信息', content: <><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未分派阶段'}</dd></div><div className="object-fact-wide"><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div className="object-fact-wide"><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div></dl><RequirementSources links={requirement.referenceLinks} notes={requirement.sourceNotes} referenceUrl={requirement.referenceUrl}/>{!!requirement.readinessIssues?.length && <p className="object-info-note">{requirement.readinessIssues.join('；')}</p>}</>},
+      {id: 'dependencies', label: '依赖', actions: <Button variant="secondary" aria-label="在关系图中维护依赖" title="在关系图中维护依赖" onClick={openPathView}>编辑依赖</Button>, content: <ObjectDependencies requirementId={id} onOpenGraph={openPathView}/>},
       {id: 'history', label: '记录', content: history},
     ]}>
       {modal === "info" && (
