@@ -1,4 +1,5 @@
 import {useState,useRef,type ReactNode} from 'react';
+import {setNativeDragPreview} from './DragPreview';
 import type {PageChrome} from '../page-chrome';
 import { PageHeader } from './PageHeader';
 import {useWorkspaceLayer} from '../workspace-runtime';
@@ -20,7 +21,7 @@ export function EditorToolbar({title,back,backLabel,pageNavigation,secondaryActi
 }
 const elementLabels:Record<string,string>={requirement:'需求',work:'工作项',milestone:'里程碑',existing:'已有对象'};
 export function EditorPalette({types,placing,onPlace,disabled}:{types:string[];placing?:string;onPlace:(kind:string)=>void;disabled?:boolean}){
-  return <ToolMenu className="graph-element-menu" label="添加元素" icon={<Plus size={18}/>}><div className="graph-elements"><strong>拖入画布，或点击后放置</strong>{types.map(type=>{const Icon=type==='existing'?Search:type==='requirement'?Workflow:type==='milestone'?Diamond:Square;return <button key={type} draggable={!disabled&&type!=='existing'} disabled={disabled} className={placing===type?'selected':''} onDragEnd={e=>{onPlace('');e.currentTarget.closest('details')?.removeAttribute('open');}} onDragStart={e=>{onPlace(type);e.dataTransfer.setData('application/pm-element',type);e.dataTransfer.effectAllowed='copy';}} onClick={e=>{onPlace(placing===type?'':type);e.currentTarget.closest('details')?.removeAttribute('open');}}><Icon size={20}/>{elementLabels[type]}</button>;})}</div></ToolMenu>;
+  return <ToolMenu className="graph-element-menu" label="添加元素" icon={<Plus size={18}/>}><div className="graph-elements"><strong>拖入画布，或点击后放置</strong>{types.map(type=>{const Icon=type==='existing'?Search:type==='requirement'?Workflow:type==='milestone'?Diamond:Square;return <button key={type} draggable={!disabled&&type!=='existing'} disabled={disabled} className={placing===type?'selected':''} onDragEnd={e=>{onPlace('');e.currentTarget.closest('details')?.removeAttribute('open');}} onDragStart={e=>{setNativeDragPreview(e,{title:elementLabels[type],kind:type,detail:'拖入画布放置'});onPlace(type);e.dataTransfer.setData('application/pm-element',type);e.dataTransfer.effectAllowed='copy';}} onClick={e=>{onPlace(placing===type?'':type);e.currentTarget.closest('details')?.removeAttribute('open');}}><Icon size={20}/>{elementLabels[type]}</button>;})}</div></ToolMenu>;
 }
 export function FindTool({onClick}:{onClick:()=>void}){return <button className="ghost-button" aria-label="查找与筛选" title="查找与筛选 · Ctrl/Cmd+F" onClick={onClick}><Search size={18}/></button>;}
 export function EditorInfo({onClick}:{onClick:()=>void}){return <button className="ghost-button" aria-label="分析说明" title="分析说明" onClick={onClick}><Info size={17}/></button>;}

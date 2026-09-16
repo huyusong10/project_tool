@@ -125,7 +125,7 @@ test('独立导航保留项目，筛选字体一致', async ({page}) => {
   await expect(filters.locator('input').first()).toBeVisible();
   const fonts = await filters.locator('input,.progress-status-filter,.select-trigger').evaluateAll(elements => elements.map(el => {const style = getComputedStyle(el); return [style.fontFamily, style.fontSize, style.fontWeight, style.textAlign].join('|');}));
   expect(new Set(fonts).size, fonts.join("\n")).toBe(1);
-  for (const [path, title] of [['/actions', '待处理事项'], ['/analytics', '统计分析']]) {
+  for (const [path, title] of [['/actions', '待办事项'], ['/analytics', '统计分析']]) {
     await page.goto(path + '?projectId=' + f.projectId);
     await expect(page.getByRole('link', {name: title, exact: true})).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('.topbar')).toContainText(title);

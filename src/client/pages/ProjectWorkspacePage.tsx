@@ -36,7 +36,7 @@ export function ProjectWorkspacePage(){
   const report=useResourceQuery<Dashboard>([...keys.dashboard,selectedProjectId],'/api/dashboard?projectId='+selectedProjectId,!!selectedProjectId);
   const graph=useResourceQuery<{analysis:PathAnalysis}>([...keys.featureGraph,selectedProjectId,session.accountId,'features'],'/api/projects/'+selectedProjectId+'/path-graph?view=features',!!selectedProjectId);
   useEffect(()=>{if([report.error,graph.error].some(e=>e instanceof ApiError&&[401,403].includes(e.status)))clearProjectGraphDrafts(account,selectedProjectId);},[report.error,graph.error,account,selectedProjectId]);
-  if(!report.data||!graph.data||report.unavailable||graph.unavailable)return <><PageHeader title="项目工作区"/><div className="page-content"><p>{report.error?.message||graph.error?.message||(!selectedProjectId?'请选择项目':'正在读取项目工作区…')}</p>{(report.error||graph.error)&&<button className="ghost-button" onClick={()=>{void report.refetch();void graph.refetch();}}>重新读取</button>}</div></>;
+  if(!report.data||!graph.data||report.unavailable||graph.unavailable)return <><PageHeader title="项目空间"/><div className="page-content"><p>{report.error?.message||graph.error?.message||(!selectedProjectId?'请选择项目':'正在读取项目工作区…')}</p>{(report.error||graph.error)&&<button className="ghost-button" onClick={()=>{void report.refetch();void graph.refetch();}}>重新读取</button>}</div></>;
   if(url.pathname!=='/'||!params.has('workspaceView')||params.get('projectId')!==selectedProjectId){
     const entryParams=url.pathname==='/execution'?progressEntryParams(account,selectedProjectId,params):new URLSearchParams(params);let location=readWorkspaceLocation(entryParams,selectedProjectId,url.pathname);
     if(url.pathname==='/'&&(!params.size||params.size===1&&params.has('projectId')||params.get('projectId')&&params.get('projectId')!==selectedProjectId)){
@@ -76,7 +76,7 @@ function ProjectWorkspace({report,data}:{report:Dashboard;data:PathAnalysis}){
   const status=draft.pending?'提交结果待核对':draft.conflict?'版本冲突':draft.count?draft.count+' 项未保存':Object.keys(draft.fields).length?'输入未保存':'已保存';
   const valid=last.scope.kind===location.scope.kind&&last.scope.id===location.scope.id;
   const draftControls=<><button onClick={()=>setChanges(true)}>草稿预览与冲突</button><button disabled={draft.busy||draft.readOnly||(!draft.count&&!draft.pending)} onClick={()=>void draft.save()}>{draft.pending?'核对原提交':'保存项目草稿'}</button><button disabled={!draft.count||draft.busy||draft.readOnly} onClick={()=>setDiscard(true)}>放弃项目草稿</button></>;
-  const header=<PageHeader title="项目工作区" status={<ToolbarStatus onClick={()=>setChanges(true)}>{status}</ToolbarStatus>} actions={<div className="page-editor-actions"><div className="page-editor-history"/><div className="page-editor-primary"/></div>} moreActions={<button onClick={()=>go('/analytics')}>统计分析 · 全项目</button>}/>;
+  const header=<PageHeader title="项目空间" status={<ToolbarStatus onClick={()=>setChanges(true)}>{status}</ToolbarStatus>} actions={<div className="page-editor-actions"><div className="page-editor-history"/><div className="page-editor-primary"/></div>} moreActions={<button onClick={()=>go('/analytics')}>统计分析 · 全项目</button>}/>;
   return <ProjectWorkspaceContext.Provider value={{location,data,enter,inspect,switchView,navigation,draftControls}}><WorkspaceRuntimeContext.Provider value={runtime}>
     <div className="unified-workspace" data-scope={location.scope.kind} data-view={location.view}>
       <WorkspaceOverview/>

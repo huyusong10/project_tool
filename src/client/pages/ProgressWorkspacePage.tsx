@@ -33,7 +33,7 @@ export function ProgressWorkspacePage(){
   const graph=useResourceQuery<{analysis:PathAnalysis}>([...keys.featureGraph,selectedProjectId,session.accountId,'features'],'/api/projects/'+selectedProjectId+'/path-graph?view=features',!!selectedProjectId);
   useEffect(()=>{if([report.error,graph.error].some(e=>e instanceof ApiError&&[401,403].includes(e.status)))clearProjectGraphDrafts(session.accountId||'guest',selectedProjectId);},[report.error,graph.error,session.accountId,selectedProjectId]);
   if(!migrated.current){migrated.current=true;if(entry.toString()!==params.toString())return <Navigate to={'/execution?'+entry} replace/>;}
-  if(!report.data||!graph.data||report.unavailable||graph.unavailable)return <><PageHeader title="项目工作区"/><div className="page-content"><p>{report.error?.message||graph.error?.message||(!selectedProjectId?'请选择项目':'正在读取进展表…')}</p>{(report.error||graph.error)&&<button className="ghost-button" onClick={()=>{void report.refetch();void graph.refetch();}}>重新读取</button>}</div></>;
+  if(!report.data||!graph.data||report.unavailable||graph.unavailable)return <><PageHeader title="项目空间"/><div className="page-content"><p>{report.error?.message||graph.error?.message||(!selectedProjectId?'请选择项目':'正在读取进展表…')}</p>{(report.error||graph.error)&&<button className="ghost-button" onClick={()=>{void report.refetch();void graph.refetch();}}>重新读取</button>}</div></>;
   return <ProgressWorkspace key={(session.accountId||'guest')+selectedProjectId} report={report.data} formal={graph.data.analysis}/>;
 }
 export function ProgressWorkspace({report,formal}:{report:Dashboard;formal:PathAnalysis}){
@@ -65,7 +65,7 @@ export function ProgressWorkspace({report,formal}:{report:Dashboard;formal:PathA
   const select=(row:WorkspaceRow)=>workspace?workspace.inspect(row.id):setParams(old=>{const next=new URLSearchParams(old);next.set('pathNode',row.id);next.delete('pathEdge');next.set('pathInspector','open');if(row.requirementId)next.set('requirementId',row.requirementId);else next.delete('requirementId');return next;},{replace:true});
   const scopeUrl=()=>{const next=new URLSearchParams(params);next.set('mode','graph');next.set('view',chosen?.requirementId?'requirement':chosen?.featureId?'feature':'features');if(chosen?.featureId)next.set('featureId',chosen.featureId);if(chosen?.phaseId)next.set('phaseId',chosen.phaseId);return '/?'+next;};
   const status=draft.loading?'恢复草稿…':draft.pending?'提交结果待核对':draft.conflict?'版本冲突':draft.count?draft.count+' 项未保存':draft.readOnly?'其他页面编辑中':Object.keys(draft.fields).length?'输入未保存':'已保存';
-  const toolbar=<PageHeader title="项目工作区" breadcrumbs={[{label:'进展表',onClick:filters.featureId?()=>patch({featureId:'',phaseId:''}):undefined},...(feature?[{label:feature.name}]:[])]}
+  const toolbar=<PageHeader title="项目空间" breadcrumbs={[{label:'进展表',onClick:filters.featureId?()=>patch({featureId:'',phaseId:''}):undefined},...(feature?[{label:feature.name}]:[])]}
     onBack={feature?()=>patch({featureId:'',phaseId:''}):undefined}
     actions={<div className="page-editor-actions" aria-hidden="true"><div className="page-editor-history"/><div className="page-editor-primary"/></div>}
     status={status?<ToolbarStatus onClick={()=>set('pathPanel','changes')}>{status}</ToolbarStatus>:null}

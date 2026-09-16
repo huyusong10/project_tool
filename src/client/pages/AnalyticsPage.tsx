@@ -419,12 +419,12 @@ export function AnalyticsPage() {
         {draft ? <SortableList
           items={activeLayout.panels}
           getId={(panel) => panel.id}
+          getPreview={panel => ({title:panel.title, detail:'调整看板图表顺序', kind:'panel'})}
           disabled={editingBlocked}
           onReorder={reorderPanels}
-          renderItem={(panel, _index, { setNodeRef, handleAttributes, handleListeners, isDragging, transform }) => <div
+          renderItem={(panel, _index, { setNodeRef, handleAttributes, handleListeners, isDragging, isOver }) => <div
             ref={setNodeRef}
-            style={{ transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined }}
-            className={`analytics-drag-item analytics-panel-${panel.size}${isDragging ? " is-dragging" : ""}`}
+            className={`analytics-drag-item analytics-panel-${panel.size}${isDragging ? " is-dragging" : ""}${isOver ? " is-over" : ""}`}
           >
             <button className="analytics-drag-handle sortable-drag-handle" aria-label={`拖动${panel.title}调整顺序`} disabled={editingBlocked} {...handleListeners} {...handleAttributes}><GripVertical size={16} /></button>
             <AnalyticsPanelCard

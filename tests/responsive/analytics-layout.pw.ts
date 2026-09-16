@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import {headerAction} from './topbar-helpers';
 import { analyticsCatalog, defaultAnalyticsLayout, type AnalyticsLayout } from '../../src/shared/analytics';
 
 async function mockAnalytics(page: Page) {
@@ -95,8 +96,10 @@ test('saving an analytics layout locks the draft and duplicate submit', async ({
     await expect.poll(() => requests).toBe(1);
     await expect(save).toBeDisabled();
     await expect(page.getByRole('button', { name: '取消编辑', exact: true })).toBeDisabled();
+    await page.getByRole('button', {name:'更多操作', exact:true}).click();
     await expect(page.getByRole('button', { name: '新增图表', exact: true })).toBeDisabled();
     await expect(page.getByRole('button', { name: '恢复默认', exact: true })).toBeDisabled();
+    await page.keyboard.press('Escape');
     await expect(page.locator('.analytics-drag-handle').first()).toBeDisabled();
     await expect(page.locator('.analytics-panel-actions button').first()).toBeDisabled();
   } finally { releaseSave(); }
@@ -219,7 +222,7 @@ test('analytics layout reset result unknown reads back and confirms the default 
 
   await page.goto('/analytics');
   await page.getByRole('button', { name: '编辑看板', exact: true }).click();
-  await page.getByRole('button', { name: '恢复默认', exact: true }).click();
+  await headerAction(page, '恢复默认');
   const dialog = page.getByRole('dialog', { name: '恢复默认看板', exact: true });
   await dialog.getByRole('button', { name: '恢复默认', exact: true }).click();
 
@@ -252,7 +255,7 @@ test('恢复默认布局响应未知且回读失败时跨导航保持锁定', as
 
   await page.goto('/analytics');
   await page.getByRole('button', { name: '编辑看板', exact: true }).click();
-  await page.getByRole('button', { name: '恢复默认', exact: true }).click();
+  await headerAction(page, '恢复默认');
   await page.getByRole('dialog', { name: '恢复默认看板', exact: true }).getByRole('button', { name: '恢复默认', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: '布局恢复默认结果待核对' })).toBeVisible();
   await expect(page.getByRole('button', { name: '保存布局', exact: true })).toBeDisabled();
@@ -261,7 +264,9 @@ test('恢复默认布局响应未知且回读失败时跨导航保持锁定', as
   await page.goBack();
   await expect(page.getByRole('alert').filter({ hasText: '布局恢复默认结果待核对' })).toBeVisible();
   await expect(page.getByRole('button', { name: '保存布局', exact: true })).toBeDisabled();
+  await page.getByRole('button', {name:'更多操作', exact:true}).click();
   await page.getByRole('button', { name: '恢复默认', exact: true }).evaluate((button) => (button as HTMLButtonElement).click());
+  await page.keyboard.press('Escape');
   expect(requests).toBe(1);
 
   failRead = false;

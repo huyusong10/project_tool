@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, Copy, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {useDetailActionHost} from './DetailWorkspace';
+import {hasActiveSortDrag} from './DragPreview';
 
 let openModalCount = 0;
 let previousBodyOverflow = '';
@@ -42,6 +43,7 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
       const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(dialog => dialog.getClientRects().length > 0);
       if (dialogs.at(-1) !== card) return;
       if (event.key === 'Escape') {
+        if (hasActiveSortDrag()) return;
         event.preventDefault();
         if (closableRef.current) closeRef.current();
         return;
@@ -74,7 +76,7 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
   const content = (
     <div className={`modal-backdrop${placement === 'right' ? ' modal-backdrop-right' : ''}`} role="presentation" onMouseDown={(event) => closable && event.target === event.currentTarget && requestClose()}>
       <section ref={cardRef} data-detail-action={host ? true : undefined} className={`modal-card modal-card-${layout}`} style={{ width, maxWidth: width ? `min(94vw, ${width}px)` : undefined }} role="dialog" aria-modal={!host} aria-labelledby={titleId} tabIndex={-1} onKeyDown={event => {
-        if (host && event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing) {event.preventDefault(); event.stopPropagation(); requestClose();}
+        if (host && event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing && !hasActiveSortDrag()) {event.preventDefault(); event.stopPropagation(); requestClose();}
       }}>
         <header><h2 id={titleId}>{title}</h2>{host ? <button type="button" data-detail-back className="ghost-button" disabled={!closable} onClick={requestClose}>返回</button> : closable && <button className="icon-button" aria-label="关闭" onClick={requestClose}><X size={18} /></button>}</header>
         <div className={`modal-body modal-body-${layout}`}>{children}</div>

@@ -1,5 +1,6 @@
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   useDraggable,
@@ -8,10 +9,23 @@ import {
   useSensors,
   type Active,
   type Over,
+  type Modifier,
 } from "@dnd-kit/core";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {createPortal} from 'react-dom';
+import {DragPreview, type DragPreviewData} from './DragPreview';
 
 type DraggableState = ReturnType<typeof useDraggable>;
+
+// The activator stays visible in pinned columns even when the full row is offscreen.
+const previewAtHandle: Modifier = ({transform, activatorEvent, activeNodeRect}) => {
+  if (!activeNodeRect) return transform;
+  const pointer = activatorEvent && 'clientX' in activatorEvent ? activatorEvent as MouseEvent : null;
+  return {...transform,
+    x:transform.x + (pointer ? pointer.clientX - 24 : Math.max(12, activeNodeRect.left)) - activeNodeRect.left,
+    y:transform.y + (pointer ? pointer.clientY - 24 - activeNodeRect.top : 0),
+  };
+};
 
 export type SortableListItemState = {
   setNodeRef: (node: HTMLElement | null) => void;
@@ -28,6 +42,7 @@ type SortableListProps<T> = {
   getId: (item: T, index: number) => string;
   onReorder: (items: T[], fromIndex: number, toIndex: number) => void | Promise<void>;
   renderItem: (item: T, index: number, state: SortableListItemState) => ReactNode;
+  getPreview: (item: T) => DragPreviewData;
   disabled?: boolean;
 };
 
@@ -72,14 +87,23 @@ function SortableItem<T>({
   });
 }
 
-export function SortableList<T>({ items, getId, onReorder, renderItem, disabled = false }: SortableListProps<T>) {
+export function SortableList<T>({ items, getId, onReorder, renderItem, getPreview, disabled = false }: SortableListProps<T>) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const startedIds = useRef("");
   const invalidated = useRef(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor),
+    useSensor(KeyboardSensor, {coordinateGetter: (event, {context, currentCoordinates}) => {
+      const direction = ['ArrowDown', 'ArrowRight'].includes(event.code) ? 1 : ['ArrowUp', 'ArrowLeft'].includes(event.code) ? -1 : 0;
+      if (!direction) return;
+      event.preventDefault();
+      const currentId = String(context.over?.id || context.active?.id || '');
+      const index = items.findIndex((item, i) => getId(item, i) === currentId);
+      const next = items[index + direction];
+      const current = context.droppableRects.get(currentId), target = next && context.droppableRects.get(getId(next, index + direction));
+      if (current && target) return {x: currentCoordinates.x + target.left - current.left, y: currentCoordinates.y + target.top - current.top};
+    }}),
   );
   const ids = useMemo(() => items.map(getId), [getId, items]);
   const idsKey = ids.join("\u0000");
@@ -114,7 +138,7 @@ export function SortableList<T>({ items, getId, onReorder, renderItem, disabled 
       const fromIndex = ids.indexOf(String(active.id));
       const toIndex = over ? ids.indexOf(String(over.id)) : -1;
       clear();
-      if (invalid) return;
+      if (invalid || disabled) return;
       if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
       void onReorder(moveItem(items, fromIndex, toIndex), fromIndex, toIndex);
     }}
@@ -132,5 +156,8 @@ export function SortableList<T>({ items, getId, onReorder, renderItem, disabled 
         renderItem={renderItem}
       />;
     })}
+    {typeof document !== 'undefined' && createPortal(<DragOverlay dropAnimation={null} zIndex={1000} modifiers={[previewAtHandle]}>
+      {activeId && items.find((item, index) => getId(item, index) === activeId) !== undefined && <DragPreview {...getPreview(items[ids.indexOf(activeId)])}/>}
+    </DragOverlay>, document.body)}
   </DndContext>;
 }

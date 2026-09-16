@@ -908,7 +908,7 @@ export function PeopleAccessPage() {
   const pending = reset.isPending || removeAccount.isPending || openAccountLock.busy || archivePerson.isPending || manualPending;
 
   return <>
-    <PageHeader title="人员与权限" actions={<button className="primary-button" onClick={() => setCreating(true)}><UserPlus size={16} />{createPersonNeedsRecheck ? '核对新增人员' : '新增人员'}</button>} />
+    <PageHeader title="人员权限" actions={<button className="primary-button" onClick={() => setCreating(true)}><UserPlus size={16} />{createPersonNeedsRecheck ? '核对新增人员' : '新增人员'}</button>} />
     <div className="page-content accounts-page people-access-page">
       {!dataReady && loadError ? <EmptyState title="人员与权限加载失败" detail={loadError.message || '暂时无法读取人员与账号，请稍后重试。'} action={<button className="ghost-button" disabled={peopleQuery.isFetching || accountsQuery.isFetching} onClick={retry}>重新加载</button>} />
         : !dataReady ? <LoadingState label="正在加载人员与权限…" className="stable-panel-state" /> : <>

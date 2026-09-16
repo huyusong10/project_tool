@@ -72,17 +72,17 @@ const LogsPage = lazyPage(() => import("./pages/LogsPage").then((module) => ({ d
 export const appRoutes: AppRoute[] = [
   {
     path: "/", scope: "project", access: "all", component: PathsPage,
-    nav: [{ group: "项目", label: "项目工作区", icon: BriefcaseBusiness, end: true }],
+    nav: [{ group: "项目协作", label: "项目空间", icon: BriefcaseBusiness, end: true }],
   },
-  { path: "/execution", scope:"project", access:"all", component:DashboardPage, chrome:{title:"项目工作区"} },
+  { path: "/execution", scope:"project", access:"all", component:DashboardPage, chrome:{title:"项目空间"} },
   { path: "/paths", scope: "project", access: "all", component: PathsPage },
   {
     path: "/my-work", scope: "personal", access: "all", component: MyWorkPage,
-    nav: [{ group: "个人", label: "我的工作", icon: ClipboardList }],
+    nav: [{ group: "个人事务", label: "我的工作", icon: ClipboardList }],
   },
   {
     path: "/settings", scope: "personal", access: "all", component: PersonalSettingsPage,
-    nav: [{ group: "个人", label: "个人设置", icon: SlidersHorizontal }],
+    nav: [{ group: "个人事务", label: "个人设置", icon: SlidersHorizontal }],
   },
   {
     path: "/features", scope: "project", access: "all", component: PathsPage,
@@ -90,21 +90,21 @@ export const appRoutes: AppRoute[] = [
   },
   {
     path: "/requirements", scope: "project", access: "all", component: PathsPage,
-    chrome: {title: "项目工作区"},
+    chrome: {title: "项目空间"},
   },
   { path: "/requirements/:id", scope: "project", access: "all", component: RequirementPage, chrome: {title: '需求详情'} },
   {
     path: "/issues", scope: "project", access: "all", component: IssuesPage,
-    nav: [{ group: "项目", label: "问题跟踪", icon: CircleAlert }],
+    nav: [{ group: "项目协作", label: "问题跟踪", icon: CircleAlert }],
   },
   {
     path: "/actions", scope: "project", access: "all", component: ActionCenterPage,
-    nav: [{group: "项目", label: "待处理事项", icon: ListTodo}],
+    nav: [{group: "项目协作", label: "待办事项", icon: ListTodo}],
 
   },
   {
     path: "/analytics", scope: "project", access: "all", component: AnalyticsPage,
-    nav: [{group: "项目", label: "统计分析", icon: ChartNoAxesCombined}],
+    nav: [{group: "项目协作", label: "统计分析", icon: ChartNoAxesCombined}],
   },
   {
     path: "/people", scope: "project", access: "all", component: PeoplePage,
@@ -124,7 +124,7 @@ export const appRoutes: AppRoute[] = [
   },
   {
     path: "/resources", scope: "platform", access: "admin", component: AccountsPage,
-    nav: [{ group: "平台治理", label: "人员与权限", icon: UsersRound, visible: ({ admin }) => admin }],
+    nav: [{ group: "平台治理", label: "人员权限", icon: UsersRound, visible: ({ admin }) => admin }],
   },
   {
     path: "/archives", scope: "platform", access: "admin", component: ArchiveCenterPage,

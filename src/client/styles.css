@@ -567,6 +567,7 @@ h1 { margin: 0; color: var(--text-primary); font-size: 26px; line-height: 1.2; l
 .analytics-page { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; }
 .analytics-toolbar { min-width: 0; max-width: 100%; min-height: 58px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-surface); }
 .analytics-toolbar .view-tabs { flex: none; }
+.analytics-toolbar .view-tabs button { flex: none; white-space: nowrap; }
 .analytics-custom-range { display: flex; align-items: center; gap: 7px; color: var(--text-faint); font-size: 12px; }
 .analytics-custom-range input { min-height: 38px; padding: 0 9px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-secondary); background: var(--bg-surface); }
 .analytics-range-label { color: var(--text-faint); font-size: 12px; white-space: nowrap; }
@@ -697,7 +698,6 @@ h1 { margin: 0; color: var(--text-primary); font-size: 26px; line-height: 1.2; l
 .sortable-drag-handle:active { cursor: grabbing; }
 .sortable-item.is-dragging { opacity: .46; }
 .work-inline-table tr.sortable-item.is-over > td { background: var(--accent-soft); box-shadow: inset 0 2px 0 var(--accent); }
-.work-inline-table th:nth-child(1) { width: 18%; }.work-inline-table th:nth-child(2) { width: 13%; }.work-inline-table th:nth-child(3) { width: 16%; }.work-inline-table th:nth-child(4), .work-inline-table th:nth-child(5) { width: 13%; }.work-inline-table th:nth-child(6) { width: 13%; }.work-inline-table th:nth-child(7) { width: 14%; }
 .work-inline-table .inline-edit-trigger { font-size: 13px; }.work-inline-new-row { background: var(--accent-soft); }.work-inline-new-row input, .work-inline-new-row select { min-width: 0; width: 100%; height: 36px; padding: 5px 7px; border: 1px solid var(--accent-border); border-radius: var(--radius-sm); outline: 0; color: var(--text-secondary); background: var(--bg-surface); font-size: 13px; }.work-inline-new-row input:focus, .work-inline-new-row select:focus { border-color: var(--accent-ink); box-shadow: 0 0 0 3px color-mix(in srgb,var(--accent) 9%,transparent); }
 .work-item-name-editor { min-width: 0; display: grid; gap: 2px; }.work-item-name-editor .inline-edit-cell + .inline-edit-cell .inline-edit-trigger { min-height: 26px; height: 26px; color: var(--text-faint); font-size: 11px; }.work-item-milestone-edit { max-width: 100%; overflow: hidden; color: var(--purple); font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .work-inline-status { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }.work-inline-status > b { font-size: 12px; }.work-inline-status > small { width: 100%; overflow: hidden; color: var(--warning); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }.work-inline-status .work-item-inline-progress { width: 100%; }

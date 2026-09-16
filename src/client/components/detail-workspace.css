@@ -58,3 +58,11 @@
 .work-create-form .inline-edit-trigger {width:100%;max-width:none;min-height:38px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface);justify-content:space-between}
 .work-create-form .inline-edit-chevron {opacity:1}
 .issue-progress-result {height:40px;line-height:20px;margin:0;overflow:auto}
+
+/* Keep ordering and object identity available while the schedule scrolls horizontally. */
+.work-inline-table th:first-child,.work-inline-table td:first-child{position:sticky;left:0;width:42px;padding:6px;z-index:2;background:var(--bg-surface)}
+.work-inline-table th:nth-child(2),.work-inline-table td:nth-child(2){position:sticky;left:42px;z-index:2;background:var(--bg-surface);box-shadow:4px 0 6px #172b4010}
+.work-inline-table th:first-child,.work-inline-table th:nth-child(2){z-index:4;background:var(--bg-surface-subtle)}
+.work-inline-table .sortable-drag-handle{display:grid;place-items:center;width:30px;height:36px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--text-muted)}
+.work-inline-table .sortable-drag-handle:hover:not(:disabled),.work-inline-table .sortable-drag-handle:focus-visible{background:var(--accent-soft);color:var(--accent-ink)}
+.analytics-drag-item.is-over{outline:2px solid var(--accent);outline-offset:3px}.outline-table tr.is-dragging{opacity:.42}
