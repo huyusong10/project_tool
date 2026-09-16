@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useId, useState, type ReactNode } from "react";
 
 /** 首次展开时挂载字段，之后只隐藏，保留表单值和原生校验。 */
@@ -79,8 +80,8 @@ export function FormSubmitActions({
 }) {
   return (
     <div className="form-actions field-full">
-      {onCancel && <button type="button" className="ghost-button" disabled={pending} onClick={onCancel}>{cancelLabel}</button>}
-      <button className={`primary-button${danger ? " danger-button" : ""}`} disabled={pending || disabled}>{pending ? pendingLabel : submitLabel}</button>
+      {onCancel && <Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={onCancel}>{cancelLabel}</Button>}
+      <Button busy={(pending)} aria-label={pending ? pendingLabel : undefined} type="submit" tone={danger ? "danger" : "primary"} variant={danger ? "soft" : "primary"} className={`primary-button${danger ? " danger-button" : ""}`} disabled={pending || disabled}>{submitLabel}</Button>
     </div>
   );
 }

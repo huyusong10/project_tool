@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import {useLocation} from 'react-router-dom';
 import {Select} from '../components/Select';
 import { useListPagination } from '../use-list-pagination';
@@ -56,7 +57,7 @@ export function LogsPage() {
   const updateFilter = (key: string, value: string) => setView(current => { const next = new URLSearchParams(current); next.set(key, value); next.set('page', '1'); next.delete('snapshot'); return next; });
   const refetch = () => { clearError(); setView(current => { const next = new URLSearchParams(current); next.delete('snapshot'); next.set('page', '1'); return next; }); setRefreshVersion(value => value + 1); };
   const listUnavailable = Boolean(error && !data);
-  if (!session.authenticated) return <><PageHeader title="操作日志" /><div className="page-content"><EmptyState title="登录后查看操作日志" detail="网页和MCP写入会统一记录。" action={<button className="primary-button" onClick={openLogin}>用户登录</button>} /></div></>;
+  if (!session.authenticated) return <><PageHeader title="操作日志" /><div className="page-content"><EmptyState title="登录后查看操作日志" detail="网页和MCP写入会统一记录。" action={<Button variant="primary" className="primary-button" onClick={openLogin}>用户登录</Button>} /></div></>;
   return <>
     <PageHeader title={admin ? "操作审计" : "项目日志"} />
     <div className="page-content logs-page">
@@ -68,9 +69,9 @@ export function LogsPage() {
         <label className="audit-date"><span>从</span><input type="date" value={from} onChange={(event) => updateFilter("from", event.target.value)} /></label>
         <label className="audit-date"><span>至</span><input type="date" value={to} onChange={(event) => updateFilter("to", event.target.value)} /></label>
       </FilterBar>
-      {error && data && <div className="warning-banner">操作日志刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
+      {error && data && <div className="warning-banner">操作日志刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}
       <section className="panel audit-panel audit-page-panel paged-panel">
-        <header><div><h2>写入记录</h2><p>共 {data?.total || 0} 条，按时间倒序</p></div><button type="button" className="ghost-button" disabled={isFetching} onClick={refetch}>刷新</button></header>
+        <header><div><h2>写入记录</h2><p>共 {data?.total || 0} 条，按时间倒序</p></div><Button variant="secondary" type="button" className="ghost-button" disabled={isFetching} onClick={refetch}>刷新</Button></header>
         <div className="audit-table paged-body" ref={pagination.scrollRef}>
           <div className="audit-head"><span>时间</span><span>来源</span><span>对象</span><span>动作</span><span>内容</span></div>
           {data?.items.map((item) => <div key={item.id}>
@@ -81,7 +82,7 @@ export function LogsPage() {
             <span title={item.entityId || undefined}>{item.summary}</span>
           </div>)}
           {listUnavailable
-            ? <EmptyState title="操作日志加载失败" detail={error?.message || "暂时无法读取操作日志。"} action={<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button>} />
+            ? <EmptyState title="操作日志加载失败" detail={error?.message || "暂时无法读取操作日志。"} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} />
             : !data?.items.length && !isLoading && <EmptyState title="没有符合条件的日志" detail="调整搜索词或筛选条件后重试。" />}
         </div>
         {!listUnavailable && <Pagination {...pagination.props} label="日志分页" />}

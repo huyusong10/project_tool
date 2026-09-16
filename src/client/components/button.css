@@ -1,0 +1,111 @@
+/* Application rules cannot repaint or resize an action control. */
+@layer application, controls;
+@layer controls {
+  :root {
+    --button-radius: 6px;
+    --button-focus: #758ea5;
+    --button-primary: #50677d;
+    --button-primary-hover: #435a70;
+    --button-on-primary: #fff;
+    --button-blue-ink: #405c75;
+    --button-blue-bg: #edf1f5;
+    --button-blue-hover: #e2e9f0;
+    --button-blue-border: #c9d4de;
+    --button-success-ink: #3c6351;
+    --button-success-bg: #edf3ef;
+    --button-success-hover: #dfeae3;
+    --button-success-border: #bfd2c6;
+    --button-warning-ink: #785e35;
+    --button-warning-bg: #f5f1e9;
+    --button-warning-hover: #eee6d7;
+    --button-warning-border: #d9cdb5;
+    --button-danger-ink: #8b4b4b;
+    --button-danger-bg: #f7eeee;
+    --button-danger-hover: #f0e0e0;
+    --button-danger-border: #dfc7c7;
+  }
+  :root:is([data-theme='dcim'], [data-theme='midnight']) {
+    --button-primary: #91a6b9;
+    --button-primary-hover: #a1b4c5;
+    --button-on-primary: #19232e;
+    --button-focus: #9eb5ca;
+    --button-blue-ink: #bccdde;
+    --button-blue-bg: #273442;
+    --button-blue-hover: #334454;
+    --button-blue-border: #52677b;
+    --button-success-ink: #b6d2c0;
+    --button-success-bg: #283b32;
+    --button-success-hover: #344c40;
+    --button-success-border: #516d5e;
+    --button-warning-ink: #ddcba8;
+    --button-warning-bg: #3c3528;
+    --button-warning-hover: #4d4333;
+    --button-warning-border: #77684d;
+    --button-danger-ink: #e1bbbb;
+    --button-danger-bg: #402f32;
+    --button-danger-hover: #533d40;
+    --button-danger-border: #7e5d62;
+  }
+  .ui-button {
+    --button-height: 36px;
+    --button-padding: 12px;
+    --button-font: 13px;
+    --button-ink: var(--text-secondary);
+    --button-bg: var(--bg-surface);
+    --button-hover: var(--bg-hover);
+    --button-border: var(--border-default);
+    appearance: none; box-sizing: border-box; display: inline-flex;
+    align-items: center; justify-content: center; flex-shrink: 0; gap: 6px;
+    width: auto; min-width: var(--button-height); max-width: 100%;
+    height: var(--button-height); min-height: var(--button-height);
+    padding: 0 var(--button-padding); margin-block: 0;
+    border: 1px solid var(--button-border); border-radius: var(--button-radius);
+    background: var(--button-bg); color: var(--button-ink);
+    font-family: inherit; font-size: var(--button-font); font-weight: 500;
+    line-height: 1.35; letter-spacing: normal; text-align: center;
+    text-decoration: none; white-space: nowrap; overflow: visible;
+    box-shadow: none; filter: none; transform: none; opacity: 1;
+    cursor: pointer; vertical-align: middle;
+    transition: background-color 120ms, border-color 120ms, color 120ms;
+  }
+  .ui-button[data-tone='primary'] { --button-ink: var(--button-blue-ink); --button-bg: var(--button-blue-bg); --button-hover: var(--button-blue-hover); --button-border: var(--button-blue-border); }
+  .ui-button[data-tone='success'] { --button-ink: var(--button-success-ink); --button-bg: var(--button-success-bg); --button-hover: var(--button-success-hover); --button-border: var(--button-success-border); }
+  .ui-button[data-tone='warning'] { --button-ink: var(--button-warning-ink); --button-bg: var(--button-warning-bg); --button-hover: var(--button-warning-hover); --button-border: var(--button-warning-border); }
+  .ui-button[data-tone='danger'] { --button-ink: var(--button-danger-ink); --button-bg: var(--button-danger-bg); --button-hover: var(--button-danger-hover); --button-border: var(--button-danger-border); }
+  .ui-button[data-variant='primary'][data-tone='primary'] { --button-ink: var(--button-on-primary); --button-bg: var(--button-primary); --button-hover: var(--button-primary-hover); --button-border: var(--button-primary); }
+  .ui-button[data-variant='soft'] { border-color: var(--button-border); }
+  .ui-button:is([data-variant='ghost'], [data-variant='menu']) { background: transparent; border-color: transparent; }
+  .ui-button[data-variant='link'] { height: auto; min-height: 24px; min-width: 0; padding: 0 2px; border-color: transparent; background: transparent; justify-content: flex-start; text-align: left; }
+  .ui-button[data-variant='menu'] { width: 100%; height: auto; min-height: 36px; padding: 8px 10px; justify-content: flex-start; text-align: left; white-space: normal; }
+  .ui-button[data-variant='field'] { justify-content: space-between; text-align: left; font-weight: 400; font-family: var(--font-sans); }
+  .ui-button[data-size='compact'] { --button-height: 30px; --button-padding: 8px; --button-font: 12px; }
+  .ui-button[data-size='mini'] { --button-height: 24px; --button-padding: 4px; --button-font: 12px; }
+  .ui-button[data-size='small'] { --button-height: 32px; --button-padding: 10px; --button-font: 12px; }
+  .ui-button[data-size='large'] { --button-height: 40px; --button-padding: 16px; --button-font: 14px; }
+  .ui-button[data-icon-only] { width: var(--button-height); min-width: var(--button-height); padding: 0; gap: 0; }
+  .ui-button[data-width='action'] { width: 66px; min-width: 66px; padding-inline: 4px; gap: 4px; }
+  .ui-button[data-width='wide'] { width: 96px; min-width: 96px; padding-inline: 6px; }
+  .ui-button[data-width='filter'] { width: 148px; min-width: 148px; }
+  .ui-button[data-width='filter'] > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ui-button[data-width='block'] { width: 100%; min-width: 0; }
+  /* Shared toolbar slots keep the same footprint on every page. */
+  .page-editor-primary > .ui-button, .page-editor-primary .topbar-menu-button { width: 100%; min-width: 0; height: var(--toolbar-control, 36px); min-height: var(--toolbar-control, 36px); padding-inline: 4px; }
+  .page-toolbar[data-narrow='true'] .ui-button:not([data-variant='menu']):not([data-variant='link']):not([data-size='compact']) { --button-height: 32px; }
+  .page-toolbar[data-narrow='true'] .page-editor-primary .ui-button { padding: 0; }
+  .page-toolbar .page-back-button { width: var(--toolbar-back); min-width: var(--toolbar-back); }
+  .page-breadcrumb .ui-button { display: block; min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; }
+  .view-tabs .ui-button { flex: 1; min-width: 0; padding-inline: 8px; }
+  .ui-button > svg { width: 16px; height: 16px; flex: none; color: inherit; stroke-width: 1.75; }
+  .ui-button[data-size='compact'] > svg { width: 14px; height: 14px; }
+  .ui-button:hover:not(:disabled) { background: var(--button-hover); color: var(--button-ink); box-shadow: none; filter: none; transform: none; }
+  .ui-button[data-variant='link']:hover:not(:disabled) { background: transparent; text-decoration: underline; text-underline-offset: 3px; }
+  .ui-button:active:not(:disabled) { background: var(--button-hover); transform: none; }
+  .ui-button:focus-visible { outline: 2px solid var(--button-focus); outline-offset: 2px; box-shadow: none; }
+  .ui-button:is([aria-pressed='true'], [aria-current='page'], [aria-checked='true']) { background: var(--button-blue-bg); color: var(--button-blue-ink); border-color: var(--button-blue-border); }
+  .ui-button:disabled { opacity: .5; cursor: not-allowed; filter: none; transform: none; box-shadow: none; }
+  .ui-button[data-busy] { position: relative; color: transparent; cursor: wait; }
+  .ui-button[data-busy] > * { visibility: hidden; }
+  .ui-button[data-busy]::after { content: ''; position: absolute; width: 14px; height: 14px; border: 2px solid var(--button-ink); border-right-color: transparent; border-radius: 50%; animation: button-busy .7s linear infinite; }
+  @keyframes button-busy { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .ui-button { transition: none; } .ui-button[data-busy]::after { animation: none; } }
+}

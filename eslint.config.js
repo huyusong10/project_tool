@@ -2,6 +2,7 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";
+import buttonControls from './scripts/button-controls-rule.mjs';
 
 export default defineConfig(
   globalIgnores([".preview/**", "dist/**", "dist-server/**", ".playwright/**", "coverage/**", "playwright-report/**", "test-results/**"]),
@@ -36,6 +37,11 @@ export default defineConfig(
       "react-hooks/exhaustive-deps": "warn",
       "no-restricted-globals": ["error", { name: "alert", message: "请使用系统 ResultDialog 展示结果或错误。" }, { name: "confirm", message: "请使用系统 ConfirmDialog 处理确认操作。" }, { name: "prompt", message: "请使用系统 TextPromptModal 收集输入。" }],
     },
+  },
+  {
+    files: ['src/client/**/*.tsx'],
+    plugins: { controls: { rules: { buttons: buttonControls } } },
+    rules: { 'controls/buttons': 'error' },
   },
   {
     files: ["src/client/**/*.{ts,tsx}"],

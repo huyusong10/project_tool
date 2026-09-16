@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import {useAppNavigate} from '../use-app-navigation';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
@@ -75,7 +76,7 @@ export function MyWorkPage() {
     <PageHeader title="我的工作" />
     <div className="page-content my-work-page">
       {isLoading && <LoadingState className="stable-panel-state" label="正在加载我的工作…" />}
-      {!isLoading && unavailable && <EmptyState title="我的工作加载失败" detail={error?.message || '暂无可用数据，请重新加载。'} action={<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button>} />}
+      {!isLoading && unavailable && <EmptyState title="我的工作加载失败" detail={error?.message || '暂无可用数据，请重新加载。'} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} />}
       {!unavailable && <>
       {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
       <section className="my-work-summary">
@@ -120,9 +121,9 @@ export function MyWorkPage() {
           }}
           renderActions={(baseItem) => {
             const item = baseItem as MyWorkItem;
-            const direct=directEntries.find(r=>r.id===item.id);if(direct)return <button className="ghost-button" onClick={()=>navigate('/requirements/'+direct.requirementId)}>处理需求</button>;
+            const direct=directEntries.find(r=>r.id===item.id);if(direct)return <Button variant="secondary" className="ghost-button" onClick={()=>navigate('/requirements/'+direct.requirementId)}>处理需求</Button>;
             return <div className="my-work-gantt-actions">
-              {item.status === 'in_progress' && <button className="my-work-progress-action" onClick={() => setProgressItem(item)} title="更新进度" aria-label={`为${item.title}更新进度`}><PencilLine size={14} /><span>更新进度</span></button>}
+              {item.status === 'in_progress' && <Button variant="secondary" size="small" className="my-work-progress-action" onClick={() => setProgressItem(item)} title="更新进度" aria-label={`为${item.title}更新进度`}><PencilLine size={14} /><span>更新进度</span></Button>}
               <WorkItemActions item={item} writeNeedsRecheck={workItemActionRechecks.has(item.id)} onWriteNeedsRecheckChange={(required) => setWorkItemActionRecheck(item.id, required)} onOpenChange={(open) => setActiveActionItemId((current) => open ? item.id : current === item.id ? undefined : current)} onAction={(nextAction, text, expectedVersion, expectedDependencyRevision, assignment) => action.mutateAsync({ item, action: nextAction, expectedVersion, expectedDependencyRevision, assignment, ...(nextAction === 'start' ? { reason: text } : { content: text }) })} onReload={async () => {
                 const [latest, requirement] = await Promise.all([
                   refetch({ throwOnError: true }),

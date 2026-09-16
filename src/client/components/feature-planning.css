@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 .feature-page-header,.feature-toolbar,.feature-detail-actions,.feature-card footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .feature-detail-panel{display:flex;flex-direction:column;min-height:0;flex:1;overflow:hidden}.feature-detail-navigation{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0;padding:0 0 16px;border-bottom:1px solid var(--border)}.feature-detail-body{overflow:auto;flex:1;min-height:0;padding:18px 4px;display:flex;flex-direction:column;gap:16px}.feature-detail-body h3{font-size:14px;margin:0}.feature-detail-body p{margin:0}.feature-full-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8}.feature-detail-footer{display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;padding-top:14px;border-top:1px solid var(--border);min-height:50px}.feature-stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.feature-stat-grid>div{display:grid;gap:4px;padding:12px 6px;text-align:center;background:var(--bg-surface-subtle);border-radius:8px}.feature-stat-grid strong{font-size:20px}.feature-stat-grid span{font-size:11px;color:var(--text-muted)}.feature-edit-heading{font-size:14px;margin:14px 0}.feature-form-embedded{overflow:auto;min-height:0;flex:1;padding-right:4px}.feature-form-embedded>.form-actions{position:sticky;bottom:0;background:var(--bg-surface);padding:14px 0 0;border-top:1px solid var(--border);z-index:1}.feature-card footer>div{display:flex;gap:6px}.feature-card .feature-assessment{max-width:100%}
 @media(max-width:640px){.feature-stat-grid{grid-template-columns:repeat(3,1fr)}.feature-detail-navigation{gap:4px}.feature-detail-navigation .view-tabs button{font-size:12px;padding:8px}.feature-detail-footer>*{flex:1;justify-content:center}}
@@ -26,3 +28,5 @@
 @media(max-width:640px){.feature-grid{padding:0 10px 12px}.feature-toolbar{padding:0 10px 14px}.feature-page-header .feature-detail-actions{gap:6px}}
 
 .topbar-page-status .canvas-draft-status{font-size:12px;line-height:1.4;padding:4px 8px;min-height:28px;color:inherit}
+
+}

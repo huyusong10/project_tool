@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import type {useDependencyDraft} from '../use-graph-draft';
 import type {PathAnalysis} from '../../shared/paths';
 import {DeliveryImpactTable} from './DeliveryImpactTable';
@@ -14,11 +15,11 @@ export function DeliveryBatchReview({draft,data,onSaved}:{draft:ReturnType<typeo
       {draft.changes.layouts?.map(l=><li key={l.scope+':'+l.direction}>共享布局：{l.scope==='global'?'项目全图':label(l.scope.replace('requirement:',''))} · {Object.keys(l.positions).length} 个节点</li>)}
     </ul>
     {draft.preview&&<DeliveryImpactTable entries={draft.preview.differences.impact||[]} target={draft.preview.differences.target}/>}
-    {draft.conflicts.map(c=><div className="editor-conflict" key={c.key}><strong>{c.title} · {labels[c.field]||c.field}</strong><p>最新：{display(c.server)}；草稿：{display(c.draft)}</p><div className="button-row"><button type="button" className="ghost-button" onClick={()=>draft.resolveConflict(c.key,'server')}>使用最新值</button>{c.canKeep&&<button type="button" className="ghost-button" onClick={()=>draft.resolveConflict(c.key,'draft')}>保留草稿值</button>}</div></div>)}
-    {draft.conflict&&<button type="button" className="ghost-button" disabled={draft.unresolved>0} onClick={draft.rebase}>核对后重新预览</button>}
+    {draft.conflicts.map(c=><div className="editor-conflict" key={c.key}><strong>{c.title} · {labels[c.field]||c.field}</strong><p>最新：{display(c.server)}；草稿：{display(c.draft)}</p><div className="button-row"><Button variant="secondary" type="button" className="ghost-button" onClick={()=>draft.resolveConflict(c.key,'server')}>使用最新值</Button>{c.canKeep&&<Button variant="secondary" type="button" className="ghost-button" onClick={()=>draft.resolveConflict(c.key,'draft')}>保留草稿值</Button>}</div></div>)}
+    {draft.conflict&&<Button variant="secondary" type="button" className="ghost-button" disabled={draft.unresolved>0} onClick={draft.rebase}>核对后重新预览</Button>}
     {(draft.error||draft.storageError)&&<p role="alert" className="form-error">{draft.error?.message||draft.storageError}</p>}
-    {draft.readOnly&&<button type="button" className="ghost-button" onClick={()=>void draft.takeOver()}>接管此草稿</button>}
+    {draft.readOnly&&<Button variant="secondary" type="button" className="ghost-button" onClick={()=>void draft.takeOver()}>接管此草稿</Button>}
     {draft.previewing&&<p className="field-help">正在预览修改…</p>}
-    <div className="form-actions">{draft.error&&<button type="button" className="ghost-button" disabled={draft.busy||draft.previewing} onClick={draft.retryPreview}>重新预览</button>}<button type="button" className="primary-button" disabled={draft.busy||draft.loading||draft.readOnly||(!draft.pending&&(draft.conflict||draft.previewing||!draft.preview))} onClick={()=>void draft.save().then(saved=>{if(saved)onSaved();})}>{draft.pending?'核对原批次并保存':draft.busy?'正在保存…':'保存全部修改'}</button></div>
+    <div className="form-actions">{draft.error&&<Button variant="secondary" type="button" className="ghost-button" disabled={draft.busy||draft.previewing} onClick={draft.retryPreview}>重新预览</Button>}<Button variant="primary" type="button" className="primary-button" disabled={draft.busy||draft.loading||draft.readOnly||(!draft.pending&&(draft.conflict||draft.previewing||!draft.preview))} onClick={()=>void draft.save().then(saved=>{if(saved)onSaved();})}>{draft.pending?'核对原批次并保存':draft.busy?'正在保存…':'保存全部修改'}</Button></div>
   </div>;
 }

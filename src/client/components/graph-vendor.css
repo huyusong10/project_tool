@@ -1,0 +1,2 @@
+@layer application, controls;
+@import '@xyflow/react/dist/style.css' layer(application);

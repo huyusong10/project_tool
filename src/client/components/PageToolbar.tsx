@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {ProjectTaskTabs} from './ProjectTaskTabs';
 import {isProjectWorkspace,projectTask} from '../project-workspace-navigation';
 import {useLayoutEffect,useRef,useState} from 'react';
@@ -34,8 +35,8 @@ export function PageToolbar(){
       onKeyDownCapture={event=>{if(chrome?.runtime?.requestSave&&(event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();event.stopPropagation();chrome.runtime.requestSave();}}}>
       <div className="page-toolbar-leading">
       {(back||crumbs.length>0)&&<div className="page-toolbar-location">
-        <div className="page-toolbar-back-slot">{back&&<button type="button" className="page-back-button" aria-label={ready&&chrome.backLabel||page.back?.label||'返回'} title={ready&&chrome.backLabel||page.back?.label||'返回'} onClick={()=>{store.prepareNavigation();back();}}><ArrowLeft size={16}/></button>}</div>
-        {!!crumbs.length&&<nav className="page-breadcrumb" aria-label={ready&&chrome.navigationLabel||'页面层级'}>{crumbs.map((crumb,index)=><span key={index}>{index>0&&<ChevronRight size={14} aria-hidden="true"/>}{crumb.onClick?<button type="button" title={crumb.label} onClick={()=>{store.prepareNavigation();crumb.onClick!();}}>{crumb.label}</button>:<span aria-current="page" title={crumb.label}>{crumb.label||<span className="shell-placeholder toolbar-location-placeholder" aria-label="正在加载对象名称"/>}</span>}</span>)}</nav>}
+        <div className="page-toolbar-back-slot">{back&&<Button variant="ghost" iconOnly type="button" className="page-back-button" aria-label={ready&&chrome.backLabel||page.back?.label||'返回'} title={ready&&chrome.backLabel||page.back?.label||'返回'} onClick={()=>{store.prepareNavigation();back();}}><ArrowLeft size={16}/></Button>}</div>
+        {!!crumbs.length&&<nav className="page-breadcrumb" aria-label={ready&&chrome.navigationLabel||'页面层级'}>{crumbs.map((crumb,index)=><span key={index}>{index>0&&<ChevronRight size={14} aria-hidden="true"/>}{crumb.onClick?<Button variant="link" tone="neutral" type="button" title={crumb.label} onClick={()=>{store.prepareNavigation();crumb.onClick!();}}>{crumb.label}</Button>:<span aria-current="page" title={crumb.label}>{crumb.label||<span className="shell-placeholder toolbar-location-placeholder" aria-label="正在加载对象名称"/>}</span>}</span>)}</nav>}
       </div>}
       {ready&&chrome.context&&!editor&&<div className="page-toolbar-context">{chrome.context}</div>}
       {(ready&&chrome.status||editor||workspace)&&<div className="page-toolbar-status" role="status">{ready?chrome.status:<span className="shell-placeholder toolbar-status-placeholder" aria-hidden="true"/>}</div>}

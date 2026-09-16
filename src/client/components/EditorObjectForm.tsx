@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {Select} from './Select';
 import {OrganizationFields} from './RequirementIntake';
 import { WorkStageSelect, MilestoneKindSelect } from "./ExecutionStageBadge";
@@ -24,7 +25,7 @@ export function EditorRequirementCreate({projectId,onClose,onCreate}:{projectId:
     <label className="field"><span>流程模板</span><Select value={value.templateId||''} onChange={e=>change({templateId:e.target.value||null})}><option value="">暂不选择</option>{templates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</Select></label>
     <div className="path-form-grid"><label className="field"><span>规划方式</span><Select value={mode} onChange={e=>{setMode(e.target.value);change({plannedStart:null,plannedEnd:null});}}><option value="later">稍后规划</option><option value="start">按开始日期</option><option value="deadline">按截止日期</option></Select></label>{mode!=='later'&&<label className="field"><span>{mode==='start'?'计划开始':'截止日期'}</span><input type="date" required value={(mode==='start'?value.plannedStart:value.plannedEnd)||''} onChange={e=>change(mode==='start'?{plannedStart:e.target.value}:{plannedEnd:e.target.value})}/></label>}</div>
     <details><summary>背景、完成标准与参考链接</summary><label className="field"><span>需求说明</span><textarea value={value.background||''} onChange={e=>change({background:e.target.value})}/></label><label className="field"><span>完成标准</span><textarea value={value.acceptanceCriteria||''} onChange={e=>change({acceptanceCriteria:e.target.value})}/></label><label className="field"><span>参考链接</span><input type="url" value={value.referenceUrl||''} onChange={e=>change({referenceUrl:e.target.value})}/></label></details>
-    {error&&<p className="form-error">{error.message}</p>}<div className="button-row"><button type="button" className="ghost-button" onClick={onClose}>取消</button><button className="primary-button">加入草稿</button></div></form></Modal>;
+    {error&&<p className="form-error">{error.message}</p>}<div className="button-row"><Button variant="secondary" type="button" className="ghost-button" onClick={onClose}>取消</Button><Button variant="primary" type="submit" className="primary-button">加入草稿</Button></div></form></Modal>;
 }
 export function EditorObjectProperties({objectId,projectId,entity,value,onChange,anchors=[]}:{objectId:string;projectId:string;entity:EditorEntityChange['entity'];value:ObjectData;canManageDelivery?:boolean;onChange:(value:ObjectData)=>void;anchors?:Array<{id:string;title:string}>}){
   const {people}=useEditorOptions(projectId);

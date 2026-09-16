@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {useAppNavigate} from '../use-app-navigation';
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -79,11 +80,11 @@ export function LoginDialog({ onClose, branding }: { onClose: () => void; brandi
       </label>
       {error && <p className="form-error field-full">{error}</p>}
       <div className="form-actions field-full">
-        <button type="button" className="ghost-button" disabled={lock.busy} onClick={close}>取消</button>
-        <button className="primary-button" disabled={lock.busy}>
+        <Button variant="secondary" type="button" className="ghost-button" disabled={lock.busy} onClick={close}>取消</Button>
+        <Button busy={(lock.busy)} aria-label={lock.busy ? "登录中…" : "用户登录"} variant="primary" type="submit" className="primary-button" disabled={lock.busy}>
           <LogIn size={16} />
-          {lock.busy ? "登录中…" : "用户登录"}
-        </button>
+          {"用户登录"}
+        </Button>
       </div>
       <div className="http-form-warning field-full">
         <LockKeyhole size={14} />
@@ -152,9 +153,9 @@ export function PasswordDialog({ forced, onClose }: { forced: boolean; onClose: 
     <label className="field field-full"><span>新密码</span><input name="newPassword" type="password" minLength={8} required disabled={lock.busy || outcomeUnknown || verifying} autoComplete="new-password" placeholder="至少8个字符" /></label>
     <label className="field field-full"><span>确认新密码</span><input name="confirmPassword" type="password" minLength={8} required disabled={lock.busy || outcomeUnknown || verifying} autoComplete="new-password" /></label>
     {error && <p className="form-error field-full">{error}</p>}
-    <div className="form-actions field-full">{!forced && <button type="button" className="ghost-button" disabled={lock.busy || verifying} onClick={close}>取消</button>}{forced && outcomeUnknown && <button type="button" className="ghost-button" disabled={verifying} onClick={() => void verifyPasswordOutcome().then((result) => {
+    <div className="form-actions field-full">{!forced && <Button variant="secondary" type="button" className="ghost-button" disabled={lock.busy || verifying} onClick={close}>取消</Button>}{forced && outcomeUnknown && <Button busy={(verifying)} aria-label={verifying ? "读取中…" : "重新读取会话状态"} variant="secondary" type="button" className="ghost-button" disabled={verifying} onClick={() => void verifyPasswordOutcome().then((result) => {
       if (result === "retry") { setOutcomeUnknown(false); mutation.reset(); setError("服务端仍要求修改初始密码，请重新提交。"); }
       else if (result === "unknown") setError("修改结果仍无法确认，请稍后重新读取会话状态。");
-    })}>{verifying ? "读取中…" : "重新读取会话状态"}</button>}<button className="primary-button" disabled={lock.busy || outcomeUnknown || verifying}>{verifying ? "核对中…" : lock.busy ? "保存中…" : "保存新密码"}</button></div>
+    })}>{"重新读取会话状态"}</Button>}<Button busy={(verifying) || (lock.busy)} aria-label={verifying ? "核对中…" : lock.busy ? "保存中…" : "保存新密码"} variant="primary" type="submit" className="primary-button" disabled={lock.busy || outcomeUnknown || verifying}>{"保存新密码"}</Button></div>
   </form></Modal>;
 }

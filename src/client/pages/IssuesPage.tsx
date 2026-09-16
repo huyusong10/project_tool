@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import {usePageResources} from '../page-context';
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -378,9 +379,9 @@ export function IssuesPage() {
     if (!formPendingRef.current) closeIssueForm();
   };
   return <>
-    <PageHeader title="问题跟踪" actions={canContribute ? <button className="primary-button" disabled={!selectedProjectId} onClick={() => setFormIssue(null)}><Plus size={16} />新建问题</button> : null} />
+    <PageHeader title="问题跟踪" actions={canContribute ? <Button variant="primary" className="primary-button" disabled={!selectedProjectId} onClick={() => setFormIssue(null)}><Plus size={16} />新建问题</Button> : null} />
     <div className="page-content issues-page">
-      {referenceError && <div className="warning-banner">{referenceDataReady ? "人员与需求范围刷新失败，当前使用上次成功结果。" : "编辑所需的人员与需求范围加载失败，当前暂时只读。"}<button className="ghost-button" disabled={peopleQuery.isFetching || requirementsQuery.isFetching} onClick={retryReferenceData}>重新加载</button></div>}
+      {referenceError && <div className="warning-banner">{referenceDataReady ? "人员与需求范围刷新失败，当前使用上次成功结果。" : "编辑所需的人员与需求范围加载失败，当前暂时只读。"}<Button variant="secondary" className="ghost-button" disabled={peopleQuery.isFetching || requirementsQuery.isFetching} onClick={retryReferenceData}>重新加载</Button></div>}
       <section className="issue-board" aria-label="问题看板">
         <article className="issue-metric metric-progress"><Clock3 size={20} /><div><span>处理中</span><strong>{summary.inProgress}</strong></div></article>
         <article className="issue-metric metric-deferred"><PauseCircle size={20} /><div><span>挂起</span><strong>{summary.deferred}</strong></div></article>
@@ -393,10 +394,10 @@ export function IssuesPage() {
         <select value={priority} onChange={(event) => updateFilter("priority", event.target.value)}><option value="">全部优先级</option>{priorityEntries.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
         <select value={ownerId} onChange={(event) => changeOwner(event.target.value)}><option value="">全部负责人</option>{people.map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
         <select value={scope} onChange={(event) => changeScope(event.target.value)}><option value="">全部范围</option><option value="public">公共问题</option>{requirements.map((requirement) => <option value={requirement.id} key={requirement.id}>{requirement.title}</option>)}</select>
-        <button className={`issue-filter-toggle${overdue ? " active" : ""}`} onClick={toggleOverdue}><AlertTriangle size={14} />仅逾期</button>
-        <button className={`issue-filter-toggle${unassigned ? " active" : ""}`} onClick={toggleUnassigned}><UserRound size={14} />未分配</button>
+        <Button variant="secondary" aria-pressed={overdue} className={`issue-filter-toggle${overdue ? " active" : ""}`} onClick={toggleOverdue}><AlertTriangle size={14} />仅逾期</Button>
+        <Button variant="secondary" aria-pressed={unassigned} className={`issue-filter-toggle${unassigned ? " active" : ""}`} onClick={toggleUnassigned}><UserRound size={14} />未分配</Button>
       </FilterBar>
-      {error && data && <div className="warning-banner">问题列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
+      {error && data && <div className="warning-banner">问题列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}
       <AdaptiveDataList
         label="问题跟踪列表"
         layout="scroll"
@@ -404,7 +405,7 @@ export function IssuesPage() {
         bodyRef={pagination.scrollRef}
         columns={issueColumns}
         empty={listUnavailable
-          ? <EmptyState title="问题列表加载失败" detail={error?.message || "暂时无法读取问题数据。"} action={<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button>} />
+          ? <EmptyState title="问题列表加载失败" detail={error?.message || "暂时无法读取问题数据。"} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} />
           : !data?.items.length && !isLoading ? <EmptyState title="没有符合条件的问题" detail="调整筛选条件，或新建一条公共问题。" /> : null}
         footer={!listUnavailable ? <Pagination {...pagination.props} label="问题列表分页" /> : null}
       >

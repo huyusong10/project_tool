@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {Select} from './Select';
 import {StartAssignmentDialog,type StartAssignment} from './StartAssignmentDialog';
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
@@ -174,7 +175,7 @@ export function WorkItemActions({
     {refreshed && <p>已读取最新工作项（版本 {baselineVersion}），本次输入已保留，请核对后重试。</p>}
     {operationUnavailable && <p className="form-error" role="alert">工作项状态已变化，请关闭后重新选择操作。</p>}
     {readError && <p className="form-error" role="alert">{readError}</p>}
-    {needsRefresh && <button type="button" className="ghost-button" disabled={pending} onClick={() => void refresh()}>重新读取工作项</button>}
+    {needsRefresh && <Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void refresh()}>重新读取工作项</Button>}
   </>;
   const textConfig: Record<TextPanel, { title: string; label: string; placeholder: string; confirm: string }> = {
     complete: { title: "完成工作项", label: "完成说明（可选）", placeholder: "可选：补充交付结果或验证结论", confirm: "确认完成" },
@@ -192,11 +193,11 @@ export function WorkItemActions({
 
   return <div className="work-item-actions" ref={anchorRef} onClick={(event) => event.stopPropagation()}>
     <div className="work-item-action-row">
-      {actionReviewBlocked || needsRefresh ? <>{terminalState}<button type="button" className="work-next-action" disabled={pending} onClick={() => void refresh()}>重新读取工作项</button></> : <>
-        {!stateChangesDisabled && item.status === "not_started" && <button className="work-next-action execution-action" data-action="start" disabled={pending || preparingStart || Boolean(startDisabledReason)} title={startDisabledReason} onClick={() => void start()}><Play size={14} />{startDisabledReason ? "暂不可开始" : pending ? "提交中" : "开始"}</button>}
-        {!stateChangesDisabled && item.status === "in_progress" && <button className="work-next-action execution-action" data-action="complete" disabled={pending} onClick={() => void run(() => onAction("complete", undefined, item.version), {successMessage:"工作项已完成"})}><Check size={14} />完成</button>}
+      {actionReviewBlocked || needsRefresh ? <>{terminalState}<Button variant="secondary" size="compact" width="action" type="button" className="work-next-action" disabled={pending} onClick={() => void refresh()}>重新读取工作项</Button></> : <>
+        {!stateChangesDisabled && item.status === "not_started" && <Button variant="secondary" size="compact" width="action" className="work-next-action execution-action" data-action="start" disabled={pending || preparingStart || Boolean(startDisabledReason)} title={startDisabledReason} onClick={() => void start()}><Play size={14} />{startDisabledReason ? "暂不可开始" : pending ? "提交中" : "开始"}</Button>}
+        {!stateChangesDisabled && item.status === "in_progress" && <Button variant="soft" tone="success" size="compact" width="action" className="work-next-action execution-action" data-action="complete" disabled={pending} onClick={() => void run(() => onAction("complete", undefined, item.version), {successMessage:"工作项已完成"})}><Check size={14} />完成</Button>}
         {terminalState}
-        {canOpenMenu && <button type="button" className="action-menu-trigger" aria-label="更多工作项操作" title="更多操作" aria-haspopup="dialog" aria-expanded={panel !== null} disabled={pending} onClick={() => panel === "menu" ? changePanel(null) : openPanel("menu")}><MoreHorizontal size={16} /></button>}
+        {canOpenMenu && <Button size="compact" variant="ghost" iconOnly type="button" className="action-menu-trigger" aria-label="更多工作项操作" title="更多操作" aria-haspopup="dialog" aria-expanded={panel !== null} disabled={pending} onClick={() => panel === "menu" ? changePanel(null) : openPanel("menu")}><MoreHorizontal size={16} /></Button>}
       </>}
     </div>
     {actionReviewBlocked && panel === null && <small className="work-action-error" role="alert">{unknownNeedsRead || writeNeedsRecheck ? "工作项操作结果待核对" : "提交结果仍待核对，工作项版本已变化"}{readError ? `：${readError}` : ""}</small>}
@@ -204,19 +205,19 @@ export function WorkItemActions({
     {startRequirement&&<StartAssignmentDialog requirement={startRequirement} workItem={item} pending={pending} blocked={actionReviewBlocked||needsRefresh} recovery={(actionReviewBlocked||needsRefresh)&&<p className="warning-banner">请先关闭此窗口，读取最新状态并核对执行记录，再继续操作。</p>} error={error} onClose={()=>setStartRequirement(null)} onStart={assignment=>void run(()=>onAction('start',undefined,item.version,undefined,assignment),{successMessage:'工作项已开始'}).then(saved=>{if(saved)setStartRequirement(null);})}/>}
     <WorkActionSurface anchorRef={anchorRef} panel={panel} pending={pending} onClose={() => { if (!pending) changePanel(null); }}>
       {panel === "menu" && <>
-        {!stateChangesDisabled && item.status === "in_progress" && <button type="button" onClick={() => openPanel("complete")}><Check size={14} />完成并补充说明</button>}
-        {canCorrect && <button type="button" onClick={() => openPanel("dates")}><CalendarDays size={14} />修正实际日期</button>}
-        {canBackfill && <button type="button" onClick={() => openPanel("backfill")}><Check size={14} />按期完成（历史补录）</button>}
-        {!stateChangesDisabled && canManage && ["completed", "cancelled"].includes(item.status) && <button onClick={() => void run(() => onAction("reopen", undefined, item.version), {successMessage:"工作项已重新打开"})}><RotateCcw size={14} />重开/返工</button>}
-        {!stateChangesDisabled && canManage && onCancel && !["completed", "cancelled"].includes(item.status) && <button className="danger" onClick={() => { if (onCancel) void run(() => onCancel("", item.version), {successMessage:"工作项已取消"}); }}><CircleStop size={14} />取消工作项</button>}
+        {!stateChangesDisabled && item.status === "in_progress" && <Button variant="secondary" type="button" onClick={() => openPanel("complete")}><Check size={14} />完成并补充说明</Button>}
+        {canCorrect && <Button variant="secondary" type="button" onClick={() => openPanel("dates")}><CalendarDays size={14} />修正实际日期</Button>}
+        {canBackfill && <Button variant="secondary" type="button" onClick={() => openPanel("backfill")}><Check size={14} />按期完成（历史补录）</Button>}
+        {!stateChangesDisabled && canManage && ["completed", "cancelled"].includes(item.status) && <Button variant="secondary" onClick={() => void run(() => onAction("reopen", undefined, item.version), {successMessage:"工作项已重新打开"})}><RotateCcw size={14} />重开/返工</Button>}
+        {!stateChangesDisabled && canManage && onCancel && !["completed", "cancelled"].includes(item.status) && <Button variant="secondary" tone="danger" className="danger" onClick={() => { if (onCancel) void run(() => onCancel("", item.version), {successMessage:"工作项已取消"}); }}><CircleStop size={14} />取消工作项</Button>}
       </>}
       {textPanel && <form className="inline-action-form" onSubmit={(event) => { event.preventDefault(); submitText(); }}>
-        <header><strong>{textConfig[textPanel].title}</strong><button type="button" disabled={pending} onClick={() => changePanel(null)} aria-label="关闭"><X size={16} /></button></header>
+        <header><strong>{textConfig[textPanel].title}</strong><Button variant="ghost" iconOnly type="button" disabled={pending} onClick={() => changePanel(null)} aria-label="关闭"><X size={16} /></Button></header>
         <label><span>{textConfig[textPanel].label}</span><textarea autoFocus readOnly={pending} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={textConfig[textPanel].placeholder} /></label>
         {textPanel === "complete" && <small className="form-hint">可留空，系统会记录“完成工作项”</small>}
         {error && <p className="form-error">{error}</p>}
         {readNotice}
-        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => changePanel(null)}>取消</button><button className="primary-button" disabled={pending || blocked}>{pending ? "提交中" : textConfig[textPanel].confirm}</button></footer>
+        <footer><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => changePanel(null)}>取消</Button><Button busy={(pending)} aria-label={pending ? "提交中" : textConfig[textPanel].confirm} variant="soft" tone="success" type="submit" className="primary-button" disabled={pending || blocked}>{textConfig[textPanel].confirm}</Button></footer>
       </form>}
       {panel === "dates" && <form className="inline-action-form" noValidate onSubmit={(event) => {
         event.preventDefault();
@@ -241,7 +242,7 @@ export function WorkItemActions({
           {successMessage:"实际日期已修正"},
         );
       }}>
-        <header><strong>修正实际日期</strong><button type="button" disabled={pending} onClick={() => changePanel(null)} aria-label="关闭"><X size={16} /></button></header>
+        <header><strong>修正实际日期</strong><Button variant="ghost" iconOnly type="button" disabled={pending} onClick={() => changePanel(null)} aria-label="关闭"><X size={16} /></Button></header>
         <p>仅修正历史实际日期，不改变工作项状态和进度；系统会保留原记录和纠错原因。</p>
         <div className="inline-action-date-grid">
           <label><span>实际开始{item.status !== "cancelled" && "（必填）"}</span><input aria-label="实际开始" type="date" disabled={pending} max={item.status === "cancelled" && item.cancelledAt ? item.cancelledAt : today} value={actualStart} onChange={(event) => { setActualStart(event.target.value); setValidationError(""); }} /></label>
@@ -254,16 +255,16 @@ export function WorkItemActions({
         {error && <p className="form-error">{error}</p>}
         {error && (actualStart !== (item.actualStart || "") || actualEnd !== (item.actualEnd || "")) && <p>当前记录：{item.actualStart || "未填写"} 至 {item.actualEnd || "未填写"}。本次输入已保留，请核对后重试。</p>}
         {readNotice}
-        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => changePanel(null)}>取消</button><button className="primary-button" disabled={pending || blocked}>{pending ? "保存中" : "保存纠错"}</button></footer>
+        <footer><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => changePanel(null)}>取消</Button><Button busy={(pending)} aria-label={pending ? "保存中" : "保存纠错"} variant="primary" type="submit" className="primary-button" disabled={pending || blocked}>{"保存纠错"}</Button></footer>
       </form>}
       {panel === "backfill" && <div className="inline-action-form">
-        <header><strong>按期完成（历史补录）</strong><button type="button" disabled={pending} onClick={() => changePanel(null)} aria-label="关闭"><X size={16} /></button></header>
+        <header><strong>按期完成（历史补录）</strong><Button variant="ghost" iconOnly type="button" disabled={pending} onClick={() => changePanel(null)} aria-label="关闭"><X size={16} /></Button></header>
         <p>实际开始：{item.plannedStart || "未排期"}<br />实际完成：{item.plannedEnd || "未排期"}</p>
         <p>确认这项历史工作已按计划完成。进度将设为 100%，记录“历史补录，按计划完成”。已有执行记录或未来计划不能使用此操作。</p>
         {backfillUnavailable && <p className="form-error" role="alert">{backfillUnavailable}</p>}
         {error && <p className="form-error" role="alert">{error}</p>}
         {readNotice}
-        <footer><button type="button" className="ghost-button" disabled={pending} onClick={() => changePanel(null)}>取消</button><button type="button" className="primary-button" disabled={pending || blocked || Boolean(backfillUnavailable)} onClick={() => { if (onCompleteAsPlanned) void run(() => onCompleteAsPlanned(baselineVersion), {successMessage:"工作项已按计划补录完成"}); }}>{pending ? "提交中" : "确认补录完成"}</button></footer>
+        <footer><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => changePanel(null)}>取消</Button><Button busy={(pending)} aria-label={pending ? "提交中" : "确认补录完成"} variant="soft" tone="success" type="button" className="primary-button" disabled={pending || blocked || Boolean(backfillUnavailable)} onClick={() => { if (onCompleteAsPlanned) void run(() => onCompleteAsPlanned(baselineVersion), {successMessage:"工作项已按计划补录完成"}); }}>{"确认补录完成"}</Button></footer>
       </div>}
     </WorkActionSurface>
   </div>;

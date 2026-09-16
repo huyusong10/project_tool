@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {Select} from './Select';
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -24,10 +25,10 @@ export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChan
         <Select aria-label="每页数量" value={pageSize} disabled={blocked} onChange={event => onPageSizeChange(Number(event.target.value))}>{pageSizeOptions.map(size => <option key={size} value={size}>{size} 条/页</option>)}</Select>
       </div>
       {range.pages > 1 && <div className="pagination-controls">
-        <button type="button" aria-label="上一页" title="上一页" disabled={blocked || range.page === 1} onClick={() => onPageChange(range.page - 1)}><ChevronLeft size={15}/><span className="pagination-button-label">上一页</span></button>
-        <div className="pagination-numbers">{pageNumbers(range.page, range.pages).map((value, index) => value === 'gap' ? <span key={'gap' + index}>…</span> : <button type="button" key={value} aria-label={`第 ${value} 页`} aria-current={value === range.page ? 'page' : undefined} disabled={blocked} onClick={() => onPageChange(value)}>{value}</button>)}</div>
+        <Button variant="secondary" type="button" aria-label="上一页" title="上一页" disabled={blocked || range.page === 1} onClick={() => onPageChange(range.page - 1)}><ChevronLeft size={15}/><span className="pagination-button-label">上一页</span></Button>
+        <div className="pagination-numbers">{pageNumbers(range.page, range.pages).map((value, index) => value === 'gap' ? <span key={'gap' + index}>…</span> : <Button variant="secondary" type="button" key={value} aria-label={`第 ${value} 页`} aria-current={value === range.page ? 'page' : undefined} disabled={blocked} onClick={() => onPageChange(value)}>{value}</Button>)}</div>
         <PageJump key={range.page + ':' + range.pages} page={range.page} pages={range.pages} disabled={blocked} onChange={onPageChange}/>
-        <button type="button" aria-label="下一页" title="下一页" disabled={blocked || range.page === range.pages} onClick={() => onPageChange(range.page + 1)}><span className="pagination-button-label">下一页</span><ChevronRight size={15}/></button>
+        <Button variant="ghost" iconOnly type="button" aria-label="下一页" title="下一页" disabled={blocked || range.page === range.pages} onClick={() => onPageChange(range.page + 1)}><span className="pagination-button-label">下一页</span><ChevronRight size={15}/></Button>
       </div>}
     </nav>
   </footer>;

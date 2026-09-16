@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 .workspace-object-inspector{position:absolute;right:16px;top:16px;bottom:16px;width:min(560px,calc(100% - 32px));background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px #23334b1f;z-index:15;display:flex;flex-direction:column;overflow:hidden}
 .workspace-object-inspector.is-wide{width:min(1080px,calc(100% - 32px))}
 .workspace-object-inspector>header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
@@ -25,7 +27,7 @@
 .delivery-inspector-shell,.workspace-object-inspector{font-size:13px;line-height:1.65;color:var(--text-primary)}
 .delivery-inspector-content,.object-inspector-body{container-type:inline-size;overscroll-behavior:contain}
 :is(.delivery-inspector-content,.object-inspector-body) :is(input,textarea,select,button){font-family:inherit}
-:is(.delivery-inspector-content,.object-inspector-body) :is(.ghost-button,.primary-button){font-size:12px;line-height:1.4;min-height:34px;white-space:normal}
+:is(.delivery-inspector-content,.object-inspector-body) :is(.ghost-button,.primary-button){white-space:normal}
 :is(.delivery-inspector-content,.object-inspector-body) :is(h3,h4){font-size:14px;line-height:1.6;margin:0 0 12px}
 :is(.delivery-inspector-content,.object-inspector-body) .object-section{border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:12px;background:var(--bg-surface)}
 :is(.delivery-inspector-content,.object-inspector-body) .object-section>summary{font-size:13px;font-weight:600;padding:0}
@@ -54,4 +56,6 @@
 @media(max-width:800px){
  .workspace-object-inspector,.workspace-object-inspector.is-wide{position:fixed;inset:0;width:100vw;height:100dvh;border-radius:0;z-index:90}
  .workspace-object-inspector>header>.inspector-size-toggle{display:none}
+}
+
 }

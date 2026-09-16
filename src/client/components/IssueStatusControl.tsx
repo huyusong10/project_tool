@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { api, jsonBody } from "../api";
@@ -53,7 +54,7 @@ function IssueStatusEditor({ issue, disabled, onPendingChange, onSaved }: {
   };
   if (editor.unavailable) return <div className="issue-status-notice">
     <p className="form-error" role="alert">{editor.readError?.message || "暂时无法访问问题，请重新读取。"}</p>
-    <button type="button" className="ghost-button" disabled={busy} onClick={() => void editor.reload()}>重新读取问题</button>
+    <Button variant="secondary" type="button" className="ghost-button" disabled={busy} onClick={() => void editor.reload()}>重新读取问题</Button>
   </div>;
   return <>
     <header><strong>变更问题状态</strong><small>当前：{issueStatusLabels[current.status as keyof typeof issueStatusLabels]}</small></header>
@@ -171,7 +172,7 @@ export function IssueFactForm({ issue, disabled, onPendingChange, onSaved, onCan
   };
   if (editor.unavailable) return <div className="issue-status-notice">
     <p className="form-error" role="alert">{editor.readError?.message || "暂时无法访问问题，请重新读取。"}</p>
-    <button type="button" className="ghost-button" disabled={busy} onClick={() => void editor.reload()}>重新读取问题</button>
+    <Button variant="secondary" type="button" className="ghost-button" disabled={busy} onClick={() => void editor.reload()}>重新读取问题</Button>
   </div>;
   return <form className="inline-action-form issue-correction-form" onSubmit={(event) => { event.preventDefault(); submit(); }}>
     <p>已解决问题可修正标题、影响和解决日期。修改会追加更正记录，原历史保留。</p>
@@ -184,6 +185,6 @@ export function IssueFactForm({ issue, disabled, onPendingChange, onSaved, onCan
     <label><span>修改说明（可选）</span><textarea aria-label="修改说明" disabled={busy} rows={2} value={reason} onChange={(event) => { editor.setDirty(true); setReason(event.target.value); }} placeholder="说明修改原因" /></label>
     {validation && editor.dirty && <p className="form-error" role="alert">{validation}</p>}
     <div className="issue-status-notice"><DraftNotice editor={editor} /></div>
-    <footer><button type="button" className="ghost-button" disabled={busy} onClick={onCancel}>取消</button><button className="primary-button" disabled={blocked}>{editor.pending ? "保存中…" : "保存修改"}</button></footer>
+    <footer><Button variant="secondary" type="button" className="ghost-button" disabled={busy} onClick={onCancel}>取消</Button><Button busy={(editor.pending)} aria-label={editor.pending ? "保存中…" : "保存修改"} variant="primary" type="submit" className="primary-button" disabled={blocked}>{"保存修改"}</Button></footer>
   </form>;
 }

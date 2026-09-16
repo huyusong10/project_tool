@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
 import { usePageScrollPosition } from '../use-page-view';
@@ -255,10 +256,10 @@ function BrandingSettingsCard({ accountKey }: { accountKey: string }) {
   return <article className="panel system-detail-panel system-branding-panel">
     <header><div><h2>品牌设置</h2><p>统一侧边栏、登录界面和浏览器标签的系统标识</p></div></header>
     {brandingQuery.isLoading && !brandingQuery.data ? <LoadingState label="正在加载品牌设置…" className="stable-panel-state" />
-      : brandingQuery.error && !brandingQuery.data ? <EmptyState title="品牌设置加载失败" detail={brandingQuery.error.message || "暂时无法读取品牌设置，请稍后重试。"} action={<button className="ghost-button" disabled={brandingQuery.isFetching} onClick={() => void brandingQuery.refetch()}>重新加载</button>} /> : <>
-    {brandingQuery.error && <div className="warning-banner">品牌设置刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={brandingQuery.isFetching} onClick={() => void brandingQuery.refetch()}>重新加载</button></div>}
-    {saveNeedsRecheck ? <div className="warning-banner">保存结果需要核对，当前草稿不会再次提交。<button type="button" className="ghost-button" disabled={saveLock.busy || brandingQuery.isFetching} onClick={() => void loadLatestBranding()}>{brandingQuery.isFetching ? "读取中…" : "重新读取品牌设置"}</button></div>
-      : stale && <div className="warning-banner">服务器上的品牌设置已经更新，当前草稿保持不变。<button type="button" className="ghost-button" disabled={saveLock.busy || brandingQuery.isFetching} onClick={() => void loadLatestBranding()}>{brandingQuery.isFetching ? "读取中…" : "使用最新设置"}</button></div>}
+      : brandingQuery.error && !brandingQuery.data ? <EmptyState title="品牌设置加载失败" detail={brandingQuery.error.message || "暂时无法读取品牌设置，请稍后重试。"} action={<Button variant="secondary" className="ghost-button" disabled={brandingQuery.isFetching} onClick={() => void brandingQuery.refetch()}>重新加载</Button>} /> : <>
+    {brandingQuery.error && <div className="warning-banner">品牌设置刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={brandingQuery.isFetching} onClick={() => void brandingQuery.refetch()}>重新加载</Button></div>}
+    {saveNeedsRecheck ? <div className="warning-banner">保存结果需要核对，当前草稿不会再次提交。<Button busy={(brandingQuery.isFetching)} aria-label={brandingQuery.isFetching ? "读取中…" : "重新读取品牌设置"} variant="secondary" type="button" className="ghost-button" disabled={saveLock.busy || brandingQuery.isFetching} onClick={() => void loadLatestBranding()}>{"重新读取品牌设置"}</Button></div>
+      : stale && <div className="warning-banner">服务器上的品牌设置已经更新，当前草稿保持不变。<Button busy={(brandingQuery.isFetching)} aria-label={brandingQuery.isFetching ? "读取中…" : "使用最新设置"} variant="secondary" type="button" className="ghost-button" disabled={saveLock.busy || brandingQuery.isFetching} onClick={() => void loadLatestBranding()}>{"使用最新设置"}</Button></div>}
     <div className="system-branding-content">
       <div className="system-branding-preview">
         <BrandLogo branding={previewBranding} />
@@ -271,16 +272,16 @@ function BrandingSettingsCard({ accountKey }: { accountKey: string }) {
           <span>系统Logo</span>
           <div>
             <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(event) => selectLogo(event.target.files?.[0])} />
-            <button type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => fileRef.current?.click()}><ImagePlus size={15} />选择图片</button>
-            {previewBranding.logoUrl && <button type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => { setLogoDraft(null); setDirty(true); setMessage(""); if (fileRef.current) fileRef.current.value = ""; }}>移除Logo</button>}
+            <Button variant="secondary" type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => fileRef.current?.click()}><ImagePlus size={15} />选择图片</Button>
+            {previewBranding.logoUrl && <Button variant="secondary" type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => { setLogoDraft(null); setDirty(true); setMessage(""); if (fileRef.current) fileRef.current.value = ""; }}>移除Logo</Button>}
           </div>
           <small>支持PNG、JPEG、WebP，最大512KB，建议使用正方形图片。</small>
         </div>
         {(localError || save.error) && <p className="form-error system-branding-feedback">{localError || save.error?.message}</p>}
         {message && <p className="system-operation-success system-branding-feedback"><ShieldCheck size={14} />{message}</p>}
         <div className="system-branding-actions">
-          <button type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => { setSystemName(defaultBranding.systemName); setShortName(defaultBranding.shortName); setLogoDraft(null); setDirty(true); setMessage(""); setLocalError(""); }}>恢复默认值</button>
-          <button className="primary-button" disabled={saveLock.busy || brandingQuery.isLoading || stale || saveNeedsRecheck}>{saveLock.busy ? "保存中…" : "保存品牌设置"}</button>
+          <Button variant="secondary" type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => { setSystemName(defaultBranding.systemName); setShortName(defaultBranding.shortName); setLogoDraft(null); setDirty(true); setMessage(""); setLocalError(""); }}>恢复默认值</Button>
+          <Button busy={(saveLock.busy)} aria-label={saveLock.busy ? "保存中…" : "保存品牌设置"} variant="primary" type="submit" className="primary-button" disabled={saveLock.busy || brandingQuery.isLoading || stale || saveNeedsRecheck}>{"保存品牌设置"}</Button>
         </div>
       </form>
     </div>
@@ -529,9 +530,9 @@ export function SystemPage() {
             title="登录后管理系统设置"
             detail="系统状态和数据库维护功能仅对管理员开放。"
             action={
-              <button className="primary-button" onClick={openLogin}>
+              <Button variant="primary" className="primary-button" onClick={openLogin}>
                 用户登录
-              </button>
+              </Button>
             }
           />
         </div>
@@ -540,23 +541,23 @@ export function SystemPage() {
   return (
     <>
       <PageHeader title="系统管理"
-        actions={<button className="primary-button" disabled={maintenanceBlocked} onClick={() => { if (!maintenanceBlocked) backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(false); }); }}>
+        actions={<Button variant="primary" className="primary-button" disabled={maintenanceBlocked} onClick={() => { if (!maintenanceBlocked) backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(false); }); }}>
           <DatabaseBackup size={15} />{backupLock.busy && !backup.variables ? "正在备份…" : "立即备份"}
-        </button>}
+        </Button>}
         moreActions={<>
-          <button className="ghost-button" disabled={maintenanceBlocked} onClick={() => importInput.current?.click()}><Upload size={15} />{uploadLock.busy ? '正在上传并校验…' : '导入数据库'}</button>
-          <button className="ghost-button" disabled={maintenanceBlocked} onClick={() => { if (!maintenanceBlocked) backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(true); }); }}><Download size={15} />{backupLock.busy && backup.variables ? '正在导出…' : downloadLock.busy ? '正在下载…' : '导出数据库'}</button>
-          <button className="ghost-button" disabled={integrityLock.busy} onClick={() => integrityLock.run(() => integrityCheck.mutate())}><ShieldCheck size={15} />{integrityLock.busy ? "检查中…" : "立即检查"}</button>
+          <Button variant="secondary" className="ghost-button" disabled={maintenanceBlocked} onClick={() => importInput.current?.click()}><Upload size={15} />{uploadLock.busy ? '正在上传并校验…' : '导入数据库'}</Button>
+          <Button variant="secondary" className="ghost-button" disabled={maintenanceBlocked} onClick={() => { if (!maintenanceBlocked) backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(true); }); }}><Download size={15} />{backupLock.busy && backup.variables ? '正在导出…' : downloadLock.busy ? '正在下载…' : '导出数据库'}</Button>
+          <Button busy={(integrityLock.busy)} aria-label={integrityLock.busy ? "检查中…" : "立即检查"} variant="secondary" className="ghost-button" disabled={integrityLock.busy} onClick={() => integrityLock.run(() => integrityCheck.mutate())}><ShieldCheck size={15} />{"立即检查"}</Button>
         </>}/>
       <div className="page-content">
         <div className="system-page">
           {restoreWaitPending && !restoreTarget && <div className="warning-banner">数据库恢复已安排，服务重启后页面将自动刷新；其他维护操作暂不可用。</div>}
-          {restoreNeedsRecheck && !restoreTarget && !restoreWaitPending && !restoreWaitError && <div className="warning-banner">数据库恢复结果需要核对，其他维护操作暂不可用。<button type="button" className="ghost-button" disabled={overviewQuery.isFetching} onClick={() => void recheckRestore()}>{overviewQuery.isFetching ? "读取中…" : "重新读取系统状态"}</button></div>}
-          {restoreWaitError && !restoreTarget && <div className="warning-banner">{restoreWaitError}<button type="button" className="ghost-button" onClick={() => window.location.reload()}>立即刷新</button></div>}
+          {restoreNeedsRecheck && !restoreTarget && !restoreWaitPending && !restoreWaitError && <div className="warning-banner">数据库恢复结果需要核对，其他维护操作暂不可用。<Button busy={(overviewQuery.isFetching)} aria-label={overviewQuery.isFetching ? "读取中…" : "重新读取系统状态"} variant="secondary" type="button" className="ghost-button" disabled={overviewQuery.isFetching} onClick={() => void recheckRestore()}>{"重新读取系统状态"}</Button></div>}
+          {restoreWaitError && !restoreTarget && <div className="warning-banner">{restoreWaitError}<Button variant="secondary" type="button" className="ghost-button" onClick={() => window.location.reload()}>立即刷新</Button></div>}
           {!restoreWaitPending && overview?.lastRestore?.outcome === 'succeeded' && <div className="system-operation-success"><ShieldCheck size={14} />最近一次数据库恢复已完成：{overview.lastRestore.backupName}（{new Date(overview.lastRestore.updatedAt).toLocaleString("zh-CN", { hour12: false })}）</div>}
           {!restoreWaitPending && overview?.lastRestore?.outcome === 'rolled_back' && <div className="warning-banner">{overview.lastRestore.message}。目标备份：{overview.lastRestore.backupName}{overview.lastRestore.failedDatabase ? `；失败库已保留为 ${overview.lastRestore.failedDatabase}` : ""}</div>}
           {!restoreWaitPending && overview?.lastRestore?.outcome === 'pending' && <div className="warning-banner">上次数据库恢复尚未确认结果，请检查服务日志后再执行新的恢复。</div>}
-          {overviewQuery.error && <div className="warning-banner">系统概览{overview ? "刷新" : "加载"}失败，{overview ? "当前展示的是上次成功结果，维护操作暂不可用。" : "运行状态未确认，维护操作暂不可用。"}<button className="ghost-button" disabled={overviewQuery.isFetching} onClick={() => void overviewQuery.refetch()}>重新加载</button></div>}
+          {overviewQuery.error && <div className="warning-banner">系统概览{overview ? "刷新" : "加载"}失败，{overview ? "当前展示的是上次成功结果，维护操作暂不可用。" : "运行状态未确认，维护操作暂不可用。"}<Button variant="secondary" className="ghost-button" disabled={overviewQuery.isFetching} onClick={() => void overviewQuery.refetch()}>重新加载</Button></div>}
           <section className="system-overview-grid" aria-label="系统概览">
             <article className="system-overview-card system-overview-running">
               <ShieldCheck size={22} />
@@ -601,10 +602,10 @@ export function SystemPage() {
             {feedback && <span className="system-operation-success"><ShieldCheck size={14} />{feedback}</span>}
             {operationError && <span className="system-operation-error">{operationError.message}</span>}
             {importError && <span className="system-operation-error" role="alert">{importError}</span>}
-            {(backupNeedsRecheck || deleteNeedsRecheck) && <button type="button" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void recheckBackups()}>{backupsQuery.isFetching ? "读取中…" : "重新读取备份列表"}</button>}
+            {(backupNeedsRecheck || deleteNeedsRecheck) && <Button busy={(backupsQuery.isFetching)} aria-label={backupsQuery.isFetching ? "读取中…" : "重新读取备份列表"} variant="secondary" type="button" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void recheckBackups()}>{"重新读取备份列表"}</Button>}
           </div>
           <div className="system-backup-table-wrap paged-body" ref={backupsPagination.scrollRef}>
-            {backupsQuery.error && backupsQuery.data && <div className="warning-banner">备份列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void backupsQuery.refetch()}>重新加载</button></div>}
+            {backupsQuery.error && backupsQuery.data && <div className="warning-banner">备份列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void backupsQuery.refetch()}>重新加载</Button></div>}
             {backupsQuery.data && <table className="system-backup-table">
               <thead><tr><th>备份／上传时间</th><th>文件名</th><th>大小</th><th>距今</th><th>操作</th></tr></thead>
               <tbody>
@@ -614,15 +615,15 @@ export function SystemPage() {
                   <td>{formatBytes(item.size)}</td>
                   <td>{relativeTime(item.createdAt, "尚未备份", now)}</td>
                   <td><div className="system-backup-actions">
-                    <button className="inline-action-button" disabled={maintenanceBlocked} onClick={() => { if (!maintenanceBlocked) downloadLock.run(() => { clearMaintenanceFeedback(); download.mutate(item); }); }}><Download size={14} />下载</button>
-                    <button className="inline-action-button" disabled={maintenanceBlocked || item.restorable === false} title={item.restorable === false ? item.validationError || "该文件不能恢复" : undefined} onClick={() => { if (maintenanceBlocked || item.restorable === false) return; clearMaintenanceFeedback(); setRestoreTarget(item); }}><RefreshCcw size={14} />恢复</button>
-                    <button className="inline-action-button danger" disabled={maintenanceBlocked} onClick={() => { if (maintenanceBlocked) return; clearMaintenanceFeedback(); setDeleteTarget(item); }}><Trash2 size={14} />{deleteBackup.isPending && deleteBackup.variables?.name === item.name ? "删除中" : "删除"}</button>
+                    <Button variant="secondary" size="small" className="inline-action-button" disabled={maintenanceBlocked} onClick={() => { if (!maintenanceBlocked) downloadLock.run(() => { clearMaintenanceFeedback(); download.mutate(item); }); }}><Download size={14} />下载</Button>
+                    <Button variant="secondary" size="small" className="inline-action-button" disabled={maintenanceBlocked || item.restorable === false} title={item.restorable === false ? item.validationError || "该文件不能恢复" : undefined} onClick={() => { if (maintenanceBlocked || item.restorable === false) return; clearMaintenanceFeedback(); setRestoreTarget(item); }}><RefreshCcw size={14} />恢复</Button>
+                    <Button busy={(deleteBackup.isPending && deleteBackup.variables?.name === item.name)} aria-label={deleteBackup.isPending && deleteBackup.variables?.name === item.name ? "删除中" : "删除"} variant="ghost" tone="danger" size="small" className="inline-action-button danger" disabled={maintenanceBlocked} onClick={() => { if (maintenanceBlocked) return; clearMaintenanceFeedback(); setDeleteTarget(item); }}><Trash2 size={14} />{"删除"}</Button>
                   </div></td>
                 </tr>)}
               </tbody>
             </table>}
             {backupsQuery.isLoading && !backupsQuery.data && <LoadingState className="system-table-state" label="正在读取备份…" />}
-            {backupsQuery.error && !backupsQuery.data && <EmptyState title="备份列表加载失败" detail={backupsQuery.error.message || "暂时无法读取备份，请稍后重试。"} action={<button className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void backupsQuery.refetch()}>重新加载</button>} />}
+            {backupsQuery.error && !backupsQuery.data && <EmptyState title="备份列表加载失败" detail={backupsQuery.error.message || "暂时无法读取备份，请稍后重试。"} action={<Button variant="secondary" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void backupsQuery.refetch()}>重新加载</Button>} />}
             {backupsQuery.data && !backups.length && <EmptyState title="暂无备份" detail="可立即创建第一份备份。" />}
           </div>
             <Pagination {...backupsPagination.props} label="备份列表分页" />
@@ -666,16 +667,16 @@ export function SystemPage() {
             </>}
             {importing && <p className="system-import-note">导入将替换本机全部业务数据、账号和系统设置。admin 使用本机配置的管理员密码，其他账号保留导入文件中的密码。导入后所有用户需要重新登录。</p>}
             {restoreTargetStale && <p className="form-error" role="alert">备份文件已被后台删除或替换，请关闭窗口并从最新列表重新选择。</p>}
-            {backupsQuery.error && <div className="warning-banner" role="alert">备份列表刷新失败，当前文件状态未确认。<button type="button" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void recheckBackups()}>{backupsQuery.isFetching ? "读取中…" : "重新读取备份列表"}</button></div>}
+            {backupsQuery.error && <div className="warning-banner" role="alert">备份列表刷新失败，当前文件状态未确认。<Button busy={(backupsQuery.isFetching)} aria-label={backupsQuery.isFetching ? "读取中…" : "重新读取备份列表"} variant="secondary" type="button" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void recheckBackups()}>{"重新读取备份列表"}</Button></div>}
             {restore.error && <p className="form-error">{restore.error.message}</p>}
-            {restoreNeedsRecheck && <div className="warning-banner">恢复结果需要核对，当前备份不会再次提交。{!restoreWaitPending && <button type="button" className="ghost-button" disabled={overviewQuery.isFetching} onClick={() => void recheckRestore()}>{overviewQuery.isFetching ? "读取中…" : "重新读取系统状态"}</button>}</div>}
+            {restoreNeedsRecheck && <div className="warning-banner">恢复结果需要核对，当前备份不会再次提交。{!restoreWaitPending && <Button busy={(overviewQuery.isFetching)} aria-label={overviewQuery.isFetching ? "读取中…" : "重新读取系统状态"} variant="secondary" type="button" className="ghost-button" disabled={overviewQuery.isFetching} onClick={() => void recheckRestore()}>{"重新读取系统状态"}</Button>}</div>}
             {restore.data && <p className="system-operation-success"><ShieldCheck size={14} />{restore.data.message}</p>}
             {restore.data && !restoreWaitError && <p>服务恢复后页面会自动刷新并重新校验当前账号权限。</p>}
-            {restoreWaitError && <p className="form-error">{restoreWaitError} <button type="button" className="ghost-button" onClick={() => window.location.reload()}>立即刷新</button></p>}
-            <div className="form-actions"><button className="ghost-button" disabled={restoreLock.busy || Boolean(restore.data)} onClick={() => { if (restoreLock.canClose() && !restore.data) setRestoreTarget(undefined); }}>取消</button><button className="primary-button" disabled={maintenanceBlocked || restoreTargetStale || Boolean(restore.data)} onClick={() => { if (maintenanceBlocked || restoreTargetStale || restore.data) return; restoreLock.run(() => restore.mutate(restoreTarget)); }}><RefreshCcw size={15} />{restoreLock.busy ? "正在校验并备份…" : restore.data ? "等待服务重启" : restoreNeedsRecheck ? "等待核对" : importing ? '确认导入并替换' : "确认恢复"}</button></div>
+            {restoreWaitError && <p className="form-error">{restoreWaitError} <Button variant="secondary" type="button" className="ghost-button" onClick={() => window.location.reload()}>立即刷新</Button></p>}
+            <div className="form-actions"><Button variant="secondary" className="ghost-button" disabled={restoreLock.busy || Boolean(restore.data)} onClick={() => { if (restoreLock.canClose() && !restore.data) setRestoreTarget(undefined); }}>取消</Button><Button variant="primary" className="primary-button" disabled={maintenanceBlocked || restoreTargetStale || Boolean(restore.data)} onClick={() => { if (maintenanceBlocked || restoreTargetStale || restore.data) return; restoreLock.run(() => restore.mutate(restoreTarget)); }}><RefreshCcw size={15} />{restoreLock.busy ? "正在校验并备份…" : restore.data ? "等待服务重启" : restoreNeedsRecheck ? "等待核对" : importing ? '确认导入并替换' : "确认恢复"}</Button></div>
           </div>
         </Modal>}
-        {deleteTarget && <ConfirmDialog title="删除数据库备份" description={<><p>备份“<strong>{deleteTarget.name}</strong>”将被永久删除，删除后无法用于数据库恢复。</p>{deleteTargetStale && <p className="form-error" role="alert">备份文件已被后台删除或替换，请关闭窗口并从最新列表重新选择。</p>}{(backupsQuery.error || deleteNeedsRecheck) && <div className="warning-banner" role="alert">{backupsQuery.error ? "备份列表刷新失败，当前文件状态未确认。" : "删除结果需要核对，当前备份不会再次提交。"}<button type="button" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void recheckBackups()}>{backupsQuery.isFetching ? "读取中…" : "重新读取备份列表"}</button></div>}</>} confirmLabel="永久删除" pendingLabel="删除中…" danger pending={deleteBackup.isPending} disabled={maintenanceBlocked || deleteTargetStale} error={deleteBackup.error?.message} onClose={() => setDeleteTarget(undefined)} onConfirm={() => { if (!maintenanceBlocked && !deleteTargetStale) deleteBackup.mutate(deleteTarget); }} />}
+        {deleteTarget && <ConfirmDialog title="删除数据库备份" description={<><p>备份“<strong>{deleteTarget.name}</strong>”将被永久删除，删除后无法用于数据库恢复。</p>{deleteTargetStale && <p className="form-error" role="alert">备份文件已被后台删除或替换，请关闭窗口并从最新列表重新选择。</p>}{(backupsQuery.error || deleteNeedsRecheck) && <div className="warning-banner" role="alert">{backupsQuery.error ? "备份列表刷新失败，当前文件状态未确认。" : "删除结果需要核对，当前备份不会再次提交。"}<Button busy={(backupsQuery.isFetching)} aria-label={backupsQuery.isFetching ? "读取中…" : "重新读取备份列表"} variant="secondary" type="button" className="ghost-button" disabled={backupsQuery.isFetching} onClick={() => void recheckBackups()}>{"重新读取备份列表"}</Button></div>}</>} confirmLabel="永久删除" pendingLabel="删除中…" danger pending={deleteBackup.isPending} disabled={maintenanceBlocked || deleteTargetStale} error={deleteBackup.error?.message} onClose={() => setDeleteTarget(undefined)} onConfirm={() => { if (!maintenanceBlocked && !deleteTargetStale) deleteBackup.mutate(deleteTarget); }} />}
       </div>
     </>
   );

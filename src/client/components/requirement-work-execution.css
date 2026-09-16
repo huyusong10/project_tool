@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 .workspace-requirement-progress{display:inline-flex;align-items:center;min-width:0;max-width:100%;padding:0;border:0;border-radius:3px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
 .workspace-requirement-progress:hover{background:var(--accent-soft);color:var(--accent-ink)}
 .workspace-requirement-progress:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
@@ -10,7 +12,7 @@
 .requirement-execution-progress{font-size:12px;text-align:center;font-variant-numeric:tabular-nums}
 .requirement-execution-progress .work-progress-link{font-size:13px}
 .requirement-execution-actions .work-item-action-row{display:flex;justify-content:flex-end;gap:4px}
-.requirement-execution-actions .work-next-action{width:70px;min-width:70px;height:32px;min-height:32px;display:flex;align-items:center;justify-content:center;padding:0 4px;gap:4px;font-size:12px}
+.requirement-execution-actions .work-next-action{display:flex;align-items:center;justify-content:center;gap:4px}
 .requirement-execution-actions .action-menu-trigger{width:32px;min-width:32px;height:32px;min-height:32px;padding:0}
 .requirement-execution-actions .work-action-state{display:none}
 @media(max-width:600px){
@@ -18,4 +20,6 @@
  .requirement-execution-name{grid-column:2/4}
  .requirement-execution-progress{grid-column:2;text-align:left}
  .requirement-execution-actions{grid-column:3}
+}
+
 }

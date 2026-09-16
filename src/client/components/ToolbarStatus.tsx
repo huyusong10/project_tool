@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {useContext,useEffect,useRef,useState,type ButtonHTMLAttributes} from 'react';
 import {Info} from 'lucide-react';
 import {AnchoredPopover} from './InlineEdit';
@@ -25,7 +26,7 @@ export function ToolbarStatus({children,title,onClick,disabled,...props}:ButtonH
     <AnchoredPopover anchorRef={anchor} open={open} onOutside={close} onEscape={()=>{close();anchor.current?.focus({preventScroll:true});}} width={280} className="toolbar-status-popover" role="presentation" preserveEditing>
       <div ref={panel} role="dialog" aria-label="状态说明" onPointerEnter={cancelClose} onPointerLeave={leave} onBlur={event=>{if(event.relatedTarget instanceof Node&&!panel.current?.contains(event.relatedTarget)&&event.relatedTarget!==anchor.current)close();}}>
       <strong>{children}</strong><p>{children==='已保存'?'当前修改已保存。':title||'可查看本机草稿、保存记录和需要处理的问题。'}</p>
-      {onClick&&<button type="button" className="ghost-button" disabled={disabled} onClick={event=>{close();onClick(event);}}>查看详情</button>}
+      {onClick&&<Button variant="secondary" type="button" className="ghost-button" disabled={disabled} onClick={event=>{close();onClick(event);}}>查看详情</Button>}
       </div>
     </AnchoredPopover>
   </>;

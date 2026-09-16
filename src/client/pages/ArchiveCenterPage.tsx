@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
@@ -177,8 +178,8 @@ export function ArchiveCenterPage() {
           <select value={type} onChange={(event) => setType(event.target.value as "all" | ArchiveEntity)}><option value="all">全部类型</option>{archiveEntityOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select>
           <span>{filteredRows.length} / {rows.length} 条</span>
         </div>
-        {archiveNeedsRecheck && <div role="alert" className="warning-banner">{archiveNeedsRecheck === "restore" ? "归档恢复结果待核对" : "永久删除结果待核对"}，当前归档事实可能已变化，本页面不会重复提交。<button className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{isFetching ? "读取中…" : "重新加载归档"}</button></div>}
-        {error && archives && <div className="warning-banner">归档列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
+        {archiveNeedsRecheck && <div role="alert" className="warning-banner">{archiveNeedsRecheck === "restore" ? "归档恢复结果待核对" : "永久删除结果待核对"}，当前归档事实可能已变化，本页面不会重复提交。<Button busy={(isFetching)} aria-label={isFetching ? "读取中…" : "重新加载归档"} variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{"重新加载归档"}</Button></div>}
+        {error && archives && <div className="warning-banner">归档列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}
         <div className="archive-table-wrap paged-body" ref={pagination.scrollRef}>
           <table className="archive-table">
             <thead><tr><th>名称</th><th>类型</th><th>补充信息</th><th>归档时间</th><th>操作</th></tr></thead>
@@ -190,7 +191,7 @@ export function ArchiveCenterPage() {
               <td><span className={`archive-type archive-type-${item.entity}`}>{item.typeLabel}</span></td>
               <td>{item.jobTitle || "—"}</td>
               <td>{formatDateTime(item.deletedAt)}</td>
-              <td><div className="archive-row-actions"><button className="inline-action-button" title={`恢复${item.typeLabel}`} disabled={Boolean(restoringKey) || permanentlyDelete.isPending || Boolean(archiveNeedsRecheck)} onClick={() => restoreArchive(item.entity, item.id, item.deletedAt)}><RotateCcw size={14} />{restoring ? "恢复中…" : "恢复"}</button><button className="inline-action-button danger" title={`永久删除${item.typeLabel}`} disabled={Boolean(restoringKey) || permanentlyDelete.isPending || Boolean(archiveNeedsRecheck)} onClick={() => {
+              <td><div className="archive-row-actions"><Button busy={(restoring)} aria-label={restoring ? "恢复中…" : "恢复"} variant="ghost" size="small" className="inline-action-button" title={`恢复${item.typeLabel}`} disabled={Boolean(restoringKey) || permanentlyDelete.isPending || Boolean(archiveNeedsRecheck)} onClick={() => restoreArchive(item.entity, item.id, item.deletedAt)}><RotateCcw size={14} />{"恢复"}</Button><Button variant="secondary" tone="danger" size="small" className="inline-action-button danger" title={`永久删除${item.typeLabel}`} disabled={Boolean(restoringKey) || permanentlyDelete.isPending || Boolean(archiveNeedsRecheck)} onClick={() => {
                 restore.reset();
                 if (item.entity === "projects" || item.entity === "requirements") {
                   const impact = item.entity === "projects"
@@ -202,18 +203,18 @@ export function ArchiveCenterPage() {
                 }
                 permanentlyDelete.reset();
                 setSimpleDeleteTarget({ entity: item.entity, id: item.id, title: item.title, deletedAt: item.deletedAt });
-              }}><Trash2 size={14} />删除</button></div></td>
+              }}><Trash2 size={14} />删除</Button></div></td>
             </tr>})}</tbody>
           </table>
           {listUnavailable
-            ? <EmptyState title="归档列表加载失败" detail={error?.message || "暂时无法读取归档数据。"} action={<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button>} />
+            ? <EmptyState title="归档列表加载失败" detail={error?.message || "暂时无法读取归档数据。"} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} />
             : !filteredRows.length && <EmptyState title="没有符合条件的归档内容" detail={rows.length ? "调整搜索词或类型筛选后重试。" : "归档项目、需求、人员或流程后会显示在这里。"} />}
         </div>
         {(restore.error || permanentlyDelete.error) && <p className="form-error archive-error">{(restore.error || permanentlyDelete.error)?.message}</p>}
         <Pagination {...pagination.props} label="归档列表分页" />
       </section>
     </div>
-    {deletePrompt && <TextPromptModal title={`永久删除${deletePrompt.entity === "projects" ? "项目" : "需求"}`} description={`${deletePrompt.impact}\n永久删除后无法恢复。`} label="输入完整名称确认" expectedValue={deletePrompt.title} confirmLabel="永久删除" danger pending={permanentlyDelete.isPending} blocked={archiveNeedsRecheck === "delete"} notice={archiveNeedsRecheck === "delete" ? <div className="warning-banner" role="alert">永久删除结果待核对，请重新加载归档后再操作。<button type="button" className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{isFetching ? "读取中…" : "重新加载归档"}</button></div> : undefined} error={permanentlyDelete.error?.message} onClose={() => setDeletePrompt(null)} onConfirm={(confirmName) => submitPermanentDelete({ entity: deletePrompt.entity, id: deletePrompt.id, confirmName, expectedDeletedAt: deletePrompt.deletedAt })} />}
-    {simpleDeleteTarget && <ConfirmDialog title="永久删除归档内容" description={<>“<strong>{simpleDeleteTarget.title}</strong>”将被永久删除，此操作无法恢复。{archiveNeedsRecheck === "delete" && <div className="warning-banner" role="alert">永久删除结果待核对，请重新加载归档后再操作。<button type="button" className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{isFetching ? "读取中…" : "重新加载归档"}</button></div>}</>} confirmLabel="永久删除" pendingLabel="删除中…" danger pending={permanentlyDelete.isPending} disabled={archiveNeedsRecheck === "delete"} error={permanentlyDelete.error?.message} onClose={() => setSimpleDeleteTarget(null)} onConfirm={() => submitPermanentDelete({ entity: simpleDeleteTarget.entity, id: simpleDeleteTarget.id, expectedDeletedAt: simpleDeleteTarget.deletedAt })} />}
+    {deletePrompt && <TextPromptModal title={`永久删除${deletePrompt.entity === "projects" ? "项目" : "需求"}`} description={`${deletePrompt.impact}\n永久删除后无法恢复。`} label="输入完整名称确认" expectedValue={deletePrompt.title} confirmLabel="永久删除" danger pending={permanentlyDelete.isPending} blocked={archiveNeedsRecheck === "delete"} notice={archiveNeedsRecheck === "delete" ? <div className="warning-banner" role="alert">永久删除结果待核对，请重新加载归档后再操作。<Button busy={(isFetching)} aria-label={isFetching ? "读取中…" : "重新加载归档"} variant="secondary" type="button" className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{"重新加载归档"}</Button></div> : undefined} error={permanentlyDelete.error?.message} onClose={() => setDeletePrompt(null)} onConfirm={(confirmName) => submitPermanentDelete({ entity: deletePrompt.entity, id: deletePrompt.id, confirmName, expectedDeletedAt: deletePrompt.deletedAt })} />}
+    {simpleDeleteTarget && <ConfirmDialog title="永久删除归档内容" description={<>“<strong>{simpleDeleteTarget.title}</strong>”将被永久删除，此操作无法恢复。{archiveNeedsRecheck === "delete" && <div className="warning-banner" role="alert">永久删除结果待核对，请重新加载归档后再操作。<Button busy={(isFetching)} aria-label={isFetching ? "读取中…" : "重新加载归档"} variant="secondary" type="button" className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{"重新加载归档"}</Button></div>}</>} confirmLabel="永久删除" pendingLabel="删除中…" danger pending={permanentlyDelete.isPending} disabled={archiveNeedsRecheck === "delete"} error={permanentlyDelete.error?.message} onClose={() => setSimpleDeleteTarget(null)} onConfirm={() => submitPermanentDelete({ entity: simpleDeleteTarget.entity, id: simpleDeleteTarget.id, expectedDeletedAt: simpleDeleteTarget.deletedAt })} />}
   </>;
 }

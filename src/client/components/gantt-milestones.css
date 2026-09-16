@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 .gantt-axis-header { position:sticky; top:0; z-index:8; background:var(--bg-surface-subtle); }
 .gantt-axis-header > .gantt-scale { position:relative; top:auto; }
 .gantt-milestone-rail { height:28px; position:relative; background:var(--bg-surface-subtle); border-bottom:1px solid var(--divider); user-select:none; }
@@ -45,3 +47,5 @@
 .template-plan-track { min-height:54px; position:relative; border-bottom:1px solid var(--divider); }
 .template-plan-bar { position:absolute; height:8px; top:24px; border-radius:4px; background:var(--accent); }
 @media(prefers-reduced-motion:no-preference) { .gantt-milestone-cut { transition:opacity 120ms; } }
+
+}

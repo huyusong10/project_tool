@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useSession } from "../app-context";
 import { Columns2, Layers } from "lucide-react";
@@ -46,10 +47,10 @@ export function GanttViewSwitch({ value, onChange }: { value: GanttViewMode; onC
       {value === "split" ? <Columns2 size={17} /> : <Layers size={17} />}
     </summary>
     <div className="gantt-view-options" role="group" aria-label="甘特显示方式">
-      {([['overlay', '现有视图'], ['split', '计划·实际双轨']] as const).map(([mode, name]) => <button key={mode} type="button" aria-pressed={value === mode} onClick={() => {
+      {([['overlay', '现有视图'], ['split', '计划·实际双轨']] as const).map(([mode, name]) => <Button variant="menu" key={mode} type="button" aria-pressed={value === mode} onClick={() => {
         onChange(mode);
         if (ref.current) { ref.current.open = false; ref.current.querySelector("summary")?.focus(); }
-      }}>{name}</button>)}
+      }}>{name}</Button>)}
     </div>
   </details>;
 }

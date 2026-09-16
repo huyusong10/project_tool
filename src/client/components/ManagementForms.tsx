@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {assertCleanProjectDraft} from '../use-graph-draft';
 import {useSession} from '../app-context';
 import { migrateFeatureFields } from "../feature-storage-migration";
@@ -131,12 +132,12 @@ export function ProjectForm({
   const checkCreatedProject=async()=>{if(!createRecheck||checkingCreate)return;setCheckingCreate(true);setCreateCheckError('');try{const latest=await api<Project[]>('/api/projects',{readOnly:true});client.setQueryData(keys.projects,latest);const baseline=new Set(createRecheck.baselineIds),draft=createRecheck.draft,created=latest.filter(item=>!baseline.has(item.id)&&item.name===canonicalizeLabel(draft.name)&&item.status===draft.status&&item.plannedStart===(draft.plannedStart||null)&&item.plannedEnd===(draft.plannedEnd||null)&&!item.isSample);if(created.length===1){onCreateRecheckChange?.(null);invalidateProjectViews(client);toast.success('已核对最新状态：项目已创建');onClose();return;}if(created.length===0){onCreateRecheckChange?.(null);mutation.reset();setCreateCheckError('未发现本次新增项目，已恢复原输入，可以重新提交。');return;}setCreateCheckError('发现多个可能的新项目，暂不解除锁定，请核对项目中心和操作记录。');}catch(error){setCreateCheckError(error instanceof Error?error.message:'项目列表读取失败');}finally{setCheckingCreate(false);}};
   return (
     <Modal title={project ? "编辑项目" : "新建项目"} closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
-    {!templatesReady && templatesQuery.error ? <EmptyState title="项目配置加载失败" detail={templatesQuery.error.message || "暂时无法读取默认流程，请稍后重试。"} action={<button type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</button>} />
+    {!templatesReady && templatesQuery.error ? <EmptyState title="项目配置加载失败" detail={templatesQuery.error.message || "暂时无法读取默认流程，请稍后重试。"} action={<Button variant="secondary" type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</Button>} />
       : !templatesReady ? <LoadingState label="正在加载项目配置…" className="stable-panel-state" /> : <>
-    {templatesQuery.error && <div className="warning-banner">默认流程刷新失败，当前展示的是上次成功结果。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</button></div>}
-    {changed && project && <div className="warning-banner">项目设置已在其他位置更新，当前草稿保持不变。<button type="button" className="ghost-button" disabled={mutation.isPending} onClick={() => {
+    {templatesQuery.error && <div className="warning-banner">默认流程刷新失败，当前展示的是上次成功结果。<Button variant="secondary" type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</Button></div>}
+    {changed && project && <div className="warning-banner">项目设置已在其他位置更新，当前草稿保持不变。<Button variant="secondary" type="button" className="ghost-button" disabled={mutation.isPending} onClick={() => {
       setBaseProject(project); setName(project.name); setStatus(project.status); setPlannedStart(project.plannedStart || ""); setPlannedEnd(project.plannedEnd || ""); setDefaultTemplateId(project.defaultTemplateId || ""); mutation.reset();
-    }}>使用最新设置</button></div>}
+    }}>使用最新设置</Button></div>}
     <form
       onSubmit={(event) => {
         event.preventDefault();
@@ -171,7 +172,7 @@ export function ProjectForm({
       <FormError>{mutation.error?.message}</FormError>
       {createUnknown&&<FormError>创建结果待核对。本页面不会重复创建，请读取最新项目。</FormError>}
       {createCheckError&&<FormError>{createCheckError}</FormError>}
-      {createUnknown&&<div className="field-full"><button type="button" className="ghost-button" disabled={checkingCreate} onClick={()=>void checkCreatedProject()}>{checkingCreate?'读取中…':'读取最新项目并继续'}</button></div>}
+      {createUnknown&&<div className="field-full"><Button busy={(checkingCreate)} aria-label={checkingCreate?'读取中…':'读取最新项目并继续'} variant="secondary" type="button" className="ghost-button" disabled={checkingCreate} onClick={()=>void checkCreatedProject()}>{'读取最新项目并继续'}</Button></div>}
       <FormSubmitActions submitLabel={project ? "保存修改" : "创建项目"} pending={mutation.isPending} disabled={createUnknown || checkingCreate || changed || selectedTemplateUnavailable} onCancel={onClose} />
       </fieldset>
     </form>
@@ -290,7 +291,7 @@ export function RequirementForm({
         <>{hasWorkdayCalendarFallback([scheduleDate])&&<p role="status" className="field-help field-full">该日期超出当前法定工作日日历覆盖范围，将按周一至周五计算。</p>}</>
         <p className="field-help field-full">不选流程时直接执行；选定流程后生成工作项。日期可留空，后续再预览排期。{scheduleMode === "deadline" ? " 截止日期需为工作日。" : ""}</p>
       </FormDisclosure>
-      {(templatesQuery.error || peopleQuery.error) && <div className="warning-banner field-full">部分辅助选项加载失败，仍可创建直接执行需求并稍后补充。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching || peopleQuery.isFetching} onClick={() => void Promise.all([templatesQuery.refetch(), peopleQuery.refetch()])}>重新加载</button></div>}
+      {(templatesQuery.error || peopleQuery.error) && <div className="warning-banner field-full">部分辅助选项加载失败，仍可创建直接执行需求并稍后补充。<Button variant="secondary" type="button" className="ghost-button" disabled={templatesQuery.isFetching || peopleQuery.isFetching} onClick={() => void Promise.all([templatesQuery.refetch(), peopleQuery.refetch()])}>重新加载</Button></div>}
       <FormDisclosure label="补充信息" hint="可选：背景、完成标准和参考链接">
         <FormField label="需求背景" full><textarea name="background" rows={3} value={background} onChange={event=>setBackground(event.target.value)} placeholder="为什么要做，可留空" /></FormField>
         <FormField label="完成标准" full><textarea name="acceptanceCriteria" rows={3} value={acceptanceCriteria} onChange={event=>setAcceptanceCriteria(event.target.value)} placeholder="如何判断完成，可留空" /></FormField>
@@ -299,7 +300,7 @@ export function RequirementForm({
       <FormError>{mutation.error?.message}</FormError>
       {unknown&&<FormError>创建结果待核对，输入已保留。本页面不会重复创建，请读取最新需求。</FormError>}
       {checkError&&<FormError>{checkError}</FormError>}
-      {unknown&&<div className="field-full"><button type="button" className="ghost-button" disabled={checking} onClick={()=>void checkLatest()}>{checking?'读取中…':'读取最新需求并继续'}</button></div>}
+      {unknown&&<div className="field-full"><Button busy={(checking)} aria-label={checking?'读取中…':'读取最新需求并继续'} variant="secondary" type="button" className="ghost-button" disabled={checking} onClick={()=>void checkLatest()}>{'读取最新需求并继续'}</Button></div>}
       <FormSubmitActions disabled={unknown||checking} submitLabel="创建需求" pending={mutation.isPending} onCancel={onClose} />
       </fieldset>
     </form>

@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import { analyticsValue } from "../analytics-presentation";
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { chartCategoryColor } from "../chart-theme";
@@ -142,7 +143,7 @@ function PanelContent({ panel, result, loading, retry }: {
   retry?: () => void;
 }) {
   if (loading) return <LoadingState className="analytics-panel-loading" label="正在计算…" />;
-  if (!result || result.error) return <EmptyState title="图表加载失败" detail={result?.error || "暂时无法读取分析数据。"} action={retry ? <button className="ghost-button" onClick={retry}><RefreshCcw size={14} />重试</button> : undefined} />;
+  if (!result || result.error) return <EmptyState title="图表加载失败" detail={result?.error || "暂时无法读取分析数据。"} action={retry ? <Button variant="secondary" className="ghost-button" onClick={retry}><RefreshCcw size={14} />重试</Button> : undefined} />;
   if (!result.rows.length) return <EmptyState title="暂无数据" detail="当前项目和时间范围内没有可展示的数据。" />;
   if (panel.visualization === "kpi") return <div className="analytics-kpi">
     <strong>{valueLabel(analyticsValue(result.rows[0], result.unit), result.unit)}</strong>
@@ -178,9 +179,9 @@ function AnalyticsPanelCard({ panel, result, asOfDate, loading, editing, disable
     <header>
       <div>{children}<h2>{panel.title}</h2><span>{analyticsTimeLabel(panel, result, asOfDate)}</span></div>
       {editing && <div className="analytics-panel-actions">
-        <button aria-label={`编辑${panel.title}`} title="编辑" disabled={disabled} onClick={onEdit}><Pencil size={14} /></button>
-        <button aria-label={`复制${panel.title}`} title="复制" disabled={disabled} onClick={onCopy}><Copy size={14} /></button>
-        <button className="danger" aria-label={`删除${panel.title}`} title="删除" disabled={disabled} onClick={onDelete}><Trash2 size={14} /></button>
+        <Button variant="ghost" iconOnly aria-label={`编辑${panel.title}`} title="编辑" disabled={disabled} onClick={onEdit}><Pencil size={14} /></Button>
+        <Button variant="ghost" iconOnly aria-label={`复制${panel.title}`} title="复制" disabled={disabled} onClick={onCopy}><Copy size={14} /></Button>
+        <Button iconOnly variant="secondary" tone="danger" className="danger" aria-label={`删除${panel.title}`} title="删除" disabled={disabled} onClick={onDelete}><Trash2 size={14} /></Button>
       </div>}
     </header>
     <div className="analytics-panel-body"><PanelContent panel={panel} result={result} loading={loading} retry={retry} /></div>
@@ -236,7 +237,7 @@ function PanelEditor({ initial, catalog, range, projectId, onClose, onSave }: {
       <label className="field"><span>显示数量</span><input type="number" min={1} max={50} value={panel.limit || 10} onChange={(event) => setPanel((current) => ({ ...current, limit: Number(event.target.value) }))} /></label>
       {!!dataset.filters.length && <div className="analytics-config-filters field-full"><span>筛选条件</span>{dataset.filters.map((filter) => <label className="field" key={filter.id}><span>{filter.label}</span><select value={panel.filters?.[filter.id]?.[0] || ""} onChange={(event) => setPanel((current) => ({ ...current, filters: { ...(current.filters || {}), [filter.id]: event.target.value ? [event.target.value] : [] } }))}><option value="">全部</option>{filter.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>)}</div>}
       {preview.error && <p className="form-error field-full">{preview.error.message}</p>}
-      <div className="form-actions field-full"><button type="button" className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" disabled={!panel.title.trim()}>应用配置</button></div>
+      <div className="form-actions field-full"><Button variant="secondary" type="button" className="ghost-button" onClick={onClose}>取消</Button><Button variant="primary" type="submit" className="primary-button" disabled={!panel.title.trim()}>应用配置</Button></div>
     </form>
     <div className="analytics-config-preview"><span>实时预览</span><AnalyticsPanelCard panel={panel} result={preview.data?.results[0]} asOfDate={preview.data?.asOfDate} loading={preview.isLoading} editing={false} /></div>
   </div>;
@@ -399,9 +400,9 @@ export function AnalyticsPage() {
   if (!projects.length) return <><PageHeader title="统计分析" /><div className="page-content"><EmptyState title="暂无可分析项目" detail="创建项目后，这里会生成默认分析看板。" /></div></>;
   if (layoutQuery.isLoading && !layoutQuery.data) return <><PageHeader title="统计分析" /><div className="page-content"><LoadingState label="正在加载分析看板…" className="tall" /></div></>;
   return <>
-    <PageHeader title="统计分析" secondaryActions={draft&&<><button className="ghost-button" disabled={editingBlocked || draft.panels.length >= 24} onClick={addPanel}><Plus size={15} />新增图表</button><button className="ghost-button" onClick={() => { if (!saveLock.canClose()) return; clearLayoutOperation(); setResetConfirm(true); }} disabled={editingBlocked}><RotateCcw size={15} />恢复默认</button></>} actions={!draft && layoutQuery.data?.canCustomize ? <button className="primary-button" disabled={!catalogQuery.data || Boolean(layoutRecheck)} onClick={beginEditing}><Settings2 size={15} />编辑看板</button> : draft ? <>
-      <button className="ghost-button" disabled={editingBlocked} onClick={() => { if (saveLock.canClose() && !layoutRecheck) { clearLayoutOperation(); setDraft(null); } }}><X size={15} />取消编辑</button>
-      <button className="primary-button" onClick={() => saveLock.run(() => { clearLayoutOperation(); saveLayout.mutate({ layout: cloneLayout(draft), expectedUpdatedAt: editingUpdatedAt }); })} disabled={editingBlocked}><Save size={15} />保存布局</button>
+    <PageHeader title="统计分析" secondaryActions={draft&&<><Button variant="secondary" className="ghost-button" disabled={editingBlocked || draft.panels.length >= 24} onClick={addPanel}><Plus size={15} />新增图表</Button><Button variant="secondary" className="ghost-button" onClick={() => { if (!saveLock.canClose()) return; clearLayoutOperation(); setResetConfirm(true); }} disabled={editingBlocked}><RotateCcw size={15} />恢复默认</Button></>} actions={!draft && layoutQuery.data?.canCustomize ? <Button variant="primary" className="primary-button" disabled={!catalogQuery.data || Boolean(layoutRecheck)} onClick={beginEditing}><Settings2 size={15} />编辑看板</Button> : draft ? <>
+      <Button variant="secondary" className="ghost-button" disabled={editingBlocked} onClick={() => { if (saveLock.canClose() && !layoutRecheck) { clearLayoutOperation(); setDraft(null); } }}><X size={15} />取消编辑</Button>
+      <Button variant="primary" className="primary-button" onClick={() => saveLock.run(() => { clearLayoutOperation(); saveLayout.mutate({ layout: cloneLayout(draft), expectedUpdatedAt: editingUpdatedAt }); })} disabled={editingBlocked}><Save size={15} />保存布局</Button>
     </> : null} />
     <div className="page-content analytics-page">
       <section className="analytics-toolbar">
@@ -410,12 +411,12 @@ export function AnalyticsPage() {
         <span className="analytics-range-label">{range.from} 至 {range.to}</span>
       </section>
       {!session.authenticated && <p className="analytics-guest-note">当前展示系统默认看板；登录后可配置并保存个人布局。</p>}
-      {layoutQuery.error && <div className="warning-banner">个人看板布局{layoutQuery.data ? "刷新失败，当前使用上次成功布局。" : "加载失败，当前显示系统默认布局且暂不可编辑。"}<button className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void layoutQuery.refetch()}>重新加载</button></div>}
-      {catalogQuery.error && <div className="warning-banner">分析指标目录{catalogQuery.data ? "刷新失败，当前使用上次成功目录。" : "加载失败，当前可查看图表但暂不可编辑布局。"}<button className="ghost-button" disabled={catalogQuery.isFetching} onClick={() => void catalogQuery.refetch()}>重新加载</button></div>}
-      {dataQuery.error && dataQuery.data && <div className="warning-banner">分析数据刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={dataQuery.isFetching} onClick={() => void dataQuery.refetch()}>重新加载</button></div>}
-      {layoutRecheck && <div className="warning-banner" role="alert">布局{layoutRecheck.action === "save" ? "保存" : "恢复默认"}结果待核对，原布局版本与草稿已锁定。<button type="button" className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void readLatestLayout()}>{layoutQuery.isFetching ? "读取中…" : "重新读取布局"}</button></div>}
-      {(saveLayout.error || resetLayout.error) && <div className="analytics-layout-error"><p className="form-error">{saveLayout.error?.message || resetLayout.error?.message}</p>{layoutNeedsRecheck && !layoutRecheck && <button type="button" className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void readLatestLayout()}>{layoutQuery.isFetching ? "读取中…" : "放弃草稿并读取最新布局"}</button>}</div>}
-      {dataUnavailable ? <EmptyState title="分析数据加载失败" detail={dataQuery.error?.message || "暂时无法读取分析数据。"} action={<button className="ghost-button" disabled={dataQuery.isFetching} onClick={() => void dataQuery.refetch()}><RefreshCcw size={15} />重新加载</button>} /> : <section className={`analytics-grid${draft ? " is-editing" : ""}`}>
+      {layoutQuery.error && <div className="warning-banner">个人看板布局{layoutQuery.data ? "刷新失败，当前使用上次成功布局。" : "加载失败，当前显示系统默认布局且暂不可编辑。"}<Button variant="secondary" className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void layoutQuery.refetch()}>重新加载</Button></div>}
+      {catalogQuery.error && <div className="warning-banner">分析指标目录{catalogQuery.data ? "刷新失败，当前使用上次成功目录。" : "加载失败，当前可查看图表但暂不可编辑布局。"}<Button variant="secondary" className="ghost-button" disabled={catalogQuery.isFetching} onClick={() => void catalogQuery.refetch()}>重新加载</Button></div>}
+      {dataQuery.error && dataQuery.data && <div className="warning-banner">分析数据刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={dataQuery.isFetching} onClick={() => void dataQuery.refetch()}>重新加载</Button></div>}
+      {layoutRecheck && <div className="warning-banner" role="alert">布局{layoutRecheck.action === "save" ? "保存" : "恢复默认"}结果待核对，原布局版本与草稿已锁定。<Button busy={(layoutQuery.isFetching)} aria-label={layoutQuery.isFetching ? "读取中…" : "重新读取布局"} variant="secondary" type="button" className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void readLatestLayout()}>{"重新读取布局"}</Button></div>}
+      {(saveLayout.error || resetLayout.error) && <div className="analytics-layout-error"><p className="form-error">{saveLayout.error?.message || resetLayout.error?.message}</p>{layoutNeedsRecheck && !layoutRecheck && <Button busy={(layoutQuery.isFetching)} aria-label={layoutQuery.isFetching ? "读取中…" : "放弃草稿并读取最新布局"} variant="secondary" type="button" className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void readLatestLayout()}>{"放弃草稿并读取最新布局"}</Button>}</div>}
+      {dataUnavailable ? <EmptyState title="分析数据加载失败" detail={dataQuery.error?.message || "暂时无法读取分析数据。"} action={<Button variant="secondary" className="ghost-button" disabled={dataQuery.isFetching} onClick={() => void dataQuery.refetch()}><RefreshCcw size={15} />重新加载</Button>} /> : <section className={`analytics-grid${draft ? " is-editing" : ""}`}>
         {draft ? <SortableList
           items={activeLayout.panels}
           getId={(panel) => panel.id}

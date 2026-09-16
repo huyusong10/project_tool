@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {hasActiveSortDrag} from './DragPreview';
 import {useProjectWorkspace} from '../project-workspace-context';
 import { useEffect,useLayoutEffect,useRef,useState,useContext,type ComponentProps,type CSSProperties,type ReactNode } from 'react';
@@ -91,7 +92,7 @@ function Workspace({ table, document:editorDocument, auxiliaryKey, toolbar, deta
       {toolbar}
       <div className="graph-tool-rail graph-overlay nopan nodrag nowheel" data-graph-panel="left" data-workspace-zone="tools">{!isTable&&palette}{!isTable&&finder&&<FindTool onClick={()=>setFinding(v=>!v)}/>}</div>
       {!isTable&&finder&&finding&&<div ref={finderRef} className="graph-finder graph-overlay nopan nodrag nowheel" data-graph-panel="left">{finder}</div>}
-      <FloatingPanel onDismiss={onDismissDetail} size={wide?'expanded':'compact'} content={detail?<div className="delivery-inspector-shell"><div className="graph-panel-heading delivery-inspector-heading"><h3>{detailTitle||'详情'}</h3><div className="delivery-inspector-actions"><button title={wide?'收起详情':'展开详情'} className="ghost-button inspector-size-toggle" onClick={()=>setWide(v=>!v)}>{wide?'收起':'展开'}</button><button className="ghost-button" onClick={onDismissDetail}>关闭</button></div></div><div className="delivery-inspector-content">{detail}</div></div>:undefined} side="right" replacement={!!auxiliary} contentKey={JSON.stringify(graph.interaction.selection)}/>
+      <FloatingPanel onDismiss={onDismissDetail} size={wide?'expanded':'compact'} content={detail?<div className="delivery-inspector-shell"><div className="graph-panel-heading delivery-inspector-heading"><h3>{detailTitle||'详情'}</h3><div className="delivery-inspector-actions"><Button variant="secondary" title={wide?'收起详情':'展开详情'} className="ghost-button inspector-size-toggle" onClick={()=>setWide(v=>!v)}>{wide?'收起':'展开'}</Button><Button variant="secondary" className="ghost-button" onClick={onDismissDetail}>关闭</Button></div></div><div className="delivery-inspector-content">{detail}</div></div>:undefined} side="right" replacement={!!auxiliary} contentKey={JSON.stringify(graph.interaction.selection)}/>
       <FloatingPanel contentKey={auxiliaryKey} onDismiss={onDismissAuxiliary} analysis={analysis} size={auxiliarySize} content={auxiliary} side="left" replacement={!!detail}/>
       {footer&&<div className="graph-footer graph-overlay nopan nodrag nowheel" data-graph-panel="bottom" data-workspace-zone="tools">{footer}</div>}
 

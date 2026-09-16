@@ -1,3 +1,4 @@
+import { Button } from './components/Button';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
@@ -36,11 +37,11 @@ const noProjects: Project[] = [];
 
 function GuestLanding() {
   const { openLogin } = useUiActions();
-  return <div className="page-content guest-landing"><div className="panel"><KeyRound size={32} /><h1>登录项目工作台</h1><p>项目、需求、问题和人员数据仅对已授权账号开放。</p><button className="primary-button" onClick={openLogin}><LogIn size={16} />用户登录</button></div></div>;
+  return <div className="page-content guest-landing"><div className="panel"><KeyRound size={32} /><h1>登录项目工作台</h1><p>项目、需求、问题和人员数据仅对已授权账号开放。</p><Button variant="primary" className="primary-button" onClick={openLogin}><LogIn size={16} />用户登录</Button></div></div>;
 }
 
 function StartupError({ title, error, pending, onRetry }: { title: string; error: Error; pending: boolean; onRetry: () => void }) {
-  return <div className="page-content guest-landing"><div className="panel"><h1>{title}</h1><p>{error.message}</p><button className="primary-button" disabled={pending} onClick={onRetry}>{pending ? "重新加载中…" : "重新加载"}</button></div></div>;
+  return <div className="page-content guest-landing"><div className="panel"><h1>{title}</h1><p>{error.message}</p><Button busy={(pending)} aria-label={pending ? "重新加载中…" : "重新加载"} variant="primary" className="primary-button" disabled={pending} onClick={onRetry}>{"重新加载"}</Button></div></div>;
 }
 
 export function App() {

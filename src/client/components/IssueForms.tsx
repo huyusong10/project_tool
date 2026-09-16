@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {IssueFactForm} from "./IssueStatusControl";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -121,7 +122,7 @@ export function DraftNotice({ editor, warning }: { editor: ReturnType<typeof use
       <details className="field-help"><summary>查看当前问题信息</summary><p>影响：{editor.baseline.impact || "未填写"}</p><p>关联：{editor.baseline.requirementTitle || editor.baseline.sourceRef || "公共问题"} · 优先级 {editor.baseline.priority}</p><p>提出人：{editor.baseline.reporter || "未指定"} · 发现日期 {editor.baseline.discoveredAt}</p></details>
     </div>}
     {editor.readError && <p className="form-error field-full" role="alert">{editor.readError.message}</p>}
-    {editor.canReload && (editor.changed || editor.needsRefresh) && <div className="field-full"><button type="button" className="ghost-button" disabled={editor.pending} onClick={() => void editor.reload()}>重新读取问题</button></div>}
+    {editor.canReload && (editor.changed || editor.needsRefresh) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" disabled={editor.pending} onClick={() => void editor.reload()}>重新读取问题</Button></div>}
   </>;
 }
 
@@ -299,7 +300,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
       <FieldShell label="下次核对日期" help="用于跟进提醒，与解决目标日期分开"><input name="nextReviewAt" type="date" value={draft.nextReviewAt} onChange={event=>change("nextReviewAt",event.target.value)}/></FieldShell>
       <FieldShell label="目标日期" help={deferred ? "挂起问题不设置目标日期" : undefined}><input name="dueDate" type="date" value={deferred ? "" : draft.dueDate} disabled={deferred} onChange={(event) => change("dueDate", event.target.value)} /></FieldShell>
       <DraftNotice editor={editor} warning={resolved ? "问题已解决，不能保存修改；已保留本次输入。" : null} />
-      <div className="form-actions field-full"><button type="button" className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" disabled={blocked}>{editor.pending ? "保存中…" : issue ? "保存修改" : "创建问题"}</button></div>
+      <div className="form-actions field-full"><Button variant="secondary" type="button" className="ghost-button" onClick={onClose}>取消</Button><Button busy={(editor.pending)} aria-label={editor.pending ? "保存中…" : issue ? "保存修改" : "创建问题"} variant="primary" type="submit" className="primary-button" disabled={blocked}>{issue ? "保存修改" : "创建问题"}</Button></div>
     </fieldset>
   </form>;
 }
@@ -352,7 +353,7 @@ export function IssueUpdateForm({ issue, canSetProgress, canResolve = false, onP
       <p className="field-help issue-progress-result" role="status">{!writesProgress ? '本次仅记录说明，不修改完成度。' : resolving ? '保存后将问题标记为已解决，记录解决日期和本次说明。' : decreasing && canResolve && !resolved ? '本次将更正完成度，并新增更正记录，原历史保留。' : !canResolve ? '可更新至 99%；由项目经理确认解决。' : '保存后将记录当前进度和本次说明。'}</p>
       <textarea name="content" aria-label="本次进展说明" rows={3} required={!writesProgress} value={content} onChange={(event) => { editor.setDirty(true); setContent(event.target.value); }} placeholder={writesProgress ? "说明（可选）" : "记录新进展、决策或待办结果"} />
       <DraftNotice editor={editor} warning={warning} />
-      <div className="issue-update-actions"><button className="primary-button" disabled={blocked}>{editor.pending ? "提交中…" : resolving ? "保存并解决" : decreasing && canResolve && !resolved ? "保存更正" : "追加进展"}</button></div>
+      <div className="issue-update-actions"><Button busy={(editor.pending)} aria-label={editor.pending ? "提交中…" : resolving ? "保存并解决" : decreasing && canResolve && !resolved ? "保存更正" : "追加进展"} variant="primary" type="submit" className="primary-button" disabled={blocked}>{resolving ? "保存并解决" : decreasing && canResolve && !resolved ? "保存更正" : "追加进展"}</Button></div>
     </fieldset>
   </form>;
 }

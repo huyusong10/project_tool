@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 .unified-workspace{display:flex;flex-direction:column;min-height:0;height:100%;overflow:hidden;--object-feature:var(--accent-ink);--object-phase:#7955bd;--object-requirement:#247b83;--object-work:#64748b;--object-group:var(--text-muted)}
 [data-theme=midnight] .unified-workspace,[data-theme=dcim] .unified-workspace{--object-phase:#b29add;--object-requirement:#66b6bd;--object-work:#9daabd}
 .unified-workspace-body{position:relative;flex:1;min-height:0;overflow:hidden}
@@ -12,10 +14,10 @@
 .workspace-object-mark[data-kind=phase]{border-radius:50%}
 .workspace-object-mark[data-kind=work]{background:transparent}
 .workspace-object-mark[data-kind=group]{background:transparent;border:1px dashed var(--border-strong)}
-.workspace-icon-button{display:inline-flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;width:32px;min-width:32px;height:32px;min-height:32px;padding:0;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer}
-.workspace-icon-button svg{flex:none}.workspace-icon-button:hover:not(:disabled){color:var(--text-primary);background:var(--bg-surface-subtle)}
-.workspace-icon-button:disabled{opacity:.35;cursor:default}
-.workspace-icon-button:focus-visible,.outline-title:focus-visible,.overview-link:focus-visible,.overview-trigger:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.workspace-icon-button{display:inline-flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;cursor:pointer}
+.workspace-icon-button svg{flex:none}
+.workspace-icon-button:disabled{cursor:default}
+.outline-title:focus-visible,.overview-link:focus-visible,.overview-trigger:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .workspace-enter{opacity:0;transition:opacity .12s;width:24px;min-width:24px;height:26px;min-height:26px;color:var(--accent-ink)}
 .outline-name:hover .workspace-enter,.workspace-name-heading:hover .workspace-enter,.workspace-graph-name:hover .workspace-enter,.workspace-enter:focus-visible,.outline-name:focus-within .workspace-enter,.workspace-name-heading:focus-within .workspace-enter,.workspace-graph-name:focus-within .workspace-enter{opacity:1}
 .workspace-overview{height:48px;min-height:48px;flex:none;background:var(--bg-surface);border-bottom:1px solid var(--border);font-size:12px}
@@ -69,8 +71,7 @@
 .outline-table td:nth-child(3){box-shadow:inset 2px 0 color-mix(in srgb,var(--object-color) 45%,transparent)}
 .outline-name{display:flex;align-items:center;gap:7px;min-width:0;line-height:1.5}
 .outline-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 0;border:0;border-radius:3px;background:transparent;color:var(--text-primary);font:inherit;font-weight:500;text-align:left;cursor:pointer}
-.outline-title:hover{color:var(--accent-ink)}.outline-name small{font-size:10px;color:var(--text-muted);flex:none}
-.outline-expand.workspace-icon-button,.outline-drag.workspace-icon-button{width:22px;min-width:22px;height:26px;min-height:26px}.outline-expand:disabled{visibility:hidden}.outline-drag{cursor:grab;opacity:0}
+.outline-title:hover{color:var(--accent-ink)}.outline-name small{font-size:10px;color:var(--text-muted);flex:none}.outline-expand:disabled{visibility:hidden}.outline-drag{cursor:grab;opacity:0}
 .outline-table tr:hover .outline-drag,.outline-table tr:focus-within .outline-drag{opacity:1}
 .outline-count,.outline-date{font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums}
 .outline-table .execution-stage-summary{height:46px;box-sizing:border-box;overflow:hidden;gap:3px 6px;align-content:center}.outline-table tr[data-object-kind=work] .execution-stage-summary{height:42px}
@@ -101,9 +102,11 @@
  .outline-actions{padding-inline:10px;gap:8px;height:52px;min-height:52px}.outline-actions input{flex:1;width:100%}.outline-actions>select{width:110px}
  .outline-caption{padding-inline:10px}.outline-help{max-width:180px}.outline-table{min-width:670px}.outline-status-column{width:144px}.outline-date-column{width:112px}.outline-menu-column{width:42px}
  .outline-table td:last-child,.outline-table th:last-child{position:sticky;right:0;padding:0 5px;z-index:2;border-left:1px solid var(--border)}.outline-table th:last-child{z-index:4}
- .outline-selection{gap:4px;padding:6px}.outline-selection>span{max-width:90px;font-size:11px}.outline-selection .workspace-icon-button{width:28px;min-width:28px}.outline-selection>.ghost-button{width:68px}
+ .outline-selection{gap:4px;padding:6px}.outline-selection>span{max-width:90px;font-size:11px}.outline-selection>.ghost-button{width:68px}
  .outline-row-actions>.topbar-menu-trigger,.outline-drag,.workspace-enter{opacity:1}
  .workspace-overview-content{grid-template-columns:1fr;overflow:visible;gap:24px}.workspace-overview-dialog{overflow:auto;gap:20px}.overview-dialog-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.overview-dialog-summary>span{padding:12px}.overview-dialog-summary strong{font-size:20px}
  .unified-workspace-body>.workspace-object-inspector{position:fixed;inset:0;width:100vw;height:100dvh}
 }
 @media(pointer:coarse){.outline-row-actions>.topbar-menu-trigger,.outline-drag,.workspace-enter{opacity:1}}
+
+}

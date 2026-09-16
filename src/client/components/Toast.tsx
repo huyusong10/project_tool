@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { CheckCircle2, CircleAlert, Info, X } from "lucide-react";
@@ -28,9 +29,9 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
     <div className={`toast toast-${item.kind}`} role={item.kind === "error" ? "alert" : "status"}>
       <Icon size={17} aria-hidden="true" />
       <span className="toast-message">{item.message}</span>
-      <button type="button" className="toast-close" aria-label="关闭通知" onClick={() => onDismiss(item.id)}>
+      <Button iconOnly size="compact" variant="secondary" type="button" className="toast-close" aria-label="关闭通知" onClick={() => onDismiss(item.id)}>
         <X size={14} />
-      </button>
+      </Button>
     </div>
   );
 }

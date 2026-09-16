@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import type { ReactNode } from "react";
 
 export function EmptyState({ title, detail, action }: { title: string; detail: string; action?: ReactNode }) {
@@ -12,6 +13,6 @@ export function LoadingState({ label = "正在加载…", className = "" }: { la
 export function RefreshNotice({ pending, onRetry }: { pending: boolean; onRetry: () => void }) {
   return <div className="query-refresh-notice" role="alert">
     <span><strong>刷新失败</strong>，暂时显示上次加载的数据，正在填写的内容已保留。</span>
-    <button type="button" className="ghost-button" disabled={pending} onClick={onRetry}>{pending ? "重新加载中…" : "重新加载"}</button>
+    <Button busy={(pending)} aria-label={pending ? "重新加载中…" : "重新加载"} variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={onRetry}>{"重新加载"}</Button>
   </div>;
 }

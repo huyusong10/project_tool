@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import {useAppNavigate} from '../use-app-navigation';
 
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
@@ -41,8 +42,8 @@ export function ActionCenterPage() {
   return <>
     <PageHeader title="待办事项" />
     <div className="page-content action-center-page">
-      {error && !data ? <section className="panel action-center-list"><EmptyState title="行动项加载失败" detail={error.message} action={<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button>} /></section> : <>
-      {error && data && <div className="warning-banner">行动项刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
+      {error && !data ? <section className="panel action-center-list"><EmptyState title="行动项加载失败" detail={error.message} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} /></section> : <>
+      {error && data && <div className="warning-banner">行动项刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}
       <section className="action-summary">
         <article><ListTodo size={19} /><span>全部行动</span><strong>{data?.summary.total || 0}</strong></article>
         <article className="is-high"><AlertTriangle size={19} /><span>优先处理</span><strong>{data?.summary.high || 0}</strong></article>
@@ -69,7 +70,7 @@ export function ActionCenterPage() {
             <div className="action-item-meta"><span>{item.ownerName || '未分派'}</span>{item.nextReviewAt&&<span>下次核对 {item.nextReviewAt}</span>}<span>{item.dueDate || '无截止日期'}{item.overdueWorkdays ? ` · 逾期${item.overdueWorkdays}个工作日` : ''}</span></div>
             <ArrowRight size={16} />
           </button>)}
-          {data && !data.items.length && !isLoading && <EmptyState title={severity||reason||ownerId?'没有匹配的待处理事项':'当前没有待处理事项'} detail={severity||reason||ownerId?'当前条件下无匹配，其他范围仍可能有待处理事项。':'当前可见范围内没有待处理事项。'} action={severity||reason||ownerId?<button className="ghost-button" onClick={clearFilters}>清空筛选</button>:undefined}/>}
+          {data && !data.items.length && !isLoading && <EmptyState title={severity||reason||ownerId?'没有匹配的待处理事项':'当前没有待处理事项'} detail={severity||reason||ownerId?'当前条件下无匹配，其他范围仍可能有待处理事项。':'当前可见范围内没有待处理事项。'} action={severity||reason||ownerId?<Button variant="secondary" className="ghost-button" onClick={clearFilters}>清空筛选</Button>:undefined}/>}
         </div>
         {data && <Pagination {...pagination.props} label="待处理事项分页" />}
       </section>

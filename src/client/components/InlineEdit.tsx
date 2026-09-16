@@ -1,3 +1,4 @@
+import { Button, MenuButtons } from './Button';
 import {
   createContext,
   type AriaRole,
@@ -210,7 +211,7 @@ function RevisionNotice<TRevision extends Revision>({
   return <div className="inline-editor-revision">
     {guard.changed && !showReload && <p role="alert">{subject}已更新，当前草稿尚未提交。</p>}
     {guard.refreshed && !guard.changed && <p>已读取最新{subject}（版本 {guard.baselineRevision}），草稿已保留，请核对后保存。</p>}
-    {(guard.changed || showReload) && <button type="button" className="ghost-button" disabled={guard.refreshing} onClick={() => void guard.reload()}>{guard.refreshing ? "读取中…" : `重新读取${subject}`}</button>}
+    {(guard.changed || showReload) && <Button busy={(guard.refreshing)} aria-label={guard.refreshing ? "读取中…" : `重新读取${subject}`} variant="secondary" type="button" className="ghost-button" disabled={guard.refreshing} onClick={() => void guard.reload()}>{`重新读取${subject}`}</Button>}
   </div>;
 }
 
@@ -371,6 +372,7 @@ export function AnchoredPopover({
 
   if (!open) return null;
   return createPortal(
+    <MenuButtons enabled={false}>
     <div
       ref={popoverRef}
       className={`inline-edit-popover ${className}`.trim()}
@@ -379,7 +381,7 @@ export function AnchoredPopover({
       onClick={(event) => event.stopPropagation()}
     >
       {children}
-    </div>,
+    </div></MenuButtons>,
     document.body,
   );
 }
@@ -481,7 +483,7 @@ export function InlineTextCell<TRevision extends Revision = number>({
         {reason && (draft.trim() !== currentValue || feedback.state === "saving") && <label className="inline-select-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea ref={reasonRef} rows={3} readOnly={feedback.state === "saving"} value={reasonText} onChange={(event) => { setReasonText(event.target.value); feedback.clearValidationError(); }} aria-label={reason.label || "变更原因"} placeholder={reason.placeholder || "请说明本次变更原因"} /></label>}
         <EditorError error={feedback.error} />
         <RevisionNotice guard={revisionGuard} showReload={feedback.reloadRequired || revisionGuard.changed && feedback.state === "error"} subject={revisionSubject} />
-        {reason && <footer className="inline-multi-actions"><span /><div><button type="button" className="ghost-button" onClick={cancel}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || draft.trim() === currentValue} onClick={() => void commit(false, true)}>保存</button></div></footer>}
+        {reason && <footer className="inline-multi-actions"><span /><div><Button variant="secondary" type="button" className="ghost-button" onClick={cancel}>取消</Button><Button variant="primary" type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || draft.trim() === currentValue} onClick={() => void commit(false, true)}>保存</Button></div></footer>}
         <p className="inline-editor-hint">Enter保存 · Esc取消</p>
       </AnchoredPopover>
     </EditableCell>
@@ -626,7 +628,7 @@ export function InlineSelectCell<TRevision extends Revision = number>({
       setOpen(true);
     }}>
       <AnchoredPopover anchorRef={anchorRef} open={open} width={300} matchAnchor onOutside={() => cancel(false)} onEscape={cancel} className={`inline-select-popover${reason && pendingValue !== null ? " has-pending" : ""}`}>
-        <div className="inline-picker-heading"><strong>{label}</strong><button type="button" onClick={() => cancel()} aria-label={`关闭${label}`}><X size={14} /></button></div>
+        <div className="inline-picker-heading"><strong>{label}</strong><Button variant="ghost" iconOnly type="button" onClick={() => cancel()} aria-label={`关闭${label}`}><X size={14} /></Button></div>
         {searchable && <label className="inline-picker-search"><Search size={14} /><input ref={searchRef} role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls={listId} aria-activedescendant={filtered[activeIndex] ? `${listId}-option-${activeIndex}` : undefined} value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={keyDown} placeholder={`搜索${label}`} /></label>}
         <div ref={listRef} id={listId} className="inline-option-list" role="listbox" tabIndex={searchable ? -1 : 0} aria-label={label} aria-activedescendant={filtered[activeIndex] ? `${listId}-option-${activeIndex}` : undefined} onKeyDown={keyDown}>
           {filtered.map((option, index) => {
@@ -651,11 +653,11 @@ export function InlineSelectCell<TRevision extends Revision = number>({
         </div>
         {reason && pendingValue !== null && <>
           <label className="inline-select-reason"><span>{reason.label || "变更原因"}{reason.required && <em>必填</em>}</span><textarea ref={reasonRef} rows={3} readOnly={feedback.state === "saving"} value={reasonText} onChange={(event) => { setReasonText(event.target.value); feedback.clearValidationError(); }} aria-label={reason.label || "变更原因"} placeholder={reason.placeholder || "请说明本次变更原因"} /></label>
-          <div className="inline-select-actions"><button type="button" className="ghost-button" onClick={() => cancel()}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || pendingOptionUnavailable} onClick={() => void commit()}>保存</button></div>
+          <div className="inline-select-actions"><Button variant="secondary" type="button" className="ghost-button" onClick={() => cancel()}>取消</Button><Button variant="primary" type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || pendingOptionUnavailable} onClick={() => void commit()}>保存</Button></div>
         </>}
         <EditorError error={pendingOptionUnavailable ? `${pendingOptionLabel}已不可用，请重新选择` : feedback.error} />
         <RevisionNotice guard={revisionGuard} showReload={feedback.reloadRequired || revisionGuard.changed && feedback.state === "error"} subject={revisionSubject} />
-        {!reason && pendingValue !== null && (revisionGuard.changed || revisionGuard.refreshed || feedback.state === "error") && <div className="inline-select-actions"><button type="button" className="ghost-button" onClick={() => cancel()}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || pendingOptionUnavailable} onClick={() => void commit()}>保存所选</button></div>}
+        {!reason && pendingValue !== null && (revisionGuard.changed || revisionGuard.refreshed || feedback.state === "error") && <div className="inline-select-actions"><Button variant="secondary" type="button" className="ghost-button" onClick={() => cancel()}>取消</Button><Button variant="primary" type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || pendingOptionUnavailable} onClick={() => void commit()}>保存所选</Button></div>}
       </AnchoredPopover>
     </EditableCell>
   </div>;
@@ -772,9 +774,9 @@ export function InlineDateCell<TRevision extends Revision = number>({
       <AnchoredPopover anchorRef={anchorRef} open={open} width={320} onOutside={() => cancel(false)} onEscape={cancel} onSuperseded={() => cancel(false)} className="inline-date-popover">
         <div className="inline-date-editor">
           <header>
-            <button type="button" aria-label="上一个月" onClick={() => setVisibleMonth((month) => moveMonth(month, -1))}><ChevronLeft size={16} /></button>
+            <Button variant="ghost" iconOnly type="button" aria-label="上一个月" onClick={() => setVisibleMonth((month) => moveMonth(month, -1))}><ChevronLeft size={16} /></Button>
             <strong>{monthLabel(visibleMonth)}</strong>
-            <button type="button" aria-label="下一个月" onClick={() => setVisibleMonth((month) => moveMonth(month, 1))}><ChevronRight size={16} /></button>
+            <Button variant="ghost" iconOnly type="button" aria-label="下一个月" onClick={() => setVisibleMonth((month) => moveMonth(month, 1))}><ChevronRight size={16} /></Button>
           </header>
           <div className="inline-calendar-weekdays" aria-hidden="true">{["一", "二", "三", "四", "五", "六", "日"].map((day) => <span key={day}>{day}</span>)}</div>
           <div className="inline-calendar-grid" role="grid" aria-label={label}>
@@ -788,8 +790,8 @@ export function InlineDateCell<TRevision extends Revision = number>({
           <EditorError error={feedback.error} />
           <RevisionNotice guard={revisionGuard} showReload={feedback.reloadRequired || revisionGuard.changed && feedback.state === "error"} subject={revisionSubject} />
           <footer>
-            <div>{allowClear && <button type="button" disabled={feedback.state === "saving"} className="inline-date-clear" onClick={() => setDraft("")}>清除</button>}<button type="button" disabled={feedback.state === "saving"} className="inline-date-today" onClick={() => { setDraft(today); setVisibleMonth(dateFromIso(today)!); }}>今天</button></div>
-            <div><button type="button" className="ghost-button" onClick={() => cancel()}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || draft === currentValue} onClick={() => void commit()}>保存</button></div>
+            <div>{allowClear && <Button variant="link" type="button" disabled={feedback.state === "saving"} className="inline-date-clear" onClick={() => setDraft("")}>清除</Button>}<Button variant="link" type="button" disabled={feedback.state === "saving"} className="inline-date-today" onClick={() => { setDraft(today); setVisibleMonth(dateFromIso(today)!); }}>今天</Button></div>
+            <div><Button variant="secondary" type="button" className="ghost-button" onClick={() => cancel()}>取消</Button><Button variant="primary" type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || draft === currentValue} onClick={() => void commit()}>保存</Button></div>
           </footer>
         </div>
       </AnchoredPopover>
@@ -903,8 +905,8 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
         <EditorError error={unavailableDraftError || feedback.error} />
         <RevisionNotice guard={revisionGuard} showReload={feedback.reloadRequired || revisionGuard.changed && feedback.state === "error"} subject={revisionSubject} />
         <footer className="inline-multi-actions">
-          <button type="button" disabled={feedback.state === "saving"} onClick={() => setDraft([])}>清空</button>
-          <div><button type="button" className="ghost-button" onClick={() => cancel()}>取消</button><button type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || Boolean(unavailableDraftError)} onClick={() => void commit()}>完成</button></div>
+          <Button variant="secondary" type="button" disabled={feedback.state === "saving"} onClick={() => setDraft([])}>清空</Button>
+          <div><Button variant="secondary" type="button" className="ghost-button" onClick={() => cancel()}>取消</Button><Button variant="primary" type="button" className="primary-button" disabled={feedback.state === "saving" || feedback.reloadRequired || revisionGuard.changed || revisionGuard.refreshing || Boolean(unavailableDraftError)} onClick={() => void commit()}>完成</Button></div>
         </footer>
       </AnchoredPopover>
     </EditableCell>

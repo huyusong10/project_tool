@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
@@ -42,9 +43,9 @@ export function useMilestoneSelection(items: GanttMilestone[], asOfDate: string,
   });
   return { selected, bind, close, related: (id: string) => selected.some(m => m.relatedIds.includes(id)),
     details: <>{hover.tooltip}{open && selected.length > 0 && createPortal(<div ref={panel} className="gantt-milestone-details" role="dialog" aria-label="里程碑详情" style={{ left: open.x, top: open.y }}>
-      <header><strong>里程碑{selected.length > 1 ? ` · ${selected.length} 项` : ''}</strong><button type="button" className="ghost-button" aria-label="关闭里程碑详情" onClick={() => { close(); open.trigger.isConnected && open.trigger.focus({ preventScroll: true }); }}><X size={16} /></button></header>
+      <header><strong>里程碑{selected.length > 1 ? ` · ${selected.length} 项` : ''}</strong><Button iconOnly variant="secondary" type="button" className="ghost-button" aria-label="关闭里程碑详情" onClick={() => { close(); open.trigger.isConnected && open.trigger.focus({ preventScroll: true }); }}><X size={16} /></Button></header>
       <MilestoneSummary items={selected} asOfDate={asOfDate} />
-      {onLocate && selected.map(m => <button type="button" className="ghost-button" key={m.id} onClick={() => { close(); onLocate(m.id); }}>查看{selected.length > 1 ? ` ${m.title}` : '关联工作'}</button>)}
+      {onLocate && selected.map(m => <Button variant="secondary" type="button" className="ghost-button" key={m.id} onClick={() => { close(); onLocate(m.id); }}>查看{selected.length > 1 ? ` ${m.title}` : '关联工作'}</Button>)}
     </div>, document.body)}</> };
 }
 export type MilestoneSelection = ReturnType<typeof useMilestoneSelection>;

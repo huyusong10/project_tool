@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 .gantt-navigation { display:flex; align-items:center; flex-wrap:wrap; gap:6px; min-width:0; max-width:100%; }
 .gantt-navigation > .ghost-button { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:32px; padding:5px 8px; white-space:nowrap; }
 .gantt-date-jump { display:flex; align-items:center; gap:5px; height:32px; padding:0 6px; border:1px solid var(--border-default); border-radius:var(--radius-sm); color:var(--text-muted); }
@@ -38,4 +40,6 @@
  .gantt-navigation { gap:6px; }
  .gantt-navigation .gantt-visible-range { flex-basis:100%; }
  .gantt-navigation .ghost-button,.gantt-navigation .view-tabs button,.gantt-date-jump { min-height:36px; }
+}
+
 }

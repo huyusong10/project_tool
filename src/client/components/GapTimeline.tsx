@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useCallback, memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { format } from "date-fns";
 import { Ban, Check, Circle, CircleAlert, Play } from "lucide-react";
@@ -64,7 +65,7 @@ function WorkItemTimelinePopover({ item, updates, asOfDate, executionStatus, for
     </header>
     <dl className="gantt-popover-metrics">
       <div><dt>实际进度</dt><dd>{item.progress}%</dd></div>
-      {forecast && <div><dt>预计完成</dt><dd>{forecast.label}<small className="gantt-range-note">{forecast.details}</small>{onEditForecast && <button type="button" className="ghost-button" onClick={onEditForecast}>修改预计完成日期</button>}</dd></div>}
+      {forecast && <div><dt>预计完成</dt><dd>{forecast.label}<small className="gantt-range-note">{forecast.details}</small>{onEditForecast && <Button variant="secondary" type="button" className="ghost-button" onClick={onEditForecast}>修改预计完成日期</Button>}</dd></div>}
       <div><dt>计划周期</dt><dd>{dateLabel(item.plannedStart)} — {dateLabel(item.plannedEnd)}</dd></div>
       <div><dt>实际执行跨度</dt><dd>{dateLabel(item.actualStart, "未开始")} — {dateLabel(observedEnd, "结束日期缺失")}{gap.actual.ongoing && observedEnd ? "（截至统计日）" : ""}</dd></div>
       {item.milestoneLabel && <div><dt>里程碑</dt><dd>{item.milestoneLabel} · {item.status === "completed" ? "已达成" : item.status === "cancelled" ? "已取消" : "待达成"}</dd></div>}
@@ -190,10 +191,10 @@ export const GapTimeline = memo(function GapTimeline({
       <div className="requirement-gantt-toolbar">
         <div className="requirement-gantt-toolbar-main">
           {showStatusFilters && <div className="work-status-filters" aria-label="按工作项状态筛选">
-            <button type="button" className={statusFilter === "all" ? "is-active" : ""} aria-pressed={statusFilter === "all"} onClick={() => setStatusFilter("all")}>全部 <b>{items.length}</b></button>
+            <Button variant="secondary" size="small" type="button" className={statusFilter === "all" ? "is-active" : ""} aria-pressed={statusFilter === "all"} onClick={() => setStatusFilter("all")}>全部 <b>{items.length}</b></Button>
             {statusFilters.filter((filter) => filter.value !== "cancelled" || statusCounts.cancelled).map((filter) => {
               const count = statusCounts[filter.value] || 0;
-              return <button
+              return <Button variant="secondary" size="small"
                 type="button"
                 key={filter.value}
                 className={`filter-${statusClass(filter.value)}${statusFilter === filter.value ? " is-active" : ""}`}
@@ -203,7 +204,7 @@ export const GapTimeline = memo(function GapTimeline({
               >
                 <WorkStatusIcon status={filter.value} />
                 {filter.label} <b>{count}</b>
-              </button>;
+              </Button>;
             })}
           </div>}
           <div className="gantt-legend" aria-label="计划实际图例">
@@ -285,7 +286,7 @@ export const GapTimeline = memo(function GapTimeline({
               {actionWidth > 0 && <div className="requirement-gantt-actions sticky-right" role="cell">{renderActions?.(item)}</div>}
             </div>;
           })}
-          {!visibleItems.length && <div className="requirement-gantt-filter-empty"><span>{emptyState?.message || "当前状态下没有工作项"}</span>{(emptyState?.onAction || statusFilter !== "all") && <button type="button" onClick={emptyState?.onAction || (() => setStatusFilter("all"))}>{emptyState?.actionLabel || "查看全部"}</button>}</div>}
+          {!visibleItems.length && <div className="requirement-gantt-filter-empty"><span>{emptyState?.message || "当前状态下没有工作项"}</span>{(emptyState?.onAction || statusFilter !== "all") && <Button variant="secondary" type="button" onClick={emptyState?.onAction || (() => setStatusFilter("all"))}>{emptyState?.actionLabel || "查看全部"}</Button>}</div>}
         </div>
       </div>
       <GanttScrollbar navigation={navigation} />

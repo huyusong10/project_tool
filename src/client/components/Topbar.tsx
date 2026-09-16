@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppNavigate } from '../use-app-navigation';
@@ -130,9 +131,9 @@ export function Topbar({ pageIcon: PageIcon, sessionReady }: { pageIcon?: NavIco
           text={!compact ? <><span className={session.authenticated ? 'topbar-account-name' : 'topbar-guest-name'}>{sessionReady ? session.authenticated ? session.username : '请登录' : <span className="shell-placeholder account-placeholder"/>}</span><ChevronDown size={13}/></> : undefined}>
           <div className="topbar-account-heading">{session.authenticated ? session.username : '尚未登录'}</div>
           {session.authenticated ? <>
-            <button type="button" role="menuitem" onClick={() => navigate('/settings')}><Settings size={16}/>个人设置</button>
-            <button type="button" role="menuitem" disabled={logoutLock.busy} onClick={() => logoutLock.run(() => { logout.reset(); logout.mutate(); })}><LogOut size={16}/>退出登录</button>
-          </> : <button type="button" role="menuitem" onClick={openLogin}><LogIn size={16}/>用户登录</button>}
+            <Button variant="menu" type="button" role="menuitem" onClick={() => navigate('/settings')}><Settings size={16}/>个人设置</Button>
+            <Button variant="menu" type="button" role="menuitem" disabled={logoutLock.busy} onClick={() => logoutLock.run(() => { logout.reset(); logout.mutate(); })}><LogOut size={16}/>退出登录</Button>
+          </> : <Button variant="menu" type="button" role="menuitem" onClick={openLogin}><LogIn size={16}/>用户登录</Button>}
           {narrow && <div data-menu-stay><ThemePicker showLabel /></div>}
         </TopbarMenu>
       </div>

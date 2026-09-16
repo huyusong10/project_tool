@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 .project-progress-workspace{display:flex;flex-direction:column;min-height:0;height:100%;position:relative;overflow:hidden}
 .workspace-progress-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid var(--border)}
 .workspace-gantt{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
@@ -65,7 +67,6 @@
 .workspace-delivery-point.is-delivered{top:25px;color:var(--gantt-completed)}.workspace-delivery-point.is-delivered i{background:var(--gantt-completed);border-color:var(--gantt-completed)}
 .work-progress-link{display:inline-flex;align-items:center;justify-content:center;min-width:50px;min-height:30px;padding:2px 8px;background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:5px;color:var(--accent-ink);font-size:14px;line-height:20px;font-weight:650;font-variant-numeric:tabular-nums;cursor:pointer}
 .work-progress-link:hover{background:var(--accent-soft)}
-.workspace-row-actions .work-next-action{min-width:60px;background:var(--action-bg,var(--gantt-running));border-color:var(--action-border,var(--gantt-running));color:var(--action-ink,var(--gantt-on-bar))}
 .workspace-row-tools>.ghost-button{min-height:28px;font-size:11px;padding:3px 6px;white-space:nowrap}
 .workspace-open-work{width:90px;max-width:100%;min-width:0;display:flex;justify-content:center;align-items:center;gap:6px}
 .workspace-open-work span{font-size:10px;font-variant-numeric:tabular-nums;color:var(--text-muted)}
@@ -87,7 +88,6 @@
  .workspace-row-actions.has-execution .workspace-row-progress{flex:0 0 auto}
  .workspace-row-actions.has-execution .workspace-row-tools{width:94px}
  .workspace-row-actions .work-progress-link{min-width:44px;padding:2px 4px}
- .workspace-row-actions .work-next-action{min-width:50px;padding:4px 5px}
  .workspace-row-meta{gap:4px}
  .workspace-row-title small{display:none}
  .workspace-row-title strong{font-size:12px}
@@ -95,7 +95,6 @@
  .workspace-progress-tools,.workspace-time-tools{gap:6px}
  .workspace-time-tools .ghost-button{padding:6px 8px;font-size:12px}
  .workspace-plan-legend{font-size:10px}
- .workspace-row-actions .work-next-action{min-height:32px}
  .workspace-row-actions .action-menu-trigger{min-height:32px}
  .workspace-row-actions .work-progress-link{min-height:32px}
 }
@@ -103,8 +102,8 @@
 .requirement-overview.is-compact{border:0;padding:0;background:none;border-radius:0}
 .requirement-overview.is-compact .requirement-overview-top{align-items:flex-start;flex-direction:column;gap:10px;margin-bottom:12px;padding:0 0 10px}
 .requirement-overview.is-compact .requirement-overview-actions{flex-wrap:wrap;gap:8px;justify-content:flex-start;width:100%}
-.workspace-gantt .workspace-row-actions .primary-button:not(.danger-button){font-size:12px;min-height:30px;padding:4px 8px;box-shadow:none;background:var(--action-bg,var(--gantt-running));color:var(--action-ink,var(--gantt-on-bar));border-color:var(--action-border,var(--gantt-running));white-space:nowrap}
-.workspace-row-actions .work-next-action:only-child{min-width:0;max-width:100%;font-size:12px;white-space:normal;line-height:1.2}
+.workspace-gantt .workspace-row-actions .primary-button:not(.danger-button){white-space:nowrap}
+.workspace-row-actions .work-next-action:only-child{white-space:normal}
 
 .workspace-gantt-row.has-milestones .workspace-row-track{--date-plan-top:28px;--date-actual-top:41px}
 .workspace-row-track .gantt-date-plan{height:6px;border-radius:2px;background:color-mix(in srgb,var(--gantt-running) 12%,var(--bg-surface));border:1px solid color-mix(in srgb,var(--gantt-running) 60%,var(--border))}
@@ -118,8 +117,6 @@
 .workspace-plan-legend .forecast i{height:7px;background:none;opacity:1;border:1.5px dashed var(--gantt-delay);box-sizing:border-box}
 .workspace-gantt-row .gantt-milestone-label{font-weight:500;border-color:color-mix(in srgb,var(--milestone-color) 28%,var(--border));background:var(--bg-surface-subtle)}
 .workspace-row-actions .action-menu-trigger{border:1px solid var(--border);border-radius:5px;background:var(--bg-surface);color:var(--text-secondary)}
-.workspace-row-actions .work-next-action:hover:not(:disabled),.workspace-row-actions .work-next-action:focus-visible{background:var(--action-bg,var(--gantt-running));border-color:var(--action-border,var(--gantt-running));color:var(--action-ink,var(--gantt-on-bar));filter:brightness(.9)}
-.workspace-row-actions .primary-button:hover:not(:disabled){filter:brightness(.92)}
 .workspace-row-actions button:focus-visible,.work-progress-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .workspace-row-progress:has(.work-progress-link){overflow:visible}
 
@@ -191,7 +188,8 @@
 .unified-workspace .workspace-row-actions .workspace-row-tools{width:100px;min-width:100px;height:32px;justify-content:flex-end}
 .unified-workspace .workspace-row-actions:not(.has-execution) .workspace-row-tools:empty{display:none}
 .unified-workspace .workspace-row-actions .work-item-actions{width:100px;display:flex;justify-content:flex-end;gap:4px}
-.unified-workspace .workspace-row-actions .work-next-action,.unified-workspace .workspace-row-actions .work-action-state{box-sizing:border-box;width:66px;min-width:66px;max-width:66px;height:30px;min-height:30px;display:flex;align-items:center;justify-content:center;padding:0 4px;gap:4px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:none;border-radius:6px}
+.unified-workspace .workspace-row-actions .work-next-action{box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.unified-workspace .workspace-row-actions .work-action-state{box-sizing:border-box;width:66px;min-width:66px;max-width:66px;height:30px;min-height:30px;display:flex;align-items:center;justify-content:center;padding:0 4px;gap:4px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:none;border-radius:6px}
 .unified-workspace .workspace-row-actions .action-menu-trigger{box-sizing:border-box;width:30px;min-width:30px;height:30px;min-height:30px;padding:0;border:0;border-radius:6px;color:var(--text-muted);background:transparent}
 .unified-workspace .workspace-row-actions .primary-button,.unified-workspace .workspace-row-actions .ghost-button{box-sizing:border-box;width:96px;min-width:96px;max-width:96px;height:30px;min-height:30px;padding:0 6px;justify-content:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}
 .unified-workspace .workspace-row-progress .work-progress-link{font-size:12px;background:transparent;border:0;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;padding:0 3px;min-width:44px}
@@ -200,7 +198,7 @@
 .unified-workspace .workspace-progress-tools>*{flex-shrink:0}.unified-workspace .workspace-progress-tools .search-box{flex-basis:190px;width:190px}
 .unified-workspace .workspace-time-tools .workspace-plan-legend{white-space:nowrap}
 .unified-workspace .workspace-time-tools>*{flex-shrink:0}.unified-workspace .workspace-time-tools .gantt-navigation{flex-wrap:nowrap;max-width:none}.unified-workspace .workspace-time-tools .gantt-visible-range{flex:none}
-@media(max-width:700px){.unified-workspace .workspace-progress-tools{display:flex;gap:8px;padding-inline:10px}.unified-workspace .workspace-progress-tools>.select-field{width:120px;flex-basis:120px}.unified-workspace .progress-status-filter{width:138px}.unified-workspace .progress-more-filter{width:108px}.unified-workspace .progress-reset{width:52px}.unified-workspace .workspace-time-tools{padding-inline:10px}.unified-workspace .workspace-plan-legend{display:none}.unified-workspace .workspace-gantt-grid{--row-label:240px;--row-actions:116px}.unified-workspace .workspace-row-actions{padding-inline:4px}.unified-workspace .workspace-row-actions.has-execution .workspace-row-progress{flex-basis:44px}.unified-workspace .workspace-gantt .workspace-row-actions .work-item-actions{flex-wrap:nowrap;justify-content:flex-end}.unified-workspace .workspace-gantt .workspace-row-actions .work-next-action{width:66px;min-width:66px}.unified-workspace .workspace-gantt .workspace-row-actions .work-item-actions .action-menu-trigger{width:30px}}
+@media(max-width:700px){.unified-workspace .workspace-progress-tools{display:flex;gap:8px;padding-inline:10px}.unified-workspace .workspace-progress-tools>.select-field{width:120px;flex-basis:120px}.unified-workspace .progress-status-filter{width:138px}.unified-workspace .progress-more-filter{width:108px}.unified-workspace .progress-reset{width:52px}.unified-workspace .workspace-time-tools{padding-inline:10px}.unified-workspace .workspace-plan-legend{display:none}.unified-workspace .workspace-gantt-grid{--row-label:240px;--row-actions:116px}.unified-workspace .workspace-row-actions{padding-inline:4px}.unified-workspace .workspace-row-actions.has-execution .workspace-row-progress{flex-basis:44px}.unified-workspace .workspace-gantt .workspace-row-actions .work-item-actions{flex-wrap:nowrap;justify-content:flex-end}.unified-workspace .workspace-gantt .workspace-row-actions .work-item-actions .action-menu-trigger{width:30px}}
 @media(max-width:600px){
  .unified-workspace .workspace-gantt-grid{--row-label:170px;--row-actions:106px}
  .unified-workspace .workspace-row-actions.has-execution{flex-direction:column;gap:2px}.unified-workspace .workspace-row-actions.has-execution .workspace-row-progress{flex:0 0 auto}
@@ -251,3 +249,5 @@
 .workspace-progress-tools :is(.progress-more-filter,.progress-reset){height:36px;justify-content:center}
 
 .workspace-progress-tools input {text-align:left}
+
+}

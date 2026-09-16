@@ -1,5 +1,5 @@
+import { Button, ButtonLink } from './Button';
 import { Component, type ReactNode } from "react";
-import { Link } from "react-router-dom";
 import { ShieldAlert } from "lucide-react";
 
 type ErrorBoundaryProps = { children: ReactNode; resetKey?: string };
@@ -27,8 +27,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <h1>页面出现异常</h1>
           <p>{error.message || "渲染过程中发生未知错误。"}</p>
           <div className="error-boundary-actions">
-            <button type="button" className="primary-button" onClick={() => window.location.reload()}>重新加载</button>
-            <Link className="ghost-button" to="/">返回首页</Link>
+            <Button variant="primary" type="button" className="primary-button" onClick={() => window.location.reload()}>重新加载</Button>
+            <ButtonLink variant="secondary" className="ghost-button" to="/">返回首页</ButtonLink>
           </div>
         </div>
       </div>

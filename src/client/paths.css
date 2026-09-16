@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 .path-analysis{padding:18px;min-width:0;color:var(--text-primary)}
 .path-toolbar,.path-filters{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
 .path-toolbar .button-row{flex-wrap:wrap}.path-toolbar select,.path-filters select,.path-filters input{max-width:100%;min-width:130px}
@@ -207,3 +209,5 @@
 @media(max-width:600px){.delivery-batch-review dl>div,.forecast-facts>div,.commitment-summary>div{grid-template-columns:88px minmax(0,1fr);gap:8px;}}
 
 .commitment-comparison{display:grid;gap:6px;padding:10px;border:1px solid var(--divider);border-radius:8px;font-size:12px;overflow-wrap:anywhere}
+
+}

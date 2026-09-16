@@ -12,13 +12,13 @@ test('执行按钮区分颜色，日夜主题悬浮和键盘聚焦保持尺寸�
     await expect(page.locator('html')).toHaveAttribute('data-theme',theme);
     for(const button of [complete,direct]){
       await expect(button).toBeEnabled();
-      const expected=await button.evaluate(el=>{const hex=getComputedStyle(el).getPropertyValue('--gantt-completed').trim();return 'rgb('+[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)).join(', ')+')';});
+      const expected=await button.evaluate(el=>{const hex=getComputedStyle(el).getPropertyValue('--button-success-bg').trim();return 'rgb('+[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)).join(', ')+')';});
       await expect(button).toHaveCSS('background-color',expected);const before=await button.boundingBox();
       const colors=await button.evaluate(el=>{const style=getComputedStyle(el);return {background:style.backgroundColor,color:style.color};});
       const green=colors.background.match(/[\d.]+/g)!.map(Number);expect(green[1]).toBeGreaterThan(green[0]);expect(green[1]).toBeGreaterThan(green[2]);
       const luminance=(color:string)=>color.match(/[\d.]+/g)!.slice(0,3).map(Number).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((a,v,i)=>a+v*[.2126,.7152,.0722][i],0);
       const values=[luminance(colors.color),luminance(colors.background)];expect((Math.max(...values)+.05)/(Math.min(...values)+.05)).toBeGreaterThanOrEqual(4.5);
-      await button.hover();await expect(button).toHaveCSS('background-color',colors.background);expect(await button.boundingBox()).toEqual(before);
+      await button.hover();await expect(button).not.toHaveCSS('background-color',colors.background);expect(await button.boundingBox()).toEqual(before);
       await button.focus();expect(await button.boundingBox()).toEqual(before);
     }
     await page.screenshot({path:info.outputPath('execution-'+theme+'.png'),animations:'disabled'});

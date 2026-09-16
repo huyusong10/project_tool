@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 .template-catalog .template-grid { grid-template-columns: repeat(2,minmax(0,1fr)); align-items: stretch; gap: 16px; padding: 16px; }
 .template-catalog .template-card { display: flex; flex-direction: column; padding: 0; min-width: 0; overflow: hidden; box-shadow: none; }
 .template-catalog .template-card > header { padding: 16px 18px 0; min-height: 58px; align-items: flex-start; }
@@ -42,3 +44,5 @@
 @container paged-list (min-width: 1360px) { .template-catalog .template-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 @container paged-list (max-width: 759px) { .template-catalog .template-grid { grid-template-columns: minmax(0,1fr); padding: 12px; } }
 @media (max-width: 639px) { .modal-backdrop-right .modal-card { width: 100vw !important; max-width: 100vw !important; border-radius: 0; } }
+
+}

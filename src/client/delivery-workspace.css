@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 /* Shared delivery workspace. Card geometry is measured, never clipped to old rows. */
 .feature-path,.path-analysis.immersive-path{min-height:0}
 .delivery-filters{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--divider);background:var(--bg-surface);flex-shrink:0}
@@ -38,3 +40,5 @@
 .delivery-inspector-content .delivery-object-details>p{margin:12px 0}.graph-workspace .dependency-card[data-kind=feature] strong{min-height:0}.delivery-inspector-content .delivery-requirement-header{padding:0}.delivery-inspector-content .delivery-requirement-header details{border:0;padding:0}.delivery-inspector-content .delivery-requirement-header .button-row{margin:0 0 8px}
 
 .delivery-inspector-content .editor-selection-tools{padding:0;border:0;margin:0 0 12px 8px}.delivery-inspector-content details.delivery-execution-detail{border:0;padding-top:4px}.delivery-work-details article:first-child{border-top:0;padding-top:0}.delivery-work-details h4{margin:0 0 12px}.delivery-work-details article>p{margin:12px 0;color:var(--text-muted);line-height:1.7}.delivery-work-details>.button-row{padding-top:12px;border-top:1px solid var(--divider)}.delivery-parent-requirement .requirement-overview{margin:12px 0}.delivery-inspector-content .delivery-parent-requirement{margin-top:0}
+
+}

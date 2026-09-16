@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useRef, useState } from 'react';
 import { Info, ExternalLink } from 'lucide-react';
 import type { Requirement } from '../types';
@@ -25,7 +26,7 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
       </div>
       <div className="requirement-overview-actions">
         <DeliveryControls requirement={r} /><TestSubmissionButton requirement={r} />
-        <button ref={anchor} className="icon-button" title="进度计算说明" aria-label="需求资料与计算说明" aria-expanded={details} onClick={() => setDetails(v => !v)}><Info size={15} /></button>
+        <Button variant="ghost" iconOnly ref={anchor} className="icon-button" title="进度计算说明" aria-label="需求资料与计算说明" aria-expanded={details} onClick={() => setDetails(v => !v)}><Info size={15} /></Button>
       </div>
     </div>
     {compact?<dl className="object-facts">
@@ -42,7 +43,7 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
       <article title={r.riskReason}><span>风险</span><span className={`risk-badge ${risk.className}`}>{risk.label}</span></article>
     </div>}
     <AnchoredPopover anchorRef={anchor} open={details} onOutside={() => setDetails(false)} onEscape={closeDetails} width={420} className="requirement-overview-details">
-      <header><strong>需求资料与计算说明</strong><button className="ghost-button" onClick={closeDetails}>关闭</button></header>
+      <header><strong>需求资料与计算说明</strong><Button variant="secondary" className="ghost-button" onClick={closeDetails}>关闭</Button></header>
       <dl>
         <div><dt>需求负责人</dt><dd>{r.ownerName || '待指定'}</dd></div>
         {!!r.readinessIssues?.length && <div><dt>资料提示</dt><dd>{r.readinessIssues.join('；')}</dd></div>}

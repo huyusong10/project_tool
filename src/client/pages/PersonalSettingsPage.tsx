@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
 import { usePageScrollPosition } from '../use-page-view';
@@ -144,7 +145,7 @@ export function PersonalSettingsPage() {
     } finally { setRecheckingTokens(false); }
   };
   return <>
-    <PageHeader title="个人设置" actions={<button className="primary-button" aria-label={tokens.length?"创建 Token":"创建第一个 Token"} disabled={!tokensQuery.data||tokenListNeedsRecheck} onClick={openTokenModal}><Plus size={15} />创建 Token</button>} secondaryActions={<button className="ghost-button" onClick={openPassword}><KeyRound size={15} />修改密码</button>} />
+    <PageHeader title="个人设置" actions={<Button variant="primary" className="primary-button" aria-label={tokens.length?"创建 Token":"创建第一个 Token"} disabled={!tokensQuery.data||tokenListNeedsRecheck} onClick={openTokenModal}><Plus size={15} />创建 Token</Button>} secondaryActions={<Button variant="secondary" className="ghost-button" onClick={openPassword}><KeyRound size={15} />修改密码</Button>} />
     <div className="page-content personal-settings-page">
       <section className="panel personal-account-panel">
         <div className="personal-account-identity"><span>{session.username?.slice(0, 1).toUpperCase() || "用"}</span><div><h2>{session.username}</h2><p><CircleUserRound size={14} />{session.personId ? "已关联业务人员" : "当前账号未关联业务人员"}</p></div></div>
@@ -159,12 +160,12 @@ export function PersonalSettingsPage() {
         <div className="personal-mcp-connection">
           <span className="personal-mcp-icon"><PlugZap size={20} /></span>
           <div><span>MCP 服务地址</span><code>{mcpEndpoint}</code><small>客户端通过 Authorization: Bearer Token 连接</small></div>
-          <button className="ghost-button" onClick={() => void copyText(mcpEndpoint, "endpoint")}><Copy size={15} />{copied === "endpoint" ? "已复制" : "复制地址"}</button>
+          <Button variant="secondary" className="ghost-button" onClick={() => void copyText(mcpEndpoint, "endpoint")}><Copy size={15} />{copied === "endpoint" ? "已复制" : "复制地址"}</Button>
         </div>
         {tokensQuery.isLoading && !tokensQuery.data && <LoadingState label="正在加载 Token…" className="personal-token-loading" />}
-        {tokensQuery.error && !tokensQuery.data && <div className="personal-token-error"><span>{tokensQuery.error.message}</span><button className="ghost-button" disabled={tokensQuery.isFetching} onClick={() => void tokensQuery.refetch()}>重新加载</button></div>}
-        {tokensQuery.error && tokensQuery.data && <div className="warning-banner">Token 列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={tokensQuery.isFetching} onClick={() => void tokensQuery.refetch()}>重新加载</button></div>}
-        {tokenListNeedsRecheck && <div className="warning-banner">Token 操作结果需要核对，创建和撤销暂不可用。<button type="button" className="ghost-button" disabled={recheckingTokens} onClick={() => void recheckTokenList()}>{recheckingTokens ? "读取中…" : "重新读取 Token 列表"}</button></div>}
+        {tokensQuery.error && !tokensQuery.data && <div className="personal-token-error"><span>{tokensQuery.error.message}</span><Button variant="secondary" className="ghost-button" disabled={tokensQuery.isFetching} onClick={() => void tokensQuery.refetch()}>重新加载</Button></div>}
+        {tokensQuery.error && tokensQuery.data && <div className="warning-banner">Token 列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={tokensQuery.isFetching} onClick={() => void tokensQuery.refetch()}>重新加载</Button></div>}
+        {tokenListNeedsRecheck && <div className="warning-banner">Token 操作结果需要核对，创建和撤销暂不可用。<Button busy={(recheckingTokens)} aria-label={recheckingTokens ? "读取中…" : "重新读取 Token 列表"} variant="secondary" type="button" className="ghost-button" disabled={recheckingTokens} onClick={() => void recheckTokenList()}>{"重新读取 Token 列表"}</Button></div>}
         {tokensQuery.data && tokens.length > 0 && <div className="paged-panel"><div className="personal-token-list paged-body" ref={pagination.scrollRef} role="table" aria-label="我的 MCP Token">
           <div className="personal-token-head" role="row"><span>Token</span><span>创建时间</span><span>最近使用</span><span>有效期</span><span>状态与操作</span></div>
           {pagination.items.map((token) => {
@@ -175,7 +176,7 @@ export function PersonalSettingsPage() {
               <time>{new Date(token.createdAt).toLocaleDateString("zh-CN")}</time>
               <time>{token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString("zh-CN", { hour12: false }) : "尚未使用"}</time>
               <time>{token.expiresAt ? new Date(token.expiresAt).toLocaleDateString("zh-CN") : "永久有效"}</time>
-              <div><b className={status === "有效" ? "safe-text" : "muted"}>{status}</b>{status === "有效" && <button className="token-revoke-button" disabled={tokenListNeedsRecheck} onClick={() => { if (tokenListNeedsRecheck) return; revoke.reset(); setRevokeTarget(token); }}>撤销</button>}</div>
+              <div><b className={status === "有效" ? "safe-text" : "muted"}>{status}</b>{status === "有效" && <Button variant="secondary" size="small" className="token-revoke-button" disabled={tokenListNeedsRecheck} onClick={() => { if (tokenListNeedsRecheck) return; revoke.reset(); setRevokeTarget(token); }}>撤销</Button>}</div>
             </div>;
           })}
         </div><Pagination {...pagination.props} label="Token 列表分页" /></div>}
@@ -184,14 +185,14 @@ export function PersonalSettingsPage() {
         {tokensQuery.data && !tokens.length && <Pagination {...pagination.props} label="Token 列表分页" />}
       </section>
       {tokenModal && <Modal title="创建 MCP Token" width={560} onClose={closeTokenModal} closable={!createLock.busy}>
-        {newToken ? <div className="token-reveal"><ShieldCheck size={38} /><strong>Token 已创建，只显示这一次</strong><p>立即复制并保存到客户端配置中，关闭后无法再次查看。</p><div><code>{newToken}</code><button className="ghost-button" onClick={() => void copyText(newToken, "token")}><Copy size={16} />{copied === "token" ? "已复制" : "复制 Token"}</button></div><button className="primary-button" onClick={closeTokenModal}>我已安全保存</button></div>
+        {newToken ? <div className="token-reveal"><ShieldCheck size={38} /><strong>Token 已创建，只显示这一次</strong><p>立即复制并保存到客户端配置中，关闭后无法再次查看。</p><div><code>{newToken}</code><Button variant="secondary" className="ghost-button" onClick={() => void copyText(newToken, "token")}><Copy size={16} />{copied === "token" ? "已复制" : "复制 Token"}</Button></div><Button variant="primary" className="primary-button" onClick={closeTokenModal}>我已安全保存</Button></div>
           : <form className="form-grid" onSubmit={(event) => { event.preventDefault(); if (tokenListNeedsRecheck) return; const data = new FormData(event.currentTarget); createLock.run(() => createToken.mutate({ name: data.get("name"), expiresInDays: data.get("expiresInDays") === "never" ? null : Number(data.get("expiresInDays")) })); }}>
             <div className="token-create-note field-full"><ShieldCheck size={18} /><span>Token 权限与当前账号一致。建议每个客户端单独创建，便于后续识别和撤销。</span></div>
             <FormField label="Token 名称" full><input name="name" required autoFocus disabled={createLock.busy} placeholder="例如：Claude Desktop、办公电脑 Codex" /></FormField>
             <FormField label="有效期" full help="到期后客户端将自动失效，可以随时创建新 Token。"><select name="expiresInDays" defaultValue="90" disabled={createLock.busy}><option value="30">30 天</option><option value="90">90 天（推荐）</option><option value="365">1 年</option><option value="never">永久有效</option></select></FormField>
             <FormError>{createToken.error?.message}</FormError>
             <FormError>{createNeedsRecheck ? "Token 可能已经创建，但密钥无法再次读取。请关闭窗口核对 Token 列表；如出现新 Token，请撤销后重新创建。" : undefined}</FormError>
-            {createNeedsRecheck && <div className="field-full"><button type="button" className="ghost-button" disabled={recheckingTokens} onClick={() => void recheckTokenList()}>{recheckingTokens ? "读取中…" : "重新读取 Token 列表"}</button></div>}
+            {createNeedsRecheck && <div className="field-full"><Button busy={(recheckingTokens)} aria-label={recheckingTokens ? "读取中…" : "重新读取 Token 列表"} variant="secondary" type="button" className="ghost-button" disabled={recheckingTokens} onClick={() => void recheckTokenList()}>{"重新读取 Token 列表"}</Button></div>}
             <FormSubmitActions submitLabel="创建 Token" pendingLabel="创建中…" onCancel={closeTokenModal} pending={createLock.busy} disabled={tokenListNeedsRecheck} />
           </form>}
       </Modal>}

@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {useRef,useState} from 'react';
 import {ChevronDown,SlidersHorizontal} from 'lucide-react';
 import {requirementStatuses,requirementStatusLabels,riskLabels} from '../../shared/domain';
@@ -23,23 +24,23 @@ export function ProgressFilters({filters,sort,features,people,result,onChange,on
   const moreTitle=[filters.phaseId==='unassigned'?'未分派阶段':features.flatMap(f=>f.phases||[]).find(p=>p.id===filters.phaseId)?.name,stages[filters.stage],filters.state==='archived'?'已归档特性':'',schedules[filters.schedule||''],({...riskLabels,pending:'待评估'} as Record<string,string>)[filters.risk||''],(dashboardScopeLabels as Record<string,string>)[filters.scope||'']].filter(Boolean).join(' · ');
   return <div className="workspace-progress-tools" data-workspace-zone="tools" aria-label="进展筛选">
     <SearchInput value={filters.query} onChange={v=>set('q',v)} placeholder="搜索名称或编号"/>
-    <button ref={statusRef} className="ghost-button progress-status-filter" aria-label="筛选执行状态" aria-haspopup="dialog" aria-expanded={open==='status'} title={states.map(s=>requirementStatusLabels[s]).join('、')||'不显示任何执行状态'} onClick={()=>setOpen(open==='status'?null:'status')}><span>{progressStatesLabel(filters.status||'')}</span><ChevronDown size={15}/></button>
+    <Button variant="field" width="filter" ref={statusRef} className="ghost-button progress-status-filter" aria-label="筛选执行状态" aria-haspopup="dialog" aria-expanded={open==='status'} title={states.map(s=>requirementStatusLabels[s]).join('、')||'不显示任何执行状态'} onClick={()=>setOpen(open==='status'?null:'status')}><span>{progressStatesLabel(filters.status||'')}</span><ChevronDown size={15}/></Button>
     <Select aria-label="进展人员" value={filters.person||''} onChange={e=>set('progressPerson',e.target.value)}><option value="">全部人员</option><option value="unassigned">未分派负责人</option>{people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</Select>
     <Select aria-label="进展特性" value={filters.featureId} onChange={e=>onChange({featureId:e.target.value,phaseId:''})}><option value="">全部特性</option>{features.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</Select>
-    <button ref={moreRef} className="ghost-button progress-more-filter" aria-haspopup="dialog" aria-expanded={open==='more'} title={moreTitle||'Phase、阶段、计划与排序'} onClick={()=>setOpen(open==='more'?null:'more')}><SlidersHorizontal size={15}/>更多筛选{moreCount>0&&<span>{moreCount}</span>}</button>
-    <button className="ghost-button progress-reset" disabled={!dirty} onClick={onReset}>重置</button>
+    <Button variant="secondary" ref={moreRef} className="ghost-button progress-more-filter" aria-haspopup="dialog" aria-expanded={open==='more'} title={moreTitle||'Phase、阶段、计划与排序'} onClick={()=>setOpen(open==='more'?null:'more')}><SlidersHorizontal size={15}/>更多筛选{moreCount>0&&<span>{moreCount}</span>}</Button>
+    <Button variant="secondary" className="ghost-button progress-reset" disabled={!dirty} onClick={onReset}>重置</Button>
     <span className="progress-filter-result" aria-live="polite">{result}</span>
     <AnchoredPopover anchorRef={statusRef} open={open==='status'} onOutside={close} onEscape={()=>{close();statusRef.current?.focus();}} width={300} className="progress-filter-popover">
       <section aria-label="执行状态筛选" data-workspace-zone="tools" data-preserve-edit>
-        <header><strong>查看哪些工作</strong><button className="ghost-button" onClick={close}>关闭</button></header>
-        <div className="progress-filter-presets">{progressStatePresets.map(p=><button key={p.label} type="button" aria-pressed={progressStatesValue(states)===p.value} onClick={()=>{set('progressStatus',p.value);close();}}><span>{p.label}</span><small>{p.description}</small></button>)}</div>
+        <header><strong>查看哪些工作</strong><Button variant="secondary" className="ghost-button" onClick={close}>关闭</Button></header>
+        <div className="progress-filter-presets">{progressStatePresets.map(p=><Button variant="secondary" key={p.label} type="button" aria-pressed={progressStatesValue(states)===p.value} onClick={()=>{set('progressStatus',p.value);close();}}><span>{p.label}</span><small>{p.description}</small></Button>)}</div>
         <fieldset><legend>自选状态（可多选）</legend><div className="progress-state-options">{requirementStatuses.map(state=><label key={state}><input type="checkbox" checked={states.includes(state)} onChange={e=>set('progressStatus',progressStatesValue(e.target.checked?[...states,state]:states.filter(s=>s!==state)))}/>{requirementStatusLabels[state]}</label>)}</div></fieldset>
         <p>按需求和工作项各自的状态筛选，保留所属层级。</p>
       </section>
     </AnchoredPopover>
     <AnchoredPopover anchorRef={moreRef} open={open==='more'} onOutside={close} onEscape={()=>{close();moreRef.current?.focus();}} width={360} className="progress-filter-popover">
       <section aria-label="更多进展筛选" data-workspace-zone="tools" data-preserve-edit>
-        <header><strong>更多筛选</strong><button className="ghost-button" onClick={close}>关闭</button></header>
+        <header><strong>更多筛选</strong><Button variant="secondary" className="ghost-button" onClick={close}>关闭</Button></header>
         <div className="progress-extra-fields">
           <label><span>Phase</span><Select disabled={!feature&&!filters.phaseId} aria-label="进展 Phase" value={filters.phaseId} onChange={e=>set('phaseId',e.target.value)}><option value="">全部 Phase</option>{(feature?.phases||features.flatMap(f=>f.phases||[])).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}<option value="unassigned">未分派阶段</option></Select></label>
           <label><span>阶段</span><Select aria-label="进展阶段" value={filters.stage} onChange={e=>set('progressStage',e.target.value)}><option value="">全部阶段</option>{Object.entries(stages).map(([id,label])=><option key={id} value={id}>{label}</option>)}</Select></label>

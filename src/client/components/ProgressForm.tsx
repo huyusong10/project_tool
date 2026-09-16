@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -108,11 +109,11 @@ export function ProgressForm({
         <p className="field-help field-full">{editsPercent ? '只有进行中的工作项可以填写0～99%的累计完成度；100%请使用“完成工作项”。' : '本次只保存说明，不改变完成度、状态和日期。'}</p>
         <FormError>{validationError || mutation.error?.message}</FormError>
         <FormError>{refresh.error?.message}</FormError>
-        {(needsRefresh || changed || unavailable) && <div className="field-full"><button type="button" className="ghost-button" onClick={() => {
+        {(needsRefresh || changed || unavailable) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" onClick={() => {
           if (submitting.current) return;
           submitting.current = true;
           refresh.mutate(undefined, { onSettled: () => { submitting.current = false; } });
-        }}>重新读取工作项</button></div>}
+        }}>重新读取工作项</Button></div>}
         <FormSubmitActions submitLabel={submitLabel} onCancel={onClose} pending={pending} disabled={Boolean(validationError)} />
       </fieldset>
     </form>

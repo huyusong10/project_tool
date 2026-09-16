@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { motionScrollBehavior } from "../motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
@@ -109,8 +110,8 @@ export function ConcurrencyPanel() {
       <select value={personId} onChange={(event) => setPersonId(event.target.value)}><option value="">全部人员</option>{people.filter((person) => !jobTitle || person.jobTitle === jobTitle).map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
       <span>今天及历史看实际，未来看计划</span>
     </div>
-    {analysisUnavailable ? <EmptyState title="人力分析加载失败" detail={analysis.error?.message || "暂时无法读取人员并发数据。"} action={<button className="ghost-button" disabled={analysis.isFetching} onClick={() => void analysis.refetch()}>重新加载</button>} /> : <>
-    {analysis.error && analysis.data && <div className="warning-banner">人力分析刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={analysis.isFetching} onClick={() => void analysis.refetch()}>重新加载</button></div>}
+    {analysisUnavailable ? <EmptyState title="人力分析加载失败" detail={analysis.error?.message || "暂时无法读取人员并发数据。"} action={<Button variant="secondary" className="ghost-button" disabled={analysis.isFetching} onClick={() => void analysis.refetch()}>重新加载</Button>} /> : <>
+    {analysis.error && analysis.data && <div className="warning-banner">人力分析刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={analysis.isFetching} onClick={() => void analysis.refetch()}>重新加载</Button></div>}
     {currentTop.length > 0 && <section className="human-leaders" aria-label="今日工作最多人员">
       <strong>今日工作较多</strong>
       <div>{currentTop.map((person) => <article key={person.id}><span className="person-avatar">{person.name.slice(-1)}</span><div><b>{person.name}</b><small>{person.jobTitle || "岗位未设置"}{person.externalCurrentCount ? ` · 外部${person.externalCurrentCount}项` : ""}</small></div><em className={`load-${Math.min(person.currentCount, 3)}`}>{person.currentCount}项</em></article>)}</div>
@@ -118,7 +119,7 @@ export function ConcurrencyPanel() {
     <div className="human-matrix-frame">
       <header className="human-matrix-heading">
         <div><span>工作日并发度</span><strong>{format(parseISO(firstDate), "MM月dd日")}—{format(parseISO(firstWindowEnd), "MM月dd日")}</strong></div>
-        <div><span>从今天开始 · 已加载至 {format(parseISO(loadedTo), "MM月dd日")}</span><button type="button" onClick={() => matrixScrollRef.current?.scrollTo({ left: 0, behavior: motionScrollBehavior() })}><LocateFixed size={14} />回到今天</button></div>
+        <div><span>从今天开始 · 已加载至 {format(parseISO(loadedTo), "MM月dd日")}</span><Button variant="secondary" type="button" onClick={() => matrixScrollRef.current?.scrollTo({ left: 0, behavior: motionScrollBehavior() })}><LocateFixed size={14} />回到今天</Button></div>
       </header>
       <div className="human-matrix-scroll" ref={matrixScrollRef} onScroll={(event) => {
         const element = event.currentTarget;
@@ -136,7 +137,7 @@ export function ConcurrencyPanel() {
               {!matrixData.people.length && !analysis.isLoading && <tr className="human-empty-row"><td colSpan={matrixData.dates.length + 1}><strong>当前区间暂无安排</strong><span>向右加载后续日期，或调整人员和岗位筛选。</span></td></tr>}
             </tbody>
           </table>
-          <button className="human-next-window" disabled={analysis.isFetchingNextPage} onClick={() => void analysis.fetchNextPage()}>{analysis.isFetchingNextPage ? "加载中" : "加载后续7天"}</button>
+          <Button variant="secondary" size="small" className="human-next-window" disabled={analysis.isFetchingNextPage} onClick={() => void analysis.fetchNextPage()}>{analysis.isFetchingNextPage ? "加载中" : "加载后续7天"}</Button>
         </div>
       </div>
       <footer><span><i className="heat heat-1" />1项 正常</span><span><i className="heat heat-2" />2项 预警</span><span><i className="heat heat-3" />3项及以上 高并发</span><small>横向拖动查看后续日期</small></footer>

@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
 import { usePageScrollPosition } from '../use-page-view';
@@ -234,7 +235,7 @@ export function ProjectSettingsPage() {
     restore.mutate({ projectId: selectedProjectId, entity, id, expectedDeletedAt });
   };
   return <>
-    <PageHeader title="项目设置" secondaryActions={project&&canManage?<button className="ghost-button" disabled={!membersQuery.data || memberMutationBusy} onClick={() => setAdding(true)}><UserPlus size={15} />添加成员</button>:null} actions={project&&canManage?<button className="primary-button" onClick={() => setEditing(true)}><Edit3 size={15} />编辑项目</button>:null} />
+    <PageHeader title="项目设置" secondaryActions={project&&canManage?<Button variant="secondary" className="ghost-button" disabled={!membersQuery.data || memberMutationBusy} onClick={() => setAdding(true)}><UserPlus size={15} />添加成员</Button>:null} actions={project&&canManage?<Button variant="primary" className="primary-button" onClick={() => setEditing(true)}><Edit3 size={15} />编辑项目</Button>:null} />
     <div className="page-content">
       {!project ? <EmptyState title="暂无可访问项目" detail="请联系管理员分配项目权限。" /> : <>
         <section className="panel project-settings-summary">
@@ -247,11 +248,11 @@ export function ProjectSettingsPage() {
               <span className="project-member-count">{membersQuery.data ? `${members.length} 人` : "—"}</span>
             </div>
           </header>
-          {membersNeedRecheck && <div role="alert" className="warning-banner">成员操作结果待核对，当前权限可能已变化，本窗口不会重复提交。<button className="ghost-button" disabled={membersQuery.isFetching} onClick={() => void reloadMembers()}>{membersQuery.isFetching ? "读取中…" : "重新读取成员"}</button></div>}
-          {membersQuery.error && membersQuery.data && <div className="warning-banner">成员列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={membersQuery.isFetching} onClick={() => void membersQuery.refetch()}>重新加载</button></div>}
+          {membersNeedRecheck && <div role="alert" className="warning-banner">成员操作结果待核对，当前权限可能已变化，本窗口不会重复提交。<Button busy={(membersQuery.isFetching)} aria-label={membersQuery.isFetching ? "读取中…" : "重新读取成员"} variant="secondary" className="ghost-button" disabled={membersQuery.isFetching} onClick={() => void reloadMembers()}>{"重新读取成员"}</Button></div>}
+          {membersQuery.error && membersQuery.data && <div className="warning-banner">成员列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={membersQuery.isFetching} onClick={() => void membersQuery.refetch()}>重新加载</Button></div>}
           <div className="project-member-list paged-body" ref={membersPagination.scrollRef}>
             {membersQuery.isLoading && !membersQuery.data && <LoadingState label="正在加载项目成员…" className="stable-panel-state" />}
-            {membersQuery.error && !membersQuery.data && <EmptyState title="项目成员加载失败" detail={membersQuery.error.message || "暂时无法读取项目成员，请稍后重试。"} action={<button className="ghost-button" disabled={membersQuery.isFetching} onClick={() => void membersQuery.refetch()}>重新加载</button>} />}
+            {membersQuery.error && !membersQuery.data && <EmptyState title="项目成员加载失败" detail={membersQuery.error.message || "暂时无法读取项目成员，请稍后重试。"} action={<Button variant="secondary" className="ghost-button" disabled={membersQuery.isFetching} onClick={() => void membersQuery.refetch()}>重新加载</Button>} />}
             {membersQuery.data && membersPagination.items.map((person) => {
               const roleLabel = person.projectRole === "manager" ? "项目经理" : person.projectRole === "viewer" ? "观察者" : "项目成员";
               const editable = canManage;
@@ -267,7 +268,7 @@ export function ProjectSettingsPage() {
                     <option value="manager">项目经理</option><option value="member">项目成员</option><option value="viewer">观察者</option>
                   </select> : <span className={`project-role-badge role-${person.projectRole || "member"}`}>{roleLabel}</span>}
                 </div>
-                {canManage && <div className="project-member-action"><button className="inline-action-button danger" disabled={memberMutationBusy} onClick={() => { setRole.reset(); remove.reset(); setRemoveTarget(person); }}><UserMinus size={14} />移除</button></div>}
+                {canManage && <div className="project-member-action"><Button variant="secondary" tone="danger" size="small" className="inline-action-button danger" disabled={memberMutationBusy} onClick={() => { setRole.reset(); remove.reset(); setRemoveTarget(person); }}><UserMinus size={14} />移除</Button></div>}
               </article>;
             })}
             {membersQuery.data && !members.length && <EmptyState title="暂无项目成员" detail="点击“添加成员”，从平台人员中选择成员加入项目。" />}
@@ -277,12 +278,12 @@ export function ProjectSettingsPage() {
         </section>
         {canManage && <section className="panel project-members-panel paged-panel">
           <header><div><h2>项目归档</h2><p>恢复当前项目已归档的需求或流程</p></div></header>
-          {projectArchiveNeedsRecheck && <div role="alert" className="warning-banner">项目归档恢复结果待核对，当前归档事实可能已变化，本页面不会重复提交。<button className="ghost-button" disabled={projectArchivesQuery.isFetching} onClick={() => void reloadProjectArchives()}>{projectArchivesQuery.isFetching ? "读取中…" : "重新读取项目归档"}</button></div>}
-          {projectArchivesQuery.error && projectArchives && <div className="warning-banner">项目归档刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={projectArchivesQuery.isFetching} onClick={() => void projectArchivesQuery.refetch()}>重新加载</button></div>}
+          {projectArchiveNeedsRecheck && <div role="alert" className="warning-banner">项目归档恢复结果待核对，当前归档事实可能已变化，本页面不会重复提交。<Button busy={(projectArchivesQuery.isFetching)} aria-label={projectArchivesQuery.isFetching ? "读取中…" : "重新读取项目归档"} variant="secondary" className="ghost-button" disabled={projectArchivesQuery.isFetching} onClick={() => void reloadProjectArchives()}>{"重新读取项目归档"}</Button></div>}
+          {projectArchivesQuery.error && projectArchives && <div className="warning-banner">项目归档刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={projectArchivesQuery.isFetching} onClick={() => void projectArchivesQuery.refetch()}>重新加载</Button></div>}
           <div className="compact-list paged-body" ref={archivesPagination.scrollRef}>
             {projectArchivesQuery.isLoading && !projectArchives && <LoadingState label="正在加载项目归档…" className="stable-panel-state" />}
-            {projectArchivesQuery.error && !projectArchives && <EmptyState title="项目归档加载失败" detail={projectArchivesQuery.error.message || "暂时无法读取项目归档，请稍后重试。"} action={<button className="ghost-button" disabled={projectArchivesQuery.isFetching} onClick={() => void projectArchivesQuery.refetch()}>重新加载</button>} />}
-            {projectArchives && archivesPagination.items.map((item) => <div key={item.entity + item.id}><Archive size={15} /><div><strong>{item.title}</strong><span>{item.type} · {new Date(item.deletedAt).toLocaleString()}</span></div><button className="compact-text-button" disabled={Boolean(restoringKey) || projectArchiveNeedsRecheck} onClick={() => restoreArchive(item.entity, item.id, item.deletedAt)}><RotateCcw size={14} />{restoringKey === `${item.entity}:${item.id}` ? "恢复中…" : "恢复"}</button></div>)}
+            {projectArchivesQuery.error && !projectArchives && <EmptyState title="项目归档加载失败" detail={projectArchivesQuery.error.message || "暂时无法读取项目归档，请稍后重试。"} action={<Button variant="secondary" className="ghost-button" disabled={projectArchivesQuery.isFetching} onClick={() => void projectArchivesQuery.refetch()}>重新加载</Button>} />}
+            {projectArchives && archivesPagination.items.map((item) => <div key={item.entity + item.id}><Archive size={15} /><div><strong>{item.title}</strong><span>{item.type} · {new Date(item.deletedAt).toLocaleString()}</span></div><Button busy={(restoringKey === `${item.entity}:${item.id}`)} aria-label={restoringKey === `${item.entity}:${item.id}` ? "恢复中…" : "恢复"} variant="link" size="small" className="compact-text-button" disabled={Boolean(restoringKey) || projectArchiveNeedsRecheck} onClick={() => restoreArchive(item.entity, item.id, item.deletedAt)}><RotateCcw size={14} />{"恢复"}</Button></div>)}
             {projectArchives && !projectArchives.requirements.length && !projectArchives.templates.length && <EmptyState title="暂无项目归档" detail="归档需求或流程后会显示在这里。" />}
           </div>
           <Pagination {...archivesPagination.props} label="项目归档分页" />
@@ -376,10 +377,10 @@ function AddProjectPersonForm({ projectId, onNeedsRecheck, onClose }: { projectI
     mutation.mutate({ personIds: selectedIds, role });
   }}>
     <SearchInput className="member-picker-search" value={keyword} onChange={setKeyword} disabled={batchBusy} placeholder="搜索姓名、岗位、登录名或拼音" autoFocus />
-    <div className="member-picker-selection"><span>已选择 <strong>{selectedIds.length}</strong> 人</span>{selectedIds.length > 0 && <button type="button" disabled={batchBusy} onClick={() => { setSelectedPeople({}); setBatchError(""); }}>清空选择</button>}</div>
+    <div className="member-picker-selection"><span>已选择 <strong>{selectedIds.length}</strong> 人</span>{selectedIds.length > 0 && <Button variant="secondary" type="button" disabled={batchBusy} onClick={() => { setSelectedPeople({}); setBatchError(""); }}>清空选择</Button>}</div>
     <div className="member-candidate-list" aria-label="可添加人员">
       {candidatesQuery.isLoading && <LoadingState label="正在加载可添加人员…" className="member-picker-state" />}
-      {candidatesQuery.isError && <div className="member-picker-state is-error"><strong>候选人员加载失败</strong><span>{candidatesQuery.error.message}</span><button type="button" className="compact-text-button" onClick={() => void candidatesQuery.refetch()}>重试</button></div>}
+      {candidatesQuery.isError && <div className="member-picker-state is-error"><strong>候选人员加载失败</strong><span>{candidatesQuery.error.message}</span><Button variant="link" size="small" type="button" className="compact-text-button" onClick={() => void candidatesQuery.refetch()}>重试</Button></div>}
       {!candidatesQuery.isLoading && !candidatesQuery.isError && people.map((person) => <button
         type="button"
         className={`member-candidate-option${selectedPeople[person.id] ? " is-selected" : ""}`}
@@ -403,6 +404,6 @@ function AddProjectPersonForm({ projectId, onNeedsRecheck, onClose }: { projectI
     <label className="field member-picker-role"><span>加入后的项目角色</span><select disabled={batchBusy} value={role} onChange={(event) => setRole(event.target.value as ProjectMemberRole)}><option value="member">项目成员</option><option value="viewer">项目观察者</option><option value="manager">项目经理</option></select></label>
     {batchNeedsRecheck && <p className="form-error" role="alert">成员添加结果待核对，当前批次不会重复提交。请关闭后在项目成员列表重新读取。</p>}
     {batchError && <p className="form-error">部分成员添加失败：{batchError}</p>}
-    <div className="form-actions"><button type="button" className="ghost-button" disabled={mutation.isPending} onClick={onClose}>{batchNeedsRecheck ? "关闭并核对" : "取消"}</button><button className="primary-button" disabled={!selectedIds.length || batchBusy}>{mutation.isPending ? `正在添加 ${selectedIds.length} 人…` : `添加 ${selectedIds.length} 人到项目`}</button></div>
+    <div className="form-actions"><Button variant="secondary" type="button" className="ghost-button" disabled={mutation.isPending} onClick={onClose}>{batchNeedsRecheck ? "关闭并核对" : "取消"}</Button><Button variant="primary" type="submit" className="primary-button" disabled={!selectedIds.length || batchBusy}>{mutation.isPending ? `正在添加 ${selectedIds.length} 人…` : `添加 ${selectedIds.length} 人到项目`}</Button></div>
   </form></Modal>;
 }

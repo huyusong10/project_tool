@@ -1,3 +1,4 @@
+import { Button, MenuButtons } from './Button';
 import { AlertTriangle, CheckCircle2, Copy, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -74,14 +75,15 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
     };
   }, [inline]);
   const content = (
+    <MenuButtons enabled={false}>
     <div className={`modal-backdrop${placement === 'right' ? ' modal-backdrop-right' : ''}`} role="presentation" onMouseDown={(event) => closable && event.target === event.currentTarget && requestClose()}>
       <section ref={cardRef} data-detail-action={host ? true : undefined} className={`modal-card modal-card-${layout}`} style={{ width, maxWidth: width ? `min(94vw, ${width}px)` : undefined }} role="dialog" aria-modal={!host} aria-labelledby={titleId} tabIndex={-1} onKeyDown={event => {
         if (host && event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing && !hasActiveSortDrag()) {event.preventDefault(); event.stopPropagation(); requestClose();}
       }}>
-        <header><h2 id={titleId}>{title}</h2>{host ? <button type="button" data-detail-back className="ghost-button" disabled={!closable} onClick={requestClose}>返回</button> : closable && <button className="icon-button" aria-label="关闭" onClick={requestClose}><X size={18} /></button>}</header>
+        <header><h2 id={titleId}>{title}</h2>{host ? <Button variant="secondary" type="button" data-detail-back className="ghost-button" disabled={!closable} onClick={requestClose}>返回</Button> : <Button variant="ghost" iconOnly disabled={!closable} className="icon-button" aria-label="关闭" onClick={requestClose}><X size={18} /></Button>}</header>
         <div className={`modal-body modal-body-${layout}`}>{children}</div>
       </section>
-    </div>
+    </div></MenuButtons>
   );
   return typeof document === 'undefined' ? content : host ? host.element && createPortal(content, host.element) : createPortal(content, document.body);
 }
@@ -167,7 +169,7 @@ export function ConfirmDialog({
     <div className={`confirm-dialog${danger ? ' is-danger' : ''}`}>
       <div className="confirm-dialog-message"><span className="confirm-dialog-icon"><AlertTriangle size={21} /></span><div>{description}</div></div>
       {error && <p className="form-error" role="alert">{error}</p>}
-      <div className="form-actions"><button type="button" className="ghost-button" disabled={lock.busy} onClick={close}>取消</button><button type="button" autoFocus className={`primary-button${danger ? ' danger-button' : ''}`} disabled={lock.busy || disabled} onClick={confirm}>{lock.busy ? pendingLabel : confirmLabel}</button></div>
+      <div className="form-actions"><Button variant="secondary" type="button" className="ghost-button" disabled={lock.busy} onClick={close}>取消</Button><Button busy={(lock.busy)} aria-label={lock.busy ? pendingLabel : confirmLabel} tone={danger ? "danger" : "primary"} variant={danger ? "soft" : "primary"} type="button" autoFocus className={`primary-button${danger ? ' danger-button' : ''}`} disabled={lock.busy || disabled} onClick={confirm}>{confirmLabel}</Button></div>
     </div>
   </Modal>;
 }
@@ -193,8 +195,8 @@ export function ResultDialog({ title, message, value, error = false, onClose }: 
   return <Modal title={title} width={500} onClose={onClose}>
     <div className={`result-dialog${error ? ' is-error' : ''}`}>
       <div className="result-dialog-message">{error ? <AlertTriangle size={24} /> : <CheckCircle2 size={24} />}<div>{message}</div></div>
-      {value && <div className="result-dialog-value"><code>{value}</code><button type="button" className="icon-button" title="复制" aria-label="复制结果" onClick={() => void copyValue()}><Copy size={16} /></button>{copied && <span>已复制</span>}{copyFailed && <span>复制失败，请手动选择</span>}</div>}
-      <div className="form-actions"><button type="button" autoFocus className="primary-button" onClick={onClose}>知道了</button></div>
+      {value && <div className="result-dialog-value"><code>{value}</code><Button variant="ghost" iconOnly type="button" className="icon-button" title="复制" aria-label="复制结果" onClick={() => void copyValue()}><Copy size={16} /></Button>{copied && <span>已复制</span>}{copyFailed && <span>复制失败，请手动选择</span>}</div>}
+      <div className="form-actions"><Button variant="primary" type="button" autoFocus className="primary-button" onClick={onClose}>知道了</Button></div>
     </div>
   </Modal>;
 }
@@ -251,8 +253,8 @@ export function TextPromptModal({
         : <input autoFocus disabled={lock.busy} value={value} onChange={(event) => setValue(event.target.value)} placeholder={placeholder || expectedValue} autoComplete="off" />}</label>
       {expectedValue !== undefined && <p className="text-prompt-match">请输入完整名称：<strong>{expectedValue}</strong></p>}
       {error && <p className="form-error">{error}</p>}
-      {onRefresh && <div><button type="button" className="ghost-button" disabled={lock.busy} onClick={() => lock.run(onRefresh)}>{refreshing ? '读取中…' : '重新读取需求'}</button></div>}
-      <div className="form-actions"><button type="button" className="ghost-button" disabled={lock.busy} onClick={close}>取消</button><button className={`primary-button${danger ? ' danger-button' : ''}`} disabled={!normalized || !matches || lock.busy || blocked}>{lock.busy ? '处理中…' : confirmLabel}</button></div>
+      {onRefresh && <div><Button busy={(refreshing)} aria-label={refreshing ? '读取中…' : '重新读取需求'} variant="secondary" type="button" className="ghost-button" disabled={lock.busy} onClick={() => lock.run(onRefresh)}>{'重新读取需求'}</Button></div>}
+      <div className="form-actions"><Button variant="secondary" type="button" className="ghost-button" disabled={lock.busy} onClick={close}>取消</Button><Button busy={(lock.busy)} aria-label={lock.busy ? '处理中…' : confirmLabel} tone={danger ? "danger" : "primary"} variant={danger ? "soft" : "primary"} type="submit" className={`primary-button${danger ? ' danger-button' : ''}`} disabled={!normalized || !matches || lock.busy || blocked}>{confirmLabel}</Button></div>
     </form>
   </Modal>;
 }

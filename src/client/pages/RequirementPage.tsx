@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import {WorkItemHistory} from "../components/WorkItemHistory";
 import {DetailWorkspace} from "../components/DetailWorkspace";
 import {Modal} from "../components/Modal";
@@ -287,31 +288,31 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
         moreDisabled={Boolean(commandRecheck || correctionRecheck)}
         secondaryActions={canManage ? (
           <>
-            {canManage && !requirementInfoLocked && <button className="ghost-button" disabled={!peopleReady || Boolean(infoRecheck)} onClick={() => { if (!infoRecheck) setModal("info"); }}>
+            {canManage && !requirementInfoLocked && <Button variant="secondary" className="ghost-button" disabled={!peopleReady || Boolean(infoRecheck)} onClick={() => { if (!infoRecheck) setModal("info"); }}>
               <Edit3 size={15} />
               编辑信息
-            </button>}
-            {canManage && !requirementLocked && <button className="ghost-button" disabled={Boolean(scheduleRecheck)} onClick={() => { if (!scheduleRecheck) setModal("schedule"); }}>
+            </Button>}
+            {canManage && !requirementLocked && <Button variant="secondary" className="ghost-button" disabled={Boolean(scheduleRecheck)} onClick={() => { if (!scheduleRecheck) setModal("schedule"); }}>
               <CalendarDays size={15} />
               调整计划
-            </button>}
+            </Button>}
           </>
         ) : null}
         moreActions={canManage ? <>
-                {requirement.executionMode!=='direct'&&!['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" onClick={() => { setCommand('complete-as-planned'); }}><Check size={15} />按期完成（历史补录）</button>}
-                {!['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" className="danger" onClick={() => { setCommand('cancel'); }}><CircleStop size={15} />取消需求</button>}
-                {['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" onClick={() => { setModal('correction'); }}><PencilLine size={15} />纠错</button>}
-                {['completed', 'cancelled'].includes(requirement.status) && <button disabled={Boolean(commandRecheck || correctionRecheck)} type="button" className="danger" onClick={() => { setCommand('archive'); }}><Archive size={15} />归档需求</button>}
+                {requirement.executionMode!=='direct'&&!['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status) && <Button variant="secondary" disabled={Boolean(commandRecheck || correctionRecheck)} type="button" onClick={() => { setCommand('complete-as-planned'); }}><Check size={15} />按期完成（历史补录）</Button>}
+                {!['completed', 'cancelled'].includes(requirement.status) && <Button variant="secondary" tone="danger" disabled={Boolean(commandRecheck || correctionRecheck)} type="button" className="danger" onClick={() => { setCommand('cancel'); }}><CircleStop size={15} />取消需求</Button>}
+                {['completed', 'cancelled'].includes(requirement.status) && <Button variant="secondary" disabled={Boolean(commandRecheck || correctionRecheck)} type="button" onClick={() => { setModal('correction'); }}><PencilLine size={15} />纠错</Button>}
+                {['completed', 'cancelled'].includes(requirement.status) && <Button variant="secondary" tone="danger" disabled={Boolean(commandRecheck || correctionRecheck)} type="button" className="danger" onClick={() => { setCommand('archive'); }}><Archive size={15} />归档需求</Button>}
         </> : null}
       />;
   const notices = <>        {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
-        {infoRecheck && <div className="warning-banner" role="alert">需求信息修改结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" disabled={!peopleReady} onClick={() => setModal("info")}>核对信息修改</button></div>}
-        {scheduleRecheck && <div className="warning-banner" role="alert">需求计划调整结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" onClick={() => setModal("schedule")}>核对计划调整</button></div>}
-        {planRecheck && <div className="warning-banner" role="alert">补全计划结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" disabled={templatesQuery.data === undefined} onClick={() => setModal("template")}>核对补全计划</button></div>}
-        {correctionRecheck && <div className="warning-banner" role="alert">需求纠错结果待核对，原需求版本与草稿已锁定。<button type="button" className="ghost-button" disabled={!peopleReady} onClick={() => setModal("correction")}>核对纠错</button></div>}
-        {commandRecheck && <div className="warning-banner" role="alert">{commandRecheck.action === 'cancel' ? '取消需求' : commandRecheck.action === 'archive' ? '归档需求' : '按期完成'}结果待核对，原需求版本已锁定。<button type="button" className="ghost-button" onClick={() => setCommand(commandRecheck.action)}>核对需求操作</button></div>}
-        {workEditorNeedsRecheck && <div className="warning-banner" role="alert">工作项设置结果待核对，设置操作暂不可用。<button type="button" className="ghost-button" disabled={workEditorRechecking} onClick={() => void recheckWorkEditor()}>{workEditorRechecking ? "读取中…" : "重新读取需求"}</button></div>}
-        {supportingError && <div className="warning-banner">{supportingDataReady ? "人员与流程数据刷新失败，当前使用上次成功结果。" : "人员或流程数据加载失败，相关编辑操作暂不可用。"}<button className="ghost-button" disabled={peopleQuery.isFetching || templatesQuery.isFetching} onClick={() => void Promise.all([peopleQuery.refetch(), templatesQuery.refetch()])}>重新加载</button></div>}
+        {infoRecheck && <div className="warning-banner" role="alert">需求信息修改结果待核对，原需求版本与草稿已锁定。<Button variant="secondary" type="button" className="ghost-button" disabled={!peopleReady} onClick={() => setModal("info")}>核对信息修改</Button></div>}
+        {scheduleRecheck && <div className="warning-banner" role="alert">需求计划调整结果待核对，原需求版本与草稿已锁定。<Button variant="secondary" type="button" className="ghost-button" onClick={() => setModal("schedule")}>核对计划调整</Button></div>}
+        {planRecheck && <div className="warning-banner" role="alert">补全计划结果待核对，原需求版本与草稿已锁定。<Button variant="secondary" type="button" className="ghost-button" disabled={templatesQuery.data === undefined} onClick={() => setModal("template")}>核对补全计划</Button></div>}
+        {correctionRecheck && <div className="warning-banner" role="alert">需求纠错结果待核对，原需求版本与草稿已锁定。<Button variant="secondary" type="button" className="ghost-button" disabled={!peopleReady} onClick={() => setModal("correction")}>核对纠错</Button></div>}
+        {commandRecheck && <div className="warning-banner" role="alert">{commandRecheck.action === 'cancel' ? '取消需求' : commandRecheck.action === 'archive' ? '归档需求' : '按期完成'}结果待核对，原需求版本已锁定。<Button variant="secondary" type="button" className="ghost-button" onClick={() => setCommand(commandRecheck.action)}>核对需求操作</Button></div>}
+        {workEditorNeedsRecheck && <div className="warning-banner" role="alert">工作项设置结果待核对，设置操作暂不可用。<Button busy={(workEditorRechecking)} aria-label={workEditorRechecking ? "读取中…" : "重新读取需求"} variant="secondary" type="button" className="ghost-button" disabled={workEditorRechecking} onClick={() => void recheckWorkEditor()}>{"重新读取需求"}</Button></div>}
+        {supportingError && <div className="warning-banner">{supportingDataReady ? "人员与流程数据刷新失败，当前使用上次成功结果。" : "人员或流程数据加载失败，相关编辑操作暂不可用。"}<Button variant="secondary" className="ghost-button" disabled={peopleQuery.isFetching || templatesQuery.isFetching} onClick={() => void Promise.all([peopleQuery.refetch(), templatesQuery.refetch()])}>重新加载</Button></div>}
 </>;
   const history = <><section className="detail-grid progress-detail-grid">
         <article className="panel progress-detail-card paged-panel">
@@ -348,15 +349,15 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
       {id: 'execution', label: '执行', content: <>{notices}<div className="detail-section-actions">{requirementHeader}</div><RequirementOverview requirement={requirement} compact={embedded}/>{!direct && workList}</>},
       {id: 'work', label: `工作项 ${requirement.workItems.length}`, content: <>
         <div className="detail-section-actions">{canManageWorkItems && <>
-          <button className="primary-button" disabled={workEditorNeedsRecheck || !!planRecheck} onClick={() => {setWorkEditorCreate(true); setWorkEditorOpen(true);}}>添加工作项</button>
-          <button className="ghost-button" disabled={workEditorNeedsRecheck || !!planRecheck} onClick={() => {setWorkEditorCreate(false); setWorkEditorOpen(true);}}>工作项设置</button>
-          {canManage && <button className="ghost-button" disabled={!!planRecheck} onClick={() => setModal('template')}>补全计划</button>}
+          <Button variant="primary" className="primary-button" disabled={workEditorNeedsRecheck || !!planRecheck} onClick={() => {setWorkEditorCreate(true); setWorkEditorOpen(true);}}>添加工作项</Button>
+          <Button variant="secondary" className="ghost-button" disabled={workEditorNeedsRecheck || !!planRecheck} onClick={() => {setWorkEditorCreate(false); setWorkEditorOpen(true);}}>工作项设置</Button>
+          {canManage && <Button variant="secondary" className="ghost-button" disabled={!!planRecheck} onClick={() => setModal('template')}>补全计划</Button>}
         </>}</div>
         {workList}{!requirement.workItems.length && <p>{direct ? '直接执行需求，在执行页记录进展。' : '尚未拆分工作项。'}</p>}
       </>},
       {id: 'basic', label: '基本信息', content: <><div className="detail-section-actions">{requirementHeader}</div><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未分派阶段'}</dd></div><div className="object-fact-wide"><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div className="object-fact-wide"><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div><div><dt>来源</dt><dd>{requirement.sourceNotes||'尚未填写'}</dd></div>{requirement.referenceUrl&&<div><dt>文档</dt><dd><a href={requirement.referenceUrl} target="_blank" rel="noreferrer">打开资料</a></dd></div>}</dl>{!!requirement.readinessIssues?.length && <p className="object-info-note">{requirement.readinessIssues.join('；')}</p>}</>},
-      {id: 'dependencies', label: '依赖', content: <><div className="detail-section-actions"><button className="ghost-button" onClick={openPathView}>在关系图中维护依赖</button></div>
-        {dependencies.map(edge => {const incoming = edge.targetRequirementId === id, otherId = incoming ? edge.sourceRequirementId : edge.targetRequirementId, other = workspace?.data.requirements.find(item => item.id === otherId); return <article className="detail-dependency" key={edge.id}><span>{incoming ? '前置' : '后续'} · </span><button className="text-button" onClick={() => workspace?.inspect(otherId)}>{other?.title || otherId}</button></article>;})}
+      {id: 'dependencies', label: '依赖', content: <><div className="detail-section-actions"><Button variant="secondary" className="ghost-button" onClick={openPathView}>在关系图中维护依赖</Button></div>
+        {dependencies.map(edge => {const incoming = edge.targetRequirementId === id, otherId = incoming ? edge.sourceRequirementId : edge.targetRequirementId, other = workspace?.data.requirements.find(item => item.id === otherId); return <article className="detail-dependency" key={edge.id}><span>{incoming ? '前置' : '后续'} · </span><Button variant="link" className="text-button" onClick={() => workspace?.inspect(otherId)}>{other?.title || otherId}</Button></article>;})}
         {!dependencies.length && <p className="muted-text">{workspace ? '当前没有需求间依赖。' : '在关系图中查看需求及工作项依赖。'}</p>}
         {requirement.workItems.filter(item => item.unmetPredecessors?.length).map(item => <p key={item.id}>{item.title}：等待 {item.unmetPredecessors!.map(predecessor => predecessor.title).join('、')}</p>)}
       </>},

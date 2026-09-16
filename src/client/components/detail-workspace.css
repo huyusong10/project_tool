@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 .detail-workspace { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; min-width: 0; }
 .detail-workspace-content { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
 .detail-workspace-summary { flex: none; padding: 12px 16px; border-bottom: 1px solid var(--border); }
@@ -66,3 +68,5 @@
 .work-inline-table .sortable-drag-handle{display:grid;place-items:center;width:30px;height:36px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--text-muted)}
 .work-inline-table .sortable-drag-handle:hover:not(:disabled),.work-inline-table .sortable-drag-handle:focus-visible{background:var(--accent-soft);color:var(--accent-ink)}
 .analytics-drag-item.is-over{outline:2px solid var(--accent);outline-offset:3px}.outline-table tr.is-dragging{opacity:.42}
+
+}

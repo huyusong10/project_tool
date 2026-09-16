@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {Select} from './Select';
 import {useState} from 'react';
 import {ArrowUpRight} from 'lucide-react';
@@ -31,9 +32,9 @@ export function DeliveryCondition({data,relation,editable,disabledReason,issue,o
         <summary>后续 · {targetName}<small>{endpointName(data,target,false)}</small></summary>
         <EndpointPicker data={data} relation={relation} side="target" disabled={false} onChange={id=>onChange(source,id)}/>
       </details>
-      {issue&&<div className="delivery-condition-error" role="alert">{issue.message}{issue.kind==='cycle'&&<button type="button" className="ghost-button" onClick={onInspectIssue}>查看循环路径</button>}</div>}
+      {issue&&<div className="delivery-condition-error" role="alert">{issue.message}{issue.kind==='cycle'&&<Button variant="secondary" type="button" className="ghost-button" onClick={onInspectIssue}>查看循环路径</Button>}</div>}
       <small>调整会替换当前关系，保存后生效。前置满足后仍由人开始。</small>
     </>:disabledReason&&<small>{disabledReason}</small>}
-    <div className="delivery-condition-links">{([['source',source],['target',target]] as const).map(([side,id])=><button type="button" className="ghost-button" key={side} onClick={()=>onLocate(id)} title={endpointName(data,id)}><ArrowUpRight size={14}/>{side==='source'?'查看前置交付':'查看后续工作'}</button>)}</div>
+    <div className="delivery-condition-links">{([['source',source],['target',target]] as const).map(([side,id])=><Button variant="secondary" type="button" className="ghost-button" key={side} onClick={()=>onLocate(id)} title={endpointName(data,id)}><ArrowUpRight size={14}/>{side==='source'?'查看前置交付':'查看后续工作'}</Button>)}</div>
   </section>;
 }

@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import type { ReactNode } from "react";
 
 /** 视图切换：统一 .view-tabs 的写法；语义为切换按钮组（aria-pressed），非整页 tablist。 */
@@ -19,7 +20,7 @@ export function ViewTabs<T extends string>({
   return (
     <div className={`view-tabs${className ? ` ${className}` : ""}`} role="group" aria-label={ariaLabel}>
       {options.map((option) => (
-        <button
+        <Button variant="ghost" size="compact"
           type="button"
           disabled={disabled}
           key={option.value}
@@ -28,7 +29,7 @@ export function ViewTabs<T extends string>({
           onClick={() => onChange(option.value)}
         >
           {option.label}
-        </button>
+        </Button>
       ))}
     </div>
   );

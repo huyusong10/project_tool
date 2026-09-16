@@ -31,7 +31,7 @@ test('完成按钮悬浮保持可读且尺寸不变', async ({page}, info) => {
   const before = await action.evaluate(el => {const s=getComputedStyle(el); return {color:s.color, background:s.backgroundColor};});
   const dimensions = await action.boundingBox();
   await action.hover();
-  await expect(action).toHaveCSS('background-color', before.background);
+  await expect(action).not.toHaveCSS('background-color', before.background);
   await expect(action).toHaveCSS('color', before.color);
   expect(await action.boundingBox()).toEqual(dimensions);
   await page.screenshot({path:info.outputPath('complete-hover.png'), animations:'disabled'});

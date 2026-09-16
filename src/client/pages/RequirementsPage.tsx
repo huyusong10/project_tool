@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import {SelectionActions} from '../components/SelectionActions';
 import {Select} from '../components/Select';
 import {executionStageOf} from '../components/ExecutionStageBadge';
@@ -162,16 +163,16 @@ export function RequirementsPage() {
         breadcrumbs={[{label:"项目特性",onClick:()=>navigate("/?view=features&mode=table")},{label:"需求维护"}]}
         onBack={()=>navigate("/?view=features&mode=table")}
 
-        secondaryActions={canManage&&<button className="ghost-button" onClick={()=>navigate("/features")}>特性规划</button>}
+        secondaryActions={canManage&&<Button variant="secondary" className="ghost-button" onClick={()=>navigate("/features")}>特性规划</Button>}
         actions={canManage ? (
-          <div className="page-editor-actions"><div className="page-editor-history"/><div className="page-editor-primary"><button className="primary-button" aria-label="新建需求" disabled={!selectedProjectId||Boolean(createRecheck)} onClick={() => {if(selectedProjectId&&!createRecheck)setCreating(true);}} title={selectedProjectId ? createRecheck?'请先核对上次创建结果':"新建需求" : "请先创建项目"}>
+          <div className="page-editor-actions"><div className="page-editor-history"/><div className="page-editor-primary"><Button variant="primary" className="primary-button" aria-label="新建需求" disabled={!selectedProjectId||Boolean(createRecheck)} onClick={() => {if(selectedProjectId&&!createRecheck)setCreating(true);}} title={selectedProjectId ? createRecheck?'请先核对上次创建结果':"新建需求" : "请先创建项目"}>
             <Plus size={16} />
             新建
-          </button></div></div>
+          </Button></div></div>
         ) : null}
       />
       <div className="page-content">
-      <div className="workspace-intake-tools" data-workspace-zone="tools"><div className="view-tabs" role="tablist" aria-label="需求视图">{[["requirements","需求"],...(canManage?[["import","导入预览"]]:[])].map(([id,label])=><button key={id} role="tab" aria-selected={intakeView===id} className="ghost-button" onClick={()=>setView("intakeView",id)}>{label}</button>)}</div>{canManage&&intakeView==="requirements"&&<SelectionActions count={selectedIds.length}><button className="ghost-button" disabled={Boolean(organizationRecheck)} onClick={()=>{if(!organizationRecheck)setOrganizing(true);}}>整理所选需求</button></SelectionActions>}</div>
+      <div className="workspace-intake-tools" data-workspace-zone="tools"><div className="view-tabs" role="tablist" aria-label="需求视图">{[["requirements","需求"],...(canManage?[["import","导入预览"]]:[])].map(([id,label])=><Button variant="secondary" key={id} role="tab" aria-selected={intakeView===id} className="ghost-button" onClick={()=>setView("intakeView",id)}>{label}</Button>)}</div>{canManage&&intakeView==="requirements"&&<SelectionActions count={selectedIds.length}><Button variant="secondary" className="ghost-button" disabled={Boolean(organizationRecheck)} onClick={()=>{if(!organizationRecheck)setOrganizing(true);}}>整理所选需求</Button></SelectionActions>}</div>
       {intakeView==="import"&&canManage?<RequirementImport key={session.accountId+":"+selectedProjectId} projectId={selectedProjectId}/>:<>
         <div className="filter-bar">
         <OrganizationFilters items={data} feature={feature} onFeature={v=>setView("feature",v)}/>
@@ -194,10 +195,10 @@ export function RequirementsPage() {
           · {items.length}/{data.length}项
         </span>
       </div>
-      {(params.get('phase')||params.get('stage'))&&<div className="warning-banner">正在查看指定 Phase 或执行阶段的需求。<button className="ghost-button" onClick={()=>setParams(old=>{const next=new URLSearchParams(old);next.delete('phase');next.delete('stage');return next;})}>清除 Phase 与阶段筛选</button></div>}
-      {organizationRecheck&&<div role="alert" className="warning-banner">整理结果待核对，批量整理暂不可用。<button type="button" className="ghost-button" onClick={()=>setOrganizing(true)}>核对整理结果</button></div>}
-      {createRecheck&&<div role="alert" className="warning-banner">需求创建结果待核对，新建入口暂不可用。<button type="button" className="ghost-button" onClick={()=>setCreating(true)}>核对需求创建</button></div>}
-      {error && loadedRequirements && <div className="warning-banner">需求列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
+      {(params.get('phase')||params.get('stage'))&&<div className="warning-banner">正在查看指定 Phase 或执行阶段的需求。<Button variant="secondary" className="ghost-button" onClick={()=>setParams(old=>{const next=new URLSearchParams(old);next.delete('phase');next.delete('stage');return next;})}>清除 Phase 与阶段筛选</Button></div>}
+      {organizationRecheck&&<div role="alert" className="warning-banner">整理结果待核对，批量整理暂不可用。<Button variant="secondary" type="button" className="ghost-button" onClick={()=>setOrganizing(true)}>核对整理结果</Button></div>}
+      {createRecheck&&<div role="alert" className="warning-banner">需求创建结果待核对，新建入口暂不可用。<Button variant="secondary" type="button" className="ghost-button" onClick={()=>setCreating(true)}>核对需求创建</Button></div>}
+      {error && loadedRequirements && <div className="warning-banner">需求列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}
       <div className="table-panel requirements-table-panel paged-panel">
         <div className="paged-body" ref={pagination.scrollRef}>
         <table className="requirements-table">
@@ -230,7 +231,7 @@ export function RequirementsPage() {
           <EmptyState
             title="需求列表加载失败"
             detail={error?.message || "暂时无法读取需求数据。"}
-            action={<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button>}
+            action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>}
           />
         ) : !items.length && !isLoading && (
           <EmptyState

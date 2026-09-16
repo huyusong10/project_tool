@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {Select} from './Select';
 import {useState,type ReactNode} from 'react';
 import {useQuery} from '@tanstack/react-query';
@@ -21,6 +22,6 @@ export function StartAssignmentDialog({requirement,workItem,pending,blocked=fals
     {(error||people.error)&&<p className="form-error">{error||people.error?.message}</p>}
     {recovery}
     {!people.isLoading&&!people.error&&!options.length&&<p>当前没有可分配的有效项目成员。</p>}
-    <div className="form-actions"><button type="button" className="ghost-button" disabled={pending} onClick={onClose}>取消</button><button className="primary-button" disabled={pending||blocked||people.isFetching||needRequirement&&!valid(requirementOwner)||needWork&&!valid(workOwner)}>{pending?'正在开始…':'开始'}</button></div>
+    <div className="form-actions"><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={onClose}>取消</Button><Button variant="primary" type="submit" className="primary-button" disabled={pending||blocked||people.isFetching||needRequirement&&!valid(requirementOwner)||needWork&&!valid(workOwner)}>{pending?'正在开始…':'开始'}</Button></div>
   </form></Modal>;
 }

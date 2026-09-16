@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {useState} from 'react';
 import {useSession} from '../app-context';
 import {canManageProject} from '../permissions';
@@ -12,7 +13,7 @@ export function DeliveryFeatureDetails({feature,phaseId,onEnter,onPhase}:{featur
   const phase=feature.phases?.find(p=>p.id===phaseId),beginPhase=(e:PhaseEdit)=>setPhaseEdit(readPendingPhase(account,feature.projectId)?.edit||e);
   return <div className="delivery-object-details">
     {phase?<>
-      <div className="delivery-phase-heading"><h3>{phase.name}</h3><PhaseStatusBadge phase={phase}/><button className="ghost-button" onClick={onPhase}>特性资料</button></div>
+      <div className="delivery-phase-heading"><h3>{phase.name}</h3><PhaseStatusBadge phase={phase}/><Button variant="secondary" className="ghost-button" onClick={onPhase}>特性资料</Button></div>
       <section className="object-section">
         <dl className="object-facts">
           <div className="object-fact-wide"><dt>交付范围</dt><dd>{phase.scope||'交付范围待明确'}</dd></div>
@@ -21,15 +22,15 @@ export function DeliveryFeatureDetails({feature,phaseId,onEnter,onPhase}:{featur
           <div><dt>关联需求</dt><dd>{phase.requirements.length} 项</dd></div>
         </dl>
         {(phase.note||phase.overdue)&&<p className="object-info-note">{phase.overdue?'已超过目标日期。':''}{phase.note}</p>}
-        {!!phase.distribution.length&&<div className="button-row">{phase.distribution.map(s=><button key={s.key} className="ghost-button" onClick={()=>onEnter(s.key)}>{s.label} {s.count}</button>)}</div>}
+        {!!phase.distribution.length&&<div className="button-row">{phase.distribution.map(s=><Button variant="secondary" key={s.key} className="ghost-button" onClick={()=>onEnter(s.key)}>{s.label} {s.count}</Button>)}</div>}
       </section>
       <div className="button-row">
-        <button className="primary-button" onClick={()=>onEnter()}>进入需求</button>
+        <Button variant="primary" className="primary-button" onClick={()=>onEnter()}>进入需求</Button>
         {manage&&!feature.archivedAt&&<>
-          <button className="ghost-button" onClick={()=>beginPhase({feature,phase,mode:phase.deliveredAt?'reopen':'edit'})}>{phase.deliveredAt?'重新打开':'编辑 Phase'}</button>
-          {!phase.deliveredAt&&<button className="ghost-button" onClick={()=>beginPhase({feature,phase,mode:'placement'})}>安排需求</button>}
-          {phase.status==='ready'&&<button className="primary-button" onClick={()=>beginPhase({feature,phase,mode:'deliver'})}>确认交付</button>}
-          {!phase.requirements.length&&!phase.deliveries.length&&<button className="ghost-button danger-text" onClick={()=>beginPhase({feature,phase,mode:'delete'})}>删除空 Phase</button>}
+          <Button variant="secondary" className="ghost-button" onClick={()=>beginPhase({feature,phase,mode:phase.deliveredAt?'reopen':'edit'})}>{phase.deliveredAt?'重新打开':'编辑 Phase'}</Button>
+          {!phase.deliveredAt&&<Button variant="secondary" className="ghost-button" onClick={()=>beginPhase({feature,phase,mode:'placement'})}>安排需求</Button>}
+          {phase.status==='ready'&&<Button variant="primary" className="primary-button" onClick={()=>beginPhase({feature,phase,mode:'deliver'})}>确认交付</Button>}
+          {!phase.requirements.length&&!phase.deliveries.length&&<Button variant="secondary" tone="danger" className="ghost-button danger-text" onClick={()=>beginPhase({feature,phase,mode:'delete'})}>删除空 Phase</Button>}
         </>}
       </div>
       <details className="object-section"><summary>关联需求 · {phase.requirements.length}</summary>

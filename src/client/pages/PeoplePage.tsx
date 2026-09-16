@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
@@ -57,8 +58,8 @@ export function PeoplePage() {
         />} />
       <div className="page-content">
 
-        {error && loadedPeople && <div className="warning-banner">人员列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
-        {listUnavailable ? <EmptyState title="人员列表加载失败" detail={error?.message || "暂时无法读取项目人员。"} action={<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button>} /> : view === "matrix" ? <>
+        {error && loadedPeople && <div className="warning-banner">人员列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}
+        {listUnavailable ? <EmptyState title="人员列表加载失败" detail={error?.message || "暂时无法读取项目人员。"} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} /> : view === "matrix" ? <>
         <div className="filter-bar"><SearchInput value={search} onChange={value => updateView('q', value)} placeholder="搜索姓名、岗位或拼音" /><select aria-label="岗位筛选" value={jobTitle} onChange={event => updateView('jobTitle', event.target.value)}><option value="">全部岗位</option>{[...new Set(data.map(person => person.jobTitle?.trim() || '岗位未设置'))].sort().map(title => <option key={title}>{title}</option>)}</select><span>{groups.reduce((sum, group) => sum + group.people.length, 0)} / {data.length} 人</span></div>
         <div className="people-matrix">
           {groups.map((group, groupIndex) => (

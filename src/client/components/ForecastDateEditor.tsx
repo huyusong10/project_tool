@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { PathAnalysis } from '../../shared/paths';
@@ -35,12 +36,12 @@ export function ForecastDateEditor({ item, data, onClose }: { item: WorkItem; da
       <fieldset disabled={lock.busy}>
         <p>{item.title}</p>
         <p className="field-help">当前推算：{node?.forecastEnd || '待更新'}；已填写的预计完成：{node?.estimate.forecastEnd || '未填写'}。</p>
-        {needsReload && <div className="warning-banner">数据或保存结果需要重新读取，已填日期保留。<button type="button" className="ghost-button" onClick={() => lock.run(() => reload.mutate())}>重新读取</button></div>}
+        {needsReload && <div className="warning-banner">数据或保存结果需要重新读取，已填日期保留。<Button variant="secondary" type="button" className="ghost-button" onClick={() => lock.run(() => reload.mutate())}>重新读取</Button></div>}
         {ended && <p role="alert">工作项已结束或不可用，不能修改预测。</p>}
         <label className="field"><span>预计完成日期</span><input type="date" min={baseline.asOfDate} value={date} onChange={event => setDate(event.target.value)} /></label>
         <p className="field-help">保存后按前置关系更新交付预测，保留原计划。清空日期恢复自动估算。</p>
         <FormError>{mutation.error?.message || reload.error?.message}</FormError>
-        <div className="button-row"><button type="button" className="ghost-button" onClick={close}>取消</button><button className="primary-button" disabled={needsReload || ended || lock.busy}>{lock.busy ? '处理中…' : '保存'}</button></div>
+        <div className="button-row"><Button variant="secondary" type="button" className="ghost-button" onClick={close}>取消</Button><Button busy={(lock.busy)} aria-label={lock.busy ? '处理中…' : '保存'} variant="primary" type="submit" className="primary-button" disabled={needsReload || ended || lock.busy}>{'保存'}</Button></div>
       </fieldset>
     </form>
   </Modal>;

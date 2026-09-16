@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 /* ════════════════════════════════════════════════════════════════
    设计令牌层（三层架构）
    Layer 1 原始令牌：收敛后的色阶/间距/圆角/字号/动效，组件不直接使用
@@ -41,4 +43,6 @@
   --ease-enter: cubic-bezier(.16, 1, .3, 1);
   /* 层级 */
   --z-sidebar: 10; --z-topbar: 20; --z-popover: 40; --z-tooltip: 1000; --z-modal: 1100; --z-toast: 1200;
+}
+
 }

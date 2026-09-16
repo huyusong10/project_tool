@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {Select} from './Select';
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import {useSession} from '../app-context';
@@ -228,13 +229,13 @@ export function RequirementInfoForm({
     <FormField label="完成标准（可选）" full><textarea name="acceptanceCriteria" rows={3} value={draft.acceptanceCriteria} onChange={(event) => change("acceptanceCriteria", event.target.value)} /></FormField>
     <FormField label="参考链接（可选）" full><input name="referenceUrl" type="url" value={draft.referenceUrl} onChange={(event) => change("referenceUrl", event.target.value)} placeholder="https://…" /></FormField>
     {unknown&&!reviewRequired&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
-    {reviewRequired && <div className="warning-banner field-full">提交结果待核对；当前版本已变化。本窗口不再提交。请核对当前资料与操作记录，已填内容保留。<button type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</button></div>}
+    {reviewRequired && <div className="warning-banner field-full">提交结果待核对；当前版本已变化。本窗口不再提交。请核对当前资料与操作记录，已填内容保留。<Button variant="secondary" type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</Button></div>}
     <FormError>{changed ? "需求已更新，请重新读取并核对；已保留你的输入。" : undefined}</FormError>
     <FormError>{draftOwnerUnavailable ? "所选负责人已不可用，请重新选择。" : undefined}</FormError>
     <FormError>{locked ? "需求已完成或取消，不能继续编辑信息。" : undefined}</FormError>
     {refreshed && <p className="field-help field-full">已读取最新需求；未修改字段已同步，已输入内容保持不变。当前：{baseRequirement.title} · {baseRequirement.processingPriority||'待评估'} · 负责人 {baseRequirement.ownerName || "未指定"}</p>}
     {readError && <FormError>{readError.message}</FormError>}
-    {(changed || needsRefresh) && <div className="field-full"><button type="button" className="ghost-button" disabled={pending} onClick={() => void read()}>重新读取需求</button></div>}
+    {(changed || needsRefresh) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void read()}>重新读取需求</Button></div>}
     <FormSubmitActions submitLabel="保存信息" onCancel={onClose} pending={pending} disabled={blocked} />
     </fieldset>
   </form></Modal>;
@@ -444,13 +445,13 @@ export function RequirementCorrectionForm({
       {!!candidates.length && <FormField label="关联历史记录（可选）" full><Select aria-label="需求纠错关联历史记录" value={supersedesId} onChange={(event) => {const value=event.target.value;setSupersedesId(value);persistDraftIfLocked(draft,reason,value);}}><option value="">不指定</option>{candidates.map((update) => <option value={update.id} key={update.id}>{new Date(update.createdAt).toLocaleDateString("zh-CN")} · {update.content.slice(0, 36)}</option>)}</Select></FormField>}
       <FormField label="纠错说明（可选）" full><textarea aria-label="需求纠错原因" rows={2} value={reason} onChange={(event) => {const value=event.target.value;setReason(value);persistDraftIfLocked(draft,value);}} placeholder="说明原信息哪里有误，以及核对依据" /></FormField>
       {unknown&&!reviewRequired&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
-      {reviewRequired && <div className="warning-banner field-full">提交结果待核对；当前版本已变化。本窗口不再提交。请核对当前资料与纠错记录，已填内容保留。<button type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</button></div>}
+      {reviewRequired && <div className="warning-banner field-full">提交结果待核对；当前版本已变化。本窗口不再提交。请核对当前资料与纠错记录，已填内容保留。<Button variant="secondary" type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</Button></div>}
       <FormError>{validation}</FormError>
       <FormError>{changed ? "需求已更新，请重新读取并核对；已保留你的输入。" : undefined}</FormError>
       <FormError>{!terminal ? "需求状态已变化，当前不能使用终态纠错。" : undefined}</FormError>
       {readError && <FormError>{readError.message}</FormError>}
       {refreshed && <p className="field-help field-full">已读取最新需求（版本 {baseline.version}），本次输入保持不变，请核对后重试。</p>}
-      {(changed || needsRefresh) && <div className="field-full"><button type="button" className="ghost-button" disabled={pending} onClick={() => void read()}>重新读取需求</button></div>}
+      {(changed || needsRefresh) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void read()}>重新读取需求</Button></div>}
       <FormSubmitActions submitLabel="保存纠错" onCancel={close} pending={pending} disabled={blocked} />
     </fieldset>
   </form></Modal>;
@@ -751,7 +752,7 @@ export function RequirementScheduleForm({
           {templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
         </Select>
       </FormField>
-      }{templatesQuery.error && <div className="warning-banner field-full">流程列表加载失败，当前只能调整日期，不能切换流程。<button type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</button></div>}
+      }{templatesQuery.error && <div className="warning-banner field-full">流程列表加载失败，当前只能调整日期，不能切换流程。<Button variant="secondary" type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</Button></div>}
       {templateChanged && <p className="template-reset-warning field-full"><AlertTriangle size={16} />切换后会替换未执行工作项并按新流程重新排期；需求级说明保留。</p>}
       {(!!baseRequirement.actualStart||baseRequirement.workItems.some((item) => item.status !== "not_started")) && <FormField label="补充说明（可选）" full><textarea name="reason" rows={2} value={reason} onChange={(event) => {
         const value = event.target.value;
@@ -763,13 +764,13 @@ export function RequirementScheduleForm({
         ? "修改日期会整体平移已有工作项，保留相对间隔、人员和实际日期；每个工作项仍可单独修改自定义计划。"
         : "保存后按当前流程生成工作项；需求负责人与全部排期就绪后自动进入未开始。"} 流程设计后续变更不会同步到当前需求。</p>
       {unknown&&!reviewRequired&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
-      {reviewRequired && <div className="warning-banner field-full">提交结果待核对；当前版本已变化。本窗口不再提交。请核对需求与全部工作项日期，已填内容保留。<button type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</button></div>}
+      {reviewRequired && <div className="warning-banner field-full">提交结果待核对；当前版本已变化。本窗口不再提交。请核对需求与全部工作项日期，已填内容保留。<Button variant="secondary" type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</Button></div>}
       <FormError>{readError?.message}</FormError>
       {changed && <FormError>需求计划已在其他位置更新，请重新加载；已修改的排期草稿会保留。</FormError>}
       {selectedTemplateUnavailable && <FormError>所选流程已不可用，请重新选择后保存。</FormError>}
       {locked && <FormError>需求已完成或取消，不能继续调整计划。</FormError>}
       {refreshed && <p className="field-help field-full">已读取最新计划；未修改字段已同步，已输入内容保持不变。</p>}
-      {(changed || needsRefresh) && <div className="field-full"><button type="button" className="ghost-button" disabled={pending} onClick={() => void reload()}>重新加载当前计划</button></div>}
+      {(changed || needsRefresh) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void reload()}>重新加载当前计划</Button></div>}
       <FormSubmitActions submitLabel="保存排期" onCancel={onClose} pending={pending} disabled={unknown || changed || needsRefresh || reviewRequired || locked || selectedTemplateUnavailable} />
       </fieldset>
     </form>
@@ -935,18 +936,18 @@ export function PlanForm({ requirement, templates, recheck, onRecheckChange, onC
         <FormField label="计划开始"><input type="date" value={baseStart} onChange={(event) => { if (submitting.current) return; const value=event.target.value;setBaseStart(value);persistDraftIfLocked(draft({baseStart:value}));resetPreview(); }} /></FormField>
       </div>
       {hasExecution && <FormField label="补充说明（可选）" full><textarea rows={2} value={reason} onChange={(event) => {const value=event.target.value;setReason(value);persistDraftIfLocked(draft({reason:value}));}} placeholder="可补充排期调整的背景" /></FormField>}
-      {!preview && <div className="form-actions"><button className="primary-button" disabled={unknown || needsRefresh || reviewRequired || locked || !templateId || !baseStart || selectedTemplateUnavailable} onClick={() => {
+      {!preview && <div className="form-actions"><Button variant="primary" className="primary-button" disabled={unknown || needsRefresh || reviewRequired || locked || !templateId || !baseStart || selectedTemplateUnavailable} onClick={() => {
         if (submitting.current) return;
         submitting.current = true;
         applyMutation.reset();
         previewMutation.mutate({ templateId, baseStart, templateUpdatedAt: selectedTemplate?.updatedAt || null });
-      }}><WandSparkles size={15} />生成差异预览</button></div>}
+      }}><WandSparkles size={15} />生成差异预览</Button></div>}
       {selectedTemplateUnavailable && <FormError full={false}>所选流程已不可用，请重新选择。</FormError>}
       {locked && <FormError full={false}>需求已完成或取消，不能继续补全计划。</FormError>}
       {unknown&&!reviewRequired&&<FormError full={false}>刚才的提交结果待核对，已填内容保留。请核对操作记录，本窗口不会重复提交。</FormError>}<FormError full={false}>{previewMutation.error?.message}</FormError>
-      {reviewRequired && <div className="warning-banner">提交结果待核对；当前版本已变化。本窗口不再提交。请核对需求日期和全部变更项，已填内容保留。<button type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</button></div>}
+      {reviewRequired && <div className="warning-banner">提交结果待核对；当前版本已变化。本窗口不再提交。请核对需求日期和全部变更项，已填内容保留。<Button variant="secondary" type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</Button></div>}
       {readError && <FormError full={false}>{readError.message}</FormError>}
-      {needsRefresh && !reviewRequired && <div><button type="button" className="ghost-button" disabled={pending} onClick={() => void readLatest()}>{reading ? "读取中…" : "重新读取需求"}</button></div>}
+      {needsRefresh && !reviewRequired && <div><Button busy={(reading)} aria-label={reading ? "读取中…" : "重新读取需求"} variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void readLatest()}>{"重新读取需求"}</Button></div>}
       <FormError full={false}>{invalidEntry ? `工作项「${invalidEntry.title}」补全后的开始日期晚于完成日期，请调整计划开始或先编辑该工作项` : applyMutation.error?.message}</FormError>
       {preview && <>
         <></><div className="plan-preview-list">
@@ -957,11 +958,11 @@ export function PlanForm({ requirement, templates, recheck, onRecheckChange, onC
         <p className="field-help">仅补充空日期或缺失工作项，已有计划和实际日期不会覆盖。</p>
         {requirementPreviewStale && <FormError full={false}>需求已更新，当前差异预览已失效，请重新预览。</FormError>}
         {templatePreviewStale && <FormError full={false}>流程设计已更新，当前差异预览已失效，请重新预览。</FormError>}
-        <div className="form-actions"><button className="ghost-button" onClick={resetPreview}>重新预览</button><button className="primary-button" disabled={unknown || previewStale || selectedTemplateUnavailable || Boolean(invalidEntry) || !preview.entries.some((item) => item.willChange)} onClick={() => {
+        <div className="form-actions"><Button variant="secondary" className="ghost-button" onClick={resetPreview}>重新预览</Button><Button variant="primary" className="primary-button" disabled={unknown || previewStale || selectedTemplateUnavailable || Boolean(invalidEntry) || !preview.entries.some((item) => item.willChange)} onClick={() => {
           if (submitting.current) return;
           submitting.current = true;
           applyMutation.mutate({ preview, reason });
-        }}>确认补全</button></div>
+        }}>确认补全</Button></div>
       </>}
     </fieldset>
     </Modal>

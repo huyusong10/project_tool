@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 /* 固定美术风格；几何布局仍由公共组件与 responsive.css 控制。 */
 [data-theme="forest"] {
   color-scheme: light;
@@ -331,8 +333,6 @@
 [data-theme="dcim"] .brand-logo { box-shadow: none; }
 [data-theme="dcim"] .brand-logo.has-image { background: transparent; }
 [data-theme="dcim"] .sidebar-nav a.active { color: var(--accent-ink); background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
-[data-theme="dcim"] .primary-button:not(.danger-button):not(.execution-action) { color: #ffffff; background: #c44710; border-color: #c44710; box-shadow: none; }
-[data-theme="dcim"] .primary-button:not(.danger-button):not(.execution-action):hover:not(:disabled) { background: #ae3c0c; border-color: #ae3c0c; }
 [data-theme="dcim"] .status-in_progress { color: var(--info-text); background: var(--info-bg); }
 .integrated-page-title h1, .panel > header h2 { font-family: var(--font-heading); }
 .stat-value, .stat-card strong, .gantt-progress-marker, .table-progress b { font-family: var(--font-numeric); font-variant-numeric: tabular-nums; }
@@ -377,8 +377,6 @@ button.gantt-date-progress { cursor: pointer; }
 .gantt-date-unplanned { position: absolute; top: calc(var(--date-plan-top) - 6px); left: 8px; color: var(--text-muted); font-size: 12px; }
 .gantt-range-note { display: block; margin-top: 3px; color: var(--text-muted); font-size: 12px; }
 
-[data-theme="industrial"] .primary-button:hover:not(:disabled):not(.danger-button):not(.execution-action) { background: #e0b617; border-color: #e0b617; }
-
 .gantt-view-picker { position: relative; flex: none; }
 .gantt-view-picker > summary { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--border-default); border-radius: var(--radius-md); color: var(--text-secondary); background: var(--bg-surface); list-style: none; cursor: pointer; }
 .gantt-view-picker > summary::-webkit-details-marker { display: none; }
@@ -399,4 +397,5 @@ button.gantt-date-progress { cursor: pointer; }
 [data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(2) { --surface-bg: color-mix(in srgb,var(--danger) 3%,var(--bg-surface)); }
 [data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(3) { --surface-bg: color-mix(in srgb,var(--warning) 4%,var(--bg-surface)); }
 [data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(4) { --surface-bg: color-mix(in srgb,var(--success) 3%,var(--bg-surface)); }
-:is([data-theme="industrial"],[data-theme="swiss"]) :is(.sidebar-nav a.active,.primary-button,.brand-logo) { box-shadow: none; }
+
+}

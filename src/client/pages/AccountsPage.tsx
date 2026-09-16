@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
@@ -179,9 +180,9 @@ function AccountPermissionEditor({ account, disabled = false, onSave, onReload }
         <header><strong>配置平台权限</strong></header>
         <label><span>平台角色</span><select autoFocus disabled={pending || reading || disabled} value={role} onChange={(event) => setRole(event.target.value as Account['globalRole'])}>{accountRoleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
         <p className="inline-action-hint">项目经理在对应项目的“项目设置”中配置；这里仅控制平台管理员权限。</p>
-        {(changed || needsRefresh) && <div className="warning-banner">账号权限已更新，当前选择尚未提交。<button type="button" className="ghost-button" disabled={reading || pending} onClick={() => void reload()}>{reading ? '读取中…' : '重新读取账号'}</button></div>}
+        {(changed || needsRefresh) && <div className="warning-banner">账号权限已更新，当前选择尚未提交。<Button busy={(reading)} aria-label={reading ? '读取中…' : '重新读取账号'} variant="secondary" type="button" className="ghost-button" disabled={reading || pending} onClick={() => void reload()}>{'重新读取账号'}</Button></div>}
         {error && <p className="form-error">{error}</p>}
-        <footer><button type="button" className="ghost-button" disabled={pending || reading || disabled} onClick={() => setOpen(false)}>取消</button><button type="button" className="primary-button" disabled={pending || reading || disabled || changed || needsRefresh} onClick={() => void submit()}>{pending ? '保存中…' : '保存权限'}</button></footer>
+        <footer><Button variant="secondary" type="button" className="ghost-button" disabled={pending || reading || disabled} onClick={() => setOpen(false)}>取消</Button><Button busy={(pending)} aria-label={pending ? '保存中…' : '保存权限'} variant="primary" type="button" className="primary-button" disabled={pending || reading || disabled || changed || needsRefresh} onClick={() => void submit()}>{'保存权限'}</Button></footer>
       </div>
     </AnchoredPopover>
     </EditableCell>
@@ -203,14 +204,14 @@ function AccountActions({ account, person, currentAccountId, pending, onReset, o
   const [open, setOpen] = useState(false);
   const name = account?.username || person?.name || '账号';
   return <div className="account-actions" ref={anchorRef}>
-    <button type="button" className="account-actions-trigger" aria-label={`打开${name}操作`} aria-expanded={open} disabled={pending} onClick={() => { if (!pending) setOpen((value) => !value); }}><MoreHorizontal size={17} /></button>
+    <Button variant="ghost" iconOnly type="button" className="account-actions-trigger" aria-label={`打开${name}操作`} aria-expanded={open} disabled={pending} onClick={() => { if (!pending) setOpen((value) => !value); }}><MoreHorizontal size={17} /></Button>
     <AnchoredPopover anchorRef={anchorRef} open={open} onOutside={() => setOpen(false)} width={190} className="account-actions-popover">
       <div role="menu" aria-label={`${name}操作`}>
-        {account && onReset && <button type="button" role="menuitem" onClick={() => { setOpen(false); onReset(); }}><KeyRound size={14} />重置密码</button>}
-        {account && onToggleLogin && <button type="button" role="menuitem" onClick={() => { setOpen(false); onToggleLogin(); }}>{account.status === 'active' ? <UserRoundX size={14} /> : <UserRoundCheck size={14} />}{account.status === 'active' ? '禁止登录' : '允许登录'}</button>}
-        {!account && onOpen && <button type="button" role="menuitem" onClick={() => { setOpen(false); onOpen(); }}><UserRoundCheck size={14} />开通账号</button>}
-        {account && !account.isBuiltin && account.id !== currentAccountId && onDelete && <button type="button" role="menuitem" className="danger" onClick={() => { setOpen(false); onDelete(); }}><Trash2 size={14} />删除账号</button>}
-        {person && onArchive && <button type="button" role="menuitem" className="danger" onClick={() => { setOpen(false); onArchive(); }}><Archive size={14} />归档人员</button>}
+        {account && onReset && <Button variant="menu" type="button" role="menuitem" onClick={() => { setOpen(false); onReset(); }}><KeyRound size={14} />重置密码</Button>}
+        {account && onToggleLogin && <Button variant="menu" type="button" role="menuitem" onClick={() => { setOpen(false); onToggleLogin(); }}>{account.status === 'active' ? <UserRoundX size={14} /> : <UserRoundCheck size={14} />}{account.status === 'active' ? '禁止登录' : '允许登录'}</Button>}
+        {!account && onOpen && <Button variant="menu" type="button" role="menuitem" onClick={() => { setOpen(false); onOpen(); }}><UserRoundCheck size={14} />开通账号</Button>}
+        {account && !account.isBuiltin && account.id !== currentAccountId && onDelete && <Button variant="menu" tone="danger" type="button" role="menuitem" className="danger" onClick={() => { setOpen(false); onDelete(); }}><Trash2 size={14} />删除账号</Button>}
+        {person && onArchive && <Button variant="menu" tone="danger" type="button" role="menuitem" className="danger" onClick={() => { setOpen(false); onArchive(); }}><Archive size={14} />归档人员</Button>}
       </div>
     </AnchoredPopover>
   </div>;
@@ -332,9 +333,9 @@ function NewPersonForm({ recheck, onRecheckChange, onClose }: {
     <FormField label="姓名" full><input name="name" required autoFocus disabled={formBusy} defaultValue={recheck?.input.name} /></FormField>
     <FormField label="岗位" full><input name="jobTitle" disabled={formBusy} defaultValue={recheck?.input.jobTitle} placeholder="例如：前端工程师、测试工程师" /></FormField>
     <p className="field-help field-full">保存后自动创建普通账号，初始密码为 888888。</p>
-    <FormError>{needsRecheck ? `新增人员结果待核对，当前草稿不会重复提交。${recheckError ? ` ${recheckError}` : ""}` : mutation.error?.message}</FormError>
-    {needsRecheck && <div className="field-full"><button type="button" className="ghost-button" disabled={recheckPending} onClick={() => void reloadPeople()}>{recheckPending ? "读取中…" : "重新读取人员"}</button></div>}
-    <FormSubmitActions submitLabel="新增人员" pendingLabel={recheckPending ? "读取中…" : "保存中…"} cancelLabel={needsRecheck ? "关闭并核对" : "取消"} onCancel={close} pending={lock.busy || recheckPending} disabled={needsRecheck} />
+    <FormError>{lock.busy ? null : needsRecheck ? `新增人员结果待核对，当前草稿不会重复提交。${recheckError ? ` ${recheckError}` : ""}` : mutation.error?.message}</FormError>
+    {needsRecheck && !lock.busy && <div className="field-full"><Button busy={(recheckPending)} aria-label={recheckPending ? "读取中…" : "重新读取人员"} variant="secondary" type="button" className="ghost-button" disabled={recheckPending} onClick={() => void reloadPeople()}>{"重新读取人员"}</Button></div>}
+    <FormSubmitActions submitLabel="新增人员" pendingLabel={recheckPending ? "读取中…" : "保存中…"} cancelLabel={needsRecheck && !lock.busy ? "关闭并核对" : "取消"} onCancel={close} pending={lock.busy || recheckPending} disabled={needsRecheck} />
   </form></Modal>;
 }
 
@@ -908,19 +909,19 @@ export function PeopleAccessPage() {
   const pending = reset.isPending || removeAccount.isPending || openAccountLock.busy || archivePerson.isPending || manualPending;
 
   return <>
-    <PageHeader title="人员权限" actions={<button className="primary-button" onClick={() => setCreating(true)}><UserPlus size={16} />{createPersonNeedsRecheck ? '核对新增人员' : '新增人员'}</button>} />
+    <PageHeader title="人员权限" actions={<Button variant="primary" className="primary-button" onClick={() => setCreating(true)}><UserPlus size={16} />{createPersonNeedsRecheck ? '核对新增人员' : '新增人员'}</Button>} />
     <div className="page-content accounts-page people-access-page">
-      {!dataReady && loadError ? <EmptyState title="人员与权限加载失败" detail={loadError.message || '暂时无法读取人员与账号，请稍后重试。'} action={<button className="ghost-button" disabled={peopleQuery.isFetching || accountsQuery.isFetching} onClick={retry}>重新加载</button>} />
+      {!dataReady && loadError ? <EmptyState title="人员与权限加载失败" detail={loadError.message || '暂时无法读取人员与账号，请稍后重试。'} action={<Button variant="secondary" className="ghost-button" disabled={peopleQuery.isFetching || accountsQuery.isFetching} onClick={retry}>重新加载</Button>} />
         : !dataReady ? <LoadingState label="正在加载人员与权限…" className="stable-panel-state" /> : <>
-      {loadError && <div className="warning-banner">数据刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={peopleQuery.isFetching || accountsQuery.isFetching} onClick={retry}>重新加载</button></div>}
-      {createPersonNeedsRecheck && <div role="alert" className="warning-banner">“{createPersonNeedsRecheck.input.name.trim()}”的新增人员结果待核对，原草稿已锁定。<button className="ghost-button" onClick={() => setCreating(true)}>继续核对</button></div>}
-      {openAccountNeedsRecheck && <div role="alert" className="warning-banner">“{openAccountNeedsRecheck.name}”的开通账号结果待核对，旧入口已锁定。<button className="ghost-button" disabled={openAccountRechecking} onClick={() => void reloadOpenedAccount()}>{openAccountRechecking ? "读取中…" : "重新读取账号"}</button></div>}
-      {resetNeedsRecheck && <div role="alert" className="warning-banner">“{resetNeedsRecheck.username}”的密码重置结果待核对，旧账号版本已锁定。<button className="ghost-button" disabled={resetRechecking} onClick={() => void reloadResetAccount()}>{resetRechecking ? "读取中…" : "重新读取账号"}</button></div>}
-      {removeAccountNeedsRecheck && <div role="alert" className="warning-banner">“{removeAccountNeedsRecheck.username}”的删除账号结果待核对，旧账号版本已锁定。<button className="ghost-button" disabled={removeAccountRechecking} onClick={() => void reloadRemovedAccount()}>{removeAccountRechecking ? "读取中…" : "重新读取账号"}</button></div>}
-      {archivePersonNeedsRecheck && <div role="alert" className="warning-banner">“{archivePersonNeedsRecheck.name}”的人员归档结果待核对，旧人员版本已锁定。<button className="ghost-button" disabled={archivePersonRechecking} onClick={() => void reloadArchivedPerson()}>{archivePersonRechecking ? "读取中…" : "重新读取归档状态"}</button></div>}
-      {accountStatusNeedsRecheck && <div role="alert" className="warning-banner">“{accountStatusNeedsRecheck.account.username}”的登录状态结果待核对，旧账号版本已锁定。<button className="ghost-button" disabled={accountStatusRechecking} onClick={() => void reloadAccountStatus()}>{accountStatusRechecking ? "读取中…" : "重新读取登录状态"}</button></div>}
-      {accountProfileNeedsRecheck && <div role="alert" className="warning-banner">“{accountProfileNeedsRecheck.account.username}”的账号资料结果待核对，旧账号版本已锁定。<button className="ghost-button" disabled={accountProfileRechecking} onClick={() => void reloadAccountProfile()}>{accountProfileRechecking ? "读取中…" : "重新读取账号资料"}</button></div>}
-      {personProfileNeedsRecheck && <div role="alert" className="warning-banner">“{personProfileNeedsRecheck.person.name}”的人员资料结果待核对，旧人员版本已锁定。<button className="ghost-button" disabled={personProfileRechecking} onClick={() => void reloadPersonProfile()}>{personProfileRechecking ? "读取中…" : "重新读取人员资料"}</button></div>}
+      {loadError && <div className="warning-banner">数据刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={peopleQuery.isFetching || accountsQuery.isFetching} onClick={retry}>重新加载</Button></div>}
+      {createPersonNeedsRecheck && <div role="alert" className="warning-banner">“{createPersonNeedsRecheck.input.name.trim()}”的新增人员结果待核对，原草稿已锁定。<Button variant="secondary" className="ghost-button" onClick={() => setCreating(true)}>继续核对</Button></div>}
+      {openAccountNeedsRecheck && <div role="alert" className="warning-banner">“{openAccountNeedsRecheck.name}”的开通账号结果待核对，旧入口已锁定。<Button busy={(openAccountRechecking)} aria-label={openAccountRechecking ? "读取中…" : "重新读取账号"} variant="secondary" className="ghost-button" disabled={openAccountRechecking} onClick={() => void reloadOpenedAccount()}>{"重新读取账号"}</Button></div>}
+      {resetNeedsRecheck && <div role="alert" className="warning-banner">“{resetNeedsRecheck.username}”的密码重置结果待核对，旧账号版本已锁定。<Button busy={(resetRechecking)} aria-label={resetRechecking ? "读取中…" : "重新读取账号"} variant="secondary" className="ghost-button" disabled={resetRechecking} onClick={() => void reloadResetAccount()}>{"重新读取账号"}</Button></div>}
+      {removeAccountNeedsRecheck && <div role="alert" className="warning-banner">“{removeAccountNeedsRecheck.username}”的删除账号结果待核对，旧账号版本已锁定。<Button busy={(removeAccountRechecking)} aria-label={removeAccountRechecking ? "读取中…" : "重新读取账号"} variant="secondary" className="ghost-button" disabled={removeAccountRechecking} onClick={() => void reloadRemovedAccount()}>{"重新读取账号"}</Button></div>}
+      {archivePersonNeedsRecheck && <div role="alert" className="warning-banner">“{archivePersonNeedsRecheck.name}”的人员归档结果待核对，旧人员版本已锁定。<Button busy={(archivePersonRechecking)} aria-label={archivePersonRechecking ? "读取中…" : "重新读取归档状态"} variant="secondary" className="ghost-button" disabled={archivePersonRechecking} onClick={() => void reloadArchivedPerson()}>{"重新读取归档状态"}</Button></div>}
+      {accountStatusNeedsRecheck && <div role="alert" className="warning-banner">“{accountStatusNeedsRecheck.account.username}”的登录状态结果待核对，旧账号版本已锁定。<Button busy={(accountStatusRechecking)} aria-label={accountStatusRechecking ? "读取中…" : "重新读取登录状态"} variant="secondary" className="ghost-button" disabled={accountStatusRechecking} onClick={() => void reloadAccountStatus()}>{"重新读取登录状态"}</Button></div>}
+      {accountProfileNeedsRecheck && <div role="alert" className="warning-banner">“{accountProfileNeedsRecheck.account.username}”的账号资料结果待核对，旧账号版本已锁定。<Button busy={(accountProfileRechecking)} aria-label={accountProfileRechecking ? "读取中…" : "重新读取账号资料"} variant="secondary" className="ghost-button" disabled={accountProfileRechecking} onClick={() => void reloadAccountProfile()}>{"重新读取账号资料"}</Button></div>}
+      {personProfileNeedsRecheck && <div role="alert" className="warning-banner">“{personProfileNeedsRecheck.person.name}”的人员资料结果待核对，旧人员版本已锁定。<Button busy={(personProfileRechecking)} aria-label={personProfileRechecking ? "读取中…" : "重新读取人员资料"} variant="secondary" className="ghost-button" disabled={personProfileRechecking} onClick={() => void reloadPersonProfile()}>{"重新读取人员资料"}</Button></div>}
       <div className="filter-bar people-access-filters">
         <SearchInput value={keyword} onChange={setKeyword} placeholder="搜索姓名、岗位、登录名或拼音" />
         <select aria-label="按岗位筛选" value={jobTitle} onChange={(event) => setJobTitle(event.target.value)}><option value="all">全部岗位</option>{jobTitles.map((value) => <option key={value}>{value}</option>)}</select>

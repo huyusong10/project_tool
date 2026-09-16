@@ -1,3 +1,4 @@
+import { Button } from './Button';
 type ProgressInputProps = {
   value: number;
   onChange: (value: number) => void;
@@ -17,6 +18,6 @@ export function ProgressInput({ value, onChange, name = 'progress', label = '当
       <input aria-label={label} type="range" min="0" max={max} step="5" value={normalized} onChange={(event) => update(event.target.value)} />
       <label><input name={name} aria-label={`${label}数值`} type="number" min="0" max={max} step="1" value={normalized} onChange={(event) => update(event.target.value)} /><span>%</span></label>
     </div>
-    <div className="progress-shortcuts">{shortcuts.map((item) => <button type="button" className={normalized === item ? 'active' : ''} key={item} onClick={() => onChange(item)}>{item}%</button>)}</div>
+    <div className="progress-shortcuts">{shortcuts.map((item) => <Button variant="secondary" size="small" aria-pressed={normalized === item} type="button" className={normalized === item ? 'active' : ''} key={item} onClick={() => onChange(item)}>{item}%</Button>)}</div>
   </div>;
 }

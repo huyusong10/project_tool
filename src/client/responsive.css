@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 /* Shared responsive contract. Page-specific styles stay in styles.css. */
 :root {
   --sidebar-width: 228px;
@@ -58,8 +60,11 @@ main {
 
 .primary-button,
 .ghost-button,
-.date-button,
 .inline-action-button {
+  white-space: nowrap;
+}
+
+.date-button {
   min-height: var(--control-height);
   white-space: nowrap;
 }
@@ -754,3 +759,5 @@ textarea {
 .issue-data-list :is(.issue-data-priority,.issue-data-status,.issue-data-due) .data-cell-primary{overflow:visible;white-space:nowrap}
 .issue-data-list .issue-data-priority .inline-edit-value-badge{overflow:visible;flex-shrink:0;min-width:max-content}
 .issue-data-list :is(.issue-data-priority,.issue-data-status) :is(.priority-badge,.issue-status){max-width:none;flex-shrink:0;white-space:nowrap}
+
+}

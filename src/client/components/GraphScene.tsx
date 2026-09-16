@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {PHASE_HEADER,PHASE_PADDING,arrangePhaseRegions,type PhaseRegion} from '../phase-layout';
 import {PhaseStatusBadge} from './PhasePlanning';
 import {nodeTypes,edgeTypes,type CardNode,type CardData,type RouteEdge} from './GraphElements';
@@ -10,7 +11,7 @@ import { ReactFlow, Background, useNodesState, useNodesInitialized,
   type Viewport, type NodeChange } from '@xyflow/react';
 import ELK from 'elkjs/lib/elk-api';
 import workerUrl from 'elkjs/lib/elk-worker.min.js?url';
-import '@xyflow/react/dist/style.css';
+import './graph-vendor.css';
 import { type RoutedLayout, type Point } from '../path-layout';
 import { stableGraphLayout } from '../graph-layout';
 import {useGraphConnection,type ConnectionSide} from '../use-graph-connection';
@@ -382,7 +383,7 @@ export function GraphScene(props: DependencyGraphProps) {
     }}>
     {!rendered&&slowBusy&&<div className="graph-initial-loader" role="status"><LoaderCircle size={20}/>正在准备画布</div>}
     {hint&&<div className={'dependency-layout-notice graph-connection-hint'+(gesture?.issue?' is-invalid':'')} style={gesture&&rect?{left:Math.max(12,Math.min(gesture.point.x-rect.left+16,rect.width-260)),top:Math.max(12,Math.min(gesture.point.y-rect.top+20,rect.height-110)),transform:'none'}:undefined} role="status">{hint}</div>}
-    {error&&<div className="dependency-layout-notice graph-error-notice" data-workspace-zone="notice" role="alert"><span>{error}</span>{connectionIssue?.kind&&props.onInspectIssue&&<button className="ghost-button" onClick={()=>{props.onInspectIssue?.(connectionIssue);setError('');}}>{connectionIssue.kind==='duplicate'?'查看已有关系':'查看循环路径'}</button>}{routingError.current&&<button className="ghost-button" onClick={()=>setRetry(n=>n+1)}>重试连线</button>}<button className="graph-notice-close" aria-label="关闭提示" title="关闭提示" onClick={dismissError}><X size={16}/></button></div>}
+    {error&&<div className="dependency-layout-notice graph-error-notice" data-workspace-zone="notice" role="alert"><span>{error}</span>{connectionIssue?.kind&&props.onInspectIssue&&<Button variant="secondary" className="ghost-button" onClick={()=>{props.onInspectIssue?.(connectionIssue);setError('');}}>{connectionIssue.kind==='duplicate'?'查看已有关系':'查看循环路径'}</Button>}{routingError.current&&<Button variant="secondary" className="ghost-button" onClick={()=>setRetry(n=>n+1)}>重试连线</Button>}<Button variant="ghost" iconOnly className="graph-notice-close" aria-label="关闭提示" title="关闭提示" onClick={dismissError}><X size={16}/></Button></div>}
     <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
       nodesDraggable={editing} nodesConnectable={false} deleteKeyCode={null} autoPanOnNodeFocus={false} autoPanOnConnect={false}
       zoomOnScroll zoomOnPinch zoomOnDoubleClick={false} panOnScroll={false} preventScrolling zoomActivationKeyCode={null}
@@ -399,7 +400,7 @@ export function GraphScene(props: DependencyGraphProps) {
       }}
       onNodeClick={(event,node)=>{if(!connection.choose(node.id)){if(!event.ctrlKey&&!event.metaKey)setSelectedIds([node.id]);const ids=interaction.selection.kind==='nodes'?interaction.selection.ids:[];selectFromCanvas(ids.includes(node.id)?node.id:ids.at(-1)||'');}}} onEdgeClick={(_,edge)=>{interaction.select({kind:'edge',id:edge.id});}}
       onMoveEnd={(_,v)=>{if(!busy&&!first.current)saveViewport(keyRef.current,v);}} minZoom={.02} maxZoom={1.5} fitView={false}>
-      <Background gap={24} size={1}/>{props.regions&&<div className="delivery-regions" style={{transform:`translate(${viewport.x}px,${viewport.y}px) scale(${viewport.zoom})`}}>{phaseRegions.current.filter(r=>!props.focusRegionId||r.id===props.focusRegionId||r.nodeIds.some(id=>props.visibleIds?.includes(id))).map(r=><div key={r.id} className="delivery-region" style={{left:r.x,top:r.y,width:Math.max(r.width,...nodes.filter(n=>r.nodeIds.includes(n.id)).map(n=>n.position.x-r.x+(n.measured?.width||244)+PHASE_PADDING)),height:Math.max(r.height,...nodes.filter(n=>r.nodeIds.includes(n.id)).map(n=>n.position.y-r.y+(n.measured?.height||168)+PHASE_PADDING))}} data-phase-region={r.id}><div className="delivery-region-header"><button className="ghost-button nodrag nopan" onClick={()=>props.onSelectPhase?.(r.phase?.featureId||'unassigned',r.id)}><span className="delivery-region-name" title={r.name}>{r.name}</span>{r.phase&&<PhaseStatusBadge phase={r.phase}/>}</button><p title={r.phase?.scope}>{r.phase?.scope||(!r.nodeIds.length?'交付范围待明确':'')}</p>{r.phase&&<small>目标 {r.phase.targetDate||'待定'}</small>}</div></div>)}</div>}
+      <Background gap={24} size={1}/>{props.regions&&<div className="delivery-regions" style={{transform:`translate(${viewport.x}px,${viewport.y}px) scale(${viewport.zoom})`}}>{phaseRegions.current.filter(r=>!props.focusRegionId||r.id===props.focusRegionId||r.nodeIds.some(id=>props.visibleIds?.includes(id))).map(r=><div key={r.id} className="delivery-region" style={{left:r.x,top:r.y,width:Math.max(r.width,...nodes.filter(n=>r.nodeIds.includes(n.id)).map(n=>n.position.x-r.x+(n.measured?.width||244)+PHASE_PADDING)),height:Math.max(r.height,...nodes.filter(n=>r.nodeIds.includes(n.id)).map(n=>n.position.y-r.y+(n.measured?.height||168)+PHASE_PADDING))}} data-phase-region={r.id}><div className="delivery-region-header"><Button variant="secondary" className="ghost-button nodrag nopan" onClick={()=>props.onSelectPhase?.(r.phase?.featureId||'unassigned',r.id)}><span className="delivery-region-name" title={r.name}>{r.name}</span>{r.phase&&<PhaseStatusBadge phase={r.phase}/>}</Button><p title={r.phase?.scope}>{r.phase?.scope||(!r.nodeIds.length?'交付范围待明确':'')}</p>{r.phase&&<small>目标 {r.phase.targetDate||'待定'}</small>}</div></div>)}</div>}
     </ReactFlow>
     {(liveCurve||pendingLinks.length>0)&&<svg className={'graph-connection-preview'+(gesture?.issue?' is-invalid':'')} aria-hidden="true">
       <defs><marker id={previewMarker} viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="context-stroke"/></marker></defs>
@@ -414,10 +415,10 @@ export function GraphScene(props: DependencyGraphProps) {
     {drag.current?.copy&&!drag.current.cancelled&&rect&&<div className="graph-copy-preview" data-drag-tick={dragTick}>{drag.current.ids.map(id=>{const p=drag.current!.original[id],n=flow.getNode(id);return p&&n?<div key={id} style={{left:p.x*viewport.zoom+viewport.x,top:p.y*viewport.zoom+viewport.y,width:(n.measured?.width||244)*viewport.zoom,height:(n.measured?.height||154)*viewport.zoom}}>{n.data.title}</div>:null;})}</div>}
     {props.children}
     <div className="graph-view-controls nopan nodrag nowheel" data-workspace-zone="controls"><span className="graph-layout-status" role="status" aria-label={slowBusy&&!gesture&&!drag.current?'正在更新连线':undefined} title={slowBusy&&!gesture&&!drag.current?'正在更新连线':undefined}>{slowBusy&&!gesture&&!drag.current&&<LoaderCircle size={14}/>}</span>
-      <button className="ghost-button" aria-label="缩小画布" title="缩小画布" onClick={()=>void flow.zoomOut()}><Minus size={16}/></button><span>{Math.round(viewport.zoom*100)}%</span>
-      <button className="ghost-button" aria-label="放大画布" title="放大画布" onClick={()=>void flow.zoomIn()}><Plus size={16}/></button>
-      <button className="ghost-button" aria-label="定位所选节点" title="定位所选节点" disabled={!selected} onClick={()=>locate(selected)}><LocateFixed size={16}/></button><button className="ghost-button" aria-label="适配视图" title="适配视图" onClick={()=>void fitAvailable(true,props.focusId?props.emphasizedIds:props.visibleIds,true)}><Scan size={16}/></button>
-      <button className="ghost-button" aria-label="自动整理" title={editing?"自动整理（可撤销）":"进入编辑后可整理共享布局"} disabled={!!gesture||!editing} onClick={()=>setArrange(value=>value+1)}><LayoutGrid size={16}/></button>
+      <Button iconOnly variant="secondary" className="ghost-button" aria-label="缩小画布" title="缩小画布" onClick={()=>void flow.zoomOut()}><Minus size={16}/></Button><span>{Math.round(viewport.zoom*100)}%</span>
+      <Button iconOnly variant="secondary" className="ghost-button" aria-label="放大画布" title="放大画布" onClick={()=>void flow.zoomIn()}><Plus size={16}/></Button>
+      <Button iconOnly variant="secondary" className="ghost-button" aria-label="定位所选节点" title="定位所选节点" disabled={!selected} onClick={()=>locate(selected)}><LocateFixed size={16}/></Button><Button iconOnly variant="secondary" className="ghost-button" aria-label="适配视图" title="适配视图" onClick={()=>void fitAvailable(true,props.focusId?props.emphasizedIds:props.visibleIds,true)}><Scan size={16}/></Button>
+      <Button iconOnly variant="secondary" className="ghost-button" aria-label="自动整理" title={editing?"自动整理（可撤销）":"进入编辑后可整理共享布局"} disabled={!!gesture||!editing} onClick={()=>setArrange(value=>value+1)}><LayoutGrid size={16}/></Button>
     </div>
   </div>;
 }

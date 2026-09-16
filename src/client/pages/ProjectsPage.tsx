@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
 import { usePageScrollPosition } from '../use-page-view';
@@ -121,15 +122,15 @@ export function ProjectsPage() {
       <PageHeader
         title="项目管理"
         actions={admin ? (
-          <button className="primary-button" disabled={Boolean(createRecheck)} onClick={() => {if(!createRecheck)setCreating(true);}}>
+          <Button variant="primary" className="primary-button" disabled={Boolean(createRecheck)} onClick={() => {if(!createRecheck)setCreating(true);}}>
             <Plus size={16} />
             新建项目
-          </button>
+          </Button>
         ) : null}
       />
       <div className="page-content">
-        {createRecheck&&<div role="alert" className="warning-banner">项目创建结果待核对，新建入口暂不可用。<button type="button" className="ghost-button" onClick={()=>setCreating(true)}>核对项目创建</button></div>}
-        {archiveRecheck&&<div role="alert" className="warning-banner">“{archiveRecheck.name}”的项目归档结果待核对，其他归档操作暂不可用。<button type="button" className="ghost-button" disabled={archiveRechecking} onClick={()=>void recheckProjectArchive()}>{archiveRechecking?'读取中…':'重新读取项目与归档'}</button></div>}
+        {createRecheck&&<div role="alert" className="warning-banner">项目创建结果待核对，新建入口暂不可用。<Button variant="secondary" type="button" className="ghost-button" onClick={()=>setCreating(true)}>核对项目创建</Button></div>}
+        {archiveRecheck&&<div role="alert" className="warning-banner">“{archiveRecheck.name}”的项目归档结果待核对，其他归档操作暂不可用。<Button busy={(archiveRechecking)} aria-label={archiveRechecking?'读取中…':'重新读取项目与归档'} variant="secondary" type="button" className="ghost-button" disabled={archiveRechecking} onClick={()=>void recheckProjectArchive()}>{'重新读取项目与归档'}</Button></div>}
         <div className="table-panel project-table paged-panel"><div className="paged-body" ref={pagination.scrollRef}>
           <table>
             <thead><tr><th>项目</th><th>计划周期</th><th>状态</th>{session.authenticated && <th>操作</th>}</tr></thead>
@@ -147,12 +148,12 @@ export function ProjectsPage() {
                   {session.authenticated && (
                     <td>
                       <div className="project-row-actions">
-                        {admin && <button className="inline-action-button danger" disabled={archive.isPending||Boolean(archiveRecheck)} onClick={() => {
+                        {admin && <Button variant="secondary" tone="danger" size="small" className="inline-action-button danger" disabled={archive.isPending||Boolean(archiveRecheck)} onClick={() => {
                           if(archiveRecheck)return;
                           archive.reset();
                           setArchiveError("");
                           setArchiveTarget({ id: project.id, name: project.name, expectedUpdatedAt: project.updatedAt });
-                        }}><Archive size={14} />归档</button>}
+                        }}><Archive size={14} />归档</Button>}
                       </div>
                     </td>
                   )}

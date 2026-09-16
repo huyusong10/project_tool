@@ -1,3 +1,5 @@
+@layer application, controls;
+@layer application {
 .app-shell{--app-topbar-height:52px}
 /* 主模块尚未执行时绘制同色空外壳；不读取或展示旧项目、标题。 */
 #root:empty{min-height:100dvh;background:var(--bg-page)}
@@ -64,3 +66,5 @@ body:has(.app-shell[data-immersive=true]){overflow:hidden}
 .brand-name-placeholder{width:80px;height:12px;background:rgba(255,255,255,.15)}
 
 @media(pointer:coarse){.topbar button,.topbar .topbar-icon{min-height:44px;min-width:44px}}
+
+}

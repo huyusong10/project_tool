@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {PencilLine} from 'lucide-react';
 import {DetailWorkspace} from "./DetailWorkspace";
 import {useState,type ReactNode} from 'react';
@@ -19,7 +20,7 @@ export function RequirementWorkExecution({requirement,people,progress,children}:
   const canUpdate=canOperate&&!['completed','cancelled'].includes(requirement.status);
   const actions=requirement.status==='completed'&&canOperate
     ?<DeliveryControls requirement={requirement}>{({actions})=>actions}</DeliveryControls>
-    :canUpdate?<button className="primary-button execution-action" data-action="progress" onClick={()=>setOpen(true)}><PencilLine size={14}/>更新进展</button>:null;
+    :canUpdate?<Button variant="soft" tone="primary" size="compact" width="wide" className="primary-button execution-action" data-action="progress" onClick={()=>setOpen(true)}><PencilLine size={14}/>更新进展</Button>:null;
   return <>
     {children({actions,progress:canUpdate?<button className="workspace-requirement-progress" aria-label={'更新 '+requirement.title+' 进展'} onClick={()=>setOpen(true)}>{progress}</button>:progress})}
     {open&&<Modal title={'更新进展 · '+requirement.title} width={720} layout="workspace" onClose={()=>setOpen(false)}><DetailWorkspace label="需求执行" tabs={[{id:"execution",label:"工作项进展",content:<RequirementExecutionItems id={requirement.id} people={people}/>}]}/></Modal>}
@@ -29,11 +30,11 @@ export function RequirementWorkExecution({requirement,people,progress,children}:
 function RequirementExecutionItems({id,people}:{id:string;people:Person[]}){
   const {session}=useSession(),[hasFreshRead,setHasFreshRead]=useState(false);
   const query=useResourceQuery<Requirement>([...keys.requirement(id),'execution',session.accountId||'guest'],'/api/requirements/'+id,true,()=>setHasFreshRead(true));
-  if(query.unavailable||!hasFreshRead)return <div role="status">{query.error?<><p className="form-error">{query.error.message}</p><button className="ghost-button" onClick={()=>void query.refetch()}>重新读取</button></>:<p>正在读取最新工作项…</p>}</div>;
+  if(query.unavailable||!hasFreshRead)return <div role="status">{query.error?<><p className="form-error">{query.error.message}</p><Button variant="secondary" className="ghost-button" onClick={()=>void query.refetch()}>重新读取</Button></>:<p>正在读取最新工作项…</p>}</div>;
   const requirement=query.data!;
   const items=requirement.workItems.filter(item=>workExecutionAccess(session,requirement,item,people).operate);
   return <div className="requirement-execution-items">
-    {query.error&&<p className="form-error" role="status">{query.error.message}<button className="ghost-button" onClick={()=>void query.refetch()}>重新读取</button></p>}
+    {query.error&&<p className="form-error" role="status">{query.error.message}<Button variant="secondary" className="ghost-button" onClick={()=>void query.refetch()}>重新读取</Button></p>}
     {!items.length&&<p className="muted">当前没有可操作的工作项。</p>}
     {items.map(item=><WorkItemExecution key={item.id} requirement={requirement} item={item} people={people}>
       {({progress,actions})=><div className="requirement-execution-item" data-work-id={item.id}>

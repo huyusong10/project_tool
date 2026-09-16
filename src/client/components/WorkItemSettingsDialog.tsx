@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {FormField, FormSubmitActions} from "./Form";
 import {Select} from "./Select";
 import {assertCleanRequirementDraft} from '../use-graph-draft';
@@ -253,14 +254,14 @@ export function WorkItemSettingsDialog({
         <div className="work-editor-modal-toolbar">
           <span>配置名称、人员、计划日期和顺序；日常推进请直接在甘特图操作</span>
           <div className="panel-actions">
-            {onOpenDependencies&&<button className="ghost-button" disabled={settingsUnknown} onClick={onOpenDependencies}>前置关系与工期</button>}
-            {canManageRequirement && (!requirement.workItems.length || requirement.workItems.some((item) => !['completed', 'cancelled'].includes(item.status) && (!item.plannedStart || !item.plannedEnd))) && <button className="ghost-button" disabled={settingsUnknown} onClick={onOpenPlan}>补全计划</button>}
-            <button className="primary-button" disabled={settingsUnknown || Boolean(newItem) || createItem.isPending || createReading} onClick={startNewItem}><Plus size={15} />添加工作项</button>
+            {onOpenDependencies&&<Button variant="secondary" className="ghost-button" disabled={settingsUnknown} onClick={onOpenDependencies}>前置关系与工期</Button>}
+            {canManageRequirement && (!requirement.workItems.length || requirement.workItems.some((item) => !['completed', 'cancelled'].includes(item.status) && (!item.plannedStart || !item.plannedEnd))) && <Button variant="secondary" className="ghost-button" disabled={settingsUnknown} onClick={onOpenPlan}>补全计划</Button>}
+            <Button variant="primary" className="primary-button" disabled={settingsUnknown || Boolean(newItem) || createItem.isPending || createReading} onClick={startNewItem}><Plus size={15} />添加工作项</Button>
           </div>
         </div>
         <FormError full={false}>{reorderItems.error?.message}</FormError>
         {settingsUnknown&&<p role="alert" className="warning-banner">刚才的提交结果待核对。请检查操作记录，本窗口不会重复提交。</p>}
-        {reorderNeedsRefresh && <div className="warning-banner">工作项顺序未保存，请重新读取需求后再拖动排序。<button type="button" className="ghost-button" disabled={reorderReading || reorderItems.isPending} onClick={() => void reloadDirectReorder()}>{reorderReading ? "读取中…" : "重新读取需求"}</button>{reorderReadError && <FormError full={false}>{reorderReadError}</FormError>}</div>}
+        {reorderNeedsRefresh && <div className="warning-banner">工作项顺序未保存，请重新读取需求后再拖动排序。<Button busy={(reorderReading)} aria-label={reorderReading ? "读取中…" : "重新读取需求"} variant="secondary" type="button" className="ghost-button" disabled={reorderReading || reorderItems.isPending} onClick={() => void reloadDirectReorder()}>{"重新读取需求"}</Button>{reorderReadError && <FormError full={false}>{reorderReadError}</FormError>}</div>}
         <div className="work-editor-scroll" ref={editorScrollRef}><table className="work-inline-table">
           <colgroup><col style={{width:42}}/><col style={{width:200}}/><col style={{width:130}}/><col style={{width:150}}/><col style={{width:135}}/><col style={{width:135}}/><col style={{width:135}}/><col style={{width:50}}/></colgroup>
           <thead><tr><th aria-label="拖动排序"/><th>工作项</th><th>主负责人</th><th>协作人员</th><th>计划开始</th><th>计划完成</th><th>状态 / 偏差</th><th>操作</th></tr></thead>
@@ -296,7 +297,7 @@ export function WorkItemSettingsDialog({
                 <td><InlineDateCell {...revisionProps} disabled={itemLocked || settingsUnknown} value={item.plannedEnd} label="计划完成" onSave={(plannedEnd, reason, expectedVersion) => saveWorkItem(item, { plannedEnd, ...(reason ? { reason } : {}) }, expectedVersion)} /></td>
                 <td><div className="work-inline-status"><StatusBadge kind="workItem" value={item.status} /><b className={gap.finishVariance > 0 ? "danger-text" : "safe-text"}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}工作日</b><span className="work-item-inline-progress"><i><b style={{ width: `${item.progress}%` }} /></i>{item.progress}%</span></div></td>
                 <td><div className="work-setting-actions">
-                  {item.status === "not_started" && <button type="button" className="danger" aria-label={`删除${item.title}`} title={canDelete ? "删除" : "已有执行信息或进展历史，不能删除"} disabled={!canDelete || settingsUnknown} onClick={() => { if (!settingsUnknown) setRemoveTarget(item); }}><Trash2 size={14} /></button>}
+                  {item.status === "not_started" && <Button iconOnly variant="secondary" tone="danger" type="button" className="danger" aria-label={`删除${item.title}`} title={canDelete ? "删除" : "已有执行信息或进展历史，不能删除"} disabled={!canDelete || settingsUnknown} onClick={() => { if (!settingsUnknown) setRemoveTarget(item); }}><Trash2 size={14} /></Button>}
                 </div></td>
               </tr>;
             }}
@@ -322,7 +323,7 @@ export function WorkItemSettingsDialog({
           <FormError>{createChanged ? '需求已更新，请重新读取并核对后再保存；新增草稿已保留。' : createReadError || undefined}</FormError>
           <FormError>{newItemHasUnavailablePeople ? '新增工作项选择的人员已不可用，请重新选择负责人或协作人员。' : undefined}</FormError>
           {createRefreshed && <p className="field-help field-full">已读取最新需求（版本 {newItem.baselineVersion}），新增草稿保持不变。</p>}
-          {(createChanged || createNeedsRefresh) && <div className="field-full"><button type="button" className="ghost-button" disabled={createReading || createItem.isPending} onClick={() => void reloadNewItem()}>{createReading ? '读取中…' : '重新读取需求'}</button></div>}
+          {(createChanged || createNeedsRefresh) && <div className="field-full"><Button busy={(createReading)} aria-label={createReading ? '读取中…' : '重新读取需求'} variant="secondary" type="button" className="ghost-button" disabled={createReading || createItem.isPending} onClick={() => void reloadNewItem()}>{'重新读取需求'}</Button></div>}
           <FormSubmitActions submitLabel="保存工作项" pending={createItem.isPending || createReading} disabled={!newItem.title.trim() || createBlocked} onCancel={closeCreation}/>
         </fieldset>
       </form>

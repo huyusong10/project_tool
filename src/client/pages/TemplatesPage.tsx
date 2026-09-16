@@ -1,3 +1,4 @@
+import { Button } from '../components/Button';
 import {useAppSearchParams} from '../use-app-navigation';
 import {usePageResources} from '../page-context';
 import { Pagination } from '../components/Pagination';
@@ -36,8 +37,8 @@ function TemplateCard({ template, isDefault, canManage, archiveDisabled, onPrevi
     <TemplateStats overview={overview} />
     <TemplateOverview overview={overview} />
     <footer className="template-card-actions">
-      <button type="button" className="ghost-button" aria-label={`查看流程 ${template.name}`} onClick={onPreview}>查看详情</button>
-      {canManage && <><button type="button" className="ghost-button" aria-label={`编辑流程 ${template.name}`} onClick={onEdit}><Edit3 size={14} />编辑</button><button type="button" className="icon-button template-archive-button" title="归档流程" aria-label={`归档流程 ${template.name}`} disabled={archiveDisabled} onClick={onArchive}><Archive size={15} /></button></>}
+      <Button variant="secondary" type="button" className="ghost-button" aria-label={`查看流程 ${template.name}`} onClick={onPreview}>查看详情</Button>
+      {canManage && <><Button variant="secondary" type="button" className="ghost-button" aria-label={`编辑流程 ${template.name}`} onClick={onEdit}><Edit3 size={14} />编辑</Button><Button variant="ghost" iconOnly type="button" className="icon-button template-archive-button" title="归档流程" aria-label={`归档流程 ${template.name}`} disabled={archiveDisabled} onClick={onArchive}><Archive size={15} /></Button></>}
     </footer>
   </article>;
 }
@@ -46,7 +47,7 @@ function TemplatePreview({ template, onEdit }: { template: WorkItemTemplate; onE
   const overview = useMemo(() => templateOverview(template), [template]);
   const titles = new Map(overview.nodes.map(item => [item.id, item.title]));
   return <div className="template-preview">
-    <div className="template-preview-heading"><h3>{template.name}</h3>{onEdit && <button type="button" className="primary-button" onClick={onEdit}><Edit3 size={14} />编辑流程</button>}</div>
+    <div className="template-preview-heading"><h3>{template.name}</h3>{onEdit && <Button variant="primary" type="button" className="primary-button" onClick={onEdit}><Edit3 size={14} />编辑流程</Button>}</div>
     <TemplateStats overview={overview} />
     <p className="template-preview-description">{template.description || '暂无用途说明'}</p>
     <ol className="template-preview-items" aria-label="工作项与里程碑详情">{overview.nodes.map(item => <li key={item.id}>
@@ -131,16 +132,16 @@ export function TemplatesPage() {
       <PageHeader
         title="流程设计"
         actions={canManage ? (
-          <button className="primary-button" onClick={() => setEditing(null)}>
+          <Button variant="primary" className="primary-button" onClick={() => setEditing(null)}>
             <Plus size={16} />
             新建流程
-          </button>
+          </Button>
         ) : null}
       />
       <div className="page-content">
-        {archiveRecheck&&<div role="alert" className="warning-banner">“{archiveRecheck.name}”的流程归档结果待核对，其他归档操作暂不可用。<button type="button" className="ghost-button" disabled={archiveRechecking} onClick={()=>void recheckTemplateArchive()}>{archiveRechecking?'读取中…':'重新读取流程与归档'}</button></div>}
-        {error && loadedTemplates && <div className="warning-banner">流程列表刷新失败，当前展示的是上次成功结果。<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button></div>}
-        {listUnavailable ? <EmptyState title="流程列表加载失败" detail={error?.message || "暂时无法读取流程设计。"} action={<button className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</button>} /> : <>
+        {archiveRecheck&&<div role="alert" className="warning-banner">“{archiveRecheck.name}”的流程归档结果待核对，其他归档操作暂不可用。<Button busy={(archiveRechecking)} aria-label={archiveRechecking?'读取中…':'重新读取流程与归档'} variant="secondary" type="button" className="ghost-button" disabled={archiveRechecking} onClick={()=>void recheckTemplateArchive()}>{'重新读取流程与归档'}</Button></div>}
+        {error && loadedTemplates && <div className="warning-banner">流程列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}
+        {listUnavailable ? <EmptyState title="流程列表加载失败" detail={error?.message || "暂时无法读取流程设计。"} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} /> : <>
         <section className="panel paged-panel template-catalog"><div className="paged-body" ref={pagination.scrollRef}><div className="template-grid">
         {pagination.items.map(template => <TemplateCard key={template.id} template={template} isDefault={project?.defaultTemplateId === template.id} canManage={canManage} archiveDisabled={Boolean(archiveRecheck)} onPreview={() => setPreview(template)} onEdit={() => setEditing(template)} onArchive={() => { if (!archiveRecheck) { archive.reset(); setArchiveTarget(template); } }} />)}
         </div></div><Pagination {...pagination.props} label="流程列表分页" /></section>

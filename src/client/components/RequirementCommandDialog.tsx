@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import {assertCleanRequirementDraft} from '../use-graph-draft';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -163,15 +164,15 @@ export function RequirementCommandDialog({ action, requirement, recheck, onReche
       {action === 'archive' && <p>需求将从日常页面隐藏，历史数据仍会保留并可在归档中心恢复。</p>}
       {needsText && <FormField label="取消说明（可选）" full><textarea rows={2} disabled={pending} value={text} onChange={(event) => setText(event.target.value)} /></FormField>}
       <FormError>{mutation.error?.message}</FormError>
-      {reviewRequired&&<div className="warning-banner">提交结果仍待核对，当前版本已变化。本窗口不再提交；请核对执行记录，已填说明保留。<button type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</button></div>}
+      {reviewRequired&&<div className="warning-banner">提交结果仍待核对，当前版本已变化。本窗口不再提交；请核对执行记录，已填说明保留。<Button variant="secondary" type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</Button></div>}
       <FormError>{warning}</FormError>
       <FormError>{changed ? '需求已更新，请重新读取并核对后再确认；原确认内容已保留。' : undefined}</FormError>
       <FormError>{readError?.message}</FormError>
       {refreshed && <p>已读取最新需求（版本 {baseline.version}），请核对后再确认。{needsText && '已填写的说明保持不变。'}</p>}
-      {(changed || needsRefresh) && <div><button type="button" className="ghost-button" disabled={pending} onClick={() => void readLatest()}>重新读取需求</button></div>}
+      {(changed || needsRefresh) && <div><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void readLatest()}>重新读取需求</Button></div>}
       <div className="form-actions">
-        <button type="button" className="ghost-button" disabled={pending} onClick={close}>取消</button>
-        <button autoFocus={!needsText} className={`primary-button${action === 'cancel' || action === 'archive' ? ' danger-button' : ''}`} disabled={pending || blocked}>{pending ? '处理中…' : commands[action].confirm}</button>
+        <Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={close}>取消</Button>
+        <Button busy={(pending)} aria-label={pending ? '处理中…' : commands[action].confirm} tone={action === "cancel" || action === "archive" ? "danger" : "primary"} variant="soft" type="submit" autoFocus={!needsText} className={`primary-button${action === 'cancel' || action === 'archive' ? ' danger-button' : ''}`} disabled={pending || blocked}>{commands[action].confirm}</Button>
       </div>
     </form>
   </Modal>;
