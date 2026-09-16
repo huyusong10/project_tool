@@ -6,7 +6,7 @@ export type DragPreviewData = {title: string; detail?: string; count?: number; k
 
 /** Reuse the visible object's name/header, including its icon, typography and colours. */
 function sourcePreview(source: HTMLElement, data: DragPreviewData) {
-  const original=source.querySelector<HTMLElement>('.work-item-name-editor .inline-edit-cell,.analytics-panel>header')
+  const original=source.querySelector<HTMLElement>('.work-arrangement-heading,.work-item-name-editor .inline-edit-cell,.analytics-panel>header')
     || source.closest('tr')?.querySelector<HTMLElement>('.outline-name') || source;
   const copy=original.cloneNode(true) as HTMLElement;
   const originals=[original,...original.querySelectorAll<HTMLElement>('*')];
@@ -17,20 +17,21 @@ function sourcePreview(source: HTMLElement, data: DragPreviewData) {
     for(const attribute of [...target.attributes])if(attribute.name==='id'||attribute.name.startsWith('aria-')||attribute.name.startsWith('data-'))target.removeAttribute(attribute.name);
     target.removeAttribute('tabindex');target.style.transition='none';target.style.animation='none';
   });
-  copy.querySelectorAll('.outline-expand,.workspace-enter,.analytics-panel-actions,.inline-edit-chevron').forEach(element=>element.remove());
+  copy.querySelectorAll('.outline-expand,.workspace-enter,.analytics-panel-actions,.inline-edit-chevron,.work-arrangement-order,.sortable-drag-handle').forEach(element=>element.remove());
   Object.assign(copy.style,{position:'static',transform:'none',opacity:'1',width:'100%',minWidth:'0',maxWidth:'100%',height:'auto',margin:'0',paddingInlineStart:'0',boxShadow:'none'});
   const body=document.createElement('div');body.className='drag-preview-object';body.append(copy);
   if((data.count||1)>1){const count=document.createElement('span');count.className='drag-preview-count';count.textContent=String(data.count)+' 项';body.append(count);}
+  if(data.kind==='work'&&data.detail){const detail=document.createElement('small');detail.className='drag-preview-detail';detail.textContent=data.detail;body.append(detail);}
   return body;
 }
 
-export function DragPreview({title,count,kind}: DragPreviewData) {
+export function DragPreview({title,count,kind,detail}: DragPreviewData) {
   const root=useRef<HTMLDivElement>(null),{activeNode}=useDndContext();
   useLayoutEffect(()=>{
     if(!root.current)return;
-    if(activeNode)root.current.replaceChildren(sourcePreview(activeNode,{title,count}));
+    if(activeNode)root.current.replaceChildren(sourcePreview(activeNode,{title,count,kind,detail}));
     else root.current.textContent=title;
-  },[activeNode,title,count]);
+  },[activeNode,title,count,kind,detail]);
   return <div ref={root} className="drag-preview" data-sortable-drag-preview data-kind={kind} aria-hidden="true" inert/>;
 }
 

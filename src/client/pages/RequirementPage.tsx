@@ -1,3 +1,4 @@
+import {ObjectDependencies} from '../components/ObjectDependencies';
 import {useDeliveryForm} from '../use-delivery-form';
 import {WorkItemObjectDetails} from '../components/WorkItemObjectDetails';
 import { Button } from '../components/Button';
@@ -332,17 +333,12 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
           {requirement.progressUpdates?.length ? <Chart option={progressOption} height={270} ariaLabel="需求计划与实际进度趋势" /> : <EmptyState title="暂无趋势" detail="产生执行记录后自动生成趋势图。" />}
         </article>
       </section></>;
-  const dependencies = workspace?.data.dependencies.filter(edge => edge.sourceRequirementId === id || edge.targetRequirementId === id) || [];
   return <div className={embedded ? "requirement-page embedded-requirement" : "page-content requirement-page"}>
     <DetailWorkspace label="需求详情" initialTab="overview" tabs={[
       {id: 'overview', label: '概况', actions: requirementHeader, content: <>{notices}<RequirementOverview requirement={requirement} compact={embedded}/></>},
       {id: 'work', label: `工作项 ${requirement.workItems.length}`, content: workList},
       {id: 'basic', label: '资料', actions:requirementHeader, content: <><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未分派阶段'}</dd></div><div className="object-fact-wide"><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div className="object-fact-wide"><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div><div><dt>来源</dt><dd>{requirement.sourceNotes||'尚未填写'}</dd></div>{requirement.referenceUrl&&<div><dt>文档</dt><dd><a href={requirement.referenceUrl} target="_blank" rel="noreferrer">打开资料</a></dd></div>}</dl>{!!requirement.readinessIssues?.length && <p className="object-info-note">{requirement.readinessIssues.join('；')}</p>}</>},
-      {id: 'dependencies', label: '依赖', actions: <Button variant="secondary" onClick={openPathView}>在关系图中维护依赖</Button>, content: <>
-        {dependencies.map(edge => {const incoming = edge.targetRequirementId === id, otherId = incoming ? edge.sourceRequirementId : edge.targetRequirementId, other = workspace?.data.requirements.find(item => item.id === otherId); return <article className="detail-dependency" key={edge.id}><span>{incoming ? '前置' : '后续'} · </span><Button variant="link" className="text-button" onClick={() => workspace?.inspect(otherId)}>{other?.title || otherId}</Button></article>;})}
-        {!dependencies.length && <p className="muted-text">{workspace ? '当前没有需求间依赖。' : '在关系图中查看需求及工作项依赖。'}</p>}
-        {requirement.workItems.filter(item => item.unmetPredecessors?.length).map(item => <p key={item.id}>{item.title}：等待 {item.unmetPredecessors!.map(predecessor => predecessor.title).join('、')}</p>)}
-      </>},
+      {id: 'dependencies', label: '依赖', actions: <Button variant="secondary" onClick={openPathView}>在关系图中维护依赖</Button>, content: <ObjectDependencies requirementId={id} onOpenGraph={openPathView}/>},
       {id: 'history', label: '记录', content: history},
     ]}>
       {modal === "info" && (

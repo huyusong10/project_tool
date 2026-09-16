@@ -250,4 +250,13 @@
 
 .workspace-progress-tools input {text-align:left}
 
+/* Every row reserves the same primary action and menu slots. */
+.unified-workspace .workspace-gantt-grid {--row-actions:148px}
+.unified-workspace .workspace-gantt .workspace-row-actions .workspace-row-tools {display:grid;grid-template-columns:96px 30px;gap:6px;align-items:center;width:132px;min-width:132px;height:32px}
+.unified-workspace .workspace-gantt .workspace-row-actions .work-item-actions {grid-column:1/-1;width:132px;display:block}
+.unified-workspace .workspace-gantt .workspace-row-actions .work-item-action-row {display:grid;grid-template-columns:96px 30px;gap:6px;width:132px;align-items:center}
+.unified-workspace .workspace-gantt .workspace-row-actions .action-menu-trigger {grid-column:2}
+.unified-workspace .workspace-gantt .workspace-row-actions .work-next-action {grid-column:1}
+@media(max-width:600px){.unified-workspace .workspace-gantt-grid{--row-actions:140px}}
+
 }

@@ -11,7 +11,7 @@ import { workStageLabels, workStages, type WorkStage } from "../../shared/execut
 import {isAssignablePerson} from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { GripVertical, Plus, Trash2 } from "lucide-react";
+import { ArrowUp, ArrowDown, GripVertical, Plus, Trash2 } from "lucide-react";
 import { api, ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { invalidateRequirementViews } from "../query-keys";
 import type { Person, Requirement, WorkItem } from "../types";
@@ -262,6 +262,17 @@ export function WorkItemSettingsDialog({
     }catch(error){setReorderReadError(error instanceof Error?error.message:'读取失败');}finally{setReorderReading(false);}
   };
 
+  const orderDisabledReason = requirementLocked
+    ? `需求${{pending_acceptance:'待验收',completed:'已完成',cancelled:'已取消'}[requirement.status as 'pending_acceptance'|'completed'|'cancelled']}，暂不能新增、调整安排或排序。重新打开需求后可继续。`
+    : !canEdit ? '当前无编辑权限或有待核对的修改，暂不能调整安排或排序。'
+    : settingsUnknown || reorderNeedsRefresh ? '请先核对刚才的操作结果，再调整顺序。'
+    : reorderItems.isPending || reorderReading ? '正在保存或读取顺序，请稍候。' : '';
+  const moveItem = (index:number, direction:number) => {
+    if(orderDisabledReason)return;
+    const next=[...requirement.workItems],target=index+direction;
+    if(target<0||target>=next.length)return;
+    [next[index],next[target]]=[next[target],next[index]];reorderWorkItems(next);
+  };
   const closeSettings = () => {
     if (createSubmitting.current || reorderSubmitting.current || createReadingRef.current || reorderReadingRef.current) return;
     onClose();
@@ -275,13 +286,14 @@ export function WorkItemSettingsDialog({
   const content = <>
       <div className="work-editor-modal">
         {!itemId&&<DetailToolbar><div className="work-editor-modal-toolbar">
-          <span>工作项安排与执行</span>
+          <span>{requirement.workItems.length} 个工作项 · {orderDisabledReason?'当前安排已锁定':'拖动手柄或使用上下移调整顺序'}</span>
           <div className="panel-actions">
             {canEdit&&onOpenDependencies&&<Button variant="secondary" className="ghost-button" disabled={settingsUnknown} onClick={onOpenDependencies}>前置关系与工期</Button>}
             {canEdit&&canManageRequirement && (!requirement.workItems.length || requirement.workItems.some((item) => !['completed', 'cancelled'].includes(item.status) && (!item.plannedStart || !item.plannedEnd))) && <Button variant="secondary" className="ghost-button" disabled={settingsUnknown} onClick={onOpenPlan}>补全计划</Button>}
-            <Button variant="primary" className="primary-button" disabled={!canEdit || settingsUnknown || createItem.isPending || createReading} onClick={startNewItem}><Plus size={15} />添加工作项</Button>
+            <Button variant="primary" className="primary-button" disabled={!canEdit || settingsUnknown || createItem.isPending || createReading} title={orderDisabledReason||undefined} onClick={startNewItem}><Plus size={15} />添加工作项</Button>
           </div>
         </div></DetailToolbar>}
+        {!itemId&&orderDisabledReason&&<p className="work-order-notice" role="status">{orderDisabledReason}</p>}
         <FormError full={false}>{reorderItems.error?.message}</FormError>
         {settingsUnknown&&<p role="alert" className="warning-banner">刚才的提交结果待核对。请检查操作记录，本窗口不会重复提交。<Button variant="secondary" disabled={createItem.isPending||reorderItems.isPending||reorderReading} onClick={()=>void recheckOperation()}>核对本次操作</Button></p>}
         {reorderReadError&&!reorderNeedsRefresh&&<p role="alert">{reorderReadError}</p>}
@@ -291,7 +303,7 @@ export function WorkItemSettingsDialog({
             items={itemId?requirement.workItems.filter(item=>item.id===itemId):requirement.workItems}
             getId={(item) => item.id}
             getPreview={item => ({title:item.title, detail:[item.ownerName || '未分派', item.plannedStart || '待排期', item.plannedEnd || '待定'].join(' · '), kind:'work'})}
-            disabled={!canEdit || !!itemId || reorderItems.isPending || settingsUnknown || reorderNeedsRefresh || reorderReading}
+            disabled={!!orderDisabledReason || !!itemId}
             onReorder={reorderWorkItems}
             renderItem={(item, _index, sortable) => {
               const gap = calculateWorkItemGap(item, requirement.asOfDate);
@@ -310,7 +322,7 @@ export function WorkItemSettingsDialog({
               const revisionProps = { revision: item.version, revisionSubject: "工作项", onReloadRevision: () => reloadWorkItemRevision(item.id) };
               const canDelete = canDeleteWorkItem(item, workItemHistoryIds.has(item.id));
               return <article ref={sortable.setNodeRef} data-work-id={item.id} className={`work-arrangement-row sortable-item${sortable.isDragging ? " is-dragging" : ""}${sortable.isOver ? " is-over" : ""}`}>
-                {!itemId&&<div className="work-arrangement-heading"><button type="button" className="sortable-drag-handle" aria-label={`拖动${item.title}调整顺序`} title="拖动排序；空格选中、方向键移动、空格放下，Esc 取消" disabled={!canEdit || !!itemId || reorderItems.isPending || settingsUnknown || reorderNeedsRefresh || reorderReading} {...sortable.handleAttributes} {...sortable.handleListeners}><GripVertical size={16} /></button><WorkspaceObjectMark kind="work" status={item.status}/><button className="detail-work-row-title" onClick={()=>onInspect?.(item.id)}><strong>{item.title}</strong></button></div>}
+                {!itemId&&<div className="work-arrangement-heading"><button type="button" className="sortable-drag-handle" aria-label={`拖动${item.title}调整顺序`} title={orderDisabledReason||"拖动排序；空格选中、方向键移动、空格放下，Esc 取消"} disabled={!!orderDisabledReason || !!itemId} {...sortable.handleAttributes} {...sortable.handleListeners}><GripVertical size={16} /></button><WorkspaceObjectMark kind="work" status={item.status}/><button className="detail-work-row-title" onClick={()=>onInspect?.(item.id)}><strong>{item.title}</strong></button><span className="work-arrangement-state"><StatusBadge kind="workItem" value={item.status} />{gap.finishVariance!==0&&<small className={gap.finishVariance>0?'danger-text':'safe-text'}>{gap.finishVariance>0?'延期 ':'提前 '}{Math.abs(gap.finishVariance)}工作日</small>}</span><span className="work-arrangement-order"><Button variant="ghost" size="compact" iconOnly title={orderDisabledReason||'上移'} aria-label={'上移'+item.title} disabled={!!orderDisabledReason||_index===0} onClick={()=>moveItem(_index,-1)}><ArrowUp size={14}/></Button><Button variant="ghost" size="compact" iconOnly title={orderDisabledReason||'下移'} aria-label={'下移'+item.title} disabled={!!orderDisabledReason||_index===requirement.workItems.length-1} onClick={()=>moveItem(_index,1)}><ArrowDown size={14}/></Button></span></div>}
                 <div className="work-arrangement-fields">
 {itemId&&<label className="work-arrangement-field"><span>名称与阶段</span><div><div className="work-item-name-editor"><InlineTextCell {...revisionProps} disabled={itemLocked || settingsUnknown} value={item.title} label="工作项名称" required onSave={(title, expectedVersion, reason) => saveWorkItem(item, { title, ...(reason ? { reason } : {}) }, expectedVersion)} /><InlineSelectCell {...revisionProps} disabled={itemLocked || settingsUnknown} value={item.workStage || ""} label="工作阶段" options={[{value:"",label:"未分类"},...workStages.map(value=>({value,label:workStageLabels[value]}))]} onSave={(workStage,reason,expectedVersion)=>saveWorkItem(item,{workStage:workStage as WorkStage || null,...reason?{reason}:{}},expectedVersion)}/></div></div></label>}
 <label className="work-arrangement-field"><span>负责人</span><div><InlineSelectCell {...revisionProps} disabled={itemLocked || settingsUnknown} value={item.ownerId} label="主负责人" options={[{ value: "", label: "未分配" }, ...assignmentOptions]} onSave={(ownerId, reason, expectedVersion) => saveWorkItem(item, { ownerId: ownerId || null, assigneeIds: [ownerId, ...item.collaborators.map((person) => person.id).filter((personId) => personId !== ownerId)].filter(Boolean), ...(reason ? { reason } : {}) }, expectedVersion)} placeholder="未分配" /></div></label>
@@ -318,9 +330,7 @@ export function WorkItemSettingsDialog({
 <label className="work-arrangement-field"><span>计划开始</span><div><InlineDateCell {...revisionProps} disabled={itemLocked || settingsUnknown} value={item.plannedStart} label="计划开始" onSave={(plannedStart, reason, expectedVersion) => saveWorkItem(item, { plannedStart, ...(reason ? { reason } : {}) }, expectedVersion)} /></div></label>
 <label className="work-arrangement-field"><span>计划完成</span><div><InlineDateCell {...revisionProps} disabled={itemLocked || settingsUnknown} value={item.plannedEnd} label="计划完成" onSave={(plannedEnd, reason, expectedVersion) => saveWorkItem(item, { plannedEnd, ...(reason ? { reason } : {}) }, expectedVersion)} /></div></label>
                 </div>
-                <div className="work-arrangement-execution"><div className="work-inline-status"><StatusBadge kind="workItem" value={item.status} /><b className={gap.finishVariance > 0 ? "danger-text" : "safe-text"}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}工作日</b><span className="work-item-inline-progress"><i><b style={{ width: `${item.progress}%` }} /></i>{item.progress}%</span></div>{!itemId&&<WorkItemExecution requirement={requirement} item={item} people={people} extraMenu={canEdit?<><Button variant="menu" disabled={reorderItems.isPending||settingsUnknown||reorderNeedsRefresh||reorderReading||_index===0} onClick={()=>{const next=[...requirement.workItems];[next[_index-1],next[_index]]=[next[_index],next[_index-1]];reorderWorkItems(next);}}>上移</Button><Button variant="menu" disabled={reorderItems.isPending||settingsUnknown||reorderNeedsRefresh||reorderReading||_index===requirement.workItems.length-1} onClick={()=>{const next=[...requirement.workItems];[next[_index],next[_index+1]]=[next[_index+1],next[_index]];reorderWorkItems(next);}}>下移</Button><Button variant="menu" tone="danger" disabled={!canDelete||settingsUnknown||item.status!=="not_started"} onClick={()=>setRemoveTarget(item)}>删除工作项</Button></>:undefined}>{({progress,actions})=><><div>{progress}</div><div className="work-actions">{actions}</div></>}</WorkItemExecution>}{canEdit&&itemId&&<div className="work-setting-actions">
-                  {item.status === "not_started" && <Button iconOnly variant="secondary" tone="danger" type="button" className="danger" aria-label={`删除${item.title}`} title={canDelete ? "删除" : "已有执行信息或进展历史，不能删除"} disabled={!canDelete || settingsUnknown} onClick={() => { if (!settingsUnknown) setRemoveTarget(item); }}><Trash2 size={14} /></Button>}
-                </div>}</div>
+                <div className="work-arrangement-execution">{!itemId&&<WorkItemExecution requirement={requirement} item={item} people={people} presentation="detail" extraMenu={canEdit&&item.status==='not_started'?<Button variant="ghost" tone="danger" size="compact" disabled={!canDelete||settingsUnknown} title={canDelete?'删除工作项':'已有执行信息或进展历史，不能删除'} onClick={()=>setRemoveTarget(item)}>删除</Button>:undefined}>{({progress,actions})=><>{progress}{actions}</>}</WorkItemExecution>}{canEdit&&itemId&&item.status==='not_started'&&<Button variant="secondary" tone="danger" size="compact" title={canDelete?'删除工作项':'已有执行信息或进展历史，不能删除'} disabled={!canDelete||settingsUnknown} onClick={()=>setRemoveTarget(item)}><Trash2 size={14}/>删除工作项</Button>}</div>
               </article>;
             }}
           />

@@ -156,7 +156,7 @@ export function SortableList<T>({ items, getId, onReorder, renderItem, getPrevie
         renderItem={renderItem}
       />;
     })}
-    {typeof document !== 'undefined' && createPortal(<DragOverlay dropAnimation={null} zIndex={1000} modifiers={[previewAtHandle]}>
+    {typeof document !== 'undefined' && createPortal(<DragOverlay dropAnimation={null} style={{zIndex:'var(--z-drag)'}} modifiers={[previewAtHandle]}>
       {activeId && items.find((item, index) => getId(item, index) === activeId) !== undefined && <DragPreview {...getPreview(items[ids.indexOf(activeId)])}/>}
     </DragOverlay>, document.body)}
   </DndContext>;

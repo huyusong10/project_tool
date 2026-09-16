@@ -29,9 +29,9 @@ test('旧需求链接接入弹窗，直接进展和拆分基线保留，工作�
   let current=await detail(page,f.direct.id);expect(current.splitBaseProgress).toBe(30);expect(current.progress).toBe(30);
   const item=current.workItems[0],row=root.locator('[data-work-id="'+item.id+'"]');await row.getByRole('button',{name:'开始',exact:true}).click();
   const assignment=root.getByRole('region',{name:'选择负责人并开始',exact:true});await chooseOption(assignment.getByLabel('工作项负责人',{exact:true}),f.testing.ownerId!);await assignment.getByRole('button',{name:'返回',exact:true}).click();await row.getByRole('button',{name:'开始',exact:true}).click();await expect(assignment.getByLabel('工作项负责人',{exact:true})).toContainText(f.testing.ownerName!);await assignment.getByRole('button',{name:'开始',exact:true}).click();await expect(assignment).toHaveCount(0);
-  await expect(row.getByRole('button',{name:'完成',exact:true})).toBeVisible();await row.getByRole('button',{name:'完成',exact:true}).click();await expect(row.getByRole('img',{name:'已完成',exact:true}).first()).toBeVisible();
+  await expect(row.getByRole('button',{name:'完成',exact:true})).toBeVisible();await row.getByRole('button',{name:'完成',exact:true}).click();await expect(row.locator('.work-arrangement-state').getByText('已完成',{exact:true})).toBeVisible();
   current=await detail(page,f.direct.id);expect(current.status).toBe('completed');expect(current.progress).toBe(100);
-  await row.getByRole('button',{name:'更多工作项操作',exact:true}).click();await root.getByRole('button',{name:'重开/返工',exact:true}).click();await expect(row.getByRole('button',{name:'完成',exact:true})).toBeVisible();expect((await detail(page,f.direct.id)).status).toBe('in_progress');
+  await root.getByRole('button',{name:'重开/返工',exact:true}).click();await expect(row.getByRole('button',{name:'完成',exact:true})).toBeVisible();expect((await detail(page,f.direct.id)).status).toBe('in_progress');
 });
 
 test('图形草稿属性在同一外壳编辑，关闭刷新不写入正式资料',async({page})=>{
@@ -53,5 +53,5 @@ test('工作项未知提交保存原文，刷新后先核对，不重复完成',
   await row.getByRole('button',{name:'完成',exact:true}).click();await expect(row.getByRole('button',{name:'重新读取工作项',exact:true})).toBeVisible();
   const saved=await page.evaluate(id=>Object.entries(sessionStorage).find(([key])=>key.endsWith(id+':action-receipt'))?.[1],item.id);expect(JSON.parse(saved!)).toEqual({action:'complete',expectedVersion:item.version,body:{}});
   await page.reload();await row.getByRole('button',{name:'重新读取工作项',exact:true}).click();await expect(row.getByRole('button',{name:'已核对，结束本次操作',exact:true})).toBeVisible();expect(writes).toBe(1);expect((await detail(page,f.testing.id)).workItems.find(w=>w.id===item.id)?.status).toBe('completed');
-  await row.getByRole('button',{name:'已核对，结束本次操作',exact:true}).click();await expect(row.getByRole('button',{name:'更多工作项操作',exact:true})).toBeVisible();expect(await page.evaluate(id=>Object.keys(sessionStorage).some(key=>key.endsWith(id+':action-receipt')),item.id)).toBe(false);expect(writes).toBe(1);
+  await row.getByRole('button',{name:'已核对，结束本次操作',exact:true}).click();await expect(row.getByRole('button',{name:'重开/返工',exact:true})).toBeVisible();expect(await page.evaluate(id=>Object.keys(sessionStorage).some(key=>key.endsWith(id+':action-receipt')),item.id)).toBe(false);expect(writes).toBe(1);
 });

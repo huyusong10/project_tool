@@ -3,5 +3,7 @@
 .drag-preview{box-sizing:border-box;width:300px;max-width:calc(100vw - 24px);padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface);color:var(--text-primary);box-shadow:0 4px 12px #15284022;opacity:.94;pointer-events:none;font:13px/1.5 var(--font-sans)}
 .drag-preview-object{display:flex;align-items:center;gap:12px;min-width:0}.drag-preview-object>:first-child{flex:1;min-width:0}.drag-preview-count{flex:none;font-size:12px;color:var(--text-muted);white-space:nowrap}
 .drag-preview-native{position:fixed;top:0;left:0;z-index:10000}
+.drag-preview[data-kind=work] .drag-preview-object {flex-wrap:wrap;gap:4px}
+.drag-preview-detail {flex:1 0 100%;color:var(--text-muted);font-size:12px;padding-left:24px}
 
 }
