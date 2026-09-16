@@ -4,7 +4,7 @@ import { normalizeSearchText } from '../shared/search';
 
 export type AccountRole = 'user' | 'admin';
 export type Actor = {
-  type: 'user' | 'token';
+  type: 'user' | 'token' | 'guest';
   id: string;
   label: string;
   accountId?: string;

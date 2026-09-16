@@ -63,6 +63,7 @@ export const loginInputSchema = z.object({
 }).strict();
 
 export const projectInputSchema = z.object({
+  guestVisible: z.boolean().optional(),
   name: z.string().trim().min(1).optional(),
   plannedStart: optionalDateSchema,
   plannedEnd: optionalDateSchema,

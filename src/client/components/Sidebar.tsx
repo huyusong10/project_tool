@@ -40,10 +40,11 @@ function NavigationTooltip({ value }: { value: TooltipState | null }) {
 
 export function Sidebar({ collapsed, onToggle, onNavigate, branding, ready }: { collapsed: boolean; onToggle: () => void; onNavigate?: () => void; branding?: SystemBranding; ready: boolean }) {
   const { session } = useSession();
-  const { selectedProjectId } = useProjects();
+  const { selectedProjectId, projects } = useProjects();
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const groups = navGroupsFor({
     authenticated: session.authenticated,
+    workspaceOnly: projects.find(p => p.id === selectedProjectId)?.publicReadOnly,
     admin: isAdmin(session),
     managesCurrentProject: canManageProject(session, selectedProjectId),
   });

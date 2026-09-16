@@ -253,6 +253,13 @@
       "when": 1789516800000,
       "tag": "0035_reference_links",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1789603300000,
+      "tag": "0037_guest_browsing",
+      "breakpoints": true
     }
   ]
 }

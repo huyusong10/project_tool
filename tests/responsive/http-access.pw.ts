@@ -21,9 +21,9 @@ test('局域网 HTTP 可登录、恢复会话、保存流程、导入需求和�
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(origin.href);
   expect(await page.evaluate(() => ({ secure: isSecureContext, uuid: typeof crypto.randomUUID }))).toEqual({ secure: false, uuid: 'undefined' });
-  await expect(page.getByRole('heading', { name: '登录项目工作台', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '暂未开放游客浏览', exact: true })).toBeVisible();
   await expect(page.getByRole('region', {name:'页面工具栏',exact:true})).toHaveCount(0);
-  await page.getByRole('button', { name: '用户登录', exact: true }).first().click();
+  await page.getByRole('button', { name: '游客登录', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('用户名', { exact: true }).fill('admin');
   await dialog.getByLabel('密码', { exact: true }).fill('41_xc7q0qOjo4Inw!');

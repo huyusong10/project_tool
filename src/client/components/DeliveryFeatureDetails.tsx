@@ -17,8 +17,8 @@ import {OverviewIntroduction} from './OverviewIntroduction';
 
 export function DeliveryFeatureDetails({feature,phaseId,onEnter,onPhase}:{feature:FeatureOverview;phaseId?:string|null;onEnter:(stage?:string)=>void;onPhase:()=>void}){
   const {session}=useSession(),account=session.accountId||'guest',workspace=useProjectWorkspace(),manage=canManageProject(session,feature.projectId),system=feature.kind==='other';
-  const [edit,setEdit]=useDeliveryForm<FeatureEdit|null>(feature.projectId,(phaseId||feature.id)+':feature-action',()=>readFeaturePending(account,feature.projectId));
-  const [phaseEdit,setPhaseEdit]=useDeliveryForm<PhaseEdit|null>(feature.projectId,(phaseId||feature.id)+':phase-action',()=>readPendingPhase(account,feature.projectId)?.edit||null);
+  const [edit,setEdit]=useDeliveryForm<FeatureEdit|null>(feature.projectId,(phaseId||feature.id)+':feature-action',()=>manage?readFeaturePending(account,feature.projectId):null);
+  const [phaseEdit,setPhaseEdit]=useDeliveryForm<PhaseEdit|null>(feature.projectId,(phaseId||feature.id)+':phase-action',()=>manage?readPendingPhase(account,feature.projectId)?.edit||null:null);
   const [creating,setCreating]=useDeliveryForm(feature.projectId,(phaseId||feature.id)+':create-requirement',()=>false);
   const [recheck,setRecheck]=useState(()=>readRequirementCreateRecheck(account,feature.projectId));
   const phase=feature.phases?.find(p=>p.id===phaseId),phases=phase?[phase]:feature.phases||[];

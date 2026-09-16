@@ -21,7 +21,7 @@ import type {PageScope} from './page-foundation';
 export type {PageScope} from './page-foundation';
 export type RouteAccess = "all" | "manager" | "admin";
 export type NavIcon = ComponentType<SVGProps<SVGSVGElement> & { size?: string | number }>;
-export type NavVisibilityContext = { admin: boolean; managesCurrentProject: boolean };
+export type NavVisibilityContext = { admin: boolean; managesCurrentProject: boolean; workspaceOnly?: boolean };
 
 export type NavEntry = {
   group: string;
@@ -143,6 +143,10 @@ export const appRoutes: AppRoute[] = [
   },
 ];
 
+export function isGuestRoute(pathname: string) {
+  return ['/', '/features', '/requirements', '/paths', '/execution'].includes(pathname) || /^\/requirements\/[^/]+$/.test(pathname);
+}
+
 export function matchRoute(pathname: string): AppRoute | undefined {
   return appRoutes.find((def) => {
     if (def.path === pathname) return true;
@@ -162,9 +166,10 @@ export type NavGroup = { label: string; items: NavItem[] };
 
 /** 由路由清单生成侧边栏导航分组（保持清单顺序）。 */
 export function navGroupsFor(context: NavVisibilityContext & { authenticated: boolean }): NavGroup[] {
-  if (!context.authenticated) return [];
+
   const groups = new Map<string, NavGroup>();
   for (const route of appRoutes) {
+    if (!context.authenticated && route.path !== '/' || context.workspaceOnly && route.scope === 'project' && route.path !== '/') continue;
     for (const entry of route.nav ?? []) {
       if (entry.visible && !entry.visible(context)) continue;
       const group = groups.get(entry.group) ?? { label: entry.group, items: [] };

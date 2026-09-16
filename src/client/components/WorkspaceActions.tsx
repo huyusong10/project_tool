@@ -55,11 +55,11 @@ export function useWorkspaceActions({data,location,inspect,onImport}:{data:PathA
     {scope.kind==='requirement'?<Button variant="secondary" onClick={()=>setWorkId(scope.id)}>新建工作项</Button>:<Button variant="secondary" onClick={newRequirement}>新建需求</Button>}
     {feature&&feature.kind!=='other'&&scope.kind!=='requirement'&&<Button variant="secondary" onClick={()=>setPhaseEdit({feature,phase,mode:'placement'})}>移入需求</Button>}
   </div>:null;
-  const dialogs=<>
+  const dialogs=manage?<>
     {featureEdit&&<FeatureEditor projectId={projectId} edit={featureEdit} onClose={()=>setFeatureEdit(null)}/>}
     {phaseEdit&&<PhaseDialog key={(phaseEdit.phase?.id||phaseEdit.feature.id)+phaseEdit.mode} edit={phaseEdit} onClose={()=>setPhaseEdit(null)}/>}
     {(creating||recheck)&&<RequirementForm projectId={projectId} defaultFeatureId={feature?.id} defaultPhaseId={phase?.id} initialRequirementIds={data.requirements.map(r=>r.id)} recheck={recheck} onRecheckChange={value=>{setRecheck(value);persistRequirementCreateRecheck(account,projectId,value);}} onClose={()=>setCreating(false)}/>}
     {workId&&<CreateWorkItemDialog requirementId={workId} projectId={projectId} onClose={()=>setWorkId('')} onDetails={()=>{setWorkId('');inspect(workId);}} onInspect={id=>{setWorkId('');inspect(id);}}/>}
-  </>;
+  </>:null;
   return {createMenu,moreActions,emptyActions,dialogs,requirementAction,clearRequirementAction:()=>setRequirementAction(null)};
 }

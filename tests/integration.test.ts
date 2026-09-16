@@ -53,8 +53,8 @@ afterAll(async () => {
 });
 
 describe('自动化项目管理API', () => {
-  it('未登录用户不能读取或写入业务数据', async () => {
-    expect((await app.inject({ method: 'GET', url: '/api/projects' })).statusCode).toBe(401);
+  it('未登录用户只看到开放项目，不能写入业务数据', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/projects' })).json()).toEqual([]);
     expect((await app.inject({ method: 'POST', url: '/api/projects', payload: { name: '无权限' } })).statusCode).toBe(401);
   });
 
@@ -544,7 +544,7 @@ describe('自动化项目管理API', () => {
 
     const visibleProjects = await app.inject({ method: 'GET', url: '/api/projects', headers: { cookie: outsiderCookie } });
     expect(visibleProjects.json().map((item: { id: string }) => item.id)).toEqual([isolatedProjectId]);
-    expect((await app.inject({ method: 'GET', url: `/api/requirements?projectId=${projectId}`, headers: { cookie: outsiderCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: `/api/requirements?projectId=${projectId}`, headers: { cookie: outsiderCookie } })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie: outsiderCookie } })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: `/api/issues/${issueId}`, headers: { cookie: outsiderCookie } })).statusCode).toBe(404);
     expect((await app.inject({ method: 'POST', url: '/api/analytics/query', headers: { cookie: outsiderCookie }, payload: {

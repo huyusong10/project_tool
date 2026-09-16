@@ -20,6 +20,7 @@ export const projects = sqliteTable('projects', {
   plannedStart: text('planned_start'),
   plannedEnd: text('planned_end'),
   defaultTemplateId: text('default_template_id'),
+  guestVisible: integer('guest_visible', { mode: 'boolean' }).notNull().default(false),
   analysisRevision: integer('analysis_revision').notNull().default(0),
   ...timestamps,
   deletedAt: text('deleted_at'),

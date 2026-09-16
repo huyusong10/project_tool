@@ -120,3 +120,5 @@
 .workspace-overview-scope{font-size:12px;color:var(--text-muted);white-space:nowrap}
 
 }
+
+.guest-project-list{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;margin:20px 0}.guest-project-list .ui-button{max-width:100%;white-space:normal}

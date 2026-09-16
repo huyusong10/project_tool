@@ -1,4 +1,6 @@
-import type {Session,Person,Requirement,WorkItem} from './types';
+import type {Session,Person,Requirement,WorkItem,Project} from './types';
+
+export const isGuestWorkspace = (session: Session, project?: Project) => !session.authenticated || Boolean(project?.publicReadOnly);
 
 export const isAdmin = (session: Session) => session.globalRole === 'admin';
 export const canManageProject = (session: Session, projectId: string) =>

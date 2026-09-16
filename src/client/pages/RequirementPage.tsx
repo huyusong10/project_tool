@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { api, ApiError } from "../api";
 import { clearProjectGraphDrafts } from "../use-graph-draft";
-import { useProjects, useSession } from "../app-context";
+import { useGuestWorkspace, useProjects, useSession } from "../app-context";
 import { keys } from "../query-keys";
 import { useResourceQuery } from "../use-resource-query";
 import { formatDateTime } from "../format";
@@ -101,6 +101,7 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
   const pathLocation=useLocation();
   const pathView = searchParams.get('view') === 'path';
   const { session } = useSession();
+  const guest=useGuestWorkspace(projectId);
   const actionRecheckAccountKey = session.accountId || session.username || "guest";
   const [modal, setModal] = useDeliveryForm<
     "info" | "correction" | "schedule" | "template" | null
@@ -175,7 +176,7 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, requirement?.projectId || ""],
     queryFn: ({ signal }) => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(requirement!.projectId)}`, { signal }),
-    enabled: Boolean(requirement?.projectId),
+    enabled: Boolean(requirement?.projectId) && !guest,
   });
   const peopleQuery = useQuery({
     queryKey: [...keys.people, requirement?.projectId || ""],
@@ -345,7 +346,7 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
       {id: 'overview', label: '概况', description:'需求说明与执行进展', content: <>{notices}<RequirementOverview requirement={requirement} compact={embedded}/></>},
       {id: 'work', label: `工作项 ${requirement.workItems.length}`, content: workList},
       {id: 'basic', label: '资料', description:'背景与验收信息', content: <><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未分派阶段'}</dd></div><div className="object-fact-wide"><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div className="object-fact-wide"><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div></dl><RequirementSources links={requirement.referenceLinks} notes={requirement.sourceNotes} referenceUrl={requirement.referenceUrl}/>{!!requirement.readinessIssues?.length && <p className="object-info-note">{requirement.readinessIssues.join('；')}</p>}</>},
-      {id: 'dependencies', label: '依赖', actions: <Button variant="secondary" aria-label="在关系图中维护依赖" title="在关系图中维护依赖" onClick={openPathView}>编辑依赖</Button>, content: <ObjectDependencies requirementId={id} onOpenGraph={openPathView}/>},
+      {id: 'dependencies', label: '依赖', actions: <Button variant="secondary" aria-label={guest?"在关系图中查看依赖":"在关系图中维护依赖"} title={guest?"在关系图中查看依赖":"在关系图中维护依赖"} onClick={openPathView}>{guest?"查看依赖":"编辑依赖"}</Button>, content: <ObjectDependencies requirementId={id} onOpenGraph={openPathView}/>},
       {id: 'history', label: '记录', content: history},
     ]}>
       {modal === "info" && (
@@ -372,8 +373,10 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
 
 export function RequirementPage(){
  const [params]=useAppSearchParams(),location=useLocation(),{session}=useSession(),{selectedProjectId}=useProjects();
+ const guest=useGuestWorkspace();
  const resource=usePageResources().requirement;
  const url=location.pathname+location.search,projectId=params.get('draftProject')||selectedProjectId;
+ if(guest&&params.has('draftProject'))return <Navigate replace to={'/?projectId='+encodeURIComponent(projectId)}/>;
  const savedUrl=remapSavedEditorUrl(url,(session.accountId||'guest')+':'+projectId);
  if(params.has('draftProject')&&savedUrl!==url)return <Navigate to={savedUrl} replace state={location.state}/>;
  if(!params.has('draftProject')&&resource.data){const r=resource.data;return <Navigate replace state={location.state} to={'/?'+workspaceParams({projectId:r.projectId,view:params.get('view')==='path'?'graph':'list',scope:{kind:'requirement',id:r.id},inspector:params.get('detailId')||params.get('workItemId')||r.id,detailTab:params.get('detailTab')||undefined},undefined,params)}/>;}

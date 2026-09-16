@@ -26,6 +26,7 @@ export type AuthorizationActor = Pick<Actor, 'type' | 'id' | 'label'> & {
 };
 
 export function requireAuthorizationActor(actor: Actor): AuthorizationActor {
+  if (actor.type === 'guest') return { type: 'guest', id: 'guest', label: '游客', accountId: '', personId: null, globalRole: 'user' };
   if (!actor.accountId || !actor.globalRole) forbidden('当前账号状态无效，请重新登录');
   const current = sqlite.prepare(`SELECT a.person_id AS personId, a.global_role AS globalRole
     FROM accounts a WHERE a.id=? AND a.status='active' AND a.deleted_at IS NULL
@@ -106,6 +107,7 @@ export function canManageProject(actor: AuthorizationActor, projectId: string) {
 }
 
 export function canReadProject(actor: AuthorizationActor, projectId: string) {
+  if (actor.type === 'guest') return Boolean(sqlite.prepare('SELECT 1 FROM projects WHERE id=? AND guest_visible=1 AND deleted_at IS NULL').get(projectId));
   if (!isActiveProject(projectId)) return false;
   if (isAdmin(actor)) return true;
   if (!actor.personId) return false;

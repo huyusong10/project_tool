@@ -115,7 +115,7 @@ export { listActionItems } from './services/actions';
 export type ProjectRecord = {
   id: string; name: string; status: string; plannedStart: string | null; plannedEnd: string | null;
   defaultTemplateId: string | null; createdAt: string; updatedAt: string; deletedAt?: string | null;
-  isSample: boolean; projectRole?: ProjectRole; canManage?: boolean;
+  guestVisible: boolean; publicReadOnly?: boolean; isSample: boolean; projectRole?: ProjectRole; canManage?: boolean;
 };
 
 type TemplateItemInput = import('../shared/path-template').TemplateDependencyItem & { id?: string; clientKey?: string; predecessorKeys?: string[]; title: string; startOffsetDays: number; durationDays: number; milestoneLabel: string | null; sortOrder: number };
@@ -129,10 +129,10 @@ function assertCurrentAdmin(actor: Actor) {
 }
 
 const projectSelect = `SELECT id, name, status, planned_start AS plannedStart, planned_end AS plannedEnd,
-  default_template_id AS defaultTemplateId, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt FROM projects`;
+  default_template_id AS defaultTemplateId, guest_visible AS guestVisible, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt FROM projects`;
 
-function withProjectMeta<T extends { id: string }>(project: T): T & { isSample: boolean } {
-  return { ...project, isSample: isSampleProjectId(project.id) };
+function withProjectMeta<T extends { id: string; guestVisible?: boolean }>(project: T): T & { isSample: boolean; guestVisible: boolean } {
+  return { ...project, guestVisible: Boolean(project.guestVisible), isSample: isSampleProjectId(project.id) };
 }
 
 export function listProjects(includeDeleted = false, actor?: Actor): ProjectRecord[] {
@@ -151,6 +151,16 @@ export function listProjects(includeDeleted = false, actor?: Actor): ProjectReco
     const projectRole = byProject.get(project.id)!;
     return { ...project, projectRole, canManage: projectRole === 'manager' };
   });
+}
+
+/** Browser project chooser includes public projects without granting membership. */
+export function listWorkspaceProjects(includeDeleted: boolean, actor: Actor): ProjectRecord[] {
+  const memberProjects = actor.type === 'guest' ? [] : listProjects(includeDeleted, actor);
+  const memberIds = new Set(memberProjects.map(p => p.id));
+  const publicProjects = rows<Omit<ProjectRecord, 'isSample'>>(`${projectSelect} WHERE guest_visible=1 AND deleted_at IS NULL ORDER BY created_at DESC`)
+    .filter(p => !memberIds.has(p.id))
+    .map(p => ({ ...withProjectMeta(p), defaultTemplateId: null, publicReadOnly: true, canManage: false }));
+  return [...memberProjects, ...publicProjects];
 }
 
 const initialFlowItems = [
@@ -211,7 +221,7 @@ export function createProject(input: JsonObject, actor: Actor): ProjectRecord {
 
 export function updateProject(id: string, input: JsonObject, actor: Actor): ProjectRecord {
   if (Object.keys(input).some((key) => ![
-    'name', 'plannedStart', 'plannedEnd', 'defaultTemplateId', 'status', 'expectedUpdatedAt',
+    'name', 'plannedStart', 'plannedEnd', 'defaultTemplateId', 'status', 'expectedUpdatedAt', 'guestVisible',
   ].includes(key))) fail('项目编辑不能提交未声明字段');
   const current = row<Omit<ProjectRecord, 'isSample'>>(`${projectSelect} WHERE id=? AND deleted_at IS NULL`, id);
   if (!current) notFound('项目不存在');
@@ -225,7 +235,9 @@ export function updateProject(id: string, input: JsonObject, actor: Actor): Proj
   if (defaultTemplateId && !row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', defaultTemplateId, id)) {
     fail('默认流程必须属于当前项目且未归档');
   }
-  const changedFields = name !== current.name || status !== current.status || plannedStart !== current.plannedStart
+  if (input.guestVisible !== undefined && typeof input.guestVisible !== 'boolean') fail('游客浏览开关必须为布尔值');
+  const guestVisible = input.guestVisible === undefined ? Boolean(current.guestVisible) : input.guestVisible;
+  const changedFields = guestVisible !== Boolean(current.guestVisible) || name !== current.name || status !== current.status || plannedStart !== current.plannedStart
     || plannedEnd !== current.plannedEnd || defaultTemplateId !== current.defaultTemplateId;
   if (!changedFields) {
     sqlite.transaction(() => {
@@ -238,10 +250,10 @@ export function updateProject(id: string, input: JsonObject, actor: Actor): Proj
   }
   const updatedAt = nextUpdatedAt(current.updatedAt);
   sqlite.transaction(() => {
-    const changed = sqlite.prepare(`UPDATE projects SET name=?, status=?, planned_start=?, planned_end=?, default_template_id=?, updated_at=?
+    const changed = sqlite.prepare(`UPDATE projects SET name=?, status=?, planned_start=?, planned_end=?, default_template_id=?, guest_visible=?, updated_at=?
       WHERE id=? AND updated_at=? AND deleted_at IS NULL`).run(
       name, status,
-      plannedStart, plannedEnd, defaultTemplateId, updatedAt, id, current.updatedAt,
+      plannedStart, plannedEnd, defaultTemplateId, Number(guestVisible), updatedAt, id, current.updatedAt,
     );
     if (!changed.changes) fail('项目已被其他用户修改，请重新打开后再保存', 'STALE_WRITE', 409);
     if (defaultTemplateId && !row('SELECT id FROM work_item_templates WHERE id=? AND project_id=? AND deleted_at IS NULL', defaultTemplateId, id)) {

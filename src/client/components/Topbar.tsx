@@ -127,7 +127,7 @@ export function Topbar({ pageIcon: PageIcon, sessionReady }: { pageIcon?: NavIco
       </div>
       <div className="topbar-personal">
         {!narrow && <ThemePicker />}
-        <TopbarMenu label={sessionReady && session.authenticated ? `账号菜单：${session.username}` : '账号菜单'} icon={<UserRound size={17}/>} disabled={!sessionReady || logoutLock.busy}
+        {sessionReady && !session.authenticated ? <Button variant="secondary" onClick={openLogin} aria-label="游客登录"><LogIn size={16}/>登录</Button> : <TopbarMenu label={sessionReady && session.authenticated ? `账号菜单：${session.username}` : '账号菜单'} icon={<UserRound size={17}/>} disabled={!sessionReady || logoutLock.busy}
           text={!compact ? <><span className={session.authenticated ? 'topbar-account-name' : 'topbar-guest-name'}>{sessionReady ? session.authenticated ? session.username : '请登录' : <span className="shell-placeholder account-placeholder"/>}</span><ChevronDown size={13}/></> : undefined}>
           <div className="topbar-account-heading">{session.authenticated ? session.username : '尚未登录'}</div>
           {session.authenticated ? <>
@@ -135,7 +135,7 @@ export function Topbar({ pageIcon: PageIcon, sessionReady }: { pageIcon?: NavIco
             <Button variant="menu" type="button" role="menuitem" disabled={logoutLock.busy} onClick={() => logoutLock.run(() => { logout.reset(); logout.mutate(); })}><LogOut size={16}/>退出登录</Button>
           </> : <Button variant="menu" type="button" role="menuitem" onClick={openLogin}><LogIn size={16}/>用户登录</Button>}
           {narrow && <div data-menu-stay><ThemePicker showLabel /></div>}
-        </TopbarMenu>
+        </TopbarMenu>}
       </div>
     </header>
     {fullTitle.tooltip}

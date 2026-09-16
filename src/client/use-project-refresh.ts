@@ -2,6 +2,7 @@ import {useEffect} from 'react';
 import {useQueryClient} from '@tanstack/react-query';
 import {api,ApiError} from './api';
 import {invalidateProjectViews} from './query-keys';
+import {clearBusinessQueries} from './session-cache';
 
 /** Other people's edits refresh query data; drafts and viewport remain owned by their existing sessions. */
 export function useProjectRefresh(projectId:string,accountId:string,enabled:boolean) {
@@ -16,7 +17,7 @@ export function useProjectRefresh(projectId:string,accountId:string,enabled:bool
         if(controller.signal.aborted||typeof result.version!=='string')return;
         if(version!==undefined&&version!==result.version)invalidateProjectViews(client);
         version=result.version;
-      }catch(error){if(!controller.signal.aborted&&error instanceof ApiError&&[401,403,404].includes(error.status))invalidateProjectViews(client);}
+      }catch(error){if(!controller.signal.aborted&&error instanceof ApiError&&[401,403,404].includes(error.status)){clearBusinessQueries(client,true);invalidateProjectViews(client);}}
       finally{running=false;}
     };
     void check();const timer=setInterval(()=>void check(),60000);

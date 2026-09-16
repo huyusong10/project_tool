@@ -1,3 +1,4 @@
+import {requireWorkspaceRead} from './workspace-access';
 import {orderOutline,archiveFeatures,restoreOutline} from './services/outline';
 import {outlineOrderInput,featureArchiveBatchInput,outlineRestoreInput} from '../shared/outline';
 import { listFeaturePhases, saveFeaturePhase, commandFeaturePhase } from './services/feature-phases';
@@ -46,5 +47,5 @@ export const intakeOperations:Operation[]=[
   operation('get_requirement_import_receipt','查询当前账号的导入提交回执','GET','/requirement-import/receipts/:batchId',z.object({...project,batchId:z.string().uuid()}).strict(),(v,a)=>getRequirementImportReceipt(v.projectId,v.batchId,a)),
 ];
 export function registerIntakeRoutes(app:FastifyInstance,requireReady:preHandlerHookHandler) {
-  for(const op of intakeOperations)app.route({method:op.method,url:op.path,preHandler:requireReady,bodyLimit:10*1024*1024,handler:async request=>op.execute({...request.query as object,...request.body as object,...request.params as object},actorFromRequest(request))});
+  for(const op of intakeOperations)app.route({method:op.method,url:op.path,preHandler:['list_feature_phases','get_feature_overview','get_requirement_intake','list_features','get_feature_requirements','list_feature_relations'].includes(op.name)?requireWorkspaceRead:requireReady,bodyLimit:10*1024*1024,handler:async request=>op.execute({...request.query as object,...request.body as object,...request.params as object},actorFromRequest(request))});
 }
