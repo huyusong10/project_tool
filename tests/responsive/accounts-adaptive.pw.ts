@@ -240,7 +240,7 @@ test('添加成员响应未知且成员回读失败时锁定原批次', async ({
   await expect(page.getByRole('alert')).toContainText('成员操作结果待核对');
   await expect(page.getByRole('button', { name: '添加成员', exact: true })).toBeDisabled();
 
-  await page.getByRole('link', { name: '人员与权限', exact: true }).click();
+  await page.getByRole('link', { name: '人员权限', exact: true }).click();
   await page.getByRole('link', { name: '项目设置', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('成员操作结果待核对');
   expect(writes).toBe(1);
@@ -1570,7 +1570,7 @@ test('人员与权限在宽、中、窄内容区完整展示并与项目角色�
   ]) {
     await page.setViewportSize(viewport);
     await page.goto('/resources');
-    const pageHeading = page.getByRole('heading', { name: '人员与权限' });
+    const pageHeading = page.getByRole('heading', { name: '人员权限' });
     if (viewport.width >= 900) await expect(pageHeading).toBeVisible();
     else await expect(pageHeading).toHaveCount(1);
     await expect(page.locator('.people-access-row')).toHaveCount(3);

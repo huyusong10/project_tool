@@ -30,13 +30,13 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
     </div>
     {compact?<dl className="object-facts">
       <div><dt>负责人</dt><dd>{r.ownerName||'待指定'}</dd></div>
-      <div><dt>交付安排</dt><dd>{r.featureName||'未关联特性'} / {r.phaseName||'未安排 Phase'}</dd></div>
+      <div><dt>交付安排</dt><dd>{r.featureName||'未关联特性'} / {r.phaseName||'未分派阶段'}</dd></div>
       <div><dt>计划日期</dt><dd>{r.plannedStart||'待定'} ～ {r.plannedEnd||'待定'}</dd></div>
       <div><dt>{deliveryDate.label}</dt><dd title={deliveryDate.help}>{deliveryDate.value}</dd></div>
       <div><dt>偏差</dt><dd title={variance.title}>{variance.label}</dd></div>
       <div><dt>风险</dt><dd title={r.riskReason}>{risk.label}</dd></div>
     </dl>:<div className="detail-kpis">
-      <article><span>交付安排</span><strong style={{fontSize:16}}>{r.phaseName || "未安排 Phase"}</strong><small>{r.featureName || "未关联特性"}</small></article>
+      <article><span>交付安排</span><strong style={{fontSize:16}}>{r.phaseName || "未分派阶段"}</strong><small>{r.featureName || "未关联特性"}</small></article>
       <article title={deliveryDate.help+"；当前计划："+(r.plannedStart||"待排期")+" → "+(r.plannedEnd||"待排期")}><span>{deliveryDate.label}</span><strong>{deliveryDate.value}</strong></article>
       <article title={variance.title}><span>偏差</span><strong className={variance.className}>{variance.label}</strong></article>
       <article title={r.riskReason}><span>风险</span><span className={`risk-badge ${risk.className}`}>{risk.label}</span></article>

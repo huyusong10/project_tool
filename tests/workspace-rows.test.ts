@@ -1,3 +1,4 @@
+import {outlineRows,scopeOutline} from '../src/client/outline-model';
 import {expect,it} from 'vitest';
 import {workspaceRows,filterWorkspaceRows,flattenWorkspaceRows} from '../src/client/workspace-rows';
 import type {Dashboard} from '../src/client/types';
@@ -7,18 +8,20 @@ import {selectedProgressStates,progressStatesValue,progressStatesLabel} from '..
 const stage=deriveExecutionStage({status:'in_progress'},[{title:'测试',status:'in_progress',workStage:'testing',progress:70,progressWeight:1}]);
 function fixture(){return {asOfDate:'2026-09-14',requirements:[{id:'r',title:'资产导入',featureId:'f',phaseId:'p',status:'in_progress',executionStage:stage,workItems:[{id:'w',title:'测试',status:'in_progress',progress:70}]}],featureOverview:{features:[{id:'f',name:'资产管理',phases:[{id:'p',name:'Phase 1',status:'in_progress',requirements:[{id:'r',title:'资产导入',status:'in_progress',executionStage:stage},{id:'archived',title:'归档交付',status:'completed',deletedAt:'2026-09-13',executionStage:deriveExecutionStage({status:'completed'})}]},{id:'empty',name:'探索',status:'planning',requirements:[]}]},{id:'empty-feature',name:'告警管理',phases:[]}]}} as unknown as Dashboard;}
 const filters={query:'',featureId:'',phaseId:'',state:'active',stage:''};
-it('未安排 Phase 的需求直接列在特性下，不增加分组或标记；Phase 筛选继续生效',()=>{
-  const report=fixture(),r=report.requirements[0];report.requirements.push({...r,id:'flat',phaseId:null,title:'直接列出'});
-  const rows=workspaceRows(report),flat=rows[0].children.find(row=>row.id==='flat')!;
-  expect(flat.kind).toBe('requirement');expect(flat.title).toBe('直接列出');expect(flat.phase).toBeUndefined();
-  expect(flattenWorkspaceRows(rows,{}).map(r=>r.row.title)).not.toContain('未安排 Phase');
-  expect(filterWorkspaceRows(rows,{...filters,phaseId:'p'})[0].children.map(r=>r.id)).not.toContain('flat');
-  expect(filterWorkspaceRows(rows,{...filters,phaseId:'unassigned',featureId:'f'})[0].children.map(r=>r.id)).toEqual(['flat']);
+it('未分派阶段固定在特性末尾，默认折叠；筛选保留分组和正式归属',()=>{
+  const report=fixture(),r=report.requirements[0];report.requirements.push({...r,id:'flat',phaseId:null,title:'待分派'});
+  const rows=workspaceRows(report),group=rows[0].children.at(-1)!;
+  expect(group).toMatchObject({id:'unphased:f',kind:'phase',virtual:true,title:'未分派阶段',phaseId:'unassigned'});
+  expect(group.phase).toBeUndefined();expect(group.children.map(row=>row.id)).toEqual(['flat']);expect(group.children[0].requirement?.phaseId).toBeNull();
+  expect(flattenWorkspaceRows(rows,{}).map(r=>r.row.id)).not.toContain('flat');
+  expect(flattenWorkspaceRows(rows,{'unphased:f':true}).find(r=>r.row.id==='flat')?.depth).toBe(2);
+  expect(filterWorkspaceRows(rows,{...filters,phaseId:'p'})[0].children.map(r=>r.id)).not.toContain('unphased:f');
+  expect(filterWorkspaceRows(rows,{...filters,phaseId:'unassigned',featureId:'f'})[0].children.map(r=>r.id)).toEqual(['unphased:f']);
 });
 it('初始展开到需求，工作项折叠，空范围与归档贡献保留',()=>{
-  const tree=workspaceRows(fixture());expect(flattenWorkspaceRows(tree,{}).map(r=>r.row.title)).toEqual(['资产管理','Phase 1','归档交付','资产导入','探索','告警管理']);
+  const tree=workspaceRows(fixture());expect(flattenWorkspaceRows(tree,{}).map(r=>r.row.title)).toEqual(['资产管理','Phase 1','归档交付','资产导入','探索','未分派阶段','告警管理','未分派阶段']);
   expect(flattenWorkspaceRows(tree,{p:true,'phase:p':true,r:true}).map(r=>r.row.title)).toContain('测试');
-  expect(tree[0].children[1].children).toEqual([]);expect(tree[1].children).toEqual([]);
+  expect(tree[0].children[1].children).toEqual([]);expect(tree[1].children[0]).toMatchObject({virtual:true,children:[]});
   expect(tree[0].children[0].children.find(r=>r.id==='r')!.requirement?.executionStage?.stages[0].progress).toBe(70);
 });
 it('搜索工作保留祖先，完整 Phase 状态和归档贡献不被筛选重算',()=>{
@@ -57,7 +60,7 @@ it('默认特性跟随首条需求的自然编号顺序，批次和工作流程�
   report.requirements=[39,34,120,119,36,38].map(n=>({...r,id:'r'+n,title:'DCIM-'+n,featureId:n<100?'a':'b',phaseId:null}));
   const tree=workspaceRows(report);
   expect(tree.map(row=>row.title)).toEqual(['权限','日志']);
-  expect(tree[0].children.filter(row=>row.kind==='requirement').map(row=>row.title)).toEqual(['DCIM-34','DCIM-36','DCIM-38','DCIM-39']);
+  expect(tree[0].children.find(row=>row.virtual)!.children.map(row=>row.title)).toEqual(['DCIM-34','DCIM-36','DCIM-38','DCIM-39']);
   expect(filterWorkspaceRows(tree,{...filters,query:'120'}).map(row=>row.title)).toEqual(['日志']);
   expect(workspaceRows(report,undefined,'feature').map(row=>row.title)).toEqual(['权限','日志']);
 });
@@ -88,4 +91,10 @@ it('取消工作保留执行记录，图形草稿移除的其他工作不重新�
   const rows=workspaceRows(report,projection),works=flattenWorkspaceRows(rows,{},true).filter(({row})=>row.kind==='work').map(({row})=>row);
   expect(works.map(w=>w.id)).toEqual(['cancelled']);expect(works[0].formalWork).toBe(r.workItems[1]);expect(works[0].work?.status).toBe('cancelled');
   expect(flattenWorkspaceRows(filterWorkspaceRows(rows,{...filters,status:'in_progress'}),{},true).some(({row})=>row.id==='cancelled')).toBe(false);
+});
+
+it('清单复用分组，同级排序仍以真实特性为父级，其他需求也保留分组',()=>{
+ const report=fixture(),r=report.requirements[0];report.requirements=[{...r,id:'flat',phaseId:null}];report.featureOverview!.features[0].kind='other';
+ const tree=outlineRows(report,{projectId:'project',requirements:report.requirements,nodes:[]} as unknown as import('../src/shared/paths').PathAnalysis);
+ const group=tree.find(row=>row.featureId==='f')!.children.at(-1)!;expect(group).toMatchObject({id:'unphased:f',virtual:true,system:true,objectId:'f'});expect(group.children[0]).toMatchObject({id:'flat',parentId:'f',system:false});expect(scopeOutline(tree,{kind:'unphased',id:'f'}).map(row=>row.id)).toEqual(['flat']);
 });

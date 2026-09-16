@@ -1,10 +1,12 @@
+import {PageHeader} from './PageHeader';
+import type {PageChrome} from '../page-chrome';
 import {WorkspaceObjectMark} from './WorkspaceObjectMark';
 import {setNativeDragPreview} from './DragPreview';
 import {TopbarMenu} from './TopbarMenu';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import {useQueryClient} from '@tanstack/react-query';
-import {ChevronDown,ChevronRight,GripVertical,ArrowUpRight,ArrowUp,ArrowDown,Plus,ListChecks,X,SlidersHorizontal} from 'lucide-react';
+import {ChevronDown,ChevronRight,GripVertical,ArrowUpRight,ArrowUp,ArrowDown,Plus,ListChecks,X} from 'lucide-react';
 import {api,ApiError,isWriteOutcomeUnknown,jsonBody} from '../api';
 import {useProjectWorkspace} from '../project-workspace-context';
 import {useSession} from '../app-context';
@@ -26,7 +28,7 @@ import {CreateWorkItemDialog} from './CreateWorkItemDialog';
 type Write={path:string;input:Record<string,unknown>;label:string;ids:string[]};
 type Pending=Write&{unknown:boolean};
 const labels:Record<OutlineKind,string>={feature:'特性',phase:'Phase',requirement:'需求',work:'工作项'};
-export function WorkspaceOutline({report}:{report:Dashboard}){
+export function WorkspaceOutline({report,header}:{report:Dashboard;header?:Omit<PageChrome,'runtime'>}){
   const workspace=useProjectWorkspace()!,{data,location}=workspace,{session}=useSession(),account=session.accountId||'guest',projectId=data.projectId,manage=canManageProject(session,projectId),client=useQueryClient();
   const [params,setParams]=useSearchParams(),baseKey='pm-outline:'+account+':'+projectId;
   const tree=useMemo(()=>outlineRows(report,data),[report,data]),all=useMemo(()=>flattenOutline(tree),[tree]);
@@ -96,21 +98,20 @@ export function WorkspaceOutline({report}:{report:Dashboard}){
   const selectable=rows.map(({row})=>row).filter(row=>!row.system&&!row.archived),checked=selectable.filter(row=>selected.includes(row.id)).length;
   const inspect=(row:OutlineRow)=>row.virtual?enter(row):workspace.inspect(row.id);
   return <div className="workspace-outline" aria-label="特性清单">
-    <div className="outline-actions" data-workspace-zone="tools">
-      <input type="search" aria-label="筛选清单" placeholder="查找名称或编号" value={query} onChange={e=>{const next=new URLSearchParams(params);next.set('q',e.target.value);setParams(next,{replace:true});}}/>
-      <select aria-label="清单排序" title={sortEnabled?'可拖动手柄调整人工顺序':'当前只能移动归属；清除筛选并选择人工顺序后可排列同级'} value={sort} onChange={e=>{const next=new URLSearchParams(params);next.set('outlineSort',e.target.value);setParams(next,{replace:true});}}><option value="manual">人工顺序</option><option value="name">按名称</option><option value="date">按日期</option></select>
-      <div className="outline-create-slot">{manage&&<TopbarMenu label="新建对象" text="新建" icon={<Plus size={16}/>}>
+    {header&&<PageHeader {...header} actions={<div className="page-editor-actions"><div className="page-editor-history"/><div className="page-editor-primary">{manage&&<TopbarMenu label="新建对象" text={<span>新建</span>} icon={<Plus size={16}/>}>
         {location.scope.kind==='project'&&<button onClick={()=>setFeatureEdit({mode:'basic'})}>新建特性</button>}
         {feature&&location.scope.kind==='feature'&&feature.kind!=='other'&&<button onClick={()=>setPhaseEdit({feature,mode:'edit'})}>新建 Phase</button>}
         {location.scope.kind==='requirement'?<button onClick={()=>setWorkCreate(true)}>新建工作项</button>:<button disabled={!!phase?.deliveredAt} onClick={()=>setCreating(true)}>新建需求</button>}
-      </TopbarMenu>}</div>
-      <TopbarMenu label="清单设置" icon={<SlidersHorizontal size={16}/>}>
-        {[{value:'manual',label:'人工顺序'},{value:'name',label:'按名称'},{value:'date',label:'按日期'}].map(option=><button key={option.value} onClick={()=>{const next=new URLSearchParams(params);next.set('outlineSort',option.value);setParams(next,{replace:true});}}>{sort===option.value?'✓ ':''}{option.label}</button>)}
+      </TopbarMenu>}</div></div>} moreActions={<>
         {manage&&feature&&location.scope.kind==='feature'&&feature.kind!=='other'&&<button onClick={()=>setFeatureEdit({feature,mode:'basic'})}>编辑特性</button>}
         {manage&&phase&&<><button onClick={()=>setPhaseEdit({feature:feature!,phase,mode:'placement'})}>移入已有需求</button><button onClick={()=>setPhaseEdit({feature:feature!,phase,mode:phase.deliveredAt?'reopen':'edit'})}>{phase.deliveredAt?'重新打开 Phase':'编辑 Phase'}</button></>}
         {manage&&<button onClick={()=>{const next=new URLSearchParams(params);next.set('intake','1');setParams(next);}}>导入需求</button>}
         <button onClick={()=>setExpanded(Object.fromEntries(all.filter(r=>r.children.length).map(r=>[r.id,true])))}>展开全部</button><button onClick={()=>setExpanded({})}>收起全部</button>
-      </TopbarMenu>
+      {header.moreActions}</>}/>}
+    <div className="outline-actions" data-workspace-zone="tools">
+      <input type="search" aria-label="筛选清单" placeholder="查找名称或编号" value={query} onChange={e=>{const next=new URLSearchParams(params);next.set('q',e.target.value);setParams(next,{replace:true});}}/>
+      <select aria-label="清单排序" title={sortEnabled?'可拖动手柄调整人工顺序':'当前只能移动归属；清除筛选并选择人工顺序后可排列同级'} value={sort} onChange={e=>{const next=new URLSearchParams(params);next.set('outlineSort',e.target.value);setParams(next,{replace:true});}}><option value="manual">人工顺序</option><option value="name">按名称</option><option value="date">按日期</option></select>
+
     </div>
     <div className="outline-caption"><span>{rows.length} 个可见对象</span><span className="outline-help">{sortEnabled?'单击名称查看资料 · ↗ 进入下一级':'筛选或自动排序中，行间排序拖拽已停用；仍可移动归属'}</span></div>
     {picked.length>0&&<div className="outline-selection" role="region" aria-label="批量操作" data-workspace-zone="tools"><span title={counts}>已选 {counts}</span>{manage&&<>

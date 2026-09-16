@@ -216,7 +216,7 @@ export function RequirementsPage() {
               >
                 <td><DataCell density="compact" primary={<strong>{canManage&&<input type="checkbox" style={{marginRight:8,verticalAlign:'middle'}} aria-label={'选择需求 '+item.title} checked={selectedIds.includes(item.id)} disabled={Boolean(organizationRecheck)} onClick={e=>e.stopPropagation()} onChange={e=>{if(!organizationRecheck)setSelectedIds(ids=>e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id));}}/>}<Link to={`/requirements/${item.id}`} style={{ color: 'inherit', textDecoration: 'none' }} onClick={event => event.stopPropagation()}>{item.title}</Link></strong>} secondary={`${item.featureName?item.featureName+" · ":""}${item.projectName} · 负责人 ${item.ownerName || "待指定"}`} /></td>
                 <td><DataCell density="compact" primary={item.acceptanceCriteria||'完成标准待补充'}/></td>
-                <td><DataCell density="compact" primary={item.phaseName||'未安排 Phase'}/></td>
+                <td><DataCell density="compact" primary={item.phaseName||'未分派阶段'}/></td>
                 <td><DataCell density="compact" primary={item.workItems.length+' 个工作项'} secondary={item.executionMode==='direct'?'直接执行':!item.workItems.length?'尚未分解':''}/></td>
                 <td><DataCell density="compact" primary={item.background||'说明待补充'}/></td>
                 <td><DataCell density="compact" primary={item.sourceNotes||'—'}/></td>

@@ -26,7 +26,7 @@ export function graphSvg(cards:GraphCard[],links:GraphLink[],layout:RoutedLayout
     const full=[r.name,r.phase?.scope,r.phase?phaseStatusLabels[r.phase.status]:'',r.phase?.targetDate].filter(Boolean).join(' · ');
     const heading=lines(r.name,38,2).map((s,i)=>text(r.x+18,r.y+26+i*20,s,14,'font-weight="600"')).join('');
     const scope=lines(r.phase?.scope||'',44,2).map((s,i)=>text(r.x+18,r.y+72+i*18,s)).join('');
-    return `<g data-phase-region="${xml(r.id)}"><title>${xml(full)}</title><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="10" fill="#f1f5f9" stroke="#cbd5e1"/>${heading}${scope}${text(r.x+18,r.y+124,r.phase?phaseStatusLabels[r.phase.status]+' · 目标 '+(r.phase.targetDate||'待安排'):r.name==='未安排 Phase'?'尚未安排交付批次':'保留直接跨范围依赖')}</g>`;
+    return `<g data-phase-region="${xml(r.id)}"><title>${xml(full)}</title><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="10" fill="#f1f5f9" stroke="#cbd5e1"/>${heading}${scope}${text(r.x+18,r.y+124,r.phase?phaseStatusLabels[r.phase.status]+' · 目标 '+(r.phase.targetDate||'待安排'):r.name==='未分派阶段'?'尚未安排交付批次':'保留直接跨范围依赖')}</g>`;
   }).join('');
   const edges=links.map(edge=>{
     const route=layout.edges[edge.id];

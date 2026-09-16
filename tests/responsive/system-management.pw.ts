@@ -1,3 +1,4 @@
+import {headerAction} from './topbar-helpers';
 import { expect, test } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
@@ -27,7 +28,7 @@ test('system management focuses on health and data safety', async ({ page }) => 
   await expect(page.getByText(/备份已创建：/)).toBeVisible();
   await expect(page.locator('.system-backup-table tbody tr').first()).toBeVisible();
 
-  await page.getByRole('button', { name: '立即检查' }).click();
+  await headerAction(page,'立即检查');
   await expect(page.getByText('数据库状态正常')).toBeVisible();
 
   await page.goto('/settings');
@@ -67,12 +68,14 @@ test('backup and integrity check allow only one request at a time', async ({ pag
     releaseBackup();
     await expect(page.getByText('备份已创建：single-flight.db')).toBeVisible();
 
+    await page.getByRole('button',{name:'更多操作',exact:true}).click();
     const check = page.getByRole('button', { name: '立即检查', exact: true });
     await check.evaluate((button) => {
       (button as HTMLButtonElement).click();
       (button as HTMLButtonElement).click();
     });
     await expect.poll(() => checkRequests).toBe(1);
+    await page.getByRole('button',{name:'更多操作',exact:true}).click();
     await expect(page.getByRole('button', { name: '检查中…', exact: true })).toBeDisabled();
     releaseCheck();
     await expect(page.getByText('数据库状态正常')).toBeVisible();

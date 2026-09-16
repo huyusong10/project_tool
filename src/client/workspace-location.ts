@@ -30,7 +30,7 @@ export function workspaceAncestors(location:WorkspaceLocation,data:PathAnalysis)
   if(!feature)return result;
   result.push({scope:{kind:'feature',id:feature.id},label:feature.kind==='other'?'其他需求':feature.name});
   if(phase)result.push({scope:{kind:'phase',id:phase.id},label:phase.name});
-  if(scope.kind==='unphased')result.push({scope,label:'未安排 Phase'});
+  if(scope.kind==='unphased')result.push({scope,label:'未分派阶段'});
   if(requirement)result.push({scope,label:requirement.title});
   return result;
 }

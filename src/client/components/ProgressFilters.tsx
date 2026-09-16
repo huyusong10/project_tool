@@ -20,7 +20,7 @@ export function ProgressFilters({filters,sort,features,people,result,onChange,on
   const dirty=!!(filters.query||filters.featureId||filters.status||filters.person||moreCount);
   const set=(name:string,value:string)=>onChange({[name]:value});
   const close=()=>setOpen(null);
-  const moreTitle=[filters.phaseId==='unassigned'?'未安排 Phase':features.flatMap(f=>f.phases||[]).find(p=>p.id===filters.phaseId)?.name,stages[filters.stage],filters.state==='archived'?'已归档特性':'',schedules[filters.schedule||''],({...riskLabels,pending:'待评估'} as Record<string,string>)[filters.risk||''],(dashboardScopeLabels as Record<string,string>)[filters.scope||'']].filter(Boolean).join(' · ');
+  const moreTitle=[filters.phaseId==='unassigned'?'未分派阶段':features.flatMap(f=>f.phases||[]).find(p=>p.id===filters.phaseId)?.name,stages[filters.stage],filters.state==='archived'?'已归档特性':'',schedules[filters.schedule||''],({...riskLabels,pending:'待评估'} as Record<string,string>)[filters.risk||''],(dashboardScopeLabels as Record<string,string>)[filters.scope||'']].filter(Boolean).join(' · ');
   return <div className="workspace-progress-tools" data-workspace-zone="tools" aria-label="进展筛选">
     <SearchInput value={filters.query} onChange={v=>set('q',v)} placeholder="搜索名称或编号"/>
     <button ref={statusRef} className="ghost-button progress-status-filter" aria-label="筛选执行状态" aria-haspopup="dialog" aria-expanded={open==='status'} title={states.map(s=>requirementStatusLabels[s]).join('、')||'不显示任何执行状态'} onClick={()=>setOpen(open==='status'?null:'status')}><span>{progressStatesLabel(filters.status||'')}</span><ChevronDown size={15}/></button>
@@ -41,7 +41,7 @@ export function ProgressFilters({filters,sort,features,people,result,onChange,on
       <section aria-label="更多进展筛选" data-workspace-zone="tools" data-preserve-edit>
         <header><strong>更多筛选</strong><button className="ghost-button" onClick={close}>关闭</button></header>
         <div className="progress-extra-fields">
-          <label><span>Phase</span><Select disabled={!feature&&!filters.phaseId} aria-label="进展 Phase" value={filters.phaseId} onChange={e=>set('phaseId',e.target.value)}><option value="">全部 Phase</option>{(feature?.phases||features.flatMap(f=>f.phases||[])).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}<option value="unassigned">未安排 Phase</option></Select></label>
+          <label><span>Phase</span><Select disabled={!feature&&!filters.phaseId} aria-label="进展 Phase" value={filters.phaseId} onChange={e=>set('phaseId',e.target.value)}><option value="">全部 Phase</option>{(feature?.phases||features.flatMap(f=>f.phases||[])).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}<option value="unassigned">未分派阶段</option></Select></label>
           <label><span>阶段</span><Select aria-label="进展阶段" value={filters.stage} onChange={e=>set('progressStage',e.target.value)}><option value="">全部阶段</option>{Object.entries(stages).map(([id,label])=><option key={id} value={id}>{label}</option>)}</Select></label>
           <label><span>计划</span><Select aria-label="进展计划" value={filters.schedule||''} onChange={e=>set('progressSchedule',e.target.value)}><option value="">全部计划</option><option value="delayed">已延期</option><option value="unplanned">未排期或日期不完整</option><option value="planned">已排期</option></Select></label>
           <label><span>特性</span><Select aria-label="进展特性状态" value={filters.state} onChange={e=>set('progressState',e.target.value)}><option value="active">当前特性</option><option value="archived">已归档特性</option></Select></label>

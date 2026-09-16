@@ -144,7 +144,7 @@ export function PersonalSettingsPage() {
     } finally { setRecheckingTokens(false); }
   };
   return <>
-    <PageHeader title="个人设置" />
+    <PageHeader title="个人设置" actions={<button className="primary-button" aria-label={tokens.length?"创建 Token":"创建第一个 Token"} disabled={!tokensQuery.data||tokenListNeedsRecheck} onClick={openTokenModal}><Plus size={15} />创建 Token</button>} secondaryActions={<button className="ghost-button" onClick={openPassword}><KeyRound size={15} />修改密码</button>} />
     <div className="page-content personal-settings-page">
       <section className="panel personal-account-panel">
         <div className="personal-account-identity"><span>{session.username?.slice(0, 1).toUpperCase() || "用"}</span><div><h2>{session.username}</h2><p><CircleUserRound size={14} />{session.personId ? "已关联业务人员" : "当前账号未关联业务人员"}</p></div></div>
@@ -153,10 +153,9 @@ export function PersonalSettingsPage() {
           <div><dt>可访问项目</dt><dd>{projects.length} 个</dd></div>
           <div><dt>MCP 权限</dt><dd>随账号权限同步</dd></div>
         </dl>
-        <button className="ghost-button personal-password-button" onClick={openPassword}><KeyRound size={15} />修改密码</button>
       </section>
       <section className="panel personal-mcp-panel">
-        <header><div><h2>MCP 接入</h2><p>为本机客户端创建独立凭据，Token 自动继承当前账号的项目权限</p></div>{tokens.length > 0 && <button className="primary-button" disabled={tokenListNeedsRecheck} onClick={openTokenModal}><Plus size={15} />创建 Token</button>}</header>
+        <header><div><h2>MCP 接入</h2><p>为本机客户端创建独立凭据，Token 自动继承当前账号的项目权限</p></div></header>
         <div className="personal-mcp-connection">
           <span className="personal-mcp-icon"><PlugZap size={20} /></span>
           <div><span>MCP 服务地址</span><code>{mcpEndpoint}</code><small>客户端通过 Authorization: Bearer Token 连接</small></div>
@@ -180,7 +179,7 @@ export function PersonalSettingsPage() {
             </div>;
           })}
         </div><Pagination {...pagination.props} label="Token 列表分页" /></div>}
-        {tokensQuery.data && !tokens.length && <div className="personal-token-empty"><span><KeyRound size={22} /></span><div><strong>还没有个人 Token</strong><p>为 Claude Desktop、Codex 等客户端分别创建 Token，后续可独立撤销。</p></div><button className="primary-button" disabled={tokenListNeedsRecheck} onClick={openTokenModal}><Plus size={15} />创建第一个 Token</button></div>}
+        {tokensQuery.data && !tokens.length && <div className="personal-token-empty"><span><KeyRound size={22} /></span><div><strong>还没有个人 Token</strong><p>为 Claude Desktop、Codex 等客户端分别创建 Token，后续可独立撤销。</p></div></div>}
         {tokensQuery.data && tokens.length > 0 && <footer className="personal-token-footer"><span>{activeTokens.length} 个有效 Token</span><small>建议不同客户端使用不同 Token，并定期撤销不再使用的凭据。</small></footer>}
         {tokensQuery.data && !tokens.length && <Pagination {...pagination.props} label="Token 列表分页" />}
       </section>

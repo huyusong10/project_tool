@@ -5,7 +5,7 @@ import {chooseOption} from './select-helper';
 test('状态多选、人员和 Phase 组合筛选，弹层不挤动表格，刷新保留条件',async({page},info)=>{
   const f=await phaseFixture(page);
   const response=await page.request.post('/api/requirements',{data:{projectId:f.projectId,featureId:f.feature.id,title:'DCIM-034 待安排'}});expect(response.ok()).toBe(true);const pending=await response.json();
-  await page.goto('/execution');const grid=page.getByRole('treegrid');await expect(grid).toContainText(pending.title);
+  await page.goto('/execution');const grid=page.getByRole('treegrid');await expect(grid.locator('[data-row-id="'+pending.id+'"]')).toHaveCount(0);await grid.locator('[data-row-id="unphased:'+f.feature.id+'"]').getByRole('button',{name:'展开 未分派阶段',exact:true}).click();await expect(grid).toContainText(pending.title);
   const position=await grid.boundingBox(),status=page.getByRole('button',{name:'筛选执行状态',exact:true});
   await status.click();expect(await grid.boundingBox()).toEqual(position);
   await page.getByRole('button',{name:'尚未结束 排除已完成、已取消',exact:true}).click();
@@ -26,7 +26,7 @@ test('状态多选、人员和 Phase 组合筛选，弹层不挤动表格，刷�
   await page.getByLabel('更多进展筛选').getByRole('button',{name:'关闭',exact:true}).click();
   await expect(grid).toContainText('Phase 2');await expect(grid).not.toContainText('Phase 1');
   const work=grid.locator('.kind-work');await expect(work.locator('.workspace-row-label')).toContainText(f.testing.ownerName!);await expect(work.locator('.workspace-row-label .work-progress-link')).toHaveCount(0);
-  await expect(work.locator('.workspace-row-actions')).toContainText('70%');await expect(work.getByRole('button',{name:'完成',exact:true})).toBeVisible();
+  await expect(work.locator('.workspace-row-track')).toContainText('70%');await expect(work.getByRole('button',{name:'完成',exact:true})).toBeVisible();
   await page.screenshot({path:info.outputPath('filtered-progress.png'),animations:'disabled'});
   await page.getByRole('button',{name:'重置',exact:true}).click();await expect(status).toHaveText('全部状态');await expect(grid).toContainText(pending.title);
   await page.setViewportSize({width:390,height:844});const narrow=await grid.boundingBox();await status.click();expect(await grid.boundingBox()).toEqual(narrow);

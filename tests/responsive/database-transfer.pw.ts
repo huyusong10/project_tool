@@ -1,3 +1,4 @@
+import {headerAction} from './topbar-helpers';
 import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
@@ -13,7 +14,7 @@ test('从页面导出、预览、取消和确认导入，重启后重新登录',
   expect((await request.post('/api/projects', { data: { name: projectName } })).ok()).toBe(true);
   await page.goto('/system');
   const exporting = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出数据库', exact: true }).click();
+  await headerAction(page,'导出数据库');
   const download = await exporting;
   expect(download.suggestedFilename()).toMatch(/^project-manage-.*\.db$/);
   const buffer = fs.readFileSync((await download.path())!);
@@ -56,9 +57,11 @@ test('从页面导出、预览、取消和确认导入，重启后重新登录',
 
 test('无效本地文件显示错误，页面允许重新选择文件', async ({ page }) => {
   await page.goto('/system');
+  if(!await page.getByRole('button', { name: '导入数据库', exact: true }).isVisible())await page.getByRole('button',{name:'更多操作',exact:true}).click();
   await expect(page.getByRole('button', { name: '导入数据库', exact: true })).toBeEnabled();
   await page.getByLabel('选择数据库文件').setInputFiles({ name: 'invalid.db', mimeType: 'application/octet-stream', buffer: Buffer.from('broken database') });
   await expect(page.getByText('备份数据库文件无效', { exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  if(!await page.getByRole('button', { name: '导入数据库', exact: true }).isVisible())await page.getByRole('button',{name:'更多操作',exact:true}).click();
   await expect(page.getByRole('button', { name: '导入数据库', exact: true })).toBeEnabled();
 });

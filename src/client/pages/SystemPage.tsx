@@ -539,7 +539,15 @@ export function SystemPage() {
     );
   return (
     <>
-      <PageHeader title="系统管理" />
+      <PageHeader title="系统管理"
+        actions={<button className="primary-button" disabled={maintenanceBlocked} onClick={() => { if (!maintenanceBlocked) backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(false); }); }}>
+          <DatabaseBackup size={15} />{backupLock.busy && !backup.variables ? "正在备份…" : "立即备份"}
+        </button>}
+        moreActions={<>
+          <button className="ghost-button" disabled={maintenanceBlocked} onClick={() => importInput.current?.click()}><Upload size={15} />{uploadLock.busy ? '正在上传并校验…' : '导入数据库'}</button>
+          <button className="ghost-button" disabled={maintenanceBlocked} onClick={() => { if (!maintenanceBlocked) backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(true); }); }}><Download size={15} />{backupLock.busy && backup.variables ? '正在导出…' : downloadLock.busy ? '正在下载…' : '导出数据库'}</button>
+          <button className="ghost-button" disabled={integrityLock.busy} onClick={() => integrityLock.run(() => integrityCheck.mutate())}><ShieldCheck size={15} />{integrityLock.busy ? "检查中…" : "立即检查"}</button>
+        </>}/>
       <div className="page-content">
         <div className="system-page">
           {restoreWaitPending && !restoreTarget && <div className="warning-banner">数据库恢复已安排，服务重启后页面将自动刷新；其他维护操作暂不可用。</div>}
@@ -585,16 +593,6 @@ export function SystemPage() {
               if (file.size > maxBytes) { setImportError(`数据库文件不能超过 ${formatBytes(maxBytes)}`); return; }
               uploadLock.run(() => upload.mutate(file));
             }} />
-            <button className="ghost-button" disabled={maintenanceBlocked} onClick={() => importInput.current?.click()}><Upload size={15} />{uploadLock.busy ? '正在上传并校验…' : '导入数据库'}</button>
-            <button className="ghost-button" disabled={maintenanceBlocked} onClick={() => { if (!maintenanceBlocked) backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(true); }); }}><Download size={15} />{backupLock.busy && backup.variables ? '正在导出…' : downloadLock.busy ? '正在下载…' : '导出数据库'}</button>
-            <button
-              className="primary-button"
-              disabled={maintenanceBlocked}
-              onClick={() => { if (!maintenanceBlocked) backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(false); }); }}
-            >
-              <DatabaseBackup size={15} />
-              {backupLock.busy && !backup.variables ? "正在备份…" : "立即备份"}
-            </button>
             </div>
           </header>
           <div className="system-backup-policy">
@@ -645,7 +643,7 @@ export function SystemPage() {
               </div>
             </article>
             <article className="panel system-detail-panel system-check-panel">
-              <header><div><h2>数据库健康检查</h2><p>检查SQLite结构和数据页，不修改业务数据</p></div><button className="ghost-button" disabled={integrityLock.busy} onClick={() => integrityLock.run(() => integrityCheck.mutate())}><ShieldCheck size={15} />{integrityLock.busy ? "检查中…" : "立即检查"}</button></header>
+              <header><div><h2>数据库健康检查</h2><p>检查SQLite结构和数据页，不修改业务数据</p></div></header>
               <div className="system-check-content">
                 <div className={`system-check-state ${integrityCheck.data ? integrityCheck.data.ok ? "is-success" : "is-error" : ""}`}>
                   <ShieldCheck size={30} />

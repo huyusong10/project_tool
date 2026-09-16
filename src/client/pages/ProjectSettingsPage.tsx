@@ -234,7 +234,7 @@ export function ProjectSettingsPage() {
     restore.mutate({ projectId: selectedProjectId, entity, id, expectedDeletedAt });
   };
   return <>
-    <PageHeader title="项目设置" actions={project?<><></>{canManage?<button className="primary-button" onClick={() => setEditing(true)}><Edit3 size={15} />编辑项目</button>:null}</>:null} />
+    <PageHeader title="项目设置" secondaryActions={project&&canManage?<button className="ghost-button" disabled={!membersQuery.data || memberMutationBusy} onClick={() => setAdding(true)}><UserPlus size={15} />添加成员</button>:null} actions={project&&canManage?<button className="primary-button" onClick={() => setEditing(true)}><Edit3 size={15} />编辑项目</button>:null} />
     <div className="page-content">
       {!project ? <EmptyState title="暂无可访问项目" detail="请联系管理员分配项目权限。" /> : <>
         <section className="panel project-settings-summary">
@@ -245,7 +245,6 @@ export function ProjectSettingsPage() {
             <div><h2>项目成员</h2><p>在当前项目内配置项目经理、项目成员和观察者</p></div>
             <div className="project-member-header-actions">
               <span className="project-member-count">{membersQuery.data ? `${members.length} 人` : "—"}</span>
-              {canManage && <button className="ghost-button" disabled={!membersQuery.data || memberMutationBusy} onClick={() => setAdding(true)}><UserPlus size={15} />添加成员</button>}
             </div>
           </header>
           {membersNeedRecheck && <div role="alert" className="warning-banner">成员操作结果待核对，当前权限可能已变化，本窗口不会重复提交。<button className="ghost-button" disabled={membersQuery.isFetching} onClick={() => void reloadMembers()}>{membersQuery.isFetching ? "读取中…" : "重新读取成员"}</button></div>}

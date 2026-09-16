@@ -50,8 +50,6 @@
 .outline-actions{display:flex;align-items:center;gap:10px;padding:0 20px;height:58px;min-height:58px;border-bottom:1px solid var(--border);flex:none}
 .outline-actions input,.outline-actions select{box-sizing:border-box;height:34px;min-height:34px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--bg-surface);color:var(--text-primary);font:inherit;font-size:12px}
 .outline-actions input{width:220px;min-width:0;flex:0 1 340px}.outline-actions select{width:130px;flex:none}
-.outline-create-slot{margin-left:auto;width:88px;flex:none}.outline-create-slot .topbar-menu-button{width:88px;height:34px;min-height:34px;justify-content:center;background:var(--accent);border-color:var(--accent);color:var(--on-accent,#fff);font-size:12px;box-shadow:none}
-.outline-actions>.topbar-menu-trigger>.topbar-icon{height:34px;width:34px;min-height:34px;padding:0;border-color:var(--border);box-shadow:none}
 .outline-caption{display:flex;justify-content:space-between;align-items:center;gap:16px;height:32px;min-height:32px;padding:0 20px;flex:none;color:var(--text-muted);font-size:11px;background:var(--bg-surface-subtle);border-bottom:1px solid var(--border)}
 .outline-caption>span:first-child{white-space:nowrap;flex:none}.outline-help{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .outline-scroll{overflow:auto;min-height:0;flex:1;scrollbar-gutter:stable;scroll-padding-bottom:84px;padding-bottom:80px;box-sizing:border-box}
@@ -100,7 +98,7 @@
 @media(max-width:700px){
  .unified-workspace .delivery-filters{height:52px;min-height:52px;padding-inline:10px;gap:8px}.unified-workspace .delivery-filters .search-box{width:190px;flex-basis:190px}
  .workspace-overview-strip{padding:0 10px;gap:8px}.workspace-overview-metrics{gap:18px}.overview-metric{min-width:128px;font-size:11px}.overview-trigger{width:32px;min-width:32px;padding:0}.overview-trigger>span,.overview-trigger>svg:last-child{display:none}
- .outline-actions{padding-inline:10px;gap:8px;height:52px;min-height:52px}.outline-actions input{flex:1;width:100%}.outline-actions>select{display:none}.outline-create-slot{width:76px}.outline-create-slot .topbar-menu-button{width:76px}
+ .outline-actions{padding-inline:10px;gap:8px;height:52px;min-height:52px}.outline-actions input{flex:1;width:100%}.outline-actions>select{width:110px}
  .outline-caption{padding-inline:10px}.outline-help{max-width:180px}.outline-table{min-width:670px}.outline-status-column{width:144px}.outline-date-column{width:112px}.outline-menu-column{width:42px}
  .outline-table td:last-child,.outline-table th:last-child{position:sticky;right:0;padding:0 5px;z-index:2;border-left:1px solid var(--border)}.outline-table th:last-child{z-index:4}
  .outline-selection{gap:4px;padding:6px}.outline-selection>span{max-width:90px;font-size:11px}.outline-selection .workspace-icon-button{width:28px;min-width:28px}.outline-selection>.ghost-button{width:68px}

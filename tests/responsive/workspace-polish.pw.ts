@@ -40,16 +40,14 @@ test('Phase 布局移动、撤销和自动整理可恢复，保存后保持相�
   await page.locator('.dependency-canvas').focus();await page.keyboard.press('Control+z');await expect.poll(position).toEqual(saved);
 });
 
-test('未分期需求直接平铺，主入口只有关系图和进展表；清单作为工具',async({page})=>{
-  const f=await phaseFixture(page),response=await page.request.post('/api/requirements',{data:{projectId:f.projectId,featureId:f.feature.id,title:'未分期直接列出'}});expect(response.ok()).toBe(true);const requirement=await response.json();
-  await page.goto('/execution');const grid=page.getByRole('treegrid'),row=grid.locator('[data-row-id="'+requirement.id+'"]');
-  await expect(row).toBeVisible();await expect(row).toHaveAttribute('aria-level','2');await expect(row).not.toContainText('未安排 Phase');await expect(grid.locator('[data-row-id$=":unassigned"]')).toHaveCount(0);
+test('未分派阶段单独分组，Phase 筛选与三个视角入口保持可用',async({page})=>{
+  const f=await phaseFixture(page),response=await page.request.post('/api/requirements',{data:{projectId:f.projectId,featureId:f.feature.id,title:'未分派需求'}});expect(response.ok()).toBe(true);const requirement=await response.json();
+  await page.goto('/execution');const grid=page.getByRole('treegrid'),row=grid.locator('[data-row-id="'+requirement.id+'"]'),group=grid.locator('[data-row-id="unphased:'+f.feature.id+'"]');
+  await expect(group).toBeVisible();await expect(row).toHaveCount(0);await group.getByRole('button',{name:'展开 未分派阶段',exact:true}).click();await expect(row).toHaveAttribute('aria-level','3');
   await chooseOption(page.getByLabel('进展特性',{exact:true}),f.feature.id);await page.getByRole('button',{name:/^更多筛选/}).click();await chooseOption(page.getByLabel('进展 Phase',{exact:true}),f.phases[1].id);await page.getByRole('dialog').filter({has:page.getByLabel('更多进展筛选')}).getByRole('button',{name:'关闭',exact:true}).click();await expect(row).toHaveCount(0);
   await page.getByRole('button',{name:/^更多筛选/}).click();await chooseOption(page.getByLabel('进展 Phase',{exact:true}),'unassigned');await page.getByRole('dialog').filter({has:page.getByLabel('更多进展筛选')}).getByRole('button',{name:'关闭',exact:true}).click();await expect(row).toBeVisible();
-  await page.goto('/features');await expect(page.locator('.delivery-table')).toBeVisible();await expect(page.getByRole('group',{name:'范围表达'})).toHaveCount(0);
-  const tasks=page.getByRole('group',{name:'项目任务'});await expect(tasks.getByRole('button')).toHaveText(['关系图','进展表']);
-  await tasks.getByRole('button',{name:'关系图',exact:true}).click();await expect(page).toHaveURL(/mode=graph/);await expect(page.locator('[data-layout-ready=true]')).toBeVisible();
-  await page.getByRole('button',{name:'特性清单',exact:true}).click();await expect(page.locator('.delivery-table')).toBeVisible();await page.getByRole('button',{name:'返回关系图',exact:true}).click();await expect(page.locator('[data-layout-ready=true]')).toBeVisible();
+  const views=page.getByRole('group',{name:'项目视角'});await expect(views.getByRole('button')).toHaveText(['特性清单','关系图','进展表']);
+  await views.getByRole('button',{name:'特性清单',exact:true}).click();await expect(page.locator('.outline-table')).toBeVisible();
 });
 
 test('Phase 外框适应长标题、依赖链和分支；不压缩卡片或改变关系',async({page},info)=>{
