@@ -13,13 +13,14 @@ const HEADER=PHASE_HEADER;
 export function featurePhaseLayout(data:PathAnalysis,feature:FeatureOverview|undefined,featureId:string,cardIds:string[]){
   const previous=data.layouts?.find(l=>l.scope==='feature:'+featureId&&l.direction==='right')?.positions||{};
   const phases=[...(feature?.phases||[])].sort((a,b)=>a.sortOrder-b.sortOrder||a.id.localeCompare(b.id));
-  const definitions:Array<{id:string;name:string;phase?:FeaturePhase}>=[...phases.map(p=>({id:p.id,name:p.name,phase:p})),{id:'unassigned',name:'未安排 Phase'}];
+  const definitions:Array<{id:string;name:string;phase?:FeaturePhase}>=[...phases.map(p=>({id:p.id,name:p.name,phase:p})),{id:'unassigned',name:'未分派阶段'}];
   const members=new Map(data.featureContext?.requirements.concat(data.requirements).map(r=>[r.id,r])||data.requirements.map(r=>[r.id,r]));
   const external=cardIds.filter(id=>(members.get(id)?.featureId||'unassigned')!==featureId||!members.has(id));
   const regions:PhaseRegion[]=[],positions:Record<string,Point>={};
   for(const definition of definitions){
     const scope=phaseLayoutScope(featureId,definition.id),saved=data.layouts?.find(l=>l.scope===scope&&l.direction==='right')?.positions||{};
     const ids=cardIds.filter(id=>!external.includes(id)&&(members.get(id)?.phaseId||'unassigned')===definition.id).sort((a,b)=>(previous[a]?.x||0)-(previous[b]?.x||0)||(previous[a]?.y||0)-(previous[b]?.y||0)||a.localeCompare(b));
+    if(definition.id==='unassigned'&&!ids.length)continue;
     const relative:Record<string,Point>={};for(const id of ids)if(saved[id])relative[id]={x:Math.max(0,saved[id].x),y:Math.max(0,saved[id].y)};
     const region:PhaseRegion={...definition,scope,nodeIds:ids,x:regions.length?regions.at(-1)!.x+regions.at(-1)!.width+56:24,y:24,width:ids.length?Math.max(320,48+244+Math.max(0,...Object.values(relative).map(p=>p.x))):320,height:ids.length?HEADER+Math.max(0,...Object.values(relative).map(p=>p.y))+224:HEADER+56};
     for(const [id,p] of Object.entries(relative))positions[id]={x:region.x+24+p.x,y:region.y+HEADER+p.y};regions.push(region);

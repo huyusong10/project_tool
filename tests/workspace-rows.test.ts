@@ -18,10 +18,10 @@ it('未分派阶段固定在特性末尾，默认折叠；筛选保留分组和�
   expect(filterWorkspaceRows(rows,{...filters,phaseId:'p'})[0].children.map(r=>r.id)).not.toContain('unphased:f');
   expect(filterWorkspaceRows(rows,{...filters,phaseId:'unassigned',featureId:'f'})[0].children.map(r=>r.id)).toEqual(['unphased:f']);
 });
-it('初始展开到需求，工作项折叠，空范围与归档贡献保留',()=>{
-  const tree=workspaceRows(fixture());expect(flattenWorkspaceRows(tree,{}).map(r=>r.row.title)).toEqual(['资产管理','Phase 1','归档交付','资产导入','探索','未分派阶段','告警管理','未分派阶段']);
+it('初始展开到需求，工作项折叠，空分组隐藏，正式空 Phase 与归档贡献保留',()=>{
+  const tree=workspaceRows(fixture());expect(flattenWorkspaceRows(tree,{}).map(r=>r.row.title)).toEqual(['资产管理','Phase 1','归档交付','资产导入','探索','告警管理']);
   expect(flattenWorkspaceRows(tree,{p:true,'phase:p':true,r:true}).map(r=>r.row.title)).toContain('测试');
-  expect(tree[0].children[1].children).toEqual([]);expect(tree[1].children[0]).toMatchObject({virtual:true,children:[]});
+  expect(tree[0].children[1].children).toEqual([]);expect(tree[1].children).toEqual([]);
   expect(tree[0].children[0].children.find(r=>r.id==='r')!.requirement?.executionStage?.stages[0].progress).toBe(70);
 });
 it('搜索工作保留祖先，完整 Phase 状态和归档贡献不被筛选重算',()=>{

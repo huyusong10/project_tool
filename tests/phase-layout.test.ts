@@ -60,6 +60,7 @@ it('需求移入目标区域空位，已保存节点相对位置保持，筛选�
   const {feature,data,ids}=fixture(),first=await measured(data,feature,ids),saved=phaseLayoutChanges(empty,[],first.regions,first.positions);
   data.layouts=saved.layouts!.map(l=>({...l,version:2}));data.requirements.find(r=>r.id==='u')!.phaseId='p2';
   const moved=await measured(data,feature,ids);expect(moved.positions.b).toEqual(first.positions.b);expect(moved.positions.c).toEqual(first.positions.c);expect(moved.positions.u).not.toEqual(moved.positions.b);
+  expect(moved.regions.map(r=>r.id)).toEqual(['p1','p2','p3','external']);
   const partial=phaseLayoutChanges(empty,data.layouts,moved.regions,{b:moved.positions.b});expect(partial.layouts?.find(l=>l.scope==='feature-phase:f:p2')?.positions.c).toEqual(data.layouts.find(l=>l.scope==='feature-phase:f:p2')?.positions.c);
 });
 it('草稿归属投影刷新 Phase 分布，交付历史不被重新计算',()=>{

@@ -26,9 +26,14 @@ test('主要操作集中到公共右栏，窄屏和滚动后仍可使用',async(
  }
 });
 
-test('未分派阶段折叠置底，进入后清单、关系图和进展表保持同一范围',async({page},info)=>{
- const f=await phaseFixture(page),response=await page.request.post('/api/requirements',{data:{projectId:f.projectId,featureId:f.feature.id,title:'待分派交付需求'}});expect(response.ok()).toBe(true);const requirement=await response.json();
+test('未分派阶段有需求才显示，折叠置底，三个视角保持同一范围',async({page},info)=>{
+ const f=await phaseFixture(page);
  const link=(view:string,scope='feature')=>'/?'+new URLSearchParams({projectId:f.projectId,workspaceView:view,scopeType:scope,scopeId:f.feature.id});
+ await page.goto(link('list'));await expect(page.locator('.outline-title')).toHaveCount(f.phases.length);await expect(page.locator('[data-object-id="unphased:'+f.feature.id+'"]')).toHaveCount(0);
+ await page.getByRole('button',{name:'展开概览',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();await expect(page.getByRole('dialog').getByRole('heading',{name:/未分派阶段/})).toHaveCount(0);await page.keyboard.press('Escape');
+ await view(page,'进展表').click();await expect(page.locator('[data-row-id="phase:'+f.phases[0].id+'"]')).toBeVisible();await expect(page.locator('[data-row-id="unphased:'+f.feature.id+'"]')).toHaveCount(0);
+ await view(page,'关系图').click();await expect(page.locator('[data-layout-ready=true]')).toBeVisible();await expect(page.locator('[data-phase-region="unassigned"]')).toHaveCount(0);
+ const response=await page.request.post('/api/requirements',{data:{projectId:f.projectId,featureId:f.feature.id,title:'待分派交付需求'}});expect(response.ok()).toBe(true);const requirement=await response.json();
  await page.goto(link('list'));const group=page.locator('[data-object-id="unphased:'+f.feature.id+'"]');await expect(group).toContainText('未分派阶段');await expect(page.locator('[data-object-id="'+requirement.id+'"]')).toHaveCount(0);await expect(group.getByRole('checkbox')).toHaveCount(0);
  for(const order of ['name','date','manual']){await page.getByLabel('清单排序',{exact:true}).selectOption(order);await expect(page.locator('.outline-table tbody tr').last()).toContainText('未分派阶段');}
  await group.getByRole('button',{name:'展开未分派阶段',exact:true}).click();await expect(page.locator('[data-object-id="'+requirement.id+'"]')).toHaveAttribute('aria-level','2');

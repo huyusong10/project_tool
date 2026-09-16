@@ -60,7 +60,7 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis,sort='n
       ...p.requirements.filter(r=>r.deletedAt).map(r=>requirementRow({...r,projectId:f.projectId,projectName:f.name,templateId:null,templateName:null,ownerId:null,ownerName:null,plannedStart:null,plannedEnd:null,progress:100,plannedProgress:null,progressGap:0,acceptedAt:null,acceptedByAccountId:null,riskLevel:"low",riskEvaluated:false,riskReason:"",priority:"P2",createdAt:"",updatedAt:"",delayed:false,highRisk:false,finishVariance:0,durationVariance:0,effectiveEnd:null,workItems:[]},f.id,p.id)),
     ].sort(byTitle)}));
     const unassigned=own.filter(r=>!r.phaseId);
-    if(unassigned.length||f.kind!=='other')phases.push({id:'unphased:'+f.id,kind:'phase',title:'未分派阶段',featureId:f.id,phaseId:'unassigned',feature:f,virtual:true,children:unassigned.map(r=>requirementRow(r,f.id,'unassigned'))});
+    if(unassigned.length)phases.push({id:'unphased:'+f.id,kind:'phase',title:'未分派阶段',featureId:f.id,phaseId:'unassigned',feature:f,virtual:true,children:unassigned.map(r=>requirementRow(r,f.id,'unassigned'))});
     return {id:'feature:'+f.id,kind:'feature',title:f.kind==='other'?'其他需求':f.name,featureId:f.id,feature:f,archived:!!f.archivedAt,children:phases};
   });
 }
