@@ -1,3 +1,4 @@
+import {referenceLinksInput} from './reference-links';
 import { workStageInput, milestoneKindInput } from './execution-stage';
 import {organizationFields} from './intake';
 import {featureRelationChange} from './features';
@@ -17,7 +18,7 @@ export const editorEntityChange=z.object({entity:z.enum(['requirement','work','m
   blockedCoordinatorId:idSchema.nullable().optional(),blockedNextReviewAt:date.nullable().optional(),blockedIssueId:idSchema.nullable().optional(),
   reviewForecast:forecastReviewInput.optional(),
   deliveryScope:z.enum(['committed','candidate']).optional(),executionMode:z.enum(['direct','work_items']).optional(),acceptanceOwnerId:idSchema.nullable().optional(),forecastEnd:date.nullable().optional(),unblockEstimate:date.nullable().optional(),
-  title:z.string().trim().min(1).optional(),ownerId:idSchema.nullable().optional(),assigneeIds:z.array(idSchema).optional(),priority:z.enum(['P0','P1','P2','P3']).optional(),background:z.string().nullable().optional(),acceptanceCriteria:z.string().nullable().optional(),referenceUrl:z.string().nullable().optional(),templateId:idSchema.nullable().optional(),plannedStart:date.nullable().optional(),plannedEnd:date.nullable().optional(),durationDays:z.number().int().min(1).max(3660).nullable().optional(),arrangement:z.enum(['early','late']).optional(),arrangementAnchor:idSchema.nullable().optional(),targetDate:date.nullable().optional(),confirmationMode:z.enum(['auto','manual']).optional(),reason:z.string().optional(),
+  title:z.string().trim().min(1).optional(),ownerId:idSchema.nullable().optional(),assigneeIds:z.array(idSchema).optional(),priority:z.enum(['P0','P1','P2','P3']).optional(),background:z.string().nullable().optional(),acceptanceCriteria:z.string().nullable().optional(),referenceUrl:z.string().nullable().optional(),referenceLinks:referenceLinksInput.optional(),templateId:idSchema.nullable().optional(),plannedStart:date.nullable().optional(),plannedEnd:date.nullable().optional(),durationDays:z.number().int().min(1).max(3660).nullable().optional(),arrangement:z.enum(['early','late']).optional(),arrangementAnchor:idSchema.nullable().optional(),targetDate:date.nullable().optional(),confirmationMode:z.enum(['auto','manual']).optional(),reason:z.string().optional(),
 }).strict().default({})}).strict();
 export const diagramLayoutChange=z.object({scope:idSchema,direction:z.enum(['right','down']),expectedVersion:z.number().int().nonnegative(),positions:z.record(z.string(),z.object({x:z.number().finite(),y:z.number().finite()}).strict())}).strict();
 export type EditorEntityChange=z.infer<typeof editorEntityChange>;

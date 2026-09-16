@@ -1,3 +1,5 @@
+import {ReferenceLinksEditor} from './ReferenceLinks';
+import {readReferenceLinks,requirementReferenceLinks,type ReferenceLink} from '../../shared/reference-links';
 import { Button } from './Button';
 import {Select} from './Select';
 import {assertCleanRequirementDraft} from '../use-graph-draft';
@@ -22,10 +24,10 @@ export type RequirementInfoDraft = {
   featureId:string;
   phaseId:string;
   reason?:string;
-  title: string; ownerId: string; background: string; acceptanceCriteria: string; referenceUrl: string;
+  title: string; ownerId: string; background: string; acceptanceCriteria: string; referenceUrl: string; referenceLinks?:ReferenceLink[];
 };
 
-const requirementInfoFields: Array<keyof RequirementInfoDraft> = ["featureId", "phaseId", "title", "ownerId", "background", "acceptanceCriteria", "referenceUrl"];
+const requirementInfoFields: Array<keyof RequirementInfoDraft> = ["featureId", "phaseId", "title", "ownerId", "background", "acceptanceCriteria", "referenceUrl", "referenceLinks"];
 export type RequirementInfoRecheck = {
   baselineVersion: number;
   draft: RequirementInfoDraft;
@@ -45,7 +47,7 @@ export function readRequirementInfoRecheck(accountKey: string, requirementId: st
     if(value.draft)value.draft.phaseId??="";
     const draft = value.draft as Partial<RequirementInfoDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
-      || !draft || requirementInfoFields.some((field) => typeof draft[field] !== "string")
+      || !draft || requirementInfoFields.some((field) => field==='referenceLinks'?draft.referenceLinks!==undefined&&!Array.isArray(draft.referenceLinks):typeof draft[field] !== "string")
       || !Array.isArray(value.dirtyFields) || value.dirtyFields.some((field) => !requirementInfoFields.includes(field))
       || value.stage !== "read" && value.stage !== "review") return null;
     return {
@@ -70,7 +72,7 @@ function requirementInfoDraft(requirement: Requirement): RequirementInfoDraft {
     featureId:requirement.featureId||'',phaseId:requirement.phaseId||'',
     title: requirement.title, ownerId: requirement.ownerId || "",
     background: requirement.background || "", acceptanceCriteria: requirement.acceptanceCriteria || "",
-    referenceUrl: requirement.referenceUrl || "",
+    referenceUrl: requirement.referenceUrl || "", referenceLinks:readReferenceLinks(requirement.referenceLinks,requirement.referenceUrl),
   };
 }
 
@@ -123,7 +125,7 @@ export function RequirementInfoForm({
     ? [currentOwner, ...eligiblePeople]
     : eligiblePeople;
   const draftOwnerUnavailable = Boolean(draft.ownerId && draft.ownerId !== baseRequirement.ownerId && !ownerOptions.some((person) => person.id === draft.ownerId));
-  const change = (field: keyof RequirementInfoDraft, value: string) => {
+  const change = (field: keyof RequirementInfoDraft, value: string | ReferenceLink[]) => {
     dirtyFields.current.add(field);if(field==='featureId')dirtyFields.current.add('phaseId');
     const next = { ...draft, [field]: value,...field==='featureId'?{phaseId:''}:{} };
     setDraft(next);
@@ -144,6 +146,7 @@ export function RequirementInfoForm({
       const mergedDraft = Object.fromEntries(Object.entries(latestDraft).map(([field, value]) => [
         field, dirtyFields.current.has(field as keyof RequirementInfoDraft) ? draft[field as keyof RequirementInfoDraft] : value,
       ])) as RequirementInfoDraft;
+      if(dirtyFields.current.has('referenceUrl')&&!dirtyFields.current.has('referenceLinks'))mergedDraft.referenceLinks=requirementReferenceLinks({referenceUrl:draft.referenceUrl},latest);
       setDraft({...mergedDraft,reason:draft.reason});
       if (unknownVersion.current !== null) {
         const requiresReview = latest.version !== unknownVersion.current;
@@ -227,7 +230,7 @@ export function RequirementInfoForm({
     {hasExecution && <p className="field-help field-full">需求已开始执行，负责人可以更换但不能清空。</p>}
     <FormField label="需求背景（可选）" full><textarea name="background" rows={3} value={draft.background} onChange={(event) => change("background", event.target.value)} /></FormField>
     <FormField label="完成标准（可选）" full><textarea name="acceptanceCriteria" rows={3} value={draft.acceptanceCriteria} onChange={(event) => change("acceptanceCriteria", event.target.value)} /></FormField>
-    <FormField label="参考链接（可选）" full><input name="referenceUrl" type="url" value={draft.referenceUrl} onChange={(event) => change("referenceUrl", event.target.value)} placeholder="https://…" /></FormField>
+    <ReferenceLinksEditor value={draft.referenceLinks??requirementReferenceLinks({referenceUrl:draft.referenceUrl},baseRequirement)} onChange={links=>change("referenceLinks",links)}/>
     {unknown&&!reviewRequired&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
     {reviewRequired && <div className="warning-banner field-full">提交结果待核对；当前版本已变化。本窗口不再提交。请核对当前资料与操作记录，已填内容保留。<Button variant="secondary" type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</Button></div>}
     <FormError>{changed ? "需求已更新，请重新读取并核对；已保留你的输入。" : undefined}</FormError>
@@ -261,7 +264,7 @@ export function readRequirementCorrectionRecheck(accountKey: string, requirement
     if(value.draft)value.draft.phaseId??="";
     const draft = value.draft as Partial<RequirementInfoDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
-      || !draft || requirementInfoFields.some((field) => typeof draft[field] !== "string")
+      || !draft || requirementInfoFields.some((field) => field==='referenceLinks'?draft.referenceLinks!==undefined&&!Array.isArray(draft.referenceLinks):typeof draft[field] !== "string")
       || typeof value.reason !== "string" || typeof value.supersedesId !== "string"
       || value.stage !== "read" && value.stage !== "review") return null;
     return {
@@ -326,7 +329,7 @@ export function RequirementCorrectionForm({
       stage: reviewRequired ? "review" : "read",
     });
   };
-  const change = (field: keyof RequirementInfoDraft, value: string) => {
+  const change = (field: keyof RequirementInfoDraft, value: string | ReferenceLink[]) => {
     const next = { ...draft, [field]: value,...field==='featureId'?{phaseId:''}:{} };
     setDraft(next);
     persistDraftIfLocked(next);
@@ -336,13 +339,13 @@ export function RequirementCorrectionForm({
     ownerId: draft.ownerId || null,
     background: canonicalizeContent(draft.background) || null,
     acceptanceCriteria: canonicalizeContent(draft.acceptanceCriteria) || null,
-    referenceUrl: canonicalizeContent(draft.referenceUrl) || null,
+    referenceUrl: canonicalizeContent(draft.referenceUrl) || null, ...(draft.referenceLinks!==undefined?{referenceLinks:draft.referenceLinks}:{}),
   });
   const informationChanged = (() => {
     const value = normalizedDraft();
     return value.phaseId!==(baseline.phaseId||null)||value.featureId!==(baseline.featureId||null)||value.title !== baseline.title || value.ownerId !== (baseline.ownerId || null)
       || value.background !== (baseline.background || null) || value.acceptanceCriteria !== (baseline.acceptanceCriteria || null)
-      || value.referenceUrl !== (baseline.referenceUrl || null);
+      || value.referenceUrl !== (baseline.referenceUrl || null) || (value.referenceLinks!==undefined && JSON.stringify(value.referenceLinks)!==JSON.stringify(readReferenceLinks(baseline.referenceLinks,baseline.referenceUrl)));
   })();
   const read = async () => {
     if (readingRef.current) return null;
@@ -441,7 +444,7 @@ export function RequirementCorrectionForm({
       </Select></FormField>
       <FormField label="需求背景（可选）" full><textarea aria-label="纠错后的需求背景" rows={3} value={draft.background} onChange={(event) => change("background", event.target.value)} /></FormField>
       <FormField label="完成标准（可选）" full><textarea aria-label="纠错后的完成标准" rows={3} value={draft.acceptanceCriteria} onChange={(event) => change("acceptanceCriteria", event.target.value)} /></FormField>
-      <FormField label="参考链接（可选）" full><input aria-label="纠错后的参考链接" type="url" value={draft.referenceUrl} onChange={(event) => change("referenceUrl", event.target.value)} placeholder="https://…" /></FormField>
+      <ReferenceLinksEditor value={draft.referenceLinks??requirementReferenceLinks({referenceUrl:draft.referenceUrl},baseline)} onChange={links=>change("referenceLinks",links)}/>
       {!!candidates.length && <FormField label="关联历史记录（可选）" full><Select aria-label="需求纠错关联历史记录" value={supersedesId} onChange={(event) => {const value=event.target.value;setSupersedesId(value);persistDraftIfLocked(draft,reason,value);}}><option value="">不指定</option>{candidates.map((update) => <option value={update.id} key={update.id}>{new Date(update.createdAt).toLocaleDateString("zh-CN")} · {update.content.slice(0, 36)}</option>)}</Select></FormField>}
       <FormField label="纠错说明（可选）" full><textarea aria-label="需求纠错原因" rows={2} value={reason} onChange={(event) => {const value=event.target.value;setReason(value);persistDraftIfLocked(draft,value);}} placeholder="说明原信息哪里有误，以及核对依据" /></FormField>
       {unknown&&!reviewRequired&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>

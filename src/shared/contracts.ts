@@ -1,3 +1,4 @@
+import {referenceLinksInput} from './reference-links';
 import { workStageInput, milestoneKindInput } from './execution-stage';
 import {organizationFields} from './intake';
 import { z } from 'zod';
@@ -99,6 +100,7 @@ export const requirementInputSchema = z.object({...organizationFields,blockedCoo
   background: optionalTextSchema,
   acceptanceCriteria: optionalTextSchema,
   referenceUrl: optionalHttpUrlSchema,
+  referenceLinks: referenceLinksInput.optional(),
   plannedStart: optionalDateSchema,
   plannedEnd: optionalDateSchema,
   scheduleMode: z.enum(['start', 'deadline']).optional(),
@@ -116,7 +118,7 @@ export const createRequirementInputSchema = requirementInputSchema.pick({feature
   ownerId: true,
   background: true,
   acceptanceCriteria: true,
-  referenceUrl: true,
+  referenceUrl: true, referenceLinks: true,
   plannedStart: true,
   plannedEnd: true,
   templateId: true,
@@ -132,7 +134,7 @@ export const updateRequirementInputSchema = requirementInputSchema.pick({feature
   deliveryScope:true,executionMode:true,acceptanceOwnerId:true,durationDays:true,forecastEnd:true,unblockEstimate:true,reason:true,
   plannedStart:true,plannedEnd:true,
   title: true, priority: true, ownerId: true, background: true,
-  acceptanceCriteria: true, referenceUrl: true, expectedVersion: true,
+  acceptanceCriteria: true, referenceUrl: true, referenceLinks: true, expectedVersion: true,
 }).extend({ expectedVersion: expectedVersionSchema }).strict();
 
 export const requirementCorrectionInputSchema = updateRequirementInputSchema.extend({
@@ -170,7 +172,7 @@ export const applyTemplateInputSchema = z.object({
   reason: z.string().trim().optional(),
 }).strict();
 
-export const workItemInputSchema = z.object({workStage:workStageInput,blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema,
+export const workItemInputSchema = z.object({referenceLinks:referenceLinksInput.optional(),workStage:workStageInput,blockedCoordinatorId:optionalIdSchema,blockedNextReviewAt:optionalDateSchema,blockedIssueId:optionalIdSchema,
   title: z.string().trim().min(1).optional(),
   ownerId: z.string().nullable().optional(),
   collaboratorIds: z.array(idSchema).optional(),
@@ -200,7 +202,7 @@ export const workItemCommandSchema = expectedVersionInputSchema.extend({
   actualEnd: optionalDateSchema,
 });
 
-export const workItemCorrectionSchema = workItemCommandSchema.omit({ content: true }).extend({
+export const workItemCorrectionSchema = workItemCommandSchema.omit({ content: true }).extend({referenceLinks:referenceLinksInput.optional(),
   reason: z.string().trim().optional(),
   title: z.string().trim().min(1).optional(),
   supersedesId: z.string().nullable().optional(),

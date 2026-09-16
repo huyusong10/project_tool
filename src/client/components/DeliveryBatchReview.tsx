@@ -2,7 +2,7 @@ import { Button } from './Button';
 import type {useDependencyDraft} from '../use-graph-draft';
 import type {PathAnalysis} from '../../shared/paths';
 import {DeliveryImpactTable} from './DeliveryImpactTable';
-const labels:Record<string,string>={title:'名称',ownerId:'负责人',acceptanceCriteria:'完成标准',background:'需求说明',referenceUrl:'来源链接',durationDays:'工期',forecastEnd:'预计完成',plannedStart:'计划开始',plannedEnd:'计划结束',targetDate:'目标日期',reason:'说明'};
+const labels:Record<string,string>={title:'名称',ownerId:'负责人',acceptanceCriteria:'完成标准',background:'需求说明',referenceUrl:'来源链接',referenceLinks:'关联链接',durationDays:'工期',forecastEnd:'预计完成',plannedStart:'计划开始',plannedEnd:'计划结束',targetDate:'目标日期',reason:'说明'};
 const display=(v:unknown):string=>v==null?'未设置':typeof v==='object'?Object.entries(v).map(([k,x])=>(k==='remainingDays'?'剩余工作日':labels[k]||k)+' '+display(x)).join('，'):({committed:'纳入交付',candidate:'候选',direct:'直接执行',work_items:'工作项分解'}[String(v)]||String(v));
 export function DeliveryBatchReview({draft,data,onSaved}:{draft:ReturnType<typeof useDependencyDraft>;data:PathAnalysis;onSaved:()=>void}) {
   const label=(id:string)=>data.requirements.find(r=>r.id===id)?.title||data.nodes.find(n=>n.id===id)?.title||draft.changes.entities?.find(c=>c.id===id)?.data.title||id;

@@ -12,7 +12,7 @@ export type Dependency = {
 export type PathMilestone={milestoneKind?:import('./execution-stage').MilestoneKind;achievedRecordedAt?:string|null;forecastEnd?:string|null;id:string;projectId:string;requirementId:string|null;title:string;targetDate:string|null;confirmationMode:'auto'|'manual';achievedAt:string|null;version:number;cancelled?:boolean};
 export type DiagramLayout={scope:string;direction:'right'|'down';version:number;positions:Record<string,{x:number;y:number}>};
 export type PathWork = import('./forecast-basis').ExecutionMetadata & {
-  workStage?:import('./execution-stage').WorkStage|null; progressWeight?:number|null;
+  referenceLinks?:import('./reference-links').ReferenceLink[]; workStage?:import('./execution-stage').WorkStage|null; progressWeight?:number|null;
   version?:number;
   arrangement?:Arrangement; arrangementAnchor?:string|null; acknowledgedDependencies?:string[];
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[];
@@ -24,7 +24,7 @@ export type PathWork = import('./forecast-basis').ExecutionMetadata & {
 };
 export type PathRequirement = import('./intake').Organization & DeliveryFields & Partial<ProcessingResult> & {
   sortOrder?:number; executionStage?:import('./execution-stage').ExecutionStage; stageResetAt?:string|null; createdAt?:string;updatedAt?:string;
-  acknowledgedDependencies?:string[]; version?:number; background?:string|null;acceptanceCriteria?:string|null;referenceUrl?:string|null;templateId?:string|null;
+  acknowledgedDependencies?:string[]; version?:number; background?:string|null;acceptanceCriteria?:string|null;referenceUrl?:string|null;referenceLinks?:import('./reference-links').ReferenceLink[];templateId?:string|null;
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[]; delayed?:boolean; scheduleComplete?:boolean;
   id: string; projectId: string; title: string; status: string; priority: string; ownerName: string | null;
   plannedStart: string | null; plannedEnd: string | null; acceptedAt: string | null;

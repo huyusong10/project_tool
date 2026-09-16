@@ -38,7 +38,7 @@ function prepare(projectId:string,pkg:IntakePackage,actor:Actor) {
     if((destination?.id!==old?.phaseId||!!r.phase&&!destination)&&(destination?.startedAt||previous?.startedAt)&&!r.reason)errors.push(r.title+'：推进后的需求移入移出需要填写原因');
     // Undefined keys disappear on the wire but otherwise reach SQL as NULL.
     // Keep the preview, update dispatch and commit limited to supplied fields.
-    const data=Object.fromEntries(Object.entries({...r.action==='create'&&feature?{featureId:feature.id}:{},reason:r.reason,title:r.title,background:r.background,acceptanceCriteria:r.acceptanceCriteria,referenceUrl:r.referenceUrl,ownerId:r.ownerId,plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,durationDays:r.durationDays}).filter(([,value])=>value!==undefined));
+    const data=Object.fromEntries(Object.entries({...r.action==='create'&&feature?{featureId:feature.id}:{},reason:r.reason,title:r.title,background:r.background,acceptanceCriteria:r.acceptanceCriteria,referenceUrl:r.referenceUrl,referenceLinks:r.referenceLinks,ownerId:r.ownerId,plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,durationDays:r.durationDays}).filter(([,value])=>value!==undefined));
     if(r.action==='update'){
       const old=r.existingId?existing.get(r.existingId):undefined;
       if(!old||old.deletedAt){errors.push(r.title+'：请选择当前项目未归档的已有需求');continue;}
@@ -53,7 +53,7 @@ function prepare(projectId:string,pkg:IntakePackage,actor:Actor) {
       if(matches.length&&!r.confirmAdditional)errors.push(r.title+'：已有同名需求，请选择更新或确认另建');
       if(new Set(r.workItems.map(w=>w.key)).size!==r.workItems.length)errors.push(r.title+'：工作项标识重复');
       changes.changes.entities!.push({entity:'requirement',op:'create',id:entityId(r.key),data});
-      for(const w of r.workItems)changes.changes.entities!.push({entity:'work',op:'create',id:entityId(r.key,w.key),requirementId:entityId(r.key),data:{title:w.title,workStage:w.workStage,ownerId:w.ownerId,plannedStart:w.plannedStart,plannedEnd:w.plannedEnd,durationDays:w.durationDays??null}});
+      for(const w of r.workItems)changes.changes.entities!.push({entity:'work',op:'create',id:entityId(r.key,w.key),requirementId:entityId(r.key),data:{title:w.title,referenceLinks:w.referenceLinks,workStage:w.workStage,ownerId:w.ownerId,plannedStart:w.plannedStart,plannedEnd:w.plannedEnd,durationDays:w.durationDays??null}});
     }
     if(!r.ownerId&&r.action==='create')warnings.push(r.title+'：未分配负责人');
     if(!r.plannedStart||!r.plannedEnd)warnings.push(r.title+'：计划日期尚未补齐');

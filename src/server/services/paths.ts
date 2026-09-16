@@ -1,3 +1,4 @@
+import {readReferenceLinks} from '../../shared/reference-links';
 import {loadBlockerCoordination} from './blocker-coordination';
 import {refreshPathAssignments} from './path-assignments';
 import {loadCommitments} from './commitments';
@@ -31,9 +32,9 @@ export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInp
     r.progress,r.created_at AS createdAt,r.updated_at AS updatedAt,r.id, r.project_id AS projectId, r.title, r.status, r.priority, r.owner_id AS ownerId,
     r.planned_start AS plannedStart, r.planned_end AS plannedEnd, r.accepted_at AS acceptedAt, r.deleted_at AS deletedAt,
     r.dependencies_reviewed_at AS dependenciesReviewedAt, r.schedule_anchor AS scheduleAnchor, r.forecast_acceptance AS forecastAcceptance,
-    r.version,r.background,r.acceptance_criteria AS acceptanceCriteria,r.reference_url AS referenceUrl,r.template_id AS templateId,r.acknowledged_dependencies AS acknowledgedDependencies
+    r.version,r.background,r.acceptance_criteria AS acceptanceCriteria,r.reference_url AS referenceUrl,r.reference_links AS referenceLinks,r.template_id AS templateId,r.acknowledged_dependencies AS acknowledgedDependencies
     FROM requirements r WHERE r.project_id=? ORDER BY r.id`, projectId);
-  const workItems = all<PathWork>(`SELECT w.work_stage AS workStage,w.progress_weight AS progressWeight,w.id, w.version, w.requirement_id AS requirementId, w.title, w.status, w.progress, w.owner_id AS ownerId,
+  const workItems = all<PathWork>(`SELECT w.reference_links AS referenceLinks,w.work_stage AS workStage,w.progress_weight AS progressWeight,w.id, w.version, w.requirement_id AS requirementId, w.title, w.status, w.progress, w.owner_id AS ownerId,
     (SELECT json_group_array(c.person_id) FROM work_item_collaborators c WHERE c.work_item_id=w.id) AS assigneeIds,
     w.planned_start AS plannedStart, w.planned_end AS plannedEnd, w.forecast_review AS forecastReview,w.blocked_coordinator_id AS blockedCoordinatorId,w.blocked_next_review_at AS blockedNextReviewAt,w.blocked_issue_id AS blockedIssueId,w.actual_start AS actualStart, w.actual_end AS actualEnd,
     w.duration_days AS durationDays, w.earliest_start AS earliestStart, w.unblock_estimate AS unblockEstimate,w.arrangement,w.arrangement_anchor AS arrangementAnchor,w.acknowledged_dependencies AS acknowledgedDependencies,
@@ -41,6 +42,7 @@ export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInp
     w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.milestone_label AS milestoneLabel
     FROM work_items w JOIN requirements r ON r.id=w.requirement_id WHERE r.project_id=? ORDER BY w.id`, projectId);
   for(const value of [...requirements,...workItems])value.forecastReview=value.forecastReview?JSON.parse(String(value.forecastReview)):null;
+  for(const value of [...requirements,...workItems])value.referenceLinks=readReferenceLinks(value.referenceLinks,'referenceUrl' in value?value.referenceUrl:null);
   const commitments=loadCommitments(projectId);for(const r of requirements)r.commitment=requirementCommitments(commitments,r.id,r.acceptedAt);
   const coordinations=[...requirements,...workItems].some(v=>v.status==='blocked')?loadBlockerCoordination(projectId):{};for(const value of [...requirements,...workItems])value.blockerCoordination=coordinations[value.id];
   for(const w of workItems)w.assigneeIds=JSON.parse(String(w.assigneeIds||'[]'));

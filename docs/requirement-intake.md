@@ -1,6 +1,6 @@
 # 原始需求录入与导入
 
-原始需求直接成为需求。原文写入需求说明，出处放在来源链接；特性用于维护长期目标、当前预期和人工判断。没有工作项时直接推进需求，需要分工时添加工作项或套用模板。
+原始需求直接成为需求。原文写入需求说明，出处放在关联链接；特性用于维护长期目标、当前预期和人工判断。没有工作项时直接推进需求，需要分工时添加工作项或套用模板。
 
 ## 页面操作
 
@@ -19,7 +19,9 @@
 |---|---|
 | `formatVersion` | `3` |
 | `requirements[]` | `key/title` 必填；`action` 为 `create/update/skip` |
-| `background/referenceUrl` | 原始需求正文与 HTTP(S) 来源链接 |
+| `background` | 需求说明 |
+| `referenceLinks[]` | `{title,url,kind?}` 关联链接；需求、导入工作项均可填写 |
+| `referenceUrl` | 兼容旧客户端的单链接，推荐改用 `referenceLinks` |
 | `acceptanceCriteria` | 完成标准 |
 | `feature/ownerId` | 未指定特性时归入“其他需求”；负责人可选，不自动选择人员 |
 | `plannedStart/plannedEnd/durationDays` | 可选计划日期、工作日工期 |

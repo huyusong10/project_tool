@@ -1,3 +1,5 @@
+import {readReferenceLinks,normalizeReferenceLinks,requirementReferenceLinks} from '../shared/reference-links';
+import {persistRequirementLinks} from './services/reference-links';
 import {workStageInput,milestoneKindInput,type WorkStage,type MilestoneKind} from '../shared/execution-stage';
 import { describeChanges } from './services/support';
 import {persistOrganization} from './services/intake-metadata';
@@ -998,7 +1000,7 @@ function shiftRequirementWorkItems(requirementId: string, currentAnchor: string,
 export function createRequirement(input: JsonObject, actor: Actor, deferNormalization=false) {
   if(!input.templateId)return createDirectRequirement({...input,executionMode:'direct'},actor,deferNormalization);
   if (Object.keys(input).some((key) => ![
-    'reason','phaseId','featureId','projectId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl',
+    'reason','phaseId','featureId','projectId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl', 'referenceLinks',
     'plannedStart', 'plannedEnd', 'templateId','deliveryScope','executionMode','acceptanceOwnerId','durationDays','forecastEnd','unblockEstimate',
   ].includes(key))) fail('新建需求不能提交未声明字段');
   const commandFields = ['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'scheduleMode', 'confirmTemplateReset', 'expectedVersion'];
@@ -1015,7 +1017,8 @@ export function createRequirement(input: JsonObject, actor: Actor, deferNormaliz
   const ownerId = requirementOwner(projectId, input.ownerId);
   const background = nullableText(input.background);
   const acceptanceCriteria = nullableText(input.acceptanceCriteria);
-  const referenceUrl = nullableText(input.referenceUrl);
+  const referenceLinks = requirementReferenceLinks(input);
+  const referenceUrl = referenceLinks[0]?.url||null;
   const inputPlannedStart = nullableText(input.plannedStart);
   const inputPlannedEnd = nullableText(input.plannedEnd);
   if (inputPlannedStart && inputPlannedEnd) fail('计划开始和截止日期只能选择一项');
@@ -1041,6 +1044,7 @@ export function createRequirement(input: JsonObject, actor: Actor, deferNormaliz
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'not_started', ?, 0, 'low', ?, ?, ?)`).run(
       id, projectId, templateId, title, background, acceptanceCriteria, referenceUrl, ownerId, plannedStart, priority, now, now,
     );
+    persistRequirementLinks(id,input);
     validateDeliveryFields(projectId,input,actor);persistOrganization(id,projectId,input);
     sqlite.prepare('UPDATE requirements SET delivery_scope=?,acceptance_owner_id=? WHERE id=?').run(input.deliveryScope||'committed',input.acceptanceOwnerId||null,id);
     if (plannedStart && templateId) applyTemplateInternal(id, templateId, plannedStart, deferNormalization);
@@ -1071,7 +1075,8 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
   const ownerId = input.ownerId === undefined ? current.ownerId : requirementOwner(current.projectId, input.ownerId);
   const background = input.background === undefined ? current.background : nullableText(input.background);
   const acceptanceCriteria = input.acceptanceCriteria === undefined ? current.acceptanceCriteria : nullableText(input.acceptanceCriteria);
-  const referenceUrl = input.referenceUrl === undefined ? current.referenceUrl : nullableText(input.referenceUrl);
+  const referenceLinks = requirementReferenceLinks(input,current);
+  const referenceUrl = referenceLinks[0]?.url||null;
   const requestedPlannedStart = input.plannedStart === undefined ? undefined : requireDate(input.plannedStart, '计划开始');
   const requestedPlannedEnd = input.plannedEnd === undefined ? undefined : requireDate(input.plannedEnd, '计划完成');
   if (requestedPlannedStart !== undefined && requestedPlannedEnd !== undefined) fail('计划开始和完成日期请选择一项');
@@ -1124,7 +1129,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
     fail('当前流程设计已归档，请恢复流程或重新选择', 'DEPENDENCY_CONFLICT', 409);
   }
   const informationChanged = title !== current.title || priority !== current.priority || ownerId !== current.ownerId
-    || background !== current.background || acceptanceCriteria !== current.acceptanceCriteria || referenceUrl !== current.referenceUrl;
+    || background !== current.background || acceptanceCriteria !== current.acceptanceCriteria || referenceUrl !== current.referenceUrl || JSON.stringify(referenceLinks)!==JSON.stringify(current.referenceLinks||[]);
   const scheduleRequested = requestedPlannedStart !== undefined || requestedPlannedEnd !== undefined;
   const scheduleChanged = templateChanged || generateInitialPlan
     || Boolean(scheduleRequested && scheduleShift && scheduleShift.currentAnchor !== scheduleShift.targetAnchor);
@@ -1149,6 +1154,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
         version=version+1, updated_at=? WHERE id=? AND version=?`)
         .run(templateId, title, nextPlannedStart, priority, ownerId, background, acceptanceCriteria, referenceUrl, now, id, current.version);
       assertVersionedWrite(changed, '需求');
+      persistRequirementLinks(id,input,current);
       applyTemplateInternal(id, templateId, nextPlannedStart!);
       updateStoredRequirementSchedule(id);
       requirementOwner(current.projectId, ownerId, true);
@@ -1162,6 +1168,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
       planned_start=?, version=version+1, updated_at=? WHERE id=? AND version=?`)
       .run(title, priority, ownerId, background, acceptanceCriteria, referenceUrl, nextPlannedStart, now, id, current.version);
     assertVersionedWrite(changed, '需求');
+    persistRequirementLinks(id,input,current);
     if (generateInitialPlan) applyTemplateInternal(id, current.templateId!, nextPlannedStart!);
     if (requestedPlannedStart !== undefined || requestedPlannedEnd !== undefined) updateStoredRequirementSchedule(id);
     else if (ownerId !== current.ownerId) syncStoredRequirementState(id, now, false);
@@ -1180,7 +1187,7 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor, d
     fail('需求状态、进度、验收、排期和流程不能通过普通编辑修改，请使用对应操作命令');
   }
   if (Object.keys(input).some((key) => ![
-    'expectedVersion', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl', 'reason',
+    'expectedVersion', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl', 'referenceLinks', 'reason',
   ].includes(key))) fail('需求编辑不能提交未声明字段');
   return changeRequirement(id, input, actor, deferAnalysis);
 }
@@ -1188,7 +1195,7 @@ export function updateRequirement(id: string, input: JsonObject, actor: Actor, d
 export function correctRequirement(id: string, input: JsonObject, actor: Actor) {
   if (Object.keys(input).some((key) => ![
     'phaseId','featureId','expectedVersion', 'reason', 'supersedesId', 'title', 'priority', 'ownerId',
-    'background', 'acceptanceCriteria', 'referenceUrl',
+    'background', 'acceptanceCriteria', 'referenceUrl', 'referenceLinks',
   ].includes(key))) fail('需求纠错不能提交未声明字段');
   const current = getRequirement(id);
   assertExpectedVersion(input, current.version);
@@ -1203,7 +1210,8 @@ export function correctRequirement(id: string, input: JsonObject, actor: Actor) 
   const ownerId = input.ownerId === undefined ? current.ownerId : requirementOwner(current.projectId, input.ownerId);
   const background = input.background === undefined ? current.background : nullableText(input.background);
   const acceptanceCriteria = input.acceptanceCriteria === undefined ? current.acceptanceCriteria : nullableText(input.acceptanceCriteria);
-  const referenceUrl = input.referenceUrl === undefined ? current.referenceUrl : nullableText(input.referenceUrl);
+  const referenceLinks = requirementReferenceLinks(input,current);
+  const referenceUrl = referenceLinks[0]?.url||null;
   const hasExecution = current.workItems!.some((item) => item.status !== 'not_started' || item.progress > 0 || item.actualStart)
     || Boolean(row(`SELECT 1 FROM progress_updates WHERE requirement_id=? AND event_type NOT IN ('note','correction','cancel') LIMIT 1`, id));
   if (input.ownerId !== undefined && !ownerId && hasExecution) {
@@ -1214,7 +1222,7 @@ export function correctRequirement(id: string, input: JsonObject, actor: Actor) 
     fail('纠错引用记录不存在或不是当前需求的需求级记录');
   }
   const factsChanged = (input.featureId!==undefined&&(input.featureId||null)!==(current.featureId||null))||title !== current.title || priority !== current.priority || ownerId !== current.ownerId
-    || background !== current.background || acceptanceCriteria !== current.acceptanceCriteria || referenceUrl !== current.referenceUrl;
+    || background !== current.background || acceptanceCriteria !== current.acceptanceCriteria || referenceUrl !== current.referenceUrl || JSON.stringify(referenceLinks)!==JSON.stringify(current.referenceLinks||[]);
   if (!factsChanged && !supersedesId) fail('没有需要纠错的需求信息，请修改字段或关联历史记录');
   const now = nowIso();
   sqlite.transaction(() => {
@@ -1224,6 +1232,7 @@ export function correctRequirement(id: string, input: JsonObject, actor: Actor) 
       title, priority, ownerId, background, acceptanceCriteria, referenceUrl, now, id, current.version,
     );
     assertVersionedWrite(changed, '需求');
+    persistRequirementLinks(id,input,current);
     appendRequirementEvent(id, 'correction', reason, actor, null, null, supersedesId, now);
     audit(actor, 'correct', 'requirement', id, `纠错需求：${current.title}`);
     requireActiveProject(current.projectId, true);
@@ -1236,7 +1245,7 @@ export function correctRequirement(id: string, input: JsonObject, actor: Actor) 
 export function rescheduleRequirement(id: string, input: JsonObject, actor: Actor) {
   if(getRequirement(id).executionMode==='direct')return rescheduleDirectRequirement(id,input,actor);
   if (input.plannedStart === undefined && input.plannedEnd === undefined) fail('请设置计划开始或计划完成日期');
-  if (['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'templateId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl']
+  if (['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'templateId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl', 'referenceLinks']
     .some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
     fail('排期命令不能修改需求信息、状态、进度、验收或流程');
   }
@@ -1251,7 +1260,7 @@ export function reselectRequirementTemplate(id: string, input: JsonObject, actor
     'templateId', 'expectedVersion', 'plannedStart', 'plannedEnd', 'scheduleMode', 'reason',
   ].includes(key))) fail('流程重选命令不能提交未声明字段');
   if (!nullableText(input.templateId)) fail('请选择要重新绑定的流程');
-  if (['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl']
+  if (['status', 'progress', 'acceptedAt', 'acceptedByAccountId', 'title', 'priority', 'ownerId', 'background', 'acceptanceCriteria', 'referenceUrl', 'referenceLinks']
     .some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
     fail('流程重选命令不能修改需求信息、状态、进度或验收信息');
   }
@@ -1484,7 +1493,7 @@ function syncWorkItemCollaborators(workItemId: string, collaboratorIds: string[]
 
 export function createWorkItem(requirementId: string, input: JsonObject, actor: Actor, deferAnalysis=false) {
   if (Object.keys(input).some((key) => ![
-    'title', 'ownerId', 'collaboratorIds', 'assigneeIds', 'plannedStart', 'plannedEnd',
+    'referenceLinks','title', 'ownerId', 'collaboratorIds', 'assigneeIds', 'plannedStart', 'plannedEnd',
     'workStage','milestoneLabel', 'expectedVersion', 'reason',
   ].includes(key))) fail('新建工作项不能提交未声明字段');
   const requirement = getRequirement(requirementId, false, !deferAnalysis);
@@ -1497,6 +1506,7 @@ export function createWorkItem(requirementId: string, input: JsonObject, actor: 
   }
   if (['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status)) fail('当前需求已锁定，不能新增工作项', 'TERMINAL_LOCKED');
   const id = randomUUID(); const now = nowIso(); const title = requireLabel(input.title, '工作项标题');
+  const referenceLinks=normalizeReferenceLinks(input.referenceLinks||[]);
   const max = row<{ value: number | null }>('SELECT MAX(sort_order) AS value FROM work_items WHERE requirement_id=?', requirementId)?.value ?? -1;
   const ownerId = nullableText(input.ownerId);
   const collaboratorIds = collaboratorIdsFromInput(input, ownerId) || [];
@@ -1518,6 +1528,7 @@ export function createWorkItem(requirementId: string, input: JsonObject, actor: 
       initialWorkEstimates({ status: 'not_started', plannedStart, plannedEnd }).durationDays,
       initialWorkEstimates({ status: 'not_started', plannedStart, plannedEnd }).progressWeight,
     );
+    sqlite.prepare('UPDATE work_items SET reference_links=? WHERE id=?').run(JSON.stringify(referenceLinks),id);
     // Explicitly adding independent work preserves the previously checked dependency facts.
     if (reviewed) sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=? WHERE id=?').run(reviewed, requirementId);
     syncWorkItemCollaborators(id, collaboratorIds);
@@ -1538,9 +1549,11 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor, defe
   if (isTerminalWorkItemStatus(current.status)) fail('已完成或已取消的工作项已锁定，请使用重开或纠错操作', 'TERMINAL_LOCKED');
   if (workItemExecutionKeys.some((key) => Object.prototype.hasOwnProperty.call(input, key))) fail('状态、进度和实际日期不能通过普通编辑修改，请使用对应操作命令');
   if (Object.keys(input).some((key) => ![
-    'expectedVersion', 'title', 'ownerId', 'collaboratorIds', 'assigneeIds',
+    'referenceLinks','expectedVersion', 'title', 'ownerId', 'collaboratorIds', 'assigneeIds',
     'workStage','plannedStart', 'plannedEnd', 'sortOrder', 'milestoneLabel', 'reason',...coordinationKeys,
   ].includes(key))) fail('工作项编辑不能提交未声明字段');
+  const referenceLinks=input.referenceLinks===undefined?readReferenceLinks(current.referenceLinks):normalizeReferenceLinks(input.referenceLinks);
+  const linksChanged=JSON.stringify(referenceLinks)!==JSON.stringify(readReferenceLinks(current.referenceLinks));
   const title = input.title === undefined ? current.title : requireLabel(input.title, '工作项标题');
   const milestone = input.milestoneLabel === undefined ? current.milestoneLabel : milestoneLabel(input.milestoneLabel);
   const ownerId = input.ownerId === undefined ? current.ownerId : nullableText(input.ownerId);
@@ -1561,7 +1574,7 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor, defe
   const requirementHasExecution = Boolean(row(`SELECT 1 FROM work_items WHERE requirement_id=? AND status<>'not_started' LIMIT 1`, current.requirementId));
   const collaboratorsChanged = collaboratorIds !== undefined
     && [...collaboratorIds].sort().join(',') !== [...previousCollaboratorIds].sort().join(',');
-  const structuralChanged = input.workStage!==undefined&&input.workStage!==current.workStage || title !== current.title || milestone !== current.milestoneLabel || ownerId !== current.ownerId
+  const structuralChanged = linksChanged || input.workStage!==undefined&&input.workStage!==current.workStage || title !== current.title || milestone !== current.milestoneLabel || ownerId !== current.ownerId
     || collaboratorsChanged || scheduleChanged || input.sortOrder !== undefined && Number(input.sortOrder) !== current.sortOrder;
   const coordinationChanged=coordinationKeys.some(k=>input[k]!==undefined);const coordination=coordinationChanged?validateCoordination(requirement.projectId,{...current,...input}):undefined;if(coordinationChanged&&current.status!=='blocked')fail('只有阻塞对象可以修改协调信息');
   if(coordinationChanged&&!structuralChanged)assertCoordinationAccess('work',id,input,actor);
@@ -1581,6 +1594,7 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor, defe
       input.sortOrder === undefined ? current.sortOrder : Number(input.sortOrder), estimates.durationDays, estimates.progressWeight, now, id, current.version,
     );
     assertVersionedWrite(result, '工作项');
+    sqlite.prepare('UPDATE work_items SET reference_links=? WHERE id=?').run(JSON.stringify(referenceLinks),id);
     if(coordination)persistCoordination('work',id,requirement.projectId,{...coordination,reason:input.reason},actor);
     if (collaboratorIds !== undefined) syncWorkItemCollaborators(id, collaboratorIds);
     else if (ownerId) sqlite.prepare('DELETE FROM work_item_collaborators WHERE work_item_id=? AND person_id=?').run(id, ownerId);
@@ -1791,7 +1805,7 @@ export function reopenWorkItem(id: string, input: JsonObject, actor: Actor) {
 
 export function correctWorkItem(id: string, input: JsonObject, actor: Actor) {
   if (Object.keys(input).some((key) => ![
-    'expectedVersion', 'reason', 'supersedesId', 'title', 'progress', 'actualStart', 'actualEnd',
+    'referenceLinks','expectedVersion', 'reason', 'supersedesId', 'title', 'progress', 'actualStart', 'actualEnd',
   ].includes(key))) fail('工作项纠错不能提交完成说明或未声明字段');
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
   if (!current) notFound('工作项不存在');
@@ -1818,8 +1832,10 @@ export function correctWorkItem(id: string, input: JsonObject, actor: Actor) {
   if (supersedesId && !row('SELECT id FROM progress_updates WHERE id=? AND requirement_id=? AND work_item_id=?', supersedesId, current.requirementId, id)) {
     fail('纠错引用记录不存在或不属于当前工作项');
   }
+  const referenceLinks=input.referenceLinks===undefined?readReferenceLinks(current.referenceLinks):normalizeReferenceLinks(input.referenceLinks);
+  const linksChanged=JSON.stringify(referenceLinks)!==JSON.stringify(readReferenceLinks(current.referenceLinks));
   const title = input.title === undefined ? current.title : requireLabel(input.title, '工作项标题');
-  const factsChanged = title !== current.title || progress !== current.progress
+  const factsChanged = linksChanged || title !== current.title || progress !== current.progress
     || actualStart !== current.actualStart || actualEnd !== current.actualEnd;
   if (!factsChanged && !supersedesId) fail('没有需要纠错的工作项信息，请修改字段或关联历史记录');
   const now = nowIso();
@@ -1829,6 +1845,7 @@ export function correctWorkItem(id: string, input: JsonObject, actor: Actor) {
     const changed = sqlite.prepare(`UPDATE work_items SET title=?, actual_start=?, actual_end=?, progress=?, version=version+1, updated_at=? WHERE id=? AND version=?`)
       .run(title, actualStart, actualEnd, progress, itemUpdatedAt, id, current.version);
     assertVersionedWrite(changed, '工作项');
+    sqlite.prepare('UPDATE work_items SET reference_links=? WHERE id=?').run(JSON.stringify(referenceLinks),id);
     syncStoredRequirementState(current.requirementId, now, true, requirement.version);
     requireActiveProject(requirement.projectId, true);
     assertProjectManager(requireAuthorizationActor(actor), requirement.projectId);

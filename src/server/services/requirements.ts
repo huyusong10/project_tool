@@ -1,3 +1,4 @@
+import {readReferenceLinks,type ReferenceLink} from '../../shared/reference-links';
 import { deriveExecutionStage, type ExecutionStage, type WorkStage } from '../../shared/execution-stage';
 import {nodeForecastBasis, deliveryForecast, requirementDeliveryForecast} from '../../shared/forecast-basis';
 import {type DeliveryFields,type ProcessingResult,deliveryReadiness,processingPriority} from '../../shared/delivery';
@@ -11,7 +12,7 @@ import { getPathAnalysis, startConditions } from './paths';
 import type { PathRisk } from '../../shared/paths';
 
 export type WorkItemRecord = import('../../shared/forecast-basis').ExecutionMetadata & {
-  workStage?:WorkStage|null; progressWeight?:number|null;
+  referenceLinks?:ReferenceLink[]; workStage?:WorkStage|null; progressWeight?:number|null;
   durationDays?:number|null;
   dependencyRevision?:number; unmetPredecessors?:Array<{id:string;title:string}>;
   id: string; requirementId: string; templateItemId: string | null; title: string; ownerId: string | null; ownerName: string | null;
@@ -27,7 +28,7 @@ export type RequirementRecord = DeliveryFields & import('../../shared/intake').O
   readinessIssues?:string[];
   pathRisk?: PathRisk; pathEnabled?:number;
   sortOrder?:number; id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
-  background: string | null; acceptanceCriteria: string | null; referenceUrl: string | null; sourceNotes?: string | null;
+  referenceLinks?:ReferenceLink[]; background: string | null; acceptanceCriteria: string | null; referenceUrl: string | null; sourceNotes?: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number | null; progressGap?: number;
   scheduleComplete?: boolean;
   asOfDate?: string;
@@ -44,7 +45,7 @@ export const requirementSelect = `SELECT EXISTS(SELECT 1 FROM project_people op 
     (SELECT name FROM people WHERE id=r.acceptance_owner_id) AS acceptanceOwnerName,
     EXISTS(SELECT 1 FROM project_people ap JOIN accounts aa ON aa.person_id=ap.person_id JOIN people person ON person.id=ap.person_id WHERE ap.project_id=r.project_id AND ap.person_id=r.acceptance_owner_id AND ap.project_role IN ('member','manager') AND aa.status='active' AND aa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS acceptanceOwnerValid,r.id, r.project_id AS projectId, pr.name AS projectName,
   r.template_id AS templateId, t.name AS templateName, r.title,
-  r.background, r.source_notes AS sourceNotes, r.acceptance_criteria AS acceptanceCriteria, r.reference_url AS referenceUrl, r.sort_order AS sortOrder,r.phase_id AS phaseId,(SELECT name FROM feature_phases fp WHERE fp.id=r.phase_id) AS phaseName,r.stage_reset_at AS stageResetAt,r.feature_id AS featureId,(SELECT CASE WHEN kind='other' THEN '其他需求' ELSE name END FROM features WHERE id=r.feature_id) AS featureName,
+  r.reference_links AS referenceLinks,r.background, r.source_notes AS sourceNotes, r.acceptance_criteria AS acceptanceCriteria, r.reference_url AS referenceUrl, r.sort_order AS sortOrder,r.phase_id AS phaseId,(SELECT name FROM feature_phases fp WHERE fp.id=r.phase_id) AS phaseName,r.stage_reset_at AS stageResetAt,r.feature_id AS featureId,(SELECT CASE WHEN kind='other' THEN '其他需求' ELSE name END FROM features WHERE id=r.feature_id) AS featureName,
   r.owner_id AS ownerId, p.name AS ownerName, r.status, r.planned_start AS plannedStart,
   r.planned_end AS plannedEnd, r.progress, r.risk_level AS riskLevel, r.priority,
   r.accepted_at AS acceptedAt, r.accepted_by_account_id AS acceptedByAccountId, r.version,
@@ -59,7 +60,7 @@ export function requirementCompletionDate(requirement: RequirementRecord) {
   return requirement.executionCompletedAt || requirement.actualEnd || requirement.effectiveEnd || null;
 }
 
-export const workItemSelect = `SELECT w.work_stage AS workStage,w.progress_weight AS progressWeight,w.duration_days AS durationDays,w.id, w.requirement_id AS requirementId, w.template_item_id AS templateItemId,
+export const workItemSelect = `SELECT w.reference_links AS referenceLinks,w.work_stage AS workStage,w.progress_weight AS progressWeight,w.duration_days AS durationDays,w.id, w.requirement_id AS requirementId, w.template_item_id AS templateItemId,
   w.title, w.owner_id AS ownerId, p.name AS ownerName, w.status,
   w.planned_start AS plannedStart, w.planned_end AS plannedEnd,
   w.forecast_review AS forecastReview,w.blocked_coordinator_id AS blockedCoordinatorId,w.blocked_next_review_at AS blockedNextReviewAt,w.blocked_issue_id AS blockedIssueId,w.actual_start AS actualStart, w.actual_end AS actualEnd, w.forecast_end AS forecastEnd,
@@ -118,7 +119,7 @@ export function loadWorkItemsByRequirementIds(requirementIds: string[], requirem
       .filter((person) => person.id !== item.ownerId)
       .map(({ workItemId: _workItemId, ...person }) => person);
     result.get(item.requirementId)!.push({
-      ...item,forecastReview:item.forecastReview?JSON.parse(String(item.forecastReview)):null,
+      ...item,referenceLinks:readReferenceLinks(item.referenceLinks),forecastReview:item.forecastReview?JSON.parse(String(item.forecastReview)):null,
       ...conditions.get(item.id),
       cancelledAt: cancellationHistory.workItemDates.get(item.id) || null,
       collaborators: itemCollaborators,
@@ -156,7 +157,7 @@ function enrichRequirement(requirement: RequirementRecord, workItems: WorkItemRe
   const gaps = workItems.map((item) => calculateWorkItemGap(item, asOfDate));
   const {pathEnabled:_pathEnabled,...value}=requirement;
   return {
-    ...value, forecastReview:value.forecastReview?JSON.parse(String(value.forecastReview)):null,
+    ...value, referenceLinks:readReferenceLinks(value.referenceLinks,value.referenceUrl),forecastReview:value.forecastReview?JSON.parse(String(value.forecastReview)):null,
     ...metrics, ...actualRange, executionCompletedAt: actualRange.actualEnd, asOfDate,
     readinessIssues:deliveryReadiness({...requirement,...metrics},workItems,metrics.scheduleComplete),
     workItems,

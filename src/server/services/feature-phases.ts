@@ -1,3 +1,4 @@
+import {readReferenceLinks,normalizeReferenceLinks} from '../../shared/reference-links';
 import { randomUUID } from 'node:crypto';
 import { sqlite } from '../database';
 import type { Actor } from '../auth';
@@ -23,12 +24,12 @@ export function phaseRequirementFacts(projectId: string): PhaseRequirement[] {
   });
 }
 export function readFeaturePhases(projectId: string, asOfDate = todayIso()): FeaturePhase[] {
-  const phases = sqlite.prepare('SELECT id,project_id AS projectId,feature_id AS featureId,name,scope,started_at AS startedAt,target_date AS targetDate,note,sort_order AS sortOrder,version,delivered_at AS deliveredAt FROM feature_phases WHERE project_id=? ORDER BY sort_order,created_at,id').all(projectId) as FeaturePhase[];
+  const phases = sqlite.prepare('SELECT reference_links AS referenceLinks,id,project_id AS projectId,feature_id AS featureId,name,scope,started_at AS startedAt,target_date AS targetDate,note,sort_order AS sortOrder,version,delivered_at AS deliveredAt FROM feature_phases WHERE project_id=? ORDER BY sort_order,created_at,id').all(projectId) as FeaturePhase[];
   const facts = phaseRequirementFacts(projectId);
   const deliveries = sqlite.prepare(`SELECT d.id,d.phase_id AS phaseId,d.delivered_at AS deliveredAt,a.username AS deliveredByName,d.created_at AS createdAt,d.reopened_at AS reopenedAt,d.reopen_reason AS reopenReason,d.snapshot FROM phase_deliveries d JOIN feature_phases p ON p.id=d.phase_id LEFT JOIN accounts a ON a.id=d.delivered_by WHERE p.project_id=? ORDER BY d.created_at DESC,d.rowid DESC`).all(projectId) as Array<Omit<PhaseDelivery, 'snapshot'> & { phaseId: string; snapshot: string }>;
   return phases.map(p => {
     const requirements = facts.filter(r => r.phaseId === p.id), status = phaseStatus(requirements, p.deliveredAt);
-    return { ...p, status, requirements, overdue: status !== 'delivered' && !!p.targetDate && p.targetDate < asOfDate, distribution: phaseDistribution(requirements), deliveries: deliveries.filter(d => d.phaseId === p.id).map(d => ({ ...d, snapshot: JSON.parse(d.snapshot) })) };
+    return { ...p, referenceLinks:readReferenceLinks(p.referenceLinks),status, requirements, overdue: status !== 'delivered' && !!p.targetDate && p.targetDate < asOfDate, distribution: phaseDistribution(requirements), deliveries: deliveries.filter(d => d.phaseId === p.id).map(d => ({ ...d, snapshot: JSON.parse(d.snapshot) })) };
   });
 }
 export function listFeaturePhases(projectId: string, featureId: string | undefined, actor: Actor) {
@@ -63,6 +64,7 @@ export function saveFeaturePhase(projectId: string, featureId: string, raw: unkn
     const id = input.id || randomUUID(), now = new Date().toISOString();
     if (before) sqlite.prepare('UPDATE feature_phases SET name=?,scope=?,target_date=?,note=?,sort_order=?,version=version+1,updated_at=? WHERE id=?').run(input.name, scope, targetDate, note, input.sortOrder ?? before.sortOrder, now, id);
     else sqlite.prepare('INSERT INTO feature_phases(id,project_id,feature_id,name,scope,target_date,note,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id, projectId, featureId, input.name, scope, targetDate, note, input.sortOrder ?? readFeaturePhases(projectId).filter(p => p.featureId === featureId).length, now, now);
+    if(input.referenceLinks!==undefined)sqlite.prepare('UPDATE feature_phases SET reference_links=? WHERE id=?').run(JSON.stringify(normalizeReferenceLinks(input.referenceLinks)),id);
     const after = readFeaturePhases(projectId).find(p => p.id === id)!;
     recordAudit(actor, before ? 'update' : 'create', 'feature_phase', id, JSON.stringify({ before, after, reason: input.reason }), projectId); return after;
   }).immediate();

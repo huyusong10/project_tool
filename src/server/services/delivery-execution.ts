@@ -1,3 +1,4 @@
+import {persistRequirementLinks} from './reference-links';
 import {nullableText,describeChanges} from './support';
 import {persistOrganization,validateOrganization} from './intake-metadata';
 import {invalidateForecastReview} from './forecast-reviews';
@@ -58,6 +59,7 @@ export function createDirectRequirement(raw:JsonObject,actor:Actor,deferNormaliz
     requireActiveProject(v.projectId);assertProjectManager(requireAuthorizationActor(actor),v.projectId);
     sqlite.prepare(`INSERT INTO requirements(id,project_id,title,owner_id,background,acceptance_criteria,reference_url,status,progress,priority,delivery_scope,execution_mode,acceptance_owner_id,planned_start,planned_end,duration_days,forecast_end,unblock_estimate,dependencies_reviewed_at,created_at,updated_at)
       VALUES (?,?,?,?,?,?,?,'not_started',0,?,?,'direct',?,?,?,?,?,?,?,?,?)`).run(id,v.projectId,v.title,v.ownerId||null,v.background||null,v.acceptanceCriteria||null,v.referenceUrl||null,v.priority,v.deliveryScope||'committed',v.acceptanceOwnerId||null,start,end,v.durationDays||null,v.forecastEnd||null,v.unblockEstimate||null,now,now,now);
+    persistRequirementLinks(id,v);
     sqlite.prepare('UPDATE requirements SET schedule_anchor=? WHERE id=?').run(start,id);persistOrganization(id,v.projectId,v);
     if(v.forecastEnd&&!deferNormalization)refreshDirectForecast(id);
     recordAudit(actor,'create','requirement',id,'创建需求：'+v.title+JSON.stringify({featureId:v.featureId,phaseId:v.phaseId,reason:v.reason}));
@@ -85,7 +87,7 @@ export function updateDeliveryRequirement(id:string,raw:JsonObject,actor:Actor,s
     if(['blocked','pending_acceptance'].includes(r.status))fail('请先解除阻塞或返工，再拆分需求');
   }
   const coordinationChanged=coordinationKeys.some(k=>value[k]!==undefined);if(coordinationChanged){if(r.status!=='blocked')fail('只有阻塞对象可以修改协调信息');Object.assign(value,validateCoordination(r.projectId,{...r,...value}));}
-  const columns={blockedCoordinatorId:'blocked_coordinator_id',blockedNextReviewAt:'blocked_next_review_at',blockedIssueId:'blocked_issue_id',...deliveryColumns,title:'title',ownerId:'owner_id',background:'background',acceptanceCriteria:'acceptance_criteria',referenceUrl:'reference_url',plannedStart:'planned_start',plannedEnd:'planned_end',priority:'priority'};
+  const columns={blockedCoordinatorId:'blocked_coordinator_id',blockedNextReviewAt:'blocked_next_review_at',blockedIssueId:'blocked_issue_id',...deliveryColumns,title:'title',ownerId:'owner_id',background:'background',acceptanceCriteria:'acceptance_criteria',referenceUrl:'reference_url',referenceLinks:'reference_links',plannedStart:'planned_start',plannedEnd:'planned_end',priority:'priority'};
   const changes=Object.entries(value).filter(([k])=>k in columns),now=new Date().toISOString();
   if(!changes.length&&value.featureId===undefined&&value.phaseId===undefined)fail('没有需要保存的修改');
   sqlite.transaction(()=>{
@@ -93,8 +95,9 @@ export function updateDeliveryRequirement(id:string,raw:JsonObject,actor:Actor,s
     persistOrganization(id,r.projectId,value);
     const setters=changes.map(([k])=>columns[k as keyof typeof columns]+'=?');
     const extra=split&&r.executionMode==='direct'&&nextMode==='work_items'?',split_base_progress=?,split_at=?':'';
-    const updated=sqlite.prepare('UPDATE requirements SET '+(setters.length?setters.join(',')+',':'')+(extra?extra.slice(1)+',':'')+'version=version+1,updated_at=? WHERE id=? AND version=?').run(...changes.map(([,v])=>v??null),...(extra?[Math.min(99,r.progress),now]:[]),now,id,r.version);
+    const updated=sqlite.prepare('UPDATE requirements SET '+(setters.length?setters.join(',')+',':'')+(extra?extra.slice(1)+',':'')+'version=version+1,updated_at=? WHERE id=? AND version=?').run(...changes.map(([k,v])=>k==='referenceLinks'?JSON.stringify(v):v??null),...(extra?[Math.min(99,r.progress),now]:[]),now,id,r.version);
     assertVersionedWrite(updated,'需求');
+    if(value.referenceLinks!==undefined||value.referenceUrl!==undefined)persistRequirementLinks(id,value,r);
     if(coordinationChanged)persistCoordination('requirement',id,r.projectId,value,actor);
     if(value.forecastEnd!==undefined&&!split&&!deferNormalization)refreshDirectForecast(id);
     if(extra)event(id,'split','拆分剩余工作；已完成基线 '+r.progress+'%。'+(value.reason||''),actor);

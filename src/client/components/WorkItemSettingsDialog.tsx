@@ -1,3 +1,5 @@
+import {ReferenceLinksEditor} from './ReferenceLinks';
+import {readReferenceLinks,type ReferenceLink} from '../../shared/reference-links';
 import {DetailToolbar} from './DetailWorkspace';
 import {useDeliveryForm} from '../use-delivery-form';
 import {WorkItemExecution} from './WorkItemExecution';
@@ -32,7 +34,7 @@ type NewWorkItemDraft = {
   ownerId: string;
   collaboratorIds: string[];
   plannedStart: string;
-  plannedEnd: string;
+  plannedEnd: string;referenceLinks?:ReferenceLink[];
   reason?: string;
   baselineVersion: number;
   baselineStatus: Requirement["status"];
@@ -157,7 +159,7 @@ export function WorkItemSettingsDialog({
         ownerId: draft.ownerId || null,
         assigneeIds: [draft.ownerId, ...draft.collaboratorIds].filter(Boolean),
         plannedStart: draft.plannedStart || null,
-        plannedEnd: draft.plannedEnd || null,
+        plannedEnd: draft.plannedEnd || null,referenceLinks:draft.referenceLinks,
         expectedVersion: draft.baselineVersion,
         ...(draft.reason ? { reason: draft.reason } : {}),
       }),
@@ -260,7 +262,7 @@ export function WorkItemSettingsDialog({
     try{
       const latest=await onReload();
       const pending=receipt;
-      const applied=pending?.kind==='reorder'?latest.version>pending.version&&JSON.stringify(latest.workItems.map(item=>item.id))===JSON.stringify(pending.ids):pending?.kind==='create'?latest.workItems.filter(item=>!pending.draft.sourceIds.includes(item.id)&&item.title===pending.draft.title.trim()&&(item.ownerId||'')===pending.draft.ownerId&&(item.plannedStart||'')===pending.draft.plannedStart&&(item.plannedEnd||'')===pending.draft.plannedEnd).length===1:false;
+      const applied=pending?.kind==='reorder'?latest.version>pending.version&&JSON.stringify(latest.workItems.map(item=>item.id))===JSON.stringify(pending.ids):pending?.kind==='create'?latest.workItems.filter(item=>!pending.draft.sourceIds.includes(item.id)&&item.title===pending.draft.title.trim()&&(item.ownerId||'')===pending.draft.ownerId&&(item.plannedStart||'')===pending.draft.plannedStart&&(item.plannedEnd||'')===pending.draft.plannedEnd&&(pending.draft.referenceLinks===undefined||JSON.stringify(item.referenceLinks)===JSON.stringify(readReferenceLinks(pending.draft.referenceLinks)))).length===1:false;
       if(!applied){setReorderReadError('已读取最新资料，仍无法确认原操作结果。原提交与输入已保留，请核对工作项及记录。');return;}
       setReceipt(null);clearReceipt();setCreateUnknown(false);setReorderUnknown(false);setNewItem(null);clearNewItem();setCreationOpen(false);setReorderNeedsRefresh(false);
     }catch(error){setReorderReadError(error instanceof Error?error.message:'读取失败');}finally{setReorderReading(false);}
@@ -305,7 +307,7 @@ export function WorkItemSettingsDialog({
           <FormField label="主负责人"><InlineSelectCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.ownerId} label="新工作项主负责人" options={[{value:'', label:'未分配'}, ...eligiblePeople.map(person => ({value:person.id, label:person.name}))]} onSave={async ownerId => setNewItem(current => current && ({...current, ownerId, collaboratorIds: current.collaboratorIds.filter(personId => personId !== ownerId)}))} placeholder="未分配"/></FormField>
           <FormField label="协作人员"><InlineMultiSelectCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.collaboratorIds} label="新工作项协作人员" options={eligiblePeople.map(person => ({value:person.id, label:person.name}))} excludedValues={newItem.ownerId ? [newItem.ownerId] : []} onSave={async collaboratorIds => setNewItem(current => current && ({...current, collaboratorIds}))} placeholder="选择人员"/></FormField>
           <FormField label="计划开始"><input type="date" value={newItem.plannedStart} onChange={event => setNewItem({...newItem, plannedStart:event.target.value})}/></FormField>
-          <FormField label="计划完成"><input type="date" value={newItem.plannedEnd} onChange={event => setNewItem({...newItem, plannedEnd:event.target.value})}/></FormField>
+          <FormField label="计划完成"><input type="date" value={newItem.plannedEnd} onChange={event => setNewItem({...newItem, plannedEnd:event.target.value})}/></FormField><ReferenceLinksEditor value={newItem.referenceLinks||[]} onChange={referenceLinks=>setNewItem({...newItem,referenceLinks})}/>
           <FormField label="变更说明（可选）"><input value={newItem.reason || ''} onChange={event => setNewItem({...newItem, reason:event.target.value})}/></FormField>
           <FormError>{createItem.error?.message}</FormError>
           <FormError>{createChanged ? '需求已更新，请重新读取并核对后再保存；新增草稿已保留。' : createReadError || undefined}</FormError>

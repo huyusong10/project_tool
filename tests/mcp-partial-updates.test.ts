@@ -40,6 +40,51 @@ async function saveFeature(projectId:string,name:string,extra:Record<string,unkn
 }
 async function detail(id:string){return call<Requirement>('get_requirement',{id});}
 
+const relatedLinks=[{title:'MPS 总体目标',url:'https://docs.example.com/mps',kind:'document'},{title:'自定义接口设计',url:'https://docs.example.com/mds',kind:'document'},{title:'实现任务',url:'https://jira.example.com/browse/DEV-33',kind:'task'}];
+it('REST / MCP 多链接保留顺序，兼容单链接修改、删除，过期或非法保存整批回滚',async()=>{
+  const projectId=await project();
+  let r=await call<Requirement>('create_requirement',{projectId,title:'多种材料',referenceLinks:relatedLinks});
+  expect(r.referenceLinks).toEqual(relatedLinks);expect(r.referenceUrl).toBe(relatedLinks[0].url);
+  r=await call<Requirement>('update_requirement',{id:r.id,expectedVersion:r.version,referenceUrl:'https://example.com/new'});
+  expect(r.referenceLinks?.slice(1)).toEqual(relatedLinks.slice(1));expect(r.referenceLinks?.[0].url).toBe('https://example.com/new');
+  r=await call<Requirement>('update_requirement',{id:r.id,expectedVersion:r.version,referenceUrl:null});
+  expect(r.referenceLinks).toEqual(relatedLinks.slice(1));
+  for(const [expectedVersion,links] of [[r.version-1,[]],[r.version,[{title:'非法',url:'javascript:alert(1)'}]],[r.version,[relatedLinks[0],relatedLinks[0]]]] as const){
+    const response=await app.inject({method:'PATCH',url:'/api/requirements/'+r.id,headers:{cookie},payload:{expectedVersion,referenceLinks:links}});
+    expect(response.statusCode).toBeGreaterThanOrEqual(400);expect(await detail(r.id)).toEqual(r);
+  }
+  r=await call<Requirement>('update_requirement',{id:r.id,expectedVersion:r.version,referenceLinks:[relatedLinks[2],relatedLinks[1]]});
+  expect(r.referenceLinks).toEqual([relatedLinks[2],relatedLinks[1]]);
+  r=await call<Requirement>('update_requirement',{id:r.id,expectedVersion:r.version,referenceLinks:[]});
+  expect(r.referenceLinks).toEqual([]);expect(r.referenceUrl).toBeNull();
+});
+it('特性和 Phase 接受开放名称，其他字段更新不清空链接',async()=>{
+  const projectId=await project(),f=await saveFeature(projectId,'多链接特性',{referenceLinks:relatedLinks});expect(f.referenceLinks).toEqual(relatedLinks);
+  let phase=await call<FeaturePhase>('save_feature_phase',{projectId,featureId:f.id,name:'交付范围',referenceLinks:relatedLinks});
+  expect(phase.referenceLinks).toEqual(relatedLinks);
+  phase=await call<FeaturePhase>('save_feature_phase',{projectId,featureId:f.id,id:phase.id,expectedVersion:phase.version,name:'调整名称'});
+  expect(phase.referenceLinks).toEqual(relatedLinks);
+  phase=await call<FeaturePhase>('save_feature_phase',{projectId,featureId:f.id,id:phase.id,expectedVersion:phase.version,name:phase.name,referenceLinks:[]});expect(phase.referenceLinks).toEqual([]);
+});
+it('工作项创建、更新、完成后纠错都保留链接与执行状态',async()=>{
+  const projectId=await project(),owner=await post('/api/people',{projectId,name:'链接负责人 '+randomUUID()});
+  let r=await call<Requirement>('create_requirement',{projectId,title:'工作项资料',ownerId:owner.id});
+  await call('create_work_item',{requirementId:r.id,expectedVersion:r.version,title:'接口开发',ownerId:owner.id,referenceLinks:relatedLinks});r=await detail(r.id);
+  let work=r.workItems[0];expect(work.referenceLinks).toEqual(relatedLinks);
+  await call('update_work_item',{id:work.id,expectedVersion:work.version,title:'接口设计与开发'});r=await detail(r.id);work=r.workItems[0];expect(work.referenceLinks).toEqual(relatedLinks);
+  await call('start_work_item',{id:work.id,expectedVersion:work.version,expectedRequirementVersion:r.version});work=(await detail(r.id)).workItems[0];
+  await call('complete_work_item',{id:work.id,expectedVersion:work.version});work=(await detail(r.id)).workItems[0];
+  await call('correct_work_item',{id:work.id,expectedVersion:work.version,referenceLinks:[relatedLinks[1]],reason:'补充材料'});
+  const after=(await detail(r.id)).workItems[0];expect(after).toMatchObject({status:work.status,actualStart:work.actualStart,actualEnd:work.actualEnd,progress:100,referenceLinks:[relatedLinks[1]]});
+});
+it('导入多链接经过预览整批落库，图形草稿读取完整列表',async()=>{
+  const projectId=await project(),pkg={formatVersion:3,requirements:[{key:'new',action:'create',title:'导入多链接',referenceLinks:relatedLinks,workItems:[{key:'w',title:'实现',referenceLinks:[relatedLinks[2]]}]}]};
+  const preview=await call<ImportPreview>('preview_requirement_import',{projectId,package:pkg});expect(preview.errors).toEqual([]);
+  await call('apply_requirement_import',{projectId,package:preview.package,expectedRevision:preview.expectedRevision,previewToken:preview.previewToken,batchId:randomUUID()});
+  const response=await app.inject({url:'/api/requirements?projectId='+projectId,headers:{cookie}});const r=response.json()[0];expect(r.referenceLinks).toEqual(relatedLinks);expect(r.workItems[0].referenceLinks).toEqual([relatedLinks[2]]);
+  const {loadPathInput}=await import('../src/server/services/paths');expect(loadPathInput(projectId).requirements[0].referenceLinks).toEqual(relatedLinks);
+});
+
 it('MCP 特性省略排序时保留位置、其他特性版本及人工评估',async()=>{
   const projectId=await project();
   await saveFeature(projectId,'甲',{sortOrder:0});

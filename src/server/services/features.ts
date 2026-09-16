@@ -1,3 +1,4 @@
+import {readReferenceLinks,normalizeReferenceLinks} from '../../shared/reference-links';
 import { phaseRequirementFacts } from './feature-phases';
 import { randomUUID } from 'node:crypto';
 import { sqlite } from '../database';
@@ -17,7 +18,7 @@ export function readFeatures(projectId: string, state: 'active'|'archived'|'all'
     FROM features g LEFT JOIN accounts a ON a.id=g.assessed_by
     WHERE g.project_id=? ${state==='all'?'':state==='active'?'AND g.archived_at IS NULL':'AND g.archived_at IS NOT NULL'}
     ORDER BY (g.kind='other'),g.sort_order,g.name,g.id`).all(projectId) as Array<Omit<Feature,'overview'> & Feature['overview']>;
-  return rows.map(({expectation,progressSummary,assessment,note,referenceLinks,...feature})=>({...feature,name:feature.kind==='other'?'其他需求':feature.name,referenceLinks:JSON.parse(String(referenceLinks)),overview:{expectation,progressSummary,assessment,note}}));
+  return rows.map(({expectation,progressSummary,assessment,note,referenceLinks,...feature})=>({...feature,name:feature.kind==='other'?'其他需求':feature.name,referenceLinks:readReferenceLinks(referenceLinks),overview:{expectation,progressSummary,assessment,note}}));
 }
 export function listFeatures(projectId: string, state: 'active'|'archived'|'all', actor: Actor) {
   assertProjectReadable(requireAuthorizationActor(actor),projectId);return readFeatures(projectId,state);
@@ -49,7 +50,7 @@ export function saveFeature(projectId:string,raw:unknown,actor:Actor) {
       ordered.splice(Math.min(input.sortOrder??ordered.length,ordered.length),0,id);
       for(const [order,featureId] of ordered.entries())sqlite.prepare('UPDATE features SET sort_order=?,version=version+1,updated_at=? WHERE id=? AND sort_order<>?').run(order,now,featureId,order);
     }
-    if(input.referenceLinks!==undefined)sqlite.prepare('UPDATE features SET reference_links=? WHERE id=?').run(JSON.stringify(input.referenceLinks),id);
+    if(input.referenceLinks!==undefined)sqlite.prepare('UPDATE features SET reference_links=? WHERE id=?').run(JSON.stringify(normalizeReferenceLinks(input.referenceLinks)),id);
     if(input.overview) {
       const {expectation,progressSummary,assessment,note}=input.overview;
       sqlite.prepare('UPDATE features SET expectation=?,progress_summary=?,assessment=?,assessment_note=?,assessed_at=?,assessed_by=? WHERE id=?').run(expectation,progressSummary,assessment,note,now,actor.accountId,id);

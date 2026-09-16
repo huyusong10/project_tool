@@ -10,7 +10,7 @@ description: 通过 MCP 将原始需求直接录入 project-manage，按需拆�
 ## 录入
 
 1. 用 query_requirements、list_work_items 查询已有记录，详情用 get_requirement、get_work_item。分页读完相关结果，不按相似标题直接覆盖。
-2. 需求说明 background 保留原始内容，referenceUrl 保存真实来源地址，acceptanceCriteria 写可观察的完成标准。来源未知可留空；不编造人员、日期或原文。
+2. 需求说明 background 保留原始内容，referenceLinks 保存真实来源链接列表（每项 title/url/kind，名称自由填写，kind 为 document/task/other），acceptanceCriteria 写可观察的完成标准。来源未知可留空；不编造人员、日期或原文。
 3. 小批量用 create_requirement；批量用 preview_requirement_import → apply_requirement_import。导入格式为 formatVersion=3，仅包含 requirements 和可选 dependencies；工作项放在需求的 workItems 中。示例见 assets/log-intake.json、assets/org-intake.json。
 4. 更新已有需求使用 action=update、真实 existingId 和读取的 expectedVersion。省略的字段保持原值，按字段类型显式传 null 或空字符串才清空；已结束需求使用详情纠错。重复内容选择跳过或更新，只有明确是另一件事时才确认另建。
 
@@ -79,3 +79,5 @@ list_work_items 支持 featureId、phaseId、workStage；phaseId=unassigned 查�
 
 
 清单顺序与批量操作：`order_outline` 传对象类型、父级和完整同级 `items:[{id,expectedVersion}]`；`archive_features` 原子归档所选特性。排序和 `update_requirement_placement` 返回 `undo`，可交给 `restore_outline` 核对版本后撤销；涉及已推进 Phase 时填写原因。`query_requirements(sort=manual)` 读取人工顺序，默认仍按名称。系统归类以 `kind=other` 标识，每项目最多一个，置底且不能改名、归档、删除或新建 Phase／特性规划关系；历史引用保留。
+
+特性、Phase、需求和工作项均可关联多个文档或任务。优先使用 `referenceLinks`；省略保留原值，空数组清空，顺序按数组保存。MPS、MDS、Confluence、Jira 和自定义资料可混合添加；类型只用于展示。同一对象最多 20 条 HTTP(S) 链接，不重复添加相同地址。旧需求 `referenceUrl` 仍兼容，单独修改只影响列表首项，不清空其他链接。

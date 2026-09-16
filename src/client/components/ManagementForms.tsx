@@ -1,3 +1,5 @@
+import {ReferenceLinksEditor} from './ReferenceLinks';
+import {readReferenceLinks,type ReferenceLink} from '../../shared/reference-links';
 import {useDeliveryForm} from '../use-delivery-form';
 import { Button } from './Button';
 import {assertCleanProjectDraft} from '../use-graph-draft';
@@ -42,7 +44,7 @@ export type RequirementFormInput = {
   ownerId: string;
   background: string;
   acceptanceCriteria: string;
-  referenceUrl: string;
+  referenceUrl: string; referenceLinks?:ReferenceLink[];
   plannedStart?: string;
   plannedEnd?: string;
 };
@@ -206,8 +208,9 @@ export function RequirementForm({
   const [scheduleMode, setScheduleMode] = useState<"start" | "deadline">(initial?.plannedEnd&&!initial.plannedStart?"deadline":"start");
   const [scheduleDate, setScheduleDate] = useState(initial?.plannedEnd||initial?.plannedStart||"");
   const [title,setTitle]=useState(initial?.title||''),[featureId,setFeatureId]=useState(initial?.featureId||defaultFeatureId||''),[phaseId,setPhaseId]=useState(initial?.phaseId||defaultPhaseId||''),[placementReason,setPlacementReason]=useState(initial?.reason||''),[ownerId, setOwnerId] = useState(initial?.ownerId||""),[templateId, setTemplateId] = useState(initial?.templateId||"");
-  const [background,setBackground]=useState(initial?.background||''),[acceptanceCriteria,setAcceptanceCriteria]=useState(initial?.acceptanceCriteria||''),[referenceUrl,setReferenceUrl]=useState(initial?.referenceUrl||'');
-  useEffect(()=>setLocal({projectId,title,ownerId,background,acceptanceCriteria,referenceUrl,featureId,phaseId,reason:placementReason,templateId,...scheduleDate?(scheduleMode==='start'?{plannedStart:scheduleDate}:{plannedEnd:scheduleDate}):{}}),[projectId,title,ownerId,background,acceptanceCriteria,referenceUrl,featureId,phaseId,placementReason,templateId,scheduleDate,scheduleMode,setLocal]);
+  const [background,setBackground]=useState(initial?.background||''),[acceptanceCriteria,setAcceptanceCriteria]=useState(initial?.acceptanceCriteria||''),[referenceLinks,setReferenceLinks]=useState(()=>readReferenceLinks(initial?.referenceLinks,initial?.referenceUrl));
+  const referenceUrl=initial?.referenceUrl||'';
+  useEffect(()=>setLocal({projectId,title,ownerId,background,acceptanceCriteria,referenceUrl,referenceLinks,featureId,phaseId,reason:placementReason,templateId,...scheduleDate?(scheduleMode==='start'?{plannedStart:scheduleDate}:{plannedEnd:scheduleDate}):{}}),[projectId,title,ownerId,background,acceptanceCriteria,referenceUrl,referenceLinks,featureId,phaseId,placementReason,templateId,scheduleDate,scheduleMode,setLocal]);
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, projectId],
     queryFn: ({ signal }) => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(projectId)}`, { signal }),
@@ -231,7 +234,7 @@ export function RequirementForm({
     onError: error=>{if(!isWriteOutcomeUnknown(error))onRecheckChange(null);},
     onSettled: () => { submitting.current = false; },
   });
-  const matchesDraft=(item:Requirement,draft:RequirementFormInput)=>item.projectId===projectId&&item.title===canonicalizeLabel(draft.title)&&item.ownerId===(draft.ownerId||null)&&item.background===(draft.background.trim()||null)&&item.acceptanceCriteria===(draft.acceptanceCriteria.trim()||null)&&item.referenceUrl===(draft.referenceUrl.trim()||null)&&(!draft.featureId||item.featureId===draft.featureId)&&(item.phaseId||null)===(draft.phaseId||null)&&(!draft.templateId||item.templateId===draft.templateId)&&(!draft.plannedStart||item.plannedStart===draft.plannedStart)&&(!draft.plannedEnd||item.plannedEnd===draft.plannedEnd);
+  const matchesDraft=(item:Requirement,draft:RequirementFormInput)=>item.projectId===projectId&&item.title===canonicalizeLabel(draft.title)&&item.ownerId===(draft.ownerId||null)&&item.background===(draft.background.trim()||null)&&item.acceptanceCriteria===(draft.acceptanceCriteria.trim()||null)&&(draft.referenceLinks!==undefined?JSON.stringify(readReferenceLinks(item.referenceLinks))===JSON.stringify(readReferenceLinks(draft.referenceLinks)):item.referenceUrl===(draft.referenceUrl.trim()||null))&&(!draft.featureId||item.featureId===draft.featureId)&&(item.phaseId||null)===(draft.phaseId||null)&&(!draft.templateId||item.templateId===draft.templateId)&&(!draft.plannedStart||item.plannedStart===draft.plannedStart)&&(!draft.plannedEnd||item.plannedEnd===draft.plannedEnd);
   const checkLatest=async()=>{if(!recheck||checking)return;setChecking(true);setCheckError('');try{const latest=await api<Requirement[]>(`/api/requirements?projectId=${encodeURIComponent(projectId)}`,{readOnly:true});client.setQueryData([...keys.requirements,projectId],latest);const baseline=new Set(recheck.baselineIds),created=latest.filter(item=>!baseline.has(item.id)&&matchesDraft(item,recheck.draft));if(created.length===1){onRecheckChange(null);invalidateRequirementViews(client,created[0].id);toast.success('已核对最新状态：需求已创建');clearLocal();onClose();return;}if(created.length===0){onRecheckChange(null);mutation.reset();setCheckError('未发现本次新增需求，已恢复原输入，可以重新提交。');return;}setCheckError('发现多个可能的新需求，暂不解除锁定，请核对需求列表和操作记录。');}catch(error){setCheckError(error instanceof Error?error.message:'需求列表读取失败');}finally{setChecking(false);}};
   return (
     <Modal title="新建需求" closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
@@ -240,7 +243,7 @@ export function RequirementForm({
         event.preventDefault();
         if (submitting.current||unknown) return;
         submitting.current = true;
-        mutation.mutate({title,ownerId,background,acceptanceCriteria,referenceUrl,featureId:featureId||null,phaseId:phaseId||null,reason:placementReason||undefined,templateId:templateId||undefined,projectId,...(scheduleDate?(scheduleMode==='start'?{plannedStart:scheduleDate}:{plannedEnd:scheduleDate}):{})});
+        mutation.mutate({title,ownerId,background,acceptanceCriteria,referenceUrl,referenceLinks,featureId:featureId||null,phaseId:phaseId||null,reason:placementReason||undefined,templateId:templateId||undefined,projectId,...(scheduleDate?(scheduleMode==='start'?{plannedStart:scheduleDate}:{plannedEnd:scheduleDate}):{})});
       }}
     >
       <fieldset className="form-grid form-fieldset" disabled={mutation.isPending}>
@@ -298,7 +301,7 @@ export function RequirementForm({
       <FormDisclosure label="补充信息" hint="可选：背景、完成标准和参考链接">
         <FormField label="需求背景" full><textarea name="background" rows={3} value={background} onChange={event=>setBackground(event.target.value)} placeholder="为什么要做，可留空" /></FormField>
         <FormField label="完成标准" full><textarea name="acceptanceCriteria" rows={3} value={acceptanceCriteria} onChange={event=>setAcceptanceCriteria(event.target.value)} placeholder="如何判断完成，可留空" /></FormField>
-        <FormField label="参考链接" full><input name="referenceUrl" type="url" value={referenceUrl} onChange={event=>setReferenceUrl(event.target.value)} placeholder="https://…" /></FormField>
+        <ReferenceLinksEditor value={referenceLinks} onChange={setReferenceLinks}/>
       </FormDisclosure>
       <FormError>{mutation.error?.message}</FormError>
       {unknown&&<FormError>创建结果待核对，输入已保留。本页面不会重复创建，请读取最新需求。</FormError>}

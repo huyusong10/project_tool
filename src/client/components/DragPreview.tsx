@@ -6,6 +6,8 @@ export type DragPreviewData = {title: string; detail?: string; count?: number; k
 
 /** Reuse the visible object's name/header, including its icon, typography and colours. */
 function sourcePreview(source: HTMLElement, data: DragPreviewData) {
+  const linkName=source.querySelector<HTMLInputElement>('.reference-link-name');
+  if(linkName){const body=document.createElement('div');body.className='drag-preview-object';const label=document.createElement('strong');label.textContent=data.title;body.append(label);return body;}
   const original=source.querySelector<HTMLElement>('.work-arrangement-heading,.work-item-name-editor .inline-edit-cell,.analytics-panel>header')
     || source.closest('tr')?.querySelector<HTMLElement>('.outline-name') || source;
   const copy=original.cloneNode(true) as HTMLElement;

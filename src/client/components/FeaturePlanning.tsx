@@ -1,3 +1,5 @@
+import {ReferenceLinks,ReferenceLinksEditor} from './ReferenceLinks';
+import {readReferenceLinks,type ReferenceLink} from '../../shared/reference-links';
 import { Button, ButtonLink } from './Button';
 import {assertCleanProjectDraft} from '../use-graph-draft';
 import {Select} from './Select';
@@ -23,8 +25,8 @@ import {ViewTabs} from './ViewTabs';
 import {TopbarMenu} from './TopbarMenu';
 
 export type FeatureEdit = { mode:'basic'|'assessment'|'archive'|'restore'|'delete'; feature?:Feature };
-function normalized(value:PendingFeature['value']){return {...value,name:value.name.trim(),description:value.description.trim(),overview:featureOverviewInput.parse(value.overview)};}
-type PendingFeature = FeatureEdit & { value: { name:string;description:string;referenceLinks?:Array<{title:string;url:string}>;overview:Feature['overview'] } };
+function normalized(value:PendingFeature['value']){return {...value,name:value.name.trim(),description:value.description.trim(),referenceLinks:readReferenceLinks(value.referenceLinks),overview:featureOverviewInput.parse(value.overview)};}
+type PendingFeature = FeatureEdit & { value: { name:string;description:string;referenceLinks?:ReferenceLink[];overview:Feature['overview'] } };
 const pendingKey=(account:string,project:string)=>'pm-feature-write:'+account+':'+project;
 export function readFeaturePending(account:string,project:string):PendingFeature|null {try{const value=JSON.parse(sessionStorage.getItem(pendingKey(account,project))||'null') as PendingFeature|null;return value&&['basic','assessment','archive','restore','delete'].includes(value.mode)&&typeof value.value?.name==='string'&&typeof value.value.description==='string'&&featureOverviewInput.safeParse(value.value.overview).success&&(!value.feature||value.feature.projectId===project)?value:null;}catch{return null;}}
 export function FeatureEditor({projectId,edit:requestedEdit,onClose,embedded=false,onBusy,onSaved}:{projectId:string;edit:FeatureEdit;onClose:()=>void;embedded?:boolean;onBusy?:(busy:boolean)=>void;onSaved?:(id:string)=>void}) {
@@ -42,7 +44,7 @@ export function FeatureEditor({projectId,edit:requestedEdit,onClose,embedded=fal
   const read=async()=>{
     setBusy(true);try{const features=await api<Feature[]>('/api/projects/'+projectId+'/features?state=all');if(!Array.isArray(features)||!features.every(g=>g&&g.projectId===projectId&&typeof g.id==='string'&&typeof g.name==='string'&&typeof g.description==='string'&&Number.isInteger(g.version)&&featureOverviewInput.safeParse(g.overview).success))throw new InvalidResponseError(200,false,'特性列表不完整');if(active.current){setLatest(features.find(g=>baseline?g.id===baseline.id:g.name===value.name.trim())||null);}}catch(e){if(active.current)setError((e as Error).message);}finally{if(active.current)setBusy(false);}
   };
-  const resolved=latest!==undefined&&(edit.mode==='delete'?!latest:!!latest&&(edit.mode==='archive'?!!latest.archivedAt:edit.mode==='restore'?!latest.archivedAt:edit.mode==='basic'?latest.name===value.name.trim()&&latest.description===value.description.trim()&&JSON.stringify(latest.referenceLinks||[])===JSON.stringify(value.referenceLinks||[]):JSON.stringify(latest.overview)===JSON.stringify(normalized(value).overview)&&latest.version>(baseline?.version||0)));
+  const resolved=latest!==undefined&&(edit.mode==='delete'?!latest:!!latest&&(edit.mode==='archive'?!!latest.archivedAt:edit.mode==='restore'?!latest.archivedAt:edit.mode==='basic'?latest.name===value.name.trim()&&latest.description===value.description.trim()&&JSON.stringify(latest.referenceLinks||[])===JSON.stringify(readReferenceLinks(value.referenceLinks)):JSON.stringify(latest.overview)===JSON.stringify(normalized(value).overview)&&latest.version>(baseline?.version||0)));
   const save=async()=>{
     if(lock.current||blocked)return;lock.current=true;setBusy(true);setError('');
     const inputValue=normalized(value),pending={...edit,feature:baseline,value:inputValue};persist(pending);
@@ -61,7 +63,7 @@ export function FeatureEditor({projectId,edit:requestedEdit,onClose,embedded=fal
   const title={basic:baseline?'编辑特性':'新建特性',assessment:'评估特性',archive:'归档特性',restore:'恢复特性',delete:'删除空特性'}[edit.mode];
   const form=<form className={'feature-form'+(embedded?' feature-form-embedded':'')} onSubmit={e=>{e.preventDefault();void save();}}>
     <fieldset disabled={busy||unknown}>
-      {edit.mode==='basic'&&<><label className="field"><span>特性名称</span><input required maxLength={200} value={value.name} onChange={e=>setValue({...value,name:e.target.value})}/></label><label className="field"><span>长期目标与范围</span><textarea aria-label="长期目标与范围" rows={5} maxLength={10000} value={value.description} onChange={e=>setValue({...value,description:e.target.value})}/></label><div className="field"><span>文档链接（MPS／MDS 等）</span>{(value.referenceLinks||[]).map((link,index)=><div className="feature-link-editor" key={index}><input required aria-label="文档名称" placeholder="文档名称" value={link.title} onChange={e=>setValue({...value,referenceLinks:value.referenceLinks!.map((l,i)=>i===index?{...l,title:e.target.value}:l)})}/><input type="url" required aria-label="文档地址" placeholder="https://…" value={link.url} onChange={e=>setValue({...value,referenceLinks:value.referenceLinks!.map((l,i)=>i===index?{...l,url:e.target.value}:l)})}/><Button variant="secondary" type="button" className="ghost-button" onClick={()=>setValue({...value,referenceLinks:value.referenceLinks!.filter((_,i)=>i!==index)})}>移除</Button></div>)}<Button variant="secondary" type="button" className="ghost-button" disabled={(value.referenceLinks?.length||0)>=20} onClick={()=>setValue({...value,referenceLinks:[...value.referenceLinks||[],{title:"",url:""}]})}>添加文档链接</Button></div></>}
+      {edit.mode==='basic'&&<><label className="field"><span>特性名称</span><input required maxLength={200} value={value.name} onChange={e=>setValue({...value,name:e.target.value})}/></label><label className="field"><span>长期目标与范围</span><textarea aria-label="长期目标与范围" rows={5} maxLength={10000} value={value.description} onChange={e=>setValue({...value,description:e.target.value})}/></label><ReferenceLinksEditor value={value.referenceLinks||[]} onChange={referenceLinks=>setValue({...value,referenceLinks})}/></>}
       {edit.mode==='assessment'&&<>{(['expectation','progressSummary','note'] as const).map(field=><label className="field" key={field}><span>{{expectation:'大致预期',progressSummary:'进展简述',note:'原因或变化说明'}[field]}</span><textarea aria-label={{expectation:'大致预期',progressSummary:'进展简述',note:'原因或变化说明'}[field]} rows={3} maxLength={2000} value={value.overview[field]} onChange={e=>setValue({...value,overview:{...value.overview,[field]:e.target.value}})}/></label>)}<label className="field"><span>判断</span><Select aria-label="判断" value={value.overview.assessment} onChange={e=>setValue({...value,overview:{...value.overview,assessment:e.target.value as Feature['overview']['assessment']}})}>{Object.entries(featureAssessmentLabels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</Select></label></>}
       {['archive','restore','delete'].includes(edit.mode)&&<p>{value.name}：{edit.mode==='archive'?'归档保留需求与规划关系；请先处理未完成需求。':edit.mode==='restore'?'恢复后可继续维护目标、评估和需求归属。':'仅能删除没有关联需求及规划关系的空特性。'}</p>}
     </fieldset>
@@ -86,7 +88,7 @@ export function FeatureDetails({projectId,feature,edit,onEdit,onBusy,returnTo,on
     {edit?<FeatureEditor key={feature.id+edit.mode} projectId={projectId} edit={edit} embedded onBusy={onBusy} onClose={()=>onEdit(null)}/>:<>
       <div className="feature-detail-body">
         {activeTab==='phases'&&<PhaseRows feature={feature} manage={manage} onEdit={onPhaseEdit}/>}
-        {activeTab==='basic'&&<><h3>长期目标与范围</h3><p className="feature-full-text">{feature.description||'尚未填写长期目标与范围'}</p>{feature.referenceLinks?.map(link=><p key={link.url}><a href={link.url} target="_blank" rel="noreferrer">{link.title}</a></p>)}{feature.archivedAt&&<p className="field-help">已归档，保留目标、需求关联及规划关系。</p>}</>}
+        {activeTab==='basic'&&<><h3>长期目标与范围</h3><p className="feature-full-text">{feature.description||'尚未填写长期目标与范围'}</p><ReferenceLinks links={feature.referenceLinks}/>{feature.archivedAt&&<p className="field-help">已归档，保留目标、需求关联及规划关系。</p>}</>}
         {activeTab==='assessment'&&<>
           <div className="canvas-assessment"><FeatureAssessment feature={feature}/><small>{feature.assessedAt?formatDateTime(feature.assessedAt)+' · '+(feature.assessedByName||'原评估人'):'尚未评估'}</small></div>
           <dl className="feature-description">{([['大致预期',feature.overview.expectation],['进展简述',feature.overview.progressSummary],['原因或变化说明',feature.overview.note]] as const).filter(([,value])=>value).map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>

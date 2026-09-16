@@ -1,3 +1,4 @@
+import {referenceLinksInput,type ReferenceLink} from './reference-links';
 import { z } from 'zod';
 import { workStageInput } from './execution-stage';
 
@@ -16,7 +17,7 @@ export const featureOverviewInput = z.object({
 }).strict();
 export type FeatureOverviewInput = z.infer<typeof featureOverviewInput>;
 export const emptyFeatureOverview: FeatureOverviewInput = { expectation: '', progressSummary: '', assessment: 'pending', note: '' };
-export const featureInput = z.object({ id: key.optional(), name: label, sortOrder: z.number().int().nonnegative().optional(), expectedVersion: version.optional(), description: text.optional(), overview: featureOverviewInput.optional(), referenceLinks: z.array(z.object({title:label,url:z.string().url().refine(v=>/^https?:\/\//i.test(v))}).strict()).max(20).optional() }).strict();
+export const featureInput = z.object({ id: key.optional(), name: label, sortOrder: z.number().int().nonnegative().optional(), expectedVersion: version.optional(), description: text.optional(), overview: featureOverviewInput.optional(), referenceLinks: referenceLinksInput.optional() }).strict();
 export const featureDeleteInput = z.object({ expectedVersion: version }).strict();
 export const organizationInput = z.object({ requirements: z.array(z.object({ id: key, expectedVersion: version }).strict()).min(1).max(1000), ...organizationFields }).extend({reason:z.string().trim().max(2000).optional()}).strict().refine(v => v.featureId !== undefined || v.phaseId !== undefined, '请选择特性或 Phase');
 export const sourceClauseInput = z.object({ key, section: text.default(''), externalId: text.default(''), title: label, content: text.default(''), priority: text.default(''), deferredReason: text.optional() }).strict();
@@ -27,10 +28,10 @@ export const sourceLinkDeleteInput = z.object({ requirementId: key, expectedVers
 export const deferClauseInput = z.object({ expectedRevision: z.string(), reason: text }).strict();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0,10)===v, '日期无效');
 const url = z.string().url().refine(v => /^https?:\/\//i.test(v), '来源仅支持 HTTP 或 HTTPS');
-const itemInput = z.object({ key, title: label, workStage: workStageInput, ownerId: key.nullable().optional(), plannedStart:date.nullable().optional(), plannedEnd:date.nullable().optional(), durationDays: z.number().int().min(1).max(3660).nullable().optional() }).strict();
+const itemInput = z.object({ referenceLinks:referenceLinksInput.optional(), key, title: label, workStage: workStageInput, ownerId: key.nullable().optional(), plannedStart:date.nullable().optional(), plannedEnd:date.nullable().optional(), durationDays: z.number().int().min(1).max(3660).nullable().optional() }).strict();
 export const importRequirementInput = z.object({
   key, action: z.enum(['create', 'update', 'skip']).default('create'), existingId: key.optional(), expectedVersion:version.optional(), confirmAdditional: z.boolean().default(false),
-  title: label, background: text.optional(), acceptanceCriteria: text.optional(), referenceUrl:url.nullable().optional(), feature: label.nullable().optional(), phase: label.nullable().optional(), reason:text.optional(),
+  title: label, background: text.optional(), acceptanceCriteria: text.optional(), referenceUrl:url.nullable().optional(), referenceLinks:referenceLinksInput.optional(), feature: label.nullable().optional(), phase: label.nullable().optional(), reason:text.optional(),
   ownerId: key.nullable().optional(), plannedStart:date.nullable().optional(), plannedEnd:date.nullable().optional(), durationDays:z.number().int().min(1).max(3660).nullable().optional(),
   workItems: z.array(itemInput).max(500).default([]),
 }).strict();
@@ -45,7 +46,7 @@ export type IntakePackage = z.infer<typeof intakePackageSchema>;
 export type SourceDocumentInput = z.infer<typeof sourceDocumentInput>;
 export type Feature = {
   id: string; projectId: string; name: string; kind?: 'feature'|'other'; sortOrder: number; version: number;
-  referenceLinks?: Array<{title:string;url:string}>; description: string; archivedAt: string | null;
+  referenceLinks?: ReferenceLink[]; description: string; archivedAt: string | null;
   overview: FeatureOverviewInput; assessedAt: string | null; assessedBy: string | null; assessedByName: string | null;
 };
 export type SourceRevision = { id: string; documentVersion: string; section: string; externalId: string; title: string; content: string; priority: string };

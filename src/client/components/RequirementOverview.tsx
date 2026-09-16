@@ -1,6 +1,6 @@
 import { Button } from './Button';
 import { useRef, useState } from 'react';
-import { Info, ExternalLink } from 'lucide-react';
+import { Info } from 'lucide-react';
 import type { Requirement } from '../types';
 import { formatDateTime } from '../format';
 import { requirementRiskDisplay, requirementVarianceDisplay, requirementDeliveryDate, requirementScheduleSummary } from '../requirement-presentation';
@@ -23,7 +23,7 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
   const plannedLabel = r.scheduleComplete === false || r.plannedProgress === null ? schedule.label : `计划 ${r.plannedProgress}%`;
   const progressHint = `${plannedLabel} · ${direct ? '直接记录完成度' : '自动按工期加权'}`;
   return <section className={"requirement-overview"+(compact?" is-compact":"")} aria-label="需求概览">
-    <OverviewIntroduction title="需求说明" text={r.background} empty="尚未填写需求说明，可在资料中补充。" secondary={{title:'完成标准',text:r.acceptanceCriteria}}/>
+    <OverviewIntroduction links={r.referenceLinks} legacy={r.referenceUrl} title="需求说明" text={r.background} empty="尚未填写需求说明，可在资料中补充。" secondary={{title:'完成标准',text:r.acceptanceCriteria}}/>
     <h3 className="overview-section-heading">执行进展</h3>
     <div className="requirement-overview-top">
       <div className="requirement-overview-meta">
@@ -60,7 +60,7 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
         {!!r.readinessIssues?.length && <div><dt>资料提示</dt><dd>{r.readinessIssues.join('；')}</dd></div>}
         <div><dt>需求说明</dt><dd>{r.background || '尚未填写'}</dd></div>
         <div><dt>完成标准</dt><dd>{r.acceptanceCriteria || '尚未填写'}</dd></div>
-        {r.referenceUrl && <div><dt>参考链接</dt><dd><a href={r.referenceUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />打开辅助资料</a></dd></div>}
+
         <div><dt>当前计划</dt><dd>{r.plannedStart||"待排期"} → {r.plannedEnd||"待排期"}</dd></div><div><dt>预计完成</dt><dd>{r.executionForecastEnd||"待确定"}</dd></div><div><dt>进度</dt><dd>{progressHint}</dd></div>
         {r.sourceNotes&&<div><dt>原始需求资料</dt><dd style={{whiteSpace:"pre-wrap"}}>{r.sourceNotes}</dd></div>}
         <div><dt>计划偏差</dt><dd>{variance.title}</dd></div>

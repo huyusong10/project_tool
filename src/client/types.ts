@@ -39,6 +39,7 @@ export type WorkItemTemplate = {
   id: string; projectId: string; name: string; description: string; createdAt: string; updatedAt: string; deletedAt?: string | null; items: TemplateItem[];
 };
 export type WorkItem = import('../shared/forecast-basis').ExecutionMetadata & {
+  referenceLinks?: import('../shared/reference-links').ReferenceLink[];
   workStage?:import('../shared/execution-stage').WorkStage|null; progressWeight?:number|null;
   durationDays?:number|null;
   dependencyRevision?:number; unmetPredecessors?:Array<{id:string;title:string}>;
@@ -82,7 +83,7 @@ export type Requirement = import('../shared/delivery').DeliveryFields & import('
   stageResetAt?:string|null;executionStage?:import('../shared/execution-stage').ExecutionStage;milestones?:import('../shared/paths').PathMilestone[];
   pathRisk?: import('../shared/paths').PathRisk;
   id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
-  sourceNotes?: string | null; background?: string | null; acceptanceCriteria?: string | null; referenceUrl?: string | null;
+  referenceLinks?: import('../shared/reference-links').ReferenceLink[]; sourceNotes?: string | null; background?: string | null; acceptanceCriteria?: string | null; referenceUrl?: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress: number | null; progressGap: number;
   asOfDate?: string; scheduleComplete?: boolean;
   actualStart?: string | null; actualEnd?: string | null;

@@ -184,3 +184,11 @@ SVG 是可保存的文本，不是浏览器截图；长说明展示摘要，完�
 示例：
 
 `get_path_graph({projectId, view: "feature", featureId, phaseId})`
+
+## 关联链接
+
+特性、Phase、需求、工作项共用 `referenceLinks: [{title,url,kind?}]`，使用现有保存／更新接口。`title` 自由命名；`kind` 为 `document/task/other`，仅用于展示，不限制 MPS、MDS、Confluence、Jira 或其他来源。地址支持 HTTP(S)，同一对象最多 20 条，不接受重复地址。数组顺序就是展示顺序。
+
+省略列表保留原值；`[]` 清空。更新需携带对象版本。需求的旧 `referenceUrl` 对应列表首项：单独更新或清空只影响该项，保留其余链接；同时提交两个字段时以列表为准。终态对象继续使用既有纠错／重开规则。
+
+示例：`save_feature` 的 `referenceLinks` 可以同时包含 `{"title":"MPS 目标","url":"https://docs.example.com/mps","kind":"document"}` 和 `{"title":"交付任务","url":"https://jira.example.com/browse/PROJ-12","kind":"task"}`。

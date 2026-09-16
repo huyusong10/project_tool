@@ -1,11 +1,14 @@
+import {ReferenceLinks} from './ReferenceLinks';
+import {readReferenceLinks,referenceUrlKey,type ReferenceLink} from '../../shared/reference-links';
 import {requirementSourceIndex} from '../requirement-sources';
 
-export function RequirementSources({notes, referenceUrl}: {notes?: string | null; referenceUrl?: string | null}) {
-  const sources = requirementSourceIndex(notes);
-  if (!notes?.trim() && !referenceUrl) return null;
+export function RequirementSources({notes, referenceUrl,links}: {links?:ReferenceLink[];notes?: string | null; referenceUrl?: string | null}) {
+  const manual=readReferenceLinks(links,referenceUrl);
+  const sources = requirementSourceIndex(notes).map(source=>({...source,title:manual.find(link=>source.url&&referenceUrlKey(link.url)===referenceUrlKey(source.url))?.title||source.title}));
+  if (!notes?.trim() && !manual.length) return null;
   return <section className="requirement-sources" aria-label="参考资料">
     <h3>参考资料</h3>
-    {referenceUrl&&<p><a href={referenceUrl} target="_blank" rel="noreferrer">打开需求文档</a></p>}
+    <ReferenceLinks links={manual.filter(link=>!sources.some(source=>source.url&&referenceUrlKey(source.url)===referenceUrlKey(link.url)))}/>
     {!!sources.length&&<ul className="requirement-source-list">{sources.map((source,index)=><li key={index}>
       {source.url?<a href={source.url} target="_blank" rel="noreferrer">{source.title}</a>:<strong>{source.title}</strong>}
       {source.version&&<small>{source.version}</small>}

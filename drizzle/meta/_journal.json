@@ -246,6 +246,13 @@
       "when": 1789430400000,
       "tag": "0034_workspace_outline",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1789516800000,
+      "tag": "0035_reference_links",
+      "breakpoints": true
     }
   ]
 }

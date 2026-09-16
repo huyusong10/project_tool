@@ -1,3 +1,5 @@
+import {ReferenceLinks} from './ReferenceLinks';
+import {WorkItemLinks} from './WorkItemLinks';
 import {ObjectDependencies} from './ObjectDependencies';
 import {useState} from 'react';
 import {Button} from './Button';
@@ -23,8 +25,8 @@ export function WorkItemObjectDetails({requirementId,workItemId,onOpenDependenci
   const manage=canManageProject(session,requirement.projectId),owner=people.data?.some(p=>p.id===session.personId&&p.projectRole!=='viewer')&&requirement.ownerId===session.personId;
   const canEdit=!!people.data&&(manage||!!owner)&&!['pending_acceptance','completed','cancelled'].includes(requirement.status);
   return <DetailWorkspace label="工作项详情" initialTab="overview" tabs={[
-    {id:'overview',label:'概况',description:'工作项进展与执行',actions:<WorkItemExecution requirement={requirement} item={item} people={people.data||[]} progressLabel="更新" presentation="detail">{({actions,progress})=><>{progress}{actions}</>}</WorkItemExecution>,content:<WorkItemFacts item={item}/>},
-    {id:'basic',label:'资料',description:canEdit?'点击字段编辑，逐项保存':'当前工作项资料只读',content:<WorkItemSettingsDialog embedded itemId={item.id} canEdit={canEdit} requirement={requirement} people={people.data||[]} canManageRequirement={manage} onClose={()=>{}} onOpenPlan={onOpenDependencies} onReload={async()=>{const result=await query.refetch({throwOnError:true});if(!result.data)throw Error('工作项无法读取');return result.data;}} onWriteNeedsRecheck={()=>persistWorkItemSettingsRecheck(session.accountId||'guest',requirement.id,true)}/>},
+    {id:'overview',label:'概况',description:'工作项进展与执行',actions:<WorkItemExecution requirement={requirement} item={item} people={people.data||[]} progressLabel="更新" presentation="detail">{({actions,progress})=><>{progress}{actions}</>}</WorkItemExecution>,content:<><WorkItemFacts item={item}/><ReferenceLinks links={item.referenceLinks} compact/></>},
+    {id:'basic',label:'资料',description:canEdit?'点击字段编辑，逐项保存':manage?'执行资料已锁定，关联链接可补充':'当前工作项资料只读',content:<><WorkItemSettingsDialog embedded itemId={item.id} canEdit={canEdit} requirement={requirement} people={people.data||[]} canManageRequirement={manage} onClose={()=>{}} onOpenPlan={onOpenDependencies} onReload={async()=>{const result=await query.refetch({throwOnError:true});if(!result.data)throw Error('工作项无法读取');return result.data;}} onWriteNeedsRecheck={()=>persistWorkItemSettingsRecheck(session.accountId||'guest',requirement.id,true)}/><WorkItemLinks key={item.id} requirement={requirement} item={item} editable={canEdit&&!['completed','cancelled'].includes(item.status)} manager={manage}/></>},
     {id:'dependencies',label:'依赖',actions:<Button variant="secondary" aria-label="在关系图中维护依赖" title="在关系图中维护依赖" onClick={onOpenDependencies}>关系</Button>,content:<ObjectDependencies requirementId={requirementId} workItemId={item.id} onOpenGraph={onOpenDependencies}/>},
     {id:'history',label:'记录',content:<WorkItemHistory requirement={requirement} workItemId={item.id}/>},
   ]}/>;
