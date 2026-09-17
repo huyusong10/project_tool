@@ -61,7 +61,7 @@ export type RequirementActionRequest={requestedAction?:'info'|'schedule';onActio
 export function RequirementObjectDetails({id,workItemId,onOpenDependencies,requestedAction,onActionHandled}:{id:string;workItemId?:string;onOpenDependencies:()=>void}&RequirementActionRequest){
   const [fresh,setFresh]=useState(false);
   const resources=usePageResources(),{session}=useSession(),query=useResourceQuery<Requirement>([...keys.requirement(id),session.accountId],signal => requirementsApi.requirementsById<Requirement>(id, { signal }),!!id,()=>setFresh(true),true);
-  if(!fresh||!query.data||query.unavailable)return <div role="status">{query.error?.message||'正在读取需求…'}{query.error&&<Button variant="secondary" disabled={query.isFetching} onClick={()=>void query.refetch()}>重新读取</Button>}</div>;
+  if(!fresh||!query.data||query.unavailable)return <div role="status"><span>{query.error?.message||'正在读取需求…'}</span>{query.error&&<Button variant="secondary" disabled={query.isFetching} onClick={()=>void query.refetch()}>重新读取</Button>}</div>;
   if(workItemId)return <WorkItemObjectDetails requirementId={id} workItemId={workItemId} onOpenDependencies={onOpenDependencies}/>;
   return <PageResourcesContext.Provider value={{...resources,requirement:query}}><RequirementObjectContent key={id} requirementId={id} embedded requestedAction={requestedAction} onActionHandled={onActionHandled} selectedWorkItemId={workItemId} onOpenDependencies={onOpenDependencies}/></PageResourcesContext.Provider>;
 }
@@ -277,7 +277,7 @@ export function RequirementObjectContent({requirementId,embedded=false,selectedW
                 {['completed', 'cancelled'].includes(requirement.status) && <Button variant="secondary" tone="danger" disabled={Boolean(commandRecheck || correctionRecheck)} type="button" className="danger" onClick={() => { setCommand('archive'); }}><Archive size={15} />归档需求</Button>}
         </> : null}
       />;
-  const notices = <>        {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
+  const notices = <>
         {infoRecheck && <div className="warning-banner" role="alert">需求信息修改结果待核对，原需求版本与草稿已锁定。<Button variant="secondary" type="button" className="ghost-button" disabled={!peopleReady} onClick={() => setModal("info")}>核对信息修改</Button></div>}
         {scheduleRecheck && <div className="warning-banner" role="alert">需求计划调整结果待核对，原需求版本与草稿已锁定。<Button variant="secondary" type="button" className="ghost-button" onClick={() => setModal("schedule")}>核对计划调整</Button></div>}
         {planRecheck && <div className="warning-banner" role="alert">补全计划结果待核对，原需求版本与草稿已锁定。<Button variant="secondary" type="button" className="ghost-button" disabled={templatesQuery.data === undefined} onClick={() => setModal("template")}>核对补全计划</Button></div>}
@@ -314,6 +314,7 @@ export function RequirementObjectContent({requirementId,embedded=false,selectedW
         </DetailCard>
       </section></>;
   return <div className={embedded ? "requirement-page embedded-requirement" : "page-content requirement-page"}>
+    {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
     <DetailWorkspace label="需求详情" initialTab="overview" actions={requirementHeader} tabs={[
       {id: 'overview', label: '概况', description:'需求说明与执行进展', content: <>{notices}<RequirementOverview requirement={requirement} compact={embedded}/></>},
       {id: 'work', label: `工作项 ${requirement.workItems.length}`, content: workList},
