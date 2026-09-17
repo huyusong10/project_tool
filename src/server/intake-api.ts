@@ -9,7 +9,7 @@ import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import type { Actor } from './auth';
 import { actorFromRequest } from './authorization';
 import { featureInput, featureDeleteInput, organizationInput, importPreviewInput, importApplyInput } from '../shared/intake';
-import { readIntakeCatalog, saveFeatureCatalog, deleteFeatureCatalog, updateOrganization } from './services/intake-metadata';
+import { readIntakeFeatures, saveFeatureCatalog, deleteFeatureCatalog, updateOrganization } from './services/intake-metadata';
 import { getFeatureOverview } from './services/feature-overview';
 import { archiveFeature, listFeatures, readFeatureRequirements, listFeatureRelations, saveFeatureRelation, deleteFeatureRelation } from './services/features';
 import { featureRelationInput } from '../shared/features';
@@ -31,7 +31,7 @@ export const intakeOperations:Operation[]=[
   operation('delete_feature_phase','删除没有需求及交付历史的空 Phase','DELETE','/feature-phases/:phaseId',phaseCommand.extend({...project,phaseId:z.string()}),(v,a)=>{const{projectId,phaseId,...input}=v;return commandFeaturePhase(projectId,phaseId,'delete',input,a);}),
   operation('record_test_submission','记录需求实际提测；不会将提测就绪当作已提测','POST','/requirements/:requirementId/test-submission',z.object({...project,requirementId:z.string(),expectedVersion:z.number().int().positive(),actualDate:z.string(),content:z.string().trim().max(2000).optional()}).strict(),(v,a)=>recordTestSubmission(v,a)),
   operation('get_feature_overview','读取特性目标、各 Phase 状态、阶段分布、交付日期与历史、人工评估；特性与 Phase 返回按已明确工作量加权的 completion；空 Phase 不计入，未排期需求参与。已完成归档需求保留交付贡献。state 默认 active，可选 archived/all','GET','/feature-overview',z.object({...project,state}).strict(),(v,a)=>getFeatureOverview(v.projectId,a,undefined,v.state)),
-  operation('get_requirement_intake','读取特性','GET','/requirement-intake',z.object(project).strict(),(v,a)=>{const {revision,features}=readIntakeCatalog(v.projectId,a);return {revision,features};}),
+  operation('get_requirement_intake','读取特性','GET','/requirement-intake',z.object(project).strict(),(v,a)=>readIntakeFeatures(v.projectId,a)),
   operation('list_features','读取长期特性；state 默认 active，可查询 archived/all','GET','/features',z.object({...project,state}).strict(),(v,a)=>listFeatures(v.projectId,v.state,a)),
   operation('save_feature','新建或更新长期特性；description 为长期目标与范围，更新须带版本；省略字段保留原值及排序，新建未传排序则追加；可选 overview 保存完整人工预期与判断','POST','/features',featureInput.extend(project),(v,a)=>{const{projectId,...input}=v;return saveFeatureCatalog(projectId,input,a);}),
   operation('delete_feature','仅删除没有需求（含归档取消项）及规划连线的空特性；非空特性请归档','DELETE','/features/:featureId',featureDeleteInput.extend({...project,featureId:z.string().min(1)}),(v,a)=>deleteFeatureCatalog(v.projectId,v.featureId,v.expectedVersion,a)),

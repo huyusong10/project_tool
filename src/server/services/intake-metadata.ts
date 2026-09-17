@@ -37,9 +37,12 @@ export function persistOrganization(id:string, projectId:string, value:Organizat
   getDatabaseContext().sqlite.prepare('UPDATE requirements SET feature_id=?,phase_id=?,sort_order=(SELECT coalesce(max(sort_order),-1)+1 FROM requirements WHERE feature_id=? AND phase_id IS ? AND id<>?) WHERE id=?').run(featureId,phaseId,featureId,phaseId,id,id);
   for(const pid of affected)getDatabaseContext().sqlite.prepare('UPDATE feature_phases SET version=version+1,updated_at=? WHERE id=?').run(new Date().toISOString(),pid);
 }
-export function readIntakeCatalog(projectId:string, actor:Actor):IntakeCatalog {
+export function readIntakeFeatures(projectId:string, actor:Actor):Pick<IntakeCatalog,'revision'|'features'> {
   assertProjectReadable(requireAuthorizationActor(actor),projectId);
-  const features=readFeatures(projectId);
+  return {revision:intakeRevision(projectId),features:readFeatures(projectId)};
+}
+export function readIntakeCatalog(projectId:string, actor:Actor):IntakeCatalog {
+  const summary=readIntakeFeatures(projectId,actor);
   const documents=getDatabaseContext().sqlite.prepare('SELECT id,source_key AS key,title,url,source_version AS version,complete FROM source_documents WHERE project_id=? ORDER BY title,id').all(projectId) as SourceDocument[];
   const revisions=getDatabaseContext().sqlite.prepare('SELECT v.id,v.document_version AS documentVersion,v.section,v.external_id AS externalId,v.title,v.content,v.priority FROM source_revisions v JOIN source_clauses c ON c.id=v.clause_id JOIN source_documents d ON d.id=c.document_id WHERE d.project_id=?').all(projectId) as SourceRevision[];
   const byRevision=new Map(revisions.map(r=>[r.id,r]));
@@ -51,7 +54,7 @@ export function readIntakeCatalog(projectId:string, actor:Actor):IntakeCatalog {
     c.links=links.filter(l=>l.clauseId===c.id).map(l=>({...l,reviewed:byRevision.get(l.reviewedRevisionId)!,needsReview:l.reviewedRevisionId!==c.currentRevisionId}));
   }
   for(const d of documents){d.complete=Boolean(d.complete);d.clauses=clauses.filter(c=>c.documentId===d.id);}
-  return {revision:intakeRevision(projectId),features,documents};
+  return {...summary,documents};
 }
 export function saveFeatureCatalog(projectId:string,raw:unknown,actor:Actor) {
   return getDatabaseContext().sqlite.transaction(()=>{saveFeature(projectId,raw,actor);return readIntakeCatalog(projectId,actor);}).immediate();

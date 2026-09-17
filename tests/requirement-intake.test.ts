@@ -123,6 +123,7 @@ it('MCP 与 REST 使用同一导入契约、预览结果及回执',async()=>{
   const batchId=randomUUID(),saved=await call('apply_requirement_import',{projectId:p.id,package:v.package,expectedRevision:v.expectedRevision,previewToken:v.previewToken,batchId});
   expect(saved.status).toBe('applied');expect((await request('GET',`/api/projects/${p.id}/requirement-import/receipts/${batchId}`)).json()).toEqual(saved);
   const features=await call('list_features',{projectId:p.id});expect(features[0].name).toBe('示例模块');
+  expect(await call('get_requirement_intake',{projectId:p.id})).toEqual(await catalog(p.id));
   const query={projectId:p.id,featureId:features[0].id,includeWorkItems:true};
   const page=await call('query_requirements',query);expect(page.total).toBe(1);
   expect(page.items[0]).toMatchObject({id:saved.requirementIds['query'],featureId:features[0].id});
