@@ -188,3 +188,30 @@ test('工作项名称编辑在窄屏和标准视口内完整显示',{tag:'@respo
   await page.screenshot({path:info.outputPath('started-name-'+viewport.width+'.png')});await page.keyboard.press('Escape');
  }
 });
+
+test('已保存但响应异常的工作项修改跨导航保持锁定，核对后不重复提交',async({page})=>{
+ const {created,secondRow,dialog,detail}=await fixture(page,false),work=(await detail()).workItems[1];
+ let writes=0,failRead=false;
+ await page.route('**/api/requirements/'+created.id,route=>failRead?route.fulfill({status:503,json:{error:'核对暂不可用'}}):route.continue());
+ await page.route('**/api/work-items/'+work.id,async route=>{
+  if(route.request().method()!=='PATCH')return route.continue();
+  writes++;const response=await route.fetch();expect(response.ok()).toBe(true);failRead=true;
+  await route.fulfill({status:200,contentType:'text/html',body:'saved'});
+ });
+ await secondRow.getByRole('button',{name:/^工作项名称：/}).click();
+ const input=page.getByRole('textbox',{name:'工作项名称',exact:true});await input.fill('结果待核对的名称');await input.press('Enter');
+ await expect(dialog.getByRole('alert').filter({hasText:'刚才的提交结果待核对'})).toBeVisible();
+ await page.keyboard.press('Escape');await dialog.locator(':scope > header').getByRole('button',{name:'关闭',exact:true}).click();
+ failRead=false;
+ const url='/requirements/'+created.id+'?workItemId='+work.id;
+ await page.goto(url);await dialog.getByRole('tab',{name:'资料',exact:true}).click();
+ await expect(dialog.getByRole('button',{name:/^工作项名称：结果待核对的名称/})).toBeDisabled();
+ await expect(dialog.getByRole('button',{name:'编辑',exact:true})).toHaveCount(0);expect(writes).toBe(1);
+ await dialog.getByRole('button',{name:'核对需求修改',exact:true}).click();
+ await expect(dialog.getByRole('alert').filter({hasText:'工作项设置结果待核对'})).toBeVisible();
+ await dialog.getByRole('button',{name:'重新读取需求',exact:true}).click();
+ await expect(dialog.getByRole('alert').filter({hasText:'工作项设置结果待核对'})).toHaveCount(0);
+ await page.goto(url);await dialog.getByRole('tab',{name:'资料',exact:true}).click();
+ await expect(dialog.getByRole('button',{name:/^工作项名称：结果待核对的名称/})).toBeEnabled();
+ expect(writes).toBe(1);expect((await detail()).workItems[1].title).toBe('结果待核对的名称');
+});
