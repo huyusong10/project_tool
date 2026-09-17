@@ -126,6 +126,19 @@ test("我的工作空筛选、拖动卡片高度及刷新恢复布局",{tag:'@re
   const initialPanel = await workPanel.boundingBox();
   const resizeHandle = workPanel.getByRole("button", { name: "调整卡片高度" });
   const handleBox = await resizeHandle.boundingBox();
+  for (const activateCapture of [false, true]) {
+    await resizeHandle.evaluate(element => element.addEventListener('pointerdown', event => {
+      element.setAttribute('data-test-pointer-id', String((event as PointerEvent).pointerId));
+    }, { once: true }));
+    await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + 2);
+    await page.mouse.down();
+    if (activateCapture) await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + 2);
+    await resizeHandle.evaluate(element => element.releasePointerCapture(Number(element.getAttribute('data-test-pointer-id'))));
+    await page.mouse.move(1, 1);
+    await page.mouse.up();
+    await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + handleBox!.height - 2);
+    expect((await workPanel.boundingBox())!.height, '指针捕获结束后，普通悬停不能继续调整高度').toBe(initialPanel!.height);
+  }
   await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + handleBox!.height / 2);
   await page.mouse.down();
   await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + handleBox!.height / 2 + 64);
@@ -140,8 +153,10 @@ test("我的工作空筛选、拖动卡片高度及刷新恢复布局",{tag:'@re
   const resetPanel = await page.locator(".my-work-list").boundingBox();
   expect(Math.abs(resetPanel!.height - initialPanel!.height)).toBeLessThanOrEqual(1);
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem("project-manage:panel-height:a1:my-work-gantt"))).toBeNull();
-
-
+  await resizeHandle.press('ArrowDown');
+  expect((await workPanel.boundingBox())!.height).toBe(initialPanel!.height + 24);
+  await resizeHandle.press('Home');
+  expect((await workPanel.boundingBox())!.height).toBe(initialPanel!.height);
 });
 
 test("个人设置在页面保持打开时自动更新 Token 到期状态", async ({ page }) => {

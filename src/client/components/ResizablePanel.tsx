@@ -89,17 +89,21 @@ export function ResizablePanel({
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  const continueResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    updateHeight(drag.startHeight + event.clientY - drag.startY);
-  };
-
   const finishResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (dragRef.current?.pointerId !== event.pointerId) return;
     dragRef.current = undefined;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     saveHeight(storageKey, heightRef.current);
+  };
+
+  const continueResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.buttons === 0) {
+      finishResize(event);
+      return;
+    }
+    updateHeight(drag.startHeight + event.clientY - drag.startY);
   };
 
   const resizeFromKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
@@ -130,6 +134,7 @@ export function ResizablePanel({
       onPointerMove={continueResize}
       onPointerUp={finishResize}
       onPointerCancel={finishResize}
+      onLostPointerCapture={finishResize}
       onDoubleClick={resetHeight}
       onKeyDown={resizeFromKeyboard}
     />
