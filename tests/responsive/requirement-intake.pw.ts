@@ -1,6 +1,7 @@
 import {chooseOption} from './select-helper';
 import {expect,test,type Page} from '@playwright/test';
 import {intakeExample} from '../../src/shared/intake';
+import {readFile} from 'node:fs/promises';
 
 async function fixture(page:Page) {
   const login=await page.request.post('/api/login',{data:{username:'admin',password:'41_xc7q0qOjo4Inw!'}});expect(login.ok()).toBe(true);
@@ -30,6 +31,52 @@ async function saveImport(page:Page) {
   await page.getByRole('button',{name:'保存需求',exact:true}).click();
   await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();
 }
+
+test('导出草稿保留未整理的最新输入，存储失败仍能备份并重新上传',async({page})=>{
+  await fixture(page);
+  const blockStorage=()=>{
+    const original=Storage.prototype.setItem;
+    Storage.prototype.setItem=function(key,value){if(key.startsWith('pm-intake:'))throw new DOMException('配额不足','QuotaExceededError');return original.call(this,key,value);};
+  };
+  await page.addInitScript(blockStorage);
+  await page.evaluate(blockStorage);
+  await page.getByRole('button',{name:'编辑导入文件',exact:true}).click();
+  const edited='导入备份核对\n保留尚未整理的修改。\n\n另一条需求\n第二段原文。';
+  await page.getByLabel('原始需求',{exact:true}).fill(edited);
+  await expect(page.locator('.warning-banner')).toContainText('本机草稿保存失败');
+  const downloadPromise=page.waitForEvent('download');
+  await page.getByRole('button',{name:'导出草稿',exact:true}).click();
+  const download=await downloadPromise;
+  expect(await download.failure()).toBeNull();
+  const path=(await download.path())!;
+  expect(await readFile(path,'utf8')).toBe(edited);
+  await page.getByLabel('上传文本、Markdown 或工具 JSON').setInputFiles({name:download.suggestedFilename(),mimeType:'text/plain',buffer:await readFile(path)});
+  await expect(page.getByLabel('导入需求标题')).toHaveCount(2);
+  await expect(page.getByLabel('导入需求标题').first()).toHaveValue('导入备份核对');
+  await expect(page.getByLabel('导入需求标题').last()).toHaveValue('另一条需求');
+  await page.reload();
+  await page.evaluate(()=>{for(const key of Object.keys(localStorage))if(key.startsWith('pm-intake:'))localStorage.removeItem(key);});
+  await page.reload();
+  await page.getByLabel('原始需求',{exact:true}).fill('新的一条需求\n没有整理也可备份。');
+  const rawDownloadPromise=page.waitForEvent('download');
+  await page.getByRole('button',{name:'导出草稿',exact:true}).click();
+  const rawDownload=await rawDownloadPromise;
+  expect(await readFile((await rawDownload.path())!,'utf8')).toBe('新的一条需求\n没有整理也可备份。');
+  await page.getByRole('button',{name:'整理需求',exact:true}).click();
+  await page.getByLabel('导入需求标题').fill('整理后的草稿');
+  const structuredPromise=page.waitForEvent('download');
+  await page.getByRole('button',{name:'导出草稿',exact:true}).click();
+  const structured=await structuredPromise;
+  expect(structured.suggestedFilename()).toBe('requirement-import-draft.json');
+  expect(JSON.parse(await readFile((await structured.path())!,'utf8')).requirements[0]).toMatchObject({title:'整理后的草稿',background:'新的一条需求\n没有整理也可备份。'});
+  await page.getByRole('button',{name:'编辑导入文件',exact:true}).click();
+  await page.getByLabel('上传文本、Markdown 或工具 JSON').setInputFiles({name:structured.suggestedFilename(),mimeType:'application/json',buffer:await readFile((await structured.path())!)});
+  await expect(page.getByLabel('导入需求标题')).toHaveValue('整理后的草稿');
+  const examplePromise=page.waitForEvent('download');
+  await page.getByRole('button',{name:'下载工具示例',exact:true}).click();
+  const example=await examplePromise;
+  expect(JSON.parse(await readFile((await example.path())!,'utf8'))).toEqual(intakeExample);
+});
 
 test('按页面名称导入到其他需求，预览后保存并进入新需求',async({page})=>{
   const projectId=await fixture(page);
