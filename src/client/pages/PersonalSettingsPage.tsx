@@ -168,16 +168,16 @@ export function PersonalSettingsPage() {
         {tokensQuery.error && tokensQuery.data && <div className="warning-banner">Token 列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={tokensQuery.isFetching} onClick={() => void tokensQuery.refetch()}>重新加载</Button></div>}
         {tokenListNeedsRecheck && <div className="warning-banner">Token 操作结果需要核对，创建和撤销暂不可用。<Button busy={(recheckingTokens)} aria-label={recheckingTokens ? "读取中…" : "重新读取 Token 列表"} variant="secondary" type="button" className="ghost-button" disabled={recheckingTokens} onClick={() => void recheckTokenList()}>{"重新读取 Token 列表"}</Button></div>}
         {tokensQuery.data && tokens.length > 0 && <div className="paged-panel"><div className="personal-token-list paged-body" ref={pagination.scrollRef} role="table" aria-label="我的 MCP Token">
-          <div className="personal-token-head" role="row"><span>Token</span><span>创建时间</span><span>最近使用</span><span>有效期</span><span>状态与操作</span></div>
+          <div className="personal-token-head" role="row"><span role="columnheader">Token</span><span role="columnheader">创建时间</span><span role="columnheader">最近使用</span><span role="columnheader">有效期</span><span role="columnheader">状态与操作</span></div>
           {pagination.items.map((token) => {
             const expired = Boolean(token.expiresAt && new Date(token.expiresAt).getTime() <= now);
             const status = token.revokedAt ? "已撤销" : expired ? "已过期" : "有效";
             return <div className="personal-token-row" role="row" key={token.id}>
-              <div><KeyRound size={16} /><span><strong>{token.name}</strong><small>pm_{token.prefix}_…</small></span></div>
-              <time>{new Date(token.createdAt).toLocaleDateString("zh-CN")}</time>
-              <time>{token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString("zh-CN", { hour12: false }) : "尚未使用"}</time>
-              <time>{token.expiresAt ? new Date(token.expiresAt).toLocaleDateString("zh-CN") : "永久有效"}</time>
-              <div><b className={status === "有效" ? "safe-text" : "muted"}>{status}</b>{status === "有效" && <Button variant="secondary" size="small" className="token-revoke-button" disabled={tokenListNeedsRecheck} onClick={() => { if (tokenListNeedsRecheck) return; revoke.reset(); setRevokeTarget(token); }}>撤销</Button>}</div>
+              <div role="cell"><KeyRound size={16} /><span><strong>{token.name}</strong><small>pm_{token.prefix}_…</small></span></div>
+              <time role="cell">{new Date(token.createdAt).toLocaleDateString("zh-CN")}</time>
+              <time role="cell">{token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString("zh-CN", { hour12: false }) : "尚未使用"}</time>
+              <time role="cell">{token.expiresAt ? new Date(token.expiresAt).toLocaleDateString("zh-CN") : "永久有效"}</time>
+              <div role="cell"><b className={status === "有效" ? "safe-text" : "muted"}>{status}</b>{status === "有效" && <Button variant="secondary" size="small" className="token-revoke-button" disabled={tokenListNeedsRecheck} onClick={() => { if (tokenListNeedsRecheck) return; revoke.reset(); setRevokeTarget(token); }}>撤销</Button>}</div>
             </div>;
           })}
         </div><Pagination {...pagination.props} label="Token 列表分页" /></div>}
