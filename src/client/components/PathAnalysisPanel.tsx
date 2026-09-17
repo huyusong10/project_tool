@@ -1,64 +1,68 @@
-import {DetailCard} from './DetailCard';
+import { editorFieldLocation } from '../workspace-location';
+import { readRecheck, persistRecheck } from '../core/write-recheck';
+import * as pathsApi from '../features/paths/api';
+import { DetailCard } from './DetailCard';
 import { Button } from './Button';
-import {useProjectWorkspace} from '../project-workspace-context';
-import {ToolbarStatus} from './ToolbarStatus';
-import {Select} from './Select';
-import {useAppNavigate} from '../use-app-navigation';
-import {flushSync} from 'react-dom';
+import { useProjectWorkspace } from '../project-workspace-context';
+import { ToolbarStatus } from './ToolbarStatus';
+import { Select } from './Select';
+import { useAppNavigate } from '../use-app-navigation';
+import { flushSync } from 'react-dom';
 import { PageHeader } from './PageHeader';
-import {randomUUID} from '../random-uuid';
-import {DeliveryImpactTable} from './DeliveryImpactTable';
-import {useWorkspaceParams} from '../use-workspace-view';
-import {editorAdapter} from '../editor-adapter';
-import {EditorField} from './EditorField';
-import {fieldObjectId} from '../editor-fields';
-import {useEditorInteraction} from '../use-editor-interaction';
-import type {GraphConnectionIssue} from './DependencyGraph';
-import { useCallback,useEffect,useMemo,useRef, useState } from 'react';
+import { randomUUID } from '../random-uuid';
+import { DeliveryImpactTable } from './DeliveryImpactTable';
+import { useWorkspaceParams } from '../use-workspace-view';
+import { editorAdapter } from '../editor-adapter';
+import { EditorField } from './EditorField';
+import { fieldObjectId } from '../editor-fields';
+import { useEditorInteraction } from '../use-editor-interaction';
+import type { GraphConnectionIssue } from '../features/graph/model';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
-import { api, ApiError,jsonBody, requiresWriteRecheck } from '../api';
-import {Link2,Copy,Trash2,LocateFixed,GitBranch,Maximize2,Minimize2} from 'lucide-react';
-import {EditorToolbar,EditorPalette,EditorInfo} from './EditorToolbar';
-import {EditorRequirementCreate,EditorObjectProperties} from './EditorObjectForm';
-import {changeEntity,copyEntities,deleteEntities} from '../editor-commands';
-import type {Point} from '../path-layout';
-import {vacantGroup} from '../fixed-routing';
-import type {EditorEntityChange} from '../../shared/path-contracts';
+import { ApiError, jsonBody, requiresWriteRecheck } from '../api';
+import { Link2, Copy, Trash2, LocateFixed, GitBranch, Maximize2, Minimize2 } from 'lucide-react';
+import { EditorToolbar, EditorPalette, EditorInfo } from './EditorToolbar';
+import { EditorRequirementCreate, EditorObjectProperties } from './EditorObjectForm';
+import { changeEntity, copyEntities, deleteEntities } from '../editor-commands';
+import type { Point } from '../path-layout';
+import { vacantGroup } from '../fixed-routing';
+import type { EditorEntityChange } from '../../shared/path-contracts';
 import { useSession } from '../app-context';
 import { useResourceQuery } from '../use-resource-query';
 import { invalidateRequirementViews, keys } from '../query-keys';
 import { canManageProject } from '../permissions';
 import type { Requirement } from '../types';
-import { acceptanceId, startId,dependencySource,dependencyTarget, type PathAnalysis, type PathNode } from '../../shared/paths';
+import { acceptanceId, startId, dependencySource, dependencyTarget, type PathAnalysis, type PathNode } from '../../shared/paths';
 import { addBusinessDays, riskLabels, todayIso } from '../../shared/domain';
 import { hasWorkdayCalendarFallback } from '../../shared/workday';
 import { projectPathGraph } from '../path-projection';
-import {relationCaption,relationDescription,replaceDeliveryCondition} from '../path-relations';
-import {DeliveryCondition} from './DeliveryCondition';
-import {PathGantt,hasPathGanttDates} from './PathGantt';
+import { relationCaption, relationDescription, replaceDeliveryCondition } from '../path-relations';
+import { DeliveryCondition } from './DeliveryCondition';
+import { PathGantt, hasPathGanttDates } from './PathGantt';
 import { Modal, useSynchronousPendingLock } from './Modal';
 import { EmptyState, LoadingState } from './Feedback';
 import { FormError } from './Form';
 import '../paths.css';
-import {emptyRequirementFilters,unfinishedStatuses,matchesRequirementFilters,compareRiskRequirements} from '../../shared/requirement-view';
-import {matchesSearch} from '../../shared/search';
-import {readPathFilters,writePathFilters,graphBranch,graphContext,cardFilterItem,cardSearch,remapEditorUrl,remapEditorViews,remapSavedEditorUrl} from '../path-view';
-import {PathFilters} from './PathFilters';
+import { emptyRequirementFilters, unfinishedStatuses, matchesRequirementFilters, compareRiskRequirements } from '../../shared/requirement-view';
+import { matchesSearch } from '../../shared/search';
+import { readPathFilters, writePathFilters, graphBranch, graphContext, cardFilterItem, cardSearch, remapEditorUrl, remapEditorViews, remapSavedEditorUrl } from '../path-view';
+import { PathFilters } from './PathFilters';
 import { GraphWorkspace } from './GraphWorkspace';
 import { PredecessorPicker } from './PredecessorPicker';
-import { clearProjectGraphDrafts,useDependencyDraft } from '../use-graph-draft';
+import { clearProjectGraphDrafts, useDependencyDraft } from '../use-graph-draft';
 import { draftNetwork, dependencyIssue } from '../dependency-draft';
 import type { DependencyChanges } from '../../shared/path-contracts';
 import type { GraphCard } from '../path-projection';
-import {featurePathGraph} from '../../shared/feature-projection';
-import {canvasView,canvasScope,requirementCanvasUrl,useCanvasNavigation} from '../canvas-navigation';
-import {canvasNavigation} from './CanvasNavigation';
-import {featurePhaseLayout,phaseLayoutChanges,constrainPhasePosition,type PhaseRegion} from '../phase-layout';
-import {DeliveryFilters,ScopeTable,matchesDeliveryCard} from './DeliveryTables';
-import {DeliveryFeatureDetails} from './DeliveryFeatureDetails';
-import {PhaseDialog,readPendingPhase,type PhaseEdit} from './PhasePlanning';
-import {CanvasDraftDetails} from './CanvasDraftDetails';
+import { featurePathGraph } from '../../shared/feature-projection';
+import { canvasView, canvasScope, requirementCanvasUrl, useCanvasNavigation } from '../canvas-navigation';
+import { canvasNavigation } from './CanvasNavigation';
+import { featurePhaseLayout, phaseLayoutChanges, constrainPhasePosition, type PhaseRegion } from '../phase-layout';
+import { DeliveryFilters, ScopeTable, matchesDeliveryCard } from './DeliveryTables';
+import { DeliveryFeatureDetails } from './DeliveryFeatureDetails';
+import { PhaseDialog } from './PhasePlanning';
+import { readPendingPhase, type PhaseEdit } from '../features/planning/phase-model';
+import { CanvasDraftDetails } from './CanvasDraftDetails';
 export type PathRequirementContext=Pick<Requirement,'id'|'projectId'|'title'|'ownerId'|'status'>&{workItems:Array<Pick<Requirement['workItems'][number],'id'|'status'|'assigneeIds'>>};
 type PlanPreview={impact:import('../../shared/delivery-impact').DeliveryImpact[];requirementId:string;projectId:string;baseStart:string;expectedRevision:number;previewToken:string;applicable:boolean;entries:Array<{workItemId:string;requirementId:string;title:string;currentStart:string|null;currentEnd:string|null;proposedStart:string|null;proposedEnd:string|null;reasons:string[]}>};
 type DependencyPlanRecheck={baseStart:string;expectedRevision:number;previewToken:string;entries:Array<{id:string;start:string|null;end:string|null}>};
@@ -67,22 +71,24 @@ type Editor = {kind:'relation'}|{kind:'estimate';node:PathNode}|{kind:'plan';bas
 
 const dependencyPlanRecheckKey=(accountId:string,requirementId:string)=>`pm-dependency-plan-recheck:${accountId}:${requirementId}`;
 function readDependencyPlanRecheck(accountId:string,requirementId:string):DependencyPlanRecheck|null{
-  try{
-    const value=JSON.parse(sessionStorage.getItem(dependencyPlanRecheckKey(accountId,requirementId))||'null') as Partial<DependencyPlanRecheck>|null;
+  return readRecheck(dependencyPlanRecheckKey(accountId,requirementId), stored => {
+    const value=stored as Partial<DependencyPlanRecheck>|null;
     if(!value||typeof value.baseStart!=='string'||!Number.isSafeInteger(value.expectedRevision)||typeof value.previewToken!=='string'||!Array.isArray(value.entries))return null;
     if(!value.entries.every(entry=>entry&&typeof entry.id==='string'&&(entry.start===null||typeof entry.start==='string')&&(entry.end===null||typeof entry.end==='string')))return null;
     return value as DependencyPlanRecheck;
-  }catch{return null;}
+
+  });
 }
 function writeDependencyPlanRecheck(accountId:string,requirementId:string,value:DependencyPlanRecheck|null){
-  try{const key=dependencyPlanRecheckKey(accountId,requirementId);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前页面仍保留核对锁。 */}
+  persistRecheck(dependencyPlanRecheckKey(accountId,requirementId), value);
 }
 const milestoneRecheckKey=(accountId:string,projectId:string)=>`pm-milestone-recheck:${accountId}:${projectId}`;
 function readMilestoneRecheck(accountId:string,projectId:string):MilestoneRecheck|null{
-  try{const value=JSON.parse(sessionStorage.getItem(milestoneRecheckKey(accountId,projectId))||'null') as Partial<MilestoneRecheck>|null;return value&&typeof value.id==='string'&&(value.action==='achieve'||value.action==='reopen')?value as MilestoneRecheck:null;}catch{return null;}
+  return readRecheck(milestoneRecheckKey(accountId,projectId), stored => {const value=stored as Partial<MilestoneRecheck>|null;return value&&typeof value.id==='string'&&(value.action==='achieve'||value.action==='reopen')?value as MilestoneRecheck:null;
+  });
 }
 function writeMilestoneRecheck(accountId:string,projectId:string,value:MilestoneRecheck|null){
-  try{const key=milestoneRecheckKey(accountId,projectId);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前页面仍保留核对锁。 */}
+  persistRecheck(milestoneRecheckKey(accountId,projectId), value);
 }
 
 function PathEditor({editor,data,requirement,manager,onClose,onReload,onPlanRecheckChange,onRecheckPlan}:{editor:Editor;data:PathAnalysis;requirement?:PathRequirementContext;manager:boolean;onClose:()=>void;onReload:()=>Promise<PathAnalysis>;onPlanRecheckChange:(value:DependencyPlanRecheck|null)=>void;onRecheckPlan:()=>Promise<{latest:PathAnalysis;applied:boolean}>}) {
@@ -96,8 +102,8 @@ function PathEditor({editor,data,requirement,manager,onClose,onReload,onPlanRech
   const stale=baseline!==data.revision||needsCheck;
   const {session}=useSession();
   const canEditStructure=manager||!!requirement&&requirement.ownerId===session.personId;
-  const mutation=useMutation({mutationFn:async ({url,body,method='POST'}:{url:string;body:unknown;method?:string})=>api(url,{method,body:jsonBody(body)}),onSuccess:()=>{if(editor.kind==='plan')onPlanRecheckChange(null);invalidateRequirementViews(client,requirement?.id);onClose();},onError:(error)=>{if(requiresWriteRecheck(error))setNeedsCheck(true);else if(editor.kind==='plan')onPlanRecheckChange(null);}});
-  const planning=useMutation({mutationFn:()=>api<PlanPreview>(`/api/requirements/${requirement!.id}/dependency-plan/preview`,{method:'POST',body:jsonBody({baseStart,expectedRevision:baseline}),readOnly:true}),onSuccess:setPreview});
+  const mutation=useMutation({mutationFn:async ({write,body,method='POST'}:{write:(options:import('../api').ApiRequestInit)=>Promise<unknown>;body:unknown;method?:string})=>write({method,body:jsonBody(body)}),onSuccess:()=>{if(editor.kind==='plan')onPlanRecheckChange(null);invalidateRequirementViews(client,requirement?.id);onClose();},onError:(error)=>{if(requiresWriteRecheck(error))setNeedsCheck(true);else if(editor.kind==='plan')onPlanRecheckChange(null);}});
+  const planning=useMutation({mutationFn:()=>pathsApi.requirementsDependencyPlanPreview<PlanPreview>(requirement!.id, {method:'POST',body:jsonBody({baseStart,expectedRevision:baseline}),readOnly:true}),onSuccess:setPreview});
   const saveLock=useSynchronousPendingLock(mutation.isPending),planningLock=useSynchronousPendingLock(planning.isPending);
   const close=()=>{if(saveLock.canClose())onClose();};
   const options=data.requirements.filter(r=>manager||r.id===requirement?.id);
@@ -105,9 +111,9 @@ function PathEditor({editor,data,requirement,manager,onClose,onReload,onPlanRech
     if(stale)return;
     const version={expectedRevision:baseline};
     saveLock.run(()=>{
-      if(editor.kind==='relation') mutation.mutate({url:`/api/projects/${data.projectId}/dependencies`,body:{...version,sourceRequirementId:sourceReq,sourceWorkItemId:sourceWork||null,targetRequirementId:targetReq,targetWorkItemId:targetWork||null}});
-      if(editor.kind==='estimate') mutation.mutate({url:`/api/work-items/${editor.node.id}/path-estimate`,method:'PATCH',body:{...version,...canEditStructure?{durationDays:Number(duration),earliestStart:earliest||null}:{},forecastEnd:forecast||null}});
-      if(editor.kind==='plan'&&preview){onPlanRecheckChange({baseStart,expectedRevision:baseline,previewToken:preview.previewToken,entries:preview.entries.map(entry=>({id:entry.workItemId,start:entry.proposedStart,end:entry.proposedEnd}))});mutation.mutate({url:`/api/requirements/${requirement!.id}/dependency-plan/apply`,body:{baseStart,expectedRevision:baseline,previewToken:preview.previewToken}});}
+      if(editor.kind==='relation') mutation.mutate({write:options=>pathsApi.saveDependency(data.projectId,options),body:{...version,sourceRequirementId:sourceReq,sourceWorkItemId:sourceWork||null,targetRequirementId:targetReq,targetWorkItemId:targetWork||null}});
+      if(editor.kind==='estimate') mutation.mutate({write:options=>pathsApi.saveEstimate(editor.node.id,options),method:'PATCH',body:{...version,...canEditStructure?{durationDays:Number(duration),earliestStart:earliest||null}:{},forecastEnd:forecast||null}});
+      if(editor.kind==='plan'&&preview){onPlanRecheckChange({baseStart,expectedRevision:baseline,previewToken:preview.previewToken,entries:preview.entries.map(entry=>({id:entry.workItemId,start:entry.proposedStart,end:entry.proposedEnd}))});mutation.mutate({write:options=>pathsApi.applyDependencyPlan(requirement!.id,options),body:{baseStart,expectedRevision:baseline,previewToken:preview.previewToken}});}
     });
   };
   const labels={relation:'配置交付前置',estimate:'工期与交付预测',review:'核对需求依赖',plan:'按依赖预览排期',acceptance:'预计验收日期'};
@@ -141,7 +147,7 @@ export function PathAnalysisPanel({projectId,requirement,onExit}:{projectId:stri
   const requirementId=params.get('view')==='requirement'?params.get('requirementId')||'':requirement?.id||'';
   const actualTarget=params.get('target')||(requirementId&&!params.has('draftProject')?acceptanceId(requirementId):'project');
   const query=useResourceQuery<{analysis:PathAnalysis}>([...keys.paths,projectId,requirementId||'all',actualTarget,'canvas',session.accountId],
-    '/api/projects/'+projectId+'/path-graph?'+new URLSearchParams({view:'project',target:actualTarget}),!!projectId);
+    signal => pathsApi.projectsPathGraphQuery<{analysis:PathAnalysis}>(projectId, new URLSearchParams({view:'project',target:actualTarget}), { signal }),!!projectId);
   useEffect(()=>{if(query.error instanceof ApiError&&[401,403].includes(query.error.status))clearProjectGraphDrafts(session.accountId||'guest',projectId);},[query.error,session.accountId,projectId]);
   if(query.isLoading||query.unavailable||!query.data)return <><PageHeader title="项目空间" titlePending={query.isLoading} actions={<span/>}/><div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace">
     {query.isLoading?<LoadingState label="正在分析交付依赖…"/>:<EmptyState title="路径分析数据不可用" detail={query.error?.message||'请选择项目'} action={<Button variant="secondary" className="ghost-button" onClick={()=>void query.refetch()}>重新加载</Button>}/>}
@@ -248,7 +254,7 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
     milestoneSubmitting.current=true;setMilestoneBusy(value.id);
     const action=value.achievedAt?'reopen':'achieve',pending:MilestoneRecheck={id:value.id,action};setMilestoneRecheck(pending);
     try{
-      await api('/api/milestones/'+value.id+'/'+action,{method:'POST',body:jsonBody({expectedVersion:value.version})});
+      await pathsApi.milestonesById(value.id, action, {method:'POST',body:jsonBody({expectedVersion:value.version})});
       invalidateRequirementViews(client,focus);
       try{await onReload();setMilestoneRecheck(null);if(mounted.current)setIssue(undefined);}catch{if(mounted.current)setIssue({message:'里程碑操作已提交，但最新状态读取失败。请重新读取里程碑结果，本窗口不会重复提交。'});}
     }catch(error){
@@ -274,11 +280,13 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
   },[data,focus,featureScope,imported,draft.count,draft.preview,draft.changes.entities,layoutValue?.positions,panel,issue]);
   const phaseLayout=useMemo(()=>featureScope?featurePhaseLayout(data,activeFeature,featureScope,graph.cards.map(c=>c.id)):undefined,[data,activeFeature,featureScope,graph.cards]);
   // Focus, selection and navigation do not change the filter projection.
-  const filterValues=JSON.stringify(readPathFilters(params,!!focus||!!featureScope));
-  const filters=useMemo(()=>params.get('mode')==='table'?emptyRequirementFilters():JSON.parse(filterValues) as ReturnType<typeof readPathFilters>,[filterValues,params]);
+  const filterValues=JSON.stringify(params.get('mode')==='table'?emptyRequirementFilters():readPathFilters(params,!!focus||!!featureScope));
+  const filters=useMemo(()=>JSON.parse(filterValues) as ReturnType<typeof readPathFilters>,[filterValues]);
+  const deliveryFilterValues=JSON.stringify(['q','phaseId','stage','workStage','view'].map(key=>[key,params.get(key)||'']));
+  const deliveryFilters=useMemo(()=>new URLSearchParams(JSON.parse(deliveryFilterValues)),[deliveryFilterValues]);
   const applyFilters=(value:ReturnType<typeof readPathFilters>)=>{setParams(writePathFilters(params,value),{replace:true,state:location.state});};
   const sorted=useMemo(()=>[...graph.cards].sort((a,b)=>compareRiskRequirements(cardFilterItem(a,data),cardFilterItem(b,data))),[graph.cards,data]);
-  const matching=useMemo(()=>sorted.filter(c=>draft.changes.entities?.some(e=>e.op==='create'&&e.id===c.id)||matchesRequirementFilters(cardFilterItem(c,data),filters)).filter(c=>matchesDeliveryCard(c,data,params)),[sorted,data,filters,draft.changes.entities,params]);
+  const matching=useMemo(()=>sorted.filter(c=>draft.changes.entities?.some(e=>e.op==='create'&&e.id===c.id)||matchesRequirementFilters(cardFilterItem(c,data),filters)).filter(c=>matchesDeliveryCard(c,data,deliveryFilters)),[sorted,data,filters,draft.changes.entities,deliveryFilters]);
   const ids=useMemo(()=>graphContext(new Set(matching.map(c=>c.id)),graph.links),[matching,graph.links]);
   const visibleIds=useMemo(()=>[...new Set([...ids,...panel==='connectionIssue'?(issue?.nodeIds||[]).map(id=>focus?id:data.nodes.find(n=>n.id===id)?.requirementId||id):[]])],[ids,panel,issue,focus,data.nodes]),contextIds=useMemo(()=>visibleIds.filter(id=>!matching.some(c=>c.id===id)),[visibleIds,matching]);
   const emphasized=useMemo(()=>branch?graphBranch(branch,focus?data.edges:graph.links):ids,[branch,focus,data.edges,graph.links,ids]);
@@ -314,7 +322,7 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
     if(!editing||!original||!editableRelation(original)){setIssue({message:'当前无权修改这条交付关系'});return;}
     const result=replaceDeliveryCondition(data,draft.changes,id,source,destination,randomUUID());
     if('issue' in result){setIssue(result.issue);return;}
-    if(result.changes!==draft.changes)draft.change(result.changes);
+    if(result.changes!==draft.changes)draft.change(withLayout(result.changes,livePositions.current));
     setRelationId(result.relationId);setInspector(true);setIssue(undefined);
   };
   const remove=(id:string,changes=draft.changes):DependencyChanges=>({...changes,add:changes.add.filter(e=>e.clientId!==id),remove:formal.dependencies.some(e=>e.id===id)?[...new Set([...changes.remove,id])]:changes.remove});
@@ -333,7 +341,7 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
   };
   const connect=(source:string,destination:string)=>{
     const error=validate(source,destination);if(error){setIssue(error);return;}
-    draft.change({...draft.changes,add:[...draft.changes.add,proposal(source,destination)!]});setIssue(undefined);
+    draft.change(withLayout({...draft.changes,add:[...draft.changes.add,proposal(source,destination)!]},livePositions.current));setIssue(undefined);
   };
   const reconnectRelation=selectedRelation||(selectedEdge?.dependencyIds.length===1?data.dependencies.find(d=>d.id===selectedEdge.dependencyIds[0]):undefined);
   const canReconnect=editing&&reconnectRelation&&editableRelation(reconnectRelation)&&(!!focus||!reconnectRelation.sourceWorkItemId&&!reconnectRelation.targetWorkItemId);
@@ -415,10 +423,10 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
       {branch&&!emphasized.has(selected)&&<p className="graph-outside-notice">此节点在分支外，定位后返回全图。</p>}
       <div className="editor-selection-tools"><Button variant="ghost" iconOnly title="定位" aria-label="定位" onClick={()=>locateNode(selected)}><LocateFixed size={16}/></Button><Button variant="ghost" iconOnly title={branch===selected?'退出聚焦':'聚焦分支'} aria-label={branch===selected?'退出聚焦':branch?'聚焦此分支':'聚焦分支'} onClick={()=>setParam('pathBranch',branch===selected?'':selected)}><GitBranch size={16}/></Button>{editing&&canEdit&&currentEntity&&selectedCard.kind!=='execution'&&<><Button variant="ghost" iconOnly title="复制（Alt 拖动 / Ctrl+C、V）" aria-label="复制元素" onClick={()=>commands.dispatch({type:'duplicate',ids:[selected],positions:{[selected]:{x:(livePositions.current[selected]?.x||0)+32,y:(livePositions.current[selected]?.y||0)+32}}})}><Copy size={16}/></Button><Button variant="ghost" iconOnly title="删除（Delete）" aria-label="删除元素" onClick={()=>commands.dispatch({type:'delete',ids:[selected]})}><Trash2 size={16}/></Button></>}</div><div className="button-row">
         {selectedCard.requirementId&&(!focus||selectedCard.external)&&<>
-          
+
           <Button variant={selectedRequirementSaved ? "secondary" : "primary"} className={selectedRequirementSaved?'ghost-button':'primary-button'} onClick={()=>directTo(selectedCard.requirementId,selectedCard.workItemId)}>进入工作项</Button>
         </>}
-        
+
       </div>
       {!!nodeRelations.length&&<Button variant="secondary" className="ghost-button graph-node-relations" onClick={()=>openPanel('nodeRelations')}>已有关联 {nodeRelations.length} 条{nodeRelations.some(d=>d.sourceWorkItemId||d.targetWorkItemId)?' · 含指定环节':''}</Button>}
       {editing&&canEdit&&currentEntity&&(!selectedCard.external||manager)&&<EditorObjectProperties historical={['completed','cancelled'].includes(selectedCard.status)||['completed','cancelled'].includes(data.requirements.find(r=>r.id===currentEntity.requirementId)?.status||'')} objectId={selected} projectId={data.projectId} entity={currentEntity.entity} canManageDelivery={manager} value={{...objectValue,priority:objectValue.priority as EditorEntityChange['data']['priority']}} onChange={fields=>commands.dispatch({type:'properties',id:selected,fields})} anchors={data.nodes.filter(n=>n.kind==='milestone'&&n.id!==selected).map(n=>({id:n.id,title:n.title}))}/>}
@@ -454,7 +462,7 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
     {panel==='changes'&&<CanvasDraftDetails draft={draft} data={data} onGo={url=>void navigation.go(url,true,true)}/>}
   </>:undefined;
   const commands=editorAdapter({properties:patchEntity,move:positions=>draft.change(withLayout(draft.changes,positions)),rename:(id,title)=>patchEntity(id,{title}),create:createEntity,duplicate:duplicate,replaceRelation,delete:(ids,edgeId)=>{const e=graph.links.find(e=>e.id===edgeId);if(e?.dependencyIds.length===1)draft.change(remove(e.dependencyIds[0]));else if(edgeId){setEdgeId(edgeId);setInspector(true);}else {draft.change(deleteEntities(data,draft.changes,ids));select('');}},connect:connect,reconnect:(source,destination)=>{const problem=validateReconnect(source,destination);if(problem)setIssue(problem);else{draft.change(reconnectChanges(source,destination));setRelationId('');setEdgeId('');}},undo:editing?draft.undo:undefined,redo:editing?draft.redo:undefined,save:()=>void draft.save(),copy:()=>structuredClone(data)},editing&&canEdit);
-  return <div className="path-analysis immersive-path">{phaseEdit&&<PhaseDialog key={(phaseEdit.phase?.id||phaseEdit.feature.id)+phaseEdit.mode} edit={phaseEdit} onClose={()=>setPhaseEdit(null)}/>}<GraphWorkspace onInspectNode={id=>{select(id);if(editing||!workspace||!formal.requirements.some(r=>r.id===id)&&!formal.nodes.some(n=>n.id===id&&n.requirementId))setInspector(true);else workspace.inspect(id);}} navigation={<DeliveryFilters workItems={!!focus} params={params} setParam={setParam} feature={activeFeature}/>} table={<ScopeTable params={params} onSort={v=>setParam('tableSort',v)} cards={matching.filter(c=>focus?c.kind!=='start'&&c.kind!=='acceptance'&&!c.external:c.kind==='requirement'&&!c.external)} data={data} selected={selected} onSelect={select} onEnter={id=>directTo(id)} focus={focus} onArrange={!focus&&manager&&!!data.featureContext?.overview.features.length?ids=>setPhaseEdit({feature:activeFeature||data.featureContext!.overview.features.find(f=>!f.archivedAt)!,mode:'placement',requirementIds:ids}):undefined}/> } onOpenNode={card=>{if(card.kind==='requirement'&&!card.archived)directTo(card.requirementId);else select(card.id);}} onRevealField={key=>{const id=fieldObjectId(key),card=graph.cards.find(c=>c.id===id);if(card){select(card.id);return;}const node=data.nodes.find(n=>n.id===id);if(node?.requirementId){directTo(node.requirementId,node.id,true);return;}if(id&&(data.requirements.some(r=>r.id===id)||data.milestones?.some(m=>m.id===id)))void navigation.go('/paths?'+new URLSearchParams({view:'project',pathScope:'all',target:'project',pathNode:id,pathInspector:'open'}),true,true);else setIssue({message:'无法定位待修正字段，请查看草稿所属对象是否仍可编辑。'});}} auxiliaryKey={panel} commands={commands} interaction={interaction} document={draft} cards={graph.cards} links={graph.links} visibleIds={visibleIds} contextIds={contextIds} emphasizedIds={emphasizedIds} onExitFocus={()=>{if(placing)setPlacing('');else setParam('pathBranch','');}} auxiliarySize={panel==='schedule'&&datedSchedule?expandedSchedule?'expanded':'timeline':'compact'}
+  return <div className="path-analysis immersive-path">{phaseEdit&&<PhaseDialog key={(phaseEdit.phase?.id||phaseEdit.feature.id)+phaseEdit.mode} edit={phaseEdit} onClose={()=>setPhaseEdit(null)}/>}<GraphWorkspace onInspectNode={id=>{select(id);if(editing||!workspace||!formal.requirements.some(r=>r.id===id)&&!formal.nodes.some(n=>n.id===id&&n.kind==='work'&&n.requirementId))setInspector(true);else workspace.inspect(id);}} navigation={<DeliveryFilters workItems={!!focus} params={params} setParam={setParam} feature={activeFeature}/>} table={<ScopeTable params={params} onSort={v=>setParam('tableSort',v)} cards={matching.filter(c=>focus?c.kind!=='start'&&c.kind!=='acceptance'&&!c.external:c.kind==='requirement'&&!c.external)} data={data} selected={selected} onSelect={select} onEnter={id=>directTo(id)} focus={focus} onArrange={!focus&&manager&&!!data.featureContext?.overview.features.length?ids=>setPhaseEdit({feature:activeFeature||data.featureContext!.overview.features.find(f=>!f.archivedAt)!,mode:'placement',requirementIds:ids}):undefined}/> } onOpenNode={card=>{if(card.kind==='requirement'&&!card.archived)directTo(card.requirementId);else select(card.id);}} onRevealField={key=>{const id=fieldObjectId(key),card=graph.cards.find(c=>c.id===id);if(card&&!card.external&&(!focus||card.requirementId===focus)){select(card.id);setInspector(true);return;}const destination=id?editorFieldLocation(data,id):undefined;if(destination)void navigation.go(destination,true,true);else setIssue({message:'无法定位待修正字段，请查看草稿所属对象是否仍可编辑。'});}} auxiliaryKey={panel} commands={commands} interaction={interaction} document={draft} cards={graph.cards} links={graph.links} visibleIds={visibleIds} contextIds={contextIds} emphasizedIds={emphasizedIds} onExitFocus={()=>{if(placing)setPlacing('');else setParam('pathBranch','');}} auxiliarySize={panel==='schedule'&&datedSchedule?expandedSchedule?'expanded':'timeline':'compact'}
     reconnect={canReconnect?{id:reconnectRelation!.id,source:focus?dependencySource(reconnectRelation!):reconnectRelation!.sourceRequirementId||reconnectRelation!.sourceMilestoneId!,target:focus?dependencyTarget(reconnectRelation!):reconnectRelation!.targetRequirementId||reconnectRelation!.targetMilestoneId!}:undefined}
     validateReconnect={validateReconnect}
     focusRegionId={params.get('phaseId')||undefined} regions={phaseLayout?.regions} constrainPosition={phaseLayout?(id,p)=>constrainPhasePosition(liveRegions.current.length?liveRegions.current:phaseLayout.regions,id,p):undefined} onSelectPhase={(f,id)=>{if(workspace){if(id==='external')return;if(id.endsWith(':unassigned')||id==='unassigned')workspace.enter({kind:'unphased',id:f});else workspace.enter({kind:'phase',id});return;}select('');setInspector(false);setParam('phaseId',id==='external'?'':id);setParam('phaseDetails','1');}} positions={phaseLayout?.positions||layoutValue?.positions} onLayoutReady={(positions,regions)=>{livePositions.current=positions;if(regions)liveRegions.current=regions;}} placing={placing} onSearch={()=>openPanel('nodes')}

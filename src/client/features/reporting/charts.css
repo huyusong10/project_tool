@@ -1,0 +1,18 @@
+@layer application {
+
+.analytics-kpi strong { color: var(--text-primary); font-size: 34px; line-height: 1; }
+.analytics-kpi span { color: var(--text-faint); font-size: 12px; }
+.analytics-table-scroll { height: 100%; max-height: 330px; overflow: auto; }
+.analytics-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.analytics-table th { position: sticky; top: 0; z-index: 1; padding: 8px 10px; color: var(--text-faint); background: var(--bg-surface-subtle); text-align: left; }
+.analytics-table td { padding: 9px 10px; border-top: 1px solid var(--divider); color: var(--text-secondary); }
+.analytics-table th:not(:first-child), .analytics-table td:not(:first-child) { text-align: right; }
+.analytics-panel-editor { display: grid; grid-template-columns: minmax(410px,.9fr) minmax(460px,1.1fr); gap: 18px; }
+.analytics-config-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-content: start; gap: 12px; }
+.analytics-config-form .field-full { grid-column: 1 / -1; }
+.analytics-config-filters { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; padding: 12px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface-subtle); }
+.analytics-config-filters > span { grid-column: 1 / -1; color: var(--text-muted); font-size: 12px; font-weight: 700; }
+.analytics-config-preview { min-width: 0; display: grid; grid-template-rows: auto minmax(340px,1fr); align-content: start; gap: 8px; padding: 13px; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface-subtle); }
+.analytics-config-preview > span { color: var(--text-muted); font-size: 12px; font-weight: 700; }
+.analytics-config-preview .analytics-panel { min-height: 340px; }
+}

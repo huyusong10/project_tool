@@ -1,18 +1,19 @@
+import * as accountsApi from '../features/accounts/api';
 import { Button } from './Button';
 import { useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppNavigate } from '../use-app-navigation';
-import {useResolvedPage} from '../page-context';
-import {usePageChrome} from '../page-chrome';
-import {WorkspaceRuntimeContext} from '../workspace-runtime';
-import {useGanttTooltip} from './GanttTooltip';
+import { useResolvedPage } from '../page-context';
+import { usePageChrome } from '../page-chrome';
+import { WorkspaceRuntimeContext } from '../workspace-runtime';
+import { useGanttTooltip } from './GanttTooltip';
 import { Check, ChevronDown, LogIn, LogOut, Settings, UserRound } from "lucide-react";
-import { api, isWriteOutcomeUnknown } from "../api";
+import { isWriteOutcomeUnknown } from "../api";
 import { useProjects, useSession, useUiActions } from "../app-context";
 import { invalidate, keys } from "../query-keys";
-import { commitSession, guestSession } from "../session-cache";
+import { commitSession, guestSession } from '../session-cache';
 import { ThemePicker } from "./ThemePicker";
-import { AnchoredPopover } from "./InlineEdit";
+import { AnchoredPopover } from './inline-edit/popover';
 import { useSynchronousPendingLock } from "./Modal";
 import { useToast } from "./Toast";
 import { TopbarMenu } from "./TopbarMenu";
@@ -83,7 +84,7 @@ export function Topbar({ pageIcon: PageIcon, sessionReady }: { pageIcon?: NavIco
   const navigate = useAppNavigate();
   const toast = useToast();
   const logout = useMutation({
-    mutationFn: () => api("/api/logout", { method: "POST" }),
+    mutationFn: () => accountsApi.logout({ method: "POST" }),
     onSuccess: async () => {
       await commitSession(client, guestSession);
       invalidate(client, keys.session);
@@ -91,7 +92,7 @@ export function Topbar({ pageIcon: PageIcon, sessionReady }: { pageIcon?: NavIco
     onError: async (error) => {
       if (isWriteOutcomeUnknown(error)) {
         try {
-          const latest = await api<typeof guestSession>("/api/session", { readOnly: true });
+          const latest = await accountsApi.session<typeof guestSession>({ readOnly: true });
           if (!latest.authenticated) {
             await commitSession(client, guestSession);
             invalidate(client, keys.session);

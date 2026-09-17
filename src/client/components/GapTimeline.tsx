@@ -18,13 +18,7 @@ import { ForecastDateEditor } from './ForecastDateEditor';
 import { achievedMilestones, milestoneDate, requirementMilestones } from '../gantt-milestones';
 import { useGanttMilestoneData } from '../use-gantt-milestones';
 import { GanttMilestoneRail, GanttMilestoneCuts, useMilestoneSelection } from './GanttMilestones';
-import {
-  GanttPlanActualBars,
-  GanttScale,
-  ganttTodayPosition,
-  ganttTrackStyle,
-  toGanttDate,
-} from "./GanttTimeline";
+import { GanttPlanActualBars, GanttScale, ganttTodayPosition, ganttTrackStyle, toGanttDate } from "./GanttTimeline";
 
 type StatusFilter = "all" | "not_started" | "in_progress" | "completed" | "cancelled";
 const statusFilters: Array<{ value: Exclude<StatusFilter, "all">; label: string }> = [

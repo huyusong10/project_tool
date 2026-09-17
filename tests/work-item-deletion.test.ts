@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import {mcpRequest} from './mcp-request';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -43,7 +44,7 @@ async function remove(protocol: 'REST' | 'MCP', id: string, expectedVersion: num
 }
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
-  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  origin = await listenTestApp(app);
   const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password } });
   expect(login.statusCode, login.body).toBe(200);
   cookie = String(login.headers['set-cookie']).split(';')[0];
@@ -57,7 +58,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -68,7 +69,7 @@ it('工作项排序审计保留所属项目', async () => {
     ids: requirement.workItems!.map((item) => item.id).reverse(), expectedVersion: requirement.version,
   });
   expect(response.statusCode, response.body).toBe(200);
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   expect(sqlite.prepare("SELECT project_id AS projectId FROM audit_logs WHERE action='reorder' AND entity_id=? ORDER BY rowid DESC LIMIT 1").get(requirement.id)).toEqual({ projectId });
 });
 
@@ -83,7 +84,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
     expect(after.workItems!.map(withoutForecastRevision)).toEqual([withoutForecastRevision(before.workItems![0])]);
     expect(after.plannedEnd).toBe(before.workItems![0].plannedEnd);
     expect((await remove(protocol, item.id, item.version)).statusCode).toBe(404);
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     expect(sqlite.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='delete' AND entity_id=?").get(item.id)).toEqual({ n: 1 });
     expect(sqlite.prepare("SELECT project_id AS projectId FROM audit_logs WHERE action='delete' AND entity_id=?").get(item.id)).toEqual({ projectId });
   });
@@ -106,7 +107,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
   it.each(['note', 'blocked_reason', 'cancelled_requirement'])(`${protocol}保留%s历史，不允许删除且不产生部分写入`, async (scenario) => {
     const requirement = await createRequirement();
     const item = requirement.workItems!.at(-1)!;
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     if (scenario === 'note') {
       const response = await post(`/api/requirements/${requirement.id}/progress`, { workItemId: item.id, content: '尚未开始时的工作说明' });
       expect(response.statusCode, response.body).toBe(200);
@@ -128,7 +129,7 @@ import { withoutForecastRevision } from './fixtures/forecast-snapshot';
 for(const protocol of ['REST','MCP'] as const){
  it(`${protocol} 删除工作项自动清理双向及跨需求依赖，保留其他工作和关联`,async()=>{
   const r=await createRequirement(),other=await createRequirement(),work=r.workItems![0],peer=r.workItems![1],external=other.workItems![0];
-  const {sqlite}=await import('../src/server/database');
+  const {sqlite}=await import('./support/database');
   const insert=sqlite.prepare("INSERT INTO dependency_edges(id,project_id,source_requirement_id,target_requirement_id,source_work_item_id,target_work_item_id,origin,created_at,updated_at) VALUES(?,?,?,?,?,?,'manual',?,?)");
   const now=new Date().toISOString(),ids=['incoming','outgoing','keep'].map(label=>work.id+label);
   insert.run(ids[0],projectId,other.id,r.id,external.id,work.id,now,now);
@@ -147,7 +148,7 @@ for(const protocol of ['REST','MCP'] as const){
 }
 
 it('删除中途失败时同时回滚工作项、依赖、需求汇总与审计',async()=>{
- const r=await createRequirement(),work=r.workItems![0],peer=r.workItems![1],{sqlite}=await import('../src/server/database');
+ const r=await createRequirement(),work=r.workItems![0],peer=r.workItems![1],{sqlite}=await import('./support/database');
  sqlite.prepare("INSERT INTO dependency_edges(id,project_id,source_requirement_id,target_requirement_id,source_work_item_id,target_work_item_id,origin,created_at,updated_at) VALUES(?,?,?,?,?,?,'manual',?,?)").run(work.id+'edge',projectId,r.id,r.id,work.id,peer.id,new Date().toISOString(),new Date().toISOString());
  const before=await detail(r.id),edge=sqlite.prepare('SELECT * FROM dependency_edges WHERE id=?').get(work.id+'edge');
  sqlite.exec("CREATE TEMP TRIGGER fail_delete_audit BEFORE INSERT ON audit_logs WHEN NEW.action='delete' AND NEW.entity_type='work_item' BEGIN SELECT RAISE(ABORT,'simulated audit failure'); END;");

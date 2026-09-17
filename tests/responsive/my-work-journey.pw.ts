@@ -16,7 +16,7 @@ async function fixture(page: Page, browser: Browser, baseURL: string) {
   await post(page.request, `/api/requirements/${r.id}/work-items`, { expectedVersion: r.version, title: '核对接口并交付', ownerId: owner.id, collaboratorIds: [member.id] });
   const detail = async () => (await (await page.request.get('/api/requirements/' + r.id)).json()) as Requirement;
   const work = (await detail()).workItems[0];
-  const context = await browser.newContext({ baseURL, viewport: { width: 1366, height: 768 } });
+  const context = await browser.newContext({ baseURL, viewport: page.viewportSize() });
   try {
     const session = await post(context.request, '/api/login', { username: member.name, password: '888888' });
     await post(context.request, '/api/account/change-password', { currentPassword: '888888', newPassword: 'journey-member-password' });
@@ -78,7 +78,19 @@ test('成员在我的工作查看已取消项，实际时间条和参与人保�
     await expect(actor.locator('.gantt-date-actual.gantt-status-cancelled')).toHaveAttribute('data-end', personal.cancelledAt!);
     await expect(actor.getByRole('button', { name: '开始', exact: true })).toHaveCount(0);
     await expect(actor.getByRole('button', { name: '完成', exact: true })).toHaveCount(0);
-    await actor.setViewportSize({ width: 390, height: 844 });
-    expect(await actor.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   } finally { await context.close(); }
+});
+
+test('我的工作取消项在矩阵与窄屏内显示',{tag:'@responsive'},async({page,browser,baseURL})=>{
+  const {actor,context,detail,work}=await fixture(page,browser,baseURL!);
+  try{
+    await post(actor.request,`/api/work-items/${work.id}/start`,{expectedVersion:work.version});
+    await post(page.request,`/api/work-items/${work.id}/cancel`,{expectedVersion:(await detail()).workItems[0].version,reason:'布局夹具'});
+    await actor.goto('/my-work?filter=all');
+    for(const width of [page.viewportSize()!.width,390]){
+      await actor.setViewportSize({width,height:844});
+      await expect(actor.locator('.unified-gantt-actual.gantt-status-cancelled')).toBeVisible();
+      await expect.poll(()=>actor.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    }
+  }finally{await context.close();}
 });

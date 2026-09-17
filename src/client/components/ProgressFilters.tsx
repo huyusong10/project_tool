@@ -1,15 +1,15 @@
 import { Button } from './Button';
-import {useRef,useState} from 'react';
-import {ChevronDown,SlidersHorizontal} from 'lucide-react';
-import {requirementStatuses,requirementStatusLabels,riskLabels} from '../../shared/domain';
-import {dashboardScopeLabels} from '../../shared/dashboard';
-import type {FeatureOverview} from '../../shared/feature-overview';
-import type {Person} from '../types';
-import type {RowFilters} from '../workspace-rows';
-import {progressStatePresets,selectedProgressStates,progressStatesValue,progressStatesLabel} from '../progress-filters';
-import {AnchoredPopover} from './InlineEdit';
-import {SearchInput} from './SearchInput';
-import {Select} from './Select';
+import { useRef, useState } from 'react';
+import { ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { requirementStatuses, requirementStatusLabels, riskLabels } from '../../shared/domain';
+import { dashboardScopeLabels } from '../../shared/dashboard';
+import type { FeatureOverview } from '../../shared/feature-overview';
+import type { Person } from '../types';
+import type { RowFilters } from '../workspace-rows';
+import { progressStatePresets, selectedProgressStates, progressStatesValue, progressStatesLabel } from '../progress-filters';
+import { AnchoredPopover } from './inline-edit/popover';
+import { SearchInput } from './SearchInput';
+import { Select } from './Select';
 
 type Props={filters:RowFilters;sort:string;features:FeatureOverview[];people:Person[];result:string;contextFeatureId?:string;phaseLocked?:boolean;onChange:(values:Record<string,string>)=>void;onReset:()=>void};
 const stages:Record<string,string>={not_started:'未开始',analysis:'分析／设计',development:'开发',integration:'联调',test_submitted:'已提测',testing:'测试',parallel:'并行推进',completed:'已完成',cancelled:'已取消'};

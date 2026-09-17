@@ -1,3 +1,4 @@
+import * as archivesApi from '../features/archives/api';
 import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
@@ -5,7 +6,7 @@ import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw, Trash2 } from "lucide-react";
-import { api, jsonBody, requiresWriteRecheck } from "../api";
+import { jsonBody, requiresWriteRecheck } from "../api";
 import { invalidateArchiveViews, keys } from "../query-keys";
 import type { Archives } from "../types";
 import { matchesSearch } from "../../shared/search";
@@ -69,7 +70,7 @@ export function ArchiveCenterPage() {
   }, [recheckAccountKey]);
   const restoreSubmitting = useRef(false);
   const deleteSubmitting = useRef(false);
-  const { data: archives, error, refetch, isFetching } = useQuery({ queryKey: keys.archives, queryFn: ({ signal }) => api<Archives>("/api/archives", { signal }) });
+  const { data: archives, error, refetch, isFetching } = useQuery({ queryKey: keys.archives, queryFn: ({ signal }) => archivesApi.archives<Archives>({ signal }) });
   const listUnavailable = Boolean(error && !archives);
   const rows = useMemo(() => archiveEntityOptions.flatMap(({ value, label }) =>
     (archives?.[value] || []).map((item) => ({ ...item, entity: value, typeLabel: label }))), [archives]);
@@ -84,7 +85,7 @@ export function ArchiveCenterPage() {
       .sort((left, right) => right.deletedAt.localeCompare(left.deletedAt) || left.id.localeCompare(right.id));
   }, [keyword, rows, type]);
   const restore = useMutation({
-    mutationFn: ({ entity, id, expectedDeletedAt }: { entity: ArchiveEntity; id: string; expectedDeletedAt: string }) => api(`/api/${entity}/${id}/restore`, { method: "POST", body: jsonBody({ expectedDeletedAt }) }),
+    mutationFn: ({ entity, id, expectedDeletedAt }: { entity: ArchiveEntity; id: string; expectedDeletedAt: string }) => archivesApi.ResourceRestore(entity, id, { method: "POST", body: jsonBody({ expectedDeletedAt }) }),
     onSuccess: () => {
       setArchiveNeedsRecheck(null);
       invalidateArchiveViews(client);
@@ -92,7 +93,7 @@ export function ArchiveCenterPage() {
     onError: async (error, input) => {
       if (!requiresWriteRecheck(error)) return;
       try {
-        const latest = await api<Archives>("/api/archives", { readOnly: true });
+        const latest = await archivesApi.archives<Archives>({ readOnly: true });
         client.setQueryData(keys.archives, latest);
         setArchiveNeedsRecheck(null);
         if (!latest[input.entity].some((item) => item.id === input.id)) {
@@ -113,7 +114,7 @@ export function ArchiveCenterPage() {
     },
   });
   const permanentlyDelete = useMutation({
-    mutationFn: ({ entity, id, confirmName, expectedDeletedAt }: { entity: ArchiveEntity; id: string; confirmName?: string; expectedDeletedAt: string }) => api(`/api/archives/${entity}/${id}`, { method: "DELETE", body: jsonBody({ confirmName, expectedDeletedAt }) }),
+    mutationFn: ({ entity, id, confirmName, expectedDeletedAt }: { entity: ArchiveEntity; id: string; confirmName?: string; expectedDeletedAt: string }) => archivesApi.archivesById(entity, id, { method: "DELETE", body: jsonBody({ confirmName, expectedDeletedAt }) }),
     onSuccess: () => {
       setArchiveNeedsRecheck(null);
       setDeletePrompt(null);
@@ -123,7 +124,7 @@ export function ArchiveCenterPage() {
     onError: async (error, input) => {
       if (!requiresWriteRecheck(error)) return;
       try {
-        const latest = await api<Archives>("/api/archives", { readOnly: true });
+        const latest = await archivesApi.archives<Archives>({ readOnly: true });
         client.setQueryData(keys.archives, latest);
         setArchiveNeedsRecheck(null);
         if (!latest[input.entity].some((item) => item.id === input.id)) {

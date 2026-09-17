@@ -1,3 +1,4 @@
+import {closeGraphProperties} from './graph-interactions';
 import { expect, test, type Page } from "@playwright/test";
 
 async function loginAsAdmin(page: Page) {
@@ -14,6 +15,8 @@ async function createProject(page: Page, name: string) {
 }
 
 async function selectProject(page: Page, name: string) {
+  await closeGraphProperties(page);
+  const issue=page.getByRole("dialog",{name:"问题详情",exact:true});if(await issue.isVisible())await issue.getByRole("button",{name:"关闭",exact:true}).click();
   await page.locator(".project-switcher-button").click();
   await page.getByRole("option", { name }).click();
   await expect(page.locator(".project-switcher-name")).toHaveText(name);
@@ -31,7 +34,7 @@ test("project selection persists and respects page scope", async ({ page }) => {
   await selectProject(page, firstName);
   await page.reload();
   await expect(page.locator(".project-switcher-name")).toHaveText(firstName);
-  const dashboardTopbarHeight = await page.locator(".topbar").evaluate((element) => element.getBoundingClientRect().height);
+
 
   await page.goto("/my-work");
   await expect(page.locator(".project-scope-indicator")).toHaveText("跨项目");
@@ -79,21 +82,9 @@ test("project selection persists and respects page scope", async ({ page }) => {
 
   await page.goto(`/requirements/${requirement.id}`);
   await expect(page.locator(".project-switcher-name")).toHaveText(firstName);
-  await expect(page.locator(".integrated-page-title h1")).toHaveAttribute("title", requirementTitle);
-  const title = page.locator(".integrated-page-title h1");
-  const titleBox = (await title.boundingBox())!;
-  const switcherBox = (await page.locator(".project-switcher").boundingBox())!;
-  // 极长项目名和操作区先保留空间；标题仍至少保留原来的可读宽度。
-  expect(titleBox.width).toBeGreaterThanOrEqual(80);
-  expect(switcherBox.x + switcherBox.width).toBeLessThanOrEqual(titleBox.x);
-  expect(await page.locator(".topbar").evaluate((element) => element.getBoundingClientRect().height)).toBe(dashboardTopbarHeight);
-  if (await title.evaluate((element) => element.scrollWidth > element.clientWidth)) {
-    await title.focus();
-    await expect(page.locator(".page-title-full")).toHaveText(requirementTitle);
-    await page.keyboard.press("Escape");
-  }
+  await expect(page.locator(".modal-card-workspace").getByRole("heading",{name:requirementTitle,exact:true})).toBeVisible();
   await selectProject(page, secondName);
-  await expect(page).toHaveURL(/\/requirements(?:\?|$)/);
+  await expect.poll(()=>new URL(page.url()).searchParams.get("projectId")).toBe(second.id);
   await expect(page.locator(".project-switcher-name")).toHaveText(secondName);
 
   await page.goto(`/issues?issueId=${issue.id}&ownerId=${oldPerson.id}&requirementId=${oldRequirement.id}`);
@@ -108,4 +99,14 @@ test("project selection persists and respects page scope", async ({ page }) => {
   await expect(page.locator(".issue-title-button", { hasText: issueTitle })).toBeVisible();
 
   expect(second.id).not.toBe(first.id);
+});
+
+test('长名称详情和项目切换器保持边界',{tag:'@responsive'},async({page})=>{
+  await loginAsAdmin(page);const project=await createProject(page,'长项目名称验证 '+Date.now());
+  const title='非常长的需求详情标题用于验证项目切换位置保持稳定'.repeat(4);
+  const response=await page.request.post('/api/requirements',{data:{projectId:project.id,title}});expect(response.ok()).toBe(true);
+  await page.goto('/requirements/'+(await response.json()).id);const dialog=page.locator('.modal-card-workspace');await expect(dialog.getByRole('heading',{name:title,exact:true})).toBeVisible();
+  const heading=(await page.locator('.integrated-page-title h1').boundingBox())!,switcher=(await page.locator('.project-switcher').boundingBox())!;
+  expect(heading.width).toBeGreaterThanOrEqual(80);expect(switcher.x+switcher.width).toBeLessThanOrEqual(heading.x);await expect(page.locator('.topbar')).toHaveCSS('height','52px');
+  expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
 });

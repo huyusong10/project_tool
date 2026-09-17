@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import { beforeAll, afterAll, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -13,7 +14,7 @@ const request=(method:'POST'|'GET'|'PATCH'|'DELETE',url:string,payload?:unknown,
 const post=(url:string,payload:unknown)=>request('POST',url,payload);
 const catalog=async(id:string)=>(await request('GET',`/api/projects/${id}/requirement-intake`)).json<IntakeCatalog>();
 beforeAll(async()=>{app=await(await import('../src/server/app')).buildApp();await app.ready();const r=await request('POST','/api/login',{username:'admin',password},'');cookie=String(r.headers['set-cookie']).split(';')[0];});
-afterAll(async()=>{await app.close();const{sqlite}=await import('../src/server/database');sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
+afterAll(async()=>{await app.close();const{sqlite}=await import('./support/database');sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
 async function project(){return (await post('/api/projects',{name:'导入验证'+(++sequence)})).json<{id:string}>();}
 async function preview(id:string,pkg=structuredClone(intakeExample)){
   const result=await post(`/api/projects/${id}/requirement-import/preview`,{package:pkg});expect(result.statusCode,result.body).toBe(200);return result.json<ImportPreview>();
@@ -42,7 +43,7 @@ it('批次重试和回执查询不重复写入，批次不能换内容',async()=
 });
 it('普通特性归档后仍可导入明确命名的新特性，不留下默认特性或重复回执',async()=>{
  const p=await project(),feature=(await post(`/api/projects/${p.id}/features`,{name:'历史特性'})).json().features[0];
- const {sqlite}=await import('../src/server/database');sqlite.prepare('UPDATE features SET archived_at=? WHERE id=?').run(new Date().toISOString(),feature.id);
+ const {sqlite}=await import('./support/database');sqlite.prepare('UPDATE features SET archived_at=? WHERE id=?').run(new Date().toISOString(),feature.id);
  const v=await preview(p.id);expect(v.errors).toEqual([]);const batchId=randomUUID(),result=await apply(p.id,v,batchId);expect(result.statusCode,result.body).toBe(200);
  const requirement=(await request('GET','/api/requirements/'+result.json().requirementIds.query)).json();expect(requirement.featureName).toBe(intakeExample.requirements[0].feature);
  expect((await apply(p.id,v,batchId)).json()).toEqual(result.json());
@@ -59,7 +60,7 @@ it('有 Phase 的特性拒绝删除，移出需求并删除空 Phase 后可删�
   const after=(await request('GET','/api/requirements/'+p.requirementId)).json();expect(after.workItems.map(({dependencyRevision:_revision,...w}:Record<string,unknown>)=>withoutForecastRevision(w))).toEqual(before.workItems.map(({dependencyRevision:_revision,...w}:Record<string,unknown>)=>withoutForecastRevision(w)));expect(after.progress).toBe(before.progress);expect(after.featureId).toBeTruthy();expect(after.featureName).toBe('其他需求');
 });
 it('旧标签不再返回，接口拒绝标签写入与筛选，特性仍正常工作',async()=>{
-  const p=await imported(),{sqlite}=await import('../src/server/database');
+  const p=await imported(),{sqlite}=await import('./support/database');
   sqlite.prepare('UPDATE requirements SET tags=? WHERE id=?').run('["旧标签"]',p.requirementId);
   const before=(await request('GET','/api/requirements/'+p.requirementId)).json();
   expect(before).not.toHaveProperty('tags');expect(await catalog(p.id)).not.toHaveProperty('tags');
@@ -76,13 +77,13 @@ it('旧标签不再返回，接口拒绝标签写入与筛选，特性仍正常�
   expect(after.workItems.map((w:{id:string})=>w.id)).toEqual(before.workItems.map((w:{id:string})=>w.id));
 });
 it('最终事务失败时导入的需求、条款、依赖和回执全部回滚',async()=>{
-  const p=await project(),v=await preview(p.id),{sqlite}=await import('../src/server/database');
+  const p=await project(),v=await preview(p.id),{sqlite}=await import('./support/database');
   sqlite.exec("CREATE TRIGGER fail_intake_receipt BEFORE INSERT ON requirement_import_receipts BEGIN SELECT RAISE(ABORT,'test rollback'); END;");
   try{const r=await apply(p.id,v);expect(r.statusCode).toBeGreaterThanOrEqual(400);expect((await request('GET','/api/requirements?projectId='+p.id)).json()).toEqual([]);expect(sqlite.prepare('SELECT count(*) n FROM dependency_change_receipts WHERE project_id=?').get(p.id)).toEqual({n:0});}finally{sqlite.exec('DROP TRIGGER fail_intake_receipt');}
 });
 it('MCP 与 REST 使用同一导入契约、预览结果及回执',async()=>{
   const p=await project(),token=(await post('/api/tokens',{name:'导入测试',expiresInDays:1})).json().token;
-  const address=await app.listen({host:'127.0.0.1',port:0});
+  const address=await listenTestApp(app);
   const call=async(name:string,args:Record<string,unknown>)=>{
     const r=await mcpRequest(address,token,name,args);expect(r.statusCode,r.body).toBe(200);
     const body=JSON.parse(r.body.startsWith('event:')?r.body.split('\n').find(l=>l.startsWith('data: '))!.slice(6):r.body);

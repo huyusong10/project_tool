@@ -1,20 +1,18 @@
+import type { FeatureRelation } from './path-model';
+export type { FeatureRelation, FeatureCanvasContext } from './path-model';
 import { z } from 'zod';
 export const featureRelationInput = z.object({
   id: z.string().min(1).optional(), expectedVersion: z.number().int().positive().optional(),
   sourceFeatureId: z.string().min(1), targetFeatureId: z.string().min(1), note: z.string().trim().max(2000).default(''),
 }).strict();
-export type FeatureRelation = { id: string; projectId: string; sourceFeatureId: string; targetFeatureId: string; note: string; version: number };
+
 export const featureRelationChange = z.discriminatedUnion('op', [
   featureRelationInput.omit({id:true,expectedVersion:true}).extend({op:z.literal('create'),id:z.string().min(1)}).strict(),
   z.object({op:z.literal('update'),id:z.string().min(1),expectedVersion:z.number().int().positive(),note:z.string().trim().max(2000)}).strict(),
   z.object({op:z.literal('delete'),id:z.string().min(1),expectedVersion:z.number().int().positive()}).strict(),
 ]);
 export type FeatureRelationChange = z.infer<typeof featureRelationChange>;
-export type FeatureCanvasContext = {
-  overview: import('./feature-overview').FeatureOverviewReport;
-  relations: FeatureRelation[];
-  requirements: import('./paths').PathRequirement[];
-};
+
 export function applyFeatureRelationDraft(relations:FeatureRelation[],changes:FeatureRelationChange[],projectId:string):FeatureRelation[] {
   const byId=new Map(relations.map(r=>[r.id,{...r}]));
   for(const change of changes){

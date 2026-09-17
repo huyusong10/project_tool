@@ -16,7 +16,7 @@ afterEach(async () => {
 
 it('默认配置与测试模式明确，非法可选参数回退默认值', () => {
   expect(readLogConfig({})).toMatchObject({ level: 'info', format: 'auto', retentionDays: 14, fileEnabled: true, slowMs: 1000 });
-  expect(readLogConfig({ NODE_ENV: 'test' }).fileEnabled).toBe(false);
+  expect(readLogConfig({ NODE_ENV: 'test' })).toMatchObject({ level: 'silent', fileEnabled: false });
   expect(readLogConfig({ NODE_ENV: 'test', LOG_FILE_ENABLED: '1' }).fileEnabled).toBe(true);
   expect(readLogConfig({ LOG_LEVEL: 'invalid', LOG_SLOW_MS: '-1', LOG_RETENTION_DAYS: '0' })).toMatchObject({ level: 'info', slowMs: 1000, retentionDays: 14 });
 });

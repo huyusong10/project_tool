@@ -1,18 +1,21 @@
+import * as reportingApi from '../features/reporting/api';
+import * as workItemsApi from '../features/work-items/api';
+import * as requirementsApi from '../features/requirements/api';
 import { Button } from '../components/Button';
-import {useAppNavigate} from '../use-app-navigation';
+import { useAppNavigate } from '../use-app-navigation';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
-import type {StartAssignment} from '../components/StartAssignmentDialog';
+import type { StartAssignment } from '../components/StartAssignmentDialog';
 
-import {directRequirementTimelineItem} from '../requirement-timeline';
-import {requirementRiskDisplay} from '../requirement-presentation';
-import {assertCleanRequirementDraft} from '../use-graph-draft';
-import {DeliveryControls} from '../components/DeliveryControls';
+import { directRequirementTimelineItem } from '../requirement-timeline';
+import { requirementRiskDisplay } from '../requirement-presentation';
+import { assertCleanRequirementDraft } from '../use-graph-draft';
+import { DeliveryControls } from '../components/DeliveryControls';
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Check, Clock3, PencilLine, Play } from 'lucide-react';
-import { api, jsonBody } from '../api';
+import { jsonBody } from '../api';
 import { useSession } from '../app-context';
 import { invalidateRequirementViews, keys } from '../query-keys';
 import { cacheResourceUpdate, useResourceQuery } from '../use-resource-query';
@@ -39,7 +42,7 @@ export function MyWorkPage() {
   const [progressItem, setProgressItem] = useState<MyWorkItem>();
   const [activeActionItemId, setActiveActionItemId] = useState<string>();
   const [workItemActionRechecks, setWorkItemActionRechecks] = useState<Set<string>>(() => readWorkItemActionRechecks(actionRecheckAccountKey));
-  const { data, isLoading, error, refetch, isFetching, unavailable } = useResourceQuery<MyWork>(keys.myWork, '/api/my-work');
+  const { data, isLoading, error, refetch, isFetching, unavailable } = useResourceQuery<MyWork>(keys.myWork, signal => reportingApi.myWork<MyWork>({ signal }));
   usePageScrollPosition(!isLoading, true);
   useEffect(() => {
     if (unavailable && error) setProgressItem(undefined);
@@ -55,7 +58,7 @@ export function MyWorkPage() {
   const workPagination = useListPagination({ items, id: 'work', personal: true, filterKey: filter, ready: Boolean(data), loading: isFetching, disabled: Boolean(activeActionItemId) });
   const ownedPagination = useListPagination({ items: data?.requirements || [], id: 'owned', personal: true, ready: Boolean(data), loading: isFetching });
   const action = useMutation({
-    mutationFn: async ({ item, action, content, reason, expectedDependencyRevision, assignment, expectedVersion = item.version }: { item: MyWorkItem; expectedDependencyRevision?:number; assignment?:StartAssignment; action: string; content?: string; reason?: string; expectedVersion?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId,{workItemId:item.id,action});return api(`/api/work-items/${item.id}/${action}`, {
+    mutationFn: async ({ item, action, content, reason, expectedDependencyRevision, assignment, expectedVersion = item.version }: { item: MyWorkItem; expectedDependencyRevision?:number; assignment?:StartAssignment; action: string; content?: string; reason?: string; expectedVersion?: number }) => {await assertCleanRequirementDraft(session.accountId||'guest',item.requirementId,{workItemId:item.id,action});return workItemsApi.workItemsById2(item.id, action, {
       method: 'POST', body: jsonBody({ ...assignment, expectedVersion, content, reason, expectedDependencyRevision }),
     });},
     onSuccess: (_result, variables) => {
@@ -127,7 +130,7 @@ export function MyWorkPage() {
               <WorkItemActions item={item} writeNeedsRecheck={workItemActionRechecks.has(item.id)} onWriteNeedsRecheckChange={(required) => setWorkItemActionRecheck(item.id, required)} onOpenChange={(open) => setActiveActionItemId((current) => open ? item.id : current === item.id ? undefined : current)} onAction={(nextAction, text, expectedVersion, expectedDependencyRevision, assignment) => action.mutateAsync({ item, action: nextAction, expectedVersion, expectedDependencyRevision, assignment, ...(nextAction === 'start' ? { reason: text } : { content: text }) })} onReload={async () => {
                 const [latest, requirement] = await Promise.all([
                   refetch({ throwOnError: true }),
-                  api<Requirement>(`/api/requirements/${item.requirementId}`),
+                  requirementsApi.requirementsById<Requirement>(item.requirementId),
                 ]);
                 const current = latest.data?.items.find((entry) => entry.id === item.id);
                 if (!current) throw new Error('工作项已不在我的工作中，请关闭操作面板。');
@@ -151,7 +154,7 @@ export function MyWorkPage() {
       requirementId={progressItem.requirementId}
       scope={{ items: (data?.items || []).filter((item) => item.id === progressItem.id), updates: (data?.recentProgress || []).filter((update) => update.requirementId === progressItem.requirementId) }}
       loadScope={async () => {
-        const latest = await api<MyWork>('/api/my-work');
+        const latest = await reportingApi.myWork<MyWork>();
         cacheResourceUpdate(client, keys.myWork, latest);
         return { items: latest.items.filter((item) => item.id === progressItem.id), updates: latest.recentProgress.filter((update) => update.requirementId === progressItem.requirementId) };
       }}

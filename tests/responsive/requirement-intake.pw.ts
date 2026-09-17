@@ -1,3 +1,4 @@
+import {chooseOption} from './select-helper';
 import {expect,test,type Page} from '@playwright/test';
 import {intakeExample} from '../../src/shared/intake';
 
@@ -10,13 +11,19 @@ async function fixture(page:Page) {
   await page.getByLabel('原始需求',{exact:true}).fill(JSON.stringify(intakeExample));await page.getByRole('button',{name:'整理需求',exact:true}).click();
   await expect(page.getByLabel('导入需求标题')).toHaveValue('查询与详情');return project.id as string;
 }
-async function expectGroupToggleAligned(page:Page) {
-  const checkbox=page.getByRole('checkbox',{name:'按分组查看',exact:true});
-  const box=(await checkbox.boundingBox())!,text=(await page.locator('.requirement-feature-toggle span').boundingBox())!;
-  expect(Math.abs(box.y+box.height/2-text.y-text.height/2)).toBeLessThanOrEqual(2);
-  expect(text.x-box.x-box.width).toBeGreaterThanOrEqual(6);
-  expect(text.height).toBeLessThanOrEqual(22);
-  await expect(page.getByLabel('标签筛选')).toHaveCount(0);
+async function returnToList(page:Page){
+  await page.getByRole('button',{name:'返回工作区',exact:true}).click();
+  await page.getByRole('button',{name:'展开全部',exact:true}).click();
+}
+async function createFeature(page:Page){
+  await page.getByRole('button',{name:'新建对象',exact:true}).click();
+  await page.getByRole('button',{name:'新建特性',exact:true}).click();
+  return page.getByRole('dialog',{name:'新建特性',exact:true});
+}
+async function openPlacement(page:Page){
+  await page.getByRole('checkbox',{name:'选择查询与详情',exact:true}).check();
+  await page.getByRole('button',{name:'调整归属…',exact:true}).click();
+  return page.getByRole('dialog',{name:'调整 1 条需求归属',exact:true});
 }
 async function saveImport(page:Page) {
   await page.getByRole('button',{name:'预览导入',exact:true}).click();
@@ -24,23 +31,21 @@ async function saveImport(page:Page) {
   await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();
 }
 
-test('导入可拆分合并，保存后按分组查看，复选框文字对齐',async({page},info)=>{
-  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
-  const id=await fixture(page);
-  await expect(page.getByText('标签',{exact:true})).toHaveCount(0);
-  await page.getByRole('button',{name:'拆分需求',exact:true}).click();await expect(page.getByLabel('导入需求标题')).toHaveCount(2);
-  await page.getByLabel('合并需求到').last().selectOption({label:'查询与详情'});await expect(page.getByLabel('导入需求标题')).toHaveCount(1);
-  await page.getByLabel('导入需求标题').fill('查询需求浏览器验证');await saveImport(page);
-  await page.getByRole('tab',{name:'需求',exact:true}).click();await expectGroupToggleAligned(page);
-  await page.getByRole('checkbox',{name:'按分组查看',exact:true}).click();await expect(page.getByRole('checkbox',{name:'按分组查看',exact:true})).toBeChecked();
-  await page.getByLabel('分组筛选').selectOption({label:'示例模块'});await expect(page.locator('tbody .intake-feature-heading')).toContainText('示例模块');
-  await page.screenshot({path:info.outputPath('features-desktop.png'),fullPage:true});
-  const requirements=await(await page.request.get('/api/requirements?projectId='+id)).json();expect(requirements).toHaveLength(1);expect(requirements[0].workItems).toHaveLength(2);expect(requirements[0]).not.toHaveProperty('tags');
-  await page.goto('/requirements?tag=obsolete&grouped=1');await expect(page.getByRole('link',{name:'查询需求浏览器验证',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'新建需求',exact:true}).click();await expect(page.getByLabel('特性')).toBeVisible();await expect(page.getByLabel('需求标签')).toHaveCount(0);
-  await page.getByRole('dialog').getByRole('button',{name:'取消',exact:true}).click();
-  await page.goto('/requirements/'+requirements[0].id);await expect(page.getByRole('heading',{name:'查询需求浏览器验证',exact:true})).toBeVisible();
-  await expect(page.locator('.requirement-progress-panel')).toBeVisible();expect(errors).toEqual([]);
+test('导入可拆分合并，保存后按特性和 Phase 展开并进入详情',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));const id=await fixture(page);
+ await expect(page.getByText('标签',{exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'拆分需求',exact:true}).click();await expect(page.getByLabel('导入需求标题')).toHaveCount(2);
+ await chooseOption(page.getByLabel('合并需求到').last(),{label:'查询与详情'});await expect(page.getByLabel('导入需求标题')).toHaveCount(1);
+ await page.getByLabel('导入需求标题').fill('查询需求浏览器验证');await saveImport(page);await returnToList(page);
+ await expect(page.locator('.outline-table')).toContainText('示例模块');
+ await expect(page.locator('.outline-title',{hasText:'查询需求浏览器验证'})).toBeVisible();
+ const requirements=await(await page.request.get('/api/requirements?projectId='+id)).json();
+ expect(requirements).toHaveLength(1);expect(requirements[0].workItems).toHaveLength(2);expect(requirements[0]).not.toHaveProperty('tags');
+ await page.goto('/requirements?tag=obsolete&grouped=1');await expect(page.locator('.outline-title',{hasText:'查询需求浏览器验证'})).toBeVisible();
+ await page.getByRole('button',{name:'新建对象',exact:true}).click();await page.getByRole('button',{name:'新建需求',exact:true}).click();
+ await expect(page.getByLabel('需求特性')).toBeVisible();await expect(page.getByLabel('需求标签')).toHaveCount(0);await page.getByRole('dialog').getByRole('button',{name:'取消',exact:true}).click();
+ await page.goto('/requirements/'+requirements[0].id);await expect(page.getByRole('heading',{name:'查询需求浏览器验证',exact:true})).toBeVisible();
+ await expect(page.locator('.requirement-overview')).toBeVisible();expect(errors).toEqual([]);
 });
 
 test('预览失败保留调整，未知提交刷新后查询原回执且不重复创建',async({page})=>{
@@ -85,54 +90,58 @@ test('需求导入跨页通知延迟时，保存前读取原批次',async({page,
   await tab.getByRole('button',{name:'按原批次重试',exact:true}).click();await expect.poll(()=>retried.length).toBe(1);expect(retried).toEqual([originalBatch]);await tab.close();
 });
 
-test('窄屏可新建分组和批量调整，分组开关对齐且页面无横向溢出',async({page},info)=>{
-  await page.setViewportSize({width:390,height:844});const id=await fixture(page);await saveImport(page);
-  await page.getByRole('tab',{name:'需求',exact:true}).click();await expectGroupToggleAligned(page);
-  await page.getByRole('button',{name:'管理分组',exact:true}).click();const manager=page.getByRole('dialog',{name:'管理特性'});
-  await manager.getByLabel('新分组名称').fill('权限管理');await manager.getByRole('button',{name:'新建分组',exact:true}).click();await expect(manager.getByText('权限管理',{exact:true})).toBeVisible();
-  await manager.getByRole('button',{name:'关闭',exact:true}).click();
-  await page.getByLabel('选择需求 查询与详情').check();await page.getByRole('button',{name:'整理所选需求'}).click();
-  const dialog=page.getByRole('dialog').filter({has:page.getByRole('heading',{name:'整理 1 个需求',exact:true})});await expect(dialog).toBeVisible();await dialog.getByRole('combobox',{name:'分组',exact:true}).selectOption({label:'权限管理'});await expect(dialog.getByText('统一替换标签')).toHaveCount(0);
-  await dialog.getByRole('button',{name:'保存整理'}).click();await expect(dialog).not.toBeVisible();
-  await page.getByRole('checkbox',{name:'按分组查看',exact:true}).click();await expect(page.getByRole('checkbox',{name:'按分组查看',exact:true})).toBeChecked();await page.getByLabel('分组筛选').selectOption({label:'权限管理'});
-  await expect(page.locator('tbody .intake-feature-heading')).toContainText('权限管理');await expectGroupToggleAligned(page);
-  const width=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,client:document.documentElement.clientWidth}));expect(width.scroll).toBeLessThanOrEqual(width.client+2);
-  await page.screenshot({path:info.outputPath('features-mobile.png'),fullPage:true});
-  expect(await(await page.request.get('/api/projects/'+id+'/requirement-intake')).json()).not.toHaveProperty('tags');
+test('特性和需求归属表单在矩阵与窄屏中可操作且不横向溢出',{tag:'@responsive'},async({page},info)=>{
+ const id=await fixture(page);await saveImport(page);await returnToList(page);
+ for(const viewport of [page.viewportSize()!,{width:390,height:844}]){
+  await page.setViewportSize(viewport);const feature=await createFeature(page);
+  await feature.getByLabel('特性名称').fill('布局输入');await feature.getByLabel('长期目标与范围').fill('长期目标与范围'.repeat(30));
+  const box=(await feature.boundingBox())!;expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(viewport.width+1);
+  await feature.getByRole('button',{name:'关闭',exact:true}).last().click();
+  const dialog=await openPlacement(page);await chooseOption(dialog.getByLabel('需求特性'),{label:'示例模块'});
+  await expect(dialog.getByRole('button',{name:'确认移动',exact:true})).toBeEnabled();
+  const bounds=(await dialog.boundingBox())!;expect(bounds.y+bounds.height).toBeLessThanOrEqual(viewport.height+1);
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+  await page.screenshot({path:info.outputPath('placement-'+viewport.width+'.png')});await dialog.getByRole('button',{name:'取消',exact:true}).click();
+  await page.getByRole('checkbox',{name:'选择查询与详情',exact:true}).uncheck();
+ }
+ expect(await(await page.request.get('/api/projects/'+id+'/requirement-intake')).json()).not.toHaveProperty('tags');
 });
 
-test('新建分组响应未知且核对读取失败时阻止重复创建',async({page})=>{
-  const id=await fixture(page);await saveImport(page);
-  await page.getByRole('tab',{name:'需求',exact:true}).click();await page.getByRole('button',{name:'管理分组',exact:true}).click();
-  const manager=page.getByRole('dialog',{name:'管理特性'}),endpoint='**/api/projects/'+id+'/features';
-  let writes=0;await page.route(endpoint,async route=>{if(route.request().method()!=='POST'){await route.continue();return;}writes++;await route.fetch();await route.fulfill({status:200,contentType:'text/html',body:'invalid response'});});
-  await page.route('**/api/projects/'+id+'/requirement-intake',route=>route.fulfill({status:503,json:{error:'核对读取失败'}}));
-  await manager.getByLabel('新分组名称').fill('响应未知分组');await manager.getByRole('button',{name:'新建分组',exact:true}).click();
-  await expect(manager.getByRole('alert')).toContainText('分组操作结果待核对');await expect(manager.getByRole('button',{name:'新建分组',exact:true})).toBeDisabled();
-  await manager.locator('form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));await expect.poll(()=>writes).toBe(1);
-  await manager.getByRole('button',{name:'关闭',exact:true}).click();await page.goto('/');await page.goto('/requirements');
-  await expect(page.getByRole('alert')).toContainText('分组操作结果待核对');await expect(page.getByRole('button',{name:'管理分组',exact:true})).toBeDisabled();
-  await page.getByRole('button',{name:'核对分组操作',exact:true}).click();await expect(manager.getByLabel('新分组名称')).toHaveValue('响应未知分组');await expect(manager.getByRole('button',{name:'新建分组',exact:true})).toBeDisabled();
-  await manager.locator('form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));await expect.poll(()=>writes).toBe(1);
-  await page.unroute('**/api/projects/'+id+'/requirement-intake');await manager.getByRole('button',{name:'读取最新分组并继续',exact:true}).click();await expect(page.getByText('分组操作结果待核对',{exact:false})).toHaveCount(0);await expect(manager.getByRole('button',{name:'新建分组',exact:true})).toBeEnabled();
-  expect((await(await page.request.get('/api/projects/'+id+'/features')).json()).filter((feature:{name:string})=>feature.name==='响应未知分组')).toHaveLength(1);
+test('新建特性响应未知且核对读取失败时阻止重复创建',async({page})=>{
+ const id=await fixture(page);await saveImport(page);await returnToList(page);let writes=0,failReads=false;
+ const endpoint='**/api/projects/'+id+'/features*';
+ await page.route(endpoint,async route=>{
+  if(route.request().method()==='POST'){writes++;await route.fetch();failReads=true;return route.fulfill({status:200,contentType:'text/html',body:'invalid response'});}
+  if(failReads)return route.fulfill({status:503,json:{error:'核对读取失败'}});return route.continue();
+ });
+ const dialog=await createFeature(page);await dialog.getByLabel('特性名称').fill('响应未知特性');await dialog.getByRole('button',{name:'新建特性',exact:true}).click();
+ await expect(dialog).toContainText('提交结果待核对');await expect(dialog.getByRole('button',{name:'新建特性',exact:true})).toBeDisabled();
+ await dialog.locator('form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));expect(writes).toBe(1);
+ await dialog.getByRole('button',{name:'读取最新资料',exact:true}).click();await expect(dialog.getByRole('alert')).toContainText('核对读取失败');
+ await dialog.getByRole('button',{name:'关闭',exact:true}).last().click();await page.goto('/issues');await page.goto('/requirements');
+ await expect(dialog.getByLabel('特性名称')).toHaveValue('响应未知特性');await expect(dialog.getByRole('button',{name:'新建特性',exact:true})).toBeDisabled();
+ failReads=false;await dialog.getByRole('button',{name:'读取最新资料',exact:true}).click();await dialog.getByRole('button',{name:'已核对，操作已生效',exact:true}).click();await expect(dialog).toHaveCount(0);expect(writes).toBe(1);
+ expect((await(await page.request.get('/api/projects/'+id+'/features')).json()).filter((f:{name:string})=>f.name==='响应未知特性')).toHaveLength(1);
 });
 
 test('批量整理响应未知且核对读取失败时阻止重复写入',async({page})=>{
-  const id=await fixture(page);await saveImport(page);
-  const catalog=await(await page.request.post('/api/projects/'+id+'/features',{data:{name:'待整理分组',sortOrder:0}})).json();
-  await page.getByRole('tab',{name:'需求',exact:true}).click();await page.reload();await page.getByLabel('选择需求 查询与详情').check();await page.getByRole('button',{name:'整理所选需求'}).click();
-  const dialog=page.getByRole('dialog').filter({has:page.getByRole('heading',{name:'整理 1 个需求',exact:true})});await dialog.getByRole('combobox',{name:'分组',exact:true}).selectOption(catalog.features[0].id);
-  let writes=0;await page.route('**/api/projects/'+id+'/requirement-placement',async route=>{writes++;await route.fetch();await route.fulfill({status:200,contentType:'text/html',body:'invalid response'});});
-  await page.route('**/api/requirements/*',route=>route.fulfill({status:503,json:{error:'核对读取失败'}}));
-  await dialog.getByRole('button',{name:'保存整理',exact:true}).click();await expect(dialog.getByRole('alert')).toContainText('整理结果待核对');await expect(dialog.getByRole('button',{name:'保存整理',exact:true})).toBeDisabled();
-  await dialog.locator('form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));await expect.poll(()=>writes).toBe(1);
-  await dialog.getByRole('button',{name:'关闭',exact:true}).click();await page.goto('/');await page.goto('/requirements');
-  await expect(page.getByRole('alert')).toContainText('整理结果待核对');await expect(page.getByLabel('选择需求 查询与详情')).toBeDisabled();
-  await page.getByRole('button',{name:'核对整理结果',exact:true}).click();await expect(dialog.getByRole('combobox',{name:'分组',exact:true})).toHaveValue(catalog.features[0].id);await expect(dialog.getByRole('button',{name:'保存整理',exact:true})).toBeDisabled();
-  await dialog.locator('form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));await expect.poll(()=>writes).toBe(1);
-  await page.unroute('**/api/requirements/*');await dialog.getByRole('button',{name:'读取最新需求并继续',exact:true}).click();await expect(dialog).not.toBeVisible();await expect(page.getByText('整理结果待核对',{exact:false})).toHaveCount(0);await expect(page.getByLabel('选择需求 查询与详情')).toBeEnabled();
-  const requirements=await(await page.request.get('/api/requirements?projectId='+id)).json();expect(requirements[0].featureId).toBe(catalog.features[0].id);
+ const id=await fixture(page);await saveImport(page);
+ const catalog=await(await page.request.post('/api/projects/'+id+'/features',{data:{name:'待整理特性',sortOrder:0}})).json();
+ const feature=catalog.features.find((f:{name:string})=>f.name==='待整理特性');
+ await returnToList(page);await page.reload();await expect(page.getByRole('checkbox',{name:'选择查询与详情',exact:true})).toBeVisible();
+ const dialog=await openPlacement(page);await chooseOption(dialog.getByLabel('需求特性'),feature.id);
+ let writes=0,failReads=false;await page.route('**/api/projects/'+id+'/requirement-placement',async route=>{writes++;await route.fetch();failReads=true;await route.fulfill({status:200,contentType:'text/html',body:'invalid response'});});
+ await page.route('**/api/dashboard?**',route=>failReads?route.fulfill({status:503,json:{error:'核对读取失败'}}):route.continue());
+ await dialog.getByRole('button',{name:'确认移动',exact:true}).click();await expect(dialog.getByRole('button',{name:'确认移动',exact:true})).toBeDisabled();
+ await dialog.getByRole('button',{name:'读取正式结果并核对',exact:true}).click();await expect(dialog.getByRole('alert')).toContainText('核对读取失败');
+ await dialog.getByRole('button',{name:'取消',exact:true}).click();await page.goto('/issues');await page.goto('/requirements');
+ await expect(page.getByText('核对读取失败',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'新建对象',exact:true})).toHaveCount(0);expect(writes).toBe(1);
+ failReads=false;await page.getByRole('button',{name:'重新读取',exact:true}).click();
+ await expect(page.locator('.outline-notice')).toContainText('提交结果待核对');expect(writes).toBe(1);
+ await page.getByRole('button',{name:'读取正式结果并核对',exact:true}).click();
+ const review=page.getByRole('dialog',{name:'核对正式结果',exact:true});await review.getByText('原提交内容 · 移动需求',{exact:true}).click();await expect(review.locator('pre')).toContainText(feature.id);
+ await expect(review.locator('tbody')).toContainText('待整理特性');await review.getByRole('button',{name:'确认已生效，结束核对',exact:true}).click();await expect(review).toHaveCount(0);expect(writes).toBe(1);
+ const requirements=await(await page.request.get('/api/requirements?projectId='+id)).json();expect(requirements[0].featureId).toBe(feature.id);
 });
 
 test('含旧标签的本机草稿保留原始文本，便于修正后继续导入',async({page})=>{

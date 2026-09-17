@@ -1,6 +1,6 @@
 import {expect,test} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
-test('多特性、长标题、空 Phase 与跨 Phase 依赖不重叠',async({page},info)=>{
+test('多特性、长标题、空 Phase 与跨 Phase 依赖不重叠',{tag:'@responsive'}, async({page},info)=>{
  const f=await phaseFixture(page),name='跨租户站点与资产数据治理分期'.repeat(6),scope='先完成基础台账，后续补充跨站点校验与数据治理。'.repeat(60);
  const phase=(await(await page.request.get(f.base+'/feature-phases')).json()).find((p:{id:string})=>p.id===f.phases[2].id);
  expect((await page.request.post(f.base+'/features/'+f.feature.id+'/phases',{data:{id:phase.id,expectedVersion:phase.version,name,scope}})).ok()).toBe(true);

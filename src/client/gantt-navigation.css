@@ -12,7 +12,7 @@
 .has-inline-actions .requirement-gantt-item { padding-inline:6px; }
 .has-inline-actions .work-item-action-row { flex-wrap:wrap; gap:4px; }
 .has-inline-actions .my-work-gantt-actions { flex-wrap:wrap; }
-.gantt-navigation-surface :is(.gantt-scale,.unified-gantt-track,.path-draft-gantt-track) { cursor:grab; touch-action:pan-y; }
+.gantt-navigation-surface :is(.gantt-scale,.unified-gantt-track,.workspace-row-track,.path-draft-gantt-track) { cursor:grab; touch-action:pan-y; }
 .gantt-navigation-surface[data-gantt-panning] { user-select:none; cursor:grabbing; }
 .gantt-navigation-surface[data-gantt-panning] * { cursor:grabbing!important; }
 .gantt-navigation-scrollbar { flex:none; position:relative; height:18px; overflow:hidden; background:var(--bg-surface-subtle); border-top:1px solid var(--divider); touch-action:none; cursor:pointer; }

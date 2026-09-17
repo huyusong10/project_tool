@@ -1,19 +1,7 @@
-import {
-  DndContext,
-  DragOverlay,
-  KeyboardSensor,
-  PointerSensor,
-  useDraggable,
-  useDroppable,
-  useSensor,
-  useSensors,
-  type Active,
-  type Over,
-  type Modifier,
-} from "@dnd-kit/core";
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type Active, type Over, type Modifier } from "@dnd-kit/core";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import {createPortal} from 'react-dom';
-import {DragPreview, type DragPreviewData} from './DragPreview';
+import { createPortal } from 'react-dom';
+import { DragPreview, type DragPreviewData } from './DragPreview';
 
 type DraggableState = ReturnType<typeof useDraggable>;
 

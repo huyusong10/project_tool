@@ -1,0 +1,21 @@
+@layer application {
+
+.password-required { display: flex; align-items: center; gap: 11px; padding: 12px 14px; border: 1px solid var(--info-border); border-radius: var(--radius-md); color: var(--accent-hover); background: var(--accent-soft); }
+.password-required > div { display: grid; gap: 2px; }
+.password-required strong { font-size: 14px; }.password-required span { color: var(--text-muted); font-size: 12px; }
+
+.accounts-page { display: grid; gap: 12px; }
+.account-data-list .adaptive-data-list-body { max-height: calc(100dvh - 270px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }.account-data-row { min-height: 84px; }.account-data-actions { justify-content: center; }
+.account-identity { min-width: 0; display: grid; gap: 2px; line-height: 1.35; }.account-identity > strong { color: var(--text-primary); font-size: 14px; overflow-wrap: anywhere; }.account-identity > small { display: grid !important; gap: 1px; color: var(--text-faint) !important; font-size: 12px; line-height: 1.35; white-space: normal; }.account-identity > small > span { overflow-wrap: anywhere; }
+.account-role, .account-status { display: inline-flex; align-items: center; gap: 5px; width: fit-content; padding: 4px 8px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.account-role { color: var(--accent-hover); background: var(--accent-soft); }.role-admin { color: var(--warning-text); background: var(--warning-bg); }.role-project_manager { color: var(--success-text); background: var(--success-bg); }
+.account-status.active { color: var(--success-text); background: var(--success-bg); }.account-status.disabled { color: var(--text-faint); background: var(--bg-hover); }
+.account-password-state { color: var(--warning-text); font-size: 12px; white-space: nowrap; }
+.people-access-page { align-content: start; }
+.people-access-filters { flex-wrap: wrap; }.people-access-filters .search-box { min-width: 260px; flex: 1; }.people-access-filters select { min-width: 138px; height: 38px; padding: 0 31px 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text-secondary); background: var(--bg-surface); font: inherit; font-size: 13px; }
+.people-access-person-editor { min-width: 0; width: 100%; display: grid; gap: 1px; }.people-access-person-editor .inline-edit-trigger { min-height: 30px; height: 30px; }.people-access-person-editor .inline-edit-cell + .inline-edit-cell .inline-edit-trigger { color: var(--text-faint); font-size: 12px; }
+.people-access-person-editor .inline-edit-value small, .account-data-list .data-cell-secondary { font-size: 12px; }
+.account-data-account { min-width: 0; }.account-data-account .inline-edit-trigger { width: 100%; }.account-missing, .account-muted { display: inline-flex; align-items: center; gap: 5px; color: var(--text-faint); font-size: 12px; }.account-missing { color: var(--warning-text); }.account-status.missing { color: var(--warning-text); background: var(--warning-bg); }
+.people-access-row { min-height: 86px; }
+.managed-projects { display: block; overflow: hidden; max-width: 330px; text-overflow: ellipsis; white-space: nowrap; }
+}

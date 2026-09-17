@@ -22,7 +22,7 @@ test('Phase 自动完成，页面筛选不改变汇总，完成后仍可编辑�
   await page.screenshot({path:info.outputPath('derived-phase.png'),animations:'disabled'});
 });
 
-test('管理员直接维护已完成工作及已解决问题的负责人，桌面和窄屏均可操作',async({page},info)=>{
+test('管理员直接维护已完成工作及已解决问题的负责人，桌面和窄屏均可操作',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page),person=await post(page,'/api/people',{projectId:f.projectId,name:'维护负责人 '+Date.now()});
   await post(page,'/api/work-items/'+f.testing.workItems[1].id+'/complete',{expectedVersion:f.testing.workItems[1].version});
   const work=f.testing.workItems[0];

@@ -2,7 +2,7 @@ import path from 'node:path';
 import {config} from '../src/server/config';
 import {addBusinessDays,todayIso} from '../src/shared/domain';
 if(path.basename(config.rootDir)!=='project-manage-paths'||!config.dbPath.startsWith(path.join(config.rootDir,'.preview')+path.sep)||config.port!==3220)throw new Error('只能写入隔离试用库');
-const {sqlite}=await import('../src/server/database');const s=await import('../src/server/services');const p=await import('../src/server/services/paths');
+const {sqlite}=await (await import('../src/server/database')).initializeDatabase();const s=await import('../src/server/services');const p=await import('../src/server/services/paths');
 const admin=sqlite.prepare('SELECT id FROM accounts WHERE is_builtin=1').get() as {id:string};const actor={type:'user' as const,id:admin.id,accountId:admin.id,label:'独立样例',globalRole:'admin' as const,personId:null};
 if(sqlite.prepare("SELECT 1 FROM projects WHERE name='路径异常试用'").get()){console.log('异常样例已存在，保留试用修改');sqlite.close();process.exit(0);}
 const day=addBusinessDays(todayIso(),0),project=s.createProject({name:'路径异常试用',plannedEnd:addBusinessDays(day,8)},actor);const projectId=project.id;

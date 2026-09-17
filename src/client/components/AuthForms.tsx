@@ -1,11 +1,12 @@
+import * as accountsApi from '../features/accounts/api';
 import { Button } from './Button';
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, LockKeyhole, LogIn } from "lucide-react";
-import { api, isWriteOutcomeUnknown, jsonBody } from "../api";
+import { isWriteOutcomeUnknown, jsonBody } from "../api";
 import { invalidate, keys } from "../query-keys";
 import type { Session, SystemBranding } from "../types";
-import { commitSession } from "../session-cache";
+import { commitSession } from '../session-cache';
 import { BrandLogo } from "./BrandLogo";
 import { Modal, useSynchronousPendingLock } from "./Modal";
 
@@ -19,12 +20,12 @@ export function LoginDialog({ onClose, branding }: { onClose: () => void; brandi
   };
   const login = useMutation({
     mutationFn: (value: object) =>
-      api<Session>("/api/login", { method: "POST", body: jsonBody(value) }),
+      accountsApi.login<Session>({ method: "POST", body: jsonBody(value) }),
     onSuccess: completeLogin,
     onError: async (failure) => {
       if (isWriteOutcomeUnknown(failure)) {
         try {
-          const latest = await api<Session>("/api/session", { readOnly: true });
+          const latest = await accountsApi.session<Session>({ readOnly: true });
           if (latest.authenticated) {
             await completeLogin(latest);
             return;
@@ -100,7 +101,7 @@ export function PasswordDialog({ forced, onClose }: { forced: boolean; onClose: 
   const verifyPasswordOutcome = async () => {
     setVerifying(true);
     try {
-      const latest = await api<Session>("/api/session", { readOnly: true });
+      const latest = await accountsApi.session<Session>({ readOnly: true });
       if (!latest.authenticated || forced && !latest.mustChangePassword) {
         await commitSession(client, latest);
         invalidate(client, keys.session);
@@ -115,7 +116,7 @@ export function PasswordDialog({ forced, onClose }: { forced: boolean; onClose: 
     }
   };
   const mutation = useMutation({
-    mutationFn: (value: object) => api<{ session: Session }>("/api/account/change-password", { method: "POST", body: jsonBody(value) }),
+    mutationFn: (value: object) => accountsApi.accountChangePassword<{ session: Session }>({ method: "POST", body: jsonBody(value) }),
     onSuccess: async ({ session }) => { await commitSession(client, session); invalidate(client, keys.session); onClose(); },
     onError: async (failure) => {
       if (isWriteOutcomeUnknown(failure)) {

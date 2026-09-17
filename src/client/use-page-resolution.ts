@@ -1,16 +1,19 @@
-import {useEffect, useRef} from 'react';
-import {useLocation} from 'react-router-dom';
-import {keys} from './query-keys';
-import {useResourceQuery} from './use-resource-query';
-import {isGuestRoute, matchRoute, pageScopeFor} from './routes';
-import {canManageProject, isAdmin} from './permissions';
-import {sessionAccessKey} from './session-cache';
-import {ApiError} from './api';
-import {clearProjectGraphDrafts} from './use-graph-draft';
-import {pathBackTarget} from './page-foundation';
-import {toolbarForRoute} from './page-presentation';
-import {chooseProject, pageIdentity, rememberedProject, rememberProject, type ResourceQuery, type ResolvedPageContext} from './page-context';
-import type {Issue, Project, Requirement, Session, WorkItemTemplate} from './types';
+import * as requirementsApi from './features/requirements/api';
+import * as issuesApi from './features/issues/api';
+import * as templatesApi from './features/templates/api';
+import { useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
+import { keys } from './query-keys';
+import { useResourceQuery } from './use-resource-query';
+import { isGuestRoute, matchRoute, pageScopeFor } from './routes';
+import { canManageProject, isAdmin } from './permissions';
+import { sessionAccessKey } from './session-identity';
+import { ApiError } from './api';
+import { clearProjectGraphDrafts } from './use-graph-draft';
+import { pathBackTarget } from './page-foundation';
+import { toolbarForRoute } from './page-presentation';
+import { chooseProject, pageIdentity, rememberedProject, rememberProject, type ResourceQuery, type ResolvedPageContext } from './page-context';
+import type { Issue, Project, Requirement, Session, WorkItemTemplate } from './types';
 
 /** 对象查询与项目列表并行；所属项目确认前不挂载项目业务页面。 */
 export function usePageResolution(sessionQuery: ResourceQuery<Session>, projectsQuery: ResourceQuery<Project[]>, session: Session, projects: Project[]) {
@@ -25,8 +28,8 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
   const requirementId = /^\/requirements\/([^/]+)$/.exec(location.pathname)?.[1] || '';
   const draft = Boolean(requirementId && params.has('draftProject'));
   const issueId = location.pathname === '/issues' ? params.get('detailId')?.replace(/^issue:/, '') || params.get('issueId') || '' : '';
-  const requirement = useResourceQuery<Requirement>(keys.requirement(requirementId), `/api/requirements/${encodeURIComponent(requirementId)}`, browseReady && Boolean(requirementId) && !draft);
-  const issue = useResourceQuery<Issue>(keys.issue(issueId), `/api/issues/${encodeURIComponent(issueId)}`, authenticated && Boolean(issueId));
+  const requirement = useResourceQuery<Requirement>(keys.requirement(requirementId), signal => requirementsApi.requirementsById<Requirement>(encodeURIComponent(requirementId), { signal }), browseReady && Boolean(requirementId) && !draft);
+  const issue = useResourceQuery<Issue>(keys.issue(issueId), signal => issuesApi.issuesById<Issue>(encodeURIComponent(issueId), { signal }), authenticated && Boolean(issueId));
   const objectQuery = requirementId && !draft ? requirement : issueId ? issue : undefined;
   const priorObject = useRef({id:'', projectId:''});
   useEffect(() => {
@@ -40,7 +43,7 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
     : !session.authenticated && explicitProject === null && projects.length > 1 && !projects.some(p => p.id === remembered) ? undefined : chooseProject(projects, explicitProject, remembered);
   const templateMode = location.pathname === '/templates';
   const templateId = templateMode ? params.get('edit') || '' : '';
-  const templates = useResourceQuery<WorkItemTemplate[]>([...keys.templates, project?.id || ''], `/api/templates?projectId=${encodeURIComponent(project?.id || '')}`, authenticated && templateMode && Boolean(project));
+  const templates = useResourceQuery<WorkItemTemplate[]>([...keys.templates, project?.id || ''], signal => templatesApi.templatesQuery<WorkItemTemplate[]>(encodeURIComponent(project?.id || ''), { signal }), authenticated && templateMode && Boolean(project));
   const template = templates.data?.find(t => t.id === templateId);
   const nav = def?.nav?.find(entry => !entry.visible || entry.visible({admin: isAdmin(session), managesCurrentProject: canManageProject(session, project?.id || '')}));
   let phase: ResolvedPageContext['phase'] = 'ready';
@@ -82,7 +85,7 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
     back = params.get('view') === 'path' ? pathBackTarget(project?.id || '', location.state?.pathSource, window.history.state?.idx) : {label:phase === 'error' ? '返回需求清单' : '返回', fallback:'/requirements', kind:'history'};
   } else if (templateId) {
     title = template?.name || '新建流程'; back = {label:'返回流程列表', fallback:'/templates', kind:'templates'};
-  } else if (location.pathname === '/paths' && project) title = '路径分析';
+  } else if (location.pathname === '/paths' && project) title = '项目空间';
   const navigationKey = `${sessionAccessKey(session)}|${pageIdentity(location.pathname, params)}|${project?.id || ''}|${project?.projectRole || ''}|${Boolean(project?.canManage)}|${Boolean(project?.publicReadOnly)}`;
   const toolbar = toolbarForRoute(location.pathname, location.search);
   const page: ResolvedPageContext = {navigationKey, phase, scope, project: phase === 'ready' ? project : undefined, title, back, toolbar, actionRow: toolbar !== 'none', error, errorTitle, retry,

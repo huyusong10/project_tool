@@ -1,5 +1,5 @@
 import { businessDateFromDateTime } from '../../shared/domain';
-import { sqlite } from '../database';
+import { getDatabaseContext } from '../database-context';
 import { chunkValues } from './support';
 
 type CancelledItem = { id: string; requirementId: string; status: string; updatedAt: string };
@@ -19,13 +19,13 @@ export function getCancellationHistory(
   const requirementStatuses = knownRequirementStatuses || (cancelled.length
     ? new Map(chunkValues(requirementIds).flatMap((batch) => {
       const placeholders = batch.map(() => '?').join(',');
-      return sqlite.prepare(`SELECT id, status FROM requirements WHERE id IN (${placeholders})`)
+      return getDatabaseContext().sqlite.prepare(`SELECT id, status FROM requirements WHERE id IN (${placeholders})`)
         .all(...batch) as Array<{ id: string; status: string }>;
     }).map((item) => [item.id, item.status]))
     : new Map<string, string>());
   const events = chunkValues(requirementIds).flatMap((batch) => {
     const placeholders = batch.map(() => '?').join(',');
-    return sqlite.prepare(`SELECT u.requirement_id AS requirementId, u.work_item_id AS workItemId,
+    return getDatabaseContext().sqlite.prepare(`SELECT u.requirement_id AS requirementId, u.work_item_id AS workItemId,
       u.event_type AS eventType, u.created_at AS createdAt
       FROM progress_updates u
       WHERE u.requirement_id IN (${placeholders})
@@ -34,7 +34,7 @@ export function getCancellationHistory(
   });
   const cancellationAudits = chunkValues(cancelled.map((item) => item.id)).flatMap((batch) => {
     const placeholders = batch.map(() => '?').join(',');
-    return sqlite.prepare(`SELECT entity_id AS workItemId, created_at AS createdAt
+    return getDatabaseContext().sqlite.prepare(`SELECT entity_id AS workItemId, created_at AS createdAt
       FROM audit_logs WHERE entity_type='work_item' AND action='cancel' AND entity_id IN (${placeholders})
       ORDER BY created_at, rowid`).all(...batch) as CancellationAudit[];
   });

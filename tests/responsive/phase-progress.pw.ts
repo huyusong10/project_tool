@@ -3,7 +3,7 @@ import {chooseOption} from './select-helper';
 import {addBusinessDays,todayIso} from '../../src/shared/domain';
 import type {FeaturePhase} from '../../src/shared/feature-phases';
 
-test('特性与Phase聚焦实际，未排期仍计入且并行不增高',async({page},info)=>{
+test('特性与Phase聚焦实际，未排期仍计入且并行不增高',{tag:'@responsive'},async({page},info)=>{
   await page.emulateMedia({reducedMotion:'reduce'});
   const today=todayIso(),day=(n:number)=>addBusinessDays(today,n);
   const post=async(url:string,data:unknown)=>{const r=await page.request.post(url,{data});expect(r.ok(),await r.text()).toBe(true);return r.json();};

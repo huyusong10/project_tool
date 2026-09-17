@@ -36,7 +36,7 @@ test('特性、Phase、需求和工作项共用开放链接，草稿恢复与保
   await page.screenshot({path:info.outputPath('work-links.png'),animations:'disabled'});
 });
 
-test('链接行键盘排序、删除及窄屏全主题无裁切',async({page},info)=>{
+test('链接行键盘排序、删除及窄屏全主题无裁切',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page);await page.goto('/?'+new URLSearchParams({projectId:f.projectId,detailId:'feature:'+f.feature.id,detailTab:'basic'}));
   const root=page.locator('.modal-card-workspace[role=dialog]');await root.getByRole('button',{name:'编辑特性',exact:true}).click();
   const editor=root.getByRole('region',{name:'编辑关联链接',exact:true});await addLink(editor,2,'外部关联材料','https://example.com/extra');

@@ -1,8 +1,9 @@
+import * as peopleApi from '../features/people/api';
 import { Button } from '../components/Button';
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
-import { api } from "../api";
+
 import { useProjects } from "../app-context";
 import { keys } from "../query-keys";
 import type { Person } from "../types";
@@ -25,7 +26,7 @@ export function PeoplePage() {
   const view = viewParams.get("view") === "analysis" ? "analysis" : "matrix";
   const { data: loadedPeople, error, refetch, isFetching, isLoading } = useQuery({
     queryKey: [...keys.people, selectedProjectId],
-    queryFn: ({ signal }) => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`, { signal }),
+    queryFn: ({ signal }) => peopleApi.peopleQuery<Person[]>(encodeURIComponent(selectedProjectId), { signal }),
     enabled: Boolean(selectedProjectId),
   });
   usePageScrollPosition(!isLoading);

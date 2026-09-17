@@ -1,24 +1,24 @@
 import { Button } from './Button';
-import {useProjectWorkspace} from '../project-workspace-context';
-import {SelectionActions} from './SelectionActions';
-import {Select} from './Select';
-import {useDeliveryForm} from '../use-delivery-form';
-import {Fragment,useRef,useState} from 'react';
-import type {PathAnalysis} from '../../shared/paths';
-import type {FeatureOverview} from '../../shared/feature-overview';
-import type {FeaturePhase,PhaseSummary} from '../../shared/feature-phases';
-import {phaseStatusLabels} from '../../shared/feature-phases';
-import type {GraphCard} from '../path-projection';
-import {PhaseStatusBadge} from './PhasePlanning';
+import { useProjectWorkspace } from '../project-workspace-context';
+import { SelectionActions } from './SelectionActions';
+import { Select } from './Select';
+import { useDeliveryForm } from '../use-delivery-form';
+import { Fragment, useRef, useState } from 'react';
+import type { PathAnalysis } from '../../shared/paths';
+import type { FeatureOverview } from '../../shared/feature-overview';
+import type { FeaturePhase, PhaseSummary } from '../../shared/feature-phases';
+import { phaseStatusLabels } from '../../shared/feature-phases';
+import type { GraphCard } from '../path-projection';
+import { PhaseStatusBadge } from './PhasePlanning';
 
-import {SearchInput} from './SearchInput';
-import {matchesSearch} from '../../shared/search';
-import {useListPagination} from '../use-list-pagination';
-import {Pagination} from './Pagination';
+import { SearchInput } from './SearchInput';
+import { matchesSearch } from '../../shared/search';
+import { useListPagination } from '../use-list-pagination';
+import { Pagination } from './Pagination';
 import '../delivery-workspace.css';
-import {AnchoredPopover} from './InlineEdit';
-import {CalendarDays,ChevronDown} from 'lucide-react';
-import {workStageLabels} from '../../shared/execution-stage';
+import { AnchoredPopover } from './inline-edit/popover';
+import { CalendarDays, ChevronDown } from 'lucide-react';
+import { workStageLabels } from '../../shared/execution-stage';
 
 export function matchesDeliveryFeature(f:FeatureOverview,p:URLSearchParams){
   return (p.get('state')==='archived'?!!f.archivedAt:!f.archivedAt)&&matchesSearch([{text:f.name,weight:100},{text:f.description}],p.get('q')||'')&&(!(p.get('phaseStatus')||p.get('from')||p.get('through'))||f.phases?.some(phase=>(!p.get('phaseStatus')||phase.status===p.get('phaseStatus'))&&(!p.get('from')||!!phase.targetDate&&phase.targetDate>=p.get('from')!)&&(!p.get('through')||!!phase.targetDate&&phase.targetDate<=p.get('through')!)));

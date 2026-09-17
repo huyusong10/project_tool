@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mockGanttData, requirement, workItem } from "./gantt-fixture";
+import { mockGanttData, mockGanttReport, requirement, workItem } from "./gantt-fixture";
 
 const skins = [ ["classic", "经典蓝白"], ["swiss", "瑞士排版"], ["forest", "暖纸森林"], ["midnight", "午夜控制台"], ["soft", "柔彩悬浮"], ["industrial", "工业黄黑"], ["dcim", "杰瑞橙"] ];
 async function chooseSkin(page: Page, label: string) {
@@ -9,72 +9,48 @@ async function chooseSkin(page: Page, label: string) {
   await page.keyboard.press("Escape");
 }
 
-for (const [skin, label] of [...skins, ['system', '跟随系统']]) test(`${label}：390px 顶栏返回与操作按钮可点击且互不遮挡`, async ({ page }) => {
+for (const [skin, label] of [...skins, ['system', '跟随系统']]) test(`${label}：矩阵和窄屏顶栏、详情与编辑按钮互不遮挡`, {tag:'@responsive'}, async ({ page }) => {
   await mockGanttData(page);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/requirements/r1');
-  await chooseSkin(page, label);
-  for (const colorScheme of ['light', 'dark'] as const) {
-    await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
-    await expect(page.locator('.sidebar')).toHaveClass(/sidebar-collapsed/);
-    await page.getByRole('button', { name: '需求列表', exact: true }).click({ trial: true });
-    await page.getByRole('button', { name: /^账号菜单/ }).click({ trial: true });
-    await page.locator('.project-switcher-button').click({ trial: true });
-    expect((await page.locator('.topbar').boundingBox())?.height).toBe(88);
-    await page.getByRole('button', { name: '需求操作', exact: true }).click();
-    await page.getByRole('button', { name: '编辑信息', exact: true }).click();
-    await expect(page.getByRole('dialog').getByLabel('需求标题', { exact: true })).toBeVisible();
-    await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth), skin).toBeLessThanOrEqual(390);
+  for(const viewport of [page.viewportSize()!,{width:390,height:844}]){
+    await page.setViewportSize(viewport);await page.goto('/?projectId=p1&workspaceView=progress&scopeType=requirement&scopeId=r1');
+    await chooseSkin(page,label);await expect(page.locator('html')).toHaveAttribute('data-theme-preference',skin);
+    for(const colorScheme of ['light','dark'] as const){
+      await page.emulateMedia({colorScheme,reducedMotion:'reduce'});
+      if(viewport.width===390)await expect(page.locator('.sidebar')).toHaveClass(/sidebar-collapsed/);
+      await page.getByRole('button',{name:/^账号菜单/}).click({trial:true});await page.locator('.project-switcher-button').click({trial:true});
+      expect((await page.locator('.topbar').boundingBox())?.height).toBe(52);
+      await page.locator('[data-row-id="r1"] .workspace-row-title').click();
+      const detail=page.locator('.modal-card-workspace[role=dialog]');await expect(detail).toBeVisible();
+      await detail.getByRole('button',{name:'编辑信息',exact:true}).click();
+      const form=page.getByRole('dialog',{name:'编辑需求信息',exact:true});await expect(form.getByLabel('需求标题',{exact:true})).toBeVisible();
+      const box=(await form.boundingBox())!;expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(viewport.width);expect(box.y+box.height).toBeLessThanOrEqual(viewport.height);
+      await form.getByRole('button',{name:'取消',exact:true}).click();await expect(detail).toBeVisible();await detail.getByRole('button',{name:'关闭',exact:true}).click();
+      await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    }
   }
 });
 
-for (const [skin, label] of skins) test(`${label}：布局、双轨三种粒度、长标题与完整提示`, async ({ page }, info) => {
+for (const [skin, label] of skins) test(`${label}：布局、双轨三种粒度、长标题与完整提示`, {tag:'@responsive'}, async ({ page }, info) => {
   await mockGanttData(page);
   const title = "EPDS-2026-018 设备监控与告警处理：" + "跨模块联动及异常恢复的完整需求说明、".repeat(8);
-  await page.route("**/api/requirements/r1", (route) => route.fulfill({ json: {
-    ...requirement, title, workItems: [workItem, { ...workItem, id: "cancelled", title: "已取消的历史工作项", status: "cancelled", cancelledAt: "2026-09-02" }],
-  } }));
-  await page.goto("/");
-  await expect(page.locator(".gantt-row")).toHaveCount(2);
-  const before = await page.locator(".dashboard-top-stats,.project-gantt-panel,.gantt-filter-bar,.gantt-corner").evaluateAll((elements) => elements.map((element) => {
-    const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
-  }));
-  await chooseSkin(page, label);
-  await expect(page.locator("html")).toHaveAttribute("data-theme", skin);
-  const after = await page.locator(".dashboard-top-stats,.project-gantt-panel,.gantt-filter-bar,.gantt-corner").evaluateAll((elements) => elements.map((element) => {
-    const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
-  }));
-  expect(after).toEqual(before);
-  await page.screenshot({ path: info.outputPath(`${skin}-home.png`), animations: "disabled" });
-  const scroll = page.locator(".project-gantt-scroll");
-  await scroll.evaluate((element) => { element.scrollLeft = 80; });
-  await expect.poll(()=>scroll.evaluate(e=>e.scrollLeft)).toBeGreaterThan(80);
-  const initialRange = await page.locator('.project-gantt-panel .gantt-visible-range').textContent();
-  await page.getByRole("button", { name: /^甘特显示方式/ }).click();
-  await page.getByRole("button", { name: "计划·实际双轨", exact: true }).click();
-  await expect(page.locator(".gantt-date-actual")).toHaveCount(2);
-  expect(await page.locator('.project-gantt-panel .gantt-visible-range').textContent()).toBe(initialRange);
-  for (const zoom of ["日", "周", "月"]) {
-    await page.getByLabel("时间粒度").getByRole("button", { name: zoom, exact: true }).click();
-    await expect(page.locator(".gantt-date-plan").first()).toBeAttached();
-    await expect(page.locator(".gantt-row").filter({ hasText: "统一甘特样式" }).locator(".gantt-date-actual")).toHaveAttribute("data-end", "2026-09-03");
-    expect(await page.locator(".gantt-date-plan").first().evaluate((e) => e.getBoundingClientRect().y)).toBeLessThan(await page.locator(".gantt-date-actual").first().evaluate((e) => e.getBoundingClientRect().y));
+  const value={...requirement,title,workItems:[workItem,{...workItem,id:'cancelled',title:'已取消的历史工作项',status:'cancelled',cancelledAt:'2026-09-02'}]};
+  await mockGanttReport(page,()=>[value]);await page.route('**/api/requirements/r1',route=>route.fulfill({json:value}));
+  await page.goto('/?projectId=p1&workspaceView=progress&scopeType=requirement&scopeId=r1');await page.getByRole('button',{name:'展开全部',exact:true}).click();
+  const frame=()=>page.locator('.topbar,.page-toolbar,.workspace-gantt,.workspace-row-label').evaluateAll(elements=>elements.map(element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};}));
+  const before=await frame();await chooseSkin(page,label);await expect(page.locator('html')).toHaveAttribute('data-theme',skin);expect(await frame()).toEqual(before);
+  const row=page.locator('[data-row-id="r1"]'),cancelled=page.locator('[data-row-id="cancelled"]');
+  for(const zoom of ['日','周','月']){
+    await page.getByRole('button',{name:zoom,exact:true}).click();await expect(row.locator('.gantt-date-plan')).toBeAttached();
+    await expect(row.locator('.gantt-date-actual')).toHaveAttribute('data-end','2026-09-03');
+    expect(await row.locator('.gantt-date-plan').evaluate(e=>e.getBoundingClientRect().y)).toBeLessThan(await row.locator('.gantt-date-actual').evaluate(e=>e.getBoundingClientRect().y));
+    await expect(cancelled.locator('.gantt-date-actual')).toHaveAttribute('data-end','2026-09-02');await expect(cancelled).toHaveAttribute('data-status','cancelled');
   }
-  await page.screenshot({ path: info.outputPath(`${skin}-split.png`), animations: "disabled" });
-  await page.goto("/requirements/r1");
-  await expect(page.getByRole("button", { name: /^甘特显示方式/ })).toHaveAttribute("aria-label", "甘特显示方式，当前计划·实际双轨");
-  const heading = page.getByRole("heading", { name: title, exact: true });
-  expect((await heading.boundingBox())!.width).toBeGreaterThan(120);
-  await heading.focus();
-  await expect(page.locator(".page-title-full")).toHaveText(title);
-  const cancelled = page.locator('[data-work-item-id="cancelled"]');
-  await expect(cancelled.locator(".gantt-date-actual")).toHaveAttribute("data-end", "2026-09-02");
-  await expect(cancelled.locator(".requirement-gap-summary")).toHaveText("已取消");
-  await page.screenshot({ path: info.outputPath(`${skin}-detail.png`), animations: "disabled" });
-  await page.reload();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", skin);
+  await row.locator('.workspace-row-title').focus();await expect(page.getByRole('tooltip')).toContainText(title);await page.keyboard.press('Escape');
+  await page.screenshot({path:info.outputPath(skin+'-split.png'),animations:'disabled'});
+  await row.locator('.workspace-row-title').click();const detail=page.locator('.modal-card-workspace[role=dialog]');
+  await expect(detail.getByRole('heading',{name:title,exact:true})).toBeVisible();expect(await detail.evaluate(e=>e.scrollWidth-e.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({path:info.outputPath(skin+'-detail.png'),animations:'disabled'});
+  await page.reload();await expect(page.locator('html')).toHaveAttribute('data-theme',skin);await expect(detail.getByRole('heading',{name:title,exact:true})).toBeVisible();
 });
 
 test("换肤保留编辑草稿、菜单键盘选择不触发提交", async ({ page }) => {
@@ -93,6 +69,8 @@ test("换肤保留编辑草稿、菜单键盘选择不触发提交", async ({ pa
   await expect(input).toHaveValue("尚未提交的需求草稿");
   expect(writes).toEqual([]);
   await page.getByRole("dialog").getByRole("button", { name: "取消", exact: true }).click();
+  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
+  if(!await page.getByRole('button',{name:/^切换风格/}).isVisible())await page.getByRole('button',{name:/^账号菜单/}).click();
   const trigger = page.getByRole("button", { name: /^切换风格/ });
   await trigger.focus(); await page.keyboard.press("ArrowDown"); await page.keyboard.press("Home"); await page.keyboard.press("Enter");
   await expect(page.locator("html")).toHaveAttribute("data-theme-preference", "system");
@@ -118,11 +96,12 @@ test("全部配色切换复用图表画布，保留进展记录", async ({ page 
     ...requirement, progressUpdates: [{ id: "update-1", requirementId: "r1", workItemId: "w1", percent: 40, workItemPercent: 40, content: "已经完成接口校验", eventType: "progress", createdAt: "2026-09-02T10:00:00Z", updatedAt: "2026-09-02T10:00:00Z" }],
   } }));
   await page.goto("/requirements/r1");
+  await page.getByRole('tab',{name:'记录',exact:true}).click();
   const chart = page.getByRole("img", { name: "需求计划与实际进度趋势", exact: true });
   await expect(chart.locator("canvas")).toBeAttached();
   const canvas = await chart.locator("canvas").elementHandle();
-  for (const [skin, label] of skins) {
-    await chooseSkin(page, label);
+  for (const [skin] of skins) {
+    await page.evaluate(value=>{localStorage.setItem('project-manage:theme',value);window.dispatchEvent(new StorageEvent('storage',{key:'project-manage:theme',newValue:value}));},skin);
     await expect(chart).toHaveAttribute("data-chart-theme", skin);
     expect(await canvas!.evaluate((element) => element.isConnected)).toBe(true);
     await expect(page.locator(".progress-feed")).toContainText("已经完成接口校验");
@@ -132,7 +111,7 @@ test("全部配色切换复用图表画布，保留进展记录", async ({ page 
 
 test("甘特视图偏好按账号隔离", async ({ page }) => {
   await mockGanttData(page);
-  await page.goto("/");
+  await page.goto("/my-work");
   await page.getByRole("button", { name: /^甘特显示方式/ }).click();
   await page.getByRole("button", { name: "计划·实际双轨", exact: true }).click();
   await page.route("**/api/session", (route) => route.fulfill({ json: { authenticated: true, accountId: "another-admin", username: "another-admin", role: "admin", globalRole: "admin", personId: null, mustChangePassword: false, managedProjectIds: [] } }));
@@ -140,7 +119,7 @@ test("甘特视图偏好按账号隔离", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^甘特显示方式/ })).toHaveAttribute("aria-label", "甘特显示方式，当前现有视图");
 });
 
-test("我的工作复用双轨与皮肤，百分比不改变执行日期跨度", async ({ page }) => {
+test("我的工作复用双轨与皮肤，百分比不改变执行日期跨度", {tag:'@responsive'},async ({ page }) => {
   await mockGanttData(page);
   await page.route("**/api/my-work", (route) => route.fulfill({ json: {
     asOfDate: "2026-09-03", summary: { total: 2, notStarted: 0, inProgress: 2, blocked: 0, completed: 0, overdue: 0 }, requirements: [],

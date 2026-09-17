@@ -78,7 +78,7 @@ describe('数据库恢复文件切换', () => {
     const backupDirectory = path.join(path.dirname(database), 'backups');
     new Database(database).close();
     fs.writeFileSync(databaseSwapRollbackPath(database), 'previous-database');
-    const script = `const fs = await import('node:fs'); const database = await import('./src/server/database.ts'); console.log('rollback=' + fs.existsSync(process.env.DB_PATH + '.pre-restore')); database.sqlite.close();`;
+    const script = `const fs = await import('node:fs'); const database = await (await import('./src/server/database.ts')).initializeDatabase(); console.log('rollback=' + fs.existsSync(process.env.DB_PATH + '.pre-restore')); database.sqlite.close();`;
     const child = spawnSync(process.execPath, ['--import', 'tsx', '--eval', script], {
       cwd: process.cwd(),
       env: { ...process.env, DB_PATH: database, BACKUP_DIR: backupDirectory, SEED_DEMO: '0', NODE_ENV: 'test' },

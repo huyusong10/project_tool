@@ -1,10 +1,12 @@
+import * as peopleApi from '../features/people/api';
+import * as reportingApi from '../features/reporting/api';
 import { Button } from './Button';
 import { motionScrollBehavior } from "../motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { LocateFixed } from "lucide-react";
-import { api } from "../api";
+
 import { useBusinessDate, useProjects } from "../app-context";
 import { keys } from "../query-keys";
 import type { PeopleConcurrency, Person } from "../types";
@@ -20,7 +22,7 @@ export function ConcurrencyPanel() {
   const [matrixViewportWidth, setMatrixViewportWidth] = useState(0);
   const { data: people = [] } = useQuery({
     queryKey: [...keys.people, selectedProjectId],
-    queryFn: ({ signal }) => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`, { signal }),
+    queryFn: ({ signal }) => peopleApi.peopleQuery<Person[]>(encodeURIComponent(selectedProjectId), { signal }),
     enabled: Boolean(selectedProjectId),
   });
   const jobTitles = useMemo(() => [...new Set(people.map((person) => person.jobTitle).filter(Boolean) as string[])].sort(), [people]);
@@ -37,7 +39,7 @@ export function ConcurrencyPanel() {
         params.set("from", pageParam);
         params.set("to", addCalendarDays(pageParam, 6));
       }
-      return api<PeopleConcurrency>(`/api/analytics/people-concurrency?${params}`, { signal });
+      return reportingApi.analyticsPeopleConcurrencyQuery<PeopleConcurrency>(params, { signal });
     },
     getNextPageParam: (lastPage) => addCalendarDays(lastPage.to, 1),
   });

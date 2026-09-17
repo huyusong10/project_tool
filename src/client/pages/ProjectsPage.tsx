@@ -1,3 +1,6 @@
+import { readRecheck, persistRecheck } from '../core/write-recheck';
+import * as projectsApi from '../features/projects/api';
+import * as archivesApi from '../features/archives/api';
 import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
@@ -5,14 +8,14 @@ import { usePageScrollPosition } from '../use-page-view';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Archive, Plus } from "lucide-react";
-import { ApiError, api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
+import { ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useProjects, useSession } from "../app-context";
 import { invalidateProjectViews, keys } from "../query-keys";
 import { ConfirmDialog } from "../components/Modal";
 import { EmptyState } from "../components/Feedback";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/Badge";
-import { ProjectForm,persistProjectCreateRecheck,readProjectCreateRecheck,type ProjectCreateRecheck } from "../components/ManagementForms";
+import { ProjectForm, persistProjectCreateRecheck, readProjectCreateRecheck, type ProjectCreateRecheck } from "../components/ManagementForms";
 import { isAdmin } from "../permissions";
 import type { Archives, Project } from "../types";
 
@@ -25,8 +28,13 @@ type ProjectArchiveInput = {
   expectedIssues?: number;
 };
 function projectArchiveRecheckKey(accountKey:string){return `project-manage:project-archive-command-recheck:${accountKey}`;}
-function readProjectArchiveRecheck(accountKey:string):ProjectArchiveInput|null{try{const raw=sessionStorage.getItem(projectArchiveRecheckKey(accountKey));if(!raw)return null;const value=JSON.parse(raw) as Partial<ProjectArchiveInput>;return typeof value.id==='string'&&typeof value.name==='string'&&typeof value.expectedUpdatedAt==='string'&&(!value.force||typeof value.expectedRequirements==='number'&&typeof value.expectedIssues==='number')?value as ProjectArchiveInput:null;}catch{return null;}}
-function persistProjectArchiveRecheck(accountKey:string,value:ProjectArchiveInput|null){try{const key=projectArchiveRecheckKey(accountKey);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前页面仍保留核对锁。 */}}
+function readProjectArchiveRecheck(accountKey:string):ProjectArchiveInput|null{
+  return readRecheck(projectArchiveRecheckKey(accountKey), stored => {const value=stored as Partial<ProjectArchiveInput>;return typeof value.id==='string'&&typeof value.name==='string'&&typeof value.expectedUpdatedAt==='string'&&(!value.force||typeof value.expectedRequirements==='number'&&typeof value.expectedIssues==='number')?value as ProjectArchiveInput:null;
+  });
+}
+function persistProjectArchiveRecheck(accountKey:string,value:ProjectArchiveInput|null){
+  persistRecheck(projectArchiveRecheckKey(accountKey), value);
+}
 
 export function ProjectsPage() {
   const { session } = useSession();
@@ -46,7 +54,7 @@ export function ProjectsPage() {
   const archiveSubmitting = useRef(false);
   const admin = isAdmin(session);
   const archive = useMutation({
-    mutationFn: ({ id, expectedUpdatedAt, force = false, expectedRequirements, expectedIssues }: ProjectArchiveInput) => api(`/api/projects/${id}`, {
+    mutationFn: ({ id, expectedUpdatedAt, force = false, expectedRequirements, expectedIssues }: ProjectArchiveInput) => projectsApi.projectsById(id, {
       method: "DELETE",
       body: jsonBody({ expectedUpdatedAt, ...(force ? { force: true, expectedRequirements, expectedIssues } : {}) }),
     }),
@@ -83,8 +91,8 @@ export function ProjectsPage() {
       if (isWriteOutcomeUnknown(error)) {
         try {
           const [latestProjects, latestArchives] = await Promise.all([
-            api<Project[]>("/api/projects", { readOnly: true }),
-            api<Archives>("/api/archives", { readOnly: true }),
+            projectsApi.projects<Project[]>({ readOnly: true }),
+            archivesApi.archives<Archives>({ readOnly: true }),
           ]);
           client.setQueryData(keys.projects, latestProjects);
           client.setQueryData(keys.archives, latestArchives);
@@ -114,7 +122,7 @@ export function ProjectsPage() {
     archiveSubmitting.current = true;
     archive.mutate(input);
   };
-  const recheckProjectArchive=async()=>{if(!archiveRecheck||archiveRechecking)return;setArchiveRechecking(true);try{const [latestProjects,latestArchives]=await Promise.all([api<Project[]>('/api/projects',{readOnly:true}),api<Archives>('/api/archives',{readOnly:true})]);client.setQueryData(keys.projects,latestProjects);client.setQueryData(keys.archives,latestArchives);const active=latestProjects.some(item=>item.id===archiveRecheck.id),archived=latestArchives.projects.some(item=>item.id===archiveRecheck.id);if(active!==archived){setArchiveRecheck(null);setArchiveTarget(null);setArchiveConflict(null);setArchiveError('');invalidateProjectViews(client);}}catch{/* 两份权威列表必须同时读取成功。 */}finally{setArchiveRechecking(false);}};
+  const recheckProjectArchive=async()=>{if(!archiveRecheck||archiveRechecking)return;setArchiveRechecking(true);try{const [latestProjects,latestArchives]=await Promise.all([projectsApi.projects<Project[]>({readOnly:true}),archivesApi.archives<Archives>({readOnly:true})]);client.setQueryData(keys.projects,latestProjects);client.setQueryData(keys.archives,latestArchives);const active=latestProjects.some(item=>item.id===archiveRecheck.id),archived=latestArchives.projects.some(item=>item.id===archiveRecheck.id);if(active!==archived){setArchiveRecheck(null);setArchiveTarget(null);setArchiveConflict(null);setArchiveError('');invalidateProjectViews(client);}}catch{/* 两份权威列表必须同时读取成功。 */}finally{setArchiveRechecking(false);}};
   const pagination = useListPagination({ items: projects, personal: true });
   usePageScrollPosition(true, true);
   return (

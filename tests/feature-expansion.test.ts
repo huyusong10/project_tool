@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -71,7 +72,7 @@ beforeAll(async () => {
   const module = await import('../src/server/app');
   app = await module.buildApp();
   await app.ready();
-  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  origin = await listenTestApp(app);
   const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } });
   adminCookie = responseCookie(login);
   const project = await app.inject({ method: 'POST', url: '/api/projects', headers: { cookie: adminCookie }, payload: { name: '功能扩充验收项目' } });
@@ -100,7 +101,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${dbPath}${suffix}`, { force: true });
   fs.rmSync(backupDir, { recursive: true, force: true });
@@ -257,7 +258,7 @@ describe('功能扩充契约', () => {
     expect(filtered.items.every((i:{reasonCodes:string[]})=>i.reasonCodes.includes('unassigned'))).toBe(true);
     expect(filtered.summary).toEqual(actions.json().summary);
     expect((await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&reason=unknown`, headers: { cookie: adminCookie } })).statusCode).toBe(400);
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     expect(sqlite.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='action_items'").get()).toEqual({ count: 0 });
   });
 

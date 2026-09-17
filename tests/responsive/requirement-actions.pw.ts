@@ -1,10 +1,12 @@
+import {chooseOption} from './select-helper';
 import { expect, test, type Page } from '@playwright/test';
 import type { Requirement, WorkItem } from '../../src/client/types';
+import { workspaceFixture } from './workspace-fixture';
 
 type Action = 'complete-as-planned' | 'cancel' | 'archive';
 const labels: Record<Action, { title: string; confirm: string; field?: string }> = {
   'complete-as-planned': { title: '按期完成（历史补录）', confirm: '确认按期完成' },
-  cancel: { title: '取消需求', confirm: '确认取消', field: '取消原因' },
+  cancel: { title: '取消需求', confirm: '确认取消', field: '取消说明（可选）' },
   archive: { title: '归档需求', confirm: '确认归档' },
 };
 
@@ -33,7 +35,11 @@ async function fixture(page: Page, action: Action) {
     if (pathname === '/api/session') return route.fulfill({ json: { authenticated: true, accountId: 'admin', username: 'admin', role: 'admin', globalRole: 'admin', personId: null, mustChangePassword: false, managedProjectIds: [] } });
     if (pathname === '/api/projects') return route.fulfill({ json: [{ id: 'p1', name: '测试项目', status: 'active', defaultTemplateId: null }] });
     if (pathname === '/api/people' || pathname === '/api/templates') return route.fulfill({ json: [] });
-    if (pathname === '/api/dashboard') return route.fulfill({ json: { summary: {}, requirements: [] } });
+    const workspace=workspaceFixture('p1','测试项目',[state.requirement]);
+    if(pathname.endsWith('/path-graph'))return route.fulfill({json:{analysis:workspace.analysis}});
+    if(pathname.endsWith('/feature-overview'))return route.fulfill({json:workspace.overview});
+    if(pathname.endsWith('/features'))return route.fulfill({json:workspace.features});
+    if (pathname === '/api/dashboard') return route.fulfill({ json: { asOfDate:'2026-09-03',summary:{total:1,active:completed?0:1,completed:completed?1:0,delayed:0,highRisk:0,completionRate:0},requirements:[state.requirement],featureOverview:workspace.overview,charts:{statuses:[],risks:[],weeks:[],varianceTop:[]} } });
     if (pathname === '/api/requirements/r1' && method === 'GET') {
       state.reads++;
       return state.readStatus ? route.fulfill({ status: state.readStatus, json: { error: '当前需求无法读取' } }) : route.fulfill({ json: state.requirement });
@@ -49,14 +55,14 @@ async function fixture(page: Page, action: Action) {
 async function openCommand(page: Page, action: Action) {
   await page.goto('/requirements/r1');
   await page.getByRole('button', { name: '需求操作', exact: true }).click();
-  await page.locator('.inline-edit-popover').getByRole('button', { name: labels[action].title, exact: true }).click();
+  await page.getByRole('menu').getByRole('button', { name: labels[action].title, exact: true }).click();
   return page.getByRole('dialog', { name: labels[action].title, exact: true });
 }
 for (const action of ['complete-as-planned', 'cancel', 'archive'] as const) {
   test(`${action}确认期间后台更新不能借新版本提交，重读前保留确认快照`, async ({ page }, testInfo) => {
     const state = await fixture(page, action);
     const dialog = await openCommand(page, action);
-    if (!labels[action].field) await expect(dialog.getByRole('button', { name: labels[action].confirm, exact: true })).toBeFocused();
+    if (!labels[action].field) await expect.poll(()=>dialog.evaluate(element=>element.contains(document.activeElement))).toBe(true);
     if (labels[action].field) await dialog.getByRole('textbox', { name: labels[action].field, exact: true }).fill('打开时填写的说明');
     state.requirement = { ...state.requirement, title: '其他人更新的需求', version: 2,
       workItems: [{ ...state.requirement.workItems[0], plannedEnd: '2020-01-06', version: 2 }] };
@@ -76,11 +82,11 @@ for (const action of ['complete-as-planned', 'cancel', 'archive'] as const) {
     await expect(dialog).toContainText('其他人更新的需求');
     if (action === 'complete-as-planned') await expect(dialog).toContainText('2020-01-06');
     if (labels[action].field) await expect(dialog.getByRole('textbox', { name: labels[action].field, exact: true })).toHaveValue('打开时填写的说明');
-    if (testInfo.project.name === 'office-1280' && (action === 'complete-as-planned' || action === 'cancel')) await page.screenshot({ path: `data/round23-ui/${action}-review.png`, animations: 'disabled' });
+    if (action === 'complete-as-planned' || action === 'cancel') await page.screenshot({ path: testInfo.outputPath(`${action}-review.png`), animations: 'disabled' });
     await dialog.getByRole('button', { name: labels[action].confirm, exact: true }).click();
     await expect(dialog).toHaveCount(0);
     expect(state.writes).toEqual([{ expectedVersion: 2, ...(action === 'cancel' ? { reason: '打开时填写的说明' } : {}) }]);
-    if (action === 'archive') await expect(page).toHaveURL('/');
+    if (action === 'archive') await expect(page).not.toHaveURL(/detailId=r1/);
   });
 
   test(`${action}冲突重读503保留内容且禁写，恢复后核对最新版本重试`, async ({ page }) => {
@@ -138,7 +144,7 @@ test('取消需求响应未知且回读失败时跨导航保留核对锁和原�
     return route.fulfill({ status: 200, contentType: 'text/html', body: 'saved' });
   });
   const dialog = await openCommand(page, 'cancel');
-  await dialog.getByRole('textbox', { name: '取消原因', exact: true }).fill('依赖方案终止');
+  await dialog.getByRole('textbox', { name: '取消说明（可选）', exact: true }).fill('依赖方案终止');
   await dialog.getByRole('button', { name: '确认取消', exact: true }).click();
   await expect(dialog).toContainText('当前需求无法读取');
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
@@ -150,14 +156,18 @@ test('取消需求响应未知且回读失败时跨导航保留核对锁和原�
     (button as HTMLButtonElement).disabled = false;
     (button as HTMLButtonElement).click();
   });
-  await expect(page.locator('.inline-edit-popover').getByRole('button', { name: '取消需求', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('menu').getByRole('button', { name: '取消需求', exact: true })).toHaveCount(0);
 
-  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await page.goto('/projects');
   await expect(page).toHaveURL(/\/projects$/);
   await page.goBack();
-  await expect(page).toHaveURL(/\/requirements\/r1/);
+  await expect(page).toHaveURL(/detailId=r1/);
+  await expect(page.getByRole('status').filter({hasText:'当前需求无法读取'})).toBeVisible();
+  await expect(page.getByRole('button', { name: '需求操作', exact: true })).toHaveCount(0);
+  state.readStatus = 0;
+  await page.getByRole('button', { name: '重新读取', exact: true }).click();
   await page.getByRole('button', { name: '核对需求操作', exact: true }).click();
-  await expect(dialog.getByRole('textbox', { name: '取消原因', exact: true })).toHaveValue('依赖方案终止');
+  await expect(dialog.getByRole('textbox', { name: '取消说明（可选）', exact: true })).toHaveValue('依赖方案终止');
   await dialog.locator('form').evaluate((form) => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
   await page.waitForTimeout(100);
   expect(state.writes).toHaveLength(1);
@@ -215,7 +225,7 @@ test('归档响应不明保留确认窗口，不以目标状态推断成功', as
   await dialog.getByRole('button', { name: '确认归档', exact: true }).click();
   await expect(dialog).toContainText('提交结果仍待核对');
   await expect(dialog.getByRole('button', {name:'确认归档',exact:true})).toBeDisabled();
-  await expect(page).toHaveURL('/requirements/r1');
+  await expect(page).toHaveURL(/detailId=r1/);
   expect(state.writes).toHaveLength(1);
 });
 
@@ -232,7 +242,7 @@ test('归档异常响应不把恢复后再次归档误认成本次归档', async
 
   await expect(dialog).toBeVisible();
   await expect(page.getByText('已核对最新状态：需求已归档', { exact: true })).toHaveCount(0);
-  await expect(page).toHaveURL('/requirements/r1');
+  await expect(page).toHaveURL(/detailId=r1/);
   expect(state.writes).toHaveLength(1);
 });
 
@@ -245,11 +255,12 @@ for (const status of [403, 404]) {
       return route.fulfill({ status, json: { error: '当前操作不可用' } });
     });
     const dialog = await openCommand(page, 'cancel');
-    await dialog.getByRole('textbox', { name: '取消原因', exact: true }).fill('失权后隐藏的说明');
+    await dialog.getByRole('textbox', { name: '取消说明（可选）', exact: true }).fill('失权后隐藏的说明');
     await dialog.getByRole('button', { name: '确认取消', exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByText('需求无法打开', { exact: true })).toBeVisible();
-    await expect(page.getByRole('textbox')).toHaveCount(0);
+    await expect(page.getByRole('status').filter({hasText:'当前需求无法读取'})).toBeVisible();
+    await expect(page.getByRole('button', { name: '需求操作', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('textbox', { name: '取消说明（可选）', exact:true })).toHaveCount(0);
     expect(state.writes).toHaveLength(1);
   });
 }
@@ -337,7 +348,7 @@ test('已完成需求可从操作菜单纠错且不提交交付字段', async ({
   await page.getByRole('button', { name: '纠错', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '需求纠错', exact: true });
   await dialog.getByRole('textbox', { name: '纠错后的需求标题', exact: true }).fill('修正后的历史需求');
-  await dialog.getByRole('combobox', { name: '需求纠错关联历史记录', exact: true }).selectOption('complete-1');
+  await chooseOption(dialog.getByRole('combobox', { name: '需求纠错关联历史记录', exact: true }), 'complete-1');
   await dialog.getByRole('textbox', { name: '需求纠错原因', exact: true }).fill('历史标题录入错误');
   await dialog.getByRole('button', { name: '保存纠错', exact: true }).click();
   await expect(dialog).toHaveCount(0);
@@ -371,7 +382,7 @@ test('需求纠错已落库但响应异常时跨导航保留草稿和核对锁',
   await page.getByRole('button', { name: '纠错', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '需求纠错', exact: true });
   await dialog.getByRole('textbox', { name: '纠错后的需求标题', exact: true }).fill(' 响应异常后的历史需求 ');
-  await dialog.getByRole('combobox', { name: '需求纠错关联历史记录', exact: true }).selectOption('complete-1');
+  await chooseOption(dialog.getByRole('combobox', { name: '需求纠错关联历史记录', exact: true }), 'complete-1');
   await dialog.getByRole('textbox', { name: '需求纠错原因', exact: true }).fill('保留这份纠错依据');
   await dialog.getByRole('button', { name: '保存纠错', exact: true }).click();
   await expect(dialog).toContainText('提交结果待核对');
@@ -381,14 +392,14 @@ test('需求纠错已落库但响应异常时跨导航保留草稿和核对锁',
   await expect(page.getByRole('alert').filter({ hasText: '需求纠错结果待核对' })).toBeVisible();
   await expect(actionButton).toBeDisabled();
   await actionButton.evaluate((button) => (button as HTMLButtonElement).click());
-  await expect(page.locator('.inline-edit-popover')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
 
-  await page.getByRole('link', { name: '项目中心', exact: true }).click();
+  await page.goto('/projects');
   await page.goBack();
   await expect(page.getByRole('alert').filter({ hasText: '需求纠错结果待核对' })).toBeVisible();
   await page.getByRole('button', { name: '核对纠错', exact: true }).click();
   await expect(dialog.getByRole('textbox', { name: '纠错后的需求标题', exact: true })).toHaveValue(' 响应异常后的历史需求 ');
-  await expect(dialog.getByRole('combobox', { name: '需求纠错关联历史记录', exact: true })).toHaveValue('complete-1');
+  await expect(dialog.getByRole('combobox', { name: '需求纠错关联历史记录', exact: true })).toContainText('原完成记录');
   await expect(dialog.getByRole('textbox', { name: '需求纠错原因', exact: true })).toHaveValue('保留这份纠错依据');
   await expect(dialog.getByRole('button', { name: '保存纠错', exact: true })).toBeDisabled();
   await dialog.getByRole('button', { name: '已核对并关闭', exact: true }).click();

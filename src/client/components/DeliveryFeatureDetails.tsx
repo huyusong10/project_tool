@@ -1,20 +1,21 @@
-import {DetailCard} from './DetailCard';
-import {ReferenceLinks} from './ReferenceLinks';
-import {Button} from './Button';
-import {useDeliveryForm} from '../use-delivery-form';
-import {useSession} from '../app-context';
-import {useProjectWorkspace} from '../project-workspace-context';
-import {canManageProject} from '../permissions';
-import type {FeatureOverview} from '../../shared/feature-overview';
-import {FeatureAssessment,FeatureEditor,readFeaturePending,type FeatureEdit} from './FeaturePlanning';
-import {PhaseDialog,PhaseStatusBadge,readPendingPhase,type PhaseEdit} from './PhasePlanning';
-import {ExecutionStageBadge} from './ExecutionStageBadge';
-import {DetailWorkspace} from './DetailWorkspace';
-import {TopbarMenu} from './TopbarMenu';
-import {RequirementForm,readRequirementCreateRecheck,persistRequirementCreateRecheck} from './ManagementForms';
-import {useState} from 'react';
-import {formatDateTime} from '../format';
-import {OverviewIntroduction} from './OverviewIntroduction';
+import { DetailCard } from './DetailCard';
+import { ReferenceLinks } from './ReferenceLinks';
+import { Button } from './Button';
+import { useDeliveryForm } from '../use-delivery-form';
+import { useSession } from '../app-context';
+import { useProjectWorkspace } from '../project-workspace-context';
+import { canManageProject } from '../permissions';
+import type { FeatureOverview } from '../../shared/feature-overview';
+import { FeatureAssessment, FeatureEditor, readFeaturePending, type FeatureEdit } from './FeaturePlanning';
+import { PhaseDialog, PhaseStatusBadge } from './PhasePlanning';
+import { readPendingPhase, type PhaseEdit } from '../features/planning/phase-model';
+import { ExecutionStageBadge } from './ExecutionStageBadge';
+import { DetailWorkspace } from './DetailWorkspace';
+import { TopbarMenu } from './TopbarMenu';
+import { RequirementForm, readRequirementCreateRecheck, persistRequirementCreateRecheck } from './ManagementForms';
+import { useState } from 'react';
+import { formatDateTime } from '../format';
+import { OverviewIntroduction } from './OverviewIntroduction';
 
 export function DeliveryFeatureDetails({feature,phaseId,onEnter,onPhase}:{feature:FeatureOverview;phaseId?:string|null;onEnter:(stage?:string)=>void;onPhase:()=>void}){
   const {session}=useSession(),account=session.accountId||'guest',workspace=useProjectWorkspace(),manage=canManageProject(session,feature.projectId),system=feature.kind==='other';

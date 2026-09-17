@@ -1,8 +1,10 @@
+import { readRecheck, persistRecheck } from '../core/write-recheck';
+import * as requirementsApi from '../features/requirements/api';
 import { Button } from './Button';
-import {assertCleanRequirementDraft} from '../use-graph-draft';
+import { assertCleanRequirementDraft } from '../use-graph-draft';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
+import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
 import { useBusinessDate, useSession } from '../app-context';
 import { invalidateArchiveViews, invalidateRequirementViews } from '../query-keys';
 import type { Requirement } from '../types';
@@ -18,22 +20,19 @@ function requirementCommandRecheckKey(accountKey: string, requirementId: string)
   return `project-manage:requirement-command-recheck:${accountKey}:${requirementId}`;
 }
 export function readRequirementCommandRecheck(accountKey: string, requirementId: string): RequirementCommandRecheck | null {
-  try {
-    const raw = sessionStorage.getItem(requirementCommandRecheckKey(accountKey, requirementId));
-    if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<RequirementCommandRecheck>;
+  return readRecheck(requirementCommandRecheckKey(accountKey, requirementId), stored => {
+
+
+    const value = stored as Partial<RequirementCommandRecheck>;
     return requirementCommands.includes(value.action as RequirementCommand)
       && typeof value.baselineVersion === 'number'
       && typeof value.text === 'string'
       && (value.stage === 'read' || value.stage === 'review') ? value as RequirementCommandRecheck : null;
-  } catch { return null; }
+
+  });
 }
 export function persistRequirementCommandRecheck(accountKey: string, requirementId: string, value: RequirementCommandRecheck | null) {
-  try {
-    const key = requirementCommandRecheckKey(accountKey, requirementId);
-    if (value) sessionStorage.setItem(key, JSON.stringify(value));
-    else sessionStorage.removeItem(key);
-  } catch { /* 当前页面仍保留核对锁。 */ }
+  persistRecheck(requirementCommandRecheckKey(accountKey, requirementId), value);
 }
 const commands = {
   'complete-as-planned': { title: '按期完成（历史补录）', confirm: '确认按期完成' },
@@ -94,7 +93,7 @@ export function RequirementCommandDialog({ action, requirement, recheck, onReche
     try {
       // 归档命令必须能读到已归档需求，否则归档生效后的读取恒为 404。
       const latest = action === 'archive'
-        ? await api<Requirement>(`/api/requirements/${baseline.id}?includeDeleted=true`, { readOnly: true })
+        ? await requirementsApi.requirementsByIdQuery<Requirement>(baseline.id, { readOnly: true })
         : await onReload();
       if (!mounted.current) return null;
       const requiresReview = unknownVersion.current !== null && latest.version !== unknownVersion.current;
@@ -112,7 +111,7 @@ export function RequirementCommandDialog({ action, requirement, recheck, onReche
     }
   };
   const mutation = useMutation({
-    mutationFn: async (input: { expectedVersion: number; content?: string; reason?: string }) => {await assertCleanRequirementDraft(session.accountId||'guest',baseline.id,{action});return api(`/api/requirements/${baseline.id}${action === 'archive' ? '' : `/${action}`}`, {
+    mutationFn: async (input: { expectedVersion: number; content?: string; reason?: string }) => {await assertCleanRequirementDraft(session.accountId||'guest',baseline.id,{action});return requirementsApi.requirementsResourceById(baseline.id, action === 'archive' ? '' : `/${action}`, {
       method: action === 'archive' ? 'DELETE' : 'POST', body: jsonBody(input),
     });},
     onMutate: (input) => onRecheckChange({ action, baselineVersion: input.expectedVersion, text, stage: 'read' }),

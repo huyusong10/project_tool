@@ -1,15 +1,16 @@
-import {useState} from 'react';
-import {Plus} from 'lucide-react';
-import type {PathAnalysis} from '../../shared/paths';
-import {useSession} from '../app-context';
-import {canManageProject} from '../permissions';
-import {workspaceAncestors,type WorkspaceLocation} from '../workspace-location';
-import {Button} from './Button';
-import {TopbarMenu} from './TopbarMenu';
-import {FeatureEditor,readFeaturePending,type FeatureEdit} from './FeaturePlanning';
-import {PhaseDialog,readPendingPhase,type PhaseEdit} from './PhasePlanning';
-import {RequirementForm,readRequirementCreateRecheck,persistRequirementCreateRecheck} from './ManagementForms';
-import {CreateWorkItemDialog} from './CreateWorkItemDialog';
+import { useState } from 'react';
+import { Plus } from 'lucide-react';
+import type { PathAnalysis } from '../../shared/paths';
+import { useSession } from '../app-context';
+import { canManageProject } from '../permissions';
+import { workspaceAncestors, type WorkspaceLocation } from '../workspace-location';
+import { Button } from './Button';
+import { TopbarMenu } from './TopbarMenu';
+import { FeatureEditor, readFeaturePending, type FeatureEdit } from './FeaturePlanning';
+import { PhaseDialog } from './PhasePlanning';
+import { readPendingPhase, type PhaseEdit } from '../features/planning/phase-model';
+import { RequirementForm, readRequirementCreateRecheck, persistRequirementCreateRecheck } from './ManagementForms';
+import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 
 /** Object actions stay available when only the workspace view changes. */
 export function useWorkspaceActions({data,location,inspect,onImport}:{data:PathAnalysis;location:WorkspaceLocation;inspect:(id?:string,tab?:string)=>void;onImport:()=>void}) {

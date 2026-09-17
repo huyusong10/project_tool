@@ -4,7 +4,7 @@ import {listDeliveryCommitments,getDeliveryCommitment,deliveryCommitmentSummary}
 import {projectChangeVersion} from './services/project-change-version';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { requireReady } from './routes';
+import { requireReady } from './http/context';
 import { actorFromRequest } from './authorization';
 import { acceptanceId } from '../shared/paths';
 import { pathQuery } from '../shared/path-contracts';

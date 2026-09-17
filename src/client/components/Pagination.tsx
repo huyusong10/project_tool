@@ -1,9 +1,9 @@
 import { Button } from './Button';
-import {Select} from './Select';
+import { Select } from './Select';
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { pageNumbers, pageRange, pageSizeOptions as defaultOptions } from '../pagination';
-import { useInlineEditActive } from './InlineEdit';
+import { useInlineEditActive } from './inline-edit/shared';
 import './pagination.css';
 
 export type PaginationProps = {
@@ -28,7 +28,7 @@ export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChan
         <Button variant="secondary" type="button" aria-label="上一页" title="上一页" disabled={blocked || range.page === 1} onClick={() => onPageChange(range.page - 1)}><ChevronLeft size={15}/><span className="pagination-button-label">上一页</span></Button>
         <div className="pagination-numbers">{pageNumbers(range.page, range.pages).map((value, index) => value === 'gap' ? <span key={'gap' + index}>…</span> : <Button variant="secondary" type="button" key={value} aria-label={`第 ${value} 页`} aria-current={value === range.page ? 'page' : undefined} disabled={blocked} onClick={() => onPageChange(value)}>{value}</Button>)}</div>
         <PageJump key={range.page + ':' + range.pages} page={range.page} pages={range.pages} disabled={blocked} onChange={onPageChange}/>
-        <Button variant="ghost" iconOnly type="button" aria-label="下一页" title="下一页" disabled={blocked || range.page === range.pages} onClick={() => onPageChange(range.page + 1)}><span className="pagination-button-label">下一页</span><ChevronRight size={15}/></Button>
+        <Button variant="secondary" type="button" aria-label="下一页" title="下一页" disabled={blocked || range.page === range.pages} onClick={() => onPageChange(range.page + 1)}><span className="pagination-button-label">下一页</span><ChevronRight size={15}/></Button>
       </div>}
     </nav>
   </footer>;

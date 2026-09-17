@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -61,7 +62,7 @@ async function restorePerson(protocol: 'REST' | 'MCP', id: string, expectedDelet
 
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
-  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  origin = await listenTestApp(app);
   const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password } });
   expect(login.statusCode, login.body).toBe(200);
   cookie = String(login.headers['set-cookie']).split(';')[0];
@@ -70,7 +71,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -102,7 +103,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
 }
 
 it('永久删除在取得写锁后复核归档代次和历史引用', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const project = (await post('/api/projects', { name: `永久删除竞争项目${++sequence}` })).json();
   expect((await app.inject({ method: 'DELETE', url: `/api/projects/${project.id}`, headers: { cookie }, payload: {
     expectedUpdatedAt: project.updatedAt,

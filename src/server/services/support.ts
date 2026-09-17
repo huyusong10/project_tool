@@ -1,6 +1,6 @@
-import {readReferenceLinks} from '../../shared/reference-links';
-import { sqlite } from '../database';
-import { fail,notFound } from '../errors';
+import { readReferenceLinks } from '../../shared/reference-links';
+import { getDatabaseContext } from '../database-context';
+import { fail, notFound } from '../errors';
 import { isTerminalRequirementStatus, isTerminalWorkItemStatus } from '../../shared/domain';
 import { canonicalizeContent, canonicalizeLabel, textSafetyIssue } from '../../shared/search';
 import { isValidIsoDate } from '../../shared/workday';
@@ -10,11 +10,11 @@ export type JsonObject = Record<string, unknown>;
 export const nowIso = () => new Date().toISOString();
 
 export function rows<T = JsonObject>(sql: string, ...params: unknown[]): T[] {
-  return sqlite.prepare(sql).all(...params) as T[];
+  return getDatabaseContext().sqlite.prepare(sql).all(...params) as T[];
 }
 
 export function row<T = JsonObject>(sql: string, ...params: unknown[]): T | undefined {
-  return sqlite.prepare(sql).get(...params) as T | undefined;
+  return getDatabaseContext().sqlite.prepare(sql).get(...params) as T | undefined;
 }
 
 /** Historical attribution does not require an active login or grant execution access. */

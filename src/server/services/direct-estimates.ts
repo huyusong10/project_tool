@@ -1,9 +1,9 @@
-import type {DependencyChanges} from '../../shared/path-contracts';
-import type {PathInput} from '../../shared/paths';
-import {analysePaths,topologicalOrder} from '../../shared/paths';
-import {addBusinessDays,businessDaysInclusive} from '../../shared/domain';
-import {fail} from '../errors';
-import {sqlite} from '../database';
+import { addBusinessDays, businessDaysInclusive } from '../../shared/domain';
+import type { DependencyChanges } from '../../shared/path-contracts';
+import type { PathInput } from '../../shared/paths';
+import { analysePaths, topologicalOrder } from '../../shared/paths';
+import { getDatabaseContext } from '../database-context';
+import { fail } from '../errors';
 
 /** Compute manual direct-execution estimates against the final batch network. */
 export function normalizeDirectEstimates(snapshot:PathInput,ids:string[],changes:NonNullable<DependencyChanges['entities']>=[],workPatches:DependencyChanges['estimates']=[]){
@@ -25,6 +25,6 @@ export function normalizeDirectEstimates(snapshot:PathInput,ids:string[],changes
   }
 }
 export function persistDirectEstimates(snapshot:PathInput,ids:string[],mapping:Record<string,string>={}){
-  const update=sqlite.prepare('UPDATE requirements SET forecast_end=?,forecast_duration=?,forecast_ready_at=?,forecast_review=? WHERE id=?');
+  const update=getDatabaseContext().sqlite.prepare('UPDATE requirements SET forecast_end=?,forecast_duration=?,forecast_ready_at=?,forecast_review=? WHERE id=?');
   for(const r of snapshot.requirements)if(ids.includes(r.id)&&r.executionMode==='direct')update.run(r.forecastEnd??null,r.forecastDuration??null,r.forecastReadyAt??null,r.forecastReview?JSON.stringify(r.forecastReview):null,mapping[r.id]||r.id);
 }

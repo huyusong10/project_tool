@@ -1,8 +1,8 @@
-import type {GraphCard,GraphLink} from '../../shared/path-projection';
-import type {LayoutNode,RoutedLayout} from '../../shared/path-layout';
-import {roundedRoutePath} from '../../shared/path-layout';
-import {phaseStatusLabels} from '../../shared/feature-phases';
-import type {PhaseRegion} from '../../shared/phase-layout';
+import { phaseStatusLabels } from '../../shared/feature-phases';
+import type { LayoutNode, RoutedLayout } from '../../shared/path-layout';
+import { roundedRoutePath } from '../../shared/path-layout';
+import type { GraphCard, GraphLink } from '../../shared/path-projection';
+import type { PhaseRegion } from '../../shared/phase-layout';
 
 const xml=(value:string)=>value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'})[c]!);
 function lines(value:string,width=34,max=3) {

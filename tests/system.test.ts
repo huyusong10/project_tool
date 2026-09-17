@@ -29,7 +29,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   for (const suffix of ['', '-wal', '-shm', '.restore']) fs.rmSync(`${dbPath}${suffix}`, { force: true });
   fs.rmSync(backupDir, { recursive: true, force: true });
@@ -70,7 +70,7 @@ describe('系统管理API', () => {
     expect(logo.statusCode).toBe(200);
     expect(logo.headers['content-type']).toContain('image/png');
     expect((await app.inject({ method: 'PUT', url: '/api/system/branding', headers: { cookie }, payload: { systemName: '研发项目管理', shortName: 'RDM', logoDataUrl: 'data:image/png;base64,bm90LWltYWdl' } })).statusCode).toBe(400);
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const futureUpdatedAt = '2099-01-01T00:00:00.000Z';
     sqlite.prepare("UPDATE system_meta SET updated_at=? WHERE key='system-branding'").run(futureUpdatedAt);
     const removedLogo = await app.inject({ method: 'PUT', url: '/api/system/branding', headers: { cookie }, payload: {
@@ -124,7 +124,7 @@ describe('系统管理API', () => {
     expect(fs.existsSync(path.join(backupDir, prepared.safetyBackup.name))).toBe(true);
 
     const DatabaseDriver = (await import('better-sqlite3')).default;
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const admin = sqlite.prepare("SELECT id FROM accounts WHERE normalized_username='admin'").get() as { id: string };
     const persistedAudit = recordRestoreAudit(prepared.source, {
       actorType: 'user', actorId: admin.id, entityId: 'restore-audit-persistence.db', summary: '恢复审计保留测试',
@@ -250,7 +250,7 @@ describe('系统管理API', () => {
   it('恢复前拒绝会导致服务启动失败的跨项目流程备份', async () => {
     const firstProject = (await app.inject({ method: 'POST', url: '/api/projects', headers: { cookie }, payload: { name: '恢复一致性项目一' } })).json();
     const secondProject = (await app.inject({ method: 'POST', url: '/api/projects', headers: { cookie }, payload: { name: '恢复一致性项目二' } })).json();
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const secondDefault = sqlite.prepare('SELECT default_template_id AS id FROM projects WHERE id=?').get(secondProject.id) as { id: string };
     const DatabaseDriver = (await import('better-sqlite3')).default;
     const inconsistentName = 'project-manage-cross-project-template.db';
@@ -278,7 +278,7 @@ describe('系统管理API', () => {
   });
 
   it('并发备份只执行一个任务，失败后允许重试', async () => {
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     expect((await app.inject({ method: 'POST', url: '/api/backups', headers: { cookie } })).statusCode).toBe(200);
     let backupStarted!: () => void;
     let releaseBackup!: () => void;
@@ -319,7 +319,7 @@ describe('系统管理API', () => {
   });
 
   it('手动备份完成前管理员失权时清理新文件且不记录成功审计', async () => {
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const admin = sqlite.prepare("SELECT id FROM accounts WHERE normalized_username='admin'").get() as { id: string };
     const filesBefore = new Set(fs.readdirSync(backupDir));
     const auditsBefore = sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE entity_type='backup' AND action='create'").get() as { count: number };
@@ -340,7 +340,7 @@ describe('系统管理API', () => {
   });
 
   it('备份删除审计失败时保留原文件并回滚审计', async () => {
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const created = await app.inject({ method: 'POST', url: '/api/backups', headers: { cookie } });
     expect(created.statusCode).toBe(200);
     const backup = created.json() as { name: string; fingerprint: string };
@@ -452,7 +452,7 @@ describe('系统管理API', () => {
   });
 
   it('自动清理前同名备份发生变化时本轮保留并等待下次重新评估', async () => {
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const { cleanupOldBackups } = await import('../src/server/backups');
     const oldName = `project-manage-2000-01-01T00-00-00-${String(Date.now() % 1000).padStart(3, '0')}.db`;
     const oldPath = path.join(backupDir, oldName);
@@ -480,7 +480,7 @@ describe('系统管理API', () => {
   it('每日自动备份首次失败后在调度窗口内重试且成功后不重复', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 8, 6, 2, 0, 0));
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const { startBackupScheduler } = await import('../src/server/backups');
     let attempts = 0;
     const backupSpy = vi.spyOn(sqlite, 'backup').mockImplementation(async (destination) => {
@@ -508,7 +508,7 @@ describe('系统管理API', () => {
   });
 
   it('服务晚于调度时间启动会补建当天备份，已有当天备份时不重复', async () => {
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const { startBackupScheduler } = await import('../src/server/backups');
     const existingName = 'project-manage-2026-09-08T02-10-00-000.db';
     await sqlite.backup(path.join(backupDir, existingName));
@@ -544,7 +544,7 @@ describe('系统管理API', () => {
   });
 
   it('启动时旧备份清理失败不会阻止调度器后续创建备份', async () => {
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const { startBackupScheduler } = await import('../src/server/backups');
     const oldName = 'project-manage-2000-01-01T00-00-00-001.db';
     const oldPath = path.join(backupDir, oldName);
@@ -585,7 +585,7 @@ describe('系统管理API', () => {
   });
 
   it('手动备份写入中不会被当作当天成功，失败后调度器继续补偿', async () => {
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const { createBackup, startBackupScheduler, listBackups } = await import('../src/server/backups');
     const simulatedYear = new Date().getFullYear() + 20;
     vi.useFakeTimers();
@@ -635,7 +635,7 @@ describe('系统管理API', () => {
   it('服务重启后不会把当天遗留的无效备份文件当作成功', async () => {
     const invalidName = 'project-manage-2026-09-12T02-01-00-000.db';
     fs.writeFileSync(path.join(backupDir, invalidName), 'interrupted-backup');
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const { startBackupScheduler } = await import('../src/server/backups');
     let attempts = 0;
     const backupSpy = vi.spyOn(sqlite, 'backup').mockImplementation(async (destination) => {

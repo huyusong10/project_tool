@@ -4,7 +4,7 @@ import os from 'node:os';
 import {randomUUID} from 'node:crypto';
 const directory=path.resolve('.preview');if(!['project-manage-paths','project-manage-debug'].includes(path.basename(process.cwd())))throw new Error('只能在隔离工作区运行');fs.mkdirSync(directory,{recursive:true});
 const dbPath=path.join(directory,`benchmark-${randomUUID()}.db`);Object.assign(process.env,{DB_PATH:dbPath,BACKUP_DIR:path.join(directory,'benchmark-backups'),SEED_DEMO:'0'});
-const {sqlite}=await import('../src/server/database');const {getPathAnalysis}=await import('../src/server/services/paths');const {listActionItems}=await import('../src/server/services/actions');
+const {sqlite}=await (await import('../src/server/database')).initializeDatabase();const {getPathAnalysis}=await import('../src/server/services/paths');const {listActionItems}=await import('../src/server/services/actions');
 const basisHelpers=await import('../src/shared/forecast-basis');
 const now=new Date().toISOString(),day='2026-09-07';
 try{

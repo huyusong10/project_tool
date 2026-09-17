@@ -1,8 +1,8 @@
 import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
-import {themes, dayTheme, nightTheme, resolveAppearance} from './src/client/theme-preference';
-import {toolbarForRoute} from './src/client/page-presentation';
+import {themes, dayTheme, nightTheme, resolveAppearance} from './src/client/theme-preference.ts';
+import {toolbarForRoute} from './src/client/page-presentation.ts';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');

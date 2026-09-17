@@ -1,3 +1,7 @@
+import { readRecheckFlag, persistRecheckFlag } from '../core/write-recheck';
+import * as projectsApi from '../features/projects/api';
+import * as archivesApi from '../features/archives/api';
+import * as peopleApi from '../features/people/api';
 import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
@@ -5,7 +9,7 @@ import { usePageScrollPosition } from '../use-page-view';
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type Query } from "@tanstack/react-query";
 import { Archive, Edit3, RotateCcw, UserMinus, UserPlus } from "lucide-react";
-import { api, jsonBody, requiresWriteRecheck } from "../api";
+import { jsonBody, requiresWriteRecheck } from "../api";
 import { useProjects, useSession } from "../app-context";
 import { invalidateArchiveViews, invalidateProjectAccessViews, invalidateProjectMemberViews, keys } from "../query-keys";
 import type { Archives, Person } from "../types";
@@ -21,45 +25,13 @@ import { useToast } from "../components/Toast";
 
 type ProjectMemberRole = "manager" | "member" | "viewer";
 
-function readProjectArchiveRecheck(accountKey: string, projectId: string) {
-  if (typeof window === "undefined" || !projectId) return false;
-  try {
-    return window.sessionStorage.getItem(`project-manage:project-archive-recheck:${accountKey}:${projectId}`) === "1";
-  } catch {
-    return false;
-  }
-}
+function readProjectArchiveRecheck(accountKey: string, projectId: string) { return !!projectId && readRecheckFlag(`project-manage:project-archive-recheck:${accountKey}:${projectId}`); }
 
-function persistProjectArchiveRecheck(accountKey: string, projectId: string, value: boolean) {
-  if (typeof window === "undefined" || !projectId) return;
-  try {
-    const key = `project-manage:project-archive-recheck:${accountKey}:${projectId}`;
-    if (value) window.sessionStorage.setItem(key, "1");
-    else window.sessionStorage.removeItem(key);
-  } catch {
-    // 页面状态仍会保留锁；存储不可用时只失去跨导航恢复能力。
-  }
-}
+function persistProjectArchiveRecheck(accountKey: string, projectId: string, required: boolean) { if(projectId) persistRecheckFlag(`project-manage:project-archive-recheck:${accountKey}:${projectId}`, required); }
 
-function readProjectMembersRecheck(accountKey: string, projectId: string) {
-  if (typeof window === "undefined" || !projectId) return false;
-  try {
-    return window.sessionStorage.getItem(`project-manage:project-members-recheck:${accountKey}:${projectId}`) === "1";
-  } catch {
-    return false;
-  }
-}
+function readProjectMembersRecheck(accountKey: string, projectId: string) { return !!projectId && readRecheckFlag(`project-manage:project-members-recheck:${accountKey}:${projectId}`); }
 
-function persistProjectMembersRecheck(accountKey: string, projectId: string, value: boolean) {
-  if (typeof window === "undefined" || !projectId) return;
-  try {
-    const key = `project-manage:project-members-recheck:${accountKey}:${projectId}`;
-    if (value) window.sessionStorage.setItem(key, "1");
-    else window.sessionStorage.removeItem(key);
-  } catch {
-    // 页面状态仍会保留锁；存储不可用时只失去跨导航恢复能力。
-  }
-}
+function persistProjectMembersRecheck(accountKey: string, projectId: string, required: boolean) { if(projectId) persistRecheckFlag(`project-manage:project-members-recheck:${accountKey}:${projectId}`, required); }
 
 export function ProjectSettingsPage() {
   const { session } = useSession();
@@ -92,13 +64,13 @@ export function ProjectSettingsPage() {
   const canManage = canManageProject(session, selectedProjectId);
   const membersQuery = useQuery({
     queryKey: [...keys.projectMembers, selectedProjectId],
-    queryFn: ({ signal }) => api<Person[]>("/api/projects/" + selectedProjectId + "/members", { signal }),
+    queryFn: ({ signal }) => projectsApi.projectsMembers<Person[]>(selectedProjectId, { signal }),
     enabled: Boolean(selectedProjectId),
   });
   const members = membersQuery.data || [];
   const setRole = useMutation({
     mutationFn: ({ projectId, personId, role, expectedMembershipUpdatedAt }: { projectId: string; personId: string; role: ProjectMemberRole; expectedMembershipUpdatedAt: string | null }) =>
-      api<Person>("/api/projects/" + projectId + "/members/" + personId, { method: "PUT", body: jsonBody({ role, expectedMembershipUpdatedAt }) }),
+      projectsApi.projectsMembersById<Person>(projectId, personId, { method: "PUT", body: jsonBody({ role, expectedMembershipUpdatedAt }) }),
     onMutate: async (input) => {
       const queryKey = [...keys.projectMembers, input.projectId];
       await client.cancelQueries({ queryKey, exact: true });
@@ -117,7 +89,7 @@ export function ProjectSettingsPage() {
     onError: async (error, input) => {
       if (!requiresWriteRecheck(error)) return;
       try {
-        const latest = await api<Person[]>(`/api/projects/${input.projectId}/members`, { readOnly: true });
+        const latest = await projectsApi.projectsMembers<Person[]>(input.projectId, { readOnly: true });
         client.setQueryData([...keys.projectMembers, input.projectId], latest);
         setMembersNeedRecheck(false, input.projectId);
         if (latest.find((person) => person.id === input.personId)?.projectRole === input.role) {
@@ -135,7 +107,7 @@ export function ProjectSettingsPage() {
     },
   });
   const remove = useMutation({
-    mutationFn: ({ projectId, person }: { projectId: string; person: Person }) => api("/api/projects/" + projectId + "/members/" + person.id, {
+    mutationFn: ({ projectId, person }: { projectId: string; person: Person }) => projectsApi.projectsMembersById(projectId, person.id, {
       method: "DELETE", body: jsonBody({ expectedMembershipUpdatedAt: person.membershipUpdatedAt || null }),
     }),
     onSuccess: (_saved, input) => {
@@ -146,7 +118,7 @@ export function ProjectSettingsPage() {
     onError: async (error, input) => {
       if (!requiresWriteRecheck(error)) return;
       try {
-        const latest = await api<Person[]>(`/api/projects/${input.projectId}/members`, { readOnly: true });
+        const latest = await projectsApi.projectsMembers<Person[]>(input.projectId, { readOnly: true });
         client.setQueryData([...keys.projectMembers, input.projectId], latest);
         setMembersNeedRecheck(false, input.projectId);
         const current = latest.find((person) => person.id === input.person.id);
@@ -184,7 +156,7 @@ export function ProjectSettingsPage() {
   };
   const projectArchivesQuery = useQuery({
     queryKey: [...keys.projectArchives, selectedProjectId],
-    queryFn: ({ signal }) => api<Archives>("/api/archives?projectId=" + encodeURIComponent(selectedProjectId), { signal }),
+    queryFn: ({ signal }) => archivesApi.archivesQuery<Archives>(encodeURIComponent(selectedProjectId), { signal }),
     enabled: canManage && Boolean(selectedProjectId),
   });
   const projectArchives = projectArchivesQuery.data;
@@ -193,7 +165,7 @@ export function ProjectSettingsPage() {
   const archivesPagination = useListPagination({ items: archiveItems, id: 'archives', ready: Boolean(projectArchives), loading: projectArchivesQuery.isFetching });
   usePageScrollPosition(Boolean(membersQuery.data) && (!canManage || Boolean(projectArchives)));
   const restore = useMutation({
-    mutationFn: ({ entity, id, expectedDeletedAt }: { projectId: string; entity: "requirements" | "templates"; id: string; expectedDeletedAt: string }) => api("/api/" + entity + "/" + id + "/restore", { method: "POST", body: jsonBody({ expectedDeletedAt }) }),
+    mutationFn: ({ entity, id, expectedDeletedAt }: { projectId: string; entity: "requirements" | "templates"; id: string; expectedDeletedAt: string }) => archivesApi.ResourceRestore(entity, id, { method: "POST", body: jsonBody({ expectedDeletedAt }) }),
     onSuccess: (_saved, input) => {
       setProjectArchiveNeedsRecheck(false, input.projectId);
       invalidateArchiveViews(client);
@@ -201,7 +173,7 @@ export function ProjectSettingsPage() {
     onError: async (error, input) => {
       if (!requiresWriteRecheck(error)) return;
       try {
-        const latest = await api<Archives>(`/api/archives?projectId=${encodeURIComponent(input.projectId)}`, { readOnly: true });
+        const latest = await archivesApi.archivesQuery<Archives>(encodeURIComponent(input.projectId), { readOnly: true });
         client.setQueryData([...keys.projectArchives, input.projectId], latest);
         setProjectArchiveNeedsRecheck(false, input.projectId);
         if (!latest[input.entity].some((item) => item.id === input.id)) {
@@ -320,7 +292,7 @@ function AddProjectPersonForm({ projectId, onNeedsRecheck, onClose }: { projectI
   const deferredKeyword = useDeferredValue(keyword.trim());
   const candidatesQuery = useQuery({
     queryKey: [...keys.peopleCandidates, projectId, deferredKeyword],
-    queryFn: ({ signal }) => api<ProjectPersonCandidate[]>(`/api/people/candidates?projectId=${encodeURIComponent(projectId)}${deferredKeyword ? `&q=${encodeURIComponent(deferredKeyword)}` : ""}`, { signal }),
+    queryFn: ({ signal }) => peopleApi.peopleCandidatesQuery<ProjectPersonCandidate[]>(encodeURIComponent(projectId), deferredKeyword ? `&q=${encodeURIComponent(deferredKeyword)}` : "", { signal }),
     enabled: Boolean(projectId),
   });
   const people = candidatesQuery.data || [];
@@ -330,7 +302,7 @@ function AddProjectPersonForm({ projectId, onNeedsRecheck, onClose }: { projectI
       const attempts: Array<{ id: string; name: string; message: string; needsRecheck: boolean }> = [];
       for (const personId of personIds) {
         try {
-          await api(`/api/projects/${projectId}/members/${personId}`, { method: "PUT", body: jsonBody({ role, expectedMembershipUpdatedAt: null }) });
+          await projectsApi.projectsMembersById(projectId, personId, { method: "PUT", body: jsonBody({ role, expectedMembershipUpdatedAt: null }) });
         } catch (error) {
           attempts.push({
             id: personId,
@@ -344,7 +316,7 @@ function AddProjectPersonForm({ projectId, onNeedsRecheck, onClose }: { projectI
       let recheckFailed = false;
       if (attempts.some((item) => item.needsRecheck)) {
         try {
-          const latest = await api<Person[]>(`/api/projects/${projectId}/members`, { readOnly: true });
+          const latest = await projectsApi.projectsMembers<Person[]>(projectId, { readOnly: true });
           confirmed = new Set(attempts.filter((item) => item.needsRecheck
             && latest.find((person) => person.id === item.id)?.projectRole === role).map((item) => item.id));
         } catch {

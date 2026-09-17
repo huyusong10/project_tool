@@ -1,10 +1,11 @@
-import {useDeliveryForm} from '../use-delivery-form';
-import {useProjects} from '../app-context';
+import * as issuesApi from '../features/issues/api';
+import { useDeliveryForm } from '../use-delivery-form';
+import { useProjects } from '../app-context';
 import { Button } from './Button';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, CheckCircle2, ChevronDown, Search } from "lucide-react";
-import { api, ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
+import { ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useBusinessDate, useSession } from "../app-context";
 import { invalidateIssueViews, keys } from "../query-keys";
 import { cacheResourceUpdate, readResourceFresh, ResourceReadInvalidatedError } from "../use-resource-query";
@@ -16,7 +17,7 @@ import { StatusBadge } from "./Badge";
 import { ProgressInput } from "./ProgressInput";
 import { priorityOptions } from "../ui-options";
 import { useToast } from "./Toast";
-import { AnchoredPopover } from "./InlineEdit";
+import { AnchoredPopover } from './inline-edit/popover';
 
 type BusyChange = (pending: boolean) => void;
 
@@ -52,7 +53,7 @@ export function useIssueDraft(issue: Issue | undefined, onPendingChange?: BusyCh
     if (!issue) throw new Error("问题不存在");
     setNeedsRefresh(true); setReadError(null);
     try {
-      const latest = await readResourceFresh<Issue>(client, keys.issue(issue.id), `/api/issues/${issue.id}`, () => mounted.current);
+      const latest = await readResourceFresh<Issue>(client, keys.issue(issue.id), signal => issuesApi.issuesById<Issue>(issue.id, { signal }), () => mounted.current);
       if (!mounted.current) return latest;
       setBaseline(latest); setNeedsRefresh(false); setRefreshed(true); setUnavailable(false);
       return latest;
@@ -212,6 +213,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
   defaultReporter?: string | null; autoFocusTitle?: boolean; onClose: () => void; onPendingChange?: BusyChange; busy?: boolean;
 }) {
   const toast = useToast();
+  const { session } = useSession();
   const { businessDate: today } = useBusinessDate();
   const editor = useIssueDraft(issue, onPendingChange,'basic',projectId);
   const [draft,setDraft,clearDraft]=useDeliveryForm(projectId,(issue?.id||'new')+':issue-basic',()=>issueFields(issue,defaultReporter,today));
@@ -245,10 +247,17 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
       ...(current ? { expectedVersion: current.version } : { projectId }),
     };
     void editor.save(
-      () => api<Issue>(current ? `/api/issues/${current.id}` : "/api/issues", { method: current ? "PATCH" : "POST", body: jsonBody(payload) }),
+      () => (current ? issuesApi.issuesById<Issue>(current.id, { method: current ? "PATCH" : "POST", body: jsonBody(payload) }) : issuesApi.issues<Issue>({ method: current ? "PATCH" : "POST", body: jsonBody(payload) })),
       ()=>{clearDraft();onClose();},
       current ? {
-        matches: (latest) => latest.title === canonicalizeLabel(draft.title)
+        matches: (latest) => latest.version === current.version + 1
+          && latest.status === current.status
+          && (!resolved || (latest.updates || []).some(update => update.eventType === 'correction'
+            && !(current.updates || []).some(previous => previous.id === update.id)
+            && update.createdByAccountId === session.accountId
+            && update.createdAt === latest.updatedAt
+            && (!canonicalizeContent(draft.reason) || update.content === canonicalizeContent(draft.reason))))
+          && latest.title === canonicalizeLabel(draft.title)
           && latest.impact === (canonicalizeContent(draft.impact) || null)
           && latest.requirementId === (draft.requirementId || null)
           && latest.sourceRef === (canonicalizeLabel(draft.sourceRef) || null)
@@ -269,7 +278,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
             status: "in_progress",
             pageSize: "100",
           });
-          const latest = await api<IssuePage>(`/api/issues?${params}`, { readOnly: true });
+          const latest = await issuesApi.issuesQuery<IssuePage>(params, { readOnly: true });
           const matches = latest.items.filter((item) => item.createdAt >= attemptedAt
             && item.projectId === projectId
             && item.status === "in_progress"
@@ -342,7 +351,7 @@ export function IssueUpdateForm({ issue, canSetProgress, canResolve = false, onP
       : writesProgress ? { content, progress, expectedVersion: baseline.version } : { content };
     const initialUpdateIds = new Set((baseline.updates || []).map(update => update.id));
     void editor.save(
-      () => api<Issue>(`/api/issues/${issue.id}/${action}`, { method: "POST", body: jsonBody(input) }),
+      () => issuesApi.issuesById2<Issue>(issue.id, action, { method: "POST", body: jsonBody(input) }),
       (saved) => { setContent(""); setProgress(saved.progress); clearInput(); },
       {
         matches: (latest) => (!writesProgress || latest.version === baseline.version + 1 && latest.progress === progress)

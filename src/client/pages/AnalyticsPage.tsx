@@ -1,13 +1,13 @@
+import { readRecheck, persistRecheck } from '../core/write-recheck';
+import * as reportingApi from '../features/reporting/api';
 import { Button } from '../components/Button';
 import { analyticsValue } from "../analytics-presentation";
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { chartCategoryColor } from "../chart-theme";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Copy, GripVertical, Pencil, Plus, RefreshCcw, RotateCcw, Save, Settings2, Trash2, X,
-} from "lucide-react";
-import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
+import { Copy, GripVertical, Pencil, Plus, RefreshCcw, RotateCcw, Save, Settings2, Trash2, X } from "lucide-react";
+import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useBusinessDate, useProjects, useSession } from "../app-context";
 import { keys } from "../query-keys";
 import { Chart } from "../components/Chart";
@@ -16,17 +16,7 @@ import { EmptyState, LoadingState } from "../components/Feedback";
 import { PageHeader } from "../components/PageHeader";
 import { SortableList } from "../components/SortableList";
 import { ViewTabs } from "../components/ViewTabs";
-import {
-  analyticsCatalog as fallbackCatalog,
-  defaultAnalyticsLayout,
-  type AnalyticsCatalog,
-  type AnalyticsLayout,
-  type AnalyticsLayoutResponse,
-  type AnalyticsPanelConfig,
-  type AnalyticsPanelResult,
-  type AnalyticsQueryResponse,
-  type AnalyticsRange,
-} from "../../shared/analytics";
+import { analyticsCatalog as fallbackCatalog, defaultAnalyticsLayout, type AnalyticsCatalog, type AnalyticsLayout, type AnalyticsLayoutResponse, type AnalyticsPanelConfig, type AnalyticsPanelResult, type AnalyticsQueryResponse, type AnalyticsRange } from "../../shared/analytics";
 import { addCalendarDays } from "../../shared/domain";
 
 type RangePreset = "30" | "90" | "180" | "project" | "custom";
@@ -56,22 +46,19 @@ function validStoredLayout(value: unknown): value is AnalyticsLayout {
 }
 
 function readAnalyticsLayoutRecheck(accountKey: string): AnalyticsLayoutRecheck | null {
-  try {
-    const raw = sessionStorage.getItem(analyticsLayoutRecheckKey(accountKey));
-    if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<AnalyticsLayoutRecheck>;
+  return readRecheck(analyticsLayoutRecheckKey(accountKey), stored => {
+
+
+    const value = stored as Partial<AnalyticsLayoutRecheck>;
     if (value.action !== "save" && value.action !== "reset" || !validStoredLayout(value.draft)
       || value.expectedUpdatedAt !== null && typeof value.expectedUpdatedAt !== "string") return null;
     return { action: value.action, draft: cloneLayout(value.draft), expectedUpdatedAt: value.expectedUpdatedAt };
-  } catch { return null; }
+
+  });
 }
 
 function persistAnalyticsLayoutRecheck(accountKey: string, value: AnalyticsLayoutRecheck | null) {
-  try {
-    const key = analyticsLayoutRecheckKey(accountKey);
-    if (value) sessionStorage.setItem(key, JSON.stringify(value));
-    else sessionStorage.removeItem(key);
-  } catch { /* 当前页面仍保留核对锁。 */ }
+  persistRecheck(analyticsLayoutRecheckKey(accountKey), value);
 }
 
 function valueLabel(value: number | null, unit: AnalyticsPanelResult["unit"]) {
@@ -206,7 +193,7 @@ function PanelEditor({ initial, catalog, range, projectId, onClose, onSave }: {
     && item.visualizations.includes(panel.visualization));
   const preview = useQuery({
     queryKey: [...keys.analyticsPreview, projectId, range, panel],
-    queryFn: ({ signal }) => api<AnalyticsQueryResponse>("/api/analytics/query", { signal, method: "POST", readOnly: true, body: jsonBody({ projectId, range, panels: [panel] }) }),
+    queryFn: ({ signal }) => reportingApi.analyticsQuery<AnalyticsQueryResponse>({ signal, method: "POST", readOnly: true, body: jsonBody({ projectId, range, panels: [panel] }) }),
     enabled: Boolean(projectId),
   });
   const updateDataset = (nextId: string) => {
@@ -269,8 +256,8 @@ export function AnalyticsPage() {
     const days = Number(preset === "project" ? 90 : preset);
     return { from: addCalendarDays(businessToday, -(days - 1)), to: businessToday };
   }, [businessToday, customFrom, customTo, preset, project?.plannedEnd, project?.plannedStart]);
-  const catalogQuery = useQuery({ queryKey: keys.analyticsCatalog, queryFn: ({ signal }) => api<AnalyticsCatalog>("/api/analytics/catalog", { signal }) });
-  const layoutQuery = useQuery({ queryKey: [...keys.analyticsLayout, layoutScope], queryFn: ({ signal }) => api<AnalyticsLayoutResponse>("/api/analytics/layout", { signal }) });
+  const catalogQuery = useQuery({ queryKey: keys.analyticsCatalog, queryFn: ({ signal }) => reportingApi.analyticsCatalog<AnalyticsCatalog>({ signal }) });
+  const layoutQuery = useQuery({ queryKey: [...keys.analyticsLayout, layoutScope], queryFn: ({ signal }) => reportingApi.analyticsLayout<AnalyticsLayoutResponse>({ signal }) });
   const catalog = catalogQuery.data || fallbackCatalog;
   const savedLayout = layoutQuery.data?.layout || defaultAnalyticsLayout;
   const activeLayout = draft || savedLayout;
@@ -288,14 +275,14 @@ export function AnalyticsPage() {
   }, [layoutScope]);
   const dataQuery = useQuery({
     queryKey: [...keys.analyticsData, selectedProjectId, range, activeLayout],
-    queryFn: ({ signal }) => api<AnalyticsQueryResponse>("/api/analytics/query", { signal, method: "POST", readOnly: true, body: jsonBody({ projectId: selectedProjectId, range, panels: activeLayout.panels }) }),
+    queryFn: ({ signal }) => reportingApi.analyticsQuery<AnalyticsQueryResponse>({ signal, method: "POST", readOnly: true, body: jsonBody({ projectId: selectedProjectId, range, panels: activeLayout.panels }) }),
     enabled: Boolean(selectedProjectId) && (!layoutQuery.isLoading || layoutQuery.data !== undefined),
   });
   usePageScrollPosition(!dataQuery.isLoading && !layoutQuery.isLoading);
   const dataUnavailable = Boolean(dataQuery.error && !dataQuery.data);
   const resultMap = new Map((dataQuery.data?.results || []).map((result) => [result.panelId, result]));
   const saveLayout = useMutation({
-    mutationFn: ({ layout, expectedUpdatedAt }: { layout: AnalyticsLayout; expectedUpdatedAt: string | null }) => api<AnalyticsLayoutResponse>("/api/analytics/layout", {
+    mutationFn: ({ layout, expectedUpdatedAt }: { layout: AnalyticsLayout; expectedUpdatedAt: string | null }) => reportingApi.analyticsLayout<AnalyticsLayoutResponse>({
       method: "PUT", body: jsonBody({ ...layout, expectedUpdatedAt }),
     }),
     onMutate: (input) => setLayoutRecheck({ action: "save", draft: cloneLayout(input.layout), expectedUpdatedAt: input.expectedUpdatedAt }),
@@ -307,7 +294,7 @@ export function AnalyticsPage() {
     onError: async (error, input) => {
       if (!isWriteOutcomeUnknown(error)) { setLayoutRecheck(null); return; }
       try {
-        const latest = await api<AnalyticsLayoutResponse>("/api/analytics/layout", { readOnly: true });
+        const latest = await reportingApi.analyticsLayout<AnalyticsLayoutResponse>({ readOnly: true });
         client.setQueryData([...keys.analyticsLayout, layoutScope], latest);
         if (latest.updatedAt !== input.expectedUpdatedAt
           && JSON.stringify(latest.layout) === JSON.stringify(input.layout)) {
@@ -323,7 +310,7 @@ export function AnalyticsPage() {
   });
   const saveLock = useSynchronousPendingLock(saveLayout.isPending);
   const resetLayout = useMutation({
-    mutationFn: (expectedUpdatedAt: string | null) => api<AnalyticsLayoutResponse>("/api/analytics/layout", {
+    mutationFn: (expectedUpdatedAt: string | null) => reportingApi.analyticsLayout<AnalyticsLayoutResponse>({
       method: "DELETE", body: jsonBody({ expectedUpdatedAt }),
     }),
     onMutate: (expectedUpdatedAt) => setLayoutRecheck({ action: "reset", draft: cloneLayout(draft || savedLayout), expectedUpdatedAt }),
@@ -335,7 +322,7 @@ export function AnalyticsPage() {
     onError: async (error) => {
       if (isWriteOutcomeUnknown(error)) {
         try {
-          const latest = await api<AnalyticsLayoutResponse>("/api/analytics/layout", { readOnly: true });
+          const latest = await reportingApi.analyticsLayout<AnalyticsLayoutResponse>({ readOnly: true });
           client.setQueryData([...keys.analyticsLayout, layoutScope], latest);
           if (latest.source === "default" && latest.updatedAt === null) {
             setLayoutRecheck(null);

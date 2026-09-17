@@ -12,7 +12,7 @@ async function loginAsAdmin(page: import("@playwright/test").Page) {
   }
 }
 
-test('窄屏默认收起导航，选择页面后收起，桌面展开偏好不被改写', async ({ page }) => {
+test('窄屏默认收起导航，选择页面后收起，桌面展开偏好不被改写', {tag:'@responsive'}, async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto('/');
   await page.evaluate(() => localStorage.setItem('project-manage:sidebar-collapsed', 'false'));
@@ -23,17 +23,17 @@ test('窄屏默认收起导航，选择页面后收起，桌面展开偏好不�
   await expect(sidebar).toHaveClass(/sidebar-collapsed/);
   await page.getByRole('button', { name: '展开侧边栏', exact: true }).click();
   await expect(sidebar).not.toHaveClass(/sidebar-collapsed/);
-  await sidebar.getByRole('link', { name: '需求管理', exact: true }).click();
-  await expect(page).toHaveURL(/\/requirements$/);
+  await sidebar.getByRole('link', { name: '项目空间', exact: true }).click();
+  await expect(page).toHaveURL(/\/\?/);
   await expect(sidebar).toHaveClass(/sidebar-collapsed/);
   expect(await page.evaluate(() => localStorage.getItem('project-manage:sidebar-collapsed'))).toBe('false');
   const context = (await page.locator('.topbar-context').boundingBox())!;
-  const actions = (await page.locator('.top-actions').boundingBox())!;
-  expect(context.y + context.height).toBeLessThanOrEqual(actions.y + 1);
-  expect((await page.locator('.topbar').boundingBox())?.height).toBe(88);
+  const actions = (await page.locator('.topbar-personal').boundingBox())!;
+  expect(context.x + context.width).toBeLessThanOrEqual(actions.x + 1);
+  expect((await page.locator('.topbar').boundingBox())?.height).toBe(52);
   await page.setViewportSize({ width: 1366, height: 768 });
   await expect(sidebar).not.toHaveClass(/sidebar-collapsed/);
-  expect((await page.locator('.topbar').boundingBox())?.height).toBe(64);
+  expect((await page.locator('.topbar').boundingBox())?.height).toBe(52);
   await page.getByRole('button', { name: '收起侧边栏', exact: true }).click();
   await expect.poll(() => page.evaluate(() => localStorage.getItem('project-manage:sidebar-collapsed'))).toBe('true');
   await page.setViewportSize({ width: 390, height: 844 });
@@ -50,10 +50,7 @@ test("折叠侧边栏保留完整导航并共用同一品牌标识", async ({ pa
   await expect(page.locator(".topbar-account-name")).toContainText("admin");
 
   const sidebar = page.locator(".sidebar");
-  const logo = sidebar.locator(".brand-logo");
-  const expandedLogo = await logo.boundingBox();
-  expect(expandedLogo?.width).toBe(40);
-  expect(expandedLogo?.height).toBe(40);
+
   const linkCount = await sidebar.locator(".sidebar-nav a").count();
   expect(linkCount).toBeGreaterThan(10);
 
@@ -61,16 +58,14 @@ test("折叠侧边栏保留完整导航并共用同一品牌标识", async ({ pa
   await expect(sidebar).toHaveClass(/sidebar-collapsed/);
   await expect(page.getByRole("button", { name: "展开侧边栏" })).toBeVisible();
   await expect(sidebar.locator(".sidebar-nav a")).toHaveCount(linkCount);
-  const collapsedLogo = await logo.boundingBox();
-  expect(collapsedLogo?.width).toBe(40);
-  expect(collapsedLogo?.height).toBe(40);
 
-  const requirements = sidebar.getByRole("link", { name: "需求管理" });
+
+  const requirements = sidebar.getByRole("link", { name: "项目空间" });
   await requirements.hover();
-  await expect(page.getByRole("tooltip")).toContainText("需求管理");
   await expect(page.getByRole("tooltip")).toContainText("项目空间");
+  await expect(page.getByRole("tooltip")).toContainText("项目协作");
   await requirements.click();
-  await expect(page).toHaveURL(/\/requirements$/);
+  await expect(page).toHaveURL(/\/\?/);
   await expect(requirements).toHaveClass(/active/);
 });
 
@@ -107,4 +102,9 @@ test("管理员可配置品牌并即时更新侧边栏", async ({ page }) => {
   await expect(favicon).toHaveAttribute('href', '/project-management-logo.png');
   await expect(page).toHaveTitle("项目管理");
   await expect(page.locator('head link[rel~="icon"]')).toHaveAttribute("href", "/project-management-logo.png");
+});
+
+test('侧栏折叠前后品牌标识保持40像素',{tag:'@responsive'},async({page})=>{
+  await loginAsAdmin(page);await page.goto('/');const sidebar=page.locator('.sidebar'),logo=sidebar.locator('.brand-logo');await expect(logo).toBeVisible();
+  for(let i=0;i<2;i++){const bounds=(await logo.boundingBox())!;expect(bounds.width).toBe(40);expect(bounds.height).toBe(40);await sidebar.getByRole('button',{name:/^(收起|展开)侧边栏$/}).click();}
 });

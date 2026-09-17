@@ -1,3 +1,4 @@
+import {chooseOption} from './select-helper';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import type { Account, Archives, Person, Project } from '../../src/client/types';
 
@@ -64,12 +65,12 @@ for (const filter of ['all', 'user'] as const) {
     });
     try {
       await page.goto('/resources');
-      await page.getByLabel('按平台权限筛选').selectOption(filter);
+      await chooseOption(page.getByLabel('按平台权限筛选'), filter);
       const row = page.locator('.people-access-row').filter({ hasText: '侯文驰' });
       await row.getByRole('button', { name: /平台权限/ }).click();
       const editor = page.locator('.account-permission-popover');
       const role = editor.getByLabel('平台角色');
-      await role.selectOption('admin');
+      await chooseOption(role, 'admin');
       await editor.getByRole('button', { name: '保存权限' }).click();
       await expect.poll(() => requests.length).toBe(1);
       await expect(row).toBeVisible();
@@ -79,7 +80,7 @@ for (const filter of ['all', 'user'] as const) {
       await expect(editor.getByRole('button', { name: '保存权限' })).toBeDisabled();
       await editor.getByRole('button', { name: '重新读取账号' }).click();
       await expect(role).toHaveValue('user');
-      await role.selectOption('admin');
+      await chooseOption(role, 'admin');
       await editor.getByRole('button', { name: '保存权限' }).click();
       await expect.poll(() => requests.length).toBe(2);
       await expect(row).toBeVisible();
@@ -91,7 +92,7 @@ for (const filter of ['all', 'user'] as const) {
       releaseSuccess();
       await expect(editor).toHaveCount(0);
       if (filter === 'user') await expect(row).toHaveCount(0);
-      await page.getByLabel('按平台权限筛选').selectOption('admin');
+      await chooseOption(page.getByLabel('按平台权限筛选'), 'admin');
       await expect(row).toBeVisible();
       expect(requests).toEqual([
         { role: 'admin', expectedUpdatedAt: accounts[1].updatedAt },
@@ -140,12 +141,12 @@ test('批量添加成员提交中保持窗口与选择，部分失败只重试�
     await dialog.locator('.member-candidate-option').filter({ hasText: '新成员' }).click();
     await dialog.locator('.member-candidate-option').filter({ hasText: '额外成员' }).click();
     const role = dialog.getByLabel('加入后的项目角色');
-    await role.selectOption('manager');
+    await chooseOption(role, 'manager');
     await dialog.getByRole('button', { name: '添加 2 人到项目' }).click();
     await expect.poll(() => requests.length).toBe(1);
     await page.keyboard.press('Escape');
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toBeDisabled();
     await expect(dialog.getByRole('button', { name: '清空选择' })).toBeDisabled();
     await expect(role).toBeDisabled();
     await expect(dialog.getByRole('searchbox')).toBeDisabled();
@@ -188,7 +189,7 @@ test('添加成员已落库但响应异常时批量核对并避免重复提交',
   await page.getByRole('button', { name: '添加成员', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '添加项目成员', exact: true });
   await dialog.locator('.member-candidate-option').filter({ hasText: '新成员' }).click();
-  await dialog.getByLabel('加入后的项目角色').selectOption('manager');
+  await chooseOption(dialog.getByLabel('加入后的项目角色'), 'manager');
   await dialog.getByRole('button', { name: '添加 1 人到项目', exact: true }).click();
 
   await expect(dialog).toHaveCount(0);
@@ -288,7 +289,7 @@ test('项目角色变更单航提交，失败回退并可重试', async ({ page 
     await expect(page.getByText('角色暂时无法保存', { exact: true })).toBeVisible();
     await expect(role).toBeEnabled();
     await expect(role).toHaveValue('member');
-    await role.selectOption('manager');
+    await chooseOption(role, 'manager');
     await expect.poll(() => requests).toEqual([
       { role: 'manager', expectedMembershipUpdatedAt: membershipUpdatedAt },
       { role: 'manager', expectedMembershipUpdatedAt: membershipUpdatedAt },
@@ -317,7 +318,7 @@ test('项目角色迟到成功响应不覆盖后台重读的新成员关系', as
   try {
     await page.goto('/project-settings');
     const role = page.getByLabel('侯文驰的项目角色', { exact: true });
-    await role.selectOption('manager');
+    await chooseOption(role, 'manager');
     await expect.poll(() => requestStarted).toBe(true);
 
     members = members.map((person) => person.id === 'u1'
@@ -354,7 +355,7 @@ test('项目成员权限写入已落库但响应异常时核对角色和移除�
 
   await page.goto('/project-settings');
   const role = page.getByLabel('侯文驰的项目角色', { exact: true });
-  await role.selectOption('manager');
+  await chooseOption(role, 'manager');
   await expect(page.getByText('已核对最新状态：项目角色已更新', { exact: true })).toBeVisible();
   await expect(role).toHaveValue('manager');
   expect(roleWrites).toBe(1);
@@ -392,7 +393,7 @@ test('项目角色响应未知且成员回读失败时锁定旧权限', async ({
 
   await page.goto('/project-settings');
   const role = page.getByLabel('侯文驰的项目角色', { exact: true });
-  await role.selectOption('manager');
+  await chooseOption(role, 'manager');
   await expect(page.getByRole('alert')).toContainText('成员操作结果待核对');
   await expect(role).toBeDisabled();
   await role.evaluate((select) => { (select as HTMLSelectElement).value = 'viewer'; select.dispatchEvent(new Event('change', { bubbles: true })); });
@@ -403,7 +404,7 @@ test('项目角色响应未知且成员回读失败时锁定旧权限', async ({
   await page.getByRole('button', { name: '重新读取成员', exact: true }).click();
   await expect(role).toBeEnabled();
   await expect(role).toHaveValue('manager');
-  await role.selectOption('viewer');
+  await chooseOption(role, 'viewer');
   await expect(page.getByText('已核对最新状态：项目角色已更新', { exact: true })).toBeVisible();
   expect(requests).toEqual([
     { role: 'manager', expectedMembershipUpdatedAt: membershipUpdatedAt },
@@ -775,7 +776,7 @@ test('登录名和平台权限已落库但响应异常时核对目标字段', as
 
   await row.getByRole('button', { name: /平台权限/ }).click();
   const permission = page.locator('.account-permission-popover');
-  await permission.getByLabel('平台角色').selectOption('admin');
+  await chooseOption(permission.getByLabel('平台角色'), 'admin');
   await permission.getByRole('button', { name: '保存权限', exact: true }).click();
   await expect(permission).toHaveCount(0);
   await expect(row.getByText('管理员', { exact: true })).toBeVisible();
@@ -881,7 +882,7 @@ test('平台权限响应未知且账号回读失败时关闭编辑器仍锁定�
   const trigger = row.getByRole('button', { name: /平台权限/ });
   await trigger.click();
   const editor = page.locator('.account-permission-popover');
-  await editor.getByLabel('平台角色').selectOption('admin');
+  await chooseOption(editor.getByLabel('平台角色'), 'admin');
   await editor.getByRole('button', { name: '保存权限', exact: true }).click();
   await expect(editor).toContainText('操作结果暂时无法确认');
   await page.keyboard.press('Escape');
@@ -1481,6 +1482,7 @@ test('人员姓名草稿遇到后台更新时保留旧版本，重读后才可�
   await expect(page.getByRole('alert')).toContainText('人员已更新');
   expect(requests).toHaveLength(0);
   await page.getByRole('button', { name: '重新读取人员', exact: true }).click();
+  await expect(page.getByText('已读取最新人员（版本 2026-09-02），草稿已保留，请核对后保存。',{exact:true})).toBeVisible();
   await expect(input).toHaveValue('本地人员姓名草稿');
   await input.press('Enter');
   await expect.poll(() => requests).toEqual([{ name: '本地人员姓名草稿', expectedUpdatedAt: '2026-09-02' }]);
@@ -1515,6 +1517,7 @@ test('登录名草稿遇到后台更新时使用打开时账号版本', async ({
   await expect(page.getByRole('alert')).toContainText('账号已更新');
   expect(requests).toHaveLength(0);
   await page.getByRole('button', { name: '重新读取账号', exact: true }).click();
+  await expect(page.getByText('已读取最新账号（版本 2026-09-02），草稿已保留，请核对后保存。',{exact:true})).toBeVisible();
   await expect(input).toHaveValue('本地登录名草稿');
   await input.press('Enter');
   await expect.poll(() => requests).toEqual([{ username: '本地登录名草稿', expectedUpdatedAt: '2026-09-02' }]);
@@ -1539,7 +1542,7 @@ test('平台权限选择遇到后台更新时必须重新读取并重新选择',
   await row.getByRole('button', { name: /平台权限/ }).click();
   const editor = page.locator('.account-permission-popover');
   const select = editor.getByLabel('平台角色');
-  await select.selectOption('admin');
+  await chooseOption(select, 'admin');
   currentAccounts = currentAccounts.map((account) => account.id === 'member'
     ? { ...account, username: '后台更新但仍为普通用户', updatedAt: '2026-09-02' }
     : account);
@@ -1550,13 +1553,13 @@ test('平台权限选择遇到后台更新时必须重新读取并重新选择',
   expect(requests).toHaveLength(0);
   await editor.getByRole('button', { name: '重新读取账号', exact: true }).click();
   await expect(select).toHaveValue('user');
-  await select.selectOption('admin');
+  await chooseOption(select, 'admin');
   await editor.getByRole('button', { name: '保存权限', exact: true }).click();
   await expect.poll(() => requests).toEqual([{ role: 'admin', expectedUpdatedAt: '2026-09-02' }]);
 });
 
-test('人员与权限在宽、中、窄内容区完整展示并与项目角色分离', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-1080p', '在一个浏览器内覆盖三种内容宽度');
+test('人员与权限在宽、中、窄内容区完整展示并与项目角色分离',{tag:'@responsive'}, async ({ page }, _testInfo) => {
+
   await mockAccounts(page);
 
   for (const viewport of [

@@ -13,7 +13,7 @@ async function checkCards(panel:Locator) {
   for(const box of titleBoxes)expect(box.width).toBeGreaterThan(20);
 }
 
-test('详情中的说明、进展、安排和记录使用一致的模块边界与标题',async({page},info)=>{
+test('详情中的说明、进展、安排和记录使用一致的模块边界与标题',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page),modal=page.locator('.modal-card-workspace[role=dialog]');
   for(const id of ['feature:'+f.feature.id,'phase:'+f.phases[1].id,f.testing.id,f.testing.workItems[1].id]){
     await page.goto('/?'+new URLSearchParams({projectId:f.projectId,detailId:id,detailTab:'overview'}));
@@ -35,7 +35,7 @@ test('详情中的说明、进展、安排和记录使用一致的模块边界�
   await page.screenshot({path:info.outputPath('range-overview-cards.png'),animations:'disabled'});
 });
 
-test('窄屏长内容不撑破卡片，失败后保留编辑输入和操作入口',async({page},info)=>{
+test('窄屏长内容不撑破卡片，失败后保留编辑输入和操作入口',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page);
   const description='提供个人资料、账号安全与自主设置。'.repeat(40);
   const saved=await page.request.post(f.base+'/features',{data:{id:f.feature.id,expectedVersion:f.feature.version,name:f.feature.name,description}});expect(saved.ok(),await saved.text()).toBe(true);

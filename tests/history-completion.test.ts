@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -39,7 +40,7 @@ async function mcp(name: string, args: Record<string, unknown>, bearer = token) 
 
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
-  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  origin = await listenTestApp(app);
   const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } });
   cookie = String(login.headers['set-cookie']).split(';')[0];
   projectId = (await post('/api/projects', { name: '历史补录测试' })).json().id;
@@ -48,13 +49,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
 it('按计划补录工作项、整条需求原子完成，重复提交不生成记录，按工作日期计入完成趋势', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   let requirement = await createHistory();
   const first = requirement.workItems![0];
   const completed = await post(`/api/work-items/${first.id}/complete-as-planned`, { expectedVersion: first.version });
@@ -82,7 +83,7 @@ it('按计划补录工作项、整条需求原子完成，重复提交不生成�
 });
 
 it('缺排期、未来计划和已有执行记录均拒绝，整条补录失败不会部分写入', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const requirement = await createHistory();
   const item = requirement.workItems!.at(-1)!;
   for (const scenario of ['missing', 'future', 'executed']) {
@@ -98,7 +99,7 @@ it('缺排期、未来计划和已有执行记录均拒绝，整条补录失败�
 });
 
 it('调整旧版非工作日排期时以需求锚点统一重算', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const requirement = await createHistory();
   const retained = requirement.workItems![0];
   sqlite.prepare('DELETE FROM work_items WHERE requirement_id=? AND id<>?').run(requirement.id, retained.id);
@@ -207,7 +208,7 @@ it('REST/MCP共用补录规则，普通成员不能补录', async () => {
 });
 
 it('200个工作项整单补录保持常量级查询准备并写全事件和审计', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const requirement = await createHistory();
   const now = new Date().toISOString();
   sqlite.prepare('DELETE FROM work_items WHERE requirement_id=?').run(requirement.id);

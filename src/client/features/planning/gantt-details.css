@@ -1,0 +1,13 @@
+@layer application {
+
+/* 甘特需求气泡下钻入口 */
+.gantt-popover-footer { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--divider); }
+.gantt-popover-footer a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-ink); font-size: 12px; font-weight: 650; text-decoration: none; }
+.gantt-popover-footer a:hover { color: var(--accent-hover); text-decoration: underline; }
+
+/* 两种甘特视图共用状态纹理，延期描边保留执行条底色。 */
+:is(.unified-gantt-actual,.unified-gantt-delay,.gantt-date-actual).gantt-status-blocked:not(.is-unfilled) { background-image: repeating-linear-gradient(135deg,transparent 0 4px,var(--gantt-blocked-bg) 4px 7px); }
+:is(.unified-gantt-actual,.unified-gantt-delay,.gantt-date-actual).gantt-status-cancelled { background-image: repeating-linear-gradient(90deg,transparent 0 6px,var(--bg-surface) 6px 9px); opacity: .65; }
+
+.gantt-toolbar-actions{flex-wrap:wrap;max-width:100%}
+}

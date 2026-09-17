@@ -30,8 +30,8 @@ async function mockArchiveCenter(page: Page, content: Archives = { projects: [],
   };
 }
 
-test('归档列表失败时显示错误并可重新加载', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-1080p', '错误态只需在一个桌面视口执行');
+test('归档列表失败时显示错误并可重新加载', async ({ page }, _testInfo) => {
+
   const state = await mockArchiveCenter(page);
   state.failLoad();
   await page.goto('/archives');
@@ -64,7 +64,7 @@ test('归档恢复连点只提交一次，请求期间锁定当前操作', async
     await expect.poll(() => requests).toBe(1);
     expect(payloads).toEqual([{ expectedDeletedAt: archivedRequirement.deletedAt }]);
     await expect(restore).toBeDisabled();
-    await expect(restore).toContainText('恢复中');
+    await expect(restore).toHaveAttribute('aria-busy', 'true');
     release();
     await expect(restore).toHaveCount(0);
     await expect(page.getByText('归档需求不存在')).toHaveCount(0);

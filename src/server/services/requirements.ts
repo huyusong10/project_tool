@@ -1,8 +1,9 @@
-import {readReferenceLinks,type ReferenceLink} from '../../shared/reference-links';
+import { requirementForecastLookup } from './requirement-forecast';
+import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
 import { deriveExecutionStage, type ExecutionStage, type WorkStage } from '../../shared/execution-stage';
-import {nodeForecastBasis, deliveryForecast, requirementDeliveryForecast} from '../../shared/forecast-basis';
-import {type DeliveryFields,type ProcessingResult,deliveryReadiness,processingPriority} from '../../shared/delivery';
-import { sqlite } from '../database';
+import { deliveryForecast } from '../../shared/forecast-basis';
+import { type DeliveryFields, type ProcessingResult, deliveryReadiness, processingPriority } from '../../shared/delivery';
+import { getDatabaseContext } from '../database-context';
 import { config } from '../config';
 import { notFound } from '../errors';
 import { businessDateFromDateTime, calculateWorkItemGap, deriveRequirementMetrics, todayIso } from '../../shared/domain';
@@ -73,11 +74,11 @@ type WorkItemRow = Omit<WorkItemRecord, 'collaborators' | 'assigneeIds' | 'assig
 type CollaboratorRow = { workItemId: string; id: string; name: string; jobTitle: string | null };
 
 function rows<T>(sql: string, ...params: unknown[]) {
-  return sqlite.prepare(sql).all(...params) as T[];
+  return getDatabaseContext().sqlite.prepare(sql).all(...params) as T[];
 }
 
 function row<T>(sql: string, ...params: unknown[]) {
-  return sqlite.prepare(sql).get(...params) as T | undefined;
+  return getDatabaseContext().sqlite.prepare(sql).get(...params) as T | undefined;
 }
 
 export function loadWorkItemsByRequirementIds(requirementIds: string[], requirementStatuses?: ReadonlyMap<string, string>) {
@@ -167,7 +168,7 @@ function enrichRequirement(requirement: RequirementRecord, workItems: WorkItemRe
 
 export const requirementAnalysisSnapshots=new WeakMap<RequirementRecord[],Map<string,import('../../shared/paths').PathAnalysis>>();
 export function listRequirements(...args: Parameters<typeof readRequirements>) {
-  return sqlite.transaction(() => readRequirements(...args))();
+  return getDatabaseContext().sqlite.transaction(() => readRequirements(...args))();
 }
 function readRequirements(filters: { phaseId?:string; featureId?:string;deliveryScope?:'committed'|'candidate';projectId?: string; ownerId?: string; includeDeleted?: boolean; view?: string; status?: string } = {}, asOfDate = todayIso()) {
   const where = [filters.includeDeleted ? '1=1' : 'r.deleted_at IS NULL'];
@@ -186,13 +187,15 @@ function readRequirements(filters: { phaseId?:string; featureId?:string;delivery
     loadedWorkItems.requirementCancellationDates.get(requirement.id),
   ));
   const analyses = new Map([...new Set(requirements.map(r => r.projectId))].map(projectId => [projectId, getPathAnalysis(projectId, undefined, asOfDate)]));
+  const lookups=new Map([...analyses].map(([id,analysis])=>[id,requirementForecastLookup(analysis)]));
   result = result.map(r => {
     const snapshot = analyses.get(r.projectId)!;
-    r.deliveryForecast = requirementDeliveryForecast(r.id, snapshot);
-    r.milestones = snapshot.milestones?.filter(m => m.requirementId === r.id) || [];
-    for (const w of r.workItems || []) w.deliveryForecast = deliveryForecast(snapshot.nodes.find(n => n.id === w.id), snapshot);
-    const analysis=analyses.get(r.projectId)!,facts=analysis.requirements.find(n=>n.id===r.id);r.forecastBasis=nodeForecastBasis(analysis.nodes,r.id);r.blockerCoordination=analysis.nodes.find(n=>n.id==='execute:'+r.id)?.blockerCoordination;r.commitment=facts?.commitment;Object.assign(r,{executionForecastEnd:facts?.executionForecastEnd,acceptanceForecastEnd:facts?.acceptanceForecastEnd,acceptanceAssumed:facts?.acceptanceAssumed});
-    for(const w of r.workItems||[])Object.assign(w,{forecastBasis:analysis.nodes.find(n=>n.id===w.id)?.forecastBasis,blockerCoordination:analysis.nodes.find(n=>n.id===w.id)?.blockerCoordination});
+    const lookup=lookups.get(r.projectId)!;
+    r.deliveryForecast = lookup.delivery(r.id);
+    r.milestones = lookup.milestones.get(r.id) || [];
+    for (const w of r.workItems || []) w.deliveryForecast = deliveryForecast(lookup.nodes.get(w.id), snapshot);
+    const facts=lookup.facts.get(r.id);r.forecastBasis=lookup.basis(r.id);r.blockerCoordination=lookup.nodes.get('execute:'+r.id)?.blockerCoordination;r.commitment=facts?.commitment;Object.assign(r,{executionForecastEnd:facts?.executionForecastEnd,acceptanceForecastEnd:facts?.acceptanceForecastEnd,acceptanceAssumed:facts?.acceptanceAssumed});
+    for(const w of r.workItems||[])Object.assign(w,{forecastBasis:lookup.nodes.get(w.id)?.forecastBasis,blockerCoordination:lookup.nodes.get(w.id)?.blockerCoordination});
     const pathRisk = analyses.get(r.projectId)?.risks[r.id];
     return pathRisk ? { ...r, ...pathRisk, pathRisk } : {...r,...processingPriority(r,asOfDate)};
   });
@@ -209,7 +212,7 @@ function readRequirements(filters: { phaseId?:string; featureId?:string;delivery
 
 /** Batch writers read execution facts while their final dependency network is still being assembled. */
 export function getRequirement(...args: Parameters<typeof readRequirement>) {
-  return sqlite.transaction(() => readRequirement(...args))();
+  return getDatabaseContext().sqlite.transaction(() => readRequirement(...args))();
 }
 function readRequirement(id: string, includeDeleted = false, withPathAnalysis = true) {
   const requirement = row<RequirementRecord>(`${requirementSelect} WHERE r.id=? ${includeDeleted ? '' : 'AND r.deleted_at IS NULL'}`, id);
@@ -237,11 +240,12 @@ function readRequirement(id: string, includeDeleted = false, withPathAnalysis = 
   const milestones=rows<import('../../shared/paths').PathMilestone>('SELECT id,project_id AS projectId,requirement_id AS requirementId,title,target_date AS targetDate,confirmation_mode AS confirmationMode,achieved_at AS achievedAt,milestone_kind AS milestoneKind,achieved_recorded_at AS achievedRecordedAt,version,cancelled FROM milestones WHERE requirement_id=?',id);
   for(const m of milestones)m.forecastEnd=pathAnalysis?.nodes.find(n=>n.id===m.id)?.forecastEnd||null;
   if(pathAnalysis){
-    result.deliveryForecast = requirementDeliveryForecast(id, pathAnalysis);
-    for (const w of result.workItems || []) w.deliveryForecast = deliveryForecast(pathAnalysis.nodes.find(n => n.id === w.id), pathAnalysis);
-    result.forecastBasis=nodeForecastBasis(pathAnalysis.nodes,id);result.blockerCoordination=pathAnalysis.nodes.find(n=>n.id==='execute:'+id)?.blockerCoordination;result.commitment=pathAnalysis.requirements.find(n=>n.id===id)?.commitment;
-    const facts=pathAnalysis.requirements.find(n=>n.id===id);Object.assign(result,{executionForecastEnd:facts?.executionForecastEnd,acceptanceForecastEnd:facts?.acceptanceForecastEnd,acceptanceAssumed:facts?.acceptanceAssumed});
-    for(const w of result.workItems||[])Object.assign(w,{forecastBasis:pathAnalysis.nodes.find(n=>n.id===w.id)?.forecastBasis,blockerCoordination:pathAnalysis.nodes.find(n=>n.id===w.id)?.blockerCoordination});
+    const lookup=requirementForecastLookup(pathAnalysis);
+    result.deliveryForecast = lookup.delivery(id);
+    for (const w of result.workItems || []) w.deliveryForecast = deliveryForecast(lookup.nodes.get(w.id), pathAnalysis);
+    result.forecastBasis=lookup.basis(id);result.blockerCoordination=lookup.nodes.get('execute:'+id)?.blockerCoordination;result.commitment=lookup.facts.get(id)?.commitment;
+    const facts=lookup.facts.get(id);Object.assign(result,{executionForecastEnd:facts?.executionForecastEnd,acceptanceForecastEnd:facts?.acceptanceForecastEnd,acceptanceAssumed:facts?.acceptanceAssumed});
+    for(const w of result.workItems||[])Object.assign(w,{forecastBasis:lookup.nodes.get(w.id)?.forecastBasis,blockerCoordination:lookup.nodes.get(w.id)?.blockerCoordination});
   }
   return { ...result,milestones,executionStage:deriveExecutionStage(result,result.workItems,milestones), ...(pathRisk ? { ...pathRisk, pathRisk } : {}), progressUpdates, issueSummary };
 }

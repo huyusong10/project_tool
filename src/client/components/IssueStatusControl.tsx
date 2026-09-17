@@ -1,13 +1,14 @@
-import {useDeliveryForm} from '../use-delivery-form';
+import * as issuesApi from '../features/issues/api';
+import { useDeliveryForm } from '../use-delivery-form';
 import { Button } from './Button';
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { api, jsonBody } from "../api";
+import { jsonBody } from "../api";
 import { useBusinessDate, useSession } from "../app-context";
 import type { Issue } from "../types";
 import { issueStatusLabels } from "../../shared/domain";
 import { canonicalizeContent, canonicalizeLabel } from "../../shared/search";
-import { AnchoredPopover } from "./InlineEdit";
+import { AnchoredPopover } from './inline-edit/popover';
 import { DraftNotice, useIssueDraft } from "./IssueForms";
 import { useToast } from "./Toast";
 
@@ -41,7 +42,7 @@ function IssueStatusEditor({ issue, disabled, onPendingChange, onSaved }: {
     const expectedContent = canonicalizeContent(note) || ({defer:"挂起问题",resume:"恢复处理",resolve:"问题已解决",reopen:"重新打开问题"}[selected.action]);
     const baselineUpdateIds = new Set((current.updates || []).map((update) => update.id));
     void editor.save(
-      () => api<Issue>(`/api/issues/${current.id}/${expected.action}`, { method: "POST", body: jsonBody(payload) }),
+      () => issuesApi.issuesById2<Issue>(current.id, expected.action, { method: "POST", body: jsonBody(payload) }),
       ()=>{clearSelected();clearNote();onSaved();},
       {
         matches: (latest) => latest.status === expected.target
@@ -135,7 +136,7 @@ export function IssueFactForm({ issue, disabled, onPendingChange, onSaved, onCan
     const expectedSupersedesId = supersedesId || null;
     reconciled.current = false;
     void editor.save(
-      () => api<Issue>(`/api/issues/${current.id}/correct`, {
+      () => issuesApi.issuesCorrect<Issue>(current.id, {
         method: "POST",
         body: jsonBody({
           expectedVersion: current.version,

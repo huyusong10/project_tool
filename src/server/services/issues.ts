@@ -1,34 +1,11 @@
-import {assertHistoricalProjectPeople,changeSnapshot} from './support';
-import {describeChanges} from './support';
 import { randomUUID } from 'node:crypto';
-import { sqlite } from '../database';
+import { isOverdueByWorkday, issueStatuses, priorities, todayIso } from '../../shared/domain';
 import type { Actor } from '../auth';
-import { issueStatuses, isOverdueByWorkday, priorities, todayIso } from '../../shared/domain';
+import { assertProjectManager, assertProjectMember, canUpdateIssueProgress, requireAuthorizationActor } from '../authorization';
+import { getDatabaseContext } from '../database-context';
 import { fail, forbidden, notFound } from '../errors';
-import {
-  assertProjectManager,
-  assertProjectMember,
-  canUpdateIssueProgress,
-  requireAuthorizationActor,
-} from '../authorization';
 import { recordAudit as audit } from './audit';
-import {
-  assertExpectedVersion,
-  assertTransition,
-  assertVersionedWrite,
-  ensureEnum,
-  nowIso,
-  nullableDate,
-  nullableLabel,
-  nullableText,
-  requireDate,
-  requireLabel,
-  requireProgress,
-  requireText,
-  row,
-  rows,
-  type JsonObject,
-} from './support';
+import { assertExpectedVersion, assertHistoricalProjectPeople, assertTransition, assertVersionedWrite, changeSnapshot, describeChanges, ensureEnum, nowIso, nullableDate, nullableLabel, nullableText, requireDate, requireLabel, requireProgress, requireText, row, rows, type JsonObject } from './support';
 
 export type IssueUpdateRecord = {
   id: string; issueId: string; progress: number | null; content: string; eventType: string; supersedesId: string | null; createdByAccountId: string | null; createdByName: string | null; createdAt: string; updatedAt: string;
@@ -57,7 +34,7 @@ const issueSelect = `SELECT i.next_review_at AS nextReviewAt,i.id, i.project_id 
   LEFT JOIN people p ON p.id=i.owner_id`;
 
 function appendIssueEvent(issueId: string, eventType: string, content: string, actor: Actor, progress: number | null = null, supersedesId: string | null = null, createdAt = nowIso()) {
-  sqlite.prepare(`INSERT INTO issue_updates
+  getDatabaseContext().sqlite.prepare(`INSERT INTO issue_updates
     (id, issue_id, progress, content, event_type, supersedes_id, created_by_account_id, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), issueId, progress, content, eventType, supersedesId, actor.accountId || null, createdAt, createdAt);
 }
@@ -210,15 +187,15 @@ export function createIssue(input: JsonObject, actor: Actor) {
   const discoveredAt = input.discoveredAt === undefined ? todayIso() : requireDate(input.discoveredAt, '发现日期');
   const dueDate = nullableDate(input.dueDate, '目标日期');
   const now = nowIso();
-  sqlite.transaction(() => {
-    sqlite.prepare(`INSERT INTO issues
+  getDatabaseContext().sqlite.transaction(() => {
+    getDatabaseContext().sqlite.prepare(`INSERT INTO issues
       (id, project_id, requirement_id, source_ref, title, impact, reporter, owner_id, status, priority,
         progress, discovered_at, due_date, resolved_at, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       id, projectId, requirementId, nullableLabel(input.sourceRef, '来源标识'), title, nullableText(input.impact),
       nullableLabel(input.reporter, '提出人'), issueOwner(projectId, input.ownerId), 'in_progress', priority, 0, discoveredAt, dueDate, null, now, now,
     );
-    sqlite.prepare('UPDATE issues SET next_review_at=? WHERE id=?').run(nullableDate(input.nextReviewAt,'下次核对日期'),id);
+    getDatabaseContext().sqlite.prepare('UPDATE issues SET next_review_at=? WHERE id=?').run(nullableDate(input.nextReviewAt,'下次核对日期'),id);
     requireActiveProject(projectId, true);
     if (requirementId) issueRequirement(projectId, requirementId, true);
     issueOwner(projectId, input.ownerId, true);
@@ -268,7 +245,7 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
     || impact !== current.impact || reporter !== current.reporter || ownerId !== current.ownerId
     || priority !== current.priority || discoveredAt !== current.discoveredAt || dueDate !== current.dueDate;
   if (!changedFields) {
-    sqlite.transaction(() => {
+    getDatabaseContext().sqlite.transaction(() => {
       requireActiveProject(projectId, true);
       if (requirementId) issueRequirement(projectId, requirementId, true);
       validateOwner();
@@ -277,8 +254,8 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
     return current;
   }
   const now = nowIso();
-  sqlite.transaction(() => {
-    const changed = sqlite.prepare(`UPDATE issues SET requirement_id=?, source_ref=?, title=?, impact=?, reporter=?, owner_id=?,
+  getDatabaseContext().sqlite.transaction(() => {
+    const changed = getDatabaseContext().sqlite.prepare(`UPDATE issues SET requirement_id=?, source_ref=?, title=?, impact=?, reporter=?, owner_id=?,
       priority=?, discovered_at=?, due_date=?, next_review_at=?, resolved_at=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(
       requirementId, sourceRef, title, impact, reporter, ownerId, priority, discoveredAt, dueDate, nextReviewAt, resolvedAt, now, id, current.version,
     );
@@ -309,11 +286,11 @@ export function addIssueUpdate(issueId: string, input: JsonObject, actor: Actor,
   if (progress !== null && progress < issue.progress) fail('普通进展不能降低完成度，请由项目经理执行纠错');
   if (progress !== null || input.expectedVersion !== undefined) assertExpectedVersion(input, issue.version);
   const id = randomUUID(); const now = nowIso();
-  sqlite.transaction(() => {
-    sqlite.prepare(`INSERT INTO issue_updates (id, issue_id, progress, content, event_type, created_by_account_id, created_at, updated_at)
+  getDatabaseContext().sqlite.transaction(() => {
+    getDatabaseContext().sqlite.prepare(`INSERT INTO issue_updates (id, issue_id, progress, content, event_type, created_by_account_id, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, issueId, progress, content, progress === null ? 'note' : 'progress', actor.accountId || null, now, now);
     if (progress !== null) {
-      const changed = sqlite.prepare(`UPDATE issues SET progress=?, version=version+1, updated_at=? WHERE id=? AND version=?`)
+      const changed = getDatabaseContext().sqlite.prepare(`UPDATE issues SET progress=?, version=version+1, updated_at=? WHERE id=? AND version=?`)
         .run(progress, now, issueId, issue.version);
       assertVersionedWrite(changed, '问题');
     }
@@ -346,12 +323,12 @@ function issueStateEvent(id: string, action: 'defer' | 'resume' | 'resolve', inp
     assertTransition(current.status, ['in_progress'], '确认解决');
     validateIssueResolution('resolved', current.discoveredAt, today);
   }
-  sqlite.transaction(() => {
+  getDatabaseContext().sqlite.transaction(() => {
     const changed = action === 'defer'
-      ? sqlite.prepare(`UPDATE issues SET status='deferred', due_date=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version)
+      ? getDatabaseContext().sqlite.prepare(`UPDATE issues SET status='deferred', due_date=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version)
       : action === 'resume'
-        ? sqlite.prepare(`UPDATE issues SET status='in_progress', version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version)
-        : sqlite.prepare(`UPDATE issues SET status='resolved', progress=100, resolved_at=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(today, now, id, current.version);
+        ? getDatabaseContext().sqlite.prepare(`UPDATE issues SET status='in_progress', version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version)
+        : getDatabaseContext().sqlite.prepare(`UPDATE issues SET status='resolved', progress=100, resolved_at=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(today, now, id, current.version);
     assertVersionedWrite(changed, '问题');
     appendIssueEvent(id, action, content, actor, action === 'resolve' ? 100 : current.progress, null, now);
     audit(actor, action, 'issue', id, `${action === 'defer' ? '挂起' : action === 'resume' ? '恢复处理' : '确认解决'}问题：${current.title}`);
@@ -377,8 +354,8 @@ export function reopenIssue(id: string, input: JsonObject, actor: Actor) {
   const requested = input.progress === undefined ? (current.ownerId ? 99 : 0) : requireProgress(input.progress, '恢复进度');
   if (requested >= 100) fail('恢复进度必须小于100%');
   const now = nowIso();
-  sqlite.transaction(() => {
-    const changed = sqlite.prepare(`UPDATE issues SET status='in_progress', progress=?, resolved_at=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`)
+  getDatabaseContext().sqlite.transaction(() => {
+    const changed = getDatabaseContext().sqlite.prepare(`UPDATE issues SET status='in_progress', progress=?, resolved_at=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`)
       .run(requested, now, id, current.version);
     assertVersionedWrite(changed, '问题');
     appendIssueEvent(id, 'reopen', reason, actor, requested, null, now);
@@ -412,8 +389,8 @@ export function correctIssue(id: string, input: JsonObject, actor: Actor) {
     || resolvedAt !== current.resolvedAt || progress !== current.progress;
   if (!factsChanged && !supersedesId) fail('没有需要纠错的问题信息，请修改字段或关联历史记录');
   const now = nowIso();
-  sqlite.transaction(() => {
-    const changed = sqlite.prepare(`UPDATE issues SET title=?, impact=?, resolved_at=?, progress=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(
+  getDatabaseContext().sqlite.transaction(() => {
+    const changed = getDatabaseContext().sqlite.prepare(`UPDATE issues SET title=?, impact=?, resolved_at=?, progress=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(
       title, impact, resolvedAt, progress, now, id, current.version,
     );
     assertVersionedWrite(changed, '问题');

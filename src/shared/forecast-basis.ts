@@ -1,24 +1,10 @@
-import type {PathAnalysis,PathInput,PathNode} from './paths';
-export type ForecastReview = {
-  confirmedAt:string; confirmedBy:string; confirmedName?:string; remainingDays:number|null; forecastEnd:string|null;
-  progress:number; actualStart:string|null; predecessorBasis:string;
-  invalidatedAt?:string;
-};
-export type ForecastBasis = {
-  source:string; review:ForecastReview|null; needsReview:boolean; reasons:string[];
-  concurrentWorkCount:number;
-  concurrentWork?:Array<{id:string;requirementId:string|null;title:string;requirementTitle:string;forecastEnd:string|null;critical:boolean}>;
-};
-export type ExecutionMetadata = {
-  deliveryForecast?: DeliveryForecast;
-  blockerCoordination?:import('./blocker-coordination').BlockerCoordination;
-  forecastReview?:ForecastReview|null; forecastBasis?:ForecastBasis;
-  blockedCoordinatorId?:string|null; blockedNextReviewAt?:string|null; blockedIssueId?:string|null;
-};
-export type DeliveryForecast = {
-  revision: number; asOfDate: string; start: string | null; end: string | null;
-  remainingDays: number; source: string; reasons: string[];
-};
+import type { DeliveryForecast } from './path-model';
+export type { ForecastReview, ForecastBasis, ExecutionMetadata, DeliveryForecast } from './path-model';
+import type { PathAnalysis, PathInput, PathNode } from './path-model';
+
+
+
+
 export function deliveryForecast(node: PathNode | undefined, analysis: Pick<PathAnalysis, 'revision' | 'asOfDate'>): DeliveryForecast {
   return { revision: analysis.revision, asOfDate: analysis.asOfDate, start: node?.forecastStart || null, end: node?.forecastEnd || null,
     remainingDays: node?.remainingDays || 0, source: node?.source || '', reasons: node?.unknownReasons || ['缺少可用预测'] };

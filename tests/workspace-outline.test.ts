@@ -11,7 +11,7 @@ Object.assign(process.env,{DB_PATH:path.join(directory,'test.db'),BACKUP_DIR:pat
 let app:FastifyInstance,cookie='';
 const request=(method:'GET'|'POST'|'DELETE',url:string,payload?:unknown)=>app.inject({method,url,headers:{cookie},payload:payload as Record<string,unknown>});
 beforeAll(async()=>{app=await(await import('../src/server/app')).buildApp();await app.ready();cookie=String((await request('POST','/api/login',{username:'admin',password})).headers['set-cookie']).split(';')[0];});
-afterAll(async()=>{await app.close();(await import('../src/server/database')).sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
+afterAll(async()=>{await app.close();(await import('./support/database')).sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
 async function fixture(){
   const p=(await request('POST','/api/projects',{name:'Outline '+randomUUID()})).json(),base='/api/projects/'+p.id;
   const f=(await request('POST',base+'/features',{name:'资产管理'})).json().features[0];
@@ -36,7 +36,7 @@ it('完整同级排序，过期版本和漏项均整批回滚；新需求追加�
   const queried=(await request('GET','/api/requirements/query?projectId='+f.p.id+'&sort=manual')).json();
   // The service is also shared by the MCP query tool.
   expect(queried.items.map((r:{id:string})=>r.id)).toEqual([b.id,a.id,c.id]);
-  const {sqlite}=await import('../src/server/database');expect((sqlite.prepare('SELECT id FROM requirements WHERE feature_id=? ORDER BY sort_order').all(f.f.id) as Array<{id:string}>).map(r=>r.id)).toEqual([b.id,a.id,c.id]);
+  const {sqlite}=await import('./support/database');expect((sqlite.prepare('SELECT id FROM requirements WHERE feature_id=? ORDER BY sort_order').all(f.f.id) as Array<{id:string}>).map(r=>r.id)).toEqual([b.id,a.id,c.id]);
 });
 it('批量归档在一个特性不符合条件时回滚全部',async()=>{
   const f=await fixture();await f.create('未完成',f.f.id);
@@ -56,7 +56,7 @@ it('移动追加到目标，撤销还原来源顺序；后续编辑使撤销整�
   const f=await fixture(),a=await f.create('A',f.f.id),b=await f.create('B',f.f.id),c=await f.create('C',f.f.id);
   const phase=(await request('POST',f.base+'/features/'+f.f.id+'/phases',{name:'下一批'})).json();
   const move=await request('POST',f.base+'/requirement-placement',{requirements:[a,c].map(r=>({id:r.id,expectedVersion:r.version})),phaseId:phase.id,featureId:f.f.id});expect(move.statusCode,move.body).toBe(200);
-  const {sqlite}=await import('../src/server/database');
+  const {sqlite}=await import('./support/database');
   expect((sqlite.prepare('SELECT id FROM requirements WHERE phase_id=? ORDER BY sort_order').all(phase.id) as Array<{id:string}>).map(r=>r.id)).toEqual([a.id,c.id]);
   const undone=await request('POST',f.base+'/outline-restore',move.json().undo);expect(undone.statusCode,undone.body).toBe(200);
   expect((sqlite.prepare('SELECT id FROM requirements WHERE feature_id=? AND phase_id IS NULL ORDER BY sort_order').all(f.f.id) as Array<{id:string}>).map(r=>r.id)).toEqual([a.id,b.id,c.id]);
@@ -73,7 +73,7 @@ it('人工排序排除系统归类，管理员可排序已完成需求，取消�
   const response=await request('POST',f.base+'/outline-order',{kind:'feature',parentId:f.p.id,items:[{id:r.featureId,expectedVersion:1}]});expect(response.statusCode).toBe(409);
   const a=(await request('POST','/api/requirements/'+r.id+'/work-items',{title:'工作 A',expectedVersion:r.version})).json();
   const b=(await request('POST','/api/requirements/'+r.id+'/work-items',{title:'工作 B',expectedVersion:(await request('GET','/api/requirements/'+r.id)).json().version})).json();
-  const {sqlite}=await import('../src/server/database');
+  const {sqlite}=await import('./support/database');
   sqlite.prepare("UPDATE requirements SET status='completed',progress=100 WHERE id=?").run(r.id);
   sqlite.prepare("UPDATE work_items SET status='completed',progress=100,actual_start='2020-01-01',actual_end='2020-01-01' WHERE id=?").run(a.id);
   sqlite.prepare("UPDATE work_items SET status='cancelled',updated_at='2020-01-01T08:00:00.000Z' WHERE id=?").run(b.id);

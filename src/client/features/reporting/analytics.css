@@ -1,0 +1,41 @@
+@layer application {
+
+.analytics-page { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; }
+.analytics-toolbar { min-width: 0; max-width: 100%; min-height: 58px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-surface); }
+.analytics-toolbar .view-tabs { flex: none; }
+.analytics-toolbar .view-tabs button { flex: none; white-space: nowrap; }
+.analytics-custom-range { display: flex; align-items: center; gap: 7px; color: var(--text-faint); font-size: 12px; }
+.analytics-custom-range input { min-height: 38px; padding: 0 9px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-secondary); background: var(--bg-surface); }
+.analytics-range-label { color: var(--text-faint); font-size: 12px; white-space: nowrap; }
+.analytics-layout-error { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }.analytics-layout-error .form-error { margin: 0; }
+.analytics-edit-actions { display: flex; gap: 7px; margin-left: auto; }
+.analytics-guest-note { min-width: 0; max-width: 100%; margin: 0; padding: 9px 12px; border: 1px solid var(--info-border); border-radius: var(--radius-md); color: var(--text-secondary); background: var(--accent-soft); font-size: 12px; }
+.analytics-grid { min-width: 0; max-width: 100%; display: grid; grid-template-columns: repeat(12,minmax(0,1fr)); align-items: stretch; gap: 12px; }
+.analytics-grid > .analytics-panel-small { grid-column: span 3; }
+.analytics-grid > .analytics-panel-medium { grid-column: span 6; }
+.analytics-grid > .analytics-panel-large { grid-column: span 12; }
+.analytics-grid-item, .analytics-drag-item { min-width: 0; }
+.analytics-drag-item { position: relative; }
+.analytics-drag-item.is-dragging { z-index: 5; opacity: .55; }
+.analytics-panel { height: 100%; min-height: 320px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--surface-border); border-radius: var(--surface-radius); background: var(--surface-bg); box-shadow: var(--surface-shadow); }
+.analytics-grid > .analytics-panel-small .analytics-panel { min-height: 168px; }
+.analytics-panel > header { min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 8px 13px; border-bottom: 1px solid var(--divider); }
+.analytics-panel > header > div:first-child { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.analytics-panel > header h2 { min-width: 0; margin: 0; overflow: hidden; color: var(--text-secondary); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.analytics-panel > header > div:first-child > span { flex: none; padding: 3px 6px; border-radius: 5px; color: var(--text-muted); background: var(--bg-hover); font-size: 12px; }
+.analytics-panel.is-editing { border-color: var(--accent-border); box-shadow: 0 0 0 2px color-mix(in srgb,var(--accent) 8%,transparent); }
+.analytics-panel-actions { display: flex; gap: 3px; margin-left: auto; }
+.analytics-panel-actions button, .analytics-drag-handle { width: 29px; height: 29px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--radius-sm); color: var(--text-muted); background: transparent; }
+.analytics-panel-actions button:hover, .analytics-drag-handle:hover { color: var(--accent-hover); background: var(--accent-soft); }
+.analytics-panel-actions button.danger:hover { color: var(--danger-text); background: var(--danger-bg); }
+.analytics-grid > .analytics-panel-small .analytics-panel.is-editing > header > div:first-child > span { display: none; }
+.analytics-grid > .analytics-panel-small .analytics-panel.is-editing > header h2 { flex: 1; }
+.analytics-drag-handle { position: absolute; z-index: 3; top: 9px; left: 8px; cursor: grab; touch-action: none; }
+.analytics-drag-handle:active { cursor: grabbing; }
+.analytics-drag-item > .analytics-panel > header { padding-left: 43px; }
+.analytics-panel-body { flex: 1; min-height: 0; padding: 10px 12px 12px; }
+.analytics-panel-body > .chart { height: 100%; min-height: 240px; }
+.analytics-panel-loading { height: 100%; min-height: 120px; display: grid; place-items: center; color: var(--text-faint); font-size: 13px; }
+.analytics-panel-body .empty-state { min-height: 160px; padding: 16px; }
+.analytics-kpi { height: 100%; min-height: 96px; display: grid; place-content: center; justify-items: center; gap: 7px; }
+}

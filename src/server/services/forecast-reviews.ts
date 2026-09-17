@@ -1,11 +1,11 @@
-import {sqlite} from '../database';
-import type {Actor} from '../auth';
-import type {PathInput,PathAnalysis} from '../../shared/paths';
-import {predecessorBasis,type ForecastReview} from '../../shared/forecast-basis';
-import type {DependencyChanges} from '../../shared/path-contracts';
+import { predecessorBasis, type ForecastReview } from '../../shared/forecast-basis';
+import type { DependencyChanges } from '../../shared/path-contracts';
+import type { PathAnalysis, PathInput } from '../../shared/paths';
+import type { Actor } from '../auth';
+import { getDatabaseContext } from '../database-context';
 export function invalidateForecastReview(kind:'requirement'|'work',id:string){
   const table=kind==='requirement'?'requirements':'work_items';
-  sqlite.prepare(`UPDATE ${table} SET forecast_review=json_set(forecast_review,'$.invalidatedAt',?) WHERE id=? AND forecast_review IS NOT NULL`).run(new Date().toISOString(),id);
+  getDatabaseContext().sqlite.prepare(`UPDATE ${table} SET forecast_review=json_set(forecast_review,'$.invalidatedAt',?) WHERE id=? AND forecast_review IS NOT NULL`).run(new Date().toISOString(),id);
 }
 export function recordForecastReviews(snapshot:PathInput,analysis:PathAnalysis,changes:DependencyChanges,actor:Actor) {
   const now=new Date().toISOString();
@@ -20,6 +20,6 @@ export function recordForecastReviews(snapshot:PathInput,analysis:PathAnalysis,c
   }
 }
 export function persistForecastReviews(snapshot:PathInput,changes:DependencyChanges,mapping:Record<string,string>={}) {
-  for(const p of changes.estimates)if(p.reviewForecast){const w=snapshot.workItems.find(w=>w.id===p.workItemId)!;sqlite.prepare('UPDATE work_items SET forecast_review=? WHERE id=?').run(JSON.stringify(w.forecastReview),mapping[w.id]||w.id);}
-  for(const p of changes.entities||[])if(p.entity==='requirement'&&p.data.reviewForecast){const r=snapshot.requirements.find(r=>r.id===p.id)!;sqlite.prepare('UPDATE requirements SET forecast_end=?,forecast_duration=?,forecast_ready_at=?,forecast_review=? WHERE id=?').run(r.forecastEnd??null,r.forecastDuration??null,r.forecastReadyAt??null,JSON.stringify(r.forecastReview),mapping[r.id]||r.id);}
+  for(const p of changes.estimates)if(p.reviewForecast){const w=snapshot.workItems.find(w=>w.id===p.workItemId)!;getDatabaseContext().sqlite.prepare('UPDATE work_items SET forecast_review=? WHERE id=?').run(JSON.stringify(w.forecastReview),mapping[w.id]||w.id);}
+  for(const p of changes.entities||[])if(p.entity==='requirement'&&p.data.reviewForecast){const r=snapshot.requirements.find(r=>r.id===p.id)!;getDatabaseContext().sqlite.prepare('UPDATE requirements SET forecast_end=?,forecast_duration=?,forecast_ready_at=?,forecast_review=? WHERE id=?').run(r.forecastEnd??null,r.forecastDuration??null,r.forecastReadyAt??null,JSON.stringify(r.forecastReview),mapping[r.id]||r.id);}
 }

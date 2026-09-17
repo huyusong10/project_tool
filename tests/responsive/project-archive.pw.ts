@@ -48,8 +48,8 @@ async function mockProjectCreate(page: Page, createBodies: Array<Record<string, 
   });
 }
 
-test('活跃项目通过明确二次确认归档且登录态保持不变', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-1080p', '交互流程只需在一个桌面视口执行');
+test('活跃项目通过明确二次确认归档且登录态保持不变', async ({ page }, _testInfo) => {
+
   const deleteBodies: Array<Record<string, unknown>> = [];
   await mockProjectArchive(page, deleteBodies);
   await page.goto('/projects');
@@ -67,7 +67,7 @@ test('活跃项目通过明确二次确认归档且登录态保持不变', async
 
   await confirmation.getByRole('button', { name: '仍然归档' }).click();
   await expect(page.getByText('还没有项目', { exact: true })).toBeVisible();
-  await expect(page.locator('.session-badge')).toContainText('admin');
+  await expect(page.getByRole('button', { name: '账号菜单：admin', exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/projects$/);
   expect(deleteBodies).toEqual([
     { expectedUpdatedAt: project.updatedAt },
@@ -75,8 +75,8 @@ test('活跃项目通过明确二次确认归档且登录态保持不变', async
   ]);
 });
 
-test('强制归档前影响数量变化时展示最新范围并再次确认', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-1080p', '交互流程只需在一个桌面视口执行');
+test('强制归档前影响数量变化时展示最新范围并再次确认', async ({ page }, _testInfo) => {
+
   const deleteBodies: Array<Record<string, unknown>> = [];
   await mockProjectArchive(page, deleteBodies, true);
   await page.goto('/projects');
@@ -98,8 +98,8 @@ test('强制归档前影响数量变化时展示最新范围并再次确认', as
   ]);
 });
 
-test('新建项目始终显示并提交项目名称', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-1080p', '表单流程只需在一个桌面视口执行');
+test('新建项目始终显示并提交项目名称', async ({ page }, _testInfo) => {
+
   const createBodies: Array<Record<string, unknown>> = [];
   await mockProjectCreate(page, createBodies);
   await page.goto('/projects');

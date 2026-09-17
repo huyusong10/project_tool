@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -48,7 +49,7 @@ async function read<T>(protocol: 'REST' | 'MCP', url: string, tool: string, args
 
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
-  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  origin = await listenTestApp(app);
   adminCookie = cookieOf(await post('/api/login', { username: 'admin', password }));
   projectId = (await post('/api/projects', { name: '历史排序验证' })).json().id;
   const person = (await post('/api/people', { projectId, name: '历史排序成员' })).json();
@@ -61,7 +62,7 @@ beforeAll(async () => {
   siblingId = (await post('/api/requirements', { projectId, title: '另一条需求' })).json().id;
   const foreignProject = (await post('/api/projects', { name: '不可见的项目' })).json().id;
   const foreignRequirement = (await post('/api/requirements', { projectId: foreignProject, title: '不可见需求' })).json().id;
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const insert = sqlite.prepare(`INSERT INTO progress_updates
     (id, requirement_id, percent, content, event_type, created_by_account_id, created_at, updated_at)
     VALUES (?, ?, ?, ?, 'note', ?, ?, ?)`);
@@ -83,7 +84,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -116,7 +117,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
 }
 
 it('我的工作对超过900条负责需求分块统计问题行动且不漏首尾批次', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const now = new Date().toISOString();
   const requirementIds = Array.from({ length: 901 }, () => randomUUID());
   const insertRequirement = sqlite.prepare(`INSERT INTO requirements

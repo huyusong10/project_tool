@@ -1,18 +1,18 @@
-import {sqlite} from '../database';
-import type {Actor} from '../auth';
-import {assertProjectManager,assertProjectReadable,requireAuthorizationActor} from '../authorization';
-import {fail,notFound} from '../errors';
-import type {PathInput} from '../../shared/paths';
-import {compareCommitments,requirementCommitments,type DeliveryCommitment} from '../../shared/commitments';
-import {todayIso,businessDateFromDateTime} from '../../shared/domain';
-import {optionalDateSchema} from '../../shared/contracts';
-import {loadAcceptanceHistory} from './acceptance-history';
+import { compareCommitments, requirementCommitments, type DeliveryCommitment } from '../../shared/commitments';
+import { optionalDateSchema } from '../../shared/contracts';
+import { businessDateFromDateTime, todayIso } from '../../shared/domain';
+import type { PathInput } from '../../shared/paths';
+import type { Actor } from '../auth';
+import { assertProjectManager, assertProjectReadable, requireAuthorizationActor } from '../authorization';
+import { getDatabaseContext } from '../database-context';
+import { fail, notFound } from '../errors';
+import { loadAcceptanceHistory } from './acceptance-history';
 
 export function loadCommitments(projectId:string):DeliveryCommitment[] {
-  return (sqlite.prepare('SELECT snapshot FROM delivery_commitments WHERE project_id=? ORDER BY confirmed_at,rowid').all(projectId) as {snapshot:string}[]).map(r=>JSON.parse(r.snapshot));
+  return (getDatabaseContext().sqlite.prepare('SELECT snapshot FROM delivery_commitments WHERE project_id=? ORDER BY confirmed_at,rowid').all(projectId) as {snapshot:string}[]).map(r=>JSON.parse(r.snapshot));
 }
 export function loadLatestCommitment(projectId:string):DeliveryCommitment|undefined {
-  const row=sqlite.prepare('SELECT snapshot FROM delivery_commitments WHERE project_id=? ORDER BY confirmed_at DESC,rowid DESC LIMIT 1').get(projectId) as {snapshot:string}|undefined;
+  const row=getDatabaseContext().sqlite.prepare('SELECT snapshot FROM delivery_commitments WHERE project_id=? ORDER BY confirmed_at DESC,rowid DESC LIMIT 1').get(projectId) as {snapshot:string}|undefined;
   return row?JSON.parse(row.snapshot):undefined;
 }
 export function listDeliveryCommitments(projectId:string,actor:Actor) {
@@ -44,14 +44,14 @@ export function prepareCommitment(snapshot:PathInput,change:{reason:string;miles
 }
 export function persistCommitment(value:DeliveryCommitment,id:string,mapping:Record<string,string>,now:string) {
   const saved={...value,id,confirmedAt:now,milestoneId:value.milestoneId?mapping[value.milestoneId]||value.milestoneId:null,items:value.items.map(i=>({...i,id:mapping[i.id]||i.id})),departures:value.departures?.map(i=>({...i,id:mapping[i.id]||i.id}))};
-  sqlite.prepare('INSERT INTO delivery_commitments(id,project_id,confirmed_at,snapshot) VALUES (?,?,?,?)').run(id,value.projectId,now,JSON.stringify(saved));
+  getDatabaseContext().sqlite.prepare('INSERT INTO delivery_commitments(id,project_id,confirmed_at,snapshot) VALUES (?,?,?,?)').run(id,value.projectId,now,JSON.stringify(saved));
   return saved;
 }
 export function deliveryCommitmentSummary(projectId:string,actor:Actor,from?:string,to?:string) {
   assertProjectReadable(requireAuthorizationActor(actor),projectId);
   optionalDateSchema.parse(from);optionalDateSchema.parse(to);if(from&&to&&from>to)fail('统计开始日期不能晚于结束日期');
   const history=loadCommitments(projectId),today=todayIso();
-  const requirements=sqlite.prepare('SELECT id,status,delivery_scope AS deliveryScope,accepted_at AS acceptedAt,deleted_at AS deletedAt FROM requirements WHERE project_id=?').all(projectId) as {id:string;status:string;deliveryScope:string;acceptedAt:string|null;deletedAt:string|null}[];
+  const requirements=getDatabaseContext().sqlite.prepare('SELECT id,status,delivery_scope AS deliveryScope,accepted_at AS acceptedAt,deleted_at AS deletedAt FROM requirements WHERE project_id=?').all(projectId) as {id:string;status:string;deliveryScope:string;acceptedAt:string|null;deletedAt:string|null}[];
   const records=loadAcceptanceHistory(projectId),firstAcceptance=new Map<string,string>();
   const inPeriod=(at:string)=>{const date=businessDateFromDateTime(at);return (!from||date>=from)&&(!to||date<=to);};
   const result={first:{sampleCount:0,onTimeCount:0,rate:null as number|null},latest:{sampleCount:0,onTimeCount:0,rate:null as number|null},acceptedCount:0,withoutCommitment:0,missingFirstDate:0,overdueOpen:0,withdrawnOrCancelled:0,reworkCount:0,reacceptedCount:0};

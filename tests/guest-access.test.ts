@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,7 +27,7 @@ async function setPublic(value:boolean,auth=cookie){
   return app.inject({method:'PATCH',url:'/api/projects/'+projectId,headers:{cookie:auth},payload:{guestVisible:value,expectedUpdatedAt:project.updatedAt}});
 }
 beforeAll(async()=>{
-  app=await(await import('../src/server/app')).buildApp();origin=await app.listen({host:'127.0.0.1',port:0});
+  app=await(await import('../src/server/app')).buildApp();origin=await listenTestApp(app);
   const login=await app.inject({method:'POST',url:'/api/login',payload:{username:'admin',password}});
   cookie=String(login.headers['set-cookie']).split(';')[0];
   const project=await post('/api/projects',{name:'开放项目'});projectId=project.id;
@@ -43,12 +44,12 @@ beforeAll(async()=>{
   expect(changed.statusCode,changed.body).toBe(200);outsider=String(changed.headers['set-cookie']).split(';')[0];
   outsiderToken=(await post('/api/tokens',{name:'非成员'},outsider)).token;
 });
-afterAll(async()=>{await app?.close();const {sqlite}=await import('../src/server/database');if(sqlite.open)sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
+afterAll(async()=>{await app?.close();const {sqlite}=await import('./support/database');if(sqlite.open)sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
 
 it('已有及新建项目默认不开放，游客无法通过 ID 读取',async()=>{
   expect((await read('/api/projects')).json()).toEqual([]);
   for(const url of ['/api/dashboard?projectId='+projectId,'/api/requirements/'+requirementId,'/api/work-items/'+workId])expect((await read(url)).statusCode,url).toBe(404);
-  const {sqlite}=await import('../src/server/database');
+  const {sqlite}=await import('./support/database');
   expect(()=>sqlite.prepare('UPDATE projects SET guest_visible=2 WHERE id=?').run(projectId)).toThrow();
 });
 

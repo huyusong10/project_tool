@@ -1,8 +1,8 @@
 import { Button } from './Button';
-import {useIntake} from './RequirementIntake';
-import {useProjects} from '../app-context';
-import {requirementStatusLabels,riskLabels} from '../../shared/domain';
-import {emptyRequirementFilters,unfinishedStatuses,type RequirementFilters} from '../../shared/requirement-view';
+import { useIntake } from '../features/planning/use-intake';
+import { useProjects } from '../app-context';
+import { requirementStatusLabels, riskLabels } from '../../shared/domain';
+import { emptyRequirementFilters, unfinishedStatuses, type RequirementFilters } from '../../shared/requirement-view';
 export function PathFilters({value,onChange,owners,people,personId,internal}:{value:RequirementFilters;onChange:(f:RequirementFilters)=>void;owners:Array<{id:string;title:string}>;people:Array<{id:string;title:string}>;personId:string|null;internal:boolean}){
   const {selectedProjectId}=useProjects(),intake=useIntake(selectedProjectId);
   const preset=(id:string)=>{const f=emptyRequirementFilters();if(id==='unfinished')f.statuses=[...unfinishedStatuses];if(id==='in_progress')f.statuses=[id];if(id==='high'){f.statuses=[...unfinishedStatuses];f.risks=['high'];}if(id==='mine'&&personId){f.statuses=[...unfinishedStatuses];if(internal)f.participants=[personId];else f.owners=[personId];}onChange(f);};

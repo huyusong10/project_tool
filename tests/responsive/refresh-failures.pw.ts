@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { Issue, Requirement, Session, WorkItem } from '../../src/client/types';
+import {mockGanttReport} from './gantt-fixture';
+import {closeGraphProperties} from './graph-interactions';
 
 type Source = 'requirement' | 'my-work' | 'issue';
 const invalidBodies = { html: '<html>invalid API response</html>', truncated: '{"id":', empty: '' };
@@ -28,7 +30,7 @@ const issue: Issue = {
 };
 const readPaths = { requirement: '/api/requirements/r1', 'my-work': '/api/my-work', issue: '/api/issues/i1' };
 const urls = { requirement: '/requirements/r1', 'my-work': '/my-work', issue: '/issues?projectId=p1&issueId=i1' };
-const resourceSelectors = { requirement: '.requirement-overview', 'my-work': '.my-work-summary', issue: '.issue-settings-shell' };
+const resourceSelectors = { requirement: '.detail-workspace[aria-label="需求详情"]', 'my-work': '.my-work-summary', issue: '.issue-settings-summary' };
 
 async function fixture(page: Page, source: Source) {
   const state = { failure: 0 as number | 'network' | keyof typeof invalidBodies, errorBody: undefined as string | undefined, failedReads: 0, reads: 0 };
@@ -59,6 +61,7 @@ async function fixture(page: Page, source: Source) {
     if (path === '/api/issues/i1') return route.fulfill({ json: issue });
     return route.fulfill({ json: {} });
   });
+  await mockGanttReport(page,()=>[requirement]);
   return state;
 }
 const refresh = (page: Page) => page.evaluate(() => {
@@ -89,20 +92,26 @@ test('失权后迟到的问题操作响应不能重新填回已清除的详情',
     const operationResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/issues/i1/resolve');
     release();
     await operationResponse;
-    await expect(page.locator('.issue-settings-shell')).toHaveCount(0);
+    await expect(page.locator('.issue-settings-summary')).toHaveCount(0);
     state.failure = 503;
     await page.getByRole('button', { name: '重新加载', exact: true }).click();
     await expect(page.getByText('读取失败 503', { exact: true })).toBeVisible();
-    await expect(page.locator('.issue-settings-shell')).toHaveCount(0);
+    await expect(page.locator('.issue-settings-summary')).toHaveCount(0);
     state.failure = 0;
     await page.getByRole('button', { name: '重新加载', exact: true }).click();
-    await expect(page.locator('.issue-settings-shell')).toBeVisible();
+    await expect(page.locator('.issue-settings-summary')).toBeVisible();
   } finally { release(); }
 });
 
 async function openDraft(page: Page, source: Source) {
   await page.goto(urls[source]);
-  if (source === 'requirement') await page.locator('.requirement-gantt-grid .gantt-progress-marker').first().click();
+  if (source === 'requirement') {
+    await expect(page.locator(resourceSelectors.requirement)).toBeVisible();
+    if(!await page.getByRole('dialog',{name:'更新工作项进度',exact:true}).isVisible()){
+      await page.getByRole('tab',{name:/^工作项 /}).click();
+      await page.getByRole('button',{name:'更新 接口开发 进度',exact:true}).click();
+    }
+  }
   if (source === 'my-work') await page.getByRole('button', { name: '为接口开发更新进度', exact: true }).click();
   const field = source === 'issue' ? page.locator('.issue-update-form textarea') : page.getByRole('textbox', { name: '说明（可选）', exact: true });
   await field.fill('不能丢失的草稿');
@@ -136,7 +145,8 @@ for (const resource of ['session', 'projects'] as const) {
       await refresh(page);
       await expect(page.locator('.app-refresh-notice')).toHaveCount(0);
       await expect(field).toHaveValue('不能丢失的草稿');
-      await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+      if(source==='issue')await closeGraphProperties(page);else await page.getByRole('dialog',{name:'更新工作项进度',exact:true}).getByRole('button',{name:'关闭',exact:true}).click();
+      await closeGraphProperties(page);
       root.failure = 503;
       await refresh(page);
       await expect(page.locator('.app-refresh-notice')).toBeVisible();
@@ -158,10 +168,10 @@ for (const resource of ['session', 'projects'] as const) {
     root.failure = 503;
     await page.getByRole('button', { name: '重新加载', exact: true }).click();
     await expect(page.getByText(`${resource}读取失败 503`, { exact: true })).toBeVisible();
-    await expect(page.locator('.requirement-overview')).toHaveCount(0);
+    await expect(page.locator('.detail-workspace[aria-label="需求详情"]')).toHaveCount(0);
     root.failure = 0;
     await page.getByRole('button', { name: '重新加载', exact: true }).click();
-    await expect(page.locator('.requirement-overview')).toBeVisible();
+    await expect(page.locator('.detail-workspace[aria-label="需求详情"]')).toBeVisible();
     await expect(field).toHaveCount(0);
   });
 
@@ -171,11 +181,11 @@ for (const resource of ['session', 'projects'] as const) {
     root.failure = 503;
     await page.goto(urls.requirement);
     await expect(page.getByText(`${resource}读取失败 503`, { exact: true })).toBeVisible();
-    await expect(page.locator('.requirement-overview')).toHaveCount(0);
+    await expect(page.locator('.detail-workspace[aria-label="需求详情"]')).toHaveCount(0);
     await expect(page.getByText('尚未创建项目', { exact: true })).toHaveCount(0);
     root.failure = 0;
     await page.getByRole('button', { name: '重新加载', exact: true }).click();
-    await expect(page.locator('.requirement-overview')).toBeVisible();
+    await expect(page.locator('.detail-workspace[aria-label="需求详情"]')).toBeVisible();
   });
 }
 
@@ -193,17 +203,17 @@ test('全局读取 退出成功后会话503也必须立即清除身份', async (
   });
   try {
     await page.goto(urls.requirement);
-    await expect(page.locator('.requirement-overview')).toBeVisible();
-    await page.getByRole('button',{name:/^账号菜单/}).click();await page.getByRole('menuitem',{ name:'退出登录', exact: true }).evaluate((button) => {
+    await expect(page.locator('.detail-workspace[aria-label="需求详情"]')).toBeVisible();
+    await closeGraphProperties(page);await closeGraphProperties(page);await page.getByRole('button',{name:/^账号菜单[:：]/}).click();await page.getByRole('menuitem',{ name:'退出登录', exact: true }).evaluate((button) => {
       (button as HTMLButtonElement).click();
       (button as HTMLButtonElement).click();
     });
     await expect.poll(() => logoutRequests).toBe(1);
-    await expect(page.getByRole('button',{name:/^账号菜单/})).toBeDisabled();
+    await expect(page.getByRole('button',{name:/^账号菜单[:：]/})).toBeDisabled();
   } finally { releaseLogout(); }
-  await expect(page.getByRole('heading', { name: '登录项目工作台', exact: true })).toBeVisible();
-  await expect(page.locator('.topbar-account-name')).toHaveCount(0);
-  await expect(page.locator('.requirement-overview')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '游客登录', exact: true })).toBeVisible();
+  await expect(page.getByRole('button',{name:/^账号菜单[:：]/})).toHaveCount(0);
+  await expect(page.locator('.detail-workspace[aria-label="需求详情"]')).toHaveCount(0);
 });
 
 test('全局读取 整站503保留草稿，资源401后会话503必须关闭旧页面', async ({ page }) => {
@@ -218,12 +228,12 @@ test('全局读取 整站503保留草稿，资源401后会话503必须关闭旧�
   state.failure = 401;
   await refresh(page);
   await expect(page.getByRole('heading', { name: '登录状态加载失败', exact: true })).toBeVisible();
-  await expect(page.locator('.topbar-account-name')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:/^账号菜单[:：]/})).toHaveCount(0);
   await expect(field).toHaveCount(0);
-  await expect(page.locator('.requirement-overview')).toHaveCount(0);
+  await expect(page.locator('.detail-workspace[aria-label="需求详情"]')).toHaveCount(0);
   session.failure = projects.failure = state.failure = 0;
-  await page.getByRole('button', { name: '重新加载', exact: true }).click();
-  await expect(page.locator('.requirement-overview')).toBeVisible();
+  await refresh(page);
+  await expect(page.locator('.detail-workspace[aria-label="需求详情"]')).toBeVisible();
 });
 
 for (const change of ['account', 'password', 'role'] as const) {
@@ -241,7 +251,7 @@ for (const change of ['account', 'password', 'role'] as const) {
     else await expect(page.getByText('读取失败 503', { exact: true })).toBeVisible();
     await expect(page.locator('.my-work-summary')).toHaveCount(0);
     await expect(field).toHaveCount(0);
-    if (change === 'account') await expect(page.locator('.topbar-account-name')).toHaveText('第二账号');
+    if (change === 'account') await expect(page.getByRole('button',{name:/^账号菜单[:：]/})).toHaveText('第二账号');
     if (change === 'role') await expect(page.getByRole('link', { name: '人员与权限', exact: true })).toHaveCount(0);
   });
 }
@@ -252,8 +262,8 @@ test('全局读取 项目授权移除后不能因详情503继续展示旧数据'
   await page.route('**/api/projects', (route) => route.fulfill({ json: [] }));
   state.failure = 503;
   await refresh(page);
-  await expect(page.getByText('读取失败 503', { exact: true })).toBeVisible();
-  await expect(page.locator('.requirement-overview')).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'项目不可用',exact:true})).toBeVisible();
+  await expect(page.locator('.detail-workspace[aria-label="需求详情"]')).toHaveCount(0);
   await expect(field).toHaveCount(0);
 });
 
@@ -269,11 +279,11 @@ test('全局读取 登录成功后使用返回会话，后续503不误报登录�
   });
   await page.route('**/api/dashboard?*', (route) => route.fulfill({ status: 503, json: { error: '仪表盘临时不可用' } }));
   await page.goto('/');
-  await page.getByRole('button', { name: '用户登录', exact: true }).first().click();
+  await page.getByRole('button', { name: '游客登录', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '用户登录', exact: true });
   await dialog.getByLabel('密码', { exact: true }).fill('test-password');
   await dialog.getByRole('button', { name: '用户登录', exact: true }).click();
-  await expect(page.locator('.topbar-account-name')).toHaveText('admin');
+  await expect(page.getByRole('button',{name:/^账号菜单[:：]/})).toHaveText('admin');
   await expect(dialog).toHaveCount(0);
   await page.getByRole('link', { name: '我的工作', exact: true }).click();
   await expect(page.locator('.my-work-summary')).toBeVisible();
@@ -287,7 +297,7 @@ test('全局读取 改名不重置草稿，切换身份后迟到写响应不回�
   const field = await openDraft(page, 'issue');
   current = { ...adminSession, username: '管理员新名字' };
   await refresh(page);
-  await expect(page.locator('.topbar-account-name')).toHaveText('管理员新名字');
+  await expect(page.getByRole('button',{name:/^账号菜单[:：]/})).toHaveText('管理员新名字');
   await expect(field).toHaveValue('不能丢失的草稿');
   let release!: () => void;
   let returned!: () => void;
@@ -309,7 +319,7 @@ test('全局读取 改名不重置草稿，切换身份后迟到写响应不回�
     state.failure = 503;
     current = { ...adminSession, accountId: 'a2', username: '第二账号' };
     await refresh(page);
-    await expect(page.locator('.topbar-account-name')).toHaveText('第二账号');
+    await expect(page.getByRole('button',{name:/^账号菜单[:：]/})).toHaveText('第二账号');
     await expect(page.getByText('读取失败 503', { exact: true })).toBeVisible();
     release();
     await responseReturned;
@@ -318,7 +328,7 @@ test('全局读取 改名不重置草稿，切换身份后迟到写响应不回�
     await refresh(page);
     await expect.poll(() => state.reads).toBeGreaterThan(readsBefore);
     await expect(page.getByText('读取失败 503', { exact: true })).toBeVisible();
-    await expect(page.locator('.issue-settings-shell')).toHaveCount(0);
+    await expect(page.locator('.issue-settings-summary')).toHaveCount(0);
     await expect(field).toHaveCount(0);
     expect(writes).toBe(1);
   } finally { release(); }
@@ -358,12 +368,12 @@ for (const source of ['requirement', 'my-work', 'issue'] as const) {
     await expect(page.locator(resourceSelectors[source])).toHaveCount(0);
     state.failure = 503;
     state.errorBody = '<html>upstream secret</html>';
-    await page.getByRole('button', { name: '重新加载', exact: true }).click();
+    await page.getByRole('button', { name: /^(重新加载|重新读取)$/, exact: true }).click();
     await expect(page.getByText('请求失败（503）', { exact: true })).toBeVisible();
     await expect(page.locator(resourceSelectors[source])).toHaveCount(0);
     await expect(page.getByText(/upstream secret/)).toHaveCount(0);
     state.failure = 0;
-    await page.getByRole('button', { name: '重新加载', exact: true }).click();
+    await page.getByRole('button', { name: /^(重新加载|重新读取)$/, exact: true }).click();
     await expect(page.locator(resourceSelectors[source])).toBeVisible();
   });
 
@@ -380,7 +390,7 @@ for (const source of ['requirement', 'my-work', 'issue'] as const) {
       await refresh(page);
       await expect(page.getByRole('alert').filter({ hasText: '刷新失败' })).toHaveCount(0);
       await expect(field).toHaveValue('不能丢失的草稿');
-      await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+      if(source==='issue')await closeGraphProperties(page);else await page.getByRole('dialog',{name:'更新工作项进度',exact:true}).getByRole('button',{name:'关闭',exact:true}).click();
       if (source === 'issue') {
         await page.goto(urls[source]);
         await expect(page.locator(resourceSelectors[source])).toBeVisible();
@@ -390,7 +400,7 @@ for (const source of ['requirement', 'my-work', 'issue'] as const) {
       await expect(page.getByRole('alert').filter({ hasText: '刷新失败' })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath('refresh-warning.png'), animations: 'disabled' });
       state.failure = 0;
-      await page.getByRole('button', { name: '重新加载', exact: true }).click();
+      await page.getByRole('button', { name: /^(重新加载|重新读取)$/, exact: true }).click();
       await expect(page.getByRole('alert').filter({ hasText: '刷新失败' })).toHaveCount(0);
     });
   }
@@ -406,7 +416,7 @@ for (const source of ['requirement', 'my-work', 'issue'] as const) {
       await expect(field).toHaveCount(0);
       await expect(page.locator(resourceSelectors[source])).toHaveCount(0);
       state.failure = 503;
-      await page.getByRole('button', { name: '重新加载', exact: true }).click();
+      await page.getByRole('button', { name: /^(重新加载|重新读取)$/, exact: true }).click();
       await expect(page.getByText('读取失败 503', { exact: true })).toBeVisible();
       await expect(page.locator(resourceSelectors[source])).toHaveCount(0);
       await expect(field).toHaveCount(0);
@@ -420,7 +430,7 @@ for (const source of ['requirement', 'my-work', 'issue'] as const) {
     await expect(page.getByText('读取失败 503', { exact: true })).toBeVisible();
     await expect(page.locator(resourceSelectors[source])).toHaveCount(0);
     state.failure = 0;
-    await page.getByRole('button', { name: '重新加载', exact: true }).click();
+    await page.getByRole('button', { name: /^(重新加载|重新读取)$/, exact: true }).click();
     await expect(page.locator(resourceSelectors[source])).toBeVisible();
   });
 }

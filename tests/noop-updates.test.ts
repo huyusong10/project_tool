@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -34,7 +35,7 @@ async function callMcp(name: string, args: Record<string, unknown>) {
 
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
-  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  origin = await listenTestApp(app);
   const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } });
   cookie = String(login.headers['set-cookie']).split(';')[0];
   projectId = (await post('/api/projects', { name: '空操作测试' })).json().id;
@@ -43,7 +44,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -58,7 +59,7 @@ it('REST和MCP保存未变化的需求、工作项与问题时不增加版本或
     projectId, requirementId: requirement.id, title: '保持不变的问题', ownerId: person.id,
     impact: '影响', reporter: '提出人', sourceRef: 'SRC-1', priority: 'P1', discoveredAt: '2020-01-02',
   })).json();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const auditCount = () => Number((sqlite.prepare(`SELECT COUNT(*) AS count FROM audit_logs
     WHERE (entity_type='requirement' AND entity_id=?) OR (entity_type='work_item' AND entity_id=?) OR (entity_type='issue' AND entity_id=?)`)
     .get(requirement.id, workItem.id, issue.id) as { count: number }).count);
@@ -113,7 +114,7 @@ it('项目、人员、流程和成员角色保存原值时保持时间戳及审�
     .find((item: { id: string }) => item.id === project.defaultTemplateId);
   const member = (await app.inject({ url: `/api/projects/${projectId}/members`, headers: { cookie } })).json()
     .find((item: { id: string }) => item.id === person.id);
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const initialAuditCount = Number((sqlite.prepare(`SELECT COUNT(*) AS count FROM audit_logs WHERE
     (entity_type='project' AND entity_id=?) OR (entity_type='person' AND entity_id=?) OR (entity_type='template' AND entity_id=?)`)
     .get(projectId, person.id, template.id) as { count: number }).count);
@@ -161,7 +162,7 @@ it('项目、人员、流程和成员角色保存原值时保持时间戳及审�
 });
 
 it('账号、个人分析布局和系统品牌空保存不制造版本、缓存或审计变化', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const admin = (await app.inject({ url: '/api/accounts', headers: { cookie } })).json()
     .find((item: { username: string }) => item.username === 'admin');
   const accountAuditCount = () => Number((sqlite.prepare(`SELECT COUNT(*) AS count FROM audit_logs
@@ -260,7 +261,7 @@ it('工作项相同排序保持版本不变，真实排序只更新移动项并�
   })).json();
   const initialIds = requirement.workItems.map((item: { id: string }) => item.id);
   const initialVersions = new Map(requirement.workItems.map((item: { id: string; version: number }) => [item.id, item.version]));
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const reorderAuditCount = () => Number((sqlite.prepare(`SELECT COUNT(*) AS count FROM audit_logs
     WHERE entity_type='work_item' AND entity_id=? AND action='reorder'`).get(requirement.id) as { count: number }).count);
   const initialAuditCount = reorderAuditCount();

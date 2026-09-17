@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 import os from "node:os";
 import path from "node:path";
 
-const testPort = Number(process.env.PLAYWRIGHT_PORT || 3211);
+const testPort = Number(process.env.PLAYWRIGHT_PORT || 3291);
 const testRunId = String(process.pid);
 
 const viewports = [
@@ -17,6 +17,8 @@ const viewports = [
 export default defineConfig({
   testDir: "./tests/responsive",
   testMatch: "**/*.pw.ts",
+  grepInvert: /@performance/,
+  outputDir: 'test-results/browser',
   timeout: 45_000,
   fullyParallel: false,
   workers: 1,
@@ -49,6 +51,8 @@ export default defineConfig({
   },
   projects: viewports.map(({ name, width, height, deviceScaleFactor }) => ({
     name,
+    // Functional cases run once; layout cases retain all six viewport projects.
+    ...(name === 'office-1280' ? {} : { grep: /@responsive/ }),
     use: {
       viewport: { width, height },
       deviceScaleFactor,

@@ -1,20 +1,23 @@
-import {ReferenceLinksEditor} from './ReferenceLinks';
-import {readReferenceLinks,type ReferenceLink} from '../../shared/reference-links';
-import {DetailToolbar} from './DetailWorkspace';
-import {useDeliveryForm} from '../use-delivery-form';
-import {WorkItemExecution} from './WorkItemExecution';
-import {WorkspaceObjectMark} from './WorkspaceObjectMark';
+import * as requirementsApi from '../features/requirements/api';
+import { ReferenceLinksEditor } from './ReferenceLinks';
+import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
+import { DetailToolbar } from './DetailWorkspace';
+import { useDeliveryForm } from '../use-delivery-form';
+import { WorkItemExecution } from './WorkItemExecution';
+import { ProgressForm } from './ProgressForm';
+import { workExecutionAccess } from '../permissions';
+import { WorkspaceObjectMark } from './WorkspaceObjectMark';
 import { Button } from './Button';
-import {FormField} from "./Form";
-import {Select} from "./Select";
-import {assertCleanRequirementDraft} from '../use-graph-draft';
-import {useSession} from '../app-context';
+import { FormField } from "./Form";
+import { Select } from "./Select";
+import { assertCleanRequirementDraft } from '../use-graph-draft';
+import { useSession } from '../app-context';
 import { workStageLabels, workStages, type WorkStage } from "../../shared/execution-stage";
-import {isAssignablePerson} from '../assignable-people';
+import { isAssignablePerson } from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
-import { api, ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
+import { ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { invalidateRequirementViews } from "../query-keys";
 import type { Person, Requirement, WorkItem } from "../types";
 import { useWorkItemSave } from "../use-work-item-save";
@@ -22,7 +25,10 @@ import { calculateWorkItemGap, canDeleteWorkItem } from "../../shared/domain";
 import { StatusBadge } from "./Badge";
 import { EmptyState } from "./Feedback";
 import { FormError } from "./Form";
-import { InlineDateCell, InlineMultiSelectCell, InlineSelectCell, InlineTextCell } from "./InlineEdit";
+import { InlineDateCell } from './inline-edit/date';
+import { InlineMultiSelectCell } from './inline-edit/multi-select';
+import { InlineSelectCell } from './inline-edit/select';
+import { InlineTextCell } from './inline-edit/text';
 import { Modal } from "./Modal";
 import { SortableList } from "./SortableList";
 import { WorkItemDeleteDialog } from "./WorkItemDeleteDialog";
@@ -63,6 +69,9 @@ export function WorkItemSettingsDialog({
   onWriteNeedsRecheck: () => void;
 }) {
   const client = useQueryClient(),{session}=useSession();
+  // The list owns the open form: deleting a row must not unmount its input.
+  const [progressItem,setProgressItem]=useDeliveryForm<string|null>(requirement.projectId,requirement.id+':work-list-progress',()=>null);
+  const progressScope=(current:Requirement)=>({items:current.workItems.filter(item=>workExecutionAccess(session,current,item,people).progress),updates:current.progressUpdates||[],requirementStatus:current.status});
   const [receipt,setReceipt,clearReceipt]=useDeliveryForm<{kind:'create';draft:NewWorkItemDraft}|{kind:'reorder';ids:string[];version:number}|null>(requirement.projectId,requirement.id+':work-list-receipt',()=>null);
   const [createUnknown,setCreateUnknown]=useDeliveryForm(requirement.projectId,requirement.id+':create-work-unknown',()=>false),[reorderUnknown,setReorderUnknown]=useDeliveryForm(requirement.projectId,requirement.id+':reorder-work-unknown',()=>false),[inlineUnknown,setInlineUnknown]=useState(false),[deleteUnknown,setDeleteUnknown]=useState(false);
   const [newItem, setNewItem, clearNewItem] = useDeliveryForm<NewWorkItemDraft | null>(requirement.projectId,requirement.id+':new-work',()=>initialCreate?{title:"",milestoneLabel:"",ownerId:"",collaboratorIds:[],plannedStart:"",plannedEnd:"",baselineVersion:requirement.version,baselineStatus:requirement.status,sourceIds:requirement.workItems.map(i=>i.id)}:null);
@@ -119,7 +128,7 @@ export function WorkItemSettingsDialog({
   }, [requirement.workItems.length]);
 
   const reorderItems = useMutation({
-    mutationFn: ({ ids, reason, expectedVersion }: { ids: string[]; reason?: string; expectedVersion: number }) => {setReceipt({kind:'reorder',ids,version:expectedVersion});return api(`/api/requirements/${requirement.id}/reorder-work-items`, {
+    mutationFn: ({ ids, reason, expectedVersion }: { ids: string[]; reason?: string; expectedVersion: number }) => {setReceipt({kind:'reorder',ids,version:expectedVersion});return requirementsApi.requirementsReorderWorkItems(requirement.id, {
       method: "POST",
       body: jsonBody({ ids, reason, expectedVersion }),
     });},
@@ -150,7 +159,7 @@ export function WorkItemSettingsDialog({
     onSettled: () => { reorderSubmitting.current = false; },
   });
   const createItem = useMutation({
-    mutationFn: async (draft: NewWorkItemDraft) => {await assertCleanRequirementDraft(session.accountId||'guest',requirement.id,{action:'edit'});setReceipt({kind:'create',draft});return api<WorkItem>(`/api/requirements/${requirement.id}/work-items`, {
+    mutationFn: async (draft: NewWorkItemDraft) => {await assertCleanRequirementDraft(session.accountId||'guest',requirement.id,{action:'edit'});setReceipt({kind:'create',draft});return requirementsApi.requirementsWorkItems<WorkItem>(requirement.id, {
       method: "POST",
       body: jsonBody({
         title: draft.title,
@@ -368,7 +377,7 @@ export function WorkItemSettingsDialog({
 {canManageRequirement&&item.actualStart&&<label className="work-arrangement-field"><span>实际开始</span><InlineDateCell {...revisionProps} disabled={!canEdit||settingsUnknown} value={item.actualStart} label="实际开始" reason={{label:'修改说明'}} onSave={(actualStart,reason,expectedVersion)=>saveWorkItem(item,{actualStart,reason},expectedVersion)}/></label>}
 {canManageRequirement&&item.status==='completed'&&<label className="work-arrangement-field"><span>实际完成</span><InlineDateCell {...revisionProps} disabled={!canEdit||settingsUnknown} value={item.actualEnd} label="实际完成" reason={{label:'修改说明'}} onSave={(actualEnd,reason,expectedVersion)=>saveWorkItem(item,{actualEnd,reason},expectedVersion)}/></label>}
                 </div>
-                <div className="work-arrangement-execution">{!itemId&&<WorkItemExecution requirement={requirement} item={item} people={people} presentation="detail" extraMenu={canEdit&&item.status==='not_started'?<Button variant="ghost" tone="danger" size="compact" disabled={!canDelete||settingsUnknown} title={canDelete?'删除工作项':'已有执行信息或进展历史，不能删除'} onClick={()=>setRemoveTarget(item)}>删除</Button>:undefined}>{({progress,actions})=><>{progress}{actions}</>}</WorkItemExecution>}{canEdit&&itemId&&item.status==='not_started'&&<Button variant="secondary" tone="danger" size="compact" title={canDelete?'删除工作项':'已有执行信息或进展历史，不能删除'} disabled={!canDelete||settingsUnknown} onClick={()=>setRemoveTarget(item)}><Trash2 size={14}/>删除</Button>}</div>
+                <div className="work-arrangement-execution">{!itemId&&<WorkItemExecution requirement={requirement} item={item} people={people} presentation="detail" onProgress={()=>setProgressItem(item.id)} extraMenu={canEdit&&item.status==='not_started'?<Button variant="ghost" tone="danger" size="compact" disabled={!canDelete||settingsUnknown} title={canDelete?'删除工作项':'已有执行信息或进展历史，不能删除'} onClick={()=>setRemoveTarget(item)}>删除</Button>:undefined}>{({progress,actions})=><>{progress}{actions}</>}</WorkItemExecution>}{canEdit&&itemId&&item.status==='not_started'&&<Button variant="secondary" tone="danger" size="compact" title={canDelete?'删除工作项':'已有执行信息或进展历史，不能删除'} disabled={!canDelete||settingsUnknown} onClick={()=>setRemoveTarget(item)}><Trash2 size={14}/>删除</Button>}</div>
               </article>;
             }}
           />
@@ -380,7 +389,8 @@ export function WorkItemSettingsDialog({
     </>;
   return <>
     {embedded?content:<Modal title="工作项" width={960} layout="workspace" closable={!createItem.isPending&&!reorderItems.isPending} onClose={closeSettings}>{content}</Modal>}
+    {progressItem&&<ProgressForm key={progressItem} requirementId={requirement.id} fixedItemId={progressItem} scope={progressScope(requirement)} loadScope={async()=>progressScope(await onReload())} contextLabel={requirement.projectName+' · '+requirement.title} onClose={()=>setProgressItem(null)}/>}
 
-    {removeTarget && <WorkItemDeleteDialog target={removeTarget} requirement={requirement} canManage onReload={onReload} onWriteNeedsRecheck={() => { setDeleteUnknown(true); onWriteNeedsRecheck(); }} onClose={() => setRemoveTarget(null)} />}
+    {removeTarget && <WorkItemDeleteDialog target={removeTarget} requirement={requirement} canManage={canManageRequirement && canEdit && !requirementLocked} onReload={onReload} onWriteNeedsRecheck={() => { setDeleteUnknown(true); onWriteNeedsRecheck(); }} onClose={() => setRemoveTarget(null)} />}
   </>;
 }

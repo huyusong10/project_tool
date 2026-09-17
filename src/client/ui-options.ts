@@ -1,20 +1,4 @@
-import {
-  issueStatuses,
-  issueStatusLabels,
-  projectStatuses,
-  priorities,
-  priorityLabels,
-  requirementStatuses,
-  requirementStatusLabels,
-  riskLevels,
-  riskLabels,
-  workItemStatuses,
-  type IssueStatus,
-  type Priority,
-  type RequirementStatus,
-  type RiskLevel,
-  type WorkItemStatus,
-} from "../shared/domain";
+import { issueStatuses, issueStatusLabels, projectStatuses, priorities, priorityLabels, requirementStatuses, requirementStatusLabels, riskLevels, riskLabels, workItemStatuses, type IssueStatus, type Priority, type RequirementStatus, type RiskLevel, type WorkItemStatus } from "../shared/domain";
 
 export type UiOption<T extends string = string> = {
   value: T;

@@ -1,3 +1,5 @@
+import {closeGraphProperties} from './graph-interactions';
+import {headerAction} from './topbar-helpers';
 import {expect,test} from '@playwright/test';
 import {mockGanttData,requirement,workItem} from './gantt-fixture';
 
@@ -11,7 +13,7 @@ for(const mode of ['direct','split'] as const){
    workItems:mode==='direct'?[]:[{...workItem,plannedEnd:'2026-09-04'}],
    progressUpdates:[{id:'record',percent:60,eventType:'progress',content:'执行记录',createdAt:date+'T01:00:00Z',updatedAt:date+'T01:00:00Z'}],
   }}));
-  await page.goto('/requirements/r1');
+  await page.goto('/requirements/r1');await page.getByRole('tab',{name:'记录',exact:true}).click();
   const chart=page.getByRole('img',{name:'需求计划与实际进度趋势',exact:true});await chart.scrollIntoViewIfNeeded();await expect(chart.locator('canvas')).toBeVisible();
   const box=(await chart.boundingBox())!;await chart.hover({position:{x:box.width/2,y:130}});
   await expect(chart).toContainText(new RegExp('计划进度\\s*'+(mode==='direct'?'88':'83')));
@@ -20,7 +22,7 @@ for(const mode of ['direct','split'] as const){
 
 test('开始冲突后重新读取需求并使用新版本重试',async({page})=>{
  await mockGanttData(page);const writes:Array<Record<string,unknown>>=[];
- let current={...requirement,executionMode:'direct',status:'not_started',progress:0,version:1,workItems:[]};
+ let current={...requirement,executionMode:'direct',ownerId:'u1',ownerName:'张三',status:'not_started',progress:0,version:1,workItems:[]};
  await page.route('**/api/requirements/r1',route=>route.fulfill({json:current}));
  await page.route('**/api/requirements/r1/start',route=>{
   const body=route.request().postDataJSON();writes.push(body);
@@ -33,7 +35,7 @@ test('开始冲突后重新读取需求并使用新版本重试',async({page})=>
 });
 test('开始窗口不再读取或确认前置条件',async({page})=>{
  await mockGanttData(page);let conditionReads=0;
- await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,executionMode:'direct',status:'not_started',version:1,workItems:[]}}));
+ await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,executionMode:'direct',ownerId:'u1',ownerName:'张三',status:'not_started',version:1,workItems:[]}}));
  await page.route('**/api/requirements/r1/start',route=>route.fulfill({json:{...requirement,executionMode:'direct',status:'in_progress',version:2,workItems:[]}}));
  await page.route('**/api/requirements/r1/start-conditions',route=>{conditionReads++;return route.fulfill({json:{dependencyRevision:1,unmetPredecessors:[]}});});
  await page.goto('/requirements/r1');await page.getByRole('button',{name:'开始需求',exact:true}).click();const dialog=page.getByRole('dialog',{name:'开始需求'});
@@ -43,12 +45,12 @@ test('存在同对象执行敏感草稿时实际日期更正不请求接口，�
  await mockGanttData(page);let current={...workItem};const writes:Array<Record<string,unknown>>=[];
  await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,version:1,workItems:[current]}}));
  await page.route('**/api/work-items/w1/correct',route=>{const body=route.request().postDataJSON();writes.push(body);current={...current,...body,version:current.version+1};return route.fulfill({json:current});});
+ await page.addInitScript(()=>{if(sessionStorage.getItem('debug-draft-seeded'))return;sessionStorage.setItem('debug-draft-seeded','1');sessionStorage.setItem('pm-graph-draft:admin:p1',JSON.stringify({formatVersion: 2,version:'1',index:0,active:true,layouts:{},fields:{},values:[{add:[],remove:[],estimates:[],entities:[{entity:'requirement',id:'r1',op:'update',expectedVersion:1,data:{durationDays:3}}]}]}));});
  await page.goto('/requirements/r1');await expect(page.locator('.requirement-overview')).toBeVisible();
- await page.evaluate(()=>sessionStorage.setItem('pm-graph-draft:admin:p1',JSON.stringify({formatVersion: 2,version:'1',index:0,active:true,layouts:{},fields:{},values:[{add:[],remove:[],estimates:[],entities:[{entity:'requirement',id:'r1',op:'update',expectedVersion:1,data:{durationDays:3}}]}]})));
- await page.getByRole('button',{name:'更多工作项操作',exact:true}).first().click();await page.getByRole('button',{name:'修正实际日期',exact:true}).click();
+ await page.getByRole('tab',{name:/^工作项/}).click();await page.locator('[data-work-id="w1"]').getByRole('button',{name:'修正实际日期',exact:true}).click();
  await page.getByLabel('实际开始',{exact:true}).fill('2026-08-31');await page.getByLabel('纠错原因',{exact:true}).fill('核对执行日期');await page.getByRole('button',{name:'保存纠错',exact:true}).click();
  await expect(page.getByText(/本次操作涉及未保存业务草稿/)).toBeVisible();expect(writes).toHaveLength(0);await expect(page.getByLabel('实际开始',{exact:true})).toHaveValue('2026-08-31');
- await page.evaluate(()=>sessionStorage.removeItem('pm-graph-draft:admin:p1'));await page.getByRole('button',{name:'保存纠错',exact:true}).click();
+ await page.keyboard.press('Escape');await closeGraphProperties(page);await page.getByRole('button',{name:'关系图',exact:true}).click();await expect(page.locator('.dependency-canvas')).toHaveAttribute('data-layout-ready','true');await headerAction(page,'放弃修改');await page.getByRole('button',{name:'放弃草稿',exact:true}).click();await expect(page.getByRole('button',{name:'编辑画布',exact:true})).toBeVisible();await expect(page.locator('.page-toolbar-status')).not.toContainText('未保存');await page.goto('/requirements/r1?detailTab=work');await page.locator('[data-work-id="w1"]').getByRole('button',{name:'修正实际日期',exact:true}).click();await expect(page.getByLabel('实际开始',{exact:true})).toHaveValue('2026-08-31');await page.getByRole('button',{name:'保存纠错',exact:true}).click();
  await expect.poll(()=>writes.length).toBe(1);expect(writes[0]).toMatchObject({actualStart:'2026-08-31',reason:'核对执行日期',expectedVersion:1});
 });
 
@@ -56,7 +58,7 @@ test('工作完成后不显示验收入口，完成标准仍作为资料保留',
  await mockGanttData(page);
  await page.route('**/api/requirements/r1',route=>route.fulfill({json:{...requirement,executionMode:'direct',version:1,status:'completed',progress:100,acceptedAt:null,acceptanceCriteria:'确认接口与文档交付',workItems:[]}}));
  await page.goto('/requirements/r1');await expect(page.getByRole('button',{name:'确认验收',exact:true})).toHaveCount(0);
- await page.getByRole('button',{name:'需求资料与计算说明',exact:true}).click();await expect(page.locator('.requirement-overview-details')).toContainText('确认接口与文档交付');
+ await page.getByRole('tab',{name:'资料',exact:true}).click();await expect(page.getByRole('tabpanel',{name:'资料',exact:true})).toContainText('确认接口与文档交付');
 });
 
 for(const persisted of [true,false]){
@@ -97,9 +99,9 @@ test('直接进度响应未知且回读失败时跨导航保留核对锁和原�
  await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);
  await expect(page.getByRole('button',{name:'核对操作结果',exact:true})).toBeVisible();
 
- await page.getByRole('link',{name:'项目中心',exact:true}).click();await expect(page).toHaveURL(/\/projects$/);
- await page.goBack();await expect(page).toHaveURL(/\/requirements\/r1/);
- await page.getByRole('button',{name:'核对操作结果',exact:true}).click();
+ await closeGraphProperties(page);await page.getByRole('link',{name:'项目中心',exact:true}).click();await expect(page).toHaveURL(/\/projects$/);
+  await page.goBack();await expect(page).toHaveURL(/scopeId=r1/);failReads=false;await page.goto('/requirements/r1');
+ await expect(dialog).toBeVisible();
  await expect(dialog.getByLabel('需求完成度')).toHaveValue('60');
  await expect(dialog.getByLabel('执行说明')).toHaveValue('接口已联通');
  await dialog.locator('form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));

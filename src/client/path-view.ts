@@ -38,7 +38,7 @@ export function remapEditorUrl(url:string,ids:Record<string,string>){
   const parsed=new URL(url,location.origin),map=(id:string)=>ids[id]||((id.startsWith('acceptance:')||id.startsWith('start:')||id.startsWith('execute:'))?id.split(':')[0]+':'+(ids[id.slice(id.indexOf(':')+1)]||id.slice(id.indexOf(':')+1)):id);
   const requirement=/^\/requirements\/([^/]+)/.exec(parsed.pathname)?.[1];
   if(requirement&&ids[requirement]){parsed.pathname='/requirements/'+ids[requirement];parsed.searchParams.delete('draftProject');}
-  for(const key of ['requirementId','pathNode','workItemId','pathBranch','target','pathRelation']){const value=parsed.searchParams.get(key);if(value)parsed.searchParams.set(key,map(value));}
+  for(const key of ['scopeId','detailId','workspaceLocate','requirementId','pathNode','workItemId','pathBranch','target','pathRelation']){const value=parsed.searchParams.get(key);if(value)parsed.searchParams.set(key,map(value));}
   if(parsed.searchParams.get('requirementId')&&ids[new URL(url,location.origin).searchParams.get('requirementId')||''])parsed.searchParams.delete('draftProject');
   const edge=parsed.searchParams.get('pathEdge');if(edge)parsed.searchParams.set('pathEdge',ids[edge]||edge.split('>').map(map).join('>'));
   return parsed.pathname+parsed.search+parsed.hash;

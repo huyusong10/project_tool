@@ -1,0 +1,33 @@
+@layer application {
+.requirement-overview { min-width: 0; margin-bottom: 12px; padding: 8px 12px; border: 1px solid var(--surface-border); border-radius: var(--surface-radius-compact); background: var(--surface-bg); box-shadow: var(--surface-shadow); }
+.requirement-overview-top, .requirement-overview-meta, .requirement-overview-actions { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.requirement-overview-top { min-height: 32px; }
+.requirement-overview-meta { flex: 1; overflow: hidden; font-size: 12px; color: var(--text-muted); }
+.requirement-overview-meta > .status-pill, .requirement-overview-meta > .priority-badge { flex: none; }
+.requirement-overview-owner { display: flex; align-items: baseline; gap: 6px; min-width: 70px; flex: 0 1 175px; white-space: nowrap; }
+.requirement-overview-owner strong, .requirement-overview-delivery { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.requirement-overview-owner strong { color: var(--text-secondary); font-weight: 600; }
+.requirement-overview-delivery { flex: 1; }
+.requirement-overview-actions { flex: none; gap: 8px; }
+.requirement-overview-actions button { min-height: 32px; padding: 4px 9px; font-size: 12px; }
+.requirement-overview-actions .delivery-controls { flex-wrap: nowrap; }
+.requirement-overview-actions .has-notice { color: var(--warning-text); }
+.button-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.delivery-controls:empty { display: none; }
+.my-owned-requirement-card .delivery-controls { padding: 8px 12px; border-top: 1px solid var(--divider); }
+.detail-kpis { display: grid; grid-template-columns: 1.1fr 1.5fr 1fr .7fr; gap: 12px; margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--divider); }
+.detail-kpis article { min-width: 0; min-height: 28px; display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.detail-kpis article > span:first-child { flex: none; color: var(--text-muted); }
+.detail-kpis strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.detail-kpis small { flex: none; color: var(--text-faint); font-size: 12px; white-space: nowrap; }
+.detail-kpis .progress-row { flex: 1; max-width: 60px; min-width: 20px; height: 4px; }
+.detail-kpis .progress-row i { display: block; height: 100%; background: var(--progress-fill); }
+.requirement-overview-details { max-height: min(600px,calc(100dvh - 32px)); overflow-y: auto; padding: 16px; }
+.requirement-overview-details > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.requirement-overview-details dl { margin: 12px 0 0; display: grid; gap: 12px; }
+.requirement-overview-details dt { color: var(--text-muted); font-size: 12px; }
+.requirement-overview-details dd { margin: 3px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text-secondary); }
+.requirement-overview-details a { display: inline-flex; gap: 6px; align-items: center; color: var(--accent-ink); }
+.requirement-progress-panel > header { padding-block: 8px; }
+.requirement-progress-panel > header > div:first-child { display: flex; align-items: center; gap: 16px; }
+}

@@ -25,4 +25,12 @@ describe('公共按钮约束', () => {
     expect(checkButtonStyles('@layer application {.row button {height:100px!important}}',file).length).toBeGreaterThan(0);
     expect(checkButtonStyles('@layer controls {.row button {color:red}}',file).length).toBeGreaterThan(0);
   });
+  it('只有应用清单可以按顺序导入本地分层样式', () => {
+    const source="@layer application, controls; @import './features/issues/workspace.css';";
+    expect(checkButtonStyles(source,'src/client/styles.css')).toEqual([]);
+    expect(checkButtonStyles(source,'src/client/page.css').length).toBeGreaterThan(0);
+    expect(checkButtonStyles("@import 'https://example.com/style.css';",'src/client/styles.css').length).toBeGreaterThan(0);
+    expect(checkButtonStyles("@import '../outside.css';",'src/client/styles.css').length).toBeGreaterThan(0);
+    expect(checkButtonStyles('@layer controls {.row {color:red}}','src/client/features/issues/workspace.css').length).toBeGreaterThan(0);
+  });
 });

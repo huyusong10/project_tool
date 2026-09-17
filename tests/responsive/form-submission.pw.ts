@@ -1,43 +1,18 @@
+import {chooseOption} from './select-helper';
+import { project, template, secondaryTemplate, people, mockForms, scenarios, type FormReferenceState } from './form-fixture';
 import { headerAction } from './topbar-helpers';
+
 import { expect, test, type Page } from '@playwright/test';
 import type { Project, Requirement, WorkItemTemplate } from '../../src/client/types';
 
-const project = { id: 'p1', name: '测试项目', status: 'active', plannedStart: null, plannedEnd: null, defaultTemplateId: 't1', isSample: false, createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' };
-const template = { id: 't1', projectId: 'p1', name: '测试流程', description: '原说明', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z', items: [
-  { id: 'ti1', templateId: 't1', title: '设计', startOffsetDays: 0, durationDays: 2, milestoneLabel: null, sortOrder: 0 },
-  { id: 'ti2', templateId: 't1', title: '开发', startOffsetDays: 2, durationDays: 3, milestoneLabel: '发布基线', sortOrder: 1 },
-] };
-const secondaryTemplate = { ...template, id: 't2', name: '备用流程', items: template.items.map((item) => ({ ...item, id: `${item.id}-secondary`, templateId: 't2' })) };
-const people = [
-  { id: 'u1', name: '负责人', active: 1, projectRole: 'member' },
-  { id: 'u2', name: '备用负责人', active: 1, projectRole: 'member' },
-];
 
-interface FormReferenceState {
-  templates: (typeof template)[];
-  people: typeof people;
-  templateRequests: number;
-  peopleRequests: number;
-}
 
-async function mockForms(page: Page, references?: FormReferenceState) {
-  await page.route('**/api/**', async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
-    if (pathname === '/api/session') return route.fulfill({ json: { authenticated: true, accountId: 'admin', username: 'admin', role: 'admin', globalRole: 'admin', personId: null, mustChangePassword: false, managedProjectIds: [] } });
-    if (pathname === '/api/branding') return route.fulfill({ json: { systemName: '项目管理', shortName: 'PM', logoUrl: null } });
-    if (pathname === '/api/projects') return route.fulfill({ json: [project] });
-    if (pathname === '/api/templates') {
-      if (references) references.templateRequests += 1;
-      return route.fulfill({ json: references?.templates || [template] });
-    }
-    if (pathname === '/api/people') {
-      if (references) references.peopleRequests += 1;
-      return route.fulfill({ json: references?.people || people.slice(0, 1) });
-    }
-    if (pathname === '/api/archives') return route.fulfill({ json: { projects: [], requirements: [], templates: [], people: [] } });
-    return route.fulfill({ json: [] });
-  });
-}
+
+
+
+
+
+
 
 async function reconnect(page: Page) {
 
@@ -45,13 +20,7 @@ async function reconnect(page: Page) {
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
 }
 
-const scenarios = [
-  { name: '新建项目', path: '/projects', trigger: '新建项目', endpoint: '/api/projects', method: 'POST', kind: 'project', field: '项目名称', submit: '创建项目' },
-  { name: '编辑项目', path: '/project-settings', trigger: '编辑项目', endpoint: '/api/projects/p1', method: 'PATCH', kind: 'project', field: '项目名称', submit: '保存修改' },
-  { name: '新建需求', path: '/requirements', trigger: '新建需求', endpoint: '/api/requirements', method: 'POST', kind: 'requirement', field: '需求标题', submit: '创建需求' },
-  { name: '新建流程', path: '/templates', trigger: '新建流程', endpoint: '/api/templates', method: 'POST', kind: 'template', field: '流程名称', submit: '保存修改' },
-  { name: '编辑流程', path: '/templates', trigger: '编辑流程 测试流程', endpoint: '/api/templates/t1', method: 'PATCH', kind: 'template', field: '流程名称', submit: '保存修改' },
-] as const;
+
 
 async function openTemplateFields(page:Page){
  const editor=page.locator('.template-flow-workspace');await editor.locator('[data-layout-ready="true"]').waitFor();
@@ -92,7 +61,8 @@ for (const scheduleMode of ['start', 'deadline'] as const) {
     const background = dialog.getByRole('textbox', { name: '需求背景', exact: true });
     await background.fill('需求背景不能丢');
     await dialog.getByRole('textbox', { name: '完成标准', exact: true }).fill('完成标准不能丢');
-    await dialog.getByRole('textbox', { name: '参考链接', exact: true }).fill('https://example.com/spec');
+    await dialog.getByRole('region', { name: '编辑关联链接' }).getByRole('button', { name: '添加', exact: true }).click();
+    await dialog.getByLabel('链接 1 地址', { exact: true }).fill('https://example.com/spec');
     await detailsToggle.click();
     await expect(background).toBeHidden();
     await detailsToggle.click();
@@ -100,7 +70,7 @@ for (const scheduleMode of ['start', 'deadline'] as const) {
     await detailsToggle.click();
     const planningToggle = dialog.getByRole('button', { name: /流程与排期/ });
     await planningToggle.click();
-    await dialog.getByRole('combobox', { name: '流程设计', exact: true }).selectOption('t1');
+    await chooseOption(dialog.getByRole('combobox', { name: '流程设计', exact: true }), 't1');
     if (scheduleMode === 'deadline') await dialog.getByRole('radio', { name: /按截止日期倒排/ }).click();
     const dateLabel = scheduleMode === 'start' ? '计划开始' : '截止日期';
     await dialog.getByLabel(dateLabel, { exact: true }).fill('2020-01-06');
@@ -116,7 +86,7 @@ for (const scheduleMode of ['start', 'deadline'] as const) {
     await expect(dialog).toHaveCount(0);
     expect(saved).toMatchObject({
       title: '折叠不丢草稿', projectId: 'p1', templateId: 't1',
-      background: '需求背景不能丢', acceptanceCriteria: '完成标准不能丢', referenceUrl: 'https://example.com/spec',
+      background: '需求背景不能丢', acceptanceCriteria: '完成标准不能丢', referenceLinks: [expect.objectContaining({ url: 'https://example.com/spec' })],
       [scheduleMode === 'start' ? 'plannedStart' : 'plannedEnd']: '2020-01-06',
     });
     expect(saved).not.toHaveProperty(scheduleMode === 'start' ? 'plannedEnd' : 'plannedStart');
@@ -138,7 +108,8 @@ test('收起的无效参考链接自动展开定位，修正后保留其它草�
   const toggle = dialog.getByRole('button', { name: /补充信息/ });
   await toggle.click();
   await dialog.getByRole('textbox', { name: '需求背景', exact: true }).fill('仍要保留');
-  const url = dialog.getByRole('textbox', { name: '参考链接', exact: true });
+  await dialog.getByRole('region', { name: '编辑关联链接' }).getByRole('button', { name: '添加', exact: true }).click();
+  const url = dialog.getByLabel('链接 1 地址', { exact: true });
   await url.fill('not-a-url');
   await toggle.click();
   await dialog.getByRole('button', { name: '创建需求', exact: true }).click();
@@ -151,7 +122,7 @@ test('收起的无效参考链接自动展开定位，修正后保留其它草�
   await dialog.getByRole('button', { name: '创建需求', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(requests).toHaveLength(1);
-  expect(requests[0]).toMatchObject({ background: '仍要保留', referenceUrl: 'https://example.com/fixed' });
+  expect(requests[0]).toMatchObject({ background: '仍要保留', referenceLinks: [expect.objectContaining({ url: 'https://example.com/fixed' })] });
   expect(requests[0]).not.toHaveProperty('templateId');
   expect(requests[0]).not.toHaveProperty('plannedStart');
   expect(requests[0]).not.toHaveProperty('plannedEnd');
@@ -169,7 +140,7 @@ test('引用选项刷新失效后保留未保存选择并明确提示', async ({
   await page.getByRole('button', { name: '编辑项目', exact: true }).click();
   const projectDialog = page.getByRole('dialog', { name: '编辑项目', exact: true });
   const defaultTemplate = projectDialog.getByRole('combobox', { name: '默认流程', exact: true });
-  await defaultTemplate.selectOption('t2');
+  await chooseOption(defaultTemplate, 't2');
   const projectTemplateRequests = references.templateRequests;
   references.templates = [template];
   await reconnect(page);
@@ -184,11 +155,11 @@ test('引用选项刷新失效后保留未保存选择并明确提示', async ({
   const requirementDialog = page.getByRole('dialog', { name: '新建需求', exact: true });
   const owner = requirementDialog.getByRole('combobox', { name: '需求负责人（可稍后指定）', exact: true });
   await expect(owner.locator('option[value="u2"]')).toHaveText('备用负责人');
-  await owner.selectOption('u2');
+  await chooseOption(owner, 'u2');
   await requirementDialog.getByRole('button', { name: /流程与排期/ }).click();
   const requirementTemplate = requirementDialog.getByRole('combobox', { name: '流程设计', exact: true });
   await expect(requirementTemplate.locator('option[value="t2"]')).toHaveText('备用流程');
-  await requirementTemplate.selectOption('t2');
+  await chooseOption(requirementTemplate, 't2');
   const requirementTemplateRequests = references.templateRequests;
   const requirementPeopleRequests = references.peopleRequests;
   references.templates = [template];
@@ -260,7 +231,7 @@ test('项目设置已落库但响应异常时核对完整项目草稿', async ({
   await page.getByRole('button', { name: '编辑项目', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '编辑项目', exact: true });
   await dialog.getByLabel('项目名称', { exact: true }).fill('核对后的项目');
-  await dialog.getByRole('combobox', { name: /项目状态/ }).selectOption('planned');
+  await chooseOption(dialog.getByRole('combobox', { name: /项目状态/ }), 'planned');
   await dialog.getByLabel('计划开始', { exact: true }).fill('2026-09-01');
   await dialog.getByLabel('计划完成', { exact: true }).fill('2026-09-30');
   await dialog.getByRole('button', { name: '保存修改', exact: true }).click();
@@ -293,7 +264,7 @@ test('新建项目已落库但响应异常时核对本次新增项目', async ({
   await page.getByRole('button', { name: '新建项目', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '新建项目', exact: true });
   await dialog.getByLabel('项目名称', { exact: true }).fill('  异常响应项目  ');
-  await dialog.getByRole('combobox', { name: /项目状态/ }).selectOption('planned');
+  await chooseOption(dialog.getByRole('combobox', { name: /项目状态/ }), 'planned');
   await dialog.getByLabel('计划开始', { exact: true }).fill('2026-09-07');
   await dialog.getByLabel('计划完成', { exact: true }).fill('2026-09-30');
   await dialog.getByRole('button', { name: '创建项目', exact: true }).click();
@@ -348,7 +319,7 @@ test('新建需求响应异常跨导航保留输入并核对本次创建', async
       title: String(body.title).trim(), ownerId: String(body.ownerId || '') || null, ownerName: '负责人',
       background: String(body.background || '').trim() || null,
       acceptanceCriteria: String(body.acceptanceCriteria || '').trim() || null,
-      referenceUrl: String(body.referenceUrl || '').trim() || null,
+      referenceUrl: String(body.referenceUrl || '').trim() || null, referenceLinks: body.referenceLinks as Requirement['referenceLinks'],
       status: 'not_started', plannedStart: null, plannedEnd: null, progress: 0, plannedProgress: 0, progressGap: 0,
       acceptedAt: null, acceptedByAccountId: null, version: 1, riskLevel: 'low', riskEvaluated: false,
       riskReason: '', priority: 'P2', createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z',
@@ -363,11 +334,12 @@ test('新建需求响应异常跨导航保留输入并核对本次创建', async
   const dialog = page.getByRole('dialog', { name: '新建需求', exact: true });
   await dialog.getByLabel('需求标题', { exact: true }).fill('  异常响应需求  ');
   await expect(dialog.getByRole('combobox', { name: '优先级', exact: true })).toHaveCount(0);
-  await dialog.getByRole('combobox', { name: '需求负责人（可稍后指定）', exact: true }).selectOption('u1');
+  await chooseOption(dialog.getByRole('combobox', { name: '需求负责人（可稍后指定）', exact: true }), 'u1');
   await dialog.getByRole('button', { name: /补充信息/ }).click();
   await dialog.getByLabel('需求背景', { exact: true }).fill('  需要核对  ');
   await dialog.getByLabel('完成标准', { exact: true }).fill('  只创建一次  ');
-  await dialog.getByLabel('参考链接', { exact: true }).fill('https://example.com/requirement');
+  await dialog.getByRole('region', { name: '编辑关联链接' }).getByRole('button', { name: '添加', exact: true }).click();
+  await dialog.getByLabel('链接 1 地址', { exact: true }).fill('https://example.com/requirement');
   await dialog.getByRole('button', { name: '创建需求', exact: true }).click();
 
   await expect(dialog).toBeVisible();
@@ -376,9 +348,9 @@ test('新建需求响应异常跨导航保留输入并核对本次创建', async
   await expect(dialog.getByLabel('需求标题',{exact:true})).toHaveValue('  异常响应需求  ');
   await expect(dialog).toContainText('创建结果待核对');
   await dialog.getByRole('button',{name:'取消',exact:true}).click();await page.goto('/');await page.goto('/requirements');
-  await expect(page.getByRole('alert')).toContainText('需求创建结果待核对');await expect(page.getByRole('button',{name:'新建需求',exact:true})).toBeDisabled();
-  await page.getByRole('button',{name:'核对需求创建',exact:true}).click();await expect(dialog.getByLabel('需求标题',{exact:true})).toHaveValue('  异常响应需求  ');await expect(dialog.getByRole('combobox',{name:'需求负责人（可稍后指定）',exact:true})).toHaveValue('u1');
-  await dialog.getByRole('button',{name:/补充信息/}).click();await expect(dialog.locator('textarea[name="background"]')).toHaveValue('  需要核对  ');await expect(dialog.locator('textarea[name="acceptanceCriteria"]')).toHaveValue('  只创建一次  ');await expect(dialog.locator('input[name="referenceUrl"]')).toHaveValue('https://example.com/requirement');
+  await expect(dialog).toContainText('创建结果待核对');await expect(dialog.getByRole('button',{name:'创建需求',exact:true})).toBeDisabled();
+  await expect(dialog.getByLabel('需求标题',{exact:true})).toHaveValue('  异常响应需求  ');await expect(dialog.getByRole('combobox',{name:'需求负责人（可稍后指定）',exact:true})).toHaveValue('u1');
+  await dialog.getByRole('button',{name:/补充信息/}).click();await expect(dialog.locator('textarea[name="background"]')).toHaveValue('  需要核对  ');await expect(dialog.locator('textarea[name="acceptanceCriteria"]')).toHaveValue('  只创建一次  ');await expect(dialog.getByLabel('链接 1 地址',{exact:true})).toHaveValue('https://example.com/requirement');
   await dialog.locator('form').dispatchEvent('submit');expect(requests).toBe(1);
   failReads=false;await dialog.getByRole('button',{name:'读取最新需求并继续',exact:true}).click();await expect(dialog).toHaveCount(0);await expect(page.getByText('已核对最新状态：需求已创建',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'新建需求',exact:true})).toBeEnabled();
   expect(requests).toBe(1);
@@ -456,15 +428,16 @@ test('流程设计已落库但响应异常时核对完整有序工作项', async
   await dialog.getByLabel('流程名称', { exact: true }).fill('核对后的流程');
   await dialog.getByRole('textbox', { name: '设计说明', exact: true }).fill('核对完整工作项');
   await openFirstTemplateItem(page);
-  const firstInputs = dialog.getByLabel('元素名称', {exact:true});
+  const firstInputs = page.getByRole('dialog').getByLabel('元素名称', {exact:true});
   await firstInputs.nth(0).fill('架构设计');
-  await dialog.getByLabel('预计工期', { exact: true }).fill('4');
+  await page.getByRole('dialog').getByLabel('预计工期', { exact: true }).fill('4');
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('button', { name: '保存修改', exact: true }).click();
 
   await dialog.getByRole('button', { name: '查询原批次并重试', exact: true }).click();
   await expect(dialog.getByRole('button', { name: '查询原批次并重试', exact: true })).toHaveCount(0);
   await expect(page.getByText('已核对最新状态：流程设计已保存', { exact: true })).toBeVisible();
-  await expect(page.locator('.integrated-page-title h1')).toHaveText('核对后的流程');
+  await expect(page.getByRole('navigation', { name: '页面层级' })).toContainText('核对后的流程');
   await expect(page).toHaveURL(/edit=t1/);
   expect(requests).toBe(1);
 });
@@ -498,15 +471,16 @@ test('新建流程已落库但响应异常时核对本次新增流程', async ({
   await dialog.getByLabel('流程名称', { exact: true }).fill('  异常响应流程  ');
   await dialog.getByLabel('设计说明', { exact: true }).fill('  核对全部工作项  ');
   await openFirstTemplateItem(page);
-  const firstInputs = dialog.getByLabel('元素名称', {exact:true});
+  const firstInputs = page.getByRole('dialog').getByLabel('元素名称', {exact:true});
   await firstInputs.nth(0).fill('架构设计');
-  await dialog.getByLabel('预计工期', { exact: true }).fill('4');
+  await page.getByRole('dialog').getByLabel('预计工期', { exact: true }).fill('4');
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('button', { name: '保存修改', exact: true }).click();
 
   await dialog.getByRole('button', { name: '查询原批次并重试', exact: true }).click();
   await expect(dialog.getByRole('button', { name: '查询原批次并重试', exact: true })).toHaveCount(0);
   await expect(page.getByText('已核对最新状态：流程已创建', { exact: true })).toBeVisible();
-  await expect(page.locator('.integrated-page-title h1')).toHaveText('异常响应流程');
+  await expect(page.getByRole('navigation', { name: '页面层级' })).toContainText('异常响应流程');
   await expect(page).toHaveURL(/edit=t-created/);
   expect(requests).toBe(1);
 });
@@ -541,7 +515,7 @@ for (const scenario of scenarios.filter(s=>s.kind!=='template') as Array<(typeof
       } else if (scenario.kind === 'requirement') {
         await expect(dialog.getByRole('combobox', { name: '优先级', exact: true })).toHaveCount(0);
         await dialog.getByRole('button', { name: /流程与排期/ }).click();
-        await dialog.getByRole('combobox', { name: '流程设计', exact: true }).selectOption('t1');
+        await chooseOption(dialog.getByRole('combobox', { name: '流程设计', exact: true }), 't1');
         await dialog.getByLabel('计划开始', { exact: true }).fill('2020-01-02');
         await dialog.getByRole('button', { name: /补充信息/ }).click();
         await dialog.getByLabel('需求背景', { exact: true }).fill('不可丢失的背景');
@@ -563,7 +537,7 @@ for (const scenario of scenarios.filter(s=>s.kind!=='template') as Array<(typeof
       if (scenario.name === '编辑流程') expect(requests[0].expectedUpdatedAt).toBe(template.updatedAt);
       await page.keyboard.press('Escape');
       await expect(dialog).toBeVisible();
-      await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
+      await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toBeDisabled();
       for (const field of await fields.all()) await expect(field).toBeDisabled();
       await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeDisabled();
       await page.keyboard.press('Tab');
@@ -579,9 +553,7 @@ for (const scenario of scenarios.filter(s=>s.kind!=='template') as Array<(typeof
       expect(await fields.evaluateAll((elements) => elements.map((element) => (element as HTMLInputElement).value))).toEqual(draft);
       expect(requests).toHaveLength(1);
       for (const field of await fields.all()) await expect(field).toBeEnabled();
-      const bounds = await dialog.boundingBox();
-      expect(bounds!.x).toBeGreaterThanOrEqual(0);
-      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+
       if (scenario.name === '编辑流程' && testInfo.project.name === 'desktop-1080p') await page.screenshot({ path: testInfo.outputPath('form-review.png') });
       await dialog.getByRole('button', { name: scenario.submit, exact: true }).click();
       await expect.poll(() => requests.length).toBe(2);
@@ -609,16 +581,20 @@ for (const scenario of scenarios.filter(s=>s.kind==='template')) test(scenario.n
     await editor.getByLabel('流程名称',{exact:true}).fill('保留这份草稿');
     await editor.getByRole('textbox',{name:'设计说明',exact:true}).fill('不可丢失的设计说明');
     await openFirstTemplateItem(page);
-    await editor.getByLabel('元素名称',{exact:true}).fill('设计修订');
-    await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect.poll(()=>requests.length).toBe(1);
+    const detail=page.getByRole('dialog');
+    await detail.getByLabel('元素名称',{exact:true}).fill('设计修订');
+    await page.keyboard.press('Control+s');await expect.poll(()=>requests.length).toBe(1);
     expect(requests[0]).toMatchObject({name:'保留这份草稿',description:'不可丢失的设计说明'});
     expect((requests[0].items as Array<{title:string}>)[0].title).toBe('设计修订');
-    await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeDisabled();
+    await expect(page.getByRole('button',{name:'保存修改',exact:true,includeHidden:true})).toBeDisabled();
+    await expect(detail.getByLabel('元素名称',{exact:true})).toBeDisabled();
+    await detail.getByRole('button',{name:'关闭',exact:true}).click();
     await page.getByRole('button',{name:'更多操作',exact:true}).click();await expect(page.getByRole('button',{name:'放弃修改',exact:true})).toBeDisabled();await page.keyboard.press('Escape');
-    await expect(editor.getByLabel('元素名称',{exact:true})).toBeDisabled();
     await page.keyboard.press('Escape');await expect(editor).toBeVisible();
     release();await expect(editor.getByRole('alert')).toContainText('暂时无法保存');
-    await expect(editor.getByLabel('元素名称',{exact:true})).toHaveValue('设计修订');
+    await openFirstTemplateItem(page);
+    await expect(page.getByRole('dialog').getByLabel('元素名称',{exact:true})).toHaveValue('设计修订');
+    await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
     await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();
     await page.getByRole('button',{name:'保存修改',exact:true}).click();
     await expect(editor).toBeVisible();

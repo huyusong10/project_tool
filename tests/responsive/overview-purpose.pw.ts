@@ -1,7 +1,7 @@
 import {expect,test} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
 
-test('特性、Phase 和需求先展示用途，资料入口保留范围和弹窗尺寸',async({page},info)=>{
+test('特性、Phase 和需求先展示用途，资料入口保留范围和弹窗尺寸',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page);
   const background='批量导入资产台账，校验字段并说明每条失败原因。';
   const acceptance='成功记录入库，失败记录可修正后重试。';
@@ -30,7 +30,7 @@ test('特性、Phase 和需求先展示用途，资料入口保留范围和弹�
   await expect(root.getByRole('region',{name:'本阶段做什么'})).toContainText('尚未填写本阶段范围');
 });
 
-test('长说明保持概况紧凑，来源去重且完整摘录仍可查阅，窄屏适配全部主题',async({page},info)=>{
+test('长说明保持概况紧凑，来源去重且完整摘录仍可查阅，窄屏适配全部主题',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page),background='解决资产重复录入问题。\n'+('字段说明与业务约束。'.repeat(50))+'\n完整说明末尾。';
   const updated=await page.request.patch('/api/requirements/'+f.testing.id,{data:{expectedVersion:f.testing.version,background,acceptanceCriteria:'校验失败时保留原始输入。'}});expect(updated.ok(),await updated.text()).toBe(true);
   const block='原始需求：LOG-001 统一模型\n出处：日志管理 MPS https://example.com/log\n版本：v24 功能需求\n完整材料中的字段定义\n已有实现说明：模型校验';

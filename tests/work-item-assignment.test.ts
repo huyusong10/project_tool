@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -39,7 +40,7 @@ async function callMcp(name: string, args: Record<string, unknown>) {
 
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
-  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  origin = await listenTestApp(app);
   const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } });
   cookie = String(login.headers['set-cookie']).split(';')[0];
   projectId = (await post('/api/projects', { name: '工作项分派测试' })).json().id;
@@ -48,7 +49,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -108,7 +109,7 @@ it('执行后修改协作者无需说明，REST与MCP保留记录并拒绝旧版
 });
 
 it('大批量协作者校验分块执行并完整保存', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),  projectId, title: '大批量协作者', plannedStart: '2020-01-02' })).json();
   const item = requirement.workItems[0];
   const now = new Date().toISOString();

@@ -5,7 +5,7 @@ import {todayIso} from '../../src/shared/domain';
 
 test.use({launchOptions:{ignoreDefaultArgs:['--hide-scrollbars']}});
 
-test('无 Phase 的并行需求保持紧凑，折叠时有工作项入口，只有一个横向滚动条',async({page},info)=>{
+test('无 Phase 的并行需求保持紧凑，折叠时有工作项入口，只有一个横向滚动条',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page);
   const post=async(url:string,data:unknown)=>{const response=await page.request.post(url,{data});expect(response.ok(),await response.text()).toBe(true);return response.json();};
   const template=await post('/api/templates',{projectId:f.projectId,name:'并行工作',dependencyMode:'legacy',items:[{title:'分析设计',workStage:'analysis',durationDays:5,startOffsetDays:0,sortOrder:0},{title:'开发实现',workStage:'development',durationDays:5,startOffsetDays:0,sortOrder:1}]});
@@ -19,21 +19,23 @@ test('无 Phase 的并行需求保持紧凑，折叠时有工作项入口，只�
   const graph=await(await page.request.get(f.base+'/path-analysis')).json();
   const input={expectedRevision:graph.revision,target:'project',changes:{add:[],remove:[],estimates:[],entities:['需求基线','设计完成','提测就绪','验收'].map((title,index)=>({id:randomUUID(),entity:'milestone',op:'create',requirementId:requirement.id,data:{title,confirmationMode:'manual',targetDate:index?null:todayIso()}}))}};
   const preview=await post(f.base+'/dependency-changes/preview',input);await post(f.base+'/dependency-changes/apply',{...input,batchId:randomUUID(),previewToken:preview.previewToken});
+  const milestoneId=input.changes.entities[0].id;await post('/api/milestones/'+milestoneId+'/achieve',{expectedVersion:1});
   await page.goto('/execution');const grid=page.getByRole('treegrid'),row=grid.locator('[data-row-id="'+requirement.id+'"]');
+  await grid.getByRole('button',{name:'展开 未分派阶段',exact:true}).click();
   await expect(row).toBeVisible();await row.scrollIntoViewIfNeeded();
   const left=await row.locator('.workspace-row-label').boundingBox();expect(left!.width).toBeLessThanOrEqual(350);
   await expect(row.locator('.workspace-row-label .workspace-row-owner')).toHaveText(f.testing.ownerName!);
   await expect(row.locator('.workspace-row-label .workspace-row-progress')).toHaveCount(0);
-  await expect(row.locator('.workspace-row-progress')).toHaveText('并行 · 分析设计 90% · 开发 17%');
+  await expect(row.locator('.workspace-row-progress')).toContainText('设计90%开发17%');
   expect((await row.boundingBox())!.height).toBeLessThanOrEqual(66);
-  const undated=row.getByRole('button',{name:'待定日期 3 项'});await expect(undated).toHaveText('◇ 3');
-  await undated.click();await expect(page.getByRole('dialog',{name:'里程碑详情'})).toContainText('提测就绪');await page.keyboard.press('Escape');
+  const milestone=row.locator('[data-milestone-id="'+milestoneId+'"]');await expect(milestone).toBeVisible();
+  await milestone.click();await expect(page.getByRole('dialog',{name:'里程碑详情'})).toContainText('提测就绪');await expect(page.getByRole('dialog',{name:'里程碑详情'}).locator('.gantt-milestone-summary')).toHaveCount(4);await page.keyboard.press('Escape');
   await page.mouse.move(5,5);await row.locator('.workspace-row-title').focus();await expect(page.getByRole('tooltip')).toHaveCount(1);await expect(page.getByRole('tooltip')).toContainText(f.testing.ownerName!);await page.keyboard.press('Escape');
-  await expect(row.locator('.gantt-milestone-label')).toHaveText('需求基线');
-  const dateLabel=await row.locator('.gantt-milestone-label').boundingBox(),plan=await row.locator('.gantt-date-plan').boundingBox();expect(dateLabel!.y+dateLabel!.height).toBeLessThanOrEqual(plan!.y);
-  const position=await row.getByRole('button',{name:/^查看 .* 的工作项$/}).boundingBox();
-  await row.getByRole('button',{name:/^查看 .* 的工作项$/}).click();
-  expect(await row.getByRole('button',{name:/^收起 .* 的工作项$/}).boundingBox()).toEqual(position);
+  await expect(milestone).toHaveAccessibleName(/最近达成：需求基线/);
+  const dateLabel=await milestone.boundingBox(),actual=await row.locator('.gantt-date-actual').boundingBox();expect(dateLabel!.y+dateLabel!.height).toBeLessThan(actual!.y);
+  const progressEntry=row.getByRole('button',{name:'更新进展',exact:true}),position=await progressEntry.boundingBox();
+  await progressEntry.click();const detail=page.locator('.modal-card-workspace');await expect(detail.getByRole('tab',{name:'工作项 2',exact:true})).toHaveAttribute('aria-selected','true');await detail.getByRole('button',{name:'关闭',exact:true}).click();
+  expect(await progressEntry.boundingBox()).toEqual(position);await row.getByRole('button',{name:'展开 '+requirement.title,exact:true}).click();
   const work=grid.locator('[data-row-id="'+requirement.workItems[1].id+'"]');
   await expect(work.getByRole('button',{name:'更新 开发实现 进度',exact:true})).toBeVisible();await expect(work.getByRole('button',{name:'完成',exact:true})).toBeVisible();
   expect(await grid.locator('.kind-work').count()).toBe(2);

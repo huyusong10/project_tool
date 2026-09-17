@@ -1,20 +1,22 @@
+import * as requirementsApi from '../features/requirements/api';
 import { Button } from '../components/Button';
-import {SelectionActions} from '../components/SelectionActions';
-import {Select} from '../components/Select';
-import {executionStageOf} from '../components/ExecutionStageBadge';
-import {useAppNavigate} from '../use-app-navigation';
+import { SelectionActions } from '../components/SelectionActions';
+import { Select } from '../components/Select';
+import { executionStageOf } from '../components/ExecutionStageBadge';
+import { useAppNavigate } from '../use-app-navigation';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
-import {Fragment, useEffect, useRef} from 'react';
-import {OrganizationBatchDialog,OrganizationFilters,matchesOrganization,persistOrganizationBatchRecheck,readOrganizationBatchRecheck,useIntake,type OrganizationBatchRecheck} from '../components/RequirementIntake';
-import {RequirementImport} from '../components/RequirementImport';
-import {compareProcessingPriority} from '../../shared/delivery';
+import { Fragment, useEffect, useRef } from 'react';
+import { OrganizationBatchDialog, OrganizationFilters, matchesOrganization, persistOrganizationBatchRecheck, readOrganizationBatchRecheck, type OrganizationBatchRecheck } from '../components/RequirementIntake';
+import { useIntake } from '../features/planning/use-intake';
+import { RequirementImport } from '../components/RequirementImport';
+import { compareProcessingPriority } from '../../shared/delivery';
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Plus } from "lucide-react";
-import { api } from "../api";
+
 import { useProjects, useSession } from "../app-context";
 import { keys } from "../query-keys";
 import type { Requirement } from "../types";
@@ -22,7 +24,7 @@ import { isTerminalRequirementStatus } from "../../shared/domain";
 import { matchesSearch, searchScore } from "../../shared/search";
 import { EmptyState } from "../components/Feedback";
 import { PageHeader } from "../components/PageHeader";
-import { RequirementForm,persistRequirementCreateRecheck,readRequirementCreateRecheck,type RequirementCreateRecheck } from "../components/ManagementForms";
+import { RequirementForm, persistRequirementCreateRecheck, readRequirementCreateRecheck, type RequirementCreateRecheck } from "../components/ManagementForms";
 import { canManageProject } from "../permissions";
 import { requirementStatusOptions } from "../ui-options";
 import { DataCell } from "../components/LayoutPrimitives";
@@ -93,10 +95,7 @@ export function RequirementsPage() {
   const { data: loadedRequirements, error, refetch, isFetching, isLoading } = useQuery({
     queryKey: [...keys.requirements, selectedProjectId],
     queryFn: ({ signal }) =>
-      api<Requirement[]>(
-        `/api/requirements${selectedProjectId ? `?projectId=${selectedProjectId}` : ""}`,
-        { signal },
-      ),
+      requirementsApi.requirementsForProject<Requirement[]>(selectedProjectId, { signal }),
     enabled: Boolean(selectedProjectId),
   });
   usePageScrollPosition(!isLoading);

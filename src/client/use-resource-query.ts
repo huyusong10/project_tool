@@ -1,6 +1,9 @@
 import { useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { api, isTemporaryReadError } from './api';
 
+export type ResourceLoader<T> = (signal?: AbortSignal) => Promise<T>;
+type ResourceSource<T> = string | ResourceLoader<T>;
+
 export class ResourceReadInvalidatedError extends Error {
   constructor() { super('资源访问状态已变更，请重新读取。'); this.name = 'ResourceReadInvalidatedError'; }
 }
@@ -11,9 +14,9 @@ export function cacheResourceUpdate<T>(client: QueryClient, queryKey: QueryKey, 
 }
 
 /** 后台刷新和显式重读都不能覆盖请求期间出现的新拒绝结果。 */
-async function readResourceSnapshot<T>(client: QueryClient, queryKey: QueryKey, path: string, isActive: () => boolean, signal?: AbortSignal) {
+async function readResourceSnapshot<T>(client: QueryClient, queryKey: QueryKey, path: ResourceSource<T>, isActive: () => boolean, signal?: AbortSignal) {
   const beforeRead = client.getQueryState<T | null>(queryKey);
-  const data = await api<T>(path, { signal });
+  const data = await (typeof path === 'function' ? path(signal) : api<T>(path, { signal }));
   if (!isActive()) return data;
   const current = client.getQueryState<T | null>(queryKey);
   if (current?.data === null && (beforeRead?.data !== null || current.dataUpdateCount !== beforeRead.dataUpdateCount)) {
@@ -23,14 +26,14 @@ async function readResourceSnapshot<T>(client: QueryClient, queryKey: QueryKey, 
 }
 
 /** 显式重读可以恢复已拒绝的缓存。 */
-export async function readResourceFresh<T>(client: QueryClient, queryKey: QueryKey, path: string, isActive: () => boolean) {
+export async function readResourceFresh<T>(client: QueryClient, queryKey: QueryKey, path: ResourceSource<T>, isActive: () => boolean) {
   const data = await readResourceSnapshot<T>(client, queryKey, path, isActive);
   if (isActive()) client.setQueryData(queryKey, data);
   return data;
 }
 
 /** 临时读取失败保留草稿依赖的数据；拒绝访问后清空缓存，不能在下一次 503 时重新显示。 */
-export function useResourceQuery<T>(queryKey: QueryKey, path: string, enabled = true, onRead?: (data: T) => void, freshOnMount = false) {
+export function useResourceQuery<T>(queryKey: QueryKey, path: ResourceSource<T>, enabled = true, onRead?: (data: T) => void, freshOnMount = false) {
   const client = useQueryClient();
   const query = useQuery<T | null>({
     queryKey,

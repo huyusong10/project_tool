@@ -1,45 +1,31 @@
-import { Button } from './Button';
-import {PHASE_HEADER,PHASE_PADDING,arrangePhaseRegions,type PhaseRegion} from '../phase-layout';
-import {PhaseStatusBadge} from './PhasePlanning';
-import {nodeTypes,edgeTypes,type CardNode,type CardData,type RouteEdge} from './GraphElements';
-import type {DependencyGraphProps,GraphConnectionIssue} from './DependencyGraph';
-import {useWorkspaceRuntime} from '../workspace-runtime';
-import {SceneRequests} from '../editor-interaction';
+import { useRoutingWorker } from '../features/graph/use-routing-worker';
+import { Button } from "./Button";
+import { PHASE_HEADER, PHASE_PADDING, arrangePhaseRegions, type PhaseRegion } from "../phase-layout";
+import { PhaseStatusBadge } from "./PhasePlanning";
+import { nodeTypes, edgeTypes, type CardNode, type CardData, type RouteEdge } from "./GraphElements";
+import type { DependencyGraphProps, GraphConnectionIssue } from "../features/graph/model";
+import { useWorkspaceRuntime } from "../workspace-runtime";
+import { SceneRequests } from "../editor-interaction";
 import { useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ReactFlow, Background, useNodesState, useNodesInitialized,
-  useReactFlow, useViewport,
-  type Viewport, type NodeChange } from '@xyflow/react';
+import { ReactFlow, Background, useNodesState, useNodesInitialized, useReactFlow, useViewport, type Viewport, type NodeChange, type ReactFlowProps } from '@xyflow/react';
 import ELK from 'elkjs/lib/elk-api';
 import workerUrl from 'elkjs/lib/elk-worker.min.js?url';
-import './graph-vendor.css';
-import { type RoutedLayout, type Point } from '../path-layout';
-import { stableGraphLayout } from '../graph-layout';
-import {useGraphConnection,type ConnectionSide} from '../use-graph-connection';
-import {graphMotion,graphMotionFrame} from '../graph-motion';
-import type { GraphLink } from '../path-projection';
-import {Minus,Plus,Scan,LayoutGrid,LocateFixed,X,LoaderCircle} from 'lucide-react';
-import {vacantPosition,vacantGroup} from '../fixed-routing';
-import {facingSide,previewCurve,staleRouteIds,type PreviewBox} from '../graph-preview';
-import {validGraphViewport,viewportShowsNode} from '../graph-viewport';
+import "./graph-vendor.css";
+import { type RoutedLayout, type Point } from "../path-layout";
+import { stableGraphLayout } from "../graph-layout";
+import { useGraphConnection, type ConnectionSide } from "../use-graph-connection";
+import { graphMotion, graphMotionFrame } from "../graph-motion";
+import type { GraphLink } from "../path-projection";
+import { Minus, Plus, Scan, LayoutGrid, LocateFixed, X, LoaderCircle } from 'lucide-react';
+import { vacantPosition, vacantGroup } from "../fixed-routing";
+import { facingSide, previewCurve, staleRouteIds, type PreviewBox } from "../graph-preview";
+import { viewportShowsNode } from "../graph-viewport";
 
-const viewports = new Map<string, Viewport>();
-function readViewport(key: string): Viewport | undefined {
-  try {
-    const base=key.replace(/:history:\d+$/,'');
-    const saved=base!==key?sessionStorage.getItem('pm-graph-view:'+key):null;
-    const value=viewports.get(key)||JSON.parse(saved||localStorage.getItem('pm-graph-view:'+base)||'null');
-    return validGraphViewport(value)?value:undefined;
-  } catch { return undefined; }
-}
-function saveViewport(key: string, value: Viewport) {
-  if(!validGraphViewport(value))return;
-  viewports.set(key, value);
-  try {
-    const base=key.replace(/:history:\d+$/,'');
-    if(base!==key)sessionStorage.setItem('pm-graph-view:'+key,JSON.stringify(value));
-    localStorage.setItem('pm-graph-view:'+base,JSON.stringify(value));
-  } catch { /* Current view remains usable. */ }
-}
+import { readViewport, saveViewport } from '../features/graph/viewport';
+const snapGrid:[number,number]=[8,8],selectionKeys=['Control','Meta'],panButtons=[0,1];
+
+type FlowEvents=Required<Pick<ReactFlowProps<CardNode,RouteEdge>,"onNodesChange"|"onNodeDoubleClick"|"onPaneClick"|"onNodeDragStart"|"onNodeDrag"|"onNodeDragStop"|"onNodeClick"|"onEdgeClick"|"onMoveEnd">>;
+
 export function GraphScene(props: DependencyGraphProps) {
   const {cards,links,viewKey,editing=false}=props;
   const allowRename=props.commands.allows('rename'),allowConnect=props.commands.allows('connect');
@@ -53,7 +39,8 @@ export function GraphScene(props: DependencyGraphProps) {
   const [nodes,setNodes,applyNodeChanges]=useNodesState<CardNode>([]),initialized=useNodesInitialized();
   const runtime=useWorkspaceRuntime(),interaction=props.interaction,selection=useSyncExternalStore(interaction.subscribe,interaction.snapshot);
   const selected=selection.kind==='nodes'?selection.primary:'',selectedEdge=selection.kind==='edge'?selection.id:undefined;
-  useEffect(()=>()=>{interaction.cancel();},[interaction,viewKey]);
+  // Fields commit their buffers on unmount; changing canvas scope only cancels canvas gestures.
+  useEffect(()=>()=>{if(interaction.operation?.kind!=='field')interaction.cancel();},[interaction,viewKey]);
   const selectedIds=useMemo(()=>selection.kind==='nodes'?selection.ids:[],[selection]);
   const [dragTick,setDragTick]=useState(0);
   const setSelectedIds=(value:string[]|((old:string[])=>string[]))=>{const old=interaction.selection.kind==='nodes'?interaction.selection.ids:[];const next=typeof value==='function'?value(old):value;interaction.nodes(next,interaction.selection.kind==='nodes'?interaction.selection.primary:'');};
@@ -65,10 +52,11 @@ export function GraphScene(props: DependencyGraphProps) {
   const selectFromCanvas=(id:string)=>{const ids=interaction.selection.kind==='nodes'?interaction.selection.ids:[];interaction.nodes(id?ids.includes(id)?ids:[id]:[],id,true);};
   const drag=useRef<{ticket:number;ids:string[];original:Record<string,Point>;copy:boolean;cancelled?:boolean}|null>(null),manualPending=useRef(false),clipboard=useRef<{ids:string[];nodes:ReturnType<typeof positioned>;snapshot?:unknown}>({ids:[],nodes:[]}),latestProps=useRef(props);latestProps.current=props;
   const rename=useCallback((id:string,title:string)=>latestProps.current.commands.dispatch({type:'rename',id,title}),[]);
+  const selectPhase=useCallback((featureId:string,phaseId:string)=>latestProps.current.onSelectPhase?.(featureId,phaseId),[]);
+  const onSelectPhase=props.onSelectPhase?selectPhase:undefined;
 
-  const router=useRef<Worker|null>(null),requests=useRef(new Map<number,{resolve:(l:RoutedLayout)=>void;reject:(e:Error)=>void}>()),routeSequence=useRef(0);
-  useEffect(()=>{const worker=new Worker(new URL('../fixed-routing.worker.ts',import.meta.url),{type:'module'});router.current=worker;worker.onmessage=e=>{const request=requests.current.get(e.data.id);if(request){requests.current.delete(e.data.id);if(e.data.error)request.reject(new Error(e.data.error));else request.resolve(e.data.layout);}};const pending=requests.current;worker.onerror=()=>{for(const request of pending.values())request.reject(new Error('连线路由暂不可用，请重试'));pending.clear();};return()=>{worker.terminate();for(const r of pending.values())r.reject(new Error('画布已关闭'));pending.clear();};},[retry]);
-  const fixedRoute=(positions:Record<string,Point>,activeNodes:CardNode[],regions=phaseRegions.current)=>new Promise<RoutedLayout>((resolve,reject)=>{const id=++routeSequence.current;requests.current.set(id,{resolve,reject});router.current!.postMessage({id,nodes:activeNodes.map(n=>({id:n.id,width:n.measured!.width!,height:n.measured!.height!,...positions[n.id]})),edges:measuredLinks,obstacles:regions.map(r=>({left:r.x+8,right:r.x+r.width-8,top:r.y,bottom:r.y+PHASE_HEADER-12}))});});
+  const route = useRoutingWorker(retry);
+  const fixedRoute=(positions:Record<string,Point>,activeNodes:CardNode[],regions=phaseRegions.current)=>route({nodes:activeNodes.map(n=>({id:n.id,width:n.measured!.width!,height:n.measured!.height!,...positions[n.id]})),edges:measuredLinks,obstacles:regions.map(r=>({left:r.x+8,right:r.x+r.width-8,top:r.y,bottom:r.y+PHASE_HEADER-12}))});
   const phaseRegions=useRef<PhaseRegion[]>(props.regions||[]),lastPhasePositions=useRef('');
   const [scene,setScene]=useState<{layout:RoutedLayout;links:GraphLink[]}|null>(null);
   const [edgeFade,setEdgeFade]=useState<{ids:Set<string>;opacity:number}>({ids:new Set(),opacity:1});
@@ -119,7 +107,7 @@ export function GraphScene(props: DependencyGraphProps) {
       const oldById=new Map(previous.map(n=>[n.id,n])),ids=new Set(cards.map(c=>c.id));
       const updated:CardNode[]=cards.map(card=>{
         const old=oldById.get(card.id),visible=!props.visibleIds||props.visibleIds.includes(card.id);
-        const data:CardData={...card,selectedPhaseId:props.selectedPhaseId,onSelectPhase:props.onSelectPhase,vertical,editing,rename:allowRename?rename:undefined,connectable:allowConnect,retiring:false,context:props.contextIds?.includes(card.id),
+        const data:CardData={...card,selectedPhaseId:props.selectedPhaseId,onSelectPhase,vertical,editing,rename:allowRename?rename:undefined,connectable:allowConnect,retiring:false,context:props.contextIds?.includes(card.id),
           highlighted:!!props.highlighted?.includes(card.id),invalid:!!props.invalidNodes?.includes(card.id),
           connection:card.id===activeSource?'source':card.id===activeTarget?invalidTarget?'invalid':'target':undefined};
         const stableData=old&&Object.keys(data).every(key=>data[key as keyof CardData]===old.data[key as keyof CardData])?old.data:data;
@@ -134,7 +122,7 @@ export function GraphScene(props: DependencyGraphProps) {
       const next=[...updated,...previous.filter(n=>!ids.has(n.id)).map(n=>n.data.retiring?n:{...n,data:{...n.data,retiring:true,editing:false}})];
       return next.length===previous.length&&next.every((n,i)=>n===previous[i])?previous:next;
     });
-  },[cards,links,scene,selected,selectedIds,vertical,editing,rename,allowRename,allowConnect,props.visibleIds,props.contextIds,props.highlighted,props.invalidNodes,props.positions,props.onSelectPhase,props.selectedPhaseId,activeSource,activeTarget,invalidTarget,setNodes]);
+  },[cards,links,scene,selected,selectedIds,vertical,editing,rename,allowRename,allowConnect,props.visibleIds,props.contextIds,props.highlighted,props.invalidNodes,props.positions,onSelectPhase,props.selectedPhaseId,activeSource,activeTarget,invalidTarget,setNodes]);
   const measuredLinks=useMemo(()=>{
     const context=document.createElement('canvas').getContext('2d');if(context)context.font='12px '+getComputedStyle(document.body).fontFamily;
     return links.map(e=>({...e,labelWidth:e.label?Math.ceil(context?.measureText(e.label).width||44)+8:undefined}));
@@ -336,7 +324,7 @@ export function GraphScene(props: DependencyGraphProps) {
     const position=displayPositions.current.get(id)||node.position;
     return flow.flowToScreenPosition({x:position.x+(side==='left'?0:side==='right'?w:w/2),y:position.y+(side==='top'?0:side==='bottom'?h:h/2)});
   };
-  const rect=container.current?.getBoundingClientRect(),previewMarker=useId().replace(/:/g,'_');
+  const rect=gesture||props.reconnect||drag.current?.copy?container.current?.getBoundingClientRect():undefined,previewMarker=useId().replace(/:/g,'_');
   const screenBox=(id:string):PreviewBox|null=>{const box=currentBoxes.get(id);return box?{x:box.x*viewport.zoom+viewport.x,y:box.y*viewport.zoom+viewport.y,width:box.width*viewport.zoom,height:box.height*viewport.zoom}:null;};
   const fixed=gesture&&screenBox(gesture.source),candidate=gesture?.target&&screenBox(gesture.target),pointer=gesture&&rect?{x:gesture.point.x-rect.left,y:gesture.point.y-rect.top}:null;
   const liveCurve=fixed&&pointer?(gesture?.reconnectEnd==='source'?candidate?previewCurve(candidate,fixed):previewCurve(fixed,pointer,undefined,true):previewCurve(fixed,candidate||pointer,gesture?.side)):null;
@@ -345,6 +333,34 @@ export function GraphScene(props: DependencyGraphProps) {
   const hintSource=gesture?.reconnectEnd==='source'?gesture.target:gesture?.source,hintTarget=gesture?.reconnectEnd==='source'?gesture.source:gesture?.target;
   const hint=gesture?.issue?.message||(gesture?.target?cards.find(c=>c.id===hintSource)?.title+' 完成后 '+cards.find(c=>c.id===hintTarget)?.title+' 开始':gesture?gesture.reconnectEnd==='source'?'选择新的前置卡片，完成后进入当前后续':'拖到后续卡片，或点击卡片完成连接':'');
   const openNode=(id:string)=>{const card=cards.find(c=>c.id===id);if(card&&props.onOpenNode&&!gesture){runtime.commitFields(false);props.onOpenNode(card);}};
+  const flowEvents:FlowEvents={
+    onNodesChange,
+    onNodeDoubleClick:(_,node)=>openNode(node.id),
+    onPaneClick:event=>{if(props.placing&&editing)createAt(props.placing,flow.screenToFlowPosition({x:event.clientX,y:event.clientY}));else {setSelectedIds([]);selectFromCanvas('');}},
+    onNodeDragStart:(event,node)=>{const ids=selectedIds.includes(node.id)?selectedIds:[node.id];interaction.nodes(ids,node.id);manualPending.current=true;const ticket=interaction.begin('move',()=>{cancelDrag();});drag.current={ticket,ids,original:displayedPositions(),copy:'altKey' in event&&event.altKey};setEdgeFade({ids:new Set(links.filter(e=>ids.includes(e.source)||ids.includes(e.target)).map(e=>e.id)),opacity:0});},
+    onNodeDrag:(_,node,dragged)=>{if(!drag.current)return;if(drag.current.cancelled){restoreDrag();return;}for(const n of dragged.length?dragged:[node])displayPositions.current.set(n.id,props.constrainPosition?.(n.id,n.position)||n.position);setDragTick(t=>t+1);},
+    onNodeDragStop:(event,node,dragged)=>{const d=drag.current;if(!d)return;const el='clientX' in event?document.elementFromPoint(event.clientX,event.clientY):null;const invalid=d.cancelled||!interaction.isCurrent(d.ticket)||!el||!container.current?.contains(el)||runtime.covers(el);if(invalid){restoreDrag();interaction.cancel();drag.current=null;return;}
+        const targets=Object.fromEntries((dragged.length?dragged:[node]).filter(n=>d.ids.includes(n.id)).map(n=>[n.id,props.constrainPosition?.(n.id,n.position)||n.position]));
+        if(d.copy){restoreDrag();drag.current=null;interaction.complete(d.ticket,()=>props.commands.dispatch({type:'duplicate',ids:d.ids,positions:vacantGroup(positioned(),targets,true)}));}
+        else {const final={...d.original,...vacantGroup(positioned(),targets)};if(props.constrainPosition)for(const id of d.ids)final[id]=props.constrainPosition(id,final[id]);drag.current=null;interaction.complete(d.ticket,()=>commitMove(final));}
+      },
+    onNodeClick:(event,node)=>{if(!connection.choose(node.id)){if(!event.ctrlKey&&!event.metaKey)setSelectedIds([node.id]);const ids=interaction.selection.kind==='nodes'?interaction.selection.ids:[];selectFromCanvas(ids.includes(node.id)?node.id:ids.at(-1)||'');}},
+    onEdgeClick:(_,edge)=>{interaction.select({kind:'edge',id:edge.id},true);},
+    onMoveEnd:(_,v)=>{if(!busy&&!first.current)saveViewport(keyRef.current,v);},
+  };
+  const latestEvents=useRef(flowEvents);latestEvents.current=flowEvents;
+  // React Flow subscribes nodes to these callbacks; route-only renders keep their identity.
+  const stableEvents=useMemo<FlowEvents>(()=>({
+    onNodesChange:(...args)=>latestEvents.current.onNodesChange(...args),
+    onNodeDoubleClick:(...args)=>latestEvents.current.onNodeDoubleClick(...args),
+    onPaneClick:(...args)=>latestEvents.current.onPaneClick(...args),
+    onNodeDragStart:(...args)=>latestEvents.current.onNodeDragStart(...args),
+    onNodeDrag:(...args)=>latestEvents.current.onNodeDrag(...args),
+    onNodeDragStop:(...args)=>latestEvents.current.onNodeDragStop(...args),
+    onNodeClick:(...args)=>latestEvents.current.onNodeClick(...args),
+    onEdgeClick:(...args)=>latestEvents.current.onEdgeClick(...args),
+    onMoveEnd:(...args)=>latestEvents.current.onMoveEnd(...args),
+  }),[]);
   return <div className="dependency-canvas" ref={container} role="region" tabIndex={0} aria-label="动态交付依赖图"
     data-layout-ready={phase==='ready'} data-layout-phase={phase} data-rendered-layout={rendered} data-connection-active={!!gesture}
     onPointerDownCapture={event=>{
@@ -384,22 +400,11 @@ export function GraphScene(props: DependencyGraphProps) {
     {!rendered&&slowBusy&&<div className="graph-initial-loader" role="status"><LoaderCircle size={20}/>正在准备画布</div>}
     {hint&&<div className={'dependency-layout-notice graph-connection-hint'+(gesture?.issue?' is-invalid':'')} style={gesture&&rect?{left:Math.max(12,Math.min(gesture.point.x-rect.left+16,rect.width-260)),top:Math.max(12,Math.min(gesture.point.y-rect.top+20,rect.height-110)),transform:'none'}:undefined} role="status">{hint}</div>}
     {error&&<div className="dependency-layout-notice graph-error-notice" data-workspace-zone="notice" role="alert"><span>{error}</span>{connectionIssue?.kind&&props.onInspectIssue&&<Button variant="secondary" className="ghost-button" onClick={()=>{props.onInspectIssue?.(connectionIssue);setError('');}}>{connectionIssue.kind==='duplicate'?'查看已有关系':'查看循环路径'}</Button>}{routingError.current&&<Button variant="secondary" className="ghost-button" onClick={()=>setRetry(n=>n+1)}>重试连线</Button>}<Button variant="ghost" iconOnly className="graph-notice-close" aria-label="关闭提示" title="关闭提示" onClick={dismissError}><X size={16}/></Button></div>}
-    <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
+    <ReactFlow {...stableEvents} nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
       nodesDraggable={editing} nodesConnectable={false} deleteKeyCode={null} autoPanOnNodeFocus={false} autoPanOnConnect={false}
       zoomOnScroll zoomOnPinch zoomOnDoubleClick={false} panOnScroll={false} preventScrolling zoomActivationKeyCode={null}
-      onNodeDoubleClick={(_,node)=>openNode(node.id)}
-      panActivationKeyCode="Space" panOnDrag={[0,1]} selectionKeyCode="Shift" multiSelectionKeyCode={["Control","Meta"]} connectOnClick={false}
-      snapToGrid snapGrid={[8,8]}
-      onPaneClick={event=>{if(props.placing&&editing)createAt(props.placing,flow.screenToFlowPosition({x:event.clientX,y:event.clientY}));else {setSelectedIds([]);selectFromCanvas('');}}}
-      onNodeDragStart={(event,node)=>{selectFromCanvas(node.id);const ids=selectedIds.includes(node.id)?selectedIds:[node.id];setSelectedIds(ids);manualPending.current=true;const ticket=interaction.begin('move',()=>{cancelDrag();});drag.current={ticket,ids,original:displayedPositions(),copy:'altKey' in event&&event.altKey};setEdgeFade({ids:new Set(links.filter(e=>ids.includes(e.source)||ids.includes(e.target)).map(e=>e.id)),opacity:0});}}
-      onNodeDrag={(_,node,dragged)=>{if(!drag.current)return;if(drag.current.cancelled){restoreDrag();return;}for(const n of dragged.length?dragged:[node])displayPositions.current.set(n.id,props.constrainPosition?.(n.id,n.position)||n.position);setDragTick(t=>t+1);}}
-      onNodeDragStop={(event,node,dragged)=>{const d=drag.current;if(!d)return;const el='clientX' in event?document.elementFromPoint(event.clientX,event.clientY):null;const invalid=d.cancelled||!interaction.isCurrent(d.ticket)||!el||!container.current?.contains(el)||runtime.covers(el);if(invalid){restoreDrag();interaction.cancel();drag.current=null;return;}
-        const targets=Object.fromEntries((dragged.length?dragged:[node]).filter(n=>d.ids.includes(n.id)).map(n=>[n.id,props.constrainPosition?.(n.id,n.position)||n.position]));
-        if(d.copy){restoreDrag();drag.current=null;interaction.complete(d.ticket,()=>props.commands.dispatch({type:'duplicate',ids:d.ids,positions:vacantGroup(positioned(),targets,true)}));}
-        else {const final={...d.original,...vacantGroup(positioned(),targets)};if(props.constrainPosition)for(const id of d.ids)final[id]=props.constrainPosition(id,final[id]);drag.current=null;interaction.complete(d.ticket,()=>commitMove(final));}
-      }}
-      onNodeClick={(event,node)=>{if(!connection.choose(node.id)){if(!event.ctrlKey&&!event.metaKey)setSelectedIds([node.id]);const ids=interaction.selection.kind==='nodes'?interaction.selection.ids:[];selectFromCanvas(ids.includes(node.id)?node.id:ids.at(-1)||'');}}} onEdgeClick={(_,edge)=>{interaction.select({kind:'edge',id:edge.id});}}
-      onMoveEnd={(_,v)=>{if(!busy&&!first.current)saveViewport(keyRef.current,v);}} minZoom={.02} maxZoom={1.5} fitView={false}>
+      panActivationKeyCode="Space" panOnDrag={panButtons} selectionKeyCode="Shift" multiSelectionKeyCode={selectionKeys} connectOnClick={false}
+      snapToGrid snapGrid={snapGrid} minZoom={.02} maxZoom={1.5} fitView={false}>
       <Background gap={24} size={1}/>{props.regions&&<div className="delivery-regions" style={{transform:`translate(${viewport.x}px,${viewport.y}px) scale(${viewport.zoom})`}}>{phaseRegions.current.filter(r=>!props.focusRegionId||r.id===props.focusRegionId||r.nodeIds.some(id=>props.visibleIds?.includes(id))).map(r=><div key={r.id} className="delivery-region" style={{left:r.x,top:r.y,width:Math.max(r.width,...nodes.filter(n=>r.nodeIds.includes(n.id)).map(n=>n.position.x-r.x+(n.measured?.width||244)+PHASE_PADDING)),height:Math.max(r.height,...nodes.filter(n=>r.nodeIds.includes(n.id)).map(n=>n.position.y-r.y+(n.measured?.height||168)+PHASE_PADDING))}} data-phase-region={r.id}><div className="delivery-region-header"><Button variant="secondary" className="ghost-button nodrag nopan" onClick={()=>props.onSelectPhase?.(r.phase?.featureId||'unassigned',r.id)}><span className="delivery-region-name" title={r.name}>{r.name}</span>{r.phase&&<PhaseStatusBadge phase={r.phase}/>}</Button><p title={r.phase?.scope}>{r.phase?.scope||(!r.nodeIds.length?'交付范围待明确':'')}</p>{r.phase&&<small>目标 {r.phase.targetDate||'待定'}</small>}</div></div>)}</div>}
     </ReactFlow>
     {(liveCurve||pendingLinks.length>0)&&<svg className={'graph-connection-preview'+(gesture?.issue?' is-invalid':'')} aria-hidden="true">

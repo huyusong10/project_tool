@@ -1,0 +1,23 @@
+@layer application {
+
+.my-work-page { display: grid; gap: 12px; }.my-work-summary { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 10px; }.my-work-summary article { min-height: 78px; display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 8px; padding: 12px 14px; border: 1px solid var(--surface-border); border-radius: var(--surface-radius); background: var(--surface-bg); box-shadow: var(--surface-shadow); }.my-work-summary svg { width: 34px; height: 34px; padding: 8px; border-radius: var(--radius-md); color: var(--accent-ink); background: var(--accent-soft); }.my-work-summary span { color: var(--text-muted); }.my-work-summary strong { color: var(--text-primary); font-size: 24px; }
+.my-work-list > header { flex-wrap: wrap; gap: 10px; }.my-work-list > header .view-tabs { margin-left: auto; }
+.my-work-list { overflow: hidden; }.my-work-list > .requirement-gantt { height: auto; flex: 1; min-height: 0; }.requirement-gantt-item-link { min-width: 0; max-width: 100%; overflow: hidden; padding: 0; border: 0; color: var(--text-secondary); background: transparent; font-size: 12px; font-weight: 700; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }.requirement-gantt-item-link:hover { color: var(--accent-hover); text-decoration: underline; text-underline-offset: 2px; }.my-work-assignment-badge, .my-work-overdue-badge { flex: none; padding: 1px 5px; border-radius: 5px; color: var(--text-secondary); background: var(--accent-soft); font-size: 10px; font-style: normal; font-weight: 700; line-height: 17px; }.my-work-overdue-badge { color: var(--danger-text); background: var(--danger-bg); }
+.my-work-list .requirement-gantt-actions { container: my-work-actions / inline-size; padding-inline: 8px; box-shadow: none; }
+.my-work-list .requirement-gantt-grid:not(.has-inline-actions):not(.is-empty) { grid-auto-rows: minmax(54px,auto); }
+.my-work-gantt-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; width: 100%; min-width: 0; }
+.my-work-gantt-actions .work-item-actions { width: auto; max-width: 100%; }
+.my-work-gantt-actions .work-item-action-row { flex-wrap: wrap; gap: 2px; }
+.my-work-progress-action { flex: none; height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border: 0; border-radius: var(--radius-sm); color: var(--accent-ink); background: var(--accent-soft); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.my-work-progress-action:hover { background: color-mix(in srgb,var(--accent) 14%,var(--bg-surface)); }
+.my-work-gantt-actions .action-menu-trigger { flex: none; width: 28px; height: 30px; }
+.my-work-gantt-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@container my-work-actions (max-width: 165px) {
+  .my-work-progress-action { padding-inline: 6px; }
+  .my-work-progress-action + .work-item-actions .work-next-action > svg { display: none; }
+  .my-work-progress-action > svg { display: none; }
+}
+
+.my-work-dates { min-width: 0; display: grid; gap: 5px; color: var(--text-faint); font-size: 12px; }.my-work-dates b { width: fit-content; color: var(--text-secondary); font-size: 12px; }
+.my-work-charts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }.my-work-context { display: grid; gap: 3px; padding: 10px 12px; border-radius: var(--radius-md); color: var(--text-secondary); background: var(--bg-page); }.my-work-context span { color: var(--text-faint); font-size: 12px; }
+}

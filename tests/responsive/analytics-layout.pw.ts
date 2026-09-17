@@ -46,6 +46,8 @@ test.describe('北京时间分析默认范围', () => {
 
 test('分析卡片显示服务端快照日期', async ({ page }) => {
   await mockAnalytics(page);
+  const graphRequests:string[]=[];
+  page.on('request',request=>{if(/\/path-(analysis|graph)(\?|$)/.test(request.url()))graphRequests.push(request.url());});
   await page.route('**/api/analytics/query', (route) => {
     const request = route.request().postDataJSON();
     return route.fulfill({ json: {
@@ -65,6 +67,7 @@ test('分析卡片显示服务端快照日期', async ({ page }) => {
   await expect(snapshot.locator('header span')).toHaveText('截至 2026-02-16');
   const future = page.locator('.analytics-panel').filter({ hasText: '未来30天到期需求' });
   await expect(future.locator('header span')).toHaveText('2026-02-16 起30天');
+  expect(graphRequests).toEqual([]);
 });
 
 test('saving an analytics layout locks the draft and duplicate submit', async ({ page }) => {

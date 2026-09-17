@@ -1,8 +1,13 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { fail } from './errors';
+import { getDatabaseContext, type DatabaseContext } from './database-context';
 
-let paused = false;
-const requests = new Set<FastifyRequest>();
+const states = new WeakMap<DatabaseContext, { paused: boolean; requests: Set<FastifyRequest> }>();
+function stateFor(context: DatabaseContext) {
+  let state = states.get(context);
+  if (!state) { state = { paused: false, requests: new Set() }; states.set(context, state); }
+  return state;
+}
 
 function isDatabaseRequest(request: FastifyRequest) {
   const pathname = request.url.split('?')[0];
@@ -11,10 +16,11 @@ function isDatabaseRequest(request: FastifyRequest) {
     && !['/api/backups/restore', '/api/backups/import/restore', '/api/system/overview'].includes(pathname);
 }
 
-export function registerDatabaseMaintenance(app: FastifyInstance) {
+export function registerDatabaseMaintenance(app: FastifyInstance, context: DatabaseContext) {
+  const state = stateFor(context), { requests } = state;
   const check = (request: FastifyRequest) => {
     if (!isDatabaseRequest(request)) return;
-    if (paused) fail('数据库正在恢复，请稍后重试', 'DATABASE_MAINTENANCE', 503);
+    if (state.paused) fail('数据库正在恢复，请稍后重试', 'DATABASE_MAINTENANCE', 503);
   };
   app.addHook('onRequest', async (request) => { check(request); });
   app.addHook('preHandler', async (request) => {
@@ -26,8 +32,9 @@ export function registerDatabaseMaintenance(app: FastifyInstance) {
   app.addHook('onError', async (request) => { requests.delete(request); });
 }
 
-export async function pauseDatabaseRequests() {
-  paused = true;
+export async function pauseDatabaseRequests(context = getDatabaseContext()) {
+  const state = stateFor(context), { requests } = state;
+  state.paused = true;
   const deadline = Date.now() + 10_000;
   while (requests.size) {
     if (Date.now() >= deadline) fail('仍有请求正在执行，本次恢复已取消，请稍后重试', 'DEPENDENCY_CONFLICT', 409);
@@ -35,4 +42,4 @@ export async function pauseDatabaseRequests() {
   }
 }
 
-export function resumeDatabaseRequests() { paused = false; }
+export function resumeDatabaseRequests(context = getDatabaseContext()) { stateFor(context).paused = false; }

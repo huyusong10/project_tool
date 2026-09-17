@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { config } from './config';
+import { config as defaultConfig } from './config';
 import { hashPassword, normalizeUsername } from './auth';
 import { ensureBuiltInSampleProject, linkSampleProgressAuthors } from './sample-project';
 import { canonicalizeLabel, matchesPlainText, searchScore } from '../shared/search';
@@ -15,17 +15,28 @@ import { recoverInterruptedDatabaseSwap } from './database-swap';
 import { initializeLegacyWorkEstimates } from './work-estimate-migration';
 import {initializeWorkspaceOrder} from './workspace-migration';
 import { reconcileFeatureBranch } from './feature-branch-migration';
+import { getDefaultDatabase, setDefaultDatabase, type DatabaseContext } from './database-context';
 
+export async function openDatabase(config = defaultConfig): Promise<DatabaseContext> {
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
+fs.mkdirSync(config.backupDir, { recursive: true });
+
 recoverInterruptedDatabaseSwap(config.dbPath);
 
-export const sqlite = new Database(config.dbPath);
+const sqlite = new Database(config.dbPath);
+
+
+try {
 sqlite.pragma('journal_mode = WAL');
+
 sqlite.pragma('busy_timeout = 5000');
+
 sqlite.function('search_score', { deterministic: true }, (value: unknown, query: unknown) =>
   searchScore([String(value ?? '')], query));
+
 sqlite.function('search_plain_match', { deterministic: true }, (value: unknown, query: unknown) =>
   matchesPlainText([String(value ?? '')], query) ? 1 : 0);
+
 sqlite.function('business_day_delta', { deterministic: true }, (planned: unknown, actual: unknown) =>
   businessDayDelta(planned == null ? null : String(planned), actual == null ? null : String(actual)));
 
@@ -69,8 +80,10 @@ async function backupBeforePendingMigration() {
 
 await backupBeforePendingMigration();
 
-export const db = drizzle(sqlite, { schema });
+const db = drizzle(sqlite, { schema });
+
 sqlite.pragma('foreign_keys = OFF');
+
 try {
   reconcileFeatureBranch(sqlite, path.join(config.rootDir, 'drizzle'));
   migrate(db, { migrationsFolder: path.join(config.rootDir, 'drizzle') });
@@ -118,6 +131,7 @@ function repairLegacyIdentityText() {
 }
 
 repairLegacyIdentityText();
+
 function bootstrapAccounts() {
   const now = new Date().toISOString();
   const transaction = sqlite.transaction(() => {
@@ -156,18 +170,38 @@ function bootstrapAccounts() {
 }
 
 ensureBuiltInSampleProject(sqlite, config.seedDemo);
+
 bootstrapAccounts();
+
 linkSampleProgressAuthors(sqlite);
+
 initializeLegacyWorkEstimates(sqlite);
+
 initializeWorkspaceOrder(sqlite);
 
 const databaseConsistency = inspectDatabaseConsistency(sqlite);
+
 if (databaseConsistency.phases) throw new Error('Phase 归属或交付记录不一致，服务已拒绝启动');
+
 if (databaseConsistency.foreignKeys) throw new Error(`数据库迁移后存在${databaseConsistency.foreignKeys}条外键异常`);
+
 if (databaseConsistency.projectScope.projectDefaults || databaseConsistency.projectScope.requirementTemplates || databaseConsistency.projectScope.workItemTemplates) {
   throw new Error('数据库迁移后存在跨项目流程引用，服务已拒绝启动');
 }
+
 if (databaseConsistency.state.workItems || databaseConsistency.state.requirements || databaseConsistency.state.issues) {
   throw new Error(`数据库状态一致性校验失败：工作项${databaseConsistency.state.workItems}、需求${databaseConsistency.state.requirements}、问题${databaseConsistency.state.issues}`);
 }
+
 sqlite.pragma('optimize');
+return {sqlite, db, config, close() { if (sqlite.open) sqlite.close(); }};
+} catch (error) { if (sqlite.open) sqlite.close(); throw error; }
+}
+
+let pending: Promise<DatabaseContext> | undefined;
+export async function initializeDatabase(): Promise<DatabaseContext> {
+  const existing = getDefaultDatabase();
+  if (existing) return existing;
+  pending ??= openDatabase().then(context => { setDefaultDatabase(context); return context; }).finally(() => { pending = undefined; });
+  return pending;
+}

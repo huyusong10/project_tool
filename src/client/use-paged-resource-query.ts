@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { QueryKey } from '@tanstack/react-query';
 import { isTemporaryReadError } from './api';
-import { useResourceQuery } from './use-resource-query';
+import { useResourceQuery, type ResourceLoader } from './use-resource-query';
 
 /** 翻页期间保留同一筛选范围的成功页；拒绝访问后不能再回退到旧记录。 */
-export function usePagedResourceQuery<T>(key: QueryKey, path: string, scope: string, enabled = true) {
+export function usePagedResourceQuery<T>(key: QueryKey, source: string | ResourceLoader<T>, scope: string, enabled = true) {
+  // Inline loaders change identity every render; the query key identifies the page.
+  const path = typeof source === 'string' ? source : JSON.stringify(key);
   const [last, setLast] = useState<{ scope: string; data: T; path: string }>();
   const [failure, setFailure] = useState<{ scope: string; error: Error; fallbackPath?: string }>();
-  const query = useResourceQuery<T>(key, path, enabled, () => setFailure(current => current?.fallbackPath === path ? current : undefined));
+  const query = useResourceQuery<T>(key, source, enabled, () => setFailure(current => current?.fallbackPath === path ? current : undefined));
   useEffect(() => {
     if (query.data) setLast({ scope, data: query.data, path });
     if (query.error) {

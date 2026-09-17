@@ -1,9 +1,10 @@
+import * as pathsApi from '../features/paths/api';
 import { Button } from './Button';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { PathAnalysis } from '../../shared/paths';
 import type { WorkItem } from '../types';
-import { api, jsonBody, requiresWriteRecheck } from '../api';
+import { jsonBody, requiresWriteRecheck } from '../api';
 import { useSession } from '../app-context';
 import { invalidateRequirementViews } from '../query-keys';
 import { assertCleanRequirementDraft } from '../use-graph-draft';
@@ -20,13 +21,13 @@ export function ForecastDateEditor({ item, data, onClose }: { item: WorkItem; da
   const mutation = useMutation({
     mutationFn: async () => {
       await assertCleanRequirementDraft(session.accountId || 'guest', item.requirementId, { workItemId: item.id, action: '更新预计完成日期' });
-      return api(`/api/work-items/${item.id}/path-estimate`, { method: 'PATCH', body: jsonBody({ expectedRevision: baseline.revision, forecastEnd: date || null }) });
+      return pathsApi.workItemsPathEstimate(item.id, { method: 'PATCH', body: jsonBody({ expectedRevision: baseline.revision, forecastEnd: date || null }) });
     },
     onSuccess: () => { invalidateRequirementViews(client, item.requirementId); onClose(); },
     onError: error => { if (requiresWriteRecheck(error)) setNeedsReload(true); },
   });
   const reload = useMutation({
-    mutationFn: () => api<PathAnalysis>(`/api/projects/${data.projectId}/path-analysis?target=project`),
+    mutationFn: () => pathsApi.projectsPathAnalysisQuery<PathAnalysis>(data.projectId),
     onSuccess: latest => { setBaseline(latest); setNeedsReload(false); mutation.reset(); invalidateRequirementViews(client, item.requirementId); },
   });
   const lock = useSynchronousPendingLock(mutation.isPending || reload.isPending);

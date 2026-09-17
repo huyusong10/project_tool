@@ -20,7 +20,7 @@ const localDay = date => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pa
 export function readLogConfig(env = process.env) {
   const positive = (value, fallback) => Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : fallback;
   return {
-    level: levels.includes(env.LOG_LEVEL) ? env.LOG_LEVEL : 'info',
+    level: levels.includes(env.LOG_LEVEL) ? env.LOG_LEVEL : env.NODE_ENV === 'test' ? 'silent' : 'info',
     format: ['auto', 'text', 'json'].includes(env.LOG_FORMAT) ? env.LOG_FORMAT : 'auto',
     directory: path.resolve(env.LOG_DIR || './data/logs'),
     retentionDays: positive(env.LOG_RETENTION_DAYS, 14),

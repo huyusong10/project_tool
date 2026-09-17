@@ -29,7 +29,6 @@ test('从页面导出、预览、取消和确认导入，重启后重新登录',
   await expect(dialog.getByText(/个项目 · .*条需求 · .*名人员/)).toBeVisible();
   await expect(dialog.getByText(/admin 使用本机配置的管理员密码/)).toBeVisible();
   await expect(dialog.getByRole('button', { name: '确认导入并替换' })).toBeEnabled();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
   await page.screenshot({ path: testInfo.outputPath('database-import-preview.png'), animations: 'disabled' });
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
   expect((await (await request.get('/api/projects')).json()).some((item: { name: string }) => item.name === extraName)).toBe(true);
@@ -53,6 +52,16 @@ test('从页面导出、预览、取消和确认导入，重启后重新登录',
   const projects = await (await request.get('/api/projects')).json() as Array<{ name: string }>;
   expect(projects.some((item) => item.name === projectName)).toBe(true);
   expect(projects.some((item) => item.name === extraName)).toBe(false);
+});
+
+test('数据库导入预览在矩阵视口内显示完整操作',{tag:'@responsive'},async({page})=>{
+  await page.goto('/system');const exporting=page.waitForEvent('download');await headerAction(page,'导出数据库');
+  const download=await exporting,buffer=fs.readFileSync((await download.path())!);
+  await page.getByLabel('选择数据库文件').setInputFiles({name:'布局验证.db',mimeType:'application/octet-stream',buffer});
+  const dialog=page.getByRole('dialog',{name:'导入数据库',exact:true});await expect(dialog).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width+1);
+  expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  await expect(dialog.getByRole('button',{name:'确认导入并替换'})).toBeInViewport();await dialog.getByRole('button',{name:'取消',exact:true}).click();
 });
 
 test('无效本地文件显示错误，页面允许重新选择文件', async ({ page }) => {

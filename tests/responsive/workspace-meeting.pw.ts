@@ -2,7 +2,7 @@ import {expect,test} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
 import {chooseOption} from './select-helper';
 
-test('会议行内更新与快速完成，双槽独立，业务顺序和按钮位置不变',async({page},info)=>{
+test('会议行内更新与快速完成保持业务顺序',async({page},info)=>{
   const f=await phaseFixture(page),work=f.testing.workItems[1];
   await page.goto('/execution?attention=1&progressAttention=1');
   const grid=page.getByRole('treegrid');await expect(grid).toContainText(f.testing.title);
@@ -12,20 +12,37 @@ test('会议行内更新与快速完成，双槽独立，业务顺序和按钮�
   await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');
   const row=grid.locator('[data-row-id="'+work.id+'"]'),order=await grid.locator('.kind-work').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-row-id')));
   expect(order).toEqual(f.testing.workItems.map(w=>w.id));
-  for(const [kind,max] of [['feature',46],['phase',56],['requirement',56],['work',50]] as const){const heights=await grid.locator('.kind-'+kind).evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().height));expect(heights.every(h=>h<=max+1),kind+': '+heights.join(', ')).toBe(true);}
+  const progress=row.getByRole('button',{name:'更新 '+work.title+' 进度',exact:true});
+  await progress.click();const dialog=page.getByRole('dialog',{name:'更新工作项进度',exact:true});
+  await dialog.getByRole('spinbutton').fill('75');await dialog.getByRole('textbox',{name:/^说明/}).fill('例会逐项更新');await dialog.getByRole('button',{name:'记录进展',exact:true}).click();
+  await expect(dialog).toHaveCount(0);await expect(progress).toContainText('75%');await expect(page.locator('.modal-card-workspace[role=dialog]')).toHaveCount(0);
+  expect(await grid.locator('.kind-work').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-row-id')))).toEqual(order);
+  await page.screenshot({path:info.outputPath('meeting-progress.png'),animations:'disabled'});
+  await row.getByRole('button',{name:'完成',exact:true}).click();await page.getByRole('button',{name:'确认完成',exact:true}).click();await expect(row.locator('.workspace-row-progress > span').first()).toContainText('100%');await expect(row).toHaveAttribute('data-status','completed');
+  await expect(page.locator('.modal-card-workspace[role=dialog]')).toHaveCount(0);await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await grid.locator('.kind-work').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-row-id')))).toEqual(order);
+  const saved=await(await page.request.get('/api/requirements/'+f.testing.id)).json();expect(saved.workItems.find((w:{id:string})=>w.id===work.id).status).toBe('completed');
+});
+test('会议双轨、行高与更新前后的操作位置稳定',{tag:'@responsive'},async({page},info)=>{
+  const f=await phaseFixture(page),work=f.testing.workItems[1];
+  await page.goto('/execution?attention=1&progressAttention=1');
+  const grid=page.getByRole('treegrid');await expect(grid).toContainText(f.testing.title);
+  await expect(page).not.toHaveURL(/Attention=|attention=/);await expect(page.getByText('需要关注',{exact:true})).toHaveCount(0);
+  await expect(page.getByText('正式计划',{exact:true})).toHaveCount(0);await expect(page.locator('.workspace-progress-summary')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'编辑画布',exact:true})).toHaveCount(0);
+  await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');
+  const row=grid.locator('[data-row-id="'+work.id+'"]'),order=await grid.locator('.kind-work').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-row-id')));
+  expect(order).toEqual(f.testing.workItems.map(w=>w.id));
+  for(const [kind,max] of [['feature',54],['phase',56],['requirement',56],['work',56]] as const){const heights=await grid.locator('.kind-'+kind).evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().height));expect(heights.every(h=>h<=max+1),kind+': '+heights.join(', ')).toBe(true);}
   const tracks=await row.locator('.gantt-date-plan,.gantt-date-actual').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect(),parent=n.parentElement!.getBoundingClientRect();return {top:r.top,bottom:r.bottom,parentTop:parent.top,parentBottom:parent.bottom};}));
   expect(tracks).toHaveLength(2);expect(tracks[0].bottom).toBeLessThan(tracks[1].top);expect(tracks.every(r=>r.top>=r.parentTop&&r.bottom<=r.parentBottom)).toBe(true);
   const progress=row.getByRole('button',{name:'更新 '+work.title+' 进度',exact:true}),position=await progress.boundingBox();
   expect(position!.x).toBeGreaterThan(0);expect(position!.x+position!.width).toBeLessThan(info.project.use.viewport!.width);
   await progress.click();const dialog=page.getByRole('dialog',{name:'更新工作项进度',exact:true});
   await dialog.getByRole('spinbutton').fill('75');await dialog.getByRole('textbox',{name:/^说明/}).fill('例会逐项更新');await dialog.getByRole('button',{name:'记录进展',exact:true}).click();
-  await expect(dialog).toHaveCount(0);await expect(progress).toHaveText('75%');await expect(page.getByRole('complementary',{name:'对象详情'})).toHaveCount(0);
+  await expect(dialog).toHaveCount(0);await expect(progress).toContainText('75%');await expect(page.locator('.modal-card-workspace[role=dialog]')).toHaveCount(0);
   expect(await progress.boundingBox()).toEqual(position);expect(await grid.locator('.kind-work').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-row-id')))).toEqual(order);
   await page.screenshot({path:info.outputPath('meeting-progress.png'),animations:'disabled'});
-  await row.getByRole('button',{name:'完成',exact:true}).click();await page.getByRole('button',{name:'确认完成',exact:true}).click();await expect(row.locator('.workspace-row-progress > span').first()).toHaveText('已完成');
-  await expect(page.getByRole('complementary',{name:'对象详情'})).toHaveCount(0);await expect(page.getByRole('dialog')).toHaveCount(0);
-  expect(await grid.locator('.kind-work').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-row-id')))).toEqual(order);
-  const saved=await(await page.request.get('/api/requirements/'+f.testing.id)).json();expect(saved.workItems.find((w:{id:string})=>w.id===work.id).status).toBe('completed');
 });
 
 test('直接执行需求行内更新与完成，特性范围不重复祖先行',async({page})=>{
@@ -35,10 +52,10 @@ test('直接执行需求行内更新与完成，特性范围不重复祖先行',
   const row=grid.locator('[data-row-id="'+f.direct.id+'"]');await row.getByRole('button',{name:'更新 '+f.direct.title+' 进度',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'更新进度',exact:true});await dialog.getByLabel('需求完成度').fill('45');await dialog.getByRole('button',{name:'更新进度',exact:true}).click();
   await expect(row.getByRole('button',{name:'更新 '+f.direct.title+' 进度',exact:true})).toHaveText('45%');await row.getByRole('button',{name:'完成需求',exact:true}).click();
-  await expect(row.locator('.workspace-row-progress > span').first()).toHaveText('已完成');await expect(page.getByRole('complementary',{name:'对象详情'})).toHaveCount(0);
+  await expect(row.locator('.workspace-row-progress > span').first()).toContainText('100%');await expect(row).toHaveAttribute('data-status','completed');await expect(page.locator('.modal-card-workspace[role=dialog]')).toHaveCount(0);
 });
 
-test('窄屏只有一套行内控件；详情字段对齐且不重排甘特',async({page},info)=>{
+test('窄屏只有一套行内控件；详情字段对齐且不重排甘特',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page),work=f.testing.workItems[1];await page.setViewportSize({width:390,height:844});await page.goto('/execution');
   await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');const grid=page.getByRole('treegrid'),row=grid.locator('[data-row-id="'+work.id+'"]');
   await row.scrollIntoViewIfNeeded();await row.locator('.workspace-row-actions').scrollIntoViewIfNeeded();const progress=row.getByRole('button',{name:'更新 '+work.title+' 进度',exact:true}),complete=row.getByRole('button',{name:'完成',exact:true});

@@ -1,23 +1,8 @@
 import { lazy, type ComponentType, type LazyExoticComponent, type SVGProps } from "react";
-import {
-  Archive,
-  ChartNoAxesCombined,
-  ListTodo,
-  BriefcaseBusiness,
-  CircleAlert,
-  ClipboardList,
-  FileClock,
-  FolderCog,
-  Network,
-  ScanSearch,
-  ServerCog,
-  SlidersHorizontal,
-  UsersRound,
-  Workflow,
-} from "lucide-react";
+import { Archive, ChartNoAxesCombined, ListTodo, BriefcaseBusiness, CircleAlert, ClipboardList, FileClock, FolderCog, Network, ScanSearch, ServerCog, SlidersHorizontal, UsersRound, Workflow } from "lucide-react";
 import { DashboardPage } from "./pages/DashboardPage";
 
-import type {PageScope} from './page-foundation';
+import type { PageScope } from './page-foundation';
 export type {PageScope} from './page-foundation';
 export type RouteAccess = "all" | "manager" | "admin";
 export type NavIcon = ComponentType<SVGProps<SVGSVGElement> & { size?: string | number }>;

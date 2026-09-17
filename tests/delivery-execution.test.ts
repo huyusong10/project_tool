@@ -15,7 +15,7 @@ const post=(url:string,data:Record<string,unknown>)=>req('POST',url,data);
 const detail=async(id:string)=>(await req('GET','/api/requirements/'+id)).json<Requirement>();
 const analysis=async(id:string)=>(await req('GET','/api/projects/'+id+'/path-analysis')).json<PathAnalysis>();
 beforeAll(async()=>{app=await(await import('../src/server/app')).buildApp();await app.ready();const r=await req('POST','/api/login',{username:'admin',password},'');cookie=String(r.headers['set-cookie']).split(';')[0];});
-afterAll(async()=>{await app.close();const{sqlite}=await import('../src/server/database');sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
+afterAll(async()=>{await app.close();const{sqlite}=await import('./support/database');sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
 async function fixture(extra:Record<string,unknown>={}){
  const project=(await post('/api/projects',{name:'交付测试'+(++sequence)})).json();
  const owner=(await post('/api/people',{projectId:project.id,name:'交付负责人'+sequence})).json();
@@ -75,7 +75,7 @@ it('普通进展不能回退进度，过期写入不改变版本及历史',async
 });
 it('完成采用实际日期，补录时间和历史验收时间不造成延期',async()=>{
  const end=addBusinessDays(todayIso(),-2),start=addBusinessDays(end,-2),{r}=await fixture({plannedStart:start,plannedEnd:end});
- await command(r.id,'start');const {sqlite}=await import('../src/server/database');sqlite.prepare('UPDATE requirements SET actual_start=? WHERE id=?').run(start,r.id);
+ await command(r.id,'start');const {sqlite}=await import('./support/database');sqlite.prepare('UPDATE requirements SET actual_start=? WHERE id=?').run(start,r.id);
  const response=await command(r.id,'complete',{actualEnd:end});expect(response.statusCode,response.body).toBe(200);
  expect(response.json()).toMatchObject({status:'completed',actualEnd:end,finishVariance:0,delayed:false});
  sqlite.prepare('UPDATE requirements SET accepted_at=? WHERE id=?').run(todayIso(),r.id);expect(await detail(r.id)).toMatchObject({finishVariance:0,delayed:false});

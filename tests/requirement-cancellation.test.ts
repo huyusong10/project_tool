@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -71,7 +72,7 @@ async function createScenario(scenario: string) {
 
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
-  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  origin = await listenTestApp(app);
   const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password } });
   expect(login.statusCode, login.body).toBe(200);
   cookie = String(login.headers['set-cookie']).split(';')[0];
@@ -80,7 +81,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -97,7 +98,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
     expect(response.statusCode, JSON.stringify(response.body)).toBe(200);
     const cancelled = response.body;
     expect(cancelled).toMatchObject({ status: 'cancelled', acceptedAt: null, version: before.version + 1 });
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const stored = sqlite.prepare('SELECT status, progress, planned_start AS plannedStart, planned_end AS plannedEnd, risk_level AS riskLevel, version FROM requirements WHERE id=?').get(before.id);
     expect(stored).toEqual({ status: cancelled.status, progress: cancelled.progress, plannedStart: cancelled.plannedStart, plannedEnd: cancelled.plannedEnd, riskLevel: cancelled.riskLevel, version: cancelled.version });
     const cancelEvents = cancelled.progressUpdates.filter((event) => event.eventType === 'cancel' && !event.workItemId);

@@ -17,7 +17,7 @@ const request=(method:'GET'|'POST'|'PATCH',url:string,payload?:unknown)=>app.inj
 const post=(url:string,payload:unknown)=>request('POST',url,payload);
 const get=async<T>(url:string)=>(await request('GET',url)).json<T>();
 beforeAll(async()=>{app=await(await import('../src/server/app')).buildApp();await app.ready();const response=await post('/api/login',{username:'admin',password});cookie=String(response.headers['set-cookie']).split(';')[0];});
-afterAll(async()=>{await app.close();(await import('../src/server/database')).sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
+afterAll(async()=>{await app.close();(await import('./support/database')).sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
 async function fixture(){
   const project=(await post('/api/projects',{name:'承诺'+randomUUID()})).json();
   const owner=(await post('/api/people',{projectId:project.id,name:'负责人'+randomUUID()})).json();

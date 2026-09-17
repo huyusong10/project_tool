@@ -1,3 +1,4 @@
+import {chooseOption} from './select-helper';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import type { Issue, IssuePage, Person, Project } from '../../src/client/types';
 
@@ -44,8 +45,8 @@ async function mockIssues(page: Page, state: { listFailure?: boolean } = {}) {
   });
 }
 
-test('问题列表失败时显示错误并可重新加载', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-1080p', '错误态只需在一个桌面视口执行');
+test('问题列表失败时显示错误并可重新加载', async ({ page }, _testInfo) => {
+
   const state = { listFailure: true };
   await mockIssues(page, state);
   await page.goto('/issues');
@@ -57,8 +58,8 @@ test('问题列表失败时显示错误并可重新加载', async ({ page }, tes
   await expect(page.locator('.issue-data-row')).toHaveCount(2);
 });
 
-test('问题列表在各宽度保留全部列，横向滚动同步表头并可编辑', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-1080p', '在一个浏览器内覆盖多种内容宽度');
+test('问题列表在各宽度保留全部列，横向滚动同步表头并可编辑',{tag:'@responsive'}, async ({ page }, testInfo) => {
+
   await mockIssues(page);
 
   for (const viewport of [
@@ -119,15 +120,15 @@ test('问题列表在各宽度保留全部列，横向滚动同步表头并可�
   expect(rect!.x + rect!.width).toBeLessThanOrEqual(620);
 });
 
-test('问题筛选、详情错误态和嵌套Esc保持正确', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-1080p', '交互流程只需在一个桌面视口执行');
+test('问题筛选、详情错误态和嵌套Esc保持正确', async ({ page }, _testInfo) => {
+
   await mockIssues(page);
   await page.goto('/issues');
-  await page.locator('.issue-filters select').nth(1).selectOption('P1');
+  await chooseOption(page.locator('.issue-filters select').nth(1), 'P1');
   await expect(page).toHaveURL(/priority=P1/);
   await page.locator('.issue-title-button').first().click();
-  await expect(page).toHaveURL(/priority=P1.*issueId=issue-1|issueId=issue-1.*priority=P1/);
-  const dialog = page.getByRole('dialog', { name: '问题详情' });
+  await expect(page).toHaveURL(/priority=P1.*detailId=issue-1|detailId=issue-1.*priority=P1/);
+  const dialog = page.locator('.modal-card-workspace[role="dialog"]');
   await expect(dialog).toBeVisible();
   await dialog.getByRole('tab',{name:'基本信息',exact:true}).click();
   await dialog.getByRole('button',{name:/^关联需求：/}).click();
@@ -145,13 +146,13 @@ test('问题筛选、详情错误态和嵌套Esc保持正确', async ({ page }, 
   await expect(page.getByText('正在加载问题详情…')).toHaveCount(0);
 });
 
-test('问题互斥筛选会清理旧地址参数', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-1080p', '筛选状态只需在一个桌面视口执行');
+test('问题互斥筛选会清理旧地址参数', async ({ page }, _testInfo) => {
+
   await mockIssues(page);
   await page.goto('/issues?active=true&overdue=true');
 
   const filters = page.locator('.issue-filters');
-  await filters.locator('select').nth(0).selectOption('resolved');
+  await chooseOption(filters.locator('select').nth(0), 'resolved');
   let params = new URL(page.url()).searchParams;
   expect(params.get('status')).toBe('resolved');
   expect(params.has('active')).toBe(false);
@@ -163,7 +164,7 @@ test('问题互斥筛选会清理旧地址参数', async ({ page }, testInfo) =>
   expect(params.get('overdue')).toBe('true');
 
   await filters.getByRole('button', { name: '未分配', exact: true }).click();
-  await filters.locator('select').nth(2).selectOption('u1');
+  await chooseOption(filters.locator('select').nth(2), 'u1');
   params = new URL(page.url()).searchParams;
   expect(params.get('ownerId')).toBe('u1');
   expect(params.has('unassigned')).toBe(false);

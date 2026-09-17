@@ -1,10 +1,10 @@
-import type {Actor} from '../auth';
-import {sqlite} from '../database';
-import {assertProjectManager,assertRequirementOwnerOrManager,assertWorkItemParticipantOrManager,requireAuthorizationActor} from '../authorization';
-import {fail,notFound} from '../errors';
-import {analysePaths,DependencyCycleError,type PathInput} from '../../shared/paths';
-import {normalizeDirectEstimates} from './direct-estimates';
-import type {DependencyChanges} from '../../shared/path-contracts';
+import type { DependencyChanges } from '../../shared/path-contracts';
+import { analysePaths, DependencyCycleError, type PathInput } from '../../shared/paths';
+import type { Actor } from '../auth';
+import { assertProjectManager, assertRequirementOwnerOrManager, assertWorkItemParticipantOrManager, requireAuthorizationActor } from '../authorization';
+import { getDatabaseContext } from '../database-context';
+import { fail, notFound } from '../errors';
+import { normalizeDirectEstimates } from './direct-estimates';
 type Patches=DependencyChanges['estimates'];
 export function analyseChecked(input:PathInput,target='project') {
   try{return analysePaths(input,target);}
@@ -17,7 +17,7 @@ export function normalizePathEstimates(snapshot:PathInput,patches:Patches,actor:
   for(const patch of patches){
     const work=snapshot.workItems.find(w=>w.id===patch.workItemId);
     if(!work||snapshot.requirements.find(r=>r.id===work.requirementId)?.deletedAt)notFound('工作项不存在');
-    if(!sqlite.prepare('SELECT 1 FROM requirements WHERE id=?').get(work.requirementId))assertProjectManager(current,snapshot.projectId);
+    if(!getDatabaseContext().sqlite.prepare('SELECT 1 FROM requirements WHERE id=?').get(work.requirementId))assertProjectManager(current,snapshot.projectId);
     // A newly created work item has no persisted assignees yet; use its parent's creation permission.
     else if(createdWorkIds.has(work.id)||patch.durationDays!==undefined||patch.earliestStart!==undefined||patch.arrangement!==undefined||patch.arrangementAnchor!==undefined)assertRequirementOwnerOrManager(current,work.requirementId);
     else assertWorkItemParticipantOrManager(current,work.id);
@@ -32,7 +32,7 @@ export function normalizePathEstimates(snapshot:PathInput,patches:Patches,actor:
 }
 /** Caller owns the transaction for estimates, relations, audit, and revision updates. */
 export function persistPathEstimates(snapshot:PathInput,patches:Patches) {
-  const update=sqlite.prepare('UPDATE work_items SET duration_days=?,earliest_start=?,unblock_estimate=?,forecast_end=?,forecast_duration=?,forecast_ready_at=?,arrangement=?,arrangement_anchor=?,forecast_review=?,version=version+1,updated_at=? WHERE id=?');
+  const update=getDatabaseContext().sqlite.prepare('UPDATE work_items SET duration_days=?,earliest_start=?,unblock_estimate=?,forecast_end=?,forecast_duration=?,forecast_ready_at=?,arrangement=?,arrangement_anchor=?,forecast_review=?,version=version+1,updated_at=? WHERE id=?');
   const now=new Date().toISOString();
   for(const patch of patches){const w=snapshot.workItems.find(w=>w.id===patch.workItemId)!;update.run(w.durationDays,w.earliestStart,w.unblockEstimate,w.forecastEnd,w.forecastDuration,w.forecastReadyAt,w.arrangement||'early',w.arrangementAnchor||null,w.forecastReview?JSON.stringify(w.forecastReview):null,now,w.id);}
 }

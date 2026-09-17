@@ -1,10 +1,4 @@
-import {
-  addCalendarDays,
-  businessDaysInclusive,
-  requirementStatuses,
-  riskLevels,
-  todayIso,
-} from '../../shared/domain';
+import { addCalendarDays, businessDaysInclusive, requirementStatuses, riskLevels, todayIso } from '../../shared/domain';
 import { listRequirements, requirementCompletionDate } from './requirements';
 import { listIssues } from './issues';
 import { rows } from './support';
@@ -12,8 +6,8 @@ import { fail } from '../errors';
 import { isValidIsoDate } from '../../shared/workday';
 import { getWorkItemCancellationDates } from './work-item-history';
 import { dashboardOverview } from '../../shared/dashboard';
-import {sqlite} from '../database';
-import {readFeatureOverview} from './feature-overview';
+import { getDatabaseContext } from '../database-context';
+import { readFeatureOverview } from './feature-overview';
 
 type PersonRow = { id: string; name: string; jobTitle: string | null };
 type ConcurrencyItem = {
@@ -106,7 +100,7 @@ export function getPeopleConcurrency(filters: { projectId?: string; personId?: s
 }
 
 export function getDashboard(projectId?: string, asOfDate = todayIso()) {
-  return sqlite.transaction(()=>readDashboard(projectId,asOfDate))();
+  return getDatabaseContext().sqlite.transaction(()=>readDashboard(projectId,asOfDate))();
 }
 function readDashboard(projectId?:string,asOfDate=todayIso()) {
   const requirements = listRequirements({ projectId }, asOfDate);
@@ -167,7 +161,7 @@ function readDashboard(projectId?:string,asOfDate=todayIso()) {
     asOfDate,
     summary: { total: requirements.length, active, completed, delayed, highRisk, completionRate },
     overview: dashboardOverview(requirements, asOfDate),
-    ...(projectId?{featureOverview:readFeatureOverview(projectId,asOfDate,'all')}:{}),
+    ...(projectId?{featureOverview:readFeatureOverview(projectId,asOfDate,'all',requirements)}:{}),
     requirements: dashboardRequirements,
     issues: { summary: issuePage.summary, attention },
     charts: { statuses, risks, weeks, varianceTop },

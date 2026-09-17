@@ -1,4 +1,4 @@
-import { sqlite } from './database';
+import { getDatabaseContext } from './database-context';
 import { AppError, fail } from './errors';
 import { nextUpdatedAt } from './services/support';
 import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
@@ -28,7 +28,7 @@ function characterCount(value: string) {
 }
 
 function brandingRow() {
-  return sqlite.prepare('SELECT value, updated_at AS updatedAt FROM system_meta WHERE key=?')
+  return getDatabaseContext().sqlite.prepare('SELECT value, updated_at AS updatedAt FROM system_meta WHERE key=?')
     .get(BRANDING_META_KEY) as BrandingRow | undefined;
 }
 
@@ -108,7 +108,7 @@ export function getBrandingLogo() {
 }
 
 export function updateBranding(input: Record<string, unknown>, actor: Actor) {
-  return sqlite.transaction(() => updateBrandingInTransaction(input, actor))();
+  return getDatabaseContext().sqlite.transaction(() => updateBrandingInTransaction(input, actor))();
 }
 
 function updateBrandingInTransaction(input: Record<string, unknown>, actor: Actor) {
@@ -146,9 +146,9 @@ function updateBrandingInTransaction(input: Record<string, unknown>, actor: Acto
   }
   const now = currentUpdatedAt ? nextUpdatedAt(currentUpdatedAt) : new Date().toISOString();
   const changed = existing
-    ? sqlite.prepare('UPDATE system_meta SET value=?, updated_at=? WHERE key=? AND updated_at=?')
+    ? getDatabaseContext().sqlite.prepare('UPDATE system_meta SET value=?, updated_at=? WHERE key=? AND updated_at=?')
       .run(serialized, now, BRANDING_META_KEY, existing.updatedAt)
-    : sqlite.prepare('INSERT OR IGNORE INTO system_meta (key, value, created_at, updated_at) VALUES (?, ?, ?, ?)')
+    : getDatabaseContext().sqlite.prepare('INSERT OR IGNORE INTO system_meta (key, value, created_at, updated_at) VALUES (?, ?, ?, ?)')
       .run(BRANDING_META_KEY, serialized, now, now);
   if (!changed.changes) {
     const latestUpdatedAt = brandingRow()?.updatedAt || null;

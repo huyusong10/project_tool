@@ -2,7 +2,7 @@ import {expect,test} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
 import {chooseOption} from './select-helper';
 
-for(const view of ['list','progress'])test(`${view} 的常驻展开收起支持筛选、刷新与窄屏，操作不移动工具栏`,async({page},info)=>{
+for(const view of ['list','progress'])test(`${view} 的常驻展开收起支持筛选、刷新与窄屏，操作不移动工具栏`,{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page);
   const url=(scopeType='project',scopeId=f.projectId)=>'/?'+new URLSearchParams({projectId:f.projectId,workspaceView:view,scopeType,scopeId});
   await page.goto(url());

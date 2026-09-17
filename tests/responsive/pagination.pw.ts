@@ -1,10 +1,12 @@
+import {chooseOption,selectedValue} from './select-helper';
 import { expect, test, type Page } from '@playwright/test';
-import { mockGanttData, requirement, workItem } from './gantt-fixture';
+import {closeGraphProperties} from './graph-interactions';
+import { mockGanttData, mockGanttReport, requirement, workItem } from './gantt-fixture';
 
 async function fixture(page: Page, total = 145) {
   await mockGanttData(page);
   const state = { total, failPage: 0, failStatus: 503, snapshot: 145, queries: [] as string[] };
-  const requirements = Array.from({length: total}, (_, i) => ({...requirement, id: 'r'+i, title: '需求 '+String(i).padStart(3,'0'), planningReasons: [], actionCount: 0, ownerId: 'u1', version: 1, executionMode: 'work_items', featureId: 'g1', featureName: '研发', workItems: [{...workItem, id: 'w'+i, requirementId: 'r'+i}]}));
+  const requirements = Array.from({length: total}, (_, i) => ({...requirement, id: 'r'+i, title: '需求 '+String(i).padStart(3,'0'), planningReasons: [], actionCount: 0, ownerId: 'u1', version: 1, executionMode: 'work_items' as const, featureId: 'g1', featureName: '研发', workItems: [{...workItem, id: 'w'+i, requirementId: 'r'+i}]}));
   const people = Array.from({length: 41}, (_,i) => ({id: 'u'+i, name: '成员'+i, active: 1, jobTitle: i<25?'开发':'测试', projectRole:'member', username:'member'+i}));
   const projects = Array.from({length: 21},(_,i)=>({id:'p'+(i+1),name:'项目'+i,status:'active',canManage:true,projectRole:'manager',createdAt:'2026-09-01',updatedAt:'2026-09-01'}));
   await page.route('**/api/**', async route => {
@@ -38,6 +40,7 @@ async function fixture(page: Page, total = 145) {
     if (path === '/api/archives') return json({projects:[],people:[],requirements:requirements.map((r,i)=>({id:r.id,title:r.title,deletedAt:'2026-09-01T08:00:00Z',workItemCount:i})),templates:[]});
     return route.fallback();
   });
+  await mockGanttReport(page,()=>requirements.slice(0,state.total));
   return state;
 }
 
@@ -59,7 +62,7 @@ test('服务端分页数量边界、每页设置及失败回退', async ({page})
   await expect(page).toHaveURL(/page=2/);
   await expect(page.locator('.action-item').first()).toContainText('行动 10');
   state.failPage=0;
-  await pager.getByLabel('每页数量').selectOption('50');
+  await chooseOption(pager.getByLabel('每页数量'), '50');
   await expect(page.locator('.action-item')).toHaveCount(50);
   await expect(page).toHaveURL(/page=1/);
 });
@@ -94,24 +97,20 @@ test('快速翻页只接受当前请求，拒绝访问后不能回退展示旧�
 });
 
 test('需求分页、跨页选择和详情往返保留页码与列表滚动', async ({page}) => {
-  await fixture(page);
-  await page.goto('/requirements?sort=title&direction=asc');
-  const pager=page.getByRole('navigation',{name:'需求列表分页'});
-  await expect(page.locator('.requirements-table tbody tr')).toHaveCount(20);
-  await page.getByLabel('选择需求 需求 000',{exact:true}).check();
-  await pager.getByRole('button',{name:'下一页',exact:true}).click();
-  await page.getByLabel('选择需求 需求 020',{exact:true}).check();
-  await expect(page.getByText('已选择 2 项')).toBeVisible();
-  const body=page.locator('.requirements-table-panel .paged-body');
-  await body.evaluate(el=>el.scrollTop=250);
-  const target=page.getByRole('link',{name:'需求 024',exact:true});
-  await target.click(); await expect(page.locator('.requirement-page')).toBeVisible();
-  await page.goBack(); await expect(page).toHaveURL(/page=2/);
-  await expect.poll(()=>body.evaluate(el=>el.scrollTop)).toBeGreaterThan(100);
-  await page.reload(); await expect(page.locator('.requirements-table tbody tr').first()).toContainText('需求 020');
-  await page.getByPlaceholder('搜索需求或负责人').fill('需求 144');
-  await expect(page.locator('.requirements-table tbody tr')).toHaveCount(1);
-  await expect(page).toHaveURL(/page=1/);
+  await fixture(page);await page.goto('/requirements?outlineSort=name');
+  await page.getByRole('button',{name:'展开全部',exact:true}).click();
+  const rows=page.locator('.outline-table [data-object-kind="requirement"]');
+  await expect(rows).toHaveCount(145);
+  await page.getByRole('checkbox',{name:'选择需求 000',exact:true}).check();
+  await page.getByRole('checkbox',{name:'选择需求 120',exact:true}).check();
+  await expect(page.getByRole('region',{name:'批量操作'})).toContainText('已选 2 个需求');
+  const body=page.locator('.outline-scroll'),target=page.locator('[data-object-id="r124"] .outline-title');
+  await target.scrollIntoViewIfNeeded();const scroll=await body.evaluate(el=>el.scrollTop);expect(scroll).toBeGreaterThan(100);
+  await target.click();await expect(page.locator('.requirement-overview')).toBeVisible();await closeGraphProperties(page);
+  await expect.poll(()=>body.evaluate(el=>el.scrollTop)).toBeGreaterThanOrEqual(scroll-5);
+  await expect(page.getByRole('checkbox',{name:'选择需求 120',exact:true})).toBeChecked();
+  await page.reload();await expect(rows).toHaveCount(145);await expect(selectedValue(page.getByLabel('清单排序'))).toHaveValue('name');
+  await page.getByLabel('筛选清单').fill('需求 144');await expect(rows).toHaveCount(1);await expect(rows).toContainText('需求 144');
 });
 
 test('我的工作两个分页独立，翻页不改变甘特日期范围', async ({page}) => {
@@ -128,7 +127,7 @@ test('我的工作两个分页独立，翻页不改变甘特日期范围', async
   await page.reload();
   await expect(page.locator('.my-work-list .requirement-gantt-row').first()).toHaveAttribute('data-work-item-id','w20');
   await expect(page.locator('.my-owned-requirement-card').first()).toContainText('需求 020');
-  await page.locator('.my-work-list').getByRole('button',{name:'更多工作项操作'}).first().click();
+  await page.locator('.my-work-list').getByRole('button',{name:'完成',exact:true}).first().click();
   await expect(work.getByRole('button',{name:'下一页',exact:true})).toBeDisabled();
   await expect(owned.getByRole('button',{name:'下一页',exact:true})).toBeEnabled();
 });
@@ -146,11 +145,17 @@ test('普通列表统一接入，流程概览默认可见且详情独立预览',
     ['/settings','Token 列表分页','.personal-token-row',20],
     ['/system','备份列表分页','.system-backup-table tbody tr',20],
   ] as const) {
-    await page.goto(url); const pager=page.getByRole('navigation',{name:label});
+    await page.goto(url);
+    if(url==='/templates'){
+      await expect(page.locator('.template-card')).toHaveCount(21);
+      await page.getByRole('button',{name:'查看流程 流程20',exact:true}).click();
+      await expect(page.getByRole('dialog',{name:'流程预览',exact:true})).toContainText('工作项20');
+      await page.keyboard.press('Escape');continue;
+    }
+    if(url==='/requirements/r1')await page.getByRole('tab',{name:'记录',exact:true}).click();const pager=page.getByRole('navigation',{name:label});
     await expect(pager).toBeVisible(); await expect(page.locator(selector)).toHaveCount(count);
     await pager.getByRole('button',{name:'下一页',exact:true}).click();
-    if (url==='/templates') { await expect(page.locator('.template-card')).toHaveCount(1); await expect(page.getByText('工作项20',{exact:true})).toBeVisible(); await page.getByRole('button',{name:'查看流程 流程20',exact:true}).click(); await expect(page.getByRole('dialog',{name:'流程详情'})).toContainText('工作项20'); await page.keyboard.press('Escape'); }
-    else if (url==='/requirements/r1') await expect(page.locator('.progress-feed > article').first()).toContainText('36 → 40%');
+    if (url==='/requirements/r1') await expect(page.locator('.progress-feed > article').first()).toContainText('36 → 40%');
   }
 });
 
@@ -163,15 +168,16 @@ test('日志翻页和刷新保留同一查询快照', async ({page}) => {
   await expect(page.locator('.audit-table')).toContainText('记录 50');
   await page.reload(); await expect(pager).toContainText('共 145 条');
   expect(state.queries.at(-1)).toContain('snapshot=145');
-  await pager.getByLabel('每页数量').selectOption('20');
+  await chooseOption(pager.getByLabel('每页数量'), '20');
   await expect(page.locator('.audit-table > div:not(.audit-head)')).toHaveCount(20);
   await page.getByRole('button',{name:'刷新',exact:true}).click();
   await expect(pager).toContainText('共 160 条');
 });
 
-test('分页适配窄容器、高分屏、侧栏和低高度窗口', async ({page}, testInfo) => {
+test('分页适配窄容器、高分屏、侧栏和低高度窗口',{tag:'@responsive'}, async ({page}, testInfo) => {
   await fixture(page); await page.goto('/actions');
-  for (const width of [390,768,1280,1366,1536,1920,2560]) {
+  const matrixWidth=page.viewportSize()!.width;
+  for (const width of [...new Set([390,768,matrixWidth])]) {
     await page.setViewportSize({width,height:900});
     const pager=page.getByRole('navigation',{name:'待处理事项分页'});
     await expect(pager).toBeVisible();
@@ -183,7 +189,7 @@ test('分页适配窄容器、高分屏、侧栏和低高度窗口', async ({pag
     const problems=await pager.evaluate(el=>{
       const bounds=el.getBoundingClientRect();
       return [...el.querySelectorAll('button,select,input')].filter(control=>{
-        const r=control.getBoundingClientRect(); return r.width>0 && (r.left<bounds.left-1 || r.right>bounds.right+1 || r.height<36);
+        const r=control.getBoundingClientRect(); return r.width>0 && (r.left<bounds.left-1 || r.right>bounds.right+1 || r.height<36 || control.tagName==='BUTTON'&&control.scrollWidth>control.clientWidth+1);
       }).map(control=>control.getAttribute('aria-label'));
     });
     expect(problems).toEqual([]);
@@ -195,7 +201,7 @@ test('分页适配窄容器、高分屏、侧栏和低高度窗口', async ({pag
   }
   await page.getByRole('button',{name:/^(展开|收起)侧边栏$/}).click();
   await expect(page.locator('.action-item').first()).toContainText('行动 20');
-  await page.setViewportSize({width:1280,height:600});
+  await page.setViewportSize({width:matrixWidth,height:600});
   expect(await page.locator('.action-items').evaluate(el=>el.scrollHeight-el.clientHeight)).toBeLessThanOrEqual(1);
 });
 
@@ -207,23 +213,45 @@ test('行内编辑只锁定所属分页，分组在跨页后显示完整匹配�
   await expect(pager.getByRole('button',{name:'下一页',exact:true})).toBeDisabled();
   await page.keyboard.press('Escape');
   await expect(pager.getByRole('button',{name:'下一页',exact:true})).toBeEnabled();
-  await page.goto('/requirements?grouped=1');
-  await expect(page.locator('.intake-group-heading')).toContainText('研发 · 21 项');
-  await page.getByRole('navigation',{name:'需求列表分页'}).getByRole('button',{name:'下一页',exact:true}).click();
-  await expect(page.locator('.intake-group-heading')).toContainText('研发 · 21 项');
-  await expect(page.locator('.requirements-table tbody tr:not(.intake-group-heading)')).toHaveCount(1);
+  await page.goto('/requirements');
+  const feature=page.locator('[data-object-id="feature:g1"]');
+  await expect(feature.locator('.outline-count')).toHaveText('21 条需求');
+  await page.getByRole('button',{name:'展开全部',exact:true}).click();
+  await expect(page.locator('.outline-table [data-object-kind="requirement"]')).toHaveCount(21);
+  await page.getByRole('button',{name:'收起全部',exact:true}).click();
+  await expect(page.locator('.outline-table [data-object-kind="requirement"]')).toHaveCount(0);
+  await expect(feature.locator('.outline-count')).toHaveText('21 条需求');
 });
 
-test('窄屏普通列表使用页面纵向滚动，分页和表格不撑宽页面', async ({page}) => {
+test('窄屏普通列表使用页面滚动，详情记录在弹窗内滚动，分页不撑宽页面', {tag:'@responsive'}, async ({page}) => {
   await fixture(page);
   await page.setViewportSize({width:390,height:844});
   for (const url of ['/requirements','/projects','/resources','/archives','/templates','/issues','/project-settings','/settings','/system','/logs','/requirements/r1']) {
     await page.goto(url);
+    if(url==='/requirements'){
+      await expect(page.getByRole('treegrid',{name:'范围树表'})).toBeVisible();
+      await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+      continue;
+    }
+    if(url==='/templates'){
+      await expect(page.locator('.template-card')).toHaveCount(21);
+      await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+      continue;
+    }
+    if(url==='/requirements/r1')await page.getByRole('tab',{name:'记录',exact:true}).click();
     const pager=page.locator('.table-pagination').first();
     await expect(pager).toBeAttached();
-    await expect(pager.getByLabel('每页数量')).toHaveValue(url === '/logs' ? '50' : url === '/requirements/r1' ? '10' : '20');
+    await expect(selectedValue(pager.getByLabel('每页数量'))).toHaveValue(url === '/logs' ? '50' : url === '/requirements/r1' ? '10' : '20');
     expect(await page.evaluate(()=>document.documentElement.scrollWidth),url).toBeLessThanOrEqual(390);
     for (const body of await page.locator('.paged-body').all()) {
+      if(url==='/requirements/r1'){
+        await expect(body).toHaveCSS('overflow-y','auto');
+        await body.evaluate(el=>{el.scrollTop=el.scrollHeight;});
+        expect(await body.evaluate(el=>Math.abs(el.scrollHeight-el.clientHeight-el.scrollTop))).toBeLessThanOrEqual(1);
+        const bounds=(await page.locator('.modal-card-workspace').boundingBox())!;
+        expect(bounds.y).toBeGreaterThanOrEqual(0);expect(bounds.y+bounds.height).toBeLessThanOrEqual(844);
+        continue;
+      }
       expect(await body.evaluate(el=>el.scrollHeight-el.clientHeight),url).toBeLessThanOrEqual(1);
     }
   }
@@ -231,13 +259,14 @@ test('窄屏普通列表使用页面纵向滚动，分页和表格不撑宽页�
 
 test('列表减少时回到有效末页；问题历史引用保留；人员搜索自动展开', async ({page}) => {
   const state=await fixture(page,21);
-  await page.goto('/requirements?page=2');
-  await expect(page.locator('.requirements-table tbody tr')).toHaveCount(1);
+  await page.goto('/actions?page=2&pageSize=20');
+  await expect(page.locator('.action-item')).toHaveCount(1);
   state.total=20;
   await page.reload();
   await expect(page).toHaveURL(/page=1/);
-  await expect(page.locator('.requirements-table tbody tr')).toHaveCount(20);
+  await expect(page.locator('.action-item')).toHaveCount(20);
   await page.goto('/issues?issueId=a0');
+  await page.getByRole('tab',{name:/^记录 /}).click();
   const history=page.getByRole('navigation',{name:'问题进展分页'});
   await expect(page.locator('.issue-update-setting-row')).toHaveCount(10);
   await expect(page.locator('.issue-correction-reference')).not.toContainText('原记录不可用');
@@ -248,6 +277,6 @@ test('列表减少时回到有效末页；问题历史引用保留；人员搜�
   await expect(page.locator('.people-role-group').filter({hasText:'开发'}).locator('.people-role-members')).toBeHidden();
   await page.getByPlaceholder('搜索姓名、岗位或拼音').fill('成员2');
   await expect(page.locator('.people-role-group').filter({hasText:'开发'}).locator('.people-role-members')).toBeVisible();
-  await page.getByLabel('岗位筛选',{exact:true}).selectOption('测试');
+  await chooseOption(page.getByLabel('岗位筛选',{exact:true}), '测试');
   await expect(page.locator('.people-role-group')).toHaveCount(1);
 });

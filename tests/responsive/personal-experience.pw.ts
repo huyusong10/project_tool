@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import type { MyWorkItem } from "../../src/client/types";
+import {mockGanttReport,requirement as baseRequirement} from './gantt-fixture';
 
 const workItem: MyWorkItem = {
   id: "w1", requirementId: "r1", templateItemId: null, title: "SDS 文档编写", ownerId: "person-1", ownerName: "胡宇松",
@@ -40,22 +41,18 @@ async function mockPersonalExperience(page: Page, personalItem = workItem, asOfD
     if (url.pathname === "/api/tokens") return json([]);
     return json({});
   });
+  const current={...baseRequirement,title:'SDS 软件架构文档基线',ownerId:'person-1',ownerName:'胡宇松',workItems:[personalItem],asOfDate:requirementAsOfDate,actualStart:personalItem.actualStart,observationEnd:asOfDate};
+  await mockGanttReport(page,()=>[current],()=>asOfDate);
+  await page.route('**/api/requirements/r1',route=>route.fulfill({json:current}));
 }
 
-test("项目看板、我的工作和个人设置采用新的信息层级", async ({ page }, testInfo) => {
-  test.skip(!["laptop-1366", "desktop-1080p", "desktop-qhd"].includes(testInfo.project.name), "代表性桌面视口已覆盖本组体验验证");
+test("项目看板、我的工作和个人设置采用新的信息层级", async ({ page }) => {
+
   await mockPersonalExperience(page);
 
-  await page.goto("/");
-  const gantt = await page.locator(".project-gantt-panel").boundingBox();
-  const issue = await page.locator(".dashboard-issue-health").boundingBox();
-  const actions = await page.locator(".dashboard-actions").boundingBox();
-  expect(gantt).not.toBeNull();
-  expect(issue).not.toBeNull();
-  expect(actions).not.toBeNull();
-  expect(actions!.y).toBeGreaterThan(issue!.y);
-  expect(actions!.y).toBeGreaterThan(gantt!.y);
-  await expect(page.locator(".project-gantt-panel").getByRole("button", { name: "调整卡片高度" })).toBeVisible();
+  await page.goto("/execution");await expect(page.getByRole('region',{name:'当前范围概览'})).toBeVisible();
+  await expect(page.getByRole('treegrid')).toBeVisible();await page.getByRole('button',{name:'展开全部',exact:true}).click();
+  await expect(page.locator('[data-row-id="r1"] .workspace-row-title')).toHaveText('SDS 软件架构文档基线');
 
   await page.goto("/my-work");
   await expect(page.getByRole("table", { name: "分配给我的工作项甘特图" })).toBeVisible();
@@ -63,11 +60,26 @@ test("项目看板、我的工作和个人设置采用新的信息层级", async
   await expect(page.locator(".my-work-list .gantt-progress-marker")).toHaveText("40");
   await expect(page.getByRole("button", { name: "为SDS 文档编写更新进度" })).toBeVisible();
   await expect(page.locator(".my-work-dates")).toHaveCount(0);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
   await page.getByRole("button", { name: "SDS 文档编写", exact: true }).click();
   await expect(page).toHaveURL(/\/requirements\/r1\?workItemId=w1$/);
   await page.goto("/my-work");
 
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "胡宇松", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "MCP 接入", exact: true })).toBeVisible();
+  await expect(page.getByText("/mcp", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "创建第一个 Token" }).click();
+  const dialog = page.getByRole("dialog", { name: "创建 MCP Token" });
+  await dialog.getByLabel("Token 名称").fill("Claude Desktop");
+  await dialog.getByRole("button", { name: "创建 Token" }).click();
+  await expect(dialog.getByText("Token 已创建，只显示这一次")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "复制 Token" })).toBeVisible();
+});
+
+test("我的工作空筛选、拖动卡片高度及刷新恢复布局",{tag:'@responsive'},async({page})=>{
+ await mockPersonalExperience(page);await page.goto('/my-work');
+ await expect(page.getByRole('table',{name:'分配给我的工作项甘特图'})).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width+1);
   const workPanel = page.locator(".my-work-list");
   const charts = page.locator(".my-work-charts");
   const panelBeforeEmpty = await workPanel.boundingBox();
@@ -100,16 +112,7 @@ test("项目看板、我的工作和个人设置采用新的信息层级", async
   expect(Math.abs(resetPanel!.height - initialPanel!.height)).toBeLessThanOrEqual(1);
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem("project-manage:panel-height:a1:my-work-gantt"))).toBeNull();
 
-  await page.goto("/settings");
-  await expect(page.getByRole("heading", { name: "胡宇松", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "MCP 接入", exact: true })).toBeVisible();
-  await expect(page.getByText("/mcp", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "创建第一个 Token" }).click();
-  const dialog = page.getByRole("dialog", { name: "创建 MCP Token" });
-  await dialog.getByLabel("Token 名称").fill("Claude Desktop");
-  await dialog.getByRole("button", { name: "创建 Token" }).click();
-  await expect(dialog.getByText("Token 已创建，只显示这一次")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "复制 Token" })).toBeVisible();
+
 });
 
 test("个人设置在页面保持打开时自动更新 Token 到期状态", async ({ page }) => {
@@ -182,6 +185,7 @@ test('我的工作响应未知且回读失败时切换筛选仍保留写入锁',
 
   failRead = false;
   await page.getByRole('button', { name: '重新读取工作项', exact: true }).click();
+  await page.getByRole('button', { name: '已核对，结束本次操作', exact: true }).click();
   await expect(page.getByRole('button', { name: '开始', exact: true })).toBeEnabled();
   expect(submissions).toBe(1);
 });
@@ -214,8 +218,9 @@ test("我的工作空排期甘特仍显示响应业务日期", async ({ page }) 
 
 test("主页甘特使用仪表盘顶层业务日期", async ({ page }) => {
   await mockPersonalExperience(page, workItem, "2026-02-16", "2026-09-03");
-  await page.goto("/");
-  await expect(page.locator(".project-gantt-toolbar").getByText("截至 02/16", { exact: true })).toBeVisible();
+  await page.goto("/execution");
+  await page.getByRole('button',{name:'展开全部',exact:true}).click();await page.locator('[data-row-id="r1"] .workspace-row-title').focus();
+  await expect(page.getByRole('tooltip')).toContainText('截至 2026-02-16');await expect(page.getByRole('tooltip')).not.toContainText('截至 2026-09-03');
 });
 
 test("人力分析首屏使用服务端业务日期窗口", async ({ page }) => {

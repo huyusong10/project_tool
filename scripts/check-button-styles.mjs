@@ -7,10 +7,13 @@ import postcss from 'postcss';
 export function checkButtonStyles(source, file) {
   const errors = [], root = postcss.parse(source, {from: file});
   const presets = file.replaceAll('\\', '/').endsWith('/components/button.css');
+  const manifest = file.replaceAll('\\', '/').endsWith('/client/styles.css');
   for (const node of root.nodes) {
     if (node.type === 'comment') continue;
     if (node.type === 'atrule' && node.name === 'layer' && (node.params === 'application, controls' || node.params === (presets ? 'controls' : 'application'))) continue;
     if (node.type === 'atrule' && node.name === 'import' && /layer\(application\)/.test(node.params)) continue;
+    // The ordered manifest imports local files; each file is checked for its own layer below.
+    if (manifest && node.type === 'atrule' && node.name === 'import' && /^(['"])\.\/(?:features|components)\/[\w/-]+\.css\1$/.test(node.params)) continue;
     errors.push(`${file}:${node.source.start.line} 样式必须放入 application 层；公共按钮由 controls 层管理。`);
   }
   if (!presets) {

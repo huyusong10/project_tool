@@ -1,3 +1,4 @@
+import * as pathsApi from './features/paths/api';
 import type { PathAnalysis } from '../shared/paths';
 import { useMemo } from 'react';
 import { keys } from './query-keys';
@@ -6,7 +7,7 @@ import { useResourceQuery } from './use-resource-query';
 /** One existing project snapshot supplies milestone dates and real predecessor links. */
 export function useGanttMilestoneData(projectId?: string) {
   const data = useResourceQuery<PathAnalysis>([...keys.paths, projectId, 'all', 'project'],
-    `/api/projects/${projectId}/path-analysis?target=project`, !!projectId).data;
+    signal => pathsApi.projectsPathAnalysisQuery<PathAnalysis>(projectId || '', { signal }), !!projectId).data;
   return useMemo(() => {
     if (!data) return data;
     const nodes = new Map(data.nodes?.map(n => [n.id, n]));

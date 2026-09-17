@@ -60,6 +60,7 @@
   .ui-button[data-width='filter'] { width: 148px; min-width: 148px; }
   .ui-button[data-width='filter'] > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ui-button[data-width='block'] { width: 100%; min-width: 0; }
+  .ui-button[data-wrap] { max-width: 100%; white-space: normal; }
   /* Shared toolbar slots keep the same footprint on every page. */
   .page-editor-primary > .ui-button, .page-editor-primary .topbar-menu-button { width: 100%; min-width: 0; height: var(--toolbar-control, 36px); min-height: var(--toolbar-control, 36px); padding-inline: 4px; }
   .page-toolbar[data-narrow='true'] .ui-button:not([data-variant='menu']):not([data-variant='link']):not([data-size='compact']) { --button-height: 32px; }

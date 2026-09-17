@@ -1,25 +1,22 @@
-import {DetailCard} from '../components/DetailCard';
-import {ObjectDetailContext,useObjectDetail,readDetailMemory} from '../components/ObjectDetailContext';
+import { searchIssues } from '../features/issues/api';
+import * as peopleApi from '../features/people/api';
+import * as requirementsApi from '../features/requirements/api';
+import * as issuesApi from '../features/issues/api';
+import { DetailCard } from '../components/DetailCard';
+import { ObjectDetailContext, useObjectDetail, readDetailMemory } from '../components/ObjectDetailContext';
 import { Button } from '../components/Button';
-import {usePageResources} from '../page-context';
+import { usePageResources } from '../page-context';
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Clock3,
-  PauseCircle,
-  Plus,
-  UserRound,
-} from "lucide-react";
-import { api, jsonBody } from "../api";
+import { AlertTriangle, CheckCircle2, Clock3, PauseCircle, Plus, UserRound } from "lucide-react";
+import { jsonBody } from "../api";
 import { useProjects, useSession } from "../app-context";
 import { invalidateIssueViews, keys } from "../query-keys";
 import { useOptimisticMutation } from "../use-optimistic-mutation";
 import type { Issue, IssuePage, IssueUpdate, Person, Requirement } from "../types";
 import { AdaptiveDataCell, AdaptiveDataList, AdaptiveDataRow, type AdaptiveDataColumn } from "../components/AdaptiveDataList";
-import {DetailWorkspace} from "../components/DetailWorkspace";
+import { DetailWorkspace } from "../components/DetailWorkspace";
 import { Modal } from "../components/Modal";
 import { StatusBadge } from "../components/Badge";
 import { EmptyState, RefreshNotice } from "../components/Feedback";
@@ -32,7 +29,8 @@ import { DataCell } from "../components/LayoutPrimitives";
 import { PageHeader } from "../components/PageHeader";
 import { IssueForm, IssueUpdateForm } from "../components/IssueForms";
 import { IssueStatusControl } from "../components/IssueStatusControl";
-import { InlineDateCell, InlineSelectCell } from "../components/InlineEdit";
+import { InlineDateCell } from '../components/inline-edit/date';
+import { InlineSelectCell } from '../components/inline-edit/select';
 import { canManageProject } from "../permissions";
 import { issueStatusOptions, priorityOptions } from "../ui-options";
 import { SearchInput } from "../components/SearchInput";
@@ -229,10 +227,10 @@ export function IssuesPage() {
     formPendingRef.current = pending;
     setFormPending(pending);
   };
-  const peopleQuery = useQuery({ queryKey: [...keys.people, selectedProjectId], queryFn: ({ signal }) => api<Person[]>(`/api/people?projectId=${encodeURIComponent(selectedProjectId)}`, { signal }), enabled: Boolean(selectedProjectId) });
+  const peopleQuery = useQuery({ queryKey: [...keys.people, selectedProjectId], queryFn: ({ signal }) => peopleApi.peopleQuery<Person[]>(encodeURIComponent(selectedProjectId), { signal }), enabled: Boolean(selectedProjectId) });
   const people = peopleQuery.data || emptyPeople;
   const eligiblePeople = people.filter((person) => person.active && person.projectRole !== "viewer");
-  const requirementsQuery = useQuery({ queryKey: [...keys.requirements, selectedProjectId], queryFn: ({ signal }) => api<Requirement[]>(`/api/requirements?projectId=${encodeURIComponent(selectedProjectId)}`, { signal }), enabled: Boolean(selectedProjectId) });
+  const requirementsQuery = useQuery({ queryKey: [...keys.requirements, selectedProjectId], queryFn: ({ signal }) => requirementsApi.requirementsQuery<Requirement[]>(encodeURIComponent(selectedProjectId), { signal }), enabled: Boolean(selectedProjectId) });
   const requirements = requirementsQuery.data || emptyRequirements;
   const referenceDataReady = peopleQuery.data !== undefined && requirementsQuery.data !== undefined;
   const referenceError = peopleQuery.error || requirementsQuery.error;
@@ -269,7 +267,7 @@ export function IssuesPage() {
   if (unassigned) params.set("unassigned", "true");
   const filterKey = JSON.stringify([selectedProjectId, deferredKeyword, status, priority, ownerId, scope, overdue, unassigned]);
   const { data, isLoading, error, refetch, isFetching } = usePagedResourceQuery<IssuePage>(
-    [...keys.issues, selectedProjectId, deferredKeyword, status, priority, ownerId, scope, overdue, unassigned, page, pageSize], `/api/issues?${params}`, filterKey, Boolean(selectedProjectId));
+    [...keys.issues, selectedProjectId, deferredKeyword, status, priority, ownerId, scope, overdue, unassigned, page, pageSize], signal => searchIssues(params, { signal }), filterKey, Boolean(selectedProjectId));
   const pagination = useListPagination({ total: data?.total || 0, filterKey, ready: Boolean(data) && !error, loading: isFetching,
     serverPage: data?.page, serverPageSize: data?.pageSize, failed: Boolean(error), disabled: detailPending || formPending });
   const runIssueSave = useOptimisticMutation<{ issue: Issue; input: Record<string, unknown> }, Issue>({
@@ -294,7 +292,7 @@ export function IssuesPage() {
       } : current);
       queryClient.setQueryData<Issue | null>(keys.issue(issue.id), (current) => current ? applyInput(current) : current);
     },
-    request: ({ issue, input }) => api<Issue>(`/api/issues/${issue.id}`, { method: "PATCH", body: jsonBody({ ...input, expectedVersion: issue.version }) }),
+    request: ({ issue, input }) => issuesApi.issuesById<Issue>(issue.id, { method: "PATCH", body: jsonBody({ ...input, expectedVersion: issue.version }) }),
     commit: (queryClient, saved) => {
       queryClient.setQueriesData<IssuePage>({ queryKey: [...keys.issues, selectedProjectId] }, (current) => current ? {
         ...current,

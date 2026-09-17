@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 const preview = path.resolve('.preview'), settings = JSON.parse(fs.readFileSync(path.join(preview, 'preview-env.json'), 'utf8'));
 if (!path.resolve(settings.DB_PATH).startsWith(preview + path.sep) || settings.SESSION_COOKIE_NAME !== 'pm_workspace_3270') throw new Error('示例仅写入隔离预览数据库');
 Object.assign(process.env, settings);
-const { buildApp } = await import('../src/server/app.ts'), { sqlite } = await import('../src/server/database.ts');
+const { buildApp } = await import('../src/server/app.ts'), { sqlite } = await (await import('../src/server/database.ts')).initializeDatabase();
 // Only the copied preview administrator receives this local preview password.
 const {hashPassword}=await import('../src/server/auth.ts');
 sqlite.prepare('UPDATE accounts SET password_hash=?,must_change_password=0,session_version=session_version+1 WHERE is_builtin=1').run(hashPassword(settings.ADMIN_PASSWORD));

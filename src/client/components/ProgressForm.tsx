@@ -1,10 +1,11 @@
-import {useDeliveryForm} from '../use-delivery-form';
-import {useProjects} from '../app-context';
+import * as requirementsApi from '../features/requirements/api';
+import { useDeliveryForm } from '../use-delivery-form';
+import { useProjects } from '../app-context';
 import { Button } from './Button';
-import {assertCleanRequirementDraft} from '../use-graph-draft';
+import { assertCleanRequirementDraft } from '../use-graph-draft';
 import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
+import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
 import { useSession } from '../app-context';
 import { invalidateRequirementViews } from '../query-keys';
 import type { ProgressUpdate, WorkItem } from '../types';
@@ -77,9 +78,9 @@ export function ProgressForm({
     },
   });
   const mutation = useMutation({
-    mutationFn: async (input: ProgressRequest) => {await assertCleanRequirementDraft(session.accountId||'guest',requirementId,{workItemId:input.workItemId,action:input.workItemPercent===undefined?'note':'progress'});receiptRef.current=input;setReceipt(input);return api(`/api/requirements/${requirementId}/progress`, { method: 'POST', body: jsonBody(input) });},
+    mutationFn: async (input: ProgressRequest) => {await assertCleanRequirementDraft(session.accountId||'guest',requirementId,{workItemId:input.workItemId,action:input.workItemPercent===undefined?'note':'progress'});receiptRef.current=input;setReceipt(input);return requirementsApi.requirementsProgress(requirementId, { method: 'POST', body: jsonBody(input) });},
     onSuccess: () => {
-      invalidateRequirementViews(client, requirementId);
+      invalidateRequirementViews(client,requirementId,'execution');
       receiptRef.current=null;setReceipt(null);clearReceipt();clearLocal();onClose();
     },
     onError: async (error, input) => {

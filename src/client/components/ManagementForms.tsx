@@ -1,15 +1,20 @@
-import {ReferenceLinksEditor} from './ReferenceLinks';
-import {readReferenceLinks,type ReferenceLink} from '../../shared/reference-links';
-import {useDeliveryForm} from '../use-delivery-form';
+import { readRecheck, persistRecheck } from '../core/write-recheck';
+import * as templatesApi from '../features/templates/api';
+import * as projectsApi from '../features/projects/api';
+import * as peopleApi from '../features/people/api';
+import * as requirementsApi from '../features/requirements/api';
+import { ReferenceLinksEditor } from './ReferenceLinks';
+import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
+import { useDeliveryForm } from '../use-delivery-form';
 import { Button } from './Button';
-import {assertCleanProjectDraft} from '../use-graph-draft';
-import {useSession} from '../app-context';
+import { assertCleanProjectDraft } from '../use-graph-draft';
+import { useSession } from '../app-context';
 import { migrateFeatureFields } from "../feature-storage-migration";
-import {OrganizationFields} from './RequirementIntake';
-import {isAssignablePerson} from '../assignable-people';
+import { OrganizationFields } from './RequirementIntake';
+import { isAssignablePerson } from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
+import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useProjects } from "../app-context";
 import { invalidateProjectViews, invalidateRequirementViews, keys } from "../query-keys";
 import type { Person, Project, Requirement, WorkItemTemplate } from "../types";
@@ -33,9 +38,12 @@ export type ProjectFormInput = {
 export type ProjectCreateRecheck={draft:ProjectFormInput;baselineIds:string[]};
 function projectCreateRecheckKey(accountKey:string){return `project-manage:project-create-recheck:${accountKey}`;}
 export function readProjectCreateRecheck(accountKey:string):ProjectCreateRecheck|null{
-  try{const raw=sessionStorage.getItem(projectCreateRecheckKey(accountKey));if(!raw)return null;const value=migrateFeatureFields(JSON.parse(raw)) as Partial<ProjectCreateRecheck>,draft=value.draft as Partial<ProjectFormInput>|undefined;return typeof draft?.name==='string'&&typeof draft.status==='string'&&typeof draft.plannedStart==='string'&&typeof draft.plannedEnd==='string'&&(draft.defaultTemplateId===undefined||typeof draft.defaultTemplateId==='string')&&Array.isArray(value.baselineIds)&&value.baselineIds.every(id=>typeof id==='string')?value as ProjectCreateRecheck:null;}catch{return null;}
+  return readRecheck(projectCreateRecheckKey(accountKey), stored => {const value=migrateFeatureFields(stored) as Partial<ProjectCreateRecheck>,draft=value.draft as Partial<ProjectFormInput>|undefined;return typeof draft?.name==='string'&&typeof draft.status==='string'&&typeof draft.plannedStart==='string'&&typeof draft.plannedEnd==='string'&&(draft.defaultTemplateId===undefined||typeof draft.defaultTemplateId==='string')&&Array.isArray(value.baselineIds)&&value.baselineIds.every(id=>typeof id==='string')?value as ProjectCreateRecheck:null;
+  });
 }
-export function persistProjectCreateRecheck(accountKey:string,value:ProjectCreateRecheck|null){try{const key=projectCreateRecheckKey(accountKey);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前页面仍保留核对锁。 */}}
+export function persistProjectCreateRecheck(accountKey:string,value:ProjectCreateRecheck|null){
+  persistRecheck(projectCreateRecheckKey(accountKey), value);
+}
 
 export type RequirementFormInput = {
   featureId?:string|null;phaseId?:string|null;reason?:string;
@@ -52,9 +60,12 @@ export type RequirementFormInput = {
 export type RequirementCreateRecheck={draft:RequirementFormInput;baselineIds:string[]};
 function requirementCreateRecheckKey(accountKey:string,projectId:string){return `project-manage:requirement-create-recheck:${accountKey}:${projectId}`;}
 export function readRequirementCreateRecheck(accountKey:string,projectId:string):RequirementCreateRecheck|null{
-  try{const raw=sessionStorage.getItem(requirementCreateRecheckKey(accountKey,projectId));if(!raw)return null;const value=migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementCreateRecheck>,draft=value.draft as Partial<RequirementFormInput>|undefined;return draft?.projectId===projectId&&typeof draft.title==='string'&&typeof draft.ownerId==='string'&&typeof draft.background==='string'&&typeof draft.acceptanceCriteria==='string'&&typeof draft.referenceUrl==='string'&&Array.isArray(value.baselineIds)&&value.baselineIds.every(id=>typeof id==='string')?value as RequirementCreateRecheck:null;}catch{return null;}
+  return readRecheck(requirementCreateRecheckKey(accountKey,projectId), stored => {const value=migrateFeatureFields(stored) as Partial<RequirementCreateRecheck>,draft=value.draft as Partial<RequirementFormInput>|undefined;return draft?.projectId===projectId&&typeof draft.title==='string'&&typeof draft.ownerId==='string'&&typeof draft.background==='string'&&typeof draft.acceptanceCriteria==='string'&&typeof draft.referenceUrl==='string'&&Array.isArray(value.baselineIds)&&value.baselineIds.every(id=>typeof id==='string')?value as RequirementCreateRecheck:null;
+  });
 }
-export function persistRequirementCreateRecheck(accountKey:string,projectId:string,value:RequirementCreateRecheck|null){try{const key=requirementCreateRecheckKey(accountKey,projectId);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前页面仍保留核对锁。 */}}
+export function persistRequirementCreateRecheck(accountKey:string,projectId:string,value:RequirementCreateRecheck|null){
+  persistRecheck(requirementCreateRecheckKey(accountKey,projectId), value);
+}
 
 export function ProjectForm({
   project,
@@ -87,7 +98,7 @@ export function ProjectForm({
   const changed = Boolean(project && baseProject && project.updatedAt !== baseProject.updatedAt);
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, project?.id || "new"],
-    queryFn: ({ signal }) => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(project!.id)}`, { signal }),
+    queryFn: ({ signal }) => templatesApi.templatesQuery<WorkItemTemplate[]>(encodeURIComponent(project!.id), { signal }),
     enabled: Boolean(project?.id),
   });
   const templates = templatesQuery.data || [];
@@ -95,10 +106,13 @@ export function ProjectForm({
   const selectedTemplateUnavailable = Boolean(defaultTemplateId && templatesQuery.data && !templates.some((template) => template.id === defaultTemplateId));
   const mutation = useMutation({
     mutationFn: (data: ProjectFormInput) =>
-      api(baseProject ? `/api/projects/${baseProject.id}` : "/api/projects", {
+      (baseProject ? projectsApi.projectsById(baseProject.id, {
         method: baseProject ? "PATCH" : "POST",
         body: jsonBody(data),
-      }),
+      }) : projectsApi.projects<Project>({
+        method: baseProject ? "PATCH" : "POST",
+        body: jsonBody(data),
+      })),
     onMutate:data=>{if(!baseProject)onCreateRecheckChange?.({draft:data,baselineIds:createRecheck?.baselineIds||[...initialProjectIds.current]});},
     onSuccess: () => {
       if(!baseProject)onCreateRecheckChange?.(null);
@@ -109,7 +123,7 @@ export function ProjectForm({
       if(!baseProject&&!isWriteOutcomeUnknown(error))onCreateRecheckChange?.(null);
       if (!requiresWriteRecheck(error)) return;
       try {
-        const latest = await api<Project[]>("/api/projects", { readOnly: true });
+        const latest = await projectsApi.projects<Project[]>({ readOnly: true });
         const matchesDraft = (item: Project) => item.name === canonicalizeLabel(input.name)
           && Boolean(item.guestVisible) === Boolean(input.guestVisible)
           && item.status === input.status
@@ -135,7 +149,7 @@ export function ProjectForm({
     },
     onSettled: () => { submitting.current = false; },
   });
-  const checkCreatedProject=async()=>{if(!createRecheck||checkingCreate)return;setCheckingCreate(true);setCreateCheckError('');try{const latest=await api<Project[]>('/api/projects',{readOnly:true});client.setQueryData(keys.projects,latest);const baseline=new Set(createRecheck.baselineIds),draft=createRecheck.draft,created=latest.filter(item=>!baseline.has(item.id)&&item.name===canonicalizeLabel(draft.name)&&item.status===draft.status&&item.plannedStart===(draft.plannedStart||null)&&item.plannedEnd===(draft.plannedEnd||null)&&!item.isSample);if(created.length===1){onCreateRecheckChange?.(null);invalidateProjectViews(client);toast.success('已核对最新状态：项目已创建');onClose();return;}if(created.length===0){onCreateRecheckChange?.(null);mutation.reset();setCreateCheckError('未发现本次新增项目，已恢复原输入，可以重新提交。');return;}setCreateCheckError('发现多个可能的新项目，暂不解除锁定，请核对项目中心和操作记录。');}catch(error){setCreateCheckError(error instanceof Error?error.message:'项目列表读取失败');}finally{setCheckingCreate(false);}};
+  const checkCreatedProject=async()=>{if(!createRecheck||checkingCreate)return;setCheckingCreate(true);setCreateCheckError('');try{const latest=await projectsApi.projects<Project[]>({readOnly:true});client.setQueryData(keys.projects,latest);const baseline=new Set(createRecheck.baselineIds),draft=createRecheck.draft,created=latest.filter(item=>!baseline.has(item.id)&&item.name===canonicalizeLabel(draft.name)&&item.status===draft.status&&item.plannedStart===(draft.plannedStart||null)&&item.plannedEnd===(draft.plannedEnd||null)&&!item.isSample);if(created.length===1){onCreateRecheckChange?.(null);invalidateProjectViews(client);toast.success('已核对最新状态：项目已创建');onClose();return;}if(created.length===0){onCreateRecheckChange?.(null);mutation.reset();setCreateCheckError('未发现本次新增项目，已恢复原输入，可以重新提交。');return;}setCreateCheckError('发现多个可能的新项目，暂不解除锁定，请核对项目中心和操作记录。');}catch(error){setCreateCheckError(error instanceof Error?error.message:'项目列表读取失败');}finally{setCheckingCreate(false);}};
   return (
     <Modal title={project ? "编辑项目" : "新建项目"} closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
     {!templatesReady && templatesQuery.error ? <EmptyState title="项目配置加载失败" detail={templatesQuery.error.message || "暂时无法读取默认流程，请稍后重试。"} action={<Button variant="secondary" type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</Button>} />
@@ -219,18 +233,18 @@ export function RequirementForm({
   useEffect(()=>setLocal({projectId,title,ownerId,background,acceptanceCriteria,referenceUrl,referenceLinks,featureId,phaseId,reason:placementReason,templateId,...scheduleDate?(scheduleMode==='start'?{plannedStart:scheduleDate}:{plannedEnd:scheduleDate}):{}}),[projectId,title,ownerId,background,acceptanceCriteria,referenceUrl,referenceLinks,featureId,phaseId,placementReason,templateId,scheduleDate,scheduleMode,setLocal]);
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, projectId],
-    queryFn: ({ signal }) => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(projectId)}`, { signal }),
+    queryFn: ({ signal }) => templatesApi.templatesQuery<WorkItemTemplate[]>(encodeURIComponent(projectId), { signal }),
     enabled: Boolean(projectId),
   });
   const peopleQuery = useQuery({
     queryKey: [...keys.people, projectId],
-    queryFn: ({ signal }) => api<Person[]>(`/api/people?projectId=${encodeURIComponent(projectId)}`, { signal }),
+    queryFn: ({ signal }) => peopleApi.peopleQuery<Person[]>(encodeURIComponent(projectId), { signal }),
     enabled: Boolean(projectId),
   });
   const templates = templatesQuery.data || [];
   const people = peopleQuery.data || [];
   const mutation = useMutation({
-    mutationFn: async (data: RequirementFormInput) => {await assertCleanProjectDraft(session.accountId||'guest',projectId,data.phaseId?{requirementId:'',phaseId:data.phaseId,action:'phase'}:undefined);return api<Requirement>("/api/requirements", { method: "POST", body: jsonBody(data) });},
+    mutationFn: async (data: RequirementFormInput) => {await assertCleanProjectDraft(session.accountId||'guest',projectId,data.phaseId?{requirementId:'',phaseId:data.phaseId,action:'phase'}:undefined);return requirementsApi.createRequirement(data);},
     onMutate:data=>onRecheckChange({draft:data,baselineIds:recheck?.baselineIds||initialRequirementIds}),
     onSuccess: () => {
       onRecheckChange(null);
@@ -241,7 +255,7 @@ export function RequirementForm({
     onSettled: () => { submitting.current = false; },
   });
   const matchesDraft=(item:Requirement,draft:RequirementFormInput)=>item.projectId===projectId&&item.title===canonicalizeLabel(draft.title)&&item.ownerId===(draft.ownerId||null)&&item.background===(draft.background.trim()||null)&&item.acceptanceCriteria===(draft.acceptanceCriteria.trim()||null)&&(draft.referenceLinks!==undefined?JSON.stringify(readReferenceLinks(item.referenceLinks))===JSON.stringify(readReferenceLinks(draft.referenceLinks)):item.referenceUrl===(draft.referenceUrl.trim()||null))&&(!draft.featureId||item.featureId===draft.featureId)&&(item.phaseId||null)===(draft.phaseId||null)&&(!draft.templateId||item.templateId===draft.templateId)&&(!draft.plannedStart||item.plannedStart===draft.plannedStart)&&(!draft.plannedEnd||item.plannedEnd===draft.plannedEnd);
-  const checkLatest=async()=>{if(!recheck||checking)return;setChecking(true);setCheckError('');try{const latest=await api<Requirement[]>(`/api/requirements?projectId=${encodeURIComponent(projectId)}`,{readOnly:true});client.setQueryData([...keys.requirements,projectId],latest);const baseline=new Set(recheck.baselineIds),created=latest.filter(item=>!baseline.has(item.id)&&matchesDraft(item,recheck.draft));if(created.length===1){onRecheckChange(null);invalidateRequirementViews(client,created[0].id);toast.success('已核对最新状态：需求已创建');clearLocal();onClose();return;}if(created.length===0){onRecheckChange(null);mutation.reset();setCheckError('未发现本次新增需求，已恢复原输入，可以重新提交。');return;}setCheckError('发现多个可能的新需求，暂不解除锁定，请核对需求列表和操作记录。');}catch(error){setCheckError(error instanceof Error?error.message:'需求列表读取失败');}finally{setChecking(false);}};
+  const checkLatest=async()=>{if(!recheck||checking)return;setChecking(true);setCheckError('');try{const latest=await requirementsApi.requirementsQuery<Requirement[]>(encodeURIComponent(projectId), {readOnly:true});client.setQueryData([...keys.requirements,projectId],latest);const baseline=new Set(recheck.baselineIds),created=latest.filter(item=>!baseline.has(item.id)&&matchesDraft(item,recheck.draft));if(created.length===1){onRecheckChange(null);invalidateRequirementViews(client,created[0].id);toast.success('已核对最新状态：需求已创建');clearLocal();onClose();return;}if(created.length===0){onRecheckChange(null);mutation.reset();setCheckError('未发现本次新增需求，已恢复原输入，可以重新提交。');return;}setCheckError('发现多个可能的新需求，暂不解除锁定，请核对需求列表和操作记录。');}catch(error){setCheckError(error instanceof Error?error.message:'需求列表读取失败');}finally{setChecking(false);}};
   return (
     <Modal title="新建需求" closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
     <form

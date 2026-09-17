@@ -1,6 +1,7 @@
+import * as workItemsApi from './features/work-items/api';
 import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, jsonBody } from "./api";
+import { jsonBody } from "./api";
 import { invalidateRequirementViews, keys } from "./query-keys";
 import type { Person, Requirement, WorkItem } from "./types";
 import { useOptimisticMutation } from "./use-optimistic-mutation";
@@ -43,7 +44,7 @@ export function useWorkItemSave(requirementId: string, people: Person[]) {
     },
     request: ({ item, input, expectedVersion = item.version }) => {
       const isCorrection = correctsActualDates(input);
-      return api<WorkItem>(`/api/work-items/${item.id}${isCorrection ? "/correct" : ""}`, {
+      return workItemsApi.workItemsResourceById<WorkItem>(item.id, isCorrection ? "/correct" : "", {
         method: isCorrection ? "POST" : "PATCH",
         body: jsonBody({ ...input, expectedVersion }),
       });

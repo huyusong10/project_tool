@@ -1,7 +1,7 @@
 import { Button, MenuButtons, type ButtonVariant } from './Button';
 import { Children, Fragment, isValidElement, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Ellipsis } from 'lucide-react';
-import { AnchoredPopover } from './InlineEdit';
+import { AnchoredPopover } from './inline-edit/popover';
 import { WorkspaceRuntimeContext } from '../workspace-runtime';
 import { useLocation } from 'react-router-dom';
 

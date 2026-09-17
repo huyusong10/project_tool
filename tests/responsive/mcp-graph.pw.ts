@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { addBusinessDays, todayIso } from '../../src/shared/domain';
 import {phaseFixture} from './phase-fixture';
 
-test('MCP SVG导出在浏览器正确显示，导出不改写布局或依赖', async ({ page }, info) => {
+test('MCP SVG导出在浏览器正确显示，导出不改写布局或依赖', {tag:'@responsive'}, async ({ page }, info) => {
   const login = await page.request.post('/api/login', { data: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } });
   expect(login.ok()).toBe(true);
   const project = await (await page.request.post('/api/projects', { data: { name: 'MCP导出' + Date.now() } })).json();

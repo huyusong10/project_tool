@@ -1,43 +1,45 @@
+import { dependencyWorkspaceLocation, editorFieldLocation } from '../workspace-location';
+import * as planningApi from '../features/planning/api';
 import { Button } from './Button';
-import {useProjectWorkspace} from '../project-workspace-context';
-import {ToolbarStatus} from './ToolbarStatus';
-import {Select} from './Select';
-import {useEffect,useMemo,useState,useRef} from 'react';
-import {flushSync} from 'react-dom';
-import {useQueryClient} from '@tanstack/react-query';
-import {Link2,Check} from 'lucide-react';
-import {useSession} from '../app-context';
-import {canManageProject} from '../permissions';
-import {useResourceQuery} from '../use-resource-query';
-import {keys,invalidateRequirementViews} from '../query-keys';
-import {useDependencyDraft,clearProjectGraphDrafts} from '../use-graph-draft';
-import {useEditorInteraction} from '../use-editor-interaction';
-import {useWorkspaceParams} from '../use-workspace-view';
-import {editorAdapter} from '../editor-adapter';
-import {draftNetwork} from '../dependency-draft';
-import {requirementCanvasUrl,useCanvasNavigation} from '../canvas-navigation';
-import {randomUUID} from '../random-uuid';
-import {api,ApiError} from '../api';
-import {featurePathGraph} from '../../shared/feature-projection';
-import type {PathAnalysis} from '../../shared/paths';
-import type {FeatureRelationChange} from '../../shared/features';
-import {GraphWorkspace} from './GraphWorkspace';
-import {PageHeader} from './PageHeader';
-import {EditorToolbar} from './EditorToolbar';
-import {EditorField} from './EditorField';
-import {canvasNavigation} from './CanvasNavigation';
-import {CanvasDraftDetails} from './CanvasDraftDetails';
+import { useProjectWorkspace } from '../project-workspace-context';
+import { ToolbarStatus } from './ToolbarStatus';
+import { Select } from './Select';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { flushSync } from 'react-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { Link2, Check } from 'lucide-react';
+import { useSession } from '../app-context';
+import { canManageProject } from '../permissions';
+import { useResourceQuery } from '../use-resource-query';
+import { keys, invalidateRequirementViews } from '../query-keys';
+import { useDependencyDraft, clearProjectGraphDrafts } from '../use-graph-draft';
+import { useEditorInteraction } from '../use-editor-interaction';
+import { useWorkspaceParams } from '../use-workspace-view';
+import { editorAdapter } from '../editor-adapter';
+import { draftNetwork } from '../dependency-draft';
+import { useCanvasNavigation } from '../canvas-navigation';
+import { randomUUID } from '../random-uuid';
+import { ApiError } from '../api';
+import { featurePathGraph } from '../../shared/feature-projection';
+import type { PathAnalysis } from '../../shared/paths';
+import type { FeatureRelationChange } from '../../shared/features';
+import { GraphWorkspace } from './GraphWorkspace';
+import { PageHeader } from './PageHeader';
+import { EditorToolbar } from './EditorToolbar';
+import { EditorField } from './EditorField';
+import { canvasNavigation } from './CanvasNavigation';
+import { CanvasDraftDetails } from './CanvasDraftDetails';
 
-import {FeatureEditor,readFeaturePending,type FeatureEdit} from './FeaturePlanning';
-import {DeliveryFeatureDetails} from './DeliveryFeatureDetails';
-import {FeatureTable,DeliveryFilters,matchesDeliveryFeature} from './DeliveryTables';
-import {Modal} from './Modal';
-import {SearchInput} from './SearchInput';
+import { FeatureEditor, readFeaturePending, type FeatureEdit } from './FeaturePlanning';
+import { DeliveryFeatureDetails } from './DeliveryFeatureDetails';
+import { FeatureTable, DeliveryFilters, matchesDeliveryFeature } from './DeliveryTables';
+import { Modal } from './Modal';
+import { SearchInput } from './SearchInput';
 import './feature-planning.css';
 
 export function FeaturePathPanel({projectId}:{projectId:string}) {
   const {session}=useSession();
-  const query=useResourceQuery<{analysis:PathAnalysis}>([...keys.featureGraph,projectId,session.accountId,'features'],'/api/projects/'+projectId+'/path-graph?view=features',!!projectId);
+  const query=useResourceQuery<{analysis:PathAnalysis}>([...keys.featureGraph,projectId,session.accountId,'features'],signal => planningApi.projectsPathGraphQuery<{analysis:PathAnalysis}>(projectId, { signal }),!!projectId);
   useEffect(()=>{if(query.error instanceof ApiError&&[401,403].includes(query.error.status))clearProjectGraphDrafts(session.accountId||'guest',projectId);},[query.error,session.accountId,projectId]);
   if(query.unavailable||!query.data)return <><PageHeader title="项目空间"/><div className="page-content"><p>{query.error?.message||'正在读取特性关系…'}</p>{query.error&&<Button variant="secondary" className="ghost-button" onClick={()=>void query.refetch()}>重新读取</Button>}</div></>;
   return <FeatureWorkspace key={(session.accountId||'guest')+projectId} formal={query.data.analysis}/>;
@@ -51,7 +53,7 @@ function FeatureWorkspace({formal}:{formal:PathAnalysis}){
   const orderKey='pm-feature-order-write:'+account+':'+projectId;
   const [orderPending,setOrderPending]=useState(()=>sessionStorage.getItem(orderKey)||'');
   const [readError,setReadError]=useState(''),[denied,setDenied]=useState(false);
-  const refresh=async()=>{try{setReadError('');await api('/api/projects/'+projectId+'/feature-overview?state=all');invalidateRequirementViews(client);}catch(e){setReadError((e as Error).message);if(e instanceof ApiError&&[401,403].includes(e.status)){clearProjectGraphDrafts(account,projectId);setDenied(true);invalidateRequirementViews(client);}}};
+  const refresh=async()=>{try{setReadError('');await planningApi.projectsFeatureOverviewQuery(projectId);invalidateRequirementViews(client);}catch(e){setReadError((e as Error).message);if(e instanceof ApiError&&[401,403].includes(e.status)){clearProjectGraphDrafts(account,projectId);setDenied(true);invalidateRequirementViews(client);}}};
   const draft=useDependencyDraft(account,formal,'project',()=>invalidateRequirementViews(client));
   const navigation=useCanvasNavigation(account,projectId,async()=>{flushSync(()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur();});await draft.flush();return true;});
   const go=(url:string)=>void navigation.go(url),setParam=(name:string,value:string)=>setParams(old=>{const next=new URLSearchParams(old);if(value)next.set(name,value);else next.delete(name);return next;},{replace:true});
@@ -88,7 +90,7 @@ function FeatureWorkspace({formal}:{formal:PathAnalysis}){
     <div className="canvas-inspector-body">{feature?<DeliveryFeatureDetails key={feature.id} feature={feature} phaseId={params.get('phaseId')} onEnter={stage=>enter(feature.id,stage)} onPhase={()=>setParam('phaseId','')}/>:card?.featureId==='unassigned'?<p>{context.overview.unassignedCount} 个需求尚未关联特性。</p>:card?<p>{card.subtitle}</p>:null}
     {edge&&<>
       {!!edge.planningRelationIds?.length&&<section><h4>规划关系</h4>{edge.planningRelationIds.map(id=>{const r=context.relations.find(r=>r.id===id)!;return <div key={id}><p>{relationName(r.sourceFeatureId)} → {relationName(r.targetFeatureId)}</p>{editing?<label className="field"><span>关系说明</span><EditorField multiline fieldKey={r.id+':note'} aria-label="规划关系说明" value={r.note} onCommit={note=>changeRelation({op:'update',id:r.id,expectedVersion:r.version||1,note})}/></label>:r.note&&<p className="canvas-summary-text">{r.note}</p>}{editing&&<Button variant="secondary" tone="danger" className="ghost-button danger-text" onClick={()=>changeRelation({op:'delete',id:r.id,expectedVersion:r.version||1})}>移除规划关系</Button>}</div>;})}</section>}
-      {!!edge.dependencyIds.length&&<section><h4>实际依赖 · {edge.dependencyIds.length} 条</h4><div className="canvas-dependency-list">{edge.dependencyIds.map(id=>{const d=data.dependencies.find(d=>d.id===id);if(!d)return null;const name=(req:string,milestone?:string|null)=>context.requirements.find(r=>r.id===req)?.title||data.nodes.find(n=>n.id===milestone)?.title||'历史交付';return <Button variant="secondary" className="ghost-button" key={id} onClick={()=>go('/paths?'+new URLSearchParams({view:'project',pathRelation:id,pathInspector:'open',pathScope:'all'}))}>{name(d.sourceRequirementId,d.sourceMilestoneId)} → {name(d.targetRequirementId,d.targetMilestoneId)}</Button>;})}</div></section>}
+      {!!edge.dependencyIds.length&&<section><h4>实际依赖 · {edge.dependencyIds.length} 条</h4><div className="canvas-dependency-list">{edge.dependencyIds.map(id=>{const d=data.dependencies.find(d=>d.id===id);if(!d)return null;const name=(req:string,milestone?:string|null)=>context.requirements.find(r=>r.id===req)?.title||data.nodes.find(n=>n.id===milestone)?.title||'历史交付';return <Button variant="secondary" className="ghost-button" key={id} onClick={()=>{const destination=dependencyWorkspaceLocation(data,id);if(destination)go(destination);}}>{name(d.sourceRequirementId,d.sourceMilestoneId)} → {name(d.targetRequirementId,d.targetMilestoneId)}</Button>;})}</div></section>}
     </>}</div>
   </div>:undefined;
   const display=<><Button variant="menu" role="menuitemcheckbox" aria-checked={planning} data-menu-stay onClick={()=>setParam('planning',planning?'0':'1')}><Check size={15} style={{visibility:planning?'visible':'hidden'}}/>规划关系（虚线）</Button><Button variant="menu" role="menuitemcheckbox" aria-checked={actual} data-menu-stay onClick={()=>setParam('actual',actual?'0':'1')}><Check size={15} style={{visibility:actual?'visible':'hidden'}}/>实际依赖（实线）</Button></>;
@@ -97,10 +99,10 @@ function FeatureWorkspace({formal}:{formal:PathAnalysis}){
     extra={(params.get('mode')==='graph'||editing)?<>{params.get('mode')==='graph'&&display}{editing&&<Button variant="secondary" className="ghost-button" onClick={()=>setChoosing(true)}><Link2 size={17}/>建立规划关系</Button>}</>:undefined}/>;
   const search=params.get('pathSearch')||'',matching=graph.cards.filter(c=>(c.title+' '+(c.expectation||'')).toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   if(denied)return <p role="alert">项目权限已移除</p>;
-  return <div className="feature-path">{readError&&<p role="alert" className="warning-banner">{readError}</p>}{orderPending&&<div role="alert" className="warning-banner">旧排序操作待核对：{orderPending}<Button variant="secondary" className="ghost-button" onClick={()=>void api('/api/projects/'+projectId+'/feature-overview?state=all').then(()=>{invalidateRequirementViews(client);setOrderPending('');sessionStorage.removeItem(orderKey);}).catch(e=>setReadError((e as Error).message))}>读取最新资料并核对顺序</Button></div>}<GraphWorkspace table={<FeatureTable features={context.overview.features} params={params} selected={selected} onSelect={select} onEnter={enter} onPhase={choosePhase} onSort={v=>setParam('tableSort',v)}/>} visibleIds={graph.cards.filter(c=>!c.featureId||c.featureId==='unassigned'||context.overview.features.some(f=>f.id===c.featureId&&matchesDeliveryFeature(f,params))).map(c=>c.id)} selectedPhaseId={params.get('phaseId')||undefined} onSelectPhase={(featureId,phaseId)=>{select('feature:'+featureId);setParam('phaseId',phaseId);}} document={draft} commands={commands} interaction={interaction} cards={graph.cards} links={graph.links} viewKey={viewKey} historyIndex={window.history.state?.idx} positions={layout?.positions} editing={editing} validateConnection={validate} locate={locate}
+  return <div className="feature-path">{readError&&<p role="alert" className="warning-banner">{readError}</p>}{orderPending&&<div role="alert" className="warning-banner">旧排序操作待核对：{orderPending}<Button variant="secondary" className="ghost-button" onClick={()=>void planningApi.projectsFeatureOverviewQuery(projectId).then(()=>{invalidateRequirementViews(client);setOrderPending('');sessionStorage.removeItem(orderKey);}).catch(e=>setReadError((e as Error).message))}>读取最新资料并核对顺序</Button></div>}<GraphWorkspace table={<FeatureTable features={context.overview.features} params={params} selected={selected} onSelect={select} onEnter={enter} onPhase={choosePhase} onSort={v=>setParam('tableSort',v)}/>} visibleIds={graph.cards.filter(c=>!c.featureId||c.featureId==='unassigned'||context.overview.features.some(f=>f.id===c.featureId&&matchesDeliveryFeature(f,params))).map(c=>c.id)} selectedPhaseId={params.get('phaseId')||undefined} onSelectPhase={(featureId,phaseId)=>{select('feature:'+featureId);setParam('phaseId',phaseId);}} document={draft} commands={commands} interaction={interaction} cards={graph.cards} links={graph.links} viewKey={viewKey} historyIndex={window.history.state?.idx} positions={layout?.positions} editing={editing} validateConnection={validate} locate={locate}
     navigation={<DeliveryFilters features params={params} setParam={setParam}/>}  toolbar={toolbar} detailTitle={card?.title||'关系详情'} detail={detail} onDismissDetail={()=>setParam('graphInspector','closed')}
     onOpenNode={card=>{if(card.featureId)enter(card.featureId);else select(card.id);}}
-    onRevealField={key=>{const r=context.relations.find(r=>key===r.id+':note');if(r){setParam('pathEdge','feature:'+r.sourceFeatureId+'>feature:'+r.targetFeatureId);setParam('graphInspector','open');}else {const id=key.startsWith('title:')?key.slice(6):key.slice(0,key.lastIndexOf(':')),node=data.nodes.find(n=>n.id===id);void navigation.go(node?.requirementId?requirementCanvasUrl(node.requirementId,params,data,id):'/paths?'+new URLSearchParams({view:'project',pathNode:id,pathInspector:'open',pathScope:'all'}),true,true);}}}
+    onRevealField={key=>{const r=context.relations.find(r=>key===r.id+':note');if(r){setParam('pathEdge','feature:'+r.sourceFeatureId+'>feature:'+r.targetFeatureId);setParam('graphInspector','open');}else {const id=key.startsWith('title:')?key.slice(6):key.slice(0,key.lastIndexOf(':')),destination=editorFieldLocation(data,id);if(destination)void navigation.go(destination,true,true);}}}
     auxiliary={changesOpen?<><div className="graph-panel-heading"><h3>修改与冲突</h3><Button variant="secondary" className="ghost-button" onClick={()=>setParam('pathPanel','')}>关闭</Button></div><CanvasDraftDetails draft={draft} data={data} onGo={url=>void navigation.go(url,true,true)}/></>:undefined} auxiliaryKey="changes" onDismissAuxiliary={()=>setParam('pathPanel','')}
     finder={<><SearchInput value={search} onChange={value=>{setParam('pathSearch',value);setParam('q',value);}} placeholder="查找特性"/>{matching.map(c=><Button variant="menu" className="ghost-button canvas-finder-row" key={c.id} onClick={()=>{select(c.id);setLocate({id:c.id,sequence:Date.now()});}}>{c.title}</Button>)}</>}
     footer={(issue||!graph.cards.length||draft.error||draft.conflict||draft.legacy.blocked)?<>{issue&&<span role="alert" className="danger-text">{issue}</span>}{!graph.cards.length&&<span>{manage?<Button variant="secondary" className="ghost-button" onClick={()=>go('/features?'+new URLSearchParams({create:'1',returnTo:'/paths?view=features'}))}>创建第一个特性</Button>:'暂无特性'}</span>}{(draft.error||draft.conflict||draft.legacy.blocked)&&<Button variant="secondary" tone="danger" className="ghost-button danger-text" onClick={()=>setParam('pathPanel','changes')}>查看修改与错误</Button>}</>:undefined}/>

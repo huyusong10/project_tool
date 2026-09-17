@@ -1,0 +1,12 @@
+@layer application {
+
+.dashboard-actions > header > a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-hover); font-size: 12px; text-decoration: none; }
+.dashboard-action-list { display: grid; }
+.dashboard-action-list > a { min-height: 50px; display: grid; grid-template-columns: 28px minmax(150px,.75fr) minmax(220px,1fr) 18px; align-items: center; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--divider); color: var(--text-secondary); text-decoration: none; }
+.dashboard-action-list > a:first-child { border-top: 0; }
+.dashboard-action-list > a:hover { background: var(--bg-surface-subtle); }
+.dashboard-action-list strong, .dashboard-action-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-action-list strong { color: var(--text-secondary); font-size: 13px; }
+.dashboard-action-list small { color: var(--text-faint); font-size: 12px; }
+.dashboard-action-list > a > svg { color: var(--text-faint); }
+}

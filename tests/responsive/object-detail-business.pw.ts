@@ -1,5 +1,5 @@
 import {expect,test,type Page} from '@playwright/test';
-import {phaseFixture} from './phase-fixture';
+import {phaseFixture,historicalPhaseFixture} from './phase-fixture';
 import {chooseOption} from './select-helper';
 import type {Requirement} from '../../src/client/types';
 const modal=(page:Page)=>page.locator('.modal-card-workspace[role=dialog]');
@@ -7,19 +7,22 @@ const detail=async(page:Page,id:string)=>(await(await page.request.get('/api/req
 
 test('Phase 新建未知结果保留原提交，交付保护和历史仍可用',async({page})=>{
   const f=await phaseFixture(page),url='/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'list',scopeType:'project',detailId:'feature:'+f.feature.id,detailTab:'children'});
+  await historicalPhaseFixture(page,f);
   await page.goto(url);await modal(page).getByRole('button',{name:'新建 Phase',exact:true}).click();
-  const form=modal(page).getByRole('dialog',{name:'新增 Phase',exact:true});
+  const form=modal(page).getByRole('dialog',{name:'新建 Phase',exact:true});
   await form.getByLabel('Phase 名称').fill('Phase 新阶段');await form.getByLabel('交付范围').fill('保留完整交付范围');
   const endpoint='**'+f.base+'/features/'+f.feature.id+'/phases';let writes=0;
   await page.route(endpoint,async route=>{if(route.request().method()!=='POST')return route.continue();writes++;await route.fetch();await route.abort('failed');});
-  await form.getByRole('button',{name:'新增 Phase',exact:true}).click();await expect(form.getByRole('button',{name:'读取最新 Phase 并核对'})).toBeVisible();
+  await form.getByRole('button',{name:'新建 Phase',exact:true}).click();await expect(form.getByRole('button',{name:'读取最新 Phase 并核对'})).toBeVisible();
   await page.reload();await expect(form.getByLabel('Phase 名称')).toHaveValue('Phase 新阶段');await form.getByRole('button',{name:'读取最新 Phase 并核对'}).click();await expect(form).toHaveCount(0);expect(writes).toBe(1);await page.unroute(endpoint);
   await expect(modal(page).getByRole('button',{name:'Phase 新阶段',exact:true})).toBeVisible();
   await modal(page).getByRole('button',{name:'Phase 1',exact:true}).click();
-  await modal(page).getByRole('tab',{name:'需求清单',exact:true}).click();await expect(modal(page).getByRole('button',{name:'新建需求',exact:true})).toHaveCount(0);
+  await modal(page).getByRole('tab',{name:'需求清单',exact:true}).click();await expect(modal(page).getByRole('button',{name:'新建需求',exact:true})).toBeEnabled();
   await modal(page).getByRole('tab',{name:'记录',exact:true}).click();await expect(modal(page).locator('.object-history-entry')).toContainText('DCIM-001 基础台账');
-  await modal(page).getByRole('tab',{name:'概况',exact:true}).click();await modal(page).getByRole('button',{name:'Phase 更多操作',exact:true}).click();await modal(page).getByRole('button',{name:'重新打开',exact:true}).click();
-  const reopen=modal(page).getByRole('dialog',{name:'重新打开 Phase',exact:true});await reopen.getByLabel('变更原因').fill('补充客户反馈');await reopen.getByRole('button',{name:'重新打开 Phase',exact:true}).click();await expect(reopen).toHaveCount(0);await expect(modal(page).getByRole('button',{name:'确认交付',exact:true})).toBeVisible();
+  await expect(modal(page).locator('.object-history-entry')).toContainText('补充客户反馈');
+  await modal(page).getByRole('tab',{name:'概况',exact:true}).click();await expect(modal(page).getByRole('button',{name:'确认交付',exact:true})).toHaveCount(0);
+  await expect(modal(page).getByRole('button',{name:'编辑 Phase',exact:true})).toBeEnabled();
+  await expect(modal(page).getByRole('button',{name:'Phase 更多操作',exact:true})).toHaveCount(0);
 });
 
 test('旧需求链接接入弹窗，直接进展和拆分基线保留，工作项可开始完成并重开',async({page})=>{

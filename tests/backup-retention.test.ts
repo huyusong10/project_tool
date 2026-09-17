@@ -17,7 +17,7 @@ process.env.BACKUP_MAX_COUNT = '1';
 let sqlite: import('better-sqlite3').Database;
 
 beforeAll(async () => {
-  ({ sqlite } = await import('../src/server/database'));
+  ({ sqlite } = await import('./support/database'));
 });
 
 afterAll(() => {

@@ -1,18 +1,18 @@
-import type { AuthorizationActor } from '../authorization';
-import { notFound, fail } from '../errors';
-import { readPathAnalysis,loadPathInput } from './paths';
-import { sqlite } from '../database';
-import { getFeatureOverview } from './feature-overview';
-import {withFeatureContext} from './feature-context';
-import { readFeatureRelations } from './features';
-import {graphSvg,exportCardSize} from './path-graph-export';
 import { featurePathGraph } from '../../shared/feature-projection';
-import { pathGraphQuerySchema } from '../../shared/query-contracts';
-import { projectPathGraph, type GraphLink } from '../../shared/path-projection';
 import { stableGraphLayout } from '../../shared/graph-layout';
-import {type RoutedLayout} from '../../shared/path-layout';
-import {featurePhaseLayout,arrangePhaseRegions,PHASE_HEADER,type PhaseRegion} from '../../shared/phase-layout';
-import {routeOrthogonalGraph} from '../../shared/orthogonal-routing';
+import { routeOrthogonalGraph } from '../../shared/orthogonal-routing';
+import { type RoutedLayout } from '../../shared/path-layout';
+import { projectPathGraph, type GraphLink } from '../../shared/path-projection';
+import { arrangePhaseRegions, featurePhaseLayout, PHASE_HEADER, type PhaseRegion } from '../../shared/phase-layout';
+import { pathGraphQuerySchema } from '../../shared/query-contracts';
+import type { AuthorizationActor } from '../authorization';
+import { getDatabaseContext } from '../database-context';
+import { fail, notFound } from '../errors';
+import { withFeatureContext } from './feature-context';
+import { getFeatureOverview } from './feature-overview';
+import { readFeatureRelations } from './features';
+import { exportCardSize, graphSvg } from './path-graph-export';
+import { loadPathInput, readPathAnalysis } from './paths';
 
 function neighborhood(root: string, links: GraphLink[], direction: 'upstream' | 'downstream', depth: number) {
   const neighbors = new Map<string, string[]>();
@@ -34,7 +34,7 @@ function neighborhood(root: string, links: GraphLink[], direction: 'upstream' | 
 export async function readPathGraph(raw: unknown, actor: AuthorizationActor) {
   const input = pathGraphQuerySchema.parse(raw);
   const featureView=input.view==='features'||input.view==='feature';
-  const {analysis,graph,overview,relations}=sqlite.transaction(()=>{
+  const {analysis,graph,overview,relations}=getDatabaseContext().sqlite.transaction(()=>{
     let analysis=readPathAnalysis(input.projectId,undefined,actor);
     if(input.requirementId&&!analysis.requirements.some(r=>r.id===input.requirementId))notFound('需求不存在');
     const target=input.target||(input.requirementId?'acceptance:'+input.requirementId:'project');

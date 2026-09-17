@@ -2,7 +2,7 @@ import {expect,test} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
 const themes=['classic','dcim','midnight','forest','swiss','soft','industrial'];
 
-test('关系图选中与详情独立，三个视角使用同一居中详情',async({page},info)=>{
+test('关系图选中与详情独立，三个视角使用同一居中详情',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page);
   const link=(view:string)=>'/?'+new URLSearchParams({projectId:f.projectId,workspaceView:view,scopeType:'requirement',scopeId:f.testing.id});
   await page.goto(link('graph'));await expect(page.locator('[data-layout-ready=true]')).toBeVisible();
@@ -26,7 +26,7 @@ test('关系图选中与详情独立，三个视角使用同一居中详情',asy
   }
 });
 
-test('工作项排序、直接操作及七主题在桌面与窄屏稳定',async({page},info)=>{
+test('工作项排序、直接操作及七主题在桌面与窄屏稳定',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page);
   await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'list',scopeType:'requirement',scopeId:f.testing.id,detailId:f.testing.id,detailTab:'work'}));
   const modal=page.getByRole('dialog');await expect(modal.locator('.work-arrangement-row')).toHaveCount(2);

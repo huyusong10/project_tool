@@ -19,7 +19,7 @@ async function fixture(page: Page, count = 7, firstItems?: TemplateItem[]) {
   return {templates,writes};
 }
 
-test('列表显示紧凑双缩略图，打开完整预览不移动卡片或写入流程', async ({page}, info) => {
+test('列表显示紧凑双缩略图，打开完整预览不移动卡片或写入流程', {tag:'@responsive'},async ({page}, info) => {
   const {writes}=await fixture(page);
   const card=page.locator('.template-card').first();
   await expect(card.locator('[data-thumbnail-node]')).toHaveCount(7);
@@ -56,7 +56,7 @@ test('列表显示紧凑双缩略图，打开完整预览不移动卡片或写�
   expect(writes).toEqual([]);
 });
 
-test('流程列表无需分页，窄屏至大屏没有图内滚动条', async ({page}, info) => {
+test('流程列表无需分页，窄屏至大屏没有图内滚动条', {tag:'@responsive'}, async ({page}, info) => {
   await fixture(page,21);
   for (const width of [390,768,1280,1536,1920,2560]) {
     await page.setViewportSize({width,height:900});
@@ -94,7 +94,7 @@ test('流程列表无需分页，窄屏至大屏没有图内滚动条', async ({
   expect(await page.evaluate(()=>window.scrollY)).toBe(scroll);
 });
 
-test('长名称、多分支换行和跨层连线保持可读', async ({page}, info) => {
+test('长名称、多分支换行和跨层连线保持可读',{tag:'@responsive'}, async ({page}, info) => {
   const roots=Array.from({length:5},(_,i)=>item('root'+i,'并行工作'+i+'：接口适配与跨模块边界检查',0,2));
   await page.setViewportSize({width:390,height:844});
   await fixture(page,1,[...roots,item('join','集成验证',2,2,roots.map(node=>node.id)),item('end','交付基线',4,0,['root0','join'],'milestone')]);
@@ -118,7 +118,7 @@ test('长名称、多分支换行和跨层连线保持可读', async ({page}, in
 });
 
 
-test('长工期预览可横向滚动，名称保留且不写入流程',async({page})=>{
+test('长工期预览可横向滚动，名称保留且不写入流程',{tag:'@responsive'},async({page})=>{
  const {writes}=await fixture(page,1,[item('a','长周期工作',0,120),item('b','一天验证',120,1,['a'])]);
  await page.locator('.template-name-button').first().click();const preview=page.getByRole('dialog',{name:'流程预览'}),pane=preview.getByRole('region',{name:'甘特预览'}).locator('.template-preview-scroll');
  expect(await pane.evaluate(e=>e.scrollWidth>e.clientWidth)).toBe(true);

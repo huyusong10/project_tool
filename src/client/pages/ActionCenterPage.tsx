@@ -1,5 +1,6 @@
+import { searchActionItems } from '../features/reporting/api';
 import { Button } from '../components/Button';
-import {useAppNavigate} from '../use-app-navigation';
+import { useAppNavigate } from '../use-app-navigation';
 
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { usePagedResourceQuery } from '../use-paged-resource-query';
@@ -32,7 +33,7 @@ export function ActionCenterPage() {
   if (ownerId) query.set('ownerId', ownerId);
   const filterKey = JSON.stringify([selectedProjectId, severity, reason, ownerId]);
   const { data, isLoading, error, refetch, isFetching } = usePagedResourceQuery<ActionItemsPage>(
-    [...keys.actionItems, selectedProjectId, severity, reason, ownerId, page, pageSize], `/api/action-items?${query}`, filterKey, Boolean(selectedProjectId));
+    [...keys.actionItems, selectedProjectId, severity, reason, ownerId, page, pageSize], signal => searchActionItems(query, { signal }), filterKey, Boolean(selectedProjectId));
   const pagination = useListPagination({ total: data?.total || 0, defaultPageSize: 10, filterKey, ready: Boolean(data) && !error, loading: isFetching,
     serverPage: data?.page, serverPageSize: data?.pageSize, failed: Boolean(error) });
   usePageScrollPosition(!isLoading);

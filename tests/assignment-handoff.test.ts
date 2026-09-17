@@ -19,7 +19,7 @@ beforeAll(async () => {
   const login = await request('POST', '/api/login', { username: 'admin', password }, '');
   cookie = String(login.headers['set-cookie']).split(';')[0];
 });
-afterAll(async () => { await app.close(); const { sqlite } = await import('../src/server/database'); sqlite.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+afterAll(async () => { await app.close(); const { sqlite } = await import('./support/database'); sqlite.close(); fs.rmSync(directory, { recursive: true, force: true }); });
 async function fixture() {
   const projectId = (await request('POST', '/api/projects', { name: '责任交接' + ++sequence })).json().id as string;
   const person = async (role: string) => (await request('POST', '/api/people', { projectId, name: role + sequence })).json() as { id: string; name: string };
