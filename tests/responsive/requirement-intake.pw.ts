@@ -31,6 +31,19 @@ async function saveImport(page:Page) {
   await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();
 }
 
+test('按页面名称导入到其他需求，预览后保存并进入新需求',async({page})=>{
+  const projectId=await fixture(page);
+  await page.getByLabel('特性',{exact:true}).fill('其他需求');
+  await page.getByLabel('Phase（可选）',{exact:true}).fill('');
+  await saveImport(page);
+  const result=page.locator('.intake-preview-result').filter({hasText:'已保存 1 个需求'});
+  await result.getByRole('link',{name:'查询与详情',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'查询与详情',exact:true})).toBeVisible();
+  const requirements=await(await page.request.get('/api/requirements?projectId='+projectId)).json();
+  expect(requirements).toHaveLength(1);
+  expect(requirements[0]).toMatchObject({featureName:'其他需求',phaseId:null});
+});
+
 test('导入可拆分合并，保存后按特性和 Phase 展开并进入详情',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));const id=await fixture(page);
  await expect(page.getByText('标签',{exact:true})).toHaveCount(0);

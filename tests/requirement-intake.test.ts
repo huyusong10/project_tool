@@ -41,6 +41,35 @@ it('批次重试和回执查询不重复写入，批次不能换内容',async()=
   expect((await request('GET',`/api/projects/${p.id}/requirement-import/receipts/${batchId}`)).json()).toEqual(first.json());
   const changed=structuredClone(v);changed.package.requirements[0].title='另一份内容';expect((await apply(p.id,changed,batchId)).statusCode).toBe(409);
 });
+it.each(['其他需求','其他特性'])('导入到系统归类 %s 时复用已有归属，新项目也可直接导入',async(feature)=>{
+  for(const existing of [false,true]){
+    const p=await project();
+    if(existing)expect((await post('/api/requirements',{projectId:p.id,title:'已有未分类需求'})).statusCode).toBe(200);
+    const before=await catalog(p.id),pkg=structuredClone(intakeExample);
+    pkg.requirements[0].feature=feature;pkg.requirements[0].phase=null;
+    const v=await preview(p.id,pkg);expect(v.errors).toEqual([]);expect(await catalog(p.id)).toEqual(before);
+    const batchId=randomUUID(),result=await apply(p.id,v,batchId);expect(result.statusCode,result.body).toBe(200);
+    const detail=(await request('GET','/api/requirements/'+result.json().requirementIds.query)).json();
+    const features=(await catalog(p.id)).features;
+    expect(features).toHaveLength(1);expect(features[0].kind).toBe('other');
+    expect(detail).toMatchObject({featureId:features[0].id,featureName:'其他需求',phaseId:null});
+    expect((await apply(p.id,v,batchId)).json()).toEqual(result.json());
+  }
+});
+it('导入回执保留任意合法需求标识并可按原批次核对',async()=>{
+  const p=await project(),pkg=structuredClone(intakeExample),key='__proto__';
+  pkg.requirements[0].key=key;
+  for(const edge of pkg.dependencies){edge.source.requirement=key;edge.target.requirement=key;}
+  const v=await preview(p.id,pkg);expect(v.errors).toEqual([]);
+  const batchId=randomUUID(),result=await apply(p.id,v,batchId);expect(result.statusCode,result.body).toBe(200);
+  const receipt=result.json<Extract<ImportReceipt,{status:'applied'}>>();
+  expect(Object.keys(receipt.requirementIds)).toEqual([key]);
+  const detail=await request('GET','/api/requirements/'+receipt.requirementIds[key]);
+  expect(detail.statusCode,detail.body).toBe(200);expect(detail.json().title).toBe(pkg.requirements[0].title);
+  expect((await apply(p.id,v,batchId)).json()).toEqual(receipt);
+  expect((await request('GET',`/api/projects/${p.id}/requirement-import/receipts/${batchId}`)).json()).toEqual(receipt);
+  expect((await request('GET','/api/requirements?projectId='+p.id)).json()).toHaveLength(1);
+});
 it('普通特性归档后仍可导入明确命名的新特性，不留下默认特性或重复回执',async()=>{
  const p=await project(),feature=(await post(`/api/projects/${p.id}/features`,{name:'历史特性'})).json().features[0];
  const {sqlite}=await import('./support/database');sqlite.prepare('UPDATE features SET archived_at=? WHERE id=?').run(new Date().toISOString(),feature.id);

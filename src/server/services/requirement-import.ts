@@ -109,14 +109,14 @@ export function applyRequirementImport(projectId:string,raw:unknown,actor:Actor)
     if(prepared.preview.previewToken!==input.previewToken)fail('预览已变化，请重新核对','STALE_WRITE',409);
     // Resolve names inside this transaction before core creation so a named
     // import never depends on the state of the default Other feature.
-    for(const r of input.package.requirements)if(r.action!=='skip'&&r.feature&&!getDatabaseContext().sqlite.prepare('SELECT 1 FROM features WHERE project_id=? AND name=?').get(projectId,r.feature)){
+    for(const r of input.package.requirements)if(r.action!=='skip'&&r.feature&&!['其他特性','其他需求'].includes(r.feature)&&!getDatabaseContext().sqlite.prepare('SELECT 1 FROM features WHERE project_id=? AND name=?').get(projectId,r.feature)){
       const order=getDatabaseContext().sqlite.prepare('SELECT COUNT(*) AS n FROM features WHERE project_id=? AND archived_at IS NULL').get(projectId) as {n:number};
       saveFeature(projectId,{name:r.feature,sortOrder:order.n},actor);
     }
     const resolved=prepare(projectId,input.package,actor);
     if(resolved.preview.errors.length)fail(resolved.preview.errors.join('；'));
     const created=resolved.core?applyDependencyChanges(projectId,{...resolved.changes,batchId:input.batchId,previewToken:resolved.core.previewToken},actor).addedIds:{};
-    const requirementIds:Record<string,string>={};
+    const requirementIds:Record<string,string>=Object.create(null);
     for(const r of input.package.requirements){
       if(r.action==='skip')continue;
       const id=r.action==='update'?r.existingId!:created[entityId(r.key)];requirementIds[r.key]=id;
