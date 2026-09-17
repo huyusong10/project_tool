@@ -3,6 +3,7 @@
 .unified-workspace{display:flex;flex-direction:column;min-height:0;height:100%;overflow:hidden;--object-feature:var(--accent-ink);--object-phase:#7955bd;--object-requirement:#247b83;--object-work:#64748b;--object-group:var(--text-muted)}
 [data-theme=midnight] .unified-workspace,[data-theme=dcim] .unified-workspace{--object-phase:#b29add;--object-requirement:#66b6bd;--object-work:#9daabd}
 .unified-workspace-body{position:relative;flex:1;min-height:0;overflow:hidden}
+.unified-workspace>.query-refresh-notice{flex:none;margin:8px 12px}
 .unified-workspace-body>.feature-path,.unified-workspace-body>.path-analysis,.workspace-list-container{height:100%;min-height:0}
 .unified-workspace [hidden]{display:none!important}
 .workspace-object-mark{display:inline-flex;align-items:center;justify-content:center;gap:5px;flex:none;width:26px;height:26px;border-radius:7px;background:color-mix(in srgb,var(--object-color) 10%,var(--bg-surface));color:var(--object-color);font-size:11px}

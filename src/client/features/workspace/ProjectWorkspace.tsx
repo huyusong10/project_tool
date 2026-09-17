@@ -5,7 +5,7 @@ import { StatusBadge } from "../../components/Badge";
 import { PhaseStatusBadge } from '../../components/PhasePlanning';
 import { Button } from "../../components/Button";
 import { ArrowLeft } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useSession } from "../../app-context";
@@ -39,7 +39,7 @@ import { Modal } from "../../components/Modal";
 import { RequirementImport } from "../../components/RequirementImport";
 import "../../project-workspace.css";
 
-export function ProjectWorkspace({report,data}:{report:Dashboard;data:PathAnalysis}){
+export function ProjectWorkspace({report,data,refreshNotice}:{report:Dashboard;data:PathAnalysis;refreshNotice?:ReactNode}){
   const {session}=useSession(),account=session.accountId||'guest',projectId=data.projectId,client=useQueryClient();
   const [runtime]=useState(()=>new WorkspaceRuntime());
   const draft=useDependencyDraft(account,data,'project',()=>invalidateRequirementViews(client));runtime.document=draft;
@@ -60,6 +60,7 @@ export function ProjectWorkspace({report,data}:{report:Dashboard;data:PathAnalys
   const header=<PageHeader {...headerProps}/>;
   return <ProjectWorkspaceContext.Provider value={{location,data,enter,inspect,switchView,navigation,draftControls,actions,moreActions:params.get('intake')==='1'?null:objectActions.moreActions,emptyActions:objectActions.emptyActions}}><WorkspaceRuntimeContext.Provider value={runtime}>
     <div className="unified-workspace" data-scope={location.scope.kind} data-view={location.view}>
+      {refreshNotice}
       <WorkspaceOverview/>
       <div className="unified-workspace-body">
         {!valid?<>{header}<div className="page-content"><p role="alert">此范围不存在或已无法访问，网址和资料输入已保留。</p><Button variant="primary" className="primary-button" onClick={()=>enter({kind:'project',id:projectId})}>进入项目</Button></div></>:params.get('intake')==='1'?<><PageHeader {...headerProps} actions={<div className="page-editor-actions"><div className="page-editor-history"/><div className="page-editor-primary"><Button variant="secondary" className="ghost-button" aria-label="返回工作区" title="返回工作区" onClick={()=>{const next=new URLSearchParams(params);next.delete('intake');next.delete('intakeView');setParams(next);}}><ArrowLeft size={16}/><span>返回</span></Button></div></div>}/><div className="workspace-import"><RequirementImport projectId={projectId} defaultFeature={importFeature?.name} defaultPhase={importPhase?.name}/></div></>:location.view==='list'?null:location.view==='progress'?<ProgressWorkspace report={report} formal={data}/>:location.scope.kind==='project'?<FeaturePathPanel projectId={projectId}/>:<PathAnalysisPanel projectId={projectId}/>}

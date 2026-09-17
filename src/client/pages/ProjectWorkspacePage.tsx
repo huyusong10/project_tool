@@ -4,6 +4,7 @@ import * as planningApi from "../features/planning/api";
 import { isGuestWorkspace } from "../permissions";
 
 import { Button } from "../components/Button";
+import { RefreshNotice } from '../components/Feedback';
 
 import { useEffect } from 'react';
 import { Navigate, useLocation, useSearchParams } from 'react-router-dom';
@@ -52,5 +53,6 @@ export function ProjectWorkspacePage(){
     }
     return <Navigate replace to={'/?'+workspaceParams(location,graph.data.analysis,entryParams)} state={url.state}/>;
   }
-  return <ProjectWorkspace key={account+':'+selectedProjectId} report={report.data} data={graph.data.analysis}/>;
+  return <ProjectWorkspace key={account+':'+selectedProjectId} report={report.data} data={graph.data.analysis}
+    refreshNotice={(report.error||graph.error)&&<RefreshNotice pending={report.isFetching||graph.isFetching} onRetry={()=>{void report.refetch();void graph.refetch();}}/>}/>;
 }
