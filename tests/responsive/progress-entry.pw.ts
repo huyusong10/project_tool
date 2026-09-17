@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { Requirement, WorkItem } from '../../src/client/types';
+import { workspaceFixture } from './workspace-fixture';
 
 const workItem: WorkItem = {
   id: 'w1', requirementId: 'r1', templateItemId: null, title: '接口开发', ownerId: 'u1', ownerName: '张三',
@@ -30,6 +31,12 @@ async function fixture(page: Page, status = 'in_progress', role: 'admin' | 'memb
     if (pathname === '/api/projects') return route.fulfill({ json: [{ id: 'p1', name: '测试项目', status: 'active', plannedStart: '2026-09-01', plannedEnd: '2026-09-30', defaultTemplateId: null }] });
     if (pathname === '/api/people') return route.fulfill({ json: [{ id: 'u1', name: '张三', active: 1, projectRole: 'member' }, { id: 'u2', name: '李四', active: 1, projectRole: 'member' }] });
     if (pathname === '/api/templates') return route.fulfill({ json: [] });
+    const workspace = workspaceFixture('p1', '测试项目', [state.requirement]);
+    if (pathname.endsWith('/path-graph')) return route.fulfill({ json: { analysis: workspace.analysis } });
+    if (pathname.endsWith('/path-analysis')) return route.fulfill({ json: workspace.analysis });
+    if (pathname.endsWith('/feature-overview')) return route.fulfill({ json: workspace.overview });
+    if (pathname.endsWith('/features')) return route.fulfill({ json: workspace.features });
+    if (pathname === '/api/dashboard') return route.fulfill({ json: { asOfDate: '2026-09-03', summary: { total: 1, active: 1, completed: 0, delayed: 0, highRisk: 0, completionRate: 0 }, requirements: [state.requirement], featureOverview: workspace.overview, charts: { statuses: [], risks: [], weeks: [], varianceTop: [] } } });
     if (pathname === '/api/requirements/r1' || pathname === '/api/my-work') {
       state.reads++;
       if (state.failRead) return route.fulfill({ status: 503, json: { error: '最新工作项暂时无法读取' } });
@@ -55,10 +62,10 @@ async function fixture(page: Page, status = 'in_progress', role: 'admin' | 'memb
 }
 
 async function openProgress(page: Page, source: 'detail' | 'my-work', itemIndex = 0) {
-  await page.goto(source === 'detail' ? '/requirements/r1' : '/my-work');
+  await page.goto(source === 'detail' ? '/requirements/r1?detailTab=work' : '/my-work');
   if (source === 'detail') {
     await expect(page.getByRole('button', { name: '增加进展', exact: true })).toHaveCount(0);
-    await page.locator('.requirement-gantt-grid .gantt-progress-marker').nth(itemIndex).click();
+    await page.locator('.work-arrangement-row').nth(itemIndex).locator('.work-progress-link').click();
     return page.getByRole('dialog', { name: '更新工作项进度', exact: true });
   }
   await page.getByRole('button', { name: /^为接口开发(更新进度|补充说明)$/, exact: true }).click();
@@ -71,7 +78,9 @@ for (const status of ['not_started'] as const) {
     await page.goto('/requirements/r1');
     await expect(page.locator('.requirement-overview')).toBeVisible();
     await expect(page.getByRole('button', { name: '增加进展', exact: true })).toHaveCount(0);
-    await expect(page.locator('.requirement-gantt-grid button.gantt-progress-marker')).toHaveCount(1);
+    await page.getByRole('tab', { name: '工作项 2', exact: true }).click();
+    await expect(page.locator('.work-arrangement-row').first().locator('.work-progress-link')).toHaveCount(0);
+    await expect(page.locator('.work-arrangement-row').nth(1).locator('.work-progress-link')).toHaveCount(1);
     expect(state.requests).toHaveLength(0);
   });
 }
@@ -90,8 +99,8 @@ for (const source of ['detail', 'my-work'] as const) {
       await content.fill('操作结果需要核对，不能假装保存成功');
       await percent.fill('60');
       await dialog.getByRole('button', { name: source === 'detail' ? '记录进展' : '保存进展', exact: true }).click();
-      await expect(dialog.getByText(/操作结果暂时无法确认/)).toBeVisible();
-      await expect(dialog.getByText(/避免重复提交/)).toBeVisible();
+      await expect(dialog.getByText(/无法确认刚才的提交是否生效/)).toBeVisible();
+      await expect(dialog.getByRole('button', { name: source === 'detail' ? '记录进展' : '保存进展', exact: true })).toBeDisabled();
       await expect(content).toHaveValue('操作结果需要核对，不能假装保存成功');
       await expect(percent).toHaveValue('60');
       await expect(content).toBeEnabled();
@@ -207,7 +216,7 @@ for (const source of ['detail', 'my-work'] as const) {
       await expect.poll(() => state.requests.length).toBe(1);
       await expect(content).toBeDisabled();
       await expect(percent).toBeDisabled();
-      await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
+      await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toBeDisabled();
       await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeDisabled();
       await page.keyboard.press('Escape');
       await expect(dialog).toBeVisible();
@@ -267,7 +276,7 @@ test('工作项版本冲突不把同账号另一个页面的相同进展误认�
   state.requirement.progressUpdates=[{id:'other-tab',requirementId:'r1',workItemId:'w1',workItemTitle:'接口开发',percent:60,workItemPercent:60,content:input.content,eventType:'progress',createdByAccountId:'admin',createdAt:'2026-09-09T01:00:00Z',updatedAt:'2026-09-09T01:00:00Z'}];
   return route.fulfill({status:409,json:{code:'STALE_WRITE',error:'工作项版本冲突'}});
  });
- const dialog=await openProgress(page,'detail');await dialog.getByRole('textbox',{name:'说明',exact:true}).fill('联调完成');await dialog.getByRole('spinbutton').fill('60');
+ const dialog=await openProgress(page,'detail');await dialog.getByRole('textbox',{name:/^说明/}).fill('联调完成');await dialog.getByRole('spinbutton').fill('60');
  await dialog.getByRole('button',{name:'记录进展',exact:true}).click();
  await expect(dialog).toBeVisible();await expect(dialog).toContainText('当前完成度 60%');
  await expect(page.getByText('已核对最新状态：进展已记录',{exact:true})).toHaveCount(0);expect(state.requests).toHaveLength(1);
@@ -294,12 +303,7 @@ for (const next of ['completed', 'removed'] as const) {
 for (const source of ['detail', 'my-work'] as const) {
   test(`${source}固定工作项入口结束后禁止提交，不出现其他关联选项`, async ({ page }) => {
     const state = await fixture(page);
-    let dialog;
-    if (source === 'detail') {
-      await page.goto('/requirements/r1');
-      await page.locator('.requirement-gantt-grid .gantt-progress-marker').first().click();
-      dialog = page.getByRole('dialog', { name: '更新工作项进度', exact: true });
-    } else dialog = await openProgress(page, source);
+    const dialog = await openProgress(page, source);
     await dialog.getByRole('textbox', { name: /^说明/ }).fill('固定关联的草稿');
     state.requirement.workItems[0] = { ...state.requirement.workItems[0], status: 'completed', progress: 100, actualEnd: '2026-09-04', version: 2 };
     const previousReads = state.reads;
@@ -333,9 +337,9 @@ test('完成工作项允许留空说明并保留可选提示', async ({ page }) 
     state.requirement.workItems[0] = { ...state.requirement.workItems[0], status: 'completed', progress: 100, version: 2 };
     return route.fulfill({ json: state.requirement.workItems[0] });
   });
-  await page.goto('/requirements/r1');
+  await page.goto('/requirements/r1?detailTab=work');
   await page.getByRole('button',{name:'完成',exact:true}).first().click();
-  const popover = page.locator('.inline-edit-popover');
+  const popover = page.getByRole('dialog', { name: '完成工作项', exact: true });
   await expect(popover.getByText('可留空，系统会记录“完成工作项”', { exact: true })).toBeVisible();
   await expect(popover.getByRole('textbox', { name: '完成说明（可选）', exact: true })).toHaveValue('');
   await expect(popover.getByRole('button', { name: '确认完成', exact: true })).toBeEnabled();
@@ -356,9 +360,9 @@ for (const source of ['detail', 'my-work'] as const) {
       state.requirement.workItems[0] = { ...state.requirement.workItems[0], status: 'completed', progress: 100, version: 3 };
       return route.fulfill({ json: state.requirement.workItems[0] });
     });
-    await page.goto(source === 'detail' ? '/requirements/r1' : '/my-work');
+    await page.goto(source === 'detail' ? '/requirements/r1?detailTab=work' : '/my-work');
     await page.getByRole('button',{name:'完成',exact:true}).first().click();
-    const popover = page.locator('.inline-edit-popover');
+    const popover = page.getByRole('dialog', { name: '完成工作项', exact: true });
     const content = popover.getByRole('textbox', { name: '完成说明（可选）', exact: true });
     await content.fill('本次交付结果需要保留');
     state.requirement.workItems[0] = { ...state.requirement.workItems[0], progress: 60, version: 2 };
@@ -374,7 +378,7 @@ for (const source of ['detail', 'my-work'] as const) {
     await popover.getByRole('button', { name: '重新读取工作项', exact: true }).click();
     await expect(popover.getByText(/已读取最新工作项（版本 2）/)).toBeVisible();
     await expect(content).toHaveValue('本次交付结果需要保留');
-    if (testInfo.project.name === 'office-1280') await page.screenshot({ path: `data/round22-ui/${source}-work-action-review.png`, animations: 'disabled' });
+    await page.screenshot({ path: testInfo.outputPath(`${source}-work-action-review.png`), animations: 'disabled' });
     await popover.getByRole('button', { name: '确认完成', exact: true }).click();
     await expect(popover).toHaveCount(0);
     expect(state.requests).toEqual([
@@ -394,9 +398,9 @@ for (const source of ['detail', 'my-work'] as const) {
       return route.fulfill({ status: 409, json: { error: '工作项状态已更新', code: 'STALE_WRITE' } });
     });
     try {
-      await page.goto(source === 'detail' ? '/requirements/r1' : '/my-work');
+      await page.goto(source === 'detail' ? '/requirements/r1?detailTab=work' : '/my-work');
       await page.getByRole('button',{name:'完成',exact:true}).first().click();
-      const popover = page.locator('.inline-edit-popover');
+      const popover = page.getByRole('dialog', { name: '完成工作项', exact: true });
       const content = popover.getByRole('textbox', { name: '完成说明（可选）', exact: true });
       await content.fill('状态变化也不能丢失这段说明');
       await popover.getByRole('button', { name: '确认完成', exact: true }).click();
@@ -425,13 +429,13 @@ for (const source of ['detail', 'my-work'] as const) {
       denied = true;
       return route.fulfill({ status: 403, json: { error: '没有完成权限' } });
     });
-    await page.goto(source === 'detail' ? '/requirements/r1' : '/my-work');
+    await page.goto(source === 'detail' ? '/requirements/r1?detailTab=work' : '/my-work');
     await page.getByRole('button', { name: '完成', exact: true }).first().click();
     await page.getByRole('textbox', { name: '完成说明（可选）', exact: true }).fill('失权后不能继续显示的说明');
     await page.getByRole('button', { name: '确认完成', exact: true }).click();
-    await expect(page.locator('.inline-edit-popover')).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '完成工作项', exact: true })).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: '完成说明（可选）', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '重新加载', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: source === 'detail' ? '重新读取' : '重新加载', exact: true })).toBeVisible();
     expect(state.requests).toHaveLength(1);
   });
 }

@@ -4,6 +4,8 @@ import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-l
 import { DetailToolbar } from './DetailWorkspace';
 import { useDeliveryForm } from '../use-delivery-form';
 import { WorkItemExecution } from './WorkItemExecution';
+import { ProgressForm } from './ProgressForm';
+import { workExecutionAccess } from '../permissions';
 import { WorkspaceObjectMark } from './WorkspaceObjectMark';
 import { Button } from './Button';
 import { FormField } from "./Form";
@@ -67,6 +69,9 @@ export function WorkItemSettingsDialog({
   onWriteNeedsRecheck: () => void;
 }) {
   const client = useQueryClient(),{session}=useSession();
+  // The list owns the open form: deleting a row must not unmount its input.
+  const [progressItem,setProgressItem]=useDeliveryForm<string|null>(requirement.projectId,requirement.id+':work-list-progress',()=>null);
+  const progressScope=(current:Requirement)=>({items:current.workItems.filter(item=>workExecutionAccess(session,current,item,people).progress),updates:current.progressUpdates||[],requirementStatus:current.status});
   const [receipt,setReceipt,clearReceipt]=useDeliveryForm<{kind:'create';draft:NewWorkItemDraft}|{kind:'reorder';ids:string[];version:number}|null>(requirement.projectId,requirement.id+':work-list-receipt',()=>null);
   const [createUnknown,setCreateUnknown]=useDeliveryForm(requirement.projectId,requirement.id+':create-work-unknown',()=>false),[reorderUnknown,setReorderUnknown]=useDeliveryForm(requirement.projectId,requirement.id+':reorder-work-unknown',()=>false),[inlineUnknown,setInlineUnknown]=useState(false),[deleteUnknown,setDeleteUnknown]=useState(false);
   const [newItem, setNewItem, clearNewItem] = useDeliveryForm<NewWorkItemDraft | null>(requirement.projectId,requirement.id+':new-work',()=>initialCreate?{title:"",milestoneLabel:"",ownerId:"",collaboratorIds:[],plannedStart:"",plannedEnd:"",baselineVersion:requirement.version,baselineStatus:requirement.status,sourceIds:requirement.workItems.map(i=>i.id)}:null);
@@ -372,7 +377,7 @@ export function WorkItemSettingsDialog({
 {canManageRequirement&&item.actualStart&&<label className="work-arrangement-field"><span>实际开始</span><InlineDateCell {...revisionProps} disabled={!canEdit||settingsUnknown} value={item.actualStart} label="实际开始" reason={{label:'修改说明'}} onSave={(actualStart,reason,expectedVersion)=>saveWorkItem(item,{actualStart,reason},expectedVersion)}/></label>}
 {canManageRequirement&&item.status==='completed'&&<label className="work-arrangement-field"><span>实际完成</span><InlineDateCell {...revisionProps} disabled={!canEdit||settingsUnknown} value={item.actualEnd} label="实际完成" reason={{label:'修改说明'}} onSave={(actualEnd,reason,expectedVersion)=>saveWorkItem(item,{actualEnd,reason},expectedVersion)}/></label>}
                 </div>
-                <div className="work-arrangement-execution">{!itemId&&<WorkItemExecution requirement={requirement} item={item} people={people} presentation="detail" extraMenu={canEdit&&item.status==='not_started'?<Button variant="ghost" tone="danger" size="compact" disabled={!canDelete||settingsUnknown} title={canDelete?'删除工作项':'已有执行信息或进展历史，不能删除'} onClick={()=>setRemoveTarget(item)}>删除</Button>:undefined}>{({progress,actions})=><>{progress}{actions}</>}</WorkItemExecution>}{canEdit&&itemId&&item.status==='not_started'&&<Button variant="secondary" tone="danger" size="compact" title={canDelete?'删除工作项':'已有执行信息或进展历史，不能删除'} disabled={!canDelete||settingsUnknown} onClick={()=>setRemoveTarget(item)}><Trash2 size={14}/>删除</Button>}</div>
+                <div className="work-arrangement-execution">{!itemId&&<WorkItemExecution requirement={requirement} item={item} people={people} presentation="detail" onProgress={()=>setProgressItem(item.id)} extraMenu={canEdit&&item.status==='not_started'?<Button variant="ghost" tone="danger" size="compact" disabled={!canDelete||settingsUnknown} title={canDelete?'删除工作项':'已有执行信息或进展历史，不能删除'} onClick={()=>setRemoveTarget(item)}>删除</Button>:undefined}>{({progress,actions})=><>{progress}{actions}</>}</WorkItemExecution>}{canEdit&&itemId&&item.status==='not_started'&&<Button variant="secondary" tone="danger" size="compact" title={canDelete?'删除工作项':'已有执行信息或进展历史，不能删除'} disabled={!canDelete||settingsUnknown} onClick={()=>setRemoveTarget(item)}><Trash2 size={14}/>删除</Button>}</div>
               </article>;
             }}
           />
@@ -384,6 +389,7 @@ export function WorkItemSettingsDialog({
     </>;
   return <>
     {embedded?content:<Modal title="工作项" width={960} layout="workspace" closable={!createItem.isPending&&!reorderItems.isPending} onClose={closeSettings}>{content}</Modal>}
+    {progressItem&&<ProgressForm key={progressItem} requirementId={requirement.id} fixedItemId={progressItem} scope={progressScope(requirement)} loadScope={async()=>progressScope(await onReload())} contextLabel={requirement.projectName+' · '+requirement.title} onClose={()=>setProgressItem(null)}/>}
 
     {removeTarget && <WorkItemDeleteDialog target={removeTarget} requirement={requirement} canManage={canManageRequirement && canEdit && !requirementLocked} onReload={onReload} onWriteNeedsRecheck={() => { setDeleteUnknown(true); onWriteNeedsRecheck(); }} onClose={() => setRemoveTarget(null)} />}
   </>;
