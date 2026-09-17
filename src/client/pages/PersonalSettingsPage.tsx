@@ -149,7 +149,7 @@ export function PersonalSettingsPage() {
     <PageHeader title="个人设置" actions={<Button variant="primary" className="primary-button" aria-label={tokens.length?"创建 Token":"创建第一个 Token"} disabled={!tokensQuery.data||tokenListNeedsRecheck} onClick={openTokenModal}><Plus size={15} />创建 Token</Button>} secondaryActions={<Button variant="secondary" className="ghost-button" onClick={openPassword}><KeyRound size={15} />修改密码</Button>} />
     <div className="page-content personal-settings-page">
       <section className="panel personal-account-panel">
-        <div className="personal-account-identity"><span>{session.username?.slice(0, 1).toUpperCase() || "用"}</span><div><h2>{session.username}</h2><p><CircleUserRound size={14} />{session.personId ? "已关联业务人员" : "当前账号未关联业务人员"}</p></div></div>
+        <div className="personal-account-identity"><span>{Array.from(session.username || '')[0]?.toUpperCase() || "用"}</span><div><h2>{session.username}</h2><p><CircleUserRound size={14} />{session.personId ? "已关联业务人员" : "当前账号未关联业务人员"}</p></div></div>
         <dl className="personal-account-facts">
           <div><dt>最高权限</dt><dd>{roleLabel}</dd></div>
           <div><dt>可访问项目</dt><dd>{projects.length} 个</dd></div>
