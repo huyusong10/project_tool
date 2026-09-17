@@ -14,7 +14,7 @@ export async function createTestDatabase() {
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'pm-test-'));
   try {
     const context=await openDatabase({...config,dbPath:path.join(directory,'test.db'),backupDir:path.join(directory,'backups'),
-      seedDemo:false,nodeEnv:'test',appPasswordHash:'scrypt$isolated$00',sessionSecret:'isolated-test-session-secret-more-than-32-characters',sessionCookieName:'test_'+randomUUID().replaceAll('-','')});
+      seedDemo:false,nodeEnv:'test',appPasswordHash:'scrypt$isolated$00',sessionSecret:'isolated-test-session-'+randomUUID(),sessionCookieName:'test_'+randomUUID().replaceAll('-','')});
     return { directory, context,
       run<T>(read:()=>T):T { return runWithDatabase(context,read); },
       close() { context.close();fs.rmSync(directory,{recursive:true,force:true}); },

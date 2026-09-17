@@ -3,7 +3,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z, type ZodType } from 'zod';
 
-import { config } from "../config";
+import { getDatabaseContext } from "../database-context";
 
 import { createSessionToken } from "../auth";
 import { actorFromRequest, assertAdmin, isAdmin, managedProjectIds, sessionActor } from "../authorization";
@@ -37,7 +37,7 @@ export function idOf(request: FastifyRequest) {
 }
 
 export function sessionOf(request: FastifyRequest) {
-  return sessionActor(request.cookies[config.sessionCookieName]);
+  return sessionActor(request.cookies[getDatabaseContext().config.sessionCookieName]);
 }
 
 export function body(request: FastifyRequest) {
@@ -81,6 +81,7 @@ export function sessionPayload(actor: ReturnType<typeof sessionOf>) {
 }
 
 export function setSessionCookie(reply: FastifyReply, accountId: string, sessionVersion: number) {
+  const {config}=getDatabaseContext();
   reply.setCookie(config.sessionCookieName, createSessionToken(accountId, sessionVersion), {
     httpOnly: true, sameSite: 'strict', secure: false, path: '/', maxAge: config.sessionHours * 60 * 60,
   });

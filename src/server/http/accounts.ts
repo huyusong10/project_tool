@@ -3,6 +3,7 @@ import { recordLogReason, updateLogContext } from "../log-context";
 import type { FastifyInstance } from 'fastify';
 
 import { config } from "../config";
+import { getDatabaseContext } from "../database-context";
 
 import { createSessionToken, verifyPassword } from "../auth";
 import { actorFromRequest, sessionActor } from "../authorization";
@@ -14,7 +15,8 @@ import { idOf, sessionOf, parsedBody, requireAuthenticated, requireReady, requir
 export function registerAccountsRoutes(app: FastifyInstance) {
   app.get('/api/session', async (request, reply) => {
     const actor=sessionOf(request);
-    if(!actor&&request.cookies[config.sessionCookieName])reply.clearCookie(config.sessionCookieName,{path:'/'});
+    const {sessionCookieName}=getDatabaseContext().config;
+    if(!actor&&request.cookies[sessionCookieName])reply.clearCookie(sessionCookieName,{path:'/'});
     return sessionPayload(actor);
   });
 
@@ -40,7 +42,7 @@ export function registerAccountsRoutes(app: FastifyInstance) {
   app.post('/api/logout', async (request, reply) => {
     parsedBody(request, emptyCommandInputSchema);
     sessionOf(request);
-    reply.clearCookie(config.sessionCookieName, { path: '/' });
+    reply.clearCookie(getDatabaseContext().config.sessionCookieName, { path: '/' });
     return { ok: true };
   });
 

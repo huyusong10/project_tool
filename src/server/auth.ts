@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { config } from './config';
+import { getDatabaseContext } from './database-context';
 import { normalizeSearchText } from '../shared/search';
 
 export type AccountRole = 'user' | 'admin';
@@ -31,16 +31,18 @@ export function normalizeUsername(username: string) {
 }
 
 function sessionSignature(value: string) {
-  return createHmac('sha256', config.sessionSecret).update(value).digest('base64url');
+  return createHmac('sha256', getDatabaseContext().config.sessionSecret).update(value).digest('base64url');
 }
 
 export function createSessionToken(accountId: string, sessionVersion: number) {
+  const {config}=getDatabaseContext();
   const expiresAt = Date.now() + config.sessionHours * 60 * 60 * 1000;
   const value = Buffer.from(JSON.stringify({ accountId, sessionVersion, expiresAt })).toString('base64url');
   return `${value}.${sessionSignature(value)}`;
 }
 
 export function verifySessionToken(token?: string, onRejected?: (code: string, reason: string) => void): { accountId: string; sessionVersion: number; expiresAt: number } | null {
+  const {config}=getDatabaseContext();
   const reject = (code = 'SESSION_INVALID', reason = '登录凭据无效，请重新登录') => { onRejected?.(code, reason); return null; };
   if (!token || !config.sessionSecret) return null;
   const [value, signature] = token.split('.');

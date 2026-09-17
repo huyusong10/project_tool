@@ -1,5 +1,4 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { config } from './config';
 import { getDatabaseContext } from './database-context';
 import { canReadProject, projectIdForRequirement, projectIdForWorkItem, recordProjectAccessFailure, sessionActor, type SessionActor } from './authorization';
 import { forbidden, notFound } from './errors';
@@ -19,6 +18,7 @@ export function isGuestProject(projectId: string) {
 }
 
 export async function workspaceSession(request: FastifyRequest, reply: FastifyReply) {
+  const {config}=getDatabaseContext();
   const cookie = request.cookies[config.sessionCookieName], actor = sessionActor(cookie);
   if (cookie && !actor) {
     reply.clearCookie(config.sessionCookieName, { path: '/' });

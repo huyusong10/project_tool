@@ -4,7 +4,6 @@ import Fastify, { type FastifyBaseLogger } from 'fastify';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
-import { config } from './config';
 import { initializeDatabase } from './database';
 import { runWithDatabase, type DatabaseContext } from './database-context';
 import { registerApiRoutes } from './routes';
@@ -37,7 +36,7 @@ export async function buildApp(runtime: RuntimeLogger = getRuntimeLogger(), data
   registerPathRoutes(app);
   registerQueryRoutes(app);
   registerMcpRoute(app, (token) => token ? authenticateApiToken(token) : null);
-  const distDir = config.webDistDir;
+  const distDir = context.config.webDistDir;
   if (fs.existsSync(distDir)) {
     const assetsDir = path.join(distDir, 'assets');
     if (fs.existsSync(assetsDir)) {
