@@ -46,6 +46,34 @@ async function mockPersonalExperience(page: Page, personalItem = workItem, asOfD
   await page.route('**/api/requirements/r1',route=>route.fulfill({json:current}));
 }
 
+test('复制地址和 Token 的降级方式保留键盘焦点',async({page})=>{
+  await page.addInitScript(()=>{
+    Object.defineProperty(navigator,'clipboard',{configurable:true,value:undefined});
+    document.execCommand=(command:string)=>{
+      if(command!=='copy')return false;
+      const input=document.activeElement as HTMLTextAreaElement;
+      document.body.dataset.copiedText=input.value.slice(input.selectionStart,input.selectionEnd);
+      return true;
+    };
+  });
+  await mockPersonalExperience(page);await page.goto('/settings');
+  const address=page.locator('.personal-mcp-connection button');
+  await address.focus();await page.keyboard.press('Enter');
+  await expect(address).toHaveText('已复制');
+  expect(await page.evaluate(()=>document.body.dataset.copiedText)).toBe(new URL('/mcp',page.url()).href);
+  await expect.soft(address,'复制地址后继续停留在原按钮').toBeFocused();
+  await page.getByRole('button',{name:'创建第一个 Token'}).click();
+  const dialog=page.getByRole('dialog',{name:'创建 MCP Token'});
+  await dialog.getByLabel('Token 名称').fill('键盘客户端');
+  await dialog.getByRole('button',{name:'创建 Token',exact:true}).click();
+  const copy=dialog.getByRole('button',{name:'复制 Token',exact:true});
+  await copy.focus();await page.keyboard.press('Enter');
+  await expect(dialog.getByRole('button',{name:'已复制',exact:true})).toBeFocused();
+  expect(await page.evaluate(()=>document.body.dataset.copiedText)).toBe('pm_1234567890_secret');
+  await page.keyboard.press('Tab');await expect(dialog.getByRole('button',{name:'我已安全保存',exact:true})).toBeFocused();
+  await page.keyboard.press('Enter');await expect(dialog).toHaveCount(0);
+});
+
 test("项目看板、我的工作和个人设置采用新的信息层级", async ({ page }) => {
 
   await mockPersonalExperience(page);
