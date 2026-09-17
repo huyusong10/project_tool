@@ -3,7 +3,7 @@ import * as planningApi from "../features/planning/api";
 import * as requirementsApi from "../features/requirements/api";
 import { ReferenceLinksEditor } from "./ReferenceLinks";
 import { readReferenceLinks } from "../../shared/reference-links";
-import { Button, ButtonLink } from "./Button";
+import { Button } from "./Button";
 import { Select } from "./Select";
 import { useDeliveryForm } from "../use-delivery-form";
 import { useEffect, useRef, useState } from 'react';
@@ -16,7 +16,6 @@ import { assertCleanProjectDraft } from "../use-graph-draft";
 import { useSession } from "../app-context";
 import { useResourceQuery } from "../use-resource-query";
 import { invalidateRequirementViews, keys } from "../query-keys";
-import type { FeatureOverview } from "../../shared/feature-overview";
 
 import { phaseInput, phaseStatusLabels, type FeaturePhase } from "../../shared/feature-phases";
 import type { Requirement } from "../types";
@@ -29,11 +28,6 @@ import { type PhaseEdit, readPendingPhase, nextPhaseName, type PhaseForm, type P
 export function PhaseStatusBadge({ phase }: { phase: Pick<FeaturePhase,'status'> }) {
   const tone = phase.status === 'completed' ? 'completed' : phase.status === 'in_progress' ? 'development' : 'not_started';
   return <span className={'stage-badge stage-' + tone}>{phaseStatusLabels[phase.status]}</span>;
-}
-
-export function PhaseRows({ feature, manage, onEdit, status = '', from = '', through = '' }: { feature: FeatureOverview; manage: boolean; onEdit: (edit: PhaseEdit) => void; status?: string; from?: string; through?: string }) {
-  const phases = (feature.phases || []).filter(p => (!status || p.status === status) && (!from || !!p.targetDate && p.targetDate >= from) && (!through || !!p.targetDate && p.targetDate <= through));
-  return <div className="phase-list"><div className="phase-list-heading"><span>{feature.phases?.length || 0} 个 Phase{feature.unassignedPhaseCount ? ' · ' + feature.unassignedPhaseCount + ' 个需求未分派阶段' : ''}</span></div>{phases.map(phase => <article className="phase-row" key={phase.id} data-testid="phase-row"><div className="phase-row-target"><strong>{phase.name}</strong><p>{phase.scope || '交付范围待明确'}</p></div><div className="phase-row-state"><PhaseStatusBadge phase={phase} /><div className="phase-distribution">{phase.distribution.map(s => <button className={"stage-badge stage-"+(phase.requirements.find(r=>r.executionStage.key===s.key)?.executionStage.tone||"not_started")} key={s.key} onClick={()=>onEdit({feature,phase,mode:'history',stageKey:s.key})}>{s.label} {s.count}</button>)}</div><small>{phase.requirements.filter(r=>r.status==='completed').length} / {phase.requirements.filter(r=>r.status!=='cancelled').length} 条需求完成{phase.status==='planning'?' · 暂无有效需求':''}</small></div><div className="phase-row-date"><small>目标交付</small><span>{phase.targetDate || '尚未安排'}</span>{phase.completedAt&&<><small>实际完成</small><span>{phase.completedAt}</span></>}{phase.overdue && <span className="danger-text">已超过目标日期</span>}</div>{phase.note&&<div className="phase-row-note"><p>{phase.note}</p></div>}<div className="phase-row-actions"><ButtonLink variant="secondary" className="ghost-button" to={'/requirements?' + new URLSearchParams({ feature: feature.id, phase: phase.id })}>需求</ButtonLink><Button variant="secondary" className="ghost-button" onClick={() => onEdit({ feature, phase, mode: 'history' })}>详情</Button>{manage && !feature.archivedAt && <><Button variant="secondary" className="ghost-button" onClick={() => onEdit({ feature, phase, mode: 'edit' })}>编辑</Button><Button variant="secondary" className="ghost-button" onClick={() => onEdit({ feature, phase, mode: 'placement' })}>安排需求</Button>{!phase.requirements.length && !phase.deliveries.length && <Button variant="secondary" tone="danger" className="ghost-button danger-text" onClick={() => onEdit({ feature, phase, mode: 'delete' })}>删除</Button>}</>}</div></article>)}{!phases.length && <p className="field-help">{feature.phases?.length ? '没有符合筛选条件的 Phase' : '尚未规划 Phase，可以先记录下一次交付目标。'}</p>}</div>;
 }
 
 export function PhaseDialog({ edit, onClose, onCreated }: { edit: PhaseEdit; onClose: () => void; onCreated?:(phase:FeaturePhase)=>void }) {
