@@ -89,4 +89,7 @@
   .ui-button[data-busy]::after { content: ''; position: absolute; width: 14px; height: 14px; border: 2px solid var(--button-ink); border-right-color: transparent; border-radius: 50%; animation: button-busy .7s linear infinite; }
   @keyframes button-busy { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .ui-button { transition: none; } .ui-button[data-busy]::after { animation: none; } }
+  @media (forced-colors: active) {
+    .view-tabs .ui-button[aria-pressed='true'] { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+  }
 }
