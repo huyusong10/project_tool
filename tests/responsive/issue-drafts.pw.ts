@@ -801,7 +801,7 @@ test('只改下次核对日期且服务端未保存时不能误报问题信息�
 
   await expect(form).toBeVisible();
   await expect(form.getByLabel('下次核对日期')).toHaveValue('2026-09-12');
-  await expect(form).toContainText('已读取最新问题，输入保持不变');
+  await expect(form).toContainText('已读取最新问题，保留已修改的输入');
   await expect(page.getByText('已核对最新状态：问题信息已保存', { exact: true })).toHaveCount(0);
   await expect(form.getByRole('button', { name: '保存修改', exact: true })).toBeEnabled();
   expect(writes).toBe(1);

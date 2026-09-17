@@ -22,8 +22,8 @@ import { AnchoredPopover } from './inline-edit/popover';
 
 type BusyChange = (pending: boolean) => void;
 
-/** 草稿使用自己的版本；刷新只更新基线，不覆盖已输入字段。 */
-export function useIssueDraft(issue: Issue | undefined, onPendingChange?: BusyChange, action='edit', projectId?:string) {
+/** 草稿使用自己的版本；重读时由表单保留本地修改。 */
+export function useIssueDraft(issue: Issue | undefined, onPendingChange?: BusyChange, action='edit', projectId?:string, onRead?: (previous:Issue,latest:Issue)=>void) {
   const client = useQueryClient();
   const {selectedProjectId}=useProjects();
   const [memory,setMemory,clearMemory]=useDeliveryForm(issue?.projectId||projectId||selectedProjectId,(issue?.id||'new')+':issue-meta:'+action,()=>({baseline:issue,dirty:false,needsRefresh:false}));
@@ -56,6 +56,7 @@ export function useIssueDraft(issue: Issue | undefined, onPendingChange?: BusyCh
     try {
       const latest = await readResourceFresh<Issue>(client, keys.issue(issue.id), signal => issuesApi.issuesById<Issue>(issue.id, { signal }), () => mounted.current);
       if (!mounted.current) return latest;
+      onRead?.(baseline || issue,latest);
       setBaseline(latest); setNeedsRefresh(false); setRefreshed(true); setUnavailable(false);
       return latest;
     } catch (caught) {
@@ -124,7 +125,7 @@ export function DraftNotice({ editor, warning }: { editor: ReturnType<typeof use
   return <>
     {message && <p className="form-error field-full" role="alert">{message}</p>}
     {(message || editor.refreshed) && editor.baseline && <div className="field-full">
-      {editor.refreshed && <p className="field-help">已读取最新问题，输入保持不变；请核对后再次保存。</p>}
+      {editor.refreshed && <p className="field-help">已读取最新问题，保留已修改的输入；请核对后再次保存。</p>}
       <p className="field-help">当前核对记录：{editor.baseline.title} · {issueStatusLabels[editor.baseline.status as keyof typeof issueStatusLabels]} · {editor.baseline.progress}% · 负责人 {editor.baseline.ownerName || "未分配"} · 目标 {editor.baseline.dueDate || "未设置"}</p>
       <details className="field-help"><summary>查看当前问题信息</summary><p>影响：{editor.baseline.impact || "未填写"}</p><p>关联：{editor.baseline.requirementTitle || editor.baseline.sourceRef || "公共问题"} · 优先级 {editor.baseline.priority}</p><p>提出人：{editor.baseline.reporter || "未指定"} · 发现日期 {editor.baseline.discoveredAt}</p></details>
     </div>}
@@ -217,8 +218,16 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
   const toast = useToast();
   const { session } = useSession();
   const { businessDate: today } = useBusinessDate();
-  const editor = useIssueDraft(issue, onPendingChange,'basic',projectId);
   const [draft,setDraft,clearDraft]=useDeliveryForm(projectId,(issue?.id||'new')+':issue-basic',()=>issueFields(issue,defaultReporter,today));
+  const editor = useIssueDraft(issue, onPendingChange,'basic',projectId,(previous,latest)=>{
+    const before=issueFields(previous,defaultReporter,today),after=issueFields(latest,defaultReporter,today);
+    setDraft(current=>{
+      const next={...current};
+      for(const field of Object.keys(after) as (keyof typeof after)[])
+        if(current[field]===undefined || current[field]===before[field]) next[field]=after[field];
+      return next;
+    });
+  });
   const [discoveredDateEdited, setDiscoveredDateEdited] = useState(false);
   useEffect(() => {
     if (!editor.dirty && editor.baseline) setDraft(issueFields(editor.baseline, defaultReporter, today));
