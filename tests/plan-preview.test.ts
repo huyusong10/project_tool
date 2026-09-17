@@ -85,6 +85,23 @@ it('人员并发读取合法的最后两日，不把查询上限计算溢出当�
   expect(response.json()).toMatchObject({ dates: ['9999-12-30', '9999-12-31'], people: [] });
 });
 
+it('合法边界的单日计划可以创建及读取，查询不修改计划与历史',async()=>{
+  const {requirement}=await fixture();
+  const template=(await post('/api/templates',{projectId:requirement.projectId,name:'合法边界单日流程',items:[{title:'单日工作',startOffsetDays:0,durationDays:1,sortOrder:0}]})).json<WorkItemTemplate>();
+  for(const date of ['0100-01-01','9999-12-31']){
+    const created=await post('/api/requirements',{projectId:requirement.projectId,templateId:template.id,title:`单日计划${date}`,plannedStart:date});
+    expect(created.statusCode,created.body).toBe(200);
+    const item=created.json<Requirement>();
+    expect(item).toMatchObject({plannedStart:date,plannedEnd:date,workItems:[{plannedStart:date,plannedEnd:date}]});
+    const baseline=await businessState();
+    expect(await detail(item.id)).toEqual(item);
+    for(const url of [`/api/projects/${requirement.projectId}/path-analysis`,`/api/dashboard?projectId=${requirement.projectId}`]){
+      const read=await app.inject({url,headers:{cookie}});expect(read.statusCode,read.body).toBe(200);
+    }
+    expect(await businessState()).toEqual(baseline);
+  }
+});
+
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
   origin = await listenTestApp(app);

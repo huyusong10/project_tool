@@ -301,15 +301,19 @@ function scheduleVarianceFromProgress(items: WeightedWorkItem[], actualProgress:
   const actual = Math.min(100, Math.max(0, Math.round(actualProgress)));
   const plannedProgress = plannedProgressAt(today);
   const plannedToday = Math.round(plannedProgress);
-  let referenceDate = today;
+  let referenceDate: string | null = today;
 
   if (actual < plannedToday) {
-    referenceDate = addBusinessDays(plannedStart, -1);
+    referenceDate = null;
     const searchEnd = today < plannedEnd ? today : plannedEnd;
     for (let cursor = plannedStart; cursor <= searchEnd; cursor = addCalendarDays(cursor, 1)) {
       if (!isBusinessDay(cursor)) continue;
       if (Math.round(plannedProgressAt(cursor)) > actual) break;
       referenceDate = cursor;
+    }
+    if (referenceDate === null) {
+      try { referenceDate = addBusinessDays(plannedStart, -1); }
+      catch (error) { if (!(error instanceof DateRangeError)) throw error; }
     }
   } else if (actual > plannedToday) {
     referenceDate = plannedEnd;
@@ -324,7 +328,7 @@ function scheduleVarianceFromProgress(items: WeightedWorkItem[], actualProgress:
 
   return {
     referenceDate,
-    varianceDays: businessDayDelta(referenceDate, today),
+    varianceDays: referenceDate === null ? businessDaysInclusive(plannedStart, today) : businessDayDelta(referenceDate, today),
     plannedProgress,
   };
 }

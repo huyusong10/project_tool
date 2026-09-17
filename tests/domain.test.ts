@@ -200,6 +200,16 @@ describe('自动状态、进度和风险', () => {
     });
   });
 
+  it.each([
+    [0, null, 2],
+    [50, '0100-01-01', 1],
+  ] as const)('最早合法排期进度%s保持偏差，不生成范围外的参考日期', (progress,referenceDate,varianceDays) => {
+    const metrics=deriveRequirementMetrics({status:'in_progress',priority:'P1'},[
+      {status:'in_progress',progress,plannedStart:'0100-01-01',plannedEnd:'0100-01-04',actualStart:'0100-01-01'},
+    ],'0100-01-04');
+    expect(metrics).toMatchObject({plannedProgress:100,scheduleReferenceDate:referenceDate,scheduleVarianceDays:varianceDays});
+  });
+
   it('状态进度圆点规范化完成、取消和异常进度', () => {
     expect(ganttProgressDisplay('not_started', 0)).toBe(0);
     expect(ganttProgressDisplay('in_progress', 61)).toBe(61);
