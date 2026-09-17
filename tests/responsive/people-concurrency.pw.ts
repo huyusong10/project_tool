@@ -40,6 +40,35 @@ test('人员并发首次失败重试后，表格继续适配窗口宽度', async
   await expect.poll(widthDifference).toBeLessThanOrEqual(1);
 });
 
+test('人力分析往返和刷新保留筛选，人员矩阵的搜索互不影响', async ({ page }) => {
+  await mockPeople(page);
+  await page.goto('/people?view=analysis');
+  const filters=page.locator('.human-filter-bar select');
+  const jobTitle='资产与机房基础设施平台开发工程师';
+  await filters.nth(0).selectOption(jobTitle);
+  await filters.nth(1).selectOption('person-2');
+  const rows=page.getByRole('table',{name:'人员工作日并发度矩阵'}).locator('tbody tr');
+  await expect(rows).toHaveCount(1);await expect(rows).toContainText('人员2');
+  const views=page.getByRole('group',{name:'人员页面视图'});
+  await views.getByRole('button',{name:'人员矩阵',exact:true}).click();
+  const search=page.getByRole('searchbox');
+  await search.fill('人员3');
+  await views.getByRole('button',{name:'人力分析',exact:true}).click();
+  await expect(filters.nth(0)).toHaveValue(jobTitle);
+  await expect(filters.nth(1)).toHaveValue('person-2');
+  await expect(rows).toHaveCount(1);
+  await page.reload();await expect(filters.nth(1)).toHaveValue('person-2');
+  await page.goto('/projects');await page.goto('/people');
+  await expect(filters.nth(1)).toHaveValue('person-2');await expect(rows).toHaveCount(1);
+  await filters.nth(0).selectOption('');
+  await expect(filters.nth(1)).toHaveValue('');await expect(rows).toHaveCount(5);
+  await views.getByRole('button',{name:'人员矩阵',exact:true}).click();
+  await expect(search).toHaveValue('人员3');
+  await views.getByRole('button',{name:'人力分析',exact:true}).click();
+  await expect(filters.nth(0)).toHaveValue('');await expect(filters.nth(1)).toHaveValue('');
+  await expect(rows).toHaveCount(5);
+});
+
 test('人员并发窄屏长姓名下，今日工作数量和返回今天入口可见', async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockPeople(page);

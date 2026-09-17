@@ -9,6 +9,7 @@ import { LocateFixed } from "lucide-react";
 
 import { useBusinessDate, useProjects } from "../app-context";
 import { keys } from "../query-keys";
+import { usePageSearchParams } from "../use-page-view";
 import type { PeopleConcurrency, Person } from "../types";
 import { addCalendarDays } from "../../shared/domain";
 import { EmptyState } from "./Feedback";
@@ -16,8 +17,17 @@ import { EmptyState } from "./Feedback";
 export function ConcurrencyPanel() {
   const { selectedProjectId } = useProjects();
   const { businessDate } = useBusinessDate();
-  const [personId, setPersonId] = useState("");
-  const [jobTitle, setJobTitle] = useState("");
+  const [viewParams, setViewParams] = usePageSearchParams(['analysisPersonId', 'analysisJobTitle']);
+  const personId = viewParams.get('analysisPersonId') || '';
+  const jobTitle = viewParams.get('analysisJobTitle') || '';
+  const setFilters = (nextJobTitle: string, nextPersonId: string) => {
+    setViewParams(current => {
+      const next = new URLSearchParams(current);
+      if (nextJobTitle) next.set('analysisJobTitle', nextJobTitle); else next.delete('analysisJobTitle');
+      if (nextPersonId) next.set('analysisPersonId', nextPersonId); else next.delete('analysisPersonId');
+      return next;
+    });
+  };
   const matrixScrollRef = useRef<HTMLDivElement>(null);
   const [matrixViewportWidth, setMatrixViewportWidth] = useState(0);
   const { data: people = [] } = useQuery({
@@ -108,8 +118,8 @@ export function ConcurrencyPanel() {
 
   return <div className="people-analysis">
       <div className="filter-bar human-filter-bar">
-      <select value={jobTitle} onChange={(event) => { setJobTitle(event.target.value); setPersonId(""); }}><option value="">全部岗位</option>{jobTitles.map((title) => <option value={title} key={title}>{title}</option>)}</select>
-      <select value={personId} onChange={(event) => setPersonId(event.target.value)}><option value="">全部人员</option>{people.filter((person) => !jobTitle || person.jobTitle === jobTitle).map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
+      <select aria-label="分析岗位" value={jobTitle} onChange={(event) => setFilters(event.target.value, '')}><option value="">全部岗位</option>{jobTitles.map((title) => <option value={title} key={title}>{title}</option>)}</select>
+      <select aria-label="分析人员" value={personId} onChange={(event) => setFilters(jobTitle, event.target.value)}><option value="">全部人员</option>{people.filter((person) => !jobTitle || person.jobTitle === jobTitle).map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
       <span>今天及历史看实际，未来看计划</span>
     </div>
     {analysisUnavailable ? <EmptyState title="人力分析加载失败" detail={analysis.error?.message || "暂时无法读取人员并发数据。"} action={<Button variant="secondary" className="ghost-button" disabled={analysis.isFetching} onClick={() => void analysis.refetch()}>重新加载</Button>} /> : <>
