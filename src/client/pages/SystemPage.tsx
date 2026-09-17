@@ -99,6 +99,8 @@ function persistBrandingRecheck(accountKey: string, value: boolean) {
 function BrandingSettingsCard({ accountKey }: { accountKey: string }) {
   const client = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
+  const logoReadVersion = useRef(0);
+  const [readingLogo, setReadingLogo] = useState(false);
   const [systemName, setSystemName] = useState(defaultBranding.systemName);
   const [shortName, setShortName] = useState(defaultBranding.shortName);
   const [logoDraft, setLogoDraft] = useState<string | null | undefined>(undefined);
@@ -106,6 +108,12 @@ function BrandingSettingsCard({ accountKey }: { accountKey: string }) {
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
   const [localError, setLocalError] = useState("");
+  useEffect(() => () => { logoReadVersion.current += 1; }, []);
+  const resetLogoRead = () => {
+    logoReadVersion.current += 1;
+    setReadingLogo(false);
+    if (fileRef.current) fileRef.current.value = "";
+  };
   const [saveNeedsRecheck, setSaveNeedsRecheckState] = useState(() => readBrandingRecheck(accountKey));
   const setSaveNeedsRecheck = (value: boolean) => {
     persistBrandingRecheck(accountKey, value);
@@ -188,6 +196,8 @@ function BrandingSettingsCard({ accountKey }: { accountKey: string }) {
     updatedAt: branding.updatedAt,
   };
   const selectLogo = (file?: File) => {
+    resetLogoRead();
+    const readVersion = logoReadVersion.current;
     setMessage("");
     setLocalError("");
     if (!file) return;
@@ -200,14 +210,24 @@ function BrandingSettingsCard({ accountKey }: { accountKey: string }) {
       return;
     }
     setDirty(true);
+    setReadingLogo(true);
     const reader = new FileReader();
-    reader.onload = () => setLogoDraft(String(reader.result || ""));
-    reader.onerror = () => setLocalError("Logo读取失败，请重新选择");
+    reader.onload = () => {
+      if (readVersion !== logoReadVersion.current) return;
+      setLogoDraft(String(reader.result || ""));
+      setReadingLogo(false);
+    };
+    reader.onerror = () => {
+      if (readVersion !== logoReadVersion.current) return;
+      setLocalError("Logo读取失败，请重新选择");
+      setReadingLogo(false);
+    };
     reader.readAsDataURL(file);
   };
   const loadLatestBranding = async () => {
     const result = await brandingQuery.refetch();
     if (result.error || !result.data) return;
+    resetLogoRead();
     setSystemName(result.data.systemName); setShortName(result.data.shortName);
     setLogoDraft(undefined); setBaselineUpdatedAt(result.data.updatedAt); setDirty(false);
     setSaveNeedsRecheck(false); setMessage(""); setLocalError(""); save.reset();
@@ -224,7 +244,7 @@ function BrandingSettingsCard({ accountKey }: { accountKey: string }) {
         <BrandLogo branding={previewBranding} />
         <div><strong>{previewBranding.systemName}</strong><span>展开与折叠状态使用同一Logo</span></div>
       </div>
-      <form className="system-branding-form" onSubmit={(event) => { event.preventDefault(); if (stale || saveNeedsRecheck) return; saveLock.run(() => { setMessage(""); setLocalError(""); save.mutate({ systemName, shortName, expectedUpdatedAt: baselineUpdatedAt, ...(logoDraft !== undefined ? { logoDataUrl: logoDraft } : {}) }); }); }}>
+      <form className="system-branding-form" onSubmit={(event) => { event.preventDefault(); if (stale || saveNeedsRecheck || readingLogo) return; saveLock.run(() => { setMessage(""); setLocalError(""); save.mutate({ systemName, shortName, expectedUpdatedAt: baselineUpdatedAt, ...(logoDraft !== undefined ? { logoDataUrl: logoDraft } : {}) }); }); }}>
         <label className="field"><span>系统名称</span><input value={systemName} maxLength={20} required disabled={saveLock.busy} onChange={(event) => { setSystemName(event.target.value); setDirty(true); setMessage(""); }} /></label>
         <label className="field"><span>系统简称</span><input value={shortName} maxLength={4} required disabled={saveLock.busy} onChange={(event) => { setShortName(event.target.value); setDirty(true); setMessage(""); }} /></label>
         <div className="system-branding-logo-field">
@@ -232,15 +252,15 @@ function BrandingSettingsCard({ accountKey }: { accountKey: string }) {
           <div>
             <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(event) => selectLogo(event.target.files?.[0])} />
             <Button variant="secondary" type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => fileRef.current?.click()}><ImagePlus size={15} />选择图片</Button>
-            {previewBranding.logoUrl && <Button variant="secondary" type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => { setLogoDraft(null); setDirty(true); setMessage(""); if (fileRef.current) fileRef.current.value = ""; }}>移除Logo</Button>}
+            {previewBranding.logoUrl && <Button variant="secondary" type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => { resetLogoRead(); setLogoDraft(null); setDirty(true); setMessage(""); }}>移除Logo</Button>}
           </div>
-          <small>支持PNG、JPEG、WebP，最大512KB，建议使用正方形图片。</small>
+          <small>{readingLogo ? "正在读取图片…" : "支持PNG、JPEG、WebP，最大512KB，建议使用正方形图片。"}</small>
         </div>
         {(localError || save.error) && <p className="form-error system-branding-feedback">{localError || save.error?.message}</p>}
         {message && <p className="system-operation-success system-branding-feedback"><ShieldCheck size={14} />{message}</p>}
         <div className="system-branding-actions">
-          <Button variant="secondary" type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => { setSystemName(defaultBranding.systemName); setShortName(defaultBranding.shortName); setLogoDraft(null); setDirty(true); setMessage(""); setLocalError(""); }}>恢复默认值</Button>
-          <Button busy={(saveLock.busy)} aria-label={saveLock.busy ? "保存中…" : "保存品牌设置"} variant="primary" type="submit" className="primary-button" disabled={saveLock.busy || brandingQuery.isLoading || stale || saveNeedsRecheck}>{"保存品牌设置"}</Button>
+          <Button variant="secondary" type="button" className="ghost-button" disabled={saveLock.busy} onClick={() => { resetLogoRead(); setSystemName(defaultBranding.systemName); setShortName(defaultBranding.shortName); setLogoDraft(null); setDirty(true); setMessage(""); setLocalError(""); }}>恢复默认值</Button>
+          <Button busy={(saveLock.busy)} aria-label={saveLock.busy ? "保存中…" : "保存品牌设置"} variant="primary" type="submit" className="primary-button" disabled={saveLock.busy || readingLogo || brandingQuery.isLoading || stale || saveNeedsRecheck}>{"保存品牌设置"}</Button>
         </div>
       </form>
     </div>
