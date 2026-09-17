@@ -213,6 +213,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
   defaultReporter?: string | null; autoFocusTitle?: boolean; onClose: () => void; onPendingChange?: BusyChange; busy?: boolean;
 }) {
   const toast = useToast();
+  const { session } = useSession();
   const { businessDate: today } = useBusinessDate();
   const editor = useIssueDraft(issue, onPendingChange,'basic',projectId);
   const [draft,setDraft,clearDraft]=useDeliveryForm(projectId,(issue?.id||'new')+':issue-basic',()=>issueFields(issue,defaultReporter,today));
@@ -249,7 +250,14 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
       () => (current ? issuesApi.issuesById<Issue>(current.id, { method: current ? "PATCH" : "POST", body: jsonBody(payload) }) : issuesApi.issues<Issue>({ method: current ? "PATCH" : "POST", body: jsonBody(payload) })),
       ()=>{clearDraft();onClose();},
       current ? {
-        matches: (latest) => latest.title === canonicalizeLabel(draft.title)
+        matches: (latest) => latest.version === current.version + 1
+          && latest.status === current.status
+          && (!resolved || (latest.updates || []).some(update => update.eventType === 'correction'
+            && !(current.updates || []).some(previous => previous.id === update.id)
+            && update.createdByAccountId === session.accountId
+            && update.createdAt === latest.updatedAt
+            && (!canonicalizeContent(draft.reason) || update.content === canonicalizeContent(draft.reason))))
+          && latest.title === canonicalizeLabel(draft.title)
           && latest.impact === (canonicalizeContent(draft.impact) || null)
           && latest.requirementId === (draft.requirementId || null)
           && latest.sourceRef === (canonicalizeLabel(draft.sourceRef) || null)

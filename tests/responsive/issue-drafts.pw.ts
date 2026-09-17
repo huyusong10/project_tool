@@ -1,3 +1,4 @@
+import {chooseOption} from './select-helper';
 import { expect, test, type Page } from '@playwright/test';
 import type { Issue } from '../../src/client/types';
 
@@ -117,7 +118,7 @@ test('新建问题已落库但响应异常时核对本次新增问题', async ({
   await dialog.getByRole('textbox', { name: '问题标题', exact: true }).fill('异常响应新增问题');
   await dialog.getByRole('textbox', { name: '问题影响', exact: true }).fill('需要核对结果');
   await dialog.getByLabel('范围标识', { exact: true }).fill('RISK-01');
-  await dialog.getByRole('combobox', { name: '优先级', exact: true }).selectOption('P1');
+  await chooseOption(dialog.getByRole('combobox', { name: '优先级', exact: true }), 'P1');
   await dialog.getByRole('button', { name: '创建问题', exact: true }).click();
 
   await expect(dialog).toHaveCount(0);
@@ -169,8 +170,8 @@ test('项目经理新建问题时可以直接选择负责人', async ({ page }) 
   expect(state.writes[0].body).toMatchObject({ projectId: 'p1', title: '创建时直接分配负责人', ownerId: 'u2' });
 });
 
-test('问题搜索选择浮层不改变弹窗滚动布局', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'laptop-1366', '滚动布局回归只需在一个窄桌面视口执行');
+test('问题搜索选择浮层不改变弹窗滚动布局', {tag:'@responsive'}, async ({ page }, _testInfo) => {
+
   await fixture(page, 'manager');
   await page.route('**/api/people', (route) => route.fulfill({ json: Array.from({ length: 14 }, (_, index) => ({
     id: `u${index + 1}`,
@@ -249,31 +250,30 @@ test('已解决问题通过纠错修正解决日期而不重开', async ({ page 
   state.issue = { ...state.issue, status: 'resolved', progress: 100, resolvedAt: '2026-09-04' };
   await page.goto('/issues?issueId=i1');
   await page.getByRole('tab', { name: '基本信息', exact: true }).click();
-  await page.getByRole('tab', {name: '基本信息', exact: true}).click();
-  const form = page.locator('.issue-correction-form');
+  const form = page.locator('.issue-form');
   await expect(form.getByLabel('纠错后的问题完成度', { exact: true })).toHaveCount(0);
   await form.getByLabel('解决日期', { exact: true }).fill('2026-09-03');
   await form.getByLabel('修改说明', { exact: true }).fill('核对实际闭环日期');
   await form.getByRole('button', { name: '保存修改', exact: true }).click();
 
-  await expect(form.getByRole('button', {name: '保存修改', exact: true})).toBeDisabled();
-  expect(state.writes[0]).toEqual({ path: '/api/issues/i1/correct', body: {
+  await expect(form).toHaveCount(0);
+  expect(state.writes[0]).toMatchObject({ path: '/api/issues/i1', body: {
     expectedVersion: 1,
     title: '问题草稿测试',
     impact: '原影响',
-    progress: 100,
     resolvedAt: '2026-09-03',
-    supersedesId: null,
     reason: '核对实际闭环日期',
   } });
   expect(state.issue.status).toBe('resolved');
+  expect(state.issue.progress).toBe(100);
 });
 
 test('问题纠错成功但响应损坏时读回事件且不重复提交', async ({ page }) => {
   const state = await fixture(page);
   state.issue = {...state.issue, status: 'resolved', progress: 100, resolvedAt: '2026-09-04'};
   let correctionWrites = 0;
-  await page.route('**/api/issues/i1/correct', async (route) => {
+  await page.route('**/api/issues/i1', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
     correctionWrites += 1;
     const body = route.request().postDataJSON() as Record<string, unknown>;
     const now = new Date().toISOString();
@@ -281,12 +281,14 @@ test('问题纠错成功但响应损坏时读回事件且不重复提交', async
       ...state.issue,
       title: String(body.title),
       impact: body.impact ? String(body.impact) : null,
-      progress: Number(body.progress),
+      requirementId: body.requirementId ? String(body.requirementId) : null,
+      sourceRef: body.sourceRef ? String(body.sourceRef) : null,
+      nextReviewAt: body.nextReviewAt ? String(body.nextReviewAt) : null,
       resolvedAt: body.resolvedAt ? String(body.resolvedAt) : null,
       version: state.issue.version + 1,
       updatedAt: now,
       updates: [{
-        id: 'correction-1', issueId: state.issue.id, progress: Number(body.progress),
+        id: 'correction-1', issueId: state.issue.id, progress: state.issue.progress,
         content: String(body.reason), eventType: 'correction', supersedesId: body.supersedesId ? String(body.supersedesId) : null,
         createdByAccountId: 'admin', createdByName: 'admin', createdAt: now, updatedAt: now,
       }],
@@ -295,29 +297,34 @@ test('问题纠错成功但响应损坏时读回事件且不重复提交', async
   });
   await page.goto('/issues?issueId=i1');
   await page.getByRole('tab', {name: '基本信息', exact: true}).click();
-  const form = page.locator('.issue-correction-form');
+  const form = page.locator('.issue-form');
   await form.getByLabel('修改说明', { exact: true }).fill('补充原记录纠错说明');
-  await expect(form.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
   await form.getByLabel('问题标题', { exact: true }).fill('核对后的问题标题');
   await form.getByRole('button', { name: '保存修改', exact: true }).click();
 
-  await expect(form.getByRole('button', {name: '保存修改', exact: true})).toBeDisabled();
-  await expect(page.getByText('已核对最新状态：问题纠错已记录', { exact: true })).toBeVisible();
+  await expect(form).toHaveCount(0);
+  await expect(page.getByText('已核对最新状态：问题信息已保存', { exact: true })).toBeVisible();
   expect(correctionWrites).toBe(1);
 });
 
 test('问题纠错异常响应不把旧同值纠错误认成本次写入', async ({ page }) => {
   const state = await fixture(page);
   state.issue = {...state.issue, status: 'resolved', progress: 100, resolvedAt: '2026-09-04'};
-  await page.route('**/api/issues/i1/correct', async (route) => {
+  let correctionWrites = 0;
+  await page.route('**/api/issues/i1', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    correctionWrites += 1;
     const body = route.request().postDataJSON() as Record<string, unknown>;
     (state as { issue: Issue }).issue = {
       ...state.issue,
       title: String(body.title), impact: body.impact ? String(body.impact) : null,
-      progress: Number(body.progress), resolvedAt: body.resolvedAt ? String(body.resolvedAt) : null,
+      requirementId: body.requirementId ? String(body.requirementId) : null,
+      sourceRef: body.sourceRef ? String(body.sourceRef) : null,
+      nextReviewAt: body.nextReviewAt ? String(body.nextReviewAt) : null,
+      resolvedAt: body.resolvedAt ? String(body.resolvedAt) : null,
       version: state.issue.version + 3, updatedAt: '2026-09-06T10:00:00.000Z',
       updates: [{
-        id: 'old-correction', issueId: state.issue.id, progress: Number(body.progress),
+        id: 'old-correction', issueId: state.issue.id, progress: state.issue.progress,
         content: String(body.reason), eventType: 'correction', supersedesId: null,
         createdByAccountId: 'admin', createdByName: 'admin',
         createdAt: '2026-09-06T09:00:00.000Z', updatedAt: '2026-09-06T09:00:00.000Z',
@@ -327,13 +334,15 @@ test('问题纠错异常响应不把旧同值纠错误认成本次写入', async
   });
   await page.goto('/issues?issueId=i1');
   await page.getByRole('tab', {name: '基本信息', exact: true}).click();
-  const form = page.locator('.issue-correction-form');
+  const form = page.locator('.issue-form');
   await form.getByLabel('问题标题', {exact: true}).fill('核对后的标题');
   await form.getByLabel('修改说明', { exact: true }).fill('重复的纠错说明');
   await form.getByRole('button', { name: '保存修改', exact: true }).click();
 
   await expect(form).toBeVisible();
-  await expect(page.getByText('已核对最新状态：问题纠错已记录', { exact: true })).toHaveCount(0);
+  await expect(form.getByLabel('问题标题', {exact: true})).toHaveValue('核对后的标题');
+  await expect(page.getByText('已核对最新状态：问题信息已保存', { exact: true })).toHaveCount(0);
+  expect(correctionWrites).toBe(1);
 });
 
 test('问题纠错历史显示被更正记录', async ({ page }) => {
