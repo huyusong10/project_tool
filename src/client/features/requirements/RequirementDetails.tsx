@@ -182,8 +182,8 @@ export function RequirementObjectContent({requirementId,embedded=false,selectedW
       grid: { left: 42, right: 18, top: 42, bottom: 34 },
       xAxis: {
         type: "category",
-        data: dailyTrend.map(({ date }) => `${date.slice(5, 7)}/${date.slice(8, 10)}`),
-        axisLabel: { color: "var(--text-muted)" },
+        data: dailyTrend.map(({ date }) => date),
+        axisLabel: { color: "var(--text-muted)", formatter: (date: string) => date.slice(5).replace('-', '/') },
       },
       yAxis: {
         type: "value",
