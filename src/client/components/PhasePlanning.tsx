@@ -23,7 +23,7 @@ import { Modal } from "./Modal";
 import { ExecutionStageBadge } from "./ExecutionStageBadge";
 import "./phase-planning.css";
 
-import { type PhaseEdit, readPendingPhase, nextPhaseName, type PhaseForm, type PendingPhase, pendingKey } from '../features/planning/phase-model';
+import { type PhaseEdit, readPendingPhase, nextPhaseName, rebasePhaseForm, type PhaseForm, type PendingPhase, pendingKey } from '../features/planning/phase-model';
 
 export function PhaseStatusBadge({ phase }: { phase: Pick<FeaturePhase,'status'> }) {
   const tone = phase.status === 'completed' ? 'completed' : phase.status === 'in_progress' ? 'development' : 'not_started';
@@ -52,7 +52,8 @@ export function PhaseDialog({ edit, onClose, onCreated }: { edit: PhaseEdit; onC
       if (!alive.current) return;
       if (unknown && applied) { persist(null); clearLocal(); changed(); if(!edit.phase&&edit.mode==='edit'&&latest)onCreated?.(latest); onClose(); return; }
       if (baseline && !latest) { setError('Phase 已不存在，输入仍保留。请关闭后核对特性。'); return; }
-      setBaseline(latest); persist(null); setUnknown(false); setNeedsRead(false); setError('已读取最新版本，输入已保留，请核对后保存。'); changed();
+      if(baseline&&latest&&edit.mode==='edit')setValue(current=>rebasePhaseForm(current,baseline,latest));
+      setBaseline(latest); persist(null); setUnknown(false); setNeedsRead(false); setError('已读取最新版本，保留已修改的输入，请核对后保存。'); changed();
     } catch (e) { if (alive.current) setError((e as Error).message); } finally { if (alive.current) setBusy(false); }
   };
   const save = async () => {
