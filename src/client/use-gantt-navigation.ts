@@ -151,7 +151,7 @@ export function useGanttNavigation({ values, asOfDate, storageKey, legacyKey, on
       suppressClick.current = false;
       if (event.button !== 0 && event.button !== 1 || event.ctrlKey || event.metaKey) return;
       const target = event.target as Element;
-      if (!target.closest('.unified-gantt-track,.gantt-scale,.gantt-milestone-rail,.path-draft-gantt-track') || target.closest('input,select,textarea,a,.gantt-milestone-label,.gantt-milestone-actual')) return;
+      if (!target.closest('.unified-gantt-track,.workspace-row-track,.gantt-scale,.gantt-milestone-rail,.path-draft-gantt-track') || target.closest('input,select,textarea,a,.gantt-milestone-label,.gantt-milestone-actual')) return;
       drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, left: element.scrollLeft, active: false };
       if (event.button === 1) event.preventDefault();
     };

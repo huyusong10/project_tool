@@ -1,11 +1,12 @@
 import type { Page, Route } from "@playwright/test";
 import { workspaceFixture } from './workspace-fixture';
+import type {PathMilestone} from '../../src/shared/paths';
 
 export const workItem = {
   id: "w1", requirementId: "r1", templateItemId: "ti1", title: "接口开发", ownerId: "u1", ownerName: "张三",
   collaborators: [], assigneeIds: ["u1"], assigneeNames: ["张三"], status: "in_progress",
   plannedStart: "2026-09-01", plannedEnd: "2026-09-10", actualStart: "2026-09-01", actualEnd: null,
-  forecastEnd: null, blockedAt: null, blockedReason: null, milestoneLabel: "接口基线", progress: 40, sortOrder: 0,
+  forecastEnd: null, blockedAt: null, blockedReason: null, milestoneLabel: "接口基线", progress: 40, sortOrder: 0, workStage: 'development' as const, durationDays: 1,
   version: 1, createdAt: "2026-09-01", updatedAt: "2026-09-02",
 };
 
@@ -33,7 +34,7 @@ const completedEarlyWorkItem = {
 
 export const requirement = {
   id: "r1", projectId: "p1", projectName: "测试项目", templateId: "t1", templateName: "研发流程",
-  title: "统一甘特样式", ownerId: null, ownerName: null, status: "in_progress", plannedStart: "2026-09-01",
+  title: "统一甘特样式", ownerId: null, ownerName: null, status: "in_progress", plannedStart: "2026-09-01", actualStart: '2026-09-01', observationEnd: '2026-09-03',
   plannedEnd: "2026-09-10", progress: 61, plannedProgress: 91, progressGap: 30, riskLevel: "medium",
   asOfDate: "2026-09-03", scheduleComplete: true,
   riskEvaluated: true, riskReason: "P1进度Gap 30%", priority: "P1", createdAt: "2026-09-01", updatedAt: "2026-09-02",
@@ -45,8 +46,32 @@ export const requirement = {
   finishVariance: 0, durationVariance: 0, effectiveEnd: "2026-09-10", issueSummary: { active: 0, overdue: 0 },
 };
 
+export const ganttRequirements = [requirement, { ...requirement, id: 'r2', title: '领先计划流程', progress: 70, plannedProgress: 50, progressGap: 0, riskLevel: 'low', riskReason: '进展正常', workItems: [
+  { ...workItem, id: 'w2', requirementId: 'r2', plannedEnd: '2026-09-09', milestoneLabel: '方案评审' },
+  { ...workItem, id: 'w3', requirementId: 'r2', plannedEnd: '2026-09-10', milestoneLabel: '验收通过' },
+  { ...workItem, id: 'w4', requirementId: 'r2', plannedEnd: '2026-09-10', milestoneLabel: '正式上线' },
+] }];
+
+/** All workspace reads share the same facts, including after a test changes a row. */
+export async function mockGanttReport(page: Page, rows: () => Parameters<typeof workspaceFixture>[2], asOfDate = () => '2026-09-03', milestones: () => PathMilestone[] = () => []) {
+  await page.route(/\/api\/(dashboard|projects\/p1\/(path-graph|path-analysis|features|feature-overview))(\?|$)/, route => {
+    const requirements = rows(), workspace = workspaceFixture('p1', '测试项目', requirements, asOfDate());
+    workspace.analysis.milestones = milestones();
+    const pathname = new URL(route.request().url()).pathname;
+    const json = pathname.endsWith('/path-graph') ? {analysis:workspace.analysis}
+      : pathname.endsWith('/path-analysis') ? workspace.analysis
+      : pathname.endsWith('/features') ? {features:workspace.features}
+      : pathname.endsWith('/feature-overview') ? workspace.overview
+      : {asOfDate:asOfDate(), featureOverview:workspace.overview,
+        summary:{total:requirements.length,active:requirements.filter(r=>r.status!=='completed').length,completed:requirements.filter(r=>r.status==='completed').length,delayed:0,highRisk:0,completionRate:0},
+        requirements,issues:{summary:{total:0,inProgress:0,deferred:0,resolved:0,active:0,highPriority:0,overdue:0,unassigned:0,closureRate:0},attention:[]},
+        charts:{statuses:[],risks:[],weeks:[],varianceTop:[]}};
+    return route.fulfill({json});
+  });
+}
+
 export async function mockGanttData(page: Page, progressRequests: Array<Record<string, unknown>> = []) {
-  const workspace = workspaceFixture('p1', '测试项目', [requirement, { ...requirement, id: 'r2', title: '领先计划流程', workItems: [{ ...workItem, id: 'w2', requirementId: 'r2' }] }]);
+  const workspace = workspaceFixture('p1', '测试项目', ganttRequirements);
   await page.route("**/api/**", async (route: Route) => {
     const pathname = new URL(route.request().url()).pathname;
     const json = (value: unknown) => route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
@@ -59,11 +84,7 @@ export async function mockGanttData(page: Page, progressRequests: Array<Record<s
     if (pathname.endsWith('/feature-overview')) return json(workspace.overview);
     if (pathname === "/api/dashboard") return json({
       summary: { total: 2, active: 2, completed: 0, delayed: 0, highRisk: 0, completionRate: 0 },
-      requirements: [requirement, { ...requirement, id: "r2", title: "领先计划流程", progress: 70, plannedProgress: 50, progressGap: 0, riskLevel: "low", riskReason: "进展正常", workItems: [
-        { ...workItem, id: "w2", requirementId: "r2", plannedEnd: "2026-09-09", milestoneLabel: "方案评审" },
-        { ...workItem, id: "w3", requirementId: "r2", plannedEnd: "2026-09-10", milestoneLabel: "验收通过" },
-        { ...workItem, id: "w4", requirementId: "r2", plannedEnd: "2026-09-10", milestoneLabel: "正式上线" },
-      ] }],
+      requirements: ganttRequirements, featureOverview: workspace.overview, asOfDate: '2026-09-03',
       issues: { summary: { total: 0, inProgress: 0, deferred: 0, resolved: 0, active: 0, highPriority: 0, overdue: 0, unassigned: 0, closureRate: 0 }, attention: [] },
       charts: { statuses: [], risks: [], weeks: [], varianceTop: [] },
     });

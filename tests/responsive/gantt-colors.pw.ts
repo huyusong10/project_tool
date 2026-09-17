@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mockGanttData, requirement, workItem } from "./gantt-fixture";
+import { mockGanttData, mockGanttReport, requirement, workItem } from "./gantt-fixture";
 
 const skins = ["classic", "swiss", "forest", "midnight", "soft", "industrial", "dcim"];
 const cases = [
@@ -37,7 +37,8 @@ test("夜间默认杰瑞橙，保留已选皮肤并迁移旧明暗偏好", async
   });
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dcim");
-  await expect(page.locator(".gantt-row")).toHaveCount(2);
+  await page.getByRole("button",{name:"展开全部",exact:true}).click();
+  await expect(page.locator(".workspace-gantt-row.kind-requirement")).toHaveCount(2);
   await page.getByRole("button", { name: /^切换风格/ }).click();
   await page.getByRole("menuitemradio", { name: /瑞士排版/ }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "swiss");
@@ -46,99 +47,57 @@ test("夜间默认杰瑞橙，保留已选皮肤并迁移旧明暗偏好", async
   expect(errors).toEqual([]);
 });
 
-for (const surface of ["execution", "detail"] as const) for (const mode of ["overlay", "split"] as const) {
-  test(`${surface} ${mode}：七套皮肤共用完成、执行、取消和延期色`, async ({ page }, info) => {
-    await mockGanttData(page);
-    const rows = cases;
-    await page.route("**/api/dashboard**", (route) => route.fulfill({ json: {
-      summary: { total: rows.length, active: rows.length, completed: 1, delayed: 0, highRisk: 0, completionRate: 0 },
-      requirements: rows.map((item) => ({ ...requirement, ...item, id: item.status, title: item.status, asOfDate: "2026-09-14", effectiveEnd: item.actualEnd || "2026-09-10", workItems: [], riskLevel: "low", progressGap: 0 })),
-      issues: { summary: { total: 0 }, attention: [] }, charts: { statuses: [], risks: [], weeks: [], varianceTop: [] },
-    } }));
-    await page.route("**/api/requirements/r1", (route) => route.fulfill({ json: {
-      ...requirement, asOfDate: "2026-09-14", workItems: rows.map((item) => ({ ...workItem, ...item, id: item.status, title: item.status, milestoneLabel: null, cancelledAt: "2026-09-03" })),
-    } }));
-    await page.goto(surface === "execution" ? "/execution" : "/requirements/r1");
-    if (surface === 'execution') await page.getByLabel('按状态筛选', { exact: true }).selectOption('');
-    if (mode === "split") {
-      await page.getByRole("button", { name: /^甘特显示方式/ }).click();
-      const menu = (await page.locator(".gantt-view-options").boundingBox())!;
-      const sidebar = (await page.locator(".sidebar").boundingBox())!;
-      expect(menu.x).toBeGreaterThanOrEqual(sidebar.x + sidebar.width);
-      expect(menu.x + menu.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-      await page.getByRole("button", { name: "计划·实际双轨", exact: true }).click();
-    }
-    const barSelector = mode === "split" ? ".gantt-date-actual" : ".unified-gantt-actual";
-    const markerSelector = mode === "split" ? ".gantt-date-progress" : surface === "execution" ? ".unified-gantt-label" : ".gantt-progress-marker";
-    const bar = (status: string) => page.locator(`${barSelector}.gantt-status-${status}`);
-    for (const skin of skins) {
-      await changeSkin(page, skin);
-      const dark = ["midnight", "dcim"].includes(skin);
-      const green = dark ? "rgb(120, 173, 147)" : "rgb(53, 116, 91)";
-      const blue = dark ? "rgb(120, 153, 188)" : "rgb(68, 107, 145)";
-      const red = dark ? "rgb(226, 132, 134)" : "rgb(190, 79, 81)";
-      await expect(bar("completed")).toHaveCSS("background-color", green);
-      await expect(bar("in-progress")).toHaveCSS("background-color", blue);
-      // 99.6% 的显示会取整为 100；业务状态仍是执行中。
-      await expect(page.locator(`${markerSelector}.gantt-status-in-progress`)).toContainText(surface === "execution" ? "进行中" : "100");
-      if (mode === "overlay" && surface === "detail") {
-        await expect(page.locator(`${markerSelector}.gantt-status-completed`)).toHaveCSS("background-color", green);
-        await expect(page.locator(`${markerSelector}.gantt-status-in-progress`)).toHaveCSS("background-color", blue);
-      }
-      await expect(bar("cancelled")).toHaveCSS("background-color", dark ? "rgb(150, 157, 169)" : "rgb(104, 113, 129)");
-      await expect(bar("cancelled")).not.toHaveCSS("background-image", "none");
-      await expect(page.locator(`${barSelector}.gantt-status-planning,${barSelector}.gantt-status-not-started`)).toHaveCount(0);
-      const completedRow = surface === "execution" ? page.locator(".gantt-row").filter({ has: bar("completed") }) : page.locator('[data-work-item-id="completed"]');
-      await expect(completedRow.locator(mode === "split" ? ".gantt-date-delay" : ".unified-gantt-delay")).toHaveCSS("border-top-color", red);
-      if (mode === "overlay") await expect(completedRow.locator(".unified-gantt-delay")).toHaveCSS("background-color", green);
-      if (surface === "execution" && info.project.name === "desktop-1080p") await page.screenshot({ path: info.outputPath(`${skin}-${mode}-states.png`), animations: "disabled" });
-    }
-  });
-}
-
-for (const mode of ["overlay", "split"] as const) test(`${mode}：各执行阶段共用蓝色，阶段文字和测试进度保留`, async ({ page }, info) => {
+for(const surface of ['project','requirement'] as const)test(surface+'：七套皮肤共用完成、执行、取消和延期色',{tag:'@responsive'},async({page},info)=>{
   await mockGanttData(page);
-  const rows = [
-    ...["analysis", "development", "integration", "testing"].map(workStage => ({
-      ...requirement, id: workStage, title: workStage, progress: 99,
-      workItems: [{ ...workItem, workStage, progress: 70, durationDays: 1 }],
-    })),
-    { ...requirement, id: 'parallel', title: '并行推进', workItems: [
-      { ...workItem, id: 'dev', workStage: 'development', progress: 40 },
-      { ...workItem, id: 'test', workStage: 'testing', progress: 70 },
-    ] },
-    { ...requirement, id: 'submitted', title: '已提测需求', workItems: [], actualStart: '2026-09-01', observationEnd: '2026-09-03',
-      executionStage: { key: 'test_submitted', label: '已提测', tone: 'submitted', stages: [], currentWork: [] } },
+  const rows=surface==='project'?cases.map(item=>({...requirement,...item,id:item.status,title:item.status,executionMode:'direct' as const,observationEnd:item.actualEnd,workItems:[]}))
+    :[{...requirement,workItems:cases.map(item=>({...workItem,...item,id:item.status,title:item.status,milestoneLabel:null,cancelledAt:item.status==='cancelled'?'2026-09-03':null}))}];
+  await mockGanttReport(page,()=>rows,()=> '2026-09-14');
+  await page.goto('/?projectId=p1&workspaceView=progress&scopeType='+surface+'&scopeId='+(surface==='project'?'p1':'r1'));
+  await page.getByRole('button',{name:'展开全部',exact:true}).click();
+  const row=(status:string)=>page.locator('.workspace-gantt-row[data-row-id="'+status+'"]');
+  const fill=(status:string)=>row(status).locator('.gantt-completion-fill');
+  const bar=(status:string)=>row(status).locator('.gantt-date-actual');
+  for(const skin of skins){
+    await changeSkin(page,skin);const dark=['midnight','dcim'].includes(skin);
+    const green=dark?'rgb(120, 173, 147)':'rgb(53, 116, 91)',blue=dark?'rgb(120, 153, 188)':'rgb(68, 107, 145)',red=dark?'rgb(226, 132, 134)':'rgb(190, 79, 81)';
+    await expect(fill('completed')).toHaveCSS('background-color',green);
+    if(surface==='requirement')await expect(fill('in_progress')).toHaveCSS('background-color',blue);else await expect(bar('in_progress')).toHaveCSS('background-color',blue);
+    await expect(row('in_progress')).toHaveAttribute('data-status','in_progress');
+    // Current work capsules preserve the numeric estimate, without changing the business status.
+    await expect(row('in_progress').locator('.gantt-progress-value')).toHaveText('99.6%');
+    await expect(bar('cancelled')).toHaveCSS('background-color',dark?'rgb(150, 157, 169)':'rgb(104, 113, 129)');
+    await expect(bar('cancelled')).not.toHaveCSS('background-image','none');
+    await expect(bar('not_started')).toHaveCount(0);await expect(row('cancelled').locator('.gantt-progress-value')).toHaveCount(0);
+    await expect(row('completed').locator('.gantt-date-delay')).toHaveCSS('border-top-color',red);
+  }
+  for(const viewport of [page.viewportSize()!,{width:390,height:844}]){
+    await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    await expect(page.locator('.workspace-gantt-scroll')).toBeVisible();
+    await page.screenshot({path:info.outputPath(surface+'-states-'+viewport.width+'.png'),animations:'disabled'});
+  }
+});
+
+test('各执行阶段共用蓝色，阶段文字、测试进度和并行阶段保留',{tag:'@responsive'},async({page},info)=>{
+  await mockGanttData(page);
+  const rows=[
+    ...(['analysis','development','integration','testing'] as const).map(workStage=>({...requirement,id:workStage,title:workStage,progress:99,workItems:[{...workItem,id:workStage+'-work',workStage,progress:70}]})),
+    {...requirement,id:'parallel',title:'并行推进',workItems:[{...workItem,id:'dev',workStage:'development' as const,progress:40},{...workItem,id:'test',workStage:'testing' as const,progress:70}]},
+    {...requirement,id:'submitted',title:'已提测需求',workItems:[],executionStage:{key:'test_submitted',label:'已提测',tone:'submitted',stages:[],currentWork:[]}},
   ];
-  await page.route("**/api/dashboard**", route => route.fulfill({ json: {
-    summary: { total: rows.length, active: rows.length, completed: 0, delayed: 0, highRisk: 0, completionRate: 0 },
-    requirements: rows, issues: { summary: {}, attention: [] },
-    charts: { statuses: [], risks: [], weeks: [], varianceTop: [] },
-  } }));
-  await page.goto('/execution');
-  if (mode === 'split') {
-    await page.getByRole('button', { name: /^甘特显示方式/ }).click();
-    await page.getByRole('button', { name: '计划·实际双轨', exact: true }).click();
-  }
-  const bars = page.locator(mode === 'split' ? '.gantt-date-actual' : '.unified-gantt-actual');
-  const badges = page.locator('.gantt-requirement-info .stage-badge');
-  await expect(bars).toHaveCount(rows.length);
-  const testing = page.locator('.gantt-row').filter({ has: page.getByRole('button', { name: 'testing', exact: true }) });
-  await expect(testing).toContainText('测试中');
-  await expect(testing).toContainText('70%');
-  await expect(testing).not.toContainText('99%');
-  await expect(page.locator('.gantt-row').filter({ hasText: '并行推进' })).toContainText('开发中 · 部分测试');
-  await expect(page.locator('.gantt-row').filter({ hasText: '已提测需求' })).toContainText('已提测');
-  for (const skin of skins) {
-    await changeSkin(page, skin);
-    const blue = ['midnight', 'dcim'].includes(skin) ? 'rgb(120, 153, 188)' : 'rgb(68, 107, 145)';
-    expect(await bars.evaluateAll(elements => [...new Set(elements.map(el => getComputedStyle(el).backgroundColor))])).toEqual([blue]);
-    expect(await badges.evaluateAll(elements => new Set(elements.map(el => getComputedStyle(el).color)).size)).toBe(1);
-    if (info.project.name === 'desktop-1080p' && ['classic', 'dcim'].includes(skin)) {
-      await page.screenshot({ path: info.outputPath(`${skin}-${mode}-stages.png`), animations: 'disabled' });
+  await mockGanttReport(page,()=>rows);await page.goto('/execution');await page.getByRole('button',{name:'展开全部',exact:true}).click();
+  const reqRows=page.locator('.workspace-gantt-row.kind-requirement'),testing=reqRows.filter({has:page.getByRole('button',{name:'testing',exact:true})});
+  await expect(testing.locator('.gantt-progress-text')).toContainText('测试');await expect(testing.locator('.gantt-progress-value')).toHaveText('70%');await expect(testing).not.toContainText('99%');
+  await expect(page.locator('[data-row-id="parallel"] .gantt-progress-text')).toContainText('开发');await expect(page.locator('[data-row-id="parallel"] .gantt-progress-text')).toContainText('测试');
+  await expect(page.locator('[data-row-id="submitted"] .gantt-progress-text')).toContainText('已提测');
+  for(const skin of skins){
+    await changeSkin(page,skin);const blue=['midnight','dcim'].includes(skin)?'rgb(120, 153, 188)':'rgb(68, 107, 145)';
+    await expect(reqRows.locator('.gantt-date-actual')).toHaveCount(rows.length);
+    // Filled stage tracks and unfilled parallel tracks use the same running color.
+    for(const r of await reqRows.all()){
+      const fill=r.locator('.gantt-completion-fill');await expect(await fill.count()?fill:r.locator('.gantt-date-actual')).toHaveCSS('background-color',blue);
     }
+    await expect(testing.locator('.gantt-progress-value')).toHaveCSS('color',blue);
   }
-  await page.setViewportSize({ width: 390, height: 844 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-  await page.screenshot({ path: info.outputPath(`${mode}-stages-mobile.png`), fullPage: true });
+  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await page.screenshot({path:info.outputPath('stages-mobile.png'),fullPage:true});
 });
