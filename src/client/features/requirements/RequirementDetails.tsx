@@ -115,7 +115,7 @@ export function RequirementObjectContent({requirementId,embedded=false,selectedW
     isFetching,
     unavailable,
   } = usePageResources().requirement;
-  const historyPagination = useListPagination({ items: requirement?.progressUpdates || [], id: "history:requirement", defaultPageSize: 10, ready: Boolean(requirement), loading: isFetching });
+  const historyPagination = useListPagination({ items: requirement?.progressUpdates || [], id: "history:requirement:" + id, defaultPageSize: 10, ready: Boolean(requirement), loading: isFetching });
   const lastPathProject=useRef<string|undefined>(undefined);
   useEffect(()=>{if(requirement?.projectId)lastPathProject.current=requirement.projectId;},[requirement?.projectId]);
   const scrollKey='pm-detail-scroll:'+(session.accountId||'guest')+':'+(requirement?.projectId||'')+':'+id,workTarget=searchParams.get('workItemId');
