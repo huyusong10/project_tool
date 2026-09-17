@@ -131,12 +131,21 @@ export function RequirementCorrectionForm({
     try {
       const latest = await readResourceFresh<Requirement>(client, keys.requirement(requirement.id), signal => requirementsApi.requirementsById<Requirement>(requirement.id, { signal }), () => mounted.current);
       if (!mounted.current) return null;
+      const previousDraft=requirementInfoDraft(baseline),latestDraft=requirementInfoDraft(latest);
+      const changedFields=new Set(requirementInfoFields.filter(field=>draft[field]!==undefined&&JSON.stringify(draft[field])!==JSON.stringify(previousDraft[field])));
+      if(changedFields.has('featureId'))changedFields.add('phaseId');
+      const mergedDraft={...draft};
+      for(const field of requirementInfoFields)
+        if(!changedFields.has(field))Object.assign(mergedDraft,{[field]:latestDraft[field]});
+      if(changedFields.has('referenceUrl')&&draft.referenceLinks===undefined)
+        mergedDraft.referenceLinks=requirementReferenceLinks({referenceUrl:draft.referenceUrl},latest);
+      setDraft(mergedDraft);
       if (unknownVersion.current !== null) {
         const requiresReview = versionedWriteOutcome(unknownVersion.current, latest.version) === 'conflict';
         setReviewRequired(requiresReview);
         setUnknown(requiresReview);
         if (requiresReview) onRecheckChange({
-          baselineVersion: unknownVersion.current, draft, reason, supersedesId, stage: "review",
+          baselineVersion: unknownVersion.current, draft:mergedDraft, reason, supersedesId, stage: "review",
         });
         else {
           unknownVersion.current = null;
@@ -231,7 +240,7 @@ export function RequirementCorrectionForm({
       <FormError>{changed ? "需求已更新，请重新读取并核对；已保留你的输入。" : undefined}</FormError>
       <FormError>{!terminal ? "需求状态已变化，当前不能使用终态纠错。" : undefined}</FormError>
       {readError && <FormError>{readError.message}</FormError>}
-      {refreshed && <p className="field-help field-full">已读取最新需求（版本 {baseline.version}），本次输入保持不变，请核对后重试。</p>}
+      {refreshed && <p className="field-help field-full">已读取最新需求（版本 {baseline.version}），保留已修改的输入，请核对后重试。</p>}
       {(changed || needsRefresh) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void read()}>重新读取需求</Button></div>}
       <FormSubmitActions submitLabel="保存纠错" onCancel={()=>{clearBaseline();clearDraft();clearReason();clearSupersedesId();close();}} pending={pending} disabled={blocked} />
     </fieldset>
