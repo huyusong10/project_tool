@@ -1,84 +1,44 @@
-import { test, expect } from '@playwright/test';
-import { mockGanttData } from './gantt-fixture';
+import {test,expect} from '@playwright/test';
+import {mockGanttData,mockGanttReport,ganttRequirements} from './gantt-fixture';
+import type {PathMilestone} from '../../src/shared/paths';
 
-const milestone = { id: 'm1', title: '接口基线', projectId: 'p1', requirementId: 'r1', targetDate: '2026-09-04', achievedAt: '2026-09-03', confirmationMode: 'auto', version: 1 };
+const milestone:PathMilestone={id:'m1',title:'接口基线',projectId:'p1',requirementId:'r1',targetDate:'2026-09-04',achievedAt:'2026-09-03',confirmationMode:'auto',version:1};
 
-test('里程碑贴住条带切面；有无标记的行始终等高居中，刷新和双轨不挤动内容', async ({ page }, info) => {
-  await mockGanttData(page); await page.emulateMedia({ reducedMotion: 'reduce' });
-  let reached = true;
-  await page.route('**/path-analysis*', route => route.fulfill({ json: { milestones: [{ ...milestone, achievedAt: reached ? milestone.achievedAt : null }], nodes: [], edges: [] } }));
-  await page.goto('/');
-  const surface = page.locator('.project-gantt-scroll');
-  await expect(surface).toHaveAttribute('data-gantt-ready', 'true');
-  const geometry = () => surface.locator('.gantt-track').evaluateAll(rows => rows.map(row => {
-    const box = row.getBoundingClientRect(), rect = (selector: string) => row.querySelector(selector)?.getBoundingClientRect();
-    const plan = rect('.gantt-date-plan') || rect('.unified-gantt-plan')!, actual = rect('.gantt-date-actual');
-    const top = plan.top, bottom = actual?.bottom || plan.bottom;
-    const pin = rect('.gantt-milestone-pin'), label = rect('.gantt-milestone-label'), cut = rect('.is-inline .gantt-milestone-cut');
-    return { height: box.height, barTop: top - box.top, barBottom: bottom - box.top, center: (top + bottom) / 2 - box.top,
-      pinCenter: pin && pin.y + pin.height / 2 - box.top, labelTop: label && label.top - box.top, labelBottom: label && label.bottom - box.top,
-      cutTop: cut && cut.top - box.top, cutBottom: cut && cut.bottom - box.top };
-  }));
-  const verify = async () => {
-    const [withMark, withoutMark] = await geometry();
-    expect(withMark.height).toBe(withoutMark.height);
-    for (const row of [withMark, withoutMark]) expect(Math.abs(row.center - row.height / 2)).toBeLessThan(1);
-    expect(withMark.barTop).toBe(withoutMark.barTop); expect(withMark.barBottom).toBe(withoutMark.barBottom);
-    expect(withMark.pinCenter).toBeCloseTo(withMark.barTop, 1);
-    expect(withMark.labelTop).toBeGreaterThanOrEqual(0);
-    expect(withMark.labelBottom!).toBeLessThan(withMark.barTop);
-    expect(withMark.cutTop).toBe(withMark.barTop); expect(withMark.cutBottom).toBe(withMark.barBottom);
-    return withMark;
-  };
-  const original = await verify();
-  for (const width of [1280, 390]) {
-    await page.setViewportSize({ width, height: 844 });
-    await page.getByRole('button', { name: '适配全部', exact: true }).click(); await verify();
-    await expect(surface).toBeVisible();
-    await expect.poll(async () => (await surface.boundingBox())?.height || 0).toBeGreaterThanOrEqual(240);
-    await surface.screenshot({ path: info.outputPath(`milestone-centered-${width}.png`) });
-    await page.getByRole('button', { name: /甘特显示方式，当前/ }).click();
-    await page.getByRole('button', { name: '计划·实际双轨', exact: true }).click(); await verify();
-    await surface.screenshot({ path: info.outputPath(`milestone-centered-split-${width}.png`) });
-    await page.getByRole('button', { name: /甘特显示方式，当前/ }).click();
-    await page.getByRole('button', { name: '现有视图', exact: true }).click(); await verify();
-  }
-  await page.setViewportSize({ width: 1280, height: 800 }); reached = false; await page.reload();
-  await expect(surface).toHaveAttribute('data-gantt-ready', 'true');
-  await expect(surface.locator('.gantt-milestone-rail')).toHaveCount(0);
-  const refreshed = (await geometry())[0];
-  expect(refreshed.height).toBe(original.height); expect(refreshed.center).toBe(original.center);
-  expect(refreshed.barTop).toBe(original.barTop); expect(refreshed.barBottom).toBe(original.barBottom);
+test('最新达成标记位于计划条上方，有无标记及刷新前后的行高不变',{tag:'@responsive'},async({page},info)=>{
+ await mockGanttData(page);await page.emulateMedia({reducedMotion:'reduce'});let reached=true;
+ await mockGanttReport(page,()=>ganttRequirements,()=> '2026-09-18',()=>[{...milestone,achievedAt:reached?milestone.achievedAt:null}]);
+ await page.goto('/execution');await page.getByRole('button',{name:'展开全部',exact:true}).click();
+ const surface=page.locator('.workspace-gantt-scroll');await expect(surface).toHaveAttribute('data-gantt-ready','true');
+ const geometry=()=>surface.locator('.workspace-gantt-row.kind-requirement').evaluateAll(rows=>Object.fromEntries(rows.map(row=>{
+  const track=row.querySelector('.workspace-row-track')!,box=track.getBoundingClientRect(),rect=(selector:string)=>track.querySelector(selector)?.getBoundingClientRect();
+  const plan=rect('.gantt-date-plan')!,actual=rect('.gantt-date-actual')!,pin=rect('.workspace-latest-milestone');
+  return [(row as HTMLElement).dataset.rowId,{height:box.height,planTop:plan.top-box.top,actualTop:actual.top-box.top,actualBottom:actual.bottom-box.top,pinTop:pin&&pin.top-box.top,pinBottom:pin&&pin.bottom-box.top}];
+ })));
+ const verify=async()=>{const {r1,r2}=await geometry();expect(r1.height).toBe(r2.height);expect(r1.height).toBe(55);expect(r1.planTop).toBe(r2.planTop);expect(r1.actualTop).toBe(r2.actualTop);expect(r1.actualBottom).toBe(r2.actualBottom);expect(r1.pinTop).toBeGreaterThanOrEqual(0);expect(r1.pinBottom!).toBeLessThan(r1.actualTop);return r1;};
+ const original=await verify();
+ for(const viewport of [page.viewportSize()!,{width:390,height:844}]){
+  await page.setViewportSize(viewport);await page.getByRole('button',{name:'适配全部',exact:true}).click();await verify();
+  expect(await surface.evaluate(e=>e.clientWidth<=innerWidth)).toBe(true);await page.screenshot({path:info.outputPath('milestone-fixed-'+viewport.width+'.png')});
+ }
+ reached=false;await page.reload();await expect(surface).toHaveAttribute('data-gantt-ready','true');await expect(surface.locator('.workspace-gantt-row.kind-requirement')).toHaveCount(2);await expect(surface.locator('.workspace-latest-milestone')).toHaveCount(0);
+ const refreshed=(await geometry()).r1;expect(refreshed.height).toBe(original.height);expect(refreshed.planTop).toBe(original.planTop);expect(refreshed.actualTop).toBe(original.actualTop);
 });
 
-test('密集达成标记合并名称但保留每个实际日期，已取消记录不显示', async ({ page }, info) => {
-  await mockGanttData(page); await page.emulateMedia({ reducedMotion: 'reduce' });
-  const reached = [
-    { ...milestone, targetDate: '2030-12-20', title: '很长的接口设计评审交付基线名称' },
-    { ...milestone, id: 'm2', title: 'MDS基线' },
-    { ...milestone, id: 'm3', title: '文档基线', achievedAt: '2026-09-04' },
-    { ...milestone, id: 'cancelled', title: '已取消发布', cancelled: true },
-  ];
-  await page.route('**/path-analysis*', route => route.fulfill({ json: { milestones: reached, nodes: [], edges: [] } }));
-  await page.goto('/'); const surface = page.locator('.project-gantt-scroll');
-  await expect(surface).toHaveAttribute('data-gantt-ready', 'true');
-  for (const width of [1280, 390]) {
-    await page.setViewportSize({ width, height: 844 });
-    for (const zoom of ['日', '周', '月']) {
-      await page.locator('[aria-label="时间粒度"]').getByRole('button', { name: zoom, exact: true }).click();
-      const rail = surface.locator('.gantt-milestone-rail.is-inline');
-      await expect(rail.locator('[data-milestone-id]')).toHaveCount(3);
-      await expect(rail.locator('[data-milestone-id="cancelled"], [data-milestone-actual]')).toHaveCount(0);
-      await expect(rail.locator('[data-milestone-id="m1"]')).toHaveAttribute('data-milestone-date', '2026-09-03');
-      const labels = await rail.locator('.gantt-milestone-label').evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().toJSON()));
-      for (let i = 1; i < labels.length; i++) expect(labels[i].x).toBeGreaterThanOrEqual(labels[i - 1].right);
-    }
+test('密集达成记录只显示最新日期，详情保留全部日期与取消状态',{tag:'@responsive'},async({page},info)=>{
+ await mockGanttData(page);await page.emulateMedia({reducedMotion:'reduce'});
+ const reached:PathMilestone[]=[{...milestone,title:'很长的接口设计评审交付基线名称',targetDate:'2030-12-20'}, {...milestone,id:'m2',title:'MDS基线'}, {...milestone,id:'m3',title:'文档基线',achievedAt:'2026-09-04'}, {...milestone,id:'cancelled',title:'已取消发布',achievedAt:'2026-09-05',cancelled:true}];
+ await mockGanttReport(page,()=>ganttRequirements,()=> '2026-09-18',()=>reached);
+ await page.goto('/execution');await page.getByRole('button',{name:'展开全部',exact:true}).click();const surface=page.locator('.workspace-gantt-scroll');
+ for(const viewport of [page.viewportSize()!,{width:390,height:844}]){
+  await page.setViewportSize(viewport);
+  for(const zoom of ['日','周','月']){
+   await page.locator('[aria-label="时间粒度"]').getByRole('button',{name:zoom,exact:true}).click();
+   const pin=surface.locator('.workspace-latest-milestone');await expect(pin).toHaveCount(1);await expect(pin).toHaveAttribute('data-milestone-id','m3');await expect(pin).toHaveAttribute('data-milestone-date','2026-09-04');
+   await pin.click();const details=page.getByRole('dialog',{name:'里程碑详情'});await expect(details.locator('.gantt-milestone-summary')).toHaveCount(4);
+   await expect(details).toContainText('很长的接口设计评审交付基线名称');await expect(details).toContainText('实际达成2026-09-03');await expect(details).toContainText('实际达成2026-09-04');
+   await expect(details.locator('.gantt-milestone-summary').filter({hasText:'已取消发布'})).toContainText('已取消');
+   const box=(await details.boundingBox())!;expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(viewport.width+1);expect(await details.evaluate(e=>e.scrollWidth<=e.clientWidth+1)).toBe(true);await page.keyboard.press('Escape');
   }
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.getByRole('button', { name: '适配全部', exact: true }).click();
-  const label = surface.locator('.gantt-milestone-label').first(); await expect(label).not.toContainText('已达成'); await expect(label).toContainText('项'); await label.click();
-  const details = page.getByRole('dialog', { name: '里程碑详情' });
-  await expect(details).toContainText('很长的接口设计评审交付基线名称'); await expect(details).not.toContainText('目标日期');
-  await expect(details).toContainText('实际达成2026-09-03'); await expect(details).not.toContainText('已取消发布');
-  await page.keyboard.press('Escape'); await surface.screenshot({ path: info.outputPath('milestone-grouped.png') });
+ }
+ await page.screenshot({path:info.outputPath('milestone-history.png')});
 });

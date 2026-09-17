@@ -20,12 +20,20 @@ function MilestoneSummary({ items, asOfDate }: { items: GanttMilestone[]; asOfDa
   </section>)}</>;
 }
 export function useMilestoneSelection(items: GanttMilestone[], asOfDate: string, onLocate?: (id: string) => void) {
-  const [open, setOpen] = useState<{ ids: string[]; x: number; y: number; trigger: HTMLElement } | null>(null);
+  const [open, setOpen] = useState<{ ids: string[]; x: number; y: number; trigger: HTMLElement; anchor: { left: number; top: number } } | null>(null);
   const panel = useRef<HTMLDivElement>(null), hover = useGanttTooltip();
   const close = () => { setOpen(null); hover.close(); };
   useEffect(() => {
     if (!open) return;
-    const outside = (e: Event) => { if (e.target instanceof Node && (panel.current?.contains(e.target) || open.trigger.contains(e.target))) return; setOpen(null); };
+    const outside = (e: Event) => {
+      if (e.target instanceof Node && (panel.current?.contains(e.target) || open.trigger.contains(e.target))) return;
+      // A queued scroll event can arrive after opening without moving the anchor.
+      if (e.type === 'scroll' && open.trigger.isConnected) {
+        const rect = open.trigger.getBoundingClientRect();
+        if (Math.abs(rect.left - open.anchor.left) < 0.5 && Math.abs(rect.top - open.anchor.top) < 0.5) return;
+      }
+      setOpen(null);
+    };
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(null); open.trigger.isConnected && open.trigger.focus({ preventScroll: true }); } };
     document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', key, true);
     window.addEventListener('scroll', outside, true); window.addEventListener('resize', outside);
@@ -38,7 +46,7 @@ export function useMilestoneSelection(items: GanttMilestone[], asOfDate: string,
       e.stopPropagation(); hover.close();
       if (open?.trigger === e.currentTarget) { setOpen(null); return; }
       const rect = e.currentTarget.getBoundingClientRect(), width = Math.min(320, window.innerWidth - 24), height = Math.min(340, window.innerHeight - 24);
-      setOpen({ ids: group.map(m => m.id), trigger: e.currentTarget, x: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)), y: Math.max(12, Math.min(rect.bottom + 8, window.innerHeight - height - 12)) });
+      setOpen({ ids: group.map(m => m.id), trigger: e.currentTarget, anchor: { left: rect.left, top: rect.top }, x: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)), y: Math.max(12, Math.min(rect.bottom + 8, window.innerHeight - height - 12)) });
     },
   });
   return { selected, bind, close, related: (id: string) => selected.some(m => m.relatedIds.includes(id)),
