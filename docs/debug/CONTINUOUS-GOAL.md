@@ -5,7 +5,7 @@
 ## 基线与恢复
 
 - 工作目录：D:\tools\project-manage-improve；分支 codex/continuous-improvement；起点 bd19fa1。
-- 当前产品提交 ca9de56。完整验收基线为 DU / ca9de56，覆盖 A—DT；DW修复专项通过（与本记录同提交）。
+- 当前产品提交 8cfc241。完整验收基线为 DU / ca9de56，覆盖 A—DT；DW在此之后通过专项验收。
 - 原目录 D:\tools\project-manage 的 dev 不改动。保留用户修改 skills/project-manage-intake/SKILL.md 和未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 使用独立构建、临时数据库和浏览器端口 3296；3210、3295 服务保持原样。未部署、未推送。
 - 证据保存在 .preview/qa/continuous-goal/，不进入版本库。当前无运行测试、无临时浏览器测试留在 tests/responsive。
@@ -34,7 +34,7 @@ git show fd512b7:docs/debug/CONTINUOUS-GOAL.md
 
 | DT / ca9de56 | 原文首行自动截成标题时去掉截断的高代理项，仍按现有200单元上限；完整原文保持 | intake-title-boundary-before.log复现界面和保存值均出现“�”；after.log共16项浏览器通过，含跨边界符号、恰好完整生僻字、普通边界及保存后原文核对；Lint/类型/测试构建通过，新增1项永久导入回归 |
 
-| DW / 本提交 | 特性资料与评估冲突核对按原基线合并未改字段，本地修改保留；确认未知写入已生效后清除已保存草稿，再编辑使用当前资料 | feature-conflict-before-confirmed.log复现范围/链接/预期/进展/判断被覆盖；feature-receipt-draft-before.log复现核对成功后带回旧内容。feature-conflict-final.log共13项，连续冲突、远端清空、刷新恢复、本地同字段改动、未知写入只提交一次后再次编辑、需求执行事实/Phase不变通过；Lint/类型/测试构建通过，新增3项永久恢复回归 |
+| DW / 8cfc241 | 特性资料与评估冲突核对按原基线合并未改字段，本地修改保留；确认未知写入已生效后清除已保存草稿，再编辑使用当前资料 | feature-conflict-before-confirmed.log复现范围/链接/预期/进展/判断被覆盖；feature-receipt-draft-before.log复现核对成功后带回旧内容。feature-conflict-final.log共13项，连续冲突、远端清空、刷新恢复、本地同字段改动、未知写入只提交一次后再次编辑、需求执行事实/Phase不变通过；Lint/类型/测试构建通过，新增3项永久恢复回归 |
 
 DU完整验收：969项业务（117文件）、8项性能、26项浏览器冒烟，运行时、428模块边界、Lint、类型、构建与预算均通过。主JS937.01KB、CSS342.24KB、ELK1595.33KB。stages-do-dt-verify.log首次有迁移测试启动超时（空输出），其余968项通过；单独重验通过，随后原4 worker业务全量与性能全部通过，未改超时或生产代码。证据另见stages-do-dt-transfer-recheck.log、stages-do-dt-business-recheck.log、stages-do-dt-smoke-build.log。该启动问题尚无稳定复现。
 
@@ -47,6 +47,7 @@ DU完整验收：969项业务（117文件）、8项性能、26项浏览器冒烟
 - DK：排序、移动撤销、版本/同级集合变化、筛选保护已有业务及真实浏览器覆盖。
 - DN：100特性、500 Phase、1000需求、10万进展读取中位177.03ms，20查询；最近三条、同时间顺序、取消/归档排除与空项目正确，读取无写入。feature-history-scale.*。
 - DQ：固定同一毫秒，正在写入时第二次备份409，成功后再次备份自动增加文件名毫秒；两份下载各有正确的数据与指纹，SQLite完整性/外键检查通过，下载不新增备份。backup-concurrency-probe.ts及backup-concurrency.log；无需修改。
+- DX：前端日期入口未发现UTC截断；todayIso/businessDateFromDateTime固定Asia/Shanghai，业务时钟每分钟及恢复焦点刷新；提测、纠错及图排期沿用统一日期，formatDate直接格式化纯日期。domain.test.ts已有午夜边界、format.test.ts已有日期显示覆盖；无需修改或重复测试。
 - DV：只读检查人员/归档/交付/工作区排序与进展倒序，均在复制、筛选、映射或本地分组数组上操作；Modal与GraphWorkspace已有isComposing和229保护。未发现需修改问题，不重复增加测试。
 - DR：原目录9个近期服务日志、205条记录无error/fatal，19条告警为登录/问题接口401及登录429；当前3210健康检查200。runtime-log-review.json；活跃文件首次普通只读共享冲突，改Get-Content共享读取成功。原目录仍仅两项用户改动，无需修改。
 
@@ -83,10 +84,10 @@ DU完整验收：969项业务（117文件）、8项性能、26项浏览器冒烟
 - DU首次全量迁移测试等待启动超时；单项与原并发全量重验均通过。保留证据，若再次出现再采集子进程启动时间；不直接放宽超时。
 - 无需用户决策，无外部阻塞。
 
-## 当前阶段 DX：日期默认值与业务日期
+## 当前阶段 DY：较多关联资料的阅读与编辑
 
-范围：检查前端创建、编辑和显示日期时的时间来源，避免UTC截断或浏览器时区让默认日期落到前一天。已有DF服务器跨午夜和CV提测日期规则不重复修改。
+范围：20个关联链接达到现有上限，长名称/长URL，检查特性概况的展开入口、完整资料页、编辑和删除补充；覆盖1280/390px。
 
-验收：定位各日期入口的实际转换；只有发现具体不一致才复现与修改。现有业务日期和合法日期范围保持。
+验收：完整链接可找到并打开正确地址，详情与编辑无不可达字段或横向裁切；20项禁止继续新增，删除一项后可补充并保存，其他业务事实不变。低影响检查使用临时探针。
 
-恢复状态：DW两处数据保护修复及3项永久浏览器回归通过13项专项；无运行测试，准备检查前端统一日期函数。
+恢复状态：无运行测试；DW已提交8cfc241。DX检查无需修改，正在准备关联资料浏览器验证。
