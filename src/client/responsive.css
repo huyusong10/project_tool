@@ -677,6 +677,9 @@ textarea {
   .project-member-action { grid-column: 2; grid-row: 2 / span 2; align-self: end; }
   .member-picker-role { grid-template-columns: 1fr; }
   .my-work-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .my-work-summary article { grid-template-columns: 34px minmax(0,1fr); gap: 4px 8px; }
+  .my-work-summary span { white-space: nowrap; }
+  .my-work-summary strong { grid-column: 1 / -1; }
   .my-work-items > article { grid-template-columns: 1fr; }
   .my-work-dates, .my-work-actions { grid-column: 1; }
   .project-permission-list { grid-template-columns: 1fr; }
