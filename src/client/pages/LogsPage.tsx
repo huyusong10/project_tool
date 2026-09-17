@@ -25,7 +25,7 @@ const auditActionLabels: Record<string, string> = {
   reset_password: "重置密码", change_password: "修改密码", import: "导入",
 };
 const auditEntityLabels: Record<string, string> = {
-  feature: "特性", feature_relation: "特性规划关系", project: "项目", requirement: "需求", work_item: "工作项", progress: "进展",
+  feature: "特性", feature_phase: "Phase", feature_relation: "特性规划关系", project: "项目", requirement: "需求", work_item: "工作项", progress: "进展",
   issue: "问题", issue_update: "问题进展", person: "人员", account: "账号", template: "流程设计", api_token: "MCP Token", backup: "数据库备份", system_branding: "系统品牌",
 };
 
@@ -74,13 +74,17 @@ export function LogsPage() {
       <section className="panel audit-panel audit-page-panel paged-panel">
         <header><div><h2>写入记录</h2><p>共 {data?.total || 0} 条，按时间倒序</p></div><Button variant="secondary" type="button" className="ghost-button" disabled={isFetching} onClick={refetch}>刷新</Button></header>
         <div className="audit-table paged-body" ref={pagination.scrollRef}>
-          <div className="audit-head"><span>时间</span><span>来源</span><span>对象</span><span>动作</span><span>内容</span></div>
+          <div className="audit-head"><span>时间（北京时间）</span><span>来源</span><span>对象</span><span>动作</span><span>内容</span></div>
           {data?.items.map((item) => <div key={item.id}>
-            <span>{new Date(item.createdAt).toLocaleString("zh-CN")}</span>
+            <span>{new Date(item.createdAt).toLocaleString("zh-CN", { timeZone: 'Asia/Shanghai' })}</span>
             <span title={item.actorType === "token" && item.tokenName ? `MCP Token：${item.tokenName}` : undefined}>{item.actorName || "已删除用户"}{item.actorType === "token" && ` · MCP${item.tokenName ? `（${item.tokenName}）` : ""}`}</span>
             <span>{auditEntityLabels[item.entityType] || item.entityType}</span>
             <span>{auditActionLabels[item.action] || item.action}</span>
-            <span title={item.entityId || undefined}>{item.summary}</span>
+            <details className="audit-content">
+              <summary title="展开或收起操作内容">{item.summary}</summary>
+              <p>{item.summary}</p>
+              {item.entityId && <small>对象 ID：{item.entityId}</small>}
+            </details>
           </div>)}
           {listUnavailable
             ? <EmptyState title="操作日志加载失败" detail={error?.message || "暂时无法读取操作日志。"} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} />
