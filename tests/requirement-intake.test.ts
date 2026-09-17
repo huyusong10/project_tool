@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import { beforeAll, afterAll, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -82,7 +83,7 @@ it('最终事务失败时导入的需求、条款、依赖和回执全部回滚'
 });
 it('MCP 与 REST 使用同一导入契约、预览结果及回执',async()=>{
   const p=await project(),token=(await post('/api/tokens',{name:'导入测试',expiresInDays:1})).json().token;
-  const address=await app.listen({host:'127.0.0.1',port:0});
+  const address=await listenTestApp(app);
   const call=async(name:string,args:Record<string,unknown>)=>{
     const r=await mcpRequest(address,token,name,args);expect(r.statusCode,r.body).toBe(200);
     const body=JSON.parse(r.body.startsWith('event:')?r.body.split('\n').find(l=>l.startsWith('data: '))!.slice(6):r.body);

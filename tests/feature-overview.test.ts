@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -93,7 +94,7 @@ it('项目成员只读、经理可编辑，跨项目和失效账号被拒绝',as
 });
 it('MCP 和 REST 共用总体进展读写与校验，项目刷新版本随评估变更',async()=>{
   const {projectId,group}=await fixture();const token=(await request('POST','/api/tokens',{name:'总体进展测试',expiresInDays:1})).json().token;
-  const address=await app.listen({host:'127.0.0.1',port:0});
+  const address=await listenTestApp(app);
   const call=async(name:string,args:Record<string,unknown>)=>{
     const response=await mcpRequest(address,token,name,args);expect(response.statusCode,response.body).toBe(200);
     const body=JSON.parse(response.body.startsWith('event:')?response.body.split('\n').find(line=>line.startsWith('data: '))!.slice(6):response.body);

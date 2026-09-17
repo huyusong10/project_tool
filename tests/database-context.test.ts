@@ -7,7 +7,7 @@ import { expect, it } from 'vitest';
 import { config } from '../src/server/config';
 import { openDatabase } from '../src/server/database';
 import { getDatabaseContext, runWithDatabase } from '../src/server/database-context';
-import { buildApp } from '../src/server/app';
+import { createTestApp } from './support/test-app';
 import { listProjects } from '../src/server/services/projects';
 
 it('导入服务和数据库工厂不打开数据库，失败初始化关闭连接', async () => {
@@ -24,12 +24,8 @@ it('导入服务和数据库工厂不打开数据库，失败初始化关闭连�
 });
 
 it('两个应用显式注入不同数据库，异步请求与业务查询不串库', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-context-'));
-  const contexts = await Promise.all(['left', 'right'].map(name => openDatabase({
-    ...config, dbPath: path.join(dir, `${name}.db`), backupDir: path.join(dir, name),
-    seedDemo: false, appPasswordHash: 'scrypt$context$00',
-  })));
-  const apps = await Promise.all(contexts.map(context => buildApp(undefined, context)));
+  const fixtures = await Promise.all([createTestApp(), createTestApp()]);
+  const contexts = fixtures.map(fixture => fixture.context), apps = fixtures.map(fixture => fixture.app);
   try {
     contexts.forEach((context, index) => context.sqlite.prepare(
       'INSERT INTO projects(id,name,guest_visible,created_at,updated_at) VALUES(?,?,1,?,?)',
@@ -46,8 +42,6 @@ it('两个应用显式注入不同数据库，异步请求与业务查询不串�
       expect(response.json<Array<{id: string; name: string}>>().find(project => project.id === 'isolated')?.name).toBe(`project-${index}`);
     });
   } finally {
-    await Promise.all(apps.map(app => app.close()));
-    contexts.forEach(context => context.close());
-    fs.rmSync(dir, { recursive: true, force: true });
+    await Promise.all(fixtures.map(fixture => fixture.close()));
   }
 });

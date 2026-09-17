@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import http from 'node:http';
 import { performance } from 'node:perf_hooks';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
@@ -89,7 +90,7 @@ it('真实连接中断只记录一条 WARN，不误记成功', async () => {
   app.get('/stream', (_request, reply) => {
     reply.hijack(); reply.raw.writeHead(200); reply.raw.write('waiting'); entered();
   });
-  const origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  const origin = await listenTestApp(app);
   const req = http.get(origin + '/stream'); req.on('error', () => {});
   await pending; req.destroy();
   await vi.waitFor(() => expect(log.records()).toHaveLength(1));

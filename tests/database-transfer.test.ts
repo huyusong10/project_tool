@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -167,7 +168,7 @@ it('安全备份失败或确认指纹过期时不切换数据库', async () => {
 });
 
 it('真实 HTTP 分块上传超限返回 413；客户端断开后能继续维护数据库', async () => {
-  const address = await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = await listenTestApp(app);
   const url = `${address}/api/backups/import?filename=stream.db`;
   const status = await new Promise<number>((resolve, reject) => {
     const request = http.request(url, { method: 'POST', headers: { cookie, 'content-type': 'application/octet-stream' } }, (response) => {

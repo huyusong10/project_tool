@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -24,7 +25,7 @@ beforeAll(async()=>{
  app=await(await import('../src/server/app')).buildApp();await app.ready();
  const login=await request('POST','/api/login',{username:'admin',password});
  cookie=String(login.headers['set-cookie']).split(';')[0];
- origin=await app.listen({host:'127.0.0.1',port:0});
+ origin=await listenTestApp(app);
  token=(await request('POST','/api/tokens',{name:'契约回归'})).json().token;
 });
 afterAll(async()=>{await app.close();(await import('./support/database')).sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});

@@ -6,16 +6,16 @@ import { assertProjectReadable, requireAuthorizationActor } from '../authorizati
 import { getDatabaseContext } from '../database-context';
 import { phaseRequirementFacts, readFeaturePhases } from './feature-phases';
 import { readFeatures } from './features';
-import { listRequirements } from './requirements';
+import { listRequirements, type RequirementRecord } from './requirements';
 
 export function getFeatureOverview(projectId: string, actor: Actor, asOfDate = todayIso(), state: 'active'|'archived'|'all' = 'active') {
   assertProjectReadable(requireAuthorizationActor(actor), projectId);
   return readFeatureOverview(projectId,asOfDate,state);
 }
 
-export function readFeatureOverview(projectId:string,asOfDate=todayIso(),state:'active'|'archived'|'all'='active') {
+export function readFeatureOverview(projectId:string,asOfDate=todayIso(),state:'active'|'archived'|'all'='active',requirements?:RequirementRecord[]) {
   return getDatabaseContext().sqlite.transaction(() => {
-    const report = summarizeFeatureOverview(readFeatures(projectId,state), listRequirements({ projectId }, asOfDate), asOfDate);
+    const report = summarizeFeatureOverview(readFeatures(projectId,state), requirements ?? listRequirements({ projectId }, asOfDate), asOfDate);
     const updates = getDatabaseContext().sqlite.prepare(`SELECT id,featureId,requirementId,requirementTitle,content,createdAt FROM (
       SELECT u.id,r.feature_id AS featureId,r.id AS requirementId,r.title AS requirementTitle,u.content,u.created_at AS createdAt,
         ROW_NUMBER() OVER (PARTITION BY r.feature_id ORDER BY u.created_at DESC,u.rowid DESC) AS rank

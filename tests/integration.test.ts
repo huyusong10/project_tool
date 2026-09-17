@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -40,7 +41,7 @@ beforeAll(async () => {
   const module = await import('../src/server/app');
   app = await module.buildApp();
   await app.ready();
-  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  origin = await listenTestApp(app);
 });
 
 afterAll(async () => {

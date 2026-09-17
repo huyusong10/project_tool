@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -12,7 +13,7 @@ const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-phases-')), password
 Object.assign(process.env, { DB_PATH: path.join(directory, 'test.db'), BACKUP_DIR: path.join(directory, 'backups'), WEB_DIST_DIR: path.join(directory, 'web'), SEED_DEMO: '0', NODE_ENV: 'test', APP_PASSWORD_HASH: 'scrypt$phases$' + scryptSync(password, 'phases', 64).toString('hex'), SESSION_SECRET: 'phases-isolated-secret-more-than-thirty-two-characters' });
 let app: FastifyInstance, cookie = '', address = '';
 const req = (method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?: unknown, auth = cookie) => app.inject({ method, url, headers: { cookie: auth }, payload: payload as Record<string, unknown> });
-beforeAll(async () => { app = await (await import('../src/server/app')).buildApp(); await app.ready(); const login = await req('POST', '/api/login', { username: 'admin', password }, ''); cookie = String(login.headers['set-cookie']).split(';')[0]; address = await app.listen({ host: '127.0.0.1', port: 0 }); });
+beforeAll(async () => { app = await (await import('../src/server/app')).buildApp(); await app.ready(); const login = await req('POST', '/api/login', { username: 'admin', password }, ''); cookie = String(login.headers['set-cookie']).split(';')[0]; address = await listenTestApp(app); });
 afterAll(async () => { await app.close(); (await import('./support/database')).sqlite.close(); fs.rmSync(directory, { recursive: true, force: true }); });
 async function fixture() {
   const p = (await req('POST', '/api/projects', { name: 'Phase 验证 ' + randomUUID() })).json();

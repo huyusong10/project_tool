@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -104,7 +105,7 @@ async function fixture(legacy=false){
 }
 async function add(projectId:string,sourceRequirementId:string,sourceWorkItemId:string|null,targetRequirementId:string,targetWorkItemId:string|null,revision?:number){return post(`/api/projects/${projectId}/dependencies`,{sourceRequirementId,sourceWorkItemId,targetRequirementId,targetWorkItemId,expectedRevision:revision??(await analysis(projectId)).revision});}
 async function mcp(name:string,args:Record<string,unknown>){const result=await fetch(`${origin}/mcp`,{method:'POST',headers:{authorization:`Bearer ${token}`,accept:'application/json, text/event-stream','content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})});const body=await result.json();return body.result.structuredContent;}
-beforeAll(async()=>{app=await(await import('../src/server/app')).buildApp();origin=await app.listen({host:'127.0.0.1',port:0});const login=await request('POST','/api/login',{username:'admin',password},'');cookie=String(login.headers['set-cookie']).split(';')[0];token=(await post('/api/tokens',{name:'路径验证'})).json().token;});
+beforeAll(async()=>{app=await(await import('../src/server/app')).buildApp();origin=await listenTestApp(app);const login=await request('POST','/api/login',{username:'admin',password},'');cookie=String(login.headers['set-cookie']).split(';')[0];token=(await post('/api/tokens',{name:'路径验证'})).json().token;});
 afterAll(async()=>{vi.useRealTimers();await app.close();const{sqlite}=await import('./support/database');if(sqlite.open)sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
 it('排期编辑贯通存储、进度、拓扑和查询；估算单独修改且不重写实际历史', async () => {
  const {projectId,a,owner}=await fixture();
@@ -195,7 +196,7 @@ it('未登录、跨项目、普通成员和需求负责人权限由服务端裁�
  const internal=await request('POST',`/api/projects/${f.projectId}/dependencies`,{...body,targetRequirementId:f.a.id,targetWorkItemId:f.a.workItems[2].id},ownerCookie);expect(internal.statusCode,internal.body).toBe(200);
 });
 it('重新启动不会重复迁移或关系，历史日期不变',async()=>{
- const f=await fixture();const before=await analysis(f.projectId),workBefore=(await detail(f.a.id)).workItems;await app.close();app=await(await import('../src/server/app')).buildApp();origin=await app.listen({host:'127.0.0.1',port:0});
+ const f=await fixture();const before=await analysis(f.projectId),workBefore=(await detail(f.a.id)).workItems;await app.close();app=await(await import('../src/server/app')).buildApp();origin=await listenTestApp(app);
  expect((await analysis(f.projectId)).dependencies).toEqual(before.dependencies);expect((await detail(f.a.id)).workItems).toEqual(workBefore);
 });
 

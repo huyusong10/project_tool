@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import { afterAll,beforeAll,expect,it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -12,7 +13,7 @@ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'pm-features-')),password='
 Object.assign(process.env,{DB_PATH:path.join(directory,'test.db'),BACKUP_DIR:path.join(directory,'backups'),WEB_DIST_DIR:path.join(directory,'web'),SEED_DEMO:'0',NODE_ENV:'test',APP_PASSWORD_HASH:'scrypt$features$'+scryptSync(password,'features',64).toString('hex'),SESSION_SECRET:'feature-planning-isolated-test-secret-123456789'});
 let app:FastifyInstance,cookie='',address='';
 const request=(method:'GET'|'POST'|'DELETE'|'PUT',url:string,payload?:unknown,auth=cookie)=>app.inject({method,url,headers:{cookie:auth},payload:payload as Record<string,unknown>});
-beforeAll(async()=>{app=await(await import('../src/server/app')).buildApp();await app.ready();const login=await request('POST','/api/login',{username:'admin',password},'');cookie=String(login.headers['set-cookie']).split(';')[0];address=await app.listen({host:'127.0.0.1',port:0});});
+beforeAll(async()=>{app=await(await import('../src/server/app')).buildApp();await app.ready();const login=await request('POST','/api/login',{username:'admin',password},'');cookie=String(login.headers['set-cookie']).split(';')[0];address=await listenTestApp(app);});
 afterAll(async()=>{await app.close();(await import('./support/database')).sqlite.close();expect(path.resolve(directory).startsWith(path.resolve(os.tmpdir())+path.sep)).toBe(true);fs.rmSync(directory,{recursive:true,force:true});});
 async function fixture(){const p=(await request('POST','/api/projects',{name:'特性规划 '+randomUUID()})).json<{id:string}>();const base='/api/projects/'+p.id;const create=async(name:string)=>(await request('POST',base+'/features',{name,sortOrder:999})).json<IntakeCatalog>().features.find(g=>g.name===name)!;return {id:p.id,base,a:await create('基础授权'),b:await create('协作权限'),create};}
 async function features(base:string){return (await request('GET',base+'/features?state=all')).json<Feature[]>();}

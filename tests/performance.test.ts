@@ -1,16 +1,12 @@
-import fs from 'node:fs';
-import path from 'node:path';
+import { createTestDatabase } from './support/test-app';
+import { profileQueries } from './support/query-profile';
+import { measureScenario, writePerformanceReport } from './support/performance';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { defaultAnalyticsLayout, type AnalyticsQueryResponse } from '../src/shared/analytics';
 import type { AuthorizationActor } from '../src/server/authorization';
 
-const dbPath = path.join(process.cwd(), 'data', `performance-${randomUUID()}.db`);
-process.env.DB_PATH = dbPath;
-process.env.BACKUP_DIR = path.join(process.cwd(), 'data', `performance-backups-${randomUUID()}`);
-process.env.SEED_DEMO = '0';
-process.env.APP_PASSWORD_HASH = 'scrypt$test$00';
-process.env.SESSION_SECRET = 'performance-test-session-secret-more-than-32-chars';
+let fixture: Awaited<ReturnType<typeof createTestDatabase>>;
 
 let sqlite: import('better-sqlite3').Database;
 let getDashboard: (projectId?: string) => unknown;
@@ -22,13 +18,18 @@ let listActionItems: typeof import('../src/server/services/actions').listActionI
 let projectId = '';
 
 beforeAll(async () => {
-  const database = await import('./support/database');
-  sqlite = database.sqlite;
-  ({ getDashboard, getPeopleConcurrency } = await import('../src/server/services'));
-  ({ listRequirements } = await import('../src/server/services/requirements'));
-  ({ getCancellationHistory } = await import('../src/server/services/work-item-history'));
-  ({ queryAnalytics } = await import('../src/server/analytics'));
-  ({ listActionItems } = await import('../src/server/services/actions'));
+  fixture=await createTestDatabase();sqlite=fixture.context.sqlite;
+  const reporting=await import('../src/server/services/reporting');
+  const requirements=await import('../src/server/services/requirements');
+  const history=await import('../src/server/services/work-item-history');
+  const analytics=await import('../src/server/analytics');
+  const actions=await import('../src/server/services/actions');
+  getDashboard=(id)=>fixture.run(()=>reporting.getDashboard(id));
+  getPeopleConcurrency=(filters)=>fixture.run(()=>reporting.getPeopleConcurrency(filters));
+  listRequirements=(...args)=>fixture.run(()=>requirements.listRequirements(...args));
+  getCancellationHistory=(...args)=>fixture.run(()=>history.getCancellationHistory(...args));
+  queryAnalytics=(input)=>fixture.run(()=>analytics.queryAnalytics(input));
+  listActionItems=(...args)=>fixture.run(()=>actions.listActionItems(...args));
   projectId = randomUUID();
   const now = new Date().toISOString();
   sqlite.prepare('INSERT INTO projects (id,name,status,created_at,updated_at) VALUES (?, ?, ?, ?, ?)').run(projectId, '性能测试项目', 'active', now, now);
@@ -55,14 +56,14 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-  if (sqlite.open) sqlite.close();
-  for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${dbPath}${suffix}`, { force: true });
-  fs.rmSync(process.env.BACKUP_DIR!, { recursive: true, force: true });
+  writePerformanceReport();
+  fixture?.close();
 });
 
-describe('看板性能', () => {
-  it('5000条问题的后台版本检查只读且p95低于500毫秒',async()=>{
-    const {projectChangeVersion}=await import('../src/server/services/project-change-version');
+describe('看板性能', {timeout: 30000}, () => {
+  it('5000条问题的后台版本检查只读且全部样本低于500毫秒',async()=>{
+    const {projectChangeVersion:readVersion}=await import('../src/server/services/project-change-version');
+    const projectChangeVersion=(...args:Parameters<typeof readVersion>)=>fixture.run(()=>readVersion(...args));
     const id=randomUUID(),now=new Date().toISOString();
     sqlite.transaction(()=>{
       sqlite.prepare('INSERT INTO projects(id,name,created_at,updated_at)VALUES(?,?,?,?)').run(id,'后台检查性能',now,now);
@@ -71,45 +72,34 @@ describe('看板性能', () => {
       for(let i=0;i<5000;i++)insert.run(randomUUID(),id,'问题'+i,now,now);
     })();
     const actor:AuthorizationActor={type:'user',id:'version-bench-admin',label:'version-bench-admin',accountId:'version-bench-admin',personId:null,globalRole:'admin'};
-    const before=sqlite.prepare('SELECT total_changes() AS n').get(),times:number[]=[],baseline=projectChangeVersion(id,actor);
-    for(let i=0;i<20;i++){const start=performance.now();expect(projectChangeVersion(id,actor)).toEqual(baseline);times.push(performance.now()-start);}
-    const p95=times.sort((a,b)=>a-b)[18];expect(p95).toBeLessThan(500);expect(sqlite.prepare('SELECT total_changes() AS n').get()).toEqual(before);
-    console.info('project-refresh-performance',JSON.stringify({issues:5000,samples:20,p95Ms:+p95.toFixed(1)}));
+    const before=sqlite.prepare('SELECT total_changes() AS n').get(),baseline=projectChangeVersion(id,actor);
+    measureScenario('project-refresh-5000-issues',500,()=>projectChangeVersion(id,actor),result=>expect(result).toEqual(baseline));
+    expect(sqlite.prepare('SELECT total_changes() AS n').get()).toEqual(before);
   });
   it('500个需求和5000个工作项在2秒内完成统计', () => {
-    const start = performance.now();
-    const result = getDashboard(projectId) as { summary: { total: number } };
-    const elapsed = performance.now() - start;
-    expect(result.summary.total).toBe(500);
-    expect(elapsed).toBeLessThan(2000);
+    measureScenario('dashboard-500-requirements-5000-work',2000,()=>getDashboard(projectId) as {summary:{total:number}},result=>expect(result.summary.total).toBe(500));
+  });
+
+  it('看板与特性摘要复用需求批次，并记录 SQL 时间和查询计划',()=>{
+    const {queries}=profileQueries(sqlite,()=>getDashboard(projectId));
+    expect(queries.filter(query=>query.sql.includes(' AS pathEnabled'))).toHaveLength(1);
+    expect(queries.every(query=>query.plan.length>0)).toBe(true);
   });
 
   it('单周人员并发热力图在2秒内完成统计', () => {
-    const start = performance.now();
-    const result = getPeopleConcurrency({ projectId }) as { people: unknown[] };
-    const elapsed = performance.now() - start;
-    expect(result.people).toHaveLength(50);
-    expect(elapsed).toBeLessThan(2000);
+    measureScenario('people-week-50',2000,()=>getPeopleConcurrency({projectId}) as {people:unknown[]},result=>expect(result.people).toHaveLength(50));
   });
 
   it('默认分析看板批量查询在2秒内完成且24面板在3秒内完成', () => {
     const query = (panels: typeof defaultAnalyticsLayout.panels) => queryAnalytics({
       projectId, range: { from: '2026-06-01', to: '2026-12-01' }, panels,
     });
-    let start = performance.now();
-    const defaults = query(defaultAnalyticsLayout.panels);
-    const defaultElapsed = performance.now() - start;
-    expect(defaults.results).toHaveLength(defaultAnalyticsLayout.panels.length);
-    expect(defaultElapsed).toBeLessThan(2000);
+    measureScenario('analytics-default',2000,()=>query(defaultAnalyticsLayout.panels),result=>expect(result.results).toHaveLength(defaultAnalyticsLayout.panels.length));
 
     const panels = Array.from({ length: 24 }, (_, index) => ({
       ...defaultAnalyticsLayout.panels[index % defaultAnalyticsLayout.panels.length], id: `performance-panel-${index}`,
     }));
-    start = performance.now();
-    const maximum = query(panels);
-    const maximumElapsed = performance.now() - start;
-    expect(maximum.results).toHaveLength(24);
-    expect(maximumElapsed).toBeLessThan(3000);
+    measureScenario('analytics-24-panels',3000,()=>query(panels),result=>expect(result.results).toHaveLength(24));
   });
 
   it('人员峰值按每个面板的时间策略独立取数', () => {
@@ -143,13 +133,10 @@ describe('看板性能', () => {
       return originalPrepare(...args);
     }) as typeof sqlite.prepare;
     try {
-      const start = performance.now();
-      const result = listActionItems({ projectId, pageSize: 100 }, actor);
-      const elapsed = performance.now() - start;
-      expect(result.total).toBeGreaterThan(0);
-      expect(elapsed).toBeLessThan(2000);
-      // Complete network/history plus one latest-scope read; independent of node count.
-      expect(prepareCount).toBeLessThanOrEqual(15);
+      measureScenario('actions-500-requirements',2000,()=>{prepareCount=0;return listActionItems({projectId,pageSize:100},actor);},result=>{
+        expect(result.total).toBeGreaterThan(0);
+        expect(prepareCount).toBeLessThanOrEqual(15);
+      });
     } finally {
       sqlite.prepare = originalPrepare as typeof sqlite.prepare;
     }

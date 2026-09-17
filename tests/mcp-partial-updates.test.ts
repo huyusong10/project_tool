@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -15,7 +16,7 @@ Object.assign(process.env,{DB_PATH:path.join(directory,'test.db'),BACKUP_DIR:pat
 let app:FastifyInstance,origin:string,cookie:string,token:string;
 beforeAll(async()=>{
   app=await(await import('../src/server/app')).buildApp();
-  origin=await app.listen({host:'127.0.0.1',port:0});
+  origin=await listenTestApp(app);
   const login=await app.inject({method:'POST',url:'/api/login',payload:{username:'admin',password}});
   cookie=String(login.headers['set-cookie']).split(';')[0];
   token=(await post('/api/tokens',{name:'partial updates'})).token;

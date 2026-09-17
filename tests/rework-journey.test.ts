@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -29,7 +30,7 @@ const command = async (id: string, action: string, payload: Record<string, unkno
 
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
-  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  origin = await listenTestApp(app);
   const login = await post('/api/login', { username: 'admin', password });
   expect(login.statusCode, login.body).toBe(200);
   cookie = String(login.headers['set-cookie']).split(';')[0];

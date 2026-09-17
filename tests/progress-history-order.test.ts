@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -48,7 +49,7 @@ async function read<T>(protocol: 'REST' | 'MCP', url: string, tool: string, args
 
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
-  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  origin = await listenTestApp(app);
   adminCookie = cookieOf(await post('/api/login', { username: 'admin', password }));
   projectId = (await post('/api/projects', { name: '历史排序验证' })).json().id;
   const person = (await post('/api/people', { projectId, name: '历史排序成员' })).json();

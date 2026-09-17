@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import {mcpRequest} from './mcp-request';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -43,7 +44,7 @@ async function remove(protocol: 'REST' | 'MCP', id: string, expectedVersion: num
 }
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
-  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  origin = await listenTestApp(app);
   const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password } });
   expect(login.statusCode, login.body).toBe(200);
   cookie = String(login.headers['set-cookie']).split(';')[0];

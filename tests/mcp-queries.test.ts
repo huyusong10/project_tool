@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -45,7 +46,7 @@ async function get<T>(url: string, auth = cookie): Promise<T> {
 }
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
-  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  origin = await listenTestApp(app);
   const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password } });
   cookie = String(login.headers['set-cookie']).split(';')[0];
   token = (await post('/api/tokens', { name: 'MCP查询验证' })).token;

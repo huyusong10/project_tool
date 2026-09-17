@@ -161,7 +161,7 @@ function readDashboard(projectId?:string,asOfDate=todayIso()) {
     asOfDate,
     summary: { total: requirements.length, active, completed, delayed, highRisk, completionRate },
     overview: dashboardOverview(requirements, asOfDate),
-    ...(projectId?{featureOverview:readFeatureOverview(projectId,asOfDate,'all')}:{}),
+    ...(projectId?{featureOverview:readFeatureOverview(projectId,asOfDate,'all',requirements)}:{}),
     requirements: dashboardRequirements,
     issues: { summary: issuePage.summary, attention },
     charts: { statuses, risks, weeks, varianceTop },

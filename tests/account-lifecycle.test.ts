@@ -1,3 +1,4 @@
+import {listenTestApp} from './support/listen';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -50,7 +51,7 @@ async function createIdentity() {
 
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
-  testOrigin = await app.listen({ host: '127.0.0.1', port: 0 });
+  testOrigin = await listenTestApp(app);
   const admin = await login('admin', adminPassword);
   expect(admin.statusCode, admin.body).toBe(200);
   adminCookie = cookieOf(admin);
