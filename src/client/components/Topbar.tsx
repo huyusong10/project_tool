@@ -33,7 +33,7 @@ function ProjectSwitcher({ ready }: { ready: boolean }) {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('.project-switcher-menu [aria-selected="true"]')?.focus()); }
       }}>
         <span className="project-dot" />
-        <span className="project-switcher-name">{selected?.name || '选择项目'}</span>
+        <span className="project-switcher-name" title={selected?.name}>{selected?.name || '选择项目'}</span>
         {selected?.isSample && <span className="sample-project-badge">样板</span>}
         <ChevronDown className={open ? "is-open" : ""} size={15} />
       </button>
@@ -45,7 +45,7 @@ function ProjectSwitcher({ ready }: { ready: boolean }) {
           const next = event.key === 'ArrowDown' ? (index + 1) % items.length : event.key === 'ArrowUp' ? (index + items.length - 1) % items.length : event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : null;
           if (next !== null) { event.preventDefault(); items[next]?.focus(); }
         }} onBlur={event => { if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget) && !buttonRef.current?.contains(event.relatedTarget)) setOpen(false); }}>
-          {projects.map((project) => <button type="button" role="option" aria-selected={project.id === selectedProjectId} key={project.id} onClick={() => { changeProject(project.id); setOpen(false); }}>
+          {projects.map((project) => <button type="button" role="option" title={project.name} aria-selected={project.id === selectedProjectId} key={project.id} onClick={() => { changeProject(project.id); setOpen(false); }}>
             <span className="project-switcher-option"><span>{project.name}</span>{project.isSample && <em className="sample-project-badge">样板</em>}</span>
             {project.id === selectedProjectId && <Check size={15} />}
           </button>)}

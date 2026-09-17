@@ -31,7 +31,7 @@ body:has(.app-shell[data-immersive=true]){overflow:hidden}
 .project-switcher-name{flex:1;min-width:0;text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .project-switcher-button svg{color:var(--text-faint)}
 .project-switcher-button svg.is-open{transform:rotate(180deg)}
-.project-switcher-menu{display:grid;gap:4px}
+.project-switcher-menu{display:grid;grid-template-columns:minmax(0,1fr);gap:4px}
 .project-switcher-menu button{width:100%;min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 10px;border:0;border-radius:var(--radius-sm);color:var(--text-secondary);background:transparent;text-align:left}
 .project-switcher-menu button:hover,.project-switcher-menu button[aria-selected=true]{color:var(--accent-ink);background:var(--accent-soft)}
 .project-switcher-option{min-width:0;display:flex;align-items:center;gap:7px}
