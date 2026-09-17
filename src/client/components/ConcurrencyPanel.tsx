@@ -101,7 +101,7 @@ export function ConcurrencyPanel() {
     const observer = new ResizeObserver(updateWidth);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [analysisUnavailable]);
   useEffect(() => {
     matrixScrollRef.current?.scrollTo({ left: 0 });
   }, [firstDate, jobTitle, personId]);
@@ -116,7 +116,7 @@ export function ConcurrencyPanel() {
     {analysis.error && analysis.data && <div className="warning-banner">人力分析刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={analysis.isFetching} onClick={() => void analysis.refetch()}>重新加载</Button></div>}
     {currentTop.length > 0 && <section className="human-leaders" aria-label="今日工作最多人员">
       <strong>今日工作较多</strong>
-      <div>{currentTop.map((person) => <article key={person.id}><span className="person-avatar">{person.name.slice(-1)}</span><div><b>{person.name}</b><small>{person.jobTitle || "岗位未设置"}{person.externalCurrentCount ? ` · 外部${person.externalCurrentCount}项` : ""}</small></div><em className={`load-${Math.min(person.currentCount, 3)}`}>{person.currentCount}项</em></article>)}</div>
+      <div tabIndex={0}>{currentTop.map((person) => <article key={person.id}><span className="person-avatar">{person.name.slice(-1)}</span><div><b title={person.name}>{person.name}</b><small title={person.jobTitle || "岗位未设置"}>{person.jobTitle || "岗位未设置"}{person.externalCurrentCount ? ` · 外部${person.externalCurrentCount}项` : ""}</small></div><em className={`load-${Math.min(person.currentCount, 3)}`}>{person.currentCount}项</em></article>)}</div>
     </section>}
     <div className="human-matrix-frame">
       <header className="human-matrix-heading">
