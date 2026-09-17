@@ -127,8 +127,12 @@ export function listActionItems(
     WHERE r.project_id=? AND r.deleted_at IS NULL AND r.status NOT IN ('completed','cancelled')
       AND w.status NOT IN ('completed','cancelled')`, personId, personId, filters.projectId);
   const workById=new Map(workItems.map(w=>[w.id,w]));
+  const participatingRequirementIds = new Set<string>();
   for (const workItem of workItems) {
-    if (!manager && workItem.requirementOwnerId !== personId && workItem.ownerId !== personId && !workItem.actorCollaborator&&pathNodes.get(workItem.id)?.blockerCoordination?.coordinatorId!==personId) continue;
+    const participates = workItem.ownerId === personId || workItem.actorCollaborator
+      || pathNodes.get(workItem.id)?.blockerCoordination?.coordinatorId === personId;
+    if (participates) participatingRequirementIds.add(workItem.requirementId);
+    if (!manager && workItem.requirementOwnerId !== personId && !participates) continue;
     const reasonCodes = deriveWorkItemActionReasons(workItem);
     const pathBlocker=pathBlockers.get(workItem.id);
     if(pathBlocker)reasonCodes.push('path_blocked');
@@ -166,7 +170,7 @@ export function listActionItems(
     }));
   }
 
-  const visibleIds=new Set(requirements.filter(r=>manager||r.ownerId===personId||r.acceptanceOwnerValid&&r.acceptanceOwnerId===personId||r.blockerCoordination?.coordinatorId===personId||workItems.some(w=>w.requirementId===r.id&&(w.ownerId===personId||w.actorCollaborator||pathNodes.get(w.id)?.blockerCoordination?.coordinatorId===personId))).map(r=>r.id));
+  const visibleIds=new Set(requirements.filter(r=>manager||r.ownerId===personId||r.acceptanceOwnerValid&&r.acceptanceOwnerId===personId||r.blockerCoordination?.coordinatorId===personId||participatingRequirementIds.has(r.id)).map(r=>r.id));
   for(const b of pathAnalysis?.blockers||[]){
     const node=pathNodes.get(b.nodeId);if(!node)continue;
     if(!manager&&(!b.requirementId||!visibleIds.has(b.requirementId)))continue;
