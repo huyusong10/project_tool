@@ -6,7 +6,7 @@ import { remapEditorViews } from './path-view';
 import { executionDraftConflicts, type ExecutionCommand } from '../shared/execution-draft';
 import { EditorSession, newHistory, readHistory, type HistoryCommand, type EditorHistory, type FieldAvailability } from './editor-session';
 import { projectFieldActive } from './editor-fields';
-import { rebaseEditorHistory } from './editor-rebase';
+import { currentEditorAnalysis, rebaseEditorHistory } from './editor-rebase';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { readDraftRecord, writeDraftRecord, writeSharedDraftRecord, watchDraftRecord, clearDraftRecords, ownsDraft, takeDraft, releaseDraft } from './graph-draft-storage';
 import { ApiError, isWriteOutcomeUnknown, jsonBody } from './api';
@@ -51,7 +51,8 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
   current.fieldAvailability=fieldAvailability;
   if(!enabled){current.loading=false;current.readOnly=true;if(current.state.version!==version)current.state=newHistory(initial,version,source);}
   useSyncExternalStore(current.subscribe,current.snapshot);
-  const latest=useRef({initial,version,source});latest.current={initial,version,source};
+  const latestSource=source?currentEditorAnalysis(source,current.state.server):undefined;
+  const latest=useRef({initial,version,source});latest.current={initial,version:latestSource?String(latestSource.revision):version,source:latestSource};
   const persist=()=>current.persist(async state=>{if(current.blocked)return;await writeDraftRecord(storageKey,state.active||Object.keys(state.fields).length||Object.keys(state.layouts).length?state:undefined);sessionStorage.removeItem(storageKey);});
   const dispatch=(command:HistoryCommand<T>)=>{
     if(!enabled||current.loading||current.readOnly||current.blocked)return false;
@@ -100,9 +101,10 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
 }
 const empty: DependencyChanges = { add: [], remove: [], estimates: [] };
 type PendingBatch = DependencyChangesInput & { batchId: string; previewToken: string };
-export function useDependencyDraft(accountId: string, data: PathAnalysis, target: string, onSaved: (receipt?:DependencyChangeReceipt) => void, scope?:string) {
-  const enabled=!useGuestWorkspace(data.projectId);
-  const key = accountId + ':' + data.projectId+(scope?':'+scope:''), history = useGraphHistory(key, empty, String(data.revision),data,projectFieldActive,enabled);
+export function useDependencyDraft(accountId: string, incoming: PathAnalysis, target: string, onSaved: (receipt?:DependencyChangeReceipt) => void, scope?:string) {
+  const enabled=!useGuestWorkspace(incoming.projectId);
+  const key = accountId + ':' + incoming.projectId+(scope?':'+scope:''), history = useGraphHistory(key, empty, String(incoming.revision),incoming,projectFieldActive,enabled);
+  const data=currentEditorAnalysis(incoming,history.source);
   const pendingKey = prefix + key + ':submission';
   const [pendingReady,setPendingReady]=useState(false);
   const [pending, setPending] = useState<PendingBatch | null>(() => {

@@ -1,6 +1,10 @@
 import type {DependencyChanges} from '../shared/path-contracts';
 import type {PathAnalysis} from '../shared/paths';
 import {isDraftTemplateId} from '../shared/template-instance';
+/** Multiple workspace views share one draft but may refresh at different times. */
+export function currentEditorAnalysis(incoming:PathAnalysis,shared?:PathAnalysis):PathAnalysis{
+ return shared?.projectId===incoming.projectId&&shared.revision>incoming.revision?shared:incoming;
+}
 export type EditorConflict={key:string;title:string;field:string;before:unknown;server:unknown;draft:unknown;canKeep:boolean};
 const equal=(a:unknown,b:unknown)=>JSON.stringify(a??null)===JSON.stringify(b??null);
 const entity=(d:PathAnalysis,id:string)=>d.requirements.find(r=>r.id===id)||d.milestones?.find(m=>m.id===id)||(()=>{const n=d.nodes.find(n=>n.id===id);return n?{...n,...n.estimate}:undefined;})();

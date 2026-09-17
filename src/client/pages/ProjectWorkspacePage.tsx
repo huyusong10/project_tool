@@ -46,8 +46,8 @@ export function ProjectWorkspacePage(){
       try{
         const key=workspacePreferenceKey(account,selectedProjectId),view=readWorkspaceViewPreference(localStorage.getItem(key),selectedProjectId);
         if(view)location={...location,view};
-        // A project switch restores that project's view filters, never another project's range or detail.
-        if(params.has('projectId'))for(const [name,value] of new URLSearchParams(sessionStorage.getItem(key+':'+location.view)||''))if(viewFields.includes(name))entryParams.set(name,value);
+        // Implicit entry and project switches restore view filters, never range or detail.
+        for(const [name,value] of new URLSearchParams(sessionStorage.getItem(key+':'+location.view)||''))if(viewFields.includes(name))entryParams.set(name,value);
       }catch{/* Use the project list on first entry. */}
     }
     return <Navigate replace to={'/?'+workspaceParams(location,graph.data.analysis,entryParams)} state={url.state}/>;
