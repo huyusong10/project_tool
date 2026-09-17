@@ -29,6 +29,7 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
     <div className="requirement-overview-top">
       <div className="requirement-overview-meta">
         <ExecutionStageBadge requirement={r} />
+        {direct&&<span title={progressHint}>完成度 {r.progress}%</span>}
         {!compact&&<span className="requirement-overview-owner" title={`需求负责人：${r.ownerName || '待指定'}`}>负责人 <strong>{r.ownerName || '待指定'}</strong></span>}
       </div>
       <div className="requirement-overview-actions">
