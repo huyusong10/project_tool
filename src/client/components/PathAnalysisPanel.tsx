@@ -266,18 +266,19 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
       if(mounted.current)setIssue({message:error instanceof Error?error.message:'里程碑操作失败',nodeIds:[value.id]});
     }finally{milestoneSubmitting.current=false;if(mounted.current)setMilestoneBusy('');}
   };
+  const connectionIssueOpen=panel==='connectionIssue';
   const graph=useMemo(()=>{
     const value=featureScope&&data.featureContext?featurePathGraph(data,data.featureContext.overview,data.featureContext.relations,data.featureContext.requirements,featureScope):projectPathGraph(data,focus,false);
-    if(focus)for(const id of new Set([...imported,...Object.keys(layoutValue?.positions||{}),...panel==='connectionIssue'?issue?.nodeIds||[]:[]])) {
+    if(focus)for(const id of new Set([...imported,...Object.keys(layoutValue?.positions||{}),...connectionIssueOpen?issue?.nodeIds||[]:[]])) {
       if(value.cards.some(c=>c.id===id))continue;
       const r=data.requirements.find(r=>r.id===id);if(r){value.cards.push({id:r.id,requirementId:r.id,workItemId:null,kind:'requirement',title:r.title,subtitle:'本项目需求',status:r.status,risk:data.risks[r.id]?.riskLevel||'pending',forecast:null,floatDays:null,critical:false,unknown:true,external:true,hiddenCount:0});continue;}const n=data.nodes.find(n=>n.id===id&&n.kind!=='project');if(!n)continue;
       value.cards.push({id:n.id,requirementId:n.requirementId!,workItemId:n.id,kind:n.kind,progress:n.progress,workStage:n.workStage,plannedEnd:n.plannedEnd,title:n.title,subtitle:'外部 · '+data.requirements.find(r=>r.id===n.requirementId)?.title,status:n.status,risk:data.risks[n.requirementId!]?.riskLevel||'pending',forecast:n.forecastEnd,floatDays:n.floatDays,critical:n.critical,unknown:!!n.unknownReasons.length,external:true,hiddenCount:0});
     }
     if(focus)for(const c of draft.changes.entities||[])if(c.entity==='requirement'&&c.op==='create'&&c.id!==focus&&!value.cards.some(n=>n.id===c.id))value.cards.push({id:c.id,requirementId:c.id,workItemId:null,kind:'requirement',title:c.data.title||'新需求',subtitle:'本项目 · 未保存需求',status:'not_started',risk:'pending',forecast:null,floatDays:null,critical:false,unknown:true,external:true,hiddenCount:0});
-    if(focus&&panel==='connectionIssue')for(const edge of data.edges.filter(e=>issue?.edgeIds?.includes(e.id)))if(!value.links.some(e=>e.id===edge.id)&&value.cards.some(c=>c.id===edge.source)&&value.cards.some(c=>c.id===edge.target))value.links.push({...edge,dependencyIds:edge.dependencyId?[edge.dependencyId]:[],label:'交付前置'});
+    if(focus&&connectionIssueOpen)for(const edge of data.edges.filter(e=>issue?.edgeIds?.includes(e.id)))if(!value.links.some(e=>e.id===edge.id)&&value.cards.some(c=>c.id===edge.source)&&value.cards.some(c=>c.id===edge.target))value.links.push({...edge,dependencyIds:edge.dependencyId?[edge.dependencyId]:[],label:'交付前置'});
     if(draft.count&&!draft.preview)value.cards=value.cards.map(c=>({...c,forecast:null,floatDays:null,critical:false,unknown:true}));
     return value;
-  },[data,focus,featureScope,imported,draft.count,draft.preview,draft.changes.entities,layoutValue?.positions,panel,issue]);
+  },[data,focus,featureScope,imported,draft.count,draft.preview,draft.changes.entities,layoutValue?.positions,connectionIssueOpen,issue]);
   const phaseLayout=useMemo(()=>featureScope?featurePhaseLayout(data,activeFeature,featureScope,graph.cards.map(c=>c.id)):undefined,[data,activeFeature,featureScope,graph.cards]);
   // Focus, selection and navigation do not change the filter projection.
   const filterValues=JSON.stringify(params.get('mode')==='table'?emptyRequirementFilters():readPathFilters(params,!!focus||!!featureScope));
