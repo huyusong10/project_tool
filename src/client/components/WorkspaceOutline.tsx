@@ -24,6 +24,7 @@ import type { Dashboard } from '../types';
 import type { OutlineKind, OutlineUndo } from '../../shared/outline';
 import type { PathAnalysis } from '../../shared/paths';
 import { matchesSearch, normalizeSearchText } from '../../shared/search';
+import { compareProgressNames } from '../../shared/progress-query';
 import { ExecutionStageBadge, WorkProgressBadge } from './ExecutionStageBadge';
 import { PhaseDialog, PhaseStatusBadge } from './PhasePlanning';
 import { type PhaseEdit } from '../features/planning/phase-model';
@@ -98,7 +99,7 @@ export function WorkspaceOutline({report,projection,header}:{report:Dashboard;pr
   };
   const counts=Object.entries(labels).map(([kind,label])=>{const count=picked.filter(r=>r.kind===kind).length;return count?count+' 个'+label:'';}).filter(Boolean).join('、');
   const visible=(rows:OutlineRow[],depth=1):Array<{row:OutlineRow;depth:number}>=>{
-    const ordered=[...rows].sort((a,b)=>Number(!!a.system)-Number(!!b.system)||(sort==='name'?a.title.localeCompare(b.title,'zh-CN',{numeric:true}):sort==='date'?(a.phase?.targetDate||a.work?.plannedEnd||a.requirement?.plannedEnd||'9999').localeCompare(b.phase?.targetDate||b.work?.plannedEnd||b.requirement?.plannedEnd||'9999'):0));
+    const ordered=[...rows].sort((a,b)=>Number(!!a.system)-Number(!!b.system)||(sort==='name'?compareProgressNames(a.title,b.title):sort==='date'?(a.phase?.targetDate||a.work?.plannedEnd||a.requirement?.plannedEnd||'9999').localeCompare(b.phase?.targetDate||b.work?.plannedEnd||b.requirement?.plannedEnd||'9999'):0));
     return ordered.filter(r=>!filtered||matches(r)).flatMap(row=>[{row,depth},...(currentExpanded[row.id]?visible(row.children,depth+1):[])]);
   };
   const rows=visible(scopedTree);

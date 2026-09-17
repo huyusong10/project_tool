@@ -28,5 +28,6 @@ export function matchesProgressStage(status:string, stage:ExecutionStage|null|un
   if(workStage!==undefined)return workStage===filter||status===filter||filter==='parallel'&&stage?.key==='parallel'||filter==='unclassified'&&!workStage;
   return stage?.key===filter||!!stage?.stages.some(s=>s.stage===filter)||status===filter;
 }
-export const compareProgressNames=(a:string,b:string)=>a.localeCompare(b,'zh-CN',{numeric:true});
+const progressNameCollator=new Intl.Collator('zh-CN',{numeric:true});
+export const compareProgressNames=(a:string,b:string)=>progressNameCollator.compare(a,b);
 export const compareProgressTitles=(a:{id:string;title:string},b:{id:string;title:string})=>compareProgressNames(a.title,b.title)||a.id.localeCompare(b.id);
