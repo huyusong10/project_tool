@@ -1,5 +1,10 @@
 import type {Locator} from '@playwright/test';
 
+/** Read the native value mirrored by a custom picker without changing it. */
+export function selectedValue(locator:Locator){
+  return locator.locator('xpath=self::select | ancestor::span[contains(@class,"select-field")]/select');
+}
+
 /** Exercise the visible picker; unchanged native controls still use selectOption. */
 export async function chooseOption(locator:Locator,value:string|{label?:string;value?:string;index?:number}){
   const isSelect=await locator.evaluate(e=>e.tagName==='SELECT');

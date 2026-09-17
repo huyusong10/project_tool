@@ -12,10 +12,10 @@ export class SceneRequests{
 /** A finished/cancelled ticket cannot commit again, even after another gesture starts. */
 export class EditorInteraction{
   selection:EditorSelection={kind:'none'};operation:Operation|null=null;
-  private sequence=0;private listeners=new Set<()=>void>();
-  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
+  private sequence=0;private listeners=new Set<(activate:boolean)=>void>();
+  subscribe=(fn:(activate:boolean)=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
   snapshot=()=>this.selection;
-  select(selection:EditorSelection,activate=false){const same=JSON.stringify(selection)===JSON.stringify(this.selection);if(same&&!activate)return;if(!same)this.selection=selection;for(const fn of this.listeners)fn();}
+  select(selection:EditorSelection,activate=false){const same=JSON.stringify(selection)===JSON.stringify(this.selection);if(same&&!activate)return;if(!same)this.selection=selection;for(const fn of this.listeners)fn(activate);}
   nodes(ids:string[],primary=ids.at(-1)||'',activate=false){const unique=[...new Set(ids)];this.select(unique.length?{kind:'nodes',ids:unique,primary:unique.includes(primary)?primary:unique.at(-1)!}:{kind:'none'},activate);}
   begin(kind:GestureKind,cancel:()=>void){this.cancel();const id=++this.sequence;this.operation={id,kind,cancel};return id;}
   isCurrent(id:number){return this.operation?.id===id;}

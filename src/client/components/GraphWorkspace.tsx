@@ -75,7 +75,7 @@ function Workspace({ table, onInspectNode, document:editorDocument, auxiliaryKey
       {toolbar}
       <div className="graph-tool-rail graph-overlay nopan nodrag nowheel" data-graph-panel="left" data-workspace-zone="tools">{!isTable&&palette}{!isTable&&finder&&<FindTool onClick={()=>setFinding(v=>!v)}/>}</div>
       {!isTable&&finder&&finding&&<div ref={finderRef} className="graph-finder graph-overlay nopan nodrag nowheel" data-graph-panel="left">{finder}</div>}
-      {detail&&<Modal title={typeof detailTitle==='string'?detailTitle:'关系详情'} width={960} layout="workspace" onClose={()=>onDismissDetail?.()}><DetailWorkspace label="关系图详情" tabs={[{id:'properties',label:graph.editing?'草稿属性':'关系详情',content:detail,description:graph.editing?'修改应用到图形草稿，由公共工具栏统一保存':undefined}]}/></Modal>}
+      {detail&&<Modal title={typeof detailTitle==='string'?detailTitle:'关系详情'} width={960} layout="workspace" onClose={()=>onDismissDetail?.()} returnFocus={()=>root.current?.querySelector<HTMLElement>('.dependency-canvas')||null}><DetailWorkspace label="关系图详情" tabs={[{id:'properties',label:graph.editing?'草稿属性':'关系详情',content:detail,description:graph.editing?'修改应用到图形草稿，由公共工具栏统一保存':undefined}]}/></Modal>}
       <FloatingPanel contentKey={auxiliaryKey} onDismiss={onDismissAuxiliary} analysis={analysis} size={auxiliarySize} content={auxiliary} side="left" replacement={!!detail}/>
       {footer&&<div className="graph-footer graph-overlay nopan nodrag nowheel" data-graph-panel="bottom" data-workspace-zone="tools">{footer}</div>}
 

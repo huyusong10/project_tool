@@ -4,7 +4,7 @@ import { StatusBadge } from "../../components/Badge";
 import { PhaseStatusBadge } from '../../components/PhasePlanning';
 import { Button } from "../../components/Button";
 import { ArrowLeft } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useSession } from "../../app-context";
@@ -44,7 +44,7 @@ export function ProjectWorkspace({report,data}:{report:Dashboard;data:PathAnalys
   const draft=useDependencyDraft(account,data,'project',()=>invalidateRequirementViews(client));runtime.document=draft;
 
   const [changes,setChanges]=useState(false),[discard,setDiscard]=useState(false);
-  const navigationData=draftNetwork(data,draft.changes,draft.templateInstances);
+  const navigationData=useMemo(()=>draftNetwork(data,draft.changes,draft.templateInstances),[data,draft.changes,draft.templateInstances]);
   const { params, setParams, go, location, detailTrail, trail, last, enter, inspect, detailBack, switchView, selected, features, selectedPhase, selectedFeature, selectedRequirement, title } = useWorkspaceNavigation(data,navigationData);
   const navigation={breadcrumbs:trail.map((t,i)=>({label:t.label,onClick:i<trail.length-1?()=>enter(t.scope):undefined})),navigationLabel:'项目层级',backLabel:'上一级',onBack:trail.length>1?()=>enter(trail[trail.length-2].scope):undefined,
     views:<ViewTabs ariaLabel="项目视角" value={location.view} options={[{value:'list',label:'清单'},{value:'graph',label:'关系图'},{value:'progress',label:'进展表'}]} onChange={v=>switchView(v as WorkspaceView)}/>};

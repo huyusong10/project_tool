@@ -39,7 +39,7 @@
 .page-toolbar[data-project-workspace=true] .page-editor-history:empty{display:none}
 .page-toolbar[data-project-workspace=true] .page-editor-actions[aria-hidden=true]{display:none}
 .page-toolbar[data-project-workspace=true]:has(.workspace-create-action) .page-editor-history{display:none}
-.page-toolbar[data-project-workspace=true]:has(.workspace-create-action) .workspace-history-menu{display:flex!important}
+:root:has(.page-toolbar[data-project-workspace=true] .workspace-create-action) .workspace-history-menu{display:flex!important}
 .workspace-create-action{flex:none;width:72px;height:var(--toolbar-control)}
 .workspace-create-action .topbar-menu-button{width:100%;justify-content:center;height:var(--toolbar-control)}
 .page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-actions{width:112px;flex:0 0 112px}

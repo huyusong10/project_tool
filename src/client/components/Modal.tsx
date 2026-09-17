@@ -8,12 +8,13 @@ import {hasActiveSortDrag} from './DragPreview';
 let openModalCount = 0;
 let previousBodyOverflow = '';
 
-export function Modal({ title, children, onClose, width = 560, closable = true, layout = 'adaptive', placement = 'center', headerActions, backAction }: { title: string; children: ReactNode; onClose: () => void; width?: number; closable?: boolean; layout?: 'adaptive' | 'workspace'; placement?: 'center' | 'right'; headerActions?: ReactNode; backAction?: ReactNode }) {
+export function Modal({ title, children, onClose, width = 560, closable = true, layout = 'adaptive', placement = 'center', headerActions, backAction, returnFocus }: { title: string; children: ReactNode; onClose: () => void; width?: number; closable?: boolean; layout?: 'adaptive' | 'workspace'; placement?: 'center' | 'right'; headerActions?: ReactNode; backAction?: ReactNode; returnFocus?:()=>HTMLElement|null }) {
   const host = useDetailActionHost();
   const inline = Boolean(host) && layout === 'workspace';
   const cardRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   const closableRef = useRef(closable);
+  const returnFocusRef=useRef(returnFocus);returnFocusRef.current=returnFocus;
   const titleId = useId();
   const requestClose = () => {
     const child = Array.from(cardRef.current?.querySelectorAll<HTMLElement>('[data-detail-action]') || []).at(-1);
@@ -74,7 +75,7 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
       document.removeEventListener('keydown', handleKeyDown);
       openModalCount = Math.max(0, openModalCount - 1);
       if (openModalCount === 0) document.body.style.overflow = previousBodyOverflow;
-      requestAnimationFrame(() => previousFocus?.isConnected && previousFocus.focus());
+      requestAnimationFrame(() => {const target=returnFocusRef.current?.()||previousFocus;if(target?.isConnected)target.focus({preventScroll:true});});
     };
   }, [inline]);
   const content = (

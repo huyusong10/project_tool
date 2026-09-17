@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {readWorkspaceLocation,workspaceAncestors,workspaceParams,type WorkspaceLocation} from '../src/client/workspace-location';
+import {editorFieldLocation,readWorkspaceLocation,workspaceAncestors,workspaceParams,type WorkspaceLocation} from '../src/client/workspace-location';
 import {workspaceSummary} from '../src/client/workspace-summary';
 import {reorderSelection} from '../src/client/outline-model';
 import type {PathAnalysis} from '../src/shared/paths';
@@ -15,6 +15,16 @@ const data={asOfDate:'2026-09-16',projectId:'p',projectName:'项目',requirement
 ]}}} as unknown as PathAnalysis;
 const location=(kind:WorkspaceLocation['scope']['kind'],id:string):WorkspaceLocation=>({projectId:'p',view:'list',scope:{kind,id}});
 describe('公共范围与旧网址',()=>{
+  it('错误草稿字段定位到所属范围，不打开正式资料或携带旧筛选',()=>{
+    const workData={...data,nodes:[{id:'work-a',requirementId:'a'}]} as PathAnalysis;
+    for(const [id,kind,scope] of [['work-a','requirement','a'],['a','feature','f'],['d','feature','other']]){
+      const params=new URL(editorFieldLocation(workData,id)!,'http://local').searchParams;
+      expect(readWorkspaceLocation(params,'p')).toMatchObject({view:'graph',scope:{kind,id:scope},inspector:undefined});
+      expect(params.get('graphInspector')).toBe('open');expect(params.get('pathNode')).toBe(id);
+      expect(params.has('detailId')).toBe(false);
+    }
+    expect(editorFieldLocation(workData,'missing')).toBeUndefined();
+  });
   it('当前层级覆盖互斥特性和 Phase 筛选，但保留人员、状态等条件',()=>{
     const filters=new URLSearchParams('progressFeatureId=other&progressPhaseId=foreign&progressStatus=in_progress&progressPerson=person');
     const feature=workspaceParams(location('feature','f'),data,filters);

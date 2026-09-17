@@ -12,6 +12,13 @@ const empty=():DependencyChanges=>({add:[],remove:[],estimates:[]});
 const dependency=(id:string,sr:string,sw:string|null,tr:string,tw:string|null):Dependency=>({id,projectId:'p',sourceRequirementId:sr,sourceWorkItemId:sw,targetRequirementId:tr,targetWorkItemId:tw,origin:'manual'});
 function fixture(){const input=pathFixture();input.dependencies=input.dependencies.filter(d=>d.sourceRequirementId===d.targetRequirementId);input.dependencies.push(dependency('whole','A',null,'B',null));return analysePaths(input);}
 describe('就地交付条件',()=>{
+  it('保存新需求后映射工作区范围、详情和返回定位，保留视角与筛选',()=>{
+    vi.stubGlobal('location',{origin:'http://localhost'});
+    try{
+      const before='/projects/p?scopeType=requirement&scopeId=draft&requirementId=draft&draftProject=p&view=graph&detailId=work&workspaceLocate=work&pathNode=acceptance%3Adraft&pathSearch=test';
+      expect(remapEditorUrl(before,{draft:'saved',work:'saved-work'})).toBe('/projects/p?scopeType=requirement&scopeId=saved&requirementId=saved&view=graph&detailId=saved-work&workspaceLocate=saved-work&pathNode=acceptance%3Asaved&pathSearch=test');
+    }finally{vi.unstubAllGlobals();}
+  });
   it('保存后历史中的草稿地址和节点映射到正式对象，保留筛选与分析目标',()=>{
     const storage=()=>{const values:Record<string,string>={};return {getItem:(key:string)=>values[key]||null,setItem:(key:string,value:string)=>{values[key]=value;},removeItem:(key:string)=>{delete values[key];}};};
     vi.stubGlobal('location',{origin:'http://localhost'});vi.stubGlobal('localStorage',storage());vi.stubGlobal('sessionStorage',storage());
