@@ -51,12 +51,12 @@
 .outline-actions{overflow-x:auto;scrollbar-width:none;display:flex;align-items:center;gap:10px;padding:0 20px;height:58px;min-height:58px;border-bottom:1px solid var(--border);flex:none}
 .outline-actions input,.outline-actions select{box-sizing:border-box;height:34px;min-height:34px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--bg-surface);color:var(--text-primary);font:inherit;font-size:12px}
 .outline-actions input{width:220px;min-width:140px;flex:0 1 340px}.outline-actions select{width:130px;flex:none}
-.outline-caption{display:flex;justify-content:space-between;align-items:center;gap:16px;height:32px;min-height:32px;padding:0 20px;flex:none;color:var(--text-muted);font-size:11px;background:var(--bg-surface-subtle);border-bottom:1px solid var(--border)}
+.outline-caption{display:flex;justify-content:space-between;align-items:center;gap:16px;height:32px;min-height:32px;padding:0 20px;flex:none;color:var(--text-muted);font-size:12px;background:var(--bg-surface-subtle);border-bottom:1px solid var(--border)}
 .outline-caption>span:first-child{white-space:nowrap;flex:none}.outline-help{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .outline-scroll{overflow:auto;min-height:0;flex:1;scrollbar-gutter:stable;scroll-padding-bottom:84px;padding-bottom:80px;box-sizing:border-box}
 .outline-table{width:100%;min-width:740px;table-layout:fixed;border-collapse:separate;border-spacing:0;text-align:left;font-size:13px}
 .outline-select-column{width:44px}.outline-drag-column{width:28px}.outline-status-column{width:166px}.outline-date-column{width:120px}.outline-menu-column{width:50px}
-.outline-table th{position:sticky;top:0;height:38px;background:var(--bg-surface);z-index:3;font-size:11px;font-weight:500;color:var(--text-muted);white-space:nowrap}
+.outline-table th{position:sticky;top:0;height:38px;background:var(--bg-surface);z-index:3;font-size:12px;font-weight:500;color:var(--text-muted);white-space:nowrap}
 .outline-table td,.outline-table th{box-sizing:border-box;border-bottom:1px solid var(--border);padding:0 10px}
 .outline-table td{height:48px;background:var(--outline-row-bg,var(--bg-surface));cursor:pointer}
 .outline-table td:first-child,.outline-table th:first-child{text-align:center;padding:0 6px}.outline-table td:nth-child(2),.outline-table th:nth-child(2){padding:0}

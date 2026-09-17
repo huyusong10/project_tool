@@ -85,7 +85,7 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
     back = params.get('view') === 'path' ? pathBackTarget(project?.id || '', location.state?.pathSource, window.history.state?.idx) : {label:phase === 'error' ? '返回需求清单' : '返回', fallback:'/requirements', kind:'history'};
   } else if (templateId) {
     title = template?.name || '新建流程'; back = {label:'返回流程列表', fallback:'/templates', kind:'templates'};
-  } else if (location.pathname === '/paths' && project) title = '路径分析';
+  } else if (location.pathname === '/paths' && project) title = '项目空间';
   const navigationKey = `${sessionAccessKey(session)}|${pageIdentity(location.pathname, params)}|${project?.id || ''}|${project?.projectRole || ''}|${Boolean(project?.canManage)}|${Boolean(project?.publicReadOnly)}`;
   const toolbar = toolbarForRoute(location.pathname, location.search);
   const page: ResolvedPageContext = {navigationKey, phase, scope, project: phase === 'ready' ? project : undefined, title, back, toolbar, actionRow: toolbar !== 'none', error, errorTitle, retry,
