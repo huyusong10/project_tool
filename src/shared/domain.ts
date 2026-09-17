@@ -86,11 +86,12 @@ function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+const businessDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+});
+
 export function businessDateFromDateTime(value: string | number | Date): string {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
-  });
-  return formatter.format(new Date(value));
+  return businessDateFormatter.format(new Date(value));
 }
 
 export function todayIso(): string {
