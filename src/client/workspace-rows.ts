@@ -58,7 +58,7 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis,sort='n
     const own=requirements.filter(r=>r.featureId===f.id).sort(byTitle);
     const phases:WorkspaceRow[]=[...(f.phases||[])].sort((a,b)=>a.sortOrder-b.sortOrder).map(p=>({id:'phase:'+p.id,kind:'phase',title:p.name,featureId:f.id,phaseId:p.id,phase:p,feature:f,children:[
       ...own.filter(r=>r.phaseId===p.id).map(r=>requirementRow(r,f.id,p.id)),
-      ...p.requirements.filter(r=>r.deletedAt).map(r=>requirementRow({...r,projectId:f.projectId,projectName:f.name,templateId:null,templateName:null,ownerId:null,ownerName:null,plannedStart:null,plannedEnd:null,progress:100,plannedProgress:null,progressGap:0,acceptedAt:null,acceptedByAccountId:null,riskLevel:"low",riskEvaluated:false,riskReason:"",priority:"P2",createdAt:"",updatedAt:"",delayed:false,highRisk:false,finishVariance:0,durationVariance:0,effectiveEnd:null,workItems:[]},f.id,p.id)),
+      ...p.requirements.filter(r=>r.deletedAt).map(r=>requirementRow({...r,projectId:f.projectId,projectName:f.name,templateId:null,templateName:null,ownerId:null,ownerName:null,plannedStart:null,plannedEnd:null,progress:r.progress??(r.status==='completed'?100:0),plannedProgress:null,progressGap:0,acceptedAt:null,acceptedByAccountId:null,riskLevel:"low",riskEvaluated:false,riskReason:"",priority:"P2",createdAt:"",updatedAt:"",delayed:false,highRisk:false,finishVariance:0,durationVariance:0,effectiveEnd:null,workItems:[]},f.id,p.id)),
     ].sort(byTitle)}));
     const unassigned=own.filter(r=>!r.phaseId);
     if(unassigned.length)phases.push({id:'unphased:'+f.id,kind:'phase',title:'未分派阶段',featureId:f.id,phaseId:'unassigned',feature:f,virtual:true,children:unassigned.map(r=>requirementRow(r,f.id,'unassigned'))});

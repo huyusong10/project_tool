@@ -47,6 +47,14 @@ it('特性与 Phase 条件保留空批次，归档特性只在显式筛选下出
   expect(filterWorkspaceRows(workspaceRows(report),{...filters,featureId:'f',phaseId:'empty'})[0].children.map(r=>r.title)).toEqual(['探索']);
 });
 
+it('归档需求保留记录的完成度，取消项不伪造为全部完成',()=>{
+  const report=fixture();
+  const archived=report.featureOverview!.features[0].phases![0].requirements[1];
+  Object.assign(archived,{status:'cancelled',progress:35,executionStage:deriveExecutionStage({status:'cancelled'})});
+  const row=workspaceRows(report)[0].children[0].children.find(r=>r.id==='archived')!;
+  expect(row.requirement).toMatchObject({status:'cancelled',progress:35});
+});
+
 it('正式工作顺序覆盖路径的 ID 顺序；临时工作追加，执行操作保留正式版本',()=>{
   const report=fixture(),r=report.requirements[0],sample=r.workItems[0];
   r.version=9;r.ownerId='owner';r.workItems=['z','a','m'].map((id,i)=>({...sample,id,title:'工作 '+i,sortOrder:i,version:i+2}));

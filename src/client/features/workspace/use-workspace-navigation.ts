@@ -15,7 +15,8 @@ export function useWorkspaceNavigation(data: PathAnalysis, navigationData: PathA
   const selectedPhase=selected?.startsWith('phase:')?features.flatMap(f=>f.phases||[]).find(p=>p.id===selected.slice(6)):undefined;
   const selectedFeature=features.find(f=>f.id===(selectedPhase?.featureId||(selected?.startsWith('feature:')?selected.slice(8):'')));
   const selectedRequirement=data.requirements.find(r=>r.id===selected)||data.requirements.find(r=>r.id===data.nodes.find(n=>n.id===selected)?.requirementId);
-  const title=selectedPhase?.name||selectedFeature?.name||data.nodes.find(n=>n.id===selected)?.title||selectedRequirement?.title;
+  const archivedRequirement=features.flatMap(f=>f.phases||[]).flatMap(p=>p.requirements).find(r=>r.id===selected&&r.deletedAt);
+  const title=selectedPhase?.name||selectedFeature?.name||data.nodes.find(n=>n.id===selected)?.title||selectedRequirement?.title||archivedRequirement?.title;
 
   const memoryKey=workspacePreferenceKey(account,projectId),trail=workspaceAncestors(location,navigationData),last=trail.at(-1)!;
   const viewKey=memoryKey+':'+location.view;
@@ -39,5 +40,5 @@ export function useWorkspaceNavigation(data: PathAnalysis, navigationData: PathA
     go('/?'+next);
   };
 
-  return { params, setParams, go, location, detailTrail, trail, last, enter, inspect, detailBack, switchView, selected, features, selectedPhase, selectedFeature, selectedRequirement, title };
+  return { params, setParams, go, location, detailTrail, trail, last, enter, inspect, detailBack, switchView, selected, features, selectedPhase, selectedFeature, selectedRequirement, archivedRequirement, title };
 }
