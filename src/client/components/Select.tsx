@@ -39,7 +39,7 @@ export function Select({children,className='',...props}:SelectHTMLAttributes<HTM
     native.current.dispatchEvent(new Event('change',{bubbles:true}));close(true);
   };
   const keyDown=(event:React.KeyboardEvent)=>{
-    if(event.nativeEvent.isComposing)return;
+    if(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229)return;
     if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close(true);return;}
     if(event.key==='Tab'){close();return;}
     if(event.target===search.current&&['Home','End'].includes(event.key))return;

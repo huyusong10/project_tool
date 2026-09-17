@@ -126,6 +126,7 @@ export function InlineSelectCell<TRevision extends Revision = number>({
   }, [feedback, onSave, pendingOptionLabel, pendingOptionUnavailable, pendingValue, reason?.label, reason?.required, reasonText, revisionGuard]);
 
   const keyDown = (event: ReactKeyboardEvent) => {
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (!filtered.length) return;
     if (event.key === "ArrowDown") { event.preventDefault(); setActiveIndex((index) => (index + 1) % filtered.length); }
     if (event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((index) => (index - 1 + filtered.length) % filtered.length); }
@@ -148,7 +149,7 @@ export function InlineSelectCell<TRevision extends Revision = number>({
     }}>
       <AnchoredPopover anchorRef={anchorRef} open={open} width={300} matchAnchor onOutside={() => cancel(false)} onEscape={cancel} className={`inline-select-popover${reason && pendingValue !== null ? " has-pending" : ""}`}>
         <div className="inline-picker-heading"><strong>{label}</strong><Button variant="ghost" iconOnly type="button" onClick={() => cancel()} aria-label={`关闭${label}`}><X size={14} /></Button></div>
-        {searchable && <label className="inline-picker-search"><Search size={14} /><input ref={searchRef} role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls={listId} aria-activedescendant={filtered[activeIndex] ? `${listId}-option-${activeIndex}` : undefined} value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={keyDown} placeholder={`搜索${label}`} /></label>}
+        {searchable && <label className="inline-picker-search"><Search size={14} /><input ref={searchRef} role="combobox" aria-label={`搜索${label}`} aria-expanded="true" aria-autocomplete="list" aria-controls={listId} aria-activedescendant={filtered[activeIndex] ? `${listId}-option-${activeIndex}` : undefined} value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={keyDown} placeholder={`搜索${label}`} /></label>}
         <div ref={listRef} id={listId} className="inline-option-list" role="listbox" tabIndex={searchable ? -1 : 0} aria-label={label} aria-activedescendant={filtered[activeIndex] ? `${listId}-option-${activeIndex}` : undefined} onKeyDown={keyDown}>
           {filtered.map((option, index) => {
             const isSelected = option.value === (pendingValue ?? currentValue);
