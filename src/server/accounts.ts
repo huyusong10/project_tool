@@ -4,7 +4,7 @@ import { hashPassword, normalizeUsername, verifyPassword, type Actor } from './a
 import { addCalendarDays, deriveWorkItemStatus, isOverdueByWorkday, startOfWeekIso, todayIso } from '../shared/domain';
 import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
 import { isBusinessDay } from '../shared/workday';
-import { listRequirements, loadWorkItemsByRequirementIds } from './services/requirements';
+import { listRequirements, loadWorkItemsByRequirementIds, requirementAnalysisSnapshots } from './services/requirements';
 import { getPathAnalysis } from './services/paths';
 import { deliveryForecast } from '../shared/forecast-basis';
 import { deriveRequirementActionReasons, deriveWorkItemActionReasons } from './services/actions';
@@ -340,7 +340,9 @@ function readMyWork(accountId: string) {
   const requirementStatuses = new Map(rawItems.map(item => [item.requirementId, item.requirementStatus]));
   const loaded = loadWorkItemsByRequirementIds([...requirementStatuses.keys()], requirementStatuses);
   const workItems = new Map([...loaded.workItems.values()].flat().map(item => [item.id, item]));
-  const forecasts = new Map([...new Set(rawItems.map(item => item.projectId))].map(id => [id, getPathAnalysis(id, undefined, today)]));
+  const owned = listRequirements({ ownerId: account.personId }, today);
+  const forecasts = new Map(requirementAnalysisSnapshots.get(owned));
+  for(const id of new Set(rawItems.map(item=>item.projectId)))if(!forecasts.has(id))forecasts.set(id,getPathAnalysis(id,undefined,today));
   const items = rawItems.map((reference) => {
     const analysis = forecasts.get(reference.projectId)!;
     const item = { ...workItems.get(reference.id)!, ...reference, deliveryForecast: deliveryForecast(analysis.nodes.find(n => n.id === reference.id), analysis) };
@@ -358,8 +360,7 @@ function readMyWork(accountId: string) {
   const accessibleProjects = new Set((getDatabaseContext().sqlite.prepare(`SELECT pp.project_id AS projectId FROM project_people pp
     JOIN projects p ON p.id=pp.project_id WHERE pp.person_id=? AND p.deleted_at IS NULL`)
     .all(account.personId) as Array<{ projectId: string }>).map((item) => item.projectId));
-  const ownedRequirements = listRequirements({ ownerId: account.personId }, today)
-    .filter((requirement) => accessibleProjects.has(requirement.projectId));
+  const ownedRequirements = owned.filter((requirement) => accessibleProjects.has(requirement.projectId));
   const requirementIds = ownedRequirements.map((requirement) => requirement.id);
   const issueActionCounts = new Map<string, number>();
   for (const batch of chunkValues(requirementIds, 899)) {
