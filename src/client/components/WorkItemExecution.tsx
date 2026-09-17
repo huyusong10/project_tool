@@ -34,7 +34,8 @@ export function WorkItemExecution({requirement:r,item,people,children,progressLa
     await assertCleanRequirementDraft(session.accountId||'guest',r.id,{workItemId:item.id,action:input.action});
     return workItemsApi.workItemsById2(item.id, input.action, {method:'POST',body:jsonBody({...input.assignment,expectedVersion:input.expectedVersion,expectedDependencyRevision:input.expectedDependencyRevision,...(input.action==='complete'?{content:input.content}:input.content?{reason:input.content}:{})})});
   },onSuccess:()=>invalidateRequirementViews(client,r.id)});
-  const updates=(history?.progressUpdates||r.progressUpdates||[]).filter(u=>u.workItemId===item.id);
+  const currentRequirement=history&&history.version>=r.version&&(history.workItems.find(w=>w.id===item.id)?.version??-1)>=item.version?history:r;
+  const updates=(currentRequirement.progressUpdates||[]).filter(u=>u.workItemId===item.id);
   const label=(access.progress&&progressLabel?progressLabel+' · '+item.progress+'%':null)||(({not_started:'未开始',completed:'已完成',cancelled:'已取消'} as Record<string,string>)[item.status]??item.progress+'%');
   const progressControl=access.progress?<button className="work-progress-link" disabled={needsCheck} title={needsCheck?'请先核对刚才的操作结果':'更新工作项进度'} aria-label={progressLabel||'更新 '+item.title+' 进度'} onClick={e=>{e.stopPropagation();setHistory(null);if(onProgress)onProgress();else setProgressOpen(true);}}>{presentation==='detail'?item.progress+'%':progressContent??label}</button>:presentation==="detail"?null:<span>{progressContent??label}</span>;
   const progress=presentation==='detail'?<span className="work-execution-progress-slot">{progressControl}</span>:progressControl;
@@ -44,11 +45,10 @@ export function WorkItemExecution({requirement:r,item,people,children,progressLa
     onSaveDates={access.manager?(dates,version)=>save(item,dates,version):undefined}
     onCompleteAsPlanned={access.manager&&!['completed','cancelled','pending_acceptance'].includes(r.status)?expectedVersion=>action.mutateAsync({action:'complete-as-planned',expectedVersion}):undefined}
     onReload={async()=>{const latest=await reload(),work=latest.workItems.find(w=>w.id===item.id);if(!work)throw Error('工作项已不存在，请关闭操作面板。');invalidateRequirementViews(client,r.id);return {item:work,updates:latest.progressUpdates?.filter(u=>u.workItemId===item.id)||[]};}}
-    onOpenChange={open=>{if(open&&!history)void reload().catch(()=>{/* The action's reload control can retry; server checks all history before writing. */});}}
+    onOpenChange={open=>{if(open&&(!history||!currentRequirement.progressUpdates))void reload().catch(()=>{/* The action's reload control can retry; server checks all history before writing. */});}}
     hasExecutionHistory={!!item.actualStart||updates.some(u=>!['note','correction'].includes(u.eventType))} correctionCandidates={updates}
     canManage={access.manager||access.owner} stateChangesDisabled={r.status==='cancelled'} writeNeedsRecheck={needsCheck}
     onWriteNeedsRecheckChange={required=>{setNeedsCheck(required);persistWorkItemActionRecheck(account,item.id,required);}}/>:null;
   const scope=(current:Requirement)=>({items:current.workItems.filter(w=>workExecutionAccess(session,current,w,people).progress),updates:current.progressUpdates||[],requirementStatus:current.status});
-  const progressRequirement=history&&history.version>=r.version&&(history.workItems.find(w=>w.id===item.id)?.version??-1)>=item.version?history:r;
-  return <>{children({progress,actions})}{progressOpen&&<ProgressForm title="更新工作项进度" requirementId={r.id} fixedItemId={item.id} scope={scope(progressRequirement)} loadScope={async()=>scope(await reload())} contextLabel={r.projectName+' · '+r.title} onClose={()=>setProgressOpen(false)}/>}</>;
+  return <>{children({progress,actions})}{progressOpen&&<ProgressForm title="更新工作项进度" requirementId={r.id} fixedItemId={item.id} scope={scope(currentRequirement)} loadScope={async()=>scope(await reload())} contextLabel={r.projectName+' · '+r.title} onClose={()=>setProgressOpen(false)}/>}</>;
 }

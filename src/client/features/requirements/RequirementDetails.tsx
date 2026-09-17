@@ -30,7 +30,7 @@ import { useGuestWorkspace, useSession } from "../../app-context";
 import { keys } from "../../query-keys";
 import { useResourceQuery } from "../../use-resource-query";
 import { formatDateTime } from "../../format";
-import type { Person, ProgressUpdate, Requirement, WorkItemTemplate } from "../../types";
+import type { Person, Requirement, WorkItemTemplate } from "../../types";
 import { requirementPlannedProgress } from "../../../shared/domain";
 import { Chart } from "../../components/Chart";
 import { EmptyState, RefreshNotice } from "../../components/Feedback";
@@ -41,7 +41,7 @@ import { persistRequirementPlanRecheck, PlanForm, readRequirementPlanRecheck, ty
 import { persistRequirementScheduleRecheck, readRequirementScheduleRecheck, RequirementScheduleForm, type RequirementScheduleRecheck } from './forms/schedule';
 import { WorkItemSettingsDialog } from "../../components/WorkItemSettingsDialog";
 import { canManageProject } from "../../permissions";
-import { dailyProgressTrend, progressHistoryMetadata } from "../../progress-trend";
+import { dailyProgressTrend, progressHistoryMetadata, progressReferenceLabel } from "../../progress-trend";
 import { persistRequirementCommandRecheck, readRequirementCommandRecheck, RequirementCommandDialog, type RequirementCommand, type RequirementCommandRecheck } from "../../components/RequirementCommandDialog";
 
 import { persistWorkItemSettingsRecheck, readWorkItemSettingsRechecks } from "../../work-item-write-rechecks";
@@ -49,10 +49,6 @@ import { persistWorkItemSettingsRecheck, readWorkItemSettingsRechecks } from "..
 export const emptyPeople: Person[] = [];
 
 export const emptyTemplates: WorkItemTemplate[] = [];
-
-export const progressEventLabels: Record<string, string> = { note: "说明", progress: "进展", start: "开始", block: "阻塞", unblock: "解阻", complete: "完成", reopen: "返工", correction: "纠错", accept: "验收", cancel: "取消" };
-
-export const progressReferenceLabel = (update?: ProgressUpdate) => update ? `${formatDateTime(update.createdAt)} · ${progressEventLabels[update.eventType] || update.eventType}` : "原记录不可用";
 
 export function EmbeddedRequirementHeader({secondaryActions,moreActions,moreDisabled}:ComponentProps<typeof PageHeader>){return <div className="detail-toolbar-actions"><div className="button-row">{secondaryActions}</div>{moreActions&&<TopbarMenu label="需求操作" disabled={moreDisabled}>{moreActions}</TopbarMenu>}</div>;}
 
