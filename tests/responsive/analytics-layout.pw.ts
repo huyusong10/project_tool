@@ -44,6 +44,31 @@ test.describe('北京时间分析默认范围', () => {
   });
 });
 
+test('统计图的长需求名可在悬浮提示中完整阅读且不撑出页面',async({page},info)=>{
+  const server=await mockAnalytics(page),label='跨系统资源同步与资产校验'.repeat(12);
+  const panel={...defaultAnalyticsLayout.panels.find(p=>p.id==='variance-top')!,size:'large' as const};
+  server.setLayout({...defaultAnalyticsLayout,panels:[panel]},'2026-09-17T00:00:00.000Z');
+  await page.route('**/api/analytics/query',route=>route.fulfill({json:{asOfDate:'2026-09-17',range:route.request().postDataJSON().range,results:[{panelId:panel.id,measureLabel:'延期工作日',unit:'days',snapshot:true,rows:[{key:'long-name',label,value:8}]}]}}));
+  await page.emulateMedia({reducedMotion:'reduce'});await page.goto('/analytics');
+  const chart=page.getByRole('img',{name:panel.title+'图表'});
+  for(const width of [1280,390]){
+    await page.setViewportSize({width,height:850});await chart.scrollIntoViewIfNeeded();
+    await expect.poll(async()=>Math.round((await chart.locator('canvas').boundingBox())!.width)).toBe(Math.round((await chart.boundingBox())!.width));
+    const bounds=(await chart.boundingBox())!;
+    await chart.hover({position:{x:Math.min(180,bounds.width-24),y:bounds.height/2}});
+    const tooltip=chart.locator(':scope > div').filter({hasText:label}).last();
+    await expect(tooltip).toBeVisible();await expect(tooltip).toContainText('8');
+    await page.screenshot({path:info.outputPath('long-chart-label-'+width+'.png'),animations:'disabled'});
+    const box=(await tooltip.boundingBox())!;
+    expect.soft(box.x,'提示左侧应可见').toBeGreaterThanOrEqual(0);
+    expect.soft(box.x+box.width,'提示右侧应可见').toBeLessThanOrEqual(width);
+    expect.soft(await tooltip.evaluate(el=>el.scrollWidth<=el.clientWidth+1),'提示内部应完整换行').toBe(true);
+    expect.soft(box.y+box.height,'提示应位于图表底边之内').toBeLessThanOrEqual(bounds.y+bounds.height+1);
+    expect.soft(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'提示不能撑宽页面').toBe(true);
+    await page.mouse.move(0,0);
+  }
+});
+
 test('分析卡片显示服务端快照日期', async ({ page }) => {
   await mockAnalytics(page);
   const graphRequests:string[]=[];
