@@ -165,7 +165,7 @@ export function prepareEditorLayouts(snapshot:PathInput,layouts:NonNullable<Depe
 }
 
 export function persistEditorEntities(snapshot:PathInput,changes:EditorEntityChange[],expanded:Map<string,TemplateExpansion>,actor:Actor,removed:string[]=[]){
-  const ids:Record<string,string>={},now=new Date().toISOString();
+  const ids:Record<string,string>=Object.create(null),now=new Date().toISOString();
   for(const c of [...changes].sort((a,b)=>Number(b.entity==='requirement')-Number(a.entity==='requirement'))){
     const {reviewForecast:_review,...data}=c.data,reqId=ids[c.requirementId||'']||c.requirementId,entityId=ids[c.id]||c.id;
     if(c.entity==='requirement'){

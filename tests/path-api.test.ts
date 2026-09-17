@@ -29,6 +29,31 @@ async function batchPreview(projectId:string,changes:DependencyChanges,revision?
   const response=await post('/api/projects/'+projectId+'/dependency-changes/preview',input);
   return {input,response,preview:response.json<DependencyChangePreview>()};
 }
+it('依赖批次回执保留与对象原型同名的临时标识',async()=>{
+  const {projectId,a,b}=await fixture(),clientId='__proto__';
+  const changes:DependencyChanges={add:[{clientId,sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:b.workItems[1].id}],remove:[],estimates:[]};
+  const {input,response,preview}=await batchPreview(projectId,changes);expect(response.statusCode,response.body).toBe(200);
+  const body={...input,batchId:randomUUID(),previewToken:preview.previewToken};
+  const saved=await post('/api/projects/'+projectId+'/dependency-changes/apply',body);expect(saved.statusCode,saved.body).toBe(200);
+  const receipt=saved.json<DependencyChangeReceipt>();expect(Object.keys(receipt.addedIds)).toEqual([clientId]);
+  expect((await analysis(projectId)).dependencies.find(d=>d.id===receipt.addedIds[clientId])).toMatchObject({sourceWorkItemId:a.workItems[0].id,targetWorkItemId:b.workItems[1].id});
+  expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',body)).json()).toEqual(receipt);
+  expect((await request('GET','/api/projects/'+projectId+'/dependency-changes/'+body.batchId)).json()).toEqual({status:'applied',...receipt});
+});
+it('图形批次使用任意合法临时标识创建需求及其工作项',async()=>{
+  const {projectId}=await fixture(),id='__proto__',work='constructor';
+  const changes:DependencyChanges={add:[],remove:[],estimates:[],entities:[
+    {entity:'requirement',op:'create',id,data:{title:'保留输入标识的需求'}},
+    {entity:'work',op:'create',id:work,requirementId:id,data:{title:'从临时归属创建的工作',durationDays:3}},
+  ]};
+  const {input,response,preview}=await batchPreview(projectId,changes);expect(response.statusCode,response.body).toBe(200);
+  const body={...input,batchId:randomUUID(),previewToken:preview.previewToken};
+  const saved=await post('/api/projects/'+projectId+'/dependency-changes/apply',body);expect(saved.statusCode,saved.body).toBe(200);
+  const receipt=saved.json<DependencyChangeReceipt>();expect(Object.keys(receipt.addedIds).sort()).toEqual([id,work].sort());
+  const requirement=await detail(receipt.addedIds[id]);expect(requirement.title).toBe('保留输入标识的需求');
+  expect(requirement.workItems).toHaveLength(1);expect(requirement.workItems[0]).toMatchObject({id:receipt.addedIds[work],requirementId:requirement.id,durationDays:3});
+  expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',body)).json()).toEqual(receipt);
+});
 it('批次按最终网络校验：移除旧前置再反向连接；预览无副作用，原子保存估算',async()=>{
   const {projectId,a}=await fixture(),before=await analysis(projectId),old=before.dependencies.find(d=>d.sourceWorkItemId===a.workItems[0].id)!;
   const edge={clientId:randomUUID(),sourceRequirementId:a.id,sourceWorkItemId:a.workItems[1].id,targetRequirementId:a.id,targetWorkItemId:a.workItems[0].id};

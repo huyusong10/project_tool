@@ -134,7 +134,7 @@ export function prepareFeatureRelationChanges(projectId:string,changes:FeatureRe
   return {before,after};
 }
 export function persistFeatureRelationChanges(projectId:string,changes:FeatureRelationChange[],before:FeatureRelation[],actor:Actor) {
-  const ids:Record<string,string>={},now=new Date().toISOString();
+  const ids:Record<string,string>=Object.create(null),now=new Date().toISOString();
   // Release removed endpoint pairs before inserting replacements in the final batch.
   for(const change of [...changes.filter(c=>c.op==='delete'),...changes.filter(c=>c.op!=='delete')]){
     const old=before.find(r=>r.id===change.id),id=change.op==='create'?randomUUID():change.id;

@@ -123,7 +123,8 @@ export function applyDependencyChanges(projectId: string, raw: unknown, actor: A
     }
     const prepared = prepare(projectId, input, actor);
     if (previewToken !== prepared.previewToken) fail('预览已失效，请重新预览', 'STALE_WRITE');
-    const addedIds: Record<string, string> = {}, now = new Date().toISOString();
+    // Client IDs are arbitrary strings, including Object.prototype property names.
+    const addedIds: Record<string, string> = Object.create(null), now = new Date().toISOString();
     const temporaryIds=[...input.changes.add.map(c=>c.clientId),...(input.changes.entities||[]).filter(c=>c.op==='create').map(c=>c.id),...(input.changes.featureRelations||[]).filter(c=>c.op==='create').map(c=>c.id)];
     if(new Set(temporaryIds).size!==temporaryIds.length)fail('不同对象不能共用临时标识');
     Object.assign(addedIds,persistFeatureRelationChanges(projectId,input.changes.featureRelations||[],prepared.features.before,actor));
