@@ -17,6 +17,15 @@ import './feature-planning.css';
 export type FeatureEdit = { mode:'basic'|'assessment'|'archive'|'restore'|'delete'; feature?:Feature };
 function normalized(value:PendingFeature['value']){return {...value,name:value.name.trim(),description:value.description.trim(),referenceLinks:readReferenceLinks(value.referenceLinks),overview:featureOverviewInput.parse(value.overview)};}
 type PendingFeature = FeatureEdit & { value: { name:string;description:string;referenceLinks?:ReferenceLink[];overview:Feature['overview'] } };
+function rebaseFeatureValue(draft:PendingFeature['value'],previous:Feature,latest:Feature):PendingFeature['value'] {
+  const merged={...draft,overview:{...draft.overview}};
+  for(const field of ['name','description'] as const)if(draft[field].trim()===previous[field])merged[field]=latest[field];
+  if(JSON.stringify(readReferenceLinks(draft.referenceLinks))===JSON.stringify(readReferenceLinks(previous.referenceLinks)))merged.referenceLinks=latest.referenceLinks||[];
+  for(const field of ['expectation','progressSummary','assessment','note'] as const){
+    if(draft.overview[field].trim()===previous.overview[field])Object.assign(merged.overview,{[field]:latest.overview[field]});
+  }
+  return merged;
+}
 const pendingKey=(account:string,project:string)=>'pm-feature-write:'+account+':'+project;
 export function readFeaturePending(account:string,project:string):PendingFeature|null {try{const value=JSON.parse(sessionStorage.getItem(pendingKey(account,project))||'null') as PendingFeature|null;return value&&['basic','assessment','archive','restore','delete'].includes(value.mode)&&typeof value.value?.name==='string'&&typeof value.value.description==='string'&&featureOverviewInput.safeParse(value.value.overview).success&&(!value.feature||value.feature.projectId===project)?value:null;}catch{return null;}}
 export function FeatureEditor({projectId,edit:requestedEdit,onClose,embedded=false,onBusy,onSaved}:{projectId:string;edit:FeatureEdit;onClose:()=>void;embedded?:boolean;onBusy?:(busy:boolean)=>void;onSaved?:(id:string)=>void}) {
@@ -59,7 +68,7 @@ export function FeatureEditor({projectId,edit:requestedEdit,onClose,embedded=fal
     </fieldset>
     {error&&<p role="alert" className="warning-banner">{error}</p>}
     {blocked&&<div className="warning-banner">{unknown?'提交结果待核对。':'资料已变化。'}输入已保留。<Button variant="secondary" type="button" className="ghost-button" disabled={busy} onClick={()=>void read()}>读取最新资料</Button></div>}
-    {latest!==undefined&&<div className="feature-recheck"><h3>服务器上的最新资料</h3>{latest?<><p>{latest.name}{latest.archivedAt?'（已归档）':''}</p><p>{latest.description}</p><p>{latest.overview.expectation}</p><p>{latest.overview.progressSummary}</p><p>{featureAssessmentLabels[latest.overview.assessment]}</p><p>{latest.overview.note}</p></>:<p>未找到该特性。</p>}<Button variant="secondary" type="button" className="ghost-button" onClick={()=>{persist(null);if(unknown&&resolved||baseline&&!latest){invalidateRequirementViews(client);onClose();return;}setBaseline(latest||undefined);setLatest(undefined);setBlocked(false);setUnknown(false);}}>{unknown&&resolved?'已核对，操作已生效':baseline&&!latest?'完成核对并关闭':'保留输入，按最新资料继续'}</Button></div>}
+    {latest!==undefined&&<div className="feature-recheck"><h3>服务器上的最新资料</h3>{latest?<><p>{latest.name}{latest.archivedAt?'（已归档）':''}</p><p>{latest.description}</p><p>{latest.overview.expectation}</p><p>{latest.overview.progressSummary}</p><p>{featureAssessmentLabels[latest.overview.assessment]}</p><p>{latest.overview.note}</p></>:<p>未找到该特性。</p>}<Button variant="secondary" type="button" className="ghost-button" onClick={()=>{persist(null);if(unknown&&resolved||baseline&&!latest){clearLocal();invalidateRequirementViews(client);onClose();return;}if(baseline&&latest)setValue(draft=>rebaseFeatureValue(draft,baseline,latest));setBaseline(latest||undefined);setLatest(undefined);setBlocked(false);setUnknown(false);}}>{unknown&&resolved?'已核对，操作已生效':baseline&&!latest?'完成核对并关闭':'保留输入，按最新资料继续'}</Button></div>}
     <div className="form-actions"><Button variant="secondary" type="button" className="ghost-button" onClick={()=>{clearLocal();onClose();}} disabled={busy}>{embedded?'取消编辑':'关闭'}</Button><Button busy={(busy)} aria-label={busy?'处理中…':edit.mode==='assessment'?'保存评估':title} variant="primary" type="submit" className="primary-button" disabled={busy||blocked}>{edit.mode==='assessment'?'保存评估':title}</Button></div>
   </form>;
   return embedded?<><h3 className="feature-edit-heading">{title}</h3>{form}</>:<Modal title={title} onClose={onClose} closable={!busy}>{form}</Modal>;
