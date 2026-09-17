@@ -197,6 +197,10 @@
 .unified-workspace .workspace-progress-tools>*{flex-shrink:0}.unified-workspace .workspace-progress-tools .search-box{flex-basis:190px;width:190px}
 .unified-workspace .workspace-time-tools .workspace-plan-legend{white-space:nowrap}
 .unified-workspace .workspace-time-tools>*{flex-shrink:0}.unified-workspace .workspace-time-tools .gantt-navigation{flex-wrap:nowrap;max-width:none}.unified-workspace .workspace-time-tools .gantt-visible-range{flex:none}
+.unified-workspace .workspace-time-tools:has(.gantt-navigation.is-range-limited){height:auto;flex-wrap:wrap;padding-block:6px}
+.unified-workspace .workspace-time-tools .gantt-navigation.is-range-limited{flex-wrap:wrap;max-width:100%;flex-shrink:1}
+.workspace-time-tools .gantt-navigation.is-range-limited .gantt-date-jump{display:flex}
+.gantt-range-notice{flex-basis:100%;white-space:normal}
 @media(max-width:700px){.unified-workspace .workspace-progress-tools{display:flex;gap:8px;padding-inline:10px}.unified-workspace .workspace-progress-tools>.select-field{width:120px;flex-basis:120px}.unified-workspace .progress-status-filter{width:138px}.unified-workspace .progress-more-filter{width:108px}.unified-workspace .progress-reset{width:52px}.unified-workspace .workspace-time-tools{padding-inline:10px}.unified-workspace .workspace-plan-legend{display:none}.unified-workspace .workspace-gantt-grid{--row-label:240px;--row-actions:116px}.unified-workspace .workspace-row-actions{padding-inline:4px}.unified-workspace .workspace-row-actions.has-execution .workspace-row-progress{flex-basis:44px}.unified-workspace .workspace-gantt .workspace-row-actions .work-item-actions{flex-wrap:nowrap;justify-content:flex-end}.unified-workspace .workspace-gantt .workspace-row-actions .work-item-actions .action-menu-trigger{width:30px}}
 @media(max-width:600px){
  .unified-workspace .workspace-gantt-grid{--row-label:170px;--row-actions:106px}

@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { mockGanttData } from './gantt-fixture';
+import { mockGanttData, mockGanttReport, requirement, workItem } from './gantt-fixture';
 import {addBusinessDays} from '../../src/shared/domain';
 
 async function snapshot(surface: Locator) {
@@ -24,6 +24,26 @@ async function drag(page: Page, surface: Locator, distance: number) {
   await page.waitForTimeout(40);
 }
 test.beforeEach(async({page})=>{await mockGanttData(page);await page.emulateMedia({reducedMotion:'reduce'});});
+
+test('多年计划适配后跨远日期定位，立即刷新仍保留新日期',async({page})=>{
+  const rows=[{...requirement,plannedStart:'2026-01-01',plannedEnd:'2055-12-31',workItems:[{...workItem,plannedStart:'2026-01-01',plannedEnd:'2055-12-31'}]}];
+  await mockGanttReport(page,()=>rows);
+  const errors:string[]=[],writes:string[]=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  page.on('request',request=>{if(request.url().includes('/api/')&&request.method()!=='GET')writes.push(request.url());});
+  await page.goto('/execution');
+  const surface=page.locator('.workspace-gantt-scroll'),range=page.locator('.gantt-visible-range');
+  await expect(surface).toHaveAttribute('data-gantt-ready','true');
+  await page.getByRole('button',{name:'适配全部',exact:true}).click();
+  const includesDate=async(date:string)=>{const [first,last]=(await range.innerText()).replaceAll('/','-').split(' — ');return first<=date&&date<=last;};
+  for(const date of ['0100-01-01','9999-12-31','2026-09-03']){
+    const input=page.getByLabel('跳转到日期',{exact:true});await input.fill(date);await input.press('Enter');
+    await expect.poll(()=>includesDate(date)).toBe(true);
+    await page.reload();await expect(surface).toHaveAttribute('data-gantt-ready','true');
+    await expect.poll(()=>includesDate(date)).toBe(true);
+  }
+  expect(errors).toEqual([]);expect(writes).toEqual([]);
+});
 
 test('真实拖动跨月跨年、向左补日期、缩放和页面往返均保持日期锚点',async({page})=>{
   const writes:string[]=[];page.on('request',r=>{if(r.method()!=='GET'&&r.url().includes('/api/'))writes.push(r.url());});

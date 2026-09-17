@@ -4,6 +4,7 @@ import { useSession } from './app-context';
 import { buildBusinessDayTimeline, ganttZoomOptions, toGanttDate, type GanttZoom } from './gantt-geometry';
 import { ganttAnchorAt, ganttAnchorPixel, ganttDates, surroundGanttAnchor, type GanttAnchor, type GanttBounds } from './gantt-navigation';
 import { motionScrollBehavior } from './motion';
+import {ganttRangeTooWide} from './gantt-calendar';
 
 type SavedView = { version: 1; anchor: GanttAnchor; zoom: GanttZoom; cellWidth: number; bounds?: GanttBounds };
 type Drag = { id: number; x: number; y: number; left: number; active: boolean };
@@ -12,7 +13,7 @@ function restore(key: string, legacyKey?: string): Partial<SavedView> {
     const saved = JSON.parse(sessionStorage.getItem(key) || 'null');
     if (saved?.version === 1 && toGanttDate(saved.anchor?.date) && Number.isFinite(saved.anchor.fraction)
       && saved.anchor.fraction >= 0 && saved.anchor.fraction < 1 && saved.zoom in ganttZoomOptions
-      && saved.cellWidth >= 1 && saved.cellWidth <= 80) return { ...saved, bounds: toGanttDate(saved.bounds?.start) && toGanttDate(saved.bounds?.end) && saved.bounds.start <= saved.bounds.end ? saved.bounds : undefined };
+      && saved.cellWidth >= 1 && saved.cellWidth <= 80) return { ...saved, bounds: toGanttDate(saved.bounds?.start) && toGanttDate(saved.bounds?.end) && saved.bounds.start <= saved.bounds.end && !ganttRangeTooWide(saved.bounds.start,saved.bounds.end) ? saved.bounds : undefined };
     const zoom = legacyKey && localStorage.getItem(`project-manage:gantt-zoom:${legacyKey}`);
     if (zoom && zoom in ganttZoomOptions) return { zoom: zoom as GanttZoom, cellWidth: ganttZoomOptions[zoom as GanttZoom].cellWidth };
   } catch { /* A blocked personal-view store must not block browsing. */ }
@@ -88,6 +89,7 @@ export function useGanttNavigation({ values, asOfDate, storageKey, legacyKey, on
     ready.current = true;
     element.dataset.ganttReady = 'true';
     updateVisible();
+    persist();
   // Coordinate publication is independent of row content and callbacks.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dates, bounds, scale, size, key, base, usableWidth, surface]);
@@ -226,6 +228,7 @@ export function useGanttNavigation({ values, asOfDate, storageKey, legacyKey, on
     else scrollRef.current?.scrollTo({ left: Math.max(0, ganttAnchorPixel(dates, target, scale.cellWidth) - usableWidth / 2), behavior: motionScrollBehavior() });
   };
   const fit = () => {
+    if(base.rangeLimited)return;
     const width = Math.max(1, Math.min(40, usableWidth / base.days));
     anchor.current = ganttAnchorAt(base.dates, base.days / 2, 1);
     setScale({ zoom: width >= 32 ? 'day' : width >= 10 ? 'week' : 'month', cellWidth: width });
@@ -234,7 +237,7 @@ export function useGanttNavigation({ values, asOfDate, storageKey, legacyKey, on
   };
   return {
     scrollRef, attach, barRef, zoom: scale.zoom, cellWidth: scale.cellWidth, dates, timelineWidth,
-    viewportWidth: size.width, totalWidth: timelineWidth + size.fixed, visible,
+    viewportWidth: size.width, totalWidth: timelineWidth + size.fixed, visible, rangeLimited:base.rangeLimited,
     changeZoom: (zoom: GanttZoom) => { captureAnchor(); setScale({ zoom, cellWidth: ganttZoomOptions[zoom].cellWidth }); },
     today: () => navigateTo(asOfDate), navigateTo, fit,
   };
