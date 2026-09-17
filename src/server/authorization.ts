@@ -4,6 +4,7 @@ import { verifySessionToken, type AccountRole, type Actor } from './auth';
 import type { ProjectRole } from '../shared/domain';
 import { forbidden, notFound } from './errors';
 import { accountPersonAvailableSql } from './account-access';
+import { recordLogIdentity, recordLogReason, recordProjectContext, updateLogContext } from './log-context';
 
 export type SessionActor = Actor & {
   accountId: string;
@@ -20,12 +21,14 @@ declare module 'fastify' {
 }
 
 export type AuthorizationActor = Pick<Actor, 'type' | 'id' | 'label'> & {
+  accountName?: string;
   accountId: string;
   personId: string | null;
   globalRole: AccountRole;
 };
 
 export function requireAuthorizationActor(actor: Actor): AuthorizationActor {
+  if (actor.type === 'guest') return { type: 'guest', id: 'guest', label: '游客', accountId: '', personId: null, globalRole: 'user' };
   if (!actor.accountId || !actor.globalRole) forbidden('当前账号状态无效，请重新登录');
   const current = sqlite.prepare(`SELECT a.person_id AS personId, a.global_role AS globalRole
     FROM accounts a WHERE a.id=? AND a.status='active' AND a.deleted_at IS NULL
@@ -40,7 +43,8 @@ export function requireAuthorizationActor(actor: Actor): AuthorizationActor {
 }
 
 export function sessionActor(token?: string): SessionActor | null {
-  const payload = verifySessionToken(token);
+  if (token) updateLogContext({ authMethod: 'session' });
+  const payload = verifySessionToken(token, recordLogReason);
   if (!payload) return null;
   const account = sqlite.prepare(`SELECT id, username, person_id AS personId, global_role AS globalRole,
     must_change_password AS mustChangePassword, session_version AS sessionVersion
@@ -49,12 +53,15 @@ export function sessionActor(token?: string): SessionActor | null {
       id: string; username: string; personId: string | null; globalRole: AccountRole;
       mustChangePassword: number; sessionVersion: number;
     } | undefined;
-  if (!account || account.sessionVersion !== payload.sessionVersion) return null;
-  return {
+  if (!account) { recordLogReason('ACCOUNT_UNAVAILABLE', '会话对应的账号或人员已停用、归档或不存在'); return null; }
+  if (account.sessionVersion !== payload.sessionVersion) { recordLogReason('SESSION_REVOKED', '登录会话已被注销，请重新登录'); return null; }
+  const actor: SessionActor = {
     type: 'user', id: account.id, label: account.username, accountId: account.id,
     personId: account.personId, globalRole: account.globalRole,
     mustChangePassword: Boolean(account.mustChangePassword), sessionVersion: account.sessionVersion,
   };
+  recordLogIdentity(actor);
+  return actor;
 }
 
 export function actorFromRequest(request: FastifyRequest): SessionActor {
@@ -76,7 +83,21 @@ export function isAdmin(actor: Pick<SessionActor, 'globalRole'>) {
 }
 
 function isActiveProject(projectId: string) {
-  return Boolean(sqlite.prepare('SELECT 1 FROM projects WHERE id=? AND deleted_at IS NULL').get(projectId));
+  const project = sqlite.prepare('SELECT name FROM projects WHERE id=? AND deleted_at IS NULL').get(projectId) as { name: string } | undefined;
+  recordProjectContext(projectId, project?.name);
+  return Boolean(project);
+}
+
+/** Internal diagnostics only; public errors continue to hide inaccessible resources. */
+export function recordProjectAccessFailure(actor: AuthorizationActor, projectId: string, required: 'read' | 'manage' | 'contribute' | 'workspace' = 'read') {
+  const project = sqlite.prepare('SELECT name, deleted_at AS deletedAt FROM projects WHERE id=?').get(projectId) as { name: string; deletedAt: string | null } | undefined;
+  recordProjectContext(projectId, project?.name);
+  if (!project) recordLogReason('PROJECT_NOT_FOUND', '项目不存在');
+  else if (project.deletedAt) recordLogReason('PROJECT_ARCHIVED', '项目已归档');
+  else if (actor.type === 'guest') recordLogReason('PROJECT_NOT_PUBLIC', '项目未开放游客浏览，需要登录有访问权限的账号');
+  else if (required === 'manage') recordLogReason('PROJECT_MANAGER_REQUIRED', '当前账号不是该项目的项目经理或管理员');
+  else if (required === 'contribute') recordLogReason('PROJECT_CONTRIBUTOR_REQUIRED', '当前账号不是该项目的可协作成员');
+  else recordLogReason('PROJECT_ACCESS_DENIED', required === 'workspace' ? '当前账号不是项目成员，且项目未开放游客浏览' : '当前账号没有访问该项目的权限');
 }
 
 export function accessibleProjectIds(actor: AuthorizationActor) {
@@ -106,6 +127,7 @@ export function canManageProject(actor: AuthorizationActor, projectId: string) {
 }
 
 export function canReadProject(actor: AuthorizationActor, projectId: string) {
+  if (actor.type === 'guest') return Boolean(sqlite.prepare('SELECT 1 FROM projects WHERE id=? AND guest_visible=1 AND deleted_at IS NULL').get(projectId));
   if (!isActiveProject(projectId)) return false;
   if (isAdmin(actor)) return true;
   if (!actor.personId) return false;
@@ -119,19 +141,19 @@ export function canContributeProject(actor: AuthorizationActor, projectId: strin
 }
 
 export function assertAdmin(actor: AuthorizationActor) {
-  if (!isAdmin(actor)) forbidden('此功能仅管理员可用');
+  if (!isAdmin(actor)) { recordLogReason('ADMIN_REQUIRED', '此功能仅管理员可用'); forbidden('此功能仅管理员可用'); }
 }
 
 export function assertProjectManager(actor: AuthorizationActor, projectId: string) {
-  if (!canManageProject(actor, projectId)) forbidden('只有当前项目的项目经理或管理员可以执行此操作');
+  if (!canManageProject(actor, projectId)) { recordProjectAccessFailure(actor, projectId, 'manage'); forbidden('只有当前项目的项目经理或管理员可以执行此操作'); }
 }
 
 export function assertProjectReadable(actor: AuthorizationActor, projectId: string) {
-  if (!canReadProject(actor, projectId)) forbidden('没有访问当前项目的权限');
+  if (!canReadProject(actor, projectId)) { recordProjectAccessFailure(actor, projectId); forbidden('没有访问当前项目的权限'); }
 }
 
 export function assertProjectResourceReadable(actor: AuthorizationActor, projectId: string, message = '资源不存在') {
-  if (!canReadProject(actor, projectId)) notFound(message);
+  if (!canReadProject(actor, projectId)) { recordProjectAccessFailure(actor, projectId); notFound(message); }
 }
 
 export function assertProjectResourceManager(actor: AuthorizationActor, projectId: string, message = '资源不存在') {
@@ -140,7 +162,7 @@ export function assertProjectResourceManager(actor: AuthorizationActor, projectI
 }
 
 export function assertProjectMember(actor: AuthorizationActor, projectId: string) {
-  if (!canContributeProject(actor, projectId)) forbidden('只有当前项目成员可以提交问题或追加进展');
+  if (!canContributeProject(actor, projectId)) { recordProjectAccessFailure(actor, projectId, 'contribute'); forbidden('只有当前项目成员可以提交问题或追加进展'); }
 }
 
 export function projectIdForRequirement(requirementId: string) {

@@ -27,7 +27,6 @@ export function milestoneCommand(id:string,action:'achieve'|'reopen',raw:{expect
     if(action==='achieve'&&m.achievedAt||action==='reopen'&&!m.achievedAt)fail('里程碑状态不支持此操作');
     if(m.version!==raw.expectedVersion)fail('里程碑已更新','STALE_WRITE',409);
     if(m.milestoneKind==='test_submitted'&&action==='reopen')fail('提测记录保留为历史，需求返工后可记录新一轮提测');
-    if(m.requirementId&&sqlite.prepare('SELECT 1 FROM requirements r JOIN feature_phases p ON p.id=r.phase_id WHERE r.id=? AND p.delivered_at IS NOT NULL').get(m.requirementId))fail('请先重新打开已交付 Phase');
     if(action==='achieve'){
       const input=loadPathInput(m.projectId);if(input.dependencies.filter(e=>e.targetMilestoneId===id).some(e=>!deliveredDate(input,e)))fail('里程碑前置尚未交付');
       sqlite.prepare('UPDATE milestones SET achieved_at=?,achieved_recorded_at=?,achieved_by=?,version=version+1,updated_at=? WHERE id=?').run(todayIso(),new Date().toISOString(),actor.accountId||null,new Date().toISOString(),id);

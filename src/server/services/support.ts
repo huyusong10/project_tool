@@ -17,6 +17,21 @@ export function row<T = JsonObject>(sql: string, ...params: unknown[]): T | unde
   return sqlite.prepare(sql).get(...params) as T | undefined;
 }
 
+/** Historical attribution does not require an active login or grant execution access. */
+export function assertHistoricalProjectPeople(projectId: string, ids: Array<string | null>) {
+  for (const id of new Set(ids.filter(Boolean))) {
+    if (!row(`SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id
+      WHERE pp.project_id=? AND p.id=? AND p.deleted_at IS NULL AND pp.project_role IN ('member','manager')`, projectId, id)) {
+      fail('历史负责人和协作人必须属于当前项目');
+    }
+  }
+}
+
+export function changeSnapshot(current: object, after: JsonObject, reason: string) {
+  const before = current as JsonObject;
+  return {reason, before: Object.fromEntries(Object.keys(after).map(key => [key, before[key] ?? null])), after};
+}
+
 /** Keep generated IN clauses below SQLite's parameter limit, including older builds that default to 999. */
 export function chunkValues<T>(values: readonly T[], size = 900): T[][] {
   const chunks: T[][] = [];

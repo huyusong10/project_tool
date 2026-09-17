@@ -1,0 +1,17 @@
+@layer application, controls;
+@layer application {
+.workspace-summary-timeline{position:relative;height:52px;min-height:52px;width:100%;--date-actual-top:18px}
+.workspace-summary-timeline .gantt-date-hitbox{z-index:5;top:5px;height:41px}
+.workspace-summary-timeline .gantt-date-actual{height:16px}
+.workspace-gantt-row.kind-feature .workspace-summary-timeline{--date-actual-top:21px;--gantt-actual-height:10px}
+.workspace-gantt-row.kind-feature .workspace-summary-timeline .gantt-date-actual{height:10px;background:color-mix(in srgb,var(--gantt-running) 65%,var(--bg-surface))}
+.workspace-gantt-summary article.workspace-summary-phase-detail{grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.workspace-summary-phase-detail>span{white-space:nowrap}
+.workspace-summary-phase-detail small{display:block;font-size:11px;color:var(--text-muted);margin-top:2px}
+.workspace-summary-timeline button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:600px){
+ .unified-workspace .workspace-gantt .workspace-gantt-grid{--row-label:112px}
+ .workspace-gantt-row:not(.kind-work) .workspace-row-label > .workspace-object-mark{display:none}
+ .workspace-row-label .workspace-disclosure:empty{display:none}
+}
+}

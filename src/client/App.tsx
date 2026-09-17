@@ -11,7 +11,7 @@ import {
   BusinessDateContext,
   SessionContext,
   UiActionsContext,
-  useUiActions,
+  useUiActions, useProjects,
 } from "./app-context";
 import { appRoutes, preloadPage } from "./routes";
 import { invalidate, invalidateBusinessDateViews, keys } from "./query-keys";
@@ -36,12 +36,18 @@ import {useProjectRefresh} from './use-project-refresh';
 const noProjects: Project[] = [];
 
 function GuestLanding() {
-  const { openLogin } = useUiActions();
-  return <div className="page-content guest-landing"><div className="panel"><KeyRound size={32} /><h1>登录项目工作台</h1><p>项目、需求、问题和人员数据仅对已授权账号开放。</p><Button variant="primary" className="primary-button" onClick={openLogin}><LogIn size={16} />用户登录</Button></div></div>;
+  const { openLogin } = useUiActions(), { projects, changeProject } = useProjects();
+  return <div className="page-content guest-landing"><div className="panel"><KeyRound size={32}/>
+    <h1>{projects.length ? '选择项目' : '暂未开放游客浏览'}</h1>
+    <p>{projects.length ? '查看项目的交付安排、需求和工作进展。' : '登录有权限的账号后可查看项目。'}</p>
+    {projects.length > 0 && <div className="guest-project-list">{projects.map(project => <Button key={project.id} variant="secondary" onClick={() => changeProject(project.id)}>{project.name}</Button>)}</div>}
+    <Button variant="primary" onClick={openLogin}><LogIn size={16}/>登录</Button>
+  </div></div>;
 }
 
 function StartupError({ title, error, pending, onRetry }: { title: string; error: Error; pending: boolean; onRetry: () => void }) {
-  return <div className="page-content guest-landing"><div className="panel"><h1>{title}</h1><p>{error.message}</p><Button busy={(pending)} aria-label={pending ? "重新加载中…" : "重新加载"} variant="primary" className="primary-button" disabled={pending} onClick={onRetry}>{"重新加载"}</Button></div></div>;
+  const {openLogin} = useUiActions(),navigate=useNavigate();
+  return <div className="page-content guest-landing"><div className="panel"><h1>{title}</h1><p>{error.message}</p><Button busy={(pending)} aria-label={pending ? "重新加载中…" : "重新加载"} variant="primary" className="primary-button" disabled={pending} onClick={onRetry}>{"重新加载"}</Button><Button variant="secondary" onClick={()=>navigate("/")}>项目空间</Button><Button variant="secondary" onClick={openLogin}>切换账号</Button></div></div>;
 }
 
 export function App() {
@@ -95,7 +101,7 @@ export function App() {
   });
   const session = sessionQuery.data || guestSession;
   const sessionReady = !sessionQuery.unavailable;
-  const projectsEnabled = session.authenticated && !session.mustChangePassword;
+  const projectsEnabled = sessionReady && !session.mustChangePassword;
   useEffect(() => { if (projectsEnabled) preloadPage(location.pathname); }, [projectsEnabled, location.pathname]);
   const projectKey = [...keys.projects, session.accountId];
   const projectsQuery = useResourceQuery<Project[]>(projectKey, "/api/projects", projectsEnabled, (next) => {
@@ -122,7 +128,7 @@ export function App() {
   const selectedProjectId = activeProject?.id || '';
   const projectSelectionReady = page.phase === 'ready';
   const chrome = useMemo(() => createPageChrome(page.navigationKey), [page.navigationKey]);
-  useProjectRefresh(selectedProjectId,session.accountId||'',projectsEnabled&&projectSelectionReady);
+  useProjectRefresh(selectedProjectId,session.accountId||'guest',projectsEnabled&&projectSelectionReady);
 
   useEffect(() => {
     try { window.localStorage.setItem("project-manage:sidebar-collapsed", String(sidebarCollapsed)); } catch { /* 当前页面仍可收起侧栏。 */ }
@@ -141,6 +147,7 @@ export function App() {
   const lastUnauthorizedRef = useRef(0);
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      if (!session.authenticated) return;
       const now = Date.now();
       if (now - lastUnauthorizedRef.current < 3000) return;
       lastUnauthorizedRef.current = now;
@@ -148,7 +155,7 @@ export function App() {
       toast.info("登录状态已过期，请重新登录");
     });
     return () => setUnauthorizedHandler(null);
-  }, [client, toast]);
+  }, [client, toast, session.authenticated]);
 
   const changeProject = useCallback((projectId: string) => {
     if (projectId === selectedProjectId || !projects.some(project => project.id === projectId)) return;
@@ -157,7 +164,7 @@ export function App() {
     const params = location.pathname === '/issues' ? new URLSearchParams(location.search) : new URLSearchParams();
     if (location.pathname === '/issues') for (const key of ['issueId','requirementId','ownerId','page','q']) params.delete(key);
     params.set('projectId',projectId);
-    let pathname = location.pathname;
+    let pathname = projects.find(p => p.id === projectId)?.publicReadOnly ? '/' : location.pathname;
     if (/^\/requirements\/[^/]+$/.test(pathname)) pathname = new URLSearchParams(location.search).get('view') === 'path' ? '/paths' : '/requirements';
     navigate({pathname, search: `?${params}`}, {state:null});
   }, [chrome, projects, session.accountId, session.username, location.pathname, location.search, navigate, selectedProjectId]);
@@ -181,14 +188,14 @@ export function App() {
               <Sidebar branding={brandingQuery.data || (brandingQuery.isError ? defaultBranding : undefined)} ready={sessionReady && (page.scope !== 'project' || page.phase !== 'loading' || Boolean(activeProject))} collapsed={visibleSidebarCollapsed} onToggle={() => narrowScreen ? setNarrowSidebarExpanded(value => !value) : setSidebarCollapsed(value => !value)} onNavigate={() => { chrome.prepareNavigation(); setNarrowSidebarExpanded(false); }} />
               <main>
                 <Topbar pageIcon={pageIcon} sessionReady={sessionReady} />
-                {(!sessionReady || session.authenticated && !session.mustChangePassword) && <PageToolbar />}
+                {(!sessionReady || !session.mustChangePassword && Boolean(activeProject)) && <PageToolbar />}
                 {rootRefreshFailed && page.phase === 'ready' && <div className="app-refresh-notice"><RefreshNotice
                   pending={sessionQuery.isFetching || projectsQuery.isFetching}
                   onRetry={() => { void sessionQuery.refetch(); if (projectsEnabled) void projectsQuery.refetch(); }}
                 /></div>}
                 <ErrorBoundary resetKey={page.navigationKey}>
                   <Suspense key={page.navigationKey} fallback={<LoadingState label="正在加载页面…" className="tall" />}>
-                    {page.phase === 'error' ? <StartupError title={page.errorTitle || '页面加载失败'} error={page.error!} pending={sessionQuery.isFetching || projectsQuery.isFetching || resources.requirement.isFetching || resources.issue.isFetching || resources.templates.isFetching} onRetry={() => void page.retry()} /> : page.phase === 'loading' ? <LoadingState label="正在加载页面…" className="tall" /> : !session.authenticated ? <GuestLanding /> : session.mustChangePassword ? null :
+                    {page.phase === 'error' ? <StartupError title={page.errorTitle || '页面加载失败'} error={page.error!} pending={sessionQuery.isFetching || projectsQuery.isFetching || resources.requirement.isFetching || resources.issue.isFetching || resources.templates.isFetching} onRetry={() => void page.retry()} /> : page.phase === 'loading' ? <LoadingState label="正在加载页面…" className="tall" /> : !session.authenticated && !page.project ? <GuestLanding /> : session.mustChangePassword ? null :
                     <Routes>
                       {appRoutes.map((def) => {
                         const PageComponent = def.component;

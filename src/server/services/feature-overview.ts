@@ -1,4 +1,5 @@
-import { readFeaturePhases } from './feature-phases';
+import { readFeaturePhases, phaseRequirementFacts } from './feature-phases';
+import { phaseCompletion } from '../../shared/feature-phases';
 import { sqlite } from '../database';
 import type { Actor } from '../auth';
 import { assertProjectReadable, requireAuthorizationActor } from '../authorization';
@@ -23,8 +24,16 @@ export function readFeatureOverview(projectId:string,asOfDate=todayIso(),state:'
     ) ranked WHERE rank<=3 ORDER BY featureId,rank`).all(projectId) as Array<FeatureProgressSummary & { featureId: string }>;
     const byFeature = new Map(report.features.map(feature => [feature.id, feature]));
     for (const {featureId,...update} of updates) byFeature.get(featureId)?.recentUpdates.push(update);
-    const phases=readFeaturePhases(projectId,asOfDate);
-    for(const feature of report.features){feature.phases=phases.filter(p=>p.featureId===feature.id);feature.unassignedPhaseCount=Number((sqlite.prepare("SELECT count(*) AS n FROM requirements WHERE feature_id=? AND phase_id IS NULL AND deleted_at IS NULL AND status<>'cancelled'").get(feature.id) as {n:number}).n);}
+    const facts=phaseRequirementFacts(projectId,asOfDate),byId=new Map(facts.map(r=>[r.id,r]));
+    const phases=readFeaturePhases(projectId,asOfDate,facts);
+    for(const feature of report.features){
+      feature.phases=phases.filter(p=>p.featureId===feature.id);
+      // Summing requirement weights equals weighting Phases by their scope, without rounding each Phase first.
+      // Archived completions and requirements awaiting a Phase retain their contribution.
+      feature.completion=phaseCompletion(facts.filter(r=>r.featureId===feature.id));
+      feature.requirements=feature.requirements.map(r=>({...r,progress:byId.get(r.id)?.progress,progressWeight:byId.get(r.id)?.progressWeight}));
+      feature.unassignedPhaseCount=facts.filter(r=>r.featureId===feature.id&&!r.phaseId&&!r.deletedAt&&r.status!=='cancelled').length;
+    }
     return report;
   })();
 }

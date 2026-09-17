@@ -1,3 +1,4 @@
+import {assertHistoricalProjectPeople,changeSnapshot} from './support';
 import {describeChanges} from './support';
 import { randomUUID } from 'node:crypto';
 import { sqlite } from '../database';
@@ -236,32 +237,41 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
   if (input.projectId !== undefined && requireText(input.projectId, '项目') !== projectId) {
     fail('问题不能通过普通编辑迁移到其他项目');
   }
-  if (current.status === 'resolved') fail('已解决问题已锁定，请使用重开或纠错操作', 'TERMINAL_LOCKED');
-  if (['status', 'progress', 'resolvedAt'].some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
-    fail('问题状态、完成度和解决日期不能通过普通编辑修改');
+  const historical = current.status === 'resolved';
+  assertProjectManager(requireAuthorizationActor(actor), projectId);
+  if (['status', 'progress'].some((key) => Object.prototype.hasOwnProperty.call(input, key))) {
+    fail('问题状态和完成度不能通过普通编辑修改');
   }
   if (Object.keys(input).some((key) => ![
     'expectedVersion', 'projectId', 'title', 'impact', 'reporter', 'sourceRef',
-    'ownerId', 'requirementId', 'priority', 'discoveredAt', 'dueDate', 'nextReviewAt',
+    'ownerId', 'requirementId', 'priority', 'discoveredAt', 'dueDate', 'nextReviewAt', 'resolvedAt', 'reason',
   ].includes(key))) fail('问题编辑不能提交未声明字段');
   const title = input.title === undefined ? current.title : requireLabel(input.title, '问题标题');
   const requirementId = input.requirementId === undefined ? current.requirementId : issueRequirement(projectId, input.requirementId);
   const sourceRef = input.sourceRef === undefined ? current.sourceRef : nullableLabel(input.sourceRef, '来源标识');
-  const ownerId = input.ownerId === undefined ? current.ownerId : issueOwner(projectId, input.ownerId);
+  const ownerId = input.ownerId === undefined ? current.ownerId : nullableText(input.ownerId);
   const priority = input.priority === undefined ? current.priority : ensureEnum(input.priority, priorities, '问题优先级');
   const impact = input.impact === undefined ? current.impact : nullableText(input.impact);
   const reporter = input.reporter === undefined ? current.reporter : nullableLabel(input.reporter, '提出人');
   const discoveredAt = input.discoveredAt === undefined ? current.discoveredAt : requireDate(input.discoveredAt, '发现日期');
   const dueDate = current.status === 'deferred' ? null : input.dueDate === undefined ? current.dueDate : nullableDate(input.dueDate, '目标日期');
   const nextReviewAt=input.nextReviewAt===undefined?current.nextReviewAt:nullableDate(input.nextReviewAt,'下次核对日期');
-  const changedFields = nextReviewAt!==current.nextReviewAt||title !== current.title || requirementId !== current.requirementId || sourceRef !== current.sourceRef
+  const resolvedAt = input.resolvedAt === undefined ? current.resolvedAt : nullableDate(input.resolvedAt, '解决日期');
+  validateIssueResolution(current.status, discoveredAt, resolvedAt);
+  const validateOwner = () => {
+    if (ownerId === current.ownerId) return;
+    if (historical) assertHistoricalProjectPeople(projectId, [ownerId]);
+    else issueOwner(projectId, ownerId, true);
+  };
+  validateOwner();
+  const changedFields = resolvedAt !== current.resolvedAt || nextReviewAt!==current.nextReviewAt||title !== current.title || requirementId !== current.requirementId || sourceRef !== current.sourceRef
     || impact !== current.impact || reporter !== current.reporter || ownerId !== current.ownerId
     || priority !== current.priority || discoveredAt !== current.discoveredAt || dueDate !== current.dueDate;
   if (!changedFields) {
     sqlite.transaction(() => {
       requireActiveProject(projectId, true);
       if (requirementId) issueRequirement(projectId, requirementId, true);
-      issueOwner(projectId, ownerId, true);
+      validateOwner();
       assertProjectManager(requireAuthorizationActor(actor), projectId);
     })();
     return current;
@@ -269,14 +279,16 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
   const now = nowIso();
   sqlite.transaction(() => {
     const changed = sqlite.prepare(`UPDATE issues SET requirement_id=?, source_ref=?, title=?, impact=?, reporter=?, owner_id=?,
-      priority=?, discovered_at=?, due_date=?, next_review_at=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(
-      requirementId, sourceRef, title, impact, reporter, ownerId, priority, discoveredAt, dueDate, nextReviewAt, now, id, current.version,
+      priority=?, discovered_at=?, due_date=?, next_review_at=?, resolved_at=?, version=version+1, updated_at=? WHERE id=? AND version=?`).run(
+      requirementId, sourceRef, title, impact, reporter, ownerId, priority, discoveredAt, dueDate, nextReviewAt, resolvedAt, now, id, current.version,
     );
     assertVersionedWrite(changed, '问题');
-    audit(actor, 'update', 'issue', id, `更新问题：${title}`);
+    const reason = nullableText(input.reason) || describeChanges(current,input);
+    if (historical) appendIssueEvent(id, 'correction', reason, actor, current.progress, null, now);
+    audit(actor, historical ? 'correct' : 'update', 'issue', id, JSON.stringify(changeSnapshot(current,{requirementId,sourceRef,title,impact,reporter,ownerId,priority,discoveredAt,dueDate,nextReviewAt,resolvedAt},reason)));
     requireActiveProject(projectId, true);
     if (requirementId) issueRequirement(projectId, requirementId, true);
-    issueOwner(projectId, ownerId, true);
+    validateOwner();
     assertProjectManager(requireAuthorizationActor(actor), projectId);
   })();
   return getIssue(id);

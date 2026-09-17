@@ -34,14 +34,17 @@ function prepare(projectId: string, input: DependencyChangesInput, actor: Actor)
   if (new Set(remove).size !== remove.length || new Set(add.map(e => e.clientId)).size !== add.length
     || new Set(estimates.map(e => e.workItemId)).size !== estimates.length) fail('批次中存在重复修改');
   const expanded=prepareEditorEntities(snapshot,entities,actor);
-  const removed=snapshot.dependencies.filter(e=>remove.includes(e.id));
+  const deletedWorkIds=new Set(entities.filter(c=>c.entity==='work'&&c.op==='delete').map(c=>c.id));
+  const autoRemoved=(e:typeof snapshot.dependencies[number])=>deletedWorkIds.has(e.sourceWorkItemId||'')||deletedWorkIds.has(e.targetWorkItemId||'');
+  const removed=snapshot.dependencies.filter(e=>remove.includes(e.id)||autoRemoved(e));
   for(const id of remove){
     const edge=snapshot.dependencies.find(e=>e.id===id);
     if(!edge)fail('要移除的依赖已经不存在','STALE_WRITE',409,{dependencyIds:[id]});
+    if(autoRemoved(edge))continue;
     if(expanded.get(edge.sourceRequirementId)?.dependencies.some(e=>e.id===id))assertProjectManager(current,projectId);
     else assertRelationAccess(edge,actor);
   }
-  snapshot.dependencies=snapshot.dependencies.filter(e=>!remove.includes(e.id));
+  snapshot.dependencies=snapshot.dependencies.filter(e=>!removed.some(r=>r.id===e.id));
   if(entities.some(c=>c.data.ownerId!==undefined||Object.keys(c.data).some(k=>k.startsWith('blocked')))){
     const blocked=[...snapshot.requirements,...snapshot.workItems].filter(v=>v.status==='blocked');
     const coordinations=loadBlockerCoordination(projectId,blocked.map(v=>({id:v.id,owner_id:v.ownerId||null,blocked_coordinator_id:v.blockedCoordinatorId||null,blocked_next_review_at:v.blockedNextReviewAt||null,blocked_issue_id:v.blockedIssueId||null})));

@@ -82,7 +82,7 @@ test('关系图入口直达交付范围和导入，导入预选当前特性，�
   await toolbar(page).getByRole('button',{name:'返回工作区'}).click();await expect(toolbar(page).getByRole('button',{name:'关系图',exact:true})).toHaveAttribute('aria-pressed','true');
 });
 
-test('项目入口回到项目层级；系统归类、已交付和归档范围不开放受限创建',async({page})=>{
+test('项目入口回到项目层级；系统归类和归档保持限制，已完成 Phase 可以补充需求',async({page})=>{
   const f=await phaseFixture(page);await page.goto(url(f.projectId,'feature',f.feature.id));
   await page.goto('/');await expect.poll(()=>new URL(page.url()).searchParams.get('scopeType')).toBe('project');
   await page.request.post('/api/requirements',{data:{projectId:f.projectId,title:'未归类需求'}});
@@ -91,7 +91,7 @@ test('项目入口回到项目层级；系统归类、已交付和归档范围�
   const archived=(await(await page.request.post(f.base+'/features',{data:{name:'已归档特性'}})).json()).features.find((x:{name:string})=>x.name==='已归档特性');
   const archivedResult=await page.request.post(f.base+'/features/'+archived.id+'/archive',{data:{expectedVersion:archived.version}});expect(archivedResult.ok(),await archivedResult.text()).toBe(true);
   await page.goto(url(f.projectId,'feature',archived.id));await expect(page.locator('.workspace-gantt')).toBeVisible();await expect(toolbar(page).getByRole('button',{name:'新建对象',exact:true})).toHaveCount(0);
-  await page.goto(url(f.projectId,'phase',f.phases[0].id));await expect(page.locator('.workspace-gantt')).toBeVisible();await expect(toolbar(page).getByRole('button',{name:'新建对象',exact:true})).toHaveCount(0);
+  await page.goto(url(f.projectId,'phase',f.phases[0].id));await expect(page.locator('.workspace-gantt')).toBeVisible();await expect(toolbar(page).getByRole('button',{name:'新建对象',exact:true})).toBeVisible();
 });
 
 

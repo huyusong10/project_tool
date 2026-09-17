@@ -1,3 +1,4 @@
+import { getRuntimeLogger } from '../scripts/runtime-logger.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -92,7 +93,7 @@ describe('系统管理API', () => {
     const check = await app.inject({ method: 'POST', url: '/api/system/database-check', headers: { cookie } });
     expect(check.statusCode).toBe(200);
     expect(check.json()).toEqual(expect.objectContaining({ ok: true, checkedAt: expect.any(String), durationMs: expect.any(Number) }));
-    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const errorLog = vi.spyOn(getRuntimeLogger().logger, 'error');
     const pragma = vi.spyOn(sqlite, 'pragma').mockImplementationOnce(() => { throw new Error('D:\\private\\database.db is unavailable'); });
     const failedCheck = await app.inject({ method: 'POST', url: '/api/system/database-check', headers: { cookie } });
     expect(failedCheck.statusCode).toBe(200);
@@ -488,7 +489,7 @@ describe('系统管理API', () => {
       fs.writeFileSync(destination, 'scheduled-backup');
       return { totalPages: 1, remainingPages: 0 };
     });
-    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const errorLog = vi.spyOn(getRuntimeLogger().logger, 'error');
     const timer = startBackupScheduler();
     try {
       await vi.advanceTimersByTimeAsync(0);
@@ -497,7 +498,7 @@ describe('系统管理API', () => {
       expect(attempts).toBe(2);
       await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
       expect(attempts).toBe(2);
-      expect(errorLog).toHaveBeenCalledWith('自动备份失败', expect.any(Error));
+      expect(errorLog).toHaveBeenCalledWith(expect.objectContaining({ event: 'backup.failed', err: expect.any(Error) }), '数据库备份未完成');
     } finally {
       clearInterval(timer);
       backupSpy.mockRestore();
@@ -562,13 +563,13 @@ describe('系统管理API', () => {
       fs.writeFileSync(destination, 'scheduled-after-cleanup-error');
       return { totalPages: 1, remainingPages: 0 };
     });
-    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const errorLog = vi.spyOn(getRuntimeLogger().logger, 'warn');
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 8, 10, 1, 55, 0));
     let timer: ReturnType<typeof setInterval> | undefined;
     try {
       expect(() => { timer = startBackupScheduler(); }).not.toThrow();
-      expect(errorLog).toHaveBeenCalledWith('启动时清理过期数据库备份失败', expect.any(Error));
+      expect(errorLog).toHaveBeenCalledWith(expect.objectContaining({ event: 'backup.cleanup_failed', err: expect.any(Error) }), '启动时清理过期数据库备份失败');
       expect(attempts).toBe(0);
       rejectOldCleanup = false;
       await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
@@ -604,7 +605,7 @@ describe('系统管理API', () => {
       }
       return { totalPages: 1, remainingPages: 0 };
     });
-    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const errorLog = vi.spyOn(getRuntimeLogger().logger, 'error');
     let timer: ReturnType<typeof setInterval> | undefined;
     const manualBackup = createBackup({ cleanup: false });
     try {

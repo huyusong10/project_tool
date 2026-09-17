@@ -406,3 +406,28 @@ for(const entity of ['requirement','work'] as const)it(`进行中${entity}交接
  const formal=await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis');expect(formal.nodes.find(n=>n.id===nodeId)?.blockerCoordination).toEqual(p.analysis.nodes.find(n=>n.id===nodeId)?.blockerCoordination);
  expect(formal.nodes.find(n=>n.id===nodeId)).toMatchObject({ownerId:person.id,status:'in_progress'});
 });
+
+it('画布仅提交工作项删除，预览和保存均自动清理双向依赖',async()=>{
+ const {projectId,requirement:r,ownerId}=await fixture('work_items');
+ const works=[];for(const title of ['前置','删除对象','后续']){const response=await request('POST','/api/requirements/'+r.id+'/work-items',{title,ownerId,expectedVersion:(await get<Requirement>('/api/requirements/'+r.id)).version});expect(response.statusCode,response.body).toBe(200);works.push(response.json());}
+ const {sqlite}=await import('../src/server/database'),now=new Date().toISOString();
+ const insert=sqlite.prepare("INSERT INTO dependency_edges(id,project_id,source_requirement_id,target_requirement_id,source_work_item_id,target_work_item_id,origin,created_at,updated_at) VALUES(?,?,?,?,?,?,'manual',?,?)");
+ for(const [source,target] of [[works[0],works[1]],[works[1],works[2]]])insert.run(randomUUID(),projectId,r.id,r.id,source.id,target.id,now,now);
+ const before=await snapshot(),p=await preview(projectId,{entities:[{entity:'work',op:'delete',id:works[1].id,requirementId:r.id,expectedVersion:works[1].version,data:{}}]});
+ expect(p.response.statusCode,p.response.body).toBe(200);expect(await snapshot()).toEqual(before);expect(p.response.json().differences.removed).toHaveLength(2);
+ const saved=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...p.input,batchId:randomUUID(),previewToken:p.response.json().previewToken});expect(saved.statusCode,saved.body).toBe(200);
+ const graph=await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis');expect(graph.dependencies).toHaveLength(0);expect((await get<Requirement>('/api/requirements/'+r.id)).workItems.map(w=>w.id)).toEqual([works[0].id,works[2].id]);
+});
+
+it('画布可以更正已完成工作负责人，保留完成状态及原始记录',async()=>{
+ const {projectId,requirement:r,ownerId}=await fixture('work_items');
+ const work=(await request('POST','/api/requirements/'+r.id+'/work-items',{title:'历史工作',ownerId,expectedVersion:r.version})).json();
+ const started=await request('POST','/api/work-items/'+work.id+'/start',{expectedVersion:work.version});expect(started.statusCode,started.body).toBe(200);
+ const complete=await request('POST','/api/work-items/'+work.id+'/complete',{expectedVersion:started.json().version});expect(complete.statusCode,complete.body).toBe(200);
+ const person=(await request('POST','/api/people',{projectId,name:'历史更正负责人'})).json(),{sqlite}=await import('../src/server/database');sqlite.prepare('UPDATE people SET active=0 WHERE id=?').run(person.id);
+ const current=await get<Requirement>('/api/requirements/'+r.id),events=sqlite.prepare('SELECT * FROM progress_updates WHERE requirement_id=? ORDER BY rowid').all(r.id);
+ const p=await preview(projectId,{entities:[{entity:'work',op:'update',id:work.id,requirementId:r.id,expectedVersion:current.workItems[0].version,data:{ownerId:person.id,reason:'更正历史归属'}}]});expect(p.response.statusCode,p.response.body).toBe(200);
+ const saved=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...p.input,batchId:randomUUID(),previewToken:p.response.json().previewToken});expect(saved.statusCode,saved.body).toBe(200);
+ const after=await get<Requirement>('/api/requirements/'+r.id);expect(after.status).toBe('completed');expect(after.workItems[0]).toMatchObject({ownerId:person.id,status:'completed',progress:100,actualEnd:current.workItems[0].actualEnd});
+ expect(sqlite.prepare('SELECT * FROM progress_updates WHERE requirement_id=? ORDER BY rowid').all(r.id).slice(0,events.length)).toEqual(events);
+});

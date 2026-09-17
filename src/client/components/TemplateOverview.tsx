@@ -2,16 +2,8 @@ import { memo, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Diamond } from 'lucide-react';
 import type { TemplateOverview as Overview } from '../template-overview';
 
-export function TemplateStats({ overview }: { overview: Overview }) {
-  return <dl className="template-stats">
-    <div><dt>工作项</dt><dd>{overview.workCount}<small> 项</small></dd></div>
-    <div><dt>里程碑</dt><dd>{overview.milestoneCount}<small> 个</small></dd></div>
-    <div><dt>计划跨度</dt><dd>{overview.span}<small> 工作日</small></dd></div>
-  </dl>;
-}
-
 /** 静态概览只测量连线端点，不写入流程位置，也不挂载可编辑画布。 */
-export const TemplateOverview = memo(function TemplateOverview({ overview }: { overview: Overview }) {
+export const TemplateOverview = memo(function TemplateOverview({ overview, selected, onSelect }: { overview: Overview; selected?: string; onSelect?: (id: string) => void }) {
   const root = useRef<HTMLDivElement>(null);
   const marker = 'template-arrow-' + useId().replace(/:/g, '');
   const [paths, setPaths] = useState<Array<{ source: string; target: string; d: string }>>([]);
@@ -53,10 +45,12 @@ export const TemplateOverview = memo(function TemplateOverview({ overview }: { o
         {paths.map(edge => <path key={edge.source + ':' + edge.target} data-template-edge={edge.source + ':' + edge.target} d={edge.d} markerEnd={`url(#${marker})`} />)}
       </svg>
       {overview.levels.map(level => <div className="template-structure-level" key={level.rank}>
-        {level.items.map(item => <div key={item.id} data-template-node={item.id} className={`template-structure-node${item.kind === 'milestone' ? ' is-milestone' : ''}`}>
-          {item.kind === 'milestone' ? <Diamond size={13} aria-label="里程碑" /> : <i aria-hidden="true" />}
-          <span>{item.title}</span>
-        </div>)}
+        {level.items.map(item => {
+          const className = `template-structure-node${item.kind === 'milestone' ? ' is-milestone' : ''}${selected === item.id ? ' is-selected' : ''}`;
+          const content = <>{item.kind === 'milestone' ? <Diamond size={13} aria-label="里程碑" /> : <i aria-hidden="true" />}<span>{item.title}</span></>;
+          return onSelect ? <button type="button" key={item.id} data-template-node={item.id} className={'template-name-button ' + className} aria-pressed={selected === item.id} onClick={() => onSelect(item.id)}>{content}</button>
+            : <div key={item.id} data-template-node={item.id} className={className}>{content}</div>;
+        })}
       </div>)}
       {!overview.nodes.length && <p className="template-structure-note">暂无工作项和里程碑</p>}
     </div>

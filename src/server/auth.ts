@@ -4,12 +4,13 @@ import { normalizeSearchText } from '../shared/search';
 
 export type AccountRole = 'user' | 'admin';
 export type Actor = {
-  type: 'user' | 'token';
+  type: 'user' | 'token' | 'guest';
   id: string;
   label: string;
   accountId?: string;
   personId?: string | null;
   globalRole?: AccountRole;
+  accountName?: string;
 };
 
 export function hashPassword(password: string, salt = randomBytes(16).toString('hex')): string {
@@ -39,19 +40,21 @@ export function createSessionToken(accountId: string, sessionVersion: number) {
   return `${value}.${sessionSignature(value)}`;
 }
 
-export function verifySessionToken(token?: string): { accountId: string; sessionVersion: number; expiresAt: number } | null {
+export function verifySessionToken(token?: string, onRejected?: (code: string, reason: string) => void): { accountId: string; sessionVersion: number; expiresAt: number } | null {
+  const reject = (code = 'SESSION_INVALID', reason = '登录凭据无效，请重新登录') => { onRejected?.(code, reason); return null; };
   if (!token || !config.sessionSecret) return null;
   const [value, signature] = token.split('.');
-  if (!value || !signature) return null;
+  if (!value || !signature) return reject();
   const expected = Buffer.from(sessionSignature(value));
   const actual = Buffer.from(signature);
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return reject();
   try {
     const payload = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as { accountId: string; sessionVersion: number; expiresAt: number };
-    if (!payload.accountId || !Number.isInteger(payload.sessionVersion) || payload.expiresAt <= Date.now()) return null;
+    if (!payload.accountId || !Number.isInteger(payload.sessionVersion)) return reject();
+    if (payload.expiresAt <= Date.now()) return reject('SESSION_EXPIRED', '登录会话已过期，请重新登录');
     return payload;
   } catch {
-    return null;
+    return reject();
   }
 }
 

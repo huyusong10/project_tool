@@ -118,7 +118,8 @@ export function RequirementInfoForm({
   }, [baseRequirement.version, requirement]);
   const current = requirement.version > baseRequirement.version ? requirement : baseRequirement;
   const hasExecution = current.workItems.some((item) => item.status !== "not_started" || item.progress > 0 || item.actualStart);
-  const eligiblePeople = people.filter(isAssignablePerson);
+  const historical = ["completed","cancelled"].includes(current.status);
+  const eligiblePeople = people.filter(p=>historical?p.projectRole!=="viewer":isAssignablePerson(p));
   const currentOwner = baseRequirement.ownerId ? people.find((person) => person.id === baseRequirement.ownerId) : undefined;
   const draftOwner = draft.ownerId ? people.find((person) => person.id === draft.ownerId) : undefined;
   const ownerOptions = currentOwner && !eligiblePeople.some((person) => person.id === currentOwner.id)
@@ -197,8 +198,7 @@ export function RequirementInfoForm({
     },
     onSettled: () => { submitting.current = false; },
   });
-  const locked = ["completed", "cancelled"].includes(current.status);
-  const blocked = unknown || changed || needsRefresh || reviewRequired || locked || draftOwnerUnavailable;
+  const blocked = unknown || changed || needsRefresh || reviewRequired || draftOwnerUnavailable;
   const pending = mutation.isPending || reading;
   const finishReview = () => {
     unknownVersion.current = null;
@@ -225,7 +225,7 @@ export function RequirementInfoForm({
       <option value="" disabled={hasExecution}>{hasExecution ? "负责人缺失，请选择" : "待指定"}</option>
       {baseRequirement.ownerId && !ownerOptions.some((person) => person.id === baseRequirement.ownerId) && <option value={baseRequirement.ownerId}>{baseRequirement.ownerName || "历史负责人"} · 历史负责人</option>}
       {draft.ownerId && draft.ownerId !== baseRequirement.ownerId && !ownerOptions.some((person) => person.id === draft.ownerId) && <option value={draft.ownerId}>{draftOwner?.name || knownPeople.current.get(draft.ownerId) || "已选择负责人"} · 已不可用，请重新选择</option>}
-      {ownerOptions.map((person) => <option value={person.id} key={person.id} disabled={!isAssignablePerson(person)}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}{person === currentOwner && !eligiblePeople.includes(person) ? " · 历史负责人" : ""}</option>)}
+      {ownerOptions.map((person) => <option value={person.id} key={person.id} disabled={!historical&&!isAssignablePerson(person)}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}{person === currentOwner && !eligiblePeople.includes(person) ? " · 历史负责人" : ""}</option>)}
     </Select></FormField>
     {hasExecution && <p className="field-help field-full">需求已开始执行，负责人可以更换但不能清空。</p>}
     <FormField label="需求背景（可选）" full><textarea name="background" rows={3} value={draft.background} onChange={(event) => change("background", event.target.value)} /></FormField>
@@ -235,7 +235,7 @@ export function RequirementInfoForm({
     {reviewRequired && <div className="warning-banner field-full">提交结果待核对；当前版本已变化。本窗口不再提交。请核对当前资料与操作记录，已填内容保留。<Button variant="secondary" type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</Button></div>}
     <FormError>{changed ? "需求已更新，请重新读取并核对；已保留你的输入。" : undefined}</FormError>
     <FormError>{draftOwnerUnavailable ? "所选负责人已不可用，请重新选择。" : undefined}</FormError>
-    <FormError>{locked ? "需求已完成或取消，不能继续编辑信息。" : undefined}</FormError>
+
     {refreshed && <p className="field-help field-full">已读取最新需求；未修改字段已同步，已输入内容保持不变。当前：{baseRequirement.title} · {baseRequirement.processingPriority||'待评估'} · 负责人 {baseRequirement.ownerName || "未指定"}</p>}
     {readError && <FormError>{readError.message}</FormError>}
     {(changed || needsRefresh) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void read()}>重新读取需求</Button></div>}

@@ -83,7 +83,7 @@ export function FeatureDetails({projectId,feature,edit,onEdit,onBusy,returnTo,on
       {onEnter&&<Button variant="primary" className="primary-button" disabled={!!edit} onClick={onEnter}>进入需求</Button>}
       {manage&&<TopbarMenu label="特性更多操作" disabled={!!edit}><Button variant="menu" className="ghost-button" onClick={()=>onEdit({mode:feature.archivedAt?'restore':'archive',feature})}>{feature.archivedAt?'恢复特性':'归档特性'}</Button><Button variant="menu" tone="danger" className="ghost-button danger-text" onClick={()=>onEdit({mode:'delete',feature})}>删除空特性</Button></TopbarMenu>}
     </div>
-    <div className="feature-detail-navigation"><ViewTabs ariaLabel="特性详情" value={activeTab} disabled={!!edit} onChange={setTab} options={[{value:'phases',label:'Phase 交付'},{value:'basic',label:'目标与范围'},{value:'assessment',label:'进展评估'},{value:'requirements',label:'关联需求'}]}/>
+    <div className="feature-detail-navigation"><ViewTabs ariaLabel="特性详情" value={activeTab} disabled={!!edit} onChange={setTab} options={[{value:'phases',label:'Phase 进展'},{value:'basic',label:'目标与范围'},{value:'assessment',label:'进展评估'},{value:'requirements',label:'关联需求'}]}/>
     </div>
     {edit?<FeatureEditor key={feature.id+edit.mode} projectId={projectId} edit={edit} embedded onBusy={onBusy} onClose={()=>onEdit(null)}/>:<>
       <div className="feature-detail-body">

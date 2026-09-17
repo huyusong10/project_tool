@@ -261,7 +261,7 @@ describe('功能扩充契约', () => {
     expect(sqlite.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='action_items'").get()).toEqual({ count: 0 });
   });
 
-  it('工作全部完成后关闭待处理行动并锁定普通修改', async () => {
+  it('工作全部完成后关闭待处理行动，管理员可更正资料', async () => {
     const created = await app.inject({ method: 'POST', url: '/api/requirements', headers: { cookie: adminCookie }, payload: {
       projectId, templateId, title: '已完成历史缺负责人', plannedStart: '2026-02-13',
     } });
@@ -281,8 +281,8 @@ describe('功能扩充契约', () => {
     const actions=(await app.inject({url:`/api/action-items?projectId=${projectId}&pageSize=100`,headers:{cookie:adminCookie}})).json();
     expect(actions.items.some((i:{sourceId:string})=>i.sourceId===current.id)).toBe(false);
     const edited=await app.inject({method:'PATCH',url:`/api/requirements/${current.id}`,headers:{cookie:adminCookie},payload:{ownerId:replacementId,expectedVersion:current.version}});
-    expect(edited.statusCode).toBe(409);
-    const rescheduled=await app.inject({method:'POST',url:`/api/requirements/${current.id}/reschedule`,headers:{cookie:adminCookie},payload:{expectedVersion:current.version,scheduleMode:'start',plannedStart:'2026-02-14',reason:'不应调整'}});
+    expect(edited.statusCode,edited.body).toBe(200);expect(edited.json()).toMatchObject({status:'completed',ownerId:replacementId});
+    const rescheduled=await app.inject({method:'POST',url:`/api/requirements/${current.id}/reschedule`,headers:{cookie:adminCookie},payload:{expectedVersion:edited.json().version,scheduleMode:'start',plannedStart:'2026-02-14',reason:'不应调整'}});
     expect(rescheduled.statusCode).toBe(409);
   });
 

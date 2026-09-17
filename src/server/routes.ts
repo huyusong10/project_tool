@@ -1,3 +1,6 @@
+import { recordLogReason, updateLogContext } from './log-context';
+import { requireWorkspaceRead, workspaceSession } from './workspace-access';
+import { listWorkspaceProjects } from './services';
 import {createRequirementInputSchema,updateRequirementInputSchema,requirementCorrectionInputSchema,createWorkItemInputSchema,updateWorkItemInputSchema,startWorkItemInputSchema,reasonCommandSchema,rescheduleRequirementInputSchema} from '../shared/workflow-contracts';
 import {registerIntakeRoutes} from './intake-api';
 import {executeDirectRequirement,returnRequirement,assertRequirementAcceptor,directStartConditions} from './services/delivery-execution';
@@ -24,7 +27,7 @@ import {
   acceptRequirement, addIssueUpdate, addProgress, addProjectPerson, applyRequirementPlan, applyTemplate, archivePerson, archiveProject, archiveRequirement, archiveTemplate,
   blockWorkItem, cancelRequirement, cancelWorkItem, completeWorkItem, copyTemplate, correctIssue, correctRequirement, correctWorkItem, createPerson, createProject, createRequirement, createTemplate,
   createIssue, createWorkItem, deleteIssueUpdate, deleteProgress, deleteWorkItem, getDashboard, getIssue, getPeopleConcurrency, getRequirement, issueToken,
-  listActionItems, listArchives, listAudit, listIssues, listPeople, listPeopleCandidates, listProjects, listRequirements, listTemplates, listTokens, previewRequirementPlan,
+  listActionItems, listArchives, listAudit, listIssues, listPeople, listPeopleCandidates, listRequirements, listTemplates, listTokens, previewRequirementPlan,
   permanentlyDeleteArchive, recordAudit, removeProjectPerson, reorderWorkItems, reopenIssue, reopenWorkItem, reselectRequirementTemplate, rescheduleRequirement, resolveIssue, restorePerson, restoreProject, restoreRequirement, restoreTemplate, resumeIssue, revokeToken, searchAudit, startWorkItem,
   deferIssue, unblockWorkItem, updateIssue, updateIssueUpdate, updatePerson, updateProgress, updateProject, updateRequirement, updateTemplate, updateWorkItem,
 } from './services';
@@ -196,23 +199,32 @@ export function registerApiRoutes(app: FastifyInstance) {
   });
 
   app.decorateRequest('actor', null);
-  app.get('/api/session', async (request) => sessionPayload(sessionOf(request)));
+  app.get('/api/session', async (request, reply) => {
+    const actor=sessionOf(request);
+    if(!actor&&request.cookies[config.sessionCookieName])reply.clearCookie(config.sessionCookieName,{path:'/'});
+    return sessionPayload(actor);
+  });
   app.post('/api/login', { config: { rateLimit: { max: config.nodeEnv === 'test' ? 100 : 8, timeWindow: '1 minute' } } }, async (request, reply) => {
     const input = parsedBody(request, loginInputSchema); const account = findAccountForLogin(input.username);
-    if (!account || !verifyPassword(input.password, account.passwordHash)) return reply.code(401).send({ error: '用户名或密码错误' });
-    if (account.status !== 'active') return reply.code(403).send({ error: '账号已停用，请联系管理员' });
-    if (!account.personAvailable) return reply.code(403).send({ error: '人员已停用或归档，请联系管理员恢复人员' });
+    updateLogContext({ attemptedUser: input.username.slice(0, 120), authMethod: 'password' });
+    if (!account || !verifyPassword(input.password, account.passwordHash)) {
+      recordLogReason('LOGIN_CREDENTIALS_INVALID', '用户名或密码错误'); return reply.code(401).send({ error: '用户名或密码错误' });
+    }
+    if (account.status !== 'active') { recordLogReason('ACCOUNT_DISABLED', '账号已停用，请联系管理员'); return reply.code(403).send({ error: '账号已停用，请联系管理员' }); }
+    if (!account.personAvailable) { recordLogReason('PERSON_UNAVAILABLE', '人员已停用或归档，请联系管理员恢复人员'); return reply.code(403).send({ error: '人员已停用或归档，请联系管理员恢复人员' }); }
     if (!markLogin(account.id, account.sessionVersion, account.passwordHash)) {
       return reply.code(409).send({ error: '账号状态已变化，请重新登录', code: 'STALE_WRITE' });
     }
     const token = createSessionToken(account.id, account.sessionVersion);
     const actor = sessionActor(token);
     if (!actor) return reply.code(409).send({ error: '账号状态已变化，请重新登录', code: 'STALE_WRITE' });
+    updateLogContext({ authMethod: 'password', attemptedUser: undefined });
     setSessionCookie(reply, account.id, account.sessionVersion);
     return sessionPayload(actor);
   });
   app.post('/api/logout', async (request, reply) => {
     parsedBody(request, emptyCommandInputSchema);
+    sessionOf(request);
     reply.clearCookie(config.sessionCookieName, { path: '/' });
     return { ok: true };
   });
@@ -229,9 +241,9 @@ export function registerApiRoutes(app: FastifyInstance) {
   app.post('/api/people/:id/account', { preHandler: requireAdmin }, async (request) => openAccountForPerson(idOf(request), parsedBody(request, openAccountInputSchema), actorFromRequest(request)));
   app.get('/api/my-work', { preHandler: requireReady }, async (request) => getMyWork(actorFromRequest(request).accountId));
 
-  app.get('/api/projects', { preHandler: requireReady }, async (request) => {
+  app.get('/api/projects', { preHandler: workspaceSession }, async (request) => {
     const input = parsedQuery(request, projectListInputSchema);
-    return listProjects(input.includeDeleted, actorFromRequest(request));
+    return listWorkspaceProjects(Boolean(input.includeDeleted), actorFromRequest(request));
   });
   app.post('/api/projects', { preHandler: requireAdmin }, async (request) => createProject(parsedBody(request, createProjectInputSchema), actorFromRequest(request)));
   app.patch('/api/projects/:id', { preHandler: requireReady }, async (request) => {
@@ -243,10 +255,14 @@ export function registerApiRoutes(app: FastifyInstance) {
     return archiveProject(idOf(request), actorFromRequest(request), input);
   });
   app.post('/api/projects/:id/restore', { preHandler: requireAdmin }, async (request) => restoreProject(idOf(request), actorFromRequest(request), parsedBody(request, archiveRestoreInputSchema)));
-  app.get('/api/dashboard', { preHandler: requireReady }, async (request) => {
+  app.get('/api/dashboard', { preHandler: requireWorkspaceRead }, async (request) => {
     const { projectId } = parsedQuery(request, projectScopeInputSchema); const actor = actorFromRequest(request); assertProjectReadable(actor, projectId);
     const asOfDate = todayIso();
     const dashboard = getDashboard(projectId, asOfDate);
+    if (actor.type === 'guest') {
+      const { issues: _issues, ...publicDashboard } = dashboard;
+      return { ...publicDashboard, requirements: dashboard.requirements.map(({issueSummary: _summary, ...requirement}) => requirement) };
+    }
     return { ...dashboard, actions: listActionItems({ projectId, page: 1, pageSize: 5 }, actor, dashboard.requirements, asOfDate) };
   });
   app.get('/api/action-items', { preHandler: requireReady }, async (request) => {
@@ -272,15 +288,17 @@ export function registerApiRoutes(app: FastifyInstance) {
     return resetAnalyticsLayout(actor.accountId, body(request), actor);
   });
 
-  app.get('/api/requirements', { preHandler: requireReady }, async (request) => {
+  app.get('/api/requirements', { preHandler: requireWorkspaceRead }, async (request) => {
     const input = parsedQuery(request, requirementListInputSchema); const actor = actorFromRequest(request);
     if (input.includeDeleted) assertProjectManager(actor, input.projectId); else assertProjectReadable(actor, input.projectId);
     return listRequirements(input);
   });
-  app.get('/api/requirements/:id', { preHandler: requireReady }, async (request) => {
+  app.get('/api/requirements/:id', { preHandler: requireWorkspaceRead }, async (request) => {
     const id = idOf(request); const input = parsedQuery(request, projectListInputSchema); const actor = actorFromRequest(request); const projectId = projectIdForRequirement(id);
     if (input.includeDeleted) assertProjectResourceManager(actor, projectId, '需求不存在'); else assertProjectResourceReadable(actor, projectId, '需求不存在');
-    return getRequirement(id, input.includeDeleted);
+    const requirement = getRequirement(id, input.includeDeleted);
+    if (actor.type === 'guest') { const {issueSummary: _issues, ...detail} = requirement; return detail; }
+    return requirement;
   });
   app.post('/api/requirements', { preHandler: requireReady }, async (request) => {
     const input = parsedBody(request, createRequirementInputSchema); const actor = actorFromRequest(request); assertProjectManager(actor, input.projectId);
@@ -458,12 +476,13 @@ export function registerApiRoutes(app: FastifyInstance) {
     return deleteIssueUpdate(id, updateId, actor);
   });
 
-  app.get('/api/people', { preHandler: requireReady }, async (request) => {
+  app.get('/api/people', { preHandler: requireWorkspaceRead }, async (request) => {
     const input = parsedQuery(request, peopleListInputSchema); const actor = actorFromRequest(request); const projectId = input.projectId || '';
     if (!projectId) assertAdmin(actor);
     else if (input.includeDeleted) assertProjectManager(actor, projectId);
     else assertProjectReadable(actor, projectId);
-    return listPeople(input.includeDeleted, projectId || undefined);
+    const people = listPeople(input.includeDeleted, projectId || undefined);
+    return actor.type === 'guest' ? people.map(({ id, name, active, jobTitle }) => ({ id, name, active, jobTitle })) : people;
   });
   app.get('/api/people/candidates', { preHandler: requireReady }, async (request) => {
     const input = parsedQuery(request, personCandidatesInputSchema); assertProjectManager(actorFromRequest(request), input.projectId);
@@ -619,7 +638,7 @@ export function registerApiRoutes(app: FastifyInstance) {
     return scheduleRestore(input.name, input.expectedFingerprint, (safetyBackup, replacement) => {
       assertAdmin(requireAuthorizationActor(actor));
       recordRestoreAudit(replacement, {
-        actorType: actor.type, actorId: actor.id, entityId: input.name,
+        actorType: 'user', actorId: actor.id, entityId: input.name,
         summary: `导入数据库：${input.name}；导入前备份：${safetyBackup.name}；admin 使用本机配置密码`,
       });
     }, { importDatabase: true });
@@ -645,7 +664,7 @@ export function registerApiRoutes(app: FastifyInstance) {
     return scheduleRestore(input.name, input.expectedFingerprint, (safetyBackup, replacement) => {
       assertAdmin(requireAuthorizationActor(actor));
       recordRestoreAudit(replacement, {
-        actorType: actor.type,
+        actorType: 'user',
         actorId: actor.id,
         entityId: input.name,
         summary: `恢复数据库备份：${input.name}；恢复前备份：${safetyBackup.name}`,

@@ -1,3 +1,4 @@
+import {DetailCard} from './DetailCard';
 import { Button } from './Button';
 import { useRef, useState } from 'react';
 import { Info } from 'lucide-react';
@@ -24,7 +25,7 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
   const progressHint = `${plannedLabel} · ${direct ? '直接记录完成度' : '自动按工期加权'}`;
   return <section className={"requirement-overview"+(compact?" is-compact":"")} aria-label="需求概览">
     <OverviewIntroduction links={r.referenceLinks} legacy={r.referenceUrl} title="需求说明" text={r.background} empty="尚未填写需求说明，可在资料中补充。" secondary={{title:'完成标准',text:r.acceptanceCriteria}}/>
-    <h3 className="overview-section-heading">执行进展</h3>
+    <DetailCard title="执行进展">
     <div className="requirement-overview-top">
       <div className="requirement-overview-meta">
         <ExecutionStageBadge requirement={r} />
@@ -53,6 +54,7 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
       <p>{r.status==='completed'?'历史计划日期缺失，无法计算完整的计划偏差。':'补齐以下日期后，才能估算整体完成时间与计划偏差。'}</p>
       <ul>{schedule.gaps.map(item=><li key={item.id}>{item.title}：缺少{item.missing.join('、')}</li>)}</ul>
     </section>}
+    </DetailCard>
     <AnchoredPopover anchorRef={anchor} open={details} onOutside={() => setDetails(false)} onEscape={closeDetails} width={420} className="requirement-overview-details">
       <header><strong>需求资料与计算说明</strong><Button variant="secondary" className="ghost-button" onClick={closeDetails}>关闭</Button></header>
       <dl>

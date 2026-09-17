@@ -2,18 +2,21 @@ import {TreeExpansionActions} from './TreeExpansionActions';
 import { Button } from './Button';
 import {WorkspaceObjectMark} from './WorkspaceObjectMark';
 import type {PathEdge,PathMilestone} from '../../shared/paths';
-import {requirementMilestones} from '../gantt-milestones';
-import {GanttMilestoneRail,GanttMilestoneUndated,useMilestoneSelection} from './GanttMilestones';
+import {requirementMilestones,latestAchievedMilestone} from '../gantt-milestones';
+import {GanttMilestoneRail,GanttMilestoneUndated,useMilestoneSelection,LatestGanttMilestone} from './GanttMilestones';
 import {useEffect,useMemo,useRef,useState,type CSSProperties,type ReactNode} from 'react';
 import {ChevronDown,ChevronRight,ArrowUpRight} from 'lucide-react';
 import {workStageLabels} from '../../shared/execution-stage';
-import {phaseStatusLabels} from '../../shared/feature-phases';
+import {WorkspacePhaseProgress} from './WorkspacePhaseProgress';
+import {summaryTimeline} from '../phase-gantt';
+import {progressParts} from '../workspace-gantt-presentation';
+import {GanttProgressEnd,GanttProgressText} from './GanttProgressEnd';
 import {flattenWorkspaceRows,type WorkspaceRow} from '../workspace-rows';
 import type {Person} from '../types';
 import {useGanttNavigation} from '../use-gantt-navigation';
 import {GanttNavigation} from './GanttNavigation';
 import {GanttDateTracks} from './GanttDateTracks';
-import {GanttScale,ganttTodayPosition,ganttTrackStyle,ganttInterval,businessDateIndex,toGanttDate} from './GanttTimeline';
+import {GanttScale,ganttTodayPosition,ganttTrackStyle} from './GanttTimeline';
 import {requirementActualRange,workItemActualRange} from '../gantt-actual';
 import {ganttForecast} from '../gantt-forecast';
 import {executionStageOf} from './ExecutionStageBadge';
@@ -23,14 +26,11 @@ import {RequirementWorkExecution} from './RequirementWorkExecution';
 import {Select} from './Select';
 import {useGanttTooltip} from './GanttTooltip';
 import {WorkspaceGanttSummary} from './WorkspaceGanttSummary';
-import {requirementScheduleSummary} from '../requirement-presentation';
-import {useProjectWorkspace} from '../project-workspace-context';
 import '../workspace-gantt.css';
 
 type Props={empty?:ReactNode;milestones?:PathMilestone[];edges?:PathEdge[];rows:WorkspaceRow[];people:Person[];storageKey:string;asOfDate:string;selected:string;onSelect:(row:WorkspaceRow)=>void;onEnter?:(row:WorkspaceRow)=>void;filterKey?:string;filtered?:boolean};
 const expands=(row:WorkspaceRow,expanded:Record<string,boolean>)=>expanded[row.id]??(!row.virtual&&['feature','phase'].includes(row.kind));
 export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelect,onEnter,filtered=false,filterKey="",milestones,edges,empty}:Props){
-  const workspace=useProjectWorkspace();
   const summaryTooltip=useGanttTooltip();
   const key='pm-workspace-rows:'+storageKey;
   const [expanded,setExpanded]=useState<Record<string,boolean>>(()=>{try{return JSON.parse(sessionStorage.getItem(key)||'{}');}catch{return {};}});
@@ -38,6 +38,7 @@ export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelec
   const milestoneRows=useMemo(()=>new Map(all.filter(({row})=>row.kind==='requirement').map(({row})=>[row.id,requirementMilestones(milestones?.filter(m=>m.requirementId===row.id)||row.requirement?.milestones,row.requirement?.workItems||[],edges)])),[all,milestones,edges]);
   const projectMilestones=useMemo(()=>requirementMilestones(milestones?.filter(m=>!m.requirementId),[],edges),[milestones,edges]);
   const projectMilestoneSelection=useMilestoneSelection(projectMilestones,asOfDate);
+  const latestMilestones=useMemo(()=>new Map(all.map(({row})=>[row.id,latestAchievedMilestone(milestoneRows.get(row.id)||[],row.requirement?.stageResetAt,asOfDate)])),[all,milestoneRows,asOfDate]);
   const milestoneItems=useMemo(()=>[...milestoneRows.values()].flat(),[milestoneRows]);
   const milestoneSelection=useMilestoneSelection(milestoneItems,asOfDate,id=>{const item=milestoneItems.find(m=>m.id===id),row=all.find(({row})=>item?.relatedIds.includes(row.id))?.row||all.find(({row})=>row.id===item?.requirementId)?.row;if(row)onSelect(row);});
   const selectedPath=useMemo(()=>{
@@ -50,7 +51,8 @@ export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelec
   const currentExpanded=filtered?{...Object.fromEntries(all.map(({row})=>[row.id,true])),...(filterExpansion.key===filterKey?filterExpansion.rows:{})}:expanded;
   const changeExpanded=(value:Record<string,boolean>)=>filtered?setFilterExpansion({key:filterKey,rows:value}):setExpanded(value);
   const visible=flattenWorkspaceRows(rows,currentExpanded);
-  const dates=[...projectMilestones.flatMap(m=>[m.targetDate,m.actualDate]),...milestoneItems.flatMap(m=>[m.targetDate,m.actualDate]),...all.flatMap(({row:r})=>r.phase?[r.phase.targetDate,r.phase.deliveredAt]:r.work?[r.work.plannedStart,r.work.plannedEnd,r.work.actualStart,r.work.actualEnd,r.work.forecastEnd]:r.requirement?[r.requirement.plannedStart,r.requirement.plannedEnd,r.requirement.actualStart,r.requirement.actualEnd,r.requirement.executionForecastEnd]:[])];
+  const summaries=useMemo(()=>new Map(all.filter(({row})=>(row.kind==='feature'||row.kind==='phase')&&!row.virtual&&row.feature?.kind!=='other').map(({row})=>[row.id,summaryTimeline(row,asOfDate)])),[all,asOfDate]);
+  const dates=[...[...summaries.values()].flatMap(s=>[s.actualStart,s.actualEnd]),...projectMilestones.flatMap(m=>[m.targetDate,m.actualDate]),...[...latestMilestones.values()].flatMap(m=>m?.actualDate?[m.actualDate]:[]),...all.flatMap(({row:r})=>r.phase?[r.phase.actualStart,r.phase.observationEnd,r.phase.completedAt]:r.kind==='feature'?(r.feature?.phases||[]).flatMap(p=>[p.actualStart,p.observationEnd,p.completedAt]):r.work?[r.work.plannedStart,r.work.plannedEnd,r.work.actualStart,r.work.actualEnd,r.work.forecastEnd]:r.requirement?[r.requirement.plannedStart,r.requirement.plannedEnd,r.requirement.actualStart,r.requirement.actualEnd,r.requirement.executionForecastEnd]:[])];
   const nav=useGanttNavigation({values:dates,asOfDate,storageKey,onPan:summaryTooltip.close}),today=ganttTodayPosition(nav.dates,asOfDate),track=ganttTrackStyle(nav.dates,nav.cellWidth,nav.zoom);
   useEffect(()=>{const element=nav.scrollRef.current;if(!element)return;try{element.scrollTop=Number(sessionStorage.getItem(key+':scroll'))||0;}catch{/* View remains usable. */}const remember=()=>{try{sessionStorage.setItem(key+':scroll',String(element.scrollTop));}catch{/* View remains usable. */}};element.addEventListener('scroll',remember);return()=>element.removeEventListener('scroll',remember);},[key,nav.scrollRef]);
   const lastSelection=useRef('');
@@ -60,11 +62,6 @@ export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelec
   const expandAll=(open:boolean)=>changeExpanded({...currentExpanded,...Object.fromEntries(branches.map(({row})=>[row.id,open]))});
   const expandsTo=(row:WorkspaceRow,level:string)=>level!=='collapsed'&&(row.kind==='feature'||level!=='phases'&&row.kind==='phase'||level==='work');
   const depthValue=(hasPhases?['collapsed','phases','requirements','work']:['collapsed','requirements','work']).find(level=>branches.every(({row})=>expands(row,currentExpanded)===expandsTo(row,level)))||'custom';
-  const datePoint=(row:WorkspaceRow,date:string|null,label:string,actual=false)=>{
-    const parsed=toGanttDate(date);if(!parsed)return null;
-    const left=(businessDateIndex(parsed,nav.dates,'start')+.5)*nav.cellWidth;
-    return <button className={'workspace-delivery-point'+(actual?' is-delivered':'')} style={{left}} title={label+' '+date} aria-label={label+' '+date} onClick={()=>onSelect(row)}><i/>{label} {date?.slice(5)}</button>;
-  };
   return <section className="workspace-gantt" aria-label="特性与 Phase 计划甘特">
     <div className="workspace-time-tools" data-workspace-zone="tools"><TreeExpansionActions canExpand={branches.some(({row})=>!expands(row,currentExpanded))} canCollapse={branches.some(({row})=>expands(row,currentExpanded))} onChange={expandAll}/><GanttNavigation navigation={nav}/><Select aria-label="展开层级" value={depthValue} onChange={e=>changeExpanded({...currentExpanded,...Object.fromEntries(all.map(({row})=>[row.id,expandsTo(row,e.target.value)]))})}><option value="collapsed">收起全部</option>{hasPhases&&<option value="phases">展开到 Phase</option>}<option value="requirements">展开到需求</option><option value="work">展开到工作项</option><option value="custom" disabled>{filtered?'显示匹配项':'手动展开'}</option></Select><span className="workspace-plan-legend"><span><i/>计划</span><span className="actual"><i/>实际</span><span className="forecast"><i/>预计延期</span><span>◇ 交付 / 里程碑</span></span></div>
     <div className="workspace-gantt-scroll" ref={nav.attach} role="treegrid" tabIndex={0} aria-label="项目进展表">
@@ -73,38 +70,33 @@ export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelec
         {visible.map(({row,depth})=>{
           const rowMilestones=milestoneRows.get(row.id)||[];
           const r=row.requirement,w=row.work,item=w||r,stage=r?executionStageOf(r):null;
-          const actual=w?workItemActualRange(w,asOfDate):r&&!row.archived?requirementActualRange(r,asOfDate):null;
+          const actual=w?workItemActualRange(w,asOfDate):r?requirementActualRange(r,asOfDate):null;
           const stageLabel=stage?stage.label+(stage.stages.length===1?' · '+stage.stages[0].progress+'%':''):'';
           const stageTitle=stage&&stage.stages.length>1?stageLabel+'；'+stage.stages.map(s=>s.label+' '+s.progress+'%').join(' · '):stageLabel;
-          const actualTrack=ganttInterval(actual?.start,actual?.end,nav.dates,nav.cellWidth);
-          const planTrack=ganttInterval(item?.plannedStart,item?.plannedEnd,nav.dates,nav.cellWidth);
-          const progressAnchor=actualTrack?.right??planTrack?.left??0;
-          const schedule=!w&&row.formalRequirement?requirementScheduleSummary(row.formalRequirement):null;
-          const missingSchedule=!!item&&!row.archived&&item.status!=='cancelled'&&(!item.plannedStart||!item.plannedEnd||!w&&r?.scheduleComplete===false);
-          const scheduleNote=missingSchedule?(schedule?.gaps.length?schedule.label:item?.status==='completed'?'未记录计划':!item?.plannedStart&&!item?.plannedEnd?'待排期':'排期待补齐'):row.archived?'保留交付贡献':row.phase&&!row.phase.targetDate&&!row.phase.deliveredAt?'交付日期待定':'';
           const summary=row.kind==='feature'&&!row.children.length?'暂无需求':row.kind==='phase'&&!row.children.length?'本 Phase 暂无需求':row.kind==='feature'?row.feature?.description:row.kind==='phase'?(row.virtual?'尚未分派到交付阶段':row.phase?.scope||'范围待明确'):w?(w.workStage?workStageLabels[w.workStage]:'未分类'):stageLabel;
-          const defaultProgress=row.phase?'':w?(({not_started:'未开始',completed:'已完成',cancelled:'已取消'} as Record<string,string>)[w.status]??w.progress+'%'):stageLabel;
-          const defaultContent=stage&&!w?<span className={"workspace-stage-summary"+(stage.stages.length>1?" is-parallel":"")}>{stage.stages.length>1?<><span className="workspace-parallel-caption">并行</span>{stage.stages.map(s=><span key={s.stage}>{s.label} <strong>{s.progress}%</strong></span>)}</>:<>{stage.label}{stage.stages.length===1&&<> · <strong>{stage.stages[0].progress}%</strong></>}</>}</span>:<span className="workspace-stage-summary">{defaultProgress}</span>;
+          const parts=progressParts(row),defaultContent=<GanttProgressText parts={parts}/>;
+          const latestMilestone=latestMilestones.get(row.id);
+          const details=<WorkspaceGanttSummary row={row} asOfDate={asOfDate} milestones={rowMilestones}/>;
           const rowOpen=expands(row,currentExpanded);
           const toggleRow=()=>changeExpanded({...currentExpanded,[row.id]:!rowOpen});
-          const render=({progress,actions}:ExecutionControls)=><div className={'workspace-gantt-row kind-'+row.kind+(rowMilestones.some(m=>m.targetDate||m.actualDate)?' has-milestones':'')+(row.filterContext?' is-filter-context':'')+(row.archived?' is-archived':'')+(r?.executionMode==='direct'?' is-direct':'')} role="row" data-object-kind={row.virtual||row.feature?.kind==='other'?'group':row.kind} onClick={e=>{if(!(e.target as Element).closest('button,input,a,select'))onSelect(row);}} data-row-id={row.id} data-status={row.phase?.status||item?.status} aria-level={depth+1} aria-selected={selected===row.id}>
+          const render=({progress,actions}:ExecutionControls)=><div className={'workspace-gantt-row kind-'+row.kind+(row.filterContext?' is-filter-context':'')+(row.archived?' is-archived':'')+(r?.executionMode==='direct'?' is-direct':'')} role="row" data-object-kind={row.virtual||row.feature?.kind==='other'?'group':row.kind} onClick={e=>{if(!(e.target as Element).closest('button,input,a,select'))onSelect(row);}} data-row-id={row.id} data-status={row.phase?.status||item?.status} aria-level={depth+1} aria-selected={selected===row.id}>
             <div className="workspace-row-label" role="rowheader" style={{paddingLeft:8+Math.min(depth,2)*10}}>
               <span className="workspace-disclosure">{!!row.children.length&&<button aria-label={'展开 '+row.title} aria-expanded={rowOpen} onClick={toggleRow}>{rowOpen?<ChevronDown size={14}/>:<ChevronRight size={14}/>}</button>}</span>
-              <WorkspaceObjectMark kind={row.virtual||row.feature?.kind==='other'?'group':row.kind} status={w?.status}/><div className="workspace-name-content"><div className="workspace-name-heading"><button className="workspace-row-title" title={item?undefined:row.title+(summary?' · '+summary:'')} {...(item?summaryTooltip.bind(<WorkspaceGanttSummary row={row} asOfDate={asOfDate}/>):{})} onClick={()=>{summaryTooltip.close();onSelect(row);}}><strong>{row.title}</strong>{row.archived&&<small>已归档</small>}{row.temporary&&<small>未保存</small>}</button>{onEnter&&row.kind!=='work'&&<Button variant="ghost" iconOnly size="small" className="workspace-enter workspace-icon-button" title="进入下一级" aria-label={'进入'+row.title} onClick={()=>onEnter(row)}><ArrowUpRight size={14}/></Button>}</div>{item&&<div className="workspace-row-meta"><span className="workspace-row-owner" title={item.ownerName||'未分派负责人'}>{item.ownerName||'未分派'}</span><GanttMilestoneUndated compact items={rowMilestones} selection={milestoneSelection}/></div>}{row.kind==='feature'&&!row.children.length&&<div className="workspace-row-meta">暂无需求</div>}{row.virtual&&<div className="workspace-row-meta">{row.children.length} 项需求 · 尚未分派阶段</div>}{row.phase&&<div className="workspace-row-meta" title={phaseStatusLabels[row.phase.status]+' · '+row.phase.requirements.length+' 项需求'}>{row.phase.requirements.length?<>{phaseStatusLabels[row.phase.status]} · {row.phase.requirements.length} 项需求</>:'本 Phase 暂无需求'}</div>}</div>
+              <WorkspaceObjectMark kind={row.virtual||row.feature?.kind==='other'?'group':row.kind} status={w?.status}/><div className="workspace-name-content"><div className="workspace-name-heading"><button className="workspace-row-title" title={item?undefined:row.title+(summary?' · '+summary:'')} {...(item?summaryTooltip.bind(details):{})} onClick={()=>{summaryTooltip.close();onSelect(row);}}><strong>{row.title}</strong>{row.phase?.status==='planning'&&<small>待细化</small>}{row.archived&&<small>已归档</small>}{row.temporary&&<small>未保存</small>}</button>{onEnter&&row.kind!=='work'&&<Button variant="ghost" iconOnly size="small" className="workspace-enter workspace-icon-button" title="进入下一级" aria-label={'进入'+row.title} onClick={()=>onEnter(row)}><ArrowUpRight size={14}/></Button>}</div>{item&&<div className="workspace-row-meta"><span className="workspace-row-owner" title={item.ownerName||'未分派负责人'}>{item.ownerName||'未分派'}</span></div>}{row.kind==='feature'&&!row.children.length&&<div className="workspace-row-meta">暂无需求</div>}{row.virtual&&<div className="workspace-row-meta">{row.children.length} 项需求 · 尚未分派阶段</div>}</div>
             </div>
             <div className={'workspace-row-track gantt-track gantt-split-track gantt-status-'+(item?.status||'not_started').replaceAll('_','-')} style={track} role="cell">
-              {row.phase?<>{datePoint(row,row.phase.targetDate,'目标')}{datePoint(row,row.phase.deliveredAt,'交付',true)}</>:item&&!row.archived?<GanttDateTracks plannedStart={item.plannedStart} plannedEnd={item.plannedEnd} actualStart={actual?.start} actualEnd={actual?.end} status={item.status} progress={item.progress||0} dates={nav.dates} cellWidth={nav.cellWidth} scheduleComplete={w?!!w.plannedStart&&!!w.plannedEnd:r?.scheduleComplete!==false} progressPlacement="inside" showProgress={false} stageLabel={w?undefined:stageTitle} forecast={ganttForecast(item.deliveryForecast,item.status,asOfDate)} interactionProps={summaryTooltip.bind(<WorkspaceGanttSummary row={row} asOfDate={asOfDate}/>)}/>:null}
-              {(progress||scheduleNote)&&<div className="workspace-progress-window" style={{'--progress-anchor':progressAnchor+'px'} as CSSProperties}><span className="workspace-progress-spacer"/><div className="workspace-row-progress" title={[w?defaultProgress:stageTitle||defaultProgress,scheduleNote,r?.delayed&&!w?'延期':''].filter(Boolean).join(' · ')}>{progress}{scheduleNote&&(missingSchedule?<button type="button" className="schedule-gap-link" title={schedule?.title||'点击安排计划日期'} onClick={()=>{summaryTooltip.close();if(workspace)workspace.inspect(row.id,w||r?.executionMode==='direct'?'basic':'work');else onSelect(row);}}>{scheduleNote}</button>:<small>{scheduleNote}</small>)}{r?.delayed&&!w&&<small className="danger-text">延期</small>}</div></div>}
-              {!!rowMilestones.length&&<GanttMilestoneRail items={rowMilestones} dates={nav.dates} cellWidth={nav.cellWidth} asOfDate={asOfDate} selection={milestoneSelection} inline/>}
+              {summaries.has(row.id)?<WorkspacePhaseProgress row={row} summary={summaries.get(row.id)!} tooltip={summaryTooltip} dates={nav.dates} cellWidth={nav.cellWidth} onSelect={onSelect}/>:item&&!row.archived?<GanttDateTracks plannedStart={item.plannedStart} plannedEnd={item.plannedEnd} actualStart={actual?.start} actualEnd={actual?.end} status={item.status} progress={item.progress||0} dates={nav.dates} cellWidth={nav.cellWidth} scheduleComplete={w?!!w.plannedStart&&!!w.plannedEnd:r?.scheduleComplete!==false} progressPlacement="end" fillProgress={item.status==='cancelled'?undefined:w?w.progress:item.status==='completed'?100:stage?.stages.length===1?stage.stages[0].progress:undefined} showProgress={false} showScheduleHint={false} stageLabel={w?undefined:stageTitle} forecast={ganttForecast(item.deliveryForecast,item.status,asOfDate)} interactionProps={summaryTooltip.bind(details)}/>:null}
+              {!!parts.length&&progress&&<GanttProgressEnd start={actual?.start} end={actual?.end} asOfDate={asOfDate} dates={nav.dates} cellWidth={nav.cellWidth} {...summaryTooltip.bind(details)} onClickCapture={summaryTooltip.close}><div className="workspace-row-progress">{progress}</div></GanttProgressEnd>}
+              {latestMilestone&&<LatestGanttMilestone item={latestMilestone} history={rowMilestones} dates={nav.dates} cellWidth={nav.cellWidth} selection={milestoneSelection}/>}
               {today.visible&&<i className="gantt-today-line" style={{left:(today.offset+1)*nav.cellWidth}}/>}
             </div>
             <div className={'workspace-row-actions'+(row.kind==='work'||row.kind==='requirement'?' has-execution':'')} role="cell" data-workspace-zone="tools"><div className="workspace-row-tools">{actions}</div></div>
           </div>;
-          if(row.formalWork&&row.formalRequirement&&!row.temporary)return <WorkItemExecution key={row.id} item={row.formalWork} requirement={row.formalRequirement} people={people}>{render}</WorkItemExecution>;
+          if(row.formalWork&&row.formalRequirement&&!row.temporary)return <WorkItemExecution key={row.id} item={row.formalWork} requirement={row.formalRequirement} people={people} progressContent={defaultContent}>{controls=>render({...controls,progress:w?.status==='not_started'?null:controls.progress})}</WorkItemExecution>;
           if(row.formalRequirement&&!row.temporary&&!row.archived)return row.formalRequirement.executionMode==='direct'
-            ?<DeliveryControls key={row.id} requirement={row.formalRequirement}>{render}</DeliveryControls>
+            ?<DeliveryControls key={row.id} requirement={row.formalRequirement} progressContent={defaultContent}>{render}</DeliveryControls>
             :<RequirementWorkExecution key={row.id} requirement={row.formalRequirement} people={people} progress={defaultContent}>{render}</RequirementWorkExecution>;
-          return <div className="workspace-row-wrapper" key={row.id}>{render({progress:defaultProgress?defaultContent:null,actions:null})}</div>;
+          return <div className="workspace-row-wrapper" key={row.id}>{render({progress:parts.length?defaultContent:null,actions:null})}</div>;
         })}
         {!visible.length&&(empty||<p className="feature-empty">没有符合条件的内容</p>)}
       </div>

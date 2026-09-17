@@ -65,7 +65,9 @@ MCP 不再使用条款关联、落实范围、交付范围、执行模式切换�
 
 特性关注各 Phase 的状态，不填写总百分比。需求读取 executionStage；workStage 可选 analysis、development、integration、testing、other，不确定时留空。模板和工作项同步保留此字段。导入版本 3 使用 feature、phase 和 workItems[].workStage。
 
-用户明确确认实际交付时使用 deliver_feature_phase，先核对有效需求均完成；空 Phase 或全部取消不能交付。已交付范围修改前先用 reopen_feature_phase 填写原因，保留原交付记录；再按已有流程返工需求。未完成内容先移出当前 Phase。
+Phase 状态由有效需求自动汇总：无有效需求为待规划、全部未开始为未开始、全部完成为已完成，其余为进行中。取消需求不计入，归档完成需求保留贡献。没有独立的交付确认或重新打开命令，需求返工后自动重算。
+
+管理员或项目经理可用 update_requirement、update_work_item、update_issue 维护终态记录的负责人等资料，填写 reason 说明更正原因；原执行状态、进度和历史保留。实际日期使用相应更正字段或更正命令。delete_work_item 自动清理关联依赖，仅删除未开始且无执行历史的工作项。流程重选提交 confirmTemplateReset:true，并传当前版本和排期日期。
 
 记录实际提测使用 record_test_submission，填写 actualDate、expectedVersion 及可选 content。提测就绪不是已提测，不自动补提测事实。测试已经开始可直接显示测试阶段。结果未知先核对原请求与最新记录，不重复提交。
 

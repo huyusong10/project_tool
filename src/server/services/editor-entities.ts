@@ -1,3 +1,4 @@
+import {assertHistoricalProjectPeople} from './support';
 import {validateCoordination,isCoordinationEdit,assertCoordinationAccess} from './blocker-coordination';
 import {refreshPathAssignments} from './path-assignments';
 import {templateInstanceKey,type DraftTemplateInstance} from '../../shared/template-instance';
@@ -38,15 +39,22 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
     if(c.entity==='requirement'&&c.op==='create'||!requirementId||created.has(requirementId))assertProjectManager(current,snapshot.projectId);
     else {if(!req||req.deletedAt)notFound('需求不存在');if(c.entity!=='milestone'&&c.op==='update'&&isCoordinationEdit(c.data))assertCoordinationAccess(c.entity,c.id,c.data,actor);else assertRequirementOwnerOrManager(current,requirementId);}
     if(c.entity==='milestone'&&row?.project_id!==undefined&&row.project_id!==snapshot.projectId)notFound('里程碑不属于当前项目');
-    if(req&&['completed','cancelled'].includes(req.status)&&c.op!=='delete')fail('已结束需求不能修改结构','TERMINAL_LOCKED');
+    const historical=c.op==='update'&&(['completed','cancelled'].includes(req?.status||'')||c.entity==='work'&&['completed','cancelled'].includes(String(row?.status)));
+    if(historical){
+      assertProjectManager(current,snapshot.projectId);
+      const fields=c.entity==='work'?['title','ownerId','assigneeIds','collaboratorIds','workStage','plannedStart','plannedEnd','sortOrder','milestoneLabel','referenceLinks','reason']:['title','ownerId','background','acceptanceCriteria','referenceUrl','referenceLinks','featureId','phaseId','reason'];
+      if(Object.keys(c.data).some(k=>!fields.includes(k)))fail('已结束对象可维护资料，继续执行请使用重开');
+    }
+    if(req&&['completed','cancelled'].includes(req.status)&&c.op==='create')fail('新增工作前请重新打开需求','TERMINAL_LOCKED');
     if(c.entity!=='requirement'&&req?.status==='pending_acceptance')fail('待验收需求不能修改结构','TERMINAL_LOCKED');
     if(c.data.title!==undefined)c.data.title=requireLabel(c.data.title,'名称');
     const previousWork=c.entity==='work'&&c.op==='update'?snapshot.workItems.find(w=>w.id===c.id):undefined;
+    const validateAssignees=(ids:Array<string|null|undefined>)=>historical?assertHistoricalProjectPeople(snapshot.projectId,ids.map(id=>id||null)):assertEditorAssignees(snapshot.projectId,ids);
     if(previousWork){
       const nextOwner=c.data.ownerId===undefined?previousWork.ownerId:c.data.ownerId;
       const previousCollaborators=(previousWork.assigneeIds||[]).filter(id=>id!==previousWork.ownerId);
-      assertEditorAssignees(snapshot.projectId,[nextOwner!==previousWork.ownerId?nextOwner:null,...(c.data.assigneeIds||[]).filter(id=>id!==nextOwner&&!previousCollaborators.includes(id))]);
-    }else assertEditorAssignees(snapshot.projectId,[c.data.ownerId,...c.data.assigneeIds||[]]);
+      validateAssignees([nextOwner!==previousWork.ownerId?nextOwner:null,...(c.data.assigneeIds||[]).filter(id=>id!==nextOwner&&!previousCollaborators.includes(id))]);
+    }else validateAssignees([c.data.ownerId!==req?.ownerId?c.data.ownerId:null,...c.data.assigneeIds||[]]);
     for(const key of ['plannedStart','plannedEnd','targetDate'] as const)if(c.data[key]&&businessDaysInclusive(c.data[key]!,c.data[key]!)!==1)fail('排期日期必须是工作日');
     if(c.data.plannedStart&&c.data.plannedEnd&&c.data.plannedStart>c.data.plannedEnd)fail('计划完成日期不能早于计划开始日期');
     if(coordinationKeys.some(k=>c.data[k]!==undefined)){const original=c.entity==='requirement'?req:snapshot.workItems.find(w=>w.id===c.id);if(c.op!=='update'||!original||original.status!=='blocked')fail('只有阻塞对象可以修改协调信息');const normalized=validateCoordination(snapshot.projectId,{...original,...c.data});for(const key of coordinationKeys)if(c.data[key]!==undefined||c.data.blockedIssueId)c.data[key]=normalized[key];}
@@ -87,7 +95,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
         if(c.data.reviewForecast&&req!.executionMode!=='direct')fail('分解需求请核对具体工作项的估算');
         const {expectedVersion:_expectedVersion,...normalized}=normalizeRequirementText(updateRequirementInputSchema.parse({...editable,expectedVersion:c.expectedVersion}));
         Object.assign(c.data,normalized);
-        validateDeliveryFields(snapshot.projectId,c.data,actor,req as Parameters<typeof validateDeliveryFields>[3]);
+        if(!historical)validateDeliveryFields(snapshot.projectId,c.data,actor,req as Parameters<typeof validateDeliveryFields>[3]);
         if(c.data.executionMode&&c.data.executionMode!==req!.executionMode){
           if(c.data.executionMode==='direct')fail('画布不支持将有工作项的需求切回直接执行');
           if(['blocked','pending_acceptance'].includes(req!.status))fail('请先解阻或返工，再拆分');
@@ -103,7 +111,7 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
         snapshot.workItems.push({...workDefaults,...c.data,progressWeight:c.data.durationDays||1,id:c.id,requirementId:req.id,title:requireLabel(c.data.title,'工作项标题')});
       }else {const w=snapshot.workItems.find(w=>w.id===c.id);if(!w||w.requirementId!==requirementId)notFound('工作项不存在');
         if(c.op==='delete'){if(!canDeleteWorkItem({...w,version:Number(row!.version)} as Parameters<typeof canDeleteWorkItem>[0],!!sqlite.prepare('SELECT 1 FROM progress_updates WHERE work_item_id=? LIMIT 1').get(c.id)))fail('有执行记录的工作项请使用取消');snapshot.workItems=snapshot.workItems.filter(w=>w.id!==c.id);}
-        else {if(['completed','cancelled'].includes(w.status))fail('已结束工作项不能编辑','TERMINAL_LOCKED');
+        else {
           const collaborators=c.data.assigneeIds??w.assigneeIds?.filter(id=>id!==w.ownerId)??[];
           Object.assign(w,c.data,{assigneeIds:collaborators});}
       }

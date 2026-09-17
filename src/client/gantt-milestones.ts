@@ -7,6 +7,7 @@ import { businessDateIndex, toGanttDate } from './gantt-geometry';
 export type GanttMilestone = {
   id: string; title: string; requirementId?: string | null;
   targetDate?: string | null; forecastDate?: string | null; actualDate?: string | null;
+  actualRecordedAt?: string | null;
   cancelled?: boolean; manual?: boolean; relatedIds: string[];
   dateBasis?: 'target' | 'actual';
   offset?: number; timingLabel?: string;
@@ -27,6 +28,11 @@ export function milestoneDate(m: GanttMilestone, showForecast = false) {
 export function achievedMilestones(items: GanttMilestone[]): GanttMilestone[] {
   return items.filter(m => !m.cancelled && milestoneDay(m.actualDate))
     .map(m => ({ ...m, dateBasis: 'actual' }));
+}
+/** Select a recorded achievement from this execution round, never a future target. */
+export function latestAchievedMilestone(items:GanttMilestone[],resetAt?:string|null,asOfDate?:string) {
+  return achievedMilestones(items).filter(m=>(!resetAt||(m.actualRecordedAt||m.actualDate||'')>resetAt)&&(!asOfDate||m.actualDate!<=asOfDate))
+    .sort((a,b)=>b.actualDate!.localeCompare(a.actualDate!)||(b.actualRecordedAt||'').localeCompare(a.actualRecordedAt||'')||a.id.localeCompare(b.id))[0]||null;
 }
 export function milestoneState(m: GanttMilestone, asOfDate: string) {
   return m.cancelled ? 'cancelled' : m.actualDate ? 'reached'
@@ -53,7 +59,7 @@ export function milestoneAncestors(id: string, edges: Pick<PathEdge, 'source' | 
 export function requirementMilestones(milestones: PathMilestone[] | undefined, workItems: WorkItem[], edges: PathEdge[] = []): GanttMilestone[] {
   if (milestones !== undefined) return milestones.map(m => ({
     id: m.id, title: m.title, requirementId: m.requirementId, targetDate: milestoneDay(m.targetDate),
-    actualDate: milestoneDay(m.achievedAt), forecastDate: milestoneDay(m.forecastEnd), cancelled: m.cancelled,
+    actualDate: milestoneDay(m.achievedAt), actualRecordedAt:m.achievedRecordedAt||m.achievedAt, forecastDate: milestoneDay(m.forecastEnd), cancelled: m.cancelled,
     manual: m.confirmationMode === 'manual', relatedIds: milestoneAncestors(m.id, edges),
   }));
   return workItems.filter(w => w.milestoneLabel).map(w => ({

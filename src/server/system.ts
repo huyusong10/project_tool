@@ -1,6 +1,8 @@
+import { moduleLogger } from '../../scripts/runtime-logger.mjs';
 import fs from 'node:fs';
 import { config } from './config';
 import { sqlite } from './database';
+const log = moduleLogger('system');
 import { listRestorableBackups } from './backups';
 import { readRestoreStatus } from './restore-status';
 
@@ -80,7 +82,7 @@ export function checkDatabaseIntegrity() {
       message: ok ? '数据库结构与数据页校验正常' : messages.slice(0, 5).join('；'),
     };
   } catch (error) {
-    console.error('[system] database integrity check failed', error);
+    log.error({ event: 'system.integrity_failed', err: error }, '数据库完整性检查失败');
     return {
       ok: false,
       checkedAt: new Date().toISOString(),

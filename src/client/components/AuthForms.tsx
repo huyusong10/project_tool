@@ -1,5 +1,4 @@
 import { Button } from './Button';
-import {useAppNavigate} from '../use-app-navigation';
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, LockKeyhole, LogIn } from "lucide-react";
@@ -12,13 +11,11 @@ import { Modal, useSynchronousPendingLock } from "./Modal";
 
 export function LoginDialog({ onClose, branding }: { onClose: () => void; branding: SystemBranding }) {
   const client = useQueryClient();
-  const navigate = useAppNavigate();
   const [error, setError] = useState("");
   const completeLogin = async (session: Session) => {
     await commitSession(client, session);
     invalidate(client, keys.session);
     onClose();
-    navigate("/");
   };
   const login = useMutation({
     mutationFn: (value: object) =>

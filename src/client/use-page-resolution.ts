@@ -2,7 +2,7 @@ import {useEffect, useRef} from 'react';
 import {useLocation} from 'react-router-dom';
 import {keys} from './query-keys';
 import {useResourceQuery} from './use-resource-query';
-import {matchRoute, pageScopeFor} from './routes';
+import {isGuestRoute, matchRoute, pageScopeFor} from './routes';
 import {canManageProject, isAdmin} from './permissions';
 import {sessionAccessKey} from './session-cache';
 import {ApiError} from './api';
@@ -18,13 +18,14 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
   const params = new URLSearchParams(location.search);
   const def = matchRoute(location.pathname);
   const scope = pageScopeFor(location.pathname, isAdmin(session));
+  const browseReady = !sessionQuery.unavailable && !session.mustChangePassword;
   const authenticated = !sessionQuery.unavailable && session.authenticated && !session.mustChangePassword;
   const account = session.accountId || session.username || 'guest';
   const remembered = rememberedProject(account);
   const requirementId = /^\/requirements\/([^/]+)$/.exec(location.pathname)?.[1] || '';
   const draft = Boolean(requirementId && params.has('draftProject'));
   const issueId = location.pathname === '/issues' ? params.get('detailId')?.replace(/^issue:/, '') || params.get('issueId') || '' : '';
-  const requirement = useResourceQuery<Requirement>(keys.requirement(requirementId), `/api/requirements/${encodeURIComponent(requirementId)}`, authenticated && Boolean(requirementId) && !draft);
+  const requirement = useResourceQuery<Requirement>(keys.requirement(requirementId), `/api/requirements/${encodeURIComponent(requirementId)}`, browseReady && Boolean(requirementId) && !draft);
   const issue = useResourceQuery<Issue>(keys.issue(issueId), `/api/issues/${encodeURIComponent(issueId)}`, authenticated && Boolean(issueId));
   const objectQuery = requirementId && !draft ? requirement : issueId ? issue : undefined;
   const priorObject = useRef({id:'', projectId:''});
@@ -36,7 +37,7 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
   const explicitProject = draft ? params.get('draftProject') : params.get('projectId');
   const project = scope !== 'project' ? undefined : objectQuery
     ? !objectQuery.unavailable ? projects.find(p => p.id === objectQuery.data?.projectId) : undefined
-    : chooseProject(projects, explicitProject, remembered);
+    : !session.authenticated && explicitProject === null && projects.length > 1 && !projects.some(p => p.id === remembered) ? undefined : chooseProject(projects, explicitProject, remembered);
   const templateMode = location.pathname === '/templates';
   const templateId = templateMode ? params.get('edit') || '' : '';
   const templates = useResourceQuery<WorkItemTemplate[]>([...keys.templates, project?.id || ''], `/api/templates?projectId=${encodeURIComponent(project?.id || '')}`, authenticated && templateMode && Boolean(project));
@@ -54,9 +55,9 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
     errorTitle = title; retry = query.refetch;
   };
   waitFor(sessionQuery, '登录状态加载失败');
-  if (phase === 'ready' && authenticated && scope === 'project') waitFor(projectsQuery, '项目列表加载失败');
-  if (phase === 'ready' && authenticated && objectQuery) waitFor(objectQuery, requirementId ? '需求无法打开' : '问题详情加载失败');
-  if (phase === 'ready' && authenticated && scope === 'project' && !project && (objectQuery || explicitProject !== null)) {
+  if (phase === 'ready' && browseReady && scope === 'project') waitFor(projectsQuery, '项目列表加载失败');
+  if (phase === 'ready' && browseReady && objectQuery) waitFor(objectQuery, requirementId ? '需求无法打开' : '问题详情加载失败');
+  if (phase === 'ready' && browseReady && scope === 'project' && !project && (objectQuery || explicitProject !== null)) {
     phase = 'error'; errorTitle = '项目不可用'; error = new Error('当前账号无法访问这个页面所属的项目。'); retry = () => projectsQuery.refetch();
   }
   if (phase === 'ready' && authenticated && templateId && templateId !== 'new' && project) {
@@ -69,8 +70,11 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
   if (phase === 'ready' && authenticated && templateId && !canManageProject(session, project?.id || '')) {
     phase = 'error'; errorTitle = '无权编辑流程'; error = new Error('当前账号可以查看流程列表，不能编辑流程。'); retry = () => sessionQuery.refetch();
   }
+  if (phase === 'ready' && browseReady && (!session.authenticated || project?.publicReadOnly) && !isGuestRoute(location.pathname)) {
+    phase = 'error'; errorTitle = '此页面需要项目授权'; error = new Error('游客可以浏览项目空间。登录有权限的账号后可使用此页面。'); retry = () => projectsQuery.refetch();
+  }
   const resolvedProjectId = phase === 'ready' ? project?.id : undefined;
-  useEffect(() => { if (authenticated && resolvedProjectId) rememberProject(account, resolvedProjectId); }, [account, authenticated, resolvedProjectId]);
+  useEffect(() => { if (browseReady && resolvedProjectId) rememberProject(account, resolvedProjectId); }, [account, browseReady, resolvedProjectId]);
   let title = def?.chrome?.title || nav?.label || '';
   let back: ResolvedPageContext['back'];
   if (requirementId) {
@@ -79,7 +83,7 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
   } else if (templateId) {
     title = template?.name || '新建流程'; back = {label:'返回流程列表', fallback:'/templates', kind:'templates'};
   } else if (location.pathname === '/paths' && project) title = '路径分析';
-  const navigationKey = `${sessionAccessKey(session)}|${pageIdentity(location.pathname, params)}|${project?.id || ''}|${project?.projectRole || ''}|${Boolean(project?.canManage)}`;
+  const navigationKey = `${sessionAccessKey(session)}|${pageIdentity(location.pathname, params)}|${project?.id || ''}|${project?.projectRole || ''}|${Boolean(project?.canManage)}|${Boolean(project?.publicReadOnly)}`;
   const toolbar = toolbarForRoute(location.pathname, location.search);
   const page: ResolvedPageContext = {navigationKey, phase, scope, project: phase === 'ready' ? project : undefined, title, back, toolbar, actionRow: toolbar !== 'none', error, errorTitle, retry,
     object: requirementId ? {kind:draft ? 'draft' : 'requirement', id:requirementId} : issueId ? {kind:'issue',id:issueId} : templateId ? {kind:'template',id:templateId} : undefined};

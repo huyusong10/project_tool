@@ -53,8 +53,8 @@ afterAll(async () => {
 });
 
 describe('自动化项目管理API', () => {
-  it('未登录用户不能读取或写入业务数据', async () => {
-    expect((await app.inject({ method: 'GET', url: '/api/projects' })).statusCode).toBe(401);
+  it('未登录用户只看到开放项目，不能写入业务数据', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/projects' })).json()).toEqual([]);
     expect((await app.inject({ method: 'POST', url: '/api/projects', payload: { name: '无权限' } })).statusCode).toBe(401);
   });
 
@@ -544,7 +544,7 @@ describe('自动化项目管理API', () => {
 
     const visibleProjects = await app.inject({ method: 'GET', url: '/api/projects', headers: { cookie: outsiderCookie } });
     expect(visibleProjects.json().map((item: { id: string }) => item.id)).toEqual([isolatedProjectId]);
-    expect((await app.inject({ method: 'GET', url: `/api/requirements?projectId=${projectId}`, headers: { cookie: outsiderCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: `/api/requirements?projectId=${projectId}`, headers: { cookie: outsiderCookie } })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: `/api/requirements/${requirementId}`, headers: { cookie: outsiderCookie } })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: `/api/issues/${issueId}`, headers: { cookie: outsiderCookie } })).statusCode).toBe(404);
     expect((await app.inject({ method: 'POST', url: '/api/analytics/query', headers: { cookie: outsiderCookie }, payload: {
@@ -1004,9 +1004,9 @@ describe('自动化项目管理API', () => {
     const pending = (await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie } })).json();
     expect(pending).toMatchObject({ status: 'completed', progress: 100, acceptedAt: null });
     const terminalEdit = await app.inject({ method: 'PATCH', url: `/api/requirements/${created.json().id}`, headers: { cookie }, payload: {
-      title: '不应修改', expectedVersion: pending.version,
+      title: '完成后维护标题', expectedVersion: pending.version,
     } });
-    expect(terminalEdit.json().code).toBe('TERMINAL_LOCKED');
+    expect(terminalEdit.statusCode,terminalEdit.body).toBe(200);expect(terminalEdit.json()).toMatchObject({status:'completed',progress:100,title:'完成后维护标题'});
     const historyId = pending.progressUpdates[0].id;
     expect((await app.inject({ method: 'PATCH', url: `/api/progress/${historyId}`, headers: { cookie }, payload: { content: '覆盖历史' } })).json().code).toBe('HISTORY_IMMUTABLE');
     expect((await app.inject({ method: 'DELETE', url: `/api/progress/${historyId}`, headers: { cookie } })).json().code).toBe('HISTORY_IMMUTABLE');

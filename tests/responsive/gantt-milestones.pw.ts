@@ -174,7 +174,7 @@ test('流程预览只保留工作行，里程碑在第2日末尾切开，不新�
   ] };
   await page.route('**/api/templates*', r => r.fulfill({ json: [template] }));
   await page.goto('/templates?edit=t1'); await expect(page.locator('[data-layout-ready="true"]')).toBeVisible({ timeout: 20000 });
-  await page.getByRole('button', { name: '甘特预览', exact: true }).click();
+  await page.getByRole('button', { name: '流程预览', exact: true }).click();
   await expect(page.locator('.template-plan-row')).toHaveCount(2);
   const ratio = await page.locator('.template-milestone-plan').evaluate(root => {
     const width = root.querySelector('.template-plan-scale')!.getBoundingClientRect().width;
@@ -182,9 +182,9 @@ test('流程预览只保留工作行，里程碑在第2日末尾切开，不新�
     return point / width;
   }); expect(ratio).toBeCloseTo(2 / 5, 2);
   await page.locator('.template-milestone-plan .gantt-milestone-label').click();
-  await expect(page.getByRole('dialog', { name: '里程碑详情' })).toContainText('第 2 工作日结束');
+  await expect(page.locator('.template-preview-selection')).toContainText('第 2 个工作日结束');
   await expect(page.locator('.template-plan-row .template-plan-name.is-milestone-related')).toContainText('MPS编写');
-  await page.keyboard.press('Escape'); await page.locator('.template-milestone-plan').screenshot({ path: info.outputPath('template-slices.png') });
+  await page.locator('.template-milestone-plan').screenshot({ path: info.outputPath('template-slices.png') });
 });
 test('需求路径排期预览复用切面，独立里程碑和验收点不增加工作行', async ({ page }, info) => {
   await mockGanttData(page);

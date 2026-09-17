@@ -10,7 +10,7 @@ export type Session = {
 export type Project = {
   id: string; name: string; status: string; plannedStart: string | null; plannedEnd: string | null;
   defaultTemplateId: string | null; createdAt: string; updatedAt: string; deletedAt?: string | null;
-  isSample: boolean; projectRole?: 'viewer' | 'member' | 'manager'; canManage?: boolean;
+  guestVisible?: boolean; publicReadOnly?: boolean; isSample: boolean; projectRole?: 'viewer' | 'member' | 'manager'; canManage?: boolean;
 };
 
 // 仅用于控制界面可见性；服务端始终独立执行授权校验。

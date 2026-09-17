@@ -37,7 +37,7 @@ export function PhaseChoice({projectId,featureId,value,onChange,label='需求 Ph
   return <>
     <FormField label="交付 Phase（可选）"><Select aria-label={label} name="phaseId" value={value} onChange={e=>e.target.value==='__create_phase__'?create():onChange(e.target.value)}>
       <option value="">未分派 Phase</option>{value&&!phases.data?.some(p=>p.id===value)&&<option value={value}>原 Phase（待核对）</option>}
-      {phases.data?.map(p=><option key={p.id} value={p.id} disabled={!!p.deliveredAt&&p.id!==value}>{p.name}{p.deliveredAt?' · 已交付':''}</option>)}
+      {phases.data?.map(p=><option key={p.id} value={p.id}>{p.name}{p.status==='completed'?' · 已完成':''}</option>)}
       {canCreate&&<option value="__create_phase__">新建 Phase…</option>}
     </Select>{phases.error&&<small>Phase 读取失败。<Button variant="link" type="button" onClick={()=>void phases.refetch()}>重新读取</Button></small>}
     {canCreate&&<Button variant="link" type="button" onClick={create}>新建 Phase…</Button>}</FormField>

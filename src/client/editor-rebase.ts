@@ -9,7 +9,7 @@ export function rebaseEditor(base:PathAnalysis|undefined,server:PathAnalysis,inp
  const resolve=(key:string,title:string,field:string,before:unknown,current:unknown,draft:unknown,canKeep=true)=>{conflicts.push({key,title,field,before,server:current,draft,canKeep});return choices[key]||null;};
  changes.entities=(changes.entities||[]).filter(c=>{
   if(c.op==='create'||isDraftTemplateId(c.id,input.entities||[]))return true;const old=base&&entity(base,c.id),now=entity(server,c.id);
-  if(!now||('status' in now&&['completed','cancelled'].includes(String(now.status))&&c.op!=='delete'))return resolve(c.id,c.data.title||c.id,'对象状态',old,now,'继续编辑',false)!=='server';
+  if(!now)return resolve(c.id,c.data.title||c.id,'对象状态',old,now,'继续编辑',false)!=='server';
   if(c.op==='delete'&&now.version!==c.expectedVersion){const keep=resolve(c.id,String(now.title),'删除对象',old,now,'删除')!=='server';c.expectedVersion=now.version;return keep;}
   for(const [field,value] of Object.entries(c.data)){
    if(field==='reason')continue;const read=(value:typeof old)=>field==='reviewForecast'?value&&('forecastReview' in value?value.forecastReview:'forecastBasis' in value?value.forecastBasis?.review:undefined):value?.[field as keyof typeof value];const a=read(old),b=read(now);

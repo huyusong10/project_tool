@@ -1,3 +1,4 @@
+import {useGuestWorkspace} from './app-context';
 import {randomUUID} from './random-uuid';
 import {remapEditorViews} from './path-view';
 import {executionDraftConflicts,type ExecutionCommand} from '../shared/execution-draft';
@@ -40,21 +41,23 @@ export async function assertCleanRequirementDraft(accountId:string,requirementId
   const r=await api<{projectId:string}>('/api/requirements/'+requirementId,{readOnly:true});
   await assertCleanProjectDraft(accountId,r.projectId,{requirementId,...command});
 }
-export function useGraphHistory<T>(key:string,initial:T,version:string,source?:PathAnalysis,fieldAvailability?:FieldAvailability<T>){
-  const storageKey=prefix+key;
+export function useGraphHistory<T>(key:string,initial:T,version:string,source?:PathAnalysis,fieldAvailability?:FieldAvailability<T>,enabled=true){
+  const storageKey=prefix+(enabled?'':'readonly:')+key;
   let session=sessions.get(storageKey) as EditorSession<T>|undefined;
   if(!session){session=new EditorSession(newHistory(initial,version,source));sessions.set(storageKey,session as EditorSession<unknown>);}
   const current=session;
   current.fieldAvailability=fieldAvailability;
+  if(!enabled){current.loading=false;current.readOnly=true;if(current.state.version!==version)current.state=newHistory(initial,version,source);}
   useSyncExternalStore(current.subscribe,current.snapshot);
   const latest=useRef({initial,version,source});latest.current={initial,version,source};
   const persist=()=>current.persist(async state=>{if(current.blocked)return;await writeDraftRecord(storageKey,state.active||Object.keys(state.fields).length||Object.keys(state.layouts).length?state:undefined);sessionStorage.removeItem(storageKey);});
   const dispatch=(command:HistoryCommand<T>)=>{
-    if(current.loading||current.readOnly||current.blocked)return false;
+    if(!enabled||current.loading||current.readOnly||current.blocked)return false;
     if(command.type!=='layout-baseline'&&!ownsDraft(storageKey,true)){current.readOnly=true;current.notify();return false;}
     const changed=current.dispatch(command);if(changed)void persist();return changed;
   };
   useEffect(()=>{
+    if(!enabled)return;
     let stopped=false;current.mounts++;if(!current.loading){current.readOnly=!ownsDraft(storageKey,current.state.active||!!Object.keys(current.state.fields).length);current.notify();}
     if(current.loading)void (async()=>{
       try{
@@ -67,7 +70,7 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
     const refresh=()=>{if(stopped)return;const denied=!ownsDraft(storageKey,current.state.active||!!Object.keys(current.state.fields).length);if(denied!==current.readOnly){current.readOnly=denied;current.notify();}},leave=()=>{current.readOnly=true;void current.flush();releaseDraft(storageKey);};
     const timer=setInterval(refresh,15000);window.addEventListener('storage',refresh);window.addEventListener('pagehide',leave);
     return()=>{stopped=true;clearInterval(timer);window.removeEventListener('storage',refresh);window.removeEventListener('pagehide',leave);void current.flush();if(--current.mounts===0)queueMicrotask(()=>{if(!current.mounts&&!current.saving)releaseDraft(storageKey);});};
-  },[current,storageKey]);
+  },[current,storageKey,enabled]);
   const state=current.state;
   return {
     session:current,dispatch,flush:current.flush,busy:current.saving,setBusy:(value:boolean)=>{current.setSaving(value);if(!value&&!current.mounts)releaseDraft(storageKey);},source:state.server,baseline:state.baseline||state.values[0],value:state.values[state.index],active:state.active,version:state.version,
@@ -76,7 +79,7 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
     setField:(key:string,buffer?:import('./editor-session').FieldBuffer)=>dispatch({type:'field',key,buffer}),
     captureLayout:(scope:string,positions:Record<string,import('./path-layout').Point>)=>dispatch({type:'layout-baseline',scope,positions}),
     takeOver:async(beforeUnlock?:()=>Promise<void>)=>{
-      if(current.loading||current.saving||current.blocked)return false;
+      if(!enabled||current.loading||current.saving||current.blocked)return false;
       current.loading=true;current.notify();
       try{
         await current.flush();const saved=readHistory<T>(await readDraftRecord(storageKey));takeDraft(storageKey);
@@ -96,13 +99,14 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
 const empty: DependencyChanges = { add: [], remove: [], estimates: [] };
 type PendingBatch = DependencyChangesInput & { batchId: string; previewToken: string };
 export function useDependencyDraft(accountId: string, data: PathAnalysis, target: string, onSaved: (receipt?:DependencyChangeReceipt) => void, scope?:string) {
-  const key = accountId + ':' + data.projectId+(scope?':'+scope:''), history = useGraphHistory(key, empty, String(data.revision),data,projectFieldActive);
+  const enabled=!useGuestWorkspace(data.projectId);
+  const key = accountId + ':' + data.projectId+(scope?':'+scope:''), history = useGraphHistory(key, empty, String(data.revision),data,projectFieldActive,enabled);
   const pendingKey = prefix + key + ':submission';
   const [pendingReady,setPendingReady]=useState(false);
   const [pending, setPending] = useState<PendingBatch | null>(() => {
-    try { return JSON.parse(sessionStorage.getItem(pendingKey) || 'null'); } catch { return null; }
+    try { return enabled ? JSON.parse(sessionStorage.getItem(pendingKey) || 'null') : null; } catch { return null; }
   });
-  const legacy=useLegacyFeatureDraft(key,data.projectId,history,pending,()=>onSaved(),!scope);
+  const legacy=useLegacyFeatureDraft(key,data.projectId,history,pending,()=>onSaved(),enabled&&!scope);
   const [preview, setPreview] = useState<DependencyChangePreview | null>(null), [error, setError] = useState<Error | null>(null);
   const [templateInstances,setTemplateInstances]=useState<DraftTemplateInstance[]>([]);
   const [previewing, setPreviewing] = useState(false);
@@ -126,7 +130,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
   const fingerprint = JSON.stringify(input);
   useEffect(() => {
     const current = ++generation.current; setPreview(null); latest.current = null;
-    if (!count || conflict || pending) { setPreviewing(false); return; }
+    if (!enabled || !count || conflict || pending) { setPreviewing(false); return; }
     const controller = new AbortController(); setPreviewing(true);
     const timer = setTimeout(() => {
       void api<DependencyChangePreview>('/api/projects/' + data.projectId + '/dependency-changes/preview', {
@@ -137,8 +141,8 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
         .finally(() => { if (current === generation.current) setPreviewing(false); });
     }, 180);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [fingerprint, count, conflict, pending, data.projectId,data.asOfDate,previewAttempt]);
-  useEffect(()=>{let stopped=false;const load=()=>{if(stopped)return;setPendingReady(false);void readDraftRecord<PendingBatch>(pendingKey).then(value=>{if(!stopped)setPending(value||null);}).catch(()=>{}).finally(()=>{if(!stopped)setPendingReady(true);});};const unwatch=watchDraftRecord(pendingKey,load);load();return()=>{stopped=true;unwatch();};},[pendingKey]);
+  }, [fingerprint, count, conflict, pending, data.projectId,data.asOfDate,previewAttempt,enabled]);
+  useEffect(()=>{if(!enabled){setPending(null);setPendingReady(true);return;}let stopped=false;const load=()=>{if(stopped)return;setPendingReady(false);void readDraftRecord<PendingBatch>(pendingKey).then(value=>{if(!stopped)setPending(value||null);}).catch(()=>{}).finally(()=>{if(!stopped)setPendingReady(true);});};const unwatch=watchDraftRecord(pendingKey,load);load();return()=>{stopped=true;unwatch();};},[pendingKey,enabled]);
   const updatePending = (value: PendingBatch | null) => {
     setPending(value); try { if (value) sessionStorage.setItem(pendingKey, JSON.stringify(value)); else sessionStorage.removeItem(pendingKey); } catch { /* In-memory receipt recovery still works. */ }
   };
@@ -151,7 +155,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     return false;
   };
   const save = async (allowApply?: (preview:DependencyChangePreview)=>boolean) => {
-    if (!pendingReady||history.loading||history.readOnly||history.session.saving || (!pending&&(legacy.blocked||legacy.loading)) || Object.values(history.session.fields).some(f=>f.error) || (!pending && (conflict || JSON.stringify(history.session.state.values[history.session.state.index])===JSON.stringify(empty)))) return false;
+    if (!enabled||!pendingReady||history.loading||history.readOnly||history.session.saving || (!pending&&(legacy.blocked||legacy.loading)) || Object.values(history.session.fields).some(f=>f.error) || (!pending && (conflict || JSON.stringify(history.session.state.values[history.session.state.index])===JSON.stringify(empty)))) return false;
     history.setBusy(true);
     let batch = pending;
     let pendingChecked = Boolean(batch);

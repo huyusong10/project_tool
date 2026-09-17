@@ -8,7 +8,7 @@ const widgetClasses = new Set([
   'template-plan-name', 'canvas-draft-status', 'project-switcher-button', 'work-progress-link',
   'sortable-drag-handle', 'workspace-delivery-point', 'workspace-row-title', 'outline-title',
   'action-item', 'issue-title-button', 'issue-latest-update-button', 'my-owned-requirement-link',
-  'people-group-toggle', 'member-candidate-option', 'detail-work-row-title', 'sortable-table-heading', 'template-name-button',
+  'people-group-toggle', 'member-candidate-option', 'detail-work-row-title', 'sortable-table-heading', 'template-name-button', 'template-thumbnail-button',
 ]);
 const compoundWidgets = new Set(['Form.tsx', 'GanttTimeline.tsx', 'GanttNavigation.tsx', 'GapTimeline.tsx', 'IssueForms.tsx', 'IssueStatusControl.tsx', 'PathAnalysisPanel.tsx', 'TemplateForm.tsx', 'WorkspaceGantt.tsx']);
 export default {

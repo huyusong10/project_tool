@@ -4,9 +4,10 @@ import {ganttForecast} from '../gantt-forecast';
 import {progressUpdateDisplayValue} from '../progress-trend';
 import {executionStageOf} from './ExecutionStageBadge';
 import {requirementScheduleSummary} from '../requirement-presentation';
+import type {GanttMilestone} from '../gantt-milestones';
 
 /** Read from the report already loaded by the workspace; never fetch one detail per row. */
-export function WorkspaceGanttSummary({row,asOfDate}:{row:WorkspaceRow;asOfDate:string}) {
+export function WorkspaceGanttSummary({row,asOfDate,milestones=[]}:{row:WorkspaceRow;asOfDate:string;milestones?:GanttMilestone[]}) {
   const r=row.formalRequirement||row.requirement,w=row.formalWork||row.work,item=w||r;
   if(!item)return null;
   const plan=row.work||row.requirement||item;
@@ -33,6 +34,7 @@ export function WorkspaceGanttSummary({row,asOfDate}:{row:WorkspaceRow;asOfDate:
       {w?.blockedReason&&<div><dt>受阻原因</dt><dd className="danger-text">{w.blockedReason}</dd></div>}
       {!!w?.unmetPredecessors?.length&&<div><dt>等待前置</dt><dd>{w.unmetPredecessors.map(p=>p.title).join('、')}</dd></div>}
     </dl>
+    {!!milestones.length&&<details className="workspace-summary-milestones"><summary>里程碑记录 · {milestones.length}</summary>{milestones.map(m=><p key={m.id}>{m.title}<small>{m.cancelled?'已取消':m.actualDate?'已达成 '+m.actualDate:m.targetDate?'目标 '+m.targetDate:'尚未安排日期'}</small></p>)}</details>}
     <section><h4>最近进展</h4>{updates.length?updates.map(u=><article key={u.id}><time>{new Date(u.createdAt).toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'})}</time><p>{u.content}</p>{progressUpdateDisplayValue(u)!=null&&<b>{progressUpdateDisplayValue(u)}%</b>}</article>):<p className="workspace-summary-empty">{w?'近期记录中没有这项工作的更新':'暂无近期进展记录'}</p>}</section>
   </div>;
 }

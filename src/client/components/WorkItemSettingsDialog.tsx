@@ -268,8 +268,8 @@ export function WorkItemSettingsDialog({
     }catch(error){setReorderReadError(error instanceof Error?error.message:'读取失败');}finally{setReorderReading(false);}
   };
 
-  const orderDisabledReason = requirementLocked
-    ? `需求${{pending_acceptance:'待验收',completed:'已完成',cancelled:'已取消'}[requirement.status as 'pending_acceptance'|'completed'|'cancelled']}，暂不能新增、调整安排或排序。重新打开需求后可继续。`
+  const orderDisabledReason = requirementLocked && !canManageRequirement
+    ? `需求${{pending_acceptance:'待验收',completed:'已完成',cancelled:'已取消'}[requirement.status as 'pending_acceptance'|'completed'|'cancelled']}，新增和排序需重开；管理员可直接维护已有资料。`
     : !canEdit ? '当前无编辑权限或有待核对的修改，暂不能调整安排或排序。'
     : settingsUnknown || reorderNeedsRefresh ? '请先核对刚才的操作结果，再调整顺序。'
     : reorderItems.isPending || reorderReading ? '正在保存或读取顺序，请稍候。' : '';
@@ -321,7 +321,7 @@ export function WorkItemSettingsDialog({
   const content = <>
       <div className="work-editor-modal">
         {!itemId&&<DetailToolbar><div className="work-editor-modal-toolbar">
-          <span className={orderDisabledReason?'work-order-notice':undefined} role="status" title={orderDisabledReason||'拖动手柄排序；也可聚焦手柄，空格选中、方向键移动、空格放下，Esc 取消'}>{requirement.workItems.length} 个工作项 · {orderDisabledReason?requirementLocked?`需求${{pending_acceptance:'待验收',completed:'已完成',cancelled:'已取消'}[requirement.status as 'pending_acceptance'|'completed'|'cancelled']}，重开后可调整安排`:'当前安排已锁定':'拖动手柄排序 · 支持键盘操作'}</span>
+          <span className={orderDisabledReason?'work-order-notice':undefined} role="status" title={orderDisabledReason||'拖动手柄排序；也可聚焦手柄，空格选中、方向键移动、空格放下，Esc 取消'}>{requirement.workItems.length} 个工作项 · {orderDisabledReason?requirementLocked?`需求${{pending_acceptance:'待验收',completed:'已完成',cancelled:'已取消'}[requirement.status as 'pending_acceptance'|'completed'|'cancelled']}，管理员可维护已有资料`:'当前安排已锁定':'拖动手柄排序 · 支持键盘操作'}</span>
           <div className="panel-actions">
             {canEdit&&onOpenDependencies&&<Button aria-label="前置关系与工期" title="前置关系与工期" variant="secondary" className="ghost-button" disabled={settingsUnknown} onClick={onOpenDependencies}>依赖</Button>}
             {canEdit&&canManageRequirement && (!requirement.workItems.length || requirement.workItems.some((item) => !['completed', 'cancelled'].includes(item.status) && (!item.plannedStart || !item.plannedEnd))) && <Button aria-label="补全计划" title="补全计划" variant="secondary" className="ghost-button" disabled={settingsUnknown} onClick={onOpenPlan}>排期</Button>}
@@ -341,18 +341,20 @@ export function WorkItemSettingsDialog({
             onReorder={reorderWorkItems}
             renderItem={(item, _index, sortable) => {
               const gap = calculateWorkItemGap(item, requirement.asOfDate);
+              const historical = ['completed','cancelled'].includes(item.status) || requirementLocked;
+              const availablePeople = historical && canManageRequirement ? people.filter(p=>p.projectRole!=='viewer') : eligiblePeople;
               const historicalPeople = [
-                ...(item.ownerId && !eligiblePeople.some((person) => person.id === item.ownerId)
+                ...(item.ownerId && !availablePeople.some((person) => person.id === item.ownerId)
                   ? [{ id: item.ownerId, name: item.ownerName || "历史负责人", jobTitle: "历史负责人" }]
                   : []),
-                ...item.collaborators.filter((collaborator) => !eligiblePeople.some((person) => person.id === collaborator.id)),
+                ...item.collaborators.filter((collaborator) => !availablePeople.some((person) => person.id === collaborator.id)),
               ];
-              const assignmentOptions = [...eligiblePeople, ...historicalPeople].map((person) => ({
+              const assignmentOptions = [...availablePeople, ...historicalPeople].map((person) => ({
                 value: person.id, label: person.name,
-                description: eligiblePersonIds.has(person.id) ? person.jobTitle || "岗位未设置" : "已不可用，请重新分配",
-                disabled: !eligiblePersonIds.has(person.id),
+                description: eligiblePersonIds.has(person.id) ? person.jobTitle || "岗位未设置" : historical ? "历史人员" : "已不可用，请重新分配",
+                disabled: !historical && !eligiblePersonIds.has(person.id),
               }));
-              const itemLocked = !canEdit || ["completed", "cancelled"].includes(item.status);
+              const itemLocked = !canEdit || historical && !canManageRequirement;
               const revisionProps = { revision: item.version, revisionSubject: "工作项", onReloadRevision: () => reloadWorkItemRevision(item.id) };
               const canDelete = canDeleteWorkItem(item, workItemHistoryIds.has(item.id));
               return <article ref={sortable.setNodeRef} data-work-id={item.id} className={`work-arrangement-row sortable-item${sortable.isDragging ? " is-dragging" : ""}${sortable.isOver ? " is-over" : ""}`}>
@@ -363,6 +365,8 @@ export function WorkItemSettingsDialog({
 <label className="work-arrangement-field"><span>协作人</span><div><InlineMultiSelectCell {...revisionProps} disabled={itemLocked || settingsUnknown} value={item.collaborators.map((person) => person.id)} label="协作人员" options={assignmentOptions} excludedValues={item.ownerId ? [item.ownerId] : []} onSave={(collaboratorIds, expectedVersion, reason) => saveWorkItem(item, { assigneeIds: [item.ownerId, ...collaboratorIds].filter(Boolean), ...(reason ? { reason } : {}) }, expectedVersion)} placeholder="无协作人员" renderValue={(selected) => selected.length ? <span className="inline-person-summary">{selected.slice(0, 2).map((person) => person.label).join("、")}{selected.length > 2 ? ` +${selected.length - 2}` : ""}</span> : "无协作人员"} /></div></label>
 <label className="work-arrangement-field"><span>计划开始</span><div><InlineDateCell {...revisionProps} disabled={itemLocked || settingsUnknown} value={item.plannedStart} label="计划开始" onSave={(plannedStart, reason, expectedVersion) => saveWorkItem(item, { plannedStart, ...(reason ? { reason } : {}) }, expectedVersion)} /></div></label>
 <label className="work-arrangement-field"><span>计划完成</span><div><InlineDateCell {...revisionProps} disabled={itemLocked || settingsUnknown} value={item.plannedEnd} label="计划完成" onSave={(plannedEnd, reason, expectedVersion) => saveWorkItem(item, { plannedEnd, ...(reason ? { reason } : {}) }, expectedVersion)} /></div></label>
+{canManageRequirement&&item.actualStart&&<label className="work-arrangement-field"><span>实际开始</span><InlineDateCell {...revisionProps} disabled={!canEdit||settingsUnknown} value={item.actualStart} label="实际开始" reason={{label:'修改说明'}} onSave={(actualStart,reason,expectedVersion)=>saveWorkItem(item,{actualStart,reason},expectedVersion)}/></label>}
+{canManageRequirement&&item.status==='completed'&&<label className="work-arrangement-field"><span>实际完成</span><InlineDateCell {...revisionProps} disabled={!canEdit||settingsUnknown} value={item.actualEnd} label="实际完成" reason={{label:'修改说明'}} onSave={(actualEnd,reason,expectedVersion)=>saveWorkItem(item,{actualEnd,reason},expectedVersion)}/></label>}
                 </div>
                 <div className="work-arrangement-execution">{!itemId&&<WorkItemExecution requirement={requirement} item={item} people={people} presentation="detail" extraMenu={canEdit&&item.status==='not_started'?<Button variant="ghost" tone="danger" size="compact" disabled={!canDelete||settingsUnknown} title={canDelete?'删除工作项':'已有执行信息或进展历史，不能删除'} onClick={()=>setRemoveTarget(item)}>删除</Button>:undefined}>{({progress,actions})=><>{progress}{actions}</>}</WorkItemExecution>}{canEdit&&itemId&&item.status==='not_started'&&<Button variant="secondary" tone="danger" size="compact" title={canDelete?'删除工作项':'已有执行信息或进展历史，不能删除'} disabled={!canDelete||settingsUnknown} onClick={()=>setRemoveTarget(item)}><Trash2 size={14}/>删除</Button>}</div>
               </article>;

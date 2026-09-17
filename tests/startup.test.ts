@@ -26,6 +26,37 @@ afterEach(async () => {
 });
 
 describe('启动前检查', () => {
+  it('配置失败先记录 FATAL 并刷新文件，尚未打开数据库', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-startup-log-'));
+    directories.push(directory);
+    const logDir = path.join(directory, 'logs');
+    const outcome = await promisify(execFile)(process.execPath, ['--import', 'tsx', 'src/server/index.ts'], {
+      cwd: process.cwd(), timeout: 15000, env: { ...process.env, NODE_ENV: 'test',
+        DB_PATH: path.join(directory, 'should-not-exist.db'), ADMIN_PASSWORD: 'short', LOG_FILE_ENABLED: '1', LOG_DIR: logDir },
+    }).then(() => null, error => error as { code: number; stderr: string });
+    expect(outcome?.code).toBe(1);
+    expect(outcome?.stderr).toContain('"level":"fatal"');
+    expect(fs.existsSync(path.join(directory, 'should-not-exist.db'))).toBe(false);
+    const records = fs.readdirSync(logDir).flatMap(name => fs.readFileSync(path.join(logDir, name), 'utf8').trim().split('\n').map(line => JSON.parse(line)));
+    expect(records).toEqual([expect.objectContaining({ level: 'fatal', event: 'server.failed' })]);
+    expect(JSON.stringify(records)).not.toContain('short');
+  });
+
+  it('启动器保持 75 重启语义，启动器日志写入独立文件', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-launcher-log-'));
+    directories.push(directory);
+    const entry = path.join(directory, 'entry.mjs'), counter = path.join(directory, 'count');
+    fs.writeFileSync(entry, `import fs from 'node:fs';\nconst filename = ${JSON.stringify(counter)};\nconst count = fs.existsSync(filename) ? Number(fs.readFileSync(filename, 'utf8')) : 0;\nfs.writeFileSync(filename, String(count + 1));\nprocess.exit(count === 0 ? 75 : 0);`);
+    const logDir = path.join(directory, 'logs');
+    const result = await promisify(execFile)(process.execPath, ['scripts/run-server.mjs', entry], {
+      cwd: process.cwd(), timeout: 15000, env: { ...process.env, NODE_ENV: 'test', LOG_FILE_ENABLED: '1', LOG_DIR: logDir },
+    });
+    expect(fs.readFileSync(counter, 'utf8')).toBe('2');
+    expect(result.stdout).toContain('launcher.restarting');
+    const names = fs.readdirSync(logDir);
+    expect(names).toHaveLength(1); expect(names[0]).toContain('project-manage-launcher-');
+    expect(fs.readFileSync(path.join(logDir, names[0]), 'utf8')).toContain('launcher.restarting');
+  });
   it('端口空闲时允许启动，检查完成后不占用端口', async () => {
     const { server, port } = await serve({});
     await new Promise<void>(resolve => server.close(() => resolve()));

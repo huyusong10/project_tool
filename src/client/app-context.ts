@@ -40,6 +40,11 @@ export function useProjects() {
   return useRequired(ProjectsContext, 'ProjectsContext');
 }
 
+export function useGuestWorkspace(projectId?: string) {
+  const {session}=useSession(),{projects,selectedProjectId}=useProjects();
+  return !session.authenticated || Boolean(projects.find(p=>p.id===(projectId||selectedProjectId))?.publicReadOnly);
+}
+
 export function useUiActions() {
   return useRequired(UiActionsContext, 'UiActionsContext');
 }

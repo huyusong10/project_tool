@@ -70,7 +70,7 @@ export function WorkItemDeleteDialog({ target, requirement, canManage, onReload,
   const pending = mutation.isPending || reading;
   const blocked = unknown || Boolean(warning) || needsRefresh;
   return <ConfirmDialog title="删除工作项" description={<>
-    <p>工作项“<strong>{baseline.title}</strong>”将从需求计划中删除。此操作仅适用于尚未开始、0%且没有执行信息和进展历史的工作项。</p>
+    <p>工作项“<strong>{baseline.title}</strong>”将从需求计划中删除。其前置和后续依赖将一并删除，其他工作项保留。</p>
     {warning && <p className="form-error" role="alert">{warning}</p>}
     {readError && <p className="form-error" role="alert">{readError}</p>}
     {unknown&&<p>删除结果待核对，本窗口不会重复提交。请核对操作记录。</p>}{refreshed && <p>已读取最新工作项，请核对名称和删除条件后再确认。</p>}

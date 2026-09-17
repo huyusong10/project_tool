@@ -22,17 +22,18 @@ import { canonicalizeLabel } from "../../shared/search";
 import { useToast } from "./Toast";
 
 export type ProjectFormInput = {
+  guestVisible?: boolean;
   name: string;
   status: string;
   plannedStart: string;
   plannedEnd: string;
-  defaultTemplateId: string;
+  defaultTemplateId?: string;
   expectedUpdatedAt?: string;
 };
 export type ProjectCreateRecheck={draft:ProjectFormInput;baselineIds:string[]};
 function projectCreateRecheckKey(accountKey:string){return `project-manage:project-create-recheck:${accountKey}`;}
 export function readProjectCreateRecheck(accountKey:string):ProjectCreateRecheck|null{
-  try{const raw=sessionStorage.getItem(projectCreateRecheckKey(accountKey));if(!raw)return null;const value=migrateFeatureFields(JSON.parse(raw)) as Partial<ProjectCreateRecheck>,draft=value.draft as Partial<ProjectFormInput>|undefined;return typeof draft?.name==='string'&&typeof draft.status==='string'&&typeof draft.plannedStart==='string'&&typeof draft.plannedEnd==='string'&&typeof draft.defaultTemplateId==='string'&&Array.isArray(value.baselineIds)&&value.baselineIds.every(id=>typeof id==='string')?value as ProjectCreateRecheck:null;}catch{return null;}
+  try{const raw=sessionStorage.getItem(projectCreateRecheckKey(accountKey));if(!raw)return null;const value=migrateFeatureFields(JSON.parse(raw)) as Partial<ProjectCreateRecheck>,draft=value.draft as Partial<ProjectFormInput>|undefined;return typeof draft?.name==='string'&&typeof draft.status==='string'&&typeof draft.plannedStart==='string'&&typeof draft.plannedEnd==='string'&&(draft.defaultTemplateId===undefined||typeof draft.defaultTemplateId==='string')&&Array.isArray(value.baselineIds)&&value.baselineIds.every(id=>typeof id==='string')?value as ProjectCreateRecheck:null;}catch{return null;}
 }
 export function persistProjectCreateRecheck(accountKey:string,value:ProjectCreateRecheck|null){try{const key=projectCreateRecheckKey(accountKey);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前页面仍保留核对锁。 */}}
 
@@ -81,6 +82,7 @@ export function ProjectForm({
   const [status, setStatus] = useState(initial?.status || "active");
   const [plannedStart, setPlannedStart] = useState(initial?.plannedStart || "");
   const [plannedEnd, setPlannedEnd] = useState(initial?.plannedEnd || "");
+  const [guestVisible, setGuestVisible] = useState(Boolean(initial?.guestVisible));
   const [defaultTemplateId, setDefaultTemplateId] = useState(initial?.defaultTemplateId || "");
   const changed = Boolean(project && baseProject && project.updatedAt !== baseProject.updatedAt);
   const templatesQuery = useQuery({
@@ -109,6 +111,7 @@ export function ProjectForm({
       try {
         const latest = await api<Project[]>("/api/projects", { readOnly: true });
         const matchesDraft = (item: Project) => item.name === canonicalizeLabel(input.name)
+          && Boolean(item.guestVisible) === Boolean(input.guestVisible)
           && item.status === input.status
           && item.plannedStart === (input.plannedStart || null)
           && item.plannedEnd === (input.plannedEnd || null)
@@ -139,14 +142,14 @@ export function ProjectForm({
       : !templatesReady ? <LoadingState label="正在加载项目配置…" className="stable-panel-state" /> : <>
     {templatesQuery.error && <div className="warning-banner">默认流程刷新失败，当前展示的是上次成功结果。<Button variant="secondary" type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</Button></div>}
     {changed && project && <div className="warning-banner">项目设置已在其他位置更新，当前草稿保持不变。<Button variant="secondary" type="button" className="ghost-button" disabled={mutation.isPending} onClick={() => {
-      setBaseProject(project); setName(project.name); setStatus(project.status); setPlannedStart(project.plannedStart || ""); setPlannedEnd(project.plannedEnd || ""); setDefaultTemplateId(project.defaultTemplateId || ""); mutation.reset();
+      setBaseProject(project); setGuestVisible(Boolean(project.guestVisible)); setName(project.name); setStatus(project.status); setPlannedStart(project.plannedStart || ""); setPlannedEnd(project.plannedEnd || ""); setDefaultTemplateId(project.defaultTemplateId || ""); mutation.reset();
     }}>使用最新设置</Button></div>}
     <form
       onSubmit={(event) => {
         event.preventDefault();
         if (submitting.current || createUnknown || changed || selectedTemplateUnavailable) return;
         submitting.current = true;
-        mutation.mutate({ name, status, plannedStart, plannedEnd, defaultTemplateId, ...(baseProject ? { expectedUpdatedAt: baseProject.updatedAt } : {}) });
+        mutation.mutate({ name, status, plannedStart, plannedEnd, ...(baseProject ? { defaultTemplateId, guestVisible, expectedUpdatedAt: baseProject.updatedAt } : {}) });
       }}
     >
       <fieldset className="form-grid form-fieldset" disabled={mutation.isPending}>
@@ -164,6 +167,9 @@ export function ProjectForm({
       <FormField label="计划完成">
         <input name="plannedEnd" type="date" min={plannedStart || undefined} value={plannedEnd} onChange={(event) => setPlannedEnd(event.target.value)} />
       </FormField>
+      {project && <FormField label="游客浏览" full asLabel={false} help="开放后，无需登录即可查看项目空间、对象说明和关联链接。问题、个人事务和管理功能仍需授权。">
+        <label className="checkbox-label"><input type="checkbox" checked={guestVisible} onChange={event => setGuestVisible(event.target.checked)}/><span>允许游客查看</span></label>
+      </FormField>}
       <FormField label="默认流程" full>
         <select name="defaultTemplateId" value={defaultTemplateId} onChange={(event) => setDefaultTemplateId(event.target.value)}>
           <option value="">不指定</option>

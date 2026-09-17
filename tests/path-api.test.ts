@@ -185,11 +185,11 @@ it('前置未完成时允许记录真实开始，并保留说明和依赖',async
 });
 
 it('未登录、跨项目、普通成员和需求负责人权限由服务端裁决',async()=>{
- const f=await fixture();expect((await request('GET',`/api/projects/${f.projectId}/path-analysis`,undefined,'')).statusCode).toBe(401);
+ const f=await fixture();expect((await request('GET',`/api/projects/${f.projectId}/path-analysis`,undefined,'')).statusCode).toBe(404);
  const outsider=(await post('/api/projects',{name:`外部项目${++sequence}`})).json();expect((await add(f.projectId,f.a.id,f.a.workItems[0].id,outsider.id,null)).statusCode).toBe(400);
  const login=await request('POST','/api/login',{username:f.owner.name,password:'888888'},'');let ownerCookie=String(login.headers['set-cookie']).split(';')[0];
  const changed=await request('POST','/api/account/change-password',{currentPassword:'888888',newPassword:'paths-owner-test-123'},ownerCookie);ownerCookie=String(changed.headers['set-cookie']).split(';')[0];
- expect((await request('GET',`/api/projects/${outsider.id}/path-analysis`,undefined,ownerCookie)).statusCode).toBe(403);
+ expect((await request('GET',`/api/projects/${outsider.id}/path-analysis`,undefined,ownerCookie)).statusCode).toBe(404);
  const body={sourceRequirementId:f.a.id,sourceWorkItemId:f.a.workItems[0].id,targetRequirementId:f.b.id,targetWorkItemId:f.b.workItems[2].id,expectedRevision:(await analysis(f.projectId)).revision};
  expect((await request('POST',`/api/projects/${f.projectId}/dependencies`,body,ownerCookie)).statusCode).toBe(403);
  const internal=await request('POST',`/api/projects/${f.projectId}/dependencies`,{...body,targetRequirementId:f.a.id,targetWorkItemId:f.a.workItems[2].id},ownerCookie);expect(internal.statusCode,internal.body).toBe(200);

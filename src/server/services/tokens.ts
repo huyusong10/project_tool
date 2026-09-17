@@ -1,3 +1,4 @@
+import { recordLogReason, updateLogContext } from '../log-context';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { sqlite } from '../database';
 import { createApiTokenValue, hashApiToken, type Actor } from '../auth';
@@ -52,17 +53,22 @@ export function revokeToken(id: string, actor: Actor, allowAnyAccount = false) {
 }
 
 export function authenticateApiToken(token: string): (Actor & { accountId: string; personId: string | null; globalRole: 'user' | 'admin' }) | null {
+  updateLogContext({ authMethod: 'token' });
+  const reject = (code: string, reason: string) => { recordLogReason(code, reason); return null; };
   const match = /^pm_([a-f0-9]{10})_/.exec(token);
-  if (!match) return null;
+  if (!match) return reject('TOKEN_INVALID', 'MCP Token 格式不合法');
   const record = row<Record<string, string | number | null>>(`SELECT t.*, a.username, a.person_id, a.global_role, a.status AS account_status,
       a.must_change_password, a.updated_at AS account_updated_at
     FROM api_tokens t JOIN accounts a ON a.id=t.account_id
     WHERE t.prefix=? AND a.deleted_at IS NULL AND ${accountPersonAvailableSql}`, match[1]);
-  if (!record || record.revoked_at || record.account_status !== 'active'
-    || Number(record.must_change_password) === 1
-    || (record.expires_at && record.expires_at <= nowIso())) return null;
+  if (!record) return reject('TOKEN_UNAVAILABLE', 'MCP Token 不存在或关联账号、人员不可用');
   const actualHash = Buffer.from(hashApiToken(token)); const expectedHash = Buffer.from(String(record.token_hash));
-  if (actualHash.length !== expectedHash.length || !timingSafeEqual(actualHash, expectedHash)) return null;
+  if (actualHash.length !== expectedHash.length || !timingSafeEqual(actualHash, expectedHash)) return reject('TOKEN_INVALID', 'MCP Token 校验失败');
+  updateLogContext({ attemptedUser: String(record.username), tokenId: String(record.id), tokenName: String(record.name) });
+  if (record.revoked_at) return reject('TOKEN_REVOKED', 'MCP Token 已被撤销');
+  if (record.account_status !== 'active') return reject('ACCOUNT_DISABLED', 'MCP Token 关联账号已停用');
+  if (Number(record.must_change_password) === 1) return reject('PASSWORD_CHANGE_REQUIRED', 'MCP Token 关联账号需要先修改初始密码');
+  if (record.expires_at && record.expires_at <= nowIso()) return reject('TOKEN_EXPIRED', 'MCP Token 已过期');
   const usedAt = nowIso();
   const authenticated = sqlite.transaction(() => {
     const used = sqlite.prepare(`UPDATE api_tokens SET last_used_at=?
@@ -76,9 +82,11 @@ export function authenticateApiToken(token: string): (Actor & { accountId: strin
         AND a.updated_at=? AND a.status='active' AND a.must_change_password=0
         AND a.deleted_at IS NULL AND ${accountPersonAvailableSql}`, record.id, usedAt, record.account_updated_at));
   })();
-  if (!authenticated) return null;
+  if (!authenticated) return reject('TOKEN_STATE_CHANGED', 'MCP Token 或关联账号状态已变化');
+  updateLogContext({ attemptedUser: undefined });
   return {
     type: 'token', id: String(record.id), label: String(record.name), accountId: String(record.account_id),
+    accountName: String(record.username),
     personId: record.person_id ? String(record.person_id) : null, globalRole: record.global_role as 'user' | 'admin',
   };
 }

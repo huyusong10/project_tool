@@ -63,6 +63,7 @@ export const loginInputSchema = z.object({
 }).strict();
 
 export const projectInputSchema = z.object({
+  guestVisible: z.boolean().optional(),
   name: z.string().trim().min(1).optional(),
   plannedStart: optionalDateSchema,
   plannedEnd: optionalDateSchema,
@@ -149,7 +150,8 @@ export const rescheduleRequirementInputSchema = requirementInputSchema.extend({
   message: '计划开始和完成日期请选择一项',
 });
 
-export const reselectRequirementTemplateInputSchema = requirementInputSchema.extend({
+export const reselectRequirementTemplateInputSchema = requirementInputSchema.pick({plannedStart:true,plannedEnd:true,scheduleMode:true,reason:true}).extend({
+  confirmTemplateReset: z.literal(true).optional(),
   templateId: idSchema,
   expectedVersion: expectedVersionSchema,
 }).strict();
@@ -289,6 +291,7 @@ export const createIssueInputSchema = issueInputSchema.pick({nextReviewAt:true,
 }).strict();
 
 export const updateIssueInputSchema = issueInputSchema.omit({ projectId: true }).extend({
+  reason: optionalTextSchema, resolvedAt: optionalDateSchema,
   expectedVersion: expectedVersionSchema,
 });
 

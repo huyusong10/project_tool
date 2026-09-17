@@ -2,6 +2,9 @@
 
 端点为 `/mcp`，使用无状态 HTTP POST 和个人 Token。Token 继承账号的项目权限。成功数据在 `structuredContent.result`；业务错误返回 `isError: true`、`structuredContent.error` 和 `statusCode`。
 
+服务支持 `resources/list`、`resources/templates/list`、`prompts/list` 的能力查询，目前返回空清单，业务操作仍使用 tools。初始化声明与这些查询一致，不声明清单变更通知。日志中的 `mcpMethod` 是协议方法，`tool` 是业务工具，`method` 是 HTTP 方法；`-32601` 表示协议方法不受支持，不属于参数校验失败。HTTP 200 只说明协议响应已返回，仍须检查 `error` 或 `result.isError`。
+
+项目可通过 `update_project` 的 `guestVisible` 布尔字段开放或关闭浏览器游客查看（经理或管理员，沿用 `expectedUpdatedAt`）。MCP 始终使用 Token 和成员权限，匿名调用及非成员读取仍被拒绝。
 MCP 服务版本 `1.5.0` 发布各对象的多链接参数。构建更新服务文件和 Codex 本地 skill；运行中的服务须重新启动，Codex 须重新连接后读取新版本和工具参数。连接地址、Token 不变。
 
 Agent 录入流程维护在 [project-manage-intake skill](../skills/project-manage-intake/SKILL.md)。修改本文涉及的工具、参数或业务口径时，同步更新 skill；生产构建会安装仓库中的版本。
@@ -141,7 +144,7 @@ SVG 是可保存的文本，不是浏览器截图；长说明展示摘要，完�
 
 ## 特性、Phase 与人工评估
 
-`get_feature_overview({projectId})` 读取各 Phase 的交付状态、阶段分布、日期及历史，同时保留预期、人工评估和最近进展。特性不计算总百分比；取消需求不算交付成果，已完成需求归档后仍计入 Phase。人工评估不按需求完成数量自动填写。
+`get_feature_overview({projectId})` 读取各 Phase 的交付状态、阶段分布、日期及历史，同时保留预期、人工评估和最近进展。特性返回当前已明确范围的加权完成度；取消需求不算交付成果，已完成需求归档后仍计入 Phase。人工评估不按需求完成数量自动填写。
 
 `save_feature` 可传 `overview: {expectation, progressSummary, assessment, note}`，四项均须提供，文字可为空；`assessment` 使用 `pending/on_track/off_track/needs_adjustment`。更新时使用最新特性的 `id/name/expectedVersion`；仅调整排序时传 `sortOrder`，省略则保留位置，新建未传则追加。省略 `overview` 不影响已有评估。项目经理或管理员可保存。
 
@@ -172,7 +175,9 @@ SVG 是可保存的文本，不是浏览器截图；长说明展示摘要，完�
 
 ## Phase 与需求阶段
 
-使用 `list_feature_phases/save_feature_phase/deliver_feature_phase/reopen_feature_phase/delete_feature_phase` 管理分期。`record_test_submission` 记录实际提测。接口参数和阶段摘要见 [特性分期说明](feature-phases.md#rest-与-mcp)。
+使用 `list_feature_phases/save_feature_phase/delete_feature_phase` 管理分期，Phase 状态和完成日期由需求汇总。`record_test_submission` 记录实际提测。接口参数和阶段摘要见 [特性分期说明](feature-phases.md#rest-与-mcp)。
+
+Phase 和特性返回 `completion:{total,completed,inProgress,notStarted,percent,weight}`。Phase 按需求的实际进度及工作量加权，特性按各 Phase 的工作量加权，未安排 Phase 的需求一并计入。`weight` 是有效需求工作量之和；需求复用工作项权重，直接执行取已填工期，无估算默认 1。百分比四舍五入，非完成状态最高 99%；空范围为 `null`，取消需求排除，归档完成项保留。`get_feature_overview` 和 `dashboard_summary.featureOverview` 使用相同结果。需求摘要的 `progress/progressWeight` 提供加权依据，不能用 `executionStage` 的当前阶段百分比代替。空 Phase 不给定虚构权重，100% 仅表示当前明确范围完成。 Phase 同时返回 `actualStart`、`observationEnd`、`completedAt`：来自有效需求实际执行日期，进行中统计到 `asOfDate`，完成后停止延伸；日期缺失保持 `null`，不使用目标日期或范围调整时间补齐。 `requirements[]` 和特性总览的需求摘要保留实际日期，供网页汇总实际执行区间。未排期需求仍计入完成比例；后续空 Phase 不影响其他 Phase 比例，不推导特性或 Phase 的独立计划。
 
 ## 项目工作区
 

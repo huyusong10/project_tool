@@ -124,3 +124,34 @@ for (const protocol of ['REST', 'MCP'] as const) {
   });
 }
 import { withoutForecastRevision } from './fixtures/forecast-snapshot';
+
+for(const protocol of ['REST','MCP'] as const){
+ it(`${protocol} 删除工作项自动清理双向及跨需求依赖，保留其他工作和关联`,async()=>{
+  const r=await createRequirement(),other=await createRequirement(),work=r.workItems![0],peer=r.workItems![1],external=other.workItems![0];
+  const {sqlite}=await import('../src/server/database');
+  const insert=sqlite.prepare("INSERT INTO dependency_edges(id,project_id,source_requirement_id,target_requirement_id,source_work_item_id,target_work_item_id,origin,created_at,updated_at) VALUES(?,?,?,?,?,?,'manual',?,?)");
+  const now=new Date().toISOString(),ids=['incoming','outgoing','keep'].map(label=>work.id+label);
+  insert.run(ids[0],projectId,other.id,r.id,external.id,work.id,now,now);
+  insert.run(ids[1],projectId,r.id,r.id,work.id,peer.id,now,now);
+  insert.run(ids[2],projectId,other.id,r.id,external.id,peer.id,now,now);
+  const beforeRevision=(sqlite.prepare('SELECT analysis_revision AS revision FROM projects WHERE id=?').get(projectId) as {revision:number}).revision;
+  expect((await remove(protocol,work.id,work.version+1)).statusCode).toBe(409);
+  expect(sqlite.prepare('SELECT id FROM dependency_edges WHERE id IN (?,?,?)').all(...ids)).toHaveLength(3);
+  const result=await remove(protocol,work.id,work.version);expect(result.statusCode,JSON.stringify(result.body)).toBe(200);
+  expect(sqlite.prepare('SELECT id FROM dependency_edges WHERE id IN (?,?,?)').all(...ids)).toEqual([{id:ids[2]}]);
+  expect((await detail(r.id)).workItems!.map(w=>w.id)).toEqual([peer.id]);expect((await detail(other.id)).workItems!.map(w=>w.id)).toContain(external.id);
+  const log=sqlite.prepare("SELECT summary FROM audit_logs WHERE action='delete' AND entity_id=?").get(work.id) as {summary:string};expect(JSON.parse(log.summary).removedDependencies).toHaveLength(2);
+  expect((sqlite.prepare('SELECT analysis_revision AS revision FROM projects WHERE id=?').get(projectId) as {revision:number}).revision).toBeGreaterThan(beforeRevision);
+  expect(sqlite.pragma('foreign_key_check')).toEqual([]);
+ });
+}
+
+it('删除中途失败时同时回滚工作项、依赖、需求汇总与审计',async()=>{
+ const r=await createRequirement(),work=r.workItems![0],peer=r.workItems![1],{sqlite}=await import('../src/server/database');
+ sqlite.prepare("INSERT INTO dependency_edges(id,project_id,source_requirement_id,target_requirement_id,source_work_item_id,target_work_item_id,origin,created_at,updated_at) VALUES(?,?,?,?,?,?,'manual',?,?)").run(work.id+'edge',projectId,r.id,r.id,work.id,peer.id,new Date().toISOString(),new Date().toISOString());
+ const before=await detail(r.id),edge=sqlite.prepare('SELECT * FROM dependency_edges WHERE id=?').get(work.id+'edge');
+ sqlite.exec("CREATE TEMP TRIGGER fail_delete_audit BEFORE INSERT ON audit_logs WHEN NEW.action='delete' AND NEW.entity_type='work_item' BEGIN SELECT RAISE(ABORT,'simulated audit failure'); END;");
+ try{expect((await remove('REST',work.id,work.version)).statusCode).not.toBe(200);}finally{sqlite.exec('DROP TRIGGER fail_delete_audit');}
+ expect(await detail(r.id)).toEqual(before);expect(sqlite.prepare('SELECT * FROM dependency_edges WHERE id=?').get(work.id+'edge')).toEqual(edge);
+ expect(sqlite.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='delete' AND entity_id=?").get(work.id)).toEqual({n:0});
+});

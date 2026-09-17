@@ -9,7 +9,9 @@ import { readPathGraph } from './services/path-graph';
 import { projectChangeVersion } from './services/project-change-version';
 import { requirementQuerySchema, workItemQuerySchema, progressQuerySchema, pathGraphQuerySchema } from '../shared/query-contracts';
 import {directRequirementCommandSchema} from '../shared/contracts';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { captureRequestError, setMcpOutcome } from './request-logging';
+import { readLogContext, recordCreatedResource, recordInputContext, recordLogIdentity, recordLogReason, recordValidationIssues } from './log-context';
 import { McpServer, type StandardSchemaWithJSON, type ToolCallback } from '@modelcontextprotocol/server';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import { z } from 'zod';
@@ -31,8 +33,12 @@ const json = (value: unknown) => ({
   structuredContent: { result: value },
 });
 
-function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown) => void) {
-  const server = new McpServer({ name: 'project-manage', version: '1.5.0' });
+function createServer(actor: AuthorizationActor, request: FastifyRequest) {
+  // Some clients discover optional catalogs even when no resources/prompts are registered.
+  // Use SDK handlers for empty lists and normal not-found errors; this endpoint is stateless.
+  const server = new McpServer({ name: 'project-manage', version: '1.5.0' }, {
+    capabilities: { resources: { listChanged: false }, prompts: { listChanged: false } },
+  });
   const inputSchemas = new Map<string, StandardSchemaWithJSON>();
   const registerTool = <InputArgs extends StandardSchemaWithJSON>(
     name: string,
@@ -42,11 +48,15 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     inputSchemas.set(name, config.inputSchema);
     const readOnly = /^(get_|list_|query_|preview_|dashboard_summary$|people_concurrency$)/.test(name);
     return server.registerTool(name, { ...config, annotations: { readOnlyHint: readOnly, ...(readOnly ? { destructiveHint: false, idempotentHint: true, openWorldHint: false } : {}) } }, (async (...args: Parameters<ToolCallback<InputArgs>>) => {
+    setMcpOutcome(request, { tool: name, readOnly });
+    recordInputContext(name, args[0], /^(update_|correct_)/.test(name));
     try {
-      return await (callback as (...values: unknown[]) => unknown)(...(args as unknown[]));
+      const result = await (callback as (...values: unknown[]) => unknown)(...(args as unknown[]));
+      if (/^create_/.test(name)) recordCreatedResource(name, (result as { structuredContent?: { result?: unknown } })?.structuredContent?.result);
+      return result;
     } catch (error) {
       const response = errorResponse(error);
-      if (!response.known) onUnknownError(error);
+      captureRequestError(request, error);
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(response.payload) }],
         structuredContent: { error: response.payload, statusCode: response.statusCode },
@@ -74,7 +84,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('update_path_estimate', { description: '设置工作项工期、最早开始、人工预测日期', inputSchema: pathEstimateInput.extend({ id: idSchema }) }, async ({ id, ...input }) => json(updatePathEstimate(id, input, actor)));
   registerTool('preview_dependency_plan', { description: '按依赖预览需求及下游未开始工作的计划差异', inputSchema: dependencyPlanInput.extend({ id: idSchema }) }, async ({ id, ...input }) => json(previewDependencyPlan(id, input, actor)));
   registerTool('apply_dependency_plan', { description: '应用已核对的依赖排期预览', inputSchema: applyDependencyPlanInput.extend({ id: idSchema }) }, async ({ id, ...input }) => json(applyDependencyPlan(id, input, actor)));
-  registerTool('dashboard_summary', { description: '查询全项目进展数据，featureOverview 包含特性与 Phase 状态、交付日期及历史；与 requirements 使用同一 asOfDate。需求读取 executionStage，工作项读取自身进度，特性不计算总百分比。浏览器未保存草稿不进入结果。', inputSchema: projectScopeInputSchema }, async ({ projectId }) => {
+  registerTool('dashboard_summary', { description: '查询全项目进展数据，featureOverview 包含特性与 Phase 状态、交付日期及历史；与 requirements 使用同一 asOfDate。需求读取 executionStage，工作项读取自身进度，特性与 Phase 的 completion 按当前明确范围的工作量加权，空 Phase 不计入，尚未排期的需求参与计算。浏览器未保存草稿不进入结果。', inputSchema: projectScopeInputSchema }, async ({ projectId }) => {
     assertProjectReadable(actor, projectId); const asOfDate = todayIso(); const dashboard = getDashboard(projectId, asOfDate);
     return json({ ...dashboard, actions: listActionItems({ projectId, pageSize: 5 }, actor, dashboard.requirements, asOfDate) });
   });
@@ -124,7 +134,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('create_requirement', { description: '创建需求，标题必填，描述、负责人和计划可稍后补齐；指定 templateId 时套用模板', inputSchema: createRequirementInputSchema }, async (input) => {
     assertProjectManager(actor, input.projectId); return json(createRequirement(input, actor));
   });
-  registerTool('update_requirement', { description: '修改非终态需求的标题、负责人和说明，支持 referenceLinks 关联链接；状态通过开始、完成或返工操作更新', inputSchema: updateRequirementInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('update_requirement', { description: '修改需求标题、负责人和说明，支持 referenceLinks；管理员可更正终态资料，状态通过执行或返工操作更新', inputSchema: updateRequirementInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     if(isCoordinationEdit(input))assertCoordinationAccess('requirement',id,input,actor);else assertProjectResourceManager(actor, projectIdForRequirement(id), '需求不存在'); return json(updateRequirement(id, input, actor));
   });
   registerTool('correct_requirement', { description: '项目经理修正已完成或已取消需求的基本信息；保持交付状态并追加不可变纠错记录', inputSchema: requirementCorrectionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
@@ -161,7 +171,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('create_work_item', { description: '新增工作项', inputSchema: createWorkItemInputSchema.safeExtend({ requirementId: idSchema }) }, async ({ requirementId, ...input }) => {
     assertRequirementOwnerOrManager(actor, requirementId); return json(createWorkItem(requirementId, input, actor));
   });
-  registerTool('update_work_item', { description: '修改工作项元数据、负责人、计划日期和 referenceLinks 关联链接；执行数据需使用状态命令', inputSchema: updateWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('update_work_item', { description: '修改工作项元数据、负责人、计划日期和 referenceLinks；管理员可更正终态资料，执行数据使用状态或更正命令', inputSchema: updateWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     if(isCoordinationEdit(input))assertCoordinationAccess('work',id,input,actor);else assertWorkItemRequirementOwnerOrManager(actor, id); return json(updateWorkItem(id, input, actor));
   });
   registerTool('start_work_item', { description: '开始工作项并自动记录实际开始；依赖作为排期提示，无额外确认步骤', inputSchema: startWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
@@ -179,7 +189,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
   registerTool('correct_work_item', { description: '项目经理修正工作项标题、完成度、实际日期或关联链接；保持状态并追加不可变纠错记录', inputSchema: workItemCorrectionSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForWorkItem(id), '工作项不存在'); return json(correctWorkItem(id, input, actor));
   });
-  registerTool('delete_work_item', { description: '删除未开始且无历史的工作项', inputSchema: expectedVersionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('delete_work_item', { description: '删除未开始且无历史的工作项，并自动清理其所有前后依赖', inputSchema: expectedVersionInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertWorkItemRequirementOwnerOrManager(actor, id); return json(deleteWorkItem(id, input, actor));
   });
   registerTool('reorder_work_items', { description: '调整工作项顺序', inputSchema: reorderWorkItemsInputSchema.safeExtend({ requirementId: idSchema }) }, async ({ requirementId, ids, ...input }) => {
@@ -200,7 +210,7 @@ function createServer(actor: AuthorizationActor, onUnknownError: (error: unknown
     assertProjectMember(actor, input.projectId);
     return json(createIssue(canManageProject(actor, input.projectId) ? input : { ...input, ownerId: null }, actor));
   });
-  registerTool('update_issue', { description: '项目经理修改问题元数据，不直接修改状态或进度', inputSchema: updateIssueInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('update_issue', { description: '项目经理维护问题资料，含已解决问题的负责人、解决日期；保留状态、进度和原历史', inputSchema: updateIssueInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertProjectResourceManager(actor, projectIdForIssue(id), '问题不存在'); return json(updateIssue(id, input, actor));
   });
   registerTool('add_issue_update', { description: '追加问题说明或0-99%进度', inputSchema: issueUpdateInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
@@ -300,17 +310,31 @@ export function registerMcpRoute(app: FastifyInstance, authenticate: (header?: s
   app.route({
     method: ['GET', 'POST', 'DELETE'], url: '/mcp',bodyLimit:10*1024*1024,
     handler: async (request, reply) => {
+      const envelope = request.body as { jsonrpc?: string; id?: unknown; method?: string; params?: { name?: string; arguments?: unknown } } | null;
+      if (typeof envelope?.method === 'string') {
+        const method = envelope.method;
+        setMcpOutcome(request, { mcpMethod: method.length <= 120 && /^[A-Za-z][A-Za-z0-9_.-]*(?:\/[A-Za-z0-9_.-]+)*$/.test(method) ? method : '<invalid>' });
+      }
+      if (envelope?.method === 'tools/call' && typeof envelope.params?.name === 'string') {
+        setMcpOutcome(request, { tool: /^[a-z][a-z0-9_]{0,79}$/.test(envelope.params.name) ? envelope.params.name : '<invalid>' });
+      }
       const authorization = request.headers.authorization;
       const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined;
       const actor = token ? authenticate(token) : null;
+      recordLogIdentity(actor, 'token');
+      if (!actor && !readLogContext().reason) recordLogReason(token ? 'TOKEN_INVALID' : 'TOKEN_MISSING', token ? 'MCP Token 无效或已过期' : '请求未提供 MCP 认证令牌');
       if (!actor) return reply.code(401).header('WWW-Authenticate', 'Bearer').send({ error: 'MCP Token无效或已过期' });
       if (request.method !== 'POST') return reply.code(405).send({ error: '当前MCP端点使用无状态POST模式' });
-      const { server, inputSchemas } = createServer(actor, (error) => request.log.error({ err: error }, 'Unhandled MCP tool error'));
-      const envelope = request.body as { jsonrpc?: string; id?: unknown; method?: string; params?: { name?: string; arguments?: unknown } } | null;
+      const { server, inputSchemas } = createServer(actor, request);
+      const unknownTool = envelope?.method === 'tools/call' && typeof envelope.params?.name === 'string' && !inputSchemas.has(envelope.params.name);
       if (envelope?.method === 'tools/call' && envelope.params?.name) {
         const schema = inputSchemas.get(envelope.params.name);
+        if (schema) recordInputContext(envelope.params.name, envelope.params.arguments);
         const validation = schema ? await schema['~standard'].validate(envelope.params.arguments ?? {}) : null;
         if (validation?.issues?.length) {
+          recordValidationIssues(validation.issues);
+          setMcpOutcome(request, { resultStatus: 400, errorCode: 'VALIDATION_ERROR' });
+          await server.close();
           const payload = { error: validation.issues[0].message || '输入参数不合法', code: 'VALIDATION_ERROR' };
           return reply.send({
             jsonrpc: envelope.jsonrpc || '2.0', id: envelope.id,
@@ -323,8 +347,27 @@ export function registerMcpRoute(app: FastifyInstance, authenticate: (header?: s
         }
       }
       const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-      await server.connect(transport); reply.hijack();
-      try { await transport.handleRequest(request.raw, reply.raw, request.body); }
+      const send = transport.send.bind(transport);
+      transport.send = async (message, options) => {
+        if ('error' in message) {
+          recordLogReason(`MCP_RPC_${message.error.code}`, unknownTool ? '请求的 MCP 工具不存在' : message.error.code === -32601 ? '请求的 MCP 方法不受支持' : message.error.code === -32603 ? 'MCP 内部处理异常' : 'MCP 请求格式或参数不合法');
+          setMcpOutcome(request, { resultStatus: message.error.code === -32603 ? 500 : unknownTool ? 404 : message.error.code === -32601 ? 405 : 400, errorCode: `MCP_RPC_${message.error.code}` });
+        } else if ('result' in message && message.result.isError === true) {
+          const content = message.result.structuredContent as { statusCode?: number; error?: { code?: string } } | undefined;
+          setMcpOutcome(request, { resultStatus: content?.statusCode || (unknownTool ? 404 : 500),
+            errorCode: content?.error?.code || (unknownTool ? 'NOT_FOUND' : 'MCP_TOOL_ERROR') });
+        }
+        await send(message, options);
+      };
+      try {
+        await server.connect(transport); reply.hijack();
+        await transport.handleRequest(request.raw, reply.raw, request.body);
+      } catch (error) {
+        captureRequestError(request, error);
+        if (reply.raw.headersSent) reply.raw.destroy();
+        else if (reply.sent) { reply.raw.writeHead(500, { 'content-type': 'application/json' }); reply.raw.end(JSON.stringify({ error: '服务器内部错误' })); }
+        else throw error;
+      }
       finally { await server.close(); }
     },
   });

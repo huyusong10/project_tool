@@ -1,20 +1,26 @@
 import type { Feature } from './intake';
 import { dashboardWindow, matchesDashboardScope } from './dashboard';
 
-export type FeatureRequirementSummary = { executionStage?:import('./execution-stage').ExecutionStage;
+export type FeatureRequirementSummary = {
+  progress?:number|null; progressWeight?:number|null;
+  phaseId?:string|null; actualStart?:string|null; actualEnd?:string|null;
+  executionStage?:import('./execution-stage').ExecutionStage;
   id: string; title: string; status: string; delayed: boolean; scheduleComplete: boolean;
 };
 export type FeatureProgressSummary = {
   id: string; requirementId: string; requirementTitle: string; content: string; createdAt: string;
 };
 export type FeatureOverview = Feature & {
+  completion?:import('./feature-phases').PhaseCompletion;
   phases?:import('./feature-phases').FeaturePhase[]; unassignedPhaseCount?:number;
   counts: { total: number; completed: number; inProgress: number; delayed: number; unscheduled: number; recentCompleted: number };
   requirements: FeatureRequirementSummary[];
   recentUpdates: FeatureProgressSummary[];
 };
 export type FeatureOverviewReport = { asOfDate: string; recentFrom: string; features: FeatureOverview[]; unassignedCount: number };
-type RequirementFact = { executionStage?:import('./execution-stage').ExecutionStage;
+type RequirementFact = {
+  phaseId?:string|null; actualStart?:string|null;
+  executionStage?:import('./execution-stage').ExecutionStage;
   id: string; title: string; status: string; featureId?: string | null; deletedAt?: string | null;
   delayed?: boolean; scheduleComplete?: boolean; executionCompletedAt?: string | null; actualEnd?: string | null;
 };
@@ -40,7 +46,7 @@ export function summarizeFeatureOverview(features: Feature[], requirements: Requ
           unscheduled: items.filter(item => item.status !== 'completed' && item.scheduleComplete !== true).length,
           recentCompleted: items.filter(item => matchesDashboardScope(item, 'recent_completed', window)).length,
         },
-        requirements: items.map(item => ({ id: item.id, title: item.title, status: item.status, executionStage:item.executionStage, delayed: Boolean(item.delayed), scheduleComplete: item.scheduleComplete === true })),
+        requirements: items.map(item => ({ id: item.id, title: item.title, status: item.status, phaseId:item.phaseId, actualStart:item.actualStart, actualEnd:item.actualEnd, executionStage:item.executionStage, delayed: Boolean(item.delayed), scheduleComplete: item.scheduleComplete === true })),
         recentUpdates: [],
       };
     }),

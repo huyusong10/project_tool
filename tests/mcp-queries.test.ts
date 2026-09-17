@@ -258,8 +258,6 @@ it('所有新查询隔离项目权限，外部对象ID不泄露详情，成员�
   const feat=await feature(own.projectId),phase=await call<FeaturePhase>('save_feature_phase',{projectId:own.projectId,featureId:feat.id,name:'Phase 1'});
   for(const [name,args] of [
     ['save_feature_phase',{projectId:own.projectId,featureId:feat.id,name:'禁止修改'}],
-    ['deliver_feature_phase',{projectId:own.projectId,phaseId:phase.id,expectedVersion:phase.version}],
-    ['reopen_feature_phase',{projectId:own.projectId,phaseId:phase.id,expectedVersion:phase.version,reason:'无权修改'}],
     ['update_requirement_placement',{projectId:own.projectId,featureId:feat.id,phaseId:phase.id,requirements:[{id:own.ids.a,expectedVersion:(await call<Requirement>('get_requirement',{id:own.ids.a})).version}]}],
   ] as const)expect((await callRaw(name,args,memberToken)).structuredContent.statusCode).toBe(403);
   expect((await app.inject({ url: '/api/work-items/' + foreign.ids.w1, headers: { cookie: memberCookie } })).statusCode).toBe(404);
@@ -356,20 +354,17 @@ it('MCP 多状态、排除、阶段、Phase 与自然排序在分页前生效，
   expect((await call<Page<WorkItem>>('list_work_items',{projectId:f.projectId,featureId:feat.id,phaseId:'unassigned'})).items.map(w=>w.id)).toEqual([f.ids.w3]);
 });
 
-it('MCP 完成 Phase 创建、安排、提测、移出、交付、重开、返工和再次交付，保留原快照',async()=>{
+it('MCP 完成 Phase 创建、安排、提测、移出和需求返工，Phase 自动完成并保留归档贡献',async()=>{
   const projectId=(await call<{id:string}>('create_project',{name:'MCP Phase 全流程 '+randomUUID()})).id;
   const owner=await call<{id:string}>('create_person',{projectId,name:'MCP交付负责人'+randomUUID()});
   const feat=await feature(projectId),p=await call<FeaturePhase>('save_feature_phase',{projectId,featureId:feat.id,name:'Phase 1',scope:'首版交付'}),next=await call<FeaturePhase>('save_feature_phase',{projectId,featureId:feat.id,name:'Phase 2'});
   const phase=async(id=p.id)=>(await call<FeaturePhase[]>('list_feature_phases',{projectId})).find(p=>p.id===id)!;
   const read=(id:string)=>call<Requirement>('get_requirement',{id});
-  const command=async(name:string,id=p.id,extra={})=>call<FeaturePhase>(name,{projectId,phaseId:id,expectedVersion:(await phase(id)).version,...extra});
-  expect((await callRaw('deliver_feature_phase',{projectId,phaseId:p.id,expectedVersion:p.version})).structuredContent.statusCode).toBe(400);
   let a=await call<Requirement>('create_requirement',{projectId,title:'DCIM-1',featureId:feat.id,ownerId:owner.id}),b=await call<Requirement>('create_requirement',{projectId,title:'DCIM-2',featureId:feat.id,ownerId:owner.id});
   await call('update_requirement_placement',{projectId,featureId:feat.id,phaseId:p.id,requirements:[a,b].map(r=>({id:r.id,expectedVersion:r.version}))});
   a=await read(a.id);b=await read(b.id);
   a=await call('start_requirement',{id:a.id,expectedVersion:a.version});b=await call('start_requirement',{id:b.id,expectedVersion:b.version});
   expect((await phase()).status).toBe('in_progress');
-  expect((await callRaw('deliver_feature_phase',{projectId,phaseId:p.id,expectedVersion:(await phase()).version})).structuredContent.statusCode).toBe(400);
   a=await call('record_test_submission',{projectId,requirementId:a.id,expectedVersion:a.version,actualDate:todayIso(),content:'提测验证'});
   expect(a.executionStage?.key).toBe('test_submitted');
   a=await call('complete_requirement',{id:a.id,expectedVersion:a.version});
@@ -378,19 +373,13 @@ it('MCP 完成 Phase 创建、安排、提测、移出、交付、重开、返�
   expect((await callRaw('update_requirement_placement',{...move,reason:'推迟范围',requirements:[{id:a.id,expectedVersion:a.version},{id:b.id,expectedVersion:b.version+50}]})).structuredContent.statusCode).toBe(409);
   expect((await read(a.id)).phaseId).toBe(p.id);expect((await read(b.id)).phaseId).toBe(p.id);
   await call('update_requirement_placement',{...move,reason:'第二期补充'});
-  const delivered=await command('deliver_feature_phase',p.id,{deliveredAt:todayIso()}),snapshot=delivered.deliveries[0].snapshot;
-  expect(delivered.status).toBe('delivered');expect(snapshot.requirements.map(r=>r.id)).toEqual([a.id]);
-  expect((await callRaw('update_requirement_placement',{projectId,phaseId:next.id,requirements:[{id:a.id,expectedVersion:(await read(a.id)).version}],reason:'不应改动已交付范围'})).structuredContent.statusCode).toBe(400);
-  expect((await callRaw('reopen_feature_phase',{projectId,phaseId:p.id,expectedVersion:delivered.version})).structuredContent.statusCode).toBe(400);
-  await command('reopen_feature_phase',p.id,{reason:'补充边界验证'});
+  expect((await phase()).status).toBe('completed');expect((await phase()).requirements.map(r=>r.id)).toEqual([a.id]);
   a=await read(a.id);a=await call('return_requirement',{id:a.id,expectedVersion:a.version,progress:20,reason:'补充边界验证'});
   expect(a.executionStage?.key).toBe('in_progress');
   a=await call('complete_requirement',{id:a.id,expectedVersion:a.version});
-  const again=await command('deliver_feature_phase');expect(again.deliveries).toHaveLength(2);
-  const historical=again.deliveries.find(d=>d.id===delivered.deliveries[0].id)!;
-  expect(historical.snapshot).toEqual(snapshot);expect(historical.reopenReason).toBe('补充边界验证');
+  expect((await phase()).status).toBe('completed');expect((await phase()).deliveries).toEqual([]);
   await call('archive_requirement',{id:a.id,expectedVersion:(await read(a.id)).version});
-  expect((await phase()).requirements.find(r=>r.id===a.id)?.deletedAt).toBeTruthy();expect((await phase()).status).toBe('delivered');
+  expect((await phase()).requirements.find(r=>r.id===a.id)?.deletedAt).toBeTruthy();expect((await phase()).status).toBe('completed');
   expect(await get('/api/projects/'+projectId+'/feature-phases')).toEqual(await call('list_feature_phases',{projectId}));
 });
 

@@ -68,9 +68,19 @@ it('移动追加到目标，撤销还原来源顺序；后续编辑使撤销整�
   expect(sqlite.prepare('SELECT * FROM requirements WHERE feature_id=? ORDER BY id').all(f.f.id)).toEqual(before);
 });
 
-it('人工排序排除系统归类，工作项排序遵守需求终态保护',async()=>{
+it('人工排序排除系统归类，管理员可排序已完成需求，取消时间保持不变',async()=>{
   const f=await fixture(),r=await f.create('直接需求');
   const response=await request('POST',f.base+'/outline-order',{kind:'feature',parentId:f.p.id,items:[{id:r.featureId,expectedVersion:1}]});expect(response.statusCode).toBe(409);
-  const {sqlite}=await import('../src/server/database');sqlite.prepare("UPDATE requirements SET status='completed',progress=100 WHERE id=?").run(r.id);
-  const result=await request('POST',f.base+'/outline-order',{kind:'work',parentId:r.id,items:[{id:'missing',expectedVersion:1}]});expect(result.statusCode).toBe(409);expect(result.json().error).toContain('锁定');
+  const a=(await request('POST','/api/requirements/'+r.id+'/work-items',{title:'工作 A',expectedVersion:r.version})).json();
+  const b=(await request('POST','/api/requirements/'+r.id+'/work-items',{title:'工作 B',expectedVersion:(await request('GET','/api/requirements/'+r.id)).json().version})).json();
+  const {sqlite}=await import('../src/server/database');
+  sqlite.prepare("UPDATE requirements SET status='completed',progress=100 WHERE id=?").run(r.id);
+  sqlite.prepare("UPDATE work_items SET status='completed',progress=100,actual_start='2020-01-01',actual_end='2020-01-01' WHERE id=?").run(a.id);
+  sqlite.prepare("UPDATE work_items SET status='cancelled',updated_at='2020-01-01T08:00:00.000Z' WHERE id=?").run(b.id);
+  const result=await request('POST',f.base+'/outline-order',{kind:'work',parentId:r.id,items:[{id:b.id,expectedVersion:b.version},{id:a.id,expectedVersion:a.version}]});
+  expect(result.statusCode,result.body).toBe(200);expect(result.json().items.map((w:{id:string})=>w.id)).toEqual([b.id,a.id]);
+  expect(sqlite.prepare('SELECT status,updated_at FROM work_items WHERE id=?').get(b.id)).toEqual({status:'cancelled',updated_at:'2020-01-01T08:00:00.000Z'});
+  expect((await request('POST',f.base+'/outline-restore',result.json().undo)).statusCode).toBe(200);
+  expect(sqlite.prepare('SELECT updated_at FROM work_items WHERE id=?').get(b.id)).toEqual({updated_at:'2020-01-01T08:00:00.000Z'});
+  expect(sqlite.prepare('SELECT status,progress FROM requirements WHERE id=?').get(r.id)).toEqual({status:'completed',progress:100});
 });

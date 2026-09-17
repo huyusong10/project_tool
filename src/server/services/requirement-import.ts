@@ -34,7 +34,6 @@ function prepare(projectId:string,pkg:IntakePackage,actor:Actor) {
     const destination=r.phase?phases.find(p=>p.featureId===feature?.id&&p.name===r.phase):r.phase===null||r.feature!==undefined&&feature?.id!==old?.featureId?undefined:phases.find(p=>p.id===old?.phaseId);
     if(r.phase&&!destination&&(feature?.kind==='other'||['其他特性','其他需求'].includes(r.feature||'')))errors.push(r.title+'：其他需求不能新建 Phase');
     const previous=phases.find(p=>p.id===old?.phaseId);
-    if(destination?.deliveredAt||previous?.deliveredAt)errors.push(r.title+'：请先重新打开已交付 Phase');
     if((destination?.id!==old?.phaseId||!!r.phase&&!destination)&&(destination?.startedAt||previous?.startedAt)&&!r.reason)errors.push(r.title+'：推进后的需求移入移出需要填写原因');
     // Undefined keys disappear on the wire but otherwise reach SQL as NULL.
     // Keep the preview, update dispatch and commit limited to supplied fields.

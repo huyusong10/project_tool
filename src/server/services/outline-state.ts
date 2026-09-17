@@ -12,12 +12,9 @@ export function outlineSiblings(projectId:string,kind:OutlineKind,parentId:strin
     table='feature_phases';where='feature_id=? AND project_id=?';args=[parentId,projectId];
   }else if(kind==='work'){
     if(!sqlite.prepare('SELECT 1 FROM requirements r JOIN features f ON f.id=r.feature_id WHERE r.id=? AND r.project_id=? AND r.deleted_at IS NULL AND f.archived_at IS NULL').get(parentId,projectId))fail('需求不存在或已归档');
-    if(sqlite.prepare('SELECT 1 FROM requirements r JOIN feature_phases p ON p.id=r.phase_id WHERE r.id=? AND p.delivered_at IS NOT NULL').get(parentId))fail('请先重新打开已交付 Phase');
-    if(writable&&sqlite.prepare("SELECT 1 FROM requirements WHERE id=? AND status IN ('pending_acceptance','completed','cancelled')").get(parentId))fail('当前需求已锁定，不能调整工作项顺序','TERMINAL_LOCKED');
     table='work_items';where='requirement_id=?';args=[parentId];
   }else{
     const phase=sqlite.prepare('SELECT feature_id AS featureId,delivered_at AS deliveredAt FROM feature_phases WHERE id=? AND project_id=?').get(parentId,projectId) as {featureId:string;deliveredAt:string|null}|undefined;
-    if(writable&&phase?.deliveredAt)fail('请先重新打开已交付 Phase');
     const featureId=phase?.featureId||parentId;
     if(!sqlite.prepare('SELECT 1 FROM features WHERE id=? AND project_id=?'+(writable?' AND archived_at IS NULL':'')).get(featureId,projectId))fail('归属特性不存在或已归档');
     table='requirements';where='project_id=? AND feature_id=? AND phase_id IS ? AND deleted_at IS NULL';args=[projectId,featureId,phase?parentId:null];

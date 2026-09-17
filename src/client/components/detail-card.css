@@ -1,0 +1,82 @@
+@layer application {
+/* Business modules use one card; rows inside it use dividers, not another card. */
+.detail-card {min-width:0;margin:0 0 16px;padding:16px;border:1px solid var(--border-default);border-radius:8px;background:var(--bg-surface);color:var(--text-primary);font-family:var(--font-sans);font-size:14px;line-height:1.65;box-shadow:none}
+.detail-card:last-child {margin-bottom:0}
+.detail-card > .detail-card-heading {display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-width:0;margin:0 0 12px;padding:0;border:0;background:transparent}
+.detail-card-heading > div:first-child {min-width:0}
+.detail-card > .detail-card-heading h3 {margin:0;color:var(--text-primary);font-family:var(--font-sans);font-size:14px;font-weight:600;line-height:24px;overflow-wrap:anywhere}
+.detail-card-description {margin-top:4px;color:var(--text-muted);font-size:12px;font-weight:400;line-height:1.6;overflow-wrap:anywhere}
+.detail-card-actions {display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;flex:none;max-width:50%}
+.detail-card-body {display:grid;gap:12px;min-width:0}
+.detail-card-body > * {min-width:0}
+.detail-card :is(.progress-input,.progress-input-controls) {min-width:0}
+.detail-card .progress-input-controls {grid-template-columns:minmax(0,1fr) 82px}
+.detail-card .progress-input-controls > input {min-width:0}
+.detail-card-body > :is(p,dl,ul,.feature-full-text) {margin-top:0;margin-bottom:0}
+.detail-card-body > p {white-space:pre-wrap;overflow-wrap:anywhere}
+.detail-card-empty {margin:0;color:var(--text-muted);font-size:13px;line-height:1.65}
+.detail-card-list {display:grid;gap:0;min-width:0}
+.detail-card-row {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--divider);min-width:0}
+.detail-card-row:first-child {border-top:0;padding-top:0}
+.detail-card-row:last-child {padding-bottom:0}
+.detail-card-row-main {flex:1;min-width:0}
+.detail-card-row-main > button {max-width:100%;white-space:normal;text-align:left;overflow-wrap:anywhere}
+.detail-card-row-meta {display:block;margin-top:4px;color:var(--text-muted);font-size:12px;line-height:1.6}
+.detail-card-update {min-width:0;padding:12px 0;border-top:1px solid var(--divider)}
+.detail-card-update:first-child {border-top:0;padding-top:0}
+.detail-card-update:last-child {padding-bottom:0}
+.detail-card-update > header {display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px 12px}
+.detail-card-update > header button {min-width:0;max-width:100%;white-space:normal;text-align:left;overflow-wrap:anywhere}
+.detail-card-update time {color:var(--text-muted);font-size:12px;white-space:nowrap}
+.detail-card-update p {margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.detail-card-stats {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.detail-card-stats > div {min-width:0;padding:12px 8px;text-align:center;border-radius:6px;background:var(--bg-surface-subtle)}
+.detail-card-stats strong,.detail-card-stats span {display:block}
+.detail-card-stats strong {font-size:22px;line-height:1.3;font-weight:650;font-variant-numeric:tabular-nums}
+.detail-card-stats span {margin-top:5px;color:var(--text-muted);font-size:12px}
+.detail-workspace-panel {background:var(--bg-page)}
+.detail-workspace-panel :is(h2,h3),.detail-action-host h3 {font-family:var(--font-sans);font-size:14px;font-weight:600;line-height:1.6}
+.detail-workspace .detail-card .object-facts {margin:0;padding:0;border:0;border-radius:0;background:transparent;gap:0 24px}
+.detail-workspace .detail-card .object-facts > div {padding:8px 0;border-bottom:0}
+.detail-workspace .detail-card .object-facts dt {color:var(--text-muted);font-size:12px}
+.detail-workspace .detail-card .object-facts dd {font-size:13px;line-height:1.65}
+.detail-card.overview-introduction {margin:0 0 16px;padding:16px;background:var(--bg-surface)}
+.detail-card.overview-introduction .detail-card-body {gap:10px}
+.detail-card.overview-introduction .overview-introduction-secondary {margin:0}
+.detail-card.overview-introduction .reference-links {margin-top:0}
+.detail-card.requirement-sources {margin-top:0}
+.detail-card .object-history-entry h4 {margin:0 0 6px;font-family:var(--font-sans);font-size:13px;font-weight:600;line-height:1.6}
+.detail-card .object-history-entry p {margin:6px 0;overflow-wrap:anywhere}
+.detail-card .object-history-entry:first-child {padding-top:0}
+.detail-card .object-related-row {padding:10px 0}
+.detail-card .object-related-row > button {min-width:0;white-space:normal;text-align:left;overflow-wrap:anywhere}
+.detail-card .object-related-row:first-child {padding-top:0}
+.detail-card .object-related-row:last-child {padding-bottom:0;border-bottom:0}
+.detail-card .detail-phase-row:first-child {padding-top:0}
+.detail-card .detail-phase-row:last-child {padding-bottom:0;border-bottom:0}
+.detail-card .requirement-overview-top {margin:0;padding:0 0 4px}
+.detail-workspace .detail-card .work-history-entry:first-child {padding-top:0}
+.detail-workspace .detail-card .work-history-entry:last-child {border-bottom:0}
+.detail-card .empty-state {padding:16px 0;background:transparent}
+.detail-card.issue-update-settings {margin-top:0;min-height:0}
+.detail-card.issue-settings-progress-entry {overflow:visible}
+.detail-card .issue-update-form textarea {font:inherit;font-size:13px;color:var(--text-primary);background:var(--bg-surface)}
+.detail-card .issue-update-settings-list {padding:0}
+.detail-card.detail-dependency-group {border-radius:8px}
+.detail-workspace .requirement-overview {border:0;padding:0;margin:0;background:transparent;box-shadow:none}
+.detail-card .work-arrangement-row:not(:has(.work-arrangement-heading)) {padding:0;border:0;background:transparent}
+.detail-card.progress-detail-card {margin:0;height:auto;display:block;overflow:visible}
+.detail-card.progress-detail-card .detail-card-body {min-height:0}
+.detail-card.progress-detail-card .progress-feed {max-height:400px;overflow:auto;padding:0}
+.detail-card.progress-detail-card .pagination {margin:0}
+.detail-workspace .detail-card.issue-settings-progress-entry .issue-update-form {padding:0}
+.detail-workspace .detail-card .work-editor-modal-toolbar {top:0;padding:0 0 12px}
+@media(max-width:600px) {
+  .detail-card,.detail-card.overview-introduction {padding:12px;margin-bottom:12px}
+  .detail-card > .detail-card-heading {gap:8px;margin-bottom:10px}
+  .detail-card-stats {grid-template-columns:repeat(2,minmax(0,1fr))}
+  .detail-card-row {gap:8px;align-items:flex-start}
+  .detail-card-actions {max-width:55%}
+  .detail-workspace .detail-card .object-facts {grid-template-columns:1fr}
+}
+}

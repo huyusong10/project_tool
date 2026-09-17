@@ -31,9 +31,9 @@ export function persistOrganization(id:string, projectId:string, value:Organizat
   const phaseId=value.phaseId===undefined?(featureId===previous.featureId?previous.phaseId||null:null):value.phaseId;
   if(featureId===previous.featureId&&phaseId===previous.phaseId)return;
   if(featureId!==previous.featureId&&sqlite.prepare('SELECT 1 FROM features WHERE id=? AND archived_at IS NOT NULL').get(featureId))fail('特性已归档，请先恢复或选择当前特性','DEPENDENCY_CONFLICT',409);
-  if(phaseId){const p=sqlite.prepare('SELECT feature_id AS featureId,delivered_at AS deliveredAt FROM feature_phases WHERE id=? AND project_id=?').get(phaseId,projectId) as {featureId:string;deliveredAt:string|null}|undefined;if(!p||p.featureId!==featureId)fail('Phase 必须属于所选特性');if(p.deliveredAt)fail('已交付 Phase 不能接收需求');}
+  if(phaseId){const p=sqlite.prepare('SELECT feature_id AS featureId,delivered_at AS deliveredAt FROM feature_phases WHERE id=? AND project_id=?').get(phaseId,projectId) as {featureId:string;deliveredAt:string|null}|undefined;if(!p||p.featureId!==featureId)fail('Phase 必须属于所选特性');}
   const affected=[...new Set([previous.phaseId,phaseId].filter(Boolean))] as string[];
-  if(affected.length){const facts=phaseRequirementFacts(projectId);for(const pid of affected){if(sqlite.prepare('SELECT 1 FROM feature_phases WHERE id=? AND delivered_at IS NOT NULL').get(pid))fail('请先重新打开已交付 Phase');if((sqlite.prepare('SELECT 1 FROM feature_phases WHERE id=? AND started_at IS NOT NULL').get(pid)||facts.some(r=>r.phaseId===pid&&['in_progress','completed'].includes(r.status)))&&!String(value.reason||'').trim())fail('推进后的需求移入移出需要填写原因');}}
+  if(affected.length){const facts=phaseRequirementFacts(projectId);for(const pid of affected){if((sqlite.prepare('SELECT 1 FROM feature_phases WHERE id=? AND started_at IS NOT NULL').get(pid)||facts.some(r=>r.phaseId===pid&&['in_progress','completed'].includes(r.status)))&&!String(value.reason||'').trim())fail('推进后的需求移入移出需要填写原因');}}
   sqlite.prepare('UPDATE requirements SET feature_id=?,phase_id=?,sort_order=(SELECT coalesce(max(sort_order),-1)+1 FROM requirements WHERE feature_id=? AND phase_id IS ? AND id<>?) WHERE id=?').run(featureId,phaseId,featureId,phaseId,id,id);
   for(const pid of affected)sqlite.prepare('UPDATE feature_phases SET version=version+1,updated_at=? WHERE id=?').run(new Date().toISOString(),pid);
 }

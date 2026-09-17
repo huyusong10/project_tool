@@ -232,6 +232,12 @@ export function workItemProgressWeight(item: WorkItemLike): number {
   return Math.max(1, item.progressWeight ?? item.durationDays ?? workItemPlannedDuration(item));
 }
 
+/** Reuse recorded effort; changing calendar dates alone does not reweight a requirement. */
+export function requirementProgressWeight(requirement: Pick<DeliveryFields,'executionMode'|'durationDays'>, workItems: WorkItemLike[]): number {
+  if(requirement.executionMode==='direct')return Math.max(1,requirement.durationDays??1);
+  return Math.max(1,workItems.filter(w=>deriveWorkItemStatus(w)!=='cancelled').reduce((sum,w)=>sum+workItemProgressWeight(w),0));
+}
+
 export function initialWorkEstimates(item: WorkItemLike) {
   const durationDays = item.durationDays ?? (businessDaysInclusive(item.plannedStart, item.plannedEnd) || null);
   return { durationDays, progressWeight: item.progressWeight ?? durationDays ?? 1 };

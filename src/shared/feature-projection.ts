@@ -52,7 +52,7 @@ export function featurePathGraph(analysis:PathAnalysis,report:FeatureOverviewRep
     cards.push({id,featureId,phases:feature?.phases?.map(({id,featureId,name,status,scope,overdue,targetDate,sortOrder})=>({id,featureId,name,status,scope,overdue,targetDate,sortOrder})),kind:'feature',requirementId:'',workItemId:null,title:feature?.name||'未关联特性需求',subtitle:feature?.description|| (feature?'尚未填写长期目标':'整理需求的特性归属'),
       status:'',risk:'pending',forecast:null,floatDays:null,critical:false,unknown:false,external:!!feature?.archivedAt,hiddenCount:0,archived:!!feature?.archivedAt,
       assessment:feature?.overview.assessment,expectation:feature?feature.overview.expectation:'查看并整理需求',
-      facts:feature?feature.archivedAt?'已归档 · 保留交付依赖':feature.phases?.length?`已交付 ${feature.phases.filter(p=>p.status==='delivered').length} · 推进中 ${feature.phases.filter(p=>p.status==='in_progress').length} · 待交付 ${feature.phases.filter(p=>p.status==='ready').length} · 规划中 ${feature.phases.filter(p=>p.status==='planning').length}`:'尚未规划 Phase':`${report.unassignedCount} 个需求`});
+      facts:feature?feature.archivedAt?'已归档 · 保留交付依赖':feature.phases?.length?`已完成 ${feature.phases.filter(p=>p.status==='completed').length} · 推进中 ${feature.phases.filter(p=>p.status==='in_progress').length} · 未开始 ${feature.phases.filter(p=>p.status==='not_started').length} · 待规划 ${feature.phases.filter(p=>p.status==='planning').length}`:'尚未规划 Phase':`${report.unassignedCount} 个需求`});
   }
   const ids=new Set(cards.map(c=>c.id));
   return {cards,links:[...grouped.values()].filter(e=>ids.has(e.source)&&ids.has(e.target))};

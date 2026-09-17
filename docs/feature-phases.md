@@ -3,11 +3,11 @@
 | 层级 | 主要展示 | 维护方式 |
 |---|---|---|
 | 特性 | 目标、文档、各 Phase 交付情况 | 按反馈逐步增加 Phase |
-| Phase | 交付范围、状态、需求阶段分布、日期、关注说明 | 状态自动计算，交付由项目经理确认 |
+| Phase | 交付范围、状态、需求阶段分布、日期、关注说明 | 状态完全由需求自动汇总 |
 | 需求 | 当前阶段及阶段内工作进度 | 不要求具备完整流程或里程碑 |
 | 工作项 | 自身执行状态和百分比 | 执行人员更新 |
 
-首页提供项目交付表格和关系图；`/features` 转到表格，`/paths` 转到关系图，见[项目交付工作区](delivery-workspace.md)。`/execution` 保留需求甘特和执行指标。特性不显示总百分比，人工评估仍可维护。文档链接使用 `referenceLinks:[{title,url}]`，支持 HTTP／HTTPS。
+首页提供项目交付表格和关系图；`/features` 转到表格，`/paths` 转到关系图，见[项目交付工作区](delivery-workspace.md)。`/execution` 保留需求甘特和执行指标。进展表显示特性当前已明确范围的加权完成度，人工评估仍可维护。文档链接使用 `referenceLinks:[{title,url}]`，支持 HTTP／HTTPS。
 
 ## Phase
 
@@ -17,20 +17,37 @@ Phase 保存 `name/scope/sortOrder/targetDate/note`。名称默认建议 Phase 1
 
 | 状态 | 判定 |
 |---|---|
-| `planning` 规划中 | 尚无有效需求开始执行 |
+| `planning` 待规划 | 没有有效需求 |
+| `not_started` 未开始 | 有效需求均未开始 |
 | `in_progress` 推进中 | 已有需求开始或完成，仍有有效需求未完成 |
-| `ready` 待交付 | 至少一个有效需求，且全部完成 |
-| `delivered` 已交付 | 项目经理确认实际交付 |
+| `completed` 已完成 | 至少一个有效需求，且全部完成 |
 
-取消需求不计入交付成果。归档的已完成需求仍计入。空 Phase 和全部取消的 Phase 不能交付。
+取消需求不计入交付成果。归档的已完成需求仍计入。空 Phase 和全部取消的 Phase 显示待规划。
+
+进展表的特性、Phase 使用一条实际槽，不把下属需求排期汇总成独立计划，也不在这两级突出延期。已有目标日期保留在悬浮明细中。实际开始取有效需求最早实际开始，进行中延伸到统计日，完成后停在实际完成日期；缺失日期不使用目标或审计时间补齐。
+
+实际槽末端使用完整胶囊。特性显示 `Phase 1 · 42%`：编号表示当前推进批次，百分比表示特性整体完成度；0% 也保留完整标签。Phase 子行显示自身百分比，0% 隐藏。多 Phase 并行加“+N”。无进行中 Phase 时显示最近排序的已完成 Phase，再回退到首个已有需求的 Phase；不编造编号。完整名称、各 Phase 进度和日期放在浮窗中。标签随时间轴移动；没有实际日期时在统计日显示，不画实际条。
+
+| 汇总 | 计算 |
+|---|---|
+| 需求进度 | 沿用工作项加权进度及已有拆分基准；不是当前阶段百分比 |
+| 需求权重 | 有效工作项权重之和；直接执行取已填工期，无估算默认 1 |
+| Phase 完成度 | `Σ(需求进度 × 需求权重) / Σ需求权重` |
+| 特性完成度 | Phase 按所含需求总权重汇总；尚未安排 Phase 的需求一并计入 |
+
+特性直接汇总需求加权值，等价于按 Phase 工作量加权，避免中间取整误差。百分比四舍五入，尚有未完成需求时最高 99%。修改日历排期不改变已记录权重。未排期需求参与计算，取消需求排除，归档完成需求保留。空 Phase 没有已知工作量，不计入分母，浮窗注明待细化数量；100% 只表示当前明确范围完成。新增范围或返工后比例可以下降。
+
+实际及比例使用正式记录，筛选和结构草稿不改变进展表统计口径。REST 和 MCP 共用 `completion:{total,completed,inProgress,notStarted,percent,weight}`；特性总览也返回该字段。需求摘要返回 `progress/progressWeight`，Phase 保留 `actualStart/observationEnd/completedAt`。
+
+需求、工作项固定为计划／实际两层。阶段与百分比合成一个胶囊，贴在实际条末端，点击仍可更新进度。并行阶段显示 `设计 80% │ 开发 17%`；可见时间轴空间不足时显示 `设计 80% · +1`，悬浮查看全部，不隐藏首个阶段。计划线、延期边框和完成色保留，不重复显示待排期、延期、已完成文字。每条需求仅显示当前执行轮次最近实际达成的里程碑，名称和历史在浮窗内查看。其他需求和未分派阶段只作为目录，不画汇总条。
 
 需求使用 `featureId/phaseId`，每条需求属于一个特性；新建未指定时归入“其他特性”。Phase 必须属于所选特性。需求可以只关联特性，显示“未安排 Phase”。跨 Phase 的工作拆为独立需求，保留原编号和来源。
 
 Phase 开始推进后，调整范围、目标日期和需求归属须传 `reason`。首次推进事实由 `startedAt` 保留，即使后来移空也不取消原因要求。批量安排校验所有需求版本，任意一条冲突则整批回滚。
 
-确认交付时重新检查有效需求，保存实际日期及名称、范围、目标日期、需求清单和完成标准快照。实际交付不能晚于今天或早于需求实际完成日期。已交付范围只读；重新打开须填写原因，旧记录保留。重新打开后再通过需求已有返工操作继续执行。
+Phase 不提供确认交付或重新打开操作。全部有效需求完成时自动完成；新增未完成需求、移入未完成需求或需求返工后自动重算。`completedAt` 取有效需求最晚实际完成日期；日期不全时留空。汇总使用完整需求数据，不受页面筛选影响。完成后仍可编辑 Phase 和维护需求归属。旧交付快照保留为历史，不再限制当前操作。
 
-只有无关联需求且没有交付历史的空 Phase 可以删除。延期与关注说明单独显示，不改变执行阶段颜色。
+只有无关联需求且没有交付历史的空 Phase 可以删除。未完成且超过目标日期的 Phase 显示逾期；空 Phase 和已完成 Phase 不显示当前逾期。
 
 ## 执行阶段
 
@@ -71,8 +88,6 @@ Phase 开始推进后，调整范围、目标日期和需求归属须传 `reason
 | `GET /feature-phases?featureId=...` | `list_feature_phases` | — |
 | `POST /features/:featureId/phases` | `save_feature_phase` | `name/scope/targetDate/note/sortOrder`；修改加 `id/expectedVersion` |
 | `DELETE /feature-phases/:phaseId` | `delete_feature_phase` | `expectedVersion` |
-| `POST /feature-phases/:phaseId/deliver` | `deliver_feature_phase` | `expectedVersion/deliveredAt` |
-| `POST /feature-phases/:phaseId/reopen` | `reopen_feature_phase` | `expectedVersion/reason` |
 | `POST /requirement-placement` | `update_requirement_placement` | `requirements:[{id,expectedVersion}],featureId,phaseId,reason` |
 | `POST /requirements/:requirementId/test-submission` | `record_test_submission` | `expectedVersion/actualDate/content` |
 
@@ -80,9 +95,9 @@ Phase 写入限项目经理或管理员。REST、MCP、网页共享计算和权�
 
 ## 迁移与预览
 
-迁移 0031 增加 Phase、交付快照、阶段分类和节点类型；0032 统一当前索引与触发器名称；0033 将无特性需求归入普通的“其他特性”，记录审计并增加需求版本。旧迁移文件保持原样，既有 ID、关联、布局、评估和历史保留。旧业务接口及字段停用，不提供别名。
+迁移 0031 增加 Phase、交付快照、阶段分类和节点类型；0032 统一当前索引与触发器名称；0033 将无特性需求归入普通的“其他特性”，记录审计并增加需求版本。0036 移除旧交付锁，仅保留项目与特性归属校验。旧迁移文件保持原样，既有 ID、关联、布局、评估和历史保留。旧业务接口及字段停用，不提供别名。
 
-旧数据不自动创建 Phase，不从标题推断分期。阶段与节点类型只按迁移中的标准名称白名单回填，其余未分类。启动和备份恢复共用归属、交付、执行状态及外键检查。
+旧数据不自动创建 Phase，不从标题推断分期。阶段与节点类型只按迁移中的标准名称白名单回填，其余未分类。启动和备份恢复共用归属、历史快照、执行状态及外键检查。
 
 导入格式为版本 3，使用 `feature/phase` 名称及 `workItems[].workStage`。只有明确提供 Phase 名称才创建或复用。已开始 Phase 的归属调整传原因。
 

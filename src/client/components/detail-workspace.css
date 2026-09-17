@@ -193,17 +193,15 @@
 .schedule-gaps p {margin:4px 0}
 .schedule-gaps ul {margin:6px 0;padding-left:18px}
 .schedule-gaps li {padding:2px 0}
-.detail-dependencies {display:grid;gap:12px}
-.detail-dependency-group {border:1px solid var(--border);border-radius:6px;overflow:hidden}
-.detail-dependency-group > header {display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 12px;background:var(--bg-surface-subtle);font-size:13px}
+.detail-dependencies {min-width:0}
+.detail-dependency-group .detail-card-body {gap:0}
+.detail-dependency-group .detail-card-actions button {white-space:normal;text-align:right;overflow-wrap:anywhere}
 .detail-dependency-group > header small {margin-left:auto;color:var(--text-muted)}
 .detail-dependency-pair {display:grid;grid-template-columns:minmax(0,1fr) 14px minmax(0,1fr);gap:12px;align-items:center;padding:8px 12px;border-top:1px solid var(--divider)}
 .detail-dependency-object {display:flex;align-items:center;gap:6px;min-width:0;text-align:left}
 .detail-dependency-object small {font-size:11px;color:var(--text-muted);flex:none}
 .detail-dependency-object span {min-width:0;white-space:normal;overflow-wrap:anywhere}
-.detail-workspace .issue-settings-progress-entry {border:0;background:transparent}
-.detail-workspace .issue-settings-progress-entry > header {padding:0 0 10px;background:transparent}
-.detail-workspace .issue-settings-progress-entry .issue-update-form {padding:12px 0;background:transparent}
+.detail-workspace .issue-settings-progress-entry .issue-update-form {padding:0;background:transparent}
 @media(max-width:700px){
  .work-arrangement-row {grid-template-columns:1fr;padding:8px;gap:6px}
  .work-create-row {padding:8px}

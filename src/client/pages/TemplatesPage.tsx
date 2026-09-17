@@ -1,12 +1,10 @@
 import { Button } from '../components/Button';
 import {useAppSearchParams} from '../use-app-navigation';
 import {usePageResources} from '../page-context';
-import { Pagination } from '../components/Pagination';
-import { useListPagination } from '../use-list-pagination';
 import { usePageScrollPosition } from '../use-page-view';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Archive, Edit3, Plus, Diamond } from "lucide-react";
+import { Archive, Edit3, Plus } from "lucide-react";
 import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useProjects, useSession } from "../app-context";
 import { invalidateTemplateViews, keys } from "../query-keys";
@@ -17,7 +15,8 @@ import { canManageProject } from "../permissions";
 import { TemplateForm } from "../components/TemplateForm";
 import { EmptyState } from "../components/Feedback";
 import { templateOverview } from '../template-overview';
-import { TemplateOverview, TemplateStats } from '../components/TemplateOverview';
+import { TemplateThumbnail } from '../components/TemplateThumbnail';
+import { TemplatePreview } from '../components/TemplatePreview';
 import '../components/template-overview.css';
 
 const emptyTemplates: WorkItemTemplate[] = [];
@@ -32,30 +31,12 @@ function TemplateCard({ template, isDefault, canManage, archiveDisabled, onPrevi
   const overview = useMemo(() => templateOverview(template), [template]);
   const purpose = template.description?.trim().split(/(?<=[。！？])|\n/)[0] || '暂无用途说明';
   return <article className="template-card">
-    <header><strong className="template-name-line"><button type="button" className="template-name-button" onClick={onPreview}>{template.name}</button>{isDefault && <span className="template-default-badge">项目默认</span>}</strong></header>
+    <header><div className="template-name-line"><button type="button" className="template-name-button" onClick={onPreview}>{template.name}</button>{isDefault && <span className="template-default-badge">项目默认</span>}<span className="template-card-summary">{overview.workCount} 项工作 · {overview.milestoneCount} 个里程碑 · {overview.span} 工作日</span></div>
+      {canManage && <div className="template-card-actions"><Button variant="ghost" size="small" aria-label={`编辑流程 ${template.name}`} onClick={onEdit}><Edit3 size={14} />编辑</Button><Button variant="ghost" size="small" iconOnly title="归档流程" aria-label={`归档流程 ${template.name}`} disabled={archiveDisabled} onClick={onArchive}><Archive size={15} /></Button></div>}
+    </header>
     <p className="template-purpose" title={template.description}>{purpose}</p>
-    <TemplateStats overview={overview} />
-    <TemplateOverview overview={overview} />
-    <footer className="template-card-actions">
-      <Button variant="secondary" type="button" className="ghost-button" aria-label={`查看流程 ${template.name}`} onClick={onPreview}>查看详情</Button>
-      {canManage && <><Button variant="secondary" type="button" className="ghost-button" aria-label={`编辑流程 ${template.name}`} onClick={onEdit}><Edit3 size={14} />编辑</Button><Button variant="ghost" iconOnly type="button" className="icon-button template-archive-button" title="归档流程" aria-label={`归档流程 ${template.name}`} disabled={archiveDisabled} onClick={onArchive}><Archive size={15} /></Button></>}
-    </footer>
+    <TemplateThumbnail overview={overview} name={template.name} onOpen={onPreview} />
   </article>;
-}
-
-function TemplatePreview({ template, onEdit }: { template: WorkItemTemplate; onEdit?: () => void }) {
-  const overview = useMemo(() => templateOverview(template), [template]);
-  const titles = new Map(overview.nodes.map(item => [item.id, item.title]));
-  return <div className="template-preview">
-    <div className="template-preview-heading"><h3>{template.name}</h3>{onEdit && <Button variant="primary" type="button" className="primary-button" onClick={onEdit}><Edit3 size={14} />编辑流程</Button>}</div>
-    <TemplateStats overview={overview} />
-    <p className="template-preview-description">{template.description || '暂无用途说明'}</p>
-    <ol className="template-preview-items" aria-label="工作项与里程碑详情">{overview.nodes.map(item => <li key={item.id}>
-      <strong>{item.kind === 'milestone' && <Diamond size={14} />}{item.title}</strong>
-      <p>{item.kind === 'milestone' ? `${item.startOffsetDays ? `第 ${item.startOffsetDays} 个工作日结束` : '流程开始时'} · 里程碑${item.confirmationMode === 'manual' ? ' · 手动确认' : ''}` : `第 ${item.startOffsetDays + 1}—${item.startOffsetDays + item.durationDays} 个工作日 · 持续 ${item.durationDays} 个工作日`}</p>
-      <p>{item.predecessorIds?.length ? `前置：${item.predecessorIds.map(id => titles.get(id) || '未找到的工作项').join('、')}` : overview.dependencies ? '无前置依赖' : '未设置依赖'}</p>
-    </li>)}</ol>
-  </div>;
 }
 
 export function TemplatesPage() {
@@ -76,7 +57,6 @@ export function TemplatesPage() {
   const {data: loadedTemplates, error, refetch, isFetching, isLoading} = usePageResources().templates;
   const data = loadedTemplates || emptyTemplates;
   const editing=params.get('edit')==='new'?null:params.get('edit')?(data.find(t=>t.id===params.get('edit'))||editingSnapshot||undefined):undefined;
-  const pagination = useListPagination({ items: data, ready: Boolean(loadedTemplates), loading: isFetching });
   usePageScrollPosition(Boolean(loadedTemplates));
   const listUnavailable = Boolean(error && !loadedTemplates);
   const canManage = canManageProject(session, selectedProjectId);
@@ -142,10 +122,10 @@ export function TemplatesPage() {
         {archiveRecheck&&<div role="alert" className="warning-banner">“{archiveRecheck.name}”的流程归档结果待核对，其他归档操作暂不可用。<Button busy={(archiveRechecking)} aria-label={archiveRechecking?'读取中…':'重新读取流程与归档'} variant="secondary" type="button" className="ghost-button" disabled={archiveRechecking} onClick={()=>void recheckTemplateArchive()}>{'重新读取流程与归档'}</Button></div>}
         {error && loadedTemplates && <div className="warning-banner">流程列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}
         {listUnavailable ? <EmptyState title="流程列表加载失败" detail={error?.message || "暂时无法读取流程设计。"} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} /> : <>
-        <section className="panel paged-panel template-catalog"><div className="paged-body" ref={pagination.scrollRef}><div className="template-grid">
-        {pagination.items.map(template => <TemplateCard key={template.id} template={template} isDefault={project?.defaultTemplateId === template.id} canManage={canManage} archiveDisabled={Boolean(archiveRecheck)} onPreview={() => setPreview(template)} onEdit={() => setEditing(template)} onArchive={() => { if (!archiveRecheck) { archive.reset(); setArchiveTarget(template); } }} />)}
-        </div></div><Pagination {...pagination.props} label="流程列表分页" /></section>
-        {previewTemplate && <Modal title="流程详情" width={640} placement="right" onClose={() => setPreview(null)}><TemplatePreview template={previewTemplate} onEdit={canManage && data.some(item => item.id === previewTemplate.id) ? () => { setPreview(null); setEditing(previewTemplate); } : undefined} /></Modal>}
+        <section className="template-catalog" aria-label="流程列表">
+        {data.map(template => <TemplateCard key={template.id} template={template} isDefault={project?.defaultTemplateId === template.id} canManage={canManage} archiveDisabled={Boolean(archiveRecheck)} onPreview={() => setPreview(template)} onEdit={() => setEditing(template)} onArchive={() => { if (!archiveRecheck) { archive.reset(); setArchiveTarget(template); } }} />)}
+        </section>
+        {previewTemplate && <Modal title="流程预览" width={1200} onClose={() => setPreview(null)}><TemplatePreview template={previewTemplate} onEdit={canManage && data.some(item => item.id === previewTemplate.id) ? () => { setPreview(null); setEditing(previewTemplate); } : undefined} /></Modal>}
         {!data.length && !isLoading && <EmptyState title="还没有流程" detail="新建流程后可以用于需求排期。" />}
         {archiveTarget && (() => {
           const currentTarget = data.find((template) => template.id === archiveTarget.id);

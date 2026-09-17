@@ -19,7 +19,7 @@ export function sessionAccessKey(session: Session) {
 }
 
 export function projectAccessKey(projects: Project[]) {
-  return JSON.stringify(projects.map(({ id, projectRole, canManage }) => [id, projectRole, canManage])
+  return JSON.stringify(projects.map(({ id, projectRole, canManage, guestVisible, publicReadOnly }) => [id, projectRole, canManage, guestVisible, publicReadOnly])
     .sort((left, right) => String(left[0]).localeCompare(String(right[0]))));
 }
 

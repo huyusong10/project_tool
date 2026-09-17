@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import Fastify from 'fastify';
+import Fastify, { type FastifyBaseLogger } from 'fastify';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
@@ -13,15 +13,20 @@ import { registerMcpRoute } from './mcp';
 import { authenticateApiToken } from './services';
 import { errorResponse } from './errors';
 import { registerDatabaseMaintenance } from './database-maintenance';
+import { getRuntimeLogger, type RuntimeLogger } from '../../scripts/runtime-logger.mjs';
+import { RequestLogController, registerRequestLogging, captureRequestError } from './request-logging';
 
-export async function buildApp() {
-  const app = Fastify({ logger: { level: config.nodeEnv === 'production' ? 'info' : 'warn' }, bodyLimit: 1024 * 1024 });
+export async function buildApp(runtime: RuntimeLogger = getRuntimeLogger()) {
+  const controller = new RequestLogController(runtime.settings.slowMs);
+  const loggerInstance: FastifyBaseLogger = runtime.logger;
+  const app = Fastify({ loggerInstance, logController: controller, bodyLimit: 1024 * 1024 });
+  registerRequestLogging(app, controller);
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   registerDatabaseMaintenance(app);
   app.setErrorHandler((error, request, reply) => {
     const response = errorResponse(error);
-    if (!response.known) request.log.error({ err: error }, 'Unhandled request error');
+    captureRequestError(request, error);
     reply.code(response.statusCode).send(response.payload);
   });
   app.get('/health', async () => ({ status: 'ok', time: new Date().toISOString(), service: 'project-manage' }));

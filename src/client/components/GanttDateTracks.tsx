@@ -4,29 +4,29 @@ import { businessDateIndex, ganttInterval, toGanttDate } from "./GanttTimeline";
 import type { GanttForecast } from '../gantt-forecast';
 import { GanttForecastTail } from './GanttForecastTail';
 
-function point(value: string | null | undefined, dates: Date[], cellWidth: number) {
+function point(value: string | null | undefined, dates: Date[], cellWidth: number, end = false) {
   const date = toGanttDate(value);
-  if (!date) return null;
-  const index = businessDateIndex(date, dates, "start");
-  if (index < 0 || index >= dates.length) return null;
+  if (!date || !dates.length || date < dates[0] || date > dates.at(-1)!) return null;
+  const index = end ? businessDateIndex(date, dates, "end") + 1 : businessDateIndex(date, dates, "start");
   return { left: index * cellWidth, right: index * cellWidth, width: 0 };
 }
 
 export const GanttDateTracks = memo(function GanttDateTracks({
   plannedStart, plannedEnd, actualStart, actualEnd, status, progress, dates, cellWidth,
   onProgressClick, progressAriaLabel, interactionProps, scheduleComplete = true,
-  forecast, stageLabel, showProgress=true, progressPlacement='end',
+  forecast, stageLabel, showProgress=true, showScheduleHint=true, progressPlacement='end', fillProgress,
 }: {
   plannedStart?: string | null; plannedEnd?: string | null;
   actualStart?: string | null; actualEnd?: string | null;
   status: string; progress: number; dates: Date[]; cellWidth: number;
+  fillProgress?: number;
   onProgressClick?: () => void; progressAriaLabel?: string;
   interactionProps?: HTMLAttributes<HTMLElement>;
   scheduleComplete?: boolean;
-  forecast?: GanttForecast | null; stageLabel?: string; showProgress?:boolean; progressPlacement?:'end'|'below'|'inside';
+  forecast?: GanttForecast | null; stageLabel?: string; showProgress?:boolean; showScheduleHint?:boolean; progressPlacement?:'end'|'below'|'inside';
 }) {
-  const plan = ganttInterval(plannedStart, plannedEnd, dates, cellWidth) || point(plannedStart || plannedEnd, dates, cellWidth);
-  const actual = ganttInterval(actualStart, actualEnd, dates, cellWidth) || point(actualStart || actualEnd, dates, cellWidth);
+  const plan = ganttInterval(plannedStart, plannedEnd, dates, cellWidth) || point(plannedStart || plannedEnd, dates, cellWidth, !plannedStart);
+  const actual = ganttInterval(actualStart, actualEnd, dates, cellWidth) || point(actualStart || actualEnd, dates, cellWidth, !actualStart);
   const value = ganttProgressDisplay(status, progress);
   const terminal = ["completed", "pending_acceptance", "cancelled"].includes(status);
   const label = stageLabel || (status === "cancelled" ? "已取消" : !actualStart && ["not_started", "planning"].includes(status) ? "未开始" : progressPlacement === 'inside' ? `${value}%` : `完成 ${value}%`);
@@ -43,10 +43,10 @@ export const GanttDateTracks = memo(function GanttDateTracks({
   const right = Math.max(plan?.right ?? 0, actual?.right ?? 0);
   return <>
     {plan && <span className={`gantt-date-plan${plan.width === 0 ? " is-date-point" : ""}${!scheduleComplete ? " is-partial-plan" : ""}`} style={{ left: plan.left, width: plan.width }} data-start={plannedStart} data-end={plannedEnd} />}
-    {actual && <span className={`gantt-date-actual gantt-status-${status.replaceAll("_", "-")}${actual.width === 0 ? " is-date-point" : ""}${!terminal ? " is-ongoing" : ""}`} style={{ left: actual.left, width: actual.width }} data-start={actualStart} data-end={actualEnd} />}
+    {actual && <span role={fillProgress === undefined ? undefined : "progressbar"} aria-label={fillProgress === undefined ? undefined : progressAriaLabel || "完成比例"} aria-valuenow={fillProgress} aria-valuemin={fillProgress === undefined ? undefined : 0} aria-valuemax={fillProgress === undefined ? undefined : 100} className={`gantt-date-actual gantt-status-${status.replaceAll("_", "-")}${actual.width === 0 ? " is-date-point" : ""}${!terminal ? " is-ongoing" : ""}${fillProgress !== undefined ? " has-completion-fill" : ""}`} style={{ left: actual.left, width: actual.width }} data-start={actualStart} data-end={actualEnd}>{fillProgress !== undefined && <i className="gantt-completion-fill" style={{width:Math.max(0,Math.min(100,fillProgress))+'%'}}/>}</span>}
     {actual && lateLeft !== null && <span className="gantt-date-delay" style={{ left: lateLeft, width: Math.max(3, actual.right - lateLeft) }} />}
     {plan && scheduleComplete && <span className="gantt-date-deadline" style={{ left: plan.right }} />}
-    {(!plan || !scheduleComplete || !plannedStart || !plannedEnd) && <span className="gantt-date-unplanned">{plan ? "排期不完整" : "待排期"}</span>}
+    {showScheduleHint && (!plan || !scheduleComplete || !plannedStart || !plannedEnd) && <span className="gantt-date-unplanned">{plan ? "排期不完整" : "待排期"}</span>}
     {interactionProps && (plan || actual) && <span className="gantt-date-hitbox" style={{ left: Math.max(0, left - 4), width: Math.max(28, right - left + 8) }} tabIndex={0} aria-label={title} {...interactionProps} />}
     {showProgress&&labelFits&&(!actualStart||actual)&&(onProgressClick
       ? <button type="button" className={`gantt-date-progress ${inside?'is-inside':progressPlacement==='below'?'is-below':''} gantt-status-${status.replaceAll("_", "-")}`} style={{ left: labelLeft,maxWidth:labelWidth }} title={title} aria-label={progressAriaLabel || title} onClick={(event) => { event.stopPropagation(); onProgressClick(); }}>{label}</button>

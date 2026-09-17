@@ -1,7 +1,6 @@
 import {useDeliveryForm} from '../use-delivery-form';
 import {useProjects} from '../app-context';
 import { Button } from './Button';
-import {IssueFactForm} from "./IssueStatusControl";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, CheckCircle2, ChevronDown, Search } from "lucide-react";
@@ -203,7 +202,7 @@ function issueFields(issue: Issue | undefined, reporter: string | null | undefin
     title: issue?.title || "", impact: issue?.impact || "", requirementId: issue?.requirementId || "",
     sourceRef: issue?.sourceRef || "", priority: issue?.priority || "P2", ownerId: issue?.ownerId || "",
     reporter: issue ? issue.reporter || "" : reporter || "", discoveredAt: issue?.discoveredAt || today,
-    nextReviewAt:issue?.nextReviewAt||"",
+    nextReviewAt:issue?.nextReviewAt||"", resolvedAt:issue?.resolvedAt||"", reason:"",
     dueDate: issue?.status === "deferred" ? "" : issue?.dueDate || "",
   };
 }
@@ -234,15 +233,14 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
   const requirementOptions: SearchSelectOption[] = [{ value: "", label: "公共问题", description: "不绑定具体需求" }, ...requirements.map((value) => ({ value: value.id, label: value.title }))];
   const reporterOptions: SearchSelectOption[] = [{ value: "", label: "未指定" }, ...people.map((value) => ({ value: value.name, label: value.name }))];
   if (draft.reporter && !reporterOptions.some((value) => value.value === draft.reporter)) reporterOptions.push({ value: draft.reporter, label: draft.reporter, description: current?.reporter === draft.reporter ? "历史记录" : "当前登录账号" });
-  const ownerOptions: SearchSelectOption[] = [{ value: "", label: "未分配" }, ...people.filter((person) => person.active && person.projectRole !== "viewer").map((person) => ({ value: person.id, label: person.name }))];
+  const ownerOptions: SearchSelectOption[] = [{ value: "", label: "未分配" }, ...people.filter((person) => (resolved || person.active) && person.projectRole !== "viewer").map((person) => ({ value: person.id, label: person.name }))];
   if (draft.ownerId && !ownerOptions.some((value) => value.value === draft.ownerId)) ownerOptions.push({ value: draft.ownerId, label: current?.ownerId === draft.ownerId ? current.ownerName || "历史负责人" : draft.ownerId, description: "历史负责人" });
-  if (resolved && !editor.dirty && issue) return <IssueFactForm issue={issue} disabled={busy} onPendingChange={onPendingChange || (() => {})} onSaved={() => {}} onCancel={onClose}/>;
-  const blocked = resolved || editor.changed || editor.needsRefresh;
+  const blocked = !!issue&&!canManage || editor.changed || editor.needsRefresh;
   return <form className="issue-form" onSubmit={(event) => {
     event.preventDefault();
     if (blocked || busy) return;
     const attemptedAt = new Date().toISOString();
-    const payload = { ...draft, dueDate: deferred ? null : draft.dueDate || null,
+    const payload = { ...draft, resolvedAt: resolved ? draft.resolvedAt : undefined, reason: current ? draft.reason : undefined, dueDate: deferred ? null : draft.dueDate || null,
       ownerId: canManage ? draft.ownerId || null : null,
       ...(current ? { expectedVersion: current.version } : { projectId }),
     };
@@ -258,6 +256,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
           && latest.ownerId === (draft.ownerId || null)
           && latest.reporter === (canonicalizeLabel(draft.reporter) || null)
           && latest.discoveredAt === draft.discoveredAt
+          && (!resolved || latest.resolvedAt === draft.resolvedAt)
           && latest.nextReviewAt === (draft.nextReviewAt || null)
           && latest.dueDate === (deferred ? null : draft.dueDate || null),
         onReconciled: () => toast.success("已核对最新状态：问题信息已保存"),
@@ -305,7 +304,8 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
       <FieldShell label="发现日期"><input name="discoveredAt" type="date" required value={draft.discoveredAt} onChange={(event) => change("discoveredAt", event.target.value)} /></FieldShell>
       <FieldShell label="下次核对日期" help="用于跟进提醒，与解决目标日期分开"><input name="nextReviewAt" type="date" value={draft.nextReviewAt} onChange={event=>change("nextReviewAt",event.target.value)}/></FieldShell>
       <FieldShell label="目标日期" help={deferred ? "挂起问题不设置目标日期" : undefined}><input name="dueDate" type="date" value={deferred ? "" : draft.dueDate} disabled={deferred} onChange={(event) => change("dueDate", event.target.value)} /></FieldShell>
-      <DraftNotice editor={editor} warning={resolved ? "问题已解决，不能保存修改；已保留本次输入。" : null} />
+      {resolved&&<><FieldShell label="解决日期"><input aria-label="解决日期" name="resolvedAt" type="date" required min={draft.discoveredAt} max={today} value={draft.resolvedAt} onChange={event=>change('resolvedAt',event.target.value)}/></FieldShell><FieldShell label="修改说明" full><textarea aria-label="修改说明" rows={2} value={draft.reason} onChange={event=>change('reason',event.target.value)}/></FieldShell><p className="field-help field-full">修改资料保留已解决状态，并记录修改前后的内容。</p></>}
+      <DraftNotice editor={editor} />
       <div className="form-actions field-full"><Button variant="secondary" type="button" className="ghost-button" onClick={()=>{clearDraft();if(!editor.needsRefresh)editor.discard();onClose();}}>取消</Button><Button busy={(editor.pending)} aria-label={editor.pending ? "保存中…" : issue ? "保存修改" : "创建问题"} variant="primary" type="submit" className="primary-button" disabled={blocked}>{issue ? "保存修改" : "创建问题"}</Button></div>
     </fieldset>
   </form>;

@@ -9,7 +9,7 @@
 .workspace-gantt-scroll::-webkit-scrollbar{width:12px;height:12px}
 .workspace-gantt-scroll::-webkit-scrollbar-track{background:var(--bg-surface-subtle)}
 .workspace-gantt-scroll::-webkit-scrollbar-thumb{background:var(--text-muted);border:3px solid var(--bg-surface-subtle);border-radius:8px}
-.workspace-gantt-grid{--row-label:320px;--row-actions:116px;--gantt-day-line:color-mix(in srgb,var(--border) 38%,transparent);--gantt-week-line:color-mix(in srgb,var(--border-strong) 60%,transparent);width:calc(var(--row-label) + var(--timeline-width) + var(--row-actions));min-width:100%}
+.workspace-gantt-grid{--row-label:320px;--row-actions:116px;--gantt-day-line:color-mix(in srgb,var(--border) 24%,transparent);--gantt-week-line:color-mix(in srgb,var(--border-strong) 42%,transparent);width:calc(var(--row-label) + var(--timeline-width) + var(--row-actions));min-width:100%}
 .workspace-gantt-heading,.workspace-gantt-row{display:grid;grid-template-columns:var(--row-label) var(--timeline-width) var(--row-actions)}
 .workspace-gantt-heading{position:sticky;top:0;z-index:6;background:var(--bg-surface);height:58px;border-bottom:1px solid var(--border)}
 .workspace-gantt-row{min-height:50px;border-bottom:1px solid color-mix(in srgb,var(--border) 60%,transparent);--row-bg:var(--bg-surface)}
@@ -47,7 +47,7 @@
 .workspace-stage-summary strong{font-size:12px;font-weight:650;color:var(--gantt-running);font-variant-numeric:tabular-nums}
 .workspace-gantt-row[data-status=completed] .workspace-row-progress,.workspace-gantt-row[data-status=delivered] .workspace-row-progress{color:var(--gantt-completed)}
 .workspace-gantt-row[data-status=cancelled] .workspace-row-progress{color:var(--text-muted)}
-.workspace-row-track.gantt-track.gantt-split-track{--date-plan-top:calc(50% - 15px);--date-actual-top:calc(50% - 2px);--gantt-bar-top:var(--date-actual-top);--gantt-bar-height:16px;height:100%;min-height:0;position:relative;overflow:clip;isolation:isolate;z-index:0}
+.workspace-row-track.gantt-track.gantt-split-track{--date-plan-top:9px;--date-actual-top:22px;--gantt-bar-top:var(--date-actual-top);--gantt-bar-height:16px;height:100%;min-height:0;position:relative;overflow:clip;isolation:isolate;z-index:0}
 .workspace-date-heading{min-width:0;isolation:isolate;z-index:0}.workspace-gantt-heading.has-project-milestones{height:86px}.workspace-gantt-heading>.workspace-row-label{flex-direction:column;align-items:flex-start;justify-content:center;gap:2px}
 .workspace-date-heading .gantt-scale{height:58px}
 .workspace-date-heading .gantt-scale-month{position:absolute;top:0;height:25px;font-size:12px;white-space:nowrap;border-bottom:1px solid var(--border)}
@@ -105,7 +105,6 @@
 .workspace-gantt .workspace-row-actions .primary-button:not(.danger-button){white-space:nowrap}
 .workspace-row-actions .work-next-action:only-child{white-space:normal}
 
-.workspace-gantt-row.has-milestones .workspace-row-track{--date-plan-top:28px;--date-actual-top:41px}
 .workspace-row-track .gantt-date-plan{height:6px;border-radius:2px;background:color-mix(in srgb,var(--gantt-running) 12%,var(--bg-surface));border:1px solid color-mix(in srgb,var(--gantt-running) 60%,var(--border))}
 .workspace-row-track .gantt-date-actual{height:16px;border-radius:3px}
 .workspace-row-track .gantt-date-delay{height:16px;border-radius:3px}
@@ -209,13 +208,13 @@
 
 .workspace-stage-summary.is-parallel>span+span::before{content:" · "}
 
-/* Status stays beside its date track, including short bars and unscheduled rows. */
-.workspace-progress-window{position:absolute;left:calc(var(--gantt-viewport-left,0px) + 8px);width:max(0px,calc(var(--gantt-viewport-width,100%) - 16px));top:calc(var(--date-actual-top) - 3px);height:22px;display:flex;align-items:center;pointer-events:none;z-index:12}
-.workspace-progress-spacer{flex:0 1 auto;width:max(0px,calc(var(--progress-anchor) - var(--gantt-viewport-left,0px)));min-width:0}
-.workspace-progress-window .workspace-row-progress{flex:0 0 auto;max-width:100%;gap:7px;min-height:22px;padding:0 4px;border-radius:3px;background:var(--row-bg);color:var(--text-secondary);font-size:12px;pointer-events:auto;overflow:hidden;box-sizing:border-box}
-.workspace-row-progress>small{font-size:11px;white-space:nowrap}.workspace-row-progress>small:not(.danger-text){color:var(--text-muted)}
-.workspace-progress-window .work-progress-link{min-height:22px;line-height:20px;flex-shrink:0}
-.workspace-progress-window .workspace-stage-summary{min-width:0}
+/* Two fixed tracks; annotations and milestones never add a row. */
+.workspace-gantt .workspace-gantt-row:is(.kind-requirement,.kind-work){height:56px;min-height:56px}
+.workspace-gantt .workspace-gantt-row:is(.kind-requirement,.kind-work) .workspace-row-track{--date-plan-top:9px;--date-actual-top:30px}
+
+.workspace-row-track .gantt-date-actual.has-completion-fill{background:color-mix(in srgb,var(--gantt-running) 15%,var(--bg-surface));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--gantt-running) 35%,transparent);overflow:hidden}
+.workspace-row-track .gantt-completion-fill{display:block;height:100%;background:var(--gantt-running)}
+.workspace-row-track .gantt-status-completed .gantt-completion-fill{background:var(--gantt-completed)}
 .workspace-row-track .gantt-date-unplanned{display:none}
 .unified-workspace .workspace-row-actions,.unified-workspace .workspace-row-actions.has-execution{justify-content:flex-end;flex-direction:row}
 .unified-workspace .workspace-row-actions .work-action-state{display:none}
@@ -228,19 +227,12 @@
  .unified-workspace .workspace-gantt .workspace-row-actions .workspace-row-tools{width:66px;min-width:66px;height:64px}
  .unified-workspace .workspace-gantt .workspace-row-actions .work-item-actions{width:66px;flex-direction:column;align-items:flex-end;gap:2px}
  .unified-workspace .workspace-gantt .workspace-row-actions .primary-button,.unified-workspace .workspace-gantt .workspace-row-actions .ghost-button{width:66px;min-width:66px;max-width:66px;padding-inline:2px;font-size:11px}
- .workspace-progress-window .workspace-row-progress{gap:4px;padding-inline:2px}
- .workspace-progress-window .workspace-row-progress>small{display:none}
 }
 
 @media(max-width:600px){
  .unified-workspace .workspace-row-actions{padding-inline:3px}
  .unified-workspace .workspace-row-actions .work-item-action-row{flex-direction:column;align-items:flex-end;gap:2px;width:66px}
- .workspace-progress-window:has(.is-parallel){top:calc(50% - 10px);height:40px}
- .workspace-progress-window .workspace-stage-summary.is-parallel{display:flex;flex-direction:column;font-size:11px;line-height:18px;max-height:36px}
- .workspace-stage-summary.is-parallel>span{overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
- .workspace-stage-summary.is-parallel .workspace-parallel-caption{display:none}
- .workspace-stage-summary.is-parallel>span+span::before{content:none}
- .workspace-stage-summary.is-parallel strong{font-size:11px}
+
 }
 
 /* Filter values share typography and left alignment; action labels remain centered. */
@@ -258,7 +250,5 @@
 .unified-workspace .workspace-gantt .workspace-row-actions .action-menu-trigger {grid-column:2}
 .unified-workspace .workspace-gantt .workspace-row-actions .work-next-action {grid-column:1}
 @media(max-width:600px){.unified-workspace .workspace-gantt-grid{--row-actions:108px}}
-.workspace-row-progress .schedule-gap-link {border:0;background:transparent;color:var(--text-muted);font:inherit;font-size:11px;padding:0 2px;white-space:nowrap;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px;cursor:pointer}
-.workspace-row-progress .schedule-gap-link:hover {color:var(--accent-ink)}
 
 }

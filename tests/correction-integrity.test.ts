@@ -1042,3 +1042,67 @@ it('REST：无参数命令拒绝附带字段', async () => {
   expect(logout.statusCode).toBe(400);
 });
 import { withoutForecastRevision } from './fixtures/forecast-snapshot';
+
+for (const protocol of ['REST','MCP'] as const) {
+  it(`${protocol} 管理员维护已完成需求和工作项，保留状态、实际日期和原始记录`,async()=>{
+    const local=await createScope(),r=await createCompletedRequirement(local),w=r.workItems![0];
+    const person=(await post('/api/people',{projectId:local.projectId,name:'历史归属'+(++sequence)})).json();
+    const {sqlite}=await import('../src/server/database');
+    sqlite.prepare('UPDATE people SET active=0 WHERE id=?').run(person.id);
+    sqlite.prepare("UPDATE accounts SET status='disabled' WHERE person_id=?").run(person.id);
+    const events=sqlite.prepare('SELECT * FROM progress_updates WHERE requirement_id=? ORDER BY rowid').all(r.id);
+    const changed=await updateWorkItemCommand(protocol,w.id,{expectedVersion:w.version,title:'修正工作名称',ownerId:person.id,collaboratorIds:[local.personId],plannedStart:'2020-01-03',plannedEnd:'2020-01-06',reason:'修正录入资料'});
+    expect(changed.statusCode,JSON.stringify(changed.body)).toBe(200);
+    expect(changed.body).toMatchObject({status:'completed',progress:100,actualStart:w.actualStart,actualEnd:w.actualEnd,ownerId:person.id});
+    let latest=await detail(r.id);expect(latest.status).toBe('completed');
+    const requirementEdit=await updateRequirementCommand(protocol,r.id,{expectedVersion:latest.version,ownerId:person.id,background:'简洁说明',reason:'更正历史负责人'});
+    expect(requirementEdit.statusCode,JSON.stringify(requirementEdit.body)).toBe(200);
+    expect(requirementEdit.body).toMatchObject({status:'completed',progress:100,ownerId:person.id});
+    expect(sqlite.prepare('SELECT * FROM progress_updates WHERE requirement_id=? ORDER BY rowid').all(r.id).slice(0,events.length)).toEqual(events);
+    const log=sqlite.prepare("SELECT summary FROM audit_logs WHERE entity_id=? AND action='correct' ORDER BY rowid DESC LIMIT 1").get(w.id) as {summary:string};
+    expect(JSON.parse(log.summary)).toMatchObject({before:{ownerId:w.ownerId},after:{ownerId:person.id},reason:'修正录入资料'});
+    expect((await updateWorkItemCommand(protocol,w.id,{expectedVersion:w.version,title:'旧版本覆盖'})).statusCode).toBe(409);
+    latest=await detail(r.id);const current=latest.workItems!.find(i=>i.id===w.id)!;
+    expect((await updateWorkItemCommand(protocol,w.id,{expectedVersion:current.version,progress:50})).statusCode).toBe(400);
+  });
+  it(`${protocol} 已解决问题可维护完整资料和解决日期，失效旧负责人不阻塞修改`,async()=>{
+    const local=await createScope(),issue=await createIssue(local.projectId);
+    const assigned=await updateIssueCommand(protocol,issue.id,{expectedVersion:issue.version,ownerId:local.personId});expect(assigned.statusCode).toBe(200);
+    const resolved=await command(protocol,'issue',issue.id,'resolve',{expectedVersion:assigned.body.version,content:'原始解决说明'});expect(resolved.statusCode).toBe(200);
+    const before=await issueDetail(issue.id),{sqlite}=await import('../src/server/database');
+    sqlite.prepare('UPDATE people SET active=0 WHERE id=?').run(local.personId);
+    const person=(await post('/api/people',{projectId:local.projectId,name:'更正归属'+(++sequence)})).json();
+    sqlite.prepare('UPDATE people SET active=0 WHERE id=?').run(person.id);
+    const edit=await updateIssueCommand(protocol,issue.id,{expectedVersion:before.version,title:'修正问题名称',ownerId:person.id,discoveredAt:yesterday,resolvedAt:yesterday,reason:'修正资料'});
+    expect(edit.statusCode,JSON.stringify(edit.body)).toBe(200);expect(edit.body).toMatchObject({status:'resolved',progress:100,ownerId:person.id,resolvedAt:yesterday});
+    const after=await issueDetail(issue.id);expect(after.updates!.filter(u=>u.eventType!=='correction')).toEqual(before.updates);
+    const invalid=await updateIssueCommand(protocol,issue.id,{expectedVersion:after.version,discoveredAt:today});expect(invalid.statusCode).toBe(400);
+    expect((await issueDetail(issue.id)).version).toBe(after.version);
+  });
+  it(`${protocol} 重选流程接受页面确认字段、正排和倒排，自动清理旧工作依赖`,async()=>{
+    const local=await createScope();
+    const template=(await post('/api/templates',{projectId:local.projectId,name:'新流程'+(++sequence),items:[{title:'新工作',startOffsetDays:0,durationDays:2,sortOrder:0}]})).json();
+    for(const mode of ['start','deadline']){
+      const r=(await post('/api/requirements',{projectId:local.projectId,title:'重排'+(++sequence),templateId:local.templateId,plannedStart:'2020-01-02'})).json<Detail>();
+      const changed=await templateCommand(protocol,'reselect',r.id,{expectedVersion:r.version,templateId:template.id,scheduleMode:mode,...mode==='start'?{plannedStart:'2020-01-06'}:{plannedEnd:'2020-01-10'},confirmTemplateReset:true});
+      expect(changed.statusCode,JSON.stringify(changed.body)).toBe(200);
+      const after=await detail(r.id);expect(after.workItems).toHaveLength(1);expect(after.workItems![0].title).toBe('新工作');
+      expect(mode==='start'?after.plannedStart:after.plannedEnd).toBe(mode==='start'?'2020-01-06':'2020-01-10');
+    }
+  });
+}
+
+it('管理员可重排已完成工作，普通需求负责人不可更正终态资料，项目经理可以',async()=>{
+  const local=await createScope(),r=await createCompletedRequirement(local),w=r.workItems![0];
+  const sorted=await reorderCommand('REST',r.id,{expectedVersion:r.version,ids:r.workItems!.map(w=>w.id).reverse()});expect(sorted.statusCode,JSON.stringify(sorted.body)).toBe(200);
+  const latest=await detail(r.id);expect(latest.status).toBe('completed');expect(latest.workItems!.map(w=>w.id)).toEqual(r.workItems!.map(w=>w.id).reverse());
+  const {sqlite}=await import('../src/server/database');
+  const account=sqlite.prepare('SELECT username FROM accounts WHERE person_id=?').get(local.personId) as {username:string};
+  const login=await app.inject({method:'POST',url:'/api/login',payload:{username:account.username,password:'888888'}});let memberCookie=String(login.headers['set-cookie']).split(';')[0];
+  const passwordChange=await app.inject({method:'POST',url:'/api/account/change-password',headers:{cookie:memberCookie},payload:{currentPassword:'888888',newPassword:'maintenance-member-password'}});expect(passwordChange.statusCode).toBe(200);memberCookie=String(passwordChange.headers['set-cookie']).split(';')[0];
+  const input={expectedVersion:latest.workItems!.find(x=>x.id===w.id)!.version,title:'管理员维护'};
+  const denied=await app.inject({method:'PATCH',url:'/api/work-items/'+w.id,headers:{cookie:memberCookie},payload:input});expect(denied.statusCode,denied.body).toBe(403);
+  expect((await detail(r.id)).workItems!.find(x=>x.id===w.id)!.title).toBe(w.title);
+  sqlite.prepare("UPDATE project_people SET project_role='manager' WHERE project_id=? AND person_id=?").run(local.projectId,local.personId);
+  const permitted=await app.inject({method:'PATCH',url:'/api/work-items/'+w.id,headers:{cookie:memberCookie},payload:input});expect(permitted.statusCode,permitted.body).toBe(200);expect(permitted.json().status).toBe('completed');
+});

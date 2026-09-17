@@ -2,6 +2,7 @@ import {ArrowRight} from 'lucide-react';
 import type {Dependency} from '../../shared/paths';
 import {useProjectWorkspace} from '../project-workspace-context';
 import {Button} from './Button';
+import {DetailCard} from './DetailCard';
 
 /** Keep requirement relationships separate from links between its own work items. */
 export function ObjectDependencies({requirementId,workItemId,onOpenGraph}:{requirementId:string;workItemId?:string;onOpenGraph:()=>void}) {
@@ -41,10 +42,9 @@ export function ObjectDependencies({requirementId,workItemId,onOpenGraph}:{requi
     return current?<span className="detail-dependency-object is-current">{label}</span>:<Button variant="link" className="detail-dependency-object" title={milestoneId?'在关系图中查看里程碑':undefined} onClick={()=>milestoneId?onOpenGraph():workspace?.inspect(id)}>{label}</Button>;
   };
   return <div className="detail-dependencies">
-    {[...groups].map(([key,group])=><section className="detail-dependency-group" key={key} aria-label={group.title+(group.id?'需求':'')}>
-      <header><strong>{group.title}</strong>{group.id&&<Button variant="link" onClick={()=>workspace?.inspect(group.id!)}>{data?.requirements.find(item=>item.id===group.id)?.title||group.id}</Button>}<small>{group.edges.length} 条关系</small></header>
+    {[...groups].map(([key,group])=><DetailCard title={group.title} className="detail-dependency-group" key={key} label={group.title+(group.id?'需求':'')} actions={<>{group.id&&<Button variant="link" onClick={()=>workspace?.inspect(group.id!)}>{data?.requirements.find(item=>item.id===group.id)?.title||group.id}</Button>}<small>{group.edges.length} 条关系</small></>}>
       {group.edges.map(edge=><div className="detail-dependency-pair" key={edge.id}>{endpoint(edge,'source')}<ArrowRight size={14} aria-label="先于"/>{endpoint(edge,'target')}</div>)}
-    </section>)}
-    {!edges.length&&<p className="muted-text">{workItemId?'暂无工作项依赖。':'当前没有需求间或内部工作项依赖。'}</p>}
+    </DetailCard>)}
+    {!edges.length&&<DetailCard title="依赖关系"><p className="detail-card-empty">{workItemId?'暂无工作项依赖。':'当前没有需求间或内部工作项依赖。'}</p></DetailCard>}
   </div>;
 }

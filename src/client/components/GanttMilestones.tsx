@@ -49,6 +49,12 @@ export function useMilestoneSelection(items: GanttMilestone[], asOfDate: string,
     </div>, document.body)}</> };
 }
 export type MilestoneSelection = ReturnType<typeof useMilestoneSelection>;
+
+export function LatestGanttMilestone({item,history,dates,cellWidth,selection}:{item:GanttMilestone;history:GanttMilestone[];dates:Date[];cellWidth:number;selection:MilestoneSelection}) {
+  const left=milestonePosition(item,dates,cellWidth,true);
+  return left===null?null:<button type="button" className="gantt-milestone-actual workspace-latest-milestone" style={{left}}
+    data-milestone-id={item.id} data-milestone-date={item.actualDate} aria-label={`最近达成：${item.title}，${item.actualDate}；查看里程碑记录`} {...selection.bind(history)}><i/></button>;
+}
 type Props = { items: GanttMilestone[]; dates: Date[]; cellWidth: number; asOfDate: string; selection: MilestoneSelection; width?: number; showForecast?: boolean };
 
 export function GanttMilestoneRail({ items, dates, cellWidth, asOfDate, selection, width = dates.length * cellWidth, showForecast = false, inline = false }: Props & { inline?: boolean }) {

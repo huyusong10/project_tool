@@ -1,3 +1,5 @@
+import { performance } from 'node:perf_hooks';
+import { moduleLogger, errorWasLogged, exitWithLogs } from '../../scripts/runtime-logger.mjs';
 import {initializeWorkspaceOrder} from './workspace-migration';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,8 +14,10 @@ import { sqlite } from './database';
 import { inspectDatabaseConsistency } from './database-validation';
 import { activatePreparedDatabase, cleanupFailedDatabaseSwaps, databaseSwapRollbackPath } from './database-swap';
 import { clearRestoreStatus, readRestoreStatus, writeRestoreStatus, type RestoreStatus } from './restore-status';
-import { AppError, fail, notFound } from './errors';
+import { AppError, fail, notFound, errorResponse } from './errors';
 import { pauseDatabaseRequests, resumeDatabaseRequests } from './database-maintenance';
+
+const log = moduleLogger('backup');
 
 fs.mkdirSync(config.backupDir, { recursive: true });
 
@@ -137,6 +141,8 @@ export async function createBackup(options: {
   if (backupInProgress) fail('已有数据库备份任务正在执行', 'DEPENDENCY_CONFLICT', 409);
   if (restoreScheduled && !options.duringRestore) fail('数据库恢复任务正在执行，暂不能创建备份', 'DEPENDENCY_CONFLICT', 409);
   backupInProgress = true;
+  const started = performance.now();
+  log.info({ event: 'backup.started' }, '开始备份数据库');
   let destination: string | undefined;
   let temporaryDestination: string | undefined;
   let published = false;
@@ -157,10 +163,13 @@ export async function createBackup(options: {
     const { path: _path, ...backup } = backupDescriptor(name);
     options.beforeCommit?.(backup);
     if (options.cleanup !== false) {
-      try { cleanupOldBackups(); } catch (error) { console.error('清理过期数据库备份失败', error); }
+      try { cleanupOldBackups(); } catch (error) { log.warn({ event: 'backup.cleanup_failed', err: error }, '清理过期数据库备份失败'); }
     }
+    log.info({ event: 'backup.completed', backupName: name, durationMs: Math.round(performance.now() - started) }, '数据库备份完成');
     return backup;
   } catch (error) {
+    const response = errorResponse(error);
+    log[response.known ? 'info' : 'error']({ event: 'backup.failed', ...(!response.known ? { err: error } : {}), durationMs: Math.round(performance.now() - started) }, '数据库备份未完成');
     if (temporaryDestination && fs.existsSync(temporaryDestination)) fs.rmSync(temporaryDestination, { force: true });
     if (published && destination && fs.existsSync(destination)) fs.rmSync(destination, { force: true });
     throw error;
@@ -236,7 +245,7 @@ export function cleanupOldBackups() {
       maxCount: 3,
       preserveFile: readRestoreStatus(config.dbPath)?.failedDatabase,
     });
-  } catch (error) { console.error('清理数据库恢复失败文件失败', error); }
+  } catch (error) { log.warn({ event: 'restore.cleanup_failed', err: error }, '清理数据库恢复失败文件失败'); }
 }
 
 function validateDatabaseFile(source: string) {
@@ -399,7 +408,7 @@ export async function importBackup(
   } finally {
     for (const filename of [temporary, validationCopy]) {
       try { removeRestoreFiles(filename); }
-      catch (error) { console.error('清理数据库导入临时文件失败', error); }
+      catch (error) { log.warn({ event: 'backup.import_cleanup_failed', err: error }, '清理数据库导入临时文件失败'); }
     }
     backupInProgress = false;
   }
@@ -510,6 +519,8 @@ export async function scheduleRestore(
   restoreScheduled = true;
   const replacement = `${config.dbPath}.restore`;
   const operationId = randomUUID();
+  const started = performance.now();
+  log.info({ event: 'restore.started', operationId }, '开始恢复数据库');
   const previousStatus = readRestoreStatus(config.dbPath);
   let statusWritten = false;
   let pendingStatus: RestoreStatus | undefined;
@@ -539,14 +550,16 @@ export async function scheduleRestore(
       try {
         if (previousStatus) writeRestoreStatus(config.dbPath, previousStatus);
         else clearRestoreStatus(config.dbPath);
-      } catch (statusError) { console.error('数据库恢复状态回滚失败', statusError); }
+      } catch (statusError) { log.error({ event: 'restore.status_failed', err: statusError, operationId }, '数据库恢复状态回滚失败'); }
     }
     restoreScheduled = false;
     resumeDatabaseRequests();
+    const response = errorResponse(error);
+    log[response.known ? 'info' : 'error']({ event: 'restore.failed', operationId, ...(!response.known ? { err: error } : {}) }, '数据库恢复准备失败');
     throw error;
   }
 
-  setTimeout(() => {
+  setTimeout(async () => {
     let databaseClosed = false;
     try {
       sqlite.pragma('wal_checkpoint(TRUNCATE)');
@@ -560,11 +573,12 @@ export async function scheduleRestore(
           updatedAt: new Date().toISOString(),
           message: '数据库恢复已完成',
         });
-      } catch (error) { console.error('数据库恢复成功状态记录失败', error); }
-      try { cleanupOldBackups(); } catch (error) { console.error('数据库恢复后清理旧备份失败', error); }
-      process.exit(75);
+      } catch (error) { log.error({ event: 'restore.status_failed', err: error, operationId }, '数据库恢复成功状态记录失败'); }
+      try { cleanupOldBackups(); } catch (error) { log.warn({ event: 'backup.cleanup_failed', err: error, operationId }, '数据库恢复后清理旧备份失败'); }
+      log.info({ event: 'restore.completed', operationId, durationMs: Math.round(performance.now() - started) }, '数据库恢复完成，正在重启服务');
+      await exitWithLogs(75);
     } catch (error) {
-      console.error('数据库恢复切换失败', error);
+      log.error({ event: 'restore.failed', err: error, operationId, durationMs: Math.round(performance.now() - started) }, '数据库恢复切换失败');
       try {
         writeRestoreStatus(config.dbPath, {
           ...pendingStatus!,
@@ -572,15 +586,15 @@ export async function scheduleRestore(
           updatedAt: new Date().toISOString(),
           message: databaseClosed ? '数据库恢复切换失败，系统已保留或恢复原数据库' : '数据库恢复未生效，当前数据库保持不变',
         });
-      } catch (statusError) { console.error('数据库恢复失败状态记录失败', statusError); }
+      } catch (statusError) { log.error({ event: 'restore.status_failed', err: statusError, operationId }, '数据库恢复失败状态记录失败'); }
       if (!databaseClosed && sqlite.open) {
         restoreScheduled = false;
         resumeDatabaseRequests();
         removeRestoreFiles(replacement);
         return;
       }
-      if (fs.existsSync(config.dbPath) || fs.existsSync(databaseSwapRollbackPath(config.dbPath))) process.exit(75);
-      process.exit(1);
+      if (fs.existsSync(config.dbPath) || fs.existsSync(databaseSwapRollbackPath(config.dbPath))) await exitWithLogs(75);
+      await exitWithLogs(1);
     }
   }, 800);
   return {
@@ -612,7 +626,7 @@ function hasBackupSinceDailySchedule(now: Date) {
 
 export function startBackupScheduler() {
   try { cleanupOldBackups(); }
-  catch (error) { console.error('启动时清理过期数据库备份失败', error); }
+  catch (error) { log.warn({ event: 'backup.cleanup_failed', err: error }, '启动时清理过期数据库备份失败'); }
   const check = async () => {
     const now = new Date();
     const day = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
@@ -626,7 +640,7 @@ export function startBackupScheduler() {
         }
         await createBackup();
         lastScheduledBackup = day;
-      } catch (error) { console.error('自动备份失败', error); }
+      } catch (error) { if (!errorWasLogged(error)) log.error({ event: 'backup.failed', err: error }, '自动备份失败'); }
     }
   };
   void check();

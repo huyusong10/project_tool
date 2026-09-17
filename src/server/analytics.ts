@@ -1,4 +1,6 @@
+import { moduleLogger } from '../../scripts/runtime-logger.mjs';
 import { sqlite } from './database';
+const log = moduleLogger('analytics');
 import { getPeopleConcurrency } from './services/reporting';
 import { listRequirements, requirementCompletionDate } from './services/requirements';
 import { recordAudit } from './services/audit';
@@ -268,7 +270,7 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
   const peopleByRange = new Map<string, GenericRecord[]>();
   const errors: Record<string, string> = {};
   const messageOf = (dataset: string, error: unknown) => {
-    console.error(`[analytics] failed to load ${dataset}`, error);
+    log.error({ event: 'analytics.dataset_failed', err: error, projectId, dataset }, '图表数据读取失败');
     return '图表数据读取失败';
   };
   if (datasets.has('requirements') || datasets.has('work_items')) {
@@ -518,7 +520,7 @@ export function queryAnalytics(value: unknown): AnalyticsQueryResponse {
     try {
       return queryPanel(context, panel, range, asOfDate);
     } catch (error) {
-      console.error(`[analytics] failed to query panel ${panel.id}`, error);
+      log.error({ event: 'analytics.panel_failed', err: error, projectId, panelId: panel.id }, '图表查询失败');
       const measure = catalogMeasure(panel.dataset, panel.measure);
       return {
         panelId: panel.id, rows: [], measureLabel: measure?.label || panel.measure,
