@@ -1,7 +1,9 @@
+import * as projectsApi from '../features/projects/api';
+import * as requirementsApi from '../features/requirements/api';
 import { Button } from './Button';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, ApiError, InvalidResponseError, isWriteOutcomeUnknown, jsonBody } from '../api';
+import { ApiError, InvalidResponseError, isWriteOutcomeUnknown, jsonBody } from '../api';
 import { useSession } from '../app-context';
 import { canManageProject } from '../permissions';
 import { invalidateRequirementViews } from '../query-keys';
@@ -25,7 +27,7 @@ export function TestSubmissionButton({ requirement: r }: { requirement: Requirem
     if (!draft || lock.current || draft.pending) return;
     lock.current = true; setBusy(true); setError(''); store({ ...draft, pending: true });
     try {
-      const result = await api<Requirement>('/api/projects/' + r.projectId + '/requirements/' + r.id + '/test-submission', { method: 'POST', body: jsonBody({ expectedVersion: draft.version, actualDate: draft.actualDate, content: draft.content }) });
+      const result = await projectsApi.projectsRequirementsTestSubmission<Requirement>(r.projectId, r.id, { method: 'POST', body: jsonBody({ expectedVersion: draft.version, actualDate: draft.actualDate, content: draft.content }) });
       if (!result || result.id !== r.id || result.version <= draft.version || !result.milestones?.some(m => m.milestoneKind === 'test_submitted' && m.achievedAt === draft.actualDate)) throw new InvalidResponseError(200, true, '提测记录返回不完整');
       if (alive.current) done();
     } catch (e) {
@@ -35,7 +37,7 @@ export function TestSubmissionButton({ requirement: r }: { requirement: Requirem
   const read = async () => {
     if (!draft || busy) return; setBusy(true);
     try {
-      const latest = await api<Requirement>('/api/requirements/' + r.id);
+      const latest = await requirementsApi.requirementsById<Requirement>(r.id);
       if (!latest || latest.id !== r.id || !Number.isInteger(latest.version)) throw new InvalidResponseError(200, false, '需求返回不完整');
       if (!alive.current) return;
       if (latest.milestones?.some(m => m.milestoneKind === 'test_submitted' && m.achievedAt === draft.actualDate && (!latest.stageResetAt || (m.achievedRecordedAt || m.achievedAt) > latest.stageResetAt))) { done(); return; }

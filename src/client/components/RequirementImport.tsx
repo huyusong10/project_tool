@@ -1,5 +1,8 @@
-import {ReferenceLinksEditor} from './ReferenceLinks';
-import {readReferenceLinks} from '../../shared/reference-links';
+import * as requirementsApi from '../features/requirements/api';
+import * as peopleApi from '../features/people/api';
+import * as planningApi from '../features/planning/api';
+import { ReferenceLinksEditor } from './ReferenceLinks';
+import { readReferenceLinks } from '../../shared/reference-links';
 import { Button } from './Button';
 import { WorkStageSelect } from "./ExecutionStageBadge";
 import { migrateImportDraft } from "../feature-storage-migration";
@@ -7,7 +10,7 @@ import { randomUUID } from '../random-uuid';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { api, ApiError, isWriteOutcomeUnknown, jsonBody } from '../api';
+import { ApiError, isWriteOutcomeUnknown, jsonBody } from '../api';
 import { useSession } from '../app-context';
 import { invalidateRequirementViews, keys } from '../query-keys';
 import { intakeExample, intakePackageSchema, type IntakePackage, type ImportPreview, type ImportReceipt } from '../../shared/intake';
@@ -31,13 +34,13 @@ export function RequirementImport({projectId,defaultFeature,defaultPhase}:{proje
   const persist=(next:SavedDraft)=>{try{localStorage.setItem(storageKey,JSON.stringify(next));setStorageError('');return true;}catch{setStorageError('无法保存本机草稿。请导出 JSON 备份；恢复浏览器存储后再提交。');return false;}};
   useEffect(()=>{try{localStorage.setItem(storageKey,JSON.stringify({raw,pkg,attempt,closedBatchId}));setStorageError('');}catch{setStorageError('本机草稿保存失败，请导出 JSON 备份。');}},[raw,pkg,attempt,closedBatchId,storageKey]);
   useEffect(()=>{const receive=(event:StorageEvent)=>{if(event.key!==storageKey||!event.newValue)return;const saved=loadDraft(storageKey),current=attemptRef.current;if(saved.attempt){if(current)return;attemptRef.current=saved.attempt;setRaw(saved.raw);setPackage(saved.pkg);setAttempt(saved.attempt);setClosedBatchId(saved.closedBatchId);setPreview(null);setResult(null);setError('');return;}if(!current||saved.closedBatchId!==current.batchId)return;attemptRef.current=null;setRaw(saved.raw);setPackage(saved.pkg);setAttempt(null);setClosedBatchId(saved.closedBatchId);setPreview(null);setResult(null);setError('原待核对批次已在其他页面处理。请核对需求列表；继续导入前请重新预览。');};window.addEventListener('storage',receive);return()=>window.removeEventListener('storage',receive);},[storageKey]);
-  const requirements=useQuery({queryKey:[...keys.requirements,projectId],queryFn:({signal})=>api<Requirement[]>('/api/requirements?projectId='+projectId,{signal})});
+  const requirements=useQuery({queryKey:[...keys.requirements,projectId],queryFn:({signal})=>requirementsApi.requirementsQuery<Requirement[]>(projectId, {signal})});
   const change=(next:IntakePackage)=>{if(attempt||requestLock.current)return;setPackage(next);setRaw(JSON.stringify(next,null,2));setPreview(null);setResult(null);setError('');};
   const editRequirement=(key:string,value:Partial<IntakePackage['requirements'][number]>)=>{if(pkg)change({...pkg,requirements:pkg.requirements.map(r=>r.key===key?{...r,...value}:r)});};
   const changeAction=(key:string,action:IntakePackage['requirements'][number]['action'])=>{
     if(!pkg)return;change({...pkg,requirements:pkg.requirements.map(r=>r.key===key?{...r,action,existingId:undefined,expectedVersion:undefined,...(action==='update'?{workItems:[]}: {})}:r)});
   };
-  const people=useQuery({queryKey:[...keys.people,projectId],queryFn:()=>api<Person[]>('/api/people?projectId='+projectId)});
+  const people=useQuery({queryKey:[...keys.people,projectId],queryFn:()=>peopleApi.peopleQuery<Person[]>(projectId)});
   const parseText=(value:string):IntakePackage=>intakePackageSchema.parse({formatVersion: 3,requirements:value.trim().split(/\n\s*\n/).filter(v=>v.trim()).map(block=>({key:randomUUID(),title:block.trim().split('\n')[0].slice(0,200),background:block.trim()}))});
   const withDefaults=(pkg:IntakePackage):IntakePackage=>({...pkg,requirements:pkg.requirements.map(r=>r.action==='create'?{...r,...(r.feature===undefined&&defaultFeature?{feature:defaultFeature}:{}),...(r.phase===undefined&&defaultPhase&&(r.feature===undefined||r.feature===defaultFeature)?{phase:defaultPhase}:{})}:r)});
   const parseInput=(value:string)=>withDefaults(value.trim().startsWith('{')?intakePackageSchema.parse(JSON.parse(value)):parseText(value));
@@ -46,7 +49,7 @@ export function RequirementImport({projectId,defaultFeature,defaultPhase}:{proje
   const readFile=async(file:File|undefined)=>{if(!file)return;if(file.size>10*1024*1024){setError('导入文件不能超过 10MB');return;}try{const value=await file.text();setRaw(value);change(parseInput(value));}catch(e){setError(e instanceof Error?e.message:'文件读取失败');}};
   const inspect=async()=>{
     if(!pkg||requestLock.current||attemptRef.current)return;requestLock.current=true;setBusy(true);setError('');
-    try{const value=await api<ImportPreview>(`/api/projects/${projectId}/requirement-import/preview`,{method:'POST',body:jsonBody({package:pkg})});if(!value||!Array.isArray(value.errors)||!Array.isArray(value.warnings)||!Array.isArray(value.existingMatches)||!value.counts||!value.previewToken)throw new Error('预览响应不完整，草稿已保留');if(mounted.current&&!attemptRef.current){setPreview(value);setPackage(intakePackageSchema.parse(value.package));}}
+    try{const value=await planningApi.projectsRequirementImportPreview<ImportPreview>(projectId, {method:'POST',body:jsonBody({package:pkg})});if(!value||!Array.isArray(value.errors)||!Array.isArray(value.warnings)||!Array.isArray(value.existingMatches)||!value.counts||!value.previewToken)throw new Error('预览响应不完整，草稿已保留');if(mounted.current&&!attemptRef.current){setPreview(value);setPackage(intakePackageSchema.parse(value.package));}}
     catch(e){if(mounted.current)setError(e instanceof Error?e.message:'预览失败，草稿已保留');}finally{requestLock.current=false;if(mounted.current)setBusy(false);}
   };
   const finish=(receipt:Extract<ImportReceipt,{status:'applied'}>)=>{attemptRef.current=null;setResult(receipt);setAttempt(null);setClosedBatchId(receipt.batchId);setPreview(null);persist({raw,pkg,attempt:null,closedBatchId:receipt.batchId});invalidateRequirementViews(client);};
@@ -56,18 +59,18 @@ export function RequirementImport({projectId,defaultFeature,defaultPhase}:{proje
     const next:Attempt={batchId:randomUUID(),package:preview.package,previewToken:preview.previewToken,expectedRevision:preview.expectedRevision};
     if(!persist({raw,pkg,attempt:next,closedBatchId:null}))return;
     requestLock.current=true;attemptRef.current=next;setAttempt(next);setClosedBatchId(null);setBusy(true);setError('');
-    try{const receipt=await api<ImportReceipt>(`/api/projects/${projectId}/requirement-import/apply`,{method:'POST',body:jsonBody(next)});if(receipt.status!=='applied'||!receipt.requirementIds||typeof receipt.requirementIds!=='object')throw new Error('提交结果无法确认');if(mounted.current)finish(receipt);}
+    try{const receipt=await planningApi.projectsRequirementImportApply<ImportReceipt>(projectId, {method:'POST',body:jsonBody(next)});if(receipt.status!=='applied'||!receipt.requirementIds||typeof receipt.requirementIds!=='object')throw new Error('提交结果无法确认');if(mounted.current)finish(receipt);}
     catch(e){if(mounted.current){setError(e instanceof Error?e.message:'提交结果待核对');if(!isWriteOutcomeUnknown(e)&&e instanceof ApiError){attemptRef.current=null;setAttempt(null);setClosedBatchId(next.batchId);setPreview(null);persist({raw,pkg,attempt:null,closedBatchId:next.batchId});}}}
     finally{requestLock.current=false;if(mounted.current)setBusy(false);}
   };
   const checkReceipt=async()=>{
     if(!attempt||requestLock.current)return;requestLock.current=true;setBusy(true);setError('');
-    try{const receipt=await api<ImportReceipt>(`/api/projects/${projectId}/requirement-import/receipts/${attempt.batchId}`);if(mounted.current){if(receipt.status==='applied'&&receipt.requirementIds&&typeof receipt.requirementIds==='object')finish(receipt);else setError('尚未找到回执。可以按原批次重试；系统不会重复创建。');}}
+    try{const receipt=await planningApi.projectsRequirementImportReceiptsById<ImportReceipt>(projectId, attempt.batchId);if(mounted.current){if(receipt.status==='applied'&&receipt.requirementIds&&typeof receipt.requirementIds==='object')finish(receipt);else setError('尚未找到回执。可以按原批次重试；系统不会重复创建。');}}
     catch(e){if(mounted.current)setError(e instanceof Error?e.message:'回执查询失败');}finally{requestLock.current=false;if(mounted.current)setBusy(false);}
   };
   const retryOriginal=async()=>{
     if(!attempt||requestLock.current)return;requestLock.current=true;setBusy(true);setError('');
-    try{const receipt=await api<ImportReceipt>(`/api/projects/${projectId}/requirement-import/apply`,{method:'POST',body:jsonBody(attempt)});if(receipt.status!=='applied'||!receipt.requirementIds||typeof receipt.requirementIds!=='object')throw new Error('提交结果无法确认');if(mounted.current)finish(receipt);}
+    try{const receipt=await planningApi.projectsRequirementImportApply<ImportReceipt>(projectId, {method:'POST',body:jsonBody(attempt)});if(receipt.status!=='applied'||!receipt.requirementIds||typeof receipt.requirementIds!=='object')throw new Error('提交结果无法确认');if(mounted.current)finish(receipt);}
     catch(e){if(mounted.current){setError(e instanceof Error?e.message:'提交结果待核对');if(!isWriteOutcomeUnknown(e)&&e instanceof ApiError){attemptRef.current=null;setAttempt(null);setClosedBatchId(attempt.batchId);setPreview(null);persist({raw,pkg,attempt:null,closedBatchId:attempt.batchId});}}}finally{requestLock.current=false;if(mounted.current)setBusy(false);}
   };
   return <div className="intake-stack">

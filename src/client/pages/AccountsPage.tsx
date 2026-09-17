@@ -1,3 +1,8 @@
+import { usePersistedRecheck } from '../core/use-persisted-recheck';
+
+import * as peopleApi from '../features/people/api';
+import * as accountsApi from '../features/accounts/api';
+import * as archivesApi from '../features/archives/api';
 import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
@@ -5,7 +10,7 @@ import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, KeyRound, MoreHorizontal, Trash2, UserCog, UserPlus, UserRoundCheck, UserRoundX } from 'lucide-react';
-import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
+import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
 import { useSession } from '../app-context';
 import { invalidateArchiveViews, invalidateAccountPermissionViews, invalidateAccountViews, keys } from '../query-keys';
 import { useOptimisticMutation } from '../use-optimistic-mutation';
@@ -64,39 +69,12 @@ const isStoredCreatePerson = (value: unknown): value is CreatePersonRecheck => i
   && typeof value.input.jobTitle === 'string'
   && (value.initialPersonIds === null || Array.isArray(value.initialPersonIds) && value.initialPersonIds.every((id) => typeof id === 'string'));
 
-function readAccessRecheck<T>(accountKey: string, kind: AccessRecheckKind, validate: (value: unknown) => value is T): T | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.sessionStorage.getItem(`project-manage:access-recheck:${accountKey}:${kind}`);
-    if (!raw) return null;
-    const value: unknown = JSON.parse(raw);
-    return validate(value) ? value : null;
-  } catch {
-    return null;
-  }
-}
 
-function persistAccessRecheck(accountKey: string, kind: AccessRecheckKind, value: unknown | null) {
-  if (typeof window === 'undefined') return;
-  try {
-    const key = `project-manage:access-recheck:${accountKey}:${kind}`;
-    if (value) window.sessionStorage.setItem(key, JSON.stringify(value));
-    else window.sessionStorage.removeItem(key);
-  } catch {
-    // 页面状态仍会保留锁；存储不可用时只失去跨导航恢复能力。
-  }
-}
+
+
 
 function useAccessRecheck<T>(accountKey: string, kind: AccessRecheckKind, validate: (value: unknown) => value is T) {
-  const [value, setValueState] = useState<T | null>(() => readAccessRecheck(accountKey, kind, validate));
-  const setValue = (next: T | null) => {
-    persistAccessRecheck(accountKey, kind, next);
-    setValueState(next);
-  };
-  useEffect(() => {
-    setValueState(readAccessRecheck(accountKey, kind, validate));
-  }, [accountKey, kind, validate]);
-  return [value, setValue] as const;
+  return usePersistedRecheck(`project-manage:access-recheck:${accountKey}:${kind}`, validate);
 }
 
 function assignmentKey(account: Account) {
@@ -242,7 +220,7 @@ function NewPersonForm({ recheck, onRecheckChange, onClose }: {
     }
   }
   const mutation = useMutation({
-    mutationFn: (input: CreatePersonInput) => api<Person>('/api/people', { method: 'POST', body: jsonBody(input) }),
+    mutationFn: (input: CreatePersonInput) => peopleApi.people<Person>({ method: 'POST', body: jsonBody(input) }),
     onMutate: (input) => {
       const sourceIds = initialPersonIds.current;
       onRecheckChange({ input, initialPersonIds: sourceIds ? [...sourceIds] : null });
@@ -258,7 +236,7 @@ function NewPersonForm({ recheck, onRecheckChange, onClose }: {
       if (!requiresWriteRecheck(error)) { onRecheckChange(null); return; }
       if (!sourceIds) return;
       try {
-        const latest = await api<Person[]>('/api/people', { readOnly: true });
+        const latest = await peopleApi.people<Person[]>({ readOnly: true });
         client.setQueryData([...keys.people, 'all'], latest);
         const matches = latest.filter((person) => !sourceIds.has(person.id)
           && person.name === canonicalizeLabel(input.name)
@@ -291,7 +269,7 @@ function NewPersonForm({ recheck, onRecheckChange, onClose }: {
     setRecheckPending(true);
     setRecheckError("");
     try {
-      const latest = await api<Person[]>('/api/people', { readOnly: true });
+      const latest = await peopleApi.people<Person[]>({ readOnly: true });
       client.setQueryData([...keys.people, 'all'], latest);
       const matches = sourceIds ? latest.filter((person) => !sourceIds.has(person.id)
         && person.name === canonicalizeLabel(input.name)
@@ -378,8 +356,8 @@ export function PeopleAccessPage() {
   const [savingAccountIds, setSavingAccountIds] = useState<Set<string>>(() => new Set());
   const personSavingRef = useRef(new Set<string>());
   const [savingPersonIds, setSavingPersonIds] = useState<Set<string>>(() => new Set());
-  const peopleQuery = useQuery({ queryKey: [...keys.people, 'all'], queryFn: ({ signal }) => api<Person[]>('/api/people', { signal }) });
-  const accountsQuery = useQuery({ queryKey: keys.accounts, queryFn: ({ signal }) => api<Account[]>('/api/accounts', { signal }) });
+  const peopleQuery = useQuery({ queryKey: [...keys.people, 'all'], queryFn: ({ signal }) => peopleApi.people<Person[]>({ signal }) });
+  const accountsQuery = useQuery({ queryKey: keys.accounts, queryFn: ({ signal }) => accountsApi.accounts<Account[]>({ signal }) });
   const people = peopleQuery.data || emptyPeople;
   const accounts = accountsQuery.data || emptyAccounts;
   const dataReady = peopleQuery.data !== undefined && accountsQuery.data !== undefined;
@@ -448,7 +426,7 @@ export function PeopleAccessPage() {
     refresh();
   };
   const reset = useMutation({
-    mutationFn: (account: Account) => api<{ temporaryPassword: string }>(`/api/accounts/${account.id}/reset-password`, { method: 'POST', body: jsonBody({ expectedUpdatedAt: account.updatedAt }) }),
+    mutationFn: (account: Account) => accountsApi.accountsResetPassword<{ temporaryPassword: string }>(account.id, { method: 'POST', body: jsonBody({ expectedUpdatedAt: account.updatedAt }) }),
     onSuccess: (response) => {
       setResetNeedsRecheck(null);
       refresh();
@@ -458,7 +436,7 @@ export function PeopleAccessPage() {
     onError: async (error, account) => {
       if (isWriteOutcomeUnknown(error)) {
         try {
-          const latestAccounts = await api<Account[]>('/api/accounts', { readOnly: true });
+          const latestAccounts = await accountsApi.accounts<Account[]>({ readOnly: true });
           const latest = latestAccounts.find((entry) => entry.id === account.id);
           client.setQueryData(keys.accounts, latestAccounts);
           refresh();
@@ -508,12 +486,12 @@ export function PeopleAccessPage() {
     }
   };
   const removeAccount = useMutation({
-    mutationFn: (account: Account) => api<{ ok: true }>(`/api/accounts/${account.id}`, { method: 'DELETE', body: jsonBody({ expectedUpdatedAt: account.updatedAt }) }),
+    mutationFn: (account: Account) => accountsApi.accountsById<{ ok: true }>(account.id, { method: 'DELETE', body: jsonBody({ expectedUpdatedAt: account.updatedAt }) }),
     onSuccess: () => { setRemoveAccountNeedsRecheck(null); refresh(); setConfirmation(null); },
     onError: async (error, account) => {
       if (isWriteOutcomeUnknown(error)) {
         try {
-          const latestAccounts = await api<Account[]>('/api/accounts', { readOnly: true });
+          const latestAccounts = await accountsApi.accounts<Account[]>({ readOnly: true });
           client.setQueryData(keys.accounts, latestAccounts);
           refresh();
           if (!latestAccounts.some((entry) => entry.id === account.id)) {
@@ -553,7 +531,7 @@ export function PeopleAccessPage() {
     }
   };
   const openAccount = useMutation({
-    mutationFn: (person: Person) => api<OpenAccountResult>(`/api/people/${person.id}/account`, {
+    mutationFn: (person: Person) => peopleApi.peopleAccount<OpenAccountResult>(person.id, {
       method: 'POST', body: jsonBody({ expectedAccountDeletedAt: person.accountDeletedAt || null }),
     }),
     onSuccess: (response) => {
@@ -564,7 +542,7 @@ export function PeopleAccessPage() {
     onError: async (error, person) => {
       if (isWriteOutcomeUnknown(error)) {
         try {
-          const latestAccounts = await api<Account[]>('/api/accounts', { readOnly: true });
+          const latestAccounts = await accountsApi.accounts<Account[]>({ readOnly: true });
           const opened = latestAccounts.find((account) => account.personId === person.id
             && account.status === 'active'
             && account.mustChangePassword);
@@ -623,14 +601,14 @@ export function PeopleAccessPage() {
     }
   };
   const archivePerson = useMutation({
-    mutationFn: (person: Person) => api(`/api/people/${person.id}`, { method: 'DELETE', body: jsonBody({ expectedUpdatedAt: person.updatedAt }) }),
+    mutationFn: (person: Person) => peopleApi.peopleById(person.id, { method: 'DELETE', body: jsonBody({ expectedUpdatedAt: person.updatedAt }) }),
     onSuccess: () => { setArchivePersonNeedsRecheck(null); setConfirmation(null); invalidateArchiveViews(client); },
     onError: async (error, person) => {
       if (isWriteOutcomeUnknown(error)) {
         try {
           const [latestPeople, latestArchives] = await Promise.all([
-            api<Person[]>('/api/people', { readOnly: true }),
-            api<Archives>('/api/archives', { readOnly: true }),
+            peopleApi.people<Person[]>({ readOnly: true }),
+            archivesApi.archives<Archives>({ readOnly: true }),
           ]);
           client.setQueryData([...keys.people, 'all'], latestPeople);
           client.setQueryData(keys.archives, latestArchives);
@@ -655,8 +633,8 @@ export function PeopleAccessPage() {
     setArchivePersonRechecking(true);
     try {
       const [latestPeople, latestArchives] = await Promise.all([
-        api<Person[]>('/api/people', { readOnly: true }),
-        api<Archives>('/api/archives', { readOnly: true }),
+        peopleApi.people<Person[]>({ readOnly: true }),
+        archivesApi.archives<Archives>({ readOnly: true }),
       ]);
       client.setQueryData([...keys.people, 'all'], latestPeople);
       client.setQueryData(keys.archives, latestArchives);
@@ -696,7 +674,7 @@ export function PeopleAccessPage() {
         };
       }));
     },
-    request: ({ account, input }) => api<Account>(`/api/accounts/${account.id}`, { method: 'PATCH', body: jsonBody(input) }),
+    request: ({ account, input }) => accountsApi.accountsById<Account>(account.id, { method: 'PATCH', body: jsonBody(input) }),
     commit: (queryClient, saved) => {
       queryClient.setQueryData<Account[]>(keys.accounts, (current = []) => current.map((entry) => entry.id === saved.id ? saved : entry));
       invalidateAccountPermissionViews(queryClient);
@@ -722,7 +700,7 @@ export function PeopleAccessPage() {
           && Object.keys(input).every((key) => key === 'status' || key === 'username' || key === 'role');
         if (isWriteOutcomeUnknown(error) && knownFieldsOnly) {
           try {
-            const latestAccounts = await api<Account[]>('/api/accounts', { readOnly: true });
+            const latestAccounts = await accountsApi.accounts<Account[]>({ readOnly: true });
             const latest = latestAccounts.find((entry) => entry.id === account.id);
             client.setQueryData(keys.accounts, latestAccounts);
             refresh();
@@ -754,7 +732,7 @@ export function PeopleAccessPage() {
     apply: (queryClient, { person, input }) => {
       queryClient.setQueryData<Person[]>([...keys.people, 'all'], (current = []) => current.map((entry) => entry.id === person.id ? { ...entry, ...input } : entry));
     },
-    request: ({ person, input }) => api<Person>(`/api/people/${person.id}`, { method: 'PATCH', body: jsonBody(input) }),
+    request: ({ person, input }) => peopleApi.peopleById<Person>(person.id, { method: 'PATCH', body: jsonBody(input) }),
     commit: (queryClient, saved) => {
       queryClient.setQueryData<Person[]>([...keys.people, 'all'], (current = []) => current.map((entry) => entry.id === saved.id ? { ...entry, ...saved } : entry));
       invalidateAccountViews(queryClient);
@@ -778,7 +756,7 @@ export function PeopleAccessPage() {
           && Object.keys(input).every((key) => key === 'name' || key === 'jobTitle');
         if (isWriteOutcomeUnknown(error) && knownFieldsOnly) {
           try {
-            const latestPeople = await api<Person[]>('/api/people', { readOnly: true });
+            const latestPeople = await peopleApi.people<Person[]>({ readOnly: true });
             const latest = latestPeople.find((entry) => entry.id === person.id);
             client.setQueryData([...keys.people, 'all'], latestPeople);
             invalidateAccountViews(client);

@@ -1,6 +1,7 @@
+import { searchAudit } from '../features/audit/api';
 import { Button } from '../components/Button';
-import {useLocation} from 'react-router-dom';
-import {Select} from '../components/Select';
+import { useLocation } from 'react-router-dom';
+import { Select } from '../components/Select';
 import { useListPagination } from '../use-list-pagination';
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
 import { readPagination } from '../pagination';
@@ -47,7 +48,7 @@ export function LogsPage() {
   if (snapshot !== null) params.set('snapshot', snapshot);
   const filterKey = JSON.stringify([admin ? 'platform' : selectedProjectId, deferredKeyword, actorType, action, entityType, from, to]);
   const { data, isLoading, error, isFetching, clearError } = usePagedResourceQuery<AuditPage>(
-    [...keys.auditSearch, filterKey, page, pageSize, snapshot, refreshVersion], `/api/audit/search?${params}`, filterKey, session.authenticated && (admin || Boolean(selectedProjectId)));
+    [...keys.auditSearch, filterKey, page, pageSize, snapshot, refreshVersion], signal => searchAudit(params, { signal }), filterKey, session.authenticated && (admin || Boolean(selectedProjectId)));
   const pagination = useListPagination({ total: data?.total || 0, filterKey, defaultPageSize: 50, options: [20, 50], personal: admin,
     ready: Boolean(data) && !error, loading: isFetching, serverPage: data?.page, serverPageSize: data?.pageSize, failed: Boolean(error) });
   usePageScrollPosition(!isLoading, admin);

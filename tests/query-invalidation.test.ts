@@ -1,5 +1,21 @@
 import { QueryClient, type QueryKey } from '@tanstack/react-query';
 import { expect, it } from 'vitest';
+
+it('执行与链接更新按命令影响刷新，保留无关列表', () => {
+  const client = new QueryClient();
+  try {
+    for (const key of [keys.requirement('a'), keys.requirement('b'), keys.issues, keys.featureRelations, keys.paths, keys.auditSearch, keys.accounts]) client.setQueryData(key, {});
+    invalidateRequirementViews(client, 'a', 'links');
+    expect(client.getQueryState(keys.requirement('a'))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(keys.requirement('b'))?.isInvalidated).toBe(false);
+    expect(client.getQueryState(keys.paths)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(keys.accounts)?.isInvalidated).toBe(false);
+    invalidateRequirementViews(client, 'a', 'execution');
+    expect(client.getQueryState(keys.accounts)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(keys.issues)?.isInvalidated).toBe(false);
+    expect(client.getQueryState(keys.featureRelations)?.isInvalidated).toBe(false);
+  } finally { client.clear(); }
+});
 import { invalidateAccountPermissionViews, invalidateAccountViews, invalidateArchiveViews, invalidateIssueViews, invalidateProjectAccessViews, invalidateProjectMemberViews, invalidateProjectViews, invalidateRequirementViews, keys } from '../src/client/query-keys';
 
 it('问题变更同时刷新问题、行动中心、我的工作、账号在办计数、分析和审计，保留无关缓存', () => {

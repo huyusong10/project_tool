@@ -7,6 +7,9 @@ const walk = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry =
 const files = walk('src'), known = new Set(files), graph = new Map(), violations = [];
 for (const file of files) {
   const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+  if (/^src\/client\/(pages|components)\//.test(file) && /["'`]\/api\//.test(source.text)) {
+    violations.push(`${file} constructs an API path outside its domain module`);
+  }
   const edges = [];
   for (const node of source.statements) {
     if (!(ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) || !node.moduleSpecifier) continue;

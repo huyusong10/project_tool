@@ -1,7 +1,8 @@
+import * as workItemsApi from '../features/work-items/api';
 import { Button } from './Button';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
+import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
 import { invalidateRequirementViews } from '../query-keys';
 import { canDeleteWorkItem } from '../../shared/domain';
 import type { Requirement, WorkItem } from '../types';
@@ -52,7 +53,7 @@ export function WorkItemDeleteDialog({ target, requirement, canManage, onReload,
     }
   };
   const mutation = useMutation({
-    mutationFn: (item: WorkItem) => api(`/api/work-items/${item.id}`, { method: 'DELETE', body: jsonBody({ expectedVersion: item.version }) }),
+    mutationFn: (item: WorkItem) => workItemsApi.workItemsById(item.id, { method: 'DELETE', body: jsonBody({ expectedVersion: item.version }) }),
     onSuccess: () => {
       invalidateRequirementViews(client, baseline.requirementId);
       if (mounted.current) onClose();

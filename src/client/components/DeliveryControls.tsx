@@ -1,38 +1,42 @@
-import {useDeliveryForm} from '../use-delivery-form';
+import { versionedWriteOutcome } from '../core/write-recheck';
+import { readRecheck, persistRecheck } from '../core/write-recheck';
+import * as requirementsApi from '../features/requirements/api';
+import { useDeliveryForm } from '../use-delivery-form';
 import { Button } from './Button';
-import {Check,Play,RotateCcw} from 'lucide-react';
-import {useAppNavigate} from '../use-app-navigation';
-import {StartAssignmentDialog,type StartAssignment} from './StartAssignmentDialog';
-import {useEffect,useRef,useState,type ReactNode} from 'react';
-import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
-import {api,isWriteOutcomeUnknown,jsonBody,requiresWriteRecheck} from '../api';
-import {useSession} from '../app-context';
-import {canManageProject} from '../permissions';
-import {invalidateRequirementViews,keys} from '../query-keys';
-import {assertCleanProjectDraft} from '../use-graph-draft';
-import type {Requirement} from '../types';
-import {Modal} from './Modal';
-import {useToast} from './Toast';
+import { Check, Play, RotateCcw } from 'lucide-react';
+import { useAppNavigate } from '../use-app-navigation';
+import { StartAssignmentDialog, type StartAssignment } from './StartAssignmentDialog';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
+import { useSession } from '../app-context';
+import { canManageProject } from '../permissions';
+import { invalidateRequirementViews, keys } from '../query-keys';
+import { assertCleanProjectDraft } from '../use-graph-draft';
+import type { Requirement } from '../types';
+import { Modal } from './Modal';
+import { useToast } from './Toast';
 
 type DeliveryAction='start'|'progress'|'complete'|'rework';
 type DeliveryRecheck={action:DeliveryAction;version:number;content:string;percent:number;selected:string[];stage:'read'|'review'};
 const deliveryActions:DeliveryAction[]=['start','progress','complete','rework'];
 function deliveryRecheckKey(accountKey:string,requirementId:string){return `project-manage:delivery-recheck:${accountKey}:${requirementId}`;}
 function readDeliveryRecheck(accountKey:string,requirementId:string):DeliveryRecheck|null{
-  try{
-    const raw=sessionStorage.getItem(deliveryRecheckKey(accountKey,requirementId));if(!raw)return null;
-    const value=JSON.parse(raw) as Partial<DeliveryRecheck>;
+  return readRecheck(deliveryRecheckKey(accountKey,requirementId), stored => {
+    
+    const value=stored as Partial<DeliveryRecheck>;
     return deliveryActions.includes(value.action as DeliveryAction)&&typeof value.version==='number'&&typeof value.content==='string'
       &&typeof value.percent==='number'&&Array.isArray(value.selected)&&value.selected.every(id=>typeof id==='string')
       &&(value.stage==='read'||value.stage==='review')?value as DeliveryRecheck:null;
-  }catch{return null;}
+  
+  });
 }
 function persistDeliveryRecheck(accountKey:string,requirementId:string,value:DeliveryRecheck|null){
-  try{const key=deliveryRecheckKey(accountKey,requirementId);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前组件仍保留核对锁。 */}
+  persistRecheck(deliveryRecheckKey(accountKey,requirementId), value);
 }
 
 export function DeliveryControlsForId({id}:{id:string}){
-  const query=useQuery({queryKey:keys.requirement(id),queryFn:()=>api<Requirement>('/api/requirements/'+id)});
+  const query=useQuery({queryKey:keys.requirement(id),queryFn:()=>requirementsApi.requirementsById<Requirement>(id)});
   return query.data?<DeliveryControls requirement={query.data} compact/>:null;
 }
 function executionWarning(action:string,r:Requirement){
@@ -70,9 +74,9 @@ export function DeliveryControls({requirement:r,children,progressContent}:{requi
     if(input.action==='progress'){payload.content=input.content;payload.requirementPercent=input.percent;}
     else if(input.action==='rework'){payload.reason=input.content;payload.progress=Math.min(input.percent,99);if(input.base.executionMode!=='direct')payload.workItemIds=input.selected;}
     else if(input.action==='complete')payload.content=input.content;
-    return api('/api/requirements/'+input.base.id+'/'+input.action,{method:'POST',body:jsonBody(payload)});
+    return requirementsApi.requirementsById2(input.base.id, input.action, {method:'POST',body:jsonBody(payload)});
   },onMutate:input=>{const next:DeliveryRecheck={action:input.action,version:input.base.version,content:input.content,percent:input.percent,selected:input.selected,stage:'read'};unknownWrite.current={version:next.version,versioned:true};setDeliveryRecheck(next);},
-  onSuccess:(_result,input)=>{clearInput();setContent('');setSelected([]);readSequence.current++;setDeliveryRecheck(null);unknownWrite.current=null;invalidateRequirementViews(client,input.base.id);setModal(null);setAssigning(false);toast.success({start:'需求已开始',progress:'完成度已更新',complete:'需求已完成',rework:'需求已重新打开'}[input.action]);},
+  onSuccess:(_result,input)=>{clearInput();setContent('');setSelected([]);readSequence.current++;setDeliveryRecheck(null);unknownWrite.current=null;invalidateRequirementViews(client,input.base.id,'execution');setModal(null);setAssigning(false);toast.success({start:'需求已开始',progress:'完成度已更新',complete:'需求已完成',rework:'需求已重新打开'}[input.action]);},
   onError:(error,input)=>{
     if(!input.assignment)setModal({action:input.action,base:input.base});setContent(input.content);setPercent(input.percent);setSelected(input.selected);
     if(isWriteOutcomeUnknown(error)){unknownWrite.current={version:input.base.version,versioned:true};setDeliveryRecheck({action:input.action,version:input.base.version,content:input.content,percent:input.percent,selected:input.selected,stage:'read'});}else{unknownWrite.current=null;setDeliveryRecheck(null);}
@@ -83,14 +87,14 @@ export function DeliveryControls({requirement:r,children,progressContent}:{requi
   const reload=async(action:DeliveryAction)=>{
     const sequence=++readSequence.current;setReading(true);setReadError('');
     try{
-      const latest=await api<Requirement>('/api/requirements/'+r.id);
+      const latest=await requirementsApi.requirementsById<Requirement>(r.id);
       if(sequence!==readSequence.current)return;
       // 说明记录不增加需求版本，不能凭版本未变认定未写入。
       const unknown=unknownWrite.current;
-      const requiresReview=Boolean(unknown&&(!unknown.versioned||latest.version!==unknown.version));
+      const requiresReview=Boolean(unknown&&(!unknown.versioned||versionedWriteOutcome(unknown.version,latest.version)==='conflict'));
       setReviewRequired(requiresReview);
       if(requiresReview&&deliveryRecheck)setDeliveryRecheck({...deliveryRecheck,stage:'review'});else setDeliveryRecheck(null);
-      setModal({action,base:latest});setNeedsCheck(false);mutation.reset();invalidateRequirementViews(client,r.id);
+      setModal({action,base:latest});setNeedsCheck(false);mutation.reset();invalidateRequirementViews(client,r.id,'execution');
     }catch(error){if(sequence===readSequence.current){setReadError(error instanceof Error?error.message:'读取失败，请重试');setNeedsCheck(true);}}
     finally{if(sequence===readSequence.current)setReading(false);}
   };

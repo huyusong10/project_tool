@@ -49,7 +49,10 @@ export function invalidate(client: QueryClient, queryKey: QueryKey) {
 }
 
 export function invalidateMany(client: QueryClient, queryKeys: QueryKey[]) {
-  queryKeys.forEach((queryKey) => invalidate(client, queryKey));
+  const unique = [...new Map(queryKeys.map(key => [JSON.stringify(key), key])).values()];
+  // A broader prefix already covers its entity key; don't cancel/refetch it twice.
+  unique.filter(key => !unique.some(other => other.length < key.length && other.every((part, index) => part === key[index])))
+    .forEach((queryKey) => invalidate(client, queryKey));
 }
 
 export function invalidateAuditViews(client: QueryClient) {
@@ -86,9 +89,16 @@ const requirementViewKeys: QueryKey[] = [
   [...keys.auditSearch],
 ];
 
-export function invalidateRequirementViews(client: QueryClient, requirementId?: string) {
-  if (requirementId) invalidate(client, [...keys.requirement(requirementId)]);
-  invalidateMany(client, requirementViewKeys);
+export type RequirementChange = 'structure' | 'execution' | 'links';
+
+export function invalidateRequirementViews(client: QueryClient, requirementId?: string, change: RequirementChange = 'structure') {
+  if (change === 'links' && requirementId) {
+    invalidateMany(client, [keys.requirement(requirementId), keys.paths, keys.featureGraph, keys.auditSearch]);
+    return;
+  }
+  // Execution doesn't rename linked issues or change feature-to-feature relations.
+  const unaffected: string[] = change === 'execution' ? [keys.issues[0], keys.issueDetails[0], keys.featureRelations[0]] : [];
+  invalidateMany(client, requirementViewKeys.filter(key => !unaffected.includes(String(key[0]))));
 }
 
 /** 问题域：分派、期限与状态同时影响行动项、个人工作、账号在办计数和分析。 */

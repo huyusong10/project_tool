@@ -1,11 +1,14 @@
+import { readRecheck, persistRecheck } from '../core/write-recheck';
+import * as templatesApi from '../features/templates/api';
+import * as archivesApi from '../features/archives/api';
 import { Button } from '../components/Button';
-import {useAppSearchParams} from '../use-app-navigation';
-import {usePageResources} from '../page-context';
+import { useAppSearchParams } from '../use-app-navigation';
+import { usePageResources } from '../page-context';
 import { usePageScrollPosition } from '../use-page-view';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Archive, Edit3, Plus } from "lucide-react";
-import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
+import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useProjects, useSession } from "../app-context";
 import { invalidateTemplateViews, keys } from "../query-keys";
 import type { Archives, WorkItemTemplate } from "../types";
@@ -21,8 +24,13 @@ import '../components/template-overview.css';
 
 const emptyTemplates: WorkItemTemplate[] = [];
 function templateArchiveRecheckKey(accountKey:string,projectId:string){return `project-manage:template-archive-recheck:${accountKey}:${projectId}`;}
-function readTemplateArchiveRecheck(accountKey:string,projectId:string):WorkItemTemplate|null{try{const raw=sessionStorage.getItem(templateArchiveRecheckKey(accountKey,projectId));if(!raw)return null;const value=JSON.parse(raw) as Partial<WorkItemTemplate>;return value.projectId===projectId&&typeof value.id==='string'&&typeof value.name==='string'&&typeof value.updatedAt==='string'&&Array.isArray(value.items)?value as WorkItemTemplate:null;}catch{return null;}}
-function persistTemplateArchiveRecheck(accountKey:string,projectId:string,value:WorkItemTemplate|null){try{const key=templateArchiveRecheckKey(accountKey,projectId);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前页面仍保留核对锁。 */}}
+function readTemplateArchiveRecheck(accountKey:string,projectId:string):WorkItemTemplate|null{
+  return readRecheck(templateArchiveRecheckKey(accountKey,projectId), stored => {const value=stored as Partial<WorkItemTemplate>;return value.projectId===projectId&&typeof value.id==='string'&&typeof value.name==='string'&&typeof value.updatedAt==='string'&&Array.isArray(value.items)?value as WorkItemTemplate:null;
+  });
+}
+function persistTemplateArchiveRecheck(accountKey:string,projectId:string,value:WorkItemTemplate|null){
+  persistRecheck(templateArchiveRecheckKey(accountKey,projectId), value);
+}
 
 function TemplateCard({ template, isDefault, canManage, archiveDisabled, onPreview, onEdit, onArchive }: {
   template: WorkItemTemplate; isDefault: boolean; canManage: boolean; archiveDisabled: boolean;
@@ -64,7 +72,7 @@ export function TemplatesPage() {
   const previewTemplate = preview && (data.find(item => item.id === preview.id) || preview);
   const archive = useMutation({
     mutationFn: (template: WorkItemTemplate) =>
-      api(`/api/templates/${template.id}`, { method: "DELETE", body: jsonBody({ expectedUpdatedAt: template.updatedAt }) }),
+      templatesApi.templatesById(template.id, { method: "DELETE", body: jsonBody({ expectedUpdatedAt: template.updatedAt }) }),
     onMutate:template=>setArchiveRecheck(template),
     onSuccess: () => {
       setArchiveTarget(null);
@@ -75,8 +83,8 @@ export function TemplatesPage() {
       if (isWriteOutcomeUnknown(caught)) {
         try {
           const [latestTemplates, latestArchives] = await Promise.all([
-            api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(selectedProjectId)}`, { readOnly: true }),
-            api<Archives>(`/api/archives?projectId=${encodeURIComponent(selectedProjectId)}`, { readOnly: true }),
+            templatesApi.templatesQuery<WorkItemTemplate[]>(encodeURIComponent(selectedProjectId), { readOnly: true }),
+            archivesApi.archivesQuery<Archives>(encodeURIComponent(selectedProjectId), { readOnly: true }),
           ]);
           client.setQueryData([...keys.templates, selectedProjectId], latestTemplates);
           client.setQueryData([...keys.projectArchives, selectedProjectId], latestArchives);
@@ -103,7 +111,7 @@ export function TemplatesPage() {
     archiveSubmitting.current = true;
     archive.mutate(template);
   };
-  const recheckTemplateArchive=async()=>{if(!archiveRecheck||archiveRechecking)return;setArchiveRechecking(true);try{const [latestTemplates,latestArchives]=await Promise.all([api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(selectedProjectId)}`,{readOnly:true}),api<Archives>(`/api/archives?projectId=${encodeURIComponent(selectedProjectId)}`,{readOnly:true})]);client.setQueryData([...keys.templates,selectedProjectId],latestTemplates);client.setQueryData([...keys.projectArchives,selectedProjectId],latestArchives);const active=latestTemplates.some(item=>item.id===archiveRecheck.id),archived=latestArchives.templates.some(item=>item.id===archiveRecheck.id);if(active!==archived){setArchiveRecheck(null);setArchiveTarget(null);invalidateTemplateViews(client,true);}}catch{/* 两份权威列表必须同时读取成功。 */}finally{setArchiveRechecking(false);}};
+  const recheckTemplateArchive=async()=>{if(!archiveRecheck||archiveRechecking)return;setArchiveRechecking(true);try{const [latestTemplates,latestArchives]=await Promise.all([templatesApi.templatesQuery<WorkItemTemplate[]>(encodeURIComponent(selectedProjectId), {readOnly:true}),archivesApi.archivesQuery<Archives>(encodeURIComponent(selectedProjectId), {readOnly:true})]);client.setQueryData([...keys.templates,selectedProjectId],latestTemplates);client.setQueryData([...keys.projectArchives,selectedProjectId],latestArchives);const active=latestTemplates.some(item=>item.id===archiveRecheck.id),archived=latestArchives.templates.some(item=>item.id===archiveRecheck.id);if(active!==archived){setArchiveRecheck(null);setArchiveTarget(null);invalidateTemplateViews(client,true);}}catch{/* 两份权威列表必须同时读取成功。 */}finally{setArchiveRechecking(false);}};
   if (editing !== undefined && canManage) return <><TemplateForm key={selectedProjectId+':'+(editing?.id||'new')}
     template={editing ? data.find(t=>t.id===editing.id)||editing : undefined} templateUnavailable={Boolean(editing&&loadedTemplates&&!data.some(t=>t.id===editing.id))}
     projectId={selectedProjectId} onClose={()=>setEditing(undefined)} onSaved={(value,node)=>{setEditingSnapshot(value);const p=new URLSearchParams(params);p.set('edit',value.id);p.delete('draft');if(node)p.set('templateNode',node);setParams(p,{replace:true});}}/></>;

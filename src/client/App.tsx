@@ -1,24 +1,21 @@
+import * as systemApi from './features/system/api';
+import * as accountsApi from './features/accounts/api';
+import * as projectsApi from './features/projects/api';
 import { Button } from './components/Button';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { KeyRound, LogIn } from "lucide-react";
-import { api,ApiError, setUnauthorizedHandler } from "./api";
-import {clearGraphDrafts,clearProjectGraphDrafts} from './use-graph-draft';
+import { ApiError, setUnauthorizedHandler } from "./api";
+import { clearGraphDrafts, clearProjectGraphDrafts } from './use-graph-draft';
 import type { Project, Session, SystemBranding } from "./types";
-import {
-  ProjectsContext,
-  BusinessDateContext,
-  SessionContext,
-  UiActionsContext,
-  useUiActions, useProjects,
-} from "./app-context";
+import { ProjectsContext, BusinessDateContext, SessionContext, UiActionsContext, useUiActions, useProjects } from "./app-context";
 import { appRoutes, preloadPage } from "./routes";
 import { invalidate, invalidateBusinessDateViews, keys } from "./query-keys";
-import {usePageReturnSource} from './page-return';
-import {usePageResolution} from "./use-page-resolution";
-import {PageResourcesContext, ResolvedPageContext, rememberProject} from "./page-context";
-import {createPageChrome, PageChromeContext} from "./page-chrome";
+import { usePageReturnSource } from './page-return';
+import { usePageResolution } from "./use-page-resolution";
+import { PageResourcesContext, ResolvedPageContext, rememberProject } from "./page-context";
+import { createPageChrome, PageChromeContext } from "./page-chrome";
 import { useResourceQuery } from "./use-resource-query";
 import { clearBusinessQueries, commitSession, guestSession, projectAccessKey, sessionAccessKey } from "./session-cache";
 import { useToast } from "./components/Toast";
@@ -31,7 +28,7 @@ import { LoginDialog, PasswordDialog } from "./components/AuthForms";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoadingState, RefreshNotice } from "./components/Feedback";
 import { todayIso } from "../shared/domain";
-import {useProjectRefresh} from './use-project-refresh';
+import { useProjectRefresh } from './use-project-refresh';
 
 const noProjects: Project[] = [];
 
@@ -89,11 +86,11 @@ export function App() {
 
   const brandingQuery = useQuery({
     queryKey: [...keys.branding],
-    queryFn: ({ signal }) => api<SystemBranding>("/api/branding", { signal }),
+    queryFn: ({ signal }) => systemApi.branding<SystemBranding>({ signal }),
   });
   const branding = brandingQuery.data || defaultBranding;
   useDocumentBranding(brandingQuery.data);
-  const sessionQuery = useResourceQuery<Session>(keys.session, "/api/session", true, (next) => {
+  const sessionQuery = useResourceQuery<Session>(keys.session, signal => accountsApi.session<Session>({ signal }), true, (next) => {
     const previous = client.getQueryData<Session | null>(keys.session);
     if(previous&&(previous.accountId!==next.accountId||previous.personId!==next.personId||previous.globalRole!==next.globalRole||previous.role!==next.role||!next.authenticated||next.mustChangePassword))clearGraphDrafts(previous.accountId);
     else if(previous)for(const id of previous.managedProjectIds)if(!next.managedProjectIds.includes(id))clearProjectGraphDrafts(previous.accountId||'guest',id);
@@ -104,7 +101,7 @@ export function App() {
   const projectsEnabled = sessionReady && !session.mustChangePassword;
   useEffect(() => { if (projectsEnabled) preloadPage(location.pathname); }, [projectsEnabled, location.pathname]);
   const projectKey = [...keys.projects, session.accountId];
-  const projectsQuery = useResourceQuery<Project[]>(projectKey, "/api/projects", projectsEnabled, (next) => {
+  const projectsQuery = useResourceQuery<Project[]>(projectKey, signal => projectsApi.projects<Project[]>({ signal }), projectsEnabled, (next) => {
     const previous = client.getQueryData<Project[] | null>(projectKey);
     for(const project of previous||[]){const updated=next.find(p=>p.id===project.id);if(!updated||project.canManage&&!updated.canManage||project.projectRole!==updated.projectRole)clearProjectGraphDrafts(session.accountId||'guest',project.id);}
     if (previous === null || previous && projectAccessKey(previous) !== projectAccessKey(next)) clearBusinessQueries(client, true);
@@ -188,7 +185,7 @@ export function App() {
               <Sidebar branding={brandingQuery.data || (brandingQuery.isError ? defaultBranding : undefined)} ready={sessionReady && (page.scope !== 'project' || page.phase !== 'loading' || Boolean(activeProject))} collapsed={visibleSidebarCollapsed} onToggle={() => narrowScreen ? setNarrowSidebarExpanded(value => !value) : setSidebarCollapsed(value => !value)} onNavigate={() => { chrome.prepareNavigation(); setNarrowSidebarExpanded(false); }} />
               <main>
                 <Topbar pageIcon={pageIcon} sessionReady={sessionReady} />
-                {(!sessionReady || !session.mustChangePassword && Boolean(activeProject)) && <PageToolbar />}
+                {(!sessionReady || !session.mustChangePassword && (page.scope !== 'project' || Boolean(activeProject))) && <PageToolbar />}
                 {rootRefreshFailed && page.phase === 'ready' && <div className="app-refresh-notice"><RefreshNotice
                   pending={sessionQuery.isFetching || projectsQuery.isFetching}
                   onRetry={() => { void sessionQuery.refetch(); if (projectsEnabled) void projectsQuery.refetch(); }}

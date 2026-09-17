@@ -1,30 +1,33 @@
-import {TreeExpansionActions} from './TreeExpansionActions';
+import * as projectsApi from '../features/projects/api';
+import * as reportingApi from '../features/reporting/api';
+import * as planningApi from '../features/planning/api';
+import { TreeExpansionActions } from './TreeExpansionActions';
 import { Button } from './Button';
-import {PageHeader} from './PageHeader';
-import type {PageChrome} from '../page-chrome';
-import {WorkspaceObjectMark} from './WorkspaceObjectMark';
-import {setNativeDragPreview} from './DragPreview';
-import {TopbarMenu} from './TopbarMenu';
-import {useEffect,useMemo,useRef,useState} from 'react';
-import {useSearchParams} from 'react-router-dom';
-import {useQueryClient} from '@tanstack/react-query';
-import {ChevronDown,ChevronRight,GripVertical,ArrowUpRight,ArrowUp,ArrowDown,ListChecks,X} from 'lucide-react';
-import {api,ApiError,isWriteOutcomeUnknown,jsonBody} from '../api';
-import {useProjectWorkspace} from '../project-workspace-context';
-import {useSession} from '../app-context';
-import {canManageProject} from '../permissions';
-import {invalidateRequirementViews} from '../query-keys';
-import {outlineRows,scopeOutline,flattenOutline,reorderSelection,type OutlineRow} from '../outline-model';
-import {scopeFromObject} from '../workspace-location';
-import {assertCleanProjectDraft} from '../use-graph-draft';
-import type {Dashboard} from '../types';
-import type {OutlineKind,OutlineUndo} from '../../shared/outline';
-import type {PathAnalysis} from '../../shared/paths';
-import {ExecutionStageBadge,WorkProgressBadge} from './ExecutionStageBadge';
-import {PhaseDialog,PhaseStatusBadge,type PhaseEdit} from './PhasePlanning';
-import {FeatureEditor,type FeatureEdit} from './FeaturePlanning';
-import {Modal} from './Modal';
-import {OrganizationFields} from './RequirementIntake';
+import { PageHeader } from './PageHeader';
+import type { PageChrome } from '../page-chrome';
+import { WorkspaceObjectMark } from './WorkspaceObjectMark';
+import { setNativeDragPreview } from './DragPreview';
+import { TopbarMenu } from './TopbarMenu';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { ChevronDown, ChevronRight, GripVertical, ArrowUpRight, ArrowUp, ArrowDown, ListChecks, X } from 'lucide-react';
+import { ApiError, isWriteOutcomeUnknown, jsonBody } from '../api';
+import { useProjectWorkspace } from '../project-workspace-context';
+import { useSession } from '../app-context';
+import { canManageProject } from '../permissions';
+import { invalidateRequirementViews } from '../query-keys';
+import { outlineRows, scopeOutline, flattenOutline, reorderSelection, type OutlineRow } from '../outline-model';
+import { scopeFromObject } from '../workspace-location';
+import { assertCleanProjectDraft } from '../use-graph-draft';
+import type { Dashboard } from '../types';
+import type { OutlineKind, OutlineUndo } from '../../shared/outline';
+import type { PathAnalysis } from '../../shared/paths';
+import { ExecutionStageBadge, WorkProgressBadge } from './ExecutionStageBadge';
+import { PhaseDialog, PhaseStatusBadge, type PhaseEdit } from './PhasePlanning';
+import { FeatureEditor, type FeatureEdit } from './FeaturePlanning';
+import { Modal } from './Modal';
+import { OrganizationFields } from './RequirementIntake';
 
 type Write={path:string;input:Record<string,unknown>;label:string;ids:string[]};
 type Pending=Write&{unknown:boolean};
@@ -59,7 +62,7 @@ export function WorkspaceOutline({report,header}:{report:Dashboard;header?:Omit<
     try{
       for(const id of write.ids){const row=all.find(r=>r.objectId===id&&!r.virtual);if(row?.kind==='requirement'||row?.kind==='work')await assertCleanProjectDraft(account,projectId,{requirementId:row.requirementId||id,workItemId:row.kind==='work'?id:undefined,action:'edit'});else await assertCleanProjectDraft(account,projectId);}
       setPending({...write,unknown:true});
-      const result=await api<{undo?:OutlineUndo}>('/api/projects/'+projectId+write.path,{method:'POST',body:jsonBody(write.input)});
+      const result=await projectsApi.projectsResourceById<{undo?:OutlineUndo}>(projectId, write.path, {method:'POST',body:jsonBody(write.input)});
       setPending(null);setRetry(null);setUndo(result.undo||null);setMessage(write.label+'已保存');setSelected([]);setMoving(null);setUndoReason(false);invalidateRequirementViews(client);
     }catch(e){setError((e as Error).message);if(isWriteOutcomeUnknown(e)||e instanceof ApiError&&(e.status===409||e.status>=500))setPending({...write,unknown:isWriteOutcomeUnknown(e)||e instanceof ApiError&&e.status>=500});else setPending(null);}
     finally{busyRef.current=false;setBusy(false);}
@@ -74,7 +77,7 @@ export function WorkspaceOutline({report,header}:{report:Dashboard;header?:Omit<
   const target=targets.find(t=>t.id===destination),targetFeature=destination==='other'?null:target?.kind==='feature'?target.objectId:target?.featureId,targetPhase=target?.kind==='phase'&&!target.virtual?target.objectId:null;
   const needsReason=(moving||[]).some(r=>features.some(f=>f.phases?.some(p=>(p.id===r.phaseId||p.id===targetPhase)&&!!p.startedAt)))||!!target?.phase?.startedAt;
   const submitMove=()=>{if(!moving||!target&&destination!=='other')return;void save({path:'/requirement-placement',input:{requirements:moving.map(r=>({id:r.objectId,expectedVersion:r.version})),featureId:targetFeature,phaseId:targetPhase,reason:reason||undefined},label:'移动需求',ids:moving.map(r=>r.objectId)});};
-  const check=async()=>{setBusy(true);setError('');try{const [latestReport,latestGraph]=await Promise.all([api<Dashboard>('/api/dashboard?projectId='+projectId),api<{analysis:PathAnalysis}>('/api/projects/'+projectId+'/path-graph?view=features')]);setReview(flattenOutline(outlineRows(latestReport,latestGraph.analysis)));invalidateRequirementViews(client);}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
+  const check=async()=>{setBusy(true);setError('');try{const [latestReport,latestGraph]=await Promise.all([reportingApi.dashboardQuery<Dashboard>(projectId),planningApi.projectsPathGraphQuery<{analysis:PathAnalysis}>(projectId)]);setReview(flattenOutline(outlineRows(latestReport,latestGraph.analysis)));invalidateRequirementViews(client);}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
   const continueReview=(resume:boolean)=>{
     if(!pending||!review)return;
     if(resume&&pending.path!=='/outline-restore'){

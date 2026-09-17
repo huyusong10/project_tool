@@ -1,19 +1,22 @@
-import {ReferenceLinksEditor} from './ReferenceLinks';
-import {readReferenceLinks,type ReferenceLink} from '../../shared/reference-links';
+import { readRecheck } from '../core/write-recheck';
+import * as planningApi from '../features/planning/api';
+import * as requirementsApi from '../features/requirements/api';
+import { ReferenceLinksEditor } from './ReferenceLinks';
+import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
 import { Button, ButtonLink } from './Button';
-import {Select} from './Select';
-import {useDeliveryForm} from '../use-delivery-form';
+import { Select } from './Select';
+import { useDeliveryForm } from '../use-delivery-form';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, ApiError, InvalidResponseError, isWriteOutcomeUnknown, jsonBody } from '../api';
-import {PhaseChoice,useIntake} from './RequirementIntake';
-import {assertCleanProjectDraft} from '../use-graph-draft';
+import { ApiError, InvalidResponseError, isWriteOutcomeUnknown, jsonBody } from '../api';
+import { PhaseChoice, useIntake } from './RequirementIntake';
+import { assertCleanProjectDraft } from '../use-graph-draft';
 import { useSession } from '../app-context';
 import { useResourceQuery } from '../use-resource-query';
 import { invalidateRequirementViews, keys } from '../query-keys';
 import type { FeatureOverview } from '../../shared/feature-overview';
-import type {Feature} from '../../shared/intake';
+import type { Feature } from '../../shared/intake';
 import { phaseInput, phaseStatusLabels, type FeaturePhase } from '../../shared/feature-phases';
 import type { Requirement } from '../types';
 import { Modal } from './Modal';
@@ -25,7 +28,8 @@ type PhaseForm = { referenceLinks?:ReferenceLink[]; sortOrder?:number; name: str
 type PendingPhase = { edit: PhaseEdit; value: PhaseForm; payload: Record<string, unknown>; selected?:Requirement[] };
 const pendingKey = (account: string, project: string) => 'pm-phase-write:' + account + ':' + project;
 export function readPendingPhase(account: string, project: string): PendingPhase | null {
-  try { const value = JSON.parse(sessionStorage.getItem(pendingKey(account, project)) || 'null') as PendingPhase | null; return value?.edit.feature.projectId === project && value.payload && value.value ? value : null; } catch { return null; }
+  return readRecheck(pendingKey(account, project), stored => { const value = stored as PendingPhase | null; return value?.edit.feature.projectId === project && value.payload && value.value ? value : null; 
+  });
 }
 export function PhaseStatusBadge({ phase }: { phase: Pick<FeaturePhase,'status'> }) {
   const tone = phase.status === 'completed' ? 'completed' : phase.status === 'in_progress' ? 'development' : 'not_started';
@@ -53,7 +57,7 @@ export function PhaseDialog({ edit, onClose, onCreated }: { edit: PhaseEdit; onC
   const title = { edit: baseline ? '编辑 Phase' : '新建 Phase', delete: '删除空 Phase' }[edit.mode];
   const read = async () => {
     setBusy(true); try {
-      const phases = await api<FeaturePhase[]>('/api/projects/' + projectId + '/feature-phases?featureId=' + edit.feature.id);
+      const phases = await planningApi.projectsFeaturePhasesQuery<FeaturePhase[]>(projectId, edit.feature.id);
       if (!Array.isArray(phases)) throw new InvalidResponseError(200, false, 'Phase 列表不完整');
       const latest = phases.find(p => baseline ? p.id === baseline.id : p.name === value.name.trim());
       const applied = edit.mode === 'delete' ? !latest : latest && (latest.name === value.name.trim() && latest.scope === value.scope.trim() && latest.targetDate === value.targetDate && latest.note === value.note.trim() && (value.referenceLinks===undefined||JSON.stringify(latest.referenceLinks)===JSON.stringify(readReferenceLinks(value.referenceLinks))) && latest.sortOrder === (value.sortOrder ?? 0));
@@ -69,8 +73,9 @@ export function PhaseDialog({ edit, onClose, onCreated }: { edit: PhaseEdit; onC
       const payload = edit.mode === 'edit' ? phaseInput.parse({ sortOrder:value.sortOrder,name: value.name, scope: value.scope, targetDate: value.targetDate, note: value.note,referenceLinks:value.referenceLinks, reason: value.reason, ...(baseline ? { id: baseline.id, expectedVersion: baseline.version } : {}) }) : { expectedVersion: baseline!.version, reason: value.reason };
       await assertCleanProjectDraft(account,projectId,baseline?{requirementId:'',phaseId:baseline.id,action:'phase'}:undefined);
       persist({ edit: { ...edit, phase: baseline }, value, payload });
-      const url = '/api/projects/' + projectId + (edit.mode === 'edit' ? '/features/' + edit.feature.id + '/phases' : '/feature-phases/' + baseline!.id + (edit.mode === 'delete' ? '' : '/' + edit.mode));
-      const saved = await api<FeaturePhase | { id: string; deleted: boolean }>(url, { method: edit.mode === 'delete' ? 'DELETE' : 'POST', body: jsonBody(payload) });
+      const saved = edit.mode === 'delete'
+        ? await planningApi.deletePhase(projectId, baseline!.id, payload)
+        : await planningApi.savePhase(projectId, edit.feature.id, payload);
       if (!saved?.id || (edit.mode === 'delete' ? !('deleted' in saved && saved.deleted) : !('version' in saved && saved.version > (baseline?.version || 0)))) throw new InvalidResponseError(200, true, 'Phase 保存结果不完整');
       persist(null); clearLocal(); changed(); if (alive.current) {if(!edit.phase&&edit.mode==='edit'&&'version' in saved)onCreated?.(saved);onClose();}
     } catch (e) { if (!alive.current) return; const uncertain = isWriteOutcomeUnknown(e) || e instanceof ApiError && e.status >= 500; setError((e as Error).message); setUnknown(uncertain); setNeedsRead(uncertain || e instanceof ApiError && e.status === 409); if (!uncertain) persist(null); } finally { lock.current = false; if (alive.current) setBusy(false); }
@@ -85,7 +90,7 @@ function PhasePlacementDialog({ edit, onClose }: { edit: PhaseEdit; onClose: () 
 
   const alive=useRef(true);useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
   const clear=()=>{try{sessionStorage.removeItem(pendingKey(account,projectId));}catch{/* Open dialog retains state. */}};
-  const query = useResourceQuery<Requirement[]>([...keys.requirements, projectId, 'phase-placement', session.accountId], '/api/requirements?projectId=' + projectId, true);
+  const query = useResourceQuery<Requirement[]>([...keys.requirements, projectId, 'phase-placement', session.accountId], signal => requirementsApi.requirementsQuery<Requirement[]>(projectId, { signal }), true);
   const [selected, setSelected] = useState<Requirement[]>(local.selected), [phaseId, setPhaseId] = useState(local.phaseId), [reason, setReason] = useState(local.reason), [error, setError] = useState(''), [busy, setBusy] = useState(false), [blocked, setBlocked] = useState(!!pending);
   const lock = useRef(false), rows = (query.data || []).filter(r => (edit.requirementIds?.length?edit.requirementIds.includes(r.id):true) && !r.deletedAt && !catalog.data?.features.find(f=>f.id===r.featureId)?.archivedAt);
   const initialized=useRef(local.initialized);useEffect(()=>{if(!initialized.current&&query.data&&!pending){initialized.current=true;setSelected(query.data.filter(r=>edit.requirementIds?.includes(r.id)));}},[query.data,edit.requirementIds,pending]);
@@ -95,7 +100,7 @@ function PhasePlacementDialog({ edit, onClose }: { edit: PhaseEdit; onClose: () 
     try { for(const r of selected)await assertCleanProjectDraft(account,projectId,{requirementId:r.id,action:'phase'});
       const payload={ requirements: selected.map(r => ({ id: r.id, expectedVersion: r.version })), featureId: targetFeatureId, phaseId: phaseId || null, reason };
       sessionStorage.setItem(pendingKey(account,projectId),JSON.stringify({edit,selected,payload,value:{name:'',scope:'',targetDate:null,note:'',reason}}));
-      const result=await api<{features:unknown[]}>('/api/projects/' + projectId + '/requirement-placement', { method: 'POST', body: jsonBody(payload) });
+      const result=await planningApi.projectsRequirementPlacement<{features:unknown[]}>(projectId, { method: 'POST', body: jsonBody(payload) });
       if(!result||!Array.isArray(result.features))throw new InvalidResponseError(200,true,'需求安排返回不完整');
       clear();clearLocal();if(alive.current){invalidateRequirementViews(client);onClose();} }
     catch (e) { if(alive.current){setError((e as Error).message); const uncertain=isWriteOutcomeUnknown(e)||e instanceof ApiError&&e.status>=500;setBlocked(uncertain||e instanceof ApiError&&e.status===409);if(!uncertain)clear();} } finally { lock.current = false;if(alive.current)setBusy(false); }

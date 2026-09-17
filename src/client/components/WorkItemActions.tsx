@@ -1,19 +1,20 @@
-import {useDeliveryForm} from '../use-delivery-form';
-import {useProjects} from '../app-context';
+import * as requirementsApi from '../features/requirements/api';
+import { useDeliveryForm } from '../use-delivery-form';
+import { useProjects } from '../app-context';
 import { Button } from './Button';
-import {Select} from './Select';
-import {StartAssignmentDialog,type StartAssignment} from './StartAssignmentDialog';
+import { Select } from './Select';
+import { StartAssignmentDialog, type StartAssignment } from './StartAssignmentDialog';
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Check, CircleStop, MoreHorizontal, Play, RotateCcw } from "lucide-react";
-import { api, isWriteOutcomeUnknown, requiresWriteRecheck } from "../api";
+import { isWriteOutcomeUnknown, requiresWriteRecheck } from "../api";
 import { useBusinessDate } from "../app-context";
 import { invalidateRequirementViews } from "../query-keys";
 import type { ProgressUpdate, WorkItem, Requirement } from "../types";
 
 import { AnchoredPopover } from "./InlineEdit";
 import { useToast } from "./Toast";
-import {Modal} from './Modal';
+import { Modal } from './Modal';
 
 type TextPanel = "complete";
 type Panel = TextPanel | "dates" | "menu" | "backfill";
@@ -115,7 +116,7 @@ export function WorkItemActions({
       const latest = await onReload();
       if (!mounted.current) return null;
       if (startRequirement) {
-        const parent = await api<Requirement>('/api/requirements/' + item.requirementId);
+        const parent = await requirementsApi.requirementsById<Requirement>(item.requirementId);
         if (!mounted.current) return null;
         setStartRequirement(parent);
       }
@@ -157,7 +158,7 @@ export function WorkItemActions({
           setUnknownNeedsRead(true);
           onWriteNeedsRecheckChange?.(true);
         }
-        await readLatest();invalidateRequirementViews(client,item.requirementId);
+        await readLatest();invalidateRequirementViews(client,item.requirementId,'execution');
       }
     } finally { submitting.current = false; if (mounted.current) setPending(false); }
   };
@@ -166,7 +167,7 @@ export function WorkItemActions({
     if(startReading.current||submitting.current||actionReviewBlocked)return;
     startReading.current=true;setPreparingStart(true);setError('');
     try{
-      const requirement=await api<Requirement>('/api/requirements/'+item.requirementId);
+      const requirement=await requirementsApi.requirementsById<Requirement>(item.requirementId);
       if(!mounted.current)return;
       if(!item.ownerId||!requirement.ownerId||requirement.ownerValid===false)setStartRequirement(requirement);
       else await run(()=>onAction('start',undefined,item.version),{successMessage:'工作项已开始',request:{action:'start',expectedVersion:item.version,body:{}}});

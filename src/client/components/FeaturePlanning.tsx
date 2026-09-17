@@ -1,13 +1,14 @@
-import {ReferenceLinks,ReferenceLinksEditor} from './ReferenceLinks';
-import {readReferenceLinks,type ReferenceLink} from '../../shared/reference-links';
+import * as planningApi from '../features/planning/api';
+import { ReferenceLinks, ReferenceLinksEditor } from './ReferenceLinks';
+import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
 import { Button, ButtonLink } from './Button';
-import {assertCleanProjectDraft} from '../use-graph-draft';
-import {Select} from './Select';
-import {useDeliveryForm} from '../use-delivery-form';
+import { assertCleanProjectDraft } from '../use-graph-draft';
+import { Select } from './Select';
+import { useDeliveryForm } from '../use-delivery-form';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link,useSearchParams } from 'react-router-dom';
-import { api, ApiError, InvalidResponseError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ApiError, InvalidResponseError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from '../api';
 import { useSession } from '../app-context';
 import { canManageProject } from '../permissions';
 import { useResourceQuery } from '../use-resource-query';
@@ -17,12 +18,12 @@ import type { FeatureOverview } from '../../shared/feature-overview';
 import type { FeatureRequirements } from '../../shared/features';
 import { Modal } from './Modal';
 import { Pagination } from './Pagination';
-import {PhaseRows,type PhaseEdit} from './PhasePlanning';
+import { PhaseRows, type PhaseEdit } from './PhasePlanning';
 import { ExecutionStageBadge } from './ExecutionStageBadge';
 import { formatDateTime } from '../format';
 import './feature-planning.css';
-import {ViewTabs} from './ViewTabs';
-import {TopbarMenu} from './TopbarMenu';
+import { ViewTabs } from './ViewTabs';
+import { TopbarMenu } from './TopbarMenu';
 
 export type FeatureEdit = { mode:'basic'|'assessment'|'archive'|'restore'|'delete'; feature?:Feature };
 function normalized(value:PendingFeature['value']){return {...value,name:value.name.trim(),description:value.description.trim(),referenceLinks:readReferenceLinks(value.referenceLinks),overview:featureOverviewInput.parse(value.overview)};}
@@ -42,7 +43,7 @@ export function FeatureEditor({projectId,edit:requestedEdit,onClose,embedded=fal
   useEffect(()=>{onBusy?.(busy);return()=>onBusy?.(false);},[busy,onBusy]);
   const persist=(pending:PendingFeature|null)=>{try{if(pending)sessionStorage.setItem(pendingKey(account,projectId),JSON.stringify(pending));else sessionStorage.removeItem(pendingKey(account,projectId));}catch{/* The current dialog keeps its pending state. */}};
   const read=async()=>{
-    setBusy(true);try{const features=await api<Feature[]>('/api/projects/'+projectId+'/features?state=all');if(!Array.isArray(features)||!features.every(g=>g&&g.projectId===projectId&&typeof g.id==='string'&&typeof g.name==='string'&&typeof g.description==='string'&&Number.isInteger(g.version)&&featureOverviewInput.safeParse(g.overview).success))throw new InvalidResponseError(200,false,'特性列表不完整');if(active.current){setLatest(features.find(g=>baseline?g.id===baseline.id:g.name===value.name.trim())||null);}}catch(e){if(active.current)setError((e as Error).message);}finally{if(active.current)setBusy(false);}
+    setBusy(true);try{const features=await planningApi.projectsFeaturesQuery<Feature[]>(projectId);if(!Array.isArray(features)||!features.every(g=>g&&g.projectId===projectId&&typeof g.id==='string'&&typeof g.name==='string'&&typeof g.description==='string'&&Number.isInteger(g.version)&&featureOverviewInput.safeParse(g.overview).success))throw new InvalidResponseError(200,false,'特性列表不完整');if(active.current){setLatest(features.find(g=>baseline?g.id===baseline.id:g.name===value.name.trim())||null);}}catch(e){if(active.current)setError((e as Error).message);}finally{if(active.current)setBusy(false);}
   };
   const resolved=latest!==undefined&&(edit.mode==='delete'?!latest:!!latest&&(edit.mode==='archive'?!!latest.archivedAt:edit.mode==='restore'?!latest.archivedAt:edit.mode==='basic'?latest.name===value.name.trim()&&latest.description===value.description.trim()&&JSON.stringify(latest.referenceLinks||[])===JSON.stringify(readReferenceLinks(value.referenceLinks)):JSON.stringify(latest.overview)===JSON.stringify(normalized(value).overview)&&latest.version>(baseline?.version||0)));
   const save=async()=>{
@@ -52,7 +53,7 @@ export function FeatureEditor({projectId,edit:requestedEdit,onClose,embedded=fal
       await assertCleanProjectDraft(account,projectId);
       const suffix=edit.mode==='archive'||edit.mode==='restore'?'/'+baseline!.id+'/'+edit.mode:edit.mode==='delete'?'/'+baseline!.id:'';
       const payload=suffix?{expectedVersion:baseline!.version}:{...(baseline?{id:baseline.id,expectedVersion:baseline.version}:{}),name:edit.mode==='assessment'?baseline!.name:inputValue.name,sortOrder:baseline?.sortOrder??2147483647,...(edit.mode==='assessment'?{overview:inputValue.overview}:{description:inputValue.description,referenceLinks:inputValue.referenceLinks||[]})};
-      const response=await api<IntakeCatalog|Feature>('/api/projects/'+projectId+'/features'+suffix,{method:edit.mode==='delete'?'DELETE':'POST',body:jsonBody(payload)});
+      const response=await planningApi.projectsFeaturesResourceById<IntakeCatalog|Feature>(projectId, suffix, {method:edit.mode==='delete'?'DELETE':'POST',body:jsonBody(payload)});
       const saved=response&&'features' in response&&Array.isArray(response.features)?response.features.find(g=>baseline?g.id===baseline.id:g.name===inputValue.name):response&&'id' in response?response:undefined;
       const valid=edit.mode==='delete'?response&&'features' in response&&Array.isArray(response.features)&&!saved:saved&&Number.isInteger(saved.version)&&saved.version>(baseline?.version||0)&&(edit.mode==='archive'?!!saved.archivedAt:edit.mode==='restore'?!saved.archivedAt:edit.mode==='assessment'?featureOverviewInput.safeParse(saved.overview).success&&JSON.stringify(saved.overview)===JSON.stringify(inputValue.overview):saved.name===inputValue.name&&saved.description===inputValue.description&&JSON.stringify(saved.referenceLinks||[])===JSON.stringify(inputValue.referenceLinks||[]));
       if(!valid)throw new InvalidResponseError(200,true,'保存结果不完整');
@@ -111,6 +112,6 @@ export function FeatureAssessment({feature}:{feature:Feature}) {return <span cla
 export function FeatureRequirementList({projectId,featureId}:{projectId:string;featureId:string}) {
   const [params]=useSearchParams();
   const {session}=useSession(),[state,setState]=useState('current'),[page,setPage]=useState(1),[pageSize,setPageSize]=useState(20);
-  const query=useResourceQuery<FeatureRequirements>([...keys.featureRequirements,projectId,session.accountId,featureId,state,page,pageSize],'/api/projects/'+projectId+'/features/'+encodeURIComponent(featureId)+'/requirements?'+new URLSearchParams({state,page:String(page),pageSize:String(pageSize)}),!!projectId);
+  const query=useResourceQuery<FeatureRequirements>([...keys.featureRequirements,projectId,session.accountId,featureId,state,page,pageSize],signal => planningApi.projectsFeaturesRequirementsQuery<FeatureRequirements>(projectId, encodeURIComponent(featureId), new URLSearchParams({state,page:String(page),pageSize:String(pageSize)}), { signal }),!!projectId);
   return <section className="feature-requirements"><div className="feature-detail-actions"><Button variant="secondary" className="ghost-button" aria-pressed={state==='current'} onClick={()=>{setState('current');setPage(1);}}>关联需求</Button><Button variant="secondary" className="ghost-button" aria-pressed={state==='archived'} onClick={()=>{setState('archived');setPage(1);}}>已归档需求</Button></div>{query.error&&<p role="alert">{query.error.message}</p>}{query.unavailable?<p>正在读取需求…</p>:<><ul>{query.data?.items.map(r=><li key={r.id}>{state==='current'?<Link to={'/?'+new URLSearchParams({view:'feature',featureId,mode:params.get('mode')||'table',pathNode:r.id,pathInspector:'open'})}>{r.title}</Link>:<span>{r.title}</span>}<ExecutionStageBadge requirement={r}/>{r.deletedAt&&<small>归档于 {formatDateTime(r.deletedAt)}</small>}</li>)}</ul>{!query.data?.total&&<p>{state==='archived'?'暂无归档需求':'尚未关联需求'}</p>}<Pagination page={page} pageSize={pageSize} total={query.data?.total||0} onPageChange={setPage} onPageSizeChange={size=>{setPageSize(size);setPage(1);}} loading={query.isFetching}/></>}</section>;
 }

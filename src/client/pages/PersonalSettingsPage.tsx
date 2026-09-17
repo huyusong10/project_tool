@@ -1,3 +1,4 @@
+import * as tokensApi from '../features/tokens/api';
 import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
@@ -5,7 +6,7 @@ import { usePageScrollPosition } from '../use-page-view';
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleUserRound, Copy, KeyRound, PlugZap, Plus, ShieldCheck } from "lucide-react";
-import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
+import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useProjects, useSession, useUiActions } from "../app-context";
 import { invalidateTokenViews, keys } from "../query-keys";
 import type { ApiToken } from "../types";
@@ -52,7 +53,7 @@ export function PersonalSettingsPage() {
   const [copied, setCopied] = useState<"endpoint" | "token" | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ApiToken | null>(null);
   const [revokeNeedsRecheck, setRevokeNeedsRecheck] = useState(initialTokenRecheck === "revoke");
-  const tokensQuery = useQuery({ queryKey: [...keys.myTokens, tokenScope], queryFn: ({ signal }) => api<ApiToken[]>("/api/tokens", { signal }) });
+  const tokensQuery = useQuery({ queryKey: [...keys.myTokens, tokenScope], queryFn: ({ signal }) => tokensApi.tokens<ApiToken[]>({ signal }) });
   const tokens = tokensQuery.data || [];
   const setTokenRecheck = (kind: TokenRecheckKind | null) => {
     persistTokenRecheck(tokenScope, kind);
@@ -60,7 +61,7 @@ export function PersonalSettingsPage() {
     setRevokeNeedsRecheck(kind === "revoke");
   };
   const createToken = useMutation({
-    mutationFn: (input: object) => api<ApiToken & { token: string }>("/api/tokens", { method: "POST", body: jsonBody(input) }),
+    mutationFn: (input: object) => tokensApi.tokens<ApiToken & { token: string }>({ method: "POST", body: jsonBody(input) }),
     onMutate: () => persistTokenRecheck(tokenScope, "create"),
     onSuccess: (result) => { setTokenRecheck(null); setNewToken(result.token); setCopied(null); invalidateTokenViews(client); },
     onError: (error) => {
@@ -71,7 +72,7 @@ export function PersonalSettingsPage() {
   });
   const createLock = useSynchronousPendingLock(createToken.isPending);
   const revoke = useMutation({
-    mutationFn: (id: string) => api("/api/tokens/" + id, { method: "DELETE" }),
+    mutationFn: (id: string) => tokensApi.tokensById(id, { method: "DELETE" }),
     onMutate: () => persistTokenRecheck(tokenScope, "revoke"),
     onSuccess: () => {
       setTokenRecheck(null);
@@ -81,7 +82,7 @@ export function PersonalSettingsPage() {
     onError: async (error, id) => {
       if (isWriteOutcomeUnknown(error)) {
         try {
-          const latest = await api<ApiToken[]>("/api/tokens", { readOnly: true });
+          const latest = await tokensApi.tokens<ApiToken[]>({ readOnly: true });
           client.setQueryData([...keys.myTokens, tokenScope], latest);
           if (latest.find((token) => token.id === id)?.revokedAt) {
             setTokenRecheck(null);

@@ -1,20 +1,21 @@
-import {ReferenceLinksEditor} from './ReferenceLinks';
-import {readReferenceLinks,type ReferenceLink} from '../../shared/reference-links';
-import {DetailToolbar} from './DetailWorkspace';
-import {useDeliveryForm} from '../use-delivery-form';
-import {WorkItemExecution} from './WorkItemExecution';
-import {WorkspaceObjectMark} from './WorkspaceObjectMark';
+import * as requirementsApi from '../features/requirements/api';
+import { ReferenceLinksEditor } from './ReferenceLinks';
+import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
+import { DetailToolbar } from './DetailWorkspace';
+import { useDeliveryForm } from '../use-delivery-form';
+import { WorkItemExecution } from './WorkItemExecution';
+import { WorkspaceObjectMark } from './WorkspaceObjectMark';
 import { Button } from './Button';
-import {FormField} from "./Form";
-import {Select} from "./Select";
-import {assertCleanRequirementDraft} from '../use-graph-draft';
-import {useSession} from '../app-context';
+import { FormField } from "./Form";
+import { Select } from "./Select";
+import { assertCleanRequirementDraft } from '../use-graph-draft';
+import { useSession } from '../app-context';
 import { workStageLabels, workStages, type WorkStage } from "../../shared/execution-stage";
-import {isAssignablePerson} from '../assignable-people';
+import { isAssignablePerson } from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
-import { api, ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
+import { ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { invalidateRequirementViews } from "../query-keys";
 import type { Person, Requirement, WorkItem } from "../types";
 import { useWorkItemSave } from "../use-work-item-save";
@@ -119,7 +120,7 @@ export function WorkItemSettingsDialog({
   }, [requirement.workItems.length]);
 
   const reorderItems = useMutation({
-    mutationFn: ({ ids, reason, expectedVersion }: { ids: string[]; reason?: string; expectedVersion: number }) => {setReceipt({kind:'reorder',ids,version:expectedVersion});return api(`/api/requirements/${requirement.id}/reorder-work-items`, {
+    mutationFn: ({ ids, reason, expectedVersion }: { ids: string[]; reason?: string; expectedVersion: number }) => {setReceipt({kind:'reorder',ids,version:expectedVersion});return requirementsApi.requirementsReorderWorkItems(requirement.id, {
       method: "POST",
       body: jsonBody({ ids, reason, expectedVersion }),
     });},
@@ -150,7 +151,7 @@ export function WorkItemSettingsDialog({
     onSettled: () => { reorderSubmitting.current = false; },
   });
   const createItem = useMutation({
-    mutationFn: async (draft: NewWorkItemDraft) => {await assertCleanRequirementDraft(session.accountId||'guest',requirement.id,{action:'edit'});setReceipt({kind:'create',draft});return api<WorkItem>(`/api/requirements/${requirement.id}/work-items`, {
+    mutationFn: async (draft: NewWorkItemDraft) => {await assertCleanRequirementDraft(session.accountId||'guest',requirement.id,{action:'edit'});setReceipt({kind:'create',draft});return requirementsApi.requirementsWorkItems<WorkItem>(requirement.id, {
       method: "POST",
       body: jsonBody({
         title: draft.title,

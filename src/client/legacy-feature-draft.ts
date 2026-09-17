@@ -1,9 +1,10 @@
-import {useEffect,useRef,useState} from 'react';
-import type {DependencyChanges,DependencyChangesInput} from '../shared/path-contracts';
-import {readHistory,type EditorHistory} from './editor-session';
-import {readDraftRecord,writeSharedDraftRecord,ownsDraft,takeDraft,releaseDraft} from './graph-draft-storage';
-import {api,ApiError,jsonBody} from './api';
-import type {useGraphHistory} from './use-graph-draft';
+import * as pathsApi from './features/paths/api';
+import { useEffect, useRef, useState } from 'react';
+import type { DependencyChanges, DependencyChangesInput } from '../shared/path-contracts';
+import { readHistory, type EditorHistory } from './editor-session';
+import { readDraftRecord, writeSharedDraftRecord, ownsDraft, takeDraft, releaseDraft } from './graph-draft-storage';
+import { ApiError, jsonBody } from './api';
+import type { useGraphHistory } from './use-graph-draft';
 
 type Layout=NonNullable<DependencyChanges['layouts']>[number];
 type Pending=DependencyChangesInput&{batchId:string;previewToken:string};
@@ -49,11 +50,11 @@ export function useLegacyFeatureDraft(key:string,projectId:string,history:Histor
       if(!active.current)return;
       if(!ownsDraft(oldKey,true)){setRecovery({kind:'locked',message:'另一页面正在编辑旧特性布局'});return;}
       if(batch){
-        const receipt=await api<{status:'applied'|'not_found'}>('/api/projects/'+projectId+'/dependency-changes/'+batch.batchId,{readOnly:true});
+        const receipt=await pathsApi.projectsDependencyChangesById<{status:'applied'|'not_found'}>(projectId, batch.batchId, {readOnly:true});
         if(!active.current)return;
         if(receipt.status==='applied'){await clear();latest.current.onSaved();return;}
         if(!retrySubmission){setRecovery({kind:'pending',message:'旧特性布局的提交尚无回执，原批次和布局已保留'});return;}
-        try{await api('/api/projects/'+projectId+'/dependency-changes/apply',{method:'POST',body:jsonBody(batch)});await clear();latest.current.onSaved();return;}
+        try{await pathsApi.projectsDependencyChangesApply(projectId, {method:'POST',body:jsonBody(batch)});await clear();latest.current.onSaved();return;}
         catch(error){if(!(error instanceof ApiError)||error.status>=500)throw error;await writeSharedDraftRecord(submission,undefined);sessionStorage.removeItem(submission);}
       }
       if(!active.current)return;

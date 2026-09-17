@@ -1,35 +1,31 @@
-import {DetailCard} from '../components/DetailCard';
-import {ObjectDependencies} from '../components/ObjectDependencies';
-import {useDeliveryForm} from '../use-delivery-form';
-import {WorkItemObjectDetails} from '../components/WorkItemObjectDetails';
+import * as requirementsApi from '../features/requirements/api';
+import * as templatesApi from '../features/templates/api';
+import * as peopleApi from '../features/people/api';
+import { DetailCard } from '../components/DetailCard';
+import { ObjectDependencies } from '../components/ObjectDependencies';
+import { useDeliveryForm } from '../use-delivery-form';
+import { WorkItemObjectDetails } from '../components/WorkItemObjectDetails';
 import { Button } from '../components/Button';
-import {DetailWorkspace} from "../components/DetailWorkspace";
-import {useProjectWorkspace} from "../project-workspace-context";
-import {workspaceParams} from '../workspace-location';
-import {TopbarMenu} from '../components/TopbarMenu';
+import { DetailWorkspace } from "../components/DetailWorkspace";
+import { useProjectWorkspace } from "../project-workspace-context";
+import { workspaceParams } from '../workspace-location';
+import { TopbarMenu } from '../components/TopbarMenu';
 import '../components/object-inspector.css';
 import '../workspace-gantt.css';
-import {useAppNavigate,useAppSearchParams} from '../use-app-navigation';
-import {PageResourcesContext,usePageResources} from '../page-context';
+import { useAppNavigate, useAppSearchParams } from '../use-app-navigation';
+import { PageResourcesContext, usePageResources } from '../page-context';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
 import { RequirementOverview } from '../components/RequirementOverview';
 import { RequirementSources } from '../components/RequirementSources';
 
 import { hasPageHistory, usePageBack } from "../use-page-view";
-import { useEffect, useMemo, useRef, useState,type ComponentProps } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, useParams, useLocation } from "react-router-dom";
-import {remapSavedEditorUrl} from '../path-view';
-import {
-  Archive,
-  CalendarDays,
-  Check,
-  CircleStop,
-  Edit3,
-  PencilLine,
-} from "lucide-react";
-import { api, ApiError } from "../api";
+import { remapSavedEditorUrl } from '../path-view';
+import { Archive, CalendarDays, Check, CircleStop, Edit3, PencilLine } from "lucide-react";
+import { ApiError } from "../api";
 import { clearProjectGraphDrafts } from "../use-graph-draft";
 import { useGuestWorkspace, useProjects, useSession } from "../app-context";
 import { keys } from "../query-keys";
@@ -41,42 +37,16 @@ import { requirementPlannedProgress } from "../../shared/domain";
 import { Chart } from "../components/Chart";
 import { EmptyState, LoadingState, RefreshNotice } from "../components/Feedback";
 import { PageHeader } from "../components/PageHeader";
-import {
-  persistRequirementCorrectionRecheck,
-  persistRequirementInfoRecheck,
-  persistRequirementPlanRecheck,
-  persistRequirementScheduleRecheck,
-  PlanForm,
-  readRequirementCorrectionRecheck,
-  readRequirementInfoRecheck,
-  readRequirementPlanRecheck,
-  readRequirementScheduleRecheck,
-  RequirementCorrectionForm,
-  RequirementInfoForm,
-  RequirementScheduleForm,
-  type RequirementCorrectionRecheck,
-  type RequirementInfoRecheck,
-  type RequirementPlanRecheck,
-  type RequirementScheduleRecheck,
-} from "../components/RequirementForms";
+import { persistRequirementCorrectionRecheck, persistRequirementInfoRecheck, persistRequirementPlanRecheck, persistRequirementScheduleRecheck, PlanForm, readRequirementCorrectionRecheck, readRequirementInfoRecheck, readRequirementPlanRecheck, readRequirementScheduleRecheck, RequirementCorrectionForm, RequirementInfoForm, RequirementScheduleForm, type RequirementCorrectionRecheck, type RequirementInfoRecheck, type RequirementPlanRecheck, type RequirementScheduleRecheck } from "../components/RequirementForms";
 
 import { WorkItemSettingsDialog } from "../components/WorkItemSettingsDialog";
 import { canManageProject } from "../permissions";
 import { dailyProgressTrend, progressHistoryMetadata } from "../progress-trend";
-import {
-  persistRequirementCommandRecheck,
-  readRequirementCommandRecheck,
-  RequirementCommandDialog,
-  type RequirementCommand,
-  type RequirementCommandRecheck,
-} from "../components/RequirementCommandDialog";
-import {readDraftRecord} from '../graph-draft-storage';
-import type {DependencyChanges} from '../../shared/path-contracts';
-import {type PathRequirementContext } from "../components/PathAnalysisPanel";
-import {
-  persistWorkItemSettingsRecheck,
-  readWorkItemSettingsRechecks,
-} from "../work-item-write-rechecks";
+import { persistRequirementCommandRecheck, readRequirementCommandRecheck, RequirementCommandDialog, type RequirementCommand, type RequirementCommandRecheck } from "../components/RequirementCommandDialog";
+import { readDraftRecord } from '../graph-draft-storage';
+import type { DependencyChanges } from '../../shared/path-contracts';
+import { type PathRequirementContext } from "../components/PathAnalysisPanel";
+import { persistWorkItemSettingsRecheck, readWorkItemSettingsRechecks } from "../work-item-write-rechecks";
 
 const emptyPeople: Person[] = [];
 const emptyTemplates: WorkItemTemplate[] = [];
@@ -87,7 +57,7 @@ function EmbeddedRequirementHeader({secondaryActions,moreActions,moreDisabled}:C
 type RequirementActionRequest={requestedAction?:'info'|'schedule';onActionHandled?:()=>void};
 export function RequirementObjectDetails({id,workItemId,onOpenDependencies,requestedAction,onActionHandled}:{id:string;workItemId?:string;onOpenDependencies:()=>void}&RequirementActionRequest){
   const [fresh,setFresh]=useState(false);
-  const resources=usePageResources(),{session}=useSession(),query=useResourceQuery<Requirement>([...keys.requirement(id),session.accountId],'/api/requirements/'+id,!!id,()=>setFresh(true),true);
+  const resources=usePageResources(),{session}=useSession(),query=useResourceQuery<Requirement>([...keys.requirement(id),session.accountId],signal => requirementsApi.requirementsById<Requirement>(id, { signal }),!!id,()=>setFresh(true),true);
   if(!fresh||!query.data||query.unavailable)return <div role="status">{query.error?.message||'正在读取需求…'}{query.error&&<Button variant="secondary" disabled={query.isFetching} onClick={()=>void query.refetch()}>重新读取</Button>}</div>;
   if(workItemId)return <WorkItemObjectDetails requirementId={id} workItemId={workItemId} onOpenDependencies={onOpenDependencies}/>;
   return <PageResourcesContext.Provider value={{...resources,requirement:query}}><RequirementObjectContent key={id} requirementId={id} embedded requestedAction={requestedAction} onActionHandled={onActionHandled} selectedWorkItemId={workItemId} onOpenDependencies={onOpenDependencies}/></PageResourcesContext.Provider>;
@@ -176,12 +146,12 @@ function RequirementObjectContent({requirementId,embedded=false,selectedWorkItem
   }, [actionRecheckAccountKey, id]);
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, requirement?.projectId || ""],
-    queryFn: ({ signal }) => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(requirement!.projectId)}`, { signal }),
+    queryFn: ({ signal }) => templatesApi.templatesQuery<WorkItemTemplate[]>(encodeURIComponent(requirement!.projectId), { signal }),
     enabled: Boolean(requirement?.projectId) && !guest,
   });
   const peopleQuery = useQuery({
     queryKey: [...keys.people, requirement?.projectId || ""],
-    queryFn: ({ signal }) => api<Person[]>(`/api/people?projectId=${encodeURIComponent(requirement!.projectId)}`, { signal }),
+    queryFn: ({ signal }) => peopleApi.peopleQuery<Person[]>(encodeURIComponent(requirement!.projectId), { signal }),
     enabled: Boolean(requirement?.projectId),
   });
   const templates = templatesQuery.data || emptyTemplates;

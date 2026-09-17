@@ -9,6 +9,7 @@ import type { Actor } from '../auth';
 import { archiveUnusedSamplePeople, isSampleProjectId, restoreSamplePeople } from '../sample-project';
 
 import { projectStatuses, type ProjectRole } from '../../shared/domain';
+import type { Project } from '../../shared/api/projects';
 
 import { fail, notFound } from '../errors';
 
@@ -24,11 +25,7 @@ import { createInitialProjectFlow } from './template-defaults';
 
 import { assertOptionalArchiveGeneration } from './archive-guards';
 
-export type ProjectRecord = {
-  id: string; name: string; status: string; plannedStart: string | null; plannedEnd: string | null;
-  defaultTemplateId: string | null; createdAt: string; updatedAt: string; deletedAt?: string | null;
-  guestVisible: boolean; publicReadOnly?: boolean; isSample: boolean; projectRole?: ProjectRole; canManage?: boolean;
-};
+export type ProjectRecord = Project & { guestVisible: boolean };
 
 const projectSelect = `SELECT id, name, status, planned_start AS plannedStart, planned_end AS plannedEnd,
   default_template_id AS defaultTemplateId, guest_visible AS guestVisible, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt FROM projects`;

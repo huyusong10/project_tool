@@ -1,64 +1,66 @@
-import {DetailCard} from './DetailCard';
+import { readRecheck, persistRecheck } from '../core/write-recheck';
+import * as pathsApi from '../features/paths/api';
+import { DetailCard } from './DetailCard';
 import { Button } from './Button';
-import {useProjectWorkspace} from '../project-workspace-context';
-import {ToolbarStatus} from './ToolbarStatus';
-import {Select} from './Select';
-import {useAppNavigate} from '../use-app-navigation';
-import {flushSync} from 'react-dom';
+import { useProjectWorkspace } from '../project-workspace-context';
+import { ToolbarStatus } from './ToolbarStatus';
+import { Select } from './Select';
+import { useAppNavigate } from '../use-app-navigation';
+import { flushSync } from 'react-dom';
 import { PageHeader } from './PageHeader';
-import {randomUUID} from '../random-uuid';
-import {DeliveryImpactTable} from './DeliveryImpactTable';
-import {useWorkspaceParams} from '../use-workspace-view';
-import {editorAdapter} from '../editor-adapter';
-import {EditorField} from './EditorField';
-import {fieldObjectId} from '../editor-fields';
-import {useEditorInteraction} from '../use-editor-interaction';
-import type {GraphConnectionIssue} from './DependencyGraph';
-import { useCallback,useEffect,useMemo,useRef, useState } from 'react';
+import { randomUUID } from '../random-uuid';
+import { DeliveryImpactTable } from './DeliveryImpactTable';
+import { useWorkspaceParams } from '../use-workspace-view';
+import { editorAdapter } from '../editor-adapter';
+import { EditorField } from './EditorField';
+import { fieldObjectId } from '../editor-fields';
+import { useEditorInteraction } from '../use-editor-interaction';
+import type { GraphConnectionIssue } from './DependencyGraph';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
-import { api, ApiError,jsonBody, requiresWriteRecheck } from '../api';
-import {Link2,Copy,Trash2,LocateFixed,GitBranch,Maximize2,Minimize2} from 'lucide-react';
-import {EditorToolbar,EditorPalette,EditorInfo} from './EditorToolbar';
-import {EditorRequirementCreate,EditorObjectProperties} from './EditorObjectForm';
-import {changeEntity,copyEntities,deleteEntities} from '../editor-commands';
-import type {Point} from '../path-layout';
-import {vacantGroup} from '../fixed-routing';
-import type {EditorEntityChange} from '../../shared/path-contracts';
+import { ApiError, jsonBody, requiresWriteRecheck } from '../api';
+import { Link2, Copy, Trash2, LocateFixed, GitBranch, Maximize2, Minimize2 } from 'lucide-react';
+import { EditorToolbar, EditorPalette, EditorInfo } from './EditorToolbar';
+import { EditorRequirementCreate, EditorObjectProperties } from './EditorObjectForm';
+import { changeEntity, copyEntities, deleteEntities } from '../editor-commands';
+import type { Point } from '../path-layout';
+import { vacantGroup } from '../fixed-routing';
+import type { EditorEntityChange } from '../../shared/path-contracts';
 import { useSession } from '../app-context';
 import { useResourceQuery } from '../use-resource-query';
 import { invalidateRequirementViews, keys } from '../query-keys';
 import { canManageProject } from '../permissions';
 import type { Requirement } from '../types';
-import { acceptanceId, startId,dependencySource,dependencyTarget, type PathAnalysis, type PathNode } from '../../shared/paths';
+import { acceptanceId, startId, dependencySource, dependencyTarget, type PathAnalysis, type PathNode } from '../../shared/paths';
 import { addBusinessDays, riskLabels, todayIso } from '../../shared/domain';
 import { hasWorkdayCalendarFallback } from '../../shared/workday';
 import { projectPathGraph } from '../path-projection';
-import {relationCaption,relationDescription,replaceDeliveryCondition} from '../path-relations';
-import {DeliveryCondition} from './DeliveryCondition';
-import {PathGantt,hasPathGanttDates} from './PathGantt';
+import { relationCaption, relationDescription, replaceDeliveryCondition } from '../path-relations';
+import { DeliveryCondition } from './DeliveryCondition';
+import { PathGantt, hasPathGanttDates } from './PathGantt';
 import { Modal, useSynchronousPendingLock } from './Modal';
 import { EmptyState, LoadingState } from './Feedback';
 import { FormError } from './Form';
 import '../paths.css';
-import {emptyRequirementFilters,unfinishedStatuses,matchesRequirementFilters,compareRiskRequirements} from '../../shared/requirement-view';
-import {matchesSearch} from '../../shared/search';
-import {readPathFilters,writePathFilters,graphBranch,graphContext,cardFilterItem,cardSearch,remapEditorUrl,remapEditorViews,remapSavedEditorUrl} from '../path-view';
-import {PathFilters} from './PathFilters';
+import { emptyRequirementFilters, unfinishedStatuses, matchesRequirementFilters, compareRiskRequirements } from '../../shared/requirement-view';
+import { matchesSearch } from '../../shared/search';
+import { readPathFilters, writePathFilters, graphBranch, graphContext, cardFilterItem, cardSearch, remapEditorUrl, remapEditorViews, remapSavedEditorUrl } from '../path-view';
+import { PathFilters } from './PathFilters';
 import { GraphWorkspace } from './GraphWorkspace';
 import { PredecessorPicker } from './PredecessorPicker';
-import { clearProjectGraphDrafts,useDependencyDraft } from '../use-graph-draft';
+import { clearProjectGraphDrafts, useDependencyDraft } from '../use-graph-draft';
 import { draftNetwork, dependencyIssue } from '../dependency-draft';
 import type { DependencyChanges } from '../../shared/path-contracts';
 import type { GraphCard } from '../path-projection';
-import {featurePathGraph} from '../../shared/feature-projection';
-import {canvasView,canvasScope,requirementCanvasUrl,useCanvasNavigation} from '../canvas-navigation';
-import {canvasNavigation} from './CanvasNavigation';
-import {featurePhaseLayout,phaseLayoutChanges,constrainPhasePosition,type PhaseRegion} from '../phase-layout';
-import {DeliveryFilters,ScopeTable,matchesDeliveryCard} from './DeliveryTables';
-import {DeliveryFeatureDetails} from './DeliveryFeatureDetails';
-import {PhaseDialog,readPendingPhase,type PhaseEdit} from './PhasePlanning';
-import {CanvasDraftDetails} from './CanvasDraftDetails';
+import { featurePathGraph } from '../../shared/feature-projection';
+import { canvasView, canvasScope, requirementCanvasUrl, useCanvasNavigation } from '../canvas-navigation';
+import { canvasNavigation } from './CanvasNavigation';
+import { featurePhaseLayout, phaseLayoutChanges, constrainPhasePosition, type PhaseRegion } from '../phase-layout';
+import { DeliveryFilters, ScopeTable, matchesDeliveryCard } from './DeliveryTables';
+import { DeliveryFeatureDetails } from './DeliveryFeatureDetails';
+import { PhaseDialog, readPendingPhase, type PhaseEdit } from './PhasePlanning';
+import { CanvasDraftDetails } from './CanvasDraftDetails';
 export type PathRequirementContext=Pick<Requirement,'id'|'projectId'|'title'|'ownerId'|'status'>&{workItems:Array<Pick<Requirement['workItems'][number],'id'|'status'|'assigneeIds'>>};
 type PlanPreview={impact:import('../../shared/delivery-impact').DeliveryImpact[];requirementId:string;projectId:string;baseStart:string;expectedRevision:number;previewToken:string;applicable:boolean;entries:Array<{workItemId:string;requirementId:string;title:string;currentStart:string|null;currentEnd:string|null;proposedStart:string|null;proposedEnd:string|null;reasons:string[]}>};
 type DependencyPlanRecheck={baseStart:string;expectedRevision:number;previewToken:string;entries:Array<{id:string;start:string|null;end:string|null}>};
@@ -67,22 +69,24 @@ type Editor = {kind:'relation'}|{kind:'estimate';node:PathNode}|{kind:'plan';bas
 
 const dependencyPlanRecheckKey=(accountId:string,requirementId:string)=>`pm-dependency-plan-recheck:${accountId}:${requirementId}`;
 function readDependencyPlanRecheck(accountId:string,requirementId:string):DependencyPlanRecheck|null{
-  try{
-    const value=JSON.parse(sessionStorage.getItem(dependencyPlanRecheckKey(accountId,requirementId))||'null') as Partial<DependencyPlanRecheck>|null;
+  return readRecheck(dependencyPlanRecheckKey(accountId,requirementId), stored => {
+    const value=stored as Partial<DependencyPlanRecheck>|null;
     if(!value||typeof value.baseStart!=='string'||!Number.isSafeInteger(value.expectedRevision)||typeof value.previewToken!=='string'||!Array.isArray(value.entries))return null;
     if(!value.entries.every(entry=>entry&&typeof entry.id==='string'&&(entry.start===null||typeof entry.start==='string')&&(entry.end===null||typeof entry.end==='string')))return null;
     return value as DependencyPlanRecheck;
-  }catch{return null;}
+  
+  });
 }
 function writeDependencyPlanRecheck(accountId:string,requirementId:string,value:DependencyPlanRecheck|null){
-  try{const key=dependencyPlanRecheckKey(accountId,requirementId);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前页面仍保留核对锁。 */}
+  persistRecheck(dependencyPlanRecheckKey(accountId,requirementId), value);
 }
 const milestoneRecheckKey=(accountId:string,projectId:string)=>`pm-milestone-recheck:${accountId}:${projectId}`;
 function readMilestoneRecheck(accountId:string,projectId:string):MilestoneRecheck|null{
-  try{const value=JSON.parse(sessionStorage.getItem(milestoneRecheckKey(accountId,projectId))||'null') as Partial<MilestoneRecheck>|null;return value&&typeof value.id==='string'&&(value.action==='achieve'||value.action==='reopen')?value as MilestoneRecheck:null;}catch{return null;}
+  return readRecheck(milestoneRecheckKey(accountId,projectId), stored => {const value=stored as Partial<MilestoneRecheck>|null;return value&&typeof value.id==='string'&&(value.action==='achieve'||value.action==='reopen')?value as MilestoneRecheck:null;
+  });
 }
 function writeMilestoneRecheck(accountId:string,projectId:string,value:MilestoneRecheck|null){
-  try{const key=milestoneRecheckKey(accountId,projectId);if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key);}catch{/* 当前页面仍保留核对锁。 */}
+  persistRecheck(milestoneRecheckKey(accountId,projectId), value);
 }
 
 function PathEditor({editor,data,requirement,manager,onClose,onReload,onPlanRecheckChange,onRecheckPlan}:{editor:Editor;data:PathAnalysis;requirement?:PathRequirementContext;manager:boolean;onClose:()=>void;onReload:()=>Promise<PathAnalysis>;onPlanRecheckChange:(value:DependencyPlanRecheck|null)=>void;onRecheckPlan:()=>Promise<{latest:PathAnalysis;applied:boolean}>}) {
@@ -96,8 +100,8 @@ function PathEditor({editor,data,requirement,manager,onClose,onReload,onPlanRech
   const stale=baseline!==data.revision||needsCheck;
   const {session}=useSession();
   const canEditStructure=manager||!!requirement&&requirement.ownerId===session.personId;
-  const mutation=useMutation({mutationFn:async ({url,body,method='POST'}:{url:string;body:unknown;method?:string})=>api(url,{method,body:jsonBody(body)}),onSuccess:()=>{if(editor.kind==='plan')onPlanRecheckChange(null);invalidateRequirementViews(client,requirement?.id);onClose();},onError:(error)=>{if(requiresWriteRecheck(error))setNeedsCheck(true);else if(editor.kind==='plan')onPlanRecheckChange(null);}});
-  const planning=useMutation({mutationFn:()=>api<PlanPreview>(`/api/requirements/${requirement!.id}/dependency-plan/preview`,{method:'POST',body:jsonBody({baseStart,expectedRevision:baseline}),readOnly:true}),onSuccess:setPreview});
+  const mutation=useMutation({mutationFn:async ({write,body,method='POST'}:{write:(options:import('../api').ApiRequestInit)=>Promise<unknown>;body:unknown;method?:string})=>write({method,body:jsonBody(body)}),onSuccess:()=>{if(editor.kind==='plan')onPlanRecheckChange(null);invalidateRequirementViews(client,requirement?.id);onClose();},onError:(error)=>{if(requiresWriteRecheck(error))setNeedsCheck(true);else if(editor.kind==='plan')onPlanRecheckChange(null);}});
+  const planning=useMutation({mutationFn:()=>pathsApi.requirementsDependencyPlanPreview<PlanPreview>(requirement!.id, {method:'POST',body:jsonBody({baseStart,expectedRevision:baseline}),readOnly:true}),onSuccess:setPreview});
   const saveLock=useSynchronousPendingLock(mutation.isPending),planningLock=useSynchronousPendingLock(planning.isPending);
   const close=()=>{if(saveLock.canClose())onClose();};
   const options=data.requirements.filter(r=>manager||r.id===requirement?.id);
@@ -105,9 +109,9 @@ function PathEditor({editor,data,requirement,manager,onClose,onReload,onPlanRech
     if(stale)return;
     const version={expectedRevision:baseline};
     saveLock.run(()=>{
-      if(editor.kind==='relation') mutation.mutate({url:`/api/projects/${data.projectId}/dependencies`,body:{...version,sourceRequirementId:sourceReq,sourceWorkItemId:sourceWork||null,targetRequirementId:targetReq,targetWorkItemId:targetWork||null}});
-      if(editor.kind==='estimate') mutation.mutate({url:`/api/work-items/${editor.node.id}/path-estimate`,method:'PATCH',body:{...version,...canEditStructure?{durationDays:Number(duration),earliestStart:earliest||null}:{},forecastEnd:forecast||null}});
-      if(editor.kind==='plan'&&preview){onPlanRecheckChange({baseStart,expectedRevision:baseline,previewToken:preview.previewToken,entries:preview.entries.map(entry=>({id:entry.workItemId,start:entry.proposedStart,end:entry.proposedEnd}))});mutation.mutate({url:`/api/requirements/${requirement!.id}/dependency-plan/apply`,body:{baseStart,expectedRevision:baseline,previewToken:preview.previewToken}});}
+      if(editor.kind==='relation') mutation.mutate({write:options=>pathsApi.saveDependency(data.projectId,options),body:{...version,sourceRequirementId:sourceReq,sourceWorkItemId:sourceWork||null,targetRequirementId:targetReq,targetWorkItemId:targetWork||null}});
+      if(editor.kind==='estimate') mutation.mutate({write:options=>pathsApi.saveEstimate(editor.node.id,options),method:'PATCH',body:{...version,...canEditStructure?{durationDays:Number(duration),earliestStart:earliest||null}:{},forecastEnd:forecast||null}});
+      if(editor.kind==='plan'&&preview){onPlanRecheckChange({baseStart,expectedRevision:baseline,previewToken:preview.previewToken,entries:preview.entries.map(entry=>({id:entry.workItemId,start:entry.proposedStart,end:entry.proposedEnd}))});mutation.mutate({write:options=>pathsApi.applyDependencyPlan(requirement!.id,options),body:{baseStart,expectedRevision:baseline,previewToken:preview.previewToken}});}
     });
   };
   const labels={relation:'配置交付前置',estimate:'工期与交付预测',review:'核对需求依赖',plan:'按依赖预览排期',acceptance:'预计验收日期'};
@@ -141,7 +145,7 @@ export function PathAnalysisPanel({projectId,requirement,onExit}:{projectId:stri
   const requirementId=params.get('view')==='requirement'?params.get('requirementId')||'':requirement?.id||'';
   const actualTarget=params.get('target')||(requirementId&&!params.has('draftProject')?acceptanceId(requirementId):'project');
   const query=useResourceQuery<{analysis:PathAnalysis}>([...keys.paths,projectId,requirementId||'all',actualTarget,'canvas',session.accountId],
-    '/api/projects/'+projectId+'/path-graph?'+new URLSearchParams({view:'project',target:actualTarget}),!!projectId);
+    signal => pathsApi.projectsPathGraphQuery<{analysis:PathAnalysis}>(projectId, new URLSearchParams({view:'project',target:actualTarget}), { signal }),!!projectId);
   useEffect(()=>{if(query.error instanceof ApiError&&[401,403].includes(query.error.status))clearProjectGraphDrafts(session.accountId||'guest',projectId);},[query.error,session.accountId,projectId]);
   if(query.isLoading||query.unavailable||!query.data)return <><PageHeader title="项目空间" titlePending={query.isLoading} actions={<span/>}/><div className="path-analysis immersive-path graph-loading-shell"><section className="graph-workspace">
     {query.isLoading?<LoadingState label="正在分析交付依赖…"/>:<EmptyState title="路径分析数据不可用" detail={query.error?.message||'请选择项目'} action={<Button variant="secondary" className="ghost-button" onClick={()=>void query.refetch()}>重新加载</Button>}/>}
@@ -248,7 +252,7 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
     milestoneSubmitting.current=true;setMilestoneBusy(value.id);
     const action=value.achievedAt?'reopen':'achieve',pending:MilestoneRecheck={id:value.id,action};setMilestoneRecheck(pending);
     try{
-      await api('/api/milestones/'+value.id+'/'+action,{method:'POST',body:jsonBody({expectedVersion:value.version})});
+      await pathsApi.milestonesById(value.id, action, {method:'POST',body:jsonBody({expectedVersion:value.version})});
       invalidateRequirementViews(client,focus);
       try{await onReload();setMilestoneRecheck(null);if(mounted.current)setIssue(undefined);}catch{if(mounted.current)setIssue({message:'里程碑操作已提交，但最新状态读取失败。请重新读取里程碑结果，本窗口不会重复提交。'});}
     }catch(error){

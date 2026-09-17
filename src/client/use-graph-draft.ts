@@ -1,17 +1,19 @@
-import {useGuestWorkspace} from './app-context';
-import {randomUUID} from './random-uuid';
-import {remapEditorViews} from './path-view';
-import {executionDraftConflicts,type ExecutionCommand} from '../shared/execution-draft';
-import {EditorSession,newHistory,readHistory,type HistoryCommand,type EditorHistory,type FieldAvailability} from './editor-session';
-import {projectFieldActive} from './editor-fields';
-import {rebaseEditorHistory} from './editor-rebase';
+import * as requirementsApi from './features/requirements/api';
+import * as pathsApi from './features/paths/api';
+import { useGuestWorkspace } from './app-context';
+import { randomUUID } from './random-uuid';
+import { remapEditorViews } from './path-view';
+import { executionDraftConflicts, type ExecutionCommand } from '../shared/execution-draft';
+import { EditorSession, newHistory, readHistory, type HistoryCommand, type EditorHistory, type FieldAvailability } from './editor-session';
+import { projectFieldActive } from './editor-fields';
+import { rebaseEditorHistory } from './editor-rebase';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import {readDraftRecord,writeDraftRecord,writeSharedDraftRecord,watchDraftRecord,clearDraftRecords,ownsDraft,takeDraft,releaseDraft} from './graph-draft-storage';
-import { api, ApiError, isWriteOutcomeUnknown, jsonBody } from './api';
+import { readDraftRecord, writeDraftRecord, writeSharedDraftRecord, watchDraftRecord, clearDraftRecords, ownsDraft, takeDraft, releaseDraft } from './graph-draft-storage';
+import { ApiError, isWriteOutcomeUnknown, jsonBody } from './api';
 import type { DependencyChanges, DependencyChangePreview, DependencyChangeReceipt, DependencyChangesInput } from '../shared/path-contracts';
 import type { PathAnalysis } from '../shared/paths';
-import type {DraftTemplateInstance} from '../shared/template-instance';
-import {useLegacyFeatureDraft} from './legacy-feature-draft';
+import type { DraftTemplateInstance } from '../shared/template-instance';
+import { useLegacyFeatureDraft } from './legacy-feature-draft';
 
 const prefix = 'pm-graph-draft:';
 export function clearGraphDrafts(accountId?: string) {
@@ -38,7 +40,7 @@ export async function assertCleanProjectDraft(accountId:string,projectId:string,
   if(conflicts.length||fields.length)throw new Error('本次操作涉及未保存业务草稿：'+[...conflicts,...fields.map(()=>'未完成字段')].join('、')+'。请保存或处理这些修改后再执行');
 }
 export async function assertCleanRequirementDraft(accountId:string,requirementId:string,command?:Omit<ExecutionCommand,'requirementId'>){
-  const r=await api<{projectId:string}>('/api/requirements/'+requirementId,{readOnly:true});
+  const r=await requirementsApi.requirementsById<{projectId:string}>(requirementId, {readOnly:true});
   await assertCleanProjectDraft(accountId,r.projectId,{requirementId,...command});
 }
 export function useGraphHistory<T>(key:string,initial:T,version:string,source?:PathAnalysis,fieldAvailability?:FieldAvailability<T>,enabled=true){
@@ -133,7 +135,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
     if (!enabled || !count || conflict || pending) { setPreviewing(false); return; }
     const controller = new AbortController(); setPreviewing(true);
     const timer = setTimeout(() => {
-      void api<DependencyChangePreview>('/api/projects/' + data.projectId + '/dependency-changes/preview', {
+      void pathsApi.projectsDependencyChangesPreview<DependencyChangePreview>(data.projectId, {
         method: 'POST', body: fingerprint, readOnly: true, signal: controller.signal,
       }).then(result => {
         if (current === generation.current) { setPreview(result);setTemplateInstances(result.templateInstances||[]); latest.current = result; setError(null); }
@@ -149,8 +151,7 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
   const storePending = (value: PendingBatch | null) => {void writeSharedDraftRecord(pendingKey,value||undefined).catch(()=>{});updatePending(value);};
   const success = (receipt:DependencyChangeReceipt) => { if(history.session.blocked)return;remapEditorViews(accountId+':'+data.projectId,receipt.addedIds);storePending(null); history.reset(); setPreview(null); latest.current = null; setError(null); onSaved(receipt); };
   const checkReceipt = async (batch: PendingBatch) => {
-    const receipt = await api<({ status: 'applied' } & DependencyChangeReceipt) | { status: 'not_found' }>(
-      '/api/projects/' + data.projectId + '/dependency-changes/' + batch.batchId, { readOnly: true });
+    const receipt = await pathsApi.projectsDependencyChangesById<({ status: 'applied' } & DependencyChangeReceipt) | { status: 'not_found' }>(data.projectId, batch.batchId, { readOnly: true });
     if (receipt.status === 'applied') { success(receipt); return true; }
     return false;
   };
@@ -170,12 +171,12 @@ export function useDependencyDraft(accountId: string, data: PathAnalysis, target
       // snapshot before saving instead of ignoring the shortcut or using an old token.
       if (!batch) {
         const exact=saveInput();
-        const confirmed = JSON.stringify(exact)===fingerprint&&latest.current || await api<DependencyChangePreview>('/api/projects/' + data.projectId + '/dependency-changes/preview', { method: 'POST', body: jsonBody(exact), readOnly: true });
+        const confirmed = JSON.stringify(exact)===fingerprint&&latest.current || await pathsApi.projectsDependencyChangesPreview<DependencyChangePreview>(data.projectId, { method: 'POST', body: jsonBody(exact), readOnly: true });
         if(allowApply&&!allowApply(confirmed)){setPreview(confirmed);latest.current=confirmed;return false;}
         batch = { ...exact, batchId: randomUUID(), previewToken: confirmed.previewToken };
       }
       await writeSharedDraftRecord(pendingKey,batch);updatePending(batch);
-      const receipt=await api<DependencyChangeReceipt>('/api/projects/' + data.projectId + '/dependency-changes/apply', { method: 'POST', body: jsonBody(batch) });
+      const receipt=await pathsApi.projectsDependencyChangesApply<DependencyChangeReceipt>(data.projectId, { method: 'POST', body: jsonBody(batch) });
       success(receipt); return true;
     } catch (caught) {
       const failure = caught as Error;

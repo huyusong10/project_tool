@@ -1,21 +1,23 @@
-import {ReferenceLinksEditor} from './ReferenceLinks';
-import {readReferenceLinks} from '../../shared/reference-links';
+import * as peopleApi from '../features/people/api';
+import * as templatesApi from '../features/templates/api';
+import { ReferenceLinksEditor } from './ReferenceLinks';
+import { readReferenceLinks } from '../../shared/reference-links';
 import { Button } from './Button';
-import {Select} from './Select';
-import {OrganizationFields} from './RequirementIntake';
+import { Select } from './Select';
+import { OrganizationFields } from './RequirementIntake';
 import { WorkStageSelect, MilestoneKindSelect } from "./ExecutionStageBadge";
-import {keys} from '../query-keys';
-import {isAssignablePerson} from '../assignable-people';
-import {EditorField} from './EditorField';
-import {useState} from 'react';
-import {useQuery} from '@tanstack/react-query';
-import {api} from '../api';
-import type {Person,WorkItemTemplate} from '../types';
-import type {EditorEntityChange} from '../../shared/path-contracts';
-import {Modal} from './Modal';
+import { keys } from '../query-keys';
+import { isAssignablePerson } from '../assignable-people';
+import { EditorField } from './EditorField';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+
+import type { Person, WorkItemTemplate } from '../types';
+import type { EditorEntityChange } from '../../shared/path-contracts';
+import { Modal } from './Modal';
 function useEditorOptions(projectId:string,historical=false){
-  const people=useQuery({queryKey:[...keys.people,projectId],queryFn:()=>api<Person[]>('/api/people?projectId='+encodeURIComponent(projectId))});
-  const templates=useQuery({queryKey:['editor-templates',projectId],queryFn:()=>api<WorkItemTemplate[]>('/api/templates?projectId='+encodeURIComponent(projectId))});
+  const people=useQuery({queryKey:[...keys.people,projectId],queryFn:()=>peopleApi.peopleQuery<Person[]>(encodeURIComponent(projectId))});
+  const templates=useQuery({queryKey:['editor-templates',projectId],queryFn:()=>templatesApi.templatesQuery<WorkItemTemplate[]>(encodeURIComponent(projectId))});
   return {people:(people.data||[]).filter(p=>historical?p.projectRole!=='viewer':isAssignablePerson(p)),templates:templates.data||[],error:people.error||templates.error};
 }
 type ObjectData=EditorEntityChange['data'];

@@ -1,17 +1,18 @@
+import * as peopleApi from '../features/people/api';
 import { Button } from './Button';
-import {Select} from './Select';
-import {type ReactNode} from 'react';
-import {useDeliveryForm} from '../use-delivery-form';
-import {useQuery} from '@tanstack/react-query';
-import {api} from '../api';
-import {isAssignablePerson} from '../assignable-people';
-import {keys} from '../query-keys';
-import type {Person,Requirement,WorkItem} from '../types';
-import {Modal} from './Modal';
+import { Select } from './Select';
+import { type ReactNode } from 'react';
+import { useDeliveryForm } from '../use-delivery-form';
+import { useQuery } from '@tanstack/react-query';
+
+import { isAssignablePerson } from '../assignable-people';
+import { keys } from '../query-keys';
+import type { Person, Requirement, WorkItem } from '../types';
+import { Modal } from './Modal';
 
 export type StartAssignment={ownerId?:string;requirementOwnerId?:string;expectedRequirementVersion?:number};
 export function StartAssignmentDialog({requirement,workItem,pending,blocked=false,recovery,error,onStart,onClose}:{requirement:Requirement;workItem?:WorkItem;pending:boolean;blocked?:boolean;recovery?:ReactNode;error?:string;onStart:(value:StartAssignment)=>Promise<boolean>;onClose:()=>void}){
-  const people=useQuery({queryKey:[...keys.people,requirement.projectId],queryFn:()=>api<Person[]>('/api/people?projectId='+requirement.projectId)});
+  const people=useQuery({queryKey:[...keys.people,requirement.projectId],queryFn:()=>peopleApi.peopleQuery<Person[]>(requirement.projectId)});
   const needRequirement=!requirement.ownerId||requirement.ownerValid===false,needWork=!!workItem&&!workItem.ownerId;
   const [requirementOwner,setRequirementOwner,clearRequirementOwner]=useDeliveryForm(requirement.projectId,(workItem?.id||requirement.id)+':start-requirement-owner',()=>''),[workOwner,setWorkOwner,clearWorkOwner]=useDeliveryForm(requirement.projectId,(workItem?.id||requirement.id)+':start-work-owner',()=>'');
   const options=people.data?.filter(isAssignablePerson)||[];

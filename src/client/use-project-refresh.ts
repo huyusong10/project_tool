@@ -1,8 +1,9 @@
-import {useEffect} from 'react';
-import {useQueryClient} from '@tanstack/react-query';
-import {api,ApiError} from './api';
-import {invalidateProjectViews} from './query-keys';
-import {clearBusinessQueries} from './session-cache';
+import * as projectsApi from './features/projects/api';
+import { useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { ApiError } from './api';
+import { invalidateProjectViews } from './query-keys';
+import { clearBusinessQueries } from './session-cache';
 
 /** Other people's edits refresh query data; drafts and viewport remain owned by their existing sessions. */
 export function useProjectRefresh(projectId:string,accountId:string,enabled:boolean) {
@@ -13,7 +14,7 @@ export function useProjectRefresh(projectId:string,accountId:string,enabled:bool
     const check=async()=>{
       if(controller.signal.aborted||document.visibilityState==='hidden'||running||Date.now()-lastCheck<2000)return;
       running=true;lastCheck=Date.now();
-      try{const result=await api<{version:string}>('/api/projects/'+projectId+'/change-version',{signal:controller.signal});
+      try{const result=await projectsApi.projectsChangeVersion<{version:string}>(projectId, {signal:controller.signal});
         if(controller.signal.aborted||typeof result.version!=='string')return;
         if(version!==undefined&&version!==result.version)invalidateProjectViews(client);
         version=result.version;

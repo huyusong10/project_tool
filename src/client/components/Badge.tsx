@@ -1,13 +1,4 @@
-import {
-  accountStatusOptions,
-  issueStatusOptions,
-  priorityOptions,
-  projectStatusOptions,
-  requirementStatusOptions,
-  riskOptions,
-  workItemStatusOptions,
-  type UiOption,
-} from "../ui-options";
+import { accountStatusOptions, issueStatusOptions, priorityOptions, projectStatusOptions, requirementStatusOptions, riskOptions, workItemStatusOptions, type UiOption } from "../ui-options";
 type StatusBadgeKind = "requirement" | "issue" | "priority" | "risk" | "account" | "workItem" | "project";
 
 const optionLookup: Record<StatusBadgeKind, UiOption[]> = {

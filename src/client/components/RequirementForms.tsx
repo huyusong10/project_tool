@@ -1,17 +1,21 @@
-import {ReferenceLinksEditor} from './ReferenceLinks';
-import {readReferenceLinks,requirementReferenceLinks,type ReferenceLink} from '../../shared/reference-links';
+import { versionedWriteOutcome } from '../core/write-recheck';
+import { readRecheck, persistRecheck } from '../core/write-recheck';
+import * as requirementsApi from '../features/requirements/api';
+import * as templatesApi from '../features/templates/api';
+import { ReferenceLinksEditor } from './ReferenceLinks';
+import { readReferenceLinks, requirementReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
 import { Button } from './Button';
-import {Select} from './Select';
-import {assertCleanRequirementDraft} from '../use-graph-draft';
-import {useSession} from '../app-context';
-import {useDeliveryForm} from '../use-delivery-form';
+import { Select } from './Select';
+import { assertCleanRequirementDraft } from '../use-graph-draft';
+import { useSession } from '../app-context';
+import { useDeliveryForm } from '../use-delivery-form';
 import { migrateFeatureFields } from "../feature-storage-migration";
-import {OrganizationFields} from './RequirementIntake';
-import {isAssignablePerson} from '../assignable-people';
+import { OrganizationFields } from './RequirementIntake';
+import { isAssignablePerson } from '../assignable-people';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, WandSparkles } from "lucide-react";
-import { api, ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
+import { ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { invalidateRequirementViews, keys } from "../query-keys";
 import { readResourceFresh, ResourceReadInvalidatedError } from "../use-resource-query";
 import type { Person, PlanPreview, Requirement, WorkItemTemplate } from "../types";
@@ -40,10 +44,10 @@ function requirementInfoRecheckKey(accountKey: string, requirementId: string) {
 }
 
 export function readRequirementInfoRecheck(accountKey: string, requirementId: string): RequirementInfoRecheck | null {
-  try {
-    const raw = sessionStorage.getItem(requirementInfoRecheckKey(accountKey, requirementId));
-    if (!raw) return null;
-    const value = migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementInfoRecheck>;
+  return readRecheck(requirementInfoRecheckKey(accountKey, requirementId), stored => {
+    
+    
+    const value = migrateFeatureFields(stored) as Partial<RequirementInfoRecheck>;
     if(value.draft)value.draft.phaseId??="";
     const draft = value.draft as Partial<RequirementInfoDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
@@ -56,15 +60,12 @@ export function readRequirementInfoRecheck(accountKey: string, requirementId: st
       dirtyFields: [...new Set(value.dirtyFields)],
       stage: value.stage,
     };
-  } catch { return null; }
+  
+  });
 }
 
 export function persistRequirementInfoRecheck(accountKey: string, requirementId: string, value: RequirementInfoRecheck | null) {
-  try {
-    const key = requirementInfoRecheckKey(accountKey, requirementId);
-    if (value) sessionStorage.setItem(key, JSON.stringify(value));
-    else sessionStorage.removeItem(key);
-  } catch { /* 当前页面仍保留核对锁。 */ }
+  persistRecheck(requirementInfoRecheckKey(accountKey, requirementId), value);
 }
 
 function requirementInfoDraft(requirement: Requirement): RequirementInfoDraft {
@@ -141,7 +142,7 @@ export function RequirementInfoForm({
     if (readingRef.current) return null;
     readingRef.current = true; setReading(true); setNeedsRefresh(true); setReadError(null);
     try {
-      const latest = await readResourceFresh<Requirement>(client, keys.requirement(requirement.id), `/api/requirements/${requirement.id}`, () => mounted.current);
+      const latest = await readResourceFresh<Requirement>(client, keys.requirement(requirement.id), signal => requirementsApi.requirementsById<Requirement>(requirement.id, { signal }), () => mounted.current);
       if (!mounted.current) return null;
       const latestDraft = requirementInfoDraft(latest);
       const mergedDraft = Object.fromEntries(Object.entries(latestDraft).map(([field, value]) => [
@@ -150,7 +151,7 @@ export function RequirementInfoForm({
       if(dirtyFields.current.has('referenceUrl')&&!dirtyFields.current.has('referenceLinks'))mergedDraft.referenceLinks=requirementReferenceLinks({referenceUrl:draft.referenceUrl},latest);
       setDraft({...mergedDraft,reason:draft.reason});
       if (unknownVersion.current !== null) {
-        const requiresReview = latest.version !== unknownVersion.current;
+        const requiresReview = versionedWriteOutcome(unknownVersion.current, latest.version) === 'conflict';
         setReviewRequired(requiresReview);
         setUnknown(requiresReview);
         if (requiresReview) onRecheckChange({
@@ -179,7 +180,7 @@ export function RequirementInfoForm({
     }
   };
   const mutation = useMutation({
-    mutationFn: async (value: object) => {await assertCleanRequirementDraft(session.accountId||session.username||'guest',requirement.id,{action:draft.phaseId!==(baseRequirement.phaseId||'')||draft.featureId!==(baseRequirement.featureId||'')?'phase':'edit'});return api(`/api/requirements/${requirement.id}`, { method: "PATCH", body: jsonBody(value) });},
+    mutationFn: async (value: object) => {await assertCleanRequirementDraft(session.accountId||session.username||'guest',requirement.id,{action:draft.phaseId!==(baseRequirement.phaseId||'')||draft.featureId!==(baseRequirement.featureId||'')?'phase':'edit'});return requirementsApi.requirementsById(requirement.id, { method: "PATCH", body: jsonBody(value) });},
     onMutate: (value) => {
       const baselineVersion = Number((value as { expectedVersion?: number }).expectedVersion || baseRequirement.version);
       unknownVersion.current = baselineVersion;
@@ -257,10 +258,10 @@ function requirementCorrectionRecheckKey(accountKey: string, requirementId: stri
 }
 
 export function readRequirementCorrectionRecheck(accountKey: string, requirementId: string): RequirementCorrectionRecheck | null {
-  try {
-    const raw = sessionStorage.getItem(requirementCorrectionRecheckKey(accountKey, requirementId));
-    if (!raw) return null;
-    const value = migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementCorrectionRecheck>;
+  return readRecheck(requirementCorrectionRecheckKey(accountKey, requirementId), stored => {
+    
+    
+    const value = migrateFeatureFields(stored) as Partial<RequirementCorrectionRecheck>;
     if(value.draft)value.draft.phaseId??="";
     const draft = value.draft as Partial<RequirementInfoDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
@@ -271,15 +272,12 @@ export function readRequirementCorrectionRecheck(accountKey: string, requirement
       baselineVersion: Number(value.baselineVersion), draft: draft as RequirementInfoDraft,
       reason: value.reason, supersedesId: value.supersedesId, stage: value.stage,
     };
-  } catch { return null; }
+  
+  });
 }
 
 export function persistRequirementCorrectionRecheck(accountKey: string, requirementId: string, value: RequirementCorrectionRecheck | null) {
-  try {
-    const key = requirementCorrectionRecheckKey(accountKey, requirementId);
-    if (value) sessionStorage.setItem(key, JSON.stringify(value));
-    else sessionStorage.removeItem(key);
-  } catch { /* 当前页面仍保留核对锁。 */ }
+  persistRecheck(requirementCorrectionRecheckKey(accountKey, requirementId), value);
 }
 
 export function RequirementCorrectionForm({
@@ -351,10 +349,10 @@ export function RequirementCorrectionForm({
     if (readingRef.current) return null;
     readingRef.current = true; setReading(true); setNeedsRefresh(true); setReadError(null);
     try {
-      const latest = await readResourceFresh<Requirement>(client, keys.requirement(requirement.id), `/api/requirements/${requirement.id}`, () => mounted.current);
+      const latest = await readResourceFresh<Requirement>(client, keys.requirement(requirement.id), signal => requirementsApi.requirementsById<Requirement>(requirement.id, { signal }), () => mounted.current);
       if (!mounted.current) return null;
       if (unknownVersion.current !== null) {
-        const requiresReview = latest.version !== unknownVersion.current;
+        const requiresReview = versionedWriteOutcome(unknownVersion.current, latest.version) === 'conflict';
         setReviewRequired(requiresReview);
         setUnknown(requiresReview);
         if (requiresReview) onRecheckChange({
@@ -383,7 +381,7 @@ export function RequirementCorrectionForm({
     body: Record<string, unknown>;
   };
   const mutation = useMutation({
-    mutationFn: ({ body }: CorrectionMutation) => api<Requirement>(`/api/requirements/${requirement.id}/correct`, { method: "POST", body: jsonBody(body) }),
+    mutationFn: ({ body }: CorrectionMutation) => requirementsApi.requirementsCorrect<Requirement>(requirement.id, { method: "POST", body: jsonBody(body) }),
     onMutate: ({ body }) => {
       const baselineVersion = Number(body.expectedVersion || baseline.version);
       unknownVersion.current = baselineVersion;
@@ -494,10 +492,10 @@ function requirementScheduleRecheckKey(accountKey: string, requirementId: string
 }
 
 export function readRequirementScheduleRecheck(accountKey: string, requirementId: string): RequirementScheduleRecheck | null {
-  try {
-    const raw = sessionStorage.getItem(requirementScheduleRecheckKey(accountKey, requirementId));
-    if (!raw) return null;
-    const value = migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementScheduleRecheck>;
+  return readRecheck(requirementScheduleRecheckKey(accountKey, requirementId), stored => {
+    
+    
+    const value = migrateFeatureFields(stored) as Partial<RequirementScheduleRecheck>;
     const draft = value.draft as Partial<RequirementScheduleDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
       || !draft || typeof draft.templateId !== "string" || !["start", "deadline"].includes(String(draft.scheduleMode))
@@ -510,15 +508,12 @@ export function readRequirementScheduleRecheck(accountKey: string, requirementId
       dirtyFields: [...new Set(value.dirtyFields)],
       stage: value.stage,
     };
-  } catch { return null; }
+  
+  });
 }
 
 export function persistRequirementScheduleRecheck(accountKey: string, requirementId: string, value: RequirementScheduleRecheck | null) {
-  try {
-    const key = requirementScheduleRecheckKey(accountKey, requirementId);
-    if (value) sessionStorage.setItem(key, JSON.stringify(value));
-    else sessionStorage.removeItem(key);
-  } catch { /* 当前页面仍保留核对锁。 */ }
+  persistRecheck(requirementScheduleRecheckKey(accountKey, requirementId), value);
 }
 
 export function RequirementScheduleForm({
@@ -548,7 +543,7 @@ export function RequirementScheduleForm({
   useEffect(()=>{const next=[...dirtyFields.current];if(next.join()!==storedDirty.join())setStoredDirty(next);});
   const templatesQuery = useQuery({
     queryKey: [...keys.templates, requirement.projectId],
-    queryFn: ({ signal }) => api<WorkItemTemplate[]>(`/api/templates?projectId=${encodeURIComponent(requirement.projectId)}`, { signal }),
+    queryFn: ({ signal }) => templatesApi.templatesQuery<WorkItemTemplate[]>(encodeURIComponent(requirement.projectId), { signal }),
   });
   const templates = templatesQuery.data || [];
   const knownTemplates = useRef(new Map<string, string>(requirement.templateId && requirement.templateName ? [[requirement.templateId, requirement.templateName]] : []));
@@ -592,7 +587,7 @@ export function RequirementScheduleForm({
     if (readingRef.current) return null;
     readingRef.current = true; setReading(true); setNeedsRefresh(true); setReadError(null);
     try {
-      const latest = await readResourceFresh<Requirement>(client, keys.requirement(requirement.id), `/api/requirements/${requirement.id}`, () => mounted.current);
+      const latest = await readResourceFresh<Requirement>(client, keys.requirement(requirement.id), signal => requirementsApi.requirementsById<Requirement>(requirement.id, { signal }), () => mounted.current);
       if (!mounted.current) return null;
       const fields = dirtyFields.current;
       const nextMode = fields.has("mode") ? scheduleMode : "start";
@@ -605,7 +600,7 @@ export function RequirementScheduleForm({
       setReason(nextReason);
       setScheduleMode(nextMode);
       if (unknownVersion.current !== null) {
-        const requiresReview = latest.version !== unknownVersion.current;
+        const requiresReview = versionedWriteOutcome(unknownVersion.current, latest.version) === 'conflict';
         setReviewRequired(requiresReview);
         setUnknown(requiresReview);
         if (requiresReview) onRecheckChange({
@@ -643,7 +638,7 @@ export function RequirementScheduleForm({
   };
   const mutation = useMutation({
     mutationFn: (change: ScheduleChange) =>
-      api(`/api/requirements/${requirement.id}/${change.endpoint}`, {
+      requirementsApi.requirementsById2(requirement.id, change.endpoint, {
         method: "POST",
         body: jsonBody(change.input),
       }),
@@ -799,24 +794,21 @@ function requirementPlanRecheckKey(accountKey: string, requirementId: string) {
 }
 
 export function readRequirementPlanRecheck(accountKey: string, requirementId: string): RequirementPlanRecheck | null {
-  try {
-    const raw = sessionStorage.getItem(requirementPlanRecheckKey(accountKey, requirementId));
-    if (!raw) return null;
-    const value = migrateFeatureFields(JSON.parse(raw)) as Partial<RequirementPlanRecheck>;
+  return readRecheck(requirementPlanRecheckKey(accountKey, requirementId), stored => {
+    
+    
+    const value = migrateFeatureFields(stored) as Partial<RequirementPlanRecheck>;
     const draft = value.draft as Partial<RequirementPlanDraft> | undefined;
     if (!Number.isSafeInteger(value.baselineVersion) || Number(value.baselineVersion) < 1
       || !draft || typeof draft.templateId !== "string" || typeof draft.baseStart !== "string" || typeof draft.reason !== "string"
       || value.stage !== "read" && value.stage !== "review") return null;
     return { baselineVersion: Number(value.baselineVersion), draft: draft as RequirementPlanDraft, stage: value.stage };
-  } catch { return null; }
+  
+  });
 }
 
 export function persistRequirementPlanRecheck(accountKey: string, requirementId: string, value: RequirementPlanRecheck | null) {
-  try {
-    const key = requirementPlanRecheckKey(accountKey, requirementId);
-    if (value) sessionStorage.setItem(key, JSON.stringify(value));
-    else sessionStorage.removeItem(key);
-  } catch { /* 当前页面仍保留核对锁。 */ }
+  persistRecheck(requirementPlanRecheckKey(accountKey, requirementId), value);
 }
 
 export function PlanForm({ requirement, templates, recheck, onRecheckChange, onClose }: {
@@ -849,7 +841,7 @@ export function PlanForm({ requirement, templates, recheck, onRecheckChange, onC
     if (!templateId && templates[0]) setTemplateId(templates[0].id);
   }, [templateId, templates,setTemplateId]);
   const previewMutation = useMutation({
-    mutationFn: ({ templateUpdatedAt: _templateUpdatedAt, ...input }: { templateId: string; baseStart: string; templateUpdatedAt: string | null }) => api<PlanPreview>(`/api/requirements/${requirement.id}/plan-preview`, {
+    mutationFn: ({ templateUpdatedAt: _templateUpdatedAt, ...input }: { templateId: string; baseStart: string; templateUpdatedAt: string | null }) => requirementsApi.requirementsPlanPreview<PlanPreview>(requirement.id, {
       method: "POST", readOnly: true, body: jsonBody(input),
     }),
     onSuccess: (result, input) => {
@@ -867,10 +859,10 @@ export function PlanForm({ requirement, templates, recheck, onRecheckChange, onC
     if (readingRef.current) return null;
     readingRef.current = true; setReading(true); setNeedsRefresh(true); setReadError(null);
     try {
-      const latest = await readResourceFresh<Requirement>(client, keys.requirement(requirement.id), `/api/requirements/${requirement.id}`, () => mounted.current);
+      const latest = await readResourceFresh<Requirement>(client, keys.requirement(requirement.id), signal => requirementsApi.requirementsById<Requirement>(requirement.id, { signal }), () => mounted.current);
       if (!mounted.current) return null;
       if (unknownVersion.current !== null) {
-        const requiresReview = latest.version !== unknownVersion.current;
+        const requiresReview = versionedWriteOutcome(unknownVersion.current, latest.version) === 'conflict';
         setReviewRequired(requiresReview);
         setUnknown(requiresReview);
         if (requiresReview) onRecheckChange({ baselineVersion: unknownVersion.current, draft: draft(), stage: "review" });
@@ -890,7 +882,7 @@ export function PlanForm({ requirement, templates, recheck, onRecheckChange, onC
     }
   };
   const applyMutation = useMutation({
-    mutationFn: ({ preview: confirmed, reason: explanation }: { preview: PlanPreview; reason: string }) => api(`/api/requirements/${confirmed.requirementId}/apply-plan`, {
+    mutationFn: ({ preview: confirmed, reason: explanation }: { preview: PlanPreview; reason: string }) => requirementsApi.requirementsApplyPlan(confirmed.requirementId, {
       method: "POST",
       body: jsonBody({ templateId: confirmed.templateId, baseStart: confirmed.baseStart, expectedVersion: confirmed.requirementVersion, previewToken: confirmed.previewToken, reason: explanation.trim() || undefined, templateItemIds: confirmed.entries.filter((item) => item.willChange).map((item) => item.templateItemId) }),
     }),

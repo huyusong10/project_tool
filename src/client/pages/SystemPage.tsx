@@ -1,31 +1,17 @@
+import { waitForServiceRestart } from '../features/system/restart';
+import * as systemApi from '../features/system/api';
 import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
 import { usePageScrollPosition } from '../use-page-view';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type Query } from "@tanstack/react-query";
-import {
-  Archive,
-  Clock3,
-  DatabaseBackup,
-  Download,
-  ImagePlus,
-  RefreshCcw,
-  ShieldCheck,
-  Trash2,
-  Upload,
-} from "lucide-react";
-import { api, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
+import { Archive, Clock3, DatabaseBackup, Download, ImagePlus, RefreshCcw, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useSession, useUiActions } from "../app-context";
 import { invalidateAuditViews, invalidateSystemViews, keys } from "../query-keys";
 import { formatBytes, formatUptime, relativeTime } from "../format";
-import type {
-  Backup,
-  ImportedBackup,
-  DatabaseIntegrityCheck,
-  SystemBranding,
-  SystemOverview,
-} from "../types";
+import type { Backup, ImportedBackup, DatabaseIntegrityCheck, SystemBranding, SystemOverview } from "../types";
 import { ConfirmDialog, Modal, useSynchronousPendingLock } from "../components/Modal";
 import { EmptyState, LoadingState } from "../components/Feedback";
 import { PageHeader } from "../components/PageHeader";
@@ -61,33 +47,6 @@ async function brandingMatchesInput(latest: SystemBranding, input: BrandingSaveI
   } catch {
     return false;
   }
-}
-
-async function waitForServiceRestart(previousStartedAt: string | undefined, operationId: string, signal: AbortSignal) {
-  let baseline = previousStartedAt;
-  let disconnected = false;
-  const deadline = Date.now() + 60_000;
-  while (!signal.aborted && Date.now() < deadline) {
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
-    if (signal.aborted) return false;
-    try {
-      const response = await fetch(`/api/system/overview?restoreProbe=${Date.now()}`, {
-        cache: "no-store",
-        credentials: "same-origin",
-        signal,
-      });
-      if (response.status === 401 || response.status === 403) return true;
-      if (!response.ok) { disconnected = true; continue; }
-      const current = await response.json() as SystemOverview;
-      if (operationId && current.lastRestore?.operationId === operationId && current.lastRestore.outcome === 'rolled_back') return true;
-      if (!baseline) baseline = current.service.startedAt;
-      else if (disconnected || current.service.startedAt !== baseline) return true;
-    } catch (error) {
-      if (signal.aborted || error instanceof DOMException && error.name === "AbortError") return false;
-      disconnected = true;
-    }
-  }
-  return false;
 }
 
 type RestoreReloadProbe = { controller: AbortController; task: Promise<boolean> };
@@ -154,7 +113,7 @@ function BrandingSettingsCard({ accountKey }: { accountKey: string }) {
   };
   const brandingQuery = useQuery({
     queryKey: keys.branding,
-    queryFn: ({ signal }) => api<SystemBranding>("/api/branding", { signal }),
+    queryFn: ({ signal }) => systemApi.branding<SystemBranding>({ signal }),
   });
   const branding = brandingQuery.data ?? defaultBranding;
   useEffect(() => {
@@ -170,7 +129,7 @@ function BrandingSettingsCard({ accountKey }: { accountKey: string }) {
   const stale = Boolean(dirty && brandingQuery.data && brandingQuery.data.updatedAt !== baselineUpdatedAt);
   const save = useMutation({
     mutationFn: (input: BrandingSaveInput) =>
-      api<SystemBranding>("/api/system/branding", { method: "PUT", body: jsonBody(input) }),
+      systemApi.systemBranding<SystemBranding>({ method: "PUT", body: jsonBody(input) }),
     onMutate: async () => {
       await client.cancelQueries({ queryKey: keys.branding, exact: true });
       const query = client.getQueryCache().find({ queryKey: keys.branding, exact: true });
@@ -196,7 +155,7 @@ function BrandingSettingsCard({ accountKey }: { accountKey: string }) {
     onError: async (error, input) => {
       if (isWriteOutcomeUnknown(error)) {
         try {
-          const latest = await api<SystemBranding>("/api/branding", { readOnly: true });
+          const latest = await systemApi.branding<SystemBranding>({ readOnly: true });
           client.setQueryData(keys.branding, latest);
           if (await brandingMatchesInput(latest, input)) {
             setSystemName(latest.systemName);
@@ -328,14 +287,14 @@ export function SystemPage() {
   }, [maintenanceAccountKey]);
   const overviewQuery = useQuery({
     queryKey: keys.systemOverview,
-    queryFn: ({ signal }) => api<SystemOverview>("/api/system/overview", { signal }),
+    queryFn: ({ signal }) => systemApi.systemOverview<SystemOverview>({ signal }),
     enabled: session.authenticated,
     refetchInterval: SYSTEM_REFRESH_INTERVAL_MS,
     refetchOnWindowFocus: true,
   });
   const backupsQuery = useQuery({
     queryKey: keys.backups,
-    queryFn: ({ signal }) => api<Backup[]>("/api/backups", { signal }),
+    queryFn: ({ signal }) => systemApi.backups<Backup[]>({ signal }),
     enabled: session.authenticated,
     refetchInterval: SYSTEM_REFRESH_INTERVAL_MS,
     refetchOnWindowFocus: true,
@@ -365,7 +324,7 @@ export function SystemPage() {
   };
   const download = useMutation({
     mutationFn: async (item: Backup) => {
-      const blob = await api<Blob>(`/api/backups/${encodeURIComponent(item.name)}/download?expectedFingerprint=${encodeURIComponent(item.fingerprint)}`, { responseType: 'blob' });
+      const blob = await systemApi.backupsDownloadQuery<Blob>(encodeURIComponent(item.name), encodeURIComponent(item.fingerprint), { responseType: 'blob' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url; link.download = item.name;
@@ -377,7 +336,7 @@ export function SystemPage() {
   });
   const downloadLock = useSynchronousPendingLock(download.isPending);
   const upload = useMutation({
-    mutationFn: (file: File) => api<ImportedBackup>(`/api/backups/import?filename=${encodeURIComponent(file.name)}`, {
+    mutationFn: (file: File) => systemApi.backupsImportQuery<ImportedBackup>(encodeURIComponent(file.name), {
       method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file,
     }),
     onSuccess: (result) => {
@@ -392,7 +351,7 @@ export function SystemPage() {
   });
   const uploadLock = useSynchronousPendingLock(upload.isPending);
   const backup = useMutation({
-    mutationFn: (_downloadAfter: boolean) => api<Backup>("/api/backups", { method: "POST" }),
+    mutationFn: (_downloadAfter: boolean) => systemApi.backups<Backup>({ method: "POST" }),
     onSuccess: (result, downloadAfter) => {
       setMaintenanceRecheck(null);
       setFeedback(`备份已创建：${result.name}`);
@@ -408,9 +367,11 @@ export function SystemPage() {
   const backupLock = useSynchronousPendingLock(backup.isPending);
   const restore = useMutation({
     mutationFn: (backup: Backup | ImportedBackup) =>
-      api<{ ok: boolean; message: string; safetyBackupName: string; operationId: string }>(backup.imported || 'summary' in backup ? '/api/backups/import/restore' : '/api/backups/restore', {
+      (backup.imported || 'summary' in backup ? systemApi.backupsImportRestore<{ ok: boolean; message: string; safetyBackupName: string; operationId: string }>({
         method: "POST", body: jsonBody({ name: backup.name, expectedFingerprint: backup.fingerprint }),
-      }),
+      }) : systemApi.backupsRestore<{ ok: boolean; message: string; safetyBackupName: string; operationId: string }>({
+        method: "POST", body: jsonBody({ name: backup.name, expectedFingerprint: backup.fingerprint }),
+      })),
     onSuccess: (result) => {
       setMaintenanceRecheck(null);
       setFeedback(result.message);
@@ -428,7 +389,7 @@ export function SystemPage() {
   });
   const restoreLock = useSynchronousPendingLock(restore.isPending);
   const deleteBackup = useMutation({
-    mutationFn: (backup: Backup) => api(`/api/backups/${encodeURIComponent(backup.name)}`, {
+    mutationFn: (backup: Backup) => systemApi.backupsById(encodeURIComponent(backup.name), {
       method: "DELETE", body: jsonBody({ expectedFingerprint: backup.fingerprint }),
     }),
     onSuccess: (_result, backup) => {
@@ -440,7 +401,7 @@ export function SystemPage() {
     onError: async (error, backup) => {
       if (isWriteOutcomeUnknown(error)) {
         try {
-          const latest = await api<Backup[]>("/api/backups", { readOnly: true });
+          const latest = await systemApi.backups<Backup[]>({ readOnly: true });
           client.setQueryData(keys.backups, latest);
           if (!latest.some((item) => item.name === backup.name)) {
             setMaintenanceRecheck(null);
@@ -460,7 +421,7 @@ export function SystemPage() {
     },
   });
   const integrityCheck = useMutation({
-    mutationFn: () => api<DatabaseIntegrityCheck>("/api/system/database-check", { method: "POST", readOnly: true }),
+    mutationFn: () => systemApi.systemDatabaseCheck<DatabaseIntegrityCheck>({ method: "POST", readOnly: true }),
   });
   const integrityLock = useSynchronousPendingLock(integrityCheck.isPending);
   const maintenanceBusy = backupLock.busy || restoreLock.busy || deleteBackup.isPending || restoreWaitPending || uploadLock.busy || downloadLock.busy;
