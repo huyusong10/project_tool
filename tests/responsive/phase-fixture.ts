@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
-import type { FeaturePhase } from '../../src/shared/feature-phases';
+import type { FeaturePhase, PhaseDelivery } from '../../src/shared/feature-phases';
+import type { PathAnalysis } from '../../src/shared/paths';
 import type { Requirement } from '../../src/client/types';
 
 export async function phaseFixture(page: Page) {
@@ -24,4 +25,18 @@ export async function phaseFixture(page: Page) {
   let direct = await create('DCIM-003 无预设里程碑', phases[1].id); direct = await post('/api/requirements/' + direct.id + '/start', { expectedVersion: direct.version });
   await page.addInitScript(({ account, id }) => localStorage.setItem('project-manage:selected-project:' + account, id), { account: session.accountId, id: project.id });
   return { projectId: project.id, base, feature, phases, testing, direct };
+}
+
+/** Historical rows have no creation UI. Database round trips are covered in feature-phases.test.ts. */
+export async function historicalPhaseFixture(page:Page,fixture:Awaited<ReturnType<typeof phaseFixture>>) {
+  const phases=await(await page.request.get(fixture.base+'/feature-phases')).json() as FeaturePhase[];
+  const phase=phases.find(p=>p.id===fixture.phases[0].id)!;
+  const delivery:PhaseDelivery={id:'historical-delivery',deliveredAt:'2026-09-12',createdAt:'2026-09-12T08:00:00Z',deliveredByName:'历史负责人',reopenedAt:'2026-09-13T08:00:00Z',reopenReason:'补充客户反馈',snapshot:{name:phase.name,scope:'历史交付范围',targetDate:null,requirements:phase.requirements.map(r=>({id:r.id,title:r.title}))}};
+  await page.route('**'+fixture.base+'/path-graph*',async route=>{
+    const response=await route.fetch(),body=await response.json() as {analysis:PathAnalysis};
+    const saved=body.analysis.featureContext?.overview.features.flatMap(f=>f.phases||[]).find(p=>p.id===phase.id);
+    if(saved)saved.deliveries=[delivery];
+    await route.fulfill({response,json:body});
+  });
+  return delivery;
 }

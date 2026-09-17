@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
 
-for(const width of [1912,390])test(`详情加载期间保持正文和弹窗矩形 ${width}`,async({page},info)=>{
+for(const width of [1912,390])test(`详情加载期间保持正文和弹窗矩形 ${width}`,{tag:'@responsive'},async({page},info)=>{
   const f=await phaseFixture(page);await page.setViewportSize({width,height:949});await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',scopeType:'project'}));
   const row=page.locator('[data-row-id="'+f.testing.id+'"]');await expect(row).toBeVisible();
   const before=await page.getByRole('treegrid').boundingBox(),title=await page.locator('.integrated-page-title').textContent(),project=await page.locator('.project-switcher-name').textContent();

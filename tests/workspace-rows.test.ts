@@ -56,6 +56,10 @@ it('正式工作顺序覆盖路径的 ID 顺序；临时工作追加，执行操
   expect(children()[0].formalWork).toBe(r.workItems[0]);expect(children()[0].formalRequirement).toBe(r);
   expect(children()[0].requirement?.ownerId).toBe('draft-owner');expect(children()[0].formalRequirement?.ownerId).toBe('owner');
   expect(children()[3].temporary).toBe(true);expect(children()[3].formalWork).toBeUndefined();
+  const outline=scopeOutline(outlineRows(report,projection),{kind:'requirement',id:r.id});
+  expect(outline[0]).toMatchObject({title:'草稿 工作 0',version:2,work:{progress:70},formalWork:r.workItems[0]});
+  expect(outline[3]).toMatchObject({title:'新增',temporary:true});
+  expect(r.workItems[0].title).toBe('工作 0');
   r.workItems.forEach(w=>w.sortOrder=0);expect(children().map(row=>row.id)).toEqual(['z','a','m','new']);
   r.workItems[0].progress=99;r.workItems[0].updatedAt='2099-01-01';expect(children().map(row=>row.id)).toEqual(['z','a','m','new']);
 });

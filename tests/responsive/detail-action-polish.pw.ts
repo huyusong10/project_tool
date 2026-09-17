@@ -1,7 +1,7 @@
 import {expect,test} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
 
-test('各对象操作栏保持同高，空菜单消失，资料区与顶栏留有间距',async({page},info)=>{
+test('各对象操作栏保持同高，空菜单消失，资料区与顶栏留有间距',{tag:'@responsive'},async({page},info)=>{
   const f=await phaseFixture(page);
   const url=(id:string,tab='overview')=>'/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',scopeType:'project',detailId:id,detailTab:tab});
   const modal=page.locator('.modal-card-workspace[role=dialog]');
@@ -10,14 +10,15 @@ test('各对象操作栏保持同高，空菜单消失，资料区与顶栏留�
     await expect(modal.getByRole('tab',{name:tab==='basic'?'资料':'概况',exact:true})).toHaveAttribute('aria-selected','true');
     const toolbar=modal.locator('.detail-workspace-toolbar');await expect(toolbar).toHaveCSS('height','44px');
     for(const button of await toolbar.locator('.ui-button:not([data-icon-only=true])').all()){
-      const text=(await button.innerText()).trim();if(text)expect(text.replace(/\d+%/g,'').trim().length,text).toBeLessThanOrEqual(2);
+      const text=(await button.innerText()).trim();if(text)expect(await button.evaluate(el=>el.scrollWidth<=el.clientWidth+1&&el.scrollHeight<=el.clientHeight+1),text).toBe(true);
     }
     if(id.startsWith('phase:'))await expect(modal.getByRole('button',{name:'Phase 更多操作',exact:true})).toHaveCount(0);
     const content=modal.locator('[role=tabpanel]:visible > :first-child');
     const barBox=(await toolbar.boundingBox())!,contentBox=(await content.boundingBox())!;
     expect(contentBox.y-barBox.y-barBox.height).toBeGreaterThanOrEqual(12);
   }
-  await expect(modal.locator('.work-arrangement-field')).toHaveCount(6);
+  await expect(modal.locator('.work-arrangement-field')).toHaveCount(7);
+  await expect(modal.getByRole('button',{name:/^实际开始：/})).toBeVisible();
   await page.screenshot({path:info.outputPath('work-details.png'),animations:'disabled'});
   await page.setViewportSize({width:390,height:640});
   expect(await modal.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
@@ -51,9 +52,8 @@ test('进展图说明缺失的工作项排期，并直接打开工作项安排',
   const f=await phaseFixture(page);
   const response=await page.request.post('/api/requirements/'+f.testing.id+'/work-items',{data:{expectedVersion:f.testing.version,title:'待安排验证'}});expect(response.ok(),await response.text()).toBe(true);
   await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',scopeType:'requirement',scopeId:f.testing.id}));
-  const row=page.locator('[data-row-id="'+f.testing.id+'"]'),link=row.getByRole('button',{name:'1 项待排期',exact:true});
-  await expect(link).toHaveAttribute('title','待安排验证：缺少计划开始、计划完成');
-  await link.click();const modal=page.locator('.modal-card-workspace[role=dialog]');await expect(modal.getByRole('tab',{name:/^工作项 /})).toHaveAttribute('aria-selected','true');
+  const row=page.locator('[data-row-id="'+f.testing.id+'"]');
+  await row.getByRole('button',{name:'更新进展',exact:true}).click();const modal=page.locator('.modal-card-workspace[role=dialog]');await expect(modal.getByRole('tab',{name:/^工作项 /})).toHaveAttribute('aria-selected','true');
   await modal.getByRole('tab',{name:'概况',exact:true}).click();await expect(modal.getByRole('region',{name:'待补全的排期'})).toContainText('待安排验证：缺少计划开始、计划完成');
   await page.screenshot({path:info.outputPath('schedule-gaps.png')});
   await modal.getByRole('button',{name:'安排缺失的计划日期'}).click();await expect(modal.getByRole('tab',{name:/^工作项 /})).toHaveAttribute('aria-selected','true');

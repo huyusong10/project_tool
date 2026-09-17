@@ -33,10 +33,10 @@ import { OrganizationFields } from './RequirementIntake';
 type Write={path:string;input:Record<string,unknown>;label:string;ids:string[]};
 type Pending=Write&{unknown:boolean};
 const labels:Record<OutlineKind,string>={feature:'特性',phase:'Phase',requirement:'需求',work:'工作项'};
-export function WorkspaceOutline({report,header}:{report:Dashboard;header?:Omit<PageChrome,'runtime'>}){
+export function WorkspaceOutline({report,projection,header}:{report:Dashboard;projection?:PathAnalysis;header?:Omit<PageChrome,'runtime'>}){
   const workspace=useProjectWorkspace()!,{data,location}=workspace,{session}=useSession(),account=session.accountId||'guest',projectId=data.projectId,manage=canManageProject(session,projectId),client=useQueryClient();
   const [params,setParams]=useSearchParams(),baseKey='pm-outline:'+account+':'+projectId;
-  const tree=useMemo(()=>outlineRows(report,data),[report,data]),all=useMemo(()=>flattenOutline(tree),[tree]);
+  const tree=useMemo(()=>outlineRows(report,projection||data),[report,projection,data]),all=useMemo(()=>flattenOutline(tree),[tree]);
   const [expanded,setExpanded]=useState<Record<string,boolean>>(()=>{try{return JSON.parse(localStorage.getItem(baseKey+':expanded')||'{}');}catch{return {};}});
   const [selected,setSelected]=useState<string[]>([]),[drag,setDrag]=useState<string[]>([]),[drop,setDrop]=useState<{row:OutlineRow;placement:boolean;after:boolean}|null>(null);
   const [featureEdit,setFeatureEdit]=useState<FeatureEdit|null>(null),[phaseEdit,setPhaseEdit]=useState<PhaseEdit|null>(null);

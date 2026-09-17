@@ -1,26 +1,33 @@
-import {expect,test,type Page} from '@playwright/test';
-import {phaseFixture as fixture} from './phase-fixture';
-const dialog = (page: Page) => page.getByRole('dialog').last();
-async function noOverflow(page: Page) { expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true); }
+import {expect,test} from '@playwright/test';
+import {phaseFixture as fixture,historicalPhaseFixture} from './phase-fixture';
 
-test('特性 Phase 总览、需求阶段、甘特和路径在办公视口及窄屏可读', async ({ page }, info) => {
-  const state = await fixture(page), errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
-  await page.goto('/');await page.getByRole('button',{name:'展开／收起全部 Phase'}).click();await expect(page.locator('.delivery-expanded-phases article')).toHaveCount(3);await expect(page.locator('.delivery-phase-chips')).not.toContainText('%');await page.getByRole('button',{name:'Phase 1 已交付',exact:true}).first().click();await page.locator('.graph-detail').getByText('交付历史 · 1',{exact:true}).click();await expect(page.locator('.graph-detail')).toContainText('DCIM-001');await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();await noOverflow(page);await page.screenshot({path:info.outputPath('feature-phases-office.png'),animations:'disabled'});
-  await page.goto('/requirements'); const row = page.locator('tbody tr').filter({ hasText: state.testing.title }); await expect(row).toContainText('测试中'); await expect(row).toContainText('70%'); await expect(row).not.toContainText('99%'); await noOverflow(page);
-  await page.goto('/requirements/' + state.testing.id); await expect(page.locator('.requirement-overview')).toContainText('测试中'); await expect(page.locator('.requirement-overview')).toContainText('70%'); await page.screenshot({ path: info.outputPath('requirement-stage-office.png'), fullPage: true, animations: 'disabled' });
-  await page.goto('/execution'); await expect(page.locator('.gantt-row').filter({hasText:state.testing.title})).toContainText('测试中'); await noOverflow(page); await page.screenshot({ path: info.outputPath('execution-stage-office.png'), fullPage: true, animations: 'disabled' });
-  await page.goto('/paths?view=project'); await expect(page.locator('[data-layout-ready="true"]')).toBeVisible({ timeout: 20000 }); await noOverflow(page); await page.screenshot({ path: info.outputPath('paths-stage-office.png'), animations: 'disabled' });
-  await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/'); await expect(page.locator('.delivery-phase-chips')).toContainText('Phase 3'); await noOverflow(page); await page.screenshot({ path: info.outputPath('feature-phases-mobile.png'), fullPage: true });
-  await page.goto('/requirements/' + state.testing.id); await expect(page.locator('.requirement-overview')).toContainText('测试中'); await noOverflow(page); await page.screenshot({ path: info.outputPath('requirement-stage-mobile.png'), fullPage: true }); for(const path of ['/requirements','/execution','/paths?view=project']){await page.goto(path);await expect(page.locator('main')).toBeVisible();await noOverflow(page);await page.screenshot({path:info.outputPath('mobile-'+path.split('?')[0].slice(1)+'.png'),fullPage:true});} expect(errors).toEqual([]);
+test('特性 Phase、需求阶段、进展表和关系图在办公及窄屏可读',{tag:'@responsive'},async({page},info)=>{
+ const f=await fixture(page),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ const detail=page.locator('.modal-card-workspace[role=dialog]');
+ for(const viewport of [info.project.use.viewport!,{width:390,height:844}]){
+  await page.setViewportSize(viewport);
+  for(const workspaceView of ['list','progress','graph']){
+   await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView,scopeType:'phase',scopeId:f.phases[1].id}));
+   if(workspaceView==='graph')await expect(page.locator('.dependency-canvas')).toHaveAttribute('data-layout-ready','true');
+   const row=workspaceView==='list'?page.locator('[data-object-id="'+f.testing.id+'"]'):workspaceView==='progress'?page.locator('[data-row-id="'+f.testing.id+'"]'):page.locator('.react-flow__node[data-id="'+f.testing.id+'"]');
+   await expect(row).toContainText(workspaceView==='progress'?'测试':'测试中');if(workspaceView==='progress')await expect(row).toHaveAttribute('data-status','in_progress');await expect(row).toContainText('70%');await expect(row).not.toContainText('99%');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath(workspaceView+'-'+viewport.width+'.png'),animations:'disabled'});
+  }
+  for(const id of ['feature:'+f.feature.id,'phase:'+f.phases[1].id,f.testing.id]){
+   await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'list',scopeType:'project',detailId:id}));await expect(detail).toBeVisible();expect(await detail.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  }
+ }
+ expect(errors).toEqual([]);
 });
 
-test('新增与编辑 Phase、未知结果核对、重新打开与记录提测', async ({ page }) => {
-  const state = await fixture(page); await page.goto('/?pathInspector=closed');await page.locator('.feature-name-button').click(); await page.getByRole('button', { name: '新增 Phase', exact: true }).click(); await dialog(page).getByLabel('Phase 名称').fill('Phase 4'); await dialog(page).getByLabel('交付范围').fill('跨站点治理');
-  const endpoint = '**' + state.base + '/features/' + state.feature.id + '/phases'; let writes = 0;
-  await page.route(endpoint, async route => { if (route.request().method() !== 'POST') return route.continue(); writes++; await route.fetch(); await route.abort('failed'); });
-  await dialog(page).getByRole('button', { name: '新增 Phase', exact: true }).click(); await expect(dialog(page).getByRole('button', { name: '读取最新 Phase 并核对' })).toBeVisible();
-  await page.reload(); await expect(dialog(page).getByLabel('Phase 名称')).toHaveValue('Phase 4'); await dialog(page).getByRole('button', { name: '读取最新 Phase 并核对' }).click(); await expect(page.getByRole('dialog')).toHaveCount(0); expect(writes).toBe(1); await page.unroute(endpoint); await expect(page.locator('.phase-row')).toHaveCount(4);
-  await page.locator('.phase-row').first().getByRole('button', { name: '重新打开', exact: true }).click(); await dialog(page).getByLabel('变更原因').fill('补充客户反馈'); await dialog(page).getByRole('button', { name: '重新打开 Phase', exact: true }).click(); await expect(page.getByRole('dialog')).toHaveCount(0); await expect(page.locator('.phase-row').first()).toContainText('待交付');
-  await page.goto('/requirements/' + state.direct.id); await page.getByRole('button', { name: '记录提测', exact: true }).click(); await dialog(page).getByLabel('说明', { exact: true }).fill('版本已部署到测试环境'); await dialog(page).getByRole('button', { name: '保存提测记录' }).click(); await expect(page.getByRole('dialog')).toHaveCount(0); await expect(page.locator('.requirement-overview')).toContainText('已提测');
-  await page.goto('/?pathInspector=closed');await page.locator('.feature-name-button').click(); await page.getByRole('button', { name: '新增 Phase', exact: true }).click(); await dialog(page).getByLabel('Phase 名称').fill('尚未提交的输入'); await page.route('**' + state.base + '/feature-overview*', route => route.fulfill({ status: 403, json: { error: '项目权限已移除' } })); await page.getByRole('button', { name: '刷新特性', exact: true }).evaluate((b: HTMLButtonElement) => b.click()); await expect(page.getByRole('dialog')).toHaveCount(0); await expect(page.locator('.phase-row')).toHaveCount(0);
+test('新增与编辑 Phase、未知结果核对、历史记录和提测保留',async({page})=>{
+ const f=await fixture(page);const historical=await historicalPhaseFixture(page,f);
+ const featureUrl='/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'list',scopeType:'project',detailId:'feature:'+f.feature.id});
+ const detail=page.locator('.modal-card-workspace[role=dialog]');
+ await page.goto(featureUrl);await detail.getByRole('button',{name:'新建 Phase',exact:true}).click();const create=page.getByRole('dialog',{name:'新建 Phase',exact:true});await create.getByLabel('Phase 名称').fill('Phase 4');await create.getByLabel('交付范围').fill('跨站点治理');
+ const endpoint='**'+f.base+'/features/'+f.feature.id+'/phases';let writes=0;
+ await page.route(endpoint,async route=>{if(route.request().method()!=='POST')return route.continue();writes++;await route.fetch();await route.abort('failed');});await create.getByRole('button',{name:'新建 Phase',exact:true}).click();await expect(create.getByRole('button',{name:'读取最新 Phase 并核对'})).toBeVisible();await page.reload();await expect(create.getByLabel('Phase 名称')).toHaveValue('Phase 4');await create.getByRole('button',{name:'读取最新 Phase 并核对'}).click();await expect(create).toHaveCount(0);expect(writes).toBe(1);await page.unroute(endpoint);
+ await detail.getByRole('tab',{name:'交付范围',exact:true}).click();await expect(detail.getByRole('tabpanel',{name:'交付范围',exact:true}).locator('.detail-card-row')).toHaveCount(4);await detail.getByRole('button',{name:'Phase 4',exact:true}).click();await detail.getByRole('button',{name:'编辑 Phase',exact:true}).click();const edit=page.getByRole('dialog',{name:'编辑 Phase',exact:true});await edit.getByLabel('交付范围').fill('跨站点治理与审计');await edit.getByRole('button',{name:'编辑 Phase',exact:true}).click();await expect(edit).toHaveCount(0);await expect(detail).toContainText('跨站点治理与审计');
+ await page.goto(featureUrl+'&detailTab=history');await expect(detail.locator('.object-history-entry')).toHaveCount(1);await expect(detail).toContainText(historical.snapshot.scope);await expect(detail).toContainText('补充客户反馈');await expect(detail).toContainText('DCIM-001');
+ await page.goto('/requirements/'+f.direct.id);await detail.getByRole('button',{name:'记录提测',exact:true}).click();const testing=page.getByRole('dialog',{name:'记录提测',exact:true});await testing.getByLabel('说明',{exact:true}).fill('版本已部署到测试环境');await testing.getByRole('button',{name:'保存提测记录'}).click();await expect(testing).toHaveCount(0);await expect(detail.locator('.requirement-overview')).toContainText('已提测');
+ await page.goto(featureUrl);await detail.getByRole('button',{name:'新建 Phase',exact:true}).click();await create.getByLabel('Phase 名称').fill('尚未提交的输入');await page.route('**'+f.base+'/path-graph*',route=>route.fulfill({status:403,json:{error:'项目权限已移除'}}));await page.evaluate(()=>{window.dispatchEvent(new Event('offline'));window.dispatchEvent(new Event('online'));});await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.workspace-outline')).toHaveCount(0);
 });
