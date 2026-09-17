@@ -9,7 +9,7 @@ function lines(value:string,width=34,max=3) {
   const result:string[]=[];let line='',size=0;
   for(const c of value){const units=c.charCodeAt(0)>255?2:1;if(size+units>width||c==='\n'){result.push(line);line='';size=0;}if(c!=='\n'){line+=c;size+=units;}}
   if(line)result.push(line);
-  return result.length>max?[...result.slice(0,max-1),result[max-1].slice(0,-1)+'…']:result;
+  return result.length>max?[...result.slice(0,max-1),[...result[max-1]].slice(0,-1).join('')+'…']:result;
 }
 const titles=(card:GraphCard)=>lines(card.title,34,3);
 const subtitles=(card:GraphCard)=>{
