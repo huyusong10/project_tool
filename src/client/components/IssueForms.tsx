@@ -12,7 +12,7 @@ import { invalidateIssueViews, keys } from "../query-keys";
 import { cacheResourceUpdate, readResourceFresh, ResourceReadInvalidatedError } from "../use-resource-query";
 import type { Issue, IssuePage, Person, Requirement } from "../types";
 import { issueStatusLabels } from "../../shared/domain";
-import { canonicalizeContent, canonicalizeLabel, rankSearchItems } from "../../shared/search";
+import { canonicalizeContent, canonicalizeLabel, matchesSearch, rankSearchItems } from "../../shared/search";
 import { FieldShell } from "./LayoutPrimitives";
 import { StatusBadge } from "./Badge";
 import { ProgressInput } from "./ProgressInput";
@@ -166,6 +166,7 @@ function SearchSelectField({
     query,
     (option) => [{ text: option.label, weight: 100 }, { text: option.description, weight: 20 }],
   );
+  const noMatches = !!query.trim() && !matched.length && !pinned.some(option => matchesSearch([option.label, option.description], query));
   const visibleOptions = [...pinned];
   if (selected && !visibleOptions.some((option) => option.value === selected.value)) visibleOptions.push(selected);
   for (const option of matched) {
@@ -191,7 +192,7 @@ function SearchSelectField({
           {visibleOptions.map((option) => <button type="button" role="option" aria-selected={option.value === value} key={option.value || "__empty"} onClick={() => { onChange(option.value); close(true); }}>
             <span><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>{option.value === value && <Check size={15} />}
           </button>)}
-          {!visibleOptions.length && <p>没有匹配选项</p>}
+          {(!visibleOptions.length || noMatches) && <p>没有匹配选项</p>}
         </div>
       </AnchoredPopover>
     </div>
