@@ -54,7 +54,7 @@
 .text-prompt-match { margin: -5px 0 0; color: var(--text-faint); font-size: 12px; }.text-prompt-match strong { color: var(--text-secondary); }
 .confirm-dialog, .result-dialog { display: grid; gap: 16px; }
 .confirm-dialog-message, .result-dialog-message { min-width: 0; display: flex; align-items: flex-start; gap: 12px; color: var(--text-secondary); font-size: 14px; line-height: 1.7; }
-.confirm-dialog-message > div, .result-dialog-message > div { min-width: 0; flex: 1; }
+.confirm-dialog-message > div, .result-dialog-message > div { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 .confirm-dialog-message p { margin: 8px 0 0; }
 .confirm-dialog-icon, .result-dialog-message > svg { width: 38px; height: 38px; display: grid; place-items: center; flex: none; border-radius: var(--radius-lg); color: var(--warning); background: var(--warning-bg); }
 .confirm-dialog.is-danger .confirm-dialog-icon, .result-dialog.is-error .result-dialog-message > svg { color: var(--danger); background: var(--danger-bg); }
