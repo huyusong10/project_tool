@@ -39,11 +39,12 @@ export async function readPathGraph(raw: unknown, actor: AuthorizationActor) {
     if(input.requirementId&&!analysis.requirements.some(r=>r.id===input.requirementId))notFound('需求不存在');
     const target=input.target||(input.requirementId?'acceptance:'+input.requirementId:'project');
     if(target!=='project')analysis=readPathAnalysis(input.projectId,target,actor);
-    analysis=withFeatureContext(analysis,loadPathInput(input.projectId,analysis.asOfDate).requirements,actor);
-    const overview=featureView?getFeatureOverview(input.projectId,actor,analysis.asOfDate,'all'):undefined;
-    const relations=featureView?readFeatureRelations(input.projectId):undefined;
+    const requirements=loadPathInput(input.projectId,analysis.asOfDate).requirements;
+    const overview=getFeatureOverview(input.projectId,actor,analysis.asOfDate,'all');
+    const relations=readFeatureRelations(input.projectId);
+    analysis=withFeatureContext(analysis,requirements,actor,{overview,relations});
     if(input.featureId&&input.featureId!=='unassigned'&&!overview?.features.some(g=>g.id===input.featureId))notFound('特性不存在');
-    const graph=overview?featurePathGraph(analysis,overview,relations!,loadPathInput(input.projectId,analysis.asOfDate).requirements,input.featureId,input.planning,input.actual):projectPathGraph(analysis,input.requirementId,input.attention);
+    const graph=featureView?featurePathGraph(analysis,overview,relations,requirements,input.featureId,input.planning,input.actual):projectPathGraph(analysis,input.requirementId,input.attention);
     return {analysis,graph,overview,relations};
   })();
   const ids = new Set(graph.cards.map(c => c.id));
