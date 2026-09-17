@@ -1,4 +1,4 @@
-import type {Locator} from '@playwright/test';
+import {expect,type Locator} from '@playwright/test';
 
 /** Read the native value mirrored by a custom picker without changing it. */
 export function selectedValue(locator:Locator){
@@ -10,7 +10,10 @@ export async function chooseOption(locator:Locator,value:string|{label?:string;v
   const isSelect=await locator.evaluate(e=>e.tagName==='SELECT');
   if(isSelect&&await locator.isVisible())return locator.selectOption(value);
   const field=isSelect?locator.locator('..'):locator.locator('xpath=ancestor::span[contains(@class,"select-field")]');
-  const label=await field.locator('select').evaluate((e,v)=>{const options=Array.from((e as HTMLSelectElement).options);const option=typeof v==='string'?options.find(o=>o.value===v):v.label?options.find(o=>o.label===v.label):v.index!==undefined?options[v.index]:options.find(o=>o.value===v.value);if(!option)throw Error('Option not found');return option.label;},value);
+  const optionLabel=()=>field.locator('select').evaluate((e,v)=>{const options=Array.from((e as HTMLSelectElement).options);const option=typeof v==='string'?options.find(o=>o.value===v):v.label?options.find(o=>o.label===v.label):v.index!==undefined?options[v.index]:options.find(o=>o.value===v.value);return option?.label??null;},value);
+  // Dependent options (for example a feature's phases) arrive after the picker mounts.
+  await expect.poll(optionLabel,{message:'Requested option should finish loading'}).not.toBeNull();
+  const label=(await optionLabel())!;
   await field.getByRole('combobox').click();
   const search=locator.page().locator('.select-popover input');if(await search.isVisible())await search.fill(label);
   await locator.page().getByRole('option',{name:label,exact:true}).click();

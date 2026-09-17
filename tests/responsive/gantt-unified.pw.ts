@@ -140,7 +140,7 @@ test("关联工作项的纯说明不显示需求进度或当前工作项进度",
   await expect(updates).toContainText(note.content);await expect(updates.locator('article > b')).toHaveCount(0);
 });
 
-test("进展记录展示同一工作项的完成度变化、耗时和操作人", async ({ page }) => {
+test("进展记录展示同一工作项的完成度变化、耗时和操作人", {tag:'@responsive'},async ({ page }) => {
   await mockGanttData(page);
   const progressUpdates = [
     {

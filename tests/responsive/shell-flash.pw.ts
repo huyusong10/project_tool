@@ -1,23 +1,20 @@
 import {test,expect} from '@playwright/test';
 import {writeFile} from 'node:fs/promises';
-import {mockGanttData,requirement} from './gantt-fixture';
-import {analysePaths} from '../../src/shared/paths';
-import {req,work} from '../fixtures/path-network';
+import {mockGanttData} from './gantt-fixture';
 
 type Box={text:string|null;x:number;y:number;w:number;h:number;bg:string};
 type Frame={time:number;theme?:string;header:Box|null;title:Box|null;dot:Box|null;nav:string[]};
 type SampleWindow=typeof window & {flashFrames:Frame[];stopFlash?:boolean};
 
 for(const scenario of [
-  {width:1912,theme:'classic',role:'admin',url:'/paths?pathInspector=closed'},
-  {width:1912,theme:'dcim',role:'admin',url:'/paths?pathInspector=closed'},
+  {width:'matrix',theme:'classic',role:'admin',url:'/paths?pathInspector=closed'},
+  {width:'matrix',theme:'dcim',role:'admin',url:'/paths?pathInspector=closed'},
   {width:390,theme:'classic',role:'admin',url:'/paths?pathInspector=closed'},
-  {width:1912,theme:'classic',role:'member',url:'/requirements/r1'},
-])test(`刷新全程 ${scenario.width} ${scenario.theme} ${scenario.role}`,async({page},info)=>{
-  await page.setViewportSize({width:scenario.width,height:949});await mockGanttData(page);
+  {width:'matrix',theme:'classic',role:'member',url:'/requirements/r1'},
+])test(`刷新全程 ${scenario.width} ${scenario.theme} ${scenario.role}`,{tag:'@responsive'}, async({page},info)=>{
+  if(typeof scenario.width==='number')await page.setViewportSize({width:scenario.width,height:949});await mockGanttData(page);
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  const analysis=analysePaths({projectId:'p1',projectName:'DCIM',projectEnd:'2026-12-31',revision:1,asOfDate:'2026-09-11',requirements:[{...req('r1'),projectId:'p1',title:requirement.title}],workItems:[work('w1','r1',2)],dependencies:[]});
-  await page.route('**/path-analysis*',async route=>{await new Promise(r=>setTimeout(r,950));await route.fulfill({json:analysis});});
+  await page.route('**/path-graph*',async route=>{await new Promise(r=>setTimeout(r,950));await route.fallback();});
   await page.route('**/api/session',async route=>{await new Promise(r=>setTimeout(r,100));await route.fulfill({json:{authenticated:true,accountId:'admin',username:'admin',role:scenario.role,globalRole:scenario.role,personId:null,mustChangePassword:false,managedProjectIds:scenario.role==='member'?['p1']:[]}});});
   await page.route('**/api/projects',async route=>{await new Promise(r=>setTimeout(r,350));await route.fulfill({json:[{id:'p1',name:'DCIM',canManage:true,projectRole:'manager',status:'active'}]});});
   await page.route('**/api/branding',async route=>{await new Promise(r=>setTimeout(r,550));await route.fulfill({json:{systemName:'DCIM软件',shortName:'DCIM',logoUrl:null}});});
@@ -44,7 +41,10 @@ for(const scenario of [
     await expect(page.locator('.brand-name')).toHaveText('DCIM软件');await page.waitForTimeout(200);
     const final=await page.evaluate(()=>{
       const sidebar=document.querySelector('.sidebar')!,header=document.querySelector('.topbar')!;
-      return{sidebar:{width:getComputedStyle(sidebar).width,bg:getComputedStyle(sidebar).background},header:{left:getComputedStyle(header).left,height:getComputedStyle(header).height,bg:getComputedStyle(header).background}};
+      const toolbar=document.querySelector('.page-toolbar');
+      // 首屏占位覆盖顶栏和紧随其后的页面工具栏。
+      const chromeHeight=header.getBoundingClientRect().height+(toolbar?.getBoundingClientRect().height||0);
+      return{sidebar:{width:getComputedStyle(sidebar).width,bg:getComputedStyle(sidebar).background},header:{left:getComputedStyle(header).left,height:chromeHeight+'px',bg:getComputedStyle(header).background}};
     });
     const frames=await page.evaluate(()=>{Object.assign(window,{stopFlash:true});return(window as SampleWindow).flashFrames;});
     await writeFile(info.outputPath(`${entry}-frames.json`),JSON.stringify({initial,final,frames},null,2));

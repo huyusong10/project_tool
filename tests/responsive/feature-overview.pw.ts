@@ -21,7 +21,7 @@ const ready=(page:Page)=>expect(page.locator('[data-layout-ready="true"]')).toBe
 
 test('特性总览维护、独立评估、需求入口与首页空间',async({page},info)=>{
  const state=await fixture(page);await edit(page);await fill(page);await dialog(page).getByRole('button',{name:'保存评估',exact:true}).click();await expect(page.locator('.modal-card:not(.modal-card-workspace)[role=dialog]')).toHaveCount(0);await expect(dialog(page)).toContainText('基本符合');
- await dialog(page).getByRole('tab',{name:'交付范围',exact:true}).click();await expect(dialog(page).getByRole('button',{name:'角色授权',exact:true})).toBeVisible();await dialog(page).getByRole('button',{name:'关闭',exact:true}).first().click();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await dialog(page).getByRole('tab',{name:'交付范围',exact:true}).click();await expect(dialog(page).getByRole('button',{name:'角色授权',exact:true})).toBeVisible();await dialog(page).getByRole('button',{name:'关闭',exact:true}).first().click();
  await page.screenshot({path:info.outputPath('features.png'),fullPage:true,animations:'disabled'});await featureRow(page,'权限管理').locator('.outline-title').click();await dialog(page).getByRole('tab',{name:'交付范围',exact:true}).click();await dialog(page).getByRole('button',{name:'进入特性',exact:true}).click();await page.getByRole('button',{name:'展开全部',exact:true}).click();await expect(page).toHaveURL(new RegExp('featureId='+state.group.id));await expect(page.locator('.outline-table')).toContainText('角色授权');
  await page.goto('/');await expect(page.locator('.outline-table')).toBeVisible();
 });
@@ -58,4 +58,9 @@ test('账号切换不恢复前一账号的编辑内容，成员只能查看',asy
 test('规划关系提交响应丢失后通过批次回执核对，不重复建立连线',async({page})=>{
  const state=await fixture(page);await page.goto('/paths');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();await headerAction(page,'建立规划关系');await chooseOption(dialog(page).getByLabel('前置特性'),state.group.id);await chooseOption(dialog(page).getByLabel('后续特性'),state.future.id);await dialog(page).getByLabel('关系说明').fill('粗略先后安排');await dialog(page).getByRole('button',{name:'加入草稿'}).click();let writes=0;
  await page.route('**/api/projects/'+state.projectId+'/dependency-changes/apply',async route=>{writes++;await route.fetch();await route.abort('connectionfailed');});await graphToolbar(page,'保存修改');await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();expect(writes).toBe(1);expect((await(await page.request.get('/api/projects/'+state.projectId+'/feature-relations')).json())).toHaveLength(1);
+});
+
+test('特性资料与评估详情不横向溢出',{tag:'@responsive'},async({page})=>{
+  await fixture(page);await edit(page);await fill(page);
+  for(const viewport of [page.viewportSize()!,{width:390,height:844}]){await page.setViewportSize(viewport);await expect(dialog(page)).toBeVisible();expect(await dialog(page).evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);}
 });

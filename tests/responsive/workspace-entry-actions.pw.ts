@@ -8,7 +8,7 @@ const view=async(page:Page,name:string)=>toolbar(page).getByRole('button',{name,
 const create=async(page:Page,name:string)=>{await toolbar(page).getByRole('button',{name:'新建对象',exact:true}).click();await page.getByRole('menu',{name:'新建对象'}).getByRole('button',{name,exact:true}).click();};
 const url=(projectId:string,scopeType:string,scopeId:string,workspaceView='progress')=>'/?'+new URLSearchParams({projectId,workspaceView,scopeType,scopeId});
 
-test('空对象在进展表可见，特性内筛选继承当前位置，视图切换保留创建入口',async({page},info)=>{
+test('空对象在进展表可见，特性内筛选继承当前位置，视图切换保留创建入口',async({page})=>{
   const f=await phaseFixture(page);
   const empty=(await(await page.request.post(f.base+'/features',{data:{name:'设备接入（SBI）'}})).json()).features.find((x:{name:string})=>x.name==='设备接入（SBI）');
   await page.goto(url(f.projectId,'project',f.projectId));
@@ -27,16 +27,7 @@ test('空对象在进展表可见，特性内筛选继承当前位置，视图�
     await expect(page.getByRole('dialog',{name:'新建 Phase'})).toBeVisible();
     await page.getByRole('dialog',{name:'新建 Phase'}).getByRole('button',{name:'取消',exact:true}).click();
   }
-  await page.goto(url(f.projectId,'phase',f.phases[2].id));
-  await expect(page.locator('.workspace-empty:visible')).toContainText('本 Phase 暂无需求');
-  await expect(page.locator('.workspace-empty:visible').getByRole('button',{name:'移入需求',exact:true})).toBeVisible();
-  await expect(page.locator('.workspace-empty:visible').getByRole('button',{name:'新建需求',exact:true})).toBeInViewport();
-  await page.screenshot({path:info.outputPath('empty-phase.png'),animations:'disabled'});
-  await page.setViewportSize({width:390,height:844});await view(page,'关系图');
-  await expect(toolbar(page).getByRole('button',{name:'新建对象',exact:true})).toBeVisible();
-  await expect(page.locator('.workspace-graph-empty').getByRole('button',{name:'新建需求',exact:true})).toBeInViewport();
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await page.screenshot({path:info.outputPath('mobile-actions.png'),animations:'disabled'});
+
 });
 
 test('需求录入就地创建 Phase，取消保留输入，成功后只在保存需求时写入归属',async({page})=>{
@@ -117,4 +108,18 @@ test('Phase 移入支持其他特性的需求，需求调整归属和清单移�
   expect((await(await page.request.get('/api/requirements/'+r.id)).json()).phaseId).toBe(f.phases[2].id);
   await page.getByRole('button',{name:'撤销本次操作',exact:true}).click();await page.getByRole('dialog',{name:'撤销本次操作'}).getByRole('button',{name:'确认撤销',exact:true}).click();
   await expect.poll(async()=>(await(await page.request.get('/api/requirements/'+r.id)).json()).featureId).toBe(other.id);
+});
+
+test('空 Phase 创建入口在各视口与手机宽度内可见',{tag:'@responsive'},async({page},info)=>{
+  const f=await phaseFixture(page);
+  await page.goto(url(f.projectId,'phase',f.phases[2].id));
+  await expect(page.locator('.workspace-empty:visible')).toContainText('本 Phase 暂无需求');
+  await expect(page.locator('.workspace-empty:visible').getByRole('button',{name:'移入需求',exact:true})).toBeVisible();
+  await expect(page.locator('.workspace-empty:visible').getByRole('button',{name:'新建需求',exact:true})).toBeInViewport();
+  await page.screenshot({path:info.outputPath('empty-phase.png'),animations:'disabled'});
+  await page.setViewportSize({width:390,height:844});await view(page,'关系图');
+  await expect(toolbar(page).getByRole('button',{name:'新建对象',exact:true})).toBeVisible();
+  await expect(page.locator('.workspace-graph-empty').getByRole('button',{name:'新建需求',exact:true})).toBeInViewport();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await page.screenshot({path:info.outputPath('mobile-actions.png'),animations:'disabled'});
 });

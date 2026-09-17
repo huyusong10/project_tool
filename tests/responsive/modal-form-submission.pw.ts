@@ -747,8 +747,9 @@ test('登录同周期重复提交与 Escape 只执行一次且不关闭窗口', 
   });
   try {
     await page.goto('/');
-    await page.getByRole('button', { name: '用户登录', exact: true }).first().click();
+    await page.getByRole('button', { name: '游客登录', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '用户登录' });
+    await dialog.getByLabel('用户名', {exact:true}).fill('admin');
     await dialog.getByLabel('密码').fill('test-password');
     await dialog.getByRole('button', { name: '用户登录', exact: true }).evaluate((button) => {
       (button as HTMLButtonElement).click();
@@ -777,16 +778,17 @@ test('登录与退出响应未知时按服务端会话自动完成身份切换',
   });
 
   await page.goto('/');
-  await page.getByRole('button', { name: '用户登录', exact: true }).first().click();
+  await page.getByRole('button', { name: '游客登录', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '用户登录', exact: true });
+  await dialog.getByLabel('用户名', {exact:true}).fill('admin');
   await dialog.getByLabel('密码').fill('test-password');
   await dialog.getByRole('button', { name: '用户登录', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.locator('.topbar-account-name')).toHaveText('admin');
+  await expect(page.getByRole('button',{name:'账号菜单：admin',exact:true})).toBeVisible();
 
   await page.getByRole('button',{name:/^账号菜单/}).click();await page.getByRole('menuitem',{ name:'退出登录', exact: true }).click();
-  await expect(page.getByText('请登录', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '用户登录', exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('heading',{name:'暂未开放游客浏览',exact:true})).toBeVisible();
+  await expect(page.getByRole('button', { name: '游客登录', exact: true })).toBeVisible();
 });
 
 test('修改密码同周期重复提交与 Escape 只执行一次且不关闭窗口', async ({ page }) => {

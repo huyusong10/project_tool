@@ -93,13 +93,20 @@ test('问题100%一次解决，基础修改和降低进度保留更正历史，�
 
 });
 
-test('独立导航保留项目，筛选字体一致', async ({page}) => {
-  const f = await phaseFixture(page);
+test('进展筛选字体一致', {tag:'@responsive'}, async ({page}) => {
+  await phaseFixture(page);
   await page.goto('/execution');
   const filters = page.locator('.workspace-progress-tools');
   await expect(filters.locator('input').first()).toBeVisible();
   const fonts = await filters.locator('input,.progress-status-filter,.select-trigger').evaluateAll(elements => elements.map(el => {const style = getComputedStyle(el); return [style.fontFamily, style.fontSize, style.fontWeight, style.textAlign].join('|');}));
   expect(new Set(fonts).size, fonts.join("\n")).toBe(1);
+});
+
+test('独立导航保留项目', async ({page}) => {
+  const f = await phaseFixture(page);
+  await page.goto('/execution');
+  const filters = page.locator('.workspace-progress-tools');
+  await expect(filters.locator('input').first()).toBeVisible();
   for (const [path, title] of [['/actions', '项目待处理'], ['/analytics', '统计分析']]) {
     await page.goto(path + '?projectId=' + f.projectId);
     await expect(page.getByRole('link', {name: title, exact: true})).toHaveAttribute('aria-current', 'page');

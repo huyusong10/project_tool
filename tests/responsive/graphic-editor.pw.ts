@@ -1,27 +1,12 @@
+import {graphFixture as fixture} from './graph-fixture';
 import {chooseOption,selectedValue} from './select-helper';
-import {openGraph,openGraphDrafts,reopenGraphProperties,setGraphScope,graphProperties,graphToolbar,closeGraphProperties,focusGraph} from './graph-interactions';
+import {openGraph,openGraphDrafts,reopenGraphProperties,graphProperties,graphToolbar,closeGraphProperties,focusGraph} from './graph-interactions';
 import { headerAction } from './topbar-helpers';
 
 import {test,expect,chromium,type Page} from '@playwright/test';
-import {type PathAnalysis} from '../../src/shared/paths';
 import type {Requirement,WorkItemTemplate} from '../../src/client/types';
-import {addBusinessDays,todayIso} from '../../src/shared/domain';
 
 
-async function fixture(page:Page,crossDependency=true){
- const login=await page.request.post('/api/login',{data:{username:'admin',password:'41_xc7q0qOjo4Inw!'}});expect(login.ok()).toBe(true);
- const session=await(await page.request.get('/api/session')).json();const name=`图验证${Date.now()}`;
- const project=await(await page.request.post('/api/projects',{data:{name,plannedEnd:addBusinessDays(todayIso(),3)}})).json();
- const owner=await(await page.request.post('/api/people',{data:{projectId:project.id,name:`负责人${Date.now()}`}})).json();
- const template=await(await page.request.post('/api/templates',{data:{projectId:project.id,name:'依赖流程',dependencyMode:'dependencies',items:[{clientKey:'a',title:'方案交付',durationDays:2,startOffsetDays:0,sortOrder:0,predecessorKeys:[]},{clientKey:'b',title:'集成验证',durationDays:3,startOffsetDays:2,sortOrder:1,predecessorKeys:['a']}]}})).json() as WorkItemTemplate;
- const create=async(title:string)=>await(await page.request.post('/api/requirements',{data:{projectId:project.id,templateId:template.id,ownerId:owner.id,title,plannedStart:addBusinessDays(todayIso(),0)}})).json() as Requirement;
- const a=await create('接口基础交付'),b=await create('订单交付');
- const analysis=async()=>(await(await page.request.get(`/api/projects/${project.id}/path-graph?view=features`)).json()).analysis as PathAnalysis;
- if(crossDependency)await page.request.post(`/api/projects/${project.id}/dependencies`,{data:{sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:b.workItems[1].id,expectedRevision:(await analysis()).revision}});
- await page.addInitScript(({account,id})=>localStorage.setItem(`project-manage:selected-project:${account}`,id),{account:session.accountId,id:project.id});
- setGraphScope(page,project.id,a.featureId!);
- return {project,a,b,analysis};
-}
 const ready=(page:Page)=>expect(page.locator('[data-layout-ready="true"]')).toBeVisible({timeout:20000});
 const viewportValue=(page:Page)=>page.locator('.react-flow__viewport').evaluate(e=>(e as HTMLElement).style.transform);
 const positionsValue=(page:Page)=>page.locator('.react-flow__node').evaluateAll(nodes=>Object.fromEntries(nodes.map(n=>[(n as HTMLElement).dataset.id,(n as HTMLElement).style.transform])));
@@ -259,7 +244,7 @@ test('新增里程碑与连线不移动已有视口，提示紧凑，循环说�
  await page.locator('.graph-auxiliary').getByRole('button',{name:'关闭',exact:true}).click();await expect(page.locator('.graph-error-notice')).toHaveCount(0);await ready(page);expect(await viewportValue(page)).toBe(beforeViewport);
 });
 
-test('添加菜单、分析抽屉和属性按外部点击或Esc关闭，输入草稿保留',async({page},info)=>{
+test('添加菜单、分析抽屉和属性按外部点击或Esc关闭，输入草稿保留',async({page})=>{
  const {a}=await fixture(page);await openGraph(page,'/paths?pathScope=all');await ready(page);await graphToolbar(page,'编辑画布');
  await graphToolbar(page,'添加元素');await expect(page.locator('.graph-element-menu')).toHaveAttribute('open','');await blank(page);await expect(page.locator('.graph-element-menu')).not.toHaveAttribute('open','');
  await graphToolbar(page,'添加元素');await page.keyboard.press('Escape');await expect(page.locator('.graph-element-menu')).not.toHaveAttribute('open','');
@@ -269,7 +254,6 @@ test('添加菜单、分析抽屉和属性按外部点击或Esc关闭，输入�
  await closeGraphProperties(page);await page.getByRole('button',{name:'余量',exact:true}).click();await expect(page.locator('.path-float-distribution')).toBeVisible();expect((await page.locator('.graph-auxiliary').boundingBox())!.height).toBeLessThan(230);const entries=await page.locator('.path-float-distribution button').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().y));expect(new Set(entries).size).toBe(1);
  const before=await viewportValue(page);await page.locator('.path-float-distribution button').last().click();await expect(page.locator('.path-float-results')).toBeVisible();expect(await viewportValue(page)).toBe(before);await page.keyboard.press('Escape');await expect(page.locator('.graph-auxiliary[aria-hidden="false"]')).toHaveCount(0);
  await closeGraphProperties(page);await page.getByRole('button',{name:'余量',exact:true}).click();await blank(page);await expect(page.locator('.graph-auxiliary[aria-hidden="false"]')).toHaveCount(0);
- await page.setViewportSize({width:390,height:844});await closeGraphProperties(page);await page.getByRole('button',{name:'余量',exact:true}).click();await expect(page.locator('.path-float-distribution')).toBeVisible();const drawer=(await page.locator('.graph-auxiliary').boundingBox())!,footer=(await page.locator('.graph-footer').boundingBox())!,controls=(await page.locator('.graph-view-controls').boundingBox())!;expect(drawer.y+drawer.height).toBeLessThanOrEqual(Math.min(footer.y,controls.y)-10);await page.waitForTimeout(220);await page.screenshot({path:info.outputPath('drawers-narrow.png')});
 });
 
 test('重复连线可定位已有草稿关系，快速撤销重做后线路完整且正式数据不变',async({page})=>{
@@ -307,7 +291,7 @@ test('紧凑工作区：移动、Alt复制、独立里程碑、草稿恢复与�
  await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect.poll(async()=>{const items=await(await page.request.get('/api/templates?projectId='+project.id)).json();return items.some((t:WorkItemTemplate)=>t.name==='图形编辑验收');}).toBe(true);await ready(page);
  await page.waitForTimeout(300);await page.screenshot({path:testInfo.outputPath('editor-desktop.png')});expect(errors).toEqual([]);expect((await analysis()).requirements).toHaveLength(2);
 });
-test('全局新增需求只加入草稿，进入其内部继续创建，保存后可原路返回',async({page},testInfo)=>{
+test('全局新增需求只加入草稿，进入其内部继续创建，保存后可原路返回',async({page})=>{
  const {analysis}=await fixture(page);await openGraph(page,'/paths?pathScope=all');await ready(page);const initial=await analysis();
  await page.getByRole('button',{name:'编辑画布',exact:true}).click();await graphToolbar(page,'添加元素');await page.locator('.graph-elements').getByRole('button',{name:'需求',exact:true}).click();const b=(await page.locator('.dependency-canvas').boundingBox())!;await page.mouse.click(b.x+b.width*.6,b.y+b.height*.68);
  await page.getByRole('dialog').getByLabel('需求标题').fill('草稿新需求');await page.getByRole('button',{name:'加入草稿',exact:true}).click();await ready(page);expect((await analysis()).requirements).toHaveLength(initial.requirements.length);
@@ -315,7 +299,7 @@ test('全局新增需求只加入草稿，进入其内部继续创建，保存�
  await page.getByRole('button',{name:'进入草稿新需求',exact:true}).click();await ready(page);await expect(page).toHaveURL(/draftProject=/);await expect(page.locator('.page-breadcrumb')).toContainText('草稿新需求');
  await graphToolbar(page,'添加元素');await page.locator('.graph-elements').getByRole('button',{name:'工作项',exact:true}).click();const box=(await page.locator('.dependency-canvas').boundingBox())!;await page.mouse.click(box.x+box.width*.45,box.y+box.height*.6);await ready(page);await graphProperties(page,page.locator('.react-flow__node').filter({hasText:'新工作项'}));await expect(page.getByLabel('元素名称')).toHaveValue('新工作项');
  await graphToolbar(page,'保存修改');await expect(page).not.toHaveURL(/draftProject=/);await ready(page);expect((await analysis()).requirements).toHaveLength(initial.requirements.length+1);
- await page.goBack();await ready(page);await expect(page).toHaveURL(/scopeType=feature/);await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);expect((await page.locator('.topbar').boundingBox())!.height).toBeLessThanOrEqual(88);await page.screenshot({path:testInfo.outputPath('editor-narrow.png')});
+ await page.goBack();await ready(page);await expect(page).toHaveURL(/scopeType=feature/);
 });
 
 test('多标签页显式接管草稿，撤销不影响正式数据',async({page,context})=>{
@@ -355,7 +339,7 @@ test('待核对通知丢失时，自动接手页面保存前仍读取原批次',
 test('本机存储失败给出提示，保存失败保留当前编辑并且不写正式数据',async({page})=>{
  const {analysis}=await fixture(page);await page.addInitScript(()=>{Object.defineProperty(window,'indexedDB',{value:{open(){throw new DOMException('quota','QuotaExceededError');}}});});await openGraph(page,'/paths?view=project');await ready(page);const before=await analysis();await graphToolbar(page,'编辑画布');await graphProperties(page,page.locator('.react-flow__node .dependency-card').first());await page.getByLabel('元素名称').fill('内存中的修改');await page.getByLabel('元素名称').blur();await expect(page.locator('.page-toolbar-status')).toContainText('本机保存失败');await expect(page.getByLabel('保存修改')).toBeEnabled();await graphToolbar(page,'保存修改');await reopenGraphProperties(page);await expect(page.getByLabel('元素名称')).toHaveValue('内存中的修改');expect((await analysis()).requirements).toEqual(before.requirements);
 });
-test('关闭浏览器后从同一本机草稿恢复内容、撤销和视口',{tag:'@responsive'}, async({},info)=>{
+test('关闭浏览器后从同一本机草稿恢复内容、撤销和视口', async({},info)=>{
  test.setTimeout(90000);const baseURL=String(info.project.use.baseURL||'http://127.0.0.1:3211'),profile=info.outputPath('browser-profile');
  let context=await chromium.launchPersistentContext(profile,{channel:'msedge',headless:true,baseURL,viewport:{width:1280,height:800}});let page=context.pages()[0];
  try{await fixture(page);await openGraph(page,'/templates?edit=new');await ready(page);await graphProperties(page,page.locator('.react-flow__node .dependency-card').first());await page.getByLabel('元素名称').fill('关闭后恢复');await page.getByLabel('元素名称').blur();const url=page.url(),positions=await page.locator('.react-flow__node').evaluateAll(ns=>ns.map(n=>(n as HTMLElement).style.transform));await page.waitForTimeout(150);await context.close();
@@ -587,7 +571,7 @@ test('全局交付条件：直接拉线、细化、撤销、返回和保存只�
  await edge.locator('.dependency-edge-label').click();await expect(page.locator('.delivery-condition')).toBeVisible();await page.screenshot({path:info.outputPath('delivery-condition-saved.png')});
 });
 
-test('全局交付条件：聚合明细不误改整组，重复拒绝，390px可用',async({page},info)=>{
+test('全局交付条件：聚合明细不误改整组，重复拒绝，刷新保留草稿',async({page})=>{
  const {project,a,b,analysis}=await fixture(page);
  const response=await page.request.post('/api/projects/'+project.id+'/dependencies',{data:{sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:b.workItems[0].id,expectedRevision:(await analysis()).revision}});expect(response.ok()).toBe(true);
  await openGraph(page,'/paths?pathScope=all');await ready(page);const formal=await analysis();
@@ -599,11 +583,9 @@ test('全局交付条件：聚合明细不误改整组，重复拒绝，390px可
  await page.getByRole('button',{name:'返回全部 2 条关系',exact:true}).click();await expect(page.getByLabel('等待什么完成',{exact:true})).toHaveCount(0);
  await page.locator('.modal-card-workspace .graph-relation-list>div>button:first-child').filter({hasText:'订单交付 · 集成验证'}).click();
  await chooseOption(page.getByLabel('等待什么完成',{exact:true}), a.workItems[1].id);await ready(page);expect((await analysis()).dependencies).toEqual(formal.dependencies);
- await page.setViewportSize({width:390,height:844});await closeGraphProperties(page);await headerAction(page,'关系明细');
+ await closeGraphProperties(page);await headerAction(page,'关系明细');
  await page.locator('.graph-auxiliary .graph-relation-list>div>button:first-child').filter({hasText:'订单交付 · 集成验证'}).click();await page.reload();await ready(page);await expect(selectedValue(page.getByLabel('等待什么完成',{exact:true}))).toHaveValue(a.workItems[1].id);
  await expect(edge).toHaveClass(/selected/);
- const panel=page.getByRole('dialog');const box=(await panel.boundingBox())!;expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(390);expect(await panel.evaluate(e=>e.scrollWidth-e.clientWidth)).toBeLessThanOrEqual(1);
- await page.screenshot({path:info.outputPath('delivery-condition-390.png')});
  await graphToolbar(page,'保存修改');await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();
  const cross=(await analysis()).dependencies.filter(d=>d.sourceRequirementId===a.id&&d.targetRequirementId===b.id);expect(cross).toHaveLength(2);
  expect(cross.find(d=>d.targetWorkItemId===b.workItems[0].id)?.sourceWorkItemId).toBe(a.workItems[0].id);expect(cross.find(d=>d.targetWorkItemId===b.workItems[1].id)?.sourceWorkItemId).toBe(a.workItems[1].id);
@@ -618,4 +600,21 @@ test('全局交付条件：按拼音查找需求里程碑，选择后保持草�
  const edge=page.locator('.react-flow__edge[data-id="'+a.id+'>'+b.id+'"]');await edge.locator('.dependency-edge-label').click();
  await page.getByLabel('搜索等待什么完成',{exact:true}).fill('sjqr');await chooseOption(page.getByLabel('等待什么完成',{exact:true}), milestoneId);await ready(page);await expect(edge.locator('.dependency-edge-label')).toHaveText('设计确认后开始');
  expect((await analysis()).dependencies).toEqual(formal.dependencies);await graphToolbar(page,'撤销');await expect(selectedValue(page.getByLabel('等待什么完成',{exact:true}))).toHaveValue('acceptance:'+a.id);
+});
+
+test('关系图余量抽屉、顶栏和交付条件在矩阵与窄屏内显示',{tag:'@responsive'},async({page},info)=>{
+ const {a,b}=await fixture(page);await openGraph(page,'/paths?pathScope=all');await ready(page);
+ const widths=[page.viewportSize()!.width,390];
+ for(const width of widths){
+  await page.setViewportSize({width,height:844});await closeGraphProperties(page);
+  expect((await page.locator('.topbar').boundingBox())!.height).toBeLessThanOrEqual(88);
+  await page.getByRole('button',{name:'余量',exact:true}).click();await expect(page.locator('.path-float-distribution')).toBeVisible();
+  const drawer=(await page.locator('.graph-auxiliary').boundingBox())!,footer=(await page.locator('.graph-footer').boundingBox())!,controls=(await page.locator('.graph-view-controls').boundingBox())!;
+  expect(drawer.y+drawer.height).toBeLessThanOrEqual(Math.min(footer.y,controls.y)-10);
+  await page.keyboard.press('Escape');
+  await page.locator('.react-flow__edge[data-id="'+a.id+'>'+b.id+'"] .dependency-edge-label').click();
+  const panel=page.getByRole('dialog');await expect(panel.locator('.delivery-condition')).toBeVisible();
+  const box=(await panel.boundingBox())!;expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(width);expect(await panel.evaluate(e=>e.scrollWidth-e.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({path:info.outputPath('graph-panels-'+width+'.png')});await closeGraphProperties(page);
+ }
 });

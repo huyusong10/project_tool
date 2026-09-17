@@ -15,15 +15,6 @@ test('system management focuses on health and data safety', async ({ page }) => 
   await expect(page.getByText('平台治理', { exact: true })).toBeVisible();
   await expect(page.getByText('平台运维', { exact: true })).toBeVisible();
 
-  const panel = page.locator('.system-backup-panel');
-  const panelBox = await panel.boundingBox();
-  expect(panelBox).not.toBeNull();
-  expect(panelBox!.height).toBeGreaterThanOrEqual(200);
-  expect(panelBox!.height).toBeLessThanOrEqual(621);
-  const pagerBox = await panel.getByRole('navigation', { name: '备份列表分页' }).boundingBox();
-  expect(pagerBox!.y + pagerBox!.height).toBeLessThanOrEqual(panelBox!.y + panelBox!.height);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
-
   await page.getByRole('button', { name: '立即备份' }).click();
   await expect(page.getByText(/备份已创建：/)).toBeVisible();
   await expect(page.locator('.system-backup-table tbody tr').first()).toBeVisible();
@@ -177,4 +168,18 @@ test('branding refresh preserves drafts and late save cannot replace newer setti
     await expect(shortName).toHaveValue('新三');
     await expect(page.locator('.brand-name')).toHaveText('服务器更新三');
   } finally { releaseSave(); }
+});
+
+test('备份列表面板与分页保持有界布局',{tag:'@responsive'},async({page})=>{
+  await page.goto('/system');
+  await expect(page.locator('.system-backup-panel')).toBeVisible();
+  const panel = page.locator('.system-backup-panel');
+  const panelBox = await panel.boundingBox();
+  expect(panelBox).not.toBeNull();
+  expect(panelBox!.height).toBeGreaterThanOrEqual(200);
+  expect(panelBox!.height).toBeLessThanOrEqual(621);
+  const pagerBox = await panel.getByRole('navigation', { name: '备份列表分页' }).boundingBox();
+  expect(pagerBox!.y + pagerBox!.height).toBeLessThanOrEqual(panelBox!.y + panelBox!.height);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+
 });

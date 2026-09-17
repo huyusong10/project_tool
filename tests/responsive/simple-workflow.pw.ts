@@ -1,3 +1,4 @@
+import {chooseOption} from './select-helper';
 import {expect,test} from '@playwright/test';
 import type {Requirement} from '../../src/client/types';
 
@@ -10,7 +11,7 @@ test('新建需求直接开始、更新、完成和返工，不经过来源或�
  await page.goto('/requirements');await page.getByRole('button',{name:'新建需求',exact:true}).click();
  const create=page.getByRole('dialog',{name:'新建需求'});
  await create.getByLabel('需求标题',{exact:true}).fill('用户登录认证');
- await create.getByLabel('需求负责人（可稍后指定）').selectOption(owner.id);
+ await chooseOption(create.getByLabel('需求负责人（可稍后指定）'), owner.id);
  await create.getByRole('button',{name:'创建需求',exact:true}).click();await expect(create).not.toBeVisible();
  const rows=await(await page.request.get('/api/requirements?projectId='+project.id)).json() as Requirement[];
  expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({status:'not_started',workItems:[]});
@@ -18,13 +19,13 @@ test('新建需求直接开始、更新、完成和返工，不经过来源或�
  await page.goto('/requirements/'+id);
  for(const name of ['确认验收','关联来源条款','填写落实范围','阻塞','解除阻塞','交付承诺'])await expect(page.getByRole('button',{name,exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'开始需求',exact:true}).click();
- await expect(page.getByRole("dialog")).toHaveCount(0);
+ await expect(page.locator('.modal-card:not(.modal-card-workspace)[role=dialog]')).toHaveCount(0);
  await expect.poll(async()=>(await detail()).status).toBe('in_progress');
  await page.getByRole('button',{name:'更新进度',exact:true}).click();
  const progress=page.getByRole('dialog',{name:'更新进度'});await progress.getByLabel('需求完成度').fill('60');await progress.getByRole('button',{name:'更新进度',exact:true}).click();
  await expect.poll(async()=>(await detail()).progress).toBe(60);
  await page.getByRole('button',{name:'完成需求',exact:true}).click();
- await expect(page.getByRole("dialog")).toHaveCount(0);
+ await expect(page.locator('.modal-card:not(.modal-card-workspace)[role=dialog]')).toHaveCount(0);
  await expect.poll(async()=>(await detail()).status).toBe('completed');expect(await detail()).toMatchObject({progress:100,acceptedAt:null});
  await page.screenshot({path:info.outputPath('simple-workflow-completed.png'),fullPage:true});
  await page.getByRole('button',{name:'返工',exact:true}).click();

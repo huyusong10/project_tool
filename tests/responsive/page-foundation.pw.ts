@@ -1,6 +1,7 @@
 import {test,expect,type Page} from '@playwright/test';
 import {writeFile} from 'node:fs/promises';
-import {mockGanttData,requirement} from './gantt-fixture';
+import {closeGraphProperties} from './graph-interactions';
+import {mockGanttData,mockGanttReport,requirement} from './gantt-fixture';
 
 type Rect = {text:string;x:number;y:number;w:number;h:number};
 type Frame = {barId:number;sideId:number;bar:Rect;project:Rect;title:Rect;brand:string;bodyStart:number};
@@ -19,8 +20,8 @@ async function sampleStartup(page:Page) {
   });
 }
 
-for(const width of [1280,390])for(const scenario of ['global','detail','different-project'])test(`应用启动：${scenario} ${width} 项目和标题一次到位，外壳不重挂载`,async({page},info)=>{
-  await page.setViewportSize({width,height:844}); await mockGanttData(page);
+for(const width of ['matrix',390] as const)for(const scenario of ['global','detail','different-project'])test(`应用启动：${scenario} ${width} 项目和标题一次到位，外壳不重挂载`,{tag:'@responsive'},async({page},info)=>{
+  if(width!=='matrix')await page.setViewportSize({width,height:844}); await mockGanttData(page);
   let reads=0;
   await page.route('**/api/session',async route=>{await new Promise(r=>setTimeout(r,120));await route.fallback();});
   await page.route('**/api/projects',async route=>{await new Promise(r=>setTimeout(r,scenario==='different-project'?520:240));await route.fulfill({json:[{id:'p1',name:'DCIM',status:'active'},{id:'p2',name:'不应闪现的记忆项目',status:'active'}]});});
@@ -28,11 +29,13 @@ for(const width of [1280,390])for(const scenario of ['global','detail','differen
   const name='EPDS-DCIM-35【菜单权限方案管理】';
   await page.route('**/api/requirements/r1',async route=>{reads++;await new Promise(r=>setTimeout(r,scenario==='different-project'?180:480));await route.fulfill({json:{...requirement,title:name}});});
   await page.addInitScript(different=>localStorage.setItem('project-manage:selected-project:admin',different?'p2':'p1'),scenario==='different-project');
+  await mockGanttReport(page,()=>[{...requirement,title:name}]);
   await sampleStartup(page);
   for(const entry of ['open','refresh']){
     reads=0;
     if(entry==='open')await page.goto(scenario==='global'?'/':'/requirements/r1');else await page.reload();
-    await expect(page.locator('.integrated-page-title h1')).toHaveText(scenario==='global'?'项目进展':name);
+    await expect(page.locator('.integrated-page-title h1')).toHaveText('项目空间');
+    if(scenario!=='global')await expect(page.getByRole('heading',{name,exact:true})).toBeVisible();
     await expect(page.locator('.brand-name')).toHaveText('DCIM软件');
     await page.screenshot({path:info.outputPath(`${entry}-${width}.png`)});
     const frames=await page.evaluate(()=>{Object.assign(window,{stopStartupFrames:true});return(window as typeof window&{startupFrames:Frame[]}).startupFrames;});
@@ -42,9 +45,10 @@ for(const width of [1280,390])for(const scenario of ['global','detail','differen
     expect(new Set(frames.map(f=>`${f.project.x}:${f.project.w}:${f.title.x}:${f.title.y}:${f.title.h}:${f.bar.h}:${f.bodyStart}`)).size).toBe(1);
     expect(frames.some(f=>f.project.text.includes('不应闪现'))).toBe(false);
     expect(frames.every(f=>!f.brand||f.brand==='DCIM软件')).toBe(true);
-    expect(frames.filter(f=>f.title.text).every(f=>f.title.text===(scenario==='global'?'项目进展':name))).toBe(true);
+    expect(frames.filter(f=>f.title.text).every(f=>f.title.text===('项目空间'))).toBe(true);
     expect(frames.every(f=>!f.title.text || f.project.text==='DCIM')).toBe(true);
-    expect(reads).toBe(scenario==='global'?0:1);
+    // 旧链接先确认所属项目；正式详情再次读取权限，不复用路由解析的未分账号缓存。
+    expect(reads).toBe(scenario==='global'?0:entry==='open'?2:1);
   }
 });
 
@@ -57,7 +61,7 @@ test('快速项目切换与旧响应：外壳稳定，筛选不重新初始化�
   for(const name of ['项目 B','项目 A']){await page.locator('.project-switcher-button').click();await page.getByRole('option',{name,exact:true}).click();}
   await page.waitForTimeout(700);
   await expect(page.locator('.project-switcher-name')).toHaveText('项目 A');
-  await expect(page.locator('.integrated-page-title h1')).toHaveText('项目进展');
+  await expect(page.locator('.integrated-page-title h1')).toHaveText('项目空间');
   expect(await page.evaluate(()=>{const w=window as typeof window&{initialBar:Element;initialSidebar:Element};return w.initialBar===document.querySelector('.topbar')&&w.initialSidebar===document.querySelector('.sidebar');})).toBe(true);
 });
 
@@ -69,32 +73,29 @@ test('对象失败不冒用记忆项目；旧流程只查询记忆项目且明�
   await expect(page.locator('.project-switcher-name')).toHaveText('选择项目');
   await expect(page.locator('.topbar-page-tools button')).toHaveCount(0);
   await page.goto('/templates?edit=missing'); await expect(page.getByText('当前项目中没有这个流程。请返回流程列表重新选择。',{exact:true})).toBeVisible();
-  await expect(page.getByRole('button',{name:'返回流程列表',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'项目空间',exact:true})).toBeVisible();
   const templateRequests=requests.filter(url=>new URL(url).pathname==='/api/templates');
   expect(templateRequests).toHaveLength(1);expect(new URL(templateRequests[0]).searchParams.get('projectId')).toBe('p1');
 });
 
 test('需求 A→B→A 的迟到读取不能发布旧标题或按钮',async({page},info)=>{
-  await mockGanttData(page); await sampleStartup(page);
+  await mockGanttData(page);await sampleStartup(page);
   await page.route('**/api/requirements/r1',async route=>{await new Promise(r=>setTimeout(r,650));await route.fulfill({json:requirement}).catch(()=>{});});
   await page.route('**/api/requirements/r2',async route=>{await new Promise(r=>setTimeout(r,180));await route.fulfill({json:{...requirement,id:'r2',title:'领先计划流程'}});});
   await page.addInitScript(()=>{
-    const frames:Array<{path:string;title:string;project:string}>=[];Object.assign(window,{routeFrames:frames});
-    const sample=()=>{frames.push({path:location.pathname,title:document.querySelector('.integrated-page-title h1')?.textContent||'',project:document.querySelector('.project-switcher-name')?.textContent||''});requestAnimationFrame(sample);};requestAnimationFrame(sample);
+    const frames:Array<{id:string;title:string}>=[];Object.assign(window,{routeFrames:frames});
+    const sample=()=>{frames.push({id:new URLSearchParams(location.search).get('detailId')||'',title:document.querySelector('.modal-card-workspace > header h2')?.textContent||''});requestAnimationFrame(sample);};requestAnimationFrame(sample);
   });
-  await page.goto('/');await expect(page.locator('.gantt-requirement-link')).toHaveCount(2);
-  await page.locator('.gantt-requirement-link').filter({hasText:requirement.title}).click();
-  await page.getByRole('link',{name:'项目进展',exact:true}).click();
-  await page.locator('.gantt-requirement-link').filter({hasText:'领先计划流程'}).click();
-  await expect(page.locator('.integrated-page-title h1')).toHaveText('领先计划流程');
-  await page.waitForTimeout(700);
-  await expect(page.locator('.integrated-page-title h1')).toHaveText('领先计划流程');
-  await page.getByRole('link',{name:'项目进展',exact:true}).click();
-  await page.locator('.gantt-requirement-link').filter({hasText:requirement.title}).click();
-  await expect(page.locator('.integrated-page-title h1')).toHaveText(requirement.title);
-  const frames=await page.evaluate(()=>(window as typeof window&{routeFrames:Array<{path:string;title:string}>}).routeFrames);
+  await page.goto('/requirements');await page.getByRole('button',{name:'展开全部',exact:true}).click();
+  const row=(id:string)=>page.locator('[data-object-id="'+id+'"] .outline-title');
+  await row('r1').click();await closeGraphProperties(page);await row('r2').click();
+  await expect(page.getByRole('heading',{name:'领先计划流程',exact:true})).toBeVisible();
+  await expect(page.locator('.requirement-overview')).toBeVisible();await page.waitForTimeout(700);
+  await expect(page.getByRole('heading',{name:'领先计划流程',exact:true})).toBeVisible();
+  await closeGraphProperties(page);await row('r1').click();await expect(page.getByRole('heading',{name:requirement.title,exact:true})).toBeVisible();
+  const frames=await page.evaluate(()=>(window as typeof window&{routeFrames:Array<{id:string;title:string}>}).routeFrames);
   await writeFile(info.outputPath('continuous-navigation.json'),JSON.stringify(frames,null,2));
-  for(const frame of frames.filter(f=>f.path==='/requirements/r2'))expect(['','领先计划流程']).toContain(frame.title);
+  for(const frame of frames.filter(f=>f.id==='r2'))expect(['','领先计划流程','读取中…']).toContain(frame.title);
   const shell=await page.evaluate(()=>{Object.assign(window,{stopStartupFrames:true});return(window as typeof window&{startupFrames:Frame[]}).startupFrames;});
   expect(new Set(shell.map(f=>f.barId)).size).toBe(1);expect(new Set(shell.map(f=>f.sideId)).size).toBe(1);
 });

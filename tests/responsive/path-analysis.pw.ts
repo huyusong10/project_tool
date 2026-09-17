@@ -1,37 +1,31 @@
-import { headerAction } from './topbar-helpers';
-import fs from 'node:fs';
+import { headerAction as toolbarAction } from './topbar-helpers';
 import {test,expect,type Page} from '@playwright/test';
-import {analysePaths,type PathInput,type PathAnalysis} from '../../src/shared/paths';
+import type {PathAnalysis} from '../../src/shared/paths';
+import {mockGraphAnalysis} from './graph-analysis-fixture';
 import type {Requirement,WorkItemTemplate} from '../../src/client/types';
-import {addBusinessDays,todayIso} from '../../src/shared/domain';
-import {req,work} from '../fixtures/path-network';
+import {todayIso} from '../../src/shared/domain';
 import {themes} from '../../src/client/theme';
-async function fixture(page:Page){
- const login=await page.request.post('/api/login',{data:{username:'admin',password:'41_xc7q0qOjo4Inw!'}});expect(login.ok()).toBe(true);
- const session=await(await page.request.get('/api/session')).json();const name=`图验证${Date.now()}`;
- const project=await(await page.request.post('/api/projects',{data:{name,plannedEnd:addBusinessDays(todayIso(),3)}})).json();
- const owner=await(await page.request.post('/api/people',{data:{projectId:project.id,name:`负责人${Date.now()}`}})).json();
- const template=await(await page.request.post('/api/templates',{data:{projectId:project.id,name:'依赖流程',dependencyMode:'dependencies',items:[{clientKey:'a',title:'方案交付',durationDays:2,startOffsetDays:0,sortOrder:0,predecessorKeys:[]},{clientKey:'b',title:'集成验证',durationDays:3,startOffsetDays:2,sortOrder:1,predecessorKeys:['a']}]}})).json() as WorkItemTemplate;
- const create=async(title:string)=>await(await page.request.post('/api/requirements',{data:{projectId:project.id,templateId:template.id,ownerId:owner.id,title,plannedStart:addBusinessDays(todayIso(),0)}})).json() as Requirement;
- const a=await create('接口基础交付'),b=await create('订单交付');
- const analysis=async()=>await(await page.request.get(`/api/projects/${project.id}/path-analysis`)).json() as PathAnalysis;
- await page.request.post(`/api/projects/${project.id}/dependencies`,{data:{sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:b.workItems[1].id,expectedRevision:(await analysis()).revision}});
- await page.addInitScript(({account,id})=>localStorage.setItem(`project-manage:selected-project:${account}`,id),{account:session.accountId,id:project.id});
- return {project,a,b,analysis};
+import {graphFixture as fixture} from './graph-fixture';
+import {openGraph,closeGraphProperties,graphProperties,graphToolbar} from './graph-interactions';
+const headerAction=async(page:Page,name:string)=>{await closeGraphProperties(page);await toolbarAction(page,name);};
+async function expectClean(page:Page){
+ const undo=page.getByRole('button',{name:'撤销',exact:true});
+ if(await undo.isVisible())await expect(undo).toBeDisabled();
+ else{await page.getByRole('button',{name:'更多操作',exact:true}).click();await expect(page.getByRole('button',{name:'撤销修改',exact:true})).toBeDisabled();await page.keyboard.press('Escape');}
 }
 const ready=(page:Page)=>expect(page.locator('[data-layout-ready="true"]')).toBeVisible({timeout:20000});
 const viewport=(page:Page)=>page.locator('.react-flow__viewport').evaluate(n=>(n as HTMLElement).style.transform);
 
-test('重进路径分析时恢复离屏视口会自动显示节点，正常视口保持不变',async({page})=>{
- const {project,analysis}=await fixture(page),before=await analysis();
+test('重进路径分析时恢复离屏视口会自动显示节点，正常视口保持不变',{tag:'@responsive'}, async({page})=>{
+ const {project,a,analysis}=await fixture(page),before=await analysis();
  const session=await(await page.request.get('/api/session')).json();
- const key=`pm-graph-view:${session.accountId}:${project.id}:all:right:current`;
- await page.goto('/paths?pathScope=all');await ready(page);
+ const key=`pm-graph-view:${session.accountId}:${project.id}:feature:${a.featureId}:right:current`;
+ await openGraph(page,'/paths?pathScope=all');await ready(page);
  const normal=await viewport(page);
  await page.reload();await ready(page);expect(await viewport(page)).toBe(normal);
  await page.goto('/requirements');
- await page.evaluate(({key})=>localStorage.setItem(key,JSON.stringify({x:-100000,y:-100000,zoom:1})),{key});
- await page.goto('/paths?pathScope=all');await ready(page);
+ await page.evaluate(({key})=>{const value=JSON.stringify({x:-100000,y:-100000,zoom:1});localStorage.setItem(key,value);for(const saved of Object.keys(sessionStorage))if(saved.startsWith(key))sessionStorage.setItem(saved,value);},{key});
+ await openGraph(page,'/paths?pathScope=all');await ready(page);
  const inView=async()=>page.locator('.react-flow__node:not(.graph-node-hidden)').evaluateAll(nodes=>{
    const canvas=document.querySelector('.dependency-canvas')!.getBoundingClientRect();
    return nodes.filter(node=>{const box=node.getBoundingClientRect();return box.right>canvas.left&&box.left<canvas.right&&box.bottom>canvas.top&&box.top<canvas.bottom;}).length;
@@ -42,77 +36,16 @@ test('重进路径分析时恢复离屏视口会自动显示节点，正常视�
  const restored=await viewport(page);await page.reload();await ready(page);expect(await viewport(page)).toBe(restored);
  expect(await analysis()).toEqual(before);
 });
-const openMore=async(page:Page)=>{const details=page.locator('.graph-detail .graph-more-relations');if(await details.count()&&(await details.first().getAttribute('open'))===null)await details.first().locator('summary').click();};
+const openMore=async(page:Page)=>{
+ if(!await page.locator('.modal-card-workspace').isVisible())await graphProperties(page,page.locator('.react-flow__node.selected').first());
+ const details=page.locator('.modal-card-workspace .graph-more-relations');
+ if(await details.count()&&(await details.first().getAttribute('open'))===null)await details.first().locator('summary').click();
+};
 
-test('里程碑确认同步锁定，响应异常后回读已生效状态',async({page})=>{
- const {project}=await fixture(page);
- const template=await(await page.request.post('/api/templates',{data:{projectId:project.id,name:'人工里程碑流程',dependencyMode:'dependencies',items:[{clientKey:'m',title:'手动确认交付',kind:'milestone',confirmationMode:'manual',durationDays:0,startOffsetDays:0,sortOrder:0,predecessorKeys:[]}]}})).json();
- const requirement=await(await page.request.post('/api/requirements',{data:{projectId:project.id,templateId:template.id,title:'里程碑确认需求',plannedStart:todayIso()}})).json();
- const analysis=await(await page.request.get('/api/requirements/'+requirement.id+'/path-analysis')).json() as PathAnalysis,milestone=(analysis.milestones||[]).find(item=>item.title==='手动确认交付')!;
- await page.goto('/requirements/'+requirement.id+'?view=path');await ready(page);await selectList(page,milestone.title);
- const button=page.getByRole('button',{name:'确认里程碑达成',exact:true});await expect(button).toBeVisible();
- let writes=0,release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve;});
- await page.route('**/api/milestones/'+milestone.id+'/achieve',async route=>{const index=++writes;await pending;if(index===1){await route.fetch();await route.fulfill({status:200,contentType:'text/html',body:'invalid response'});}else await route.fulfill({status:409,json:{error:'重复确认'}});});
- try{await button.evaluate(element=>{(element as HTMLButtonElement).click();(element as HTMLButtonElement).click();});await expect.poll(()=>writes).toBeGreaterThan(0);await page.waitForTimeout(100);expect(writes).toBe(1);}finally{release();}
- const reopen=page.getByRole('button',{name:'重新打开里程碑',exact:true});await expect(reopen).toBeVisible();expect(writes).toBe(1);
- let reopenWrites=0;await page.route('**/api/milestones/'+milestone.id+'/reopen',async route=>{reopenWrites++;await route.fetch();await route.fulfill({status:200,contentType:'text/html',body:'invalid response'});});
- let failReads=true;await page.route('**/api/requirements/'+requirement.id+'/path-analysis*',route=>failReads?route.fulfill({status:503,json:{error:'核对读取失败'}}):route.fallback());
- await reopen.click();await expect(page.getByRole('alert')).toContainText('里程碑操作结果待核对');await expect(reopen).toBeDisabled();await reopen.evaluate(element=>(element as HTMLButtonElement).click());expect(reopenWrites).toBe(1);
- expect(((await(await page.request.get('/api/requirements/'+requirement.id+'/path-analysis')).json() as PathAnalysis).milestones||[]).find(item=>item.id===milestone.id)?.achievedAt).toBeNull();
- failReads=false;await headerAction(page,'需求详情');await page.getByRole('button',{name:'路径分析',exact:true}).click();await ready(page);
- const recheck=page.getByRole('button',{name:'重新读取里程碑结果',exact:true});await expect(recheck).toBeVisible();
- const achieveAgain=page.getByRole('button',{name:'确认里程碑达成',exact:true});await expect(achieveAgain).toBeDisabled();await achieveAgain.evaluate(element=>(element as HTMLButtonElement).click());expect(writes).toBe(1);
- await recheck.click();await expect(recheck).toHaveCount(0);await expect(achieveAgain).toBeEnabled();expect(reopenWrites).toBe(1);
-});
 
-test('依赖排期应用同帧只提交一次且弹窗保持锁定',async({page})=>{
- const {b}=await fixture(page);await page.goto('/requirements/'+b.id+'?view=path');await ready(page);
- await page.getByRole('button',{name:'排期预览',exact:true}).click();await page.getByRole('button',{name:'预览并应用计划日期',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:'按依赖预览排期',exact:true});await dialog.getByLabel('需求开始锚点', {exact:true}).fill(addBusinessDays(todayIso(),5));await dialog.getByRole('button',{name:'生成差异预览',exact:true}).click();
- const apply=dialog.getByRole('button',{name:'应用以上计划',exact:true});await expect(apply).toBeEnabled();
- let writes=0,release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve;});
- await page.route('**/api/requirements/'+b.id+'/dependency-plan/apply',async route=>{const index=++writes;await pending;if(index===1)await route.continue();else await route.fulfill({status:409,json:{error:'重复应用'}});});
- try{await dialog.locator('form').evaluate(form=>{form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));});await expect(dialog).toBeVisible();await expect.poll(()=>writes).toBeGreaterThan(0);await page.waitForTimeout(100);expect(writes).toBe(1);}finally{release();}
- await expect(dialog).toHaveCount(0);expect(writes).toBe(1);
-});
-
-test('依赖排期响应未知且回读失败时跨导航保持核对锁',async({page})=>{
- const {b}=await fixture(page);let failReads=false,writes=0;
- await page.route('**/api/requirements/'+b.id+'/path-analysis*',route=>failReads?route.fulfill({status:503,json:{error:'核对读取失败'}}):route.fallback());
- await page.route('**/api/requirements/'+b.id+'/dependency-plan/apply',async route=>{
-   writes++;await route.fetch();failReads=true;await route.fulfill({status:200,contentType:'text/html',body:'invalid response'});
- });
- await page.goto('/requirements/'+b.id+'?view=path');await ready(page);
- await page.getByRole('button',{name:'排期预览',exact:true}).click();await page.getByRole('button',{name:'预览并应用计划日期',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:'按依赖预览排期',exact:true}),baseStart=addBusinessDays(todayIso(),5);
- await dialog.getByLabel('需求开始锚点',{exact:true}).fill(baseStart);await dialog.getByRole('button',{name:'生成差异预览',exact:true}).click();
- await dialog.getByRole('button',{name:'应用以上计划',exact:true}).click();await expect(dialog.getByText(/操作结果暂时无法确认/)).toBeVisible();
- await dialog.getByRole('button',{name:'取消',exact:true}).click();await headerAction(page,'需求详情');
- await page.getByRole('button',{name:'路径分析',exact:true}).click();await ready(page);
- const recheck=page.getByRole('button',{name:'重新读取排期结果',exact:true});await expect(recheck).toBeVisible();
- const applyEntry=page.getByRole('button',{name:'预览并应用计划日期',exact:true});if(!await applyEntry.isVisible())await page.getByRole('button',{name:'排期预览',exact:true}).click();await expect(applyEntry).toBeDisabled();
- await applyEntry.evaluate(button=>(button as HTMLButtonElement).click());expect(writes).toBe(1);
- failReads=false;await recheck.click();await expect(recheck).toHaveCount(0);await expect(applyEntry).toBeEnabled();expect(writes).toBe(1);
-});
-
-test('依赖排期未生效时重新读取并恢复开始日期但废弃旧预览',async({page})=>{
- const {b}=await fixture(page);let failReads=false,writes=0;
- await page.route('**/api/requirements/'+b.id+'/path-analysis*',route=>failReads?route.fulfill({status:503,json:{error:'核对读取失败'}}):route.fallback());
- await page.route('**/api/requirements/'+b.id+'/dependency-plan/apply',route=>{writes++;failReads=true;return route.fulfill({status:200,contentType:'text/html',body:'invalid response'});});
- await page.goto('/requirements/'+b.id+'?view=path');await ready(page);
- await page.getByRole('button',{name:'排期预览',exact:true}).click();await page.getByRole('button',{name:'预览并应用计划日期',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:'按依赖预览排期',exact:true}),baseStart=addBusinessDays(todayIso(),7);
- await dialog.getByLabel('需求开始锚点',{exact:true}).fill(baseStart);await dialog.getByRole('button',{name:'生成差异预览',exact:true}).click();await dialog.getByRole('button',{name:'应用以上计划',exact:true}).click();
- await expect(dialog.getByText(/操作结果暂时无法确认/)).toBeVisible();await dialog.getByRole('button',{name:'取消',exact:true}).click();
- await headerAction(page,'需求详情');await page.getByRole('button',{name:'路径分析',exact:true}).click();await ready(page);
- failReads=false;await page.getByRole('button',{name:'重新读取排期结果',exact:true}).click();
- const restored=page.getByRole('dialog',{name:'按依赖预览排期',exact:true});await expect(restored).toBeVisible();await expect(restored.getByLabel('需求开始锚点',{exact:true})).toHaveValue(baseStart);
- await expect(restored.getByRole('button',{name:'生成差异预览',exact:true})).toBeEnabled();await expect(restored.getByRole('button',{name:'应用以上计划',exact:true})).toBeDisabled();expect(writes).toBe(1);
-});
-
-test('排期预览可独立拖动跨月并恢复，画布视口和正式数据不变化',async({page},info)=>{
+test('排期预览可独立拖动跨月并恢复，画布视口和正式数据不变化',{tag:'@responsive'}, async({page},info)=>{
  const {analysis}=await fixture(page);const before=await analysis();await page.emulateMedia({reducedMotion:'reduce'});
- await page.goto('/paths');await ready(page);
+ await openGraph(page,'/paths');await ready(page);
  await page.getByRole('button',{name:'排期预览',exact:true}).click();
  const surface=page.locator('.path-gantt-scroll');await expect(surface).toHaveAttribute('data-gantt-ready','true');
  const view=await viewport(page),initial=await surface.evaluate(e=>e.scrollLeft),box=(await surface.boundingBox())!;
@@ -124,30 +57,34 @@ test('排期预览可独立拖动跨月并恢复，画布视口和正式数据�
  expect((await analysis()).revision).toBe(before.revision);expect(await viewport(page)).toBe(view);
  await page.screenshot({path:info.outputPath('path-gantt-navigation.png')});
 });
-const selectList=async(page:Page,title:string)=>{if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:title}).first().click();};
-test('全局主按钮打开需求详情，路径入口和原路返回保留视口',async({page})=>{
+const selectList=async(page:Page,title:string)=>{
+ await closeGraphProperties(page);
+ if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();
+ await page.getByRole('button',{name:/^节点 \d/}).click();
+ await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:title}).first().click();
+ if(await page.locator('.graph-auxiliary[aria-hidden="false"]').isVisible())await page.locator('.graph-auxiliary[aria-hidden="false"]').getByRole('button',{name:'关闭',exact:true}).click();
+ if(await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();
+ await graphProperties(page,page.locator('.react-flow__node.selected').first());
+};
+test('特性图进入需求与外部工作，详情风险一致且返回保留视口',{tag:'@responsive'},async({page})=>{
  const {a,b,analysis}=await fixture(page);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('/paths?pathScope=all');await ready(page);const before=await viewport(page);
- await selectList(page,b.title);expect(await viewport(page)).toBe(before);
- const globalUrl=page.url();const risk=(await analysis()).risks[b.id];
- await expect(page.locator('.graph-detail .primary-button')).toHaveText('查看需求详情');
- await page.getByRole('button',{name:'查看需求详情',exact:true}).click();
- await expect(page).toHaveURL(new RegExp('/requirements/'+b.id+'$'));
- await expect(page.getByRole('heading',{name:b.title,exact:true})).toBeVisible();
- await expect(page.getByRole('table',{name:'需求工作项进展甘特图'})).toBeVisible();
- await page.locator('#topbar-back-slot button').click();await ready(page);expect(page.url()).toBe(globalUrl);
- await expect.poll(()=>viewport(page)).toBe(before);
- await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await ready(page);await expect(page.getByLabel('分析目标',{exact:true})).toHaveValue('project');
- await page.reload();await ready(page);await expect(page.getByLabel('分析目标',{exact:true})).toHaveValue('project');
- const local=await(await page.request.get('/api/requirements/'+b.id+'/path-analysis')).json() as PathAnalysis;expect(local.risks[b.id]).toEqual(risk);
- if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();
- await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:'方案交付'}).filter({hasText:a.title}).click();
- await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp(a.id));
- await page.locator('#topbar-back-slot button').click();await ready(page);await page.locator('#topbar-back-slot button').click();await ready(page);expect(page.url()).toBe(globalUrl);
+ await openGraph(page,'/paths?pathScope=all');await ready(page);const before=await viewport(page);
+ await page.evaluate(()=>Object.assign(window,{originalCanvas:document.querySelector('.dependency-canvas'),originalLayouts:performance.getEntriesByName('pm-path-layout').length}));
+ await selectList(page,b.title);await ready(page);expect(await viewport(page)).toBe(before);
+ expect(await page.evaluate(()=>{const w=window as typeof window&{originalCanvas:Element;originalLayouts:number};return w.originalCanvas===document.querySelector('.dependency-canvas')&&w.originalLayouts===performance.getEntriesByName('pm-path-layout').length;})).toBe(true);
+ await expect(page.getByRole('dialog').getByRole('heading',{name:b.title,exact:true})).toBeVisible();
+ await expect(page.locator('.requirement-overview')).toBeVisible();
+ const risk=(await analysis()).risks[b.id];
+ await page.getByRole('dialog').getByRole('button',{name:'进入需求',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp('scopeId='+b.id));
+ await page.reload();await ready(page);await expect(page).toHaveURL(new RegExp('scopeId='+b.id));
+ const local=await(await page.request.get('/api/requirements/'+b.id+'/path-analysis?target=project')).json() as PathAnalysis;expect(local.risks[b.id]).toEqual(risk);
+ await graphProperties(page,page.locator('.react-flow__node[data-id="'+a.workItems[0].id+'"]'));
+ await page.getByRole('dialog').getByRole('button',{name:'进入需求',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp('scopeId='+a.id));
+ await page.getByRole('navigation',{name:'项目层级'}).getByRole('button',{name:'其他需求',exact:true}).click();await ready(page);
  await expect.poll(()=>viewport(page)).toBe(before);expect(errors).toEqual([]);
 });
-test('左键及中键平移、滚轮缩放；浮层隔离且定位才移动画布',async({page})=>{
- const {b}=await fixture(page);await page.goto('/requirements/'+b.id+'?view=path');await ready(page);
+test('左键及中键平移、滚轮缩放；列表隔离且定位才移动画布',async({page})=>{
+ const {b}=await fixture(page);await openGraph(page,'/requirements/'+b.id+'?view=path');await ready(page);
  const canvas=page.locator('.dependency-canvas'),bounds=(await canvas.boundingBox())!;
  const center={x:bounds.x+bounds.width*.5,y:bounds.y+bounds.height*.8};
  await expect(page.getByRole('button',{name:'操作画布',exact:true})).toHaveCount(0);
@@ -165,23 +102,23 @@ test('左键及中键平移、滚轮缩放；浮层隔离且定位才移动画�
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();current=await viewport(page);
  const list=page.locator('.graph-auxiliary');await list.hover();await page.mouse.wheel(0,900);expect(await viewport(page)).toBe(current);
  await page.locator('.graph-auxiliary .graph-list-row>button:first-child').first().click();expect(await viewport(page)).toBe(current);
- await page.locator('.graph-detail').getByRole('button',{name:'定位',exact:true}).click();await expect.poll(()=>viewport(page)).not.toBe(current);await page.waitForTimeout(300);
- const selected=page.locator('.react-flow__node.selected'),box=(await selected.boundingBox())!,inspector=(await page.locator('.graph-detail').boundingBox())!;
- expect(box.x+box.width).toBeLessThanOrEqual(inspector.x+2);
+ await page.getByRole('button',{name:'定位所选节点',exact:true}).click();await expect.poll(()=>viewport(page)).not.toBe(current);await page.waitForTimeout(300);
+ const selected=page.locator('.react-flow__node.selected'),box=(await selected.boundingBox())!;
+ expect(box.x).toBeGreaterThanOrEqual(bounds.x);expect(box.x+box.width).toBeLessThanOrEqual(bounds.x+bounds.width);
 });
 
 test('草稿勾选、取消、撤销重做、恢复、批量保存与响应丢失回执',async({page})=>{
- const {a,b,analysis,project}=await fixture(page);await page.goto('/paths?pathScope=all');await ready(page);const before=await analysis();
- await selectList(page,b.title);await page.getByRole('button',{name:'编辑画布',exact:true}).click();await openMore(page);
+ const {a,b,analysis,project}=await fixture(page);await openGraph(page,'/paths?pathScope=all');await ready(page);const before=await analysis();
+ await selectList(page,b.title);await graphToolbar(page,'编辑画布');await openMore(page);
  const check=page.getByRole('checkbox',{name:a.title,exact:true});await check.check();await expect(check).toBeChecked();
  await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();expect((await analysis()).revision).toBe(before.revision);
- await page.getByRole('button',{name:'撤销',exact:true}).click();await expect(check).not.toBeChecked();await page.getByRole('button',{name:'重做',exact:true}).click();await expect(check).toBeChecked();
+ await graphToolbar(page,'撤销');await openMore(page);await expect(check).not.toBeChecked();await graphToolbar(page,'重做');await openMore(page);await expect(check).toBeChecked();
  await page.reload();await ready(page);await openMore(page);await expect(check).toBeChecked();await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();
  let writes=0;await page.route('**/api/projects/'+project.id+'/dependency-changes/apply',async route=>{writes++;await route.fetch();await route.abort('failed');});
- await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect(page.getByRole('button',{name:'编辑画布',exact:true})).toBeVisible();
+ await graphToolbar(page,'保存修改');await expect(page.getByRole('button',{name:'编辑画布',exact:true})).toBeVisible();
  expect(writes).toBe(1);expect((await analysis()).dependencies).toHaveLength(before.dependencies.length+1);
  await page.unroute('**/api/projects/'+project.id+'/dependency-changes/apply');
- await page.getByRole('button',{name:'编辑画布',exact:true}).click();await openMore(page);await check.uncheck();await expect(check).not.toBeChecked();
+ await graphToolbar(page,'编辑画布');await openMore(page);await check.uncheck();await expect(check).not.toBeChecked();
  await headerAction(page,'放弃修改');await page.getByRole('dialog').getByRole('button',{name:'放弃草稿',exact:true}).click();
  expect((await analysis()).dependencies).toHaveLength(before.dependencies.length+1);
 });
@@ -194,70 +131,77 @@ test('拖线与点击连接点创建；循环指出端点；流程属性与并�
  await openMore(page);await expect(page.getByRole('checkbox',{name:'设计',exact:true})).toBeChecked();await expect(page.getByRole('checkbox',{name:'开发',exact:true})).not.toBeChecked();
  // Explicitly clear before adding through business handles. These handles are separate from ELK's route ports.
  await page.getByRole('button',{name:'清空',exact:true}).last().click();await ready(page);
- await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();
+ await closeGraphProperties(page);
  if(await page.locator('.graph-auxiliary[aria-hidden="false"]').count())await page.locator('.graph-auxiliary[aria-hidden="false"]').getByRole('button',{name:'关闭',exact:true}).click();
- await page.getByRole('button',{name:'适配视图',exact:true}).click();await page.waitForTimeout(300);
+ await graphToolbar(page,'适配视图');await page.waitForTimeout(300);
  const source=page.locator('.react-flow__node').filter({hasText:'设计'}).locator('.business-handle[data-side="left"]');
  const dest=page.locator('.react-flow__node').filter({hasText:'并行审核'}).locator('.dependency-card');
  await source.click();await dest.click();await ready(page);
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:'并行审核'}).click();await openMore(page);
  await expect(page.getByRole('checkbox',{name:'设计',exact:true})).toBeChecked();
- await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect(page.getByRole('button',{name:'撤销',exact:true})).toBeDisabled();
+ await graphToolbar(page,'保存修改');await expectClean(page);
  const templates=await(await page.request.get('/api/templates?projectId='+project.id)).json() as WorkItemTemplate[];
  const saved=templates.find(t=>t.name==='画布流程')!;expect(saved.items).toHaveLength(5);expect(saved.items.find(i=>i.title==='并行审核')?.predecessorIds).toEqual([saved.items.find(i=>i.title==='设计')!.id]);
 });
-test('所有主题和窄屏保持完整画布，颜色与面板变化不移动节点',async({page},testInfo)=>{
- const {b}=await fixture(page);await page.goto('/requirements/'+b.id+'?view=path');await ready(page);
+test('所有主题和窄屏保持完整画布，颜色与面板变化不移动节点',{tag:'@responsive'}, async({page},testInfo)=>{
+ const {b}=await fixture(page);await openGraph(page,'/requirements/'+b.id+'?view=path');await ready(page);
  const positions=()=>page.locator('.react-flow__node').evaluateAll(nodes=>nodes.map(n=>({id:n.getAttribute('data-id'),transform:(n as HTMLElement).style.transform})).sort((a,b)=>a.id!.localeCompare(b.id!)));
  const baseline=await positions();for(const theme of themes){await page.evaluate(id=>{localStorage.setItem('project-manage:theme',id);window.dispatchEvent(new StorageEvent('storage',{key:'project-manage:theme',newValue:id}));},theme.id);await expect(page.locator('html')).toHaveAttribute('data-theme',theme.id);await ready(page);expect(await positions()).toEqual(baseline);}
  await page.evaluate(()=>{localStorage.setItem('project-manage:theme','system');window.dispatchEvent(new StorageEvent('storage',{key:'project-manage:theme',newValue:'system'}));});await page.emulateMedia({colorScheme:'dark'});await expect(page.locator('html')).toHaveAttribute('data-theme','dcim');await page.emulateMedia({colorScheme:'light'});await expect(page.locator('html')).toHaveAttribute('data-theme','classic');
  await page.setViewportSize({width:390,height:844});await ready(page);const box=await page.locator('.dependency-canvas').boundingBox();expect(box!.width).toBeGreaterThan(240);expect(box!.height).toBeGreaterThan(500);
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();await page.locator('.graph-auxiliary .graph-list-row>button:first-child').first().click();
- await expect(page.locator('.graph-auxiliary')).toHaveCount(0);await expect(page.locator('.graph-detail')).toBeVisible();
+ if(await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();
+ await graphProperties(page,page.locator('.react-flow__node.selected').first());await expect(page.locator('.modal-card-workspace')).toBeVisible();
  await page.screenshot({path:testInfo.outputPath('paths-narrow.png'),fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
 
 
 test('不相交并发修改自动合并并保留草稿；执行入口仍检查相关依赖',async({page})=>{
- const {a,b,analysis}=await fixture(page);await page.goto('/paths?pathScope=all');await ready(page);
- await selectList(page,b.title);await page.getByRole('button',{name:'编辑画布',exact:true}).click();await openMore(page);
+ const {a,b,analysis}=await fixture(page);
+ const assigned=await page.request.patch('/api/work-items/'+b.workItems[0].id,{data:{ownerId:b.ownerId,expectedVersion:b.workItems[0].version}});expect(assigned.ok()).toBe(true);
+ await openGraph(page,'/paths?pathScope=all');await ready(page);
+ await selectList(page,b.title);await graphToolbar(page,'编辑画布');await openMore(page);
  await page.getByRole('checkbox',{name:a.title,exact:true}).check();await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();
  await page.request.patch('/api/work-items/'+b.workItems[0].id+'/path-estimate',{data:{expectedRevision:(await analysis()).revision,durationDays:6}});
- await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect(page.locator('.page-toolbar-status')).toContainText('1 项未保存');await expect(page.getByRole('button',{name:'版本冲突 · 查看修改',exact:true})).toHaveCount(0);expect((await analysis()).dependencies.some(d=>d.sourceRequirementId===a.id&&d.targetRequirementId===b.id&&!d.sourceWorkItemId&&!d.targetWorkItemId)).toBe(false);
+ await graphToolbar(page,'保存修改');await expect(page.locator('.page-toolbar-status')).toContainText('1 项未保存');await expect(page.getByRole('button',{name:'版本冲突 · 查看修改',exact:true})).toHaveCount(0);expect((await analysis()).dependencies.some(d=>d.sourceRequirementId===a.id&&d.targetRequirementId===b.id&&!d.sourceWorkItemId&&!d.targetWorkItemId)).toBe(false);
  await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();
- await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await expect(page.getByLabel('分析目标',{exact:true})).toBeVisible();await ready(page);
+ await openMore(page);await page.getByRole('button',{name:'进入工作项',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp('scopeId='+b.id));
  await expect(page.locator('.page-toolbar-status').filter({hasText:'1 项未保存'})).toBeVisible();
- await selectList(page,'方案交付');await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:'方案交付'}).filter({hasText:b.title}).click();await page.getByRole('button',{name:'定位并处理工作项',exact:true}).click();
- await expect(page.getByRole('dialog',{name:'处理未保存修改'})).toHaveCount(0);await expect(page.getByRole('table',{name:'需求工作项进展甘特图'})).toBeVisible();let executions=0;page.on('request',r=>{if(r.url().endsWith('/start')&&r.method()==='POST')executions++;});await page.getByRole('row').filter({hasText:'方案交付'}).getByRole('button',{name:'开始',exact:true}).click();await expect(page.locator('.work-action-error')).toContainText('未保存');expect(executions).toBe(0);await page.getByRole('button',{name:'路径分析',exact:true}).click();await ready(page);
- await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect(page.getByRole('button',{name:'编辑画布',exact:true})).toBeVisible();
+ await closeGraphProperties(page);await page.getByRole('button',{name:'清单',exact:true}).click();
+ await page.locator('[data-object-id="'+b.workItems[0].id+'"] .outline-title').click();
+ let executions=0;page.on('request',r=>{if(r.url().endsWith('/start')&&r.method()==='POST')executions++;});
+ await page.getByRole('dialog').getByRole('button',{name:'开始',exact:true}).click();await expect(page.getByText(/本次操作涉及未保存业务草稿/)).toBeVisible();expect(executions).toBe(0);
+ await closeGraphProperties(page);await page.getByRole('button',{name:'关系图',exact:true}).click();await ready(page);
+ await graphToolbar(page,'保存修改');await expect(page.getByRole('button',{name:'编辑画布',exact:true})).toBeVisible();
  expect((await analysis()).nodes.find(n=>n.id===b.workItems[0].id)?.estimate.durationDays).toBe(6);expect((await analysis()).dependencies.some(d=>d.sourceRequirementId===a.id&&d.targetRequirementId===b.id&&!d.sourceWorkItemId&&!d.targetWorkItemId)).toBe(true);
 });
-test('真实拖线建立合法跨需求往返；搜索不裁图，退出聚焦恢复视口',async({page})=>{
- const {a,b,analysis}=await fixture(page);await page.goto('/requirements/'+b.id+'?view=path');await ready(page);
- await page.getByRole('button',{name:'编辑画布',exact:true}).click();await openMore(page);await page.getByLabel('添加元素',{exact:true}).click();await page.locator('.graph-elements').getByRole('button',{name:'已有对象',exact:true}).click();
+test('真实拖线建立合法跨需求往返；搜索不裁图，退出聚焦恢复视口',{tag:'@responsive'}, async({page})=>{
+ const {a,b,analysis}=await fixture(page);await openGraph(page,'/requirements/'+b.id+'?view=path');await ready(page);
+ await graphToolbar(page,'编辑画布');await page.getByLabel('添加元素',{exact:true}).click();await page.locator('.graph-elements').getByRole('button',{name:'已有对象',exact:true}).click();
  await page.getByLabel('搜索已有对象',{exact:true}).fill('集成验证');await page.locator('.graph-auxiliary .graph-list-row>button:first-child').filter({hasText:'集成验证'}).filter({hasText:a.title}).click();await ready(page);
- await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();
+ await closeGraphProperties(page);
  if(await page.locator('.graph-auxiliary[aria-hidden="false"]').count())await page.locator('.graph-auxiliary[aria-hidden="false"]').getByRole('button',{name:'关闭',exact:true}).click();
- await page.getByRole('button',{name:'适配视图',exact:true}).click();await page.waitForTimeout(300);
+ await graphToolbar(page,'适配视图');await page.waitForTimeout(300);
  const from=page.locator('.react-flow__node[data-id="'+b.workItems[1].id+'"] .business-handle[data-side="left"]');
  const to=page.locator('.react-flow__node[data-id="'+a.workItems[1].id+'"] .dependency-card');
  const s=(await from.boundingBox())!,t=(await to.boundingBox())!;
  await page.mouse.move(s.x+s.width/2,s.y+s.height/2);await page.mouse.down();await page.mouse.move(t.x+t.width/2,t.y+t.height/2,{steps:15});await page.mouse.up();
- await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();await page.getByRole('button',{name:'保存修改',exact:true}).click();
+ await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();await graphToolbar(page,'保存修改');
  await expect.poll(async()=>(await analysis()).dependencies.some(d=>d.sourceWorkItemId===b.workItems[1].id&&d.targetWorkItemId===a.workItems[1].id)).toBe(true);
  const count=await page.locator('.react-flow__node').count();if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByLabel('筛选图中节点').fill('方案');expect(await page.locator('.react-flow__node').count()).toBe(count);
  await page.locator('.graph-auxiliary .graph-list-row>button:first-child').first().click();
- const original=await viewport(page);await page.getByRole('button',{name:'聚焦分支',exact:true}).click();await ready(page);
- await page.locator('.graph-detail').getByRole('button',{name:'定位',exact:true}).click();
- await page.locator('.page-toolbar-status').getByRole('button',{name:'退出聚焦',exact:true}).click();await ready(page);await expect.poll(()=>viewport(page)).toBe(original);
+ await page.locator('.graph-auxiliary[aria-hidden="false"]').getByRole('button',{name:'关闭',exact:true}).click();await graphToolbar(page,'编辑画布');await graphProperties(page,page.locator('.react-flow__node.selected').first());
+ const original=await viewport(page);await page.getByRole('dialog').getByRole('button',{name:'聚焦分支',exact:true}).click();await ready(page);
+ await page.locator('.modal-card-workspace').getByRole('button',{name:'定位',exact:true}).click();
+ await headerAction(page,'退出聚焦');await ready(page);await expect.poll(()=>viewport(page)).toBe(original);
 });
 
 test('权限拒绝时清除当前项目草稿，正式数据保持原状',async({page})=>{
  const {b,project,analysis}=await fixture(page),before=await analysis();
- await page.goto('/requirements/'+b.id+'?view=path');await ready(page);await selectList(page,'方案交付');
- await page.getByRole('button',{name:'编辑画布',exact:true}).click();await openMore(page);
+ await openGraph(page,'/requirements/'+b.id+'?view=path');await ready(page);await selectList(page,'方案交付');
+ await graphToolbar(page,'编辑画布');await openMore(page);
  await page.route('**/api/projects/'+project.id+'/dependency-changes/preview',route=>route.fulfill({status:403,json:{error:'需求负责人已经变化',code:'FORBIDDEN'}}));
  await page.getByLabel('预计工期',{exact:true}).fill('4');await page.getByLabel('预计工期',{exact:true}).blur();
  await expect(page.getByRole('button',{name:'编辑画布',exact:true})).toBeVisible();
@@ -266,63 +210,61 @@ test('权限拒绝时清除当前项目草稿，正式数据保持原状',async(
 });
 
 test('新增项目保留当前草稿，退出登录清理会话草稿',async({page})=>{
- const {a,b}=await fixture(page);await page.goto('/paths?pathScope=all');await ready(page);await selectList(page,b.title);
- await page.getByRole('button',{name:'编辑画布',exact:true}).click();await openMore(page);await page.getByRole('checkbox',{name:a.title,exact:true}).check();
+ const {a,b}=await fixture(page);await openGraph(page,'/paths?pathScope=all');await ready(page);await selectList(page,b.title);
+ await graphToolbar(page,'编辑画布');await openMore(page);await page.getByRole('checkbox',{name:a.title,exact:true}).check();
  await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();
  await page.request.post('/api/projects',{data:{name:'新增项目不影响草稿'+Date.now()}});
  await page.evaluate(()=>{window.dispatchEvent(new Event('offline'));window.dispatchEvent(new Event('online'));});
  await expect(page.locator('.page-toolbar-status').filter({hasText:'1 项未保存'})).toBeVisible();
  expect(await activeStoredDrafts(page)).toBeGreaterThan(0);
- await page.getByRole('link',{name:'项目进展',exact:true}).click();await page.getByRole('button',{name:/^账号菜单/}).click();await page.getByRole('menuitem',{name:'退出登录',exact:true}).click();
+ await closeGraphProperties(page);await page.getByRole('link',{name:'问题跟踪',exact:true}).click();await page.getByRole('button',{name:/^账号菜单/}).click();await page.getByRole('menuitem',{name:'退出登录',exact:true}).click();
  await expect.poll(()=>activeStoredDrafts(page)).toBe(0);
 });
-test('独立分支聚焦保留完整坐标和线路，刷新及范围外定位正确恢复',async({page})=>{
+test('独立分支聚焦保留完整坐标和线路，刷新及范围外定位正确恢复',{tag:'@responsive'},async({page})=>{
  const {project,a,b}=await fixture(page);
- const created=await page.request.post('/api/requirements',{data:{projectId:project.id,title:'独立分支',ownerId:a.ownerId,plannedStart:todayIso()}});expect(created.ok()).toBe(true);
- await page.goto('/paths?pathScope=all');await ready(page);
+ const created=await page.request.post('/api/requirements',{data:{projectId:project.id,title:'独立分支',ownerId:a.ownerId,plannedStart:todayIso()}});expect(created.ok()).toBe(true);const independent=await created.json();
+ await openGraph(page,'/paths?pathScope=all');await ready(page);await graphToolbar(page,'编辑画布');
  const snapshot=()=>page.evaluate(()=>({nodes:[...document.querySelectorAll<HTMLElement>('.react-flow__node')].map(n=>({id:n.dataset.id,position:n.style.transform})).sort((a,b)=>a.id!.localeCompare(b.id!)),edges:[...document.querySelectorAll('.react-flow__edge-path')].map(n=>n.getAttribute('d')).sort()}));
  const before=await snapshot();await selectList(page,'独立分支');const original=await viewport(page);
- await page.getByRole('button',{name:'聚焦分支',exact:true}).click();await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);await expect(page.locator('.graph-node-dim')).toHaveCount(2);
- await expect(page.locator('.page-toolbar-status').getByRole('button',{name:'退出聚焦',exact:true})).toBeVisible();
- expect((await snapshot()).nodes).toEqual(before.nodes);
- await page.getByRole('button',{name:'适配视图',exact:true}).click();await page.waitForTimeout(300);await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);await expect(page.locator('.graph-node-dim')).toHaveCount(2);
- await page.locator('.page-toolbar-status').getByRole('button',{name:'退出聚焦',exact:true}).click();await expect.poll(()=>snapshot()).toEqual(before);await expect.poll(()=>viewport(page)).toBe(original);
- await page.getByRole('button',{name:'聚焦分支',exact:true}).click();await page.reload();await ready(page);
- await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);await expect(page.locator('.graph-node-dim')).toHaveCount(2);
- await page.locator('.page-toolbar-status').getByRole('button',{name:'退出聚焦',exact:true}).click();await expect.poll(()=>snapshot()).toEqual(before);await expect.poll(()=>viewport(page)).toBe(original);
- await page.getByRole('button',{name:'聚焦分支',exact:true}).click();if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();
- if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByLabel('筛选图中节点').fill(b.title);await expect(page.locator('.graph-list-row')).toContainText('分支外');
- await page.locator('.graph-list-row').getByRole('button',{name:'定位',exact:true}).click();await expect(page.locator('.page-toolbar-status').getByRole('button',{name:'退出聚焦',exact:true})).toHaveCount(0);
+ const focus=async()=>{if(await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();if(!await page.locator('.modal-card-workspace').isVisible())await graphProperties(page,page.locator('.react-flow__node[data-id="'+independent.id+'"]'));await page.getByRole('dialog').getByRole('button',{name:'聚焦分支',exact:true}).click();await closeGraphProperties(page);};
+ await focus();await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);await expect(page.locator('.graph-node-dim')).toHaveCount(2);expect((await snapshot()).nodes).toEqual(before.nodes);
+ await graphToolbar(page,'适配视图');await page.waitForTimeout(300);await expect(page.locator('.graph-node-dim')).toHaveCount(2);
+ await headerAction(page,'退出聚焦');await expect.poll(snapshot).toEqual(before);await expect.poll(()=>viewport(page)).toBe(original);
+ await focus();await page.reload();await ready(page);await expect(page.locator('.graph-node-dim')).toHaveCount(2);
+ await headerAction(page,'退出聚焦');await expect.poll(snapshot).toEqual(before);await expect.poll(()=>viewport(page)).toBe(original);
+ await focus();if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();
+ await page.getByLabel('筛选图中节点').fill(b.title);await expect(page.locator('.graph-list-row')).toContainText('分支外');
+ await page.locator('.graph-list-row').getByRole('button',{name:'定位',exact:true}).click();await expect(page).not.toHaveURL(/pathBranch=/);
  await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);expect((await snapshot()).nodes).toEqual(before.nodes);
- // A focused draft changes the complete network, and returning never restores stale business data.
- if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByLabel('筛选图中节点').fill('独立分支');await page.locator('.graph-list-row>button:first-child').click();
- await page.getByRole('button',{name:'聚焦分支',exact:true}).click();await page.getByRole('button',{name:'编辑画布',exact:true}).click();await openMore(page);
+ await page.getByLabel('筛选图中节点').fill('');if(await page.locator('.graph-auxiliary[aria-hidden="false"]').isVisible())await page.locator('.graph-auxiliary[aria-hidden="false"]').getByRole('button',{name:'关闭',exact:true}).click();await focus();await openMore(page);
  await page.getByRole('checkbox',{name:b.title,exact:true}).check();await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();await ready(page);
- await page.locator('.page-toolbar-status').getByRole('button',{name:'退出聚焦',exact:true}).click();await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);
- await expect(page.locator('.page-toolbar-status').filter({hasText:'1 项未保存'})).toBeVisible();expect(await page.locator('.react-flow__edge').count()).toBeGreaterThan(before.edges.length);
+ await headerAction(page,'退出聚焦');await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);
+ await expect(page.locator('.page-toolbar-status')).toContainText('1 项未保存');expect(await page.locator('.react-flow__edge').count()).toBeGreaterThan(before.edges.length);
 });
-
-test('浮层矩形无相交，底部对齐，390px 两行工具栏与减少动态效果',async({page})=>{
- const {b}=await fixture(page);await page.setViewportSize({width:1690,height:896});await page.goto('/requirements/'+b.id+'?view=path');await ready(page);await selectList(page,'集成验证');
- const check=async(stacked:boolean)=>{
-  const rects=await page.evaluate(()=>Object.fromEntries(['.topbar','.graph-detail','.graph-auxiliary','.graph-footer','.graph-view-controls'].map(selector=>{const n=document.querySelector(selector);if(!n)return [selector,null];const r=n.getBoundingClientRect();return [selector,{left:r.left,right:r.right,top:r.top,bottom:r.bottom,height:r.height}];})));
-  const boxes=Object.entries(rects).filter(([,r])=>r);for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){const a=boxes[i][1]!,b=boxes[j][1]!;expect(Math.min(a.right,b.right)-Math.max(a.left,b.left)>0&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>0,boxes[i][0]+' intersects '+boxes[j][0]).toBe(false);}
-  const a=rects['.graph-footer']!,b=rects['.graph-view-controls']!;if(!stacked){expect(Math.abs(a.bottom-b.bottom)).toBeLessThan(1);expect(Math.abs(a.height-b.height)).toBeLessThan(1);}else expect(a.top-b.bottom).toBeGreaterThanOrEqual(11);
- };
- await check(false);await page.setViewportSize({width:390,height:844});await ready(page);if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();await page.locator('.graph-list-row>button:first-child').first().click();await check(true);
+test('居中详情与画布工具有界，窄屏底部两行且减少动态效果',{tag:'@responsive'},async({page})=>{
+ const {b}=await fixture(page);await openGraph(page,'/requirements/'+b.id+'?view=path');await ready(page);
+ for(const view of [page.viewportSize()!,{width:390,height:844}]){
+  await page.setViewportSize(view);await selectList(page,'集成验证');
+  const box=(await page.getByRole('dialog').boundingBox())!;expect(box.x).toBeGreaterThanOrEqual(0);expect(box.y).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(view.width+1);expect(box.y+box.height).toBeLessThanOrEqual(view.height+1);
+  await closeGraphProperties(page);
+  if(await page.locator('.graph-auxiliary[aria-hidden="false"]').isVisible())await page.locator('.graph-auxiliary[aria-hidden="false"]').getByRole('button',{name:'关闭',exact:true}).click();
+  const footer=(await page.locator('.graph-footer').boundingBox())!,controls=(await page.locator('.graph-view-controls').boundingBox())!;
+  expect(Math.min(footer.x+footer.width,controls.x+controls.width)-Math.max(footer.x,controls.x)>0&&Math.min(footer.y+footer.height,controls.y+controls.height)-Math.max(footer.y,controls.y)>0).toBe(false);
+  if(view.width===390)expect(footer.y-controls.y-controls.height).toBeGreaterThanOrEqual(11);
+  else expect(Math.abs(footer.y+footer.height-controls.y-controls.height)).toBeLessThan(1);
+ }
  const previousMotions=await page.evaluate(()=>performance.getEntriesByName('pm-path-transition').length);
- await page.emulateMedia({reducedMotion:'reduce'});await page.getByLabel('编辑画布',{exact:true}).click();await page.getByRole('button',{name:'自动整理',exact:true}).click();await expect(page.locator('.dependency-canvas')).toHaveAttribute('data-layout-phase','waiting');await ready(page);
+ await page.emulateMedia({reducedMotion:'reduce'});await graphToolbar(page,'编辑画布');await graphToolbar(page,'自动整理');await ready(page);
  expect(await page.evaluate(()=>performance.getEntriesByName('pm-path-transition').length)).toBe(previousMotions);
 });
-
 test('四侧连接到整张卡片，方向一致且每个手势只写一次，只路由线路且保留节点位置',async({page})=>{
  const {project}=await fixture(page);const titles=['起点','左侧目标','右侧目标','上侧目标','下侧目标'];
  const response=await page.request.post('/api/templates',{data:{projectId:project.id,name:'四侧连线',dependencyMode:'dependencies',items:titles.map((title,i)=>({clientKey:'k'+i,title,durationDays:1,startOffsetDays:0,sortOrder:i,predecessorKeys:[]}))}});expect(response.ok()).toBe(true);
  const template=await response.json() as WorkItemTemplate;await page.goto('/templates?edit='+template.id);await ready(page);
- for(const side of ['.graph-detail','.graph-auxiliary'])if(await page.locator(side).count())await page.locator(side).getByRole('button',{name:'关闭',exact:true}).click();
+ for(const side of ['.modal-card-workspace','.graph-auxiliary'])if(await page.locator(side).count())await page.locator(side).getByRole('button',{name:'关闭',exact:true}).click();
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  for(const [i,side] of ['left','right','top','bottom'].entries()){
-  await page.getByRole('button',{name:'适配视图',exact:true}).click();await page.waitForTimeout(300);
+  await graphToolbar(page,'适配视图');await page.waitForTimeout(300);
   const from=page.locator('.react-flow__node').filter({has:page.locator('strong',{hasText:/^起点$/})}).locator('.business-handle[data-side='+side+']');
   const to=page.locator('.react-flow__node').filter({has:page.locator('strong',{hasText:titles[i+1]})}).locator('.dependency-card');
   const a=(await from.boundingBox())!,b=(await to.boundingBox())!;
@@ -335,7 +277,7 @@ test('四侧连接到整张卡片，方向一致且每个手势只写一次，�
   expect(observed.frames).toBe(1);expect(await page.locator('.react-flow__node').evaluateAll(nodes=>nodes.map(n=>(n as HTMLElement).style.transform))).toEqual(before);
   await expect(page.locator('.react-flow__edge')).toHaveCount(i+1);
  }
- const submitted=page.waitForResponse(r=>r.url().endsWith('/api/templates/'+template.id)&&r.request().method()==='PATCH');await page.getByRole('button',{name:'保存修改',exact:true}).click();expect((await submitted).ok()).toBe(true);await expect(page.getByRole('button',{name:'撤销',exact:true})).toBeDisabled();
+ const submitted=page.waitForResponse(r=>r.url().endsWith('/api/templates/'+template.id)&&r.request().method()==='PATCH');await graphToolbar(page,'保存修改');expect((await submitted).ok()).toBe(true);await expectClean(page);
  const saved=(await(await page.request.get('/api/templates?projectId='+project.id)).json() as WorkItemTemplate[]).find(t=>t.id===template.id)!;
  for(const item of saved.items.slice(1))expect(item.predecessorIds).toEqual([saved.items[0].id]);expect(errors).toEqual([]);
 });
@@ -344,16 +286,16 @@ test('连线取消不误建节点，循环与重复拒绝，空白创建和键�
  const {project}=await fixture(page);
  const template=await(await page.request.post('/api/templates',{data:{projectId:project.id,name:'取消边界',dependencyMode:'dependencies',items:['前置','后续'].map((title,i)=>({clientKey:'k'+i,title,durationDays:1,startOffsetDays:0,sortOrder:i,predecessorKeys:[]}))}})).json() as WorkItemTemplate;
  await page.goto('/templates?edit='+template.id);await ready(page);
- for(const side of ['.graph-detail','.graph-auxiliary'])if(await page.locator(side).count())await page.locator(side).getByRole('button',{name:'关闭',exact:true}).click();
- await page.getByRole('button',{name:'适配视图',exact:true}).click();await page.waitForTimeout(300);
+ for(const side of ['.modal-card-workspace','.graph-auxiliary'])if(await page.locator(side).count())await page.locator(side).getByRole('button',{name:'关闭',exact:true}).click();
+ await graphToolbar(page,'适配视图');await page.waitForTimeout(300);
  const source=page.locator('.react-flow__node').filter({has:page.locator('strong',{hasText:/^前置$/})});
  const begin=async()=>{const box=(await source.locator('.business-handle[data-side=top]').boundingBox())!;await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();};
  const canvas=(await page.locator('.dependency-canvas').boundingBox())!,toolbar=(await page.locator('.topbar').boundingBox())!;
  for(const point of [{x:toolbar.x+20,y:toolbar.y+20},{x:-10,y:-10}]){await begin();await page.mouse.move(point.x,point.y,{steps:8});await page.mouse.up();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.react-flow__node')).toHaveCount(2);}
  const blank={x:canvas.x+25,y:canvas.y+canvas.height*.7};await begin();await page.mouse.move(blank.x,blank.y,{steps:8});await page.keyboard.press('Escape');await page.mouse.up();await expect(page.getByRole('dialog')).toHaveCount(0);
  await begin();await page.mouse.move(blank.x,blank.y,{steps:8});await page.mouse.up();await expect(page.getByRole('dialog')).toBeVisible();await page.getByLabel('新工作项标题').fill('新增后续');await page.getByRole('button',{name:'加入流程',exact:true}).click();await ready(page);
- for(const side of ['.graph-detail','.graph-auxiliary'])if(await page.locator(side).count())await page.locator(side).getByRole('button',{name:'关闭',exact:true}).click();
- await page.getByRole('button',{name:'适配视图',exact:true}).click();await page.waitForTimeout(300);
+ for(const side of ['.modal-card-workspace','.graph-auxiliary'])if(await page.locator(side).count())await page.locator(side).getByRole('button',{name:'关闭',exact:true}).click();
+ await graphToolbar(page,'适配视图');await page.waitForTimeout(300);
  const added=page.locator('.react-flow__node').filter({has:page.locator('strong',{hasText:/^新增后续$/})});
  await source.locator('.business-handle[data-side=bottom]').click();await added.locator('.dependency-card').click();await expect(page.getByRole('alert').last()).toContainText('已经存在');await expect(page.locator('.react-flow__edge')).toHaveCount(1);
  await added.locator('.business-handle[data-side=left]').click();await source.locator('.dependency-card').click();await expect(page.getByRole('alert').last()).toContainText('循环');await expect(page.locator('.react-flow__edge')).toHaveCount(1);
@@ -361,122 +303,89 @@ test('连线取消不误建节点，循环与重复拒绝，空白创建和键�
  const target=page.locator('.react-flow__node').filter({has:page.locator('strong',{hasText:/^后续$/})});await target.focus();await page.keyboard.press('Enter');await ready(page);await expect(page.locator('.react-flow__edge')).toHaveCount(2);
 });
 
-test('延迟布局与连续撤销重做只发布最新结构，拖线期间节点保持静止',async({page})=>{
+test('延迟布局与连续撤销重做只发布最新结构，拖线期间节点保持静止',{tag:'@responsive'}, async({page})=>{
  const {project}=await fixture(page);const template=await(await page.request.post('/api/templates',{data:{projectId:project.id,name:'布局竞争',dependencyMode:'dependencies',items:['前置','后续','并行'].map((title,i)=>({clientKey:'k'+i,title,durationDays:1,startOffsetDays:0,sortOrder:i,predecessorKeys:[]}))}})).json() as WorkItemTemplate;
  await page.route('**/fixed-routing.worker*.js',async route=>{const response=await route.fetch();await route.fulfill({response,body:await response.text()+';{const send=self.postMessage.bind(self);let count=0;self.postMessage=(...args)=>{const n=++count;setTimeout(()=>send(...args),n%2===0?1000:600);};}'});});
- await page.goto('/templates?edit='+template.id);await ready(page);for(const side of ['.graph-detail','.graph-auxiliary'])if(await page.locator(side).count())await page.locator(side).getByRole('button',{name:'关闭',exact:true}).click();await page.getByRole('button',{name:'适配视图',exact:true}).click();await page.waitForTimeout(300);
+ await page.goto('/templates?edit='+template.id);await ready(page);for(const side of ['.modal-card-workspace','.graph-auxiliary'])if(await page.locator(side).count())await page.locator(side).getByRole('button',{name:'关闭',exact:true}).click();await graphToolbar(page,'适配视图');await page.waitForTimeout(300);
  const node=(title:string)=>page.locator('.react-flow__node').filter({has:page.locator('strong',{hasText:new RegExp('^'+title+'$')})});
  await node('前置').locator('.business-handle[data-side=right]').click();await node('后续').locator('.dependency-card').click();
  await expect(page.locator('.dependency-canvas')).toHaveAttribute('data-layout-phase','layout');
- await page.getByRole('button',{name:'撤销',exact:true}).click();await page.getByRole('button',{name:'重做',exact:true}).click();
+ await graphToolbar(page,'撤销');await graphToolbar(page,'重做');
  await node('前置').locator('.business-handle[data-side=bottom]').click();
  const before=await page.locator('.react-flow__node').evaluateAll(nodes=>nodes.map(n=>(n as HTMLElement).style.transform));
  // Wait past the delayed Worker response while a click connection is armed.
  await page.waitForTimeout(850);expect(await page.locator('.react-flow__node').evaluateAll(nodes=>nodes.map(n=>(n as HTMLElement).style.transform))).toEqual(before);
  await node('并行').locator('.dependency-card').click();await ready(page);await expect(page.locator('.react-flow__edge')).toHaveCount(2);
- const submitted=page.waitForResponse(r=>r.url().endsWith('/api/templates/'+template.id)&&r.request().method()==='PATCH');await page.getByRole('button',{name:'保存修改',exact:true}).click();expect((await submitted).ok()).toBe(true);await expect(page.getByRole('button',{name:'撤销',exact:true})).toBeDisabled();
+ const submitted=page.waitForResponse(r=>r.url().endsWith('/api/templates/'+template.id)&&r.request().method()==='PATCH');await graphToolbar(page,'保存修改');expect((await submitted).ok()).toBe(true);await expectClean(page);
  const saved=(await(await page.request.get('/api/templates?projectId='+project.id)).json() as WorkItemTemplate[]).find(t=>t.id===template.id)!;
  expect(saved.items.slice(1).map(i=>i.predecessorIds)).toEqual([[saved.items[0].id],[saved.items[0].id]]);
 });
 
-test('20/80/200 个可见节点真实 Worker 布局，200 节点 600 边 p95 不超过 2 秒',async({page},testInfo)=>{
- test.skip(testInfo.project.name!=='office-1280','性能采样固定同一视口');test.setTimeout(240000);
- const {project}=await fixture(page);const samples:number[]=[],motionSamples:unknown[]=[];
- for(const count of [20,80,200])for(let sample=0;sample<(count===200?20:1);sample++){
-  const requirements=Array.from({length:count},(_,i)=>({...req(`r${i}`),projectId:project.id,title:`交付需求 ${i+1}`}));
-  const workItems=requirements.map((r,i)=>work(`w${i}`,r.id,1));const dependencies:PathInput['dependencies']=[];
-  for(let i=1;i<count;i++)for(const delta of [1,3,7])if(i>=delta)dependencies.push({id:`e${i}-${delta}`,projectId:project.id,sourceRequirementId:`r${i-delta}`,sourceWorkItemId:`w${i-delta}`,targetRequirementId:`r${i}`,targetWorkItemId:`w${i}`,origin:'manual'});
-  for(let i=12;dependencies.length<count*3;i++)dependencies.push({id:`extra${i}`,projectId:project.id,sourceRequirementId:`r${(i-11)%(count-11)}`,sourceWorkItemId:`w${(i-11)%(count-11)}`,targetRequirementId:`r${(i-11)%(count-11)+11}`,targetWorkItemId:`w${(i-11)%(count-11)+11}`,origin:'manual'});
-  const input:PathInput={projectId:project.id,projectName:project.name,revision:sample,projectEnd:null,asOfDate:'2026-09-07',requirements,workItems,dependencies};const result=analysePaths(input);
-  await page.route(`**/api/projects/${project.id}/path-analysis**`,route=>route.fulfill({json:result}));await page.goto('/paths?pathScope=all');await ready(page);await expect(page.locator('.react-flow__node')).toHaveCount(count);await page.getByLabel('适配视图',{exact:true}).click();await page.waitForTimeout(280);
-  const elapsed=await page.evaluate(()=>performance.getEntriesByName('pm-path-layout').at(-1)!.duration);if(count===200)samples.push(elapsed);
-  if(sample===0){await page.locator('.dependency-canvas').screenshot({path:testInfo.outputPath(`graph-${count}.png`)});const overlaps=await page.locator('.dependency-canvas').evaluate(root=>{
-   const nodes=Array.from(root.querySelectorAll('.react-flow__node')).map(n=>n.getBoundingClientRect());const labels=Array.from(root.querySelectorAll('.dependency-edge-label rect')).map(n=>n.getBoundingClientRect());
-   return labels.filter(a=>nodes.some(b=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1)).length;
-  });expect(overlaps).toBe(0);
-   const changed=analysePaths({...input,revision:sample+1,dependencies:Array.from({length:count-1},(_,i)=>({id:'fan'+i,projectId:project.id,sourceRequirementId:'r0',sourceWorkItemId:'w0',targetRequirementId:'r'+(i+1),targetWorkItemId:'w'+(i+1),origin:'manual'}))});
-   await page.unroute(`**/api/projects/${project.id}/path-analysis**`);await page.route(`**/api/projects/${project.id}/path-analysis**`,route=>route.fulfill({json:changed}));
-   await headerAction(page,'分析说明');
-   const observation=page.evaluate(async()=>{const positions=new Set<string>(),intervals:number[]=[];let active=false,last=performance.now();await new Promise<void>((resolve,reject)=>{setTimeout(()=>reject(new Error('未检测到自动整理完成')),8000);const tick=(now:number)=>{const phase=document.querySelector('.dependency-canvas')!.getAttribute('data-layout-phase');if(phase==='moving')active=true;if(phase==='moving'){positions.add([...document.querySelectorAll<HTMLElement>('.react-flow__node')].map(n=>n.style.transform).join('|'));intervals.push(now-last);}last=now;if(active&&phase==='ready')resolve();else requestAnimationFrame(tick);};requestAnimationFrame(tick);});intervals.sort((a,b)=>a-b);return {frames:positions.size,p95FrameMs:intervals[Math.max(0,Math.ceil(intervals.length*.95)-1)]||0,maxFrameMs:Math.max(0,...intervals),waitMs:performance.getEntriesByName('pm-path-layout-wait').at(-1)!.duration,layoutMs:performance.getEntriesByName('pm-path-layout').at(-1)!.duration,transitionMs:performance.getEntriesByName('pm-path-transition').at(-1)!.duration};});
-   await page.getByRole('button',{name:'刷新分析',exact:true}).click();await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();await page.getByLabel('自动整理',{exact:true}).click();const motion=await observation;expect(motion.frames).toBeGreaterThan(3);
-   await page.locator('.graph-auxiliary').getByRole('button',{name:'关闭',exact:true}).click();await page.waitForTimeout(210);
-   await page.locator('.react-flow__node[data-id="r1"]').dispatchEvent('click');
-   await expect(page.locator('.graph-detail').getByRole('button',{name:'聚焦分支',exact:true})).toBeVisible();
-   const feedback=await page.evaluate(async()=>{const values:number[]=[];for(let i=0;i<20;i++){
-    const card=document.querySelector<HTMLElement>('.react-flow__node[data-id="r2"] .dependency-card')!,before=Number(getComputedStyle(card).opacity);
-    const button=[...document.querySelectorAll<HTMLButtonElement>('.graph-detail button')].find(b=>['聚焦分支','退出聚焦'].includes(b.getAttribute('aria-label')||b.textContent||''))!;
-    const start=performance.now();button.click();await new Promise<void>(resolve=>{const tick=()=>{if(Math.abs(Number(getComputedStyle(card).opacity)-before)>.001||performance.now()-start>1500)resolve();else requestAnimationFrame(tick);};requestAnimationFrame(tick);});values.push(performance.now()-start);await new Promise(r=>setTimeout(r,210));
-   }values.sort((a,b)=>a-b);return {samples:values.length,p95Ms:values[18],maxMs:values[19]};});
-   motionSamples.push({nodes:count,...motion,feedback});fs.mkdirSync('.preview/qa',{recursive:true});fs.writeFileSync('.preview/qa/canvas-motion.json',JSON.stringify(motionSamples,null,2));expect(feedback.p95Ms).toBeLessThanOrEqual(100);expect(motion.p95FrameMs).toBeLessThanOrEqual(33);
-   await expect(page.locator('.react-flow__edge')).toHaveCount(count-1);await headerAction(page,'放弃修改');if(await page.getByRole('dialog').count())await page.getByRole('button',{name:'放弃草稿',exact:true}).click();await ready(page);
-  }
-  await page.unroute(`**/api/projects/${project.id}/path-analysis**`);
- }
- const sorted=[...samples].sort((a,b)=>a-b);const result={samples:samples.length,p50Ms:sorted[10],p95Ms:sorted[18],maxMs:sorted[19],browser:testInfo.project.use.channel,nodes:200,edges:600};fs.mkdirSync('.preview/qa',{recursive:true});fs.writeFileSync('.preview/qa/browser-layout.json',JSON.stringify(result,null,2));fs.writeFileSync('.preview/qa/canvas-motion.json',JSON.stringify(motionSamples,null,2));expect(result.p95Ms).toBeLessThanOrEqual(2000);
-});
 
 
-test('工作区筛选补上下文、完整拼音搜索与默认范围不改变布局',async({page})=>{
+
+test('工作区当前与全部筛选补上下文、完整拼音搜索不改变布局',{tag:'@responsive'}, async({page})=>{
  const {project,a,b,analysis}=await fixture(page);
  const c=await(await page.request.post('/api/requirements',{data:{projectId:project.id,title:'独立历史交付',ownerId:a.ownerId,plannedStart:todayIso()}})).json() as Requirement;
  const data=await analysis();data.requirements.find(r=>r.id===c.id)!.status='completed';
  expect(data.requirements.find(r=>r.id===a.id)?.ownerId).toBe(a.ownerId);expect(data.nodes.find(n=>n.id===a.workItems[0].id)?.assigneeIds).toBeDefined();
- await page.route('**/api/projects/'+project.id+'/path-analysis**',route=>route.fulfill({json:data}));
- await page.goto('/paths');await ready(page);await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(2);
+ await mockGraphAnalysis(page,project.id,data);
+ await openGraph(page,'/paths?pathStatuses=unfinished');await ready(page);await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(2);
  const positions=()=>page.locator('.react-flow__node').evaluateAll(nodes=>nodes.map(n=>(n as HTMLElement).style.transform));const before=await positions();
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^筛选 ·/}).click();
- await page.locator('.path-filter-options fieldset').filter({has:page.locator('legend',{hasText:'需求负责人'})}).getByRole('checkbox').first().check();
- await page.getByRole('button',{name:'清空',exact:true}).click();
+ const owner=page.locator('.path-filter-options fieldset').filter({has:page.locator('legend',{hasText:'需求负责人'})}).getByRole('checkbox').first();await owner.check();await owner.uncheck();
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByLabel('筛选图中节点').fill('dulilishi');await expect(page.locator('.graph-list-row')).toHaveCount(1);await expect(page.locator('.graph-list-row')).toContainText('范围外');
  await page.getByRole('button',{name:'查看全部并定位',exact:true}).click();await page.waitForTimeout(300);await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);expect(await positions()).toEqual(before);
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByLabel('筛选图中节点').fill('找不到的需求abcdef');await expect(page.locator('.graph-auxiliary')).toContainText('没有匹配项');
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByLabel('筛选图中节点').fill(b.title);await expect(page.locator('.graph-list-row')).toHaveCount(1);
- await page.getByRole('button',{name:'编辑画布',exact:true}).click();expect(await positions()).toEqual(before);
+ await graphToolbar(page,'编辑画布');expect(await positions()).toEqual(before);
 });
 
 test('内部搜索项目外部工作，选择不扩图，明确定位后加入并支持刷新',async({page})=>{
- const {a,b,analysis}=await fixture(page),data=await analysis(),outside=a.workItems[1].id;
+ const {a,b,analysis,project}=await fixture(page),data=await analysis(),outside=a.workItems[1].id;
  data.nodes.find(n=>n.id===outside)!.title='范围外资源核查';
- await page.route('**/api/requirements/'+b.id+'/path-analysis?*',route=>route.fulfill({json:data}));
- await page.goto('/requirements/'+b.id+'?view=path&target=project');await ready(page);
+ await mockGraphAnalysis(page,project.id,data);
+ await openGraph(page,'/requirements/'+b.id+'?view=path&target=project');await ready(page);
  const ids=()=>page.locator('.react-flow__node').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-id')));const before=await ids();expect(before).not.toContain(outside);
  if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByLabel('筛选图中节点').fill('ziyuanhecha');await expect(page.locator('.graph-list-row')).toHaveCount(1);
- await page.locator('.graph-list-row>button:first-child').click();await expect(page.locator('.graph-detail')).toContainText('范围外资源核查');expect(await ids()).toEqual(before);
+ await page.locator('.graph-list-row>button:first-child').click();await expect(page.locator('.graph-list-row')).toContainText('范围外资源核查');await expect(page).toHaveURL(new RegExp('pathNode='+outside));expect(await ids()).toEqual(before);
  await page.getByRole('button',{name:'查看全部并定位',exact:true}).click();await ready(page);await expect(page.locator('.react-flow__node[data-id="'+outside+'"]')).toBeVisible();
  await page.reload();await ready(page);await expect(page.locator('.react-flow__node[data-id="'+outside+'"]')).toBeVisible();
 });
 
-test('返回来源失去权限时说明原因，提供项目路径入口',async({page})=>{
- const {a,b}=await fixture(page);await page.goto('/requirements/'+b.id+'?view=path');await ready(page);
- if(!await page.locator('.graph-finder').isVisible())await page.getByRole('button',{name:'查找与筛选',exact:true}).click();await page.getByRole('button',{name:/^节点 \d/}).click();await page.locator('.graph-list-row>button:first-child').filter({hasText:'方案交付'}).filter({hasText:a.title}).click();
- await page.getByRole('button',{name:'进入需求路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp(a.id));
- await page.route('**/api/requirements/'+b.id,route=>route.fulfill({status:403,json:{message:'无权读取该需求',code:'FORBIDDEN'}}));
- await page.locator('#topbar-back-slot button').click();await expect(page.getByText('需求无法打开',{exact:true})).toBeVisible();await expect(page).toHaveURL(new RegExp('/requirements/'+b.id));await page.getByRole('button',{name:'返回项目路径',exact:true}).click();await ready(page);await expect(page).toHaveURL(/\/paths/);
+test('返回来源失去权限时隐藏旧画布，重新读取后恢复项目入口',async({page})=>{
+ const {project,a,b}=await fixture(page);await openGraph(page,'/requirements/'+b.id+'?view=path');await ready(page);
+ await graphProperties(page,page.locator('.react-flow__node[data-id="'+a.workItems[0].id+'"]'));
+ await page.getByRole('dialog').getByRole('button',{name:'进入需求',exact:true}).click();await ready(page);await expect(page).toHaveURL(new RegExp('scopeId='+a.id));
+ let denied=true;await page.route('**/api/projects/'+project.id+'/path-graph**',route=>denied?route.fulfill({status:403,json:{error:'无权读取该项目',code:'FORBIDDEN'}}):route.fallback());
+ await page.goBack();await expect(page.getByText('无权读取该项目',{exact:true})).toBeVisible();await expect(page.locator('.dependency-canvas')).toHaveCount(0);
+ await closeGraphProperties(page);denied=false;await page.getByRole('button',{name:/^重新(读取|加载)$/,exact:true}).click();await ready(page);
+ await page.getByRole('navigation',{name:'项目层级'}).getByRole('button').first().click();await ready(page);await expect(page).toHaveURL(/scopeType=project/);
 });
 
-test('工作区聚焦只变淡、原按钮退出、顶部固定且动画无重排',async({page})=>{
+test('工作区聚焦只变淡、原按钮退出、顶部固定且动画无重排',{tag:'@responsive'},async({page})=>{
  const {project,a}=await fixture(page);await page.request.post('/api/requirements',{data:{projectId:project.id,title:'独立观察项',ownerId:a.ownerId,plannedStart:todayIso()}});
- await page.goto('/paths?pathScope=all');await ready(page);await selectList(page,a.title);
+ await openGraph(page,'/paths?pathScope=all');await ready(page);await graphToolbar(page,'编辑画布');await selectList(page,a.title);
  const snapshot=()=>page.evaluate(()=>({top:document.querySelector('.topbar')!.getBoundingClientRect().height,canvas:document.querySelector('.dependency-canvas')!.getBoundingClientRect().height,positions:[...document.querySelectorAll<HTMLElement>('.react-flow__node')].map(n=>n.style.transform),routes:[...document.querySelectorAll('.react-flow__edge-path')].map(e=>e.getAttribute('d')),layouts:performance.getEntriesByName('pm-path-layout').length}));
- const before=await snapshot();await page.locator('.graph-detail').getByRole('button',{name:'聚焦分支',exact:true}).click();
+ const before=await snapshot();await page.locator('.modal-card-workspace').getByRole('button',{name:'聚焦分支',exact:true}).click();
  await expect(page.locator('.graph-node-dim')).toHaveCount(1);await expect(page.locator('.react-flow__node:not(.graph-node-hidden)')).toHaveCount(3);
  const samples=await page.locator('.graph-node-dim .dependency-card').evaluate(async e=>{const values:number[]=[];await new Promise<void>(resolve=>{const start=performance.now();const tick=()=>{values.push(Number(getComputedStyle(e).opacity));if(performance.now()-start>210)resolve();else requestAnimationFrame(tick);};tick();});return values;});
  expect(samples.some(v=>v>.35&&v<1)).toBe(true);expect(samples.at(-1)).toBeCloseTo(.35,2);expect(await snapshot()).toEqual(before);
- await page.locator('.graph-detail').getByRole('button',{name:'退出聚焦',exact:true}).click();await expect(page.locator('.graph-node-dim')).toHaveCount(0);expect(await snapshot()).toEqual(before);
- await page.locator('.graph-detail').getByRole('button',{name:'聚焦分支',exact:true}).click();await page.reload();await ready(page);await expect(page.locator('.graph-node-dim')).toHaveCount(1);
- await page.locator('.graph-detail').getByRole('button',{name:'退出聚焦',exact:true}).click();await expect(page.locator('.graph-node-dim')).toHaveCount(0);
+ await page.locator('.modal-card-workspace').getByRole('button',{name:'退出聚焦',exact:true}).click();await expect(page.locator('.graph-node-dim')).toHaveCount(0);expect(await snapshot()).toEqual(before);
+ await page.locator('.modal-card-workspace').getByRole('button',{name:'聚焦分支',exact:true}).click();await page.reload();await ready(page);await expect(page.locator('.graph-node-dim')).toHaveCount(1);
+ await page.locator('.modal-card-workspace').getByRole('button',{name:'退出聚焦',exact:true}).click();await expect(page.locator('.graph-node-dim')).toHaveCount(0);
 });
 
 test('工作区图上改接一次提交并可撤销，历史模板转换先预览',async({page})=>{
  const {project}=await fixture(page);
  const template=await(await page.request.post('/api/templates',{data:{projectId:project.id,name:'改接测试',dependencyMode:'dependencies',items:['原前置','后续','新前置'].map((title,i)=>({clientKey:'k'+i,title,durationDays:1,startOffsetDays:i,sortOrder:i,predecessorKeys:i===1?['k0']:[]}))}})).json() as WorkItemTemplate;
- await page.goto('/templates?edit='+template.id);await ready(page);await expect(page.locator('.graph-detail')).toHaveCount(0);await expect(page.locator('.graph-auxiliary')).toHaveCount(0);
+ await page.goto('/templates?edit='+template.id);await ready(page);await expect(page.locator('.modal-card-workspace')).toHaveCount(0);await expect(page.locator('.graph-auxiliary')).toHaveCount(0);
  await page.locator('.react-flow__edge').first().dispatchEvent('click');await expect(page.getByRole('button',{name:'拖动改接前置'})).toBeVisible();
- await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();await page.waitForTimeout(210);
+ await page.locator('.modal-card-workspace').getByRole('button',{name:'关闭',exact:true}).click();await page.waitForTimeout(210);
  const source=page.getByRole('button',{name:'拖动改接前置'}),target=page.locator('.react-flow__node').filter({has:page.locator('strong',{hasText:/^新前置$/})});
  await source.dragTo(target.locator('.dependency-card'));await ready(page);await expect(page.locator('.page-toolbar-status')).toContainText('草稿已保留');await expect(page.locator('.react-flow__edge')).toHaveCount(1);
- await page.getByRole('button',{name:'撤销',exact:true}).click();await ready(page);await page.getByRole('button',{name:'重做',exact:true}).click();await ready(page);
- const submitted=page.waitForResponse(r=>r.url().endsWith('/api/templates/'+template.id)&&r.request().method()==='PATCH');await page.getByRole('button',{name:'保存修改',exact:true}).click();expect((await submitted).ok()).toBe(true);await expect(page.getByRole('button',{name:'撤销',exact:true})).toBeDisabled();
+ await graphToolbar(page,'撤销');await ready(page);await graphToolbar(page,'重做');await ready(page);
+ const submitted=page.waitForResponse(r=>r.url().endsWith('/api/templates/'+template.id)&&r.request().method()==='PATCH');await graphToolbar(page,'保存修改');expect((await submitted).ok()).toBe(true);await expectClean(page);
  const saved=(await(await page.request.get('/api/templates?projectId='+project.id)).json() as WorkItemTemplate[]).find(t=>t.id===template.id)!;expect(saved.items[1].predecessorIds).toEqual([saved.items[2].id]);
  const legacy=await(await page.request.post('/api/templates',{data:{projectId:project.id,name:'历史偏移检查',items:[{title:'阶段一',durationDays:2,startOffsetDays:0,sortOrder:0},{title:'阶段二',durationDays:1,startOffsetDays:5,sortOrder:1}]}})).json() as WorkItemTemplate;
  await page.goto('/templates?edit='+legacy.id);await ready(page);await expect(page.locator('.business-handle')).toHaveCount(0);await headerAction(page,'流程属性');await page.getByRole('button',{name:'转换为依赖流程'}).click();await expect(page.getByRole('dialog')).toContainText('原偏移');await page.getByRole('button',{name:'确认转换，加入草稿'}).click();await ready(page);await expect(page.locator('.business-handle')).toHaveCount(8);
@@ -484,24 +393,6 @@ test('工作区图上改接一次提交并可撤销，历史模板转换先预�
 });
 
 
-test('20/80/200 节点拖动反馈与预览箭头保持响应，取消不修改布局',async({page},info)=>{
- test.setTimeout(90000);const {project}=await fixture(page),results:unknown[]=[];
- for(const count of [20,80,200]){
-  const requirements=Array.from({length:count},(_,i)=>({...req('r'+i),projectId:project.id,title:'手势需求 '+i})),workItems=requirements.map((r,i)=>work('w'+i,r.id,1)),dependencies:PathInput['dependencies']=[];
-  for(let i=1;i<count;i++)for(const delta of [1,3,7])if(i>=delta)dependencies.push({id:`e${i}-${delta}`,projectId:project.id,sourceRequirementId:'r'+(i-delta),sourceWorkItemId:'w'+(i-delta),targetRequirementId:'r'+i,targetWorkItemId:'w'+i,origin:'manual'});
-  for(let i=12;dependencies.length<count*3;i++){const from=(i-11)%(count-11);dependencies.push({id:'extra'+i,projectId:project.id,sourceRequirementId:'r'+from,sourceWorkItemId:'w'+from,targetRequirementId:'r'+(from+11),targetWorkItemId:'w'+(from+11),origin:'manual'});}
-  const data=analysePaths({projectId:project.id,projectName:project.name,revision:0,projectEnd:null,asOfDate:'2026-09-07',requirements,workItems,dependencies});const pattern=`**/api/projects/${project.id}/path-analysis**`;await page.route(pattern,r=>r.fulfill({json:data}));await page.goto('/paths?pathScope=all');await ready(page);if(await page.getByLabel('编辑画布',{exact:true}).isVisible())await page.getByLabel('编辑画布',{exact:true}).click();
-  const node=page.locator('.react-flow__node[data-id=r0]');await node.dispatchEvent('click');await page.locator('.graph-detail').getByRole('button',{name:'关闭',exact:true}).click();await page.waitForTimeout(220);for(let i=0;i<12;i++)await page.getByLabel('放大画布',{exact:true}).click();await page.getByLabel('定位所选节点',{exact:true}).click();await page.waitForTimeout(280);
-  const before=await node.getAttribute('style'),box=(await node.boundingBox())!,x=box.x+box.width*.35,y=box.y+12;
-  await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+12,y,{steps:2});await expect(page.locator('.graph-pending-route').first()).toBeVisible();
-  const observation=page.evaluate(async()=>{const intervals:number[]=[],latency:number[]=[];let moving=false,active=true,last=performance.now(),frame=0;const node=document.querySelector<HTMLElement>('.react-flow__node[data-id=r0]')!;
-   let displayed=node.style.transform;const move=(e:PointerEvent)=>{if(e.buttons!==1)return;moving=true;const began=performance.now();requestAnimationFrame(()=>{if(node.style.transform!==displayed&&document.querySelector('.graph-pending-route[marker-end]')){latency.push(performance.now()-began);displayed=node.style.transform;}});};
-   const tick=(now:number)=>{if(!active)return;if(moving)intervals.push(now-last);last=now;frame=requestAnimationFrame(tick);};document.addEventListener('pointermove',move,true);frame=requestAnimationFrame(tick);
-   await new Promise<void>(resolve=>document.addEventListener('pointerup',()=>resolve(),{once:true}));active=false;document.removeEventListener('pointermove',move,true);cancelAnimationFrame(frame);const p95=(values:number[])=>[...values].sort((a,b)=>a-b)[Math.max(0,Math.ceil(values.length*.95)-1)]||0;return {frameSamples:intervals.length,feedbackSamples:latency.length,p95FrameMs:p95(intervals),p95FeedbackMs:p95(latency)};
-  });
-  await page.mouse.move(x+332,y,{steps:40});await page.keyboard.press('Escape');await page.mouse.up();const measured=await observation;await info.attach('drag-'+count,{body:JSON.stringify(measured),contentType:'application/json'});await ready(page);expect(await node.getAttribute('style')).toBe(before);await expect(page.locator('.graph-pending-route')).toHaveCount(0);expect(measured.frameSamples).toBeGreaterThan(20);expect(measured.feedbackSamples).toBeGreaterThan(20);expect(measured.p95FeedbackMs).toBeLessThanOrEqual(100);expect(measured.p95FrameMs).toBeLessThanOrEqual(33);results.push({nodes:count,edges:dependencies.length,...measured});await page.unroute(pattern);
- }
- fs.mkdirSync('.preview/qa',{recursive:true});fs.writeFileSync('.preview/qa/gesture-drag-performance.json',JSON.stringify(results,null,2));await info.attach('drag-performance',{body:JSON.stringify(results),contentType:'application/json'});
-});
+
 
 async function activeStoredDrafts(page:import('@playwright/test').Page){return page.evaluate(()=>new Promise<number>((resolve,reject)=>{const request=indexedDB.open('pm-editor-drafts-v1',1);request.onsuccess=()=>{const db=request.result;if(!db.objectStoreNames.contains('drafts')){db.close();resolve(0);return;}const query=db.transaction('drafts').objectStore('drafts').getAll();query.onsuccess=()=>{resolve(query.result.filter(v=>v?.active).length);db.close();};query.onerror=()=>reject(query.error);};request.onerror=()=>reject(request.error);}));}

@@ -12,7 +12,7 @@ async function frame(page:Page){
 }
 async function tableFrame(page:Page){return page.locator('.outline-table thead th').evaluateAll(elements=>elements.map(element=>{const {x,y,width,height}=element.getBoundingClientRect();return [x,y,width,height];}));}
 
-test('视角、层级、画布编辑与概览浮窗保持公共框架坐标',async({page},info)=>{
+test('视角、层级、画布编辑与概览浮窗保持公共框架坐标',{tag:'@responsive'}, async({page},info)=>{
   test.setTimeout(90000);const f=await phaseFixture(page);await page.goto('/');await expect(page.locator('.workspace-outline')).toBeVisible();
   const initial=await frame(page);
   for(const name of ['关系图','进展表','清单']){await view(page,name).click();await expect.poll(()=>frame(page)).toEqual(initial);}
@@ -34,7 +34,7 @@ test('视角、层级、画布编辑与概览浮窗保持公共框架坐标',asy
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
 
-test('树表类型、左侧选择、浮动批量工具与详情操作保持列宽',async({page},info)=>{
+test('树表类型、左侧选择、浮动批量工具与详情操作保持列宽',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page);await page.request.post('/api/requirements',{data:{projectId:f.projectId,title:'临时补充'}});await page.goto('/');
   await page.getByRole('button',{name:'展开全部',exact:true}).click();
   const typeColors=await page.locator('.outline-table .workspace-object-mark').evaluateAll(elements=>Object.fromEntries(elements.map(el=>[el.getAttribute('data-kind'),getComputedStyle(el).color])));
@@ -54,7 +54,7 @@ test('树表类型、左侧选择、浮动批量工具与详情操作保持列�
   await page.getByRole('button',{name:'展开概览',exact:true}).click();await page.screenshot({path:info.outputPath('narrow-overview.png'),animations:'disabled'});expect(await page.getByRole('dialog').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
 });
 
-test('进展名称直接查看详情，执行动作占用固定宽度',async({page},info)=>{
+test('进展名称直接查看详情，执行动作占用固定宽度',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page);await page.goto('/execution');await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');const work=page.locator('[data-row-id="'+f.testing.workItems[1].id+'"]');await expect(work).toBeVisible();
   const initial=await frame(page);await work.locator('.workspace-name-heading').getByRole('button',{name:f.testing.workItems[1].title,exact:true}).click();await expect(page.locator('.modal-card-workspace[role=dialog]')).toBeVisible();expect(new URL(page.url()).searchParams.get('scopeType')).toBe('project');expect(await frame(page)).toEqual(initial);
   await page.locator('.modal-card-workspace[role=dialog]').getByRole('button',{name:'关闭',exact:true}).click();
@@ -66,8 +66,8 @@ test('进展名称直接查看详情，执行动作占用固定宽度',async({pa
   for(const button of await timeTools.locator('button:visible').all()){const b=(await button.boundingBox())!;expect(b.y).toBeGreaterThanOrEqual(toolbar.y);expect(b.y+b.height).toBeLessThanOrEqual(toolbar.y+toolbar.height);}
 });
 
-test('深色主题中的状态文字保持可读对比度',async({page},info)=>{
-  test.skip(info.project.name!=='desktop-1080p','两个深色主题共用相同颜色规则');
+test('深色主题中的状态文字保持可读对比度',{tag:'@responsive'}, async({page},info)=>{
+
   await phaseFixture(page);await page.goto('/');await page.getByRole('button',{name:'展开全部',exact:true}).click();
   for(const theme of ['midnight','dcim']){
     await page.evaluate(value=>{localStorage.setItem('project-manage:theme',value);window.dispatchEvent(new StorageEvent('storage',{key:'project-manage:theme',newValue:value}));},theme);await expect(page.locator('html')).toHaveAttribute('data-theme',theme);

@@ -1,19 +1,20 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockGanttData, requirement } from "./gantt-fixture";
+import {closeGraphProperties} from './graph-interactions';
 
 async function choose(page: Page, name: string) {
   await page.getByRole("button", { name: /^切换风格/ }).click();
   await page.getByRole("menuitemradio", { name: new RegExp("^" + name) }).click();
 }
 
-test("系统日夜切换保留筛选、滚动与草稿；手选风格不被覆盖", async ({ page }) => {
+test("系统日夜切换保留筛选、滚动与草稿；手选风格不被覆盖", {tag:'@responsive'}, async ({ page }) => {
   await mockGanttData(page);
   await page.emulateMedia({ colorScheme: "light" });
-  await page.goto("/");
+  await page.goto("/execution");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "classic");
-  const search = page.locator(".gantt-filter-search input");
+  const search = page.getByPlaceholder('搜索名称或编号');
   await search.fill("统一甘特");
-  const scroll = page.locator(".project-gantt-scroll");
+  const scroll = page.locator(".workspace-gantt-scroll");
   await expect(scroll).toHaveAttribute('data-gantt-ready', 'true');
   const visibleAnchor = () => scroll.evaluate(e => {
     const boundary = e.getBoundingClientRect().left + (e.querySelector('[data-gantt-fixed]')?.getBoundingClientRect().width || 0);
@@ -45,7 +46,7 @@ test("系统日夜切换保留筛选、滚动与草稿；手选风格不被覆�
   expect(writes).toEqual([]);
 });
 
-test("日夜偏好跨标签同步，菜单可见且可用键盘选择", async ({ page, context }) => {
+test("日夜偏好跨标签同步，菜单可见且可用键盘选择", {tag:'@responsive'}, async ({ page, context }) => {
   await mockGanttData(page);
   await page.goto("/");
   const second = await context.newPage();
@@ -68,25 +69,28 @@ test("日夜偏好跨标签同步，菜单可见且可用键盘选择", async ({
   await expect(second.getByRole("button", { name: /^切换风格/ })).toBeFocused();
 });
 
-test("减少动态效果覆盖菜单、图表与今天定位；换肤复用画布", async ({ page }) => {
+test("减少动态效果覆盖菜单、图表与今天定位；换肤复用画布", {tag:'@responsive'}, async ({ page,context }) => {
   await mockGanttData(page);
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.route("**/api/requirements/r1", (route) => route.fulfill({ json: {
     ...requirement, progressUpdates: [{ id: "u1", percent: 40, content: "进展", createdAt: "2026-09-02T10:00:00Z", eventType: "progress" }],
   } }));
   await page.goto("/requirements/r1");
+  await page.getByRole('tab',{name:'记录',exact:true}).click();
   const chart = page.getByRole("img", { name: "需求计划与实际进度趋势", exact: true });
   await expect(chart).toHaveAttribute("data-chart-motion", "short");
   const canvas = await chart.locator("canvas").elementHandle();
-  await choose(page, "柔彩悬浮");
+  const controls=await context.newPage();await mockGanttData(controls);await controls.goto('/');
+  await choose(controls, "柔彩悬浮");await page.bringToFront();
   await expect(chart).toHaveAttribute("data-chart-motion", "none");
   expect(await canvas!.evaluate((e) => e.isConnected)).toBe(true);
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.getByRole("button", { name: /^切换风格/ }).click();
-  await expect(page.locator(".theme-menu")).toHaveCSS("animation-name", "none");
-  await page.keyboard.press("Escape");
+  await controls.emulateMedia({reducedMotion:'reduce'});await controls.getByRole("button", { name: /^切换风格/ }).click();
+  await expect(controls.locator(".theme-menu")).toHaveCSS("animation-name", "none");
+  await controls.close();await page.bringToFront();
   await expect(chart).toHaveAttribute("data-chart-motion", "none");
-  await page.locator(".requirement-gantt-scroll").evaluate((e) => {
+  await closeGraphProperties(page);await page.goto('/execution');await expect(page.locator('.workspace-gantt-scroll')).toHaveAttribute('data-gantt-ready','true');
+  await page.locator(".workspace-gantt-scroll").evaluate((e) => {
     const original = e.scrollTo.bind(e);
     e.scrollTo = (options: ScrollToOptions | number = {}, y?: number) => {
       if (typeof options === "object") { e.setAttribute("data-scroll-behavior", options.behavior || "auto"); original(options); }
@@ -94,19 +98,22 @@ test("减少动态效果覆盖菜单、图表与今天定位；换肤复用画�
     };
   });
   await page.getByRole("button", { name: "今天", exact: true }).click();
-  await expect(page.locator(".requirement-gantt-scroll")).toHaveAttribute("data-scroll-behavior", "auto");
+  await expect(page.locator(".workspace-gantt-scroll")).toHaveAttribute("data-scroll-behavior", "auto");
 });
 
-test("密集图表与甘特无持续动画，侧栏一次落位", async ({ page }) => {
+test("密集图表与甘特无持续动画，侧栏一次落位", {tag:'@responsive'}, async ({ page }) => {
   await mockGanttData(page);
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.route("**/api/requirements/r1", (route) => route.fulfill({ json: {
     ...requirement, progressUpdates: Array.from({ length: 150 }, (_, i) => ({ id: `update-${i}`, percent: i % 100, content: "测试进展", eventType: "progress", createdAt: new Date(Date.UTC(2026, 0, i + 1)).toISOString() })),
   } }));
   await page.goto("/requirements/r1");
+  await page.getByRole('tab',{name:'记录',exact:true}).click();
   await expect(page.getByRole("img", { name: "需求计划与实际进度趋势", exact: true })).toHaveAttribute("data-chart-motion", "none");
   await expect(page.locator(".sidebar")).toHaveCSS("transition-duration", "0s");
-  await expect(page.locator(".unified-gantt-actual").first()).toHaveCSS("animation-name", "none");
-  await expect(page.locator(".unified-gantt-actual").first()).toHaveCSS("transition-duration", "0s");
+  await closeGraphProperties(page);await page.goto('/execution');
+  await page.getByRole('button',{name:'展开全部',exact:true}).click();
+  await expect(page.locator(".gantt-date-actual").first()).toHaveCSS("animation-name", "none");
+  await expect(page.locator(".gantt-date-actual").first()).toHaveCSS("transition-duration", "0s");
   await expect.poll(() => page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running").length)).toBe(0);
 });

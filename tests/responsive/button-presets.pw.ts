@@ -19,7 +19,7 @@ async function contrast(button:Locator){
   });
 }
 
-test('公共按钮七主题可读，加载不改变按钮和相邻控件位置', async ({page}, info) => {
+test('公共按钮七主题可读，加载不改变按钮和相邻控件位置', {tag:'@responsive'}, async ({page}, info) => {
   await phaseFixture(page);
   await page.goto('/resources');
   await page.getByRole('button', {name:'新增人员', exact:true}).click();
@@ -57,7 +57,7 @@ test('公共按钮七主题可读，加载不改变按钮和相邻控件位置',
   } finally {release();}
 });
 
-test('进展操作与选中状态跟随主题，完成、返工、删除在交互时保持可读',async({page},info)=>{
+test('进展操作与选中状态跟随主题，完成、返工、删除在交互时保持可读',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page);
   await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',scopeType:'feature',scopeId:f.feature.id}));
   const row=page.locator('[data-row-id="'+f.testing.id+'"]');

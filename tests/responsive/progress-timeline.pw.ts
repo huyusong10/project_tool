@@ -9,8 +9,7 @@ async function progressIsReadable(row:Locator){
  return row.evaluate(r=>{const cap=r.querySelector('.gantt-progress-text')!.getBoundingClientRect(),bar=r.querySelector('.gantt-date-actual')!.getBoundingClientRect();const narrow=r.querySelector('.gantt-progress-end')!.getBoundingClientRect().width<=110;return Math.abs((narrow?cap.x+cap.width/2:cap.right-22)-bar.right)<2&&Math.abs(cap.y+cap.height/2-(bar.y+bar.height/2))<2;});
 }
 
-test('并行阶段与短时间条进度显示在时间轴，右栏仅有操作，数字可直接更新',async({page},info)=>{
- await page.emulateMedia({reducedMotion:'reduce'});
+async function parallelProgressFixture(page:Page){
  const f=await phaseFixture(page);
  const template=await post(page,'/api/templates',{projectId:f.projectId,name:'并行进展',dependencyMode:'dependencies',items:[{clientKey:'design',title:'需求设计',workStage:'analysis',durationDays:1,startOffsetDays:0,sortOrder:0,predecessorKeys:[]},{clientKey:'dev',title:'后端开发',workStage:'development',durationDays:1,startOffsetDays:0,sortOrder:1,predecessorKeys:[]}]});
  let r:Requirement=await post(page,'/api/requirements',{projectId:f.projectId,featureId:f.feature.id,phaseId:f.phases[2].id,ownerId:f.testing.ownerId,title:'并行交付进展',templateId:template.id,plannedStart:new Date().toISOString().slice(0,10)});
@@ -19,6 +18,12 @@ test('并行阶段与短时间条进度显示在时间轴，右栏仅有操作�
   await post(page,'/api/requirements/'+r.id+'/progress',{expectedVersion:w.version,workItemId:w.id,workItemPercent:percent,content:'并行阶段进展'});
   r=await(await page.request.get('/api/requirements/'+r.id)).json();
  }
+ return {f,r};
+}
+
+test('并行阶段与短时间条在标准视口和窄屏内保持可读，打开进展表单不移动列',{tag:'@responsive'},async({page},info)=>{
+ await page.emulateMedia({reducedMotion:'reduce'});
+ const {f,r}=await parallelProgressFixture(page);
  await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',scopeType:'phase',scopeId:f.phases[2].id}));await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');
  const row=page.locator('[data-row-id="'+r.id+'"]'),work=page.locator('[data-row-id="'+r.workItems[0].id+'"]'),grid=page.getByRole('treegrid');
  await expect(row.locator('.workspace-row-track .workspace-row-progress')).toContainText('设计15%');await expect(row.locator('.workspace-row-track .workspace-row-progress')).toContainText('开发25%');
@@ -30,7 +35,7 @@ test('并行阶段与短时间条进度显示在时间轴，右栏仅有操作�
  await expect(row.locator('.gantt-progress-caption').first()).toBeVisible();
  expect((await work.locator('.gantt-date-actual').boundingBox())!.width).toBeLessThan(36);
  const bounds=await grid.boundingBox(),columns=await row.locator('.workspace-row-label,.workspace-row-actions').evaluateAll(els=>els.map(e=>e.getBoundingClientRect().toJSON()));
- await work.getByRole('button',{name:'更新 需求设计 进度',exact:true}).click();const dialog=page.getByRole('dialog').last();await dialog.getByRole('spinbutton').fill('35');await dialog.getByRole('textbox',{name:/^说明/}).fill('时间轴上更新');await dialog.getByRole('button',{name:'记录进展',exact:true}).click();await expect(dialog).toHaveCount(0);await expect(row.locator('.workspace-row-progress')).toContainText('设计35%');expect(await grid.boundingBox()).toEqual(bounds);expect(await row.locator('.workspace-row-label,.workspace-row-actions').evaluateAll(els=>els.map(e=>e.getBoundingClientRect().toJSON()))).toEqual(columns);
+ await work.getByRole('button',{name:'更新 需求设计 进度',exact:true}).click();const dialog=page.getByRole('dialog').last();await expect(dialog).toBeVisible();expect(await grid.boundingBox()).toEqual(bounds);expect(await row.locator('.workspace-row-label,.workspace-row-actions').evaluateAll(els=>els.map(e=>e.getBoundingClientRect().toJSON()))).toEqual(columns);await page.keyboard.press('Escape');
  const initial=await work.locator('.gantt-progress-text').boundingBox();await grid.evaluate(el=>el.scrollLeft+=60);await expect.poll(async()=>Math.round((await work.locator('.gantt-progress-text').boundingBox())!.x-initial!.x)).toBe(-60);await expect.poll(()=>progressIsReadable(work)).toBe(true);await page.getByRole('button',{name:'今天',exact:true}).click();
  await page.screenshot({path:info.outputPath('parallel-progress.png'),animations:'disabled'});
  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'今天',exact:true}).click();await work.locator('.workspace-row-progress').scrollIntoViewIfNeeded();await expect(row.locator('.is-secondary')).toBeHidden();await expect(row.locator('.compact-count')).toBeVisible();await expect(row.locator('.compact-count')).toHaveText('+1');await expect(row.locator('.gantt-progress-caption').first()).toBeVisible();
@@ -41,7 +46,7 @@ test('并行阶段与短时间条进度显示在时间轴，右栏仅有操作�
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath('narrow-progress.png'),animations:'disabled'});
 });
 
-test('工作项状态使用统一图标，未分派与执行状态分别表达',async({page},info)=>{
+test('工作项状态使用统一图标，未分派与执行状态分别表达',{tag:'@responsive'},async({page},info)=>{
  const f=await phaseFixture(page),template=await post(page,'/api/templates',{projectId:f.projectId,name:'待安排任务',dependencyMode:'dependencies',items:[{clientKey:'a',title:'待安排',durationDays:1,startOffsetDays:0,sortOrder:0,predecessorKeys:[]},{clientKey:'b',title:'已取消任务',durationDays:1,startOffsetDays:0,sortOrder:1,predecessorKeys:[]}]});
  const r:Requirement=await post(page,'/api/requirements',{projectId:f.projectId,featureId:f.feature.id,title:'未安排需求',templateId:template.id});await post(page,'/api/work-items/'+r.workItems[1].id+'/cancel',{expectedVersion:r.workItems[1].version,reason:'补充任务不再需要'});
  await page.goto('/execution');await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');
@@ -67,7 +72,7 @@ test('Phase 内独立需求的跨 Phase 依赖能实际绘制，空画布不算�
 });
 
 
-test('需求只显示最新达成节点，历史进入浮窗，所有执行行保持两层高度',async({page},info)=>{
+test('需求只显示最新达成节点，历史进入浮窗，所有执行行保持两层高度',{tag:'@responsive'},async({page},info)=>{
  const f=await phaseFixture(page),today=todayIso(),day=(n:number)=>addBusinessDays(today,n);
  const facts=[
   {id:'review-old',title:'需求基线',achievedAt:day(-3),targetDate:day(-4)},
@@ -87,4 +92,11 @@ test('需求只显示最新达成节点，历史进入浮窗，所有执行行�
  await page.screenshot({path:info.outputPath('latest-milestone.png'),animations:'disabled'});
  await page.setViewportSize({width:390,height:844});
  const narrow=await page.locator('.workspace-gantt-row:is(.kind-requirement,.kind-work)').evaluateAll(rows=>rows.map(r=>r.getBoundingClientRect().height));expect(new Set(narrow).size).toBe(1);expect(narrow[0]).toBe(56);
+});
+
+test('从时间轴数字更新所选工作项并刷新需求汇总',async({page})=>{
+ const {f,r}=await parallelProgressFixture(page);await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',scopeType:'phase',scopeId:f.phases[2].id}));await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');
+ const row=page.locator('[data-row-id="'+r.id+'"]'),work=page.locator('[data-row-id="'+r.workItems[0].id+'"]');
+ await work.getByRole('button',{name:'更新 需求设计 进度',exact:true}).click();const dialog=page.getByRole('dialog').last();await dialog.getByRole('spinbutton').fill('35');await dialog.getByRole('textbox',{name:/^说明/}).fill('时间轴上更新');await dialog.getByRole('button',{name:'记录进展',exact:true}).click();await expect(dialog).toHaveCount(0);await expect(row.locator('.workspace-row-progress')).toContainText('设计35%');
+ const latest:Requirement=await(await page.request.get('/api/requirements/'+r.id)).json();expect(latest.workItems[0].progress).toBe(35);expect(latest.workItems[1].progress).toBe(25);
 });

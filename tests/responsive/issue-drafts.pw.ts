@@ -188,7 +188,7 @@ test('问题搜索选择浮层不改变弹窗滚动布局', {tag:'@responsive'},
     const before = await body.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientWidth: element.clientWidth }));
     await dialog.getByRole('button', { name: new RegExp(`^${label}：`) }).click();
     const listbox = page.getByRole('listbox', { name: label, exact: true });
-    const popover = page.locator('body > .issue-search-select-menu');
+    const popover = dialog.locator('.issue-search-select-menu');
     await expect(listbox).toBeVisible();
     await expect(popover).toBeVisible();
     const after = await body.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientWidth: element.clientWidth }));
@@ -196,7 +196,7 @@ test('问题搜索选择浮层不改变弹窗滚动布局', {tag:'@responsive'},
     const bounds = await popover.boundingBox();
     expect(bounds).not.toBeNull();
     expect(bounds!.y).toBeGreaterThanOrEqual(12);
-    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(768 - 12);
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(page.viewportSize()!.height - 12);
     await page.keyboard.press('Escape');
     await expect(popover).toBeHidden();
     await expect(dialog.getByRole('button', { name: new RegExp(`^${label}：`) })).toBeFocused();
@@ -384,7 +384,7 @@ for (const location of ['list', 'detail'] as const) {
     await expect(container).toContainText('冲突后的状态记录');
     await expect(field).toHaveValue('本次状态说明');
     await expect(submit).toBeEnabled();
-    if (testInfo.project.name === 'office-1280') await page.screenshot({ path: `data/round20-ui/${location}-conflict-1280.png`, animations: 'disabled' });
+    await page.screenshot({ path: testInfo.outputPath(`${location}-conflict.png`), animations: 'disabled' });
     await submit.click();
     await expect(container).toHaveCount(0);
     expect(state.writes[1]).toEqual({ path: '/api/issues/i1/defer', body: { expectedVersion: 2, reason: '本次状态说明' } });

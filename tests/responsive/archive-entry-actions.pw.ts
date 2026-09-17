@@ -104,7 +104,7 @@ test('项目归档响应未知且双列表失败时跨导航保持锁定', async
   await page.route('**/api/projects/p1',route=>{requests++;archived=true;failReads=true;return route.fulfill({status:200,contentType:'text/html',body:'archived'});});
   await page.goto('/projects');await page.getByRole('button',{name:'归档',exact:true}).click();const dialog=page.getByRole('dialog',{name:'归档项目',exact:true});await dialog.getByRole('button',{name:'确认归档',exact:true}).click();
   await expect(dialog.getByRole('alert')).toContainText('请关闭窗口后重新选择归档');await dialog.getByRole('button',{name:'取消',exact:true}).click();
-  await page.getByRole('link',{name:'项目进展',exact:true}).click();await page.getByRole('link',{name:'项目中心',exact:true}).click();await expect(page.getByRole('alert')).toContainText('项目归档结果待核对');
+  await page.getByRole('link',{name:'归档中心',exact:true}).click();await page.getByRole('link',{name:'项目中心',exact:true}).click();await expect(page.getByRole('alert')).toContainText('项目归档结果待核对');
   const archiveButton=page.getByRole('button',{name:'归档',exact:true});await expect(archiveButton).toBeDisabled();await archiveButton.evaluate(button=>{button.removeAttribute('disabled');(button as HTMLButtonElement).click();});await expect(page.getByRole('dialog',{name:'归档项目',exact:true})).toHaveCount(0);expect(requests).toBe(1);
   failReads=false;await page.getByRole('button',{name:'重新读取项目与归档',exact:true}).click();await expect(page.getByText('项目归档结果待核对',{exact:false})).toHaveCount(0);await expect(page.getByText(project.name,{exact:true})).toHaveCount(0);expect(requests).toBe(1);
 });
@@ -314,7 +314,7 @@ test('项目设置恢复归档连点只提交一次', async ({ page }) => {
     await expect.poll(() => requests).toBe(1);
     expect(payloads).toEqual([{ expectedDeletedAt: '2026-09-04T08:00:00.000Z' }]);
     await expect(restore).toBeDisabled();
-    await expect(restore).toContainText('恢复中');
+    await expect(restore).toHaveAttribute('aria-busy', 'true');
     release();
     await expect(restore).toHaveCount(0);
     await expect(page.getByText('归档模板不存在')).toHaveCount(0);

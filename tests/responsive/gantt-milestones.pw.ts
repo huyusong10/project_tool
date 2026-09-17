@@ -65,7 +65,7 @@ test('部分排期保留实际进度与达成记录，不画虚假延期或完�
  await page.goto('/requirements/r1');await expect(page.locator('.requirement-overview')).toContainText('2 项待排期');await expect(page.locator('.requirement-overview')).not.toContainText('计划 0%');
 });
 
-test('流程预览只保留工作行，里程碑在第2日末尾切开，不新增一天', async ({ page }, info) => {
+test('流程预览只保留工作行，里程碑在第2日末尾切开，不新增一天', {tag:'@responsive'},async ({ page }, info) => {
   await mockGanttData(page);
   const template = { id: 't1', projectId: 'p1', name: '阶段交付流程', description: '', dependencyMode: 'dependencies', createdAt: '2026-09-01', updatedAt: '2026-09-01', items: [
     { id: 'ta', clientKey: 'ta', templateId: 't1', title: 'MPS编写', kind: 'work', sortOrder: 0, durationDays: 2, startOffsetDays: 0, predecessorIds: [] },
@@ -86,7 +86,7 @@ test('流程预览只保留工作行，里程碑在第2日末尾切开，不新�
   await expect(page.locator('.template-plan-row .template-plan-name.is-milestone-related')).toContainText('MPS编写');
   await page.locator('.template-milestone-plan').screenshot({ path: info.outputPath('template-slices.png') });
 });
-test('需求路径排期预览复用切面，独立里程碑和验收点不增加工作行', async ({ page }, info) => {
+test('需求路径排期预览复用切面，独立里程碑和验收点不增加工作行', {tag:'@responsive'},async ({ page }, info) => {
   await mockGanttData(page);
   const data = analysePaths({ projectId: 'p1', projectName: '测试项目', projectEnd: '2026-09-30', revision: 1, asOfDate: '2026-09-07',
     requirements: [{ ...req('r1'), projectId: 'p1', title: requirement.title }], workItems: [work('w1', 'r1', 2), work('w2', 'r1', 3)],

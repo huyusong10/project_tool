@@ -29,7 +29,7 @@ test('无工作项需求可直接更新并完成，不再经过验收',async({pa
  await page.getByLabel('需求完成度').fill('30');await page.getByLabel('执行说明').fill('接口已完成三成');await page.getByRole('dialog',{name:'更新进度',exact:true}).getByRole('button',{name:'更新进度',exact:true}).click();await expect(page.locator('.modal-card:not(.modal-card-workspace)[role=dialog]')).toHaveCount(0);
  expect((await detail(r.id)).progress).toBe(30);expect((await detail(r.id)).workItems).toHaveLength(0);
  await page.getByRole('button',{name:'完成需求',exact:true}).click();await expect(page.locator('.modal-card:not(.modal-card-workspace)[role=dialog]')).toHaveCount(0);
- const completed=await detail(r.id);expect(completed).toMatchObject({status:'completed',progress:100,acceptedAt:null});
+ await expect.poll(()=>detail(r.id)).toMatchObject({status:'completed',progress:100,acceptedAt:null});
  await page.goto('/?'+new URLSearchParams({projectId:r.projectId,scopeType:'unphased',scopeId:r.featureId!,workspaceView:'list'}));await expect(page.locator('[data-object-id="'+r.id+'"]')).toContainText('已完成');
  await page.goto('/requirements/'+r.id);await expect(page.getByRole('button',{name:'确认验收',exact:true})).toHaveCount(0);
 
