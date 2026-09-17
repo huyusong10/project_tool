@@ -14,7 +14,6 @@ import { useGanttNavigation } from "../use-gantt-navigation";
 import { GanttNavigation, GanttScrollbar } from "./GanttNavigation";
 import { workItemDisplayGap, workItemActualRange } from "../gantt-actual";
 import { delayedForecastEnd, ganttForecast, type GanttForecast } from '../gantt-forecast';
-import { ForecastDateEditor } from './ForecastDateEditor';
 import { achievedMilestones, milestoneDate, requirementMilestones } from '../gantt-milestones';
 import { useGanttMilestoneData } from '../use-gantt-milestones';
 import { GanttMilestoneRail, GanttMilestoneCuts, useMilestoneSelection } from './GanttMilestones';
@@ -48,7 +47,7 @@ function WorkStatusIcon({ status, size = 12 }: { status: string; size?: number }
   return <Circle size={size} />;
 }
 
-function WorkItemTimelinePopover({ item, updates, asOfDate, executionStatus, forecast, onEditForecast }: { item: WorkItem; updates: ProgressUpdate[]; asOfDate: string; executionStatus?: string; forecast?: GanttForecast | null; onEditForecast?: () => void }) {
+function WorkItemTimelinePopover({ item, updates, asOfDate, executionStatus, forecast }: { item: WorkItem; updates: ProgressUpdate[]; asOfDate: string; executionStatus?: string; forecast?: GanttForecast | null }) {
   const gap = workItemDisplayGap(item, asOfDate);
   const observedEnd = gap.observedEnd;
   const related = updates.filter((update) => update.workItemId === item.id).slice(0, 2);
@@ -59,7 +58,7 @@ function WorkItemTimelinePopover({ item, updates, asOfDate, executionStatus, for
     </header>
     <dl className="gantt-popover-metrics">
       <div><dt>实际进度</dt><dd>{item.progress}%</dd></div>
-      {forecast && <div><dt>预计完成</dt><dd>{forecast.label}<small className="gantt-range-note">{forecast.details}</small>{onEditForecast && <Button variant="secondary" type="button" className="ghost-button" onClick={onEditForecast}>修改预计完成日期</Button>}</dd></div>}
+      {forecast && <div><dt>预计完成</dt><dd>{forecast.label}<small className="gantt-range-note">{forecast.details}</small></dd></div>}
       <div><dt>计划周期</dt><dd>{dateLabel(item.plannedStart)} — {dateLabel(item.plannedEnd)}</dd></div>
       <div><dt>实际执行跨度</dt><dd>{dateLabel(item.actualStart, "未开始")} — {dateLabel(observedEnd, "结束日期缺失")}{gap.actual.ongoing && observedEnd ? "（截至统计日）" : ""}</dd></div>
       {item.milestoneLabel && <div><dt>里程碑</dt><dd>{item.milestoneLabel} · {item.status === "completed" ? "已达成" : item.status === "cancelled" ? "已取消" : "待达成"}</dd></div>}
@@ -85,7 +84,6 @@ export const GapTimeline = memo(function GapTimeline({
   projectId,
   updates = [],
   canUpdateProgress,
-  canEditForecast,
   onUpdateProgress,
   renderActions,
   renderItemMeta,
@@ -109,7 +107,6 @@ export const GapTimeline = memo(function GapTimeline({
   targetItemId?: string;
   updates?: ProgressUpdate[];
   canUpdateProgress?: (item: WorkItem) => boolean;
-  canEditForecast?: (item: WorkItem) => boolean;
   onUpdateProgress?: (item: WorkItem) => void;
   renderActions?: (item: WorkItem) => ReactNode;
   renderItemMeta?: (item: WorkItem) => ReactNode;
@@ -127,7 +124,6 @@ export const GapTimeline = memo(function GapTimeline({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const tooltip = useGanttTooltip();
   const milestoneData = useGanttMilestoneData(projectId);
-  const [forecastItem, setForecastItem] = useState<WorkItem | null>(null);
   const forecasts = useMemo(() => {
     return new Map(rangeItems.map(item => [item.id, ganttForecast(item.deliveryForecast, item.status, asOfDate)]));
   }, [rangeItems, asOfDate]);
@@ -239,8 +235,7 @@ export const GapTimeline = memo(function GapTimeline({
           {visibleItems.map((item) => {
             const gap = workItemDisplayGap(item, asOfDate);
             const observedEnd = gap.observedEnd;
-            const onEditForecast = milestoneData?.nodes?.some(n => n.id === item.id && n.kind === 'work') && canEditForecast?.(item) && !['completed', 'cancelled'].includes(item.status) ? () => { tooltip.close(); setForecastItem(item); } : undefined;
-            const tooltipProps = tooltip.bind(<WorkItemTimelinePopover item={item} updates={updates} asOfDate={asOfDate} executionStatus={executionStatus} forecast={forecasts.get(item.id)} onEditForecast={onEditForecast} />);
+            const tooltipProps = tooltip.bind(<WorkItemTimelinePopover item={item} updates={updates} asOfDate={asOfDate} executionStatus={executionStatus} forecast={forecasts.get(item.id)} />);
             return <div className={`requirement-gantt-row${milestoneSelection.related(item.id) ? ' is-milestone-related' : ''}${item.id === targetItemId ? " is-target" : ""}`} data-work-item-id={item.id} role="row" key={item.id}>
               <div className={`requirement-gantt-item item-status-${statusClass(item.status)}${item.ownerId ? "" : " is-unassigned"} sticky-left`} role="rowheader">
                 <div>
@@ -286,7 +281,6 @@ export const GapTimeline = memo(function GapTimeline({
       <GanttScrollbar navigation={navigation} />
       {tooltip.tooltip}
       {milestoneSelection.details}
-      {forecastItem && milestoneData && <ForecastDateEditor item={forecastItem} data={milestoneData} onClose={() => setForecastItem(null)} />}
     </div>
   );
 });
