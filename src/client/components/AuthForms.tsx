@@ -6,7 +6,7 @@ import { KeyRound, LockKeyhole, LogIn } from "lucide-react";
 import { isWriteOutcomeUnknown, jsonBody } from "../api";
 import { invalidate, keys } from "../query-keys";
 import type { Session, SystemBranding } from "../types";
-import { commitSession } from "../session-cache";
+import { commitSession } from '../session-cache';
 import { BrandLogo } from "./BrandLogo";
 import { Modal, useSynchronousPendingLock } from "./Modal";
 

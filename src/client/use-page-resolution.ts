@@ -7,7 +7,7 @@ import { keys } from './query-keys';
 import { useResourceQuery } from './use-resource-query';
 import { isGuestRoute, matchRoute, pageScopeFor } from './routes';
 import { canManageProject, isAdmin } from './permissions';
-import { sessionAccessKey } from './session-cache';
+import { sessionAccessKey } from './session-identity';
 import { ApiError } from './api';
 import { clearProjectGraphDrafts } from './use-graph-draft';
 import { pathBackTarget } from './page-foundation';

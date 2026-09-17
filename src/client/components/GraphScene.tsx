@@ -1,45 +1,28 @@
-import { Button } from './Button';
-import {PHASE_HEADER,PHASE_PADDING,arrangePhaseRegions,type PhaseRegion} from '../phase-layout';
-import {PhaseStatusBadge} from './PhasePlanning';
-import {nodeTypes,edgeTypes,type CardNode,type CardData,type RouteEdge} from './GraphElements';
-import type {DependencyGraphProps,GraphConnectionIssue} from './DependencyGraph';
-import {useWorkspaceRuntime} from '../workspace-runtime';
-import {SceneRequests} from '../editor-interaction';
+import { useRoutingWorker } from '../features/graph/use-routing-worker';
+import { Button } from "./Button";
+import { PHASE_HEADER, PHASE_PADDING, arrangePhaseRegions, type PhaseRegion } from "../phase-layout";
+import { PhaseStatusBadge } from "./PhasePlanning";
+import { nodeTypes, edgeTypes, type CardNode, type CardData, type RouteEdge } from "./GraphElements";
+import type { DependencyGraphProps, GraphConnectionIssue } from "../features/graph/model";
+import { useWorkspaceRuntime } from "../workspace-runtime";
+import { SceneRequests } from "../editor-interaction";
 import { useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ReactFlow, Background, useNodesState, useNodesInitialized,
-  useReactFlow, useViewport,
-  type Viewport, type NodeChange } from '@xyflow/react';
+import { ReactFlow, Background, useNodesState, useNodesInitialized, useReactFlow, useViewport, type Viewport, type NodeChange } from '@xyflow/react';
 import ELK from 'elkjs/lib/elk-api';
 import workerUrl from 'elkjs/lib/elk-worker.min.js?url';
-import './graph-vendor.css';
-import { type RoutedLayout, type Point } from '../path-layout';
-import { stableGraphLayout } from '../graph-layout';
-import {useGraphConnection,type ConnectionSide} from '../use-graph-connection';
-import {graphMotion,graphMotionFrame} from '../graph-motion';
-import type { GraphLink } from '../path-projection';
-import {Minus,Plus,Scan,LayoutGrid,LocateFixed,X,LoaderCircle} from 'lucide-react';
-import {vacantPosition,vacantGroup} from '../fixed-routing';
-import {facingSide,previewCurve,staleRouteIds,type PreviewBox} from '../graph-preview';
-import {validGraphViewport,viewportShowsNode} from '../graph-viewport';
+import "./graph-vendor.css";
+import { type RoutedLayout, type Point } from "../path-layout";
+import { stableGraphLayout } from "../graph-layout";
+import { useGraphConnection, type ConnectionSide } from "../use-graph-connection";
+import { graphMotion, graphMotionFrame } from "../graph-motion";
+import type { GraphLink } from "../path-projection";
+import { Minus, Plus, Scan, LayoutGrid, LocateFixed, X, LoaderCircle } from 'lucide-react';
+import { vacantPosition, vacantGroup } from "../fixed-routing";
+import { facingSide, previewCurve, staleRouteIds, type PreviewBox } from "../graph-preview";
+import { viewportShowsNode } from "../graph-viewport";
 
-const viewports = new Map<string, Viewport>();
-function readViewport(key: string): Viewport | undefined {
-  try {
-    const base=key.replace(/:history:\d+$/,'');
-    const saved=base!==key?sessionStorage.getItem('pm-graph-view:'+key):null;
-    const value=viewports.get(key)||JSON.parse(saved||localStorage.getItem('pm-graph-view:'+base)||'null');
-    return validGraphViewport(value)?value:undefined;
-  } catch { return undefined; }
-}
-function saveViewport(key: string, value: Viewport) {
-  if(!validGraphViewport(value))return;
-  viewports.set(key, value);
-  try {
-    const base=key.replace(/:history:\d+$/,'');
-    if(base!==key)sessionStorage.setItem('pm-graph-view:'+key,JSON.stringify(value));
-    localStorage.setItem('pm-graph-view:'+base,JSON.stringify(value));
-  } catch { /* Current view remains usable. */ }
-}
+import { readViewport, saveViewport } from '../features/graph/viewport';
+
 export function GraphScene(props: DependencyGraphProps) {
   const {cards,links,viewKey,editing=false}=props;
   const allowRename=props.commands.allows('rename'),allowConnect=props.commands.allows('connect');
@@ -66,9 +49,8 @@ export function GraphScene(props: DependencyGraphProps) {
   const drag=useRef<{ticket:number;ids:string[];original:Record<string,Point>;copy:boolean;cancelled?:boolean}|null>(null),manualPending=useRef(false),clipboard=useRef<{ids:string[];nodes:ReturnType<typeof positioned>;snapshot?:unknown}>({ids:[],nodes:[]}),latestProps=useRef(props);latestProps.current=props;
   const rename=useCallback((id:string,title:string)=>latestProps.current.commands.dispatch({type:'rename',id,title}),[]);
 
-  const router=useRef<Worker|null>(null),requests=useRef(new Map<number,{resolve:(l:RoutedLayout)=>void;reject:(e:Error)=>void}>()),routeSequence=useRef(0);
-  useEffect(()=>{const worker=new Worker(new URL('../fixed-routing.worker.ts',import.meta.url),{type:'module'});router.current=worker;worker.onmessage=e=>{const request=requests.current.get(e.data.id);if(request){requests.current.delete(e.data.id);if(e.data.error)request.reject(new Error(e.data.error));else request.resolve(e.data.layout);}};const pending=requests.current;worker.onerror=()=>{for(const request of pending.values())request.reject(new Error('连线路由暂不可用，请重试'));pending.clear();};return()=>{worker.terminate();for(const r of pending.values())r.reject(new Error('画布已关闭'));pending.clear();};},[retry]);
-  const fixedRoute=(positions:Record<string,Point>,activeNodes:CardNode[],regions=phaseRegions.current)=>new Promise<RoutedLayout>((resolve,reject)=>{const id=++routeSequence.current;requests.current.set(id,{resolve,reject});router.current!.postMessage({id,nodes:activeNodes.map(n=>({id:n.id,width:n.measured!.width!,height:n.measured!.height!,...positions[n.id]})),edges:measuredLinks,obstacles:regions.map(r=>({left:r.x+8,right:r.x+r.width-8,top:r.y,bottom:r.y+PHASE_HEADER-12}))});});
+  const route = useRoutingWorker(retry);
+  const fixedRoute=(positions:Record<string,Point>,activeNodes:CardNode[],regions=phaseRegions.current)=>route({nodes:activeNodes.map(n=>({id:n.id,width:n.measured!.width!,height:n.measured!.height!,...positions[n.id]})),edges:measuredLinks,obstacles:regions.map(r=>({left:r.x+8,right:r.x+r.width-8,top:r.y,bottom:r.y+PHASE_HEADER-12}))});
   const phaseRegions=useRef<PhaseRegion[]>(props.regions||[]),lastPhasePositions=useRef('');
   const [scene,setScene]=useState<{layout:RoutedLayout;links:GraphLink[]}|null>(null);
   const [edgeFade,setEdgeFade]=useState<{ids:Set<string>;opacity:number}>({ids:new Set(),opacity:1});

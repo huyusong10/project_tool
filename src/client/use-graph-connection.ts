@@ -1,8 +1,8 @@
-import type {EditorInteraction} from './editor-interaction';
-import type {WorkspaceRuntime} from './workspace-runtime';
-import {useEffect,useRef,useState,type RefObject} from 'react';
-import type {GraphConnectionIssue} from './components/DependencyGraph';
-import type {Point} from './path-layout';
+import type { EditorInteraction } from './editor-interaction';
+import type { WorkspaceRuntime } from './workspace-runtime';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import type { GraphConnectionIssue } from './features/graph/model';
+import type { Point } from './path-layout';
 export type ConnectionSide='left'|'right'|'top'|'bottom';
 type Issue=GraphConnectionIssue;
 type Gesture={ticket:number;reconnectEnd?:'source'|'target';source:string;side:ConnectionSide;point:Point;origin:Point;pointerId:number|null;moved:boolean;target?:string;issue?:Issue|null};

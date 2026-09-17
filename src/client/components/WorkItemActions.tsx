@@ -12,7 +12,7 @@ import { useBusinessDate } from "../app-context";
 import { invalidateRequirementViews } from "../query-keys";
 import type { ProgressUpdate, WorkItem, Requirement } from "../types";
 
-import { AnchoredPopover } from "./InlineEdit";
+import { AnchoredPopover } from './inline-edit/popover';
 import { useToast } from "./Toast";
 import { Modal } from './Modal';
 

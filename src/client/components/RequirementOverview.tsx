@@ -1,4 +1,4 @@
-import {DetailCard} from './DetailCard';
+import { DetailCard } from './DetailCard';
 import { Button } from './Button';
 import { useRef, useState } from 'react';
 import { Info } from 'lucide-react';
@@ -9,7 +9,7 @@ import { useProjectWorkspace } from '../project-workspace-context';
 import { DeliveryControls } from './DeliveryControls';
 import { ExecutionStageBadge } from './ExecutionStageBadge';
 import { TestSubmissionButton } from './TestSubmissionButton';
-import { AnchoredPopover } from './InlineEdit';
+import { AnchoredPopover } from './inline-edit/popover';
 import { OverviewIntroduction } from './OverviewIntroduction';
 
 export function RequirementOverview({ requirement: r, compact=false }: { requirement: Requirement; compact?:boolean }) {

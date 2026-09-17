@@ -1,47 +1,41 @@
-import { readRecheck } from '../core/write-recheck';
-import * as planningApi from '../features/planning/api';
-import * as requirementsApi from '../features/requirements/api';
-import { ReferenceLinksEditor } from './ReferenceLinks';
-import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
-import { Button, ButtonLink } from './Button';
-import { Select } from './Select';
-import { useDeliveryForm } from '../use-delivery-form';
+
+import * as planningApi from "../features/planning/api";
+import * as requirementsApi from "../features/requirements/api";
+import { ReferenceLinksEditor } from "./ReferenceLinks";
+import { readReferenceLinks } from "../../shared/reference-links";
+import { Button, ButtonLink } from "./Button";
+import { Select } from "./Select";
+import { useDeliveryForm } from "../use-delivery-form";
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ApiError, InvalidResponseError, isWriteOutcomeUnknown, jsonBody } from '../api';
-import { PhaseChoice, useIntake } from './RequirementIntake';
-import { assertCleanProjectDraft } from '../use-graph-draft';
-import { useSession } from '../app-context';
-import { useResourceQuery } from '../use-resource-query';
-import { invalidateRequirementViews, keys } from '../query-keys';
-import type { FeatureOverview } from '../../shared/feature-overview';
-import type { Feature } from '../../shared/intake';
-import { phaseInput, phaseStatusLabels, type FeaturePhase } from '../../shared/feature-phases';
-import type { Requirement } from '../types';
-import { Modal } from './Modal';
-import { ExecutionStageBadge } from './ExecutionStageBadge';
-import './phase-planning.css';
+import { ApiError, InvalidResponseError, isWriteOutcomeUnknown, jsonBody } from "../api";
+import { PhaseChoiceControl } from '../features/planning/PhaseChoiceControl';
+import { useIntake } from '../features/planning/use-intake';
+import { assertCleanProjectDraft } from "../use-graph-draft";
+import { useSession } from "../app-context";
+import { useResourceQuery } from "../use-resource-query";
+import { invalidateRequirementViews, keys } from "../query-keys";
+import type { FeatureOverview } from "../../shared/feature-overview";
 
-export type PhaseEdit = { requirementIds?:string[]; feature: Feature & {phases?:FeaturePhase[]}; phase?: FeaturePhase; stageKey?:string; mode: 'edit' | 'delete' | 'placement' | 'history' };
-type PhaseForm = { referenceLinks?:ReferenceLink[]; sortOrder?:number; name: string; scope: string; targetDate: string | null; note: string; reason: string };
-type PendingPhase = { edit: PhaseEdit; value: PhaseForm; payload: Record<string, unknown>; selected?:Requirement[] };
-const pendingKey = (account: string, project: string) => 'pm-phase-write:' + account + ':' + project;
-export function readPendingPhase(account: string, project: string): PendingPhase | null {
-  return readRecheck(pendingKey(account, project), stored => { const value = stored as PendingPhase | null; return value?.edit.feature.projectId === project && value.payload && value.value ? value : null; 
-  });
-}
+import { phaseInput, phaseStatusLabels, type FeaturePhase } from "../../shared/feature-phases";
+import type { Requirement } from "../types";
+import { Modal } from "./Modal";
+import { ExecutionStageBadge } from "./ExecutionStageBadge";
+import "./phase-planning.css";
+
+import { type PhaseEdit, readPendingPhase, nextPhaseName, type PhaseForm, type PendingPhase, pendingKey } from '../features/planning/phase-model';
+
 export function PhaseStatusBadge({ phase }: { phase: Pick<FeaturePhase,'status'> }) {
   const tone = phase.status === 'completed' ? 'completed' : phase.status === 'in_progress' ? 'development' : 'not_started';
   return <span className={'stage-badge stage-' + tone}>{phaseStatusLabels[phase.status]}</span>;
 }
+
 export function PhaseRows({ feature, manage, onEdit, status = '', from = '', through = '' }: { feature: FeatureOverview; manage: boolean; onEdit: (edit: PhaseEdit) => void; status?: string; from?: string; through?: string }) {
   const phases = (feature.phases || []).filter(p => (!status || p.status === status) && (!from || !!p.targetDate && p.targetDate >= from) && (!through || !!p.targetDate && p.targetDate <= through));
   return <div className="phase-list"><div className="phase-list-heading"><span>{feature.phases?.length || 0} 个 Phase{feature.unassignedPhaseCount ? ' · ' + feature.unassignedPhaseCount + ' 个需求未分派阶段' : ''}</span></div>{phases.map(phase => <article className="phase-row" key={phase.id} data-testid="phase-row"><div className="phase-row-target"><strong>{phase.name}</strong><p>{phase.scope || '交付范围待明确'}</p></div><div className="phase-row-state"><PhaseStatusBadge phase={phase} /><div className="phase-distribution">{phase.distribution.map(s => <button className={"stage-badge stage-"+(phase.requirements.find(r=>r.executionStage.key===s.key)?.executionStage.tone||"not_started")} key={s.key} onClick={()=>onEdit({feature,phase,mode:'history',stageKey:s.key})}>{s.label} {s.count}</button>)}</div><small>{phase.requirements.filter(r=>r.status==='completed').length} / {phase.requirements.filter(r=>r.status!=='cancelled').length} 条需求完成{phase.status==='planning'?' · 暂无有效需求':''}</small></div><div className="phase-row-date"><small>目标交付</small><span>{phase.targetDate || '尚未安排'}</span>{phase.completedAt&&<><small>实际完成</small><span>{phase.completedAt}</span></>}{phase.overdue && <span className="danger-text">已超过目标日期</span>}</div>{phase.note&&<div className="phase-row-note"><p>{phase.note}</p></div>}<div className="phase-row-actions"><ButtonLink variant="secondary" className="ghost-button" to={'/requirements?' + new URLSearchParams({ feature: feature.id, phase: phase.id })}>需求</ButtonLink><Button variant="secondary" className="ghost-button" onClick={() => onEdit({ feature, phase, mode: 'history' })}>详情</Button>{manage && !feature.archivedAt && <><Button variant="secondary" className="ghost-button" onClick={() => onEdit({ feature, phase, mode: 'edit' })}>编辑</Button><Button variant="secondary" className="ghost-button" onClick={() => onEdit({ feature, phase, mode: 'placement' })}>安排需求</Button>{!phase.requirements.length && !phase.deliveries.length && <Button variant="secondary" tone="danger" className="ghost-button danger-text" onClick={() => onEdit({ feature, phase, mode: 'delete' })}>删除</Button>}</>}</div></article>)}{!phases.length && <p className="field-help">{feature.phases?.length ? '没有符合筛选条件的 Phase' : '尚未规划 Phase，可以先记录下一次交付目标。'}</p>}</div>;
 }
-export function nextPhaseName(phases:Array<Pick<FeaturePhase,'name'>>) {
-  return 'Phase '+(Math.max(0,...phases.map(p=>Number(/^Phase\s+(\d+)(?=\D|$)/i.exec(p.name.trim())?.[1]||0)))+1);
-}
+
 export function PhaseDialog({ edit, onClose, onCreated }: { edit: PhaseEdit; onClose: () => void; onCreated?:(phase:FeaturePhase)=>void }) {
   const { session } = useSession(), client = useQueryClient(), account = session.accountId || session.username || "guest", projectId = edit.feature.projectId;
   const [pending] = useState(() => readPendingPhase(account, projectId));
@@ -82,7 +76,8 @@ export function PhaseDialog({ edit, onClose, onCreated }: { edit: PhaseEdit; onC
   };
   return <Modal title={title} onClose={onClose} closable={!busy}><form className="feature-form" onSubmit={e => { e.preventDefault(); e.stopPropagation(); void save(); }}><fieldset disabled={busy || unknown}>{edit.mode === 'edit' && <><label className="field"><span>Phase 名称</span><input required maxLength={200} value={value.name} onChange={e => setValue({ ...value, name: e.target.value })} /></label><label className="field"><span>展示顺序</span><input type="number" min={1} step={1} value={(value.sortOrder??0)+1} onChange={e=>setValue({...value,sortOrder:Math.max(0,Number(e.target.value)-1)})}/></label><label className="field"><span>交付范围</span><textarea rows={4} maxLength={10000} value={value.scope} onChange={e => setValue({ ...value, scope: e.target.value })} /></label><label className="field"><span>目标交付日期</span><input type="date" value={value.targetDate || ''} onChange={e => setValue({ ...value, targetDate: e.target.value || null })} /></label><label className="field"><span>关注说明</span><textarea rows={2} maxLength={2000} value={value.note} onChange={e => setValue({ ...value, note: e.target.value })} /></label><ReferenceLinksEditor value={value.referenceLinks??baseline?.referenceLinks??[]} onChange={referenceLinks=>setValue({...value,referenceLinks})}/></>}{edit.mode === 'delete' && <p>删除 {baseline?.name}。</p>}{baseline && <label className="field"><span>变更原因</span><textarea maxLength={2000} rows={2} value={value.reason} onChange={e => setValue({ ...value, reason: e.target.value })} /></label>}</fieldset>{error && <p role="alert" className="warning-banner">{error}</p>}{needsRead && <Button variant="secondary" type="button" className="ghost-button" disabled={busy} onClick={() => void read()}>读取最新 Phase 并核对</Button>}<div className="form-actions"><Button variant="secondary" type="button" className="ghost-button" disabled={busy} onClick={()=>{clearLocal();onClose();}}>取消</Button><Button busy={(busy)} aria-label={busy ? '保存中…' : title} variant={edit.mode === "edit" ? "primary" : "soft"} tone={edit.mode === "delete" ? "danger" : "primary"} type="submit" className="primary-button" disabled={busy || needsRead}>{title}</Button></div></form></Modal>;
 }
-function PhasePlacementDialog({ edit, onClose }: { edit: PhaseEdit; onClose: () => void }) {
+
+export function PhasePlacementDialog({ edit, onClose }: { edit: PhaseEdit; onClose: () => void }) {
   const { session } = useSession(), client = useQueryClient(), projectId = edit.feature.projectId, account=session.accountId||session.username||'guest';
   const [pending]=useState(()=>readPendingPhase(account,projectId));
   const [local,setLocal,clearLocal]=useDeliveryForm(projectId,edit.feature.id+':placement:'+(edit.phase?.id||'all')+':'+(edit.requirementIds||[]).join(','),()=>({targetFeatureId:String(pending?.payload.featureId||edit.feature.id),selected:pending?.selected||[] as Requirement[],phaseId:String(pending?.payload.phaseId||edit.phase?.id||''),reason:pending?.value.reason||'',initialized:!!pending}),!!pending);
@@ -105,5 +100,9 @@ function PhasePlacementDialog({ edit, onClose }: { edit: PhaseEdit; onClose: () 
       clear();clearLocal();if(alive.current){invalidateRequirementViews(client);onClose();} }
     catch (e) { if(alive.current){setError((e as Error).message); const uncertain=isWriteOutcomeUnknown(e)||e instanceof ApiError&&e.status>=500;setBlocked(uncertain||e instanceof ApiError&&e.status===409);if(!uncertain)clear();} } finally { lock.current = false;if(alive.current)setBusy(false); }
   };
-  return <Modal title={edit.requirementIds?.length?'调整需求归属':'移入需求'} width={760} onClose={onClose} closable={!busy}><form className="feature-form" onSubmit={e => { e.preventDefault(); e.stopPropagation(); void save(); }}><fieldset disabled={busy || blocked}><label className="field"><span>目标特性</span><Select aria-label="目标特性" value={targetFeatureId} onChange={e=>{setTargetFeatureId(e.target.value);setPhaseId('');}}>{catalog.data?.features.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</Select></label>{catalog.data?.features.find(f=>f.id===targetFeatureId)?.kind!=='other'&&<PhaseChoice key={targetFeatureId} projectId={projectId} featureId={targetFeatureId} value={phaseId} onChange={setPhaseId} label="目标 Phase"/>}<div className="phase-pick-list">{rows.map(r => <label key={r.id}><input type="checkbox" checked={selected.some(s => s.id === r.id)} onChange={e => setSelected(old => e.target.checked ? [...old, r] : old.filter(s => s.id !== r.id))} /><span>{r.title}<small>{r.featureName||'其他需求'} / {r.phaseName || '未分派 Phase'}</small></span><ExecutionStageBadge requirement={r} /></label>)}</div><label className="field"><span>调整原因</span><textarea rows={2} maxLength={2000} value={reason} onChange={e => setReason(e.target.value)} /></label></fieldset>{(error || query.error) && <p role="alert" className="warning-banner">{error || query.error?.message}</p>}{blocked && <Button variant="secondary" type="button" disabled={busy} className="ghost-button" onClick={() => void query.refetch().then(r => { if (!alive.current||r.error || !r.data) return; clear(); if (selected.every(s => r.data!.some(n => n.id === s.id && (n.phaseId || '') === phaseId&&n.featureId===targetFeatureId))) { clearLocal(); invalidateRequirementViews(client); onClose(); } else { setSelected(old => old.flatMap(s => r.data!.filter(n => n.id === s.id))); setBlocked(false); setError('已读取最新资料，请核对后继续。'); } })}>读取最新归属并核对</Button>}<div className="form-actions"><Button variant="secondary" type="button" className="ghost-button" disabled={busy} onClick={()=>{clearLocal();onClose();}}>取消</Button><Button variant="primary" type="submit" className="primary-button" disabled={busy || blocked || !selected.length || query.unavailable}>保存安排</Button></div></form></Modal>;
+  return <Modal title={edit.requirementIds?.length?'调整需求归属':'移入需求'} width={760} onClose={onClose} closable={!busy}><form className="feature-form" onSubmit={e => { e.preventDefault(); e.stopPropagation(); void save(); }}><fieldset disabled={busy || blocked}><label className="field"><span>目标特性</span><Select aria-label="目标特性" value={targetFeatureId} onChange={e=>{setTargetFeatureId(e.target.value);setPhaseId('');}}>{catalog.data?.features.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</Select></label>{catalog.data?.features.find(f=>f.id===targetFeatureId)?.kind!=='other'&&<PhaseChoiceControl Editor={PhaseDialog} key={targetFeatureId} projectId={projectId} featureId={targetFeatureId} value={phaseId} onChange={setPhaseId} label="目标 Phase"/>}<div className="phase-pick-list">{rows.map(r => <label key={r.id}><input type="checkbox" checked={selected.some(s => s.id === r.id)} onChange={e => setSelected(old => e.target.checked ? [...old, r] : old.filter(s => s.id !== r.id))} /><span>{r.title}<small>{r.featureName||'其他需求'} / {r.phaseName || '未分派 Phase'}</small></span><ExecutionStageBadge requirement={r} /></label>)}</div><label className="field"><span>调整原因</span><textarea rows={2} maxLength={2000} value={reason} onChange={e => setReason(e.target.value)} /></label></fieldset>{(error || query.error) && <p role="alert" className="warning-banner">{error || query.error?.message}</p>}{blocked && <Button variant="secondary" type="button" disabled={busy} className="ghost-button" onClick={() => void query.refetch().then(r => { if (!alive.current||r.error || !r.data) return; clear(); if (selected.every(s => r.data!.some(n => n.id === s.id && (n.phaseId || '') === phaseId&&n.featureId===targetFeatureId))) { clearLocal(); invalidateRequirementViews(client); onClose(); } else { setSelected(old => old.flatMap(s => r.data!.filter(n => n.id === s.id))); setBlocked(false); setError('已读取最新资料，请核对后继续。'); } })}>读取最新归属并核对</Button>}<div className="form-actions"><Button variant="secondary" type="button" className="ghost-button" disabled={busy} onClick={()=>{clearLocal();onClose();}}>取消</Button><Button variant="primary" type="submit" className="primary-button" disabled={busy || blocked || !selected.length || query.unavailable}>保存安排</Button></div></form></Modal>;
 }
+
+export type { PhaseEdit } from '../features/planning/phase-model';
+export { readPendingPhase } from '../features/planning/phase-model';
+export { nextPhaseName } from '../features/planning/phase-model';

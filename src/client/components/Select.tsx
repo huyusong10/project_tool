@@ -1,7 +1,7 @@
-import {Children,Fragment,isValidElement,useContext,useEffect,useId,useLayoutEffect,useRef,useState,type ReactNode,type SelectHTMLAttributes} from 'react';
-import {Check,ChevronDown,Search} from 'lucide-react';
-import {AnchoredPopover} from './InlineEdit';
-import {WorkspaceRuntimeContext} from '../workspace-runtime';
+import { Children, Fragment, isValidElement, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type SelectHTMLAttributes } from 'react';
+import { Check, ChevronDown, Search } from 'lucide-react';
+import { AnchoredPopover } from './inline-edit/popover';
+import { WorkspaceRuntimeContext } from '../workspace-runtime';
 import './select.css';
 
 type Option={value:string;label:string;disabled:boolean};

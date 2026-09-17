@@ -8,7 +8,7 @@ import { useWorkspaceParams } from '../use-workspace-view';
 import { editorAdapter } from '../editor-adapter';
 import { EditorField } from './EditorField';
 import { useEditorInteraction } from '../use-editor-interaction';
-import type { GraphConnectionIssue } from './DependencyGraph';
+import type { GraphConnectionIssue } from '../features/graph/model';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Settings, GitBranch, Copy, Trash2, Plus, LocateFixed, Diamond } from 'lucide-react';

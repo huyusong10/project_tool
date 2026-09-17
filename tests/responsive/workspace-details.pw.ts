@@ -74,7 +74,7 @@ test('两个视图的工作项详情信息一致，展开加宽且不重排主�
   await page.goto('/execution');await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');
   const row=page.locator('[data-row-id="'+work.id+'"]'),before=await row.boundingBox();
   await row.locator('.workspace-row-title').click();
-  const inspector=page.getByRole('complementary',{name:'对象详情'});await expect(inspector.getByText('协作人',{exact:true})).toBeVisible();
+  const inspector=page.locator('.modal-card-workspace[role=dialog]');await expect(inspector.getByText('协作人',{exact:true})).toBeVisible();
   await expect(inspector.getByText('预计完成',{exact:true})).toBeVisible();
   await expect(inspector.getByRole('button',{name:'工作项设置',exact:true})).toBeVisible();
   const font=await inspector.locator('.object-facts dd').first().evaluate(el=>getComputedStyle(el).fontSize);

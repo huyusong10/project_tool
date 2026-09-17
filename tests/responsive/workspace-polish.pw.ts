@@ -46,8 +46,8 @@ test('未分派阶段单独分组，Phase 筛选与三个视角入口保持可�
   await expect(group).toBeVisible();await expect(row).toHaveCount(0);await group.getByRole('button',{name:'展开 未分派阶段',exact:true}).click();await expect(row).toHaveAttribute('aria-level','3');
   await chooseOption(page.getByLabel('进展特性',{exact:true}),f.feature.id);await page.getByRole('button',{name:/^更多筛选/}).click();await chooseOption(page.getByLabel('进展 Phase',{exact:true}),f.phases[1].id);await page.getByRole('dialog').filter({has:page.getByLabel('更多进展筛选')}).getByRole('button',{name:'关闭',exact:true}).click();await expect(row).toHaveCount(0);
   await page.getByRole('button',{name:/^更多筛选/}).click();await chooseOption(page.getByLabel('进展 Phase',{exact:true}),'unassigned');await page.getByRole('dialog').filter({has:page.getByLabel('更多进展筛选')}).getByRole('button',{name:'关闭',exact:true}).click();await expect(row).toBeVisible();
-  const views=page.getByRole('group',{name:'项目视角'});await expect(views.getByRole('button')).toHaveText(['特性清单','关系图','进展表']);
-  await views.getByRole('button',{name:'特性清单',exact:true}).click();await expect(page.locator('.outline-table')).toBeVisible();
+  const views=page.getByRole('group',{name:'项目视角'});await expect(views.getByRole('button')).toHaveText(['清单','关系图','进展表']);
+  await views.getByRole('button',{name:'清单',exact:true}).click();await expect(page.locator('.outline-table')).toBeVisible();
 });
 
 test('Phase 外框适应长标题、依赖链和分支；不压缩卡片或改变关系',async({page},info)=>{

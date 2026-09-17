@@ -40,7 +40,7 @@ test('完成按钮悬浮保持可读且尺寸不变', async ({page}, info) => {
 test('工作项拖拽有对象预览，窄屏和横向滚动保留手柄，键盘也可排序', async ({page}, info) => {
   const f = await phaseFixture(page);
   await page.goto('/?' + new URLSearchParams({projectId:f.projectId, workspaceView:'progress', scopeType:'project', scopeId:f.projectId, pathNode:f.testing.id, pathInspector:'open'}));
-  const detail = page.getByRole('complementary', {name:'对象详情'});
+  const detail = page.locator('.modal-card-workspace[role=dialog]');
   await detail.getByRole('tab', {name:'工作项 2', exact:true}).click();
   await detail.getByRole('button', {name:'工作项设置', exact:true}).click();
   const settings = detail.getByRole('dialog', {name:'工作项设置', exact:true});

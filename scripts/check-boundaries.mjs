@@ -5,6 +5,7 @@ import ts from 'typescript';
 const walk = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory()
   ? walk(path.join(dir, entry.name)) : /\.tsx?$/.test(entry.name) ? [path.join(dir, entry.name).replaceAll('\\', '/')] : []);
 const files = walk('src'), known = new Set(files), graph = new Map(), violations = [];
+const includeTypes = process.argv.includes('--include-types');
 for (const file of files) {
   const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
   if (/^src\/client\/(pages|components)\//.test(file) && /["'`]\/api\//.test(source.text)) {
@@ -13,9 +14,9 @@ for (const file of files) {
   const edges = [];
   for (const node of source.statements) {
     if (!(ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) || !node.moduleSpecifier) continue;
-    if (node.isTypeOnly || node.importClause?.isTypeOnly) continue;
+    if (!includeTypes && (node.isTypeOnly || node.importClause?.isTypeOnly)) continue;
     const bindings = node.importClause?.namedBindings ?? node.exportClause;
-    if (bindings?.elements?.length && bindings.elements.every(item => item.isTypeOnly) && !node.importClause?.name) continue;
+    if (!includeTypes && bindings?.elements?.length && bindings.elements.every(item => item.isTypeOnly) && !node.importClause?.name) continue;
     const specifier = node.moduleSpecifier.text;
     if (!specifier.startsWith('.')) continue;
     const base = path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier));

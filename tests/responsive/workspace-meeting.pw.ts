@@ -19,11 +19,11 @@ test('会议行内更新与快速完成，双槽独立，业务顺序和按钮�
   expect(position!.x).toBeGreaterThan(0);expect(position!.x+position!.width).toBeLessThan(info.project.use.viewport!.width);
   await progress.click();const dialog=page.getByRole('dialog',{name:'更新工作项进度',exact:true});
   await dialog.getByRole('spinbutton').fill('75');await dialog.getByRole('textbox',{name:/^说明/}).fill('例会逐项更新');await dialog.getByRole('button',{name:'记录进展',exact:true}).click();
-  await expect(dialog).toHaveCount(0);await expect(progress).toHaveText('75%');await expect(page.getByRole('complementary',{name:'对象详情'})).toHaveCount(0);
+  await expect(dialog).toHaveCount(0);await expect(progress).toHaveText('75%');await expect(page.locator('.modal-card-workspace[role=dialog]')).toHaveCount(0);
   expect(await progress.boundingBox()).toEqual(position);expect(await grid.locator('.kind-work').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-row-id')))).toEqual(order);
   await page.screenshot({path:info.outputPath('meeting-progress.png'),animations:'disabled'});
   await row.getByRole('button',{name:'完成',exact:true}).click();await page.getByRole('button',{name:'确认完成',exact:true}).click();await expect(row.locator('.workspace-row-progress > span').first()).toHaveText('已完成');
-  await expect(page.getByRole('complementary',{name:'对象详情'})).toHaveCount(0);await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.modal-card-workspace[role=dialog]')).toHaveCount(0);await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await grid.locator('.kind-work').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-row-id')))).toEqual(order);
   const saved=await(await page.request.get('/api/requirements/'+f.testing.id)).json();expect(saved.workItems.find((w:{id:string})=>w.id===work.id).status).toBe('completed');
 });
@@ -35,7 +35,7 @@ test('直接执行需求行内更新与完成，特性范围不重复祖先行',
   const row=grid.locator('[data-row-id="'+f.direct.id+'"]');await row.getByRole('button',{name:'更新 '+f.direct.title+' 进度',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'更新进度',exact:true});await dialog.getByLabel('需求完成度').fill('45');await dialog.getByRole('button',{name:'更新进度',exact:true}).click();
   await expect(row.getByRole('button',{name:'更新 '+f.direct.title+' 进度',exact:true})).toHaveText('45%');await row.getByRole('button',{name:'完成需求',exact:true}).click();
-  await expect(row.locator('.workspace-row-progress > span').first()).toHaveText('已完成');await expect(page.getByRole('complementary',{name:'对象详情'})).toHaveCount(0);
+  await expect(row.locator('.workspace-row-progress > span').first()).toHaveText('已完成');await expect(page.locator('.modal-card-workspace[role=dialog]')).toHaveCount(0);
 });
 
 test('窄屏只有一套行内控件；详情字段对齐且不重排甘特',async({page},info)=>{

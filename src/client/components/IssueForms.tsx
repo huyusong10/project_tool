@@ -17,7 +17,7 @@ import { StatusBadge } from "./Badge";
 import { ProgressInput } from "./ProgressInput";
 import { priorityOptions } from "../ui-options";
 import { useToast } from "./Toast";
-import { AnchoredPopover } from "./InlineEdit";
+import { AnchoredPopover } from './inline-edit/popover';
 
 type BusyChange = (pending: boolean) => void;
 

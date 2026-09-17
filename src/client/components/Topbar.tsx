@@ -11,9 +11,9 @@ import { Check, ChevronDown, LogIn, LogOut, Settings, UserRound } from "lucide-r
 import { isWriteOutcomeUnknown } from "../api";
 import { useProjects, useSession, useUiActions } from "../app-context";
 import { invalidate, keys } from "../query-keys";
-import { commitSession, guestSession } from "../session-cache";
+import { commitSession, guestSession } from '../session-cache';
 import { ThemePicker } from "./ThemePicker";
-import { AnchoredPopover } from "./InlineEdit";
+import { AnchoredPopover } from './inline-edit/popover';
 import { useSynchronousPendingLock } from "./Modal";
 import { useToast } from "./Toast";
 import { TopbarMenu } from "./TopbarMenu";

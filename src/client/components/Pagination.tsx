@@ -1,9 +1,9 @@
 import { Button } from './Button';
-import {Select} from './Select';
+import { Select } from './Select';
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { pageNumbers, pageRange, pageSizeOptions as defaultOptions } from '../pagination';
-import { useInlineEditActive } from './InlineEdit';
+import { useInlineEditActive } from './inline-edit/shared';
 import './pagination.css';
 
 export type PaginationProps = {

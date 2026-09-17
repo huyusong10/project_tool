@@ -4,11 +4,16 @@ import type { DependencyChanges, DependencyChangesInput } from '../shared/path-c
 import { readHistory, type EditorHistory } from './editor-session';
 import { readDraftRecord, writeSharedDraftRecord, ownsDraft, takeDraft, releaseDraft } from './graph-draft-storage';
 import { ApiError, jsonBody } from './api';
-import type { useGraphHistory } from './use-graph-draft';
+
 
 type Layout=NonNullable<DependencyChanges['layouts']>[number];
 type Pending=DependencyChangesInput&{batchId:string;previewToken:string};
-type History=ReturnType<typeof useGraphHistory<DependencyChanges>>;
+type History = {
+  session: { state: EditorHistory<DependencyChanges> };
+  loading: boolean; readOnly: boolean; busy: boolean;
+  change: (value: DependencyChanges) => boolean;
+  flush: () => Promise<void>;
+};
 type Recovery={kind:'ready'|'reading'|'conflict'|'pending'|'locked'|'error';message?:string;layouts?:Layout[];conflicts?:string[]};
 const layoutKey=(layout:Layout)=>layout.scope+':'+layout.direction;
 export function mergeFeatureLayouts(current:DependencyChanges,layouts:Layout[],choices:Record<string,'current'|'legacy'>={}){

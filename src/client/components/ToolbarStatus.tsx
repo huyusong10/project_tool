@@ -1,9 +1,9 @@
 import { Button } from './Button';
-import {useContext,useEffect,useRef,useState,type ButtonHTMLAttributes} from 'react';
-import {Info} from 'lucide-react';
-import {AnchoredPopover} from './InlineEdit';
-import {WorkspaceRuntimeContext} from '../workspace-runtime';
-import {useLocation} from 'react-router-dom';
+import { useContext, useEffect, useRef, useState, type ButtonHTMLAttributes } from 'react';
+import { Info } from 'lucide-react';
+import { AnchoredPopover } from './inline-edit/popover';
+import { WorkspaceRuntimeContext } from '../workspace-runtime';
+import { useLocation } from 'react-router-dom';
 
 /** Status occupies its own slot; explanations never change the toolbar height. */
 export function ToolbarStatus({children,title,onClick,disabled,...props}:ButtonHTMLAttributes<HTMLButtonElement>){

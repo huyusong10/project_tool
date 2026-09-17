@@ -14,7 +14,7 @@ test('空对象在进展表可见，特性内筛选继承当前位置，视图�
   await page.goto(url(f.projectId,'project',f.projectId));
   await expect(page.locator('[data-row-id="feature:'+empty.id+'"]')).toContainText('暂无需求');
   await page.goto(url(f.projectId,'feature',f.feature.id)+'&progressFeatureId='+empty.id+'&progressPhaseId=foreign');
-  await expect(page.locator('[data-row-id="phase:'+f.phases[2].id+'"]')).toContainText('本 Phase 暂无需求');
+  await expect(page.locator('[data-row-id="phase:'+f.phases[2].id+'"]')).toContainText('待细化');
   await expect(page.getByRole('combobox',{name:'进展特性',exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'更多筛选',exact:true}).click();
   await expect(page.getByRole('combobox',{name:'进展 Phase',exact:true})).toBeEnabled();

@@ -8,7 +8,7 @@ import { useBusinessDate, useSession } from "../app-context";
 import type { Issue } from "../types";
 import { issueStatusLabels } from "../../shared/domain";
 import { canonicalizeContent, canonicalizeLabel } from "../../shared/search";
-import { AnchoredPopover } from "./InlineEdit";
+import { AnchoredPopover } from './inline-edit/popover';
 import { DraftNotice, useIssueDraft } from "./IssueForms";
 import { useToast } from "./Toast";
 
