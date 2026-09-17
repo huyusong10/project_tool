@@ -7,6 +7,6 @@
 .terminal-lock-note { min-height: 120px; display: flex; align-items: flex-start; gap: 10px; padding: 18px; border: 1px solid var(--border-default); border-radius: var(--radius-md); color: var(--text-secondary); background: var(--bg-surface-subtle); }
 .terminal-lock-note strong { color: var(--text-secondary); font-size: 14px; }
 .terminal-lock-note p { margin: 5px 0 0; color: var(--text-faint); font-size: 12px; line-height: 1.6; }
-.issue-update-setting-row > p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.65; white-space: pre-wrap; }
+.issue-update-setting-row > p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .issue-update-setting-footer { color: var(--text-muted); font-size: 11px; }.issue-correction-reference { color: var(--purple-text); font-weight: 700; }
 }

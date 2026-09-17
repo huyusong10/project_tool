@@ -345,11 +345,12 @@ test('问题纠错异常响应不把旧同值纠错误认成本次写入', async
   expect(correctionWrites).toBe(1);
 });
 
-test('问题纠错历史显示被更正记录', async ({ page }) => {
+test('问题纠错历史显示被更正记录', async ({ page }, info) => {
   const state = await fixture(page);
+  const content = `修正原进展\n复现地址：https://example.test/${'a9F3k7Q2'.repeat(40)}\n排查结果：保留日志中的换行。\n下一步：重新检查关联工作。`;
   state.issue = { ...state.issue, updates: [
     {
-      id: 'correction-1', issueId: 'i1', progress: 30, content: '修正原进展', eventType: 'correction', supersedesId: 'update-1',
+      id: 'correction-1', issueId: 'i1', progress: 30, content, eventType: 'correction', supersedesId: 'update-1',
       createdByAccountId: 'admin', createdByName: 'admin', createdAt: '2026-09-04T08:00:00.000Z', updatedAt: '2026-09-04T08:00:00.000Z',
     },
     {
@@ -363,6 +364,18 @@ test('问题纠错历史显示被更正记录', async ({ page }) => {
   await expect(correction).toContainText('更正：');
   await expect(correction).toContainText('进度');
   await expect(correction).not.toContainText('原记录不可用');
+  const paragraph = correction.locator(':scope > p');
+  await expect(paragraph).toHaveText(content);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect.soft.poll(() => paragraph.evaluate(element => element.scrollWidth <= element.clientWidth + 1), { message: `${width}px 长地址完整换行` }).toBe(true);
+    const bounds = (await correction.boundingBox())!;
+    const textBounds = (await paragraph.boundingBox())!;
+    expect.soft(textBounds.x + textBounds.width, `${width}px 正文保持在记录范围内`).toBeLessThanOrEqual(bounds.x + bounds.width + 1);
+    expect.soft(bounds.x + bounds.width, `${width}px 记录保持在屏幕范围内`).toBeLessThanOrEqual(width);
+    await expect(paragraph).toHaveCSS('white-space', 'pre-wrap');
+    await page.screenshot({ path: info.outputPath(`issue-history-${width}.png`), animations: 'disabled' });
+  }
 });
 
 for (const location of ['list', 'detail'] as const) {
