@@ -2,6 +2,7 @@ import { Children, Fragment, isValidElement, useContext, useEffect, useId, useLa
 import { Check, ChevronDown, Search } from 'lucide-react';
 import { AnchoredPopover } from './inline-edit/popover';
 import { WorkspaceRuntimeContext } from '../workspace-runtime';
+import { matchesSearch } from '../../shared/search';
 import './select.css';
 
 type Option={value:string;label:string;disabled:boolean};
@@ -21,7 +22,7 @@ export function Select({children,className='',...props}:SelectHTMLAttributes<HTM
   const runtime=useContext(WorkspaceRuntimeContext),listId=useId(),options=optionsFrom(children);
   const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[active,setActive]=useState(0),[invalid,setInvalid]=useState(false),[label,setLabel]=useState(props['aria-label']||'请选择');
   const [uncontrolled,setUncontrolled]=useState(String(props.defaultValue??options[0]?.value??'')),value=String(props.value??uncontrolled);
-  const visible=options.filter(o=>!query||o.label.toLocaleLowerCase().includes(query.toLocaleLowerCase())),selected=options.find(o=>o.value===value),searchable=options.length>7;
+  const visible=options.filter(o=>matchesSearch([o.label],query)),selected=options.find(o=>o.value===value),searchable=options.length>7;
   const close=(focus=false)=>{setOpen(false);setQuery('');if(focus)trigger.current?.focus({preventScroll:true});};
   const explicitLabel=props['aria-label'];
   useLayoutEffect(()=>{setLabel(explicitLabel||trigger.current?.closest('label')?.querySelector('span')?.textContent||'请选择');},[explicitLabel]);
@@ -41,6 +42,7 @@ export function Select({children,className='',...props}:SelectHTMLAttributes<HTM
     if(event.nativeEvent.isComposing)return;
     if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close(true);return;}
     if(event.key==='Tab'){close();return;}
+    if(event.target===search.current&&['Home','End'].includes(event.key))return;
     if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
       event.preventDefault();const enabled=visible.map((o,i)=>o.disabled?-1:i).filter(i=>i>=0);if(!enabled.length)return;
       const i=enabled.indexOf(active);setActive(event.key==='Home'?enabled[0]:event.key==='End'?enabled.at(-1)!:enabled[(i+(event.key==='ArrowDown'?1:-1)+enabled.length)%enabled.length]);
@@ -58,7 +60,7 @@ export function Select({children,className='',...props}:SelectHTMLAttributes<HTM
     </button>
     <AnchoredPopover anchorRef={trigger} open={open} width={260} matchAnchor preserveEditing onOutside={()=>close()} onEscape={()=>close(true)} className="select-popover" role="presentation">
       <div ref={panel} tabIndex={-1} onKeyDown={keyDown} data-preserve-edit>
-        {searchable&&<label className="select-search"><Search size={15}/><input ref={search} aria-label={'搜索'+label} placeholder="搜索选项" value={query} onChange={event=>{setQuery(event.target.value);setActive(0);}} aria-controls={listId} aria-activedescendant={visible[active]?listId+'-'+active:undefined}/></label>}
+        {searchable&&<label className="select-search"><Search size={15}/><input ref={search} aria-label={'搜索'+label} placeholder="搜索名称或拼音" value={query} onChange={event=>{setQuery(event.target.value);setActive(0);}} aria-controls={listId} aria-activedescendant={visible[active]?listId+'-'+active:undefined}/></label>}
         <div id={listId} role="listbox" aria-label={label} className="select-options" aria-activedescendant={visible[active]?listId+'-'+active:undefined}>
           {visible.map((option,i)=><button type="button" role="option" id={listId+'-'+i} key={option.value} aria-selected={option.value===value} disabled={option.disabled} tabIndex={-1} data-active={i===active} onPointerMove={()=>setActive(i)} onClick={()=>choose(option)}><span>{option.label}</span>{option.value===value&&<Check size={15}/>}</button>)}
           {!visible.length&&<p className="select-empty">没有匹配的选项</p>}
