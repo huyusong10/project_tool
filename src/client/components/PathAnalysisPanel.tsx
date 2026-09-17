@@ -263,7 +263,7 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
         catch{if(mounted.current)setIssue({message:'里程碑操作结果待核对。请重新读取里程碑结果，本窗口不会重复提交。'});return;}
       }
       setMilestoneRecheck(null);
-      if(mounted.current)setIssue({message:error instanceof Error?error.message:'里程碑操作失败'});
+      if(mounted.current)setIssue({message:error instanceof Error?error.message:'里程碑操作失败',nodeIds:[value.id]});
     }finally{milestoneSubmitting.current=false;if(mounted.current)setMilestoneBusy('');}
   };
   const graph=useMemo(()=>{
@@ -430,7 +430,7 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
       </div>
       {!!nodeRelations.length&&<Button variant="secondary" className="ghost-button graph-node-relations" onClick={()=>openPanel('nodeRelations')}>已有关联 {nodeRelations.length} 条{nodeRelations.some(d=>d.sourceWorkItemId||d.targetWorkItemId)?' · 含指定环节':''}</Button>}
       {editing&&canEdit&&currentEntity&&(!selectedCard.external||manager)&&<EditorObjectProperties historical={['completed','cancelled'].includes(selectedCard.status)||['completed','cancelled'].includes(data.requirements.find(r=>r.id===currentEntity.requirementId)?.status||'')} objectId={selected} projectId={data.projectId} entity={currentEntity.entity} canManageDelivery={manager} value={{...objectValue,priority:objectValue.priority as EditorEntityChange['data']['priority']}} onChange={fields=>commands.dispatch({type:'properties',id:selected,fields})} anchors={data.nodes.filter(n=>n.kind==='milestone'&&n.id!==selected).map(n=>({id:n.id,title:n.title}))}/>}
-      {milestone&&!editing&&canEdit&&<>{milestoneRecheck?.id===milestone.id&&<p role="alert" className="form-error">里程碑操作结果待核对，请重新读取里程碑结果。</p>}<Button busy={(milestoneBusy===milestone.id)} aria-label={milestoneBusy===milestone.id?'处理中…':milestone.achievedAt?'重新打开里程碑':'确认里程碑达成'} variant="secondary" className="ghost-button" disabled={milestoneBusy===milestone.id||Boolean(milestoneRecheck)} onClick={()=>guarded(()=>void commandMilestone(milestone))}>{milestone.achievedAt?'重新打开里程碑':'确认里程碑达成'}</Button></>}
+      {milestone&&!editing&&canEdit&&<>{milestoneRecheck?.id===milestone.id&&<p role="alert" className="form-error">里程碑操作结果待核对，请重新读取里程碑结果。</p>}{!milestoneRecheck&&!issue?.kind&&issue?.nodeIds?.includes(milestone.id)&&<p role="alert" className="form-error">{issue.message}</p>}<Button busy={(milestoneBusy===milestone.id)} aria-label={milestoneBusy===milestone.id?'处理中…':milestone.achievedAt?'重新打开里程碑':'确认里程碑达成'} variant="secondary" className="ghost-button" disabled={milestoneBusy===milestone.id||Boolean(milestoneRecheck)} onClick={()=>guarded(()=>void commandMilestone(milestone))}>{milestone.achievedAt?'重新打开里程碑':'确认里程碑达成'}</Button></>}
       {editing&&canEstimate&&node?.kind==='work'&&!draft.changes.entities?.some(c=>c.id===node.id&&c.op==='create')&&<EstimateFields key={node.id} node={node} structure={canEdit} onChange={patch=>{
         if(draft.changes.entities?.some(c=>c.id===node.id&&c.op==='create')){const {workItemId:_id,...fields}=patch;patchEntity(node.id,fields);return;}const existing=draft.changes.estimates.find(p=>p.workItemId===patch.workItemId);
         draft.change({...draft.changes,estimates:[...draft.changes.estimates.filter(p=>p.workItemId!==patch.workItemId),{...existing,...patch}]});
