@@ -76,9 +76,10 @@ export function searchAudit(filters: { q?: string; actorType?: string; action?: 
   if (q) {
     where.push(`(search_plain_match(l.summary, ?)=1 OR search_plain_match(COALESCE(l.entity_id, ''), ?)=1
       OR search_plain_match(COALESCE(l.actor_id, ''), ?)=1 OR search_plain_match(l.action, ?)=1
-      OR search_score(COALESCE(user_account.username, ''), ?)>0
-      OR search_score(COALESCE(token_account.username, ''), ?)>0
-      OR search_score(COALESCE(actor_token.name, ''), ?)>0)`);
+      OR (l.actor_type='user' AND l.actor_id IN (SELECT id FROM accounts WHERE search_score(username, ?)>0))
+      OR (l.actor_type='token' AND l.actor_id IN (SELECT t.id FROM api_tokens t
+        LEFT JOIN accounts a ON a.id=t.account_id
+        WHERE search_score(COALESCE(a.username, ''), ?)>0 OR search_score(t.name, ?)>0)))`);
     params.push(q, q, q, q, q, q, q);
   }
   if (filters.actorType) { where.push('l.actor_type=?'); params.push(filters.actorType); }
@@ -90,11 +91,9 @@ export function searchAudit(filters: { q?: string; actorType?: string; action?: 
   const page = Math.max(1, Number(filters.page) || 1);
   const pageSize = Math.min(100, Math.max(20, Number(filters.pageSize) || 50));
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const total = row<{ count: number }>(`SELECT COUNT(*) AS count ${q ? auditFrom : 'FROM audit_logs l'} ${clause}`, ...params)?.count || 0;
-  // 无关键词时，筛选只依赖日志自身字段；先分页，再读取当前页的人员与项目名称。
-  const items = rows(q
-    ? `${auditSelect} ${auditFrom} ${clause} ORDER BY l.created_at DESC, l.rowid DESC LIMIT ? OFFSET ?`
-    : `${auditSelect} FROM (SELECT l.rowid, l.* FROM audit_logs l ${clause}
+  const total = row<{ count: number }>(`SELECT COUNT(*) AS count FROM audit_logs l ${clause}`, ...params)?.count || 0;
+  // 名称匹配按账号和Token查询；日志先分页，再读取当前页的人员与项目名称。
+  const items = rows(`${auditSelect} FROM (SELECT l.rowid, l.* FROM audit_logs l ${clause}
       ORDER BY l.created_at DESC, l.rowid DESC LIMIT ? OFFSET ?) l ${auditJoins}
       ORDER BY l.created_at DESC, l.rowid DESC`, ...params, pageSize, (page - 1) * pageSize);
   return { items, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), snapshot };
