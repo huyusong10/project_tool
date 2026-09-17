@@ -40,6 +40,20 @@ it('Phase 自动汇总需求；空和全部取消保持待规划，归档完成�
   const empty=await f.create('远期探索');expect((await f.command(empty.id,'delete')).statusCode).toBe(200);
   const pending=await f.create('未开始');await f.requirement(pending.id);expect((await f.phase(pending.id)).status).toBe('not_started');
 });
+it('Phase 日期可由界面回显；零年份和无效闰日不产生记录', async () => {
+  const f=await fixture(),url=f.base+'/features/'+f.f.id+'/phases';
+  for(const targetDate of ['0001-01-01','0096-02-29','0099-12-31','0100-01-01','9999-12-31']){
+    const result=await req('POST',url,{name:'日期 '+targetDate,targetDate});
+    expect(result.statusCode,result.body).toBe(200);
+    expect((await f.phase(result.json().id)).targetDate).toBe(targetDate);
+  }
+  const before=(await req('GET',f.base+'/feature-phases')).json();
+  for(const targetDate of ['0000-01-01','0099-02-29','0100-02-29','9999-13-01']){
+    const result=await req('POST',url,{name:'无效日期',targetDate});
+    expect(result.statusCode,result.body).toBe(400);
+  }
+  expect((await req('GET',f.base+'/feature-phases')).json()).toEqual(before);
+});
 it('推进后范围、日期和移入移出需要原因；批量版本冲突回滚整个安排', async () => {
   const f = await fixture(), a = await f.create('Phase 1'), b = await f.create('Phase 2');
   const completed = await f.requirement(a.id, 'completed'), active = await f.requirement(a.id, 'in_progress');
