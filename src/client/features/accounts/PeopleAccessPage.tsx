@@ -619,7 +619,7 @@ export function PeopleAccessPage() {
       {personProfileNeedsRecheck && <div role="alert" className="warning-banner">“{personProfileNeedsRecheck.person.name}”的人员资料结果待核对，旧人员版本已锁定。<Button busy={(personProfileRechecking)} aria-label={personProfileRechecking ? "读取中…" : "重新读取人员资料"} variant="secondary" className="ghost-button" disabled={personProfileRechecking} onClick={() => void reloadPersonProfile()}>{"重新读取人员资料"}</Button></div>}
       <div className="filter-bar people-access-filters">
         <SearchInput value={keyword} onChange={setKeyword} placeholder="搜索姓名、岗位、登录名或拼音" />
-        <select aria-label="按岗位筛选" value={jobTitle} onChange={(event) => setJobTitle(event.target.value)}><option value="all">全部岗位</option>{jobTitles.map((value) => <option key={value}>{value}</option>)}</select>
+        <select aria-label="按岗位筛选" value={jobTitle} onChange={(event) => setJobTitle(event.target.value)}><option value="all">全部岗位</option>{jobTitle!=='all'&&!jobTitles.includes(jobTitle)&&<option value={jobTitle}>{jobTitle}</option>}{jobTitles.map((value) => <option key={value}>{value}</option>)}</select>
         <select aria-label="按平台权限筛选" value={role} onChange={(event) => setRole(event.target.value)}><option value="all">全部平台权限</option>{accountRoleOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select>
         <select aria-label="按登录状态筛选" value={loginStatus} onChange={(event) => setLoginStatus(event.target.value)}><option value="all">全部登录状态</option><option value="active">允许登录</option><option value="disabled">禁止登录</option><option value="missing">未开通账号</option></select>
         <span>{filteredRows.length} 名人员</span>
