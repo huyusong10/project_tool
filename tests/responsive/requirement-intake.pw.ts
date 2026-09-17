@@ -78,6 +78,24 @@ test('导出草稿保留未整理的最新输入，存储失败仍能备份并�
   expect(JSON.parse(await readFile((await example.path())!,'utf8'))).toEqual(intakeExample);
 });
 
+test('原文编辑刷新恢复最后输入，整理前不能预览旧内容',async({page})=>{
+  await fixture(page);
+  await page.getByRole('button',{name:'编辑导入文件',exact:true}).click();
+  const raw='刷新恢复的需求\n这里是未整理的新内容。';
+  await page.getByLabel('原始需求',{exact:true}).fill(raw);
+  await page.reload();
+  await expect(page.getByLabel('原始需求',{exact:true})).toBeVisible();
+  await expect(page.getByLabel('原始需求',{exact:true})).toHaveValue(raw);
+  await expect(page.getByRole('button',{name:'预览导入',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'保存需求',exact:true})).toBeDisabled();
+  await page.getByRole('button',{name:'整理需求',exact:true}).click();
+  await expect(page.getByLabel('导入需求标题')).toHaveValue('刷新恢复的需求');
+  await page.reload();
+  await expect(page.getByLabel('原始需求',{exact:true})).toHaveCount(0);
+  await expect(page.getByLabel('导入需求标题')).toHaveValue('刷新恢复的需求');
+  await saveImport(page);
+});
+
 test('按页面名称导入到其他需求，预览后保存并进入新需求',async({page})=>{
   const projectId=await fixture(page);
   await page.getByLabel('特性',{exact:true}).fill('其他需求');
