@@ -2,6 +2,7 @@ import * as issuesApi from '../features/issues/api';
 import { useDeliveryForm } from '../use-delivery-form';
 import { useProjects } from '../app-context';
 import { Button } from './Button';
+import { isAssignablePerson } from '../assignable-people';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, CheckCircle2, ChevronDown, Search } from "lucide-react";
@@ -235,7 +236,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
   const requirementOptions: SearchSelectOption[] = [{ value: "", label: "公共问题", description: "不绑定具体需求" }, ...requirements.map((value) => ({ value: value.id, label: value.title }))];
   const reporterOptions: SearchSelectOption[] = [{ value: "", label: "未指定" }, ...people.map((value) => ({ value: value.name, label: value.name }))];
   if (draft.reporter && !reporterOptions.some((value) => value.value === draft.reporter)) reporterOptions.push({ value: draft.reporter, label: draft.reporter, description: current?.reporter === draft.reporter ? "历史记录" : "当前登录账号" });
-  const ownerOptions: SearchSelectOption[] = [{ value: "", label: "未分配" }, ...people.filter((person) => (resolved || person.active) && person.projectRole !== "viewer").map((person) => ({ value: person.id, label: person.name }))];
+  const ownerOptions: SearchSelectOption[] = [{ value: "", label: "未分配" }, ...people.filter((person) => resolved ? person.projectRole !== "viewer" : isAssignablePerson(person)).map((person) => ({ value: person.id, label: person.name }))];
   if (draft.ownerId && !ownerOptions.some((value) => value.value === draft.ownerId)) ownerOptions.push({ value: draft.ownerId, label: current?.ownerId === draft.ownerId ? current.ownerName || "历史负责人" : draft.ownerId, description: "历史负责人" });
   const blocked = !!issue&&!canManage || editor.changed || editor.needsRefresh;
   return <form className="issue-form" onSubmit={(event) => {

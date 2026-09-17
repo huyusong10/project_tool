@@ -24,7 +24,7 @@ type WorkItemRow = {
 
 type IssueRow = {
   id: string; requirementId: string | null; requirementTitle: string | null; requirementOwnerId: string | null;
-  title: string; ownerId: string | null; ownerName: string | null; dueDate: string | null; nextReviewAt:string|null; updatedAt: string;
+  title: string; ownerId: string | null; ownerName: string | null; ownerValid: number; dueDate: string | null; nextReviewAt:string|null; updatedAt: string;
 };
 
 const reasonSeverity: Record<ActionReasonCode, ActionSeverity> = {
@@ -149,6 +149,9 @@ export function listActionItems(
 
   const issues = rows<IssueRow>(`SELECT i.id, i.requirement_id AS requirementId, r.title AS requirementTitle,
     r.owner_id AS requirementOwnerId, i.title, i.owner_id AS ownerId, p.name AS ownerName,
+    EXISTS (SELECT 1 FROM project_people pp JOIN accounts a ON a.person_id=pp.person_id
+      WHERE pp.project_id=i.project_id AND pp.person_id=i.owner_id AND pp.project_role IN ('member','manager')
+        AND p.active=1 AND p.deleted_at IS NULL AND a.status='active' AND a.deleted_at IS NULL) AS ownerValid,
     i.due_date AS dueDate, i.next_review_at AS nextReviewAt, i.updated_at AS updatedAt
     FROM issues i LEFT JOIN requirements r ON r.id=i.requirement_id
     LEFT JOIN people p ON p.id=i.owner_id
@@ -159,12 +162,14 @@ export function listActionItems(
     const reasonCodes: ActionReasonCode[] = [];
     if (isOverdueByWorkday(issue.dueDate, today)) reasonCodes.push('overdue');
     if (!issue.ownerId) reasonCodes.push('unassigned');
+    else if (!issue.ownerValid) reasonCodes.push('owner_unavailable');
     if(issue.nextReviewAt&&issue.nextReviewAt<=today)reasonCodes.push('follow_up');
     if (!reasonCodes.length) continue;
     items.push(makeItem({
       sourceType: 'issue', sourceId: issue.id, projectId: filters.projectId,
       requirementId: issue.requirementId, contextTitle: issue.requirementTitle, title: issue.title,
-      reasonCodes, ownerId: issue.ownerId, ownerName: issue.ownerName, dueDate: issue.dueDate, nextReviewAt:issue.nextReviewAt,
+      reasonCodes, ownerId: issue.ownerValid ? issue.ownerId : null,
+      ownerName: issue.ownerId && !issue.ownerValid ? '项目经理' : issue.ownerName, dueDate: issue.dueDate, nextReviewAt:issue.nextReviewAt,
       overdueWorkdays: isOverdueByWorkday(issue.dueDate, today) ? Math.max(0, businessDayDelta(issue.dueDate, today)) : 0,
       targetPath: `/issues?issueId=${encodeURIComponent(issue.id)}`, updatedAt: issue.updatedAt,
     }));

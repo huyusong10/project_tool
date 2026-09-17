@@ -157,17 +157,28 @@ test('新建问题核对时不能把下次核对日期不同的候选项当成�
 
 test('项目经理新建问题时可以直接选择负责人', async ({ page }) => {
   const state = await fixture(page, 'manager');
+  await page.route(/\/api\/people(?:\?|$)/, route => route.fulfill({ json: [
+    { id: 'u1', name: '张三', active: 1, projectRole: 'member' },
+    { id: 'u2', name: '李四', active: 1, projectRole: 'member', accountStatus: 'active' },
+    { id: 'u3', name: '停用成员', active: 1, projectRole: 'member', accountStatus: 'disabled' },
+    { id: 'u4', name: '无账号成员', active: 1, projectRole: 'member', accountStatus: null },
+    { id: 'u5', name: '已删除账号', active: 1, projectRole: 'member', accountStatus: 'active', accountDeletedAt: '2026-09-01' },
+  ] }));
   await page.goto('/issues');
   await page.getByRole('button', { name: '新建问题', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '新建问题', exact: true });
   await dialog.getByRole('textbox', { name: '问题标题', exact: true }).fill('创建时直接分配负责人');
   await dialog.getByRole('button', { name: '负责人：未分配', exact: true }).click();
+  await expect(page.getByRole('listbox', { name: '负责人', exact: true }).getByRole('option')).toHaveCount(3);
   await page.getByRole('listbox', { name: '负责人', exact: true }).getByRole('option', { name: '李四', exact: true }).click();
   await dialog.getByRole('button', { name: '创建问题', exact: true }).click();
 
   await expect(dialog).toHaveCount(0);
   expect(state.writes).toHaveLength(1);
   expect(state.writes[0].body).toMatchObject({ projectId: 'p1', title: '创建时直接分配负责人', ownerId: 'u2' });
+  await page.getByRole('button', { name: /^问题负责人：/ }).first().click();
+  await expect(page.getByRole('listbox', { name: '问题负责人', exact: true }).getByRole('option', { name: /停用成员|无账号成员|已删除账号/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
 });
 
 test('问题搜索选择浮层不改变弹窗滚动布局', {tag:'@responsive'}, async ({ page }, _testInfo) => {

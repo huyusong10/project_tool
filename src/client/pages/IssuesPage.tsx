@@ -34,6 +34,7 @@ import { InlineSelectCell } from '../components/inline-edit/select';
 import { canManageProject } from "../permissions";
 import { issueStatusOptions, priorityOptions } from "../ui-options";
 import { SearchInput } from "../components/SearchInput";
+import { isAssignablePerson } from '../assignable-people';
 
 const statusEntries = issueStatusOptions.map(({ value, label }) => [value, label] as const);
 const priorityEntries = priorityOptions.map(({ value, label }) => [value, label] as const);
@@ -229,7 +230,7 @@ export function IssuesPage() {
   };
   const peopleQuery = useQuery({ queryKey: [...keys.people, selectedProjectId], queryFn: ({ signal }) => peopleApi.peopleQuery<Person[]>(encodeURIComponent(selectedProjectId), { signal }), enabled: Boolean(selectedProjectId) });
   const people = peopleQuery.data || emptyPeople;
-  const eligiblePeople = people.filter((person) => person.active && person.projectRole !== "viewer");
+  const eligiblePeople = people.filter(isAssignablePerson);
   const requirementsQuery = useQuery({ queryKey: [...keys.requirements, selectedProjectId], queryFn: ({ signal }) => requirementsApi.requirementsQuery<Requirement[]>(encodeURIComponent(selectedProjectId), { signal }), enabled: Boolean(selectedProjectId) });
   const requirements = requirementsQuery.data || emptyRequirements;
   const referenceDataReady = peopleQuery.data !== undefined && requirementsQuery.data !== undefined;

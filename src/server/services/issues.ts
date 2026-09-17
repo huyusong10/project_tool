@@ -62,8 +62,9 @@ function issueOwner(projectId: string, value: unknown, conflict = false) {
   const ownerId = nullableText(value);
   if (ownerId && !row(`SELECT p.id FROM people p JOIN project_people pp ON pp.person_id=p.id
     WHERE p.id=? AND pp.project_id=? AND pp.project_role IN ('member','manager')
-      AND p.deleted_at IS NULL AND p.active=1`, ownerId, projectId)) {
-    fail('负责人必须是当前项目中已启用的成员或项目经理', conflict ? 'DEPENDENCY_CONFLICT' : 'VALIDATION_ERROR', conflict ? 409 : 400);
+      AND p.deleted_at IS NULL AND p.active=1
+      AND EXISTS (SELECT 1 FROM accounts a WHERE a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL)`, ownerId, projectId)) {
+    fail('负责人必须是当前项目中账号有效的成员或项目经理', conflict ? 'DEPENDENCY_CONFLICT' : 'VALIDATION_ERROR', conflict ? 409 : 400);
   }
   return ownerId;
 }
