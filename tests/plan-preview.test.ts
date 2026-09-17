@@ -55,6 +55,36 @@ async function fixture() {
   return { template, requirement: created.json<Requirement>(), input: { templateId: template.id, baseStart: '2026-09-01' } };
 }
 
+it('创建时排期越界返回400且回滚需求、工作项和审计，随后仍可正常创建', async () => {
+  const { template, requirement } = await fixture();
+  const baseline = await businessState();
+  const created = await post('/api/requirements', { projectId: requirement.projectId, templateId: template.id, title: '越界排期', plannedStart: '9999-12-31' });
+  expect(created.statusCode, created.body).toBe(400);
+  expect(created.json()).toMatchObject({ code: 'VALIDATION_ERROR', error: '排期超出支持的日期范围，请调整日期或工期' });
+  expect(await businessState()).toEqual(baseline);
+  const valid = await post('/api/requirements', { projectId: requirement.projectId, templateId: template.id, title: '正常排期', plannedStart: '2026-09-01' });
+  expect(valid.statusCode, valid.body).toBe(200);
+  expect(valid.json().workItems[0]).toMatchObject({ plannedStart: '2026-09-01', plannedEnd: '2026-09-02' });
+});
+
+it.each(['REST', 'MCP'] as const)('%s补全排期越界不改变原需求和记录', async protocol => {
+  const { requirement, input } = await fixture();
+  const baseline = await businessState();
+  for (const action of ['preview', 'apply'] as const) {
+    const response = await plan(protocol, action, requirement.id, { ...input, baseStart: '9999-12-31', ...(action === 'apply' ? { expectedVersion: requirement.version } : {}) });
+    expect(response.statusCode).toBe(400);
+    expect(protocol === 'MCP' ? response.body.error : response.body).toMatchObject({ code: 'VALIDATION_ERROR', error: '排期超出支持的日期范围，请调整日期或工期' });
+    expect(await businessState()).toEqual(baseline);
+  }
+});
+
+it('人员并发读取合法的最后两日，不把查询上限计算溢出当作五年超限', async () => {
+  const { requirement } = await fixture();
+  const response = await app.inject({ url: `/api/analytics/people-concurrency?projectId=${requirement.projectId}&from=9999-12-30&to=9999-12-31`, headers: { cookie } });
+  expect(response.statusCode, response.body).toBe(200);
+  expect(response.json()).toMatchObject({ dates: ['9999-12-30', '9999-12-31'], people: [] });
+});
+
 beforeAll(async () => {
   app = await (await import('../src/server/app')).buildApp();
   origin = await listenTestApp(app);

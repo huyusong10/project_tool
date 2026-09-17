@@ -1,5 +1,5 @@
 import type { DeliveryFields } from './delivery';
-import { countBusinessDays, isBusinessDay, isValidIsoDate } from './workday';
+import { countBusinessDays, DateRangeError, isBusinessDay, isValidIsoDate } from './workday';
 
 export const requirementStatuses = ['not_started', 'in_progress', 'completed', 'cancelled'] as const;
 export const workItemStatuses = ['not_started', 'in_progress', 'completed', 'cancelled'] as const;
@@ -80,6 +80,9 @@ function parseIsoDate(value: string): Date {
 }
 
 function isoDate(date: Date): string {
+  const year = date.getUTCFullYear();
+  // Keep arithmetic inside the same year range accepted by isValidIsoDate.
+  if (!Number.isFinite(year) || year < 100 || year > 9999) throw new DateRangeError();
   return date.toISOString().slice(0, 10);
 }
 

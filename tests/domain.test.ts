@@ -1,14 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addBusinessDays, businessDateFromDateTime, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
+  addBusinessDays, addCalendarDays, businessDateFromDateTime, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
   deriveRequirementScheduleRange, deriveWorkItemStatus, ganttProgressDisplay, issueActionsByStatus, plannedDatesFromOffset, plannedStartFromDeadline, requirementActionsByStatus, riskLevelFromProgressGap, signedProgressVariance, workItemActionsByStatus, workItemPlannedProgress,
   isOverdueByWorkday, startOfWeekIso,
 } from '../src/shared/domain';
-import { hasWorkdayCalendarFallback, isBusinessDay, isValidIsoDate } from '../src/shared/workday';
+import { DateRangeError, hasWorkdayCalendarFallback, isBusinessDay, isValidIsoDate } from '../src/shared/workday';
 import { isoDateSchema, issueInputSchema, peopleConcurrencyInputSchema, reorderWorkItemsInputSchema, templateInputSchema } from '../src/shared/contracts';
 import { analyticsCatalog } from '../src/shared/analytics';
 
 describe('工作日、排期与Gap规则', () => {
+  it('日期加减越界立即报错，边界内的最后工作日仍可排期', () => {
+    expect(isoDateSchema.safeParse('9999-12-31').success).toBe(true);
+    expect(isoDateSchema.safeParse('0100-01-01').success).toBe(true);
+    expect(addBusinessDays('9999-12-30', 1)).toBe('9999-12-31');
+    expect(addBusinessDays('0100-01-01', 0)).toBe('0100-01-01');
+    expect(() => addBusinessDays('9999-12-31', 1)).toThrow(DateRangeError);
+    expect(() => addBusinessDays('0100-01-01', -1)).toThrow(DateRangeError);
+    expect(() => addCalendarDays('9999-12-31', 1)).toThrow(DateRangeError);
+    expect(() => plannedDatesFromOffset('9999-12-31', 0, 2)).toThrow(DateRangeError);
+  });
+
   it('排除周末并按偏移和工期生成计划', () => {
     expect(businessDaysInclusive('2026-09-04', '2026-09-07')).toBe(2);
     expect(businessDayDelta('2026-09-04', '2026-09-07')).toBe(1);
