@@ -96,6 +96,24 @@ it('归属不可跨特性；权限和旧接口停用；REST/MCP 状态一致', a
   const token = (await req('POST', '/api/tokens', { name: 'Phase MCP', expiresInDays: 1 })).json().token;
   const response = await mcpRequest(address, token, 'list_feature_phases', { projectId: f.projectId }); const body = JSON.parse(response.body.startsWith('event:') ? response.body.split('\n').find(line => line.startsWith('data: '))!.slice(6) : response.body); expect(body.result?.isError, JSON.stringify(body)).not.toBe(true); expect(JSON.parse(body.result.content[0].text)).toEqual((await req('GET', f.base + '/feature-phases')).json());
 });
+it.each([
+  ['2026-09-11T15:59:59.999Z','2026-09-11','2026-09-10'],
+  ['2026-09-11T16:00:00.000Z','2026-09-12','2026-09-11'],
+  ['2026-09-11T23:59:59.999Z','2026-09-12','2026-09-11'],
+  ['2026-09-12T00:00:00.000Z','2026-09-12','2026-09-11'],
+])('返工时间 %s 按北京时间校验提测日期',async(resetAt,validDate,invalidDate)=>{
+  const f=await fixture(),r=await f.requirement(null,'in_progress');
+  const {sqlite}=await import('./support/database');
+  sqlite.prepare('UPDATE requirements SET stage_reset_at=? WHERE id=?').run(resetAt,r.id);
+  const read=async()=>(await req('GET','/api/requirements/'+r.id)).json();
+  const before=await read(),endpoint=f.base+'/requirements/'+r.id+'/test-submission';
+  const rejected=await req('POST',endpoint,{expectedVersion:before.version,actualDate:invalidDate});
+  expect(rejected.statusCode,rejected.body).toBe(400);expect(await read()).toEqual(before);
+  const accepted=await req('POST',endpoint,{expectedVersion:before.version,actualDate:validDate});
+  expect(accepted.statusCode,accepted.body).toBe(200);
+  expect(accepted.json()).toMatchObject({version:before.version+1,status:before.status,progress:before.progress,actualStart:before.actualStart,stageResetAt:resetAt,milestones:[{milestoneKind:'test_submitted',achievedAt:validDate}]});
+});
+
 it('记录提测是人工事实，重复记录受保护，路径、列表和 Phase 使用同一摘要', async () => {
   const f = await fixture(), a = await f.create('Phase 1'), r = await f.requirement(a.id, 'in_progress');
   const result = await req('POST', f.base + '/requirements/' + r.id + '/test-submission', { expectedVersion: r.version, actualDate: '2026-09-12' }); expect(result.statusCode, result.body).toBe(200); expect(result.json().executionStage).toMatchObject({ key: 'test_submitted', label: '已提测' });
