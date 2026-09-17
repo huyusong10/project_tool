@@ -26,6 +26,21 @@ async function fixture(page: Page, browser: Browser, baseURL: string) {
   } catch (error) { await context.close(); throw error; }
 }
 
+for (const trigger of ['return', 'interval'] as const) test(`其他账号开工后我的工作自动更新：${trigger}`, async ({ page, browser, baseURL }) => {
+  const { actor, context, detail, work } = await fixture(page, browser, baseURL!);
+  try {
+    await actor.clock.install();
+    await actor.goto('/my-work');
+    await expect(actor.getByRole('button', { name: '开始', exact: true })).toBeEnabled();
+    await post(page.request, `/api/work-items/${work.id}/start`, { expectedVersion: work.version });
+    expect((await detail()).workItems[0].status).toBe('in_progress');
+    if (trigger === 'return') await actor.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
+    else await actor.clock.fastForward(61_000);
+    await expect(actor.getByRole('button', { name: `为${work.title}更新进度`, exact: true })).toBeVisible();
+    await expect(actor.getByRole('button', { name: '开始', exact: true })).toHaveCount(0);
+  } finally { await context.close(); }
+});
+
 test('普通协作成员经我的工作开始、更新完成度并完成，需求随工作完成', async ({ page, browser, baseURL }) => {
   const { actor, context, detail, work, myWork } = await fixture(page, browser, baseURL!);
   try {
