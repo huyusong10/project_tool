@@ -1,8 +1,8 @@
-import {projectPhaseOverview} from '../../shared/phase-projection';
-import type {Actor} from '../auth';
-import type {PathAnalysis,PathRequirement} from '../../shared/paths';
-import {getFeatureOverview} from './feature-overview';
-import {readFeatureRelations} from './features';
+import type { PathAnalysis, PathRequirement } from '../../shared/paths';
+import { projectPhaseOverview } from '../../shared/phase-projection';
+import type { Actor } from '../auth';
+import { getFeatureOverview } from './feature-overview';
+import { readFeatureRelations } from './features';
 
 /** Called inside the execution snapshot transaction. Planning never enters scheduling. */
 export function withFeatureContext(analysis:PathAnalysis,requirements:PathRequirement[],actor:Actor):PathAnalysis {

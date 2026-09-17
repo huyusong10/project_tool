@@ -1,8 +1,8 @@
-import {readReferenceLinks,type ReferenceLink} from '../../shared/reference-links';
+import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
 import { deriveExecutionStage, type ExecutionStage, type WorkStage } from '../../shared/execution-stage';
-import {nodeForecastBasis, deliveryForecast, requirementDeliveryForecast} from '../../shared/forecast-basis';
-import {type DeliveryFields,type ProcessingResult,deliveryReadiness,processingPriority} from '../../shared/delivery';
-import { sqlite } from '../database';
+import { nodeForecastBasis, deliveryForecast, requirementDeliveryForecast } from '../../shared/forecast-basis';
+import { type DeliveryFields, type ProcessingResult, deliveryReadiness, processingPriority } from '../../shared/delivery';
+import { getDatabaseContext } from '../database-context';
 import { config } from '../config';
 import { notFound } from '../errors';
 import { businessDateFromDateTime, calculateWorkItemGap, deriveRequirementMetrics, todayIso } from '../../shared/domain';
@@ -73,11 +73,11 @@ type WorkItemRow = Omit<WorkItemRecord, 'collaborators' | 'assigneeIds' | 'assig
 type CollaboratorRow = { workItemId: string; id: string; name: string; jobTitle: string | null };
 
 function rows<T>(sql: string, ...params: unknown[]) {
-  return sqlite.prepare(sql).all(...params) as T[];
+  return getDatabaseContext().sqlite.prepare(sql).all(...params) as T[];
 }
 
 function row<T>(sql: string, ...params: unknown[]) {
-  return sqlite.prepare(sql).get(...params) as T | undefined;
+  return getDatabaseContext().sqlite.prepare(sql).get(...params) as T | undefined;
 }
 
 export function loadWorkItemsByRequirementIds(requirementIds: string[], requirementStatuses?: ReadonlyMap<string, string>) {
@@ -167,7 +167,7 @@ function enrichRequirement(requirement: RequirementRecord, workItems: WorkItemRe
 
 export const requirementAnalysisSnapshots=new WeakMap<RequirementRecord[],Map<string,import('../../shared/paths').PathAnalysis>>();
 export function listRequirements(...args: Parameters<typeof readRequirements>) {
-  return sqlite.transaction(() => readRequirements(...args))();
+  return getDatabaseContext().sqlite.transaction(() => readRequirements(...args))();
 }
 function readRequirements(filters: { phaseId?:string; featureId?:string;deliveryScope?:'committed'|'candidate';projectId?: string; ownerId?: string; includeDeleted?: boolean; view?: string; status?: string } = {}, asOfDate = todayIso()) {
   const where = [filters.includeDeleted ? '1=1' : 'r.deleted_at IS NULL'];
@@ -209,7 +209,7 @@ function readRequirements(filters: { phaseId?:string; featureId?:string;delivery
 
 /** Batch writers read execution facts while their final dependency network is still being assembled. */
 export function getRequirement(...args: Parameters<typeof readRequirement>) {
-  return sqlite.transaction(() => readRequirement(...args))();
+  return getDatabaseContext().sqlite.transaction(() => readRequirement(...args))();
 }
 function readRequirement(id: string, includeDeleted = false, withPathAnalysis = true) {
   const requirement = row<RequirementRecord>(`${requirementSelect} WHERE r.id=? ${includeDeleted ? '' : 'AND r.deleted_at IS NULL'}`, id);

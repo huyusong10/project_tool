@@ -1,10 +1,10 @@
-import { readFeaturePhases, phaseRequirementFacts } from './feature-phases';
-import { phaseCompletion } from '../../shared/feature-phases';
-import { sqlite } from '../database';
-import type { Actor } from '../auth';
-import { assertProjectReadable, requireAuthorizationActor } from '../authorization';
 import { todayIso } from '../../shared/domain';
 import { summarizeFeatureOverview, type FeatureProgressSummary } from '../../shared/feature-overview';
+import { phaseCompletion } from '../../shared/feature-phases';
+import type { Actor } from '../auth';
+import { assertProjectReadable, requireAuthorizationActor } from '../authorization';
+import { getDatabaseContext } from '../database-context';
+import { phaseRequirementFacts, readFeaturePhases } from './feature-phases';
 import { readFeatures } from './features';
 import { listRequirements } from './requirements';
 
@@ -14,9 +14,9 @@ export function getFeatureOverview(projectId: string, actor: Actor, asOfDate = t
 }
 
 export function readFeatureOverview(projectId:string,asOfDate=todayIso(),state:'active'|'archived'|'all'='active') {
-  return sqlite.transaction(() => {
+  return getDatabaseContext().sqlite.transaction(() => {
     const report = summarizeFeatureOverview(readFeatures(projectId,state), listRequirements({ projectId }, asOfDate), asOfDate);
-    const updates = sqlite.prepare(`SELECT id,featureId,requirementId,requirementTitle,content,createdAt FROM (
+    const updates = getDatabaseContext().sqlite.prepare(`SELECT id,featureId,requirementId,requirementTitle,content,createdAt FROM (
       SELECT u.id,r.feature_id AS featureId,r.id AS requirementId,r.title AS requirementTitle,u.content,u.created_at AS createdAt,
         ROW_NUMBER() OVER (PARTITION BY r.feature_id ORDER BY u.created_at DESC,u.rowid DESC) AS rank
       FROM progress_updates u JOIN requirements r ON r.id=u.requirement_id

@@ -19,7 +19,7 @@ const post = (url: string, payload: Record<string, unknown>) => app.inject({ met
 const get = async <T>(url: string) => (await app.inject({ url, headers: { cookie } })).json<T>();
 const detail = (id: string) => get<Requirement>('/api/requirements/' + id);
 const summary = async (projectId:string) => {
- const {sqlite}=await import('../src/server/database');
+ const {sqlite}=await import('./support/database');
  const events=sqlite.prepare("SELECT p.event_type AS type FROM progress_updates p JOIN requirements r ON r.id=p.requirement_id WHERE r.project_id=? AND p.work_item_id IS NULL AND p.event_type IN ('accept','rework','reopen')").all(projectId) as Array<{type:string}>;
  const legacy=sqlite.prepare('SELECT count(*) n FROM requirements WHERE project_id=? AND accepted_at IS NOT NULL').get(projectId) as {n:number};
  const count=events.filter(e=>e.type==='accept').length;
@@ -37,7 +37,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await app.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -64,7 +64,7 @@ async function completedRequirement() {
 
 it.each(['REST', 'MCP'] as const)('%s 工作项重开保留首次验收，记一次需求返工；后续另一工作项重开不重复计数，再次完成不增加验收记录', async protocol => {
   const { r, projectId } = await completedRequirement();
-  const {sqlite}=await import('../src/server/database');
+  const {sqlite}=await import('./support/database');
   sqlite.prepare("UPDATE requirements SET accepted_at='2020-02-03T10:00:00.000Z' WHERE id=?").run(r.id);
   expect(await summary(projectId)).toMatchObject({ acceptedCount: 1, reworkCount: 0 });
   const accepted = await detail(r.id);
@@ -91,7 +91,7 @@ it.each(['REST', 'MCP'] as const)('%s 工作项重开保留首次验收，记一
 
 it('重开事务失败时，补存验收、工作项和需求历史一起回滚', async () => {
   const { r, projectId } = await completedRequirement();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   sqlite.prepare("UPDATE requirements SET status='completed',progress=100,accepted_at='2020-02-03T10:00:00.000Z' WHERE id=?").run(r.id);
   const before = await detail(r.id), beforeSummary = await summary(projectId);
   const auditCount = sqlite.prepare('SELECT count(*) AS n FROM audit_logs').get();
@@ -109,7 +109,7 @@ it('重开事务失败时，补存验收、工作项和需求历史一起回滚'
 
 it('只有验收日期的历史需求，经工作项重开也不丢失原验收事实', async () => {
   const { r, projectId } = await completedRequirement();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   sqlite.prepare("UPDATE requirements SET status='completed',progress=100,accepted_at='2020-02-03T10:00:00.000Z' WHERE id=?").run(r.id);
   expect(await summary(projectId)).toMatchObject({ acceptedCount: 1 });
   const w = r.workItems[0];

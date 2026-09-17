@@ -13,7 +13,7 @@ Object.assign(process.env,{DB_PATH:path.join(dir,'test.db'),BACKUP_DIR:path.join
 let app:FastifyInstance,cookie='';
 const request=(method:'GET'|'POST'|'DELETE',url:string,payload?:unknown)=>app.inject({method,url,headers:{cookie},payload:payload as Record<string,unknown>});
 beforeAll(async()=>{app=await(await import('../src/server/app')).buildApp();await app.ready();const login=await request('POST','/api/login',{username:'admin',password});cookie=String(login.headers['set-cookie']).split(';')[0];});
-afterAll(async()=>{await app.close();(await import('../src/server/database')).sqlite.close();expect(path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep)).toBe(true);fs.rmSync(dir,{recursive:true,force:true});});
+afterAll(async()=>{await app.close();(await import('./support/database')).sqlite.close();expect(path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep)).toBe(true);fs.rmSync(dir,{recursive:true,force:true});});
 async function fixture(){
  const p=(await request('POST','/api/projects',{name:'连贯画布 '+randomUUID()})).json<{id:string}>(),base='/api/projects/'+p.id;
  const create=async(name:string)=>(await request('POST',base+'/features',{name,sortOrder:999})).json<IntakeCatalog>().features.find(g=>g.name===name)!;

@@ -48,13 +48,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
 it('按计划补录工作项、整条需求原子完成，重复提交不生成记录，按工作日期计入完成趋势', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   let requirement = await createHistory();
   const first = requirement.workItems![0];
   const completed = await post(`/api/work-items/${first.id}/complete-as-planned`, { expectedVersion: first.version });
@@ -82,7 +82,7 @@ it('按计划补录工作项、整条需求原子完成，重复提交不生成�
 });
 
 it('缺排期、未来计划和已有执行记录均拒绝，整条补录失败不会部分写入', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const requirement = await createHistory();
   const item = requirement.workItems!.at(-1)!;
   for (const scenario of ['missing', 'future', 'executed']) {
@@ -98,7 +98,7 @@ it('缺排期、未来计划和已有执行记录均拒绝，整条补录失败�
 });
 
 it('调整旧版非工作日排期时以需求锚点统一重算', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const requirement = await createHistory();
   const retained = requirement.workItems![0];
   sqlite.prepare('DELETE FROM work_items WHERE requirement_id=? AND id<>?').run(requirement.id, retained.id);
@@ -207,7 +207,7 @@ it('REST/MCP共用补录规则，普通成员不能补录', async () => {
 });
 
 it('200个工作项整单补录保持常量级查询准备并写全事件和审计', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const requirement = await createHistory();
   const now = new Date().toISOString();
   sqlite.prepare('DELETE FROM work_items WHERE requirement_id=?').run(requirement.id);

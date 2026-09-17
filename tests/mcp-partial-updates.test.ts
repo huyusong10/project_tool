@@ -20,7 +20,7 @@ beforeAll(async()=>{
   cookie=String(login.headers['set-cookie']).split(';')[0];
   token=(await post('/api/tokens',{name:'partial updates'})).token;
 });
-afterAll(async()=>{await app?.close();const {sqlite}=await import('../src/server/database');if(sqlite.open)sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
+afterAll(async()=>{await app?.close();const {sqlite}=await import('./support/database');if(sqlite.open)sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
 async function post(url:string,payload:Record<string,unknown>){
   const response=await app.inject({method:'POST',url,headers:{cookie},payload});
   expect(response.statusCode,response.body).toBe(200);return response.json();

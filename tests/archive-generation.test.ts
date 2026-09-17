@@ -70,7 +70,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -102,7 +102,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
 }
 
 it('永久删除在取得写锁后复核归档代次和历史引用', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const project = (await post('/api/projects', { name: `永久删除竞争项目${++sequence}` })).json();
   expect((await app.inject({ method: 'DELETE', url: `/api/projects/${project.id}`, headers: { cookie }, payload: {
     expectedUpdatedAt: project.updatedAt,

@@ -27,7 +27,7 @@ beforeAll(async()=>{
  origin=await app.listen({host:'127.0.0.1',port:0});
  token=(await request('POST','/api/tokens',{name:'契约回归'})).json().token;
 });
-afterAll(async()=>{await app.close();(await import('../src/server/database')).sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
+afterAll(async()=>{await app.close();(await import('./support/database')).sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
 
 async function fixture(_executionMode:'direct'|'work_items'){
  const project=(await request('POST','/api/projects',{name:'契约'+randomUUID()})).json();
@@ -38,7 +38,7 @@ async function fixture(_executionMode:'direct'|'work_items'){
  return {projectId:project.id as string,requirement:response.json<Requirement>(),ownerId:owner.id as string};
 }
 async function snapshot(){
- const {sqlite}=await import('../src/server/database');
+ const {sqlite}=await import('./support/database');
  return ['requirements','work_items','milestones','diagram_layouts','delivery_commitments','dependency_edges','audit_logs','progress_updates','dependency_change_receipts'].map(table=>sqlite.prepare('SELECT * FROM '+table+' ORDER BY rowid').all());
 }
 
@@ -173,7 +173,7 @@ it('批次写入后的最终网络校验失败时，实体、估算、审计与�
   {entity:'milestone',op:'create',id:m,requirementId:r.id,data:{title:'交付点'}},
  ],add:[{clientId:randomUUID(),sourceRequirementId:r.id,sourceWorkItemId:w,targetRequirementId:r.id,targetWorkItemId:null,targetMilestoneId:m}]});
  expect(p.response.statusCode,p.response.body).toBe(200);
- const {sqlite}=await import('../src/server/database');
+ const {sqlite}=await import('./support/database');
  // Simulate a persistence defect after relation insertion; success must not be acknowledged.
  sqlite.exec("CREATE TEMP TRIGGER corrupt_saved_anchor AFTER INSERT ON dependency_edges BEGIN UPDATE work_items SET arrangement_anchor='invalid-saved-anchor' WHERE id=NEW.source_work_item_id; END");
  try{
@@ -187,7 +187,7 @@ it('预览后创建对象的负责人失效，不能绕过成员校验写入部�
  const {projectId,requirement:r,ownerId}=await fixture('work_items'),id=randomUUID();
  const p=await preview(projectId,{entities:[{entity:'work',op:'create',id,requirementId:r.id,data:{title:'等待保存',ownerId,durationDays:2}}]});
  expect(p.response.statusCode,p.response.body).toBe(200);
- const {sqlite}=await import('../src/server/database');sqlite.prepare('UPDATE people SET active=0 WHERE id=?').run(ownerId);
+ const {sqlite}=await import('./support/database');sqlite.prepare('UPDATE people SET active=0 WHERE id=?').run(ownerId);
  const before=await snapshot(),result=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...p.input,batchId:randomUUID(),previewToken:p.response.json().previewToken});
  expect(result.statusCode,result.body).not.toBe(200);expect(await snapshot()).toEqual(before);
 });
@@ -266,7 +266,7 @@ it('现有需求中新建工作项并修改预计工期可以一次预览保存�
  expect(await snapshot()).toEqual(stored);
 });
 it('新增独立工作项保留已核对关系；历史核对记录不增加操作门槛',async()=>{
- const {sqlite}=await import('../src/server/database');
+ const {sqlite}=await import('./support/database');
  for(const legacy of [false,true]){
   const {projectId,requirement:r,ownerId}=await fixture('work_items');
   if(legacy)sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=NULL WHERE id=?').run(r.id);
@@ -410,7 +410,7 @@ for(const entity of ['requirement','work'] as const)it(`进行中${entity}交接
 it('画布仅提交工作项删除，预览和保存均自动清理双向依赖',async()=>{
  const {projectId,requirement:r,ownerId}=await fixture('work_items');
  const works=[];for(const title of ['前置','删除对象','后续']){const response=await request('POST','/api/requirements/'+r.id+'/work-items',{title,ownerId,expectedVersion:(await get<Requirement>('/api/requirements/'+r.id)).version});expect(response.statusCode,response.body).toBe(200);works.push(response.json());}
- const {sqlite}=await import('../src/server/database'),now=new Date().toISOString();
+ const {sqlite}=await import('./support/database'),now=new Date().toISOString();
  const insert=sqlite.prepare("INSERT INTO dependency_edges(id,project_id,source_requirement_id,target_requirement_id,source_work_item_id,target_work_item_id,origin,created_at,updated_at) VALUES(?,?,?,?,?,?,'manual',?,?)");
  for(const [source,target] of [[works[0],works[1]],[works[1],works[2]]])insert.run(randomUUID(),projectId,r.id,r.id,source.id,target.id,now,now);
  const before=await snapshot(),p=await preview(projectId,{entities:[{entity:'work',op:'delete',id:works[1].id,requirementId:r.id,expectedVersion:works[1].version,data:{}}]});
@@ -424,7 +424,7 @@ it('画布可以更正已完成工作负责人，保留完成状态及原始记�
  const work=(await request('POST','/api/requirements/'+r.id+'/work-items',{title:'历史工作',ownerId,expectedVersion:r.version})).json();
  const started=await request('POST','/api/work-items/'+work.id+'/start',{expectedVersion:work.version});expect(started.statusCode,started.body).toBe(200);
  const complete=await request('POST','/api/work-items/'+work.id+'/complete',{expectedVersion:started.json().version});expect(complete.statusCode,complete.body).toBe(200);
- const person=(await request('POST','/api/people',{projectId,name:'历史更正负责人'})).json(),{sqlite}=await import('../src/server/database');sqlite.prepare('UPDATE people SET active=0 WHERE id=?').run(person.id);
+ const person=(await request('POST','/api/people',{projectId,name:'历史更正负责人'})).json(),{sqlite}=await import('./support/database');sqlite.prepare('UPDATE people SET active=0 WHERE id=?').run(person.id);
  const current=await get<Requirement>('/api/requirements/'+r.id),events=sqlite.prepare('SELECT * FROM progress_updates WHERE requirement_id=? ORDER BY rowid').all(r.id);
  const p=await preview(projectId,{entities:[{entity:'work',op:'update',id:work.id,requirementId:r.id,expectedVersion:current.workItems[0].version,data:{ownerId:person.id,reason:'更正历史归属'}}]});expect(p.response.statusCode,p.response.body).toBe(200);
  const saved=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...p.input,batchId:randomUUID(),previewToken:p.response.json().previewToken});expect(saved.statusCode,saved.body).toBe(200);

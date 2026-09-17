@@ -100,7 +100,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${dbPath}${suffix}`, { force: true });
   fs.rmSync(backupDir, { recursive: true, force: true });
@@ -257,7 +257,7 @@ describe('功能扩充契约', () => {
     expect(filtered.items.every((i:{reasonCodes:string[]})=>i.reasonCodes.includes('unassigned'))).toBe(true);
     expect(filtered.summary).toEqual(actions.json().summary);
     expect((await app.inject({ method: 'GET', url: `/api/action-items?projectId=${projectId}&reason=unknown`, headers: { cookie: adminCookie } })).statusCode).toBe(400);
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     expect(sqlite.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='action_items'").get()).toEqual({ count: 0 });
   });
 

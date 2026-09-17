@@ -29,13 +29,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
 it('数据库拒绝主记录更新时返回冲突，并回滚随后追加的历史', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '受控写入需求', plannedStart: '2020-01-02',
   })).json();
@@ -87,7 +87,7 @@ it('数据库拒绝主记录更新时返回冲突，并回滚随后追加的历�
 });
 
 it('历史补录在父需求归档或版本变化时整体回滚', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const single = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '补录归档竞争需求', plannedStart: '2020-01-02',
   })).json();
@@ -128,7 +128,7 @@ it('历史补录在父需求归档或版本变化时整体回滚', async () => {
 });
 
 it('工作项编辑与进度写入会锁定父需求版本', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '工作项父版本竞争需求', plannedStart: '2020-03-02',
   })).json();
@@ -169,7 +169,7 @@ it('工作项编辑与进度写入会锁定父需求版本', async () => {
 });
 
 it('成员在工作项写入期间失权时业务修改一起回滚', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const owner = (await post('/api/people', { projectId, name: '并发失权需求负责人' })).json();
   const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, ownerId: owner.id, title: '并发失权需求', plannedStart: '2020-04-01',
@@ -197,7 +197,7 @@ it('成员在工作项写入期间失权时业务修改一起回滚', async () =
 });
 
 it('项目经理在需求写入期间被降级时业务修改一起回滚', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const manager = (await post('/api/people', { projectId, name: '并发降级项目经理' })).json();
   expect((await put(`/api/projects/${projectId}/members/${manager.id}`, { role: 'manager' })).statusCode).toBe(200);
   const requirement = (await post('/api/requirements', { projectId, title: '经理并发降级需求' })).json();
@@ -250,7 +250,7 @@ it('项目经理在需求写入期间被降级时业务修改一起回滚', asyn
 });
 
 it('平台管理员在领域写入期间失权时业务修改一起回滚', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const requirement = (await post('/api/requirements', { projectId, title: '管理员并发失权需求' })).json();
   const admin = sqlite.prepare("SELECT id FROM accounts WHERE normalized_username='admin'").get() as { id: string };
   sqlite.exec(`CREATE TEMP TRIGGER demote_admin_during_requirement_edit BEFORE UPDATE OF title ON requirements
@@ -284,7 +284,7 @@ it('平台管理员在领域写入期间失权时业务修改一起回滚', asyn
 });
 
 it('平台管理员在账号写入期间失权时账号与审计一起回滚', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const person = (await post('/api/people', { name: '账号并发失权目标' })).json();
   const target = (await app.inject({ url: '/api/accounts', headers: { cookie } })).json()
     .find((account: { personId: string }) => account.personId === person.id);
@@ -322,7 +322,7 @@ it('平台管理员在账号写入期间失权时账号与审计一起回滚', a
 });
 
 it('项目与人员平台写入会在同一事务内复核权限并记录审计', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const admin = sqlite.prepare("SELECT id FROM accounts WHERE normalized_username='admin'").get() as { id: string };
   sqlite.exec(`CREATE TEMP TRIGGER demote_admin_during_project_create BEFORE INSERT ON projects
     WHEN NEW.name='不应由失权管理员创建的项目' BEGIN
@@ -349,7 +349,7 @@ it('项目与人员平台写入会在同一事务内复核权限并记录审计'
 });
 
 it('流程与需求审计失败时业务数据整体回滚', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   sqlite.exec(`CREATE TEMP TRIGGER reject_template_create_audit BEFORE INSERT ON audit_logs
     WHEN NEW.entity_type='template' AND NEW.action='create' AND NEW.summary='创建流程：不应脱离审计创建的流程' BEGIN
       SELECT RAISE(ABORT, 'reject template create audit');
@@ -379,7 +379,7 @@ it('流程与需求审计失败时业务数据整体回滚', async () => {
 });
 
 it('工作项删除、排序和进展审计失败时业务数据整体回滚', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
 
   const deletedRequirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),
     projectId, title: '工作项删除审计回滚', plannedStart: '2020-06-01',
@@ -429,7 +429,7 @@ it('工作项删除、排序和进展审计失败时业务数据整体回滚', a
 });
 
 it('问题创建和进展审计失败时业务数据整体回滚', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   sqlite.exec(`CREATE TEMP TRIGGER reject_issue_create_audit BEFORE INSERT ON audit_logs
     WHEN NEW.entity_type='issue' AND NEW.action='create' AND NEW.summary='创建问题：不应脱离审计创建的问题' BEGIN
       SELECT RAISE(ABORT, 'reject issue create audit');
@@ -452,7 +452,7 @@ it('问题创建和进展审计失败时业务数据整体回滚', async () => {
 });
 
 it('品牌和Token写入会在同一事务内复核管理员并记录审计', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const admin = sqlite.prepare("SELECT id FROM accounts WHERE normalized_username='admin'").get() as { id: string };
   const initialBranding = await app.inject({ url: '/api/branding' });
   const established = await app.inject({ method: 'PUT', url: '/api/system/branding', headers: { cookie }, payload: {
@@ -501,7 +501,7 @@ it('品牌和Token写入会在同一事务内复核管理员并记录审计', as
 });
 
 it('个人分析布局写入期间账号失效时布局与审计一起回滚', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const admin = sqlite.prepare("SELECT id FROM accounts WHERE normalized_username='admin'").get() as { id: string };
   const initial = (await app.inject({ url: '/api/analytics/layout', headers: { cookie } })).json();
   const established = await app.inject({ method: 'PUT', url: '/api/analytics/layout', headers: { cookie }, payload: {
@@ -533,7 +533,7 @@ it('个人分析布局写入期间账号失效时布局与审计一起回滚', a
 });
 
 it('无版本说明在获得写锁后重查终态，晚到记录不会越过取消或解决', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const requirement = (await post('/api/requirements', { projectId, title: '并发取消说明测试' })).json();
   sqlite.exec(`CREATE TEMP TRIGGER cancel_before_note BEFORE INSERT ON progress_updates
     WHEN NEW.event_type='note' BEGIN
@@ -564,7 +564,7 @@ it('无版本说明在获得写锁后重查终态，晚到记录不会越过取�
 });
 
 it('归档与新建在同一写锁后复核父子状态，不会留下活跃孤儿', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const emptyProject = (await post('/api/projects', { name: '并发归档空项目' })).json();
   sqlite.exec(`CREATE TEMP TRIGGER add_requirement_during_project_archive BEFORE UPDATE OF deleted_at ON projects
     WHEN OLD.id='${emptyProject.id}' AND NEW.deleted_at IS NOT NULL BEGIN
@@ -622,7 +622,7 @@ it('归档与新建在同一写锁后复核父子状态，不会留下活跃孤�
 });
 
 it('流程恢复归档和成员移除不会越过并发项目归档', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const ownedProject = (await post('/api/projects', { name: '子资源归档竞争项目' })).json();
   const template = (await post('/api/templates', {
     projectId: ownedProject.id,
@@ -669,7 +669,7 @@ it('流程恢复归档和成员移除不会越过并发项目归档', async () =
 });
 
 it('需求、工作项和进展写入会在写锁后复核父项目', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const ownedProject = (await post('/api/projects', { name: '业务写入归档竞争项目' })).json();
   const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(ownedProject.id),
     projectId: ownedProject.id, title: '原需求标题', plannedStart: '2020-01-02',
@@ -721,7 +721,7 @@ it('需求、工作项和进展写入会在写锁后复核父项目', async () =
 });
 
 it('问题编辑、进展和状态命令会在写锁后复核项目与关联需求', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const ownedProject = (await post('/api/projects', { name: '问题写入归档竞争项目' })).json();
   const requirement = (await post('/api/requirements', { projectId: ownedProject.id, title: '问题关联需求' })).json();
   const issue = (await post('/api/issues', { projectId: ownedProject.id, requirementId: requirement.id, title: '原问题标题' })).json();
@@ -767,7 +767,7 @@ it('问题编辑、进展和状态命令会在写锁后复核项目与关联需�
 });
 
 it('人员停用与负责人分派双向复核，并阻止最后两名经理同时降级', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const ownedProject = (await post('/api/projects', { name: '人员并发约束项目' })).json();
   const person = (await post('/api/people', { projectId: ownedProject.id, name: '并发负责人' })).json();
   const requirement = (await post('/api/requirements', { projectId: ownedProject.id, title: '并发分派需求' })).json();
@@ -825,7 +825,7 @@ it('人员停用与负责人分派双向复核，并阻止最后两名经理同�
 });
 
 it('工作项负责人、协作者和问题负责人写入后复核人员有效性', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const ownedProject = (await post('/api/projects', { name: '多入口人员分派竞争项目' })).json();
   const person = (await post('/api/people', { projectId: ownedProject.id, name: '多入口并发人员' })).json();
   const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(ownedProject.id),
@@ -870,7 +870,7 @@ it('工作项负责人、协作者和问题负责人写入后复核人员有效�
 });
 
 it('设置默认流程与流程归档双向复核，并始终保留有效流程', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const ownedProject = (await post('/api/projects', { name: '默认流程并发约束项目' })).json();
   const template = (await post('/api/templates', {
     projectId: ownedProject.id,
@@ -921,7 +921,7 @@ it('设置默认流程与流程归档双向复核，并始终保留有效流程'
 });
 
 it('复制流程时来源被归档会整体回滚', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const targetProject = (await post('/api/projects', { name: '流程复制来源复核目标' })).json();
   const source = (await post('/api/templates', {
     projectId, name: '待复制来源流程', description: '复制期间必须保持有效',
@@ -943,7 +943,7 @@ it('复制流程时来源被归档会整体回滚', async () => {
 });
 
 it('账号激活和重新开通会在写锁后复核人员状态', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const person = (await post('/api/people', { name: '账号并发状态人员' })).json();
   const account = sqlite.prepare(`SELECT id, status, updated_at AS updatedAt, deleted_at AS deletedAt
     FROM accounts WHERE person_id=?`).get(person.id) as { id: string; status: string; updatedAt: string; deletedAt: string | null };
@@ -982,7 +982,7 @@ it('账号激活和重新开通会在写锁后复核人员状态', async () => {
 });
 
 it('Token创建和认证会在写锁后复核账号及撤销状态', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const admin = sqlite.prepare("SELECT id, status FROM accounts WHERE normalized_username='admin'").get() as { id: string; status: string };
   sqlite.exec(`CREATE TEMP TRIGGER disable_account_during_token_create BEFORE INSERT ON api_tokens
     WHEN NEW.account_id='${admin.id}' BEGIN
@@ -1009,7 +1009,7 @@ it('Token创建和认证会在写锁后复核账号及撤销状态', async () =>
 });
 
 it('登录落库前账号变化时返回冲突且不签发Cookie', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const person = (await post('/api/people', { name: '登录并发状态人员' })).json();
   const account = sqlite.prepare('SELECT id, username FROM accounts WHERE person_id=?').get(person.id) as { id: string; username: string };
   sqlite.exec(`CREATE TEMP TRIGGER disable_account_during_login BEFORE UPDATE OF last_login_at ON accounts

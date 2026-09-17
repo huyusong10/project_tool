@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 const preview = path.resolve('.preview'), settings = JSON.parse(fs.readFileSync(path.join(preview, 'preview-env.json'), 'utf8'));
 if (!path.resolve(settings.DB_PATH).startsWith(preview + path.sep) || settings.SESSION_COOKIE_NAME !== 'pm_phases_preview') throw new Error('示例仅写入隔离预览数据库');
 Object.assign(process.env, settings);
-const { buildApp } = await import('../src/server/app.ts'), { sqlite } = await import('../src/server/database.ts');
+const { buildApp } = await import('../src/server/app.ts'), { sqlite } = await (await import('../src/server/database.ts')).initializeDatabase();
 const app = await buildApp(); await app.ready();
 const login = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password: settings.ADMIN_PASSWORD } });
 const cookie = String(login.headers['set-cookie']).split(';')[0];

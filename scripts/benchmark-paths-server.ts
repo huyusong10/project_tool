@@ -4,7 +4,7 @@ import os from 'node:os';
 import {randomUUID} from 'node:crypto';
 const directory=path.resolve('.preview');if(path.basename(process.cwd())!=='project-manage-paths')throw new Error('只能在隔离工作区运行');fs.mkdirSync(directory,{recursive:true});
 const dbPath=path.join(directory,`benchmark-${randomUUID()}.db`);Object.assign(process.env,{DB_PATH:dbPath,BACKUP_DIR:path.join(directory,'benchmark-backups'),SEED_DEMO:'0'});
-const {sqlite}=await import('../src/server/database');const {getPathAnalysis}=await import('../src/server/services/paths');
+const {sqlite}=await (await import('../src/server/database')).initializeDatabase();const {getPathAnalysis}=await import('../src/server/services/paths');
 const now=new Date().toISOString(),day='2026-09-07';
 try{
  sqlite.transaction(()=>{

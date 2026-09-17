@@ -19,7 +19,7 @@ let sample: typeof import('../src/server/sample-project');
 const actor: Actor = { type: 'user', id: 'sample-test-admin', label: '测试管理员', globalRole: 'admin' };
 
 beforeAll(async () => {
-  ({ sqlite } = await import('../src/server/database'));
+  ({ sqlite } = await import('./support/database'));
   services = await import('../src/server/services');
   sample = await import('../src/server/sample-project');
 });

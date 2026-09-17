@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { config } from './config';
-import { sqlite } from './database';
+import { getDatabaseContext } from './database-context';
 import { canReadProject, projectIdForRequirement, projectIdForWorkItem, recordProjectAccessFailure, sessionActor, type SessionActor } from './authorization';
 import { forbidden, notFound } from './errors';
 import { recordLogIdentity, recordProjectContext, updateLogContext } from './log-context';
@@ -13,7 +13,7 @@ export const guestActor: SessionActor = {
 };
 
 export function isGuestProject(projectId: string) {
-  const project = sqlite.prepare('SELECT name FROM projects WHERE id=? AND guest_visible=1 AND deleted_at IS NULL').get(projectId) as { name: string } | undefined;
+  const project = getDatabaseContext().sqlite.prepare('SELECT name FROM projects WHERE id=? AND guest_visible=1 AND deleted_at IS NULL').get(projectId) as { name: string } | undefined;
   recordProjectContext(projectId, project?.name);
   return Boolean(project);
 }

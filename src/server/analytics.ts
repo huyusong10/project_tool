@@ -1,5 +1,5 @@
 import { moduleLogger } from '../../scripts/runtime-logger.mjs';
-import { sqlite } from './database';
+import { getDatabaseContext } from './database-context';
 const log = moduleLogger('analytics');
 import { getPeopleConcurrency } from './services/reporting';
 import { listRequirements, requirementCompletionDate } from './services/requirements';
@@ -63,7 +63,7 @@ function cloneDefaultLayout(): AnalyticsLayout {
 type AnalyticsLayoutRow = { configJson: string; updatedAt: string };
 
 function analyticsLayoutRow(accountId: string) {
-  return sqlite.prepare('SELECT config_json AS configJson, updated_at AS updatedAt FROM analytics_layouts WHERE account_id=?')
+  return getDatabaseContext().sqlite.prepare('SELECT config_json AS configJson, updated_at AS updatedAt FROM analytics_layouts WHERE account_id=?')
     .get(accountId) as AnalyticsLayoutRow | undefined;
 }
 
@@ -196,7 +196,7 @@ export function getAnalyticsLayout(accountId?: string | null, canCustomize = fal
 
 export function saveAnalyticsLayout(accountId: string, value: unknown, actor: Actor) {
   const layout = validateAnalyticsLayout(value);
-  return sqlite.transaction(() => saveAnalyticsLayoutInTransaction(accountId, value, actor, layout))();
+  return getDatabaseContext().sqlite.transaction(() => saveAnalyticsLayoutInTransaction(accountId, value, actor, layout))();
 }
 
 function assertCurrentLayoutAccount(accountId: string, actor: Actor) {
@@ -222,9 +222,9 @@ function saveAnalyticsLayoutInTransaction(accountId: string, value: unknown, act
   }
   const now = currentUpdatedAt ? nextUpdatedAt(currentUpdatedAt) : new Date().toISOString();
   const changed = existing
-    ? sqlite.prepare('UPDATE analytics_layouts SET config_json=?, updated_at=? WHERE account_id=? AND updated_at=?')
+    ? getDatabaseContext().sqlite.prepare('UPDATE analytics_layouts SET config_json=?, updated_at=? WHERE account_id=? AND updated_at=?')
       .run(serialized, now, accountId, existing.updatedAt)
-    : sqlite.prepare('INSERT OR IGNORE INTO analytics_layouts (account_id, config_json, created_at, updated_at) VALUES (?, ?, ?, ?)')
+    : getDatabaseContext().sqlite.prepare('INSERT OR IGNORE INTO analytics_layouts (account_id, config_json, created_at, updated_at) VALUES (?, ?, ?, ?)')
       .run(accountId, serialized, now, now);
   if (!changed.changes) {
     throw new AppError('个人分析布局已被其他会话修改，请重新读取后再保存', 409, 'STALE_WRITE', {
@@ -237,7 +237,7 @@ function saveAnalyticsLayoutInTransaction(accountId: string, value: unknown, act
 }
 
 export function resetAnalyticsLayout(accountId: string, value: unknown, actor: Actor) {
-  return sqlite.transaction(() => resetAnalyticsLayoutInTransaction(accountId, value, actor))();
+  return getDatabaseContext().sqlite.transaction(() => resetAnalyticsLayoutInTransaction(accountId, value, actor))();
 }
 
 function resetAnalyticsLayoutInTransaction(accountId: string, value: unknown, actor: Actor) {
@@ -250,7 +250,7 @@ function resetAnalyticsLayoutInTransaction(accountId: string, value: unknown, ac
     assertCurrentLayoutAccount(accountId, actor);
     return { layout: cloneDefaultLayout(), source: 'default' as const, canCustomize: true, updatedAt: null };
   }
-  const changed = sqlite.prepare('DELETE FROM analytics_layouts WHERE account_id=? AND updated_at=?').run(accountId, existing.updatedAt);
+  const changed = getDatabaseContext().sqlite.prepare('DELETE FROM analytics_layouts WHERE account_id=? AND updated_at=?').run(accountId, existing.updatedAt);
   if (!changed.changes) {
     throw new AppError('个人分析布局已被其他会话修改，请重新读取后再恢复默认', 409, 'STALE_WRITE', {
       currentUpdatedAt: analyticsLayoutRow(accountId)?.updatedAt || null,
@@ -297,7 +297,7 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
     }
   }
   if (datasets.has('issues')) try {
-    issues = sqlite.prepare(`SELECT i.id, i.title, i.status, i.priority,
+    issues = getDatabaseContext().sqlite.prepare(`SELECT i.id, i.title, i.status, i.priority,
       i.requirement_id AS requirementId, i.owner_id AS ownerId, COALESCE(p.name, '未分配') AS owner,
       i.discovered_at AS discoveredAt, i.due_date AS dueDate, i.resolved_at AS resolvedAt,
       i.created_at AS createdAt, i.updated_at AS updatedAt
@@ -306,7 +306,7 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
       WHERE i.project_id=? AND (i.requirement_id IS NULL OR r.deleted_at IS NULL)`).all(projectId) as GenericRecord[];
   } catch (error) { errors.issues = messageOf('issues', error); }
   if (datasets.has('progress')) try {
-    progress = sqlite.prepare(`SELECT u.id, u.requirement_id AS requirementId,
+    progress = getDatabaseContext().sqlite.prepare(`SELECT u.id, u.requirement_id AS requirementId,
       r.title AS requirement, COALESCE(a.username, '系统/未知') AS creator, u.created_at AS createdAt
       FROM progress_updates u JOIN requirements r ON r.id=u.requirement_id
       LEFT JOIN accounts a ON a.id=u.created_by_account_id
@@ -511,7 +511,7 @@ export function queryAnalytics(value: unknown): AnalyticsQueryResponse {
   const input = value as Record<string, unknown>;
   rejectUnknownKeys(input, ['projectId', 'range', 'panels'], '分析查询不能包含未声明字段');
   const projectId = String(input.projectId || '').trim();
-  if (!projectId || !sqlite.prepare('SELECT id FROM projects WHERE id=? AND deleted_at IS NULL').get(projectId)) validationError('请选择有效项目');
+  if (!projectId || !getDatabaseContext().sqlite.prepare('SELECT id FROM projects WHERE id=? AND deleted_at IS NULL').get(projectId)) validationError('请选择有效项目');
   const range = validateRange(input.range);
   const layout = validateAnalyticsLayout({ version: 1, panels: input.panels });
   const asOfDate = todayIso();

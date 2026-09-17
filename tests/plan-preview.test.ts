@@ -25,7 +25,7 @@ const post = (url: string, payload: Record<string, unknown>) => app.inject({ met
 const detail = async (id: string) => (await app.inject({ url: `/api/requirements/${id}`, headers: { cookie } })).json<Requirement>();
 
 async function businessState() {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   // MCP鉴权会更新Token最后使用时间；这里只比较计划、执行记录和业务审计。
   return ['requirements', 'work_items', 'progress_updates', 'audit_logs'].map((table) => sqlite.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
 }
@@ -65,7 +65,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });

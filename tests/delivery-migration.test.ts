@@ -18,7 +18,7 @@ it('交付升级保留旧事实，只有零工作项需求采用直接执行，�
   db.prepare("INSERT INTO work_items(id,requirement_id,title,status,progress,created_at,updated_at)VALUES('cancelled','cancelled-work','取消历史','cancelled',30,?,?)").run(now,now);
   const original=db.prepare('SELECT * FROM requirements ORDER BY id').all() as Record<string,unknown>[],works=db.prepare('SELECT * FROM work_items ORDER BY id').all() as Record<string,unknown>[];db.close();
   const env={...process.env,DB_PATH:dbPath,BACKUP_DIR:path.join(dir,'backups'),SEED_DEMO:'0',APP_PASSWORD_HASH:'scrypt$test$00',SESSION_SECRET:'delivery-migration-test-secret-more-than-32-chars'};
-  const start=()=>spawnSync(process.execPath,['--import','tsx','--eval',"const {sqlite}=await import('./src/server/database.ts'); sqlite.close();"],{cwd:process.cwd(),env,encoding:'utf8'});
+  const start=()=>spawnSync(process.execPath,['--import','tsx','--eval',"const {sqlite}=await (await import('./src/server/database.ts')).initializeDatabase(); sqlite.close();"],{cwd:process.cwd(),env,encoding:'utf8'});
   const first=start();expect(first.status,first.stderr).toBe(0);db=new Database(dbPath);
   const after=db.prepare('SELECT * FROM requirements ORDER BY id').all() as Record<string,unknown>[];
   for(let i=0;i<original.length;i++)for(const key of Object.keys(original[i]).filter(k=>k!=='updated_at'&&k!=='version'))expect(after[i][key],key).toEqual(original[i][key]);

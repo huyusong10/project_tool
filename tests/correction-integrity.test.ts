@@ -159,7 +159,7 @@ async function createCommand(protocol: 'REST' | 'MCP', source: 'requirement' | '
 }
 
 async function creationCounts() {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const count = (table: string) => (sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count;
   return { requirements: count('requirements'), workItems: count('work_items'), issues: count('issues'), auditLogs: count('audit_logs') };
 }
@@ -195,7 +195,7 @@ async function copyTemplateCommand(protocol: 'REST' | 'MCP', input: Record<strin
 }
 
 async function administrationCounts() {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const count = (table: string) => (sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count;
   return {
     projects: count('projects'), people: count('people'), accounts: count('accounts'), projectPeople: count('project_people'),
@@ -411,7 +411,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -429,7 +429,7 @@ it('旧取消工作项受控修正后保持原取消日期上限', async () => {
   });
   expect(cancelled.statusCode, JSON.stringify(cancelled.body)).toBe(200);
 
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   sqlite.prepare("DELETE FROM progress_updates WHERE work_item_id=? AND event_type='cancel'").run(item.id);
   sqlite.prepare("UPDATE audit_logs SET created_at=? WHERE entity_type='work_item' AND entity_id=? AND action='cancel'")
     .run('2020-01-05T08:00:00.000Z', item.id);
@@ -524,7 +524,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
 
   it.each(['complete', 'reopen'])(`${protocol}：%s拒绝历史未来实际开始，修正后可继续操作`, async (action) => {
     const item = await createWork();
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     if (action === 'complete') sqlite.prepare('UPDATE work_items SET actual_start=? WHERE id=?').run(tomorrow, item.id);
     else sqlite.prepare("UPDATE work_items SET status='completed', progress=100, actual_start=?, actual_end=? WHERE id=?").run(tomorrow, tomorrow, item.id);
     const before = await detail(item.requirementId);
@@ -1047,7 +1047,7 @@ for (const protocol of ['REST','MCP'] as const) {
   it(`${protocol} 管理员维护已完成需求和工作项，保留状态、实际日期和原始记录`,async()=>{
     const local=await createScope(),r=await createCompletedRequirement(local),w=r.workItems![0];
     const person=(await post('/api/people',{projectId:local.projectId,name:'历史归属'+(++sequence)})).json();
-    const {sqlite}=await import('../src/server/database');
+    const {sqlite}=await import('./support/database');
     sqlite.prepare('UPDATE people SET active=0 WHERE id=?').run(person.id);
     sqlite.prepare("UPDATE accounts SET status='disabled' WHERE person_id=?").run(person.id);
     const events=sqlite.prepare('SELECT * FROM progress_updates WHERE requirement_id=? ORDER BY rowid').all(r.id);
@@ -1069,7 +1069,7 @@ for (const protocol of ['REST','MCP'] as const) {
     const local=await createScope(),issue=await createIssue(local.projectId);
     const assigned=await updateIssueCommand(protocol,issue.id,{expectedVersion:issue.version,ownerId:local.personId});expect(assigned.statusCode).toBe(200);
     const resolved=await command(protocol,'issue',issue.id,'resolve',{expectedVersion:assigned.body.version,content:'原始解决说明'});expect(resolved.statusCode).toBe(200);
-    const before=await issueDetail(issue.id),{sqlite}=await import('../src/server/database');
+    const before=await issueDetail(issue.id),{sqlite}=await import('./support/database');
     sqlite.prepare('UPDATE people SET active=0 WHERE id=?').run(local.personId);
     const person=(await post('/api/people',{projectId:local.projectId,name:'更正归属'+(++sequence)})).json();
     sqlite.prepare('UPDATE people SET active=0 WHERE id=?').run(person.id);
@@ -1096,7 +1096,7 @@ it('管理员可重排已完成工作，普通需求负责人不可更正终态�
   const local=await createScope(),r=await createCompletedRequirement(local),w=r.workItems![0];
   const sorted=await reorderCommand('REST',r.id,{expectedVersion:r.version,ids:r.workItems!.map(w=>w.id).reverse()});expect(sorted.statusCode,JSON.stringify(sorted.body)).toBe(200);
   const latest=await detail(r.id);expect(latest.status).toBe('completed');expect(latest.workItems!.map(w=>w.id)).toEqual(r.workItems!.map(w=>w.id).reverse());
-  const {sqlite}=await import('../src/server/database');
+  const {sqlite}=await import('./support/database');
   const account=sqlite.prepare('SELECT username FROM accounts WHERE person_id=?').get(local.personId) as {username:string};
   const login=await app.inject({method:'POST',url:'/api/login',payload:{username:account.username,password:'888888'}});let memberCookie=String(login.headers['set-cookie']).split(';')[0];
   const passwordChange=await app.inject({method:'POST',url:'/api/account/change-password',headers:{cookie:memberCookie},payload:{currentPassword:'888888',newPassword:'maintenance-member-password'}});expect(passwordChange.statusCode).toBe(200);memberCookie=String(passwordChange.headers['set-cookie']).split(';')[0];

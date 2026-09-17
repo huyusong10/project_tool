@@ -43,7 +43,7 @@ describe('正式库增量迁移', () => {
       .run(createHash('sha256').update(legacySql).digest('hex'), 1788265084830);
     db.close();
 
-    const script = "const m=await import('./src/server/database.ts'); console.log(m.sqlite.prepare('SELECT COUNT(*) AS count FROM work_items').get().count); m.sqlite.close();";
+    const script = "const m=await (await import('./src/server/database.ts')).initializeDatabase(); console.log(m.sqlite.prepare('SELECT COUNT(*) AS count FROM work_items').get().count); m.sqlite.close();";
     const env = { ...process.env, DB_PATH: dbPath, BACKUP_DIR: backupDir, SEED_DEMO: '0' };
     const first = spawnSync(process.execPath, ['--import', 'tsx', '--eval', script], { cwd: process.cwd(), env, encoding: 'utf8' });
     const second = spawnSync(process.execPath, ['--import', 'tsx', '--eval', script], { cwd: process.cwd(), env, encoding: 'utf8' });
@@ -56,7 +56,7 @@ describe('正式库增量迁移', () => {
     expect((migrationBackup.pragma('integrity_check') as Array<{ integrity_check: string }>)[0].integrity_check).toBe('ok');
     migrationBackup.close();
 
-    const restoreScript = `const backups=await import('./src/server/backups.ts'); const database=await import('./src/server/database.ts'); const prepared=await backups.prepareRestore(${JSON.stringify(migrationBackups[0])}); console.log('prepared=' + prepared.source); database.sqlite.close();`;
+    const restoreScript = `const backups=await import('./src/server/backups.ts'); const database=await (await import('./src/server/database.ts')).initializeDatabase(); const prepared=await backups.prepareRestore(${JSON.stringify(migrationBackups[0])}); console.log('prepared=' + prepared.source); database.sqlite.close();`;
     const restored = spawnSync(process.execPath, ['--import', 'tsx', '--eval', restoreScript], { cwd: process.cwd(), env, encoding: 'utf8' });
     expect(restored.status, restored.stderr).toBe(0);
     expect(restored.stdout).toContain(`prepared=${dbPath}.restore`);

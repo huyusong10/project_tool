@@ -13,6 +13,7 @@ process.env.APP_PASSWORD_HASH = 'scrypt$test$00';
 process.env.SESSION_SECRET = 'login-rate-limit-temporary-test-secret-123456789';
 // 与生产使用同一个8次阈值，关闭生产请求日志；不能使用测试环境的100次阈值。
 process.env.NODE_ENV = 'development';
+process.env.LOG_LEVEL = 'silent';
 let app: FastifyInstance;
 
 beforeAll(async () => {
@@ -23,7 +24,7 @@ beforeAll(async () => {
 afterAll(async () => {
   vi.useRealTimers();
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });

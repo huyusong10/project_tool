@@ -13,7 +13,7 @@ Object.assign(process.env, { DB_PATH: path.join(directory, 'test.db'), BACKUP_DI
 let app: FastifyInstance, cookie = '', address = '';
 const req = (method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?: unknown, auth = cookie) => app.inject({ method, url, headers: { cookie: auth }, payload: payload as Record<string, unknown> });
 beforeAll(async () => { app = await (await import('../src/server/app')).buildApp(); await app.ready(); const login = await req('POST', '/api/login', { username: 'admin', password }, ''); cookie = String(login.headers['set-cookie']).split(';')[0]; address = await app.listen({ host: '127.0.0.1', port: 0 }); });
-afterAll(async () => { await app.close(); (await import('../src/server/database')).sqlite.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+afterAll(async () => { await app.close(); (await import('./support/database')).sqlite.close(); fs.rmSync(directory, { recursive: true, force: true }); });
 async function fixture() {
   const p = (await req('POST', '/api/projects', { name: 'Phase 验证 ' + randomUUID() })).json();
   const base = '/api/projects/' + p.id, f = (await req('POST', base + '/features', { name: '资产管理' })).json().features[0];
@@ -21,7 +21,7 @@ async function fixture() {
   const phase = async (id: string) => (await req('GET', base + '/feature-phases')).json<FeaturePhase[]>().find(p => p.id === id)!;
   const command = async (id: string, action: string, extra = {}) => req(action === 'delete' ? 'DELETE' : 'POST', base + '/feature-phases/' + id + (action === 'delete' ? '' : '/' + action), { expectedVersion: (await phase(id)).version, ...extra });
   const requirement = async (phaseId: string | null, status = 'not_started', archived = false) => {
-    const { sqlite } = await import('../src/server/database'), id = randomUUID(), now = new Date().toISOString();
+    const { sqlite } = await import('./support/database'), id = randomUUID(), now = new Date().toISOString();
     sqlite.prepare("INSERT INTO requirements(id,project_id,feature_id,phase_id,title,status,execution_mode,progress,actual_start,actual_end,deleted_at,created_at,updated_at) VALUES(?,?,?,?,?,?,'direct',?,?,?,?,?,?)").run(id, p.id, f.id, phaseId, 'DCIM-' + id, status, status === 'completed' ? 100 : status === 'in_progress' ? 30 : 0, ['in_progress', 'completed'].includes(status) ? '2026-09-10' : null, status === 'completed' ? '2026-09-11' : null, archived ? now : null, now, now);
     return archived ? {id} : (await req('GET', '/api/requirements/' + id)).json();
   };
@@ -53,7 +53,7 @@ it('推进后范围、日期和移入移出需要原因；批量版本冲突回�
 });
 it('历史交付记录不锁定 Phase，需求重开、完成及移入自动刷新状态', async () => {
   const f=await fixture(),a=await f.create('Phase 1'),r=await f.requirement(a.id,'completed');
-  const {sqlite}=await import('../src/server/database');
+  const {sqlite}=await import('./support/database');
   const snapshot={name:a.name,scope:'原始范围',targetDate:null,requirements:[{id:r.id,title:r.title}]};
   sqlite.prepare('INSERT INTO phase_deliveries(id,phase_id,delivered_at,snapshot,created_at) VALUES(?,?,?,?,?)').run(randomUUID(),a.id,'2026-09-12',JSON.stringify(snapshot),new Date().toISOString());
   sqlite.prepare('UPDATE feature_phases SET delivered_at=? WHERE id=?').run('2026-09-12',a.id);
@@ -157,7 +157,7 @@ it('dashboard 与特性总览共用统计日，归档完成需求仍保留在 Ph
 
 it('REST、MCP及特性总览复用加权完成度，工作项进度不是需求库中的旧值',async()=>{
   const f=await fixture(),p=await f.create('Phase 1'),later=await f.create('Phase 2');
-  const {sqlite}=await import('../src/server/database');
+  const {sqlite}=await import('./support/database');
   const r=await f.requirement(p.id,'in_progress');
   sqlite.prepare("UPDATE requirements SET execution_mode='work_items',progress=0 WHERE id=?").run(r.id);
   const now=new Date().toISOString();

@@ -48,7 +48,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -108,7 +108,7 @@ it('执行后修改协作者无需说明，REST与MCP保留记录并拒绝旧版
 });
 
 it('大批量协作者校验分块执行并完整保存', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),  projectId, title: '大批量协作者', plannedStart: '2020-01-02' })).json();
   const item = requirement.workItems[0];
   const now = new Date().toISOString();

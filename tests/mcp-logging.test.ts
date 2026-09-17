@@ -30,7 +30,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await app?.close(); await log.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -109,7 +109,7 @@ it('失效会话和伪造会话分别说明原因，不把未验证的账号当�
 });
 
 it('Token 撤销与过期有明确原因，错误密钥不会被归属到 Token 所有人', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   for (const [column, reasonCode] of [['revoked_at', 'TOKEN_REVOKED'], ['expires_at', 'TOKEN_EXPIRED']] as const) {
     const before = sqlite.prepare(`SELECT ${column} AS value FROM api_tokens WHERE id=?`).get(tokenId) as { value: string | null };
     sqlite.prepare(`UPDATE api_tokens SET ${column}=? WHERE id=?`).run('2020-01-01T00:00:00.000Z', tokenId);
@@ -218,7 +218,7 @@ it('慢 MCP 查询提升为 WARN，内部异常保留 HTTP 200 但记录 ERROR',
   expect(log.records()).toHaveLength(1);
   expect(log.records()[0]).toMatchObject({ level: 'warn', slow: true, outcome: 'succeeded' });
   log.clear();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const original = sqlite.prepare.bind(sqlite);
   const prepare = vi.spyOn(sqlite, 'prepare').mockImplementation((sql: string) => {
     if (sql.includes('FROM projects')) throw new Error('simulated query failure');

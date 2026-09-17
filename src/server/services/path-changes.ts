@@ -1,23 +1,23 @@
-import {recordForecastReviews,persistForecastReviews} from './forecast-reviews';
-import {loadBlockerCoordination} from './blocker-coordination';
-import {decorateForecastBasis} from '../../shared/forecast-basis';
-import {prepareCommitment,persistCommitment} from './commitments';
-import {persistDirectEstimates} from './direct-estimates';
-import {deliveryImpact,deliveryTargetChange} from '../../shared/delivery-impact';
-import {analyseChecked as analyse,normalizePathEstimates,persistPathEstimates} from './path-estimates';
 import { createHash, randomUUID } from 'node:crypto';
-import { sqlite } from '../database';
+import { deliveryImpact, deliveryTargetChange } from '../../shared/delivery-impact';
+import { decorateForecastBasis } from '../../shared/forecast-basis';
+import { applyDependencyChangesInput, dependencyChangesInput, type DependencyChangeReceipt, type DependencyChangesInput } from '../../shared/path-contracts';
+import { dependencySource, dependencyTarget, remapPathNodeId } from '../../shared/paths';
 import type { Actor } from '../auth';
-import { assertProjectReadable,assertProjectManager, requireAuthorizationActor } from '../authorization';
+import { assertProjectManager, assertProjectReadable, requireAuthorizationActor } from '../authorization';
+import { getDatabaseContext } from '../database-context';
 import { fail, notFound } from '../errors';
-import { applyDependencyChangesInput, dependencyChangesInput, type DependencyChangesInput, type DependencyChangeReceipt } from '../../shared/path-contracts';
-import { assertRelationAccess, checkedRevision, insertDependency, loadPathInput } from './paths';
 import { recordAudit } from './audit';
-import {prepareEditorEntities,prepareEditorLayouts,persistEditorEntities} from './editor-entities';
-import {dependencySource,dependencyTarget,remapPathNodeId} from '../../shared/paths';
-import {settleMilestones} from './milestones';
-import {prepareFeatureRelationChanges,persistFeatureRelationChanges,readFeatures} from './features';
-import {withFeatureContext} from './feature-context';
+import { loadBlockerCoordination } from './blocker-coordination';
+import { persistCommitment, prepareCommitment } from './commitments';
+import { persistDirectEstimates } from './direct-estimates';
+import { persistEditorEntities, prepareEditorEntities, prepareEditorLayouts } from './editor-entities';
+import { withFeatureContext } from './feature-context';
+import { persistFeatureRelationChanges, prepareFeatureRelationChanges, readFeatures } from './features';
+import { persistForecastReviews, recordForecastReviews } from './forecast-reviews';
+import { settleMilestones } from './milestones';
+import { analyseChecked as analyse, normalizePathEstimates, persistPathEstimates } from './path-estimates';
+import { assertRelationAccess, checkedRevision, insertDependency, loadPathInput } from './paths';
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 /** Preview and commit use the same final network, never a sequence of public single-item writes. */
@@ -72,7 +72,7 @@ function prepare(projectId: string, input: DependencyChangesInput, actor: Actor)
   const validIds=new Set([...analysis.nodes.map(n=>n.id),...snapshot.requirements.map(r=>r.id)]);
   const featureIds=layouts.some(l=>l.scope==='features')?new Set([
     'feature:unassigned',
-    ...(sqlite.prepare('SELECT id FROM features WHERE project_id=?').all(projectId) as {id:string}[]).map(g=>'feature:'+g.id),
+    ...(getDatabaseContext().sqlite.prepare('SELECT id FROM features WHERE project_id=?').all(projectId) as {id:string}[]).map(g=>'feature:'+g.id),
     ...(snapshot.milestones||[]).filter(m=>!m.requirementId).map(m=>m.id),
   ]):new Set<string>();
   for(const layout of layouts)for(const id of Object.keys(layout.positions))if(!(layout.scope==='features'?featureIds:validIds).has(id))fail('布局包含失效节点');
@@ -85,7 +85,7 @@ function prepare(projectId: string, input: DependencyChangesInput, actor: Actor)
 }
 
 export function previewDependencyChanges(projectId: string, raw: unknown, actor: Actor) {
-  return sqlite.transaction(() => {
+  return getDatabaseContext().sqlite.transaction(() => {
     const result = prepare(projectId, dependencyChangesInput.parse(raw), actor);
     return { analysis: result.analysis, expectedRevision: result.expectedRevision, asOfDate: result.asOfDate,
       previewToken: result.previewToken, count: result.count, differences:result.differences,templateInstances:[...result.expanded.values()].map(({requirementId,key,entities,dependencies})=>({requirementId,key,entities,dependencies})) };
@@ -94,7 +94,7 @@ export function previewDependencyChanges(projectId: string, raw: unknown, actor:
 
 type ReceiptRow = { batch_id: string; project_id: string; actor_type: string; actor_id: string; content_hash: string;
   committed_revision: number; added_ids: string; created_at: string };
-const readReceipt = (batchId: string) => sqlite.prepare('SELECT * FROM dependency_change_receipts WHERE batch_id=?').get(batchId) as ReceiptRow | undefined;
+const readReceipt = (batchId: string) => getDatabaseContext().sqlite.prepare('SELECT * FROM dependency_change_receipts WHERE batch_id=?').get(batchId) as ReceiptRow | undefined;
 function receiptValue(row: ReceiptRow): DependencyChangeReceipt {
   return { batchId: row.batch_id, committedRevision: row.committed_revision, addedIds: JSON.parse(row.added_ids), createdAt: row.created_at };
 }
@@ -113,7 +113,7 @@ export function applyDependencyChanges(projectId: string, raw: unknown, actor: A
   const parsed = applyDependencyChangesInput.parse(raw);
   const { batchId, previewToken, ...input } = parsed;
   const contentHash = hash(input);
-  return sqlite.transaction(() => {
+  return getDatabaseContext().sqlite.transaction(() => {
     assertProjectReadable(requireAuthorizationActor(actor), projectId);
     const receipt = readReceipt(batchId);
     if (receipt) {
@@ -127,7 +127,7 @@ export function applyDependencyChanges(projectId: string, raw: unknown, actor: A
     const temporaryIds=[...input.changes.add.map(c=>c.clientId),...(input.changes.entities||[]).filter(c=>c.op==='create').map(c=>c.id),...(input.changes.featureRelations||[]).filter(c=>c.op==='create').map(c=>c.id)];
     if(new Set(temporaryIds).size!==temporaryIds.length)fail('不同对象不能共用临时标识');
     Object.assign(addedIds,persistFeatureRelationChanges(projectId,input.changes.featureRelations||[],prepared.features.before,actor));
-    for (const id of input.changes.remove) sqlite.prepare('DELETE FROM dependency_edges WHERE id=?').run(id);
+    for (const id of input.changes.remove) getDatabaseContext().sqlite.prepare('DELETE FROM dependency_edges WHERE id=?').run(id);
     Object.assign(addedIds,persistEditorEntities(prepared.snapshot,input.changes.entities||[],prepared.expanded,actor,input.changes.remove));
     const mapId=(id:string|null|undefined)=>id?addedIds[id]||id:null;
     for (const edge of input.changes.add) {
@@ -150,12 +150,12 @@ export function applyDependencyChanges(projectId: string, raw: unknown, actor: A
     for(const layout of input.changes.layouts||[]){
       const mapped=(id:string)=>remapPathNodeId(id,addedIds);
       const scope=layout.scope.startsWith('requirement:')?'requirement:'+mapId(layout.scope.slice(12)):layout.scope;
-      sqlite.prepare('INSERT INTO diagram_layouts(project_id,scope,direction,positions,version,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(project_id,scope,direction) DO UPDATE SET positions=excluded.positions,version=excluded.version,updated_at=excluded.updated_at').run(projectId,scope,layout.direction,JSON.stringify(Object.fromEntries(Object.entries(layout.positions).map(([id,p])=>[mapped(id),p]))),layout.expectedVersion+1,now);
+      getDatabaseContext().sqlite.prepare('INSERT INTO diagram_layouts(project_id,scope,direction,positions,version,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(project_id,scope,direction) DO UPDATE SET positions=excluded.positions,version=excluded.version,updated_at=excluded.updated_at').run(projectId,scope,layout.direction,JSON.stringify(Object.fromEntries(Object.entries(layout.positions).map(([id,p])=>[mapped(id),p]))),layout.expectedVersion+1,now);
     }
     if(prepared.commitment){const commitment=persistCommitment(prepared.commitment.value,batchId,addedIds,now);recordAudit(actor,'confirm_delivery_commitment','project',projectId,'确认项目交付承诺：'+commitment.reason);}
     recordAudit(actor, 'apply_dependency_changes', 'project', projectId, '保存 ' + prepared.count + ' 项画布修改');
-    const revision = (sqlite.prepare('SELECT analysis_revision AS revision FROM projects WHERE id=?').get(projectId) as { revision: number }).revision;
-    sqlite.prepare('INSERT INTO dependency_change_receipts (batch_id,project_id,actor_type,actor_id,content_hash,committed_revision,added_ids,created_at) VALUES (?,?,?,?,?,?,?,?)')
+    const revision = (getDatabaseContext().sqlite.prepare('SELECT analysis_revision AS revision FROM projects WHERE id=?').get(projectId) as { revision: number }).revision;
+    getDatabaseContext().sqlite.prepare('INSERT INTO dependency_change_receipts (batch_id,project_id,actor_type,actor_id,content_hash,committed_revision,added_ids,created_at) VALUES (?,?,?,?,?,?,?,?)')
       .run(batchId, projectId, actor.type, actor.id, contentHash, revision, JSON.stringify(addedIds), now);
     return { batchId, committedRevision: revision, addedIds, createdAt: now };
   }).immediate();

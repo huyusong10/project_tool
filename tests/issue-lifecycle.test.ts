@@ -59,7 +59,7 @@ it.each(['REST','MCP'] as const)('%s 问题状态切换无需说明，仍记录�
 
 it('同毫秒的问题进展按写入顺序展示，列表最近进展与详情一致', async () => {
   const issue = await createIssue('同毫秒历史顺序');
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const insert = sqlite.prepare(`INSERT INTO issue_updates
     (id, issue_id, progress, content, event_type, created_at, updated_at) VALUES (?, ?, NULL, ?, 'note', ?, ?)`);
   const instant = `${today}T04:00:00.000Z`;
@@ -129,7 +129,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -204,7 +204,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
 it('可以修复过去已写入的错误解决日期，原始历史保持不变', async () => {
   const issue = await createIssue('历史解决日期不一致');
   expect((await command('REST', issue.id, 'resolve', { expectedVersion: issue.version, content: '原始解决说明' })).statusCode).toBe(200);
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   sqlite.prepare('UPDATE issues SET resolved_at=? WHERE id=?').run(addCalendarDays(discoveredAt, -1), issue.id);
   const before = await getIssue(issue.id);
   expect((await command('REST', issue.id, 'correct', { expectedVersion: before.version, reason: '修复历史日期', resolvedAt: today })).statusCode).toBe(200);

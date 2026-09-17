@@ -1,4 +1,4 @@
-import { sqlite } from '../database';
+import { getDatabaseContext } from '../database-context';
 import type { AuthorizationActor } from '../authorization';
 import { assertProjectManager, assertProjectReadable, assertProjectResourceReadable, projectIdForWorkItem } from '../authorization';
 import { notFound } from '../errors';
@@ -7,8 +7,8 @@ import { isOverdueByWorkday, todayIso } from '../../shared/domain';
 import { listRequirements, loadWorkItemsByRequirementIds } from './requirements';
 import { getPathAnalysis } from './paths';
 import { deliveryForecast } from '../../shared/forecast-basis';
-import {compareProgressNames,compareProgressTitles,matchesProgressStatus,matchesProgressStage} from '../../shared/progress-query';
-import type {WorkStage} from '../../shared/execution-stage';
+import { compareProgressNames, compareProgressTitles, matchesProgressStatus, matchesProgressStage } from '../../shared/progress-query';
+import type { WorkStage } from '../../shared/execution-stage';
 
 function pageInfo(total: number, page: number, pageSize: number) {
   return { total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) };
@@ -19,7 +19,7 @@ export function queryRequirements(raw: unknown, actor: AuthorizationActor) {
   const input = requirementQuerySchema.parse(raw);
   if (input.includeDeleted) assertProjectManager(actor, input.projectId);
   else assertProjectReadable(actor, input.projectId);
-  return sqlite.transaction(() => {
+  return getDatabaseContext().sqlite.transaction(() => {
     const q = input.q?.toLocaleLowerCase();
     const values = listRequirements(input).filter(r => {
       if(!matchesProgressStatus(r.status,input.statuses,input.excludeStatuses)||!matchesProgressStage(r.status,r.executionStage,input.stage||''))return false;
@@ -58,8 +58,8 @@ function workDetails(references: WorkReference[]) {
 
 export function readWorkItem(id: string, actor: AuthorizationActor) {
   assertProjectResourceReadable(actor, projectIdForWorkItem(id), '工作项不存在');
-  return sqlite.transaction(() => {
-    const reference = sqlite.prepare(`${workReference} ${workFrom} WHERE w.id=? AND r.deleted_at IS NULL AND p.deleted_at IS NULL`).get(id) as WorkReference | undefined;
+  return getDatabaseContext().sqlite.transaction(() => {
+    const reference = getDatabaseContext().sqlite.prepare(`${workReference} ${workFrom} WHERE w.id=? AND r.deleted_at IS NULL AND p.deleted_at IS NULL`).get(id) as WorkReference | undefined;
     if (!reference) notFound('工作项不存在');
     return workDetails([reference])[0];
   })();
@@ -68,7 +68,7 @@ export function readWorkItem(id: string, actor: AuthorizationActor) {
 export function queryWorkItems(raw: unknown, actor: AuthorizationActor) {
   const input = workItemQuerySchema.parse(raw);
   assertProjectReadable(actor, input.projectId);
-  return sqlite.transaction(() => {
+  return getDatabaseContext().sqlite.transaction(() => {
     const where = ['r.project_id=?', 'r.deleted_at IS NULL', 'p.deleted_at IS NULL'];
     const params: unknown[] = [input.projectId];
     const add = (clause: string, ...values: unknown[]) => { where.push(clause); params.push(...values); };
@@ -87,7 +87,7 @@ export function queryWorkItems(raw: unknown, actor: AuthorizationActor) {
     if (input.to) add('COALESCE(w.planned_start,w.planned_end)<=?', input.to);
     const clause = `${workFrom} WHERE ${where.join(' AND ')}`;
     // Sort lightweight references before pagination; only load full details for the requested page.
-    const references = (sqlite.prepare(`${workReference} ${clause}`).all(...params) as WorkReference[])
+    const references = (getDatabaseContext().sqlite.prepare(`${workReference} ${clause}`).all(...params) as WorkReference[])
       .filter(w=>matchesProgressStatus(w.status,input.statuses,input.excludeStatuses));
     references.sort((a,b)=>{
       if(input.sort==='updated')return b.updatedAt.localeCompare(a.updatedAt)||a.id.localeCompare(b.id);
@@ -104,8 +104,8 @@ export function queryWorkItems(raw: unknown, actor: AuthorizationActor) {
 export function queryProgressUpdates(raw: unknown, actor: AuthorizationActor) {
   const input = progressQuerySchema.parse(raw);
   assertProjectReadable(actor, input.projectId);
-  return sqlite.transaction(() => {
-    const { latest } = sqlite.prepare('SELECT COALESCE(MAX(u.rowid),0) AS latest FROM progress_updates u JOIN requirements r ON r.id=u.requirement_id WHERE r.project_id=? AND r.deleted_at IS NULL').get(input.projectId) as { latest: number };
+  return getDatabaseContext().sqlite.transaction(() => {
+    const { latest } = getDatabaseContext().sqlite.prepare('SELECT COALESCE(MAX(u.rowid),0) AS latest FROM progress_updates u JOIN requirements r ON r.id=u.requirement_id WHERE r.project_id=? AND r.deleted_at IS NULL').get(input.projectId) as { latest: number };
     const snapshot = Math.min(input.snapshot ?? latest, latest);
     const where = ['r.project_id=?', 'r.deleted_at IS NULL', 'u.rowid<=?'];
     const params: unknown[] = [input.projectId, snapshot];
@@ -118,8 +118,8 @@ export function queryProgressUpdates(raw: unknown, actor: AuthorizationActor) {
     if (input.from) add('u.created_at>=?', new Date(input.from + 'T00:00:00.000+08:00').toISOString());
     if (input.to) add('u.created_at<=?', new Date(input.to + 'T23:59:59.999+08:00').toISOString());
     const from = `FROM progress_updates u JOIN requirements r ON r.id=u.requirement_id LEFT JOIN work_items w ON w.id=u.work_item_id LEFT JOIN accounts a ON a.id=u.created_by_account_id WHERE ${where.join(' AND ')}`;
-    const { total } = sqlite.prepare(`SELECT COUNT(*) AS total ${from}`).get(...params) as { total: number };
-    const items = sqlite.prepare(`SELECT u.id,r.project_id AS projectId,u.requirement_id AS requirementId,r.title AS requirementTitle,
+    const { total } = getDatabaseContext().sqlite.prepare(`SELECT COUNT(*) AS total ${from}`).get(...params) as { total: number };
+    const items = getDatabaseContext().sqlite.prepare(`SELECT u.id,r.project_id AS projectId,u.requirement_id AS requirementId,r.title AS requirementTitle,
       u.work_item_id AS workItemId,w.title AS workItemTitle,u.percent,u.work_item_percent AS workItemPercent,
       u.content,u.event_type AS eventType,u.supersedes_id AS supersedesId,u.created_by_account_id AS createdByAccountId,
       a.username AS createdByName,u.created_at AS createdAt,u.updated_at AS updatedAt ${from}

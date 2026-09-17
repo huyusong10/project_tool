@@ -58,7 +58,7 @@ beforeAll(async () => {
 afterAll(async () => {
   vi.useRealTimers();
   await app.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${dbPath}${suffix}`, { force: true });
   fs.rmSync(backupDir, { recursive: true, force: true });
@@ -101,7 +101,7 @@ describe('第二轮深度回归', () => {
   });
 
   it('审计日志使用稳定快照翻页，并按服务本地日期筛选', async () => {
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const createdAt = '2026-09-03T16:30:00.000Z';
     const insert = sqlite.prepare(`INSERT INTO audit_logs
       (id, actor_type, actor_id, action, entity_type, entity_id, project_id, summary, created_at)
@@ -131,7 +131,7 @@ describe('第二轮深度回归', () => {
       projectId: analyticsProjectId, title: '凌晨创建需求',
     } });
     const requirementId = requirement.json().id;
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const utcPreviousDay = '2026-09-03T16:30:00.000Z';
     sqlite.prepare('UPDATE requirements SET created_at=? WHERE id=?').run(utcPreviousDay, requirementId);
     sqlite.prepare(`INSERT INTO progress_updates
@@ -256,7 +256,7 @@ describe('第二轮深度回归', () => {
     expect((await app.inject({ method: 'POST', url: `/api/issues/${archivedIssue.json().id}/reopen`, headers: { cookie: adminCookie }, payload: {
       reason: '归档后重开', expectedVersion: resolved.json().version,
     } })).statusCode).toBe(409);
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     expect(sqlite.prepare('SELECT status FROM work_items WHERE id=?').get(cancelledItem.id)).toMatchObject({ status: 'cancelled' });
     expect(sqlite.prepare('SELECT status FROM issues WHERE id=?').get(archivedIssue.json().id)).toMatchObject({ status: 'resolved' });
   });
@@ -276,7 +276,7 @@ describe('第二轮深度回归', () => {
     expect((await app.inject({ method: 'POST', url: `/api/accounts/${accountId}/reset-password`, headers: { cookie: adminCookie } })).statusCode).toBe(200);
     expect(await mcpStatus(2)).toBe(401);
 
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const before = (sqlite.prepare('SELECT COUNT(*) AS count FROM progress_updates WHERE requirement_id=?').get(requirementId) as { count: number }).count;
     expect((await app.inject({ method: 'DELETE', url: `/api/projects/${projectId}`, headers: { cookie: adminCookie }, payload: { force: true } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: `/api/requirements/${requirementId}/progress`, headers: { cookie: adminCookie }, payload: { content: '不应写入' } })).statusCode).toBe(403);

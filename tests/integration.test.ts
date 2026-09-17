@@ -46,7 +46,7 @@ beforeAll(async () => {
 afterAll(async () => {
   vi.useRealTimers();
   await app.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${dbPath}${suffix}`, { force: true });
   fs.rmSync(process.env.BACKUP_DIR!, { recursive: true, force: true });
@@ -299,7 +299,7 @@ describe('自动化项目管理API', () => {
     expect(crowdedDashboard.json().issues.attention).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: attentionTarget.json().id, status: 'in_progress' }),
     ]));
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const placeholders = temporaryIssueIds.map(() => '?').join(',');
     sqlite.transaction(() => {
       sqlite.prepare(`DELETE FROM issue_updates WHERE issue_id IN (${placeholders})`).run(...temporaryIssueIds);
@@ -330,7 +330,7 @@ describe('自动化项目管理API', () => {
       projectId, range: { from: '2026-10-01', to: '2026-09-01' }, panels: [panels[0]],
     } })).statusCode).toBe(400);
 
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     const now = new Date().toISOString();
     const archivedRequirementId = randomUUID();
     const archivedIssueId = randomUUID();
@@ -799,7 +799,7 @@ describe('自动化项目管理API', () => {
     expect((await app.inject({ method: 'DELETE', url: `/api/archives/templates/${disposableTemplateId}`, headers: { cookie }, payload: {
       expectedDeletedAt: templateArchive.deletedAt,
     } })).statusCode).toBe(200);
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     expect(sqlite.prepare("SELECT project_id AS projectId FROM audit_logs WHERE action='permanent_delete' AND entity_type='requirement' AND entity_id=?").get(disposableRequirementId)).toEqual({ projectId: disposableProjectId });
     expect(sqlite.prepare("SELECT project_id AS projectId FROM audit_logs WHERE action='permanent_delete' AND entity_type='template' AND entity_id=?").get(disposableTemplateId)).toEqual({ projectId: disposableProjectId });
 
@@ -1051,7 +1051,7 @@ describe('自动化项目管理API', () => {
     expect((await app.inject({ method: 'GET', url: `/api/people?projectId=${projectId}`, headers: { cookie } })).json()
       .some((person: { id: string }) => person.id === createdPerson.json().id)).toBe(true);
 
-    const { sqlite } = await import('../src/server/database');
+    const { sqlite } = await import('./support/database');
     expect(sqlite.prepare('SELECT status,deleted_at AS deletedAt FROM accounts WHERE id=?').get(disposable.id))
       .toMatchObject({ status: 'disabled', deletedAt: expect.any(String) });
     expect(sqlite.prepare('SELECT project_role AS projectRole FROM project_people WHERE project_id=? AND person_id=?')

@@ -13,10 +13,10 @@ Object.assign(process.env,{DB_PATH:path.join(directory,'test.db'),BACKUP_DIR:pat
 let app:FastifyInstance,cookie='',address='';
 const request=(method:'GET'|'POST'|'DELETE'|'PUT',url:string,payload?:unknown,auth=cookie)=>app.inject({method,url,headers:{cookie:auth},payload:payload as Record<string,unknown>});
 beforeAll(async()=>{app=await(await import('../src/server/app')).buildApp();await app.ready();const login=await request('POST','/api/login',{username:'admin',password},'');cookie=String(login.headers['set-cookie']).split(';')[0];address=await app.listen({host:'127.0.0.1',port:0});});
-afterAll(async()=>{await app.close();(await import('../src/server/database')).sqlite.close();expect(path.resolve(directory).startsWith(path.resolve(os.tmpdir())+path.sep)).toBe(true);fs.rmSync(directory,{recursive:true,force:true});});
+afterAll(async()=>{await app.close();(await import('./support/database')).sqlite.close();expect(path.resolve(directory).startsWith(path.resolve(os.tmpdir())+path.sep)).toBe(true);fs.rmSync(directory,{recursive:true,force:true});});
 async function fixture(){const p=(await request('POST','/api/projects',{name:'特性规划 '+randomUUID()})).json<{id:string}>();const base='/api/projects/'+p.id;const create=async(name:string)=>(await request('POST',base+'/features',{name,sortOrder:999})).json<IntakeCatalog>().features.find(g=>g.name===name)!;return {id:p.id,base,a:await create('基础授权'),b:await create('协作权限'),create};}
 async function features(base:string){return (await request('GET',base+'/features?state=all')).json<Feature[]>();}
-async function addRequirement(projectId:string,featureId:string|null,status='not_started',archived=false){const {sqlite}=await import('../src/server/database');const id=randomUUID(),now=new Date().toISOString();sqlite.prepare("INSERT INTO requirements(id,project_id,feature_id,title,status,execution_mode,progress,actual_end,deleted_at,created_at,updated_at) VALUES(?,?,?,?,?,'direct',?,?,?,?,?)").run(id,projectId,featureId,'需求 '+id,status,status==='completed'?100:0,status==='completed'?'2026-09-10':null,archived?now:null,now,now);return id;}
+async function addRequirement(projectId:string,featureId:string|null,status='not_started',archived=false){const {sqlite}=await import('./support/database');const id=randomUUID(),now=new Date().toISOString();sqlite.prepare("INSERT INTO requirements(id,project_id,feature_id,title,status,execution_mode,progress,actual_end,deleted_at,created_at,updated_at) VALUES(?,?,?,?,?,'direct',?,?,?,?,?)").run(id,projectId,featureId,'需求 '+id,status,status==='completed'?100:0,status==='completed'?'2026-09-10':null,archived?now:null,now,now);return id;}
 const versioned=(feature:Feature,extra:Record<string,unknown>)=>({id:feature.id,name:feature.name,sortOrder:feature.sortOrder,expectedVersion:feature.version,...extra});
 
 it('旧接口保留新资料和评估时间；改动日志使用稳定特性 ID',async()=>{
@@ -26,13 +26,13 @@ it('旧接口保留新资料和评估时间；改动日志使用稳定特性 ID'
   r=await request('POST',base+'/features',versioned(saved,{name:'授权平台'}));const after=r.json<IntakeCatalog>().features.find(g=>g.id===a.id)!;
   expect(after.description).toBe('长期覆盖协作中的授权与审计');expect(after.overview).toEqual(overview);expect(after.assessedAt).toBe(saved.assessedAt);
   expect((await request('POST',base+'/features',versioned(saved,{description:'覆盖别人'}))).statusCode).toBe(409);
-  const {sqlite}=await import('../src/server/database');const log=sqlite.prepare("SELECT summary FROM audit_logs WHERE entity_type='feature' AND entity_id=? ORDER BY rowid DESC LIMIT 1").get(a.id) as {summary:string};expect(log.summary).toContain('授权平台');expect(log.summary).toContain('长期覆盖');
+  const {sqlite}=await import('./support/database');const log=sqlite.prepare("SELECT summary FROM audit_logs WHERE entity_type='feature' AND entity_id=? ORDER BY rowid DESC LIMIT 1").get(a.id) as {summary:string};expect(log.summary).toContain('授权平台');expect(log.summary).toContain('长期覆盖');
 });
 it('归档前处理未完成需求，保留终态与历史归属，恢复不改变人工判断',async()=>{
   const {base,id,a,b}=await fixture(),r=await addRequirement(id,a.id);
   expect((await request('POST',base+'/features/'+a.id+'/archive',{expectedVersion:a.version})).statusCode).toBe(409);
   expect((await request('DELETE',base+'/features/'+a.id,{expectedVersion:a.version})).statusCode).toBe(409);
-  const {sqlite}=await import('../src/server/database');sqlite.prepare("UPDATE requirements SET status='completed',progress=100 WHERE id=?").run(r);
+  const {sqlite}=await import('./support/database');sqlite.prepare("UPDATE requirements SET status='completed',progress=100 WHERE id=?").run(r);
   const history=await addRequirement(id,a.id,'completed',true);
   let archived=await request('POST',base+'/features/'+a.id+'/archive',{expectedVersion:a.version});expect(archived.statusCode,archived.body).toBe(200);
   const archivedGroup=archived.json<Feature>();expect((await request('GET',base+'/features')).json<Feature[]>().some(g=>g.id===a.id)).toBe(false);
@@ -80,7 +80,7 @@ it('网页与 MCP 特性图一致；规划和资料修改不改变执行分析�
 });
 it('实际依赖双向聚合不误报循环，两类关系共存且按需求当前归属变化',async()=>{
   const {base,id,a,b}=await fixture(),a1=await addRequirement(id,a.id),a2=await addRequirement(id,a.id),b1=await addRequirement(id,b.id),b2=await addRequirement(id,b.id);
-  const {sqlite}=await import('../src/server/database');const add=(source:string,target:string)=>sqlite.prepare('INSERT INTO dependency_edges(id,project_id,source_requirement_id,target_requirement_id,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(randomUUID(),id,source,target,new Date().toISOString(),new Date().toISOString());add(a1,b1);add(b2,a2);
+  const {sqlite}=await import('./support/database');const add=(source:string,target:string)=>sqlite.prepare('INSERT INTO dependency_edges(id,project_id,source_requirement_id,target_requirement_id,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(randomUUID(),id,source,target,new Date().toISOString(),new Date().toISOString());add(a1,b1);add(b2,a2);
   await request('POST',base+'/feature-relations',{sourceFeatureId:a.id,targetFeatureId:b.id});
   const result=await request('GET',base+'/path-graph?view=features');expect(result.statusCode,result.body).toBe(200);expect(result.json().links).toHaveLength(2);expect(result.json().links.find((e:{source:string})=>e.source==='feature:'+a.id).label).toBe('规划 · 1 条实际依赖');
   expect((await request('GET',base+'/path-graph?view=features&planning=false')).json().links.every((e:{planningRelationIds:string[]})=>e.planningRelationIds.length===0)).toBe(true);
@@ -89,7 +89,7 @@ it('实际依赖双向聚合不误报循环，两类关系共存且按需求当�
 });
 it('历史交付保留归档特性节点，未关联特性与里程碑独立显示',async()=>{
   const {base,id,a,b}=await fixture(),old=await addRequirement(id,a.id,'completed',true),current=await addRequirement(id,b.id),unassigned=await addRequirement(id,null);
-  const {sqlite}=await import('../src/server/database');sqlite.prepare('INSERT INTO dependency_edges(id,project_id,source_requirement_id,target_requirement_id,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(randomUUID(),id,old,current,new Date().toISOString(),new Date().toISOString());
+  const {sqlite}=await import('./support/database');sqlite.prepare('INSERT INTO dependency_edges(id,project_id,source_requirement_id,target_requirement_id,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(randomUUID(),id,old,current,new Date().toISOString(),new Date().toISOString());
   expect((await request('POST',base+'/features/'+a.id+'/archive',{expectedVersion:a.version})).statusCode).toBe(200);
   const predecessor=(await request('POST',base+'/features',{name:'更早交付',sortOrder:999})).json<IntakeCatalog>().features.find(g=>g.name==='更早交付')!;
   const predecessorRequirement=await addRequirement(id,predecessor.id,'completed',true);

@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { sqlite } from '../database';
 import type { Actor } from '../auth';
+import { getDatabaseContext } from '../database-context';
 
 function row<T>(sql: string, ...params: unknown[]) {
-  return sqlite.prepare(sql).get(...params) as T | undefined;
+  return getDatabaseContext().sqlite.prepare(sql).get(...params) as T | undefined;
 }
 
 function rows<T = Record<string, unknown>>(sql: string, ...params: unknown[]) {
-  return sqlite.prepare(sql).all(...params) as T[];
+  return getDatabaseContext().sqlite.prepare(sql).all(...params) as T[];
 }
 
 function auditProjectId(entityType: string, entityId: string | null): string | null {
@@ -31,7 +31,7 @@ export type AuditEntry = {
 };
 
 export function recordAudits(actor: Actor, entries: AuditEntry[]) {
-  const insert = sqlite.prepare(`INSERT INTO audit_logs (id, actor_type, actor_id, action, entity_type, entity_id, project_id, summary, created_at)
+  const insert = getDatabaseContext().sqlite.prepare(`INSERT INTO audit_logs (id, actor_type, actor_id, action, entity_type, entity_id, project_id, summary, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   for (const entry of entries) {
     const scopeProjectId = entry.projectId === undefined ? auditProjectId(entry.entityType, entry.entityId) : entry.projectId;

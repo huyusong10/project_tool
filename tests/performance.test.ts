@@ -22,7 +22,7 @@ let listActionItems: typeof import('../src/server/services/actions').listActionI
 let projectId = '';
 
 beforeAll(async () => {
-  const database = await import('../src/server/database');
+  const database = await import('./support/database');
   sqlite = database.sqlite;
   ({ getDashboard, getPeopleConcurrency } = await import('../src/server/services'));
   ({ listRequirements } = await import('../src/server/services/requirements'));

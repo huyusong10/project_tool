@@ -1,24 +1,24 @@
-import {readReferenceLinks} from '../../shared/reference-links';
-import {loadBlockerCoordination} from './blocker-coordination';
-import {refreshPathAssignments} from './path-assignments';
-import {loadCommitments} from './commitments';
-import {requirementCommitments} from '../../shared/commitments';
-import {recordForecastReviews,persistForecastReviews} from './forecast-reviews';
-import {deliveryImpact} from '../../shared/delivery-impact';
-import {analyseChecked,normalizePathEstimates,persistPathEstimates} from './path-estimates';
-import { randomUUID, createHash } from 'node:crypto';
-import { sqlite } from '../database';
+import { createHash, randomUUID } from 'node:crypto';
+import { requirementCommitments } from '../../shared/commitments';
+import { deliveryImpact } from '../../shared/delivery-impact';
+import { businessDayDelta, businessDaysInclusive, initialWorkEstimates, todayIso } from '../../shared/domain';
+import { applyDependencyPlanInput, dependencyInput, dependencyPlanInput, pathEstimateInput, pathVersion, reviewDependenciesInput } from '../../shared/path-contracts';
+import { acceptanceId, analysePaths, dependencySource, dependencyTarget, type Dependency, type DiagramLayout, type PathAnalysis, type PathInput, type PathMilestone, type PathRequirement, type PathWork } from '../../shared/paths';
+import { readReferenceLinks } from '../../shared/reference-links';
 import type { Actor } from '../auth';
 import { assertProjectManager, assertProjectReadable, assertRequirementOwnerOrManager, assertWorkItemParticipantOrManager, requireAuthorizationActor } from '../authorization';
 import { config } from '../config';
+import { getDatabaseContext } from '../database-context';
 import { fail, notFound } from '../errors';
 import { recordAudit } from './audit';
-import { acceptanceId, analysePaths,dependencySource,dependencyTarget, type Dependency, type PathInput, type PathRequirement, type PathWork, type PathAnalysis,type PathMilestone,type DiagramLayout } from '../../shared/paths';
-import { businessDayDelta, businessDaysInclusive, initialWorkEstimates, todayIso } from '../../shared/domain';
-import { dependencyInput, pathVersion, pathEstimateInput, reviewDependenciesInput, dependencyPlanInput, applyDependencyPlanInput } from '../../shared/path-contracts';
+import { loadBlockerCoordination } from './blocker-coordination';
+import { loadCommitments } from './commitments';
+import { persistForecastReviews, recordForecastReviews } from './forecast-reviews';
+import { refreshPathAssignments } from './path-assignments';
+import { analyseChecked, normalizePathEstimates, persistPathEstimates } from './path-estimates';
 
-const all = <T>(sql: string, ...args: unknown[]) => sqlite.prepare(sql).all(...args) as T[];
-const one = <T>(sql: string, ...args: unknown[]) => sqlite.prepare(sql).get(...args) as T | undefined;
+const all = <T>(sql: string, ...args: unknown[]) => getDatabaseContext().sqlite.prepare(sql).all(...args) as T[];
+const one = <T>(sql: string, ...args: unknown[]) => getDatabaseContext().sqlite.prepare(sql).get(...args) as T | undefined;
 export const dependencySelect = `SELECT id, project_id AS projectId, coalesce(source_requirement_id,'') AS sourceRequirementId, source_work_item_id AS sourceWorkItemId,
  coalesce(target_requirement_id,'') AS targetRequirementId, target_work_item_id AS targetWorkItemId, source_milestone_id AS sourceMilestoneId,target_milestone_id AS targetMilestoneId, origin FROM dependency_edges`;
 
@@ -55,7 +55,7 @@ export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInp
     layouts:all<DiagramLayout>('SELECT scope,direction,version,positions FROM diagram_layouts WHERE project_id=?',projectId).map(l=>({...l,positions:JSON.parse(String(l.positions))})) };
 }
 export function getPathAnalysis(projectId: string, target = 'project', asOfDate = todayIso()): PathAnalysis {
-  return sqlite.transaction(()=>{try{return analysePaths(loadPathInput(projectId,asOfDate),target);}catch(error){fail((error as Error).message,'DEPENDENCY_CONFLICT');}})();
+  return getDatabaseContext().sqlite.transaction(()=>{try{return analysePaths(loadPathInput(projectId,asOfDate),target);}catch(error){fail((error as Error).message,'DEPENDENCY_CONFLICT');}})();
 }
 export function readPathAnalysis(projectId: string, target: string | undefined, actor: Actor) {
   assertProjectReadable(requireAuthorizationActor(actor), projectId);
@@ -92,7 +92,7 @@ export function assertEndpoints(d: Omit<Dependency, 'id' | 'origin'>) {
 }
 export function addDependency(projectId: string, raw: unknown, actor: Actor) {
   const { expectedRevision, ...value } = dependencyInput.parse(raw);
-  return sqlite.transaction(() => {
+  return getDatabaseContext().sqlite.transaction(() => {
     const d = { ...value, projectId }; assertRelationAccess(d, actor); checkedRevision(projectId, expectedRevision); assertEndpoints(d);
     const input = loadPathInput(projectId);
     if (input.dependencies.some(e => dependencySource(e)===dependencySource({...d,id:'',origin:''})&&dependencyTarget(e)===dependencyTarget({...d,id:'',origin:''}))) fail('这条依赖已存在', 'DEPENDENCY_CONFLICT');
@@ -105,29 +105,29 @@ export function addDependency(projectId: string, raw: unknown, actor: Actor) {
 }
 export function insertDependency(d: Dependency) {
   const now = new Date().toISOString();
-  sqlite.prepare(`INSERT INTO dependency_edges (id,project_id,source_requirement_id,source_work_item_id,target_requirement_id,target_work_item_id,source_milestone_id,target_milestone_id,origin,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+  getDatabaseContext().sqlite.prepare(`INSERT INTO dependency_edges (id,project_id,source_requirement_id,source_work_item_id,target_requirement_id,target_work_item_id,source_milestone_id,target_milestone_id,origin,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
     .run(d.id, d.projectId, d.sourceRequirementId||null, d.sourceWorkItemId, d.targetRequirementId||null, d.targetWorkItemId,d.sourceMilestoneId||null,d.targetMilestoneId||null, d.origin, now, now);
 }
 export function removeDependency(id: string, raw: unknown, actor: Actor) {
   const { expectedRevision } = pathVersion.parse(raw);
-  return sqlite.transaction(() => {
+  return getDatabaseContext().sqlite.transaction(() => {
     const d = one<Dependency>(`${dependencySelect} WHERE id=?`, id); if (!d) notFound('依赖不存在');
     assertRelationAccess(d, actor); checkedRevision(d.projectId, expectedRevision);
-    sqlite.prepare('DELETE FROM dependency_edges WHERE id=?').run(id);
+    getDatabaseContext().sqlite.prepare('DELETE FROM dependency_edges WHERE id=?').run(id);
     recordAudit(actor, 'remove_dependency', d.targetRequirementId?'requirement':'project', d.targetRequirementId||d.projectId, '移除交付前置关系');
     return getPathAnalysis(d.projectId);
   }).immediate();
 }
 export function reviewDependencies(id: string, raw: unknown, actor: Actor) {
   const input = reviewDependenciesInput.parse(raw);
-  return sqlite.transaction(() => {
+  return getDatabaseContext().sqlite.transaction(() => {
     const projectId = pathProjectForRequirement(id), current = requireAuthorizationActor(actor);
     if (input.forecastAcceptance !== undefined) assertProjectManager(current, projectId); else assertRequirementOwnerOrManager(current, id);
     checkedRevision(projectId, input.expectedRevision);
     if (input.forecastAcceptance && input.forecastAcceptance < todayIso()) fail('预计验收日期不能早于今天');
-    if (input.reviewed !== undefined) sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=?, version=version+1, updated_at=? WHERE id=?')
+    if (input.reviewed !== undefined) getDatabaseContext().sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=?, version=version+1, updated_at=? WHERE id=?')
       .run(input.reviewed ? new Date().toISOString() : null, new Date().toISOString(), id);
-    if (input.forecastAcceptance !== undefined) sqlite.prepare('UPDATE requirements SET forecast_acceptance=?,version=version+1,updated_at=? WHERE id=?')
+    if (input.forecastAcceptance !== undefined) getDatabaseContext().sqlite.prepare('UPDATE requirements SET forecast_acceptance=?,version=version+1,updated_at=? WHERE id=?')
       .run(input.forecastAcceptance, new Date().toISOString(), id);
     recordAudit(actor, 'review_dependencies', 'requirement', id, input.reviewed === false ? '标记依赖待核对' : input.reviewed ? '核对全部前置（无前置项按独立工作处理）' : '更新预计验收日期');
     return getPathAnalysis(projectId, acceptanceId(id));
@@ -135,7 +135,7 @@ export function reviewDependencies(id: string, raw: unknown, actor: Actor) {
 }
 export function updatePathEstimate(id: string, raw: unknown, actor: Actor) {
   const input = pathEstimateInput.parse(raw);
-  return sqlite.transaction(() => {
+  return getDatabaseContext().sqlite.transaction(() => {
     const w = one<{ requirementId: string; status: string }>('SELECT requirement_id AS requirementId,status FROM work_items WHERE id=?', id); if (!w) notFound('工作项不存在');
     const projectId = pathProjectForRequirement(w.requirementId), current = requireAuthorizationActor(actor);
     if (input.durationDays !== undefined || input.earliestStart !== undefined || input.arrangement !== undefined || input.arrangementAnchor !== undefined) assertRequirementOwnerOrManager(current, w.requirementId);
@@ -155,7 +155,7 @@ export function previewDependencyPlan(id: string, raw: unknown, actor: Actor) {
   const { baseStart, expectedRevision } = dependencyPlanInput.parse(raw), projectId = pathProjectForRequirement(id);
   assertProjectManager(requireAuthorizationActor(actor), projectId); checkedRevision(projectId, expectedRevision);
   if (baseStart < todayIso() || businessDaysInclusive(baseStart, baseStart) !== 1) fail('开始锚点必须为今天或之后的工作日');
-  return sqlite.transaction(() => {
+  return getDatabaseContext().sqlite.transaction(() => {
     const input = loadPathInput(projectId);
     const before=analysePaths(input);
     const current = input.requirements.find(r => r.id === id)!;
@@ -176,24 +176,24 @@ export function previewDependencyPlan(id: string, raw: unknown, actor: Actor) {
 }
 export function applyDependencyPlan(id: string, raw: unknown, actor: Actor) {
   const input = applyDependencyPlanInput.parse(raw);
-  return sqlite.transaction(() => {
+  return getDatabaseContext().sqlite.transaction(() => {
     const preview = previewDependencyPlan(id, { baseStart: input.baseStart, expectedRevision: input.expectedRevision }, actor);
     if (input.previewToken !== preview.previewToken) fail('预览已失效，请重新预览', 'STALE_WRITE');
     if (!preview.applicable) fail('存在待确认的交付条件，暂不能应用');
     const now = new Date().toISOString();
-    sqlite.prepare('UPDATE requirements SET schedule_anchor=?,version=version+1,updated_at=? WHERE id=?').run(input.baseStart, now, id);
+    getDatabaseContext().sqlite.prepare('UPDATE requirements SET schedule_anchor=?,version=version+1,updated_at=? WHERE id=?').run(input.baseStart, now, id);
     const affected = new Set<string>();
     for (const e of preview.entries) {
-      if(e.kind==='execution')sqlite.prepare("UPDATE requirements SET planned_start=?,planned_end=?,version=version+1,updated_at=? WHERE id=? AND status='not_started'").run(e.proposedStart,e.proposedEnd,now,e.requirementId);
+      if(e.kind==='execution')getDatabaseContext().sqlite.prepare("UPDATE requirements SET planned_start=?,planned_end=?,version=version+1,updated_at=? WHERE id=? AND status='not_started'").run(e.proposedStart,e.proposedEnd,now,e.requirementId);
       else {
         const work = one<PathWork>('SELECT status,planned_start AS plannedStart,planned_end AS plannedEnd,duration_days AS durationDays,progress_weight AS progressWeight FROM work_items WHERE id=?', e.workItemId)!;
         const estimate = initialWorkEstimates(work);
-        sqlite.prepare("UPDATE work_items SET duration_days=COALESCE(duration_days,?),progress_weight=COALESCE(progress_weight,?),planned_start=?,planned_end=?,version=version+1,updated_at=? WHERE id=? AND status='not_started'")
+        getDatabaseContext().sqlite.prepare("UPDATE work_items SET duration_days=COALESCE(duration_days,?),progress_weight=COALESCE(progress_weight,?),planned_start=?,planned_end=?,version=version+1,updated_at=? WHERE id=? AND status='not_started'")
           .run(estimate.durationDays || businessDaysInclusive(e.proposedStart,e.proposedEnd) || null, estimate.progressWeight, e.proposedStart, e.proposedEnd, now, e.workItemId);
       }
       affected.add(e.requirementId);
     }
-    for (const requirementId of affected) if(!preview.entries.some(e=>e.requirementId===requirementId&&e.kind==='execution'))sqlite.prepare(`UPDATE requirements SET planned_start=(SELECT MIN(planned_start) FROM work_items WHERE requirement_id=? AND status<>'cancelled'),
+    for (const requirementId of affected) if(!preview.entries.some(e=>e.requirementId===requirementId&&e.kind==='execution'))getDatabaseContext().sqlite.prepare(`UPDATE requirements SET planned_start=(SELECT MIN(planned_start) FROM work_items WHERE requirement_id=? AND status<>'cancelled'),
       planned_end=(SELECT MAX(planned_end) FROM work_items WHERE requirement_id=? AND status<>'cancelled'),version=version+1,updated_at=? WHERE id=?`).run(requirementId, requirementId, now, requirementId);
     recordAudit(actor, 'apply_dependency_plan', 'requirement', id, `按依赖调整 ${preview.entries.length} 项未开始工作，涉及 ${affected.size} 个需求`);
     return getPathAnalysis(preview.projectId, acceptanceId(id));
@@ -227,8 +227,8 @@ export function assertStartConditions(workId:string,requirementId:string,input:{
   const snapshot=loadPathInput(pathProjectForRequirement(requirementId)),unmet=new Set(conditions.unmetPredecessors.map(p=>p.id));
   const edges=snapshot.dependencies.filter(d=>d.targetRequirementId===requirementId&&!d.targetMilestoneId&&(!d.targetWorkItemId||d.targetWorkItemId===workId)&&unmet.has(d.sourceMilestoneId||d.sourceWorkItemId||d.sourceRequirementId));
   const req=snapshot.requirements.find(r=>r.id===requirementId)!,work=snapshot.workItems.find(w=>w.id===workId)!;
-  sqlite.prepare('UPDATE requirements SET acknowledged_dependencies=? WHERE id=?').run(JSON.stringify([...new Set([...(req.acknowledgedDependencies||[]),...edges.filter(d=>!d.targetWorkItemId).map(d=>d.id)])]),requirementId);
-  sqlite.prepare('UPDATE work_items SET acknowledged_dependencies=? WHERE id=?').run(JSON.stringify([...new Set([...(work.acknowledgedDependencies||[]),...edges.filter(d=>d.targetWorkItemId).map(d=>d.id)])]),workId);
+  getDatabaseContext().sqlite.prepare('UPDATE requirements SET acknowledged_dependencies=? WHERE id=?').run(JSON.stringify([...new Set([...(req.acknowledgedDependencies||[]),...edges.filter(d=>!d.targetWorkItemId).map(d=>d.id)])]),requirementId);
+  getDatabaseContext().sqlite.prepare('UPDATE work_items SET acknowledged_dependencies=? WHERE id=?').run(JSON.stringify([...new Set([...(work.acknowledgedDependencies||[]),...edges.filter(d=>d.targetWorkItemId).map(d=>d.id)])]),workId);
   return conditions.unmetPredecessors;
 }
 
@@ -237,5 +237,5 @@ export function adjustForecastClock(id:string,action:'block'|'unblock',today:str
   const w=one<{duration:number|null;ready:string|null}>('SELECT forecast_duration AS duration,forecast_ready_at AS ready FROM work_items WHERE id=?',id);
   if(!w?.duration||!w.ready)return;
   const duration=action==='block'?Math.max(1,w.duration-Math.max(0,businessDayDelta(w.ready,today))):w.duration;
-  sqlite.prepare('UPDATE work_items SET forecast_duration=?,forecast_ready_at=? WHERE id=?').run(duration,today,id);
+  getDatabaseContext().sqlite.prepare('UPDATE work_items SET forecast_duration=?,forecast_ready_at=? WHERE id=?').run(duration,today,id);
 }

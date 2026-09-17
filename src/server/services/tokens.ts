@@ -1,6 +1,6 @@
 import { recordLogReason, updateLogContext } from '../log-context';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { sqlite } from '../database';
+import { getDatabaseContext } from '../database-context';
 import { createApiTokenValue, hashApiToken, type Actor } from '../auth';
 import { fail, forbidden, notFound } from '../errors';
 import { recordAudit as audit } from './audit';
@@ -23,8 +23,8 @@ export function issueToken(input: JsonObject, actor: Actor) {
   if (days !== null && (!Number.isFinite(days) || days < 1 || days > 3650)) fail('有效期不合法');
   const expiresAt = days === null ? null : new Date(Date.now() + days * 86400000).toISOString();
   const { prefix, token } = createApiTokenValue();
-  sqlite.transaction(() => {
-    sqlite.prepare(`INSERT INTO api_tokens (id, name, prefix, token_hash, account_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+  getDatabaseContext().sqlite.transaction(() => {
+    getDatabaseContext().sqlite.prepare(`INSERT INTO api_tokens (id, name, prefix, token_hash, account_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
       .run(id, name, prefix, hashApiToken(token), actor.accountId, expiresAt, now);
     const account = row(`SELECT 1 FROM accounts a WHERE a.id=? AND a.status='active' AND a.must_change_password=0
       AND a.deleted_at IS NULL AND ${accountPersonAvailableSql}`, actor.accountId!);
@@ -35,14 +35,14 @@ export function issueToken(input: JsonObject, actor: Actor) {
 }
 
 export function revokeToken(id: string, actor: Actor, allowAnyAccount = false) {
-  return sqlite.transaction(() => {
+  return getDatabaseContext().sqlite.transaction(() => {
     const token = row<{ name: string; accountId: string; revokedAt: string | null }>('SELECT name, account_id AS accountId, revoked_at AS revokedAt FROM api_tokens WHERE id=?', id);
     if (!token) notFound('Token不存在');
     const currentActor = requireAuthorizationActor(actor);
     if (allowAnyAccount) assertAdmin(currentActor);
     else if (token.accountId !== currentActor.accountId) forbidden('只能撤销自己的Token');
     if (token.revokedAt) return { ok: true };
-    const changed = sqlite.prepare('UPDATE api_tokens SET revoked_at=? WHERE id=? AND revoked_at IS NULL').run(nowIso(), id);
+    const changed = getDatabaseContext().sqlite.prepare('UPDATE api_tokens SET revoked_at=? WHERE id=? AND revoked_at IS NULL').run(nowIso(), id);
     if (!changed.changes) return { ok: true };
     const finalActor = requireAuthorizationActor(actor);
     if (allowAnyAccount) assertAdmin(finalActor);
@@ -70,8 +70,8 @@ export function authenticateApiToken(token: string): (Actor & { accountId: strin
   if (Number(record.must_change_password) === 1) return reject('PASSWORD_CHANGE_REQUIRED', 'MCP Token 关联账号需要先修改初始密码');
   if (record.expires_at && record.expires_at <= nowIso()) return reject('TOKEN_EXPIRED', 'MCP Token 已过期');
   const usedAt = nowIso();
-  const authenticated = sqlite.transaction(() => {
-    const used = sqlite.prepare(`UPDATE api_tokens SET last_used_at=?
+  const authenticated = getDatabaseContext().sqlite.transaction(() => {
+    const used = getDatabaseContext().sqlite.prepare(`UPDATE api_tokens SET last_used_at=?
       WHERE id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?)
         AND EXISTS (SELECT 1 FROM accounts a WHERE a.id=api_tokens.account_id AND a.updated_at=?
           AND a.status='active' AND a.must_change_password=0 AND a.deleted_at IS NULL AND ${accountPersonAvailableSql})`)

@@ -44,7 +44,7 @@ beforeAll(async () => {
 afterAll(async () => {
   releaseRequest?.();
   await app.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -80,7 +80,7 @@ it('上传只保存文件和预览；导入副本改用本机 admin 密码并注
   expect(result.statusCode, result.body).toBe(200);
   uploaded = result.json();
   expect(result.json()).toMatchObject({ imported: true, originalName: 'source.db', restorable: true, summary: { projects: 1, people: 1 } });
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const { prepareRestore } = await import('../src/server/backups');
   const { verifyPassword } = await import('../src/server/auth');
   const oldAccounts = sqlite.prepare('SELECT id, password_hash, session_version, is_builtin FROM accounts ORDER BY id').all() as Array<{ id: string; password_hash: string; session_version: number; is_builtin: number }>;
@@ -154,7 +154,7 @@ it('替换前等待既有请求结束，期间阻止 REST/MCP，失败后恢复�
 });
 
 it('安全备份失败或确认指纹过期时不切换数据库', async () => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const { scheduleRestore } = await import('../src/server/backups');
   const backup = vi.spyOn(sqlite, 'backup').mockRejectedValueOnce(new Error('磁盘空间不足'));
   await expect(scheduleRestore(uploaded.name, uploaded.fingerprint)).rejects.toThrow('磁盘空间不足');

@@ -64,7 +64,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -125,7 +125,7 @@ it('普通成员不能绕过归档中心读取项目归档资源', async () => {
   const person = await app.inject({ method: 'POST', url: '/api/people', headers: { cookie: adminCookie }, payload: {
     projectId, name: `归档权限人员${++sequence}`,
   } });
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const archivedAt = new Date().toISOString();
   sqlite.prepare('UPDATE requirements SET deleted_at=? WHERE id=?').run(archivedAt, requirement.json().id);
   sqlite.prepare('UPDATE work_item_templates SET deleted_at=? WHERE id=?').run(archivedAt, template.json().id);
@@ -153,7 +153,7 @@ it('保持启用、修改登录名和修改角色不踢出会话，角色权限�
 
 it('账号编辑拒绝旧页面覆盖较新的资料', async () => {
   const identity = await createIdentity();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   sqlite.prepare('UPDATE accounts SET updated_at=? WHERE id=?').run('2099-01-01T00:00:00.000Z', identity.accountId);
   const listed = await app.inject({ url: '/api/accounts', headers: { cookie: adminCookie } });
   const original = listed.json().find((account: { id: string }) => account.id === identity.accountId);
@@ -176,7 +176,7 @@ it('账号编辑拒绝旧页面覆盖较新的资料', async () => {
 
 it('自行修改密码保持账号版本单调并替换当前会话', async () => {
   const identity = await createIdentity();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const futureVersion = '2099-01-01T00:00:00.000Z';
   sqlite.prepare('UPDATE accounts SET updated_at=? WHERE id=?').run(futureVersion, identity.accountId);
   const nextPassword = `${memberPassword}-new`;
@@ -218,7 +218,7 @@ it('重复撤销同一Token保持第一次撤销时间且只记录一次审计',
   expect(issued.statusCode, issued.body).toBe(200);
   const id = issued.json().id as string;
   expect((await app.inject({ method: 'DELETE', url: `/api/tokens/${id}`, headers: { cookie: adminCookie } })).statusCode).toBe(200);
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const first = sqlite.prepare('SELECT revoked_at AS revokedAt FROM api_tokens WHERE id=?').get(id) as { revokedAt: string };
   expect((await app.inject({ method: 'DELETE', url: `/api/tokens/${id}`, headers: { cookie: adminCookie } })).statusCode).toBe(200);
   const second = sqlite.prepare('SELECT revoked_at AS revokedAt FROM api_tokens WHERE id=?').get(id) as { revokedAt: string };
@@ -383,7 +383,7 @@ it('旧确认框不能归档已变化人员，归档也不会倒退关联账号�
   } });
   expect(stale.statusCode, stale.body).toBe(409);
   expect(stale.json().code).toBe('STALE_WRITE');
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   const accountVersion = '2099-01-01T00:00:00.000Z';
   sqlite.prepare('UPDATE accounts SET updated_at=? WHERE id=?').run(accountVersion, identity.accountId);
   const archived = await app.inject({ method: 'DELETE', url: `/api/people/${identity.personId}`, headers: { cookie: adminCookie }, payload: {
@@ -422,7 +422,7 @@ it.each(['inactive', 'archived'] as const)('%s人员不能绕过人员恢复入�
 
 it.each(['inactive', 'archived'] as const)('历史不一致数据：账号启用但人员%s时，登录、REST与MCP都拒绝', async (state) => {
   const identity = await createIdentity();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   // 仅污染本测试的临时库，模拟旧版本留下的状态不一致，不调整账号或会话版本。
   sqlite.prepare('UPDATE people SET active=?, deleted_at=? WHERE id=?').run(state === 'inactive' ? 0 : 1, state === 'archived' ? new Date().toISOString() : null, identity.personId);
   const deniedLogin = await login(identity.username, memberPassword);
@@ -437,7 +437,7 @@ it.each(['inactive', 'archived'] as const)('历史不一致数据：账号启用
 });
 
 it.each(['REST', 'MCP'] as const)('%s保存人员资料携带原active值，不改变登录状态或注销现有会话', async (channel) => {
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   for (const loginAllowed of [true, false]) {
     const identity = await createIdentity();
     if (!loginAllowed) expect((await changeStatus(identity.accountId, 'disabled')).statusCode).toBe(200);

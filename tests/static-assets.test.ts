@@ -29,7 +29,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(webDistDir, { recursive: true, force: true });
   for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${dbPath}${suffix}`, { force: true });

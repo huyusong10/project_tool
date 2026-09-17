@@ -2,7 +2,7 @@ import path from 'node:path';
 import { config } from '../src/server/config';
 import { addBusinessDays, todayIso } from '../src/shared/domain';
 if (path.basename(config.rootDir)!=='project-manage-paths'||!config.dbPath.startsWith(path.join(config.rootDir,'.preview')+path.sep)||config.port!==3220) throw new Error('只允许写入隔离试用库');
-const {sqlite}=await import('../src/server/database');
+const {sqlite}=await (await import('../src/server/database')).initializeDatabase();
 const svc=await import('../src/server/services');
 const {getPathAnalysis,addDependency,updatePathEstimate}=await import('../src/server/services/paths');
 const admin=sqlite.prepare("SELECT id FROM accounts WHERE is_builtin=1").get() as {id:string};

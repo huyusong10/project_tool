@@ -9,8 +9,8 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { config } from './config';
-import { sqlite } from './database';
+
+import { getDatabaseContext } from './database-context';
 import { inspectDatabaseConsistency } from './database-validation';
 import { activatePreparedDatabase, cleanupFailedDatabaseSwaps, databaseSwapRollbackPath } from './database-swap';
 import { clearRestoreStatus, readRestoreStatus, writeRestoreStatus, type RestoreStatus } from './restore-status';
@@ -18,8 +18,6 @@ import { AppError, fail, notFound, errorResponse } from './errors';
 import { pauseDatabaseRequests, resumeDatabaseRequests } from './database-maintenance';
 
 const log = moduleLogger('backup');
-
-fs.mkdirSync(config.backupDir, { recursive: true });
 
 const INCOMPLETE_BACKUP_RETENTION_MS = 24 * 60 * 60 * 1000;
 const INCOMPLETE_BACKUP_PATTERN = /^project-manage-(?:pre-migration-)?\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z?\.db\.partial-[0-9a-f-]{36}$/;
@@ -34,8 +32,8 @@ function backupFilename(date = new Date()) {
 
 function safeBackupPath(filename: string) {
   if (path.basename(filename) !== filename || !filename.toLowerCase().endsWith('.db') || filename.includes('\0')) fail('备份文件名不合法');
-  const resolved = path.resolve(config.backupDir, filename);
-  if (path.dirname(resolved) !== path.resolve(config.backupDir)) fail('备份文件不合法');
+  const resolved = path.resolve(getDatabaseContext().config.backupDir, filename);
+  if (path.dirname(resolved) !== path.resolve(getDatabaseContext().config.backupDir)) fail('备份文件不合法');
   return resolved;
 }
 
@@ -110,7 +108,7 @@ function isTransientBackupEntryError(error: unknown) {
 
 export function listBackups() {
   const backups: PublicBackup[] = [];
-  for (const entry of fs.readdirSync(config.backupDir, { withFileTypes: true })) {
+  for (const entry of fs.readdirSync(getDatabaseContext().config.backupDir, { withFileTypes: true })) {
     if (!entry.isFile() || entry.isSymbolicLink() || !entry.name.toLowerCase().endsWith('.db')) continue;
     try {
       const { path: _path, ...backup } = backupDescriptor(entry.name);
@@ -155,7 +153,7 @@ export async function createBackup(options: {
     }
     destination = safeBackupPath(name);
     temporaryDestination = `${destination}.partial-${randomUUID()}`;
-    await sqlite.backup(temporaryDestination);
+    await getDatabaseContext().sqlite.backup(temporaryDestination);
     if (fs.existsSync(destination)) fail('备份文件名发生冲突，请重试', 'DEPENDENCY_CONFLICT', 409);
     fs.renameSync(temporaryDestination, destination);
     temporaryDestination = undefined;
@@ -195,7 +193,7 @@ export function deleteBackup(
     fs.unlinkSync(current.path);
     return { ok: true, name: filename };
   };
-  return beforeDelete ? sqlite.transaction(remove)() : remove();
+  return beforeDelete ? getDatabaseContext().sqlite.transaction(remove)() : remove();
 }
 
 function cleanupBackupIfUnchanged(backup: PublicBackup) {
@@ -211,24 +209,24 @@ function cleanupBackupIfUnchanged(backup: PublicBackup) {
 }
 
 export function cleanupOldBackups() {
-  const cutoff = Date.now() - config.backupRetentionDays * 86400000;
+  const cutoff = Date.now() - getDatabaseContext().config.backupRetentionDays * 86400000;
   const skipped = new Set<string>();
   for (const backup of listBackups()) {
     if (new Date(backup.createdAt).getTime() < cutoff && !cleanupBackupIfUnchanged(backup)) skipped.add(backup.name);
   }
   const countCandidates = listBackups().filter((item) => !skipped.has(item.name));
-  if (countCandidates.length > config.backupMaxCount) {
+  if (countCandidates.length > getDatabaseContext().config.backupMaxCount) {
     // 无效文件保留在列表中供管理员诊断，但不能挤占可恢复备份的保留名额。
     for (const backup of listRestorableBackups()
       .filter((item) => item.restorable && !skipped.has(item.name))
-      .slice(config.backupMaxCount)) {
+      .slice(getDatabaseContext().config.backupMaxCount)) {
       cleanupBackupIfUnchanged(backup);
     }
   }
   const incompleteCutoff = Date.now() - INCOMPLETE_BACKUP_RETENTION_MS;
-  for (const entry of fs.readdirSync(config.backupDir, { withFileTypes: true })) {
+  for (const entry of fs.readdirSync(getDatabaseContext().config.backupDir, { withFileTypes: true })) {
     if (!entry.isFile() || entry.isSymbolicLink() || ![INCOMPLETE_BACKUP_PATTERN, INCOMPLETE_IMPORT_PATTERN].some((pattern) => pattern.test(entry.name))) continue;
-    const target = path.join(config.backupDir, entry.name);
+    const target = path.join(getDatabaseContext().config.backupDir, entry.name);
     try {
       const stat = fs.lstatSync(target);
       if (!stat.isFile() || stat.isSymbolicLink() || stat.mtimeMs >= incompleteCutoff) continue;
@@ -240,10 +238,10 @@ export function cleanupOldBackups() {
     }
   }
   try {
-    cleanupFailedDatabaseSwaps(config.dbPath, {
-      retentionDays: config.backupRetentionDays,
+    cleanupFailedDatabaseSwaps(getDatabaseContext().config.dbPath, {
+      retentionDays: getDatabaseContext().config.backupRetentionDays,
       maxCount: 3,
-      preserveFile: readRestoreStatus(config.dbPath)?.failedDatabase,
+      preserveFile: readRestoreStatus(getDatabaseContext().config.dbPath)?.failedDatabase,
     });
   } catch (error) { log.warn({ event: 'restore.cleanup_failed', err: error }, '清理数据库恢复失败文件失败'); }
 }
@@ -258,7 +256,7 @@ function validateDatabaseFile(source: string) {
     const tables = new Set((checkDb.prepare("SELECT name FROM sqlite_schema WHERE type='table'").all() as Array<{ name: string }>)
       .map((table) => table.name));
     if (requiredTables.some((table) => !tables.has(table))) fail('备份文件不是有效的项目管理数据库');
-    const journal = JSON.parse(fs.readFileSync(path.join(config.rootDir, 'drizzle', 'meta', '_journal.json'), 'utf8')) as {
+    const journal = JSON.parse(fs.readFileSync(path.join(getDatabaseContext().config.rootDir, 'drizzle', 'meta', '_journal.json'), 'utf8')) as {
       entries?: Array<{ when?: number }>;
     };
     const latestSupportedMigration = Math.max(0, ...(journal.entries || []).map((entry) => Number(entry.when) || 0));
@@ -283,7 +281,7 @@ function validateDatabaseFile(source: string) {
 const backupValidationCache = new Map<string, { restorable: boolean; validationError: string | null }>();
 
 function validateBackupSnapshot(backup: PublicBackup, fullValidation = false) {
-  const validationCopy = path.join(config.backupDir, `.backup-validation-${randomUUID()}`);
+  const validationCopy = path.join(getDatabaseContext().config.backupDir, `.backup-validation-${randomUUID()}`);
   try {
     fs.copyFileSync(safeBackupPath(backup.name), validationCopy);
     assertBackupUnchanged(backup.name, backup.fingerprint);
@@ -326,7 +324,7 @@ function migrateAndValidateRestoreCopy(replacement: string) {
     restoreDb.pragma('journal_mode = DELETE');
     restoreDb.pragma('foreign_keys = OFF');
     try {
-      migrate(drizzle(restoreDb), { migrationsFolder: path.join(config.rootDir, 'drizzle') });
+      migrate(drizzle(restoreDb), { migrationsFolder: path.join(getDatabaseContext().config.rootDir, 'drizzle') });
       initializeWorkspaceOrder(restoreDb);
     } finally {
       restoreDb.pragma('foreign_keys = ON');
@@ -359,7 +357,7 @@ export async function importBackup(
   if (backupInProgress || restoreScheduled) fail('已有数据库维护任务正在执行', 'DEPENDENCY_CONFLICT', 409);
   backupInProgress = true;
   const id = randomUUID();
-  const temporary = path.join(config.backupDir, `.database-import-${id}`);
+  const temporary = path.join(getDatabaseContext().config.backupDir, `.database-import-${id}`);
   const validationCopy = `${temporary}.validation`;
   const name = `project-manage-import-${id}.db`;
   const destination = safeBackupPath(name);
@@ -368,8 +366,8 @@ export async function importBackup(
   try {
     const limiter = new Transform({ transform(chunk: Buffer, _encoding, callback) {
       size += chunk.length;
-      callback(size > config.databaseImportMaxBytes
-        ? new AppError(`数据库文件不能超过 ${config.databaseImportMaxBytes / 1024 / 1024} MB`, 413)
+      callback(size > getDatabaseContext().config.databaseImportMaxBytes
+        ? new AppError(`数据库文件不能超过 ${getDatabaseContext().config.databaseImportMaxBytes / 1024 / 1024} MB`, 413)
         : null, chunk);
     } });
     // 不把 HTTP 输入流交给 pipeline 销毁，超限时仍能返回明确的 413 响应。
@@ -415,7 +413,7 @@ export async function importBackup(
 }
 
 function applyImportedAccounts(replacement: string) {
-  if (!/^scrypt\$[0-9a-f]+\$[0-9a-f]{128}$/i.test(config.appPasswordHash)) {
+  if (!/^scrypt\$[0-9a-f]+\$[0-9a-f]{128}$/i.test(getDatabaseContext().config.appPasswordHash)) {
     fail('请先配置本机 ADMIN_PASSWORD 或通过 configure.ps1 设置管理员密码');
   }
   const database = new Database(replacement);
@@ -428,12 +426,12 @@ function applyImportedAccounts(replacement: string) {
         const now = new Date().toISOString();
         database.prepare(`INSERT INTO accounts (id, username, normalized_username, password_hash,
           global_role, status, must_change_password, session_version, is_builtin, created_at, updated_at)
-          VALUES (?, 'admin', 'admin', ?, 'admin', 'active', 0, 0, 1, ?, ?)`).run(id, config.appPasswordHash, now, now);
+          VALUES (?, 'admin', 'admin', ?, 'admin', 'active', 0, 0, 1, ?, ?)`).run(id, getDatabaseContext().config.appPasswordHash, now, now);
         builtin.push({ id });
       }
       database.prepare(`UPDATE accounts SET username='admin', normalized_username='admin', password_hash=?,
         global_role='admin', status='active', must_change_password=0, deleted_at=NULL, person_id=NULL, updated_at=?
-        WHERE id=?`).run(config.appPasswordHash, new Date().toISOString(), builtin[0].id);
+        WHERE id=?`).run(getDatabaseContext().config.appPasswordHash, new Date().toISOString(), builtin[0].id);
       // 会话版本使用新随机值，防止较旧快照重新激活仍留在浏览器中的会话。
       const updateSession = database.prepare('UPDATE accounts SET session_version=? WHERE id=?');
       for (const account of database.prepare('SELECT id FROM accounts').all() as Array<{ id: string }>) {
@@ -463,8 +461,8 @@ export async function prepareRestore(filename: string, expectedFingerprint?: str
 } = {}) {
   if (options.importDatabase && !IMPORT_NAME_PATTERN.test(filename)) fail('请先上传并校验要导入的数据库');
   const backup = validateBackup(filename, expectedFingerprint);
-  const replacement = `${config.dbPath}.restore`;
-  if (fs.existsSync(databaseSwapRollbackPath(config.dbPath))) {
+  const replacement = `${getDatabaseContext().config.dbPath}.restore`;
+  if (fs.existsSync(databaseSwapRollbackPath(getDatabaseContext().config.dbPath))) {
     fail('上次数据库恢复的回滚文件尚未清理，暂不能再次恢复', 'DEPENDENCY_CONFLICT', 409);
   }
   removeRestoreFiles(replacement);
@@ -494,8 +492,8 @@ export function recordRestoreAudit(replacement: string, audit: RestoreAudit) {
   const restoredDatabase = new Database(replacement);
   let restoredWritten = false;
   try {
-    sqlite.transaction(() => {
-      sqlite.prepare(insertSql).run(id, audit.actorType, audit.actorId, audit.entityId, audit.summary, createdAt);
+    getDatabaseContext().sqlite.transaction(() => {
+      getDatabaseContext().sqlite.prepare(insertSql).run(id, audit.actorType, audit.actorId, audit.entityId, audit.summary, createdAt);
       restoredDatabase.prepare(insertSql).run(id, audit.actorType, audit.actorId, audit.entityId, audit.summary, createdAt);
       restoredWritten = true;
     })();
@@ -517,11 +515,11 @@ export async function scheduleRestore(
   options = { ...options, importDatabase: options.importDatabase || IMPORT_NAME_PATTERN.test(filename) };
   if (restoreScheduled) fail('已有数据库恢复任务正在执行', 'DEPENDENCY_CONFLICT', 409);
   restoreScheduled = true;
-  const replacement = `${config.dbPath}.restore`;
+  const replacement = `${getDatabaseContext().config.dbPath}.restore`;
   const operationId = randomUUID();
   const started = performance.now();
   log.info({ event: 'restore.started', operationId }, '开始恢复数据库');
-  const previousStatus = readRestoreStatus(config.dbPath);
+  const previousStatus = readRestoreStatus(getDatabaseContext().config.dbPath);
   let statusWritten = false;
   let pendingStatus: RestoreStatus | undefined;
   let safetyBackup: Awaited<ReturnType<typeof createBackup>> | undefined;
@@ -537,7 +535,7 @@ export async function scheduleRestore(
       message: '数据库恢复已安排，正在等待服务重启',
       failedDatabase: null,
     };
-    writeRestoreStatus(config.dbPath, pendingStatus);
+    writeRestoreStatus(getDatabaseContext().config.dbPath, pendingStatus);
     statusWritten = true;
     beforeSchedule?.(safetyBackup, replacement);
   } catch (error) {
@@ -548,8 +546,8 @@ export async function scheduleRestore(
     }
     if (statusWritten) {
       try {
-        if (previousStatus) writeRestoreStatus(config.dbPath, previousStatus);
-        else clearRestoreStatus(config.dbPath);
+        if (previousStatus) writeRestoreStatus(getDatabaseContext().config.dbPath, previousStatus);
+        else clearRestoreStatus(getDatabaseContext().config.dbPath);
       } catch (statusError) { log.error({ event: 'restore.status_failed', err: statusError, operationId }, '数据库恢复状态回滚失败'); }
     }
     restoreScheduled = false;
@@ -562,12 +560,12 @@ export async function scheduleRestore(
   setTimeout(async () => {
     let databaseClosed = false;
     try {
-      sqlite.pragma('wal_checkpoint(TRUNCATE)');
-      sqlite.close();
+      getDatabaseContext().sqlite.pragma('wal_checkpoint(TRUNCATE)');
+      getDatabaseContext().sqlite.close();
       databaseClosed = true;
-      activatePreparedDatabase(config.dbPath, replacement);
+      activatePreparedDatabase(getDatabaseContext().config.dbPath, replacement);
       try {
-        writeRestoreStatus(config.dbPath, {
+        writeRestoreStatus(getDatabaseContext().config.dbPath, {
           ...pendingStatus!,
           outcome: 'succeeded',
           updatedAt: new Date().toISOString(),
@@ -580,20 +578,20 @@ export async function scheduleRestore(
     } catch (error) {
       log.error({ event: 'restore.failed', err: error, operationId, durationMs: Math.round(performance.now() - started) }, '数据库恢复切换失败');
       try {
-        writeRestoreStatus(config.dbPath, {
+        writeRestoreStatus(getDatabaseContext().config.dbPath, {
           ...pendingStatus!,
           outcome: 'rolled_back',
           updatedAt: new Date().toISOString(),
           message: databaseClosed ? '数据库恢复切换失败，系统已保留或恢复原数据库' : '数据库恢复未生效，当前数据库保持不变',
         });
       } catch (statusError) { log.error({ event: 'restore.status_failed', err: statusError, operationId }, '数据库恢复失败状态记录失败'); }
-      if (!databaseClosed && sqlite.open) {
+      if (!databaseClosed && getDatabaseContext().sqlite.open) {
         restoreScheduled = false;
         resumeDatabaseRequests();
         removeRestoreFiles(replacement);
         return;
       }
-      if (fs.existsSync(config.dbPath) || fs.existsSync(databaseSwapRollbackPath(config.dbPath))) await exitWithLogs(75);
+      if (fs.existsSync(getDatabaseContext().config.dbPath) || fs.existsSync(databaseSwapRollbackPath(getDatabaseContext().config.dbPath))) await exitWithLogs(75);
       await exitWithLogs(1);
     }
   }, 800);

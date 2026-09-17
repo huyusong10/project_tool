@@ -30,7 +30,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await app.close();
-  (await import('../src/server/database')).sqlite.close();
+  (await import('./support/database')).sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
 

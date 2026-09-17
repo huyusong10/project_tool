@@ -52,7 +52,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await app?.close();
-  const { sqlite } = await import('../src/server/database');
+  const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -134,7 +134,7 @@ it('需求分页默认精简字段，支持参与人和关键词，兼容原列�
 });
 
 it('REST、MCP和延期筛选按工作完成日期计算，等待或确认验收不增加延期', async () => {
-  const f = await fixture(), { sqlite } = await import('../src/server/database');
+  const f = await fixture(), { sqlite } = await import('./support/database');
   sqlite.prepare("UPDATE work_items SET status='completed',progress=100,planned_start='2026-08-19',planned_end='2026-08-28',actual_start='2026-08-19',actual_end='2026-08-28' WHERE requirement_id IN (?,?)").run(f.ids.a, f.ids.b);
   sqlite.prepare("UPDATE work_items SET actual_end='2026-09-01' WHERE id=?").run(f.ids.w3);
   for (const acceptedAt of [null, '2026-09-04T10:46:36.014Z']) {
@@ -162,7 +162,7 @@ it('REST、MCP和延期筛选按工作完成日期计算，等待或确认验收
 });
 
 it('MCP、REST和主页面对不完整排期返回未知计划进度，不把部分结束日期报为延期', async () => {
-  const f = await fixture(), { sqlite } = await import('../src/server/database');
+  const f = await fixture(), { sqlite } = await import('./support/database');
   const start = addBusinessDays(todayIso(), -5), end = addBusinessDays(todayIso(), -3);
   sqlite.prepare("UPDATE work_items SET status='completed',progress=100,planned_start=?,planned_end=?,actual_start=?,actual_end=? WHERE id=?").run(start, end, start, end, f.ids.w1);
   sqlite.prepare("UPDATE requirements SET status='in_progress',planned_start=?,planned_end=? WHERE id=?").run(start, end, f.ids.a);
@@ -181,7 +181,7 @@ it('MCP、REST和主页面对不完整排期返回未知计划进度，不把部
 });
 
 it('进展按北京时间自然日筛选，同时间倒序和snapshot分页不受新记录影响', async () => {
-  const f = await fixture(), { sqlite } = await import('../src/server/database');
+  const f = await fixture(), { sqlite } = await import('./support/database');
   const insert = sqlite.prepare(`INSERT INTO progress_updates(id,requirement_id,work_item_id,percent,content,event_type,created_by_account_id,created_at,updated_at) VALUES (?,?,?,0,?,'note',?,?,?)`);
   const author = (await get<{ accountId: string }>('/api/session')).accountId;
   const entries = ['2026-09-09T15:59:59.999Z', '2026-09-09T16:00:00.000Z', '2026-09-10T15:59:59.999Z', '2026-09-10T16:00:00.000Z'];
@@ -318,7 +318,7 @@ async function feature(projectId:string,name='MCP 特性') {
 }
 
 it('MCP 多状态、排除、阶段、Phase 与自然排序在分页前生效，REST 与网页匹配规则一致',async()=>{
-  const f=await fixture(),{sqlite}=await import('../src/server/database');
+  const f=await fixture(),{sqlite}=await import('./support/database');
   sqlite.prepare("UPDATE requirements SET title=?,status='in_progress' WHERE id=?").run('DCIM-39',f.ids.a);
   sqlite.prepare("UPDATE requirements SET title=?,status='in_progress' WHERE id=?").run('DCIM-34',f.ids.b);
   sqlite.prepare("UPDATE work_items SET status='in_progress',actual_start=?,work_stage=?,progress=?,sort_order=? WHERE id=?").run(todayIso(),'analysis',30,1,f.ids.w1);

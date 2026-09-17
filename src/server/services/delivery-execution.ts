@@ -1,27 +1,26 @@
-import {persistRequirementLinks} from './reference-links';
-import {nullableText,describeChanges} from './support';
-import {persistOrganization,validateOrganization} from './intake-metadata';
-import {invalidateForecastReview} from './forecast-reviews';
-import {preserveRecordedAcceptance} from './acceptance-history';
-import {validateCoordination,persistCoordination,isCoordinationEdit,assertCoordinationAccess} from './blocker-coordination';
-import {coordinationKeys} from '../../shared/blocker-coordination';
-import {randomUUID} from 'node:crypto';
-import {sqlite} from '../database';
-import type {Actor} from '../auth';
-import {assertProjectManager,assertRequirementOwnerOrManager,canManageProject,requireAuthorizationActor} from '../authorization';
-import {fail,forbidden,notFound} from '../errors';
-import {createRequirementInputSchema,updateRequirementInputSchema,directRequirementCommandSchema,rescheduleRequirementInputSchema} from '../../shared/contracts';
+import { randomUUID } from 'node:crypto';
+import { coordinationKeys } from '../../shared/blocker-coordination';
+import { createRequirementInputSchema, directRequirementCommandSchema, rescheduleRequirementInputSchema, updateRequirementInputSchema } from '../../shared/contracts';
 import { addBusinessDays, businessDaysInclusive, todayIso } from '../../shared/domain';
-import {getRequirement,type RequirementRecord} from './requirements';
-import {loadPathInput} from './paths';
-import {analysePaths,dependencySource} from '../../shared/paths';
-import {recordAudit} from './audit';
-import {settleMilestones} from './milestones';
-import {requireActiveProject,assertExpectedVersion,assertVersionedWrite,normalizeRequirementText,type JsonObject} from './support';
-import {normalizeDirectEstimates,persistDirectEstimates} from './direct-estimates';
+import { analysePaths, dependencySource } from '../../shared/paths';
+import type { Actor } from '../auth';
+import { assertProjectManager, assertRequirementOwnerOrManager, canManageProject, requireAuthorizationActor } from '../authorization';
+import { getDatabaseContext } from '../database-context';
+import { fail, forbidden, notFound } from '../errors';
+import { preserveRecordedAcceptance } from './acceptance-history';
+import { recordAudit } from './audit';
+import { assertCoordinationAccess, isCoordinationEdit, persistCoordination, validateCoordination } from './blocker-coordination';
+import { normalizeDirectEstimates, persistDirectEstimates } from './direct-estimates';
+import { invalidateForecastReview } from './forecast-reviews';
+import { persistOrganization, validateOrganization } from './intake-metadata';
+import { settleMilestones } from './milestones';
+import { loadPathInput } from './paths';
+import { persistRequirementLinks } from './reference-links';
+import { getRequirement, type RequirementRecord } from './requirements';
+import { assertExpectedVersion, assertVersionedWrite, describeChanges, normalizeRequirementText, nullableText, requireActiveProject, type JsonObject } from './support';
 
 function refreshDirectForecast(id:string){
-  const row=sqlite.prepare('SELECT project_id AS projectId FROM requirements WHERE id=?').get(id) as {projectId:string};
+  const row=getDatabaseContext().sqlite.prepare('SELECT project_id AS projectId FROM requirements WHERE id=?').get(id) as {projectId:string};
   const snapshot=loadPathInput(row.projectId);normalizeDirectEstimates(snapshot,[id]);persistDirectEstimates(snapshot,[id]);
 }
 
@@ -29,13 +28,13 @@ export const deliveryColumns={deliveryScope:'delivery_scope',executionMode:'exec
 export function validateDeliveryFields(projectId:string,value:JsonObject,actor:Actor,current?:RequirementRecord,conflict=false){
   const auth=requireAuthorizationActor(actor);validateOrganization(projectId,value);if(value.featureId!==undefined&&value.featureId!==current?.featureId||value.phaseId!==undefined&&value.phaseId!==current?.phaseId)assertProjectManager(requireAuthorizationActor(actor),projectId);
   if(value.deliveryScope!==undefined&&value.deliveryScope!==current?.deliveryScope||value.acceptanceOwnerId!==undefined&&value.acceptanceOwnerId!==current?.acceptanceOwnerId)assertProjectManager(auth,projectId);
-  if(value.acceptanceOwnerId){const valid=sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id JOIN accounts a ON a.person_id=p.id WHERE pp.project_id=? AND p.id=? AND pp.project_role IN ('manager','member') AND p.active=1 AND p.deleted_at IS NULL AND a.status='active' AND a.deleted_at IS NULL").get(projectId,value.acceptanceOwnerId);if(!valid)fail('验收人必须是有有效账号的当前项目成员');}
-  if(value.ownerId&&!sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id JOIN accounts a ON a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL WHERE pp.project_id=? AND p.id=? AND pp.project_role IN ('member','manager') AND p.active=1 AND p.deleted_at IS NULL").get(projectId,value.ownerId))fail('负责人必须是有效项目成员',conflict?'DEPENDENCY_CONFLICT':'VALIDATION_ERROR',conflict?409:400);
+  if(value.acceptanceOwnerId){const valid=getDatabaseContext().sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id JOIN accounts a ON a.person_id=p.id WHERE pp.project_id=? AND p.id=? AND pp.project_role IN ('manager','member') AND p.active=1 AND p.deleted_at IS NULL AND a.status='active' AND a.deleted_at IS NULL").get(projectId,value.acceptanceOwnerId);if(!valid)fail('验收人必须是有有效账号的当前项目成员');}
+  if(value.ownerId&&!getDatabaseContext().sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id JOIN accounts a ON a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL WHERE pp.project_id=? AND p.id=? AND pp.project_role IN ('member','manager') AND p.active=1 AND p.deleted_at IS NULL").get(projectId,value.ownerId))fail('负责人必须是有效项目成员',conflict?'DEPENDENCY_CONFLICT':'VALIDATION_ERROR',conflict?409:400);
   if(current&&value.ownerId===null&&current.actualStart)fail('需求已执行，不能清空负责人');
   for(const key of ['forecastEnd','unblockEstimate'])if(value[key]&&String(value[key])<todayIso())fail('预测日期不能早于今天');
 }
 export function assertRequirementAcceptor(id:string,actor:Actor){
-  const auth=requireAuthorizationActor(actor),r=sqlite.prepare(`SELECT r.project_id AS projectId,r.acceptance_owner_id AS acceptanceOwnerId,
+  const auth=requireAuthorizationActor(actor),r=getDatabaseContext().sqlite.prepare(`SELECT r.project_id AS projectId,r.acceptance_owner_id AS acceptanceOwnerId,
     EXISTS(SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id JOIN accounts a ON a.person_id=p.id WHERE pp.project_id=r.project_id AND pp.person_id=r.acceptance_owner_id AND pp.project_role IN ('manager','member') AND p.active=1 AND p.deleted_at IS NULL AND a.status='active' AND a.deleted_at IS NULL) AS acceptanceOwnerValid FROM requirements r WHERE r.id=? AND r.deleted_at IS NULL`).get(id) as {projectId:string;acceptanceOwnerId:string|null;acceptanceOwnerValid:boolean}|undefined;
   if(!r)notFound('需求不存在');
   if(canManageProject(auth,r.projectId))return;
@@ -43,8 +42,8 @@ export function assertRequirementAcceptor(id:string,actor:Actor){
   forbidden('只有指定验收人或项目经理可以验收和退回本需求');
 }
 function event(id:string,type:string,content:string,actor:Actor,workItem?:{id:string;progress:number}){
-  const now=new Date().toISOString(),r=sqlite.prepare('SELECT progress FROM requirements WHERE id=?').get(id) as {progress:number};
-  sqlite.prepare('INSERT INTO progress_updates(id,requirement_id,work_item_id,percent,work_item_percent,content,event_type,created_by_account_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),id,workItem?.id||null,r.progress,workItem?.progress??null,content,type,actor.accountId||null,now,now);
+  const now=new Date().toISOString(),r=getDatabaseContext().sqlite.prepare('SELECT progress FROM requirements WHERE id=?').get(id) as {progress:number};
+  getDatabaseContext().sqlite.prepare('INSERT INTO progress_updates(id,requirement_id,work_item_id,percent,work_item_percent,content,event_type,created_by_account_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),id,workItem?.id||null,r.progress,workItem?.progress??null,content,type,actor.accountId||null,now,now);
   recordAudit(actor,type,workItem?'work_item':'requirement',workItem?.id||id,content);
 }
 export function createDirectRequirement(raw:JsonObject,actor:Actor,deferNormalization=false){
@@ -55,12 +54,12 @@ export function createDirectRequirement(raw:JsonObject,actor:Actor,deferNormaliz
   let start=v.plannedStart||null,end=v.plannedEnd||null;
   for(const d of [start,end])if(d&&businessDaysInclusive(d,d)!==1)fail('计划日期必须是工作日');
   if(v.durationDays){if(start)end=addBusinessDays(start,v.durationDays-1);else if(end)start=addBusinessDays(end,1-v.durationDays);}
-  sqlite.transaction(()=>{
+  getDatabaseContext().sqlite.transaction(()=>{
     requireActiveProject(v.projectId);assertProjectManager(requireAuthorizationActor(actor),v.projectId);
-    sqlite.prepare(`INSERT INTO requirements(id,project_id,title,owner_id,background,acceptance_criteria,reference_url,status,progress,priority,delivery_scope,execution_mode,acceptance_owner_id,planned_start,planned_end,duration_days,forecast_end,unblock_estimate,dependencies_reviewed_at,created_at,updated_at)
+    getDatabaseContext().sqlite.prepare(`INSERT INTO requirements(id,project_id,title,owner_id,background,acceptance_criteria,reference_url,status,progress,priority,delivery_scope,execution_mode,acceptance_owner_id,planned_start,planned_end,duration_days,forecast_end,unblock_estimate,dependencies_reviewed_at,created_at,updated_at)
       VALUES (?,?,?,?,?,?,?,'not_started',0,?,?,'direct',?,?,?,?,?,?,?,?,?)`).run(id,v.projectId,v.title,v.ownerId||null,v.background||null,v.acceptanceCriteria||null,v.referenceUrl||null,v.priority,v.deliveryScope||'committed',v.acceptanceOwnerId||null,start,end,v.durationDays||null,v.forecastEnd||null,v.unblockEstimate||null,now,now,now);
     persistRequirementLinks(id,v);
-    sqlite.prepare('UPDATE requirements SET schedule_anchor=? WHERE id=?').run(start,id);persistOrganization(id,v.projectId,v);
+    getDatabaseContext().sqlite.prepare('UPDATE requirements SET schedule_anchor=? WHERE id=?').run(start,id);persistOrganization(id,v.projectId,v);
     if(v.forecastEnd&&!deferNormalization)refreshDirectForecast(id);
     recordAudit(actor,'create','requirement',id,'创建需求：'+v.title+JSON.stringify({featureId:v.featureId,phaseId:v.phaseId,reason:v.reason}));
     requireActiveProject(v.projectId,true);assertProjectManager(requireAuthorizationActor(actor),v.projectId);validateDeliveryFields(v.projectId,v,actor,undefined,true);
@@ -90,12 +89,12 @@ export function updateDeliveryRequirement(id:string,raw:JsonObject,actor:Actor,s
   const columns={blockedCoordinatorId:'blocked_coordinator_id',blockedNextReviewAt:'blocked_next_review_at',blockedIssueId:'blocked_issue_id',...deliveryColumns,title:'title',ownerId:'owner_id',background:'background',acceptanceCriteria:'acceptance_criteria',referenceUrl:'reference_url',referenceLinks:'reference_links',plannedStart:'planned_start',plannedEnd:'planned_end',priority:'priority'};
   const changes=Object.entries(value).filter(([k])=>k in columns),now=new Date().toISOString();
   if(!changes.length&&value.featureId===undefined&&value.phaseId===undefined)fail('没有需要保存的修改');
-  sqlite.transaction(()=>{
+  getDatabaseContext().sqlite.transaction(()=>{
     requireActiveProject(r.projectId);validateDeliveryFields(r.projectId,value,actor,r);
     persistOrganization(id,r.projectId,value);
     const setters=changes.map(([k])=>columns[k as keyof typeof columns]+'=?');
     const extra=split&&r.executionMode==='direct'&&nextMode==='work_items'?',split_base_progress=?,split_at=?':'';
-    const updated=sqlite.prepare('UPDATE requirements SET '+(setters.length?setters.join(',')+',':'')+(extra?extra.slice(1)+',':'')+'version=version+1,updated_at=? WHERE id=? AND version=?').run(...changes.map(([k,v])=>k==='referenceLinks'?JSON.stringify(v):v??null),...(extra?[Math.min(99,r.progress),now]:[]),now,id,r.version);
+    const updated=getDatabaseContext().sqlite.prepare('UPDATE requirements SET '+(setters.length?setters.join(',')+',':'')+(extra?extra.slice(1)+',':'')+'version=version+1,updated_at=? WHERE id=? AND version=?').run(...changes.map(([k,v])=>k==='referenceLinks'?JSON.stringify(v):v??null),...(extra?[Math.min(99,r.progress),now]:[]),now,id,r.version);
     assertVersionedWrite(updated,'需求');
     if(value.referenceLinks!==undefined||value.referenceUrl!==undefined)persistRequirementLinks(id,value,r);
     if(coordinationChanged)persistCoordination('requirement',id,r.projectId,value,actor);
@@ -113,7 +112,7 @@ export function directStartConditions(id:string){
 }
 export function executeDirectRequirement(id:string,action:'start'|'progress'|'complete'|'rework',raw:JsonObject,actor:Actor){
   const input=directRequirementCommandSchema.parse(raw),auth=requireAuthorizationActor(actor);
-  return sqlite.transaction(()=>{
+  return getDatabaseContext().sqlite.transaction(()=>{
     const r=getRequirement(id);requireActiveProject(r.projectId);assertExpectedVersion(input,r.version);
     if(r.executionMode!=='direct')fail('此需求通过工作项推进，请操作对应工作项');
     assertRequirementOwnerOrManager(auth,id);
@@ -140,7 +139,7 @@ export function executeDirectRequirement(id:string,action:'start'|'progress'|'co
       content=(nullableText(content)||'重新打开需求')+'；原完成日期：'+(r.actualEnd||'未记录');
       preserveRecordedAcceptance(id);sets="status='in_progress',progress=?,actual_end=NULL,accepted_at=NULL,accepted_by_account_id=NULL";args=[input.progress??99];
     }
-    const updated=sqlite.prepare('UPDATE requirements SET '+sets+',version=version+1,updated_at=? WHERE id=? AND version=?').run(...args,now,id,r.version);
+    const updated=getDatabaseContext().sqlite.prepare('UPDATE requirements SET '+sets+',version=version+1,updated_at=? WHERE id=? AND version=?').run(...args,now,id,r.version);
     assertVersionedWrite(updated,'需求');event(id,action,content,actor);settleMilestones(r.projectId,actor);
     requireActiveProject(r.projectId,true);assertRequirementOwnerOrManager(requireAuthorizationActor(actor),id);
     return getRequirement(id);
@@ -153,11 +152,11 @@ export function returnRequirement(id:string,input:JsonObject,actor:Actor){
   if(r.status!=='completed')fail('当前需求不能退回');
   const reason=nullableText(input.reason)||'需求返工',ids=Array.isArray(input.workItemIds)?input.workItemIds.map(String):[];
   if(!ids.length||ids.some(id=>!r.workItems?.some(w=>w.id===id&&w.status==='completed')))fail('请选择需要返工的已完成工作项');
-  sqlite.transaction(()=>{
+  getDatabaseContext().sqlite.transaction(()=>{
     requireActiveProject(r.projectId);
     preserveRecordedAcceptance(id);
-    for(const wid of new Set(ids))sqlite.prepare("UPDATE work_items SET status=CASE WHEN actual_start IS NULL THEN 'not_started' ELSE 'in_progress' END,progress=CASE WHEN actual_start IS NULL THEN 0 ELSE 99 END,actual_end=NULL,version=version+1,updated_at=? WHERE id=?").run(new Date().toISOString(),wid);
-    const updated=sqlite.prepare("UPDATE requirements SET status='in_progress',progress=99,accepted_at=NULL,accepted_by_account_id=NULL,version=version+1,updated_at=? WHERE id=? AND version=?").run(new Date().toISOString(),id,r.version);
+    for(const wid of new Set(ids))getDatabaseContext().sqlite.prepare("UPDATE work_items SET status=CASE WHEN actual_start IS NULL THEN 'not_started' ELSE 'in_progress' END,progress=CASE WHEN actual_start IS NULL THEN 0 ELSE 99 END,actual_end=NULL,version=version+1,updated_at=? WHERE id=?").run(new Date().toISOString(),wid);
+    const updated=getDatabaseContext().sqlite.prepare("UPDATE requirements SET status='in_progress',progress=99,accepted_at=NULL,accepted_by_account_id=NULL,version=version+1,updated_at=? WHERE id=? AND version=?").run(new Date().toISOString(),id,r.version);
     assertVersionedWrite(updated,'需求');for(const wid of new Set(ids))invalidateForecastReview('work',wid);assertRequirementOwnerOrManager(requireAuthorizationActor(actor),id);
     const returned=r.workItems!.filter(w=>ids.includes(w.id));
     event(id,'rework',reason+'；返工项：'+returned.map(w=>w.title).join('、')+'；原完成日期：'+(r.executionCompletedAt||r.actualEnd||'未记录'),actor);
@@ -167,7 +166,7 @@ export function returnRequirement(id:string,input:JsonObject,actor:Actor){
 
 export function rescheduleDirectRequirement(id:string,raw:JsonObject,actor:Actor){
   const value=rescheduleRequirementInputSchema.parse(raw);
-  return sqlite.transaction(()=>{
+  return getDatabaseContext().sqlite.transaction(()=>{
     const r=getRequirement(id);requireActiveProject(r.projectId);assertProjectManager(requireAuthorizationActor(actor),r.projectId);assertExpectedVersion(value,r.version);
     if(['completed','cancelled'].includes(r.status))fail('已结束需求不能重新排期');
     const reason=nullableText(value.reason)||describeChanges(r,value);
@@ -175,7 +174,7 @@ export function rescheduleDirectRequirement(id:string,raw:JsonObject,actor:Actor
     const start=value.plannedStart||(value.plannedEnd&&duration?addBusinessDays(value.plannedEnd,1-duration):null);
     const end=value.plannedEnd||(value.plannedStart&&duration?addBusinessDays(value.plannedStart,duration-1):null);
     for(const d of [start,end])if(d&&businessDaysInclusive(d,d)!==1)fail('计划日期必须是工作日');
-    const updated=sqlite.prepare('UPDATE requirements SET planned_start=?,planned_end=?,schedule_anchor=?,version=version+1,updated_at=? WHERE id=? AND version=?').run(start,end,start,new Date().toISOString(),id,r.version);
+    const updated=getDatabaseContext().sqlite.prepare('UPDATE requirements SET planned_start=?,planned_end=?,schedule_anchor=?,version=version+1,updated_at=? WHERE id=? AND version=?').run(start,end,start,new Date().toISOString(),id,r.version);
     assertVersionedWrite(updated,'需求');event(id,'reschedule',reason+'；计划 '+(start||'待定')+' 至 '+(end||'待定'),actor);
     return getRequirement(id);
   }).immediate();
