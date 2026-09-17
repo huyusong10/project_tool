@@ -41,7 +41,7 @@ export function RequirementImport({projectId,defaultFeature,defaultPhase}:{proje
     if(!pkg)return;change({...pkg,requirements:pkg.requirements.map(r=>r.key===key?{...r,action,existingId:undefined,expectedVersion:undefined,...(action==='update'?{workItems:[]}: {})}:r)});
   };
   const people=useQuery({queryKey:[...keys.people,projectId],queryFn:()=>peopleApi.peopleQuery<Person[]>(projectId)});
-  const parseText=(value:string):IntakePackage=>intakePackageSchema.parse({formatVersion: 3,requirements:value.trim().split(/\n\s*\n/).filter(v=>v.trim()).map(block=>({key:randomUUID(),title:block.trim().split('\n')[0].slice(0,200),background:block.trim()}))});
+  const parseText=(value:string):IntakePackage=>intakePackageSchema.parse({formatVersion: 3,requirements:value.trim().split(/\n\s*\n/).filter(v=>v.trim()).map(block=>({key:randomUUID(),title:block.trim().split('\n')[0].slice(0,200).replace(/[\uD800-\uDBFF]$/, ''),background:block.trim()}))});
   const withDefaults=(pkg:IntakePackage):IntakePackage=>({...pkg,requirements:pkg.requirements.map(r=>r.action==='create'?{...r,...(r.feature===undefined&&defaultFeature?{feature:defaultFeature}:{}),...(r.phase===undefined&&defaultPhase&&(r.feature===undefined||r.feature===defaultFeature)?{phase:defaultPhase}:{})}:r)});
   const parseInput=(value:string)=>withDefaults(value.trim().startsWith('{')?intakePackageSchema.parse(JSON.parse(value)):parseText(value));
   const download=(value:unknown,name:string)=>{const blob=new Blob([typeof value==='string'?value:JSON.stringify(value,null,2)],{type:typeof value==='string'?'text/plain;charset=utf-8':'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);};

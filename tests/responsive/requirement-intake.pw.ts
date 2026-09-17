@@ -96,6 +96,27 @@ test('原文编辑刷新恢复最后输入，整理前不能预览旧内容',asy
   await saveImport(page);
 });
 
+test('原文首行截成标题时不拆开边界字符，保存后原文保持完整',async({page})=>{
+  await fixture(page);
+  const samples=[
+    {line:'A'.repeat(199)+'🧪补充',title:'A'.repeat(199)},
+    {line:'界'.repeat(198)+'𠮷补充',title:'界'.repeat(198)+'𠮷'},
+    {line:'B'.repeat(200)+'后续',title:'B'.repeat(200)},
+  ].map((sample,index)=>({...sample,background:sample.line+'\n保留完整说明 '+index}));
+  await page.getByRole('button',{name:'编辑导入文件',exact:true}).click();
+  await page.getByLabel('原始需求',{exact:true}).fill(samples.map(s=>s.background).join('\n\n'));
+  await page.getByRole('button',{name:'整理需求',exact:true}).click();
+  await expect.soft(page.getByLabel('导入需求标题')).toHaveCount(samples.length);
+  expect.soft(await page.getByLabel('导入需求标题').evaluateAll(inputs=>inputs.map(input=>(input as HTMLInputElement).value))).toEqual(samples.map(s=>s.title));
+  await page.getByRole('button',{name:'预览导入',exact:true}).click();
+  const applied=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/requirement-import/apply'));
+  await page.getByRole('button',{name:'保存需求',exact:true}).click();
+  const response=await applied;expect(response.status()).toBe(200);const receipt=await response.json();
+  await expect(page.getByText('已保存 3 个需求',{exact:true})).toBeVisible();
+  const saved=await Promise.all(Object.values(receipt.requirementIds as Record<string,string>).map(async id=>(await page.request.get('/api/requirements/'+id)).json()));
+  for(const sample of samples){const actual=saved.find(r=>r.background===sample.background);expect(actual).toBeDefined();expect.soft(actual.title).toBe(sample.title);}
+});
+
 test('按页面名称导入到其他需求，预览后保存并进入新需求',async({page})=>{
   const projectId=await fixture(page);
   await page.getByLabel('特性',{exact:true}).fill('其他需求');
