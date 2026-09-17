@@ -156,7 +156,7 @@ function enrichRequirement(requirement: RequirementRecord, workItems: WorkItemRe
   const actualRange = requirementActualRange({...requirement, status: metrics.status}, workItems, asOfDate, cancelledAt);
   const gaps = workItems.map((item) => calculateWorkItemGap(item, asOfDate));
   return {
-    ...requirement, referenceLinks:readReferenceLinks(requirement.referenceLinks,requirement.referenceUrl),forecastReview:requirement.forecastReview?JSON.parse(String(requirement.forecastReview)):null,
+    ...requirement, ownerValid:Boolean(requirement.ownerValid), referenceLinks:readReferenceLinks(requirement.referenceLinks,requirement.referenceUrl),forecastReview:requirement.forecastReview?JSON.parse(String(requirement.forecastReview)):null,
     ...metrics, ...actualRange, executionCompletedAt: actualRange.actualEnd, asOfDate,
     readinessIssues:deliveryReadiness({...requirement,...metrics},workItems,metrics.scheduleComplete),
     workItems,

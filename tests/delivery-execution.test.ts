@@ -25,9 +25,10 @@ async function fixture(extra:Record<string,unknown>={}){
 async function command(id:string,action:string,data:Record<string,unknown>={}){const current=await detail(id);return post('/api/requirements/'+id+'/'+action,{expectedVersion:current.version,...data});}
 it('开始时补选负责人一次生效；无说明更新与返工保留事实记录',async()=>{
  const {r,owner}=await fixture({ownerId:null});
+ expect(r.ownerValid).toBe(false);
  expect((await command(r.id,'start',{ownerId:'missing'})).statusCode).toBe(400);expect(await detail(r.id)).toEqual(r);
  const started=await command(r.id,'start',{ownerId:owner.id});expect(started.statusCode,started.body).toBe(200);
- expect(started.json()).toMatchObject({ownerId:owner.id,status:'in_progress',version:r.version+1});
+ expect(started.json()).toMatchObject({ownerId:owner.id,ownerValid:true,status:'in_progress',version:r.version+1});
  expect((await post('/api/requirements/'+r.id+'/start',{ownerId:owner.id,expectedVersion:r.version})).statusCode).toBe(409);
  expect((await command(r.id,'progress',{requirementPercent:45})).statusCode).toBe(200);
  expect((await detail(r.id)).progressUpdates?.[0].content).toContain('0% → 45%');

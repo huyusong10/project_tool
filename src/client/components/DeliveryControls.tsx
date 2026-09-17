@@ -48,7 +48,7 @@ function executionWarning(action:string,r:Requirement){
 }
 export function DeliveryControls({requirement:r,children,progressContent}:{requirement:Requirement;compact?:boolean;progressContent?:ReactNode;children?:(controls:{progress:ReactNode;actions:ReactNode})=>ReactNode}){
   const {session}=useSession(),client=useQueryClient(),navigate=useAppNavigate(),toast=useToast();
-  const manager=canManageProject(session,r.projectId),owner=manager||session.personId===r.ownerId;
+  const manager=session.authenticated&&canManageProject(session,r.projectId),owner=manager||session.authenticated&&!!session.personId&&session.personId===r.ownerId&&r.ownerValid!==false;
   const recheckAccountKey=session.accountId||session.username||'guest';
   const [initialRecheck]=useState(()=>readDeliveryRecheck(recheckAccountKey,r.id));
   const [deliveryRecheck,setDeliveryRecheckState]=useState<DeliveryRecheck|null>(initialRecheck);
@@ -82,7 +82,7 @@ export function DeliveryControls({requirement:r,children,progressContent}:{requi
     if(isWriteOutcomeUnknown(error)){unknownWrite.current={version:input.base.version,versioned:true};setDeliveryRecheck({action:input.action,version:input.base.version,content:input.content,percent:input.percent,selected:input.selected,stage:'read'});}else{unknownWrite.current=null;setDeliveryRecheck(null);}
     if(requiresWriteRecheck(error))setNeedsCheck(true);
   },onSettled:()=>{submitting.current=false;}});
-  const submit=async(input:ExecutionInput)=>{if(submitting.current||mutation.isPending||needsCheck||reading||reviewRequired)return false;submitting.current=true;return mutation.mutateAsync(input).then(()=>true,()=>false);};
+  const submit=async(input:ExecutionInput)=>{if(!owner||submitting.current||mutation.isPending||needsCheck||reading||reviewRequired)return false;submitting.current=true;return mutation.mutateAsync(input).then(()=>true,()=>false);};
   const quick=(action:DeliveryAction)=>{if(deliveryRecheck)return;mutation.reset();submit({action,base:r,content:'',percent:Math.min(r.progress,99),selected:[]});};
   const reload=async(action:DeliveryAction)=>{
     const sequence=++readSequence.current;setReading(true);setReadError('');
@@ -105,14 +105,15 @@ export function DeliveryControls({requirement:r,children,progressContent}:{requi
   const [assigning,setAssigning]=useState(false);
   const direct=r.executionMode==='direct',ended=['completed','cancelled'].includes(r.status);
   const labels:Record<string,string>={start:'开始需求',progress:'更新进度',complete:'完成需求',rework:'返工'};
-  const warning=modal?executionWarning(modal.action,modal.base):'';
+  const permissionWarning=owner?'':'当前没有执行此需求的权限，已填说明保留。';
+  const warning=modal?permissionWarning||executionWarning(modal.action,modal.base):'';
   const progress=children&&progressContent!==undefined
     ? direct&&owner&&r.status==='in_progress'&&!deliveryRecheck?<button type="button" className="work-progress-link" aria-label={'更新 '+r.title+' 进度'} disabled={mutation.isPending} onClick={()=>open('progress')}>{progressContent}</button>:progressContent
     : direct&&owner&&r.status==='in_progress'&&!deliveryRecheck?<Button variant={children ? "link" : "secondary"} className={children?'work-progress-link':'ghost-button'} aria-label={children?'更新 '+r.title+' 进度':'更新进度'} disabled={mutation.isPending} onClick={()=>open('progress')}>{children?r.progress+'%':'更新'}</Button>:children?<span>{r.status==='not_started'?'未开始':r.status==='completed'?'已完成':r.status==='cancelled'?'已取消':r.progress+'%'}</span>:null;
   const actions=deliveryRecheck&&!mutation.isPending?<Button variant="secondary" size="compact" width="action" className="ghost-button" aria-label="核对操作结果" title="核对操作结果" onClick={resumeRecheck}>核对</Button>:<>{direct&&owner&&!ended&&<>{r.status==='not_started'&&<Button variant="primary" size="compact" width="action" className="primary-button execution-action" aria-label="开始需求" title="开始需求" data-action="start" disabled={mutation.isPending} onClick={()=>!r.ownerId||r.ownerValid===false?setAssigning(true):quick('start')}><Play size={14}/>开始</Button>}{r.status==='in_progress'&&<Button variant="soft" tone="success" size="compact" width="action" className="primary-button execution-action" aria-label="完成需求" title="完成需求" data-action="complete" disabled={mutation.isPending} onClick={()=>quick('complete')}><Check size={14}/>完成</Button>}</>}{owner&&r.status==='completed'&&<Button variant="soft" tone="warning" size="compact" width="action" className="ghost-button execution-action" data-action="rework" disabled={mutation.isPending} onClick={()=>open('rework')}><RotateCcw size={14}/>返工</Button>}</>;
   return <>
     {children?children({progress,actions}):<div className="button-row delivery-controls">{progress}{actions}</div>}
-    {assigning&&<StartAssignmentDialog requirement={r} pending={mutation.isPending} blocked={needsCheck||reviewRequired} recovery={(needsCheck||reviewRequired)&&<Button variant="secondary" type="button" className="ghost-button" onClick={()=>{setAssigning(false);if(deliveryRecheck)resumeRecheck();else setModal({action:"start",base:r});}}>读取并核对操作结果</Button>} error={mutation.error?.message} onClose={()=>setAssigning(false)} onStart={assignment=>submit({action:'start',base:r,assignment,content:'',percent:r.progress,selected:[]})}/>}
+    {assigning&&<StartAssignmentDialog requirement={r} pending={mutation.isPending} blocked={!owner||needsCheck||reviewRequired} recovery={(needsCheck||reviewRequired)&&<Button variant="secondary" type="button" className="ghost-button" onClick={()=>{setAssigning(false);if(deliveryRecheck)resumeRecheck();else setModal({action:"start",base:r});}}>读取并核对操作结果</Button>} error={permissionWarning||mutation.error?.message} onClose={()=>setAssigning(false)} onStart={assignment=>submit({action:'start',base:r,assignment,content:'',percent:r.progress,selected:[]})}/>}
     {modal&&<Modal title={labels[modal.action]} onClose={close} closable={!mutation.isPending}><form onSubmit={e=>{e.preventDefault();if(!submitting.current&&!mutation.isPending&&!needsCheck&&!reading&&!reviewRequired&&!warning){submit({action:modal.action,base:modal.base,content,percent,selected});}}}><fieldset className="form-fieldset" disabled={mutation.isPending}>
       <p>{modal.base.title}</p>
       {['progress','rework'].includes(modal.action)&&modal.base.executionMode==='direct'&&<label className="field"><span>完成度</span><input aria-label="需求完成度" type="number" min={modal.action==='progress'?modal.base.progress:0} max={99} required value={percent} onChange={e=>setPercent(Number(e.target.value))}/></label>}
