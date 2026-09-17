@@ -27,7 +27,7 @@ export type WorkItemRecord = import('../../shared/forecast-basis').ExecutionMeta
 export type RequirementRecord = DeliveryFields & import('../../shared/intake').Organization & Partial<ProcessingResult> & {
   stageResetAt?:string|null; executionStage?:ExecutionStage; milestones?: import('../../shared/paths').PathMilestone[];
   readinessIssues?:string[];
-  pathRisk?: PathRisk; pathEnabled?:number;
+  pathRisk?: PathRisk;
   sortOrder?:number; id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   referenceLinks?:ReferenceLink[]; background: string | null; acceptanceCriteria: string | null; referenceUrl: string | null; sourceNotes?: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number | null; progressGap?: number;
@@ -50,8 +50,7 @@ export const requirementSelect = `SELECT EXISTS(SELECT 1 FROM project_people op 
   r.owner_id AS ownerId, p.name AS ownerName, r.status, r.planned_start AS plannedStart,
   r.planned_end AS plannedEnd, r.progress, r.risk_level AS riskLevel, r.priority,
   r.accepted_at AS acceptedAt, r.accepted_by_account_id AS acceptedByAccountId, r.version,
-  r.created_at AS createdAt, r.updated_at AS updatedAt, r.deleted_at AS deletedAt,
-  (EXISTS(SELECT 1 FROM requirements reviewed WHERE reviewed.project_id=r.project_id AND reviewed.dependencies_reviewed_at IS NOT NULL) OR EXISTS(SELECT 1 FROM dependency_edges dep WHERE dep.project_id=r.project_id)) AS pathEnabled
+  r.created_at AS createdAt, r.updated_at AS updatedAt, r.deleted_at AS deletedAt
   FROM requirements r JOIN projects pr ON pr.id = r.project_id
   LEFT JOIN people p ON p.id = r.owner_id
   LEFT JOIN work_item_templates t ON t.id = r.template_id`;
@@ -156,9 +155,8 @@ function enrichRequirement(requirement: RequirementRecord, workItems: WorkItemRe
   const metrics = deriveRequirementMetrics(requirement, workItems, asOfDate, config.highRiskDelayDays);
   const actualRange = requirementActualRange({...requirement, status: metrics.status}, workItems, asOfDate, cancelledAt);
   const gaps = workItems.map((item) => calculateWorkItemGap(item, asOfDate));
-  const {pathEnabled:_pathEnabled,...value}=requirement;
   return {
-    ...value, referenceLinks:readReferenceLinks(value.referenceLinks,value.referenceUrl),forecastReview:value.forecastReview?JSON.parse(String(value.forecastReview)):null,
+    ...requirement, referenceLinks:readReferenceLinks(requirement.referenceLinks,requirement.referenceUrl),forecastReview:requirement.forecastReview?JSON.parse(String(requirement.forecastReview)):null,
     ...metrics, ...actualRange, executionCompletedAt: actualRange.actualEnd, asOfDate,
     readinessIssues:deliveryReadiness({...requirement,...metrics},workItems,metrics.scheduleComplete),
     workItems,

@@ -82,7 +82,7 @@ describe('看板性能', {timeout: 30000}, () => {
 
   it('看板与特性摘要复用需求批次，并记录 SQL 时间和查询计划',()=>{
     const {queries}=profileQueries(sqlite,()=>getDashboard(projectId));
-    expect(queries.filter(query=>query.sql.includes(' AS pathEnabled'))).toHaveLength(1);
+    expect(queries.filter(query=>query.sql.includes('FROM requirements r JOIN projects pr'))).toHaveLength(1);
     expect(queries.every(query=>query.plan.length>0)).toBe(true);
   });
 
