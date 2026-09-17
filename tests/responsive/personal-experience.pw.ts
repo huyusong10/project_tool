@@ -65,9 +65,10 @@ test('复制地址和 Token 的降级方式保留键盘焦点',async({page})=>{
   await page.getByRole('button',{name:'创建第一个 Token'}).click();
   const dialog=page.getByRole('dialog',{name:'创建 MCP Token'});
   await dialog.getByLabel('Token 名称').fill('键盘客户端');
-  await dialog.getByRole('button',{name:'创建 Token',exact:true}).click();
+  await dialog.getByRole('button',{name:'创建 Token',exact:true}).focus();await page.keyboard.press('Enter');
   const copy=dialog.getByRole('button',{name:'复制 Token',exact:true});
-  await copy.focus();await page.keyboard.press('Enter');
+  await expect(copy,'创建成功后应能直接复制新 Token').toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(dialog.getByRole('button',{name:'已复制',exact:true})).toBeFocused();
   expect(await page.evaluate(()=>document.body.dataset.copiedText)).toBe('pm_1234567890_secret');
   await page.keyboard.press('Tab');await expect(dialog.getByRole('button',{name:'我已安全保存',exact:true})).toBeFocused();
