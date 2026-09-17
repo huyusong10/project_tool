@@ -294,12 +294,13 @@ function scheduleVarianceFromProgress(items: WeightedWorkItem[], actualProgress:
   const plannedEnds = items.map((item) => item.plannedEnd as string).sort();
   const plannedStart = plannedStarts[0];
   const plannedEnd = plannedEnds.at(-1) as string;
-  const plannedProgressAt = (date: string) => Math.round(items.reduce(
+  const plannedProgressAt = (date: string) => items.reduce(
     (sum, item) => sum + item.progressWeight * plannedProgressWithDuration(item, date),
     0,
-  ) / totalWeight);
+  ) / totalWeight;
   const actual = Math.min(100, Math.max(0, Math.round(actualProgress)));
-  const plannedToday = plannedProgressAt(today);
+  const plannedProgress = plannedProgressAt(today);
+  const plannedToday = Math.round(plannedProgress);
   let referenceDate = today;
 
   if (actual < plannedToday) {
@@ -307,14 +308,14 @@ function scheduleVarianceFromProgress(items: WeightedWorkItem[], actualProgress:
     const searchEnd = today < plannedEnd ? today : plannedEnd;
     for (let cursor = plannedStart; cursor <= searchEnd; cursor = addCalendarDays(cursor, 1)) {
       if (!isBusinessDay(cursor)) continue;
-      if (plannedProgressAt(cursor) > actual) break;
+      if (Math.round(plannedProgressAt(cursor)) > actual) break;
       referenceDate = cursor;
     }
   } else if (actual > plannedToday) {
     referenceDate = plannedEnd;
     for (let cursor = today; cursor <= plannedEnd; cursor = addCalendarDays(cursor, 1)) {
       if (!isBusinessDay(cursor)) continue;
-      if (plannedProgressAt(cursor) >= actual) {
+      if (Math.round(plannedProgressAt(cursor)) >= actual) {
         referenceDate = cursor;
         break;
       }
@@ -324,6 +325,7 @@ function scheduleVarianceFromProgress(items: WeightedWorkItem[], actualProgress:
   return {
     referenceDate,
     varianceDays: businessDayDelta(referenceDate, today),
+    plannedProgress,
   };
 }
 
@@ -378,8 +380,8 @@ export function deriveRequirementMetrics(
   const base=direct?0:requirement.splitBaseProgress||0;
   const remainingProgress=totalWeight ? actualWeightedProgress / totalWeight : 0;
   const progress = direct ? requirement.progress||0 : Math.min(status==='completed'?100:99,Math.round(base+(100-base)*remainingProgress/100));
-  const plannedProgress = requirementPlannedProgress(requirement, workItems, today);
   const scheduleVariance = scheduleVarianceFromProgress(activeItems, base?remainingProgress:progress, today);
+  const plannedProgress = scheduleVariance === null ? null : Math.round(base + (100 - base) * scheduleVariance.plannedProgress / 100);
 
   const actualEnds = activeItems.map((item) => item.actualEnd).filter((value): value is string => Boolean(value));
   // Execution delay stops at the last work completion; accepting later does not extend it.
