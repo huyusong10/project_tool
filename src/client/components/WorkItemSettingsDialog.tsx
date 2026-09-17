@@ -385,6 +385,6 @@ export function WorkItemSettingsDialog({
   return <>
     {embedded?content:<Modal title="工作项" width={960} layout="workspace" closable={!createItem.isPending&&!reorderItems.isPending} onClose={closeSettings}>{content}</Modal>}
 
-    {removeTarget && <WorkItemDeleteDialog target={removeTarget} requirement={requirement} canManage onReload={onReload} onWriteNeedsRecheck={() => { setDeleteUnknown(true); onWriteNeedsRecheck(); }} onClose={() => setRemoveTarget(null)} />}
+    {removeTarget && <WorkItemDeleteDialog target={removeTarget} requirement={requirement} canManage={canManageRequirement && canEdit && !requirementLocked} onReload={onReload} onWriteNeedsRecheck={() => { setDeleteUnknown(true); onWriteNeedsRecheck(); }} onClose={() => setRemoveTarget(null)} />}
   </>;
 }
