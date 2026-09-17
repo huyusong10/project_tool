@@ -172,6 +172,27 @@ it('模板复制和实例化保留前置；旧模板不推断关系或改写历�
  const old=await fixture(true),before=(await detail(old.a.id)).workItems;expect((await analysis(old.projectId)).dependencies).toEqual([]);expect((await analysis(old.projectId)).coverage.reviewed).toBe(2);const {sqlite}=await import('./support/database');sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=NULL WHERE id=?').run(old.a.id);expect((await analysis(old.projectId)).forecastEnd).toBeTruthy();
  expect((await post(`/api/requirements/${old.a.id}/dependency-review`,{expectedRevision:(await analysis(old.projectId)).revision,reviewed:true})).statusCode).toBe(410);const stripDerived=(items:WorkItem[])=>items.map(({forecastBasis:_basis,deliveryForecast:_forecast,...w})=>w);expect(stripDerived((await detail(old.a.id)).workItems)).toEqual(stripDerived(before));
 });
+it('流程客户端标识与内部结束节点同名时，创建、复制和实例化仍保持排期', async () => {
+ const project = (await post('/api/projects', { name: `流程标识${++sequence}` })).json();
+ const response = await post('/api/templates', { projectId: project.id, name: '特殊标识流程', dependencyMode: 'dependencies', items: [
+  { clientKey: '__template_finish__', title: '设计', durationDays: 2, startOffsetDays: 0, sortOrder: 0, predecessorKeys: [] },
+  { clientKey: '__template_finish___', title: '开发', durationDays: 3, startOffsetDays: 2, sortOrder: 1, predecessorKeys: ['__template_finish__'] },
+ ] });
+ expect(response.statusCode, response.body).toBe(200);
+ const template = response.json<WorkItemTemplate>();
+ expect(template.items.map(item => item.startOffsetDays)).toEqual([0, 2]);
+ const copied = await post(`/api/projects/${project.id}/templates/${template.id}/copy`, {});
+ expect(copied.statusCode, copied.body).toBe(200);
+ for (const source of [template, copied.json<WorkItemTemplate>()]) {
+  expect(source.items.map(item => item.startOffsetDays)).toEqual([0, 2]);
+  expect(source.items[1].predecessorIds).toEqual([source.items[0].id]);
+  const created = await post('/api/requirements', { projectId: project.id, templateId: source.id, title: source.name, plannedStart: '2026-09-01' });
+  expect(created.statusCode, created.body).toBe(200);
+  expect(created.json<Requirement>().workItems.map(item => [item.title, item.plannedStart, item.plannedEnd])).toEqual([
+   ['设计', '2026-09-01', '2026-09-02'], ['开发', '2026-09-03', '2026-09-07'],
+  ]);
+ }
+});
 it('部分交付允许 A设计→B开发→A联调；执行循环拒绝且版本不变',async()=>{
  const {projectId,a,b}=await fixture();expect((await add(projectId,a.id,a.workItems[0].id,b.id,b.workItems[1].id)).statusCode).toBe(200);
  expect((await add(projectId,b.id,b.workItems[1].id,a.id,a.workItems[2].id)).statusCode).toBe(200);
