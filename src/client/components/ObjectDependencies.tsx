@@ -9,12 +9,16 @@ export function ObjectDependencies({requirementId,workItemId,onOpenGraph}:{requi
   const workspace=useProjectWorkspace();
   const data=workspace?.data;
   const dependencies=[...data?.dependencies||[]];
+  const nodesById=new Map(data?.nodes.map(node=>[node.id,node]));
+  const workPairs=new Set(dependencies.filter(edge=>edge.sourceWorkItemId&&edge.targetWorkItemId).map(edge=>JSON.stringify([edge.sourceWorkItemId,edge.targetWorkItemId])));
   // Legacy workflows express order as graph edges rather than saved dependency rows.
   for(const edge of data?.edges||[]){
     if(edge.dependencyId)continue;
-    const source=data?.nodes.find(node=>node.id===edge.source),target=data?.nodes.find(node=>node.id===edge.target);
+    const source=nodesById.get(edge.source),target=nodesById.get(edge.target);
     if(source?.kind!=='work'||target?.kind!=='work'||!source.requirementId||source.requirementId!==target.requirementId)continue;
-    if(dependencies.some(item=>item.sourceWorkItemId===source.id&&item.targetWorkItemId===target.id))continue;
+    const pair=JSON.stringify([source.id,target.id]);
+    if(workPairs.has(pair))continue;
+    workPairs.add(pair);
     dependencies.push({id:edge.id,projectId:data!.projectId,sourceRequirementId:source.requirementId,sourceWorkItemId:source.id,targetRequirementId:target.requirementId,targetWorkItemId:target.id,origin:'workflow'});
   }
   const edges=dependencies.filter(edge=>workItemId
@@ -35,7 +39,7 @@ export function ObjectDependencies({requirementId,workItemId,onOpenGraph}:{requi
     const milestoneId=side==='source'?edge.sourceMilestoneId:edge.targetMilestoneId;
     const id=milestoneId||workId||parentId;
     const title=milestoneId?data?.milestones?.find(item=>item.id===milestoneId)?.title
-      :workId?data?.nodes.find(item=>item.id===workId)?.title
+      :workId?nodesById.get(workId)?.title
       :data?.requirements.find(item=>item.id===parentId)?.title;
     const label=<><small>{milestoneId?'里程碑':workId?'工作项':'需求'}</small><span>{title||id}</span></>;
     const current=id===(workItemId||requirementId);
