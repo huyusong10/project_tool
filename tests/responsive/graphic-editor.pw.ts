@@ -433,7 +433,9 @@ test('路由等待期间连续微移不同节点不回退，Esc 取消后继续�
 test('深度交互：属性改名保留光标与中文输入确认，Esc 不提交名称',async({page})=>{
  const {a}=await fixture(page);await openGraph(page,'/templates?edit='+a.templateId);await ready(page);
  const node=page.locator('.react-flow__node').first();await graphProperties(page,node.locator('.dependency-card'));const title=page.getByLabel('元素名称');await title.focus();const position=await node.getAttribute('style');
- await title.fill('中文名称');await title.dispatchEvent('compositionstart');await title.dispatchEvent('keydown',{key:'Enter',code:'Enter',isComposing:true});await expect(title).toHaveValue('中文名称');await title.dispatchEvent('compositionend');
+ await title.fill('中文名称');await title.dispatchEvent('compositionstart');
+ for(const composing of [{isComposing:true},{keyCode:229}])for(const key of ['Enter','Escape']){await title.dispatchEvent('keydown',{key,code:key,...composing});await expect(title).toHaveValue('中文名称');await expect(title).toBeFocused();}
+ await title.dispatchEvent('compositionend');
  await page.keyboard.press('End');await page.keyboard.type(' A B');await expect(title).toHaveValue('中文名称 A B');expect(await node.getAttribute('style')).toBe(position);await page.keyboard.press('Escape');await expect(title).toHaveValue('方案交付');await closeGraphProperties(page);await expect(node).toContainText('方案交付');
 });
 

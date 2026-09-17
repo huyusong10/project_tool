@@ -39,7 +39,12 @@ test('完成统一为可留空的确认表单，说明可恢复且一次确认�
   const form=modal.getByRole('dialog',{name:'完成工作项',exact:true});
   await expect(form.getByRole('button',{name:'确认完成',exact:true})).toHaveAttribute('data-size','medium');
   await form.getByRole('textbox',{name:'完成说明（可选）',exact:true}).fill('待确认的完成说明');
-  await form.getByRole('button',{name:'关闭',exact:true}).click();
+  const explanation=form.getByRole('textbox',{name:'完成说明（可选）',exact:true});
+  for(const composing of [{isComposing:true},{keyCode:229}]){
+    await explanation.dispatchEvent('keydown',{key:'Escape',code:'Escape',...composing});
+    await expect(explanation).toHaveValue('待确认的完成说明');
+  }
+  await page.keyboard.press('Escape');await expect(form).toHaveCount(0);await expect(modal).toBeVisible();
   await modal.getByRole('button',{name:'完成',exact:true}).click();await expect(form.getByRole('textbox',{name:'完成说明（可选）',exact:true})).toHaveValue('待确认的完成说明');
   await form.getByRole('textbox',{name:'完成说明（可选）',exact:true}).fill('');
   expect(writes).toBe(0);await page.screenshot({path:info.outputPath('complete-optional.png'),animations:'disabled'});
