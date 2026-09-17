@@ -1,19 +1,54 @@
 import {test,expect} from '@playwright/test';
 import { themes } from '../../src/client/theme-preference';
 test.use({actionTimeout:10_000});
+const openedProjects:string[]=[];
+test.afterEach(async({request})=>{
+  if(!openedProjects.length)return;
+  await request.post('/api/login',{data:{username:'admin',password:'41_xc7q0qOjo4Inw!'}});
+  const projects=await(await request.get('/api/projects')).json();
+  for(const id of openedProjects.splice(0)){
+    const project=projects.find((p:{id:string;guestVisible:boolean})=>p.id===id);
+    if(project?.guestVisible){const response=await request.patch('/api/projects/'+id,{data:{guestVisible:false,expectedUpdatedAt:project.updatedAt}});expect(response.ok(),await response.text()).toBe(true);}
+  }
+});
 
-test('游客浏览选项保持紧凑对齐，支持文字点击、键盘和保存', async ({page}, testInfo) => {
+test('游客浏览选项支持文字点击、键盘和保存', async ({page}) => {
   await page.request.post('/api/login', {data:{username:'admin',password:'41_xc7q0qOjo4Inw!'}});
   const response = await page.request.post('/api/projects', {data:{name:'游客选项布局验证'}});
   expect(response.ok()).toBe(true);
   const project = await response.json();
+  openedProjects.push(project.id);
   await page.goto('/project-settings?projectId='+project.id);
   await page.getByRole('button',{name:'编辑项目',exact:true}).click();
   const dialog = page.getByRole('dialog',{name:'编辑项目'});
   const checkbox = dialog.getByRole('checkbox',{name:'允许游客查看',exact:true});
   await expect(checkbox).not.toBeChecked();
   await expect(dialog.locator('label label')).toHaveCount(0);
-  for (const width of [1280,390]) {
+  await dialog.getByText('允许游客查看',{exact:true}).click();
+  await expect(checkbox).toBeChecked();
+  await checkbox.focus(); await page.keyboard.press('Space');
+  await expect(checkbox).not.toBeChecked();
+  await page.keyboard.press('Space');
+  await dialog.getByRole('button',{name:'保存修改',exact:true}).click();
+  await expect(dialog).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('button',{name:'编辑项目',exact:true}).click();
+  await expect(checkbox).toBeChecked();
+});
+
+test('游客浏览选项在当前视口、窄屏和主题下保持紧凑对齐',{tag:'@responsive'}, async ({page}, testInfo) => {
+  await page.request.post('/api/login', {data:{username:'admin',password:'41_xc7q0qOjo4Inw!'}});
+  const response = await page.request.post('/api/projects', {data:{name:'游客选项布局验证'}});
+  expect(response.ok()).toBe(true);
+  const project = await response.json();
+  openedProjects.push(project.id);
+  await page.goto('/project-settings?projectId='+project.id);
+  await page.getByRole('button',{name:'编辑项目',exact:true}).click();
+  const dialog = page.getByRole('dialog',{name:'编辑项目'});
+  const checkbox = dialog.getByRole('checkbox',{name:'允许游客查看',exact:true});
+  await expect(checkbox).not.toBeChecked();
+  await expect(dialog.locator('label label')).toHaveCount(0);
+  for (const width of [testInfo.project.use.viewport!.width,390]) {
     await page.setViewportSize({width,height:800});
     for (const theme of themes) {
       await page.evaluate(id => document.documentElement.dataset.theme = id, theme.id);
@@ -29,16 +64,6 @@ test('游客浏览选项保持紧凑对齐，支持文字点击、键盘和保�
     await page.evaluate(()=>document.documentElement.dataset.theme = 'classic');
     await page.screenshot({path:testInfo.outputPath('guest-checkbox-'+width+'.png')});
   }
-  await dialog.getByText('允许游客查看',{exact:true}).click();
-  await expect(checkbox).toBeChecked();
-  await checkbox.focus(); await page.keyboard.press('Space');
-  await expect(checkbox).not.toBeChecked();
-  await page.keyboard.press('Space');
-  await dialog.getByRole('button',{name:'保存修改',exact:true}).click();
-  await expect(dialog).toHaveCount(0);
-  await page.reload();
-  await page.getByRole('button',{name:'编辑项目',exact:true}).click();
-  await expect(checkbox).toBeChecked();
 });
 
 test('游客浏览三视角和四类详情，登录保留位置，撤回开放清理页面',async({page,browser,baseURL},testInfo)=>{
@@ -52,6 +77,7 @@ test('游客浏览三视角和四类详情，登录保留位置，撤回开放�
   const post=async(url:string,data:object)=>{const r=await admin.request.post(url,{data});expect(r.ok(),await r.text()).toBe(true);return r.json();};
   await post('/api/login',{username:'admin',password:'41_xc7q0qOjo4Inw!'});
   const project=await post('/api/projects',{name:'游客浏览验证'}),projectId=project.id,base='/api/projects/'+projectId;
+  openedProjects.push(projectId);
   await post('/api/projects',{name:'不公开的内部项目'});
   const owner=await post('/api/people',{name:'游客验证负责人 '+testInfo.project.name,projectId});
   const feature=(await post(base+'/features',{name:'资产管理',description:'统一管理设备台账和资产变更',referenceLinks:[{title:'设计文档',url:'https://example.com/mds'}]})).features[0];
@@ -82,13 +108,7 @@ test('游客浏览三视角和四类详情，登录保留位置，撤回开放�
     }
   }
   expect(failures).toEqual([]);expect(errors).toEqual([]);
-  // Narrow-screen navigation and object detail share the same readonly shell.
-  await page.setViewportSize({width:390,height:844});
-  await page.getByRole('dialog').getByRole('tab',{name:'概况',exact:true}).click();
-  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await page.screenshot({path:testInfo.outputPath('guest-narrow-detail.png')});
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
-  await page.setViewportSize({width:1280,height:800});
   const currentUrl=page.url();
   await page.getByRole('button',{name:'游客登录',exact:true}).click();
   const login=page.getByRole('dialog',{name:'用户登录'});
@@ -116,7 +136,7 @@ test('多个开放项目提供选择，关闭项目不会出现在选择列表',
   const admin=await browser.newContext({baseURL});await admin.request.post('/api/login',{data:{username:'admin',password:'41_xc7q0qOjo4Inw!'}});
   const ids:string[]=[];
   for(const name of ['游客甲项目','游客乙项目']){
-    const p=await(await admin.request.post('/api/projects',{data:{name}})).json();ids.push(p.id);
+    const p=await(await admin.request.post('/api/projects',{data:{name}})).json();ids.push(p.id);openedProjects.push(p.id);
     expect((await admin.request.patch('/api/projects/'+p.id,{data:{guestVisible:true,expectedUpdatedAt:p.updatedAt}})).ok()).toBe(true);
   }
   await page.goto('/');await expect(page.getByRole('heading',{name:'选择项目'})).toBeVisible();
@@ -126,4 +146,13 @@ test('多个开放项目提供选择，关闭项目不会出现在选择列表',
   await expect(page.getByText('游客浏览',{exact:true})).toBeVisible();
   for(const id of ids){const p=(await(await admin.request.get('/api/projects')).json()).find((p:{id:string})=>p.id===id);expect((await admin.request.patch('/api/projects/'+id,{data:{guestVisible:false,expectedUpdatedAt:p.updatedAt}})).ok()).toBe(true);}
   await admin.close();
+});
+
+test('游客工作项详情在当前视口和窄屏只读且无横向溢出',{tag:'@responsive'},async({page},info)=>{
+  await page.request.post('/api/login',{data:{username:'admin',password:'41_xc7q0qOjo4Inw!'}});
+  const project=await(await page.request.post('/api/projects',{data:{name:'游客详情布局'}})).json();openedProjects.push(project.id);
+  const requirement=await(await page.request.post('/api/requirements',{data:{projectId:project.id,title:'设备台账',background:'记录每台设备的位置和负责人'}})).json();
+  const workResponse=await page.request.post('/api/requirements/'+requirement.id+'/work-items',{data:{expectedVersion:requirement.version,title:'开发实现'}});expect(workResponse.ok(),await workResponse.text()).toBe(true);
+  const latest=await(await page.request.get('/api/requirements/'+requirement.id)).json();const opened=await page.request.patch('/api/projects/'+project.id,{data:{guestVisible:true,expectedUpdatedAt:project.updatedAt}});expect(opened.ok(),await opened.text()).toBe(true);await page.request.post('/api/logout',{data:{}});
+  for(const viewport of [info.project.use.viewport!,{width:390,height:844}]){await page.setViewportSize(viewport);await page.goto('/?'+new URLSearchParams({projectId:project.id,workspaceView:'progress',detailId:latest.workItems[0].id}));const panel=page.getByRole('dialog');await expect(panel).toBeVisible();await expect(panel.getByRole('button',{name:/^(开始|更新|完成|保存)$/})).toHaveCount(0);expect(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath('guest-detail-'+viewport.width+'.png')});}
 });

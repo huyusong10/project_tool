@@ -1,5 +1,6 @@
 import {readWorkspaceLocation,workspaceParams,workspacePreferenceKey} from './workspace-location';
 import {readWorkspaceViewPreference} from './features/workspace/preferences';
+import {normalizeRequirementStatusFilter} from '../shared/requirement-view';
 export type ProjectTask='scope'|'progress';
 export const workspacePaths=['/','/features','/paths','/requirements','/execution'];
 export const isProjectWorkspace=(pathname:string)=>workspacePaths.includes(pathname);
@@ -14,7 +15,7 @@ export function initialScopeMode(account:string,project:string){
 /** Only stored user choices migrate; the former implicit in-progress default does not. */
 export function progressEntryParams(account:string,project:string,current:URLSearchParams){
   const next=new URLSearchParams(current);next.delete('attention');next.delete('progressAttention');
-  const flattenSelection=(params:URLSearchParams)=>{const old=params.get('pathNode')?.match(/^phase:(.+):unassigned$/);if(old){params.set('featureId',old[1]);params.set('phaseId','unassigned');params.delete('pathNode');}return params;};
+  const flattenSelection=(params:URLSearchParams)=>{const old=params.get('pathNode')?.match(/^phase:(.+):unassigned$/);if(old){params.set('featureId',old[1]);params.set('phaseId','unassigned');params.delete('pathNode');}const status=params.get('progressStatus');if(status&&status!=='none')params.set('progressStatus',[...new Set(status.split(',').map(normalizeRequirementStatusFilter).filter(Boolean))].join(','));return params;};
   const aliases:Record<string,string>={feature:'featureId',phase:'phaseId',status:'progressStatus',risk:'progressRisk',personId:'progressPerson',schedule:'progressSchedule',scope:'progressScope'};
   for(const [old,name] of Object.entries(aliases))if(next.has(old)&&!next.has(name)){next.set(name,next.get(old)!);next.delete(old);}
   if([...current.keys()].some(k=>k!=='projectId'))return flattenSelection(next);
@@ -28,7 +29,7 @@ export function progressEntryParams(account:string,project:string,current:URLSea
       const value=JSON.parse(sessionStorage.getItem(prefix+old)||'null');if(typeof value==='string'&&value)next.set(name,value);
     }
   }catch{/* Invalid view preferences never alter submitted requests. */}
-  return next;
+  return flattenSelection(next);
 }
 export function rememberProjectTask(account:string,project:string,pathname:string,search:string){
   if(!['/','/execution','/requirements'].includes(pathname))return;

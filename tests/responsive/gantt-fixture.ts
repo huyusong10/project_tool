@@ -1,4 +1,5 @@
 import type { Page, Route } from "@playwright/test";
+import { workspaceFixture } from './workspace-fixture';
 
 export const workItem = {
   id: "w1", requirementId: "r1", templateItemId: "ti1", title: "接口开发", ownerId: "u1", ownerName: "张三",
@@ -45,12 +46,17 @@ export const requirement = {
 };
 
 export async function mockGanttData(page: Page, progressRequests: Array<Record<string, unknown>> = []) {
+  const workspace = workspaceFixture('p1', '测试项目', [requirement, { ...requirement, id: 'r2', title: '领先计划流程', workItems: [{ ...workItem, id: 'w2', requirementId: 'r2' }] }]);
   await page.route("**/api/**", async (route: Route) => {
     const pathname = new URL(route.request().url()).pathname;
     const json = (value: unknown) => route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
     if (pathname === "/api/session") return json({ authenticated: true, accountId: "admin", username: "admin", role: "admin", globalRole: "admin", personId: null, mustChangePassword: false, managedProjectIds: [] });
     if (pathname === "/api/projects") return json([{ id: "p1", name: "测试项目", status: "active", plannedStart: "2026-09-01", plannedEnd: "2026-09-30", defaultTemplateId: "t1", createdAt: "2026-09-01", updatedAt: "2026-09-01" }]);
-    if (pathname.endsWith("/feature-overview")) return json({asOfDate:"2026-09-11",recentFrom:"2026-09-05",groups:[],unassignedCount:0});
+    if (pathname.endsWith('/path-graph')) return json({analysis:workspace.analysis});
+    if (pathname.endsWith('/path-analysis')) return json(workspace.analysis);
+    if (pathname.endsWith('/features')) return json({features:workspace.features});
+    if (pathname.endsWith('/feature-phases')) return json([]);
+    if (pathname.endsWith('/feature-overview')) return json(workspace.overview);
     if (pathname === "/api/dashboard") return json({
       summary: { total: 2, active: 2, completed: 0, delayed: 0, highRisk: 0, completionRate: 0 },
       requirements: [requirement, { ...requirement, id: "r2", title: "领先计划流程", progress: 70, plannedProgress: 50, progressGap: 0, riskLevel: "low", riskReason: "进展正常", workItems: [
@@ -68,6 +74,7 @@ export async function mockGanttData(page: Page, progressRequests: Array<Record<s
     if (pathname === "/api/requirements/r1") return json(requirement);
     if (pathname === "/api/templates") return json([]);
     if (pathname === "/api/people") return json([]);
+    if (pathname === '/api/my-work') return json({asOfDate:'2026-09-03',summary:{total:1,notStarted:0,inProgress:1,blocked:0,completed:0,overdue:0},requirements:[],items:[{...workItem,projectId:'p1',projectName:'测试项目',requirementTitle:requirement.title,requirementStatus:requirement.status,assignmentType:'owner',overdue:false}],completionTrend:[],upcoming:[],recentProgress:[]});
     return json({});
   });
 }

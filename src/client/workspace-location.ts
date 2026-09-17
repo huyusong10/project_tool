@@ -69,6 +69,16 @@ export function scopeFromObject(id:string,data:PathAnalysis):WorkspaceScope|unde
 }
 export function workspacePreferenceKey(account:string,project:string){return 'pm-workspace-location:'+account+':'+project;}
 
+/** Open an actual dependency in the target's feature, where external predecessors remain visible. */
+export function dependencyWorkspaceLocation(data:PathAnalysis,id:string):string|undefined{
+  const dependency=data.dependencies.find(d=>d.id===id);if(!dependency)return;
+  const requirement=data.requirements.find(r=>r.id===dependency.targetRequirementId);
+  const featureId=requirement?.featureId||data.featureContext?.overview.features.find(f=>f.kind==='other')?.id;
+  if(!featureId)return;
+  const params=workspaceParams({projectId:data.projectId,view:'graph',scope:{kind:'feature',id:featureId}},data,new URLSearchParams({pathRelation:id,graphInspector:'open',pathScope:'all'}));
+  return '/?'+params;
+}
+
 /** Invalid draft fields open the graph editor, never the formal object inspector. */
 export function editorFieldLocation(data:PathAnalysis,id:string):string|undefined{
   const node=data.nodes.find(n=>n.id===id),requirement=data.requirements.find(r=>r.id===(node?.requirementId||id));

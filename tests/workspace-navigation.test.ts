@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {editorFieldLocation,readWorkspaceLocation,workspaceAncestors,workspaceParams,type WorkspaceLocation} from '../src/client/workspace-location';
+import {dependencyWorkspaceLocation,editorFieldLocation,readWorkspaceLocation,workspaceAncestors,workspaceParams,type WorkspaceLocation} from '../src/client/workspace-location';
 import {workspaceSummary} from '../src/client/workspace-summary';
 import {reorderSelection} from '../src/client/outline-model';
 import type {PathAnalysis} from '../src/shared/paths';
@@ -15,6 +15,13 @@ const data={asOfDate:'2026-09-16',projectId:'p',projectName:'项目',requirement
 ]}}} as unknown as PathAnalysis;
 const location=(kind:WorkspaceLocation['scope']['kind'],id:string):WorkspaceLocation=>({projectId:'p',view:'list',scope:{kind,id}});
 describe('公共范围与旧网址',()=>{
+  it('实际依赖进入后续需求所属特性，并打开指定关系',()=>{
+    const linked={...data,dependencies:[{id:'cross',sourceRequirementId:'a',targetRequirementId:'d'}]} as PathAnalysis;
+    const params=new URL(dependencyWorkspaceLocation(linked,'cross')!,'http://local').searchParams;
+    expect(readWorkspaceLocation(params,'p')).toMatchObject({view:'graph',scope:{kind:'feature',id:'other'},inspector:undefined});
+    expect(params.get('pathRelation')).toBe('cross');expect(params.get('graphInspector')).toBe('open');
+    expect(dependencyWorkspaceLocation(linked,'missing')).toBeUndefined();
+  });
   it('错误草稿字段定位到所属范围，不打开正式资料或携带旧筛选',()=>{
     const workData={...data,nodes:[{id:'work-a',requirementId:'a'}]} as PathAnalysis;
     for(const [id,kind,scope] of [['work-a','requirement','a'],['a','feature','f'],['d','feature','other']]){

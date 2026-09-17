@@ -25,6 +25,8 @@ import { PageHeader } from "../components/PageHeader";
 import "../project-workspace.css";
 
 import { ProjectWorkspace } from '../features/workspace/ProjectWorkspace';
+import { remapSavedEditorUrl } from '../path-view';
+import { viewFields } from '../features/workspace/use-workspace-navigation';
 
 export function ProjectWorkspacePage(){
   const {selectedProjectId,projects}=useProjects(),{session}=useSession(),[params]=useSearchParams(),url=useLocation(),account=session.accountId||'guest';
@@ -34,11 +36,19 @@ export function ProjectWorkspacePage(){
   useEffect(()=>{if([report.error,graph.error].some(e=>e instanceof ApiError&&[401,403].includes(e.status)))clearProjectGraphDrafts(account,selectedProjectId);},[report.error,graph.error,account,selectedProjectId]);
   if(!report.data||!graph.data||report.unavailable||graph.unavailable)return <><PageHeader title="项目空间"/><div className="page-content"><p>{report.error?.message||graph.error?.message||(!selectedProjectId?'请选择项目':'正在读取项目工作区…')}</p>{(report.error||graph.error)&&<Button variant="secondary" className="ghost-button" onClick={()=>{void report.refetch();void graph.refetch();}}>重新读取</Button>}</div></>;
   if(guest&&(params.has('intake')||params.has('draftProject'))){const safe=new URLSearchParams(params);for(const key of ['intake','intakeView','draftProject'])safe.delete(key);return <Navigate replace to={'/?'+safe}/>;}
+  // Browser history can still point at a temporary ID after another scope saved the draft.
+  const currentUrl=url.pathname+url.search,remappedUrl=remapSavedEditorUrl(currentUrl,account+':'+selectedProjectId);
+  if(remappedUrl!==currentUrl)return <Navigate replace to={remappedUrl} state={url.state}/>;
   if(url.pathname!=='/'||!params.has('workspaceView')||params.get('projectId')!==selectedProjectId){
     const entryParams=url.pathname==='/execution'?progressEntryParams(account,selectedProjectId,params):new URLSearchParams(params);let location=readWorkspaceLocation(entryParams,selectedProjectId,url.pathname);
     if(url.pathname==='/'&&(!params.size||params.size===1&&params.has('projectId')||params.get('projectId')&&params.get('projectId')!==selectedProjectId)){
       location={projectId:selectedProjectId,scope:{kind:'project',id:selectedProjectId},view:guest?'progress':'list'};
-      try{const view=readWorkspaceViewPreference(localStorage.getItem(workspacePreferenceKey(account,selectedProjectId)),selectedProjectId);if(view)location={...location,view};}catch{/* Use the project list on first entry. */}
+      try{
+        const key=workspacePreferenceKey(account,selectedProjectId),view=readWorkspaceViewPreference(localStorage.getItem(key),selectedProjectId);
+        if(view)location={...location,view};
+        // A project switch restores that project's view filters, never another project's range or detail.
+        if(params.has('projectId'))for(const [name,value] of new URLSearchParams(sessionStorage.getItem(key+':'+location.view)||''))if(viewFields.includes(name))entryParams.set(name,value);
+      }catch{/* Use the project list on first entry. */}
     }
     return <Navigate replace to={'/?'+workspaceParams(location,graph.data.analysis,entryParams)} state={url.state}/>;
   }

@@ -15,6 +15,12 @@ it('旧未分期中间行链接转换成直接需求筛选',()=>{
 it('首次默认关系图；只迁移明确保存的表格偏好',()=>{
   expect(initialScopeMode('a','p')).toBe('graph');sessionStorage.setItem('pm-canvas-navigation:a:p:features','mode=table');expect(initialScopeMode('a','p')).toBe('table');expect(initialScopeMode('b','p')).toBe('graph');
 });
+it('旧阻塞状态迁移为进行中，明确不选状态仍保持空结果',()=>{
+  expect(progressEntryParams('a','p',new URLSearchParams('status=blocked')).get('progressStatus')).toBe('in_progress');
+  sessionStorage.setItem('pm-path-view:a:p:dashboard-gantt:status','"blocked"');
+  expect(progressEntryParams('a','p',new URLSearchParams()).get('progressStatus')).toBe('in_progress');
+  expect(progressEntryParams('a','p',new URLSearchParams('progressStatus=none')).get('progressStatus')).toBe('none');
+});
 it('任务切换携带对象，图形筛选不在进展中生效；保留自己的时间筛选',()=>{
   rememberProjectTask('a','p','/execution','?progressStage=testing');
   const url=new URL(projectTaskUrl('a','p','progress',new URLSearchParams('view=requirement&requirementId=r&pathNode=w&featureId=f&phaseId=p1&pathFloat=critical&stage=development')),'http://test');
