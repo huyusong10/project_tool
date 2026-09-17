@@ -204,7 +204,8 @@ function PanelEditor({ initial, catalog, range, projectId, onClose, onSave }: {
   const updateMeasure = (nextId: string) => {
     const nextMeasure = dataset.measures.find((item) => item.id === nextId)!;
     const nextDimension = panel.dimension && nextMeasure.dimensions.includes(panel.dimension) ? panel.dimension : undefined;
-    const nextVisualization = nextMeasure.visualizations.includes(panel.visualization) && (nextDimension || ["kpi", "table"].includes(panel.visualization)) ? panel.visualization : "kpi";
+    const nextVisualizations = nextMeasure.visualizations.filter((item) => nextDimension ? item !== "kpi" : item === "kpi" || item === "table");
+    const nextVisualization = nextVisualizations.includes(panel.visualization) ? panel.visualization : nextVisualizations[0];
     setPanel((current) => ({ ...current, measure: nextId, secondaryMeasure: undefined, dimension: nextDimension, visualization: nextVisualization }));
   };
   return <div className="analytics-panel-editor">

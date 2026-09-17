@@ -1,6 +1,46 @@
 import { expect, test, type Page } from '@playwright/test';
 import {headerAction} from './topbar-helpers';
 import { analyticsCatalog, defaultAnalyticsLayout, type AnalyticsLayout } from '../../src/shared/analytics';
+import { chooseOption, selectedValue } from './select-helper';
+
+test('切换指标后保留有效分组并选择兼容图表，真实预览与保存均成功', async ({ page }) => {
+  const login=await page.request.post('/api/login',{data:{username:'admin',password:'41_xc7q0qOjo4Inw!'}});
+  expect(login.ok()).toBe(true);
+  const session=await login.json();
+  const created=await page.request.post('/api/projects',{data:{name:'统计配置核对 '+Date.now()}});
+  expect(created.ok()).toBe(true);
+  const project=await created.json();
+  await page.addInitScript(({accountId,projectId})=>localStorage.setItem('project-manage:selected-project:'+accountId,projectId),{accountId:session.accountId,projectId:project.id});
+  await page.goto('/analytics');
+  await page.getByRole('button',{name:'编辑看板',exact:true}).click();
+  await page.getByRole('button',{name:'编辑风险分布',exact:true}).click();
+  const editor=page.getByRole('dialog').filter({has:page.getByRole('heading',{name:'配置分析图表',exact:true})});
+  const previewPromise=page.waitForResponse(response=>response.url().endsWith('/api/analytics/query')&&response.request().method()==='POST'&&response.request().postDataJSON().panels.length===1&&response.request().postDataJSON().panels[0].measure==='finish_variance');
+  await chooseOption(editor.getByRole('combobox',{name:'指标',exact:true}),'finish_variance');
+  const preview=await previewPromise;
+  expect(preview.status(),await preview.text()).toBe(200);
+  await expect(selectedValue(editor.getByRole('combobox',{name:'分组维度',exact:true}))).toHaveValue('risk');
+  await expect(selectedValue(editor.getByRole('combobox',{name:'图表类型',exact:true}))).toHaveValue('bar');
+  await editor.getByLabel('图表标题',{exact:true}).fill('按风险查看完成偏差');
+  await editor.getByRole('button',{name:'应用配置',exact:true}).click();
+  await page.getByRole('button',{name:'保存布局',exact:true}).click();
+  await expect(page.getByRole('button',{name:'编辑看板',exact:true})).toBeVisible();
+  const saved=await page.request.get('/api/analytics/layout');
+  expect(saved.ok()).toBe(true);
+  expect((await saved.json()).layout.panels.find((panel:{id:string})=>panel.id==='risk-distribution')).toMatchObject({title:'按风险查看完成偏差',measure:'finish_variance',dimension:'risk',visualization:'bar'});
+  await page.reload();
+  await page.getByRole('button',{name:'编辑看板',exact:true}).click();
+  await page.getByRole('button',{name:'编辑按风险查看完成偏差',exact:true}).click();
+  await expect(selectedValue(editor.getByRole('combobox',{name:'指标',exact:true}))).toHaveValue('finish_variance');
+  await expect(selectedValue(editor.getByRole('combobox',{name:'图表类型',exact:true}))).toHaveValue('bar');
+  const ungroupedPromise=page.waitForResponse(response=>response.url().endsWith('/api/analytics/query')&&response.request().method()==='POST'&&response.request().postDataJSON().panels.length===1&&response.request().postDataJSON().panels[0].measure==='completed_count');
+  await chooseOption(editor.getByRole('combobox',{name:'指标',exact:true}),'completed_count');
+  const ungrouped=await ungroupedPromise;
+  expect(ungrouped.status(),await ungrouped.text()).toBe(200);
+  await expect(selectedValue(editor.getByRole('combobox',{name:'分组维度',exact:true}))).toHaveValue('');
+  await expect(selectedValue(editor.getByRole('combobox',{name:'图表类型',exact:true}))).toHaveValue('kpi');
+  await editor.getByRole('button',{name:'取消',exact:true}).click();
+});
 
 async function mockAnalytics(page: Page) {
   let layout = structuredClone(defaultAnalyticsLayout);
