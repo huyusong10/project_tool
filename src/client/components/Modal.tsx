@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {useDetailActionHost} from './DetailWorkspace';
 import {hasActiveSortDrag} from './DragPreview';
+import {copyText} from '../clipboard';
 
 let openModalCount = 0;
 let previousBodyOverflow = '';
@@ -179,27 +180,14 @@ export function ConfirmDialog({
 }
 
 export function ResultDialog({ title, message, value, error = false, onClose }: { title: string; message: ReactNode; value?: string; error?: boolean; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
-  const [copyFailed, setCopyFailed] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'copied' | 'failed' | null>(null);
   const copyValue = async () => {
-    try {
-      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value || '');
-      else {
-        const input = document.createElement('textarea');
-        input.value = value || ''; input.style.position = 'fixed'; input.style.opacity = '0';
-        document.body.appendChild(input);
-        try {
-          input.select();
-          if (!document.execCommand('copy')) throw new Error('copy failed');
-        } finally { input.remove(); }
-      }
-      setCopied(true); setCopyFailed(false);
-    } catch { setCopyFailed(true); }
+    setCopyStatus(await copyText(value || '') ? 'copied' : 'failed');
   };
   return <Modal title={title} width={500} onClose={onClose}>
     <div className={`result-dialog${error ? ' is-error' : ''}`}>
       <div className="result-dialog-message">{error ? <AlertTriangle size={24} /> : <CheckCircle2 size={24} />}<div>{message}</div></div>
-      {value && <div className="result-dialog-value"><code>{value}</code><Button variant="ghost" iconOnly type="button" className="icon-button" title="复制" aria-label="复制结果" onClick={() => void copyValue()}><Copy size={16} /></Button>{copied && <span>已复制</span>}{copyFailed && <span>复制失败，请手动选择</span>}</div>}
+      {value && <div className="result-dialog-value"><code>{value}</code><Button variant="ghost" iconOnly type="button" className="icon-button" title="复制" aria-label="复制结果" onClick={() => void copyValue()}><Copy size={16} /></Button>{copyStatus === 'copied' && <span>已复制</span>}{copyStatus === 'failed' && <span>复制失败，请手动选择</span>}</div>}
       <div className="form-actions"><Button variant="primary" type="button" autoFocus className="primary-button" onClick={onClose}>知道了</Button></div>
     </div>
   </Modal>;
