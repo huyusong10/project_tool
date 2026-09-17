@@ -280,11 +280,13 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
   },[data,focus,featureScope,imported,draft.count,draft.preview,draft.changes.entities,layoutValue?.positions,panel,issue]);
   const phaseLayout=useMemo(()=>featureScope?featurePhaseLayout(data,activeFeature,featureScope,graph.cards.map(c=>c.id)):undefined,[data,activeFeature,featureScope,graph.cards]);
   // Focus, selection and navigation do not change the filter projection.
-  const filterValues=JSON.stringify(readPathFilters(params,!!focus||!!featureScope));
-  const filters=useMemo(()=>params.get('mode')==='table'?emptyRequirementFilters():JSON.parse(filterValues) as ReturnType<typeof readPathFilters>,[filterValues,params]);
+  const filterValues=JSON.stringify(params.get('mode')==='table'?emptyRequirementFilters():readPathFilters(params,!!focus||!!featureScope));
+  const filters=useMemo(()=>JSON.parse(filterValues) as ReturnType<typeof readPathFilters>,[filterValues]);
+  const deliveryFilterValues=JSON.stringify(['q','phaseId','stage','workStage','view'].map(key=>[key,params.get(key)||'']));
+  const deliveryFilters=useMemo(()=>new URLSearchParams(JSON.parse(deliveryFilterValues)),[deliveryFilterValues]);
   const applyFilters=(value:ReturnType<typeof readPathFilters>)=>{setParams(writePathFilters(params,value),{replace:true,state:location.state});};
   const sorted=useMemo(()=>[...graph.cards].sort((a,b)=>compareRiskRequirements(cardFilterItem(a,data),cardFilterItem(b,data))),[graph.cards,data]);
-  const matching=useMemo(()=>sorted.filter(c=>draft.changes.entities?.some(e=>e.op==='create'&&e.id===c.id)||matchesRequirementFilters(cardFilterItem(c,data),filters)).filter(c=>matchesDeliveryCard(c,data,params)),[sorted,data,filters,draft.changes.entities,params]);
+  const matching=useMemo(()=>sorted.filter(c=>draft.changes.entities?.some(e=>e.op==='create'&&e.id===c.id)||matchesRequirementFilters(cardFilterItem(c,data),filters)).filter(c=>matchesDeliveryCard(c,data,deliveryFilters)),[sorted,data,filters,draft.changes.entities,deliveryFilters]);
   const ids=useMemo(()=>graphContext(new Set(matching.map(c=>c.id)),graph.links),[matching,graph.links]);
   const visibleIds=useMemo(()=>[...new Set([...ids,...panel==='connectionIssue'?(issue?.nodeIds||[]).map(id=>focus?id:data.nodes.find(n=>n.id===id)?.requirementId||id):[]])],[ids,panel,issue,focus,data.nodes]),contextIds=useMemo(()=>visibleIds.filter(id=>!matching.some(c=>c.id===id)),[visibleIds,matching]);
   const emphasized=useMemo(()=>branch?graphBranch(branch,focus?data.edges:graph.links):ids,[branch,focus,data.edges,graph.links,ids]);

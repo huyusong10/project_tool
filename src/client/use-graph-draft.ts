@@ -7,7 +7,7 @@ import { executionDraftConflicts, type ExecutionCommand } from '../shared/execut
 import { EditorSession, newHistory, readHistory, type HistoryCommand, type EditorHistory, type FieldAvailability } from './editor-session';
 import { projectFieldActive } from './editor-fields';
 import { currentEditorAnalysis, rebaseEditorHistory } from './editor-rebase';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { readDraftRecord, writeDraftRecord, writeSharedDraftRecord, watchDraftRecord, clearDraftRecords, ownsDraft, takeDraft, releaseDraft } from './graph-draft-storage';
 import { ApiError, isWriteOutcomeUnknown, jsonBody } from './api';
 import type { DependencyChanges, DependencyChangePreview, DependencyChangeReceipt, DependencyChangesInput } from '../shared/path-contracts';
@@ -100,6 +100,7 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
   };
 }
 const empty: DependencyChanges = { add: [], remove: [], estimates: [] };
+const noResolutions:Record<string,'draft'|'server'>={};
 type PendingBatch = DependencyChangesInput & { batchId: string; previewToken: string };
 export function useDependencyDraft(accountId: string, incoming: PathAnalysis, target: string, onSaved: (receipt?:DependencyChangeReceipt) => void, scope?:string) {
   const enabled=!useGuestWorkspace(incoming.projectId);
@@ -121,8 +122,9 @@ export function useDependencyDraft(accountId: string, incoming: PathAnalysis, ta
   const featureVersion=(value:PathAnalysis|undefined)=>JSON.stringify([value?.featureContext?.relations,value?.featureContext?.overview.features.map(g=>[g.id,g.archivedAt])]);
   const resolutionVersion=JSON.stringify([data.revision,data.layouts?.map(l=>[l.scope,l.direction,l.version]),featureVersion(data)]);
   const [resolutionState,setResolutionState]=useState<{version:string;values:Record<string,'draft'|'server'>}>({version:resolutionVersion,values:{}});
-  const resolutions=resolutionState.version===resolutionVersion?resolutionState.values:{};
-  const rebased=rebaseEditorHistory(history.source,data,history.session.state.values,history.session.state.index,resolutions);
+  const resolutions=resolutionState.version===resolutionVersion?resolutionState.values:noResolutions;
+  const historyValues=history.session.state.values,historyIndex=history.session.state.index;
+  const rebased=useMemo(()=>rebaseEditorHistory(history.source,data,historyValues,historyIndex,resolutions),[history.source,data,historyValues,historyIndex,resolutions]);
   const conflict = history.session.state.values.some(v=>v.add.length||v.remove.length||v.estimates.length||v.entities?.length||v.layouts?.length||v.featureRelations?.length||v.commitment) && (Number(history.version) !== data.revision || history.session.state.values.some(v=>!!v.featureRelations?.length&&featureVersion(history.source)!==featureVersion(data)||(v.layouts||[]).some(l=>l.expectedVersion!==(data.layouts?.find(d=>d.scope===l.scope&&d.direction===l.direction)?.version||0))));
   useEffect(()=>{
     if(!conflict||history.loading||history.readOnly||history.busy||pending)return;

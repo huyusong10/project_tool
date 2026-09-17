@@ -5,7 +5,7 @@ import {useProjectWorkspace} from '../project-workspace-context';
 import {scopeFromObject} from '../workspace-location';
 import {PhaseChip} from './DeliveryTables';
 import { ExecutionStageBadge, WorkProgressBadge } from "./ExecutionStageBadge";
-import {memo,useEffect,useRef,useMemo,useId} from 'react';
+import {memo,useCallback,useEffect,useRef,useMemo,useId} from 'react';
 import {Handle,Position,BaseEdge,useUpdateNodeInternals,useStore,type Node,type NodeProps,type Edge,type EdgeProps} from '@xyflow/react';
 import type {GraphCard} from '../path-projection';
 import {roundedRoutePath,type RoutedLayout} from '../path-layout';
@@ -16,6 +16,14 @@ export type CardNode = Node<CardData, 'delivery'>;
 export type RouteEdge = Edge<{ route?: RoutedLayout['edges'][string]; critical: boolean; planningOnly?:boolean; labelText: string; description?:string; opacity:number; invalid?:boolean; filtered?:boolean }, 'delivery'>;
 const Card = memo(function Card({ id, data, selected }: NodeProps<CardNode>) {
   const inspect=useGraphInspect(),workspace=useProjectWorkspace(),system=data.kind==='feature'&&workspace?.data.featureContext?.overview.features.some(f=>f.id===data.featureId&&f.kind==='other');
+  const actions=useRef({inspect,workspace,data});actions.current={inspect,workspace,data};
+  const inspectNode=useCallback(()=>{const {inspect,workspace}=actions.current;(inspect||workspace?.inspect)?.(id);},[id]);
+  const enterNode=useCallback(()=>{const {workspace,data}=actions.current;if(!workspace)return;const scope=data.kind==='requirement'?{kind:'requirement' as const,id}:scopeFromObject(id,workspace.data);if(scope)workspace.enter(scope);},[id]);
+  const enterPhase=useCallback((phaseId:string)=>actions.current.workspace?.enter({kind:'phase',id:phaseId}),[]);
+  return <CardContent id={id} data={data} selected={selected} system={!!system} inWorkspace={!!workspace} inspect={inspectNode} enter={enterNode} enterPhase={enterPhase}/>;
+});
+// URL selection changes the workspace context, but not every card's presentation.
+const CardContent=memo(function CardContent({id,data,selected,system,inWorkspace,inspect,enter,enterPhase}:{id:string;data:CardData;selected?:boolean;system:boolean;inWorkspace:boolean;inspect:()=>void;enter:()=>void;enterPhase:(id:string)=>void}){
   const update = useUpdateNodeInternals(), key = String(data.vertical);
   const previous = useRef(key);
   useEffect(() => { if (previous.current !== key) { previous.current = key; update(id); } }, [id, key, update]);
@@ -26,10 +34,10 @@ const Card = memo(function Card({ id, data, selected }: NodeProps<CardNode>) {
     <Handle id="route-in" type="target" position={side(true)} className="route-handle" isConnectable={false}/>
     <div className="dependency-card-top">{data.kind==='work'?<WorkProgressBadge work={data}/>:data.kind==='requirement'&&data.executionStage?<ExecutionStageBadge requirement={{status:data.status,executionStage:data.executionStage}}/>:<span>{data.kind==='feature'?(system?'归类':data.archived?'归档特性':data.featureId==='unassigned'?'未关联特性':'特性'):data.kind==='template'?'流程工作':data.kind==='milestone'?'里程碑':data.external ? '关联工作' : requirementStatusLabels[data.status as keyof typeof requirementStatusLabels] || '交付条件'}</span>}
       {data.kind!=='template'&&data.kind!=='feature'&&<span className={'risk-badge risk-' + data.risk}>{['completed', 'cancelled'].includes(data.status) ? '已结束' : riskLabels[data.risk as keyof typeof riskLabels] || '待评估'}</span>}</div>
-    {workspace?<div className="workspace-graph-name"><button className="text-button graph-title nodrag nopan" onClick={e=>{e.stopPropagation();(inspect||workspace.inspect)(id);}}>{data.title}</button>{['feature','requirement'].includes(data.kind)&&!data.external&&!data.context&&<Button variant="ghost" iconOnly size="small" className="workspace-enter workspace-icon-button nodrag nopan" title="进入下一级" aria-label={'进入'+data.title} onClick={e=>{e.stopPropagation();const scope=data.kind==='requirement'?{kind:'requirement' as const,id}:scopeFromObject(id,workspace.data);if(scope)workspace.enter(scope);}}><ArrowUpRight size={14}/></Button>}</div>:<EditorField inline required fieldKey={'title:'+id} value={data.title} disabled={['feature','requirement'].includes(data.kind)||!data.editing||!data.rename||['start','acceptance','project'].includes(data.kind)} onCommit={title=>data.rename?.(id,title)}/>}{data.kind!=='feature'&&<small title={data.subtitle}>{data.subtitle}</small>}
+    {inWorkspace?<div className="workspace-graph-name"><button className="text-button graph-title nodrag nopan" onClick={e=>{e.stopPropagation();inspect();}}>{data.title}</button>{['feature','requirement'].includes(data.kind)&&!data.external&&!data.context&&<Button variant="ghost" iconOnly size="small" className="workspace-enter workspace-icon-button nodrag nopan" title="进入下一级" aria-label={'进入'+data.title} onClick={e=>{e.stopPropagation();enter();}}><ArrowUpRight size={14}/></Button>}</div>:<EditorField inline required fieldKey={'title:'+id} value={data.title} disabled={['feature','requirement'].includes(data.kind)||!data.editing||!data.rename||['start','acceptance','project'].includes(data.kind)} onCommit={title=>data.rename?.(id,title)}/>}{data.kind!=='feature'&&<small title={data.subtitle}>{data.subtitle}</small>}
     <div className="dependency-card-bottom">{data.kind==='feature'?<span title={data.expectation}>{data.expectation||data.phases?.filter(p=>p.status!=='completed'&&p.targetDate).sort((a,b)=>a.targetDate!.localeCompare(b.targetDate!)).slice(0,1).map(p=>p.name+' · '+p.targetDate).join('')||'目标待安排'}</span>:<><span>{data.plannedEnd?'计划 '+data.plannedEnd:data.forecast?'预计 '+data.forecast:'日期待定'}</span>{data.kind!=='template'&&<span>{data.floatDays === null ? '余量待确认' : '余量 ' + data.floatDays + ' 天'}</span>}</>}</div>
     {(data.kind==='feature'&&!data.phases?.length||data.context||data.unknown||data.hiddenCount>0)&&<small>{data.kind==='feature'?'尚未规划 Phase':data.context?'来自 '+(data.featureName||'关联特性'):data.unknown?'交付条件待确认':'另有 '+data.hiddenCount+' 条关系'}</small>}
-    {!!data.phases?.length&&<div className="delivery-phase-chips">{data.phases.map(p=><PhaseChip key={p.id} phase={p} selected={p.id===data.selectedPhaseId} onClick={()=>workspace?workspace.enter({kind:'phase',id:p.id}):data.onSelectPhase?.(p.featureId,p.id)}/>)}</div>}
+    {!!data.phases?.length&&<div className="delivery-phase-chips">{data.phases.map(p=><PhaseChip key={p.id} phase={p} selected={p.id===data.selectedPhaseId} onClick={()=>inWorkspace?enterPhase(p.id):data.onSelectPhase?.(p.featureId,p.id)}/>)}</div>}
     <Handle id="route-out" type="source" position={side(false)} className="route-handle" isConnectable={false}/>
     {data.editing && !system && data.connectable!==false && !data.retiring && data.kind !== 'start' && !(data.kind==='feature'&&(data.archived||data.featureId==='unassigned')) && (['left','right','top','bottom'] as const).map(side=><button key={side} type="button" data-side={side} className="business-handle nopan nodrag" aria-label={'从'+data.title+'的'+{left:'左',right:'右',top:'上',bottom:'下'}[side]+'侧连接后续'+(data.kind==='feature'?'特性':'工作')}/>)}
   </div>;
