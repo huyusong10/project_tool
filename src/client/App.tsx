@@ -40,7 +40,7 @@ function GuestLanding() {
   return <div className="page-content guest-landing"><div className="panel"><KeyRound size={32}/>
     <h1>{projects.length ? '选择项目' : '暂未开放游客浏览'}</h1>
     <p>{projects.length ? '查看项目的交付安排、需求和工作进展。' : '登录有权限的账号后可查看项目。'}</p>
-    {projects.length > 0 && <div className="guest-project-list">{projects.map(project => <Button key={project.id} variant="secondary" onClick={() => changeProject(project.id)}>{project.name}</Button>)}</div>}
+    {projects.length > 0 && <div className="guest-project-list">{projects.map(project => <Button key={project.id} variant="secondary" wrap onClick={() => changeProject(project.id)}>{project.name}</Button>)}</div>}
     <Button variant="primary" onClick={openLogin}><LogIn size={16}/>登录</Button>
   </div></div>;
 }

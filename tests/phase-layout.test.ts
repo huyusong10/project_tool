@@ -4,6 +4,7 @@ import {expect,it} from 'vitest';
 import {featurePhaseLayout,arrangePhaseRegions,phaseLayoutChanges,constrainPhasePosition} from '../src/client/phase-layout';
 import type {PathAnalysis} from '../src/shared/paths';
 import type {FeatureOverview} from '../src/shared/feature-overview';
+import {emptyFeatureOverview} from '../src/shared/intake';
 import {projectPhaseOverview} from '../src/shared/phase-projection';
 import {executionDraftConflicts} from '../src/shared/execution-draft';
 import {routeFixedGraph} from '../src/client/fixed-routing';
@@ -43,7 +44,18 @@ it('长依赖链、并行分支按拓扑展开，Phase 外框包含所有卡片'
   for(const [i,a] of ids.entries())for(const b of ids.slice(i+1)){const p=result.positions[a],q=result.positions[b];expect(p.x+244<=q.x||q.x+244<=p.x||p.y+212<=q.y||q.y+212<=p.y).toBe(true);}
 });
 function fixture(){
-  const feature={id:'f',phases:[{id:'p1',featureId:'f',sortOrder:0,name:'第一期',requirements:[],deliveries:[],deliveredAt:null},{id:'p2',featureId:'f',sortOrder:1,name:'第二期',requirements:[],deliveries:[],deliveredAt:null},{id:'p3',featureId:'f',sortOrder:2,name:'远期',requirements:[],deliveries:[],deliveredAt:null}]} as unknown as FeatureOverview;
+  const feature: FeatureOverview = {
+    id: 'f', projectId: 'project', name: '特性', sortOrder: 0, version: 1,
+    description: '', archivedAt: null, overview: {...emptyFeatureOverview},
+    assessedAt: null, assessedBy: null, assessedByName: null,
+    requirements: [], recentUpdates: [],
+    counts: {total: 0, completed: 0, inProgress: 0, delayed: 0, unscheduled: 0, recentCompleted: 0},
+    phases: ['第一期', '第二期', '远期'].map((name, sortOrder) => ({
+      id: `p${sortOrder + 1}`, projectId: 'project', featureId: 'f', name, sortOrder,
+      scope: '', note: '', targetDate: null, version: 1, status: 'planning',
+      completedAt: null, overdue: false, requirements: [], deliveries: [], deliveredAt: null, distribution: [],
+    })),
+  };
   const data={requirements:[{id:'a',featureId:'f',phaseId:'p1',status:'completed'},{id:'b',featureId:'f',phaseId:'p2',status:'in_progress'},{id:'c',featureId:'f',phaseId:'p2',status:'not_started'},{id:'u',featureId:'f',phaseId:null,status:'not_started'},{id:'outside',featureId:'g',phaseId:null,status:'not_started'}],layouts:[{scope:'feature:f',direction:'right',version:1,positions:{c:{x:10,y:10},b:{x:20,y:10}}}],nodes:[],edges:[],dependencies:[]} as unknown as PathAnalysis;
   return {feature,data,ids:data.requirements.map(r=>r.id)};
 }

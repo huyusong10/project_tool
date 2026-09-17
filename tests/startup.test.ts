@@ -31,7 +31,7 @@ describe('启动前检查', () => {
     directories.push(directory);
     const logDir = path.join(directory, 'logs');
     const outcome = await promisify(execFile)(process.execPath, ['--import', 'tsx', 'src/server/index.ts'], {
-      cwd: process.cwd(), timeout: 15000, env: { ...process.env, NODE_ENV: 'test',
+      cwd: process.cwd(), timeout: 15000, env: { ...process.env, NODE_ENV: 'test', LOG_LEVEL: 'info',
         DB_PATH: path.join(directory, 'should-not-exist.db'), ADMIN_PASSWORD: 'short', LOG_FILE_ENABLED: '1', LOG_DIR: logDir },
     }).then(() => null, error => error as { code: number; stderr: string });
     expect(outcome?.code).toBe(1);
@@ -49,7 +49,7 @@ describe('启动前检查', () => {
     fs.writeFileSync(entry, `import fs from 'node:fs';\nconst filename = ${JSON.stringify(counter)};\nconst count = fs.existsSync(filename) ? Number(fs.readFileSync(filename, 'utf8')) : 0;\nfs.writeFileSync(filename, String(count + 1));\nprocess.exit(count === 0 ? 75 : 0);`);
     const logDir = path.join(directory, 'logs');
     const result = await promisify(execFile)(process.execPath, ['scripts/run-server.mjs', entry], {
-      cwd: process.cwd(), timeout: 15000, env: { ...process.env, NODE_ENV: 'test', LOG_FILE_ENABLED: '1', LOG_DIR: logDir },
+      cwd: process.cwd(), timeout: 15000, env: { ...process.env, NODE_ENV: 'test', LOG_LEVEL: 'info', LOG_FILE_ENABLED: '1', LOG_DIR: logDir },
     });
     expect(fs.readFileSync(counter, 'utf8')).toBe('2');
     expect(result.stdout).toContain('launcher.restarting');
@@ -84,7 +84,7 @@ describe('启动前检查', () => {
     directories.push(directory);
     // A directory cannot be opened as a SQLite database. Startup must exit before touching it.
     const result = await promisify(execFile)(process.execPath, ['--import', 'tsx', 'src/server/index.ts'], {
-      cwd: process.cwd(), timeout: 15000, env: { ...process.env, HOST: '127.0.0.1', PORT: String(port),
+      cwd: process.cwd(), timeout: 15000, env: { ...process.env, LOG_LEVEL: 'info', HOST: '127.0.0.1', PORT: String(port),
         DB_PATH: directory, BACKUP_DIR: path.join(directory, 'backups'), SEED_DEMO: '0', NODE_ENV: 'test',
         APP_PASSWORD_HASH: 'startup-test-only', SESSION_SECRET: 'startup-test-secret-more-than-thirty-two-characters' },
     });
@@ -98,7 +98,7 @@ describe('启动前检查', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-startup-conflict-'));
     directories.push(directory);
     const outcome = await promisify(execFile)(process.execPath, ['--import', 'tsx', 'src/server/index.ts'], {
-      cwd: process.cwd(), timeout: 15000, env: { ...process.env, HOST: '127.0.0.1', PORT: String(port),
+      cwd: process.cwd(), timeout: 15000, env: { ...process.env, LOG_LEVEL: 'info', HOST: '127.0.0.1', PORT: String(port),
         DB_PATH: directory, BACKUP_DIR: path.join(directory, 'backups'), SEED_DEMO: '0', NODE_ENV: 'test',
         APP_PASSWORD_HASH: 'startup-test-only', SESSION_SECRET: 'startup-test-secret-more-than-thirty-two-characters' },
     }).then(() => null, error => error as { code: number; stderr: string });

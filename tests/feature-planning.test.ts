@@ -105,7 +105,7 @@ it('成员只读；跨项目特性、关系和历史不能越权读取或写入'
   expect((await request('POST',base+'/feature-relations',{sourceFeatureId:a.id,targetFeatureId:b.id},auth)).statusCode).toBe(403);expect((await request('POST',base+'/features/'+a.id+'/archive',{expectedVersion:a.version},auth)).statusCode).toBe(403);
   const revision=(await request('GET',base+'/path-analysis')).json().revision;
   expect((await request('POST',base+'/dependency-changes/preview',{expectedRevision:revision,changes:{featureRelations:[{op:'create',id:'reader-attempt',sourceFeatureId:a.id,targetFeatureId:b.id,note:''}]}},auth)).statusCode).toBe(403);
-  const other=await fixture();for(const url of ['/path-graph?view=features','/feature-relations','/features/'+other.a.id+'/requirements?state=archived'])expect((await request('GET',other.base+url,undefined,auth)).statusCode).toBe(403);
+  const other=await fixture();for(const url of ['/path-graph?view=features','/feature-relations','/features/'+other.a.id+'/requirements?state=archived'])expect((await request('GET',other.base+url,undefined,auth)).statusCode).toBe(404);
 });
 it('特性共享布局沿用批次与版本检查，不接受外项目节点且不影响需求布局',async()=>{
   const {base,a}=await fixture();const graph=(await request('GET',base+'/path-graph?view=features')).json();

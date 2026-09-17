@@ -85,7 +85,7 @@ it('项目成员只读、经理可编辑，跨项目和失效账号被拒绝',as
   login=await request('POST','/api/account/change-password',{currentPassword:'888888',newPassword:'feature-overview-member'},auth);auth=String(login.headers['set-cookie']).split(';')[0];
   expect((await request('GET','/api/projects/'+projectId+'/feature-overview',undefined,auth)).statusCode).toBe(200);
   expect((await save(projectId,update(group,{overview}),auth)).statusCode).toBe(403);
-  const other=await fixture();expect((await request('GET','/api/projects/'+other.projectId+'/feature-overview',undefined,auth)).statusCode).toBe(403);
+  const other=await fixture();expect((await request('GET','/api/projects/'+other.projectId+'/feature-overview',undefined,auth)).statusCode).toBe(404);
   expect((await request('PUT','/api/projects/'+projectId+'/members/'+person.id,{role:'manager'})).statusCode).toBe(200);
   const result=await save(projectId,update(group,{overview}),auth);expect(result.statusCode,result.body).toBe(200);expect(result.json<IntakeCatalog>().features[0].assessedByName).toBe(personName);
   const {sqlite}=await import('../src/server/database');sqlite.prepare("UPDATE accounts SET status='disabled' WHERE person_id=?").run(person.id);

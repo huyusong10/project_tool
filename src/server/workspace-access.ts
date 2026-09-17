@@ -4,6 +4,7 @@ import { sqlite } from './database';
 import { canReadProject, projectIdForRequirement, projectIdForWorkItem, recordProjectAccessFailure, sessionActor, type SessionActor } from './authorization';
 import { forbidden, notFound } from './errors';
 import { recordLogIdentity, recordProjectContext, updateLogContext } from './log-context';
+import { idSchema } from '../shared/contracts';
 
 /** Internal read-only identity. It has no account, membership, token, or write permissions. */
 export const guestActor: SessionActor = {
@@ -35,6 +36,9 @@ export async function requireWorkspaceRead(request: FastifyRequest, reply: Fasti
   if (reply.sent) return;
   const params = request.params as Record<string, string>;
   const query = request.query as Record<string, string>;
+  // Validate supplied IDs before resource lookup, including whitespace-only values.
+  for (const key of ['id', 'projectId']) if (params[key] !== undefined) params[key] = idSchema.parse(params[key]);
+  if (query.projectId !== undefined) query.projectId = idSchema.parse(query.projectId);
   let projectId = params.projectId || query.projectId;
   const route = request.routeOptions.url || '';
   if (route.startsWith('/api/projects/:id/')) projectId = params.id;
