@@ -1,0 +1,10 @@
+@layer application {
+.account-assignment-warning {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  color: var(--warning-text);
+  font-size: 12px;
+  line-height: 1.4;
+}
+}

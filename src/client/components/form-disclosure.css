@@ -1,0 +1,9 @@
+@layer application {
+
+/* Feature expansion: lightweight planning, workday coverage and action center */
+.form-disclosure { overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface-subtle); }
+.form-disclosure > button { width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 12px; border: 0; color: var(--text-secondary); background: transparent; text-align: left; }
+.form-disclosure > button:hover, .form-disclosure > button.is-open { background: var(--accent-soft); }
+.form-disclosure strong { color: var(--text-secondary); font-size: 13px; }
+.form-disclosure span { color: var(--text-faint); font-size: 12px; }
+}

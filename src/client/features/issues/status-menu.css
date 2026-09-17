@@ -1,0 +1,6 @@
+@layer application {
+.issue-status-editor { width: fit-content; }.issue-status-popover > label > small { margin-top: -2px; font-size: 11px; }
+.issue-status-notice { padding: 0 12px 12px; overflow-wrap: anywhere; }
+.issue-status-notice:empty { display: none; }
+.issue-status-notice .field-help { margin: 8px 0; }
+}

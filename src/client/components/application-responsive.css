@@ -1,0 +1,24 @@
+@layer application {
+
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .brand-name, .nav-label, main, .topbar { transition: none!important; }
+  .sidebar-tooltip { animation: none; }
+}
+
+@media (max-width: 1200px) {
+  body { min-width: 900px; }
+  .app-shell { grid-template-columns: 190px minmax(0,1fr); }
+  .sidebar { width: 190px; }.detail-grid { grid-template-columns: 1fr; }
+  .template-editor { grid-template-columns: 1fr; }
+  .project-gantt-grid { grid-template-columns: 320px 1fr; }.gantt-requirement-link { max-width: 252px; }
+  .action-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .action-item { grid-template-columns: 30px minmax(220px,1fr) minmax(170px,.7fr) 20px; }
+  .my-owned-requirement-grid { grid-template-columns: 1fr; }
+  .personal-account-panel { grid-template-columns: minmax(240px,1fr) auto; gap: 14px 20px; }
+  .personal-account-facts { grid-column: 1/-1; grid-row: 2; }
+  .personal-token-empty { grid-template-columns: 44px minmax(0,1fr); }
+  .personal-token-empty > button { grid-column: 2; justify-self: start; }
+}
+}

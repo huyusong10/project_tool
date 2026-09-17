@@ -1,0 +1,3 @@
+@layer application {
+.template-card li>span:has(svg){display:grid;place-items:center}
+}
