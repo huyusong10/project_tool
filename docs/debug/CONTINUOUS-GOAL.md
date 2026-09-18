@@ -4,7 +4,7 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品79bbdd9（LW）、9cf4cd6（LV）、3376c6b（LM）、0aa4c09（LK）、e4c0fb6（LI）、834caa2（LE）、8903cfc（LD），测试夹具dd0aa3a；更早成果见下表与历史版本。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品3517da6（MA）、79bbdd9（LW）、9cf4cd6（LV）、3376c6b（LM）、0aa4c09（LK）、e4c0fb6（LI）、834caa2（LE）、8903cfc（LD），测试夹具dd0aa3a；更早成果见下表与历史版本。
 - 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
 - 最新全量LX：997业务/120文件、11性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-lx-verify.log，42879退出0已回收。覆盖至79bbdd9，首轮完整通过；本轮LV/LW目标检查另有8/2个不同浏览器场景通过。
 - LX生产构建：主JS933.44KB、CSS339.24KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-lv-matrix.log确认759功能/183布局/2性能、普通1857实例；只列清单，不称为执行全部浏览器。
@@ -157,10 +157,26 @@ LX对LF后的LI/LK/LM/LV/LW做一次组合验收，首轮完整通过，结果�
 
 LY只核对近期依赖证据：stage-jg-audit-official.json于9月18日23:06记录官方运行依赖0公告，JG记录确认包含新增压缩插件；package-lock最后提交仍06146c4，此后未变。距本轮约7小时，不重复扫描，不把旧报告称为当前无漏洞证明。未升级或安装依赖。
 
-## 当前阶段 LZ
+## LZ复核：MCP无需修改
 
-转查MCP部分更新和失败反馈。先读mcp-partial-updates、mcp-logging、mcp-queries的既有覆盖和对应工具，只对尚未覆盖的具体业务场景探查。验收要求遗漏字段保持、成功响应与回读一致、失败不误报成功；已有证据充分则不重复测试。文件在src/server/mcp-tools与tests/mcp-*.test.ts；尚未执行该阶段。
+mcp-partial-updates已有真实HTTP验证字段省略/显式清空、链接顺序、版本冲突、特性/Phase局部修改和工作项完成后纠错；mcp-queries验证REST回读与图形投影一致。registry把业务错误返回isError和statusCode，mcp-logging验证参数、业务、认证、SDK及传输错误不记成功；均随LX通过。本轮只核对源码与覆盖，工具复用网页契约和服务，未发现新缺陷，不重跑。
+
+## MA验收：纠错历史记录可辨认
+
+3517da6修复两个纠错入口只显示说明前28/36字，同日且开头相同的记录无法区分或按末尾检索。原版94575退出1，两个真实回归均失败，截图中两条需求记录名称完全相同。仅移除截断并复用progressReferenceLabel显示既有时间/事件名称，沿用原菜单换行和搜索，不改全站时区或写入规则。
+
+强化两个原有回归，无新增永久测试：需求纠错15865中的该项通过，两次409重读/刷新保留所选来源、最终仅一次成功纠错；工作项57818退出0，通过末尾搜索、1280/390可读、连续纠错链、精确supersedesId、历史/执行事实保持及刷新分页。相邻短操作25363中的该项通过，Escape/焦点/背景保持。合计3个不同浏览器场景；类型/测试构建、目标Lint/diff通过，窄屏与普通截图已看。stage-ma-history-before/after/final/accepted、ma-history-*；以上句柄均已回收。LX全量尚不含MA，不重复整套verify。
+
+15865和25363各为1通过1失败，失败均是测试按全页option计数，把背景排序的3项算入；菜单内始终只有1项。已改为限定历史listbox，没有改搜索规则；早先“00匹配时间”的口头判断不成立，保留失败证据。日期初查未证明需要统一所有浏览器时间显示，本轮不扩大修改。
+
+## MB复核：批量操作无需修改
+
+当前清单只对特性提供批量归档，workspace-outline.test.ts:41明确验证一项不符合条件则整批回滚，随LX通过；不能套用“部分归档成功”的假设。unified-workspace已有他人归档后清除选择、恢复不重新选中、只归档剩余对象的真实回归代码；requirement-intake:263已有批量整理响应未知/读取失败的重复写保护。源码在筛选/范围/排序变化时清选择，并剔除归档对象。本轮只核对这些浏览器回归与源码，不称本轮执行通过，不改、不重跑。
+
+## 当前阶段 MC
+
+MA现在显示完整历史说明，检查大量长说明下的菜单成本，防止此次改动影响可用性。已有requirement-history-browser.json测量的是历史页首开/分页，不能直接代表纠错菜单。拟以模拟API隔离100/1000/5000条、每条约200字的浏览器开窗/展开/末尾搜索成本，关闭trace，用页面事件计时；验证所选id和0业务写。只按测量结果决定是否需要简化；不要引入虚拟列表或重跑旧历史分页测量。尚未创建新探针。
 
 ## 最新检查点
 
-79bbdd9、9cf4cd6产品与测试已提交，LX完整验收通过。无运行句柄，3296监听0，当前格式Playwright临时目录0。原目录仍仅skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件；没有部署或推送。最新原服务游标LS（21:52:33.400Z），间隔很短，不重复轮询。LD—LQ细节压缩为恢复索引，原记录仍在e6b84d1；本轮提交记录后从LZ继续，Goal保持active。
+3517da6产品与测试已提交，MA目标验收通过，最新全量仍LX。所有已知句柄已回收；3296监听0，当前格式临时目录0。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标LS（21:52:33.400Z），间隔很短，不重复轮询；未部署或推送。从MC继续，Goal保持active。
