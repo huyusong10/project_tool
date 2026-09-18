@@ -74,7 +74,7 @@ export function App() {
   );
   const uiActionsValue = useMemo(() => ({ openLogin, openPassword }), [openLogin, openPassword]);
   const businessDateValue = useMemo(() => ({ businessDate }), [businessDate]);
-  const rootRefreshFailed = Boolean(sessionQuery.error || projectsEnabled && projectsQuery.error);
+  const rootRefreshFailed = Boolean(sessionQuery.error || projectsEnabled && !projectsQuery.unavailable && projectsQuery.error);
   return (
     <InlineEditProvider resetKey={page.navigationKey}>
       <SessionContext.Provider value={sessionValue}>

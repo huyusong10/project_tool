@@ -147,6 +147,7 @@ test('项目中心区分首次加载失败、旧数据刷新失败和真实空�
   await page.goto('/projects');
   await expect(page.getByRole('heading', { name: '项目列表加载失败', exact: true })).toBeVisible();
   await expect(page.getByText('projects读取失败 503', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '新建项目', exact: true })).toBeDisabled();
   await expect(table).toHaveCount(0);
   await expect(notice).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('projects-first-read-failed-1280.png'), animations: 'disabled' });

@@ -20,6 +20,7 @@ export type ResolvedPageContext = {
   retry: () => unknown;
 };
 export type PageResources = {
+  projects: ResourceQuery<Project[]>;
   requirement: ResourceQuery<Requirement>;
   issue: ResourceQuery<Issue>;
   templates: ResourceQuery<WorkItemTemplate[]>;

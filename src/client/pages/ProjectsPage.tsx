@@ -12,7 +12,9 @@ import { ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from 
 import { useProjects, useSession } from "../app-context";
 import { invalidateProjectViews, keys } from "../query-keys";
 import { ConfirmDialog } from "../components/Modal";
-import { EmptyState } from "../components/Feedback";
+import { EmptyState, LoadingState } from "../components/Feedback";
+import { StartupError } from '../features/accounts/AccessLanding';
+import { usePageResources } from '../page-context';
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/Badge";
 import { ProjectForm, persistProjectCreateRecheck, readProjectCreateRecheck, type ProjectCreateRecheck } from "../components/ManagementForms";
@@ -39,6 +41,7 @@ function persistProjectArchiveRecheck(accountKey:string,value:ProjectArchiveInpu
 export function ProjectsPage() {
   const { session } = useSession();
   const { projects, selectedProjectId } = useProjects();
+  const { projects: projectsQuery } = usePageResources();
   const client = useQueryClient();
   const createRecheckAccountKey=session.accountId||session.username||'guest';
   const [creating, setCreating] = useState(false);
@@ -130,7 +133,7 @@ export function ProjectsPage() {
       <PageHeader
         title="项目管理"
         actions={admin ? (
-          <Button variant="primary" className="primary-button" disabled={Boolean(createRecheck)} onClick={() => {if(!createRecheck)setCreating(true);}}>
+          <Button variant="primary" className="primary-button" disabled={projectsQuery.unavailable || Boolean(createRecheck)} onClick={() => {if(!projectsQuery.unavailable && !createRecheck)setCreating(true);}}>
             <Plus size={16} />
             新建项目
           </Button>
@@ -139,7 +142,10 @@ export function ProjectsPage() {
       <div className="page-content">
         {createRecheck&&<div role="alert" className="warning-banner">项目创建结果待核对，新建入口暂不可用。<Button variant="secondary" type="button" className="ghost-button" onClick={()=>setCreating(true)}>核对项目创建</Button></div>}
         {archiveRecheck&&<div role="alert" className="warning-banner">“{archiveRecheck.name}”的项目归档结果待核对，其他归档操作暂不可用。<Button busy={(archiveRechecking)} aria-label={archiveRechecking?'读取中…':'重新读取项目与归档'} variant="secondary" type="button" className="ghost-button" disabled={archiveRechecking} onClick={()=>void recheckProjectArchive()}>{'重新读取项目与归档'}</Button></div>}
-        <div className="table-panel project-table paged-panel"><div className="paged-body" ref={pagination.scrollRef}>
+        {projectsQuery.unavailable ? projectsQuery.error || projectsQuery.data === null
+          ? <StartupError title="项目列表加载失败" error={projectsQuery.error || new Error('资源不存在或当前账号无权访问。')} pending={projectsQuery.isFetching} onRetry={() => void projectsQuery.refetch()} />
+          : <LoadingState label="正在加载项目列表…" className="tall" />
+          : <div className="table-panel project-table paged-panel"><div className="paged-body" ref={pagination.scrollRef}>
           <table>
             <thead><tr><th>项目</th><th>计划周期</th><th>状态</th>{session.authenticated && <th>操作</th>}</tr></thead>
             <tbody>
@@ -171,7 +177,7 @@ export function ProjectsPage() {
           </table></div>
           <Pagination {...pagination.props} label="项目列表分页" />
           {!projects.length && <EmptyState title="还没有项目" detail="创建第一个项目后即可维护需求和排期。" />}
-        </div>
+        </div>}
         {creating && (
           <ProjectForm createRecheck={createRecheck} onCreateRecheckChange={setCreateRecheck} onClose={() => setCreating(false)} />
         )}

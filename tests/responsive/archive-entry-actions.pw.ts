@@ -106,6 +106,14 @@ test('项目归档响应未知且双列表失败时跨导航保持锁定', async
   await expect(dialog.getByRole('alert')).toContainText('请关闭窗口后重新选择归档');await dialog.getByRole('button',{name:'取消',exact:true}).click();
   await page.getByRole('link',{name:'归档中心',exact:true}).click();await page.getByRole('link',{name:'项目中心',exact:true}).click();await expect(page.getByRole('alert')).toContainText('项目归档结果待核对');
   const archiveButton=page.getByRole('button',{name:'归档',exact:true});await expect(archiveButton).toBeDisabled();await archiveButton.evaluate(button=>{button.removeAttribute('disabled');(button as HTMLButtonElement).click();});await expect(page.getByRole('dialog',{name:'归档项目',exact:true})).toHaveCount(0);expect(requests).toBe(1);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '项目列表加载失败', exact: true })).toBeVisible();
+  await expect(page.locator('.project-table')).toHaveCount(0);
+  await expect(page.getByRole('alert')).toContainText('项目归档结果待核对');
+  await page.getByRole('button', { name: '重新读取项目与归档', exact: true }).click();
+  await expect(page.getByRole('button', { name: '重新读取项目与归档', exact: true })).toBeEnabled();
+  await expect(page.getByRole('alert')).toContainText('项目归档结果待核对');
+  expect(requests).toBe(1);
   failReads=false;await page.getByRole('button',{name:'重新读取项目与归档',exact:true}).click();await expect(page.getByText('项目归档结果待核对',{exact:false})).toHaveCount(0);await expect(page.getByText(project.name,{exact:true})).toHaveCount(0);expect(requests).toBe(1);
 });
 

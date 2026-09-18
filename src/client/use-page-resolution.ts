@@ -58,7 +58,7 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
     errorTitle = title; retry = query.refetch;
   };
   waitFor(sessionQuery, '登录状态加载失败');
-  if (phase === 'ready' && browseReady && (scope === 'project' || def?.path === '/projects')) waitFor(projectsQuery, '项目列表加载失败');
+  if (phase === 'ready' && browseReady && scope === 'project') waitFor(projectsQuery, '项目列表加载失败');
   if (phase === 'ready' && browseReady && objectQuery) waitFor(objectQuery, requirementId ? '需求无法打开' : '问题详情加载失败');
   if (phase === 'ready' && browseReady && scope === 'project' && !project && (objectQuery || explicitProject !== null)) {
     phase = 'error'; errorTitle = '项目不可用'; error = new Error('当前账号无法访问这个页面所属的项目。'); retry = () => projectsQuery.refetch();
@@ -90,6 +90,6 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
   const toolbar = toolbarForRoute(location.pathname, location.search);
   const page: ResolvedPageContext = {navigationKey, phase, scope, project: phase === 'ready' ? project : undefined, title, back, toolbar, actionRow: toolbar !== 'none', error, errorTitle, retry,
     object: requirementId ? {kind:draft ? 'draft' : 'requirement', id:requirementId} : issueId ? {kind:'issue',id:issueId} : templateId ? {kind:'template',id:templateId} : undefined};
-  const resources = {requirement, issue, templates};
+  const resources = {requirement, issue, templates, projects: projectsQuery};
   return {page, resources, pageIcon: nav?.icon};
 }

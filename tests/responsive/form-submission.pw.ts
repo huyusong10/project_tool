@@ -275,7 +275,7 @@ test('新建项目已落库但响应异常时核对本次新增项目', async ({
   expect(requests).toBe(1);
 });
 
-test('新建项目响应未知且列表核对失败时阻止重复创建', async ({ page }) => {
+test('新建项目响应未知且列表核对失败时阻止重复创建', async ({ page }, testInfo) => {
   await mockForms(page);
   let failReads = false;
   let requests = 0;
@@ -299,7 +299,18 @@ test('新建项目响应未知且列表核对失败时阻止重复创建', async
   expect(requests).toBe(1);
   await dialog.getByRole('button',{name:'取消',exact:true}).click();await page.goto('/');await page.goto('/projects');
   await expect(page.getByRole('alert')).toContainText('项目创建结果待核对');await expect(page.getByRole('button',{name:'新建项目',exact:true})).toBeDisabled();
+  await expect(page.getByRole('heading', { name: '项目列表加载失败', exact: true })).toBeVisible();
+  await expect(page.locator('.project-table')).toHaveCount(0);
+  await expect(page.locator('.app-refresh-notice')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('project-create-recheck-1280.png'), animations: 'disabled' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('button', { name: '核对项目创建', exact: true })).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath('project-create-recheck-390.png'), animations: 'disabled' });
   await page.getByRole('button',{name:'核对项目创建',exact:true}).click();await expect(dialog.getByLabel('项目名称',{exact:true})).toHaveValue('待核对创建项目');await expect(dialog.getByRole('button',{name:'创建项目',exact:true})).toBeDisabled();
+  await dialog.getByRole('button', { name: '读取最新项目并继续', exact: true }).click();
+  await expect(dialog).toContainText('项目列表暂时不可用');
+  await expect(dialog.getByLabel('项目名称', { exact: true })).toHaveValue('待核对创建项目');
+  await expect(dialog.getByRole('button', { name: '创建项目', exact: true })).toBeDisabled();
   await dialog.locator('form').dispatchEvent('submit');expect(requests).toBe(1);
   failReads=false;await dialog.getByRole('button',{name:'读取最新项目并继续',exact:true}).click();await expect(dialog).toContainText('未发现本次新增项目');await expect(dialog.getByRole('button',{name:'创建项目',exact:true})).toBeEnabled();await expect(page.getByText('项目创建结果待核对',{exact:false})).toHaveCount(0);
 });
