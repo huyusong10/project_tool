@@ -7,6 +7,7 @@
 - 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品0fb023a（GV项目切换），前一产品15c6888（GR人员草稿）、2a9a2b9（GQ计数）、a1c13c9（GL键盘）。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
+- GW完整验收0fb023a：969项业务（117文件）、9项性能、26项浏览器，运行时、模块边界、Lint、类型、构建和预算通过。主JS938.40KB、CSS342.32KB、ELK1595.33KB；stages-gl-gv-verify.log，涵盖GL/GQ/GR/GV，GT草案未进入产品。
 - GJ完整验收25c7e91：969项业务（117文件）、8项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS938.10KB、CSS342.32KB、ELK1595.33KB。stages-fe-gi-verify.log，涵盖FE—GI全部产品修改。
 - 之前FD完整验收717bc30：969项业务、8项性能、26项浏览器及全部静态/构建检查通过（stages-ez-fd-verify.log）。GJ同时确认原目录仍只有上述两项用户修改。
 - 之前EY基线fc73dcc可查stages-es-ew-verify.log，EQ基线5e31e67可查stages-ek-ep-verify.log。当前无运行测试、无临时测试留在tests/responsive。
@@ -96,8 +97,8 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - GT未验收：760px以下隐藏了看板唯一排序手柄。草案恢复手柄、标题与操作分行；宽屏与390px键盘跨行/首末边界/Esc/取消零写入/保存一次/刷新均通过，既有10项看板、Lint/类型/测试构建通过。触摸拖动能交换图表，但之后触摸保存未生成click、零PUT；拖动前触摸保存及拖动后鼠标保存通过。50/100/750ms等待与同CDP触摸均未解决，按钮按下/松开同节点且仍连接；无应用页面的原生按钮触摸对照正常。不能判为仅探针问题，未修改公共DND。产品CSS已恢复基线，修复保留analytics-narrow-order-draft.patch；analytics-keyboard-order-probe.pw.ts已归档，证据analytics-keyboard-order-after.log、stage-gt-*、analytics-touch-{control,target,separated,cdp}.log、touch-cdp-*及截图。解除条件：最小DND复现或实际触屏证据确定无click原因，并验证拖动后触摸保存一次、取消零写入；不是用户决策事项。
 - 无用户决策事项。GT保留待查项，其他领域可以独立推进，Goal保持active。
 
-## 当前阶段 GW：近期改动组合验收
+## 当前阶段 GX：问题列表内联编辑的并发保护
 
-对GJ之后的GL键盘、GQ计数、GR人员草稿、GV项目切换运行一次完整verify；GT触摸排序草案未进入产品。不扩大已通过专项，不重复性能探索。
+IssuesPage的内联日期未传issue.version，保存回调会随背景刷新改用新版本；检查日期草稿是否因此覆盖其他会话的新值。先真实接口复现，再决定是否复用既有revision guard；不扩展编辑范围。
 
-验收：运行时、模块边界、Lint、全部业务/性能、浏览器冒烟、类型、生产构建和预算全部通过。证据stages-gl-gv-verify.log；后续继续选择不同业务重点。原dev刚复核仍仅两项用户修改，探针均已归档。
+验收：背景变化不静默提交旧草稿，明确重读保留输入并用核对版本保存一次，取消零写入，其他字段及历史保持；检查同页已有内联编辑。GW已结束，当前无运行测试；原dev仍仅两项用户修改。
