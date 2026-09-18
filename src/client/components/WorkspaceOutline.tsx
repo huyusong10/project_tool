@@ -47,21 +47,22 @@ export function WorkspaceOutline({report,projection,header}:{report:Dashboard;pr
   const [retry,setRetry]=useState<Write|null>(null);
   const [review,setReview]=useState<OutlineRow[]|null>(null),[busy,setBusy]=useState(false),busyRef=useRef(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[undo,setUndo]=useState<OutlineUndo|null>(null),[undoReason,setUndoReason]=useState(false);
   const query=params.get('q')||'',sort=params.get('outlineSort')||'manual',filtered=!!normalizeSearchText(query),sortEnabled=sort==='manual'&&!filtered;
-  const scopeKey=location.scope.kind+':'+location.scope.id,filterKey=scopeKey+':'+query;
+  const {kind:scopeKind,id:scopeId}=location.scope,scopeKey=scopeKind+':'+scopeId,filterKey=scopeKey+':'+query;
   const [filterExpansion,setFilterExpansion]=useState<{key:string;rows:Record<string,boolean>}>({key:'',rows:{}});
   const currentExpanded=filtered?{...Object.fromEntries(all.map(row=>[row.id,true])),...(filterExpansion.key===filterKey?filterExpansion.rows:{})}:expanded;
   const changeExpanded=(value:Record<string,boolean>)=>filtered?setFilterExpansion({key:filterKey,rows:value}):setExpanded(value);
   const matches=(row:OutlineRow):boolean=>matchesSearch([row.title],query)||row.children.some(matches);
-  const scopedTree=scopeOutline(tree,location.scope),branches=flattenOutline(scopedTree).filter(row=>row.children.length&&(!filtered||matches(row)));
+  const scopedTree=useMemo(()=>scopeOutline(tree,{kind:scopeKind,id:scopeId}),[tree,scopeKind,scopeId]),scoped=useMemo(()=>flattenOutline(scopedTree),[scopedTree]);
+  const branches=scoped.filter(row=>row.children.length&&(!filtered||matches(row)));
   const expandAll=(open:boolean)=>changeExpanded({...currentExpanded,...Object.fromEntries(branches.map(row=>[row.id,open]))});
   useEffect(()=>setSelected([]),[scopeKey,query,sort]);
   useEffect(()=>{
-    const eligible=new Set(all.filter(row=>!row.system&&!row.archived).map(row=>row.id));
+    const eligible=new Set(scoped.filter(row=>!row.system&&!row.archived).map(row=>row.id));
     setSelected(ids=>{const next=ids.filter(id=>eligible.has(id));return next.length===ids.length?ids:next;});
-  },[all]);
+  },[scoped]);
   useEffect(()=>{try{localStorage.setItem(baseKey+':expanded',JSON.stringify(expanded));}catch{/* Keep expansion in this page. */}},[baseKey,expanded]);
   const setPending=(v:Pending|null)=>{setPendingState(v);try{if(v)sessionStorage.setItem(baseKey+':pending',JSON.stringify(v));else sessionStorage.removeItem(baseKey+':pending');}catch{/* Keep the pending write in memory. */}};
-  const picked=all.filter(r=>selected.includes(r.id)&&!r.system&&!r.archived),homogeneous=picked.length>0&&picked.every(r=>r.kind===picked[0].kind),sameParent=homogeneous&&picked.every(r=>r.parentId===picked[0].parentId);
+  const picked=scoped.filter(r=>selected.includes(r.id)&&!r.system&&!r.archived),homogeneous=picked.length>0&&picked.every(r=>r.kind===picked[0].kind),sameParent=homogeneous&&picked.every(r=>r.parentId===picked[0].parentId);
   const features=data.featureContext?.overview.features||[];
   const targets=all.filter(r=>(r.kind==='feature'||r.kind==='phase')&&!r.archived);
   const save=async(write:Write)=>{
