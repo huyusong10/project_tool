@@ -148,14 +148,18 @@ test('流程归档确认连点只提交一次', async ({ page }) => {
   });
   try {
     await page.goto('/templates');
-    await page.getByRole('button', { name: '归档流程 备用流程' }).click();
+    const archiveButton=page.getByRole('button', { name: '归档流程 备用流程' });
+    await archiveButton.focus();await page.keyboard.press('Enter');
     const dialog = page.getByRole('dialog', { name: '归档流程' });
+    await expect(dialog).toBeVisible();await page.keyboard.press('Escape');await expect(archiveButton).toBeFocused();expect(requests).toBe(0);
+    await page.keyboard.press('Enter');
     await dialog.getByRole('button', { name: '确认归档' }).dblclick();
     await expect.poll(() => requests).toBe(1);
     expect(payloads).toEqual([{ expectedUpdatedAt: templates[1].updatedAt }]);
     await expect(dialog.getByRole('button', { name: '归档中…', exact: true })).toBeDisabled();
     release();
     await expect(dialog).toHaveCount(0);
+    await expect(archiveButton).toHaveCount(0);await expect(page.getByRole('button',{name:'新建流程',exact:true})).toBeFocused();
   } finally { release(); }
 });
 
@@ -180,6 +184,7 @@ test('流程归档已落库但响应异常时同时核对活动与归档列表',
 
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText('备用流程', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'新建流程',exact:true})).toBeFocused();
   expect(requests).toBe(1);
 });
 

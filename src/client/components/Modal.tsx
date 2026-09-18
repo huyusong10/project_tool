@@ -15,6 +15,7 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
   const cardRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   const closableRef = useRef(closable);
+  const previousFocusRef=useRef(typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null);
   const returnFocusRef=useRef(returnFocus);returnFocusRef.current=returnFocus;
   const titleId = useId();
   const requestClose = () => {
@@ -28,7 +29,7 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
   useEffect(() => { closableRef.current = closable; }, [closable]);
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousFocus = previousFocusRef.current;
     if (openModalCount++ === 0) {
       previousBodyOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
@@ -150,6 +151,7 @@ export function ConfirmDialog({
   error,
   onClose,
   onConfirm,
+  returnFocus,
 }: {
   title: string;
   description: ReactNode;
@@ -161,6 +163,7 @@ export function ConfirmDialog({
   error?: string;
   onClose: () => void;
   onConfirm: () => void;
+  returnFocus?: () => HTMLElement | null;
 }) {
   const lock = useSynchronousPendingLock(pending);
   const close = () => {
@@ -170,7 +173,7 @@ export function ConfirmDialog({
   const confirm = () => {
     if (!disabled) lock.run(onConfirm);
   };
-  return <Modal title={title} width={500} onClose={close} closable={!lock.busy}>
+  return <Modal title={title} width={500} onClose={close} closable={!lock.busy} returnFocus={returnFocus}>
     <div className={`confirm-dialog${danger ? ' is-danger' : ''}`}>
       <div className="confirm-dialog-message"><span className="confirm-dialog-icon"><AlertTriangle size={21} /></span><div>{description}</div></div>
       {error && <p className="form-error" role="alert">{error}</p>}
