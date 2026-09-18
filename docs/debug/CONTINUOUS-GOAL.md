@@ -21,6 +21,7 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 | 阶段 / 提交 | 结果与验收入口 |
 |---|---|
+| EZ / 本次提交 | 工作项重复关联链接显示Zod JSON；只取校验错误的中文message。20项上限、规范化重复地址、保留输入、纠正/删除再添加、清空刷新和390px通过，完成/进度/日期/其他工作/旧历史不变；既有4项链接流程及Lint/类型通过。reference-link-limit-repro/after/final.log。无需新增永久测试 |
 | EG / 1013ffe | 批量归档核对显示已归档/未归档；未知结果、冲突、整批回滚及窄屏4项。batch-archive-state-* |
 | EI / 0a2ad1c | 待处理里程碑直达图形属性；项目里程碑使用项目范围，不依赖“其他需求”存在。11项专项，EJ全量通过。action-milestone-* |
 | EK / b553f9e、EL / a189d32 | 已保存项目里程碑的空名称校验和草稿摘要定位回到原字段；复用editorFieldLocation。milestone-draft/summary-location-* |
@@ -75,10 +76,10 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - DU一次迁移测试启动15秒超时、输出为空；单项与同并发重验通过，EB/EJ/EQ全量未再发生。不直接放宽超时。
 - 无用户决策事项、无外部阻塞。Goal保持active。
 
-## 当前阶段 EZ：关联链接上限与重复纠正
+## 当前阶段 FA：姓名末字头像的完整字符
 
-检查20项关联链接、重复规范化地址的错误反馈、纠正和清空；优先检查已完成工作项，确认修改链接不改变完成事实和旧历史。
+Avatar与人力分析摘要仍使用slice(-1)，可能把“李𠮷”的末字截成孤立代理项。检查真实人员的矩阵、人力摘要和项目成员头像；只修复显示，复用现有Avatar。
 
-验收：错误用可读信息说明，原输入保留；达到20项禁止继续添加，纠正/删除后可保存，空列表不恢复旧链接。390px表单可操作。
+验收：罕见汉字与普通中文、英文均按原规则取完整末字，空值仍用?；名称和账号事实不变，头像尺寸与窄屏布局保持。沿用DS的码点处理，不增加字形库。
 
-EY验收已完成，原工作目录仍仅用户原改动。下一步实际浏览器复现；WorkItemLinks直接显示normalizeReferenceLinks抛出的错误message，重复地址可能暴露Zod JSON，尚未标为缺陷。
+当前无运行测试。EZ探针已归档；初次探针错误使用WorkItem.percent导致类型失败，改成progress；之后仅因项目forecast revision随链接保存递增而失败，比较时仅剔除该派生版本，保留其他所有事实断言，最终通过。

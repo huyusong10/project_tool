@@ -4,6 +4,7 @@ import { workItemWriteUrl } from '../features/work-items/api';
 import { DetailCard } from './DetailCard';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ZodError } from 'zod';
 import { normalizeReferenceLinks, readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
 import { api, jsonBody, isWriteOutcomeUnknown, requiresWriteRecheck } from '../api';
 import { useDeliveryForm } from '../use-delivery-form';
@@ -28,7 +29,7 @@ export function WorkItemLinks({requirement,item,editable,manager}:{requirement:R
     const url=workItemWriteUrl(item.id, terminal),method=terminal?'POST':'PATCH',body=jsonBody({expectedVersion:draft.version,referenceLinks:links,...terminal?{reason:'更新关联链接'}:{}});
     setReceipt({version:draft.version,links,url,method,body});
     return api(url,{method,body});
-  },onSuccess:()=>{finish();setError('');},onError:e=>{setError(e.message);if(!isWriteOutcomeUnknown(e)){setReceipt(null);clearReceipt();}setNeedsRead(requiresWriteRecheck(e));}});
+  },onSuccess:()=>{finish();setError('');},onError:e=>{setError(e instanceof ZodError?e.issues.map(issue=>issue.message).join('；'):e.message);if(!isWriteOutcomeUnknown(e)){setReceipt(null);clearReceipt();}setNeedsRead(requiresWriteRecheck(e));}});
   const read=async()=>{
     setReading(true);setError('');try{
       const {latest:work,outcome}=await inspectLinkWrite(requirement.id,item.id,receipt);
