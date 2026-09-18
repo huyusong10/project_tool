@@ -1,3 +1,4 @@
+import {editorFieldLocation} from '../workspace-location';
 import { Button } from './Button';
 import {Select} from './Select';
 import {useState} from 'react';
@@ -10,7 +11,7 @@ export function CanvasDraftDetails({draft,data,onGo}:{draft:Draft;data:PathAnaly
   const go=(url:string)=>{const parsed=new URL(url,location.origin),id=parsed.searchParams.get('requirementId');if(id&&draft.changes.entities?.some(c=>c.id===id&&c.op==='create'))parsed.searchParams.set('draftProject',data.projectId);onGo(parsed.pathname+parsed.search);};
   const [choices,setChoices]=useState<Record<string,'current'|'legacy'>>({}),legacy=draft.legacy;
   const name=(id:string)=>data.requirements.find(r=>r.id===id)?.title||data.nodes.find(n=>n.id===id)?.title||data.featureContext?.overview.features.find(g=>g.id===id)?.name||id;
-  const locate=(id:string)=>{const node=data.nodes.find(n=>n.id===id);go(node?.requirementId?requirementCanvasUrl(node.requirementId,new URLSearchParams({view:'project'}),data,id):'/paths?'+new URLSearchParams({view:'project',pathNode:id,pathInspector:'open',pathScope:'all'}));};
+  const locate=(id:string)=>{const destination=editorFieldLocation(data,id),node=data.nodes.find(n=>n.id===id);go(destination||(node?.requirementId?requirementCanvasUrl(node.requirementId,new URLSearchParams({view:'project'}),data,id):'/paths?'+new URLSearchParams({view:'project',pathNode:id,pathInspector:'open',pathScope:'all'})));};
   const scopeUrl=(scope:string)=>scope==='features'?'/paths?view=features':scope.startsWith('feature:')?'/paths?view=feature&featureId='+encodeURIComponent(scope.slice(8)):scope.startsWith('requirement:')?requirementCanvasUrl(scope.slice(12),new URLSearchParams({view:'project'}),data):'/paths?view=project';
   return <div className="canvas-draft-details"><p>所有层的修改一起保存，共 {draft.count} 项。</p>
     {draft.storageError&&<p role="alert" className="form-error">{draft.storageError}</p>}

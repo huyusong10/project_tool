@@ -155,7 +155,7 @@ for(const destination of ['全局','其他需求'] as const)for(const narrow of 
  await page.goBack();await expect.poll(()=>new URL(page.url()).searchParams.get('requirementId')).toBe(new URL(beforeUrl).searchParams.get('requirementId'));await ready(page);
 });
 
-test('特性图中的项目里程碑名称留空后，从项目层保存能返回原字段',async({page},info)=>{
+test('项目里程碑草稿在跨范围校验和摘要定位后可继续保存',async({page},info)=>{
   const f=await phaseFixture(page),id=crypto.randomUUID();
   const read=async()=>await(await page.request.get(f.base+'/path-analysis')).json() as PathAnalysis;
   const initial=await read();
@@ -172,7 +172,9 @@ test('特性图中的项目里程碑名称留空后，从项目层保存能返�
   await expect(title).toBeVisible();await expect(title).toHaveValue('');await expect(title).toHaveAttribute('aria-invalid','true');await expect(title).toBeFocused();expect(writes).toBe(0);
   expect((await read()).milestones).toEqual(before.milestones);
   await page.screenshot({path:info.outputPath('milestone-invalid-name.png'),animations:'disabled'});
-  await title.fill('已核对的项目集成评审');const saved=page.waitForResponse(response=>response.url().endsWith('/dependency-changes/apply'));await page.keyboard.press('Control+s');expect((await saved).status()).toBe(200);
+  await title.fill('已核对的项目集成评审');await title.blur();await closeGraphProperties(page);await openGraphDrafts(page);
+  await page.locator('.canvas-change-row').filter({hasText:'已核对的项目集成评审'}).getByRole('button',{name:'定位',exact:true}).click();await expect(title).toHaveValue('已核对的项目集成评审');expect(writes).toBe(0);
+  const saved=page.waitForResponse(response=>response.url().endsWith('/dependency-changes/apply'));await page.keyboard.press('Control+s');expect((await saved).status()).toBe(200);
   const after=await read();expect(after.milestones).toEqual(before.milestones!.map(item=>item.id===id?{...item,title:'已核对的项目集成评审',version:item.version+1}:item));expect(writes).toBe(1);expect(after.dependencies).toEqual(before.dependencies);
 });
 
