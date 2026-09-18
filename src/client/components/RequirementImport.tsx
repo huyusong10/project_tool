@@ -17,6 +17,23 @@ import { intakeExample, intakePackageSchema, type IntakePackage, type ImportPrev
 import { mergeIntakeRequirements, splitIntakeRequirement } from '../intake-edit';
 import { DeliveryImpactTable } from './DeliveryImpactTable';
 import type { Requirement, Person } from '../types';
+import { ZodError } from 'zod';
+
+const importFieldLabels:Record<string,string>={requirements:'需求',workItems:'工作项',dependencies:'依赖',key:'标识',title:'标题',background:'原文说明',acceptanceCriteria:'验收标准',plannedStart:'计划开始',plannedEnd:'计划结束',durationDays:'工期',referenceUrl:'来源地址',referenceLinks:'关联链接',ownerId:'负责人',feature:'特性',phase:'Phase'};
+function importReadError(error:unknown,fallback:string){
+  if(error instanceof SyntaxError)return 'JSON格式不正确，请检查括号、引号和逗号。';
+  if(!(error instanceof ZodError))return error instanceof Error?error.message:fallback;
+  return error.issues.map(issue=>{
+    const field=issue.path.map(part=>typeof part==='number'?`第${part+1}项`:importFieldLabels[String(part)]||String(part)).join(' · ')||'导入内容';
+    const message=issue.code==='too_big'?`不能超过${issue.maximum}${issue.origin==='string'?'个字符':issue.origin==='array'?'项':''}`
+      :issue.code==='too_small'?`不能少于${issue.minimum}${issue.origin==='string'?'个字符':issue.origin==='array'?'项':''}`
+      :issue.code==='invalid_type'?'必填内容缺失或类型不正确'
+      :issue.code==='invalid_format'?'格式不正确'
+      :issue.code==='invalid_value'?`必须是${issue.values.map(String).join('、')}`
+      :issue.code==='unrecognized_keys'?`不支持这些字段：${issue.keys.join('、')}`:issue.message;
+    return `${field}：${message}`;
+  }).join('；');
+}
 
 type Attempt={batchId:string;previewToken:string;expectedRevision:string;package:IntakePackage};
 type SavedDraft={advanced:boolean;raw:string;pkg:IntakePackage|null;attempt:Attempt|null;closedBatchId:string|null};
@@ -45,14 +62,14 @@ export function RequirementImport({projectId,defaultFeature,defaultPhase}:{proje
   const withDefaults=(pkg:IntakePackage):IntakePackage=>({...pkg,requirements:pkg.requirements.map(r=>r.action==='create'?{...r,...(r.feature===undefined&&defaultFeature?{feature:defaultFeature}:{}),...(r.phase===undefined&&defaultPhase&&(r.feature===undefined||r.feature===defaultFeature)?{phase:defaultPhase}:{})}:r)});
   const parseInput=(value:string)=>withDefaults(value.trim().startsWith('{')?intakePackageSchema.parse(JSON.parse(value)):parseText(value));
   const download=(value:unknown,name:string)=>{const blob=new Blob([typeof value==='string'?value:JSON.stringify(value,null,2)],{type:typeof value==='string'?'text/plain;charset=utf-8':'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);};
-  const parse=()=>{fileRead.current++;try{change(parseInput(raw));setAdvanced(false);}catch(e){setError(e instanceof Error?e.message:'内容读取失败');}};
+  const parse=()=>{fileRead.current++;try{change(parseInput(raw));setAdvanced(false);}catch(e){setError(importReadError(e,'内容读取失败'));}};
   const readFile=async(file:File|undefined)=>{
     const revision=++fileRead.current;
     if(!file)return;
     if(file.size>10*1024*1024){setError('导入文件不能超过 10MB');return;}
     const current=()=>mounted.current&&revision===fileRead.current&&!requestLock.current&&!attemptRef.current;
     try{const value=await file.text();if(!current())return;setRaw(value);change(parseInput(value));}
-    catch(e){if(current())setError(e instanceof Error?e.message:'文件读取失败');}
+    catch(e){if(current())setError(importReadError(e,'文件读取失败'));}
   };
   const inspect=async()=>{
     if(!pkg||requestLock.current||attemptRef.current)return;requestLock.current=true;setBusy(true);setError('');
