@@ -60,7 +60,7 @@ export function ProgressWorkspace({report,formal}:{report:Dashboard;formal:PathA
   const close=()=>set('pathInspector','closed');
   const select=(row:WorkspaceRow)=>workspace?(row.virtual?workspace.enter({kind:'unphased',id:row.featureId}):workspace.inspect(row.id)):setParams(old=>{const next=new URLSearchParams(old);next.set('pathNode',row.id);next.delete('pathEdge');next.set('pathInspector','open');if(row.requirementId)next.set('requirementId',row.requirementId);else next.delete('requirementId');return next;},{replace:true});
   const scopeUrl=()=>{const next=new URLSearchParams(params);next.set('mode','graph');next.set('view',chosen?.requirementId?'requirement':chosen?.featureId?'feature':'features');if(chosen?.featureId)next.set('featureId',chosen.featureId);if(chosen?.phaseId)next.set('phaseId',chosen.phaseId);return '/?'+next;};
-  const status=draft.loading?'恢复草稿…':draft.pending?'提交结果待核对':draft.conflict?'版本冲突':draft.count?draft.count+' 项未保存':draft.readOnly?'其他页面编辑中':Object.keys(draft.fields).length?'输入未保存':'已保存';
+  const status=draft.loading?'恢复草稿…':draft.pending?'提交结果待核对':draft.ownershipError?'编辑状态无法确认':draft.conflict?'版本冲突':draft.count?draft.count+' 项未保存':draft.readOnly?'其他页面编辑中':Object.keys(draft.fields).length?'输入未保存':'已保存';
   const toolbar=<PageHeader title="项目空间" breadcrumbs={[{label:'进展表',onClick:filters.featureId?()=>patch({featureId:'',phaseId:''}):undefined},...(feature?[{label:feature.name}]:[])]}
     onBack={feature?()=>patch({featureId:'',phaseId:''}):undefined}
     actions={workspace?undefined:<div className="page-editor-actions" aria-hidden="true"><div className="page-editor-history"/><div className="page-editor-primary"/></div>}

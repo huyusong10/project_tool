@@ -8,7 +8,7 @@ import { EditorSession, newHistory, readHistory, type HistoryCommand, type Edito
 import { projectFieldActive } from './editor-fields';
 import { currentEditorAnalysis, rebaseEditorHistory } from './editor-rebase';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { readDraftRecord, writeDraftRecord, writeSharedDraftRecord, watchDraftRecord, clearDraftRecords, ownsDraft, takeDraft, releaseDraft } from './graph-draft-storage';
+import { readDraftRecord, writeDraftRecord, writeSharedDraftRecord, watchDraftRecord, clearDraftRecords, ownsDraft, takeDraft, releaseDraft, draftOwnershipError } from './graph-draft-storage';
 import { ApiError, isWriteOutcomeUnknown, jsonBody } from './api';
 import type { DependencyChanges, DependencyChangePreview, DependencyChangeReceipt, DependencyChangesInput } from '../shared/path-contracts';
 import type { PathAnalysis } from '../shared/paths';
@@ -27,6 +27,9 @@ export function clearProjectGraphDrafts(accountId:string,projectId:string){
   for(const storage of [sessionStorage,localStorage])for(const key of Object.keys(storage))if(key===base||key.startsWith(base+':')||['pm-project-task:','pm-workspace-rows:','pm-path-origin:','pm-editor-ids:','pm-path-view:','pm-canvas-navigation:','pm-graph-view:','pm-detail-scroll:','pm-editor-new-template:','pm-editor-lease:pm-graph-draft:'].some(p=>(key===p+accountId+':'+projectId||key.startsWith(p+accountId+':'+projectId+':'))))storage.removeItem(key);
 }
 const sessions=new Map<string,EditorSession<unknown>>();
+function checkDraftOwnership<T>(current:EditorSession<T>,key:string,claim:boolean){
+  const owned=ownsDraft(key,claim);current.ownershipError=owned===undefined?draftOwnershipError:'';current.readOnly=owned!==true;return owned===true;
+}
 function releaseUnusedHistory<T>(key:string,current:EditorSession<T>,releaseLease:boolean) {
   void current.flush().then(()=>{
     if(current.mounts||current.saving||sessions.get(key)!==current)return;
@@ -64,29 +67,30 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
   const persist=()=>current.persist(async state=>{if(current.blocked)return;await writeDraftRecord(storageKey,state.active||Object.keys(state.fields).length||Object.keys(state.layouts).length?state:undefined);sessionStorage.removeItem(storageKey);});
   const dispatch=(command:HistoryCommand<T>)=>{
     if(!enabled||current.loading||current.readOnly||current.blocked)return false;
-    if(command.type!=='layout-baseline'&&!ownsDraft(storageKey,true)){current.readOnly=true;current.notify();return false;}
+    if(command.type!=='layout-baseline'&&!checkDraftOwnership(current,storageKey,true)){current.notify();return false;}
     const changed=current.dispatch(command);if(changed)void persist();return changed;
   };
   useEffect(()=>{
     current.mounts++;
     if(!enabled)return()=>{current.mounts--;releaseUnusedHistory(storageKey,current,false);};
-    let stopped=false;if(!current.loading){current.readOnly=!ownsDraft(storageKey,current.state.active||!!Object.keys(current.state.fields).length);current.notify();}
+    let stopped=false;if(!current.loading){checkDraftOwnership(current,storageKey,current.state.active||!!Object.keys(current.state.fields).length);current.notify();}
     if(current.loading)void (async()=>{
       try{
         const stored=await readDraftRecord<unknown>(storageKey),legacy=stored===undefined?JSON.parse(sessionStorage.getItem(storageKey)||'null'):undefined;
         const restored=readHistory<T>(stored??legacy);
         if(restored){current.state={...restored,server:restored.server||latest.current.source};current.restored=restored.active;current.stored=true;if(legacy){await writeDraftRecord(storageKey,current.state);sessionStorage.removeItem(storageKey);}}
       }catch(error){current.error=(error as Error).message.includes('原记录')?(error as Error).message:'本机存储不可用，草稿仅保留在当前页面';current.blocked=(error as Error).message.includes('原记录');}
-      current.loading=false;current.readOnly=!ownsDraft(storageKey,current.state.active||!!Object.keys(current.state.fields).length);current.notify();
+      current.loading=false;checkDraftOwnership(current,storageKey,current.state.active||!!Object.keys(current.state.fields).length);current.notify();
     })();
-    const refresh=()=>{if(stopped)return;const denied=!ownsDraft(storageKey,current.state.active||!!Object.keys(current.state.fields).length);if(denied!==current.readOnly){current.readOnly=denied;current.notify();}},leave=()=>{current.readOnly=true;void current.flush();releaseDraft(storageKey);};
+    const refresh=()=>{if(stopped)return;const denied=current.readOnly,error=current.ownershipError;checkDraftOwnership(current,storageKey,current.state.active||!!Object.keys(current.state.fields).length);if(denied!==current.readOnly||error!==current.ownershipError)current.notify();},leave=()=>{current.readOnly=true;void current.flush();releaseDraft(storageKey);};
     const timer=setInterval(refresh,15000);window.addEventListener('storage',refresh);window.addEventListener('pagehide',leave);
     return()=>{stopped=true;clearInterval(timer);window.removeEventListener('storage',refresh);window.removeEventListener('pagehide',leave);current.mounts--;releaseUnusedHistory(storageKey,current,true);};
   },[current,storageKey,enabled]);
   const state=current.state;
   return {
     session:current,dispatch,flush:current.flush,busy:current.saving,setBusy:(value:boolean)=>{current.setSaving(value);if(!value&&!current.mounts)releaseUnusedHistory(storageKey,current,enabled);},source:state.server,baseline:state.baseline||state.values[0],value:state.values[state.index],active:state.active,version:state.version,
-    dirty:JSON.stringify(state.values[state.index])!==JSON.stringify(state.baseline||state.values[0]),loading:current.loading,storageError:current.error,stored:current.stored,restored:current.restored,readOnly:current.readOnly||current.blocked,
+    dirty:JSON.stringify(state.values[state.index])!==JSON.stringify(state.baseline||state.values[0]),loading:current.loading,storageError:current.ownershipError||current.error,ownershipError:current.ownershipError,stored:current.stored,restored:current.restored,readOnly:current.readOnly||current.blocked,
+    recheckOwnership:()=>{if(!enabled||current.loading||current.saving||current.blocked)return;checkDraftOwnership(current,storageKey,current.state.active||!!Object.keys(current.state.fields).length);current.notify();},
     get fields(){return current.fields;},get fieldEpoch(){return current.fieldEpoch;},get pendingField(){return current.pendingField;},requestField:current.requestField,isFieldActive:current.isFieldActive,layoutBaselines:state.layouts,
     setField:(key:string,buffer?:import('./editor-session').FieldBuffer)=>dispatch({type:'field',key,buffer}),
     captureLayout:(scope:string,positions:Record<string,import('./path-layout').Point>)=>dispatch({type:'layout-baseline',scope,positions}),
@@ -94,7 +98,9 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
       if(!enabled||current.loading||current.saving||current.blocked)return false;
       current.loading=true;current.notify();
       try{
-        await current.flush();const saved=readHistory<T>(await readDraftRecord(storageKey));takeDraft(storageKey);
+        await current.flush();const saved=readHistory<T>(await readDraftRecord(storageKey));
+        try{takeDraft(storageKey);}catch{current.ownershipError=draftOwnershipError;current.readOnly=true;return false;}
+        current.ownershipError='';
         current.adopt(saved?{...saved,server:saved.server||latest.current.source}:newHistory(latest.current.initial,latest.current.version,latest.current.source));
         await beforeUnlock?.();current.readOnly=false;return true;
       }catch(error){current.error='无法接管草稿：'+(error as Error).message;current.readOnly=true;return false;}

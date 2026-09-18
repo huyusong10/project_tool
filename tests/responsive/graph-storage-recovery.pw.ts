@@ -1,6 +1,7 @@
 import {expect,test,type Page} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
 import {headerAction} from './topbar-helpers';
+import {openGraphDrafts} from './graph-interactions';
 import type {WorkItemTemplate} from '../../src/client/types';
 
 test('会话存储不可用时关系图仍可浏览，可读的旧排序回执仍能核对',async({page},info)=>{
@@ -99,4 +100,53 @@ test('流程本机偏好不可读时仍可打开，保存后清理偏好失败�
   await expect(page.getByRole('textbox',{name:'设计说明',exact:true})).toHaveValue('');
   expect((await list()).find(t=>t.id===saved.id)).toEqual(saved);
   expect(writes).toEqual(['POST /api/templates']);expect(errors).toEqual([]);
+});
+
+test('本机编辑状态读取失败可重试，重试不会接管另一页面草稿',async({page,context},info)=>{
+  const f=await phaseFixture(page),errors:string[]=[],writes:string[]=[];
+  const read=async()=>{const r=await page.request.get('/api/templates?projectId='+f.projectId);expect(r.ok()).toBe(true);return r.json();};
+  const before=await read(),url='/templates?'+new URLSearchParams({projectId:f.projectId,edit:f.testing.templateId!});
+  const track=(target:Page)=>{target.on('pageerror',e=>errors.push(e.message));target.on('request',r=>{if(new URL(r.url()).pathname.startsWith('/api/')&&!['GET','HEAD'].includes(r.method()))writes.push(r.method()+' '+new URL(r.url()).pathname);});};
+  track(page);await page.goto(url);await expect(page.locator('[data-layout-ready=true]')).toBeVisible();
+  await headerAction(page,'流程属性');
+  const name=page.getByRole('textbox',{name:'流程名称',exact:true});
+  await name.fill('仍由原页面编辑');await name.blur();
+  await expect(page.getByText('草稿已保留',{exact:true})).toBeVisible();
+  const tab=await context.newPage();track(tab);
+  try{
+    await tab.addInitScript(()=>{
+      const get=Storage.prototype.getItem,set=Storage.prototype.setItem;
+      const blocked=(storage:Storage,key:string)=>storage===localStorage&&key.startsWith('pm-editor-lease:')&&get.call(sessionStorage,'mi-allow-lease')!=='1';
+      Storage.prototype.getItem=function(key){if(blocked(this,key))throw new DOMException('Lease storage denied','SecurityError');return get.call(this,key);};
+      Storage.prototype.setItem=function(key,value){if(blocked(this,key))throw new DOMException('Lease storage denied','SecurityError');return set.call(this,key,value);};
+    });
+    await tab.goto(url);await expect(tab.locator('[data-layout-ready=true]')).toBeVisible();
+    await expect(tab.locator('.page-toolbar-status')).toContainText('编辑状态无法确认');
+    await expect(tab.getByRole('button',{name:'保存修改',exact:true})).toBeDisabled();
+    await openGraphDrafts(tab);
+    await expect(tab.getByRole('alert')).toContainText('无法读取本机编辑状态');
+    await tab.getByRole('button',{name:'重新检查编辑状态',exact:true}).click();
+    await expect(tab.getByRole('alert')).toContainText('无法读取本机编辑状态');
+    await tab.getByRole('button',{name:'接管此草稿',exact:true}).click();
+    await expect(tab.getByRole('button',{name:'保存修改',exact:true})).toBeDisabled();
+    await expect(tab.getByRole('alert')).toContainText('无法读取本机编辑状态');
+    await expect(name).toBeEnabled();
+    await tab.screenshot({path:info.outputPath('ownership-unavailable-1280.png'),animations:'disabled'});
+    await tab.setViewportSize({width:390,height:844});
+    await tab.screenshot({path:info.outputPath('ownership-unavailable-390.png'),animations:'disabled'});
+    await tab.evaluate(()=>sessionStorage.setItem('mi-allow-lease','1'));
+    await tab.getByRole('button',{name:'重新检查编辑状态',exact:true}).click();
+    await expect(tab.locator('.page-toolbar-status')).toContainText('其他页面编辑中');
+    await expect(tab.getByRole('button',{name:'重新检查编辑状态',exact:true})).toHaveCount(0);
+    await expect(tab.getByRole('button',{name:'保存修改',exact:true})).toBeDisabled();
+    await expect(name).toBeEnabled();await expect(name).toHaveValue('仍由原页面编辑');
+    await tab.getByRole('button',{name:'接管此草稿',exact:true}).click();
+    await expect(page.locator('.page-toolbar-status')).toContainText('其他页面编辑中');
+    await expect(tab.locator('.page-toolbar-status')).not.toContainText('编辑状态无法确认');
+    await expect(tab.getByRole('button',{name:'保存修改',exact:true})).toBeEnabled();
+    if(!await tab.getByRole('textbox',{name:'流程名称',exact:true}).isVisible())await headerAction(tab,'流程属性');
+    await expect(tab.getByRole('textbox',{name:'流程名称',exact:true})).toBeEnabled();
+    await expect(tab.getByRole('textbox',{name:'流程名称',exact:true})).toHaveValue('仍由原页面编辑');
+    expect(await read()).toEqual(before);expect(writes).toEqual([]);expect(errors).toEqual([]);
+  }finally{await tab.close();}
 });

@@ -43,7 +43,7 @@ export function historyTransition<T>(state:EditorHistory<T>,command:HistoryComma
 
 /** Editing documents survive route mounts; disk writes keep command order. */
 export class EditorSession<T>{
-  state:EditorHistory<T>;mounts=0;loading=true;saving=false;readOnly=false;error='';stored=false;restored=false;blocked=false;
+  state:EditorHistory<T>;mounts=0;loading=true;saving=false;readOnly=false;error='';ownershipError='';stored=false;restored=false;blocked=false;
   fieldEpoch=0;fieldAvailability?:FieldAvailability<T>;
   pendingField?:string;
   requestField=(key?:string)=>{if(this.pendingField===key)return;this.pendingField=key;this.notify();};

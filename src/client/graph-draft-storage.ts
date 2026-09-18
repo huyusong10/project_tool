@@ -13,6 +13,8 @@ export function watchDraftRecord(key:string,listener:()=>void){const signal=reco
 export async function clearDraftRecords(prefix:string){const db=await database();return new Promise<void>((resolve,reject)=>{const tx=db.transaction('drafts','readwrite'),store=tx.objectStore('drafts'),request=store.openCursor();request.onsuccess=()=>{const cursor=request.result;if(!cursor)return;if(String(cursor.key).startsWith(prefix))cursor.delete();cursor.continue();};tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});}
 export const editorTabId=randomUUID();
 const leaseKey=(key:string)=>'pm-editor-lease:'+key;
-export function ownsDraft(key:string,claim=false){try{const old=JSON.parse(localStorage.getItem(leaseKey(key))||'null') as {owner:string;expires:number}|null;if(old&&old.owner!==editorTabId&&old.expires>Date.now())return false;if(claim)localStorage.setItem(leaseKey(key),JSON.stringify({owner:editorTabId,expires:Date.now()+45000}));return true;}catch{return false;}}
+export const draftOwnershipError='无法读取本机编辑状态，暂时不能编辑。请检查浏览器的存储设置后重新检查。';
+/** undefined means the lease could not be checked; false means another tab owns it. */
+export function ownsDraft(key:string,claim=false):boolean|undefined{try{const old=JSON.parse(localStorage.getItem(leaseKey(key))||'null') as {owner:string;expires:number}|null;if(old&&old.owner!==editorTabId&&old.expires>Date.now())return false;if(claim)localStorage.setItem(leaseKey(key),JSON.stringify({owner:editorTabId,expires:Date.now()+45000}));return true;}catch{return undefined;}}
 export function takeDraft(key:string){localStorage.setItem(leaseKey(key),JSON.stringify({owner:editorTabId,expires:Date.now()+45000}));}
 export function releaseDraft(key:string){try{if(ownsDraft(key))localStorage.removeItem(leaseKey(key));}catch{/* A stored lease expires after an interrupted tab. */}}
