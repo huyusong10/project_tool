@@ -130,6 +130,62 @@ async function failRootRead(page: Page, resource: 'session' | 'projects') {
   return state;
 }
 
+test('项目中心区分首次加载失败、旧数据刷新失败和真实空列表', async ({ page }, testInfo) => {
+  await fixture(page, 'requirement');
+  const projects = [{ id: 'p1', name: '测试项目', status: 'active', defaultTemplateId: null, isSample: false }];
+  await page.route('**/api/projects', route => route.fulfill({ json: projects }));
+  const root = await failRootRead(page, 'projects');
+  const errors: string[] = [];
+  const writes: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => {
+    if (new URL(request.url()).pathname.startsWith('/api/') && !['GET', 'HEAD'].includes(request.method())) writes.push(request.url());
+  });
+  const table = page.locator('.project-table');
+  const notice = page.locator('.app-refresh-notice');
+  root.failure = 503;
+  await page.goto('/projects');
+  await expect(page.getByRole('heading', { name: '项目列表加载失败', exact: true })).toBeVisible();
+  await expect(page.getByText('projects读取失败 503', { exact: true })).toBeVisible();
+  await expect(table).toHaveCount(0);
+  await expect(notice).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('projects-first-read-failed-1280.png'), animations: 'disabled' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: testInfo.outputPath('projects-first-read-failed-390.png'), animations: 'disabled' });
+
+  root.failure = 0;
+  await page.getByRole('button', { name: '重新加载', exact: true }).click();
+  await expect(table.getByText('测试项目', { exact: true })).toBeVisible();
+  root.failure = 503;
+  await refresh(page);
+  await expect(notice).toContainText('暂时显示上次加载的数据');
+  await expect(table.getByText('测试项目', { exact: true })).toBeVisible();
+  await expect(table.getByText('还没有项目', { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('projects-background-failed-390.png'), animations: 'disabled' });
+  projects[0].name = '重试后更新的项目';
+  root.failure = 0;
+  await notice.getByRole('button', { name: '重新加载', exact: true }).click();
+  await expect(notice).toHaveCount(0);
+  await expect(table.getByText('重试后更新的项目', { exact: true })).toBeVisible();
+  await expect(table.getByText('测试项目', { exact: true })).toHaveCount(0);
+
+  root.failure = 403;
+  await refresh(page);
+  await expect(page.getByText('projects读取失败 403', { exact: true })).toBeVisible();
+  await expect(table).toHaveCount(0);
+  root.failure = 503;
+  await page.getByRole('button', { name: '重新加载', exact: true }).click();
+  await expect(page.getByText('projects读取失败 503', { exact: true })).toBeVisible();
+  await expect(table).toHaveCount(0);
+  projects.length = 0;
+  root.failure = 0;
+  await page.getByRole('button', { name: '重新加载', exact: true }).click();
+  await expect(table.getByText('还没有项目', { exact: true })).toBeVisible();
+  await expect(notice).toHaveCount(0);
+  expect(writes).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 for (const resource of ['session', 'projects'] as const) {
   for (const [source, failure] of [['requirement', 503], ['my-work', 'network'], ['issue', 'html']] as const) {
     test(`全局读取 ${resource}后台${failure}保留${source}草稿`, async ({ page }, testInfo) => {
