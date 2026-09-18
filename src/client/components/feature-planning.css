@@ -21,5 +21,6 @@
 @media(max-width:640px){.feature-grid{padding:0 10px 12px}.feature-toolbar{padding:0 10px 14px}}
 
 .topbar-page-status .canvas-draft-status{font-size:12px;line-height:1.4;padding:4px 8px;min-height:28px;color:inherit}
+.canvas-draft-details>.warning-banner{display:grid;justify-content:stretch}
 
 }

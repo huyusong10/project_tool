@@ -16,6 +16,9 @@ type History = {
 };
 type Recovery={kind:'ready'|'reading'|'conflict'|'pending'|'locked'|'error';message?:string;layouts?:Layout[];conflicts?:string[]};
 const layoutKey=(layout:Layout)=>layout.scope+':'+layout.direction;
+const recoveryMessage=(error:unknown)=>error instanceof DOMException&&error.name==='SecurityError'
+  ?'浏览器阻止了本机存储访问。请允许此网站使用本机存储后，重新核对旧草稿。'
+  :(error as Error).message;
 export function mergeFeatureLayouts(current:DependencyChanges,layouts:Layout[],choices:Record<string,'current'|'legacy'>={}){
   const merged=[...(current.layouts||[])],conflicts:string[]=[];
   for(const layout of layouts){const key=layoutKey(layout),index=merged.findIndex(l=>layoutKey(l)===key);
@@ -64,13 +67,13 @@ export function useLegacyFeatureDraft(key:string,projectId:string,history:Histor
       }
       if(!active.current)return;
       await importLayouts(stored?.values[stored.index]?.layouts||[]);
-    }catch(error){if(active.current)setRecovery({kind:'error',message:(error as Error).message});}
+    }catch(error){if(active.current)setRecovery({kind:'error',message:recoveryMessage(error)});}
     finally{running.current=false;}
   };
   const runRef=useRef(run);runRef.current=run;
   useEffect(()=>{if(!enabled||done.current||history.loading||history.readOnly||history.busy||pending)return;void runRef.current();},[enabled,history.loading,history.readOnly,history.busy,pending,attempt]);
   return {...recovery,blocked:!['ready','reading'].includes(recovery.kind),loading:recovery.kind==='reading'&&!pending&&!history.readOnly,
     retry:()=>setAttempt(n=>n+1),retrySubmission:()=>void run(true),takeOver:()=>{takeDraft(oldKey);setAttempt(n=>n+1);},
-    resolve:(choices:Record<string,'current'|'legacy'>)=>void importLayouts(recovery.layouts||[],choices).catch(error=>setRecovery({kind:'error',message:(error as Error).message})),
+    resolve:(choices:Record<string,'current'|'legacy'>)=>void importLayouts(recovery.layouts||[],choices).catch(error=>setRecovery({kind:'error',message:recoveryMessage(error)})),
   };
 }

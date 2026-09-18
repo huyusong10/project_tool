@@ -21,6 +21,9 @@ test('会话存储不可用时关系图仍可浏览，可读的旧排序回执�
   await page.goto(url);await expect(page.locator('.react-flow__node').first()).toBeVisible();
   await page.getByRole('button',{name:'进展表',exact:true}).click();await expect(page.locator('.workspace-gantt')).toBeVisible();
   await page.getByRole('button',{name:'关系图',exact:true}).click();await expect(page.locator('.react-flow__node').first()).toBeVisible();
+  await page.getByRole('button',{name:'查看修改与错误',exact:true}).click();
+  await expect(page.locator('.canvas-draft-details')).toContainText('浏览器阻止了本机存储访问');
+  await expect(page.getByRole('button',{name:'重新核对旧草稿',exact:true})).toBeVisible();
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:info.outputPath('storage-unavailable-390.png'),animations:'disabled'});
   await page.reload();await expect(page.locator('.react-flow__node').first()).toBeVisible();await expect(page.getByRole('heading',{name:'页面出现异常',exact:true})).toHaveCount(0);
   const legacy=await page.context().newPage(),key='pm-feature-order-write:'+session.accountId+':'+f.projectId;
