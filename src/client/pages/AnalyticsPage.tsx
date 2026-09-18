@@ -2,6 +2,7 @@ import { readRecheck, persistRecheck } from '../core/write-recheck';
 import * as reportingApi from '../features/reporting/api';
 import { Button } from '../components/Button';
 import { analyticsValue } from "../analytics-presentation";
+import { copyLabel } from '../../shared/copy-label';
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { chartCategoryColor } from "../chart-theme";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -382,7 +383,7 @@ export function AnalyticsPage() {
     const id = `panel-${Date.now().toString(36)}`;
     setEditingPanel({ id, title: "新图表", dataset: "requirements", measure: "count", visualization: "kpi", size: "small", timeScope: "snapshot", sort: "desc", limit: 10 });
   };
-  const copyPanel = (panel: AnalyticsPanelConfig) => { if (saveLock.canClose()) setDraft((current) => current && current.panels.length < 24 ? ({ ...current, panels: [...current.panels, { ...cloneLayout({ version: 1, panels: [panel] }).panels[0], id: `panel-${Date.now().toString(36)}`, title: `${panel.title}副本` }] }) : current); };
+  const copyPanel = (panel: AnalyticsPanelConfig) => { if (saveLock.canClose()) setDraft((current) => current && current.panels.length < 24 ? ({ ...current, panels: [...current.panels, { ...cloneLayout({ version: 1, panels: [panel] }).panels[0], id: `panel-${Date.now().toString(36)}`, title: copyLabel(panel.title, '副本', 60) }] }) : current); };
   const deletePanel = (panelId: string) => { if (saveLock.canClose()) setDraft((current) => current && current.panels.length > 1 ? ({ ...current, panels: current.panels.filter((item) => item.id !== panelId) }) : current); };
   const reorderPanels = (panels: AnalyticsPanelConfig[]) => { if (saveLock.canClose()) setDraft((current) => current ? { ...current, panels } : current); };
   if (!projects.length) return <><PageHeader title="统计分析" /><div className="page-content"><EmptyState title="暂无可分析项目" detail="创建项目后，这里会生成默认分析看板。" /></div></>;
