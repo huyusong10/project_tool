@@ -23,6 +23,12 @@ function ProjectSwitcher({ ready }: { ready: boolean }) {
   const { projects, selectedProjectId, changeProject } = useProjects();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => menuRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({block:'nearest'}));
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
   const page = useResolvedPage();
   const selectable = ready || Boolean(selectedProjectId) || page.phase === 'error' && projects.length > 0;
   const selected = projects.find((project) => project.id === selectedProjectId);
@@ -30,7 +36,11 @@ function ProjectSwitcher({ ready }: { ready: boolean }) {
     {!selectable ? <span className="project-switcher-empty" aria-label="正在加载项目"><span className="project-dot"/><span className="shell-placeholder project-name-placeholder"/></span> : projects.length ? <>
       <button type="button" ref={buttonRef} className="project-switcher-button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((value) => !value)} onKeyDown={event => {
         if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); setOpen(false); }
-        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('.project-switcher-menu [aria-selected="true"]')?.focus()); }
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault(); setOpen(true);
+          const fallback = event.key === 'ArrowUp' ? 'button:last-child' : 'button:first-child';
+          requestAnimationFrame(() => (menuRef.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]') || menuRef.current?.querySelector<HTMLButtonElement>(fallback))?.focus());
+        }
       }}>
         <span className="project-dot" />
         <span className="project-switcher-name" title={selected?.name}>{selected?.name || '选择项目'}</span>
@@ -38,7 +48,7 @@ function ProjectSwitcher({ ready }: { ready: boolean }) {
         <ChevronDown className={open ? "is-open" : ""} size={15} />
       </button>
       <AnchoredPopover anchorRef={buttonRef} open={open} onOutside={() => setOpen(false)} width={240} preserveEditing onEscape={() => { setOpen(false); buttonRef.current?.focus(); }}>
-        <div className="project-switcher-menu" role="listbox" aria-label="切换项目" data-workspace-zone="tools" data-preserve-edit onKeyDown={event => {
+        <div ref={menuRef} className="project-switcher-menu" role="listbox" aria-label="切换项目" data-workspace-zone="tools" data-preserve-edit onKeyDown={event => {
           if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setOpen(false); buttonRef.current?.focus(); return; }
           const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button'));
           const index = items.indexOf(document.activeElement as HTMLButtonElement);

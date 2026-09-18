@@ -92,10 +92,14 @@ test("project selection persists and respects page scope", async ({ page }) => {
   await expect(page.getByRole("dialog", { name: "问题详情" }).getByRole("heading", { name: issueTitle })).toBeVisible();
   await expect.poll(() => {
     const query = new URL(page.url()).searchParams;
-    return { issueId: query.get("issueId"), owner: query.has("ownerId"), requirement: query.has("requirementId") };
-  }).toEqual({ issueId: issue.id, owner: false, requirement: false });
+    return { issueId: query.get("issueId"), owner: query.get("ownerId"), requirement: query.get("requirementId") };
+  }).toEqual({ issueId: issue.id, owner: oldPerson.id, requirement: oldRequirement.id });
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "问题详情" })).toBeHidden();
+  await expect(page.locator('.issue-filters').getByRole('combobox').nth(2)).toContainText('所选负责人（不在当前列表）');
+  await expect(page.locator('.issue-filters').getByRole('combobox').nth(3)).toContainText('所选需求（不在当前列表）');
+  await expect(page.locator('.issue-title-button')).toHaveCount(0);
+  await page.getByRole('button',{name:'清除筛选',exact:true}).click();
   await expect(page.locator(".issue-title-button", { hasText: issueTitle })).toBeVisible();
 
   expect(second.id).not.toBe(first.id);
