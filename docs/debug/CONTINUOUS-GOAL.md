@@ -4,10 +4,10 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品b33fc22（MC）、3517da6（MA）、79bbdd9（LW）、9cf4cd6（LV）、3376c6b（LM）、0aa4c09（LK）、e4c0fb6（LI）、834caa2（LE）、8903cfc（LD），测试夹具dd0aa3a；更早成果见下表与历史版本。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品3c87217（MD）、b33fc22（MC）、3517da6（MA）、79bbdd9（LW）、9cf4cd6（LV）、3376c6b（LM）、0aa4c09（LK）、e4c0fb6（LI）、834caa2（LE）、8903cfc（LD），测试夹具dd0aa3a；更早成果见下表与历史版本。
 - 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
 - 最新全量LX：997业务/120文件、11性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-lx-verify.log，42879退出0已回收。覆盖至79bbdd9，首轮完整通过；本轮LV/LW目标检查另有8/2个不同浏览器场景通过。
-- LX生产构建：主JS933.44KB、CSS339.24KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-lv-matrix.log确认759功能/183布局/2性能、普通1857实例；只列清单，不称为执行全部浏览器。
+- LX生产构建：主JS933.44KB、CSS339.24KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-md-matrix.log确认760功能/183布局/2性能、普通1858实例；只列清单，不称为执行全部浏览器。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
 详细历史在本文件Git版本：A—DO fd512b7；DP—EV 41a4ed0；FE—HL d35957a；HE—IE 67250e9。JG至JL详验见1ce7589；JP—JZ详验见dc53ed7。按主题取读，不重新开始。
@@ -190,10 +190,24 @@ mcp-partial-updates已有真实HTTP验证字段省略/显式清空、链接顺�
 
 27303/66764/56354/62532/86237均退出0并回收。最初stage-mc-history-scale因探针把reducedMotion误写到test.use而构建失败，stage-mc-build-diagnostic定位；改用page.emulateMedia后才测量，没有把启动失败当产品问题。stage-mc-correction-regression中89934退出0，3个真实业务场景通过；强化已有需求纠错回归，后台新增历史可见且原选择保留，另验证连续纠错和短操作焦点。类型/测试构建、目标Lint/diff通过；最新完整verify仍LX，未重跑全量。
 
-## 当前阶段 MD
+## MD验收：项目中心区分读取失败与空列表
 
-转查项目中心加载失败后的反馈与恢复：失败应有可操作的重试入口，不能误显示为无项目或把旧项目当作最新结果。先核对已有项目选择/项目中心回归和实现；已有充分证据则不重复运行，没有具体问题不改组件。该阶段尚未执行。
+项目中心属于平台范围，原页面就绪条件只等待项目范围的项目列表；首次503会同时显示“上次加载的数据”和“还没有项目”。新增1条浏览器回归在原版失败，截图确认。3c87217只增加项目中心的等待条件，复用现有加载/错误/重试，不引入查询或页面状态。
+
+新回归验证首次503、重试后有项目、后台503保留旧列表并提示、重试显示新名称、403清列表后503不回填、恢复为空数组才显示空项目，0业务写/0页面异常；1280/390截图已看。stage-md-before.log的16271退出1；stage-md-after.log的30242退出0。另5个既有场景通过：真实项目选择/页面范围、两种全局首次失败、项目后台503保留草稿、403后503不回填；stage-md-regression.log的88941退出0。共6个不同浏览器，类型/测试构建、目标Lint/diff、矩阵通过，所有句柄已回收；最新全量仍LX。
+
+## ME复核：退出处理无需修改
+
+退出处理先停备份定时器，再关闭HTTP服务并限时刷日志；进行中的备份只写.partial文件，发布前不进入可恢复列表。日志阻塞2秒上限、备份调度和恢复已有测试随LX通过，本轮未重跑这些部件测试。
+
+临时stage-me-shutdown.mjs用当前测试构建启动两个独立服务，各真实登录/创建1个项目，然后在子进程内触发SIGINT/SIGTERM事件。均退出0，分别28.2/32.6ms；停止日志恰好1条，无关闭错误，端口关闭，项目完整数据库行保持，数据库完整性ok/外键0且可再次取得写锁，各1个已发布备份完整性ok。shutdown-me.json与stage-me-shutdown.log留证，子进程均已回收。只验证Node退出处理，不代表Windows控制台信号投递或强制终止已验证；不增加退出抽象或产品修改。
+
+首次探针误按.log后缀找实际.jsonl日志而失败；stage-me-shutdown-first.log保留。服务当时已正确写入server.stopped，修正探针后才记录上述结果，不把探针错误当产品缺陷。
+
+## 当前阶段 MF
+
+转查读取接口对无效分页、排序和筛选参数的处理。先按现有契约和既有测试核对，关注异常500、查询范围意外扩大、分页结果不一致；不擅自把已约定的默认值或截断规则改成拒绝输入。已有充分覆盖则换领域，不为边角输入扩展接口。
 
 ## 最新检查点
 
-b33fc22产品与回归已提交；MA/MC目标验收通过，最新全量仍LX。所有已知句柄已回收；3296监听0，当前格式临时目录0。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标LS（21:52:33.400Z），不重复短间隔轮询；未部署或推送。从MD继续，Goal保持active。
+3c87217产品与回归已提交；MA/MC/MD目标验收通过，ME无产品修改，最新全量仍LX。所有已知句柄及ME子进程已回收。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标LS（21:52:33.400Z），不重复短间隔轮询；未部署或推送。从MF继续，Goal保持active。
