@@ -85,10 +85,10 @@ export function permanentlyDeleteArchive(entity: ArchiveEntity, id: string, acto
       assertArchiveGeneration(input, person.deletedAt);
       lockArchiveGeneration('people', id, person.deletedAt);
       const references = row<{ count: number }>(`SELECT
-        (SELECT COUNT(*) FROM requirements WHERE owner_id=?) +
+        (SELECT COUNT(*) FROM requirements WHERE owner_id=? OR acceptance_owner_id=?) +
         (SELECT COUNT(*) FROM work_items WHERE owner_id=?) +
         (SELECT COUNT(*) FROM work_item_collaborators WHERE person_id=?) +
-        (SELECT COUNT(*) FROM issues WHERE owner_id=?) AS count`, id, id, id, id)?.count || 0;
+        (SELECT COUNT(*) FROM issues WHERE owner_id=?) AS count`, id, id, id, id, id)?.count || 0;
       if (references) fail(`该人员仍被${references}条历史业务记录引用，只能保留归档`, 'DEPENDENCY_CONFLICT', 409, { references });
       getDatabaseContext().sqlite.prepare('DELETE FROM accounts WHERE person_id=? AND is_builtin=0').run(id);
       const deleted = getDatabaseContext().sqlite.prepare('DELETE FROM people WHERE id=? AND deleted_at=?').run(id, person.deletedAt);
