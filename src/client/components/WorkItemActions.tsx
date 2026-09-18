@@ -4,7 +4,7 @@ import { useProjects } from '../app-context';
 import { Button } from './Button';
 import { Select } from './Select';
 import { StartAssignmentDialog, type StartAssignment } from './StartAssignmentDialog';
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Check, CircleStop, MoreHorizontal, Play, RotateCcw } from "lucide-react";
 import { isWriteOutcomeUnknown, requiresWriteRecheck } from "../api";
@@ -77,6 +77,8 @@ export function WorkItemActions({
   const anchorRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
+  const historyOptions = useMemo(() => panel === 'dates' ? correctionCandidates
+    .map(update => <option value={update.id} key={update.id}>{progressReferenceLabel(update)} · {update.content}</option>) : [], [panel, correctionCandidates]);
   const reason=input.reason, setReason=(reason:string)=>setInput(value=>({...value,reason}));
   const actualStart=input.actualStart, setActualStart=(actualStart:string)=>setInput(value=>({...value,actualStart}));
   const actualEnd=input.actualEnd, setActualEnd=(actualEnd:string)=>setInput(value=>({...value,actualEnd}));
@@ -272,7 +274,7 @@ export function WorkItemActions({
           {item.status === "completed" && <label><span>实际完成（必填）</span><input aria-label="实际完成" type="date" disabled={pending} min={actualStart || undefined} max={today} value={actualEnd} onChange={(event) => { setActualEnd(event.target.value); setValidationError(""); }} /></label>}
         </div>
         {item.status === "cancelled" && item.cancelledAt && <small>取消日期：{item.cancelledAt}</small>}
-        {!!correctionCandidates.length && <label><span>关联历史记录（可选）</span><Select aria-label="工作项纠错关联历史记录" disabled={pending} value={supersedesId} onChange={(event) => setSupersedesId(event.target.value)}><option value="">不指定</option>{correctionCandidates.map((update) => <option value={update.id} key={update.id}>{progressReferenceLabel(update)} · {update.content}</option>)}</Select></label>}
+        {!!historyOptions.length && <label><span>关联历史记录（可选）</span><Select aria-label="工作项纠错关联历史记录" disabled={pending} value={supersedesId} onChange={(event) => setSupersedesId(event.target.value)}><option value="">不指定</option>{historyOptions}</Select></label>}
         <label><span>纠错说明（可选）</span><textarea aria-label="纠错原因" readOnly={pending} rows={2} value={reason} onChange={(event) => { setReason(event.target.value); setValidationError(""); }} placeholder="说明为什么修正历史数据" /></label>
         {validationError && <p className="form-error" role="alert">{validationError}</p>}
         {error && <p className="form-error">{error}</p>}

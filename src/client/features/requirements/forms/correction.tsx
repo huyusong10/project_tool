@@ -11,7 +11,7 @@ import { useDeliveryForm } from "../../../use-delivery-form";
 import { migrateFeatureFields } from "../../../feature-storage-migration";
 import { OrganizationFields } from '../../../components/RequirementIntake';
 import { isAssignablePerson } from "../../../assignable-people";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../../../api";
@@ -191,7 +191,8 @@ export function RequirementCorrectionForm({
     },
     onSettled: () => { submitting.current = false; },
   });
-  const candidates = (baseline.progressUpdates || []).filter((update) => !update.workItemId);
+  const historyOptions = useMemo(() => (baseline.progressUpdates || []).filter(update => !update.workItemId)
+    .map(update => <option value={update.id} key={update.id}>{progressReferenceLabel(update)} · {update.content}</option>), [baseline.progressUpdates]);
   const validation = !canonicalizeLabel(draft.title) ? "需求标题不能为空。"
     : hasExecution && !draft.ownerId ? "需求已有执行记录，负责人不能清空。"
     : ownerUnavailable ? "所选负责人已不可用，请重新选择。"
@@ -233,7 +234,7 @@ export function RequirementCorrectionForm({
       <FormField label="需求背景（可选）" full><textarea aria-label="纠错后的需求背景" rows={3} value={draft.background} onChange={(event) => change("background", event.target.value)} /></FormField>
       <FormField label="完成标准（可选）" full><textarea aria-label="纠错后的完成标准" rows={3} value={draft.acceptanceCriteria} onChange={(event) => change("acceptanceCriteria", event.target.value)} /></FormField>
       <ReferenceLinksEditor value={draft.referenceLinks??requirementReferenceLinks({referenceUrl:draft.referenceUrl},baseline)} onChange={links=>change("referenceLinks",links)}/>
-      {!!candidates.length && <FormField label="关联历史记录（可选）" full><Select aria-label="需求纠错关联历史记录" value={supersedesId} onChange={(event) => {const value=event.target.value;setSupersedesId(value);persistDraftIfLocked(draft,reason,value);}}><option value="">不指定</option>{candidates.map((update) => <option value={update.id} key={update.id}>{progressReferenceLabel(update)} · {update.content}</option>)}</Select></FormField>}
+      {!!historyOptions.length && <FormField label="关联历史记录（可选）" full><Select aria-label="需求纠错关联历史记录" value={supersedesId} onChange={(event) => {const value=event.target.value;setSupersedesId(value);persistDraftIfLocked(draft,reason,value);}}><option value="">不指定</option>{historyOptions}</Select></FormField>}
       <FormField label="纠错说明（可选）" full><textarea aria-label="需求纠错原因" rows={2} value={reason} onChange={(event) => {const value=event.target.value;setReason(value);persistDraftIfLocked(draft,value);}} placeholder="说明原信息哪里有误，以及核对依据" /></FormField>
       {unknown&&!reviewRequired&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
       {reviewRequired && <div className="warning-banner field-full">提交结果待核对；当前版本已变化。本窗口不再提交。请核对当前资料与纠错记录，已填内容保留。<Button variant="secondary" type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</Button></div>}

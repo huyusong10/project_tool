@@ -28,6 +28,11 @@ test('需求纠错重读保留本地标题和其他人的资料，执行事实�
   const response=page.waitForResponse(r=>new URL(r.url()).pathname===endpoint+'/correct'&&r.request().method()==='POST');
   await form.getByRole('button',{name:'保存纠错',exact:true}).click();expect((await response).status()).toBe(409);
   await expect(form).toContainText('已读取最新需求');expect(await read()).toEqual(latest);
+  await form.getByRole('combobox',{name:'需求纠错关联历史记录',exact:true}).click();
+  const refreshedHistory=page.getByRole('listbox',{name:'需求纠错关联历史记录',exact:true});
+  await expect(refreshedHistory.getByRole('option').filter({hasText:'核实其他资料'})).toBeVisible();
+  await expect(refreshedHistory.getByRole('option').filter({hasText:source.content})).toHaveAttribute('aria-selected','true');
+  await page.keyboard.press('Escape');
   await expect(form.getByRole('textbox',{name:'纠错后的需求背景',exact:true})).toHaveValue(remote.background);
   await expect(form.getByRole('textbox',{name:'链接 1 地址',exact:true})).toHaveValue(remote.referenceLinks[0].url);
   await expect(form.getByRole('textbox',{name:'纠错后的需求标题',exact:true})).toHaveValue('本地核实的需求标题');
