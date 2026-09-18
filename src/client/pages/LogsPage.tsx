@@ -23,10 +23,18 @@ const auditActionLabels: Record<string, string> = {
   unblock: "解除阻塞", cancel: "取消", reorder: "排序", apply_template: "应用模板",
   apply_plan: "补全计划", revoke: "撤销", add_member: "添加成员", remove_member: "移出成员",
   reset_password: "重置密码", change_password: "修改密码", import: "导入",
+  correct: "纠错", progress: "更新进度", test_submission: "记录提测", accept: "验收",
+  rework: "返工", reopen: "重开", split: "拆分工作", reschedule: "调整计划",
+  defer: "挂起", resume: "恢复处理", resolve: "确认解决", coordinate_blocker: "协调阻塞",
+  achieve: "达成里程碑", confirm_delivery_commitment: "确认交付承诺",
+  apply_dependency_changes: "保存画布修改", add_dependency: "增加前置关系", remove_dependency: "移除前置关系",
+  delete_dependencies: "清除前置关系", review_dependencies: "更新前置核对与预计验收", estimate_path: "更新交付估算",
+  apply_dependency_plan: "按依赖排期", upload: "上传", download: "下载", reset: "恢复默认",
 };
 const auditEntityLabels: Record<string, string> = {
   feature: "特性", feature_phase: "Phase", feature_relation: "特性规划关系", project: "项目", requirement: "需求", work_item: "工作项", progress: "进展",
   issue: "问题", issue_update: "问题进展", person: "人员", account: "账号", template: "流程设计", api_token: "MCP Token", backup: "数据库备份", system_branding: "系统品牌",
+  milestone: "里程碑", analytics_layout: "统计分析布局", phase: "Phase（排序）", work: "工作项（排序）",
 };
 
 export function LogsPage() {
@@ -64,7 +72,7 @@ export function LogsPage() {
     <div className="page-content logs-page">
       <FilterBar className="audit-filters">
         <SearchInput value={keyword} onChange={(value) => updateFilter("q", value)} placeholder="搜索用户、Token、操作内容、实体ID或拼音" />
-        <Select value={actorType} onChange={(event) => updateFilter("actorType", event.target.value)}><option value="">全部来源</option><option value="user">用户</option><option value="token">MCP Token</option></Select>
+        <Select value={actorType} onChange={(event) => updateFilter("actorType", event.target.value)}><option value="">全部来源</option><option value="user">用户</option><option value="token">MCP Token</option><option value="system">系统</option></Select>
         <Select value={action} onChange={(event) => updateFilter("action", event.target.value)}><option value="">全部动作</option>{Object.entries(auditActionLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</Select>
         <Select value={entityType} onChange={(event) => updateFilter("entityType", event.target.value)}><option value="">全部对象</option>{Object.entries(auditEntityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</Select>
         <label className="audit-date"><span>从</span><input type="date" value={from} onChange={(event) => updateFilter("from", event.target.value)} /></label>
@@ -77,7 +85,7 @@ export function LogsPage() {
           <div className="audit-head"><span>时间（北京时间）</span><span>来源</span><span>对象</span><span>动作</span><span>内容</span></div>
           {data?.items.map((item) => <div key={item.id}>
             <span>{new Date(item.createdAt).toLocaleString("zh-CN", { timeZone: 'Asia/Shanghai' })}</span>
-            <span title={item.actorType === "token" && item.tokenName ? `MCP Token：${item.tokenName}` : undefined}>{item.actorName || "已删除用户"}{item.actorType === "token" && ` · MCP${item.tokenName ? `（${item.tokenName}）` : ""}`}</span>
+            <span title={item.actorType === "token" && item.tokenName ? `MCP Token：${item.tokenName}` : undefined}>{item.actorType === "system" ? "系统" : item.actorName || "已删除用户"}{item.actorType === "token" && ` · MCP${item.tokenName ? `（${item.tokenName}）` : ""}`}</span>
             <span>{auditEntityLabels[item.entityType] || item.entityType}</span>
             <span>{auditActionLabels[item.action] || item.action}</span>
             <details className="audit-content">
