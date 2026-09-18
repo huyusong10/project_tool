@@ -4,27 +4,20 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品3571ea1（JL），前一产品c0059d1（JK）、06146c4（JG）、c6ca4f3（JC）；README修正c36e4f9。
-- 原目录D:\tools\project-manage的dev不改。JL后检查仍只有用户修改skills/project-manage-intake/SKILL.md、未跟踪docs/dcim-ai-workflow-v3-gaps.md。未部署、未推送。
-- 临时数据库和独立构建；浏览器使用3296，串行运行；性能独占。3210/3295不改。HZ漏设端口，用默认3291的独立临时服务完成，后续已恢复3296。
-- JG组合验收06146c4：983业务/119文件、10性能、26浏览器，运行时/429边界/Lint/类型/构建/预算全通过，verify首轮退出0（exec49747已结束）。主JS940.24KB、CSS342.55KB、ELK1595.33KB；stages-iz-jg-verify.log及performance/build-budget.json。另15目标浏览器及真实传输探针通过，所有句柄已回收。前IX组合基线dc98ee2：982业务/10性能/26浏览器，stages-is-iv-verify.log。
-- IQ组合验收：980业务/119文件、10性能、26浏览器，运行时/429边界/Lint/类型/构建/预算均通过。首轮新增边界期望2项错误后补验domain35项和剩余流水线，退出0；不是首轮verify一次通过。stages-im-iq-verify/rest.log；主JS939.62KB、CSS342.57KB、ELK1595.33KB。
-- 前IL完整验收ab3e713：974业务/118文件、9性能、26浏览器，运行时、429模块边界、Lint、类型、构建、预算全通过，verify退出0。主JS939.62KB、CSS342.52KB、ELK1595.33KB；stages-ib-ik-verify.log。前全量HZ见stages-hr-hw-verify.log。
-- IB：7项不同浏览器、3项加强字段断言的重验，Lint/类型/测试构建通过；现已随IL合并验收。当时无待验收产品修改；后续运行状态见当前阶段。
-- IF：12项不同配置/启动检查通过（初轮11通过，1测试替身模块加载问题修正后补验3项），当前pwsh手动夹具也通过，修改测试ESLint和diff检查通过；无需重跑应用全量。
-- IH：26既有业务、16既有浏览器旅程及Lint通过；最终会话身份保护调整后补验3项多标签旅程。50项目前后测和5项目回访探针通过，类型/测试构建通过。无运行进程，临时探针已归档。
-- IJ：2条真实日志探针、2条既有日志浏览器通过，日期/每页条数/项目条件保持、查询零写入、390px可选；截图已检查。目标ESLint、类型/测试构建、diff通过；探针归档，无永久测试增加。
-- IK：31业务/4文件、目标ESLint、类型、diff通过。加强既有样板清理旅程，新增1条历史引用删除回归；无临时探针。
-- IL之后IM：99项不同业务（64+37，重叠2项）、最终范围调整后13项重验、3浏览器及五类独立探针通过；ESLint/类型/测试构建/diff通过。新增2项断开恢复回归；无运行进程或未归档浏览器探针。
-- IO：11条既有浏览器及1条50项目专项通过；1280/390px、中文同前缀及200字符英文名称完整可见，键盘/鼠标切换正确、完整项目DTO不变、查询零写入、无页面异常；ESLint/类型/测试构建/diff通过，截图已检查，探针已归档。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品2bc92fb（JO），前一产品906437a（JN）、3571ea1（JL）、c0059d1（JK）、06146c4（JG）；README修正c36e4f9。
+- 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
+- 最近全量为JG/06146c4：983业务/119文件、10性能、26冒烟，运行时/429边界/Lint/类型/构建/预算全通过，verify首轮退出0；stages-iz-jg-verify.log。JK另9浏览器，JN另9浏览器，JO另31浏览器，各自类型/构建/Lint通过；这些后续修改未再跑完整verify。
+- JO生产构建：主JS931.81KB、CSS339.06KB、ELK1595.33KB，428模块边界及预算通过。全部执行句柄已回收，无运行进程、未归档临时浏览器测试或未验收产品修改。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
-详细历史在本文件Git版本：A—DO fd512b7；DP—EV 41a4ed0；FE—HL d35957a；HE—IE 67250e9。后者保留HP/HS探针修正、完整测量、截图及各专项数量。按主题取读，不重新开始。
+详细历史在本文件Git版本：A—DO fd512b7；DP—EV 41a4ed0；FE—HL d35957a；HE—IE 67250e9。JG全量及至JL详细验收、旧基线和探针修正见1ce7589。按主题取读，不重新开始。
 
 ## 近期成果
 
 | 阶段 / 提交 | 结果 / 证据 |
 |---|---|
+| JO / 2bc92fb | 删除被统一清单替代的两套表格、专用选择组件和38个专用CSS选择器；旧mode=table解析保留。JS940395→931808B、CSS342552→339058B，合计减少12081B。31浏览器、类型/完整Lint/428边界/生产构建/预算通过，1280/390截图已检查；stage-jo-*、retired-table-*。无新增测试；CSS初稿误删现用Phase容器，在浏览器验收前复核恢复，保留声明比对通过 |
+| JN / 906437a | 选中特性被他人归档后，数量排除但ID仍保留；恢复后自动重选，真实后续批量归档误含甲乙。新增1条真实回归在原代码失败，修复按刷新后的非系统/非归档对象清理选择；仅乙提交、甲完整资料保持、刷新一致。9目标浏览器（含145行、折叠/窄屏、排序/移动/未知写入）、类型/测试构建/Lint/diff通过；outline-archived-selection-before.log/context/png、stage-jn-*。97971失败、42629通过均已回收 |
 | JL / 3571ea1 | 两份自动启动脚本的四条中文提示被PowerShell5.1实际读成乱码。仅补UTF-8 BOM；去掉3字节BOM后的SHA256与原文件相同，5.1/当前PowerShell解析和中文值一致，diff通过。autostart-literals-before/after.json、encoding-change.json。Parser首稿探针管道语法错误已修正（parse-before/baseline.json）；原脚本无语法错误，问题仅为乱码。未调用计划任务命令、不增加永久测试 |
 | JK / c0059d1 | 补选窗口选A后，他人将负责人设为B；刷新后选框消失但开始仍发送A，原代码真实回归返回400“负责人已指定”。改为已有效分派时省略ownerId，窗口显示当前B。1条新增回归核对只写一次、B保持、版本和刷新状态正确；9浏览器、类型/测试构建/Lint/diff通过。start-assignment-refreshed-before.log/context/png、stage-jk-*，89271失败已回收、63147通过已回收，无运行进程 |
 | JI / c36e4f9 | README常用命令修正两处：build只做类型/前后端构建，skill同步独立；浏览器测试默认3291。对照package.json、Vite和两份Playwright配置确认，diff通过；仅文档，不重复测试 |
@@ -33,27 +26,6 @@
 | JC / c6ca4f3 | 4个仅末尾不同的合法长名称在1280/390均被截断，2289—2473px文字挤入315—332px，没有完整名称提示。仅将候选名称/说明改为换行并允许无空格词断行，列表继续限高滚动。6布局及1真实专项通过，8次末尾坐标均在候选内；四项键盘选择、无结果/末尾搜索、仅1次创建、刷新完整Issue DTO一致、零页面异常。类型/测试构建/Lint/diff通过，截图已检查，无新增永久测试。issue-picker-names-before/after.json/png、stage-jc-*；首轮专项在搜索框RAF聚焦前直接focus选项而失败，等待实际焦点后通过，6布局首轮已通过；探针已归档 |
 | JA / 891273d | 问题表单的关联需求/负责人/提出人浮层初帧隐藏，autoFocus无效；原代码强化后的既有回归失败。改为显示后RAF聚焦，关闭清理待执行回调。3功能/真实旅程与6种桌面布局通过；真实1280/390键盘搜索、Esc、Tab/Enter选择，取消零写入、仅1次创建、重新打开字段和完整Issue DTO一致，无页面异常。Lint/类型/测试构建/diff通过，截图已检查。既有布局夹具修正people查询匹配，14选项原始布局在搜索前断言；无新增永久测试。issue-picker-focus-before/context/png、keyboard.json、stage-ja-*；真实探针已归档，所有句柄结束 |
 | IZ / 6f36dd1 | 协作选择初帧隐藏使autoFocus失效，焦点留在入口按钮，键盘输入zhangsan后搜索仍为空。显示后RAF聚焦搜索或首个复选框，关闭时取消待执行聚焦。两个既有小列表/搜索旅程在原代码失败；修改后7浏览器、ESLint、类型/测试构建、diff通过。1000选项读取夹具打开45—47ms、搜索11—19ms，无需性能改造；实际保存用3个真实目标，隐藏已选保留、Esc零写入、Space/Tab/Enter仅1次保存、刷新一致，1280/390截图已检查。collaborator-picker-focus-before/typing、regression-before、scale.json、stage-iz-*；强化2个既有旅程，无新增永久测试，探针已归档 |
-| IV / dc98ee2 | SVG把英文都按窄字符计算，特性/需求/Phase共16行越界，宽标题309—502px挤出280px卡片、Phase名与状态重叠。按字符类别估宽并为省略号留空间，产品净增5行，无字体依赖。25业务、3不同浏览器及1次扩大字符集补验通过；空图、长英文/数字/中文/emoji、XML、完整标题、Phase不重叠、全量分析/需求DTO保持；类型/构建/Lint/diff通过，截图已检查。graph-export-text-before/after/characters、stage-iv-*、graph-font-width。前三次探针夹具分别误用overview、缺overview必填项、未解包features，已记录修正；正式复现和验收日志独立保存。探针已归档，无新增永久测试 |
-| IU链接 / 7d70e7b | 需求合并遗漏来源新版referenceLinks，旧实现两个单元场景失败；合并双方新链接并按URL去重、目标名称优先，保留目标旧来源，超20条不截断。7单元、2真实浏览器（正常/超限修正）、Lint/类型/构建通过；完整原文、链接、工作、依赖重映射和刷新后保存核对。intake-merge-links-before、stage-iu-links-*、intake-merge-links-browser.log |
-| IT / eee9d38 | 折叠4500工作控件仍创建77446 DOM；事件到两次动画帧计时：整理440ms、标题修改787ms。只在展开时创建工作控件，后测DOM928—946，整理35ms、修改13ms；输入仍存原pkg。17既有浏览器通过，强化原拆分合并旅程：编辑/添加移除/收起重开/刷新后保存保留标题。Lint/类型/构建/diff通过。intake-editor-9-500-before/after、stage-it-*；早先13476ms包含自动化定位成本，不当纯绘制指标 |
-| IS / d473f2e | 超过既有4000总对象上限时返回英文JSON；复用导出常量，在导入预览给出本批数量、上限和分批提示。36业务、Lint/类型/构建、1真实浏览器通过；4509对象跳过2需求后3507可预览，全部原文保持、零写入、1280/390截图已检查。三个有效大批次及失败末项/重试全表快照核对通过：1000需求提交1960ms，100需求×10工作2096ms，4000对象边界9220ms。intake-scale-before、intake-boundary、intake-limit-*、stage-is-*；无永久测试增加 |
-| IQ / e53c666 | 逐日扫描使100个五年计划真实需求读取中位1000ms、最慢1447ms；二分定位进度日期后24ms/27ms。1808组完整计算结果与原实现一致，产品净增3行，无缓存。980业务/10性能/26浏览器组合验收通过；新增1性能和4日期回归。schedule-variance-*、stages-im-iq-*；首次新增2测试期望错误（负零及周末对齐后偏移）已修正，原产品规则保持 |
-| IO / 6348240 | 项目菜单240px单行省略，50个同前缀项目末尾编号不可见；改为320px并按视口收缩、名称完整换行、选中图标不压缩。12不同浏览器通过，project-choice-before/after、project-choice-visibility、stage-io-*及1280/390截图。专项初次End按键早于菜单RAF焦点转入，改为等待实际焦点后通过；无产品键盘修改，无永久测试增加 |
-| IM / 6c6d772 | 响应途中断开不触发onResponse/onError，活动计数残留，之后恢复等待10秒并取消；真实4000需求备份下载复现。仅数据库路由在处理函数finally清理计数，未结束写入仍等待且只执行一次。99不同业务、3真实浏览器、五类探针通过。maintenance-abort-baseline/after、maintenance-real-before、stage-im-*。首次探针钩子参数错误修正；初稿包装静态路由破坏回调发送，浏览器3项失败后限定数据库路由，三项全部重验通过 |
-| IK / ab3e713 | 迁移保留旧acceptance_owner_id，但归档引用检查遗漏；样板归档会误停用外部旧验收人，普通永久删除报500。两个既有查询纳入旧验收人，同一需求只计一次；样板删除成功且历史人员/账号保留，无引用者仍清除；普通删除409并保留资料。31业务通过，legacy-acceptor-before/sample-before、stage-ik-*。首次样板夹具用无账号旧actor创建需求失败，改为直接构造迁移保留资料后复现 |
-| IJ / 906a0a0 | 日志缺少当前业务动作/对象筛选，提测与分析布局显示英文，自动记录误显示“已删除用户”。仅补现有标签表及系统来源选项/名称。真实提测、返工、分析布局重置和系统记录可筛选；4浏览器通过。audit-actions-before/observed、stage-ij-*、audit-actions-narrow/audit-layout-filter截图；当前记录原样保留 |
-| IH / 0064a41 | 浏览50项目、每项目100需求的模拟分析响应后，查询缓存过期并GC，未编辑画布会话50→0，堆51.93→12.16MB；5/20项目后测10.85/11.69MB，DOM稳定。卸载后等待存储队列，再释放无编辑/字段/错误且无保存中的会话，旧会话不能释放新会话租约。26业务、16恢复/访客/接管旅程通过；加强既有存储失败测试的跨页输入保留。5项目回访视口/布局完全相同。multi-project-memory-baseline/after/recovery、stage-ih-*；首次空项目缺“其他需求”的夹具失败后补最小需求，不改业务行为 |
-| IF / f301ff2 | start.bat调用Windows PowerShell 5.1，configure.ps1无BOM中文先解析失败，补BOM后又因-AsPlainText参数不支持失败。改用NetworkCredential读取SecureString、保存UTF-8 BOM，并将安装依赖放到配置之前。5.1/当前pwsh密码与部署参数保留、指定测试库账号更新通过；冷/热启动顺序用npm/配置/服务替身验证，未下载依赖或操作原账号。configure-powershell51-before/bom-only/after、startup-order-before、stage-if-*、configure-pwsh-*；保留2项启动回归。初测试Read-Host替身依赖Security模块而加载失败，改为直接构造SecureString后通过 |
-| IB / 7b6dbaf | 未知创建误认工作阶段或协作人员不同的同名项并清掉草稿。补齐阶段、里程碑名、参与人集合比较；不同资料保留输入，一致资料仍能确认。两条防丢失回归、7浏览器通过；work-create-identity-before、stage-ib-*。仅凭相同资料不能证明并发操作来源 |
-| HW / 1c1708b | 工作项名称规范化后无法核对已成功创建；比较复用canonicalizeLabel。混合全角/组合字符/空白旅程通过，零重提、完整DTO不变；5浏览器及Lint/类型/构建，work-title-recheck-before、stage-hw-*。人员/特性规则已一致 |
-| IA / baf3208 | README校正人员权限、人力分析、归档、Token/密码入口及独立skill同步命令，删除重复首次配置，净减5行；对照实际路由和脚本验收 |
-| HU / c84c5cf | 图表复制为“副本”预留60字符上限；11浏览器、2既有业务通过；analytics-long-copy-before、stage-hu-* |
-| HS / 71f888c | 画布/流程长标题复制预留后缀，不切断emoji；卡片标题限制两行并显示完整悬停文字。63不同业务、8不同浏览器及窄屏补拍；canvas-long-copy-*、stage-hs-* |
-| HR / 7276541 | 导入格式/类型/长度错误显示中文字段和项次，保留原文；5浏览器通过；intake-error-feedback-*、stage-hr-* |
-| HP / 9e6f7b8 | 200字符流程复制超限修复，连续12副本唯一；需求流程选择换行显示完整长名称。50业务、20不同浏览器；template-long-copy-*、stage-hp-* |
-| HO / 54a7571 | 人力矩阵仅向右接近末端才自动加周，纵向和过滤复位不加载。1000人923可见服务39ms，模拟完整响应后绘制251—276ms；非真实网络传输。4既有浏览器及规模/窄屏通过；people-scale-*、stage-ho-* |
-| HM / 624110c | Phase聚合按组读取，1000 Phase/9000需求由92—116ms降到18—22ms；同库9场景完整DTO一致，无缓存/索引；phase-summary-scale-* |
-| HE/HF | 链接核对按服务端规范化规则比较，覆盖需求/工作项/特性/Phase；84c5c72、23ca8fa，stage-he/hf-* |
 
 ## 近期无需修改
 
@@ -144,10 +116,22 @@
 
 Date的原因输入和IssueStatusControl的折叠说明出现时机不同，暂不认定同类聚焦缺陷。“搜索需求编号”没有独立编号字段，名称内业务编号本来可搜，不因UUID未参与搜索增加功能。Goal保持active。
 
-## 当前阶段 JN：项目空间的批量选择
+## JO验收：移除已替代的旧表格渲染
 
 JG全量通过后，JK另9浏览器/类型/构建/Lint通过；JL仅编码修正并独立验证；JI仅文档。所有成果已提交，无运行进程或临时浏览器测试。JG全量不含后来的JK/JL，不能把它称为最新HEAD完整verify。
 
-下一步核对批量选择在过滤、翻页、对象归档后的选择集与页面计数。先查既有测试和证据，只对未覆盖的真实操作做探针；验收为操作目标与用户看到的选择一致，取消零写入、刷新结果一致。已覆盖的归档权限/写锁、归档行保留并禁用选择不重复检查；无证据不改变选择规则。
+当前清单为完整树表，无分页。selection-review.log已有145行滚动/详情往返、筛选清空选择的真实断言；batch-archive-state-after.log已有归档拒绝回滚/版本冲突/未知写入核对，4项通过，不重复这些场景。
+
+JN已验收提交906437a，无运行进程。检查相邻ScopeTable时确认FeaturePathPanel/PathAnalysisPanel只由ProjectWorkspace在graph视角渲染，旧mode=table由readWorkspaceLocation转为统一list，workspaceParams规范化mode=graph。旧FeatureTable/ScopeTable仍由GraphWorkspace条件打包，两个组件的分页/选择与旧模式开关已无现用入口；TemplateForm用同一GraphWorkspace但没有table。workspace-details已有旧链接进入outline的断言。
+
+JO已提交2bc92fb，修改7个产品文件：删除旧表格渲染、专用选择组件和专用样式，保留旧URL解析、统一清单/图/进展表、PhaseChip/过滤规则、现用归属编辑及恢复。JN测试构建包体940395B JS/342552B CSS，JO同样构建931808B/339058B，减少8587B/3494B；retired-table-bundle-before/after.json。类型、完整Lint、428模块边界通过；Lint58648已回收。
+
+目标浏览器最终31项全通过，40857退出0并回收，stage-jo-browser.log，3296。生产构建/预算通过（stage-jo-build.log）：主JS931.81KB、CSS339.06KB、ELK1595.33KB；图、详情1280及清单选择390截图已检查并归档retired-table-*.png。无新增测试或运行进程。
+
+CSS初稿误把现用PhaseChip容器样式列为旧表格样式，静态复核发现后已恢复两个选择器，发生在浏览器验收前；retired-table-source-audit.json确认33+5个旧选择器被移除、剩余全部声明与原文一致（首稿因Git LF/工作区CRLF误报，规范换行后比对通过）。remove-retired-tables.mjs记录收窄后的删除范围，不应重复执行这个一次性编辑脚本。
 
 JL附带只读核对：startup.test.ts已保护重启75、其他服务占端口64、重复启动不开数据库，随JG全量通过；不重跑。run-server.ps1用LiteralPath及参数调用Node、start.bat引用目录；未实际验证含空格目录的完整启动，不能宣称该场景通过。Goal继续active。
+
+## 当前阶段 JP：选择对象被移出当前范围
+
+JN验证了归档/恢复；另有代码线索：WorkspaceOutline的picked基于整个项目all，当前范围由scopedTree显示。若选中需求被他人移入另一个Phase，原页面范围不变但可能保留不可见选择，并使用刷新后的版本提交。下一步用真实移动和取消核对是否能复现；只有证据成立才缩小选择资格到当前范围，折叠中的选择继续保留，待核对原请求不清除。暂未修改或运行JP探针。Goal保持active。
