@@ -25,6 +25,7 @@
 
 | 阶段 / 提交 | 结果 / 证据 |
 |---|---|
+| JF / 测量，无产品修改 | 同需求/跨需求两种长链，100/500/1000/2000规模各3次，末项日期、全链关键性、循环拒绝、输入不变和结果hash通过。2000跨需求=4000实体、1999依赖，符合现有上限；计算中位765ms，JSON167MB。同规模随机UUID真实HTTP返回169635625B，Accept-Encoding仍无压缩，回环请求2229ms。原字节本地压缩并解压hash一致：br质量4为1626731B/414ms，gzip1为79524524B/2304ms，gzip6为77051770B/4130ms。500/1000真实规模也核对只读、末项日期。dependency-chain*.ts/json/log；HTTP首稿漏依赖created_at，已保存fixture-error并修正。压缩仅是本地试验，尚未接入服务 |
 | JC / c6ca4f3 | 4个仅末尾不同的合法长名称在1280/390均被截断，2289—2473px文字挤入315—332px，没有完整名称提示。仅将候选名称/说明改为换行并允许无空格词断行，列表继续限高滚动。6布局及1真实专项通过，8次末尾坐标均在候选内；四项键盘选择、无结果/末尾搜索、仅1次创建、刷新完整Issue DTO一致、零页面异常。类型/测试构建/Lint/diff通过，截图已检查，无新增永久测试。issue-picker-names-before/after.json/png、stage-jc-*；首轮专项在搜索框RAF聚焦前直接focus选项而失败，等待实际焦点后通过，6布局首轮已通过；探针已归档 |
 | JA / 891273d | 问题表单的关联需求/负责人/提出人浮层初帧隐藏，autoFocus无效；原代码强化后的既有回归失败。改为显示后RAF聚焦，关闭清理待执行回调。3功能/真实旅程与6种桌面布局通过；真实1280/390键盘搜索、Esc、Tab/Enter选择，取消零写入、仅1次创建、重新打开字段和完整Issue DTO一致，无页面异常。Lint/类型/测试构建/diff通过，截图已检查。既有布局夹具修正people查询匹配，14选项原始布局在搜索前断言；无新增永久测试。issue-picker-focus-before/context/png、keyboard.json、stage-ja-*；真实探针已归档，所有句柄结束 |
 | IZ / 6f36dd1 | 协作选择初帧隐藏使autoFocus失效，焦点留在入口按钮，键盘输入zhangsan后搜索仍为空。显示后RAF聚焦搜索或首个复选框，关闭时取消待执行聚焦。两个既有小列表/搜索旅程在原代码失败；修改后7浏览器、ESLint、类型/测试构建、diff通过。1000选项读取夹具打开45—47ms、搜索11—19ms，无需性能改造；实际保存用3个真实目标，隐藏已选保留、Esc零写入、Space/Tab/Enter仅1次保存、刷新一致，1280/390截图已检查。collaborator-picker-focus-before/typing、regression-before、scale.json、stage-iz-*；强化2个既有旅程，无新增永久测试，探针已归档 |
@@ -70,6 +71,9 @@
 - HN/HL：跨午夜日期刷新、2026中秋/国庆调休与正倒排一致；holiday-schedule-*。HH：53 Token分页撤销身份正确；token-pagination-*。HI：5001项目六角色查询0.72—3.73ms，无优化必要。HJ：官方npm运行依赖审计0公告，未升级。
 
 ## 覆盖与降低优先级的领域
+
+- JD：来源链接无需修改。reference-links.pw.ts已有4对象保存/草稿恢复、完成项补充、键盘排序/删除/窄屏、写响应丢失后刷新核对；mcp-partial-updates保护改名、完成/纠错和省略字段。旧reference-links-scale.log已验证20项长资料1280/390，状态SQL不写链接，本轮只读复核，不重复测试。
+- JE：人员姓名按normalizeSearchText去重，恢复也复核同名。person-rename-journey-facts.log既有真实改名旅程通过，账户/会话、未提交进度、成员/问题/工作显示均核对。归档项目保留未结束分配是当前三类计数的一致行为；未发现可直接判定的身份缺陷，不更改停用规则。既有archives-scale已覆盖5000需求，查询中位8.82ms，避免重复规模探针。
 
 - JB：只读核对模板变更。integration约894行保护旧工作项事实；editor-contract-consistency约89行、plan-preview约122行保护旧预览拒绝及新实例；versioned-write-integrity约872行保护默认流程/归档并发和最后有效流程。这些已随IX通过，服务只更新模板表，未发现新问题，不重复运行。既有真实模板保存template-instance-final和归档后改选archived-template-draft-facts均1通过；后者其余命名final/accepted/pass日志仍是早期失败，不能按文件名判断。
 
@@ -118,12 +122,12 @@
 
 该轮另发现的合并来源链接遗漏已独立修复7d70e7b；验收见近期成果。工作区无未提交产品修改。周末无工作日计划候选同样降级：当前新建排期明确限制工作日，未发现当前入口证据。
 
-## 当前阶段 JD：来源链接在编辑和状态变更中的保留
+## 当前阶段 JG：大分析响应的传输压缩验证
 
-JA/JC已验收并提交；JC的39837基线测量退出0，19256初轮6通过1探针时序失败，65513修正后退出0。无运行进程或未归档探针。IX全量基线仍是dc98ee2，IZ/JA/JC另有目标浏览器、类型/构建/Lint验收，不重跑全量。
+当前产品仍c6ca4f3，无未提交产品修改。JF纯计算退出0；真实HTTP首稿缺少测试依赖时间戳退出1，修正后15417退出0并已回收。无运行进程；两个探针原本就在证据目录。IX全量基线仍是dc98ee2，IZ/JA/JC另有目标浏览器、类型/构建/Lint验收，不重跑无关全量。
 
-下一轮转向数据保留：核对需求/工作项的referenceLinks在普通字段编辑、状态变更中的存储和展示是否一致。IU只修复过导入合并；先查已有覆盖，存在明确缺口再做真实旅程，不重跑合并探针或为凑覆盖增加测试。模板变更、选择器焦点和名称降低优先级。
+JF证明大结果的传输成本，JG评估标准HTTP压缩，保持完整JSON和现有业务结果。下一步先核对可维护的实现范围与协议协商：客户端接受/拒绝编码、解压后完整字节、不同规模和取消响应。br在测量中优于gzip，不能只看压缩率而忽略CPU；明确区分回环时间与真实网络。尚未安装依赖，未决定全局启用；避免给MCP流、备份或请求体增加未验证行为。
 
-已定位mcp-partial-updates.test.ts约53—95行：需求旧单链接与多链接兼容、重排/清空、工作项改名/完成后纠错均有断言；guest-access保护读取。工作项服务保留未提交referenceLinks，需求读取兼容referenceUrl。下一步先核对浏览器编辑入口的既有旅程，再决定是否需要实际探针。原目录刚复核仍只有同两项用户修改。
+已读官方https://github.com/fastify/fastify-compress：>=8支持Fastify5，可按路由启用，globalCompression/globalDecompression分开，br默认质量4。若采用依赖，先查实际版本与本地实现并限定范围；不自建紧凑JSON协议、删除affectedRequirementIds、加缓存或重做图布局。后台完整风险列表参与排序及服务查询，不能仅凭前端少用就删字段。当前src/server/app.ts没有响应压缩；path-routes.ts两条path-analysis路由直接返回完整PathAnalysis。
 
 Date的原因输入和IssueStatusControl的折叠说明出现时机不同，暂不认定同类聚焦缺陷。“搜索需求编号”没有独立编号字段，名称内业务编号本来可搜，不因UUID未参与搜索增加功能。Goal保持active。
