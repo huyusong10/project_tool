@@ -1,4 +1,4 @@
-import { editorFieldLocation } from '../workspace-location';
+import { editorFieldLocation, workspaceParams } from '../workspace-location';
 import { readRecheck, persistRecheck } from '../core/write-recheck';
 import * as pathsApi from '../features/paths/api';
 import { DetailCard } from './DetailCard';
@@ -401,7 +401,11 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
     const id=randomUUID(),entity=kind as EditorEntityChange['entity'],entry:EditorEntityChange={id,entity,op:'create',requirementId:entity==='requirement'?undefined:focus||null,data:attributes||(entity==='milestone'?{title:'新里程碑',confirmationMode:'auto'}:{title:'新工作项',durationDays:1,reason:requirement&&requirement.status!=='planning'&&requirement.status!=='not_started'?'在画布新增工作项':undefined})};
     if(entity==='requirement')entry.data.featureId=featureScope&&featureScope!=='unassigned'?featureScope:data.requirements.find(r=>r.id===focus)?.featureId||data.featureContext?.overview.features.find(f=>f.name==='其他特性'&&!f.archivedAt)?.id;
     const positions={...livePositions.current,...layoutValue?.positions,[id]:position};if(direct)delete positions['execute:'+direct.id];
-    draft.change(withLayout({...initial,entities:[...initial.entities||[],entry]},positions));setPlacing('');setCreatingRequirement(null);select(id);
+    draft.change(withLayout({...initial,entities:[...initial.entities||[],entry]},positions));setPlacing('');setCreatingRequirement(null);
+    if(entity==='milestone'&&!focus&&featureScope){
+      const destination=workspaceParams({projectId:formal.projectId,view:'graph',scope:{kind:'project',id:formal.projectId}},data,new URLSearchParams({pathNode:id,graphInspector:'open',pathInspector:'closed',pathScope:'all'}));
+      void navigation.go('/?'+destination);
+    }else select(id);
   };
   const duplicate=(selectedIds:string[],positions:Record<string,Point>,snapshot?:unknown)=>{if(!editing||!canEdit)return;positions=vacantGroup(graph.cards.map(c=>({id:c.id,...livePositions.current[c.id],width:244,height:154})),positions,true);const copied=copyEntities((snapshot as PathAnalysis)||data,draft.changes,selectedIds,focus);draft.change(withLayout(copied.changes,{...livePositions.current,...layoutValue?.positions,...Object.fromEntries(Object.entries(positions).filter(([id])=>copied.mapping[id]).map(([id,p])=>[copied.mapping[id],p]))}));if(copied.mapping[selectedIds[0]])select(copied.mapping[selectedIds[0]]);};
   const currentEntity=selectedCard?entityFor(selectedCard.id):null,milestone=data.milestones?.find(m=>m.id===selected);
