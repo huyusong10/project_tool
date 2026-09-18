@@ -1,4 +1,4 @@
-$Task = Get-ScheduledTask -TaskName "ProjectManageLocal" -ErrorAction SilentlyContinue
+﻿$Task = Get-ScheduledTask -TaskName "ProjectManageLocal" -ErrorAction SilentlyContinue
 if ($Task) {
   Unregister-ScheduledTask -TaskName "ProjectManageLocal" -Confirm:$false
   Write-Host "已移除开机自启动"
