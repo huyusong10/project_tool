@@ -152,7 +152,7 @@ MCP覆盖需求、工作项、问题、行动项、我的工作、项目成员�
 
 ```powershell
 npm run dev       # 前后端开发模式
-npm run build     # 类型检查、构建并同步 Codex skill
+npm run build     # 类型检查及前后端构建
 npm run sync:codex-skill # 仅同步仓库中的 skill
 npm run lint      # 轻量代码检查
 npm test          # 单元、集成和性能测试
@@ -161,6 +161,6 @@ npm run test:http # HTTP 非安全上下文：页面、登录、会话、流程�
 npm run verify    # 原生依赖、代码检查、测试、HTTP 浏览器回归与生产构建
 ```
 
-发布前运行 `npm run verify`。HTTP 回归使用普通测试域名，避免 localhost 的浏览器安全上下文例外掩盖局域网问题；不修改正式数据库。测试端口默认 3211，被占用时设置 `$env:PLAYWRIGHT_PORT='3241'` 后再运行。前端 UUID 统一使用 `src/client/random-uuid.ts`，lint 禁止绕过封装；新增依赖安全上下文的浏览器 API 时，须检测支持情况并补充 HTTP 回归。
+发布前运行 `npm run verify`。HTTP 回归使用普通测试域名，避免 localhost 的浏览器安全上下文例外掩盖局域网问题；不修改正式数据库。测试端口默认 3291，被占用时设置 `$env:PLAYWRIGHT_PORT='3241'` 后再运行。前端 UUID 统一使用 `src/client/random-uuid.ts`，lint 禁止绕过封装；新增依赖安全上下文的浏览器 API 时，须检测支持情况并补充 HTTP 回归。
 
 需要开机自动启动时，以当前用户运行 `install-autostart.ps1`；移除时运行 `uninstall-autostart.ps1`。
