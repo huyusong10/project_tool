@@ -4,11 +4,11 @@
 
 ## 基线与恢复
 
-- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品92983d1（HK Phase错误反馈），前一产品23ca8fa（HF其他链接核对）、84c5c72（HE需求链接核对）、544be86（HC数量输入）。
+- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品624110c（HM Phase读取分组），前一产品92983d1（HK Phase错误反馈）、23ca8fa（HF其他链接核对）、84c5c72（HE需求链接核对）。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
 - HG完整验收23ca8fa：970项业务（117文件）、9项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS938.26KB、CSS342.41KB、ELK1595.33KB；stages-gx-hf-verify.log，涵盖GX、GT/GZ、HC、HE/HF。原目录仍仅两项用户修改。
-- HK在HG之后单独验收4项浏览器、Lint、类型和测试构建；没有必要重复HG完整检查。
+- HG之后HK单独验收4项浏览器，HM验收51业务/6浏览器；两项均通过Lint、类型和测试构建。不重复HG完整检查。
 - 证据保留在.preview/qa/continuous-goal/；原日志、探针、截图不进版本库。临时探针验收后归档，恢复先看当前阶段与git状态。
 
 历史记录均在同路径的Git版本：A—DO：fd512b7；DP—EV：41a4ed0；FE—HL：d35957a。按主题检索，不重新开始已验收工作。
@@ -21,12 +21,14 @@ git show d35957a:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 | 阶段 / 提交 | 结果与验收入口 |
 |---|---|
+| HM / 624110c | readFeaturePhases每Phase反复筛全部需求/历史，改为各分组一次。50/250/1000 Phase，最多9000需求/2000历史交付，1000档中位92—116ms→18—22ms；无SQL/索引/缓存修改。同库旧/新实现9场景完整响应逐字段一致，空Phase/状态/权重/分布/归属/同时间历史顺序正确、零写入。51业务、6浏览器及Lint/类型/测试构建通过；phase-summary-scale-before、same-database及stage-hm-*。独立夹具hash曾不同，弃用该比较方法，改为同库直接比较；未加永久测试 |
 | HK / 92983d1 | Phase重复链接在客户端校验时直接展示Zod JSON。仅按工作项链接已有写法提取issues.message，未改校验/版本规则。真实https://example.com与尾斜杠重复地址显示中文原因、零POST且输入保留，移除重复项后只创建一次、其他Phase完整DTO不变；4项不同浏览器旅程、Lint/类型/测试构建通过，390px截图已复核。phase-link-validation-before/after/verified/final.log、stage-hk-lint及归档探针；未加永久测试。中途修正探针getByLabel对已填textarea定位及误用POST地址GET读取两个问题，未改产品来迎合探针 |
 | HF / 23ca8fa | 同样的空格使特性正常保存误报异常、Phase核对漏走成功返回、工作项核对仍锁定；真实3条既有旅程均在旧实现失败。三个表单的结果比较复用HE函数，草稿合并规则不变。15项相关浏览器通过，特性补验响应丢失后只提交一次；Lint/类型/测试构建通过。只扩展既有3条旅程，未新增长期测试。other-link-recheck-before/after.log、feature-link-normal-and-unknown.log、stage-hf-lint.log及失败上下文 |
 | HE / 84c5c72 | 新需求链接名称含两侧空格，保存成功但响应丢失，核对因原始值与服务端trim结果不同而漏认创建。新增小型referenceLinksEqual复用现有schema，保留类型/顺序/内容差异和非法输入校验，接入新建需求核对。真实两链接创建、丢响应、刷新、核对成功，只POST一次且完整需求DTO不变；23浏览器、3链接单测、Lint/类型/测试构建通过。requirement-link-recheck-baseline/after.log、stage-he-*；保留1条真实恢复回归。最初探针误把客户端readOnly选项放到HTTP查询，修正后基线确实失败，未放宽服务端字段 |
 
 ## 近期无需修改的检查
 
+- HN：隔夜业务日期已有60秒时钟、focus/visibilitychange刷新和查询失效处理；现有浏览器覆盖分析/看板范围、问题未编辑日期保留、日期选择器“今天”、历史补录跨午夜解锁，REST/MCP也覆盖跨日快照一致。只读核对，不重复运行或修改。
 - HL：按[2026年政府安排](https://www.beijing.gov.cn/fuwu/bmfw/sy/jrts/202511/t20251104_4258838.html)独立对照9/18—10/12逐日工作日；9/20与10/10补班，中秋/国庆假期跳过。真实11工作日流程正排/倒排均为9/20—10/10，两工作项分别9/20—24、9/28—10/10；10/7截止报工作日错误并保留输入。一次拒绝、两次成功创建，流程完整DTO不变。holiday-schedule-verified.log/json及归档探针，无产品修改或永久测试。首轮误依赖仅空工作区出现的“新建需求”按钮，改用公共“新建对象”菜单后通过。
 - HJ：2026-09-18运行依赖只读审计，配置镜像返回审计接口NOT_IMPLEMENTED；显式官方registry的npm audit --omit=dev返回0项公告，npm ls --omit=dev --depth=0确认23个直接依赖无安装问题。runtime-dependency-audit(-official).json、runtime-dependency-tree.json；未升级或修改锁文件。结论限查询所覆盖公告，不代表不存在未知问题。
 - HI：51/501/5001项目（含1样板），混合私有/公开/归档，管理员、成员、未关联人员、游客及包含归档参数共6场景。最大档五次服务中位0.72—3.73ms、单次最大6.06ms，完整响应、排序、角色、公开只读属性均符合独立种子预期，数据库零写入。project-list-scale.ts/log/json含SQL计划，不含网络或UI时间；无需查询优化/缓存/永久测试。分析24面板规模及进展长说明已有专项，未重复运行。
@@ -67,8 +69,8 @@ git show d35957a:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - DU一次迁移测试启动15秒超时、输出为空；单项与同并发重验通过，EB/EJ/EQ全量未再发生。不直接放宽超时。
 - GT待查项已在GZ完成独立输入节奏对照和实际页面验收，见近期成果。无用户决策事项、无外部阻塞，Goal保持active。
 
-## 当前阶段 HM：多Phase汇总读取规模
+## 当前阶段 HO：人员较多时的人力分析
 
-检查多特性、多Phase及需求的汇总读取成本和范围正确性。现有feature-history-scale只覆盖历史来源条款；先读聚合路径与现有测试，再决定是否需要独立规模探针。
+检查人力分析在多人员、多协作分配下的读取和显示成本。GQ覆盖账号任务计数1000人，GR覆盖人员页筛选刷新；先确认人力分析既有性能夹具的人员规模，再选择未充分覆盖的范围，不重复这些检查。
 
-验收：特性过滤不混入其他Phase；状态、计数与需求事实一致；读取零写入；只按测量证据优化。HL已验收，探针归档，无运行测试；当前产品92983d1。
+验收：人员筛选、协作工作、负荷与日期范围一致，读取零写入；有测量收益再修改。HM已验收，无运行进程、无临时测试文件、工作记录已压缩保留历史入口；当前产品624110c。
