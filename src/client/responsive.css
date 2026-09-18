@@ -753,11 +753,7 @@ textarea {
 .is-scroll-table .adaptive-data-cell::before{display:none}
 .issue-data-latest .issue-latest-update-button{width:100%;min-width:0;text-align:left}
 .issue-data-latest .issue-latest-update{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.6}
-.selection-actions{margin-left:auto;display:flex;align-items:center;gap:10px;flex:none;font-size:12px;white-space:nowrap}
-.selection-actions>span{color:var(--text-muted)}
-.selection-actions>.ghost-button{min-height:36px;height:36px;padding:0 10px;font-size:12px}
-.delivery-batch:has(.selection-actions),.workspace-intake-tools{min-height:36px;flex-wrap:nowrap}
-@media(max-width:1100px){.selection-actions{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:25;max-width:calc(100vw - 24px);padding:8px 12px;border:1px solid var(--accent-border);border-radius:10px;background:var(--bg-surface);box-shadow:var(--shadow-2)}}
+.workspace-intake-tools{min-height:36px;flex-wrap:nowrap}
 
 /* Short facts must fit inside their column even when the table scrolls. */
 .issue-data-list :is(.issue-data-priority,.issue-data-status,.issue-data-due) .data-cell-primary{overflow:visible;white-space:nowrap}
