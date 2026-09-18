@@ -4,10 +4,10 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品f2e458d（JP），前一产品2bc92fb（JO）、906437a（JN）、3571ea1（JL）、c0059d1（JK）、06146c4（JG）；README修正c36e4f9。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品d8d7b25（JR），前一产品f2e458d（JP）、2bc92fb（JO）、906437a（JN）、3571ea1（JL）、c0059d1（JK）、06146c4（JG）；README修正c36e4f9。
 - 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
 - 最近全量为JG/06146c4：983业务/119文件、10性能、26冒烟，运行时/429边界/Lint/类型/构建/预算全通过，verify首轮退出0；stages-iz-jg-verify.log。JK另9浏览器，JN另9浏览器，JO另31浏览器，JP另7浏览器，各自类型/构建/Lint通过；这些后续修改未再跑完整verify。
-- JO生产构建：主JS931.81KB、CSS339.06KB、ELK1595.33KB，428模块边界及预算通过。全部执行句柄已回收，无运行进程、未归档临时浏览器测试或未验收产品修改。
+- JR生产构建：主JS931.87KB、CSS339.06KB、ELK1595.33KB，预算通过；428模块边界最近JO通过。生产/测试服务端6文件完全相同，共984482B，零缺失引用或残留。全部执行句柄已回收，无运行进程、未归档临时浏览器测试或未验收产品修改。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
 详细历史在本文件Git版本：A—DO fd512b7；DP—EV 41a4ed0；FE—HL d35957a；HE—IE 67250e9。JG全量及至JL详细验收、旧基线和探针修正见1ce7589。按主题取读，不重新开始。
@@ -16,6 +16,7 @@
 
 | 阶段 / 提交 | 结果 / 证据 |
 |---|---|
+| JR / d8d7b25 | 两条tsup命令补--clean，生产44文件26.37MB→6文件984482B，测试66文件40.89MB→相同6文件；去掉38+60个未引用旧块，合计65297436B。生产/测试构建（含类型）和预算首轮0、当前引用完整、6文件字节及SHA一致、diff通过。实际start.bat从中文/空格/方括号/&目录启动，健康/资源931873B/登录/创建项目入独立SQLite/重复启动0通过，12037测试树已停止。stage-jr-*、server-build-artifacts-before/after.json、output-match.json、startup-path-*；61506/10503均已回收，无新永久测试 |
 | JP / f2e458d | 需求被他人移出当前Phase后，隐藏选择仍用最新版本加入后续真实移动，覆盖他人归属。按当前范围计算批量对象并清理选择，折叠后代仍保留。新增1回归原代码失败；修改后7个不同浏览器场景通过，取消零写入、仅当前需求提交、外部归属/版本保持、未知移动响应刷新后可核对且不重发。类型/测试构建/目标Lint/diff通过；outline-scope-selection-before、stage-jp-*。首轮修复后仅测试误要求项目预测revision不变，已改为核对其余完整DTO；5个既有场景通过后不重复，新增回归及临时状态探针补验2通过，探针已归档 |
 | JO / 2bc92fb | 删除被统一清单替代的两套表格、专用选择组件和38个专用CSS选择器；旧mode=table解析保留。JS940395→931808B、CSS342552→339058B，合计减少12081B。31浏览器、类型/完整Lint/428边界/生产构建/预算通过，1280/390截图已检查；stage-jo-*、retired-table-*。无新增测试；CSS初稿误删现用Phase容器，在浏览器验收前复核恢复，保留声明比对通过 |
 | JN / 906437a | 选中特性被他人归档后，数量排除但ID仍保留；恢复后自动重选，真实后续批量归档误含甲乙。新增1条真实回归在原代码失败，修复按刷新后的非系统/非归档对象清理选择；仅乙提交、甲完整资料保持、刷新一致。9目标浏览器（含145行、折叠/窄屏、排序/移动/未知写入）、类型/测试构建/Lint/diff通过；outline-archived-selection-before.log/context/png、stage-jn-*。97971失败、42629通过均已回收 |
@@ -29,6 +30,10 @@
 | IZ / 6f36dd1 | 协作选择初帧隐藏使autoFocus失效，焦点留在入口按钮，键盘输入zhangsan后搜索仍为空。显示后RAF聚焦搜索或首个复选框，关闭时取消待执行聚焦。两个既有小列表/搜索旅程在原代码失败；修改后7浏览器、ESLint、类型/测试构建、diff通过。1000选项读取夹具打开45—47ms、搜索11—19ms，无需性能改造；实际保存用3个真实目标，隐藏已选保留、Esc零写入、Space/Tab/Enter仅1次保存、刷新一致，1280/390截图已检查。collaborator-picker-focus-before/typing、regression-before、scale.json、stage-iz-*；强化2个既有旅程，无新增永久测试，探针已归档 |
 
 ## 近期无需修改
+
+- JS：按IE记录的16个日志字节偏移只读检查，至2026-09-18 23:59:57无新增字节/事件，无解析错误；健康200。runtime-log-review-js.mjs/json保留新恢复入口，不重读旧事件或推断无法定位的历史404。无产品修改。
+
+- JQ：导出与重新上传已有intake-export-final.log及stage-it-browser.log验收，不重复。另实际上传UTF-16LE文本/UTF-16BE JSON，中文、𠮷、emoji和组合字符读取/导出UTF-8 JSON/重传/保存通过；正式提交前零apply，最终仅2写/2需求，刷新一致。Edge原生File.text实读BOM正确，无产品修改或新增永久测试。intake-utf16-checked.log（33745退出0）、intake-utf16-probe.pw.ts；首轮仅误要求数据库不做既定NFC规范化而失败（85628退出1），修正断言后通过。临时测试已归档，原文件hash与HEAD相同。
 
 - JM：统计空结果与跨项目已有真实验收：analytics-empty-review.log的空样本→完成→返工、保存筛选/布局不变通过；analytics-account-scope-checked.log的个人布局跨项目、账号切换、无权项目403、恢复默认独立通过。现有queryKey含项目/范围/面板，范围用页面参数。只读核对记录，不重复运行已通过旅程。
 
@@ -141,6 +146,12 @@ WorkspaceOutline改为当前范围scoped计算picked/清理ID，共11行调整�
 
 追加2项通过：修正回归、临时实际折叠/展开保留选择→进入Phase清空→移动已生效但响应丢失→重连对象移出→刷新后原请求/原因/正式Phase仍可核对→仅1写且版本+1。stage-jp-browser-final.log（39459退出0已回收）、stage-jp-state-probe.pw.ts已归档，零页面异常；目标Lint、类型/测试构建、diff通过。无运行进程。
 
-## 当前阶段 JQ：导出文件与重新导入
+## JR验收：构建输出与特殊目录启动
 
-切换到日常导入/导出操作。已定位RequirementImport的本地下载和SystemPage备份下载；先核对已有覆盖和当前格式，再实际检查尚未覆盖的文件往返、长文本/Unicode及取消零写入。没有具体问题前不改下载实现，不重复已验收的数据库恢复、导入并发或规模上限。Goal保持active。
+package.json仅两行添加已安装tsup帮助中确认的--clean。执行前确认两个输出目录为工作区内普通目录，未通过链接指向其他位置。清理98个无当前引用的旧块，不改部署/迁移/启动规则。两种构建与预算、产物相等检查和真实Windows启动均通过，详见成果表。
+
+独立部署探针保留在.preview/qa/continuous-goal/启动 验证 [JR] & LgWieM；配置/数据库/日志仅测试使用，node_modules为指向当前依赖的junction，不要递归清除此目录。实际端口12037，已停止。原dev目录仍只有用户的skill修改和未跟踪文档，无部署或推送。
+
+## 当前阶段 JT：组合验收
+
+JG之后JK/JL/JN/JO/JP/JR已分别通过目标验收。现在对最新产品d8d7b25做一次npm run verify，包含业务、性能、冒烟、静态检查及生产构建，日志stages-jk-jr-verify.log；浏览器3296、性能独占，不并行运行其他检查。只有退出0才更新完整验证基线；如失败先保留证据再定位，不改已通过断言掩盖问题。完成后进入另一业务领域，Goal继续active。
