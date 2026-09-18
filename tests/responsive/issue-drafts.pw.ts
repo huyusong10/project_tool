@@ -183,8 +183,8 @@ test('项目经理新建问题时可以直接选择负责人', async ({ page }) 
 
 test('问题搜索选择浮层不改变弹窗滚动布局', {tag:'@responsive'}, async ({ page }, _testInfo) => {
 
-  await fixture(page, 'manager');
-  await page.route('**/api/people', (route) => route.fulfill({ json: Array.from({ length: 14 }, (_, index) => ({
+  const state = await fixture(page, 'manager');
+  await page.route(/\/api\/people(?:\?|$)/, (route) => route.fulfill({ json: Array.from({ length: 14 }, (_, index) => ({
     id: `u${index + 1}`,
     name: index === 0 ? '张三' : index === 1 ? '李四' : `成员${index + 1}`,
     active: 1,
@@ -194,6 +194,8 @@ test('问题搜索选择浮层不改变弹窗滚动布局', {tag:'@responsive'},
   await page.getByRole('button', { name: '新建问题', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '新建问题', exact: true });
   const body = dialog.locator('.modal-body');
+  const title = dialog.getByRole('textbox', { name: '问题标题', exact: true });
+  await title.fill('保留问题表单原文');
 
   for (const label of ['关联需求', '负责人', '提出人']) {
     const before = await body.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientWidth: element.clientWidth }));
@@ -202,16 +204,23 @@ test('问题搜索选择浮层不改变弹窗滚动布局', {tag:'@responsive'},
     const popover = dialog.locator('.issue-search-select-menu');
     await expect(listbox).toBeVisible();
     await expect(popover).toBeVisible();
+    const search = popover.getByRole('textbox');
+    await expect(search).toBeFocused();
     const after = await body.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientWidth: element.clientWidth }));
     expect(after).toEqual(before);
     const bounds = await popover.boundingBox();
     expect(bounds).not.toBeNull();
     expect(bounds!.y).toBeGreaterThanOrEqual(12);
     expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(page.viewportSize()!.height - 12);
+    await page.keyboard.type('draft-filter');
+    await expect(search).toHaveValue('draft-filter');
     await page.keyboard.press('Escape');
     await expect(popover).toBeHidden();
     await expect(dialog.getByRole('button', { name: new RegExp(`^${label}：`) })).toBeFocused();
+    await expect(title).toHaveValue('保留问题表单原文');
   }
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  expect(state.writes).toEqual([]);
 });
 
 test('普通成员新建问题时不显示负责人选择', async ({ page }) => {

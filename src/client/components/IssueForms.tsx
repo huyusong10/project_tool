@@ -158,8 +158,14 @@ function SearchSelectField({
   helper?: string;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => searchRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
   const selected = options.find((option) => option.value === value);
   const pinned = options.filter((option) => pinnedValues.includes(option.value));
   const matched = rankSearchItems(
@@ -188,7 +194,7 @@ function SearchSelectField({
         <span className={!selected && !value ? "is-placeholder" : ""}>{selected?.label || value || placeholder}</span><ChevronDown size={15} />
       </button>
       <AnchoredPopover anchorRef={triggerRef} open={open} onOutside={() => close()} onEscape={() => close(true)} width={360} matchAnchor role="presentation" className="issue-search-select-menu">
-        <label><Search size={14} /><input autoFocus value={query} placeholder={searchPlaceholder || `搜索${label}`} onChange={(event) => setQuery(event.target.value)} /></label>
+        <label><Search size={14} /><input ref={searchRef} value={query} placeholder={searchPlaceholder || `搜索${label}`} onChange={(event) => setQuery(event.target.value)} /></label>
         <div role="listbox" aria-label={label}>
           {visibleOptions.map((option) => <button type="button" role="option" aria-selected={option.value === value} key={option.value || "__empty"} onClick={() => { onChange(option.value); close(true); }}>
             <span><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>{option.value === value && <Check size={15} />}
