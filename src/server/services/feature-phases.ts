@@ -28,9 +28,17 @@ export function phaseRequirementFacts(projectId: string, asOfDate = todayIso()):
 export function readFeaturePhases(projectId: string, asOfDate = todayIso(), facts = phaseRequirementFacts(projectId,asOfDate)): FeaturePhase[] {
   const phases = getDatabaseContext().sqlite.prepare('SELECT reference_links AS referenceLinks,id,project_id AS projectId,feature_id AS featureId,name,scope,started_at AS startedAt,target_date AS targetDate,note,sort_order AS sortOrder,version,delivered_at AS deliveredAt FROM feature_phases WHERE project_id=? ORDER BY sort_order,created_at,id').all(projectId) as FeaturePhase[];
   const deliveries = getDatabaseContext().sqlite.prepare(`SELECT d.id,d.phase_id AS phaseId,d.delivered_at AS deliveredAt,a.username AS deliveredByName,d.created_at AS createdAt,d.reopened_at AS reopenedAt,d.reopen_reason AS reopenReason,d.snapshot FROM phase_deliveries d JOIN feature_phases p ON p.id=d.phase_id LEFT JOIN accounts a ON a.id=d.delivered_by WHERE p.project_id=? ORDER BY d.created_at DESC,d.rowid DESC`).all(projectId) as Array<Omit<PhaseDelivery, 'snapshot'> & { phaseId: string; snapshot: string }>;
+  const requirementsByPhase = new Map<string, PhaseRequirement[]>(), deliveriesByPhase = new Map<string, typeof deliveries>();
+  for (const fact of facts) {
+    if (!fact.phaseId) continue;
+    const items = requirementsByPhase.get(fact.phaseId) || []; items.push(fact); requirementsByPhase.set(fact.phaseId, items);
+  }
+  for (const delivery of deliveries) {
+    const items = deliveriesByPhase.get(delivery.phaseId) || []; items.push(delivery); deliveriesByPhase.set(delivery.phaseId, items);
+  }
   return phases.map(p => {
-    const requirements = facts.filter(r => r.phaseId === p.id);
-    return { ...p, referenceLinks:readReferenceLinks(p.referenceLinks),...phaseProgress(requirements, p.targetDate, asOfDate), requirements, distribution: phaseDistribution(requirements), deliveries: deliveries.filter(d => d.phaseId === p.id).map(d => ({ ...d, snapshot: JSON.parse(d.snapshot) })) };
+    const requirements = requirementsByPhase.get(p.id) || [];
+    return { ...p, referenceLinks:readReferenceLinks(p.referenceLinks),...phaseProgress(requirements, p.targetDate, asOfDate), requirements, distribution: phaseDistribution(requirements), deliveries: (deliveriesByPhase.get(p.id) || []).map(d => ({ ...d, snapshot: JSON.parse(d.snapshot) })) };
   });
 }
 export function listFeaturePhases(projectId: string, featureId: string | undefined, actor: Actor) {
