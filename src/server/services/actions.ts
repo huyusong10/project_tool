@@ -179,7 +179,10 @@ export function listActionItems(
   for(const b of pathAnalysis?.blockers||[]){
     const node=pathNodes.get(b.nodeId);if(!node)continue;
     if(!manager&&(!b.requirementId||!visibleIds.has(b.requirementId)))continue;
-    if(node.kind==='milestone'&&!items.some(i=>i.sourceId===node.id))items.push(makeItem({sourceType:'milestone',sourceId:node.id,projectId:filters.projectId,requirementId:node.requirementId,contextTitle:null,title:node.title,reasonCodes:['path_blocked'],ownerId:null,ownerName:'项目经理',dueDate:node.plannedEnd,overdueWorkdays:0,targetPath:node.requirementId?'/requirements/'+node.requirementId+'?view=path&pathSelected='+node.id:'/paths?pathSelected='+node.id,updatedAt:today}));
+    if(node.kind==='milestone'&&!items.some(i=>i.sourceId===node.id)){
+      const destination=new URLSearchParams({projectId:filters.projectId,workspaceView:'graph',scopeType:node.requirementId?'requirement':'project',scopeId:node.requirementId||filters.projectId,pathNode:node.id,graphInspector:'open',pathInspector:'closed',pathScope:'all'});
+      items.push(makeItem({sourceType:'milestone',sourceId:node.id,projectId:filters.projectId,requirementId:node.requirementId,contextTitle:null,title:node.title,reasonCodes:['path_blocked'],ownerId:null,ownerName:'项目经理',dueDate:node.plannedEnd,overdueWorkdays:0,targetPath:'/?'+destination,updatedAt:today}));
+    }
   }
   for(const item of items){
     const parent=requirementsById.get(item.requirementId||''),source=sourcesById.get(item.sourceId);
