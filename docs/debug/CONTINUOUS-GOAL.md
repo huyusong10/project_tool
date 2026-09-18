@@ -4,11 +4,12 @@
 
 ## 基线与恢复
 
-- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品9e6f7b8（HP长名称流程复用），前一产品54a7571（HO人力矩阵滚动）、624110c（HM Phase读取分组）、92983d1（HK Phase错误反馈）。
+- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品7276541（HR导入错误反馈），前一产品9e6f7b8（HP长名称流程复用）、54a7571（HO人力矩阵滚动）、624110c（HM Phase读取分组）。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
 - HQ完整验收9e6f7b8：971项业务（118文件）、9项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算全部通过，verify退出0。主JS938.26KB、CSS342.41KB、ELK1595.33KB；stages-hk-hp-verify.log，涵盖HK、HM、HO、HP。原目录仍仅两项用户修改。
 - 上一完整基线HG23ca8fa：970业务/9性能/26浏览器，stages-gx-hf-verify.log。专项证据仍保留：HK4浏览器、HM51业务/6浏览器、HO4既有浏览器及规模/窄屏、HP50业务/20不同浏览器；不要无变化重跑。
+- HQ之后HR仅导入错误文案，5浏览器、Lint、类型与测试构建通过；未重复全量验收。
 - 证据保留在.preview/qa/continuous-goal/；原日志、探针、截图不进版本库。临时探针验收后归档，恢复先看当前阶段与git状态。
 
 历史记录均在同路径的Git版本：A—DO：fd512b7；DP—EV：41a4ed0；FE—HL：d35957a。按主题检索，不重新开始已验收工作。
@@ -21,6 +22,7 @@ git show d35957a:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 | 阶段 / 提交 | 结果与验收入口 |
 |---|---|
+| HR / 7276541 | 导入标题/原文超限和无效日期直接显示整段Zod JSON，JSON语法错误仅英文。局部格式函数保留字段路径并标明第几项，显示中文限制/日期/类型/版本/未知字段提示；粘贴和上传共用，校验与提交规则不变。非法内容刷新仍保留原文，纠正后恰好1次apply，完整保存标题/原文/日期；上传错误类型、空标题、0工期、旧版本和多余字段也明确定位。5浏览器（含既有4异步文件竞争）、Lint/类型/测试构建通过，390px前后截图复核。intake-error-feedback-before/after.log、before.json/json、stage-hr-lint及归档探针；无永久新测试 |
 | HP / 9e6f7b8 | 合法200字符流程追加“（副本）”后超限，真实复制返回400。生成副本名称为后缀预留长度，不切断emoji；连续复制至12，依赖/人工里程碑/新ID及来源完整DTO正确，保留1项业务回归。390px原生下拉截去副本编号，需求创建的流程选择复用已有Select换行显示，不改其他入口。实际选择第二份副本并只创建1需求、两边流程完整DTO不变，截图复核。50业务、20不同浏览器及Lint/类型/测试构建通过；stage-hp-business/browser/refreshed-picker/lint-final、template-long-copy-baseline、归档探针与截图。初业务夹具漏无前置空列表，修正后才得到真实超限基线；初浏览器误认为原生框带搜索，随后按截图发现实际末尾不可辨识；既有1测试改用选择控件的共享读值助手后补验通过 |
 | HO / 54a7571 | 人力矩阵只向下查看人员也触发下一周，50人实测请求1→2、日期6→9列；筛选后滚动复位也可误触发。记录横向位置，仅向右且接近右端自动加载，按钮不变。扩展既有1旅程验证纵向不加载、向右加载、回到今天；4既有浏览器通过。50/250/1000独立服务及服务响应驱动的浏览器探针确认实际/计划计数、协作去重、筛选、后续周、零写入。1000人923可见，服务39ms、未压缩10.6MB；浏览器响应结束至绘制251—276ms，筛选111—114ms、按钮后续周712ms（含操作等待），无需虚拟列表或协议修改。390px最后人员截图复核。people-concurrency-scale、people-scale-browser-before/after/json、people-scale-visual、stage-ho-*；探针归档，截图首次被后续Playwright清理后只补拍窄屏，未重复规模测量 |
 | HM / 624110c | readFeaturePhases每Phase反复筛全部需求/历史，改为各分组一次。50/250/1000 Phase，最多9000需求/2000历史交付，1000档中位92—116ms→18—22ms；无SQL/索引/缓存修改。同库旧/新实现9场景完整响应逐字段一致，空Phase/状态/权重/分布/归属/同时间历史顺序正确、零写入。51业务、6浏览器及Lint/类型/测试构建通过；phase-summary-scale-before、same-database及stage-hm-*。独立夹具hash曾不同，弃用该比较方法，改为同库直接比较；未加永久测试 |
@@ -72,10 +74,10 @@ git show d35957a:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - 画布复制需求/工作项/里程碑和流程元素也直接追加“ 副本”，200字符边界尚未实测；HP只覆盖完整流程的REST/MCP共用复制服务及需求创建选择器。此项保留待验证，不能宣称已修复。
 - GT待查项已在GZ完成独立输入节奏对照和实际页面验收，见近期成果。无用户决策事项、无外部阻塞，Goal保持active。
 
-## 当前阶段 HR：需求导入的错误反馈
+## 当前阶段 HS：画布复制的长标题边界
 
-HQ已通过。下一步用非法JSON、字段超限、无效日期检查错误是否容易定位、原文是否保留、修正后是否只提交一次。已有导入恢复/异步文件竞争/原文备份覆盖不重跑；本轮只补错误反馈证据。
+HR已验收并提交。下一步实际复制200字符的需求、工作项、里程碑和流程元素，检查自动副本名称能否预览/保存，原对象与内部依赖是否保留。只有确认同类缺陷后才考虑复用小型名称函数，不扩展命名规则或复制功能。
 
-已读事实：RequirementImport.tsx的parse/upload直接展示Error.message；intakePackageSchema含200字符标题、10000字符原文、有效日期校验。尚未做HR浏览器测量，不能据此标记缺陷或验收。FeaturePlanning只对overview调用parse，其他多数检索匹配是JSON.parse；避免误认为均是Zod校验。近期Phase/工作项链接原始Zod JSON问题已分别修复，不重复检查。
+已读事实：src/client/editor-commands.ts的copyEntities对需求、显式选择的工作项/里程碑追加“ 副本”；TemplateForm.tsx的duplicate也直接追加。HP完整流程复制已为“（副本N）”保留200字符空间并去掉截断的高代理项。HS尚未实测，不能据此标记缺陷或验收。既有graphic-editor.pw.ts含复制/撤销/草稿保存旅程，可先选对应路径而不是重跑全部。
 
-所有HQ/HO/HP进程已退出、临时浏览器探针已归档，当前无待验收产品修改。原目录2026-09-18复核仍只有两项用户修改。更正HO此前描述：矩阵没有按宽度自动补周的effect，原问题来自未区分横纵的scroll事件；浏览器规模检查使用服务导出的完整响应进行路由模拟，不代表真实网络传输时间。
+所有HQ/HO/HP/HR进程已退出、临时浏览器探针已归档，当前无待验收产品修改。原目录2026-09-18复核仍只有两项用户修改。更正HO此前描述：矩阵没有按宽度自动补周的effect，原问题来自未区分横纵的scroll事件；浏览器规模检查使用服务导出的完整响应进行路由模拟，不代表真实网络传输时间。
