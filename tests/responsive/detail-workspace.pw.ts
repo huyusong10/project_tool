@@ -139,7 +139,8 @@ test('新增工作项冲突保留表单，未知响应禁止重复创建', async
   await expect(form).toHaveCount(0);
   expect(writes).toBe(2);
   await detail.getByRole('button', {name: '添加工作项', exact: true}).click();
-  await form.getByLabel('新工作项名称', {exact: true}).fill('响应损坏但已经创建');
+  const draftTitle = '  ＡＢ　e\u0301  响应损坏但已经创建  ', savedTitle = 'AB é 响应损坏但已经创建';
+  await form.getByLabel('新工作项名称', {exact: true}).fill(draftTitle);
   await form.getByLabel('变更说明（可选）', {exact: true}).fill('补充本次范围');
   await form.getByRole('region',{name:'编辑关联链接'}).getByRole('button',{name:'添加',exact:true}).click();
   await form.getByLabel('链接 1 地址',{exact:true}).fill('https://example.com/work-evidence');
@@ -147,9 +148,12 @@ test('新增工作项冲突保留表单，未知响应禁止重复创建', async
   await page.route('**' + endpoint, async route => {await route.fetch(); await route.fulfill({status: 200, contentType: 'text/html', body: '<html>proxy response</html>'});});
   await form.getByRole('button', {name: '保存工作项', exact: true}).click();
   await expect(form.getByRole('button', {name: '保存工作项', exact: true})).toBeDisabled();
-  await expect(form.getByLabel('新工作项名称', {exact: true})).toHaveValue('响应损坏但已经创建');
+  await expect(form.getByLabel('新工作项名称', {exact: true})).toHaveValue(draftTitle);
   expect(writes).toBe(3);
-  await expect.poll(async () => (await (await page.request.get('/api/requirements/' + f.testing.id)).json()).workItems.filter((item: {title: string}) => item.title === '响应损坏但已经创建').length).toBe(1);
+  const savedResponse = await page.request.get('/api/requirements/' + f.testing.id);
+  expect(savedResponse.ok(), await savedResponse.text()).toBe(true);
+  const saved = await savedResponse.json();
+  expect(saved.workItems.filter((item: {title: string}) => item.title === savedTitle)).toHaveLength(1);
   await expect(detail.getByRole('button', {name: '添加工作项', exact: true})).toBeDisabled();
   await tabs.getByRole('tab', {name: '概况', exact: true}).click();
   await detail.getByRole('button', {name: '重新读取需求', exact: true}).click();
@@ -157,4 +161,7 @@ test('新增工作项冲突保留表单，未知响应禁止重复创建', async
   await detail.getByRole('button',{name:'核对本次操作',exact:true}).click();
   await expect(detail.getByRole('button', {name: '添加工作项', exact: true})).toBeEnabled();
   expect(writes).toBe(3);
+  const recheckedResponse = await page.request.get('/api/requirements/' + f.testing.id);
+  expect(recheckedResponse.ok(), await recheckedResponse.text()).toBe(true);
+  expect(await recheckedResponse.json()).toEqual(saved);
 });
