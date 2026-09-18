@@ -1,5 +1,7 @@
 import {expect,test,type Page} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
+import {headerAction} from './topbar-helpers';
+import type {WorkItemTemplate} from '../../src/client/types';
 
 test('会话存储不可用时关系图仍可浏览，可读的旧排序回执仍能核对',async({page},info)=>{
   const f=await phaseFixture(page),errors:string[]=[],writes:string[]=[];
@@ -35,4 +37,66 @@ test('会话存储不可用时关系图仍可浏览，可读的旧排序回执�
     expect(await legacy.evaluate(key=>sessionStorage.getItem(key),key)).toBeNull();
   }finally{await legacy.close();}
   expect(await read()).toEqual(before);expect(writes).toEqual([]);expect(errors).toEqual([]);
+});
+
+test('流程本机偏好不可读时仍可打开，保存后清理偏好失败不重复创建',async({page},info)=>{
+  const post=async(url:string,data:unknown)=>{const r=await page.request.post(url,{data});expect(r.ok(),await r.text()).toBe(true);return r.json();};
+  const session=await post('/api/login',{username:'admin',password:'41_xc7q0qOjo4Inw!'});
+  const project=await post('/api/projects',{name:'流程存储恢复 '+Date.now()});
+  const list=async():Promise<WorkItemTemplate[]>=>{const r=await page.request.get('/api/templates?projectId='+project.id);expect(r.ok()).toBe(true);return r.json();};
+  const before=await list(),existing=before[0],errors:string[]=[],writes:string[]=[];
+  await page.addInitScript(()=>{
+    const get=Storage.prototype.getItem,set=Storage.prototype.setItem,remove=Storage.prototype.removeItem;
+    const mode=()=>get.call(sessionStorage,'mh-storage-mode')||'all';
+    const blocked=()=>{throw new DOMException('Local preferences unavailable','SecurityError');};
+    Storage.prototype.getItem=function(key){return this===localStorage&&mode()==='all'?blocked():get.call(this,key);};
+    Storage.prototype.setItem=function(key,value){return this===localStorage&&(mode()==='all'||mode()==='cleanup'&&key.startsWith('pm-graph-view:'))?blocked():set.call(this,key,value);};
+    Storage.prototype.removeItem=function(key){return this===localStorage&&mode()!=='none'?blocked():remove.call(this,key);};
+  });
+  page.on('pageerror',e=>errors.push(e.message));
+  page.on('request',r=>{if(new URL(r.url()).pathname.startsWith('/api/')&&!['GET','HEAD'].includes(r.method()))writes.push(r.method()+' '+new URL(r.url()).pathname);});
+  const editor=page.locator('.template-flow-workspace');
+  await page.goto('/templates?'+new URLSearchParams({projectId:project.id,edit:existing.id}));
+  await expect(editor.locator('[data-layout-ready=true]')).toBeVisible();
+  await expect(editor.locator('.react-flow__node')).toHaveCount(existing.items.length);
+  await expect(page.getByRole('heading',{name:'页面出现异常',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeDisabled();
+  await page.goto('/templates?'+new URLSearchParams({projectId:project.id,edit:'new'}));
+  await expect(editor.locator('[data-layout-ready=true]')).toBeVisible();
+  await expect.poll(()=>new URL(page.url()).searchParams.get('draft')).toBeTruthy();
+  const draftId=new URL(page.url()).searchParams.get('draft')!;
+  await page.screenshot({path:info.outputPath('template-storage-blocked-1280.png'),animations:'disabled'});
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:info.outputPath('template-storage-blocked-390.png'),animations:'disabled'});
+  expect(writes).toEqual([]);expect(await list()).toEqual(before);
+
+  await page.evaluate(()=>sessionStorage.setItem('mh-storage-mode','none'));
+  await page.reload();await expect(editor.locator('[data-layout-ready=true]')).toBeVisible();
+  expect(new URL(page.url()).searchParams.get('draft')).toBe(draftId);
+  await headerAction(page,'流程属性');
+  await page.getByRole('textbox',{name:'流程名称',exact:true}).fill('偏好不可用仍完成创建');
+  await page.getByRole('textbox',{name:'设计说明',exact:true}).fill('保存完成后，不因本机偏好清理失败而再次提交。');
+  await page.evaluate(({accountId,projectId,draftId})=>{
+    localStorage.setItem('pm-graph-view:'+accountId+':'+projectId+':template:'+draftId,JSON.stringify({x:0,y:0,zoom:1}));
+    sessionStorage.setItem('mh-storage-mode','cleanup');
+  },{accountId:session.accountId,projectId:project.id,draftId});
+  await headerAction(page,'保存修改');
+  await expect.poll(async()=>(await list()).filter(t=>t.name==='偏好不可用仍完成创建').length).toBe(1);
+  const saved=(await list()).find(t=>t.name==='偏好不可用仍完成创建')!;
+  await expect.poll(()=>new URL(page.url()).searchParams.get('edit')).toBe(saved.id);
+  await expect(editor.locator('.react-flow__node')).toHaveCount(1);
+  await page.screenshot({path:info.outputPath('template-storage-saved-390.png'),animations:'disabled'});
+  expect(writes).toEqual(['POST /api/templates']);
+  expect((await list()).filter(t=>t.id!==saved.id)).toEqual(before);
+  await page.evaluate(()=>sessionStorage.setItem('mh-storage-mode','none'));
+  await page.reload();await expect(editor.locator('[data-layout-ready=true]')).toBeVisible();
+  expect((await list()).find(t=>t.id===saved.id)).toEqual(saved);
+  await headerAction(page,'返回流程列表');
+  await page.getByRole('button',{name:'新建流程',exact:true}).click();
+  await expect(editor.locator('[data-layout-ready=true]')).toBeVisible();
+  if(!await page.getByRole('textbox',{name:'流程名称',exact:true}).isVisible())await headerAction(page,'流程属性');
+  await expect(page.getByRole('textbox',{name:'流程名称',exact:true})).toHaveValue('');
+  await expect(page.getByRole('textbox',{name:'设计说明',exact:true})).toHaveValue('');
+  expect((await list()).find(t=>t.id===saved.id)).toEqual(saved);
+  expect(writes).toEqual(['POST /api/templates']);expect(errors).toEqual([]);
 });
