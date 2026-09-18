@@ -1,6 +1,6 @@
 import * as planningApi from '../features/planning/api';
 import { ReferenceLinksEditor } from './ReferenceLinks';
-import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
+import { readReferenceLinks, referenceLinksEqual, type ReferenceLink } from '../../shared/reference-links';
 import { Button } from './Button';
 import { assertCleanProjectDraft } from '../use-graph-draft';
 import { Select } from './Select';
@@ -43,7 +43,7 @@ export function FeatureEditor({projectId,edit:requestedEdit,onClose,embedded=fal
   const read=async()=>{
     setBusy(true);try{const features=await planningApi.projectsFeaturesQuery<Feature[]>(projectId);if(!Array.isArray(features)||!features.every(g=>g&&g.projectId===projectId&&typeof g.id==='string'&&typeof g.name==='string'&&typeof g.description==='string'&&Number.isInteger(g.version)&&featureOverviewInput.safeParse(g.overview).success))throw new InvalidResponseError(200,false,'特性列表不完整');if(active.current){setLatest(features.find(g=>baseline?g.id===baseline.id:g.name===value.name.trim())||null);}}catch(e){if(active.current)setError((e as Error).message);}finally{if(active.current)setBusy(false);}
   };
-  const resolved=latest!==undefined&&(edit.mode==='delete'?!latest:!!latest&&(edit.mode==='archive'?!!latest.archivedAt:edit.mode==='restore'?!latest.archivedAt:edit.mode==='basic'?latest.name===value.name.trim()&&latest.description===value.description.trim()&&JSON.stringify(latest.referenceLinks||[])===JSON.stringify(readReferenceLinks(value.referenceLinks)):JSON.stringify(latest.overview)===JSON.stringify(normalized(value).overview)&&latest.version>(baseline?.version||0)));
+  const resolved=latest!==undefined&&(edit.mode==='delete'?!latest:!!latest&&(edit.mode==='archive'?!!latest.archivedAt:edit.mode==='restore'?!latest.archivedAt:edit.mode==='basic'?latest.name===value.name.trim()&&latest.description===value.description.trim()&&referenceLinksEqual(latest.referenceLinks,value.referenceLinks):JSON.stringify(latest.overview)===JSON.stringify(normalized(value).overview)&&latest.version>(baseline?.version||0)));
   const save=async()=>{
     if(lock.current||blocked)return;lock.current=true;setBusy(true);setError('');
     const inputValue=normalized(value),pending={...edit,feature:baseline,value:inputValue};persist(pending);
@@ -53,7 +53,7 @@ export function FeatureEditor({projectId,edit:requestedEdit,onClose,embedded=fal
       const payload=suffix?{expectedVersion:baseline!.version}:{...(baseline?{id:baseline.id,expectedVersion:baseline.version}:{}),name:edit.mode==='assessment'?baseline!.name:inputValue.name,sortOrder:baseline?.sortOrder??2147483647,...(edit.mode==='assessment'?{overview:inputValue.overview}:{description:inputValue.description,referenceLinks:inputValue.referenceLinks||[]})};
       const response=await planningApi.projectsFeaturesResourceById<IntakeCatalog|Feature>(projectId, suffix, {method:edit.mode==='delete'?'DELETE':'POST',body:jsonBody(payload)});
       const saved=response&&'features' in response&&Array.isArray(response.features)?response.features.find(g=>baseline?g.id===baseline.id:g.name===inputValue.name):response&&'id' in response?response:undefined;
-      const valid=edit.mode==='delete'?response&&'features' in response&&Array.isArray(response.features)&&!saved:saved&&Number.isInteger(saved.version)&&saved.version>(baseline?.version||0)&&(edit.mode==='archive'?!!saved.archivedAt:edit.mode==='restore'?!saved.archivedAt:edit.mode==='assessment'?featureOverviewInput.safeParse(saved.overview).success&&JSON.stringify(saved.overview)===JSON.stringify(inputValue.overview):saved.name===inputValue.name&&saved.description===inputValue.description&&JSON.stringify(saved.referenceLinks||[])===JSON.stringify(inputValue.referenceLinks||[]));
+      const valid=edit.mode==='delete'?response&&'features' in response&&Array.isArray(response.features)&&!saved:saved&&Number.isInteger(saved.version)&&saved.version>(baseline?.version||0)&&(edit.mode==='archive'?!!saved.archivedAt:edit.mode==='restore'?!saved.archivedAt:edit.mode==='assessment'?featureOverviewInput.safeParse(saved.overview).success&&JSON.stringify(saved.overview)===JSON.stringify(inputValue.overview):saved.name===inputValue.name&&saved.description===inputValue.description&&referenceLinksEqual(saved.referenceLinks,inputValue.referenceLinks));
       if(!valid)throw new InvalidResponseError(200,true,'保存结果不完整');
       persist(null);clearLocal();if(active.current){invalidateRequirementViews(client);onClose();if(saved)onSaved?.(saved.id);}
     }catch(e){if(!active.current)return;setError((e as Error).message);const uncertain=isWriteOutcomeUnknown(e)||e instanceof ApiError&&e.status>=500;setUnknown(uncertain);if(!uncertain)persist(null);if(uncertain||requiresWriteRecheck(e)&&(!(e instanceof ApiError)||e.status!==409||e.code==='STALE_WRITE')){setBlocked(true);if(!uncertain)await read();}}

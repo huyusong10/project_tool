@@ -141,6 +141,9 @@ test('新增工作项冲突保留表单，未知响应禁止重复创建', async
   await detail.getByRole('button', {name: '添加工作项', exact: true}).click();
   await form.getByLabel('新工作项名称', {exact: true}).fill('响应损坏但已经创建');
   await form.getByLabel('变更说明（可选）', {exact: true}).fill('补充本次范围');
+  await form.getByRole('region',{name:'编辑关联链接'}).getByRole('button',{name:'添加',exact:true}).click();
+  await form.getByLabel('链接 1 地址',{exact:true}).fill('https://example.com/work-evidence');
+  await form.getByLabel('链接 1 名称',{exact:true}).fill('  工作项资料  ');
   await page.route('**' + endpoint, async route => {await route.fetch(); await route.fulfill({status: 200, contentType: 'text/html', body: '<html>proxy response</html>'});});
   await form.getByRole('button', {name: '保存工作项', exact: true}).click();
   await expect(form.getByRole('button', {name: '保存工作项', exact: true})).toBeDisabled();
@@ -153,4 +156,5 @@ test('新增工作项冲突保留表单，未知响应禁止重复创建', async
   await tabs.getByRole('tab', {name: /^工作项 /}).click();
   await detail.getByRole('button',{name:'核对本次操作',exact:true}).click();
   await expect(detail.getByRole('button', {name: '添加工作项', exact: true})).toBeEnabled();
+  expect(writes).toBe(3);
 });

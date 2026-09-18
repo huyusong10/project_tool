@@ -19,7 +19,7 @@ test('先选择链接类型再粘贴地址，保存后保留手动类型', async
   await chooseOption(kind, 'document');
   await editor.getByRole('textbox', { name: '链接 2 地址', exact: true }).fill('https://jira.example.com/browse/DESIGN-12');
   await expect(selectedValue(kind)).toHaveValue('document');
-  await editor.getByRole('textbox', { name: '链接 2 名称', exact: true }).fill('联调设计依据');
+  await editor.getByRole('textbox', { name: '链接 2 名称', exact: true }).fill('  联调设计依据  ');
   await editor.getByRole('button', { name: '添加', exact: true }).click();
   await editor.getByRole('textbox', { name: '链接 3 地址', exact: true }).fill('https://jira.example.com/browse/DESIGN-13');
   await expect(selectedValue(editor.getByRole('combobox', { name: '链接 3 类型', exact: true }))).toHaveValue('task');
@@ -28,6 +28,18 @@ test('先选择链接类型再粘贴地址，保存后保留手动类型', async
   const link = root.getByRole('link', { name: /联调设计依据/ });
   await expect(link).toHaveAttribute('href', 'https://jira.example.com/browse/DESIGN-12');
   await expect(link).toContainText('文档');
+  await root.getByRole('button',{name:'编辑特性',exact:true}).click();
+  await editor.getByRole('textbox',{name:'链接 2 名称',exact:true}).fill('  更新联调资料  ');
+  let writes=0;
+  await page.route('**'+f.base+'/features',async route=>{
+    if(route.request().method()!=='POST')return route.continue();
+    writes++;await route.fetch();await route.abort('failed');
+  });
+  await root.getByRole('button',{name:'编辑特性',exact:true}).click();
+  await root.getByRole('button',{name:'读取最新资料',exact:true}).click();
+  await root.getByRole('button',{name:'已核对，操作已生效',exact:true}).click();
+  await expect(root.getByRole('link',{name:/更新联调资料/})).toHaveAttribute('href','https://jira.example.com/browse/DESIGN-12');
+  expect(writes).toBe(1);
 });
 test('特性、Phase、需求和工作项共用开放链接，草稿恢复与保存',async({page},info)=>{
   const f=await phaseFixture(page),root=page.locator('.modal-card-workspace[role=dialog]');

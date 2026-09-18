@@ -2,7 +2,7 @@
 import * as planningApi from "../features/planning/api";
 import * as requirementsApi from "../features/requirements/api";
 import { ReferenceLinksEditor } from "./ReferenceLinks";
-import { readReferenceLinks } from "../../shared/reference-links";
+import { referenceLinksEqual } from "../../shared/reference-links";
 import { Button } from "./Button";
 import { Select } from "./Select";
 import { useDeliveryForm } from "../use-delivery-form";
@@ -48,7 +48,7 @@ export function PhaseDialog({ edit, onClose, onCreated }: { edit: PhaseEdit; onC
       const phases = await planningApi.projectsFeaturePhasesQuery<FeaturePhase[]>(projectId, edit.feature.id);
       if (!Array.isArray(phases)) throw new InvalidResponseError(200, false, 'Phase 列表不完整');
       const latest = phases.find(p => baseline ? p.id === baseline.id : p.name === value.name.trim());
-      const applied = edit.mode === 'delete' ? !latest : latest && (latest.name === value.name.trim() && latest.scope === value.scope.trim() && latest.targetDate === value.targetDate && latest.note === value.note.trim() && (value.referenceLinks===undefined||JSON.stringify(latest.referenceLinks)===JSON.stringify(readReferenceLinks(value.referenceLinks))) && latest.sortOrder === (value.sortOrder ?? 0));
+      const applied = edit.mode === 'delete' ? !latest : latest && (latest.name === value.name.trim() && latest.scope === value.scope.trim() && latest.targetDate === value.targetDate && latest.note === value.note.trim() && (value.referenceLinks===undefined||referenceLinksEqual(latest.referenceLinks,value.referenceLinks)) && latest.sortOrder === (value.sortOrder ?? 0));
       if (!alive.current) return;
       if (unknown && applied) { persist(null); clearLocal(); changed(); if(!edit.phase&&edit.mode==='edit'&&latest)onCreated?.(latest); onClose(); return; }
       if (baseline && !latest) { setError('Phase 已不存在，输入仍保留。请关闭后核对特性。'); return; }
