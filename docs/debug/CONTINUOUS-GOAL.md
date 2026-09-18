@@ -4,7 +4,7 @@
 
 ## 基线与恢复
 
-- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品e0610c3（GT/GZ窄屏排序），前一产品fb1ad2e（GX问题内联版本）、0fb023a（GV项目切换）、15c6888（GR人员草稿）。
+- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品544be86（HC数量输入），前一产品e0610c3（GT/GZ窄屏排序）、fb1ad2e（GX问题内联版本）、0fb023a（GV项目切换）。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
 - GW完整验收0fb023a：969项业务（117文件）、9项性能、26项浏览器，运行时、模块边界、Lint、类型、构建和预算通过。主JS938.40KB、CSS342.32KB、ELK1595.33KB；stages-gl-gv-verify.log，涵盖GL/GQ/GR/GV，GT草案未进入产品。
@@ -23,6 +23,7 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 | 阶段 / 提交 | 结果与验收入口 |
 |---|---|
+| HC / 544be86 | 图表未设limit时实际返回12组，编辑器却显示10；清空存0仍显示10。用空值准确显示已有“不限制”，0保持可见，保留显式1—50整数限制，仅改1行字段绑定。真实12负责人分组，非法0/51/1.5不能应用；限3→取消改5零写入→清空恢复12，两次明确保存、刷新、其他面板完整不变、390px通过。2项浏览器（含既有指标兼容旅程）、Lint/类型/测试构建通过；analytics-limit-input-before/after.log及探针/截图，未加永久测试或改后端规则 |
 | GT/GZ / e0610c3 | 760px以下隐藏唯一看板排序手柄。恢复手柄，标题与操作分行，仅3条CSS规则；宽/390px键盘跨行、首末边界、Esc、取消零写入、保存一次及刷新通过。触屏模拟按帧发送拖动，保存一次和取消不写入通过；12项看板浏览器、Lint/类型/测试构建通过，截图已复核，无新增永久测试。analytics-paced-touch-verified.log、analytics-touch-save-cancel.log、stage-gz-lint及analytics-keyboard-paced-probe。GT最初连续极速发送8次动作后无click；独立原生/最小DND/SortableList对照表明逐帧输入均正常，未更改传感器/依赖来迎合探针；原失败日志和touch-dnd-*证据保留。此项待查已解除 |
 | GX / fb1ad2e | 问题日期草稿21日，另一会话改25日/v2，背景刷新后保存却用新版本把旧草稿覆盖为21日/v3。四个内联字段接入既有revision guard，重读当前页并按捕获版本保存，无公共组件/后端修改。真实日期、优先级、负责人、关联需求并发均先拦截、保留选择、重读后只写一次；日期取消零写入，已落库但响应丢失后核对不重复提交，其他字段/历史完整DTO保持。80项浏览器、Lint/类型/测试构建通过，390px截图已复核；新增1条永久日期恢复旅程，三个选择器临时探针归档。issue-inline-revision-before/after.log、stage-gx-*、issue-date-recheck-390.png |
 | GV / 0fb023a | 101个项目中，鼠标打开切换器看不到末尾当前项；打开后滚到当前项，键盘仍聚焦当前项。显式项目不可用时原方向键无法进入列表，现Down/Up分别聚焦首项/末项。真实101新增项目、长名称、390/1280px、Home/End/环绕/Esc、实际选择目标问题页、刷新、全部项目DTO不变、零业务写入通过；33项不同浏览器用例、Lint/类型/测试构建通过。临时2条旅程已归档，无新永久测试。project-switcher-scale-before/after、project-navigation-baseline/verified、stage-gv-lint及截图。旧project-selection断言自动删除显式失效筛选，在产品基线也失败；按EV决定改为保留原ID/提示，关闭详情后明确清除筛选再显示问题，不恢复自动扩大范围。打开计时含自动化开销，不当作纯渲染性能 |
@@ -101,8 +102,8 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - DU一次迁移测试启动15秒超时、输出为空；单项与同并发重验通过，EB/EJ/EQ全量未再发生。不直接放宽超时。
 - GT待查项已在GZ完成独立输入节奏对照和实际页面验收，见近期成果。无用户决策事项、无外部阻塞，Goal保持active。
 
-## 当前阶段 HC：图表显示数量的输入与默认值
+## 当前阶段 HD：流程更新与新建需求草稿
 
-发现PanelEditor用panel.limit || 10显示数量，清空会存成0却显示10；未指定limit时后端本来不截断，界面也误显示10。先用真实分组数据确认，再让空值准确表示已有的“不限制”，保留显式1—50约束，不改后端规则。
+检查用户选择流程并填写新需求时，另一会话修改该流程，预览、草稿及实际创建是否一致。先核对现有版本协议和专项；已有充分覆盖则不重复。
 
-验收：显示/预览/保存一致；0、超限及小数不能提交，清空恢复默认不限制；保存与取消次数明确、其他面板不变，390px可用。HB已结束，无运行测试；当前产品e0610c3。
+验收：不丢标题/说明/日期等输入，不无提示套用与预览不一致的流程；核对后只创建一次。HC已验收，无运行测试，探针均归档；当前产品544be86。
