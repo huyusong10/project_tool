@@ -4,7 +4,7 @@
 
 ## 基线与恢复
 
-- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品提交fc73dcc。
+- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品提交95d9385。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
 - EY完整验收基线fc73dcc：969项业务（117文件）、8项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS937.89KB、CSS342.24KB、ELK1595.33KB。stages-es-ew-verify.log。
@@ -22,7 +22,7 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 | 阶段 / 提交 | 结果与验收入口 |
 |---|---|
 | EZ / 61be7be | 工作项重复关联链接显示Zod JSON；只取校验错误的中文message。20项上限、规范化重复地址、保留输入、纠正/删除再添加、清空刷新和390px通过，完成/进度/日期/其他工作/旧历史不变；既有4项链接流程及Lint/类型通过。reference-link-limit-repro/after/final.log。无需新增永久测试 |
-| FA / 本次提交 | 人员矩阵/人力摘要/项目成员的末字头像把𠮷和符号截成替换字符；Avatar按完整码点取末字，人力摘要复用组件。4项浏览器含三处真实人员、普通中英文、390px和零写入；36/34/36px尺寸不变，6项空值/空白/字符探针及Lint/类型通过。person-avatar-character-before/after.log；无需新增永久测试 |
+| FA / 95d9385 | 人员矩阵/人力摘要/项目成员的末字头像把𠮷和符号截成替换字符；Avatar按完整码点取末字，人力摘要复用组件。4项浏览器含三处真实人员、普通中英文、390px和零写入；36/34/36px尺寸不变，6项空值/空白/字符探针及Lint/类型通过。person-avatar-character-before/after.log；无需新增永久测试 |
 | EG / 1013ffe | 批量归档核对显示已归档/未归档；未知结果、冲突、整批回滚及窄屏4项。batch-archive-state-* |
 | EI / 0a2ad1c | 待处理里程碑直达图形属性；项目里程碑使用项目范围，不依赖“其他需求”存在。11项专项，EJ全量通过。action-milestone-* |
 | EK / b553f9e、EL / a189d32 | 已保存项目里程碑的空名称校验和草稿摘要定位回到原字段；复用editorFieldLocation。milestone-draft/summary-location-* |
@@ -35,6 +35,7 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 最近无需修改：
 
+- FB：项目日志/平台审计两条真实旅程：反向日期显示可读错误，刷新仍保留条件，修正后恢复；新写入不穿透快照，明确刷新后计数分别1→2/2→3，关键词/动作/对象/日期保留；空日期范围和清空恢复、390px通过。audit-date-recovery.log；探针归档，不加永久测试。
 - EH：模拟24分析面板，导航至全部图表约504ms，响应到绘制86ms，时间切换90ms；末项/提示/1280及390px正确。analytics-scale-*；不是实际网络耗时。
 - EM：品牌设置的版本检查、背景刷新保留草稿、迟到响应保护已有完整实现和测试，不改“使用最新设置”整体重载。
 - EO：其他项目增至200个、2万需求/10万工作/1万问题，当前40需求项目读取约20.6ms不变；管理员/成员5场景×7筛选×4档结果及顺序一致，零写入。actions-project-isolation-*。
@@ -77,10 +78,10 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - DU一次迁移测试启动15秒超时、输出为空；单项与同并发重验通过，EB/EJ/EQ全量未再发生。不直接放宽超时。
 - 无用户决策事项、无外部阻塞。Goal保持active。
 
-## 当前阶段 FB：日志日期纠正与刷新快照
+## 当前阶段 FC：项目里程碑依赖的草稿定位
 
-检查日志日期反向、无匹配范围、修正日期后继续查询，以及筛选中的新写入是否按刷新规则出现。使用真实项目日志，保持现有快照分页规则。
+dependencyWorkspaceLocation只按终点需求寻找特性；关系终点是项目里程碑且项目没有“其他需求”时会返回空。检查从修改摘要定位这类新增依赖，能否继续编辑和保存。
 
-验收：非法日期可读且保留条件，纠正后恢复查询；新日志在明确刷新后出现且不丢筛选，390px可操作。查不到问题则记录无需修改。
+验收：有命名特性、无“其他需求”的项目中，依赖摘要定位到原关系；修改前置交付后一次保存，原需求/里程碑/关系保持。复用现有项目图与定位机制，不创建额外特性或新归属。
 
-当前无运行测试，EZ/FA探针均已归档。EY为最近全量基线，EZ/FA此后专项通过。下一步定位日志日期校验与已有快照覆盖，再完成真实查询旅程。
+当前无运行测试、无临时探针留在tests/responsive。EY为最近全量基线，EZ/FA此后专项通过。下一步先以phaseFixture实际复现，不能只凭源码判定缺陷。
