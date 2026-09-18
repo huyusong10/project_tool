@@ -130,9 +130,16 @@ test('按页面名称导入到其他需求，预览后保存并进入新需求',
   expect(requirements[0]).toMatchObject({featureName:'其他需求',phaseId:null});
 });
 
-test('导入可拆分合并，保存后按特性和 Phase 展开并进入详情',async({page})=>{
+test('导入工作项收起和重载后保留编辑，可拆分合并并进入保存的详情',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));const id=await fixture(page);
  await expect(page.getByText('标签',{exact:true})).toHaveCount(0);
+ const work=page.locator('.intake-import-card details').first(),titles=page.getByLabel('导入工作项标题');
+ await expect(titles).toHaveCount(0);await work.locator('summary').click();await expect(titles).toHaveCount(2);
+ await titles.first().fill('收起后保留的工作项');await work.getByRole('button',{name:'添加工作项',exact:true}).click();await expect(titles).toHaveCount(3);
+ await work.getByRole('button',{name:'移除',exact:true}).last().click();await expect(titles).toHaveCount(2);
+ await work.locator('summary').click();await expect(titles).toHaveCount(0);
+ await work.locator('summary').click();await expect(titles.first()).toHaveValue('收起后保留的工作项');
+ await page.reload();await expect(titles).toHaveCount(0);await work.locator('summary').click();await expect(titles.first()).toHaveValue('收起后保留的工作项');
  await page.getByRole('button',{name:'拆分需求',exact:true}).click();await expect(page.getByLabel('导入需求标题')).toHaveCount(2);
  await chooseOption(page.getByLabel('合并需求到').last(),{label:'查询与详情'});await expect(page.getByLabel('导入需求标题')).toHaveCount(1);
  await page.getByLabel('导入需求标题').fill('查询需求浏览器验证');await saveImport(page);await returnToList(page);
@@ -140,6 +147,7 @@ test('导入可拆分合并，保存后按特性和 Phase 展开并进入详情'
  await expect(page.locator('.outline-title',{hasText:'查询需求浏览器验证'})).toBeVisible();
  const requirements=await(await page.request.get('/api/requirements?projectId='+id)).json();
  expect(requirements).toHaveLength(1);expect(requirements[0].workItems).toHaveLength(2);expect(requirements[0]).not.toHaveProperty('tags');
+ expect(requirements[0].workItems.map((work:{title:string})=>work.title)).toContain('收起后保留的工作项');
  await page.goto('/requirements?tag=obsolete&grouped=1');await expect(page.locator('.outline-title',{hasText:'查询需求浏览器验证'})).toBeVisible();
  await page.getByRole('button',{name:'新建对象',exact:true}).click();await page.getByRole('button',{name:'新建需求',exact:true}).click();
  await expect(page.getByLabel('需求特性')).toBeVisible();await expect(page.getByLabel('需求标签')).toHaveCount(0);await page.getByRole('dialog').getByRole('button',{name:'取消',exact:true}).click();
