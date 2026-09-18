@@ -4,7 +4,7 @@
 
 ## 基线与恢复
 
-- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品84c5c72（HE需求链接核对），前一产品544be86（HC数量输入）、e0610c3（GT/GZ窄屏排序）、fb1ad2e（GX问题内联版本）。
+- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品23ca8fa（HF其他链接核对），前一产品84c5c72（HE需求链接核对）、544be86（HC数量输入）、e0610c3（GT/GZ窄屏排序）。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
 - GW完整验收0fb023a：969项业务（117文件）、9项性能、26项浏览器，运行时、模块边界、Lint、类型、构建和预算通过。主JS938.40KB、CSS342.32KB、ELK1595.33KB；stages-gl-gv-verify.log，涵盖GL/GQ/GR/GV，GT草案未进入产品。
@@ -23,6 +23,7 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 | 阶段 / 提交 | 结果与验收入口 |
 |---|---|
+| HF / 23ca8fa | 同样的空格使特性正常保存误报异常、Phase核对漏走成功返回、工作项核对仍锁定；真实3条既有旅程均在旧实现失败。三个表单的结果比较复用HE函数，草稿合并规则不变。15项相关浏览器通过，特性补验响应丢失后只提交一次；Lint/类型/测试构建通过。只扩展既有3条旅程，未新增长期测试。other-link-recheck-before/after.log、feature-link-normal-and-unknown.log、stage-hf-lint.log及失败上下文 |
 | HE / 84c5c72 | 新需求链接名称含两侧空格，保存成功但响应丢失，核对因原始值与服务端trim结果不同而漏认创建。新增小型referenceLinksEqual复用现有schema，保留类型/顺序/内容差异和非法输入校验，接入新建需求核对。真实两链接创建、丢响应、刷新、核对成功，只POST一次且完整需求DTO不变；23浏览器、3链接单测、Lint/类型/测试构建通过。requirement-link-recheck-baseline/after.log、stage-he-*；保留1条真实恢复回归。最初探针误把客户端readOnly选项放到HTTP查询，修正后基线确实失败，未放宽服务端字段 |
 | HD / 无需修改 | 新建需求只有流程名称选择，没有流程内容或排期预览；不引入额外版本协议。既有form-submission覆盖流程/负责人失效后保留选择，requirement-edit-rechecks覆盖实际排期预览随需求/流程更新失效，template-save-journey覆盖流程编辑草稿并发核对。本轮读代码确认，未重复运行已验收专项 |
 | HC / 544be86 | 图表未设limit时实际返回12组，编辑器却显示10；清空存0仍显示10。用空值准确显示已有“不限制”，0保持可见，保留显式1—50整数限制，仅改1行字段绑定。真实12负责人分组，非法0/51/1.5不能应用；限3→取消改5零写入→清空恢复12，两次明确保存、刷新、其他面板完整不变、390px通过。2项浏览器（含既有指标兼容旅程）、Lint/类型/测试构建通过；analytics-limit-input-before/after.log及探针/截图，未加永久测试或改后端规则 |
@@ -104,8 +105,8 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - DU一次迁移测试启动15秒超时、输出为空；单项与同并发重验通过，EB/EJ/EQ全量未再发生。不直接放宽超时。
 - GT待查项已在GZ完成独立输入节奏对照和实际页面验收，见近期成果。无用户决策事项、无外部阻塞，Goal保持active。
 
-## 当前阶段 HF：其他对象的链接写入核对
+## 当前阶段 HG：本批完整验收
 
-特性普通保存、Phase未知结果、新工作项未知结果也比较未经trim的链接。用真实接口分别复现；仅在确认后复用HE的小型比较函数，不改草稿合并规则。
+对GX、GT/GZ、HC、HE/HF产品修改执行一次npm run verify。独立3296服务运行中，日志stages-gx-hf-verify.log；不同时运行其他浏览器或性能测量。
 
-验收：有效名称两侧空格不会产生虚假未知结果或无法解锁；核对不再次写入，原对象其他资料与关系不变，非法链接仍被拦截。HE已验收，无运行测试；当前产品84c5c72。
+验收：运行时、模块边界、Lint、业务/性能/浏览器测试、构建预算全部通过。随后检查个人Token列表在多页、长名称、窄屏和撤销重排时的实际操作；已覆盖的未知提交恢复不重复。当前产品23ca8fa。
