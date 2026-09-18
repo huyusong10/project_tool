@@ -18,6 +18,19 @@ for(const mode of ['direct','work_items'] as const)it.each([
   expect(analysis.nodes.find(n=>n.id==='B1')).toMatchObject({forecastStart:nextStart,forecastEnd:nextStart});expect(input).toEqual(before);
 });
 
+it.each(['work','requirement','direct'] as const)('%s 历史纠错跨非工作日仍核对实际依赖先后，同日完成和已确认例外保持',target=>{
+  const earlier='2026-09-12',finished='2026-09-13',input:PathInput={projectId:'p',projectName:'历史日期顺序',revision:1,projectEnd:null,asOfDate:'2026-09-14',
+    requirements:[{...req('A'),status:'completed'},{...req('B'),status:'in_progress',executionMode:target==='direct'?'direct':'work_items',actualStart:earlier,progress:10,durationDays:2}],
+    workItems:[{...work('A1','A',1),status:'completed',actualStart:'2026-09-11',actualEnd:finished,progress:100},...(target==='direct'?[]:[{...work('B1','B',2),status:'in_progress',actualStart:earlier,progress:10}])],
+    dependencies:[{id:'history',projectId:'p',sourceRequirementId:'A',sourceWorkItemId:target==='work'?'A1':null,targetRequirementId:'B',targetWorkItemId:target==='work'?'B1':null,origin:'manual'}]};
+  const id=target==='work'?'B1':'start:B',message='已开始但前置条件尚未满足，请核对依赖',before=structuredClone(input);
+  expect(analysePaths(input).nodes.find(n=>n.id===id)?.ownReasons).toContain(message);expect(input).toEqual(before);
+  const receiver=target==='work'?input.workItems[1]:input.requirements[1];receiver.acknowledgedDependencies=['history'];
+  expect(analysePaths(input).nodes.find(n=>n.id===id)).toMatchObject({ownReasons:[],startAcknowledged:true});
+  receiver.acknowledgedDependencies=[];input.requirements[1].actualStart=finished;if(target!=='direct')input.workItems[1].actualStart=finished;
+  expect(analysePaths(input).nodes.find(n=>n.id===id)?.ownReasons).toEqual([]);
+});
+
 describe('交付网络', () => {
   it('部分排期不构成整个需求截止日，真实下游截止日仍可向未排期前置传播风险', () => {
     const input = {

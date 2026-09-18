@@ -80,7 +80,7 @@ export function topologicalOrder(ids: string[], edges: Array<{ source: string; t
   return result;
 }
 
-type Internal = PathNode & { release: number; fixed: number | null; planDuration: number; planRelease: number; planFinish: number; planStart: number; actualStart: number | null };
+type Internal = PathNode & { release: number; fixed: number | null; planDuration: number; planRelease: number; planFinish: number; planStart: number; actualStart: number | null; actualStartDate: string | null };
 
 export function analysePaths(input: PathInput, requestedTarget = projectTarget): PathAnalysis {
   const base = addBusinessDays(input.asOfDate, 0);
@@ -105,7 +105,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
       earliestStart: 0, earliestFinish: 0, floatDays: null, critical: false, planCritical: false, nearCritical: false, inScope: false,
       unknownReasons: [], ownReasons: [], source: '', riskLevel: 'low', complete: false, release: 0, fixed: null,
       estimate:{durationDays:null,earliestStart:null,unblockEstimate:null,forecastEnd:null},
-      planDuration: 0, planRelease: 0, planFinish: 0, planStart: 0, actualStart: null };
+      planDuration: 0, planRelease: 0, planFinish: 0, planStart: 0, actualStart: null, actualStartDate: null };
     nodes.push(n); return n;
   };
   const link = (source: string, target: string, dependencyId: string | null = null) => edges.push({ id: dependencyId || `${source}>${target}`, source, target, dependencyId, critical: false });
@@ -124,8 +124,8 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
       if(dates.length===active.length&&dates.length){end.fixed=toFinish(dates.at(-1)!);end.forecastEnd=dates.at(-1)!.slice(0,10);}
       else end.ownReasons.push('实际完成日期未记录');
     } else if (r.status === 'cancelled') end.ownReasons.push('前置需求已取消');
-    const actualStarts = active.flatMap(w => w.actualStart ? [toStart(w.actualStart)] : []);
-    if (actualStarts.length) { start.release = Math.min(...actualStarts); start.actualStart = start.release; }
+    const actualStarts = active.flatMap(w => w.actualStart ? [w.actualStart.slice(0,10)] : []);
+    if (actualStarts.length) { start.actualStartDate=actualStarts.reduce((first,date)=>date<first?date:first);start.release=toStart(start.actualStartDate);start.actualStart=start.release; }
     if (!active.length && !end.complete) end.ownReasons.push('缺少有效工作项');
     for (const w of works.get(r.id)!) {
       if (w.status === 'cancelled' && !referenced.has(w.id)) continue;
@@ -139,6 +139,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
       n.remainingDays = w.actualStart ? Math.max(1, Math.ceil((duration ?? 0) * (1 - w.progress / 100))) : duration ?? 0;
       n.release = Math.max(0, w.earliestStart ? toStart(w.earliestStart) : 0);
       n.actualStart = w.actualStart ? toStart(w.actualStart) : null;
+      n.actualStartDate = w.actualStart ? w.actualStart.slice(0,10) : null;
       n.source = w.actualStart ? '按进度估算剩余工期' : '预计工期';
       if (w.status === 'completed' && w.actualEnd) { n.fixed = toFinish(w.actualEnd); n.remainingDays = 0; n.complete = true; n.source = '实际完成'; n.forecastStart=(w.actualStart||w.actualEnd).slice(0,10);n.forecastEnd=w.actualEnd.slice(0,10); }
       else {
@@ -189,7 +190,11 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     if (n.fixed !== null) { n.earliestStart = n.earliestFinish = n.fixed; n.unknownReasons = []; }
     else {
       n.earliestStart = Math.max(n.release, ...parents.map(p => n.actualStart!==null&&p.complete?p.earliestFinish-1:p.earliestFinish));
-      if (n.actualStart !== null && parents.some(p => !p.complete && p.kind !== 'start' || (p.complete?p.earliestFinish-1:p.earliestFinish) > n.actualStart!)) n.ownReasons.push('已开始但前置条件尚未满足，请核对依赖');
+      if (n.actualStart !== null && parents.some(p => {
+        if(!p.complete&&p.kind!=='start')return true;
+        if(p.complete&&p.forecastEnd&&n.actualStartDate)return p.forecastEnd>n.actualStartDate;
+        return (p.complete?p.earliestFinish-1:p.earliestFinish)>n.actualStart!;
+      })) n.ownReasons.push('已开始但前置条件尚未满足，请核对依赖');
       n.earliestFinish = n.earliestStart + n.remainingDays;
       n.unknownReasons = [...new Set([...n.ownReasons, ...parents.flatMap(p => p.unknownReasons)])];
     }
@@ -312,7 +317,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     target: requestedTarget, targetLabel: target.title, targetDate, forecastEnd: eligible.length || input.milestones?.some(m=>!m.requirementId&&!m.cancelled) || requestedTarget !== projectTarget ? target.forecastEnd : null,
     deadlineSlack: current.complete && (eligible.length || input.milestones?.some(m=>!m.requirementId&&!m.cancelled) || requestedTarget !== projectTarget) && targetDate ? toFinish(targetDate) - target.earliestFinish : null, complete: current.complete,
     coverage: { reviewed: input.requirements.filter(r => !r.deletedAt && r.dependenciesReviewedAt).length, total: input.requirements.filter(r => !r.deletedAt).length, unplanned },
-    nodes: nodes.map(({ release: _r, fixed: _f, planDuration: _pd, planRelease: _pr, planFinish: _pf, planStart: _ps, actualStart: _as, ...n }) => n),
+    nodes: nodes.map(({ release: _r, fixed: _f, planDuration: _pd, planRelease: _pr, planFinish: _pf, planStart: _ps, actualStart: _as, actualStartDate: _asd, ...n }) => n),
     edges, requirements: input.requirements.filter(r => !r.deletedAt).map(r=>({...r,...viewMetrics.get(r.id),executionStage:deriveExecutionStage({...r,status:viewMetrics.get(r.id)!.status},r.executionMode==='direct'?[]:works.get(r.id),(input.milestones||[]).filter(m=>m.requirementId===r.id)),...risks[r.id],processingPriority:risks[r.id].processingPriority,priorityReasons:risks[r.id].priorityReasons,affectedRequirementIds:risks[r.id].affectedRequirementIds,priorityAsOfDate:input.asOfDate})), dependencies: input.dependencies, risks, blockers,milestones:input.milestones||[],layouts:input.layouts||[] });
 
   return result;
