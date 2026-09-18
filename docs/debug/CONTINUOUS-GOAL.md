@@ -4,10 +4,10 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品05e1795（KY）、682b616（KX）、033d907（KV）；更早成果见下表与历史版本。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品0da42bc（LA）、05e1795（KY）、682b616（KX）；更早成果见下表与历史版本。
 - 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
-- 最新全量KW：997业务/120文件、11性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-kw-verify.log，43070退出0已回收。覆盖KR/KT/KV，尚未包含KX/KY；其后15个不同目标浏览器通过（KX 11、KY 4），类型/测试构建/目标Lint/diff通过。
-- KW生产构建：主JS933.10KB、CSS339.11KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-ky-matrix.log确认757功能/183布局/2性能、普通1855实例；只列清单，不称为执行全部浏览器。无运行句柄、未验收产品修改；3296监听0、当前格式测试临时目录0，原目录仍仅用户两项修改。
+- 最新全量LC：997业务/120文件、11性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-lc-verify.log，71519退出0已回收。覆盖KX/KY/LA，首轮完整通过；LA另有3目标浏览器和3业务通过。
+- LC生产构建：主JS933.21KB、CSS339.18KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-ky-matrix.log确认757功能/183布局/2性能、普通1855实例；只列清单，不称为执行全部浏览器。无未验收产品修改/运行句柄，LD探针已归档；3296监听0、当前格式临时目录0，原目录仍仅用户两项修改。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
 详细历史在本文件Git版本：A—DO fd512b7；DP—EV 41a4ed0；FE—HL d35957a；HE—IE 67250e9。JG至JL详验见1ce7589；JP—JZ详验见dc53ed7。按主题取读，不重新开始。
@@ -16,6 +16,8 @@
 
 | 阶段 / 提交 | 结果与验证 |
 |---|---|
+| LC / 组合验收 | KX/KY/LA后一次完整verify首轮通过：997业务/120文件、11性能、26冒烟、运行时/428边界/完整Lint/类型/生产构建/预算，stage-lc-verify.log，71519退出0已回收。无额外产品修改 |
+| LA / 0da42bc | 本机存储被浏览器拒绝时，空草稿及已有草稿详情都只显示英文Access is denied；旧方案恢复可行但未解释原因。只将SecurityError转成中文原因/恢复指引，提示与按钮上下排列，其他错误及核对规则保持。强化原有回归；3个不同浏览器、3业务、类型/测试构建/目标Lint/按钮样式/diff通过。完整IndexedDB草稿与正式分析DTO保持、0业务写，恢复访问后可解除核对；1280/390文字完整可见，截图已看。stage-la-*、storage-details-la-*、la-accepted；临时探针已归档 |
 | KY / 05e1795 | sessionStorage不可读使项目关系图显示“页面出现异常”；旧排序回执读取缺少catch，真实探针原版失败。1行捕获读取异常，保留正常读取/核对行为；新增1条回归覆盖存储读写删除均失败、切换进展/关系图、390px刷新、另一正常标签旧回执显示与核对清除，完整分析DTO保持且0业务写。4目标浏览器/类型/测试构建/目标Lint/矩阵/diff通过，截图已看；stage-ky-before/after/regression/lint/matrix.log、ky-before、ky-storage-unavailable-390.png |
 | KX / 682b616 | 缺失排期入口在直接执行需求中跳到不含日期编辑的资料页，观察者也显示“排期”；真实三角色复现。接入现有计划表单，工作项仍导航原安排页，按权限/锁状态显示排期或查看；直接执行只读者不显示无用途按钮。强化1个原有回归，11个不同浏览器、类型/测试构建/目标Lint/diff通过。真实三角色两模式零写、完整DTO保持；直接保存仅1写、版本+1、刷新一致，1280/390截图已看。stage-kx-before/after/save-rechecks/lint.log、schedule-entry-kx、schedule-save-kx、kx-before/after；探针已归档 |
 | KW / 组合验收 | KR/KT/KV后一次完整verify首轮通过：997业务、11性能、26冒烟、运行时/428边界/完整Lint/类型/生产构建/预算；stage-kw-verify.log，43070退出0已回收 |
@@ -37,6 +39,7 @@
 
 | 阶段 / 领域 | 已验收结果与证据 |
 |---|---|
+| LB 原服务增量 | 从KJ游标2026-09-18 18:16:27.072Z检查至20:12:50.557Z，17日志新增0字节/0事件，无读取错误，3210健康200。runtime-log-review-lb.json/mjs为最新游标；实际间隔约2小时，不是一天。无新增备份，不重复KJ的备份完整性检查；原服务未修改 |
 | KZ 流程目录成本 | 复核已有100/500/1000规模×3项目×含归档与否共18组；最高105.10ms，803条SQL合计22.82ms。原真实101流程×30步首开226—242ms，HTTP26.36ms、响应到可用127—141ms、末项预览33.20ms。template-list-scale-before.json/log、template-list-queries-before.json、template-catalog-scale.json/log；列表函数仍5b5bd91，未发现新瓶颈，不重测、不改实现。以上是旧测量 |
 | KQ 到期跟进 | 真实经理取消0写、恢复保留35%/原历史/核对日期、显式改期后提醒消失；返回/刷新保留筛选，共2写。stage-kq-final.log 1通过，follow-up-kq.json/png |
 | KS 分屏输入 | 1024/820/801/800/768/640/1280×600保持65%与说明、按钮可滚动操作；取消0写、确认1写、历史/刷新一致。stage-ks-browser.log 1通过；名称问题已由KT修复 |
@@ -125,6 +128,24 @@ FeaturePathPanel仍由ProjectWorkspace调用。原版真实探针进入页面错
 
 存储不可用时仍显示旧草稿待核对及“查看修改与错误”。本次只保证正式资料可浏览，不承诺跨页草稿恢复，也不取消现有编辑保护。该提示是否充分解释原因留给LA核对。
 
-## 当前阶段 LA
+## LA验收：存储恢复提示
 
 KZ复核旧测量后无需修改；不重跑已验收的流程目录规模测试。转查KY截图中的草稿提示：会话存储不可用时显示“旧草稿待核对”，需实际打开“查看修改与错误”，确认详情说明当前原因、恢复入口可用且不会误提交或丢弃既有草稿。先核对已存在的保护和提示；能说明原因则记录无需修改，不为改文案绕过草稿锁或新增存储机制。
+
+原版确认为英文权限错误；存储恢复后原流程可以解除核对。初始13985退出1（1通过1夹具失败）：完整草稿比较多出了新打开项目视图的布局缓存，不是输入丢失。改为先进入该视图再取基线；13325退出1的3个回归仅因缺少原因说明失败，完整草稿和正式DTO均保持。提示修改后80922退出0；截图发现横排把窄屏正文挤窄，1行局部CSS改为纵排后93150退出0，两个临时场景分别在1280/390验证完整文字可见。均已回收；la-after是仅文案阶段，la-accepted才是最终截图。0da42bc已提交。
+
+## LC验收：组合基线
+
+KX/KY/LA已通过完整verify，stage-lc-verify.log，71519退出0已回收。覆盖运行时、428边界、完整Lint、997业务/120文件、11性能、26浏览器冒烟、生产类型/构建/体积预算。按最新提交0da42bc建立基线。
+
+## 当前阶段 LD
+
+检查需求/工作项的依赖导航与项目角色是否一致。两个详情入口均只用guest区分“编辑/查看依赖”；PathAnalysisPanel按manager或owner开放结构编辑，而服务端assertRequirementOwnerOrManager还检查canContributeProject。源码差异不能直接当作权限缺陷。
+
+真实操作先确认仍有未完成任务的负责人降为viewer会409，DEPENDENCY_CONFLICT给出需求2、工作项1、问题0（25219已回收）；保留该保护。结束任务后再降级才是合法场景。取消任务探针15113已回收：需求入口仍显示“编辑依赖”，但未发现编辑画布入口；后续无法直接定位已取消工作项，使探针未完成，不能称权限越界。证据stage-ld-before/historical-before.log、ld-active-assignment-guard、ld-cancelled-probe。
+
+32592也已退出1回收：真实完成任务后降级成功，但需求详情的依赖按钮仍显示“编辑依赖”，且从项目进展进入该详情时，点击后URL仍为scopeType=project，workspaceLocate指向所属feature，而非需求scopeId。明确403与最终DTO断言尚未到达，不声称已验证。stage-ld-completed-before.log、viewer-owner-ld-completed-before.json、ld-completed-before；最终探针归档为.preview/qa/continuous-goal/stage-ld-viewer-owner.pw.ts。
+
+原因已定位：ProjectWorkspace.tsx两个onOpenDependencies都调用switchView('graph',selected)；use-workspace-navigation.ts的switchView保留原scope，并按原scope将所选需求/工作项映射到上层特性。现有path-navigation.pw.ts第13行回归只从/requirements/:id进入，起点已是需求scope，未覆盖从项目/特性视图打开详情。下一步先补这组跨范围导航，明确进入所选需求的关系图并保留工作项定位、后退/前进；可考虑为switchView增加可选目标scope，保留其他普通视图切换及概览定位行为。
+
+导航修正后再实际验证历史负责人观察者的画布权限，不根据当前未到目标层级的截图改权限。详情按钮可与DeliveryFeatureDetails现有“查看依赖”导航语义保持一致，避免按是否登录承诺编辑能力。未修改LD产品，LC基线保持有效。
