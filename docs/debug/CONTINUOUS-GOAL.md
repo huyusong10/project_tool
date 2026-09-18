@@ -7,8 +7,8 @@
 - 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品提交fc73dcc。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
-- EQ完整验收基线5e31e67：969项业务（117文件）、8项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS937.66KB、CSS342.24KB、ELK1595.33KB。stages-ek-ep-verify.log。
-- ES/ET/EV/EW为此后修改，各自专项、Lint、类型及测试构建通过。当前无运行测试、无临时测试留在tests/responsive。
+- EY完整验收基线fc73dcc：969项业务（117文件）、8项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS937.89KB、CSS342.24KB、ELK1595.33KB。stages-es-ew-verify.log。
+- ES/ET/EV/EW专项及EY集成均通过。之前EQ基线5e31e67仍可查stages-ek-ep-verify.log。当前无运行测试、无临时测试留在tests/responsive。
 - 证据在.preview/qa/continuous-goal/，不进版本库；原日志、探针、截图保留。恢复先读本记录、git status及差异，不重跑已验收事项。
 
 详细历史按需定位：A—DO在fd512b7的本文件；DP—EV在41a4ed0的本文件，更早记录为CONTINUOUS-DEBUG.md。
@@ -75,8 +75,10 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - DU一次迁移测试启动15秒超时、输出为空；单项与同并发重验通过，EB/EJ/EQ全量未再发生。不直接放宽超时。
 - 无用户决策事项、无外部阻塞。Goal保持active。
 
-## 当前阶段 EY：ES—EW 集成验收
+## 当前阶段 EZ：关联链接上限与重复纠正
 
-对项目里程碑草稿识别、模态框焦点、历史问题筛选、新建项目里程碑导航运行现有npm run verify。验收运行时、模块边界、Lint、业务、性能、浏览器烟测、类型、构建及体积预算。
+检查20项关联链接、重复规范化地址的错误反馈、纠正和清空；优先检查已完成工作项，确认修改链接不改变完成事实和旧历史。
 
-EX临时探针已归档。下一步记录完整结果；若失败，按失败证据定位，不能降低验收标准。通过后换一个探索重点，长期Goal仍active。
+验收：错误用可读信息说明，原输入保留；达到20项禁止继续添加，纠正/删除后可保存，空列表不恢复旧链接。390px表单可操作。
+
+EY验收已完成，原工作目录仍仅用户原改动。下一步实际浏览器复现；WorkItemLinks直接显示normalizeReferenceLinks抛出的错误message，重复地址可能暴露Zod JSON，尚未标为缺陷。
