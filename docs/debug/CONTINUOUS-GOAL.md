@@ -4,11 +4,11 @@
 
 ## 基线与恢复
 
-- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品为GI归档来源修复（本次提交），前一产品54c57d0。
+- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品25c7e91（GI归档来源），前一产品54c57d0。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
-- FD完整验收：969项业务（117文件）、8项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS938.10KB、CSS342.24KB、ELK1595.33KB。stages-ez-fd-verify.log。
-- FE—GH分别完成下列专项验收；GH另完成生产构建和体积预算，仍为主JS938.10KB、CSS342.24KB、ELK1595.33KB（stages-fe-gh-build.log）。未重复全套验证。
+- GJ完整验收25c7e91：969项业务（117文件）、8项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS938.10KB、CSS342.32KB、ELK1595.33KB。stages-fe-gi-verify.log，涵盖FE—GI全部产品修改。
+- 之前FD完整验收717bc30：969项业务、8项性能、26项浏览器及全部静态/构建检查通过（stages-ez-fd-verify.log）。GJ同时确认原目录仍只有上述两项用户修改。
 - 之前EY基线fc73dcc可查stages-es-ew-verify.log，EQ基线5e31e67可查stages-ek-ep-verify.log。当前无运行测试、无临时测试留在tests/responsive。
 - 证据在.preview/qa/continuous-goal/，不进版本库；原日志、探针、截图保留。恢复先读本记录、git status及差异，不重跑已验收事项。
 
@@ -22,7 +22,7 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 | 阶段 / 提交 | 结果与验收入口 |
 |---|---|
-| GI / 本次提交 | 跨项目同名需求/流程在归档列表完全无法辨认；既有查询关联项目名，列表和删除确认显示归属，关键词可搜项目，长名称换行。真实两项目同名内容从筛选/取消删除确认到分别恢复，另一项目完整归档及执行DTO不变，仅两个预期恢复请求；390px通过。13项浏览器（含既有未知写入和归档入口）、3项REST/MCP归档代际保护、Lint/类型/测试构建通过。增加1项实际跨项目回归；archive-project-context-repro/after/final.log及截图。初探未先结束需求，已按原规则先取消再归档；权限/代际约束不变 |
+| GI / 25c7e91 | 跨项目同名需求/流程在归档列表完全无法辨认；既有查询关联项目名，列表和删除确认显示归属，关键词可搜项目，长名称换行。真实两项目同名内容从筛选/取消删除确认到分别恢复，另一项目完整归档及执行DTO不变，仅两个预期恢复请求；390px通过。13项浏览器（含既有未知写入和归档入口）、3项REST/MCP归档代际保护、Lint/类型/测试构建通过。增加1项实际跨项目回归；archive-project-context-repro/after/final.log及截图。初探未先结束需求，已按原规则先取消再归档；权限/代际约束不变 |
 | GH / 54c57d0 | 登录429原样显示英文底层错误；登录路由用现有ttl返回“登录尝试过于频繁，请在 N 秒后重试”。不改8次/分钟（test100次）阈值、HTTP状态或Retry-After。真实错误密码401→限流429→等待60秒后200，仅一次成功登录，用户名/输入与目标工作区保留，业务DTO不变、390px通过；24项账号生命周期、Lint/类型/测试与生产构建/预算通过。login-rate-before/after.log、response-before.json、response.json及截图，无新永久测试 |
 | FG / f8481be | 添加成员搜索框按Enter误把已选人员加入项目；只阻止此搜索框普通Enter的表单提交，保留输入法和添加按钮键盘提交。真实58人/默认50候选、拼音跨搜索、无匹配、部分成功、另一处已加入经理不降权、成功者不重复、其他项目和需求事实不变、390px及同尺寸关闭回焦通过。扩展既有批次回归；4项浏览器含未知写入、Lint/类型/测试构建通过；member-cross-search-before/after/final.log及截图。首轮后验仅探针因打开后缩窄窗口使入口移入更多菜单而找不到原按钮，改为先验同尺寸回焦、再验窄屏候选 |
 | FE / d6f96eb | 路由评分对每条候选路径重复扫描全部既有线段；预先筛除候选范围外必定零分的线段，原评分/布局规则不变，无新索引或缓存。1000节点/3000边同输入4次交替读取中位5.14→2.94秒、完整输出hash一致；浏览器3次路由中位7.29→3.75秒、pm-path-layout 12.36→8.80秒，500节点1.30→0.73秒。27组全量布局对照、28项模型、15项浏览器、Lint/类型/测试构建通过；graph-route-*、graph-worker-timing*.json/log。首次页面绘制仍有额外开销，计时不含自动化扫描 |
@@ -85,8 +85,8 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - DU一次迁移测试启动15秒超时、输出为空；单项与同并发重验通过，EB/EJ/EQ全量未再发生。不直接放宽超时。
 - 无用户决策事项、无外部阻塞。Goal保持active。
 
-## 当前阶段 GJ：近期改进集成验收
+## 当前阶段 GK：新账号的首个项目
 
-FE路由优化、FG成员搜索、GH登录限流反馈和GI归档来源均通过专项检查。GI同时涉及服务端返回和客户端消费，执行npm run verify建立新的集成基线，并检查原目录仍未被本Goal改动。
+真实创建尚无项目的人员账号，经首次改密进入空工作台；管理员授予项目成员并分配直接需求后，原页面通过已有可见时刷新获得工作并提交首次进度。重点检查空数据、权限变化和新账号第一条业务写入。
 
-验收：业务、性能、浏览器烟测、边界/Lint/类型、生产构建和体积预算全部通过；临时探针均已归档。完成后转向未分配项目的新账号从空工作台到获得项目访问的实际路径，不把阶段通过当作Goal完成。
+验收：授权前无项目/工作泄露；授权后不需重新登录，首项进度只写一次，既有其他需求事实不变，390px可用。当前临时探针tests/responsive/new-account-first-project-probe.pw.ts待运行，端口3296；不需要产品修改则归档证据并换方向。
