@@ -41,6 +41,8 @@ git show d35957a:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 ## 近期无需修改的检查
 
+- IE：19:45增量查看原服务16日志文件，新增11条info（1次登录成功、10次未匹配GET/404），无错误级事件，健康200。另用全新游客浏览器只读检查当前首页，48响应/42静态资源全部成功，无页面异常、失败请求或被阻止写入。原始404无路径，不能确定原因；需当时请求路径或可复现场景再深入。runtime-log-review-ie.json、runtime-assets-ie.ts/log/json。首次报告误用原cwd相对路径写入失败，改在improve保存；原dev仍仅两项用户修改。
+- ID：MCP需求/工作项/进展分页直接复用REST服务，严格输入、筛选在分页前生效、空结果/越界页、total/pages及历史snapshot均有mcp-queries.test.ts既有覆盖，已随HZ通过；未重复运行或修改。工作项越界页返回空数组，问题页码收至末页，属于现有明确行为，不强行统一。
 - IC：已有永久用例覆盖IndexedDB首次打开失败；另用真实已存草稿注入4次写事务abort，原有本机记录完整不变，当前输入保留，失败时正式apply为0。解除中断后只apply一次，提示清除、刷新显示正确名称，无页面异常。draft-abort-recovery.log/json及归档探针，截图仅证明输入保留（警告在弹窗后）；无需产品修改或永久新测试。身份切换清理按既有账号/项目范围执行，未改策略。
 - IA：README校正“人员权限/人力分析/归档中心/个人设置”等实际入口，明确skill需执行独立sync命令，删除重复首次配置步骤，净减5行。对照路由、页面、package.json、configure/sync脚本及git diff --check验收；纯文档修改，不重跑测试，不执行账号重置或本机skill同步。
 - HY：共享搜索使用indexOf/includes，特殊符号不进入拼音匹配；问题和日志SQL通过绑定参数调用同一search_score/search_plain_match，无LIKE通配或动态正则。既有search.test.ts已覆盖90%、单独%、字段_a字面匹配。只读确认，无需修改或重复运行该测试。
@@ -88,11 +90,12 @@ git show d35957a:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - DU一次迁移测试启动15秒超时、输出为空；单项与同并发重验通过，EB/EJ/EQ全量未再发生。不直接放宽超时。
 - 画布与统计面板复制长标题候选分别在HS/HU解决；降低此领域优先级。
 - 名称长度并不统一：requireLabel按码点计200，部分创建schema按UTF-16计200；现有copyLabel保守按UTF-16截断。发现代码差异，尚无必须调整的业务证据，暂不统一限制或改已验收方案。
+- IE的10次未匹配GET无请求路径；当前游客首页48请求全成功。需原请求路径或复现场景才可定位，暂不改路由/日志隐私规则。
 - GT待查项已在GZ完成独立输入节奏对照和实际页面验收，见近期成果。无用户决策事项、无外部阻塞，Goal保持active。
 
-## 当前阶段 ID：MCP分页读取与返回范围
+## 当前阶段 IF：Windows首次配置兼容性
 
-IC无需修改。下一步只读检查MCP的分页工具描述、输入约束、返回总数/下一页信息与REST共用服务的一致性，优先空数据、末页和筛选组合。先查已有覆盖；在独立测试库验证确有缺口的路径，不调用原服务写工具、不新增功能或重做已验收的大规模性能检查。
+ID/IE无需修改。新证据：start.bat调用powershell.exe，当前系统为5.1.22621.2506，不支持configure.ps1第7行ConvertFrom-SecureString -AsPlainText。另startup先configure再npm install，而scripts/configure.mjs静态依赖better-sqlite3/dotenv，首次无node_modules可能先失败。下一步在.preview下独立目录复制包装器和configure脚本，用固定测试输入替代Read-Host复现，不执行原目录配置、不重置现有账号；核对脚本编码和依赖安装顺序，修复后验收5.1/当前pwsh兼容及配置保留行为。
 
 当前产品7b6dbaf，IC检查进程已退出，临时浏览器探针已归档。无待验收产品修改或外部阻塞。接续先看本记录和git状态，不重新运行已通过的HZ全量检查。
 
