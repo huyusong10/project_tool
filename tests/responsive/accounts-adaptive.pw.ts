@@ -107,7 +107,7 @@ async function reconnect(page: Page) {
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
 }
 
-test('批量添加成员提交中保持窗口与选择，部分失败只重试失败成员', async ({ page }) => {
+test('成员搜索不提交，批量添加保持选择且部分失败只重试失败成员', async ({ page }) => {
   await mockAccounts(page);
   const candidates = [people[2], { ...people[2], id: 'u4', name: '额外成员' }];
   const added = new Set<string>();
@@ -140,9 +140,16 @@ test('批量添加成员提交中保持窗口与选择，部分失败只重试�
     const dialog = page.getByRole('dialog', { name: '添加项目成员' });
     await dialog.locator('.member-candidate-option').filter({ hasText: '新成员' }).click();
     await dialog.locator('.member-candidate-option').filter({ hasText: '额外成员' }).click();
+    const search = dialog.getByRole('searchbox');
+    await search.fill('成员');
+    await search.press('Enter');
+    await expect(search).toBeEnabled();
+    await expect(search).toBeFocused();
+    expect(requests).toEqual([]);
     const role = dialog.getByLabel('加入后的项目角色');
     await chooseOption(role, 'manager');
-    await dialog.getByRole('button', { name: '添加 2 人到项目' }).click();
+    await dialog.getByRole('button', { name: '添加 2 人到项目' }).focus();
+    await page.keyboard.press('Enter');
     await expect.poll(() => requests.length).toBe(1);
     await page.keyboard.press('Escape');
     await expect(dialog).toBeVisible();

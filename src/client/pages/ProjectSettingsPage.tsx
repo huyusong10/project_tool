@@ -348,7 +348,7 @@ function AddProjectPersonForm({ projectId, onNeedsRecheck, onClose }: { projectI
     setBatchError("");
     mutation.mutate({ personIds: selectedIds, role });
   }}>
-    <SearchInput className="member-picker-search" value={keyword} onChange={setKeyword} disabled={batchBusy} placeholder="搜索姓名、岗位、登录名或拼音" autoFocus />
+    <SearchInput className="member-picker-search" value={keyword} onChange={setKeyword} disabled={batchBusy} placeholder="搜索姓名、岗位、登录名或拼音" autoFocus onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) event.preventDefault(); }} />
     <div className="member-picker-selection"><span>已选择 <strong>{selectedIds.length}</strong> 人</span>{selectedIds.length > 0 && <Button variant="secondary" type="button" disabled={batchBusy} onClick={() => { setSelectedPeople({}); setBatchError(""); }}>清空选择</Button>}</div>
     <div className="member-candidate-list" aria-label="可添加人员">
       {candidatesQuery.isLoading && <LoadingState label="正在加载可添加人员…" className="member-picker-state" />}
