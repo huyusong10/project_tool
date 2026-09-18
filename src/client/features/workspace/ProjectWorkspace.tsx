@@ -72,7 +72,7 @@ export function ProjectWorkspace({report,data,refreshNotice}:{report:Dashboard;d
         </ObjectInspector>}
       </div>
       {objectActions.dialogs}
-      {changes&&<Modal title="修改与冲突" onClose={()=>setChanges(false)}><CanvasDraftDetails draft={draft} data={data} onGo={go}/><div className="form-actions"><Button variant="secondary" className="ghost-button" disabled={!draft.count||draft.busy||draft.readOnly} onClick={()=>setDiscard(true)}>放弃草稿</Button><Button variant="primary" className="primary-button" disabled={draft.busy||draft.readOnly||(!draft.count&&!draft.pending)} onClick={()=>void draft.save()}>{draft.pending?'核对原批次':'保存草稿'}</Button></div></Modal>}
+      {changes&&<Modal title="修改与冲突" onClose={()=>setChanges(false)}><CanvasDraftDetails draft={draft} data={navigationData} onGo={url=>{setChanges(false);go(url);}}/><div className="form-actions"><Button variant="secondary" className="ghost-button" disabled={!draft.count||draft.busy||draft.readOnly} onClick={()=>setDiscard(true)}>放弃草稿</Button><Button variant="primary" className="primary-button" disabled={draft.busy||draft.readOnly||(!draft.count&&!draft.pending)} onClick={()=>void draft.save()}>{draft.pending?'核对原批次':'保存草稿'}</Button></div></Modal>}
       {discard&&<Modal title="放弃草稿" onClose={()=>setDiscard(false)}><p>放弃当前项目所有层级的图形和业务草稿。</p><div className="form-actions"><Button variant="secondary" className="ghost-button" onClick={()=>setDiscard(false)}>继续编辑</Button><Button variant="primary" className="primary-button" onClick={()=>{draft.cancel();setDiscard(false);}}>放弃</Button></div></Modal>}
     </div>
   </WorkspaceRuntimeContext.Provider></ProjectWorkspaceContext.Provider>;

@@ -5,7 +5,7 @@
 ## 基线与恢复
 
 - 工作目录：D:\tools\project-manage-improve；分支 codex/continuous-improvement；起点 bd19fa1。
-- 当前产品提交09ca901，含EN品牌字符校验修复；EJ完整验收基线0a2ad1c，覆盖A—EI；EK/EL/EN通过专项验收。
+- 当前产品含EK/EL/EN/EP修复，EQ完整验收覆盖A—EP；EP另有9项浏览器专项通过。
 - 原目录 D:\tools\project-manage 的 dev 不改动。保留用户修改 skills/project-manage-intake/SKILL.md 和未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 使用独立构建、临时数据库和浏览器端口 3296；3210、3295 服务保持原样。未部署、未推送。
 - 证据保存在 .preview/qa/continuous-goal/，不进入版本库。当前无运行测试、无临时浏览器测试留在 tests/responsive。
@@ -116,10 +116,24 @@ branding-character-boundary-before.log复现输入、保存与刷新值均截断
 
 5种身份/项目场景×7组筛选×4档规模的完整结果和顺序哈希一致，返回对象均属所选项目，全部读取零写入。actions-project-isolation-probe.ts、.json/.log及查询计划保留；这是本地服务读取，不是HTTP耗时。无需修改，无永久测试。
 
-## 当前阶段 EP：草稿摘要定位连线
+## EP：草稿摘要定位连线
 
-范围：EL已修复对象定位，但连线行仍用旧路径参数，尚未实际复现。验证修改关系后的摘要定位、继续编辑和保存，检查正确对象、范围及草稿保留。
+已复现三个问题：新增实际依赖的定位使用旧全局URL而未打开关系；同画布改变网址时关系ID仍停留在初始本地状态；清单草稿摘要定位后弹窗不关闭。现复用dependencyWorkspaceLocation，关系ID直接读取网址，项目摘要使用已存在的navigationData并在定位后关闭弹窗。
 
-验收：真实操作打开对应关系，未提交时不写入；明确保存后仅提交一次且关系事实正确。不能只根据旧URL推断缺陷。
+当前画布、项目总图、项目清单三入口均定位后修改前置交付点，未保存正式分析完全不变，明确保存仅一次且只新增预期依赖；390px截图复核、无异常。新增3项浏览器回归，连同跨特性依赖、里程碑草稿、重复连线、交付条件细化/撤销/返回/刷新共9项通过（draft-relation-location-final.log）。before.log复现两入口，routing.log定位到同页状态残留；其中另一项失败为探针误把Locator当作value，已改toHaveValue。list-summary-before.log独立复现清单弹窗残留。
 
-恢复状态：EO独立测量完成，无运行测试。下一步读取摘要连线定位入口与既有图编辑旅程，先做真实复现。
+## EQ：近期修改集成验收
+
+stages-ek-ep-verify.log完整通过：969项业务（117文件）、8项性能、26项浏览器冒烟，运行时、428模块边界、Lint、类型、构建与预算通过；主JS937.66KB、CSS342.24KB、ELK1595.33KB。覆盖EK/EL/EN/EP；迁移启动未再超时。原目录仍仅保留两项用户改动。
+
+## ER：减少动态效果只读检查
+
+motion.ts统一监听浏览器偏好；CSS禁用过渡、动画和平滑滚动；GraphScene定位/恢复/布局读取实时偏好，Chart在偏好改变时更新选项。day-night-motion.pw.ts已有实时切换、菜单、图表、今天定位及密集图表检查；motion.test.ts随EQ通过。不修改、不重复运行专项。
+
+## 当前阶段 ES：未保存的新项目里程碑定位
+
+范围：已保存项目里程碑已通过EK/EL；尚未保存的新里程碑未覆盖。ProjectWorkspace选择图面板仍查询正式data.milestones，验证创建草稿后跨视图定位和无效字段恢复是否受影响。
+
+验收：先真实复现；草稿定位和校验能回到原字段，未保存零正式写入，修正后仅一次保存且既有事实保持。没有证据则不修改。
+
+恢复状态：EQ已全部通过，无运行测试。ES未改代码，准备临时浏览器探针。

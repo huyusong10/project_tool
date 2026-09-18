@@ -645,3 +645,21 @@ test('关系图余量抽屉、顶栏和交付条件在矩阵与窄屏内显示',
   await page.screenshot({path:info.outputPath('graph-panels-'+width+'.png')});await closeGraphProperties(page);
  }
 });
+
+for(const origin of ['当前画布','项目总图','项目清单'])test(`新增关系从${origin}定位后仍可编辑并保存`,async({page},info)=>{
+  const {project,a,b,analysis}=await fixture(page,false),before=await analysis();let writes=0;const errors:string[]=[];
+  page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/dependency-changes/apply'))writes++;});
+  await openGraph(page,'/paths?pathScope=all');await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();await graphToolbar(page,'编辑画布');
+  await page.locator('.react-flow__node[data-id="'+a.id+'"] .business-handle[data-side="bottom"]').click();await page.locator('.react-flow__node[data-id="'+b.id+'"] .dependency-card').click({position:{x:80,y:45}});
+  await expect(page.locator('[data-draft-stored="true"]')).toBeVisible();await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();
+  if(origin!=='当前画布'){await closeGraphProperties(page);await page.getByRole('button',{name:'上一级',exact:true}).click();if(origin==='项目清单')await page.getByRole('button',{name:'清单',exact:true}).click();}
+  await openGraphDrafts(page);await page.locator('.canvas-change-row').filter({hasText:'新增：接口基础交付 → 订单交付'}).getByRole('button',{name:'定位',exact:true}).click();
+  await expect(page.locator('.canvas-draft-details')).toHaveCount(0);await expect(page.locator('.delivery-condition')).toBeVisible();await expect(page.locator('.graph-relation-list')).toContainText('未保存');
+  expect(new URL(page.url()).searchParams.get('projectId')).toBe(project.id);expect(new URL(page.url()).searchParams.get('scopeId')).toBe(b.featureId);
+  const source=page.getByRole('combobox',{name:'等待什么完成',exact:true});await expect(source).toBeEnabled();await chooseOption(source,a.workItems[0].id);await expect(selectedValue(source)).toHaveValue(a.workItems[0].id);
+  expect(writes).toBe(0);expect(await analysis()).toEqual(before);
+  if(origin==='项目清单'){await page.setViewportSize({width:390,height:844});await expect(page.locator('.delivery-condition')).toBeVisible();await page.screenshot({path:info.outputPath('draft-relation-location-390.png'),animations:'disabled'});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);}
+  const response=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/dependency-changes/apply'));await graphToolbar(page,'保存修改');expect((await response).status()).toBe(200);expect(writes).toBe(1);
+  const after=await analysis(),added=after.dependencies.filter(d=>!before.dependencies.some(old=>old.id===d.id));expect(added).toHaveLength(1);expect(added[0]).toMatchObject({sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:null});
+  expect(after.dependencies.filter(d=>before.dependencies.some(old=>old.id===d.id))).toEqual(before.dependencies);expect(errors).toEqual([]);
+});

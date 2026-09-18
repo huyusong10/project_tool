@@ -208,8 +208,8 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
   const livePositions=useRef<Record<string,Point>>({}),liveRegions=useRef<PhaseRegion[]>([]);
   const layoutScope=focus?'requirement:'+focus:featureScope?'feature:'+featureScope:'global',layoutValue=data.layouts?.find(l=>l.scope===layoutScope&&l.direction==='right'),formalLayout=formal.layouts?.find(l=>l.scope===layoutScope&&l.direction==='right');
   const withLayout=(changes:DependencyChanges,positions:Record<string,Point>):DependencyChanges=>phaseLayout?phaseLayoutChanges(changes,formal.layouts||[],liveRegions.current.length?liveRegions.current:phaseLayout.regions,positions):({...changes,layouts:[...(changes.layouts||[]).filter(l=>l.scope!==layoutScope||l.direction!=='right'),{scope:layoutScope,direction:'right',expectedVersion:formalLayout?.version||0,positions}]});
-  const [relationId,updateRelationId]=useState(params.get('pathRelation')||'');
-  const setRelationId=(id:string)=>{updateRelationId(id);setParam('pathRelation',id);};
+  const relationId=params.get('pathRelation')||'';
+  const setRelationId=(id:string)=>setParam('pathRelation',id);
   const {interaction,selected,edgeId,setEdgeId,select}=useEditorInteraction(params.get('pathNode')||params.get('workItemId')||'',selection=>{setParam('pathNode',selection.kind==='nodes'?selection.primary:'');setParam('pathEdge',selection.kind==='edge'?selection.id:'');setRelationId('');setInspector(selection.kind==='edge');if(narrow())setPanel('');},params.get('pathEdge')||'');
   const inspector=(params.get('graphInspector')||'closed')==='open'&&(!!selected||!!edgeId||!!relationId),setInspector=(value:boolean)=>setParam('graphInspector',value?'open':'closed');
   const [locate,setLocate]=useState<{id:string;sequence:number}>();
