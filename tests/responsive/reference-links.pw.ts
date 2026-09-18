@@ -95,7 +95,7 @@ test('工作项链接提交结果未知时刷新保留原请求，核对后不�
   await page.route('**/api/work-items/'+work.id,async route=>{
     if(route.request().method()!=='PATCH')return route.continue();writes++;await route.fetch();await route.abort('failed');
   });
-  await links.getByRole('button',{name:'保存',exact:true}).click();await expect(links.getByRole('button',{name:'核对',exact:true})).toBeVisible();expect(writes).toBe(1);
+  await links.locator('form').evaluate(form=>{(form as HTMLFormElement).requestSubmit();(form as HTMLFormElement).requestSubmit();});await expect(links.getByRole('button',{name:'核对',exact:true})).toBeVisible();expect(writes).toBe(1);
   await page.reload();await expect(links.getByRole('textbox',{name:'链接 1 名称',exact:true})).toHaveValue('待核对材料');
   await expect(links.getByRole('button',{name:'保存',exact:true})).toHaveCount(0);
   await links.getByRole('button',{name:'核对',exact:true}).click();await expect(links.getByRole('link',{name:'待核对材料'})).toBeVisible();expect(writes).toBe(1);
