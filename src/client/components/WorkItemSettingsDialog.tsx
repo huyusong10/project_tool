@@ -272,7 +272,19 @@ export function WorkItemSettingsDialog({
     try{
       const latest=await onReload();
       const pending=receipt;
-      const applied=pending?.kind==='reorder'?latest.version>pending.version&&JSON.stringify(latest.workItems.map(item=>item.id))===JSON.stringify(pending.ids):pending?.kind==='create'?latest.workItems.filter(item=>!pending.draft.sourceIds.includes(item.id)&&item.title===canonicalizeLabel(pending.draft.title)&&(item.ownerId||'')===pending.draft.ownerId&&(item.plannedStart||'')===pending.draft.plannedStart&&(item.plannedEnd||'')===pending.draft.plannedEnd&&(pending.draft.referenceLinks===undefined||referenceLinksEqual(item.referenceLinks,pending.draft.referenceLinks))).length===1:false;
+      const draft=pending?.kind==='create'?pending.draft:null;
+      const assigneeIds=draft?[...new Set([draft.ownerId,...draft.collaboratorIds].filter(Boolean))].sort():[];
+      const applied=pending?.kind==='reorder'
+        ?latest.version>pending.version&&JSON.stringify(latest.workItems.map(item=>item.id))===JSON.stringify(pending.ids)
+        :draft?latest.workItems.filter(item=>!draft.sourceIds.includes(item.id)
+          &&item.title===canonicalizeLabel(draft.title)
+          &&(item.workStage||null)===(draft.workStage||null)
+          &&(item.milestoneLabel||'')===canonicalizeLabel(draft.milestoneLabel)
+          &&(item.ownerId||'')===draft.ownerId
+          &&JSON.stringify([...item.assigneeIds].sort())===JSON.stringify(assigneeIds)
+          &&(item.plannedStart||'')===draft.plannedStart
+          &&(item.plannedEnd||'')===draft.plannedEnd
+          &&(draft.referenceLinks===undefined||referenceLinksEqual(item.referenceLinks,draft.referenceLinks))).length===1:false;
       if(!applied){setReorderReadError('已读取最新资料，仍无法确认原操作结果。原提交与输入已保留，请核对工作项及记录。');return;}
       setReceipt(null);clearReceipt();setCreateUnknown(false);setReorderUnknown(false);setNewItem(null);clearNewItem();setCreationOpen(false);setReorderNeedsRefresh(false);
     }catch(error){setReorderReadError(error instanceof Error?error.message:'读取失败');}finally{setReorderReading(false);}
