@@ -26,7 +26,7 @@ export class WorkspaceRuntime{
   outside=(event:PointerEvent)=>{
     const target=event.target;if(target instanceof Element&&(this.root?.contains(target)||target.closest('.topbar,[data-workspace-zone="tools"]'))){const button=target.closest<HTMLElement>('button,summary');if(button)this.lastTrigger=button;}if(!(target instanceof Element)||target.closest('[role=dialog],.modal-backdrop'))return;
     const layers=[...this.layers.values()].reverse(),inside=layers.find(l=>l.element()?.contains(target));
-    for(const layer of layers)if(layer.kind==='menu'&&!layer.element()?.contains(target))this.close(layer,false);
+    for(const layer of layers)if(layer.kind==='menu'&&!layer.element()?.contains(target)&&!layer.trigger?.contains(target))this.close(layer,false);
     if(inside){if(this.interaction?.operation?.kind!=='field')this.cancel();return;}
     const zone=target.closest<HTMLElement>('[data-workspace-zone]')?.dataset.workspaceZone;
     for(const layer of layers){
@@ -36,7 +36,7 @@ export class WorkspaceRuntime{
       this.close(layer,false);
     }
   };
-  focusOut=(event:FocusEvent)=>{const target=event.relatedTarget;if(!(target instanceof Node))return;for(const layer of this.layers.values())if(layer.kind==='menu'&&layer.element()?.contains(event.target as Node)&&!layer.element()?.contains(target))this.close(layer,false);};
+  focusOut=(event:FocusEvent)=>{const target=event.relatedTarget;if(!(target instanceof Node))return;for(const layer of this.layers.values())if(layer.kind==='menu'&&layer.element()?.contains(event.target as Node)&&!layer.element()?.contains(target)&&!layer.trigger?.contains(target))this.close(layer,false);};
 }
 export const WorkspaceRuntimeContext=createContext<WorkspaceRuntime|null>(null);
 export function useWorkspaceRuntime(){const runtime=useContext(WorkspaceRuntimeContext);if(!runtime)throw new Error('缺少工作区运行环境');return runtime;}

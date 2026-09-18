@@ -29,7 +29,7 @@ export function Select({children,className='',...props}:SelectHTMLAttributes<HTM
   useEffect(()=>{
     if(!open)return;
     const frame=requestAnimationFrame(()=>{if(searchable)search.current?.focus();else panel.current?.focus();});
-    const unregister=runtime?.register({element:()=>panel.current,kind:'menu',trigger:trigger.current,close:()=>setOpen(false)});
+    const unregister=runtime?.register({element:()=>panel.current,kind:'menu',trigger:trigger.current,close:()=>{setOpen(false);setQuery('');}});
     return()=>{cancelAnimationFrame(frame);unregister?.();};
   },[open,runtime,searchable]);
   useEffect(()=>{if(open)panel.current?.querySelector('[data-active=true]')?.scrollIntoView({block:'nearest'});},[active,open]);
