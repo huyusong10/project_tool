@@ -91,7 +91,7 @@
 .outline-notice>span{min-width:0;overflow-wrap:anywhere;line-height:1.5}.outline-notice .ghost-button{height:32px;min-height:32px;white-space:nowrap;flex:none;padding:0 10px;font-size:12px}.outline-notice [role=alert]{color:var(--danger)}
 .workspace-import{height:100%;overflow:auto;padding:16px 24px}
 .unified-workspace .text-button{appearance:none;border:0;background:transparent;color:var(--text-primary);font:inherit;padding:3px 0;cursor:pointer;line-height:1.5}
-.unified-workspace .text-button:hover{color:var(--accent-ink)}.workspace-graph-name{display:flex;align-items:flex-start;gap:4px;min-width:0}.workspace-graph-name .graph-title{flex:1;min-width:0;font-weight:600;font-size:13px;text-align:left;line-height:1.5}
+.unified-workspace .text-button:hover{color:var(--accent-ink)}.workspace-graph-name{display:flex;align-items:flex-start;gap:4px;min-width:0}.workspace-graph-name .graph-title{flex:1;min-width:0;font-weight:600;font-size:13px;text-align:left;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .workspace-graph-name .workspace-enter{flex:none}
 .unified-workspace .delivery-filters{height:58px;min-height:58px;box-sizing:border-box;flex-wrap:nowrap;padding:0 16px;overflow-x:auto;scrollbar-width:none}
 .unified-workspace .delivery-filters>*{flex-shrink:0}.unified-workspace .delivery-filters .search-box{width:220px;flex:0 0 220px}.unified-workspace .delivery-filters>.select-field{width:156px;min-width:156px;max-width:156px;flex:none}

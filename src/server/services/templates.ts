@@ -11,6 +11,7 @@ import type { Actor } from '../auth';
 import { maxTemplateDurationDays, maxTemplateItems, maxTemplateOffsetDays } from '../../shared/domain';
 
 import { normalizeSearchText } from '../../shared/search';
+import { copyLabel } from '../../shared/copy-label';
 
 import { fail, notFound } from '../errors';
 
@@ -223,10 +224,9 @@ export function copyTemplate(targetProjectId: string, sourceTemplateId: string, 
       FROM work_item_templates WHERE id=? AND deleted_at IS NULL`, sourceTemplateId,
   );
   if (!source) notFound('来源流程不存在');
-  const copyName = (suffix: string) => source.name.slice(0, 200 - suffix.length).replace(/[\uD800-\uDBFF]$/, '') + suffix;
-  let name = copyName('（副本）'); let suffix = 2;
+  let name = copyLabel(source.name, '（副本）'); let suffix = 2;
   while (row('SELECT 1 FROM work_item_templates WHERE project_id=? AND deleted_at IS NULL AND lower(trim(name))=lower(trim(?))', targetProjectId, name)) {
-    name = copyName(`（副本${suffix++}）`);
+    name = copyLabel(source.name, `（副本${suffix++}）`);
   }
   const sourceItems = listTemplates(source.projectId).find(t=>t.id===sourceTemplateId)!.items as Array<{id:string;predecessorIds:string[];title:string;kind:'work'|'milestone';confirmationMode:'auto'|'manual';arrangement:'early'|'late';arrangementAnchor:string|null;workStage?:WorkStage|null;milestoneKind?:MilestoneKind;startOffsetDays:number;durationDays:number;milestoneLabel:string|null;sortOrder:number}>;
   const items = sourceItems.map((item) => ({

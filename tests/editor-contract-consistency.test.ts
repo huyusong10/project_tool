@@ -343,13 +343,20 @@ it('同一工作项的结构和估算修改按最终快照保存，不回退新�
  const saved=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...input,batchId:randomUUID(),previewToken:p.previewToken});
  expect(saved.statusCode,saved.body).toBe(200);expect((await get<Requirement>('/api/requirements/'+r.id)).workItems[0].durationDays).toBe(4);
 });
-it('复制工期未确认的工作项保留未知工期，不凭空生成一天的承诺',async()=>{
+it('复制长标题且工期未确认的工作项可保存，仍保留未知工期',async()=>{
  const {projectId,requirement:r,ownerId}=await fixture('work_items');
- await request('POST','/api/requirements/'+r.id+'/work-items',{expectedVersion:r.version,title:'工期待确认',ownerId});
+ const title='工'.repeat(196)+'😀原题';
+ await request('POST','/api/requirements/'+r.id+'/work-items',{expectedVersion:r.version,title,ownerId});
  const analysis=await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis'),work=analysis.nodes.find(n=>n.kind==='work')!;
  expect(work.estimate.durationDays).toBeNull();
  const copied=copyEntities(analysis,{add:[],remove:[],estimates:[]},[work.id],r.id);
  expect(copied.changes.entities!.find(c=>c.id===copied.mapping[work.id])!.data.durationDays).toBeNull();
+ const {input,response}=await preview(projectId,copied.changes);expect(response.statusCode,response.body).toBe(200);
+ const saved=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...input,batchId:randomUUID(),previewToken:response.json<DependencyChangePreview>().previewToken});
+ expect(saved.statusCode,saved.body).toBe(200);
+ const latest=await get<Requirement>('/api/requirements/'+r.id);
+ expect(latest.workItems.find(w=>w.id===work.id)).toMatchObject({title,durationDays:null});
+ expect(latest.workItems.find(w=>w.id===saved.json().addedIds[copied.mapping[work.id]])).toMatchObject({title:'工'.repeat(196)+' 副本',durationDays:null});
 });
 it('本地草稿修改直接执行需求时，不改写正式分析基线，放弃后可恢复原节点',async()=>{
  const {projectId,requirement:r}=await fixture('direct');
