@@ -4,7 +4,7 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品891273d（JA），前一产品6f36dd1（IZ）、dc98ee2（IV）、7d70e7b（IU链接修复）、eee9d38（IT）、d473f2e（IS）、e53c666（IQ）；README修正baf3208。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品c6ca4f3（JC），前一产品891273d（JA）、6f36dd1（IZ）、dc98ee2（IV）、7d70e7b（IU链接修复）、eee9d38（IT）、d473f2e（IS）、e53c666（IQ）；README修正baf3208。
 - 原目录D:\tools\project-manage的dev不改。21:54检查仍只有用户修改skills/project-manage-intake/SKILL.md、未跟踪docs/dcim-ai-workflow-v3-gaps.md。未部署、未推送。
 - 临时数据库和独立构建；浏览器使用3296，串行运行；性能独占。3210/3295不改。HZ漏设端口，用默认3291的独立临时服务完成，后续已恢复3296。
 - IX组合验收dc98ee2：982业务/119文件、10性能、26浏览器，运行时/429边界/Lint/类型/构建/预算全通过，verify首轮退出0（exec20746已结束）。主JS940.02KB、CSS342.57KB、ELK1595.33KB；stages-is-iv-verify.log及performance/build-budget.json。临时探针已归档，无未提交产品修改。
@@ -25,6 +25,7 @@
 
 | 阶段 / 提交 | 结果 / 证据 |
 |---|---|
+| JC / c6ca4f3 | 4个仅末尾不同的合法长名称在1280/390均被截断，2289—2473px文字挤入315—332px，没有完整名称提示。仅将候选名称/说明改为换行并允许无空格词断行，列表继续限高滚动。6布局及1真实专项通过，8次末尾坐标均在候选内；四项键盘选择、无结果/末尾搜索、仅1次创建、刷新完整Issue DTO一致、零页面异常。类型/测试构建/Lint/diff通过，截图已检查，无新增永久测试。issue-picker-names-before/after.json/png、stage-jc-*；首轮专项在搜索框RAF聚焦前直接focus选项而失败，等待实际焦点后通过，6布局首轮已通过；探针已归档 |
 | JA / 891273d | 问题表单的关联需求/负责人/提出人浮层初帧隐藏，autoFocus无效；原代码强化后的既有回归失败。改为显示后RAF聚焦，关闭清理待执行回调。3功能/真实旅程与6种桌面布局通过；真实1280/390键盘搜索、Esc、Tab/Enter选择，取消零写入、仅1次创建、重新打开字段和完整Issue DTO一致，无页面异常。Lint/类型/测试构建/diff通过，截图已检查。既有布局夹具修正people查询匹配，14选项原始布局在搜索前断言；无新增永久测试。issue-picker-focus-before/context/png、keyboard.json、stage-ja-*；真实探针已归档，所有句柄结束 |
 | IZ / 6f36dd1 | 协作选择初帧隐藏使autoFocus失效，焦点留在入口按钮，键盘输入zhangsan后搜索仍为空。显示后RAF聚焦搜索或首个复选框，关闭时取消待执行聚焦。两个既有小列表/搜索旅程在原代码失败；修改后7浏览器、ESLint、类型/测试构建、diff通过。1000选项读取夹具打开45—47ms、搜索11—19ms，无需性能改造；实际保存用3个真实目标，隐藏已选保留、Esc零写入、Space/Tab/Enter仅1次保存、刷新一致，1280/390截图已检查。collaborator-picker-focus-before/typing、regression-before、scale.json、stage-iz-*；强化2个既有旅程，无新增永久测试，探针已归档 |
 | IV / dc98ee2 | SVG把英文都按窄字符计算，特性/需求/Phase共16行越界，宽标题309—502px挤出280px卡片、Phase名与状态重叠。按字符类别估宽并为省略号留空间，产品净增5行，无字体依赖。25业务、3不同浏览器及1次扩大字符集补验通过；空图、长英文/数字/中文/emoji、XML、完整标题、Phase不重叠、全量分析/需求DTO保持；类型/构建/Lint/diff通过，截图已检查。graph-export-text-before/after/characters、stage-iv-*、graph-font-width。前三次探针夹具分别误用overview、缺overview必填项、未解包features，已记录修正；正式复现和验收日志独立保存。探针已归档，无新增永久测试 |
@@ -70,7 +71,7 @@
 
 ## 覆盖与降低优先级的领域
 
-- JB：只读核对模板变更。integration约894行保护旧工作项事实；editor-contract-consistency约89行、plan-preview约122行保护旧预览拒绝及新实例；versioned-write-integrity约872行保护默认流程/归档并发和最后有效流程。这些已随IX通过，服务只更新模板表，未发现新问题，不重复运行。既有真实模板保存和归档后改选探针也已留存，具体结果按终态日志核对，不按文件名判断。
+- JB：只读核对模板变更。integration约894行保护旧工作项事实；editor-contract-consistency约89行、plan-preview约122行保护旧预览拒绝及新实例；versioned-write-integrity约872行保护默认流程/归档并发和最后有效流程。这些已随IX通过，服务只更新模板表，未发现新问题，不重复运行。既有真实模板保存template-instance-final和归档后改选archived-template-draft-facts均1通过；后者其余命名final/accepted/pass日志仍是早期失败，不能按文件名判断。
 
 | 领域 | 已覆盖 |
 |---|---|
@@ -117,10 +118,12 @@
 
 该轮另发现的合并来源链接遗漏已独立修复7d70e7b；验收见近期成果。工作区无未提交产品修改。周末无工作日计划候选同样降级：当前新建排期明确限制工作日，未发现当前入口证据。
 
-## 当前阶段 JC：关联需求长名称辨识
+## 当前阶段 JD：来源链接在编辑和状态变更中的保留
 
-JA已验收891273d；49958原回归退出1已保存证据，26887/74452/18456修复验证均退出0，无运行进程或未归档探针。IX全量基线仍是dc98ee2，IZ/JA另有目标浏览器、类型/构建/Lint验收，不重跑全量。
+JA/JC已验收并提交；JC的39837基线测量退出0，19256初轮6通过1探针时序失败，65513修正后退出0。无运行进程或未归档探针。IX全量基线仍是dc98ee2，IZ/JA/JC另有目标浏览器、类型/构建/Lint验收，不重跑全量。
 
-JB只读复核未发现需要修改之处。JC依据JA新截图：关联需求候选名称单行截断。下一步用仅末尾不同的长名称，验证是否有完整辨识入口；若确实不可辨识，优先局部样式解决，验证390/1280、无空格英文和选择后真实存储。模板列表性能已有scale探针，降低优先级，不重复测量。
+下一轮转向数据保留：核对需求/工作项的referenceLinks在普通字段编辑、状态变更中的存储和展示是否一致。IU只修复过导入合并；先查已有覆盖，存在明确缺口再做真实旅程，不重跑合并探针或为凑覆盖增加测试。模板变更、选择器焦点和名称降低优先级。
+
+已定位mcp-partial-updates.test.ts约53—95行：需求旧单链接与多链接兼容、重排/清空、工作项改名/完成后纠错均有断言；guest-access保护读取。工作项服务保留未提交referenceLinks，需求读取兼容referenceUrl。下一步先核对浏览器编辑入口的既有旅程，再决定是否需要实际探针。原目录刚复核仍只有同两项用户修改。
 
 Date的原因输入和IssueStatusControl的折叠说明出现时机不同，暂不认定同类聚焦缺陷。“搜索需求编号”没有独立编号字段，名称内业务编号本来可搜，不因UUID未参与搜索增加功能。Goal保持active。
