@@ -18,6 +18,7 @@ import { ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from 
 import { invalidateRequirementViews, keys } from "../../../query-keys";
 import { readResourceFresh, ResourceReadInvalidatedError } from "../../../use-resource-query";
 import type { Person, Requirement } from "../../../types";
+import { progressReferenceLabel } from '../../../progress-trend';
 import { Modal } from "../../../components/Modal";
 import { FormError, FormField, FormSubmitActions } from "../../../components/Form";
 import { useToast } from "../../../components/Toast";
@@ -232,7 +233,7 @@ export function RequirementCorrectionForm({
       <FormField label="需求背景（可选）" full><textarea aria-label="纠错后的需求背景" rows={3} value={draft.background} onChange={(event) => change("background", event.target.value)} /></FormField>
       <FormField label="完成标准（可选）" full><textarea aria-label="纠错后的完成标准" rows={3} value={draft.acceptanceCriteria} onChange={(event) => change("acceptanceCriteria", event.target.value)} /></FormField>
       <ReferenceLinksEditor value={draft.referenceLinks??requirementReferenceLinks({referenceUrl:draft.referenceUrl},baseline)} onChange={links=>change("referenceLinks",links)}/>
-      {!!candidates.length && <FormField label="关联历史记录（可选）" full><Select aria-label="需求纠错关联历史记录" value={supersedesId} onChange={(event) => {const value=event.target.value;setSupersedesId(value);persistDraftIfLocked(draft,reason,value);}}><option value="">不指定</option>{candidates.map((update) => <option value={update.id} key={update.id}>{new Date(update.createdAt).toLocaleDateString("zh-CN")} · {update.content.slice(0, 36)}</option>)}</Select></FormField>}
+      {!!candidates.length && <FormField label="关联历史记录（可选）" full><Select aria-label="需求纠错关联历史记录" value={supersedesId} onChange={(event) => {const value=event.target.value;setSupersedesId(value);persistDraftIfLocked(draft,reason,value);}}><option value="">不指定</option>{candidates.map((update) => <option value={update.id} key={update.id}>{progressReferenceLabel(update)} · {update.content}</option>)}</Select></FormField>}
       <FormField label="纠错说明（可选）" full><textarea aria-label="需求纠错原因" rows={2} value={reason} onChange={(event) => {const value=event.target.value;setReason(value);persistDraftIfLocked(draft,value);}} placeholder="说明原信息哪里有误，以及核对依据" /></FormField>
       {unknown&&!reviewRequired&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
       {reviewRequired && <div className="warning-banner field-full">提交结果待核对；当前版本已变化。本窗口不再提交。请核对当前资料与纠错记录，已填内容保留。<Button variant="secondary" type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</Button></div>}

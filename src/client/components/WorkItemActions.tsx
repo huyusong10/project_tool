@@ -11,6 +11,7 @@ import { isWriteOutcomeUnknown, requiresWriteRecheck } from "../api";
 import { useBusinessDate } from "../app-context";
 import { invalidateRequirementViews } from "../query-keys";
 import type { ProgressUpdate, WorkItem, Requirement } from "../types";
+import { progressReferenceLabel } from '../progress-trend';
 
 import { AnchoredPopover } from './inline-edit/popover';
 import { useToast } from "./Toast";
@@ -271,7 +272,7 @@ export function WorkItemActions({
           {item.status === "completed" && <label><span>实际完成（必填）</span><input aria-label="实际完成" type="date" disabled={pending} min={actualStart || undefined} max={today} value={actualEnd} onChange={(event) => { setActualEnd(event.target.value); setValidationError(""); }} /></label>}
         </div>
         {item.status === "cancelled" && item.cancelledAt && <small>取消日期：{item.cancelledAt}</small>}
-        {!!correctionCandidates.length && <label><span>关联历史记录（可选）</span><Select aria-label="工作项纠错关联历史记录" disabled={pending} value={supersedesId} onChange={(event) => setSupersedesId(event.target.value)}><option value="">不指定</option>{correctionCandidates.map((update) => <option value={update.id} key={update.id}>{new Date(update.createdAt).toLocaleDateString("zh-CN")} · {update.content.slice(0, 28)}</option>)}</Select></label>}
+        {!!correctionCandidates.length && <label><span>关联历史记录（可选）</span><Select aria-label="工作项纠错关联历史记录" disabled={pending} value={supersedesId} onChange={(event) => setSupersedesId(event.target.value)}><option value="">不指定</option>{correctionCandidates.map((update) => <option value={update.id} key={update.id}>{progressReferenceLabel(update)} · {update.content}</option>)}</Select></label>}
         <label><span>纠错说明（可选）</span><textarea aria-label="纠错原因" readOnly={pending} rows={2} value={reason} onChange={(event) => { setReason(event.target.value); setValidationError(""); }} placeholder="说明为什么修正历史数据" /></label>
         {validationError && <p className="form-error" role="alert">{validationError}</p>}
         {error && <p className="form-error">{error}</p>}

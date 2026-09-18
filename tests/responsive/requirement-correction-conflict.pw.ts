@@ -7,14 +7,19 @@ test('需求纠错重读保留本地标题和其他人的资料，执行事实�
   const f=await phaseFixture(page),endpoint='/api/requirements/'+f.testing.id;
   const post=async(url:string,data:object)=>{const response=await page.request.post(url,{data});expect(response.ok(),await response.text()).toBe(true);return response.json();};
   const read=async()=>await(await page.request.get(endpoint)).json() as Requirement;
+  const notePrefix='已完成资产导入、字段映射和历史数据核对，本次记录对应的独立验证材料为：';
+  for(const suffix of ['来源甲','来源乙'])await post(endpoint+'/progress',{expectedVersion:(await read()).version,content:notePrefix+suffix});
   await post('/api/work-items/'+f.testing.workItems[1].id+'/complete',{expectedVersion:f.testing.workItems[1].version,content:'保留完成记录'});
   const original=await read();expect(original.status).toBe('completed');
+  const source=original.progressUpdates!.find(update=>update.content===notePrefix+'来源乙')!;
   const replacement=await post('/api/people',{projectId:f.projectId,name:'纠错新负责人 '+Date.now()});
   const facts=(r:Requirement)=>({status:r.status,progress:r.progress,actualStart:r.actualStart,actualEnd:r.actualEnd,plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,workItems:r.workItems.map(w=>({...w,deliveryForecast:{...w.deliveryForecast,revision:undefined}}))});
   let writes=0;page.on('request',request=>{if(request.method()==='POST'&&new URL(request.url()).pathname===endpoint+'/correct')writes++;});
   await page.goto('/requirements/'+original.id);
   const open=async()=>{await page.getByRole('button',{name:'需求操作',exact:true}).click();await page.getByRole('button',{name:'纠错',exact:true}).click();};
   await open();const form=page.getByRole('dialog',{name:'需求纠错',exact:true});
+  await form.getByRole('combobox',{name:'需求纠错关联历史记录',exact:true}).click();
+  const option=page.getByRole('option').filter({hasText:source.content});await expect(option).toBeVisible();await option.click();
   await form.getByRole('textbox',{name:'纠错后的需求标题',exact:true}).fill('本地核实的需求标题');
   await form.getByRole('textbox',{name:'需求纠错原因',exact:true}).fill('核对原资料后修正标题');
   const remote={ownerId:replacement.id,background:'远端核实的背景',acceptanceCriteria:'远端核实的完成标准',phaseId:f.phases[0].id,referenceLinks:[{title:'最新资料',url:'https://example.com/latest-requirement'}]};
@@ -41,6 +46,6 @@ test('需求纠错重读保留本地标题和其他人的资料，执行事实�
   const saved=await read();expect(saved).toMatchObject({...remote,...second,title:'本地核实的需求标题',version:latest.version+1});
   expect(facts(saved)).toEqual(facts(original));
   expect(saved.progressUpdates?.filter(u=>latest.progressUpdates?.some(p=>p.id===u.id))).toEqual(latest.progressUpdates);
-  expect(saved.progressUpdates?.filter(u=>!latest.progressUpdates?.some(p=>p.id===u.id))).toMatchObject([{eventType:'correction',content:'核对原资料后修正标题'}]);
+  expect(saved.progressUpdates?.filter(u=>!latest.progressUpdates?.some(p=>p.id===u.id))).toMatchObject([{eventType:'correction',content:'核对原资料后修正标题',supersedesId:source.id}]);
   expect(writes).toBe(3);
 });
