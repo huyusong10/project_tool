@@ -4,7 +4,7 @@
 
 ## 基线与恢复
 
-- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品23ca8fa（HF其他链接核对），前一产品84c5c72（HE需求链接核对）、544be86（HC数量输入）、e0610c3（GT/GZ窄屏排序）。
+- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品92983d1（HK Phase错误反馈），前一产品23ca8fa（HF其他链接核对）、84c5c72（HE需求链接核对）、544be86（HC数量输入）。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
 - HG完整验收23ca8fa：970项业务（117文件）、9项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS938.26KB、CSS342.41KB、ELK1595.33KB；stages-gx-hf-verify.log，涵盖GX、GT/GZ、HC、HE/HF。原目录仍仅两项用户修改。
@@ -24,6 +24,7 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 | 阶段 / 提交 | 结果与验收入口 |
 |---|---|
+| HK / 92983d1 | Phase重复链接在客户端校验时直接展示Zod JSON。仅按工作项链接已有写法提取issues.message，未改校验/版本规则。真实https://example.com与尾斜杠重复地址显示中文原因、零POST且输入保留，移除重复项后只创建一次、其他Phase完整DTO不变；4项不同浏览器旅程、Lint/类型/测试构建通过，390px截图已复核。phase-link-validation-before/after/verified/final.log、stage-hk-lint及归档探针；未加永久测试。中途修正探针getByLabel对已填textarea定位及误用POST地址GET读取两个问题，未改产品来迎合探针 |
 | HF / 23ca8fa | 同样的空格使特性正常保存误报异常、Phase核对漏走成功返回、工作项核对仍锁定；真实3条既有旅程均在旧实现失败。三个表单的结果比较复用HE函数，草稿合并规则不变。15项相关浏览器通过，特性补验响应丢失后只提交一次；Lint/类型/测试构建通过。只扩展既有3条旅程，未新增长期测试。other-link-recheck-before/after.log、feature-link-normal-and-unknown.log、stage-hf-lint.log及失败上下文 |
 | HE / 84c5c72 | 新需求链接名称含两侧空格，保存成功但响应丢失，核对因原始值与服务端trim结果不同而漏认创建。新增小型referenceLinksEqual复用现有schema，保留类型/顺序/内容差异和非法输入校验，接入新建需求核对。真实两链接创建、丢响应、刷新、核对成功，只POST一次且完整需求DTO不变；23浏览器、3链接单测、Lint/类型/测试构建通过。requirement-link-recheck-baseline/after.log、stage-he-*；保留1条真实恢复回归。最初探针误把客户端readOnly选项放到HTTP查询，修正后基线确实失败，未放宽服务端字段 |
 | HD / 无需修改 | 新建需求只有流程名称选择，没有流程内容或排期预览；不引入额外版本协议。既有form-submission覆盖流程/负责人失效后保留选择，requirement-edit-rechecks覆盖实际排期预览随需求/流程更新失效，template-save-journey覆盖流程编辑草稿并发核对。本轮读代码确认，未重复运行已验收专项 |
@@ -109,8 +110,8 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - DU一次迁移测试启动15秒超时、输出为空；单项与同并发重验通过，EB/EJ/EQ全量未再发生。不直接放宽超时。
 - GT待查项已在GZ完成独立输入节奏对照和实际页面验收，见近期成果。无用户决策事项、无外部阻塞，Goal保持active。
 
-## 当前阶段 HK：Phase重复链接的错误反馈
+## 当前阶段 HL：临近中秋、国庆的工作日排期
 
-Phase客户端先做schema解析，catch直接显示Error.message；同类工作项链接已把Zod issues转换为文字。真实新建Phase添加重复链接，确认是否仍暴露JSON校验结构。
+按2026年政府公开安排核对9月20日、10月10日补班和中秋/国庆休假，检查正向及截止日反推排期。现有workday-range覆盖春节与年份边界；本轮关注即将到来的跨假期实际规划，不重复全日期遍历。
 
-验收：重复链接显示可读原因，原输入保留且不发送写入；修正后只创建一次，其他Phase完整资料不变。不改验证规则。HJ已完成，无运行测试；当前产品23ca8fa。
+验收：日期表与公开来源一致，正向/反推得到相同工作日和工作项计划，假期输入有现有规则的清楚反馈。不扩日历覆盖范围。HK已验收，探针归档，无运行测试；当前产品92983d1。
