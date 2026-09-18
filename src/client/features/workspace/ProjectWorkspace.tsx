@@ -51,7 +51,7 @@ export function ProjectWorkspace({report,data,refreshNotice}:{report:Dashboard;d
     views:<ViewTabs ariaLabel="项目视角" value={location.view} options={[{value:'list',label:'清单'},{value:'graph',label:'关系图'},{value:'progress',label:'进展表'}]} onChange={v=>switchView(v as WorkspaceView)}/>};
   const status=draft.pending?'提交结果待核对':draft.conflict?'版本冲突':draft.count?draft.count+' 项未保存':Object.keys(draft.fields).length?'输入未保存':'已保存';
   const valid=last.scope.kind===location.scope.kind&&last.scope.id===location.scope.id;
-  const projectMilestoneOpen=location.scope.kind==='project'&&params.get('graphInspector')==='open'&&data.milestones?.some(m=>m.id===params.get('pathNode')&&!m.requirementId);
+  const projectMilestoneOpen=location.scope.kind==='project'&&params.get('graphInspector')==='open'&&navigationData.milestones?.some(m=>m.id===params.get('pathNode')&&!m.requirementId);
   const draftControls=<><Button variant="secondary" onClick={()=>setChanges(true)}>草稿预览与冲突</Button><Button variant="secondary" disabled={draft.busy||draft.readOnly||(!draft.count&&!draft.pending)} onClick={()=>void draft.save()}>{draft.pending?'核对原提交':'保存项目草稿'}</Button><Button variant="secondary" disabled={!draft.count||draft.busy||draft.readOnly} onClick={()=>setDiscard(true)}>放弃项目草稿</Button></>;
   const headerProps={title:"项目空间",status:<ToolbarStatus onClick={()=>setChanges(true)}>{status}</ToolbarStatus>,moreActions:<Button variant="secondary" onClick={()=>go('/analytics')}>统计分析 · 全项目</Button>};
   const objectActions=useWorkspaceActions({data,location,inspect,onImport:()=>{const next=new URLSearchParams(params);next.set('intake','1');setParams(next);}});

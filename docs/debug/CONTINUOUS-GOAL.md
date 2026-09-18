@@ -5,7 +5,7 @@
 ## 基线与恢复
 
 - 工作目录：D:\tools\project-manage-improve；分支 codex/continuous-improvement；起点 bd19fa1。
-- 当前产品含EK/EL/EN/EP修复，EQ完整验收覆盖A—EP；EP另有9项浏览器专项通过。
+- 当前产品在5e31e67上修复ES新里程碑草稿定位；EQ完整验收基线5e31e67覆盖A—EP，ES专项通过。
 - 原目录 D:\tools\project-manage 的 dev 不改动。保留用户修改 skills/project-manage-intake/SKILL.md 和未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 使用独立构建、临时数据库和浏览器端口 3296；3210、3295 服务保持原样。未部署、未推送。
 - 证据保存在 .preview/qa/continuous-goal/，不进入版本库。当前无运行测试、无临时浏览器测试留在 tests/responsive。
@@ -130,10 +130,16 @@ stages-ek-ep-verify.log完整通过：969项业务（117文件）、8项性能�
 
 motion.ts统一监听浏览器偏好；CSS禁用过渡、动画和平滑滚动；GraphScene定位/恢复/布局读取实时偏好，Chart在偏好改变时更新选项。day-night-motion.pw.ts已有实时切换、菜单、图表、今天定位及密集图表检查；motion.test.ts随EQ通过。不修改、不重复运行专项。
 
-## 当前阶段 ES：未保存的新项目里程碑定位
+## ES：未保存的新项目里程碑定位
 
-范围：已保存项目里程碑已通过EK/EL；尚未保存的新里程碑未覆盖。ProjectWorkspace选择图面板仍查询正式data.milestones，验证创建草稿后跨视图定位和无效字段恢复是否受影响。
+真实新建草稿后，摘要定位缺少名称编辑框；ProjectWorkspace判定项目里程碑仅查正式资料。改查已有navigationData，一处读取替换。新增草稿定位、空名称拦截后回到原字段、390px修改、工具栏保存一次及刷新均通过；原依赖与已有里程碑保持，保存前零写入。新增1项浏览器回归并入graphic-editor.pw.ts。
 
-验收：先真实复现；草稿定位和校验能回到原字段，未保存零正式写入，修正后仅一次保存且既有事实保持。没有证据则不修改。
+new-project-milestone-before.log复现；after.log原里程碑编辑和两种待处理入口3项通过，新旅程最后因探针先blur再在画布外按Ctrl+S超时，改用明确的保存按钮；final.log新旅程通过。Lint/类型/测试构建通过，截图已复核，无临时测试留在tests/responsive。
 
-恢复状态：EQ已全部通过，无运行测试。ES未改代码，准备临时浏览器探针。
+## 当前阶段 ET：移除列表项后的键盘落点
+
+范围：检查删除、归档等日常操作完成后，原触发控件消失时键盘焦点是否仍可继续操作。先核对Modal现有returnFocus及具体调用，再选一个实际未覆盖入口验证。
+
+验收：若发现焦点丢到页面开头，恢复到可见且合理的相邻操作；取消和原对象仍存在时的回焦行为保持。无复现则不改公共弹窗。
+
+恢复状态：ES专项完成，无运行测试。ET未改代码，下一步查看现有弹窗回焦调用和键盘覆盖。
