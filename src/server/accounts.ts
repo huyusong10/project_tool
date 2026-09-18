@@ -122,15 +122,21 @@ export function listAccounts() {
   const roles = getDatabaseContext().sqlite.prepare(`SELECT pp.person_id AS personId, pp.project_id AS projectId, pr.name AS projectName
     FROM project_people pp JOIN projects pr ON pr.id=pp.project_id
     WHERE pp.project_role='manager' AND pr.deleted_at IS NULL ORDER BY pr.name`).all() as any[];
-  const assignments = getDatabaseContext().sqlite.prepare(`SELECT p.id AS personId,
+  const assignments = getDatabaseContext().sqlite.prepare(`WITH active_work AS (
+      SELECT w.id, w.owner_id FROM work_items w JOIN requirements r ON r.id=w.requirement_id
+      WHERE r.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled')
+    ), work_assignments AS (
+      SELECT owner_id AS person_id, id AS work_item_id FROM active_work WHERE owner_id IS NOT NULL
+      UNION
+      SELECT c.person_id, c.work_item_id FROM work_item_collaborators c JOIN active_work w ON w.id=c.work_item_id
+    ), work_counts AS (
+      SELECT person_id, COUNT(*) AS workItems FROM work_assignments GROUP BY person_id
+    ) SELECT p.id AS personId,
     (SELECT COUNT(*) FROM requirements r
       WHERE r.owner_id=p.id AND r.deleted_at IS NULL AND r.status NOT IN ('completed','cancelled')) AS requirements,
-    (SELECT COUNT(DISTINCT w.id) FROM work_items w LEFT JOIN work_item_collaborators c ON c.work_item_id=w.id AND c.person_id=p.id
-      JOIN requirements r ON r.id=w.requirement_id
-      WHERE r.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled')
-        AND (w.owner_id=p.id OR c.person_id IS NOT NULL)) AS workItems,
+    COALESCE(w.workItems, 0) AS workItems,
     (SELECT COUNT(*) FROM issues i WHERE i.owner_id=p.id AND i.status<>'resolved') AS issues
-    FROM people p`).all() as Array<{ personId: string; requirements: number; workItems: number; issues: number }>;
+    FROM people p LEFT JOIN work_counts w ON w.person_id=p.id`).all() as Array<{ personId: string; requirements: number; workItems: number; issues: number }>;
   const assignmentsByPerson = new Map(assignments.map(({ personId, requirements, workItems, issues }) => [
     personId, { requirements: Number(requirements), workItems: Number(workItems), issues: Number(issues) },
   ]));

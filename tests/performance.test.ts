@@ -61,6 +61,36 @@ afterAll(() => {
 });
 
 describe('看板性能', {timeout: 30000}, () => {
+  it('1000个账号和10000个工作项的在办计数只读且全部样本低于500毫秒',async()=>{
+    const local=await createTestDatabase(),db=local.context.sqlite;
+    const {listAccounts}=await import('../src/server/accounts');
+    const now='2026-09-01T00:00:00.000Z',size=1000;
+    try{
+      db.transaction(()=>{
+        db.prepare('INSERT INTO projects(id,name,created_at,updated_at)VALUES(?,?,?,?)').run('account-scale','账号任务规模',now,now);
+        const person=db.prepare('INSERT INTO people(id,name,active,created_at,updated_at)VALUES(?,?,1,?,?)');
+        const account=db.prepare("INSERT INTO accounts(id,person_id,username,normalized_username,password_hash,created_at,updated_at)VALUES(?,?,?,?,'test-only',?,?)");
+        const requirement=db.prepare("INSERT INTO requirements(id,project_id,title,owner_id,status,deleted_at,created_at,updated_at)VALUES(?,'account-scale',?,?,'in_progress',?,?,?)");
+        const work=db.prepare("INSERT INTO work_items(id,requirement_id,title,owner_id,status,progress,actual_start,actual_end,sort_order,created_at,updated_at)VALUES(?,?,?,?,?,?,'2026-09-01',?,?,?,?)");
+        const collaborator=db.prepare('INSERT INTO work_item_collaborators(work_item_id,person_id)VALUES(?,?)');
+        for(let i=0;i<size;i++){const id='person'+i;person.run(id,id,now,now);account.run('account'+i,id,id,id,now,now);}
+        for(let i=0;i<size;i++){
+          const owner='person'+i,rid='r'+i;requirement.run(rid,rid,owner,i%10===0?now:null,now,now);
+          for(let j=0;j<10;j++){
+            const id=rid+'w'+j;work.run(id,rid,id,owner,j===0?'completed':'in_progress',j===0?100:30,j===0?'2026-09-02':null,j,now,now);
+            collaborator.run(id,owner);collaborator.run(id,'person'+((i+1)%size));
+          }
+        }
+      })();
+      const unchanged=db.prepare('SELECT total_changes() AS n').get();
+      measureScenario('accounts-1000-10000-work',500,()=>local.run(listAccounts),result=>{
+        const byPerson=new Map(result.filter(account=>account.personId).map(account=>[account.personId,account.activeAssignments]));
+        expect(byPerson.size).toBe(size);
+        for(let i=0;i<size;i++)expect(byPerson.get('person'+i)).toEqual({requirements:i%10===0?0:1,workItems:(i%10===0?0:9)+((i+size-1)%10===0?0:9),issues:0});
+      });
+      expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(unchanged);
+    }finally{local.close();}
+  });
   it('5000条问题的后台版本检查只读且全部样本低于500毫秒',async()=>{
     const {projectChangeVersion:readVersion}=await import('../src/server/services/project-change-version');
     const projectChangeVersion=(...args:Parameters<typeof readVersion>)=>fixture.run(()=>readVersion(...args));
