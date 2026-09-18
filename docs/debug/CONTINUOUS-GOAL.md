@@ -4,10 +4,10 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品834caa2（LE）、8903cfc（LD），测试夹具dd0aa3a；更早成果见下表与历史版本。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品3376c6b（LM）、0aa4c09（LK）、e4c0fb6（LI）、834caa2（LE）、8903cfc（LD），测试夹具dd0aa3a；更早成果见下表与历史版本。
 - 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
 - 最新全量LF：997业务/120文件、11性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-lf-verify.log，24625退出0已回收。覆盖LD/LE及dd0aa3a，首轮完整通过；目标检查另有LD 15、LE 7个不同浏览器场景通过。
-- LF生产构建：主JS933.42KB、CSS339.24KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-ld-matrix.log确认758功能/183布局/2性能、普通1856实例；只列清单，不称为执行全部浏览器。产品与测试已提交，临时探针已归档；无运行句柄、3296监听0、当前格式临时目录0，原目录仍仅用户两项修改。
+- LF生产构建：主JS933.42KB、CSS339.24KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-ld-matrix.log确认758功能/183布局/2性能、普通1856实例；只列清单，不称为执行全部浏览器。该轮产品与测试已提交，临时探针已归档；LF结束时无运行句柄、3296监听0、当前格式临时目录0，原目录仍仅用户两项修改。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
 详细历史在本文件Git版本：A—DO fd512b7；DP—EV 41a4ed0；FE—HL d35957a；HE—IE 67250e9。JG至JL详验见1ce7589；JP—JZ详验见dc53ed7。按主题取读，不重新开始。
@@ -104,65 +104,49 @@
 
 该轮另发现的合并来源链接遗漏已独立修复7d70e7b；验收见近期成果。工作区无未提交产品修改。周末无工作日计划候选同样降级：当前新建排期明确限制工作日，未发现当前入口证据。
 
-## KV验收：返回标签核对登录身份
+## 旧阶段恢复索引
 
-检查登录身份变化后的浏览器后退/前进。基础会话变化清业务缓存与草稿已有refresh-failures.pw.ts验证；KK已验证公开项目撤回后当前页面清空。本阶段只补历史导航这一差异：另一账号无权时返回旧私有地址不得显示旧数据，重新获得权限后正常读取；浏览器业务零写入。先核对已有证据，不重复基础身份旅程。
-
-个人设置页的session继承refetchOnWindowFocus:false。校正夹具后，第二标签真实退出/登录，旧页返回仍显示admin；corrected-before.log（31529退出1）及trace/screenshot已保留。main.tsx只为session开启返回标签刷新，复用已有身份变化清缓存，不增加轮询。初次修改后已通过身份/后退/前进隔离，探针误要求默认折叠的需求立即可见；现按实际操作展开分组。
-
-033d907已提交：只加session查询选项和1个真实双标签回归。session-history/refresh-failures/my-work-journey共50通过，stage-kv-regression.log（40151退出0已回收），类型/测试构建/目标Lint/diff通过；无权历史地址404且不显示旧正文/管理员菜单，新增观察权限后刷新可读，甲乙完整需求DTO均保持，原页面业务0写、无页面异常，390px截图已检查。临时探针归档；accepted事实以永久用例和最终日志为准，早期session-history-kv.json并非最终通过结果。
-
-矩阵756功能/183布局/2性能、1854实例归类通过，stage-kv-matrix.log，仅清单。Headless两页均为visible，夹具显式隐藏/返回并让document的visibilitychange冒泡至查询库实际监听的window；早期focus/不冒泡事件的失败不作产品对照依据，api-focus-probe/ui-before/constant-visibility/transition-before日志保留。
-
-## KX验收：缺失排期入口
-
-KW已完成。KV观察者截图出现“排期”入口；只读确认RequirementOverview.tsx约54行只调用workspace.inspect，直接执行跳basic，工作项模式跳work，不直接提交。RequirementDetails.tsx的basic标签只有资料/来源，没有计划日期；现有“调整计划”动作在Header并以canManage及终态限制。
-
-682b616已提交，复用detail-action-polish已有用例增加直接执行表单路径。11个不同浏览器通过（53515、45476退出0已回收），包含取消0写、真实保存1写、三角色与两种执行模式、6条既有冲突/核对/终态回归。初始探针27614退出1，正确等待的管理员表单和观察者工作项标签断言均失败；两个直接只读按钮断言最初遗漏await，修正后通过，原角色标签快照保留，不把未等待断言当作失败证据。截图与完整DTO断言均已检查。
-
-## KY验收：会话存储异常
-
-转查浏览器存储不可用时的使用与恢复。已有gantt-colors/appearance验证皮肤和侧栏，graphic-editor验证IndexedDB失败提示，requirement-intake验证导出备份；不重复这些已覆盖路径。useDeliveryForm和页面筛选均已捕获存储异常。
-
-FeaturePathPanel仍由ProjectWorkspace调用。原版真实探针进入页面错误边界，37812退出1；页面异常由边界捕获，pageerror为空，截图与错误提示是实际证据。1行catch后同探针通过，71557退出0。永久回归扩展为三个会话存储方法均抛错，另用无注入的标签验证旧回执正常读取与清除；与3条现有特性图交互/刷新/未知写入测试共4通过，34341退出0。全部句柄已回收，临时探针已归档。
-
-存储不可用时仍显示旧草稿待核对及“查看修改与错误”。本次只保证正式资料可浏览，不承诺跨页草稿恢复，也不取消现有编辑保护。该提示是否充分解释原因留给LA核对。
-
-## 早期恢复入口
-
-LA/LC详细过程见1532cfc：存储不可用的英文提示与窄屏裁切由0da42bc修复，3个目标浏览器与3个业务通过；初始完整草稿比较需先建立项目布局缓存，不能把新布局当丢失。la-accepted为最终截图，la-after仅文案阶段。LC完整verify覆盖至LA，现已由LF替代。
-
-## LD验收：依赖导航与角色
-
-8903cfc修复两个详情入口保留上层范围的问题：进入所属需求，工作项保持选中，返回恢复原详情页签。入口统一称“查看依赖”。画布复用已有项目角色，只向经理、当前成员中的需求负责人或执行人开放各自操作；弹窗复用同一结构权限。无额外请求、无服务端权限修改。
-
-- 原版99728回归确认跨范围错误；进程已结束，恢复时句柄已不存在。首次修复86702退出1：8通过，1失败暴露工作项只定位未选中，另1确认观察者仍有编辑入口；API明确403、正式完整DTO保持，属界面问题。viewer-owner-ld-permission-before.json、ld-navigation-after。
-- 补齐选中后31514退出0；角色修复后8422退出0，11个导航/角色浏览器通过。覆盖项目/特性清单与进展、旧需求链接、浏览器后退/前进、原经理失权恢复及历史负责人恢复member。只读导航完整DTO保持、业务0写；1280/390截图已查看。stage-ld-regression.log、ld-accepted。
-- 普通执行人补验：91472退出1中的3个既有管理员浏览器通过；探针错误地要求添加菜单消失，实际各项禁用。88885退出1：预测已保存，另一需求的项目级风险/余量随交付预测合理变化，不应要求完整分析DTO相等。改查其版本、执行记录、工作项版本/状态/计划日期保持；95820退出0，预测仅1次apply、刷新仍在、结构不可编辑、pageerror为0。stage-ld-contributor-final.log、contributor-ld.json、ld-contributor-final；390截图已查看。以上句柄均回收，临时探针归档。
-- 合计15个不同浏览器场景通过，不累计重复运行；20个业务测试通过，目标Lint/按钮样式/diff、类型/测试构建、矩阵通过。后续LF完整verify已覆盖LD。
-- 早期降级保护与取消探针的事实仍有效：未完成任务降为观察者返回409；取消工作项直接定位探针未完成。stage-ld-before/historical-before/completed-before.log。只有导航修复后的86702实际到需求范围并验证了403，不能用早期项目范围截图证明画布权限。
-
-## LE验收：人员矩阵
-
-规模测量82664退出0：50/500/5000人，单岗位及5000人20岗位，共12次渲染；500人响应到显示25—28ms，5000人170—311ms、搜索28—57ms、清空182—397ms。零业务写、零pageerror，折叠和390px筛选通过。people-matrix-le.json、stage-le-matrix.log、le-matrix；使用模拟API隔离浏览器成本，不声称真实HTTP端到端。已有KI覆盖服务端5000人，旧people-scale-browser覆盖人力分析时间表，均未重跑。本轮不改分组算法、分页或渲染架构。
-
-实际创建中英文长姓名和岗位后，原版20处末尾可见性检查13处失败：姓名、岗位卡片省略，390px连续英文标题越界。834caa2只改卡片样式，允许换行，给人数保留空间；20处均通过、1280/390截图已查看、完整人员DTO保持、业务0写、pageerror0。stage-le-labels-before/after/accepted.log、person-labels-le-before.json/person-labels-le.json、le-labels-after；不因局部CSS增加永久测试。
-
-相邻检查发现两处测试夹具问题，dd0aa3a已修正：岗位筛选用已排期需求和首个工作日起的真实API窗口，不依赖当天是否休息；人员目录用本次姓名后缀筛选，改名时前缀命中确保真实移到前页。保留未知更新重读、草稿不丢、仅一次保存、取消不写等原断言，不改产品规则。
-
-- 第一次长文字探针被类型检查拒绝（width重复），修正探针后5693退出1是实际13处可见性失败。
-- 77446退出1：长文字及3个人力分析场景通过，2个旧夹具失败；临时还原CSS后9831仍同样失败，已自动恢复候选样式。stage-le-fixture-baseline.log。
-- 38645退出1：日期夹具和长文字通过，分页筛选后的搜索排序仍让原改名对象留在末页；修正改名为搜索前缀命中，76056退出0，两筛选案例一起通过。stage-le-fixtures-final.log。全部句柄回收。
-- 共7个不同浏览器场景通过（规模1、文字1、既有人力3、筛选2），目标Lint/按钮样式/diff、类型/测试构建通过。临时两探针已归档。
-
-## LF验收：组合基线
-
-834caa2、8903cfc、dd0aa3a已首轮通过完整verify，stage-lf-verify.log，24625退出0已回收。997业务、11性能、26冒烟及全部静态/生产构建/预算通过；没有重新执行1856个浏览器实例，矩阵仅用于分类。
+- KV返回标签身份核对033d907、KX缺失排期682b616、KY会话存储05e1795及LA存储原因0da42bc均随LF验收；细节见1532cfc和ed74b0c，不重复运行。
+- LD 8903cfc：详情查看依赖进入所属需求并选中工作项，往返保留原页签；观察者不能编辑画布，成员按既有职责编辑。15个不同浏览器、20业务检查通过。最终stage-ld-regression/admin/contributor-final.log、ld-accepted、ld-contributor-final；早期范围、选中与角色失败及DTO断言修订见ed74b0c。
+- LE 834caa2/dd0aa3a：人员与岗位长名称20/20完整显示；工作日和搜索重排夹具隔离真实日期/其他案例。7个不同浏览器通过，stage-le-*、le-accepted；50/500/5000模拟规模最高响应170—311ms为已完成旧测量，无性能修改。早期13/20裁切及夹具失败见ed74b0c。
+- LF最新全量与浏览器清单见基线；stage-lf-verify.log首轮完整通过，覆盖至dd0aa3a。此后LI/LK/LM只作所需目标验证。
 
 ## LG复核：归档服务无需修改
 
 archives-scale.json/log已有100/1000/5000需求、最高100项目/10万历史的全局及项目内9组对照，每组5次，完整结果hash/统计/只读断言通过。5000规模全局中位8.82ms、最高10.24ms，项目内0.15—0.17ms。listArchives第21—39行仍为25c7e91与5b5bd91，均早于该测量；后续ab3e713只改历史引用删除保护。本次只复核旧证据，未重跑、未改服务查询。
 
-## 当前阶段 LH
+## LH验收：大归档清单无需性能改动
 
-检查归档中心接收大清单后的浏览器成本。ArchiveCenterPage已通过useListPagination只渲染当前页，筛选在浏览器遍历四类归档并排序；未找到归档浏览器规模证据。服务端5000规模不重测。下一步测50/500/5000条的响应到显示、搜索、清空和末页，核对当前页行数、切换类型及恢复入口的对象归属；只读与取消应0写。明显瓶颈或真实交互问题才改实现，不增加分页体系。恢复先用最新代码与本记录，长期Goal保持active。
+50/500/5000条四类归档各3轮浏览器测量，5000条响应到显示29—33ms、中文搜索23—25ms、拼音45—54ms、清空25—29ms、末页操作54—60ms；最大规模DOM仍717个元素。类型切换、末页与390px确认窗口通过；取消0写，模拟恢复仅指定需求与expectedDeletedAt，5000→4999、末页20→19，pageerror0。使用模拟API隔离浏览器成本，不称真实端到端或真实数据库恢复。archives-browser-lh.json、stage-lh-archives-final.log、lh-archives-final，截图已查看；临时探针归档，不改性能实现。
+
+初始78150退出1：等待当前布局隐藏的跳页输入导致180秒超时，records为空，没有性能结论；改为点击可见末页按钮后32105退出0（1通过），两句柄已回收。stage-lh-archives.log、archives-browser-lh-initial.json保留失败证据。
+
+## LI验收：筛选名称
+
+e4c0fb6为归档类型和问题列表四个筛选补无障碍名称。只改5个aria-label，已有回归由按位置查找改为按名称查找；无新永久测试。Analytics、个人设置和项目成员的相邻控件已有表单标签，不重复添加。
+
+归档原版39401退出1，快照中combobox没有名称；修改后58965退出0，真实同名跨项目筛选、取消、需求/模板各一次恢复、其他项目完整DTO保持及刷新通过。问题原版9148退出1（2失败）；修改后65042退出0（4通过），覆盖筛选互斥、详情Esc、加载重试及8种宽度的滚动编辑。stage-li-label/ issues-before/after.log与li-*；目标Lint/diff、类型/测试构建通过，句柄已回收。LF全量尚不含LI，不重复完整verify。
+
+## LJ复核：休息日负载规则保持
+
+LE出现的非工作日空矩阵已有明确业务回归：tests/integration.test.ts:736“周末并发区间没有工作日，不能虚构当日负载”要求dates与days为空、currentCount/peakCount为0、currentTop为空。该测试随LF通过，未重新执行。人力分析按工作日计算，源码与既定规则一致，本轮不改。
+
+## LK验收：工作项链接连续提交
+
+0aa4c09复用useSynchronousPendingLock保护关联链接保存。强化原有未知结果回归，同一事件周期两次requestSubmit在原版发出2次PATCH，stage-lk-links-before.log明确失败；该进程已结束、3296无监听，恢复时未持有句柄。修改后74017退出0，4个原有浏览器场景通过，包括已完成工作项补充链接、普通链接连续提交、刷新恢复与核对、窄屏主题；目标Lint/diff与类型/测试构建通过。stage-lk-links-after.log、lk-links-after。无新永久测试，不改回执或核对协议。LF全量早于LI/LK。
+
+## LM验收：同名Token辨认
+
+3376c6b在撤销窗口显示与列表相同的前缀标识。原有核对回归改成两个同名Token，原版87899退出1，确认窗口缺少目标前缀；修改后56708退出0，4个已有Token创建/撤销/未知结果场景和1个真实同名旅程通过。真实接口两次取消0写，确认只DELETE所选id，另一个完整DTO保持；刷新后状态一致，pageerror0。1280/390截图已查看，目标Lint/diff、类型/测试构建通过。stage-lm-tokens-before/after.log、lm-tokens-after、token-identity-lm.json；句柄已回收，临时stage-lm-token-identity.pw.ts已归档。无新永久测试。
+
+旧Token长名称、53条真实分页、混合状态和390px撤销已有token-pagination-verified、token-long-after、token-table-final成功证据；本轮只复核，不重复。LF全量尚不含LI/LK/LM，最新目标验证分别5/4/5个不同浏览器场景。
+
+## LN复核：下载恢复无需修改
+
+backup-download-final.log于9月18日03:23验收真实备份下载503后重下同一快照：只备份一次、两次下载请求、一次成功文件；SQLite完整性ok，中文/扩展字原文保持且不包含备份后新增需求。SystemPage下载逻辑仍c2e876f/32d2a13，早于该测量，本轮未重跑。RequirementImport导出仍d47aa38，原有requirement-intake.pw.ts:35覆盖存储失败、未整理原文、JSON及重传恢复；没有新缺陷证据，不改实现。
+
+顺带核对交接覆盖：assignment-handoff.pw.ts已覆盖待处理入口更换不可用负责人、开始执行、移除失效协作者及窄屏；服务assignment-handoff.test.ts另覆盖40%交接保留事实与历史。降低此领域优先级，不另建同类探针。
+
+## 当前阶段 LO
+
+核对项目默认流程归档后，新建需求页面显示的流程与实际创建结果是否一致；改选有效流程是否保留输入，已有需求实例是否保持。先读ProjectSettingsPage、RequirementForm的默认流程选择逻辑及既有归档回归，只补尚未覆盖的默认带入路径。已保存草稿在旧流程归档后改选保留输入由JB/KB验收，不重复。没有证据前不改业务规则。
