@@ -1,4 +1,4 @@
-import {chooseOption} from './select-helper';
+import {chooseOption,selectedValue} from './select-helper';
 import { project, template, secondaryTemplate, people, mockForms, scenarios, type FormReferenceState } from './form-fixture';
 import { headerAction } from './topbar-helpers';
 
@@ -158,7 +158,7 @@ test('引用选项刷新失效后保留未保存选择并明确提示', async ({
   await chooseOption(owner, 'u2');
   await requirementDialog.getByRole('button', { name: /流程与排期/ }).click();
   const requirementTemplate = requirementDialog.getByRole('combobox', { name: '流程设计', exact: true });
-  await expect(requirementTemplate.locator('option[value="t2"]')).toHaveText('备用流程');
+  await expect(selectedValue(requirementTemplate).locator('option[value="t2"]')).toHaveText('备用流程');
   await chooseOption(requirementTemplate, 't2');
   const requirementTemplateRequests = references.templateRequests;
   const requirementPeopleRequests = references.peopleRequests;
@@ -167,8 +167,8 @@ test('引用选项刷新失效后保留未保存选择并明确提示', async ({
   await reconnect(page);
   await expect.poll(() => references.templateRequests).toBeGreaterThan(requirementTemplateRequests);
   await expect.poll(() => references.peopleRequests).toBeGreaterThan(requirementPeopleRequests);
-  await expect(requirementTemplate).toHaveValue('t2');
-  await expect(requirementTemplate.locator('option:checked')).toHaveText('已不可用的流程（请重新选择）');
+  await expect(selectedValue(requirementTemplate)).toHaveValue('t2');
+  await expect(requirementTemplate).toHaveText('已不可用的流程（请重新选择）');
   await expect(owner).toHaveValue('u2');
   await expect(owner.locator('option:checked')).toHaveText('已不可用的负责人（请重新选择）');
 });

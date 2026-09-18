@@ -7,6 +7,7 @@ import { ReferenceLinksEditor } from './ReferenceLinks';
 import { readReferenceLinks, referenceLinksEqual, type ReferenceLink } from '../../shared/reference-links';
 import { useDeliveryForm } from '../use-delivery-form';
 import { Button } from './Button';
+import { Select } from './Select';
 import { assertCleanProjectDraft } from '../use-graph-draft';
 import { useSession } from '../app-context';
 import { migrateFeatureFields } from "../feature-storage-migration";
@@ -280,11 +281,11 @@ export function RequirementForm({
       </FormField>
       <FormDisclosure label="流程与排期" hint={templateId?'已选流程：'+(templates.find(t=>t.id===templateId)?.name||'项目默认流程'):'未选流程，直接执行；可稍后拆分'}>
         <FormField label="流程设计" full>
-          <select name="templateId" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
+          <Select name="templateId" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
             <option value="">暂不选择流程</option>
             {templateId && !templates.some((template) => template.id === templateId) && <option value={templateId}>{templatesQuery.data === undefined ? "项目默认流程（正在加载）" : "已不可用的流程（请重新选择）"}</option>}
             {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-          </select>
+          </Select>
         </FormField>
         <div className="field field-full">
           <span>排期方式</span>
