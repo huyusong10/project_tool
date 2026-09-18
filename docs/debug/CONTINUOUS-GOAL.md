@@ -39,6 +39,7 @@ git show d35957a:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 ## 近期无需修改的检查
 
+- IA：README校正“人员权限/人力分析/归档中心/个人设置”等实际入口，明确skill需执行独立sync命令，删除重复首次配置步骤，净减5行。对照路由、页面、package.json、configure/sync脚本及git diff --check验收；纯文档修改，不重跑测试，不执行账号重置或本机skill同步。
 - HY：共享搜索使用indexOf/includes，特殊符号不进入拼音匹配；问题和日志SQL通过绑定参数调用同一search_score/search_plain_match，无LIKE通配或动态正则。既有search.test.ts已覆盖90%、单独%、字段_a字面匹配。只读确认，无需修改或重复运行该测试。
 - HX：真实图表→人力分析→关系图→进展表→个人设置往返30轮；GC后设置页稳定3022 DOM节点/373监听器、2个实际存活尺寸观察器、0 Worker/MutationObserver、2个60秒定时器，无页面异常。堆内存预热12.1MB至第10轮15.27MB、第30轮16.16MB，尚不能归因为泄漏，不作内存优化。初探针只记observe/disconnect造成每轮+2假象，补WeakRef证实对象已回收。resource-release-initial/json、resource-release-weak.log及归档探针；无产品修改/永久测试。结论仅限已测资源，不宣称整个应用不存在内存问题。
 - HV：2026-09-18 19:13只读复查原服务16个日志文件，较HB新增1条19:01的info HTTP_404（GET未匹配路由，1ms），无错误级别事件，3210健康200。缺少原始路径，不能据此判定产品缺陷，不改路由。runtime-log-review-hv.json；活动日志目录元数据滞后，改用实际内容和文件流长度；JSON时间用DateKind String保留时区/毫秒，纠正初次本地字符串转换。原dev仍仅两项用户修改。
@@ -86,9 +87,9 @@ git show d35957a:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - 名称长度并不统一：requireLabel按码点计200，部分创建schema按UTF-16计200；现有copyLabel保守按UTF-16截断。发现代码差异，尚无必须调整的业务证据，暂不统一限制或改已验收方案。
 - GT待查项已在GZ完成独立输入节奏对照和实际页面验收，见近期成果。无用户决策事项、无外部阻塞，Goal保持active。
 
-## 当前阶段 IA：README入口与构建说明校正
+## 当前阶段 IB：同名工作项的创建结果核对
 
-HZ已通过。README把Token/归档放在系统管理，使用旧“人员与权限/并发分析”名称，修改密码缺少“个人设置”步骤；还声称npm run build自动同步skill，但package.json只有独立sync命令。按现有路由、页面和脚本修正这些具体事实，删除重复首次配置步骤；不扩写用户手册、不运行会改账号或本机skill的命令。
+IA已验收。HW检查发现未知创建核对只比较标题/主负责人/计划/链接，没有比较工作阶段和协作人员。检查另一用户新增同名但资料不同的工作项时，是否误认本次已成功并清除草稿。用真实新增对象和未知原响应复现；只在明确误认后补字段核对，并验收已生效的正常创建仍可确认。
 
 当前产品1c1708b，HZ完整验收进程已退出，临时浏览器探针已归档。无待验收产品修改或外部阻塞。接续先看本记录和git状态，不重新运行已通过的HZ全量检查。
 
