@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useProjects } from "../app-context";
+import { usePageResources } from '../page-context';
 import { invalidateProjectViews, invalidateRequirementViews, keys } from "../query-keys";
 import type { Person, Project, Requirement, WorkItemTemplate } from "../types";
 import { FormDisclosure, FormError, FormField, FormSubmitActions } from "./Form";
@@ -82,6 +83,7 @@ export function ProjectForm({
   const client = useQueryClient();
   const toast = useToast();
   const { projects } = useProjects();
+  const { projects: projectsQuery } = usePageResources();
   const submitting = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -150,7 +152,35 @@ export function ProjectForm({
     },
     onSettled: () => { submitting.current = false; },
   });
-  const checkCreatedProject=async()=>{if(!createRecheck||checkingCreate)return;setCheckingCreate(true);setCreateCheckError('');try{const latest=await projectsApi.projects<Project[]>({readOnly:true});client.setQueryData(keys.projects,latest);const baseline=new Set(createRecheck.baselineIds),draft=createRecheck.draft,created=latest.filter(item=>!baseline.has(item.id)&&item.name===canonicalizeLabel(draft.name)&&item.status===draft.status&&item.plannedStart===(draft.plannedStart||null)&&item.plannedEnd===(draft.plannedEnd||null)&&!item.isSample);if(created.length===1){onCreateRecheckChange?.(null);invalidateProjectViews(client);toast.success('已核对最新状态：项目已创建');onClose();return;}if(created.length===0){onCreateRecheckChange?.(null);mutation.reset();setCreateCheckError('未发现本次新增项目，已恢复原输入，可以重新提交。');return;}setCreateCheckError('发现多个可能的新项目，暂不解除锁定，请核对项目中心和操作记录。');}catch(error){setCreateCheckError(error instanceof Error?error.message:'项目列表读取失败');}finally{setCheckingCreate(false);}};
+  const checkCreatedProject = async () => {
+    if (!createRecheck || checkingCreate) return;
+    setCheckingCreate(true);
+    setCreateCheckError('');
+    try {
+      const { data: latest } = await projectsQuery.refetch({ throwOnError: true });
+      if (!latest) throw new Error('项目列表读取失败');
+      const baseline = new Set(createRecheck.baselineIds), draft = createRecheck.draft;
+      const created = latest.filter(item => !baseline.has(item.id) && item.name === canonicalizeLabel(draft.name) && item.status === draft.status && item.plannedStart === (draft.plannedStart || null) && item.plannedEnd === (draft.plannedEnd || null) && !item.isSample);
+      if (created.length === 1) {
+        onCreateRecheckChange?.(null);
+        invalidateProjectViews(client);
+        toast.success('已核对最新状态：项目已创建');
+        onClose();
+        return;
+      }
+      if (created.length === 0) {
+        onCreateRecheckChange?.(null);
+        mutation.reset();
+        setCreateCheckError('未发现本次新增项目，已恢复原输入，可以重新提交。');
+        return;
+      }
+      setCreateCheckError('发现多个可能的新项目，暂不解除锁定，请核对项目中心和操作记录。');
+    } catch (error) {
+      setCreateCheckError(error instanceof Error ? error.message : '项目列表读取失败');
+    } finally {
+      setCheckingCreate(false);
+    }
+  };
   return (
     <Modal title={project ? "编辑项目" : "新建项目"} closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
     {!templatesReady && templatesQuery.error ? <EmptyState title="项目配置加载失败" detail={templatesQuery.error.message || "暂时无法读取默认流程，请稍后重试。"} action={<Button variant="secondary" type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</Button>} />

@@ -286,6 +286,7 @@ test('新建项目响应未知且列表核对失败时阻止重复创建', async
       return route.abort('connectionfailed');
     }
     if (failReads) return route.fulfill({ status: 503, json: { error: '项目列表暂时不可用' } });
+    if (requests) return route.fulfill({ json: [{ ...project, name: '核对后更新的项目' }] });
     return route.fallback();
   });
   await page.goto('/projects');
@@ -313,6 +314,11 @@ test('新建项目响应未知且列表核对失败时阻止重复创建', async
   await expect(dialog.getByRole('button', { name: '创建项目', exact: true })).toBeDisabled();
   await dialog.locator('form').dispatchEvent('submit');expect(requests).toBe(1);
   failReads=false;await dialog.getByRole('button',{name:'读取最新项目并继续',exact:true}).click();await expect(dialog).toContainText('未发现本次新增项目');await expect(dialog.getByRole('button',{name:'创建项目',exact:true})).toBeEnabled();await expect(page.getByText('项目创建结果待核对',{exact:false})).toHaveCount(0);
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(page.locator('.project-table').getByText('核对后更新的项目', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '项目列表加载失败', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '新建项目', exact: true })).toBeEnabled();
+  expect(requests).toBe(1);
 });
 
 test('新建需求响应异常跨导航保留输入并核对本次创建', async ({ page }) => {
