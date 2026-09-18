@@ -205,7 +205,7 @@ export function useDependencyDraft(accountId: string, incoming: PathAnalysis, ta
     } finally { history.setBusy(false); }
   };
   return {
-    templateInstances,legacy,
+    templateInstances,legacy,conflictChoices:resolutions,
     ...history,loading:history.loading||!pendingReady||legacy.loading,readOnly:history.readOnly||legacy.blocked&&legacy.kind!=='error',changes,count,conflict,conflicts:conflict?rebased.conflicts:[],unresolved:rebased.pending.length,resolveConflict:(key:string,value:'draft'|'server')=>setResolutionState(old=>({version:resolutionVersion,values:{...(old.version===resolutionVersion?old.values:{}),[key]:value}})),preview, previewing, pending, error, save,retryPreview:()=>setPreviewAttempt(n=>n+1),
     takeOver:()=>history.takeOver(async()=>{setPending(await readDraftRecord<PendingBatch>(pendingKey)||null);}),
     get fields(){return history.fields;},get fieldEpoch(){return history.fieldEpoch;},get pendingField(){return history.pendingField;},

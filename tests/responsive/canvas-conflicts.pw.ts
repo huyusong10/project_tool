@@ -1,0 +1,47 @@
+import {expect,test} from '@playwright/test';
+import {graphFixture} from './graph-fixture';
+import {closeGraphProperties,graphProperties,graphToolbar,openGraph,openGraphDrafts} from './graph-interactions';
+import type {Requirement} from '../../src/client/types';
+
+test('多条画布冲突显示已选处理方式，改选后保存保留逐项决定',async({page},info)=>{
+  test.setTimeout(60_000);
+  const f=await graphFixture(page,false),work=f.a.workItems[0],errors:string[]=[],writes:string[]=[];
+  const detail=async()=>await(await page.request.get('/api/requirements/'+f.a.id)).json() as Requirement;
+  const ready=()=>expect(page.locator('[data-layout-ready="true"]')).toBeVisible({timeout:20_000});
+  page.on('pageerror',error=>errors.push(error.message));
+  page.on('request',request=>{if(request.url().includes('/api/')&&!['GET','HEAD'].includes(request.method())&&!request.url().endsWith('/preview'))writes.push(new URL(request.url()).pathname);});
+  await openGraph(page,'/requirements/'+f.a.id+'?view=path');await ready();await graphToolbar(page,'编辑画布');
+  await graphProperties(page,page.locator('.react-flow__node[data-id="'+work.id+'"] .dependency-card'));
+  await page.getByLabel('预计工期',{exact:true}).fill('6');await page.getByLabel('预计工期',{exact:true}).blur();
+  await page.getByLabel('元素名称',{exact:true}).fill('本地方案名称');await page.getByLabel('元素名称',{exact:true}).blur();
+  await closeGraphProperties(page);await expect(page.locator('[data-draft-stored="true"]')).toBeVisible();
+  const changed=await page.request.patch('/api/work-items/'+work.id,{data:{expectedVersion:work.version,title:'服务端方案名称'}});
+  expect(changed.ok(),await changed.text()).toBe(true);
+  const estimated=await page.request.patch('/api/work-items/'+work.id+'/path-estimate',{data:{expectedRevision:(await f.analysis()).revision,durationDays:9}});
+  expect(estimated.ok(),await estimated.text()).toBe(true);let formal=await detail();
+  await expect.poll(async()=>{await page.evaluate(()=>window.dispatchEvent(new Event('focus')));return page.locator('.page-toolbar-status').textContent();},{timeout:15_000,intervals:[1500]}).toContain('冲突');
+  await openGraphDrafts(page);
+  const conflicts=page.locator('.draft-conflict'),durations=conflicts.filter({has:page.locator('strong').filter({hasText:'durationDays'})}),names=conflicts.filter({has:page.locator('strong').filter({hasText:' · title'})});
+  await expect(durations).toHaveCount(2);await expect(names).toHaveCount(1);
+  const first=durations.first(),keep=first.getByRole('button',{name:'保留我的修改',exact:true}),server=first.getByRole('button',{name:'使用服务器内容',exact:true});
+  await keep.click();
+  await expect.soft(keep).toHaveAttribute('aria-pressed','true',{timeout:500});await expect.soft(server).toHaveAttribute('aria-pressed','false',{timeout:500});
+  await expect.soft(first.getByText('已选择：保留我的修改',{exact:true})).toBeVisible({timeout:500});
+  await server.click();await expect.soft(server).toHaveAttribute('aria-pressed','true',{timeout:500});await expect.soft(keep).toHaveAttribute('aria-pressed','false',{timeout:500});
+  await expect.soft(first.getByText('已选择：使用服务器内容',{exact:true})).toBeVisible({timeout:500});
+  const updatedEstimate=await page.request.patch('/api/work-items/'+work.id+'/path-estimate',{data:{expectedRevision:(await f.analysis()).revision,durationDays:10}});
+  expect(updatedEstimate.ok(),await updatedEstimate.text()).toBe(true);formal=await detail();
+  await expect.poll(async()=>{await page.evaluate(()=>window.dispatchEvent(new Event('focus')));return first.textContent();},{timeout:15_000,intervals:[1500]}).toContain('服务器：10');
+  await expect.soft(keep).toHaveAttribute('aria-pressed','false',{timeout:500});await expect.soft(server).toHaveAttribute('aria-pressed','false',{timeout:500});await expect(first.getByRole('status')).toHaveCount(0);
+  await keep.click();await expect.soft(keep).toHaveAttribute('aria-pressed','true',{timeout:500});
+  for(const width of [1280,390]){await page.setViewportSize({width,height:844});await first.scrollIntoViewIfNeeded();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath('conflict-choice-'+width+'.png'),animations:'disabled'});}
+  expect(await detail()).toEqual(formal);expect(writes).toEqual([]);
+  await durations.nth(1).getByRole('button',{name:'保留我的修改',exact:true}).click();
+  await names.getByRole('button',{name:'使用服务器内容',exact:true}).click();await expect(conflicts).toHaveCount(0);
+  expect(await detail()).toEqual(formal);expect(writes).toEqual([]);
+  await graphToolbar(page,'保存修改');await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();
+  const saved=await detail(),updated=saved.workItems.find(item=>item.id===work.id)!;
+  expect(updated).toMatchObject({title:'服务端方案名称',durationDays:6,version:formal.workItems.find(item=>item.id===work.id)!.version+1,status:work.status,ownerId:work.ownerId});
+  expect(writes).toEqual(['/api/projects/'+f.project.id+'/dependency-changes/apply']);
+  await page.reload();await ready();expect(await detail()).toEqual(saved);expect(errors).toEqual([]);
+});
