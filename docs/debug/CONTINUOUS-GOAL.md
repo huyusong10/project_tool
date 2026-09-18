@@ -4,9 +4,9 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品d15deab（JZ），前一产品bd5f0ba（JW）、169a78a（JV）、1896b57（JU）、25c1658（JT）；更早成果见下表与历史版本。README修正c36e4f9。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新测试工具5ab83f5（KC），最新产品d15deab（JZ），前一产品bd5f0ba（JW）、169a78a（JV）、1896b57（JU）、25c1658（JT）；更早成果见下表与历史版本。README修正c36e4f9。
 - 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
-- 最新全量JY：993业务/119文件、10性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-jy-verify.log，23980退出0已回收。覆盖JU/JV/JW；JZ在此后仅做目标验收。本次首轮全量通过；JT更早的失败与修复记录仍保留。
+- 最新全量JY：993业务/119文件、10性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-jy-verify.log，23980退出0已回收。覆盖JU/JV/JW；JZ/KC在此后仅做目标验收。本次首轮全量通过；JT更早的失败与修复记录仍保留。
 - JY生产构建：主JS931.87KB、CSS339.15KB、ELK1595.33KB，预算通过。构建按JR规则清理输出。JT服务端产物的具体字节及引用核对见server-build-artifacts-jt.json，不将旧哈希结果当成JY复验。无运行进程、未归档临时浏览器测试或未验收产品修改。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
@@ -16,6 +16,7 @@
 
 | 阶段 / 提交 | 结果 / 证据 |
 |---|---|
+| KC / 5ab83f5 | 浏览器验证遗留943组数据库/WAL/SHM共约2.56GB，另2035个备份目录。改用每轮唯一目录，进程正常退出后只清理自身原位目录，失败截图/trace保留。3回归覆盖成功/失败退出、同PID旧资料保留及junction替换拒绝；真实服务两路径、类型/目标Lint/diff通过。playwright-temp-before.json、playwright-storage-real-results.json、stage-kc-*；旧资料未删除，强制终止进程不保证清理 |
 | JZ / d15deab | 新建问题所选负责人停用/移出后显示UUID并误称历史负责人，真实2场景原版失败。共用选择控件改为失效提示，仅已保存的原负责人保留历史名称；7行产品差异，强化1个既有回归保护负责人/关联需求失效后改选。2需求、4问题浏览器场景、类型/测试构建/目标Lint/diff通过，390px截图已检查。stage-jz-*、issue-owner-*.json/png；无新增永久测试 |
 | JY / 组合验收 | JU/JV/JW目标验证后执行一次全量verify，993业务/119文件、10性能、26冒烟及全部静态/生产构建/预算通过。stage-jy-verify.log，23980退出0已回收。无额外产品修改、未部署或推送 |
 | JW / bd5f0ba | 周六使7个既有浏览器场景在建样本时失败；8份测试夹具统一业务工作日并补创建响应检查。继续验收发现实际日期点高8px、标签按16px定位，中心差4px；1行CSS使用既有高度变量，日期及点宽不变。新增固定周末回归原版失败，四层/日周月/390px通过。13个不同浏览器、类型/测试构建/目标Lint/diff通过，截图已检查。weekend-browser-fixtures-before、weekend-point-regression-before、stage-jw-*、weekend-progress-point-before.json/png |
@@ -36,6 +37,10 @@
 | IZ / 6f36dd1 | 协作选择初帧隐藏使autoFocus失效，焦点留在入口按钮，键盘输入zhangsan后搜索仍为空。显示后RAF聚焦搜索或首个复选框，关闭时取消待执行聚焦。两个既有小列表/搜索旅程在原代码失败；修改后7浏览器、ESLint、类型/测试构建、diff通过。1000选项读取夹具打开45—47ms、搜索11—19ms，无需性能改造；实际保存用3个真实目标，隐藏已选保留、Esc零写入、Space/Tab/Enter仅1次保存、刷新一致，1280/390截图已检查。collaborator-picker-focus-before/typing、regression-before、scale.json、stage-iz-*；强化2个既有旅程，无新增永久测试，探针已归档 |
 
 ## 近期无需修改
+
+- KA：双项目真实经理日志旅程通过。甲末页21条固定快照；甲乙新增后切乙不带旧快照、显示乙新增；返回甲恢复原页2/21条，刷新才看到22条。降为观察者后甲及平台审计403、旧表格清空，乙仍可查看/刷新；24条问题完整DTO不变、浏览器业务零写入、无页面异常。stage-ka-audit-scope.log 1通过（64588退出0已回收），audit-role-scope.json，390px无权页截图已检查。临时探针已归档，无产品修改或新增永久测试。
+
+- KB：跨项目流程复制已有BH完整真实验收，template-copy-complete.log确为1通过（10.3s）；探针覆盖两份副本的引用/分类/人工确认/晚做锚点、编辑后来源35%执行事实和已有实例保持、新实例采用新内容。当前copyTemplate新建独立项，saveTemplateGraph映射副本ID，更新校验项归属；JY已通过template-copy/path-api/feature-phases/写锁回归。无需修改，不重复运行。copyLabel与现有来源读取规则保持。
 
 - JX：真实11条问题，末页取消改关联零写；甲→乙后页码2→1、筛选10/总数11，浏览器返回保留查询/负责人/优先级/范围/每页数；乙→公共后原范围为空，刷新公共筛选仍1条。两条需求汇总同步、目标完整DTO仅归属/版本/更新时间变化、总共2写、无页面异常，390px截图已检查。stage-jx-issue-scope.log 1通过（86387退出0已回收），issue-scope-return.json/png，临时探针已归档；前两次失败均为探针选择器（同名候选未限定弹层、误写内联标签），selector-fixture及inline-label-fixture日志保留，43349/41209退出1已回收。产品无需修改，不增加永久测试。
 
@@ -178,6 +183,12 @@ stage-jv-browser.log 2通过（80713退出0已回收），包括原图表切换/
 
 最终stage-jz-issue-owner-final.log 4通过（85703退出0已回收）：两真实问题旅程各1次拒绝、1次创建，完整DTO/输入保持；已保存的接手人再停用仍显示姓名与历史标识，取消零额外问题写入。首版字段专用提示的4通过只作中间记录after.log（65294已回收），最终已简化为共用回退。390px原版及最终截图已查看、提示完整可读。两轮合计6个不同浏览器场景，目标Lint/类型/测试构建/diff通过；d15deab已提交2文件29增/7删，临时探针全部归档，无运行进程。未因显示修改重跑JY全量。
 
-## 当前阶段 KA
+## KC验收：浏览器验证临时资料
 
-转向操作日志的查询范围：先核对项目切换、角色变化和分页快照的既有覆盖，再决定补验。验收要求为项目经理只看当前有权项目，角色变化后不保留超范围数据，分页/刷新遵守已有快照规则。已覆盖的长记录展开、删除Phase筛选和普通分页不重复运行。原dev、部署和运行服务保持不变，Goal保持active，没有预设完成点。
+旧配置只用PID命名且没有清理入口；实际943组数据库/WAL/SHM共2563910064B，另13个JSON4095B及2035个备份目录，备份内容未计量。只读统计保留于playwright-temp-before.json，未删除旧资料。两条原版退出回归失败，playwright-storage-before.log。
+
+5ab83f5只改配置及新增3条子进程回归：0/1退出码保持，旧同PID资料不覆盖，junction替换后拒绝清理并保留两处数据。实际Windows服务成功1通过、故意断言失败1失败，均曾写真实DB/WAL/SHM/备份，退出后目录消失；失败截图和trace已另存证据目录。playwright-storage-real-results.json、stage-kc-browser-success/intended-failure.log。首稿仅页面标题定位错误，heading-fixture.log保留；错误路径同样清理成功。最后3回归、目标Lint、类型/diff通过，临时探针已归档，3296无监听。正常退出清理不能涵盖操作系统强制终止；失败时报告保留路径并返回非零，不增加后台扫描。
+
+## 当前阶段 KD
+
+检查账号密码变更后的会话与页面恢复：先核对现有真实旅程和服务测试，仅补查未覆盖的多会话状态变化、重新登录与输入处理。验收要求旧会话按现有规则失效、没有越权写入，重新登录后业务资料一致；无证据不修改。Goal保持active，没有预设完成点。
