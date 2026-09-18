@@ -4,7 +4,7 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品7d70e7b（IU链接修复），前一产品eee9d38（IT）、d473f2e（IS）、e53c666（IQ）；README修正baf3208。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品dc98ee2（IV），前一产品7d70e7b（IU链接修复）、eee9d38（IT）、d473f2e（IS）、e53c666（IQ）；README修正baf3208。
 - 原目录D:\tools\project-manage的dev不改。21:07检查仍只有用户修改skills/project-manage-intake/SKILL.md、未跟踪docs/dcim-ai-workflow-v3-gaps.md。未部署、未推送。
 - 临时数据库和独立构建；浏览器使用3296，串行运行；性能独占。3210/3295不改。HZ漏设端口，用默认3291的独立临时服务完成，后续已恢复3296。
 - IQ组合验收：980业务/119文件、10性能、26浏览器，运行时/429边界/Lint/类型/构建/预算均通过。首轮新增边界期望2项错误后补验domain35项和剩余流水线，退出0；不是首轮verify一次通过。stages-im-iq-verify/rest.log；主JS939.62KB、CSS342.57KB、ELK1595.33KB。
@@ -24,6 +24,7 @@
 
 | 阶段 / 提交 | 结果 / 证据 |
 |---|---|
+| IV / dc98ee2 | SVG把英文都按窄字符计算，特性/需求/Phase共16行越界，宽标题309—502px挤出280px卡片、Phase名与状态重叠。按字符类别估宽并为省略号留空间，产品净增5行，无字体依赖。25业务、3不同浏览器及1次扩大字符集补验通过；空图、长英文/数字/中文/emoji、XML、完整标题、Phase不重叠、全量分析/需求DTO保持；类型/构建/Lint/diff通过，截图已检查。graph-export-text-before/after/characters、stage-iv-*、graph-font-width。前三次探针夹具分别误用overview、缺overview必填项、未解包features，已记录修正；正式复现和验收日志独立保存。探针已归档，无新增永久测试 |
 | IU链接 / 7d70e7b | 需求合并遗漏来源新版referenceLinks，旧实现两个单元场景失败；合并双方新链接并按URL去重、目标名称优先，保留目标旧来源，超20条不截断。7单元、2真实浏览器（正常/超限修正）、Lint/类型/构建通过；完整原文、链接、工作、依赖重映射和刷新后保存核对。intake-merge-links-before、stage-iu-links-*、intake-merge-links-browser.log |
 | IT / eee9d38 | 折叠4500工作控件仍创建77446 DOM；事件到两次动画帧计时：整理440ms、标题修改787ms。只在展开时创建工作控件，后测DOM928—946，整理35ms、修改13ms；输入仍存原pkg。17既有浏览器通过，强化原拆分合并旅程：编辑/添加移除/收起重开/刷新后保存保留标题。Lint/类型/构建/diff通过。intake-editor-9-500-before/after、stage-it-*；早先13476ms包含自动化定位成本，不当纯绘制指标 |
 | IS / d473f2e | 超过既有4000总对象上限时返回英文JSON；复用导出常量，在导入预览给出本批数量、上限和分批提示。36业务、Lint/类型/构建、1真实浏览器通过；4509对象跳过2需求后3507可预览，全部原文保持、零写入、1280/390截图已检查。三个有效大批次及失败末项/重试全表快照核对通过：1000需求提交1960ms，100需求×10工作2096ms，4000对象边界9220ms。intake-scale-before、intake-boundary、intake-limit-*、stage-is-*；无永久测试增加 |
@@ -46,6 +47,8 @@
 | HE/HF | 链接核对按服务端规范化规则比较，覆盖需求/工作项/特性/Phase；84c5c72、23ca8fa，stage-he/hf-* |
 
 ## 近期无需修改
+
+- IW：复核问题在项目/需求归档后的列表与汇总。REST/MCP list_issues和dashboard都要求projectId并先校验活动项目；详情也先校验项目。listIssues条目、总数、汇总采用相同的父需求归档条件；恢复沿用原问题资料。integration覆盖汇总/归档分析，deep-regressions及versioned-write-integrity覆盖归档后写入和写锁竞争。未发现不一致，不加重复校验或重复执行已通过测试。接口无全局问题列表入口，不能把服务函数的可选参数认作权限缺口。
 
 - IR：真实IssuesPage资源中断后错误页仍可导航，返回首页后再次进入并重新加载可恢复；当前项目、完整项目DTO保持，实际问题API仍限定原项目，业务零写入。1浏览器通过，失败/恢复截图已检查，page-chunk-recovery.*及探针已归档。初探针误认为侧栏导航必带projectId查询参数，实际使用已记住的项目；改为核对真正发出的问题API范围后通过，无产品修改。
 
@@ -107,6 +110,6 @@
 
 该轮另发现的合并来源链接遗漏已独立修复7d70e7b；验收见近期成果。工作区无未提交产品修改。周末无工作日计划候选同样降级：当前新建排期明确限制工作日，未发现当前入口证据。
 
-## 当前阶段 IV：图表导出的文字与空数据
+## 当前阶段 IX：IS—IV组合验收
 
-检查既有MCP SVG输出，重点为长英文/混合名称、特殊字符、空图。现有浏览器覆盖中文长名称、代理对、Phase和跨期依赖；不重复已充分覆盖的中文样例。验收：实际渲染无文字越出卡片、完整标题可读取、输出为合法SVG、导出前后业务数据与布局不变。先测量；没有问题就记录无需修改并转向其他领域。Goal保持active。
+IS总对象上限反馈、IT折叠工作控件、IU合并链接、IV导出文本均已单独通过验收并提交；IW只读复核无需修改。自IQ全量后积累四项变更，现在进行一次组合verify，检查业务、性能、浏览器冒烟、模块边界、类型/构建预算。浏览器3296串行，性能独占；临时浏览器探针均已归档，工作区无未提交产品修改。验收后更新基线并转向其他未充分覆盖的业务，Goal保持active。
