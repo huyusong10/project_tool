@@ -47,7 +47,7 @@ function ProjectSwitcher({ ready }: { ready: boolean }) {
         {selected?.isSample && <span className="sample-project-badge">样板</span>}
         <ChevronDown className={open ? "is-open" : ""} size={15} />
       </button>
-      <AnchoredPopover anchorRef={buttonRef} open={open} onOutside={() => setOpen(false)} width={240} preserveEditing onEscape={() => { setOpen(false); buttonRef.current?.focus(); }}>
+      <AnchoredPopover anchorRef={buttonRef} open={open} onOutside={() => setOpen(false)} width={320} preserveEditing onEscape={() => { setOpen(false); buttonRef.current?.focus(); }}>
         <div ref={menuRef} className="project-switcher-menu" role="listbox" aria-label="切换项目" data-workspace-zone="tools" data-preserve-edit onKeyDown={event => {
           if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setOpen(false); buttonRef.current?.focus(); return; }
           const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button'));
