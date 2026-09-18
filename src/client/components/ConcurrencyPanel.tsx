@@ -30,6 +30,7 @@ export function ConcurrencyPanel() {
     });
   };
   const matrixScrollRef = useRef<HTMLDivElement>(null);
+  const matrixScrollLeftRef = useRef(0);
   const [matrixViewportWidth, setMatrixViewportWidth] = useState(0);
   const { data: people = [] } = useQuery({
     queryKey: [...keys.people, selectedProjectId],
@@ -108,6 +109,7 @@ export function ConcurrencyPanel() {
   useEffect(() => {
     const element = matrixScrollRef.current;
     if (!element) return undefined;
+    matrixScrollLeftRef.current = element.scrollLeft;
     const updateWidth = () => setMatrixViewportWidth(element.clientWidth);
     updateWidth();
     const observer = new ResizeObserver(updateWidth);
@@ -115,6 +117,7 @@ export function ConcurrencyPanel() {
     return () => observer.disconnect();
   }, [analysisUnavailable]);
   useEffect(() => {
+    matrixScrollLeftRef.current = 0;
     matrixScrollRef.current?.scrollTo({ left: 0 });
   }, [firstDate, jobTitle, personId]);
 
@@ -137,7 +140,9 @@ export function ConcurrencyPanel() {
       </header>
       <div className="human-matrix-scroll" ref={matrixScrollRef} onScroll={(event) => {
         const element = event.currentTarget;
-        if (element.scrollLeft + element.clientWidth >= element.scrollWidth - 140 && !analysis.isFetchingNextPage) void analysis.fetchNextPage();
+        const movingRight = element.scrollLeft > matrixScrollLeftRef.current;
+        matrixScrollLeftRef.current = element.scrollLeft;
+        if (movingRight && element.scrollLeft + element.clientWidth >= element.scrollWidth - 140 && !analysis.isFetchingNextPage) void analysis.fetchNextPage();
       }}>
         <div className="human-matrix-content">
           <table className="human-continuous-table" style={{ width: tableWidth }} aria-label="人员工作日并发度矩阵">
