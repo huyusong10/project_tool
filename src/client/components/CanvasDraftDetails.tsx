@@ -7,6 +7,13 @@ import type {useDependencyDraft} from '../use-graph-draft';
 import {requirementCanvasUrl} from '../canvas-navigation';
 
 type Draft=ReturnType<typeof useDependencyDraft>;
+const conflictFieldLabels:Record<string,string>={
+  title:'名称',ownerId:'负责人',assigneeIds:'执行人员',priority:'优先级',featureId:'特性',phaseId:'Phase',
+  background:'需求说明',acceptanceCriteria:'完成标准',referenceUrl:'参考链接',referenceLinks:'参考链接',templateId:'流程模板',
+  plannedStart:'计划开始',plannedEnd:'计划结束',durationDays:'预计工期（工作日）',earliestStart:'最早开始',forecastEnd:'预计完成',
+  arrangement:'安排方式',arrangementAnchor:'交付点',workStage:'工作阶段',milestoneKind:'节点含义',targetDate:'目标日期',confirmationMode:'达成方式',
+  deliveryScope:'交付范围',executionMode:'执行方式',acceptanceOwnerId:'验收人',
+};
 export function CanvasDraftDetails({draft,data,onGo}:{draft:Draft;data:PathAnalysis;onGo:(url:string)=>void}){
   const go=(url:string)=>{const parsed=new URL(url,location.origin),id=parsed.searchParams.get('requirementId');if(id&&draft.changes.entities?.some(c=>c.id===id&&c.op==='create'))parsed.searchParams.set('draftProject',data.projectId);onGo(parsed.pathname+parsed.search);};
   const [choices,setChoices]=useState<Record<string,'current'|'legacy'>>({}),legacy=draft.legacy;
@@ -29,7 +36,7 @@ export function CanvasDraftDetails({draft,data,onGo}:{draft:Draft;data:PathAnaly
     {!!draft.changes.estimates.length&&<section><h4>工作项估算</h4>{draft.changes.estimates.map(c=><div className="canvas-change-row" key={c.workItemId}><span>{name(c.workItemId)}</span><Button variant="secondary" className="ghost-button" onClick={()=>locate(c.workItemId)}>定位</Button></div>)}</section>}
     {!!draft.changes.layouts?.length&&<section><h4>共享布局</h4>{draft.changes.layouts.map(l=><div className="canvas-change-row" key={l.scope+l.direction}><span>{l.scope==='features'?'特性总览':l.scope==='global'?'全部需求':name(l.scope.slice(l.scope.indexOf(':')+1))}</span><Button variant="secondary" className="ghost-button" onClick={()=>go(scopeUrl(l.scope))}>定位</Button></div>)}</section>}
     {draft.conflicts.map(c=><div className="draft-conflict" key={c.key}>
-      <strong>{c.title} · {c.field}</strong><p>服务器：{JSON.stringify(c.server)??'已不存在'}</p><p>我的修改：{JSON.stringify(c.draft)}</p>
+      <strong>{c.title} · {conflictFieldLabels[c.field]||c.field}</strong><p>服务器：{JSON.stringify(c.server)??'已不存在'}</p><p>我的修改：{JSON.stringify(c.draft)}</p>
       <div className="button-row"><Button variant="secondary" className="ghost-button" aria-pressed={draft.conflictChoices[c.key]==='server'} onClick={()=>draft.resolveConflict(c.key,'server')}>使用服务器内容</Button>{c.canKeep&&<Button variant="secondary" className="ghost-button" aria-pressed={draft.conflictChoices[c.key]==='draft'} onClick={()=>draft.resolveConflict(c.key,'draft')}>保留我的修改</Button>}</div>
       {draft.conflictChoices[c.key]&&<p role="status">已选择：{draft.conflictChoices[c.key]==='server'?'使用服务器内容':'保留我的修改'}</p>}
     </div>)}

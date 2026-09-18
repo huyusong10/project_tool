@@ -21,7 +21,7 @@ test('多条画布冲突显示已选处理方式，改选后保存保留逐项�
   expect(estimated.ok(),await estimated.text()).toBe(true);let formal=await detail();
   await expect.poll(async()=>{await page.evaluate(()=>window.dispatchEvent(new Event('focus')));return page.locator('.page-toolbar-status').textContent();},{timeout:15_000,intervals:[1500]}).toContain('冲突');
   await openGraphDrafts(page);
-  const conflicts=page.locator('.draft-conflict'),durations=conflicts.filter({has:page.locator('strong').filter({hasText:'durationDays'})}),names=conflicts.filter({has:page.locator('strong').filter({hasText:' · title'})});
+  const conflicts=page.locator('.draft-conflict'),durations=conflicts.filter({has:page.locator('strong').filter({hasText:'预计工期（工作日）'})}),names=conflicts.filter({has:page.locator('strong').filter({hasText:' · 名称'})});
   await expect(durations).toHaveCount(2);await expect(names).toHaveCount(1);
   const first=durations.first(),keep=first.getByRole('button',{name:'保留我的修改',exact:true}),server=first.getByRole('button',{name:'使用服务器内容',exact:true});
   await keep.click();
