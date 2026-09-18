@@ -125,17 +125,21 @@ export function listIssues(filters: {
   const pageSize = Math.min(100, Math.max(1, Number(filters.pageSize) || 50));
   const countFrom = `FROM issues i JOIN projects pr ON pr.id=i.project_id
     LEFT JOIN requirements r ON r.id=i.requirement_id LEFT JOIN people p ON p.id=i.owner_id`;
-  const total = row<{ count: number }>(`SELECT COUNT(*) AS count ${countFrom} ${clause}`, ...params)?.count || 0;
+  // A keyword may scan issue history; reuse its matches for counting and paging.
+  const matchingIds = q ? rows<{ id: string }>(`SELECT i.id ${countFrom} ${clause}`, ...params).map(issue => issue.id) : undefined;
+  const total = matchingIds?.length ?? (row<{ count: number }>(`SELECT COUNT(*) AS count ${countFrom} ${clause}`, ...params)?.count || 0);
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(requestedPage, pages);
-  const items = rows<IssueRecord>(`${issueSelect} ${clause}
+  const itemClause = matchingIds ? 'WHERE i.id IN (SELECT value FROM json_each(?))' : clause;
+  const itemParams = matchingIds ? [JSON.stringify(matchingIds)] : params;
+  const items = rows<IssueRecord>(`${issueSelect} ${itemClause}
     ORDER BY CASE WHEN i.status='resolved' THEN 1 ELSE 0 END,
       CASE WHEN i.status<>'resolved' AND i.due_date IS NOT NULL AND business_day_delta(i.due_date, ?)>0 THEN 0 ELSE 1 END,
       CASE i.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
       CASE WHEN i.due_date IS NULL THEN 1 ELSE 0 END, i.due_date,
       CASE i.status WHEN 'in_progress' THEN 0 WHEN 'deferred' THEN 1 ELSE 2 END,
       i.updated_at DESC, i.id
-    LIMIT ? OFFSET ?`, ...params, asOfDate, pageSize, (page - 1) * pageSize)
+    LIMIT ? OFFSET ?`, ...itemParams, asOfDate, pageSize, (page - 1) * pageSize)
     .map((issue) => enrichIssue(issue, asOfDate));
   const summaryWhere = `WHERE (i.requirement_id IS NULL OR r.deleted_at IS NULL)${filters.projectId ? ' AND i.project_id=?' : ''}`;
   const summaryParams = filters.projectId ? [filters.projectId] : [];

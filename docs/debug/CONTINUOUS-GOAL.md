@@ -4,11 +4,11 @@
 
 ## 基线与恢复
 
-- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品提交95d9385。
+- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品为FD问题查询优化（本次提交），前一产品9609153。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
-- EY完整验收基线fc73dcc：969项业务（117文件）、8项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS937.89KB、CSS342.24KB、ELK1595.33KB。stages-es-ew-verify.log。
-- ES/ET/EV/EW专项及EY集成均通过。之前EQ基线5e31e67仍可查stages-ek-ep-verify.log。当前无运行测试、无临时测试留在tests/responsive。
+- FD完整验收：969项业务（117文件）、8项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS938.10KB、CSS342.24KB、ELK1595.33KB。stages-ez-fd-verify.log。
+- 之前EY基线fc73dcc可查stages-es-ew-verify.log，EQ基线5e31e67可查stages-ek-ep-verify.log。当前无运行测试、无临时测试留在tests/responsive。
 - 证据在.preview/qa/continuous-goal/，不进版本库；原日志、探针、截图保留。恢复先读本记录、git status及差异，不重跑已验收事项。
 
 详细历史按需定位：A—DO在fd512b7的本文件；DP—EV在41a4ed0的本文件，更早记录为CONTINUOUS-DEBUG.md。
@@ -21,7 +21,8 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 | 阶段 / 提交 | 结果与验收入口 |
 |---|---|
-| FC / 本次提交 | 项目里程碑依赖定位原来无“其他需求”则无反应，有则跳错范围；复用editorFieldLocation并带原关系ID。两种项目结构从清单摘要继续修改前置交付并一次保存；原需求/里程碑/关系完整保留，390px通过。7项浏览器、22项模型、Lint/类型通过，新增2项回归；project-milestone-relation-repro/after/final.log |
+| FD / 本次提交 | 关键词计数与分页重复扫描问题进展；每次请求匹配一次ID，复用计数与分页，未加缓存/索引。1000问题/10万旧进展下命中、无匹配、标题稀疏匹配1076/1106/1106ms→538/542/557ms；普通分页4.5ms，广泛匹配950项5.9ms。11条件×3规模完整响应/顺序hash与旧实现一致、最近进展不变、零写入。issue-history-scale*/response-hashes.json及SQL计划；完整verify通过。同步服务读取，不含HTTP |
+| FC / 9609153 | 项目里程碑依赖定位原来无“其他需求”则无反应，有则跳错范围；复用editorFieldLocation并带原关系ID。两种项目结构从清单摘要继续修改前置交付并一次保存；原需求/里程碑/关系完整保留，390px通过。7项浏览器、22项模型、Lint/类型通过，新增2项回归；project-milestone-relation-repro/after/final.log |
 | EZ / 61be7be | 工作项重复关联链接显示Zod JSON；只取校验错误的中文message。20项上限、规范化重复地址、保留输入、纠正/删除再添加、清空刷新和390px通过，完成/进度/日期/其他工作/旧历史不变；既有4项链接流程及Lint/类型通过。reference-link-limit-repro/after/final.log。无需新增永久测试 |
 | FA / 95d9385 | 人员矩阵/人力摘要/项目成员的末字头像把𠮷和符号截成替换字符；Avatar按完整码点取末字，人力摘要复用组件。4项浏览器含三处真实人员、普通中英文、390px和零写入；36/34/36px尺寸不变，6项空值/空白/字符探针及Lint/类型通过。person-avatar-character-before/after.log；无需新增永久测试 |
 | EG / 1013ffe | 批量归档核对显示已归档/未归档；未知结果、冲突、整批回滚及窄屏4项。batch-archive-state-* |
@@ -79,10 +80,10 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - DU一次迁移测试启动15秒超时、输出为空；单项与同并发重验通过，EB/EJ/EQ全量未再发生。不直接放宽超时。
 - 无用户决策事项、无外部阻塞。Goal保持active。
 
-## 当前阶段 FD：问题查询随历史进展增长的耗时
+## 当前阶段 FE：大关系图首次布局耗时拆分
 
-在隔离数据库建立1000条问题，逐步增加旧进展记录，测量默认分页、负责人/状态/逾期及历史关键词查询。保持每条问题的最新进展不变，验证完整返回值与顺序。
+DO记录1000节点/3000边首次布局约8—13秒，尚未区分ELK、固定连线路由及绘制。用浏览器Worker消息计时拆分真实调用，检查是否存在重复作业。先诊断，不改布局算法。
 
-验收：采样耗时、查询计划、SQL次数和零写入证据；只在明确瓶颈且可保持结果时改进，不提前增加索引、缓存或测试。
+验收：500/1000节点代表数据、各Worker请求数量/耗时、全图就绪及零写入；保持完整节点/边结果。性能采样串行独占，不把Playwright标签扫描计入绘制耗时。
 
-当前无运行测试、无临时探针留在tests/responsive。EY为最近全量基线，EZ/FA/FC此后专项通过。FC首次探针误以为path-analysis包含featureContext，改用path-graph分析数据后复现并修复；永久回归已从graphic-editor运行通过。
+当前无运行测试、无临时探针留在tests/responsive。旧largeGraphInput/mockGraphAnalysis可复用。GraphScene的pm-path-layout包含ELK之后fixedRoute，不能把总耗时直接归为ELK。下一步编写仅记录Worker消息的临时探针。
