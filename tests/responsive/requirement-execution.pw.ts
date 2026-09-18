@@ -1,3 +1,4 @@
+import {addBusinessDays,todayIso} from '../../src/shared/domain';
 import {expect,test,type Page} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
 import type {Requirement} from '../../src/client/types';
@@ -27,7 +28,7 @@ test('折叠需求直接更新、完成和返工，图形草稿租约不屏蔽�
 
 test('需求负责人操作本需求，执行人只操作分派工作，无关成员没有入口',async({page})=>{
  const f=await phaseFixture(page),other=await post(page,'/api/people',{projectId:f.projectId,name:'其他负责人 '+Date.now()}),reader=await post(page,'/api/people',{projectId:f.projectId,name:'无关成员 '+Date.now()});
- let mixed:Requirement=await post(page,'/api/requirements',{projectId:f.projectId,featureId:f.feature.id,ownerId:other.id,title:'仅参与开发的需求',templateId:f.testing.templateId,plannedStart:new Date().toISOString().slice(0,10)});
+ let mixed:Requirement=await post(page,'/api/requirements',{projectId:f.projectId,featureId:f.feature.id,ownerId:other.id,title:'仅参与开发的需求',templateId:f.testing.templateId,plannedStart:addBusinessDays(todayIso(),0)});
  const assigned=await page.request.patch('/api/work-items/'+mixed.workItems[0].id,{data:{expectedVersion:mixed.workItems[0].version,ownerId:f.testing.ownerId}});expect(assigned.ok(),await assigned.text()).toBe(true);mixed=await(await page.request.get('/api/requirements/'+mixed.id)).json();
  const unrelated:Requirement=await post(page,'/api/requirements',{projectId:f.projectId,featureId:f.feature.id,ownerId:other.id,title:'未参与需求',templateId:f.testing.templateId});
  const login=async(name:string)=>{await post(page,'/api/login',{username:name,password:'888888'});await post(page,'/api/account/change-password',{currentPassword:'888888',newPassword:'requirement-execution-test-password'});await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',scopeType:'project'}));};

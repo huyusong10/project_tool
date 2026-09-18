@@ -3,7 +3,7 @@ import type {Requirement} from '../../src/client/types';
 import {randomUUID} from 'node:crypto';
 import type {PathAnalysis} from '../../src/shared/paths';
 import type {DependencyChanges} from '../../src/shared/path-contracts';
-import {todayIso} from '../../src/shared/domain';
+import {addBusinessDays,todayIso} from '../../src/shared/domain';
 
 async function post(page:Page,url:string,data:Record<string,unknown>){
  const response=await page.request.post(url,{data});expect(response.ok(),await response.text()).toBe(true);return response.json();
@@ -51,7 +51,7 @@ for(const scope of ['requirement','project'] as const)test(`${scope==='requireme
   {clientKey:'w',title:'后续接口工作',durationDays:1,startOffsetDays:0,sortOrder:1,predecessorKeys:['m']},
  ]});
  const namedFeature=scope==='project'?(await post(page,base+'/features',{name:'已有需求范围'})).features.find((feature:{name:string})=>feature.name==='已有需求范围'):undefined;
- const requirement=await create({title:'待处理里程碑旅程',templateId:template.id,plannedStart:todayIso(),...(namedFeature?{featureId:namedFeature.id}:{})});
+ const requirement=await create({title:'待处理里程碑旅程',templateId:template.id,plannedStart:addBusinessDays(todayIso(),0),...(namedFeature?{featureId:namedFeature.id}:{})});
  const analysis=await(await page.request.get(base+'/path-analysis')).json() as PathAnalysis;
  const own=analysis.milestones!.find(item=>item.requirementId===requirement.id)!,id=scope==='requirement'?own.id:randomUUID();
  const changes:DependencyChanges={add:[],remove:[],estimates:[],entities:[scope==='requirement'

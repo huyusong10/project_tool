@@ -3,7 +3,7 @@ import {test,expect,type Page} from '@playwright/test';
 import type {PathAnalysis} from '../../src/shared/paths';
 import {mockGraphAnalysis} from './graph-analysis-fixture';
 import type {Requirement,WorkItemTemplate} from '../../src/client/types';
-import {todayIso} from '../../src/shared/domain';
+import {addBusinessDays,todayIso} from '../../src/shared/domain';
 import {themes} from '../../src/client/theme';
 import {graphFixture as fixture} from './graph-fixture';
 import {openGraph,closeGraphProperties,graphProperties,graphToolbar} from './graph-interactions';
@@ -222,7 +222,7 @@ test('新增项目保留当前草稿，退出登录清理会话草稿',async({pa
 });
 test('独立分支聚焦保留完整坐标和线路，刷新及范围外定位正确恢复',{tag:'@responsive'},async({page})=>{
  const {project,a,b}=await fixture(page);
- const created=await page.request.post('/api/requirements',{data:{projectId:project.id,title:'独立分支',ownerId:a.ownerId,plannedStart:todayIso()}});expect(created.ok()).toBe(true);const independent=await created.json();
+ const created=await page.request.post('/api/requirements',{data:{projectId:project.id,title:'独立分支',ownerId:a.ownerId,plannedStart:addBusinessDays(todayIso(),0)}});expect(created.ok(),await created.text()).toBe(true);const independent=await created.json();
  await openGraph(page,'/paths?pathScope=all');await ready(page);await graphToolbar(page,'编辑画布');
  const snapshot=()=>page.evaluate(()=>({nodes:[...document.querySelectorAll<HTMLElement>('.react-flow__node')].map(n=>({id:n.dataset.id,position:n.style.transform})).sort((a,b)=>a.id!.localeCompare(b.id!)),edges:[...document.querySelectorAll('.react-flow__edge-path')].map(n=>n.getAttribute('d')).sort()}));
  const before=await snapshot();await selectList(page,'独立分支');const original=await viewport(page);
@@ -326,7 +326,7 @@ test('延迟布局与连续撤销重做只发布最新结构，拖线期间节�
 
 test('工作区当前与全部筛选补上下文、完整拼音搜索不改变布局',{tag:'@responsive'}, async({page})=>{
  const {project,a,b,analysis}=await fixture(page);
- const c=await(await page.request.post('/api/requirements',{data:{projectId:project.id,title:'独立历史交付',ownerId:a.ownerId,plannedStart:todayIso()}})).json() as Requirement;
+ const created=await page.request.post('/api/requirements',{data:{projectId:project.id,title:'独立历史交付',ownerId:a.ownerId,plannedStart:addBusinessDays(todayIso(),0)}});expect(created.ok(),await created.text()).toBe(true);const c=await created.json() as Requirement;
  const data=await analysis();data.requirements.find(r=>r.id===c.id)!.status='completed';
  expect(data.requirements.find(r=>r.id===a.id)?.ownerId).toBe(a.ownerId);expect(data.nodes.find(n=>n.id===a.workItems[0].id)?.assigneeIds).toBeDefined();
  await mockGraphAnalysis(page,project.id,data);
@@ -364,7 +364,7 @@ test('返回来源失去权限时隐藏旧画布，重新读取后恢复项目�
 });
 
 test('工作区聚焦只变淡、原按钮退出、顶部固定且动画无重排',{tag:'@responsive'},async({page})=>{
- const {project,a}=await fixture(page);await page.request.post('/api/requirements',{data:{projectId:project.id,title:'独立观察项',ownerId:a.ownerId,plannedStart:todayIso()}});
+ const {project,a}=await fixture(page);const created=await page.request.post('/api/requirements',{data:{projectId:project.id,title:'独立观察项',ownerId:a.ownerId,plannedStart:addBusinessDays(todayIso(),0)}});expect(created.ok(),await created.text()).toBe(true);
  await openGraph(page,'/paths?pathScope=all');await ready(page);await graphToolbar(page,'编辑画布');await selectList(page,a.title);
  const snapshot=()=>page.evaluate(()=>({top:document.querySelector('.topbar')!.getBoundingClientRect().height,canvas:document.querySelector('.dependency-canvas')!.getBoundingClientRect().height,positions:[...document.querySelectorAll<HTMLElement>('.react-flow__node')].map(n=>n.style.transform),routes:[...document.querySelectorAll('.react-flow__edge-path')].map(e=>e.getAttribute('d')),layouts:performance.getEntriesByName('pm-path-layout').length}));
  const before=await snapshot();await page.locator('.modal-card-workspace').getByRole('button',{name:'聚焦分支',exact:true}).click();

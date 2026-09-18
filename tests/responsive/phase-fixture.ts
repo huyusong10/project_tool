@@ -1,3 +1,4 @@
+import {addBusinessDays,todayIso} from '../../src/shared/domain';
 import { expect, type Page } from '@playwright/test';
 import type { FeaturePhase, PhaseDelivery } from '../../src/shared/feature-phases';
 import type { PathAnalysis } from '../../src/shared/paths';
@@ -12,7 +13,7 @@ export async function phaseFixture(page: Page) {
   const feature = (await post(base + '/features', { name: '资产管理', description: '从基础台账开始逐步交付资产管理', referenceLinks: [{ title: 'MDS', url: 'https://example.com/asset-mds' }] })).features[0];
   const phases: FeaturePhase[] = [];
   for (const [index, scope] of ['基础台账', '批量导入', ''].entries()) phases.push(await post(base + '/features/' + feature.id + '/phases', { name: 'Phase ' + (index + 1), scope, note: index === 1 ? '字段映射待确认' : '' }));
-  const create = async (title: string, phaseId: string | null, templateId?: string) => post('/api/requirements', { projectId: project.id, title, ownerId: owner.id, featureId: feature.id, phaseId, reason:'补充本次交付范围', templateId, ...(templateId ? { plannedStart: new Date().toISOString().slice(0, 10) } : {}) });
+  const create = async (title: string, phaseId: string | null, templateId?: string) => post('/api/requirements', { projectId: project.id, title, ownerId: owner.id, featureId: feature.id, phaseId, reason:'补充本次交付范围', templateId, ...(templateId ? { plannedStart: addBusinessDays(todayIso(),0) } : {}) });
   let done = await create('DCIM-001 基础台账', phases[0].id); done = await post('/api/requirements/' + done.id + '/start', { expectedVersion: done.version }); await post('/api/requirements/' + done.id + '/complete', { expectedVersion: done.version, content: '验证交付' });
   const template = await post('/api/templates', { projectId: project.id, name: '阶段工作流', dependencyMode: 'legacy', items: [{ title: '开发', workStage: 'development', durationDays: 99, startOffsetDays: 0, sortOrder: 0 }, { title: '测试', workStage: 'testing', durationDays: 1, startOffsetDays: 0, sortOrder: 1 }] });
   let testing: Requirement = await create('DCIM-002 资产导入', phases[1].id, template.id);

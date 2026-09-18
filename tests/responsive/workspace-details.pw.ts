@@ -37,7 +37,7 @@ test('里程碑恢复，完成文字不遮挡预计虚线，日周月视图均�
   const f=await phaseFixture(page),work=f.testing.workItems[1],today=todayIso(),start=addBusinessDays(today,-5),end=addBusinessDays(today,5);
   const graph=await(await page.request.get(f.base+'/path-analysis')).json(),ids=[randomUUID(),randomUUID(),randomUUID()];
   const input:{expectedRevision:number;target:string;changes:DependencyChanges}={expectedRevision:graph.revision,target:'project',changes:{add:[],remove:[],estimates:[],entities:ids.map((id,i)=>({id,entity:'milestone',op:'create',requirementId:f.testing.id,data:{title:['接口确认','验收确认','待定评审'][i],confirmationMode:'manual',targetDate:i===2?null:addBusinessDays(today,i+1)}}))}};
-  input.changes.entities!.push({id:randomUUID(),entity:'milestone',op:'create',requirementId:null,data:{title:'项目联审',confirmationMode:'manual',targetDate:today}});
+  input.changes.entities!.push({id:randomUUID(),entity:'milestone',op:'create',requirementId:null,data:{title:'项目联审',confirmationMode:'manual',targetDate:addBusinessDays(today,0)}});
   const response=await page.request.post(f.base+'/dependency-changes/preview',{data:input});expect(response.ok(),await response.text()).toBe(true);
   const preview=await response.json(),applied=await page.request.post(f.base+'/dependency-changes/apply',{data:{...input,batchId:randomUUID(),previewToken:preview.previewToken}});expect(applied.ok(),await applied.text()).toBe(true);
   const achieved=await page.request.post('/api/milestones/'+ids[0]+'/achieve',{data:{expectedVersion:1}});expect(achieved.ok(),await achieved.text()).toBe(true);

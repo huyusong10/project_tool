@@ -1,7 +1,7 @@
 import {expect,test} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
 import {phaseFixture} from './phase-fixture';
-import {todayIso} from '../../src/shared/domain';
+import {addBusinessDays,todayIso} from '../../src/shared/domain';
 
 test.use({launchOptions:{ignoreDefaultArgs:['--hide-scrollbars']}});
 
@@ -9,7 +9,7 @@ test('无 Phase 的并行需求保持紧凑，折叠时有工作项入口，只�
   const f=await phaseFixture(page);
   const post=async(url:string,data:unknown)=>{const response=await page.request.post(url,{data});expect(response.ok(),await response.text()).toBe(true);return response.json();};
   const template=await post('/api/templates',{projectId:f.projectId,name:'并行工作',dependencyMode:'legacy',items:[{title:'分析设计',workStage:'analysis',durationDays:5,startOffsetDays:0,sortOrder:0},{title:'开发实现',workStage:'development',durationDays:5,startOffsetDays:0,sortOrder:1}]});
-  let requirement=await post('/api/requirements',{projectId:f.projectId,featureId:f.feature.id,title:'EPDS-DCIM-137【租户管理】',templateId:template.id,plannedStart:todayIso(),ownerId:f.testing.ownerId});
+  let requirement=await post('/api/requirements',{projectId:f.projectId,featureId:f.feature.id,title:'EPDS-DCIM-137【租户管理】',templateId:template.id,plannedStart:addBusinessDays(todayIso(),0),ownerId:f.testing.ownerId});
   for(let index=0;index<2;index++){
     const work=requirement.workItems[index];
     const started=await post('/api/work-items/'+work.id+'/start',{expectedVersion:work.version,expectedRequirementVersion:requirement.version,ownerId:f.testing.ownerId});
@@ -17,7 +17,7 @@ test('无 Phase 的并行需求保持紧凑，折叠时有工作项入口，只�
     requirement=await(await page.request.get('/api/requirements/'+requirement.id)).json();
   }
   const graph=await(await page.request.get(f.base+'/path-analysis')).json();
-  const input={expectedRevision:graph.revision,target:'project',changes:{add:[],remove:[],estimates:[],entities:['需求基线','设计完成','提测就绪','验收'].map((title,index)=>({id:randomUUID(),entity:'milestone',op:'create',requirementId:requirement.id,data:{title,confirmationMode:'manual',targetDate:index?null:todayIso()}}))}};
+  const input={expectedRevision:graph.revision,target:'project',changes:{add:[],remove:[],estimates:[],entities:['需求基线','设计完成','提测就绪','验收'].map((title,index)=>({id:randomUUID(),entity:'milestone',op:'create',requirementId:requirement.id,data:{title,confirmationMode:'manual',targetDate:index?null:addBusinessDays(todayIso(),0)}}))}};
   const preview=await post(f.base+'/dependency-changes/preview',input);await post(f.base+'/dependency-changes/apply',{...input,batchId:randomUUID(),previewToken:preview.previewToken});
   const milestoneId=input.changes.entities[0].id;await post('/api/milestones/'+milestoneId+'/achieve',{expectedVersion:1});
   await page.goto('/execution');const grid=page.getByRole('treegrid'),row=grid.locator('[data-row-id="'+requirement.id+'"]');
