@@ -691,8 +691,9 @@ textarea {
   .analytics-edit-actions { width: 100%; margin-left: 0; }
   .analytics-config-form, .analytics-config-filters { grid-template-columns: 1fr; }
   .analytics-config-form .field-full, .analytics-config-filters > span { grid-column: 1; }
-  .analytics-drag-handle { display: none; }
-  .analytics-drag-item > .analytics-panel > header { padding-left: 13px; }
+  .analytics-drag-item > .analytics-panel > header { flex-wrap: wrap; }
+  .analytics-drag-item > .analytics-panel > header > div:first-child { flex: 1 1 100%; }
+  .analytics-drag-item .analytics-panel-actions { margin-left: 0; }
   .inline-date-range { grid-template-columns: 1fr; align-items: stretch; gap: 2px; }
   .inline-date-range > span { display: none; }
   .account-inline-projects, .inline-action-date-grid { grid-template-columns: 1fr; }
