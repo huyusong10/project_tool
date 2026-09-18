@@ -4,7 +4,7 @@
 
 ## 基线与恢复
 
-- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品提交41a4ed0。
+- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品提交fc73dcc。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
 - EQ完整验收基线5e31e67：969项业务（117文件）、8项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS937.66KB、CSS342.24KB、ELK1595.33KB。stages-ek-ep-verify.log。
@@ -28,7 +28,7 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 | EP / 5e31e67 | 新增依赖摘要复用dependencyWorkspaceLocation；关系ID直接读URL，项目摘要用navigationData并关闭弹窗。当前画布/项目总图/清单均可定位修改保存，9项专项；扩展3项永久回归。draft-relation-location-* |
 | ES / 65a2aa1 | 项目里程碑图面板识别navigationData中的未保存对象；摘要定位、空值校验、390px保存一次及刷新通过。新增1项回归；new-project-milestone-*。初次探针在blur后画布外按Ctrl+S超时，改用明确保存按钮 |
 | ET / ef6837f | Modal首次渲染记录原焦点，避免autoFocus抢先导致取消失焦；ConfirmDialog透传returnFocus。流程归档成功/核对成功回“新建流程”，取消回原按钮。真实2旅程及10项相邻专项、原事实保持，扩展2项既有测试；template-archive-focus-* |
-| EW / 本次提交 | 特性画布新建未连接的项目里程碑原来立即消失；创建后转到现有项目图并打开属性，正式归属不变。扩展ES回归，立即改名、摘要定位、空值校验、390px、保存一次与刷新通过；需求内里程碑/视口/模板需求共5项通过，Lint/类型通过。new-milestone-immediate-before/after.log |
+| EW / fc73dcc | 特性画布新建未连接的项目里程碑原来立即消失；创建后转到现有项目图并打开属性，正式归属不变。扩展ES回归，立即改名、摘要定位、空值校验、390px、保存一次与刷新通过；需求内里程碑/视口/模板需求共5项通过，Lint/类型通过。new-milestone-immediate-before/after.log |
 | EV / 41a4ed0 | 归档人员/需求后不自动清除问题筛选，两个下拉保留当前值/名称或失效提示；防止无提示扩大范围。真实归档、刷新、切换/清空、未知负责人、状态分页和新建分派4项通过，新增2项回归；historical-issue-filters-final.log及archived-issue-*-filter-* |
 
 最近无需修改：
@@ -37,6 +37,7 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - EM：品牌设置的版本检查、背景刷新保留草稿、迟到响应保护已有完整实现和测试，不改“使用最新设置”整体重载。
 - EO：其他项目增至200个、2万需求/10万工作/1万问题，当前40需求项目读取约20.6ms不变；管理员/成员5场景×7筛选×4档结果及顺序一致，零写入。actions-project-isolation-*。
 - ER：减少动态效果已有统一CSS、GraphScene、Chart处理和实时切换专项；未重复测试。
+- EX：真实双项目同人执行，经理仅看到外部数量2→工作完成后1→项目归档后0，普通成员没有外部数量/明细，读取外部项目403。本项目事实不变；加载后续日期、切换空闲人员和390px通过。concurrency-cross-project-verified.log。首次探针未指定工作负责人、第二次使用已退役block接口，均修正探针；不恢复旧工作流。无产品修改。
 - EU：真实问题挂起/刷新/恢复保留35%进度、旧历史和核对日期；挂起清目标日期，核对日期改到未来后提醒消失。取消输入保留、三次明确写入、390px及原需求/依赖保持；issue-defer-review-date-final.log。无产品修改。
 
 ## 覆盖与降低优先级的领域
@@ -74,10 +75,8 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - DU一次迁移测试启动15秒超时、输出为空；单项与同并发重验通过，EB/EJ/EQ全量未再发生。不直接放宽超时。
 - 无用户决策事项、无外部阻塞。Goal保持active。
 
-## 当前阶段 EX：人员矩阵的多项目安排与状态变化
+## 当前阶段 EY：ES—EW 集成验收
 
-检查人员矩阵在人选跨项目、工作暂停/完成、项目归档后的展示与工作量统计。先定位已覆盖场景，再选真实缺口；不扩大人员可见范围或增加新统计口径。
+对项目里程碑草稿识别、模态框焦点、历史问题筛选、新建项目里程碑导航运行现有npm run verify。验收运行时、模块边界、Lint、业务、性能、浏览器烟测、类型、构建及体积预算。
 
-验收：视图与现有业务事实一致，切换人员或日期后不残留旧数据；无实证问题则记录无需修改并换题。
-
-当前无运行测试。EW仅修改创建后的导航并扩展既有回归；未新增测试文件。下一步读取人员矩阵实现及近期覆盖记录，选择尚未覆盖的组合。
+EX临时探针已归档。下一步记录完整结果；若失败，按失败证据定位，不能降低验收标准。通过后换一个探索重点，长期Goal仍active。
