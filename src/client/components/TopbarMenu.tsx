@@ -37,7 +37,11 @@ export function TopbarMenu({ label = '更多操作', icon = <Ellipsis size={17}/
     <AnchoredPopover align="end" anchorRef={trigger} open={open} onOutside={() => close()} onEscape={() => close(true)} preserveEditing role="presentation" width={240} className="topbar-menu-popover">
       <div ref={menu} role="menu" aria-label={label} data-workspace-zone="tools" data-preserve-edit className="topbar-menu-content"
         onBlur={event => { if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget) && !trigger.current?.contains(event.relatedTarget)) close(); }}
-        onClick={event => { if ((event.target as Element).closest('button') && !(event.target as Element).closest('[data-menu-stay]')) { if (runtime) runtime.lastTrigger = trigger.current; close(); } }}
+        onClick={event => { if ((event.target as Element).closest('button') && !(event.target as Element).closest('[data-menu-stay]')) {
+          if (runtime) runtime.lastTrigger = trigger.current;
+          // 菜单项即将移除；让新弹窗记住仍存在的入口，不打断操作自行转移的焦点。
+          close(Boolean(menu.current?.contains(document.activeElement)));
+        } }}
         onKeyDown={event => {
           if (event.defaultPrevented) return;
           if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); close(true); return; }
