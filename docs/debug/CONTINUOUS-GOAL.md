@@ -7,8 +7,8 @@
 - 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品9e6f7b8（HP长名称流程复用），前一产品54a7571（HO人力矩阵滚动）、624110c（HM Phase读取分组）、92983d1（HK Phase错误反馈）。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
-- HG完整验收23ca8fa：970项业务（117文件）、9项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS938.26KB、CSS342.41KB、ELK1595.33KB；stages-gx-hf-verify.log，涵盖GX、GT/GZ、HC、HE/HF。原目录仍仅两项用户修改。
-- HG之后HK单独验收4项浏览器，HM验收51业务/6浏览器，HO验收4既有浏览器和规模/窄屏探针；均通过Lint、类型和测试构建。不重复HG完整检查。
+- HQ完整验收9e6f7b8：971项业务（118文件）、9项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算全部通过，verify退出0。主JS938.26KB、CSS342.41KB、ELK1595.33KB；stages-hk-hp-verify.log，涵盖HK、HM、HO、HP。原目录仍仅两项用户修改。
+- 上一完整基线HG23ca8fa：970业务/9性能/26浏览器，stages-gx-hf-verify.log。专项证据仍保留：HK4浏览器、HM51业务/6浏览器、HO4既有浏览器及规模/窄屏、HP50业务/20不同浏览器；不要无变化重跑。
 - 证据保留在.preview/qa/continuous-goal/；原日志、探针、截图不进版本库。临时探针验收后归档，恢复先看当前阶段与git状态。
 
 历史记录均在同路径的Git版本：A—DO：fd512b7；DP—EV：41a4ed0；FE—HL：d35957a。按主题检索，不重新开始已验收工作。
@@ -72,8 +72,10 @@ git show d35957a:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - 画布复制需求/工作项/里程碑和流程元素也直接追加“ 副本”，200字符边界尚未实测；HP只覆盖完整流程的REST/MCP共用复制服务及需求创建选择器。此项保留待验证，不能宣称已修复。
 - GT待查项已在GZ完成独立输入节奏对照和实际页面验收，见近期成果。无用户决策事项、无外部阻塞，Goal保持active。
 
-## 当前阶段 HQ：合并验收近期改动
+## 当前阶段 HR：需求导入的错误反馈
 
-HK、HM、HO、HP均已分别验收并提交；自HG完整基线后首次运行npm run verify，检查近期界面、读取性能和复制服务共同运行。完成后换一个探索重点；画布复制边界保留候选。
+HQ已通过。下一步用非法JSON、字段超限、无效日期检查错误是否容易定位、原文是否保留、修正后是否只提交一次。已有导入恢复/异步文件竞争/原文备份覆盖不重跑；本轮只补错误反馈证据。
 
-HO/HP进程已退出、临时浏览器探针归档。原目录2026-09-18复核仍只有两项用户修改。更正HO此前描述：矩阵没有按宽度自动补周的effect，原问题来自未区分横纵的scroll事件。服务和浏览器测量分开；浏览器使用服务导出的完整响应进行路由模拟，不代表真实网络传输时间。
+已读事实：RequirementImport.tsx的parse/upload直接展示Error.message；intakePackageSchema含200字符标题、10000字符原文、有效日期校验。尚未做HR浏览器测量，不能据此标记缺陷或验收。FeaturePlanning只对overview调用parse，其他多数检索匹配是JSON.parse；避免误认为均是Zod校验。近期Phase/工作项链接原始Zod JSON问题已分别修复，不重复检查。
+
+所有HQ/HO/HP进程已退出、临时浏览器探针已归档，当前无待验收产品修改。原目录2026-09-18复核仍只有两项用户修改。更正HO此前描述：矩阵没有按宽度自动补周的effect，原问题来自未区分横纵的scroll事件；浏览器规模检查使用服务导出的完整响应进行路由模拟，不代表真实网络传输时间。
