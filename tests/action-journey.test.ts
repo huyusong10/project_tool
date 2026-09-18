@@ -48,7 +48,7 @@ async function fixture(mode: 'direct' | 'work_items') {
   let requirement = (await request('POST', '/api/requirements', { projectId: project.id, ownerId: owner.id, title: '需要跟进的交付',  durationDays: 2 })).json<Requirement>();
   const detail = async () => (await request('GET', '/api/requirements/' + requirement.id)).json<Requirement>();
   if (mode === 'work_items') {
-    await request('POST', `/api/requirements/${requirement.id}/work-items`, { expectedVersion: requirement.version, title: '待跟进的接口', ownerId: executor.id, plannedStart: todayIso(), plannedEnd: addBusinessDays(todayIso(), 1) });
+    await request('POST', `/api/requirements/${requirement.id}/work-items`, { expectedVersion: requirement.version, title: '待跟进的接口', ownerId: executor.id, plannedStart: addBusinessDays(todayIso(), 0), plannedEnd: addBusinessDays(todayIso(), 1) });
     requirement = await detail();
   }
   const sourceId = mode === 'direct' ? requirement.id : requirement.workItems[0].id;

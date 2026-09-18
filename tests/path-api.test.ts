@@ -170,7 +170,7 @@ it('排期编辑贯通存储、进度、拓扑和查询；估算单独修改且�
  const logs=()=>sqlite.prepare('SELECT * FROM progress_updates WHERE requirement_id=? ORDER BY rowid').all(a.id);
  const originalFacts=facts(),originalLogs=logs();
  const unchangedHistory=()=>expect(logs().slice(0,originalLogs.length)).toEqual(originalLogs);
- for(const patch of [{plannedEnd:addBusinessDays(todayIso(),12)},{plannedStart:null,plannedEnd:null},{plannedStart:todayIso(),plannedEnd:addBusinessDays(todayIso(),14)}]) {
+ for(const patch of [{plannedEnd:addBusinessDays(todayIso(),12)},{plannedStart:null,plannedEnd:null},{plannedStart:addBusinessDays(todayIso(),0),plannedEnd:addBusinessDays(todayIso(),14)}]) {
    const current=(await detail(a.id)).workItems[1];
    const changed=await request('PATCH',`/api/work-items/${current.id}`,{expectedVersion:current.version,...patch});expect(changed.statusCode,changed.body).toBe(200);
    const r=await detail(a.id),snapshot=await analysis(projectId),node=snapshot.nodes.find(n=>n.id===current.id)!;
@@ -185,7 +185,7 @@ it('排期编辑贯通存储、进度、拓扑和查询；估算单独修改且�
  expect(r.progress).toBe(40);expect(r.workItems[1]).toMatchObject({progressWeight:2,durationDays:6});
  expect(node.forecastEnd! > baselineAnalysis.nodes.find(n=>n.id===build.id)!.forecastEnd!).toBe(true);
  const single=(await request('GET',`/api/work-items/${build.id}`)).json();expect(single.deliveryForecast).toEqual(r.workItems[1].deliveryForecast);
- const done=snapshot.nodes.find(n=>n.id===w.id)!;expect(done.forecastStart!<=done.forecastEnd!).toBe(true);expect(done.scheduledStart).toBe(done.forecastStart);
+ const done=snapshot.nodes.find(n=>n.id===w.id)!;expect(done).toMatchObject({forecastStart:baseline.workItems[0].actualStart,forecastEnd:baseline.workItems[0].actualEnd,scheduledStart:baseline.workItems[0].actualStart,scheduledEnd:baseline.workItems[0].actualEnd});
  expect(facts()).toEqual(originalFacts);unchangedHistory();
 });
 it('模板复制和实例化保留前置；旧模板不推断关系或改写历史日期',async()=>{

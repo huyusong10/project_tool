@@ -121,7 +121,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     if (r.status === 'completed' || active.length && active.every(w=>w.status==='completed')) {
       const dates=active.map(w=>w.actualEnd).filter((v):v is string=>!!v).sort();
       end.complete=true;
-      if(dates.length===active.length&&dates.length)end.fixed=toFinish(dates.at(-1)!);
+      if(dates.length===active.length&&dates.length){end.fixed=toFinish(dates.at(-1)!);end.forecastEnd=dates.at(-1)!.slice(0,10);}
       else end.ownReasons.push('实际完成日期未记录');
     } else if (r.status === 'cancelled') end.ownReasons.push('前置需求已取消');
     const actualStarts = active.flatMap(w => w.actualStart ? [toStart(w.actualStart)] : []);
@@ -140,7 +140,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
       n.release = Math.max(0, w.earliestStart ? toStart(w.earliestStart) : 0);
       n.actualStart = w.actualStart ? toStart(w.actualStart) : null;
       n.source = w.actualStart ? '按进度估算剩余工期' : '预计工期';
-      if (w.status === 'completed' && w.actualEnd) { n.fixed = toFinish(w.actualEnd); n.remainingDays = 0; n.complete = true; n.source = '实际完成'; }
+      if (w.status === 'completed' && w.actualEnd) { n.fixed = toFinish(w.actualEnd); n.remainingDays = 0; n.complete = true; n.source = '实际完成'; n.forecastStart=(w.actualStart||w.actualEnd).slice(0,10);n.forecastEnd=w.actualEnd.slice(0,10); }
       else {
         if (!duration&&!(w.forecastEnd&&w.forecastDuration&&w.forecastReadyAt)) n.ownReasons.push('预计工期缺失');
         if (w.status === 'cancelled') n.ownReasons.push('前置工作已取消');
@@ -159,7 +159,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
   }
   for(const m of input.milestones||[]){
     const n=add(m.id,m.requirementId,'milestone',m.title);n.plannedEnd=m.targetDate;n.source='零工期里程碑';
-    if(m.achievedAt){n.complete=true;n.fixed=toFinish(m.achievedAt);n.status='completed';n.source='实际达成';}
+    if(m.achievedAt){n.complete=true;n.fixed=toFinish(m.achievedAt);n.status='completed';n.source='实际达成';n.forecastEnd=m.achievedAt.slice(0,10);}
     else if(m.cancelled){n.status='cancelled';n.ownReasons.push('前置里程碑已取消');}
     else if(m.confirmationMode==='manual'||!input.dependencies.some(d=>d.targetMilestoneId===m.id)){
       if(m.targetDate&&m.targetDate>=input.asOfDate)n.release=toFinish(m.targetDate);
@@ -193,8 +193,9 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
       n.earliestFinish = n.earliestStart + n.remainingDays;
       n.unknownReasons = [...new Set([...n.ownReasons, ...parents.flatMap(p => p.unknownReasons)])];
     }
-    n.forecastStart = n.unknownReasons.length ? null : n.complete ? n.actualStart === null ? endDate(n.earliestFinish) : dateAt(n.actualStart) : dateAt(n.earliestStart);
-    n.forecastEnd = n.unknownReasons.length ? null : n.kind==='start' ? dateAt(n.earliestStart) : endDate(n.earliestFinish);if(n.kind==='milestone'||n.kind==='acceptance')n.forecastStart=n.forecastEnd;
+    // 工作日偏移用于依赖计算；已完成对象显示记录的实际日期。
+    n.forecastStart = n.unknownReasons.length ? null : n.complete ? n.forecastStart ?? (n.actualStart === null ? endDate(n.earliestFinish) : dateAt(n.actualStart)) : dateAt(n.earliestStart);
+    n.forecastEnd = n.unknownReasons.length ? null : n.complete&&n.forecastEnd ? n.forecastEnd : n.kind==='start' ? dateAt(n.earliestStart) : endDate(n.earliestFinish);if(n.kind==='milestone'||n.kind==='acceptance')n.forecastStart=n.forecastEnd;
   }
   const scopeOf = (target: string, plan=false) => {
     const set = new Set<string>([target]), queue = [target];

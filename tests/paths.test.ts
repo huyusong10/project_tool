@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { analysePaths } from '../src/shared/paths';
 import { pathFixture,date,req,work } from './fixtures/path-network';
+import type { PathInput } from '../src/shared/paths';
+
+for(const mode of ['direct','work_items'] as const)it.each([
+  ['2026-09-19','2026-09-19','2026-09-20'],['2026-09-18','2026-09-20','2026-09-21'],['2026-09-24','2026-09-25','2026-09-28'],
+])(`${mode} 已完成对象保留实际起止日期，后续工作仍按工作日排期：%s→%s`,(actualStart,actualEnd,nextStart)=>{
+  const done={...work('A1','A',1),status:'completed',progress:100,actualStart,actualEnd};
+  const input:PathInput={projectId:'p',projectName:'实际日期',revision:1,projectEnd:null,asOfDate:actualEnd,
+    requirements:[{...req('A'),executionMode:mode,status:'completed',progress:100,actualStart,actualEnd},req('B')],
+    workItems:[...(mode==='work_items'?[done]:[]),work('B1','B',1)],
+    milestones:[{id:'milestone',projectId:'p',requirementId:null,title:'现场交付',targetDate:null,confirmationMode:'manual',achievedAt:actualEnd,version:1}],
+    dependencies:[{id:'after-done',projectId:'p',sourceRequirementId:'A',sourceWorkItemId:null,targetRequirementId:'B',targetWorkItemId:'B1',origin:'manual'}]};
+  const before=structuredClone(input),analysis=analysePaths(input),completed=analysis.nodes.find(n=>n.id===(mode==='direct'?'execute:A':'A1'))!;
+  expect.soft(completed).toMatchObject({forecastStart:actualStart,forecastEnd:actualEnd,scheduledStart:actualStart,scheduledEnd:actualEnd,remainingDays:0,complete:true});
+  for(const id of ['acceptance:A','milestone'])expect.soft(analysis.nodes.find(n=>n.id===id)).toMatchObject({forecastStart:actualEnd,forecastEnd:actualEnd,scheduledStart:actualEnd,scheduledEnd:actualEnd,complete:true});
+  expect(analysis.nodes.find(n=>n.id==='B1')).toMatchObject({forecastStart:nextStart,forecastEnd:nextStart});expect(input).toEqual(before);
+});
+
 describe('交付网络', () => {
   it('部分排期不构成整个需求截止日，真实下游截止日仍可向未排期前置传播风险', () => {
     const input = {
