@@ -34,6 +34,7 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
 
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null), optionsRef = useRef<HTMLDivElement>(null);
   const knownOptions = useRef(new Map(options.map((option) => [option.value, option])));
   for (const option of options) knownOptions.current.set(option.value, option);
   const [open, setOpen] = useState(false);
@@ -62,6 +63,11 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
   const visible = rankSearchItems(available, search, (option) => [{ text: option.label, weight: 100 }, option.description, option.keywords]);
 
   useEffect(() => { if (!open && feedback.state !== "saving" && feedback.state !== "error") setDraft(value); }, [feedback.state, normalizedValue, open, value]);
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => (searchRef.current || optionsRef.current?.querySelector<HTMLInputElement>('input:not(:disabled)'))?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
 
   const cancel = useCallback((refocus = true) => {
     if (!feedback.isSaving()) {
@@ -100,8 +106,8 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
     }}>
       <AnchoredPopover anchorRef={anchorRef} open={open} width={320} matchAnchor onOutside={() => cancel(false)} onEscape={cancel} className="inline-multi-popover">
         <div className="inline-picker-heading"><strong>{label}</strong><span>已选 {draft.length} 项</span></div>
-        {available.length > 6 && <label className="inline-picker-search"><Search size={14} /><input autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`搜索${label}`} /></label>}
-        <div className="inline-multi-options" role="listbox" aria-multiselectable="true">
+        {available.length > 6 && <label className="inline-picker-search"><Search size={14} /><input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`搜索${label}`} /></label>}
+        <div ref={optionsRef} className="inline-multi-options" role="listbox" aria-multiselectable="true">
           {visible.map((option) => {
             const checked = draft.includes(option.value);
             return <label key={option.value} className={checked ? "is-selected" : ""} title={option.label}>

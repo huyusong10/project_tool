@@ -199,7 +199,8 @@ test("工作项负责人、协作者和日期共用版本快照，重读时保�
 
   await firstRow.getByRole("button", { name: /协作人员：无协作人员/ }).click();
   popover = page.locator(".inline-multi-popover");
-  await popover.getByRole("checkbox", { name: /李四/ }).check();
+  await expect(popover.getByRole("checkbox", { name: /李四/ })).toBeFocused();
+  await page.keyboard.press('Space');
   await pushBackgroundUpdate({ title: "后台再次更新标题" });
   await expect(popover.getByRole("button", { name: "完成", exact: true })).toBeDisabled();
   expect(submissions).toHaveLength(2);
@@ -568,7 +569,12 @@ test("管理表格支持原地编辑、显式状态命令和失败回滚", async
   await ownerSearch.press('Enter');
   await expect.poll(() => patches.some((entry) => entry.path === "/api/work-items/w1" && entry.body.ownerId === "u1")).toBe(true);
   await page.getByRole("button", { name: /协作人员：无协作人员/ }).first().click();
-  await page.getByText("李四", { exact: true }).click();
+  const collaboratorSearch = page.getByPlaceholder('搜索协作人员', { exact: true });
+  await expect(collaboratorSearch).toBeFocused();
+  await page.keyboard.type('lisi');
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('checkbox', { name: /李四/ })).toBeFocused();
+  await page.keyboard.press('Space');
   await page.getByRole("button", { name: "完成", exact: true }).click();
   await expect.poll(() => patches.some((entry) => Array.isArray(entry.body.assigneeIds) && entry.body.assigneeIds.includes("u2"))).toBe(true);
   await page.getByRole("button", { name: /计划开始：2026-09-01/ }).first().click();
