@@ -4,14 +4,15 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品906a0a0（IJ），前一产品0064a41（IH）、f301ff2（IF）；README修正baf3208。
-- 原目录D:\tools\project-manage的dev不改。19:44检查仍只有用户修改skills/project-manage-intake/SKILL.md、未跟踪docs/dcim-ai-workflow-v3-gaps.md。未部署、未推送。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品ab3e713（IK），前一产品906a0a0（IJ）、0064a41（IH）、f301ff2（IF）；README修正baf3208。
+- 原目录D:\tools\project-manage的dev不改。20:32检查仍只有用户修改skills/project-manage-intake/SKILL.md、未跟踪docs/dcim-ai-workflow-v3-gaps.md。未部署、未推送。
 - 临时数据库和独立构建；浏览器使用3296，串行运行；性能独占。3210/3295不改。HZ漏设端口，用默认3291的独立临时服务完成，后续已恢复3296。
-- HZ完整验收1c1708b：971业务/118文件、9性能、26浏览器，运行时、429模块边界、Lint、类型、构建、预算全通过，verify退出0。主JS939.41KB、CSS342.52KB、ELK1595.33KB；stages-hr-hw-verify.log。
-- HZ之后IB：7项不同浏览器、3项加强字段断言的重验，Lint/类型/测试构建通过；未重复HZ。当前无待验收产品修改、无运行进程、无未归档临时浏览器探针。
+- IL完整验收ab3e713：974业务/118文件、9性能、26浏览器，运行时、429模块边界、Lint、类型、构建、预算全通过，verify退出0。主JS939.62KB、CSS342.52KB、ELK1595.33KB；stages-ib-ik-verify.log。前全量HZ见stages-hr-hw-verify.log。
+- IB：7项不同浏览器、3项加强字段断言的重验，Lint/类型/测试构建通过；现已随IL合并验收。当前无待验收产品修改、无运行进程、无未归档临时浏览器探针。
 - IF：12项不同配置/启动检查通过（初轮11通过，1测试替身模块加载问题修正后补验3项），当前pwsh手动夹具也通过，修改测试ESLint和diff检查通过；无需重跑应用全量。
 - IH：26既有业务、16既有浏览器旅程及Lint通过；最终会话身份保护调整后补验3项多标签旅程。50项目前后测和5项目回访探针通过，类型/测试构建通过。无运行进程，临时探针已归档。
 - IJ：2条真实日志探针、2条既有日志浏览器通过，日期/每页条数/项目条件保持、查询零写入、390px可选；截图已检查。目标ESLint、类型/测试构建、diff通过；探针归档，无永久测试增加。
+- IK：31业务/4文件、目标ESLint、类型、diff通过。加强既有样板清理旅程，新增1条历史引用删除回归；无临时探针。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
 详细历史在本文件Git版本：A—DO fd512b7；DP—EV 41a4ed0；FE—HL d35957a；HE—IE 67250e9。后者保留HP/HS探针修正、完整测量、截图及各专项数量。按主题取读，不重新开始。
@@ -20,6 +21,7 @@
 
 | 阶段 / 提交 | 结果 / 证据 |
 |---|---|
+| IK / ab3e713 | 迁移保留旧acceptance_owner_id，但归档引用检查遗漏；样板归档会误停用外部旧验收人，普通永久删除报500。两个既有查询纳入旧验收人，同一需求只计一次；样板删除成功且历史人员/账号保留，无引用者仍清除；普通删除409并保留资料。31业务通过，legacy-acceptor-before/sample-before、stage-ik-*。首次样板夹具用无账号旧actor创建需求失败，改为直接构造迁移保留资料后复现 |
 | IJ / 906a0a0 | 日志缺少当前业务动作/对象筛选，提测与分析布局显示英文，自动记录误显示“已删除用户”。仅补现有标签表及系统来源选项/名称。真实提测、返工、分析布局重置和系统记录可筛选；4浏览器通过。audit-actions-before/observed、stage-ij-*、audit-actions-narrow/audit-layout-filter截图；当前记录原样保留 |
 | IH / 0064a41 | 浏览50项目、每项目100需求的模拟分析响应后，查询缓存过期并GC，未编辑画布会话50→0，堆51.93→12.16MB；5/20项目后测10.85/11.69MB，DOM稳定。卸载后等待存储队列，再释放无编辑/字段/错误且无保存中的会话，旧会话不能释放新会话租约。26业务、16恢复/访客/接管旅程通过；加强既有存储失败测试的跨页输入保留。5项目回访视口/布局完全相同。multi-project-memory-baseline/after/recovery、stage-ih-*；首次空项目缺“其他需求”的夹具失败后补最小需求，不改业务行为 |
 | IF / f301ff2 | start.bat调用Windows PowerShell 5.1，configure.ps1无BOM中文先解析失败，补BOM后又因-AsPlainText参数不支持失败。改用NetworkCredential读取SecureString、保存UTF-8 BOM，并将安装依赖放到配置之前。5.1/当前pwsh密码与部署参数保留、指定测试库账号更新通过；冷/热启动顺序用npm/配置/服务替身验证，未下载依赖或操作原账号。configure-powershell51-before/bom-only/after、startup-order-before、stage-if-*、configure-pwsh-*；保留2项启动回归。初测试Read-Host替身依赖Security模块而加载失败，改为直接构造SecureString后通过 |
@@ -71,6 +73,7 @@
 - 项目归档/恢复保留此前独立归档的需求；Phase历史交付按快照原样返回。旧来源条款复核不恢复成产品入口。
 - 性能测量独立运行，分开记录服务计算、网络和浏览器成本；不得把Playwright扫描标签时间算作渲染耗时。
 - 临时浏览器探针验收后移回证据目录；新增永久回归只覆盖会破坏数据、恢复或交互的重要路径。
+- 协调阻塞流程已退役，0026迁移清空协调人并将blocked转为现有状态；不能仅凭残留函数认定入口可达。旧验收人字段迁移仍保留，历史引用必须保护（IK）。
 
 ## 候选与受阻
 
@@ -82,8 +85,10 @@
 - IE的10次未匹配GET无请求路径；当前游客首页48请求全成功。需原请求路径或复现场景才可定位，暂不改路由/日志隐私规则。
 - GT待查项已在GZ完成独立输入节奏对照和实际页面验收，见近期成果。无用户决策事项、无外部阻塞，Goal保持active。
 
-## 当前阶段 IK：样板人员被真实项目引用后的清理
+## 当前阶段 IM：客户端断开后的恢复请求计数
 
-日志日期/快照已由FB验收，归档规模已由GY测过5000需求（读取约8.82ms，f453494），不重复。样板清理已有外部成员/负责人/协作者保护及两项业务测试，但samplePersonUsedOutside和普通人员永久删除引用计数均未包含blocked_coordinator_id。该字段仍被现有协调阻塞操作写入，且人员移出项目只检查主要分配。
+IL完整验收结束，无运行进程。只读检查确认MCP使用无状态POST/JSON，GET/DELETE返回405，每次请求finally关闭server；退出路径5秒后关闭余留连接，不构造不存在的SSE会话测试。
 
-下一步从现有服务创建仅作为阻塞协调人的外部引用，再移出成员、归档/删除样板项目，确认是否错误归档人员或被外键阻断。acceptance_owner_id也是旧字段，但现有入口拒绝，先核对历史迁移再决定是否涉及。仅按可达业务证据修复，不扩大成员移出限制。验收要求外部协调资料完整、样板清理成功、无引用人员仍清除；普通永久删除有引用时返回可读原因且事务无变化。当前未改此领域代码，无运行检查。
+新线索：database-maintenance.ts在preHandler登记请求，仅onResponse/onError删除；pauseDatabaseRequests会等待Set清空，10秒未清空则取消恢复。下一步用独立Fastify服务制造可控的响应途中断开，观察处理结束后维护锁是否仍把已断开请求计为活动。先验证现有Fastify钩子是否已清理，再决定修改；不能仅凭没有onRequestAbort判断缺陷。必要时用真实MCP/备份下载复现，不改原服务或数据库。
+
+验收：客户端断开后的请求不永久阻止后续恢复；真正仍在执行的写入必须等待结束；请求失败、正常完成及维护恢复开关保持。日志日期/快照FB、归档5000需求规模GY已充分验收，不重复。Goal保持active。
