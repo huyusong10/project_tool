@@ -1,4 +1,5 @@
 import {requireWorkspaceRead} from './workspace-access';
+import compress from '@fastify/compress';
 import {dependencyChangesInput,applyDependencyChangesInput,pathEstimateInput} from '../shared/workflow-contracts';
 import {listDeliveryCommitments,getDeliveryCommitment,deliveryCommitmentSummary} from './services/commitments';
 import {projectChangeVersion} from './services/project-change-version';
@@ -14,6 +15,7 @@ import {milestoneCommand,readDiagramLayouts} from './services/milestones';
 const params = z.object({ id: z.string().min(1) });
 export function registerPathRoutes(root: FastifyInstance) {
   root.register(async app => {
+  await app.register(compress, { global: false });
 
   app.get('/api/projects/:id/change-version',{preHandler:requireWorkspaceRead},async request=>projectChangeVersion(params.parse(request.params).id,actorFromRequest(request)));
   app.get('/api/projects/:id/diagram-layouts',{preHandler:requireWorkspaceRead},async request=>readDiagramLayouts(params.parse(request.params).id,actorFromRequest(request)));
@@ -27,8 +29,8 @@ export function registerPathRoutes(root: FastifyInstance) {
     const p = z.object({ id: z.string(), batchId: z.string().uuid() }).parse(request.params);
     return getDependencyChangeReceipt(p.id, p.batchId, actorFromRequest(request));
   });
-  app.get('/api/projects/:id/path-analysis',{preHandler:requireWorkspaceRead},async request => readPathAnalysis(params.parse(request.params).id, pathQuery.parse(request.query).target, actorFromRequest(request)));
-  app.get('/api/requirements/:id/path-analysis',{preHandler:requireWorkspaceRead},async request => {
+  app.get('/api/projects/:id/path-analysis',{compress:{encodings:['br','gzip'],zlibOptions:{level:1}},preHandler:requireWorkspaceRead},async request => readPathAnalysis(params.parse(request.params).id, pathQuery.parse(request.query).target, actorFromRequest(request)));
+  app.get('/api/requirements/:id/path-analysis',{compress:{encodings:['br','gzip'],zlibOptions:{level:1}},preHandler:requireWorkspaceRead},async request => {
     const { id } = params.parse(request.params); return readPathAnalysis(pathProjectForRequirement(id), pathQuery.parse(request.query).target || acceptanceId(id), actorFromRequest(request));
   });
   app.get('/api/projects/:id/dependencies',{preHandler:requireWorkspaceRead},async request => readPathAnalysis(params.parse(request.params).id, undefined, actorFromRequest(request)).dependencies);

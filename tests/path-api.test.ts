@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {scryptSync,randomUUID} from 'node:crypto';
+import {brotliDecompressSync,gunzipSync} from 'node:zlib';
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import type {FastifyInstance} from 'fastify';
 import type {PathAnalysis} from '../src/shared/paths';
@@ -10,6 +11,28 @@ import type {Requirement,WorkItem,WorkItemTemplate} from '../src/client/types';
 import {addBusinessDays,todayIso} from '../src/shared/domain';
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'pm-path-api-'));
 import type {DependencyChanges,DependencyChangePreview,DependencyChangeReceipt} from '../src/shared/path-contracts';
+
+it('项目和需求分析按客户端编码压缩，完整结果与权限保持且不影响其他接口',async()=>{
+  const {projectId,a}=await fixture();
+  for(const url of ['/api/projects/'+projectId+'/path-analysis','/api/requirements/'+a.id+'/path-analysis']){
+    const original=await request('GET',url);expect(original.statusCode).toBe(200);
+    expect(original.headers['content-encoding']).toBeUndefined();
+    for(const [accept,encoding] of [['br, gzip','br'],['gzip, br;q=0','gzip'],['br;q=0.1, gzip;q=0.9','gzip'],['br;q=0, gzip;q=0',undefined],['identity',undefined],['deflate',undefined]] as const){
+      const response=await app.inject({method:'GET',url,headers:{cookie,'accept-encoding':accept}});
+      expect(response.statusCode).toBe(200);expect(response.headers['content-encoding']).toBe(encoding);
+      if(encoding)expect(response.headers.vary).toContain('accept-encoding');
+      expect(response.headers['cache-control']).toBe('private, no-store');
+      const decoded=encoding==='br'?brotliDecompressSync(response.rawPayload):encoding==='gzip'?gunzipSync(response.rawPayload):response.rawPayload;
+      expect(decoded.equals(original.rawPayload)).toBe(true);
+      if(encoding)expect(response.rawPayload.length).toBeLessThan(original.rawPayload.length);
+    }
+    const denied=await app.inject({method:'GET',url,headers:{'accept-encoding':'br'}});
+    expect(denied.statusCode).toBe(404);
+  }
+  const url='/api/requirements/'+a.id,original=await request('GET',url);
+  const other=await app.inject({method:'GET',url,headers:{cookie,'accept-encoding':'br'}});
+  expect(other.headers['content-encoding']).toBeUndefined();expect(other.rawPayload.equals(original.rawPayload)).toBe(true);
+});
 
 it('提交中审计失败时关系、估算、版本和回执全部回滚，同批次可安全重试',async()=>{
  const {projectId,a,b}=await fixture(),before=await analysis(projectId),changes:DependencyChanges={add:[{clientId:randomUUID(),sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:b.workItems[1].id}],remove:[before.dependencies[0].id],estimates:[{workItemId:a.workItems[0].id,durationDays:7}]};
