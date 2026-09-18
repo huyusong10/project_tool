@@ -1,3 +1,5 @@
+import {phaseFixture} from './phase-fixture';
+import type {PathAnalysis} from '../../src/shared/paths';
 import {graphFixture as fixture} from './graph-fixture';
 import {chooseOption,selectedValue} from './select-helper';
 import {openGraph,openGraphDrafts,reopenGraphProperties,graphProperties,graphToolbar,closeGraphProperties,focusGraph} from './graph-interactions';
@@ -151,6 +153,27 @@ for(const destination of ['全局','其他需求'] as const)for(const narrow of 
  await page.goBack();await expect.poll(()=>new URL(page.url()).searchParams.get('requirementId')).toBe(new URL(beforeUrl).searchParams.get('requirementId'));await ready(page);await graphProperties(page,page.locator('.react-flow__node[data-id="'+id+'"] .dependency-card'));await expect(title).toHaveValue('其他页面的有效修改');await graphToolbar(page,'保存修改');await expect(page).toHaveURL(new RegExp('requirementId='+a.id));await ready(page);await expect(title).toBeFocused();
  await title.fill('定位后修正');const saved=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/apply'));await page.keyboard.press('Control+s');expect((await saved).status()).toBe(200);expect((await analysis()).nodes.find(n=>n.id===a.workItems[0].id)?.title).toBe('定位后修正');
  await page.goBack();await expect.poll(()=>new URL(page.url()).searchParams.get('requirementId')).toBe(new URL(beforeUrl).searchParams.get('requirementId'));await ready(page);
+});
+
+test('特性图中的项目里程碑名称留空后，从项目层保存能返回原字段',async({page},info)=>{
+  const f=await phaseFixture(page),id=crypto.randomUUID();
+  const read=async()=>await(await page.request.get(f.base+'/path-analysis')).json() as PathAnalysis;
+  const initial=await read();
+  const input={expectedRevision:initial.revision,target:'project',changes:{add:[{clientId:crypto.randomUUID(),sourceRequirementId:f.testing.id,sourceWorkItemId:null,targetRequirementId:'',targetMilestoneId:id,targetWorkItemId:null}],remove:[],estimates:[],entities:[{entity:'milestone',op:'create',id,requirementId:null,data:{title:'项目集成评审',confirmationMode:'manual'}}]}};
+  const previewResponse=await page.request.post(f.base+'/dependency-changes/preview',{data:input});expect(previewResponse.ok(),await previewResponse.text()).toBe(true);
+  const preview=await previewResponse.json(),applied=await page.request.post(f.base+'/dependency-changes/apply',{data:{...input,batchId:crypto.randomUUID(),previewToken:preview.previewToken}});expect(applied.ok(),await applied.text()).toBe(true);
+  const before=await read();let writes=0;page.on('request',request=>{if(request.url().endsWith('/dependency-changes/apply'))writes++;});
+  await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'graph',scopeType:'feature',scopeId:f.feature.id}));
+  const ready=()=>expect(page.locator('.dependency-canvas')).toHaveAttribute('data-layout-ready','true');await ready();
+  await graphToolbar(page,'编辑画布');await graphProperties(page,page.locator('.react-flow__node[data-id="'+id+'"] .dependency-card'));
+  const title=page.getByLabel('元素名称',{exact:true});await title.fill('');await title.blur();await expect(title).toHaveAttribute('aria-invalid','true');
+  await closeGraphProperties(page);await page.getByRole('button',{name:'上一级',exact:true}).click();await ready();
+  await graphToolbar(page,'保存修改');
+  await expect(title).toBeVisible();await expect(title).toHaveValue('');await expect(title).toHaveAttribute('aria-invalid','true');await expect(title).toBeFocused();expect(writes).toBe(0);
+  expect((await read()).milestones).toEqual(before.milestones);
+  await page.screenshot({path:info.outputPath('milestone-invalid-name.png'),animations:'disabled'});
+  await title.fill('已核对的项目集成评审');const saved=page.waitForResponse(response=>response.url().endsWith('/dependency-changes/apply'));await page.keyboard.press('Control+s');expect((await saved).status()).toBe(200);
+  const after=await read();expect(after.milestones).toEqual(before.milestones!.map(item=>item.id===id?{...item,title:'已核对的项目集成评审',version:item.version+1}:item));expect(writes).toBe(1);expect(after.dependencies).toEqual(before.dependencies);
 });
 
 for(const scope of ['项目','模板'] as const)for(const unfinished of [false,true])test('草稿重新接管：'+scope+(unfinished?'保留对方未完成输入':'采用对方已确认字段')+'，旧字段不回写',async({page,context})=>{
