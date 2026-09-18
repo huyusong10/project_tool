@@ -21,6 +21,7 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 | 阶段 / 提交 | 结果与验收入口 |
 |---|---|
+| FC / 本次提交 | 项目里程碑依赖定位原来无“其他需求”则无反应，有则跳错范围；复用editorFieldLocation并带原关系ID。两种项目结构从清单摘要继续修改前置交付并一次保存；原需求/里程碑/关系完整保留，390px通过。7项浏览器、22项模型、Lint/类型通过，新增2项回归；project-milestone-relation-repro/after/final.log |
 | EZ / 61be7be | 工作项重复关联链接显示Zod JSON；只取校验错误的中文message。20项上限、规范化重复地址、保留输入、纠正/删除再添加、清空刷新和390px通过，完成/进度/日期/其他工作/旧历史不变；既有4项链接流程及Lint/类型通过。reference-link-limit-repro/after/final.log。无需新增永久测试 |
 | FA / 95d9385 | 人员矩阵/人力摘要/项目成员的末字头像把𠮷和符号截成替换字符；Avatar按完整码点取末字，人力摘要复用组件。4项浏览器含三处真实人员、普通中英文、390px和零写入；36/34/36px尺寸不变，6项空值/空白/字符探针及Lint/类型通过。person-avatar-character-before/after.log；无需新增永久测试 |
 | EG / 1013ffe | 批量归档核对显示已归档/未归档；未知结果、冲突、整批回滚及窄屏4项。batch-archive-state-* |
@@ -78,10 +79,10 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - DU一次迁移测试启动15秒超时、输出为空；单项与同并发重验通过，EB/EJ/EQ全量未再发生。不直接放宽超时。
 - 无用户决策事项、无外部阻塞。Goal保持active。
 
-## 当前阶段 FC：项目里程碑依赖的草稿定位
+## 当前阶段 FD：问题查询随历史进展增长的耗时
 
-dependencyWorkspaceLocation只按终点需求寻找特性；关系终点是项目里程碑且项目没有“其他需求”时会返回空。检查从修改摘要定位这类新增依赖，能否继续编辑和保存。
+在隔离数据库建立1000条问题，逐步增加旧进展记录，测量默认分页、负责人/状态/逾期及历史关键词查询。保持每条问题的最新进展不变，验证完整返回值与顺序。
 
-验收：有命名特性、无“其他需求”的项目中，依赖摘要定位到原关系；修改前置交付后一次保存，原需求/里程碑/关系保持。复用现有项目图与定位机制，不创建额外特性或新归属。
+验收：采样耗时、查询计划、SQL次数和零写入证据；只在明确瓶颈且可保持结果时改进，不提前增加索引、缓存或测试。
 
-当前无运行测试、无临时探针留在tests/responsive。EY为最近全量基线，EZ/FA此后专项通过。下一步先以phaseFixture实际复现，不能只凭源码判定缺陷。
+当前无运行测试、无临时探针留在tests/responsive。EY为最近全量基线，EZ/FA/FC此后专项通过。FC首次探针误以为path-analysis包含featureContext，改用path-graph分析数据后复现并修复；永久回归已从graphic-editor运行通过。

@@ -681,3 +681,23 @@ test('新增项目里程碑立即可编辑，摘要定位和跨范围校验后�
   const after=await read();expect(after.milestones).toHaveLength((before.milestones?.length||0)+1);expect(after.milestones?.find(m=>m.id===id)).toMatchObject({title:'新项目交付点',requirementId:null});expect(after.dependencies).toEqual(before.dependencies);
   await page.reload();await expect(page.locator('.react-flow__node[data-id="'+id+'"]')).toContainText('新项目交付点');expect((await read()).milestones).toEqual(after.milestones);
 });
+
+for(const other of [false,true])test('项目里程碑依赖从项目清单摘要定位 '+(other?'存在其他需求':'仅命名特性'),async({page},info)=>{
+  const f=await phaseFixture(page),id=crypto.randomUUID(),read=async()=>(await(await page.request.get(f.base+'/path-graph?view=features')).json()).analysis as PathAnalysis;
+  if(other){const response=await page.request.post('/api/requirements',{data:{projectId:f.projectId,title:'不归命名特性的需求',ownerId:f.testing.ownerId}});expect(response.ok(),await response.text()).toBe(true);}
+  const initial=await read(),input={expectedRevision:initial.revision,target:'project',changes:{add:[{clientId:crypto.randomUUID(),sourceRequirementId:f.direct.id,sourceWorkItemId:null,targetRequirementId:'',targetMilestoneId:id,targetWorkItemId:null}],remove:[],estimates:[],entities:[{entity:'milestone',op:'create',id,requirementId:null,data:{title:'项目集成评审',confirmationMode:'manual'}}]}};
+  const previewResponse=await page.request.post(f.base+'/dependency-changes/preview',{data:input});expect(previewResponse.ok(),await previewResponse.text()).toBe(true);const preview=await previewResponse.json();
+  const apply=await page.request.post(f.base+'/dependency-changes/apply',{data:{...input,batchId:crypto.randomUUID(),previewToken:preview.previewToken}});expect(apply.ok(),await apply.text()).toBe(true);
+  const before=await read();expect(before.featureContext?.overview.features.some(feature=>feature.kind==='other')).toBe(other);let writes=0;const errors:string[]=[];
+  page.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/dependency-changes/apply'))writes++;});page.on('pageerror',error=>errors.push(error.message));
+  await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'graph',scopeType:'feature',scopeId:f.feature.id}));await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();await graphToolbar(page,'编辑画布');
+  await page.locator('.react-flow__node[data-id="'+f.testing.id+'"] .business-handle[data-side="bottom"]').click();await page.locator('.react-flow__node[data-id="'+id+'"] .dependency-card').click({position:{x:80,y:45}});
+  await expect(page.locator('[data-draft-stored="true"]')).toBeVisible();await closeGraphProperties(page);await page.getByRole('button',{name:'上一级',exact:true}).click();await page.getByRole('button',{name:'清单',exact:true}).click();await openGraphDrafts(page);
+  await page.locator('.canvas-change-row').filter({hasText:'新增：'+f.testing.title+' → 项目集成评审'}).getByRole('button',{name:'定位',exact:true}).click();
+  await expect(page.locator('.canvas-draft-details')).toHaveCount(0);await expect(page.locator('.delivery-condition')).toBeVisible();expect(new URL(page.url()).searchParams.get('scopeType')).toBe('project');
+  const source=page.getByRole('combobox',{name:'等待什么完成',exact:true});await expect(source).toBeEnabled();await chooseOption(source,f.testing.workItems[0].id);await expect(selectedValue(source)).toHaveValue(f.testing.workItems[0].id);expect(writes).toBe(0);expect((await read()).dependencies).toEqual(before.dependencies);
+  await page.setViewportSize({width:390,height:844});await page.screenshot({path:info.outputPath('project-milestone-relation-390.png'),animations:'disabled'});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  const response=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/dependency-changes/apply'));await graphToolbar(page,'保存修改');expect((await response).status()).toBe(200);expect(writes).toBe(1);
+  const after=await read(),added=after.dependencies.filter(d=>!before.dependencies.some(old=>old.id===d.id));expect(added).toHaveLength(1);expect(added[0]).toMatchObject({sourceRequirementId:f.testing.id,sourceWorkItemId:f.testing.workItems[0].id,targetMilestoneId:id});expect(after.dependencies.filter(d=>before.dependencies.some(old=>old.id===d.id))).toEqual(before.dependencies);expect(after.milestones).toEqual(before.milestones);expect(after.requirements).toEqual(before.requirements);expect(errors).toEqual([]);
+});
+
