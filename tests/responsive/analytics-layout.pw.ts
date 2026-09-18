@@ -59,6 +59,71 @@ async function mockAnalytics(page: Page) {
   };
 }
 
+test('分析日期未填或范围错误时就地提示，修正后恢复查询且不改布局', async ({ page }, testInfo) => {
+  expect((await page.request.post('/api/login', { data: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } })).ok()).toBe(true);
+  const created = await page.request.post('/api/projects', { data: { name: '分析日期恢复 ' + Date.now() } });
+  expect(created.ok()).toBe(true);
+  const project = await created.json();
+  const layoutBefore = await (await page.request.get('/api/analytics/layout')).json();
+  const projectsBefore = await (await page.request.get('/api/projects')).json();
+  const queries: Array<{ from: string; to: string }> = [], writes: string[] = [], errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/analytics/query') queries.push(request.postDataJSON().range);
+    else if (path.startsWith('/api/') && !['GET', 'HEAD'].includes(request.method())) writes.push(path);
+  });
+  const initial = page.waitForResponse(response => new URL(response.url()).pathname === '/api/analytics/query');
+  await page.goto(`/analytics?projectId=${project.id}&range=custom&from=2026-08-01&to=2026-08-31`);
+  expect((await initial).status()).toBe(200);
+  const from = page.getByLabel('分析开始日期', { exact: true }), to = page.getByLabel('分析结束日期', { exact: true });
+  const count = queries.length;
+  await from.fill('');
+  await expect(page.getByRole('alert')).toContainText('请选择有效的开始日期和结束日期');
+  await expect(page.getByText('分析数据加载失败', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.analytics-grid')).toHaveCount(0);
+  expect(queries).toHaveLength(count);
+  await page.screenshot({ path: testInfo.outputPath('analytics-missing-date-1280.png'), animations: 'disabled' });
+  await headerAction(page, '编辑看板');
+  await headerAction(page, '新增图表');
+  const editor = page.getByRole('dialog', { name: '配置分析图表', exact: true });
+  await expect(editor).toContainText('请检查分析日期');
+  await editor.getByLabel('图表标题', { exact: true }).fill('日期恢复检查面板');
+  await editor.getByRole('button', { name: '应用配置', exact: true }).click();
+  expect(queries).toHaveLength(count);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await from.fill('2026-09-01');
+  await expect(page.getByRole('alert')).toContainText('开始日期不能晚于结束日期');
+  expect(queries).toHaveLength(count);
+  await page.screenshot({ path: testInfo.outputPath('analytics-reversed-date-390.png'), animations: 'disabled' });
+  await from.fill('2010-01-01');
+  await expect(page.getByRole('alert')).toContainText('分析时间范围不能超过5年');
+  expect(queries).toHaveLength(count);
+
+  const recovered = page.waitForResponse(response => new URL(response.url()).pathname === '/api/analytics/query' && response.request().postDataJSON().range.from === '2026-08-02');
+  await from.fill('2026-08-02');
+  expect((await recovered).status()).toBe(200);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('.analytics-grid')).toBeVisible();
+  await expect(page.getByText('日期恢复检查面板', { exact: true })).toBeVisible();
+  await expect(to).toHaveValue('2026-08-31');
+  await page.screenshot({ path: testInfo.outputPath('analytics-date-recovered-390.png'), animations: 'disabled' });
+  await headerAction(page, '取消编辑');
+  await expect(page.getByText('日期恢复检查面板', { exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: '项目空间', exact: true }).click();
+  await page.getByRole('link', { name: '统计分析', exact: true }).click();
+  await expect(from).toHaveValue('2026-08-02');
+  await expect(to).toHaveValue('2026-08-31');
+  await page.reload();
+  await expect(from).toHaveValue('2026-08-02');
+  await expect(to).toHaveValue('2026-08-31');
+  expect(await (await page.request.get('/api/analytics/layout')).json()).toEqual(layoutBefore);
+  expect(await (await page.request.get('/api/projects')).json()).toEqual(projectsBefore);
+  expect(writes).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test.describe('北京时间分析默认范围', () => {
   test.use({ timezoneId: 'America/Los_Angeles' });
 
