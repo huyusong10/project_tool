@@ -4,11 +4,12 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品7b6dbaf（IB），前一产品1c1708b（HW）；README修正baf3208。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品f301ff2（IF），前一产品7b6dbaf（IB）、1c1708b（HW）；README修正baf3208。
 - 原目录D:\tools\project-manage的dev不改。19:44检查仍只有用户修改skills/project-manage-intake/SKILL.md、未跟踪docs/dcim-ai-workflow-v3-gaps.md。未部署、未推送。
 - 临时数据库和独立构建；浏览器使用3296，串行运行；性能独占。3210/3295不改。HZ漏设端口，用默认3291的独立临时服务完成，后续已恢复3296。
 - HZ完整验收1c1708b：971业务/118文件、9性能、26浏览器，运行时、429模块边界、Lint、类型、构建、预算全通过，verify退出0。主JS939.41KB、CSS342.52KB、ELK1595.33KB；stages-hr-hw-verify.log。
 - HZ之后IB：7项不同浏览器、3项加强字段断言的重验，Lint/类型/测试构建通过；未重复HZ。当前无待验收产品修改、无运行进程、无未归档临时浏览器探针。
+- IF：12项不同配置/启动检查通过（初轮11通过，1测试替身模块加载问题修正后补验3项），当前pwsh手动夹具也通过，修改测试ESLint和diff检查通过；无需重跑应用全量。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
 详细历史在本文件Git版本：A—DO fd512b7；DP—EV 41a4ed0；FE—HL d35957a；HE—IE 67250e9。后者保留HP/HS探针修正、完整测量、截图及各专项数量。按主题取读，不重新开始。
@@ -17,6 +18,7 @@
 
 | 阶段 / 提交 | 结果 / 证据 |
 |---|---|
+| IF / f301ff2 | start.bat调用Windows PowerShell 5.1，configure.ps1无BOM中文先解析失败，补BOM后又因-AsPlainText参数不支持失败。改用NetworkCredential读取SecureString、保存UTF-8 BOM，并将安装依赖放到配置之前。5.1/当前pwsh密码与部署参数保留、指定测试库账号更新通过；冷/热启动顺序用npm/配置/服务替身验证，未下载依赖或操作原账号。configure-powershell51-before/bom-only/after、startup-order-before、stage-if-*、configure-pwsh-*；保留2项启动回归。初测试Read-Host替身依赖Security模块而加载失败，改为直接构造SecureString后通过 |
 | IB / 7b6dbaf | 未知创建误认工作阶段或协作人员不同的同名项并清掉草稿。补齐阶段、里程碑名、参与人集合比较；不同资料保留输入，一致资料仍能确认。两条防丢失回归、7浏览器通过；work-create-identity-before、stage-ib-*。仅凭相同资料不能证明并发操作来源 |
 | HW / 1c1708b | 工作项名称规范化后无法核对已成功创建；比较复用canonicalizeLabel。混合全角/组合字符/空白旅程通过，零重提、完整DTO不变；5浏览器及Lint/类型/构建，work-title-recheck-before、stage-hw-*。人员/特性规则已一致 |
 | IA / baf3208 | README校正人员权限、人力分析、归档、Token/密码入口及独立skill同步命令，删除重复首次配置，净减5行；对照实际路由和脚本验收 |
@@ -75,8 +77,8 @@
 - IE的10次未匹配GET无请求路径；当前游客首页48请求全成功。需原请求路径或复现场景才可定位，暂不改路由/日志隐私规则。
 - GT待查项已在GZ完成独立输入节奏对照和实际页面验收，见近期成果。无用户决策事项、无外部阻塞，Goal保持active。
 
-## 当前阶段 IF：Windows首次配置兼容性
+## 当前阶段 IG：自动备份的清理边界
 
-start.bat调用powershell.exe；本机5.1.22621.2506没有configure.ps1第7行使用的ConvertFrom-SecureString -AsPlainText。configure.ps1是无BOM UTF-8，还需核对5.1中文解析。start.bat先configure再npm install，而configure.mjs静态依赖better-sqlite3/dotenv，首次无依赖可能提前失败。
+IF已验收。下一步检查自动备份清理在日期保留期限、最大份数与混合来源文件下的行为，先查看既有测试和历史覆盖；只在缺口有具体风险时用临时目录验证，不触及原服务备份。重点确认清理对象、保留边界及失败后的结果提示，不改备份产品范围。
 
-下一步在.preview下复制包装器和configure脚本，用固定测试输入替代Read-Host复现。不得执行原目录配置或重置现有账号。修复后验收Windows PowerShell 5.1/当前pwsh、配置保留和首次安装顺序。当前只读发现，尚未修改或创建该阶段夹具。
+当前没有待验收修改或运行进程。IF固定输入夹具保留在.preview/qa/continuous-goal/，全部配置只写隔离目录；原目录保持原两项用户修改。
