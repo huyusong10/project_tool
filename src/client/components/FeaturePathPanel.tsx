@@ -51,7 +51,7 @@ function FeatureWorkspace({formal}:{formal:PathAnalysis}){
   const workspaceLocate=params.get('workspaceLocate');
   useEffect(()=>{if(workspaceLocate)setLocate({id:workspaceLocate,sequence:Date.now()});},[workspaceLocate]);
   const orderKey='pm-feature-order-write:'+account+':'+projectId;
-  const [orderPending,setOrderPending]=useState(()=>sessionStorage.getItem(orderKey)||'');
+  const [orderPending,setOrderPending]=useState(()=>{try{return sessionStorage.getItem(orderKey)||'';}catch{return '';}});
   const [readError,setReadError]=useState(''),[denied,setDenied]=useState(false);
   const refresh=async()=>{try{setReadError('');await planningApi.projectsFeatureOverviewQuery(projectId);invalidateRequirementViews(client);}catch(e){setReadError((e as Error).message);if(e instanceof ApiError&&[401,403].includes(e.status)){clearProjectGraphDrafts(account,projectId);setDenied(true);invalidateRequirementViews(client);}}};
   const draft=useDependencyDraft(account,formal,'project',()=>invalidateRequirementViews(client));
