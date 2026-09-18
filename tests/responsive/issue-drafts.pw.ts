@@ -155,27 +155,48 @@ test('新建问题核对时不能把下次核对日期不同的候选项当成�
   expect(state.writes).toHaveLength(1);
 });
 
-test('项目经理新建问题时可以直接选择负责人', async ({ page }) => {
+test('项目经理新建问题时可以直接选择负责人，失效选择明确提示并可改选', async ({ page }) => {
   const state = await fixture(page, 'manager');
-  await page.route(/\/api\/people(?:\?|$)/, route => route.fulfill({ json: [
+  let availablePeople = [
     { id: 'u1', name: '张三', active: 1, projectRole: 'member' },
     { id: 'u2', name: '李四', active: 1, projectRole: 'member', accountStatus: 'active' },
     { id: 'u3', name: '停用成员', active: 1, projectRole: 'member', accountStatus: 'disabled' },
     { id: 'u4', name: '无账号成员', active: 1, projectRole: 'member', accountStatus: null },
     { id: 'u5', name: '已删除账号', active: 1, projectRole: 'member', accountStatus: 'active', accountDeletedAt: '2026-09-01' },
-  ] }));
+  ];
+  await page.route(/\/api\/people(?:\?|$)/, route => route.fulfill({ json: availablePeople }));
+  let availableRequirements = [{id: 'r1', title: '待关联需求'}];
+  await page.route(/\/api\/requirements(?:\?|$)/, route => route.fulfill({json: availableRequirements}));
   await page.goto('/issues');
   await page.getByRole('button', { name: '新建问题', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '新建问题', exact: true });
   await dialog.getByRole('textbox', { name: '问题标题', exact: true }).fill('创建时直接分配负责人');
+  await dialog.getByRole('button', {name: '关联需求：公共问题', exact: true}).click();
+  await page.getByRole('listbox', {name: '关联需求', exact: true}).getByRole('option', {name: '待关联需求', exact: true}).click();
+  availableRequirements = [];
+  await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
+  await dialog.getByRole('button', {name: '关联需求：已不可用的关联需求（请重新选择）', exact: true}).click();
+  await page.getByRole('listbox', {name: '关联需求', exact: true}).getByRole('option', {name: /公共问题/}).click();
   await dialog.getByRole('button', { name: '负责人：未分配', exact: true }).click();
   await expect(page.getByRole('listbox', { name: '负责人', exact: true }).getByRole('option')).toHaveCount(3);
   await page.getByRole('listbox', { name: '负责人', exact: true }).getByRole('option', { name: '李四', exact: true }).click();
+  availablePeople = availablePeople.map(person => person.id === 'u2' ? {...person, accountStatus: 'disabled'} : person);
+  await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
+  await expect(dialog.getByRole('button', {name: '负责人：已不可用的负责人（请重新选择）', exact: true})).toBeVisible();
+  availablePeople = availablePeople.filter(person => person.id !== 'u2');
+  await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
+  const unavailableOwner = dialog.getByRole('button', {name: '负责人：已不可用的负责人（请重新选择）', exact: true});
+  await expect(unavailableOwner).toBeVisible();
+  await expect(dialog.getByRole('textbox', {name: '问题标题', exact: true})).toHaveValue('创建时直接分配负责人');
+  expect(state.writes).toEqual([]);
+  await unavailableOwner.click();
+  await expect(page.getByRole('listbox', {name: '负责人', exact: true})).not.toContainText('历史负责人');
+  await page.getByRole('listbox', {name: '负责人', exact: true}).getByRole('option', {name: '张三', exact: true}).click();
   await dialog.getByRole('button', { name: '创建问题', exact: true }).click();
 
   await expect(dialog).toHaveCount(0);
   expect(state.writes).toHaveLength(1);
-  expect(state.writes[0].body).toMatchObject({ projectId: 'p1', title: '创建时直接分配负责人', ownerId: 'u2' });
+  expect(state.writes[0].body).toMatchObject({ projectId: 'p1', title: '创建时直接分配负责人', ownerId: 'u1', requirementId: '' });
   await page.getByRole('button', { name: /^问题负责人：/ }).first().click();
   await expect(page.getByRole('listbox', { name: '问题负责人', exact: true }).getByRole('option', { name: /停用成员|无账号成员|已删除账号/ })).toHaveCount(0);
   await page.keyboard.press('Escape');

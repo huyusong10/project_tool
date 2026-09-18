@@ -167,6 +167,7 @@ function SearchSelectField({
     return () => window.cancelAnimationFrame(frame);
   }, [open]);
   const selected = options.find((option) => option.value === value);
+  const displayLabel = selected?.label || (value ? `已不可用的${label}（请重新选择）` : placeholder);
   const pinned = options.filter((option) => pinnedValues.includes(option.value));
   const matched = rankSearchItems(
     options.filter((option) => !pinnedValues.includes(option.value)),
@@ -190,8 +191,8 @@ function SearchSelectField({
   return <FieldShell label={label} help={helper} className="issue-search-select-field" asLabel={false}>
     <div className={`issue-search-select${open ? " is-open" : ""}`}>
       <input type="hidden" name={name} value={value} readOnly />
-      <button ref={triggerRef} type="button" aria-haspopup="listbox" aria-expanded={open} aria-label={`${label}：${selected?.label || value || placeholder}`} onClick={() => { setOpen((current) => !current); setQuery(""); }}>
-        <span className={!selected && !value ? "is-placeholder" : ""}>{selected?.label || value || placeholder}</span><ChevronDown size={15} />
+      <button ref={triggerRef} type="button" aria-haspopup="listbox" aria-expanded={open} aria-label={`${label}：${displayLabel}`} onClick={() => { setOpen((current) => !current); setQuery(""); }}>
+        <span className={!selected && !value ? "is-placeholder" : ""}>{displayLabel}</span><ChevronDown size={15} />
       </button>
       <AnchoredPopover anchorRef={triggerRef} open={open} onOutside={() => close()} onEscape={() => close(true)} width={360} matchAnchor role="presentation" className="issue-search-select-menu">
         <label><Search size={14} /><input ref={searchRef} value={query} placeholder={searchPlaceholder || `搜索${label}`} onChange={(event) => setQuery(event.target.value)} /></label>
@@ -253,7 +254,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
   const reporterOptions: SearchSelectOption[] = [{ value: "", label: "未指定" }, ...people.map((value) => ({ value: value.name, label: value.name }))];
   if (draft.reporter && !reporterOptions.some((value) => value.value === draft.reporter)) reporterOptions.push({ value: draft.reporter, label: draft.reporter, description: current?.reporter === draft.reporter ? "历史记录" : "当前登录账号" });
   const ownerOptions: SearchSelectOption[] = [{ value: "", label: "未分配" }, ...people.filter((person) => resolved ? person.projectRole !== "viewer" : isAssignablePerson(person)).map((person) => ({ value: person.id, label: person.name }))];
-  if (draft.ownerId && !ownerOptions.some((value) => value.value === draft.ownerId)) ownerOptions.push({ value: draft.ownerId, label: current?.ownerId === draft.ownerId ? current.ownerName || "历史负责人" : draft.ownerId, description: "历史负责人" });
+  if (draft.ownerId && current?.ownerId === draft.ownerId && !ownerOptions.some((value) => value.value === draft.ownerId)) ownerOptions.push({ value: draft.ownerId, label: current.ownerName || "历史负责人", description: "历史负责人" });
   const blocked = !!issue&&!canManage || editor.changed || editor.needsRefresh;
   return <form className="issue-form" onSubmit={(event) => {
     event.preventDefault();
