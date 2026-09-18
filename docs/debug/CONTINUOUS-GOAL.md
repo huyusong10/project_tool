@@ -5,8 +5,9 @@
 ## 基线与恢复
 
 - 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品dc98ee2（IV），前一产品7d70e7b（IU链接修复）、eee9d38（IT）、d473f2e（IS）、e53c666（IQ）；README修正baf3208。
-- 原目录D:\tools\project-manage的dev不改。21:07检查仍只有用户修改skills/project-manage-intake/SKILL.md、未跟踪docs/dcim-ai-workflow-v3-gaps.md。未部署、未推送。
+- 原目录D:\tools\project-manage的dev不改。21:54检查仍只有用户修改skills/project-manage-intake/SKILL.md、未跟踪docs/dcim-ai-workflow-v3-gaps.md。未部署、未推送。
 - 临时数据库和独立构建；浏览器使用3296，串行运行；性能独占。3210/3295不改。HZ漏设端口，用默认3291的独立临时服务完成，后续已恢复3296。
+- IX组合验收dc98ee2：982业务/119文件、10性能、26浏览器，运行时/429边界/Lint/类型/构建/预算全通过，verify首轮退出0（exec20746已结束）。主JS940.02KB、CSS342.57KB、ELK1595.33KB；stages-is-iv-verify.log及performance/build-budget.json。临时探针已归档，无未提交产品修改。
 - IQ组合验收：980业务/119文件、10性能、26浏览器，运行时/429边界/Lint/类型/构建/预算均通过。首轮新增边界期望2项错误后补验domain35项和剩余流水线，退出0；不是首轮verify一次通过。stages-im-iq-verify/rest.log；主JS939.62KB、CSS342.57KB、ELK1595.33KB。
 - 前IL完整验收ab3e713：974业务/118文件、9性能、26浏览器，运行时、429模块边界、Lint、类型、构建、预算全通过，verify退出0。主JS939.62KB、CSS342.52KB、ELK1595.33KB；stages-ib-ik-verify.log。前全量HZ见stages-hr-hw-verify.log。
 - IB：7项不同浏览器、3项加强字段断言的重验，Lint/类型/测试构建通过；现已随IL合并验收。当时无待验收产品修改；后续运行状态见当前阶段。
@@ -110,6 +111,8 @@
 
 该轮另发现的合并来源链接遗漏已独立修复7d70e7b；验收见近期成果。工作区无未提交产品修改。周末无工作日计划候选同样降级：当前新建排期明确限制工作日，未发现当前入口证据。
 
-## 当前阶段 IX：IS—IV组合验收
+## 当前阶段 IY：协作人变化后的跨页面资料
 
-IS总对象上限反馈、IT折叠工作控件、IU合并链接、IV导出文本均已单独通过验收并提交；IW只读复核无需修改。自IQ全量后积累四项变更，现在进行一次组合verify，检查业务、性能、浏览器冒烟、模块边界、类型/构建预算。浏览器3296串行，性能独占；临时浏览器探针均已归档，工作区无未提交产品修改。验收后更新基线并转向其他未充分覆盖的业务，Goal保持active。
+IX组合验收通过，全部进程已退出。下一步核对工作项协作人替换、移除及需求归档恢复后，“我的工作”、人力分析与工作项详情的参与人和计数是否一致。先比对已有覆盖，只给未覆盖且可达的操作做真实流程探针；若无新偏差则记录无需修改。验收：旧协作人退出当前分配、新协作人出现、负责人不重复计数、历史事实保持、刷新后结果一致。状态规则以现有业务为准，不新增追溯归属规则。
+
+已读tests/my-work-journey.test.ts：覆盖协作人开始至完成、详情资料一致、取消时间条；本轮不重复这三项。尚需查协作人变更的既有测试与API，再决定探针范围。模板列表规模已在template-list-scale-before、template-catalog-scale测过；恢复时勿因N+1外观重新开始，现有证据优先。Goal保持active。
