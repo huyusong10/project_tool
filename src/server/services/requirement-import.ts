@@ -11,7 +11,7 @@ import { recordAudit } from './audit';
 import { previewDependencyChanges, applyDependencyChanges } from './path-changes';
 import { intakeRevision, persistOrganization } from './intake-metadata';
 import { importPreviewInput, importApplyInput, type IntakePackage, type ImportPreview, type ImportReceipt } from '../../shared/intake';
-import type { DependencyChangesInput } from '../../shared/path-contracts';
+import { maxDependencyEntityChanges, type DependencyChangesInput } from '../../shared/path-contracts';
 
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const ref=(...parts:string[])=>JSON.stringify(parts);
@@ -77,6 +77,7 @@ function prepare(projectId:string,pkg:IntakePackage,actor:Actor) {
     }
   }
   let core:ReturnType<typeof previewDependencyChanges>|null=null;
+  if(changes.changes.entities!.length>maxDependencyEntityChanges)errors.push(`本批有${changes.changes.entities!.length}个需求和工作项，超过单次${maxDependencyEntityChanges}个的上限，请分批导入`);
   if(!errors.length&&(changes.changes.entities!.length||changes.changes.add.length)){
     try{core=previewDependencyChanges(projectId,changes,actor);}catch(error){errors.push(error instanceof Error?error.message:'无法预览需求');}
   }
