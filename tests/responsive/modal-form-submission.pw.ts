@@ -126,23 +126,29 @@ test('撤销 Token 已落库但响应异常时核对撤销时间并解除锁定'
     id: 't1', name: '办公电脑', prefix: '1234567890', accountId: 'admin', expiresAt: null,
     lastUsedAt: null, revokedAt: null as string | null, createdAt: '2026-09-05T00:00:00.000Z',
   };
+  const sibling = { ...token, id: 't2', prefix: 'abcdef1234' };
   await page.route('**/api/tokens/t1', (route) => {
     revokeRequests++;
     token = { ...token, revokedAt: '2026-09-05T00:00:00.001Z' };
     return route.fulfill({ status: 200, contentType: 'text/html', body: '<html>invalid revoke response</html>' });
   });
   await page.route('**/api/tokens', (route) => route.request().method() === 'GET'
-    ? route.fulfill({ json: [token] })
+    ? route.fulfill({ json: [token, sibling] })
     : route.fallback());
 
   await page.goto('/settings');
-  await page.getByRole('button', { name: '撤销', exact: true }).click();
+  const targetRow = page.getByRole('row').filter({ hasText: 'pm_1234567890_…' });
+  await targetRow.getByRole('button', { name: '撤销', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '撤销 MCP Token', exact: true });
+  await expect(dialog).toContainText('pm_1234567890_…');
+  await expect(dialog).not.toContainText('pm_abcdef1234_…');
   await dialog.getByRole('button', { name: '确认撤销', exact: true }).click();
 
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText('已撤销', { exact: true })).toBeVisible();
   await expect(page.locator('.personal-mcp-panel .warning-banner')).toHaveCount(0);
+  await expect(page.getByRole('row').filter({ hasText: 'pm_abcdef1234_…' }).getByRole('button', { name: '撤销', exact: true })).toBeEnabled();
+  await expect(page.getByText('1 个有效 Token', { exact: true })).toBeVisible();
   expect(revokeRequests).toBe(1);
 });
 

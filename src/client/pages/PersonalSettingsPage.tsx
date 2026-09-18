@@ -197,7 +197,7 @@ export function PersonalSettingsPage() {
             <FormSubmitActions submitLabel="创建 Token" pendingLabel="创建中…" onCancel={closeTokenModal} pending={createLock.busy} disabled={tokenListNeedsRecheck} />
           </form>}
       </Modal>}
-      {revokeTarget && <ConfirmDialog title="撤销 MCP Token" description={<><p>撤销“<strong>{revokeTarget.name}</strong>”后，使用该 Token 的客户端将立即无法访问系统。</p>{revokeNeedsRecheck && <p className="form-error">撤销结果需要核对，请关闭窗口查看最新 Token 列表。</p>}</>} confirmLabel="确认撤销" pendingLabel="撤销中…" danger pending={revoke.isPending} disabled={revokeNeedsRecheck} error={revoke.error?.message} onClose={() => setRevokeTarget(null)} onConfirm={() => revoke.mutate(revokeTarget.id)} />}
+      {revokeTarget && <ConfirmDialog title="撤销 MCP Token" description={<><p>撤销“<strong>{revokeTarget.name}</strong>”后，使用该 Token 的客户端将立即无法访问系统。</p><p>Token 标识：<code>pm_{revokeTarget.prefix}_…</code></p>{revokeNeedsRecheck && <p className="form-error">撤销结果需要核对，请关闭窗口查看最新 Token 列表。</p>}</>} confirmLabel="确认撤销" pendingLabel="撤销中…" danger pending={revoke.isPending} disabled={revokeNeedsRecheck} error={revoke.error?.message} onClose={() => setRevokeTarget(null)} onConfirm={() => revoke.mutate(revokeTarget.id)} />}
     </div>
   </>;
 }
