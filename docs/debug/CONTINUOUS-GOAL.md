@@ -151,10 +151,34 @@ backup-download-final.log于9月18日03:23验收真实备份下载503后重下�
 
 新假设不成立：TemplatesPage:150明确提示先更换默认流程并禁用归档；services/templates.ts:255/263在写前和事务内再次拒绝。versioned-write-integrity.test.ts:872已有触发器模拟“设默认时归档、归档时设默认、归档最后有效流程”并验证409及完整回滚，随LF通过。不能把合法业务中不可达的“默认流程已归档”当成新缺陷，本轮不改、不重跑。
 
-## 当前阶段 LP
+## LP验收：统计跨项目往返无需修改
 
-转查统计分析跨项目往返：日期范围与人员等筛选在切换项目、后退/前进和刷新时是否与所显示项目一致。验收只读零业务写入、返回范围不混用、空结果能正确恢复。先查AnalyticsPage、use-page-view和现有page-consistency/project-selection/workspace-refresh回归；已有同一路径证据则跳过，只补未覆盖的组合。该阶段尚未执行浏览器探针。
+stage-lp-analytics.log中95935退出0，1个模拟API浏览器旅程通过：甲项目自定义日期与乙项目项目周期分别恢复，后退/前进/刷新一致；空数据后切换自定义范围正常，甲项目迟到响应不覆盖乙项目，显式range=30不带入旧from/to。analytics-projects-lp.json记录请求范围、0业务写入、0页面异常；截图已查看，临时stage-lp-analytics-projects.pw.ts已归档。只隔离浏览器行为，不称真实数据库端到端。统计页没有全局人员筛选，本轮范围限定在项目与时间。个人布局跨项目/身份独立已有analytics-account-scope-checked，不重跑。
+
+## LQ复核：取消工作项汇总保持
+
+WorkspaceOverview:21排除cancelled工作项，workspaceSummary排除cancelled需求的交付贡献；已完成工作保留历史事实，由requirement-cancellation.test.ts明确要求。split-cancel-complete.log已验收30%拆分基线在取消/重开/完成后跨页面100%→65%→100%，本轮未重跑、不改规则。split-cancel-final.log实际失败，不能据文件名当成功。Phase空范围和全取消保持待规划已有feature-phases回归，随LF通过。
+
+## LR验收：清单树性能校准，暂不修改实现
+
+模拟API，100/500/1000需求各5工作项、每规模2轮，生产React构建、1280×800、减少动画、关闭Playwright trace与截图。stage-lr-outline-calibrated.log中47104退出0（1场景、6组）；展开后的602/3002/6002行与需求/工作项数准确，收起、定位最后工作项、清空通过，业务0写、pageerror0。outline-scale-lr.json是最终数据，临时stage-lr-outline-scale.pw.ts归档。
+
+| 需求 / 工作项 | 首行响应后显示 | 全部展开 | 收起 | 定位搜索 | 清空 |
+|---|---|---|---|---|---|
+| 100 / 500 | 31—32ms | 157—167ms | 28ms | 28ms | 22—26ms |
+| 500 / 2500 | 70—71ms | 706—758ms | 78—93ms | 66—71ms | 26—34ms |
+| 1000 / 5000 | 225—297ms | 2173—2472ms | 189—216ms | 157—166ms | 68—84ms |
+
+1000规模展开有206426个DOM元素，CDP增量约脚本0.90秒、样式0.63—0.77秒、布局0.34—0.48秒。保留全展开2秒级候选，但没有证据支持简单改动，不引入虚拟列表或改变层级/选择语义；查询和小范围操作成本较低。有限样本只说明当前本机浏览器成本，不推断真实服务器或所有用户机器。
+
+早期测量纠偏：68575退出1，1000规模全页面角色定位“收起全部”超时，失败截图中按钮可见，未据此修改产品；outline-scale-lr-initial.json仅4组，首行计时混入测试等待。改为工具栏定位和页面内首行计时后48105退出0（6组），但默认trace开着；11919退出0的两轮CDP追踪也仍含trace。trace造成节点快照开销，旧4.7—4.8秒不是最终日常性能；outline-scale-lr-measured.json、outline-profile-lr.json仅保留方法修正证据。以上句柄均已回收。
+
+检索证据目录时9223只读rg耗时较长，已确认结束并回收；以后优先--maxdepth 1列证据文件，避免深入启动探针中的依赖junction。
+
+## 当前阶段 LS
+
+转查原服务增量运行状态。沿runtime-log-review-lb.json的20:12Z游标只读新增日志与/health，核对是否产生新备份；只有出现新文件才验证独立备份副本。原服务、日志和源备份均不修改。距上次约一个半小时，按实际时间记录，不误记为一天；该阶段尚未执行。
 
 ## 最新检查点
 
-3376c6b、0aa4c09及e4c0fb6产品已保留，工作记录提交后工作树应干净。当前无运行句柄，3296监听0，当前格式Playwright临时目录0；临时LM探针已归档。原目录只保留skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件；没有部署或推送。原服务日志游标仍LB（20:12Z），本轮05:25本地时间仅相隔约1小时，不重复轮询。
+3376c6b、0aa4c09及e4c0fb6产品已保留，工作记录提交后工作树应干净。最近检查时无运行句柄，3296监听0，当前格式Playwright临时目录0；临时LM/LP/LR探针已归档。原目录只保留skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件；没有部署或推送。原服务日志游标仍LB（20:12Z），本轮05:25本地时间仅相隔约1小时，不重复轮询。
