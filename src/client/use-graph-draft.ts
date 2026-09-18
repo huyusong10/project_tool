@@ -27,6 +27,14 @@ export function clearProjectGraphDrafts(accountId:string,projectId:string){
   for(const storage of [sessionStorage,localStorage])for(const key of Object.keys(storage))if(key===base||key.startsWith(base+':')||['pm-project-task:','pm-workspace-rows:','pm-path-origin:','pm-editor-ids:','pm-path-view:','pm-canvas-navigation:','pm-graph-view:','pm-detail-scroll:','pm-editor-new-template:','pm-editor-lease:pm-graph-draft:'].some(p=>(key===p+accountId+':'+projectId||key.startsWith(p+accountId+':'+projectId+':'))))storage.removeItem(key);
 }
 const sessions=new Map<string,EditorSession<unknown>>();
+function releaseUnusedHistory<T>(key:string,current:EditorSession<T>,releaseLease:boolean) {
+  void current.flush().then(()=>{
+    if(current.mounts||current.saving||sessions.get(key)!==current)return;
+    if(releaseLease)releaseDraft(key);
+    // Clean layout baselines can be read back from IndexedDB; unsaved input stays in memory.
+    if(!current.state.active&&!Object.keys(current.state.fields).length&&!current.error)sessions.delete(key);
+  });
+}
 export async function assertCleanProjectDraft(accountId:string,projectId:string,command?:ExecutionCommand){
   const key=prefix+accountId+':'+projectId,session=sessions.get(key);
   const state=((!session?.loading?session?.state:undefined)||readHistory<DependencyChanges>((await readDraftRecord(key))??JSON.parse(sessionStorage.getItem(key)||'null'))) as EditorHistory<DependencyChanges>|undefined;
@@ -60,8 +68,9 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
     const changed=current.dispatch(command);if(changed)void persist();return changed;
   };
   useEffect(()=>{
-    if(!enabled)return;
-    let stopped=false;current.mounts++;if(!current.loading){current.readOnly=!ownsDraft(storageKey,current.state.active||!!Object.keys(current.state.fields).length);current.notify();}
+    current.mounts++;
+    if(!enabled)return()=>{current.mounts--;releaseUnusedHistory(storageKey,current,false);};
+    let stopped=false;if(!current.loading){current.readOnly=!ownsDraft(storageKey,current.state.active||!!Object.keys(current.state.fields).length);current.notify();}
     if(current.loading)void (async()=>{
       try{
         const stored=await readDraftRecord<unknown>(storageKey),legacy=stored===undefined?JSON.parse(sessionStorage.getItem(storageKey)||'null'):undefined;
@@ -72,11 +81,11 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
     })();
     const refresh=()=>{if(stopped)return;const denied=!ownsDraft(storageKey,current.state.active||!!Object.keys(current.state.fields).length);if(denied!==current.readOnly){current.readOnly=denied;current.notify();}},leave=()=>{current.readOnly=true;void current.flush();releaseDraft(storageKey);};
     const timer=setInterval(refresh,15000);window.addEventListener('storage',refresh);window.addEventListener('pagehide',leave);
-    return()=>{stopped=true;clearInterval(timer);window.removeEventListener('storage',refresh);window.removeEventListener('pagehide',leave);void current.flush();if(--current.mounts===0)queueMicrotask(()=>{if(!current.mounts&&!current.saving)releaseDraft(storageKey);});};
+    return()=>{stopped=true;clearInterval(timer);window.removeEventListener('storage',refresh);window.removeEventListener('pagehide',leave);current.mounts--;releaseUnusedHistory(storageKey,current,true);};
   },[current,storageKey,enabled]);
   const state=current.state;
   return {
-    session:current,dispatch,flush:current.flush,busy:current.saving,setBusy:(value:boolean)=>{current.setSaving(value);if(!value&&!current.mounts)releaseDraft(storageKey);},source:state.server,baseline:state.baseline||state.values[0],value:state.values[state.index],active:state.active,version:state.version,
+    session:current,dispatch,flush:current.flush,busy:current.saving,setBusy:(value:boolean)=>{current.setSaving(value);if(!value&&!current.mounts)releaseUnusedHistory(storageKey,current,enabled);},source:state.server,baseline:state.baseline||state.values[0],value:state.values[state.index],active:state.active,version:state.version,
     dirty:JSON.stringify(state.values[state.index])!==JSON.stringify(state.baseline||state.values[0]),loading:current.loading,storageError:current.error,stored:current.stored,restored:current.restored,readOnly:current.readOnly||current.blocked,
     get fields(){return current.fields;},get fieldEpoch(){return current.fieldEpoch;},get pendingField(){return current.pendingField;},requestField:current.requestField,isFieldActive:current.isFieldActive,layoutBaselines:state.layouts,
     setField:(key:string,buffer?:import('./editor-session').FieldBuffer)=>dispatch({type:'field',key,buffer}),

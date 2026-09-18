@@ -363,6 +363,8 @@ test('待核对通知丢失时，自动接手页面保存前仍读取原批次',
 });
 test('本机存储失败给出提示，保存失败保留当前编辑并且不写正式数据',async({page})=>{
  const {analysis}=await fixture(page);await page.addInitScript(()=>{Object.defineProperty(window,'indexedDB',{value:{open(){throw new DOMException('quota','QuotaExceededError');}}});});await openGraph(page,'/paths?view=project');await ready(page);const before=await analysis();await graphToolbar(page,'编辑画布');await graphProperties(page,page.locator('.react-flow__node .dependency-card').first());await page.getByLabel('元素名称').fill('内存中的修改');await page.getByLabel('元素名称').blur();await expect(page.locator('.page-toolbar-status')).toContainText('本机保存失败');await expect(page.getByLabel('保存修改')).toBeEnabled();await graphToolbar(page,'保存修改');await reopenGraphProperties(page);await expect(page.getByLabel('元素名称')).toHaveValue('内存中的修改');expect((await analysis()).requirements).toEqual(before.requirements);
+ await closeGraphProperties(page);await page.getByRole('link',{name:'个人设置',exact:true}).click();await expect(page.getByRole('heading',{name:'个人设置',exact:true})).toBeVisible();
+ await page.goBack();await ready(page);await reopenGraphProperties(page);await expect(page.getByLabel('元素名称')).toHaveValue('内存中的修改');expect((await analysis()).requirements).toEqual(before.requirements);
 });
 test('关闭浏览器后从同一本机草稿恢复内容、撤销和视口', async({},info)=>{
  test.setTimeout(90000);const baseURL=String(info.project.use.baseURL||'http://127.0.0.1:3211'),profile=info.outputPath('browser-profile');

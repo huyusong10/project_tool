@@ -41,7 +41,7 @@ export function historyTransition<T>(state:EditorHistory<T>,command:HistoryComma
   }
 }
 
-/** One in-memory document survives route mounts; disk writes keep command order. */
+/** Editing documents survive route mounts; disk writes keep command order. */
 export class EditorSession<T>{
   state:EditorHistory<T>;mounts=0;loading=true;saving=false;readOnly=false;error='';stored=false;restored=false;blocked=false;
   fieldEpoch=0;fieldAvailability?:FieldAvailability<T>;
