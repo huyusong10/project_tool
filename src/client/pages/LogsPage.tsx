@@ -72,9 +72,9 @@ export function LogsPage() {
     <div className="page-content logs-page">
       <FilterBar className="audit-filters">
         <SearchInput value={keyword} onChange={(value) => updateFilter("q", value)} placeholder="搜索用户、Token、操作内容、实体ID或拼音" />
-        <Select value={actorType} onChange={(event) => updateFilter("actorType", event.target.value)}><option value="">全部来源</option><option value="user">用户</option><option value="token">MCP Token</option><option value="system">系统</option></Select>
-        <Select value={action} onChange={(event) => updateFilter("action", event.target.value)}><option value="">全部动作</option>{Object.entries(auditActionLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</Select>
-        <Select value={entityType} onChange={(event) => updateFilter("entityType", event.target.value)}><option value="">全部对象</option>{Object.entries(auditEntityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</Select>
+        <Select aria-label="日志来源" value={actorType} onChange={(event) => updateFilter("actorType", event.target.value)}><option value="">全部来源</option><option value="user">用户</option><option value="token">MCP Token</option><option value="system">系统</option></Select>
+        <Select aria-label="日志动作" value={action} onChange={(event) => updateFilter("action", event.target.value)}><option value="">全部动作</option>{Object.entries(auditActionLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</Select>
+        <Select aria-label="日志对象" value={entityType} onChange={(event) => updateFilter("entityType", event.target.value)}><option value="">全部对象</option>{Object.entries(auditEntityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</Select>
         <label className="audit-date"><span>从</span><input type="date" value={from} onChange={(event) => updateFilter("from", event.target.value)} /></label>
         <label className="audit-date"><span>至</span><input type="date" value={to} onChange={(event) => updateFilter("to", event.target.value)} /></label>
       </FilterBar>

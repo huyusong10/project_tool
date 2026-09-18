@@ -17,7 +17,8 @@ test('项目日志可以筛选已删除 Phase，并展开长操作内容', async
   const removed = await page.request.delete(base + '/feature-phases/' + phase.id, { data: { expectedVersion: phase.version, reason: '删除未安排的空阶段' } });
   expect(removed.ok(), await removed.text()).toBe(true);
   await page.goto('/project-logs?projectId=' + project.id);
-  await chooseOption(page.locator('.audit-filters .select-field').nth(2).getByRole('combobox'), 'feature_phase');
+  for (const name of ['日志来源', '日志动作', '日志对象']) await expect(page.getByRole('combobox', { name, exact: true })).toBeVisible();
+  await chooseOption(page.getByRole('combobox', { name: '日志对象', exact: true }), 'feature_phase');
   const rows = page.locator('.audit-table > div:not(.audit-head):not(.empty-state)');
   await expect(rows).toHaveCount(2);
   const created = rows.filter({ hasText: '尾部验收材料' });
@@ -52,6 +53,7 @@ test.describe('日志筛选与显示的业务时区', () => {
       total: 1, page: 1, pageSize: 50, pages: 1, snapshot: 1,
     } }));
     await page.goto('/logs?from=2026-09-17&to=2026-09-17');
+    for (const name of ['日志来源', '日志动作', '日志对象']) await expect(page.getByRole('combobox', { name, exact: true })).toBeVisible();
     const row = page.locator('.audit-table > div').filter({ hasText: '北京时间9月17日凌晨的修改' });
     await expect(row.locator('span').first()).toHaveText('2026/9/17 00:15:00');
     await expect(page.locator('.audit-head')).toContainText('北京时间');
