@@ -45,7 +45,10 @@ export function Select({children,className='',...props}:SelectHTMLAttributes<HTM
     if(event.target===search.current&&['Home','End'].includes(event.key))return;
     if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
       event.preventDefault();const enabled=visible.map((o,i)=>o.disabled?-1:i).filter(i=>i>=0);if(!enabled.length)return;
-      const i=enabled.indexOf(active);setActive(event.key==='Home'?enabled[0]:event.key==='End'?enabled.at(-1)!:enabled[(i+(event.key==='ArrowDown'?1:-1)+enabled.length)%enabled.length]);
+      if(event.key==='Home')setActive(enabled[0]);
+      else if(event.key==='End')setActive(enabled.at(-1)!);
+      else if(event.key==='ArrowDown')setActive(enabled.find(i=>i>active)??enabled[0]);
+      else setActive(enabled.filter(i=>i<active).at(-1)??enabled.at(-1)!);
     }else if(event.key==='Enter'||event.key===' '&&!searchable){event.preventDefault();if(visible[active])choose(visible[active]);}
     else if(!searchable&&event.key.length===1){const i=visible.findIndex(o=>!o.disabled&&o.label.toLocaleLowerCase().startsWith(event.key.toLocaleLowerCase()));if(i>=0)setActive(i);}
   };
