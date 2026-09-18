@@ -155,6 +155,35 @@ test('导入工作项收起和重载后保留编辑，可拆分合并并进入�
  await expect(page.locator('.requirement-overview')).toBeVisible();expect(errors).toEqual([]);
 });
 
+for(const targetLinks of [1,20])test(`合并导入保留来源链接和工作依赖，目标原有${targetLinks}条链接`,async({page})=>{
+ const id=await fixture(page),links=Array.from({length:targetLinks},(_,index)=>({title:`目标文档${index}`,url:`https://example.com/${index}`,kind:'document'}));
+ const sourceLink={title:'来源任务',url:'https://example.com/browse/PM-1',kind:'task'};
+ const pkg={formatVersion:3,requirements:[
+   {key:'target',title:'合并后的需求',background:'目标原文',referenceLinks:links,workItems:[{key:'work',title:'目标工作'}]},
+   {key:'source',title:'来源需求',background:'来源原文',referenceLinks:[{title:'来源中的同址名称',url:'https://EXAMPLE.com/0',kind:'other'},sourceLink],workItems:[{key:'work',title:'来源工作'}]},
+ ],dependencies:[{source:{requirement:'target',workItem:'work'},target:{requirement:'source',workItem:'work'}}]};
+ await page.getByRole('button',{name:'编辑导入文件',exact:true}).click();await page.getByLabel('原始需求',{exact:true}).fill(JSON.stringify(pkg));
+ await page.getByRole('button',{name:'整理需求',exact:true}).click();await expect(page.getByLabel('导入需求标题')).toHaveCount(2);
+ await chooseOption(page.getByLabel('合并需求到').last(),'target');await expect(page.getByLabel('导入需求标题')).toHaveCount(1);
+ const linkFields=page.locator('.reference-link-row');await expect(linkFields).toHaveCount(targetLinks+1);
+ await expect(page.getByLabel(`链接 ${targetLinks+1} 名称`,{exact:true})).toHaveValue(sourceLink.title);
+ if(targetLinks===20){
+   await page.getByRole('button',{name:'预览导入',exact:true}).click();await expect(page.getByRole('alert')).toContainText('最多关联 20 个链接');
+   await expect(linkFields).toHaveCount(21);await expect(page.getByRole('button',{name:'保存需求',exact:true})).toBeDisabled();
+   expect(await(await page.request.get('/api/requirements?projectId='+id)).json()).toEqual([]);
+   await page.getByRole('button',{name:'移除链接 1',exact:true}).click();links.shift();
+ }
+ await page.reload();await expect(linkFields).toHaveCount(links.length+1);
+ const response=page.waitForResponse(r=>r.url().endsWith('/requirement-import/preview'));
+ await page.getByRole('button',{name:'预览导入',exact:true}).click();const preview=await(await response).json();expect(preview.errors).toEqual([]);
+ expect(preview.package.dependencies).toEqual([{source:{requirement:'target',workItem:'work'},target:{requirement:'target',workItem:'source::work'}}]);
+ await page.getByRole('button',{name:'保存需求',exact:true}).click();await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();
+ const saved=await(await page.request.get('/api/requirements?projectId='+id)).json();expect(saved).toHaveLength(1);
+ const detail=await(await page.request.get('/api/requirements/'+saved[0].id)).json();
+ expect(detail.referenceLinks).toEqual([...links,sourceLink]);expect(detail.background).toBe('目标原文\n来源原文');
+ expect(detail.workItems.map((work:{title:string})=>work.title)).toEqual(['目标工作','来源工作']);
+});
+
 test('预览失败保留调整，未知提交刷新后查询原回执且不重复创建',async({page})=>{
   const id=await fixture(page),url='**/api/projects/'+id+'/requirement-import/preview';
   await page.getByLabel('导入需求标题').fill('保留导入输入');
