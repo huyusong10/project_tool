@@ -7,10 +7,11 @@
 - 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品23ca8fa（HF其他链接核对），前一产品84c5c72（HE需求链接核对）、544be86（HC数量输入）、e0610c3（GT/GZ窄屏排序）。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
+- HG完整验收23ca8fa：970项业务（117文件）、9项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS938.26KB、CSS342.41KB、ELK1595.33KB；stages-gx-hf-verify.log，涵盖GX、GT/GZ、HC、HE/HF。原目录仍仅两项用户修改。
 - GW完整验收0fb023a：969项业务（117文件）、9项性能、26项浏览器，运行时、模块边界、Lint、类型、构建和预算通过。主JS938.40KB、CSS342.32KB、ELK1595.33KB；stages-gl-gv-verify.log，涵盖GL/GQ/GR/GV，GT草案未进入产品。
 - GJ完整验收25c7e91：969项业务（117文件）、8项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算通过。主JS938.10KB、CSS342.32KB、ELK1595.33KB。stages-fe-gi-verify.log，涵盖FE—GI全部产品修改。
 - 之前FD完整验收717bc30：969项业务、8项性能、26项浏览器及全部静态/构建检查通过（stages-ez-fd-verify.log）。GJ同时确认原目录仍只有上述两项用户修改。
-- 之前EY基线fc73dcc可查stages-es-ew-verify.log，EQ基线5e31e67可查stages-ek-ep-verify.log。当前无运行测试、无临时测试留在tests/responsive。
+- 之前EY基线fc73dcc可查stages-es-ew-verify.log，EQ基线5e31e67可查stages-ek-ep-verify.log。运行测试与临时文件以当前阶段记录为准。
 - 证据在.preview/qa/continuous-goal/，不进版本库；原日志、探针、截图保留。恢复先读本记录、git status及差异，不重跑已验收事项。
 
 详细历史按需定位：A—DO在fd512b7的本文件；DP—EV在41a4ed0的本文件，更早记录为CONTINUOUS-DEBUG.md。
@@ -105,8 +106,8 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - DU一次迁移测试启动15秒超时、输出为空；单项与同并发重验通过，EB/EJ/EQ全量未再发生。不直接放宽超时。
 - GT待查项已在GZ完成独立输入节奏对照和实际页面验收，见近期成果。无用户决策事项、无外部阻塞，Goal保持active。
 
-## 当前阶段 HG：本批完整验收
+## 当前阶段 HH：多页长名称 Token 的撤销操作
 
-对GX、GT/GZ、HC、HE/HF产品修改执行一次npm run verify。独立3296服务运行中，日志stages-gx-hf-verify.log；不同时运行其他浏览器或性能测量。
+真实53个Token（39有效、14已撤销），长名称、20条分页、390px。打开第二页撤销确认时，后台撤销另一个Token并刷新列表，确认仍对应原目标。临时tests/responsive/token-pagination-probe.pw.ts运行中，日志token-pagination-probe.log，源文件同步保留于证据目录。
 
-验收：运行时、模块边界、Lint、业务/性能/浏览器测试、构建预算全部通过。随后检查个人Token列表在多页、长名称、窄屏和撤销重排时的实际操作；已覆盖的未知提交恢复不重复。当前产品23ca8fa。
+验收：只撤销选中目标一次；其他Token完整资料不变；分页刷新保留，窄屏无页面横向溢出，确认内容和操作可读。HG已通过，不重复完整测试；当前产品23ca8fa。
