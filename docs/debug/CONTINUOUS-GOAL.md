@@ -4,9 +4,9 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新测试工具5ab83f5（KC），最新产品d15deab（JZ），前一产品bd5f0ba（JW）、169a78a（JV）、1896b57（JU）、25c1658（JT）；更早成果见下表与历史版本。README修正c36e4f9。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品0451f2e（KF），测试工具5ab83f5（KC）；前一产品d15deab（JZ）、bd5f0ba（JW）、169a78a（JV）、1896b57（JU）、25c1658（JT）。更早成果见下表与历史版本。
 - 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
-- 最新全量JY：993业务/119文件、10性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-jy-verify.log，23980退出0已回收。覆盖JU/JV/JW；JZ/KC在此后仅做目标验收。本次首轮全量通过；JT更早的失败与修复记录仍保留。
+- 最新全量JY：993业务/119文件、10性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-jy-verify.log，23980退出0已回收。覆盖JU/JV/JW；JZ/KC/KF在此后仅做目标验收。本次首轮全量通过；JT更早的失败与修复记录仍保留。
 - JY生产构建：主JS931.87KB、CSS339.15KB、ELK1595.33KB，预算通过。构建按JR规则清理输出。JT服务端产物的具体字节及引用核对见server-build-artifacts-jt.json，不将旧哈希结果当成JY复验。无运行进程、未归档临时浏览器测试或未验收产品修改。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
@@ -16,6 +16,7 @@
 
 | 阶段 / 提交 | 结果 / 证据 |
 |---|---|
+| KF / 0451f2e | 5000人候选查询为每人扫描整张账号表，默认742ms、拼音1136ms。1行SQL指定现有人员唯一索引后降至6.33/46.51ms；100/1000/5000规模9类查询共27组内容/顺序/hash完全一致且只读。新增1条性能回归原版失败；11性能、22业务、真实5000候选跨搜索/角色竞争旅程、类型/测试构建/目标Lint/diff通过。member-candidate-*、stage-kf-*；390px截图已检查，临时探针归档且临时数据库已自动清理 |
 | KC / 5ab83f5 | 浏览器验证遗留943组数据库/WAL/SHM共约2.56GB，另2035个备份目录。改用每轮唯一目录，进程正常退出后只清理自身原位目录，失败截图/trace保留。3回归覆盖成功/失败退出、同PID旧资料保留及junction替换拒绝；真实服务两路径、类型/目标Lint/diff通过。playwright-temp-before.json、playwright-storage-real-results.json、stage-kc-*；旧资料未删除，强制终止进程不保证清理 |
 | JZ / d15deab | 新建问题所选负责人停用/移出后显示UUID并误称历史负责人，真实2场景原版失败。共用选择控件改为失效提示，仅已保存的原负责人保留历史名称；7行产品差异，强化1个既有回归保护负责人/关联需求失效后改选。2需求、4问题浏览器场景、类型/测试构建/目标Lint/diff通过，390px截图已检查。stage-jz-*、issue-owner-*.json/png；无新增永久测试 |
 | JY / 组合验收 | JU/JV/JW目标验证后执行一次全量verify，993业务/119文件、10性能、26冒烟及全部静态/生产构建/预算通过。stage-jy-verify.log，23980退出0已回收。无额外产品修改、未部署或推送 |
@@ -38,6 +39,8 @@
 
 ## 近期无需修改
 
+- KD：密码重置恢复已有CB真实双账号验收，password-session-accepted.log确为1通过（11.9s）。旧提交401且DTO不变、临时登录强制改密、返回原需求后仅1次新进度、旧历史保持。当前reset/changeOwnPassword仍递增会话版本，授权逐请求检查，改密/写锁回归已随JY通过。无新缺口，不重复运行。
+- KE：需求历史已有100/1000/5000条真实桌面/390px验收，requirement-history-browser-after.log 1通过；browser.json记录5000条首开约953ms、末页约49ms、零写入/异常。EC跨需求页码独立、往返及刷新已有9通过的position-after.log；当前WorkItemHistory沿用按工作项独立分页。只读复核，无修改或重复测量。
 - KA：双项目真实经理日志旅程通过。甲末页21条固定快照；甲乙新增后切乙不带旧快照、显示乙新增；返回甲恢复原页2/21条，刷新才看到22条。降为观察者后甲及平台审计403、旧表格清空，乙仍可查看/刷新；24条问题完整DTO不变、浏览器业务零写入、无页面异常。stage-ka-audit-scope.log 1通过（64588退出0已回收），audit-role-scope.json，390px无权页截图已检查。临时探针已归档，无产品修改或新增永久测试。
 
 - KB：跨项目流程复制已有BH完整真实验收，template-copy-complete.log确为1通过（10.3s）；探针覆盖两份副本的引用/分类/人工确认/晚做锚点、编辑后来源35%执行事实和已有实例保持、新实例采用新内容。当前copyTemplate新建独立项，saveTemplateGraph映射副本ID，更新校验项归属；JY已通过template-copy/path-api/feature-phases/写锁回归。无需修改，不重复运行。copyLabel与现有来源读取规则保持。
@@ -189,6 +192,14 @@ stage-jv-browser.log 2通过（80713退出0已回收），包括原图表切换/
 
 5ab83f5只改配置及新增3条子进程回归：0/1退出码保持，旧同PID资料不覆盖，junction替换后拒绝清理并保留两处数据。实际Windows服务成功1通过、故意断言失败1失败，均曾写真实DB/WAL/SHM/备份，退出后目录消失；失败截图和trace已另存证据目录。playwright-storage-real-results.json、stage-kc-browser-success/intended-failure.log。首稿仅页面标题定位错误，heading-fixture.log保留；错误路径同样清理成功。最后3回归、目标Lint、类型/diff通过，临时探针已归档，3296无监听。正常退出清理不能涵盖操作系统强制终止；失败时报告保留路径并返回非零，不增加后台扫描。
 
-## 当前阶段 KD
+KC补验：普通/性能配置分别执行--list，check:browser-matrix通过（753功能、183布局、2性能；普通矩阵1851实例），stage-kc-matrix.log；只列清单，未重复执行浏览器场景。
 
-检查账号密码变更后的会话与页面恢复：先核对现有真实旅程和服务测试，仅补查未覆盖的多会话状态变化、重新登录与输入处理。验收要求旧会话按现有规则失效、没有越权写入，重新登录后业务资料一致；无证据不修改。Goal保持active，没有预设完成点。
+## KF验收：候选人员查询
+
+原查询计划为SCAN a LEFT-JOIN，5000人九类查询中位742—1171ms；指定已有idx_accounts_person后变为按person_id单次查找，中位6.33—46.51ms，无新索引/缓存。永久回归在原版默认查询769.8ms而失败，修复后默认6.19ms、拼音27.34ms，所有样本低于250ms，归档/停用/现有成员、已删除账号/无账号及只读断言通过。member-candidate-regression-before.log、scale-before.json、comparison.json、queries-before.json、stage-kf-performance-samples.json；不同夹具的时间不混用。
+
+stage-kf-performance.log 11通过（9525退出0）；business.log 22通过；lint及浏览器自带类型/测试构建通过。真实服务装入5000人员/账号，现有上限仍50候选；打开操作约34ms、搜索到选中约126ms（含自动化交互，不称纯渲染耗时）。取消未改变成员；跨搜索两选择保持，甲已被他人加入为经理，提交仅2次，甲角色保持、乙添加为成员；原项目成员和需求完整DTO保持，零页面异常。stage-kf-browser.log 1通过（88274退出0已回收），browser.json、scale-390.png；重载后的network为空，不据此声称网络耗时。所有探针已结束归档。
+
+## 当前阶段 KG
+
+KF的390px截图显示候选姓名、岗位及登录名被省略。检查只在末尾不同的合法长名称是否仍可辨认，包含键盘和窄屏；先复现再决定是否只调整文字换行。验收要求能识别完整身份、选择准确、无横向溢出或额外写入。此项来自新截图证据，不重复扩大KF规模测试。Goal保持active，没有预设完成点。
