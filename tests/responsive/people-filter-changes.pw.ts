@@ -1,4 +1,5 @@
 import {expect,test} from '@playwright/test';
+import {addBusinessDays,addCalendarDays,todayIso} from '../../src/shared/domain';
 
 test('岗位变更后三个人员视图仍显示真实筛选条件并可直接清空',async({page},info)=>{
   const post=async(url:string,data:object)=>{const response=await page.request.post(url,{data});expect(response.ok(),await response.text()).toBe(true);return response.json();};
@@ -6,11 +7,14 @@ test('岗位变更后三个人员视图仍显示真实筛选条件并可直接�
   const project=await post('/api/projects',{name:'岗位变化筛选检查 '+Date.now()});
   const first=await post('/api/people',{projectId:project.id,name:'转岗人员 '+Date.now(),jobTitle:'研发'});
   const second=await post('/api/people',{projectId:project.id,name:'原测试人员 '+Date.now(),jobTitle:'测试'});
+  const plannedStart=addBusinessDays(todayIso(),0),plannedEnd=addBusinessDays(plannedStart,4);
   for(const person of [first,second]){
-    const r=await post('/api/requirements',{projectId:project.id,title:person.name+'执行的需求',ownerId:person.id});
+    const r=await post('/api/requirements',{projectId:project.id,title:person.name+'执行的需求',ownerId:person.id,plannedStart,plannedEnd});
     await post('/api/requirements/'+r.id+'/start',{expectedVersion:r.version});
   }
   await page.addInitScript(({account,id})=>localStorage.setItem('project-manage:selected-project:'+account,id),{account:session.accountId,id:project.id});
+  // 岗位筛选使用包含工作日的窗口，不依赖测试当天是否休息。
+  await page.route('**/api/analytics/people-concurrency*',async route=>{const url=new URL(route.request().url());if(!url.searchParams.has('from')){url.searchParams.set('from',plannedStart);url.searchParams.set('to',addCalendarDays(plannedStart,6));}const response=await route.fetch({url:url.href});await route.fulfill({response});});
   await page.goto('/resources');await page.getByLabel('按岗位筛选',{exact:true}).selectOption('研发');
   await page.goto('/people?view=matrix');await page.getByLabel('岗位筛选',{exact:true}).selectOption('研发');
   const views=page.getByRole('group',{name:'人员页面视图'});
