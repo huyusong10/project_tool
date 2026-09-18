@@ -1,59 +1,41 @@
 # 持续改进工作记录
 
-长期目标：功能范围保持稳定，持续提高正确性、易用性、性能与可维护性。没有预设完成点；阶段验收后继续选题。
+长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal持续active，没有预设完成点。
 
 ## 基线与恢复
 
-- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品7b6dbaf（IB创建结果资料核对），前一产品1c1708b（HW名称规范化）、c84c5cf（HU图表复制）。README校正baf3208。
-- 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
-- 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
-- HZ完整验收1c1708b：971业务/118文件、9性能、26浏览器冒烟，运行时、429模块边界、Lint、类型、构建与预算通过，verify退出0。主JS939.41KB、CSS342.52KB、ELK1595.33KB；stages-hr-hw-verify.log，覆盖HR/HS/HU/HW。此轮命令漏设PLAYWRIGHT_PORT，使用默认3291的独立临时服务，3210/3295未动；后续恢复3296。
-- HQ完整验收9e6f7b8：971项业务（118文件）、9项性能、26项浏览器，运行时、428模块边界、Lint、类型、构建和预算全部通过，verify退出0。主JS938.26KB、CSS342.41KB、ELK1595.33KB；stages-hk-hp-verify.log，涵盖HK、HM、HO、HP。原目录仍仅两项用户修改。
-- 上一完整基线HG23ca8fa：970业务/9性能/26浏览器，stages-gx-hf-verify.log。专项证据仍保留：HK4浏览器、HM51业务/6浏览器、HO4既有浏览器及规模/窄屏、HP50业务/20不同浏览器；不要无变化重跑。
-- HQ之后HR仅导入错误文案，5浏览器、Lint、类型与测试构建通过；未重复全量验收。
-- HS：63项不同业务（62首轮通过，1修正正式ID映射后补验）、8项不同浏览器及窄屏补拍；Lint、类型、测试构建、429模块边界通过。未重复HQ全量验收。
-- HU：11浏览器（真实长标题复制及10既有布局旅程）、2项已有复制业务、Lint/类型/测试构建通过。未重复HQ全量验收。
-- HW：5项既有详情浏览器（扩展1项未知创建旅程），Lint/类型/测试构建通过；未重复全量检查。
-- HZ之后IB：7项不同浏览器、3项补充字段断言重验及Lint/类型/测试构建通过；未重跑HZ。
-- 证据保留在.preview/qa/continuous-goal/；原日志、探针、截图不进版本库。临时探针验收后归档，恢复先看当前阶段与git状态。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品7b6dbaf（IB），前一产品1c1708b（HW）；README修正baf3208。
+- 原目录D:\tools\project-manage的dev不改。19:44检查仍只有用户修改skills/project-manage-intake/SKILL.md、未跟踪docs/dcim-ai-workflow-v3-gaps.md。未部署、未推送。
+- 临时数据库和独立构建；浏览器使用3296，串行运行；性能独占。3210/3295不改。HZ漏设端口，用默认3291的独立临时服务完成，后续已恢复3296。
+- HZ完整验收1c1708b：971业务/118文件、9性能、26浏览器，运行时、429模块边界、Lint、类型、构建、预算全通过，verify退出0。主JS939.41KB、CSS342.52KB、ELK1595.33KB；stages-hr-hw-verify.log。
+- HZ之后IB：7项不同浏览器、3项加强字段断言的重验，Lint/类型/测试构建通过；未重复HZ。当前无待验收产品修改、无运行进程、无未归档临时浏览器探针。
+- 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
-历史记录均在同路径的Git版本：A—DO：fd512b7；DP—EV：41a4ed0；FE—HL：d35957a。按主题检索，不重新开始已验收工作。
+详细历史在本文件Git版本：A—DO fd512b7；DP—EV 41a4ed0；FE—HL d35957a；HE—IE 67250e9。后者保留HP/HS探针修正、完整测量、截图及各专项数量。按主题取读，不重新开始。
 
-```powershell
-git show d35957a:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
-```
+## 近期成果
 
-## 近期产品修改
-
-| 阶段 / 提交 | 结果与验收入口 |
+| 阶段 / 提交 | 结果 / 证据 |
 |---|---|
-| IB / 7b6dbaf | 未知创建只比较标题/主负责人/计划/链接，另一会话新增同名但工作阶段或协作人员不同的对象时，会误认并清掉草稿。两个真实基线失败，补比较阶段、规范化里程碑名和参与人集合；不同资料继续保留草稿并提示待核对，零重提、完整服务DTO不变。既有成功核对扩展为非空阶段/协作人员，仍可清理已生效草稿。7不同浏览器及3项补充断言重验，Lint/类型/构建通过；work-create-identity-before、stage-ib-*。保留2项防草稿丢失回归；不声称仅凭资料能证明完全相同的并发操作来源 |
-| HW / 1c1708b | 工作项名称含全角、组合字符和重复空白时，服务端保存规范化名称，未知响应核对却仅trim，导致已成功创建仍锁住操作。核对复用canonicalizeLabel；既有旅程加入混合字符，旧基线确实无法解除锁定，修复后核对成功、写入次数不增加、完整需求DTO不变。5浏览器及Lint/类型/测试构建通过，work-title-recheck-before.log/png、stage-hw-*。人员新建/编辑已使用相同规范化；特性前后端都只trim，无需修改 |
-| HU / c84c5cf | 60字符图表标题追加“副本”后保存被服务端拒绝。给已有copyLabel增加长度参数，图表传60、其他调用保持默认200。真实含emoji边界复制保存及刷新成功，副本除ID/名称外与源图表相同，原有全部面板完整配置不变。11浏览器覆盖布局保存锁、过期草稿、未知结果和恢复默认；2项200字符流程/画布业务及Lint/类型/测试构建通过。analytics-long-copy-before/save-before、stage-hu-*及归档探针；无新增永久测试 |
-| HS / 71f888c | 200字符需求/工作项/里程碑/流程元素追加“ 副本”后超过上限；4浏览器路径及工作项接口旧基线返回400。另发现工作项长标题越出卡片并被连接点挡住点击。新增3行copyLabel，画布/流程元素/HP服务复用，保持200 UTF-16及完整emoji；画布标题两行并提供完整悬停名称。五类复制保存、来源资料（仅排除预期变化的预测revision）及既有依赖不变；未知工期仍null。63业务、8浏览器、Lint/类型/构建/429边界通过，1280/390截图复核。canvas-long-copy-before/after/final、contract-before/final、stage-hs-*；只扩展既有1业务旅程。探针初用草稿ID查正式项、把预测revision当业务变化，分别改用addedIds和仅排除该预测元数据；首张窄屏截图未定位目标，仅补拍定位后的卡片。临时探针归档 |
-| HR / 7276541 | 导入标题/原文超限和无效日期直接显示整段Zod JSON，JSON语法错误仅英文。局部格式函数保留字段路径并标明第几项，显示中文限制/日期/类型/版本/未知字段提示；粘贴和上传共用，校验与提交规则不变。非法内容刷新仍保留原文，纠正后恰好1次apply，完整保存标题/原文/日期；上传错误类型、空标题、0工期、旧版本和多余字段也明确定位。5浏览器（含既有4异步文件竞争）、Lint/类型/测试构建通过，390px前后截图复核。intake-error-feedback-before/after.log、before.json/json、stage-hr-lint及归档探针；无永久新测试 |
-| HP / 9e6f7b8 | 合法200字符流程追加“（副本）”后超限，真实复制返回400。生成副本名称为后缀预留长度，不切断emoji；连续复制至12，依赖/人工里程碑/新ID及来源完整DTO正确，保留1项业务回归。390px原生下拉截去副本编号，需求创建的流程选择复用已有Select换行显示，不改其他入口。实际选择第二份副本并只创建1需求、两边流程完整DTO不变，截图复核。50业务、20不同浏览器及Lint/类型/测试构建通过；stage-hp-business/browser/refreshed-picker/lint-final、template-long-copy-baseline、归档探针与截图。初业务夹具漏无前置空列表，修正后才得到真实超限基线；初浏览器误认为原生框带搜索，随后按截图发现实际末尾不可辨识；既有1测试改用选择控件的共享读值助手后补验通过 |
-| HO / 54a7571 | 人力矩阵只向下查看人员也触发下一周，50人实测请求1→2、日期6→9列；筛选后滚动复位也可误触发。记录横向位置，仅向右且接近右端自动加载，按钮不变。扩展既有1旅程验证纵向不加载、向右加载、回到今天；4既有浏览器通过。50/250/1000独立服务及服务响应驱动的浏览器探针确认实际/计划计数、协作去重、筛选、后续周、零写入。1000人923可见，服务39ms、未压缩10.6MB；浏览器响应结束至绘制251—276ms，筛选111—114ms、按钮后续周712ms（含操作等待），无需虚拟列表或协议修改。390px最后人员截图复核。people-concurrency-scale、people-scale-browser-before/after/json、people-scale-visual、stage-ho-*；探针归档，截图首次被后续Playwright清理后只补拍窄屏，未重复规模测量 |
-| HM / 624110c | readFeaturePhases每Phase反复筛全部需求/历史，改为各分组一次。50/250/1000 Phase，最多9000需求/2000历史交付，1000档中位92—116ms→18—22ms；无SQL/索引/缓存修改。同库旧/新实现9场景完整响应逐字段一致，空Phase/状态/权重/分布/归属/同时间历史顺序正确、零写入。51业务、6浏览器及Lint/类型/测试构建通过；phase-summary-scale-before、same-database及stage-hm-*。独立夹具hash曾不同，弃用该比较方法，改为同库直接比较；未加永久测试 |
-| HK / 92983d1 | Phase重复链接在客户端校验时直接展示Zod JSON。仅按工作项链接已有写法提取issues.message，未改校验/版本规则。真实https://example.com与尾斜杠重复地址显示中文原因、零POST且输入保留，移除重复项后只创建一次、其他Phase完整DTO不变；4项不同浏览器旅程、Lint/类型/测试构建通过，390px截图已复核。phase-link-validation-before/after/verified/final.log、stage-hk-lint及归档探针；未加永久测试。中途修正探针getByLabel对已填textarea定位及误用POST地址GET读取两个问题，未改产品来迎合探针 |
-| HF / 23ca8fa | 同样的空格使特性正常保存误报异常、Phase核对漏走成功返回、工作项核对仍锁定；真实3条既有旅程均在旧实现失败。三个表单的结果比较复用HE函数，草稿合并规则不变。15项相关浏览器通过，特性补验响应丢失后只提交一次；Lint/类型/测试构建通过。只扩展既有3条旅程，未新增长期测试。other-link-recheck-before/after.log、feature-link-normal-and-unknown.log、stage-hf-lint.log及失败上下文 |
-| HE / 84c5c72 | 新需求链接名称含两侧空格，保存成功但响应丢失，核对因原始值与服务端trim结果不同而漏认创建。新增小型referenceLinksEqual复用现有schema，保留类型/顺序/内容差异和非法输入校验，接入新建需求核对。真实两链接创建、丢响应、刷新、核对成功，只POST一次且完整需求DTO不变；23浏览器、3链接单测、Lint/类型/测试构建通过。requirement-link-recheck-baseline/after.log、stage-he-*；保留1条真实恢复回归。最初探针误把客户端readOnly选项放到HTTP查询，修正后基线确实失败，未放宽服务端字段 |
+| IB / 7b6dbaf | 未知创建误认工作阶段或协作人员不同的同名项并清掉草稿。补齐阶段、里程碑名、参与人集合比较；不同资料保留输入，一致资料仍能确认。两条防丢失回归、7浏览器通过；work-create-identity-before、stage-ib-*。仅凭相同资料不能证明并发操作来源 |
+| HW / 1c1708b | 工作项名称规范化后无法核对已成功创建；比较复用canonicalizeLabel。混合全角/组合字符/空白旅程通过，零重提、完整DTO不变；5浏览器及Lint/类型/构建，work-title-recheck-before、stage-hw-*。人员/特性规则已一致 |
+| IA / baf3208 | README校正人员权限、人力分析、归档、Token/密码入口及独立skill同步命令，删除重复首次配置，净减5行；对照实际路由和脚本验收 |
+| HU / c84c5cf | 图表复制为“副本”预留60字符上限；11浏览器、2既有业务通过；analytics-long-copy-before、stage-hu-* |
+| HS / 71f888c | 画布/流程长标题复制预留后缀，不切断emoji；卡片标题限制两行并显示完整悬停文字。63不同业务、8不同浏览器及窄屏补拍；canvas-long-copy-*、stage-hs-* |
+| HR / 7276541 | 导入格式/类型/长度错误显示中文字段和项次，保留原文；5浏览器通过；intake-error-feedback-*、stage-hr-* |
+| HP / 9e6f7b8 | 200字符流程复制超限修复，连续12副本唯一；需求流程选择换行显示完整长名称。50业务、20不同浏览器；template-long-copy-*、stage-hp-* |
+| HO / 54a7571 | 人力矩阵仅向右接近末端才自动加周，纵向和过滤复位不加载。1000人923可见服务39ms，模拟完整响应后绘制251—276ms；非真实网络传输。4既有浏览器及规模/窄屏通过；people-scale-*、stage-ho-* |
+| HM / 624110c | Phase聚合按组读取，1000 Phase/9000需求由92—116ms降到18—22ms；同库9场景完整DTO一致，无缓存/索引；phase-summary-scale-* |
+| HE/HF | 链接核对按服务端规范化规则比较，覆盖需求/工作项/特性/Phase；84c5c72、23ca8fa，stage-he/hf-* |
 
-## 近期无需修改的检查
+## 近期无需修改
 
-- IE：19:45增量查看原服务16日志文件，新增11条info（1次登录成功、10次未匹配GET/404），无错误级事件，健康200。另用全新游客浏览器只读检查当前首页，48响应/42静态资源全部成功，无页面异常、失败请求或被阻止写入。原始404无路径，不能确定原因；需当时请求路径或可复现场景再深入。runtime-log-review-ie.json、runtime-assets-ie.ts/log/json。首次报告误用原cwd相对路径写入失败，改在improve保存；原dev仍仅两项用户修改。
-- ID：MCP需求/工作项/进展分页直接复用REST服务，严格输入、筛选在分页前生效、空结果/越界页、total/pages及历史snapshot均有mcp-queries.test.ts既有覆盖，已随HZ通过；未重复运行或修改。工作项越界页返回空数组，问题页码收至末页，属于现有明确行为，不强行统一。
-- IC：已有永久用例覆盖IndexedDB首次打开失败；另用真实已存草稿注入4次写事务abort，原有本机记录完整不变，当前输入保留，失败时正式apply为0。解除中断后只apply一次，提示清除、刷新显示正确名称，无页面异常。draft-abort-recovery.log/json及归档探针，截图仅证明输入保留（警告在弹窗后）；无需产品修改或永久新测试。身份切换清理按既有账号/项目范围执行，未改策略。
-- IA：README校正“人员权限/人力分析/归档中心/个人设置”等实际入口，明确skill需执行独立sync命令，删除重复首次配置步骤，净减5行。对照路由、页面、package.json、configure/sync脚本及git diff --check验收；纯文档修改，不重跑测试，不执行账号重置或本机skill同步。
-- HY：共享搜索使用indexOf/includes，特殊符号不进入拼音匹配；问题和日志SQL通过绑定参数调用同一search_score/search_plain_match，无LIKE通配或动态正则。既有search.test.ts已覆盖90%、单独%、字段_a字面匹配。只读确认，无需修改或重复运行该测试。
-- HX：真实图表→人力分析→关系图→进展表→个人设置往返30轮；GC后设置页稳定3022 DOM节点/373监听器、2个实际存活尺寸观察器、0 Worker/MutationObserver、2个60秒定时器，无页面异常。堆内存预热12.1MB至第10轮15.27MB、第30轮16.16MB，尚不能归因为泄漏，不作内存优化。初探针只记observe/disconnect造成每轮+2假象，补WeakRef证实对象已回收。resource-release-initial/json、resource-release-weak.log及归档探针；无产品修改/永久测试。结论仅限已测资源，不宣称整个应用不存在内存问题。
-- HV：2026-09-18 19:13只读复查原服务16个日志文件，较HB新增1条19:01的info HTTP_404（GET未匹配路由，1ms），无错误级别事件，3210健康200。缺少原始路径，不能据此判定产品缺陷，不改路由。runtime-log-review-hv.json；活动日志目录元数据滞后，改用实际内容和文件流长度；JSON时间用DateKind String保留时区/毫秒，纠正初次本地字符串转换。原dev仍仅两项用户修改。
-- HT：11个同负责人逾期问题，从筛选后第2页打开唯一事项、解决后直接浏览器返回，自动回第1页；原因/负责人保持，剩余10项身份及完整DTO不变，仅1次问题写入，刷新仍10项，390px无横向溢出。action-last-page-verified.log/json及截图/归档探针，无产品修改或永久测试。初探误把issues分页对象当数组；之后先关详情再返回会按既有历史重新打开详情，改为详情内直接返回才检验目标旅程。
-- HN：隔夜业务日期已有60秒时钟、focus/visibilitychange刷新和查询失效处理；现有浏览器覆盖分析/看板范围、问题未编辑日期保留、日期选择器“今天”、历史补录跨午夜解锁，REST/MCP也覆盖跨日快照一致。只读核对，不重复运行或修改。
-- HL：按[2026年政府安排](https://www.beijing.gov.cn/fuwu/bmfw/sy/jrts/202511/t20251104_4258838.html)独立对照9/18—10/12逐日工作日；9/20与10/10补班，中秋/国庆假期跳过。真实11工作日流程正排/倒排均为9/20—10/10，两工作项分别9/20—24、9/28—10/10；10/7截止报工作日错误并保留输入。一次拒绝、两次成功创建，流程完整DTO不变。holiday-schedule-verified.log/json及归档探针，无产品修改或永久测试。首轮误依赖仅空工作区出现的“新建需求”按钮，改用公共“新建对象”菜单后通过。
-- HJ：2026-09-18运行依赖只读审计，配置镜像返回审计接口NOT_IMPLEMENTED；显式官方registry的npm audit --omit=dev返回0项公告，npm ls --omit=dev --depth=0确认23个直接依赖无安装问题。runtime-dependency-audit(-official).json、runtime-dependency-tree.json；未升级或修改锁文件。结论限查询所覆盖公告，不代表不存在未知问题。
-- HI：51/501/5001项目（含1样板），混合私有/公开/归档，管理员、成员、未关联人员、游客及包含归档参数共6场景。最大档五次服务中位0.72—3.73ms、单次最大6.06ms，完整响应、排序、角色、公开只读属性均符合独立种子预期，数据库零写入。project-list-scale.ts/log/json含SQL计划，不含网络或UI时间；无需查询优化/缓存/永久测试。分析24面板规模及进展长说明已有专项，未重复运行。
-- HH：53个真实Token，39有效/14已撤销，长名称、20条分页。第二页打开撤销确认后另一项后台撤销并刷新，确认仍指向原ID；一次DELETE仅改变该项revokedAt，其他完整资料不变，有效数39→38→37。390px确认/列表截图复核，第三页13项刷新保持，无页面横向溢出，表格内部横向滚动可用。token-pagination-verified.log及归档探针/截图，无产品修改或永久测试。首轮误用窄屏隐藏的数字页按钮，改用已有“下一页”和跳转页码后通过。
+- IC：已存草稿的4次写事务abort，原记录不变、输入保留、正式apply为0；恢复后只apply一次，刷新正确，无页面异常。draft-abort-recovery.log/json/探针/截图；首次打开失败已有回归。
+- HX：实际页面往返30轮，GC后设置页3022 DOM节点/373监听器/2实际尺寸观察器/0 Worker/2定时器稳定。堆内存第10轮15.27MB、第30轮16.16MB，不能归因为泄漏。初计数漏算GC，WeakRef已澄清；resource-release-*。
+- HY/ID：特殊字符使用字面匹配；MCP分页复用REST且覆盖筛选、空页、越界、历史snapshot，既有测试已在HZ通过，无需重复。
+- IE：19:45原服务新增1次成功登录、10次未匹配GET/404，均info，健康200。游客首页48响应/42静态资源全成功，无页面异常；原404缺路径，暂不能定位。runtime-log-review-ie、runtime-assets-ie.*。报告首次误用原cwd未能写入，已在improve保存，原目录未变。
+- HT：解决筛选第2页最后一个问题后返回，自动回第1页，筛选及剩余10项DTO保持，仅1写；action-last-page-*。
+- HN/HL：跨午夜日期刷新、2026中秋/国庆调休与正倒排一致；holiday-schedule-*。HH：53 Token分页撤销身份正确；token-pagination-*。HI：5001项目六角色查询0.72—3.73ms，无优化必要。HJ：官方npm运行依赖审计0公告，未升级。
 
 ## 覆盖与降低优先级的领域
 
@@ -95,8 +77,6 @@ git show d35957a:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 ## 当前阶段 IF：Windows首次配置兼容性
 
-ID/IE无需修改。新证据：start.bat调用powershell.exe，当前系统为5.1.22621.2506，不支持configure.ps1第7行ConvertFrom-SecureString -AsPlainText。另startup先configure再npm install，而scripts/configure.mjs静态依赖better-sqlite3/dotenv，首次无node_modules可能先失败。下一步在.preview下独立目录复制包装器和configure脚本，用固定测试输入替代Read-Host复现，不执行原目录配置、不重置现有账号；核对脚本编码和依赖安装顺序，修复后验收5.1/当前pwsh兼容及配置保留行为。
+start.bat调用powershell.exe；本机5.1.22621.2506没有configure.ps1第7行使用的ConvertFrom-SecureString -AsPlainText。configure.ps1是无BOM UTF-8，还需核对5.1中文解析。start.bat先configure再npm install，而configure.mjs静态依赖better-sqlite3/dotenv，首次无依赖可能提前失败。
 
-当前产品7b6dbaf，IC检查进程已退出，临时浏览器探针已归档。无待验收产品修改或外部阻塞。接续先看本记录和git状态，不重新运行已通过的HZ全量检查。
-
-原目录2026-09-18复核仍只有两项用户修改。更正HO此前描述：矩阵没有按宽度自动补周的effect，原问题来自未区分横纵的scroll事件；浏览器规模检查使用服务导出的完整响应进行路由模拟，不代表真实网络传输时间。
+下一步在.preview下复制包装器和configure脚本，用固定测试输入替代Read-Host复现。不得执行原目录配置或重置现有账号。修复后验收Windows PowerShell 5.1/当前pwsh、配置保留和首次安装顺序。当前只读发现，尚未修改或创建该阶段夹具。
