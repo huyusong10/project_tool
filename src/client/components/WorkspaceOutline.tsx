@@ -55,6 +55,10 @@ export function WorkspaceOutline({report,projection,header}:{report:Dashboard;pr
   const scopedTree=scopeOutline(tree,location.scope),branches=flattenOutline(scopedTree).filter(row=>row.children.length&&(!filtered||matches(row)));
   const expandAll=(open:boolean)=>changeExpanded({...currentExpanded,...Object.fromEntries(branches.map(row=>[row.id,open]))});
   useEffect(()=>setSelected([]),[scopeKey,query,sort]);
+  useEffect(()=>{
+    const eligible=new Set(all.filter(row=>!row.system&&!row.archived).map(row=>row.id));
+    setSelected(ids=>{const next=ids.filter(id=>eligible.has(id));return next.length===ids.length?ids:next;});
+  },[all]);
   useEffect(()=>{try{localStorage.setItem(baseKey+':expanded',JSON.stringify(expanded));}catch{/* Keep expansion in this page. */}},[baseKey,expanded]);
   const setPending=(v:Pending|null)=>{setPendingState(v);try{if(v)sessionStorage.setItem(baseKey+':pending',JSON.stringify(v));else sessionStorage.removeItem(baseKey+':pending');}catch{/* Keep the pending write in memory. */}};
   const picked=all.filter(r=>selected.includes(r.id)&&!r.system&&!r.archived),homogeneous=picked.length>0&&picked.every(r=>r.kind===picked[0].kind),sameParent=homogeneous&&picked.every(r=>r.parentId===picked[0].parentId);
