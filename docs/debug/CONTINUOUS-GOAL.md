@@ -4,10 +4,10 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品d8d7b25（JR），前一产品f2e458d（JP）、2bc92fb（JO）、906437a（JN）、3571ea1（JL）、c0059d1（JK）、06146c4（JG）；README修正c36e4f9。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品25c1658（JT），前一产品d8d7b25（JR）、f2e458d（JP）、2bc92fb（JO）；更早成果见下表与历史版本。README修正c36e4f9。
 - 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
-- 最近全量为JG/06146c4：983业务/119文件、10性能、26冒烟，运行时/429边界/Lint/类型/构建/预算全通过，verify首轮退出0；stages-iz-jg-verify.log。JK另9浏览器，JN另9浏览器，JO另31浏览器，JP另7浏览器，各自类型/构建/Lint通过；这些后续修改未再跑完整verify。
-- JR生产构建：主JS931.87KB、CSS339.06KB、ELK1595.33KB，预算通过；428模块边界最近JO通过。生产/测试服务端6文件完全相同，共984482B，零缺失引用或残留。全部执行句柄已回收，无运行进程、未归档临时浏览器测试或未验收产品修改。
+- 最新全量JT：989业务/119文件、10性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stages-jt-verify-final.log，62874退出0已回收。此前组合首轮发现周末夹具及实际日期产品缺陷，修复过程见JT验收；不能写成整个阶段首轮通过。
+- JT生产构建：主JS931.87KB、CSS339.06KB、ELK1595.33KB。生产/测试服务端各6文件984785B，零缺失引用或残留，server-build-artifacts-jt.json；源代码变化后旧哈希块仍正确清理。无运行进程、未归档临时浏览器测试或未验收产品修改。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
 详细历史在本文件Git版本：A—DO fd512b7；DP—EV 41a4ed0；FE—HL d35957a；HE—IE 67250e9。JG全量及至JL详细验收、旧基线和探针修正见1ce7589。按主题取读，不重新开始。
@@ -16,6 +16,7 @@
 
 | 阶段 / 提交 | 结果 / 证据 |
 |---|---|
+| JT / 25c1658 | 进入周六后的组合验收暴露3个日期失败。两处夹具改用最近工作日后，实际已完成对象仍出现开始09-20/结束09-18，实际均为09-19。保留工作/直接执行、需求完成节点、已达成里程碑的实际日期，工作日坐标继续用于依赖排期。6确定日期回归原代码全失败，修复后通过；强化既有真实API为日期精确等于存储。完整989业务/10性能/26冒烟及全部静态/构建检查通过；path-completed-nonworking-before、stage-jt-*、stages-jt-verify-final.log |
 | JR / d8d7b25 | 两条tsup命令补--clean，生产44文件26.37MB→6文件984482B，测试66文件40.89MB→相同6文件；去掉38+60个未引用旧块，合计65297436B。生产/测试构建（含类型）和预算首轮0、当前引用完整、6文件字节及SHA一致、diff通过。实际start.bat从中文/空格/方括号/&目录启动，健康/资源931873B/登录/创建项目入独立SQLite/重复启动0通过，12037测试树已停止。stage-jr-*、server-build-artifacts-before/after.json、output-match.json、startup-path-*；61506/10503均已回收，无新永久测试 |
 | JP / f2e458d | 需求被他人移出当前Phase后，隐藏选择仍用最新版本加入后续真实移动，覆盖他人归属。按当前范围计算批量对象并清理选择，折叠后代仍保留。新增1回归原代码失败；修改后7个不同浏览器场景通过，取消零写入、仅当前需求提交、外部归属/版本保持、未知移动响应刷新后可核对且不重发。类型/测试构建/目标Lint/diff通过；outline-scope-selection-before、stage-jp-*。首轮修复后仅测试误要求项目预测revision不变，已改为核对其余完整DTO；5个既有场景通过后不重复，新增回归及临时状态探针补验2通过，探针已归档 |
 | JO / 2bc92fb | 删除被统一清单替代的两套表格、专用选择组件和38个专用CSS选择器；旧mode=table解析保留。JS940395→931808B、CSS342552→339058B，合计减少12081B。31浏览器、类型/完整Lint/428边界/生产构建/预算通过，1280/390截图已检查；stage-jo-*、retired-table-*。无新增测试；CSS初稿误删现用Phase容器，在浏览器验收前复核恢复，保留声明比对通过 |
@@ -108,35 +109,9 @@
 
 该轮另发现的合并来源链接遗漏已独立修复7d70e7b；验收见近期成果。工作区无未提交产品修改。周末无工作日计划候选同样降级：当前新建排期明确限制工作日，未发现当前入口证据。
 
-## JG验收：大分析响应的传输压缩
+## 旧阶段详细证据
 
-产品06146c4已提交：精确依赖@fastify/compress 9.2.0（新增12个依赖）、path-routes两条分析GET、1项协议回归。插件限定path路由子域，global:false，仅两条GET开启br/gzip；br默认质量4、gzip级别1。普通API、MCP流、备份及请求解压保持原行为。不要用compress:true；每路由须显式编码/级别，本库空对象会用默认值覆盖全局配置。
-
-真实TCP+Edge探针通过：500/1000/2000跨需求链，identity分别13155524/45812143/169635643B，br为209622/540661/1625482B，gzip1为2034262/13147432/79541386B；解压原字节hash全部相同。2000规模回环identity3497ms、br3393ms、gzip6043ms；Edge完整JSON解析3887ms，encoded/decoded大小一致。三次中断响应后维护等待均低于0.1ms、读取hash保持、SQLite零写入。证据analysis-compression-http.ts/json/log。只证明传输缩小，未减少JSON解析内存或验证6001节点完整布局。
-
-协议协商与权限测试通过，identity/q=0/deflate回退、br/gzip优先级、完整字节、no-store、普通API范围均核对。首轮误期望identity也有Vary、未登录401，实际插件仅压缩时加Vary、现有私有项目返回404；修正测试后通过。4文件46项先通过，新回归独立补验1通过，共47不同业务。15浏览器全通过（stage-jg-browser.log）。首次镜像audit接口404（stage-jg-audit.json），官方registry复验0公告（stage-jg-audit-official.json），不改npm设置。
-
-完整验收首轮退出0：983业务/119文件、10性能、26冒烟，所有检查通过，exec49747已回收。普通HTTP补验98023也退出0：域名映射127.0.0.1、isSecureContext=false、实际Accept-Encoding=gzip, deflate，169634533B→79325896B，浏览器解析5119ms；同库回环identity2299ms、gzip4137ms。不能将localhost的br收益当作所有内网部署效果。analysis-compression-insecure-http.ts/json/log，当前无运行进程。
-
-已读官方https://github.com/fastify/fastify-compress及安装的源码，>=8支持Fastify5。不自建紧凑JSON协议、删除affectedRequirementIds、加缓存或重做图布局；后台完整风险列表参与排序及服务查询，不能仅凭前端少用就删字段。
-
-Date的原因输入和IssueStatusControl的折叠说明出现时机不同，暂不认定同类聚焦缺陷。“搜索需求编号”没有独立编号字段，名称内业务编号本来可搜，不因UUID未参与搜索增加功能。Goal保持active。
-
-## JO验收：移除已替代的旧表格渲染
-
-JG全量通过后，JK另9浏览器/类型/构建/Lint通过；JL仅编码修正并独立验证；JI仅文档。所有成果已提交，无运行进程或临时浏览器测试。JG全量不含后来的JK/JL，不能把它称为最新HEAD完整verify。
-
-当前清单为完整树表，无分页。selection-review.log已有145行滚动/详情往返、筛选清空选择的真实断言；batch-archive-state-after.log已有归档拒绝回滚/版本冲突/未知写入核对，4项通过，不重复这些场景。
-
-JN已验收提交906437a，无运行进程。检查相邻ScopeTable时确认FeaturePathPanel/PathAnalysisPanel只由ProjectWorkspace在graph视角渲染，旧mode=table由readWorkspaceLocation转为统一list，workspaceParams规范化mode=graph。旧FeatureTable/ScopeTable仍由GraphWorkspace条件打包，两个组件的分页/选择与旧模式开关已无现用入口；TemplateForm用同一GraphWorkspace但没有table。workspace-details已有旧链接进入outline的断言。
-
-JO已提交2bc92fb，修改7个产品文件：删除旧表格渲染、专用选择组件和专用样式，保留旧URL解析、统一清单/图/进展表、PhaseChip/过滤规则、现用归属编辑及恢复。JN测试构建包体940395B JS/342552B CSS，JO同样构建931808B/339058B，减少8587B/3494B；retired-table-bundle-before/after.json。类型、完整Lint、428模块边界通过；Lint58648已回收。
-
-目标浏览器最终31项全通过，40857退出0并回收，stage-jo-browser.log，3296。生产构建/预算通过（stage-jo-build.log）：主JS931.81KB、CSS339.06KB、ELK1595.33KB；图、详情1280及清单选择390截图已检查并归档retired-table-*.png。无新增测试或运行进程。
-
-CSS初稿误把现用PhaseChip容器样式列为旧表格样式，静态复核发现后已恢复两个选择器，发生在浏览器验收前；retired-table-source-audit.json确认33+5个旧选择器被移除、剩余全部声明与原文一致（首稿因Git LF/工作区CRLF误报，规范换行后比对通过）。remove-retired-tables.mjs记录收窄后的删除范围，不应重复执行这个一次性编辑脚本。
-
-JL附带只读核对：startup.test.ts已保护重启75、其他服务占端口64、重复启动不开数据库，随JG全量通过；不重跑。run-server.ps1用LiteralPath及参数调用Node、start.bat引用目录；未实际验证含空格目录的完整启动，不能宣称该场景通过。Goal继续active。
+JG/JN/JO的协议协商、普通HTTP压缩、CSS删除复核及早期启动脚本核对详见本文件Git版本13eb56a；成果表保留结论。压缩稳定决定：只给两条分析GET配置compress编码与级别，插件global:false；不能用compress:true或依赖空路由对象继承全局设置。普通HTTP不假设支持br。
 
 ## JP验收：选择对象被移出当前范围
 
@@ -152,6 +127,18 @@ package.json仅两行添加已安装tsup帮助中确认的--clean。执行前确
 
 独立部署探针保留在.preview/qa/continuous-goal/启动 验证 [JR] & LgWieM；配置/数据库/日志仅测试使用，node_modules为指向当前依赖的junction，不要递归清除此目录。实际端口12037，已停止。原dev目录仍只有用户的skill修改和未跟踪文档，无部署或推送。
 
-## 当前阶段 JT：组合验收
+## JT验收：已完成对象的实际日期
 
-JG之后JK/JL/JN/JO/JP/JR已分别通过目标验收。现在对最新产品d8d7b25做一次npm run verify，包含业务、性能、冒烟、静态检查及生产构建，日志stages-jk-jr-verify.log；浏览器3296、性能独占，不并行运行其他检查。只有退出0才更新完整验证基线；如失败先保留证据再定位，不改已通过断言掩盖问题。完成后进入另一业务领域，Goal继续active。
+首次verify在2026-09-19凌晨退出1（54503已回收）：980业务通过，3项在工作项排期返回400，后续性能/冒烟/构建尚未执行。两处测试直接用周六todayIso当计划开始；按现有工作日约束改为addBusinessDays(todayIso(),0)，业务断言不放宽。stage-jt-weekend-fixtures.log：25通过后，path-api的已完成日期起止顺序仍失败，暴露产品问题。
+
+实际完成日期被工作日坐标取整：2026-09-19开始/完成的工作显示09-20开始、09-18完成。新增直接执行/工作项两种模式×周六、调休周日、节假日共6确定日期回归，原代码全失败；path-completed-nonworking-before.log。最初口头推测“周一”不准确，现有业务日历09-20为调休工作日，以确定日期测试为准。
+
+已提交4文件：paths保留已完成工作/直接需求、需求完成节点和已达成里程碑的原始日期，仅工作日偏移用于依赖计算。18条paths最终通过；此前另26条API/行动旅程通过。首轮确定日期测试对09-20后续工作的期望误按当日，改为实际下一工作日09-21后通过，产品调度算法不变（stage-jt-paths-after/final.log）。既有真实API断言强化为起止/排期日期精确等于存储事实。
+
+完整verify退出0：989业务/119文件、10性能、26冒烟及全部静态/构建/预算通过；62874已回收。首次54503失败也已回收，所有探针均已结束。
+
+## 当前阶段 JU：历史日期纠正与依赖核对
+
+新代码线索：已开始节点的依赖冲突比较仍用工作日偏移。若前置在调休工作日09-20完成、后续实际09-19开始，两者可能映射到同一开始坐标而遗漏提示。尚未证明当前业务入口能形成该状态。下一步先核对历史纠错规则和现有测试，再以真实API验证；入口拒绝或已明确确认的情况不算缺陷，不改已验收的排期算法。Goal保持active。
+
+已读work-items.ts的correctWorkItem（294行起）：校验状态、实际起止先后、不得未来、取消上限及历史引用，没有直接依赖日期检查；correction-integrity.test.ts约508—535行保护未来日期拒绝与过去日期纠正，已随JT通过，不重跑。下一步临时真实API探针可用过去09-12/09-13纠错，避免09-20尚未来的日期被正常拒绝；核对已完成前置与已开始后续的实际值、声明确认状态和分析提示。当前未新增探针或修改产品，工作区干净。
