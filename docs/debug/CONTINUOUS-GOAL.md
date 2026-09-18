@@ -4,7 +4,7 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品dc98ee2（IV），前一产品7d70e7b（IU链接修复）、eee9d38（IT）、d473f2e（IS）、e53c666（IQ）；README修正baf3208。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品6f36dd1（IZ），前一产品dc98ee2（IV）、7d70e7b（IU链接修复）、eee9d38（IT）、d473f2e（IS）、e53c666（IQ）；README修正baf3208。
 - 原目录D:\tools\project-manage的dev不改。21:54检查仍只有用户修改skills/project-manage-intake/SKILL.md、未跟踪docs/dcim-ai-workflow-v3-gaps.md。未部署、未推送。
 - 临时数据库和独立构建；浏览器使用3296，串行运行；性能独占。3210/3295不改。HZ漏设端口，用默认3291的独立临时服务完成，后续已恢复3296。
 - IX组合验收dc98ee2：982业务/119文件、10性能、26浏览器，运行时/429边界/Lint/类型/构建/预算全通过，verify首轮退出0（exec20746已结束）。主JS940.02KB、CSS342.57KB、ELK1595.33KB；stages-is-iv-verify.log及performance/build-budget.json。临时探针已归档，无未提交产品修改。
@@ -25,6 +25,7 @@
 
 | 阶段 / 提交 | 结果 / 证据 |
 |---|---|
+| IZ / 6f36dd1 | 协作选择初帧隐藏使autoFocus失效，焦点留在入口按钮，键盘输入zhangsan后搜索仍为空。显示后RAF聚焦搜索或首个复选框，关闭时取消待执行聚焦。两个既有小列表/搜索旅程在原代码失败；修改后7浏览器、ESLint、类型/测试构建、diff通过。1000选项读取夹具打开45—47ms、搜索11—19ms，无需性能改造；实际保存用3个真实目标，隐藏已选保留、Esc零写入、Space/Tab/Enter仅1次保存、刷新一致，1280/390截图已检查。collaborator-picker-focus-before/typing、regression-before、scale.json、stage-iz-*；强化2个既有旅程，无新增永久测试，探针已归档 |
 | IV / dc98ee2 | SVG把英文都按窄字符计算，特性/需求/Phase共16行越界，宽标题309—502px挤出280px卡片、Phase名与状态重叠。按字符类别估宽并为省略号留空间，产品净增5行，无字体依赖。25业务、3不同浏览器及1次扩大字符集补验通过；空图、长英文/数字/中文/emoji、XML、完整标题、Phase不重叠、全量分析/需求DTO保持；类型/构建/Lint/diff通过，截图已检查。graph-export-text-before/after/characters、stage-iv-*、graph-font-width。前三次探针夹具分别误用overview、缺overview必填项、未解包features，已记录修正；正式复现和验收日志独立保存。探针已归档，无新增永久测试 |
 | IU链接 / 7d70e7b | 需求合并遗漏来源新版referenceLinks，旧实现两个单元场景失败；合并双方新链接并按URL去重、目标名称优先，保留目标旧来源，超20条不截断。7单元、2真实浏览器（正常/超限修正）、Lint/类型/构建通过；完整原文、链接、工作、依赖重映射和刷新后保存核对。intake-merge-links-before、stage-iu-links-*、intake-merge-links-browser.log |
 | IT / eee9d38 | 折叠4500工作控件仍创建77446 DOM；事件到两次动画帧计时：整理440ms、标题修改787ms。只在展开时创建工作控件，后测DOM928—946，整理35ms、修改13ms；输入仍存原pkg。17既有浏览器通过，强化原拆分合并旅程：编辑/添加移除/收起重开/刷新后保存保留标题。Lint/类型/构建/diff通过。intake-editor-9-500-before/after、stage-it-*；早先13476ms包含自动化定位成本，不当纯绘制指标 |
@@ -113,10 +114,10 @@
 
 该轮另发现的合并来源链接遗漏已独立修复7d70e7b；验收见近期成果。工作区无未提交产品修改。周末无工作日计划候选同样降级：当前新建排期明确限制工作日，未发现当前入口证据。
 
-## 当前阶段 IZ：较多人员的协作选择体验
+## 当前阶段 JA：问题表单引用选择的键盘入口
 
-IY通过，exec71584已退出0，所有测试进程结束，探针已归档，工作区无未提交产品修改。IX组合基线不变。
+IZ验收并提交6f36dd1，23791已退出0；相关进程均结束，无未提交产品修改。1000选项仅45—47ms，不加虚拟列表或缓存。IX全量基线仍是dc98ee2，IZ另外通过7条目标浏览器及类型/构建/Lint。
 
-下一步测量InlineMultiSelectCell在1000人员选项下的打开、搜索和选择体验，检查长姓名、390px、搜索前后隐藏的已选人员及键盘取消/提交。只按测量或实际操作发现的问题修改；没有问题就降低优先级，不为维持进展增加缓存/虚拟列表。
+新证据：IssueForms.tsx内部SearchSelect同样在初帧隐藏的AnchoredPopover内使用input autoFocus（约191行）；文本、单选和顶部菜单已有RAF聚焦，不能批量改所有浮层。下一步先在新建问题的负责人/关联需求选择中验证打开后直接键入是否有效，兼顾Esc返回焦点、原表单输入和取消零写入。仅复现后修正。现有issue-drafts.pw.ts约184行覆盖浮层布局，但尚未核对是否覆盖直接键入。
 
-已读src/client/components/inline-edit/multi-select.tsx：超过6项提供搜索，rankSearchItems排序，勾选独立存draft，搜索不清空。popover.tsx已有IME Esc保护，inline-edit.pw.ts覆盖版本变化与单选IME；不重复这些已验收场景。work-item-assignment.test.ts已覆盖901协作人服务端分块保存，IZ关注界面，不重做后端容量测试。性能独占，页面计时与自动化定位分开；若使用规模读取夹具需明确范围，保存目标仍用真实存在的人员。
+Date的原因输入和IssueStatusControl的折叠说明出现时机不同，暂不认定同类缺陷，不顺手修改。Goal保持active。
