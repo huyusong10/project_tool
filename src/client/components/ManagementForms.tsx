@@ -4,7 +4,7 @@ import * as projectsApi from '../features/projects/api';
 import * as peopleApi from '../features/people/api';
 import * as requirementsApi from '../features/requirements/api';
 import { ReferenceLinksEditor } from './ReferenceLinks';
-import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
+import { readReferenceLinks, referenceLinksEqual, type ReferenceLink } from '../../shared/reference-links';
 import { useDeliveryForm } from '../use-delivery-form';
 import { Button } from './Button';
 import { assertCleanProjectDraft } from '../use-graph-draft';
@@ -254,7 +254,7 @@ export function RequirementForm({
     onError: error=>{if(!isWriteOutcomeUnknown(error))onRecheckChange(null);},
     onSettled: () => { submitting.current = false; },
   });
-  const matchesDraft=(item:Requirement,draft:RequirementFormInput)=>item.projectId===projectId&&item.title===canonicalizeLabel(draft.title)&&item.ownerId===(draft.ownerId||null)&&item.background===(draft.background.trim()||null)&&item.acceptanceCriteria===(draft.acceptanceCriteria.trim()||null)&&(draft.referenceLinks!==undefined?JSON.stringify(readReferenceLinks(item.referenceLinks))===JSON.stringify(readReferenceLinks(draft.referenceLinks)):item.referenceUrl===(draft.referenceUrl.trim()||null))&&(!draft.featureId||item.featureId===draft.featureId)&&(item.phaseId||null)===(draft.phaseId||null)&&(!draft.templateId||item.templateId===draft.templateId)&&(!draft.plannedStart||item.plannedStart===draft.plannedStart)&&(!draft.plannedEnd||item.plannedEnd===draft.plannedEnd);
+  const matchesDraft=(item:Requirement,draft:RequirementFormInput)=>item.projectId===projectId&&item.title===canonicalizeLabel(draft.title)&&item.ownerId===(draft.ownerId||null)&&item.background===(draft.background.trim()||null)&&item.acceptanceCriteria===(draft.acceptanceCriteria.trim()||null)&&(draft.referenceLinks!==undefined?referenceLinksEqual(item.referenceLinks,draft.referenceLinks):item.referenceUrl===(draft.referenceUrl.trim()||null))&&(!draft.featureId||item.featureId===draft.featureId)&&(item.phaseId||null)===(draft.phaseId||null)&&(!draft.templateId||item.templateId===draft.templateId)&&(!draft.plannedStart||item.plannedStart===draft.plannedStart)&&(!draft.plannedEnd||item.plannedEnd===draft.plannedEnd);
   const checkLatest=async()=>{if(!recheck||checking)return;setChecking(true);setCheckError('');try{const latest=await requirementsApi.requirementsQuery<Requirement[]>(encodeURIComponent(projectId), {readOnly:true});client.setQueryData([...keys.requirements,projectId],latest);const baseline=new Set(recheck.baselineIds),created=latest.filter(item=>!baseline.has(item.id)&&matchesDraft(item,recheck.draft));if(created.length===1){onRecheckChange(null);invalidateRequirementViews(client,created[0].id);toast.success('已核对最新状态：需求已创建');clearLocal();onClose();return;}if(created.length===0){onRecheckChange(null);mutation.reset();setCheckError('未发现本次新增需求，已恢复原输入，可以重新提交。');return;}setCheckError('发现多个可能的新需求，暂不解除锁定，请核对需求列表和操作记录。');}catch(error){setCheckError(error instanceof Error?error.message:'需求列表读取失败');}finally{setChecking(false);}};
   return (
     <Modal title="新建需求" closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
