@@ -201,6 +201,17 @@ describe('自动状态、进度和风险', () => {
   });
 
   it.each([
+    ['2026-02-14', '2026-02-24', 50, '2026-02-13', '2026-02-14', -1],
+    ['2026-02-14', '2026-02-24', 50, '2026-02-24', '2026-02-14', 1],
+    ['2027-01-02', '2027-01-03', 100, '2027-01-01', '2027-01-03', -0],
+    ['2027-01-02', '2027-01-03', 0, '2027-01-03', '2026-12-31', 1],
+  ] as const)('进度参考日期保留调休与无工作日计划：%s至%s，进度%s，截至%s',
+    (plannedStart, plannedEnd, progress, today, scheduleReferenceDate, scheduleVarianceDays) => {
+      const metrics = deriveRequirementMetrics({ executionMode: 'direct', status: 'in_progress', progress, plannedStart, plannedEnd }, [], today);
+      expect(metrics).toMatchObject({ scheduleReferenceDate, scheduleVarianceDays });
+    });
+
+  it.each([
     [0, null, 2],
     [50, '0100-01-01', 1],
   ] as const)('最早合法排期进度%s保持偏差，不生成范围外的参考日期', (progress,referenceDate,varianceDays) => {

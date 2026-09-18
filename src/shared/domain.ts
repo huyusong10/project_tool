@@ -298,6 +298,16 @@ function scheduleVarianceFromProgress(items: WeightedWorkItem[], actualProgress:
     (sum, item) => sum + item.progressWeight * plannedProgressWithDuration(item, date),
     0,
   ) / totalWeight;
+  // 计划进度只增不减，先找达到目标的自然日，再对齐工作日。
+  const firstDateAtProgress = (from: string, to: string, target: number) => {
+    let low = 0, high = (parseIsoDate(to).getTime() - parseIsoDate(from).getTime()) / 86_400_000;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (Math.round(plannedProgressAt(addCalendarDays(from, middle))) >= target) high = middle;
+      else low = middle + 1;
+    }
+    return addCalendarDays(from, low);
+  };
   const actual = Math.min(100, Math.max(0, Math.round(actualProgress)));
   const plannedProgress = plannedProgressAt(today);
   const plannedToday = Math.round(plannedProgress);
@@ -306,24 +316,17 @@ function scheduleVarianceFromProgress(items: WeightedWorkItem[], actualProgress:
   if (actual < plannedToday) {
     referenceDate = null;
     const searchEnd = today < plannedEnd ? today : plannedEnd;
-    for (let cursor = plannedStart; cursor <= searchEnd; cursor = addCalendarDays(cursor, 1)) {
-      if (!isBusinessDay(cursor)) continue;
-      if (Math.round(plannedProgressAt(cursor)) > actual) break;
-      referenceDate = cursor;
+    for (let cursor = firstDateAtProgress(plannedStart, searchEnd, actual + 1); cursor > plannedStart;) {
+      cursor = addCalendarDays(cursor, -1);
+      if (isBusinessDay(cursor)) { referenceDate = cursor; break; }
     }
     if (referenceDate === null) {
       try { referenceDate = addBusinessDays(plannedStart, -1); }
       catch (error) { if (!(error instanceof DateRangeError)) throw error; }
     }
   } else if (actual > plannedToday) {
-    referenceDate = plannedEnd;
-    for (let cursor = today; cursor <= plannedEnd; cursor = addCalendarDays(cursor, 1)) {
-      if (!isBusinessDay(cursor)) continue;
-      if (Math.round(plannedProgressAt(cursor)) >= actual) {
-        referenceDate = cursor;
-        break;
-      }
-    }
+    referenceDate = firstDateAtProgress(today, plannedEnd, actual);
+    while (referenceDate < plannedEnd && !isBusinessDay(referenceDate)) referenceDate = addCalendarDays(referenceDate, 1);
   }
 
   return {

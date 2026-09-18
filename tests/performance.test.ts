@@ -61,6 +61,36 @@ afterAll(() => {
 });
 
 describe('看板性能', {timeout: 30000}, () => {
+  it('100个五年计划的需求汇总保留进度参考日期且低于250毫秒', async () => {
+    const local = await createTestDatabase(), db = local.context.sqlite;
+    const { listRequirements: readRequirements } = await import('../src/server/services/requirements');
+    const now = '2026-09-18T00:00:00.000Z';
+    try {
+      db.transaction(() => {
+        db.prepare('INSERT INTO projects(id,name,created_at,updated_at) VALUES(?,?,?,?)').run('long-plans', '多年计划', now, now);
+        const requirement = db.prepare(`INSERT INTO requirements(id,project_id,title,status,execution_mode,created_at,updated_at)
+          VALUES(?,'long-plans',?,'in_progress','work_items',?,?)`);
+        const work = db.prepare(`INSERT INTO work_items(id,requirement_id,title,status,planned_start,planned_end,actual_start,progress,created_at,updated_at)
+          VALUES(?,?,?,'in_progress','2022-01-01','2026-12-31','2022-01-01',80,?,?)`);
+        for (let index = 0; index < 100; index++) {
+          const id = `long-${index}`;
+          requirement.run(id, id, now, now);
+          work.run(`${id}-work`, id, id, now, now);
+        }
+      })();
+      const unchanged = db.prepare('SELECT total_changes() AS n').get();
+      measureScenario('requirements-100-five-year-plans', 250,
+        () => local.run(() => readRequirements({ projectId: 'long-plans' }, '2026-09-18')),
+        result => {
+          expect(result).toHaveLength(100);
+          for (const item of result) expect(item).toMatchObject({
+            progress: 80, scheduleReferenceDate: '2026-01-08', scheduleVarianceDays: 173,
+          });
+        });
+      expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(unchanged);
+    } finally { local.close(); }
+  });
+
   it('1000个账号和10000个工作项的在办计数只读且全部样本低于500毫秒',async()=>{
     const local=await createTestDatabase(),db=local.context.sqlite;
     const {listAccounts}=await import('../src/server/accounts');
