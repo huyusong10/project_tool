@@ -5,11 +5,16 @@ import type { GraphCard, GraphLink } from '../../shared/path-projection';
 import type { PhaseRegion } from '../../shared/phase-layout';
 
 const xml=(value:string)=>value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'})[c]!);
+// Half-em estimates cover the export's normal/bold fonts without a server font engine.
+const textUnits=(c:string)=>c.codePointAt(0)!>0xffff?3:/[W@]/.test(c)?2.5:c.charCodeAt(0)>255||/[A-Zmw%&]/.test(c)?2:/[il .,:;!'|]/.test(c)?1:1.5;
 function lines(value:string,width=34,max=3) {
   const result:string[]=[];let line='',size=0;
-  for(const c of value){const units=c.charCodeAt(0)>255?2:1;if(size+units>width||c==='\n'){result.push(line);line='';size=0;}if(c!=='\n'){line+=c;size+=units;}}
+  for(const c of value){const units=textUnits(c);if(size+units>width||c==='\n'){result.push(line);line='';size=0;}if(c!=='\n'){line+=c;size+=units;}}
   if(line)result.push(line);
-  return result.length>max?[...result.slice(0,max-1),[...result[max-1]].slice(0,-1).join('')+'…']:result;
+  if(result.length<=max)return result;
+  const last=[...result[max-1]];let used=last.reduce((sum,c)=>sum+textUnits(c),0);
+  while(last.length&&used+textUnits('…')>width)used-=textUnits(last.pop()!);
+  return [...result.slice(0,max-1),last.join('').trimEnd()+'…'];
 }
 const titles=(card:GraphCard)=>lines(card.title,34,3);
 const subtitles=(card:GraphCard)=>{
