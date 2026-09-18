@@ -4,7 +4,7 @@
 
 ## 基线与恢复
 
-- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品0fb023a（GV项目切换），前一产品15c6888（GR人员草稿）、2a9a2b9（GQ计数）、a1c13c9（GL键盘）。
+- 工作目录 D:\tools\project-manage-improve，分支 codex/continuous-improvement，起点 bd19fa1；当前产品fb1ad2e（GX问题内联版本），前一产品0fb023a（GV项目切换）、15c6888（GR人员草稿）、2a9a2b9（GQ计数）。
 - 原目录 D:\tools\project-manage 的 dev 保持原样，最后检查仍仅用户修改 skills/project-manage-intake/SKILL.md、未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 独立构建、临时数据库、浏览器端口3296；3210/3295不动。未部署、未推送。单个Playwright服务串行运行；性能测量独占运行。
 - GW完整验收0fb023a：969项业务（117文件）、9项性能、26项浏览器，运行时、模块边界、Lint、类型、构建和预算通过。主JS938.40KB、CSS342.32KB、ELK1595.33KB；stages-gl-gv-verify.log，涵盖GL/GQ/GR/GV，GT草案未进入产品。
@@ -23,6 +23,7 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 
 | 阶段 / 提交 | 结果与验收入口 |
 |---|---|
+| GX / fb1ad2e | 问题日期草稿21日，另一会话改25日/v2，背景刷新后保存却用新版本把旧草稿覆盖为21日/v3。四个内联字段接入既有revision guard，重读当前页并按捕获版本保存，无公共组件/后端修改。真实日期、优先级、负责人、关联需求并发均先拦截、保留选择、重读后只写一次；日期取消零写入，已落库但响应丢失后核对不重复提交，其他字段/历史完整DTO保持。80项浏览器、Lint/类型/测试构建通过，390px截图已复核；新增1条永久日期恢复旅程，三个选择器临时探针归档。issue-inline-revision-before/after.log、stage-gx-*、issue-date-recheck-390.png |
 | GV / 0fb023a | 101个项目中，鼠标打开切换器看不到末尾当前项；打开后滚到当前项，键盘仍聚焦当前项。显式项目不可用时原方向键无法进入列表，现Down/Up分别聚焦首项/末项。真实101新增项目、长名称、390/1280px、Home/End/环绕/Esc、实际选择目标问题页、刷新、全部项目DTO不变、零业务写入通过；33项不同浏览器用例、Lint/类型/测试构建通过。临时2条旅程已归档，无新永久测试。project-switcher-scale-before/after、project-navigation-baseline/verified、stage-gv-lint及截图。旧project-selection断言自动删除显式失效筛选，在产品基线也失败；按EV决定改为保留原ID/提示，关闭详情后明确清除筛选再显示问题，不恢复自动扩大范围。打开计时含自动化开销，不当作纯渲染性能 |
 | GR / 15c6888 | 人员列表末页编辑时，后台转岗或改名使行离开筛选/当前页，草稿消失。仅编辑期间保留原人员ID顺序，资料/版本/权限用最新响应，提示列表变化；保存或取消后应用新范围和有效页。真实21人末页验证旧版本拦截、重读保留输入、保存一次、后台重排后Esc零写入、390px；50项账号/分页/新旅程、Lint/类型/测试构建通过。新增1条保存与取消旅程；people-filter-refresh-before/complete.log及截图、stage-gr-*。不保留已不存在人员或旧权限 |
 | GQ / 2a9a2b9 | listAccounts逐人扫描全部工作项造成1000人/1.5万工作/4.5万协作读取约4.2秒；SQL先取在办工作，合并并去重负责人/协作者后按人计数，需求/问题原计数不变，无新增索引/缓存。五次交替50/250/1000人中位9.11→1.62ms、238.31→7.96ms、4181.52→35.85ms；6档含空数据完整响应与原实现一致，零写入。60项业务、9项性能、5项浏览器、Lint/类型/测试构建通过；新增1项1000账号/1万工作性能与计数回归。accounts-scale-before/after/edge证据以baseline/after/edge.json及相应log保存，stage-gq-*。初次临时种子缺协作表列和终态进度约束，按现有schema修正，未放宽产品约束 |
@@ -97,8 +98,8 @@ git show 41a4ed0:docs/debug/CONTINUOUS-GOAL.md | rg '阶段名或主题'
 - GT未验收：760px以下隐藏了看板唯一排序手柄。草案恢复手柄、标题与操作分行；宽屏与390px键盘跨行/首末边界/Esc/取消零写入/保存一次/刷新均通过，既有10项看板、Lint/类型/测试构建通过。触摸拖动能交换图表，但之后触摸保存未生成click、零PUT；拖动前触摸保存及拖动后鼠标保存通过。50/100/750ms等待与同CDP触摸均未解决，按钮按下/松开同节点且仍连接；无应用页面的原生按钮触摸对照正常。不能判为仅探针问题，未修改公共DND。产品CSS已恢复基线，修复保留analytics-narrow-order-draft.patch；analytics-keyboard-order-probe.pw.ts已归档，证据analytics-keyboard-order-after.log、stage-gt-*、analytics-touch-{control,target,separated,cdp}.log、touch-cdp-*及截图。解除条件：最小DND复现或实际触屏证据确定无click原因，并验证拖动后触摸保存一次、取消零写入；不是用户决策事项。
 - 无用户决策事项。GT保留待查项，其他领域可以独立推进，Goal保持active。
 
-## 当前阶段 GX：问题列表内联编辑的并发保护
+## 当前阶段 GY：归档列表与引用计数规模
 
-IssuesPage的内联日期未传issue.version，保存回调会随背景刷新改用新版本；检查日期草稿是否因此覆盖其他会话的新值。先真实接口复现，再决定是否复用既有revision guard；不扩展编辑范围。
+测量全局及指定项目归档读取，覆盖100/1000/5000需求、工作项、旧进展和关联问题；检查每项引用计数、项目归属及只读性。已有progress复合索引，先观察实际成本，不预设需要缓存、索引或改写SQL。
 
-验收：背景变化不静默提交旧草稿，明确重读保留输入并用核对版本保存一次，取消零写入，其他字段及历史保持；检查同页已有内联编辑。GW已结束，当前无运行测试；原dev仍仅两项用户修改。
+验收：重复读取完整响应稳定、零写入；区分本地同步读取与网络/浏览器成本。无具体瓶颈则保留现实现。GX验收结束、探针已归档、无运行测试；原dev仍仅两项用户修改。
