@@ -53,7 +53,7 @@ test('完成统一为可留空的确认表单，说明可恢复且一次确认�
   const latest=await(await page.request.get('/api/requirements/'+f.testing.id)).json();expect(latest.workItems.find((w:{id:string})=>w.id===work.id).status).toBe('completed');
 });
 
-test('进展图说明缺失的工作项排期，并直接打开工作项安排',async({page},info)=>{
+test('概况中的缺失排期入口打开工作项安排或需求计划表单',async({page},info)=>{
   const f=await phaseFixture(page);
   const response=await page.request.post('/api/requirements/'+f.testing.id+'/work-items',{data:{expectedVersion:f.testing.version,title:'待安排验证'}});expect(response.ok(),await response.text()).toBe(true);
   await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',scopeType:'requirement',scopeId:f.testing.id}));
@@ -62,4 +62,10 @@ test('进展图说明缺失的工作项排期，并直接打开工作项安排',
   await modal.getByRole('tab',{name:'概况',exact:true}).click();await expect(modal.getByRole('region',{name:'待补全的排期'})).toContainText('待安排验证：缺少计划开始、计划完成');
   await page.screenshot({path:info.outputPath('schedule-gaps.png')});
   await modal.getByRole('button',{name:'安排缺失的计划日期'}).click();await expect(modal.getByRole('tab',{name:/^工作项 /})).toHaveAttribute('aria-selected','true');
+  await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',detailId:f.direct.id}));
+  await modal.getByRole('button',{name:'安排缺失的计划日期'}).click();
+  const schedule=page.getByRole('dialog',{name:'调整需求计划',exact:true});await expect(schedule).toBeVisible();
+  await expect(schedule.getByLabel('计划开始',{exact:true})).toBeEnabled();
+  await schedule.getByRole('button',{name:'取消',exact:true}).click();await expect(schedule).toHaveCount(0);
+  await expect(modal.getByRole('tab',{name:'概况',exact:true})).toHaveAttribute('aria-selected','true');
 });
