@@ -177,7 +177,7 @@ export function ArchiveCenterPage() {
         <header><div><h2>已归档内容</h2><p>统一筛选、恢复或永久删除平台归档资源</p></div></header>
         <div className="archive-toolbar">
           <SearchInput value={keyword} onChange={setKeyword} placeholder="搜索名称、所属项目、岗位或拼音" />
-          <select value={type} onChange={(event) => setType(event.target.value as "all" | ArchiveEntity)}><option value="all">全部类型</option>{archiveEntityOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select>
+          <select aria-label="归档类型" value={type} onChange={(event) => setType(event.target.value as "all" | ArchiveEntity)}><option value="all">全部类型</option>{archiveEntityOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select>
           <span>{filteredRows.length} / {rows.length} 条</span>
         </div>
         {archiveNeedsRecheck && <div role="alert" className="warning-banner">{archiveNeedsRecheck === "restore" ? "归档恢复结果待核对" : "永久删除结果待核对"}，当前归档事实可能已变化，本页面不会重复提交。<Button busy={(isFetching)} aria-label={isFetching ? "读取中…" : "重新加载归档"} variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{"重新加载归档"}</Button></div>}

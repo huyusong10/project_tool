@@ -313,7 +313,7 @@ test('跨项目同名归档在筛选、删除确认和恢复时保留归属',asy
   await expect(page.locator('.archive-table')).toContainText(south.project.name);await expect(page.locator('.archive-table')).toContainText(north.project.name);
   for(const fixture of fixtures){for(const entity of ['requirements','templates'] as const){const id=entity==='requirements'?fixture.a.id:fixture.template.id;expect(before[entity].find(item=>item.id===id)).toMatchObject({projectName:fixture.project.name});}}
   const writes:string[]=[];page.on('request',request=>{if(request.url().includes('/api/')&&!['GET','HEAD'].includes(request.method()))writes.push(request.method()+' '+new URL(request.url()).pathname);});
-  const search=page.locator('.archive-toolbar').getByRole('searchbox'),type=page.locator('.archive-toolbar').getByRole('combobox');
+  const search=page.locator('.archive-toolbar').getByRole('searchbox'),type=page.getByRole('combobox',{name:'归档类型',exact:true});
   await search.fill(south.project.name);await expect(page.locator('.archive-table tbody tr')).toHaveCount(2);
   for(const entity of ['requirements','templates'] as const){
     await chooseOption(type,entity);const row=page.locator('.archive-table tbody tr');await expect(row).toHaveCount(1);await expect(row).toContainText(south.project.name);
