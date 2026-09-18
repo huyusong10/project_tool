@@ -73,11 +73,13 @@ function IssueScopeControl({
   requirements,
   canEdit,
   onSave,
+  onReloadRevision,
 }: {
   issue: Issue;
   requirements: Requirement[];
   canEdit: boolean;
-  onSave: (input: Record<string, unknown>) => Promise<unknown>;
+  onSave: (input: Record<string, unknown>, expectedVersion?: number) => Promise<unknown>;
+  onReloadRevision: () => Promise<number>;
 }) {
   const label = issueScope(issue);
   if (!canEdit) {
@@ -91,13 +93,16 @@ function IssueScopeControl({
     ...requirements.map((requirement) => ({ value: requirement.id, label: requirement.title })),
   ];
   return <InlineSelectCell
+    revision={issue.version}
+    revisionSubject="问题"
+    onReloadRevision={onReloadRevision}
     value={value}
     label="关联需求"
     options={options}
-    onSave={(next) => {
-      if (next === publicIssueScopeValue) return onSave({ requirementId: null, sourceRef: null });
-      if (next === sourceIssueScopeValue) return onSave({ requirementId: null });
-      return onSave({ requirementId: next, sourceRef: null });
+    onSave={(next, _reason, expectedVersion) => {
+      if (next === publicIssueScopeValue) return onSave({ requirementId: null, sourceRef: null }, expectedVersion);
+      if (next === sourceIssueScopeValue) return onSave({ requirementId: null }, expectedVersion);
+      return onSave({ requirementId: next, sourceRef: null }, expectedVersion);
     }}
     renderValue={(_value, selected) => <span className="issue-scope" title={selected?.label || label}>{selected?.label || label}</span>}
   />;
@@ -288,7 +293,15 @@ export function IssuesPage() {
       invalidateIssueViews(queryClient, saved.id);
     },
   });
-  const saveIssue = (issue: Issue, input: Record<string, unknown>) => runIssueSave({ issue, input });
+  const saveIssue = (issue: Issue, input: Record<string, unknown>, expectedVersion = issue.version) => runIssueSave({ issue: {...issue, version: expectedVersion}, input });
+  const reloadIssueVersion = async (id: string) => {
+    const latest = await refetch();
+    if (latest.error) throw latest.error;
+    const issue = latest.data?.items.find(item => item.id === id);
+    if (!issue) throw new Error('问题已不在当前列表，请关闭编辑后重新查找。');
+    return issue.version;
+  };
+  const issueRevision = (issue: Issue) => ({revision: issue.version, revisionSubject: '问题', onReloadRevision: () => reloadIssueVersion(issue.id)});
   const updateFilter = (key: string, value: string) => {
     const next = new URLSearchParams(linkedQuery);
     next.delete("page");
@@ -397,12 +410,12 @@ export function IssuesPage() {
       >
         {data?.items.map((issue) => <AdaptiveDataRow className={`issue-data-row${issue.overdue ? " is-overdue" : ""}`} key={issue.id}>
           <AdaptiveDataCell column="issue" className="issue-data-primary"><button type="button" className="issue-title-button" onClick={() => openIssue(issue.id, "basic")}><DataCell primary={<strong>{issue.title}</strong>} secondary={issue.impact || "暂无影响说明"} /></button></AdaptiveDataCell>
-          <AdaptiveDataCell column="scope" className="issue-data-scope"><DataCell primary={<IssueScopeControl issue={issue} requirements={requirements} canEdit={canEditIssue(issue)} onSave={(input) => saveIssue(issue, input)} />} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="scope" className="issue-data-scope"><DataCell primary={<IssueScopeControl issue={issue} requirements={requirements} canEdit={canEditIssue(issue)} onReloadRevision={() => reloadIssueVersion(issue.id)} onSave={(input, expectedVersion) => saveIssue(issue, input, expectedVersion)} />} /></AdaptiveDataCell>
           <AdaptiveDataCell column="status" className="issue-data-status"><DataCell primary={<IssueStatusControl issue={issue} canManage={canEditIssue(issue)} compact />} /></AdaptiveDataCell>
           <AdaptiveDataCell column="progress" className="issue-data-progress"><DataCell primary={<span className="issue-table-progress"><i><b style={{ width: `${issue.progress}%` }} /></i>{issue.progress}%</span>} /></AdaptiveDataCell>
-          <AdaptiveDataCell column="priority" className="issue-data-priority"><DataCell primary={canEditIssue(issue) ? <InlineSelectCell value={issue.priority} label="问题优先级" options={priorityOptions} displayMode="badge" onSave={(priority) => saveIssue(issue, { priority })} renderValue={(value) => <StatusBadge kind="priority" value={value} />} /> : <StatusBadge kind="priority" value={issue.priority} />} /></AdaptiveDataCell>
-          <AdaptiveDataCell column="owner" className="issue-data-owner"><DataCell primary={canEditIssue(issue) ? <InlineSelectCell value={issue.ownerId} label="问题负责人" options={[{ value: "", label: "未分配" }, ...(issue.status==="resolved"?people.filter(p=>p.projectRole!=="viewer"):eligiblePeople).map((person) => ({ value: person.id, label: person.name })), ...(issue.ownerId && !(issue.status==="resolved"?people:eligiblePeople).some((person) => person.id === issue.ownerId) ? [{ value: issue.ownerId, label: issue.ownerName || "历史负责人", description: "历史负责人" }] : [])]} onSave={(ownerId) => saveIssue(issue, { ownerId: ownerId || null })} placeholder="未分配" renderValue={(_value, selected) => selected?.value ? selected.label : <span className="muted-text">未分配</span>} /> : issue.ownerName || <span className="muted-text">未分配</span>} /></AdaptiveDataCell>
-          <AdaptiveDataCell column="dueDate" className={`issue-data-due${issue.overdue ? " danger-text" : ""}`}><DataCell primary={canEditIssue(issue) && issue.status !== "deferred" ? <InlineDateCell value={issue.dueDate} label="目标日期" onSave={(dueDate) => saveIssue(issue, { dueDate })} /> : issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"} secondary={issue.status === "resolved" ? `解决 ${issue.resolvedAt || "日期未记录"}` : issue.overdue ? "已逾期" : undefined} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="priority" className="issue-data-priority"><DataCell primary={canEditIssue(issue) ? <InlineSelectCell {...issueRevision(issue)} value={issue.priority} label="问题优先级" options={priorityOptions} displayMode="badge" onSave={(priority, _reason, expectedVersion) => saveIssue(issue, { priority }, expectedVersion)} renderValue={(value) => <StatusBadge kind="priority" value={value} />} /> : <StatusBadge kind="priority" value={issue.priority} />} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="owner" className="issue-data-owner"><DataCell primary={canEditIssue(issue) ? <InlineSelectCell {...issueRevision(issue)} value={issue.ownerId} label="问题负责人" options={[{ value: "", label: "未分配" }, ...(issue.status==="resolved"?people.filter(p=>p.projectRole!=="viewer"):eligiblePeople).map((person) => ({ value: person.id, label: person.name })), ...(issue.ownerId && !(issue.status==="resolved"?people:eligiblePeople).some((person) => person.id === issue.ownerId) ? [{ value: issue.ownerId, label: issue.ownerName || "历史负责人", description: "历史负责人" }] : [])]} onSave={(ownerId, _reason, expectedVersion) => saveIssue(issue, { ownerId: ownerId || null }, expectedVersion)} placeholder="未分配" renderValue={(_value, selected) => selected?.value ? selected.label : <span className="muted-text">未分配</span>} /> : issue.ownerName || <span className="muted-text">未分配</span>} /></AdaptiveDataCell>
+          <AdaptiveDataCell column="dueDate" className={`issue-data-due${issue.overdue ? " danger-text" : ""}`}><DataCell primary={canEditIssue(issue) && issue.status !== "deferred" ? <InlineDateCell {...issueRevision(issue)} value={issue.dueDate} label="目标日期" onSave={(dueDate, _reason, expectedVersion) => saveIssue(issue, { dueDate }, expectedVersion)} /> : issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"} secondary={issue.status === "resolved" ? `解决 ${issue.resolvedAt || "日期未记录"}` : issue.overdue ? "已逾期" : undefined} /></AdaptiveDataCell>
           <AdaptiveDataCell column="latest" className="issue-data-latest"><button type="button" className="issue-latest-update-button" onClick={() => openIssue(issue.id, "updates")}><DataCell primary={<span className="issue-latest-update" title={issue.latestUpdate || undefined}>{issue.latestUpdate || "暂无进展"}</span>} secondary={issue.latestUpdateAt ? shortDateTime(issue.latestUpdateAt) : "查看进展"} /></button></AdaptiveDataCell>
         </AdaptiveDataRow>)}
       </AdaptiveDataList>
