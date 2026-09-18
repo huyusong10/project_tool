@@ -320,8 +320,17 @@ for (const source of ['detail', 'my-work'] as const) {
 for (const role of ['member', 'owner'] as const) {
   test(`${role}进度录入绑定所点工作项且不提供切换为需求说明`, async ({ page }) => {
     const state = await fixture(page, 'in_progress', role);
+    const prefix=role==='member'?'核对接口参数与返回结果'.repeat(8):'CrossEnvironmentIntegrationValidation'.repeat(4);
+    state.requirement.workItems.forEach((item,index)=>{item.title=prefix+(index?'乙':'甲');});
     const dialog = await openProgress(page, 'detail', role === 'owner' ? 1 : 0);
     await expect(dialog.getByRole('combobox')).toHaveCount(0);
+    const title=dialog.locator('.progress-item-context strong');
+    await expect(title).toHaveText(state.requirement.workItems[role==='owner'?1:0].title);
+    for(const width of [1280,390]){
+      await page.setViewportSize({width,height:600});await title.scrollIntoViewIfNeeded();
+      expect(await title.evaluate(el=>el.scrollWidth<=el.clientWidth+1&&el.scrollHeight<=el.clientHeight+1)).toBe(true);
+      expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+    }
     await dialog.getByRole('textbox', { name: /^说明/ }).fill('权限范围内更新进展');
     await dialog.getByRole('spinbutton').fill('75');
     await dialog.getByRole('button', { name: '记录进展', exact: true }).click();
