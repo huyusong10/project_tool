@@ -245,8 +245,8 @@ function BrandingSettingsCard({ accountKey }: { accountKey: string }) {
         <div><strong>{previewBranding.systemName}</strong><span>展开与折叠状态使用同一Logo</span></div>
       </div>
       <form className="system-branding-form" onSubmit={(event) => { event.preventDefault(); if (stale || saveNeedsRecheck || readingLogo) return; saveLock.run(() => { setMessage(""); setLocalError(""); save.mutate({ systemName, shortName, expectedUpdatedAt: baselineUpdatedAt, ...(logoDraft !== undefined ? { logoDataUrl: logoDraft } : {}) }); }); }}>
-        <label className="field"><span>系统名称</span><input value={systemName} maxLength={20} required disabled={saveLock.busy} onChange={(event) => { setSystemName(event.target.value); setDirty(true); setMessage(""); }} /></label>
-        <label className="field"><span>系统简称</span><input value={shortName} maxLength={4} required disabled={saveLock.busy} onChange={(event) => { setShortName(event.target.value); setDirty(true); setMessage(""); }} /></label>
+        <label className="field"><span>系统名称</span><input value={systemName} pattern=".{1,20}" title="请输入1～20个字符" required disabled={saveLock.busy} onChange={(event) => { setSystemName(event.target.value); setDirty(true); setMessage(""); }} /></label>
+        <label className="field"><span>系统简称</span><input value={shortName} pattern=".{1,4}" title="请输入1～4个字符" required disabled={saveLock.busy} onChange={(event) => { setShortName(event.target.value); setDirty(true); setMessage(""); }} /></label>
         <div className="system-branding-logo-field">
           <span>系统Logo</span>
           <div>
