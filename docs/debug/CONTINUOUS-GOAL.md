@@ -5,7 +5,7 @@
 ## 基线与恢复
 
 - 工作目录：D:\tools\project-manage-improve；分支 codex/continuous-improvement；起点 bd19fa1。
-- 当前产品提交ef6837f，含ET弹窗回焦修复；EQ完整验收基线5e31e67覆盖A—EP，ES/ET专项通过。
+- 当前产品在ef6837f上修复EV历史问题筛选；EQ完整验收基线5e31e67覆盖A—EP，ES/ET/EV专项通过。
 - 原目录 D:\tools\project-manage 的 dev 不改动。保留用户修改 skills/project-manage-intake/SKILL.md 和未跟踪 docs/dcim-ai-workflow-v3-gaps.md。
 - 使用独立构建、临时数据库和浏览器端口 3296；3210、3295 服务保持原样。未部署、未推送。
 - 证据保存在 .preview/qa/continuous-goal/，不进入版本库。当前无运行测试、无临时浏览器测试留在 tests/responsive。
@@ -148,10 +148,16 @@ new-project-milestone-before.log复现；after.log原里程碑编辑和两种待
 
 仅一次defer、一次resume和一次PATCH，旧记录、需求及依赖全部保持，390px无溢出或异常，截图复核。issue-defer-review-date-final.log和归档探针；初次探针的getByLabel无法定位重新挂载后已含文本的隐式标签，改按快照中正确的textbox可访问名称定位。无需修改产品，不新增永久测试。
 
-## 当前阶段 EV：历史问题的负责人筛选
+## EV：历史问题筛选保持所选范围
 
-范围：IssuesPage在人员列表不含当前ownerId时自动清除筛选。核对负责人归档后，已保存的历史问题筛选是否意外扩大范围；先验证真实归档与现有权限规则，不把外项目或不可访问对象混入结果。
+负责人归档后，接口按原ownerId仍返回本人历史问题，页面却自动删除筛选并展示他人的问题；归档需求后同样把原本应为空的requirementId筛选扩大为全部范围。删除这段自动清理effect，两个下拉保留当前值；能从当前结果读取名称则展示原名称，否则显示“所选负责人/需求（不在当前列表）”。权限及新增/编辑的候选范围保持。
 
-验收：用户能知道当前筛选的范围，历史问题与负责人事实保持，清除或切换筛选仍可操作；没有具体问题则不改。
+archived-issue-owner-filter-before.log、archived-issue-scope-filter-before.log分别复现隐式扩大结果；historical-issue-filters-final.log共4项通过，含真实归档、刷新、正常切换/清空、不存在负责人空结果、问题状态分页与新建分派入口。原问题记录完全一致，归档需求仍保留1个关联问题；390px截图已复核。Lint/类型/测试构建通过，page-consistency.pw.ts新增2项真实回归，无临时测试留在tests/responsive。
 
-恢复状态：EU无需修改，探针已归档，无运行测试。EV未改代码，下一步读取人员归档约束和问题筛选控件。
+## 当前阶段 EW：特性画布创建项目里程碑后的反馈
+
+范围：ES通过摘要找回了未保存里程碑，但创建时特性图仅显示内部需求和已连接的外部对象；没有连接的新项目里程碑可能立即从当前画布消失。验证实际新建后的选中对象、编辑入口和保存结果。
+
+验收：创建后能直接看到并编辑新里程碑，项目归属保持；需求内里程碑、普通新需求和已有视口规则不受影响。优先使用现有项目范围和图编辑器，不新增归属或投影规则。
+
+恢复状态：EV验收完成，无运行测试。EW未改代码，下一步用真实命名特性的新建操作复现。

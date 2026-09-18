@@ -6,7 +6,7 @@ import { DetailCard } from '../components/DetailCard';
 import { ObjectDetailContext, useObjectDetail, readDetailMemory } from '../components/ObjectDetailContext';
 import { Button } from '../components/Button';
 import { usePageResources } from '../page-context';
-import { useDeferredValue, useEffect, useRef, useState } from "react";
+import { useDeferredValue, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { AlertTriangle, CheckCircle2, Clock3, PauseCircle, Plus, UserRound } from "lucide-react";
@@ -236,21 +236,6 @@ export function IssuesPage() {
   const referenceDataReady = peopleQuery.data !== undefined && requirementsQuery.data !== undefined;
   const referenceError = peopleQuery.error || requirementsQuery.error;
   const retryReferenceData = () => void Promise.all([peopleQuery.refetch(), requirementsQuery.refetch()]);
-  useEffect(() => {
-    if (!referenceDataReady) return;
-    const staleOwner = Boolean(ownerId && !people.some((person) => person.id === ownerId));
-    const staleRequirement = Boolean(scope && scope !== "public" && !requirements.some((requirement) => requirement.id === scope));
-    if (!staleOwner && !staleRequirement) return;
-    const next = new URLSearchParams(linkedQuery);
-    next.delete("page");
-    if (staleOwner) {
-      next.delete("ownerId");
-    }
-    if (staleRequirement) {
-      next.delete("requirementId");
-    }
-    setSearchParams(next, { replace: true });
-  }, [linkedQuery, ownerId, people, referenceDataReady, requirements, scope, setSearchParams]);
   const canEdit = canManageProject(session, selectedProjectId);
   const canEditIssue = (issue: Issue) => referenceDataReady && canEdit && (!issue.requirementId || requirements.some((requirement) => requirement.id === issue.requirementId));
   const canContribute = referenceDataReady && session.authenticated && !session.mustChangePassword
@@ -393,8 +378,8 @@ export function IssuesPage() {
         <SearchInput value={keyword} onChange={(value) => updateFilter("q", value)} placeholder="搜索问题、影响、人员、进展或拼音" />
         <select value={status} onChange={(event) => changeStatus(event.target.value)}><option value="in_progress">处理中</option><option value="active">全部未闭环</option><option value="">全部状态</option>{statusEntries.filter(([value]) => value !== "in_progress").map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
         <select value={priority} onChange={(event) => updateFilter("priority", event.target.value)}><option value="">全部优先级</option>{priorityEntries.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
-        <select value={ownerId} onChange={(event) => changeOwner(event.target.value)}><option value="">全部负责人</option>{people.map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
-        <select value={scope} onChange={(event) => changeScope(event.target.value)}><option value="">全部范围</option><option value="public">公共问题</option>{requirements.map((requirement) => <option value={requirement.id} key={requirement.id}>{requirement.title}</option>)}</select>
+        <select value={ownerId} onChange={(event) => changeOwner(event.target.value)}><option value="">全部负责人</option>{ownerId&&!people.some(person=>person.id===ownerId)&&<option value={ownerId}>{data?.items.find(item=>item.ownerId===ownerId)?.ownerName||'所选负责人（不在当前列表）'}</option>}{people.map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
+        <select value={scope} onChange={(event) => changeScope(event.target.value)}><option value="">全部范围</option><option value="public">公共问题</option>{scope&&scope!=='public'&&!requirements.some(requirement=>requirement.id===scope)&&<option value={scope}>{data?.items.find(item=>item.requirementId===scope)?.requirementTitle||'所选需求（不在当前列表）'}</option>}{requirements.map((requirement) => <option value={requirement.id} key={requirement.id}>{requirement.title}</option>)}</select>
         <Button variant="secondary" aria-pressed={overdue} className={`issue-filter-toggle${overdue ? " active" : ""}`} onClick={toggleOverdue}><AlertTriangle size={14} />仅逾期</Button>
         <Button variant="secondary" aria-pressed={unassigned} className={`issue-filter-toggle${unassigned ? " active" : ""}`} onClick={toggleUnassigned}><UserRound size={14} />未分配</Button>
       </FilterBar>
