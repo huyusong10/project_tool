@@ -61,6 +61,42 @@ afterAll(() => {
 });
 
 describe('看板性能', {timeout: 30000}, () => {
+  it('5000人候选查询保留搜索和可用状态，全部样本低于250毫秒',async()=>{
+    const local=await createTestDatabase(),db=local.context.sqlite;
+    const {listPeopleCandidates}=await import('../src/server/services/people');
+    const now='2026-09-19T00:00:00.000Z',size=5000;
+    try{
+      db.transaction(()=>{
+        db.prepare('INSERT INTO projects(id,name,created_at,updated_at)VALUES(?,?,?,?)').run('candidates','人员候选规模',now,now);
+        const person=db.prepare('INSERT INTO people(id,name,active,deleted_at,created_at,updated_at)VALUES(?,?,?,?,?,?)');
+        const account=db.prepare("INSERT INTO accounts(id,person_id,username,normalized_username,password_hash,deleted_at,created_at,updated_at)VALUES(?,?,?,?,'test-only',?,?,?)");
+        const member=db.prepare("INSERT INTO project_people(project_id,person_id,project_role,created_at)VALUES('candidates',?,'viewer',?)");
+        for(let i=0;i<size;i++){
+          const id='candidate-'+i;
+          const name=i===size-1?'张三远端目标':'人员'+String(i).padStart(5,'0');
+          person.run(id,name,i===size-3?0:1,i===size-2?now:null,now,now);
+          if(i!==size-6)account.run('candidate-account-'+i,id,'login-'+i,'login-'+i,i===size-5?now:null,now,now);
+          if(i%5===0||i===size-4)member.run(id,now);
+        }
+      })();
+      const unchanged=db.prepare('SELECT total_changes() AS n').get();
+      const read=(q:string)=>local.run(()=>listPeopleCandidates('candidates',q));
+      measureScenario('person-candidates-5000-default',250,()=>read(''),rows=>{
+        expect(rows).toHaveLength(50);expect(rows.every(row=>row.canAdd)).toBe(true);
+        expect(rows.map(row=>row.id)).toEqual(Array.from({length:63},(_,i)=>i).filter(i=>i%5!==0).slice(0,50).map(i=>'candidate-'+i));
+      });
+      measureScenario('person-candidates-5000-pinyin',250,()=>read('zhangsanyuanduan'),rows=>{
+        expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({id:'candidate-4999',username:'login-4999',canAdd:true});
+      });
+      for(const [q,id,reason] of [['人员04998','candidate-4998','archived'],['人员04997','candidate-4997','inactive'],['人员04996','candidate-4996','already_member']] as const){
+        const rows=read(q);expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({id,canAdd:false,unavailableReason:reason});
+      }
+      expect(read('login-4999')[0].id).toBe('candidate-4999');expect(read('login-4995')).toEqual([]);
+      for(const q of ['人员04995','人员04994'])expect(read(q)[0].username).toBeNull();
+      expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(unchanged);
+    }finally{local.close();}
+  });
+
   it('100个五年计划的需求汇总保留进度参考日期且低于250毫秒', async () => {
     const local = await createTestDatabase(), db = local.context.sqlite;
     const { listRequirements: readRequirements } = await import('../src/server/services/requirements');

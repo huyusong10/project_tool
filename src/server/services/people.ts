@@ -44,6 +44,7 @@ export function listPeople(includeDeleted = false, projectId?: string) {
 export function listPeopleCandidates(projectId: string, q = '') {
   requireActiveProject(projectId);
   const query = normalizeSearchText(q);
+  // 账号增长后旧统计可能仍选择逐人扫描账号表，使用既有人员唯一索引保持单次查找。
   const candidates = rows<{
     id: string; name: string; jobTitle: string | null; username: string | null; active: number; deletedAt: string | null;
     existingProjectRole: ProjectRole | null; searchRank: number;
@@ -53,7 +54,7 @@ export function listPeopleCandidates(projectId: string, q = '') {
         search_score(COALESCE(a.username, ''), ?) + 50,
         search_score(COALESCE(p.job_title, ''), ?)) AS searchRank
     FROM people p
-    LEFT JOIN accounts a ON a.person_id=p.id AND a.deleted_at IS NULL
+    LEFT JOIN accounts a INDEXED BY idx_accounts_person ON a.person_id=p.id AND a.deleted_at IS NULL
     LEFT JOIN project_people pp ON pp.person_id=p.id AND pp.project_id=?
     WHERE ((?='' AND p.deleted_at IS NULL AND p.active=1 AND pp.person_id IS NULL)
       OR (?<>'' AND (search_score(p.name, ?)>0
