@@ -20,7 +20,10 @@ export function registerAccountsRoutes(app: FastifyInstance) {
     return sessionPayload(actor);
   });
 
-  app.post('/api/login', { config: { rateLimit: { max: config.nodeEnv === 'test' ? 100 : 8, timeWindow: '1 minute' } } }, async (request, reply) => {
+  app.post('/api/login', { config: { rateLimit: {
+    max: config.nodeEnv === 'test' ? 100 : 8, timeWindow: '1 minute',
+    errorResponseBuilder: (_request, {statusCode, ttl}) => Object.assign(new Error(`登录尝试过于频繁，请在 ${Math.max(1, Math.ceil(ttl / 1000))} 秒后重试`), {statusCode}),
+  } } }, async (request, reply) => {
     const input = parsedBody(request, loginInputSchema); const account = findAccountForLogin(input.username);
     updateLogContext({ attemptedUser: input.username.slice(0, 120), authMethod: 'password' });
     if (!account || !verifyPassword(input.password, account.passwordHash)) {
