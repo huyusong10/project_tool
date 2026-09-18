@@ -131,8 +131,12 @@ test('本机编辑状态读取失败可重试，重试不会接管另一页面�
     await expect(tab.getByRole('button',{name:'保存修改',exact:true})).toBeDisabled();
     await expect(tab.getByRole('alert')).toContainText('无法读取本机编辑状态');
     await expect(name).toBeEnabled();
+    if(!await tab.getByRole('heading',{name:'草稿与冲突',exact:true}).isVisible())await openGraphDrafts(tab);
+    await expect(tab.getByRole('alert')).toBeVisible();
+    await expect(tab.getByRole('button',{name:'重新检查编辑状态',exact:true})).toBeVisible();
     await tab.screenshot({path:info.outputPath('ownership-unavailable-1280.png'),animations:'disabled'});
     await tab.setViewportSize({width:390,height:844});
+    await expect(tab.getByRole('button',{name:'重新检查编辑状态',exact:true})).toBeVisible();
     await tab.screenshot({path:info.outputPath('ownership-unavailable-390.png'),animations:'disabled'});
     await tab.evaluate(()=>sessionStorage.setItem('mi-allow-lease','1'));
     await tab.getByRole('button',{name:'重新检查编辑状态',exact:true}).click();
