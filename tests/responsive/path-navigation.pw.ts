@@ -10,10 +10,19 @@ const featureRoot=async(page:Page)=>{await closeGraphProperties(page);await page
 async function enter(page:Page,id:string){await closeGraphProperties(page);await node(page,id).locator('.dependency-card').click();await expect(node(page,id)).toHaveClass(/selected/);await node(page,id).getByRole('button',{name:/^进入/}).click();await ready(page);}
 async function stableViewport(page:Page){let prior='',stable=0;await expect.poll(async()=>{const value=await viewport(page)||'';stable=value===prior?stable+1:0;prior=value;return stable;},{intervals:[100]}).toBeGreaterThanOrEqual(3);return viewport(page);}
 
-test('需求详情进入工作项层级，画布返回恢复详情而不绕圈',async({page})=>{
- const {a}=await setup(page);await page.goto('/requirements/'+a.id);await expect(page.locator('.requirement-overview')).toBeVisible();
- for(let i=0;i<2;i++){await page.getByRole('tab',{name:'依赖',exact:true}).click();await page.getByRole('button',{name:'在关系图中维护依赖',exact:true}).click();await ready(page);await expect(node(page,a.workItems[0].id)).toBeVisible();await expect(page).toHaveURL(new RegExp('scopeId='+a.id));await page.goBack();await expect(page.getByRole('dialog')).toContainText(a.title);}
- await page.goForward();await ready(page);await page.goBack();await expect(page.getByRole('dialog')).toContainText(a.title);
+test('不同范围的详情进入所属需求关系图，浏览器返回恢复入口',async({page})=>{
+ const {project,a,analysis}=await setup(page),before=await analysis(),writes:string[]=[];
+ page.on('request',request=>{if(request.url().includes('/api/')&&!['GET','HEAD'].includes(request.method()))writes.push(request.method()+' '+new URL(request.url()).pathname);});
+ const detail=(scopeType:string,scopeId:string,view:string,id:string)=>'/?'+new URLSearchParams({projectId:project.id,workspaceView:view,scopeType,scopeId,detailId:id,detailTab:'dependencies'});
+ const entries=[['/requirements/'+a.id,a.id],[detail('project',project.id,'progress',a.id),a.id],[detail('project',project.id,'list',a.workItems[0].id),a.workItems[0].id],[detail('feature',a.featureId!,'progress',a.workItems[0].id),a.workItems[0].id],[detail('feature',a.featureId!,'list',a.id),a.id]];
+ for(const [url,id] of entries){
+  await page.goto(url);const modal=page.locator('.modal-card-workspace[role=dialog]');await modal.getByRole('tab',{name:'依赖',exact:true}).click();const originalUrl=page.url();
+  await modal.getByRole('button',{name:/^在关系图中/}).click();await ready(page);await expect(page).toHaveURL(new RegExp('scopeType=requirement&scopeId='+a.id));await expect(node(page,a.workItems[0].id)).toBeVisible();
+  if(id!==a.id)await expect(node(page,id)).toHaveClass(/selected/);
+  await page.goBack();await expect(page).toHaveURL(originalUrl);await expect(modal.getByRole('tab',{name:'依赖',exact:true})).toHaveAttribute('aria-selected','true');
+  await page.goForward();await ready(page);await expect(page).toHaveURL(new RegExp('scopeId='+a.id));await page.goBack();await expect(page).toHaveURL(originalUrl);await expect(modal).toBeVisible();
+ }
+ expect(writes).toEqual([]);expect(await analysis()).toEqual(before);
 });
 test('外部工作项进入其所属层级，返回保持原来的选择',async({page})=>{
  const {a,b}=await setup(page);await openGraph(page,'/requirements/'+b.id+'?view=path');await ready(page);

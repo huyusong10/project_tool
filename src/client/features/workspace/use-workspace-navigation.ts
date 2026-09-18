@@ -31,12 +31,13 @@ export function useWorkspaceNavigation(data: PathAnalysis, navigationData: PathA
     setParams(next);
   };
   const detailBack=()=>{const previous=detailTrail.at(-1);if(!previous)return;setDetailTrail(trail=>trail.slice(0,-1));setParams(workspaceParams({...location,inspector:previous.id,detailTab:previous.tab},navigationData,params),{replace:true});};
-  const switchView=(view:WorkspaceView,locateId?:string)=>{
+  const switchView=(view:WorkspaceView,locateId?:string,scope:WorkspaceScope=location.scope)=>{
     if(locateId)setDetailTrail([]);
-    const next=workspaceParams({...location,view,...(locateId?{inspector:undefined,detailTab:undefined}:{})},navigationData,params);
+    const next=workspaceParams({...location,scope,view,...(locateId?{inspector:undefined,detailTab:undefined}:{})},navigationData,params);
     for(const field of viewFields)next.delete(field);next.delete('intake');next.delete('intakeView');next.delete('workspaceLocate');
     try{const saved=new URLSearchParams(sessionStorage.getItem(memoryKey+':'+view)||'');for(const [k,v] of saved)if(viewFields.includes(k))next.set(k,v);}catch{/* No saved filters. */}
-    if(locateId){next.set('pathScope','all');next.set('pathSearch','');next.delete('q');const r=data.requirements.find(r=>r.id===locateId)||data.requirements.find(r=>r.id===data.nodes.find(n=>n.id===locateId)?.requirementId);next.set('workspaceLocate',location.scope.kind==='project'&&r?.featureId?'feature:'+r.featureId:location.scope.kind!=='requirement'&&r?r.id:locateId);}
+    if(locateId){next.set('pathScope','all');next.set('pathSearch','');next.delete('q');const r=data.requirements.find(r=>r.id===locateId)||data.requirements.find(r=>r.id===data.nodes.find(n=>n.id===locateId)?.requirementId);next.set('workspaceLocate',scope.kind==='project'&&r?.featureId?'feature:'+r.featureId:scope.kind!=='requirement'&&r?r.id:locateId);}
+    if(locateId&&scope.kind==='requirement'){next.delete('workItemId');next.delete('pathRelation');next.set('pathNode',locateId===scope.id?'':locateId);next.set('graphInspector','closed');next.set('pathInspector','closed');}
     go('/?'+next);
   };
 

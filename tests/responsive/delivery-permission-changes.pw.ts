@@ -1,5 +1,6 @@
 import {expect,test,type APIRequestContext} from '@playwright/test';
 import type {Requirement} from '../../src/client/types';
+import {phaseFixture} from './phase-fixture';
 
 test('打开的需求在经理改为只读后拒绝旧提交，刷新权限且不影响其他项目',async({page,browser,baseURL},info)=>{
   const post=async(request:APIRequestContext,url:string,data:object)=>{const response=await request.post(url,{data});expect(response.ok(),await response.text()).toBe(true);return response.json();};
@@ -42,5 +43,34 @@ test('打开的需求在经理改为只读后拒绝旧提交，刷新权限且�
     await setRole(project.id,person.id,'manager');await actor.goto('/requirements/'+a.id);await actor.reload();
     const restored=actor.getByRole('dialog',{name:'更新进度',exact:true});await expect(restored.getByRole('button',{name:'更新进度',exact:true})).toBeEnabled();await expect(restored.getByLabel('需求完成度')).toHaveValue('52');await expect(restored.getByLabel('执行说明')).toHaveValue('尚未获准的修改');await restored.getByLabel('执行说明').fill('重新授权后提交');await restored.getByRole('button',{name:'更新进度',exact:true}).click();await expect(restored).toHaveCount(0);
     await expect.poll(async()=>(await detail(a.id)).progress).toBe(52);expect((await detail(a.id)).progressUpdates?.some(update=>update.content==='尚未获准的修改')).toBe(false);expect(await detail(b.id)).toEqual(otherBefore);
+  }finally{await context.close();}
+});
+
+test('历史负责人转为观察者后，需求和工作项关系图保持只读',async({page,browser,baseURL},info)=>{
+  const f=await phaseFixture(page),context=await browser.newContext({baseURL,viewport:page.viewportSize()}),actor=await context.newPage();
+  const read=async()=>await(await page.request.get('/api/requirements/'+f.testing.id)).json() as Requirement;
+  const setRole=async(role:string)=>{const members=await(await page.request.get(f.base+'/members')).json();return page.request.put(f.base+'/members/'+f.testing.ownerId,{data:{role,expectedMembershipUpdatedAt:members.find((person:{id:string})=>person.id===f.testing.ownerId).membershipUpdatedAt}});};
+  const graphUrl='/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'graph',scopeType:'requirement',scopeId:f.testing.id});
+  try{
+    const login=await context.request.post('/api/login',{data:{username:f.testing.ownerName,password:'888888'}});expect(login.ok()).toBe(true);
+    const password=await context.request.post('/api/account/change-password',{data:{currentPassword:'888888',newPassword:'historical-owner-password'}});expect(password.ok()).toBe(true);
+    await actor.goto(graphUrl);await expect(actor.getByRole('button',{name:'编辑画布',exact:true})).toBeVisible();
+    expect((await setRole('viewer')).status()).toBe(409);
+    const finished=await page.request.post('/api/work-items/'+f.testing.workItems[1].id+'/complete',{data:{expectedVersion:f.testing.workItems[1].version}});expect(finished.ok(),await finished.text()).toBe(true);
+    for(const id of [f.testing.id,f.direct.id]){const current=await(await page.request.get('/api/requirements/'+id)).json();if(current.status!=='completed'){const completed=await page.request.post('/api/requirements/'+id+'/complete',{data:{expectedVersion:current.version,content:'完成任务后转为观察者'}});expect(completed.ok(),await completed.text()).toBe(true);}}
+    const change=await setRole('viewer');expect(change.ok(),await change.text()).toBe(true);
+    const before=await read();expect(before.ownerId).toBe(f.testing.ownerId);
+    const writes:string[]=[],errors:string[]=[];actor.on('request',r=>{if(r.url().includes('/api/')&&!['GET','HEAD'].includes(r.method()))writes.push(r.method()+' '+new URL(r.url()).pathname);});actor.on('pageerror',e=>errors.push(e.message));
+    for(const id of [f.testing.id,f.testing.workItems[0].id]){
+      await actor.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',detailId:id,detailTab:'dependencies'}));
+      const entry=actor.locator('.modal-card-workspace[role=dialog]').getByRole('button',{name:'在关系图中查看依赖',exact:true});await expect(entry).toHaveText('查看依赖');await entry.click();
+      await expect(actor.locator('[data-layout-ready="true"]')).toBeVisible();await expect(actor).toHaveURL(new RegExp('scopeId='+f.testing.id));await expect(actor.getByRole('button',{name:'编辑画布',exact:true})).toHaveCount(0);
+      if(id!==f.testing.id)await expect(actor.locator('.react-flow__node[data-id="'+id+'"]')).toHaveClass(/selected/);
+    }
+    await actor.screenshot({path:info.outputPath('historical-owner-1280.png'),animations:'disabled'});await actor.setViewportSize({width:390,height:844});await actor.screenshot({path:info.outputPath('historical-owner-390.png'),animations:'disabled'});
+    const work=before.workItems.find(item=>item.id===f.testing.workItems[1].id)!;
+    const denied=await context.request.patch('/api/work-items/'+work.id,{data:{title:'观察者不能提交的名称',expectedVersion:work.version}});expect(denied.status()).toBe(403);
+    expect(await read()).toEqual(before);expect(writes).toEqual([]);expect(errors).toEqual([]);
+    const restored=await setRole('member');expect(restored.ok(),await restored.text()).toBe(true);await actor.setViewportSize(page.viewportSize()!);await actor.goto(graphUrl);await expect(actor.getByRole('button',{name:'编辑画布',exact:true})).toBeVisible();expect(writes).toEqual([]);
   }finally{await context.close();}
 });

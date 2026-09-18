@@ -319,7 +319,7 @@ export function RequirementObjectContent({requirementId,embedded=false,selectedW
       {id: 'overview', label: '概况', description:'需求说明与执行进展', content: <>{notices}<RequirementOverview requirement={requirement} compact={embedded} onArrangeSchedule={arrangeSchedule}/></>},
       {id: 'work', label: `工作项 ${requirement.workItems.length}`, content: workList},
       {id: 'basic', label: '资料', description:'背景与验收信息', content: <><DetailCard title="需求资料"><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未分派阶段'}</dd></div><div className="object-fact-wide"><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div className="object-fact-wide"><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div></dl>{!!requirement.readinessIssues?.length && <p className="object-info-note">{requirement.readinessIssues.join('；')}</p>}</DetailCard><RequirementSources links={requirement.referenceLinks} notes={requirement.sourceNotes} referenceUrl={requirement.referenceUrl}/></>},
-      {id: 'dependencies', label: '依赖', actions: <Button variant="secondary" aria-label={guest?"在关系图中查看依赖":"在关系图中维护依赖"} title={guest?"在关系图中查看依赖":"在关系图中维护依赖"} onClick={openPathView}>{guest?"查看依赖":"编辑依赖"}</Button>, content: <ObjectDependencies requirementId={id} onOpenGraph={openPathView}/>},
+      {id: 'dependencies', label: '依赖', actions: <Button variant="secondary" aria-label="在关系图中查看依赖" title="在关系图中查看依赖" onClick={openPathView}>查看依赖</Button>, content: <ObjectDependencies requirementId={id} onOpenGraph={openPathView}/>},
       {id: 'history', label: '记录', content: history},
     ]}>
       {modal === "info" && (

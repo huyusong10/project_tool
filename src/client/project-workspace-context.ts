@@ -7,7 +7,7 @@ export type ProjectWorkspaceContextValue={
   draftControls?:ReactNode;
   location:WorkspaceLocation;data:PathAnalysis;
   enter:(scope:WorkspaceScope)=>void;inspect:(id?:string,tab?:string)=>void;
-  switchView:(view:WorkspaceView,locateId?:string)=>void;
+  switchView:(view:WorkspaceView,locateId?:string,scope?:WorkspaceScope)=>void;
   navigation:Pick<PageChrome,'breadcrumbs'|'navigationLabel'|'onBack'|'backLabel'|'views'>;
 };
 export const ProjectWorkspaceContext=createContext<ProjectWorkspaceContextValue|null>(null);

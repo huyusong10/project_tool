@@ -28,7 +28,7 @@ import { changeEntity, copyEntities, deleteEntities } from '../editor-commands';
 import type { Point } from '../path-layout';
 import { vacantGroup } from '../fixed-routing';
 import type { EditorEntityChange } from '../../shared/path-contracts';
-import { useSession } from '../app-context';
+import { useProjects, useSession } from '../app-context';
 import { useResourceQuery } from '../use-resource-query';
 import { invalidateRequirementViews, keys } from '../query-keys';
 import { canManageProject } from '../permissions';
@@ -89,7 +89,7 @@ function writeMilestoneRecheck(accountId:string,projectId:string,value:Milestone
   persistRecheck(milestoneRecheckKey(accountId,projectId), value);
 }
 
-function PathEditor({editor,data,requirement,manager,onClose,onReload,onPlanRecheckChange,onRecheckPlan}:{editor:Editor;data:PathAnalysis;requirement?:PathRequirementContext;manager:boolean;onClose:()=>void;onReload:()=>Promise<PathAnalysis>;onPlanRecheckChange:(value:DependencyPlanRecheck|null)=>void;onRecheckPlan:()=>Promise<{latest:PathAnalysis;applied:boolean}>}) {
+function PathEditor({editor,data,requirement,manager,canEditStructure,onClose,onReload,onPlanRecheckChange,onRecheckPlan}:{editor:Editor;data:PathAnalysis;requirement?:PathRequirementContext;manager:boolean;canEditStructure:boolean;onClose:()=>void;onReload:()=>Promise<PathAnalysis>;onPlanRecheckChange:(value:DependencyPlanRecheck|null)=>void;onRecheckPlan:()=>Promise<{latest:PathAnalysis;applied:boolean}>}) {
   const client=useQueryClient(), [baseline,setBaseline]=useState(data.revision),[needsCheck,setNeedsCheck]=useState(false),[reloadError,setReloadError]=useState(''),[preview,setPreview]=useState<PlanPreview|null>(null);
   const [sourceReq,setSourceReq]=useState(requirement?.id||data.requirements[0]?.id||''),[targetReq,setTargetReq]=useState(requirement?.id||data.requirements[1]?.id||data.requirements[0]?.id||'');
   const [sourceWork,setSourceWork]=useState(''),[targetWork,setTargetWork]=useState('');
@@ -98,8 +98,6 @@ function PathEditor({editor,data,requirement,manager,onClose,onReload,onPlanRech
   const [forecast,setForecast]=useState(estimate?.forecastEnd||'');
   const [baseStart,setBaseStart]=useState(editor.kind==='plan'&&editor.baseStart?editor.baseStart:addBusinessDays(todayIso(),0));
   const stale=baseline!==data.revision||needsCheck;
-  const {session}=useSession();
-  const canEditStructure=manager||!!requirement&&requirement.ownerId===session.personId;
   const mutation=useMutation({mutationFn:async ({write,body,method='POST'}:{write:(options:import('../api').ApiRequestInit)=>Promise<unknown>;body:unknown;method?:string})=>write({method,body:jsonBody(body)}),onSuccess:()=>{if(editor.kind==='plan')onPlanRecheckChange(null);invalidateRequirementViews(client,requirement?.id);onClose();},onError:(error)=>{if(requiresWriteRecheck(error))setNeedsCheck(true);else if(editor.kind==='plan')onPlanRecheckChange(null);}});
   const planning=useMutation({mutationFn:()=>pathsApi.requirementsDependencyPlanPreview<PlanPreview>(requirement!.id, {method:'POST',body:jsonBody({baseStart,expectedRevision:baseline}),readOnly:true}),onSuccess:setPreview});
   const saveLock=useSynchronousPendingLock(mutation.isPending),planningLock=useSynchronousPendingLock(planning.isPending);
@@ -174,7 +172,9 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   useEffect(()=>setPlanRecheckState(planRequirementId?readDependencyPlanRecheck(planAccountId,planRequirementId):null),[planAccountId,planRequirementId]);
   useEffect(()=>setMilestoneRecheckState(readMilestoneRecheck(planAccountId,milestoneProjectId)),[planAccountId,milestoneProjectId]);
-  const focus=requirement?.id,manager=canManageProject(session,formal.projectId),canEdit=!(params.get('view')==='feature'&&formal.featureContext?.overview.features.find(g=>g.id===params.get('featureId'))?.archivedAt)&&(manager||!!requirement&&requirement.ownerId===session.personId);
+  const {projects}=useProjects(),role=projects.find(project=>project.id===formal.projectId)?.projectRole;
+  const focus=requirement?.id,manager=canManageProject(session,formal.projectId),contributor=session.authenticated&&(manager||role==='member'||role==='manager');
+  const canEdit=!(params.get('view')==='feature'&&formal.featureContext?.overview.features.find(g=>g.id===params.get('featureId'))?.archivedAt)&&(manager||contributor&&!!requirement&&requirement.ownerId===session.personId);
   const draft=useDependencyDraft(session.accountId||'guest',formal,target,receipt=>{
     invalidateRequirementViews(client,focus);
     if(receipt){const scope=(session.accountId||'guest')+':'+formal.projectId,ids=receipt.addedIds;
@@ -375,7 +375,7 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
     <button className={selectedRelation?.id===d.id?'selected':''} onClick={()=>{setIssue(undefined);const edge=graph.links.find(e=>e.dependencyIds.includes(d.id));if(edge)setEdgeId(edge.id);else select('');setRelationId(d.id);setInspector(true);if(narrow())setPanel('');}}>{relationLabel(d)}<small>{relationCaption(data,d)} · {d.origin==='template'?'模板关系':'自定义关系'} · {formal.dependencies.some(e=>e.id===d.id)?'已保存':'未保存'}</small></button>
     {editing&&editableRelation(d)&&selectedRelation?.id===d.id&&<Button variant="secondary" className="ghost-button" onClick={()=>{draft.change(remove(d.id));setRelationId('');}}>移除选中关系</Button>}
   </div>):<p>当前没有关系。</p>}</div>;
-  const work=requirement?.workItems.find(w=>w.id===selected),canEstimate=!!work&&!['completed','cancelled'].includes(work.status)&&(canEdit||!!session.personId&&work.assigneeIds.includes(session.personId));
+  const work=requirement?.workItems.find(w=>w.id===selected),canEstimate=!!work&&!['completed','cancelled'].includes(work.status)&&(canEdit||contributor&&!!session.personId&&work.assigneeIds.includes(session.personId));
   const nodesPanel=<>
     {panel==='filters'&&<PathFilters value={filters} onChange={applyFilters} owners={[...owners].map(([id,title])=>({id,title}))} people={[...people].map(([id,title])=>({id,title}))} personId={session.personId} internal={!!focus}/>}
     <p className="graph-result-count">匹配 {matching.length} 项 · 关联上下文 {contextIds.length} 项</p>
@@ -479,7 +479,7 @@ function PathWorkspace({data:formal,requirement,target,onReload}:{data:PathAnaly
 
     </>}/>
     {creatingRequirement&&<EditorRequirementCreate projectId={data.projectId} onClose={()=>setCreatingRequirement(null)} onCreate={value=>createEntity('requirement',creatingRequirement,value)}/>}
-    {editor&&<PathEditor editor={editor} data={formal} requirement={requirement} manager={manager} onClose={()=>setEditor(null)} onReload={onReload} onPlanRecheckChange={setPlanRecheck} onRecheckPlan={recheckPlan}/>}
+    {editor&&<PathEditor editor={editor} data={formal} requirement={requirement} manager={manager} canEditStructure={canEdit} onClose={()=>setEditor(null)} onReload={onReload} onPlanRecheckChange={setPlanRecheck} onRecheckPlan={recheckPlan}/>}
     {(confirmDiscard||guard)&&<Modal title="处理未保存修改" width={460} onClose={()=>{setConfirmDiscard(false);setGuard(null);}}><p>当前草稿尚未保存。</p><div className="button-row">
       <Button variant="secondary" className="ghost-button" onClick={()=>{setConfirmDiscard(false);setGuard(null);}}>继续编辑</Button><Button variant="secondary" className="ghost-button" disabled={!!draft.pending||draft.busy} onClick={()=>{draft.cancel();setConfirmDiscard(false);const action=guard;setGuard(null);action?.();}}>放弃草稿</Button>
       {guard&&<Button variant="primary" className="primary-button" disabled={draft.busy||!draft.pending&&!draft.preview} onClick={()=>void draft.save().then(saved=>{if(saved){const action=guard;setGuard(null);action?.();}})}>保存后继续</Button>}
