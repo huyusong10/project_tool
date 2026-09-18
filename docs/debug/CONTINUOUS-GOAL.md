@@ -147,6 +147,14 @@ backup-download-final.log于9月18日03:23验收真实备份下载503后重下�
 
 顺带核对交接覆盖：assignment-handoff.pw.ts已覆盖待处理入口更换不可用负责人、开始执行、移除失效协作者及窄屏；服务assignment-handoff.test.ts另覆盖40%交接保留事实与历史。降低此领域优先级，不另建同类探针。
 
-## 当前阶段 LO
+## LO复核：默认流程归档受既定保护
 
-核对项目默认流程归档后，新建需求页面显示的流程与实际创建结果是否一致；改选有效流程是否保留输入，已有需求实例是否保持。先读ProjectSettingsPage、RequirementForm的默认流程选择逻辑及既有归档回归，只补尚未覆盖的默认带入路径。已保存草稿在旧流程归档后改选保留输入由JB/KB验收，不重复。没有证据前不改业务规则。
+新假设不成立：TemplatesPage:150明确提示先更换默认流程并禁用归档；services/templates.ts:255/263在写前和事务内再次拒绝。versioned-write-integrity.test.ts:872已有触发器模拟“设默认时归档、归档时设默认、归档最后有效流程”并验证409及完整回滚，随LF通过。不能把合法业务中不可达的“默认流程已归档”当成新缺陷，本轮不改、不重跑。
+
+## 当前阶段 LP
+
+转查统计分析跨项目往返：日期范围与人员等筛选在切换项目、后退/前进和刷新时是否与所显示项目一致。验收只读零业务写入、返回范围不混用、空结果能正确恢复。先查AnalyticsPage、use-page-view和现有page-consistency/project-selection/workspace-refresh回归；已有同一路径证据则跳过，只补未覆盖的组合。该阶段尚未执行浏览器探针。
+
+## 最新检查点
+
+3376c6b、0aa4c09及e4c0fb6产品已保留，工作记录提交后工作树应干净。当前无运行句柄，3296监听0，当前格式Playwright临时目录0；临时LM探针已归档。原目录只保留skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件；没有部署或推送。原服务日志游标仍LB（20:12Z），本轮05:25本地时间仅相隔约1小时，不重复轮询。
