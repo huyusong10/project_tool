@@ -4,9 +4,9 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品2bc92fb（JO），前一产品906437a（JN）、3571ea1（JL）、c0059d1（JK）、06146c4（JG）；README修正c36e4f9。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品f2e458d（JP），前一产品2bc92fb（JO）、906437a（JN）、3571ea1（JL）、c0059d1（JK）、06146c4（JG）；README修正c36e4f9。
 - 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
-- 最近全量为JG/06146c4：983业务/119文件、10性能、26冒烟，运行时/429边界/Lint/类型/构建/预算全通过，verify首轮退出0；stages-iz-jg-verify.log。JK另9浏览器，JN另9浏览器，JO另31浏览器，各自类型/构建/Lint通过；这些后续修改未再跑完整verify。
+- 最近全量为JG/06146c4：983业务/119文件、10性能、26冒烟，运行时/429边界/Lint/类型/构建/预算全通过，verify首轮退出0；stages-iz-jg-verify.log。JK另9浏览器，JN另9浏览器，JO另31浏览器，JP另7浏览器，各自类型/构建/Lint通过；这些后续修改未再跑完整verify。
 - JO生产构建：主JS931.81KB、CSS339.06KB、ELK1595.33KB，428模块边界及预算通过。全部执行句柄已回收，无运行进程、未归档临时浏览器测试或未验收产品修改。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
@@ -16,6 +16,7 @@
 
 | 阶段 / 提交 | 结果 / 证据 |
 |---|---|
+| JP / f2e458d | 需求被他人移出当前Phase后，隐藏选择仍用最新版本加入后续真实移动，覆盖他人归属。按当前范围计算批量对象并清理选择，折叠后代仍保留。新增1回归原代码失败；修改后7个不同浏览器场景通过，取消零写入、仅当前需求提交、外部归属/版本保持、未知移动响应刷新后可核对且不重发。类型/测试构建/目标Lint/diff通过；outline-scope-selection-before、stage-jp-*。首轮修复后仅测试误要求项目预测revision不变，已改为核对其余完整DTO；5个既有场景通过后不重复，新增回归及临时状态探针补验2通过，探针已归档 |
 | JO / 2bc92fb | 删除被统一清单替代的两套表格、专用选择组件和38个专用CSS选择器；旧mode=table解析保留。JS940395→931808B、CSS342552→339058B，合计减少12081B。31浏览器、类型/完整Lint/428边界/生产构建/预算通过，1280/390截图已检查；stage-jo-*、retired-table-*。无新增测试；CSS初稿误删现用Phase容器，在浏览器验收前复核恢复，保留声明比对通过 |
 | JN / 906437a | 选中特性被他人归档后，数量排除但ID仍保留；恢复后自动重选，真实后续批量归档误含甲乙。新增1条真实回归在原代码失败，修复按刷新后的非系统/非归档对象清理选择；仅乙提交、甲完整资料保持、刷新一致。9目标浏览器（含145行、折叠/窄屏、排序/移动/未知写入）、类型/测试构建/Lint/diff通过；outline-archived-selection-before.log/context/png、stage-jn-*。97971失败、42629通过均已回收 |
 | JL / 3571ea1 | 两份自动启动脚本的四条中文提示被PowerShell5.1实际读成乱码。仅补UTF-8 BOM；去掉3字节BOM后的SHA256与原文件相同，5.1/当前PowerShell解析和中文值一致，diff通过。autostart-literals-before/after.json、encoding-change.json。Parser首稿探针管道语法错误已修正（parse-before/baseline.json）；原脚本无语法错误，问题仅为乱码。未调用计划任务命令、不增加永久测试 |
@@ -132,6 +133,14 @@ CSS初稿误把现用PhaseChip容器样式列为旧表格样式，静态复核�
 
 JL附带只读核对：startup.test.ts已保护重启75、其他服务占端口64、重复启动不开数据库，随JG全量通过；不重跑。run-server.ps1用LiteralPath及参数调用Node、start.bat引用目录；未实际验证含空格目录的完整启动，不能宣称该场景通过。Goal继续active。
 
-## 当前阶段 JP：选择对象被移出当前范围
+## JP验收：选择对象被移出当前范围
 
-JN验证了归档/恢复；另有代码线索：WorkspaceOutline的picked基于整个项目all，当前范围由scopedTree显示。若选中需求被他人移入另一个Phase，原页面范围不变但可能保留不可见选择，并使用刷新后的版本提交。下一步用真实移动和取消核对是否能复现；只有证据成立才缩小选择资格到当前范围，折叠中的选择继续保留，待核对原请求不清除。暂未修改或运行JP探针。Goal保持active。
+原代码实际复现：在Phase 2选择两需求，他人将其中一条移到Phase 3；重连刷新后该行消失但仍选2条，再次移动实际请求含两条，覆盖外部归属。取消操作原本零写入。outline-scope-selection-before.log及截图/context，45967退出1已回收。
+
+WorkspaceOutline改为当前范围scoped计算picked/清理ID，共11行调整；memo保留范围树引用，折叠行不排除。原请求pending/moving仍独立。新增1条回归保留；5个既有回归（归档恢复、移动撤销、未知排序、冲突、拖拽）通过。首轮新回归仅因派生deliveryForecast.revision由51→55而失败，产品归属/版本已保持；修正为除此项目修订号外完整DTO比较，stage-jp-browser-forecast-assertion.log。37361退出1已回收。
+
+追加2项通过：修正回归、临时实际折叠/展开保留选择→进入Phase清空→移动已生效但响应丢失→重连对象移出→刷新后原请求/原因/正式Phase仍可核对→仅1写且版本+1。stage-jp-browser-final.log（39459退出0已回收）、stage-jp-state-probe.pw.ts已归档，零页面异常；目标Lint、类型/测试构建、diff通过。无运行进程。
+
+## 当前阶段 JQ：导出文件与重新导入
+
+切换到日常导入/导出操作。已定位RequirementImport的本地下载和SystemPage备份下载；先核对已有覆盖和当前格式，再实际检查尚未覆盖的文件往返、长文本/Unicode及取消零写入。没有具体问题前不改下载实现，不重复已验收的数据库恢复、导入并发或规模上限。Goal保持active。
