@@ -26,13 +26,13 @@ export function listArchives(projectId?: string) {
       (SELECT COUNT(*) FROM issues i WHERE i.project_id=p.id) AS issueCount,
       (SELECT COUNT(*) FROM work_item_templates t WHERE t.project_id=p.id) AS templateCount
       FROM projects p WHERE p.deleted_at IS NOT NULL ORDER BY p.deleted_at DESC`),
-    requirements: rows(`SELECT r.id, r.title, r.deleted_at AS deletedAt,
+    requirements: rows(`SELECT r.id, r.title, p.name AS projectName, r.deleted_at AS deletedAt,
       (SELECT COUNT(*) FROM work_items w WHERE w.requirement_id=r.id) AS workItemCount,
       (SELECT COUNT(*) FROM progress_updates u WHERE u.requirement_id=r.id) AS progressCount,
       (SELECT COUNT(*) FROM issues i WHERE i.requirement_id=r.id) AS linkedIssueCount
-      FROM requirements r WHERE r.deleted_at IS NOT NULL ${projectId ? 'AND r.project_id=?' : ''} ORDER BY r.deleted_at DESC`, ...(projectId ? [projectId] : [])),
+      FROM requirements r LEFT JOIN projects p ON p.id=r.project_id WHERE r.deleted_at IS NOT NULL ${projectId ? 'AND r.project_id=?' : ''} ORDER BY r.deleted_at DESC`, ...(projectId ? [projectId] : [])),
     people: projectId ? [] : rows(`SELECT id, name AS title, job_title AS jobTitle, deleted_at AS deletedAt FROM people WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`),
-    templates: rows(`SELECT id, name AS title, deleted_at AS deletedAt FROM work_item_templates WHERE deleted_at IS NOT NULL ${projectId ? 'AND project_id=?' : ''} ORDER BY deleted_at DESC`, ...(projectId ? [projectId] : [])),
+    templates: rows(`SELECT t.id, t.name AS title, p.name AS projectName, t.deleted_at AS deletedAt FROM work_item_templates t LEFT JOIN projects p ON p.id=t.project_id WHERE t.deleted_at IS NOT NULL ${projectId ? 'AND t.project_id=?' : ''} ORDER BY t.deleted_at DESC`, ...(projectId ? [projectId] : [])),
   };
 }
 

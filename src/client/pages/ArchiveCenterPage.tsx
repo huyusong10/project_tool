@@ -57,8 +57,8 @@ export function ArchiveCenterPage() {
   const keyword = filters.get('q') || '', type = filters.get('type') || 'all';
   const updateFilter = (key: string, value: string) => setFilters(current => { const next = new URLSearchParams(current); next.set(key, value); next.set('page', '1'); return next; });
   const setKeyword = (value: string) => updateFilter('q', value), setType = (value: string) => updateFilter('type', value);
-  const [deletePrompt, setDeletePrompt] = useState<{ entity: ArchiveEntity; id: string; title: string; impact: string; deletedAt: string } | null>(null);
-  const [simpleDeleteTarget, setSimpleDeleteTarget] = useState<{ entity: ArchiveEntity; id: string; title: string; deletedAt: string } | null>(null);
+  const [deletePrompt, setDeletePrompt] = useState<{ entity: ArchiveEntity; id: string; title: string; projectName?: string | null; impact: string; deletedAt: string } | null>(null);
+  const [simpleDeleteTarget, setSimpleDeleteTarget] = useState<{ entity: ArchiveEntity; id: string; title: string; projectName?: string | null; deletedAt: string } | null>(null);
   const [restoringKey, setRestoringKey] = useState<string | null>(null);
   const [archiveNeedsRecheck, setArchiveNeedsRecheckState] = useState<ArchiveRecheck>(() => readArchiveRecheck(recheckAccountKey));
   const setArchiveNeedsRecheck = (value: ArchiveRecheck) => {
@@ -79,6 +79,7 @@ export function ArchiveCenterPage() {
       .filter((item) => type === "all" || item.entity === type)
       .filter((item) => matchesSearch([
         { text: item.title, weight: 100 },
+        { text: item.projectName, weight: 50 },
         { text: item.jobTitle, weight: 20 },
         { text: item.typeLabel, pinyin: false },
       ], keyword))
@@ -175,7 +176,7 @@ export function ArchiveCenterPage() {
       <section className="panel archive-panel paged-panel">
         <header><div><h2>已归档内容</h2><p>统一筛选、恢复或永久删除平台归档资源</p></div></header>
         <div className="archive-toolbar">
-          <SearchInput value={keyword} onChange={setKeyword} placeholder="搜索归档名称、岗位或拼音" />
+          <SearchInput value={keyword} onChange={setKeyword} placeholder="搜索名称、所属项目、岗位或拼音" />
           <select value={type} onChange={(event) => setType(event.target.value as "all" | ArchiveEntity)}><option value="all">全部类型</option>{archiveEntityOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select>
           <span>{filteredRows.length} / {rows.length} 条</span>
         </div>
@@ -183,14 +184,14 @@ export function ArchiveCenterPage() {
         {error && archives && <div className="warning-banner">归档列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}
         <div className="archive-table-wrap paged-body" ref={pagination.scrollRef}>
           <table className="archive-table">
-            <thead><tr><th>名称</th><th>类型</th><th>补充信息</th><th>归档时间</th><th>操作</th></tr></thead>
+            <thead><tr><th>名称</th><th>类型</th><th>项目 / 岗位</th><th>归档时间</th><th>操作</th></tr></thead>
             <tbody>{pagination.items.map((item) => {
               const rowKey = `${item.entity}:${item.id}`;
               const restoring = restoringKey === rowKey;
               return <tr key={`${item.entity}-${item.id}`}>
               <td><strong title={item.title}>{item.title}</strong></td>
               <td><span className={`archive-type archive-type-${item.entity}`}>{item.typeLabel}</span></td>
-              <td>{item.jobTitle || "—"}</td>
+              <td>{item.projectName || item.jobTitle || "—"}</td>
               <td>{formatDateTime(item.deletedAt)}</td>
               <td><div className="archive-row-actions"><Button busy={(restoring)} aria-label={restoring ? "恢复中…" : "恢复"} variant="ghost" size="small" className="inline-action-button" title={`恢复${item.typeLabel}`} disabled={Boolean(restoringKey) || permanentlyDelete.isPending || Boolean(archiveNeedsRecheck)} onClick={() => restoreArchive(item.entity, item.id, item.deletedAt)}><RotateCcw size={14} />{"恢复"}</Button><Button variant="secondary" tone="danger" size="small" className="inline-action-button danger" title={`永久删除${item.typeLabel}`} disabled={Boolean(restoringKey) || permanentlyDelete.isPending || Boolean(archiveNeedsRecheck)} onClick={() => {
                 restore.reset();
@@ -199,11 +200,11 @@ export function ArchiveCenterPage() {
                     ? `将级联删除需求 ${item.requirementCount || 0} 条、工作项 ${item.workItemCount || 0} 条、问题 ${item.issueCount || 0} 条、流程 ${item.templateCount || 0} 个。`
                     : `将级联删除工作项 ${item.workItemCount || 0} 条、进展 ${item.progressCount || 0} 条；${item.linkedIssueCount || 0} 个关联问题会保留并转为项目公共问题。`;
                   permanentlyDelete.reset();
-                  setDeletePrompt({ entity: item.entity, id: item.id, title: item.title, impact, deletedAt: item.deletedAt });
+                  setDeletePrompt({ entity: item.entity, id: item.id, title: item.title, projectName: item.projectName, impact, deletedAt: item.deletedAt });
                   return;
                 }
                 permanentlyDelete.reset();
-                setSimpleDeleteTarget({ entity: item.entity, id: item.id, title: item.title, deletedAt: item.deletedAt });
+                setSimpleDeleteTarget({ entity: item.entity, id: item.id, title: item.title, projectName: item.projectName, deletedAt: item.deletedAt });
               }}><Trash2 size={14} />删除</Button></div></td>
             </tr>})}</tbody>
           </table>
@@ -215,7 +216,7 @@ export function ArchiveCenterPage() {
         <Pagination {...pagination.props} label="归档列表分页" />
       </section>
     </div>
-    {deletePrompt && <TextPromptModal title={`永久删除${deletePrompt.entity === "projects" ? "项目" : "需求"}`} description={`${deletePrompt.impact}\n永久删除后无法恢复。`} label="输入完整名称确认" expectedValue={deletePrompt.title} confirmLabel="永久删除" danger pending={permanentlyDelete.isPending} blocked={archiveNeedsRecheck === "delete"} notice={archiveNeedsRecheck === "delete" ? <div className="warning-banner" role="alert">永久删除结果待核对，请重新加载归档后再操作。<Button busy={(isFetching)} aria-label={isFetching ? "读取中…" : "重新加载归档"} variant="secondary" type="button" className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{"重新加载归档"}</Button></div> : undefined} error={permanentlyDelete.error?.message} onClose={() => setDeletePrompt(null)} onConfirm={(confirmName) => submitPermanentDelete({ entity: deletePrompt.entity, id: deletePrompt.id, confirmName, expectedDeletedAt: deletePrompt.deletedAt })} />}
-    {simpleDeleteTarget && <ConfirmDialog title="永久删除归档内容" description={<>“<strong>{simpleDeleteTarget.title}</strong>”将被永久删除，此操作无法恢复。{archiveNeedsRecheck === "delete" && <div className="warning-banner" role="alert">永久删除结果待核对，请重新加载归档后再操作。<Button busy={(isFetching)} aria-label={isFetching ? "读取中…" : "重新加载归档"} variant="secondary" type="button" className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{"重新加载归档"}</Button></div>}</>} confirmLabel="永久删除" pendingLabel="删除中…" danger pending={permanentlyDelete.isPending} disabled={archiveNeedsRecheck === "delete"} error={permanentlyDelete.error?.message} onClose={() => setSimpleDeleteTarget(null)} onConfirm={() => submitPermanentDelete({ entity: simpleDeleteTarget.entity, id: simpleDeleteTarget.id, expectedDeletedAt: simpleDeleteTarget.deletedAt })} />}
+    {deletePrompt && <TextPromptModal title={`永久删除${deletePrompt.entity === "projects" ? "项目" : "需求"}`} description={<>{deletePrompt.projectName && <span className="archive-project-context">所属项目：{deletePrompt.projectName}<br /></span>}{deletePrompt.impact}{"\n"}永久删除后无法恢复。</>} label="输入完整名称确认" expectedValue={deletePrompt.title} confirmLabel="永久删除" danger pending={permanentlyDelete.isPending} blocked={archiveNeedsRecheck === "delete"} notice={archiveNeedsRecheck === "delete" ? <div className="warning-banner" role="alert">永久删除结果待核对，请重新加载归档后再操作。<Button busy={(isFetching)} aria-label={isFetching ? "读取中…" : "重新加载归档"} variant="secondary" type="button" className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{"重新加载归档"}</Button></div> : undefined} error={permanentlyDelete.error?.message} onClose={() => setDeletePrompt(null)} onConfirm={(confirmName) => submitPermanentDelete({ entity: deletePrompt.entity, id: deletePrompt.id, confirmName, expectedDeletedAt: deletePrompt.deletedAt })} />}
+    {simpleDeleteTarget && <ConfirmDialog title="永久删除归档内容" description={<>{simpleDeleteTarget.projectName && <span className="archive-project-context">所属项目：{simpleDeleteTarget.projectName}<br /></span>}“<strong>{simpleDeleteTarget.title}</strong>”将被永久删除，此操作无法恢复。{archiveNeedsRecheck === "delete" && <div className="warning-banner" role="alert">永久删除结果待核对，请重新加载归档后再操作。<Button busy={(isFetching)} aria-label={isFetching ? "读取中…" : "重新加载归档"} variant="secondary" type="button" className="ghost-button" disabled={isFetching} onClick={() => void reloadArchives()}>{"重新加载归档"}</Button></div>}</>} confirmLabel="永久删除" pendingLabel="删除中…" danger pending={permanentlyDelete.isPending} disabled={archiveNeedsRecheck === "delete"} error={permanentlyDelete.error?.message} onClose={() => setSimpleDeleteTarget(null)} onConfirm={() => submitPermanentDelete({ entity: simpleDeleteTarget.entity, id: simpleDeleteTarget.id, expectedDeletedAt: simpleDeleteTarget.deletedAt })} />}
   </>;
 }

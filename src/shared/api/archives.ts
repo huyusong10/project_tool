@@ -5,7 +5,7 @@ export type Archives = {
 };
 
 export type ArchiveItem = {
-  id: string; title: string; jobTitle?: string | null; deletedAt: string;
+  id: string; title: string; jobTitle?: string | null; projectName?: string | null; deletedAt: string;
   requirementCount?: number; workItemCount?: number; issueCount?: number; templateCount?: number;
   progressCount?: number; linkedIssueCount?: number;
 };
