@@ -4,10 +4,10 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品c6ca4f3（JC），前一产品891273d（JA）、6f36dd1（IZ）、dc98ee2（IV）、7d70e7b（IU链接修复）、eee9d38（IT）、d473f2e（IS）、e53c666（IQ）；README修正baf3208。
-- 原目录D:\tools\project-manage的dev不改。21:54检查仍只有用户修改skills/project-manage-intake/SKILL.md、未跟踪docs/dcim-ai-workflow-v3-gaps.md。未部署、未推送。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。当前产品3571ea1（JL），前一产品c0059d1（JK）、06146c4（JG）、c6ca4f3（JC）；README修正c36e4f9。
+- 原目录D:\tools\project-manage的dev不改。JL后检查仍只有用户修改skills/project-manage-intake/SKILL.md、未跟踪docs/dcim-ai-workflow-v3-gaps.md。未部署、未推送。
 - 临时数据库和独立构建；浏览器使用3296，串行运行；性能独占。3210/3295不改。HZ漏设端口，用默认3291的独立临时服务完成，后续已恢复3296。
-- IX组合验收dc98ee2：982业务/119文件、10性能、26浏览器，运行时/429边界/Lint/类型/构建/预算全通过，verify首轮退出0（exec20746已结束）。主JS940.02KB、CSS342.57KB、ELK1595.33KB；stages-is-iv-verify.log及performance/build-budget.json。临时探针已归档，无未提交产品修改。
+- JG组合验收06146c4：983业务/119文件、10性能、26浏览器，运行时/429边界/Lint/类型/构建/预算全通过，verify首轮退出0（exec49747已结束）。主JS940.24KB、CSS342.55KB、ELK1595.33KB；stages-iz-jg-verify.log及performance/build-budget.json。另15目标浏览器及真实传输探针通过，所有句柄已回收。前IX组合基线dc98ee2：982业务/10性能/26浏览器，stages-is-iv-verify.log。
 - IQ组合验收：980业务/119文件、10性能、26浏览器，运行时/429边界/Lint/类型/构建/预算均通过。首轮新增边界期望2项错误后补验domain35项和剩余流水线，退出0；不是首轮verify一次通过。stages-im-iq-verify/rest.log；主JS939.62KB、CSS342.57KB、ELK1595.33KB。
 - 前IL完整验收ab3e713：974业务/118文件、9性能、26浏览器，运行时、429模块边界、Lint、类型、构建、预算全通过，verify退出0。主JS939.62KB、CSS342.52KB、ELK1595.33KB；stages-ib-ik-verify.log。前全量HZ见stages-hr-hw-verify.log。
 - IB：7项不同浏览器、3项加强字段断言的重验，Lint/类型/测试构建通过；现已随IL合并验收。当时无待验收产品修改；后续运行状态见当前阶段。
@@ -25,6 +25,10 @@
 
 | 阶段 / 提交 | 结果 / 证据 |
 |---|---|
+| JL / 3571ea1 | 两份自动启动脚本的四条中文提示被PowerShell5.1实际读成乱码。仅补UTF-8 BOM；去掉3字节BOM后的SHA256与原文件相同，5.1/当前PowerShell解析和中文值一致，diff通过。autostart-literals-before/after.json、encoding-change.json。Parser首稿探针管道语法错误已修正（parse-before/baseline.json）；原脚本无语法错误，问题仅为乱码。未调用计划任务命令、不增加永久测试 |
+| JK / c0059d1 | 补选窗口选A后，他人将负责人设为B；刷新后选框消失但开始仍发送A，原代码真实回归返回400“负责人已指定”。改为已有效分派时省略ownerId，窗口显示当前B。1条新增回归核对只写一次、B保持、版本和刷新状态正确；9浏览器、类型/测试构建/Lint/diff通过。start-assignment-refreshed-before.log/context/png、stage-jk-*，89271失败已回收、63147通过已回收，无运行进程 |
+| JI / c36e4f9 | README常用命令修正两处：build只做类型/前后端构建，skill同步独立；浏览器测试默认3291。对照package.json、Vite和两份Playwright配置确认，diff通过；仅文档，不重复测试 |
+| JG / 06146c4 | 仅两条path-analysis GET按客户端编码压缩，完整字节、权限、no-store和其它接口保持。500/1000/2000跨需求链真实传输、浏览器解析、三次断开恢复通过；2000样本169.6MB→br1.63MB，普通HTTP浏览器仅接受gzip，另一样本169.6MB→79.3MB。压缩增加CPU，未减少解压后JSON内存。983业务/10性能/26冒烟及15目标浏览器通过，官方运行依赖audit0公告。analysis-compression-http/insecure-http.ts/json/log、stage-jg-*、stages-iz-jg-verify.log；细节见JG验收 |
 | JF / 测量，无产品修改 | 同需求/跨需求两种长链，100/500/1000/2000规模各3次，末项日期、全链关键性、循环拒绝、输入不变和结果hash通过。2000跨需求=4000实体、1999依赖，符合现有上限；计算中位765ms，JSON167MB。同规模随机UUID真实HTTP返回169635625B，Accept-Encoding仍无压缩，回环请求2229ms。原字节本地压缩并解压hash一致：br质量4为1626731B/414ms，gzip1为79524524B/2304ms，gzip6为77051770B/4130ms。500/1000真实规模也核对只读、末项日期。dependency-chain*.ts/json/log；HTTP首稿漏依赖created_at，已保存fixture-error并修正。压缩仅是本地试验，尚未接入服务 |
 | JC / c6ca4f3 | 4个仅末尾不同的合法长名称在1280/390均被截断，2289—2473px文字挤入315—332px，没有完整名称提示。仅将候选名称/说明改为换行并允许无空格词断行，列表继续限高滚动。6布局及1真实专项通过，8次末尾坐标均在候选内；四项键盘选择、无结果/末尾搜索、仅1次创建、刷新完整Issue DTO一致、零页面异常。类型/测试构建/Lint/diff通过，截图已检查，无新增永久测试。issue-picker-names-before/after.json/png、stage-jc-*；首轮专项在搜索框RAF聚焦前直接focus选项而失败，等待实际焦点后通过，6布局首轮已通过；探针已归档 |
 | JA / 891273d | 问题表单的关联需求/负责人/提出人浮层初帧隐藏，autoFocus无效；原代码强化后的既有回归失败。改为显示后RAF聚焦，关闭清理待执行回调。3功能/真实旅程与6种桌面布局通过；真实1280/390键盘搜索、Esc、Tab/Enter选择，取消零写入、仅1次创建、重新打开字段和完整Issue DTO一致，无页面异常。Lint/类型/测试构建/diff通过，截图已检查。既有布局夹具修正people查询匹配，14选项原始布局在搜索前断言；无新增永久测试。issue-picker-focus-before/context/png、keyboard.json、stage-ja-*；真实探针已归档，所有句柄结束 |
@@ -52,6 +56,10 @@
 | HE/HF | 链接核对按服务端规范化规则比较，覆盖需求/工作项/特性/Phase；84c5c72、23ca8fa，stage-he/hf-* |
 
 ## 近期无需修改
+
+- JM：统计空结果与跨项目已有真实验收：analytics-empty-review.log的空样本→完成→返工、保存筛选/布局不变通过；analytics-account-scope-checked.log的个人布局跨项目、账号切换、无权项目403、恢复默认独立通过。现有queryKey含项目/范围/面板，范围用页面参数。只读核对记录，不重复运行已通过旅程。
+
+- JH：旧预测核对已退役，workflow-contracts明确剔除reviewForecast，delivery-commitments.test.ts第32行保护旧批次返回400和承诺查询410，migration清空旧值；这些已随JG组合验收通过。残留内部函数不代表存在当前业务入口，不增加复核界面或重复测试。
 
 - IY：真实管理员与两名成员，六状态（初始、替换、移除、完成、归档、恢复）的我的工作、人力分析和详情一致；负责人只计一次，恢复保留工作项全部资料（交付预测revision随归档恢复递增）。旧协作者填写63%和说明后被移除，刷新即禁用提交、原输入保留，强制表单submit零请求且完整需求DTO不变。1浏览器通过（12.9s），collaborator-consistency.log/json及探针已归档；原历史逐条保持，刷新恢复正确、无页面异常。探针首次类型缺失阻止启动；后续修正三个夹具断言/操作：矩阵只显示有安排者、先关闭需求弹窗再导航、不能要求归档恢复后的派生revision不变。无产品修改或新增永久测试，不重跑全量。
 
@@ -122,12 +130,24 @@
 
 该轮另发现的合并来源链接遗漏已独立修复7d70e7b；验收见近期成果。工作区无未提交产品修改。周末无工作日计划候选同样降级：当前新建排期明确限制工作日，未发现当前入口证据。
 
-## 当前阶段 JG：大分析响应的传输压缩验证
+## JG验收：大分析响应的传输压缩
 
-当前产品仍c6ca4f3，无未提交产品修改。JF纯计算退出0；真实HTTP首稿缺少测试依赖时间戳退出1，修正后15417退出0并已回收。无运行进程；两个探针原本就在证据目录。IX全量基线仍是dc98ee2，IZ/JA/JC另有目标浏览器、类型/构建/Lint验收，不重跑无关全量。
+产品06146c4已提交：精确依赖@fastify/compress 9.2.0（新增12个依赖）、path-routes两条分析GET、1项协议回归。插件限定path路由子域，global:false，仅两条GET开启br/gzip；br默认质量4、gzip级别1。普通API、MCP流、备份及请求解压保持原行为。不要用compress:true；每路由须显式编码/级别，本库空对象会用默认值覆盖全局配置。
 
-JF证明大结果的传输成本，JG评估标准HTTP压缩，保持完整JSON和现有业务结果。下一步先核对可维护的实现范围与协议协商：客户端接受/拒绝编码、解压后完整字节、不同规模和取消响应。br在测量中优于gzip，不能只看压缩率而忽略CPU；明确区分回环时间与真实网络。尚未安装依赖，未决定全局启用；避免给MCP流、备份或请求体增加未验证行为。
+真实TCP+Edge探针通过：500/1000/2000跨需求链，identity分别13155524/45812143/169635643B，br为209622/540661/1625482B，gzip1为2034262/13147432/79541386B；解压原字节hash全部相同。2000规模回环identity3497ms、br3393ms、gzip6043ms；Edge完整JSON解析3887ms，encoded/decoded大小一致。三次中断响应后维护等待均低于0.1ms、读取hash保持、SQLite零写入。证据analysis-compression-http.ts/json/log。只证明传输缩小，未减少JSON解析内存或验证6001节点完整布局。
 
-已读官方https://github.com/fastify/fastify-compress：>=8支持Fastify5，可按路由启用，globalCompression/globalDecompression分开，br默认质量4。若采用依赖，先查实际版本与本地实现并限定范围；不自建紧凑JSON协议、删除affectedRequirementIds、加缓存或重做图布局。后台完整风险列表参与排序及服务查询，不能仅凭前端少用就删字段。当前src/server/app.ts没有响应压缩；path-routes.ts两条path-analysis路由直接返回完整PathAnalysis。
+协议协商与权限测试通过，identity/q=0/deflate回退、br/gzip优先级、完整字节、no-store、普通API范围均核对。首轮误期望identity也有Vary、未登录401，实际插件仅压缩时加Vary、现有私有项目返回404；修正测试后通过。4文件46项先通过，新回归独立补验1通过，共47不同业务。15浏览器全通过（stage-jg-browser.log）。首次镜像audit接口404（stage-jg-audit.json），官方registry复验0公告（stage-jg-audit-official.json），不改npm设置。
+
+完整验收首轮退出0：983业务/119文件、10性能、26冒烟，所有检查通过，exec49747已回收。普通HTTP补验98023也退出0：域名映射127.0.0.1、isSecureContext=false、实际Accept-Encoding=gzip, deflate，169634533B→79325896B，浏览器解析5119ms；同库回环identity2299ms、gzip4137ms。不能将localhost的br收益当作所有内网部署效果。analysis-compression-insecure-http.ts/json/log，当前无运行进程。
+
+已读官方https://github.com/fastify/fastify-compress及安装的源码，>=8支持Fastify5。不自建紧凑JSON协议、删除affectedRequirementIds、加缓存或重做图布局；后台完整风险列表参与排序及服务查询，不能仅凭前端少用就删字段。
 
 Date的原因输入和IssueStatusControl的折叠说明出现时机不同，暂不认定同类聚焦缺陷。“搜索需求编号”没有独立编号字段，名称内业务编号本来可搜，不因UUID未参与搜索增加功能。Goal保持active。
+
+## 当前阶段 JN：项目空间的批量选择
+
+JG全量通过后，JK另9浏览器/类型/构建/Lint通过；JL仅编码修正并独立验证；JI仅文档。所有成果已提交，无运行进程或临时浏览器测试。JG全量不含后来的JK/JL，不能把它称为最新HEAD完整verify。
+
+下一步核对批量选择在过滤、翻页、对象归档后的选择集与页面计数。先查既有测试和证据，只对未覆盖的真实操作做探针；验收为操作目标与用户看到的选择一致，取消零写入、刷新结果一致。已覆盖的归档权限/写锁、归档行保留并禁用选择不重复检查；无证据不改变选择规则。
+
+JL附带只读核对：startup.test.ts已保护重启75、其他服务占端口64、重复启动不开数据库，随JG全量通过；不重跑。run-server.ps1用LiteralPath及参数调用Node、start.bat引用目录；未实际验证含空格目录的完整启动，不能宣称该场景通过。Goal继续active。
