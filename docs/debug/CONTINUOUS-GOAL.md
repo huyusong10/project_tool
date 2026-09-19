@@ -2,14 +2,14 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 RF
+## 恢复入口与当前阶段 RJ
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段RF（浏览器历史与项目筛选，待检查）：先查session-history、project-selection既有用例及use-page-view/project上下文。核对后退/前进是否同时恢复URL中的项目和页面筛选；身份切换清空、双标签项目隔离已有覆盖，不重复验证。只有发现具体缺口才实测或修改。
+2. 当前阶段RJ（新建工作项的失效参与人，待检查）：先定位当前新建工作项表单与提交契约、查已有回归。核对填草稿后参与人被移出项目/停用时，提交是否完整拒绝、错误是否指出参与人、名称/说明等草稿是否保留并可改选恢复。PX已覆盖失效需求负责人复制分派，QH已覆盖成员改名后进展草稿，不重复这两项。
 3. 最新完整验证QU覆盖至8c67902：1002业务/121文件（45.81s）、13性能（18.81s）、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。5429首轮退出0、已回收；stage-qu-verify.log、stage-qu-performance-samples.json、stage-qu-build-budget.json。
-4. 最新产品本次RE（创建日志省略空对象），此前5a4ec09（RC归档同名流程统计）、7f71ac3（QZ问题状态术语）、7ffc3b2（QW流程里程碑定位）、8c67902（QT同名需求）、a4c6c6b（QS图例）、428b87b（QO认证反馈）、05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
+4. 最新产品190bf36（RE创建日志省略空对象），此前5a4ec09（RC归档同名流程统计）、7f71ac3（QZ问题状态术语）、7ffc3b2（QW流程里程碑定位）、8c67902（QT同名需求）、a4c6c6b（QS图例）、428b87b（QO认证反馈）、05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
-6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。QU5429首轮verify退出0、已回收；QW41531专项6场景通过并归档；QX33487取消返回首轮11.5s通过已回收并归档；QZ98039最终52既有测试/构建退出0已回收。QY检查3296监听0，无运行测试。
+6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。最新RF27038单场景10.8s、RI49703单场景18.5s均首轮退出0回收；RE13775的45测试/构建完成。临时浏览器探针均已归档，当前无未回收执行句柄。
 
 ## 当前验收基线
 
@@ -42,7 +42,7 @@ QU完整验证覆盖至8c67902；后续QW/QZ/RC/RE按专项及生产构建验收
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
-| RE / 本次提交 | 无归属附加信息时，新建需求日志不再显示空{}；非空内容仍保留，历史日志不改。45既有测试和构建通过 |
+| RE / 190bf36 | 无归属附加信息时，新建需求日志不再显示空{}；非空内容仍保留，历史日志不改。45既有测试和构建通过 |
 | RC / 5a4ec09 | 流程归档后复用名称，旧/新流程需求被按名称合并；真实流程还会与同名的“未绑定流程”占位组混合。改用流程ID区分，仅5行变化，不改名称或存储；1个接口回归及28相关测试、构建通过 |
 | QZ / 7f71ac3 | 同一问题状态在状态徽标中叫已解决，在筛选/统计/说明中却叫闭环。统一问题筛选、解决说明、3个统计指标、默认趋势标题及接口提示；详情操作说明使用现有按钮名称。只改文案，52既有测试和构建通过 |
 | QW / 7ffc3b2 | 流程图选中首尾里程碑只更新选择，甘特仍停在原位置，长流程末尾不可见。仅在TemplatePreview选择时查现有里程碑标签并复用工作项滚动；不增加标记/组件/状态。6浏览器及构建通过，见专项基线 |
@@ -60,6 +60,10 @@ QU完整验证覆盖至8c67902；后续QW/QZ/RC/RE按专项及生产构建验收
 
 | 阶段 / 领域 | 结论与证据 |
 |---|---|
+| RI 常用控件名称 | 隔离服务真实项目/需求/问题，浏览10常用页并打开新增人员/新建项目弹窗，通过浏览器辅助功能树检查button/link/textbox/searchbox/combobox/spinbutton/checkbox/radio/slider/dialog非忽略节点。12状态合计354个控件，空名称0，页面写0/异常0；49703首轮18.5s退出0回收（含类型/测试构建）。control-names-ri.json、stage-ri-control-names.log；探针归档，无产品改动/永久测试。仅名称检查，不扩展为全站所有弹窗或完整无障碍验收 |
+| RF 双项目历史恢复 | 真实HTTP两项目4问题，从甲项目带搜索进入乙项目，另设乙搜索，再进个人设置。后退乙→甲、前进乙分别恢复项目/搜索/对应2与1条结果；打开乙问题详情ID正确，关闭/重载仍保留乙筛选。27038首轮10.8s退出0回收（含类型/测试构建），完整4问题和项目DTO保持，0页面写/异常；project-history-rf.json、stage-rf-project-history.log，探针归档，无修改/永久测试 |
+| RG 本人跨项目刷新 | main.tsx已为keys.myWork单独配置60秒轮询及返回标签刷新，不依赖useProjectRefresh的当前项目；隐藏时沿用查询库暂停策略。既有my-work-journey覆盖两种触发，RA确认草稿独立。仅追踪配置，不改/不新建或重跑测试 |
+| RH 流程目录旧证据 | 找到KZ已复核的100/500/1000规模18组测量，800流程/16000元素中位105.1ms；真实101流程×30步首开226–242ms。证据template-list-scale-before.json、template-catalog-scale.json及cac4ecd记录。当前列表仍按相同方式组装，未发现新瓶颈，不重测或优化；把此项补回索引以避免再次探索 |
 | RD 日志连续翻页 | 既有deep-regressions已覆盖服务端固定快照；补真实HTTP浏览器25创建日志，第二页时另一会话新增第26条，往返页仍为原20+5且无重复/遗漏，snapshot保持27。主动刷新回第1页，snapshot28/共26条，新增记录在首行；动作/对象/每页20筛选及刷新结果重载保持。50190首轮12.4s退出0回收，0页面写/异常，完整26需求和项目DTO保持，390无根级溢出且截图已看（表格仍为内部横滚）。audit-pages-rd.json、stage-rd-audit-pages.log；探针归档，无产品修改/永久测试 |
 | RA 我的工作跨日 | 只读追踪App→useBusinessDateClock→invalidateBusinessDateViews，已包含keys.myWork；accounts.readMyWork单次todayIso统一逾期/预测/未来10工作日，MyWorkPage把响应asOfDate传入甘特。筛选独立存于URL，ProgressForm按工作ID挂载且useDeliveryForm独立保留草稿。既有personal-experience覆盖响应日期，my-work-journey覆盖轮询/返回；未发现缺口，不改/不重跑测试。本轮仅代码与既有覆盖审查，不称实际跨午夜验证 |
 | RB 导出覆盖复核 | 草稿最新输入/存储失败后备份重传、数据库导出恢复、MCP SVG转义与边界已有requirement-intake/database-transfer/mcp-graph及OM/ON覆盖。只读核对导出入口与既有场景，未发现新证据，不重复运行或增加测试 |
