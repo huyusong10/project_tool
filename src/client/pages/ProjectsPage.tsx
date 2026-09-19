@@ -6,6 +6,7 @@ import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
 import { usePageScrollPosition } from '../use-page-view';
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Archive, Plus } from "lucide-react";
 import { ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
@@ -20,6 +21,7 @@ import { StatusBadge } from "../components/Badge";
 import { ProjectForm, persistProjectCreateRecheck, readProjectCreateRecheck, type ProjectCreateRecheck } from "../components/ManagementForms";
 import { isAdmin } from "../permissions";
 import type { Archives } from "../types";
+import { workspaceParams } from "../workspace-location";
 
 type ProjectArchiveInput = {
   id: string;
@@ -155,7 +157,7 @@ export function ProjectsPage() {
               {pagination.items.map((project) => {
                 return (
                 <tr key={project.id} className={project.id === selectedProjectId ? "is-current" : ""}>
-                  <td><span className="project-name-line"><strong>{project.name}</strong>{project.isSample && <span className="sample-project-badge">样板</span>}</span>{project.id === selectedProjectId && <small>当前项目</small>}</td>
+                  <td><span className="project-name-line"><Link to={'/?'+workspaceParams({projectId:project.id,view:'list',scope:{kind:'project',id:project.id}})} title={project.name}><strong>{project.name}</strong></Link>{project.isSample && <span className="sample-project-badge">样板</span>}</span>{project.id === selectedProjectId && <small>当前项目</small>}</td>
                   <td><div className="inline-date-range">
                     <span>{project.plannedStart || "未设置"}</span>
                     <span>→</span>
