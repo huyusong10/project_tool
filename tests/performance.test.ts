@@ -157,7 +157,7 @@ describe('看板性能', {timeout: 30000}, () => {
       expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(unchanged);
     }finally{local.close();}
   });
-  it('5000条问题的后台版本检查只读且全部样本低于500毫秒',async()=>{
+  it('5000条问题和5000名成员的后台版本检查只读且全部样本低于500毫秒',async()=>{
     const {projectChangeVersion:readVersion}=await import('../src/server/services/project-change-version');
     const projectChangeVersion=(...args:Parameters<typeof readVersion>)=>fixture.run(()=>readVersion(...args));
     const id=randomUUID(),now=new Date().toISOString();
@@ -165,11 +165,18 @@ describe('看板性能', {timeout: 30000}, () => {
       sqlite.prepare('INSERT INTO projects(id,name,created_at,updated_at)VALUES(?,?,?,?)').run(id,'后台检查性能',now,now);
       sqlite.prepare("INSERT INTO accounts(id,username,normalized_username,password_hash,global_role,status,created_at,updated_at)VALUES('version-bench-admin','version-bench-admin','version-bench-admin','test-only','admin','active',?,?)").run(now,now);
       const insert=sqlite.prepare("INSERT INTO issues(id,project_id,title,status,discovered_at,created_at,updated_at)VALUES(?,?,?,'in_progress','2026-09-10',?,?)");
-      for(let i=0;i<5000;i++)insert.run(randomUUID(),id,'问题'+i,now,now);
+      const person=sqlite.prepare('INSERT INTO people(id,name,created_at,updated_at)VALUES(?,?,?,?)');
+      const account=sqlite.prepare("INSERT INTO accounts(id,person_id,username,normalized_username,password_hash,status,created_at,updated_at)VALUES(?,?,?,?,'test-only','active',?,?)");
+      const member=sqlite.prepare('INSERT INTO project_people(project_id,person_id,created_at,updated_at)VALUES(?,?,?,?)');
+      for(let i=0;i<5000;i++){
+        insert.run(randomUUID(),id,'问题'+i,now,now);
+        const personId=randomUUID(),name='version-member-'+i;
+        person.run(personId,name,now,now);account.run(randomUUID(),personId,name,name,now,now);member.run(id,personId,now,now);
+      }
     })();
     const actor:AuthorizationActor={type:'user',id:'version-bench-admin',label:'version-bench-admin',accountId:'version-bench-admin',personId:null,globalRole:'admin'};
     const before=sqlite.prepare('SELECT total_changes() AS n').get(),baseline=projectChangeVersion(id,actor);
-    measureScenario('project-refresh-5000-issues',500,()=>projectChangeVersion(id,actor),result=>expect(result).toEqual(baseline));
+    measureScenario('project-refresh-5000-issues-and-members',500,()=>projectChangeVersion(id,actor),result=>expect(result).toEqual(baseline));
     expect(sqlite.prepare('SELECT total_changes() AS n').get()).toEqual(before);
   });
   it('500个需求和5000个工作项在2秒内完成统计', () => {

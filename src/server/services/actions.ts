@@ -116,7 +116,7 @@ export function listActionItems(
   const workItems = rows<WorkItemRow>(`SELECT w.id, w.requirement_id AS requirementId, r.title AS requirementTitle,
     r.owner_id AS requirementOwnerId, w.title, w.owner_id AS ownerId, p.name AS ownerName, w.status,
     w.planned_end AS plannedEnd,w.blocked_at AS blockedAt, w.updated_at AS updatedAt,
-    EXISTS (SELECT 1 FROM project_people pp JOIN accounts a ON a.person_id=pp.person_id
+    EXISTS (SELECT 1 FROM project_people pp JOIN accounts a INDEXED BY idx_accounts_person ON a.person_id=pp.person_id
       WHERE pp.project_id=r.project_id AND pp.person_id=w.owner_id AND pp.project_role IN ('member','manager')
         AND p.active=1 AND p.deleted_at IS NULL AND a.status='active' AND a.deleted_at IS NULL) AS ownerValid,
     CASE WHEN ? IS NOT NULL AND EXISTS (
