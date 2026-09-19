@@ -236,4 +236,7 @@
  .work-create-state {display:none}
  .work-create-actions {grid-column:2;justify-content:flex-end}
 }
+@container (max-width:300px){
+ .work-arrangement-list .work-arrangement-row .work-arrangement-fields {grid-template-columns:1fr}
+}
 }
