@@ -185,7 +185,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
   const hasExecution = current.workItems!.some((item) => item.status !== 'not_started' || item.progress > 0 || item.actualStart)
     || Boolean(row(`SELECT 1 FROM progress_updates WHERE requirement_id=? AND event_type NOT IN ('note','correction') LIMIT 1`, id));
   if (input.ownerId !== undefined && !ownerId && hasExecution) {
-    fail('需求已开始执行，只能更换负责人，不能清空负责人', 'DEPENDENCY_CONFLICT', 409);
+    fail('需求已有执行记录，只能更换负责人，不能清空负责人', 'DEPENDENCY_CONFLICT', 409);
   }
   if (ownerId !== current.ownerId) validateDeliveryFields(current.projectId, { ownerId }, actor, current);
   let nextPlannedStart = current.plannedStart;
