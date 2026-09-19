@@ -10,7 +10,7 @@ import { useDeferredValue, useEffect, useState } from "react";
 import { useProjects, useSession, useUiActions } from "../app-context";
 import { keys } from "../query-keys";
 import type { AuditPage } from "../types";
-import { EmptyState } from "../components/Feedback";
+import { EmptyState, LoadingState } from "../components/Feedback";
 import { FilterBar } from "../components/FilterBar";
 import { Pagination } from "../components/Pagination";
 import { PageHeader } from "../components/PageHeader";
@@ -74,16 +74,16 @@ export function LogsPage() {
         <SearchInput value={keyword} onChange={(value) => updateFilter("q", value)} placeholder="搜索用户、Token、操作内容、实体ID或拼音" />
         <Select aria-label="日志来源" value={actorType} onChange={(event) => updateFilter("actorType", event.target.value)}><option value="">全部来源</option><option value="user">用户</option><option value="token">MCP Token</option><option value="system">系统</option></Select>
         <Select aria-label="日志动作" value={action} onChange={(event) => updateFilter("action", event.target.value)}><option value="">全部动作</option>{Object.entries(auditActionLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</Select>
-        <Select aria-label="日志对象" value={entityType} onChange={(event) => updateFilter("entityType", event.target.value)}><option value="">全部对象</option>{Object.entries(auditEntityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</Select>
+        <Select className="audit-object-filter" aria-label="日志对象" value={entityType} onChange={(event) => updateFilter("entityType", event.target.value)}><option value="">全部对象</option>{Object.entries(auditEntityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</Select>
         <label className="audit-date"><span>从</span><input type="date" value={from} onChange={(event) => updateFilter("from", event.target.value)} /></label>
         <label className="audit-date"><span>至</span><input type="date" value={to} onChange={(event) => updateFilter("to", event.target.value)} /></label>
       </FilterBar>
       {error && data && <div className="warning-banner">操作日志刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}
       <section className="panel audit-panel audit-page-panel paged-panel">
-        <header><div><h2>写入记录</h2><p>共 {data?.total || 0} 条，按时间倒序</p></div><Button variant="secondary" type="button" className="ghost-button" disabled={isFetching} onClick={refetch}>刷新</Button></header>
+        <header><div><h2>写入记录</h2><p>{data ? <>共 {data.total} 条，</> : null}按时间倒序</p></div><Button variant="secondary" type="button" className="ghost-button" disabled={isFetching} onClick={refetch}>刷新</Button></header>
         <div className="audit-table paged-body" ref={pagination.scrollRef}>
-          <div className="audit-head"><span>时间（北京时间）</span><span>来源</span><span>对象</span><span>动作</span><span>内容</span></div>
-          {data?.items.map((item) => <div key={item.id}>
+          {Boolean(data?.items.length) && <div className="audit-head"><span>时间（北京时间）</span><span>来源</span><span>对象</span><span>动作</span><span>内容</span></div>}
+          {data?.items.map((item) => <div className="audit-row" key={item.id}>
             <span>{new Date(item.createdAt).toLocaleString("zh-CN", { timeZone: 'Asia/Shanghai' })}</span>
             <span title={item.actorType === "token" && item.tokenName ? `MCP Token：${item.tokenName}` : undefined}>{item.actorType === "system" ? "系统" : item.actorName || "已删除用户"}{item.actorType === "token" && ` · MCP${item.tokenName ? `（${item.tokenName}）` : ""}`}</span>
             <span>{auditEntityLabels[item.entityType] || item.entityType}{admin && item.projectName && <small className="audit-project-name" title={item.projectName}>{item.projectName}</small>}</span>
@@ -95,11 +95,11 @@ export function LogsPage() {
               {item.entityId && <small>对象 ID：{item.entityId}</small>}
             </details>
           </div>)}
-          {listUnavailable
+          {isLoading && !data ? <LoadingState label="正在加载操作日志…" /> : listUnavailable
             ? <EmptyState title="操作日志加载失败" detail={error?.message || "暂时无法读取操作日志。"} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} />
             : !data?.items.length && !isLoading && <EmptyState title="没有符合条件的日志" detail="调整搜索词或筛选条件后重试。" />}
         </div>
-        {!listUnavailable && <Pagination {...pagination.props} label="日志分页" />}
+        {data && !listUnavailable && <Pagination {...pagination.props} label="日志分页" />}
       </section>
     </div>
   </>;
