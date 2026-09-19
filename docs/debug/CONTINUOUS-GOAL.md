@@ -2,19 +2,20 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 PS
+## 恢复入口与当前阶段 PV
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段PS（综合验收）：PR已验收。OZ完整验证后累计PE/PH/PL/PM/PO/PR六次产品修改，专项均通过；现在运行一次完整verify，检查业务/性能/冒烟与生产构建组合，不重复近期专项探针。验收以实际命令退出码及日志为准；失败先区分产品与夹具/环境，保留证据。之后转向不同业务流程。
-3. 最新完整验证OZ：999业务/120文件、13性能、26浏览器冒烟，运行时/428边界/完整Lint及按钮规范/类型/生产构建/体积预算均通过，覆盖OZ/OX/OQ。OZ另16导入浏览器和87专项业务通过，无遗留句柄。
-4. 最新产品PR（本提交，特性筛选状态解释），`ec4f020`（PO，筛选工具栏焦点可见），`c82f5b9`（PM），`3dd3422`（PL），`1512802`（PH）、`fc47d21`（PE）、`f48d23c`（OZ）、`17c9bb7`（OX）、`c06e7fd`（OQ）、`4985552`（OP）、`7e375d0`（OK）、`5dca0b5`（OJ）、`a79fe72`（OD）、`fedbd45`（OC）。PB将40883字节/158行压为25979字节/114行（提交0a8a724），基线/稳定决定/候选逐段比较保持，`record-compaction-pb.json`留存校验；完整前版保存在 `67baff3`；NN及更早详细历史仍在 `cac4ecd`。
+2. 当前阶段PV（默认流程与归档条件变化）：PS完整验证、PT实际库关系检查、PU运行增量均通过，无新问题。接下来真实经理已打开归档确认时，管理员将该流程设为默认；核对旧确认拒绝、刷新解释与恢复操作，模板自身updatedAt未变也不能越过项目默认规则。既有archive-entry-actions只模拟模板本身改名/版本变化，此次检查项目条件变化及真实DTO。验收要求拒绝期间0业务变化，换回默认后明确重新归档仅1成功，已有实例历史/其他项目保持。先验证再决定修改，不扩规则。
+3. 最新完整验证PS：999业务/120文件、13性能、26浏览器冒烟，运行时/428边界/完整Lint及按钮规范/类型/生产构建/体积预算均通过，覆盖至cf27f95；98531首轮退出0，全部句柄回收。stage-ps-verify.log及stage-ps-performance-samples.json。
+4. 最新产品`cf27f95`（PR，特性筛选状态解释），`ec4f020`（PO，筛选工具栏焦点可见），`c82f5b9`（PM），`3dd3422`（PL），`1512802`（PH）、`fc47d21`（PE）、`f48d23c`（OZ）、`17c9bb7`（OX）、`c06e7fd`（OQ）、`4985552`（OP）、`7e375d0`（OK）、`5dca0b5`（OJ）、`a79fe72`（OD）、`fedbd45`（OC）。PB将40883字节/158行压为25979字节/114行（提交0a8a724），基线/稳定决定/候选逐段比较保持，`record-compaction-pb.json`留存校验；完整前版保存在 `67baff3`；NN及更早详细历史仍在 `cac4ecd`。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
-6. PR原版73039完整归档/恢复往返只缺提示和入口，退出1；早期82233误切已展开行、85718按钮徽标影响exact定位，均为探针假设错误。5857改后3场景退出0；全部句柄回收，探针已归档。浏览器端口3296，独立数据库/构建；浏览器串行，性能独占。每次浏览器命令设置 `$env:PLAYWRIGHT_PORT='3296'`。PK50161、PM49948/34361、PO29505/46531/90969/34482/40522均退出0，全部句柄已回收，探针归档，无运行测试。PO开始前3296监听0、测试临时目录0；原目录仍仅2处用户修改。
+6. PS结束3296监听0、当前浏览器测试临时目录0，隔离目录干净；原目录仍仅2处用户改动。PR原版73039完整归档/恢复往返只缺提示和入口，退出1；早期82233误切已展开行、85718按钮徽标影响exact定位，均为探针假设错误。5857改后3场景退出0；全部句柄回收，探针已归档。浏览器端口3296，独立数据库/构建；浏览器串行，性能独占。每次浏览器命令设置 `$env:PLAYWRIGHT_PORT='3296'`。PK50161、PM49948/34361、PO29505/46531/90969/34482/40522均退出0，全部句柄已回收，探针归档，无运行测试。PO开始前3296监听0、测试临时目录0；原目录仍仅2处用户修改。
 
 ## 当前验收基线
 
 | 范围 | 最终证据与边界 |
 |---|---|
+| PS完整验证 | stage-ps-verify.log首轮退出0（98531已回收）：999业务/120文件、13性能、26浏览器冒烟（1.2min）；原生运行时、428边界、完整Lint/按钮规范、类型、生产构建和预算均通过，覆盖至cf27f95。stage-ps-performance-samples.json留存本轮样本 |
 | PR专项验证 | 原版archived-feature-filter-pr-original.json提示/入口均false，但完整往返和数据核对通过；改后5857通过普通成员跨页归档/恢复、既有组合筛选和归档规则3场景。两方向390提示/按钮在视口、截图已看；切换后搜索词/所选特性/刷新保持，交付历史及另一需求业务DTO保持，项目/特性DTO在只读期间保持，0成员写/异常。类型/测试构建/目标Lint/diff通过；archived-feature-filter-pr-after.json与stage-pr-archived-feature-filter-after.log，探针归档，无永久测试 |
 | PO专项验证 | 29505原版测量390窗口按钮右界391/裁切边界375，稳定10帧及开关菜单仍缺16px；640/1280正常。46531注入scroll-padding、scroll-margin及两者均无改善，不保留。焦点时仅滚动工具栏实际子元素后，90969探针/菜单、34482组合筛选/PM双规模共5不同场景通过；40522另验证鼠标点击与真实触摸点击部分可见按钮，打开/关闭成功且右界375。原24次焦点顺序保持，组合筛选/刷新/画布位置保持；项目/特性完整DTO、0写/异常。类型/测试构建/目标Lint/diff通过，390截图已看；filter-visibility-po-original/css-trial/after/complete.json，stage-po-filter-visibility/after/complete及stage-po-filter-regression.log；全部探针归档，无永久测试 |
 | PM专项验证 | 原版76699在1280/390/640×360的6次Tab/Shift+Tab分别错到主页/提交按钮；改后49948的6浏览器通过（2探针+4既有搜索/输入法/菜单场景），34361扩展表单外筛选栏后2探针通过。2/26选项×表单/筛选栏×三尺寸×正反方向24次焦点正确、目标至少在视口、输入/选项/URL/完整项目特性需求DTO保持、0写/异常。类型/测试构建/目标Lint/diff通过；select-tab-pm-original/complete-2/complete-26.json与stage-pm-select-tab-original/after/complete.log。390两截图已看，探针归档，无新永久测试 |
@@ -25,21 +26,21 @@
 | OQ专项验证 | 24646的stage-oq-entry-after五个既有浏览器通过，41299的stage-oq-entry-complete入口探针及普通列表分页通过，共7不同场景；类型/测试构建、目标Lint/428边界/diff通过，无新永久测试。全局项目中心无当前项目，高亮断言错误已移除；产品只补普通链接 |
 | OK专项验证 | 32623的stage-ok-after九个既有浏览器通过；58365的stage-ok-complete通过完整偏移探针。共10不同场景，类型/测试构建、目标Lint/diff通过；仅此后新增key限定偏移字段实例，由两对象切换探针覆盖。所有句柄已回收，无新永久测试 |
 | OZ完整验证 | `stage-oz-verify.log`首轮退出0（81970已回收）：999业务/120文件、13性能、26浏览器冒烟（1.2min），运行时、428边界、完整Lint/按钮规范、类型、生产构建、预算均通过，覆盖至f48d23c。`stage-oz-performance-samples.json`保留本轮样本 |
-| 生产体积 | PH正式构建：主JS934.28KB、CSS339.75KB、ELK1595.33KB，服务端6文件/app878.67KB；stage-ph-production-build/build-budget.log，覆盖PE/PH。按JR清理旧产物。`stage-oz-performance-samples.json`保存完整性能样本，源`coverage/performance/samples.json` |
+| 生产体积 | PS正式构建：主JS934.69KB、CSS339.75KB、ELK1595.33KB，服务端6文件/app878.89KB；stage-ps-verify.log中构建与预算通过，覆盖至cf27f95 |
 | 浏览器清单 | 最新`stage-np-matrix.log`：771功能/183布局/2性能、普通1869实例；这是列举结果，未执行整个矩阵。NT结束3296监听0、当前测试临时目录0；原目录仍只有2处用户改动 |
-| 原服务增量 | 最新游标PN：2026-09-19T06:27:14.118Z；较PI约32分钟，17日志新增0字节/0事件，无错误/读取失败，3210健康200。`runtime-log-review-pn.mjs/json`、`stage-pn-runtime.log`。只检查后续增量，不短间隔轮询 |
+| 原服务增量 | 最新游标PU：2026-09-19T07:01:11.554Z；较PN约34分钟，17日志新增0字节/0事件，无错误/读取失败，3210健康200。runtime-log-review-pu.mjs/json、stage-pu-runtime.log。只检查后续增量，不短间隔轮询 |
 | 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；PN元数据仍同PI/PA/MK，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-pn-listing.json` |
 | 依赖证据 | JG官方生产依赖审计9月18日23:06为0公告，lock最后提交06146c4；LY只复核未变。这是旧证据，不代表当前安全快照 |
 
-OZ完整验证覆盖至f48d23c，专项证据见表。原目录仍仅2处用户修改。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
+PS完整验证覆盖至cf27f95，专项证据见表。原目录仍仅2处用户修改。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
 
 ## 近期产品成果
 
-均已验收，最新完整验证覆盖至f48d23c；PE/PH/PL/PM/PO/PR用专项验收。更早产品成果、失败尝试和精确证据见 `67baff3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
+均已验收，PS完整验证覆盖至cf27f95，含PE/PH/PL/PM/PO/PR。更早产品成果、失败尝试和精确证据见 `67baff3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
-| PR / 本提交 | 成员已选特性被管理员归档或恢复后，保留的状态筛选与特性不符，空结果原来没有解释。ProgressWorkspace仅在该情况下说明特性归档状态，提供查看对应状态的按钮；点击只改progressState，其他筛选保持，不自动切换、不改API或筛选语义。原版复现与改后3场景/窄屏/只读证据见专项基线 |
+| PR / cf27f95 | 成员已选特性被管理员归档或恢复后，保留的状态筛选与特性不符，空结果原来没有解释。ProgressWorkspace仅在该情况下说明特性归档状态，提供查看对应状态的按钮；点击只改progressState，其他筛选保持，不自动切换、不改API或筛选语义。原版复现与改后3场景/窄屏/只读证据见专项基线 |
 | PO / ec4f020 | PM窄屏截图发现更多筛选文字不完整，实测右侧裁切16px，CSS滚动边距无效。ProgressFilters加局部onFocusCapture，对工具栏实际子元素调用最近边界scrollIntoView；弹层移到其他DOM位置时不参与。保持原单行横滚布局，无新样式/抽象；390按钮恢复完整、640/1280保持，鼠标/触摸/键盘与组合筛选5场景通过，证据见专项基线 |
 | PM / c82f5b9 | 自定义Select关闭Tab弹层后焦点丢失：实际新建需求中Tab跳出到主页，Shift+Tab跳到提交按钮，三尺寸均复现。仅将Tab分支close()改为close(true)，恢复入口焦点后让浏览器沿原顺序移动；24次表单/页面筛选焦点和4既有搜索/菜单场景通过，草稿/选项/URL/完整业务DTO保持。原版及改后证据见专项基线，无新永久测试。早期45162计数全页面option、64181精确getByLabel原生select定位失败，均属探针错误，已修正/回收 |
 | PL / 3dd3422 | 开始工作并补选负责人时缺expectedRequirementVersion，REST/MCP原版错误提示缺expectedVersion，调用方无法据此补正确字段。仅在既有鉴权后指出父版本字段及读取所属需求的恢复方式，仍走原版本/事务校验；2通道完整原版证据、改后28专项业务、目标Lint/类型/diff通过。parent-version-pl-baseline/after.json与stage-pl-parent-version-baseline/after.log；探针归档，无永久测试 |
@@ -62,6 +63,7 @@ OZ完整验证覆盖至f48d23c，专项证据见表。原目录仍仅2处用户�
 
 | 阶段 / 领域 | 结论与证据 |
 |---|---|
+| PT 实际库对象关系 | 2026-09-19T07:00:10.418Z，同一只读事务检查2项目/12特性/19Phase/62需求/257工作/101里程碑/360依赖/395进展/31问题。复用现有启动一致性检查；另查需求-特性、问题/里程碑-需求、进展-工作父级、依赖两端项目与父级，全部异常计数0，total_changes=0。包含归档和历史行，不输出名称/ID/正文，不称完整历史快照或API验收。object-relations-original-pt.ts/json、stage-pt-original-relations.log首轮退出0；无产品修改/永久测试 |
 | PQ 同需求工作密度 | 无依赖、3名人员、每工作2协作与混合执行/取消历史，10/100/1000同级工作×单项/两类小页/越界页/无匹配/资料装载/完整分析共21场景，各5样本。1000单项22.9ms、小页23.5ms，资料5.4ms/分析16.7ms；100单项3.5ms，空页只2查询，1000越界1.1ms/无匹配2.2ms。每场景完整结果hash一致、9表hash保持、total_changes增量0。改装载范围预期收益有限，不改/不加永久测试；work-page-density-pq.ts、work-page-density-pq-baseline.json、stage-pq-work-density-baseline.log。首轮夹具给协作关系表多填created_at，SQL拒绝后修正，未算产品缺陷；两命令均结束，无遗留句柄。不推断复杂依赖图性能 |
 | PK 已归档流程实例 | 实际两工作+里程碑，完成一项/开始一项后归档来源；页面编辑说明及平移9/11→9/23后刷新，原工作ID/人员/实际日期/40%进度/3条历史、2依赖、里程碑完整资料、归档和项目DTO保持；工作日期按原间隔平移。页面只有PATCH200和reschedule200、0异常。50161首个完整通过2.7s，类型/测试构建通过，390截图已看、保存钮在视口、已归档流程可读；archived-template-instance-pk.json、stage-pk-archived-template-instance-verified.log、探针归档。前轮夹具缺父版本、textarea默认内容被getByLabel精确匹配算入，以及工作项deliveryForecast.revision变化导致探针失败，均已定位并修正断言；42651/96302/53019/81362/95318均回收。无需产品修改/永久测试；原文档G1—G5新增功能不实施 |
 | PJ 图表文本复核 | AnalyticsPage将标签作为坐标或饼图name，未提供HTML formatter；RequirementDetails只把数值格式化为百分比，Chart保留内置提示路径。所安装echarts TooltipView调用tooltipMarkup，后者对header/name/value调用encodeHTML（170/234/244行），zrender/core/dom处理转义。应用src/client/shared未找到直接HTML写入或eval；当前无需修改，不把静态复核称为浏览器运行或全面安全审计 |
