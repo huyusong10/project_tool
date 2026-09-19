@@ -43,7 +43,6 @@ body:has(.app-shell[data-immersive=true]){overflow:hidden}
 .topbar-menu-content{display:flex;flex-direction:column;gap:4px;max-height:calc(100dvh - 110px);overflow-y:auto;overscroll-behavior:contain}
 .topbar-menu-content>button,.topbar-menu-content .theme-toggle{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;min-height:38px;height:auto;padding:8px 10px;border:0;background:transparent;color:var(--text-secondary);border-radius:var(--radius-sm);font-size:13px;text-align:left}
 .topbar-menu-content>button:hover{background:var(--bg-hover)}
-.topbar-menu-content>button[aria-label]:has(svg:only-child)::after{content:attr(aria-label)}
 .topbar-menu-content>.danger{color:var(--danger-text)}
 .topbar-account-heading{padding:8px 10px;color:var(--text-muted);font-size:12px;border-bottom:1px solid var(--border-default);overflow-wrap:anywhere}
 .topbar-menu-status{padding:8px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--text-muted);font-size:12px;border-bottom:1px solid var(--border-default)}
