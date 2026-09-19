@@ -48,7 +48,7 @@
 .schedule-mode-switch button.is-active { border-color: var(--accent-ink); color: var(--accent-hover); background: var(--accent-soft); box-shadow: 0 0 0 3px color-mix(in srgb,var(--accent) 8%,transparent); }
 .schedule-mode-switch strong { font-size: 14px; }.schedule-mode-switch small { color: var(--text-faint); font-size: 12px; font-weight: 400; }
 .schedule-date-field input { max-width: 320px; }
-.field-help { margin: -4px 0 0; color: var(--text-faint); font-size: 12px; line-height: 1.55; }.form-error { margin: 0; color: var(--danger); font-size: 12px; }
+.field-help { margin: -4px 0 0; color: var(--text-faint); font-size: 12px; line-height: 1.55; }.form-error { margin: 0; color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
 .login-brand-logo { grid-column: 1/-1; width: 52px; height: 52px; flex-basis: 52px; margin: 0 auto; border-radius: 14px; font-size: 16px; }
 .query-refresh-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 14px; border: 1px solid var(--warning-border); border-radius: var(--radius-md); color: var(--warning-text); background: var(--warning-bg); font-size: 12px; line-height: 1.6; }
