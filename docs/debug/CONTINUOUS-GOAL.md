@@ -2,10 +2,10 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 RJ
+## 恢复入口与当前阶段 RK
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段RJ（新建工作项的失效参与人，待检查）：先定位当前新建工作项表单与提交契约、查已有回归。核对填草稿后参与人被移出项目/停用时，提交是否完整拒绝、错误是否指出参与人、名称/说明等草稿是否保留并可改选恢复。PX已覆盖失效需求负责人复制分派，QH已覆盖成员改名后进展草稿，不重复这两项。
+2. 当前阶段RK（用户插入的优先目标：全面整理UI）：实际截图检查主要页面、详情、表单、弹窗、流程图及各类甘特；重点修复元素粘连、对齐与留白、同类甘特条粗细。验收需要桌面/窄屏前后图、相关交互和日期定位检查，不能用既有无溢出/可访问名称测试代替视觉验收。先完成共用样式，再逐页处理；不改变功能范围。
 3. 最新完整验证QU覆盖至8c67902：1002业务/121文件（45.81s）、13性能（18.81s）、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。5429首轮退出0、已回收；stage-qu-verify.log、stage-qu-performance-samples.json、stage-qu-build-budget.json。
 4. 最新产品190bf36（RE创建日志省略空对象），此前5a4ec09（RC归档同名流程统计）、7f71ac3（QZ问题状态术语）、7ffc3b2（QW流程里程碑定位）、8c67902（QT同名需求）、a4c6c6b（QS图例）、428b87b（QO认证反馈）、05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
@@ -60,6 +60,7 @@ QU完整验证覆盖至8c67902；后续QW/QZ/RC/RE按专项及生产构建验收
 
 | 阶段 / 领域 | 结论与证据 |
 |---|---|
+| RJ新建参与人恢复 | 协作者账号失效时，原校验提示只指负责人；work-item-assignees一行改为“负责人和协作人员”。真实草稿提交400不写数据，刷新保留名称/说明/日期/有效负责人，改选后仅一次200创建一项，原进展保持。86588完整原版仅文案断言失败；40817改后1浏览器16.3s、52094既有8测试/2文件3.43s、目标Lint/类型/构建/预算通过，均回收。create-assignees-rj-original/after.json、stage-rj-*日志；探针归档，无永久测试。2958动态checked定位器uncheck超时为探针错误 |
 | RI 常用控件名称 | 隔离服务真实项目/需求/问题，浏览10常用页并打开新增人员/新建项目弹窗，通过浏览器辅助功能树检查button/link/textbox/searchbox/combobox/spinbutton/checkbox/radio/slider/dialog非忽略节点。12状态合计354个控件，空名称0，页面写0/异常0；49703首轮18.5s退出0回收（含类型/测试构建）。control-names-ri.json、stage-ri-control-names.log；探针归档，无产品改动/永久测试。仅名称检查，不扩展为全站所有弹窗或完整无障碍验收 |
 | RF 双项目历史恢复 | 真实HTTP两项目4问题，从甲项目带搜索进入乙项目，另设乙搜索，再进个人设置。后退乙→甲、前进乙分别恢复项目/搜索/对应2与1条结果；打开乙问题详情ID正确，关闭/重载仍保留乙筛选。27038首轮10.8s退出0回收（含类型/测试构建），完整4问题和项目DTO保持，0页面写/异常；project-history-rf.json、stage-rf-project-history.log，探针归档，无修改/永久测试 |
 | RG 本人跨项目刷新 | main.tsx已为keys.myWork单独配置60秒轮询及返回标签刷新，不依赖useProjectRefresh的当前项目；隐藏时沿用查询库暂停策略。既有my-work-journey覆盖两种触发，RA确认草稿独立。仅追踪配置，不改/不新建或重跑测试 |
