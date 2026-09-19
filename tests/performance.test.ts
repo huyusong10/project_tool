@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { defaultAnalyticsLayout, type AnalyticsQueryResponse } from '../src/shared/analytics';
 import type { AuthorizationActor } from '../src/server/authorization';
+import { req, work } from './fixtures/path-network';
 
 let fixture: Awaited<ReturnType<typeof createTestDatabase>>;
 
@@ -157,10 +158,11 @@ describe('看板性能', {timeout: 30000}, () => {
       expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(unchanged);
     }finally{local.close();}
   });
-  it('5000条问题和5000名成员的后台版本检查只读且全部样本低于500毫秒',async()=>{
+  it('5000条问题和5000名成员的后台版本与关系图人员读取均只读且符合预算',async()=>{
     const {projectChangeVersion:readVersion}=await import('../src/server/services/project-change-version');
+    const {refreshPathAssignments}=await import('../src/server/services/path-assignments');
     const projectChangeVersion=(...args:Parameters<typeof readVersion>)=>fixture.run(()=>readVersion(...args));
-    const id=randomUUID(),now=new Date().toISOString();
+    const id=randomUUID(),now=new Date().toISOString(),personIds:string[]=[];
     sqlite.transaction(()=>{
       sqlite.prepare('INSERT INTO projects(id,name,created_at,updated_at)VALUES(?,?,?,?)').run(id,'后台检查性能',now,now);
       sqlite.prepare("INSERT INTO accounts(id,username,normalized_username,password_hash,global_role,status,created_at,updated_at)VALUES('version-bench-admin','version-bench-admin','version-bench-admin','test-only','admin','active',?,?)").run(now,now);
@@ -171,12 +173,18 @@ describe('看板性能', {timeout: 30000}, () => {
       for(let i=0;i<5000;i++){
         insert.run(randomUUID(),id,'问题'+i,now,now);
         const personId=randomUUID(),name='version-member-'+i;
+        personIds.push(personId);
         person.run(personId,name,now,now);account.run(randomUUID(),personId,name,name,now,now);member.run(id,personId,now,now);
       }
     })();
     const actor:AuthorizationActor={type:'user',id:'version-bench-admin',label:'version-bench-admin',accountId:'version-bench-admin',personId:null,globalRole:'admin'};
     const before=sqlite.prepare('SELECT total_changes() AS n').get(),baseline=projectChangeVersion(id,actor);
     measureScenario('project-refresh-5000-issues-and-members',500,()=>projectChangeVersion(id,actor),result=>expect(result).toEqual(baseline));
+    const snapshot={projectId:id,requirements:personIds.map((ownerId,index)=>({...req('assignment-'+index),projectId:id,ownerId})),workItems:personIds.map((ownerId,index)=>({...work('assigned-work-'+index,'assignment-'+index,1),ownerId}))};
+    measureScenario('path-assignments-5000-people',250,()=>{fixture.run(()=>refreshPathAssignments(snapshot));return snapshot;},result=>{
+      expect(result.requirements.every((r,index)=>r.ownerValid&&r.ownerName==='version-member-'+index)).toBe(true);
+      expect(result.workItems.every((w,index)=>w.ownerName==='version-member-'+index&&w.assigneeIds?.[0]===personIds[index])).toBe(true);
+    });
     expect(sqlite.prepare('SELECT total_changes() AS n').get()).toEqual(before);
   });
   it('500个需求和5000个工作项在2秒内完成统计', () => {
