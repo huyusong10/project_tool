@@ -2,19 +2,20 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 PO
+## 恢复入口与当前阶段 PQ
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段PO（待测量）：PM的Tab焦点顺序已验收，PN原服务增量正常。PM窄屏截图select-filter-tab-390.png中“更多筛选”右侧疑似被裁切；焦点与操作已通过，但toBeInViewport只证明部分可见，不能证明按钮/文字完整可读。下一步先读已有progress-filter-keyboard-review.pw.ts和对应旧证据；测量实际按钮/工具栏/视口边界及水平scrollLeft，区分原有横向滚动布局与实际操作问题。没有明确收益则不改，不扩展成工具栏重做。
+2. 当前阶段PQ（性能选题已复核，未测量）：PO筛选按钮完整可见已验收。转向同一需求集中过多工作项时的单项/分页读取。queries.ts workDetails按当前页父需求调用loadWorkItemsByRequirementIds，会装载同需求全部工作/协作/取消历史；是否值得缩小范围必须测量。旧query-profile/query-final只覆盖1000需求×10工作，未覆盖集中分布；当前项目列表51/501/5001×6身份最大3.73ms已有NR证据，不重测。下一步独立数据库10/100/1000同级工作，测readWorkItem、queryWorkItems少量非空/空页，分离整体路径分析与资料装载，核对完整DTO及0写。没有明显收益则不改，不增加缓存/索引体系。
 3. 最新完整验证OZ：999业务/120文件、13性能、26浏览器冒烟，运行时/428边界/完整Lint及按钮规范/类型/生产构建/体积预算均通过，覆盖OZ/OX/OQ。OZ另16导入浏览器和87专项业务通过，无遗留句柄。
-4. 最新产品PM（本提交，1行Tab焦点修复），`3dd3422`（PL），`1512802`（PH）、`fc47d21`（PE）、`f48d23c`（OZ）、`17c9bb7`（OX）、`c06e7fd`（OQ）、`4985552`（OP）、`7e375d0`（OK）、`5dca0b5`（OJ）、`a79fe72`（OD）、`fedbd45`（OC）。PB将40883字节/158行压为25979字节/114行（提交0a8a724），基线/稳定决定/候选逐段比较保持，`record-compaction-pb.json`留存校验；完整前版保存在 `67baff3`；NN及更早详细历史仍在 `cac4ecd`。
+4. 最新产品PO（本提交，筛选工具栏焦点可见），`c82f5b9`（PM），`3dd3422`（PL），`1512802`（PH）、`fc47d21`（PE）、`f48d23c`（OZ）、`17c9bb7`（OX）、`c06e7fd`（OQ）、`4985552`（OP）、`7e375d0`（OK）、`5dca0b5`（OJ）、`a79fe72`（OD）、`fedbd45`（OC）。PB将40883字节/158行压为25979字节/114行（提交0a8a724），基线/稳定决定/候选逐段比较保持，`record-compaction-pb.json`留存校验；完整前版保存在 `67baff3`；NN及更早详细历史仍在 `cac4ecd`。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
-6. 浏览器端口3296，独立数据库/构建；浏览器串行，性能独占。每次浏览器命令设置 `$env:PLAYWRIGHT_PORT='3296'`。PK50161、PM49948/34361均退出0，全部句柄已回收，探针归档，无运行测试。原目录仍仅2处用户修改。
+6. 浏览器端口3296，独立数据库/构建；浏览器串行，性能独占。每次浏览器命令设置 `$env:PLAYWRIGHT_PORT='3296'`。PK50161、PM49948/34361、PO29505/46531/90969/34482/40522均退出0，全部句柄已回收，探针归档，无运行测试。PO开始前3296监听0、测试临时目录0；原目录仍仅2处用户修改。
 
 ## 当前验收基线
 
 | 范围 | 最终证据与边界 |
 |---|---|
+| PO专项验证 | 29505原版测量390窗口按钮右界391/裁切边界375，稳定10帧及开关菜单仍缺16px；640/1280正常。46531注入scroll-padding、scroll-margin及两者均无改善，不保留。焦点时仅滚动工具栏实际子元素后，90969探针/菜单、34482组合筛选/PM双规模共5不同场景通过；40522另验证鼠标点击与真实触摸点击部分可见按钮，打开/关闭成功且右界375。原24次焦点顺序保持，组合筛选/刷新/画布位置保持；项目/特性完整DTO、0写/异常。类型/测试构建/目标Lint/diff通过，390截图已看；filter-visibility-po-original/css-trial/after/complete.json，stage-po-filter-visibility/after/complete及stage-po-filter-regression.log；全部探针归档，无永久测试 |
 | PM专项验证 | 原版76699在1280/390/640×360的6次Tab/Shift+Tab分别错到主页/提交按钮；改后49948的6浏览器通过（2探针+4既有搜索/输入法/菜单场景），34361扩展表单外筛选栏后2探针通过。2/26选项×表单/筛选栏×三尺寸×正反方向24次焦点正确、目标至少在视口、输入/选项/URL/完整项目特性需求DTO保持、0写/异常。类型/测试构建/目标Lint/diff通过；select-tab-pm-original/complete-2/complete-26.json与stage-pm-select-tab-original/after/complete.log。390两截图已看，探针归档，无新永久测试 |
 | PL专项验证 | REST/MCP各验证缺父版本400、过期409、正确200、重复409，拒绝后完整需求/工作/执行历史不变；原版2项仅错误字段名断言失败，改后2探针+26既有业务共28通过。目标Lint/类型/diff通过，仅work-items.ts补缺字段提示，无新永久测试。parent-version-pl-baseline/after.json、stage-pl-parent-version-baseline/after.log，探针归档。夹具首次cookie未初始化失败不算产品问题 |
 | PH专项验证 | 10793原版真实跨年记录10次提示均无年份；81187改后12浏览器（探针+11既有我的工作场景）通过30.8s，10次提示完整日期、1280/390截图已看，个人报表/项目/三需求完整DTO保持，0页面写/异常。类型/测试与正式生产构建/目标Lint/diff/体积检查通过；探针归档，无新永久测试 |
@@ -33,11 +34,12 @@ OZ完整验证覆盖至f48d23c，专项证据见表。原目录仍仅2处用户�
 
 ## 近期产品成果
 
-均已验收，最新完整验证覆盖至f48d23c；PE/PH/PL/PM用专项验收。更早产品成果、失败尝试和精确证据见 `67baff3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
+均已验收，最新完整验证覆盖至f48d23c；PE/PH/PL/PM/PO用专项验收。更早产品成果、失败尝试和精确证据见 `67baff3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
-| PM / 本提交 | 自定义Select关闭Tab弹层后焦点丢失：实际新建需求中Tab跳出到主页，Shift+Tab跳到提交按钮，三尺寸均复现。仅将Tab分支close()改为close(true)，恢复入口焦点后让浏览器沿原顺序移动；24次表单/页面筛选焦点和4既有搜索/菜单场景通过，草稿/选项/URL/完整业务DTO保持。原版及改后证据见专项基线，无新永久测试。早期45162计数全页面option、64181精确getByLabel原生select定位失败，均属探针错误，已修正/回收 |
+| PO / 本提交 | PM窄屏截图发现更多筛选文字不完整，实测右侧裁切16px，CSS滚动边距无效。ProgressFilters加局部onFocusCapture，对工具栏实际子元素调用最近边界scrollIntoView；弹层移到其他DOM位置时不参与。保持原单行横滚布局，无新样式/抽象；390按钮恢复完整、640/1280保持，鼠标/触摸/键盘与组合筛选5场景通过，证据见专项基线 |
+| PM / c82f5b9 | 自定义Select关闭Tab弹层后焦点丢失：实际新建需求中Tab跳出到主页，Shift+Tab跳到提交按钮，三尺寸均复现。仅将Tab分支close()改为close(true)，恢复入口焦点后让浏览器沿原顺序移动；24次表单/页面筛选焦点和4既有搜索/菜单场景通过，草稿/选项/URL/完整业务DTO保持。原版及改后证据见专项基线，无新永久测试。早期45162计数全页面option、64181精确getByLabel原生select定位失败，均属探针错误，已修正/回收 |
 | PL / 3dd3422 | 开始工作并补选负责人时缺expectedRequirementVersion，REST/MCP原版错误提示缺expectedVersion，调用方无法据此补正确字段。仅在既有鉴权后指出父版本字段及读取所属需求的恢复方式，仍走原版本/事务校验；2通道完整原版证据、改后28专项业务、目标Lint/类型/diff通过。parent-version-pl-baseline/after.json与stage-pl-parent-version-baseline/after.log；探针归档，无永久测试 |
 | PH / 1512802 | 我的工作图表先把完整日期截为月日，2025-12-29及2026-01-05悬停也无年份，原版10793实际失败。完成/近期并发两图保留完整日期，仅坐标轴formatter显示月日；只改2处配置，无API/计数改动。81187的12浏览器通过，10次完整日期提示含跨年历史，生产构建/体积/目标Lint通过，截图已看；chart-date-ph-before/after.json与stage-ph-chart-date-before/after.log，探针归档 |
 | PE / fc47d21 | 平台日志同名问题展开后也只显示对象ID，无法读出项目；API已有projectName但页面未使用。对象栏补一行项目名（截断/全文title），展开内容显示完整名称；项目日志保持原显示，无接口/查询改动。原版8272失败证据和改后5浏览器/目标静态检查通过；audit-project-context-pe-before/after.json、stage-pe-audit-before/after/pagination.log，1280/390截图已看，探针归档 |
