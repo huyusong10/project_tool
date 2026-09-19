@@ -7,6 +7,7 @@ import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { chartCategoryColor } from "../chart-theme";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useResourceQuery } from '../use-resource-query';
 import { Copy, GripVertical, Pencil, Plus, RefreshCcw, RotateCcw, Save, Settings2, Trash2, X } from "lucide-react";
 import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useBusinessDate, useProjects, useSession } from "../app-context";
@@ -194,11 +195,9 @@ function PanelEditor({ initial, catalog, range, rangeError, projectId, onClose, 
     && item.unit === measure.unit
     && (!panel.dimension || item.dimensions.includes(panel.dimension))
     && item.visualizations.includes(panel.visualization));
-  const preview = useQuery({
-    queryKey: [...keys.analyticsPreview, projectId, range, panel],
-    queryFn: ({ signal }) => reportingApi.analyticsQuery<AnalyticsQueryResponse>({ signal, method: "POST", readOnly: true, body: jsonBody({ projectId, range, panels: [panel] }) }),
-    enabled: Boolean(projectId) && !rangeError,
-  });
+  const preview = useResourceQuery<AnalyticsQueryResponse>([...keys.analyticsPreview, projectId, range, panel],
+    signal => reportingApi.analyticsQuery<AnalyticsQueryResponse>({ signal, method: "POST", readOnly: true, body: jsonBody({ projectId, range, panels: [panel] }) }),
+    Boolean(projectId) && !rangeError);
   const updateDataset = (nextId: string) => {
     const nextDataset = catalog.datasets.find((item) => item.id === nextId)!;
     const nextMeasure = nextDataset.measures[0];
@@ -283,11 +282,9 @@ export function AnalyticsPage() {
     setEditingPanel(null);
     setResetConfirm(false);
   }, [layoutScope]);
-  const dataQuery = useQuery({
-    queryKey: [...keys.analyticsData, selectedProjectId, range, activeLayout],
-    queryFn: ({ signal }) => reportingApi.analyticsQuery<AnalyticsQueryResponse>({ signal, method: "POST", readOnly: true, body: jsonBody({ projectId: selectedProjectId, range, panels: activeLayout.panels }) }),
-    enabled: Boolean(selectedProjectId) && !rangeError && (!layoutQuery.isLoading || layoutQuery.data !== undefined),
-  });
+  const dataQuery = useResourceQuery<AnalyticsQueryResponse>([...keys.analyticsData, selectedProjectId, range, activeLayout],
+    signal => reportingApi.analyticsQuery<AnalyticsQueryResponse>({ signal, method: "POST", readOnly: true, body: jsonBody({ projectId: selectedProjectId, range, panels: activeLayout.panels }) }),
+    Boolean(selectedProjectId) && !rangeError && (!layoutQuery.isLoading || layoutQuery.data !== undefined));
   usePageScrollPosition(!dataQuery.isLoading && !layoutQuery.isLoading);
   const dataUnavailable = Boolean(dataQuery.error && !dataQuery.data);
   const resultMap = new Map((dataQuery.data?.results || []).map((result) => [result.panelId, result]));
