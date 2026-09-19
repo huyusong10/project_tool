@@ -46,14 +46,14 @@ export function ActionCenterPage() {
       {error && !data ? <section className="panel action-center-list"><EmptyState title="行动项加载失败" detail={error.message} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} /></section> : <>
       {error && data && <div className="warning-banner">行动项刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}
       <section className="action-summary">
-        <article><ListTodo size={19} /><span>全部行动</span><strong>{data?.summary.total || 0}</strong></article>
-        <article className="is-high"><AlertTriangle size={19} /><span>优先处理</span><strong>{data?.summary.high || 0}</strong></article>
-        <article className="is-normal"><CircleAlert size={19} /><span>需要处理</span><strong>{data?.summary.medium || 0}</strong></article>
-        <article><ArrowDown size={19} /><span>资料待补齐</span><strong>{data?.summary.low || 0}</strong></article>
+        <article><ListTodo size={19} /><span>全部行动</span><strong>{data ? data.summary.total : "—"}</strong></article>
+        <article className="is-high"><AlertTriangle size={19} /><span>优先处理</span><strong>{data ? data.summary.high : "—"}</strong></article>
+        <article className="is-normal"><CircleAlert size={19} /><span>需要处理</span><strong>{data ? data.summary.medium : "—"}</strong></article>
+        <article><ArrowDown size={19} /><span>资料待补齐</span><strong>{data ? data.summary.low : "—"}</strong></article>
       </section>
       <section className="panel action-center-list paged-panel">
         <header><div><h2>待处理事项</h2><p>由需求、工作项和问题状态实时推导，处理源数据后自动消失{data?.asOfDate ? ` · 截至 ${data.asOfDate}` : ''}</p></div></header>
-        <FilterBar className="action-center-filters" result={`${data?.total || 0} 项`}>
+        <FilterBar className="action-center-filters" result={data ? `${data.total} 项` : undefined}>
           <select aria-label="处理优先级" value={severity} onChange={(event) => updateFilter('severity', event.target.value)}><option value="">全部处理优先级</option><option value="high">P0 紧急 / P1 高</option><option value="medium">P2 正常</option><option value="low">P3 较低</option></select>
           <select aria-label="行动原因" value={reason} onChange={(event) => updateFilter('reason', event.target.value)}><option value="">全部原因</option>{reasonOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
           <select aria-label="负责人" value={ownerId} onChange={(event) => updateFilter('ownerId', event.target.value)}>

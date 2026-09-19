@@ -668,7 +668,7 @@ textarea {
 }
 
 @media (max-width: 1199px) {
-  .my-work-summary { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .my-work-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .my-work-charts { grid-template-columns: 1fr; }
   .analytics-grid > .analytics-panel-small { grid-column: span 6; }
   .analytics-grid > .analytics-panel-medium, .analytics-grid > .analytics-panel-large { grid-column: span 12; }
@@ -727,7 +727,7 @@ textarea {
   .action-summary article { min-height: 64px; padding: 8px; gap: 6px; grid-template-columns: 28px minmax(0,1fr) auto; }
   .action-summary svg { width: 28px; height: 28px; padding: 5px; }
   .action-summary strong { font-size: 20px; }
-  .action-item { grid-template-columns: 80px minmax(0,1fr) 16px; gap: 6px 10px; padding: 12px; }
+  .action-item { grid-template-columns: 30px minmax(0,1fr) 16px; gap: 6px 10px; padding: 12px; }
   .action-item-main { grid-column: 2; }
   .action-item-meta { grid-column: 2; grid-row: 2; }
   .action-item > svg { grid-column: 3; grid-row: 1 / span 2; }

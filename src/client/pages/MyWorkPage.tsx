@@ -90,7 +90,7 @@ export function MyWorkPage() {
         <div className="my-owned-requirement-grid paged-body" ref={ownedPagination.scrollRef}>
           {ownedPagination.items.map((requirement) => <div className="my-owned-requirement-card" key={requirement.id}><button className="my-owned-requirement-link" onClick={() => navigate(`/requirements/${requirement.id}`)}>
             <div><strong>{requirement.title}</strong></div>
-            <p>{requirement.projectName} · {requirement.plannedStart || "待排期"} → {requirement.plannedEnd || "待排期"}</p>
+            <p>{requirement.projectName}<br /><span>{requirement.plannedStart || "待排期"}</span> → <span>{requirement.plannedEnd || "待排期"}</span></p>
             <footer><span className={`status-pill status-${requirement.status}`}>{requirementStatusLabels[requirement.status as keyof typeof requirementStatusLabels] || requirement.status}</span><span>{requirement.planningReasons.join("、") || requirement.readinessIssues?.join('、') || requirementRiskDisplay(requirement as Requirement).label}</span><b>{requirement.actionCount} 项待处理</b></footer>
           </button>{requirement.executionMode==='direct'&&<DeliveryControls requirement={requirement as Requirement} compact/>}</div>)}
         </div>
