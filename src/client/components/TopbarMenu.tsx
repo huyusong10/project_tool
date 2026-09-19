@@ -10,6 +10,7 @@ function hasMenuContent(children:ReactNode):boolean {
     ? child.type===Fragment?hasMenuContent(child.props.children):true
     : typeof child==='string'&&child.trim().length>0);
 }
+const menuItems=(menu:HTMLDivElement|null)=>Array.from(menu?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')||[]).filter(button=>button.getClientRects().length>0);
 
 /** Navigation menus share anchoring without taking ownership of a business field. */
 export function TopbarMenu({ label = '更多操作', icon = <Ellipsis size={17}/>, children, text, variant = "secondary", disabled = false }: {
@@ -26,7 +27,7 @@ export function TopbarMenu({ label = '更多操作', icon = <Ellipsis size={17}/
   useEffect(() => {
     if (!open) return;
     // AnchoredPopover becomes visible after its position is measured.
-    const frame=requestAnimationFrame(()=>menu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus());
+    const frame=requestAnimationFrame(()=>menuItems(menu.current)[0]?.focus());
     const unregister=runtime?.register({ element: () => menu.current, kind: 'menu', trigger: trigger.current, close: () => setOpen(false) });
     return()=>{cancelAnimationFrame(frame);unregister?.();};
   }, [open, runtime]);
@@ -45,7 +46,7 @@ export function TopbarMenu({ label = '更多操作', icon = <Ellipsis size={17}/
         onKeyDown={event => {
           if (event.defaultPrevented) return;
           if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); close(true); return; }
-          const items = Array.from(menu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') || []);
+          const items = menuItems(menu.current);
           const index = items.indexOf(document.activeElement as HTMLButtonElement);
           const next = event.key === 'ArrowDown' ? (index + 1) % items.length : event.key === 'ArrowUp' ? (index + items.length - 1) % items.length : event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : null;
           if (next !== null) { event.preventDefault(); items[next]?.focus(); }

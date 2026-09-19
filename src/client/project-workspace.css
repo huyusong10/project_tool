@@ -83,11 +83,12 @@
 .outline-table tr.drop-placement td{background:var(--accent-soft);box-shadow:inset 0 2px var(--accent),inset 0 -2px var(--accent)}
 .outline-table tr.drop-before td{box-shadow:inset 0 3px var(--accent)}.outline-table tr.drop-after td{box-shadow:inset 0 -3px var(--accent)}
 .outline-empty{padding:40px 20px;text-align:center;color:var(--text-muted);font-size:13px}
-.outline-selection,.outline-notice{position:absolute;z-index:18;display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg-surface);box-shadow:0 6px 28px #17223822;font-size:12px}
-.outline-selection{bottom:16px;left:50%;transform:translateX(-50%);max-width:calc(100% - 32px);box-sizing:border-box;min-height:50px}
+.outline-action-stack{position:absolute;bottom:16px;left:16px;right:16px;z-index:18;display:flex;flex-direction:column-reverse;align-items:center;gap:12px;pointer-events:none}
+.outline-selection,.outline-notice{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg-surface);box-shadow:0 6px 28px #17223822;font-size:12px;pointer-events:auto}
+.outline-selection{max-width:100%;box-sizing:border-box;min-height:50px}
 .outline-selection>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:40px;max-width:200px;padding:0 4px}
-.outline-selection>.ghost-button{height:32px;min-height:32px;width:80px;padding:0 8px;font-size:12px;flex:none}.outline-selection .topbar-icon{height:32px;min-height:32px;width:32px;padding:0;box-shadow:none;border:0}
-.outline-notice{bottom:16px;right:16px;max-width:min(620px,calc(100% - 32px));box-sizing:border-box}.workspace-outline:has(.outline-selection) .outline-notice{bottom:80px}
+.outline-selection>.ghost-button{flex:none}.outline-order-menu{display:none!important}
+.outline-notice{align-self:flex-end;max-width:min(620px,100%);box-sizing:border-box}
 .outline-notice>span{min-width:0;overflow-wrap:anywhere;line-height:1.5}.outline-notice .ghost-button{height:32px;min-height:32px;white-space:nowrap;flex:none;padding:0 10px;font-size:12px}.outline-notice [role=alert]{color:var(--danger)}
 .workspace-import{height:100%;overflow:auto;padding:16px 24px}
 .unified-workspace .text-button{appearance:none;border:0;background:transparent;color:var(--text-primary);font:inherit;padding:3px 0;cursor:pointer;line-height:1.5}
@@ -102,12 +103,17 @@
  .outline-actions{padding-inline:10px;gap:8px;height:52px;min-height:52px}.outline-actions input{flex:1;width:100%}.outline-actions>select{width:110px}
  .outline-caption{padding-inline:10px}.outline-help{max-width:180px}.outline-table{min-width:670px}.outline-status-column{width:144px}.outline-date-column{width:112px}.outline-menu-column{width:42px}
  .outline-table td:last-child,.outline-table th:last-child{position:sticky;right:0;padding:0 5px;z-index:2;border-left:1px solid var(--border)}.outline-table th:last-child{z-index:4}
- .outline-selection{gap:4px;padding:6px}.outline-selection>span{max-width:90px;font-size:11px}.outline-selection>.ghost-button{width:68px}
+ .outline-selection{gap:4px;padding:6px}.outline-selection>span{max-width:90px;font-size:11px}
  .outline-row-actions>.topbar-menu-trigger,.outline-drag,.workspace-enter{opacity:1}
  .workspace-overview-content{grid-template-columns:1fr;overflow:visible;gap:24px}.workspace-overview-dialog{overflow:auto;gap:20px}.overview-dialog-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.overview-dialog-summary>span{padding:12px}.overview-dialog-summary strong{font-size:20px}
  .unified-workspace-body>.workspace-object-inspector{position:fixed;inset:0;width:100vw;height:100dvh}
 }
 @media(pointer:coarse){.outline-row-actions>.topbar-menu-trigger,.outline-drag,.workspace-enter{opacity:1}}
+@media(max-width:540px){
+ .outline-selection{flex-wrap:wrap;justify-content:center}.outline-selection>span{flex:1 0 100%;max-width:none;white-space:normal;text-align:center;overflow-wrap:anywhere}
+ .outline-selection .outline-order-action{display:none!important}.outline-order-menu{display:flex!important}
+ .outline-scroll{scroll-padding-bottom:128px;padding-bottom:124px}
+}
 
 }
 
