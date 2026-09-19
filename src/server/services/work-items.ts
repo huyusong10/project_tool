@@ -202,6 +202,7 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'cancel', inpu
   const assigning=action==='start'&&(input.ownerId!==undefined||input.requirementOwnerId!==undefined);
   if(assigning){
     assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor),id);
+    if(input.expectedRequirementVersion===undefined)fail('补选负责人时缺少expectedRequirementVersion，请读取所属需求的最新版本后重试');
     assertExpectedVersion({expectedVersion:input.expectedRequirementVersion},parentRequirement.version);
     if(parentRequirement.ownerId&&parentRequirement.ownerValid&&requirementStartOwner!==parentRequirement.ownerId)fail('需求负责人已指定，请刷新后开始');
     if(current.ownerId&&startOwner!==current.ownerId)fail('工作项负责人已指定，请刷新后开始');
