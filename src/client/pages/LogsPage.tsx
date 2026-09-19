@@ -86,10 +86,11 @@ export function LogsPage() {
           {data?.items.map((item) => <div key={item.id}>
             <span>{new Date(item.createdAt).toLocaleString("zh-CN", { timeZone: 'Asia/Shanghai' })}</span>
             <span title={item.actorType === "token" && item.tokenName ? `MCP Token：${item.tokenName}` : undefined}>{item.actorType === "system" ? "系统" : item.actorName || "已删除用户"}{item.actorType === "token" && ` · MCP${item.tokenName ? `（${item.tokenName}）` : ""}`}</span>
-            <span>{auditEntityLabels[item.entityType] || item.entityType}</span>
+            <span>{auditEntityLabels[item.entityType] || item.entityType}{admin && item.projectName && <small className="audit-project-name" title={item.projectName}>{item.projectName}</small>}</span>
             <span>{auditActionLabels[item.action] || item.action}</span>
             <details className="audit-content">
               <summary title="展开或收起操作内容">{item.summary}</summary>
+              {admin && item.projectName && <p className="audit-project-context">项目：{item.projectName}</p>}
               <p>{item.summary}</p>
               {item.entityId && <small>对象 ID：{item.entityId}</small>}
             </details>
