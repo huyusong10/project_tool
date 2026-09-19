@@ -1,5 +1,5 @@
 import { Button } from './Button';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { CheckCircle2, CircleAlert, Info, X } from "lucide-react";
 
@@ -40,6 +40,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const nextId = useRef(0);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  const region = useRef<HTMLDivElement>(null);
+  const newestId = items.at(-1)?.id;
+
+  useLayoutEffect(() => {
+    if (region.current) region.current.scrollTop = region.current.scrollHeight;
+  }, [newestId]);
 
   const dismiss = useCallback((id: number) => {
     const timer = timers.current.get(id);
@@ -70,7 +76,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       {typeof document === "undefined" ? null : createPortal(
-        <div className="toast-region" aria-label="操作反馈">
+        <div ref={region} className="toast-region" aria-label="操作反馈">
           {items.map((item) => <ToastCard key={item.id} item={item} onDismiss={dismiss} />)}
         </div>,
         document.body,

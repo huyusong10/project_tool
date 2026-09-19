@@ -5,18 +5,19 @@
 ## 恢复入口与当前阶段 RK
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段RK16（继续用户优先目标：全面整理UI）：RK1—RK15已验收。RK15横屏/低高度24状态、138次焦点均正常，无产品修改。下一轮检查消息反馈和确认弹窗的长文本、按钮排列；近期正常高度/横屏表单与主题已覆盖，降低优先级。
+2. 当前阶段RK17（继续用户优先目标：全面整理UI）：RK1—RK16已验收。下一轮检查清单批量选择后的操作栏和密集行对齐，近期普通表单/低高度弹窗/通知/主题降低优先级。导出影响检查确认MCP SVG独立于UI CSS，最近修改dc98ee2，既有ON/RB及mcp-graph已覆盖，当前无需重复。
 3. 最新完整验证QU覆盖至8c67902：1002业务/121文件（45.81s）、13性能（18.81s）、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。5429首轮退出0、已回收；stage-qu-verify.log、stage-qu-performance-samples.json、stage-qu-build-budget.json。
-4. 最新产品1fbbbbb（RK14导入配色和下拉选中可读性）；此前3a5112c（RK13顶部与导航）、e065c86（RK12日常待办）、6745208（RK11问题详情）、e366874（RK10项目成员布局）、43fb1eb（RK9日志与流程列表）、2835276（RK8设置页密集布局）、66dce6e（RK7图内查找）、6229dd3（RK6环形图图例）、849ff88（RK5加载反馈和提示间距）、c3ac452（RK4账号列和长项目名）、3f5dfb1（RK3资料卡和表单焦点）、f5b3323（RK2筛选和密集导入）、4f4c1e5（RK1尺寸与间距）、044c619（RJ新建工作项失效协作者提示）、190bf36（RE创建日志省略空对象），此前5a4ec09（RC归档同名流程统计）、7f71ac3（QZ问题状态术语）、7ffc3b2（QW流程里程碑定位）、8c67902（QT同名需求）、a4c6c6b（QS图例）、428b87b（QO认证反馈）、05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
+4. 最新产品RK16（本次提交，通知堆叠可滚动）；此前1fbbbbb（RK14主题颜色）、3a5112c（RK13顶部与导航）、e065c86（RK12日常待办）、6745208（RK11问题详情）、e366874（RK10项目成员布局）、43fb1eb（RK9日志与流程列表）、2835276（RK8设置页密集布局）、66dce6e（RK7图内查找）、6229dd3（RK6环形图图例）、849ff88（RK5加载反馈和提示间距）、c3ac452（RK4账号列和长项目名）、3f5dfb1（RK3资料卡和表单焦点）、f5b3323（RK2筛选和密集导入）、4f4c1e5（RK1尺寸与间距）、044c619（RJ新建工作项失效协作者提示）、190bf36（RE创建日志省略空对象），此前5a4ec09（RC归档同名流程统计）、7f71ac3（QZ问题状态术语）、7ffc3b2（QW流程里程碑定位）、8c67902（QT同名需求）、a4c6c6b（QS图例）、428b87b（QO认证反馈）、05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
-6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。RK15的17420共1临时测试25.2s退出0，24状态/138次焦点0越界遮挡；目标Lint/测试启动类型构建通过，无产品改动不重复生产构建。77267错误选择器进程已停止且退出1回收，证据见ui-rk15-audit.json。
+6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。RK16的77831共1既有+1临时20.8s退出0；12截图/9几何样本与滚轮、关闭、自动消失、5条上限通过。目标Lint/按钮CSS/类型/生产构建/预算通过，全部句柄回收。46899菜单聚焦竞争的探针纠错见ui-rk16-audit.json，不记产品缺陷。
 
-RK16恢复入口：components/Toast.tsx、application-feedback.css、Modal.tsx及inline-edit/controls.css；Toast最多5条、错误5.2秒/其他3.4秒，当前容器无高度限制。先走真实操作入口确认长消息是否可达，不注入组件制造问题；确认弹窗已有overflow-wrap。主目录不动；探针归档 `.preview/qa/continuous-goal/`，禁止递归扫描证据根（含历史node_modules联接）。
+RK17恢复入口：components/WorkspaceOutline.tsx、CanvasDraftDetails.tsx、ManagementForms.tsx及workspace-actions-groups.pw.ts。先核实当前批量入口；之前RK3主要覆盖归属表单，RK7覆盖图查找，LR已测1000需求/5000工作性能且无简单方案，勿重做规模性能。主目录不动；探针归档 `.preview/qa/continuous-goal/`，禁止递归扫描证据根（含历史node_modules联接）。
 
 ## 当前验收基线
 
 | 范围 | 最终证据与边界 |
 |---|---|
+| RK16 消息反馈 | 横屏5条错误通知高452.5px、首条及关闭按钮y=-80.5；通知区现限定视口内，滚动查看旧消息，新消息定位末项。844x390容器y14/高362/scrollTop99，最后一条底371.5。1280x800/390x844/844x390共12图，77831的1既有+1临时20.8s通过；滚轮回首、第6条保持5条并定位新消息、关闭旧项、5.2秒自动消失通过，0越界/异常/额外业务写（21次mock退出POST）。长确认框和单条长串无需改；代表前后图已看。目标Lint/按钮CSS/类型/构建/预算通过（CSS343.62KB）。仅Toast和反馈CSS，无永久测试；ui-rk16-audit.json、ui-rk16-before/accepted、stage-rk16-* |
 | RK15 横屏弹窗 | 844x390、667x375、1024x600，修改密码/本地校验错误、新问题/负责人菜单、新需求/特性菜单、需求详情/资料编辑共24状态、138次Tab。17420临时测试25.2s通过；完整焦点边界与中心命中0遮挡，弹窗/菜单0越界，0写/异常/根级溢出，菜单Esc归还焦点、嵌套编辑返回正常。代表性6图已看，当前无需产品修改；目标Lint及测试启动类型构建通过。ui-rk15-audit.json、ui-rk15-baseline和stage-rk15-*；77267选错角色导致主动停止的探针不计产品缺陷，无永久测试 |
 | RK14 主题颜色 | 导入预览/操作栏/合并选择原引用未定义变量回落白底，深色对比1.14—2.78；改既有表面色后6.52—13.26，预览边线随主题。Select选中项与勾选改accent-ink，工业黄黑1.45→5.28、杰瑞橙4.40→6.55。真实隔离1需求2工作，7主题×1280/390：42导入图+14菜单图；99567共4测试21.0s、59842共4测试17.6s通过，含真实合并/恢复/链接保存和键盘。0视觉探针业务写/异常/根级溢出，菜单边界与Esc焦点、草稿和预览保持；代表性前后图已看。目标Lint/按钮CSS/类型/构建/预算通过。2份CSS，无永久测试；局部颜色测量不等同全系统对比标准认证，经典既有4.40/4.48保持。ui-rk14-audit.json、ui-rk14-accepted/select-accepted及stage-rk14-* |
 | RK13 顶部与导航 | 无操作工具栏紧凑布局88→56px、宽屏撤掉空520px列；末级面包屑优先保留，390长项目名下问题跟踪完整。访问错误按钮加8px行列间距；初稿看板慢加载跳高32px已补动作占位，加载前后边界相同。真实隔离夹具，长名与观察者UI响应覆盖；4宽度1280/1024/760/390共55最终状态，另慢加载4图。42304共2测试37.1s、42151共3测试24.1s通过；0根级溢出/操作越界/页面异常/UI业务写，analytics POST为读。菜单键盘与Esc、切换账号、编辑取消高度、内部返回通过；代表性图已看。目标Lint/按钮CSS/类型/生产构建/预算通过（CSS343.48KB）。ui-rk13-audit.json、ui-rk13-final/loading-accepted及stage-rk13-*；5产品文件，无永久测试 |
@@ -36,7 +37,7 @@ RK16恢复入口：components/Toast.tsx、application-feedback.css、Modal.tsx�
 | QZ文案验证 | 问题状态为已解决，原筛选/统计/说明却用闭环。6文件10处纯文字统一为解决，详情提示引用现有“重新打开”按钮。未改变操作/指标ID、统计口径或已存个人标题；保留既有测试中的旧自定义标题验证兼容。98039最终domain/issue-lifecycle共52测试/2文件2.73s，目标Lint/diff/类型/正式构建/预算通过，无新增测试或浏览器场景。stage-qz-terminology-tests-final.log、stage-qz-build-final.log、stage-qz-build-budget-final.json |
 | QW专项验证 | PW已覆盖普通工作项10/50/200元素定位，本轮真实122工作日、2工作/3里程碑补首尾里程碑键盘操作。73966原版完整流程仅末尾定位断言失败：1280/390选末尾后甘特scrollLeft仍0，选中标签在可见区外；焦点/关闭及DTO保持均正常。TemplatePreview补查现有data-milestone-id所属标签，复用滚动逻辑，改4行；41531的6浏览器16.3s通过，末尾scrollLeft739/1045，回首项归0，四次标签均可见、外层滚动保持、选择焦点和Escape入口焦点保持，0写/异常且流程/项目完整DTO保持。含既有列表/长名/长工期/草稿预览，类型/目标Lint/diff/生产构建/预算通过，1280原版及390改后图已看；preview-keyboard-qw-original/after.json、stage-qw-preview-keyboard-baseline/after.log、stage-qw-build.log及build-budget.json。探针归档，无永久测试；34682相对has选择器错误属探针问题 |
 | QU完整验证 | 5429首轮verify退出0、已回收，覆盖8c67902及QS/QT：1002业务/121文件45.81s、13性能18.81s、26浏览器冒烟1.2min，运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。stage-qu-verify.log、stage-qu-performance-samples.json、stage-qu-build-budget.json |
-| 生产体积 | RK14最终正式构建主JS935.26KB、CSS343.48KB、ELK1595.33KB；服务端app879.68KB，预算通过。stage-rk14-build.log、stage-rk14-build-budget.log |
+| 生产体积 | RK16最终正式构建主JS935.26KB、CSS343.62KB、ELK1595.33KB；服务端app879.68KB，预算通过。stage-rk16-build.log、stage-rk16-build-budget.log |
 | 原服务增量 | 最新游标QV：2026-09-19T09:19:51.510Z，较QL约46分钟；17日志新增0字节/0事件，无错误/读取失败，3210健康200。runtime-log-review-qv.mjs/json、stage-qv-runtime.log。连续QL/QV均无新增，降低优先级，等待实际运行变化或更长间隔，不短间隔轮询 |
 | 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；QV按修改时间取最新两份备份，元数据与QL/PN一致，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-qv-listing.json` |
 | 依赖证据 | QD于2026-09-19T07:47:17—21Z查询npm官方registry，生产范围143依赖、0已知漏洞，退出0；锁SHA256前后相同32A55528…C796F，最后提交06146c4。stage-qd-audit-official.json及metadata.json；未升级依赖 |
