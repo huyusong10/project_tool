@@ -67,7 +67,12 @@ it('网页与 MCP 特性图一致；规划和资料修改不改变执行分析�
   const response=await mcpRequest(address,token,'get_path_graph',{projectId:id,view:'features'});const body=JSON.parse(response.body.startsWith('event:')?response.body.split('\n').find(line=>line.startsWith('data: '))!.slice(6):response.body);expect(body.result?.isError,JSON.stringify(body)).not.toBe(true);expect(JSON.parse(body.result.content[0].text)).toEqual(rest.json());
   const call=async(name:string,args:Record<string,unknown>)=>{const response=await mcpRequest(address,token,name,{projectId:id,...args});const body=JSON.parse(response.body.startsWith('event:')?response.body.split('\n').find(line=>line.startsWith('data: '))!.slice(6):response.body);expect(body.result?.isError,JSON.stringify(body)).not.toBe(true);return JSON.parse(body.result.content[0].text);};
   expect(await call('list_feature_relations',{})).toEqual((await request('GET',base+'/feature-relations')).json());
-  expect(await call('get_feature_requirements',{featureId:a.id,state:'archived'})).toEqual((await request('GET',base+'/features/'+a.id+'/requirements?state=archived')).json());
+  for (const [state,page] of [['current',1],['current',2],['archived',1]] as const) {
+    const http=await request('GET',base+'/features/'+a.id+'/requirements?state='+state+'&page='+page+'&pageSize=1');
+    expect(http.statusCode,http.body).toBe(200);
+    expect(http.json().items).toHaveLength(state==='current'&&page===1?1:0);
+    expect(await call('get_feature_requirements',{featureId:a.id,state,page,pageSize:1})).toEqual(http.json());
+  }
   const edge=relation.json<FeatureRelation>();const updated=await call('save_feature_relation',{id:edge.id,expectedVersion:edge.version,sourceFeatureId:a.id,targetFeatureId:b.id,note:'MCP 更新说明'});
   expect((await request('GET',base+'/feature-relations')).json()[0]).toEqual(updated);
   const changes={add:[],remove:[],estimates:[],featureRelations:[{op:'update',id:updated.id,expectedVersion:updated.version,note:'统一批次说明'}],layouts:[{scope:'features',direction:'right',expectedVersion:0,positions:{['feature:'+a.id]:{x:80,y:120}}}]};

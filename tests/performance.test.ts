@@ -62,6 +62,43 @@ afterAll(() => {
 });
 
 describe('看板性能', {timeout: 30000}, () => {
+  it('特性需求分页不受5000个其他需求和50000个工作项拖慢，全部样本低于100毫秒', async () => {
+    const local = await createTestDatabase(), db = local.context.sqlite;
+    const { readFeatureRequirements } = await import('../src/server/services/features');
+    const now = '2026-09-19T00:00:00.000Z';
+    const admin = db.prepare("SELECT id FROM accounts WHERE normalized_username='admin'").get() as { id: string };
+    const actor: AuthorizationActor = { type: 'user', id: admin.id, accountId: admin.id, personId: null, globalRole: 'admin', label: '分页性能' };
+    try {
+      const requirement = db.prepare("INSERT INTO requirements(id,project_id,feature_id,title,status,execution_mode,created_at,updated_at)VALUES(?,'feature-page',?,?,'in_progress','work_items',?,?)");
+      const work = db.prepare("INSERT INTO work_items(id,requirement_id,title,status,progress,work_stage,duration_days,actual_start,created_at,updated_at)VALUES(?,?,?,'in_progress',30,'development',3,'2026-09-16',?,?)");
+      db.transaction(() => {
+        db.prepare('INSERT INTO projects(id,name,created_at,updated_at)VALUES(?,?,?,?)').run('feature-page', '特性分页', now, now);
+        db.prepare("INSERT INTO features(id,project_id,name,created_at,updated_at)VALUES('target','feature-page','目标',?,?)").run(now, now);
+        for (let index = 0; index < 30; index++) {
+          const id = 'target-' + String(index).padStart(2, '0');
+          requirement.run(id, 'target', id, now, now); work.run(id + '-work', id, '当前开发', now, now);
+        }
+      })();
+      const read = (page: number) => local.run(() => readFeatureRequirements('feature-page', 'target', 'current', page, 20, actor));
+      const baseline = read(1), empty = read(50);
+      expect(baseline).toMatchObject({ total: 30, page: 1, pageSize: 20, pages: 2 });
+      expect(baseline.items).toHaveLength(20);
+      expect(baseline.items.every(item => item.status === 'in_progress' && item.executionStage?.key === 'development')).toBe(true);
+      expect(empty.items).toEqual([]);
+      db.transaction(() => {
+        for (let index = 0; index < 5000; index++) {
+          const id = 'noise-' + index;
+          requirement.run(id, null, id, now, now);
+          for (let item = 0; item < 10; item++) work.run(id + '-work-' + item, id, '其他需求工作', now, now);
+        }
+      })();
+      const unchanged = db.prepare('SELECT total_changes() AS n').get();
+      measureScenario('feature-page-with-5000-other-requirements', 100, () => read(1), result => expect(result).toEqual(baseline));
+      measureScenario('feature-empty-page-with-5000-other-requirements', 100, () => read(50), result => expect(result).toEqual(empty));
+      expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(unchanged);
+    } finally { local.close(); }
+  });
+
   it('5000人候选查询保留搜索和可用状态，全部样本低于250毫秒',async()=>{
     const local=await createTestDatabase(),db=local.context.sqlite;
     const {listPeopleCandidates}=await import('../src/server/services/people');

@@ -93,7 +93,7 @@ export function readFeatureRequirements(projectId:string,id:string,state:'curren
     const params=id==='unassigned'?[projectId]:[projectId,id];
     const total=(getDatabaseContext().sqlite.prepare('SELECT COUNT(*) AS count FROM requirements WHERE '+where).get(...params) as {count:number}).count;
     const items=getDatabaseContext().sqlite.prepare('SELECT id,title,status,version,feature_id AS featureId,deleted_at AS deletedAt,actual_end AS actualEnd FROM requirements WHERE '+where+' ORDER BY updated_at DESC,id LIMIT ? OFFSET ?').all(...params,pageSize,(page-1)*pageSize) as FeatureRequirement[];
-    const facts=new Map(phaseRequirementFacts(projectId).map(r=>[r.id,r]));for(const item of items){const fact=facts.get(item.id);if(fact){item.status=fact.status;item.executionStage=fact.executionStage;}}
+    const facts=new Map(phaseRequirementFacts(projectId,undefined,items.map(item=>item.id)).map(r=>[r.id,r]));for(const item of items){const fact=facts.get(item.id);if(fact){item.status=fact.status;item.executionStage=fact.executionStage;}}
     return {items,total,page,pageSize,pages:Math.max(1,Math.ceil(total/pageSize))};
   })();
 }
