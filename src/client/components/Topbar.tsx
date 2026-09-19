@@ -18,9 +18,11 @@ import { useSynchronousPendingLock } from "./Modal";
 import { useToast } from "./Toast";
 import { TopbarMenu } from "./TopbarMenu";
 import type { NavIcon, PageScope } from "../routes";
+import { isAdmin } from '../permissions';
 
 function ProjectSwitcher({ ready }: { ready: boolean }) {
   const { projects, selectedProjectId, changeProject } = useProjects();
+  const { session } = useSession();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -61,7 +63,7 @@ function ProjectSwitcher({ ready }: { ready: boolean }) {
           </button>)}
         </div>
       </AnchoredPopover>
-    </> : <span className="project-switcher-empty"><span className="project-dot" />尚未创建项目</span>}
+    </> : <span className="project-switcher-empty"><span className="project-dot" />{isAdmin(session)?'尚未创建项目':'暂无可访问项目'}</span>}
   </div>;
 }
 
