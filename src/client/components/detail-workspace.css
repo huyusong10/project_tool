@@ -6,7 +6,7 @@
 .detail-workspace-tabs { display: flex; flex: none; min-height: 44px; gap: 4px; padding: 0 12px; overflow-x: auto; border-bottom: 1px solid var(--border); scrollbar-width: thin; }
 .detail-workspace-tabs button { flex: 1 0 auto; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 12px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; white-space: nowrap; }
 .detail-workspace-tabs button[aria-selected=true] { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
-.detail-workspace-panel { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 16px; }
+.detail-workspace-panel { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scroll-padding-block: 12px 84px; padding: 16px; }
 .detail-workspace-panel[hidden], .detail-action-host[hidden] { display: none; }
 .detail-action-host { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
 .detail-action-host > .modal-backdrop { pointer-events: auto; }
