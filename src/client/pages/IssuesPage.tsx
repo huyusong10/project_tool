@@ -175,7 +175,7 @@ function IssueDetail({
     <header className="issue-settings-summary">
       <div>
         <div className="issue-detail-badges"><IssueStatusControl issue={issue} canManage={canEditIssue} disabled={pending} onPendingChange={onPendingChange} compact /><StatusBadge kind="priority" value={issue.priority} />{issue.overdue && <span className="issue-overdue-badge">已逾期</span>}</div>
-        <h3>{issue.title}</h3>
+        <h3 title={issue.title}>{issue.title}</h3>
         <p>{issueScope(issue)} · {issue.ownerName || "未分配负责人"}</p>
       </div>
       <div className="issue-settings-current-progress"><span>当前进度</span><div><i><b style={{ width: `${issue.progress}%` }} /></i><strong>{issue.progress}%</strong></div><small>由状态命令与追加进展共同维护</small></div>
@@ -184,7 +184,7 @@ function IssueDetail({
   </>;
   const basic = <DetailCard title="问题资料">
       {!canEditIssue ? <div className="issue-readonly-detail">
-        <dl><div><dt>问题影响</dt><dd>{issue.impact || "暂无影响说明"}</dd></div><div><dt>关联范围</dt><dd>{issueScope(issue)}</dd></div><div><dt>负责人</dt><dd>{issue.ownerName || "未分配"}</dd></div><div><dt>提出人</dt><dd>{issue.reporter || "未指定"}</dd></div><div><dt>发现日期</dt><dd>{issue.discoveredAt}</dd></div><div><dt>下次核对</dt><dd>{issue.nextReviewAt||"未设置"}</dd></div><div><dt>目标日期</dt><dd>{issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"}</dd></div>{issue.status === "resolved" && <div><dt>解决日期</dt><dd>{issue.resolvedAt || "未记录"}</dd></div>}</dl>
+        <dl><div><dt>问题标题</dt><dd>{issue.title}</dd></div><div><dt>问题影响</dt><dd>{issue.impact || "暂无影响说明"}</dd></div><div><dt>关联范围</dt><dd>{issueScope(issue)}</dd></div><div><dt>负责人</dt><dd>{issue.ownerName || "未分配"}</dd></div><div><dt>提出人</dt><dd>{issue.reporter || "未指定"}</dd></div><div><dt>发现日期</dt><dd>{issue.discoveredAt}</dd></div><div><dt>下次核对</dt><dd>{issue.nextReviewAt||"未设置"}</dd></div><div><dt>目标日期</dt><dd>{issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"}</dd></div>{issue.status === "resolved" && <div><dt>解决日期</dt><dd>{issue.resolvedAt || "未记录"}</dd></div>}</dl>
       </div> : <IssueForm issue={issue} projectId={projectId} people={people} requirements={requirements} canManage defaultReporter={defaultReporter} autoFocusTitle={tab === "basic"} onClose={onClose} busy={pending} onPendingChange={onPendingChange} />}
   </DetailCard>;
   const updates = <>
