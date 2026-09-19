@@ -2,6 +2,71 @@ import {expect,test,type APIRequestContext,type Page} from '@playwright/test';
 import type {Requirement} from '../../src/client/types';
 
 test.use({actionTimeout:10_000});
+
+test('偏好存储不可访问时跨页面、新标签和刷新保持项目范围', async ({ page }, info) => {
+  const post = async (url: string, data: object) => {
+    const response = await page.request.post(url, { data });
+    expect(response.ok(), await response.text()).toBe(true);
+    return response.json();
+  };
+  await post('/api/login', { username: 'admin', password: '41_xc7q0qOjo4Inw!' });
+  const a = await post('/api/projects', { name: '导航范围甲 ' + Date.now() });
+  const b = await post('/api/projects', { name: '导航范围乙 ' + Date.now() });
+  const ma = await post('/api/people', { projectId: a.id, name: '范围甲成员 ' + Date.now() });
+  const mb = await post('/api/people', { projectId: b.id, name: '范围乙成员 ' + Date.now() });
+  const before = await (await page.request.get('/api/projects')).json();
+  const active = before[0].id === a.id ? b : a, other = active.id === a.id ? b : a;
+  const members: Record<string, string> = { [a.id]: ma.name, [b.id]: mb.name };
+  const errors: string[] = [], writes: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.context().on('page', tab => tab.on('pageerror', error => errors.push(error.message)));
+  page.context().on('request', request => {
+    if (new URL(request.url()).pathname.startsWith('/api/') && !['GET', 'HEAD'].includes(request.method())) writes.push(request.url());
+  });
+  await page.context().addInitScript(() => {
+    for (const key of ['localStorage', 'sessionStorage']) Object.defineProperty(window, key, {
+      configurable: true,
+      get: () => { throw new DOMException('Preference storage is unavailable', 'SecurityError'); },
+    });
+  });
+  const expectProject = async (tab: Page, project: { id: string; name: string }, excluded: { id: string }) => {
+    await expect(tab.locator('.project-switcher-name')).toHaveText(project.name);
+    await expect(tab.getByText(members[project.id], { exact: true })).toBeVisible();
+    await expect(tab.getByText(members[excluded.id], { exact: true })).toHaveCount(0);
+    expect(new URL(tab.url()).searchParams.get('projectId')).toBe(project.id);
+  };
+  await page.goto(`/actions?projectId=${active.id}`);
+  const peopleRead = page.waitForResponse(response => new URL(response.url()).pathname === '/api/people');
+  await page.getByRole('link', { name: '人员矩阵', exact: true }).click();
+  expect(new URL((await peopleRead).url()).searchParams.get('projectId')).toBe(active.id);
+  await expectProject(page, active, other);
+  await page.screenshot({ path: info.outputPath('storage-project-scope-1280.png'), animations: 'disabled' });
+  await page.reload();
+  await expectProject(page, active, other);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('link', { name: '个人设置', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'MCP 接入', exact: true })).toBeVisible();
+  const target = await page.getByRole('link', { name: '人员矩阵', exact: true }).getAttribute('href');
+  expect(new URL(target!, page.url()).searchParams.get('projectId')).toBe(active.id);
+  const second = await page.context().newPage();
+  try {
+    await second.goto(target!);
+    await expectProject(second, active, other);
+  } finally { await second.close(); }
+  await page.getByRole('link', { name: '人员矩阵', exact: true }).click();
+  await expectProject(page, active, other);
+  await page.screenshot({ path: info.outputPath('storage-project-scope-390.png'), animations: 'disabled' });
+  await page.locator('.project-switcher-button').click();
+  await page.getByRole('option', { name: other.name, exact: true }).click();
+  await expectProject(page, other, active);
+  await page.getByRole('link', { name: '个人设置', exact: true }).click();
+  await page.getByRole('link', { name: '人员矩阵', exact: true }).click();
+  await expectProject(page, other, active);
+  expect(await (await page.request.get('/api/projects')).json()).toEqual(before);
+  expect(writes).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test('返回标签时更新登录身份，历史导航不恢复旧私有项目',async({page,browser,baseURL},info)=>{
   test.setTimeout(90_000);
   const admin=await browser.newContext({baseURL}),errors:string[]=[],writes:string[]=[],report:Record<string,unknown>={};
