@@ -358,7 +358,7 @@ export function IssueUpdateForm({ issue, canSetProgress, canResolve = false, onP
   const warning = resolved ? "问题已解决，不能追加进展；已保留本次输入。"
     : decreasing && !canResolve ? "降低完成度需要项目经理更正。已保留本次输入。"
     : resolving && !canResolve ? "解决问题需要项目经理权限。已保留本次输入。" : null;
-  if (resolved && !editor.dirty) return <p className="issue-settings-resolved-note"><CheckCircle2 size={17} />问题已闭环并锁定。如需继续处理，请先执行“重开”。</p>;
+  if (resolved && !editor.dirty) return <p className="issue-settings-resolved-note"><CheckCircle2 size={17} />问题已解决。如需继续处理，请先选择“重新打开”。</p>;
   const blocked = Boolean(warning || editor.changed || editor.needsRefresh || permissionChanged);
   return <form className="issue-update-form" onSubmit={(event) => {
     event.preventDefault();

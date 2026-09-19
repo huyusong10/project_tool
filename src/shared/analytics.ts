@@ -142,10 +142,10 @@ export const analyticsCatalog: AnalyticsCatalog = {
       measures: [
         { id: "count", label: "新增问题", unit: "count", dimensions: ["week", "status", "priority", "scope", "owner"], visualizations: ["kpi", ...groupedVisualizations] },
         { id: "active_count", label: "活跃问题", unit: "count", dimensions: ["status", "priority", "scope", "owner"], visualizations: snapshotVisualizations },
-        { id: "resolved_count", label: "闭环问题", unit: "count", dimensions: ["week", "priority", "scope", "owner"], visualizations: ["kpi", ...groupedVisualizations] },
-        { id: "closure_rate", label: "问题闭环率", unit: "percent", dimensions: ["priority", "scope", "owner"], visualizations: snapshotVisualizations },
+        { id: "resolved_count", label: "已解决问题", unit: "count", dimensions: ["week", "priority", "scope", "owner"], visualizations: ["kpi", ...groupedVisualizations] },
+        { id: "closure_rate", label: "问题解决率", unit: "percent", dimensions: ["priority", "scope", "owner"], visualizations: snapshotVisualizations },
         { id: "overdue_count", label: "逾期问题", unit: "count", dimensions: ["priority", "scope", "owner"], visualizations: snapshotVisualizations },
-        { id: "average_resolution_days", label: "平均闭环周期", unit: "days", dimensions: ["week", "priority", "owner"], visualizations: ["kpi", "bar", "line", "table"] },
+        { id: "average_resolution_days", label: "平均解决周期", unit: "days", dimensions: ["week", "priority", "owner"], visualizations: ["kpi", "bar", "line", "table"] },
       ],
       dimensions: [
         { id: "week", label: "周" }, { id: "status", label: "状态" }, { id: "priority", label: "优先级" },
@@ -188,7 +188,7 @@ export const defaultAnalyticsLayout: AnalyticsLayout = {
     { id: "delivery-trend", title: "最近交付趋势", dataset: "requirements", measure: "completed_count", dimension: "week", visualization: "line", size: "medium", timeScope: "range", sort: "asc" },
     { id: "risk-distribution", title: "风险分布", dataset: "requirements", measure: "count", dimension: "risk", visualization: "donut", size: "medium", timeScope: "snapshot", sort: "desc" },
     { id: "variance-top", title: "耗时偏差 Top 10", dataset: "requirements", measure: "finish_variance", dimension: "requirement", visualization: "bar", size: "medium", timeScope: "snapshot", sort: "desc", limit: 10 },
-    { id: "issue-trend", title: "问题新增与闭环趋势", dataset: "issues", measure: "count", secondaryMeasure: "resolved_count", dimension: "week", visualization: "line", size: "medium", timeScope: "range", sort: "asc" },
+    { id: "issue-trend", title: "问题新增与解决趋势", dataset: "issues", measure: "count", secondaryMeasure: "resolved_count", dimension: "week", visualization: "line", size: "medium", timeScope: "range", sort: "asc" },
     { id: "upcoming-deadlines", title: "未来30天到期需求", dataset: "requirements", measure: "due_count", dimension: "day", visualization: "bar", size: "medium", timeScope: "future30", sort: "asc", limit: 30 },
     { id: "people-concurrency", title: "人员当前并发排行", dataset: "people", measure: "current_concurrency", dimension: "person", visualization: "bar", size: "large", timeScope: "snapshot", sort: "desc", limit: 12 },
   ],

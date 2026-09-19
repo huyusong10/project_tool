@@ -15,10 +15,10 @@ import { useToast } from "./Toast";
 const issueStateChoices: Record<string, Array<{ action: string; label: string; target: string; prompt: string; result: string }>> = {
   in_progress: [
     { action: "defer", label: "挂起", target: "deferred", prompt: "说明挂起原因", result: "问题已挂起" },
-    { action: "resolve", label: "确认解决", target: "resolved", prompt: "填写闭环说明", result: "问题已解决" },
+    { action: "resolve", label: "确认解决", target: "resolved", prompt: "填写解决说明", result: "问题已解决" },
   ],
   deferred: [{ action: "resume", label: "恢复处理", target: "in_progress", prompt: "说明恢复原因", result: "问题已恢复处理" }],
-  resolved: [{ action: "reopen", label: "重新打开", target: "in_progress", prompt: "说明重开原因", result: "问题已重新打开" }],
+  resolved: [{ action: "reopen", label: "重新打开", target: "in_progress", prompt: "填写重新打开的原因", result: "问题已重新打开" }],
 };
 
 function IssueStatusEditor({ issue, disabled, onPendingChange, onSaved }: {

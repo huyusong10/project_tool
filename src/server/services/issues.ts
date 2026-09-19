@@ -376,7 +376,7 @@ export function reopenIssue(id: string, input: JsonObject, actor: Actor) {
 export function correctIssue(id: string, input: JsonObject, actor: Actor) {
   if (Object.keys(input).some((key) => ![
     'expectedVersion', 'reason', 'supersedesId', 'title', 'impact', 'progress', 'resolvedAt',
-  ].includes(key))) fail('问题纠错不能提交闭环说明或未声明字段');
+  ].includes(key))) fail('问题纠错不能提交解决说明或未声明字段');
   const current = getIssue(id, true); assertExpectedVersion(input, current.version); const reason = nullableText(input.reason) || describeChanges(current,input);
   assertIssueParentMutable(current);
   const progress = input.progress === undefined ? current.progress : requireProgress(input.progress, '问题完成度');
