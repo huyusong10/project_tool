@@ -6,6 +6,7 @@ import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
 import { usePageScrollPosition } from '../use-page-view';
+import { useResourceQuery } from '../use-resource-query';
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type Query } from "@tanstack/react-query";
 import { Archive, Edit3, RotateCcw, UserMinus, UserPlus } from "lucide-react";
@@ -62,11 +63,11 @@ export function ProjectSettingsPage() {
   const restoreSubmitting = useRef(false);
   const roleSubmitting = useRef(false);
   const canManage = canManageProject(session, selectedProjectId);
-  const membersQuery = useQuery({
-    queryKey: [...keys.projectMembers, selectedProjectId],
-    queryFn: ({ signal }) => projectsApi.projectsMembers<Person[]>(selectedProjectId, { signal }),
-    enabled: Boolean(selectedProjectId),
-  });
+  const membersQuery = useResourceQuery<Person[]>(
+    [...keys.projectMembers, selectedProjectId],
+    signal => projectsApi.projectsMembers<Person[]>(selectedProjectId, { signal }),
+    Boolean(selectedProjectId),
+  );
   const members = membersQuery.data || [];
   const setRole = useMutation({
     mutationFn: ({ projectId, personId, role, expectedMembershipUpdatedAt }: { projectId: string; personId: string; role: ProjectMemberRole; expectedMembershipUpdatedAt: string | null }) =>
@@ -154,11 +155,11 @@ export function ProjectSettingsPage() {
     setPendingRole(input);
     setRole.mutate(input);
   };
-  const projectArchivesQuery = useQuery({
-    queryKey: [...keys.projectArchives, selectedProjectId],
-    queryFn: ({ signal }) => archivesApi.archivesQuery<Archives>(encodeURIComponent(selectedProjectId), { signal }),
-    enabled: canManage && Boolean(selectedProjectId),
-  });
+  const projectArchivesQuery = useResourceQuery<Archives>(
+    [...keys.projectArchives, selectedProjectId],
+    signal => archivesApi.archivesQuery<Archives>(encodeURIComponent(selectedProjectId), { signal }),
+    canManage && Boolean(selectedProjectId),
+  );
   const projectArchives = projectArchivesQuery.data;
   const membersPagination = useListPagination({ items: members, id: 'members', ready: Boolean(membersQuery.data), loading: membersQuery.isFetching, disabled: memberMutationBusy });
   const archiveItems = [...(projectArchives?.requirements || []).map(item => ({...item, entity: 'requirements' as const, type: '需求'})), ...(projectArchives?.templates || []).map(item => ({...item, entity: 'templates' as const, type: '流程'}))].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt) || a.id.localeCompare(b.id));
