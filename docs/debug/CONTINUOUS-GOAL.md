@@ -376,10 +376,18 @@ MU/MV/MW完成目标验收后执行一次完整verify，stage-mx-verify的50107�
 
 真实持久化多段说明、空行及800字符无空格地址，在1280/390验证完整innerText、所有文字矩形均在正文宽度内、无水平溢出、刷新完整DTO不变、0业务写/0异常。公共样式已有pre-wrap和anywhere；正文宽864/287px均无需修改。42877的stage-nk-before首轮通过；64933补充滚动到底部并检查末尾文字实际在视口内，stage-nk-visible-end通过，首屏与窄屏末尾截图已看。issue-history-nk.json与临时探针已归档，不增加永久测试，两个句柄已回收。
 
-## 当前阶段 NL
+## NL验收：MCP真实客户端中断
 
-检查MCP客户端断开时的连接清理，避免重复KL正常请求成本测量。已读取mcp-transport.ts：无状态POST，每次创建McpServer，handleRequest在finally中server.close；现有mcp-logging/queries未发现中断覆盖。下一步在独立测试服务验证请求体发送中断及较大只读响应中断，观察实际连接/Server关闭和后续健康读取；需要区分客户端取消与服务错误，不凭源码推断泄漏。
+独立测试服务在请求体1字节/半包/末字节前各取消4次，并对3,297,644字节真实get_issue响应在首块/1MiB/2MiB处各取消4次。每次连接归零；14个McpServer全部关闭（含前后完整读取），最终响应hash一致、31表完整hash保持（仅排除Token正常last_used_at）、健康200。日志12次CONNECTION_ABORTED、13次成功，无服务端失败；响应取消时服务端已完成发送，不能把客户端没读完算为服务端错误。mcp-interruption-nl.ts/json、stage-nl-interruption.log首轮退出0，服务与临时库清理完成。无需修改，不新增永久测试。
+
+## NM验收：我的工作跨项目读取
+
+在3个本人项目之外加入0/20/100个项目，每个20需求、200工作项、100历史；分别不参与和作为成员但没有本人工作，共5组独占测量。最多2000需求、20000工作项、10000历史干扰下，不参与时中位2.95ms，成员时7.15ms，原基线3.19ms。完整我的工作结果SHA五组一致、查询数均34、读取0数据库写。my-work-cross-project-nm.ts/json、stage-nm-cross-project.log首轮退出0，临时库已清理。当前实现已按本人工作筛选并复用分析，无需修改，不新增永久测试；此前e504ced的同项目规模测量未重跑。
+
+## 当前阶段 NN
+
+精简本记录，保留当前基线、业务覆盖、稳定决定、候选与证据入口；重复历史从Git按主题恢复。先提交NL/NM详细检查点，再压缩，不丢弃未决事项。随后检查新项目管理员的空项目首次安排流程，先核对已有覆盖再选真实操作。
 
 ## 最新检查点
 
-NB f6837ac、NE b808aab、NF 2b9ac1b已提交，NG完整验收通过。NC键盘往返、ND Token真实恢复、NH原服务增量、NI下载中断均无需修改；NJ人员并发编辑、NK问题历史长文本均无需修改；当前NL检查MCP中断清理。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标NH（01:31:25.794Z），不重复短间隔轮询；未部署或推送。Goal保持active。
+NB f6837ac、NE b808aab、NF 2b9ac1b已提交，NG完整验收通过。NC键盘往返、ND Token真实恢复、NH原服务增量、NI下载中断、NJ人员并发编辑、NK问题历史长文本、NL MCP中断清理、NM我的工作跨项目成本均无需修改。当前NN精简记录。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标NH（01:31:25.794Z），不重复短间隔轮询；未部署或推送。Goal保持active。
