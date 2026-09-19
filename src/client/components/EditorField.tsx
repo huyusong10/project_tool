@@ -2,7 +2,7 @@ import {useEffect,useRef,useState,useId,type InputHTMLAttributes} from 'react';
 import {useWorkspaceRuntime} from '../workspace-runtime';
 
 /** The same field transaction backs native properties and inline card names. */
-export function EditorField({fieldKey,value,onCommit,inline=false,multiline=false,...input}:Omit<InputHTMLAttributes<HTMLInputElement>,'value'|'onChange'> & {fieldKey:string;value:string;onCommit:(value:string)=>void;inline?:boolean;multiline?:boolean}){
+export function EditorField({fieldKey,value,onCommit,inline=false,multiline=false,invalidNumberMessage='请输入有效工期',...input}:Omit<InputHTMLAttributes<HTMLInputElement>,'value'|'onChange'> & {fieldKey:string;value:string;onCommit:(value:string)=>void;inline?:boolean;multiline?:boolean;invalidNumberMessage?:string}){
   const runtime=useWorkspaceRuntime(),owner=useId(),saved=inline||runtime.fieldOwner?.key===fieldKey&&runtime.fieldOwner.owner!==owner?undefined:runtime.document?.fields[fieldKey];
   const [raw,setRaw]=useState(saved?.value??value),[editing,setEditing]=useState(false),[error,setError]=useState(saved?.error||'');
   const element=useRef<HTMLInputElement&HTMLTextAreaElement&HTMLElement>(null),state=useRef({raw,original:saved?.original??value,dirty:!!saved});
@@ -18,7 +18,7 @@ export function EditorField({fieldKey,value,onCommit,inline=false,multiline=fals
     const text=cancel?state.current.original:state.current.raw;
     // Numeric fields are whole workdays. Validate the buffer even after its input unmounts.
     const invalidNumber=input.type==='number'&&(element.current?.validity.valid===false||!!text.trim()&&(!Number.isInteger(Number(text))||Number(text)<Number(input.min??0)||input.max!==undefined&&Number(text)>Number(input.max)));
-    const invalid=!cancel&&(invalidNumber?'请输入有效工期':input.required&&!text.trim()?'请填写名称':'');
+    const invalid=!cancel&&(invalidNumber?invalidNumberMessage:input.required&&!text.trim()?'请填写名称':'');
     if(invalid){setError(invalid);runtime.document?.setField(fieldKey,{value:text,original:state.current.original,error:invalid});if(ticket.current!==undefined)runtime.interaction?.complete(ticket.current,()=>{});ticket.current=undefined;release();return false;}
     if(inline&&element.current)element.current.textContent=text;
     state.current={raw:text,original:text,dirty:false};setRaw(text);setError('');setEditing(false);
