@@ -148,16 +148,16 @@
 .progress-filter-popover header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;font-size:14px}
 .progress-filter-popover header button{padding:3px 7px;min-height:28px;font-size:12px}
 .progress-filter-presets{display:grid;gap:3px}
-.progress-filter-presets button{display:grid;text-align:left;gap:3px;padding:9px 10px;border:0;border-radius:5px;color:var(--text-primary);background:none;cursor:pointer;font:inherit;font-size:13px}
-.progress-filter-presets button small{font-size:11px;color:var(--text-muted)}
-.progress-filter-presets button:hover,.progress-filter-presets button[aria-pressed=true]{background:var(--accent-soft)}
+.progress-filter-preset-copy{display:grid;gap:4px;min-width:0}
+.progress-filter-preset-copy small{font-size:11px;color:var(--text-muted);line-height:1.5}
 .progress-filter-popover fieldset{border:0;border-top:1px solid var(--border);padding:12px 0 0;margin:12px 0 0}
 .progress-filter-popover legend{font-size:12px;color:var(--text-muted);padding:0 5px 0 0}
 .progress-state-options{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .progress-state-options label{display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer}
 .progress-filter-popover p{font-size:11px;color:var(--text-muted);margin:12px 0 0;line-height:1.6}
 .progress-extra-fields{display:grid;gap:12px}
-.progress-extra-fields>label{display:grid;grid-template-columns:44px minmax(0,1fr);align-items:center;gap:12px;font-size:12px;color:var(--text-secondary)}
+.progress-extra-fields>label{display:grid;grid-template-columns:72px minmax(0,1fr);align-items:center;gap:4px 12px;font-size:12px;color:var(--text-secondary)}
+.progress-extra-fields>label>small{grid-column:2;line-height:1.5;color:var(--text-muted)}
 @media(max-width:800px){.workspace-progress-tools .search-box{width:100%;flex-basis:100%}.progress-filter-result{margin-left:0}}
 @media(max-width:600px){
  .workspace-progress-tools{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));padding:8px 10px;gap:6px}

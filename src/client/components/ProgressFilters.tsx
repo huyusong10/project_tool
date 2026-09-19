@@ -49,7 +49,7 @@ export function ProgressFilters({filters,sort,features,people,result,contextFeat
     <AnchoredPopover anchorRef={statusRef} open={open==='status'} onOutside={close} onEscape={closeAndFocus} width={300} className="progress-filter-popover">
       <section ref={panelRef} onKeyDown={panelKeyDown} aria-label="执行状态筛选" data-workspace-zone="tools" data-preserve-edit>
         <header><strong>查看哪些工作</strong><Button variant="secondary" className="ghost-button" onClick={closeAndFocus}>关闭</Button></header>
-        <div className="progress-filter-presets">{progressStatePresets.map(p=><Button variant="secondary" key={p.label} type="button" aria-pressed={progressStatesValue(states)===p.value} onClick={()=>{set('progressStatus',p.value);closeAndFocus();}}><span>{p.label}</span><small>{p.description}</small></Button>)}</div>
+        <div className="progress-filter-presets">{progressStatePresets.map(p=><Button variant="menu" key={p.label} type="button" aria-pressed={progressStatesValue(states)===p.value} onClick={()=>{set('progressStatus',p.value);closeAndFocus();}}><span className="progress-filter-preset-copy"><span>{p.label}</span><small>{p.description}</small></span></Button>)}</div>
         <fieldset><legend>自选状态（可多选）</legend><div className="progress-state-options">{requirementStatuses.map(state=><label key={state}><input type="checkbox" checked={states.includes(state)} onChange={e=>set('progressStatus',progressStatesValue(e.target.checked?[...states,state]:states.filter(s=>s!==state)))}/>{requirementStatusLabels[state]}</label>)}</div></fieldset>
         <p>按需求和工作项各自的状态筛选，保留所属层级。</p>
       </section>
