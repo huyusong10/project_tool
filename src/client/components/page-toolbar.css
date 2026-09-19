@@ -49,4 +49,7 @@
 .page-toolbar[data-narrow=true] .workspace-create-action{width:32px}
 .page-toolbar[data-narrow=true] .workspace-create-action .topbar-menu-button{padding:0}
 .page-toolbar[data-narrow=true] .workspace-create-action .topbar-menu-button>span{display:none}
+.page-toolbar[data-project-workspace=true][data-narrow=true]{height:auto;grid-template-rows:28px auto;padding-bottom:7px}
+.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-trailing{height:auto;flex-wrap:wrap;row-gap:8px}
+.page-toolbar[data-project-workspace=true][data-narrow=true] .page-toolbar-views{flex:1 0 148px;min-width:148px}
 }
