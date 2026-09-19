@@ -7,7 +7,7 @@ import { useGanttTooltip } from './GanttTooltip';
 import './gantt-milestones.css';
 
 const stateLabels = { planned: '未达成', reached: '已达成', overdue: '已逾期', cancelled: '已取消' };
-function MilestoneSummary({ items, asOfDate }: { items: GanttMilestone[]; asOfDate: string }) {
+function MilestoneSummary({ items, asOfDate, onLocate }: { items: GanttMilestone[]; asOfDate: string; onLocate?: (id: string) => void }) {
   return <>{items.map(m => <section key={m.id} className="gantt-milestone-summary">
     <strong>{m.title}</strong><small>{stateLabels[milestoneState(m, asOfDate)]}{m.manual && !m.actualDate ? ' · 人工确认' : ''}</small>
     <dl className="gantt-popover-metrics">
@@ -17,6 +17,7 @@ function MilestoneSummary({ items, asOfDate }: { items: GanttMilestone[]; asOfDa
       {!m.targetDate && !m.actualDate && <div><dt>排期</dt><dd>{m.timingLabel || '未排期'}</dd></div>}
     </dl>
     {m.dateBasis !== 'actual' && m.actualDate && m.targetDate && m.actualDate !== m.targetDate && <small>{m.actualDate < m.targetDate ? '提前达成，目标日期保留' : '延期达成，目标日期保留'}</small>}
+    {onLocate && <Button variant="secondary" type="button" className="ghost-button" onClick={() => onLocate(m.id)}>查看关联工作</Button>}
   </section>)}</>;
 }
 export function useMilestoneSelection(items: GanttMilestone[], asOfDate: string, onLocate?: (id: string) => void) {
@@ -52,8 +53,7 @@ export function useMilestoneSelection(items: GanttMilestone[], asOfDate: string,
   return { selected, bind, close, related: (id: string) => selected.some(m => m.relatedIds.includes(id)),
     details: <>{hover.tooltip}{open && selected.length > 0 && createPortal(<div ref={panel} className="gantt-milestone-details" role="dialog" aria-label="里程碑详情" style={{ left: open.x, top: open.y }}>
       <header><strong>里程碑{selected.length > 1 ? ` · ${selected.length} 项` : ''}</strong><Button iconOnly variant="secondary" type="button" className="ghost-button" aria-label="关闭里程碑详情" onClick={() => { close(); open.trigger.isConnected && open.trigger.focus({ preventScroll: true }); }}><X size={16} /></Button></header>
-      <MilestoneSummary items={selected} asOfDate={asOfDate} />
-      {onLocate && selected.map(m => <Button variant="secondary" type="button" className="ghost-button" key={m.id} onClick={() => { close(); onLocate(m.id); }}>查看{selected.length > 1 ? ` ${m.title}` : '关联工作'}</Button>)}
+      <MilestoneSummary items={selected} asOfDate={asOfDate} onLocate={onLocate ? id => { close(); onLocate(id); } : undefined} />
     </div>, document.body)}</> };
 }
 export type MilestoneSelection = ReturnType<typeof useMilestoneSelection>;

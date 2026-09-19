@@ -2,19 +2,20 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 QF
+## 恢复入口与当前阶段 QG
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段QF（里程碑同名与长名称辨识，待检查）：从现有入口和覆盖定位样本，检查多条同名里程碑、长名称及关联需求时能否明确定位，桌面/390与只读资料保持。近期多项目、负责人提示和备份下载均已验收，不重跑。
+2. 当前阶段QG（依赖较多的工作分页性能，待测量）：PQ仅覆盖无依赖工作密度；在10/100/500工作、层间依赖及里程碑下检查单项/分页查询，保留预热+5样本、与完整读取结果核对及业务表hash保持。基于测量判断收益，不先加缓存或重构；不重跑PQ无依赖样本。
 3. 最新完整验证QC覆盖至2270423：1000业务/120文件、13性能、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。59262首轮退出0、已回收；stage-qc-verify.log、stage-qc-performance-samples.json、stage-qc-build-budget.json。
-4. 最新产品`2270423`（QB，项目切换焦点），前一产品`fe41792`（QA，执行记录提示），再前`33ff6eb`（PX，负责人分派校验）。PY归档前完整记录在 `33ff6eb:docs/debug/CONTINUOUS-GOAL.md`；PB前在 `67baff3`，NN及更早详细历史在 `cac4ecd`。本记录只保留当前恢复所需信息，旧阶段不重新开始。PY精简校验见 `.preview/qa/continuous-goal/record-compaction-py.json`，稳定决定/候选逐字保持。
+4. 最新产品为本次QF（里程碑记录入口），前一产品`2270423`（QB，项目切换焦点），前一产品`fe41792`（QA，执行记录提示），再前`33ff6eb`（PX，负责人分派校验）。PY归档前完整记录在 `33ff6eb:docs/debug/CONTINUOUS-GOAL.md`；PB前在 `67baff3`，NN及更早详细历史在 `cac4ecd`。本记录只保留当前恢复所需信息，旧阶段不重新开始。PY精简校验见 `.preview/qa/continuous-goal/record-compaction-py.json`，稳定决定/候选逐字保持。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
-6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。最新QE59993退出0/2.6s，QC59262、QB各句柄均已回收；探针已归档，无运行测试。QE结束3296监听0、当前浏览器临时目录0；原目录仍仅2处用户修改。历史探针错误见对应证据，不算产品缺陷。
+6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。最新QF49042的11浏览器32.7s退出0、已回收；原版20312完整3.2s退出0但测得横向溢出856/318，44760重复点击已禁用“展开全部”是探针错误，已修正/回收。探针归档，无运行测试。最近QE结束3296监听0/当前临时目录0；原目录仍仅2处用户修改。
 
 ## 当前验收基线
 
 | 范围 | 最终证据与边界 |
 |---|---|
+| QF专项验证 | 原版模拟API、真实浏览器：两同名不同日期记录与一个105字标题，1280/390浮窗宽318但scrollWidth856，入口全在记录之外；milestone-actions-qf-original-complete.json和截图。入口改在对应记录内、统一短文案，49042的11浏览器32.7s通过：两尺寸scrollWidth=clientWidth=318，3记录各1入口，6次分别定位w1/w-late/w-early；既有10场景覆盖主题/缩放/日期/历史/取消/项目范围。类型/测试构建、目标Lint/按钮规范/diff通过，原版/改后390图已看，0写/异常。milestone-actions-qf-after.json、stage-qf-milestone-actions-after.log；探针归档，无永久测试。仅界面模拟数据证据，不称真实数据库验收 |
 | QC完整验证 | 59262首轮verify退出0、已回收：1000业务/120文件（46.11s）、13性能（19.04s）、26浏览器冒烟（1.2min）；运行时/428边界/完整Lint/按钮样式/类型/生产构建/预算通过，覆盖2270423。stage-qc-verify.log、stage-qc-performance-samples.json、stage-qc-build-budget.json |
 | QB专项验证 | 25个长名项目，1280×800/390×844/390×400首尾6次键盘切换原版全丢焦点，Tab回brand-home；project-menu-qb-original-complete.json。Topbar选择后focus入口preventScroll，一行修改。86643完整通过6.7s：6次焦点恢复、Tab到标题，Home/End/方向键/Esc、刷新、2鼠标/2触摸切换；25项目与2问题完整DTO保持、0写/异常。两张390截图已看、边界与完整名称通过。既有project-selection功能4.2s通过；类型/测试构建、目标Lint/diff通过。project-menu-qb-verified.json、stage-qb-project-menu-after/verified.log，探针归档，无永久测试。列表没有搜索框，不新增功能 |
 | QA专项验证 | 14447原版完整流程结束，仅因旧提示失败；cancelled-owner-hint-qa-original-complete.json。10949改后1真实浏览器2.1s通过：未开始/0%/无实际开始/仅取消记录，负责人空选项禁用，清空接口409，完整需求/项目DTO保持、0页面写/异常；390图已看。测试构建含类型、目标Lint/diff通过；cancelled-owner-hint-qa-after.json与stage-qa-cancelled-owner-hint-after.log。最初toBeDisabled不适用隐藏原生option，改为disabled属性断言后完整复现；不算产品缺陷。无永久测试 |
@@ -27,15 +28,16 @@
 | 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；PN元数据仍同PI/PA/MK，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-pn-listing.json` |
 | 依赖证据 | QD于2026-09-19T07:47:17—21Z查询npm官方registry，生产范围143依赖、0已知漏洞，退出0；锁SHA256前后相同32A55528…C796F，最后提交06146c4。stage-qd-audit-official.json及metadata.json；未升级依赖 |
 
-QC完整验证覆盖至2270423，专项交互证据见表。原目录仍仅2处用户修改。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
+QC完整验证覆盖至2270423，QF由11浏览器及静态检查专项验收。原目录仍仅2处用户修改。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
 
 
 ## 近期产品成果
 
-均已验收，QC完整验证覆盖至2270423。更早产品成果、失败尝试和精确证据见 `33ff6eb:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
+均已验收，QC完整验证覆盖至2270423；QF见专项基线。更早产品成果、失败尝试和精确证据见 `33ff6eb:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
+| QF / 本次提交 | 甘特里程碑浮窗把全部查看按钮放在记录末尾，同名记录难以对应，长名称按钮使318px浮窗溢出至856px。复用MilestoneSummary在每条记录内显示“查看关联工作”，名称只显示于标题；仅调整现有回调位置和局部按钮样式，无新数据/API/抽象。两尺寸无溢出、6次关联定位及既有10场景通过 |
 | QB / 2270423 | 项目切换选中后菜单移除，键盘焦点丢失，下一次Tab回页面品牌链接；6次真实复现。仅在选择完成后focus原按钮且preventScroll，保留现有导航和菜单结构。键盘/鼠标/触摸及数据不变证据见专项基线 |
 | QA / fe41792 | 开始前取消唯一工作后，需求仍未开始且只有取消历史，编辑提示和拒绝清空负责人接口却称“已开始执行”。仅两处改成“已有执行记录”，与现有纠错文案一致；不改取消语义、负责人规则或API。原版及改后证据见专项基线 |
 | PX / 33ff6eb | 已有工作分解需求的普通负责人修改仅校验人员及成员关系，漏检账号状态，REST/MCP实际可把需求分派给已停用账号。changeRequirement在实际更换负责人时复用validateDeliveryFields，写前及事务内检查；保留原失效负责人编辑说明和终态历史纠错。无新校验体系/API，新增1有业务结果断言的回归；原版与改后证据见专项基线 |

@@ -29,7 +29,7 @@
 .gantt-milestone-summary { padding:8px 0; border-bottom:1px solid var(--divider); }
 .gantt-milestone-summary > strong,.gantt-milestone-summary > small { display:block; overflow-wrap:anywhere; }
 .gantt-milestone-summary small { color:var(--text-muted); margin-top:4px; }
-.gantt-milestone-details > button { margin-top:8px; max-width:100%; }
+.gantt-milestone-summary > button { margin-top:8px; max-width:100%; }
 .gantt-milestone-rail.is-inline { --milestone-bar-top:var(--gantt-bar-top); --milestone-bar-bottom:calc(var(--gantt-bar-top) + var(--gantt-bar-height)); position:absolute; top:0; height:100%; z-index:10; background:transparent; border:0; pointer-events:none; }
 .gantt-split-track > .gantt-milestone-rail.is-inline { --milestone-bar-top:var(--date-plan-top); --milestone-bar-bottom:calc(var(--date-actual-top) + 8px); }
 .gantt-milestone-rail.is-inline .gantt-milestone-pin { top:calc(var(--milestone-bar-top) - 3.5px); z-index:1; box-shadow:0 0 0 1px var(--bg-surface); }
