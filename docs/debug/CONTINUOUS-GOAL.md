@@ -2,12 +2,12 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 QQ
+## 恢复入口与当前阶段 QR
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段QQ（精简恢复记录，待执行）：保留QP最新完整基线及QO/QJ/QI/QF专项，较早细节改用Git快照索引；稳定决定与候选逐字保持并校验hash。目标约21—23KB，保留业务覆盖索引和失败边界，不改变产品或重跑测试。
+2. 当前阶段QR（已解决问题原负责人失效后的重开，待检查）：reopenIssue已在事务前后调用issueOwner，拒绝无效负责人。检查经理能否从旧详情保留重开原因、修正历史负责人后继续重开，并保留解决记录及其他问题。先读现有UI和测试，避免重复生命周期正常路径；不放宽负责人校验。
 3. 最新完整验证QP覆盖至428b87b：1000业务/120文件（45.85s）、13性能（18.75s）、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。65495首轮退出0、已回收；stage-qp-verify.log、stage-qp-performance-samples.json、stage-qp-build-budget.json。
-4. 最新产品为428b87b（QO）（认证错误可见性及通知标记），此前05e6869（QJ，成员候选显示上限提示），此前162894d（QI，普通表单草稿存储失败提示），此前`e5b6299`（QF，里程碑记录入口）；此前2270423（QB，项目切换焦点）、fe41792（QA，执行记录提示）、33ff6eb（PX，负责人分派校验）。PY归档前完整记录在 `33ff6eb:docs/debug/CONTINUOUS-GOAL.md`；PB前在 `67baff3`，NN及更早详细历史在 `cac4ecd`。本记录只保留当前恢复所需信息，旧阶段不重新开始。PY精简校验见 `.preview/qa/continuous-goal/record-compaction-py.json`，稳定决定/候选逐字保持。
+4. 最新产品428b87b（QO，认证反馈），此前05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
 6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。QP65495首轮verify退出0、已回收；QO46600专项5场景已验收，探针归档，无运行测试。QO96241误用窄屏隐藏按钮、16415原版缺alert失败，均已回收；不把探针错误算产品缺陷。
 
@@ -20,12 +20,6 @@
 | QJ专项验证 | 120真实候选原版只展示50人且无上限说明，其余完整业务流程通过；56844退出1仅因缺提示。增加1行条件提示，复用field-help；96884改后4浏览器20.1s通过，含原有失败重试/未知写2路径。1280/390长姓名及岗位无横向溢出，跨搜索保留3选择和viewer角色，空搜索结果不清选择，Enter不提交；仅3次PUT到目标项目，刷新一致，已加入搜索禁用，人员/账号/项目/另一项目成员完整DTO保持，0异常。类型/测试构建、目标Lint/diff通过，390长名与上限图已看；member-candidates-qj-original/after.json、stage-qj-member-candidates-original/after.log，探针归档，无永久测试 |
 | QI专项验证 | 原版98808真实quota故障注入：已存37%后改57%，没有提示，关闭再开恢复旧37%；当前重新填写57%可仅提交1次。hook在写失败状态首次出现时用现有Toast告知风险，连续输入不重复；恢复写入后重开保留67%未提交草稿，明确取消后正式数据仍57%。91665专项5场景23.8s、6334现有冒烟26场景1.2min通过；类型/目标Lint/428边界/diff/正式构建及预算通过，390提示图已看；draft-quota-qi-original/verified.json、stage-qi-draft-quota-verified/smoke/build.log及build-budget.json。无新存储机制/永久测试；持续故障下关闭后仍可能丢失最新输入，本次仅修复缺少反馈，未声称无损恢复 |
 | QF专项验证 | 原版模拟API、真实浏览器：两同名不同日期记录与一个105字标题，1280/390浮窗宽318但scrollWidth856，入口全在记录之外；milestone-actions-qf-original-complete.json和截图。入口改在对应记录内、统一短文案，49042的11浏览器32.7s通过：两尺寸scrollWidth=clientWidth=318，3记录各1入口，6次分别定位w1/w-late/w-early；既有10场景覆盖主题/缩放/日期/历史/取消/项目范围。类型/测试构建、目标Lint/按钮规范/diff通过，原版/改后390图已看，0写/异常。milestone-actions-qf-after.json、stage-qf-milestone-actions-after.log；探针归档，无永久测试。仅界面模拟数据证据，不称真实数据库验收 |
-| QC完整验证 | 59262首轮verify退出0、已回收：1000业务/120文件（46.11s）、13性能（19.04s）、26浏览器冒烟（1.2min）；运行时/428边界/完整Lint/按钮样式/类型/生产构建/预算通过，覆盖2270423。stage-qc-verify.log、stage-qc-performance-samples.json、stage-qc-build-budget.json |
-| QB专项验证 | 25个长名项目，1280×800/390×844/390×400首尾6次键盘切换原版全丢焦点，Tab回brand-home；project-menu-qb-original-complete.json。Topbar选择后focus入口preventScroll，一行修改。86643完整通过6.7s：6次焦点恢复、Tab到标题，Home/End/方向键/Esc、刷新、2鼠标/2触摸切换；25项目与2问题完整DTO保持、0写/异常。两张390截图已看、边界与完整名称通过。既有project-selection功能4.2s通过；类型/测试构建、目标Lint/diff通过。project-menu-qb-verified.json、stage-qb-project-menu-after/verified.log，探针归档，无永久测试。列表没有搜索框，不新增功能 |
-| QA专项验证 | 14447原版完整流程结束，仅因旧提示失败；cancelled-owner-hint-qa-original-complete.json。10949改后1真实浏览器2.1s通过：未开始/0%/无实际开始/仅取消记录，负责人空选项禁用，清空接口409，完整需求/项目DTO保持、0页面写/异常；390图已看。测试构建含类型、目标Lint/diff通过；cancelled-owner-hint-qa-after.json与stage-qa-cancelled-owner-hint-after.log。最初toBeDisabled不适用隐藏原生option，改为disabled属性断言后完整复现；不算产品缺陷。无永久测试 |
-| PX专项验证 | 原版REST/MCP：两类需求新建及direct更新拒绝400，work_items普通更新却200写入失效owner；owner-assignment-px-original.json、stage-px-owner-assignment-original.log。改后8组合全400，4个更新完整DTO/版本不变。40专项（含2探针）+73集成/编辑契约共113通过，27013的4既有浏览器通过23.3s；类型/测试构建/目标Lint/diff通过。新增1正式回归涵盖错误分派、有效交接、原失效负责人补说明、取消后历史纠错，完整工作存储及历史保持；owner-assignment-px-complete.json、stage-px-owner-assignment-complete/owner-integration/owner-browser.log。探针归档，全句柄回收 |
-| PS完整验证 | stage-ps-verify.log首轮退出0（98531已回收）：999业务/120文件、13性能、26浏览器冒烟（1.2min）；原生运行时、428边界、完整Lint/按钮规范、类型、生产构建和预算均通过，覆盖至cf27f95。stage-ps-performance-samples.json留存本轮样本 |
-| PR专项验证 | 原版archived-feature-filter-pr-original.json提示/入口均false，但完整往返和数据核对通过；改后5857通过普通成员跨页归档/恢复、既有组合筛选和归档规则3场景。两方向390提示/按钮在视口、截图已看；切换后搜索词/所选特性/刷新保持，交付历史及另一需求业务DTO保持，项目/特性DTO在只读期间保持，0成员写/异常。类型/测试构建/目标Lint/diff通过；archived-feature-filter-pr-after.json与stage-pr-archived-feature-filter-after.log，探针归档，无永久测试 |
 | 生产体积 | QP正式构建：主JS934890B、CSS339753B、ELK1595334B；服务端6文件/app879.24KB，预算通过。覆盖428b87b，stage-qp-build-budget.json与stage-qp-verify.log |
 | 浏览器清单 | 最新`stage-np-matrix.log`：771功能/183布局/2性能、普通1869实例；这是列举结果，未执行整个矩阵。NT结束3296监听0、当前测试临时目录0；原目录仍只有2处用户改动 |
 | 原服务增量 | 最新游标QL：2026-09-19T08:33:47.350Z，较QD约46分钟；17日志新增0字节/0事件，无错误/读取失败，3210健康200。runtime-log-review-ql.mjs/json、stage-ql-runtime.log。只检查后续增量，不短间隔轮询 |
@@ -37,7 +31,7 @@ QP完整验证覆盖至428b87b，包含QF/QI/QJ/QO；各专项证据保留其额
 
 ## 近期产品成果
 
-均已验收，QP完整验证覆盖至428b87b；额外场景见专项基线。更早产品成果、失败尝试和精确证据见 `33ff6eb:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
+均已验收，QP完整验证覆盖至428b87b；额外场景见专项基线。更早产品成果、失败尝试和精确证据见 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
@@ -45,21 +39,11 @@ QP完整验证覆盖至428b87b，包含QF/QI/QJ/QO；各专项证据保留其额
 | QJ / 05e6869 | 添加项目成员最多返回50名候选，原界面未说明，列表外人员需搜索。仅在返回50人且加载成功时显示“最多显示 50 人，未找到时请缩小搜索范围。”；不改变接口、上限或批量逻辑。真实120人流程与既有恢复场景通过，见专项基线 |
 | QI / 162894d | sessionStorage写入失败时普通表单静默继续，关闭后读回旧草稿而无提示。useDeliveryForm记录本次写入是否失败，仅在失败状态出现时复用Toast提醒提交/复制；恢复成功写入后重置失败状态。保持当前输入与原提交逻辑，不增加存储后备或持久化体系。原版损失风险及改后31浏览器/构建证据见专项基线 |
 | QF / e5b6299 | 甘特里程碑浮窗把全部查看按钮放在记录末尾，同名记录难以对应，长名称按钮使318px浮窗溢出至856px。复用MilestoneSummary在每条记录内显示“查看关联工作”，名称只显示于标题；仅调整现有回调位置和局部按钮样式，无新数据/API/抽象。两尺寸无溢出、6次关联定位及既有10场景通过 |
-| QB / 2270423 | 项目切换选中后菜单移除，键盘焦点丢失，下一次Tab回页面品牌链接；6次真实复现。仅在选择完成后focus原按钮且preventScroll，保留现有导航和菜单结构。键盘/鼠标/触摸及数据不变证据见专项基线 |
-| QA / fe41792 | 开始前取消唯一工作后，需求仍未开始且只有取消历史，编辑提示和拒绝清空负责人接口却称“已开始执行”。仅两处改成“已有执行记录”，与现有纠错文案一致；不改取消语义、负责人规则或API。原版及改后证据见专项基线 |
-| PX / 33ff6eb | 已有工作分解需求的普通负责人修改仅校验人员及成员关系，漏检账号状态，REST/MCP实际可把需求分派给已停用账号。changeRequirement在实际更换负责人时复用validateDeliveryFields，写前及事务内检查；保留原失效负责人编辑说明和终态历史纠错。无新校验体系/API，新增1有业务结果断言的回归；原版与改后证据见专项基线 |
-| PR / cf27f95 | 成员已选特性被管理员归档或恢复后，保留的状态筛选与特性不符，空结果原来没有解释。ProgressWorkspace仅在该情况下说明特性归档状态，提供查看对应状态的按钮；点击只改progressState，其他筛选保持，不自动切换、不改API或筛选语义。原版复现与改后3场景/窄屏/只读证据见专项基线 |
-| PO / ec4f020 | PM窄屏截图发现更多筛选文字不完整，实测右侧裁切16px，CSS滚动边距无效。ProgressFilters加局部onFocusCapture，对工具栏实际子元素调用最近边界scrollIntoView；弹层移到其他DOM位置时不参与。保持原单行横滚布局，无新样式/抽象；390按钮恢复完整、640/1280保持，鼠标/触摸/键盘与组合筛选5场景通过，证据见专项基线 |
-| PM / c82f5b9 | 自定义Select关闭Tab弹层后焦点丢失：实际新建需求中Tab跳出到主页，Shift+Tab跳到提交按钮，三尺寸均复现。仅将Tab分支close()改为close(true)，恢复入口焦点后让浏览器沿原顺序移动；24次表单/页面筛选焦点和4既有搜索/菜单场景通过，草稿/选项/URL/完整业务DTO保持。原版及改后证据见专项基线，无新永久测试。早期45162计数全页面option、64181精确getByLabel原生select定位失败，均属探针错误，已修正/回收 |
-| PL / 3dd3422 | 开始工作并补选负责人时缺expectedRequirementVersion，REST/MCP原版错误提示缺expectedVersion，调用方无法据此补正确字段。仅在既有鉴权后指出父版本字段及读取所属需求的恢复方式，仍走原版本/事务校验；2通道完整原版证据、改后28专项业务、目标Lint/类型/diff通过。parent-version-pl-baseline/after.json与stage-pl-parent-version-baseline/after.log；探针归档，无永久测试 |
-| PH / 1512802 | 我的工作图表先把完整日期截为月日，2025-12-29及2026-01-05悬停也无年份，原版10793实际失败。完成/近期并发两图保留完整日期，仅坐标轴formatter显示月日；只改2处配置，无API/计数改动。81187的12浏览器通过，10次完整日期提示含跨年历史，生产构建/体积/目标Lint通过，截图已看；chart-date-ph-before/after.json与stage-ph-chart-date-before/after.log，探针归档 |
-| PE / fc47d21 | 平台日志同名问题展开后也只显示对象ID，无法读出项目；API已有projectName但页面未使用。对象栏补一行项目名（截断/全文title），展开内容显示完整名称；项目日志保持原显示，无接口/查询改动。原版8272失败证据和改后5浏览器/目标静态检查通过；audit-project-context-pe-before/after.json、stage-pe-audit-before/after/pagination.log，1280/390截图已看，探针归档 |
-| OZ / f48d23c | 三条混合需求中仅中间一条日期错误，原预览只说日期逆序，未指出对象；75567实际原版失败，修正与仅1次保存本来可用。共享日期校验沿用原规则/错误码并补现有entityIds，导入映射需求名或“需求 / 工作项”。新增1正式回归含新建/更新/工作项×逆序/休息日6组，预览及拒绝提交不改已有资料；87专项业务、94088的16导入浏览器和完整验证通过。390错误名称全文可读，改正/刷新后3条完整输入保留、仅1 apply200、已有需求除项目分析revision外完整DTO保持/0异常；`import-error-oz-before/after.json`、`stage-oz-import-before/after/unit-corrected.log`，探针归档。初次单测把9月20日调休工作日误作休息日，本地日历核对改19日后通过，不改产品日历 |
 
 
 ## 已检查、暂不修改
 
-以下样本无需无证据重测。这里只保留最近检查；其余阶段的完整结论、限制和证据路径见 `33ff6eb:docs/debug/CONTINUOUS-GOAL.md`。
+以下样本无需无证据重测。这里只保留最近检查；其余阶段的完整结论、限制和证据路径见 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`。
 
 | 阶段 / 领域 | 结论与证据 |
 |---|---|
@@ -69,18 +53,11 @@ QP完整验证覆盖至428b87b，包含QF/QI/QJ/QO；各专项证据保留其额
 | QH 人员更名与进展 | 普通协作者打开27%工作并填57%草稿，管理员更名主负责人和本人；模拟61秒后台轮询取得新名称，原ID/工作版本/草稿保持，保存1次POST200、v3→4，仅增1条本人历史。旧历史、原需求除名称/分析revision外完整DTO保持，账号除实时personName外所有字段（含登录名/版本）保持，项目和另一项目需求完整DTO保持；刷新姓名/参与人一致，0异常。17072首个完整2.2s通过、类型/测试构建通过、390草稿图已看；person-rename-qh.json、stage-qh-person-rename-verified.log，探针归档，无产品修改/永久测试。33833账号personName假设错误见恢复项 |
 | QG 多依赖工作分页 | 10/100/500工作，1/10/50里程碑，35/440/2240依赖；每组先核对100条分批完整读取与1/5条小页、末项DTO一致，再7类读取各预热+5样本及SQL profile。500工作末项32.7ms、首项37.1ms、5条小页34.0ms、完整分析30.3ms中位；空/越界≤1.13ms。21场景输出hash稳定、11表hash及total_changes保持。无需优化/永久测试；work-page-dependencies-qg.ts、work-page-dependencies-qg-baseline.json、stage-qg-work-dependencies-verified.log首个完整退出0。最初探针pageSize500超出既有100上限，改100分批核对；stage-qg-work-dependencies-baseline.log为探针错误。仅服务层本机样本，非HTTP或浏览器耗时 |
 | QE 旧备份下载 | 隔离服务创建两份真实备份，另一管理员删除旧行文件。旧下载404且显示“备份不存在”，0下载产物；另一份仍可下载200，仅1文件，SQLite完整性ok/外键0/原需求内容一致。刷新移除旧行；剩余备份完整DTO、原项目/需求完整DTO保持，0页面写/异常。59993首轮2.6s通过，类型/测试构建通过、390错误图已看；stale-backup-qe.json与stage-qe-stale-backup.log，探针归档，无产品修改/永久测试。不涉及原服务备份 |
-| PZ 问题跨页状态 | 真实成员在21问题第2页唯一项填57%/说明，管理员解决；旧提交409、原完整详情保持，列表回第1页而detailId不变，草稿保留。管理员以40%重开，显式重新读取后恢复原57%及说明，只1次200；4条历史保持，关详情/重开/刷新仍57%，搜索/负责人/优先级/状态筛选保持，另21问题完整资料保持、0异常。97472的stage-pz-issue-pagination-verified首个完整通过3.9s，类型/测试构建通过，两张390图已看；issue-pagination-pz.json，探针归档，无产品修改/永久测试。21491误以标题默认打开进展页，63073误要求重读前的已解决核对基线仍显示进度输入，均为探针假设错误，已修正；三句柄全回收 |
-| PW 流程预览规模 | 真实10/50/200元素（8/40/160工作，2/10/40里程碑；12/76/316依赖），含长名称；生产React、关闭trace，各1预热+5真实点击到目标DOM后两帧样本。打开中位18.1/18.6/59.5ms、最慢18.5/19.4/60.3ms；选末端中位18.5/18.7/16.0ms，200预览8328 DOM。3场景94459首轮15.7s通过；桌面/390末端与首项双图联动、弹窗滚动保持、完整模板/项目DTO、0写/异常。390三截图已看，类型/测试构建通过；template-preview-pw-10/50/200.json、stage-pw-template-preview.log，探针归档。不加缓存/优化/永久测试；不推断所有200节点的稠密图 |
-| PV 默认流程与归档条件 | 真实经理已打开确认后，管理员将同一流程设为默认（模板updatedAt未变）。刷新路径0拒绝写；未刷新旧确认409 DEPENDENCY_CONFLICT，重新读取流程/归档后明确阻止；更换默认、重新选择后各仅1 DELETE200，刷新归档一致。拒绝前后完整需求/模板/项目DTO保持；允许的项目修改仅改变分析revision，原实例/计划/开始历史/另一项目保持，0页面异常。84706两场景1.9/3.2s通过，类型/测试构建通过；390提示/取消钮在视口且两截图已看。default-archive-pv-fresh/stale.json、stage-pv-default-archive-verified.log，探针归档，无修改/永久测试。首轮40007预期400及误固定work.dependencyRevision导致失败；修正探针并增加拒绝期间完全DTO比较，不算产品缺陷 |
-| PT 实际库对象关系 | 2026-09-19T07:00:10.418Z，同一只读事务检查2项目/12特性/19Phase/62需求/257工作/101里程碑/360依赖/395进展/31问题。复用现有启动一致性检查；另查需求-特性、问题/里程碑-需求、进展-工作父级、依赖两端项目与父级，全部异常计数0，total_changes=0。包含归档和历史行，不输出名称/ID/正文，不称完整历史快照或API验收。object-relations-original-pt.ts/json、stage-pt-original-relations.log首轮退出0；无产品修改/永久测试 |
-| PQ 同需求工作密度 | 无依赖、3名人员、每工作2协作与混合执行/取消历史，10/100/1000同级工作×单项/两类小页/越界页/无匹配/资料装载/完整分析共21场景，各5样本。1000单项22.9ms、小页23.5ms，资料5.4ms/分析16.7ms；100单项3.5ms，空页只2查询，1000越界1.1ms/无匹配2.2ms。每场景完整结果hash一致、9表hash保持、total_changes增量0。改装载范围预期收益有限，不改/不加永久测试；work-page-density-pq.ts、work-page-density-pq-baseline.json、stage-pq-work-density-baseline.log。首轮夹具给协作关系表多填created_at，SQL拒绝后修正，未算产品缺陷；两命令均结束，无遗留句柄。不推断复杂依赖图性能 |
-| PK 已归档流程实例 | 实际两工作+里程碑，完成一项/开始一项后归档来源；页面编辑说明及平移9/11→9/23后刷新，原工作ID/人员/实际日期/40%进度/3条历史、2依赖、里程碑完整资料、归档和项目DTO保持；工作日期按原间隔平移。页面只有PATCH200和reschedule200、0异常。50161首个完整通过2.7s，类型/测试构建通过，390截图已看、保存钮在视口、已归档流程可读；archived-template-instance-pk.json、stage-pk-archived-template-instance-verified.log、探针归档。前轮夹具缺父版本、textarea默认内容被getByLabel精确匹配算入，以及工作项deliveryForecast.revision变化导致探针失败，均已定位并修正断言；42651/96302/53019/81362/95318均回收。无需产品修改/永久测试；原文档G1—G5新增功能不实施 |
-| PG 进展草稿并发拆分 | 普通成员分别从需求详情/我的工作填57%及说明，管理员把已存27%的需求新增工作项；旧进展409且正式DTO保持，重读禁用直接提交，说明经控制卸载后转详情和刷新恢复。390说明/取消钮在视口；明确取消后个人工作仅显示新工作项并成功开始1次200，27%基线/原历史保持、草稿不写入、另一需求除分析revision外完整DTO/成员保持/0异常。22480的stage-pg-direct-split首轮2通过17.0s，类型/测试构建通过；pg-direct-split各路径direct-split-pg.json与截图已看，探针归档，无产品修改/永久测试 |
-| OW 旧问题提醒 | 真实管理员解决，普通负责人从仍显示的旧提醒进入详情；首次/曾缓存两路径均显示已解决100%、无逾期，后退保留原因/负责人筛选并移除提醒，刷新一致，另两问题完整DTO保持/0页面写/0异常。28882的`stage-ow-owner-issue.log`两浏览器3.5/3.2s、类型/测试构建通过，390截图已看，探针归档。71581首轮误用viewer，按既有规则其行动列表为空，不是缺陷；已回收。截图新增OX标题阅读候选，不把导航验收当布局全部通过 |
-| OR 归档期间进展草稿 | 实际普通成员填写57%/说明，管理员归档；未提交与旧提交403两条路径均经后台61秒轮询/不可用页/刷新，原身份保持。恢复后他人已存40%（v4），原草稿v3提交409，读取最新后输入不变且仅1次200存57%（v5）；原27%、他人40%、本人57%各1条，刷新一致。同项目/另一项目资料除预测快照revision外完整DTO保持，成员DTO保持，0页面异常。7996的stage-or-corrected-progress首轮修正后2通过（3.5/3.0s），390输入/保存钮在视口、截图已看，探针归档，无产品修改/永久测试。21661首轮只因探针误期待404（实际旧写403）和不应固定的预测revision失败；未把该轮算产品缺陷 |
 
 
 ## 更早业务覆盖索引
+
+QQ归档：QC, QB, QA, PX, PS, PR, PO, PM, PL, PH, PE, OZ, PZ, PW, PV, PT, PQ, PK, PG, OW, OR。完整原文、证据与失败边界在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`；最新QP基线保留于本记录。
 
 本轮归档索引：OX问题标题、OQ项目入口、OP分派查询、OK/OC流程数值、OJ长姓名登录、OD首账号空项目、OB流程不可用返回、NY特性需求分页；详细结果及提交在33ff6eb。
 
