@@ -2,14 +2,14 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 PJ
+## 恢复入口与当前阶段 PK
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段PJ：核对自定义统计图表中的用户文本是否按原文显示，先检查已有formatter与所安装图表库的转义路径，不凭HTML形状标题就改组件。PH完整年份提示已专项验收，PI增量日志/健康通过；最新完整业务基线仍OZ。
+2. 当前阶段PK（探索中，未验收）：只读原目录dcim-ai-workflow-v3-gaps.md，G1—G5新增归属/验证/迁移不属稳定功能范围，不实施、不改文档/配置。选已有业务检查：模板归档后，已执行实例能否继续编辑/调整计划，保留工作ID/依赖/人员/实际日期/进展。已定位requirements.ts模板名LEFT JOIN不过滤归档，schedule.tsx保留原流程“已归档”选项、同ID不触发重置；既有archive-entry-actions只测归档操作、deep-regressions拒绝用归档模板首次生成工作。下一步真实模板两工作+里程碑→完成一项/开始一项→归档来源→页面编辑与平移计划，核对实例不被重新生成。template-save-journey.pw.ts fixture有创建字段，templates DELETE用expectedUpdatedAt；先读schedule表单及提交路径，避免猜接口。
 3. 最新完整验证OZ：999业务/120文件、13性能、26浏览器冒烟，运行时/428边界/完整Lint及按钮规范/类型/生产构建/体积预算均通过，覆盖OZ/OX/OQ。OZ另16导入浏览器和87专项业务通过，无遗留句柄。
 4. 最新产品 `1512802`（PH）、`fc47d21`（PE）、`f48d23c`（OZ）、`17c9bb7`（OX）、`c06e7fd`（OQ）、`4985552`（OP）、`7e375d0`（OK）、`5dca0b5`（OJ）、`a79fe72`（OD）、`fedbd45`（OC）。PB将40883字节/158行压为25979字节/114行（提交0a8a724），基线/稳定决定/候选逐段比较保持，`record-compaction-pb.json`留存校验；完整前版保存在 `67baff3`；NN及更早详细历史仍在 `cac4ecd`。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
-6. 浏览器端口3296，独立数据库/构建；浏览器串行，性能独占。每次浏览器命令设置 `$env:PLAYWRIGHT_PORT='3296'`。全部句柄已回收，探针归档；PH的81187退出0，无运行测试。PF结束3296监听0、当前浏览器临时目录0、隔离工作区干净，原目录仍仅2处用户修改。
+6. 浏览器端口3296，独立数据库/构建；浏览器串行，性能独占。每次浏览器命令设置 `$env:PLAYWRIGHT_PORT='3296'`。全部句柄已回收，探针归档；PH的81187退出0，无运行测试。PH/PJ结束3296监听0、当前浏览器临时目录0、隔离工作区干净，原目录仍仅2处用户修改。
 
 ## 当前验收基线
 
@@ -54,6 +54,7 @@ OZ完整验证覆盖至f48d23c，专项证据见表。原目录仍仅2处用户�
 
 | 阶段 / 领域 | 结论与证据 |
 |---|---|
+| PJ 图表文本复核 | AnalyticsPage将标签作为坐标或饼图name，未提供HTML formatter；RequirementDetails只把数值格式化为百分比，Chart保留内置提示路径。所安装echarts TooltipView调用tooltipMarkup，后者对header/name/value调用encodeHTML（170/234/244行），zrender/core/dom处理转义。应用src/client/shared未找到直接HTML写入或eval；当前无需修改，不把静态复核称为浏览器运行或全面安全审计 |
 | PG 进展草稿并发拆分 | 普通成员分别从需求详情/我的工作填57%及说明，管理员把已存27%的需求新增工作项；旧进展409且正式DTO保持，重读禁用直接提交，说明经控制卸载后转详情和刷新恢复。390说明/取消钮在视口；明确取消后个人工作仅显示新工作项并成功开始1次200，27%基线/原历史保持、草稿不写入、另一需求除分析revision外完整DTO/成员保持/0异常。22480的stage-pg-direct-split首轮2通过17.0s，类型/测试构建通过；pg-direct-split各路径direct-split-pg.json与截图已看，探针归档，无产品修改/永久测试 |
 | PF 参考链接URL往返 | 中文/空格/%252F、大小写主机/443/%2F/%2B、国际域名/中文片段三组，经真实原生表单一次PATCH保存、刷新和三次新窗口打开，原href/title保持，目的URL等于浏览器标准化且编码不丢失，opener为空。目标.invalid全部本地拦截，无外部站点访问；打开前后需求/项目完整DTO保持、0异常。57658的stage-pf-reference-url-complete通过18.0s、类型/测试构建通过；reference-url-pf.json与探针归档，无产品修改/永久测试。86576首轮仅误用不含“其他”类型的exact可访问名，修正定位后通过，均已回收 |
 | PD 分析范围往返 | 三条真实需求分别在10/45/120天前完成，经开始、完成、纠错接口准备；自定义↔30/90/180/项目周期四轮及刷新，共10次标签/请求/URL/数量核对，自定义1、预设1/2/3/3且输入保持。9843的stage-pd-analytics-range-complete首轮完整通过11.2s，类型/构建通过；项目/需求/看板完整DTO保持、0页面写/异常，390截图已看。analytics-range-pd.json与探针归档。前两次夹具给开始/完成接口传历史日期被400拒绝，改走既有纠错，不算产品缺陷；42540/42424/9843均回收。无需产品修改/永久测试 |
