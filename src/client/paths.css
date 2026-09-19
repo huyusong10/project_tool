@@ -127,7 +127,7 @@
 .graph-loading-shell{align-items:stretch}.graph-loading-shell>.graph-workspace{display:grid;place-items:center}
 .graph-reconnect-handle{position:absolute;width:26px;height:26px;border-radius:50%;border:2px solid var(--accent);background:var(--bg-surface);z-index:5;transform:translate(-50%,-50%);cursor:crosshair;padding:0;font-size:0}
 @media(max-width:800px){
- .graph-status-slot{gap:5px}.graph-status-slot>span{font-size:11px}.graph-finder input{width:80px}.graph-finder button{padding:4px;font-size:11px}
+ .graph-status-slot{gap:5px}.graph-status-slot>span{font-size:11px}.graph-finder input{width:100%;min-width:0;flex-basis:100%}.graph-finder button{padding:4px;font-size:11px}
 }
 @media(prefers-reduced-motion:reduce){.graph-workspace *,.graph-workspace *:before,.graph-workspace *:after{animation:none!important;transition:none!important}}
 
