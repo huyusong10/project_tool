@@ -187,6 +187,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
   if (input.ownerId !== undefined && !ownerId && hasExecution) {
     fail('需求已开始执行，只能更换负责人，不能清空负责人', 'DEPENDENCY_CONFLICT', 409);
   }
+  if (ownerId !== current.ownerId) validateDeliveryFields(current.projectId, { ownerId }, actor, current);
   let nextPlannedStart = current.plannedStart;
   let scheduleShift: { currentAnchor: string; targetAnchor: string } | null = null;
   let generateInitialPlan = false;
@@ -257,6 +258,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
       applyTemplateInternal(id, templateId, nextPlannedStart!);
       updateStoredRequirementSchedule(id);
       requirementOwner(current.projectId, ownerId, true);
+      if (ownerId !== current.ownerId) validateDeliveryFields(current.projectId, { ownerId }, actor, current, true);
       requireActiveProject(current.projectId, true);
       assertProjectManager(requireAuthorizationActor(actor), current.projectId);
       audit(actor, auditAction, 'requirement', id, auditSummary);
@@ -272,6 +274,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
     if (requestedPlannedStart !== undefined || requestedPlannedEnd !== undefined) updateStoredRequirementSchedule(id);
     else if (ownerId !== current.ownerId) syncStoredRequirementState(id, now, false);
     requirementOwner(current.projectId, ownerId, true);
+    if (ownerId !== current.ownerId) validateDeliveryFields(current.projectId, { ownerId }, actor, current, true);
     requireActiveProject(current.projectId, true);
     assertProjectManager(requireAuthorizationActor(actor), current.projectId);
     audit(actor, auditAction, 'requirement', id, auditSummary);

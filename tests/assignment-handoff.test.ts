@@ -66,6 +66,40 @@ it('新增和批量草稿都拒绝把工作分派给已停用账号，预览不�
   expect(await detail(r.id)).toEqual(before);
 });
 
+it('工作分解需求拒绝分派给停用账号，保留原负责人编辑及终态历史纠错', async () => {
+  const { r, previous, next, disable } = await fixture();
+  await disable();
+  const before = await detail(r.id);
+  const invalid = await request('PATCH', '/api/requirements/' + r.id, { expectedVersion: before.version, ownerId: previous.id });
+  expect(invalid.statusCode, invalid.body).toBe(400);
+  expect(await detail(r.id)).toEqual(before);
+
+  const { sqlite } = await import('./support/database');
+  const storedWork = () => sqlite.prepare('SELECT * FROM work_items WHERE requirement_id=? ORDER BY id').all(r.id);
+  const workBefore = storedWork();
+  const handed = await request('PATCH', '/api/requirements/' + r.id, { expectedVersion: before.version, ownerId: next.id });
+  expect(handed.statusCode, handed.body).toBe(200);
+  expect(handed.json()).toMatchObject({ ownerId: next.id, ownerValid: true, version: before.version + 1 });
+  expect(storedWork()).toEqual(workBefore);
+  expect((await detail(r.id)).progressUpdates).toEqual(before.progressUpdates);
+
+  const account = (await request('GET', '/api/accounts')).json().find((item: { personId: string }) => item.personId === next.id);
+  expect((await request('PATCH', '/api/accounts/' + account.id, { status: 'disabled', expectedUpdatedAt: account.updatedAt })).statusCode).toBe(200);
+  const current = await detail(r.id);
+  const edited = await request('PATCH', '/api/requirements/' + r.id, { expectedVersion: current.version, ownerId: next.id, background: '保留历史负责人，只补充说明' });
+  expect(edited.statusCode, edited.body).toBe(200);
+  expect(edited.json()).toMatchObject({ ownerId: next.id, ownerValid: false, background: '保留历史负责人，只补充说明' });
+  expect(storedWork()).toEqual(workBefore);
+
+  const cancelled = await request('POST', '/api/requirements/' + r.id + '/cancel', { expectedVersion: edited.json().version, reason: '保留已取消需求的历史资料' });
+  expect(cancelled.statusCode, cancelled.body).toBe(200);
+  const cancelledWork = storedWork();
+  const corrected = await request('PATCH', '/api/requirements/' + r.id, { expectedVersion: cancelled.json().version, ownerId: previous.id, reason: '更正原历史负责人' });
+  expect(corrected.statusCode, corrected.body).toBe(200);
+  expect(corrected.json()).toMatchObject({ ownerId: previous.id, status: 'cancelled' });
+  expect(storedWork()).toEqual(cancelledWork);
+});
+
 it('问题负责人账号停用后提示交接，拒绝新增分派；交接保留进度和历史', async () => {
   const { projectId, previous, next, disable } = await fixture();
   const created = await request('POST', '/api/issues', { projectId, title: '问题责任交接', ownerId: previous.id });

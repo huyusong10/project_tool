@@ -2,19 +2,20 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 PW
+## 恢复入口与当前阶段 PY
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段PW（流程预览规模，未测量）：PV默认条件变化两真实路径通过，不修改。转查单一流程的预览规模；domain.ts上限200元素，既有template-overview浏览器主要7元素和21张卡。候选为10/50/200元素的串并行与里程碑：测实际点击打开/选中末端的两帧耗时，核对元素/依赖数量、390滚动与双图联动、完整模板DTO/0写。性能独占且trace关闭；只有测量或实际操作给出问题才改，不凭templateOverview的循环加缓存。已定位TemplatePreview.tsx/TemplateOverview.tsx/template-overview.ts及tests/responsive/template-overview.pw.ts。
+2. 当前阶段PY（工作记录整理）：PX已验收；PW实测正常、PX修复负责人分派漏检。记录已近4万字节，近期成果与旧证据重复。精简为当前基线、最近成果、覆盖索引、稳定决定和候选；较早详细过程保存在本提交历史中，整理前后逐段比较稳定决定/候选，不能丢失已知限制或重置进度。整理后选择不同业务重点。
 3. 最新完整验证PS：999业务/120文件、13性能、26浏览器冒烟，运行时/428边界/完整Lint及按钮规范/类型/生产构建/体积预算均通过，覆盖至cf27f95；98531首轮退出0，全部句柄回收。stage-ps-verify.log及stage-ps-performance-samples.json。
-4. 最新产品`cf27f95`（PR，特性筛选状态解释），`ec4f020`（PO，筛选工具栏焦点可见），`c82f5b9`（PM），`3dd3422`（PL），`1512802`（PH）、`fc47d21`（PE）、`f48d23c`（OZ）、`17c9bb7`（OX）、`c06e7fd`（OQ）、`4985552`（OP）、`7e375d0`（OK）、`5dca0b5`（OJ）、`a79fe72`（OD）、`fedbd45`（OC）。PB将40883字节/158行压为25979字节/114行（提交0a8a724），基线/稳定决定/候选逐段比较保持，`record-compaction-pb.json`留存校验；完整前版保存在 `67baff3`；NN及更早详细历史仍在 `cac4ecd`。
+4. 最新产品PX（本提交，阻止分派到停用账号），`cf27f95`（PR，特性筛选状态解释），`ec4f020`（PO，筛选工具栏焦点可见），`c82f5b9`（PM），`3dd3422`（PL），`1512802`（PH）、`fc47d21`（PE）、`f48d23c`（OZ）、`17c9bb7`（OX）、`c06e7fd`（OQ）、`4985552`（OP）、`7e375d0`（OK）、`5dca0b5`（OJ）、`a79fe72`（OD）、`fedbd45`（OC）。PB将40883字节/158行压为25979字节/114行（提交0a8a724），基线/稳定决定/候选逐段比较保持，`record-compaction-pb.json`留存校验；完整前版保存在 `67baff3`；NN及更早详细历史仍在 `cac4ecd`。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
-6. PV40007首轮仅探针错误（依赖分析revision、将DEPENDENCY_CONFLICT误期望400），84706修正后两场景退出0，全部句柄回收，探针归档。PS结束3296监听0、当前浏览器测试临时目录0，隔离目录干净；原目录仍仅2处用户改动。PR原版73039完整归档/恢复往返只缺提示和入口，退出1；早期82233误切已展开行、85718按钮徽标影响exact定位，均为探针假设错误。5857改后3场景退出0；全部句柄回收，探针已归档。浏览器端口3296，独立数据库/构建；浏览器串行，性能独占。每次浏览器命令设置 `$env:PLAYWRIGHT_PORT='3296'`。PK50161、PM49948/34361、PO29505/46531/90969/34482/40522均退出0，全部句柄已回收，探针归档，无运行测试。PO开始前3296监听0、测试临时目录0；原目录仍仅2处用户修改。
+6. PX原版两探针对work_items PATCH真实200且ownerValid=false；改后113专项业务与27013四浏览器退出0，42402已回收，临时探针归档，无运行测试。PV40007首轮仅探针错误（依赖分析revision、将DEPENDENCY_CONFLICT误期望400），84706修正后两场景退出0，全部句柄回收，探针归档。PS结束3296监听0、当前浏览器测试临时目录0，隔离目录干净；原目录仍仅2处用户改动。PR原版73039完整归档/恢复往返只缺提示和入口，退出1；早期82233误切已展开行、85718按钮徽标影响exact定位，均为探针假设错误。5857改后3场景退出0；全部句柄回收，探针已归档。浏览器端口3296，独立数据库/构建；浏览器串行，性能独占。每次浏览器命令设置 `$env:PLAYWRIGHT_PORT='3296'`。PK50161、PM49948/34361、PO29505/46531/90969/34482/40522均退出0，全部句柄已回收，探针归档，无运行测试。PO开始前3296监听0、测试临时目录0；原目录仍仅2处用户修改。
 
 ## 当前验收基线
 
 | 范围 | 最终证据与边界 |
 |---|---|
+| PX专项验证 | 原版REST/MCP：两类需求新建及direct更新拒绝400，work_items普通更新却200写入失效owner；owner-assignment-px-original.json、stage-px-owner-assignment-original.log。改后8组合全400，4个更新完整DTO/版本不变。40专项（含2探针）+73集成/编辑契约共113通过，27013的4既有浏览器通过23.3s；类型/测试构建/目标Lint/diff通过。新增1正式回归涵盖错误分派、有效交接、原失效负责人补说明、取消后历史纠错，完整工作存储及历史保持；owner-assignment-px-complete.json、stage-px-owner-assignment-complete/owner-integration/owner-browser.log。探针归档，全句柄回收 |
 | PS完整验证 | stage-ps-verify.log首轮退出0（98531已回收）：999业务/120文件、13性能、26浏览器冒烟（1.2min）；原生运行时、428边界、完整Lint/按钮规范、类型、生产构建和预算均通过，覆盖至cf27f95。stage-ps-performance-samples.json留存本轮样本 |
 | PR专项验证 | 原版archived-feature-filter-pr-original.json提示/入口均false，但完整往返和数据核对通过；改后5857通过普通成员跨页归档/恢复、既有组合筛选和归档规则3场景。两方向390提示/按钮在视口、截图已看；切换后搜索词/所选特性/刷新保持，交付历史及另一需求业务DTO保持，项目/特性DTO在只读期间保持，0成员写/异常。类型/测试构建/目标Lint/diff通过；archived-feature-filter-pr-after.json与stage-pr-archived-feature-filter-after.log，探针归档，无永久测试 |
 | PO专项验证 | 29505原版测量390窗口按钮右界391/裁切边界375，稳定10帧及开关菜单仍缺16px；640/1280正常。46531注入scroll-padding、scroll-margin及两者均无改善，不保留。焦点时仅滚动工具栏实际子元素后，90969探针/菜单、34482组合筛选/PM双规模共5不同场景通过；40522另验证鼠标点击与真实触摸点击部分可见按钮，打开/关闭成功且右界375。原24次焦点顺序保持，组合筛选/刷新/画布位置保持；项目/特性完整DTO、0写/异常。类型/测试构建/目标Lint/diff通过，390截图已看；filter-visibility-po-original/css-trial/after/complete.json，stage-po-filter-visibility/after/complete及stage-po-filter-regression.log；全部探针归档，无永久测试 |
@@ -32,14 +33,15 @@
 | 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；PN元数据仍同PI/PA/MK，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-pn-listing.json` |
 | 依赖证据 | JG官方生产依赖审计9月18日23:06为0公告，lock最后提交06146c4；LY只复核未变。这是旧证据，不代表当前安全快照 |
 
-PS完整验证覆盖至cf27f95，专项证据见表。原目录仍仅2处用户修改。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
+PS完整验证覆盖至cf27f95，PX使用专项证据，见表。原目录仍仅2处用户修改。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
 
 ## 近期产品成果
 
-均已验收，PS完整验证覆盖至cf27f95，含PE/PH/PL/PM/PO/PR。更早产品成果、失败尝试和精确证据见 `67baff3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
+均已验收，PS完整验证覆盖至cf27f95，PX由113业务/4浏览器专项验收。更早产品成果、失败尝试和精确证据见 `67baff3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
+| PX / 本提交 | 已有工作分解需求的普通负责人修改仅校验人员及成员关系，漏检账号状态，REST/MCP实际可把需求分派给已停用账号。changeRequirement在实际更换负责人时复用validateDeliveryFields，写前及事务内检查；保留原失效负责人编辑说明和终态历史纠错。无新校验体系/API，新增1有业务结果断言的回归；原版与改后证据见专项基线 |
 | PR / cf27f95 | 成员已选特性被管理员归档或恢复后，保留的状态筛选与特性不符，空结果原来没有解释。ProgressWorkspace仅在该情况下说明特性归档状态，提供查看对应状态的按钮；点击只改progressState，其他筛选保持，不自动切换、不改API或筛选语义。原版复现与改后3场景/窄屏/只读证据见专项基线 |
 | PO / ec4f020 | PM窄屏截图发现更多筛选文字不完整，实测右侧裁切16px，CSS滚动边距无效。ProgressFilters加局部onFocusCapture，对工具栏实际子元素调用最近边界scrollIntoView；弹层移到其他DOM位置时不参与。保持原单行横滚布局，无新样式/抽象；390按钮恢复完整、640/1280保持，鼠标/触摸/键盘与组合筛选5场景通过，证据见专项基线 |
 | PM / c82f5b9 | 自定义Select关闭Tab弹层后焦点丢失：实际新建需求中Tab跳出到主页，Shift+Tab跳到提交按钮，三尺寸均复现。仅将Tab分支close()改为close(true)，恢复入口焦点后让浏览器沿原顺序移动；24次表单/页面筛选焦点和4既有搜索/菜单场景通过，草稿/选项/URL/完整业务DTO保持。原版及改后证据见专项基线，无新永久测试。早期45162计数全页面option、64181精确getByLabel原生select定位失败，均属探针错误，已修正/回收 |
@@ -63,6 +65,7 @@ PS完整验证覆盖至cf27f95，专项证据见表。原目录仍仅2处用户�
 
 | 阶段 / 领域 | 结论与证据 |
 |---|---|
+| PW 流程预览规模 | 真实10/50/200元素（8/40/160工作，2/10/40里程碑；12/76/316依赖），含长名称；生产React、关闭trace，各1预热+5真实点击到目标DOM后两帧样本。打开中位18.1/18.6/59.5ms、最慢18.5/19.4/60.3ms；选末端中位18.5/18.7/16.0ms，200预览8328 DOM。3场景94459首轮15.7s通过；桌面/390末端与首项双图联动、弹窗滚动保持、完整模板/项目DTO、0写/异常。390三截图已看，类型/测试构建通过；template-preview-pw-10/50/200.json、stage-pw-template-preview.log，探针归档。不加缓存/优化/永久测试；不推断所有200节点的稠密图 |
 | PV 默认流程与归档条件 | 真实经理已打开确认后，管理员将同一流程设为默认（模板updatedAt未变）。刷新路径0拒绝写；未刷新旧确认409 DEPENDENCY_CONFLICT，重新读取流程/归档后明确阻止；更换默认、重新选择后各仅1 DELETE200，刷新归档一致。拒绝前后完整需求/模板/项目DTO保持；允许的项目修改仅改变分析revision，原实例/计划/开始历史/另一项目保持，0页面异常。84706两场景1.9/3.2s通过，类型/测试构建通过；390提示/取消钮在视口且两截图已看。default-archive-pv-fresh/stale.json、stage-pv-default-archive-verified.log，探针归档，无修改/永久测试。首轮40007预期400及误固定work.dependencyRevision导致失败；修正探针并增加拒绝期间完全DTO比较，不算产品缺陷 |
 | PT 实际库对象关系 | 2026-09-19T07:00:10.418Z，同一只读事务检查2项目/12特性/19Phase/62需求/257工作/101里程碑/360依赖/395进展/31问题。复用现有启动一致性检查；另查需求-特性、问题/里程碑-需求、进展-工作父级、依赖两端项目与父级，全部异常计数0，total_changes=0。包含归档和历史行，不输出名称/ID/正文，不称完整历史快照或API验收。object-relations-original-pt.ts/json、stage-pt-original-relations.log首轮退出0；无产品修改/永久测试 |
 | PQ 同需求工作密度 | 无依赖、3名人员、每工作2协作与混合执行/取消历史，10/100/1000同级工作×单项/两类小页/越界页/无匹配/资料装载/完整分析共21场景，各5样本。1000单项22.9ms、小页23.5ms，资料5.4ms/分析16.7ms；100单项3.5ms，空页只2查询，1000越界1.1ms/无匹配2.2ms。每场景完整结果hash一致、9表hash保持、total_changes增量0。改装载范围预期收益有限，不改/不加永久测试；work-page-density-pq.ts、work-page-density-pq-baseline.json、stage-pq-work-density-baseline.log。首轮夹具给协作关系表多填created_at，SQL拒绝后修正，未算产品缺陷；两命令均结束，无遗留句柄。不推断复杂依赖图性能 |
