@@ -55,7 +55,7 @@
 .graph-view-controls{right:16px;bottom:16px;display:flex;align-items:center;gap:3px;padding:6px;font-size:12px;color:var(--text-muted);box-sizing:border-box}
 .graph-workspace[data-stacked=true] .graph-view-controls{bottom:calc(var(--graph-footer-height,46px) + 28px)}
 .graph-fields{display:grid;gap:10px;margin-top:14px}.graph-fields .field{margin:0}
-.graph-overlay input:not([type=checkbox]),.graph-overlay select,.graph-overlay textarea{box-sizing:border-box;max-width:100%;border:1px solid var(--border-default);border-radius:7px;padding:8px 9px;background:var(--bg-surface);color:var(--text-primary);font:inherit;font-size:13px}
+.graph-overlay :where(input:not([type=checkbox]),select,textarea){box-sizing:border-box;max-width:100%;border:1px solid var(--border-default);border-radius:7px;padding:8px 9px;background:var(--bg-surface);color:var(--text-primary);font:inherit;font-size:13px}
 .graph-auxiliary>input,.graph-auxiliary>select{width:100%;margin-bottom:10px}
 .graph-list-row{display:flex;gap:5px;align-items:center;border-bottom:1px solid var(--divider);padding:5px 0}
 .graph-list-row>button:first-child,.graph-relation-list>div>button:first-child{flex:1;min-width:0;display:grid;gap:5px;padding:9px 7px;text-align:left;background:transparent;color:var(--text-primary);border:1px solid transparent;border-radius:7px;font:inherit;font-size:13px;overflow-wrap:anywhere}

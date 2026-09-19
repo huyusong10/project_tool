@@ -2,8 +2,10 @@
 @layer application {
 .gantt-navigation { display:flex; align-items:center; flex-wrap:wrap; gap:6px; min-width:0; max-width:100%; }
 .gantt-navigation > .ghost-button { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:32px; padding:5px 8px; white-space:nowrap; }
-.gantt-date-jump { display:flex; align-items:center; gap:5px; height:32px; padding:0 6px; border:1px solid var(--border-default); border-radius:var(--radius-sm); color:var(--text-muted); }
-.gantt-date-jump input { width:112px; min-width:0; border:0; padding:0; background:transparent; color:var(--text-secondary); font:inherit; font-size:12px; }
+.gantt-date-jump { display:flex; align-items:center; gap:5px; height:36px; padding:0 6px; border:1px solid var(--border-default); border-radius:var(--radius-sm); color:var(--text-muted); }
+.gantt-date-jump:focus-within { border-color:var(--accent-ink); box-shadow:var(--focus-ring); }
+.gantt-date-jump input { width:112px; min-width:0; border:0; padding:0; outline:0; background:transparent; color:var(--text-secondary); font:inherit; font-size:12px; }
+.gantt-date-jump input:focus { box-shadow:none; }
 .gantt-visible-range { font-size:12px; color:var(--text-faint); white-space:nowrap; }
 .project-gantt-scroll.gantt-navigation-surface,.requirement-gantt-scroll.gantt-navigation-surface,.path-gantt-scroll.gantt-navigation-surface { overflow-x:hidden; overflow-y:auto; overscroll-behavior-x:contain; overflow-anchor:none; }
 .gantt-navigation-surface:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
@@ -39,7 +41,7 @@
  .gantt-navigation-surface .gantt-requirement-info > div { min-width:0; }
  .gantt-navigation { gap:6px; }
  .gantt-navigation .gantt-visible-range { flex-basis:100%; }
- .gantt-navigation .ghost-button,.gantt-navigation .view-tabs button,.gantt-date-jump { min-height:36px; }
+ .gantt-navigation .ghost-button,.gantt-navigation .view-tabs button { min-height:36px; }
 }
 
 }
