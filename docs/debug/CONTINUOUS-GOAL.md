@@ -2,12 +2,12 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 PQ
+## 恢复入口与当前阶段 PR
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段PQ（性能选题已复核，未测量）：PO筛选按钮完整可见已验收。转向同一需求集中过多工作项时的单项/分页读取。queries.ts workDetails按当前页父需求调用loadWorkItemsByRequirementIds，会装载同需求全部工作/协作/取消历史；是否值得缩小范围必须测量。旧query-profile/query-final只覆盖1000需求×10工作，未覆盖集中分布；当前项目列表51/501/5001×6身份最大3.73ms已有NR证据，不重测。下一步独立数据库10/100/1000同级工作，测readWorkItem、queryWorkItems少量非空/空页，分离整体路径分析与资料装载，核对完整DTO及0写。没有明显收益则不改，不增加缓存/索引体系。
+2. 当前阶段PR（选题已定位，未复现）：PQ集中工作项读取已测量，当前不修改。转查已选特性被归档后的进展筛选：reporting.ts:167始终readFeatureOverview(all)，ProgressWorkspace给选择器未过滤的tree特性，ProgressFilters仅显示特性名，无归档标识；当前/归档状态另在更多筛选。现有feature-overview/canvas-journey覆盖归档命令和恢复，未见选中特性在别处归档后的筛选解释。下一步真实选择特性→另处归档→刷新，核对名称/空结果及切到归档状态的恢复，保存完整DTO/0页面写证据后再判断是否只需补状态标识；不擅自重置筛选或改筛选语义。
 3. 最新完整验证OZ：999业务/120文件、13性能、26浏览器冒烟，运行时/428边界/完整Lint及按钮规范/类型/生产构建/体积预算均通过，覆盖OZ/OX/OQ。OZ另16导入浏览器和87专项业务通过，无遗留句柄。
-4. 最新产品PO（本提交，筛选工具栏焦点可见），`c82f5b9`（PM），`3dd3422`（PL），`1512802`（PH）、`fc47d21`（PE）、`f48d23c`（OZ）、`17c9bb7`（OX）、`c06e7fd`（OQ）、`4985552`（OP）、`7e375d0`（OK）、`5dca0b5`（OJ）、`a79fe72`（OD）、`fedbd45`（OC）。PB将40883字节/158行压为25979字节/114行（提交0a8a724），基线/稳定决定/候选逐段比较保持，`record-compaction-pb.json`留存校验；完整前版保存在 `67baff3`；NN及更早详细历史仍在 `cac4ecd`。
+4. 最新产品`ec4f020`（PO，筛选工具栏焦点可见），`c82f5b9`（PM），`3dd3422`（PL），`1512802`（PH）、`fc47d21`（PE）、`f48d23c`（OZ）、`17c9bb7`（OX）、`c06e7fd`（OQ）、`4985552`（OP）、`7e375d0`（OK）、`5dca0b5`（OJ）、`a79fe72`（OD）、`fedbd45`（OC）。PB将40883字节/158行压为25979字节/114行（提交0a8a724），基线/稳定决定/候选逐段比较保持，`record-compaction-pb.json`留存校验；完整前版保存在 `67baff3`；NN及更早详细历史仍在 `cac4ecd`。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
 6. 浏览器端口3296，独立数据库/构建；浏览器串行，性能独占。每次浏览器命令设置 `$env:PLAYWRIGHT_PORT='3296'`。PK50161、PM49948/34361、PO29505/46531/90969/34482/40522均退出0，全部句柄已回收，探针归档，无运行测试。PO开始前3296监听0、测试临时目录0；原目录仍仅2处用户修改。
 
@@ -38,7 +38,7 @@ OZ完整验证覆盖至f48d23c，专项证据见表。原目录仍仅2处用户�
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
-| PO / 本提交 | PM窄屏截图发现更多筛选文字不完整，实测右侧裁切16px，CSS滚动边距无效。ProgressFilters加局部onFocusCapture，对工具栏实际子元素调用最近边界scrollIntoView；弹层移到其他DOM位置时不参与。保持原单行横滚布局，无新样式/抽象；390按钮恢复完整、640/1280保持，鼠标/触摸/键盘与组合筛选5场景通过，证据见专项基线 |
+| PO / ec4f020 | PM窄屏截图发现更多筛选文字不完整，实测右侧裁切16px，CSS滚动边距无效。ProgressFilters加局部onFocusCapture，对工具栏实际子元素调用最近边界scrollIntoView；弹层移到其他DOM位置时不参与。保持原单行横滚布局，无新样式/抽象；390按钮恢复完整、640/1280保持，鼠标/触摸/键盘与组合筛选5场景通过，证据见专项基线 |
 | PM / c82f5b9 | 自定义Select关闭Tab弹层后焦点丢失：实际新建需求中Tab跳出到主页，Shift+Tab跳到提交按钮，三尺寸均复现。仅将Tab分支close()改为close(true)，恢复入口焦点后让浏览器沿原顺序移动；24次表单/页面筛选焦点和4既有搜索/菜单场景通过，草稿/选项/URL/完整业务DTO保持。原版及改后证据见专项基线，无新永久测试。早期45162计数全页面option、64181精确getByLabel原生select定位失败，均属探针错误，已修正/回收 |
 | PL / 3dd3422 | 开始工作并补选负责人时缺expectedRequirementVersion，REST/MCP原版错误提示缺expectedVersion，调用方无法据此补正确字段。仅在既有鉴权后指出父版本字段及读取所属需求的恢复方式，仍走原版本/事务校验；2通道完整原版证据、改后28专项业务、目标Lint/类型/diff通过。parent-version-pl-baseline/after.json与stage-pl-parent-version-baseline/after.log；探针归档，无永久测试 |
 | PH / 1512802 | 我的工作图表先把完整日期截为月日，2025-12-29及2026-01-05悬停也无年份，原版10793实际失败。完成/近期并发两图保留完整日期，仅坐标轴formatter显示月日；只改2处配置，无API/计数改动。81187的12浏览器通过，10次完整日期提示含跨年历史，生产构建/体积/目标Lint通过，截图已看；chart-date-ph-before/after.json与stage-ph-chart-date-before/after.log，探针归档 |
@@ -60,6 +60,7 @@ OZ完整验证覆盖至f48d23c，专项证据见表。原目录仍仅2处用户�
 
 | 阶段 / 领域 | 结论与证据 |
 |---|---|
+| PQ 同需求工作密度 | 无依赖、3名人员、每工作2协作与混合执行/取消历史，10/100/1000同级工作×单项/两类小页/越界页/无匹配/资料装载/完整分析共21场景，各5样本。1000单项22.9ms、小页23.5ms，资料5.4ms/分析16.7ms；100单项3.5ms，空页只2查询，1000越界1.1ms/无匹配2.2ms。每场景完整结果hash一致、9表hash保持、total_changes增量0。改装载范围预期收益有限，不改/不加永久测试；work-page-density-pq.ts、work-page-density-pq-baseline.json、stage-pq-work-density-baseline.log。首轮夹具给协作关系表多填created_at，SQL拒绝后修正，未算产品缺陷；两命令均结束，无遗留句柄。不推断复杂依赖图性能 |
 | PK 已归档流程实例 | 实际两工作+里程碑，完成一项/开始一项后归档来源；页面编辑说明及平移9/11→9/23后刷新，原工作ID/人员/实际日期/40%进度/3条历史、2依赖、里程碑完整资料、归档和项目DTO保持；工作日期按原间隔平移。页面只有PATCH200和reschedule200、0异常。50161首个完整通过2.7s，类型/测试构建通过，390截图已看、保存钮在视口、已归档流程可读；archived-template-instance-pk.json、stage-pk-archived-template-instance-verified.log、探针归档。前轮夹具缺父版本、textarea默认内容被getByLabel精确匹配算入，以及工作项deliveryForecast.revision变化导致探针失败，均已定位并修正断言；42651/96302/53019/81362/95318均回收。无需产品修改/永久测试；原文档G1—G5新增功能不实施 |
 | PJ 图表文本复核 | AnalyticsPage将标签作为坐标或饼图name，未提供HTML formatter；RequirementDetails只把数值格式化为百分比，Chart保留内置提示路径。所安装echarts TooltipView调用tooltipMarkup，后者对header/name/value调用encodeHTML（170/234/244行），zrender/core/dom处理转义。应用src/client/shared未找到直接HTML写入或eval；当前无需修改，不把静态复核称为浏览器运行或全面安全审计 |
 | PG 进展草稿并发拆分 | 普通成员分别从需求详情/我的工作填57%及说明，管理员把已存27%的需求新增工作项；旧进展409且正式DTO保持，重读禁用直接提交，说明经控制卸载后转详情和刷新恢复。390说明/取消钮在视口；明确取消后个人工作仅显示新工作项并成功开始1次200，27%基线/原历史保持、草稿不写入、另一需求除分析revision外完整DTO/成员保持/0异常。22480的stage-pg-direct-split首轮2通过17.0s，类型/测试构建通过；pg-direct-split各路径direct-split-pg.json与截图已看，探针归档，无产品修改/永久测试 |
