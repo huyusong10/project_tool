@@ -40,7 +40,7 @@
 .workspace-overview-phase:first-child,.workspace-overview-blocker:first-child{padding-top:0}.workspace-overview-phase:last-child,.workspace-overview-blocker:last-child{border-bottom:0;padding-bottom:0}
 .overview-item-heading,.workspace-overview-phase footer,.overview-blocker-meta{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .overview-item-heading>button{flex:1}.overview-item-heading>span{flex:none}
-.workspace-overview-content p{font-size:12px;line-height:1.7;margin:8px 0;color:var(--text-muted)}
+.workspace-overview-content p{font-size:12px;line-height:1.7;margin:8px 0;color:var(--text-muted);overflow-wrap:anywhere}
 .workspace-overview-phase footer,.overview-blocker-meta{font-size:11px;color:var(--text-muted)}
 .overview-link{display:inline-flex;align-items:center;gap:6px;border:0;padding:0;background:transparent;color:var(--text-primary);font:inherit;font-size:13px;text-align:left;line-height:1.5;cursor:pointer;overflow-wrap:anywhere}
 .overview-link svg{flex:none;color:var(--text-muted)}.overview-link:hover{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
@@ -105,7 +105,7 @@
  .outline-table td:last-child,.outline-table th:last-child{position:sticky;right:0;padding:0 5px;z-index:2;border-left:1px solid var(--border)}.outline-table th:last-child{z-index:4}
  .outline-selection{gap:4px;padding:6px}.outline-selection>span{max-width:90px;font-size:11px}
  .outline-row-actions>.topbar-menu-trigger,.outline-drag,.workspace-enter{opacity:1}
- .workspace-overview-content{grid-template-columns:1fr;overflow:visible;gap:24px}.workspace-overview-dialog{overflow:auto;gap:20px}.overview-dialog-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.overview-dialog-summary>span{padding:12px}.overview-dialog-summary strong{font-size:20px}
+ .workspace-overview-content{grid-template-columns:1fr;flex:none;overflow:visible;gap:24px}.workspace-overview-dialog{overflow:auto;gap:20px}.overview-dialog-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.overview-dialog-summary>span{padding:12px}.overview-dialog-summary strong{font-size:20px}
  .unified-workspace-body>.workspace-object-inspector{position:fixed;inset:0;width:100vw;height:100dvh}
 }
 @media(pointer:coarse){.outline-row-actions>.topbar-menu-trigger,.outline-drag,.workspace-enter{opacity:1}}

@@ -48,7 +48,7 @@
 .detail-card .object-history-entry h4 {margin:0 0 6px;font-family:var(--font-sans);font-size:13px;font-weight:600;line-height:1.6}
 .detail-card .object-history-entry p {margin:6px 0;overflow-wrap:anywhere}
 .detail-card .object-history-entry:first-child {padding-top:0}
-.detail-card .object-related-row {padding:10px 0}
+.detail-card .object-related-row {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;padding:10px 0}
 .detail-card .object-related-row > button {min-width:0;white-space:normal;text-align:left;overflow-wrap:anywhere}
 .detail-card .object-related-row:first-child {padding-top:0}
 .detail-card .object-related-row:last-child {padding-bottom:0;border-bottom:0}
