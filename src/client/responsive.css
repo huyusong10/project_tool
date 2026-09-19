@@ -682,11 +682,6 @@ textarea {
   .system-grid { grid-template-columns: 1fr; }
   .project-members-panel > header { align-items: flex-start; flex-direction: column; }
   .project-member-header-actions { width: 100%; justify-content: space-between; }
-  .project-member-row, .project-member-row.can-manage { grid-template-columns: minmax(0,1fr) auto; gap: 10px 14px; padding: 12px 14px; }
-  .project-member-identity { grid-column: 1 / -1; }
-  .project-member-meta { grid-column: 1; }
-  .project-member-role { grid-column: 1; }
-  .project-member-action { grid-column: 2; grid-row: 2 / span 2; align-self: end; }
   .member-picker-role { grid-template-columns: 1fr; }
   .my-work-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .my-work-summary article { grid-template-columns: 34px minmax(0,1fr); gap: 4px 8px; }
