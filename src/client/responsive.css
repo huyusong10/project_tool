@@ -315,12 +315,13 @@ textarea {
   .system-backup-policy {
     align-items: flex-start;
     flex-direction: column;
+    flex-wrap: nowrap;
     gap: 5px;
   }
 
   .system-backup-policy .system-operation-success,
   .system-backup-policy .system-operation-error {
-    margin-left: 0;
+    flex-basis: auto;
   }
 
   .stats-grid {

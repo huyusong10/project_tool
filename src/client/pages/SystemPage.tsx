@@ -591,10 +591,10 @@ export function SystemPage() {
               <thead><tr><th>备份／上传时间</th><th>文件名</th><th>大小</th><th>距今</th><th>操作</th></tr></thead>
               <tbody>
                 {backupsPagination.items.map((item) => <tr key={item.name}>
-                  <td>{new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false })}</td>
+                  <td data-label="备份／上传时间">{new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false })}</td>
                   <td><strong title={item.name}>{item.name}</strong>{item.restorable === false && <small className="system-backup-file-error" title={item.validationError ?? undefined}>不可恢复：{item.validationError || "文件校验失败"}</small>}</td>
-                  <td>{formatBytes(item.size)}</td>
-                  <td>{relativeTime(item.createdAt, "尚未备份", now)}</td>
+                  <td data-label="大小">{formatBytes(item.size)}</td>
+                  <td data-label="距今">{relativeTime(item.createdAt, "尚未备份", now)}</td>
                   <td><div className="system-backup-actions">
                     <Button variant="secondary" size="small" className="inline-action-button" disabled={maintenanceBlocked} onClick={() => { if (!maintenanceBlocked) downloadLock.run(() => { clearMaintenanceFeedback(); download.mutate(item); }); }}><Download size={14} />下载</Button>
                     <Button variant="secondary" size="small" className="inline-action-button" disabled={maintenanceBlocked || item.restorable === false} title={item.restorable === false ? item.validationError || "该文件不能恢复" : undefined} onClick={() => { if (maintenanceBlocked || item.restorable === false) return; clearMaintenanceFeedback(); setRestoreTarget(item); }}><RefreshCcw size={14} />恢复</Button>
