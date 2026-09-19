@@ -167,6 +167,7 @@
 .graph-edge-presentation.is-invalid{opacity:1!important}.graph-edge-presentation.is-invalid .dependency-edge-label text{fill:var(--danger)}
 .graph-cycle-path{padding-left:22px;display:grid;gap:8px;font-size:12px;line-height:1.6}.graph-cycle-path li{padding:6px 0}.graph-cycle-path li>button{margin-left:8px;font-size:12px}.graph-node-relations{margin-top:10px;width:100%;font-size:12px}
 .graph-panel-content>.graph-panel-heading{position:sticky;top:0;background:var(--bg-surface);z-index:2;padding-bottom:8px;border-bottom:1px solid var(--divider)}
+.graph-panel-content>.graph-panel-heading::before{content:"";position:absolute;left:0;right:0;bottom:100%;height:16px;background:var(--bg-surface)}
 .path-float-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px;margin-top:8px}
 @media(max-width:800px){.graph-workspace .path-float-distribution{grid-template-columns:repeat(2,minmax(0,1fr))}.path-float-results{grid-template-columns:1fr}.graph-error-notice{flex-wrap:wrap;padding:8px}.graph-error-notice>span{flex-basis:calc(100% - 40px)}.graph-error-notice .graph-notice-close{position:absolute;right:5px;top:5px}.graph-error-notice .ghost-button{margin-right:24px}}
 @media(prefers-reduced-motion:reduce){.graph-layout-status svg,.graph-initial-loader svg{animation:none}}
@@ -209,5 +210,13 @@
 @media(max-width:600px){.delivery-batch-review dl>div,.forecast-facts>div,.commitment-summary>div{grid-template-columns:88px minmax(0,1fr);gap:8px;}}
 
 .commitment-comparison{display:grid;gap:6px;padding:10px;border:1px solid var(--divider);border-radius:8px;font-size:12px;overflow-wrap:anywhere}
+
+@media(max-height:600px){
+ .graph-workspace .graph-auxiliary{top:12px;bottom:auto;max-height:calc(100% - 24px);scroll-padding-block:76px 12px;z-index:15}
+ .graph-workspace:where(.has-finder) .graph-auxiliary{top:var(--graph-find-bottom,120px);max-height:calc(100% - var(--graph-find-bottom,120px) - 12px)}
+}
+@media(max-height:450px){
+ .graph-workspace .graph-auxiliary{position:fixed;inset:64px 12px 12px auto;width:min(var(--graph-auxiliary-width,480px),calc(100% - 24px));max-height:none;z-index:50}
+}
 
 }
