@@ -3,6 +3,7 @@ import { getDatabaseContext } from './database-context';
 import { hashPassword, normalizeUsername, verifyPassword, type Actor } from './auth';
 import { addCalendarDays, deriveWorkItemStatus, isOverdueByWorkday, startOfWeekIso, todayIso } from '../shared/domain';
 import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
+import { maxUsernameLength } from '../shared/contracts';
 import { isBusinessDay } from '../shared/workday';
 import { listRequirements, loadWorkItemsByRequirementIds, requirementAnalysisSnapshots } from './services/requirements';
 import { getPathAnalysis } from './services/paths';
@@ -59,7 +60,7 @@ function uniqueUsername(username: string, exceptId?: string) {
   if (issue) fail(issue === 'line_break' ? '登录名不能包含换行' : '登录名包含不支持的控制字符');
   const value = canonicalizeLabel(username);
   if (!value) fail('登录名不能为空');
-  if (value.length > 64) fail('登录名不能超过64个字符');
+  if (value.length > maxUsernameLength) fail(`登录名不能超过${maxUsernameLength}个字符`);
   const normalized = normalizeUsername(value);
   const duplicate = getDatabaseContext().sqlite.prepare(`SELECT id FROM accounts WHERE normalized_username=? ${exceptId ? 'AND id<>?' : ''} LIMIT 1`)
     .get(...[normalized, ...(exceptId ? [exceptId] : [])]);
@@ -68,10 +69,12 @@ function uniqueUsername(username: string, exceptId?: string) {
 }
 
 function availableUsername(base: string, personId: string) {
-  let username = canonicalizeLabel(base) || `user-${personId.slice(0, 6)}`;
+  const name = canonicalizeLabel(base) || `user-${personId.slice(0, 6)}`;
+  const candidate = (suffix = '') => name.slice(0, maxUsernameLength - suffix.length).replace(/[\uD800-\uDBFF]$/u, '').trimEnd() + suffix;
+  let username = candidate();
   let normalized = normalizeUsername(username);
   if (getDatabaseContext().sqlite.prepare('SELECT 1 FROM accounts WHERE normalized_username=?').get(normalized)) {
-    username = `${username}-${personId.slice(0, 6)}`;
+    username = candidate(`-${personId.slice(0, 6)}`);
     normalized = normalizeUsername(username);
   }
   return { username, normalized };

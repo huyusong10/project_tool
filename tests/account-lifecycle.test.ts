@@ -82,6 +82,37 @@ it('登录拒绝结构化凭据和未知字段', async () => {
   expect(unknown.headers['set-cookie']).toBeUndefined();
 });
 
+it('自动开通账号保留完整姓名，长姓名与重名后缀生成可登录的名称', async () => {
+  const create = async (name: string) => {
+    const response = await app.inject({ method: 'POST', url: '/api/people', headers: { cookie: adminCookie }, payload: { name, projectId } });
+    expect(response.statusCode, response.body).toBe(200);
+    const person = response.json();
+    expect(person.name).toBe(name);
+    const account = (await app.inject({ url: '/api/accounts', headers: { cookie: adminCookie } })).json()
+      .find((entry: { personId: string }) => entry.personId === person.id);
+    return { person, account };
+  };
+  const reserved = await create('预留长登录名');
+  const renamed = await app.inject({ method: 'PATCH', url: '/api/accounts/' + reserved.account.id, headers: { cookie: adminCookie }, payload: {
+    username: 'R'.repeat(64), expectedUpdatedAt: reserved.account.updatedAt,
+  } });
+  expect(renamed.statusCode, renamed.body).toBe(200);
+  const names = ['常'.repeat(64), '长'.repeat(65), '长'.repeat(64) + '乙', 'U'.repeat(63) + '🚀尾', 'R'.repeat(64), '全'.repeat(200)];
+  const usernames = new Set<string>(['R'.repeat(64)]);
+  for (const name of names) {
+    const { person, account } = await create(name);
+    expect(account.username.length).toBeLessThanOrEqual(64);
+    expect(account.username.isWellFormed()).toBe(true);
+    expect(usernames.has(account.username)).toBe(false);
+    usernames.add(account.username);
+    if (name === names[0]) expect(account.username).toBe(name);
+    if (name === names[2] || name === names[4]) expect(account.username.endsWith('-' + person.id.slice(0, 6))).toBe(true);
+    const response = await login(account.username, '888888');
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({ accountId: account.id, personId: person.id, mustChangePassword: true });
+  }
+});
+
 it('停用后再启用不会复活旧Cookie，重新登录可用，Token保留原有恢复语义', async () => {
   const identity = await createIdentity();
   expect((await projects(identity.cookie)).statusCode).toBe(200);
