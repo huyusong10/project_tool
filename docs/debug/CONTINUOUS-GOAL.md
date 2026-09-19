@@ -4,10 +4,10 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品4e95f24（MM）、96c7323（ML）、4aa4345（MJ）、36b4292（MI）、eb8d679（MH）、3c87217（MD）、b33fc22（MC）、3517da6（MA）、79bbdd9（LW）、9cf4cd6（LV）、3376c6b（LM）、0aa4c09（LK）、e4c0fb6（LI）、834caa2（LE）、8903cfc（LD），测试夹具dd0aa3a、MI截图断言d583b73；更早成果见下表与历史版本。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品64ad1bc（MP）、4e95f24（MM）、96c7323（ML）、4aa4345（MJ）、36b4292（MI）、eb8d679（MH）、3c87217（MD）、b33fc22（MC）、3517da6（MA）、79bbdd9（LW）、9cf4cd6（LV）、3376c6b（LM）、0aa4c09（LK）、e4c0fb6（LI）、834caa2（LE）、8903cfc（LD），测试夹具dd0aa3a、MI截图断言d583b73；更早成果见下表与历史版本。
 - 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
-- 最新全量MJ：997业务/120文件、11性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-mj-complete.log，11198退出0已回收。覆盖至4aa4345；首轮63319发现1个恢复问题，修复后完整重验通过，不称首轮通过。
-- MJ生产预算：主JS933.57KB、CSS339.24KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-mm-matrix.log确认763功能/183布局/2性能、普通1861实例；只列清单，不称为执行全部浏览器。ML/MM分别完成目标验收，未重跑完整MJ。
+- 最新全量MQ：997业务/120文件、11性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-mq-verify.log，6561退出0已回收。覆盖至64ad1bc，ML/MM/MP组合验收首轮通过；此前MJ的失败与修复记录仍保留。
+- MQ生产预算：主JS933.76KB、CSS339.24KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-mp-matrix.log确认764功能/183布局/2性能、普通1862实例；只列清单，不称为执行全部浏览器。3296监听0、当前测试临时目录0。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
 详细历史在本文件Git版本：A—DO fd512b7；DP—EV 41a4ed0；FE—HL d35957a；HE—IE 67250e9。JG至JL详验见1ce7589；JP—JZ详验见dc53ed7。按主题取读，不重新开始。
@@ -260,10 +260,26 @@ MM新增前端跨度校验后，独占浏览器测试0100/9999年份输入。最
 
 analytics-range-cost-mo.json、stage-mo-range-cost-final.log留证，97164退出0。首次15200也退出0，但观察器与动画帧可能重复完成计时，已给探针加一次性完成保护后复测；旧结果保留analytics-range-cost-mo-first.json，不用它作为最终数值。生产React、trace关闭、排除Playwright定位耗时。临时stage-mo-range-cost.pw.ts已移入证据目录，无永久性能测试。
 
-## 当前阶段 MP
+## MP验收：存储不可用时保持项目导航范围
 
-转查普通列表和导航在浏览器限制偏好存储后的可用性。已定位use-sidebar-preference、use-page-view、page-foundation和GanttViewSwitch；先检查实际读写路径及已有覆盖，选择未覆盖的页面操作验证。编辑权和流程草稿已由MH/MI验收，只有新证据才回到这些领域。验收标准：偏好失败不阻止打开列表、切换筛选和返回，当前页输入保留，业务0写；无问题则不改。
+普通偏好已有catch；真实21项目探针在localStorage/sessionStorage属性本身均抛SecurityError时，分页、侧栏和窄屏输入可用，但非默认项目跳到人员矩阵实际读取默认项目。storage-project-scope-mp-before.json记录选择ID与实际请求ID不一致，51120退出1，stage-mp-nondefault-before留证。
+
+64ad1bc给项目选择增加按账号隔离的当前标签页记忆，侧栏的项目入口及品牌主页显式携带已授权的项目ID；平台和个人入口仍使用原范围。没有增加业务缓存或改变权限规则。1条永久真实回归覆盖非默认项目跨页/刷新/新标签、经个人页返回、再次切换项目、390px；完整项目DTO保持，0业务写/0页面异常。旧双标签切换身份/失权恢复回归与21项目临时探针同时通过，共3个不同浏览器；29项相关测试、类型/测试构建、目标Lint/diff、矩阵通过，1280/390截图已看。stage-mp-complete的46560退出0已回收，临时stage-mp-storage-navigation.pw.ts已归档。
+
+探针修正记录：68270仅innerText与textContent空白规则不同；32228和66360仅URL没有projectId，首次选中的恰好是默认项目，不能当作数据错误。改为选非默认项目并核对真实人员GET后，51120才证明错误。首次after构建失败为新测试members索引类型缺声明，stage-mp-typecheck的TS7015；补Record后46560通过。所有旧句柄已回收。
+
+## MQ验收：近期改动完整验证
+
+MP修改共享导航与项目记忆后，对ML/MM/MP执行完整verify，首轮通过。stage-mq-verify.log的6561退出0已回收；997业务/120文件、11性能、26冒烟及全部静态检查/生产构建/预算通过。无额外产品修改。
+
+## MR复核：备份保留规则
+
+当前backups.ts:199—233在删除前复查文件指纹；变化的同名文件本轮跳过，数量上限只计算可恢复备份；过期中断文件与近期临时文件分别处理。backup-retention:28验证无效文件不占有效名额；system:428/454验证旧临时文件清理、近期文件保留、清理前文件变化则本轮跳过/下轮重评。这些现有测试已随MQ通过，本轮只复核实现与覆盖，不重复运行或添加探针；没有新缺陷证据，当前无需修改。
+
+## 当前阶段 MS
+
+MP增加当前标签页的项目记忆，下一步检查正常存储下同一账号的两个标签分别选择不同项目，再经个人页返回的范围。用实际人员请求和成员内容核对，确保另一个标签的最近选择不会改变当前标签项目；同时核对新链接刷新与显式切换仍可用。已有MP涵盖存储拒绝、KV涵盖账号切换，此轮只补正常存储的跨标签组合；无问题则归档探针，不增加永久测试。
 
 ## 最新检查点
 
-MM产品已提交，11浏览器目标验收完成；MN无需修改，MO极端日期成本已测量，所有句柄已回收，临时性能探针已归档。下一步MP检查普通列表偏好存储失败。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标MK（23:33:15.400Z），不重复短间隔轮询；未部署或推送。Goal保持active。
+MP产品已提交，MQ完整验收通过，MR无需修改；所有句柄已回收，临时探针已归档，下一步MS检查同账号双标签项目选择。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标MK（23:33:15.400Z），不重复短间隔轮询；未部署或推送。Goal保持active。
