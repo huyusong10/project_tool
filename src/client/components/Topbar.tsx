@@ -57,7 +57,7 @@ function ProjectSwitcher({ ready }: { ready: boolean }) {
           const next = event.key === 'ArrowDown' ? (index + 1) % items.length : event.key === 'ArrowUp' ? (index + items.length - 1) % items.length : event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : null;
           if (next !== null) { event.preventDefault(); items[next]?.focus(); }
         }} onBlur={event => { if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget) && !buttonRef.current?.contains(event.relatedTarget)) setOpen(false); }}>
-          {projects.map((project) => <button type="button" role="option" title={project.name} aria-selected={project.id === selectedProjectId} key={project.id} onClick={() => { changeProject(project.id); setOpen(false); }}>
+          {projects.map((project) => <button type="button" role="option" title={project.name} aria-selected={project.id === selectedProjectId} key={project.id} onClick={() => { changeProject(project.id); setOpen(false); buttonRef.current?.focus({ preventScroll: true }); }}>
             <span className="project-switcher-option"><span>{project.name}</span>{project.isSample && <em className="sample-project-badge">样板</em>}</span>
             {project.id === selectedProjectId && <Check size={15} />}
           </button>)}
