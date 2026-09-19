@@ -65,6 +65,7 @@
 .detail-card.detail-dependency-group {border-radius:8px}
 .detail-workspace .requirement-overview {border:0;padding:0;margin:0;background:transparent;box-shadow:none}
 .detail-card .work-arrangement-row:not(:has(.work-arrangement-heading)) {padding:0;border:0;background:transparent}
+.detail-card .work-editor-scroll {border:0}
 .detail-card.progress-detail-card {margin:0;height:auto;display:block;overflow:visible}
 .detail-card.progress-detail-card .detail-card-body {min-height:0}
 .detail-card.progress-detail-card .progress-feed {max-height:400px;overflow:auto;padding:0}

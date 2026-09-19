@@ -14,7 +14,7 @@
 .detail-action-host > .modal-backdrop-inline > .modal-card { width: 100% !important; max-width: 100% !important; height: 100%; max-height: 100%; border: 0; border-radius: 0; box-shadow: none; }
 .detail-action-host .modal-card > header { min-height: 52px; gap: 12px; padding: 12px 16px; }
 .detail-action-host .modal-card > header h2 { font-size: 15px; }
-.detail-action-host .modal-body { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 16px; }
+.detail-action-host .modal-body { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scroll-padding-block: 12px 84px; padding: 16px; }
 .detail-action-host .modal-body:has(> .detail-workspace) { display: flex; overflow: hidden; padding: 0; }
 .detail-workspace :is(.button-row, .form-actions, .issue-update-actions, .inline-action-form > footer, .panel-actions) { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .detail-workspace :is(.form-actions, .issue-update-actions, .inline-action-form > footer) { position: sticky; bottom: -16px; z-index: 2; padding: 12px 0; margin-top: 12px; background: var(--bg-surface); border-top: 1px solid var(--border); }
