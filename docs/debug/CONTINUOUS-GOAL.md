@@ -2,12 +2,12 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 OB
+## 恢复入口与当前阶段 OD
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段：OB检查流程正在编辑时被另一处归档/移除后的草稿和反馈。TemplatesPage保留editingSnapshot并向TemplateForm传templateUnavailable，后者已将它纳入locked；尚无缺陷证据，先核对反馈与已有覆盖再做真实浏览器场景。
-3. 已定位`TemplatesPage.tsx:50—70/117`、`TemplateForm.tsx:53/74/103`；模板已有冲突合并、未知结果回执、跨标签接管、保存期间返回覆盖，不重跑这些场景。下一步定位归档提示和自动保存触发条件，再选择独立管理员归档/恢复与本地输入的验收路径。OA原服务无新增事件，NY完整基线保持。
-4. 最新产品 `ebefd1f`（NY）、`8b7cb73`（NS）、`2aec872`（NP），此前 `2b9ac1b`（NF）。NN将记录约61KB/389行压为约20KB/121行，提交3aca1b2，详细历史保存在 `cac4ecd`。
+2. 当前阶段：OD检查普通账号尚未加入项目时的首次使用。现有空项目归档测试主要是管理员；尚未找到零成员项目账号→加入首个项目的真实浏览器验收。先实际登录/首次改密码，检查首页提示、我的工作/个人设置和加入项目后的恢复，不预设缺陷。
+3. 已定位ProjectWorkspacePage.tsx:33—38：无selectedProjectId时暂停两查询并提示“请选择项目”；需验证零可选项目时实际体验。管理员POST /api/people允许不传projectId并创建账号；既有人员/项目成员API可作为独立夹具。验收包含真实普通角色、0页面业务写、个人页可用、独立管理员加入首个项目后重读/刷新恢复，避免重复NO经理空项目安排场景。
+4. 最新产品 `fedbd45`（OC）、`4e8888f`（OB）、`ebefd1f`（NY）、`8b7cb73`（NS）。NN将记录约61KB/389行压为约20KB/121行，提交3aca1b2，详细历史保存在 `cac4ecd`。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
 6. 浏览器端口3296，独立数据库/构建；浏览器串行，性能独占。每次浏览器命令设置 `$env:PLAYWRIGHT_PORT='3296'`。全部句柄已回收，当前无运行测试。
 
@@ -15,21 +15,23 @@
 
 | 范围 | 最终证据与边界 |
 |---|---|
-| NY完整验证 | `stage-ny-verify.log` 首轮退出0（48984已回收）：997业务/120文件、12性能、26浏览器冒烟，运行时、428边界、完整Lint/按钮规范、类型、生产构建、预算均通过；覆盖最新产品ebefd1f（含NP/NS）。前一NT覆盖至NS |
-| 生产体积 | 主JS933.76KB、CSS339.37KB、ELK1595.33KB，服务端6文件/app877.78KB；按JR清理旧产物。`stage-ny-performance-samples.json` 保存完整性能样本，源`coverage/performance/samples.json` |
+| OC完整验证 | `stage-oc-verify.log` 首轮退出0（23923已回收）：997业务/120文件、12性能、26浏览器冒烟，运行时、428边界、完整Lint/按钮规范、类型、生产构建、预算均通过；覆盖最新产品fedbd45（含OB/NY）。前一NY覆盖至NY |
+| 生产体积 | 主JS933.90KB、CSS339.37KB、ELK1595.33KB，服务端6文件/app877.78KB；按JR清理旧产物。`stage-oc-performance-samples.json` 保存完整性能样本，源`coverage/performance/samples.json` |
 | 浏览器清单 | 最新`stage-np-matrix.log`：771功能/183布局/2性能、普通1869实例；这是列举结果，未执行整个矩阵。NT结束3296监听0、当前测试临时目录0；原目录仍只有2处用户改动 |
 | 原服务增量 | 最新游标OA：2026-09-19T03:00:12.394Z；较NQ约40分钟，17日志新增0字节/0事件，无错误/读取失败，3210健康200。`runtime-log-review-oa.mjs/json`、`stage-oa-runtime.log`；NQ此前49分钟2成功事件。只检查后续增量，不短间隔轮询 |
 | 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；后续元数据未变，不重复完整性检查。`runtime-backup-kj.json` |
 | 依赖证据 | JG官方生产依赖审计9月18日23:06为0公告，lock最后提交06146c4；LY只复核未变。这是旧证据，不代表当前安全快照 |
 
-NY已完整覆盖当前产品。验收后3296监听0、当前浏览器测试临时目录0，原目录仍仅2处用户修改。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
+OC完整验证覆盖当前产品。验收后3296监听0、当前浏览器测试临时目录0，原目录仍仅2处用户修改。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
 
 ## 近期产品成果
 
-表内专项均已验收，NY覆盖全部产品变更。NP以前的失败尝试、精确句柄和截图路径可从 `cac4ecd:docs/debug/CONTINUOUS-GOAL.md` 按阶段读取，不把文件名中的final/pass当作通过证据。
+表内专项均已验收，OC完整验证覆盖全部产品修改。NP以前的失败尝试、精确句柄和截图路径可从 `cac4ecd:docs/debug/CONTINUOUS-GOAL.md` 按阶段读取，不把文件名中的final/pass当作通过证据。
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
+| OC / fedbd45 | 流程预计工期输入max3660，实际模板上限1830；复用maxTemplateDurationDays并标明1–1830范围。75249的`stage-oc-before`实际1 PATCH400，27213的`stage-oc-after`1831就地提示/0写/刷新保留，390字段与提示可见、截图已看，改1830仅1 PATCH200，其他流程与刷新完整DTO保持。只改1产品文件，探针`stage-oc-template-duration.pw.ts`归档，不新增永久测试；完整验证已通过 |
+| OB / 4e8888f | 流程不可用页提示回列表，却只提供项目空间；复用既有back，返回按钮带原项目ID。99774的`stage-ob-navigation-before`缺少入口失败；68640的`stage-ob-after`20浏览器、7导航单测/目标Lint/类型与测试构建通过，1280/390截图已看。真实经理草稿由另一管理员归档，进入错误页无写；返回列表/后退/恢复/核对后只有1 PATCH，名称/正在输入的说明与其他流程完整DTO保持。探针`stage-ob-template-availability.pw.ts`归档。初始26558误以为编辑器仍挂载，9000的原版恢复探针通过；没有修改不可达的模板保存分支 |
 | NY / ebefd1f | REST/MCP特性需求分页原来每页计算整个项目；共享facts增加可选ID范围，当前页调用，默认全项目保持。5000其他需求/33330工作干扰下8种页从198—322ms降至0.10—1.98ms，3档规模共24组完整DTO hash一致/0写，空页少3查询；`feature-page-scope-ny-before/after.json`。新增1项5000需求/5万工作性能回归，最新普通页中位1.36/最慢1.46ms，空页0.18/0.23ms；原REST/MCP测试补非空与空页，完整验证全通过。当前UI不直接调用该分页，不称为界面提速；无新缓存/索引 |
 | NS / 8b7cb73 | 长项目名称挤压状态，长英文名称被panel裁切。2行局部CSS让名称可收缩换行、状态不收缩且不换行。真实3状态×1280/620/390共9组，原版状态2—3行、英文3组文字越界；60181的`stage-ns-before`失败。修改后9组状态1行/0越界/0横向溢出，完整项目DTO/0写/0异常，11627的`stage-ns-after`通过，类型/测试构建/diff通过，前后窄屏截图已看。`settings-header-ns-before.json`、`settings-header-ns.json`，探针归档，无新增永久测试，句柄已回收 |
 | NP / 2aec872 | 项目设置成员/归档在真实403后仍保留旧内容；两个查询复用useResourceQuery，无新抽象。29405的`stage-np-corrected-before`两项在旧行未清除处失败；14176的`stage-np-after`14不同浏览器通过，覆盖503保留→403清除→503不恢复→重授权/刷新，以及原成员添加/角色/未知写/归档恢复。完整人员/项目/归档DTO保持、0页面写/异常，390两错误提示已滚动到视口并看图。类型/测试构建、目标Lint/diff/矩阵通过，全部句柄回收。60403首轮只是夹具未先取消需求即归档，被业务规则正确拒绝；产品失败证据采用修正轮 |
