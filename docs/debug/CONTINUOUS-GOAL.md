@@ -2,12 +2,12 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 NU
+## 恢复入口与当前阶段 OB
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段：检查原生备份进行中有并发业务写入时的数据一致性，仅独立测试库。验收备份完整性/外键、关联表只能同属一次提交、活动库最终值正确、后续备份正常，临时文件/连接清理。
-3. 已读 `system.test.ts:280`（模拟延迟/失败、拒绝重复备份和删除）、`:323`（管理员失权清理）、`backup-concurrency-probe.ts`（两次备份之间写入、同毫秒命名）。均未覆盖原生复制过程中提交；不要重读或重跑这些既有场景。产品`backups.ts:134`用SQLite原生backup先写partial再发布。下一步构造多页独立库，用原生backup的progress观测复制时机；不得把模拟文件复制称原生备份证据。
-4. 最新产品 `8b7cb73`（NS）、`2aec872`（NP），此前 `2b9ac1b`（NF）。NC/ND/NH—NO均无产品修改；NN将记录约61KB/389行压为约20KB/121行，提交3aca1b2，详细历史保存在 `cac4ecd`。
+2. 当前阶段：OB检查流程正在编辑时被另一处归档/移除后的草稿和反馈。TemplatesPage保留editingSnapshot并向TemplateForm传templateUnavailable，后者已将它纳入locked；尚无缺陷证据，先核对反馈与已有覆盖再做真实浏览器场景。
+3. 已定位`TemplatesPage.tsx:50—70/117`、`TemplateForm.tsx:53/74/103`；模板已有冲突合并、未知结果回执、跨标签接管、保存期间返回覆盖，不重跑这些场景。下一步定位归档提示和自动保存触发条件，再选择独立管理员归档/恢复与本地输入的验收路径。OA原服务无新增事件，NY完整基线保持。
+4. 最新产品 `ebefd1f`（NY）、`8b7cb73`（NS）、`2aec872`（NP），此前 `2b9ac1b`（NF）。NN将记录约61KB/389行压为约20KB/121行，提交3aca1b2，详细历史保存在 `cac4ecd`。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
 6. 浏览器端口3296，独立数据库/构建；浏览器串行，性能独占。每次浏览器命令设置 `$env:PLAYWRIGHT_PORT='3296'`。全部句柄已回收，当前无运行测试。
 
@@ -15,21 +15,22 @@
 
 | 范围 | 最终证据与边界 |
 |---|---|
-| NT完整验证 | `stage-nt-verify.log` 首轮退出0（98049已回收）：997业务/120文件、11性能、26浏览器冒烟，运行时、428边界、完整Lint/按钮规范、类型、生产构建、预算均通过；覆盖最新产品8b7cb73（含NP/NS）。前一NG覆盖至NF |
-| 生产体积 | 主JS933.76KB、CSS339.37KB、ELK1595.33KB，服务端6文件；按JR清理旧产物。`stage-nt-performance-samples.json` 保存完整性能样本，源`coverage/performance/samples.json` |
+| NY完整验证 | `stage-ny-verify.log` 首轮退出0（48984已回收）：997业务/120文件、12性能、26浏览器冒烟，运行时、428边界、完整Lint/按钮规范、类型、生产构建、预算均通过；覆盖最新产品ebefd1f（含NP/NS）。前一NT覆盖至NS |
+| 生产体积 | 主JS933.76KB、CSS339.37KB、ELK1595.33KB，服务端6文件/app877.78KB；按JR清理旧产物。`stage-ny-performance-samples.json` 保存完整性能样本，源`coverage/performance/samples.json` |
 | 浏览器清单 | 最新`stage-np-matrix.log`：771功能/183布局/2性能、普通1869实例；这是列举结果，未执行整个矩阵。NT结束3296监听0、当前测试临时目录0；原目录仍只有2处用户改动 |
-| 原服务增量 | 最新游标NQ：2026-09-19T02:20:05.539Z；较NH约49分钟，17日志新增976字节/2成功事件（登录30ms、创建问题9ms），无错误/读取失败，3210健康200。`runtime-log-review-nq.mjs/json`、`stage-nq-runtime.log`；只检查后续增量，不短间隔轮询 |
+| 原服务增量 | 最新游标OA：2026-09-19T03:00:12.394Z；较NQ约40分钟，17日志新增0字节/0事件，无错误/读取失败，3210健康200。`runtime-log-review-oa.mjs/json`、`stage-oa-runtime.log`；NQ此前49分钟2成功事件。只检查后续增量，不短间隔轮询 |
 | 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；后续元数据未变，不重复完整性检查。`runtime-backup-kj.json` |
 | 依赖证据 | JG官方生产依赖审计9月18日23:06为0公告，lock最后提交06146c4；LY只复核未变。这是旧证据，不代表当前安全快照 |
 
-NT已完整覆盖NP/NS。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
+NY已完整覆盖当前产品。验收后3296监听0、当前浏览器测试临时目录0，原目录仍仅2处用户修改。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
 
 ## 近期产品成果
 
-表内专项均已验收，NT覆盖全部产品变更。NP以前的失败尝试、精确句柄和截图路径可从 `cac4ecd:docs/debug/CONTINUOUS-GOAL.md` 按阶段读取，不把文件名中的final/pass当作通过证据。
+表内专项均已验收，NY覆盖全部产品变更。NP以前的失败尝试、精确句柄和截图路径可从 `cac4ecd:docs/debug/CONTINUOUS-GOAL.md` 按阶段读取，不把文件名中的final/pass当作通过证据。
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
+| NY / ebefd1f | REST/MCP特性需求分页原来每页计算整个项目；共享facts增加可选ID范围，当前页调用，默认全项目保持。5000其他需求/33330工作干扰下8种页从198—322ms降至0.10—1.98ms，3档规模共24组完整DTO hash一致/0写，空页少3查询；`feature-page-scope-ny-before/after.json`。新增1项5000需求/5万工作性能回归，最新普通页中位1.36/最慢1.46ms，空页0.18/0.23ms；原REST/MCP测试补非空与空页，完整验证全通过。当前UI不直接调用该分页，不称为界面提速；无新缓存/索引 |
 | NS / 8b7cb73 | 长项目名称挤压状态，长英文名称被panel裁切。2行局部CSS让名称可收缩换行、状态不收缩且不换行。真实3状态×1280/620/390共9组，原版状态2—3行、英文3组文字越界；60181的`stage-ns-before`失败。修改后9组状态1行/0越界/0横向溢出，完整项目DTO/0写/0异常，11627的`stage-ns-after`通过，类型/测试构建/diff通过，前后窄屏截图已看。`settings-header-ns-before.json`、`settings-header-ns.json`，探针归档，无新增永久测试，句柄已回收 |
 | NP / 2aec872 | 项目设置成员/归档在真实403后仍保留旧内容；两个查询复用useResourceQuery，无新抽象。29405的`stage-np-corrected-before`两项在旧行未清除处失败；14176的`stage-np-after`14不同浏览器通过，覆盖503保留→403清除→503不恢复→重授权/刷新，以及原成员添加/角色/未知写/归档恢复。完整人员/项目/归档DTO保持、0页面写/异常，390两错误提示已滚动到视口并看图。类型/测试构建、目标Lint/diff/矩阵通过，全部句柄回收。60403首轮只是夹具未先取消需求即归档，被业务规则正确拒绝；产品失败证据采用修正轮 |
 | NF / 2b9ac1b | 统计主图表和配置预览403仍保留旧结果，改用既有useResourceQuery。真实503保留→403清除→503不恢复→重授权恢复；配置草稿、完整DTO保持，0业务写/异常。原版2失败，13不同浏览器通过，390实际提示截图已看。`stage-nf-corrected-before/after/preview-visible` |
@@ -58,6 +59,11 @@ NT已完整覆盖NP/NS。没有新增修改或验收疑点时不反复重跑已�
 
 | 阶段 / 领域 | 结论与证据 |
 |---|---|
+| NZ 历史恢复复核 | 现有NC覆盖筛选/后退前进刷新，KV覆盖切身份后历史页不可恢复私有内容；正式path-navigation覆盖不同范围与外部工作项入口/多层画布返回，pagination覆盖145行选择及详情返回滚动。只按测试标题和相关小段复核，无新缺陷证据，不重跑浏览器或修改 |
+| NX 导入体积 | 导入REST/MCP已有独立10MiB上限，不受普通API的1MiB限制。真实浏览器读取恰好10MiB（小JSON加空白），超1字节拒绝且草稿/0写保持；1,201,836字节合法文件20需求经1,203,046字节预览/1,203,200字节提交均200，全部长说明/标准逐字段一致，刷新完整DTO保持/无重复/0异常。7054的`stage-nx-corrected-size.log`通过4.7s，`import-size-nx.json`/探针归档，无产品修改或永久测试。首轮27923按字符补齐含中文文件导致字节超限，属于探针错误；两句柄已回收 |
+| NW HTTP请求体 | 独立真实HTTP10类非法JSON/空/错类型/无Content-Type/超限请求均400/415/413，31表完整hash保持；Content-Length与chunked超限均拒绝，恰好1MiB含中文/扩展字符的合法JSON可创建，后续普通创建/健康200。`http-body-errors-nw.ts/json`、`stage-nw-http-body.log`首轮退出0，服务/临时目录清理。保留原框架错误码，无500/部分写入证据，不修改 |
+| NV 大工期输入 | 现有契约：直接需求上限3660工作日，流程工期/偏移各1830、最多200步骤。共享schema拒绝3661/百万/MAX_SAFE_INTEGER，合法最大值接受；两起始年2026/9000、正反向及偏移+工期10组与独立工作日计数一致，中位0.055—10.03ms、最慢10.48ms。`duration-bounds-nv.ts/json`、`stage-nv-duration.log`首轮退出0。只测契约/计算，不称HTTP或浏览器验证；无需修改/永久测试 |
+| NU 备份期间写入 | 6.09MB独立库，SQLite原生backup保持默认100页步长，用progress回调在复制中提交真实需求命令。同连接/另一连接各3次双需求事务，回滚场景3次事务全撤回；31张应用表完整hash均等于某次已提交快照（提交场景最终第3次、回滚原状态），完整性ok/外键0，后续3份备份及活动库一致、无partial残留，连接/临时目录清理。`backup-live-writes-nu.ts/json`、`stage-nu-live-writes.log`首轮退出0。回调插入观测与写入，耗时不作生产性能结论；无需修改/永久测试 |
 | NR 日期/列表复核 | 日期上限已有domain正反向溢出、plan-preview REST/MCP创建/预览/提交原子回滚、合法0100/9999单日及最后两日并发读取，date-boundary浏览器改正后恢复；当前实现保持DateRangeError，不改、不重跑。项目列表历史51/501/5001×6身份完整结果/只读已验收，最大3.73ms（`project-list-scale.json`），不重测 |
 | NO 首次安排 | 真实经理空项目取消创建/取消加人均0写；添加执行人并创建直接执行需求、选择起始日期/完成标准，观察者不进入负责人选项。真实执行人从我的工作接手并更新30%，经理刷新回读一致；严格经理2写/成员2写，另一项目需求/成员/关系图与平台人员完整DTO保持。79201的`stage-no-complete`通过8.4s，390两截图已看；`first-arrangement-no.json`，探针归档。早期90904原生select的getByLabel定位、77275未展开树行均仅探针错误，句柄已回收 |
 | NM 我的工作 | 3本人项目之外0/20/100项目，最多2000需求/2万工作/1万历史；不参与/成员无本人工作5组。基线3.19ms，最大干扰不参与2.95ms/成员7.15ms；完整结果SHA相同、34查询、0数据库写。`my-work-cross-project-nm.ts/json`、`stage-nm-cross-project.log`首轮通过；旧e504ced复用分析测量未重跑 |
