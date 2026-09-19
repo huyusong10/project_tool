@@ -2,10 +2,10 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 QN
+## 恢复入口与当前阶段 QO
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段QN（观察者浏览归档成果，待检查）：既有archived-requirement-navigation浏览器用管理员；delivery-permission-changes只覆盖观察者读取未归档历史。检查观察者从Phase/清单进入归档完成成果时，入口、摘要可读范围与includeDeleted接口权限是否一致；先读现有页面资源/详情逻辑，再决定是否需要真实浏览器探针，不扩大归档读取权限。
+2. 当前阶段QO（低高度屏幕的登录/修改密码流程，待检查）：先检查现有AuthForms及浏览器覆盖，再在隔离账号上验证390×400下错误密码→修正、输入与提交入口可达、键盘焦点及正确身份返回。若已有相同覆盖或无可说明收益则不重复造探针；不修改原服务密码，不放宽登录规则。
 3. 最新完整验证QC覆盖至2270423：1000业务/120文件、13性能、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。59262首轮退出0、已回收；stage-qc-verify.log、stage-qc-performance-samples.json、stage-qc-build-budget.json。
 4. 最新产品为05e6869（QJ，成员候选显示上限提示），此前162894d（QI，普通表单草稿存储失败提示），此前`e5b6299`（QF，里程碑记录入口）；此前2270423（QB，项目切换焦点）、fe41792（QA，执行记录提示）、33ff6eb（PX，负责人分派校验）。PY归档前完整记录在 `33ff6eb:docs/debug/CONTINUOUS-GOAL.md`；PB前在 `67baff3`，NN及更早详细历史在 `cac4ecd`。本记录只保留当前恢复所需信息，旧阶段不重新开始。PY精简校验见 `.preview/qa/continuous-goal/record-compaction-py.json`，稳定决定/候选逐字保持。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
@@ -60,6 +60,7 @@ QC完整验证覆盖至2270423，QF由11浏览器及静态检查、QI由31浏览
 
 | 阶段 / 领域 | 结论与证据 |
 |---|---|
+| QN 归档成果只读入口 | 只读追踪use-workspace-navigation→ProjectWorkspace/ProgressWorkspace→ArchivedRequirementDetails：归档ID从Phase facts解析，复用摘要且无完整需求GET；归档管理链接仅canManageProject为真显示。includeDeleted=true只用于RequirementCommandDialog管理命令核对。现有archived-requirement-navigation覆盖管理员三入口和游客摘要/无管理链接，delivery-permission-changes覆盖观察者管理限制。因此未发现权限不一致，不改/不新建或重跑浏览器；本轮仅代码与既有测试覆盖审查，不称新观察者实测 |
 | QM 导入目标归档 | 真实经理预览两需求，含一待新建特性和一既有特性/Phase、2工作；管理员归档既有空特性后，旧apply409，需求/Phase/catalog/原需求完整DTO保持，回执not_found。重预览按人工改过的需求标题指出特性已归档；恢复并刷新后标题和原文保持。新预览apply200，只创建2需求/2工作，新特性仅1份且原特性/Phase复用；原需求除分析revision外完整DTO、另一项目需求/成员保持，0异常。26336首轮3.4s通过、类型/测试构建通过，390错误图已看；import-archive-qm.json、stage-qm-import-archive.log，探针归档，无产品修改/永久测试 |
 | QK Phase移入中途归档 | 真实经理选择两需求，管理员取消/归档第二条；旧批次409，拒绝前后两需求及Phase完整DTO一致。重读仅保留第一条且原因不丢，重试1次200，第一条v3→4移入目标，27%进度/历史/其余业务字段保持；第二条归档资料保持，恢复后仍在原Phase且取消历史保持。项目/成员/另一项目需求完整DTO保持，0异常；Phase交付历史仍为空，不称已验证非空历史快照。4421首个完整2.9s通过、类型/测试构建通过，390图已看；phase-archive-qk.json、stage-qk-phase-archive-final-check.log，探针归档，无产品修改/永久测试。55947错误directPercent字段、3743推进后创建缺原因、23275非终态不能归档、70364textarea精确标签均属探针错误，修正并回收后通过 |
 | QH 人员更名与进展 | 普通协作者打开27%工作并填57%草稿，管理员更名主负责人和本人；模拟61秒后台轮询取得新名称，原ID/工作版本/草稿保持，保存1次POST200、v3→4，仅增1条本人历史。旧历史、原需求除名称/分析revision外完整DTO保持，账号除实时personName外所有字段（含登录名/版本）保持，项目和另一项目需求完整DTO保持；刷新姓名/参与人一致，0异常。17072首个完整2.2s通过、类型/测试构建通过、390草稿图已看；person-rename-qh.json、stage-qh-person-rename-verified.log，探针归档，无产品修改/永久测试。33833账号personName假设错误见恢复项 |
