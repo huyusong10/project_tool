@@ -108,17 +108,19 @@ function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) 
       color: ["var(--chart-line)", "var(--success)", "var(--warning)", "var(--text-muted)", "var(--purple)", "var(--danger)", "var(--info)"],
     }],
   };
+  const legend = result.secondaryMeasureLabel ? { top: 0, right: 12, textStyle: { color: "var(--text-muted)" } } : undefined;
   const horizontal = panel.visualization === "bar" && ["requirement", "person", "owner"].includes(panel.dimension || "");
   if (horizontal) return {
     tooltip: { trigger: "axis" },
-    grid: { left: 120, right: 24, top: 16, bottom: 24 },
-    xAxis: { type: "value", splitLine: { lineStyle: { color: "var(--divider)" } }, axisLabel: { color: "var(--text-muted)" } },
+    legend,
+    grid: { left: 120, right: 24, top: legend ? 34 : 16, bottom: 24 },
+    xAxis: { type: "value", minInterval: result.unit === "count" ? 1 : undefined, splitLine: { lineStyle: { color: "var(--divider)" } }, axisLabel: { color: "var(--text-muted)" } },
     yAxis: { type: "category", inverse: true, data: labels, axisLabel: { color: "var(--text-secondary)", width: 105, overflow: "truncate" } },
     series,
   };
   return {
     tooltip: { trigger: "axis" },
-    legend: result.secondaryMeasureLabel ? { top: 0, right: 12, textStyle: { color: "var(--text-muted)" } } : undefined,
+    legend,
     grid: { left: 42, right: 18, top: result.secondaryMeasureLabel ? 34 : 16, bottom: 40 },
     xAxis: { type: "category", data: labels, axisLabel: { color: "var(--text-muted)", hideOverlap: true }, axisLine: { lineStyle: { color: "var(--border-default)" } } },
     yAxis: { type: "value", minInterval: result.unit === "count" ? 1 : undefined, splitLine: { lineStyle: { color: "var(--divider)" } }, axisLabel: { color: "var(--text-muted)" } },

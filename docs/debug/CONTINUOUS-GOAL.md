@@ -2,12 +2,12 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 QS
+## 恢复入口与当前阶段 QT
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段QS（分析图表筛选与表示一致性，待检查）：核对实际支持的图表、筛选、对比指标和空值表示，优先寻找可复现的不一致；不新增下钻等功能。问题列表组合筛选及10万历史已有规模证据，跳过重复测量。
+2. 当前阶段QT（同名需求统计分组，待验证）：QS读代码发现dimensionValue按需求标题作分组key，进展数据已有requirementId。检查同一项目不同需求同名时进展数量/偏差是否误合并；有复现才按稳定ID修复，不扩图表能力。此前问题列表组合筛选及10万历史已有证据，跳过重复测量。
 3. 最新完整验证QP覆盖至428b87b：1000业务/120文件（45.85s）、13性能（18.75s）、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。65495首轮退出0、已回收；stage-qp-verify.log、stage-qp-performance-samples.json、stage-qp-build-budget.json。
-4. 最新产品428b87b（QO，认证反馈），此前05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
+4. 最新产品本次QS（横向统计图例/数量刻度），此前428b87b（QO，认证反馈），此前05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
 6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。QP65495首轮verify退出0、已回收；QO46600专项5场景已验收，探针归档，无运行测试。QR53138完整验证通过并回收；38891选择器歧义、2498未计实时账号问题数变化均为探针错误，已回收并修正。无运行测试。
 
@@ -15,6 +15,7 @@
 
 | 范围 | 最终证据与边界 |
 |---|---|
+| QS专项验证 | 原版1810真实4需求（已完成/未开始/处理中）、2负责人；状态筛选后甲2/1、乙1/0，表格/纵图正确而横图缺两个指标图例且数量轴有0.5/1.5。AnalyticsPage共用原纵图图例，横图留34px顶部空间，数量刻度至少1；无接口/布局配置变化。90552改后3浏览器13.7s通过（含既有指标切换与长标签），类型/目标Lint/diff/生产构建/预算通过，390前后图已看；无横向溢出，完整布局/4需求/人员/项目DTO保持，0写/异常。analytics-legend-qs-original/after.json、stage-qs-analytics-legend-original/after.log、stage-qs-build.log及build-budget.json；探针归档，无永久测试。71701误传已退役priority属探针错误，改用真实状态筛选后复现 |
 | QP完整验证 | 65495首轮verify退出0、已回收：1000业务/120文件45.85s、13性能18.75s、26浏览器冒烟1.2min；运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算全部通过，覆盖428b87b及累计QF/QI/QJ/QO。stage-qp-verify.log、stage-qp-performance-samples.json、stage-qp-build-budget.json |
 | QO专项验证 | 390×400首次改密不一致提示在弹窗可见区外，登录/强制改密/普通改密共4类错误均无alert标记；原版auth-height-qo-original.json完整流程通过，仅末尾通知标记断言失败。AuthForms内部6行组件复用原样式，错误变化后nearest滚动并标记role=alert。46600改后5浏览器14.7s通过，4错误均在可见区，确认输入焦点保持；7次预期认证请求、0额外提交/异常，原需求/项目/其他账号完整DTO保持，同身份以新密码重新登录。包含既有重复提交/Escape/未知结果4场景；类型/目标Lint/diff/生产构建/预算通过，两低高度图已看；auth-height-qo-after.json、stage-qo-auth-height-after/build.log及build-budget.json。未用真实读屏软件验证播报，不扩大为该项结论；无永久测试 |
 | QJ专项验证 | 120真实候选原版只展示50人且无上限说明，其余完整业务流程通过；56844退出1仅因缺提示。增加1行条件提示，复用field-help；96884改后4浏览器20.1s通过，含原有失败重试/未知写2路径。1280/390长姓名及岗位无横向溢出，跨搜索保留3选择和viewer角色，空搜索结果不清选择，Enter不提交；仅3次PUT到目标项目，刷新一致，已加入搜索禁用，人员/账号/项目/另一项目成员完整DTO保持，0异常。类型/测试构建、目标Lint/diff通过，390长名与上限图已看；member-candidates-qj-original/after.json、stage-qj-member-candidates-original/after.log，探针归档，无永久测试 |
@@ -26,15 +27,16 @@
 | 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；QL最新两份备份元数据与PN一致，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-ql-listing.json` |
 | 依赖证据 | QD于2026-09-19T07:47:17—21Z查询npm官方registry，生产范围143依赖、0已知漏洞，退出0；锁SHA256前后相同32A55528…C796F，最后提交06146c4。stage-qd-audit-official.json及metadata.json；未升级依赖 |
 
-QP完整验证覆盖至428b87b，包含QF/QI/QJ/QO；各专项证据保留其额外覆盖和限制。原目录仍仅2处用户修改。没有新修改或验收疑点时不重复已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
+QP完整验证覆盖至428b87b，包含QF/QI/QJ/QO；后续QS按专项验收，未重复全量。各专项证据保留其额外覆盖和限制。原目录仍仅2处用户修改。没有新修改或验收疑点时不重复已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
 
 
 ## 近期产品成果
 
-均已验收，QP完整验证覆盖至428b87b；额外场景见专项基线。更早产品成果、失败尝试和精确证据见 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
+均已验收，最新QS专项通过，QP完整验证覆盖至428b87b；额外场景见专项基线。更早产品成果、失败尝试和精确证据见 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
+| QS / 本次提交 | 按负责人分组的横向对比柱状图未显示图例，两个指标只能悬停识别；数量轴出现小数刻度。复用纵图既有图例并留顶部空间，数量最小间隔1；实际筛选值和其他对象不变。3浏览器及构建通过，见专项基线 |
 | QO / 428b87b | 低高度首次改密的错误文字需手动滚动才能看见，认证错误也缺辅助技术通知标记。仅在AuthForms本文件复用AuthFormError，出现/变化的错误滚到最近可见区域并带role=alert；不移动输入焦点，不改密码/会话/提交锁逻辑。5浏览器及构建通过，见专项基线 |
 | QJ / 05e6869 | 添加项目成员最多返回50名候选，原界面未说明，列表外人员需搜索。仅在返回50人且加载成功时显示“最多显示 50 人，未找到时请缩小搜索范围。”；不改变接口、上限或批量逻辑。真实120人流程与既有恢复场景通过，见专项基线 |
 | QI / 162894d | sessionStorage写入失败时普通表单静默继续，关闭后读回旧草稿而无提示。useDeliveryForm记录本次写入是否失败，仅在失败状态出现时复用Toast提醒提交/复制；恢复成功写入后重置失败状态。保持当前输入与原提交逻辑，不增加存储后备或持久化体系。原版损失风险及改后31浏览器/构建证据见专项基线 |
