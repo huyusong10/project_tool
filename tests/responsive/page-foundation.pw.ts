@@ -72,10 +72,13 @@ test('对象失败不冒用记忆项目；旧流程只查询记忆项目且明�
   await page.goto('/requirements/missing'); await expect(page.getByText('对象已删除',{exact:true})).toBeVisible();
   await expect(page.locator('.project-switcher-name')).toHaveText('选择项目');
   await expect(page.locator('.topbar-page-tools button')).toHaveCount(0);
-  await page.goto('/templates?edit=missing'); await expect(page.getByText('当前项目中没有这个流程。请返回流程列表重新选择。',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'项目空间',exact:true})).toBeVisible();
+  await page.goto('/templates?edit=missing'); await expect(page.getByText('当前项目中没有这个流程。请返回流程列表重新选择。',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'返回流程列表',exact:true})).toBeVisible();
   const templateRequests=requests.filter(url=>new URL(url).pathname==='/api/templates');
   expect(templateRequests).toHaveLength(1);expect(new URL(templateRequests[0]).searchParams.get('projectId')).toBe('p1');
+  await page.getByRole('button',{name:'返回流程列表',exact:true}).click();
+  await expect(page).toHaveURL('/templates?projectId=p1');
 });
 
 test('需求 A→B→A 的迟到读取不能发布旧标题或按钮',async({page},info)=>{
