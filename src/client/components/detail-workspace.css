@@ -209,7 +209,9 @@
  .work-create-row {padding:8px}
  .work-create-row .form-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 8px}
  .work-create-state {display:none}
- .work-arrangement-execution {grid-column:1;grid-row:3;max-width:none}
+ .work-arrangement-execution {grid-column:1;grid-row:3;max-width:none;align-items:flex-start}
+ .work-arrangement-execution .work-item-actions-detail {display:flex;flex:1;flex-wrap:wrap;width:auto;gap:6px 4px}
+ .work-item-actions-detail .work-item-action-row {width:66px;flex:none}
  .work-arrangement-heading {flex-wrap:wrap;gap:4px}
  .work-arrangement-heading .detail-work-row-title {min-width:90px}
  .work-arrangement-state small {display:none}
