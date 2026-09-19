@@ -158,7 +158,7 @@ describe('看板性能', {timeout: 30000}, () => {
       expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(unchanged);
     }finally{local.close();}
   });
-  it('5000条问题和5000名成员的后台版本与关系图人员读取均只读且符合预算',async()=>{
+  it('5000条问题和5000名成员的后台查询只读且符合预算',async()=>{
     const {projectChangeVersion:readVersion}=await import('../src/server/services/project-change-version');
     const {refreshPathAssignments}=await import('../src/server/services/path-assignments');
     const projectChangeVersion=(...args:Parameters<typeof readVersion>)=>fixture.run(()=>readVersion(...args));
@@ -166,15 +166,15 @@ describe('看板性能', {timeout: 30000}, () => {
     sqlite.transaction(()=>{
       sqlite.prepare('INSERT INTO projects(id,name,created_at,updated_at)VALUES(?,?,?,?)').run(id,'后台检查性能',now,now);
       sqlite.prepare("INSERT INTO accounts(id,username,normalized_username,password_hash,global_role,status,created_at,updated_at)VALUES('version-bench-admin','version-bench-admin','version-bench-admin','test-only','admin','active',?,?)").run(now,now);
-      const insert=sqlite.prepare("INSERT INTO issues(id,project_id,title,status,discovered_at,created_at,updated_at)VALUES(?,?,?,'in_progress','2026-09-10',?,?)");
+      const insert=sqlite.prepare("INSERT INTO issues(id,project_id,title,owner_id,status,discovered_at,due_date,next_review_at,created_at,updated_at)VALUES(?,?,?,?,'in_progress','2026-09-10','2026-09-15','2026-09-18',?,?)");
       const person=sqlite.prepare('INSERT INTO people(id,name,created_at,updated_at)VALUES(?,?,?,?)');
       const account=sqlite.prepare("INSERT INTO accounts(id,person_id,username,normalized_username,password_hash,status,created_at,updated_at)VALUES(?,?,?,?,'test-only','active',?,?)");
       const member=sqlite.prepare('INSERT INTO project_people(project_id,person_id,created_at,updated_at)VALUES(?,?,?,?)');
       for(let i=0;i<5000;i++){
-        insert.run(randomUUID(),id,'问题'+i,now,now);
         const personId=randomUUID(),name='version-member-'+i;
         personIds.push(personId);
         person.run(personId,name,now,now);account.run(randomUUID(),personId,name,name,now,now);member.run(id,personId,now,now);
+        insert.run(randomUUID(),id,'问题'+i,personId,now,now);
       }
     })();
     const actor:AuthorizationActor={type:'user',id:'version-bench-admin',label:'version-bench-admin',accountId:'version-bench-admin',personId:null,globalRole:'admin'};
@@ -184,6 +184,11 @@ describe('看板性能', {timeout: 30000}, () => {
     measureScenario('path-assignments-5000-people',250,()=>{fixture.run(()=>refreshPathAssignments(snapshot));return snapshot;},result=>{
       expect(result.requirements.every((r,index)=>r.ownerValid&&r.ownerName==='version-member-'+index)).toBe(true);
       expect(result.workItems.every((w,index)=>w.ownerName==='version-member-'+index&&w.assigneeIds?.[0]===personIds[index])).toBe(true);
+    });
+    measureScenario('actions-5000-assigned-issues',500,()=>listActionItems({projectId:id,pageSize:100},actor,undefined,'2026-09-19'),result=>{
+      expect(result.total).toBe(5000);expect(result.ownerOptions).toHaveLength(5000);
+      expect(result.summary.byReason).toEqual({overdue:5000,follow_up:5000});
+      expect(result.items.every(item=>item.ownerId&&item.ownerName?.startsWith('version-member-'))).toBe(true);
     });
     expect(sqlite.prepare('SELECT total_changes() AS n').get()).toEqual(before);
   });

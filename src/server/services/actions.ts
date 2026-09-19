@@ -149,7 +149,7 @@ export function listActionItems(
 
   const issues = rows<IssueRow>(`SELECT i.id, i.requirement_id AS requirementId, r.title AS requirementTitle,
     r.owner_id AS requirementOwnerId, i.title, i.owner_id AS ownerId, p.name AS ownerName,
-    EXISTS (SELECT 1 FROM project_people pp JOIN accounts a ON a.person_id=pp.person_id
+    EXISTS (SELECT 1 FROM project_people pp JOIN accounts a INDEXED BY idx_accounts_person ON a.person_id=pp.person_id
       WHERE pp.project_id=i.project_id AND pp.person_id=i.owner_id AND pp.project_role IN ('member','manager')
         AND p.active=1 AND p.deleted_at IS NULL AND a.status='active' AND a.deleted_at IS NULL) AS ownerValid,
     i.due_date AS dueDate, i.next_review_at AS nextReviewAt, i.updated_at AS updatedAt
