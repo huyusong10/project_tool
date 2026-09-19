@@ -19,7 +19,7 @@ import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/Badge";
 import { ProjectForm, persistProjectCreateRecheck, readProjectCreateRecheck, type ProjectCreateRecheck } from "../components/ManagementForms";
 import { isAdmin } from "../permissions";
-import type { Archives, Project } from "../types";
+import type { Archives } from "../types";
 
 type ProjectArchiveInput = {
   id: string;
@@ -56,6 +56,13 @@ export function ProjectsPage() {
   const setArchiveRecheck=(value:ProjectArchiveInput|null)=>{persistProjectArchiveRecheck(createRecheckAccountKey,value);setArchiveRecheckState(value);};
   const archiveSubmitting = useRef(false);
   const admin = isAdmin(session);
+  const readArchiveLists = async () => {
+    const { data: projects } = await projectsQuery.refetch({ throwOnError: true });
+    if (!projects) throw new Error('项目列表加载失败');
+    // 项目读取可能更新访问状态；归档读取须使用更新后的状态。
+    const archives = await archivesApi.archives<Archives>({ readOnly: true });
+    return { projects, archives };
+  };
   const archive = useMutation({
     mutationFn: ({ id, expectedUpdatedAt, force = false, expectedRequirements, expectedIssues }: ProjectArchiveInput) => projectsApi.projectsById(id, {
       method: "DELETE",
@@ -93,11 +100,7 @@ export function ProjectsPage() {
       }
       if (isWriteOutcomeUnknown(error)) {
         try {
-          const [latestProjects, latestArchives] = await Promise.all([
-            projectsApi.projects<Project[]>({ readOnly: true }),
-            archivesApi.archives<Archives>({ readOnly: true }),
-          ]);
-          client.setQueryData(keys.projects, latestProjects);
+          const { projects: latestProjects, archives: latestArchives } = await readArchiveLists();
           client.setQueryData(keys.archives, latestArchives);
           if (!latestProjects.some((project) => project.id === input.id)
             && latestArchives.projects.some((project) => project.id === input.id)) {
@@ -125,7 +128,7 @@ export function ProjectsPage() {
     archiveSubmitting.current = true;
     archive.mutate(input);
   };
-  const recheckProjectArchive=async()=>{if(!archiveRecheck||archiveRechecking)return;setArchiveRechecking(true);try{const [latestProjects,latestArchives]=await Promise.all([projectsApi.projects<Project[]>({readOnly:true}),archivesApi.archives<Archives>({readOnly:true})]);client.setQueryData(keys.projects,latestProjects);client.setQueryData(keys.archives,latestArchives);const active=latestProjects.some(item=>item.id===archiveRecheck.id),archived=latestArchives.projects.some(item=>item.id===archiveRecheck.id);if(active!==archived){setArchiveRecheck(null);setArchiveTarget(null);setArchiveConflict(null);setArchiveError('');invalidateProjectViews(client);}}catch{/* 两份权威列表必须同时读取成功。 */}finally{setArchiveRechecking(false);}};
+  const recheckProjectArchive=async()=>{if(!archiveRecheck||archiveRechecking)return;setArchiveRechecking(true);try{const {projects:latestProjects,archives:latestArchives}=await readArchiveLists();client.setQueryData(keys.archives,latestArchives);const active=latestProjects.some(item=>item.id===archiveRecheck.id),archived=latestArchives.projects.some(item=>item.id===archiveRecheck.id);if(active!==archived){setArchiveRecheck(null);setArchiveTarget(null);setArchiveConflict(null);setArchiveError('');invalidateProjectViews(client);}}catch{/* 两份权威列表必须同时读取成功。 */}finally{setArchiveRechecking(false);}};
   const pagination = useListPagination({ items: projects, personal: true });
   usePageScrollPosition(true, true);
   return (
