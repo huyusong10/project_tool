@@ -41,7 +41,7 @@
 .inline-date-editor > footer button { min-height: 32px; padding: 0 9px; font-size: 12px; }
 .inline-date-clear, .inline-date-today { border: 0; border-radius: var(--radius-sm); color: var(--accent-ink); background: transparent; }
 .inline-date-clear:hover, .inline-date-today:hover { background: var(--accent-soft); }
-.text-prompt-form { display: grid; gap: 14px; }
+.text-prompt-form { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr); gap: 14px; overflow-wrap: anywhere; }
 .requirement-command-form { display: grid; gap: 12px; color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
 .requirement-command-form > p { margin: 0; }
 .requirement-command-plan { display: grid; gap: 8px; max-height: 180px; overflow: auto; margin: 0; padding: 10px 12px; list-style: none; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-hover); }
