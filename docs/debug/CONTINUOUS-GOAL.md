@@ -4,10 +4,10 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品b808aab（NE）、f6837ac（NB）、22d45f8（NA）、2a6ad07（MW）、6f54442（MV）、495664b（MU）、64ad1bc（MP）、4e95f24（MM）、96c7323（ML）、4aa4345（MJ）、36b4292（MI）、eb8d679（MH）、3c87217（MD）、b33fc22（MC）、3517da6（MA）；更早成果见下表与历史版本。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品2b9ac1b（NF）、b808aab（NE）、f6837ac（NB）、22d45f8（NA）、2a6ad07（MW）、6f54442（MV）、495664b（MU）、64ad1bc（MP）、4e95f24（MM）、96c7323（ML）、4aa4345（MJ）、36b4292（MI）、eb8d679（MH）、3c87217（MD）、b33fc22（MC）、3517da6（MA）；更早成果见下表与历史版本。
 - 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
-- 最新全量NA：997业务/120文件、11性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-na-verify-final.log，55517退出0已回收。覆盖至22d45f8；首轮归档探针误入Vitest的失败原因与修正见NA。此前MX覆盖MU/MV/MW。
-- NA生产预算：主JS933.76KB、CSS339.24KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-mv-matrix.log确认767功能/183布局/2性能、普通1865实例；只列清单，不称为执行全部浏览器。3296监听0、当前测试临时目录0。
+- 最新全量NG：997业务/120文件、11性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-ng-verify.log，20554首轮退出0已回收。覆盖至2b9ac1b；此前NA覆盖22d45f8。
+- NG生产预算：主JS933.76KB、CSS339.24KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-nf-matrix.log确认769功能/183布局/2性能、普通1867实例；只列清单，不称为执行全部浏览器。3296监听0、当前测试临时目录0。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
 详细历史在本文件Git版本：A—DO fd512b7；DP—EV 41a4ed0；FE—HL d35957a；HE—IE 67250e9。JG至JL详验见1ce7589；JP—JZ详验见dc53ed7。按主题取读，不重新开始。
@@ -348,10 +348,28 @@ MU/MV/MW完成目标验收后执行一次完整verify，stage-mx-verify的50107�
 
 强化现有5000问题夹具为已指派且逾期、到跟进日期。27013原版在500ms预算失败，中位842.3/最慢1140.8ms；调整后84.18/87.55ms，56971的11性能全通过。44业务/3文件、6真实行动浏览器、类型/测试构建/目标Lint/diff通过，56404退出0已回收。issue-actions-ne-before/comparison.json、stage-ne-regression-before/performance/unit/actions/lint.log留证。b808aab已提交；永久测试数量仍11，未重复NA全量。
 
-## 当前阶段 NF
+## NF验收：统计分析拒绝后清除旧图表
 
-检查统计分析在数据接口明确拒绝后是否保留旧图表。AnalyticsPage主查询与配置预览使用普通useQuery，暂时失败保留数据合理，但没有区分403；目前只有代码线索，尚未证明真实缺陷。下一步用真实成员撤权、其他接口暂时503隔离影响，验证主图表与配置预览的清除/再次503/重新授权恢复，不提前改代码。
+真实成员移出项目，其他读取暂时503隔离影响后，统计数据接口403仍保留主图表和配置预览旧数值；62787的stage-nf-corrected-before两处均失败。首轮12992仅为夹具把需求分给待撤权者，被依赖保护正确阻止；改为独立负责人后才得到产品失败证据。
+
+2b9ac1b把主图表和配置预览接入既有useResourceQuery；查询键、日期和布局规则保持。2个新真实回归验证503保留、403清除、再次503不恢复、重新授权恢复且未保存配置保留；完整个人布局/需求/人员/项目DTO保持、0业务写/0页面异常。30650的stage-nf-after共13不同浏览器通过（含11原布局/日期/恢复场景）；类型/测试构建/目标Lint/diff/矩阵通过。预览初始窄屏截图只拍到表单，6348补充滚动至失败提示并断言在视口内，stage-nf-preview-visible通过，两种失败截图已看。最新矩阵769功能/183布局/2性能、普通1867实例，仅列清单。
+
+## NG验收：近期查询与统计修复组合验证
+
+20554的stage-ng-verify首轮退出0已回收。997业务/120文件、11性能、26浏览器冒烟、运行时/428边界/完整Lint/类型/生产构建/预算全部通过；覆盖NB、NE、NF。stage-ng-performance-samples.json留存最终全组样本。3296监听0、当前测试临时目录0，原目录仍只有原来2处用户改动。
+
+## NH检查：原服务日志增量
+
+从MY游标2026-09-19T00:37:56.366Z至01:31:25.794Z，约53分钟；17日志新增0字节/0事件/0读取错误，3210健康200。runtime-log-review-nh.mjs/json、stage-nh-runtime.log为最新游标。未重读旧日志、未复验未变化备份；原服务无需修改。
+
+## NI验收：真实备份下载中断
+
+独立测试服务使用34,111,488字节（约32.5MiB）SQLite备份，真实HTTP在首个数据块、1MiB和16MiB处各取消4次。12次对应文件流均关闭；随后完整下载与源备份SHA一致，新建备份成功，健康200、数据库完整性ok。backup-download-ni.ts/json、stage-ni-download.log首轮退出0，测试服务/临时目录已关闭清理。未操作原服务资料；无需产品修改，不增加永久测试。
+
+## 当前阶段 NJ
+
+检查平台人员姓名、岗位并发编辑时的草稿保留和冲突反馈。已定位PeopleAccessPage与accounts-adaptive：已有平台权限、成员操作核对覆盖，不能重复当作人员资料的新验收。下一步先定位姓名/岗位内联编辑和现有回归，只有未覆盖的实际组合才建立真实双会话探针；验收要求不覆盖他人修改、核对保留输入、最终资料/刷新一致。
 
 ## 最新检查点
 
-NB f6837ac、NE b808aab已提交并目标验收，最新完整NA覆盖至22d45f8。NC键盘往返、ND Token真实恢复均无需修改；当前NF检查统计分析明确拒绝后的图表缓存。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标MY（00:37:56.366Z），不重复短间隔轮询；未部署或推送。Goal保持active。
+NB f6837ac、NE b808aab、NF 2b9ac1b已提交，NG完整验收通过。NC键盘往返、ND Token真实恢复、NH原服务增量、NI下载中断均无需修改；当前NJ检查人员资料并发编辑。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标NH（01:31:25.794Z），不重复短间隔轮询；未部署或推送。Goal保持active。
