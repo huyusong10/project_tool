@@ -101,7 +101,7 @@ function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) 
   ];
   if (panel.visualization === "donut") return {
     tooltip: { trigger: "item" },
-    legend: { bottom: 0, textStyle: { color: "var(--text-muted)" } },
+    legend: { type: "scroll", bottom: 0, left: 0, right: 0, tooltip: { show: true }, textStyle: { color: "var(--text-muted)", width: 120, overflow: "truncate" } },
     series: [{
       name: result.measureLabel, type: "pie", radius: ["46%", "70%"], center: ["50%", "44%"],
       label: { show: false }, data: result.rows.map((row) => ({ name: row.label, value: row.value, itemStyle: { color: chartCategoryColor(panel.dimension, row.key) } })),
