@@ -2,14 +2,14 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 QR
+## 恢复入口与当前阶段 QS
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段QR（已解决问题原负责人失效后的重开，待检查）：reopenIssue已在事务前后调用issueOwner，拒绝无效负责人。检查经理能否从旧详情保留重开原因、修正历史负责人后继续重开，并保留解决记录及其他问题。先读现有UI和测试，避免重复生命周期正常路径；不放宽负责人校验。
+2. 当前阶段QS（分析图表筛选与表示一致性，待检查）：核对实际支持的图表、筛选、对比指标和空值表示，优先寻找可复现的不一致；不新增下钻等功能。问题列表组合筛选及10万历史已有规模证据，跳过重复测量。
 3. 最新完整验证QP覆盖至428b87b：1000业务/120文件（45.85s）、13性能（18.75s）、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。65495首轮退出0、已回收；stage-qp-verify.log、stage-qp-performance-samples.json、stage-qp-build-budget.json。
 4. 最新产品428b87b（QO，认证反馈），此前05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
-6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。QP65495首轮verify退出0、已回收；QO46600专项5场景已验收，探针归档，无运行测试。QO96241误用窄屏隐藏按钮、16415原版缺alert失败，均已回收；不把探针错误算产品缺陷。
+6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。QP65495首轮verify退出0、已回收；QO46600专项5场景已验收，探针归档，无运行测试。QR53138完整验证通过并回收；38891选择器歧义、2498未计实时账号问题数变化均为探针错误，已回收并修正。无运行测试。
 
 ## 当前验收基线
 
@@ -47,6 +47,7 @@ QP完整验证覆盖至428b87b，包含QF/QI/QJ/QO；各专项证据保留其额
 
 | 阶段 / 领域 | 结论与证据 |
 |---|---|
+| QR 失效负责人后重开 | 真实经理保留重开原因，管理员停用原负责人；旧重开409且完整问题不变。基本信息修正负责人1次PATCH200，仍已解决/100%，原解决日期保持，仅增纠错历史；刷新保留原因，重新读取问题后1次重开200、v3→5/99%，保留原2条历史，只增纠错及重开各1。新负责人账号实时activeAssignments.issues增加1，其余账号字段、项目/成员/其他问题完整DTO保持，0异常。53138首个完整13.4s通过（含测试构建/类型），390错误图已看，无溢出；issue-owner-qr.json、stage-qr-issue-owner-complete.log，探针归档，无产品修改/永久测试。38891全局option歧义、2498活跃问题数假设错误属探针错误 |
 | QN 归档成果只读入口 | 只读追踪use-workspace-navigation→ProjectWorkspace/ProgressWorkspace→ArchivedRequirementDetails：归档ID从Phase facts解析，复用摘要且无完整需求GET；归档管理链接仅canManageProject为真显示。includeDeleted=true只用于RequirementCommandDialog管理命令核对。现有archived-requirement-navigation覆盖管理员三入口和游客摘要/无管理链接，delivery-permission-changes覆盖观察者管理限制。因此未发现权限不一致，不改/不新建或重跑浏览器；本轮仅代码与既有测试覆盖审查，不称新观察者实测 |
 | QM 导入目标归档 | 真实经理预览两需求，含一待新建特性和一既有特性/Phase、2工作；管理员归档既有空特性后，旧apply409，需求/Phase/catalog/原需求完整DTO保持，回执not_found。重预览按人工改过的需求标题指出特性已归档；恢复并刷新后标题和原文保持。新预览apply200，只创建2需求/2工作，新特性仅1份且原特性/Phase复用；原需求除分析revision外完整DTO、另一项目需求/成员保持，0异常。26336首轮3.4s通过、类型/测试构建通过，390错误图已看；import-archive-qm.json、stage-qm-import-archive.log，探针归档，无产品修改/永久测试 |
 | QK Phase移入中途归档 | 真实经理选择两需求，管理员取消/归档第二条；旧批次409，拒绝前后两需求及Phase完整DTO一致。重读仅保留第一条且原因不丢，重试1次200，第一条v3→4移入目标，27%进度/历史/其余业务字段保持；第二条归档资料保持，恢复后仍在原Phase且取消历史保持。项目/成员/另一项目需求完整DTO保持，0异常；Phase交付历史仍为空，不称已验证非空历史快照。4421首个完整2.9s通过、类型/测试构建通过，390图已看；phase-archive-qk.json、stage-qk-phase-archive-final-check.log，探针归档，无产品修改/永久测试。55947错误directPercent字段、3743推进后创建缺原因、23275非终态不能归档、70364textarea精确标签均属探针错误，修正并回收后通过 |
@@ -86,6 +87,7 @@ QQ归档：QC, QB, QA, PX, PS, PR, PO, PM, PL, PH, PE, OZ, PZ, PW, PV, PT, PQ, P
 - 需求标题200 UTF-16单元，截断去末尾高代理；requireLabel为200码点，部分创建schema仍UTF-16；品牌20/4码点且不换行。没有业务证据不统一限制。
 - 活跃人员姓名全局唯一（新增、编辑、恢复均检查）；历史重复或失效引用不据此增加产品字段。
 - 登录名上限沿用64 UTF-16单元；自动姓名前缀为重名后缀预留位置且不拆开扩展字符。人员姓名保持完整，不批量重命名已有账号；OJ原系统只读计数未发现超限账号。
+- 账号DTO的personName和activeAssignments是实时派生值；姓名/进行中任务变化时逐项验证预期差异，不把整份账号不变当作前提。
 - 同项目任一执行更新可递增其他需求的deliveryForecast.revision；需求及工作项的跨对象不变性比较只排除这个项目级分析元数据，其余完整DTO仍比对。OR/OY已两次确认，避免把它当业务对象版本或重新制造探针失败。
 - 正式详情用detailId；里程碑/图属性用pathNode+graphInspector=open+pathInspector=closed。项目里程碑为项目范围；“其他需求”可能不存在，不为只读导航创建它。
 - 批量归档行继续显示“已归档”并禁用选择；项目恢复保留独立归档需求，Phase交付历史保持快照，旧来源条款不恢复成入口。
