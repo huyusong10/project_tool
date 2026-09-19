@@ -5,16 +5,19 @@
 ## 恢复入口与当前阶段 RK
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段RK4（继续用户优先目标：全面整理UI）：RK1甘特/间距、RK2筛选/密集导入、RK3详情表单已验收。下一轮转到人员矩阵、账号/项目/归档表格，检查长名称、多列密集数据、空态及390/中等宽度的对齐和操作位置；先复用既有夹具再截图。近期表单与甘特降低优先级，不重复验收，不改变业务范围。
+2. 当前阶段RK5（继续用户优先目标：全面整理UI）：RK1甘特/间距、RK2筛选/密集导入、RK3详情表单、RK4密集表格已验收。下一轮检查普通成员/只读角色、加载失败/空数据和恢复提示，重点看长提示与按钮、状态切换后的布局。近期甘特/表单/普通列表降低优先级，不重复验收，不改变业务范围。
 3. 最新完整验证QU覆盖至8c67902：1002业务/121文件（45.81s）、13性能（18.81s）、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。5429首轮退出0、已回收；stage-qu-verify.log、stage-qu-performance-samples.json、stage-qu-build-budget.json。
-4. 最新产品RK3（本次提交，资料卡和表单焦点）；此前f5b3323（RK2筛选和密集导入）、4f4c1e5（RK1尺寸与间距）、044c619（RJ新建工作项失效协作者提示）、190bf36（RE创建日志省略空对象），此前5a4ec09（RC归档同名流程统计）、7f71ac3（QZ问题状态术语）、7ffc3b2（QW流程里程碑定位）、8c67902（QT同名需求）、a4c6c6b（QS图例）、428b87b（QO认证反馈）、05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
+4. 最新产品RK4（本次提交，账号列和筛选对齐、长项目名）；此前3f5dfb1（RK3资料卡和表单焦点）、f5b3323（RK2筛选和密集导入）、4f4c1e5（RK1尺寸与间距）、044c619（RJ新建工作项失效协作者提示）、190bf36（RE创建日志省略空对象），此前5a4ec09（RC归档同名流程统计）、7f71ac3（QZ问题状态术语）、7ffc3b2（QW流程里程碑定位）、8c67902（QT同名需求）、a4c6c6b（QS图例）、428b87b（QO认证反馈）、05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
-6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。RK3最终82637的3既有+1临时场景34.4s退出0，24次Tab遮挡0；最后类型/生产构建/预算/按钮CSS规范通过，句柄均已回收。RK2最终67610共21场景通过、67587补键盘通过。RK3初始62507关闭按钮误用取消；51097/46307精确getByLabel失败，改role=textbox定位后58817完整通过，DOM标签正确；80040是实际5处焦点遮挡复现。失败及解除证据见ui-rk3-audit.json。当前无执行句柄。
+6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。RK4最终19161的7既有+1临时场景46.4s退出0，58939补长名称1场景22.3s退出0；完整Lint/类型/生产构建/预算通过，句柄均已回收。RK3最终82637的3既有+1临时场景34.4s通过、24次Tab遮挡0；RK2最终67610的21场景和67587键盘补测通过。探针失败及解除证据按ui-rk2/rk3/rk4-audit.json查阅，不重复运行已通过场景。当前无执行句柄。
+
+RK5恢复入口：先复用访问恢复场景和只读角色夹具，截图检查加载/失败/空态以及长恢复提示。warning-banner当前全局flex、不换行，需测窄屏后再决定；不从CSS直接断定缺陷。临时探针均归档到 `.preview/qa/continuous-goal/`，不用递归扫描该目录（历史证据内有node_modules联接）。
 
 ## 当前验收基线
 
 | 范围 | 最终证据与边界 |
 |---|---|
+| RK4 密集表格 | 账号紧凑布局统一980px断点，明确网格区域，消除姓名/状态和登录/菜单重叠；状态文案原64px压到47px→完整64px，900宽列间距14px。宽屏主信息顶部对齐；筛选36px、窄屏等宽；项目列40/30/14/16并允许长名换行。mock只读24人员/8项目/19归档，4页×1280/1180/900/390、菜单和分页21图，另4张超长项目名；代表性修改区域已看。19161的账号/项目切换/分页7既有+1临时46.4s通过，58939长名补测通过；0异常/写入，菜单定位、筛选刷新保留、第二页及文字边界通过。完整Lint/类型/构建/预算通过（JS935.01KB/CSS340.61KB）。ui-rk4-audit.json、ui-rk4-*和stage-rk4-*；4份CSS改动，无永久测试。初始全页图内的分页是正常sticky行为，未误改 |
 | RK3 详情编辑 | 去掉工作项资料卡work-editor-scroll内框；详情内表单加滚动预留，Phase多链接24次Tab原5个控件遮挡→0。真实8长需求、3长链接，特性/Phase编辑、移入选择及单工作资料1280/390共9图；代表性和修改区域已看。82637的detail-fields/feature-phases共3既有+1临时通过34.4s；类型/生产构建/预算/按钮CSS检查通过（CSS340.04KB）。ui-rk3-audit.json及ui-rk3-visual/after/accepted、stage-rk3-*。临时视觉场景不提交表单，真实保存恢复由既有场景覆盖；仅2行产品CSS，无永久测试 |
 | RK2 密集界面 | 状态预设标题/说明分行；更多筛选72px标签及提示对齐；弹层使用实色背景；导入工作项复用FormField，桌面三列、窄屏标题满行；滚动区预留底栏，解决实际Tab焦点遮挡。隔离服务10工作/8长姓名、6导入需求×8工作，19截图状态，1280/390及dcim筛选；修改区域人工复核。19既有浏览器+2临时场景通过，后补24次Tab原8遮挡→0；Lint/类型/构建/预算通过（JS935.01KB/CSS340.00KB）。ui-rk2-audit.json、ui-rk2-*截图和stage-rk2-*日志；无永久新增测试，临时探针归档 |
 | RE创建日志验证 | RD实际25条日志的summary均有尾缀{}；delivery-execution和requirement-commands两处在新记录中省略空归属JSON，有值时保留内容，直接创建补中文分号分隔。已有日志不重写。13775首轮退出0回收：既有delivery-execution/feature-planning/integration共45测试/3文件4.87s，目标Lint/diff/类型/生产构建/预算通过；stage-re-create-log-tests.log、stage-re-build.log、stage-re-build-budget.json。纯文案变化未新增测试或重复浏览器 |

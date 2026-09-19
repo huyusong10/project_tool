@@ -147,6 +147,8 @@ textarea {
 .issue-filters > select {
   flex: 0 1 180px;
 }
+.filter-bar select { min-height: 36px; }
+.people-access-filters select { flex-basis: 180px; }
 
 @media (max-width: 600px) {
   .issue-board { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
@@ -438,7 +440,7 @@ textarea {
   }
 }
 
-@container adaptive-data-list (max-width: 900px) {
+@container adaptive-data-list (max-width: 980px) {
   .account-data-list .adaptive-data-list-header {
     display: none;
   }
@@ -471,14 +473,14 @@ textarea {
     display: none;
   }
 
-  .account-data-primary { grid-area: primary; }
-  .account-data-account { grid-area: account; }
-  .account-data-permission { grid-area: permission; }
-  .account-data-status { grid-area: status; align-self: start !important; justify-content: flex-end; }
+  .account-data-list .account-data-row > .account-data-primary { grid-area: primary; }
+  .account-data-list .account-data-row > .account-data-account { grid-area: account; }
+  .account-data-list .account-data-row > .account-data-permission { grid-area: permission; }
+  .account-data-list .account-data-row > .account-data-status { grid-area: status; display: flex; align-self: start; justify-content: flex-end; }
   .account-data-status .data-cell { justify-items: end; text-align: right; }
   .account-data-status .data-cell-primary { justify-content: flex-end; }
-  .account-data-login { grid-area: login; }
-  .account-data-actions { grid-area: actions; justify-content: flex-end; }
+  .account-data-list .account-data-row > .account-data-login { grid-area: login; }
+  .account-data-list .account-data-row > .account-data-actions { grid-area: actions; display: flex; justify-content: flex-end; }
 
   .account-data-account,
   .account-data-permission,
@@ -512,7 +514,7 @@ textarea {
       "actions actions";
   }
 
-  .account-data-actions {
+  .account-data-list .account-data-row > .account-data-actions {
     justify-content: flex-start;
   }
 }
@@ -673,7 +675,7 @@ textarea {
 }
 
 @media (max-width: 760px) {
-  .people-access-filters .search-box, .people-access-filters select { width: 100%; min-width: 0; }
+  .people-access-filters .search-box, .people-access-filters select { width: 100%; min-width: 0; flex-basis: 100%; max-width: none; }
   .people-access-filters > span { margin-left: 0; }
   .issue-state-actions.is-compact { flex-wrap: wrap; }
   .system-grid { grid-template-columns: 1fr; }
