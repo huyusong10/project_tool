@@ -2,19 +2,20 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 QU
+## 恢复入口与当前阶段 QW
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段QU（累计验证，待运行）：QT修改服务端统计分组，运行一次完整verify覆盖QS/QT；保留性能样本和构建预算。随后切换到运行资源或其他尚未检查的业务，不重复本轮图表。
-3. 最新完整验证QP覆盖至428b87b：1000业务/120文件（45.85s）、13性能（18.75s）、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。65495首轮退出0、已回收；stage-qp-verify.log、stage-qp-performance-samples.json、stage-qp-build-budget.json。
-4. 最新产品本次QT（同名需求独立统计），此前a4c6c6b（QS图例）、428b87b（QO，认证反馈），此前05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
+2. 当前阶段QW（流程预览键盘操作覆盖审查，进行中）：先核对PW既有10/50/200元素探针及现有template-overview覆盖，避免重做规模/长工期测试。若尚缺键盘联动与关闭焦点证据，再做窄屏日常操作探针；检查后允许无需修改。
+3. 最新完整验证QU覆盖至8c67902：1002业务/121文件（45.81s）、13性能（18.81s）、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。5429首轮退出0、已回收；stage-qu-verify.log、stage-qu-performance-samples.json、stage-qu-build-budget.json。
+4. 最新产品8c67902（QT同名需求独立统计），此前a4c6c6b（QS图例）、428b87b（QO，认证反馈），此前05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
-6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。QP65495首轮verify退出0、已回收；QO46600专项5场景已验收，探针归档，无运行测试。QR53138完整验证通过并回收；38891选择器歧义、2498未计实时账号问题数变化均为探针错误，已回收并修正。无运行测试。
+6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。QU5429首轮verify退出0、已回收；QT67865和QS90552专项已验收并归档。47454探针更名后分析revision未排除已修正；无运行测试。
 
 ## 当前验收基线
 
 | 范围 | 最终证据与边界 |
 |---|---|
+| QU完整验证 | 5429首轮verify退出0、已回收，覆盖8c67902及QS/QT：1002业务/121文件45.81s、13性能18.81s、26浏览器冒烟1.2min，运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。stage-qu-verify.log、stage-qu-performance-samples.json、stage-qu-build-budget.json |
 | QT专项验证 | 原版两个回归用例失败：同名需求进展1/2条合为3，延期1/2工作日合为1.5。dimensionValue仅在requirement维度使用需求ID作key，标题仍作label；无API字段/存储迁移。2个永久回归覆盖两个数据集、降序/升序/Top1、归档/其他项目排除、更名键不变、5表及total_changes只读；连同已有测试共36/4文件3.62s通过。67865真实HTTP两同名需求及3说明，表格/柱图分别2/1；改名后键和值保持、旧历史保留，布局/项目/账号和另一需求除分析revision完整DTO保持，0页面写/异常，1280/390无溢出、390图已看。浏览器10.2s/类型/目标Lint/diff通过；stage-qt-groups-original/after.log、requirement-groups-qt.json、stage-qt-requirement-groups-verified.log；浏览器探针归档。47454未排除更名导致的项目分析revision，属探针错误，已回收 |
 | QS专项验证 | 原版1810真实4需求（已完成/未开始/处理中）、2负责人；状态筛选后甲2/1、乙1/0，表格/纵图正确而横图缺两个指标图例且数量轴有0.5/1.5。AnalyticsPage共用原纵图图例，横图留34px顶部空间，数量刻度至少1；无接口/布局配置变化。90552改后3浏览器13.7s通过（含既有指标切换与长标签），类型/目标Lint/diff/生产构建/预算通过，390前后图已看；无横向溢出，完整布局/4需求/人员/项目DTO保持，0写/异常。analytics-legend-qs-original/after.json、stage-qs-analytics-legend-original/after.log、stage-qs-build.log及build-budget.json；探针归档，无永久测试。71701误传已退役priority属探针错误，改用真实状态筛选后复现 |
 | QP完整验证 | 65495首轮verify退出0、已回收：1000业务/120文件45.85s、13性能18.75s、26浏览器冒烟1.2min；运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算全部通过，覆盖428b87b及累计QF/QI/QJ/QO。stage-qp-verify.log、stage-qp-performance-samples.json、stage-qp-build-budget.json |
@@ -22,22 +23,22 @@
 | QJ专项验证 | 120真实候选原版只展示50人且无上限说明，其余完整业务流程通过；56844退出1仅因缺提示。增加1行条件提示，复用field-help；96884改后4浏览器20.1s通过，含原有失败重试/未知写2路径。1280/390长姓名及岗位无横向溢出，跨搜索保留3选择和viewer角色，空搜索结果不清选择，Enter不提交；仅3次PUT到目标项目，刷新一致，已加入搜索禁用，人员/账号/项目/另一项目成员完整DTO保持，0异常。类型/测试构建、目标Lint/diff通过，390长名与上限图已看；member-candidates-qj-original/after.json、stage-qj-member-candidates-original/after.log，探针归档，无永久测试 |
 | QI专项验证 | 原版98808真实quota故障注入：已存37%后改57%，没有提示，关闭再开恢复旧37%；当前重新填写57%可仅提交1次。hook在写失败状态首次出现时用现有Toast告知风险，连续输入不重复；恢复写入后重开保留67%未提交草稿，明确取消后正式数据仍57%。91665专项5场景23.8s、6334现有冒烟26场景1.2min通过；类型/目标Lint/428边界/diff/正式构建及预算通过，390提示图已看；draft-quota-qi-original/verified.json、stage-qi-draft-quota-verified/smoke/build.log及build-budget.json。无新存储机制/永久测试；持续故障下关闭后仍可能丢失最新输入，本次仅修复缺少反馈，未声称无损恢复 |
 | QF专项验证 | 原版模拟API、真实浏览器：两同名不同日期记录与一个105字标题，1280/390浮窗宽318但scrollWidth856，入口全在记录之外；milestone-actions-qf-original-complete.json和截图。入口改在对应记录内、统一短文案，49042的11浏览器32.7s通过：两尺寸scrollWidth=clientWidth=318，3记录各1入口，6次分别定位w1/w-late/w-early；既有10场景覆盖主题/缩放/日期/历史/取消/项目范围。类型/测试构建、目标Lint/按钮规范/diff通过，原版/改后390图已看，0写/异常。milestone-actions-qf-after.json、stage-qf-milestone-actions-after.log；探针归档，无永久测试。仅界面模拟数据证据，不称真实数据库验收 |
-| 生产体积 | QP正式构建：主JS934890B、CSS339753B、ELK1595334B；服务端6文件/app879.24KB，预算通过。覆盖428b87b，stage-qp-build-budget.json与stage-qp-verify.log |
+| 生产体积 | QU正式构建：主JS934890B、CSS339753B、ELK1595334B；服务端6文件/app879.38KB，预算通过。覆盖8c67902，stage-qu-build-budget.json与stage-qu-verify.log |
 | 浏览器清单 | 最新`stage-np-matrix.log`：771功能/183布局/2性能、普通1869实例；这是列举结果，未执行整个矩阵。NT结束3296监听0、当前测试临时目录0；原目录仍只有2处用户改动 |
-| 原服务增量 | 最新游标QL：2026-09-19T08:33:47.350Z，较QD约46分钟；17日志新增0字节/0事件，无错误/读取失败，3210健康200。runtime-log-review-ql.mjs/json、stage-ql-runtime.log。只检查后续增量，不短间隔轮询 |
-| 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；QL最新两份备份元数据与PN一致，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-ql-listing.json` |
+| 原服务增量 | 最新游标QV：2026-09-19T09:19:51.510Z，较QL约46分钟；17日志新增0字节/0事件，无错误/读取失败，3210健康200。runtime-log-review-qv.mjs/json、stage-qv-runtime.log。连续QL/QV均无新增，降低优先级，等待实际运行变化或更长间隔，不短间隔轮询 |
+| 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；QV按修改时间取最新两份备份，元数据与QL/PN一致，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-qv-listing.json` |
 | 依赖证据 | QD于2026-09-19T07:47:17—21Z查询npm官方registry，生产范围143依赖、0已知漏洞，退出0；锁SHA256前后相同32A55528…C796F，最后提交06146c4。stage-qd-audit-official.json及metadata.json；未升级依赖 |
 
-QP完整验证覆盖至428b87b，包含QF/QI/QJ/QO；后续QS/QT按专项验收，未重复全量。各专项证据保留其额外覆盖和限制。原目录仍仅2处用户修改。没有新修改或验收疑点时不重复已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
+QU完整验证覆盖至8c67902及所有累计产品改动。各专项证据保留其额外覆盖和限制。原目录仍仅2处用户修改。没有新修改或验收疑点时不重复已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
 
 
 ## 近期产品成果
 
-均已验收，最新QS/QT专项通过，QP完整验证覆盖至428b87b；额外场景见专项基线。更早产品成果、失败尝试和精确证据见 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
+均已验收，QU完整验证覆盖至8c67902；额外场景见专项基线。更早产品成果、失败尝试和精确证据见 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
-| QT / 本次提交 | 同名需求按标题合并，进展相加、延期天数取平均，掩盖分别处理的两个对象。仅requirement维度按现有ID分组，仍显示原标题；进展和偏差分列，改名后身份保持。2回归、36相关业务及真实页面通过，见专项基线 |
+| QT / 8c67902 | 同名需求按标题合并，进展相加、延期天数取平均，掩盖分别处理的两个对象。仅requirement维度按现有ID分组，仍显示原标题；进展和偏差分列，改名后身份保持。2回归、36相关业务及真实页面通过，见专项基线 |
 | QS / a4c6c6b | 按负责人分组的横向对比柱状图未显示图例，两个指标只能悬停识别；数量轴出现小数刻度。复用纵图既有图例并留顶部空间，数量最小间隔1；实际筛选值和其他对象不变。3浏览器及构建通过，见专项基线 |
 | QO / 428b87b | 低高度首次改密的错误文字需手动滚动才能看见，认证错误也缺辅助技术通知标记。仅在AuthForms本文件复用AuthFormError，出现/变化的错误滚到最近可见区域并带role=alert；不移动输入焦点，不改密码/会话/提交锁逻辑。5浏览器及构建通过，见专项基线 |
 | QJ / 05e6869 | 添加项目成员最多返回50名候选，原界面未说明，列表外人员需搜索。仅在返回50人且加载成功时显示“最多显示 50 人，未找到时请缩小搜索范围。”；不改变接口、上限或批量逻辑。真实120人流程与既有恢复场景通过，见专项基线 |
