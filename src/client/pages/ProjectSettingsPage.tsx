@@ -374,6 +374,7 @@ function AddProjectPersonForm({ projectId, onNeedsRecheck, onClose }: { projectI
       </button>)}
       {!candidatesQuery.isLoading && !candidatesQuery.isError && !people.length && <div className="member-picker-state"><strong>{keyword ? "没有匹配的人员" : "暂无可添加人员"}</strong><span>{keyword ? "请调整搜索关键词。" : "当前启用人员均已加入项目，或请先到人员与权限新增人员。"}</span></div>}
     </div>
+    {!candidatesQuery.isLoading && !candidatesQuery.isError && people.length === 50 && <p className="field-help">最多显示 50 人，未找到时请缩小搜索范围。</p>}
     <label className="field member-picker-role"><span>加入后的项目角色</span><select disabled={batchBusy} value={role} onChange={(event) => setRole(event.target.value as ProjectMemberRole)}><option value="member">项目成员</option><option value="viewer">项目观察者</option><option value="manager">项目经理</option></select></label>
     {batchNeedsRecheck && <p className="form-error" role="alert">成员添加结果待核对，当前批次不会重复提交。请关闭后在项目成员列表重新读取。</p>}
     {batchError && <p className="form-error">部分成员添加失败：{batchError}</p>}
