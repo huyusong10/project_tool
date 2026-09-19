@@ -437,8 +437,11 @@ function dimensionValue(dataset: string, dimension: string, record: GenericRecor
     key: String(dataset === 'requirements' ? record.id : record.requirementId),
     label: String(record.title || record.requirement || '未设置'),
   };
+  if (dimension === 'template') return {
+    key: String(record.templateId || 'unbound'),
+    label: String(record.template || '未绑定流程'),
+  };
   const raw = dimension === 'person' ? record.person
-      : dimension === 'template' ? record.template
         : dimension === 'owner' ? record.owner
           : dimension === 'scope' ? (record.requirementId ? 'requirement' : 'public')
             : record[dimension];

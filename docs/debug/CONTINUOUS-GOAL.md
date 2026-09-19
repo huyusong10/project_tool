@@ -2,12 +2,12 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 RA
+## 恢复入口与当前阶段 RD
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段RA（我的工作跨业务日刷新，待检查）：MyWork只读使用keys.myWork和服务端asOfDate；检查上海零点后的逾期/日期是否随查询刷新，保留筛选和未提交输入。先读core/use-business-date.ts、use-project-refresh.ts及my-work-journey既有轮询用例；日期输入/统计范围跨日已有覆盖，不重跑。仅发现具体缺口才实测或改动。
+2. 当前阶段RD（日志翻页期间新增记录，待检查）：先追踪LogsPage的snapshot、筛选和刷新逻辑，并查既有业务测试。核对浏览第二页时其他账号新增日志是否造成重复/遗漏，以及主动刷新能否获得最新记录。10万日志性能和长文本/时区已有覆盖，不重跑；只有具体覆盖缺口才补一次日常操作实测。
 3. 最新完整验证QU覆盖至8c67902：1002业务/121文件（45.81s）、13性能（18.81s）、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。5429首轮退出0、已回收；stage-qu-verify.log、stage-qu-performance-samples.json、stage-qu-build-budget.json。
-4. 最新产品本次QZ（问题状态术语一致），此前7ffc3b2（QW流程里程碑定位），此前8c67902（QT同名需求独立统计），此前a4c6c6b（QS图例）、428b87b（QO，认证反馈），此前05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
+4. 最新产品本次RC（归档同名流程独立统计），此前7f71ac3（QZ问题状态术语）、7ffc3b2（QW流程里程碑定位）、8c67902（QT同名需求）、a4c6c6b（QS图例）、428b87b（QO认证反馈）、05e6869（QJ）、162894d（QI）、e5b6299（QF）。QQ精简前完整记录在 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`，PY前在33ff6eb，PB前在67baff3，更早在cac4ecd。QQ归档校验见 `.preview/qa/continuous-goal/record-compaction-qq.json`；按索引续查，不重新开始。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
 6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。QU5429首轮verify退出0、已回收；QW41531专项6场景通过并归档；QX33487取消返回首轮11.5s通过已回收并归档；QZ98039最终52既有测试/构建退出0已回收。QY检查3296监听0，无运行测试。
 
@@ -15,6 +15,7 @@
 
 | 范围 | 最终证据与边界 |
 |---|---|
+| RC流程分组验证 | 新增1个真实HTTP注入回归：归档旧流程后创建同名流程，两组1/2需求原来合成3；名为“未绑定流程”的4需求与真正未绑定3需求原来合成7。analytics.template维度按已有templateId分组，未绑定使用独立key；4组分别4/3/2/1，主副指标、正倒序/Top1、接口更名key稳定、7表和total_changes只读均通过。连同需求分组/integration/流程复制共28测试/4文件4.78s，目标Lint/diff/类型/生产构建/预算通过；stage-rc-template-groups-reproduction/after.log、stage-rc-build.log及budget.json。无UI改动或浏览器新增用例。前两次夹具误传templateId:null、executionMode，400属测试输入错误，原版失败证据以reproduction为准 |
 | QZ文案验证 | 问题状态为已解决，原筛选/统计/说明却用闭环。6文件10处纯文字统一为解决，详情提示引用现有“重新打开”按钮。未改变操作/指标ID、统计口径或已存个人标题；保留既有测试中的旧自定义标题验证兼容。98039最终domain/issue-lifecycle共52测试/2文件2.73s，目标Lint/diff/类型/正式构建/预算通过，无新增测试或浏览器场景。stage-qz-terminology-tests-final.log、stage-qz-build-final.log、stage-qz-build-budget-final.json |
 | QW专项验证 | PW已覆盖普通工作项10/50/200元素定位，本轮真实122工作日、2工作/3里程碑补首尾里程碑键盘操作。73966原版完整流程仅末尾定位断言失败：1280/390选末尾后甘特scrollLeft仍0，选中标签在可见区外；焦点/关闭及DTO保持均正常。TemplatePreview补查现有data-milestone-id所属标签，复用滚动逻辑，改4行；41531的6浏览器16.3s通过，末尾scrollLeft739/1045，回首项归0，四次标签均可见、外层滚动保持、选择焦点和Escape入口焦点保持，0写/异常且流程/项目完整DTO保持。含既有列表/长名/长工期/草稿预览，类型/目标Lint/diff/生产构建/预算通过，1280原版及390改后图已看；preview-keyboard-qw-original/after.json、stage-qw-preview-keyboard-baseline/after.log、stage-qw-build.log及build-budget.json。探针归档，无永久测试；34682相对has选择器错误属探针问题 |
 | QU完整验证 | 5429首轮verify退出0、已回收，覆盖8c67902及QS/QT：1002业务/121文件45.81s、13性能18.81s、26浏览器冒烟1.2min，运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。stage-qu-verify.log、stage-qu-performance-samples.json、stage-qu-build-budget.json |
@@ -31,16 +32,17 @@
 | 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；QV按修改时间取最新两份备份，元数据与QL/PN一致，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-qv-listing.json` |
 | 依赖证据 | QD于2026-09-19T07:47:17—21Z查询npm官方registry，生产范围143依赖、0已知漏洞，退出0；锁SHA256前后相同32A55528…C796F，最后提交06146c4。stage-qd-audit-official.json及metadata.json；未升级依赖 |
 
-QU完整验证覆盖至8c67902；后续QW/QZ按专项及生产构建验收，未重复全量。各专项证据保留其额外覆盖和限制。原目录仍仅2处用户修改。没有新修改或验收疑点时不重复已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
+QU完整验证覆盖至8c67902；后续QW/QZ/RC按专项及生产构建验收，未重复全量。各专项证据保留其额外覆盖和限制。原目录仍仅2处用户修改。没有新修改或验收疑点时不重复已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
 
 
 ## 近期产品成果
 
-均已验收，QW/QZ专项通过，QU完整验证覆盖至8c67902；额外场景见专项基线。更早产品成果、失败尝试和精确证据见 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
+均已验收，QW/QZ/RC专项通过，QU完整验证覆盖至8c67902；额外场景见专项基线。更早产品成果、失败尝试和精确证据见 `1a366a3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
-| QZ / 本次提交 | 同一问题状态在状态徽标中叫已解决，在筛选/统计/说明中却叫闭环。统一问题筛选、解决说明、3个统计指标、默认趋势标题及接口提示；详情操作说明使用现有按钮名称。只改文案，52既有测试和构建通过 |
+| RC / 本次提交 | 流程归档后复用名称，旧/新流程需求被按名称合并；真实流程还会与同名的“未绑定流程”占位组混合。改用流程ID区分，仅5行变化，不改名称或存储；1个接口回归及28相关测试、构建通过 |
+| QZ / 7f71ac3 | 同一问题状态在状态徽标中叫已解决，在筛选/统计/说明中却叫闭环。统一问题筛选、解决说明、3个统计指标、默认趋势标题及接口提示；详情操作说明使用现有按钮名称。只改文案，52既有测试和构建通过 |
 | QW / 7ffc3b2 | 流程图选中首尾里程碑只更新选择，甘特仍停在原位置，长流程末尾不可见。仅在TemplatePreview选择时查现有里程碑标签并复用工作项滚动；不增加标记/组件/状态。6浏览器及构建通过，见专项基线 |
 | QT / 8c67902 | 同名需求按标题合并，进展相加、延期天数取平均，掩盖分别处理的两个对象。仅requirement维度按现有ID分组，仍显示原标题；进展和偏差分列，改名后身份保持。2回归、36相关业务及真实页面通过，见专项基线 |
 | QS / a4c6c6b | 按负责人分组的横向对比柱状图未显示图例，两个指标只能悬停识别；数量轴出现小数刻度。复用纵图既有图例并留顶部空间，数量最小间隔1；实际筛选值和其他对象不变。3浏览器及构建通过，见专项基线 |
@@ -56,6 +58,8 @@ QU完整验证覆盖至8c67902；后续QW/QZ按专项及生产构建验收，未
 
 | 阶段 / 领域 | 结论与证据 |
 |---|---|
+| RA 我的工作跨日 | 只读追踪App→useBusinessDateClock→invalidateBusinessDateViews，已包含keys.myWork；accounts.readMyWork单次todayIso统一逾期/预测/未来10工作日，MyWorkPage把响应asOfDate传入甘特。筛选独立存于URL，ProgressForm按工作ID挂载且useDeliveryForm独立保留草稿。既有personal-experience覆盖响应日期，my-work-journey覆盖轮询/返回；未发现缺口，不改/不重跑测试。本轮仅代码与既有覆盖审查，不称实际跨午夜验证 |
+| RB 导出覆盖复核 | 草稿最新输入/存储失败后备份重传、数据库导出恢复、MCP SVG转义与边界已有requirement-intake/database-transfer/mcp-graph及OM/ON覆盖。只读核对导出入口与既有场景，未发现新证据，不重复运行或增加测试 |
 | QY 测试资源清理 | 2026-09-19T09:33:50Z检查QU开始（09:17:12Z）后的资源：改进目录data文件0/目录0，Temp中pm-/project-manage-前缀且该时间后修改的目录0，3296监听0。仅目录元数据读取，无删除或数据库内容访问；不能扩大为全机无残留。旧943组/2035备份目录仍不动，无新增泄漏证据，不改代码；test-resources-qy.json |
 | QX 只读取消与返回 | 既有api-read-errors覆盖主动取消、503/403及迟到响应；useResourceQuery取消时不清缓存、不回调。补真实HTTP浏览器：暂扣已成功计算的问题搜索响应，离开到流程页时浏览器发出1次ERR_ABORTED；返回后新请求200，原q与2结果保持，刷新一致，无网络/读取故障提示。2问题/项目/账号完整DTO保持，0写/异常，390无溢出且截图已看；33487首轮11.5s通过（含类型/测试构建），read-cancel-qx.json、stage-qx-read-cancel.log。探针归档，无产品改动/永久测试；失权恢复依托既有用例覆盖，本轮未重测 |
 | QR 失效负责人后重开 | 真实经理保留重开原因，管理员停用原负责人；旧重开409且完整问题不变。基本信息修正负责人1次PATCH200，仍已解决/100%，原解决日期保持，仅增纠错历史；刷新保留原因，重新读取问题后1次重开200、v3→5/99%，保留原2条历史，只增纠错及重开各1。新负责人账号实时activeAssignments.issues增加1，其余账号字段、项目/成员/其他问题完整DTO保持，0异常。53138首个完整13.4s通过（含测试构建/类型），390错误图已看，无溢出；issue-owner-qr.json、stage-qr-issue-owner-complete.log，探针归档，无产品修改/永久测试。38891全局option歧义、2498活跃问题数假设错误属探针错误 |
