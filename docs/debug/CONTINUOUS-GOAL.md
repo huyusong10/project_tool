@@ -366,10 +366,20 @@ MU/MV/MW完成目标验收后执行一次完整verify，stage-mx-verify的50107�
 
 独立测试服务使用34,111,488字节（约32.5MiB）SQLite备份，真实HTTP在首个数据块、1MiB和16MiB处各取消4次。12次对应文件流均关闭；随后完整下载与源备份SHA一致，新建备份成功，健康200、数据库完整性ok。backup-download-ni.ts/json、stage-ni-download.log首轮退出0，测试服务/临时目录已关闭清理。未操作原服务资料；无需产品修改，不增加永久测试。
 
-## 当前阶段 NJ
+## NJ验收：人员资料连续并发修改
 
-检查平台人员姓名、岗位并发编辑时的草稿保留和冲突反馈。已定位PeopleAccessPage与accounts-adaptive：已有平台权限、成员操作核对覆盖，不能重复当作人员资料的新验收。下一步先定位姓名/岗位内联编辑和现有回归，只有未覆盖的实际组合才建立真实双会话探针；验收要求不覆盖他人修改、核对保留输入、最终资料/刷新一致。
+真实双会话分别验证1280姓名/390岗位。另一会话两次改动另一字段，本地两次409后均保留输入，中间一次人员重读503不解除保护；最终各1次成功，仅提交当前字段与核对版本，刷新后远端另一字段保持。其他人员完整DTO及账号登录名/版本/状态/权限保持，0页面异常，13697的stage-nj-accepted退出0已回收；person-conflict-nj.json和两张已看截图留证，临时探针已归档。无需产品修改，不增加永久测试。
+
+前两轮为探针错误：89825比较PATCH简略结果与GET丰富DTO；27674精确按钮定位漏了“，点击编辑”后缀，姓名冲突流程已成功。修正为同一GET DTO及完整可访问名称后才通过，两轮失败不当作产品缺陷。
+
+## NK验收：问题历史长文本
+
+真实持久化多段说明、空行及800字符无空格地址，在1280/390验证完整innerText、所有文字矩形均在正文宽度内、无水平溢出、刷新完整DTO不变、0业务写/0异常。公共样式已有pre-wrap和anywhere；正文宽864/287px均无需修改。42877的stage-nk-before首轮通过；64933补充滚动到底部并检查末尾文字实际在视口内，stage-nk-visible-end通过，首屏与窄屏末尾截图已看。issue-history-nk.json与临时探针已归档，不增加永久测试，两个句柄已回收。
+
+## 当前阶段 NL
+
+检查MCP客户端断开时的连接清理，避免重复KL正常请求成本测量。已读取mcp-transport.ts：无状态POST，每次创建McpServer，handleRequest在finally中server.close；现有mcp-logging/queries未发现中断覆盖。下一步在独立测试服务验证请求体发送中断及较大只读响应中断，观察实际连接/Server关闭和后续健康读取；需要区分客户端取消与服务错误，不凭源码推断泄漏。
 
 ## 最新检查点
 
-NB f6837ac、NE b808aab、NF 2b9ac1b已提交，NG完整验收通过。NC键盘往返、ND Token真实恢复、NH原服务增量、NI下载中断均无需修改；当前NJ检查人员资料并发编辑。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标NH（01:31:25.794Z），不重复短间隔轮询；未部署或推送。Goal保持active。
+NB f6837ac、NE b808aab、NF 2b9ac1b已提交，NG完整验收通过。NC键盘往返、ND Token真实恢复、NH原服务增量、NI下载中断均无需修改；NJ人员并发编辑、NK问题历史长文本均无需修改；当前NL检查MCP中断清理。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标NH（01:31:25.794Z），不重复短间隔轮询；未部署或推送。Goal保持active。
