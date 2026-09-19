@@ -3,7 +3,7 @@ import { Button } from './Button';
 import { Avatar } from './Avatar';
 import { motionScrollBehavior } from "../motion";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { LocateFixed } from "lucide-react";
 
@@ -13,8 +13,10 @@ import { usePageSearchParams } from "../use-page-view";
 import type { PeopleConcurrency, Person } from "../types";
 import { addCalendarDays } from "../../shared/domain";
 import { EmptyState } from "./Feedback";
+import { isTemporaryReadError } from '../api';
 
 export function ConcurrencyPanel({ people }: { people: Person[] }) {
+  const client = useQueryClient();
   const { selectedProjectId } = useProjects();
   const { businessDate } = useBusinessDate();
   const [viewParams, setViewParams] = usePageSearchParams(['analysisPersonId', 'analysisJobTitle']);
@@ -33,11 +35,12 @@ export function ConcurrencyPanel({ people }: { people: Person[] }) {
   const [matrixViewportWidth, setMatrixViewportWidth] = useState(0);
   const jobTitles = useMemo(() => [...new Set(people.map((person) => person.jobTitle).filter(Boolean) as string[])].sort(), [people]);
   const filteredPeople = people.filter((person) => !jobTitle || person.jobTitle === jobTitle);
+  const analysisKey = [...keys.peopleConcurrency, selectedProjectId, personId, jobTitle, businessDate];
   const analysis = useInfiniteQuery({
-    queryKey: [...keys.peopleConcurrency, selectedProjectId, personId, jobTitle, businessDate],
+    queryKey: analysisKey,
     initialPageParam: null as string | null,
     enabled: Boolean(selectedProjectId),
-    queryFn: ({ pageParam, signal }) => {
+    queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams();
       params.set("projectId", selectedProjectId);
       if (personId) params.set("personId", personId);
@@ -46,8 +49,14 @@ export function ConcurrencyPanel({ people }: { people: Person[] }) {
         params.set("from", pageParam);
         params.set("to", addCalendarDays(pageParam, 6));
       }
-      return reportingApi.analyticsPeopleConcurrencyQuery<PeopleConcurrency>(params, { signal });
+      try {
+        return await reportingApi.analyticsPeopleConcurrencyQuery<PeopleConcurrency>(params, { signal });
+      } catch (error) {
+        if (!signal.aborted && !isTemporaryReadError(error)) client.setQueryData(analysisKey, null);
+        throw error;
+      }
     },
+    retry: (failureCount, error) => failureCount < 1 && isTemporaryReadError(error),
     getNextPageParam: (lastPage) => addCalendarDays(lastPage.to, 1),
   });
   const pages = useMemo(() => analysis.data?.pages || [], [analysis.data?.pages]);
