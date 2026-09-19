@@ -36,7 +36,7 @@ export function assertProjectAssignees(requirementId: string, ids: Array<string 
       JOIN people p ON p.id=pp.person_id
       WHERE pp.project_id=? AND pp.person_id IN (${placeholders}) AND pp.project_role IN ('member','manager')
         AND p.deleted_at IS NULL AND p.active=1
-        AND EXISTS (SELECT 1 FROM accounts a WHERE a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL)`, requirement.projectId, ...batch)?.count || 0;
+        AND EXISTS (SELECT 1 FROM accounts a INDEXED BY idx_accounts_person WHERE a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL)`, requirement.projectId, ...batch)?.count || 0;
   }
   if (count !== assigneeIds.length) fail('负责人必须是当前项目中账号有效的成员或项目经理', conflict ? 'DEPENDENCY_CONFLICT' : 'VALIDATION_ERROR', conflict ? 409 : 400);
 }

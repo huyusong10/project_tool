@@ -62,6 +62,33 @@ afterAll(() => {
 });
 
 describe('看板性能', {timeout: 30000}, () => {
+  it('多人分配校验不扫描无关账号，1000名成员的全部样本低于150毫秒', async () => {
+    const local = await createTestDatabase(), db = local.context.sqlite;
+    const { assertEditorAssignees } = await import('../src/server/services/editor-entities');
+    const { assertProjectAssignees } = await import('../src/server/services/work-item-assignees');
+    const now = '2026-09-19T00:00:00.000Z', ids = Array.from({ length: 1000 }, (_, index) => 'assignee-' + index);
+    try {
+      db.transaction(() => {
+        db.prepare("INSERT INTO projects(id,name,created_at,updated_at)VALUES('assignees','参与人校验',?,?)").run(now, now);
+        db.prepare("INSERT INTO requirements(id,project_id,title,created_at,updated_at)VALUES('assignee-requirement','assignees','校验需求',?,?)").run(now, now);
+        const person = db.prepare('INSERT INTO people(id,name,created_at,updated_at)VALUES(?,?,?,?)');
+        const account = db.prepare("INSERT INTO accounts(id,person_id,username,normalized_username,password_hash,created_at,updated_at)VALUES(?,?,?,?,'test-only',?,?)");
+        const member = db.prepare("INSERT INTO project_people(project_id,person_id,created_at,updated_at)VALUES('assignees',?,?,?)");
+        for (let index = 0; index < 10000; index++) {
+          const id = 'unrelated-' + index; account.run(id, null, id, id, now, now);
+        }
+        for (const id of ids) {
+          person.run(id, id, now, now); account.run('account-' + id, id, id, id, now, now); member.run(id, now, now);
+        }
+      })();
+      const before = db.prepare('SELECT total_changes() AS n').get();
+      measureScenario('editor-assignees-1000-unrelated-10000', 150,
+        () => local.run(() => assertEditorAssignees('assignees', ids)), result => expect(result).toBeUndefined());
+      measureScenario('work-assignees-1000-unrelated-10000', 150,
+        () => local.run(() => assertProjectAssignees('assignee-requirement', ids)), result => expect(result).toBeUndefined());
+      expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(before);
+    } finally { local.close(); }
+  });
   it('特性需求分页不受5000个其他需求和50000个工作项拖慢，全部样本低于100毫秒', async () => {
     const local = await createTestDatabase(), db = local.context.sqlite;
     const { readFeatureRequirements } = await import('../src/server/services/features');

@@ -20,7 +20,7 @@ const workDefaults={status:'not_started',progress:0,plannedStart:null,plannedEnd
 const entityTable={requirement:'requirements',work:'work_items',milestone:'milestones'};
 type TemplateExpansion=DraftTemplateInstance & {version:string;items:Array<{clientId:string;templateItemId:string;kind:string}>};
 export function assertEditorAssignees(projectId:string,ids:Array<string|null|undefined>){
-  for(const id of new Set(ids.filter(Boolean)))if(!getDatabaseContext().sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id WHERE pp.project_id=? AND pp.person_id=? AND pp.project_role IN ('member','manager') AND p.active=1 AND p.deleted_at IS NULL AND EXISTS (SELECT 1 FROM accounts a WHERE a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL)").get(projectId,id))fail('负责人必须是当前项目中账号有效的成员或项目经理');
+  for(const id of new Set(ids.filter(Boolean)))if(!getDatabaseContext().sqlite.prepare("SELECT 1 FROM project_people pp JOIN people p ON p.id=pp.person_id WHERE pp.project_id=? AND pp.person_id=? AND pp.project_role IN ('member','manager') AND p.active=1 AND p.deleted_at IS NULL AND EXISTS (SELECT 1 FROM accounts a INDEXED BY idx_accounts_person WHERE a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL)").get(projectId,id))fail('负责人必须是当前项目中账号有效的成员或项目经理');
 }
 export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityChange[],actor:Actor){
   const current=requireAuthorizationActor(actor),created=new Set(changes.filter(c=>c.op==='create').map(c=>c.id));
