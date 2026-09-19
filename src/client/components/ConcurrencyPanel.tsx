@@ -1,10 +1,9 @@
-import * as peopleApi from '../features/people/api';
 import * as reportingApi from '../features/reporting/api';
 import { Button } from './Button';
 import { Avatar } from './Avatar';
 import { motionScrollBehavior } from "../motion";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { LocateFixed } from "lucide-react";
 
@@ -15,7 +14,7 @@ import type { PeopleConcurrency, Person } from "../types";
 import { addCalendarDays } from "../../shared/domain";
 import { EmptyState } from "./Feedback";
 
-export function ConcurrencyPanel() {
+export function ConcurrencyPanel({ people }: { people: Person[] }) {
   const { selectedProjectId } = useProjects();
   const { businessDate } = useBusinessDate();
   const [viewParams, setViewParams] = usePageSearchParams(['analysisPersonId', 'analysisJobTitle']);
@@ -32,11 +31,6 @@ export function ConcurrencyPanel() {
   const matrixScrollRef = useRef<HTMLDivElement>(null);
   const matrixScrollLeftRef = useRef(0);
   const [matrixViewportWidth, setMatrixViewportWidth] = useState(0);
-  const { data: people = [] } = useQuery({
-    queryKey: [...keys.people, selectedProjectId],
-    queryFn: ({ signal }) => peopleApi.peopleQuery<Person[]>(encodeURIComponent(selectedProjectId), { signal }),
-    enabled: Boolean(selectedProjectId),
-  });
   const jobTitles = useMemo(() => [...new Set(people.map((person) => person.jobTitle).filter(Boolean) as string[])].sort(), [people]);
   const filteredPeople = people.filter((person) => !jobTitle || person.jobTitle === jobTitle);
   const analysis = useInfiniteQuery({

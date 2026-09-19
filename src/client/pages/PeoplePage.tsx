@@ -1,7 +1,7 @@
 import * as peopleApi from '../features/people/api';
 import { Button } from '../components/Button';
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useResourceQuery } from "../use-resource-query";
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 
 import { useProjects } from "../app-context";
@@ -24,11 +24,11 @@ export function PeoplePage() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const updateView = (key: string, value: string) => setViewParams(current => { const next = new URLSearchParams(current); next.set(key, value); return next; });
   const view = viewParams.get("view") === "analysis" ? "analysis" : "matrix";
-  const { data: loadedPeople, error, refetch, isFetching, isLoading } = useQuery({
-    queryKey: [...keys.people, selectedProjectId],
-    queryFn: ({ signal }) => peopleApi.peopleQuery<Person[]>(encodeURIComponent(selectedProjectId), { signal }),
-    enabled: Boolean(selectedProjectId),
-  });
+  const { data: loadedPeople, error, refetch, isFetching, isLoading } = useResourceQuery<Person[]>(
+    [...keys.people, selectedProjectId],
+    signal => peopleApi.peopleQuery<Person[]>(encodeURIComponent(selectedProjectId), { signal }),
+    Boolean(selectedProjectId),
+  );
   usePageScrollPosition(!isLoading);
   const data = loadedPeople || emptyPeople;
   const jobTitles = [...new Set(data.map(person => person.jobTitle?.trim() || '岗位未设置'))].sort();
@@ -92,7 +92,7 @@ export function PeoplePage() {
             />
           )}
         </div>
-        </> : <ConcurrencyPanel />}
+        </> : <ConcurrencyPanel people={data} />}
       </div>
     </>
   );
