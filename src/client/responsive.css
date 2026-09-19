@@ -238,6 +238,7 @@ textarea {
 }
 
 @container page-content (max-width: 900px) {
+  .action-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .system-overview-grid,
   .system-secondary-grid {
     grid-template-columns: repeat(2,minmax(0,1fr));
@@ -719,7 +720,6 @@ textarea {
   .requirement-overview-actions .delivery-controls { flex: 1 1 100%; min-width: 0; justify-content: flex-start; }
   .detail-kpis { grid-template-columns: minmax(0,1fr); gap: 2px; }
   .requirement-progress-panel > header > div:first-child { flex-wrap: wrap; gap: 8px; }
-  .action-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .action-summary article { min-height: 64px; padding: 8px; gap: 6px; grid-template-columns: 28px minmax(0,1fr) auto; }
   .action-summary svg { width: 28px; height: 28px; padding: 5px; }
   .action-summary strong { font-size: 20px; }
