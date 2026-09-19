@@ -149,7 +149,8 @@ export function createRequirement(input: JsonObject, actor: Actor, deferNormaliz
     requirementOwner(projectId, ownerId, true);
     requireActiveProject(projectId, true);
     assertProjectManager(requireAuthorizationActor(actor), projectId);
-    audit(actor, 'create', 'requirement', id, plannedStart ? `创建需求并生成工作项：${title}` : `创建需求：${title}；${JSON.stringify({featureId:input.featureId,phaseId:input.phaseId,reason:input.reason})}`);
+    const organization = JSON.stringify({featureId:input.featureId,phaseId:input.phaseId,reason:input.reason});
+    audit(actor, 'create', 'requirement', id, plannedStart ? `创建需求并生成工作项：${title}` : `创建需求：${title}${organization==='{}'?'':'；'+organization}`);
   });
   tx();
   return getRequirement(id, false, !deferNormalization);

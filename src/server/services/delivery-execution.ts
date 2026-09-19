@@ -61,7 +61,8 @@ export function createDirectRequirement(raw:JsonObject,actor:Actor,deferNormaliz
     persistRequirementLinks(id,v);
     getDatabaseContext().sqlite.prepare('UPDATE requirements SET schedule_anchor=? WHERE id=?').run(start,id);persistOrganization(id,v.projectId,v);
     if(v.forecastEnd&&!deferNormalization)refreshDirectForecast(id);
-    recordAudit(actor,'create','requirement',id,'创建需求：'+v.title+JSON.stringify({featureId:v.featureId,phaseId:v.phaseId,reason:v.reason}));
+    const organization = JSON.stringify({featureId:v.featureId,phaseId:v.phaseId,reason:v.reason});
+    recordAudit(actor,'create','requirement',id,'创建需求：'+v.title+(organization==='{}'?'':'；'+organization));
     requireActiveProject(v.projectId,true);assertProjectManager(requireAuthorizationActor(actor),v.projectId);validateDeliveryFields(v.projectId,v,actor,undefined,true);
   }).immediate();
   return getRequirement(id,false,!deferNormalization);
