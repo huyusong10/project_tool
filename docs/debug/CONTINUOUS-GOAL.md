@@ -4,10 +4,10 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品2a6ad07（MW）、6f54442（MV）、495664b（MU）、64ad1bc（MP）、4e95f24（MM）、96c7323（ML）、4aa4345（MJ）、36b4292（MI）、eb8d679（MH）、3c87217（MD）、b33fc22（MC）、3517da6（MA）；更早成果见下表与历史版本。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品22d45f8（NA）、2a6ad07（MW）、6f54442（MV）、495664b（MU）、64ad1bc（MP）、4e95f24（MM）、96c7323（ML）、4aa4345（MJ）、36b4292（MI）、eb8d679（MH）、3c87217（MD）、b33fc22（MC）、3517da6（MA）；更早成果见下表与历史版本。
 - 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
-- 最新全量MX：997业务/120文件、11性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-mx-verify.log，50107退出0已回收。覆盖至2a6ad07，MU/MV/MW组合验收首轮通过；此前MQ覆盖ML/MM/MP。
-- MX生产预算：主JS933.76KB、CSS339.24KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-mv-matrix.log确认767功能/183布局/2性能、普通1865实例；只列清单，不称为执行全部浏览器。3296监听0、当前测试临时目录0。
+- 最新全量NA：997业务/120文件、11性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-na-verify-final.log，55517退出0已回收。覆盖至22d45f8；首轮归档探针误入Vitest的失败原因与修正见NA。此前MX覆盖MU/MV/MW。
+- NA生产预算：主JS933.76KB、CSS339.24KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-mv-matrix.log确认767功能/183布局/2性能、普通1865实例；只列清单，不称为执行全部浏览器。3296监听0、当前测试临时目录0。
 - 证据在.preview/qa/continuous-goal/，不进版本库。恢复先看当前阶段和git状态，不重跑已通过检查。
 
 详细历史在本文件Git版本：A—DO fd512b7；DP—EV 41a4ed0；FE—HL d35957a；HE—IE 67250e9。JG至JL详验见1ce7589；JP—JZ详验见dc53ed7。按主题取读，不重新开始。
@@ -312,10 +312,26 @@ MU/MV/MW完成目标验收后执行一次完整verify，stage-mx-verify的50107�
 
 从MK游标2026-09-18T23:33:15.400Z检查至2026-09-19T00:37:56.366Z，约65分钟。17日志新增0字节/0事件/0读取错误，3210健康200。runtime-log-review-my.mjs/json、stage-my-runtime.log为最新增量证据；未重读旧内容、未复验备份，原服务无需修改。
 
-## 当前阶段 MZ
+## MZ验收：只读参考链接的上限与窄屏
 
-检查只读详情的参考链接：按已有上限20条、200字符名称、4000字符地址构造数据，在1280/390检查完整名称、概况中的“全部”入口、键盘定位及实际href，完整正式DTO保持、页面0业务写。ReferenceLinks已有换行和焦点样式；reference-links.pw.ts主要覆盖编辑、排序、保存与草稿，不重复这些流程。当前只完成实现与覆盖检查，尚未建探针或宣称通过。无问题则归档探针，不增加永久测试。近期人员权限、项目切换、归档核对降低优先级；没有新证据不重测。
+真实观察者读取需求和特性，每份20链接、200字符中英文名称和4000字符地址，在1280/390验证完整文字矩形、概况“全部”入口、连续Tab至末项、href与刷新保留。80个链接矩形均无横向溢出，页面0业务写/0异常，完整项目/需求/关系图DTO保持。39867的stage-mz-links首轮退出0已回收，readonly-links-mz.json和mz-links截图留证，4张代表截图已看。无需产品修改，临时stage-mz-readonly-links.pw.ts已归档，不增加永久测试。
+
+## NA验收：消除账号扫描导致的跨项目成本
+
+原5000问题性能测试没有覆盖成员查询。独占基线对100/1000/5000成员×0/5000/50000无关人员共9组测量，版本均一致、读取0写；目标账号/人员/成员角色变化均检测到，无关账号变化不影响结果。最重组中位12369ms，100人项目也从0.65ms增长至153ms。查询计划明确每个成员SCAN accounts，已有idx_accounts_person未使用。26187退出0已回收，project-refresh-members-na-before.json与stage-na-project-refresh.log留证。
+
+强化原性能场景为5000问题+5000成员后，66251原版失败，中位837.6ms/最慢1094.2ms超过500ms预算。给该LEFT JOIN指定既有人员唯一索引后，9组完整version均与原版相同，最重组降至6.12ms，计划均改用idx_accounts_person。project-refresh-members-na-comparison.json和stage-na-project-refresh-after.log留证。
+
+扩大夹具还暴露行动中心的同类扫描：48793完整性能组10通过/1失败，行动中心超过2秒。诊断副本用固定ID/时间复核，44957仍失败，中位2053ms；工作项负责人查询827ms、需求负责人/验收人查询264ms。仅给这3处已测量的账号JOIN指定同一索引，SQL降至3.53/1.44ms，完整行动中心结果SHA相同、仍14查询，总耗时中位309ms/最慢330ms。actions-accounts-na-before/comparison/samples-after.json、stage-na-action-profile-before-corrected/after.log留证；临时诊断测试已归档。首个诊断生成因Python默认GBK读取失败，未生成或执行测试，stage-na-action-profile-before.log不是产品失败证据。
+
+22d45f8共4处索引选择调整，不新增索引/缓存/业务规则；原性能场景数量仍11。68059的stage-na-verify为997业务通过，但Vitest把证据目录的诊断副本.test.ts也发现为测试，因相对导入失效使整轮退出1；不是产品测试失败。已将副本改为stage-na-action-profile.probe.ts，后续归档Vitest探针不得保留.test.ts/.spec.ts后缀。
+
+修正后stage-na-verify-final的55517退出0已回收，997业务/120文件、11性能、26浏览器冒烟及全部静态/生产构建/预算通过。stage-na-full-performance-samples.json保存最终全组样本，3296监听0/当前浏览器临时目录0。产品已提交，所有句柄已回收；没有为补数量新增永久测试。
+
+## 当前阶段 NB
+
+NA诊断还发现refreshPathAssignments的账号LEFT JOIN使用SCAN a，50个实际人员时约7.8ms，尚不足以决定修改。下一步独占测量100/1000等不同实际指派人数与无关账号规模，核对完整姓名、人员有效性与协作者顺序；只有测出有价值的瓶颈才调整。来源src/server/services/path-assignments.ts与actions-accounts-na-before.json，当前仅读源码，未改该查询。近期后台变更检查、需求负责人和行动中心已验收的查询不重复测量。
 
 ## 最新检查点
 
-MU/MV/MW产品均已提交，MX完整verify通过，MY原服务无需修改。所有句柄已回收，下一步MZ只读参考链接的上限与窄屏组合。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标MY（00:37:56.366Z），不重复短间隔轮询；未部署或推送。Goal保持active。
+MZ只读长链接实测无需修改；NA产品22d45f8已提交并完整验收，全部句柄已回收，当前NB待测量关系图指派人员查询。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标MY（00:37:56.366Z），不重复短间隔轮询；未部署或推送。Goal保持active。
