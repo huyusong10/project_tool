@@ -2,12 +2,12 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 QC
+## 恢复入口与当前阶段 QE
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段QC（整体基线更新，待执行）：PX分派校验、QA提示、QB键盘焦点均有专项验收；运行一次完整verify，检查业务、性能、冒烟、构建及边界。通过后保存最新基线并进入不同重点；不因阶段通过结束Goal。
-3. 最新完整验证PS：999业务/120文件、13性能、26浏览器冒烟，运行时/428边界/完整Lint及按钮规范/类型/生产构建/体积预算均通过，覆盖至cf27f95；98531首轮退出0，全部句柄回收。stage-ps-verify.log及stage-ps-performance-samples.json。
-4. 最新产品为本次QB（项目切换焦点），前一产品`fe41792`（QA，执行记录提示），再前`33ff6eb`（PX，负责人分派校验）。PY归档前完整记录在 `33ff6eb:docs/debug/CONTINUOUS-GOAL.md`；PB前在 `67baff3`，NN及更早详细历史在 `cac4ecd`。本记录只保留当前恢复所需信息，旧阶段不重新开始。PY精简校验见 `.preview/qa/continuous-goal/record-compaction-py.json`，稳定决定/候选逐字保持。
+2. 当前阶段QE（旧备份下载恢复，待验证）：在隔离测试服务创建两份真实备份；另一管理员删除旧页面中的一份，检查旧下载404的错误反馈、无下载产物、不锁住另一份下载、页面刷新后清理旧行；核对下载数据库及原业务DTO。不触碰原服务备份。
+3. 最新完整验证QC覆盖至2270423：1000业务/120文件、13性能、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。59262首轮退出0、已回收；stage-qc-verify.log、stage-qc-performance-samples.json、stage-qc-build-budget.json。
+4. 最新产品`2270423`（QB，项目切换焦点），前一产品`fe41792`（QA，执行记录提示），再前`33ff6eb`（PX，负责人分派校验）。PY归档前完整记录在 `33ff6eb:docs/debug/CONTINUOUS-GOAL.md`；PB前在 `67baff3`，NN及更早详细历史在 `cac4ecd`。本记录只保留当前恢复所需信息，旧阶段不重新开始。PY精简校验见 `.preview/qa/continuous-goal/record-compaction-py.json`，稳定决定/候选逐字保持。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
 6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`，独立数据库/构建；浏览器串行、性能独占。QB86643首个完整改后通过；14925探针标题含副标题、40914与既有测试共库使25项目变27，均属夹具假设错误；40914中既有项目选择测试已通过。43403原版6次丢焦点实际复现。上述及QA/PZ句柄均已回收，探针归档；没有运行测试。
 
@@ -15,27 +15,28 @@
 
 | 范围 | 最终证据与边界 |
 |---|---|
+| QC完整验证 | 59262首轮verify退出0、已回收：1000业务/120文件（46.11s）、13性能（19.04s）、26浏览器冒烟（1.2min）；运行时/428边界/完整Lint/按钮样式/类型/生产构建/预算通过，覆盖2270423。stage-qc-verify.log、stage-qc-performance-samples.json、stage-qc-build-budget.json |
 | QB专项验证 | 25个长名项目，1280×800/390×844/390×400首尾6次键盘切换原版全丢焦点，Tab回brand-home；project-menu-qb-original-complete.json。Topbar选择后focus入口preventScroll，一行修改。86643完整通过6.7s：6次焦点恢复、Tab到标题，Home/End/方向键/Esc、刷新、2鼠标/2触摸切换；25项目与2问题完整DTO保持、0写/异常。两张390截图已看、边界与完整名称通过。既有project-selection功能4.2s通过；类型/测试构建、目标Lint/diff通过。project-menu-qb-verified.json、stage-qb-project-menu-after/verified.log，探针归档，无永久测试。列表没有搜索框，不新增功能 |
 | QA专项验证 | 14447原版完整流程结束，仅因旧提示失败；cancelled-owner-hint-qa-original-complete.json。10949改后1真实浏览器2.1s通过：未开始/0%/无实际开始/仅取消记录，负责人空选项禁用，清空接口409，完整需求/项目DTO保持、0页面写/异常；390图已看。测试构建含类型、目标Lint/diff通过；cancelled-owner-hint-qa-after.json与stage-qa-cancelled-owner-hint-after.log。最初toBeDisabled不适用隐藏原生option，改为disabled属性断言后完整复现；不算产品缺陷。无永久测试 |
 | PX专项验证 | 原版REST/MCP：两类需求新建及direct更新拒绝400，work_items普通更新却200写入失效owner；owner-assignment-px-original.json、stage-px-owner-assignment-original.log。改后8组合全400，4个更新完整DTO/版本不变。40专项（含2探针）+73集成/编辑契约共113通过，27013的4既有浏览器通过23.3s；类型/测试构建/目标Lint/diff通过。新增1正式回归涵盖错误分派、有效交接、原失效负责人补说明、取消后历史纠错，完整工作存储及历史保持；owner-assignment-px-complete.json、stage-px-owner-assignment-complete/owner-integration/owner-browser.log。探针归档，全句柄回收 |
 | PS完整验证 | stage-ps-verify.log首轮退出0（98531已回收）：999业务/120文件、13性能、26浏览器冒烟（1.2min）；原生运行时、428边界、完整Lint/按钮规范、类型、生产构建和预算均通过，覆盖至cf27f95。stage-ps-performance-samples.json留存本轮样本 |
 | PR专项验证 | 原版archived-feature-filter-pr-original.json提示/入口均false，但完整往返和数据核对通过；改后5857通过普通成员跨页归档/恢复、既有组合筛选和归档规则3场景。两方向390提示/按钮在视口、截图已看；切换后搜索词/所选特性/刷新保持，交付历史及另一需求业务DTO保持，项目/特性DTO在只读期间保持，0成员写/异常。类型/测试构建/目标Lint/diff通过；archived-feature-filter-pr-after.json与stage-pr-archived-feature-filter-after.log，探针归档，无永久测试 |
-| 生产体积 | PS正式构建：主JS934.69KB、CSS339.75KB、ELK1595.33KB，服务端6文件/app878.89KB；stage-ps-verify.log中构建与预算通过，覆盖至cf27f95 |
+| 生产体积 | QC正式构建：主JS934729B、CSS339753B、ELK1595334B；服务端6文件/app879.24KB，预算通过。覆盖2270423，stage-qc-build-budget.json |
 | 浏览器清单 | 最新`stage-np-matrix.log`：771功能/183布局/2性能、普通1869实例；这是列举结果，未执行整个矩阵。NT结束3296监听0、当前测试临时目录0；原目录仍只有2处用户改动 |
-| 原服务增量 | 最新游标PU：2026-09-19T07:01:11.554Z；较PN约34分钟，17日志新增0字节/0事件，无错误/读取失败，3210健康200。runtime-log-review-pu.mjs/json、stage-pu-runtime.log。只检查后续增量，不短间隔轮询 |
+| 原服务增量 | 最新游标QD：2026-09-19T07:47:18.258Z，较PU约46分钟；17日志新增0字节/0事件，无错误/读取失败，3210健康200。runtime-log-review-qd.mjs/json、stage-qd-runtime.log。只检查后续增量，不短间隔轮询 |
 | 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；PN元数据仍同PI/PA/MK，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-pn-listing.json` |
-| 依赖证据 | JG官方生产依赖审计9月18日23:06为0公告，lock最后提交06146c4；LY只复核未变。这是旧证据，不代表当前安全快照 |
+| 依赖证据 | QD于2026-09-19T07:47:17—21Z查询npm官方registry，生产范围143依赖、0已知漏洞，退出0；锁SHA256前后相同32A55528…C796F，最后提交06146c4。stage-qd-audit-official.json及metadata.json；未升级依赖 |
 
-PS完整验证覆盖至cf27f95，PX使用专项证据，见表。原目录仍仅2处用户修改。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
+QC完整验证覆盖至2270423，专项交互证据见表。原目录仍仅2处用户修改。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
 
 
 ## 近期产品成果
 
-均已验收，PS完整验证覆盖至cf27f95，PX由113业务/4浏览器专项验收。更早产品成果、失败尝试和精确证据见 `33ff6eb:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
+均已验收，QC完整验证覆盖至2270423。更早产品成果、失败尝试和精确证据见 `33ff6eb:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
-| QB / 本次提交 | 项目切换选中后菜单移除，键盘焦点丢失，下一次Tab回页面品牌链接；6次真实复现。仅在选择完成后focus原按钮且preventScroll，保留现有导航和菜单结构。键盘/鼠标/触摸及数据不变证据见专项基线 |
+| QB / 2270423 | 项目切换选中后菜单移除，键盘焦点丢失，下一次Tab回页面品牌链接；6次真实复现。仅在选择完成后focus原按钮且preventScroll，保留现有导航和菜单结构。键盘/鼠标/触摸及数据不变证据见专项基线 |
 | QA / fe41792 | 开始前取消唯一工作后，需求仍未开始且只有取消历史，编辑提示和拒绝清空负责人接口却称“已开始执行”。仅两处改成“已有执行记录”，与现有纠错文案一致；不改取消语义、负责人规则或API。原版及改后证据见专项基线 |
 | PX / 33ff6eb | 已有工作分解需求的普通负责人修改仅校验人员及成员关系，漏检账号状态，REST/MCP实际可把需求分派给已停用账号。changeRequirement在实际更换负责人时复用validateDeliveryFields，写前及事务内检查；保留原失效负责人编辑说明和终态历史纠错。无新校验体系/API，新增1有业务结果断言的回归；原版与改后证据见专项基线 |
 | PR / cf27f95 | 成员已选特性被管理员归档或恢复后，保留的状态筛选与特性不符，空结果原来没有解释。ProgressWorkspace仅在该情况下说明特性归档状态，提供查看对应状态的按钮；点击只改progressState，其他筛选保持，不自动切换、不改API或筛选语义。原版复现与改后3场景/窄屏/只读证据见专项基线 |
