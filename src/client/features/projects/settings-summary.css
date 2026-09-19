@@ -1,3 +1,5 @@
 @layer application {
 .project-settings-summary, .project-members-panel { margin-bottom: 16px; }
+.project-settings-summary > header > div { min-width: 0; overflow-wrap: anywhere; }
+.project-settings-summary > header > span { flex: none; white-space: nowrap; }
 }
