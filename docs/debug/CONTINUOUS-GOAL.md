@@ -4,7 +4,7 @@
 
 ## 基线与恢复
 
-- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品f6837ac（NB）、22d45f8（NA）、2a6ad07（MW）、6f54442（MV）、495664b（MU）、64ad1bc（MP）、4e95f24（MM）、96c7323（ML）、4aa4345（MJ）、36b4292（MI）、eb8d679（MH）、3c87217（MD）、b33fc22（MC）、3517da6（MA）；更早成果见下表与历史版本。
+- 工作目录D:\tools\project-manage-improve，分支codex/continuous-improvement，起点bd19fa1。最新产品b808aab（NE）、f6837ac（NB）、22d45f8（NA）、2a6ad07（MW）、6f54442（MV）、495664b（MU）、64ad1bc（MP）、4e95f24（MM）、96c7323（ML）、4aa4345（MJ）、36b4292（MI）、eb8d679（MH）、3c87217（MD）、b33fc22（MC）、3517da6（MA）；更早成果见下表与历史版本。
 - 原目录D:\tools\project-manage的dev不改，仅保留用户自己的skill修改和未跟踪文档。未部署、未推送。独立数据库/构建，浏览器端口3296，测试串行、性能独占；3210/3295不改。
 - 最新全量NA：997业务/120文件、11性能、26浏览器冒烟，运行时/428边界/完整Lint/类型/生产构建/预算全部通过，stage-na-verify-final.log，55517退出0已回收。覆盖至22d45f8；首轮归档探针误入Vitest的失败原因与修正见NA。此前MX覆盖MU/MV/MW。
 - NA生产预算：主JS933.76KB、CSS339.24KB、ELK1595.33KB，预算通过，按JR规则清理输出。最新stage-mv-matrix.log确认767功能/183布局/2性能、普通1865实例；只列清单，不称为执行全部浏览器。3296监听0、当前测试临时目录0。
@@ -334,10 +334,24 @@ MU/MV/MW完成目标验收后执行一次完整verify，stage-mx-verify的50107�
 
 只为path-assignments.ts的LEFT JOIN指定既有idx_accounts_person后，最重组降至2.97ms，6组完整快照SHA一致、读取0数据库写，100/1000人分别保持1/2批查询。path-assignments-nb-comparison.json与stage-nb-after留证。并入原有大规模性能用例，数量仍11；11067原版在825ms超过250ms预算处失败，已回收。15320退出0：11性能通过，5000实际指派人员中位15.20ms/最慢15.66ms，stage-nb-performance-samples.json留证。41业务/4文件、4真实人员交接场景、类型/测试构建/目标Lint/diff通过；stage-nb-unit/handoff/lint.log留证，77618已回收，handoff日志4通过（23.2秒）。产品f6837ac已提交，不重复刚完成的NA全量验证。
 
-## 当前阶段 NC
+## NC验收：清单搜索键盘与往返
 
-检查项目清单搜索的键盘操作、详情关闭后焦点、浏览器往返和跨视图筛选。先核对现有覆盖，再用真实数据验证尚未覆盖的组合；验收要求结果与筛选一致、键盘能继续操作、只读旅程0业务写且完整DTO保持。没有问题则保留证据后换领域，不新增永久测试。
+真实数据在1280/390验证空结果后Escape清空、连续键盘查找并打开详情、关闭后焦点回到原结果、清单与进展表分别保留筛选、浏览器后退/前进和刷新。完整项目/两份需求/关系图DTO保持，0业务写/0异常；19380首轮退出0已回收，stage-nc-search.log、search-keyboard-nc.json留证，两张截图已看。无需产品修改，探针已归档，不新增永久测试。
+
+## ND验收：Token真实响应丢失恢复
+
+真实创建已落库但浏览器响应被中断，后续列表503、刷新和失败重读都保持防重复锁。恢复后核对真实列表，撤销丢失密钥的Token，再新建并刷新得到2有效/1撤销；浏览器严格2次POST+1次DELETE，同账号其他Token完整DTO、项目和人员完整DTO保持，0页面异常。9288首轮退出0已回收，stage-nd-token.log、token-recovery-nd.json留证；390失败/恢复截图已看。无需修改，探针归档，不新增永久测试。
+
+## NE验收：行动中心的问题负责人查询
+
+100/1000待处理问题×0/5000/50000无关账号共6组，查询计划逐问题SCAN accounts；1000问题最重组中位534.64ms，其中SQL522.01ms。完整分页结果逐项核对未分派、停用、删除、无账号、观察者及跟进/逾期原因，0数据库写；67344退出0已回收。只给问题分支账号JOIN指定已有idx_accounts_person后，最重组12.44ms/SQL1.38ms，6组完整结果SHA和查询数相同。
+
+强化现有5000问题夹具为已指派且逾期、到跟进日期。27013原版在500ms预算失败，中位842.3/最慢1140.8ms；调整后84.18/87.55ms，56971的11性能全通过。44业务/3文件、6真实行动浏览器、类型/测试构建/目标Lint/diff通过，56404退出0已回收。issue-actions-ne-before/comparison.json、stage-ne-regression-before/performance/unit/actions/lint.log留证。b808aab已提交；永久测试数量仍11，未重复NA全量。
+
+## 当前阶段 NF
+
+检查统计分析在数据接口明确拒绝后是否保留旧图表。AnalyticsPage主查询与配置预览使用普通useQuery，暂时失败保留数据合理，但没有区分403；目前只有代码线索，尚未证明真实缺陷。下一步用真实成员撤权、其他接口暂时503隔离影响，验证主图表与配置预览的清除/再次503/重新授权恢复，不提前改代码。
 
 ## 最新检查点
 
-NB产品f6837ac已提交并目标验收，最新完整NA覆盖至22d45f8。当前NC检查项目清单搜索和键盘往返。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标MY（00:37:56.366Z），不重复短间隔轮询；未部署或推送。Goal保持active。
+NB f6837ac、NE b808aab已提交并目标验收，最新完整NA覆盖至22d45f8。NC键盘往返、ND Token真实恢复均无需修改；当前NF检查统计分析明确拒绝后的图表缓存。原目录仍仅用户自己的skills/project-manage-intake/SKILL.md修改与docs/dcim-ai-workflow-v3-gaps.md未跟踪文件。最新原服务游标MY（00:37:56.366Z），不重复短间隔轮询；未部署或推送。Goal保持active。
