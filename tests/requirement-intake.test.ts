@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID, scryptSync } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { intakeExample, type IntakeCatalog, type ImportPreview, type ImportReceipt } from '../src/shared/intake';
+import { intakeExample, intakePackageSchema, type IntakeCatalog, type ImportPreview, type ImportReceipt } from '../src/shared/intake';
 import { mcpRequest } from './mcp-request';
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'pm-intake-')),password='intake-isolated-test';
 Object.assign(process.env,{DB_PATH:path.join(directory,'test.db'),BACKUP_DIR:path.join(directory,'backups'),WEB_DIST_DIR:path.join(directory,'web'),SEED_DEMO:'0',NODE_ENV:'test',APP_PASSWORD_HASH:`scrypt$intake$${scryptSync(password,'intake',64).toString('hex')}`,SESSION_SECRET:'intake-test-secret-more-than-thirty-two-characters'});
@@ -155,6 +155,29 @@ it('并发修改、无效依赖和跨项目分组不能部分写入',async()=>{
  expect((await request('GET','/api/requirements?projectId='+p.id)).json()).toEqual([]);
  const other=await imported(),created=await post('/api/requirements',{projectId:p.id,title:'不带工作项的需求'});expect(created.statusCode,created.body).toBe(200);
  expect((await request('PATCH','/api/requirements/'+created.json().id,{expectedVersion:created.json().version,featureId:(await catalog(other.id)).features[0].id})).statusCode).toBe(400);
+});
+it('混合导入的无效排期指出具体需求或工作项，预览和拒绝提交不修改已有数据',async()=>{
+ const p=await project(),original=(await post('/api/requirements',{projectId:p.id,title:'已有需求保留原文',background:'原始说明'})).json();
+ const before=(await request('GET','/api/requirements/'+original.id)).json(),beforeCatalog=await catalog(p.id);
+ for(const kind of ['create','update','work'] as const)for(const dates of [
+  {plannedStart:'2026-09-22',plannedEnd:'2026-09-21',message:'计划完成日期不能早于计划开始日期'},
+  {plannedStart:'2026-09-19',plannedEnd:'2026-09-21',message:'排期日期必须是工作日'},
+ ]){
+  const {message,...plan}=dates,title='需要修正的现场需求';
+  const pkg=intakePackageSchema.parse({formatVersion:3,requirements:[
+   {key:'valid',title:'前一条正常需求',workItems:kind==='work'?[{key:'w',title:'执行核对'}]:[]},
+   {key:'invalid',title,...(kind==='update'?{action:'update',existingId:original.id,expectedVersion:original.version}:{}),
+    ...(kind==='work'?{workItems:[{key:'w',title:'执行核对',...plan}]}:plan)},
+   {key:'last',title:'后一条正常需求'},
+  ]});
+  const result=await preview(p.id,pkg);
+  expect(result.errors).toEqual([title+(kind==='work'?' / 执行核对':'')+'：'+message]);
+  expect(await catalog(p.id)).toEqual(beforeCatalog);
+  expect((await apply(p.id,result)).statusCode).toBe(400);
+  expect((await request('GET','/api/requirements/'+original.id)).json()).toEqual(before);
+  expect((await request('GET','/api/requirements?projectId='+p.id)).json().map((r:{id:string})=>r.id)).toEqual([original.id]);
+  expect(await catalog(p.id)).toEqual(beforeCatalog);
+ }
 });
 it('直接执行后添加第一个工作项自动汇总，保留已记录的进度基线',async()=>{
  const p=await project(),owner=(await post('/api/people',{projectId:p.id,name:'负责人'+sequence})).json().id;

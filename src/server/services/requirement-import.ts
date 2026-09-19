@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { getDatabaseContext } from '../database-context';
 import type { Actor } from '../auth';
 import { assertProjectManager, assertProjectReadable, requireAuthorizationActor } from '../authorization';
-import { fail, notFound } from '../errors';
+import { AppError, fail, notFound } from '../errors';
 import { requireActiveProject } from './support';
 import { recordAudit } from './audit';
 import { previewDependencyChanges, applyDependencyChanges } from './path-changes';
@@ -79,7 +79,14 @@ function prepare(projectId:string,pkg:IntakePackage,actor:Actor) {
   let core:ReturnType<typeof previewDependencyChanges>|null=null;
   if(changes.changes.entities!.length>maxDependencyEntityChanges)errors.push(`本批有${changes.changes.entities!.length}个需求和工作项，超过单次${maxDependencyEntityChanges}个的上限，请分批导入`);
   if(!errors.length&&(changes.changes.entities!.length||changes.changes.add.length)){
-    try{core=previewDependencyChanges(projectId,changes,actor);}catch(error){errors.push(error instanceof Error?error.message:'无法预览需求');}
+    try{core=previewDependencyChanges(projectId,changes,actor);}catch(error){
+      const entityIds=error instanceof AppError?(error.details as {entityIds?:string[]}|undefined)?.entityIds:undefined;
+      const labels=changes.changes.entities!.filter(entity=>entityIds?.includes(entity.id)).map(entity=>{
+        const parent=entity.entity==='work'?changes.changes.entities!.find(item=>item.id===entity.requirementId):undefined;
+        return [parent?.data.title,entity.data.title].filter(Boolean).join(' / ');
+      }).filter(Boolean);
+      errors.push((labels.length?labels.join('、')+'：':'')+(error instanceof Error?error.message:'无法预览需求'));
+    }
   }
   if(!pkg.requirements.some(r=>r.action!=='skip'))errors.push('没有选择要导入的需求');
   const preview:ImportPreview={expectedRevision:revision,previewToken:hash({projectId,pkg,revision,core:core?.previewToken}),package:pkg,warnings:[...new Set(warnings)],errors:[...new Set(errors)],existingMatches,differences:core?.differences||null,counts:{requirements:pkg.requirements.filter(r=>r.action==='create').length,updated:pkg.requirements.filter(r=>r.action==='update').length,workItems:pkg.requirements.filter(r=>r.action==='create').reduce((n,r)=>n+r.workItems.length,0)}};

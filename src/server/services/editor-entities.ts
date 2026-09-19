@@ -56,8 +56,8 @@ export function prepareEditorEntities(snapshot:PathInput,changes:EditorEntityCha
       const previousCollaborators=(previousWork.assigneeIds||[]).filter(id=>id!==previousWork.ownerId);
       validateAssignees([nextOwner!==previousWork.ownerId?nextOwner:null,...(c.data.assigneeIds||[]).filter(id=>id!==nextOwner&&!previousCollaborators.includes(id))]);
     }else validateAssignees([c.data.ownerId!==req?.ownerId?c.data.ownerId:null,...c.data.assigneeIds||[]]);
-    for(const key of ['plannedStart','plannedEnd','targetDate'] as const)if(c.data[key]&&businessDaysInclusive(c.data[key]!,c.data[key]!)!==1)fail('排期日期必须是工作日');
-    if(c.data.plannedStart&&c.data.plannedEnd&&c.data.plannedStart>c.data.plannedEnd)fail('计划完成日期不能早于计划开始日期');
+    for(const key of ['plannedStart','plannedEnd','targetDate'] as const)if(c.data[key]&&businessDaysInclusive(c.data[key]!,c.data[key]!)!==1)fail('排期日期必须是工作日','VALIDATION_ERROR',400,{entityIds:[c.id]});
+    if(c.data.plannedStart&&c.data.plannedEnd&&c.data.plannedStart>c.data.plannedEnd)fail('计划完成日期不能早于计划开始日期','VALIDATION_ERROR',400,{entityIds:[c.id]});
     if(coordinationKeys.some(k=>c.data[k]!==undefined)){const original=c.entity==='requirement'?req:snapshot.workItems.find(w=>w.id===c.id);if(c.op!=='update'||!original||original.status!=='blocked')fail('只有阻塞对象可以修改协调信息');const normalized=validateCoordination(snapshot.projectId,{...original,...c.data});for(const key of coordinationKeys)if(c.data[key]!==undefined||c.data.blockedIssueId)c.data[key]=normalized[key];}
     if(c.entity==='requirement'){
       if(c.op==='create'){
