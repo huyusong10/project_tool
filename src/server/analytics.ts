@@ -433,8 +433,11 @@ function dimensionValue(dataset: string, dimension: string, record: GenericRecor
     const key = dimension === 'week' ? startOfWeekIso(date) : date;
     return { key, label: dimension === 'week' ? `${shortDate(key)}周` : shortDate(key) };
   }
-  const raw = dimension === 'requirement' ? (record.title || record.requirement)
-    : dimension === 'person' ? record.person
+  if (dimension === 'requirement') return {
+    key: String(dataset === 'requirements' ? record.id : record.requirementId),
+    label: String(record.title || record.requirement || '未设置'),
+  };
+  const raw = dimension === 'person' ? record.person
       : dimension === 'template' ? record.template
         : dimension === 'owner' ? record.owner
           : dimension === 'scope' ? (record.requirementId ? 'requirement' : 'public')
