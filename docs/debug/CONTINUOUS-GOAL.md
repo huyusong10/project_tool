@@ -5,18 +5,19 @@
 ## 恢复入口与当前阶段 RK
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段RK20（继续用户优先目标：全面整理UI）：RK1—RK19已验收。RK19由RK18实际截图中新发现的重复菜单文字插入，现已修复。下一轮检查登录、首次进入和空数据页面的视觉状态；批量栏、顶部、普通表单、低高度弹窗、通知和主题降低优先级。
+2. 当前阶段RK21（继续用户优先目标：全面整理UI）：RK1—RK20已验收。下一轮检查人员矩阵中的长姓名、密集行和筛选布局。游客入口、批量栏、顶部、普通表单、低高度弹窗、通知和主题降低优先级。
 3. 最新完整验证QU覆盖至8c67902：1002业务/121文件（45.81s）、13性能（18.81s）、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。5429首轮退出0、已回收；stage-qu-verify.log、stage-qu-performance-samples.json、stage-qu-build-budget.json。
-4. 最新产品RK19（本次提交，菜单标签去重）；RK18 7df1e4c（窄工具栏页签换行）；RK17 070b727（批量选择栏）；RK16 9ee46a0、RK14 1fbbbbb、RK13 3a5112c、RK12 e065c86、RK11 6745208、RK10 e366874、RK9 43fb1eb、RK8 2835276；RK1—RK16详细验收及此前成果索引在 `9ee46a0:docs/debug/CONTINUOUS-GOAL.md`。记录本次精简前副本和SHA见record-before-rk17-compaction.md、record-compaction-rk17.json。更早完整记录按下方索引读取。
+4. 最新产品RK20（本次提交，长项目按钮换行与游客列表滚动）；RK19 5c185af（菜单标签去重）；RK18 7df1e4c（窄工具栏页签换行）；RK17 070b727（批量选择栏）；RK16 9ee46a0、RK14 1fbbbbb、RK13 3a5112c、RK12 e065c86、RK11 6745208、RK10 e366874、RK9 43fb1eb、RK8 2835276；RK1—RK16详细验收及此前成果索引在 `9ee46a0:docs/debug/CONTINUOUS-GOAL.md`。记录本次精简前副本和SHA见record-before-rk17-compaction.md、record-compaction-rk17.json。更早完整记录按下方索引读取。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
-6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`；独立数据库/构建，串行且trace关闭。RK19的50102共3测试30.8s退出0；12菜单状态24标签，重复9→0，15个纯图标标签保留。目标Lint/按钮CSS/类型/生产构建/预算通过，全部句柄回收。
+6. 浏览器端口3296，每次命令设置 `$env:PLAYWRIGHT_PORT='3296'`；独立数据库/构建，串行且trace关闭。RK20最终29771的40状态15.5s退出0；82240另2既有游客流程通过，wrap-only视觉缺陷已修正。目标Lint/按钮CSS/类型/生产构建/预算通过，全部句柄回收。
 
-RK20恢复入口：AuthForms.tsx、features/accounts/AccessLanding.tsx已读；LoginDialog使用440px Modal、52px标志、full字段和HTTP提示；GuestLanding为单面板、wrap项目按钮及登录入口。下一步按既有http-access/form-submission场景创建视觉探针。QO已验收认证长错误/低高度焦点，不重做该功能回归。RK13已检查StartupError，无新证据不重测。主目录不动，禁止递归扫描证据根。
+RK21恢复入口：先用rg发现PeoplePage、ConcurrencyPanel、人员矩阵CSS及people/concurrency浏览器用例。RK5只修加载/提示，RK4主要账号/人员管理表；先核对密集人员矩阵已有视觉覆盖，避开QG已测的服务端并发查询性能。主目录不动，禁止递归扫描证据根。
 
 ## 当前验收基线
 
 | 范围 | 最终证据与边界 |
 |---|---|
+| RK20 游客入口 | 长项目名换行仍限36px高，390/320各7标签越界，面板横溢出212/247px；wrap按钮现随文字增高并断长词。首稿截图发现居中列表顶部裁切，补safe center/overflow:auto，顶部标题可见、底部登录可滚动并实际点击。真实8公开空项目，4尺寸40状态，最终29771的15.5s及此前2既有游客回归通过，0溢出/裁切/异常/浏览器写；改密和空管理员列表为UI响应覆盖。代表前后图已看，目标Lint/按钮CSS/类型/构建/预算通过，2CSS共3行，无永久测试。ui-rk20-audit.json、ui-rk20-final及stage-rk20-*；accepted目录只是未完整验收的首稿 |
 | RK19 菜单重复文字 | RK18截图发现放弃修改显示两遍；svg:only-child忽略同级文字，误触发伪元素标签。现Button仅对menu且iconOnly补aria-label，移除该CSS推断。3画布×1280/390/320（568高）12状态24标签，重复9→0，15纯图标标签保留；50102的3浏览器30.8s通过，含七主题按钮和菜单操作。0异常/溢出/探针写，代表前后图已看，目标Lint/按钮CSS/类型/构建/预算通过。ui-rk19-audit.json、ui-rk19-before/accepted及stage-rk19-*；2产品文件各1行，无永久测试 |
 | RK18 窄屏视图页签 | 320页签仅27px宽、长文字每侧越4.5px；360文字距边2.16px。3条CSS允许操作区换行、页签最小148px，320/360变132px高，375/390/760保持88px、桌面56px。真实6宽42状态+两宽568高触屏14状态；最终2测试27.2s及触屏14.2s通过，0越界/重叠/异常/写，查看/编辑/层级坐标稳定、tap及菜单Esc正常。代表图已看，目标Lint/按钮CSS/类型/构建/预算通过；ui-rk18-audit.json及ui-rk18-*、stage-rk18-*。初稿390多1px已修正；无永久测试 |
 | RK17 批量选择栏 | 390/320原越界18/88px且数量截断；按钮统一36px，窄屏排序收进更多、数量换行；通知与选中栏共用12px间距堆叠。菜单键盘跳过隐藏项。真实126行、4宽28截图/24几何状态，最终0越界/异常/额外写/重叠，4模拟400；2既有移动撤销/多选拖拽及2测试26.4s通过。代表前后图已看，目标Lint/按钮CSS/类型/构建/预算通过。ui-rk17-audit.json、ui-rk17-before/accepted和stage-rk17-*；3产品文件，无永久测试 |
@@ -40,7 +41,7 @@ RK20恢复入口：AuthForms.tsx、features/accounts/AccessLanding.tsx已读；L
 | QZ文案验证 | 问题状态为已解决，原筛选/统计/说明却用闭环。6文件10处纯文字统一为解决，详情提示引用现有“重新打开”按钮。未改变操作/指标ID、统计口径或已存个人标题；保留既有测试中的旧自定义标题验证兼容。98039最终domain/issue-lifecycle共52测试/2文件2.73s，目标Lint/diff/类型/正式构建/预算通过，无新增测试或浏览器场景。stage-qz-terminology-tests-final.log、stage-qz-build-final.log、stage-qz-build-budget-final.json |
 | QW专项验证 | PW已覆盖普通工作项10/50/200元素定位，本轮真实122工作日、2工作/3里程碑补首尾里程碑键盘操作。73966原版完整流程仅末尾定位断言失败：1280/390选末尾后甘特scrollLeft仍0，选中标签在可见区外；焦点/关闭及DTO保持均正常。TemplatePreview补查现有data-milestone-id所属标签，复用滚动逻辑，改4行；41531的6浏览器16.3s通过，末尾scrollLeft739/1045，回首项归0，四次标签均可见、外层滚动保持、选择焦点和Escape入口焦点保持，0写/异常且流程/项目完整DTO保持。含既有列表/长名/长工期/草稿预览，类型/目标Lint/diff/生产构建/预算通过，1280原版及390改后图已看；preview-keyboard-qw-original/after.json、stage-qw-preview-keyboard-baseline/after.log、stage-qw-build.log及build-budget.json。探针归档，无永久测试；34682相对has选择器错误属探针问题 |
 | QU完整验证 | 5429首轮verify退出0、已回收，覆盖8c67902及QS/QT：1002业务/121文件45.81s、13性能18.81s、26浏览器冒烟1.2min，运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。stage-qu-verify.log、stage-qu-performance-samples.json、stage-qu-build-budget.json |
-| 生产体积 | RK19主JS935.57KB、CSS344.10KB、ELK1595.33KB，预算通过；stage-rk19-build.log、stage-rk19-build-budget.log |
+| 生产体积 | RK20主JS935.57KB、CSS344.12KB、ELK1595.33KB，预算通过；stage-rk20-build.log、stage-rk20-build-budget.log |
 | 原服务增量 | 最新游标QV：2026-09-19T09:19:51.510Z，较QL约46分钟；17日志新增0字节/0事件，无错误/读取失败，3210健康200。runtime-log-review-qv.mjs/json、stage-qv-runtime.log。连续QL/QV均无新增，降低优先级，等待实际运行变化或更长间隔，不短间隔轮询 |
 | 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；QV按修改时间取最新两份备份，元数据与QL/PN一致，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-qv-listing.json` |
 | 依赖证据 | QD于2026-09-19T07:47:17—21Z查询npm官方registry，生产范围143依赖、0已知漏洞，退出0；锁SHA256前后相同32A55528…C796F，最后提交06146c4。stage-qd-audit-official.json及metadata.json；未升级依赖 |
