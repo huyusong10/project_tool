@@ -2,10 +2,10 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 QL
+## 恢复入口与当前阶段 QM
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段QL（原服务运行增量，待检查）：从QD07:47:18Z游标读取新增日志并检查健康；仅比较备份元数据，有新备份才考虑完整性验收，不重复旧文件。随后选择与近期成员/Phase不同的业务或维护重点。
+2. 当前阶段QM（导入预览后目标特性归档/恢复，待检查）：导入按特性/Phase名称匹配，不支持templateId。先核对既有测试和归档规则，再用真实预览后的目标归档验证整批拒绝、编辑内容保留、恢复后重新预览与单次落库；不扩功能。
 3. 最新完整验证QC覆盖至2270423：1000业务/120文件、13性能、26浏览器冒烟（1.2min），运行时/428边界/完整Lint及按钮规范/类型/生产构建/预算均通过。59262首轮退出0、已回收；stage-qc-verify.log、stage-qc-performance-samples.json、stage-qc-build-budget.json。
 4. 最新产品为05e6869（QJ）（成员候选显示上限提示），此前162894d（QI，普通表单草稿存储失败提示），此前`e5b6299`（QF，里程碑记录入口）；此前2270423（QB，项目切换焦点）、fe41792（QA，执行记录提示）、33ff6eb（PX，负责人分派校验）。PY归档前完整记录在 `33ff6eb:docs/debug/CONTINUOUS-GOAL.md`；PB前在 `67baff3`，NN及更早详细历史在 `cac4ecd`。本记录只保留当前恢复所需信息，旧阶段不重新开始。PY精简校验见 `.preview/qa/continuous-goal/record-compaction-py.json`，稳定决定/候选逐字保持。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
@@ -26,8 +26,8 @@
 | PR专项验证 | 原版archived-feature-filter-pr-original.json提示/入口均false，但完整往返和数据核对通过；改后5857通过普通成员跨页归档/恢复、既有组合筛选和归档规则3场景。两方向390提示/按钮在视口、截图已看；切换后搜索词/所选特性/刷新保持，交付历史及另一需求业务DTO保持，项目/特性DTO在只读期间保持，0成员写/异常。类型/测试构建/目标Lint/diff通过；archived-feature-filter-pr-after.json与stage-pr-archived-feature-filter-after.log，探针归档，无永久测试 |
 | 生产体积 | QI正式构建：主JS934749B、CSS339753B、ELK1595334B；服务端6文件/app879.24KB，预算通过。覆盖本次QI及QF，stage-qi-build-budget.json与stage-qi-build.log |
 | 浏览器清单 | 最新`stage-np-matrix.log`：771功能/183布局/2性能、普通1869实例；这是列举结果，未执行整个矩阵。NT结束3296监听0、当前测试临时目录0；原目录仍只有2处用户改动 |
-| 原服务增量 | 最新游标QD：2026-09-19T07:47:18.258Z，较PU约46分钟；17日志新增0字节/0事件，无错误/读取失败，3210健康200。runtime-log-review-qd.mjs/json、stage-qd-runtime.log。只检查后续增量，不短间隔轮询 |
-| 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；PN元数据仍同PI/PA/MK，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-pn-listing.json` |
+| 原服务增量 | 最新游标QL：2026-09-19T08:33:47.350Z，较QD约46分钟；17日志新增0字节/0事件，无错误/读取失败，3210健康200。runtime-log-review-ql.mjs/json、stage-ql-runtime.log。只检查后续增量，不短间隔轮询 |
+| 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；QL最新两份备份元数据与PN一致，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-ql-listing.json` |
 | 依赖证据 | QD于2026-09-19T07:47:17—21Z查询npm官方registry，生产范围143依赖、0已知漏洞，退出0；锁SHA256前后相同32A55528…C796F，最后提交06146c4。stage-qd-audit-official.json及metadata.json；未升级依赖 |
 
 QC完整验证覆盖至2270423，QF由11浏览器及静态检查、QI由31浏览器与构建/静态检查、QJ由4浏览器及静态检查专项验收。原目录仍仅2处用户修改。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
