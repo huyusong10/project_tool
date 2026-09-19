@@ -27,8 +27,8 @@
 .path-gantt-corner { position:sticky; left:0; top:0; z-index:10; display:flex; align-items:center; height:54px; padding:8px; background:var(--bg-surface-subtle); border-bottom:1px solid var(--divider); }
 .path-draft-gantt.is-dated .path-gantt-name { position:sticky; left:0; z-index:5; height:54px; padding:8px; text-align:left; border-radius:0; background:var(--bg-surface); border-bottom:1px solid var(--divider); }
 .path-draft-gantt.is-dated .path-draft-gantt-track { height:54px; border-radius:0; border-bottom:1px solid var(--divider); background-color:var(--bg-surface); }
-.path-draft-gantt.is-dated .path-draft-gantt-track i { top:30px; }
-.path-draft-gantt.is-dated .path-draft-gantt-track i.plan { top:15px; }
+.path-draft-gantt.is-dated .path-draft-gantt-track > i { top:30px; height:var(--gantt-actual-height); border-radius:var(--gantt-bar-radius); }
+.path-draft-gantt.is-dated .path-draft-gantt-track > i.plan { top:12px; height:var(--gantt-plan-height); }
 @media(max-width:600px) {
  .my-work-list > header .view-tabs { width:100%; min-width:0; overflow-x:auto; }
  .my-work-list > header .view-tabs button { flex:none; white-space:nowrap; }

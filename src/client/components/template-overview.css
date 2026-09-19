@@ -74,7 +74,7 @@
 .template-plan-track { padding:0; background:transparent; border:0; border-bottom:1px solid var(--divider); border-radius:0; }
 .template-preview .template-plan-track.is-selected { background:var(--bg-surface-subtle); }
 .template-preview .template-plan-name.is-selected { color:var(--accent-ink); box-shadow:inset 3px 0 var(--accent); }
-.template-preview .template-plan-track.is-selected .template-plan-bar { height:10px; }
+.template-preview .template-plan-track.is-selected .template-plan-bar { background:var(--accent-hover); }
 .template-preview .template-structure-node:focus-visible,.template-preview .template-plan-name:focus-visible,.template-preview .template-plan-track:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 .template-preview-selection { display:flex; flex-wrap:wrap; align-content:flex-start; gap:6px 18px; min-height:42px; font-size:12px; line-height:1.7; color:var(--text-muted); overflow-wrap:anywhere; }
 .template-preview-selection strong { color:var(--text-primary); }

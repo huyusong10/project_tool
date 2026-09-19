@@ -47,7 +47,7 @@
 .workspace-stage-summary strong{font-size:12px;font-weight:650;color:var(--gantt-running);font-variant-numeric:tabular-nums}
 .workspace-gantt-row[data-status=completed] .workspace-row-progress,.workspace-gantt-row[data-status=delivered] .workspace-row-progress{color:var(--gantt-completed)}
 .workspace-gantt-row[data-status=cancelled] .workspace-row-progress{color:var(--text-muted)}
-.workspace-row-track.gantt-track.gantt-split-track{--date-plan-top:9px;--date-actual-top:22px;--gantt-bar-top:var(--date-actual-top);--gantt-bar-height:16px;height:100%;min-height:0;position:relative;overflow:clip;isolation:isolate;z-index:0}
+.workspace-row-track.gantt-track.gantt-split-track{--date-plan-top:9px;--date-actual-top:22px;--gantt-bar-top:var(--date-actual-top);--gantt-bar-height:var(--gantt-actual-height);height:100%;min-height:0;position:relative;overflow:clip;isolation:isolate;z-index:0}
 .workspace-date-heading{min-width:0;isolation:isolate;z-index:0}.workspace-gantt-heading.has-project-milestones{height:86px}.workspace-gantt-heading>.workspace-row-label{flex-direction:column;align-items:flex-start;justify-content:center;gap:2px}
 .workspace-date-heading .gantt-scale{height:58px}
 .workspace-date-heading .gantt-scale-month{position:absolute;top:0;height:25px;font-size:12px;white-space:nowrap;border-bottom:1px solid var(--border)}
@@ -105,13 +105,11 @@
 .workspace-gantt .workspace-row-actions .primary-button:not(.danger-button){white-space:nowrap}
 .workspace-row-actions .work-next-action:only-child{white-space:normal}
 
-.workspace-row-track .gantt-date-plan{height:6px;border-radius:2px;background:color-mix(in srgb,var(--gantt-running) 12%,var(--bg-surface));border:1px solid color-mix(in srgb,var(--gantt-running) 60%,var(--border))}
-.workspace-row-track .gantt-date-actual{height:16px;border-radius:3px}
-.workspace-row-track .gantt-date-delay{height:16px;border-radius:3px}
-.workspace-row-track .gantt-date-deadline{height:29px;border-color:var(--text-secondary)}
-.workspace-row-track .gantt-date-hitbox{height:37px}
+.workspace-row-track .gantt-date-plan{border-radius:2px;background:color-mix(in srgb,var(--gantt-running) 12%,var(--bg-surface));border:1px solid color-mix(in srgb,var(--gantt-running) 60%,var(--border))}
+.workspace-row-track .gantt-date-delay{border-radius:var(--gantt-bar-radius)}
+.workspace-row-track .gantt-date-deadline{border-color:var(--text-secondary)}
 .workspace-row-track .gantt-date-hitbox:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-radius:3px}
-.workspace-row-track.gantt-split-track .gantt-forecast-tail{height:16px;border:2px dashed var(--gantt-delay);border-radius:3px;background:color-mix(in srgb,var(--gantt-delay) 5%,var(--bg-surface));min-width:3px}
+.workspace-row-track.gantt-split-track .gantt-forecast-tail{height:var(--gantt-actual-height);border:2px dashed var(--gantt-delay);border-radius:var(--gantt-bar-radius);background:color-mix(in srgb,var(--gantt-delay) 5%,var(--bg-surface));min-width:3px}
 .workspace-row-track .gantt-forecast-end-label{position:absolute;right:4px;top:0;line-height:12px;font-size:10px;font-weight:600;color:var(--gantt-delay);white-space:nowrap}
 .workspace-plan-legend .forecast i{height:7px;background:none;opacity:1;border:1.5px dashed var(--gantt-delay);box-sizing:border-box}
 .workspace-gantt-row .gantt-milestone-label{font-weight:500;border-color:color-mix(in srgb,var(--milestone-color) 28%,var(--border));background:var(--bg-surface-subtle)}

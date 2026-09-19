@@ -364,16 +364,16 @@
 .gantt-split-track { --date-plan-top: 8px; --date-actual-top: 29px; }
 .gantt-track.gantt-split-track { --date-plan-top: calc(50% - 14.5px); --date-actual-top: calc(50% + 6.5px); }
 .gantt-date-plan, .gantt-date-actual, .gantt-date-deadline, .gantt-date-delay { position: absolute; pointer-events: none; box-sizing: border-box; }
-.gantt-date-plan { top: var(--date-plan-top); height: 6px; border: 1px solid var(--gantt-plan-border); border-radius: var(--radius-sm); background: var(--gantt-plan-fill); z-index: 2; }
-.gantt-date-actual { top: var(--date-actual-top); height: 8px; background: var(--bar-color,var(--gantt-muted)); border-radius: var(--radius-sm); z-index: 3; }
-.gantt-date-delay { top: var(--date-actual-top); height: 8px; border: 2px solid var(--gantt-delay); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; z-index: 4; }
+.gantt-date-plan { top: var(--date-plan-top); height: var(--gantt-plan-height); border: 1px solid var(--gantt-plan-border); border-radius: var(--radius-sm); background: var(--gantt-plan-fill); z-index: 2; }
+.gantt-date-actual { top: var(--date-actual-top); height: var(--gantt-actual-height); background: var(--bar-color,var(--gantt-muted)); border-radius: var(--gantt-bar-radius); z-index: 3; }
+.gantt-date-delay { top: var(--date-actual-top); height: var(--gantt-actual-height); border: 2px solid var(--gantt-delay); border-radius: 0 var(--gantt-bar-radius) var(--gantt-bar-radius) 0; z-index: 4; }
 .gantt-date-actual.is-ongoing { border-right: 2px dotted var(--bg-surface); }
-.gantt-date-deadline { top: var(--date-plan-top); height: calc(var(--date-actual-top) - var(--date-plan-top) + 8px); border-left: 1px dashed var(--text-muted); z-index: 3; }
-.gantt-date-plan.is-date-point, .gantt-date-actual.is-date-point { width: 5px !important; height: 8px; border: 1px solid var(--text-muted); transform: translateX(-2px); }
-.gantt-date-progress { position: absolute; top: calc(var(--date-actual-top) - 6px); z-index: 9; max-width: 112px; height: 21px; display: inline-flex; align-items: center; padding: 0 5px; border: 1px solid var(--bar-color,var(--gantt-muted)); border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-primary); font-family: var(--font-numeric); font-size: 12px; font-weight: 650; line-height: 19px; white-space: nowrap; }
+.gantt-date-deadline { top: var(--date-plan-top); height: calc(var(--date-actual-top) - var(--date-plan-top) + var(--gantt-actual-height)); border-left: 1px dashed var(--text-muted); z-index: 3; }
+.gantt-date-plan.is-date-point, .gantt-date-actual.is-date-point { width: 5px !important; border: 1px solid var(--text-muted); transform: translateX(-2px); }
+.gantt-date-progress { position: absolute; top: calc(var(--date-actual-top) + (var(--gantt-actual-height) - 21px) / 2); z-index: 9; max-width: 112px; height: 21px; display: inline-flex; align-items: center; padding: 0 5px; border: 1px solid var(--bar-color,var(--gantt-muted)); border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-primary); font-family: var(--font-numeric); font-size: 12px; font-weight: 650; line-height: 19px; white-space: nowrap; }
 button.gantt-date-progress { cursor: pointer; }
 .gantt-date-progress.gantt-status-cancelled { color: var(--text-muted); border-color: var(--border-strong); }
-.gantt-date-hitbox { position: absolute; top: calc(var(--date-plan-top) - 4px); height: calc(var(--date-actual-top) - var(--date-plan-top) + 16px); z-index: 6; cursor: help; }
+.gantt-date-hitbox { position: absolute; top: calc(var(--date-plan-top) - 4px); height: calc(var(--date-actual-top) - var(--date-plan-top) + var(--gantt-actual-height) + 8px); z-index: 6; cursor: help; }
 .gantt-date-unplanned { position: absolute; top: calc(var(--date-plan-top) - 6px); left: 8px; color: var(--text-muted); font-size: 12px; }
 .gantt-range-note { display: block; margin-top: 3px; color: var(--text-muted); font-size: 12px; }
 

@@ -60,7 +60,7 @@
 .detail-workspace .work-actions .work-item-actions {width:auto}
 
 .work-create-form .inline-edit-cell {width:100%}
-.work-create-form .inline-edit-trigger {width:100%;max-width:none;min-height:38px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface);justify-content:space-between}
+.work-create-form .inline-edit-trigger {width:100%;max-width:none;min-height:42px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface);justify-content:space-between}
 .work-create-form .inline-edit-chevron {opacity:1}
 .issue-progress-result {min-height:20px;line-height:20px;margin:0}
 
@@ -149,12 +149,12 @@
 .work-action-slot > button {width:100%}
 .work-item-actions-detail > .work-action-error {grid-column:1/-1}
 .work-create-row {padding:12px;border:1px solid var(--accent);border-radius:6px;background:var(--bg-surface-subtle);scroll-margin:12px}
-.work-create-row .form-grid {grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px;margin:0}
+.work-create-row .form-grid {grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 12px;margin:0}
 .work-create-heading {display:flex;align-items:center;gap:8px;min-width:0}
 .work-create-heading > .work-create-name {flex:1;min-width:0;margin:0}
 .work-create-state {font-size:12px;color:var(--text-muted);white-space:nowrap}
 .work-create-actions {display:flex;gap:6px;flex:none}
-.work-create-row .field {min-width:0;gap:4px}
+.work-create-row .field {min-width:0;gap:6px}
 .work-create-row .field > span {font-size:12px;color:var(--text-muted)}
 .work-create-row :is(input,.select-control,.inline-edit-trigger) {min-width:0;width:100%;font-size:13px}
 .work-create-row .field-help {margin:0}
@@ -207,7 +207,7 @@
 @media(max-width:700px){
  .work-arrangement-row {grid-template-columns:1fr;padding:8px;gap:6px}
  .work-create-row {padding:8px}
- .work-create-row .form-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .work-create-row .form-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 8px}
  .work-create-state {display:none}
  .work-arrangement-execution {grid-column:1;grid-row:3;max-width:none}
  .work-arrangement-heading {flex-wrap:wrap;gap:4px}
@@ -226,3 +226,12 @@
 }
 
 @layer application { .work-order-menu { display: grid; gap: 4px; } }
+
+@layer application {
+@container (max-width:400px){
+ .work-create-row .form-grid {grid-template-columns:1fr}
+ .work-create-heading {display:grid;grid-template-columns:24px minmax(0,1fr)}
+ .work-create-state {display:none}
+ .work-create-actions {grid-column:2;justify-content:flex-end}
+}
+}
