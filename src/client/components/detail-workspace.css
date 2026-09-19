@@ -190,7 +190,7 @@
 .detail-workspace-panel > .requirement-overview.is-compact {padding:0;margin:0}
 .detail-workspace-panel > .requirement-overview.is-compact .requirement-overview-top {display:flex;align-items:center;flex-direction:row;flex-wrap:wrap;gap:8px;padding:0;margin:0 0 12px}
 .detail-workspace-panel > .requirement-overview.is-compact .requirement-overview-actions {width:auto;margin:0;margin-left:auto}
-.schedule-gaps {margin-top:12px;padding:10px 12px;border:1px solid var(--warning-border);border-radius:6px;background:var(--warning-bg);font-size:12px;color:var(--text-secondary)}
+.schedule-gaps {margin-top:12px;padding:10px 12px;border:1px solid var(--warning-border);border-radius:6px;background:var(--warning-bg);font-size:12px;color:var(--text-secondary);overflow-wrap:anywhere}
 .schedule-gaps > header {display:flex;align-items:center;justify-content:space-between;gap:8px}
 .schedule-gaps p {margin:4px 0}
 .schedule-gaps ul {margin:6px 0;padding-left:18px}
