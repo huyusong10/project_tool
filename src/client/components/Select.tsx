@@ -41,7 +41,7 @@ export function Select({children,className='',...props}:SelectHTMLAttributes<HTM
   const keyDown=(event:React.KeyboardEvent)=>{
     if(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229)return;
     if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close(true);return;}
-    if(event.key==='Tab'){close();return;}
+    if(event.key==='Tab'){close(true);return;}
     if(event.target===search.current&&['Home','End'].includes(event.key))return;
     if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
       event.preventDefault();const enabled=visible.map((o,i)=>o.disabled?-1:i).filter(i=>i>=0);if(!enabled.length)return;

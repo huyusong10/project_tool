@@ -2,19 +2,20 @@
 
 长期目标：保持功能范围稳定，提高正确性、易用性、性能和可维护性。Goal保持active，没有预设完成点。当前阶段验收后继续选择不同重点，不因清单清空结束。
 
-## 恢复入口与当前阶段 PM
+## 恢复入口与当前阶段 PO
 
 1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先看本记录和 `git status --short`，按主题读代码与证据，不重新开始。
-2. 当前阶段PM（选题复核）：PK已归档流程实例无需修改；PL父版本缺失提示已修正并验收。下一轮转向选择控件和长列表操作，先读取既有select-search及LV/LW证据，避免重测已验收的菜单开关/失焦/触摸/拼音/焦点；仅发现具体未覆盖情景才制作探针。
+2. 当前阶段PO（待测量）：PM的Tab焦点顺序已验收，PN原服务增量正常。PM窄屏截图select-filter-tab-390.png中“更多筛选”右侧疑似被裁切；焦点与操作已通过，但toBeInViewport只证明部分可见，不能证明按钮/文字完整可读。下一步先读已有progress-filter-keyboard-review.pw.ts和对应旧证据；测量实际按钮/工具栏/视口边界及水平scrollLeft，区分原有横向滚动布局与实际操作问题。没有明确收益则不改，不扩展成工具栏重做。
 3. 最新完整验证OZ：999业务/120文件、13性能、26浏览器冒烟，运行时/428边界/完整Lint及按钮规范/类型/生产构建/体积预算均通过，覆盖OZ/OX/OQ。OZ另16导入浏览器和87专项业务通过，无遗留句柄。
-4. 最新产品PL（本提交，1行缺字段提示），`1512802`（PH）、`fc47d21`（PE）、`f48d23c`（OZ）、`17c9bb7`（OX）、`c06e7fd`（OQ）、`4985552`（OP）、`7e375d0`（OK）、`5dca0b5`（OJ）、`a79fe72`（OD）、`fedbd45`（OC）。PB将40883字节/158行压为25979字节/114行（提交0a8a724），基线/稳定决定/候选逐段比较保持，`record-compaction-pb.json`留存校验；完整前版保存在 `67baff3`；NN及更早详细历史仍在 `cac4ecd`。
+4. 最新产品PM（本提交，1行Tab焦点修复），`3dd3422`（PL），`1512802`（PH）、`fc47d21`（PE）、`f48d23c`（OZ）、`17c9bb7`（OX）、`c06e7fd`（OQ）、`4985552`（OP）、`7e375d0`（OK）、`5dca0b5`（OJ）、`a79fe72`（OD）、`fedbd45`（OC）。PB将40883字节/158行压为25979字节/114行（提交0a8a724），基线/稳定决定/候选逐段比较保持，`record-compaction-pb.json`留存校验；完整前版保存在 `67baff3`；NN及更早详细历史仍在 `cac4ecd`。
 5. 原目录 `D:\tools\project-manage` 的dev不改，仍仅用户的 `skills/project-manage-intake/SKILL.md` 修改和未跟踪 `docs/dcim-ai-workflow-v3-gaps.md`。未部署、推送或合并；3210/3295不改。
-6. 浏览器端口3296，独立数据库/构建；浏览器串行，性能独占。每次浏览器命令设置 `$env:PLAYWRIGHT_PORT='3296'`。全部句柄已回收，探针归档；PK的50161退出0；PL原版2场景失败于错误字段名，改后28专项业务退出0、目标Lint/类型/diff通过，无运行测试。PH/PJ结束3296监听0、当前浏览器临时目录0，原目录仍仅2处用户修改。
+6. 浏览器端口3296，独立数据库/构建；浏览器串行，性能独占。每次浏览器命令设置 `$env:PLAYWRIGHT_PORT='3296'`。PK50161、PM49948/34361均退出0，全部句柄已回收，探针归档，无运行测试。原目录仍仅2处用户修改。
 
 ## 当前验收基线
 
 | 范围 | 最终证据与边界 |
 |---|---|
+| PM专项验证 | 原版76699在1280/390/640×360的6次Tab/Shift+Tab分别错到主页/提交按钮；改后49948的6浏览器通过（2探针+4既有搜索/输入法/菜单场景），34361扩展表单外筛选栏后2探针通过。2/26选项×表单/筛选栏×三尺寸×正反方向24次焦点正确、目标至少在视口、输入/选项/URL/完整项目特性需求DTO保持、0写/异常。类型/测试构建/目标Lint/diff通过；select-tab-pm-original/complete-2/complete-26.json与stage-pm-select-tab-original/after/complete.log。390两截图已看，探针归档，无新永久测试 |
 | PL专项验证 | REST/MCP各验证缺父版本400、过期409、正确200、重复409，拒绝后完整需求/工作/执行历史不变；原版2项仅错误字段名断言失败，改后2探针+26既有业务共28通过。目标Lint/类型/diff通过，仅work-items.ts补缺字段提示，无新永久测试。parent-version-pl-baseline/after.json、stage-pl-parent-version-baseline/after.log，探针归档。夹具首次cookie未初始化失败不算产品问题 |
 | PH专项验证 | 10793原版真实跨年记录10次提示均无年份；81187改后12浏览器（探针+11既有我的工作场景）通过30.8s，10次提示完整日期、1280/390截图已看，个人报表/项目/三需求完整DTO保持，0页面写/异常。类型/测试与正式生产构建/目标Lint/diff/体积检查通过；探针归档，无新永久测试 |
 | PE专项验证 | 8272原版同名问题两行都无项目归属，失败已回收；77529通过2既有日志浏览器+真实探针，58259通过2分页/快照场景，共5场景。类型/测试生产构建、目标Lint/428边界/diff通过；2行API项目名与页面一致、改名后归档可定位、长名展开390完整且不溢出，截图已看，完整项目/日志/另一问题DTO保持、0页面写/异常。探针归档，无新永久测试 |
@@ -24,19 +25,20 @@
 | OZ完整验证 | `stage-oz-verify.log`首轮退出0（81970已回收）：999业务/120文件、13性能、26浏览器冒烟（1.2min），运行时、428边界、完整Lint/按钮规范、类型、生产构建、预算均通过，覆盖至f48d23c。`stage-oz-performance-samples.json`保留本轮样本 |
 | 生产体积 | PH正式构建：主JS934.28KB、CSS339.75KB、ELK1595.33KB，服务端6文件/app878.67KB；stage-ph-production-build/build-budget.log，覆盖PE/PH。按JR清理旧产物。`stage-oz-performance-samples.json`保存完整性能样本，源`coverage/performance/samples.json` |
 | 浏览器清单 | 最新`stage-np-matrix.log`：771功能/183布局/2性能、普通1869实例；这是列举结果，未执行整个矩阵。NT结束3296监听0、当前测试临时目录0；原目录仍只有2处用户改动 |
-| 原服务增量 | 最新游标PI：2026-09-19T05:55:10.457Z；较PA约36分钟，17日志新增0字节/0事件，无错误/读取失败，3210健康200。`runtime-log-review-pi.mjs/json`、`stage-pi-runtime.log`。只检查后续增量，不短间隔轮询 |
-| 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；PI元数据仍同PA/MK，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-pi-listing.json` |
+| 原服务增量 | 最新游标PN：2026-09-19T06:27:14.118Z；较PI约32分钟，17日志新增0字节/0事件，无错误/读取失败，3210健康200。`runtime-log-review-pn.mjs/json`、`stage-pn-runtime.log`。只检查后续增量，不短间隔轮询 |
+| 原备份 | KJ已验证 `project-manage-2026-09-19T02-00-10-969.db`，3112960字节，完整性ok/外键0/33表、源SHA保持；PN元数据仍同PI/PA/MK，不重复完整性检查。`runtime-backup-kj.json`、`runtime-backup-pn-listing.json` |
 | 依赖证据 | JG官方生产依赖审计9月18日23:06为0公告，lock最后提交06146c4；LY只复核未变。这是旧证据，不代表当前安全快照 |
 
 OZ完整验证覆盖至f48d23c，专项证据见表。原目录仍仅2处用户修改。没有新增修改或验收疑点时不反复重跑已通过检查。证据在 `.preview/qa/continuous-goal/`，不进版本库。
 
 ## 近期产品成果
 
-均已验收，最新完整验证覆盖至f48d23c；PE/PH用专项验收。更早产品成果、失败尝试和精确证据见 `67baff3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
+均已验收，最新完整验证覆盖至f48d23c；PE/PH/PL/PM用专项验收。更早产品成果、失败尝试和精确证据见 `67baff3:docs/debug/CONTINUOUS-GOAL.md`；不把文件名中的final/pass当作通过证明。
 
 | 阶段 / 提交 | 问题、结果与证据入口 |
 |---|---|
-| PL / 本提交 | 开始工作并补选负责人时缺expectedRequirementVersion，REST/MCP原版错误提示缺expectedVersion，调用方无法据此补正确字段。仅在既有鉴权后指出父版本字段及读取所属需求的恢复方式，仍走原版本/事务校验；2通道完整原版证据、改后28专项业务、目标Lint/类型/diff通过。parent-version-pl-baseline/after.json与stage-pl-parent-version-baseline/after.log；探针归档，无永久测试 |
+| PM / 本提交 | 自定义Select关闭Tab弹层后焦点丢失：实际新建需求中Tab跳出到主页，Shift+Tab跳到提交按钮，三尺寸均复现。仅将Tab分支close()改为close(true)，恢复入口焦点后让浏览器沿原顺序移动；24次表单/页面筛选焦点和4既有搜索/菜单场景通过，草稿/选项/URL/完整业务DTO保持。原版及改后证据见专项基线，无新永久测试。早期45162计数全页面option、64181精确getByLabel原生select定位失败，均属探针错误，已修正/回收 |
+| PL / 3dd3422 | 开始工作并补选负责人时缺expectedRequirementVersion，REST/MCP原版错误提示缺expectedVersion，调用方无法据此补正确字段。仅在既有鉴权后指出父版本字段及读取所属需求的恢复方式，仍走原版本/事务校验；2通道完整原版证据、改后28专项业务、目标Lint/类型/diff通过。parent-version-pl-baseline/after.json与stage-pl-parent-version-baseline/after.log；探针归档，无永久测试 |
 | PH / 1512802 | 我的工作图表先把完整日期截为月日，2025-12-29及2026-01-05悬停也无年份，原版10793实际失败。完成/近期并发两图保留完整日期，仅坐标轴formatter显示月日；只改2处配置，无API/计数改动。81187的12浏览器通过，10次完整日期提示含跨年历史，生产构建/体积/目标Lint通过，截图已看；chart-date-ph-before/after.json与stage-ph-chart-date-before/after.log，探针归档 |
 | PE / fc47d21 | 平台日志同名问题展开后也只显示对象ID，无法读出项目；API已有projectName但页面未使用。对象栏补一行项目名（截断/全文title），展开内容显示完整名称；项目日志保持原显示，无接口/查询改动。原版8272失败证据和改后5浏览器/目标静态检查通过；audit-project-context-pe-before/after.json、stage-pe-audit-before/after/pagination.log，1280/390截图已看，探针归档 |
 | OZ / f48d23c | 三条混合需求中仅中间一条日期错误，原预览只说日期逆序，未指出对象；75567实际原版失败，修正与仅1次保存本来可用。共享日期校验沿用原规则/错误码并补现有entityIds，导入映射需求名或“需求 / 工作项”。新增1正式回归含新建/更新/工作项×逆序/休息日6组，预览及拒绝提交不改已有资料；87专项业务、94088的16导入浏览器和完整验证通过。390错误名称全文可读，改正/刷新后3条完整输入保留、仅1 apply200、已有需求除项目分析revision外完整DTO保持/0异常；`import-error-oz-before/after.json`、`stage-oz-import-before/after/unit-corrected.log`，探针归档。初次单测把9月20日调休工作日误作休息日，本地日历核对改19日后通过，不改产品日历 |
