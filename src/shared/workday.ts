@@ -1,5 +1,12 @@
 import chineseDays from 'chinese-days';
 
+export class DateRangeError extends RangeError {
+  constructor() {
+    super('排期超出支持的日期范围，请调整日期或工期');
+    this.name = 'DateRangeError';
+  }
+}
+
 export const workdayCalendarCoverage = {
   fromYear: 2004,
   toYear: 2026,

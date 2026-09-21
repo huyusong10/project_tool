@@ -62,6 +62,7 @@ export function TemplatesPage() {
   const setArchiveRecheck=(value:WorkItemTemplate|null)=>{persistTemplateArchiveRecheck(recheckAccountKey,selectedProjectId,value);setArchiveRecheckState(value);};
   useEffect(()=>{setArchiveRecheckState(readTemplateArchiveRecheck(recheckAccountKey,selectedProjectId));setArchiveTarget(null);setPreview(null);},[recheckAccountKey,selectedProjectId]);
   const archiveSubmitting = useRef(false);
+  const createButton=useRef<HTMLButtonElement>(null),archiveReturnFocus=useRef<HTMLElement|null>(null);
   const {data: loadedTemplates, error, refetch, isFetching, isLoading} = usePageResources().templates;
   const data = loadedTemplates || emptyTemplates;
   const editing=params.get('edit')==='new'?null:params.get('edit')?(data.find(t=>t.id===params.get('edit'))||editingSnapshot||undefined):undefined;
@@ -75,6 +76,7 @@ export function TemplatesPage() {
       templatesApi.templatesById(template.id, { method: "DELETE", body: jsonBody({ expectedUpdatedAt: template.updatedAt }) }),
     onMutate:template=>setArchiveRecheck(template),
     onSuccess: () => {
+      archiveReturnFocus.current=createButton.current;
       setArchiveTarget(null);
       setArchiveRecheck(null);
       invalidateTemplateViews(client, true);
@@ -90,6 +92,7 @@ export function TemplatesPage() {
           client.setQueryData([...keys.projectArchives, selectedProjectId], latestArchives);
           if (!latestTemplates.some((entry) => entry.id === template.id)
             && latestArchives.templates.some((entry) => entry.id === template.id)) {
+            archiveReturnFocus.current=createButton.current;
             setArchiveTarget(null);
             setArchiveRecheck(null);
             invalidateTemplateViews(client, true);
@@ -120,7 +123,7 @@ export function TemplatesPage() {
       <PageHeader
         title="流程设计"
         actions={canManage ? (
-          <Button variant="primary" className="primary-button" onClick={() => setEditing(null)}>
+          <Button ref={createButton} variant="primary" className="primary-button" onClick={() => setEditing(null)}>
             <Plus size={16} />
             新建流程
           </Button>
@@ -131,7 +134,7 @@ export function TemplatesPage() {
         {error && loadedTemplates && <div className="warning-banner">流程列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}
         {listUnavailable ? <EmptyState title="流程列表加载失败" detail={error?.message || "暂时无法读取流程设计。"} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} /> : <>
         <section className="template-catalog" aria-label="流程列表">
-        {data.map(template => <TemplateCard key={template.id} template={template} isDefault={project?.defaultTemplateId === template.id} canManage={canManage} archiveDisabled={Boolean(archiveRecheck)} onPreview={() => setPreview(template)} onEdit={() => setEditing(template)} onArchive={() => { if (!archiveRecheck) { archive.reset(); setArchiveTarget(template); } }} />)}
+        {data.map(template => <TemplateCard key={template.id} template={template} isDefault={project?.defaultTemplateId === template.id} canManage={canManage} archiveDisabled={Boolean(archiveRecheck)} onPreview={() => setPreview(template)} onEdit={() => setEditing(template)} onArchive={() => { if (!archiveRecheck) { archiveReturnFocus.current=null; archive.reset(); setArchiveTarget(template); } }} />)}
         </section>
         {previewTemplate && <Modal title="流程预览" width={1200} onClose={() => setPreview(null)}><TemplatePreview template={previewTemplate} onEdit={canManage && data.some(item => item.id === previewTemplate.id) ? () => { setPreview(null); setEditing(previewTemplate); } : undefined} /></Modal>}
         {!data.length && !isLoading && <EmptyState title="还没有流程" detail="新建流程后可以用于需求排期。" />}
@@ -148,7 +151,7 @@ export function TemplatesPage() {
             ? "这是项目默认流程。请先在项目设置中更换默认流程，再执行归档。"
             : data.length <= 1 ? "项目至少需要保留一个有效流程，当前流程不能归档。" : undefined;
           const disabledReason = refreshReason || blockedReason;
-          return <ConfirmDialog title="归档流程" description={<>流程“<strong>{archiveTarget.name}</strong>”归档后不再用于新需求，已有需求和历史数据不会改变。</>} confirmLabel={disabledReason ? "无法归档" : "确认归档"} pendingLabel="归档中…" danger pending={archive.isPending} disabled={Boolean(disabledReason)} error={disabledReason || archive.error?.message} onClose={() => setArchiveTarget(null)} onConfirm={() => submitArchive(archiveTarget)} />;
+          return <ConfirmDialog returnFocus={()=>archiveReturnFocus.current} title="归档流程" description={<>流程“<strong>{archiveTarget.name}</strong>”归档后不再用于新需求，已有需求和历史数据不会改变。</>} confirmLabel={disabledReason ? "无法归档" : "确认归档"} pendingLabel="归档中…" danger pending={archive.isPending} disabled={Boolean(disabledReason)} error={disabledReason || archive.error?.message} onClose={() => setArchiveTarget(null)} onConfirm={() => submitArchive(archiveTarget)} />;
         })()}
         </>}
       </div>

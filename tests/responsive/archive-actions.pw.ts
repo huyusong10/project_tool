@@ -1,5 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import type { Archives } from '../../src/client/types';
+import {graphFixture} from './graph-fixture';
+import {chooseOption} from './select-helper';
 
 const archivedRequirement = {
   id: 'r1', title: '历史需求', deletedAt: '2026-09-04T10:00:00.000Z',
@@ -292,3 +294,39 @@ test('人员永久删除连点只提交一次', async ({ page }) => {
     await expect(page.getByText('归档人员不存在')).toHaveCount(0);
   } finally { release(); }
 });
+
+test('跨项目同名归档在筛选、删除确认和恢复时保留归属',async({page},info)=>{
+  const fixtures=[];const suffix=Date.now();
+  for(const region of ['南区机房集成','北区机房集成']){
+    const fixture=await graphFixture(page,false);
+    const renamed=await page.request.patch('/api/projects/'+fixture.project.id,{data:{name:region+suffix,expectedUpdatedAt:fixture.project.updatedAt}});expect(renamed.ok(),await renamed.text()).toBe(true);fixture.project=await renamed.json();
+    const cancelled=await page.request.post('/api/requirements/'+fixture.a.id+'/cancel',{data:{expectedVersion:fixture.a.version,reason:'归档同名来源验证'}});expect(cancelled.ok(),await cancelled.text()).toBe(true);fixture.a=await cancelled.json();
+    const archiveRequirement=await page.request.delete('/api/requirements/'+fixture.a.id,{data:{expectedVersion:fixture.a.version}});expect(archiveRequirement.ok(),await archiveRequirement.text()).toBe(true);
+    const templates=await(await page.request.get('/api/templates?projectId='+fixture.project.id)).json();const template=templates.find((item:{id:string})=>item.id===fixture.a.templateId);
+    const archiveTemplate=await page.request.delete('/api/templates/'+template.id,{data:{expectedUpdatedAt:template.updatedAt}});expect(archiveTemplate.ok(),await archiveTemplate.text()).toBe(true);
+    fixtures.push({...fixture,template});
+  }
+  const [south,north]=fixtures;
+  const archives=async(projectId?:string)=>await(await page.request.get('/api/archives'+(projectId?'?projectId='+projectId:''))).json() as Archives;
+  const before=await archives(),northBefore=await archives(north.project.id),northFacts=await(await page.request.get('/api/requirements/'+north.b.id)).json();
+  await page.goto('/archives?q='+suffix);await expect(page.locator('.archive-table tbody tr')).toHaveCount(4);
+  await expect(page.locator('.archive-table')).toContainText(south.project.name);await expect(page.locator('.archive-table')).toContainText(north.project.name);
+  for(const fixture of fixtures){for(const entity of ['requirements','templates'] as const){const id=entity==='requirements'?fixture.a.id:fixture.template.id;expect(before[entity].find(item=>item.id===id)).toMatchObject({projectName:fixture.project.name});}}
+  const writes:string[]=[];page.on('request',request=>{if(request.url().includes('/api/')&&!['GET','HEAD'].includes(request.method()))writes.push(request.method()+' '+new URL(request.url()).pathname);});
+  const search=page.locator('.archive-toolbar').getByRole('searchbox'),type=page.getByRole('combobox',{name:'归档类型',exact:true});
+  await search.fill(south.project.name);await expect(page.locator('.archive-table tbody tr')).toHaveCount(2);
+  for(const entity of ['requirements','templates'] as const){
+    await chooseOption(type,entity);const row=page.locator('.archive-table tbody tr');await expect(row).toHaveCount(1);await expect(row).toContainText(south.project.name);
+    await row.getByRole('button',{name:'删除',exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog).toContainText(south.project.name);
+    await page.setViewportSize({width:390,height:844});await page.screenshot({path:info.outputPath('archive-project-'+entity+'-390.png'),animations:'disabled'});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await dialog.getByRole('button',{name:'取消',exact:true}).click();await row.getByRole('button',{name:'恢复',exact:true}).click();await expect(row).toHaveCount(0);
+  }
+  const after=await archives();expect(after.requirements).toEqual(before.requirements.filter(item=>item.id!==south.a.id));expect(after.templates).toEqual(before.templates.filter(item=>item.id!==south.template.id));
+  expect(await archives(north.project.id)).toEqual(northBefore);
+  expect((await archives(south.project.id)).requirements).toEqual([]);expect((await archives(south.project.id)).templates).toEqual([]);
+  expect(await(await page.request.get('/api/requirements/'+north.b.id)).json()).toEqual(northFacts);
+  expect(writes).toEqual(['POST /api/requirements/'+south.a.id+'/restore','POST /api/templates/'+south.template.id+'/restore']);
+  await search.fill(String(suffix));await chooseOption(type,'all');await page.reload();await expect(page.locator('.archive-table tbody tr')).toHaveCount(2);await expect(page.locator('.archive-table')).toContainText(north.project.name);
+});
+

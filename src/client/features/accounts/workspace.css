@@ -12,10 +12,14 @@
 .account-status.active { color: var(--success-text); background: var(--success-bg); }.account-status.disabled { color: var(--text-faint); background: var(--bg-hover); }
 .account-password-state { color: var(--warning-text); font-size: 12px; white-space: nowrap; }
 .people-access-page { align-content: start; }
-.people-access-filters { flex-wrap: wrap; }.people-access-filters .search-box { min-width: 260px; flex: 1; }.people-access-filters select { min-width: 138px; height: 38px; padding: 0 31px 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text-secondary); background: var(--bg-surface); font: inherit; font-size: 13px; }
+.people-access-filters { flex-wrap: wrap; }.people-access-filters .search-box { min-width: 260px; flex: 1; }.people-access-filters select { min-width: 138px; height: 36px; padding: 0 31px 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text-secondary); background: var(--bg-surface); font: inherit; font-size: 13px; }
 .people-access-person-editor { min-width: 0; width: 100%; display: grid; gap: 1px; }.people-access-person-editor .inline-edit-trigger { min-height: 30px; height: 30px; }.people-access-person-editor .inline-edit-cell + .inline-edit-cell .inline-edit-trigger { color: var(--text-faint); font-size: 12px; }
 .people-access-person-editor .inline-edit-value small, .account-data-list .data-cell-secondary { font-size: 12px; }
 .account-data-account { min-width: 0; }.account-data-account .inline-edit-trigger { width: 100%; }.account-missing, .account-muted { display: inline-flex; align-items: center; gap: 5px; color: var(--text-faint); font-size: 12px; }.account-missing { color: var(--warning-text); }.account-status.missing { color: var(--warning-text); background: var(--warning-bg); }
 .people-access-row { min-height: 86px; }
 .managed-projects { display: block; overflow: hidden; max-width: 330px; text-overflow: ellipsis; white-space: nowrap; }
+@container adaptive-data-list (min-width: 981px) {
+ .people-access-row > .adaptive-data-cell {align-items:flex-start}
+ .people-access-person-editor .inline-edit-cell:first-child .inline-edit-trigger {height:36px;min-height:36px}
+}
 }

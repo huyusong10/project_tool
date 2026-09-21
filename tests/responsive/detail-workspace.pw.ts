@@ -1,5 +1,6 @@
 import {expect, test, type Page} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
+import {chooseOption, selectedValue} from './select-helper';
 
 async function post(page: Page, url: string, data: unknown) {
   const response = await page.request.post(url, {data});
@@ -139,18 +140,81 @@ test('新增工作项冲突保留表单，未知响应禁止重复创建', async
   await expect(form).toHaveCount(0);
   expect(writes).toBe(2);
   await detail.getByRole('button', {name: '添加工作项', exact: true}).click();
-  await form.getByLabel('新工作项名称', {exact: true}).fill('响应损坏但已经创建');
+  const draftTitle = '  ＡＢ　e\u0301  响应损坏但已经创建  ', savedTitle = 'AB é 响应损坏但已经创建';
+  await form.getByLabel('新工作项名称', {exact: true}).fill(draftTitle);
+  await chooseOption(form.getByRole('combobox', {name: '工作阶段', exact: true}), 'integration');
+  await form.getByRole('button', {name: /^新工作项协作人员：/}).click();
+  const collaborators = page.locator('.inline-multi-popover');
+  await collaborators.getByRole('checkbox', {name: new RegExp(f.testing.ownerName!)}).check();
+  await collaborators.getByRole('button', {name: '完成', exact: true}).click();
   await form.getByLabel('变更说明（可选）', {exact: true}).fill('补充本次范围');
+  await form.getByRole('region',{name:'编辑关联链接'}).getByRole('button',{name:'添加',exact:true}).click();
+  await form.getByLabel('链接 1 地址',{exact:true}).fill('https://example.com/work-evidence');
+  await form.getByLabel('链接 1 名称',{exact:true}).fill('  工作项资料  ');
   await page.route('**' + endpoint, async route => {await route.fetch(); await route.fulfill({status: 200, contentType: 'text/html', body: '<html>proxy response</html>'});});
   await form.getByRole('button', {name: '保存工作项', exact: true}).click();
   await expect(form.getByRole('button', {name: '保存工作项', exact: true})).toBeDisabled();
-  await expect(form.getByLabel('新工作项名称', {exact: true})).toHaveValue('响应损坏但已经创建');
+  await expect(form.getByLabel('新工作项名称', {exact: true})).toHaveValue(draftTitle);
   expect(writes).toBe(3);
-  await expect.poll(async () => (await (await page.request.get('/api/requirements/' + f.testing.id)).json()).workItems.filter((item: {title: string}) => item.title === '响应损坏但已经创建').length).toBe(1);
+  const savedResponse = await page.request.get('/api/requirements/' + f.testing.id);
+  expect(savedResponse.ok(), await savedResponse.text()).toBe(true);
+  const saved = await savedResponse.json();
+  expect(saved.workItems.filter((item: {title: string}) => item.title === savedTitle)).toHaveLength(1);
+  expect(saved.workItems.find((item: {title: string}) => item.title === savedTitle)).toMatchObject({workStage: 'integration', assigneeIds: [f.testing.ownerId]});
   await expect(detail.getByRole('button', {name: '添加工作项', exact: true})).toBeDisabled();
   await tabs.getByRole('tab', {name: '概况', exact: true}).click();
   await detail.getByRole('button', {name: '重新读取需求', exact: true}).click();
   await tabs.getByRole('tab', {name: /^工作项 /}).click();
   await detail.getByRole('button',{name:'核对本次操作',exact:true}).click();
   await expect(detail.getByRole('button', {name: '添加工作项', exact: true})).toBeEnabled();
+  expect(writes).toBe(3);
+  const recheckedResponse = await page.request.get('/api/requirements/' + f.testing.id);
+  expect(recheckedResponse.ok(), await recheckedResponse.text()).toBe(true);
+  expect(await recheckedResponse.json()).toEqual(saved);
 });
+
+for (const changedField of ['工作阶段', '协作人员'] as const) {
+  test(`未知创建不能把${changedField}不同的同名工作项当作本次结果`, async ({page}) => {
+    const f = await phaseFixture(page);
+    await page.goto('/?' + new URLSearchParams({projectId: f.projectId, workspaceView: 'progress', scopeType: 'project', scopeId: f.projectId, detailId: f.testing.id, detailTab: 'work'}));
+    const detail = page.getByRole('dialog');
+    await detail.getByRole('tab', {name: /^工作项 /}).click();
+    await detail.getByRole('button', {name: '添加工作项', exact: true}).click();
+    const form = detail.getByRole('form', {name: '新增工作项', exact: true});
+    await form.getByLabel('新工作项名称', {exact: true}).fill('联调核验');
+    await form.getByLabel('变更说明（可选）', {exact: true}).fill('保留本次安排');
+    await chooseOption(form.getByRole('combobox', {name: '工作阶段', exact: true}), 'integration');
+    if (changedField === '协作人员') {
+      await form.getByRole('button', {name: /^新工作项协作人员：/}).click();
+      const picker = page.locator('.inline-multi-popover');
+      await picker.getByRole('checkbox', {name: new RegExp(f.testing.ownerName!)}).check();
+      await picker.getByRole('button', {name: '完成', exact: true}).click();
+    }
+    const endpoint = '/api/requirements/' + f.testing.id + '/work-items';
+    let writes = 0;
+    page.on('request', request => {if (new URL(request.url()).pathname === endpoint && request.method() === 'POST') writes++;});
+    await page.route('**' + endpoint, async route => {
+      // Another client's similar item arrives; the original request has no confirmed result.
+      const input = route.request().postDataJSON();
+      await post(page, endpoint, {...input, ...(changedField === '工作阶段' ? {workStage: 'testing'} : {assigneeIds: []})});
+      await route.fulfill({status: 200, contentType: 'text/html', body: '<html>proxy response</html>'});
+    });
+    await form.getByRole('button', {name: '保存工作项', exact: true}).click();
+    await expect(form.getByRole('button', {name: '保存工作项', exact: true})).toBeDisabled();
+    const beforeResponse = await page.request.get('/api/requirements/' + f.testing.id);
+    expect(beforeResponse.ok(), await beforeResponse.text()).toBe(true);
+    const before = await beforeResponse.json();
+    expect(before.workItems.filter((item: {title: string}) => item.title === '联调核验')).toHaveLength(1);
+    await detail.getByRole('button', {name: '核对本次操作', exact: true}).click();
+    await expect(detail).toContainText('仍无法确认原操作结果');
+    await expect(form.getByLabel('新工作项名称', {exact: true})).toHaveValue('联调核验');
+    await expect(form.getByLabel('变更说明（可选）', {exact: true})).toHaveValue('保留本次安排');
+    await expect(selectedValue(form.getByRole('combobox', {name: '工作阶段', exact: true}))).toHaveValue('integration');
+    if (changedField === '协作人员') await expect(form.getByRole('button', {name: /^新工作项协作人员：/})).toContainText(f.testing.ownerName!);
+    await expect(detail.getByRole('button', {name: '添加工作项', exact: true})).toBeDisabled();
+    expect(writes).toBe(1);
+    const afterResponse = await page.request.get('/api/requirements/' + f.testing.id);
+    expect(afterResponse.ok(), await afterResponse.text()).toBe(true);
+    expect(await afterResponse.json()).toEqual(before);
+  });
+}

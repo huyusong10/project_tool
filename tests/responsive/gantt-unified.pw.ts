@@ -112,7 +112,7 @@ test("需求历史和趋势图使用同时间的最新进度", async ({ page }, 
   await expect(chart.locator('canvas')).toBeVisible();
   const box = (await chart.boundingBox())!;
   await chart.hover({ position: { x: box.width - 35, y: 130 } });
-  await expect(chart).toContainText('09/03');
+  await expect(chart).toContainText('2026-09-03');
   await expect(chart).toContainText(/实际进度\s*90/);
   await page.screenshot({ path: testInfo.outputPath('history-trend.png'), animations: 'disabled' });
 });

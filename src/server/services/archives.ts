@@ -26,13 +26,13 @@ export function listArchives(projectId?: string) {
       (SELECT COUNT(*) FROM issues i WHERE i.project_id=p.id) AS issueCount,
       (SELECT COUNT(*) FROM work_item_templates t WHERE t.project_id=p.id) AS templateCount
       FROM projects p WHERE p.deleted_at IS NOT NULL ORDER BY p.deleted_at DESC`),
-    requirements: rows(`SELECT r.id, r.title, r.deleted_at AS deletedAt,
+    requirements: rows(`SELECT r.id, r.title, p.name AS projectName, r.deleted_at AS deletedAt,
       (SELECT COUNT(*) FROM work_items w WHERE w.requirement_id=r.id) AS workItemCount,
       (SELECT COUNT(*) FROM progress_updates u WHERE u.requirement_id=r.id) AS progressCount,
       (SELECT COUNT(*) FROM issues i WHERE i.requirement_id=r.id) AS linkedIssueCount
-      FROM requirements r WHERE r.deleted_at IS NOT NULL ${projectId ? 'AND r.project_id=?' : ''} ORDER BY r.deleted_at DESC`, ...(projectId ? [projectId] : [])),
+      FROM requirements r LEFT JOIN projects p ON p.id=r.project_id WHERE r.deleted_at IS NOT NULL ${projectId ? 'AND r.project_id=?' : ''} ORDER BY r.deleted_at DESC`, ...(projectId ? [projectId] : [])),
     people: projectId ? [] : rows(`SELECT id, name AS title, job_title AS jobTitle, deleted_at AS deletedAt FROM people WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`),
-    templates: rows(`SELECT id, name AS title, deleted_at AS deletedAt FROM work_item_templates WHERE deleted_at IS NOT NULL ${projectId ? 'AND project_id=?' : ''} ORDER BY deleted_at DESC`, ...(projectId ? [projectId] : [])),
+    templates: rows(`SELECT t.id, t.name AS title, p.name AS projectName, t.deleted_at AS deletedAt FROM work_item_templates t LEFT JOIN projects p ON p.id=t.project_id WHERE t.deleted_at IS NOT NULL ${projectId ? 'AND t.project_id=?' : ''} ORDER BY t.deleted_at DESC`, ...(projectId ? [projectId] : [])),
   };
 }
 
@@ -85,10 +85,10 @@ export function permanentlyDeleteArchive(entity: ArchiveEntity, id: string, acto
       assertArchiveGeneration(input, person.deletedAt);
       lockArchiveGeneration('people', id, person.deletedAt);
       const references = row<{ count: number }>(`SELECT
-        (SELECT COUNT(*) FROM requirements WHERE owner_id=?) +
+        (SELECT COUNT(*) FROM requirements WHERE owner_id=? OR acceptance_owner_id=?) +
         (SELECT COUNT(*) FROM work_items WHERE owner_id=?) +
         (SELECT COUNT(*) FROM work_item_collaborators WHERE person_id=?) +
-        (SELECT COUNT(*) FROM issues WHERE owner_id=?) AS count`, id, id, id, id)?.count || 0;
+        (SELECT COUNT(*) FROM issues WHERE owner_id=?) AS count`, id, id, id, id, id)?.count || 0;
       if (references) fail(`该人员仍被${references}条历史业务记录引用，只能保留归档`, 'DEPENDENCY_CONFLICT', 409, { references });
       getDatabaseContext().sqlite.prepare('DELETE FROM accounts WHERE person_id=? AND is_builtin=0').run(id);
       const deleted = getDatabaseContext().sqlite.prepare('DELETE FROM people WHERE id=? AND deleted_at=?').run(id, person.deletedAt);

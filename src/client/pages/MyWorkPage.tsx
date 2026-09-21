@@ -66,8 +66,8 @@ export function MyWorkPage() {
     },
   });
   const charts = useMemo(() => ({
-    completion: { grid: { left: 35, right: 12, top: 18, bottom: 32 }, tooltip: { trigger: 'axis' }, xAxis: { type: 'category', data: data?.completionTrend.map((item) => item.week.slice(5)) || [] }, yAxis: { type: 'value', minInterval: 1 }, series: [{ type: 'bar', data: data?.completionTrend.map((item) => item.completed) || [], itemStyle: { color: 'var(--success)', borderRadius: [5, 5, 0, 0] } }] },
-    upcoming: { grid: { left: 35, right: 12, top: 18, bottom: 32 }, tooltip: { trigger: 'axis' }, xAxis: { type: 'category', data: data?.upcoming.map((item) => item.date.slice(5)) || [] }, yAxis: { type: 'value', minInterval: 1 }, series: [{ type: 'line', smooth: true, data: data?.upcoming.map((item) => item.count) || [], lineStyle: { color: 'var(--success)', width: 3 }, itemStyle: { color: 'var(--success)' }, areaStyle: { color: 'var(--chart-success-area)' } }] },
+    completion: { grid: { left: 35, right: 12, top: 18, bottom: 32 }, tooltip: { trigger: 'axis' }, xAxis: { type: 'category', data: data?.completionTrend.map((item) => item.week) || [], axisLabel: { formatter: (value: string) => value.slice(5) } }, yAxis: { type: 'value', minInterval: 1 }, series: [{ type: 'bar', data: data?.completionTrend.map((item) => item.completed) || [], itemStyle: { color: 'var(--success)', borderRadius: [5, 5, 0, 0] } }] },
+    upcoming: { grid: { left: 35, right: 12, top: 18, bottom: 32 }, tooltip: { trigger: 'axis' }, xAxis: { type: 'category', data: data?.upcoming.map((item) => item.date) || [], axisLabel: { formatter: (value: string) => value.slice(5) } }, yAxis: { type: 'value', minInterval: 1 }, series: [{ type: 'line', smooth: true, data: data?.upcoming.map((item) => item.count) || [], lineStyle: { color: 'var(--success)', width: 3 }, itemStyle: { color: 'var(--success)' }, areaStyle: { color: 'var(--chart-success-area)' } }] },
   }), [data]);
   const metrics: Array<{ label: string; value: number; Icon: typeof Clock3 }> = [
     { label: '待开始', value: data?.summary.notStarted || 0, Icon: Clock3 },
@@ -90,7 +90,7 @@ export function MyWorkPage() {
         <div className="my-owned-requirement-grid paged-body" ref={ownedPagination.scrollRef}>
           {ownedPagination.items.map((requirement) => <div className="my-owned-requirement-card" key={requirement.id}><button className="my-owned-requirement-link" onClick={() => navigate(`/requirements/${requirement.id}`)}>
             <div><strong>{requirement.title}</strong></div>
-            <p>{requirement.projectName} · {requirement.plannedStart || "待排期"} → {requirement.plannedEnd || "待排期"}</p>
+            <p>{requirement.projectName}<br /><span>{requirement.plannedStart || "待排期"}</span> → <span>{requirement.plannedEnd || "待排期"}</span></p>
             <footer><span className={`status-pill status-${requirement.status}`}>{requirementStatusLabels[requirement.status as keyof typeof requirementStatusLabels] || requirement.status}</span><span>{requirement.planningReasons.join("、") || requirement.readinessIssues?.join('、') || requirementRiskDisplay(requirement as Requirement).label}</span><b>{requirement.actionCount} 项待处理</b></footer>
           </button>{requirement.executionMode==='direct'&&<DeliveryControls requirement={requirement as Requirement} compact/>}</div>)}
         </div>

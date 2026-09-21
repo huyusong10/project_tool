@@ -7,6 +7,7 @@ import { invalidateRequirementViews } from '../query-keys';
 import { canDeleteWorkItem } from '../../shared/domain';
 import type { Requirement, WorkItem } from '../types';
 import { ConfirmDialog } from './Modal';
+import { useProjectWorkspace } from '../project-workspace-context';
 
 export function WorkItemDeleteDialog({ target, requirement, canManage, onReload, onWriteNeedsRecheck, onClose }: {
   target: WorkItem;
@@ -17,6 +18,7 @@ export function WorkItemDeleteDialog({ target, requirement, canManage, onReload,
   onClose: () => void;
 }) {
   const client = useQueryClient();
+  const workspace = useProjectWorkspace();
   const [unknown,setUnknown]=useState(false);
   const [baseline, setBaseline] = useState(target);
   const [reading, setReading] = useState(false);
@@ -56,7 +58,6 @@ export function WorkItemDeleteDialog({ target, requirement, canManage, onReload,
     mutationFn: (item: WorkItem) => workItemsApi.workItemsById(item.id, { method: 'DELETE', body: jsonBody({ expectedVersion: item.version }) }),
     onSuccess: () => {
       invalidateRequirementViews(client, baseline.requirementId);
-      if (mounted.current) onClose();
     },
     onError: async (error) => {
       if (!mounted.current) return;
@@ -81,6 +82,10 @@ export function WorkItemDeleteDialog({ target, requirement, canManage, onReload,
     onConfirm={() => {
       if (submitting.current || readingRef.current || blocked) return;
       submitting.current = true;
-      mutation.mutate(baseline);
+      void mutation.mutateAsync(baseline).then(() => {
+        if (!mounted.current) return;
+        if (workspace?.location.inspector === baseline.id) workspace.inspect();
+        onClose();
+      }, () => {});
     }} />;
 }

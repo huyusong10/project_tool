@@ -69,9 +69,13 @@ export function scopeFromObject(id:string,data:PathAnalysis):WorkspaceScope|unde
 }
 export function workspacePreferenceKey(account:string,project:string){return 'pm-workspace-location:'+account+':'+project;}
 
-/** Open an actual dependency in the target's feature, where external predecessors remain visible. */
+/** Locate a dependency in its target's graph editor. */
 export function dependencyWorkspaceLocation(data:PathAnalysis,id:string):string|undefined{
   const dependency=data.dependencies.find(d=>d.id===id);if(!dependency)return;
+  if(!dependency.targetRequirementId&&dependency.targetMilestoneId){
+    const destination=editorFieldLocation(data,dependency.targetMilestoneId);
+    return destination?destination+'&pathRelation='+encodeURIComponent(id):undefined;
+  }
   const requirement=data.requirements.find(r=>r.id===dependency.targetRequirementId);
   const featureId=requirement?.featureId||data.featureContext?.overview.features.find(f=>f.kind==='other')?.id;
   if(!featureId)return;
@@ -84,7 +88,8 @@ export function editorFieldLocation(data:PathAnalysis,id:string):string|undefine
   const node=data.nodes.find(n=>n.id===id),requirement=data.requirements.find(r=>r.id===(node?.requirementId||id));
   const milestone=data.milestones?.find(m=>m.id===id);
   if(!requirement&&!milestone)return;
-  const scope:WorkspaceScope=requirement&&requirement.id!==id?{kind:'requirement',id:requirement.id}
+  const scope:WorkspaceScope=milestone&&!milestone.requirementId?{kind:'project',id:data.projectId}
+    :requirement&&requirement.id!==id?{kind:'requirement',id:requirement.id}
     :{kind:'feature',id:requirement?.featureId||data.featureContext?.overview.features.find(f=>f.kind==='other')?.id||'unassigned'};
   const params=workspaceParams({projectId:data.projectId,view:'graph',scope},data,new URLSearchParams({pathNode:id,graphInspector:'open',pathInspector:'closed',pathScope:'all'}));
   return '/?'+params;

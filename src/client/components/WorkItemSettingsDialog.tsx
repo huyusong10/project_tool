@@ -1,6 +1,7 @@
 import * as requirementsApi from '../features/requirements/api';
 import { ReferenceLinksEditor } from './ReferenceLinks';
-import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
+import { referenceLinksEqual, type ReferenceLink } from '../../shared/reference-links';
+import { canonicalizeLabel } from '../../shared/search';
 import { DetailToolbar } from './DetailWorkspace';
 import { useDeliveryForm } from '../use-delivery-form';
 import { WorkItemExecution } from './WorkItemExecution';
@@ -271,7 +272,19 @@ export function WorkItemSettingsDialog({
     try{
       const latest=await onReload();
       const pending=receipt;
-      const applied=pending?.kind==='reorder'?latest.version>pending.version&&JSON.stringify(latest.workItems.map(item=>item.id))===JSON.stringify(pending.ids):pending?.kind==='create'?latest.workItems.filter(item=>!pending.draft.sourceIds.includes(item.id)&&item.title===pending.draft.title.trim()&&(item.ownerId||'')===pending.draft.ownerId&&(item.plannedStart||'')===pending.draft.plannedStart&&(item.plannedEnd||'')===pending.draft.plannedEnd&&(pending.draft.referenceLinks===undefined||JSON.stringify(item.referenceLinks)===JSON.stringify(readReferenceLinks(pending.draft.referenceLinks)))).length===1:false;
+      const draft=pending?.kind==='create'?pending.draft:null;
+      const assigneeIds=draft?[...new Set([draft.ownerId,...draft.collaboratorIds].filter(Boolean))].sort():[];
+      const applied=pending?.kind==='reorder'
+        ?latest.version>pending.version&&JSON.stringify(latest.workItems.map(item=>item.id))===JSON.stringify(pending.ids)
+        :draft?latest.workItems.filter(item=>!draft.sourceIds.includes(item.id)
+          &&item.title===canonicalizeLabel(draft.title)
+          &&(item.workStage||null)===(draft.workStage||null)
+          &&(item.milestoneLabel||'')===canonicalizeLabel(draft.milestoneLabel)
+          &&(item.ownerId||'')===draft.ownerId
+          &&JSON.stringify([...item.assigneeIds].sort())===JSON.stringify(assigneeIds)
+          &&(item.plannedStart||'')===draft.plannedStart
+          &&(item.plannedEnd||'')===draft.plannedEnd
+          &&(draft.referenceLinks===undefined||referenceLinksEqual(item.referenceLinks,draft.referenceLinks))).length===1:false;
       if(!applied){setReorderReadError('已读取最新资料，仍无法确认原操作结果。原提交与输入已保留，请核对工作项及记录。');return;}
       setReceipt(null);clearReceipt();setCreateUnknown(false);setReorderUnknown(false);setNewItem(null);clearNewItem();setCreationOpen(false);setReorderNeedsRefresh(false);
     }catch(error){setReorderReadError(error instanceof Error?error.message:'读取失败');}finally{setReorderReading(false);}
@@ -317,7 +330,7 @@ export function WorkItemSettingsDialog({
           <FormField label="协作人员"><InlineMultiSelectCell disabled={settingsUnknown || createItem.isPending || createReading} value={newItem.collaboratorIds} label="新工作项协作人员" options={eligiblePeople.map(person => ({value:person.id, label:person.name}))} excludedValues={newItem.ownerId ? [newItem.ownerId] : []} onSave={async collaboratorIds => setNewItem(current => current && ({...current, collaboratorIds}))} placeholder="选择人员"/></FormField>
           <FormField label="计划开始"><input type="date" value={newItem.plannedStart} onChange={event => setNewItem({...newItem, plannedStart:event.target.value})}/></FormField>
           <FormField label="计划完成"><input type="date" value={newItem.plannedEnd} onChange={event => setNewItem({...newItem, plannedEnd:event.target.value})}/></FormField><ReferenceLinksEditor value={newItem.referenceLinks||[]} onChange={referenceLinks=>setNewItem({...newItem,referenceLinks})}/>
-          <FormField label="变更说明（可选）"><input value={newItem.reason || ''} onChange={event => setNewItem({...newItem, reason:event.target.value})}/></FormField>
+          <FormField label="变更说明（可选）" full><input value={newItem.reason || ''} onChange={event => setNewItem({...newItem, reason:event.target.value})}/></FormField>
           <FormError>{createItem.error?.message}</FormError>
           <FormError>{createChanged ? '需求已更新，请重新读取并核对后再保存；新增草稿已保留。' : createReadError || undefined}</FormError>
           <FormError>{newItemHasUnavailablePeople ? '新增工作项选择的人员已不可用，请重新选择负责人或协作人员。' : undefined}</FormError>

@@ -10,10 +10,13 @@ import { fail, notFound } from '../errors';
 import { recordAudit } from './audit';
 import { requireActiveProject } from './support';
 
-export function phaseRequirementFacts(projectId: string, asOfDate = todayIso()): PhaseRequirement[] {
-  const requirements = getDatabaseContext().sqlite.prepare(`SELECT id,title,status,version,feature_id AS featureId,phase_id AS phaseId,stage_reset_at AS stageResetAt,actual_start AS actualStart,actual_end AS actualEnd,deleted_at AS deletedAt,acceptance_criteria AS acceptanceCriteria,execution_mode AS executionMode,progress,duration_days AS durationDays,split_base_progress AS splitBaseProgress FROM requirements WHERE project_id=?`).all(projectId) as Array<PhaseRequirement & { stageResetAt: string | null; executionMode: 'direct' | 'work_items'; progress: number; durationDays:number|null }>;
-  const work = getDatabaseContext().sqlite.prepare(`SELECT w.requirement_id AS requirementId,w.title,w.status,w.progress,w.progress_weight AS progressWeight,w.duration_days AS durationDays,w.planned_start AS plannedStart,w.planned_end AS plannedEnd,w.work_stage AS workStage,w.actual_start AS actualStart,w.actual_end AS actualEnd FROM work_items w JOIN requirements r ON r.id=w.requirement_id WHERE r.project_id=?`).all(projectId) as Array<StageWork & { requirementId: string }>;
-  const milestones = getDatabaseContext().sqlite.prepare('SELECT requirement_id AS requirementId,title,milestone_kind AS milestoneKind,achieved_at AS achievedAt,achieved_recorded_at AS achievedRecordedAt,cancelled FROM milestones WHERE project_id=?').all(projectId) as Array<StageMilestone & { requirementId: string }>;
+export function phaseRequirementFacts(projectId: string, asOfDate = todayIso(), requirementIds?: readonly string[]): PhaseRequirement[] {
+  if (requirementIds?.length === 0) return [];
+  const scope = requirementIds ? ` IN (${requirementIds.map(() => '?').join(',')})` : '';
+  const params = [projectId, ...(requirementIds ?? [])];
+  const requirements = getDatabaseContext().sqlite.prepare(`SELECT id,title,status,version,feature_id AS featureId,phase_id AS phaseId,stage_reset_at AS stageResetAt,actual_start AS actualStart,actual_end AS actualEnd,deleted_at AS deletedAt,acceptance_criteria AS acceptanceCriteria,execution_mode AS executionMode,progress,duration_days AS durationDays,split_base_progress AS splitBaseProgress FROM requirements WHERE project_id=?${scope ? ' AND id' + scope : ''}`).all(...params) as Array<PhaseRequirement & { stageResetAt: string | null; executionMode: 'direct' | 'work_items'; progress: number; durationDays:number|null }>;
+  const work = getDatabaseContext().sqlite.prepare(`SELECT w.requirement_id AS requirementId,w.title,w.status,w.progress,w.progress_weight AS progressWeight,w.duration_days AS durationDays,w.planned_start AS plannedStart,w.planned_end AS plannedEnd,w.work_stage AS workStage,w.actual_start AS actualStart,w.actual_end AS actualEnd FROM work_items w JOIN requirements r ON r.id=w.requirement_id WHERE r.project_id=?${scope ? ' AND w.requirement_id' + scope : ''}`).all(...params) as Array<StageWork & { requirementId: string }>;
+  const milestones = getDatabaseContext().sqlite.prepare(`SELECT requirement_id AS requirementId,title,milestone_kind AS milestoneKind,achieved_at AS achievedAt,achieved_recorded_at AS achievedRecordedAt,cancelled FROM milestones WHERE project_id=?${scope ? ' AND requirement_id' + scope : ''}`).all(...params) as Array<StageMilestone & { requirementId: string }>;
   const byWork = new Map<string, StageWork[]>(), byMilestone = new Map<string, StageMilestone[]>();
   for (const w of work) { const items = byWork.get(w.requirementId) || []; items.push(w); byWork.set(w.requirementId, items); }
   for (const m of milestones) { const items = byMilestone.get(m.requirementId) || []; items.push(m); byMilestone.set(m.requirementId, items); }
@@ -28,9 +31,17 @@ export function phaseRequirementFacts(projectId: string, asOfDate = todayIso()):
 export function readFeaturePhases(projectId: string, asOfDate = todayIso(), facts = phaseRequirementFacts(projectId,asOfDate)): FeaturePhase[] {
   const phases = getDatabaseContext().sqlite.prepare('SELECT reference_links AS referenceLinks,id,project_id AS projectId,feature_id AS featureId,name,scope,started_at AS startedAt,target_date AS targetDate,note,sort_order AS sortOrder,version,delivered_at AS deliveredAt FROM feature_phases WHERE project_id=? ORDER BY sort_order,created_at,id').all(projectId) as FeaturePhase[];
   const deliveries = getDatabaseContext().sqlite.prepare(`SELECT d.id,d.phase_id AS phaseId,d.delivered_at AS deliveredAt,a.username AS deliveredByName,d.created_at AS createdAt,d.reopened_at AS reopenedAt,d.reopen_reason AS reopenReason,d.snapshot FROM phase_deliveries d JOIN feature_phases p ON p.id=d.phase_id LEFT JOIN accounts a ON a.id=d.delivered_by WHERE p.project_id=? ORDER BY d.created_at DESC,d.rowid DESC`).all(projectId) as Array<Omit<PhaseDelivery, 'snapshot'> & { phaseId: string; snapshot: string }>;
+  const requirementsByPhase = new Map<string, PhaseRequirement[]>(), deliveriesByPhase = new Map<string, typeof deliveries>();
+  for (const fact of facts) {
+    if (!fact.phaseId) continue;
+    const items = requirementsByPhase.get(fact.phaseId) || []; items.push(fact); requirementsByPhase.set(fact.phaseId, items);
+  }
+  for (const delivery of deliveries) {
+    const items = deliveriesByPhase.get(delivery.phaseId) || []; items.push(delivery); deliveriesByPhase.set(delivery.phaseId, items);
+  }
   return phases.map(p => {
-    const requirements = facts.filter(r => r.phaseId === p.id);
-    return { ...p, referenceLinks:readReferenceLinks(p.referenceLinks),...phaseProgress(requirements, p.targetDate, asOfDate), requirements, distribution: phaseDistribution(requirements), deliveries: deliveries.filter(d => d.phaseId === p.id).map(d => ({ ...d, snapshot: JSON.parse(d.snapshot) })) };
+    const requirements = requirementsByPhase.get(p.id) || [];
+    return { ...p, referenceLinks:readReferenceLinks(p.referenceLinks),...phaseProgress(requirements, p.targetDate, asOfDate), requirements, distribution: phaseDistribution(requirements), deliveries: (deliveriesByPhase.get(p.id) || []).map(d => ({ ...d, snapshot: JSON.parse(d.snapshot) })) };
   });
 }
 export function listFeaturePhases(projectId: string, featureId: string | undefined, actor: Actor) {

@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {useDetailActionHost} from './DetailWorkspace';
 import {hasActiveSortDrag} from './DragPreview';
+import {copyText} from '../clipboard';
 
 let openModalCount = 0;
 let previousBodyOverflow = '';
@@ -14,6 +15,7 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
   const cardRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   const closableRef = useRef(closable);
+  const previousFocusRef=useRef(typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null);
   const returnFocusRef=useRef(returnFocus);returnFocusRef.current=returnFocus;
   const titleId = useId();
   const requestClose = () => {
@@ -27,7 +29,7 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
   useEffect(() => { closableRef.current = closable; }, [closable]);
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousFocus = previousFocusRef.current;
     if (openModalCount++ === 0) {
       previousBodyOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
@@ -82,7 +84,7 @@ export function Modal({ title, children, onClose, width = 560, closable = true, 
     <CompactButtons enabled={false}><MenuButtons enabled={false}>
     <div className={`modal-backdrop${inline ? ' modal-backdrop-inline' : ''}${placement === 'right' ? ' modal-backdrop-right' : ''}`} role="presentation" onMouseDown={(event) => closable && event.target === event.currentTarget && requestClose()}>
       <section ref={cardRef} data-detail-action={host ? true : undefined} className={`modal-card modal-card-${layout}`} style={{ width, maxWidth: width ? `min(94vw, ${width}px)` : undefined }} role={inline ? 'region' : 'dialog'} aria-modal={inline ? undefined : true} aria-labelledby={titleId} tabIndex={-1} onKeyDown={event => {
-        if (host && event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing && !hasActiveSortDrag()) {event.preventDefault(); event.stopPropagation(); requestClose();}
+        if (host && event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229 && !hasActiveSortDrag()) {event.preventDefault(); event.stopPropagation(); requestClose();}
       }}>
         <header onClickCapture={event=>{if(cardRef.current?.querySelector('[data-detail-back]:disabled')){event.preventDefault();event.stopPropagation();}}}>{backAction}<h2 id={titleId}>{title}</h2>{headerActions}{inline ? <Button variant="secondary" type="button" data-detail-back className="ghost-button" disabled={!closable} onClick={requestClose}>返回</Button> : <Button variant="ghost" iconOnly data-detail-back={host ? true : undefined} disabled={!closable} className="icon-button" aria-label="关闭" onClick={requestClose}><X size={18} /></Button>}</header>
         <div className={`modal-body modal-body-${layout}`}>{children}</div>
@@ -149,6 +151,7 @@ export function ConfirmDialog({
   error,
   onClose,
   onConfirm,
+  returnFocus,
 }: {
   title: string;
   description: ReactNode;
@@ -160,6 +163,7 @@ export function ConfirmDialog({
   error?: string;
   onClose: () => void;
   onConfirm: () => void;
+  returnFocus?: () => HTMLElement | null;
 }) {
   const lock = useSynchronousPendingLock(pending);
   const close = () => {
@@ -169,7 +173,7 @@ export function ConfirmDialog({
   const confirm = () => {
     if (!disabled) lock.run(onConfirm);
   };
-  return <Modal title={title} width={500} onClose={close} closable={!lock.busy}>
+  return <Modal title={title} width={500} onClose={close} closable={!lock.busy} returnFocus={returnFocus}>
     <div className={`confirm-dialog${danger ? ' is-danger' : ''}`}>
       <div className="confirm-dialog-message"><span className="confirm-dialog-icon"><AlertTriangle size={21} /></span><div>{description}</div></div>
       {error && <p className="form-error" role="alert">{error}</p>}
@@ -179,27 +183,14 @@ export function ConfirmDialog({
 }
 
 export function ResultDialog({ title, message, value, error = false, onClose }: { title: string; message: ReactNode; value?: string; error?: boolean; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
-  const [copyFailed, setCopyFailed] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'copied' | 'failed' | null>(null);
   const copyValue = async () => {
-    try {
-      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value || '');
-      else {
-        const input = document.createElement('textarea');
-        input.value = value || ''; input.style.position = 'fixed'; input.style.opacity = '0';
-        document.body.appendChild(input);
-        try {
-          input.select();
-          if (!document.execCommand('copy')) throw new Error('copy failed');
-        } finally { input.remove(); }
-      }
-      setCopied(true); setCopyFailed(false);
-    } catch { setCopyFailed(true); }
+    setCopyStatus(await copyText(value || '') ? 'copied' : 'failed');
   };
   return <Modal title={title} width={500} onClose={onClose}>
     <div className={`result-dialog${error ? ' is-error' : ''}`}>
       <div className="result-dialog-message">{error ? <AlertTriangle size={24} /> : <CheckCircle2 size={24} />}<div>{message}</div></div>
-      {value && <div className="result-dialog-value"><code>{value}</code><Button variant="ghost" iconOnly type="button" className="icon-button" title="复制" aria-label="复制结果" onClick={() => void copyValue()}><Copy size={16} /></Button>{copied && <span>已复制</span>}{copyFailed && <span>复制失败，请手动选择</span>}</div>}
+      {value && <div className="result-dialog-value"><code>{value}</code><Button variant="ghost" iconOnly type="button" className="icon-button" title="复制" aria-label="复制结果" onClick={() => void copyValue()}><Copy size={16} /></Button>{copyStatus === 'copied' && <span>已复制</span>}{copyStatus === 'failed' && <span>复制失败，请手动选择</span>}</div>}
       <div className="form-actions"><Button variant="primary" type="button" autoFocus className="primary-button" onClick={onClose}>知道了</Button></div>
     </div>
   </Modal>;

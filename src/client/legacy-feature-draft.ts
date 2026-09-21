@@ -2,7 +2,7 @@ import * as pathsApi from './features/paths/api';
 import { useEffect, useRef, useState } from 'react';
 import type { DependencyChanges, DependencyChangesInput } from '../shared/path-contracts';
 import { readHistory, type EditorHistory } from './editor-session';
-import { readDraftRecord, writeSharedDraftRecord, ownsDraft, takeDraft, releaseDraft } from './graph-draft-storage';
+import { readDraftRecord, writeSharedDraftRecord, ownsDraft, takeDraft, releaseDraft, draftOwnershipError } from './graph-draft-storage';
 import { ApiError, jsonBody } from './api';
 
 
@@ -16,6 +16,9 @@ type History = {
 };
 type Recovery={kind:'ready'|'reading'|'conflict'|'pending'|'locked'|'error';message?:string;layouts?:Layout[];conflicts?:string[]};
 const layoutKey=(layout:Layout)=>layout.scope+':'+layout.direction;
+const recoveryMessage=(error:unknown)=>error instanceof DOMException&&error.name==='SecurityError'
+  ?'浏览器阻止了本机存储访问。请允许此网站使用本机存储后，重新核对旧草稿。'
+  :(error as Error).message;
 export function mergeFeatureLayouts(current:DependencyChanges,layouts:Layout[],choices:Record<string,'current'|'legacy'>={}){
   const merged=[...(current.layouts||[])],conflicts:string[]=[];
   for(const layout of layouts){const key=layoutKey(layout),index=merged.findIndex(l=>layoutKey(l)===key);
@@ -39,7 +42,8 @@ export function useLegacyFeatureDraft(key:string,projectId:string,history:Histor
   const clear=async()=>{await writeSharedDraftRecord(oldKey,undefined);await writeSharedDraftRecord(submission,undefined);sessionStorage.removeItem(oldKey);sessionStorage.removeItem(submission);releaseDraft(oldKey);done.current=true;if(active.current)setRecovery({kind:'ready'});};
   const importLayouts=async(layouts:Layout[],choices:Record<string,'current'|'legacy'>={})=>{
     const current=latest.current.history;
-    if(current.readOnly||current.loading||current.busy||latest.current.pending||!ownsDraft(oldKey,true))return;
+    if(current.readOnly||current.loading||current.busy||latest.current.pending)return;
+    const owned=ownsDraft(oldKey,true);if(owned===undefined)throw new Error(draftOwnershipError);if(!owned)return;
     const merged=mergeFeatureLayouts(current.session.state.values[current.session.state.index],layouts,choices);
     if(merged.conflicts.length){setRecovery({kind:'conflict',layouts,conflicts:merged.conflicts});return;}
     if(layouts.length&&!current.change(merged.changes)){
@@ -53,7 +57,7 @@ export function useLegacyFeatureDraft(key:string,projectId:string,history:Histor
       const stored=await read(),batch=await readDraftRecord<Pending>(submission)??JSON.parse(sessionStorage.getItem(submission)||'null') as Pending|null;
       if(!stored&&!batch){done.current=true;if(active.current)setRecovery({kind:'ready'});return;}
       if(!active.current)return;
-      if(!ownsDraft(oldKey,true)){setRecovery({kind:'locked',message:'另一页面正在编辑旧特性布局'});return;}
+      const owned=ownsDraft(oldKey,true);if(owned===undefined)throw new Error(draftOwnershipError);if(!owned){setRecovery({kind:'locked',message:'另一页面正在编辑旧特性布局'});return;}
       if(batch){
         const receipt=await pathsApi.projectsDependencyChangesById<{status:'applied'|'not_found'}>(projectId, batch.batchId, {readOnly:true});
         if(!active.current)return;
@@ -64,13 +68,13 @@ export function useLegacyFeatureDraft(key:string,projectId:string,history:Histor
       }
       if(!active.current)return;
       await importLayouts(stored?.values[stored.index]?.layouts||[]);
-    }catch(error){if(active.current)setRecovery({kind:'error',message:(error as Error).message});}
+    }catch(error){if(active.current)setRecovery({kind:'error',message:recoveryMessage(error)});}
     finally{running.current=false;}
   };
   const runRef=useRef(run);runRef.current=run;
   useEffect(()=>{if(!enabled||done.current||history.loading||history.readOnly||history.busy||pending)return;void runRef.current();},[enabled,history.loading,history.readOnly,history.busy,pending,attempt]);
   return {...recovery,blocked:!['ready','reading'].includes(recovery.kind),loading:recovery.kind==='reading'&&!pending&&!history.readOnly,
     retry:()=>setAttempt(n=>n+1),retrySubmission:()=>void run(true),takeOver:()=>{takeDraft(oldKey);setAttempt(n=>n+1);},
-    resolve:(choices:Record<string,'current'|'legacy'>)=>void importLayouts(recovery.layouts||[],choices).catch(error=>setRecovery({kind:'error',message:(error as Error).message})),
+    resolve:(choices:Record<string,'current'|'legacy'>)=>void importLayouts(recovery.layouts||[],choices).catch(error=>setRecovery({kind:'error',message:recoveryMessage(error)})),
   };
 }

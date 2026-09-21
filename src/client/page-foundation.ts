@@ -36,11 +36,14 @@ export function createChromeStore<T extends {runtime?: NavigationRuntime | null}
   };
 }
 
+const projectSelections = new Map<string, string>();
 export function rememberedProject(account: string) {
+  if (projectSelections.has(account)) return projectSelections.get(account)!;
   try { return localStorage.getItem(`project-manage:selected-project:${account}`) || ''; } catch { return ''; }
 }
 export function rememberProject(account: string, project: string) {
   if (!account || !project) return;
+  projectSelections.set(account, project);
   try { localStorage.setItem(`project-manage:selected-project:${account}`, project); } catch { /* 当前页面仍可使用。 */ }
 }
 /** 只有对象、页面模式和明确项目参与导航身份；筛选、聚焦和视口不会重建页面。 */

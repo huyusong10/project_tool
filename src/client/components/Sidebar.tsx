@@ -7,7 +7,8 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { SystemBranding } from "../types";
 import { useProjects, useSession } from "../app-context";
 import { canManageProject, isAdmin } from "../permissions";
-import { navGroupsFor } from "../routes";
+import { navGroupsFor, pageScopeFor } from "../routes";
+import { rememberedProject } from '../page-foundation';
 import { BrandLogo } from "./BrandLogo";
 
 type TooltipState = { anchor: HTMLElement; label: string; group: string };
@@ -53,7 +54,8 @@ export function Sidebar({ collapsed, onToggle, onNavigate, branding, ready }: { 
     if (collapsed) setTooltip({ anchor, label, group });
   };
   const location=useLocation();
-  const home=selectedProjectId?'/?'+workspaceParams({projectId:selectedProjectId,view:'list',scope:{kind:'project',id:selectedProjectId}}):'/';
+  const navigationProjectId = selectedProjectId || projects.find(project => project.id === rememberedProject(session.accountId || session.username || 'guest'))?.id;
+  const home=navigationProjectId?'/?'+workspaceParams({projectId:navigationProjectId,view:'list',scope:{kind:'project',id:navigationProjectId}}):'/';
   return (
     <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}`} aria-label="主导航">
       <div className="brand-mark">
@@ -79,7 +81,7 @@ export function Sidebar({ collapsed, onToggle, onNavigate, branding, ready }: { 
               {group.items.map((item) => {
                 const Icon = item.icon;
                 return <NavLink
-                  to={item.to}
+                  to={navigationProjectId && pageScopeFor(item.to, isAdmin(session)) === 'project' ? `${item.to}?${new URLSearchParams({ projectId: navigationProjectId })}` : item.to}
                   end={item.end}
                   className={({isActive})=>isActive||item.to==='/'&&isProjectWorkspace(location.pathname)?'active':undefined}
                   key={`${group.label}-${item.label}`}

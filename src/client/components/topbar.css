@@ -31,23 +31,22 @@ body:has(.app-shell[data-immersive=true]){overflow:hidden}
 .project-switcher-name{flex:1;min-width:0;text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .project-switcher-button svg{color:var(--text-faint)}
 .project-switcher-button svg.is-open{transform:rotate(180deg)}
-.project-switcher-menu{display:grid;gap:4px}
+.project-switcher-menu{display:grid;grid-template-columns:minmax(0,1fr);gap:4px}
 .project-switcher-menu button{width:100%;min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 10px;border:0;border-radius:var(--radius-sm);color:var(--text-secondary);background:transparent;text-align:left}
 .project-switcher-menu button:hover,.project-switcher-menu button[aria-selected=true]{color:var(--accent-ink);background:var(--accent-soft)}
-.project-switcher-option{min-width:0;display:flex;align-items:center;gap:7px}
-.project-switcher-option>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-switcher-menu button>svg{flex:none}
+.project-switcher-option{flex:1;min-width:0;display:flex;align-items:center;gap:7px}
+.project-switcher-option>span{min-width:0;overflow-wrap:anywhere;white-space:normal}
 .sample-project-badge{flex:none;display:inline-flex;align-items:center;padding:2px 6px;border-radius:5px;color:var(--purple);background:var(--purple-bg);font-size:10px;font-style:normal;font-weight:750;line-height:16px}
 .topbar-menu-trigger{display:flex;flex:none}
 .topbar-menu-popover{padding:6px;overflow:visible}
 .topbar-menu-content{display:flex;flex-direction:column;gap:4px;max-height:calc(100dvh - 110px);overflow-y:auto;overscroll-behavior:contain}
 .topbar-menu-content>button,.topbar-menu-content .theme-toggle{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;min-height:38px;height:auto;padding:8px 10px;border:0;background:transparent;color:var(--text-secondary);border-radius:var(--radius-sm);font-size:13px;text-align:left}
 .topbar-menu-content>button:hover{background:var(--bg-hover)}
-.topbar-menu-content>button[aria-label]:has(svg:only-child)::after{content:attr(aria-label)}
 .topbar-menu-content>.danger{color:var(--danger-text)}
 .topbar-account-heading{padding:8px 10px;color:var(--text-muted);font-size:12px;border-bottom:1px solid var(--border-default);overflow-wrap:anywhere}
 .topbar-menu-status{padding:8px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--text-muted);font-size:12px;border-bottom:1px solid var(--border-default)}
-.topbar-menu-content:has(.theme-picker){overflow:visible}
-.topbar-menu-content .theme-menu{right:0;top:0;max-height:calc(100dvh - 100px);overflow:auto;width:min(280px,calc(100vw - 24px))}
+.topbar-menu-content .theme-menu{position:static;width:100%;max-height:none;overflow:visible;margin-top:4px;box-shadow:none}
 .topbar[data-compact=true]{gap:8px;padding-inline:10px}
 .topbar[data-compact=true] .topbar-context{gap:8px}
 .topbar[data-compact=true] .project-switcher{flex-basis:112px;width:112px}

@@ -3,13 +3,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID, scryptSync } from 'node:crypto';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { Requirement, WorkItem, ProgressUpdate } from '../src/client/types';
 import type { DependencyChanges, DependencyChangePreview, DependencyChangeReceipt } from '../src/shared/path-contracts';
 import type { readPathGraph } from '../src/server/services/path-graph';
 import { projectPathGraph } from '../src/shared/path-projection';
 import { addBusinessDays, todayIso } from '../src/shared/domain';
+import * as domain from '../src/shared/domain';
 import type { PathAnalysis } from '../src/shared/paths';
 import { mcpRequest, mcpRpcRequest } from './mcp-request';
 import type {FeaturePhase} from '../src/shared/feature-phases';
@@ -101,6 +102,33 @@ it('MCP发布可发现的查询工具、严格输入与只读标记，批次描�
   expect(tools.find(t=>t.name==='get_diagram_layouts')?.description).toContain('feature-phase:');
   expect(tools.find(t=>t.name==='preview_requirement_import')?.description).toContain('formatVersion:3');
   expect(tools.some(t=>t.description.includes('受控'))).toBe(false);
+});
+
+it.each(['REST','MCP'] as const)('%s跨业务午夜读取时，筛选、标签、预测与响应日期保持一致',async protocol=>{
+  const projectId=(await post('/api/projects',{name:'查询跨日 '+randomUUID()})).id;
+  const template=await post('/api/templates',{projectId,name:'跨日流程',items:[
+    {title:'已到期',durationDays:1,startOffsetDays:0,sortOrder:0},
+    {title:'当天到期',durationDays:1,startOffsetDays:1,sortOrder:1},
+  ]});
+  const requirement=await post<Requirement>('/api/requirements',{projectId,templateId:template.id,title:'跨日查询需求',plannedStart:'2026-09-16'});
+  const dueToday=requirement.workItems.find(item=>item.plannedEnd==='2026-09-17')!;
+  const {sqlite}=await import('./support/database');
+  const facts=()=>['requirements','work_items','progress_updates','audit_logs'].map(table=>sqlite.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
+  const before=facts();
+  const read=async<T,>(url:string,tool:string,args:Record<string,unknown>)=>{
+    const clock=vi.spyOn(domain,'todayIso').mockReturnValueOnce('2026-09-17').mockReturnValue('2026-09-18');
+    try{return protocol==='REST'?await get<T>(url):await call<T>(tool,args);}finally{clock.mockRestore();}
+  };
+  for(const overdue of [false,true]){
+    const page=await read<Page<WorkItem & {overdue:boolean}> & {asOfDate:string}>(`/api/work-items?projectId=${projectId}&overdue=${overdue}`,'list_work_items',{projectId,overdue});
+    expect(page.asOfDate).toBe('2026-09-17');expect(page.total).toBe(overdue?1:2);
+    for(const item of page.items){expect(item.overdue).toBe(item.plannedEnd==='2026-09-16');expect(item.deliveryForecast?.asOfDate).toBe(page.asOfDate);}
+  }
+  const work=await read<WorkItem & {overdue:boolean}>(`/api/work-items/${dueToday.id}`,'get_work_item',{id:dueToday.id});
+  expect(work.overdue).toBe(false);expect(work.deliveryForecast?.asOfDate).toBe('2026-09-17');
+  const page=await read<Page<Requirement> & {asOfDate:string}>(`/api/requirements/query?projectId=${projectId}`,'query_requirements',{projectId});
+  expect(page.asOfDate).toBe('2026-09-17');expect(page.items[0].asOfDate).toBe(page.asOfDate);expect(page.items[0].deliveryForecast?.asOfDate).toBe(page.asOfDate);
+  expect(facts()).toEqual(before);
 });
 
 it('独立工作项读取与需求详情一致，筛选负责人/协作者/日期、分页与REST一致', async () => {

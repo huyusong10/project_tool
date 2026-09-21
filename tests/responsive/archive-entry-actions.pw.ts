@@ -72,10 +72,13 @@ test('项目归档确认连点只提交一次', async ({ page }) => {
   } finally { release(); }
 });
 
-test('项目归档已落库但响应异常时同时核对活动与归档列表', async ({ page }) => {
+test('项目归档已落库但响应异常时同时核对活动与归档列表', async ({ page }, info) => {
   let archived = false;
   let requests = 0;
-  await mockBase(page, { projects: () => archived ? [] : [project] });
+  let checkedReads = 0;
+  const remaining = { ...project, id: 'p2', name: '核对后仍可读的项目' };
+  await mockBase(page, { projects: () => archived ? [remaining] : [project, remaining] });
+  await page.route('**/api/projects', route => archived && ++checkedReads > 1 ? route.fulfill({ status: 503, json: { error: '核对后的刷新暂时失败' } }) : route.fallback());
   await page.route('**/api/archives', (route) => route.fulfill({ json: {
     projects: archived ? [{ id: project.id, title: project.name, deletedAt: '2026-09-05T00:00:00.000Z' }] : [],
     requirements: [], people: [], templates: [],
@@ -87,26 +90,46 @@ test('项目归档已落库但响应异常时同时核对活动与归档列表',
   });
 
   await page.goto('/projects');
-  await page.getByRole('button', { name: '归档', exact: true }).click();
+  await page.getByRole('row').filter({ hasText: project.name }).getByRole('button', { name: '归档', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '归档项目', exact: true });
   await dialog.getByRole('button', { name: '确认归档', exact: true }).click();
 
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText(project.name, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(remaining.name, { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '新建项目', exact: true })).toBeEnabled();
+  await expect.poll(() => checkedReads).toBeGreaterThan(1);
   expect(requests).toBe(1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: info.outputPath('archive-rechecked-list-390.png'), animations: 'disabled' });
 });
 
-test('项目归档响应未知且双列表失败时跨导航保持锁定', async ({ page }) => {
-  let archived=false,failReads=false,requests=0;
+test('项目归档响应未知且双列表失败时跨导航保持锁定', async ({ page }, info) => {
+  let archived=false,failReads=false,requests=0,checkedReads=0;
   await mockBase(page,{projects:()=>archived?[]:[project]});
-  await page.route('**/api/projects',route=>failReads?route.fulfill({status:503,json:{error:'项目列表暂时不可用'}}):route.fallback());
+  await page.route('**/api/projects',route=>failReads || archived && ++checkedReads > 1 ? route.fulfill({status:503,json:{error:'项目列表暂时不可用'}}):route.fallback());
   await page.route('**/api/archives',route=>failReads?route.fulfill({status:503,json:{error:'归档列表暂时不可用'}}):route.fulfill({json:{projects:archived?[{id:project.id,title:project.name,deletedAt:'2026-09-05T00:00:00.000Z'}]:[],requirements:[],people:[],templates:[]}}));
   await page.route('**/api/projects/p1',route=>{requests++;archived=true;failReads=true;return route.fulfill({status:200,contentType:'text/html',body:'archived'});});
   await page.goto('/projects');await page.getByRole('button',{name:'归档',exact:true}).click();const dialog=page.getByRole('dialog',{name:'归档项目',exact:true});await dialog.getByRole('button',{name:'确认归档',exact:true}).click();
   await expect(dialog.getByRole('alert')).toContainText('请关闭窗口后重新选择归档');await dialog.getByRole('button',{name:'取消',exact:true}).click();
-  await page.getByRole('link',{name:'归档中心',exact:true}).click();await page.getByRole('link',{name:'项目中心',exact:true}).click();await expect(page.getByRole('alert')).toContainText('项目归档结果待核对');
+  const recheckNotice = page.getByRole('alert').filter({ hasText: '项目归档结果待核对' });
+  await page.getByRole('link',{name:'归档中心',exact:true}).click();await page.getByRole('link',{name:'项目中心',exact:true}).click();await expect(recheckNotice).toBeVisible();
   const archiveButton=page.getByRole('button',{name:'归档',exact:true});await expect(archiveButton).toBeDisabled();await archiveButton.evaluate(button=>{button.removeAttribute('disabled');(button as HTMLButtonElement).click();});await expect(page.getByRole('dialog',{name:'归档项目',exact:true})).toHaveCount(0);expect(requests).toBe(1);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '项目列表加载失败', exact: true })).toBeVisible();
+  await expect(page.locator('.project-table')).toHaveCount(0);
+  await expect(recheckNotice).toBeVisible();
+  await page.getByRole('button', { name: '重新读取项目与归档', exact: true }).click();
+  await expect(page.getByRole('button', { name: '重新读取项目与归档', exact: true })).toBeEnabled();
+  await expect(recheckNotice).toBeVisible();
+  expect(requests).toBe(1);
   failReads=false;await page.getByRole('button',{name:'重新读取项目与归档',exact:true}).click();await expect(page.getByText('项目归档结果待核对',{exact:false})).toHaveCount(0);await expect(page.getByText(project.name,{exact:true})).toHaveCount(0);expect(requests).toBe(1);
+  await expect(page.getByRole('heading', { name: '项目列表加载失败', exact: true })).toHaveCount(0);
+  await expect(page.getByText('还没有项目', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '新建项目', exact: true })).toBeEnabled();
+  await expect.poll(() => checkedReads).toBeGreaterThan(1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: info.outputPath('archive-rechecked-empty-390.png'), animations: 'disabled' });
 });
 
 test('项目归档提交同一事件周期内不能被 Escape 关闭', async ({ page }) => {
@@ -148,14 +171,18 @@ test('流程归档确认连点只提交一次', async ({ page }) => {
   });
   try {
     await page.goto('/templates');
-    await page.getByRole('button', { name: '归档流程 备用流程' }).click();
+    const archiveButton=page.getByRole('button', { name: '归档流程 备用流程' });
+    await archiveButton.focus();await page.keyboard.press('Enter');
     const dialog = page.getByRole('dialog', { name: '归档流程' });
+    await expect(dialog).toBeVisible();await page.keyboard.press('Escape');await expect(archiveButton).toBeFocused();expect(requests).toBe(0);
+    await page.keyboard.press('Enter');
     await dialog.getByRole('button', { name: '确认归档' }).dblclick();
     await expect.poll(() => requests).toBe(1);
     expect(payloads).toEqual([{ expectedUpdatedAt: templates[1].updatedAt }]);
     await expect(dialog.getByRole('button', { name: '归档中…', exact: true })).toBeDisabled();
     release();
     await expect(dialog).toHaveCount(0);
+    await expect(archiveButton).toHaveCount(0);await expect(page.getByRole('button',{name:'新建流程',exact:true})).toBeFocused();
   } finally { release(); }
 });
 
@@ -180,6 +207,7 @@ test('流程归档已落库但响应异常时同时核对活动与归档列表',
 
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText('备用流程', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'新建流程',exact:true})).toBeFocused();
   expect(requests).toBe(1);
 });
 

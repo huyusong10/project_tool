@@ -9,7 +9,7 @@ function stateFor(context: DatabaseContext) {
   return state;
 }
 
-function isDatabaseRequest(request: FastifyRequest) {
+function isDatabaseRequest(request: { url: string }) {
   const pathname = request.url.split('?')[0];
   // 恢复入口自己持有互斥锁；状态查询供页面在切换期间核对结果。
   return (pathname.startsWith('/api/') || pathname === '/mcp')
@@ -23,13 +23,18 @@ export function registerDatabaseMaintenance(app: FastifyInstance, context: Datab
     if (state.paused) fail('数据库正在恢复，请稍后重试', 'DATABASE_MAINTENANCE', 503);
   };
   app.addHook('onRequest', async (request) => { check(request); });
-  app.addHook('preHandler', async (request) => {
-    check(request);
-    if (!isDatabaseRequest(request)) return;
-    requests.add(request);
+  app.addHook('preHandler', async (request) => { check(request); });
+  app.addHook('onRoute', (route) => {
+    if (!isDatabaseRequest(route)) return;
+    const handler = route.handler;
+    route.handler = async function (request, reply) {
+      check(request);
+      requests.add(request);
+      // A disconnected response may never finish; its database work must still finish before restore.
+      try { return await handler.call(this, request, reply); }
+      finally { requests.delete(request); }
+    };
   });
-  app.addHook('onResponse', async (request) => { requests.delete(request); });
-  app.addHook('onError', async (request) => { requests.delete(request); });
 }
 
 export async function pauseDatabaseRequests(context = getDatabaseContext()) {

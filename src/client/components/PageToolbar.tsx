@@ -24,13 +24,14 @@ export function PageToolbar(){
   useLayoutEffect(()=>{const element=root.current;if(!element)return;const measure=()=>setWidth(Math.round(element.getBoundingClientRect().width));const observer=new ResizeObserver(measure);observer.observe(element);measure();return()=>observer.disconnect();},[visible]);
   const ready=page.phase==='ready'&&!!chrome&&!chrome.titlePending,compact=width!==null&&width<960,narrow=width!==null&&width<640;
   const editor=page.toolbar==='path'||page.toolbar==='editor',secondaryInMenu=editor||page.toolbar==='analytics'||compact;
+  const hasTools=workspace||editor||!ready||!!(chrome?.views||chrome?.actions||chrome?.secondaryActions||chrome?.moreActions);
   const hasMenu=!!(chrome?.moreActions||secondaryInMenu&&chrome?.secondaryActions||editor&&chrome?.context);
   const pendingEditorActions=editor&&<div className="page-editor-actions" aria-hidden="true"><div className="page-editor-history"/><div className="page-editor-primary"><span className="shell-placeholder toolbar-actions-placeholder"/></div></div>;
   const back=ready&&chrome.onBack||((page.back||deepDelivery||page.phase==='error')?fallbackBack:undefined);
   const crumbs=ready&&chrome.breadcrumbs!==undefined?chrome.breadcrumbs:page.back?[{label:page.object?.kind==='template'?'流程设计':'需求清单',onClick:()=>navigate(page.back!.fallback)},{label:ready?chrome.title:page.phase==='error'?'无法打开':'',onClick:undefined}]:delivery?[{label:page.project?.name||'项目空间',onClick:deepDelivery?()=>navigate('/?view=features'):undefined},...(deepDelivery?[{label:''}]:[])]:[...(page.scope==='project'&&page.project?[{label:page.project.name,onClick:()=>navigate('/')}]:[]),{label:ready?chrome.title:page.title}];
   if(!visible)return null;
   return <WorkspaceRuntimeContext.Provider value={chrome?.runtime||null}>
-    <div ref={root} className="page-toolbar" role="region" aria-label="页面工具栏" data-toolbar={page.toolbar} data-fixed-editor={editor} data-project-workspace={workspace} data-compact={compact} data-narrow={narrow} data-page-phase={page.phase} data-workspace-zone="tools" data-preserve-edit
+    <div ref={root} className="page-toolbar" role="region" aria-label="页面工具栏" data-toolbar={page.toolbar} data-fixed-editor={editor} data-project-workspace={workspace} data-compact={compact} data-narrow={narrow} data-has-tools={hasTools} data-page-phase={page.phase} data-workspace-zone="tools" data-preserve-edit
       onClickCapture={event=>{if(chrome?.runtime?.requestSave&&(event.target as Element).closest('[aria-label="保存修改"]')){event.preventDefault();event.stopPropagation();chrome.runtime.requestSave();}}}
       onKeyDownCapture={event=>{if(chrome?.runtime?.requestSave&&(event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();event.stopPropagation();chrome.runtime.requestSave();}}}>
       <div className="page-toolbar-leading">

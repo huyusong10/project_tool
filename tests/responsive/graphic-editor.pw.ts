@@ -1,3 +1,5 @@
+import {phaseFixture} from './phase-fixture';
+import type {PathAnalysis} from '../../src/shared/paths';
 import {graphFixture as fixture} from './graph-fixture';
 import {chooseOption,selectedValue} from './select-helper';
 import {openGraph,openGraphDrafts,reopenGraphProperties,graphProperties,graphToolbar,closeGraphProperties,focusGraph} from './graph-interactions';
@@ -151,6 +153,29 @@ for(const destination of ['全局','其他需求'] as const)for(const narrow of 
  await page.goBack();await expect.poll(()=>new URL(page.url()).searchParams.get('requirementId')).toBe(new URL(beforeUrl).searchParams.get('requirementId'));await ready(page);await graphProperties(page,page.locator('.react-flow__node[data-id="'+id+'"] .dependency-card'));await expect(title).toHaveValue('其他页面的有效修改');await graphToolbar(page,'保存修改');await expect(page).toHaveURL(new RegExp('requirementId='+a.id));await ready(page);await expect(title).toBeFocused();
  await title.fill('定位后修正');const saved=page.waitForResponse(r=>r.url().endsWith('/dependency-changes/apply'));await page.keyboard.press('Control+s');expect((await saved).status()).toBe(200);expect((await analysis()).nodes.find(n=>n.id===a.workItems[0].id)?.title).toBe('定位后修正');
  await page.goBack();await expect.poll(()=>new URL(page.url()).searchParams.get('requirementId')).toBe(new URL(beforeUrl).searchParams.get('requirementId'));await ready(page);
+});
+
+test('项目里程碑草稿在跨范围校验和摘要定位后可继续保存',async({page},info)=>{
+  const f=await phaseFixture(page),id=crypto.randomUUID();
+  const read=async()=>await(await page.request.get(f.base+'/path-analysis')).json() as PathAnalysis;
+  const initial=await read();
+  const input={expectedRevision:initial.revision,target:'project',changes:{add:[{clientId:crypto.randomUUID(),sourceRequirementId:f.testing.id,sourceWorkItemId:null,targetRequirementId:'',targetMilestoneId:id,targetWorkItemId:null}],remove:[],estimates:[],entities:[{entity:'milestone',op:'create',id,requirementId:null,data:{title:'项目集成评审',confirmationMode:'manual'}}]}};
+  const previewResponse=await page.request.post(f.base+'/dependency-changes/preview',{data:input});expect(previewResponse.ok(),await previewResponse.text()).toBe(true);
+  const preview=await previewResponse.json(),applied=await page.request.post(f.base+'/dependency-changes/apply',{data:{...input,batchId:crypto.randomUUID(),previewToken:preview.previewToken}});expect(applied.ok(),await applied.text()).toBe(true);
+  const before=await read();let writes=0;page.on('request',request=>{if(request.url().endsWith('/dependency-changes/apply'))writes++;});
+  await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'graph',scopeType:'feature',scopeId:f.feature.id}));
+  const ready=()=>expect(page.locator('.dependency-canvas')).toHaveAttribute('data-layout-ready','true');await ready();
+  await graphToolbar(page,'编辑画布');await graphProperties(page,page.locator('.react-flow__node[data-id="'+id+'"] .dependency-card'));
+  const title=page.getByLabel('元素名称',{exact:true});await title.fill('');await title.blur();await expect(title).toHaveAttribute('aria-invalid','true');
+  await closeGraphProperties(page);await page.getByRole('button',{name:'上一级',exact:true}).click();await ready();
+  await graphToolbar(page,'保存修改');
+  await expect(title).toBeVisible();await expect(title).toHaveValue('');await expect(title).toHaveAttribute('aria-invalid','true');await expect(title).toBeFocused();expect(writes).toBe(0);
+  expect((await read()).milestones).toEqual(before.milestones);
+  await page.screenshot({path:info.outputPath('milestone-invalid-name.png'),animations:'disabled'});
+  await title.fill('已核对的项目集成评审');await title.blur();await closeGraphProperties(page);await openGraphDrafts(page);
+  await page.locator('.canvas-change-row').filter({hasText:'已核对的项目集成评审'}).getByRole('button',{name:'定位',exact:true}).click();await expect(title).toHaveValue('已核对的项目集成评审');expect(writes).toBe(0);
+  const saved=page.waitForResponse(response=>response.url().endsWith('/dependency-changes/apply'));await page.keyboard.press('Control+s');expect((await saved).status()).toBe(200);
+  const after=await read();expect(after.milestones).toEqual(before.milestones!.map(item=>item.id===id?{...item,title:'已核对的项目集成评审',version:item.version+1}:item));expect(writes).toBe(1);expect(after.dependencies).toEqual(before.dependencies);
 });
 
 for(const scope of ['项目','模板'] as const)for(const unfinished of [false,true])test('草稿重新接管：'+scope+(unfinished?'保留对方未完成输入':'采用对方已确认字段')+'，旧字段不回写',async({page,context})=>{
@@ -338,6 +363,8 @@ test('待核对通知丢失时，自动接手页面保存前仍读取原批次',
 });
 test('本机存储失败给出提示，保存失败保留当前编辑并且不写正式数据',async({page})=>{
  const {analysis}=await fixture(page);await page.addInitScript(()=>{Object.defineProperty(window,'indexedDB',{value:{open(){throw new DOMException('quota','QuotaExceededError');}}});});await openGraph(page,'/paths?view=project');await ready(page);const before=await analysis();await graphToolbar(page,'编辑画布');await graphProperties(page,page.locator('.react-flow__node .dependency-card').first());await page.getByLabel('元素名称').fill('内存中的修改');await page.getByLabel('元素名称').blur();await expect(page.locator('.page-toolbar-status')).toContainText('本机保存失败');await expect(page.getByLabel('保存修改')).toBeEnabled();await graphToolbar(page,'保存修改');await reopenGraphProperties(page);await expect(page.getByLabel('元素名称')).toHaveValue('内存中的修改');expect((await analysis()).requirements).toEqual(before.requirements);
+ await closeGraphProperties(page);await page.getByRole('link',{name:'个人设置',exact:true}).click();await expect(page.getByRole('heading',{name:'个人设置',exact:true})).toBeVisible();
+ await page.goBack();await ready(page);await reopenGraphProperties(page);await expect(page.getByLabel('元素名称')).toHaveValue('内存中的修改');expect((await analysis()).requirements).toEqual(before.requirements);
 });
 test('关闭浏览器后从同一本机草稿恢复内容、撤销和视口', async({},info)=>{
  test.setTimeout(90000);const baseURL=String(info.project.use.baseURL||'http://127.0.0.1:3211'),profile=info.outputPath('browser-profile');
@@ -433,7 +460,9 @@ test('路由等待期间连续微移不同节点不回退，Esc 取消后继续�
 test('深度交互：属性改名保留光标与中文输入确认，Esc 不提交名称',async({page})=>{
  const {a}=await fixture(page);await openGraph(page,'/templates?edit='+a.templateId);await ready(page);
  const node=page.locator('.react-flow__node').first();await graphProperties(page,node.locator('.dependency-card'));const title=page.getByLabel('元素名称');await title.focus();const position=await node.getAttribute('style');
- await title.fill('中文名称');await title.dispatchEvent('compositionstart');await title.dispatchEvent('keydown',{key:'Enter',code:'Enter',isComposing:true});await expect(title).toHaveValue('中文名称');await title.dispatchEvent('compositionend');
+ await title.fill('中文名称');await title.dispatchEvent('compositionstart');
+ for(const composing of [{isComposing:true},{keyCode:229}])for(const key of ['Enter','Escape']){await title.dispatchEvent('keydown',{key,code:key,...composing});await expect(title).toHaveValue('中文名称');await expect(title).toBeFocused();}
+ await title.dispatchEvent('compositionend');
  await page.keyboard.press('End');await page.keyboard.type(' A B');await expect(title).toHaveValue('中文名称 A B');expect(await node.getAttribute('style')).toBe(position);await page.keyboard.press('Escape');await expect(title).toHaveValue('方案交付');await closeGraphProperties(page);await expect(node).toContainText('方案交付');
 });
 
@@ -618,3 +647,59 @@ test('关系图余量抽屉、顶栏和交付条件在矩阵与窄屏内显示',
   await page.screenshot({path:info.outputPath('graph-panels-'+width+'.png')});await closeGraphProperties(page);
  }
 });
+
+for(const origin of ['当前画布','项目总图','项目清单'])test(`新增关系从${origin}定位后仍可编辑并保存`,async({page},info)=>{
+  const {project,a,b,analysis}=await fixture(page,false),before=await analysis();let writes=0;const errors:string[]=[];
+  page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/dependency-changes/apply'))writes++;});
+  await openGraph(page,'/paths?pathScope=all');await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();await graphToolbar(page,'编辑画布');
+  await page.locator('.react-flow__node[data-id="'+a.id+'"] .business-handle[data-side="bottom"]').click();await page.locator('.react-flow__node[data-id="'+b.id+'"] .dependency-card').click({position:{x:80,y:45}});
+  await expect(page.locator('[data-draft-stored="true"]')).toBeVisible();await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();
+  if(origin!=='当前画布'){await closeGraphProperties(page);await page.getByRole('button',{name:'上一级',exact:true}).click();if(origin==='项目清单')await page.getByRole('button',{name:'清单',exact:true}).click();}
+  await openGraphDrafts(page);await page.locator('.canvas-change-row').filter({hasText:'新增：接口基础交付 → 订单交付'}).getByRole('button',{name:'定位',exact:true}).click();
+  await expect(page.locator('.canvas-draft-details')).toHaveCount(0);await expect(page.locator('.delivery-condition')).toBeVisible();await expect(page.locator('.graph-relation-list')).toContainText('未保存');
+  expect(new URL(page.url()).searchParams.get('projectId')).toBe(project.id);expect(new URL(page.url()).searchParams.get('scopeId')).toBe(b.featureId);
+  const source=page.getByRole('combobox',{name:'等待什么完成',exact:true});await expect(source).toBeEnabled();await chooseOption(source,a.workItems[0].id);await expect(selectedValue(source)).toHaveValue(a.workItems[0].id);
+  expect(writes).toBe(0);expect(await analysis()).toEqual(before);
+  if(origin==='项目清单'){await page.setViewportSize({width:390,height:844});await expect(page.locator('.delivery-condition')).toBeVisible();await page.screenshot({path:info.outputPath('draft-relation-location-390.png'),animations:'disabled'});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);}
+  const response=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/dependency-changes/apply'));await graphToolbar(page,'保存修改');expect((await response).status()).toBe(200);expect(writes).toBe(1);
+  const after=await analysis(),added=after.dependencies.filter(d=>!before.dependencies.some(old=>old.id===d.id));expect(added).toHaveLength(1);expect(added[0]).toMatchObject({sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:null});
+  expect(after.dependencies.filter(d=>before.dependencies.some(old=>old.id===d.id))).toEqual(before.dependencies);expect(errors).toEqual([]);
+});
+
+test('新增项目里程碑立即可编辑，摘要定位和跨范围校验后只保存一次',async({page},info)=>{
+  const f=await phaseFixture(page),read=async()=>await(await page.request.get(f.base+'/path-analysis')).json() as PathAnalysis,before=await read();let writes=0;
+  page.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/dependency-changes/apply'))writes++;});
+  await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'graph',scopeType:'feature',scopeId:f.feature.id}));await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();
+  await graphToolbar(page,'编辑画布');await graphToolbar(page,'添加元素');await page.locator('.graph-elements').getByRole('button',{name:'里程碑',exact:true}).click();
+  const box=(await page.locator('.dependency-canvas').boundingBox())!;await page.mouse.click(box.x+box.width*.55,box.y+box.height*.7);await expect(page.locator('[data-draft-stored="true"]')).toBeVisible();
+  await expect(page.locator('.dependency-card').filter({hasText:'新里程碑'})).toBeVisible();
+  const title=page.getByLabel('元素名称',{exact:true});await expect(title).toHaveValue('新里程碑');expect(new URL(page.url()).searchParams.get('scopeType')).toBe('project');
+  await title.fill('项目创建交付点');await title.blur();await expect(page.locator('.dependency-card').filter({hasText:'项目创建交付点'})).toBeVisible();
+  await openGraphDrafts(page);await page.locator('.canvas-change-row').filter({hasText:'新增：项目创建交付点'}).getByRole('button',{name:'定位',exact:true}).click();
+  await expect(title).toHaveValue('项目创建交付点');const id=new URL(page.url()).searchParams.get('pathNode');expect(id).toBeTruthy();expect(writes).toBe(0);expect((await read()).milestones).toEqual(before.milestones);
+  await title.fill('');await title.blur();await expect(title).toHaveAttribute('aria-invalid','true');await closeGraphProperties(page);await graphToolbar(page,'保存修改');await expect(title).toHaveValue('');await expect(title).toHaveAttribute('aria-invalid','true');await expect(title).toBeFocused();expect(writes).toBe(0);
+  await title.fill('新项目交付点');await title.blur();await page.setViewportSize({width:390,height:844});await page.screenshot({path:info.outputPath('new-project-milestone-390.png'),animations:'disabled'});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  const response=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/dependency-changes/apply'));await graphToolbar(page,'保存修改');expect((await response).status()).toBe(200);expect(writes).toBe(1);
+  const after=await read();expect(after.milestones).toHaveLength((before.milestones?.length||0)+1);expect(after.milestones?.find(m=>m.id===id)).toMatchObject({title:'新项目交付点',requirementId:null});expect(after.dependencies).toEqual(before.dependencies);
+  await page.reload();await expect(page.locator('.react-flow__node[data-id="'+id+'"]')).toContainText('新项目交付点');expect((await read()).milestones).toEqual(after.milestones);
+});
+
+for(const other of [false,true])test('项目里程碑依赖从项目清单摘要定位 '+(other?'存在其他需求':'仅命名特性'),async({page},info)=>{
+  const f=await phaseFixture(page),id=crypto.randomUUID(),read=async()=>(await(await page.request.get(f.base+'/path-graph?view=features')).json()).analysis as PathAnalysis;
+  if(other){const response=await page.request.post('/api/requirements',{data:{projectId:f.projectId,title:'不归命名特性的需求',ownerId:f.testing.ownerId}});expect(response.ok(),await response.text()).toBe(true);}
+  const initial=await read(),input={expectedRevision:initial.revision,target:'project',changes:{add:[{clientId:crypto.randomUUID(),sourceRequirementId:f.direct.id,sourceWorkItemId:null,targetRequirementId:'',targetMilestoneId:id,targetWorkItemId:null}],remove:[],estimates:[],entities:[{entity:'milestone',op:'create',id,requirementId:null,data:{title:'项目集成评审',confirmationMode:'manual'}}]}};
+  const previewResponse=await page.request.post(f.base+'/dependency-changes/preview',{data:input});expect(previewResponse.ok(),await previewResponse.text()).toBe(true);const preview=await previewResponse.json();
+  const apply=await page.request.post(f.base+'/dependency-changes/apply',{data:{...input,batchId:crypto.randomUUID(),previewToken:preview.previewToken}});expect(apply.ok(),await apply.text()).toBe(true);
+  const before=await read();expect(before.featureContext?.overview.features.some(feature=>feature.kind==='other')).toBe(other);let writes=0;const errors:string[]=[];
+  page.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/dependency-changes/apply'))writes++;});page.on('pageerror',error=>errors.push(error.message));
+  await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'graph',scopeType:'feature',scopeId:f.feature.id}));await expect(page.locator('[data-layout-ready="true"]')).toBeVisible();await graphToolbar(page,'编辑画布');
+  await page.locator('.react-flow__node[data-id="'+f.testing.id+'"] .business-handle[data-side="bottom"]').click();await page.locator('.react-flow__node[data-id="'+id+'"] .dependency-card').click({position:{x:80,y:45}});
+  await expect(page.locator('[data-draft-stored="true"]')).toBeVisible();await closeGraphProperties(page);await page.getByRole('button',{name:'上一级',exact:true}).click();await page.getByRole('button',{name:'清单',exact:true}).click();await openGraphDrafts(page);
+  await page.locator('.canvas-change-row').filter({hasText:'新增：'+f.testing.title+' → 项目集成评审'}).getByRole('button',{name:'定位',exact:true}).click();
+  await expect(page.locator('.canvas-draft-details')).toHaveCount(0);await expect(page.locator('.delivery-condition')).toBeVisible();expect(new URL(page.url()).searchParams.get('scopeType')).toBe('project');
+  const source=page.getByRole('combobox',{name:'等待什么完成',exact:true});await expect(source).toBeEnabled();await chooseOption(source,f.testing.workItems[0].id);await expect(selectedValue(source)).toHaveValue(f.testing.workItems[0].id);expect(writes).toBe(0);expect((await read()).dependencies).toEqual(before.dependencies);
+  await page.setViewportSize({width:390,height:844});await page.screenshot({path:info.outputPath('project-milestone-relation-390.png'),animations:'disabled'});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  const response=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/dependency-changes/apply'));await graphToolbar(page,'保存修改');expect((await response).status()).toBe(200);expect(writes).toBe(1);
+  const after=await read(),added=after.dependencies.filter(d=>!before.dependencies.some(old=>old.id===d.id));expect(added).toHaveLength(1);expect(added[0]).toMatchObject({sourceRequirementId:f.testing.id,sourceWorkItemId:f.testing.workItems[0].id,targetMilestoneId:id});expect(after.dependencies.filter(d=>before.dependencies.some(old=>old.id===d.id))).toEqual(before.dependencies);expect(after.milestones).toEqual(before.milestones);expect(after.requirements).toEqual(before.requirements);expect(errors).toEqual([]);
+});
+

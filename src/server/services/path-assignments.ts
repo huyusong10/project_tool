@@ -8,7 +8,7 @@ export function refreshPathAssignments(snapshot:Pick<PathInput,'projectId'|'requ
   const people=new Map<string,{name:string;valid:number}>();
   for(const batch of chunkValues(ids,899)){
     const rows=getDatabaseContext().sqlite.prepare(`SELECT p.id,p.name,CASE WHEN pp.project_role IN ('member','manager') AND p.active=1 AND p.deleted_at IS NULL AND a.status='active' AND a.deleted_at IS NULL THEN 1 ELSE 0 END AS valid
-      FROM people p LEFT JOIN project_people pp ON pp.person_id=p.id AND pp.project_id=? LEFT JOIN accounts a ON a.person_id=p.id
+      FROM people p LEFT JOIN project_people pp ON pp.person_id=p.id AND pp.project_id=? LEFT JOIN accounts a INDEXED BY idx_accounts_person ON a.person_id=p.id
       WHERE p.id IN (${batch.map(()=>'?').join(',')})`).all(snapshot.projectId,...batch) as Array<{id:string;name:string;valid:number}>;
     for(const p of rows)people.set(p.id,p);
   }

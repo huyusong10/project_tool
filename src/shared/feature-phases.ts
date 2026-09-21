@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { ExecutionStage } from './execution-stage';
 
 const id = z.string().trim().min(1), version = z.number().int().positive();
-export const phaseDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v, '日期无效');
+export const phaseDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => !v.startsWith('0000-') && !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v, '日期无效');
 export const phaseInput = z.object({ referenceLinks:referenceLinksInput.optional(), id: id.optional(), expectedVersion: version.optional(), name: z.string().trim().min(1).max(200), scope: z.string().trim().max(10000).optional(), targetDate: phaseDate.nullable().optional(), note: z.string().trim().max(2000).optional(), sortOrder: z.number().int().min(0).optional(), reason: z.string().trim().max(2000).optional() }).strict();
 export const phaseCommand = z.object({ expectedVersion: version, reason: z.string().trim().max(2000).optional() }).strict();
 export const phaseStatusLabels = { planning: '待规划', not_started: '未开始', in_progress: '进行中', completed: '已完成' } as const;

@@ -23,6 +23,27 @@ let origin = '';
 let sequence = 0;
 const post = (url: string, payload: Record<string, unknown>) => app.inject({ method: 'POST', url, headers: { cookie }, payload });
 
+it('历史验收人引用阻止永久删除并返回可读冲突，资料不变', async () => {
+  const project = (await post('/api/projects', { name: `旧验收资料${++sequence}` })).json();
+  const person = (await post('/api/people', { projectId: project.id, name: `旧验收人${++sequence}` })).json();
+  const requirement = (await post('/api/requirements', { projectId: project.id, title: '迁移保留的验收资料' })).json();
+  const { sqlite } = await import('./support/database');
+  // The current API cannot assign this retired field; migration deliberately preserves its existing value.
+  sqlite.prepare('UPDATE requirements SET acceptance_owner_id=? WHERE id=?').run(person.id, requirement.id);
+  expect((await app.inject({ method: 'DELETE', url: '/api/people/' + person.id, headers: { cookie }, payload: { expectedUpdatedAt: person.updatedAt } })).statusCode).toBe(200);
+  const archived = await archivedPerson(person.id);
+  const facts = () => ({ person: sqlite.prepare('SELECT id,active,deleted_at,updated_at FROM people WHERE id=?').get(person.id),
+    account: sqlite.prepare('SELECT id,status,deleted_at,updated_at FROM accounts WHERE person_id=?').get(person.id),
+    reference: sqlite.prepare('SELECT acceptance_owner_id FROM requirements WHERE id=?').get(requirement.id),
+    audit: sqlite.prepare('SELECT COUNT(*) AS count FROM audit_logs').get() });
+  const before = facts();
+  const result = await permanentlyDelete('REST', person.id, archived.deletedAt);
+  expect(result.statusCode).toBe(409);
+  expect(result.body).toMatchObject({ code: 'DEPENDENCY_CONFLICT', error: '该人员仍被1条历史业务记录引用，只能保留归档' });
+  expect(facts()).toEqual(before);
+  expect(sqlite.pragma('foreign_key_check')).toEqual([]);
+});
+
 async function archivedPerson(id: string) {
   const response = await app.inject({ method: 'GET', url: '/api/archives', headers: { cookie } });
   expect(response.statusCode, response.body).toBe(200);

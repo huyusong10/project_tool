@@ -60,7 +60,7 @@
   .ui-button[data-width='filter'] { width: 148px; min-width: 148px; }
   .ui-button[data-width='filter'] > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ui-button[data-width='block'] { width: 100%; min-width: 0; }
-  .ui-button[data-wrap] { max-width: 100%; white-space: normal; }
+  .ui-button[data-wrap] { height: auto; max-width: 100%; padding-block: 8px; white-space: normal; overflow-wrap: anywhere; }
   /* Shared toolbar slots keep the same footprint on every page. */
   .page-editor-primary > .ui-button, .page-editor-primary .topbar-menu-button { width: 100%; min-width: 0; height: var(--toolbar-control, 36px); min-height: var(--toolbar-control, 36px); padding-inline: 4px; }
   .page-toolbar[data-narrow='true'] .ui-button:not([data-variant='menu']):not([data-variant='link']):not([data-size='compact']) { --button-height: 32px; }
@@ -89,4 +89,7 @@
   .ui-button[data-busy]::after { content: ''; position: absolute; width: 14px; height: 14px; border: 2px solid var(--button-ink); border-right-color: transparent; border-radius: 50%; animation: button-busy .7s linear infinite; }
   @keyframes button-busy { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .ui-button { transition: none; } .ui-button[data-busy]::after { animation: none; } }
+  @media (forced-colors: active) {
+    .view-tabs .ui-button[aria-pressed='true'] { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+  }
 }

@@ -107,7 +107,7 @@ async function reconnect(page: Page) {
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
 }
 
-test('批量添加成员提交中保持窗口与选择，部分失败只重试失败成员', async ({ page }) => {
+test('成员搜索不提交，批量添加保持选择且部分失败只重试失败成员', async ({ page }) => {
   await mockAccounts(page);
   const candidates = [people[2], { ...people[2], id: 'u4', name: '额外成员' }];
   const added = new Set<string>();
@@ -140,9 +140,16 @@ test('批量添加成员提交中保持窗口与选择，部分失败只重试�
     const dialog = page.getByRole('dialog', { name: '添加项目成员' });
     await dialog.locator('.member-candidate-option').filter({ hasText: '新成员' }).click();
     await dialog.locator('.member-candidate-option').filter({ hasText: '额外成员' }).click();
+    const search = dialog.getByRole('searchbox');
+    await search.fill('成员');
+    await search.press('Enter');
+    await expect(search).toBeEnabled();
+    await expect(search).toBeFocused();
+    expect(requests).toEqual([]);
     const role = dialog.getByLabel('加入后的项目角色');
     await chooseOption(role, 'manager');
-    await dialog.getByRole('button', { name: '添加 2 人到项目' }).click();
+    await dialog.getByRole('button', { name: '添加 2 人到项目' }).focus();
+    await page.keyboard.press('Enter');
     await expect.poll(() => requests.length).toBe(1);
     await page.keyboard.press('Escape');
     await expect(dialog).toBeVisible();
@@ -413,6 +420,14 @@ test('项目角色响应未知且成员回读失败时锁定旧权限', async ({
 });
 
 test('开通账号连点只提交一次并保留成功凭据', async ({ page }) => {
+  await page.addInitScript(()=>{
+    Object.defineProperty(navigator,'clipboard',{configurable:true,value:undefined});
+    document.execCommand=()=>{
+      const input=document.activeElement as HTMLTextAreaElement;
+      document.body.dataset.copiedResult=input.value.slice(input.selectionStart,input.selectionEnd);
+      return true;
+    };
+  });
   await mockAccounts(page);
   let releaseOpen!: () => void;
   const waitingOpen = new Promise<void>((resolve) => { releaseOpen = resolve; });
@@ -444,6 +459,16 @@ test('开通账号连点只提交一次并保留成功凭据', async ({ page }) 
   const result = page.getByRole('dialog', { name: '账号已开通', exact: true });
   await expect(result).toBeVisible();
   await expect(result).toContainText('888888');
+  const copy=result.getByRole('button',{name:'复制结果',exact:true});
+  await copy.focus();await page.keyboard.press('Enter');
+  await expect(result.getByText('已复制',{exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>document.body.dataset.copiedResult)).toBe(await result.locator('code').textContent());
+  await expect.soft(copy,'复制后保留结果操作焦点').toBeFocused();
+  await page.evaluate(()=>{document.execCommand=()=>false;});
+  await copy.focus();await page.keyboard.press('Enter');
+  await expect(result.getByText('复制失败，请手动选择',{exact:true})).toBeVisible();
+  await expect.soft(result.getByText('已复制',{exact:true}),'失败不能继续显示已复制').toHaveCount(0);
+  await expect.soft(copy,'复制失败后仍可继续操作').toBeFocused();
 });
 
 test('开通账号已落库但响应异常时核对最新账号并显示凭据', async ({ page }) => {

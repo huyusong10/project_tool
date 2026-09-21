@@ -4,9 +4,10 @@ import * as projectsApi from '../features/projects/api';
 import * as peopleApi from '../features/people/api';
 import * as requirementsApi from '../features/requirements/api';
 import { ReferenceLinksEditor } from './ReferenceLinks';
-import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
+import { readReferenceLinks, referenceLinksEqual, type ReferenceLink } from '../../shared/reference-links';
 import { useDeliveryForm } from '../use-delivery-form';
 import { Button } from './Button';
+import { Select } from './Select';
 import { assertCleanProjectDraft } from '../use-graph-draft';
 import { useSession } from '../app-context';
 import { migrateFeatureFields } from "../feature-storage-migration";
@@ -16,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useProjects } from "../app-context";
+import { usePageResources } from '../page-context';
 import { invalidateProjectViews, invalidateRequirementViews, keys } from "../query-keys";
 import type { Person, Project, Requirement, WorkItemTemplate } from "../types";
 import { FormDisclosure, FormError, FormField, FormSubmitActions } from "./Form";
@@ -81,6 +83,7 @@ export function ProjectForm({
   const client = useQueryClient();
   const toast = useToast();
   const { projects } = useProjects();
+  const { projects: projectsQuery } = usePageResources();
   const submitting = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -149,7 +152,35 @@ export function ProjectForm({
     },
     onSettled: () => { submitting.current = false; },
   });
-  const checkCreatedProject=async()=>{if(!createRecheck||checkingCreate)return;setCheckingCreate(true);setCreateCheckError('');try{const latest=await projectsApi.projects<Project[]>({readOnly:true});client.setQueryData(keys.projects,latest);const baseline=new Set(createRecheck.baselineIds),draft=createRecheck.draft,created=latest.filter(item=>!baseline.has(item.id)&&item.name===canonicalizeLabel(draft.name)&&item.status===draft.status&&item.plannedStart===(draft.plannedStart||null)&&item.plannedEnd===(draft.plannedEnd||null)&&!item.isSample);if(created.length===1){onCreateRecheckChange?.(null);invalidateProjectViews(client);toast.success('已核对最新状态：项目已创建');onClose();return;}if(created.length===0){onCreateRecheckChange?.(null);mutation.reset();setCreateCheckError('未发现本次新增项目，已恢复原输入，可以重新提交。');return;}setCreateCheckError('发现多个可能的新项目，暂不解除锁定，请核对项目中心和操作记录。');}catch(error){setCreateCheckError(error instanceof Error?error.message:'项目列表读取失败');}finally{setCheckingCreate(false);}};
+  const checkCreatedProject = async () => {
+    if (!createRecheck || checkingCreate) return;
+    setCheckingCreate(true);
+    setCreateCheckError('');
+    try {
+      const { data: latest } = await projectsQuery.refetch({ throwOnError: true });
+      if (!latest) throw new Error('项目列表读取失败');
+      const baseline = new Set(createRecheck.baselineIds), draft = createRecheck.draft;
+      const created = latest.filter(item => !baseline.has(item.id) && item.name === canonicalizeLabel(draft.name) && item.status === draft.status && item.plannedStart === (draft.plannedStart || null) && item.plannedEnd === (draft.plannedEnd || null) && !item.isSample);
+      if (created.length === 1) {
+        onCreateRecheckChange?.(null);
+        invalidateProjectViews(client);
+        toast.success('已核对最新状态：项目已创建');
+        onClose();
+        return;
+      }
+      if (created.length === 0) {
+        onCreateRecheckChange?.(null);
+        mutation.reset();
+        setCreateCheckError('未发现本次新增项目，已恢复原输入，可以重新提交。');
+        return;
+      }
+      setCreateCheckError('发现多个可能的新项目，暂不解除锁定，请核对项目中心和操作记录。');
+    } catch (error) {
+      setCreateCheckError(error instanceof Error ? error.message : '项目列表读取失败');
+    } finally {
+      setCheckingCreate(false);
+    }
+  };
   return (
     <Modal title={project ? "编辑项目" : "新建项目"} closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
     {!templatesReady && templatesQuery.error ? <EmptyState title="项目配置加载失败" detail={templatesQuery.error.message || "暂时无法读取默认流程，请稍后重试。"} action={<Button variant="secondary" type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</Button>} />
@@ -254,7 +285,7 @@ export function RequirementForm({
     onError: error=>{if(!isWriteOutcomeUnknown(error))onRecheckChange(null);},
     onSettled: () => { submitting.current = false; },
   });
-  const matchesDraft=(item:Requirement,draft:RequirementFormInput)=>item.projectId===projectId&&item.title===canonicalizeLabel(draft.title)&&item.ownerId===(draft.ownerId||null)&&item.background===(draft.background.trim()||null)&&item.acceptanceCriteria===(draft.acceptanceCriteria.trim()||null)&&(draft.referenceLinks!==undefined?JSON.stringify(readReferenceLinks(item.referenceLinks))===JSON.stringify(readReferenceLinks(draft.referenceLinks)):item.referenceUrl===(draft.referenceUrl.trim()||null))&&(!draft.featureId||item.featureId===draft.featureId)&&(item.phaseId||null)===(draft.phaseId||null)&&(!draft.templateId||item.templateId===draft.templateId)&&(!draft.plannedStart||item.plannedStart===draft.plannedStart)&&(!draft.plannedEnd||item.plannedEnd===draft.plannedEnd);
+  const matchesDraft=(item:Requirement,draft:RequirementFormInput)=>item.projectId===projectId&&item.title===canonicalizeLabel(draft.title)&&item.ownerId===(draft.ownerId||null)&&item.background===(draft.background.trim()||null)&&item.acceptanceCriteria===(draft.acceptanceCriteria.trim()||null)&&(draft.referenceLinks!==undefined?referenceLinksEqual(item.referenceLinks,draft.referenceLinks):item.referenceUrl===(draft.referenceUrl.trim()||null))&&(!draft.featureId||item.featureId===draft.featureId)&&(item.phaseId||null)===(draft.phaseId||null)&&(!draft.templateId||item.templateId===draft.templateId)&&(!draft.plannedStart||item.plannedStart===draft.plannedStart)&&(!draft.plannedEnd||item.plannedEnd===draft.plannedEnd);
   const checkLatest=async()=>{if(!recheck||checking)return;setChecking(true);setCheckError('');try{const latest=await requirementsApi.requirementsQuery<Requirement[]>(encodeURIComponent(projectId), {readOnly:true});client.setQueryData([...keys.requirements,projectId],latest);const baseline=new Set(recheck.baselineIds),created=latest.filter(item=>!baseline.has(item.id)&&matchesDraft(item,recheck.draft));if(created.length===1){onRecheckChange(null);invalidateRequirementViews(client,created[0].id);toast.success('已核对最新状态：需求已创建');clearLocal();onClose();return;}if(created.length===0){onRecheckChange(null);mutation.reset();setCheckError('未发现本次新增需求，已恢复原输入，可以重新提交。');return;}setCheckError('发现多个可能的新需求，暂不解除锁定，请核对需求列表和操作记录。');}catch(error){setCheckError(error instanceof Error?error.message:'需求列表读取失败');}finally{setChecking(false);}};
   return (
     <Modal title="新建需求" closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
@@ -280,11 +311,11 @@ export function RequirementForm({
       </FormField>
       <FormDisclosure label="流程与排期" hint={templateId?'已选流程：'+(templates.find(t=>t.id===templateId)?.name||'项目默认流程'):'未选流程，直接执行；可稍后拆分'}>
         <FormField label="流程设计" full>
-          <select name="templateId" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
+          <Select name="templateId" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
             <option value="">暂不选择流程</option>
             {templateId && !templates.some((template) => template.id === templateId) && <option value={templateId}>{templatesQuery.data === undefined ? "项目默认流程（正在加载）" : "已不可用的流程（请重新选择）"}</option>}
             {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-          </select>
+          </Select>
         </FormField>
         <div className="field field-full">
           <span>排期方式</span>

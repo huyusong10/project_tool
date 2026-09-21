@@ -46,7 +46,7 @@ export function normalizeSearchText(value: unknown) {
     .replace(allFormatCharacters, "")
     .replace(/\s+/gu, " ")
     .trim()
-    .toLocaleLowerCase("zh-CN");
+    .toLowerCase();
 }
 
 export type SearchField = string | null | undefined | {

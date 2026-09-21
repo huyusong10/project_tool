@@ -48,11 +48,11 @@ const auditSelect = `SELECT l.id, l.actor_type AS actorType, l.actor_id AS actor
   actor_token.name AS tokenName, l.action, l.entity_type AS entityType, l.entity_id AS entityId,
   l.project_id AS projectId, audit_project.name AS projectName,
   l.summary, l.created_at AS createdAt`;
-const auditFrom = `FROM audit_logs l
-  LEFT JOIN accounts user_account ON l.actor_type='user' AND user_account.id=l.actor_id
+const auditJoins = `LEFT JOIN accounts user_account ON l.actor_type='user' AND user_account.id=l.actor_id
   LEFT JOIN api_tokens actor_token ON l.actor_type='token' AND actor_token.id=l.actor_id
   LEFT JOIN accounts token_account ON token_account.id=actor_token.account_id
   LEFT JOIN projects audit_project ON audit_project.id=l.project_id`;
+const auditFrom = `FROM audit_logs l ${auditJoins}`;
 
 export function listAudit(limit = 100, projectId?: string) {
   const normalizedLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 500) : 100;
@@ -76,9 +76,10 @@ export function searchAudit(filters: { q?: string; actorType?: string; action?: 
   if (q) {
     where.push(`(search_plain_match(l.summary, ?)=1 OR search_plain_match(COALESCE(l.entity_id, ''), ?)=1
       OR search_plain_match(COALESCE(l.actor_id, ''), ?)=1 OR search_plain_match(l.action, ?)=1
-      OR search_score(COALESCE(user_account.username, ''), ?)>0
-      OR search_score(COALESCE(token_account.username, ''), ?)>0
-      OR search_score(COALESCE(actor_token.name, ''), ?)>0)`);
+      OR (l.actor_type='user' AND l.actor_id IN (SELECT id FROM accounts WHERE search_score(username, ?)>0))
+      OR (l.actor_type='token' AND l.actor_id IN (SELECT t.id FROM api_tokens t
+        LEFT JOIN accounts a ON a.id=t.account_id
+        WHERE search_score(COALESCE(a.username, ''), ?)>0 OR search_score(t.name, ?)>0)))`);
     params.push(q, q, q, q, q, q, q);
   }
   if (filters.actorType) { where.push('l.actor_type=?'); params.push(filters.actorType); }
@@ -90,8 +91,10 @@ export function searchAudit(filters: { q?: string; actorType?: string; action?: 
   const page = Math.max(1, Number(filters.page) || 1);
   const pageSize = Math.min(100, Math.max(20, Number(filters.pageSize) || 50));
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const total = row<{ count: number }>(`SELECT COUNT(*) AS count ${auditFrom} ${clause}`, ...params)?.count || 0;
-  const items = rows(`${auditSelect} ${auditFrom} ${clause}
-    ORDER BY l.created_at DESC, l.rowid DESC LIMIT ? OFFSET ?`, ...params, pageSize, (page - 1) * pageSize);
+  const total = row<{ count: number }>(`SELECT COUNT(*) AS count FROM audit_logs l ${clause}`, ...params)?.count || 0;
+  // 名称匹配按账号和Token查询；日志先分页，再读取当前页的人员与项目名称。
+  const items = rows(`${auditSelect} FROM (SELECT l.rowid, l.* FROM audit_logs l ${clause}
+      ORDER BY l.created_at DESC, l.rowid DESC LIMIT ? OFFSET ?) l ${auditJoins}
+      ORDER BY l.created_at DESC, l.rowid DESC`, ...params, pageSize, (page - 1) * pageSize);
   return { items, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), snapshot };
 }

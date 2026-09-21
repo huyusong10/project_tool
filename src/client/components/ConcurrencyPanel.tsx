@@ -1,36 +1,46 @@
-import * as peopleApi from '../features/people/api';
 import * as reportingApi from '../features/reporting/api';
 import { Button } from './Button';
+import { Avatar } from './Avatar';
 import { motionScrollBehavior } from "../motion";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { LocateFixed } from "lucide-react";
 
 import { useBusinessDate, useProjects } from "../app-context";
 import { keys } from "../query-keys";
+import { usePageSearchParams } from "../use-page-view";
 import type { PeopleConcurrency, Person } from "../types";
 import { addCalendarDays } from "../../shared/domain";
 import { EmptyState } from "./Feedback";
+import { isTemporaryReadError } from '../api';
 
-export function ConcurrencyPanel() {
+export function ConcurrencyPanel({ people }: { people: Person[] }) {
+  const client = useQueryClient();
   const { selectedProjectId } = useProjects();
   const { businessDate } = useBusinessDate();
-  const [personId, setPersonId] = useState("");
-  const [jobTitle, setJobTitle] = useState("");
+  const [viewParams, setViewParams] = usePageSearchParams(['analysisPersonId', 'analysisJobTitle']);
+  const personId = viewParams.get('analysisPersonId') || '';
+  const jobTitle = viewParams.get('analysisJobTitle') || '';
+  const setFilters = (nextJobTitle: string, nextPersonId: string) => {
+    setViewParams(current => {
+      const next = new URLSearchParams(current);
+      if (nextJobTitle) next.set('analysisJobTitle', nextJobTitle); else next.delete('analysisJobTitle');
+      if (nextPersonId) next.set('analysisPersonId', nextPersonId); else next.delete('analysisPersonId');
+      return next;
+    });
+  };
   const matrixScrollRef = useRef<HTMLDivElement>(null);
+  const matrixScrollLeftRef = useRef(0);
   const [matrixViewportWidth, setMatrixViewportWidth] = useState(0);
-  const { data: people = [] } = useQuery({
-    queryKey: [...keys.people, selectedProjectId],
-    queryFn: ({ signal }) => peopleApi.peopleQuery<Person[]>(encodeURIComponent(selectedProjectId), { signal }),
-    enabled: Boolean(selectedProjectId),
-  });
   const jobTitles = useMemo(() => [...new Set(people.map((person) => person.jobTitle).filter(Boolean) as string[])].sort(), [people]);
+  const filteredPeople = people.filter((person) => !jobTitle || person.jobTitle === jobTitle);
+  const analysisKey = [...keys.peopleConcurrency, selectedProjectId, personId, jobTitle, businessDate];
   const analysis = useInfiniteQuery({
-    queryKey: [...keys.peopleConcurrency, selectedProjectId, personId, jobTitle, businessDate],
+    queryKey: analysisKey,
     initialPageParam: null as string | null,
     enabled: Boolean(selectedProjectId),
-    queryFn: ({ pageParam, signal }) => {
+    queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams();
       params.set("projectId", selectedProjectId);
       if (personId) params.set("personId", personId);
@@ -39,8 +49,14 @@ export function ConcurrencyPanel() {
         params.set("from", pageParam);
         params.set("to", addCalendarDays(pageParam, 6));
       }
-      return reportingApi.analyticsPeopleConcurrencyQuery<PeopleConcurrency>(params, { signal });
+      try {
+        return await reportingApi.analyticsPeopleConcurrencyQuery<PeopleConcurrency>(params, { signal });
+      } catch (error) {
+        if (!signal.aborted && !isTemporaryReadError(error)) client.setQueryData(analysisKey, null);
+        throw error;
+      }
     },
+    retry: (failureCount, error) => failureCount < 1 && isTemporaryReadError(error),
     getNextPageParam: (lastPage) => addCalendarDays(lastPage.to, 1),
   });
   const pages = useMemo(() => analysis.data?.pages || [], [analysis.data?.pages]);
@@ -96,27 +112,29 @@ export function ConcurrencyPanel() {
   useEffect(() => {
     const element = matrixScrollRef.current;
     if (!element) return undefined;
+    matrixScrollLeftRef.current = element.scrollLeft;
     const updateWidth = () => setMatrixViewportWidth(element.clientWidth);
     updateWidth();
     const observer = new ResizeObserver(updateWidth);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [analysisUnavailable]);
   useEffect(() => {
+    matrixScrollLeftRef.current = 0;
     matrixScrollRef.current?.scrollTo({ left: 0 });
   }, [firstDate, jobTitle, personId]);
 
   return <div className="people-analysis">
       <div className="filter-bar human-filter-bar">
-      <select value={jobTitle} onChange={(event) => { setJobTitle(event.target.value); setPersonId(""); }}><option value="">全部岗位</option>{jobTitles.map((title) => <option value={title} key={title}>{title}</option>)}</select>
-      <select value={personId} onChange={(event) => setPersonId(event.target.value)}><option value="">全部人员</option>{people.filter((person) => !jobTitle || person.jobTitle === jobTitle).map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
+      <select aria-label="分析岗位" value={jobTitle} onChange={(event) => setFilters(event.target.value, '')}><option value="">全部岗位</option>{jobTitle&&!jobTitles.includes(jobTitle)&&<option value={jobTitle}>{jobTitle}</option>}{jobTitles.map((title) => <option value={title} key={title}>{title}</option>)}</select>
+      <select aria-label="分析人员" value={personId} onChange={(event) => setFilters(jobTitle, event.target.value)}><option value="">全部人员</option>{personId&&!filteredPeople.some(person=>person.id===personId)&&<option value={personId}>{people.find(person=>person.id===personId)?.name||'所选人员（不在当前列表）'}</option>}{filteredPeople.map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select>
       <span>今天及历史看实际，未来看计划</span>
     </div>
     {analysisUnavailable ? <EmptyState title="人力分析加载失败" detail={analysis.error?.message || "暂时无法读取人员并发数据。"} action={<Button variant="secondary" className="ghost-button" disabled={analysis.isFetching} onClick={() => void analysis.refetch()}>重新加载</Button>} /> : <>
     {analysis.error && analysis.data && <div className="warning-banner">人力分析刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={analysis.isFetching} onClick={() => void analysis.refetch()}>重新加载</Button></div>}
     {currentTop.length > 0 && <section className="human-leaders" aria-label="今日工作最多人员">
       <strong>今日工作较多</strong>
-      <div>{currentTop.map((person) => <article key={person.id}><span className="person-avatar">{person.name.slice(-1)}</span><div><b>{person.name}</b><small>{person.jobTitle || "岗位未设置"}{person.externalCurrentCount ? ` · 外部${person.externalCurrentCount}项` : ""}</small></div><em className={`load-${Math.min(person.currentCount, 3)}`}>{person.currentCount}项</em></article>)}</div>
+      <div tabIndex={0}>{currentTop.map((person) => <article key={person.id}><Avatar name={person.name} className="person-avatar"/><div><b title={person.name}>{person.name}</b><small title={person.jobTitle || "岗位未设置"}>{person.jobTitle || "岗位未设置"}{person.externalCurrentCount ? ` · 外部${person.externalCurrentCount}项` : ""}</small></div><em className={`load-${Math.min(person.currentCount, 3)}`}>{person.currentCount}项</em></article>)}</div>
     </section>}
     <div className="human-matrix-frame">
       <header className="human-matrix-heading">
@@ -125,7 +143,9 @@ export function ConcurrencyPanel() {
       </header>
       <div className="human-matrix-scroll" ref={matrixScrollRef} onScroll={(event) => {
         const element = event.currentTarget;
-        if (element.scrollLeft + element.clientWidth >= element.scrollWidth - 140 && !analysis.isFetchingNextPage) void analysis.fetchNextPage();
+        const movingRight = element.scrollLeft > matrixScrollLeftRef.current;
+        matrixScrollLeftRef.current = element.scrollLeft;
+        if (movingRight && element.scrollLeft + element.clientWidth >= element.scrollWidth - 140 && !analysis.isFetchingNextPage) void analysis.fetchNextPage();
       }}>
         <div className="human-matrix-content">
           <table className="human-continuous-table" style={{ width: tableWidth }} aria-label="人员工作日并发度矩阵">
@@ -135,8 +155,8 @@ export function ConcurrencyPanel() {
               return <th className={`${date === asOfDate ? "is-today" : ""}${parsed.getDay() === 1 && date !== asOfDate ? " is-week-start" : ""}`} key={date}><span>{["日", "一", "二", "三", "四", "五", "六"][parsed.getDay()]}</span>{date.slice(5).replace("-", "/")}</th>;
             })}</tr></thead>
             <tbody>
-              {matrixData.people.map((person) => <tr key={person.id}><td><strong>{person.name}</strong><small>{person.jobTitle || "—"}{person.externalCurrentCount ? ` · 外部${person.externalCurrentCount}项` : ""}</small></td>{person.days.map((day) => <td className={parseISO(day.date).getDay() === 1 && day.date !== asOfDate ? "is-week-start" : ""} key={day.date}><span className={`heat heat-${Math.min(day.count, 3)}`} title={day.items.map((item) => `${item.requirementTitle} · ${item.title}`).join("\n")}>{day.count || ""}</span></td>)}</tr>)}
-              {!matrixData.people.length && !analysis.isLoading && <tr className="human-empty-row"><td colSpan={matrixData.dates.length + 1}><strong>当前区间暂无安排</strong><span>向右加载后续日期，或调整人员和岗位筛选。</span></td></tr>}
+              {matrixData.people.map((person) => <tr key={person.id}><td><strong title={person.name}>{person.name}</strong><small title={person.jobTitle || "岗位未设置"}>{person.jobTitle || "—"}{person.externalCurrentCount ? ` · 外部${person.externalCurrentCount}项` : ""}</small></td>{person.days.map((day) => <td className={parseISO(day.date).getDay() === 1 && day.date !== asOfDate ? "is-week-start" : ""} key={day.date}><span className={`heat heat-${Math.min(day.count, 3)}`} title={day.items.map((item) => `${item.requirementTitle} · ${item.title}`).join("\n")}>{day.count || ""}</span></td>)}</tr>)}
+              {!matrixData.people.length && !analysis.isLoading && <tr className="human-empty-row"><td colSpan={matrixData.dates.length + 1}><div className="human-empty-message" style={{width:matrixViewportWidth||undefined}}><strong>当前区间暂无安排</strong><span>向右加载后续日期，或调整人员和岗位筛选。</span></div></td></tr>}
             </tbody>
           </table>
           <Button variant="secondary" size="small" className="human-next-window" disabled={analysis.isFetchingNextPage} onClick={() => void analysis.fetchNextPage()}>{analysis.isFetchingNextPage ? "加载中" : "加载后续7天"}</Button>

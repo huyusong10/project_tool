@@ -28,6 +28,10 @@ export function readReferenceLinks(value:unknown,legacy?:string|null):ReferenceL
   return result;
 }
 export function normalizeReferenceLinks(value:unknown):ReferenceLink[]{return readReferenceLinks(referenceLinksInput.parse(value));}
+export function referenceLinksEqual(left:unknown,right:unknown):boolean {
+  const a=referenceLinksInput.safeParse(left??[]),b=referenceLinksInput.safeParse(right??[]);
+  return a.success&&b.success&&JSON.stringify(readReferenceLinks(a.data))===JSON.stringify(readReferenceLinks(b.data));
+}
 export function requirementReferenceLinks(input:{referenceLinks?:unknown;referenceUrl?:unknown},current?:{referenceLinks?:unknown;referenceUrl?:string|null}) {
   if(input.referenceLinks!==undefined)return normalizeReferenceLinks(input.referenceLinks);
   const links=readReferenceLinks(current?.referenceLinks,current?.referenceUrl);

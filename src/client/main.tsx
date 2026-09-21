@@ -6,6 +6,7 @@ import { App } from './App';
 import { ToastProvider } from './components/Toast';
 import { initTheme } from './theme';
 import { initMotion } from './motion';
+import { keys } from './query-keys';
 import './tokens.css';
 import './styles.css';
 import './themes.css';
@@ -21,6 +22,10 @@ const queryClient = new QueryClient({
     queries: { retry: 1, refetchOnWindowFocus: false },
   },
 });
+// 返回标签时核对登录身份，沿用会话变化时已有的缓存清理。
+queryClient.setQueryDefaults(keys.session, { refetchOnWindowFocus: true });
+// 个人页不绑定项目，独立读取本人工作；隐藏页面时使用查询库默认的暂停轮询行为。
+queryClient.setQueryDefaults(keys.myWork, { refetchOnWindowFocus: true, refetchInterval: 60_000 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

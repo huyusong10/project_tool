@@ -2,6 +2,7 @@ import * as issuesApi from '../features/issues/api';
 import { useDeliveryForm } from '../use-delivery-form';
 import { useProjects } from '../app-context';
 import { Button } from './Button';
+import { isAssignablePerson } from '../assignable-people';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, CheckCircle2, ChevronDown, Search } from "lucide-react";
@@ -11,7 +12,7 @@ import { invalidateIssueViews, keys } from "../query-keys";
 import { cacheResourceUpdate, readResourceFresh, ResourceReadInvalidatedError } from "../use-resource-query";
 import type { Issue, IssuePage, Person, Requirement } from "../types";
 import { issueStatusLabels } from "../../shared/domain";
-import { canonicalizeContent, canonicalizeLabel, rankSearchItems } from "../../shared/search";
+import { canonicalizeContent, canonicalizeLabel, matchesSearch, rankSearchItems } from "../../shared/search";
 import { FieldShell } from "./LayoutPrimitives";
 import { StatusBadge } from "./Badge";
 import { ProgressInput } from "./ProgressInput";
@@ -21,8 +22,8 @@ import { AnchoredPopover } from './inline-edit/popover';
 
 type BusyChange = (pending: boolean) => void;
 
-/** 草稿使用自己的版本；刷新只更新基线，不覆盖已输入字段。 */
-export function useIssueDraft(issue: Issue | undefined, onPendingChange?: BusyChange, action='edit', projectId?:string) {
+/** 草稿使用自己的版本；重读时由表单保留本地修改。 */
+export function useIssueDraft(issue: Issue | undefined, onPendingChange?: BusyChange, action='edit', projectId?:string, onRead?: (previous:Issue,latest:Issue)=>void) {
   const client = useQueryClient();
   const {selectedProjectId}=useProjects();
   const [memory,setMemory,clearMemory]=useDeliveryForm(issue?.projectId||projectId||selectedProjectId,(issue?.id||'new')+':issue-meta:'+action,()=>({baseline:issue,dirty:false,needsRefresh:false}));
@@ -55,6 +56,7 @@ export function useIssueDraft(issue: Issue | undefined, onPendingChange?: BusyCh
     try {
       const latest = await readResourceFresh<Issue>(client, keys.issue(issue.id), signal => issuesApi.issuesById<Issue>(issue.id, { signal }), () => mounted.current);
       if (!mounted.current) return latest;
+      onRead?.(baseline || issue,latest);
       setBaseline(latest); setNeedsRefresh(false); setRefreshed(true); setUnavailable(false);
       return latest;
     } catch (caught) {
@@ -123,7 +125,7 @@ export function DraftNotice({ editor, warning }: { editor: ReturnType<typeof use
   return <>
     {message && <p className="form-error field-full" role="alert">{message}</p>}
     {(message || editor.refreshed) && editor.baseline && <div className="field-full">
-      {editor.refreshed && <p className="field-help">已读取最新问题，输入保持不变；请核对后再次保存。</p>}
+      {editor.refreshed && <p className="field-help">已读取最新问题，保留已修改的输入；请核对后再次保存。</p>}
       <p className="field-help">当前核对记录：{editor.baseline.title} · {issueStatusLabels[editor.baseline.status as keyof typeof issueStatusLabels]} · {editor.baseline.progress}% · 负责人 {editor.baseline.ownerName || "未分配"} · 目标 {editor.baseline.dueDate || "未设置"}</p>
       <details className="field-help"><summary>查看当前问题信息</summary><p>影响：{editor.baseline.impact || "未填写"}</p><p>关联：{editor.baseline.requirementTitle || editor.baseline.sourceRef || "公共问题"} · 优先级 {editor.baseline.priority}</p><p>提出人：{editor.baseline.reporter || "未指定"} · 发现日期 {editor.baseline.discoveredAt}</p></details>
     </div>}
@@ -156,15 +158,23 @@ function SearchSelectField({
   helper?: string;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => searchRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
   const selected = options.find((option) => option.value === value);
+  const displayLabel = selected?.label || (value ? `已不可用的${label}（请重新选择）` : placeholder);
   const pinned = options.filter((option) => pinnedValues.includes(option.value));
   const matched = rankSearchItems(
     options.filter((option) => !pinnedValues.includes(option.value)),
     query,
     (option) => [{ text: option.label, weight: 100 }, { text: option.description, weight: 20 }],
   );
+  const noMatches = !!query.trim() && !matched.length && !pinned.some(option => matchesSearch([option.label, option.description], query));
   const visibleOptions = [...pinned];
   if (selected && !visibleOptions.some((option) => option.value === selected.value)) visibleOptions.push(selected);
   for (const option of matched) {
@@ -181,16 +191,16 @@ function SearchSelectField({
   return <FieldShell label={label} help={helper} className="issue-search-select-field" asLabel={false}>
     <div className={`issue-search-select${open ? " is-open" : ""}`}>
       <input type="hidden" name={name} value={value} readOnly />
-      <button ref={triggerRef} type="button" aria-haspopup="listbox" aria-expanded={open} aria-label={`${label}：${selected?.label || value || placeholder}`} onClick={() => { setOpen((current) => !current); setQuery(""); }}>
-        <span className={!selected && !value ? "is-placeholder" : ""}>{selected?.label || value || placeholder}</span><ChevronDown size={15} />
+      <button ref={triggerRef} type="button" aria-haspopup="listbox" aria-expanded={open} aria-label={`${label}：${displayLabel}`} onClick={() => { setOpen((current) => !current); setQuery(""); }}>
+        <span className={!selected && !value ? "is-placeholder" : ""}>{displayLabel}</span><ChevronDown size={15} />
       </button>
       <AnchoredPopover anchorRef={triggerRef} open={open} onOutside={() => close()} onEscape={() => close(true)} width={360} matchAnchor role="presentation" className="issue-search-select-menu">
-        <label><Search size={14} /><input autoFocus value={query} placeholder={searchPlaceholder || `搜索${label}`} onChange={(event) => setQuery(event.target.value)} /></label>
+        <label><Search size={14} /><input ref={searchRef} value={query} placeholder={searchPlaceholder || `搜索${label}`} onChange={(event) => setQuery(event.target.value)} /></label>
         <div role="listbox" aria-label={label}>
           {visibleOptions.map((option) => <button type="button" role="option" aria-selected={option.value === value} key={option.value || "__empty"} onClick={() => { onChange(option.value); close(true); }}>
             <span><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>{option.value === value && <Check size={15} />}
           </button>)}
-          {!visibleOptions.length && <p>没有匹配选项</p>}
+          {(!visibleOptions.length || noMatches) && <p>没有匹配选项</p>}
         </div>
       </AnchoredPopover>
     </div>
@@ -215,8 +225,16 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
   const toast = useToast();
   const { session } = useSession();
   const { businessDate: today } = useBusinessDate();
-  const editor = useIssueDraft(issue, onPendingChange,'basic',projectId);
   const [draft,setDraft,clearDraft]=useDeliveryForm(projectId,(issue?.id||'new')+':issue-basic',()=>issueFields(issue,defaultReporter,today));
+  const editor = useIssueDraft(issue, onPendingChange,'basic',projectId,(previous,latest)=>{
+    const before=issueFields(previous,defaultReporter,today),after=issueFields(latest,defaultReporter,today);
+    setDraft(current=>{
+      const next={...current};
+      for(const field of Object.keys(after) as (keyof typeof after)[])
+        if(current[field]===undefined || current[field]===before[field]) next[field]=after[field];
+      return next;
+    });
+  });
   const [discoveredDateEdited, setDiscoveredDateEdited] = useState(false);
   useEffect(() => {
     if (!editor.dirty && editor.baseline) setDraft(issueFields(editor.baseline, defaultReporter, today));
@@ -235,8 +253,8 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
   const requirementOptions: SearchSelectOption[] = [{ value: "", label: "公共问题", description: "不绑定具体需求" }, ...requirements.map((value) => ({ value: value.id, label: value.title }))];
   const reporterOptions: SearchSelectOption[] = [{ value: "", label: "未指定" }, ...people.map((value) => ({ value: value.name, label: value.name }))];
   if (draft.reporter && !reporterOptions.some((value) => value.value === draft.reporter)) reporterOptions.push({ value: draft.reporter, label: draft.reporter, description: current?.reporter === draft.reporter ? "历史记录" : "当前登录账号" });
-  const ownerOptions: SearchSelectOption[] = [{ value: "", label: "未分配" }, ...people.filter((person) => (resolved || person.active) && person.projectRole !== "viewer").map((person) => ({ value: person.id, label: person.name }))];
-  if (draft.ownerId && !ownerOptions.some((value) => value.value === draft.ownerId)) ownerOptions.push({ value: draft.ownerId, label: current?.ownerId === draft.ownerId ? current.ownerName || "历史负责人" : draft.ownerId, description: "历史负责人" });
+  const ownerOptions: SearchSelectOption[] = [{ value: "", label: "未分配" }, ...people.filter((person) => resolved ? person.projectRole !== "viewer" : isAssignablePerson(person)).map((person) => ({ value: person.id, label: person.name }))];
+  if (draft.ownerId && current?.ownerId === draft.ownerId && !ownerOptions.some((value) => value.value === draft.ownerId)) ownerOptions.push({ value: draft.ownerId, label: current.ownerName || "历史负责人", description: "历史负责人" });
   const blocked = !!issue&&!canManage || editor.changed || editor.needsRefresh;
   return <form className="issue-form" onSubmit={(event) => {
     event.preventDefault();
@@ -340,7 +358,7 @@ export function IssueUpdateForm({ issue, canSetProgress, canResolve = false, onP
   const warning = resolved ? "问题已解决，不能追加进展；已保留本次输入。"
     : decreasing && !canResolve ? "降低完成度需要项目经理更正。已保留本次输入。"
     : resolving && !canResolve ? "解决问题需要项目经理权限。已保留本次输入。" : null;
-  if (resolved && !editor.dirty) return <p className="issue-settings-resolved-note"><CheckCircle2 size={17} />问题已闭环并锁定。如需继续处理，请先执行“重开”。</p>;
+  if (resolved && !editor.dirty) return <p className="issue-settings-resolved-note"><CheckCircle2 size={17} />问题已解决。如需继续处理，请先选择“重新打开”。</p>;
   const blocked = Boolean(warning || editor.changed || editor.needsRefresh || permissionChanged);
   return <form className="issue-update-form" onSubmit={(event) => {
     event.preventDefault();

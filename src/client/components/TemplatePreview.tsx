@@ -19,13 +19,15 @@ export function TemplatePreview({ template, onEdit }: {
     setSelected(id);
     // Scroll each pane without moving the surrounding dialog or the other pane.
     for (const pane of [gantt.current, flow.current]) {
-      const node = pane?.querySelector<HTMLElement>(`[data-template-node="${CSS.escape(id)}"], [data-template-work="${CSS.escape(id)}"]`);
+      const milestone = pane?.querySelector(`[data-milestone-id="${CSS.escape(id)}"]`)
+        ?.parentElement?.querySelector<HTMLElement>('.gantt-milestone-label');
+      const node = pane?.querySelector<HTMLElement>(`[data-template-node="${CSS.escape(id)}"], [data-template-work="${CSS.escape(id)}"]`) || milestone;
       if (!pane || !node) continue;
       const bounds = pane.getBoundingClientRect(), target = node.getBoundingClientRect();
       if (target.top < bounds.top) pane.scrollTop += target.top - bounds.top - 8;
       else if (target.bottom > bounds.bottom) pane.scrollTop += target.bottom - bounds.bottom + 8;
       if (pane === gantt.current) {
-        const bar = node.parentElement?.querySelector('.template-plan-bar')?.getBoundingClientRect();
+        const bar = (milestone || node.parentElement?.querySelector('.template-plan-bar'))?.getBoundingClientRect();
         const labelWidth = 130;
         if (bar && (bar.left < bounds.left + labelWidth || bar.right > bounds.right)) pane.scrollLeft += bar.left - bounds.left - labelWidth - 10;
       }

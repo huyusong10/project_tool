@@ -8,6 +8,57 @@ test.beforeEach(async ({ page }) => {
   expect(response.ok()).toBe(true);
 });
 
+test('图片读取中不能抢先保存，恢复默认后迟到的图片不会覆盖选择', async ({ page }) => {
+  await page.addInitScript(() => {
+    const pending: Array<() => void> = [];
+    const nativeRead = FileReader.prototype.readAsDataURL;
+    const state = { completed: 0, release: () => pending.shift()?.() };
+    Object.assign(window, { brandingReader: state });
+    FileReader.prototype.readAsDataURL = function (file) {
+      this.addEventListener('loadend', () => state.completed++, { once: true });
+      pending.push(() => nativeRead.call(this, file));
+    };
+  });
+  let branding: {systemName:string;shortName:string;logoUrl:string|null;updatedAt:string|null} = {systemName:'项目管理',shortName:'PM',logoUrl:null,updatedAt:null};
+  await page.route('**/api/branding', route => route.fulfill({json:branding}));
+  const writes:Array<Record<string,unknown>>=[];
+  await page.route('**/api/system/branding', route => {
+    const body=route.request().postDataJSON();writes.push(body);
+    branding={systemName:body.systemName,shortName:body.shortName,logoUrl:body.logoDataUrl,updatedAt:'2026-09-17T12:00:00.000Z'};
+    return route.fulfill({json:branding});
+  });
+  await page.goto('/system');
+  const panel=page.locator('.system-branding-panel'),save=panel.getByRole('button',{name:'保存品牌设置',exact:true});
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64');
+  await panel.locator('input[type=file]').setInputFiles({name:'pending.png',mimeType:'image/png',buffer:png});
+  await expect.soft(save).toBeDisabled();
+  await panel.getByRole('button',{name:'恢复默认值',exact:true}).click();
+  await page.evaluate(()=>(window as unknown as {brandingReader:{release:()=>void}}).brandingReader.release());
+  await expect.poll(()=>page.evaluate(()=>(window as unknown as {brandingReader:{completed:number}}).brandingReader.completed)).toBe(1);
+  await expect.soft(panel.locator('.system-branding-preview img')).toHaveAttribute('src','/project-management-logo.png');
+  await expect(save).toBeEnabled();
+  await panel.locator('input[type=file]').setInputFiles({name:'superseded.png',mimeType:'image/png',buffer:png});
+  await panel.locator('input[type=file]').setInputFiles({name:'latest.png',mimeType:'image/png',buffer:png});
+  await page.evaluate(()=>(window as unknown as {brandingReader:{release:()=>void}}).brandingReader.release());
+  await expect.poll(()=>page.evaluate(()=>(window as unknown as {brandingReader:{completed:number}}).brandingReader.completed)).toBe(2);
+  await expect(save).toBeDisabled();
+  await expect(panel.locator('.system-branding-preview img')).toHaveAttribute('src','/project-management-logo.png');
+  await page.evaluate(()=>(window as unknown as {brandingReader:{release:()=>void}}).brandingReader.release());
+  await expect.poll(()=>page.evaluate(()=>(window as unknown as {brandingReader:{completed:number}}).brandingReader.completed)).toBe(3);
+  await expect(panel.locator('.system-branding-preview img')).toHaveAttribute('src','data:image/png;base64,'+png.toString('base64'));
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect.poll(()=>writes.length).toBe(1);
+  expect(writes[0].logoDataUrl).toBe('data:image/png;base64,'+png.toString('base64'));
+  await expect(panel.getByText('品牌设置已保存')).toBeVisible();
+  await panel.locator('input[type=file]').setInputFiles({name:'removed.png',mimeType:'image/png',buffer:png});
+  await panel.getByRole('button',{name:'移除Logo',exact:true}).click();
+  await page.evaluate(()=>(window as unknown as {brandingReader:{release:()=>void}}).brandingReader.release());
+  await expect.poll(()=>page.evaluate(()=>(window as unknown as {brandingReader:{completed:number}}).brandingReader.completed)).toBe(4);
+  await expect(panel.locator('.system-branding-preview img')).toHaveAttribute('src','/project-management-logo.png');
+  await expect(save).toBeEnabled();
+});
+
 test('system management focuses on health and data safety', async ({ page }) => {
   await page.goto('/system');
   await expect(page.getByRole('heading', { name: '系统管理', exact: true })).toBeVisible();

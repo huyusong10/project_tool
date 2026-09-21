@@ -2,7 +2,7 @@ import type {LayoutEdge, LayoutNode, Point, RoutedLayout} from './path-layout';
 
 type Node = LayoutNode & Point;
 type Box = {left:number; right:number; top:number; bottom:number};
-type Segment = {a:Point; b:Point};
+type Segment = Box & {a:Point; b:Point};
 type Side = 'left'|'right'|'top'|'bottom';
 type Endpoint = {node:Node; side:Side; other:Node; point:Point};
 const padding=10, stub=28, laneGap=12;
@@ -10,7 +10,7 @@ const bounds=(n:Node):Box=>({left:n.x-padding,right:n.x+n.width+padding,top:n.y-
 const intersects=(a:Box,b:Box)=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top;
 const horizontal=(s:Segment)=>s.a.y===s.b.y;
 const length=(a:Point,b:Point)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
-const segments=(points:Point[]):Segment[]=>points.slice(1).map((b,i)=>({a:points[i],b}));
+const segments=(points:Point[]):Segment[]=>points.slice(1).map((b,i)=>{const a=points[i];return {a,b,left:Math.min(a.x,b.x),right:Math.max(a.x,b.x),top:Math.min(a.y,b.y),bottom:Math.max(a.y,b.y)};});
 function clear(a:Point,b:Point,boxes:Box[]){
   return (a.x===b.x||a.y===b.y)&&!boxes.some(r=>a.y===b.y
     ? a.y>r.top&&a.y<r.bottom&&Math.max(a.x,b.x)>r.left&&Math.min(a.x,b.x)<r.right
@@ -101,6 +101,10 @@ export function routeOrthogonalGraph(nodes:Node[],edges:LayoutEdge[],reserved:Bo
       const nearby=(values:number[],center:number)=>[...new Set(values)].sort((a,b)=>Math.abs(a-center)-Math.abs(b-center)).slice(0,14);
       const xs=nearby([mid.x,ap.x,bp.x,...boxes.flatMap(r=>[r.left-laneGap,r.right+laneGap])],mid.x);
       const ys=nearby([mid.y,ap.y,bp.y,...boxes.flatMap(r=>[r.top-laneGap,r.bottom+laneGap])],mid.y);
+      // Segments outside every candidate's bounds cannot add spacing or crossing cost.
+      const area={left:Math.min(ap.x,bp.x,...xs)-laneGap,right:Math.max(ap.x,bp.x,...xs)+laneGap,
+        top:Math.min(ap.y,bp.y,...ys)-laneGap,bottom:Math.max(ap.y,bp.y,...ys)+laneGap};
+      const nearbyOccupied=occupied.filter(segment=>intersects(area,segment));
       const candidates:Point[][]=[];
       for(const x of xs)candidates.push([ap,{x,y:ap.y},{x,y:bp.y},bp]);
       for(const y of ys)candidates.push([ap,{x:ap.x,y},{x:bp.x,y},bp]);
@@ -110,7 +114,7 @@ export function routeOrthogonalGraph(nodes:Node[],edges:LayoutEdge[],reserved:Bo
         const full=simplify([a,...ps,b]);
         // A lead must not double back into itself at either card.
         if(segments(full).some((s,i,all)=>i>0&&horizontal(s)===horizontal(all[i-1])&&length(all[i-1].a,s.b)<length(all[i-1].a,s.a)))continue;
-        const cost=segments(ps).reduce((v,s)=>v+length(s.a,s.b)+penalty(s,occupied),0)+Math.max(0,ps.length-2)*28;
+        const cost=segments(ps).reduce((v,s)=>v+length(s.a,s.b)+penalty(s,nearbyOccupied),0)+Math.max(0,ps.length-2)*28;
         if(cost<bestCost){bestCost=cost;best=ps;}
       }
       points=simplify([a,...best||gridRoute(ap,bp,boxes),b]);

@@ -5,6 +5,7 @@ export async function copyText(value: string): Promise<boolean> {
       await navigator.clipboard.writeText(value);
       return true;
     }
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const input = document.createElement("textarea");
     input.value = value;
     input.style.position = "fixed";
@@ -15,6 +16,7 @@ export async function copyText(value: string): Promise<boolean> {
       return document.execCommand("copy");
     } finally {
       input.remove();
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     }
   } catch {
     return false;

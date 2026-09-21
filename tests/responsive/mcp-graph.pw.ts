@@ -7,9 +7,10 @@ test('MCP SVG导出在浏览器正确显示，导出不改写布局或依赖', {
   expect(login.ok()).toBe(true);
   const project = await (await page.request.post('/api/projects', { data: { name: 'MCP导出' + Date.now() } })).json();
   const owner = await (await page.request.post('/api/people', { data: { projectId: project.id, name: '导出负责人' + Date.now() } })).json();
+  const longTitle = '跨园区设备接入与告警验证'.repeat(5).slice(0, 50) + '𠮷后续验收计划';
   const templateResponse = await page.request.post('/api/templates', { data: { projectId: project.id, name: '导出流程', dependencyMode: 'dependencies', items: [
     { clientKey: 'a', title: '接口设计 <外部&输入>', durationDays: 2, startOffsetDays: 0, sortOrder: 0, predecessorKeys: [] },
-    { clientKey: 'b', title: '实现与集成验证', durationDays: 2, startOffsetDays: 2, sortOrder: 1, predecessorKeys: ['a'] },
+    { clientKey: 'b', title: longTitle, durationDays: 2, startOffsetDays: 2, sortOrder: 1, predecessorKeys: ['a'] },
   ] } });
   expect(templateResponse.ok()).toBe(true);
   const template = await templateResponse.json();
@@ -42,6 +43,8 @@ test('MCP SVG导出在浏览器正确显示，导出不改写布局或依赖', {
   });
   expect(bounds.every(Boolean)).toBe(true);
   await page.locator('svg').screenshot({ path: info.outputPath('mcp-graph.svg.png') });
+  expect(graph.svg).not.toMatch(/[\uD800-\uDFFF]/u);
+  await expect(page.locator('[data-card="' + requirement.workItems[1].id + '"] > title')).toContainText(longTitle);
   expect(await (await page.request.get(analysisUrl)).json()).toEqual(before);
 });
 

@@ -4,9 +4,6 @@ const log = moduleLogger('analytics');
 import { getPeopleConcurrency } from './services/reporting';
 import { listRequirements, requirementCompletionDate } from './services/requirements';
 import { recordAudit } from './services/audit';
-import {firstAcceptanceDates} from './services/acceptance-history';
-import {loadCommitments} from './services/commitments';
-import {requirementCommitments} from '../shared/commitments';
 import { nextUpdatedAt } from './services/support';
 import type { Actor } from './auth';
 import {
@@ -91,7 +88,10 @@ function validatePanel(value: unknown, index: number): AnalyticsPanelConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) validationError(`第${index + 1}个图表配置不合法`);
   const panel = {...value} as Record<string, unknown>;
   if(panel.dataset==='requirements'){
-    for(const key of ['measure','secondaryMeasure'])if(['commitment_on_time_rate','latest_commitment_on_time_rate'].includes(String(panel[key])))panel[key]='on_time_rate';
+    const retiredMeasures=['commitment_on_time_rate','latest_commitment_on_time_rate'];
+    const migratedMeasure=[panel.measure,panel.secondaryMeasure].some(value=>retiredMeasures.includes(String(value)));
+    for(const key of ['measure','secondaryMeasure'])if(retiredMeasures.includes(String(panel[key])))panel[key]='on_time_rate';
+    if(migratedMeasure&&panel.secondaryMeasure===panel.measure)delete panel.secondaryMeasure;
     if(typeof panel.title==='string'&&/按(首次|最近)承诺交付率/.test(panel.title))panel.title='按期完成率';
     if(panel.filters&&typeof panel.filters==='object'){panel.filters={...panel.filters};delete (panel.filters as Record<string,unknown>).deliveryScope;}
   }
@@ -275,17 +275,12 @@ function loadContext(projectId: string, panels: AnalyticsPanelConfig[], range: A
   };
   if (datasets.has('requirements') || datasets.has('work_items')) {
     try {
-      const historyNeeded=panels.some(p=>[p.measure,p.secondaryMeasure].some(m=>m&&['commitment_on_time_rate','latest_commitment_on_time_rate'].includes(m)));
-      const requirements = listRequirements({ projectId,includeDeleted:historyNeeded }, asOfDate);
-      const acceptances=historyNeeded?firstAcceptanceDates(projectId):new Map<string,string>(),commitments=historyNeeded?loadCommitments(projectId):[];
+      const requirements = listRequirements({ projectId }, asOfDate);
       requirementRows = requirements.map((requirement) => ({
         ...requirement,priority:requirement.processingPriority||'unassessed',deliveryScope:requirement.deliveryScope||'committed',
         template: requirement.templateName || '未绑定流程', owner: requirement.ownerName || '未分配',
         risk: requirement.riskEvaluated ? requirement.riskLevel : 'unassessed',
         completedAt: requirementCompletionDate(requirement),
-        firstAcceptedAt:(acceptances.get(requirement.id)||requirement.acceptedAt)?businessDateFromDateTime(acceptances.get(requirement.id)||requirement.acceptedAt!):null,
-        firstCommitmentEnd:requirementCommitments(commitments,requirement.id,acceptances.get(requirement.id)||requirement.acceptedAt).first?.targetDate||null,
-        latestCommitmentEnd:requirementCommitments(commitments,requirement.id,acceptances.get(requirement.id)||requirement.acceptedAt).latest?.targetDate||null,
       }));
       workItems = requirements.filter(r=>!r.deletedAt).flatMap((requirement) => (requirement.workItems || []).map((item) => ({
         ...item, requirementTitle: requirement.title, owner: item.ownerName || '未分配',
@@ -337,7 +332,6 @@ function inRange(value: string | null | undefined, range: AnalyticsRange) {
 
 function eventDate(dataset: string, measure: string, record: GenericRecord) {
   if (dataset === 'requirements') {
-    if (['commitment_on_time_rate','latest_commitment_on_time_rate'].includes(measure)) return record.firstAcceptedAt;
     if (['completed_count','on_time_rate'].includes(measure)) return record.completedAt;
     if (measure === 'due_count') return record.plannedEnd;
     if (measure === 'finish_variance') return record.completedAt || record.plannedEnd;
@@ -382,11 +376,9 @@ function eligibleRecords(dataset: string, measure: string, records: GenericRecor
   let result = records;
   if (range && dataset !== 'people') result = result.filter((record) => inRange(eventDate(dataset, measure, record), range));
   if (dataset === 'requirements') {
-    if(!['commitment_on_time_rate','latest_commitment_on_time_rate'].includes(measure))result=result.filter(r=>!r.deletedAt);
+    result=result.filter(r=>!r.deletedAt);
     if (measure === 'active_count') result = result.filter((record) => !['completed', 'cancelled'].includes(record.status));
     if (['completed_count','on_time_rate'].includes(measure)) result = result.filter((record) => Boolean(record.completedAt));
-    if (measure === 'commitment_on_time_rate') result=result.filter(r=>!!r.firstCommitmentEnd&&!!r.firstAcceptedAt);
-    if (measure === 'latest_commitment_on_time_rate') result=result.filter(r=>!!r.latestCommitmentEnd&&!!r.firstAcceptedAt);
     if (measure === 'on_time_rate') result = result.filter((record) => Boolean(record.plannedEnd));
     if (measure === 'delayed_count') result = result.filter((record) => record.delayed);
     if (measure === 'finish_variance') result = result.filter((record) => Number(record.finishVariance || 0) > 0);
@@ -411,7 +403,6 @@ function round(value: number) {
 function measureValue(dataset: string, measure: string, records: GenericRecord[]) {
   if (!records.length) return 0;
   if (dataset === 'requirements') {
-    if (measure === 'commitment_on_time_rate'||measure==='latest_commitment_on_time_rate') return round(records.filter(r=>r.firstAcceptedAt<=(measure==='commitment_on_time_rate'?r.firstCommitmentEnd:r.latestCommitmentEnd)).length/records.length*100);
     if (measure === 'on_time_rate') return round(records.filter((record) => businessDayDelta(record.plannedEnd, record.completedAt) <= 0).length / records.length * 100);
     if (measure === 'finish_variance') return round(records.reduce((sum, record) => sum + Number(record.finishVariance || 0), 0) / records.length);
   }
@@ -442,9 +433,15 @@ function dimensionValue(dataset: string, dimension: string, record: GenericRecor
     const key = dimension === 'week' ? startOfWeekIso(date) : date;
     return { key, label: dimension === 'week' ? `${shortDate(key)}周` : shortDate(key) };
   }
-  const raw = dimension === 'requirement' ? (record.title || record.requirement)
-    : dimension === 'person' ? record.person
-      : dimension === 'template' ? record.template
+  if (dimension === 'requirement') return {
+    key: String(dataset === 'requirements' ? record.id : record.requirementId),
+    label: String(record.title || record.requirement || '未设置'),
+  };
+  if (dimension === 'template') return {
+    key: String(record.templateId || 'unbound'),
+    label: String(record.template || '未绑定流程'),
+  };
+  const raw = dimension === 'person' ? record.person
         : dimension === 'owner' ? record.owner
           : dimension === 'scope' ? (record.requirementId ? 'requirement' : 'public')
             : record[dimension];

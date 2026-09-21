@@ -93,7 +93,7 @@ export function readFeatureRequirements(projectId:string,id:string,state:'curren
     const params=id==='unassigned'?[projectId]:[projectId,id];
     const total=(getDatabaseContext().sqlite.prepare('SELECT COUNT(*) AS count FROM requirements WHERE '+where).get(...params) as {count:number}).count;
     const items=getDatabaseContext().sqlite.prepare('SELECT id,title,status,version,feature_id AS featureId,deleted_at AS deletedAt,actual_end AS actualEnd FROM requirements WHERE '+where+' ORDER BY updated_at DESC,id LIMIT ? OFFSET ?').all(...params,pageSize,(page-1)*pageSize) as FeatureRequirement[];
-    const facts=new Map(phaseRequirementFacts(projectId).map(r=>[r.id,r]));for(const item of items){const fact=facts.get(item.id);if(fact){item.status=fact.status;item.executionStage=fact.executionStage;}}
+    const facts=new Map(phaseRequirementFacts(projectId,undefined,items.map(item=>item.id)).map(r=>[r.id,r]));for(const item of items){const fact=facts.get(item.id);if(fact){item.status=fact.status;item.executionStage=fact.executionStage;}}
     return {items,total,page,pageSize,pages:Math.max(1,Math.ceil(total/pageSize))};
   })();
 }
@@ -134,7 +134,7 @@ export function prepareFeatureRelationChanges(projectId:string,changes:FeatureRe
   return {before,after};
 }
 export function persistFeatureRelationChanges(projectId:string,changes:FeatureRelationChange[],before:FeatureRelation[],actor:Actor) {
-  const ids:Record<string,string>={},now=new Date().toISOString();
+  const ids:Record<string,string>=Object.create(null),now=new Date().toISOString();
   // Release removed endpoint pairs before inserting replacements in the final batch.
   for(const change of [...changes.filter(c=>c.op==='delete'),...changes.filter(c=>c.op!=='delete')]){
     const old=before.find(r=>r.id===change.id),id=change.op==='create'?randomUUID():change.id;

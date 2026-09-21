@@ -28,7 +28,7 @@ export function MenuButtons({children, enabled = true}: {children: ReactNode; en
 export function Button({ variant = 'secondary', tone = variant === 'primary' || variant === 'soft' || variant === 'link' ? 'primary' : 'neutral', size: requestedSize, iconOnly = false, width = 'auto', busy = false, wrap = false, disabled, type = 'button', className = '', children, ...props }: ButtonProps) {
   const menu = useContext(MenuButtonsContext);
   const defaultSize=useContext(ButtonSizeContext),size=requestedSize||defaultSize;
-  return <button {...props} type={type} className={`ui-button ${className}`.trim()} data-variant={menu ? 'menu' : variant} data-tone={menu && tone === 'primary' ? 'neutral' : tone} data-size={size} data-icon-only={!menu && iconOnly || undefined} data-width={menu ? 'block' : width} data-busy={busy || undefined} data-wrap={wrap || undefined} aria-busy={busy || props['aria-busy']} disabled={disabled || busy}>{children}</button>;
+  return <button {...props} type={type} className={`ui-button ${className}`.trim()} data-variant={menu ? 'menu' : variant} data-tone={menu && tone === 'primary' ? 'neutral' : tone} data-size={size} data-icon-only={!menu && iconOnly || undefined} data-width={menu ? 'block' : width} data-busy={busy || undefined} data-wrap={wrap || undefined} aria-busy={busy || props['aria-busy']} disabled={disabled || busy}>{children}{menu&&iconOnly&&props['aria-label']}</button>;
 }
 
 type ButtonLinkProps = Omit<ComponentProps<typeof Link>, 'style' | 'color'> & Pick<ButtonProps, 'variant' | 'tone' | 'size' | 'iconOnly' | 'width'>;

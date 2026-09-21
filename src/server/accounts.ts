@@ -3,8 +3,9 @@ import { getDatabaseContext } from './database-context';
 import { hashPassword, normalizeUsername, verifyPassword, type Actor } from './auth';
 import { addCalendarDays, deriveWorkItemStatus, isOverdueByWorkday, startOfWeekIso, todayIso } from '../shared/domain';
 import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
+import { maxUsernameLength } from '../shared/contracts';
 import { isBusinessDay } from '../shared/workday';
-import { listRequirements, loadWorkItemsByRequirementIds } from './services/requirements';
+import { listRequirements, loadWorkItemsByRequirementIds, requirementAnalysisSnapshots } from './services/requirements';
 import { getPathAnalysis } from './services/paths';
 import { deliveryForecast } from '../shared/forecast-basis';
 import { deriveRequirementActionReasons, deriveWorkItemActionReasons } from './services/actions';
@@ -59,7 +60,7 @@ function uniqueUsername(username: string, exceptId?: string) {
   if (issue) fail(issue === 'line_break' ? '登录名不能包含换行' : '登录名包含不支持的控制字符');
   const value = canonicalizeLabel(username);
   if (!value) fail('登录名不能为空');
-  if (value.length > 64) fail('登录名不能超过64个字符');
+  if (value.length > maxUsernameLength) fail(`登录名不能超过${maxUsernameLength}个字符`);
   const normalized = normalizeUsername(value);
   const duplicate = getDatabaseContext().sqlite.prepare(`SELECT id FROM accounts WHERE normalized_username=? ${exceptId ? 'AND id<>?' : ''} LIMIT 1`)
     .get(...[normalized, ...(exceptId ? [exceptId] : [])]);
@@ -68,10 +69,12 @@ function uniqueUsername(username: string, exceptId?: string) {
 }
 
 function availableUsername(base: string, personId: string) {
-  let username = canonicalizeLabel(base) || `user-${personId.slice(0, 6)}`;
+  const name = canonicalizeLabel(base) || `user-${personId.slice(0, 6)}`;
+  const candidate = (suffix = '') => name.slice(0, maxUsernameLength - suffix.length).replace(/[\uD800-\uDBFF]$/u, '').trimEnd() + suffix;
+  let username = candidate();
   let normalized = normalizeUsername(username);
   if (getDatabaseContext().sqlite.prepare('SELECT 1 FROM accounts WHERE normalized_username=?').get(normalized)) {
-    username = `${username}-${personId.slice(0, 6)}`;
+    username = candidate(`-${personId.slice(0, 6)}`);
     normalized = normalizeUsername(username);
   }
   return { username, normalized };
@@ -122,15 +125,21 @@ export function listAccounts() {
   const roles = getDatabaseContext().sqlite.prepare(`SELECT pp.person_id AS personId, pp.project_id AS projectId, pr.name AS projectName
     FROM project_people pp JOIN projects pr ON pr.id=pp.project_id
     WHERE pp.project_role='manager' AND pr.deleted_at IS NULL ORDER BY pr.name`).all() as any[];
-  const assignments = getDatabaseContext().sqlite.prepare(`SELECT p.id AS personId,
+  const assignments = getDatabaseContext().sqlite.prepare(`WITH active_work AS (
+      SELECT w.id, w.owner_id FROM work_items w JOIN requirements r ON r.id=w.requirement_id
+      WHERE r.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled')
+    ), work_assignments AS (
+      SELECT owner_id AS person_id, id AS work_item_id FROM active_work WHERE owner_id IS NOT NULL
+      UNION
+      SELECT c.person_id, c.work_item_id FROM work_item_collaborators c JOIN active_work w ON w.id=c.work_item_id
+    ), work_counts AS (
+      SELECT person_id, COUNT(*) AS workItems FROM work_assignments GROUP BY person_id
+    ) SELECT p.id AS personId,
     (SELECT COUNT(*) FROM requirements r
       WHERE r.owner_id=p.id AND r.deleted_at IS NULL AND r.status NOT IN ('completed','cancelled')) AS requirements,
-    (SELECT COUNT(DISTINCT w.id) FROM work_items w LEFT JOIN work_item_collaborators c ON c.work_item_id=w.id AND c.person_id=p.id
-      JOIN requirements r ON r.id=w.requirement_id
-      WHERE r.deleted_at IS NULL AND w.status NOT IN ('completed','cancelled')
-        AND (w.owner_id=p.id OR c.person_id IS NOT NULL)) AS workItems,
+    COALESCE(w.workItems, 0) AS workItems,
     (SELECT COUNT(*) FROM issues i WHERE i.owner_id=p.id AND i.status<>'resolved') AS issues
-    FROM people p`).all() as Array<{ personId: string; requirements: number; workItems: number; issues: number }>;
+    FROM people p LEFT JOIN work_counts w ON w.person_id=p.id`).all() as Array<{ personId: string; requirements: number; workItems: number; issues: number }>;
   const assignmentsByPerson = new Map(assignments.map(({ personId, requirements, workItems, issues }) => [
     personId, { requirements: Number(requirements), workItems: Number(workItems), issues: Number(issues) },
   ]));
@@ -340,7 +349,9 @@ function readMyWork(accountId: string) {
   const requirementStatuses = new Map(rawItems.map(item => [item.requirementId, item.requirementStatus]));
   const loaded = loadWorkItemsByRequirementIds([...requirementStatuses.keys()], requirementStatuses);
   const workItems = new Map([...loaded.workItems.values()].flat().map(item => [item.id, item]));
-  const forecasts = new Map([...new Set(rawItems.map(item => item.projectId))].map(id => [id, getPathAnalysis(id, undefined, today)]));
+  const owned = listRequirements({ ownerId: account.personId }, today);
+  const forecasts = new Map(requirementAnalysisSnapshots.get(owned));
+  for(const id of new Set(rawItems.map(item=>item.projectId)))if(!forecasts.has(id))forecasts.set(id,getPathAnalysis(id,undefined,today));
   const items = rawItems.map((reference) => {
     const analysis = forecasts.get(reference.projectId)!;
     const item = { ...workItems.get(reference.id)!, ...reference, deliveryForecast: deliveryForecast(analysis.nodes.find(n => n.id === reference.id), analysis) };
@@ -358,8 +369,7 @@ function readMyWork(accountId: string) {
   const accessibleProjects = new Set((getDatabaseContext().sqlite.prepare(`SELECT pp.project_id AS projectId FROM project_people pp
     JOIN projects p ON p.id=pp.project_id WHERE pp.person_id=? AND p.deleted_at IS NULL`)
     .all(account.personId) as Array<{ projectId: string }>).map((item) => item.projectId));
-  const ownedRequirements = listRequirements({ ownerId: account.personId }, today)
-    .filter((requirement) => accessibleProjects.has(requirement.projectId));
+  const ownedRequirements = owned.filter((requirement) => accessibleProjects.has(requirement.projectId));
   const requirementIds = ownedRequirements.map((requirement) => requirement.id);
   const issueActionCounts = new Map<string, number>();
   for (const batch of chunkValues(requirementIds, 899)) {

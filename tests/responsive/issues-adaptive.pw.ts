@@ -124,7 +124,7 @@ test('问题筛选、详情错误态和嵌套Esc保持正确', async ({ page }, 
 
   await mockIssues(page);
   await page.goto('/issues');
-  await chooseOption(page.locator('.issue-filters select').nth(1), 'P1');
+  await chooseOption(page.getByRole('combobox',{name:'问题优先级筛选',exact:true}), 'P1');
   await expect(page).toHaveURL(/priority=P1/);
   await page.locator('.issue-title-button').first().click();
   await expect(page).toHaveURL(/priority=P1.*detailId=issue-1|detailId=issue-1.*priority=P1/);
@@ -139,7 +139,7 @@ test('问题筛选、详情错误态和嵌套Esc保持正确', async ({ page }, 
   await expect(dialog).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
-  await expect(page.locator('.issue-filters select').nth(1)).toHaveValue('P1');
+  await expect(page.getByRole('combobox',{name:'问题优先级筛选',exact:true})).toHaveValue('P1');
 
   await page.goto('/issues?issueId=does-not-exist');
   await expect(page.getByText('问题详情加载失败')).toBeVisible();
@@ -152,7 +152,7 @@ test('问题互斥筛选会清理旧地址参数', async ({ page }, _testInfo) =
   await page.goto('/issues?active=true&overdue=true');
 
   const filters = page.locator('.issue-filters');
-  await chooseOption(filters.locator('select').nth(0), 'resolved');
+  await chooseOption(filters.getByRole('combobox',{name:'问题状态筛选',exact:true}), 'resolved');
   let params = new URL(page.url()).searchParams;
   expect(params.get('status')).toBe('resolved');
   expect(params.has('active')).toBe(false);
@@ -164,7 +164,7 @@ test('问题互斥筛选会清理旧地址参数', async ({ page }, _testInfo) =
   expect(params.get('overdue')).toBe('true');
 
   await filters.getByRole('button', { name: '未分配', exact: true }).click();
-  await chooseOption(filters.locator('select').nth(2), 'u1');
+  await chooseOption(filters.getByRole('combobox',{name:'问题负责人筛选',exact:true}), 'u1');
   params = new URL(page.url()).searchParams;
   expect(params.get('ownerId')).toBe('u1');
   expect(params.has('unassigned')).toBe(false);

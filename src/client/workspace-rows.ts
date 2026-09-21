@@ -19,12 +19,17 @@ export type WorkspaceRow = {
 /** Formal delivery facts remain intact when structural drafts change the visible scope. */
 export function workspaceRows(report:Dashboard, projection?:PathAnalysis,sort='name'):WorkspaceRow[] {
   const formal=new Map(report.requirements.map(r=>[r.id,r]));
+  const projectedWork=new Map<PathAnalysis['nodes'][number]['requirementId'],PathAnalysis['nodes']>();
+  for(const node of projection?.nodes||[])if(node.kind==='work'){
+    const own=projectedWork.get(node.requirementId);
+    if(own)own.push(node);else projectedWork.set(node.requirementId,[node]);
+  }
   const requirements:Requirement[]=projection?projection.requirements.filter(r=>!r.deletedAt).map(r=>{
     const saved=formal.get(r.id);
     const savedOrder=new Map(saved?.workItems.map((w,index)=>[w.id,w.sortOrder??index]));
     const savedRank=new Map(saved?.workItems.map((w,index)=>[w.id,index]));
     const nextOrder=Math.max(-1,...savedOrder.values())+1;
-    const works=projection.nodes.filter(n=>n.requirementId===r.id&&n.kind==='work').map((n,index)=>{
+    const works=(projectedWork.get(r.id)||[]).map((n,index)=>{
       const old=saved?.workItems.find(w=>w.id===n.id);
       return {...old,id:n.id,requirementId:r.id,title:n.title,workStage:n.workStage,ownerId:n.ownerId,ownerName:n.ownerName,
         plannedStart:n.plannedStart,plannedEnd:n.plannedEnd,status:old?.status||'not_started',progress:old?.progress||0,

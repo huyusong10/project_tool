@@ -1,0 +1,61 @@
+import { expect, test } from '@playwright/test';
+
+test('工作区菜单重复点击入口可关闭，焦点返回与重新搜索保持一致', async ({ page }, info) => {
+  const post = async (url: string, data: unknown) => {
+    const response = await page.request.post(url, { data });
+    expect(response.ok(), await response.text()).toBe(true);
+    return response.json();
+  };
+  await post('/api/login', { username: 'admin', password: '41_xc7q0qOjo4Inw!' });
+  const project = await post('/api/projects', { name: '菜单关闭 ' + Date.now() });
+  for (let i = 0; i < 8; i++) await post(`/api/projects/${project.id}/features`, { name: `功能 ${i}` });
+  const writes: string[] = [], errors: string[] = [];
+  page.on('request', request => { if (request.url().includes('/api/') && !['GET', 'HEAD'].includes(request.method())) writes.push(request.method() + ' ' + request.url()); });
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/execution?projectId=' + project.id);
+  const select = page.getByRole('combobox', { name: '进展特性', exact: true });
+  const search = page.getByRole('textbox', { name: '搜索进展特性', exact: true });
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await select.click();
+    await expect(search).toBeFocused();
+    await search.fill('功能 7');
+    await expect(page.getByRole('option')).toHaveCount(1);
+    await select.click();
+    await expect(search).not.toBeVisible();
+    await expect(select).toHaveAttribute('aria-expanded', 'false');
+    await expect(select).toContainText('全部特性');
+    await select.click();
+    await expect(search).toHaveValue('');
+    await expect(page.getByRole('option', { name: '功能 0', exact: true })).toBeVisible();
+    await search.fill('功能 7');
+    await search.press('Escape');
+    await expect(select).toBeFocused();
+    await expect(select).toHaveAttribute('aria-expanded', 'false');
+    await select.click();
+    await search.fill('功能 7');
+    const status = page.getByRole('button', { name: '筛选执行状态', exact: true });
+    await status.focus();
+    await expect(search).not.toBeVisible();
+    await select.click();
+    await expect(search).toHaveValue('');
+    await search.press('Tab');
+    await expect(select).toHaveAttribute('aria-expanded', 'false');
+    const menuTrigger = page.getByRole('button', { name: '更多操作', exact: true });
+    const menu = page.getByRole('menu', { name: '更多操作', exact: true });
+    await menuTrigger.click();
+    await expect(menu).toBeVisible();
+    await menuTrigger.click();
+    await expect(menu).not.toBeVisible();
+    await expect(menuTrigger).toBeFocused();
+    await menuTrigger.press('Enter');
+    await expect(menu).toBeVisible();
+    await menuTrigger.focus();
+    await expect(menu).toBeVisible();
+    await menuTrigger.press('Enter');
+    await expect(menu).not.toBeVisible();
+    await page.screenshot({ path: info.outputPath(`select-close-${width}.png`), animations: 'disabled' });
+  }
+  expect(writes).toEqual([]);
+  expect(errors).toEqual([]);
+});

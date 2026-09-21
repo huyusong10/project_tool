@@ -37,3 +37,16 @@ it('恢复草稿时已经删除的关系端点必须核对，不静默保留或�
  const result=rebaseEditor(base,server,changes);expect(result.pending[0]).toMatchObject({key:'relation:edge',canKeep:false});
  expect(rebaseEditor(base,server,changes,{'relation:edge':'server'}).changes.add).toEqual([]);
 });
+
+it('已删除对象的冲突保留已知名称，放弃失效修改后保留其他草稿',async()=>{
+ const {rebaseEditor}=await import('../src/client/editor-rebase'),{pathFixture}=await import('./fixtures/path-network'),{analysePaths}=await import('../src/shared/paths');
+ const input=pathFixture();input.workItems[0].title='设备接入方案';input.workItems[0].version=1;
+ const base=analysePaths(input),server=structuredClone(base);server.nodes=server.nodes.filter(n=>n.id!=='A1');
+ const kept={entity:'work' as const,op:'update' as const,id:'B1',expectedVersion:1,data:{title:'继续保留的联调'}};
+ for(const estimates of [false,true]){
+  const changes={add:[],remove:[],estimates:estimates?[{workItemId:'A1',durationDays:6}]:[],entities:[...estimates?[]:[{entity:'work' as const,op:'update' as const,id:'A1',expectedVersion:1,data:{durationDays:6}}],kept]};
+  const result=rebaseEditor(base,server,changes);expect(result.pending).toHaveLength(1);expect(result.pending[0]).toMatchObject({key:'A1',title:'设备接入方案',canKeep:false});
+  const resolved=rebaseEditor(base,server,changes,{A1:'server'});expect(resolved.pending).toEqual([]);expect(resolved.changes.estimates).toEqual([]);expect(resolved.changes.entities).toMatchObject([{id:'B1',data:kept.data}]);expect(changes.estimates.length+changes.entities.length).toBe(2);
+  const unknown=rebaseEditor(undefined,server,changes);expect(unknown.pending.find(c=>c.key==='A1')?.title).toBe('已不可用的工作项');
+ }
+});

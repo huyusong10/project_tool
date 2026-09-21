@@ -6,13 +6,13 @@ import type {Requirement,WorkItem} from '../../src/client/types';
 
 async function post(page:Page,url:string,data:unknown){const r=await page.request.post(url,{data});expect(r.ok(),await r.text()).toBe(true);return r.json();}
 async function progressIsReadable(row:Locator){
- return row.evaluate(r=>{const cap=r.querySelector('.gantt-progress-text')!.getBoundingClientRect(),bar=r.querySelector('.gantt-date-actual')!.getBoundingClientRect();const narrow=r.querySelector('.gantt-progress-end')!.getBoundingClientRect().width<=110;return Math.abs((narrow?cap.x+cap.width/2:cap.right-22)-bar.right)<2&&Math.abs(cap.y+cap.height/2-(bar.y+bar.height/2))<2;});
+ return row.evaluate(r=>{const cap=r.querySelector('.gantt-progress-text')!.getBoundingClientRect(),actual=r.querySelector('.gantt-date-actual')!,bar=actual.getBoundingClientRect();const narrow=r.querySelector('.gantt-progress-end')!.getBoundingClientRect().width<=110,anchor=actual.classList.contains('is-date-point')?bar.x+bar.width/2:bar.right;return Math.abs((narrow?cap.x+cap.width/2:cap.right-22)-anchor)<2&&Math.abs(cap.y+cap.height/2-(bar.y+bar.height/2))<2;});
 }
 
 async function parallelProgressFixture(page:Page){
  const f=await phaseFixture(page);
  const template=await post(page,'/api/templates',{projectId:f.projectId,name:'并行进展',dependencyMode:'dependencies',items:[{clientKey:'design',title:'需求设计',workStage:'analysis',durationDays:1,startOffsetDays:0,sortOrder:0,predecessorKeys:[]},{clientKey:'dev',title:'后端开发',workStage:'development',durationDays:1,startOffsetDays:0,sortOrder:1,predecessorKeys:[]}]});
- let r:Requirement=await post(page,'/api/requirements',{projectId:f.projectId,featureId:f.feature.id,phaseId:f.phases[2].id,ownerId:f.testing.ownerId,title:'并行交付进展',templateId:template.id,plannedStart:new Date().toISOString().slice(0,10)});
+ let r:Requirement=await post(page,'/api/requirements',{projectId:f.projectId,featureId:f.feature.id,phaseId:f.phases[2].id,ownerId:f.testing.ownerId,title:'并行交付进展',templateId:template.id,plannedStart:addBusinessDays(todayIso(),0)});
  for(const [i,percent] of [15,25].entries()){
   const w:WorkItem=await post(page,'/api/work-items/'+r.workItems[i].id+'/start',{expectedVersion:r.workItems[i].version,expectedRequirementVersion:r.version,ownerId:f.testing.ownerId});
   await post(page,'/api/requirements/'+r.id+'/progress',{expectedVersion:w.version,workItemId:w.id,workItemPercent:percent,content:'并行阶段进展'});
@@ -99,4 +99,27 @@ test('从时间轴数字更新所选工作项并刷新需求汇总',async({page}
  const row=page.locator('[data-row-id="'+r.id+'"]'),work=page.locator('[data-row-id="'+r.workItems[0].id+'"]');
  await work.getByRole('button',{name:'更新 需求设计 进度',exact:true}).click();const dialog=page.getByRole('dialog').last();await dialog.getByRole('spinbutton').fill('35');await dialog.getByRole('textbox',{name:/^说明/}).fill('时间轴上更新');await dialog.getByRole('button',{name:'记录进展',exact:true}).click();await expect(dialog).toHaveCount(0);await expect(row.locator('.workspace-row-progress')).toContainText('设计35%');
  const latest:Requirement=await(await page.request.get('/api/requirements/'+r.id)).json();expect(latest.workItems[0].progress).toBe(35);expect(latest.workItems[1].progress).toBe(25);
+});
+
+test('周末完成的日期点与特性、Phase、需求和工作进度标签对齐',async({page},info)=>{
+ await page.emulateMedia({reducedMotion:'reduce'});
+ const session=await post(page,'/api/login',{username:'admin',password:'41_xc7q0qOjo4Inw!'}),project=await post(page,'/api/projects',{name:'周末日期点 '+Date.now()}),owner=await post(page,'/api/people',{projectId:project.id,name:'日期点负责人 '+Date.now()}),base='/api/projects/'+project.id;
+ const feature=(await post(page,base+'/features',{name:'周末交付'})).features.find((item:{name:string})=>item.name==='周末交付'),phase=await post(page,base+'/features/'+feature.id+'/phases',{name:'周末阶段'});
+ const template=await post(page,'/api/templates',{projectId:project.id,name:'日期点流程',dependencyMode:'dependencies',items:[{clientKey:'one',title:'周末工作',durationDays:1,startOffsetDays:0,sortOrder:0,predecessorKeys:[]}]});
+ const requirement:Requirement=await post(page,'/api/requirements',{projectId:project.id,title:'周末完成样本',featureId:feature.id,phaseId:phase.id,ownerId:owner.id,templateId:template.id,plannedStart:'2026-09-11'});
+ const started:WorkItem=await post(page,'/api/work-items/'+requirement.workItems[0].id+'/start',{expectedVersion:requirement.workItems[0].version,expectedRequirementVersion:requirement.version,ownerId:owner.id});
+ const completed:WorkItem=await post(page,'/api/work-items/'+started.id+'/complete',{expectedVersion:started.version});
+ await post(page,'/api/work-items/'+started.id+'/correct',{expectedVersion:completed.version,actualStart:'2026-09-12',actualEnd:'2026-09-12',reason:'固定周末历史日期，核对工作日轴上的日期点'});
+ const read=async()=>(await(await page.request.get('/api/requirements/'+requirement.id)).json()) as Requirement,before=await read();expect(before.workItems[0]).toMatchObject({status:'completed',actualStart:'2026-09-12',actualEnd:'2026-09-12'});
+ await page.addInitScript(({account,projectId})=>localStorage.setItem('project-manage:selected-project:'+account,projectId),{account:session.accountId,projectId:project.id});
+ await page.goto('/?'+new URLSearchParams({projectId:project.id,workspaceView:'progress',scopeType:'project'}));await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');
+ const rows=['feature:'+feature.id,'phase:'+phase.id,requirement.id,started.id].map(id=>page.locator('[data-row-id="'+id+'"]'));
+ for(const zoom of ['日','周','月']){
+  await page.getByRole('button',{name:zoom,exact:true}).click();
+  for(const row of rows){await expect(row.locator('.gantt-date-actual')).toHaveClass(/is-date-point/);await expect(row.locator('.gantt-progress-end')).toHaveAttribute('data-anchor-date','2026-09-12');await expect.poll(()=>progressIsReadable(row)).toBe(true);}
+ }
+ await page.screenshot({path:info.outputPath('weekend-point-1280.png'),animations:'disabled'});
+ await page.setViewportSize({width:390,height:844});const position=await rows.at(-1)!.evaluate(row=>{const bar=row.querySelector('.gantt-date-actual')!.getBoundingClientRect(),left=row.querySelector('.workspace-row-label')!.getBoundingClientRect().right,right=row.querySelector('.workspace-row-actions')!.getBoundingClientRect().left;return {x:(left+right)/2,y:bar.y+bar.height/2,delta:bar.x+bar.width/2-(left+right)/2};});await page.mouse.move(position.x,position.y);await page.mouse.wheel(position.delta,0);
+ for(const row of rows){await expect.poll(()=>progressIsReadable(row)).toBe(true);await expect.poll(()=>row.locator('.gantt-progress-text').evaluate(el=>{const box=el.getBoundingClientRect();return el.contains(document.elementFromPoint(box.x+box.width/2,box.y+box.height/2));})).toBe(true);}
+ await page.screenshot({path:info.outputPath('weekend-point-390.png'),animations:'disabled'});expect(await read()).toEqual(before);
 });

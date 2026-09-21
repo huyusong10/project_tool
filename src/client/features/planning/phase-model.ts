@@ -12,6 +12,16 @@ export type PhaseEdit = { requirementIds?:string[]; feature: Feature & {phases?:
 
 export type PhaseForm = { referenceLinks?:ReferenceLink[]; sortOrder?:number; name: string; scope: string; targetDate: string | null; note: string; reason: string };
 
+export function rebasePhaseForm(draft:PhaseForm,previous:FeaturePhase,latest:FeaturePhase):PhaseForm {
+  const base={...previous,referenceLinks:previous.referenceLinks||[]};
+  const next={...latest,referenceLinks:latest.referenceLinks||[]};
+  const merged={...draft};
+  for(const field of ['name','scope','targetDate','note','sortOrder','referenceLinks'] as const){
+    if(draft[field]===undefined||JSON.stringify(draft[field])===JSON.stringify(base[field]))Object.assign(merged,{[field]:next[field]});
+  }
+  return merged;
+}
+
 export type PendingPhase = { edit: PhaseEdit; value: PhaseForm; payload: Record<string, unknown>; selected?:Requirement[] };
 
 export const pendingKey = (account: string, project: string) => 'pm-phase-write:' + account + ':' + project;

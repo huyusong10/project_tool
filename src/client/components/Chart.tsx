@@ -68,7 +68,7 @@ export function Chart({ option, height = 240, ariaLabel }: { option: Record<stri
         animationEasing: 'cubicOut',
         animationEasingUpdate: 'cubicOut',
         textStyle: { fontFamily: font, color: text, ...resolved.textStyle as object },
-        tooltip: { backgroundColor: colors.resolve('--bg-surface'), borderColor: line, textStyle: { color: text }, ...resolved.tooltip as object },
+        tooltip: { confine: true, extraCssText: 'max-width:min(360px,100%);white-space:normal;overflow-wrap:anywhere;', backgroundColor: colors.resolve('--bg-surface'), borderColor: line, textStyle: { color: text }, ...resolved.tooltip as object },
       } as EChartsCoreOption, { replaceMerge: ['series', 'xAxis', 'yAxis', 'legend', 'grid'], lazyUpdate: false });
     } finally { colors.dispose(); }
   }, [option, theme, reducedMotion]);

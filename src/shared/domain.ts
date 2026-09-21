@@ -1,5 +1,5 @@
 import type { DeliveryFields } from './delivery';
-import { countBusinessDays, isBusinessDay, isValidIsoDate } from './workday';
+import { countBusinessDays, DateRangeError, isBusinessDay, isValidIsoDate } from './workday';
 
 export const requirementStatuses = ['not_started', 'in_progress', 'completed', 'cancelled'] as const;
 export const workItemStatuses = ['not_started', 'in_progress', 'completed', 'cancelled'] as const;
@@ -80,14 +80,18 @@ function parseIsoDate(value: string): Date {
 }
 
 function isoDate(date: Date): string {
+  const year = date.getUTCFullYear();
+  // Keep arithmetic inside the same year range accepted by isValidIsoDate.
+  if (!Number.isFinite(year) || year < 100 || year > 9999) throw new DateRangeError();
   return date.toISOString().slice(0, 10);
 }
 
+const businessDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+});
+
 export function businessDateFromDateTime(value: string | number | Date): string {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
-  });
-  return formatter.format(new Date(value));
+  return businessDateFormatter.format(new Date(value));
 }
 
 export function todayIso(): string {
@@ -290,36 +294,45 @@ function scheduleVarianceFromProgress(items: WeightedWorkItem[], actualProgress:
   const plannedEnds = items.map((item) => item.plannedEnd as string).sort();
   const plannedStart = plannedStarts[0];
   const plannedEnd = plannedEnds.at(-1) as string;
-  const plannedProgressAt = (date: string) => Math.round(items.reduce(
+  const plannedProgressAt = (date: string) => items.reduce(
     (sum, item) => sum + item.progressWeight * plannedProgressWithDuration(item, date),
     0,
-  ) / totalWeight);
+  ) / totalWeight;
+  // 计划进度只增不减，先找达到目标的自然日，再对齐工作日。
+  const firstDateAtProgress = (from: string, to: string, target: number) => {
+    let low = 0, high = (parseIsoDate(to).getTime() - parseIsoDate(from).getTime()) / 86_400_000;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (Math.round(plannedProgressAt(addCalendarDays(from, middle))) >= target) high = middle;
+      else low = middle + 1;
+    }
+    return addCalendarDays(from, low);
+  };
   const actual = Math.min(100, Math.max(0, Math.round(actualProgress)));
-  const plannedToday = plannedProgressAt(today);
-  let referenceDate = today;
+  const plannedProgress = plannedProgressAt(today);
+  const plannedToday = Math.round(plannedProgress);
+  let referenceDate: string | null = today;
 
   if (actual < plannedToday) {
-    referenceDate = addBusinessDays(plannedStart, -1);
+    referenceDate = null;
     const searchEnd = today < plannedEnd ? today : plannedEnd;
-    for (let cursor = plannedStart; cursor <= searchEnd; cursor = addCalendarDays(cursor, 1)) {
-      if (!isBusinessDay(cursor)) continue;
-      if (plannedProgressAt(cursor) > actual) break;
-      referenceDate = cursor;
+    for (let cursor = firstDateAtProgress(plannedStart, searchEnd, actual + 1); cursor > plannedStart;) {
+      cursor = addCalendarDays(cursor, -1);
+      if (isBusinessDay(cursor)) { referenceDate = cursor; break; }
+    }
+    if (referenceDate === null) {
+      try { referenceDate = addBusinessDays(plannedStart, -1); }
+      catch (error) { if (!(error instanceof DateRangeError)) throw error; }
     }
   } else if (actual > plannedToday) {
-    referenceDate = plannedEnd;
-    for (let cursor = today; cursor <= plannedEnd; cursor = addCalendarDays(cursor, 1)) {
-      if (!isBusinessDay(cursor)) continue;
-      if (plannedProgressAt(cursor) >= actual) {
-        referenceDate = cursor;
-        break;
-      }
-    }
+    referenceDate = firstDateAtProgress(today, plannedEnd, actual);
+    while (referenceDate < plannedEnd && !isBusinessDay(referenceDate)) referenceDate = addCalendarDays(referenceDate, 1);
   }
 
   return {
     referenceDate,
-    varianceDays: businessDayDelta(referenceDate, today),
+    varianceDays: referenceDate === null ? businessDaysInclusive(plannedStart, today) : businessDayDelta(referenceDate, today),
+    plannedProgress,
   };
 }
 
@@ -374,8 +387,8 @@ export function deriveRequirementMetrics(
   const base=direct?0:requirement.splitBaseProgress||0;
   const remainingProgress=totalWeight ? actualWeightedProgress / totalWeight : 0;
   const progress = direct ? requirement.progress||0 : Math.min(status==='completed'?100:99,Math.round(base+(100-base)*remainingProgress/100));
-  const plannedProgress = requirementPlannedProgress(requirement, workItems, today);
   const scheduleVariance = scheduleVarianceFromProgress(activeItems, base?remainingProgress:progress, today);
+  const plannedProgress = scheduleVariance === null ? null : Math.round(base + (100 - base) * scheduleVariance.plannedProgress / 100);
 
   const actualEnds = activeItems.map((item) => item.actualEnd).filter((value): value is string => Boolean(value));
   // Execution delay stops at the last work completion; accepting later does not extend it.

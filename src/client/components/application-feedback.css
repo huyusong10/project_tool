@@ -1,8 +1,9 @@
 @layer application {
 
 /* ── 操作反馈 toast 与错误边界（重构底座） ── */
-.toast-region { position: fixed; right: 18px; bottom: 18px; z-index: 1200; display: flex; flex-direction: column; gap: 10px; max-width: min(360px, calc(100vw - 36px)); pointer-events: none; }
-.toast { pointer-events: auto; display: flex; align-items: flex-start; gap: 9px; padding: 11px 13px; border-radius: var(--radius-lg); background: var(--bg-surface); border: 1px solid var(--border-default); box-shadow: var(--shadow-2); font-size: 13px; line-height: 1.5; color: var(--text-primary); animation: toast-in .18s ease; }
+.toast-region { position: fixed; right: 14px; bottom: 14px; z-index: 1200; display: flex; flex-direction: column; gap: 10px; padding: 4px; max-width: min(368px, calc(100vw - 28px)); max-height: calc(100dvh - 28px); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.toast-region:empty { display: none; }
+.toast { pointer-events: auto; flex-shrink: 0; display: flex; align-items: flex-start; gap: 9px; padding: 11px 13px; border-radius: var(--radius-lg); background: var(--bg-surface); border: 1px solid var(--border-default); box-shadow: var(--shadow-2); font-size: 13px; line-height: 1.5; color: var(--text-primary); animation: toast-in .18s ease; }
 .toast > svg { flex: none; margin-top: 1px; }
 .toast-success > svg { color: var(--success); }
 .toast-error > svg { color: var(--danger); }

@@ -1,0 +1,36 @@
+import {expect,test} from '@playwright/test';
+import type {Issue} from '../../src/client/types';
+
+test('问题日期草稿在并发变化和未知写入后核对，保存一次或取消',async({page},info)=>{
+ const post=async(url:string,data:object)=>{const response=await page.request.post(url,{data});expect(response.ok(),await response.text()).toBe(true);return response.json();};
+ await post('/api/login',{username:'admin',password:'41_xc7q0qOjo4Inw!'});
+ const project=await post('/api/projects',{name:'内联问题版本'+Date.now()});
+ const original=await post('/api/issues',{projectId:project.id,title:'并发日期核对',dueDate:'2026-10-20'}) as Issue;
+ await page.goto('/issues?projectId='+project.id);
+ const row=page.getByRole('row').filter({hasText:original.title}),trigger=row.getByRole('button',{name:/目标日期：/}),editor=page.locator('.inline-date-popover');
+ await trigger.click();await editor.getByRole('gridcell',{name:'2026-10-21',exact:true}).click();
+ const response=await page.request.patch('/api/issues/'+original.id,{data:{dueDate:'2026-10-25',impact:'另一会话更新影响',expectedVersion:original.version}});expect(response.ok()).toBe(true);const latest=await response.json() as Issue;
+ const writes:unknown[]=[];page.on('request',r=>{if(r.method()==='PATCH'&&new URL(r.url()).pathname==='/api/issues/'+original.id)writes.push(r.postDataJSON());});
+ await page.evaluate(()=>{window.dispatchEvent(new Event('offline'));window.dispatchEvent(new Event('online'));});
+ await expect(trigger).toContainText('2026-10-25');await expect(editor.getByRole('gridcell',{name:'2026-10-21',exact:true})).toHaveAttribute('aria-selected','true');
+ const save=editor.getByRole('button',{name:'保存',exact:true});
+ expect(writes).toEqual([]);await expect(save).toBeDisabled();await expect(editor).toContainText('问题已更新');
+ await editor.getByRole('button',{name:'重新读取问题',exact:true}).click();await expect(editor).toContainText('草稿已保留，请核对后保存');
+ await expect(editor.getByRole('gridcell',{name:'2026-10-21',exact:true})).toHaveAttribute('aria-selected','true');
+ await page.setViewportSize({width:390,height:844});await page.screenshot({path:info.outputPath('issue-date-recheck-390.png'),animations:'disabled'});
+ await save.click();await expect(editor).toHaveCount(0);expect(writes).toEqual([{dueDate:'2026-10-21',expectedVersion:latest.version}]);
+ const saved=await(await page.request.get('/api/issues/'+original.id)).json() as Issue;
+ expect(saved).toEqual({...latest,dueDate:'2026-10-21',version:latest.version+1,updatedAt:saved.updatedAt});
+ await trigger.click();await editor.getByRole('button',{name:'清除',exact:true}).click();
+ const changed=await page.request.patch('/api/issues/'+original.id,{data:{priority:'P1',expectedVersion:saved.version}});expect(changed.ok()).toBe(true);const last=await changed.json();
+ await page.evaluate(()=>{window.dispatchEvent(new Event('offline'));window.dispatchEvent(new Event('online'));});
+ await expect(editor).toContainText('问题已更新');await expect(save).toBeDisabled();await editor.getByRole('button',{name:'取消',exact:true}).click();
+ expect(writes).toHaveLength(1);expect(await(await page.request.get('/api/issues/'+original.id)).json()).toEqual(last);
+ await page.route('**/api/issues/'+original.id,async route=>{if(route.request().method()==='PATCH'){await route.fetch();await route.abort('failed');}else await route.continue();});
+ await trigger.click();await editor.getByRole('gridcell',{name:'2026-10-22',exact:true}).click();await save.click();
+ await expect(editor.getByRole('button',{name:'重新读取问题',exact:true})).toBeVisible();await expect(save).toBeDisabled();
+ const applied=await(await page.request.get('/api/issues/'+original.id)).json() as Issue;
+ expect(applied).toEqual({...last,dueDate:'2026-10-22',version:last.version+1,updatedAt:applied.updatedAt});
+ await editor.getByRole('button',{name:'重新读取问题',exact:true}).click();await expect(editor).toContainText('草稿已保留，请核对后保存');await expect(save).toBeDisabled();
+ await editor.getByRole('button',{name:'取消',exact:true}).click();expect(writes).toHaveLength(2);expect(await(await page.request.get('/api/issues/'+original.id)).json()).toEqual(applied);
+});

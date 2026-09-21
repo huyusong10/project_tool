@@ -6,7 +6,7 @@ import { Button } from "../../components/Button";
 import { Pagination } from "../../components/Pagination";
 import { useListPagination } from "../../use-list-pagination";
 import { usePageSearchParams, usePageScrollPosition } from "../../use-page-view";
-import { useMemo, useRef, useState } from 'react';
+import { useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserPlus, UserRoundCheck } from 'lucide-react';
 import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../../api";
@@ -22,6 +22,7 @@ import { PageHeader } from "../../components/PageHeader";
 
 import { InlineSelectCell } from '../../components/inline-edit/select';
 import { InlineTextCell } from '../../components/inline-edit/text';
+import { InlineEditContext } from '../../components/inline-edit/shared';
 import { accountRoleOptions, accountStatusOptions } from "../../ui-options";
 import { canonicalizeLabel, matchesSearch, searchScore } from "../../../shared/search";
 import { SearchInput } from "../../components/SearchInput";
@@ -133,7 +134,17 @@ export function PeopleAccessPage() {
       : 0);
   }, [jobTitle, keyword, loginStatus, role, rows]);
 
-  const pagination = useListPagination({ items: filteredRows, filterKey: JSON.stringify([keyword, jobTitle, role, loginStatus]), personal: true, ready: dataReady, loading: peopleQuery.isFetching || accountsQuery.isFetching });
+  const activeAnchor=useContext(InlineEditContext)?.activeAnchor;
+  const editingRow=Boolean(activeAnchor?.closest('.people-access-row'));
+  const [heldRowIds,setHeldRowIds]=useState<string[]>([]);
+  useLayoutEffect(()=>{if(!editingRow)setHeldRowIds(filteredRows.map(row=>row.person.id));},[editingRow,filteredRows]);
+  const displayedRows=useMemo(()=>{
+    if(!editingRow)return filteredRows;
+    const byId=new Map(rows.map(row=>[row.person.id,row]));
+    return heldRowIds.flatMap(id=>{const row=byId.get(id);return row?[row]:[];});
+  },[editingRow,filteredRows,heldRowIds,rows]);
+  const heldOrder=editingRow&&(displayedRows.length!==filteredRows.length||displayedRows.some((row,index)=>row.person.id!==filteredRows[index]?.person.id));
+  const pagination = useListPagination({ items: displayedRows, filterKey: JSON.stringify([keyword, jobTitle, role, loginStatus]), personal: true, ready: dataReady, loading: peopleQuery.isFetching || accountsQuery.isFetching });
   const refresh = () => {
     invalidateAccountPermissionViews(client);
   };
@@ -609,6 +620,7 @@ export function PeopleAccessPage() {
       {!dataReady && loadError ? <EmptyState title="人员与权限加载失败" detail={loadError.message || '暂时无法读取人员与账号，请稍后重试。'} action={<Button variant="secondary" className="ghost-button" disabled={peopleQuery.isFetching || accountsQuery.isFetching} onClick={retry}>重新加载</Button>} />
         : !dataReady ? <LoadingState label="正在加载人员与权限…" className="stable-panel-state" /> : <>
       {loadError && <div className="warning-banner">数据刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={peopleQuery.isFetching || accountsQuery.isFetching} onClick={retry}>重新加载</Button></div>}
+      {heldOrder && <div role="status" className="warning-banner">人员列表已变化，结束当前编辑后更新列表范围和顺序。</div>}
       {createPersonNeedsRecheck && <div role="alert" className="warning-banner">“{createPersonNeedsRecheck.input.name.trim()}”的新增人员结果待核对，原草稿已锁定。<Button variant="secondary" className="ghost-button" onClick={() => setCreating(true)}>继续核对</Button></div>}
       {openAccountNeedsRecheck && <div role="alert" className="warning-banner">“{openAccountNeedsRecheck.name}”的开通账号结果待核对，旧入口已锁定。<Button busy={(openAccountRechecking)} aria-label={openAccountRechecking ? "读取中…" : "重新读取账号"} variant="secondary" className="ghost-button" disabled={openAccountRechecking} onClick={() => void reloadOpenedAccount()}>{"重新读取账号"}</Button></div>}
       {resetNeedsRecheck && <div role="alert" className="warning-banner">“{resetNeedsRecheck.username}”的密码重置结果待核对，旧账号版本已锁定。<Button busy={(resetRechecking)} aria-label={resetRechecking ? "读取中…" : "重新读取账号"} variant="secondary" className="ghost-button" disabled={resetRechecking} onClick={() => void reloadResetAccount()}>{"重新读取账号"}</Button></div>}
@@ -619,12 +631,12 @@ export function PeopleAccessPage() {
       {personProfileNeedsRecheck && <div role="alert" className="warning-banner">“{personProfileNeedsRecheck.person.name}”的人员资料结果待核对，旧人员版本已锁定。<Button busy={(personProfileRechecking)} aria-label={personProfileRechecking ? "读取中…" : "重新读取人员资料"} variant="secondary" className="ghost-button" disabled={personProfileRechecking} onClick={() => void reloadPersonProfile()}>{"重新读取人员资料"}</Button></div>}
       <div className="filter-bar people-access-filters">
         <SearchInput value={keyword} onChange={setKeyword} placeholder="搜索姓名、岗位、登录名或拼音" />
-        <select aria-label="按岗位筛选" value={jobTitle} onChange={(event) => setJobTitle(event.target.value)}><option value="all">全部岗位</option>{jobTitles.map((value) => <option key={value}>{value}</option>)}</select>
+        <select aria-label="按岗位筛选" value={jobTitle} onChange={(event) => setJobTitle(event.target.value)}><option value="all">全部岗位</option>{jobTitle!=='all'&&!jobTitles.includes(jobTitle)&&<option value={jobTitle}>{jobTitle}</option>}{jobTitles.map((value) => <option key={value}>{value}</option>)}</select>
         <select aria-label="按平台权限筛选" value={role} onChange={(event) => setRole(event.target.value)}><option value="all">全部平台权限</option>{accountRoleOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select>
         <select aria-label="按登录状态筛选" value={loginStatus} onChange={(event) => setLoginStatus(event.target.value)}><option value="all">全部登录状态</option><option value="active">允许登录</option><option value="disabled">禁止登录</option><option value="missing">未开通账号</option></select>
-        <span>{filteredRows.length} 名人员</span>
+        <span>{displayedRows.length} 名人员</span>
       </div>
-      <AdaptiveDataList label="人员与权限列表" className="account-data-list people-access-list paged-panel" bodyRef={pagination.scrollRef} footer={<Pagination {...pagination.props} label="人员与权限分页" />} columns={accountColumns} empty={!filteredRows.length && !peopleQuery.isLoading && !accountsQuery.isLoading && <EmptyState title="没有符合条件的人员" detail={rows.length ? '请调整搜索或筛选条件。' : '新增人员后会自动创建登录账号。'} />}>
+      <AdaptiveDataList label="人员与权限列表" className="account-data-list people-access-list paged-panel" bodyRef={pagination.scrollRef} footer={<Pagination {...pagination.props} label="人员与权限分页" />} columns={accountColumns} empty={!displayedRows.length && !peopleQuery.isLoading && !accountsQuery.isLoading && <EmptyState title="没有符合条件的人员" detail={rows.length ? '请调整搜索或筛选条件。' : '新增人员后会自动创建登录账号。'} />}>
         {pagination.items.map(({ person, account }) => {
           const rowSaving = savingPersonIds.has(person.id) || Boolean(account && savingAccountIds.has(account.id));
           const openingNeedsRecheck = openAccountNeedsRecheck?.id === person.id;

@@ -1,4 +1,5 @@
 import type { IntakePackage } from '../shared/intake';
+import { readReferenceLinks, referenceUrlKey } from '../shared/reference-links';
 
 export function mergeIntakeRequirements(pkg:IntakePackage,from:string,to:string):IntakePackage {
   const next=structuredClone(pkg),source=next.requirements.find(r=>r.key===from),target=next.requirements.find(r=>r.key===to);
@@ -7,6 +8,10 @@ export function mergeIntakeRequirements(pkg:IntakePackage,from:string,to:string)
   target.workItems.push(...source.workItems.map(w=>({...w,key:workKeys.get(w.key)!})));
   target.acceptanceCriteria=[...new Set([target.acceptanceCriteria,source.acceptanceCriteria].filter(Boolean))].join('\n');
   target.background=[...new Set([target.background,source.background].filter(Boolean))].join('\n');
+  if(source.referenceLinks?.length){
+    const links=[...readReferenceLinks(target.referenceLinks,target.referenceUrl),...readReferenceLinks(source.referenceLinks)];
+    target.referenceLinks=links.filter((link,index)=>!link.url.trim()||links.findIndex(other=>referenceUrlKey(other.url)===referenceUrlKey(link.url))===index);
+  }
   if(source.referenceUrl && source.referenceUrl !== target.referenceUrl) target.background += '\n来源：' + source.referenceUrl;
   next.requirements=next.requirements.filter(r=>r.key!==from);
   const endpoint=(e:{requirement:string;workItem?:string})=>e.requirement===from?{requirement:to,...(e.workItem?{workItem:workKeys.get(e.workItem)||e.workItem}:{})}:e;

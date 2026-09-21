@@ -6,18 +6,22 @@ import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
 import { usePageScrollPosition } from '../use-page-view';
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Archive, Plus } from "lucide-react";
 import { ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useProjects, useSession } from "../app-context";
 import { invalidateProjectViews, keys } from "../query-keys";
 import { ConfirmDialog } from "../components/Modal";
-import { EmptyState } from "../components/Feedback";
+import { EmptyState, LoadingState } from "../components/Feedback";
+import { StartupError } from '../features/accounts/AccessLanding';
+import { usePageResources } from '../page-context';
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/Badge";
 import { ProjectForm, persistProjectCreateRecheck, readProjectCreateRecheck, type ProjectCreateRecheck } from "../components/ManagementForms";
 import { isAdmin } from "../permissions";
-import type { Archives, Project } from "../types";
+import type { Archives } from "../types";
+import { workspaceParams } from "../workspace-location";
 
 type ProjectArchiveInput = {
   id: string;
@@ -39,6 +43,7 @@ function persistProjectArchiveRecheck(accountKey:string,value:ProjectArchiveInpu
 export function ProjectsPage() {
   const { session } = useSession();
   const { projects, selectedProjectId } = useProjects();
+  const { projects: projectsQuery } = usePageResources();
   const client = useQueryClient();
   const createRecheckAccountKey=session.accountId||session.username||'guest';
   const [creating, setCreating] = useState(false);
@@ -53,6 +58,13 @@ export function ProjectsPage() {
   const setArchiveRecheck=(value:ProjectArchiveInput|null)=>{persistProjectArchiveRecheck(createRecheckAccountKey,value);setArchiveRecheckState(value);};
   const archiveSubmitting = useRef(false);
   const admin = isAdmin(session);
+  const readArchiveLists = async () => {
+    const { data: projects } = await projectsQuery.refetch({ throwOnError: true });
+    if (!projects) throw new Error('项目列表加载失败');
+    // 项目读取可能更新访问状态；归档读取须使用更新后的状态。
+    const archives = await archivesApi.archives<Archives>({ readOnly: true });
+    return { projects, archives };
+  };
   const archive = useMutation({
     mutationFn: ({ id, expectedUpdatedAt, force = false, expectedRequirements, expectedIssues }: ProjectArchiveInput) => projectsApi.projectsById(id, {
       method: "DELETE",
@@ -90,11 +102,7 @@ export function ProjectsPage() {
       }
       if (isWriteOutcomeUnknown(error)) {
         try {
-          const [latestProjects, latestArchives] = await Promise.all([
-            projectsApi.projects<Project[]>({ readOnly: true }),
-            archivesApi.archives<Archives>({ readOnly: true }),
-          ]);
-          client.setQueryData(keys.projects, latestProjects);
+          const { projects: latestProjects, archives: latestArchives } = await readArchiveLists();
           client.setQueryData(keys.archives, latestArchives);
           if (!latestProjects.some((project) => project.id === input.id)
             && latestArchives.projects.some((project) => project.id === input.id)) {
@@ -122,7 +130,7 @@ export function ProjectsPage() {
     archiveSubmitting.current = true;
     archive.mutate(input);
   };
-  const recheckProjectArchive=async()=>{if(!archiveRecheck||archiveRechecking)return;setArchiveRechecking(true);try{const [latestProjects,latestArchives]=await Promise.all([projectsApi.projects<Project[]>({readOnly:true}),archivesApi.archives<Archives>({readOnly:true})]);client.setQueryData(keys.projects,latestProjects);client.setQueryData(keys.archives,latestArchives);const active=latestProjects.some(item=>item.id===archiveRecheck.id),archived=latestArchives.projects.some(item=>item.id===archiveRecheck.id);if(active!==archived){setArchiveRecheck(null);setArchiveTarget(null);setArchiveConflict(null);setArchiveError('');invalidateProjectViews(client);}}catch{/* 两份权威列表必须同时读取成功。 */}finally{setArchiveRechecking(false);}};
+  const recheckProjectArchive=async()=>{if(!archiveRecheck||archiveRechecking)return;setArchiveRechecking(true);try{const {projects:latestProjects,archives:latestArchives}=await readArchiveLists();client.setQueryData(keys.archives,latestArchives);const active=latestProjects.some(item=>item.id===archiveRecheck.id),archived=latestArchives.projects.some(item=>item.id===archiveRecheck.id);if(active!==archived){setArchiveRecheck(null);setArchiveTarget(null);setArchiveConflict(null);setArchiveError('');invalidateProjectViews(client);}}catch{/* 两份权威列表必须同时读取成功。 */}finally{setArchiveRechecking(false);}};
   const pagination = useListPagination({ items: projects, personal: true });
   usePageScrollPosition(true, true);
   return (
@@ -130,7 +138,7 @@ export function ProjectsPage() {
       <PageHeader
         title="项目管理"
         actions={admin ? (
-          <Button variant="primary" className="primary-button" disabled={Boolean(createRecheck)} onClick={() => {if(!createRecheck)setCreating(true);}}>
+          <Button variant="primary" className="primary-button" disabled={projectsQuery.unavailable || Boolean(createRecheck)} onClick={() => {if(!projectsQuery.unavailable && !createRecheck)setCreating(true);}}>
             <Plus size={16} />
             新建项目
           </Button>
@@ -139,14 +147,17 @@ export function ProjectsPage() {
       <div className="page-content">
         {createRecheck&&<div role="alert" className="warning-banner">项目创建结果待核对，新建入口暂不可用。<Button variant="secondary" type="button" className="ghost-button" onClick={()=>setCreating(true)}>核对项目创建</Button></div>}
         {archiveRecheck&&<div role="alert" className="warning-banner">“{archiveRecheck.name}”的项目归档结果待核对，其他归档操作暂不可用。<Button busy={(archiveRechecking)} aria-label={archiveRechecking?'读取中…':'重新读取项目与归档'} variant="secondary" type="button" className="ghost-button" disabled={archiveRechecking} onClick={()=>void recheckProjectArchive()}>{'重新读取项目与归档'}</Button></div>}
-        <div className="table-panel project-table paged-panel"><div className="paged-body" ref={pagination.scrollRef}>
+        {projectsQuery.unavailable ? projectsQuery.error || projectsQuery.data === null
+          ? <StartupError title="项目列表加载失败" error={projectsQuery.error || new Error('资源不存在或当前账号无权访问。')} pending={projectsQuery.isFetching} onRetry={() => void projectsQuery.refetch()} />
+          : <LoadingState label="正在加载项目列表…" className="tall" />
+          : <div className="table-panel project-table paged-panel"><div className="paged-body" ref={pagination.scrollRef}>
           <table>
             <thead><tr><th>项目</th><th>计划周期</th><th>状态</th>{session.authenticated && <th>操作</th>}</tr></thead>
             <tbody>
               {pagination.items.map((project) => {
                 return (
                 <tr key={project.id} className={project.id === selectedProjectId ? "is-current" : ""}>
-                  <td><span className="project-name-line"><strong>{project.name}</strong>{project.isSample && <span className="sample-project-badge">样板</span>}</span>{project.id === selectedProjectId && <small>当前项目</small>}</td>
+                  <td><span className="project-name-line"><Link to={'/?'+workspaceParams({projectId:project.id,view:'list',scope:{kind:'project',id:project.id}})} title={project.name}><strong>{project.name}</strong></Link>{project.isSample && <span className="sample-project-badge">样板</span>}</span>{project.id === selectedProjectId && <small>当前项目</small>}</td>
                   <td><div className="inline-date-range">
                     <span>{project.plannedStart || "未设置"}</span>
                     <span>→</span>
@@ -171,7 +182,7 @@ export function ProjectsPage() {
           </table></div>
           <Pagination {...pagination.props} label="项目列表分页" />
           {!projects.length && <EmptyState title="还没有项目" detail="创建第一个项目后即可维护需求和排期。" />}
-        </div>
+        </div>}
         {creating && (
           <ProjectForm createRecheck={createRecheck} onCreateRecheckChange={setCreateRecheck} onClose={() => setCreating(false)} />
         )}

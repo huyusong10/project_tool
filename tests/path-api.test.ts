@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {scryptSync,randomUUID} from 'node:crypto';
+import {brotliDecompressSync,gunzipSync} from 'node:zlib';
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import type {FastifyInstance} from 'fastify';
 import type {PathAnalysis} from '../src/shared/paths';
@@ -10,6 +11,28 @@ import type {Requirement,WorkItem,WorkItemTemplate} from '../src/client/types';
 import {addBusinessDays,todayIso} from '../src/shared/domain';
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'pm-path-api-'));
 import type {DependencyChanges,DependencyChangePreview,DependencyChangeReceipt} from '../src/shared/path-contracts';
+
+it('项目和需求分析按客户端编码压缩，完整结果与权限保持且不影响其他接口',async()=>{
+  const {projectId,a}=await fixture();
+  for(const url of ['/api/projects/'+projectId+'/path-analysis','/api/requirements/'+a.id+'/path-analysis']){
+    const original=await request('GET',url);expect(original.statusCode).toBe(200);
+    expect(original.headers['content-encoding']).toBeUndefined();
+    for(const [accept,encoding] of [['br, gzip','br'],['gzip, br;q=0','gzip'],['br;q=0.1, gzip;q=0.9','gzip'],['br;q=0, gzip;q=0',undefined],['identity',undefined],['deflate',undefined]] as const){
+      const response=await app.inject({method:'GET',url,headers:{cookie,'accept-encoding':accept}});
+      expect(response.statusCode).toBe(200);expect(response.headers['content-encoding']).toBe(encoding);
+      if(encoding)expect(response.headers.vary).toContain('accept-encoding');
+      expect(response.headers['cache-control']).toBe('private, no-store');
+      const decoded=encoding==='br'?brotliDecompressSync(response.rawPayload):encoding==='gzip'?gunzipSync(response.rawPayload):response.rawPayload;
+      expect(decoded.equals(original.rawPayload)).toBe(true);
+      if(encoding)expect(response.rawPayload.length).toBeLessThan(original.rawPayload.length);
+    }
+    const denied=await app.inject({method:'GET',url,headers:{'accept-encoding':'br'}});
+    expect(denied.statusCode).toBe(404);
+  }
+  const url='/api/requirements/'+a.id,original=await request('GET',url);
+  const other=await app.inject({method:'GET',url,headers:{cookie,'accept-encoding':'br'}});
+  expect(other.headers['content-encoding']).toBeUndefined();expect(other.rawPayload.equals(original.rawPayload)).toBe(true);
+});
 
 it('提交中审计失败时关系、估算、版本和回执全部回滚，同批次可安全重试',async()=>{
  const {projectId,a,b}=await fixture(),before=await analysis(projectId),changes:DependencyChanges={add:[{clientId:randomUUID(),sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:b.workItems[1].id}],remove:[before.dependencies[0].id],estimates:[{workItemId:a.workItems[0].id,durationDays:7}]};
@@ -29,6 +52,31 @@ async function batchPreview(projectId:string,changes:DependencyChanges,revision?
   const response=await post('/api/projects/'+projectId+'/dependency-changes/preview',input);
   return {input,response,preview:response.json<DependencyChangePreview>()};
 }
+it('依赖批次回执保留与对象原型同名的临时标识',async()=>{
+  const {projectId,a,b}=await fixture(),clientId='__proto__';
+  const changes:DependencyChanges={add:[{clientId,sourceRequirementId:a.id,sourceWorkItemId:a.workItems[0].id,targetRequirementId:b.id,targetWorkItemId:b.workItems[1].id}],remove:[],estimates:[]};
+  const {input,response,preview}=await batchPreview(projectId,changes);expect(response.statusCode,response.body).toBe(200);
+  const body={...input,batchId:randomUUID(),previewToken:preview.previewToken};
+  const saved=await post('/api/projects/'+projectId+'/dependency-changes/apply',body);expect(saved.statusCode,saved.body).toBe(200);
+  const receipt=saved.json<DependencyChangeReceipt>();expect(Object.keys(receipt.addedIds)).toEqual([clientId]);
+  expect((await analysis(projectId)).dependencies.find(d=>d.id===receipt.addedIds[clientId])).toMatchObject({sourceWorkItemId:a.workItems[0].id,targetWorkItemId:b.workItems[1].id});
+  expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',body)).json()).toEqual(receipt);
+  expect((await request('GET','/api/projects/'+projectId+'/dependency-changes/'+body.batchId)).json()).toEqual({status:'applied',...receipt});
+});
+it('图形批次使用任意合法临时标识创建需求及其工作项',async()=>{
+  const {projectId}=await fixture(),id='__proto__',work='constructor';
+  const changes:DependencyChanges={add:[],remove:[],estimates:[],entities:[
+    {entity:'requirement',op:'create',id,data:{title:'保留输入标识的需求'}},
+    {entity:'work',op:'create',id:work,requirementId:id,data:{title:'从临时归属创建的工作',durationDays:3}},
+  ]};
+  const {input,response,preview}=await batchPreview(projectId,changes);expect(response.statusCode,response.body).toBe(200);
+  const body={...input,batchId:randomUUID(),previewToken:preview.previewToken};
+  const saved=await post('/api/projects/'+projectId+'/dependency-changes/apply',body);expect(saved.statusCode,saved.body).toBe(200);
+  const receipt=saved.json<DependencyChangeReceipt>();expect(Object.keys(receipt.addedIds).sort()).toEqual([id,work].sort());
+  const requirement=await detail(receipt.addedIds[id]);expect(requirement.title).toBe('保留输入标识的需求');
+  expect(requirement.workItems).toHaveLength(1);expect(requirement.workItems[0]).toMatchObject({id:receipt.addedIds[work],requirementId:requirement.id,durationDays:3});
+  expect((await post('/api/projects/'+projectId+'/dependency-changes/apply',body)).json()).toEqual(receipt);
+});
 it('批次按最终网络校验：移除旧前置再反向连接；预览无副作用，原子保存估算',async()=>{
   const {projectId,a}=await fixture(),before=await analysis(projectId),old=before.dependencies.find(d=>d.sourceWorkItemId===a.workItems[0].id)!;
   const edge={clientId:randomUUID(),sourceRequirementId:a.id,sourceWorkItemId:a.workItems[1].id,targetRequirementId:a.id,targetWorkItemId:a.workItems[0].id};
@@ -122,7 +170,7 @@ it('排期编辑贯通存储、进度、拓扑和查询；估算单独修改且�
  const logs=()=>sqlite.prepare('SELECT * FROM progress_updates WHERE requirement_id=? ORDER BY rowid').all(a.id);
  const originalFacts=facts(),originalLogs=logs();
  const unchangedHistory=()=>expect(logs().slice(0,originalLogs.length)).toEqual(originalLogs);
- for(const patch of [{plannedEnd:addBusinessDays(todayIso(),12)},{plannedStart:null,plannedEnd:null},{plannedStart:todayIso(),plannedEnd:addBusinessDays(todayIso(),14)}]) {
+ for(const patch of [{plannedEnd:addBusinessDays(todayIso(),12)},{plannedStart:null,plannedEnd:null},{plannedStart:addBusinessDays(todayIso(),0),plannedEnd:addBusinessDays(todayIso(),14)}]) {
    const current=(await detail(a.id)).workItems[1];
    const changed=await request('PATCH',`/api/work-items/${current.id}`,{expectedVersion:current.version,...patch});expect(changed.statusCode,changed.body).toBe(200);
    const r=await detail(a.id),snapshot=await analysis(projectId),node=snapshot.nodes.find(n=>n.id===current.id)!;
@@ -137,7 +185,7 @@ it('排期编辑贯通存储、进度、拓扑和查询；估算单独修改且�
  expect(r.progress).toBe(40);expect(r.workItems[1]).toMatchObject({progressWeight:2,durationDays:6});
  expect(node.forecastEnd! > baselineAnalysis.nodes.find(n=>n.id===build.id)!.forecastEnd!).toBe(true);
  const single=(await request('GET',`/api/work-items/${build.id}`)).json();expect(single.deliveryForecast).toEqual(r.workItems[1].deliveryForecast);
- const done=snapshot.nodes.find(n=>n.id===w.id)!;expect(done.forecastStart!<=done.forecastEnd!).toBe(true);expect(done.scheduledStart).toBe(done.forecastStart);
+ const done=snapshot.nodes.find(n=>n.id===w.id)!;expect(done).toMatchObject({forecastStart:baseline.workItems[0].actualStart,forecastEnd:baseline.workItems[0].actualEnd,scheduledStart:baseline.workItems[0].actualStart,scheduledEnd:baseline.workItems[0].actualEnd});
  expect(facts()).toEqual(originalFacts);unchangedHistory();
 });
 it('模板复制和实例化保留前置；旧模板不推断关系或改写历史日期',async()=>{
@@ -146,6 +194,27 @@ it('模板复制和实例化保留前置；旧模板不推断关系或改写历�
  const copied=copy.json<WorkItemTemplate>();expect(copied.dependencyMode).toBe('dependencies');expect(copied.items[1].predecessorIds).toEqual([copied.items[0].id]);
  const old=await fixture(true),before=(await detail(old.a.id)).workItems;expect((await analysis(old.projectId)).dependencies).toEqual([]);expect((await analysis(old.projectId)).coverage.reviewed).toBe(2);const {sqlite}=await import('./support/database');sqlite.prepare('UPDATE requirements SET dependencies_reviewed_at=NULL WHERE id=?').run(old.a.id);expect((await analysis(old.projectId)).forecastEnd).toBeTruthy();
  expect((await post(`/api/requirements/${old.a.id}/dependency-review`,{expectedRevision:(await analysis(old.projectId)).revision,reviewed:true})).statusCode).toBe(410);const stripDerived=(items:WorkItem[])=>items.map(({forecastBasis:_basis,deliveryForecast:_forecast,...w})=>w);expect(stripDerived((await detail(old.a.id)).workItems)).toEqual(stripDerived(before));
+});
+it('流程客户端标识与内部结束节点同名时，创建、复制和实例化仍保持排期', async () => {
+ const project = (await post('/api/projects', { name: `流程标识${++sequence}` })).json();
+ const response = await post('/api/templates', { projectId: project.id, name: '特殊标识流程', dependencyMode: 'dependencies', items: [
+  { clientKey: '__template_finish__', title: '设计', durationDays: 2, startOffsetDays: 0, sortOrder: 0, predecessorKeys: [] },
+  { clientKey: '__template_finish___', title: '开发', durationDays: 3, startOffsetDays: 2, sortOrder: 1, predecessorKeys: ['__template_finish__'] },
+ ] });
+ expect(response.statusCode, response.body).toBe(200);
+ const template = response.json<WorkItemTemplate>();
+ expect(template.items.map(item => item.startOffsetDays)).toEqual([0, 2]);
+ const copied = await post(`/api/projects/${project.id}/templates/${template.id}/copy`, {});
+ expect(copied.statusCode, copied.body).toBe(200);
+ for (const source of [template, copied.json<WorkItemTemplate>()]) {
+  expect(source.items.map(item => item.startOffsetDays)).toEqual([0, 2]);
+  expect(source.items[1].predecessorIds).toEqual([source.items[0].id]);
+  const created = await post('/api/requirements', { projectId: project.id, templateId: source.id, title: source.name, plannedStart: '2026-09-01' });
+  expect(created.statusCode, created.body).toBe(200);
+  expect(created.json<Requirement>().workItems.map(item => [item.title, item.plannedStart, item.plannedEnd])).toEqual([
+   ['设计', '2026-09-01', '2026-09-02'], ['开发', '2026-09-03', '2026-09-07'],
+  ]);
+ }
 });
 it('部分交付允许 A设计→B开发→A联调；执行循环拒绝且版本不变',async()=>{
  const {projectId,a,b}=await fixture();expect((await add(projectId,a.id,a.workItems[0].id,b.id,b.workItems[1].id)).statusCode).toBe(200);

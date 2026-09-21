@@ -1,6 +1,6 @@
 import * as accountsApi from '../features/accounts/api';
 import { Button } from './Button';
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, LockKeyhole, LogIn } from "lucide-react";
 import { isWriteOutcomeUnknown, jsonBody } from "../api";
@@ -9,6 +9,12 @@ import type { Session, SystemBranding } from "../types";
 import { commitSession } from '../session-cache';
 import { BrandLogo } from "./BrandLogo";
 import { Modal, useSynchronousPendingLock } from "./Modal";
+
+function AuthFormError({ message }: { message: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useEffect(() => { if (message) ref.current?.scrollIntoView({ block: "nearest" }); }, [message]);
+  return message ? <p ref={ref} role="alert" className="form-error field-full">{message}</p> : null;
+}
 
 export function LoginDialog({ onClose, branding }: { onClose: () => void; branding: SystemBranding }) {
   const client = useQueryClient();
@@ -76,7 +82,7 @@ export function LoginDialog({ onClose, branding }: { onClose: () => void; brandi
           autoComplete="current-password"
         />
       </label>
-      {error && <p className="form-error field-full">{error}</p>}
+      <AuthFormError message={error} />
       <div className="form-actions field-full">
         <Button variant="secondary" type="button" className="ghost-button" disabled={lock.busy} onClick={close}>取消</Button>
         <Button busy={(lock.busy)} aria-label={lock.busy ? "登录中…" : "用户登录"} variant="primary" type="submit" className="primary-button" disabled={lock.busy}>
@@ -150,7 +156,7 @@ export function PasswordDialog({ forced, onClose }: { forced: boolean; onClose: 
     <label className="field field-full"><span>当前密码</span><input name="currentPassword" type="password" required autoFocus disabled={lock.busy || outcomeUnknown || verifying} autoComplete="current-password" /></label>
     <label className="field field-full"><span>新密码</span><input name="newPassword" type="password" minLength={8} required disabled={lock.busy || outcomeUnknown || verifying} autoComplete="new-password" placeholder="至少8个字符" /></label>
     <label className="field field-full"><span>确认新密码</span><input name="confirmPassword" type="password" minLength={8} required disabled={lock.busy || outcomeUnknown || verifying} autoComplete="new-password" /></label>
-    {error && <p className="form-error field-full">{error}</p>}
+    <AuthFormError message={error} />
     <div className="form-actions field-full">{!forced && <Button variant="secondary" type="button" className="ghost-button" disabled={lock.busy || verifying} onClick={close}>取消</Button>}{forced && outcomeUnknown && <Button busy={(verifying)} aria-label={verifying ? "读取中…" : "重新读取会话状态"} variant="secondary" type="button" className="ghost-button" disabled={verifying} onClick={() => void verifyPasswordOutcome().then((result) => {
       if (result === "retry") { setOutcomeUnknown(false); mutation.reset(); setError("服务端仍要求修改初始密码，请重新提交。"); }
       else if (result === "unknown") setError("修改结果仍无法确认，请稍后重新读取会话状态。");

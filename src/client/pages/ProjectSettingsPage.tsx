@@ -6,6 +6,7 @@ import { Button } from '../components/Button';
 import { Pagination } from '../components/Pagination';
 import { useListPagination } from '../use-list-pagination';
 import { usePageScrollPosition } from '../use-page-view';
+import { useResourceQuery } from '../use-resource-query';
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type Query } from "@tanstack/react-query";
 import { Archive, Edit3, RotateCcw, UserMinus, UserPlus } from "lucide-react";
@@ -62,11 +63,11 @@ export function ProjectSettingsPage() {
   const restoreSubmitting = useRef(false);
   const roleSubmitting = useRef(false);
   const canManage = canManageProject(session, selectedProjectId);
-  const membersQuery = useQuery({
-    queryKey: [...keys.projectMembers, selectedProjectId],
-    queryFn: ({ signal }) => projectsApi.projectsMembers<Person[]>(selectedProjectId, { signal }),
-    enabled: Boolean(selectedProjectId),
-  });
+  const membersQuery = useResourceQuery<Person[]>(
+    [...keys.projectMembers, selectedProjectId],
+    signal => projectsApi.projectsMembers<Person[]>(selectedProjectId, { signal }),
+    Boolean(selectedProjectId),
+  );
   const members = membersQuery.data || [];
   const setRole = useMutation({
     mutationFn: ({ projectId, personId, role, expectedMembershipUpdatedAt }: { projectId: string; personId: string; role: ProjectMemberRole; expectedMembershipUpdatedAt: string | null }) =>
@@ -154,11 +155,11 @@ export function ProjectSettingsPage() {
     setPendingRole(input);
     setRole.mutate(input);
   };
-  const projectArchivesQuery = useQuery({
-    queryKey: [...keys.projectArchives, selectedProjectId],
-    queryFn: ({ signal }) => archivesApi.archivesQuery<Archives>(encodeURIComponent(selectedProjectId), { signal }),
-    enabled: canManage && Boolean(selectedProjectId),
-  });
+  const projectArchivesQuery = useResourceQuery<Archives>(
+    [...keys.projectArchives, selectedProjectId],
+    signal => archivesApi.archivesQuery<Archives>(encodeURIComponent(selectedProjectId), { signal }),
+    canManage && Boolean(selectedProjectId),
+  );
   const projectArchives = projectArchivesQuery.data;
   const membersPagination = useListPagination({ items: members, id: 'members', ready: Boolean(membersQuery.data), loading: membersQuery.isFetching, disabled: memberMutationBusy });
   const archiveItems = [...(projectArchives?.requirements || []).map(item => ({...item, entity: 'requirements' as const, type: '需求'})), ...(projectArchives?.templates || []).map(item => ({...item, entity: 'templates' as const, type: '流程'}))].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt) || a.id.localeCompare(b.id));
@@ -255,7 +256,7 @@ export function ProjectSettingsPage() {
           <div className="compact-list paged-body" ref={archivesPagination.scrollRef}>
             {projectArchivesQuery.isLoading && !projectArchives && <LoadingState label="正在加载项目归档…" className="stable-panel-state" />}
             {projectArchivesQuery.error && !projectArchives && <EmptyState title="项目归档加载失败" detail={projectArchivesQuery.error.message || "暂时无法读取项目归档，请稍后重试。"} action={<Button variant="secondary" className="ghost-button" disabled={projectArchivesQuery.isFetching} onClick={() => void projectArchivesQuery.refetch()}>重新加载</Button>} />}
-            {projectArchives && archivesPagination.items.map((item) => <div key={item.entity + item.id}><Archive size={15} /><div><strong>{item.title}</strong><span>{item.type} · {new Date(item.deletedAt).toLocaleString()}</span></div><Button busy={(restoringKey === `${item.entity}:${item.id}`)} aria-label={restoringKey === `${item.entity}:${item.id}` ? "恢复中…" : "恢复"} variant="link" size="small" className="compact-text-button" disabled={Boolean(restoringKey) || projectArchiveNeedsRecheck} onClick={() => restoreArchive(item.entity, item.id, item.deletedAt)}><RotateCcw size={14} />{"恢复"}</Button></div>)}
+            {projectArchives && archivesPagination.items.map((item) => <div key={item.entity + item.id}><Archive size={15} /><div><strong>{item.title}</strong><span>{item.type} · {new Date(item.deletedAt).toLocaleString("zh-CN", { hour12: false })}</span></div><Button busy={(restoringKey === `${item.entity}:${item.id}`)} aria-label={restoringKey === `${item.entity}:${item.id}` ? "恢复中…" : "恢复"} variant="link" size="small" className="compact-text-button" disabled={Boolean(restoringKey) || projectArchiveNeedsRecheck} onClick={() => restoreArchive(item.entity, item.id, item.deletedAt)}><RotateCcw size={14} />{"恢复"}</Button></div>)}
             {projectArchives && !projectArchives.requirements.length && !projectArchives.templates.length && <EmptyState title="暂无项目归档" detail="归档需求或流程后会显示在这里。" />}
           </div>
           <Pagination {...archivesPagination.props} label="项目归档分页" />
@@ -348,7 +349,7 @@ function AddProjectPersonForm({ projectId, onNeedsRecheck, onClose }: { projectI
     setBatchError("");
     mutation.mutate({ personIds: selectedIds, role });
   }}>
-    <SearchInput className="member-picker-search" value={keyword} onChange={setKeyword} disabled={batchBusy} placeholder="搜索姓名、岗位、登录名或拼音" autoFocus />
+    <SearchInput className="member-picker-search" value={keyword} onChange={setKeyword} disabled={batchBusy} placeholder="搜索姓名、岗位、登录名或拼音" autoFocus onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) event.preventDefault(); }} />
     <div className="member-picker-selection"><span>已选择 <strong>{selectedIds.length}</strong> 人</span>{selectedIds.length > 0 && <Button variant="secondary" type="button" disabled={batchBusy} onClick={() => { setSelectedPeople({}); setBatchError(""); }}>清空选择</Button>}</div>
     <div className="member-candidate-list" aria-label="可添加人员">
       {candidatesQuery.isLoading && <LoadingState label="正在加载可添加人员…" className="member-picker-state" />}
@@ -373,6 +374,7 @@ function AddProjectPersonForm({ projectId, onNeedsRecheck, onClose }: { projectI
       </button>)}
       {!candidatesQuery.isLoading && !candidatesQuery.isError && !people.length && <div className="member-picker-state"><strong>{keyword ? "没有匹配的人员" : "暂无可添加人员"}</strong><span>{keyword ? "请调整搜索关键词。" : "当前启用人员均已加入项目，或请先到人员与权限新增人员。"}</span></div>}
     </div>
+    {!candidatesQuery.isLoading && !candidatesQuery.isError && people.length === 50 && <p className="field-help">最多显示 50 人，未找到时请缩小搜索范围。</p>}
     <label className="field member-picker-role"><span>加入后的项目角色</span><select disabled={batchBusy} value={role} onChange={(event) => setRole(event.target.value as ProjectMemberRole)}><option value="member">项目成员</option><option value="viewer">项目观察者</option><option value="manager">项目经理</option></select></label>
     {batchNeedsRecheck && <p className="form-error" role="alert">成员添加结果待核对，当前批次不会重复提交。请关闭后在项目成员列表重新读取。</p>}
     {batchError && <p className="form-error">部分成员添加失败：{batchError}</p>}

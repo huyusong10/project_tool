@@ -17,7 +17,7 @@ export function GuestLanding() {
   </div></div>;
 }
 
-export function StartupError({ title, error, pending, onRetry }: { title: string; error: Error; pending: boolean; onRetry: () => void }) {
+export function StartupError({ title, error, pending, onRetry, back }: { title: string; error: Error; pending: boolean; onRetry: () => void; back?: { label: string; fallback: string } }) {
   const {openLogin} = useUiActions(),navigate=useNavigate();
-  return <div className="page-content guest-landing"><div className="panel"><h1>{title}</h1><p>{error.message}</p><Button busy={(pending)} aria-label={pending ? "重新加载中…" : "重新加载"} variant="primary" className="primary-button" disabled={pending} onClick={onRetry}>{"重新加载"}</Button><Button variant="secondary" onClick={()=>navigate("/")}>项目空间</Button><Button variant="secondary" onClick={openLogin}>切换账号</Button></div></div>;
+  return <div className="page-content guest-landing"><div className="panel"><h1>{title}</h1><p>{error.message}</p><div className="button-row"><Button busy={(pending)} aria-label={pending ? "重新加载中…" : "重新加载"} variant="primary" className="primary-button" disabled={pending} onClick={onRetry}>{"重新加载"}</Button><Button variant="secondary" onClick={()=>navigate(back?.fallback || "/")}>{back?.label || '项目空间'}</Button><Button variant="secondary" onClick={openLogin}>切换账号</Button></div></div></div>;
 }

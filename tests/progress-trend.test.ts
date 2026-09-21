@@ -10,6 +10,13 @@ describe('需求计划进度',()=>{
     const split={executionMode:'work_items' as const,splitBaseProgress:30};
     expect(requirementPlannedProgress(split,[item],'2026-09-03')).toBe(83);
     expect(requirementPlannedProgress(split,[item],'2026-09-03')).toBe(deriveRequirementMetrics(split,[item],'2026-09-03').plannedProgress);
+    const weighted = [
+      { ...item, plannedEnd: '2026-09-02', progressWeight: 1 },
+      { ...item, plannedStart: '2026-09-03', progressWeight: 8 },
+    ];
+    const partial = { ...split, splitBaseProgress: 20 };
+    expect(requirementPlannedProgress(partial, weighted, '2026-09-01')).toBe(24);
+    expect(deriveRequirementMetrics(partial, weighted, '2026-09-01').plannedProgress).toBe(24);
   });
   it('排期不完整时不伪造零进度，已取消工作项不影响有效计划',()=>{
     expect(requirementPlannedProgress({executionMode:'direct'},[],'2026-09-03')).toBeNull();

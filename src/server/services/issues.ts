@@ -62,8 +62,9 @@ function issueOwner(projectId: string, value: unknown, conflict = false) {
   const ownerId = nullableText(value);
   if (ownerId && !row(`SELECT p.id FROM people p JOIN project_people pp ON pp.person_id=p.id
     WHERE p.id=? AND pp.project_id=? AND pp.project_role IN ('member','manager')
-      AND p.deleted_at IS NULL AND p.active=1`, ownerId, projectId)) {
-    fail('负责人必须是当前项目中已启用的成员或项目经理', conflict ? 'DEPENDENCY_CONFLICT' : 'VALIDATION_ERROR', conflict ? 409 : 400);
+      AND p.deleted_at IS NULL AND p.active=1
+      AND EXISTS (SELECT 1 FROM accounts a WHERE a.person_id=p.id AND a.status='active' AND a.deleted_at IS NULL)`, ownerId, projectId)) {
+    fail('负责人必须是当前项目中账号有效的成员或项目经理', conflict ? 'DEPENDENCY_CONFLICT' : 'VALIDATION_ERROR', conflict ? 409 : 400);
   }
   return ownerId;
 }
@@ -124,17 +125,21 @@ export function listIssues(filters: {
   const pageSize = Math.min(100, Math.max(1, Number(filters.pageSize) || 50));
   const countFrom = `FROM issues i JOIN projects pr ON pr.id=i.project_id
     LEFT JOIN requirements r ON r.id=i.requirement_id LEFT JOIN people p ON p.id=i.owner_id`;
-  const total = row<{ count: number }>(`SELECT COUNT(*) AS count ${countFrom} ${clause}`, ...params)?.count || 0;
+  // A keyword may scan issue history; reuse its matches for counting and paging.
+  const matchingIds = q ? rows<{ id: string }>(`SELECT i.id ${countFrom} ${clause}`, ...params).map(issue => issue.id) : undefined;
+  const total = matchingIds?.length ?? (row<{ count: number }>(`SELECT COUNT(*) AS count ${countFrom} ${clause}`, ...params)?.count || 0);
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(requestedPage, pages);
-  const items = rows<IssueRecord>(`${issueSelect} ${clause}
+  const itemClause = matchingIds ? 'WHERE i.id IN (SELECT value FROM json_each(?))' : clause;
+  const itemParams = matchingIds ? [JSON.stringify(matchingIds)] : params;
+  const items = rows<IssueRecord>(`${issueSelect} ${itemClause}
     ORDER BY CASE WHEN i.status='resolved' THEN 1 ELSE 0 END,
       CASE WHEN i.status<>'resolved' AND i.due_date IS NOT NULL AND business_day_delta(i.due_date, ?)>0 THEN 0 ELSE 1 END,
       CASE i.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
       CASE WHEN i.due_date IS NULL THEN 1 ELSE 0 END, i.due_date,
       CASE i.status WHEN 'in_progress' THEN 0 WHEN 'deferred' THEN 1 ELSE 2 END,
       i.updated_at DESC, i.id
-    LIMIT ? OFFSET ?`, ...params, asOfDate, pageSize, (page - 1) * pageSize)
+    LIMIT ? OFFSET ?`, ...itemParams, asOfDate, pageSize, (page - 1) * pageSize)
     .map((issue) => enrichIssue(issue, asOfDate));
   const summaryWhere = `WHERE (i.requirement_id IS NULL OR r.deleted_at IS NULL)${filters.projectId ? ' AND i.project_id=?' : ''}`;
   const summaryParams = filters.projectId ? [filters.projectId] : [];
@@ -371,7 +376,7 @@ export function reopenIssue(id: string, input: JsonObject, actor: Actor) {
 export function correctIssue(id: string, input: JsonObject, actor: Actor) {
   if (Object.keys(input).some((key) => ![
     'expectedVersion', 'reason', 'supersedesId', 'title', 'impact', 'progress', 'resolvedAt',
-  ].includes(key))) fail('问题纠错不能提交闭环说明或未声明字段');
+  ].includes(key))) fail('问题纠错不能提交解决说明或未声明字段');
   const current = getIssue(id, true); assertExpectedVersion(input, current.version); const reason = nullableText(input.reason) || describeChanges(current,input);
   assertIssueParentMutable(current);
   const progress = input.progress === undefined ? current.progress : requireProgress(input.progress, '问题完成度');

@@ -2,13 +2,14 @@
 import * as planningApi from "../features/planning/api";
 import * as requirementsApi from "../features/requirements/api";
 import { ReferenceLinksEditor } from "./ReferenceLinks";
-import { readReferenceLinks } from "../../shared/reference-links";
-import { Button, ButtonLink } from "./Button";
+import { referenceLinksEqual } from "../../shared/reference-links";
+import { Button } from "./Button";
 import { Select } from "./Select";
 import { useDeliveryForm } from "../use-delivery-form";
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { ZodError } from 'zod';
 import { ApiError, InvalidResponseError, isWriteOutcomeUnknown, jsonBody } from "../api";
 import { PhaseChoiceControl } from '../features/planning/PhaseChoiceControl';
 import { useIntake } from '../features/planning/use-intake';
@@ -16,7 +17,6 @@ import { assertCleanProjectDraft } from "../use-graph-draft";
 import { useSession } from "../app-context";
 import { useResourceQuery } from "../use-resource-query";
 import { invalidateRequirementViews, keys } from "../query-keys";
-import type { FeatureOverview } from "../../shared/feature-overview";
 
 import { phaseInput, phaseStatusLabels, type FeaturePhase } from "../../shared/feature-phases";
 import type { Requirement } from "../types";
@@ -24,16 +24,11 @@ import { Modal } from "./Modal";
 import { ExecutionStageBadge } from "./ExecutionStageBadge";
 import "./phase-planning.css";
 
-import { type PhaseEdit, readPendingPhase, nextPhaseName, type PhaseForm, type PendingPhase, pendingKey } from '../features/planning/phase-model';
+import { type PhaseEdit, readPendingPhase, nextPhaseName, rebasePhaseForm, type PhaseForm, type PendingPhase, pendingKey } from '../features/planning/phase-model';
 
 export function PhaseStatusBadge({ phase }: { phase: Pick<FeaturePhase,'status'> }) {
   const tone = phase.status === 'completed' ? 'completed' : phase.status === 'in_progress' ? 'development' : 'not_started';
   return <span className={'stage-badge stage-' + tone}>{phaseStatusLabels[phase.status]}</span>;
-}
-
-export function PhaseRows({ feature, manage, onEdit, status = '', from = '', through = '' }: { feature: FeatureOverview; manage: boolean; onEdit: (edit: PhaseEdit) => void; status?: string; from?: string; through?: string }) {
-  const phases = (feature.phases || []).filter(p => (!status || p.status === status) && (!from || !!p.targetDate && p.targetDate >= from) && (!through || !!p.targetDate && p.targetDate <= through));
-  return <div className="phase-list"><div className="phase-list-heading"><span>{feature.phases?.length || 0} 个 Phase{feature.unassignedPhaseCount ? ' · ' + feature.unassignedPhaseCount + ' 个需求未分派阶段' : ''}</span></div>{phases.map(phase => <article className="phase-row" key={phase.id} data-testid="phase-row"><div className="phase-row-target"><strong>{phase.name}</strong><p>{phase.scope || '交付范围待明确'}</p></div><div className="phase-row-state"><PhaseStatusBadge phase={phase} /><div className="phase-distribution">{phase.distribution.map(s => <button className={"stage-badge stage-"+(phase.requirements.find(r=>r.executionStage.key===s.key)?.executionStage.tone||"not_started")} key={s.key} onClick={()=>onEdit({feature,phase,mode:'history',stageKey:s.key})}>{s.label} {s.count}</button>)}</div><small>{phase.requirements.filter(r=>r.status==='completed').length} / {phase.requirements.filter(r=>r.status!=='cancelled').length} 条需求完成{phase.status==='planning'?' · 暂无有效需求':''}</small></div><div className="phase-row-date"><small>目标交付</small><span>{phase.targetDate || '尚未安排'}</span>{phase.completedAt&&<><small>实际完成</small><span>{phase.completedAt}</span></>}{phase.overdue && <span className="danger-text">已超过目标日期</span>}</div>{phase.note&&<div className="phase-row-note"><p>{phase.note}</p></div>}<div className="phase-row-actions"><ButtonLink variant="secondary" className="ghost-button" to={'/requirements?' + new URLSearchParams({ feature: feature.id, phase: phase.id })}>需求</ButtonLink><Button variant="secondary" className="ghost-button" onClick={() => onEdit({ feature, phase, mode: 'history' })}>详情</Button>{manage && !feature.archivedAt && <><Button variant="secondary" className="ghost-button" onClick={() => onEdit({ feature, phase, mode: 'edit' })}>编辑</Button><Button variant="secondary" className="ghost-button" onClick={() => onEdit({ feature, phase, mode: 'placement' })}>安排需求</Button>{!phase.requirements.length && !phase.deliveries.length && <Button variant="secondary" tone="danger" className="ghost-button danger-text" onClick={() => onEdit({ feature, phase, mode: 'delete' })}>删除</Button>}</>}</div></article>)}{!phases.length && <p className="field-help">{feature.phases?.length ? '没有符合筛选条件的 Phase' : '尚未规划 Phase，可以先记录下一次交付目标。'}</p>}</div>;
 }
 
 export function PhaseDialog({ edit, onClose, onCreated }: { edit: PhaseEdit; onClose: () => void; onCreated?:(phase:FeaturePhase)=>void }) {
@@ -54,11 +49,12 @@ export function PhaseDialog({ edit, onClose, onCreated }: { edit: PhaseEdit; onC
       const phases = await planningApi.projectsFeaturePhasesQuery<FeaturePhase[]>(projectId, edit.feature.id);
       if (!Array.isArray(phases)) throw new InvalidResponseError(200, false, 'Phase 列表不完整');
       const latest = phases.find(p => baseline ? p.id === baseline.id : p.name === value.name.trim());
-      const applied = edit.mode === 'delete' ? !latest : latest && (latest.name === value.name.trim() && latest.scope === value.scope.trim() && latest.targetDate === value.targetDate && latest.note === value.note.trim() && (value.referenceLinks===undefined||JSON.stringify(latest.referenceLinks)===JSON.stringify(readReferenceLinks(value.referenceLinks))) && latest.sortOrder === (value.sortOrder ?? 0));
+      const applied = edit.mode === 'delete' ? !latest : latest && (latest.name === value.name.trim() && latest.scope === value.scope.trim() && latest.targetDate === value.targetDate && latest.note === value.note.trim() && (value.referenceLinks===undefined||referenceLinksEqual(latest.referenceLinks,value.referenceLinks)) && latest.sortOrder === (value.sortOrder ?? 0));
       if (!alive.current) return;
       if (unknown && applied) { persist(null); clearLocal(); changed(); if(!edit.phase&&edit.mode==='edit'&&latest)onCreated?.(latest); onClose(); return; }
       if (baseline && !latest) { setError('Phase 已不存在，输入仍保留。请关闭后核对特性。'); return; }
-      setBaseline(latest); persist(null); setUnknown(false); setNeedsRead(false); setError('已读取最新版本，输入已保留，请核对后保存。'); changed();
+      if(baseline&&latest&&edit.mode==='edit')setValue(current=>rebasePhaseForm(current,baseline,latest));
+      setBaseline(latest); persist(null); setUnknown(false); setNeedsRead(false); setError('已读取最新版本，保留已修改的输入，请核对后保存。'); changed();
     } catch (e) { if (alive.current) setError((e as Error).message); } finally { if (alive.current) setBusy(false); }
   };
   const save = async () => {
@@ -72,7 +68,7 @@ export function PhaseDialog({ edit, onClose, onCreated }: { edit: PhaseEdit; onC
         : await planningApi.savePhase(projectId, edit.feature.id, payload);
       if (!saved?.id || (edit.mode === 'delete' ? !('deleted' in saved && saved.deleted) : !('version' in saved && saved.version > (baseline?.version || 0)))) throw new InvalidResponseError(200, true, 'Phase 保存结果不完整');
       persist(null); clearLocal(); changed(); if (alive.current) {if(!edit.phase&&edit.mode==='edit'&&'version' in saved)onCreated?.(saved);onClose();}
-    } catch (e) { if (!alive.current) return; const uncertain = isWriteOutcomeUnknown(e) || e instanceof ApiError && e.status >= 500; setError((e as Error).message); setUnknown(uncertain); setNeedsRead(uncertain || e instanceof ApiError && e.status === 409); if (!uncertain) persist(null); } finally { lock.current = false; if (alive.current) setBusy(false); }
+    } catch (e) { if (!alive.current) return; const uncertain = isWriteOutcomeUnknown(e) || e instanceof ApiError && e.status >= 500; setError(e instanceof ZodError?e.issues.map(issue=>issue.message).join('；'):(e as Error).message); setUnknown(uncertain); setNeedsRead(uncertain || e instanceof ApiError && e.status === 409); if (!uncertain) persist(null); } finally { lock.current = false; if (alive.current) setBusy(false); }
   };
   return <Modal title={title} onClose={onClose} closable={!busy}><form className="feature-form" onSubmit={e => { e.preventDefault(); e.stopPropagation(); void save(); }}><fieldset disabled={busy || unknown}>{edit.mode === 'edit' && <><label className="field"><span>Phase 名称</span><input required maxLength={200} value={value.name} onChange={e => setValue({ ...value, name: e.target.value })} /></label><label className="field"><span>展示顺序</span><input type="number" min={1} step={1} value={(value.sortOrder??0)+1} onChange={e=>setValue({...value,sortOrder:Math.max(0,Number(e.target.value)-1)})}/></label><label className="field"><span>交付范围</span><textarea rows={4} maxLength={10000} value={value.scope} onChange={e => setValue({ ...value, scope: e.target.value })} /></label><label className="field"><span>目标交付日期</span><input type="date" value={value.targetDate || ''} onChange={e => setValue({ ...value, targetDate: e.target.value || null })} /></label><label className="field"><span>关注说明</span><textarea rows={2} maxLength={2000} value={value.note} onChange={e => setValue({ ...value, note: e.target.value })} /></label><ReferenceLinksEditor value={value.referenceLinks??baseline?.referenceLinks??[]} onChange={referenceLinks=>setValue({...value,referenceLinks})}/></>}{edit.mode === 'delete' && <p>删除 {baseline?.name}。</p>}{baseline && <label className="field"><span>变更原因</span><textarea maxLength={2000} rows={2} value={value.reason} onChange={e => setValue({ ...value, reason: e.target.value })} /></label>}</fieldset>{error && <p role="alert" className="warning-banner">{error}</p>}{needsRead && <Button variant="secondary" type="button" className="ghost-button" disabled={busy} onClick={() => void read()}>读取最新 Phase 并核对</Button>}<div className="form-actions"><Button variant="secondary" type="button" className="ghost-button" disabled={busy} onClick={()=>{clearLocal();onClose();}}>取消</Button><Button busy={(busy)} aria-label={busy ? '保存中…' : title} variant={edit.mode === "edit" ? "primary" : "soft"} tone={edit.mode === "delete" ? "danger" : "primary"} type="submit" className="primary-button" disabled={busy || needsRead}>{title}</Button></div></form></Modal>;
 }

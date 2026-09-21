@@ -9,7 +9,9 @@ export function resolveTemplateOffsets<T extends TemplateDependencyItem>(items: 
   const order = topologicalOrder(keyed.map(x => x.key), edges), byKey = new Map(keyed.map(x => [x.key, x.item]));
   const end = new Map<string, number>();
   for (const key of order) { const item = byKey.get(key)!;if(item.kind==='milestone')item.durationDays=0;else if(item.durationDays<1)throw new Error('工作项工期至少一个工作日'); item.startOffsetDays = Math.max(0, ...(item.predecessorKeys || []).map(id => end.get(id)!)); end.set(key, item.startOffsetDays + item.durationDays); }
-  const finish='__template_finish__',targets=new Set(edges.map(e=>e.source));
+  let finish='__template_finish__';
+  while(byKey.has(finish))finish+='_';
+  const targets=new Set(edges.map(e=>e.source));
   const arranged=arrangeLate([...order,finish],[...keyed.map(({key,item})=>({id:key,start:item.startOffsetDays,finish:end.get(key)!,duration:item.durationDays,arrangement:item.arrangement,anchor:item.arrangementAnchor,movable:item.kind!=='milestone',reliable:true})),{id:finish,start:Math.max(0,...end.values()),finish:Math.max(0,...end.values()),duration:0,movable:false,reliable:true}],[...edges,...order.filter(id=>!targets.has(id)).map(source=>({source,target:finish}))]);
   for(const {key,item} of keyed)item.startOffsetDays=arranged.get(key)!.start;
   return items;

@@ -1,4 +1,5 @@
 import { ZodError } from 'zod';
+import { DateRangeError } from '../shared/workday';
 
 export type AppErrorCode =
   | 'DATABASE_MAINTENANCE'
@@ -54,6 +55,11 @@ export function notFound(message = '资源不存在'): never {
 }
 
 export function errorResponse(error: unknown) {
+  if (error instanceof DateRangeError) return {
+    statusCode: 400,
+    payload: { error: error.message, code: 'VALIDATION_ERROR' },
+    known: true,
+  };
   if (error instanceof ZodError) {
     return {
       statusCode: 400,

@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Runner = Join-Path $ProjectRoot "run-server.ps1"
 if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot "dist-server\index.js"))) {

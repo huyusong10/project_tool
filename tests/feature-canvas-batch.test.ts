@@ -24,14 +24,14 @@ async function fixture(){
  return {base,a,b,c,analysis,preview,apply};
 }
 const empty=():DependencyChanges=>({add:[],remove:[],estimates:[]});
-it('规划关系和多个布局原子保存，回执映射稳定且不改变执行分析或评估',async()=>{
+it.each(['draft-planning','__proto__'])('规划关系 %s 和多个布局原子保存，回执映射稳定且不改变执行分析或评估',async(clientId)=>{
  const {base,a,b,analysis,preview}=await fixture(),before=await analysis();
- const changes:DependencyChanges={...empty(),featureRelations:[{op:'create',id:'draft-planning',sourceFeatureId:a.id,targetFeatureId:b.id,note:'先完成基础验证'}],layouts:[{scope:'features',direction:'right',expectedVersion:0,positions:{['feature:'+a.id]:{x:120,y:80}}},{scope:'feature:'+a.id,direction:'right',expectedVersion:0,positions:{}}]};
- const {input,response}=await preview(changes);expect(response.statusCode,response.body).toBe(200);expect(response.json().analysis.featureContext.relations[0].id).toBe('draft-planning');
+ const changes:DependencyChanges={...empty(),featureRelations:[{op:'create',id:clientId,sourceFeatureId:a.id,targetFeatureId:b.id,note:'先完成基础验证'}],layouts:[{scope:'features',direction:'right',expectedVersion:0,positions:{['feature:'+a.id]:{x:120,y:80}}},{scope:'feature:'+a.id,direction:'right',expectedVersion:0,positions:{}}]};
+ const {input,response}=await preview(changes);expect(response.statusCode,response.body).toBe(200);expect(response.json().analysis.featureContext.relations[0].id).toBe(clientId);
  const payload={...input,previewToken:response.json().previewToken,batchId:randomUUID()},saved=await request('POST',base+'/dependency-changes/apply',payload);expect(saved.statusCode,saved.body).toBe(200);
  expect((await request('POST',base+'/dependency-changes/apply',payload)).json()).toEqual(saved.json());
  expect((await request('GET',base+'/dependency-changes/'+payload.batchId)).json()).toMatchObject({status:'applied',addedIds:saved.json().addedIds});
- expect((await request('GET',base+'/feature-relations')).json()[0].id).toBe(saved.json().addedIds['draft-planning']);
+ expect((await request('GET',base+'/feature-relations')).json()[0].id).toBe(saved.json().addedIds[clientId]);
  const after=await analysis();expect({...after,layouts:[],revision:0}).toEqual({...before,layouts:[],revision:0});
  const features=(await request('GET',base+'/features')).json<Feature[]>();expect(features.find(g=>g.id===a.id)?.assessedAt).toBe(a.assessedAt);
 });

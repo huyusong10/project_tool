@@ -149,7 +149,7 @@ export function PersonalSettingsPage() {
     <PageHeader title="个人设置" actions={<Button variant="primary" className="primary-button" aria-label={tokens.length?"创建 Token":"创建第一个 Token"} disabled={!tokensQuery.data||tokenListNeedsRecheck} onClick={openTokenModal}><Plus size={15} />创建 Token</Button>} secondaryActions={<Button variant="secondary" className="ghost-button" onClick={openPassword}><KeyRound size={15} />修改密码</Button>} />
     <div className="page-content personal-settings-page">
       <section className="panel personal-account-panel">
-        <div className="personal-account-identity"><span>{session.username?.slice(0, 1).toUpperCase() || "用"}</span><div><h2>{session.username}</h2><p><CircleUserRound size={14} />{session.personId ? "已关联业务人员" : "当前账号未关联业务人员"}</p></div></div>
+        <div className="personal-account-identity"><span>{Array.from(session.username || '')[0]?.toUpperCase() || "用"}</span><div><h2>{session.username}</h2><p><CircleUserRound size={14} />{session.personId ? "已关联业务人员" : "当前账号未关联业务人员"}</p></div></div>
         <dl className="personal-account-facts">
           <div><dt>最高权限</dt><dd>{roleLabel}</dd></div>
           <div><dt>可访问项目</dt><dd>{projects.length} 个</dd></div>
@@ -168,16 +168,16 @@ export function PersonalSettingsPage() {
         {tokensQuery.error && tokensQuery.data && <div className="warning-banner">Token 列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={tokensQuery.isFetching} onClick={() => void tokensQuery.refetch()}>重新加载</Button></div>}
         {tokenListNeedsRecheck && <div className="warning-banner">Token 操作结果需要核对，创建和撤销暂不可用。<Button busy={(recheckingTokens)} aria-label={recheckingTokens ? "读取中…" : "重新读取 Token 列表"} variant="secondary" type="button" className="ghost-button" disabled={recheckingTokens} onClick={() => void recheckTokenList()}>{"重新读取 Token 列表"}</Button></div>}
         {tokensQuery.data && tokens.length > 0 && <div className="paged-panel"><div className="personal-token-list paged-body" ref={pagination.scrollRef} role="table" aria-label="我的 MCP Token">
-          <div className="personal-token-head" role="row"><span>Token</span><span>创建时间</span><span>最近使用</span><span>有效期</span><span>状态与操作</span></div>
+          <div className="personal-token-head" role="row"><span role="columnheader">Token</span><span role="columnheader">创建时间</span><span role="columnheader">最近使用</span><span role="columnheader">有效期</span><span role="columnheader">状态与操作</span></div>
           {pagination.items.map((token) => {
             const expired = Boolean(token.expiresAt && new Date(token.expiresAt).getTime() <= now);
             const status = token.revokedAt ? "已撤销" : expired ? "已过期" : "有效";
             return <div className="personal-token-row" role="row" key={token.id}>
-              <div><KeyRound size={16} /><span><strong>{token.name}</strong><small>pm_{token.prefix}_…</small></span></div>
-              <time>{new Date(token.createdAt).toLocaleDateString("zh-CN")}</time>
-              <time>{token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString("zh-CN", { hour12: false }) : "尚未使用"}</time>
-              <time>{token.expiresAt ? new Date(token.expiresAt).toLocaleDateString("zh-CN") : "永久有效"}</time>
-              <div><b className={status === "有效" ? "safe-text" : "muted"}>{status}</b>{status === "有效" && <Button variant="secondary" size="small" className="token-revoke-button" disabled={tokenListNeedsRecheck} onClick={() => { if (tokenListNeedsRecheck) return; revoke.reset(); setRevokeTarget(token); }}>撤销</Button>}</div>
+              <div role="cell"><KeyRound size={16} /><span><strong>{token.name}</strong><small>pm_{token.prefix}_…</small></span></div>
+              <time role="cell">{new Date(token.createdAt).toLocaleDateString("zh-CN")}</time>
+              <time role="cell">{token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString("zh-CN", { hour12: false }) : "尚未使用"}</time>
+              <time role="cell">{token.expiresAt ? new Date(token.expiresAt).toLocaleDateString("zh-CN") : "永久有效"}</time>
+              <div role="cell"><b className={status === "有效" ? "safe-text" : "muted"}>{status}</b>{status === "有效" && <Button variant="secondary" size="small" className="token-revoke-button" disabled={tokenListNeedsRecheck} onClick={() => { if (tokenListNeedsRecheck) return; revoke.reset(); setRevokeTarget(token); }}>撤销</Button>}</div>
             </div>;
           })}
         </div><Pagination {...pagination.props} label="Token 列表分页" /></div>}
@@ -186,7 +186,7 @@ export function PersonalSettingsPage() {
         {tokensQuery.data && !tokens.length && <Pagination {...pagination.props} label="Token 列表分页" />}
       </section>
       {tokenModal && <Modal title="创建 MCP Token" width={560} onClose={closeTokenModal} closable={!createLock.busy}>
-        {newToken ? <div className="token-reveal"><ShieldCheck size={38} /><strong>Token 已创建，只显示这一次</strong><p>立即复制并保存到客户端配置中，关闭后无法再次查看。</p><div><code>{newToken}</code><Button variant="secondary" className="ghost-button" onClick={() => void copyText(newToken, "token")}><Copy size={16} />{copied === "token" ? "已复制" : "复制 Token"}</Button></div><Button variant="primary" className="primary-button" onClick={closeTokenModal}>我已安全保存</Button></div>
+        {newToken ? <div className="token-reveal"><ShieldCheck size={38} /><strong>Token 已创建，只显示这一次</strong><p>立即复制并保存到客户端配置中，关闭后无法再次查看。</p><div><code>{newToken}</code><Button variant="secondary" className="ghost-button" autoFocus onClick={() => void copyText(newToken, "token")}><Copy size={16} />{copied === "token" ? "已复制" : "复制 Token"}</Button></div><Button variant="primary" className="primary-button" onClick={closeTokenModal}>我已安全保存</Button></div>
           : <form className="form-grid" onSubmit={(event) => { event.preventDefault(); if (tokenListNeedsRecheck) return; const data = new FormData(event.currentTarget); createLock.run(() => createToken.mutate({ name: data.get("name"), expiresInDays: data.get("expiresInDays") === "never" ? null : Number(data.get("expiresInDays")) })); }}>
             <div className="token-create-note field-full"><ShieldCheck size={18} /><span>Token 权限与当前账号一致。建议每个客户端单独创建，便于后续识别和撤销。</span></div>
             <FormField label="Token 名称" full><input name="name" required autoFocus disabled={createLock.busy} placeholder="例如：Claude Desktop、办公电脑 Codex" /></FormField>
@@ -197,7 +197,7 @@ export function PersonalSettingsPage() {
             <FormSubmitActions submitLabel="创建 Token" pendingLabel="创建中…" onCancel={closeTokenModal} pending={createLock.busy} disabled={tokenListNeedsRecheck} />
           </form>}
       </Modal>}
-      {revokeTarget && <ConfirmDialog title="撤销 MCP Token" description={<><p>撤销“<strong>{revokeTarget.name}</strong>”后，使用该 Token 的客户端将立即无法访问系统。</p>{revokeNeedsRecheck && <p className="form-error">撤销结果需要核对，请关闭窗口查看最新 Token 列表。</p>}</>} confirmLabel="确认撤销" pendingLabel="撤销中…" danger pending={revoke.isPending} disabled={revokeNeedsRecheck} error={revoke.error?.message} onClose={() => setRevokeTarget(null)} onConfirm={() => revoke.mutate(revokeTarget.id)} />}
+      {revokeTarget && <ConfirmDialog title="撤销 MCP Token" description={<><p>撤销“<strong>{revokeTarget.name}</strong>”后，使用该 Token 的客户端将立即无法访问系统。</p><p>Token 标识：<code>pm_{revokeTarget.prefix}_…</code></p>{revokeNeedsRecheck && <p className="form-error">撤销结果需要核对，请关闭窗口查看最新 Token 列表。</p>}</>} confirmLabel="确认撤销" pendingLabel="撤销中…" danger pending={revoke.isPending} disabled={revokeNeedsRecheck} error={revoke.error?.message} onClose={() => setRevokeTarget(null)} onConfirm={() => revoke.mutate(revokeTarget.id)} />}
     </div>
   </>;
 }

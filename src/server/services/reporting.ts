@@ -21,9 +21,12 @@ type EffectiveConcurrencyItem = ConcurrencyItem & { effectiveActualEnd: string }
 export function getPeopleConcurrency(filters: { projectId?: string; personId?: string; jobTitle?: string; from?: string; to?: string; includeExternalAggregate?: boolean } = {}, asOfDate = todayIso()) {
   const from = filters.from || asOfDate; const to = filters.to || addCalendarDays(from, 6);
   if (!isValidIsoDate(from) || !isValidIsoDate(to) || from > to) fail('人员并发查询日期范围不合法');
-  if (to > addCalendarDays(from, 1830)) fail('人员并发查询范围不能超过5年');
+  if (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`) > 1830 * 86_400_000) fail('人员并发查询范围不能超过5年');
   const dates: string[] = [];
-  for (let date = from; date <= to; date = addCalendarDays(date, 1)) if (businessDaysInclusive(date, date) === 1) dates.push(date);
+  for (let date = from; ; date = addCalendarDays(date, 1)) {
+    if (businessDaysInclusive(date, date) === 1) dates.push(date);
+    if (date === to) break;
+  }
   const where = ['p.deleted_at IS NULL', 'p.active=1']; const params: unknown[] = [];
   if (filters.personId) { where.push('p.id=?'); params.push(filters.personId); }
   if (filters.jobTitle) { where.push('p.job_title=?'); params.push(filters.jobTitle); }

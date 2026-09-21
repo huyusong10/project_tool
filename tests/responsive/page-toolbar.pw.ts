@@ -22,6 +22,18 @@ async function geometry(page:Page){
 }
 const ready=(page:Page)=>expect(page.locator('.dependency-canvas')).toHaveAttribute('data-layout-ready','true');
 async function enter(page:Page,id:string){await page.locator('[data-object-id="'+id+'"]').getByRole('button',{name:/^进入/}).click();}
+test('更多操作打开的弹窗关闭后回到入口，键盘能再次打开',async({page})=>{
+ await phaseFixture(page);await page.setViewportSize({width:390,height:844});
+ const writes:string[]=[];page.on('request',request=>{if(request.url().includes('/api/')&&request.method()!=='GET')writes.push(request.url());});
+ for(const [url,action,title] of [['/project-settings','添加成员','添加项目成员'],['/settings','修改密码','修改密码']]){
+  await page.goto(url);const more=bar(page).getByRole('button',{name:'更多操作',exact:true});await expect(more).toBeVisible();
+  await more.focus();await page.keyboard.press('ArrowDown');const item=page.getByRole('menu').getByRole('button',{name:action,exact:true});await expect(item).toBeFocused();await page.keyboard.press('Enter');
+  const dialog=page.getByRole('dialog',{name:title,exact:true});await expect(dialog).toBeVisible();await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(more).toBeFocused();
+  await page.keyboard.press('ArrowDown');await expect(item).toBeFocused();await page.keyboard.press('Enter');await expect(dialog).toBeVisible();await dialog.getByRole('button',{name:'关闭',exact:true}).click();await expect(more).toBeFocused();
+ }
+ expect(writes).toEqual([]);
+});
+
 test('公共工具栏覆盖清单、详情和三个工作区视角',{tag:'@responsive'},async({page},info)=>{
  const f=await phaseFixture(page);await page.goto('/requirements');await expect(page.locator('.outline-table')).toContainText('资产管理');await geometry(page);
  await enter(page,'feature:'+f.feature.id);await expect(page).toHaveURL(/scopeType=feature/);

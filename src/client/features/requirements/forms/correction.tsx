@@ -11,13 +11,14 @@ import { useDeliveryForm } from "../../../use-delivery-form";
 import { migrateFeatureFields } from "../../../feature-storage-migration";
 import { OrganizationFields } from '../../../components/RequirementIntake';
 import { isAssignablePerson } from "../../../assignable-people";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../../../api";
 import { invalidateRequirementViews, keys } from "../../../query-keys";
 import { readResourceFresh, ResourceReadInvalidatedError } from "../../../use-resource-query";
 import type { Person, Requirement } from "../../../types";
+import { progressReferenceLabel } from '../../../progress-trend';
 import { Modal } from "../../../components/Modal";
 import { FormError, FormField, FormSubmitActions } from "../../../components/Form";
 import { useToast } from "../../../components/Toast";
@@ -131,12 +132,21 @@ export function RequirementCorrectionForm({
     try {
       const latest = await readResourceFresh<Requirement>(client, keys.requirement(requirement.id), signal => requirementsApi.requirementsById<Requirement>(requirement.id, { signal }), () => mounted.current);
       if (!mounted.current) return null;
+      const previousDraft=requirementInfoDraft(baseline),latestDraft=requirementInfoDraft(latest);
+      const changedFields=new Set(requirementInfoFields.filter(field=>draft[field]!==undefined&&JSON.stringify(draft[field])!==JSON.stringify(previousDraft[field])));
+      if(changedFields.has('featureId'))changedFields.add('phaseId');
+      const mergedDraft={...draft};
+      for(const field of requirementInfoFields)
+        if(!changedFields.has(field))Object.assign(mergedDraft,{[field]:latestDraft[field]});
+      if(changedFields.has('referenceUrl')&&draft.referenceLinks===undefined)
+        mergedDraft.referenceLinks=requirementReferenceLinks({referenceUrl:draft.referenceUrl},latest);
+      setDraft(mergedDraft);
       if (unknownVersion.current !== null) {
         const requiresReview = versionedWriteOutcome(unknownVersion.current, latest.version) === 'conflict';
         setReviewRequired(requiresReview);
         setUnknown(requiresReview);
         if (requiresReview) onRecheckChange({
-          baselineVersion: unknownVersion.current, draft, reason, supersedesId, stage: "review",
+          baselineVersion: unknownVersion.current, draft:mergedDraft, reason, supersedesId, stage: "review",
         });
         else {
           unknownVersion.current = null;
@@ -181,7 +191,8 @@ export function RequirementCorrectionForm({
     },
     onSettled: () => { submitting.current = false; },
   });
-  const candidates = (baseline.progressUpdates || []).filter((update) => !update.workItemId);
+  const historyOptions = useMemo(() => (baseline.progressUpdates || []).filter(update => !update.workItemId)
+    .map(update => <option value={update.id} key={update.id}>{progressReferenceLabel(update)} · {update.content}</option>), [baseline.progressUpdates]);
   const validation = !canonicalizeLabel(draft.title) ? "需求标题不能为空。"
     : hasExecution && !draft.ownerId ? "需求已有执行记录，负责人不能清空。"
     : ownerUnavailable ? "所选负责人已不可用，请重新选择。"
@@ -223,7 +234,7 @@ export function RequirementCorrectionForm({
       <FormField label="需求背景（可选）" full><textarea aria-label="纠错后的需求背景" rows={3} value={draft.background} onChange={(event) => change("background", event.target.value)} /></FormField>
       <FormField label="完成标准（可选）" full><textarea aria-label="纠错后的完成标准" rows={3} value={draft.acceptanceCriteria} onChange={(event) => change("acceptanceCriteria", event.target.value)} /></FormField>
       <ReferenceLinksEditor value={draft.referenceLinks??requirementReferenceLinks({referenceUrl:draft.referenceUrl},baseline)} onChange={links=>change("referenceLinks",links)}/>
-      {!!candidates.length && <FormField label="关联历史记录（可选）" full><Select aria-label="需求纠错关联历史记录" value={supersedesId} onChange={(event) => {const value=event.target.value;setSupersedesId(value);persistDraftIfLocked(draft,reason,value);}}><option value="">不指定</option>{candidates.map((update) => <option value={update.id} key={update.id}>{new Date(update.createdAt).toLocaleDateString("zh-CN")} · {update.content.slice(0, 36)}</option>)}</Select></FormField>}
+      {!!historyOptions.length && <FormField label="关联历史记录（可选）" full><Select aria-label="需求纠错关联历史记录" value={supersedesId} onChange={(event) => {const value=event.target.value;setSupersedesId(value);persistDraftIfLocked(draft,reason,value);}}><option value="">不指定</option>{historyOptions}</Select></FormField>}
       <FormField label="纠错说明（可选）" full><textarea aria-label="需求纠错原因" rows={2} value={reason} onChange={(event) => {const value=event.target.value;setReason(value);persistDraftIfLocked(draft,value);}} placeholder="说明原信息哪里有误，以及核对依据" /></FormField>
       {unknown&&!reviewRequired&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
       {reviewRequired && <div className="warning-banner field-full">提交结果待核对；当前版本已变化。本窗口不再提交。请核对当前资料与纠错记录，已填内容保留。<Button variant="secondary" type="button" className="ghost-button" onClick={finishReview}>已核对并关闭</Button></div>}
@@ -231,7 +242,7 @@ export function RequirementCorrectionForm({
       <FormError>{changed ? "需求已更新，请重新读取并核对；已保留你的输入。" : undefined}</FormError>
       <FormError>{!terminal ? "需求状态已变化，当前不能使用终态纠错。" : undefined}</FormError>
       {readError && <FormError>{readError.message}</FormError>}
-      {refreshed && <p className="field-help field-full">已读取最新需求（版本 {baseline.version}），本次输入保持不变，请核对后重试。</p>}
+      {refreshed && <p className="field-help field-full">已读取最新需求（版本 {baseline.version}），保留已修改的输入，请核对后重试。</p>}
       {(changed || needsRefresh) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void read()}>重新读取需求</Button></div>}
       <FormSubmitActions submitLabel="保存纠错" onCancel={()=>{clearBaseline();clearDraft();clearReason();clearSupersedesId();close();}} pending={pending} disabled={blocked} />
     </fieldset>

@@ -13,6 +13,29 @@ async function checkCards(panel:Locator) {
   for(const box of titleBoxes)expect(box.width).toBeGreaterThan(20);
 }
 
+test('需求进展保留分行说明，长工作项名称和完成度互不遮挡',async({page},info)=>{
+  const f=await phaseFixture(page),work=f.testing.workItems[1];
+  const title='资产导入校验与问题回归'.repeat(8),lines=['已验证：','登录','查询','待处理：','导出'];
+  const renamed=await page.request.patch('/api/work-items/'+work.id,{data:{expectedVersion:work.version,title,reason:'补充工作范围'}});
+  expect(renamed.ok(),await renamed.text()).toBe(true);
+  const latest=await renamed.json();
+  const saved=await page.request.post('/api/requirements/'+f.testing.id+'/progress',{data:{expectedVersion:latest.version,workItemId:work.id,workItemPercent:80,content:lines.join('\n')}});
+  expect(saved.ok(),await saved.text()).toBe(true);
+  await page.goto('/?'+new URLSearchParams({projectId:f.projectId,detailId:f.testing.id,detailTab:'history'}));
+  const modal=page.locator('.modal-card-workspace[role=dialog]'),feed=modal.locator('.progress-feed');
+  const article=feed.locator('article').filter({hasText:'已验证：'}),content=article.locator('.progress-record-summary span');
+  await expect(content).toHaveText(lines.join('\n'));
+  for(const width of [1280,390]){
+    await page.setViewportSize({width,height:800});await article.scrollIntoViewIfNeeded();
+    await page.screenshot({path:info.outputPath('progress-history-'+width+'.png'),animations:'disabled'});
+    const tops=await content.evaluate((el,values)=>values.map(value=>{const start=el.textContent!.indexOf(value),range=document.createRange();range.setStart(el.firstChild!,start);range.setEnd(el.firstChild!,start+1);return range.getBoundingClientRect().top;}),lines);
+    expect.soft(new Set(tops).size,'各条说明应显示在独立行').toBe(lines.length);
+    expect.soft(await feed.evaluate(el=>el.scrollWidth<=el.clientWidth+1),'记录不应出现横向滚动').toBe(true);
+    const marker=(await article.locator('.progress-marker').boundingBox())!,summary=(await article.locator('.progress-record-summary').boundingBox())!;
+    expect.soft(marker.x+marker.width,'完成度不应覆盖内容').toBeLessThanOrEqual(summary.x);
+  }
+});
+
 test('详情中的说明、进展、安排和记录使用一致的模块边界与标题',{tag:'@responsive'}, async({page},info)=>{
   const f=await phaseFixture(page),modal=page.locator('.modal-card-workspace[role=dialog]');
   for(const id of ['feature:'+f.feature.id,'phase:'+f.phases[1].id,f.testing.id,f.testing.workItems[1].id]){

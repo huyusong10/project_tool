@@ -1,9 +1,23 @@
 import { defineConfig } from "@playwright/test";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 const testPort = Number(process.env.PLAYWRIGHT_PORT || 3291);
 const testRunId = String(process.pid);
+const temporaryRoot = fs.realpathSync(os.tmpdir());
+const testDirectory = fs.mkdtempSync(path.join(temporaryRoot, `project-manage-playwright-${testRunId}-`));
+// 正常运行在 globalTeardown 之后才停止 webServer；退出时再清理，避免 Windows 文件锁。
+process.once('exit', () => {
+  try {
+    if (!fs.existsSync(testDirectory)) return;
+    if (path.dirname(testDirectory) !== temporaryRoot || fs.realpathSync(testDirectory) !== testDirectory) throw new Error('测试临时目录位置已变化');
+    fs.rmSync(testDirectory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  } catch (error) {
+    console.error(`清理浏览器测试临时目录失败：${testDirectory}`, error);
+    if (!process.exitCode) process.exitCode = 1;
+  }
+});
 
 const viewports = [
   { name: "office-1280", width: 1280, height: 800, deviceScaleFactor: 1 },
@@ -42,8 +56,8 @@ export default defineConfig({
       WEB_DIST_DIR: path.join(process.cwd(), ".playwright", "dist"),
       SESSION_COOKIE_NAME: `pm_playwright_${testRunId}`,
       SEED_DEMO: "0",
-      DB_PATH: path.join(os.tmpdir(), `project-manage-playwright-${testRunId}.db`),
-      BACKUP_DIR: path.join(os.tmpdir(), `project-manage-playwright-backups-${testRunId}`),
+      DB_PATH: path.join(testDirectory, 'test.db'),
+      BACKUP_DIR: path.join(testDirectory, 'backups'),
       APP_PASSWORD_HASH: "scrypt$4c63a6f93ff4f94b031b7e7583592177$b598dbddaf9dd06678ff8756923d9e0a7f2d68eaa45bc644fbf4a73c9298970c7489671dfcfc8be282022c26a3370fb040f3f086a45faa1e1abde04bbe4a51ef",
       ADMIN_PASSWORD: "",
       SESSION_SECRET: "playwright-session-secret-with-more-than-thirty-two-characters",

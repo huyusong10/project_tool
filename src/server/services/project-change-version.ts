@@ -11,7 +11,7 @@ export function projectChangeVersion(projectId:string,actor:Actor) {
     const project=getDatabaseContext().sqlite.prepare('SELECT analysis_revision,updated_at FROM projects WHERE id=?').get(projectId);
     const aggregate=(table:string,where:string)=>getDatabaseContext().sqlite.prepare(`SELECT count(*) n,max(updated_at) updated FROM ${table} WHERE ${where}`).get(projectId);
     const members=getDatabaseContext().sqlite.prepare(`SELECT pp.person_id,pp.project_role,p.updated_at AS person_updated,p.active,p.deleted_at AS person_deleted,a.updated_at AS account_updated,a.status,a.deleted_at AS account_deleted FROM project_people pp
-      JOIN people p ON p.id=pp.person_id LEFT JOIN accounts a ON a.person_id=p.id WHERE pp.project_id=? ORDER BY pp.person_id`).all(projectId);
+      JOIN people p ON p.id=pp.person_id LEFT JOIN accounts a INDEXED BY idx_accounts_person ON a.person_id=p.id WHERE pp.project_id=? ORDER BY pp.person_id`).all(projectId);
     // Each mutable object has its own revision. A global maximum timestamp can hide an edit.
     const issues=getDatabaseContext().sqlite.prepare('SELECT id,version FROM issues WHERE project_id=? ORDER BY id').all(projectId);
     const templates=getDatabaseContext().sqlite.prepare('SELECT id,updated_at FROM work_item_templates WHERE project_id=? ORDER BY id').all(projectId);

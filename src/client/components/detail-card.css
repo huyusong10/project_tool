@@ -9,9 +9,6 @@
 .detail-card-actions {display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;flex:none;max-width:50%}
 .detail-card-body {display:grid;gap:12px;min-width:0}
 .detail-card-body > * {min-width:0}
-.detail-card :is(.progress-input,.progress-input-controls) {min-width:0}
-.detail-card .progress-input-controls {grid-template-columns:minmax(0,1fr) 82px}
-.detail-card .progress-input-controls > input {min-width:0}
 .detail-card-body > :is(p,dl,ul,.feature-full-text) {margin-top:0;margin-bottom:0}
 .detail-card-body > p {white-space:pre-wrap;overflow-wrap:anywhere}
 .detail-card-empty {margin:0;color:var(--text-muted);font-size:13px;line-height:1.65}
@@ -48,7 +45,7 @@
 .detail-card .object-history-entry h4 {margin:0 0 6px;font-family:var(--font-sans);font-size:13px;font-weight:600;line-height:1.6}
 .detail-card .object-history-entry p {margin:6px 0;overflow-wrap:anywhere}
 .detail-card .object-history-entry:first-child {padding-top:0}
-.detail-card .object-related-row {padding:10px 0}
+.detail-card .object-related-row {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;padding:10px 0}
 .detail-card .object-related-row > button {min-width:0;white-space:normal;text-align:left;overflow-wrap:anywhere}
 .detail-card .object-related-row:first-child {padding-top:0}
 .detail-card .object-related-row:last-child {padding-bottom:0;border-bottom:0}
@@ -65,7 +62,9 @@
 .detail-card.detail-dependency-group {border-radius:8px}
 .detail-workspace .requirement-overview {border:0;padding:0;margin:0;background:transparent;box-shadow:none}
 .detail-card .work-arrangement-row:not(:has(.work-arrangement-heading)) {padding:0;border:0;background:transparent}
+.detail-card .work-editor-scroll {border:0}
 .detail-card.progress-detail-card {margin:0;height:auto;display:block;overflow:visible}
+.detail-card.progress-detail-card > .detail-card-heading {min-height:0}
 .detail-card.progress-detail-card .detail-card-body {min-height:0}
 .detail-card.progress-detail-card .progress-feed {max-height:400px;overflow:auto;padding:0}
 .detail-card.progress-detail-card .pagination {margin:0}

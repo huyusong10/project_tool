@@ -1,6 +1,46 @@
 import { expect, test, type Page } from '@playwright/test';
 import {headerAction} from './topbar-helpers';
 import { analyticsCatalog, defaultAnalyticsLayout, type AnalyticsLayout } from '../../src/shared/analytics';
+import { chooseOption, selectedValue } from './select-helper';
+
+test('切换指标后保留有效分组并选择兼容图表，真实预览与保存均成功', async ({ page }) => {
+  const login=await page.request.post('/api/login',{data:{username:'admin',password:'41_xc7q0qOjo4Inw!'}});
+  expect(login.ok()).toBe(true);
+  const session=await login.json();
+  const created=await page.request.post('/api/projects',{data:{name:'统计配置核对 '+Date.now()}});
+  expect(created.ok()).toBe(true);
+  const project=await created.json();
+  await page.addInitScript(({accountId,projectId})=>localStorage.setItem('project-manage:selected-project:'+accountId,projectId),{accountId:session.accountId,projectId:project.id});
+  await page.goto('/analytics');
+  await page.getByRole('button',{name:'编辑看板',exact:true}).click();
+  await page.getByRole('button',{name:'编辑风险分布',exact:true}).click();
+  const editor=page.getByRole('dialog').filter({has:page.getByRole('heading',{name:'配置分析图表',exact:true})});
+  const previewPromise=page.waitForResponse(response=>response.url().endsWith('/api/analytics/query')&&response.request().method()==='POST'&&response.request().postDataJSON().panels.length===1&&response.request().postDataJSON().panels[0].measure==='finish_variance');
+  await chooseOption(editor.getByRole('combobox',{name:'指标',exact:true}),'finish_variance');
+  const preview=await previewPromise;
+  expect(preview.status(),await preview.text()).toBe(200);
+  await expect(selectedValue(editor.getByRole('combobox',{name:'分组维度',exact:true}))).toHaveValue('risk');
+  await expect(selectedValue(editor.getByRole('combobox',{name:'图表类型',exact:true}))).toHaveValue('bar');
+  await editor.getByLabel('图表标题',{exact:true}).fill('按风险查看完成偏差');
+  await editor.getByRole('button',{name:'应用配置',exact:true}).click();
+  await page.getByRole('button',{name:'保存布局',exact:true}).click();
+  await expect(page.getByRole('button',{name:'编辑看板',exact:true})).toBeVisible();
+  const saved=await page.request.get('/api/analytics/layout');
+  expect(saved.ok()).toBe(true);
+  expect((await saved.json()).layout.panels.find((panel:{id:string})=>panel.id==='risk-distribution')).toMatchObject({title:'按风险查看完成偏差',measure:'finish_variance',dimension:'risk',visualization:'bar'});
+  await page.reload();
+  await page.getByRole('button',{name:'编辑看板',exact:true}).click();
+  await page.getByRole('button',{name:'编辑按风险查看完成偏差',exact:true}).click();
+  await expect(selectedValue(editor.getByRole('combobox',{name:'指标',exact:true}))).toHaveValue('finish_variance');
+  await expect(selectedValue(editor.getByRole('combobox',{name:'图表类型',exact:true}))).toHaveValue('bar');
+  const ungroupedPromise=page.waitForResponse(response=>response.url().endsWith('/api/analytics/query')&&response.request().method()==='POST'&&response.request().postDataJSON().panels.length===1&&response.request().postDataJSON().panels[0].measure==='completed_count');
+  await chooseOption(editor.getByRole('combobox',{name:'指标',exact:true}),'completed_count');
+  const ungrouped=await ungroupedPromise;
+  expect(ungrouped.status(),await ungrouped.text()).toBe(200);
+  await expect(selectedValue(editor.getByRole('combobox',{name:'分组维度',exact:true}))).toHaveValue('');
+  await expect(selectedValue(editor.getByRole('combobox',{name:'图表类型',exact:true}))).toHaveValue('kpi');
+  await editor.getByRole('button',{name:'取消',exact:true}).click();
+});
 
 async function mockAnalytics(page: Page) {
   let layout = structuredClone(defaultAnalyticsLayout);
@@ -18,6 +58,71 @@ async function mockAnalytics(page: Page) {
     setLayout(next: AnalyticsLayout, nextUpdatedAt: string) { layout = next; updatedAt = nextUpdatedAt; },
   };
 }
+
+test('分析日期未填或范围错误时就地提示，修正后恢复查询且不改布局', async ({ page }, testInfo) => {
+  expect((await page.request.post('/api/login', { data: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } })).ok()).toBe(true);
+  const created = await page.request.post('/api/projects', { data: { name: '分析日期恢复 ' + Date.now() } });
+  expect(created.ok()).toBe(true);
+  const project = await created.json();
+  const layoutBefore = await (await page.request.get('/api/analytics/layout')).json();
+  const projectsBefore = await (await page.request.get('/api/projects')).json();
+  const queries: Array<{ from: string; to: string }> = [], writes: string[] = [], errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/analytics/query') queries.push(request.postDataJSON().range);
+    else if (path.startsWith('/api/') && !['GET', 'HEAD'].includes(request.method())) writes.push(path);
+  });
+  const initial = page.waitForResponse(response => new URL(response.url()).pathname === '/api/analytics/query');
+  await page.goto(`/analytics?projectId=${project.id}&range=custom&from=2026-08-01&to=2026-08-31`);
+  expect((await initial).status()).toBe(200);
+  const from = page.getByLabel('分析开始日期', { exact: true }), to = page.getByLabel('分析结束日期', { exact: true });
+  const count = queries.length;
+  await from.fill('');
+  await expect(page.getByRole('alert')).toContainText('请选择有效的开始日期和结束日期');
+  await expect(page.getByText('分析数据加载失败', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.analytics-grid')).toHaveCount(0);
+  expect(queries).toHaveLength(count);
+  await page.screenshot({ path: testInfo.outputPath('analytics-missing-date-1280.png'), animations: 'disabled' });
+  await headerAction(page, '编辑看板');
+  await headerAction(page, '新增图表');
+  const editor = page.getByRole('dialog', { name: '配置分析图表', exact: true });
+  await expect(editor).toContainText('请检查分析日期');
+  await editor.getByLabel('图表标题', { exact: true }).fill('日期恢复检查面板');
+  await editor.getByRole('button', { name: '应用配置', exact: true }).click();
+  expect(queries).toHaveLength(count);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await from.fill('2026-09-01');
+  await expect(page.getByRole('alert')).toContainText('开始日期不能晚于结束日期');
+  expect(queries).toHaveLength(count);
+  await page.screenshot({ path: testInfo.outputPath('analytics-reversed-date-390.png'), animations: 'disabled' });
+  await from.fill('2010-01-01');
+  await expect(page.getByRole('alert')).toContainText('分析时间范围不能超过5年');
+  expect(queries).toHaveLength(count);
+
+  const recovered = page.waitForResponse(response => new URL(response.url()).pathname === '/api/analytics/query' && response.request().postDataJSON().range.from === '2026-08-02');
+  await from.fill('2026-08-02');
+  expect((await recovered).status()).toBe(200);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('.analytics-grid')).toBeVisible();
+  await expect(page.getByText('日期恢复检查面板', { exact: true })).toBeVisible();
+  await expect(to).toHaveValue('2026-08-31');
+  await page.screenshot({ path: testInfo.outputPath('analytics-date-recovered-390.png'), animations: 'disabled' });
+  await headerAction(page, '取消编辑');
+  await expect(page.getByText('日期恢复检查面板', { exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: '项目空间', exact: true }).click();
+  await page.getByRole('link', { name: '统计分析', exact: true }).click();
+  await expect(from).toHaveValue('2026-08-02');
+  await expect(to).toHaveValue('2026-08-31');
+  await page.reload();
+  await expect(from).toHaveValue('2026-08-02');
+  await expect(to).toHaveValue('2026-08-31');
+  expect(await (await page.request.get('/api/analytics/layout')).json()).toEqual(layoutBefore);
+  expect(await (await page.request.get('/api/projects')).json()).toEqual(projectsBefore);
+  expect(writes).toEqual([]);
+  expect(errors).toEqual([]);
+});
 
 test.describe('北京时间分析默认范围', () => {
   test.use({ timezoneId: 'America/Los_Angeles' });
@@ -42,6 +147,31 @@ test.describe('北京时间分析默认范围', () => {
     await expect(from).toHaveValue('2026-06-09');
     await expect(to).toHaveValue('2026-09-04');
   });
+});
+
+test('统计图的长需求名可在悬浮提示中完整阅读且不撑出页面',async({page},info)=>{
+  const server=await mockAnalytics(page),label='跨系统资源同步与资产校验'.repeat(12);
+  const panel={...defaultAnalyticsLayout.panels.find(p=>p.id==='variance-top')!,size:'large' as const};
+  server.setLayout({...defaultAnalyticsLayout,panels:[panel]},'2026-09-17T00:00:00.000Z');
+  await page.route('**/api/analytics/query',route=>route.fulfill({json:{asOfDate:'2026-09-17',range:route.request().postDataJSON().range,results:[{panelId:panel.id,measureLabel:'延期工作日',unit:'days',snapshot:true,rows:[{key:'long-name',label,value:8}]}]}}));
+  await page.emulateMedia({reducedMotion:'reduce'});await page.goto('/analytics');
+  const chart=page.getByRole('img',{name:panel.title+'图表'});
+  for(const width of [1280,390]){
+    await page.setViewportSize({width,height:850});await chart.scrollIntoViewIfNeeded();
+    await expect.poll(async()=>Math.round((await chart.locator('canvas').boundingBox())!.width)).toBe(Math.round((await chart.boundingBox())!.width));
+    const bounds=(await chart.boundingBox())!;
+    await chart.hover({position:{x:Math.min(180,bounds.width-24),y:bounds.height/2}});
+    const tooltip=chart.locator(':scope > div').filter({hasText:label}).last();
+    await expect(tooltip).toBeVisible();await expect(tooltip).toContainText('8');
+    await page.screenshot({path:info.outputPath('long-chart-label-'+width+'.png'),animations:'disabled'});
+    const box=(await tooltip.boundingBox())!;
+    expect.soft(box.x,'提示左侧应可见').toBeGreaterThanOrEqual(0);
+    expect.soft(box.x+box.width,'提示右侧应可见').toBeLessThanOrEqual(width);
+    expect.soft(await tooltip.evaluate(el=>el.scrollWidth<=el.clientWidth+1),'提示内部应完整换行').toBe(true);
+    expect.soft(box.y+box.height,'提示应位于图表底边之内').toBeLessThanOrEqual(bounds.y+bounds.height+1);
+    expect.soft(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'提示不能撑宽页面').toBe(true);
+    await page.mouse.move(0,0);
+  }
 });
 
 test('分析卡片显示服务端快照日期', async ({ page }) => {

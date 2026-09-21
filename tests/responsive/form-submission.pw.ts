@@ -1,4 +1,4 @@
-import {chooseOption} from './select-helper';
+import {chooseOption,selectedValue} from './select-helper';
 import { project, template, secondaryTemplate, people, mockForms, scenarios, type FormReferenceState } from './form-fixture';
 import { headerAction } from './topbar-helpers';
 
@@ -158,7 +158,7 @@ test('引用选项刷新失效后保留未保存选择并明确提示', async ({
   await chooseOption(owner, 'u2');
   await requirementDialog.getByRole('button', { name: /流程与排期/ }).click();
   const requirementTemplate = requirementDialog.getByRole('combobox', { name: '流程设计', exact: true });
-  await expect(requirementTemplate.locator('option[value="t2"]')).toHaveText('备用流程');
+  await expect(selectedValue(requirementTemplate).locator('option[value="t2"]')).toHaveText('备用流程');
   await chooseOption(requirementTemplate, 't2');
   const requirementTemplateRequests = references.templateRequests;
   const requirementPeopleRequests = references.peopleRequests;
@@ -167,8 +167,8 @@ test('引用选项刷新失效后保留未保存选择并明确提示', async ({
   await reconnect(page);
   await expect.poll(() => references.templateRequests).toBeGreaterThan(requirementTemplateRequests);
   await expect.poll(() => references.peopleRequests).toBeGreaterThan(requirementPeopleRequests);
-  await expect(requirementTemplate).toHaveValue('t2');
-  await expect(requirementTemplate.locator('option:checked')).toHaveText('已不可用的流程（请重新选择）');
+  await expect(selectedValue(requirementTemplate)).toHaveValue('t2');
+  await expect(requirementTemplate).toHaveText('已不可用的流程（请重新选择）');
   await expect(owner).toHaveValue('u2');
   await expect(owner.locator('option:checked')).toHaveText('已不可用的负责人（请重新选择）');
 });
@@ -275,7 +275,7 @@ test('新建项目已落库但响应异常时核对本次新增项目', async ({
   expect(requests).toBe(1);
 });
 
-test('新建项目响应未知且列表核对失败时阻止重复创建', async ({ page }) => {
+test('新建项目响应未知且列表核对失败时阻止重复创建', async ({ page }, testInfo) => {
   await mockForms(page);
   let failReads = false;
   let requests = 0;
@@ -286,6 +286,7 @@ test('新建项目响应未知且列表核对失败时阻止重复创建', async
       return route.abort('connectionfailed');
     }
     if (failReads) return route.fulfill({ status: 503, json: { error: '项目列表暂时不可用' } });
+    if (requests) return route.fulfill({ json: [{ ...project, name: '核对后更新的项目' }] });
     return route.fallback();
   });
   await page.goto('/projects');
@@ -299,9 +300,25 @@ test('新建项目响应未知且列表核对失败时阻止重复创建', async
   expect(requests).toBe(1);
   await dialog.getByRole('button',{name:'取消',exact:true}).click();await page.goto('/');await page.goto('/projects');
   await expect(page.getByRole('alert')).toContainText('项目创建结果待核对');await expect(page.getByRole('button',{name:'新建项目',exact:true})).toBeDisabled();
+  await expect(page.getByRole('heading', { name: '项目列表加载失败', exact: true })).toBeVisible();
+  await expect(page.locator('.project-table')).toHaveCount(0);
+  await expect(page.locator('.app-refresh-notice')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('project-create-recheck-1280.png'), animations: 'disabled' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('button', { name: '核对项目创建', exact: true })).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath('project-create-recheck-390.png'), animations: 'disabled' });
   await page.getByRole('button',{name:'核对项目创建',exact:true}).click();await expect(dialog.getByLabel('项目名称',{exact:true})).toHaveValue('待核对创建项目');await expect(dialog.getByRole('button',{name:'创建项目',exact:true})).toBeDisabled();
+  await dialog.getByRole('button', { name: '读取最新项目并继续', exact: true }).click();
+  await expect(dialog).toContainText('项目列表暂时不可用');
+  await expect(dialog.getByLabel('项目名称', { exact: true })).toHaveValue('待核对创建项目');
+  await expect(dialog.getByRole('button', { name: '创建项目', exact: true })).toBeDisabled();
   await dialog.locator('form').dispatchEvent('submit');expect(requests).toBe(1);
   failReads=false;await dialog.getByRole('button',{name:'读取最新项目并继续',exact:true}).click();await expect(dialog).toContainText('未发现本次新增项目');await expect(dialog.getByRole('button',{name:'创建项目',exact:true})).toBeEnabled();await expect(page.getByText('项目创建结果待核对',{exact:false})).toHaveCount(0);
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(page.locator('.project-table').getByText('核对后更新的项目', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '项目列表加载失败', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '新建项目', exact: true })).toBeEnabled();
+  expect(requests).toBe(1);
 });
 
 test('新建需求响应异常跨导航保留输入并核对本次创建', async ({ page }) => {

@@ -23,13 +23,14 @@ export const editorEntityChange=z.object({entity:z.enum(['requirement','work','m
 export const diagramLayoutChange=z.object({scope:idSchema,direction:z.enum(['right','down']),expectedVersion:z.number().int().nonnegative(),positions:z.record(z.string(),z.object({x:z.number().finite(),y:z.number().finite()}).strict())}).strict();
 export type EditorEntityChange=z.infer<typeof editorEntityChange>;
 
+export const maxDependencyEntityChanges = 4000;
 export const dependencyChanges = z.object({
   featureRelations:z.array(featureRelationChange).max(2000).optional(),
   commitment: z.object({reason:z.string().trim().max(2000).default(''),milestoneId:idSchema.nullable().optional()}).strict().optional(),
   add: z.array(dependencyInput.omit({ expectedRevision: true }).extend({ clientId: idSchema })).max(6000).default([]),
   remove: z.array(idSchema).max(6000).default([]),
   estimates: z.array(pathEstimateInput.omit({ expectedRevision: true }).extend({ workItemId: idSchema })).max(2000).default([]),
-  entities:z.array(editorEntityChange).max(4000).optional(),layouts:z.array(diagramLayoutChange).max(200).optional(),
+  entities:z.array(editorEntityChange).max(maxDependencyEntityChanges).optional(),layouts:z.array(diagramLayoutChange).max(200).optional(),
 }).strict();
 export const dependencyChangesInput = pathVersion.extend({
   target: z.string().min(1).default('project'),

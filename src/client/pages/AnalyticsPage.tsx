@@ -2,10 +2,12 @@ import { readRecheck, persistRecheck } from '../core/write-recheck';
 import * as reportingApi from '../features/reporting/api';
 import { Button } from '../components/Button';
 import { analyticsValue } from "../analytics-presentation";
+import { copyLabel } from '../../shared/copy-label';
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { chartCategoryColor } from "../chart-theme";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useResourceQuery } from '../use-resource-query';
 import { Copy, GripVertical, Pencil, Plus, RefreshCcw, RotateCcw, Save, Settings2, Trash2, X } from "lucide-react";
 import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useBusinessDate, useProjects, useSession } from "../app-context";
@@ -17,7 +19,8 @@ import { PageHeader } from "../components/PageHeader";
 import { SortableList } from "../components/SortableList";
 import { ViewTabs } from "../components/ViewTabs";
 import { analyticsCatalog as fallbackCatalog, defaultAnalyticsLayout, type AnalyticsCatalog, type AnalyticsLayout, type AnalyticsLayoutResponse, type AnalyticsPanelConfig, type AnalyticsPanelResult, type AnalyticsQueryResponse, type AnalyticsRange } from "../../shared/analytics";
-import { addCalendarDays } from "../../shared/domain";
+import { addCalendarDays, businessDaysInclusive } from "../../shared/domain";
+import { isValidIsoDate } from '../../shared/workday';
 
 type RangePreset = "30" | "90" | "180" | "project" | "custom";
 
@@ -98,24 +101,26 @@ function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) 
   ];
   if (panel.visualization === "donut") return {
     tooltip: { trigger: "item" },
-    legend: { bottom: 0, textStyle: { color: "var(--text-muted)" } },
+    legend: { type: "scroll", bottom: 0, left: 0, right: 0, tooltip: { show: true }, textStyle: { color: "var(--text-muted)", width: 120, overflow: "truncate" } },
     series: [{
       name: result.measureLabel, type: "pie", radius: ["46%", "70%"], center: ["50%", "44%"],
       label: { show: false }, data: result.rows.map((row) => ({ name: row.label, value: row.value, itemStyle: { color: chartCategoryColor(panel.dimension, row.key) } })),
       color: ["var(--chart-line)", "var(--success)", "var(--warning)", "var(--text-muted)", "var(--purple)", "var(--danger)", "var(--info)"],
     }],
   };
+  const legend = result.secondaryMeasureLabel ? { top: 0, right: 12, textStyle: { color: "var(--text-muted)" } } : undefined;
   const horizontal = panel.visualization === "bar" && ["requirement", "person", "owner"].includes(panel.dimension || "");
   if (horizontal) return {
     tooltip: { trigger: "axis" },
-    grid: { left: 120, right: 24, top: 16, bottom: 24 },
-    xAxis: { type: "value", splitLine: { lineStyle: { color: "var(--divider)" } }, axisLabel: { color: "var(--text-muted)" } },
+    legend,
+    grid: { left: 120, right: 24, top: legend ? 34 : 16, bottom: 24 },
+    xAxis: { type: "value", minInterval: result.unit === "count" ? 1 : undefined, splitLine: { lineStyle: { color: "var(--divider)" } }, axisLabel: { color: "var(--text-muted)" } },
     yAxis: { type: "category", inverse: true, data: labels, axisLabel: { color: "var(--text-secondary)", width: 105, overflow: "truncate" } },
     series,
   };
   return {
     tooltip: { trigger: "axis" },
-    legend: result.secondaryMeasureLabel ? { top: 0, right: 12, textStyle: { color: "var(--text-muted)" } } : undefined,
+    legend,
     grid: { left: 42, right: 18, top: result.secondaryMeasureLabel ? 34 : 16, bottom: 40 },
     xAxis: { type: "category", data: labels, axisLabel: { color: "var(--text-muted)", hideOverlap: true }, axisLine: { lineStyle: { color: "var(--border-default)" } } },
     yAxis: { type: "value", minInterval: result.unit === "count" ? 1 : undefined, splitLine: { lineStyle: { color: "var(--divider)" } }, axisLabel: { color: "var(--text-muted)" } },
@@ -175,10 +180,11 @@ function AnalyticsPanelCard({ panel, result, asOfDate, loading, editing, disable
   </article>;
 }
 
-function PanelEditor({ initial, catalog, range, projectId, onClose, onSave }: {
+function PanelEditor({ initial, catalog, range, rangeError, projectId, onClose, onSave }: {
   initial: AnalyticsPanelConfig;
   catalog: AnalyticsCatalog;
   range: AnalyticsRange;
+  rangeError: string;
   projectId: string;
   onClose: () => void;
   onSave: (panel: AnalyticsPanelConfig) => void;
@@ -191,11 +197,9 @@ function PanelEditor({ initial, catalog, range, projectId, onClose, onSave }: {
     && item.unit === measure.unit
     && (!panel.dimension || item.dimensions.includes(panel.dimension))
     && item.visualizations.includes(panel.visualization));
-  const preview = useQuery({
-    queryKey: [...keys.analyticsPreview, projectId, range, panel],
-    queryFn: ({ signal }) => reportingApi.analyticsQuery<AnalyticsQueryResponse>({ signal, method: "POST", readOnly: true, body: jsonBody({ projectId, range, panels: [panel] }) }),
-    enabled: Boolean(projectId),
-  });
+  const preview = useResourceQuery<AnalyticsQueryResponse>([...keys.analyticsPreview, projectId, range, panel],
+    signal => reportingApi.analyticsQuery<AnalyticsQueryResponse>({ signal, method: "POST", readOnly: true, body: jsonBody({ projectId, range, panels: [panel] }) }),
+    Boolean(projectId) && !rangeError);
   const updateDataset = (nextId: string) => {
     const nextDataset = catalog.datasets.find((item) => item.id === nextId)!;
     const nextMeasure = nextDataset.measures[0];
@@ -204,7 +208,8 @@ function PanelEditor({ initial, catalog, range, projectId, onClose, onSave }: {
   const updateMeasure = (nextId: string) => {
     const nextMeasure = dataset.measures.find((item) => item.id === nextId)!;
     const nextDimension = panel.dimension && nextMeasure.dimensions.includes(panel.dimension) ? panel.dimension : undefined;
-    const nextVisualization = nextMeasure.visualizations.includes(panel.visualization) && (nextDimension || ["kpi", "table"].includes(panel.visualization)) ? panel.visualization : "kpi";
+    const nextVisualizations = nextMeasure.visualizations.filter((item) => nextDimension ? item !== "kpi" : item === "kpi" || item === "table");
+    const nextVisualization = nextVisualizations.includes(panel.visualization) ? panel.visualization : nextVisualizations[0];
     setPanel((current) => ({ ...current, measure: nextId, secondaryMeasure: undefined, dimension: nextDimension, visualization: nextVisualization }));
   };
   return <div className="analytics-panel-editor">
@@ -221,12 +226,12 @@ function PanelEditor({ initial, catalog, range, projectId, onClose, onSave }: {
       <label className="field"><span>时间策略</span><select value={panel.timeScope} onChange={(event) => setPanel((current) => ({ ...current, timeScope: event.target.value as AnalyticsPanelConfig["timeScope"] }))}><option value="snapshot">当前快照</option><option value="range">跟随页面范围</option><option value="future30">未来30天</option></select></label>
       <label className="field"><span>卡片尺寸</span><select value={panel.size} onChange={(event) => setPanel((current) => ({ ...current, size: event.target.value as AnalyticsPanelConfig["size"] }))}>{catalog.sizes.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
       <label className="field"><span>排序</span><select value={panel.sort || "desc"} onChange={(event) => setPanel((current) => ({ ...current, sort: event.target.value as AnalyticsPanelConfig["sort"] }))}><option value="desc">降序</option><option value="asc">升序</option></select></label>
-      <label className="field"><span>显示数量</span><input type="number" min={1} max={50} value={panel.limit || 10} onChange={(event) => setPanel((current) => ({ ...current, limit: Number(event.target.value) }))} /></label>
+      <label className="field"><span>显示数量</span><input type="number" min={1} max={50} placeholder="不限制" value={panel.limit ?? ''} onChange={(event) => { const limit = event.target.value; setPanel((current) => ({ ...current, limit: limit === '' ? undefined : Number(limit) })); }} /></label>
       {!!dataset.filters.length && <div className="analytics-config-filters field-full"><span>筛选条件</span>{dataset.filters.map((filter) => <label className="field" key={filter.id}><span>{filter.label}</span><select value={panel.filters?.[filter.id]?.[0] || ""} onChange={(event) => setPanel((current) => ({ ...current, filters: { ...(current.filters || {}), [filter.id]: event.target.value ? [event.target.value] : [] } }))}><option value="">全部</option>{filter.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>)}</div>}
       {preview.error && <p className="form-error field-full">{preview.error.message}</p>}
       <div className="form-actions field-full"><Button variant="secondary" type="button" className="ghost-button" onClick={onClose}>取消</Button><Button variant="primary" type="submit" className="primary-button" disabled={!panel.title.trim()}>应用配置</Button></div>
     </form>
-    <div className="analytics-config-preview"><span>实时预览</span><AnalyticsPanelCard panel={panel} result={preview.data?.results[0]} asOfDate={preview.data?.asOfDate} loading={preview.isLoading} editing={false} /></div>
+    <div className="analytics-config-preview"><span>实时预览</span>{rangeError ? <EmptyState title="请检查分析日期" detail={rangeError} /> : <AnalyticsPanelCard panel={panel} result={preview.data?.results[0]} asOfDate={preview.data?.asOfDate} loading={preview.isLoading} editing={false} />}</div>
   </div>;
 }
 
@@ -256,6 +261,12 @@ export function AnalyticsPage() {
     const days = Number(preset === "project" ? 90 : preset);
     return { from: addCalendarDays(businessToday, -(days - 1)), to: businessToday };
   }, [businessToday, customFrom, customTo, preset, project?.plannedEnd, project?.plannedStart]);
+  const rangeError = useMemo(() => {
+    if (!isValidIsoDate(range.from) || !isValidIsoDate(range.to)) return '请选择有效的开始日期和结束日期。';
+    if (range.from > range.to) return '开始日期不能晚于结束日期。';
+    if (businessDaysInclusive(range.from, range.to) > 1320) return '分析时间范围不能超过5年。';
+    return '';
+  }, [range]);
   const catalogQuery = useQuery({ queryKey: keys.analyticsCatalog, queryFn: ({ signal }) => reportingApi.analyticsCatalog<AnalyticsCatalog>({ signal }) });
   const layoutQuery = useQuery({ queryKey: [...keys.analyticsLayout, layoutScope], queryFn: ({ signal }) => reportingApi.analyticsLayout<AnalyticsLayoutResponse>({ signal }) });
   const catalog = catalogQuery.data || fallbackCatalog;
@@ -273,11 +284,9 @@ export function AnalyticsPage() {
     setEditingPanel(null);
     setResetConfirm(false);
   }, [layoutScope]);
-  const dataQuery = useQuery({
-    queryKey: [...keys.analyticsData, selectedProjectId, range, activeLayout],
-    queryFn: ({ signal }) => reportingApi.analyticsQuery<AnalyticsQueryResponse>({ signal, method: "POST", readOnly: true, body: jsonBody({ projectId: selectedProjectId, range, panels: activeLayout.panels }) }),
-    enabled: Boolean(selectedProjectId) && (!layoutQuery.isLoading || layoutQuery.data !== undefined),
-  });
+  const dataQuery = useResourceQuery<AnalyticsQueryResponse>([...keys.analyticsData, selectedProjectId, range, activeLayout],
+    signal => reportingApi.analyticsQuery<AnalyticsQueryResponse>({ signal, method: "POST", readOnly: true, body: jsonBody({ projectId: selectedProjectId, range, panels: activeLayout.panels }) }),
+    Boolean(selectedProjectId) && !rangeError && (!layoutQuery.isLoading || layoutQuery.data !== undefined));
   usePageScrollPosition(!dataQuery.isLoading && !layoutQuery.isLoading);
   const dataUnavailable = Boolean(dataQuery.error && !dataQuery.data);
   const resultMap = new Map((dataQuery.data?.results || []).map((result) => [result.panelId, result]));
@@ -381,11 +390,11 @@ export function AnalyticsPage() {
     const id = `panel-${Date.now().toString(36)}`;
     setEditingPanel({ id, title: "新图表", dataset: "requirements", measure: "count", visualization: "kpi", size: "small", timeScope: "snapshot", sort: "desc", limit: 10 });
   };
-  const copyPanel = (panel: AnalyticsPanelConfig) => { if (saveLock.canClose()) setDraft((current) => current && current.panels.length < 24 ? ({ ...current, panels: [...current.panels, { ...cloneLayout({ version: 1, panels: [panel] }).panels[0], id: `panel-${Date.now().toString(36)}`, title: `${panel.title}副本` }] }) : current); };
+  const copyPanel = (panel: AnalyticsPanelConfig) => { if (saveLock.canClose()) setDraft((current) => current && current.panels.length < 24 ? ({ ...current, panels: [...current.panels, { ...cloneLayout({ version: 1, panels: [panel] }).panels[0], id: `panel-${Date.now().toString(36)}`, title: copyLabel(panel.title, '副本', 60) }] }) : current); };
   const deletePanel = (panelId: string) => { if (saveLock.canClose()) setDraft((current) => current && current.panels.length > 1 ? ({ ...current, panels: current.panels.filter((item) => item.id !== panelId) }) : current); };
   const reorderPanels = (panels: AnalyticsPanelConfig[]) => { if (saveLock.canClose()) setDraft((current) => current ? { ...current, panels } : current); };
   if (!projects.length) return <><PageHeader title="统计分析" /><div className="page-content"><EmptyState title="暂无可分析项目" detail="创建项目后，这里会生成默认分析看板。" /></div></>;
-  if (layoutQuery.isLoading && !layoutQuery.data) return <><PageHeader title="统计分析" /><div className="page-content"><LoadingState label="正在加载分析看板…" className="tall" /></div></>;
+  if (layoutQuery.isLoading && !layoutQuery.data) return <><PageHeader title="统计分析" actions={<span className="shell-placeholder toolbar-actions-placeholder" aria-hidden="true" />} /><div className="page-content"><LoadingState label="正在加载分析看板…" className="tall" /></div></>;
   return <>
     <PageHeader title="统计分析" secondaryActions={draft&&<><Button variant="secondary" className="ghost-button" disabled={editingBlocked || draft.panels.length >= 24} onClick={addPanel}><Plus size={15} />新增图表</Button><Button variant="secondary" className="ghost-button" onClick={() => { if (!saveLock.canClose()) return; clearLayoutOperation(); setResetConfirm(true); }} disabled={editingBlocked}><RotateCcw size={15} />恢复默认</Button></>} actions={!draft && layoutQuery.data?.canCustomize ? <Button variant="primary" className="primary-button" disabled={!catalogQuery.data || Boolean(layoutRecheck)} onClick={beginEditing}><Settings2 size={15} />编辑看板</Button> : draft ? <>
       <Button variant="secondary" className="ghost-button" disabled={editingBlocked} onClick={() => { if (saveLock.canClose() && !layoutRecheck) { clearLayoutOperation(); setDraft(null); } }}><X size={15} />取消编辑</Button>
@@ -394,16 +403,17 @@ export function AnalyticsPage() {
     <div className="page-content analytics-page">
       <section className="analytics-toolbar">
         <ViewTabs ariaLabel="分析时间范围" value={preset} onChange={setPreset} options={([['30', '近30天'], ['90', '近90天'], ['180', '近180天'], ['project', '项目周期'], ['custom', '自定义']] as Array<[RangePreset, string]>).map(([value, label]) => ({ value, label }))} />
-        {preset === "custom" && <div className="analytics-custom-range"><input aria-label="分析开始日期" type="date" value={customFrom} max={customTo} onChange={(event) => { setCustomFrom(event.target.value); }} /><span>至</span><input aria-label="分析结束日期" type="date" value={customTo} min={customFrom} onChange={(event) => { setCustomTo(event.target.value); }} /></div>}
-        <span className="analytics-range-label">{range.from} 至 {range.to}</span>
+        {preset === "custom" && <div className="analytics-custom-range"><input aria-label="分析开始日期" aria-invalid={Boolean(rangeError)} aria-describedby={rangeError ? 'analytics-range-error' : undefined} type="date" value={customFrom} max={customTo} onChange={(event) => { setCustomFrom(event.target.value); }} /><span>至</span><input aria-label="分析结束日期" aria-invalid={Boolean(rangeError)} aria-describedby={rangeError ? 'analytics-range-error' : undefined} type="date" value={customTo} min={customFrom} onChange={(event) => { setCustomTo(event.target.value); }} /></div>}
+        {!rangeError && <span className="analytics-range-label">{range.from} 至 {range.to}</span>}
       </section>
+      {rangeError && <p id="analytics-range-error" className="form-error" role="alert">{rangeError}</p>}
       {!session.authenticated && <p className="analytics-guest-note">当前展示系统默认看板；登录后可配置并保存个人布局。</p>}
       {layoutQuery.error && <div className="warning-banner">个人看板布局{layoutQuery.data ? "刷新失败，当前使用上次成功布局。" : "加载失败，当前显示系统默认布局且暂不可编辑。"}<Button variant="secondary" className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void layoutQuery.refetch()}>重新加载</Button></div>}
       {catalogQuery.error && <div className="warning-banner">分析指标目录{catalogQuery.data ? "刷新失败，当前使用上次成功目录。" : "加载失败，当前可查看图表但暂不可编辑布局。"}<Button variant="secondary" className="ghost-button" disabled={catalogQuery.isFetching} onClick={() => void catalogQuery.refetch()}>重新加载</Button></div>}
       {dataQuery.error && dataQuery.data && <div className="warning-banner">分析数据刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={dataQuery.isFetching} onClick={() => void dataQuery.refetch()}>重新加载</Button></div>}
       {layoutRecheck && <div className="warning-banner" role="alert">布局{layoutRecheck.action === "save" ? "保存" : "恢复默认"}结果待核对，原布局版本与草稿已锁定。<Button busy={(layoutQuery.isFetching)} aria-label={layoutQuery.isFetching ? "读取中…" : "重新读取布局"} variant="secondary" type="button" className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void readLatestLayout()}>{"重新读取布局"}</Button></div>}
       {(saveLayout.error || resetLayout.error) && <div className="analytics-layout-error"><p className="form-error">{saveLayout.error?.message || resetLayout.error?.message}</p>{layoutNeedsRecheck && !layoutRecheck && <Button busy={(layoutQuery.isFetching)} aria-label={layoutQuery.isFetching ? "读取中…" : "放弃草稿并读取最新布局"} variant="secondary" type="button" className="ghost-button" disabled={layoutQuery.isFetching} onClick={() => void readLatestLayout()}>{"放弃草稿并读取最新布局"}</Button>}</div>}
-      {dataUnavailable ? <EmptyState title="分析数据加载失败" detail={dataQuery.error?.message || "暂时无法读取分析数据。"} action={<Button variant="secondary" className="ghost-button" disabled={dataQuery.isFetching} onClick={() => void dataQuery.refetch()}><RefreshCcw size={15} />重新加载</Button>} /> : <section className={`analytics-grid${draft ? " is-editing" : ""}`}>
+      {rangeError ? null : dataUnavailable ? <EmptyState title="分析数据加载失败" detail={dataQuery.error?.message || "暂时无法读取分析数据。"} action={<Button variant="secondary" className="ghost-button" disabled={dataQuery.isFetching} onClick={() => void dataQuery.refetch()}><RefreshCcw size={15} />重新加载</Button>} /> : <section className={`analytics-grid${draft ? " is-editing" : ""}`}>
         {draft ? <SortableList
           items={activeLayout.panels}
           getId={(panel) => panel.id}
@@ -424,7 +434,7 @@ export function AnalyticsPage() {
           <AnalyticsPanelCard panel={panel} result={resultMap.get(panel.id)} asOfDate={dataQuery.data?.asOfDate} loading={dataQuery.isLoading} editing={false} retry={() => void dataQuery.refetch()} />
         </div>)}
       </section>}
-      {editingPanel && <Modal title="配置分析图表" width={1080} onClose={() => setEditingPanel(null)}><PanelEditor initial={editingPanel} catalog={catalog} range={range} projectId={selectedProjectId} onClose={() => setEditingPanel(null)} onSave={updatePanel} /></Modal>}
+      {editingPanel && <Modal title="配置分析图表" width={1080} onClose={() => setEditingPanel(null)}><PanelEditor initial={editingPanel} catalog={catalog} range={range} rangeError={rangeError} projectId={selectedProjectId} onClose={() => setEditingPanel(null)} onSave={updatePanel} /></Modal>}
       {resetConfirm && <ConfirmDialog title="恢复默认看板" description="当前个人看板布局将被删除，并恢复为系统默认布局。" confirmLabel="恢复默认" pendingLabel="恢复中…" danger pending={resetLayout.isPending} error={resetLayout.error?.message} onClose={() => { resetLayout.reset(); setResetConfirm(false); }} onConfirm={() => resetLayout.mutate(editingUpdatedAt)} />}
     </div>
   </>;

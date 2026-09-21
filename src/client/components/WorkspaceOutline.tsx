@@ -24,6 +24,7 @@ import type { Dashboard } from '../types';
 import type { OutlineKind, OutlineUndo } from '../../shared/outline';
 import type { PathAnalysis } from '../../shared/paths';
 import { matchesSearch, normalizeSearchText } from '../../shared/search';
+import { compareProgressNames } from '../../shared/progress-query';
 import { ExecutionStageBadge, WorkProgressBadge } from './ExecutionStageBadge';
 import { PhaseDialog, PhaseStatusBadge } from './PhasePlanning';
 import { type PhaseEdit } from '../features/planning/phase-model';
@@ -46,17 +47,22 @@ export function WorkspaceOutline({report,projection,header}:{report:Dashboard;pr
   const [retry,setRetry]=useState<Write|null>(null);
   const [review,setReview]=useState<OutlineRow[]|null>(null),[busy,setBusy]=useState(false),busyRef=useRef(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[undo,setUndo]=useState<OutlineUndo|null>(null),[undoReason,setUndoReason]=useState(false);
   const query=params.get('q')||'',sort=params.get('outlineSort')||'manual',filtered=!!normalizeSearchText(query),sortEnabled=sort==='manual'&&!filtered;
-  const scopeKey=location.scope.kind+':'+location.scope.id,filterKey=scopeKey+':'+query;
+  const {kind:scopeKind,id:scopeId}=location.scope,scopeKey=scopeKind+':'+scopeId,filterKey=scopeKey+':'+query;
   const [filterExpansion,setFilterExpansion]=useState<{key:string;rows:Record<string,boolean>}>({key:'',rows:{}});
   const currentExpanded=filtered?{...Object.fromEntries(all.map(row=>[row.id,true])),...(filterExpansion.key===filterKey?filterExpansion.rows:{})}:expanded;
   const changeExpanded=(value:Record<string,boolean>)=>filtered?setFilterExpansion({key:filterKey,rows:value}):setExpanded(value);
   const matches=(row:OutlineRow):boolean=>matchesSearch([row.title],query)||row.children.some(matches);
-  const scopedTree=scopeOutline(tree,location.scope),branches=flattenOutline(scopedTree).filter(row=>row.children.length&&(!filtered||matches(row)));
+  const scopedTree=useMemo(()=>scopeOutline(tree,{kind:scopeKind,id:scopeId}),[tree,scopeKind,scopeId]),scoped=useMemo(()=>flattenOutline(scopedTree),[scopedTree]);
+  const branches=scoped.filter(row=>row.children.length&&(!filtered||matches(row)));
   const expandAll=(open:boolean)=>changeExpanded({...currentExpanded,...Object.fromEntries(branches.map(row=>[row.id,open]))});
   useEffect(()=>setSelected([]),[scopeKey,query,sort]);
+  useEffect(()=>{
+    const eligible=new Set(scoped.filter(row=>!row.system&&!row.archived).map(row=>row.id));
+    setSelected(ids=>{const next=ids.filter(id=>eligible.has(id));return next.length===ids.length?ids:next;});
+  },[scoped]);
   useEffect(()=>{try{localStorage.setItem(baseKey+':expanded',JSON.stringify(expanded));}catch{/* Keep expansion in this page. */}},[baseKey,expanded]);
   const setPending=(v:Pending|null)=>{setPendingState(v);try{if(v)sessionStorage.setItem(baseKey+':pending',JSON.stringify(v));else sessionStorage.removeItem(baseKey+':pending');}catch{/* Keep the pending write in memory. */}};
-  const picked=all.filter(r=>selected.includes(r.id)&&!r.system&&!r.archived),homogeneous=picked.length>0&&picked.every(r=>r.kind===picked[0].kind),sameParent=homogeneous&&picked.every(r=>r.parentId===picked[0].parentId);
+  const picked=scoped.filter(r=>selected.includes(r.id)&&!r.system&&!r.archived),homogeneous=picked.length>0&&picked.every(r=>r.kind===picked[0].kind),sameParent=homogeneous&&picked.every(r=>r.parentId===picked[0].parentId);
   const features=data.featureContext?.overview.features||[];
   const targets=all.filter(r=>(r.kind==='feature'||r.kind==='phase')&&!r.archived);
   const save=async(write:Write)=>{
@@ -98,7 +104,7 @@ export function WorkspaceOutline({report,projection,header}:{report:Dashboard;pr
   };
   const counts=Object.entries(labels).map(([kind,label])=>{const count=picked.filter(r=>r.kind===kind).length;return count?count+' 个'+label:'';}).filter(Boolean).join('、');
   const visible=(rows:OutlineRow[],depth=1):Array<{row:OutlineRow;depth:number}>=>{
-    const ordered=[...rows].sort((a,b)=>Number(!!a.system)-Number(!!b.system)||(sort==='name'?a.title.localeCompare(b.title,'zh-CN',{numeric:true}):sort==='date'?(a.phase?.targetDate||a.work?.plannedEnd||a.requirement?.plannedEnd||'9999').localeCompare(b.phase?.targetDate||b.work?.plannedEnd||b.requirement?.plannedEnd||'9999'):0));
+    const ordered=[...rows].sort((a,b)=>Number(!!a.system)-Number(!!b.system)||(sort==='name'?compareProgressNames(a.title,b.title):sort==='date'?(a.phase?.targetDate||a.work?.plannedEnd||a.requirement?.plannedEnd||'9999').localeCompare(b.phase?.targetDate||b.work?.plannedEnd||b.requirement?.plannedEnd||'9999'):0));
     return ordered.filter(r=>!filtered||matches(r)).flatMap(row=>[{row,depth},...(currentExpanded[row.id]?visible(row.children,depth+1):[])]);
   };
   const rows=visible(scopedTree);
@@ -106,6 +112,7 @@ export function WorkspaceOutline({report,projection,header}:{report:Dashboard;pr
   const toggle=(row:OutlineRow)=>setSelected(ids=>ids.includes(row.id)?ids.filter(id=>id!==row.id):[...ids,row.id]);
   const shift=(items:OutlineRow[],direction:-1|1)=>{const first=items[0];if(!first)return;const siblings=all.filter(r=>r.kind===first.kind&&r.parentId===first.parentId&&!r.system&&!r.archived),indexes=items.map(r=>siblings.findIndex(s=>s.id===r.id)),index=direction<0?Math.min(...indexes)-1:Math.max(...indexes)+1;if(siblings[index])order(items,siblings[index],direction>0);};
   const selectable=rows.map(({row})=>row).filter(row=>!row.system&&!row.archived),checked=selectable.filter(row=>selected.includes(row.id)).length;
+  const orderDisabled=!sameParent||!sortEnabled||busy||!!pending;
   const inspect=(row:OutlineRow)=>row.virtual?enter(row):workspace.inspect(row.id);
   return <div className="workspace-outline" aria-label="清单">
     {header&&<PageHeader {...header}/>}
@@ -116,12 +123,14 @@ export function WorkspaceOutline({report,projection,header}:{report:Dashboard;pr
 
     </div>
     <div className="outline-caption"><span>{rows.length} 个可见对象</span><span className="outline-help">{sortEnabled?'单击名称查看资料 · ↗ 进入下一级':'筛选或自动排序中，行间排序拖拽已停用；仍可移动归属'}</span></div>
+    <div className="outline-action-stack">
     {picked.length>0&&<div className="outline-selection" role="region" aria-label="批量操作" data-workspace-zone="tools"><span title={counts}>已选 {counts}</span>{manage&&<>
       <Button variant="secondary" className="ghost-button" disabled={!homogeneous||picked[0]?.kind!=='requirement'||busy||!!pending} onClick={()=>move(picked)}>调整归属…</Button>
-      <Button variant="ghost" iconOnly size="small" className="workspace-icon-button" title="上移" aria-label="上移" disabled={!sameParent||!sortEnabled||busy||!!pending} onClick={()=>shift(picked,-1)}><ArrowUp size={16}/></Button><Button variant="ghost" iconOnly size="small" className="workspace-icon-button" title="下移" aria-label="下移" disabled={!sameParent||!sortEnabled||busy||!!pending} onClick={()=>shift(picked,1)}><ArrowDown size={16}/></Button>
-      <TopbarMenu label="更多批量操作"><Button variant="menu" disabled={!homogeneous||picked[0]?.kind!=='feature'||busy||!!pending} onClick={()=>void save({path:'/features/archive-batch',input:{items:picked.map(r=>({id:r.objectId,expectedVersion:r.version}))},label:'归档特性',ids:picked.map(r=>r.objectId)})}>批量归档</Button></TopbarMenu>
-    </>}<Button variant="ghost" iconOnly size="small" className="workspace-icon-button" aria-label="清空选择" title="清空选择" onClick={()=>setSelected([])}><X size={16}/></Button></div>}
+      <Button variant="ghost" iconOnly className="workspace-icon-button outline-order-action" title="上移" aria-label="上移" disabled={orderDisabled} onClick={()=>shift(picked,-1)}><ArrowUp size={16}/></Button><Button variant="ghost" iconOnly className="workspace-icon-button outline-order-action" title="下移" aria-label="下移" disabled={orderDisabled} onClick={()=>shift(picked,1)}><ArrowDown size={16}/></Button>
+      <TopbarMenu label="更多批量操作"><Button variant="menu" className="outline-order-menu" disabled={orderDisabled} onClick={()=>shift(picked,-1)}>上移</Button><Button variant="menu" className="outline-order-menu" disabled={orderDisabled} onClick={()=>shift(picked,1)}>下移</Button><Button variant="menu" disabled={!homogeneous||picked[0]?.kind!=='feature'||busy||!!pending} onClick={()=>void save({path:'/features/archive-batch',input:{items:picked.map(r=>({id:r.objectId,expectedVersion:r.version}))},label:'归档特性',ids:picked.map(r=>r.objectId)})}>批量归档</Button></TopbarMenu>
+    </>}<Button variant="ghost" iconOnly className="workspace-icon-button" aria-label="清空选择" title="清空选择" onClick={()=>setSelected([])}><X size={16}/></Button></div>}
     {(message||error||pending)&&<div className="outline-notice" data-workspace-zone="notice"><span role={error?'alert':'status'}>{error||message}{pending?' · '+(pending.unknown?'提交结果待核对':'版本或业务条件已变化'):''}</span>{retry&&!pending&&retry.path!=='/requirement-placement'&&<Button variant="secondary" className="ghost-button" disabled={busy} onClick={()=>void save(retry)}>确认原操作</Button>}{undo&&!pending&&<Button variant="secondary" className="ghost-button" disabled={busy} onClick={()=>{setReason('');setUndoReason(true);}}>撤销本次操作</Button>}{pending?<Button variant="secondary" className="ghost-button" disabled={busy} onClick={()=>void check()}>读取正式结果并核对</Button>:<Button variant="ghost" iconOnly size="small" className="workspace-icon-button" aria-label="关闭提示" onClick={()=>{setMessage('');setError('');}}><X size={16}/></Button>}</div>}
+    </div>
     <div className="outline-scroll"><table className="outline-table" role="treegrid" aria-label="范围树表"><colgroup><col className="outline-select-column"/><col className="outline-drag-column"/><col/><col className="outline-status-column"/><col className="outline-date-column"/><col className="outline-menu-column"/></colgroup><thead><tr><th>{manage&&<input type="checkbox" aria-label="选择当前可见对象" title="只选择当前可见对象，不隐式选择后代" checked={!!selectable.length&&checked===selectable.length} disabled={!selectable.length} ref={element=>{if(element)element.indeterminate=checked>0&&checked<selectable.length;}} onChange={e=>setSelected(e.target.checked?[...new Set([...selected,...selectable.map(row=>row.id)])]:selected.filter(id=>!selectable.some(row=>row.id===id)))}/>}</th><th aria-label="拖动"/><th>名称</th><th>执行情况</th><th>计划完成</th><th aria-label="对象操作"/></tr></thead><tbody>{rows.map(({row,depth})=>{
       const dropping=drop?.row.id===row.id,chosen=selected.includes(row.id),canDrag=manage&&!row.system&&!row.archived&&!busy&&!pending;
       return <tr key={row.id} aria-level={depth} aria-selected={!row.system?chosen:undefined} aria-expanded={row.children.length?!!currentExpanded[row.id]:undefined} data-object-id={row.id} data-object-kind={row.system?'group':row.kind} className={(chosen?'is-selected ':'')+(drag.includes(row.id)?'is-dragging ':'')+(dropping?(drop.placement?'drop-placement':drop.after?'drop-after':'drop-before'):'')}
@@ -139,6 +148,6 @@ export function WorkspaceOutline({report,projection,header}:{report:Dashboard;pr
     {phaseEdit&&<PhaseDialog edit={phaseEdit} onClose={()=>setPhaseEdit(null)}/>}
     {moving&&<Modal title={'调整 '+moving.length+' 条需求归属'} closable={!busy} onClose={()=>setMoving(null)}><p>按当前顺序追加到目标末尾。</p><OrganizationFields projectId={projectId} featureId={targetFeature||''} phaseId={targetPhase||''} onChange={(key,value)=>setDestination(key==='featureId'?(value?'feature:'+value:'other'):value?'phase:'+value:targetFeature?'feature:'+targetFeature:'other')}/><label className="field"><span>变更原因{needsReason?'（必填）':'（可选）'}</span><textarea aria-label="变更原因" value={reason} onChange={e=>setReason(e.target.value)}/></label>{error&&<p role="alert">{error}</p>}{pending&&<Button variant="secondary" className="ghost-button" disabled={busy} onClick={()=>void check()}>读取正式结果并核对</Button>}<div className="form-actions"><Button variant="secondary" className="ghost-button" disabled={busy} onClick={()=>setMoving(null)}>取消</Button><Button variant="primary" className="primary-button" disabled={busy||!!pending||!destination||needsReason&&!reason.trim()} onClick={submitMove}>确认移动</Button></div></Modal>}
     {undoReason&&undo&&<Modal title="撤销本次操作" closable={!busy} onClose={()=>setUndoReason(false)}><p>系统将检查本次操作涉及的对象及同级顺序。内容已经变化时整批保留现状。</p><label className="field"><span>变更原因（涉及已推进 Phase 时必填）</span><textarea value={reason} onChange={e=>setReason(e.target.value)}/></label>{error&&<p role="alert">{error}</p>}{pending&&<Button variant="secondary" className="ghost-button" disabled={busy} onClick={()=>void check()}>读取正式结果并核对</Button>}<Button variant="primary" className="primary-button" disabled={busy||!!pending} onClick={()=>void save({path:'/outline-restore',input:{...undo,reason:reason||undefined},label:'撤销操作',ids:undo.expected.flatMap(g=>g.items.map(i=>i.id))})}>确认撤销</Button></Modal>}
-    {pending&&review&&<Modal title="核对正式结果" onClose={()=>setReview(null)}><p>{pending.unknown?'原提交结果未知。请对照原请求和正式资料确认；系统不会自动重复提交。':'原操作未保存。原输入保留；请核对变化后重新选择操作。'}</p><details><summary>原提交内容 · {pending.label}</summary><pre>{JSON.stringify(pending.input,null,2)}</pre></details><table><thead><tr><th>对象</th><th>当前归属</th><th>版本</th><th>顺序</th></tr></thead><tbody>{review.filter(r=>pending.ids.includes(r.objectId)&&!r.virtual).map(r=><tr key={r.id}><td>{r.title}</td><td>{review.find(p=>p.objectId===r.parentId&&!p.virtual)?.title||'项目'}</td><td>{r.version}</td><td>{r.requirement?.sortOrder??r.work?.sortOrder??r.phase?.sortOrder??r.feature?.sortOrder}</td></tr>)}</tbody></table>{error&&<p role="alert">{error}</p>}<div className="form-actions"><Button variant="secondary" className="ghost-button" onClick={()=>continueReview(false)}>{pending.unknown?'确认已生效，结束核对':'结束核对，重新选择'}</Button>{pending.path!=='/outline-restore'&&<Button variant="primary" className="primary-button" onClick={()=>continueReview(true)}>{pending.unknown?'确认未生效，保留输入':'保留输入，按最新资料继续'}</Button>}</div></Modal>}
+    {pending&&review&&<Modal title="核对正式结果" onClose={()=>setReview(null)}><p>{pending.unknown?'原提交结果未知。请对照原请求和正式资料确认；系统不会自动重复提交。':'原操作未保存。原输入保留；请核对变化后重新选择操作。'}</p><details><summary>原提交内容 · {pending.label}</summary><pre>{JSON.stringify(pending.input,null,2)}</pre></details><table><thead><tr><th>对象</th><th>{pending.path==='/features/archive-batch'?'归档状态':'当前归属'}</th><th>版本</th><th>顺序</th></tr></thead><tbody>{review.filter(r=>pending.ids.includes(r.objectId)&&!r.virtual).map(r=><tr key={r.id}><td>{r.title}</td><td>{pending.path==='/features/archive-batch'?(r.archived?'已归档':'未归档'):review.find(p=>p.objectId===r.parentId&&!p.virtual)?.title||'项目'}</td><td>{r.version}</td><td>{r.requirement?.sortOrder??r.work?.sortOrder??r.phase?.sortOrder??r.feature?.sortOrder}</td></tr>)}</tbody></table>{error&&<p role="alert">{error}</p>}<div className="form-actions"><Button variant="secondary" className="ghost-button" onClick={()=>continueReview(false)}>{pending.unknown?'确认已生效，结束核对':'结束核对，重新选择'}</Button>{pending.path!=='/outline-restore'&&<Button variant="primary" className="primary-button" onClick={()=>continueReview(true)}>{pending.unknown?'确认未生效，保留输入':'保留输入，按最新资料继续'}</Button>}</div></Modal>}
   </div>;
 }

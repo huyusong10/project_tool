@@ -5,13 +5,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import { getDatabaseContext } from '../database-context';
 import type { Actor } from '../auth';
 import { assertProjectManager, assertProjectReadable, requireAuthorizationActor } from '../authorization';
-import { fail, notFound } from '../errors';
+import { AppError, fail, notFound } from '../errors';
 import { requireActiveProject } from './support';
 import { recordAudit } from './audit';
 import { previewDependencyChanges, applyDependencyChanges } from './path-changes';
 import { intakeRevision, persistOrganization } from './intake-metadata';
 import { importPreviewInput, importApplyInput, type IntakePackage, type ImportPreview, type ImportReceipt } from '../../shared/intake';
-import type { DependencyChangesInput } from '../../shared/path-contracts';
+import { maxDependencyEntityChanges, type DependencyChangesInput } from '../../shared/path-contracts';
 
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const ref=(...parts:string[])=>JSON.stringify(parts);
@@ -77,8 +77,16 @@ function prepare(projectId:string,pkg:IntakePackage,actor:Actor) {
     }
   }
   let core:ReturnType<typeof previewDependencyChanges>|null=null;
+  if(changes.changes.entities!.length>maxDependencyEntityChanges)errors.push(`本批有${changes.changes.entities!.length}个需求和工作项，超过单次${maxDependencyEntityChanges}个的上限，请分批导入`);
   if(!errors.length&&(changes.changes.entities!.length||changes.changes.add.length)){
-    try{core=previewDependencyChanges(projectId,changes,actor);}catch(error){errors.push(error instanceof Error?error.message:'无法预览需求');}
+    try{core=previewDependencyChanges(projectId,changes,actor);}catch(error){
+      const entityIds=error instanceof AppError?(error.details as {entityIds?:string[]}|undefined)?.entityIds:undefined;
+      const labels=changes.changes.entities!.filter(entity=>entityIds?.includes(entity.id)).map(entity=>{
+        const parent=entity.entity==='work'?changes.changes.entities!.find(item=>item.id===entity.requirementId):undefined;
+        return [parent?.data.title,entity.data.title].filter(Boolean).join(' / ');
+      }).filter(Boolean);
+      errors.push((labels.length?labels.join('、')+'：':'')+(error instanceof Error?error.message:'无法预览需求'));
+    }
   }
   if(!pkg.requirements.some(r=>r.action!=='skip'))errors.push('没有选择要导入的需求');
   const preview:ImportPreview={expectedRevision:revision,previewToken:hash({projectId,pkg,revision,core:core?.previewToken}),package:pkg,warnings:[...new Set(warnings)],errors:[...new Set(errors)],existingMatches,differences:core?.differences||null,counts:{requirements:pkg.requirements.filter(r=>r.action==='create').length,updated:pkg.requirements.filter(r=>r.action==='update').length,workItems:pkg.requirements.filter(r=>r.action==='create').reduce((n,r)=>n+r.workItems.length,0)}};
@@ -109,14 +117,14 @@ export function applyRequirementImport(projectId:string,raw:unknown,actor:Actor)
     if(prepared.preview.previewToken!==input.previewToken)fail('预览已变化，请重新核对','STALE_WRITE',409);
     // Resolve names inside this transaction before core creation so a named
     // import never depends on the state of the default Other feature.
-    for(const r of input.package.requirements)if(r.action!=='skip'&&r.feature&&!getDatabaseContext().sqlite.prepare('SELECT 1 FROM features WHERE project_id=? AND name=?').get(projectId,r.feature)){
+    for(const r of input.package.requirements)if(r.action!=='skip'&&r.feature&&!['其他特性','其他需求'].includes(r.feature)&&!getDatabaseContext().sqlite.prepare('SELECT 1 FROM features WHERE project_id=? AND name=?').get(projectId,r.feature)){
       const order=getDatabaseContext().sqlite.prepare('SELECT COUNT(*) AS n FROM features WHERE project_id=? AND archived_at IS NULL').get(projectId) as {n:number};
       saveFeature(projectId,{name:r.feature,sortOrder:order.n},actor);
     }
     const resolved=prepare(projectId,input.package,actor);
     if(resolved.preview.errors.length)fail(resolved.preview.errors.join('；'));
     const created=resolved.core?applyDependencyChanges(projectId,{...resolved.changes,batchId:input.batchId,previewToken:resolved.core.previewToken},actor).addedIds:{};
-    const requirementIds:Record<string,string>={};
+    const requirementIds:Record<string,string>=Object.create(null);
     for(const r of input.package.requirements){
       if(r.action==='skip')continue;
       const id=r.action==='update'?r.existingId!:created[entityId(r.key)];requirementIds[r.key]=id;

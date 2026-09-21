@@ -59,12 +59,18 @@ describe('内置样板项目', () => {
     const now = new Date().toISOString();
     const externalProjectId = 'sample-test-external-project';
     const retainedPersonId = sample.SAMPLE_PERSON_IDS[0];
-    const archivedPersonId = sample.SAMPLE_PERSON_IDS[1];
+    const legacyAcceptorId = sample.SAMPLE_PERSON_IDS[1];
+    const archivedPersonId = sample.SAMPLE_PERSON_IDS[2];
     const futureVersion = '2099-01-01T00:00:00.000Z';
     sqlite.prepare(`INSERT INTO projects (id,name,status,created_at,updated_at) VALUES (?, '外部项目', 'active', ?, ?)`)
       .run(externalProjectId, now, now);
     sqlite.prepare(`INSERT INTO project_people (project_id,person_id,project_role,created_at) VALUES (?, ?, 'member', ?)`)
       .run(externalProjectId, retainedPersonId, now);
+    const historicalRequirement = { id: 'sample-test-historical-acceptance' };
+    // The simplified workflow keeps this historical field during migration, without a current editing entry.
+    sqlite.prepare(`INSERT INTO requirements(id,project_id,title,acceptance_owner_id,created_at,updated_at)
+      VALUES (?,?,'保留旧验收人的需求',?,?,?)`).run(historicalRequirement.id, externalProjectId, legacyAcceptorId, now, now);
+    const legacyAccount = sqlite.prepare('SELECT id,status,updated_at FROM accounts WHERE person_id=?').get(legacyAcceptorId);
     sqlite.prepare("UPDATE accounts SET status='disabled', updated_at=? WHERE person_id=?").run(futureVersion, retainedPersonId);
     sqlite.prepare('UPDATE people SET updated_at=? WHERE id=?').run(futureVersion, archivedPersonId);
     sqlite.prepare('UPDATE accounts SET updated_at=? WHERE person_id=?').run(futureVersion, archivedPersonId);
@@ -78,7 +84,9 @@ describe('内置样板项目', () => {
     expect(sqlite.prepare('SELECT active,deleted_at AS deletedAt FROM people WHERE id=?').get(retainedPersonId))
       .toMatchObject({ active: 1, deletedAt: null });
     expect(sqlite.prepare("SELECT COUNT(*) AS count FROM people WHERE id LIKE 'sample-v1-person-%' AND deleted_at IS NOT NULL").get())
-      .toEqual({ count: 5 });
+      .toEqual({ count: 4 });
+    expect(sqlite.prepare('SELECT active,deleted_at AS deletedAt FROM people WHERE id=?').get(legacyAcceptorId)).toEqual({ active: 1, deletedAt: null });
+    expect(sqlite.prepare('SELECT id,status,updated_at FROM accounts WHERE person_id=?').get(legacyAcceptorId)).toEqual(legacyAccount);
     const archivedVersions = sqlite.prepare(`SELECT p.updated_at AS personUpdatedAt, a.updated_at AS accountUpdatedAt
       FROM people p JOIN accounts a ON a.person_id=p.id WHERE p.id=?`).get(archivedPersonId) as { personUpdatedAt: string; accountUpdatedAt: string };
     expect(Date.parse(archivedVersions.personUpdatedAt)).toBeGreaterThan(Date.parse(futureVersion));
@@ -103,7 +111,9 @@ describe('内置样板项目', () => {
     });
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM projects WHERE id=?').get(sample.SAMPLE_PROJECT_ID)).toEqual({ count: 0 });
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM people WHERE id=?').get(retainedPersonId)).toEqual({ count: 1 });
-    expect(sqlite.prepare("SELECT COUNT(*) AS count FROM people WHERE id LIKE 'sample-v1-person-%'").get()).toEqual({ count: 1 });
+    expect(sqlite.prepare("SELECT COUNT(*) AS count FROM people WHERE id LIKE 'sample-v1-person-%'").get()).toEqual({ count: 2 });
+    expect(sqlite.prepare('SELECT acceptance_owner_id AS ownerId FROM requirements WHERE id=?').get(historicalRequirement.id)).toEqual({ ownerId: legacyAcceptorId });
+    expect(sqlite.prepare('SELECT id,status,updated_at FROM accounts WHERE person_id=?').get(legacyAcceptorId)).toEqual(legacyAccount);
     expect(sqlite.prepare('SELECT status FROM accounts WHERE person_id=?').get(retainedPersonId)).toEqual({ status: 'disabled' });
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM system_meta WHERE key=?').get(sample.SAMPLE_META_KEY)).toEqual({ count: 1 });
     expect(sample.ensureBuiltInSampleProject(sqlite, true)).toBe(false);

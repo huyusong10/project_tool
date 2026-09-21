@@ -1,6 +1,11 @@
 import { useId } from 'react';
 import type { TemplateOverview } from '../template-overview';
 
+function shortTitle(title: string) {
+  const characters = Array.from(title);
+  return characters.length > 6 ? characters.slice(0, 5).join('') + '…' : title;
+}
+
 /** Overview graphics only; opening either thumbnail shows the full, accessible preview. */
 export function TemplateThumbnail({ overview, name, onOpen }: { overview: TemplateOverview; name: string; onOpen: () => void }) {
   const marker = 'thumbnail-arrow-' + useId().replace(/:/g, '');
@@ -42,7 +47,7 @@ export function TemplateThumbnail({ overview, name, onOpen }: { overview: Templa
         })}
         {nodes.map(node => <g key={node.id} data-thumbnail-node={node.id} className={node.kind === 'milestone' ? 'template-thumb-node is-milestone' : 'template-thumb-node'}>
           <title>{node.title}</title><rect x={node.x - 36} y={node.y - 9} width={72} height={18} rx={node.kind === 'milestone' ? 9 : 4} />
-          <text x={node.x} y={node.y + 3.5} textAnchor="middle">{node.title.length > 6 ? node.title.slice(0, 5) + '…' : node.title}</text>
+          <text x={node.x} y={node.y + 3.5} textAnchor="middle">{shortTitle(node.title)}</text>
         </g>)}
         {overview.levels.filter(level => level.items.length > 3).map(level => {
           const first = byId.get(level.items[0].id)!;

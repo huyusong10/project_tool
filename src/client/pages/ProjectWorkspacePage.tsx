@@ -1,9 +1,10 @@
 import { readWorkspaceViewPreference } from '../features/workspace/preferences';
 import * as reportingApi from "../features/reporting/api";
 import * as planningApi from "../features/planning/api";
-import { isGuestWorkspace } from "../permissions";
+import { isAdmin, isGuestWorkspace } from "../permissions";
 
 import { Button } from "../components/Button";
+import { EmptyState, RefreshNotice } from '../components/Feedback';
 
 import { useEffect } from 'react';
 import { Navigate, useLocation, useSearchParams } from 'react-router-dom';
@@ -34,6 +35,7 @@ export function ProjectWorkspacePage(){
   const report=useResourceQuery<Dashboard>([...keys.dashboard,selectedProjectId],signal => reportingApi.dashboardQuery<Dashboard>(selectedProjectId, { signal }),!!selectedProjectId);
   const graph=useResourceQuery<{analysis:PathAnalysis}>([...keys.featureGraph,selectedProjectId,session.accountId,'features'],signal => planningApi.projectsPathGraphQuery<{analysis:PathAnalysis}>(selectedProjectId, { signal }),!!selectedProjectId);
   useEffect(()=>{if([report.error,graph.error].some(e=>e instanceof ApiError&&[401,403].includes(e.status)))clearProjectGraphDrafts(account,selectedProjectId);},[report.error,graph.error,account,selectedProjectId]);
+  if(!selectedProjectId&&!projects.length&&!isAdmin(session))return <><PageHeader title="项目空间"/><div className="page-content"><EmptyState title="当前账号没有可访问的项目" detail="请联系项目经理或系统管理员添加项目权限，添加后刷新页面。"/></div></>;
   if(!report.data||!graph.data||report.unavailable||graph.unavailable)return <><PageHeader title="项目空间"/><div className="page-content"><p>{report.error?.message||graph.error?.message||(!selectedProjectId?'请选择项目':'正在读取项目工作区…')}</p>{(report.error||graph.error)&&<Button variant="secondary" className="ghost-button" onClick={()=>{void report.refetch();void graph.refetch();}}>重新读取</Button>}</div></>;
   if(guest&&(params.has('intake')||params.has('draftProject'))){const safe=new URLSearchParams(params);for(const key of ['intake','intakeView','draftProject'])safe.delete(key);return <Navigate replace to={'/?'+safe}/>;}
   // Browser history can still point at a temporary ID after another scope saved the draft.
@@ -52,5 +54,6 @@ export function ProjectWorkspacePage(){
     }
     return <Navigate replace to={'/?'+workspaceParams(location,graph.data.analysis,entryParams)} state={url.state}/>;
   }
-  return <ProjectWorkspace key={account+':'+selectedProjectId} report={report.data} data={graph.data.analysis}/>;
+  return <ProjectWorkspace key={account+':'+selectedProjectId} report={report.data} data={graph.data.analysis}
+    refreshNotice={(report.error||graph.error)&&<RefreshNotice pending={report.isFetching||graph.isFetching} onRetry={()=>{void report.refetch();void graph.refetch();}}/>}/>;
 }

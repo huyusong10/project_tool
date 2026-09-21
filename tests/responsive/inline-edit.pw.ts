@@ -199,7 +199,8 @@ test("工作项负责人、协作者和日期共用版本快照，重读时保�
 
   await firstRow.getByRole("button", { name: /协作人员：无协作人员/ }).click();
   popover = page.locator(".inline-multi-popover");
-  await popover.getByRole("checkbox", { name: /李四/ }).check();
+  await expect(popover.getByRole("checkbox", { name: /李四/ })).toBeFocused();
+  await page.keyboard.press('Space');
   await pushBackgroundUpdate({ title: "后台再次更新标题" });
   await expect(popover.getByRole("button", { name: "完成", exact: true })).toBeDisabled();
   expect(submissions).toHaveLength(2);
@@ -547,6 +548,9 @@ test("管理表格支持原地编辑、显式状态命令和失败回滚", async
 
   const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
   await mockApplication(page, patches);
+  await page.route('**/api/people?**', route => route.fulfill({ json: [
+    ...people, ...Array.from({ length: 6 }, (_, index) => ({ ...people[1], id: `candidate-${index}`, name: `候选人员${index}` })),
+  ] }));
 
   await page.goto("/requirements/r1");
   await expect(page.getByRole("button", {name:/需求优先级/})).toHaveCount(0);
@@ -555,10 +559,22 @@ test("管理表格支持原地编辑、显式状态命令和失败回滚", async
   await page.goto("/requirements/r1");
   await page.getByRole('tab', { name: /^工作项 / }).click();
   await page.getByRole("button", { name: /主负责人：未分配/ }).first().click();
-  await page.getByRole("option").filter({ hasText: "张三" }).click();
+  const ownerSearch = page.getByRole('combobox', { name: '搜索主负责人', exact: true });
+  await ownerSearch.fill('张三');
+  for (const composition of [{ isComposing: true }, { keyCode: 229 }]) {
+    await ownerSearch.dispatchEvent('keydown', { key: 'Enter', code: 'Enter', ...composition });
+    await expect(ownerSearch).toBeVisible();
+    expect(patches, '确认输入法候选词不能提交负责人变更').toEqual([]);
+  }
+  await ownerSearch.press('Enter');
   await expect.poll(() => patches.some((entry) => entry.path === "/api/work-items/w1" && entry.body.ownerId === "u1")).toBe(true);
   await page.getByRole("button", { name: /协作人员：无协作人员/ }).first().click();
-  await page.getByText("李四", { exact: true }).click();
+  const collaboratorSearch = page.getByPlaceholder('搜索协作人员', { exact: true });
+  await expect(collaboratorSearch).toBeFocused();
+  await page.keyboard.type('lisi');
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('checkbox', { name: /李四/ })).toBeFocused();
+  await page.keyboard.press('Space');
   await page.getByRole("button", { name: "完成", exact: true }).click();
   await expect.poll(() => patches.some((entry) => Array.isArray(entry.body.assigneeIds) && entry.body.assigneeIds.includes("u2"))).toBe(true);
   await page.getByRole("button", { name: /计划开始：2026-09-01/ }).first().click();

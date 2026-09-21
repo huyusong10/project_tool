@@ -30,7 +30,7 @@ import { useGuestWorkspace, useSession } from "../../app-context";
 import { keys } from "../../query-keys";
 import { useResourceQuery } from "../../use-resource-query";
 import { formatDateTime } from "../../format";
-import type { Person, ProgressUpdate, Requirement, WorkItemTemplate } from "../../types";
+import type { Person, Requirement, WorkItemTemplate } from "../../types";
 import { requirementPlannedProgress } from "../../../shared/domain";
 import { Chart } from "../../components/Chart";
 import { EmptyState, RefreshNotice } from "../../components/Feedback";
@@ -41,7 +41,7 @@ import { persistRequirementPlanRecheck, PlanForm, readRequirementPlanRecheck, ty
 import { persistRequirementScheduleRecheck, readRequirementScheduleRecheck, RequirementScheduleForm, type RequirementScheduleRecheck } from './forms/schedule';
 import { WorkItemSettingsDialog } from "../../components/WorkItemSettingsDialog";
 import { canManageProject } from "../../permissions";
-import { dailyProgressTrend, progressHistoryMetadata } from "../../progress-trend";
+import { dailyProgressTrend, progressHistoryMetadata, progressReferenceLabel } from "../../progress-trend";
 import { persistRequirementCommandRecheck, readRequirementCommandRecheck, RequirementCommandDialog, type RequirementCommand, type RequirementCommandRecheck } from "../../components/RequirementCommandDialog";
 
 import { persistWorkItemSettingsRecheck, readWorkItemSettingsRechecks } from "../../work-item-write-rechecks";
@@ -49,10 +49,6 @@ import { persistWorkItemSettingsRecheck, readWorkItemSettingsRechecks } from "..
 export const emptyPeople: Person[] = [];
 
 export const emptyTemplates: WorkItemTemplate[] = [];
-
-export const progressEventLabels: Record<string, string> = { note: "说明", progress: "进展", start: "开始", block: "阻塞", unblock: "解阻", complete: "完成", reopen: "返工", correction: "纠错", accept: "验收", cancel: "取消" };
-
-export const progressReferenceLabel = (update?: ProgressUpdate) => update ? `${formatDateTime(update.createdAt)} · ${progressEventLabels[update.eventType] || update.eventType}` : "原记录不可用";
 
 export function EmbeddedRequirementHeader({secondaryActions,moreActions,moreDisabled}:ComponentProps<typeof PageHeader>){return <div className="detail-toolbar-actions"><div className="button-row">{secondaryActions}</div>{moreActions&&<TopbarMenu label="需求操作" disabled={moreDisabled}>{moreActions}</TopbarMenu>}</div>;}
 
@@ -119,7 +115,7 @@ export function RequirementObjectContent({requirementId,embedded=false,selectedW
     isFetching,
     unavailable,
   } = usePageResources().requirement;
-  const historyPagination = useListPagination({ items: requirement?.progressUpdates || [], id: "history:requirement", defaultPageSize: 10, ready: Boolean(requirement), loading: isFetching });
+  const historyPagination = useListPagination({ items: requirement?.progressUpdates || [], id: "history:requirement:" + id, defaultPageSize: 10, ready: Boolean(requirement), loading: isFetching });
   const lastPathProject=useRef<string|undefined>(undefined);
   useEffect(()=>{if(requirement?.projectId)lastPathProject.current=requirement.projectId;},[requirement?.projectId]);
   const scrollKey='pm-detail-scroll:'+(session.accountId||'guest')+':'+(requirement?.projectId||'')+':'+id,workTarget=searchParams.get('workItemId');
@@ -186,8 +182,8 @@ export function RequirementObjectContent({requirementId,embedded=false,selectedW
       grid: { left: 42, right: 18, top: 42, bottom: 34 },
       xAxis: {
         type: "category",
-        data: dailyTrend.map(({ date }) => `${date.slice(5, 7)}/${date.slice(8, 10)}`),
-        axisLabel: { color: "var(--text-muted)" },
+        data: dailyTrend.map(({ date }) => date),
+        axisLabel: { color: "var(--text-muted)", formatter: (date: string) => date.slice(5).replace('-', '/') },
       },
       yAxis: {
         type: "value",
@@ -241,7 +237,11 @@ export function RequirementObjectContent({requirementId,embedded=false,selectedW
   const isRequirementOwner = canContribute && Boolean(session.personId && requirement.ownerId === session.personId);
   const requirementLocked = ["pending_acceptance", "completed", "cancelled"].includes(requirement.status);
   const canManageWorkItems = supportingDataReady && (canManage || isRequirementOwner && !requirementLocked);
+  const canEditWorkItems = canManageWorkItems && !workEditorNeedsRecheck && !planRecheck;
   const direct = requirement.executionMode === 'direct';
+  const arrangeSchedule = !requirementLocked && (direct ? canManage && !scheduleRecheck : canEditWorkItems && workspace)
+    ? () => { if (direct) setModal('schedule'); else workspace?.inspect(requirement.id,'work'); }
+    : undefined;
   const progressById = new Map((requirement.progressUpdates || []).map((update) => [update.id, update]));
   if (pathView) {
     const params=new URLSearchParams(searchParams);params.set('view','requirement');params.set('requirementId',requirement.id);
@@ -251,7 +251,7 @@ export function RequirementObjectContent({requirementId,embedded=false,selectedW
     if(params.get('workItemId'))params.set('pathNode',params.get('workItemId')!);
     return <Navigate to={'/paths?'+params} replace state={pathLocation.state}/>;
   }
-  const workList = <WorkItemSettingsDialog embedded requirement={requirement} people={people} canEdit={canManageWorkItems&&!workEditorNeedsRecheck&&!planRecheck} canManageRequirement={canManage} onInspect={openWork} onClose={()=>{}} onOpenDependencies={openPathView} onOpenPlan={()=>setModal('template')} onWriteNeedsRecheck={()=>{persistWorkItemSettingsRecheck(actionRecheckAccountKey,id,true);setWorkEditorNeedsRecheck(true);}} onReload={async()=>{const result=await refetch({throwOnError:true});if(!result.data)throw Error('需求无法打开');return result.data;}}/>;
+  const workList = <WorkItemSettingsDialog embedded requirement={requirement} people={people} canEdit={canEditWorkItems} canManageRequirement={canManage} onInspect={openWork} onClose={()=>{}} onOpenDependencies={openPathView} onOpenPlan={()=>setModal('template')} onWriteNeedsRecheck={()=>{persistWorkItemSettingsRecheck(actionRecheckAccountKey,id,true);setWorkEditorNeedsRecheck(true);}} onReload={async()=>{const result=await refetch({throwOnError:true});if(!result.data)throw Error('需求无法打开');return result.data;}}/>;
   const requirementHeader=<Header
         title={requirement.title}
 
@@ -316,10 +316,10 @@ export function RequirementObjectContent({requirementId,embedded=false,selectedW
   return <div className={embedded ? "requirement-page embedded-requirement" : "page-content requirement-page"}>
     {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
     <DetailWorkspace label="需求详情" initialTab="overview" actions={requirementHeader} tabs={[
-      {id: 'overview', label: '概况', description:'需求说明与执行进展', content: <>{notices}<RequirementOverview requirement={requirement} compact={embedded}/></>},
+      {id: 'overview', label: '概况', description:'需求说明与执行进展', content: <>{notices}<RequirementOverview requirement={requirement} compact={embedded} onArrangeSchedule={arrangeSchedule}/></>},
       {id: 'work', label: `工作项 ${requirement.workItems.length}`, content: workList},
       {id: 'basic', label: '资料', description:'背景与验收信息', content: <><DetailCard title="需求资料"><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未分派阶段'}</dd></div><div className="object-fact-wide"><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div className="object-fact-wide"><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div></dl>{!!requirement.readinessIssues?.length && <p className="object-info-note">{requirement.readinessIssues.join('；')}</p>}</DetailCard><RequirementSources links={requirement.referenceLinks} notes={requirement.sourceNotes} referenceUrl={requirement.referenceUrl}/></>},
-      {id: 'dependencies', label: '依赖', actions: <Button variant="secondary" aria-label={guest?"在关系图中查看依赖":"在关系图中维护依赖"} title={guest?"在关系图中查看依赖":"在关系图中维护依赖"} onClick={openPathView}>{guest?"查看依赖":"编辑依赖"}</Button>, content: <ObjectDependencies requirementId={id} onOpenGraph={openPathView}/>},
+      {id: 'dependencies', label: '依赖', actions: <Button variant="secondary" aria-label="在关系图中查看依赖" title="在关系图中查看依赖" onClick={openPathView}>查看依赖</Button>, content: <ObjectDependencies requirementId={id} onOpenGraph={openPathView}/>},
       {id: 'history', label: '记录', content: history},
     ]}>
       {modal === "info" && (

@@ -2,8 +2,9 @@
 
 .guest-landing {
   display: grid;
-  place-items: center;
+  place-items: safe center;
   min-height: calc(100vh - 72px);
+  overflow: auto;
 }
 
 .guest-landing > .panel {
@@ -15,4 +16,6 @@
 .guest-landing h1 { margin: 16px 0 8px; }
 .guest-landing p { color: var(--muted); margin: 0 0 24px; }
 .guest-landing .primary-button { margin: 0 auto; }
+.guest-landing .button-row { justify-content: center; }
+.guest-landing .button-row .primary-button { margin: 0; }
 }

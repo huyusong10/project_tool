@@ -149,7 +149,8 @@ export function createRequirement(input: JsonObject, actor: Actor, deferNormaliz
     requirementOwner(projectId, ownerId, true);
     requireActiveProject(projectId, true);
     assertProjectManager(requireAuthorizationActor(actor), projectId);
-    audit(actor, 'create', 'requirement', id, plannedStart ? `创建需求并生成工作项：${title}` : `创建需求：${title}；${JSON.stringify({featureId:input.featureId,phaseId:input.phaseId,reason:input.reason})}`);
+    const organization = JSON.stringify({featureId:input.featureId,phaseId:input.phaseId,reason:input.reason});
+    audit(actor, 'create', 'requirement', id, plannedStart ? `创建需求并生成工作项：${title}` : `创建需求：${title}${organization==='{}'?'':'；'+organization}`);
   });
   tx();
   return getRequirement(id, false, !deferNormalization);
@@ -185,8 +186,9 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
   const hasExecution = current.workItems!.some((item) => item.status !== 'not_started' || item.progress > 0 || item.actualStart)
     || Boolean(row(`SELECT 1 FROM progress_updates WHERE requirement_id=? AND event_type NOT IN ('note','correction') LIMIT 1`, id));
   if (input.ownerId !== undefined && !ownerId && hasExecution) {
-    fail('需求已开始执行，只能更换负责人，不能清空负责人', 'DEPENDENCY_CONFLICT', 409);
+    fail('需求已有执行记录，只能更换负责人，不能清空负责人', 'DEPENDENCY_CONFLICT', 409);
   }
+  if (ownerId !== current.ownerId) validateDeliveryFields(current.projectId, { ownerId }, actor, current);
   let nextPlannedStart = current.plannedStart;
   let scheduleShift: { currentAnchor: string; targetAnchor: string } | null = null;
   let generateInitialPlan = false;
@@ -257,6 +259,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
       applyTemplateInternal(id, templateId, nextPlannedStart!);
       updateStoredRequirementSchedule(id);
       requirementOwner(current.projectId, ownerId, true);
+      if (ownerId !== current.ownerId) validateDeliveryFields(current.projectId, { ownerId }, actor, current, true);
       requireActiveProject(current.projectId, true);
       assertProjectManager(requireAuthorizationActor(actor), current.projectId);
       audit(actor, auditAction, 'requirement', id, auditSummary);
@@ -272,6 +275,7 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
     if (requestedPlannedStart !== undefined || requestedPlannedEnd !== undefined) updateStoredRequirementSchedule(id);
     else if (ownerId !== current.ownerId) syncStoredRequirementState(id, now, false);
     requirementOwner(current.projectId, ownerId, true);
+    if (ownerId !== current.ownerId) validateDeliveryFields(current.projectId, { ownerId }, actor, current, true);
     requireActiveProject(current.projectId, true);
     assertProjectManager(requireAuthorizationActor(actor), current.projectId);
     audit(actor, auditAction, 'requirement', id, auditSummary);

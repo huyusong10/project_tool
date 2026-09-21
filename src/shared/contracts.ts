@@ -57,8 +57,9 @@ export const changePasswordInputSchema = z.object({
   currentPassword: z.string().min(1).max(1024),
   newPassword: z.string().min(8).max(1024),
 }).strict();
+export const maxUsernameLength = 64;
 export const loginInputSchema = z.object({
-  username: z.string().min(1).max(64),
+  username: z.string().min(1).max(maxUsernameLength),
   password: z.string().min(1).max(1024),
 }).strict();
 
@@ -464,7 +465,7 @@ export const issueListInputSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).optional(),
 }).strict().superRefine((input, context) => {
   if (input.status === 'resolved' && (input.active || input.overdue)) {
-    context.addIssue({ code: 'custom', path: ['status'], message: '已解决状态不能与仅未闭环或仅逾期同时筛选' });
+    context.addIssue({ code: 'custom', path: ['status'], message: '已解决状态不能与仅未解决或仅逾期同时筛选' });
   }
   if (input.ownerId && input.unassigned) {
     context.addIssue({ code: 'custom', path: ['ownerId'], message: '指定负责人不能与仅未分派同时筛选' });

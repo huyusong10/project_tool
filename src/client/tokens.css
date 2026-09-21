@@ -41,6 +41,8 @@
   --dur-fast: .1s; --dur-base: .14s; --dur-slow: .18s;
   --ease-standard: cubic-bezier(.2, 0, .38, 1);
   --ease-enter: cubic-bezier(.16, 1, .3, 1);
+  /* 时间轴：计划参考线与执行条共用尺寸。 */
+  --gantt-plan-height: 6px; --gantt-actual-height: 16px; --gantt-bar-radius: 3px;
   /* 层级 */
   --z-sidebar: 10; --z-topbar: 20; --z-popover: 40; --z-tooltip: 1000; --z-modal: 1100; --z-toast: 1200; --z-drag: 1600;
 }

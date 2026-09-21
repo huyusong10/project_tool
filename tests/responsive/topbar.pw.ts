@@ -83,7 +83,9 @@ test.describe('触屏',()=>{
     const snapshot=()=>page.locator('.react-flow__node').evaluateAll(nodes=>nodes.map(n=>({id:n.getAttribute('data-id'),position:(n as HTMLElement).style.transform}))),before=await snapshot();
     for(const name of ['保存修改','更多操作']){const box=(await page.getByRole('button',{name,exact:true}).boundingBox())!;expect(box.width).toBeGreaterThanOrEqual(32);expect(box.height).toBeGreaterThanOrEqual(32);}
     const layouts=await page.evaluate(()=>performance.getEntriesByName('pm-path-layout').length);
-    await page.getByRole('button',{name:'更多操作',exact:true}).tap();await page.keyboard.press('Escape');expect(await snapshot()).toEqual(before);
+    const more=page.getByRole('button',{name:'更多操作',exact:true}),menu=page.getByRole('menu',{name:'更多操作',exact:true});
+    await more.tap();await expect(menu).toBeVisible();await more.tap();await expect(menu).not.toBeVisible();
+    await more.tap();await page.keyboard.press('Escape');await expect(more).toBeFocused();expect(await snapshot()).toEqual(before);
     await page.setViewportSize(info.project.use.viewport!);await bounds(page);await page.getByRole('button',{name:'收起侧边栏',exact:true}).click();await bounds(page);
     expect(await snapshot()).toEqual(before);expect(await page.evaluate(()=>performance.getEntriesByName('pm-path-layout').length)).toBe(layouts);
     const bar=(await page.locator('.page-toolbar').boundingBox())!,canvas=(await page.locator('.dependency-canvas').boundingBox())!;expect(canvas.y).toBeGreaterThanOrEqual(bar.y+bar.height);

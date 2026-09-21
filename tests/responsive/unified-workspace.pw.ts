@@ -3,10 +3,53 @@ import {chooseOption,selectedValue} from './select-helper';
 import {expect,test,type Page} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
 import {headerAction} from './topbar-helpers';
+import type {Feature} from '../../src/shared/intake';
+import type {Requirement} from '../../src/client/types';
 const view=(page:Page,name:string)=>page.getByRole('region',{name:'页面工具栏'}).getByRole('button',{name,exact:true});
 const row=(page:Page,id:string)=>page.locator('[data-object-id="'+id+'"]');
 const create=async(page:Page,name:string)=>{await page.getByRole('button',{name:'新建对象',exact:true}).click();await page.getByRole('menu',{name:'新建对象'}).getByRole('button',{name,exact:true}).click();};
 const moveRow=async(page:Page,id:string)=>{await row(page,id).locator('.outline-row-actions button').click();await page.getByRole('menu').getByRole('button',{name:'调整归属…',exact:true}).click();};
+
+test('已选需求被他人移出当前 Phase 后，取消和再次移动均不覆盖他人归属',async({page})=>{
+  const f=await phaseFixture(page),selection=page.getByRole('region',{name:'批量操作'});
+  await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'list',scopeType:'phase',scopeId:f.phases[1].id}));
+  await row(page,f.testing.id).getByRole('checkbox').check();await row(page,f.direct.id).getByRole('checkbox').check();await expect(selection).toContainText('已选 2 个需求');
+  const moved=await page.request.post(f.base+'/requirement-placement',{data:{requirements:[{id:f.direct.id,expectedVersion:f.direct.version}],featureId:f.feature.id,phaseId:f.phases[2].id,reason:'另一页面调整交付批次'}});expect(moved.ok(),await moved.text()).toBe(true);
+  const readDirect=async():Promise<Requirement>=> (await(await page.request.get('/api/requirements/'+f.direct.id)).json()),external=await readDirect();
+  await page.evaluate(()=>{window.dispatchEvent(new Event('offline'));window.dispatchEvent(new Event('online'));});
+  await expect(row(page,f.direct.id)).toHaveCount(0);await expect.soft(selection).toContainText('已选 1 个需求');await expect(row(page,f.testing.id).getByRole('checkbox')).toBeChecked();
+  const writes:Array<{requirements:Array<{id:string}>}>=[];await page.route('**'+f.base+'/requirement-placement',route=>{writes.push(route.request().postDataJSON());return route.continue();});
+  await selection.getByRole('button',{name:'调整归属…'}).click();let dialog=page.getByRole('dialog');await expect.soft(dialog).toContainText('调整 1 条需求归属');await dialog.getByRole('button',{name:'取消',exact:true}).click();
+  expect(writes).toHaveLength(0);expect(await readDirect()).toEqual(external);
+  await selection.getByRole('button',{name:'调整归属…'}).click();dialog=page.getByRole('dialog');await chooseOption(dialog.getByLabel('需求特性',{exact:true}),f.feature.id);await chooseOption(dialog.getByLabel('需求 Phase',{exact:true}),f.phases[0].id);await dialog.getByLabel('变更原因',{exact:true}).fill('仅调整当前批次中选中的需求');await dialog.getByRole('button',{name:'确认移动',exact:true}).click();
+  await expect(dialog).toHaveCount(0);await expect(page.locator('.outline-notice')).toContainText('移动需求已保存');expect(writes).toHaveLength(1);expect.soft(writes[0].requirements.map(item=>item.id)).toEqual([f.testing.id]);
+  // 项目预测修订号随其他需求移动更新；需求自身的版本、归属和其余资料保持。
+  const after=await readDirect();expect(after).toEqual({...external,deliveryForecast:{...external.deliveryForecast,revision:after.deliveryForecast?.revision}});
+  await page.reload();await expect(row(page,f.testing.id)).toHaveCount(0);expect.soft((await readDirect()).phaseId).toBe(f.phases[2].id);expect((await(await page.request.get('/api/requirements/'+f.testing.id)).json()).phaseId).toBe(f.phases[0].id);
+});
+
+test('已选特性被他人归档后清除选择，恢复不会再次加入批量操作',async({page})=>{
+  const post=async(url:string,data:unknown)=>{const response=await page.request.post(url,{data});expect(response.ok(),await response.text()).toBe(true);return response.json();};
+  const session=await post('/api/login',{username:'admin',password:'41_xc7q0qOjo4Inw!'}),project=await post('/api/projects',{name:'后台归档与选择'+Date.now()}),base='/api/projects/'+project.id+'/features';
+  for(const name of ['选中特性甲','选中特性乙'])await post(base,{name});
+  const read=async(state='active')=>(await(await page.request.get(base+'?state='+state)).json()) as Feature[];
+  const features=await read(),a=features.find(feature=>feature.name==='选中特性甲')!,b=features.find(feature=>feature.name==='选中特性乙')!;
+  await page.addInitScript(({accountId,projectId})=>localStorage.setItem('project-manage:selected-project:'+accountId,projectId),{accountId:session.accountId,projectId:project.id});
+  await page.goto('/?'+new URLSearchParams({projectId:project.id,workspaceView:'list',scopeType:'project',scopeId:project.id}));
+  const aCheckbox=row(page,'feature:'+a.id).getByRole('checkbox'),bCheckbox=row(page,'feature:'+b.id).getByRole('checkbox'),selection=page.getByRole('region',{name:'批量操作'});
+  await aCheckbox.check();await bCheckbox.check();await expect(selection).toContainText('已选 2 个特性');
+  await post(base+'/'+a.id+'/archive',{expectedVersion:a.version});
+  const refresh=()=>page.evaluate(()=>{window.dispatchEvent(new Event('offline'));window.dispatchEvent(new Event('online'));});await refresh();
+  await expect(aCheckbox).toBeDisabled();await expect.soft(aCheckbox).not.toBeChecked();await expect(selection).toContainText('已选 1 个特性');await expect(bCheckbox).toBeChecked();
+  const archived=(await read('archived')).find(feature=>feature.id===a.id)!;await post(base+'/'+a.id+'/restore',{expectedVersion:archived.version});await refresh();
+  await expect(aCheckbox).toBeEnabled();await expect.soft(aCheckbox).not.toBeChecked();await expect.soft(selection).toContainText('已选 1 个特性');
+  const restored=(await read()).find(feature=>feature.id===a.id),writes:Array<{items:Array<{id:string}>}>=[];
+  await page.route('**'+base+'/archive-batch',route=>{writes.push(route.request().postDataJSON());return route.continue();});
+  await page.getByRole('button',{name:'更多批量操作',exact:true}).click();await page.getByRole('menu',{name:'更多批量操作'}).getByRole('button',{name:'批量归档',exact:true}).click();
+  await expect(page.locator('.outline-notice')).toContainText('归档特性已保存');expect(writes).toHaveLength(1);expect.soft(writes[0].items.map(item=>item.id)).toEqual([b.id]);
+  expect.soft((await read()).find(feature=>feature.id===a.id)).toEqual(restored);expect.soft((await read('archived')).map(feature=>feature.id)).toEqual([b.id]);
+  await page.reload();await expect(bCheckbox).toBeDisabled();await expect(aCheckbox).toBeEnabled();await expect(aCheckbox).not.toBeChecked();
+});
 
 test('项目层新建需求响应丢失，默认归类仍能核对且不重复创建',async({page})=>{
   const f=await phaseFixture(page);await page.goto('/');let writes=0;await page.route('**/api/requirements',async route=>{if(route.request().method()==='POST'){writes++;await route.fetch();await route.abort('failed');}else await route.continue();});

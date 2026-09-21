@@ -155,25 +155,57 @@ test('新建问题核对时不能把下次核对日期不同的候选项当成�
   expect(state.writes).toHaveLength(1);
 });
 
-test('项目经理新建问题时可以直接选择负责人', async ({ page }) => {
+test('项目经理新建问题时可以直接选择负责人，失效选择明确提示并可改选', async ({ page }) => {
   const state = await fixture(page, 'manager');
+  let availablePeople = [
+    { id: 'u1', name: '张三', active: 1, projectRole: 'member' },
+    { id: 'u2', name: '李四', active: 1, projectRole: 'member', accountStatus: 'active' },
+    { id: 'u3', name: '停用成员', active: 1, projectRole: 'member', accountStatus: 'disabled' },
+    { id: 'u4', name: '无账号成员', active: 1, projectRole: 'member', accountStatus: null },
+    { id: 'u5', name: '已删除账号', active: 1, projectRole: 'member', accountStatus: 'active', accountDeletedAt: '2026-09-01' },
+  ];
+  await page.route(/\/api\/people(?:\?|$)/, route => route.fulfill({ json: availablePeople }));
+  let availableRequirements = [{id: 'r1', title: '待关联需求'}];
+  await page.route(/\/api\/requirements(?:\?|$)/, route => route.fulfill({json: availableRequirements}));
   await page.goto('/issues');
   await page.getByRole('button', { name: '新建问题', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '新建问题', exact: true });
   await dialog.getByRole('textbox', { name: '问题标题', exact: true }).fill('创建时直接分配负责人');
+  await dialog.getByRole('button', {name: '关联需求：公共问题', exact: true}).click();
+  await page.getByRole('listbox', {name: '关联需求', exact: true}).getByRole('option', {name: '待关联需求', exact: true}).click();
+  availableRequirements = [];
+  await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
+  await dialog.getByRole('button', {name: '关联需求：已不可用的关联需求（请重新选择）', exact: true}).click();
+  await page.getByRole('listbox', {name: '关联需求', exact: true}).getByRole('option', {name: /公共问题/}).click();
   await dialog.getByRole('button', { name: '负责人：未分配', exact: true }).click();
+  await expect(page.getByRole('listbox', { name: '负责人', exact: true }).getByRole('option')).toHaveCount(3);
   await page.getByRole('listbox', { name: '负责人', exact: true }).getByRole('option', { name: '李四', exact: true }).click();
+  availablePeople = availablePeople.map(person => person.id === 'u2' ? {...person, accountStatus: 'disabled'} : person);
+  await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
+  await expect(dialog.getByRole('button', {name: '负责人：已不可用的负责人（请重新选择）', exact: true})).toBeVisible();
+  availablePeople = availablePeople.filter(person => person.id !== 'u2');
+  await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
+  const unavailableOwner = dialog.getByRole('button', {name: '负责人：已不可用的负责人（请重新选择）', exact: true});
+  await expect(unavailableOwner).toBeVisible();
+  await expect(dialog.getByRole('textbox', {name: '问题标题', exact: true})).toHaveValue('创建时直接分配负责人');
+  expect(state.writes).toEqual([]);
+  await unavailableOwner.click();
+  await expect(page.getByRole('listbox', {name: '负责人', exact: true})).not.toContainText('历史负责人');
+  await page.getByRole('listbox', {name: '负责人', exact: true}).getByRole('option', {name: '张三', exact: true}).click();
   await dialog.getByRole('button', { name: '创建问题', exact: true }).click();
 
   await expect(dialog).toHaveCount(0);
   expect(state.writes).toHaveLength(1);
-  expect(state.writes[0].body).toMatchObject({ projectId: 'p1', title: '创建时直接分配负责人', ownerId: 'u2' });
+  expect(state.writes[0].body).toMatchObject({ projectId: 'p1', title: '创建时直接分配负责人', ownerId: 'u1', requirementId: '' });
+  await page.getByRole('button', { name: /^问题负责人：/ }).first().click();
+  await expect(page.getByRole('listbox', { name: '问题负责人', exact: true }).getByRole('option', { name: /停用成员|无账号成员|已删除账号/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
 });
 
 test('问题搜索选择浮层不改变弹窗滚动布局', {tag:'@responsive'}, async ({ page }, _testInfo) => {
 
-  await fixture(page, 'manager');
-  await page.route('**/api/people', (route) => route.fulfill({ json: Array.from({ length: 14 }, (_, index) => ({
+  const state = await fixture(page, 'manager');
+  await page.route(/\/api\/people(?:\?|$)/, (route) => route.fulfill({ json: Array.from({ length: 14 }, (_, index) => ({
     id: `u${index + 1}`,
     name: index === 0 ? '张三' : index === 1 ? '李四' : `成员${index + 1}`,
     active: 1,
@@ -183,6 +215,8 @@ test('问题搜索选择浮层不改变弹窗滚动布局', {tag:'@responsive'},
   await page.getByRole('button', { name: '新建问题', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '新建问题', exact: true });
   const body = dialog.locator('.modal-body');
+  const title = dialog.getByRole('textbox', { name: '问题标题', exact: true });
+  await title.fill('保留问题表单原文');
 
   for (const label of ['关联需求', '负责人', '提出人']) {
     const before = await body.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientWidth: element.clientWidth }));
@@ -191,16 +225,23 @@ test('问题搜索选择浮层不改变弹窗滚动布局', {tag:'@responsive'},
     const popover = dialog.locator('.issue-search-select-menu');
     await expect(listbox).toBeVisible();
     await expect(popover).toBeVisible();
+    const search = popover.getByRole('textbox');
+    await expect(search).toBeFocused();
     const after = await body.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientWidth: element.clientWidth }));
     expect(after).toEqual(before);
     const bounds = await popover.boundingBox();
     expect(bounds).not.toBeNull();
     expect(bounds!.y).toBeGreaterThanOrEqual(12);
     expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(page.viewportSize()!.height - 12);
+    await page.keyboard.type('draft-filter');
+    await expect(search).toHaveValue('draft-filter');
     await page.keyboard.press('Escape');
     await expect(popover).toBeHidden();
     await expect(dialog.getByRole('button', { name: new RegExp(`^${label}：`) })).toBeFocused();
+    await expect(title).toHaveValue('保留问题表单原文');
   }
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  expect(state.writes).toEqual([]);
 });
 
 test('普通成员新建问题时不显示负责人选择', async ({ page }) => {
@@ -345,11 +386,12 @@ test('问题纠错异常响应不把旧同值纠错误认成本次写入', async
   expect(correctionWrites).toBe(1);
 });
 
-test('问题纠错历史显示被更正记录', async ({ page }) => {
+test('问题纠错历史显示被更正记录', async ({ page }, info) => {
   const state = await fixture(page);
+  const content = `修正原进展\n复现地址：https://example.test/${'a9F3k7Q2'.repeat(40)}\n排查结果：保留日志中的换行。\n下一步：重新检查关联工作。`;
   state.issue = { ...state.issue, updates: [
     {
-      id: 'correction-1', issueId: 'i1', progress: 30, content: '修正原进展', eventType: 'correction', supersedesId: 'update-1',
+      id: 'correction-1', issueId: 'i1', progress: 30, content, eventType: 'correction', supersedesId: 'update-1',
       createdByAccountId: 'admin', createdByName: 'admin', createdAt: '2026-09-04T08:00:00.000Z', updatedAt: '2026-09-04T08:00:00.000Z',
     },
     {
@@ -363,6 +405,18 @@ test('问题纠错历史显示被更正记录', async ({ page }) => {
   await expect(correction).toContainText('更正：');
   await expect(correction).toContainText('进度');
   await expect(correction).not.toContainText('原记录不可用');
+  const paragraph = correction.locator(':scope > p');
+  await expect(paragraph).toHaveText(content);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect.soft.poll(() => paragraph.evaluate(element => element.scrollWidth <= element.clientWidth + 1), { message: `${width}px 长地址完整换行` }).toBe(true);
+    const bounds = (await correction.boundingBox())!;
+    const textBounds = (await paragraph.boundingBox())!;
+    expect.soft(textBounds.x + textBounds.width, `${width}px 正文保持在记录范围内`).toBeLessThanOrEqual(bounds.x + bounds.width + 1);
+    expect.soft(bounds.x + bounds.width, `${width}px 记录保持在屏幕范围内`).toBeLessThanOrEqual(width);
+    await expect(paragraph).toHaveCSS('white-space', 'pre-wrap');
+    await page.screenshot({ path: info.outputPath(`issue-history-${width}.png`), animations: 'disabled' });
+  }
 });
 
 for (const location of ['list', 'detail'] as const) {
@@ -777,7 +831,7 @@ test('只改下次核对日期且服务端未保存时不能误报问题信息�
 
   await expect(form).toBeVisible();
   await expect(form.getByLabel('下次核对日期')).toHaveValue('2026-09-12');
-  await expect(form).toContainText('已读取最新问题，输入保持不变');
+  await expect(form).toContainText('已读取最新问题，保留已修改的输入');
   await expect(page.getByText('已核对最新状态：问题信息已保存', { exact: true })).toHaveCount(0);
   await expect(form.getByRole('button', { name: '保存修改', exact: true })).toBeEnabled();
   expect(writes).toBe(1);

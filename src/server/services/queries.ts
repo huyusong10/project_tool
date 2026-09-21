@@ -20,8 +20,9 @@ export function queryRequirements(raw: unknown, actor: AuthorizationActor) {
   if (input.includeDeleted) assertProjectManager(actor, input.projectId);
   else assertProjectReadable(actor, input.projectId);
   return getDatabaseContext().sqlite.transaction(() => {
+    const asOfDate = todayIso();
     const q = input.q?.toLocaleLowerCase();
-    const values = listRequirements(input).filter(r => {
+    const values = listRequirements(input, asOfDate).filter(r => {
       if(!matchesProgressStatus(r.status,input.statuses,input.excludeStatuses)||!matchesProgressStage(r.status,r.executionStage,input.stage||''))return false;
       if (q && ![r.title, r.background, r.acceptanceCriteria, r.ownerName].some(v => v?.toLocaleLowerCase().includes(q))) return false;
       if (input.participantId && r.ownerId !== input.participantId && !r.workItems?.some(w => w.assigneeIds.includes(input.participantId!))) return false;
@@ -35,7 +36,7 @@ export function queryRequirements(raw: unknown, actor: AuthorizationActor) {
       const { workItems, ...summary } = r;
       return { ...summary, workItemCount: workItems?.length || 0 };
     });
-    return { items, ...pageInfo(values.length, input.page, input.pageSize), asOfDate: todayIso() };
+    return { items, ...pageInfo(values.length, input.page, input.pageSize), asOfDate };
   })();
 }
 
@@ -43,25 +44,26 @@ type WorkReference = { id: string; title:string; status:string; workStage:WorkSt
 const workFrom = 'FROM work_items w JOIN requirements r ON r.id=w.requirement_id JOIN projects p ON p.id=r.project_id LEFT JOIN features f ON f.id=r.feature_id LEFT JOIN feature_phases ph ON ph.id=r.phase_id';
 const workReference = `SELECT w.id,w.title,w.status,w.work_stage AS workStage,w.sort_order AS sortOrder,w.created_at AS createdAt,w.updated_at AS updatedAt,w.planned_end AS plannedEnd,w.requirement_id AS requirementId,r.title AS requirementTitle,r.status AS requirementStatus,r.project_id AS projectId,p.name AS projectName,r.feature_id AS featureId,CASE WHEN f.kind='other' THEN '其他需求' ELSE f.name END AS featureName,r.phase_id AS phaseId,ph.name AS phaseName`;
 
-function workDetails(references: WorkReference[]) {
+function workDetails(references: WorkReference[], asOfDate: string) {
   const statuses = new Map(references.map(r => [r.requirementId, r.requirementStatus]));
   const loaded = loadWorkItemsByRequirementIds([...statuses.keys()], statuses);
   const work = new Map([...loaded.workItems.values()].flat().map(w => [w.id, w]));
-  const analyses = new Map([...new Set(references.map(r => r.projectId))].map(id => [id, getPathAnalysis(id)]));
+  const analyses = new Map([...new Set(references.map(r => r.projectId))].map(id => [id, getPathAnalysis(id, undefined, asOfDate)]));
   return references.map(reference => {
     const item = work.get(reference.id)!;
     const node = analyses.get(reference.projectId)!.nodes.find(n => n.id === item.id);
     return { ...item, ...reference, deliveryForecast: deliveryForecast(node, analyses.get(reference.projectId)!), forecastBasis: node?.forecastBasis, blockerCoordination: node?.blockerCoordination,
-      overdue: !['completed', 'cancelled'].includes(item.status) && isOverdueByWorkday(item.plannedEnd, todayIso()) };
+      overdue: !['completed', 'cancelled'].includes(item.status) && isOverdueByWorkday(item.plannedEnd, asOfDate) };
   });
 }
 
 export function readWorkItem(id: string, actor: AuthorizationActor) {
   assertProjectResourceReadable(actor, projectIdForWorkItem(id), '工作项不存在');
   return getDatabaseContext().sqlite.transaction(() => {
+    const asOfDate = todayIso();
     const reference = getDatabaseContext().sqlite.prepare(`${workReference} ${workFrom} WHERE w.id=? AND r.deleted_at IS NULL AND p.deleted_at IS NULL`).get(id) as WorkReference | undefined;
     if (!reference) notFound('工作项不存在');
-    return workDetails([reference])[0];
+    return workDetails([reference], asOfDate)[0];
   })();
 }
 
@@ -69,6 +71,7 @@ export function queryWorkItems(raw: unknown, actor: AuthorizationActor) {
   const input = workItemQuerySchema.parse(raw);
   assertProjectReadable(actor, input.projectId);
   return getDatabaseContext().sqlite.transaction(() => {
+    const asOfDate = todayIso();
     const where = ['r.project_id=?', 'r.deleted_at IS NULL', 'p.deleted_at IS NULL'];
     const params: unknown[] = [input.projectId];
     const add = (clause: string, ...values: unknown[]) => { where.push(clause); params.push(...values); };
@@ -80,7 +83,7 @@ export function queryWorkItems(raw: unknown, actor: AuthorizationActor) {
     if (input.participantId) add('(w.owner_id=? OR EXISTS(SELECT 1 FROM work_item_collaborators c WHERE c.work_item_id=w.id AND c.person_id=?))', input.participantId, input.participantId);
     if (input.status) add('w.status=?', input.status);
     if (input.active || input.overdue) add("w.status NOT IN ('completed','cancelled')");
-    if (input.overdue) add('business_day_delta(w.planned_end,?)>0', todayIso());
+    if (input.overdue) add('business_day_delta(w.planned_end,?)>0', asOfDate);
     if (input.unassigned) add('w.owner_id IS NULL');
     if (input.q) add('(search_score(w.title,?)>0 OR search_score(r.title,?)>0)', input.q, input.q);
     if (input.from) add('COALESCE(w.planned_end,w.planned_start)>=?', input.from);
@@ -96,7 +99,7 @@ export function queryWorkItems(raw: unknown, actor: AuthorizationActor) {
       return compareProgressNames(a.requirementTitle,b.requirementTitle)||a.requirementId.localeCompare(b.requirementId)||a.sortOrder-b.sortOrder||a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id);
     });
     const page=references.slice((input.page-1)*input.pageSize,input.page*input.pageSize);
-    return { items: workDetails(page), ...pageInfo(references.length, input.page, input.pageSize), asOfDate: todayIso() };
+    return { items: workDetails(page, asOfDate), ...pageInfo(references.length, input.page, input.pageSize), asOfDate };
   })();
 }
 

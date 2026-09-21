@@ -27,7 +27,7 @@ export type WorkItemRecord = import('../../shared/forecast-basis').ExecutionMeta
 export type RequirementRecord = DeliveryFields & import('../../shared/intake').Organization & Partial<ProcessingResult> & {
   stageResetAt?:string|null; executionStage?:ExecutionStage; milestones?: import('../../shared/paths').PathMilestone[];
   readinessIssues?:string[];
-  pathRisk?: PathRisk; pathEnabled?:number;
+  pathRisk?: PathRisk;
   sortOrder?:number; id: string; projectId: string; projectName: string; templateId: string | null; templateName: string | null; title: string; ownerId: string | null; ownerName: string | null;
   referenceLinks?:ReferenceLink[]; background: string | null; acceptanceCriteria: string | null; referenceUrl: string | null; sourceNotes?: string | null;
   status: string; plannedStart: string | null; plannedEnd: string | null; progress: number; plannedProgress?: number | null; progressGap?: number;
@@ -40,18 +40,17 @@ export type RequirementRecord = DeliveryFields & import('../../shared/intake').O
   issueSummary?: { active: number; overdue: number };
 };
 
-export const requirementSelect = `SELECT EXISTS(SELECT 1 FROM project_people op JOIN accounts oa ON oa.person_id=op.person_id JOIN people person ON person.id=op.person_id WHERE op.project_id=r.project_id AND op.person_id=r.owner_id AND op.project_role IN ('member','manager') AND oa.status='active' AND oa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS ownerValid,r.delivery_scope AS deliveryScope,r.execution_mode AS executionMode,r.acceptance_owner_id AS acceptanceOwnerId,
+export const requirementSelect = `SELECT EXISTS(SELECT 1 FROM project_people op JOIN accounts oa INDEXED BY idx_accounts_person ON oa.person_id=op.person_id JOIN people person ON person.id=op.person_id WHERE op.project_id=r.project_id AND op.person_id=r.owner_id AND op.project_role IN ('member','manager') AND oa.status='active' AND oa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS ownerValid,r.delivery_scope AS deliveryScope,r.execution_mode AS executionMode,r.acceptance_owner_id AS acceptanceOwnerId,
     r.forecast_review AS forecastReview,r.blocked_coordinator_id AS blockedCoordinatorId,r.blocked_next_review_at AS blockedNextReviewAt,r.blocked_issue_id AS blockedIssueId,r.actual_start AS actualStart,r.actual_end AS actualEnd,r.blocked_at AS blockedAt,r.blocked_reason AS blockedReason,
     r.forecast_duration AS forecastDuration,r.forecast_ready_at AS forecastReadyAt,r.duration_days AS durationDays,r.forecast_end AS forecastEnd,r.unblock_estimate AS unblockEstimate,r.split_base_progress AS splitBaseProgress,r.split_at AS splitAt,
     (SELECT name FROM people WHERE id=r.acceptance_owner_id) AS acceptanceOwnerName,
-    EXISTS(SELECT 1 FROM project_people ap JOIN accounts aa ON aa.person_id=ap.person_id JOIN people person ON person.id=ap.person_id WHERE ap.project_id=r.project_id AND ap.person_id=r.acceptance_owner_id AND ap.project_role IN ('member','manager') AND aa.status='active' AND aa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS acceptanceOwnerValid,r.id, r.project_id AS projectId, pr.name AS projectName,
+    EXISTS(SELECT 1 FROM project_people ap JOIN accounts aa INDEXED BY idx_accounts_person ON aa.person_id=ap.person_id JOIN people person ON person.id=ap.person_id WHERE ap.project_id=r.project_id AND ap.person_id=r.acceptance_owner_id AND ap.project_role IN ('member','manager') AND aa.status='active' AND aa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS acceptanceOwnerValid,r.id, r.project_id AS projectId, pr.name AS projectName,
   r.template_id AS templateId, t.name AS templateName, r.title,
   r.reference_links AS referenceLinks,r.background, r.source_notes AS sourceNotes, r.acceptance_criteria AS acceptanceCriteria, r.reference_url AS referenceUrl, r.sort_order AS sortOrder,r.phase_id AS phaseId,(SELECT name FROM feature_phases fp WHERE fp.id=r.phase_id) AS phaseName,r.stage_reset_at AS stageResetAt,r.feature_id AS featureId,(SELECT CASE WHEN kind='other' THEN '其他需求' ELSE name END FROM features WHERE id=r.feature_id) AS featureName,
   r.owner_id AS ownerId, p.name AS ownerName, r.status, r.planned_start AS plannedStart,
   r.planned_end AS plannedEnd, r.progress, r.risk_level AS riskLevel, r.priority,
   r.accepted_at AS acceptedAt, r.accepted_by_account_id AS acceptedByAccountId, r.version,
-  r.created_at AS createdAt, r.updated_at AS updatedAt, r.deleted_at AS deletedAt,
-  (EXISTS(SELECT 1 FROM requirements reviewed WHERE reviewed.project_id=r.project_id AND reviewed.dependencies_reviewed_at IS NOT NULL) OR EXISTS(SELECT 1 FROM dependency_edges dep WHERE dep.project_id=r.project_id)) AS pathEnabled
+  r.created_at AS createdAt, r.updated_at AS updatedAt, r.deleted_at AS deletedAt
   FROM requirements r JOIN projects pr ON pr.id = r.project_id
   LEFT JOIN people p ON p.id = r.owner_id
   LEFT JOIN work_item_templates t ON t.id = r.template_id`;
@@ -156,9 +155,8 @@ function enrichRequirement(requirement: RequirementRecord, workItems: WorkItemRe
   const metrics = deriveRequirementMetrics(requirement, workItems, asOfDate, config.highRiskDelayDays);
   const actualRange = requirementActualRange({...requirement, status: metrics.status}, workItems, asOfDate, cancelledAt);
   const gaps = workItems.map((item) => calculateWorkItemGap(item, asOfDate));
-  const {pathEnabled:_pathEnabled,...value}=requirement;
   return {
-    ...value, referenceLinks:readReferenceLinks(value.referenceLinks,value.referenceUrl),forecastReview:value.forecastReview?JSON.parse(String(value.forecastReview)):null,
+    ...requirement, ownerValid:Boolean(requirement.ownerValid), referenceLinks:readReferenceLinks(requirement.referenceLinks,requirement.referenceUrl),forecastReview:requirement.forecastReview?JSON.parse(String(requirement.forecastReview)):null,
     ...metrics, ...actualRange, executionCompletedAt: actualRange.actualEnd, asOfDate,
     readinessIssues:deliveryReadiness({...requirement,...metrics},workItems,metrics.scheduleComplete),
     workItems,

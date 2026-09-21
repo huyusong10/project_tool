@@ -74,7 +74,7 @@ export function App() {
   );
   const uiActionsValue = useMemo(() => ({ openLogin, openPassword }), [openLogin, openPassword]);
   const businessDateValue = useMemo(() => ({ businessDate }), [businessDate]);
-  const rootRefreshFailed = Boolean(sessionQuery.error || projectsEnabled && projectsQuery.error);
+  const rootRefreshFailed = Boolean(sessionQuery.error || projectsEnabled && !projectsQuery.unavailable && projectsQuery.error);
   return (
     <InlineEditProvider resetKey={page.navigationKey}>
       <SessionContext.Provider value={sessionValue}>
@@ -93,7 +93,7 @@ export function App() {
                 /></div>}
                 <ErrorBoundary resetKey={page.navigationKey}>
                   <Suspense key={page.navigationKey} fallback={<LoadingState label="正在加载页面…" className="tall" />}>
-                    {page.phase === 'error' ? <StartupError title={page.errorTitle || '页面加载失败'} error={page.error!} pending={sessionQuery.isFetching || projectsQuery.isFetching || resources.requirement.isFetching || resources.issue.isFetching || resources.templates.isFetching} onRetry={() => void page.retry()} /> : page.phase === 'loading' ? <LoadingState label="正在加载页面…" className="tall" /> : !session.authenticated && !page.project ? <GuestLanding /> : session.mustChangePassword ? null :
+                    {page.phase === 'error' ? <StartupError title={page.errorTitle || '页面加载失败'} error={page.error!} pending={sessionQuery.isFetching || projectsQuery.isFetching || resources.requirement.isFetching || resources.issue.isFetching || resources.templates.isFetching} onRetry={() => void page.retry()} back={page.back?.kind==='templates'?page.back:undefined} /> : page.phase === 'loading' ? <LoadingState label="正在加载页面…" className="tall" /> : !session.authenticated && !page.project ? <GuestLanding /> : session.mustChangePassword ? null :
                     <Routes>
                       {appRoutes.map((def) => {
                         const PageComponent = def.component;

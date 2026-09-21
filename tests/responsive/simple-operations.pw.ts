@@ -27,6 +27,22 @@ test('未分配需求在当前入口选择负责人并开始，失败保留选�
  await expect.poll(async()=>(await detail(r.id)).status).toBe('in_progress');expect((await detail(r.id)).ownerId).toBe(person.id);expect(calls).toBe(2);
 });
 
+test('补选窗口刷新到他人指定的负责人后，开始保留当前分派',async({page})=>{
+ const {project,person,create,detail}=await fixture(page),r=await create('补选期间已完成分派');
+ const response=await page.request.post('/api/people',{data:{projectId:project.id,name:'其他人指定的负责人'}});expect(response.ok()).toBe(true);const assigned=await response.json();
+ await page.goto('/requirements/'+r.id);await page.getByRole('button',{name:'开始需求',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'选择负责人并开始'});await chooseOption(dialog.getByLabel('需求负责人',{exact:true}),person.id);
+ const changed=await page.request.patch('/api/requirements/'+r.id,{data:{ownerId:assigned.id,expectedVersion:r.version}});expect(changed.ok(),await changed.text()).toBe(true);
+ await page.evaluate(()=>{window.dispatchEvent(new Event('offline'));window.dispatchEvent(new Event('online'));});
+ await expect(dialog.getByLabel('需求负责人',{exact:true})).toHaveCount(0);await expect(dialog).toContainText('当前需求负责人：'+assigned.name);expect((await detail(r.id)).status).toBe('not_started');
+ const writes:Record<string,unknown>[]=[];await page.route('**/api/requirements/'+r.id+'/start',route=>{writes.push(route.request().postDataJSON());return route.continue();});
+ const started=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/requirements/'+r.id+'/start');
+ await dialog.getByRole('button',{name:'开始',exact:true}).click();const saved=await started;expect(saved.status(),await saved.text()).toBe(200);
+ await expect(dialog).not.toBeVisible();expect(writes).toHaveLength(1);expect(writes[0]).not.toHaveProperty('ownerId');
+ expect(await detail(r.id)).toMatchObject({ownerId:assigned.id,status:'in_progress',version:r.version+2});
+ await page.reload();expect(await detail(r.id)).toMatchObject({ownerId:assigned.id,status:'in_progress'});
+});
+
 test('工作项补选人员后一次开始，完成说明可留空；同帧确认只提交一次',async({page})=>{
  const {person,create,detail}=await fixture(page),r=await create('工作项执行');
  const response=await page.request.post('/api/requirements/'+r.id+'/work-items',{data:{title:'实际工作',expectedVersion:r.version}});expect(response.ok()).toBe(true);

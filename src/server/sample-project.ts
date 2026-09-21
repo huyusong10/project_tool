@@ -234,12 +234,12 @@ function uniquePersonName(sqlite: SqliteDatabase, preferred: string) {
 function samplePersonUsedOutside(sqlite: SqliteDatabase, personId: string) {
   return Boolean(sqlite.prepare(`SELECT 1 WHERE
     EXISTS (SELECT 1 FROM project_people WHERE person_id=? AND project_id<>?) OR
-    EXISTS (SELECT 1 FROM requirements WHERE owner_id=? AND project_id<>?) OR
+    EXISTS (SELECT 1 FROM requirements WHERE (owner_id=? OR acceptance_owner_id=?) AND project_id<>?) OR
     EXISTS (SELECT 1 FROM work_items w JOIN requirements r ON r.id=w.requirement_id WHERE w.owner_id=? AND r.project_id<>?) OR
     EXISTS (SELECT 1 FROM work_item_collaborators c JOIN work_items w ON w.id=c.work_item_id JOIN requirements r ON r.id=w.requirement_id WHERE c.person_id=? AND r.project_id<>?) OR
     EXISTS (SELECT 1 FROM issues WHERE owner_id=? AND project_id<>?)
     LIMIT 1`).get(
-      personId, SAMPLE_PROJECT_ID, personId, SAMPLE_PROJECT_ID, personId, SAMPLE_PROJECT_ID,
+      personId, SAMPLE_PROJECT_ID, personId, personId, SAMPLE_PROJECT_ID, personId, SAMPLE_PROJECT_ID,
       personId, SAMPLE_PROJECT_ID, personId, SAMPLE_PROJECT_ID,
     ));
 }

@@ -12,7 +12,7 @@ import { TestSubmissionButton } from './TestSubmissionButton';
 import { AnchoredPopover } from './inline-edit/popover';
 import { OverviewIntroduction } from './OverviewIntroduction';
 
-export function RequirementOverview({ requirement: r, compact=false }: { requirement: Requirement; compact?:boolean }) {
+export function RequirementOverview({ requirement: r, compact=false, onArrangeSchedule }: { requirement: Requirement; compact?:boolean; onArrangeSchedule?:()=>void }) {
   const workspace = useProjectWorkspace();
   const [details, setDetails] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
@@ -29,6 +29,7 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
     <div className="requirement-overview-top">
       <div className="requirement-overview-meta">
         <ExecutionStageBadge requirement={r} />
+        {direct&&<span title={progressHint}>完成度 {r.progress}%</span>}
         {!compact&&<span className="requirement-overview-owner" title={`需求负责人：${r.ownerName || '待指定'}`}>负责人 <strong>{r.ownerName || '待指定'}</strong></span>}
       </div>
       <div className="requirement-overview-actions">
@@ -50,7 +51,7 @@ export function RequirementOverview({ requirement: r, compact=false }: { require
       <article title={r.riskReason}><span>风险</span><span className={`risk-badge ${risk.className}`}>{risk.label}</span></article>
     </div>}
     {!!schedule.gaps.length&&<section className="schedule-gaps" aria-label="待补全的排期">
-      <header><strong>{schedule.label}</strong>{workspace&&<Button size="compact" variant="secondary" aria-label={r.status==='completed'?'查看缺失的计划日期':'安排缺失的计划日期'} onClick={()=>workspace.inspect(r.id,direct?'basic':'work')}>{r.status==='completed'?'查看':'排期'}</Button>}</header>
+      <header><strong>{schedule.label}</strong>{(onArrangeSchedule||!direct&&workspace)&&<Button size="compact" variant="secondary" aria-label={onArrangeSchedule?'安排缺失的计划日期':'查看缺失的计划日期'} onClick={onArrangeSchedule||(()=>workspace?.inspect(r.id,'work'))}>{onArrangeSchedule?'排期':'查看'}</Button>}</header>
       <p>{r.status==='completed'?'历史计划日期缺失，无法计算完整的计划偏差。':'补齐以下日期后，才能估算整体完成时间与计划偏差。'}</p>
       <ul>{schedule.gaps.map(item=><li key={item.id}>{item.title}：缺少{item.missing.join('、')}</li>)}</ul>
     </section>}

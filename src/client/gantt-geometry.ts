@@ -1,8 +1,8 @@
 import type { CSSProperties } from "react";
 import { eachDayOfInterval, format, isValid, parseISO, startOfDay } from "date-fns";
-import { addBusinessDays, todayIso } from "../shared/domain";
+import { todayIso } from "../shared/domain";
 import { isBusinessDay, isValidIsoDate } from "../shared/workday";
-import { ganttWeekOffsets } from "./gantt-calendar";
+import { ganttRangeTooWide, ganttWeekOffsets, shiftGanttDate } from "./gantt-calendar";
 
 export type GanttZoom = "day" | "week" | "month";
 
@@ -38,11 +38,14 @@ export function buildBusinessDayTimeline(values: Array<string | null | undefined
   const today = toGanttDate(asOfDate) || toGanttDate(todayIso()) || startOfDay(new Date());
   const earliest = parsed.length ? new Date(Math.min(...parsed.map((date) => date.getTime()))) : today;
   const latest = parsed.length ? new Date(Math.max(...parsed.map((date) => date.getTime()))) : today;
-  const start = toGanttDate(addBusinessDays(format(earliest, "yyyy-MM-dd"), -option.padding))!;
-  let end = toGanttDate(addBusinessDays(format(latest, "yyyy-MM-dd"), option.padding))!;
+  let start = toGanttDate(shiftGanttDate(format(earliest, "yyyy-MM-dd"), -option.padding))!;
+  let end = toGanttDate(shiftGanttDate(format(latest, "yyyy-MM-dd"), option.padding))!;
+  const rangeLimited=ganttRangeTooWide(format(start,'yyyy-MM-dd'),format(end,'yyyy-MM-dd'));
+  if(rangeLimited){start=toGanttDate(shiftGanttDate(format(today,'yyyy-MM-dd'),-option.padding))!;end=toGanttDate(shiftGanttDate(format(today,'yyyy-MM-dd'),option.padding))!;}
   let dates = eachDayOfInterval({ start, end }).filter((date) => isBusinessDay(format(date, "yyyy-MM-dd")));
   if (dates.length < option.minimumDays) {
-    end = toGanttDate(addBusinessDays(format(start, "yyyy-MM-dd"), option.minimumDays - 1))!;
+    end = toGanttDate(shiftGanttDate(format(start, "yyyy-MM-dd"), option.minimumDays - 1))!;
+    start = toGanttDate(shiftGanttDate(format(end, "yyyy-MM-dd"), 1-option.minimumDays))!;
     dates = eachDayOfInterval({ start, end }).filter((date) => isBusinessDay(format(date, "yyyy-MM-dd")));
   }
   return {
@@ -50,6 +53,7 @@ export function buildBusinessDayTimeline(values: Array<string | null | undefined
     end,
     dates,
     days: dates.length,
+    rangeLimited,
   };
 }
 

@@ -1,11 +1,46 @@
 import {expect,test,type Locator} from '@playwright/test';
 import {phaseFixture} from './phase-fixture';
+import {chooseOption,selectedValue} from './select-helper';
 
 async function addLink(editor:Locator,index:number,title:string,url:string){
   await editor.getByRole('button',{name:'添加',exact:true}).click();
   await editor.getByRole('textbox',{name:`链接 ${index} 地址`,exact:true}).fill(url);
   await editor.getByRole('textbox',{name:`链接 ${index} 名称`,exact:true}).fill(title);
 }
+
+test('先选择链接类型再粘贴地址，保存后保留手动类型', async ({ page }) => {
+  const f = await phaseFixture(page);
+  await page.goto('/?' + new URLSearchParams({ projectId: f.projectId, detailId: 'feature:' + f.feature.id, detailTab: 'basic' }));
+  const root = page.locator('.modal-card-workspace[role=dialog]');
+  await root.getByRole('button', { name: '编辑特性', exact: true }).click();
+  const editor = root.getByRole('region', { name: '编辑关联链接', exact: true });
+  await editor.getByRole('button', { name: '添加', exact: true }).click();
+  const kind = editor.getByRole('combobox', { name: '链接 2 类型', exact: true });
+  await chooseOption(kind, 'document');
+  await editor.getByRole('textbox', { name: '链接 2 地址', exact: true }).fill('https://jira.example.com/browse/DESIGN-12');
+  await expect(selectedValue(kind)).toHaveValue('document');
+  await editor.getByRole('textbox', { name: '链接 2 名称', exact: true }).fill('  联调设计依据  ');
+  await editor.getByRole('button', { name: '添加', exact: true }).click();
+  await editor.getByRole('textbox', { name: '链接 3 地址', exact: true }).fill('https://jira.example.com/browse/DESIGN-13');
+  await expect(selectedValue(editor.getByRole('combobox', { name: '链接 3 类型', exact: true }))).toHaveValue('task');
+  await expect(editor.getByRole('textbox', { name: '链接 3 名称', exact: true })).toHaveValue('DESIGN-13');
+  await root.getByRole('button', { name: '编辑特性', exact: true }).click();
+  const link = root.getByRole('link', { name: /联调设计依据/ });
+  await expect(link).toHaveAttribute('href', 'https://jira.example.com/browse/DESIGN-12');
+  await expect(link).toContainText('文档');
+  await root.getByRole('button',{name:'编辑特性',exact:true}).click();
+  await editor.getByRole('textbox',{name:'链接 2 名称',exact:true}).fill('  更新联调资料  ');
+  let writes=0;
+  await page.route('**'+f.base+'/features',async route=>{
+    if(route.request().method()!=='POST')return route.continue();
+    writes++;await route.fetch();await route.abort('failed');
+  });
+  await root.getByRole('button',{name:'编辑特性',exact:true}).click();
+  await root.getByRole('button',{name:'读取最新资料',exact:true}).click();
+  await root.getByRole('button',{name:'已核对，操作已生效',exact:true}).click();
+  await expect(root.getByRole('link',{name:/更新联调资料/})).toHaveAttribute('href','https://jira.example.com/browse/DESIGN-12');
+  expect(writes).toBe(1);
+});
 test('特性、Phase、需求和工作项共用开放链接，草稿恢复与保存',async({page},info)=>{
   const f=await phaseFixture(page),root=page.locator('.modal-card-workspace[role=dialog]');
   const open=async(id:string,tab='basic')=>{await page.goto('/?'+new URLSearchParams({projectId:f.projectId,detailId:id,detailTab:tab}));await expect(root).toBeVisible();};
@@ -60,7 +95,7 @@ test('工作项链接提交结果未知时刷新保留原请求，核对后不�
   await page.route('**/api/work-items/'+work.id,async route=>{
     if(route.request().method()!=='PATCH')return route.continue();writes++;await route.fetch();await route.abort('failed');
   });
-  await links.getByRole('button',{name:'保存',exact:true}).click();await expect(links.getByRole('button',{name:'核对',exact:true})).toBeVisible();expect(writes).toBe(1);
+  await links.locator('form').evaluate(form=>{(form as HTMLFormElement).requestSubmit();(form as HTMLFormElement).requestSubmit();});await expect(links.getByRole('button',{name:'核对',exact:true})).toBeVisible();expect(writes).toBe(1);
   await page.reload();await expect(links.getByRole('textbox',{name:'链接 1 名称',exact:true})).toHaveValue('待核对材料');
   await expect(links.getByRole('button',{name:'保存',exact:true})).toHaveCount(0);
   await links.getByRole('button',{name:'核对',exact:true}).click();await expect(links.getByRole('link',{name:'待核对材料'})).toBeVisible();expect(writes).toBe(1);

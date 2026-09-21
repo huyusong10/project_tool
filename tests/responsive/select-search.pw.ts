@@ -60,6 +60,11 @@ for (const width of [1280, 390]) test(`搜索特性支持复制名称、拼音�
 test('下拉搜索的 Home/End 编辑文本，方向键选项和 Escape 取消选择', async ({ page }) => {
   const { select, search } = await openRequirement(page);
   await search.fill('资产管理');
+  for (const composition of [{ isComposing: true }, { keyCode: 229 }]) {
+    await search.dispatchEvent('keydown', { key: 'Enter', code: 'Enter', ...composition });
+    await expect(search).toBeVisible();
+    await expect(select).toContainText('默认归入其他需求');
+  }
   await search.press('Home');
   expect(await search.evaluate((input: HTMLInputElement) => input.selectionStart)).toBe(0);
   await search.press('End');

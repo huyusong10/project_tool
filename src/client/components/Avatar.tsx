@@ -1,5 +1,5 @@
-/** 姓名首/尾字头像，替代 5 处手写的 slice 圆形块。 */
+/** 姓名末字头像。 */
 export function Avatar({ name, className = "" }: { name: string; className?: string }) {
-  const initial = name.trim() ? name.trim().slice(-1) : "?";
+  const initial = Array.from(name.trim()).at(-1) || "?";
   return <span className={`avatar${className ? ` ${className}` : ""}`} aria-hidden="true">{initial}</span>;
 }

@@ -1,5 +1,9 @@
 import { businessDateFromDateTime } from "../shared/domain";
 import type { ProgressUpdate } from "./types";
+import { formatDateTime } from './format';
+
+const progressEventLabels: Record<string,string> = {note:'说明',progress:'进展',start:'开始',block:'阻塞',unblock:'解阻',complete:'完成',reopen:'返工',correction:'纠错',accept:'验收',cancel:'取消'};
+export const progressReferenceLabel = (update?:ProgressUpdate) => update ? `${formatDateTime(update.createdAt)} · ${progressEventLabels[update.eventType]||update.eventType}` : '原记录不可用';
 
 type ProgressSnapshot = Pick<ProgressUpdate, "id" | "percent" | "createdAt">;
 type ProgressDisplaySnapshot = Pick<ProgressUpdate, "workItemId" | "workItemPercent" | "percent">;

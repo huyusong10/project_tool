@@ -19,7 +19,7 @@
 .action-center-filters > span { margin-left: auto; white-space: nowrap; }
 .action-items { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: auto; }
 .action-items > .empty-state { min-height: 100%; }
-.action-item { flex: none; width: 100%; min-height: 72px; display: grid; grid-template-columns: 84px minmax(0,1fr) minmax(150px,230px) 20px; align-items: center; gap: 12px; padding: 10px 15px; border: 0; border-top: 1px solid var(--divider); color: var(--text-secondary); background: var(--bg-surface); text-align: left; }
+.action-item { flex: none; width: 100%; min-height: 72px; display: grid; grid-template-columns: 30px minmax(0,1fr) minmax(150px,230px) 20px; align-items: center; gap: 12px; padding: 10px 15px; border: 0; border-top: 1px solid var(--divider); color: var(--text-secondary); background: var(--bg-surface); text-align: left; }
 .action-item:first-child { border-top: 0; }
 .action-item:hover { background: var(--bg-surface-subtle); }
 .action-severity { width: 27px; height: 27px; display: grid; place-items: center; border-radius: var(--radius-sm); color: var(--text-muted); background: var(--bg-hover); font-size: 12px; font-weight: 750; white-space: nowrap; }
@@ -29,10 +29,10 @@
 .action-item-main { min-width: 0; display: grid; gap: 4px; }
 .action-item-main > div { min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 8px; row-gap: 2px; }
 .action-item-main strong, .action-item-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.action-item-main strong { color: var(--text-secondary); font-size: 14px; }
+.action-item-main strong { color: var(--text-secondary); font-size: 14px; white-space: normal; overflow-wrap: anywhere; }
 .action-item-main small { color: var(--text-faint); font-size: 12px; }
 .action-item-main p { margin: 0; color: var(--text-muted); font-size: 12px; }
 .action-item-meta { min-width: 0; display: grid; gap: 3px; color: var(--text-faint); font-size: 12px; }
-.action-item-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.action-item-meta span { white-space: normal; overflow-wrap: anywhere; }
 .action-item > svg { color: var(--text-faint); }
 }

@@ -17,10 +17,11 @@ export function projectPathGraph(a:PathAnalysis, focus?:string, attention=false)
     });
     for(const n of a.nodes.filter(n=>n.kind==='milestone'&&!n.requirementId))cards.push({id:n.id,requirementId:'',workItemId:null,kind:'milestone',title:n.title,subtitle:'项目里程碑',status:n.status,risk:n.riskLevel,forecast:n.forecastEnd,floatDays:n.floatDays,critical:n.critical,unknown:!!n.unknownReasons.length,external:false,hiddenCount:0});
     const ids=new Set(cards.map(n=>n.id)), grouped=new Map<string,GraphLink>();
+    const dependencyEdges=new Map(a.edges.filter(edge=>edge.dependencyId).map(edge=>[edge.dependencyId,edge]));
     for(const d of a.dependencies) {
       const source=d.sourceRequirementId||d.sourceMilestoneId!,target=d.targetRequirementId||d.targetMilestoneId!;
       if(source===target||!ids.has(source)||!ids.has(target)) continue;
-      const id=`${source}>${target}`, edge=a.edges.find(e=>e.dependencyId===d.id), existing=grouped.get(id);
+      const id=`${source}>${target}`, edge=dependencyEdges.get(d.id), existing=grouped.get(id);
       const label=compactRelationCaption(relationCaption(a,d)),description=relationDescription(a,d);
       if(existing) {existing.dependencyIds.push(d.id);existing.critical ||= !!edge?.critical;existing.description+='\n'+description;}
       else grouped.set(id,{id,source,target,label,description,critical:!!edge?.critical,dependencyIds:[d.id]});
@@ -30,7 +31,7 @@ export function projectPathGraph(a:PathAnalysis, focus?:string, attention=false)
     // Preserve one-hop context and explicitly count everything omitted.
     const selected=new Set(keep); links.forEach(e=>{if(selected.has(e.source)||selected.has(e.target)){keep.add(e.source);keep.add(e.target);}});
     if(!keep.size) cards.forEach(c=>keep.add(c.id));
-    return {cards:cards.filter(c=>keep.has(c.id)).map(c=>({...c,hiddenCount:links.filter(e=>(e.source===c.id&&!keep.has(e.target))||(e.target===c.id&&!keep.has(e.source))).length})),links:links.filter(e=>keep.has(e.source)&&keep.has(e.target))};
+    return {cards:cards.filter(c=>keep.has(c.id)).map(c=>({...c,hiddenCount:attention?links.filter(e=>(e.source===c.id&&!keep.has(e.target))||(e.target===c.id&&!keep.has(e.source))).length:0})),links:links.filter(e=>keep.has(e.source)&&keep.has(e.target))};
   }
   const internal=new Set(a.nodes.filter(n=>n.requirementId===focus&&n.kind!=='project').map(n=>n.id));
   const keep=new Set(internal), links=a.edges.filter(e=>internal.has(e.source)||internal.has(e.target)).filter(e=>nodeMap.get(e.source)?.kind!=='project'&&nodeMap.get(e.target)?.kind!=='project');

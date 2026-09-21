@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { analyticsCatalog, type AnalyticsPanelConfig } from '../../src/shared/analytics';
-import {selectedValue} from './select-helper';
+import {chooseOption,selectedValue} from './select-helper';
+import {todayIso} from '../../src/shared/domain';
 import {workspaceFixture} from './workspace-fixture';
 import {closeGraphProperties} from './graph-interactions';
 import { mockGanttData, mockGanttReport, requirement } from './gantt-fixture';
@@ -122,4 +123,33 @@ test('统计页区分零数量、无完成样本和真实零按期率，并恢�
   sampleCount = 2;
   await page.reload();
   await expect(page.locator('.analytics-kpi strong').first()).toHaveText('0%');
+});
+
+test('负责人归档后历史问题筛选保持原范围且可切换清空',async({page},info)=>{
+  const post=async(url:string,data:object)=>{const r=await page.request.post(url,{data});expect(r.ok(),await r.text()).toBe(true);return r.json();};
+  await post('/api/login',{username:'admin',password:'41_xc7q0qOjo4Inw!'});const project=await post('/api/projects',{name:'历史负责人筛选 '+Date.now()});
+  const a=await post('/api/people',{projectId:project.id,name:'历史负责人甲 '+Date.now()}),b=await post('/api/people',{projectId:project.id,name:'当前负责人乙 '+Date.now()});
+  const issues=[];for(const [person,title] of [[a,'甲负责的已解决问题'],[b,'乙负责的已解决问题']] as const){const issue=await post('/api/issues',{projectId:project.id,title,ownerId:person.id,discoveredAt:todayIso()});issues.push(await post('/api/issues/'+issue.id+'/resolve',{expectedVersion:issue.version,content:'已核对解决'}));}
+  const url='/issues?'+new URLSearchParams({projectId:project.id,status:'resolved',ownerId:a.id});await page.goto(url);const owner=page.locator('.issue-filters').getByRole('combobox').nth(2),rowA=page.getByRole('row').filter({hasText:'甲负责的已解决问题'}),rowB=page.getByRole('row').filter({hasText:'乙负责的已解决问题'});await expect(selectedValue(owner)).toHaveValue(a.id);await expect(rowA).toBeVisible();await expect(rowB).toHaveCount(0);
+  const archived=await page.request.delete('/api/people/'+a.id,{data:{expectedUpdatedAt:a.updatedAt}});expect(archived.ok(),await archived.text()).toBe(true);await page.reload();
+  const filtered=await(await page.request.get('/api/issues?'+new URLSearchParams({projectId:project.id,status:'resolved',ownerId:a.id}))).json();expect(filtered.total).toBe(1);expect(filtered.items[0].id).toBe(issues[0].id);
+  await expect(selectedValue(owner)).toHaveValue(a.id);expect(new URL(page.url()).searchParams.get('ownerId')).toBe(a.id);await expect(rowB).toHaveCount(0);await expect(rowA).toBeVisible();
+    expect(await selectedValue(owner).locator('option:checked').textContent()).toBe(a.name);await page.setViewportSize({width:390,height:844});await owner.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('archived-issue-owner-filter-390.png'),animations:'disabled'});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    await chooseOption(owner,b.id);await expect(rowB).toBeVisible();await expect(rowA).toHaveCount(0);await chooseOption(owner,'');await expect(rowA).toBeVisible();await expect(rowB).toBeVisible();
+    await page.goto('/issues?'+new URLSearchParams({projectId:project.id,status:'resolved',ownerId:'no-such-person'}));await expect(selectedValue(owner)).toHaveValue('no-such-person');await expect(rowA).toHaveCount(0);await expect(rowB).toHaveCount(0);await chooseOption(owner,'');await expect(rowA).toBeVisible();await expect(rowB).toBeVisible();
+  for(const issue of issues)expect(await(await page.request.get('/api/issues/'+issue.id)).json()).toEqual(issue);
+});
+
+test('需求归档后问题筛选仍明确保留原范围',async({page})=>{
+  const post=async(url:string,data:object)=>{const r=await page.request.post(url,{data});expect(r.ok(),await r.text()).toBe(true);return r.json();};
+  await post('/api/login',{username:'admin',password:'41_xc7q0qOjo4Inw!'});const project=await post('/api/projects',{name:'历史范围筛选 '+Date.now()}),owner=await post('/api/people',{projectId:project.id,name:'范围负责人 '+Date.now()});
+  let requirement=await post('/api/requirements',{projectId:project.id,ownerId:owner.id,title:'待归档的已完成需求'});
+  for(const [requirementId,title] of [[requirement.id,'需求内历史问题'],[null,'其他公共问题']] as const){const issue=await post('/api/issues',{projectId:project.id,title,requirementId,ownerId:owner.id,discoveredAt:todayIso()});await post('/api/issues/'+issue.id+'/resolve',{expectedVersion:issue.version,content:'已确认解决'});}
+  requirement=await post('/api/requirements/'+requirement.id+'/start',{expectedVersion:requirement.version});requirement=await post('/api/requirements/'+requirement.id+'/complete',{expectedVersion:requirement.version});
+  await page.goto('/issues?'+new URLSearchParams({projectId:project.id,status:'resolved',requirementId:requirement.id}));const scope=page.locator('.issue-filters').getByRole('combobox').nth(3),own=page.getByRole('row').filter({hasText:'需求内历史问题'}),other=page.getByRole('row').filter({hasText:'其他公共问题'});await expect(selectedValue(scope)).toHaveValue(requirement.id);await expect(own).toBeVisible();await expect(other).toHaveCount(0);
+  const archived=await page.request.delete('/api/requirements/'+requirement.id,{data:{expectedVersion:requirement.version}});expect(archived.ok(),await archived.text()).toBe(true);await page.reload();
+  const filtered=await(await page.request.get('/api/issues?'+new URLSearchParams({projectId:project.id,status:'resolved',requirementId:requirement.id}))).json();expect(filtered.total).toBe(0);
+  await expect(selectedValue(scope)).toHaveValue(requirement.id);expect(new URL(page.url()).searchParams.get('requirementId')).toBe(requirement.id);await expect(other).toHaveCount(0);await expect(own).toHaveCount(0);
+  await chooseOption(scope,'public');await expect(other).toBeVisible();await chooseOption(scope,'');await expect(other).toBeVisible();await expect(own).toHaveCount(0);
+  const archives=await(await page.request.get('/api/archives?projectId='+project.id)).json();expect(archives.requirements.find((r:{id:string})=>r.id===requirement.id).linkedIssueCount).toBe(1);
 });

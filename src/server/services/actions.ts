@@ -24,7 +24,7 @@ type WorkItemRow = {
 
 type IssueRow = {
   id: string; requirementId: string | null; requirementTitle: string | null; requirementOwnerId: string | null;
-  title: string; ownerId: string | null; ownerName: string | null; dueDate: string | null; nextReviewAt:string|null; updatedAt: string;
+  title: string; ownerId: string | null; ownerName: string | null; ownerValid: number; dueDate: string | null; nextReviewAt:string|null; updatedAt: string;
 };
 
 const reasonSeverity: Record<ActionReasonCode, ActionSeverity> = {
@@ -116,7 +116,7 @@ export function listActionItems(
   const workItems = rows<WorkItemRow>(`SELECT w.id, w.requirement_id AS requirementId, r.title AS requirementTitle,
     r.owner_id AS requirementOwnerId, w.title, w.owner_id AS ownerId, p.name AS ownerName, w.status,
     w.planned_end AS plannedEnd,w.blocked_at AS blockedAt, w.updated_at AS updatedAt,
-    EXISTS (SELECT 1 FROM project_people pp JOIN accounts a ON a.person_id=pp.person_id
+    EXISTS (SELECT 1 FROM project_people pp JOIN accounts a INDEXED BY idx_accounts_person ON a.person_id=pp.person_id
       WHERE pp.project_id=r.project_id AND pp.person_id=w.owner_id AND pp.project_role IN ('member','manager')
         AND p.active=1 AND p.deleted_at IS NULL AND a.status='active' AND a.deleted_at IS NULL) AS ownerValid,
     CASE WHEN ? IS NOT NULL AND EXISTS (
@@ -127,8 +127,12 @@ export function listActionItems(
     WHERE r.project_id=? AND r.deleted_at IS NULL AND r.status NOT IN ('completed','cancelled')
       AND w.status NOT IN ('completed','cancelled')`, personId, personId, filters.projectId);
   const workById=new Map(workItems.map(w=>[w.id,w]));
+  const participatingRequirementIds = new Set<string>();
   for (const workItem of workItems) {
-    if (!manager && workItem.requirementOwnerId !== personId && workItem.ownerId !== personId && !workItem.actorCollaborator&&pathNodes.get(workItem.id)?.blockerCoordination?.coordinatorId!==personId) continue;
+    const participates = workItem.ownerId === personId || workItem.actorCollaborator
+      || pathNodes.get(workItem.id)?.blockerCoordination?.coordinatorId === personId;
+    if (participates) participatingRequirementIds.add(workItem.requirementId);
+    if (!manager && workItem.requirementOwnerId !== personId && !participates) continue;
     const reasonCodes = deriveWorkItemActionReasons(workItem);
     const pathBlocker=pathBlockers.get(workItem.id);
     if(pathBlocker)reasonCodes.push('path_blocked');
@@ -145,6 +149,9 @@ export function listActionItems(
 
   const issues = rows<IssueRow>(`SELECT i.id, i.requirement_id AS requirementId, r.title AS requirementTitle,
     r.owner_id AS requirementOwnerId, i.title, i.owner_id AS ownerId, p.name AS ownerName,
+    EXISTS (SELECT 1 FROM project_people pp JOIN accounts a INDEXED BY idx_accounts_person ON a.person_id=pp.person_id
+      WHERE pp.project_id=i.project_id AND pp.person_id=i.owner_id AND pp.project_role IN ('member','manager')
+        AND p.active=1 AND p.deleted_at IS NULL AND a.status='active' AND a.deleted_at IS NULL) AS ownerValid,
     i.due_date AS dueDate, i.next_review_at AS nextReviewAt, i.updated_at AS updatedAt
     FROM issues i LEFT JOIN requirements r ON r.id=i.requirement_id
     LEFT JOIN people p ON p.id=i.owner_id
@@ -155,22 +162,27 @@ export function listActionItems(
     const reasonCodes: ActionReasonCode[] = [];
     if (isOverdueByWorkday(issue.dueDate, today)) reasonCodes.push('overdue');
     if (!issue.ownerId) reasonCodes.push('unassigned');
+    else if (!issue.ownerValid) reasonCodes.push('owner_unavailable');
     if(issue.nextReviewAt&&issue.nextReviewAt<=today)reasonCodes.push('follow_up');
     if (!reasonCodes.length) continue;
     items.push(makeItem({
       sourceType: 'issue', sourceId: issue.id, projectId: filters.projectId,
       requirementId: issue.requirementId, contextTitle: issue.requirementTitle, title: issue.title,
-      reasonCodes, ownerId: issue.ownerId, ownerName: issue.ownerName, dueDate: issue.dueDate, nextReviewAt:issue.nextReviewAt,
+      reasonCodes, ownerId: issue.ownerValid ? issue.ownerId : null,
+      ownerName: issue.ownerId && !issue.ownerValid ? '项目经理' : issue.ownerName, dueDate: issue.dueDate, nextReviewAt:issue.nextReviewAt,
       overdueWorkdays: isOverdueByWorkday(issue.dueDate, today) ? Math.max(0, businessDayDelta(issue.dueDate, today)) : 0,
       targetPath: `/issues?issueId=${encodeURIComponent(issue.id)}`, updatedAt: issue.updatedAt,
     }));
   }
 
-  const visibleIds=new Set(requirements.filter(r=>manager||r.ownerId===personId||r.acceptanceOwnerValid&&r.acceptanceOwnerId===personId||r.blockerCoordination?.coordinatorId===personId||workItems.some(w=>w.requirementId===r.id&&(w.ownerId===personId||w.actorCollaborator||pathNodes.get(w.id)?.blockerCoordination?.coordinatorId===personId))).map(r=>r.id));
+  const visibleIds=new Set(requirements.filter(r=>manager||r.ownerId===personId||r.acceptanceOwnerValid&&r.acceptanceOwnerId===personId||r.blockerCoordination?.coordinatorId===personId||participatingRequirementIds.has(r.id)).map(r=>r.id));
   for(const b of pathAnalysis?.blockers||[]){
     const node=pathNodes.get(b.nodeId);if(!node)continue;
     if(!manager&&(!b.requirementId||!visibleIds.has(b.requirementId)))continue;
-    if(node.kind==='milestone'&&!items.some(i=>i.sourceId===node.id))items.push(makeItem({sourceType:'milestone',sourceId:node.id,projectId:filters.projectId,requirementId:node.requirementId,contextTitle:null,title:node.title,reasonCodes:['path_blocked'],ownerId:null,ownerName:'项目经理',dueDate:node.plannedEnd,overdueWorkdays:0,targetPath:node.requirementId?'/requirements/'+node.requirementId+'?view=path&pathSelected='+node.id:'/paths?pathSelected='+node.id,updatedAt:today}));
+    if(node.kind==='milestone'&&!items.some(i=>i.sourceId===node.id)){
+      const destination=new URLSearchParams({projectId:filters.projectId,workspaceView:'graph',scopeType:node.requirementId?'requirement':'project',scopeId:node.requirementId||filters.projectId,pathNode:node.id,graphInspector:'open',pathInspector:'closed',pathScope:'all'});
+      items.push(makeItem({sourceType:'milestone',sourceId:node.id,projectId:filters.projectId,requirementId:node.requirementId,contextTitle:null,title:node.title,reasonCodes:['path_blocked'],ownerId:null,ownerName:'项目经理',dueDate:node.plannedEnd,overdueWorkdays:0,targetPath:'/?'+destination,updatedAt:today}));
+    }
   }
   for(const item of items){
     const parent=requirementsById.get(item.requirementId||''),source=sourcesById.get(item.sourceId);

@@ -1,14 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addBusinessDays, businessDateFromDateTime, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
+  addBusinessDays, addCalendarDays, businessDateFromDateTime, businessDayDelta, businessDaysInclusive, calculateWorkItemGap, deriveRequirementMetrics,
   deriveRequirementScheduleRange, deriveWorkItemStatus, ganttProgressDisplay, issueActionsByStatus, plannedDatesFromOffset, plannedStartFromDeadline, requirementActionsByStatus, riskLevelFromProgressGap, signedProgressVariance, workItemActionsByStatus, workItemPlannedProgress,
   isOverdueByWorkday, startOfWeekIso,
 } from '../src/shared/domain';
-import { hasWorkdayCalendarFallback, isBusinessDay, isValidIsoDate } from '../src/shared/workday';
+import { DateRangeError, hasWorkdayCalendarFallback, isBusinessDay, isValidIsoDate } from '../src/shared/workday';
 import { isoDateSchema, issueInputSchema, peopleConcurrencyInputSchema, reorderWorkItemsInputSchema, templateInputSchema } from '../src/shared/contracts';
 import { analyticsCatalog } from '../src/shared/analytics';
 
 describe('工作日、排期与Gap规则', () => {
+  it('日期加减越界立即报错，边界内的最后工作日仍可排期', () => {
+    expect(isoDateSchema.safeParse('9999-12-31').success).toBe(true);
+    expect(isoDateSchema.safeParse('0100-01-01').success).toBe(true);
+    expect(addBusinessDays('9999-12-30', 1)).toBe('9999-12-31');
+    expect(addBusinessDays('0100-01-01', 0)).toBe('0100-01-01');
+    expect(() => addBusinessDays('9999-12-31', 1)).toThrow(DateRangeError);
+    expect(() => addBusinessDays('0100-01-01', -1)).toThrow(DateRangeError);
+    expect(() => addCalendarDays('9999-12-31', 1)).toThrow(DateRangeError);
+    expect(() => plannedDatesFromOffset('9999-12-31', 0, 2)).toThrow(DateRangeError);
+  });
+
   it('排除周末并按偏移和工期生成计划', () => {
     expect(businessDaysInclusive('2026-09-04', '2026-09-07')).toBe(2);
     expect(businessDayDelta('2026-09-04', '2026-09-07')).toBe(1);
@@ -187,6 +198,27 @@ describe('自动状态、进度和风险', () => {
       scheduleVarianceDays: -2,
       finishVariance: 0,
     });
+  });
+
+  it.each([
+    ['2026-02-14', '2026-02-24', 50, '2026-02-13', '2026-02-14', -1],
+    ['2026-02-14', '2026-02-24', 50, '2026-02-24', '2026-02-14', 1],
+    ['2027-01-02', '2027-01-03', 100, '2027-01-01', '2027-01-03', -0],
+    ['2027-01-02', '2027-01-03', 0, '2027-01-03', '2026-12-31', 1],
+  ] as const)('进度参考日期保留调休与无工作日计划：%s至%s，进度%s，截至%s',
+    (plannedStart, plannedEnd, progress, today, scheduleReferenceDate, scheduleVarianceDays) => {
+      const metrics = deriveRequirementMetrics({ executionMode: 'direct', status: 'in_progress', progress, plannedStart, plannedEnd }, [], today);
+      expect(metrics).toMatchObject({ scheduleReferenceDate, scheduleVarianceDays });
+    });
+
+  it.each([
+    [0, null, 2],
+    [50, '0100-01-01', 1],
+  ] as const)('最早合法排期进度%s保持偏差，不生成范围外的参考日期', (progress,referenceDate,varianceDays) => {
+    const metrics=deriveRequirementMetrics({status:'in_progress',priority:'P1'},[
+      {status:'in_progress',progress,plannedStart:'0100-01-01',plannedEnd:'0100-01-04',actualStart:'0100-01-01'},
+    ],'0100-01-04');
+    expect(metrics).toMatchObject({plannedProgress:100,scheduleReferenceDate:referenceDate,scheduleVarianceDays:varianceDays});
   });
 
   it('状态进度圆点规范化完成、取消和异常进度', () => {
