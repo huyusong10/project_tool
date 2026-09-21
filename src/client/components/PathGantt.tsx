@@ -27,7 +27,7 @@ export function PathGantt({ nodes, onSelect, storageKey, asOfDate, edges = [], m
   const navigation = useGanttNavigation({ values, asOfDate, storageKey, onPan: selection.close });
   const { dates, cellWidth, timelineWidth, zoom } = navigation;
   const { offset, visible } = ganttTodayPosition(dates, asOfDate);
-  const track = useMemo(() => ganttTrackStyle(dates, cellWidth), [dates, cellWidth]);
+  const track = useMemo(() => ganttTrackStyle(dates, cellWidth, zoom), [dates, cellWidth, zoom]);
   return <div className="path-draft-gantt is-dated">
     <GanttNavigation navigation={navigation} />
     <div className="path-gantt-scroll gantt-navigation-surface" ref={navigation.attach} tabIndex={0} aria-label="排期预览时间轴，可左右拖动浏览">
@@ -41,10 +41,11 @@ export function PathGantt({ nodes, onSelect, storageKey, asOfDate, edges = [], m
           const related = selection.related(n.id) || project && selection.selected.some(m => m.relatedIds.some(id => allNodes.find(p => p.id === id)?.requirementId === n.requirementId));
           return <div className={`path-draft-gantt-row${related ? ' is-milestone-related' : ''}`} key={n.id}>
             <button className="path-gantt-name" onClick={() => onSelect(n)} title={n.title}>{n.title}{project&&requirements.find(r=>r.id===n.requirementId)&&<ExecutionStageBadge requirement={requirements.find(r=>r.id===n.requirementId)!}/>}<small>{n.forecastEnd || '交付待确认'}{n.arrangement === 'late' ? ' · 靠近交付' : ''}</small></button>
-            <div className="path-draft-gantt-track" style={track}>
+            <div className="path-draft-gantt-track gantt-split-track" style={track}>
               <GanttMilestoneCuts items={milestoneItems} dates={dates} cellWidth={cellWidth} asOfDate={asOfDate} selection={selection} showForecast />
-              {plan && <i className="plan" style={{ left: plan.left, width: plan.width }} />}
-              {forecast ? <i style={{ left: forecast.left, width: forecast.width }} title={`${n.forecastStart} ～ ${n.forecastEnd}`} /> : <em>待确认</em>}
+              {plan && <span className="gantt-date-plan" style={{ left: plan.left, width: plan.width }} />}
+              {forecast ? <span className="gantt-date-prediction" style={{ left: forecast.left, width: forecast.width }} title={`${n.forecastStart} ～ ${n.forecastEnd}`} /> : <em>待确认</em>}
+              {visible && <i className="gantt-today-line" style={{left:(offset+1)*cellWidth}}/>}
             </div>
           </div>;
         })}

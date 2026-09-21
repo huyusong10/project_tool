@@ -1,3 +1,4 @@
+import './gantt-timeline.css';
 import { memo, type HTMLAttributes } from "react";
 import { ganttProgressDisplay } from "../../shared/domain";
 import { businessDateIndex, ganttInterval, toGanttDate } from "./GanttTimeline";

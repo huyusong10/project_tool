@@ -85,8 +85,8 @@ test("项目看板、我的工作和个人设置采用新的信息层级", async
 
   await page.goto("/my-work");
   await expect(page.getByRole("table", { name: "分配给我的工作项甘特图" })).toBeVisible();
-  await expect(page.locator(".my-work-list .unified-gantt-plan")).toHaveCount(1);
-  await expect(page.locator(".my-work-list .gantt-progress-marker")).toHaveText("40");
+  await expect(page.locator(".my-work-list .gantt-date-plan")).toHaveCount(1);
+  await expect(page.locator(".my-work-list .gantt-progress-value")).toHaveText("40%");
   await expect(page.getByRole("button", { name: "为SDS 文档编写更新进度" })).toBeVisible();
   await expect(page.locator(".my-work-dates")).toHaveCount(0);
   await page.getByRole("button", { name: "SDS 文档编写", exact: true }).click();
@@ -121,7 +121,7 @@ test("我的工作空筛选、拖动卡片高度及刷新恢复布局",{tag:'@re
   expect(Math.abs(panelAfterEmpty!.height - panelBeforeEmpty!.height)).toBeLessThanOrEqual(1);
   expect(Math.abs(chartsAfterEmpty!.y - chartsBeforeEmpty!.y)).toBeLessThanOrEqual(1);
   await page.getByRole("button", { name: "查看全部", exact: true }).click();
-  await expect(page.locator(".my-work-list .unified-gantt-plan")).toHaveCount(1);
+  await expect(page.locator(".my-work-list .gantt-date-plan")).toHaveCount(1);
 
   const initialPanel = await workPanel.boundingBox();
   const resizeHandle = workPanel.getByRole("button", { name: "调整卡片高度" });
@@ -184,7 +184,7 @@ test("我的工作允许未排期工作项开始并明确显示待排期", async
   });
   await page.goto('/my-work');
   await expect(page.getByRole('button', { name: '开始', exact: true })).toBeEnabled();
-  await expect(page.locator('.my-work-list .gantt-unscheduled')).toHaveText('待排期');
+  await expect(page.locator('.my-work-list .gantt-date-unplanned')).toHaveText('待排期');
   await expect(page.getByRole('button', { name: '暂不可开始', exact: true })).toHaveCount(0);
 });
 
@@ -242,7 +242,7 @@ test("我的工作甘特使用响应业务日期", async ({ page }) => {
     actualStart: "2026-09-01",
   });
   await page.goto("/my-work");
-  await page.locator(".my-work-list .gantt-bar-hitbox").focus();
+  await page.locator(".my-work-list .gantt-date-hitbox").focus();
   await expect(page.locator(".gantt-popover-metrics")).toContainText("+1个工作日 / +1个工作日");
   await expect(page.locator(".my-work-list").getByTitle("截至 2026-09-03", { exact: true })).toBeVisible();
 });
@@ -257,7 +257,7 @@ test("我的工作空排期甘特仍显示响应业务日期", async ({ page }) 
   }, "2026-02-16");
   await page.goto("/my-work");
   await expect(page.locator(".my-work-list").getByTitle("截至 2026-02-16", { exact: true })).toBeVisible();
-  await expect(page.locator(".my-work-list .gantt-unscheduled")).toHaveText("待排期");
+  await expect(page.locator(".my-work-list .gantt-date-unplanned")).toHaveText("待排期");
 });
 
 test("主页甘特使用仪表盘顶层业务日期", async ({ page }) => {

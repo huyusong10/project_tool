@@ -68,6 +68,7 @@
   .page-toolbar .page-back-button { width: var(--toolbar-back); min-width: var(--toolbar-back); }
   .page-breadcrumb .ui-button { display: block; min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; }
   .view-tabs .ui-button { flex: 1; min-width: 0; padding-inline: 8px; }
+  .my-work-list > header .view-tabs .ui-button { flex: 0 0 auto; }
   .ui-button > svg { width: 16px; height: 16px; flex: none; color: inherit; stroke-width: 1.75; }
   .ui-button[data-size='compact'] > svg { width: 14px; height: 14px; }
   .ui-button:hover:not(:disabled) { background: var(--button-hover); color: var(--button-ink); box-shadow: none; filter: none; transform: none; }

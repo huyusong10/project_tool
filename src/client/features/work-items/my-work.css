@@ -4,7 +4,7 @@
 .my-work-list > header { flex-wrap: wrap; gap: 10px; }.my-work-list > header .view-tabs { margin-left: auto; }
 .my-work-list { overflow: hidden; }.my-work-list > .requirement-gantt { height: auto; flex: 1; min-height: 0; }.requirement-gantt-item-link { min-width: 0; max-width: 100%; overflow: hidden; padding: 0; border: 0; color: var(--text-secondary); background: transparent; font-size: 12px; font-weight: 700; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }.requirement-gantt-item-link:hover { color: var(--accent-hover); text-decoration: underline; text-underline-offset: 2px; }.my-work-assignment-badge, .my-work-overdue-badge { flex: none; padding: 1px 5px; border-radius: 5px; color: var(--text-secondary); background: var(--accent-soft); font-size: 10px; font-style: normal; font-weight: 700; line-height: 17px; }.my-work-overdue-badge { color: var(--danger-text); background: var(--danger-bg); }
 .my-work-list .requirement-gantt-actions { container: my-work-actions / inline-size; padding-inline: 8px; box-shadow: none; }
-.my-work-list .requirement-gantt-grid:not(.has-inline-actions):not(.is-empty) { grid-auto-rows: minmax(54px,auto); }
+.my-work-list .requirement-gantt-grid:not(.has-inline-actions):not(.is-empty) { grid-auto-rows: minmax(var(--gantt-row-height),auto); }
 .my-work-gantt-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; width: 100%; min-width: 0; }
 .my-work-gantt-actions .work-item-actions { width: auto; max-width: 100%; }
 .my-work-gantt-actions .work-item-action-row { flex-wrap: wrap; gap: 2px; }

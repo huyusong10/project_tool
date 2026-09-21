@@ -111,6 +111,8 @@ export function MyWorkPage() {
           showStatusFilters={false}
           showGapSummary={false}
           showUnscheduled
+          canUpdateProgress={item => item.status === 'in_progress' && !directEntries.some(entry => entry.id === item.id)}
+          onUpdateProgress={item => setProgressItem(item as MyWorkItem)}
           actionColumnWidth={190}
           ariaLabel="分配给我的工作项甘特图"
           emptyState={{ message: '当前筛选下没有工作项', actionLabel: '查看全部', onAction: () => setFilter('all') }}

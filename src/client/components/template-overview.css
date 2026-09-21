@@ -19,7 +19,7 @@
 .template-thumbnail svg { display:block; width:100%; height:132px; }
 .template-thumbnail svg text { fill:var(--text-muted); font-size:10px; }
 .template-thumbnail-empty { display:grid; place-items:center; height:132px; color:var(--text-muted); font-size:12px; }
-.template-thumb-bar { fill:var(--accent); }
+.template-thumb-bar { fill:color-mix(in srgb,var(--gantt-running) 12%,var(--bg-surface)); stroke:var(--gantt-running); stroke-width:.75; }
 .template-thumb-milestone path { fill:var(--purple-bg); stroke:var(--purple-text); }
 .template-thumb-milestone line { stroke:var(--purple-border,var(--border-strong)); stroke-dasharray:3 3; }
 .template-thumb-edge { fill:none; stroke:var(--border-strong); stroke-width:1.3; }
@@ -78,7 +78,7 @@
 .template-plan-track { padding:0; background:transparent; border:0; border-bottom:1px solid var(--divider); border-radius:0; }
 .template-preview .template-plan-track.is-selected { background:var(--bg-surface-subtle); }
 .template-preview .template-plan-name.is-selected { color:var(--accent-ink); box-shadow:inset 3px 0 var(--accent); }
-.template-preview .template-plan-track.is-selected .template-plan-bar { background:var(--accent-hover); }
+.template-preview .template-plan-track.is-selected .template-plan-bar { border-color:var(--gantt-running); box-shadow:0 0 0 1px var(--gantt-running); }
 .template-preview .template-structure-node:focus-visible,.template-preview .template-plan-name:focus-visible,.template-preview .template-plan-track:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 .template-preview-selection { display:flex; flex-wrap:wrap; align-content:flex-start; gap:6px 18px; min-height:42px; font-size:12px; line-height:1.7; color:var(--text-muted); overflow-wrap:anywhere; }
 .template-preview-selection strong { color:var(--text-primary); }

@@ -1,8 +1,7 @@
 @layer application, controls;
 @layer application {
-.gantt-forecast-tail { position:absolute; top:calc(var(--gantt-bar-top) + 3px); height:calc(var(--gantt-bar-height) - 6px); z-index:4; box-sizing:border-box; border:2px dashed var(--gantt-delay); border-radius:0 5px 5px 0; background:transparent; cursor:help; }
+.gantt-forecast-tail { position:absolute; top:var(--date-actual-top); height:var(--gantt-actual-height); z-index:4; box-sizing:border-box; border:2px dashed var(--gantt-delay); border-radius:var(--gantt-bar-radius); background:color-mix(in srgb,var(--gantt-delay) 5%,var(--bg-surface)); min-width:3px; cursor:help; }
 .gantt-forecast-tail:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-.gantt-split-track .gantt-forecast-tail { top:var(--date-actual-top); height:var(--gantt-actual-height); border-radius:0 3px 3px 0; }
 .gantt-legend .legend-forecast { height:8px; border:2px dashed var(--gantt-delay); border-radius:3px; background:transparent; }
 
 }

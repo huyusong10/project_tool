@@ -235,8 +235,8 @@
   --shadow-3: 0 16px 42px color-mix(in srgb, var(--text-primary) 18%, transparent);
   --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
   --backdrop-bg: #101b2966;
-  --gantt-week-line: var(--border-strong);
-  --gantt-day-line: var(--divider);
+  --gantt-week-line: color-mix(in srgb,var(--border-strong) 42%,transparent);
+  --gantt-day-line: color-mix(in srgb,var(--border) 24%,transparent);
   /* 甘特业务色独立于皮肤强调色，只按明暗调整亮度。 */
   --gantt-running: #446b91;
   --gantt-completed: #35745b;
@@ -360,42 +360,8 @@
 .modal-backdrop { z-index: var(--z-modal); }
 .inline-edit-popover { z-index: 1300; }
 
-/* 双轨只改变行内绘制，不改变固定列、行高、面板和筛选区。 */
-.gantt-split-track { --date-plan-top: 8px; --date-actual-top: 29px; }
-.gantt-track.gantt-split-track { --date-plan-top: calc(50% - 14.5px); --date-actual-top: calc(50% + 6.5px); }
-.gantt-date-plan, .gantt-date-actual, .gantt-date-deadline, .gantt-date-delay { position: absolute; pointer-events: none; box-sizing: border-box; }
-.gantt-date-plan { top: var(--date-plan-top); height: var(--gantt-plan-height); border: 1px solid var(--gantt-plan-border); border-radius: var(--radius-sm); background: var(--gantt-plan-fill); z-index: 2; }
-.gantt-date-actual { top: var(--date-actual-top); height: var(--gantt-actual-height); background: var(--bar-color,var(--gantt-muted)); border-radius: var(--gantt-bar-radius); z-index: 3; }
-.gantt-date-delay { top: var(--date-actual-top); height: var(--gantt-actual-height); border: 2px solid var(--gantt-delay); border-radius: 0 var(--gantt-bar-radius) var(--gantt-bar-radius) 0; z-index: 4; }
-.gantt-date-actual.is-ongoing { border-right: 2px dotted var(--bg-surface); }
-.gantt-date-deadline { top: var(--date-plan-top); height: calc(var(--date-actual-top) - var(--date-plan-top) + var(--gantt-actual-height)); border-left: 1px dashed var(--text-muted); z-index: 3; }
-.gantt-date-plan.is-date-point, .gantt-date-actual.is-date-point { width: 5px !important; border: 1px solid var(--text-muted); transform: translateX(-2px); }
-.gantt-date-progress { position: absolute; top: calc(var(--date-actual-top) + (var(--gantt-actual-height) - 21px) / 2); z-index: 9; max-width: 112px; height: 21px; display: inline-flex; align-items: center; padding: 0 5px; border: 1px solid var(--bar-color,var(--gantt-muted)); border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-primary); font-family: var(--font-numeric); font-size: 12px; font-weight: 650; line-height: 19px; white-space: nowrap; }
-button.gantt-date-progress { cursor: pointer; }
-.gantt-date-progress.gantt-status-cancelled { color: var(--text-muted); border-color: var(--border-strong); }
-.gantt-date-hitbox { position: absolute; top: calc(var(--date-plan-top) - 4px); height: calc(var(--date-actual-top) - var(--date-plan-top) + var(--gantt-actual-height) + 8px); z-index: 6; cursor: help; }
-.gantt-date-unplanned { position: absolute; top: calc(var(--date-plan-top) - 6px); left: 8px; color: var(--text-muted); font-size: 12px; }
-.gantt-range-note { display: block; margin-top: 3px; color: var(--text-muted); font-size: 12px; }
-
-.gantt-view-picker { position: relative; flex: none; }
-.gantt-view-picker > summary { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--border-default); border-radius: var(--radius-md); color: var(--text-secondary); background: var(--bg-surface); list-style: none; cursor: pointer; }
-.gantt-view-picker > summary::-webkit-details-marker { display: none; }
-.gantt-view-picker[open] { z-index: 40; }
-.gantt-view-picker[open] > summary { color: var(--accent-ink); background: var(--accent-soft); }
-/* 工具栏换行后按钮可能靠左；菜单向右展开，避免落入固定侧栏。 */
-.gantt-view-options { position: absolute; top: calc(100% + 6px); left: 0; width: 180px; padding: 5px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--bg-surface); box-shadow: var(--shadow-2); }
-.gantt-view-options button { display: block; width: 100%; min-height: 36px; padding: 6px 10px; color: var(--text-secondary); background: transparent; border: 0; border-radius: var(--radius-sm); text-align: left; font-size: 13px; }
-.gantt-view-options button:hover, .gantt-view-options button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); }
-
-/* 为新增视图入口腾出宽度，保留原工具栏和筛选区的纵向位置。 */
-.gantt-toolbar-actions { gap: 6px; }
-.gantt-toolbar-actions > .view-tabs button { min-width: 28px; padding-inline: 7px; }
-
-.gantt-date-plan.is-partial-plan { border-style: dashed; background: transparent; }
-
 [data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(1) { --surface-bg: color-mix(in srgb,var(--accent) 3%,var(--bg-surface)); }
 [data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(2) { --surface-bg: color-mix(in srgb,var(--danger) 3%,var(--bg-surface)); }
 [data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(3) { --surface-bg: color-mix(in srgb,var(--warning) 4%,var(--bg-surface)); }
 [data-theme="soft"] .dashboard-top-stats .stat-card:nth-child(4) { --surface-bg: color-mix(in srgb,var(--success) 3%,var(--bg-surface)); }
-
 }
