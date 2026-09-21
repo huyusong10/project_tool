@@ -4,18 +4,19 @@
 
 ## 恢复入口
 
-1. 工作目录 `D:\tools\project-manage-improve`，分支 `codex/continuous-improvement`，起点 `bd19fa1`。先读本记录和 `git status --short`，按主题取证，不重头检查。
-2. 用户当前优先目标：全面检查 UI 整齐度、美观度，修复元素粘连和甘特条粗细不统一。RK1—RK36 UI检查已验收；当前阶段为合入主干、重新构建与推送。
-3. 最新产品 RK36（本次提交，账号内外观菜单正常滚动）、RK35 `81ba9bf`（超窄工作字段单列）及 RK33 `d7a79d9`（窄屏链接名称与地址分行）；RK32 `e6f5ed8`（缺失排期长文）；此前 `e99fb34`（RK31）、`edf6499`（RK30）、`7aa463b`（RK29）。完整验证66819、RK36最终42113均退出0已回收，所有句柄已结束；日志 `.preview/qa/continuous-goal/stage-rk30-verify.log`。
-4. 用户2026-09-21要求完成当前任务后合入主干、重新构建、提交并推送全部工作区代码。暂停选择新UI探索事项，先完成本次集成；长期Goal不标完成。
-5. 已确认远端默认分支dev，fetch后origin/dev未变化，原dev领先4提交，改进分支领先dev430提交。原目录的skills/project-manage-intake/SKILL.md修改和docs/dcim-ai-workflow-v3-gaps.md将原样一并提交；现在已获编辑主干及push授权。3210/3295运行服务尚未重启。
+1. 当前只保留主目录 `D:\tools\project-manage`，分支 `dev`；原改进起点 `bd19fa1`。用户要求删除 D:\tools 下全部附加 worktree，5个目录及Git登记均已移除，不恢复旧工作树。
+2. UI插入目标 RK1—RK36 已验收，已合入主干并重新构建。长期Goal仍active；本轮结束后从该基线继续，避免重查近期UI区域。
+3. 合入提交 `d06893c`，原工作区两份DCIM文档提交 `727425b`；RK36 `8966283`、RK35 `81ba9bf`、RK33 `d7a79d9`。主干完整验证55110退出0并回收：1003业务、13性能、26浏览器通过，生产构建/预算通过。日志 `.preview/qa/continuous-goal/integration-20260921-verify-final.log`。
+4. 用户2026-09-21授权合入、重新构建、提交和推送全部当前工作区改动；随后要求清理项目目录及删除附加worktree。最终发布结果写入 `.preview/qa/continuous-goal/integration-20260921-result.json`，恢复时核对HEAD与origin/dev。
+5. 旧worktree快照/差异/清单在 `.preview/qa/worktrees-20260921-085547/`，逐文件SHA256校验后移除。guest-checkbox有135项、progress有101项未提交状态，完整源码及数据保留于各自zip/patch；分支仍保留。旧改进证据在project-manage-improve.zip内原`.preview/qa/continuous-goal/`路径；RK34—36审计JSON已单独保留。主项目50个散落日志及历史测试产物归档到 `.preview/qa/history-20260921-085203.zip`（1070文件111.49→77.50MiB）；正式构建、主数据库、备份和node_modules保留。3210服务尚未重启，3295/3296无监听。
 6. 浏览器串行，端口3296，每次设置 `$env:PLAYWRIGHT_PORT='3296'`，trace关闭，隔离数据库/构建。新测试会清空 test-results/browser，代表图先存入 `.preview/qa/continuous-goal` 并实际查看。
 
 ## 验证基线与当前阶段
 
 | 范围 | 验证事实 |
 |---|---|
-| 最新完整基线 RK30 | 1003业务/122文件47.31s；13性能19.00s；26浏览器冒烟1.1min。运行时、428边界、完整Lint/按钮规范、类型、生产构建/预算通过。66819退出0已回收，stage-rk30-verify.log。JS936.06/CSS346.56/ELK1595.33KB；上一完整基线RK23/26db885 |
+| 主干集成 / 2026-09-21 | 1003业务/122文件56.52s；13性能19.43s；26浏览器1.5min；原生运行时、428边界、完整Lint/按钮CSS、类型、前后端构建及预算通过。55110退出0已回收。JS936.06/CSS346.46/ELK1595.33KB。主目录历史备份3274个构建脚本被ESLint扫描，补data/**忽略后完成验证；源码规则不变。清理两个测试文件末尾空行，附加worktree全部归档移除。 |
+| 上一完整基线 RK30 | 1003业务/122文件47.31s；13性能19.00s；26浏览器冒烟1.1min。运行时、428边界、完整Lint/按钮规范、类型、生产构建/预算通过。66819退出0已回收，stage-rk30-verify.log。JS936.06/CSS346.56/ELK1595.33KB；上一完整基线RK23/26db885 |
 | RK29 / 7aa463b | 真实4状态工作、3人员与协作者；4尺寸72悬浮状态和8图例图。横溢出720→0、文字459→0，0窗口越界/异常/浏览器写。3既有+探针4项31.8s；Lint/按钮规范/类型/构建/预算通过。JS936.06/CSS346.53KB。历史里程碑名称仅响应覆盖；主甘特摘要与图例无需修改 |
 | RK30 / edf6499 | 320px进度按钮向左裁切61.2px且无法点击，表单30px、记录29px溢出；窄屏操作自适应换行，滑杆可缩，数字框统一焦点；历史记录窄屏上下排列。去掉记录标题多余28px空白，恢复嵌入记录卡片14px间距。32状态/28次Tab，0溢出/裁切/异常/浏览器写；真实项目/需求/执行记录，无响应模拟。91955的4既有+探针5项23.4s；最终55842探针14.8s。代表修前/修后图已看，目标Lint/按钮规范通过；完整验证全通过 |
 | RK31 / e99fb34 | 待处理900px窗口摘要仍四列，两个标签被拆成两行；容器≤900px提前两列。真实12需求/3工作/3问题产生18行动（高9/中3/低6）；6尺寸48状态、6次详情返回，摘要标签均单行，0溢出/异常/浏览器写。79156的临时+3既有4项34.1s；目标Lint/按钮CSS/类型/构建/预算通过（CSS346.51KB）。代表前后图已看，列表/筛选/空态无需修改；ui-rk31-audit.json及stage-rk31-*，无永久测试 |
@@ -26,13 +27,13 @@
 
 | RK35 / 81ba9bf | 320px工作清单日期被截成2026-09…；内容≤300px字段单列后日期完整。真实8工作/3长姓名，5尺寸55状态，0日期裁切/溢出/焦点遮挡/异常/浏览器写；列表、组合新增、日期入口、独立资料均检查。既有新增冲突/未知响应恢复通过；最终95714总21.1s，Lint/按钮CSS/类型/构建预算通过（CSS346.51KB）。代表前后图已看；ui-rk35-audit.json与stage-rk35-* |
 
-| RK36 / 本次提交 | 账号内外观菜单被父层截断，窄屏首部移到窗口外约241px；改为在账号菜单内顺序展开，父层统一滚动。6尺寸78状态/48方向键，宿主越界与横溢出0、焦点边缘误差≤0.44px、0异常/浏览器写。4项既有主题测试通过；最终42113总20.2s，Lint/按钮CSS通过，代表前后图已看；生产构建随主干完整验证执行。ui-rk36-audit.json与stage-rk36-* |
+| RK36 / 8966283 | 账号内外观菜单被父层截断，窄屏首部移到窗口外约241px；改为在账号菜单内顺序展开，父层统一滚动。6尺寸78状态/48方向键，宿主越界与横溢出0、焦点边缘误差≤0.44px、0异常/浏览器写。4项既有主题测试通过；最终42113总20.2s，Lint/按钮CSS通过，代表前后图已看；主干完整验证及生产构建也已通过。ui-rk36-audit.json与stage-rk36-* |
 
 RK30证据：`ui-rk30-audit.json`、`ui-rk30-before/`、`ui-rk30-accepted/`、`stage-rk30-*.log`；探针已归档 `stage-rk30-progress.pw.ts`，无永久测试。63502因真实320入口不可点击失败；基线仅此处用键盘进入继续检查，修后真实点击成功。73308首稿通过后，截图发现标题空白与卡片粘连，补改并重新验证；不是只凭测试通过验收。
 
 ## UI 已验收覆盖
 
-详细证据路径统一为 `.preview/qa/continuous-goal/ui-rkN-audit.json`、`stage-rkN-*`（RK1用ui-rk-audit.json）。完整细节在 `7aa463b:docs/debug/CONTINUOUS-GOAL.md`，本次精简前快照/SHA见 record-before-rk30-compaction.md、record-compaction-rk30.json。
+详细证据位于旧改进worktree归档内的 `.preview/qa/continuous-goal/ui-rkN-audit.json`、`stage-rkN-*`（RK1用ui-rk-audit.json）。完整细节在 `7aa463b:docs/debug/CONTINUOUS-GOAL.md`，本次精简前快照/SHA见 record-before-rk30-compaction.md、record-compaction-rk30.json。
 
 | 阶段 / 提交 | 已验收成果、覆盖重点 |
 |---|---|

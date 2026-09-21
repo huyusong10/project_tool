@@ -329,4 +329,3 @@ test('跨项目同名归档在筛选、删除确认和恢复时保留归属',asy
   expect(writes).toEqual(['POST /api/requirements/'+south.a.id+'/restore','POST /api/templates/'+south.template.id+'/restore']);
   await search.fill(String(suffix));await chooseOption(type,'all');await page.reload();await expect(page.locator('.archive-table tbody tr')).toHaveCount(2);await expect(page.locator('.archive-table')).toContainText(north.project.name);
 });
-

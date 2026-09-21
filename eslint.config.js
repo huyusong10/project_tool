@@ -5,7 +5,7 @@ import tseslint from "typescript-eslint";
 import buttonControls from './scripts/button-controls-rule.mjs';
 
 export default defineConfig(
-  globalIgnores([".preview/**", "dist/**", "dist-server/**", ".playwright/**", "coverage/**", "playwright-report/**", "test-results/**"]),
+  globalIgnores(["data/**", ".preview/**", "dist/**", "dist-server/**", ".playwright/**", "coverage/**", "playwright-report/**", "test-results/**"]),
   {
     files: ["**/*.{ts,tsx}"],
     languageOptions: {

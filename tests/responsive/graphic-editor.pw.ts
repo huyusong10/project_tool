@@ -702,4 +702,3 @@ for(const other of [false,true])test('项目里程碑依赖从项目清单摘要
   const response=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/dependency-changes/apply'));await graphToolbar(page,'保存修改');expect((await response).status()).toBe(200);expect(writes).toBe(1);
   const after=await read(),added=after.dependencies.filter(d=>!before.dependencies.some(old=>old.id===d.id));expect(added).toHaveLength(1);expect(added[0]).toMatchObject({sourceRequirementId:f.testing.id,sourceWorkItemId:f.testing.workItems[0].id,targetMilestoneId:id});expect(after.dependencies.filter(d=>before.dependencies.some(old=>old.id===d.id))).toEqual(before.dependencies);expect(after.milestones).toEqual(before.milestones);expect(after.requirements).toEqual(before.requirements);expect(errors).toEqual([]);
 });
-
