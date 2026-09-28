@@ -85,7 +85,7 @@ PR 和快捷修改共用事项写入保护。停止、重启和数据库恢复�
 
 | 环境配置 | 默认值 | 用途 |
 |---|---|---|
-| `JIRA_BASE_URL` | `https://ecj.jereh.cn` | Jira 站点 |
+| `JIRA_BASE_URL` | `https://ec-jira.jereh.cn` | Jira 站点 |
 | `JIRA_API_VERSION` | `2` | REST API 版本 |
 | `JIRA_ENCRYPTION_KEY` | 自动生成并保存 | 可选独立密钥，64 个十六进制字符 |
 | `JIRA_ENABLED` | `1` | 设为 `0` 停用远端操作 |

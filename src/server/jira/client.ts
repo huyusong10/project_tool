@@ -123,7 +123,7 @@ export function createJiraClient(site: string, apiVersion: string, token: string
       const p = z.array(z.object({ object: z.object({ url: z.string(), title: z.string() }) })).safeParse(await request('/issue/' + encodeURIComponent(key) + '/remotelink'));
       if (!p.success) throw new JiraRemoteError(0);
       return p.data.flatMap(({ object }) => {
-        try { const u = new URL(object.url); return u.protocol === 'https:' && (u.hostname === 'ecc.jereh.cn' || /confluence/i.test(u.hostname) || /\/pages\/|\/spaces\//.test(u.pathname)) ? [{ ...object, kind: 'document' as const }] : []; } catch { return []; }
+        try { const u = new URL(object.url); return u.protocol === 'https:' && (u.hostname === 'ec-confluence.jereh.cn' || /confluence/i.test(u.hostname) || /\/pages\/|\/spaces\//.test(u.pathname)) ? [{ ...object, kind: 'document' as const }] : []; } catch { return []; }
       });
     },
   };

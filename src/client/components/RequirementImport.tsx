@@ -10,7 +10,7 @@ import { migrateImportDraft } from "../feature-storage-migration";
 import { randomUUID } from '../random-uuid';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { RequirementImportResult } from './RequirementImportResult';
 import { ApiError, isWriteOutcomeUnknown, jsonBody } from '../api';
 import { useSession } from '../app-context';
 import { invalidateRequirementViews, keys } from '../query-keys';
@@ -120,12 +120,12 @@ export function RequirementImport({projectId,defaultFeature,defaultPhase}:{proje
     catch(e){if(mounted.current){setError(e instanceof Error?e.message:'提交结果待核对');if(!isWriteOutcomeUnknown(e)&&e instanceof ApiError){attemptRef.current=null;setAttempt(null);setClosedBatchId(attempt.batchId);setPreview(null);persist({raw,pkg,advanced,attempt:null,closedBatchId:attempt.batchId});}}}finally{requestLock.current=false;if(mounted.current)setBusy(false);}
   };
   return <div className="intake-stack">
-    <div className="intake-section-head"><div><h2>导入需求</h2><p className="field-help">粘贴原始需求，每段一条：第一行是标题，其余内容保留为说明。核对后保存。</p></div><div className="button-row"><Button variant="secondary" className="ghost-button" onClick={()=>download(intakeExample,'requirement-import-example.json')}>下载工具示例</Button>{(pkg||raw.trim())&&<Button variant="secondary" className="ghost-button" onClick={()=>download(!pkg||advanced?raw:pkg,!pkg||advanced?'requirement-import-draft.txt':'requirement-import-draft.json')}>导出草稿</Button>}</div></div>
-    {defaultFeature&&<p className="field-help">新需求默认归属：{defaultFeature}{defaultPhase?' / '+defaultPhase:''}。可在导入预览中调整。</p>}
-    {storageError&&<div className="warning-banner">{storageError}</div>}{error&&<div className="form-error" role="alert">{error}</div>}
+    {!result&&<><div className="intake-section-head"><div><h2>导入需求</h2><p className="field-help">粘贴原始需求，每段一条：第一行是标题，其余内容保留为说明。核对后保存。</p></div><div className="button-row"><Button variant="secondary" className="ghost-button" onClick={()=>download(intakeExample,'requirement-import-example.json')}>下载工具示例</Button>{(pkg||raw.trim())&&<Button variant="secondary" className="ghost-button" onClick={()=>download(!pkg||advanced?raw:pkg,!pkg||advanced?'requirement-import-draft.txt':'requirement-import-draft.json')}>导出草稿</Button>}</div></div>
+    {defaultFeature&&<p className="field-help">新需求默认归属：{defaultFeature}{defaultPhase?' / '+defaultPhase:''}。可在导入预览中调整。</p>}</>}
+    {storageError&&<div className="warning-banner">{storageError}{result&&<Button variant="secondary" onClick={()=>download(pkg||raw,'requirement-import-draft.json')}>导出草稿</Button>}</div>}{error&&<div className="form-error" role="alert">{error}</div>}
     {attempt&&<div className="warning-banner"><p>上次提交结果待核对，原批次已保留。</p><Button variant="primary" className="primary-button" disabled={busy} onClick={()=>void checkReceipt()}>查询提交回执</Button><Button variant="secondary" className="ghost-button" disabled={busy} onClick={()=>void retryOriginal()}>按原批次重试</Button></div>}
-    {result&&<div className="intake-preview-result"><strong>已保存 {Object.keys(result.requirementIds).length} 个需求</strong><div className="button-row">{Object.entries(result.requirementIds).map(([key,id])=><Link key={key} to={'/requirements/'+id}>{pkg?.requirements.find(r=>r.key===key)?.title||key}</Link>)}</div><Button variant="secondary" className="ghost-button" onClick={()=>{fileRead.current++;setPackage(null);setRaw('');setResult(null);setClosedBatchId(null);setAdvanced(false);persist({raw:'',pkg:null,advanced:false,attempt:null,closedBatchId:null,result:null});}}>继续导入</Button></div>}
-    <fieldset className="form-fieldset intake-stack" disabled={busy||!!attempt||!!result}>
+    {result?<RequirementImportResult result={result} pkg={pkg} projectId={projectId} onContinue={()=>{fileRead.current++;setPackage(null);setRaw('');setResult(null);setClosedBatchId(null);setAdvanced(false);setMergeSource(null);setExpandedWork(new Set());persist({raw:'',pkg:null,advanced:false,attempt:null,closedBatchId:null,result:null});}}/>:
+    <fieldset className="form-fieldset intake-stack" disabled={busy||!!attempt}>
     {(!pkg||advanced)&&<div className="intake-import-empty"><label className="field"><span>上传文本、Markdown 或工具 JSON</span><input type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" onChange={e=>void readFile(e.target.files?.[0])}/></label><label className="field"><span>原始需求</span><textarea className="intake-import-json" aria-label="原始需求" value={raw} onChange={e=>{fileRead.current++;setRaw(e.target.value);setPreview(null);}} placeholder={'用户登录认证\n用户输入账号和密码后可以登录。\n\n日志查询\n支持按时间和用户筛选日志。'}/></label><Button variant="primary" className="primary-button" disabled={!raw.trim()} onClick={parse}>整理需求</Button></div>}
     {pkg&&<><div className="intake-toolbar"><strong>{pkg.requirements.filter(r=>r.action!=='skip').length} 个需求</strong><Button variant="secondary" className="ghost-button" onClick={()=>{fileRead.current++;setAdvanced(v=>!v);setRaw(JSON.stringify(pkg,null,2));}}>编辑导入文件</Button><Button variant="secondary" className="ghost-button" onClick={()=>change({...pkg,requirements:[...pkg.requirements,{key:randomUUID(),title:'新需求',action:'create',confirmAdditional:false,workItems:[],feature:defaultFeature,phase:defaultPhase}]})}>增加需求</Button></div>
     <div className="intake-stack">{pkg.requirements.map(r=>{
@@ -144,6 +144,6 @@ export function RequirementImport({projectId,defaultFeature,defaultPhase}:{proje
     </section>;})}</div></>}
     {preview&&<div className="intake-preview-result"><strong>新增 {preview.counts.requirements} 个需求，更新 {preview.counts.updated} 个需求，新增 {preview.counts.workItems} 个工作项</strong>{preview.errors.length>0&&<ul>{preview.errors.map(e=><li key={e}>{e}</li>)}</ul>}{preview.warnings.length>0&&<details open><summary>资料提示</summary><ul>{preview.warnings.map(w=><li key={w}>{w}</li>)}</ul></details>}{!!preview.differences&&<DeliveryImpactTable entries={(preview.differences as {impact?:Parameters<typeof DeliveryImpactTable>[0]['entries']}).impact||[]} target={(preview.differences as {target?:Parameters<typeof DeliveryImpactTable>[0]['target']}).target}/>}</div>}
     <div className="intake-import-actions"><span>{busy?'正在处理…':preview?'修改内容后需重新预览':'草稿保存在本机'}</span><Button variant="secondary" className="ghost-button" disabled={!pkg||busy||advanced} onClick={()=>void inspect()}>预览导入</Button><Button variant="primary" className="primary-button" disabled={!preview||!!preview.errors.length||busy||!!storageError} onClick={()=>void submit()}>保存需求</Button></div>
-    </fieldset>
+    </fieldset>}
   </div>;
 }

@@ -44,7 +44,7 @@ export const config = {
   backupMaxCount: Math.max(1, Math.floor(Number(process.env.BACKUP_MAX_COUNT || 100) || 100)),
   seedDemo: process.env.SEED_DEMO !== '0',
   nodeEnv: process.env.NODE_ENV || 'development',
-  jiraBaseUrl: process.env.JIRA_BASE_URL || 'https://ecj.jereh.cn',
+  jiraBaseUrl: process.env.JIRA_BASE_URL || 'https://ec-jira.jereh.cn',
   jiraApiVersion: process.env.JIRA_API_VERSION || '2',
   jiraEncryptionKey: process.env.JIRA_ENCRYPTION_KEY || '',
   jiraEnabled: process.env.JIRA_ENABLED !== '0',

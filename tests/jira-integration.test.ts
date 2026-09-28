@@ -72,7 +72,7 @@ beforeEach(async () => {
     if (url.pathname.endsWith('/search')) { reads.push('search:' + url.searchParams.get('jql')); const startAt = Number(url.searchParams.get('startAt')); return json({ startAt, total: paginated ? 2 : 1, issues: [rawIssue(remote[paginated && startAt ? 'TEST-3' : 'TEST-2'])] }); }
     const match = /\/issue\/([^/]+)(.*)/.exec(url.pathname); if (!match) return json({}, 404);
     const issue = remote[match[1]] || Object.values(remote).find(i => i.id === match[1] || i.key === match[1]); if (!issue || hidden && issue.key === 'TEST-1') return json({}, 404);
-    if (match[2] === '/remotelink') return json([{ object: { url: 'https://ecc.jereh.cn/pages/viewpage.action?pageId=123', title: 'Design document' } }]);
+    if (match[2] === '/remotelink') return json([{ object: { url: 'https://ec-confluence.jereh.cn/pages/viewpage.action?pageId=123', title: 'Design document' } }]);
     if (match[2] === '/transitions') {
       if (init?.method === 'POST') {
         const transition = JSON.parse(String(init.body)).transition.id; writes.push({ key: issue.key, transition });

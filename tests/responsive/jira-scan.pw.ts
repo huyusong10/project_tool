@@ -71,7 +71,7 @@ async function fixture(page: Page, options: { configured?: boolean; rejectSave?:
     }
     if (path.endsWith('/operations')) return route.fulfill({ json: preview ? [preview] : [] });
     if (path.includes('/operations/')) return route.fulfill({ json: preview });
-    if (path.endsWith('/import-preview')) return route.fulfill({ json: { id: 'import1', issue: scan.rows[0].issue, links: [{ title: 'DCIM-99', url: scan.rows[0].issue!.url, kind: 'task' }, { title: '设计文档', url: 'https://ecc.jereh.cn/pages/viewpage.action?pageId=1', kind: 'document' }], warnings: [] } });
+    if (path.endsWith('/import-preview')) return route.fulfill({ json: { id: 'import1', issue: scan.rows[0].issue, links: [{ title: 'DCIM-99', url: scan.rows[0].issue!.url, kind: 'task' }, { title: '设计文档', url: 'https://ec-confluence.jereh.cn/pages/viewpage.action?pageId=1', kind: 'document' }], warnings: [] } });
     if (path.includes('/imports/')) {
       scan.rows[0] = { ...scan.rows[0], association: 'linked', requirementId: 'imported' };
       rows.push({ ...rows[0], requirementId: 'imported', title: request.postDataJSON().title, localStatus: 'not_started' });

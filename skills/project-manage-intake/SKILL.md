@@ -86,7 +86,7 @@ MCP 服务 `1.5.0` 的特性、Phase、需求和工作项均可关联多个文�
 
 ## DCIM AI 工作流 V3.0
 
-仅在 DCIM V3.0 上下文使用以下规则；其他项目不自动套用。规则来源：[SDS 工作流与设计协作规则](https://ecc.jereh.cn/pages/viewpage.action?pageId=6589992)。
+仅在 DCIM V3.0 上下文使用以下规则；其他项目不自动套用。规则来源：[SDS 工作流与设计协作规则](https://ec-confluence.jereh.cn/pages/viewpage.action?pageId=6589992)。
 
 特性维护 MPS、UX、数据设计、MDS、Phase 划分和需求拆分。公共数据、契约和系统约束由特性级设计负责人维护；局部工程选择随实现处理，缺失公共约定回 MDS，跨系统边界回 SDS。Phase 属于单一特性，需求是可验证功能；跨 Phase 拆可分别完成的增量，可共同引用同一 EPDS。
 
